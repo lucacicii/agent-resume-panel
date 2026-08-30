@@ -12,6 +12,7 @@ Languages: [English](#english) | [简体中文](#简体中文)
 
 - Create a project, then optionally associate a local folder.
 - Configure roles in **Settings → IM** (agent, prompt, read/write/execute tools). Builtin templates cannot be deleted.
+- Select text in a message and right-click for Quote / Translate / Explain. Quote goes into the composer; Translate and Explain run on the chat model and open a result popover. Custom actions are added in Settings → IM.
 - New rooms enable the five builtin roles. The room sidebar only turns templates on or off.
 - Each room can keep **background knowledge**: text, http(s) links, and images. Links are stored as URLs only — IM does not fetch pages; the dispatched agent decides whether to open them.
 - Every role’s ACP session uses the room folder as `cwd` and may list/read the entire tree. Write and command tools still follow the template.
@@ -29,6 +30,7 @@ Notes reuse is deferred: IM does not write project notes yet.
 
 - 先新建项目，再按需关联本地目录。
 - 在 **设置 → IM** 配置角色（Agent、提示词、读/写/执行工具）。内置模板不可删除。
+- 在消息里选中文字后右键：引用 / 翻译 / 解释。引用进入输入框；翻译和解释走对话模型，结果显示在弹出层。自定义操作在 设置 → IM 里添加。
 - 新房间默认启用五个内置角色。房间侧栏只负责勾选或取消模板。
 - 每个房间可添加 **背景知识**：文本、http(s) 链接、图片。链接只存 URL，IM 不抓网页；要不要打开由被派发的 agent 自己决定。
 - 每个角色的 ACP 会话都以房间目录为 `cwd`，可以列出并阅读整个项目树。写文件和执行命令仍由模板控制。

@@ -1,11 +1,16 @@
 import { dialog, type BrowserWindow } from "electron";
 import { constants } from "node:fs";
 import * as fs from "node:fs/promises";
-import { effectivePanelHome, loadSettings, preparePanelDatabasesFromSettings } from "@agent-resume/core";
+import {
+  effectivePanelHome,
+  loadSettings,
+  preparePanelDatabasesFromSettings
+} from "@agent-resume/core";
 import { safeHandle } from "../ipcUtils";
 import { ImConductor, emitImEvent } from "./conductor";
+import { runIndependentSelectionAction } from "./selectionRunner";
 import { ImStore } from "./store";
-import { isImAgent, parseImRoleTools, type ImAgent, type ImEvent } from "./types";
+import { isImAgent, isImSelectionActionKind, parseImRoleTools, type ImAgent, type ImEvent, type ImSelectionActionKind } from "./types";
 import type { AcpStreamEvent } from "../acp/types";
 
 let store: ImStore | null = null;
@@ -298,6 +303,58 @@ export function registerImIpc(deps: {
     const im = await getStore();
     await im.removeKnowledge(args.itemId, effectivePanelHome(settings));
     return { ok: true };
+  });
+
+  safeHandle("im:listSelectionActions", async () => {
+    const im = await getStore();
+    return im.listSelectionActions();
+  });
+
+  safeHandle("im:createSelectionAction", async (_event, args: {
+    name?: unknown;
+    kind?: unknown;
+    prompt?: unknown;
+  }) => {
+    if (typeof args?.name !== "string" || typeof args?.kind !== "string" || !isImSelectionActionKind(args.kind)) {
+      throw new Error("Action name and kind are required.");
+    }
+    const im = await getStore();
+    return im.createSelectionAction({
+      name: args.name,
+      kind: args.kind as ImSelectionActionKind,
+      prompt: typeof args.prompt === "string" ? args.prompt : ""
+    });
+  });
+
+  safeHandle("im:updateSelectionAction", async (_event, args: {
+    actionId?: unknown;
+    name?: unknown;
+    kind?: unknown;
+    prompt?: unknown;
+    enabled?: unknown;
+  }) => {
+    if (typeof args?.actionId !== "string") throw new Error("Action id is required.");
+    const im = await getStore();
+    return im.updateSelectionAction({
+      actionId: args.actionId,
+      name: typeof args.name === "string" ? args.name : undefined,
+      kind: typeof args.kind === "string" && isImSelectionActionKind(args.kind) ? args.kind : undefined,
+      prompt: typeof args.prompt === "string" ? args.prompt : undefined,
+      enabled: typeof args.enabled === "boolean" ? args.enabled : undefined
+    });
+  });
+
+  safeHandle("im:deleteSelectionAction", async (_event, args: { actionId?: unknown }) => {
+    if (typeof args?.actionId !== "string") throw new Error("Action id is required.");
+    const im = await getStore();
+    await im.deleteSelectionAction(args.actionId);
+    return { ok: true };
+  });
+
+  safeHandle("im:runSelectionAction", async (_event, args: { actionId?: unknown; text?: unknown }) => {
+    if (typeof args?.actionId !== "string") throw new Error("Action id is required.");
+    const im = await getStore();
+    return runIndependentSelectionAction(im, args.actionId, typeof args.text === "string" ? args.text : "");
   });
 }
 

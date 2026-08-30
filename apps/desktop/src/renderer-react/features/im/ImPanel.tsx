@@ -1,12 +1,12 @@
 import { ThemeIcon } from "../../components/ThemeIcon";
 import { renderMarkdown } from "../../components/Markdown";
 import { createPortal } from "react-dom";
-import { useCallback, useEffect, useRef, useState, type FormEvent, type JSX, type KeyboardEvent, type ReactPortal } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type JSX, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactPortal } from "react";
 import { desktopApi } from "../../bridge";
 import { notifyDesktop } from "../../components/Notifications";
 import { useI18n } from "../../i18n";
 import { storedWidth } from "../../storage";
-import { isBuiltinTemplateId, type ImEvent, type ImJob, type ImKnowledgeItem, type ImMember, type ImMessage, type ImProject, type ImQuotedMessage, type ImRoleTemplate, type ImRoom } from "../../../shared/imTypes";
+import { isBuiltinTemplateId, type ImEvent, type ImJob, type ImKnowledgeItem, type ImMember, type ImMessage, type ImProject, type ImQuotedMessage, type ImRoleTemplate, type ImRoom, type ImSelectionAction } from "../../../shared/imTypes";
 
 const SIDEBAR_COLLAPSED_KEY = "im-sidebar-collapsed";
 const SIDEBAR_WIDTH_KEY = "im-sidebar-width";
@@ -67,6 +67,20 @@ export function ImPanel(): ReactPortal | null {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => storageBoolean(SIDEBAR_COLLAPSED_KEY));
   const [sidebarWidth, setSidebarWidth] = useState(() => storedWidth(SIDEBAR_WIDTH_KEY, 240, 160, 360));
   const [sending, setSending] = useState(false);
+  const [selectionActions, setSelectionActions] = useState<ImSelectionAction[]>([]);
+  const [selectionMenu, setSelectionMenu] = useState<{
+    x: number;
+    y: number;
+    text: string;
+    message: ImMessage;
+  } | null>(null);
+  const [selectionResult, setSelectionResult] = useState<{
+    x: number;
+    y: number;
+    title: string;
+    text: string;
+    loading: boolean;
+  } | null>(null);
   const [templates, setTemplates] = useState<ImRoleTemplate[]>([]);
   const [knowledgeOpen, setKnowledgeOpen] = useState(false);
   const [knowledgeTitle, setKnowledgeTitle] = useState("");
@@ -88,11 +102,13 @@ export function ImPanel(): ReactPortal | null {
   }, []);
 
   const loadProjects = useCallback(async () => {
-    const [list, nextTemplates] = await Promise.all([
+    const [list, nextTemplates, nextActions] = await Promise.all([
       desktopApi().imListProjects(),
-      desktopApi().imListTemplates()
+      desktopApi().imListTemplates(),
+      desktopApi().imListSelectionActions()
     ]);
     setTemplates(nextTemplates);
+    setSelectionActions(nextActions.filter((item) => item.enabled));
     setProjects(list);
     setSelectedProjectId((current) => {
       if (current && list.some((project) => project.projectId === current)) return current;
@@ -194,19 +210,99 @@ export function ImPanel(): ReactPortal | null {
     return job?.status === "failed";
   });
 
-  const quoteMessage = useCallback((message: ImMessage) => {
+  const quoteSelection = useCallback((message: ImMessage, body: string, extraDraft?: string) => {
+    const clipped = body.length > 4000 ? `${body.slice(0, 3999)}…` : body;
     setQuotes((current) => {
-      if (current.some((item) => item.messageId === message.messageId)) return current;
+      if (current.some((item) => item.messageId === message.messageId && item.body === clipped)) return current;
       return [...current, {
         messageId: message.messageId,
         authorLabel: message.authorLabel,
-        body: message.body,
+        body: clipped,
         createdAtMs: message.createdAtMs,
-        truncated: false
+        truncated: clipped !== body
       }];
     });
+    if (extraDraft?.trim()) {
+      setDraft((current) => current.trim() ? `${current.trim()}\n${extraDraft.trim()}` : extraDraft.trim());
+    }
     textareaRef.current?.focus();
   }, []);
+
+  const quoteMessage = useCallback((message: ImMessage) => {
+    quoteSelection(message, message.body);
+  }, [quoteSelection]);
+
+  const selectedTextIn = useCallback((root: HTMLElement): string => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return "";
+    const range = selection.getRangeAt(0);
+    if (!root.contains(range.commonAncestorContainer)) return "";
+    return selection.toString().trim();
+  }, []);
+
+  const openSelectionMenu = useCallback((event: ReactMouseEvent<HTMLElement>, message: ImMessage) => {
+    // Prefer the highlighted text when the right-click happens over a selection
+    // inside the message; otherwise run on the whole message body.
+    const text = selectedTextIn(event.currentTarget) || message.body.trim();
+    if (!text) return;
+    event.preventDefault();
+    setSelectionResult(null);
+    setSelectionMenu({
+      x: Math.min(event.clientX, window.innerWidth - 220),
+      y: Math.min(event.clientY, window.innerHeight - 160),
+      text,
+      message
+    });
+  }, [selectedTextIn]);
+
+  const runSelectionAction = useCallback(async (action: ImSelectionAction) => {
+    if (!selectionMenu) return;
+    const { text, message, x, y } = selectionMenu;
+    setSelectionMenu(null);
+    if (action.kind === "context") {
+      const extra = action.actionId === "quote" ? "" : action.prompt.replaceAll("{selection}", text).trim();
+      quoteSelection(message, text, extra);
+      return;
+    }
+    setSelectionResult({ x, y, title: action.name, text: "", loading: true });
+    try {
+      const result = await desktopApi().imRunSelectionAction({ actionId: action.actionId, text });
+      setSelectionResult({ x, y, title: action.name, text: result.text, loading: false });
+    } catch (error) {
+      setSelectionResult(null);
+      setError(error);
+    }
+  }, [quoteSelection, selectionMenu, setError]);
+
+  const actionLabel = useCallback((action: ImSelectionAction) => {
+    if (action.actionId === "quote") return t("desktop.im.quote");
+    if (action.actionId === "translate") return t("desktop.im.translate");
+    if (action.actionId === "explain") return t("desktop.im.explain");
+    return action.name;
+  }, [t]);
+
+  useEffect(() => {
+    if (!selectionMenu && !selectionResult) return;
+    const onPointer = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest(".im-selection-menu, .im-selection-result")) return;
+      setSelectionMenu(null);
+      if (!selectionResult?.loading) setSelectionResult(null);
+    };
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setSelectionMenu(null);
+        if (!selectionResult?.loading) setSelectionResult(null);
+      }
+    };
+    window.addEventListener("pointerdown", onPointer);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointerdown", onPointer);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [selectionMenu, selectionResult]);
 
   const createProject = useCallback(async (event: FormEvent) => {
     event.preventDefault();
@@ -568,7 +664,7 @@ export function ImPanel(): ReactPortal | null {
                 {visibleMessages.length ? visibleMessages.map((message) => {
                   const speaker = members.find((member) => member.memberId === message.authorMemberId);
                   return (
-                    <article key={message.messageId} className={`im-message is-${message.kind.replace(".", "-")}`}>
+                    <article key={message.messageId} className={`im-message is-${message.kind.replace(".", "-")}`} onContextMenu={(event) => openSelectionMenu(event, message)}>
                       {message.kind !== "system" && (
                         <header>
                           <strong>
@@ -590,7 +686,22 @@ export function ImPanel(): ReactPortal | null {
                           ))}
                         </div>
                       )}
-                      <div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(message.body) }} />
+                      {message.mentionRoleIds.length > 0 && (
+                        <div className="im-message-mentions" aria-label={t("desktop.im.mentions")}>
+                          {message.mentionRoleIds.map((mentionId) => {
+                            const mentionMember = room?.members.find((item) => item.memberId === mentionId);
+                            return (
+                              <span key={mentionId} className="im-message-mention">
+                                @{mentionMember ? memberLabel(mentionMember) : mentionId}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+                      <div
+                        className="markdown-body"
+                        dangerouslySetInnerHTML={{ __html: renderMarkdown(message.body) }}
+                      />
                     </article>
                   );
                 }) : (
@@ -734,6 +845,39 @@ export function ImPanel(): ReactPortal | null {
           )}
         </aside>
       </div>
+      {selectionMenu ? createPortal(
+        <div
+          className="im-selection-menu chat-context-menu"
+          role="menu"
+          style={{ left: selectionMenu.x, top: selectionMenu.y }}
+        >
+          {selectionActions.map((action) => (
+            <button key={action.actionId} type="button" role="menuitem" onClick={() => void runSelectionAction(action)}>
+              {actionLabel(action)}
+            </button>
+          ))}
+        </div>,
+        document.body
+      ) : null}
+      {selectionResult ? createPortal(
+        <div
+          className="im-selection-result"
+          role="dialog"
+          aria-label={selectionResult.title}
+          style={{ left: Math.min(selectionResult.x, window.innerWidth - 320), top: Math.min(selectionResult.y, window.innerHeight - 220) }}
+        >
+          <header>
+            <strong>{selectionResult.title}</strong>
+            <button type="button" className="tool-btn ghost-btn" onClick={() => setSelectionResult(null)} aria-label={t("desktop.common.cancel")}>
+              <ThemeIcon name="close" size={12} />
+            </button>
+          </header>
+          {selectionResult.loading
+            ? <p className="im-empty">{t("desktop.im.actionRunning")}</p>
+            : <div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(selectionResult.text) }} />}
+        </div>,
+        document.body
+      ) : null}
     </section>,
     host
   );

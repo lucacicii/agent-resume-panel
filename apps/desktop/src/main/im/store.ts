@@ -31,7 +31,12 @@ import {
   type ImQuotedMessage,
   type ImRoleTemplate,
   type ImRoleTools,
-  type ImRoom
+  type ImRoom,
+  IM_BUILTIN_SELECTION_ACTION_IDS,
+  isBuiltinSelectionActionId,
+  isImSelectionActionKind,
+  type ImSelectionAction,
+  type ImSelectionActionKind
 } from "./types";
 
 interface BuiltinRoleSpec {
@@ -92,6 +97,34 @@ const KNOWLEDGE_PROMPT_MAX = 8_000;
 const KNOWLEDGE_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 const KNOWLEDGE_IMAGE_MAX_COUNT = 20;
 const KNOWLEDGE_ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+const SELECTION_PROMPT_MAX = 4_000;
+const SELECTION_TEXT_MAX = 8_000;
+
+interface BuiltinSelectionActionSpec {
+  actionId: (typeof IM_BUILTIN_SELECTION_ACTION_IDS)[number];
+  name: string;
+  kind: ImSelectionActionKind;
+  prompt: string;
+  sortOrder: number;
+}
+
+const BUILTIN_SELECTION_ACTIONS: readonly BuiltinSelectionActionSpec[] = [
+  { actionId: "quote", name: "Quote", kind: "context", prompt: "", sortOrder: 0 },
+  {
+    actionId: "translate",
+    name: "Translate",
+    kind: "independent",
+    prompt: "Translate the following text into the user's UI language. Return only the translation.\n\n{selection}",
+    sortOrder: 1
+  },
+  {
+    actionId: "explain",
+    name: "Explain",
+    kind: "independent",
+    prompt: "Explain the following text concisely. Return only the explanation.\n\n{selection}",
+    sortOrder: 2
+  }
+];
 
 interface ProjectRow {
   project_id: string;
@@ -151,6 +184,17 @@ interface KnowledgeRow {
   file_name: string | null;
   size_bytes: number | null;
   created_at_ms: number;
+}
+
+interface SelectionActionRow {
+  action_id: string;
+  name: string;
+  kind: string;
+  prompt: string;
+  sort_order: number;
+  enabled: number;
+  created_at_ms: number;
+  updated_at_ms: number;
 }
 
 interface JobRow {
@@ -243,6 +287,26 @@ function parseToolsJson(raw: string | null | undefined, templateId: string): ImR
   } catch {
     return builtinToolsFor(templateId);
   }
+}
+
+function mapSelectionAction(row: SelectionActionRow): ImSelectionAction {
+  return {
+    actionId: row.action_id,
+    name: row.name,
+    kind: isImSelectionActionKind(row.kind) ? row.kind : "independent",
+    prompt: row.prompt,
+    sortOrder: row.sort_order,
+    enabled: row.enabled === 1,
+    createdAtMs: row.created_at_ms,
+    updatedAtMs: row.updated_at_ms
+  };
+}
+
+export function fillSelectionPrompt(template: string, selection: string): string {
+  const text = selection.trim();
+  if (!template.trim()) return text;
+  if (template.includes("{selection}")) return template.split("{selection}").join(text);
+  return `${template.trim()}\n\n${text}`;
 }
 
 function mapTemplate(row: TemplateRow): ImRoleTemplate {
@@ -373,7 +437,139 @@ export class ImStore {
   async initialize(): Promise<void> {
     await ensureDesktopDbSchema(this.dbPath);
     await this.ensureBuiltinTemplates();
+    await this.ensureBuiltinSelectionActions();
     await this.backfillBuiltinMembersOnce();
+  }
+
+  private async ensureBuiltinSelectionActions(): Promise<void> {
+    const existing = await this.listSelectionActions();
+    const known = new Set(existing.map((item) => item.actionId));
+    const now = nowMs();
+    for (const action of BUILTIN_SELECTION_ACTIONS) {
+      if (known.has(action.actionId)) continue;
+      await runSqlite(
+        this.dbPath,
+        `INSERT INTO im_selection_actions (
+          action_id, name, kind, prompt, sort_order, enabled, created_at_ms, updated_at_ms
+        ) VALUES (
+          ${sqlString(action.actionId)},
+          ${sqlString(action.name)},
+          ${sqlString(action.kind)},
+          ${sqlString(action.prompt)},
+          ${action.sortOrder},
+          1,
+          ${now},
+          ${now}
+        );`
+      );
+    }
+  }
+
+  async listSelectionActions(): Promise<ImSelectionAction[]> {
+    const rows = await runSqliteJson<SelectionActionRow>(
+      this.dbPath,
+      "SELECT * FROM im_selection_actions ORDER BY sort_order ASC, created_at_ms ASC;"
+    );
+    return rows.map(mapSelectionAction);
+  }
+
+  async getSelectionAction(actionId: string): Promise<ImSelectionAction | undefined> {
+    const rows = await runSqliteJson<SelectionActionRow>(
+      this.dbPath,
+      `SELECT * FROM im_selection_actions WHERE action_id = ${sqlString(actionId)} LIMIT 1;`
+    );
+    return rows[0] ? mapSelectionAction(rows[0]) : undefined;
+  }
+
+  async createSelectionAction(input: {
+    name: string;
+    kind: ImSelectionActionKind;
+    prompt?: string;
+  }): Promise<ImSelectionAction> {
+    const name = input.name.trim();
+    if (!name) throw new Error("Action name is required.");
+    if (!isImSelectionActionKind(input.kind)) throw new Error("Action kind must be context or independent.");
+    const prompt = (input.prompt ?? "").slice(0, SELECTION_PROMPT_MAX);
+    if (input.kind === "independent" && !prompt.trim()) {
+      throw new Error("Independent actions need a prompt. Use {selection} for the highlighted text.");
+    }
+    const now = nowMs();
+    const existing = await this.listSelectionActions();
+    const sortOrder = existing.reduce((max, item) => Math.max(max, item.sortOrder), -1) + 1;
+    const actionId = randomUUID();
+    await runSqlite(
+      this.dbPath,
+      `INSERT INTO im_selection_actions (
+        action_id, name, kind, prompt, sort_order, enabled, created_at_ms, updated_at_ms
+      ) VALUES (
+        ${sqlString(actionId)},
+        ${sqlString(name)},
+        ${sqlString(input.kind)},
+        ${sqlString(prompt)},
+        ${sortOrder},
+        1,
+        ${now},
+        ${now}
+      );`
+    );
+    const created = await this.getSelectionAction(actionId);
+    if (!created) throw new Error("Failed to load created action.");
+    return created;
+  }
+
+  async updateSelectionAction(input: {
+    actionId: string;
+    name?: string;
+    kind?: ImSelectionActionKind;
+    prompt?: string;
+    enabled?: boolean;
+  }): Promise<ImSelectionAction> {
+    const current = await this.getSelectionAction(input.actionId);
+    if (!current) throw new Error("Selection action not found.");
+    const builtin = isBuiltinSelectionActionId(current.actionId);
+    const name = input.name !== undefined ? input.name.trim() : current.name;
+    if (!name) throw new Error("Action name is required.");
+    let kind = current.kind;
+    if (input.kind !== undefined) {
+      if (builtin && input.kind !== current.kind) {
+        throw new Error("Builtin selection actions cannot change type.");
+      }
+      if (!isImSelectionActionKind(input.kind)) throw new Error("Action kind must be context or independent.");
+      kind = input.kind;
+    }
+    const prompt = input.prompt !== undefined ? input.prompt.slice(0, SELECTION_PROMPT_MAX) : current.prompt;
+    if (kind === "independent" && current.actionId !== "quote" && !prompt.trim()) {
+      throw new Error("Independent actions need a prompt. Use {selection} for the highlighted text.");
+    }
+    const enabled = input.enabled === undefined ? current.enabled : input.enabled;
+    const now = nowMs();
+    await runSqlite(
+      this.dbPath,
+      `UPDATE im_selection_actions SET
+        name = ${sqlString(name)},
+        kind = ${sqlString(kind)},
+        prompt = ${sqlString(prompt)},
+        enabled = ${enabled ? 1 : 0},
+        updated_at_ms = ${now}
+       WHERE action_id = ${sqlString(current.actionId)};`
+    );
+    const updated = await this.getSelectionAction(current.actionId);
+    if (!updated) throw new Error("Failed to load updated action.");
+    return updated;
+  }
+
+  async deleteSelectionAction(actionId: string): Promise<void> {
+    if (isBuiltinSelectionActionId(actionId)) {
+      throw new Error("Builtin selection actions cannot be deleted.");
+    }
+    await runSqlite(
+      this.dbPath,
+      `DELETE FROM im_selection_actions WHERE action_id = ${sqlString(actionId)};`
+    );
+  }
+
+  clipSelectionText(value: string): string {
+    return clipBody(value, SELECTION_TEXT_MAX).body;
   }
 
   private async ensureBuiltinTemplates(): Promise<void> {

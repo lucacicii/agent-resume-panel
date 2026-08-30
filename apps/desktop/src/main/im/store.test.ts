@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { desktopDbPath, ensureDesktopDbSchema } from "@agent-resume/core";
-import { buildDispatchPrompt, ImStore } from "./store";
+import { buildDispatchPrompt, fillSelectionPrompt, ImStore } from "./store";
 
 const homes: string[] = [];
 
@@ -51,6 +51,23 @@ describe("ImStore", () => {
     await store.initialize();
     const again = await store.listTemplates();
     expect(again).toHaveLength(5);
+  });
+
+  it("seeds builtin selection actions and blocks deleting them", async () => {
+    const store = await createStore();
+    const actions = await store.listSelectionActions();
+    expect(actions.map((item) => item.actionId)).toEqual(["quote", "translate", "explain"]);
+    expect(actions[0]?.kind).toBe("context");
+    expect(actions[1]?.kind).toBe("independent");
+    await expect(store.deleteSelectionAction("quote")).rejects.toThrow(/cannot be deleted/i);
+    const custom = await store.createSelectionAction({
+      name: "Summarize",
+      kind: "independent",
+      prompt: "Summarize:\n{selection}"
+    });
+    expect(fillSelectionPrompt(custom.prompt, "hello world")).toContain("hello world");
+    await store.deleteSelectionAction(custom.actionId);
+    expect((await store.listSelectionActions()).map((item) => item.actionId)).toEqual(["quote", "translate", "explain"]);
   });
 
   it("treats write and execute roles as exclusive", async () => {

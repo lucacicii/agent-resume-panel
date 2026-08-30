@@ -17,7 +17,11 @@ const messages = {
   "desktop.im.selectProject": "Select or create a project.",
   "desktop.im.emptyRoom": "Quote a message and @ a role to dispatch work.",
   "desktop.im.transcript": "Room transcript",
+  "desktop.im.mentions": "Mentioned roles",
   "desktop.im.quote": "Quote",
+  "desktop.im.translate": "Translate",
+  "desktop.im.explain": "Explain",
+  "desktop.im.actionRunning": "Working…",
   "desktop.im.removeQuote": "Remove quote",
   "desktop.im.mention": "Mention a role",
   "desktop.im.removeMention": "Remove mention",
@@ -135,6 +139,12 @@ function renderIm() {
       createdAtMs: 1,
       updatedAtMs: 1
     }))),
+    imListSelectionActions: vi.fn(async () => [
+      { actionId: "quote", name: "Quote", kind: "context", prompt: "", sortOrder: 0, enabled: true, createdAtMs: 1, updatedAtMs: 1 },
+      { actionId: "translate", name: "Translate", kind: "independent", prompt: "Translate:\n{selection}", sortOrder: 1, enabled: true, createdAtMs: 1, updatedAtMs: 1 },
+      { actionId: "explain", name: "Explain", kind: "independent", prompt: "Explain:\n{selection}", sortOrder: 2, enabled: true, createdAtMs: 1, updatedAtMs: 1 }
+    ]),
+    imRunSelectionAction: vi.fn(async () => ({ text: "translated" })),
     imAddMember: vi.fn(async () => roomFor(created).members[0]),
     imRemoveMember: vi.fn(async () => ({ ok: true })),
     imPostMessage: vi.fn(async () => ({
@@ -287,6 +297,135 @@ describe("ImPanel", () => {
     expect(document.querySelector(".im-message.is-role-say .markdown-body strong")?.textContent).toBe("desktop");
     expect(screen.queryByText("Read · README.md")).toBeNull();
     expect(document.querySelector(".im-message.is-role-say")).toBeTruthy();
+  });
+
+  it("opens a selection menu and quotes the highlighted text", async () => {
+    const api = renderIm();
+    const next = roomFor(project());
+    (api.imGetRoom as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...next,
+      messages: [{
+        messageId: "answer",
+        projectId: "proj-1",
+        kind: "role.say",
+        authorMemberId: "mem-pm",
+        authorLabel: "Product Manager",
+        body: "Keep the helper.",
+        quoteIds: [],
+        quotes: [],
+        mentionRoleIds: [],
+        jobId: null,
+        createdAtMs: 1
+      }]
+    });
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+    const body = document.querySelector(".im-message .markdown-body") as HTMLElement;
+    expect(body).toBeTruthy();
+    const range = document.createRange();
+    range.selectNodeContents(body);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    fireEvent.contextMenu(body);
+    expect(await screen.findByRole("menuitem", { name: "Quote" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Translate" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Quote" }));
+    await waitFor(() => expect(screen.getByLabelText("Remove quote")).toBeTruthy());
+  });
+
+  it("renders the @-mentioned roles on the message in the transcript", async () => {
+    const api = renderIm();
+    const next = roomFor(project());
+    (api.imGetRoom as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...next,
+      messages: [{
+        messageId: "m1",
+        projectId: "proj-1",
+        kind: "human",
+        authorMemberId: null,
+        authorLabel: "You",
+        body: "please implement this",
+        quoteIds: [],
+        quotes: [],
+        mentionRoleIds: ["mem-pm", "mem-dev"],
+        jobId: null,
+        createdAtMs: 1
+      }]
+    });
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+    await waitFor(() => expect(document.querySelector(".im-message-mentions")).toBeTruthy());
+    const chips = [...document.querySelectorAll(".im-message-mention")].map((item) => item.textContent);
+    expect(chips).toEqual(["@Product Manager", "@Developer"]);
+  });
+
+  it("opens the context menu on the whole message without a selection", async () => {
+    const api = renderIm();
+    const next = roomFor(project());
+    (api.imGetRoom as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...next,
+      messages: [{
+        messageId: "full",
+        projectId: "proj-1",
+        kind: "role.say",
+        authorMemberId: "mem-pm",
+        authorLabel: "Product Manager",
+        body: "Whole message body",
+        quoteIds: [],
+        quotes: [],
+        mentionRoleIds: [],
+        jobId: null,
+        createdAtMs: 1
+      }]
+    });
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+    window.getSelection()?.removeAllRanges();
+    const article = document.querySelector(".im-message") as HTMLElement;
+    fireEvent.contextMenu(article);
+    expect(await screen.findByRole("menuitem", { name: "Quote" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Quote" }));
+    const chip = await screen.findByLabelText("Remove quote");
+    expect(chip.textContent).toContain("Whole message body");
+  });
+
+  it("runs an independent action and shows the result popover", async () => {
+    const api = renderIm();
+    const next = roomFor(project());
+    (api.imGetRoom as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...next,
+      messages: [{
+        messageId: "answer",
+        projectId: "proj-1",
+        kind: "role.say",
+        authorMemberId: "mem-pm",
+        authorLabel: "Product Manager",
+        body: "Keep the helper.",
+        quoteIds: [],
+        quotes: [],
+        mentionRoleIds: [],
+        jobId: null,
+        createdAtMs: 1
+      }]
+    });
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+    const body = document.querySelector(".im-message .markdown-body") as HTMLElement;
+    const range = document.createRange();
+    range.selectNodeContents(body);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    fireEvent.contextMenu(body);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Translate" }));
+    await waitFor(() => expect(api.imRunSelectionAction).toHaveBeenCalledWith({ actionId: "translate", text: "Keep the helper." }));
+    await waitFor(() => expect(screen.getByRole("dialog", { name: "Translate" })).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("translated")).toBeTruthy());
   });
 
   it("quotes a message into the composer", async () => {

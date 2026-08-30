@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { desktopApi } from "../../bridge";
-import { isBuiltinTemplateId, type ImAgent, type ImRoleTemplate, type ImRoleTools } from "../../../shared/imTypes";
+import {
+  isBuiltinSelectionActionId,
+  isBuiltinTemplateId,
+  type ImAgent,
+  type ImRoleTemplate,
+  type ImRoleTools,
+  type ImSelectionAction,
+  type ImSelectionActionKind
+} from "../../../shared/imTypes";
 
 type Translate = (key: string, ...args: Array<string | number>) => string;
 const AGENTS: ImAgent[] = ["pi", "claude", "codex"];
@@ -23,13 +31,26 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
   const [agent, setAgent] = useState<ImAgent>("claude");
   const [tools, setTools] = useState<ImRoleTools>(emptyDraft().tools);
   const [status, setStatus] = useState("");
+  const [actions, setActions] = useState<ImSelectionAction[]>([]);
+  const [selectedActionId, setSelectedActionId] = useState("");
+  const [creatingAction, setCreatingAction] = useState(false);
+  const [actionName, setActionName] = useState("");
+  const [actionKind, setActionKind] = useState<ImSelectionActionKind>("independent");
+  const [actionPrompt, setActionPrompt] = useState("");
+  const [actionEnabled, setActionEnabled] = useState(true);
+  const selectedAction = actions.find((item) => item.actionId === selectedActionId) ?? null;
 
   const selected = templates.find((item) => item.templateId === selectedId) ?? null;
 
   const load = useCallback(async () => {
-    const list = await desktopApi().imListTemplates();
+    const [list, nextActions] = await Promise.all([
+      desktopApi().imListTemplates(),
+      desktopApi().imListSelectionActions()
+    ]);
     setTemplates(list);
     setSelectedId((current) => current && list.some((item) => item.templateId === current) ? current : list[0]?.templateId || "");
+    setActions(nextActions);
+    setSelectedActionId((current) => current && nextActions.some((item) => item.actionId === current) ? current : nextActions[0]?.actionId || "");
   }, []);
 
   useEffect(() => {
@@ -51,6 +72,21 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
     setAgent(selected.agent);
     setTools(selected.tools);
   }, [creating, selected]);
+
+  useEffect(() => {
+    if (creatingAction) {
+      setActionName("");
+      setActionKind("independent");
+      setActionPrompt("Explain the following text.\n\n{selection}");
+      setActionEnabled(true);
+      return;
+    }
+    if (!selectedAction) return;
+    setActionName(selectedAction.name);
+    setActionKind(selectedAction.kind);
+    setActionPrompt(selectedAction.prompt);
+    setActionEnabled(selectedAction.enabled);
+  }, [creatingAction, selectedAction]);
 
   const save = useCallback(async () => {
     try {
@@ -86,7 +122,42 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
     }
   }, [load, selected]);
 
+  const saveAction = useCallback(async () => {
+    try {
+      if (creatingAction) {
+        const created = await desktopApi().imCreateSelectionAction({ name: actionName, kind: actionKind, prompt: actionPrompt });
+        setCreatingAction(false);
+        await load();
+        setSelectedActionId(created.actionId);
+      } else if (selectedAction) {
+        await desktopApi().imUpdateSelectionAction({
+          actionId: selectedAction.actionId,
+          name: actionName,
+          kind: isBuiltinSelectionActionId(selectedAction.actionId) ? undefined : actionKind,
+          prompt: actionPrompt,
+          enabled: actionEnabled
+        });
+        await load();
+      }
+      setStatus(t("desktop.settings.imActionSaved"));
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+    }
+  }, [actionEnabled, actionKind, actionName, actionPrompt, creatingAction, load, selectedAction, t]);
+
+  const removeAction = useCallback(async () => {
+    if (!selectedAction || isBuiltinSelectionActionId(selectedAction.actionId)) return;
+    try {
+      await desktopApi().imDeleteSelectionAction({ actionId: selectedAction.actionId });
+      setSelectedActionId("");
+      await load();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+    }
+  }, [load, selectedAction]);
+
   return (
+    <>
     <section className="settings-group">
       <h3 className="settings-group-title">{t("desktop.settings.imTemplates")}</h3>
       <div className="settings-group-body im-settings-layout">
@@ -151,5 +222,65 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
         </div>
       </div>
     </section>
+    <section className="settings-group">
+      <h3 className="settings-group-title">{t("desktop.settings.imActions")}</h3>
+      <div className="settings-group-body im-settings-layout">
+        <p className="settings-footnote">{t("desktop.settings.imActionsHint")}</p>
+        <div className="im-settings-split">
+          <div className="im-settings-list">
+            {actions.map((action) => (
+              <button
+                key={action.actionId}
+                type="button"
+                className={`im-settings-item${selectedActionId === action.actionId && !creatingAction ? " active" : ""}`}
+                onClick={() => {
+                  setCreatingAction(false);
+                  setSelectedActionId(action.actionId);
+                }}
+              >
+                {action.name}
+                {isBuiltinSelectionActionId(action.actionId) ? <span>{t("desktop.settings.imBuiltin")}</span> : null}
+              </button>
+            ))}
+            <button type="button" className="im-settings-item" onClick={() => setCreatingAction(true)}>
+              {t("desktop.settings.imNewAction")}
+            </button>
+          </div>
+          <div className="im-settings-editor">
+            <label className="settings-field">
+              <span className="settings-field-label">{t("desktop.settings.imName")}</span>
+              <input value={actionName} onChange={(event) => setActionName(event.target.value)} />
+            </label>
+            <label className="settings-field">
+              <span className="settings-field-label">{t("desktop.settings.imActionKind")}</span>
+              <select
+                value={actionKind}
+                disabled={Boolean(selectedAction && isBuiltinSelectionActionId(selectedAction.actionId) && !creatingAction)}
+                onChange={(event) => setActionKind(event.target.value as ImSelectionActionKind)}
+              >
+                <option value="context">{t("desktop.settings.imActionKindContext")}</option>
+                <option value="independent">{t("desktop.settings.imActionKindIndependent")}</option>
+              </select>
+            </label>
+            <label className="settings-field">
+              <span className="settings-field-label">{t("desktop.settings.imActionPrompt")}</span>
+              <textarea rows={6} value={actionPrompt} onChange={(event) => setActionPrompt(event.target.value)} />
+            </label>
+            <p className="settings-footnote">{t("desktop.settings.imActionPromptHint")}</p>
+            <label>
+              <input type="checkbox" checked={actionEnabled} onChange={(event) => setActionEnabled(event.target.checked)} />
+              {t("desktop.settings.imActionEnabled")}
+            </label>
+            <div className="im-add-role-actions">
+              <button type="button" className="btn primary" onClick={() => void saveAction()}>{t("desktop.settings.save")}</button>
+              {selectedAction && !isBuiltinSelectionActionId(selectedAction.actionId) && !creatingAction ? (
+                <button type="button" className="ghost-btn" onClick={() => void removeAction()}>{t("desktop.settings.imDeleteAction")}</button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+    </>
   );
 }

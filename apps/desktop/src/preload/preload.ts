@@ -45,7 +45,9 @@ import type {
   ImMessage,
   ImProject,
   ImRoleTemplate,
-  ImRoom
+  ImRoom,
+  ImSelectionAction,
+  ImSelectionActionKind
 } from "../shared/imTypes";
 
 export type {
@@ -623,6 +625,17 @@ export interface DesktopApi {
   imAddKnowledgeLink(args: { projectId: string; url: string; title?: string; note?: string }): Promise<ImKnowledgeItem>;
   imAddKnowledgeImage(args: { projectId: string }): Promise<{ ok: true; item: ImKnowledgeItem } | { ok: false; canceled: true }>;
   imRemoveKnowledge(args: { itemId: string }): Promise<{ ok: boolean }>;
+  imListSelectionActions(): Promise<ImSelectionAction[]>;
+  imCreateSelectionAction(args: { name: string; kind: ImSelectionActionKind; prompt?: string }): Promise<ImSelectionAction>;
+  imUpdateSelectionAction(args: {
+    actionId: string;
+    name?: string;
+    kind?: ImSelectionActionKind;
+    prompt?: string;
+    enabled?: boolean;
+  }): Promise<ImSelectionAction>;
+  imDeleteSelectionAction(args: { actionId: string }): Promise<{ ok: boolean }>;
+  imRunSelectionAction(args: { actionId: string; text: string }): Promise<{ text: string }>;
   onImEvent(callback: (event: ImEvent) => void): () => void;
   terminalSpawn(args: {
     cwd: string;
@@ -1630,6 +1643,11 @@ const api: DesktopApi = {
   imAddKnowledgeLink: (args) => ipcRenderer.invoke("im:addKnowledgeLink", args),
   imAddKnowledgeImage: (args) => ipcRenderer.invoke("im:addKnowledgeImage", args),
   imRemoveKnowledge: (args) => ipcRenderer.invoke("im:removeKnowledge", args),
+  imListSelectionActions: () => ipcRenderer.invoke("im:listSelectionActions"),
+  imCreateSelectionAction: (args) => ipcRenderer.invoke("im:createSelectionAction", args),
+  imUpdateSelectionAction: (args) => ipcRenderer.invoke("im:updateSelectionAction", args),
+  imDeleteSelectionAction: (args) => ipcRenderer.invoke("im:deleteSelectionAction", args),
+  imRunSelectionAction: (args) => ipcRenderer.invoke("im:runSelectionAction", args),
   onImEvent: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, payload: ImEvent) => callback(payload);
     ipcRenderer.on("im:event", handler);

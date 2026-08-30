@@ -15,9 +15,9 @@ const messages = {
   "desktop.settings.paneSessionsDesc": "Sessions desc",
   "desktop.settings.paneWorkbench": "Workbench",
   "desktop.settings.paneWorkbenchDesc": "Workbench desc",
-  "desktop.settings.paneIm": "Roles",
+  "desktop.settings.paneIm": "IM",
   "desktop.settings.paneImDesc": "IM role templates",
-  "desktop.settings.imTemplates": "Role templates",
+  "desktop.settings.imTemplates": "Roles",
   "desktop.settings.imTemplatesHint": "Edit agent, prompt, and tools.",
   "desktop.settings.imBuiltin": "Builtin",
   "desktop.settings.imNewTemplate": "New template",
@@ -31,6 +31,17 @@ const messages = {
   "desktop.settings.imToolExecute": "Run commands",
   "desktop.settings.imSaved": "Template saved",
   "desktop.settings.imDeleteTemplate": "Delete template",
+  "desktop.settings.imActions": "Selection actions",
+  "desktop.settings.imActionsHint": "Shown when you select text.",
+  "desktop.settings.imNewAction": "New action",
+  "desktop.settings.imActionKind": "Type",
+  "desktop.settings.imActionKindContext": "Context",
+  "desktop.settings.imActionKindIndependent": "Independent",
+  "desktop.settings.imActionPrompt": "Prompt",
+  "desktop.settings.imActionPromptHint": "Use {selection}.",
+  "desktop.settings.imActionEnabled": "Show in menu",
+  "desktop.settings.imActionSaved": "Action saved",
+  "desktop.settings.imDeleteAction": "Delete action",
   "desktop.im.agent.pi": "Pi",
   "desktop.im.agent.claude": "Claude Code",
   "desktop.im.agent.codex": "Codex",
@@ -153,7 +164,10 @@ function renderWindowSettings(initialPane = "general") {
     imListTemplates: vi.fn(async () => []),
     imCreateTemplate: vi.fn(async () => ({ templateId: "custom" })),
     imUpdateTemplate: vi.fn(async () => ({ templateId: "custom" })),
-    imDeleteTemplate: vi.fn(async () => ({ ok: true }))
+    imDeleteTemplate: vi.fn(async () => ({ ok: true })),
+    imListSelectionActions: vi.fn(async () => []),    imCreateSelectionAction: vi.fn(async () => ({ actionId: "custom-action" })),
+    imUpdateSelectionAction: vi.fn(async () => ({ actionId: "custom-action" })),
+    imDeleteSelectionAction: vi.fn(async () => ({ ok: true }))
   } as unknown as typeof window.agentResume;
   render(
     <I18nProvider>
@@ -322,5 +336,14 @@ describe("SettingsPanel (window)", () => {
     const { host } = renderWindowSettings("storage");
     await waitFor(() => expect(host.textContent).toContain("Panel home"));
     expect(host.querySelector("select.settings-row-control")).toBeNull();
+  });
+
+  it("wraps the IM pane in the scrollable settings body and titles the group Roles", async () => {
+    const { host } = renderWindowSettings("im");
+    await waitFor(() => expect(host.querySelector(".settings-pane-body")).not.toBeNull());
+    const paneBody = host.querySelector(".settings-pane-body");
+    expect(paneBody?.querySelector(".settings-group-title")?.textContent).toBe("Roles");
+    expect(paneBody?.className).toContain("settings-pane-body");
+    expect(paneBody?.querySelectorAll(".settings-group").length).toBeGreaterThanOrEqual(2);
   });
 });

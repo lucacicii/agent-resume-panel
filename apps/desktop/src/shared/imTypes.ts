@@ -192,3 +192,28 @@ export type ImEvent =
   | { type: "message"; projectId: string; message: ImMessage }
   | { type: "job"; projectId: string; job: ImJob }
   | { type: "member"; projectId: string; member: ImMember };
+
+export const IM_SELECTION_ACTION_KINDS = ["context", "independent"] as const;
+export type ImSelectionActionKind = (typeof IM_SELECTION_ACTION_KINDS)[number];
+
+export function isImSelectionActionKind(value: string): value is ImSelectionActionKind {
+  return (IM_SELECTION_ACTION_KINDS as readonly string[]).includes(value);
+}
+
+export const IM_BUILTIN_SELECTION_ACTION_IDS = ["quote", "translate", "explain"] as const;
+export type ImBuiltinSelectionActionId = (typeof IM_BUILTIN_SELECTION_ACTION_IDS)[number];
+
+export function isBuiltinSelectionActionId(value: string): value is ImBuiltinSelectionActionId {
+  return (IM_BUILTIN_SELECTION_ACTION_IDS as readonly string[]).includes(value);
+}
+
+export interface ImSelectionAction {
+  actionId: string;
+  name: string;
+  kind: ImSelectionActionKind;
+  prompt: string;
+  sortOrder: number;
+  enabled: boolean;
+  createdAtMs: number;
+  updatedAtMs: number;
+}

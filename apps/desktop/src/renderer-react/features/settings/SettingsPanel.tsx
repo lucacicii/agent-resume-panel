@@ -418,13 +418,12 @@ export function SettingsPanel({
             <div
               className={`settings-pane${pane === "usage" || pane === "logs" ? " settings-pane-usage" : pane === "about" ? " settings-pane-about" : ""}`}
             >
-              {pane === "usage" || pane === "logs" || pane === "about" || pane === "mcp" || pane === "backup" || pane === "im" ? body : <div className="settings-pane-body">{body}
+              {pane === "usage" || pane === "logs" || pane === "about" || pane === "mcp" || pane === "backup" ? body : <div className="settings-pane-body">{pane === "im" ? body : <>{body}
                 <div className="settings-pane-actions">
                   <button type="button" className="btn primary" data-testid={`settings-save-${pane}`} disabled={!dirty || saving} onClick={() => void handleSave(pane as EditablePane)}>{saving ? t("desktop.settings.saving") : t("desktop.settings.save")}</button>
                   <button type="button" className="ghost-btn" data-testid={`settings-discard-${pane}`} disabled={!dirty || saving} onClick={() => handleDiscard(pane as EditablePane)}>{t("desktop.settings.discard")}</button>
                   {dirty ? <span className="settings-unsaved-hint">{t("desktop.settings.unsavedHint")}</span> : null}
-                </div>
-              </div>}
+                </div></>}</div>}
             </div>
           </div>
           {pane === "about" ? (

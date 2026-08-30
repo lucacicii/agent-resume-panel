@@ -327,4 +327,17 @@ CREATE TABLE IF NOT EXISTS im_jobs (
   finished_at_ms INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_im_jobs_project ON im_jobs(project_id, updated_at_ms DESC);
+
+CREATE TABLE IF NOT EXISTS im_selection_actions (
+  action_id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  prompt TEXT NOT NULL DEFAULT '',
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_im_selection_actions_sort
+  ON im_selection_actions(sort_order, created_at_ms);
 `;

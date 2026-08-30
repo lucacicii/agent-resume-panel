@@ -10484,7 +10484,8 @@ textarea.wb-editor-host {
 /* macOS-style context menus (Workbench / Notes / Ask) — aligns with .ops-menu tokens */
 .wb-context-menu,
 .notes-context-menu,
-.chat-context-menu {
+.chat-context-menu,
+.im-selection-menu {
   position: fixed;
   z-index: 2000;
   min-width: 180px;
@@ -10516,7 +10517,8 @@ textarea.wb-editor-host {
 
 .wb-context-menu button,
 .notes-context-menu button,
-.chat-context-menu button {
+.chat-context-menu button,
+.im-selection-menu button {
   appearance: none;
   border: none;
   background: transparent;
@@ -10537,7 +10539,8 @@ textarea.wb-editor-host {
 
 .wb-context-menu button:hover,
 .notes-context-menu button:hover:not(:disabled),
-.chat-context-menu button:hover:not(:disabled) {
+.chat-context-menu button:hover:not(:disabled),
+.im-selection-menu button:hover:not(:disabled) {
   background: var(--color-fill-secondary);
 }
 
@@ -17096,6 +17099,23 @@ html[data-window-mode="browser"] #react-chrome {
   line-height: inherit;
   overflow-wrap: anywhere;
 }
+.im-message-mentions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.im-message-mention {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--color-separator);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  color: var(--color-label-secondary);
+  background: color-mix(in srgb, var(--color-fill-secondary) 60%, transparent);
+}
 .im-message .markdown-body > :first-child {
   margin-top: 0;
 }
@@ -17266,6 +17286,25 @@ html[data-window-mode="browser"] #react-chrome {
 .im-empty {
   color: var(--color-label-tertiary);
   padding: 12px;
+}
+.im-selection-result {
+  position: fixed;
+  z-index: 2001;
+  width: min(320px, calc(100vw - 16px));
+  max-height: min(280px, calc(100vh - 24px));
+  overflow: auto;
+  padding: 8px 10px;
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-xl);
+  background: var(--color-elevated-bg);
+  box-shadow: var(--shadow-popover);
+}
+.im-selection-result header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
 }
 .visually-hidden {
   position: absolute;
