@@ -8,6 +8,20 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## English
 
+### [0.2.16]
+
+#### Added
+
+- **Multi-Role IM Group Chat with ACP Agent Dispatch**: introduced real-time multi-agent IM group chat with built-in role templates (PM, Project Manager, UI Designer, Developer, Tester) and custom ACP roles (Pi, Claude, Codex), supporting multi-role `@mention` fan-out, read-only parallelism, room-level execution serialization, Markdown transcript rendering, and background knowledge snapshots
+- **IM Selection Actions & Context Popover**: text selection in IM messages triggers quick actions (quote context, translate, explain, or custom prompt actions); independent actions execute via Chat LLM and display inline result popovers with token usage tracking
+- **Provider-Centric AI Model Pool**: redesigned model configuration into a unified Provider Pool with baseUrl/apiKey and categorized models (`text`, `image`, `embedding`); features discovery via `GET /models` with heuristic classification, fine-grained per-feature model assignments, and automatic migration from legacy settings
+
+#### Improved
+
+- **Automatic Model Resolution & Selection Auto-Populate**: automatically falls back to the first available model of the matching kind from the provider pool when specific use-case selections are unset, and auto-populates empty tool/chat/embedding choices upon adding new models
+- **Enhanced LLM Error Detail Extraction**: parses deep error payloads from API response JSON across `error`, `message`, and `detail` fields, formatting error notifications with HTTP status codes and target model names
+- **IM Mentions & Roles Configuration**: rendered inline mention tags for referenced roles directly inside message bubbles, and polished Roles settings layout and scrolling
+
 ### [0.2.15]
 
 #### Added
@@ -393,6 +407,20 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 ---
 
 ## 简体中文
+
+### [0.2.16]
+
+#### 新增
+
+- **IM 多角色群聊与 ACP Agent 调度**：引入支持多 Agent 协同的即时通讯（IM）群聊面板，提供内置角色模板（产品经理、项目经理、UI 设计师、开发工程师、测试工程师）与自定义 ACP 角色（接入 Pi、Claude、Codex 等），支持单条消息 `@` 多个角色并行分发、只读并行与写入串行调度、Markdown 转录渲染及背景知识快照
+- **IM 划词动作与即时结果弹窗**：在 IM 消息中选中文本即可触发划词快捷操作（引用、翻译、解释或自定义 Prompt 动作），独立动作通过 Chat LLM 异步执行并在原地弹窗展示结果，自动记录使用量与 Token 消耗
+- **以 Provider 为中心的 AI 模型池**：全新重构模型配置体系为统一 Provider 模型池（Base URL、API Key 及文本/图像/嵌入分类模型列表），支持一键探测（`GET /models`）与启发式分类，精细化分配各场景模型，并支持旧版配置自动平滑迁移
+
+#### 改进
+
+- **模型池智能回退与自动填充**：未显式指定功能模型时，自动从模型池中匹配对应类型的可用模型进行回退，并在新增模型时自动填充未配置的 Tool / Chat / Embedding 选项
+- **LLM 错误详情提取与友好提示**：深度解析 API 响应 JSON 中的 `error`、`message` 与 `detail` 错误细节，在错误提示中携带 HTTP 状态码与模型名称，大幅提升排错效率
+- **IM 提及标签展示与角色配置优化**：在消息气泡中以直观的内联标签展示被 `@` 提及的角色列表，并优化设置页「角色」面板的布局与滚动交互
 
 ### [0.2.15]
 
