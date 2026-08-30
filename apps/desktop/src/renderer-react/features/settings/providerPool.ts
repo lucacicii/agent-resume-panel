@@ -40,15 +40,26 @@ export function listProviderModels(providers: AiProvider[], kind: ModelKind): Po
   return output;
 }
 
-/** Resolve one selection to its provider + model within the pool. */
+/** Resolve one selection to its provider + model within the pool. Falls back to first valid model. */
 export function resolveSelectedModel(
   providers: AiProvider[],
-  selection: ModelSelection | undefined
+  selection: ModelSelection | undefined,
+  kind: ModelKind = "text"
 ): { provider: AiProvider; model: ProviderModel } | undefined {
-  if (!selection?.providerId || !selection?.modelId) return undefined;
-  const provider = (providers ?? []).find((entry) => entry.id === selection.providerId);
-  if (!provider) return undefined;
-  const model = (provider.models ?? []).find((entry) => entry.id === selection.modelId);
-  if (!model) return undefined;
-  return { provider, model };
+  if (selection?.providerId && selection?.modelId) {
+    const provider = (providers ?? []).find((entry) => entry.id === selection.providerId);
+    if (provider) {
+      const model = (provider.models ?? []).find((entry) => entry.id === selection.modelId);
+      if (model) return { provider, model };
+    }
+  }
+  for (const provider of providers ?? []) {
+    if (!provider.baseUrl?.trim()) continue;
+    for (const model of provider.models ?? []) {
+      if (model.kind === kind && model.id.trim()) {
+        return { provider, model };
+      }
+    }
+  }
+  return undefined;
 }

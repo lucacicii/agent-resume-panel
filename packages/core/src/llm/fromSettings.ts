@@ -36,18 +36,49 @@ export function findProvider(settings: PanelSettings, providerId?: string): AiPr
   return (settings.providers ?? []).find((provider) => provider.id === providerId);
 }
 
-/** Resolve a use case's selected model to its provider + model id (pool lookup only). */
+function findFirstValidModel(
+  settings: PanelSettings,
+  kind: ModelKind
+): { provider: AiProvider; modelId: string } | undefined {
+  for (const provider of settings.providers ?? []) {
+    if (!provider.baseUrl?.trim() || !provider.apiKey?.trim()) continue;
+    for (const model of provider.models ?? []) {
+      if (model.kind === kind && model.id.trim()) {
+        return { provider, modelId: model.id.trim() };
+      }
+    }
+  }
+  return undefined;
+}
+
+/** Resolve a use case's selected model to its provider + model id. Falls back to pool defaults. */
 export function resolveSelectedModel(
   settings: PanelSettings,
   use: "tool" | "chat" | "embedding" | "image"
 ): { provider: AiProvider; modelId: string } | undefined {
   const selection: ModelSelection | undefined = settings.modelSelections?.[use];
-  if (!selection?.providerId || !selection?.modelId) return undefined;
-  const provider = findProvider(settings, selection.providerId);
-  if (!provider) return undefined;
-  const model = (provider.models ?? []).find((entry) => entry.id === selection.modelId);
-  if (!model) return undefined;
-  return { provider, modelId: model.id };
+  if (selection?.providerId && selection?.modelId) {
+    const provider = findProvider(settings, selection.providerId);
+    if (provider) {
+      const model = (provider.models ?? []).find((entry) => entry.id === selection.modelId);
+      if (model) {
+        return { provider, modelId: model.id };
+      }
+    }
+  }
+  if (use === "chat") {
+    return resolveSelectedModel(settings, "tool") ?? findFirstValidModel(settings, "text");
+  }
+  if (use === "tool") {
+    return findFirstValidModel(settings, "text");
+  }
+  if (use === "embedding") {
+    return findFirstValidModel(settings, "embedding");
+  }
+  if (use === "image") {
+    return findFirstValidModel(settings, "image");
+  }
+  return undefined;
 }
 
 function resolvedOutputLanguage(settings: PanelSettings, systemLocale?: string): string {

@@ -163,13 +163,16 @@ test("chat config falls back to the tool selection when chat is unset", () => {
   assert.equal(chatLlmConfigFromSettings(noChatOptions)?.disableThinking, undefined);
 });
 
-test("unconfigured or dangling selections resolve to undefined", () => {
-  assert.equal(llmConfigFromSettings({ ...poolSettings, modelSelections: {} }), undefined);
+test("unconfigured providers resolve to undefined and unset selections fall back to first valid model", () => {
+  assert.equal(llmConfigFromSettings({ ...poolSettings, providers: [] }), undefined);
   assert.equal(
-    llmConfigFromSettings({ ...poolSettings, modelSelections: { tool: { providerId: "missing", modelId: "x" } } }),
+    llmConfigFromSettings({ ...poolSettings, modelSelections: {} })?.model,
+    "gpt-4o-mini"
+  );
+  assert.equal(
+    resolveSelectedModel({ ...poolSettings, providers: [] }, "image"),
     undefined
   );
-  assert.equal(resolveSelectedModel({ ...poolSettings, modelSelections: { image: { providerId: "x", modelId: "y" } } }, "image"), undefined);
 });
 
 test("migrateLegacyModelSettings seeds the pool from legacy llm/embedding", () => {

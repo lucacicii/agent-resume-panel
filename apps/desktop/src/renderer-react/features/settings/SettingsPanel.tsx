@@ -568,11 +568,34 @@ function ProvidersPane({ draft, setDraft, t }: { draft: ProvidersDraft; setDraft
   const addModel = () => {
     const id = newModelId.trim();
     if (!id || !selectedProvider) return;
-    patchProvider(selectedProvider.id, (provider) => (
-      provider.models.some((model) => model.id === id)
-        ? provider
-        : { ...provider, models: [...provider.models, { id, kind: newModelKind }] }
-    ));
+    const nextProviders = draft.providers.map((entry) =>
+      entry.id === selectedProvider.id
+        ? entry.models.some((model) => model.id === id)
+          ? entry
+          : { ...entry, models: [...entry.models, { id, kind: newModelKind }] }
+        : entry
+    );
+    const nextDraft: ProvidersDraft = {
+      ...draft,
+      providers: nextProviders
+    };
+    if (newModelKind === "text") {
+      if (!draft.toolSelection?.providerId) {
+        nextDraft.toolSelection = { providerId: selectedProvider.id, modelId: id };
+      }
+      if (!draft.chatSelection?.providerId) {
+        nextDraft.chatSelection = { providerId: selectedProvider.id, modelId: id };
+      }
+    } else if (newModelKind === "embedding") {
+      if (!draft.embeddingSelection?.providerId) {
+        nextDraft.embeddingSelection = { providerId: selectedProvider.id, modelId: id };
+      }
+    } else if (newModelKind === "image") {
+      if (!draft.imageSelection?.providerId) {
+        nextDraft.imageSelection = { providerId: selectedProvider.id, modelId: id };
+      }
+    }
+    setDraft(nextDraft);
     setNewModelId("");
   };
 
