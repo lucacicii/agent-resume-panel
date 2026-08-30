@@ -139,9 +139,13 @@ import {
   disposeAcpController,
   disposeAllAcpControllers,
   getAcpRuntimeMetrics,
+  connectAcpChat,
+  denyAcpPermission,
+  promptAcpChat,
   registerAcpIpc,
   setAcpRecordProjectPath
 } from "./acp/acpHost";
+import { registerImIpc } from "./im/ipc";
 import { getAcpRecord, updateAcpRecord } from "./acp/store";
 import { registerWorkbenchFsIpc } from "./workbenchFs";
 import {
@@ -3307,6 +3311,14 @@ app.whenReady().then(async () => {
   registerAcpIpc({
     loadSettings,
     getMainWindow: () => mainWindow
+  });
+  registerImIpc({
+    getMainWindow: () => mainWindow,
+    acp: {
+      connect: (chatId) => connectAcpChat(chatId),
+      prompt: (chatId, text) => promptAcpChat(chatId, text),
+      denyPermission: (requestId) => denyAcpPermission(requestId)
+    }
   });
   registerWorkbenchFsIpc();
   registerWorkbenchWatcherIpc(() => mainWindow);

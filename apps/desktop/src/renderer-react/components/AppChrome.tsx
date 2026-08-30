@@ -6,7 +6,7 @@ import { type ActiveSessionDot, type SessionDotStatus } from "../features/workbe
 import { Tooltip } from "./Tooltip";
 import { BellNotificationButton } from "./BellNotificationButton";
 
-type PrimaryTab = "report" | "agent" | "workbench" | "notes" | "kanban";
+type PrimaryTab = "report" | "agent" | "workbench" | "notes" | "kanban" | "im";
 type FloatingNoteDot = { noteId: string; title: string };
 
 const tabs: Array<{ id: PrimaryTab; icon: ThemeIconName; key: string; fallback: string }> = [
@@ -14,7 +14,8 @@ const tabs: Array<{ id: PrimaryTab; icon: ThemeIconName; key: string; fallback: 
   { id: "agent", icon: "bot", key: "desktop.tabs.agent", fallback: "Agent" },
   { id: "workbench", icon: "terminal", key: "desktop.tabs.workbench", fallback: "Workbench" },
   { id: "notes", icon: "file-text", key: "desktop.tabs.notes", fallback: "Notes" },
-  { id: "kanban", icon: "square-kanban", key: "desktop.tabs.kanban", fallback: "Kanban" }
+  { id: "kanban", icon: "square-kanban", key: "desktop.tabs.kanban", fallback: "Kanban" },
+  { id: "im", icon: "message-square", key: "desktop.tabs.im", fallback: "IM" }
 ];
 
 function eventDetail<T>(event: Event): T | undefined {

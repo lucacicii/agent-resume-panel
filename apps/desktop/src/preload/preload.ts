@@ -36,6 +36,17 @@ import type {
   LinkGraphProgressEvent
 } from "../shared/linkGraphTypes";
 import type { WorkbenchArrowDirection } from "../shared/workbenchShortcuts";
+import type {
+  ImAgent,
+  ImEvent,
+  ImJob,
+  ImKnowledgeItem,
+  ImMember,
+  ImMessage,
+  ImProject,
+  ImRoleTemplate,
+  ImRoom
+} from "../shared/imTypes";
 
 export type {
   BrowserIpcEvent,
@@ -569,6 +580,50 @@ export interface DesktopApi {
   acpOpenPath(args: { path: string }): Promise<{ ok: boolean }>;
   acpDisconnect(args: { chatId: string }): Promise<{ ok: boolean }>;
   onAcpStream(callback: (event: Record<string, unknown>) => void): () => void;
+  imListProjects(): Promise<ImProject[]>;
+  imCreateProject(args: { name: string }): Promise<ImProject>;
+  imRenameProject(args: { projectId: string; name: string }): Promise<ImProject>;
+  imDeleteProject(args: { projectId: string }): Promise<{ ok: boolean }>;
+  imPickLocalPath(args?: { title?: string }): Promise<{ ok: true; path: string } | { ok: false; canceled: true }>;
+  imSetLocalPath(args: { projectId: string; localPath: string | null }): Promise<ImProject>;
+  imListTemplates(): Promise<ImRoleTemplate[]>;
+  imSetTemplateAgent(args: { templateId: string; agent: ImAgent }): Promise<ImRoleTemplate>;
+  imCreateTemplate(args: {
+    name: string;
+    persona: string;
+    agent: ImAgent;
+    tools?: { fsRead: boolean; fsWrite: boolean; execute: boolean };
+  }): Promise<ImRoleTemplate>;
+  imUpdateTemplate(args: {
+    templateId: string;
+    name?: string;
+    persona?: string;
+    agent?: ImAgent;
+    tools?: { fsRead: boolean; fsWrite: boolean; execute: boolean };
+  }): Promise<ImRoleTemplate>;
+  imDeleteTemplate(args: { templateId: string }): Promise<{ ok: boolean }>;
+  imGetRoom(args: { projectId: string }): Promise<ImRoom>;
+  imSetMemberAgent(args: { memberId: string; agent: ImAgent }): Promise<ImMember>;
+  imCreateRole(args: {
+    projectId: string;
+    name: string;
+    persona: string;
+    agent: ImAgent;
+  }): Promise<{ template: ImRoleTemplate; member: ImMember }>;
+  imAddMember(args: { projectId: string; templateId: string }): Promise<ImMember>;
+  imRemoveMember(args: { memberId: string }): Promise<{ ok: boolean }>;
+  imPostMessage(args: {
+    projectId: string;
+    body: string;
+    quoteIds: string[];
+    mentionRoleIds: string[];
+  }): Promise<{ message: ImMessage; job: ImJob | null }>;
+  imListKnowledge(args: { projectId: string }): Promise<ImKnowledgeItem[]>;
+  imAddKnowledgeText(args: { projectId: string; title: string; body: string }): Promise<ImKnowledgeItem>;
+  imAddKnowledgeLink(args: { projectId: string; url: string; title?: string; note?: string }): Promise<ImKnowledgeItem>;
+  imAddKnowledgeImage(args: { projectId: string }): Promise<{ ok: true; item: ImKnowledgeItem } | { ok: false; canceled: true }>;
+  imRemoveKnowledge(args: { itemId: string }): Promise<{ ok: boolean }>;
+  onImEvent(callback: (event: ImEvent) => void): () => void;
   terminalSpawn(args: {
     cwd: string;
     command?: string;
@@ -1552,6 +1607,33 @@ const api: DesktopApi = {
     const handler = (_event: Electron.IpcRendererEvent, payload: Record<string, unknown>) => callback(payload);
     ipcRenderer.on("acp:stream", handler);
     return () => ipcRenderer.removeListener("acp:stream", handler);
+  },
+  imListProjects: () => ipcRenderer.invoke("im:listProjects"),
+  imCreateProject: (args) => ipcRenderer.invoke("im:createProject", args),
+  imRenameProject: (args) => ipcRenderer.invoke("im:renameProject", args),
+  imDeleteProject: (args) => ipcRenderer.invoke("im:deleteProject", args),
+  imPickLocalPath: (args) => ipcRenderer.invoke("im:pickLocalPath", args),
+  imSetLocalPath: (args) => ipcRenderer.invoke("im:setLocalPath", args),
+  imListTemplates: () => ipcRenderer.invoke("im:listTemplates"),
+  imSetTemplateAgent: (args) => ipcRenderer.invoke("im:setTemplateAgent", args),
+  imCreateTemplate: (args) => ipcRenderer.invoke("im:createTemplate", args),
+  imUpdateTemplate: (args) => ipcRenderer.invoke("im:updateTemplate", args),
+  imDeleteTemplate: (args) => ipcRenderer.invoke("im:deleteTemplate", args),
+  imGetRoom: (args) => ipcRenderer.invoke("im:getRoom", args),
+  imSetMemberAgent: (args) => ipcRenderer.invoke("im:setMemberAgent", args),
+  imCreateRole: (args) => ipcRenderer.invoke("im:createRole", args),
+  imAddMember: (args) => ipcRenderer.invoke("im:addMember", args),
+  imRemoveMember: (args) => ipcRenderer.invoke("im:removeMember", args),
+  imPostMessage: (args) => ipcRenderer.invoke("im:postMessage", args),
+  imListKnowledge: (args) => ipcRenderer.invoke("im:listKnowledge", args),
+  imAddKnowledgeText: (args) => ipcRenderer.invoke("im:addKnowledgeText", args),
+  imAddKnowledgeLink: (args) => ipcRenderer.invoke("im:addKnowledgeLink", args),
+  imAddKnowledgeImage: (args) => ipcRenderer.invoke("im:addKnowledgeImage", args),
+  imRemoveKnowledge: (args) => ipcRenderer.invoke("im:removeKnowledge", args),
+  onImEvent: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: ImEvent) => callback(payload);
+    ipcRenderer.on("im:event", handler);
+    return () => ipcRenderer.removeListener("im:event", handler);
   },
   terminalSpawn: (args) => ipcRenderer.invoke("terminal:spawn", args),
   terminalAttach: (args) => ipcRenderer.invoke("terminal:attach", args),

@@ -7,6 +7,7 @@ import { desktopApi } from "../../bridge";
 import { Status, type StatusKind } from "../../components/Status";
 import { useI18n } from "../../i18n";
 import { AboutPane, BackupPane, LogsPane, NotesPane, ReportPane, StoragePane, UsagePane, WorkbenchPane, type UsageDetailTab } from "./AdditionalPanes";
+import { ImSettingsPane } from "./ImSettingsPane";
 import { McpPane } from "./McpPane";
 import {
   embeddingSearchIdentityChanged,
@@ -36,11 +37,11 @@ import {
 type ModelsFieldKey = "llmBaseUrl" | "llmModel" | "llmApiKey" | "chatBaseUrl" | "chatModel" | "chatApiKey" | "embBaseUrl" | "embModel" | "embApiKey";
 type ModelsApiKeyField = "llmApiKey" | "chatApiKey" | "embApiKey";
 
-type Pane = "general" | "models" | "sessions" | "workbench" | "notes" | "report" | "storage" | "mcp" | "usage" | "logs" | "backup" | "about";
-type EditablePane = Exclude<Pane, "mcp" | "usage" | "logs" | "backup" | "about">;
+type Pane = "general" | "models" | "sessions" | "workbench" | "im" | "notes" | "report" | "storage" | "mcp" | "usage" | "logs" | "backup" | "about";
+type EditablePane = Exclude<Pane, "mcp" | "usage" | "logs" | "backup" | "about" | "im">;
 
 function isEditablePane(value: Pane): value is EditablePane {
-  return value !== "mcp" && value !== "usage" && value !== "logs" && value !== "backup" && value !== "about";
+  return value !== "mcp" && value !== "usage" && value !== "logs" && value !== "backup" && value !== "about" && value !== "im";
 }
 
 export type SettingsPanelProps = {
@@ -54,6 +55,7 @@ const panes: Array<{ id: Pane; key: string; desc: string }> = [
   { id: "models", key: "desktop.settings.paneModels", desc: "desktop.settings.paneModelsDesc" },
   { id: "sessions", key: "desktop.settings.paneSessions", desc: "desktop.settings.paneSessionsDesc" },
   { id: "workbench", key: "desktop.settings.paneWorkbench", desc: "desktop.settings.paneWorkbenchDesc" },
+  { id: "im", key: "desktop.settings.paneIm", desc: "desktop.settings.paneImDesc" },
   { id: "notes", key: "desktop.settings.paneNotes", desc: "desktop.settings.paneNotesDesc" },
   { id: "report", key: "desktop.settings.paneReport", desc: "desktop.settings.paneReportDesc" },
   { id: "storage", key: "desktop.settings.paneStorage", desc: "desktop.settings.paneStorageDesc" },
@@ -321,6 +323,7 @@ export function SettingsPanel({
     : pane === "models" ? <ModelsPane draft={models} setDraft={(value) => setModels(value)} t={t} />
     : pane === "sessions" ? <SessionsPane draft={sessions} setDraft={(value) => setSessions(value)} t={t} />
     : pane === "workbench" ? <WorkbenchPane draft={workbench} setDraft={(value) => setWorkbench(value)} t={t} />
+    : pane === "im" ? <ImSettingsPane t={t} />
     : pane === "notes" ? <NotesPane draft={notes} setDraft={setNotes} t={t} />
     : pane === "report" ? (
       <ReportPane
@@ -415,7 +418,7 @@ export function SettingsPanel({
             <div
               className={`settings-pane${pane === "usage" || pane === "logs" ? " settings-pane-usage" : pane === "about" ? " settings-pane-about" : ""}`}
             >
-              {pane === "usage" || pane === "logs" || pane === "about" || pane === "mcp" || pane === "backup" ? body : <div className="settings-pane-body">{body}
+              {pane === "usage" || pane === "logs" || pane === "about" || pane === "mcp" || pane === "backup" || pane === "im" ? body : <div className="settings-pane-body">{body}
                 <div className="settings-pane-actions">
                   <button type="button" className="btn primary" data-testid={`settings-save-${pane}`} disabled={!dirty || saving} onClick={() => void handleSave(pane as EditablePane)}>{saving ? t("desktop.settings.saving") : t("desktop.settings.save")}</button>
                   <button type="button" className="ghost-btn" data-testid={`settings-discard-${pane}`} disabled={!dirty || saving} onClick={() => handleDiscard(pane as EditablePane)}>{t("desktop.settings.discard")}</button>

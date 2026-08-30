@@ -9,6 +9,10 @@ export const DESKTOP_AGENT_TRACE_MIGRATION_SQL = `
 ALTER TABLE agent_messages ADD COLUMN tool_trace_json TEXT;
 `;
 
+export const IM_TOOLS_MIGRATION_SQL = `
+ALTER TABLE im_role_templates ADD COLUMN tools_json TEXT;
+`;
+
 export const DESKTOP_ONLY_SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS gtd_ai_audit (
   id TEXT PRIMARY KEY,
@@ -240,4 +244,87 @@ CREATE TABLE IF NOT EXISTS tag_definitions (
 );
 CREATE INDEX IF NOT EXISTS idx_tag_defs_counts ON tag_definitions(status, active_entity_count DESC);
 CREATE INDEX IF NOT EXISTS idx_tag_defs_category ON tag_definitions(category, status, global_weight DESC);
+
+CREATE TABLE IF NOT EXISTS im_projects (
+  project_id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  local_path TEXT,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_im_projects_updated ON im_projects(updated_at_ms DESC);
+
+CREATE TABLE IF NOT EXISTS im_role_templates (
+  template_id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  persona TEXT NOT NULL DEFAULT '',
+  agent TEXT NOT NULL,
+  permissions TEXT NOT NULL DEFAULT 'write',
+  tools_json TEXT,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS im_members (
+  member_id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  template_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  persona TEXT NOT NULL DEFAULT '',
+  agent TEXT NOT NULL,
+  permissions TEXT NOT NULL DEFAULT 'write',
+  enabled INTEGER NOT NULL DEFAULT 1,
+  acp_chat_id TEXT,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_im_members_project ON im_members(project_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_im_members_project_template
+  ON im_members(project_id, template_id);
+
+CREATE TABLE IF NOT EXISTS im_knowledge (
+  item_id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  title TEXT NOT NULL DEFAULT '',
+  body TEXT NOT NULL DEFAULT '',
+  url TEXT,
+  storage_path TEXT,
+  mime_type TEXT,
+  file_name TEXT,
+  size_bytes INTEGER,
+  created_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_im_knowledge_project ON im_knowledge(project_id, created_at_ms);
+
+CREATE TABLE IF NOT EXISTS im_messages (
+  message_id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  author_member_id TEXT,
+  author_label TEXT NOT NULL,
+  body TEXT NOT NULL,
+  quote_ids_json TEXT NOT NULL DEFAULT '[]',
+  mention_role_ids_json TEXT NOT NULL DEFAULT '[]',
+  job_id TEXT,
+  created_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_im_messages_project ON im_messages(project_id, created_at_ms);
+
+CREATE TABLE IF NOT EXISTS im_jobs (
+  job_id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  member_id TEXT NOT NULL,
+  message_id TEXT,
+  acp_chat_id TEXT,
+  status TEXT NOT NULL,
+  brief_json TEXT NOT NULL,
+  error TEXT,
+  files_json TEXT NOT NULL DEFAULT '[]',
+  permission_json TEXT,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  finished_at_ms INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_im_jobs_project ON im_jobs(project_id, updated_at_ms DESC);
 `;

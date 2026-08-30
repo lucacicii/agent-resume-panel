@@ -863,11 +863,24 @@ class AcpChatController {
   }
 }
 
+let imStreamHandler: ((event: AcpStreamEvent) => Promise<void>) | null | undefined;
+
 function emitToWindow(getMainWindow: GetMainWindow, event: AcpStreamEvent): void {
   const win = getMainWindow();
   if (win && !win.isDestroyed()) {
     win.webContents.send("acp:stream", event);
   }
+  if (imStreamHandler === undefined) {
+    imStreamHandler = null;
+    void import("../im/ipc").then((mod) => {
+      imStreamHandler = mod.handleImAcpStream;
+      return mod.handleImAcpStream(event);
+    }).catch(() => {
+      imStreamHandler = null;
+    });
+    return;
+  }
+  if (imStreamHandler) void imStreamHandler(event);
 }
 
 function findControllerChatIdByAcpSessionId(sessionId: string | undefined): string | null {
@@ -887,10 +900,58 @@ function resolveChatIdForSession(sessionId: string | undefined): string | null {
   );
 }
 
+let acpHostDeps: { loadSettings: LoadSettings; getMainWindow: GetMainWindow } | null = null;
+
+export async function connectAcpChat(chatId: string, force = false): Promise<void> {
+  if (!acpHostDeps) throw new Error("ACP host is not registered.");
+  const { loadSettings, getMainWindow } = acpHostDeps;
+  const settings = await loadSettings();
+  const panelHome = effectivePanelHome(settings);
+  const record = await getAcpRecord(panelHome, chatId);
+  if (!record) throw new Error("ACP session not found.");
+
+  let controller = controllers.get(chatId);
+  if (controller && !force && controller.isLive()) {
+    lastActiveChatId = chatId;
+    controller.repostSnapshot();
+    return;
+  }
+  if (controller) {
+    controller.dispose();
+    controllers.delete(chatId);
+  }
+  controller = new AcpChatController(record, panelHome, settings, (event) =>
+    emitToWindow(getMainWindow, event)
+  );
+  controllers.set(chatId, controller);
+  lastActiveChatId = chatId;
+  await controller.bootstrap();
+}
+
+export async function promptAcpChat(
+  chatId: string,
+  text: string,
+  images: IncomingAcpImage[] = [],
+  files: IncomingAcpFile[] = []
+): Promise<void> {
+  const controller = controllers.get(chatId);
+  if (!controller) throw new Error("ACP chat is not connected.");
+  lastActiveChatId = chatId;
+  await controller.sendMessage(text, images, files);
+}
+
+export async function denyAcpPermission(requestId: string): Promise<void> {
+  const waiter = permissionWaiters.get(requestId);
+  if (!waiter) return;
+  permissionWaiters.delete(requestId);
+  waiter.resolve({ outcome: { outcome: "cancelled" } });
+}
+
 export function registerAcpIpc(deps: {
   loadSettings: LoadSettings;
   getMainWindow: GetMainWindow;
 }): void {
+  acpHostDeps = deps;
   const { loadSettings, getMainWindow } = deps;
 
   setPermissionPromptHandler(async (params: RequestPermissionRequest): Promise<RequestPermissionResponse> => {
@@ -1042,30 +1103,12 @@ export function registerAcpIpc(deps: {
   });
 
   safeHandle("acp:connect", async (_event, args: { chatId: string; force?: boolean }) => {
-    const settings = await loadSettings();
-    const panelHome = effectivePanelHome(settings);
-    const record = await getAcpRecord(panelHome, args.chatId);
-    if (!record) throw new Error("ACP session not found.");
-
-    let controller = controllers.get(args.chatId);
-    // Keep-alive: reusing a live controller avoids respawning the agent on every
-    // tab focus / active flip. force=true rebuilds (settings change, error retry).
-    if (controller && !args.force && controller.isLive()) {
-      lastActiveChatId = args.chatId;
-      controller.repostSnapshot();
-      return { ok: true, record: controller.getRecord(), reused: true };
-    }
-    if (controller) {
-      controller.dispose();
-      controllers.delete(args.chatId);
-    }
-    controller = new AcpChatController(record, panelHome, settings, (event) =>
-      emitToWindow(getMainWindow, event)
-    );
-    controllers.set(args.chatId, controller);
-    lastActiveChatId = args.chatId;
-    await controller.bootstrap();
-    return { ok: true, record: controller.getRecord(), reused: false };
+    const existed = controllers.get(args.chatId);
+    const reused = Boolean(existed && !args.force && existed.isLive());
+    await connectAcpChat(args.chatId, args.force === true);
+    const controller = controllers.get(args.chatId);
+    if (!controller) throw new Error("ACP session not found.");
+    return { ok: true, record: controller.getRecord(), reused };
   });
 
   safeHandle(
@@ -1074,10 +1117,7 @@ export function registerAcpIpc(deps: {
       _event,
       args: { chatId: string; text?: string; images?: IncomingAcpImage[]; files?: IncomingAcpFile[] }
     ) => {
-      const controller = controllers.get(args.chatId);
-      if (!controller) throw new Error("ACP chat is not connected.");
-      lastActiveChatId = args.chatId;
-      await controller.sendMessage(args.text ?? "", args.images ?? [], args.files ?? []);
+      await promptAcpChat(args.chatId, args.text ?? "", args.images ?? [], args.files ?? []);
       return { ok: true };
     }
   );

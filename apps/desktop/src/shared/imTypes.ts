@@ -1,0 +1,194 @@
+export const IM_AGENTS = ["pi", "claude", "codex"] as const;
+export type ImAgent = (typeof IM_AGENTS)[number];
+
+export const IM_PERMISSIONS = ["read", "write"] as const;
+export type ImPermission = (typeof IM_PERMISSIONS)[number];
+
+export const IM_MESSAGE_KINDS = ["human", "role.say", "job.card", "system"] as const;
+export type ImMessageKind = (typeof IM_MESSAGE_KINDS)[number];
+
+export const IM_JOB_STATUSES = [
+  "queued",
+  "connecting",
+  "running",
+  "awaiting_user",
+  "completed",
+  "failed",
+  "cancelled"
+] as const;
+export type ImJobStatus = (typeof IM_JOB_STATUSES)[number];
+
+export function isImAgent(value: string): value is ImAgent {
+  return (IM_AGENTS as readonly string[]).includes(value);
+}
+
+export function isImPermission(value: string): value is ImPermission {
+  return (IM_PERMISSIONS as readonly string[]).includes(value);
+}
+
+export const IM_BUILTIN_TEMPLATE_IDS = [
+  "role_product_manager",
+  "role_project_manager",
+  "role_ui_designer",
+  "role_developer",
+  "role_tester"
+] as const;
+
+export type ImBuiltinTemplateId = (typeof IM_BUILTIN_TEMPLATE_IDS)[number];
+
+export function isBuiltinTemplateId(value: string): value is ImBuiltinTemplateId {
+  return (IM_BUILTIN_TEMPLATE_IDS as readonly string[]).includes(value);
+}
+
+export interface ImRoleTools {
+  fsRead: boolean;
+  fsWrite: boolean;
+  execute: boolean;
+}
+
+export const DEFAULT_IM_ROLE_TOOLS: ImRoleTools = {
+  fsRead: true,
+  fsWrite: true,
+  execute: true
+};
+
+export function parseImRoleTools(value: unknown, fallback?: ImRoleTools): ImRoleTools {
+  const base = fallback ?? DEFAULT_IM_ROLE_TOOLS;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return { ...base };
+  const raw = value as Record<string, unknown>;
+  return {
+    fsRead: true,
+    fsWrite: typeof raw.fsWrite === "boolean" ? raw.fsWrite : base.fsWrite,
+    execute: typeof raw.execute === "boolean" ? raw.execute : base.execute
+  };
+}
+
+export interface ImProject {
+  projectId: string;
+  name: string;
+  localPath: string | null;
+  createdAtMs: number;
+  updatedAtMs: number;
+}
+
+export interface ImRoleTemplate {
+  templateId: string;
+  name: string;
+  persona: string;
+  agent: ImAgent;
+  permissions: ImPermission;
+  tools: ImRoleTools;
+  createdAtMs: number;
+  updatedAtMs: number;
+}
+
+export interface ImMember {
+  memberId: string;
+  projectId: string;
+  templateId: string;
+  name: string;
+  persona: string;
+  agent: ImAgent;
+  permissions: ImPermission;
+  tools: ImRoleTools;
+  enabled: boolean;
+  acpChatId: string | null;
+  createdAtMs: number;
+  updatedAtMs: number;
+}
+
+export interface ImQuotedMessage {
+  messageId: string;
+  authorLabel: string;
+  body: string;
+  createdAtMs: number;
+  truncated: boolean;
+}
+
+export interface ImMessage {
+  messageId: string;
+  projectId: string;
+  kind: ImMessageKind;
+  authorMemberId: string | null;
+  authorLabel: string;
+  body: string;
+  quoteIds: string[];
+  quotes: ImQuotedMessage[];
+  mentionRoleIds: string[];
+  jobId: string | null;
+  createdAtMs: number;
+}
+
+export const IM_KNOWLEDGE_KINDS = ["text", "link", "image"] as const;
+export type ImKnowledgeKind = (typeof IM_KNOWLEDGE_KINDS)[number];
+
+export function isImKnowledgeKind(value: string): value is ImKnowledgeKind {
+  return (IM_KNOWLEDGE_KINDS as readonly string[]).includes(value);
+}
+
+export interface ImKnowledgeItem {
+  itemId: string;
+  projectId: string;
+  kind: ImKnowledgeKind;
+  title: string;
+  body: string;
+  url: string | null;
+  storagePath: string | null;
+  mimeType: string | null;
+  fileName: string | null;
+  sizeBytes: number | null;
+  createdAtMs: number;
+}
+
+export interface ImKnowledgeSnapshot {
+  kind: ImKnowledgeKind;
+  title: string;
+  body: string;
+  url: string | null;
+  fileName: string | null;
+  truncated: boolean;
+}
+
+export interface ImJobBrief {
+  persona: string;
+  instruction: string;
+  cwd: string;
+  quotes: ImQuotedMessage[];
+  knowledge: ImKnowledgeSnapshot[];
+}
+
+export interface ImPermissionRequest {
+  requestId: string;
+  title: string;
+  options: Array<{ optionId: string; name: string; kind: string }>;
+}
+
+export interface ImJob {
+  jobId: string;
+  projectId: string;
+  memberId: string;
+  messageId: string | null;
+  acpChatId: string | null;
+  status: ImJobStatus;
+  brief: ImJobBrief;
+  error: string | null;
+  filesChanged: string[];
+  permission: ImPermissionRequest | null;
+  createdAtMs: number;
+  updatedAtMs: number;
+  finishedAtMs: number | null;
+}
+
+export interface ImRoom {
+  project: ImProject;
+  members: ImMember[];
+  messages: ImMessage[];
+  jobs: ImJob[];
+  knowledge: ImKnowledgeItem[];
+}
+
+export type ImEvent =
+  | { type: "room"; room: ImRoom }
+  | { type: "message"; projectId: string; message: ImMessage }
+  | { type: "job"; projectId: string; job: ImJob }
+  | { type: "member"; projectId: string; member: ImMember };

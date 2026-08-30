@@ -15,6 +15,25 @@ const messages = {
   "desktop.settings.paneSessionsDesc": "Sessions desc",
   "desktop.settings.paneWorkbench": "Workbench",
   "desktop.settings.paneWorkbenchDesc": "Workbench desc",
+  "desktop.settings.paneIm": "Roles",
+  "desktop.settings.paneImDesc": "IM role templates",
+  "desktop.settings.imTemplates": "Role templates",
+  "desktop.settings.imTemplatesHint": "Edit agent, prompt, and tools.",
+  "desktop.settings.imBuiltin": "Builtin",
+  "desktop.settings.imNewTemplate": "New template",
+  "desktop.settings.imName": "Name",
+  "desktop.settings.imAgent": "Agent",
+  "desktop.settings.imPrompt": "Prompt",
+  "desktop.settings.imTools": "Tools",
+  "desktop.settings.imToolRead": "Read files",
+  "desktop.settings.imToolReadAlways": "Every role can list and read the whole project folder.",
+  "desktop.settings.imToolWrite": "Write files",
+  "desktop.settings.imToolExecute": "Run commands",
+  "desktop.settings.imSaved": "Template saved",
+  "desktop.settings.imDeleteTemplate": "Delete template",
+  "desktop.im.agent.pi": "Pi",
+  "desktop.im.agent.claude": "Claude Code",
+  "desktop.im.agent.codex": "Codex",
   "desktop.settings.paneNotes": "Notes",
   "desktop.settings.paneNotesDesc": "Notes desc",
   "desktop.settings.paneReport": "Report",
@@ -130,7 +149,11 @@ function renderWindowSettings(initialPane = "general") {
     onSettingsNavigate: (callback: (payload: { pane: string }) => void) => {
       navigateHandlers.push(callback);
       return () => undefined;
-    }
+    },
+    imListTemplates: vi.fn(async () => []),
+    imCreateTemplate: vi.fn(async () => ({ templateId: "custom" })),
+    imUpdateTemplate: vi.fn(async () => ({ templateId: "custom" })),
+    imDeleteTemplate: vi.fn(async () => ({ ok: true }))
   } as unknown as typeof window.agentResume;
   render(
     <I18nProvider>

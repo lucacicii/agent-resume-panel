@@ -18,7 +18,7 @@ Use this index for feature requests without a concrete path or searchable identi
 | ACP chat, agent connection, permissions, ACP files, images, handoff | `.agents/menus/acp-chat.md` | VS Code extension |
 | GTD, status, tasks, todolist, daily/weekly/monthly digest, memory, Ask, semantic search, usage | `.agents/menus/report-gtd.md` | Core and desktop |
 | notes, Markdown, attachments, note import, note search, index | `.agents/menus/notes.md` | Extension, core, and desktop |
-| desktop app, Memory calendar, Ask, Workbench, embedded terminal, desktop settings | `.agents/menus/desktop.md` | Electron desktop |
+| desktop app, Memory calendar, Ask, Workbench, embedded terminal, desktop settings, IM rooms | `.agents/menus/desktop.md` | Electron desktop |
 | settings, local storage, LLM configuration, embeddings, panel home, catalog database, usage, session sync | `.agents/menus/infrastructure.md` | Shared infrastructure |
 | sidebar, tree views, context menus, commands, package contributions, extension i18n | `.agents/menus/vscode-integration.md` | VS Code extension only |
 | desktop i18n, locale catalog, merge pipeline | `.agents/extended/product-independence.md` § i18n | Desktop only (`desktop.*` keys) |
