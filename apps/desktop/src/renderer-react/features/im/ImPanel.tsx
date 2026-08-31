@@ -39,10 +39,10 @@ function roleLabel(member: ImMember, t: Translate): string {
   return builtinRoleLabel(member.templateId, member.name, t);
 }
 
-function agentTag(agent: string, t: Translate): JSX.Element {
+function agentTag(agent: string, model: string | undefined, t: Translate): JSX.Element {
   return (
     <span className="s-provider-tag" data-provider={agent}>
-      {t(`desktop.im.agent.${agent}`)}
+      {t(`desktop.im.agent.${agent}`)}{model ? ` · ${model}` : ""}
     </span>
   );
 }
@@ -560,6 +560,14 @@ export function ImPanel(): ReactPortal | null {
     }
   }, [room?.members, selectedProjectId, setError]);
 
+  const cancelJob = useCallback(async (job: ImJob) => {
+    try {
+      await desktopApi().imCancelJob({ jobId: job.jobId });
+    } catch (error) {
+      setError(error);
+    }
+  }, [setError]);
+
   if (!host) return null;
   const headerSlot = document.getElementById("app-header-slot");
   const toolbar = (
@@ -707,7 +715,7 @@ export function ImPanel(): ReactPortal | null {
                         <header>
                           <strong>
                             {speaker ? memberLabel(speaker) : message.authorLabel}
-                            {speaker ? <> {agentTag(speaker.agent, t)}</> : null}
+                            {speaker ? <> {agentTag(speaker.agent, speaker.model, t)}</> : null}
                           </strong>
                           <button type="button" className="im-quote-btn" onClick={() => quoteMessage(message)}>
                             {t("desktop.im.quote")}
@@ -765,6 +773,46 @@ export function ImPanel(): ReactPortal | null {
                   <p className="im-empty">{t("desktop.im.emptyRoom")}</p>
                 )}
               </div>
+              {room?.jobs.some((job) => job.status === "queued" || job.status === "connecting" || job.status === "running" || job.status === "awaiting_user") && (
+                <div className="im-active-jobs-banner" aria-label={t("desktop.im.currentJob")}>
+                  <div className="im-active-jobs-header">
+                    <span className="im-active-jobs-title">{t("desktop.im.currentJob")}</span>
+                  </div>
+                  <div className="im-active-jobs-list">
+                    {room.jobs
+                      .filter((job) => job.status === "queued" || job.status === "connecting" || job.status === "running" || job.status === "awaiting_user")
+                      .map((job) => {
+                        const owner = members.find((member) => member.memberId === job.memberId);
+                        const name = owner ? memberLabel(owner) : job.memberId;
+                        const agent = owner?.agent;
+                        const model = owner?.model;
+                        return (
+                          <div key={job.jobId} className={`im-active-job-item is-${job.status}`}>
+                            <span className={`im-job-dot is-${job.status}`} aria-hidden="true" />
+                            <span className="im-active-job-name">{name}</span>
+                            {agent && (
+                              <span className="s-provider-tag" data-provider={agent}>
+                                {t(`desktop.im.agent.${agent}`)}{model ? ` · ${model}` : ""}
+                              </span>
+                            )}
+                            <span className="im-active-job-status">
+                              {t(`desktop.im.job.${job.status}`)}
+                            </span>
+                            <button
+                              type="button"
+                              className="im-job-cancel-btn"
+                              onClick={() => void cancelJob(job)}
+                              aria-label={t("desktop.im.cancelJob")}
+                              title={t("desktop.im.cancelJob")}
+                            >
+                              <ThemeIcon name="close" size={11} />
+                            </button>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
               {activeJob?.permission && (
                 <div className="im-permission" role="alertdialog" aria-label={t("desktop.im.permissionTitle")}>
                   <strong>{permissionOwner ? `${memberLabel(permissionOwner)} · ` : ""}{activeJob.permission.title}</strong>
@@ -815,7 +863,7 @@ export function ImPanel(): ReactPortal | null {
                         onMouseEnter={() => setMentionIndex(index)}
                         onClick={() => pickMention(member)}
                       >
-                        @{memberLabel(member)} {agentTag(member.agent, t)}
+                        @{memberLabel(member)} {agentTag(member.agent, member.model, t)}
                       </button>
                     ))}
                   </div>
@@ -885,21 +933,10 @@ export function ImPanel(): ReactPortal | null {
                   />
                   <strong>{label}</strong>
                 </span>
-                {agentTag(template.agent, t)}
+                {agentTag(template.agent, template.model, t)}
               </label>
             );
           }) : <p className="im-empty">{t("desktop.im.noMembers")}</p>}
-          {room?.jobs.some((job) => job.status === "queued" || job.status === "connecting" || job.status === "running" || job.status === "awaiting_user") && (
-            <div className="im-job-status">
-              <h3>{t("desktop.im.currentJob")}</h3>
-              {room.jobs.filter((job) => job.status === "queued" || job.status === "connecting" || job.status === "running" || job.status === "awaiting_user").map((job) => {
-                const owner = members.find((member) => member.memberId === job.memberId);
-                return (
-                  <p key={job.jobId}>{owner ? memberLabel(owner) : job.memberId} · {t(`desktop.im.job.${job.status}`)}</p>
-                );
-              })}
-            </div>
-          )}
         </aside>
       </div>
       {selectionMenu ? createPortal(

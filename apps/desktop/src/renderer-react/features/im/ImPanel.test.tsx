@@ -488,4 +488,36 @@ describe("ImPanel", () => {
     fireEvent.click(quote);
     await waitFor(() => expect(screen.getByLabelText("Remove quote")).toBeTruthy());
   });
+
+  it("renders active jobs banner under the chat transcript when jobs are active", async () => {
+    const currentProject = project();
+    const currentRoom = roomFor(currentProject);
+    const api = renderIm();
+    (api.imGetRoom as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...currentRoom,
+      jobs: [
+        {
+          jobId: "job-running-1",
+          projectId: currentProject.projectId,
+          memberId: currentRoom.members[0]!.memberId,
+          messageId: "msg-1",
+          acpChatId: "chat-1",
+          status: "running",
+          brief: { persona: "", instruction: "", cwd: "/tmp/app", quotes: [], knowledge: [] },
+          error: null,
+          filesChanged: [],
+          permission: null,
+          createdAtMs: 1,
+          updatedAtMs: 1,
+          finishedAtMs: null
+        }
+      ]
+    });
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+    await waitFor(() => expect(document.querySelector(".im-active-jobs-banner")).not.toBeNull());
+    expect(document.querySelector(".im-active-jobs-banner")?.textContent).toContain("Current job");
+    expect(document.querySelector(".im-active-jobs-banner")?.textContent).toContain("Running");
+  });
 });

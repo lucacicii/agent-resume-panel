@@ -139,6 +139,7 @@ interface TemplateRow {
   name: string;
   persona: string;
   agent: string;
+  model: string | null;
   permissions: string;
   tools_json: string | null;
   created_at_ms: number;
@@ -152,6 +153,7 @@ interface MemberRow {
   name: string;
   persona: string;
   agent: string;
+  model: string | null;
   permissions: string;
   enabled: number;
   acp_chat_id: string | null;
@@ -320,6 +322,7 @@ function mapTemplate(row: TemplateRow): ImRoleTemplate {
     name: row.name,
     persona: row.persona,
     agent: isImAgent(row.agent) ? row.agent : "claude",
+    model: row.model?.trim() || undefined,
     permissions: tools.fsWrite ? "write" : "read",
     tools,
     createdAtMs: row.created_at_ms,
@@ -336,6 +339,7 @@ function mapMember(row: MemberRow, template?: ImRoleTemplate): ImMember {
     name: template?.name ?? row.name,
     persona: template?.persona ?? row.persona,
     agent: template?.agent ?? (isImAgent(row.agent) ? row.agent : "claude"),
+    model: template?.model ?? (row.model?.trim() || undefined),
     permissions: template?.permissions ?? (isImPermission(row.permissions) ? row.permissions : "write"),
     tools,
     enabled: row.enabled === 1,
@@ -443,6 +447,21 @@ export class ImStore {
     await this.ensureBuiltinTemplates();
     await this.ensureBuiltinSelectionActions();
     await this.backfillBuiltinMembersOnce();
+    await this.reconcileStaleJobs();
+  }
+
+  private async reconcileStaleJobs(): Promise<void> {
+    const now = nowMs();
+    await runSqlite(
+      this.dbPath,
+      `UPDATE im_jobs
+       SET status = 'cancelled',
+           error = coalesce(error, 'App restarted while job was running'),
+           permission_json = NULL,
+           updated_at_ms = ${now},
+           finished_at_ms = ${now}
+       WHERE status IN ('queued', 'connecting', 'running', 'awaiting_user');`
+    );
   }
 
   private async ensureBuiltinSelectionActions(): Promise<void> {
@@ -742,23 +761,26 @@ export class ImStore {
     name: string;
     persona: string;
     agent: ImAgent;
+    model?: string;
     tools?: ImRoleTools;
   }): Promise<ImRoleTemplate> {
     const name = input.name.trim();
     if (!name) throw new Error("Role name is required.");
     if (!isImAgent(input.agent)) throw new Error("IM only supports Pi, Claude Code, and Codex.");
     const tools = parseImRoleTools({ ...input.tools, fsRead: true });
+    const model = input.model?.trim() || null;
     const now = nowMs();
     const templateId = randomUUID();
     await runSqlite(
       this.dbPath,
       `INSERT INTO im_role_templates (
-        template_id, name, persona, agent, permissions, tools_json, created_at_ms, updated_at_ms
+        template_id, name, persona, agent, model, permissions, tools_json, created_at_ms, updated_at_ms
       ) VALUES (
         ${sqlString(templateId)},
         ${sqlString(name)},
         ${sqlString(input.persona.trim())},
         ${sqlString(input.agent)},
+        ${sqlNullOrString(model)},
         ${sqlString(tools.fsWrite ? "write" : "read")},
         ${sqlString(JSON.stringify(tools))},
         ${now},
@@ -775,6 +797,7 @@ export class ImStore {
     name?: string;
     persona?: string;
     agent?: ImAgent;
+    model?: string | null;
     tools?: ImRoleTools;
   }): Promise<ImRoleTemplate> {
     const current = await this.getTemplate(input.templateId);
@@ -783,6 +806,7 @@ export class ImStore {
     if (!name) throw new Error("Role name is required.");
     const agent = input.agent ?? current.agent;
     if (!isImAgent(agent)) throw new Error("IM only supports Pi, Claude Code, and Codex.");
+    const model = input.model !== undefined ? (input.model?.trim() || null) : (current.model ?? null);
     const persona = input.persona ?? current.persona;
     const tools = input.tools ? parseImRoleTools({ ...input.tools, fsRead: true }) : { ...current.tools, fsRead: true };
     const now = nowMs();
@@ -792,15 +816,16 @@ export class ImStore {
         name = ${sqlString(name)},
         persona = ${sqlString(persona)},
         agent = ${sqlString(agent)},
+        model = ${sqlNullOrString(model)},
         permissions = ${sqlString(tools.fsWrite ? "write" : "read")},
         tools_json = ${sqlString(JSON.stringify(tools))},
         updated_at_ms = ${now}
        WHERE template_id = ${sqlString(input.templateId)};`
     );
-    if (agent !== current.agent) {
+    if (agent !== current.agent || model !== (current.model ?? null)) {
       await runSqlite(
         this.dbPath,
-        `UPDATE im_members SET acp_chat_id = NULL, agent = ${sqlString(agent)}, updated_at_ms = ${now}
+        `UPDATE im_members SET acp_chat_id = NULL, agent = ${sqlString(agent)}, model = ${sqlNullOrString(model)}, updated_at_ms = ${now}
          WHERE template_id = ${sqlString(input.templateId)};`
       );
     }
@@ -827,6 +852,8 @@ export class ImStore {
     name: string;
     persona: string;
     agent: ImAgent;
+    model?: string;
+    tools?: ImRoleTools;
   }): Promise<{ template: ImRoleTemplate; member: ImMember }> {
     await this.requireProject(input.projectId);
     const members = await this.listMembers(input.projectId);
@@ -905,6 +932,7 @@ export class ImStore {
       name: template.name,
       persona: template.persona,
       agent: template.agent,
+      model: template.model,
       permissions: template.permissions,
       tools: template.tools,
       enabled: true,
@@ -915,7 +943,7 @@ export class ImStore {
     await runSqlite(
       this.dbPath,
       `INSERT INTO im_members (
-        member_id, project_id, template_id, name, persona, agent, permissions, enabled, acp_chat_id, created_at_ms, updated_at_ms
+        member_id, project_id, template_id, name, persona, agent, model, permissions, enabled, acp_chat_id, created_at_ms, updated_at_ms
       ) VALUES (
         ${sqlString(member.memberId)},
         ${sqlString(projectId)},
@@ -923,6 +951,7 @@ export class ImStore {
         ${sqlString(member.name)},
         ${sqlString(member.persona)},
         ${sqlString(member.agent)},
+        ${sqlNullOrString(member.model)},
         ${sqlString(member.permissions)},
         1,
         NULL,
@@ -1150,6 +1179,20 @@ export class ImStore {
     const updated = await this.getJob(jobId);
     if (!updated) throw new Error("Failed to load updated job.");
     return updated;
+  }
+
+  async cancelJob(jobId: string): Promise<ImJob> {
+    const current = await this.getJob(jobId);
+    if (!current) throw new Error("Job not found.");
+    if (current.status === "completed" || current.status === "failed" || current.status === "cancelled") {
+      return current;
+    }
+    return this.updateJob(jobId, {
+      status: "cancelled",
+      error: "Cancelled by user",
+      permission: null,
+      finished: true
+    });
   }
 
   async resolveQuotes(projectId: string, quoteIds: string[]): Promise<ImQuotedMessage[]> {

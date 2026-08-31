@@ -602,6 +602,7 @@ export interface DesktopApi {
     name: string;
     persona: string;
     agent: ImAgent;
+    model?: string;
     tools?: { fsRead: boolean; fsWrite: boolean; execute: boolean };
   }): Promise<ImRoleTemplate>;
   imUpdateTemplate(args: {
@@ -609,6 +610,7 @@ export interface DesktopApi {
     name?: string;
     persona?: string;
     agent?: ImAgent;
+    model?: string | null;
     tools?: { fsRead: boolean; fsWrite: boolean; execute: boolean };
   }): Promise<ImRoleTemplate>;
   imDeleteTemplate(args: { templateId: string }): Promise<{ ok: boolean }>;
@@ -619,6 +621,7 @@ export interface DesktopApi {
     name: string;
     persona: string;
     agent: ImAgent;
+    model?: string;
   }): Promise<{ template: ImRoleTemplate; member: ImMember }>;
   imAddMember(args: { projectId: string; templateId: string }): Promise<ImMember>;
   imRemoveMember(args: { memberId: string }): Promise<{ ok: boolean }>;
@@ -628,6 +631,7 @@ export interface DesktopApi {
     quoteIds: string[];
     mentionRoleIds: string[];
   }): Promise<{ message: ImMessage; job: ImJob | null }>;
+  imCancelJob(args: { jobId: string }): Promise<ImJob>;
   imListKnowledge(args: { projectId: string }): Promise<ImKnowledgeItem[]>;
   imAddKnowledgeText(args: { projectId: string; title: string; body: string }): Promise<ImKnowledgeItem>;
   imAddKnowledgeLink(args: { projectId: string; url: string; title?: string; note?: string }): Promise<ImKnowledgeItem>;
@@ -1649,6 +1653,7 @@ const api: DesktopApi = {
   imAddMember: (args) => ipcRenderer.invoke("im:addMember", args),
   imRemoveMember: (args) => ipcRenderer.invoke("im:removeMember", args),
   imPostMessage: (args) => ipcRenderer.invoke("im:postMessage", args),
+  imCancelJob: (args) => ipcRenderer.invoke("im:cancelJob", args),
   imListKnowledge: (args) => ipcRenderer.invoke("im:listKnowledge", args),
   imAddKnowledgeText: (args) => ipcRenderer.invoke("im:addKnowledgeText", args),
   imAddKnowledgeLink: (args) => ipcRenderer.invoke("im:addKnowledgeLink", args),

@@ -63,6 +63,25 @@ export function parseImRoleTools(value: unknown, fallback?: ImRoleTools): ImRole
   };
 }
 
+export const IM_AGENT_SUGGESTED_MODELS: Record<ImAgent, Array<{ id: string; label: string }>> = {
+  claude: [
+    { id: "", label: "Default" },
+    { id: "claude-3-7-sonnet-20250219", label: "Claude 3.7 Sonnet" },
+    { id: "claude-3-5-sonnet-20241022", label: "Claude 3.5 Sonnet" },
+    { id: "claude-3-5-haiku-20241022", label: "Claude 3.5 Haiku" },
+    { id: "claude-opus", label: "Claude Opus" }
+  ],
+  codex: [
+    { id: "", label: "Default" },
+    { id: "o3-mini", label: "o3-mini" },
+    { id: "gpt-4o", label: "GPT-4o" },
+    { id: "gpt-4o-mini", label: "GPT-4o mini" }
+  ],
+  pi: [
+    { id: "", label: "Default" }
+  ]
+};
+
 export interface ImProject {
   projectId: string;
   name: string;
@@ -76,6 +95,7 @@ export interface ImRoleTemplate {
   name: string;
   persona: string;
   agent: ImAgent;
+  model?: string;
   permissions: ImPermission;
   tools: ImRoleTools;
   createdAtMs: number;
@@ -89,6 +109,7 @@ export interface ImMember {
   name: string;
   persona: string;
   agent: ImAgent;
+  model?: string;
   permissions: ImPermission;
   tools: ImRoleTools;
   enabled: boolean;

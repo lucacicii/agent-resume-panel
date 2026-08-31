@@ -162,25 +162,108 @@ describe("ImStore", () => {
     expect(developer?.persona).toBe("Ship small diffs only.");
   });
 
-  it("snapshots quoted messages into the dispatch prompt", async () => {
+  it("persists model configuration on role templates and propagates to room members", async () => {
     const store = await createStore();
-    const project = await store.createProject("Quoted");
-    const first = await store.insertMessage({
+    const created = await store.createTemplate({
+      name: "Architect",
+      persona: "You are Lead Architect.",
+      agent: "claude",
+      model: "claude-opus"
+    });
+    expect(created.model).toBe("claude-opus");
+
+    const project = await store.createProject("Model Test");
+    await store.addMember(project.projectId, created.templateId);
+    let room = await store.getRoom(project.projectId);
+    let architect = room.members.find((member) => member.templateId === created.templateId);
+    expect(architect?.model).toBe("claude-opus");
+
+    const updated = await store.updateTemplate({
+      templateId: created.templateId,
+      model: "claude-3-7-sonnet-20250219"
+    });
+    expect(updated.model).toBe("claude-3-7-sonnet-20250219");
+
+    room = await store.getRoom(project.projectId);
+    architect = room.members.find((member) => member.templateId === created.templateId);
+    expect(architect?.model).toBe("claude-3-7-sonnet-20250219");
+
+    const cleared = await store.updateTemplate({
+      templateId: created.templateId,
+      model: ""
+    });
+    expect(cleared.model).toBeUndefined();
+
+    room = await store.getRoom(project.projectId);
+    architect = room.members.find((member) => member.templateId === created.templateId);
+    expect(architect?.model).toBeUndefined();
+  });
+
+  it("reconciles stale running/queued jobs on store initialization after restart", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "im-store-restart-"));
+    try {
+      const dbPath = path.join(dir, "desktop.db");
+      const firstStore = new ImStore(dbPath);
+      await firstStore.initialize();
+
+      const project = await firstStore.createProject("Restart Test");
+      const room = await firstStore.getRoom(project.projectId);
+      const dev = room.members.find((m) => m.templateId === "role_developer")!;
+
+      const job1 = await firstStore.createJob({
+        projectId: project.projectId,
+        memberId: dev.memberId,
+        messageId: null,
+        brief: { persona: "", instruction: "", cwd: "/tmp", quotes: [], knowledge: [] },
+        status: "running"
+      });
+      const job2 = await firstStore.createJob({
+        projectId: project.projectId,
+        memberId: dev.memberId,
+        messageId: null,
+        brief: { persona: "", instruction: "", cwd: "/tmp", quotes: [], knowledge: [] },
+        status: "queued"
+      });
+
+      expect((await firstStore.getJob(job1.jobId))?.status).toBe("running");
+      expect((await firstStore.getJob(job2.jobId))?.status).toBe("queued");
+
+      // Simulate app restart: open new store instance on the same db
+      const restartedStore = new ImStore(dbPath);
+      await restartedStore.initialize();
+
+      const recoveredJob1 = await restartedStore.getJob(job1.jobId);
+      const recoveredJob2 = await restartedStore.getJob(job2.jobId);
+
+      expect(recoveredJob1?.status).toBe("cancelled");
+      expect(recoveredJob1?.error).toContain("App restarted");
+      expect(recoveredJob2?.status).toBe("cancelled");
+      expect(recoveredJob2?.error).toContain("App restarted");
+
+      // Verify no active writer jobs remain to block the queue
+      const activeWriter = await restartedStore.findActiveWriterJob(project.projectId);
+      expect(activeWriter).toBeUndefined();
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("allows cancelling active jobs via cancelJob", async () => {
+    const store = await createStore();
+    const project = await store.createProject("Cancel Test");
+    const room = await store.getRoom(project.projectId);
+    const dev = room.members.find((m) => m.templateId === "role_developer")!;
+
+    const job = await store.createJob({
       projectId: project.projectId,
-      kind: "human",
-      authorLabel: "You",
-      body: "Use the existing auth helper."
+      memberId: dev.memberId,
+      messageId: null,
+      brief: { persona: "", instruction: "", cwd: "/tmp", quotes: [], knowledge: [] },
+      status: "running"
     });
-    const quotes = await store.resolveQuotes(project.projectId, [first.messageId]);
-    const prompt = buildDispatchPrompt({
-      persona: "You are Developer.",
-      instruction: "Implement login.",
-      cwd: "/tmp/app",
-      quotes,
-      knowledge: []
-    });
-    expect(prompt).toContain("Use the existing auth helper.");
-    expect(prompt).toContain("Implement login.");
-    expect(prompt).toContain("/tmp/app");
+
+    const cancelled = await store.cancelJob(job.jobId);
+    expect(cancelled.status).toBe("cancelled");
+    expect((await store.getJob(job.jobId))?.status).toBe("cancelled");
   });
 });

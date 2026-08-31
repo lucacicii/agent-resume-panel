@@ -21,6 +21,7 @@ type AcpHostApi = {
   connect: (chatId: string) => Promise<void>;
   prompt: (chatId: string, text: string) => Promise<void>;
   denyPermission: (requestId: string) => Promise<void>;
+  setModel?: (chatId: string, modelId: string) => Promise<void>;
 };
 
 async function getStore(): Promise<ImStore> {
@@ -48,7 +49,8 @@ export function registerImIpc(deps: {
         emit,
         deps.acp.connect,
         deps.acp.prompt,
-        deps.acp.denyPermission
+        deps.acp.denyPermission,
+        deps.acp.setModel
       );
     }
     return conductor;
@@ -119,6 +121,7 @@ export function registerImIpc(deps: {
     name?: unknown;
     persona?: unknown;
     agent?: unknown;
+    model?: unknown;
     tools?: unknown;
   }) => {
     if (typeof args?.name !== "string" || typeof args?.agent !== "string" || !isImAgent(args.agent)) {
@@ -129,6 +132,7 @@ export function registerImIpc(deps: {
       name: args.name,
       persona: typeof args.persona === "string" ? args.persona : "",
       agent: args.agent as ImAgent,
+      model: typeof args.model === "string" ? args.model : undefined,
       tools: parseImRoleTools(args.tools)
     });
   });
@@ -138,6 +142,7 @@ export function registerImIpc(deps: {
     name?: unknown;
     persona?: unknown;
     agent?: unknown;
+    model?: unknown;
     tools?: unknown;
   }) => {
     if (typeof args?.templateId !== "string") throw new Error("Template id is required.");
@@ -150,6 +155,7 @@ export function registerImIpc(deps: {
       name: typeof args.name === "string" ? args.name : undefined,
       persona: typeof args.persona === "string" ? args.persona : undefined,
       agent: typeof args.agent === "string" ? args.agent as ImAgent : undefined,
+      model: args.model === null ? null : typeof args.model === "string" ? args.model : undefined,
       tools: args.tools === undefined ? undefined : parseImRoleTools(args.tools)
     });
   });
@@ -180,6 +186,7 @@ export function registerImIpc(deps: {
     name?: unknown;
     persona?: unknown;
     agent?: unknown;
+    model?: unknown;
   }) => {
     if (typeof args?.projectId !== "string" || typeof args?.name !== "string") {
       throw new Error("Project id and role name are required.");
@@ -192,7 +199,8 @@ export function registerImIpc(deps: {
       projectId: args.projectId,
       name: args.name,
       persona: typeof args.persona === "string" ? args.persona : "",
-      agent: args.agent as ImAgent
+      agent: args.agent as ImAgent,
+      model: typeof args.model === "string" ? args.model : undefined
     });
   });
 
@@ -231,6 +239,12 @@ export function registerImIpc(deps: {
       quoteIds,
       mentionRoleIds
     });
+  });
+
+  safeHandle("im:cancelJob", async (_event, args: { jobId?: unknown }) => {
+    if (typeof args?.jobId !== "string") throw new Error("Job id is required.");
+    const runner = await getConductor();
+    return runner.cancelJob(args.jobId);
   });
 
   safeHandle("im:listKnowledge", async (_event, args: { projectId?: unknown }) => {

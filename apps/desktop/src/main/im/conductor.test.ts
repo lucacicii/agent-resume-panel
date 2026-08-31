@@ -159,4 +159,34 @@ describe("ImConductor", () => {
       mentionRoleIds: [room.members[0]!.memberId]
     })).rejects.toThrow(/local folder/i);
   });
+
+  it("sets model dynamically when dispatching a job for a role with configured model", async () => {
+    const store = await createStore();
+    const project = await store.createProject("Model dispatch");
+    await store.setLocalPath(project.projectId, process.cwd());
+    const architect = await store.createTemplate({
+      name: "Architect",
+      persona: "Lead Architect.",
+      agent: "claude",
+      model: "claude-opus"
+    });
+    const member = await store.addMember(project.projectId, architect.templateId);
+
+    const connect = vi.fn(async () => undefined);
+    const prompt = vi.fn(async () => undefined);
+    const setModel = vi.fn(async () => undefined);
+    const conductor = new ImConductor(store, () => undefined, connect, prompt, undefined, setModel);
+
+    await conductor.postMessage({
+      projectId: project.projectId,
+      body: "Plan architecture",
+      quoteIds: [],
+      mentionRoleIds: [member.memberId]
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(connect).toHaveBeenCalled();
+    expect(setModel).toHaveBeenCalledWith(expect.any(String), "claude-opus");
+    expect(prompt).toHaveBeenCalled();
+  });
 });

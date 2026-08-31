@@ -13,6 +13,11 @@ export const IM_TOOLS_MIGRATION_SQL = `
 ALTER TABLE im_role_templates ADD COLUMN tools_json TEXT;
 `;
 
+export const IM_ROLE_MODEL_MIGRATION_SQL = `
+ALTER TABLE im_role_templates ADD COLUMN model TEXT;
+ALTER TABLE im_members ADD COLUMN model TEXT;
+`;
+
 export const IM_SELECTION_ACTION_MODEL_MIGRATION_SQL = `
 ALTER TABLE im_selection_actions ADD COLUMN provider_id TEXT;
 ALTER TABLE im_selection_actions ADD COLUMN model_id TEXT;
@@ -264,6 +269,7 @@ CREATE TABLE IF NOT EXISTS im_role_templates (
   name TEXT NOT NULL,
   persona TEXT NOT NULL DEFAULT '',
   agent TEXT NOT NULL,
+  model TEXT,
   permissions TEXT NOT NULL DEFAULT 'write',
   tools_json TEXT,
   created_at_ms INTEGER NOT NULL,
@@ -277,6 +283,7 @@ CREATE TABLE IF NOT EXISTS im_members (
   name TEXT NOT NULL,
   persona TEXT NOT NULL DEFAULT '',
   agent TEXT NOT NULL,
+  model TEXT,
   permissions TEXT NOT NULL DEFAULT 'write',
   enabled INTEGER NOT NULL DEFAULT 1,
   acp_chat_id TEXT,

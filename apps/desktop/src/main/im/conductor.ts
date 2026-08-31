@@ -8,6 +8,7 @@ import { isImAgent, type ImEvent, type ImJob, type ImJobStatus, type ImMember, t
 type ConnectFn = (chatId: string) => Promise<void>;
 type PromptFn = (chatId: string, text: string) => Promise<void>;
 type DenyPermissionFn = (requestId: string) => Promise<void>;
+type SetModelFn = (chatId: string, modelId: string) => Promise<void>;
 
 const WRITER_BUSY: ReadonlySet<ImJobStatus> = new Set([
   "queued",
@@ -38,7 +39,8 @@ export class ImConductor {
     private readonly emit: (event: ImEvent) => void,
     private readonly connectChat: ConnectFn,
     private readonly promptChat: PromptFn,
-    private readonly denyPermission?: DenyPermissionFn
+    private readonly denyPermission?: DenyPermissionFn,
+    private readonly setModel?: SetModelFn
   ) {}
 
   async postMessage(input: {
@@ -131,6 +133,22 @@ export class ImConductor {
         // Store may already be gone (tests / shutdown).
       }
     });
+  }
+
+  async cancelJob(jobId: string): Promise<ImJob> {
+    const cancelled = await this.store.cancelJob(jobId);
+    this.emit({ type: "job", projectId: cancelled.projectId, job: cancelled });
+    const chatId = cancelled.acpChatId;
+    if (chatId) {
+      this.jobsByChat.delete(chatId);
+      this.settlePrompt(chatId, new Error("Job cancelled by user"));
+    }
+    try {
+      await this.pumpExclusiveQueue(cancelled.projectId);
+    } catch {
+      // ignore
+    }
+    return cancelled;
   }
 
   async handleAcpStream(event: AcpStreamEvent): Promise<void> {
@@ -252,6 +270,7 @@ export class ImConductor {
     if (!member) throw new Error("Room member not found.");
     const template = await this.store.getTemplate(member.templateId);
     const agent = template?.agent ?? member.agent;
+    const model = template?.model ?? member.model;
     const project = (await this.store.getRoom(job.projectId)).project;
     if (!project.localPath) throw new Error("Associate a local folder before asking a role to work.");
     if (!isImAgent(agent)) throw new Error("IM only supports Pi, Claude Code, and Codex.");
@@ -280,6 +299,13 @@ export class ImConductor {
     this.emit({ type: "job", projectId: job.projectId, job: connecting });
 
     await this.connectChat(chatId);
+    if (model && this.setModel) {
+      try {
+        await this.setModel(chatId, model);
+      } catch (error) {
+        console.warn(`[IM Conductor] Failed to set model ${model} on chat ${chatId}:`, error);
+      }
+    }
     const running = await this.store.updateJob(jobId, { status: "running", acpChatId: chatId });
     this.emit({ type: "job", projectId: job.projectId, job: running });
 

@@ -3,6 +3,7 @@ import type { PanelSettings } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { listProviderModels } from "./providerPool";
 import {
+  IM_AGENT_SUGGESTED_MODELS,
   isBuiltinSelectionActionId,
   isBuiltinTemplateId,
   type ImAgent,
@@ -15,11 +16,12 @@ import {
 type Translate = (key: string, ...args: Array<string | number>) => string;
 const AGENTS: ImAgent[] = ["pi", "claude", "codex"];
 
-function emptyDraft(): { name: string; persona: string; agent: ImAgent; tools: ImRoleTools } {
+function emptyDraft(): { name: string; persona: string; agent: ImAgent; model: string; tools: ImRoleTools } {
   return {
     name: "",
     persona: "",
     agent: "claude",
+    model: "",
     tools: { fsRead: true, fsWrite: false, execute: false }
   };
 }
@@ -31,6 +33,7 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
   const [name, setName] = useState("");
   const [persona, setPersona] = useState("");
   const [agent, setAgent] = useState<ImAgent>("claude");
+  const [model, setModel] = useState("");
   const [tools, setTools] = useState<ImRoleTools>(emptyDraft().tools);
   const [status, setStatus] = useState("");
   const [settings, setSettings] = useState<PanelSettings | null>(null);
@@ -70,6 +73,7 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
       setName(draft.name);
       setPersona(draft.persona);
       setAgent(draft.agent);
+      setModel(draft.model);
       setTools(draft.tools);
       return;
     }
@@ -77,6 +81,7 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
     setName(selected.name);
     setPersona(selected.persona);
     setAgent(selected.agent);
+    setModel(selected.model ?? "");
     setTools(selected.tools);
   }, [creating, selected]);
 
@@ -102,7 +107,13 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
   const save = useCallback(async () => {
     try {
       if (creating) {
-        const created = await desktopApi().imCreateTemplate({ name, persona, agent, tools });
+        const created = await desktopApi().imCreateTemplate({
+          name,
+          persona,
+          agent,
+          model: model.trim() || undefined,
+          tools
+        });
         setCreating(false);
         await load();
         setSelectedId(created.templateId);
@@ -112,6 +123,7 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
           name,
           persona,
           agent,
+          model: model.trim() || null,
           tools
         });
         await load();
@@ -120,7 +132,7 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
     }
-  }, [agent, creating, load, name, persona, selected, t, tools]);
+  }, [agent, creating, load, model, name, persona, selected, t, tools]);
 
   const remove = useCallback(async () => {
     if (!selected || isBuiltinTemplateId(selected.templateId)) return;
@@ -213,6 +225,42 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
                   <option key={item} value={item}>{t(`desktop.im.agent.${item}`)}</option>
                 ))}
               </select>
+            </label>
+            <label className="settings-field">
+              <span className="settings-field-label">{t("desktop.settings.imModel")}</span>
+              <select
+                value={
+                  (IM_AGENT_SUGGESTED_MODELS[agent] ?? []).some((item) => item.id === model)
+                    ? model
+                    : model
+                      ? "__custom__"
+                      : ""
+                }
+                onChange={(event) => {
+                  const val = event.target.value;
+                  if (val !== "__custom__") {
+                    setModel(val);
+                  }
+                }}
+              >
+                {(IM_AGENT_SUGGESTED_MODELS[agent] ?? []).map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.id ? `${item.label} (${item.id})` : t("desktop.settings.imModelDefault")}
+                  </option>
+                ))}
+                {model && !(IM_AGENT_SUGGESTED_MODELS[agent] ?? []).some((item) => item.id === model) ? (
+                  <option value="__custom__">{t("desktop.settings.imModelCustom")}: {model}</option>
+                ) : (
+                  <option value="__custom__">{t("desktop.settings.imModelCustom")}</option>
+                )}
+              </select>
+              <input
+                style={{ marginTop: "6px" }}
+                value={model}
+                placeholder={t("desktop.settings.imModelPlaceholder")}
+                onChange={(event) => setModel(event.target.value)}
+              />
+              <p className="settings-footnote">{t("desktop.settings.imModelHint")}</p>
             </label>
             <label className="settings-field">
               <span className="settings-field-label">{t("desktop.settings.imPrompt")}</span>

@@ -631,6 +631,20 @@ class AcpChatController {
     }
   }
 
+  async setModel(modelId: string): Promise<void> {
+    if (!modelId) return;
+    const modelOpt = this.configOptions.find(
+      (option) => option.type === "select" && (option.category === "model" || option.id === "model" || option.id === "model_id")
+    );
+    if (modelOpt && modelOpt.type === "select") {
+      if (modelOpt.currentValue !== modelId) {
+        await this.setConfigOption(modelOpt.id, modelId);
+      }
+    } else {
+      await this.setConfigOption("model", modelId);
+    }
+  }
+
   async setConfigOption(configId: string, value: string | boolean): Promise<void> {
     if (!configId || !this.connection || !this.activeAcpSessionId || this.isRunning) return;
     try {
@@ -945,6 +959,13 @@ export async function denyAcpPermission(requestId: string): Promise<void> {
   if (!waiter) return;
   permissionWaiters.delete(requestId);
   waiter.resolve({ outcome: { outcome: "cancelled" } });
+}
+
+export async function setAcpModel(chatId: string, modelId: string): Promise<void> {
+  const controller = controllers.get(chatId);
+  if (controller && modelId) {
+    await controller.setModel(modelId);
+  }
 }
 
 export function registerAcpIpc(deps: {

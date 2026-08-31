@@ -147,6 +147,7 @@ import {
   denyAcpPermission,
   promptAcpChat,
   registerAcpIpc,
+  setAcpModel,
   setAcpRecordProjectPath
 } from "./acp/acpHost";
 import { registerImIpc } from "./im/ipc";
@@ -3328,7 +3329,8 @@ app.whenReady().then(async () => {
     acp: {
       connect: (chatId) => connectAcpChat(chatId),
       prompt: (chatId, text) => promptAcpChat(chatId, text),
-      denyPermission: (requestId) => denyAcpPermission(requestId)
+      denyPermission: (requestId) => denyAcpPermission(requestId),
+      setModel: (chatId, modelId) => setAcpModel(chatId, modelId)
     }
   });
   registerWorkbenchFsIpc();

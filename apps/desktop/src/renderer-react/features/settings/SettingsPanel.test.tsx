@@ -29,6 +29,11 @@ const messages = {
   "desktop.settings.imNewTemplate": "New template",
   "desktop.settings.imName": "Name",
   "desktop.settings.imAgent": "Agent",
+  "desktop.settings.imModel": "Model",
+  "desktop.settings.imModelDefault": "Default",
+  "desktop.settings.imModelCustom": "Custom",
+  "desktop.settings.imModelPlaceholder": "e.g. claude-3-7-sonnet-20250219",
+  "desktop.settings.imModelHint": "Model hint",
   "desktop.settings.imPrompt": "Prompt",
   "desktop.settings.imTools": "Tools",
   "desktop.settings.imToolRead": "Read files",
@@ -170,7 +175,7 @@ const messages = {
   "desktop.settings.unsavedHint": "Unsaved changes"
 };
 
-function renderWindowSettings(initialPane = "general") {
+function renderWindowSettings(initialPane = "general", overrides?: Record<string, unknown>) {
   const host = document.createElement("div");
   host.id = "react-settings";
   document.body.append(host);
@@ -240,7 +245,8 @@ function renderWindowSettings(initialPane = "general") {
     imListSelectionActions: vi.fn(async () => []),
     imCreateSelectionAction: vi.fn(async () => ({ actionId: "custom-action" })),
     imUpdateSelectionAction: vi.fn(async () => ({ actionId: "custom-action" })),
-    imDeleteSelectionAction: vi.fn(async () => ({ ok: true }))
+    imDeleteSelectionAction: vi.fn(async () => ({ ok: true })),
+    ...overrides
   } as unknown as typeof window.agentResume;
   render(
     <I18nProvider>
@@ -466,5 +472,46 @@ describe("SettingsPanel (window)", () => {
     expect(paneBody?.querySelector(".settings-group-title")?.textContent).toBe("Roles");
     expect(paneBody?.className).toContain("settings-pane-body");
     expect(paneBody?.querySelectorAll(".settings-group").length).toBeGreaterThanOrEqual(2);
+    expect(host.textContent).toContain("Model");
+  });
+
+  it("allows selecting and typing a model for role templates in IM settings", async () => {
+    const imUpdateTemplate = vi.fn(async () => ({ templateId: "role_developer" }));
+    const { host } = renderWindowSettings("im", {
+      imListTemplates: vi.fn(async () => [
+        {
+          templateId: "role_developer",
+          name: "Developer",
+          persona: "You are Developer.",
+          agent: "claude",
+          model: "claude-3-7-sonnet-20250219",
+          permissions: "write",
+          tools: { fsRead: true, fsWrite: true, execute: true },
+          createdAtMs: 1000,
+          updatedAtMs: 1000
+        }
+      ]),
+      imUpdateTemplate
+    });
+
+    await waitFor(() => expect(host.textContent).toContain("Developer"));
+    await waitFor(() => expect(host.querySelector(".im-settings-editor")).not.toBeNull());
+
+    const modelInput = host.querySelector('input[placeholder*="claude"]') as HTMLInputElement;
+    expect(modelInput).not.toBeNull();
+    expect(modelInput.value).toBe("claude-3-7-sonnet-20250219");
+
+    fireEvent.change(modelInput, { target: { value: "claude-opus" } });
+    const saveBtn = host.querySelector(".im-add-role-actions button.btn.primary") as HTMLButtonElement;
+    fireEvent.click(saveBtn);
+
+    await waitFor(() => {
+      expect(imUpdateTemplate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          templateId: "role_developer",
+          model: "claude-opus"
+        })
+      );
+    });
   });
 });
