@@ -1,7 +1,7 @@
 import { ThemeIcon } from "../../components/ThemeIcon";
 import { renderMarkdown } from "../../components/Markdown";
 import { createPortal } from "react-dom";
-import { useCallback, useEffect, useRef, useState, type FormEvent, type JSX, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactPortal } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent, type JSX, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactPortal } from "react";
 import { desktopApi } from "../../bridge";
 import { notifyDesktop } from "../../components/Notifications";
 import { useI18n } from "../../i18n";
@@ -27,6 +27,56 @@ const BUILTIN_ROLE_KEYS = {
   role_developer: "developer",
   role_tester: "tester"
 } as const;
+
+// Stable brand colors for built-in roles; custom templates hash to a hue.
+const BUILTIN_ROLE_COLORS: Record<string, string> = {
+  role_product_manager: "hsl(265 70% 58%)",
+  role_project_manager: "hsl(199 92% 52%)",
+  role_ui_designer: "hsl(330 72% 58%)",
+  role_developer: "hsl(152 76% 42%)",
+  role_tester: "hsl(35 92% 52%)"
+};
+
+function roleColor(templateId: string): string {
+  const builtin = BUILTIN_ROLE_COLORS[templateId];
+  if (builtin) return builtin;
+  let hash = 0;
+  for (let i = 0; i < templateId.length; i++) {
+    hash = (hash << 5) - hash + templateId.charCodeAt(i);
+    hash |= 0;
+  }
+  return `hsl(${Math.abs(hash) % 360} 65% 50%)`;
+}
+
+function roleInitial(label: string): string {
+  return label.trim().charAt(0).toUpperCase() || "?";
+}
+
+function dayKey(millis: number): string {
+  const date = new Date(millis);
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
+
+function formatDay(millis: number, t: Translate): string {
+  const date = new Date(millis);
+  const now = new Date();
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startTarget = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const diffDays = Math.round((startToday - startTarget) / 86_400_000);
+  if (diffDays === 0) return t("desktop.im.today");
+  if (diffDays === 1) return t("desktop.im.yesterday");
+  return date.toLocaleDateString();
+}
+
+function formatTime(millis: number): string {
+  return new Date(millis).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+}
+
+const ACTIVE_JOB_STATUSES = ["queued", "connecting", "running", "awaiting_user"] as const;
+
+function isActiveJobStatus(status: string): boolean {
+  return (ACTIVE_JOB_STATUSES as readonly string[]).includes(status);
+}
 
 type Translate = (key: string, ...args: Array<string | number>) => string;
 
@@ -84,12 +134,15 @@ export function ImPanel(): ReactPortal | null {
   const [translations, setTranslations] = useState<Record<string, string>>({});
   const [translatingIds, setTranslatingIds] = useState<Set<string>>(() => new Set());
   const [templates, setTemplates] = useState<ImRoleTemplate[]>([]);
-  const [knowledgeOpen, setKnowledgeOpen] = useState(false);
+  const [sidebarTab, setSidebarTab] = useState<"members" | "knowledge">("members");
   const [knowledgeTitle, setKnowledgeTitle] = useState("");
   const [knowledgeBody, setKnowledgeBody] = useState("");
   const [knowledgeUrl, setKnowledgeUrl] = useState("");
+  const [pinnedToBottom, setPinnedToBottom] = useState(true);
+  const [hasNewBelow, setHasNewBelow] = useState(false);
   const transcriptRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const prevMsgCount = useRef(0);
 
   const setError = useCallback((error: unknown) => {
     notifyDesktop({
@@ -148,6 +201,12 @@ export function ImPanel(): ReactPortal | null {
   }, [active, loadRoom, selectedProjectId, setError]);
 
   useEffect(() => {
+    setPinnedToBottom(true);
+    setHasNewBelow(false);
+    prevMsgCount.current = 0;
+  }, [selectedProjectId]);
+
+  useEffect(() => {
     const stop = desktopApi().onImEvent((event: ImEvent) => {
       if (event.type === "room") {
         if (event.room.project.projectId === selectedProjectId) setRoom(event.room);
@@ -181,8 +240,57 @@ export function ImPanel(): ReactPortal | null {
   useEffect(() => {
     const node = transcriptRef.current;
     if (!node) return;
+    const count = room?.messages.length ?? 0;
+    const grew = count > prevMsgCount.current;
+    prevMsgCount.current = count;
+    if (pinnedToBottom) {
+      node.scrollTop = node.scrollHeight;
+    } else if (grew) {
+      setHasNewBelow(true);
+    }
+  }, [pinnedToBottom, room?.messages.length]);
+
+  const copyText = useCallback(async (text: string) => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+    } catch { /* fall through to legacy path */ }
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.select();
+    document.execCommand("copy");
+    area.remove();
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
+    const node = transcriptRef.current;
+    if (!node) return;
     node.scrollTop = node.scrollHeight;
-  }, [room?.messages.length]);
+    setPinnedToBottom(true);
+    setHasNewBelow(false);
+  }, []);
+
+  const onTranscriptScroll = useCallback(() => {
+    const node = transcriptRef.current;
+    if (!node) return;
+    const nearBottom = node.scrollHeight - node.scrollTop - node.clientHeight < 60;
+    setPinnedToBottom(nearBottom);
+    if (nearBottom) setHasNewBelow(false);
+  }, []);
+
+  const insertIntoComposer = useCallback((text: string) => {
+    setDraft((current) => {
+      const base = current.trim();
+      return base ? `${base}\n${text}` : text;
+    });
+    textareaRef.current?.focus();
+  }, []);
 
   const members = room?.members.filter((member) => member.enabled) ?? [];
   const mentionQuery = (() => {
@@ -196,9 +304,7 @@ export function ImPanel(): ReactPortal | null {
     ? members.filter((member) => roleLabel(member, t).toLowerCase().includes(mentionQuery) || member.agent.includes(mentionQuery))
     : members
   ).filter((member) => !mentionIds.includes(member.memberId));
-  const activeJob = room?.jobs.find((job) =>
-    job.status === "queued" || job.status === "connecting" || job.status === "running" || job.status === "awaiting_user"
-  ) ?? null;
+  const activeJob = room?.jobs.find((job) => isActiveJobStatus(job.status)) ?? null;
   const permissionOwner = activeJob
     ? members.find((member) => member.memberId === activeJob.memberId)
     : undefined;
@@ -672,7 +778,7 @@ export function ImPanel(): ReactPortal | null {
                   <p>{room.project.localPath || t("desktop.im.needFolder")}</p>
                 </div>
                 <div className="im-room-head-actions">
-                  <button type="button" className="tool-btn ghost-btn" onClick={() => setKnowledgeOpen((open) => !open)}>
+                  <button type="button" className={`tool-btn ghost-btn${sidebarTab === "knowledge" ? " active" : ""}`} onClick={() => setSidebarTab("knowledge")}>
                     {t("desktop.im.knowledge")} ({room.knowledge.length})
                   </button>
                   <button type="button" className="tool-btn" onClick={() => void associateFolder()}>
@@ -680,107 +786,130 @@ export function ImPanel(): ReactPortal | null {
                   </button>
                 </div>
               </div>
-              {knowledgeOpen && (
-                <div className="im-knowledge" aria-label={t("desktop.im.knowledge")}>
-                  {room.knowledge.length ? room.knowledge.map((item) => (
-                    <div key={item.itemId} className="im-knowledge-item">
-                      <strong>{item.title || item.fileName || item.url}</strong>
-                      <span className="im-folder-path">{item.kind === "link" ? item.url : item.kind === "image" ? item.fileName : item.body.slice(0, 80)}</span>
-                      <button type="button" className="tool-btn ghost-btn" onClick={() => void removeKnowledge(item)} aria-label={t("desktop.im.removeKnowledge")}>
-                        <ThemeIcon name="close" size={12} />
-                      </button>
-                    </div>
-                  )) : <p className="im-empty">{t("desktop.im.knowledgeEmpty")}</p>}
-                  <form className="im-knowledge-form" onSubmit={(event) => void addKnowledgeText(event)}>
-                    <input value={knowledgeTitle} onChange={(event) => setKnowledgeTitle(event.target.value)} placeholder={t("desktop.im.knowledgeTitle")} aria-label={t("desktop.im.knowledgeTitle")} />
-                    <textarea value={knowledgeBody} onChange={(event) => setKnowledgeBody(event.target.value)} placeholder={t("desktop.im.knowledgeText")} aria-label={t("desktop.im.knowledgeText")} rows={2} />
-                    <button type="submit" className="tool-btn">{t("desktop.im.addText")}</button>
-                  </form>
-                  <form className="im-knowledge-form" onSubmit={(event) => void addKnowledgeLink(event)}>
-                    <input value={knowledgeUrl} onChange={(event) => setKnowledgeUrl(event.target.value)} placeholder={t("desktop.im.knowledgeUrl")} aria-label={t("desktop.im.knowledgeUrl")} />
-                    <button type="submit" className="tool-btn">{t("desktop.im.addLink")}</button>
-                    <button type="button" className="tool-btn ghost-btn" onClick={() => void addKnowledgeImage()}>{t("desktop.im.addImage")}</button>
-                  </form>
-                </div>
-              )}
-              <div ref={transcriptRef} className="im-transcript" aria-label={t("desktop.im.transcript")}>
-                {visibleMessages.length ? visibleMessages.map((message) => {
+              <div className="im-transcript-wrap">
+                <div ref={transcriptRef} className="im-transcript" aria-label={t("desktop.im.transcript")} onScroll={onTranscriptScroll}>
+                {visibleMessages.length ? visibleMessages.map((message, index) => {
                   const speaker = members.find((member) => member.memberId === message.authorMemberId);
                   const displayBody = translations[message.messageId] ?? message.body;
                   const isTranslating = translatingIds.has(message.messageId);
                   const translated = Boolean(translations[message.messageId]);
+                  const roleColorValue = speaker ? roleColor(speaker.templateId) : undefined;
+                  const prevVisible = visibleMessages[index - 1];
+                  const showDate = !prevVisible || dayKey(prevVisible.createdAtMs) !== dayKey(message.createdAtMs);
                   return (
-                    <article key={message.messageId} className={`im-message is-${message.kind.replace(".", "-")}`} onContextMenu={(event) => openSelectionMenu(event, message)}>
-                      {message.kind !== "system" && (
-                        <header>
-                          <strong>
-                            {speaker ? memberLabel(speaker) : message.authorLabel}
-                            {speaker ? <> {agentTag(speaker.agent, speaker.model, t)}</> : null}
-                          </strong>
-                          <button type="button" className="im-quote-btn" onClick={() => quoteMessage(message)}>
-                            {t("desktop.im.quote")}
-                          </button>
-                        </header>
+                    <Fragment key={message.messageId}>
+                      {showDate && (
+                        <div className="im-date-separator" aria-hidden="true">{formatDay(message.createdAtMs, t)}</div>
                       )}
-                      {message.quotes.length > 0 && (
-                        <div className="im-quote-list">
-                          {message.quotes.map((quote) => (
-                            <blockquote key={quote.messageId}>
-                              <span>{quote.authorLabel}</span>
-                              {quote.body}
-                            </blockquote>
-                          ))}
-                        </div>
-                      )}
-                      {message.mentionRoleIds.length > 0 && (
-                        <div className="im-message-mentions" aria-label={t("desktop.im.mentions")}>
-                          {message.mentionRoleIds.map((mentionId) => {
-                            const mentionMember = room?.members.find((item) => item.memberId === mentionId);
-                            return (
-                              <span key={mentionId} className="im-message-mention">
-                                @{mentionMember ? memberLabel(mentionMember) : mentionId}
-                              </span>
-                            );
-                          })}
-                        </div>
-                      )}
-                      <div
-                        className="markdown-body"
-                        dangerouslySetInnerHTML={{ __html: renderMarkdown(displayBody) }}
-                      />
-                      {(message.kind === "human" || message.kind === "role.say") && (
-                        <div className="im-message-actions">
-                          <button type="button" className="im-message-action" onClick={() => quoteMessage(message)}>
-                            {t("desktop.im.quote")}
-                          </button>
-                          <button
-                            type="button"
-                            className="im-message-action"
-                            disabled={isTranslating}
-                            onClick={() => void translateMessage(message)}
-                          >
-                            {translated
-                              ? t("desktop.im.restore")
-                              : isTranslating
-                                ? t("desktop.im.actionRunning")
-                                : t("desktop.im.translate")}
-                          </button>
-                        </div>
-                      )}
-                    </article>
+                      <article
+                        className={`im-message is-${message.kind.replace(".", "-")}`}
+                        style={roleColorValue ? { "--im-role-color": roleColorValue } as CSSProperties : undefined}
+                        onContextMenu={(event) => openSelectionMenu(event, message)}
+                      >
+                        {message.kind !== "system" && (
+                          <header>
+                            <span className="im-message-author">
+                              {roleColorValue && (
+                                <span className="im-role-avatar" aria-hidden="true" style={{ "--im-role-color": roleColorValue } as CSSProperties}>
+                                  {roleInitial(speaker ? memberLabel(speaker) : message.authorLabel)}
+                                </span>
+                              )}
+                              <strong>
+                                {speaker ? memberLabel(speaker) : message.authorLabel}
+                                {speaker ? <> {agentTag(speaker.agent, speaker.model, t)}</> : null}
+                              </strong>
+                            </span>
+                            <span className="im-message-meta">
+                              <time dateTime={new Date(message.createdAtMs).toISOString()} className="im-message-time">
+                                {formatTime(message.createdAtMs)}
+                              </time>
+                            </span>
+                          </header>
+                        )}
+                        {message.quotes.length > 0 && (
+                          <div className="im-quote-list">
+                            {message.quotes.map((quote) => (
+                              <blockquote key={quote.messageId}>
+                                <span>{quote.authorLabel}</span>
+                                {quote.body}
+                              </blockquote>
+                            ))}
+                          </div>
+                        )}
+                        {message.mentionRoleIds.length > 0 && (
+                          <div className="im-message-mentions" aria-label={t("desktop.im.mentions")}>
+                            {message.mentionRoleIds.map((mentionId) => {
+                              const mentionMember = room?.members.find((item) => item.memberId === mentionId);
+                              const mentionColor = mentionMember ? roleColor(mentionMember.templateId) : undefined;
+                              return (
+                                <span
+                                  key={mentionId}
+                                  className="im-message-mention"
+                                  style={mentionColor ? { "--im-role-color": mentionColor } as CSSProperties : undefined}
+                                >
+                                  @{mentionMember ? memberLabel(mentionMember) : mentionId}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        )}
+                        <div
+                          className="markdown-body"
+                          dangerouslySetInnerHTML={{ __html: renderMarkdown(displayBody) }}
+                        />
+                        {(message.kind === "human" || message.kind === "role.say") && (
+                          <div className="im-message-actions">
+                            <button type="button" className="im-message-action" onClick={() => void copyText(message.body)}>
+                              {t("desktop.common.copy")}
+                            </button>
+                            <button type="button" className="im-message-action im-quote-btn" onClick={() => quoteMessage(message)}>
+                              {t("desktop.im.quote")}
+                            </button>
+                            <button
+                              type="button"
+                              className="im-message-action"
+                              disabled={isTranslating}
+                              onClick={() => void translateMessage(message)}
+                            >
+                              {translated
+                                ? t("desktop.im.restore")
+                                : isTranslating
+                                  ? t("desktop.im.actionRunning")
+                                  : t("desktop.im.translate")}
+                            </button>
+                          </div>
+                        )}
+                      </article>
+                    </Fragment>
                   );
                 }) : (
-                  <p className="im-empty">{t("desktop.im.emptyRoom")}</p>
+                  room?.project.localPath
+                    ? <p className="im-empty">{t("desktop.im.emptyRoom")}</p>
+                    : (
+                      <div className="im-empty im-empty-cta">
+                        <p>{t("desktop.im.emptyRoomNoFolder")}</p>
+                        <button type="button" className="tool-btn" onClick={() => void associateFolder()}>
+                          {t("desktop.im.associateFolder")}
+                        </button>
+                      </div>
+                    )
+                )}
+                </div>
+                {hasNewBelow && (
+                  <button type="button" className="im-new-below" onClick={scrollToBottom}>
+                    <ThemeIcon name="arrow-down" size={12} aria-hidden="true" />
+                    {t("desktop.im.newMessages")}
+                  </button>
                 )}
               </div>
-              {room?.jobs.some((job) => job.status === "queued" || job.status === "connecting" || job.status === "running" || job.status === "awaiting_user") && (
+              {room?.jobs.some((job) => job.status === "awaiting_user") && (
                 <div className="im-active-jobs-banner" aria-label={t("desktop.im.currentJob")}>
                   <div className="im-active-jobs-header">
                     <span className="im-active-jobs-title">{t("desktop.im.currentJob")}</span>
                   </div>
                   <div className="im-active-jobs-list">
                     {room.jobs
-                      .filter((job) => job.status === "queued" || job.status === "connecting" || job.status === "running" || job.status === "awaiting_user")
+                      .filter((job) => job.status === "awaiting_user")
                       .map((job) => {
                         const owner = members.find((member) => member.memberId === job.memberId);
                         const name = owner ? memberLabel(owner) : job.memberId;
@@ -863,6 +992,9 @@ export function ImPanel(): ReactPortal | null {
                         onMouseEnter={() => setMentionIndex(index)}
                         onClick={() => pickMention(member)}
                       >
+                        <span className="im-role-avatar" aria-hidden="true" style={{ "--im-role-color": roleColor(member.templateId) } as CSSProperties}>
+                          {roleInitial(memberLabel(member))}
+                        </span>
                         @{memberLabel(member)} {agentTag(member.agent, member.model, t)}
                       </button>
                     ))}
@@ -917,26 +1049,103 @@ export function ImPanel(): ReactPortal | null {
           )}
         </div>
         <aside className="im-members" aria-label={t("desktop.im.members")}>
-          <h3>{t("desktop.im.members")}</h3>
-          {templates.length ? templates.map((template) => {
-            const enabledMember = members.find((item) => item.templateId === template.templateId);
-            const label = enabledMember
-              ? memberLabel(enabledMember)
-              : builtinRoleLabel(template.templateId, template.name, t);
-            return (
-              <label key={template.templateId} className="im-member-row">
-                <span className="im-member-head">
-                  <input
-                    type="checkbox"
-                    checked={Boolean(enabledMember)}
-                    onChange={(event) => void toggleTemplate(template, event.target.checked)}
-                  />
-                  <strong>{label}</strong>
-                </span>
-                {agentTag(template.agent, template.model, t)}
-              </label>
-            );
-          }) : <p className="im-empty">{t("desktop.im.noMembers")}</p>}
+          <div className="im-sidebar-tabs" role="tablist" aria-label={t("desktop.im.members")}>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={sidebarTab === "members"}
+              className={sidebarTab === "members" ? "active" : ""}
+              onClick={() => setSidebarTab("members")}
+            >
+              {t("desktop.im.members")}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={sidebarTab === "knowledge"}
+              className={sidebarTab === "knowledge" ? "active" : ""}
+              onClick={() => setSidebarTab("knowledge")}
+            >
+              {t("desktop.im.knowledge")} ({room?.knowledge.length ?? 0})
+            </button>
+          </div>
+          {sidebarTab === "knowledge" ? (
+            <div className="im-knowledge-pane" aria-label={t("desktop.im.knowledge")}>
+              {room?.knowledge.length ? room.knowledge.map((item) => (
+                <div key={item.itemId} className="im-knowledge-item">
+                  <span className="im-kind-icon" aria-hidden="true">
+                    <ThemeIcon name={item.kind === "link" ? "globe" : item.kind === "image" ? "file-image" : "file-text"} size={13} />
+                  </span>
+                  <div className="im-knowledge-main">
+                    <strong title={item.title || item.fileName || item.url || ""}>{item.title || item.fileName || item.url}</strong>
+                    <span className="im-folder-path">{item.kind === "link" ? item.url : item.kind === "image" ? item.fileName : item.body.slice(0, 80)}</span>
+                  </div>
+                  <span className="im-knowledge-item-actions">
+                    {item.kind === "link" && item.url ? (
+                      <button
+                        type="button"
+                        className="tool-btn ghost-btn"
+                        title={t("desktop.im.openLink")}
+                        aria-label={t("desktop.im.openLink")}
+                        onClick={() => void desktopApi().openExternalUrl(item.url || "")}
+                      >
+                        <ThemeIcon name="external-link" size={12} />
+                      </button>
+                    ) : null}
+                    <button type="button" className="tool-btn ghost-btn" onClick={() => void removeKnowledge(item)} aria-label={t("desktop.im.removeKnowledge")}>
+                      <ThemeIcon name="close" size={12} />
+                    </button>
+                  </span>
+                </div>
+              )) : <p className="im-empty">{t("desktop.im.knowledgeEmpty")}</p>}
+              <form className="im-knowledge-form" onSubmit={(event) => void addKnowledgeText(event)}>
+                <input value={knowledgeTitle} onChange={(event) => setKnowledgeTitle(event.target.value)} placeholder={t("desktop.im.knowledgeTitle")} aria-label={t("desktop.im.knowledgeTitle")} />
+                <textarea value={knowledgeBody} onChange={(event) => setKnowledgeBody(event.target.value)} placeholder={t("desktop.im.knowledgeText")} aria-label={t("desktop.im.knowledgeText")} rows={2} />
+                <button type="submit" className="tool-btn">{t("desktop.im.addText")}</button>
+              </form>
+              <form className="im-knowledge-form" onSubmit={(event) => void addKnowledgeLink(event)}>
+                <input value={knowledgeUrl} onChange={(event) => setKnowledgeUrl(event.target.value)} placeholder={t("desktop.im.knowledgeUrl")} aria-label={t("desktop.im.knowledgeUrl")} />
+                <button type="submit" className="tool-btn">{t("desktop.im.addLink")}</button>
+                <button type="button" className="tool-btn ghost-btn" onClick={() => void addKnowledgeImage()}>{t("desktop.im.addImage")}</button>
+              </form>
+            </div>
+          ) : (
+            templates.length ? templates.map((template) => {
+              const enabledMember = members.find((item) => item.templateId === template.templateId);
+              const label = enabledMember
+                ? memberLabel(enabledMember)
+                : builtinRoleLabel(template.templateId, template.name, t);
+              const jobStatus = enabledMember
+                ? room?.jobs.find((item) => item.memberId === enabledMember.memberId && isActiveJobStatus(item.status))?.status ?? "idle"
+                : "idle";
+              const rowColor = roleColor(template.templateId);
+              return (
+                <label key={template.templateId} className="im-member-row">
+                  <span className="im-member-head">
+                    <span className="im-member-ident">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(enabledMember)}
+                        onChange={(event) => void toggleTemplate(template, event.target.checked)}
+                      />
+                      <span className="im-role-avatar" aria-hidden="true" style={{ "--im-role-color": rowColor } as CSSProperties}>
+                        {roleInitial(label)}
+                      </span>
+                      <strong>{label}</strong>
+                    </span>
+                    {enabledMember && jobStatus !== "idle" ? (
+                      <span
+                        className={`im-job-dot is-${jobStatus}`}
+                        title={t(`desktop.im.job.${jobStatus}`)}
+                        aria-label={t(`desktop.im.job.${jobStatus}`)}
+                      />
+                    ) : <span className="im-job-dot is-idle" aria-hidden="true" />}
+                  </span>
+                  {agentTag(template.agent, template.model, t)}
+                </label>
+              );
+            }) : <p className="im-empty">{t("desktop.im.noMembers")}</p>
+          )}
         </aside>
       </div>
       {selectionMenu ? createPortal(
@@ -962,9 +1171,24 @@ export function ImPanel(): ReactPortal | null {
         >
           <header>
             <strong>{selectionResult.title}</strong>
-            <button type="button" className="tool-btn ghost-btn" onClick={() => setSelectionResult(null)} aria-label={t("desktop.common.cancel")}>
-              <ThemeIcon name="close" size={12} />
-            </button>
+            <span className="im-selection-result-actions">
+              {!selectionResult.loading ? (
+                <>
+                  <button type="button" className="tool-btn ghost-btn" onClick={() => void copyText(selectionResult.text)}>
+                    {t("desktop.common.copy")}
+                  </button>
+                  <button type="button" className="tool-btn ghost-btn" onClick={() => {
+                    insertIntoComposer(selectionResult.text);
+                    setSelectionResult(null);
+                  }}>
+                    {t("desktop.im.sendToComposer")}
+                  </button>
+                </>
+              ) : null}
+              <button type="button" className="tool-btn ghost-btn" onClick={() => setSelectionResult(null)} aria-label={t("desktop.common.cancel")}>
+                <ThemeIcon name="close" size={12} />
+              </button>
+            </span>
           </header>
           {selectionResult.loading
             ? <p className="im-empty">{t("desktop.im.actionRunning")}</p>

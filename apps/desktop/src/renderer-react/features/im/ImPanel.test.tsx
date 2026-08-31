@@ -489,7 +489,7 @@ describe("ImPanel", () => {
     await waitFor(() => expect(screen.getByLabelText("Remove quote")).toBeTruthy());
   });
 
-  it("renders active jobs banner under the chat transcript when jobs are active", async () => {
+  it("renders the needs-attention banner when a job is waiting on user permission", async () => {
     const currentProject = project();
     const currentRoom = roomFor(currentProject);
     const api = renderIm();
@@ -497,16 +497,20 @@ describe("ImPanel", () => {
       ...currentRoom,
       jobs: [
         {
-          jobId: "job-running-1",
+          jobId: "job-waiting-1",
           projectId: currentProject.projectId,
           memberId: currentRoom.members[0]!.memberId,
           messageId: "msg-1",
           acpChatId: "chat-1",
-          status: "running",
+          status: "awaiting_user",
           brief: { persona: "", instruction: "", cwd: "/tmp/app", quotes: [], knowledge: [] },
           error: null,
           filesChanged: [],
-          permission: null,
+          permission: {
+            requestId: "req-1",
+            title: "Approve command",
+            options: [{ optionId: "allow", name: "Allow", kind: "button" }]
+          },
           createdAtMs: 1,
           updatedAtMs: 1,
           finishedAtMs: null
@@ -518,6 +522,6 @@ describe("ImPanel", () => {
     });
     await waitFor(() => expect(document.querySelector(".im-active-jobs-banner")).not.toBeNull());
     expect(document.querySelector(".im-active-jobs-banner")?.textContent).toContain("Current job");
-    expect(document.querySelector(".im-active-jobs-banner")?.textContent).toContain("Running");
+    expect(document.querySelector(".im-active-jobs-banner")?.textContent).toContain("Waiting for you");
   });
 });

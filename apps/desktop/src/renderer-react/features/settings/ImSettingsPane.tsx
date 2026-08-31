@@ -136,6 +136,7 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
 
   const remove = useCallback(async () => {
     if (!selected || isBuiltinTemplateId(selected.templateId)) return;
+    if (!window.confirm(t("desktop.settings.imDeleteTemplateConfirm"))) return;
     try {
       await desktopApi().imDeleteTemplate({ templateId: selected.templateId });
       setSelectedId("");
@@ -143,7 +144,7 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
     }
-  }, [load, selected]);
+  }, [load, selected, t]);
 
   const saveAction = useCallback(async () => {
     try {
@@ -178,6 +179,7 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
 
   const removeAction = useCallback(async () => {
     if (!selectedAction || isBuiltinSelectionActionId(selectedAction.actionId)) return;
+    if (!window.confirm(t("desktop.settings.imDeleteActionConfirm"))) return;
     try {
       await desktopApi().imDeleteSelectionAction({ actionId: selectedAction.actionId });
       setSelectedActionId("");
@@ -185,7 +187,7 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
     }
-  }, [load, selectedAction]);
+  }, [load, selectedAction, t]);
 
   return (
     <>
@@ -228,38 +230,21 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
             </label>
             <label className="settings-field">
               <span className="settings-field-label">{t("desktop.settings.imModel")}</span>
-              <select
-                value={
-                  (IM_AGENT_SUGGESTED_MODELS[agent] ?? []).some((item) => item.id === model)
-                    ? model
-                    : model
-                      ? "__custom__"
-                      : ""
-                }
-                onChange={(event) => {
-                  const val = event.target.value;
-                  if (val !== "__custom__") {
-                    setModel(val);
-                  }
-                }}
-              >
-                {(IM_AGENT_SUGGESTED_MODELS[agent] ?? []).map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.id ? `${item.label} (${item.id})` : t("desktop.settings.imModelDefault")}
-                  </option>
-                ))}
-                {model && !(IM_AGENT_SUGGESTED_MODELS[agent] ?? []).some((item) => item.id === model) ? (
-                  <option value="__custom__">{t("desktop.settings.imModelCustom")}: {model}</option>
-                ) : (
-                  <option value="__custom__">{t("desktop.settings.imModelCustom")}</option>
-                )}
-              </select>
               <input
-                style={{ marginTop: "6px" }}
                 value={model}
+                list="im-model-suggestions"
                 placeholder={t("desktop.settings.imModelPlaceholder")}
                 onChange={(event) => setModel(event.target.value)}
               />
+              <datalist id="im-model-suggestions">
+                {(IM_AGENT_SUGGESTED_MODELS[agent] ?? [])
+                  .filter((item) => item.id)
+                  .map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.label} ({item.id})
+                    </option>
+                  ))}
+              </datalist>
               <p className="settings-footnote">{t("desktop.settings.imModelHint")}</p>
             </label>
             <label className="settings-field">
@@ -273,10 +258,11 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
                 <input type="checkbox" checked={tools.fsWrite} onChange={(event) => setTools({ ...tools, fsRead: true, fsWrite: event.target.checked })} />
                 {t("desktop.settings.imToolWrite")}
               </label>
-              <label>
+              <label className={tools.execute ? "im-tool-danger" : ""}>
                 <input type="checkbox" checked={tools.execute} onChange={(event) => setTools({ ...tools, fsRead: true, execute: event.target.checked })} />
                 {t("desktop.settings.imToolExecute")}
               </label>
+              {tools.execute ? <p className="settings-footnote im-tool-danger-hint">{t("desktop.settings.imExecuteWarning")}</p> : null}
             </fieldset>
             <div className="im-add-role-actions">
               <button type="button" className="btn primary" onClick={() => void save()}>{t("desktop.settings.save")}</button>

@@ -17291,6 +17291,10 @@ html[data-window-mode="browser"] #react-chrome {
   background: var(--chat-bubble-user);
   color: var(--chat-bubble-user-text);
 }
+.im-message.is-role-say {
+  border-left: 3px solid var(--im-role-color, transparent);
+  background: color-mix(in srgb, var(--im-role-color, transparent) 8%, var(--chat-bubble-assistant));
+}
 .im-message.is-system,
 .im-message.is-job-card {
   align-self: center;
@@ -17325,18 +17329,26 @@ html[data-window-mode="browser"] #react-chrome {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  border: 1px solid var(--color-separator);
+  border: 1px solid color-mix(in srgb, var(--im-role-color, var(--color-separator)) 45%, var(--color-separator));
   border-radius: 999px;
   padding: 1px 8px;
   font-size: 11px;
   color: var(--color-label-secondary);
-  background: color-mix(in srgb, var(--color-fill-secondary) 60%, transparent);
+  background: color-mix(in srgb, var(--im-role-color, var(--color-fill-secondary)) 8%, var(--color-fill-secondary));
 }
 .im-message-actions {
   display: flex;
   justify-content: flex-end;
   gap: 6px;
   margin-top: 6px;
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.im-message:hover .im-message-actions,
+.im-message:focus-within .im-message-actions {
+  visibility: visible;
+  opacity: 1;
 }
 .im-message-action {
   border: 0;
@@ -17417,7 +17429,9 @@ html[data-window-mode="browser"] #react-chrome {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
 }
 .im-mention-menu button {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   width: 100%;
   text-align: left;
   border: 0;
@@ -17508,6 +17522,242 @@ html[data-window-mode="browser"] #react-chrome {
   border: 1px solid var(--color-separator);
   border-radius: 8px;
   padding: 8px 10px;
+}
+/* --- IM role identity, member + knowledge sidebar, smart scroll --- */
+.im-transcript-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+.im-date-separator {
+  align-self: center;
+  padding: 4px 10px;
+  font-size: 11px;
+  color: var(--color-label-tertiary);
+  background: var(--color-control-bg);
+  border-radius: 999px;
+  margin: 2px 0 4px;
+}
+.im-role-avatar {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--im-role-color, var(--color-accent)) 82%, black);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  user-select: none;
+}
+.im-message-author {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.im-message-author strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.im-message-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.im-message-time {
+  font-size: 10px;
+  color: var(--color-label-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+.im-message-actions {
+  gap: 4px;
+}
+.im-new-below {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border: 1px solid var(--color-separator);
+  border-radius: 999px;
+  background: var(--color-elevated-bg);
+  box-shadow: var(--shadow-popover);
+  color: var(--color-label-primary);
+  font-size: 12px;
+  cursor: pointer;
+}
+.im-new-below:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+.im-empty-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+}
+.im-empty-cta p {
+  margin: 0;
+}
+.im-member-ident {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.im-member-ident strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.im-job-dot.is-idle {
+  background: var(--color-label-tertiary);
+  opacity: 0.45;
+}
+.im-sidebar-tabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 8px;
+  padding: 2px;
+  border: 1px solid var(--color-separator);
+  border-radius: 8px;
+  background: var(--color-window-bg);
+}
+.im-sidebar-tabs button {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-label-secondary);
+  font-size: 12px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.im-sidebar-tabs button:hover {
+  background: var(--color-control-bg);
+}
+.im-sidebar-tabs button.active {
+  background: var(--color-control-bg);
+  color: var(--color-label-primary);
+  font-weight: 600;
+}
+.im-knowledge-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.im-knowledge-pane .im-knowledge-item {
+  align-items: flex-start;
+}
+.im-knowledge-item .im-knowledge-main {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.im-knowledge-main strong {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.im-knowledge-main .im-folder-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.im-knowledge-item-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.im-kind-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border-radius: 5px;
+  background: var(--color-control-bg);
+  color: var(--color-label-secondary);
+}
+.im-knowledge-pane .im-knowledge-form {
+  flex-direction: column;
+  align-items: stretch;
+}
+.im-selection-result-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.im-tool-danger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+  padding: 4px 8px;
+  border: 1px solid color-mix(in srgb, var(--color-danger, #ef4444) 55%, var(--color-separator));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color-danger, #ef4444) 10%, transparent);
+  color: var(--color-label-primary);
+}
+.im-tool-danger-hint {
+  color: var(--color-danger, #ef4444);
+}
+/* --- Markdown code blocks: language header + hover-only copy button --- */
+.code-block {
+  position: relative;
+}
+.code-block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 4px;
+  font-size: 11px;
+}
+.code-block-lang {
+  color: var(--color-label-tertiary);
+  text-transform: lowercase;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+.code-block-head .code-copy-btn {
+  border: 0;
+  background: transparent;
+  color: var(--color-label-tertiary);
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.code-block:hover .code-copy-btn,
+.code-copy-btn:focus-visible {
+  opacity: 1;
+}
+.code-block-head .code-copy-btn:hover {
+  background: var(--color-fill-secondary);
+  color: var(--color-label-primary);
 }
 .im-active-jobs-banner {
   margin: 0 12px 8px;
