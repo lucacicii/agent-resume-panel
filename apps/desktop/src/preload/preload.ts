@@ -591,8 +591,9 @@ export interface DesktopApi {
   acpDisconnect(args: { chatId: string }): Promise<{ ok: boolean }>;
   onAcpStream(callback: (event: Record<string, unknown>) => void): () => void;
   imListProjects(): Promise<ImProject[]>;
-  imCreateProject(args: { name: string; localPath?: string }): Promise<ImProject>;
+  imCreateProject(args: { name?: string; localPath?: string }): Promise<ImProject>;
   imRenameProject(args: { projectId: string; name: string }): Promise<ImProject>;
+  imAutoRenameProject(args: { projectId: string }): Promise<ImProject>;
   imDeleteProject(args: { projectId: string }): Promise<{ ok: boolean }>;
   imPickLocalPath(args?: { title?: string }): Promise<{ ok: true; path: string } | { ok: false; canceled: true }>;
   imSetLocalPath(args: { projectId: string; localPath: string | null }): Promise<ImProject>;
@@ -1643,6 +1644,7 @@ const api: DesktopApi = {
   imListProjects: () => ipcRenderer.invoke("im:listProjects"),
   imCreateProject: (args) => ipcRenderer.invoke("im:createProject", args),
   imRenameProject: (args) => ipcRenderer.invoke("im:renameProject", args),
+  imAutoRenameProject: (args) => ipcRenderer.invoke("im:autoRenameProject", args),
   imDeleteProject: (args) => ipcRenderer.invoke("im:deleteProject", args),
   imPickLocalPath: (args) => ipcRenderer.invoke("im:pickLocalPath", args),
   imSetLocalPath: (args) => ipcRenderer.invoke("im:setLocalPath", args),

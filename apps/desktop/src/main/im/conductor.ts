@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { effectivePanelHome, expandHome, loadSettings } from "@agent-resume/core";
 import { createAcpRecord, getAcpRecord } from "../acp/store";
 import type { AcpAgentProvider, AcpStreamEvent, AcpToolCallInfo } from "../acp/types";
-import { buildDispatchPrompt, saveImMessageImage, type ImStore } from "./store";
+import { buildDispatchPrompt, extractFirstQuestionTitle, isDefaultChatName, saveImMessageImage, type ImStore } from "./store";
 import { isImAgent, type ImEvent, type ImImageAttachment, type ImJob, type ImJobStatus, type ImMember, type ImMessage, type ImRoleTools } from "./types";
 
 type ConnectFn = (chatId: string) => Promise<void>;
@@ -88,6 +88,20 @@ export class ImConductor {
       mentionRoleIds: mentionIds
     });
     this.emit({ type: "message", projectId: input.projectId, message });
+
+    // Auto-fill chat name from the first user question if still using a default name
+    if (isDefaultChatName(room.project.name) && body.trim()) {
+      const suggested = extractFirstQuestionTitle(body);
+      if (suggested) {
+        try {
+          await this.store.renameProject(input.projectId, suggested);
+          const updatedRoom = await this.store.getRoom(input.projectId);
+          this.emit({ type: "room", room: updatedRoom });
+        } catch {
+          // best-effort
+        }
+      }
+    }
 
     if (!mentionIds.length) {
       return { message, job: null };

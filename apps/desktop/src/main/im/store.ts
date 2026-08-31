@@ -6,7 +6,9 @@ import {
   escapeSqlLiteral,
   expandHome,
   runSqlite,
-  runSqliteJson
+  runSqliteJson,
+  suggestSessionTitleFromMessages,
+  type PanelSettings
 } from "@agent-resume/core";
 import {
   IM_BUILTIN_TEMPLATE_IDS,
@@ -304,6 +306,50 @@ function mapKnowledge(row: KnowledgeRow): ImKnowledgeItem {
     sizeBytes: row.size_bytes,
     createdAtMs: row.created_at_ms
   };
+}
+
+const DEFAULT_CHAT_NAMES = new Set([
+  "new chat",
+  "untitled chat",
+  "未命名对话",
+  "新建对话",
+  "新規チャット",
+  "new project",
+  "untitled project",
+  "未命名项目",
+  "新建项目"
+]);
+
+export function isDefaultChatName(name?: string | null): boolean {
+  if (!name) return true;
+  const normalized = name.trim().toLowerCase();
+  return !normalized || DEFAULT_CHAT_NAMES.has(normalized);
+}
+
+const KNOWN_ROLE_MENTIONS = [
+  "@product manager",
+  "@project manager",
+  "@ui designer",
+  "@developer",
+  "@tester",
+  "@产品经理",
+  "@项目经理",
+  "@ui设计师",
+  "@开发",
+  "@测试"
+];
+
+export function extractFirstQuestionTitle(text: string): string {
+  let cleaned = text;
+  for (const mention of KNOWN_ROLE_MENTIONS) {
+    const reg = new RegExp(mention.replace(/\s+/g, "\\s+"), "gi");
+    cleaned = cleaned.replace(reg, " ");
+  }
+  cleaned = cleaned.replace(/@[a-zA-Z0-9_\u4e00-\u9fa5\-\.]+/g, " ").replace(/\s+/g, " ").trim();
+  if (!cleaned) return "";
+  const firstLine = cleaned.split("\n")[0]?.trim() || cleaned;
+  if (firstLine.length <= 48) return firstLine;
+  return `${firstLine.slice(0, 47)}…`;
 }
 
 function mapProject(row: ProjectRow): ImProject {
@@ -706,9 +752,8 @@ export class ImStore {
     return rows[0] ? mapProject(rows[0]) : undefined;
   }
 
-  async createProject(name: string, panelHome?: string, localPath?: string | null): Promise<ImProject> {
-    const trimmed = name.trim();
-    if (!trimmed) throw new Error("Project name is required.");
+  async createProject(name?: string, panelHome?: string, localPath?: string | null): Promise<ImProject> {
+    const trimmed = name?.trim() || "New chat";
     const now = nowMs();
     const projectId = randomUUID();
     let initialPath = localPath?.trim() ? path.resolve(expandHome(localPath.trim())) : null;
@@ -764,6 +809,43 @@ export class ImStore {
        WHERE project_id = ${sqlString(projectId)};`
     );
     return { ...project, name: trimmed, updatedAtMs: now };
+  }
+
+  async autoRenameProject(projectId: string, settings: PanelSettings): Promise<{ project: ImProject; title: string }> {
+    const room = await this.getRoom(projectId);
+    const humanMessages = room.messages.filter((m) => m.kind === "human" && m.body.trim());
+    const firstHuman = humanMessages[0];
+    const fallbackTitle = firstHuman ? extractFirstQuestionTitle(firstHuman.body) : "";
+
+    const previewMessages = room.messages
+      .filter((m) => m.kind === "human" || m.kind === "role.say")
+      .map((m) => ({
+        role: m.kind === "human" ? ("user" as const) : ("assistant" as const),
+        text: m.body
+      }))
+      .filter((m) => m.text.trim());
+
+    let title = fallbackTitle || room.project.name || "New chat";
+
+    if (settings?.llm?.baseUrl?.trim() && previewMessages.length > 0) {
+      try {
+        const runtimeConfig = {
+          baseUrl: settings.llm.baseUrl.trim(),
+          apiKey: settings.llm.apiKey?.trim() || "",
+          model: settings.llm.model?.trim() || "gpt-4o",
+          outputLanguage: settings.llm.outputLanguage
+        };
+        const result = await suggestSessionTitleFromMessages(runtimeConfig, room.project.name, previewMessages);
+        if (result.title?.trim()) {
+          title = result.title.trim();
+        }
+      } catch (err) {
+        console.warn("[IM Store] autoRenameProject LLM failed, using fallback:", err);
+      }
+    }
+
+    const updated = await this.renameProject(projectId, title);
+    return { project: updated, title };
   }
 
   async setLocalPath(projectId: string, localPath: string | null): Promise<ImProject> {

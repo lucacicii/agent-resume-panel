@@ -640,6 +640,10 @@ export {
   hideSessionAction,
   hideProjectAction
 } from "./session/actions";
+export {
+  suggestSessionTitleFromMessages,
+  summarizeSessionMessages
+} from "./session/assist";
 export type {
   SessionActionOptions,
   SummarizeSessionResult,

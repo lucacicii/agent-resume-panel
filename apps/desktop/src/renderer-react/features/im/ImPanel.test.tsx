@@ -26,6 +26,7 @@ const messages = {
   "desktop.im.resetDefault": "Reset to default",
   "desktop.im.fetchModels": "Fetch models",
   "desktop.im.customBadge": "Custom",
+  "desktop.workbench.autoRename": "Auto rename",
   "desktop.common.revealInFinder": "Reveal in Finder",
   "desktop.im.emptyRoom": "Quote a message and @ a role to dispatch work.",
   "desktop.im.transcript": "Room transcript",
@@ -143,6 +144,7 @@ function renderIm() {
     imListProjects: vi.fn(async () => [created]),
     imCreateProject: vi.fn(async ({ name }: { name: string }) => project({ name, localPath: `/tmp/scratch/${name}` })),
     imRenameProject: vi.fn(async ({ projectId, name }: { projectId: string; name: string }) => project({ projectId, name })),
+    imAutoRenameProject: vi.fn(async ({ projectId }: { projectId: string }) => project({ projectId, name: "Auto Renamed Chat" })),
     imDeleteProject: vi.fn(async () => ({ ok: true })),
     imGetRoom: vi.fn(async () => roomFor(created)),
     imPickLocalPath: vi.fn(async () => ({ ok: true as const, path: "/tmp/app" })),
@@ -810,28 +812,27 @@ describe("ImPanel", () => {
     expect(document.querySelector(".im-members")).not.toBeNull();
   });
 
-  it("opens a chat context menu with rename and associate folder actions", async () => {
+  it("opens a chat context menu with rename, auto rename, and associate folder actions", async () => {
     const api = renderIm();
     await act(async () => {
       window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
     });
     const row = await screen.findByRole("button", { name: /Room One/ });
     fireEvent.contextMenu(row);
-    expect(await screen.findByRole("menuitem", { name: "Rename" })).toBeTruthy();
+    expect(await screen.findByRole("menuitem", { name: "Auto rename" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Rename" })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "Associate folder" })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "Reveal in Finder" })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "Delete chat" })).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("menuitem", { name: "Associate folder" }));
-    await waitFor(() => expect(api.imPickLocalPath).toHaveBeenCalled());
-    await waitFor(() => expect(api.imSetLocalPath).toHaveBeenCalledWith({
-      projectId: "proj-1",
-      localPath: "/tmp/app"
+    fireEvent.click(screen.getByRole("menuitem", { name: "Auto rename" }));
+    await waitFor(() => expect(api.imAutoRenameProject).toHaveBeenCalledWith({
+      projectId: "proj-1"
     }));
   });
 
-  it("starts a new chat from Cmd+T shortcut and IPC event", async () => {
-    renderIm();
+  it("starts a new chat from Cmd+T shortcut and IPC event immediately", async () => {
+    const api = renderIm();
     await act(async () => {
       window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
     });
@@ -841,7 +842,9 @@ describe("ImPanel", () => {
     await act(async () => {
       window.dispatchEvent(new CustomEvent("test:cmd-t"));
     });
-    expect(await screen.findByLabelText("Chat name")).toBeTruthy();
+    await waitFor(() => expect(api.imCreateProject).toHaveBeenCalledWith({
+      name: "Untitled chat"
+    }));
   });
 
   it("configures custom agent and model per chat member and loads models automatically", async () => {

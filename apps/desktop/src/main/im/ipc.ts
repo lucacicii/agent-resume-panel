@@ -90,7 +90,20 @@ export function registerImIpc(deps: {
       throw new Error("Project id and name are required.");
     }
     const im = await getStore();
-    return im.renameProject(args.projectId, args.name);
+    const project = await im.renameProject(args.projectId, args.name);
+    const room = await im.getRoom(args.projectId);
+    emit({ type: "room", room });
+    return project;
+  });
+
+  safeHandle("im:autoRenameProject", async (_event, args: { projectId?: unknown }) => {
+    if (typeof args?.projectId !== "string") throw new Error("Project id is required.");
+    const im = await getStore();
+    const settings = await loadSettings();
+    const result = await im.autoRenameProject(args.projectId, settings);
+    const room = await im.getRoom(args.projectId);
+    emit({ type: "room", room });
+    return result.project;
   });
 
   safeHandle("im:deleteProject", async (_event, args: { projectId?: unknown }) => {

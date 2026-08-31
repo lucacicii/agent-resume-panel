@@ -575,13 +575,21 @@ export function ImPanel(): ReactPortal | null {
     };
   }, [selectionMenu, selectionResult, folderMenu]);
 
-  const startCreateChat = useCallback(() => {
+  const startCreateChat = useCallback(async () => {
     setSidebarCollapsed(false);
     try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, "0"); } catch { /* ignore */ }
-    setCreating(true);
+    setCreating(false);
     setFolderMenu(null);
     setRenamingProjectId(null);
-  }, []);
+    try {
+      const project = await desktopApi().imCreateProject({ name: t("desktop.im.untitledChat") });
+      await loadProjects();
+      selectProject(project.projectId);
+      setTimeout(() => textareaRef.current?.focus(), 50);
+    } catch (error) {
+      setError(error);
+    }
+  }, [loadProjects, selectProject, setError, t]);
 
   useEffect(() => {
     if (creating) {
@@ -640,6 +648,16 @@ export function ImPanel(): ReactPortal | null {
       setError(error);
     }
   }, [selectedProjectId, setError, t]);
+
+  const autoRenameChat = useCallback(async (project: ImProject) => {
+    try {
+      const updated = await desktopApi().imAutoRenameProject({ projectId: project.projectId });
+      setProjects((current) => current.map((item) => item.projectId === updated.projectId ? updated : item));
+      setRoom((current) => current && current.project.projectId === updated.projectId ? { ...current, project: updated } : current);
+    } catch (error) {
+      setError(error);
+    }
+  }, [setError]);
 
   const revealFolder = useCallback(async (project: ImProject) => {
     if (!project.localPath) return;
@@ -1794,6 +1812,17 @@ export function ImPanel(): ReactPortal | null {
           onPointerDown={(event) => event.stopPropagation()}
           onContextMenu={(event) => event.preventDefault()}
         >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              const project = folderMenu.project;
+              setFolderMenu(null);
+              void autoRenameChat(project);
+            }}
+          >
+            {t("desktop.workbench.autoRename")}
+          </button>
           <button
             type="button"
             role="menuitem"

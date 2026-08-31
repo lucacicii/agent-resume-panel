@@ -64,6 +64,24 @@ describe("ImConductor", () => {
     expect(connect).not.toHaveBeenCalled();
   });
 
+  it("automatically renames a default chat to the user's first question", async () => {
+    const store = await createStore();
+    const project = await store.createProject("New chat");
+    const emit = vi.fn();
+    const conductor = new ImConductor(store, emit, vi.fn(async () => undefined), vi.fn(async () => undefined));
+
+    await conductor.postMessage({
+      projectId: project.projectId,
+      body: "@Developer Help me design the authentication flow",
+      quoteIds: [],
+      mentionRoleIds: []
+    });
+
+    const updated = await store.getProject(project.projectId);
+    expect(updated?.name).toBe("Help me design the authentication flow");
+    expect(emit).toHaveBeenCalledWith(expect.objectContaining({ type: "room" }));
+  });
+
   it("fans out read-only mentions in parallel and queues exclusive roles", async () => {
     const store = await createStore();
     const project = await store.createProject("Fanout");

@@ -369,4 +369,21 @@ describe("ImStore", () => {
     expect(reset.agent).toBe("claude");
     expect(reset.model).toBeUndefined();
   });
+
+  it("defaults to 'New chat' when creating a project without a name and auto-renames with autoRenameProject", async () => {
+    const store = await createStore();
+    const project = await store.createProject("");
+    expect(project.name).toBe("New chat");
+
+    await store.insertMessage({
+      projectId: project.projectId,
+      kind: "human",
+      authorLabel: "You",
+      body: "How do I build a search bar with fuzzy matching?"
+    });
+
+    const renamed = await store.autoRenameProject(project.projectId, {} as any);
+    expect(renamed.title).toContain("How do I build a search bar with fuzzy matching");
+    expect((await store.getProject(project.projectId))?.name).toBe(renamed.title);
+  });
 });
