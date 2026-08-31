@@ -117,6 +117,14 @@ class AcpChatController {
     return this.record;
   }
 
+  getConfigOptions(): AcpConfigOption[] {
+    return this.configOptions;
+  }
+
+  getModels(): AcpModelsState | null {
+    return this.models;
+  }
+
   getActiveAcpSessionId(): string | undefined {
     return this.activeAcpSessionId;
   }
@@ -1274,6 +1282,42 @@ export function disposeAcpController(chatId: string): void {
   if (lastActiveChatId === id) {
     lastActiveChatId = null;
   }
+}
+
+export function getLiveAcpAgentModels(provider: string): Array<{ id: string; label: string }> {
+  const result: Array<{ id: string; label: string }> = [];
+  const seen = new Set<string>();
+  for (const controller of controllers.values()) {
+    if (controller.getRecord().provider !== provider) continue;
+    const configOptions = controller.getConfigOptions();
+    for (const opt of configOptions) {
+      if (opt.type === "select" && (opt.category === "model" || opt.id === "model" || opt.id === "model_id")) {
+        for (const item of opt.options) {
+          if ("value" in item && item.value && !seen.has(item.value)) {
+            seen.add(item.value);
+            result.push({ id: item.value, label: item.name || item.value });
+          } else if ("options" in item && Array.isArray(item.options)) {
+            for (const sub of item.options) {
+              if (sub.value && !seen.has(sub.value)) {
+                seen.add(sub.value);
+                result.push({ id: sub.value, label: `${sub.name || sub.value} (${item.name || item.group})` });
+              }
+            }
+          }
+        }
+      }
+    }
+    const legacyModels = controller.getModels();
+    if (legacyModels?.availableModels) {
+      for (const m of legacyModels.availableModels) {
+        if (m.modelId && !seen.has(m.modelId)) {
+          seen.add(m.modelId);
+          result.push({ id: m.modelId, label: m.name || m.modelId });
+        }
+      }
+    }
+  }
+  return result;
 }
 
 export function getAcpRuntimeMetrics(): { count: number; liveCount: number } {

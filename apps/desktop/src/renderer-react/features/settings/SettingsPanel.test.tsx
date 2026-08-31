@@ -497,11 +497,12 @@ describe("SettingsPanel (window)", () => {
     await waitFor(() => expect(host.textContent).toContain("Developer"));
     await waitFor(() => expect(host.querySelector(".im-settings-editor")).not.toBeNull());
 
-    const modelInput = host.querySelector('input[placeholder*="claude"]') as HTMLInputElement;
-    expect(modelInput).not.toBeNull();
-    expect(modelInput.value).toBe("claude-3-7-sonnet-20250219");
+    const selects = host.querySelectorAll(".im-settings-editor select");
+    const modelSelect = selects[1] as HTMLSelectElement;
+    expect(modelSelect).not.toBeNull();
+    expect(modelSelect.value).toBe("claude-3-7-sonnet-20250219");
 
-    fireEvent.change(modelInput, { target: { value: "claude-opus" } });
+    fireEvent.change(modelSelect, { target: { value: "claude-opus" } });
     const saveBtn = host.querySelector(".im-add-role-actions button.btn.primary") as HTMLButtonElement;
     fireEvent.click(saveBtn);
 

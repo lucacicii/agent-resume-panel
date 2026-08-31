@@ -8,18 +8,47 @@ import { desktopApi } from "../../bridge";
 import { notifyDesktop } from "../../components/Notifications";
 import { useI18n } from "../../i18n";
 import { storedWidth } from "../../storage";
-import { isBuiltinTemplateId, type ImEvent, type ImJob, type ImKnowledgeItem, type ImMember, type ImMessage, type ImProject, type ImQuotedMessage, type ImRoleTemplate, type ImRoom, type ImSelectionAction } from "../../../shared/imTypes";
+import {
+  IM_AGENTS,
+  IM_AGENT_SUGGESTED_MODELS,
+  isBuiltinTemplateId,
+  type ImAgent,
+  type ImAgentModelOption,
+  type ImEvent,
+  type ImJob,
+  type ImKnowledgeItem,
+  type ImMember,
+  type ImMessage,
+  type ImProject,
+  type ImQuotedMessage,
+  type ImRoleTemplate,
+  type ImRoom,
+  type ImSelectionAction
+} from "../../../shared/imTypes";
 
 const SIDEBAR_COLLAPSED_KEY = "im-sidebar-collapsed";
 const SIDEBAR_WIDTH_KEY = "im-sidebar-width";
 const SELECTED_PROJECT_KEY = "im-selected-project";
+const RIGHT_SIDEBAR_OPEN_KEY = "im-right-sidebar-open";
 
-function storageBoolean(key: string): boolean {
-  try { return localStorage.getItem(key) === "1"; } catch { return false; }
+function storageBoolean(key: string, fallback = false): boolean {
+  try {
+    const val = localStorage.getItem(key);
+    if (val == null) return fallback;
+    return val === "1";
+  } catch {
+    return fallback;
+  }
 }
 
 function basename(value = ""): string {
   return value.replaceAll("\\", "/").split("/").filter(Boolean).at(-1) || value;
+}
+
+function isScratchPath(value?: string | null): boolean {
+  if (!value) return true;
+  const normalized = value.replaceAll("\\", "/");
+  return normalized.includes("/.desktop/scratch/im/") || normalized.endsWith("/.desktop/scratch/im");
 }
 
 const BUILTIN_ROLE_KEYS = {
@@ -138,6 +167,9 @@ export function ImPanel(): ReactPortal | null {
   const mentionListRef = useRef<HTMLDivElement | null>(null);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
+  const [renamingProjectId, setRenamingProjectId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [folderMenu, setFolderMenu] = useState<{ x: number; y: number; project: ImProject } | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => storageBoolean(SIDEBAR_COLLAPSED_KEY));
   const [sidebarWidth, setSidebarWidth] = useState(() => storedWidth(SIDEBAR_WIDTH_KEY, 240, 160, 360));
   const [sending, setSending] = useState(false);
@@ -159,6 +191,10 @@ export function ImPanel(): ReactPortal | null {
   const [translatingIds, setTranslatingIds] = useState<Set<string>>(() => new Set());
   const [templates, setTemplates] = useState<ImRoleTemplate[]>([]);
   const [sidebarTab, setSidebarTab] = useState<"members" | "knowledge">("members");
+  const [rightSidebarOpen, setRightSidebarOpen] = useState(() => storageBoolean(RIGHT_SIDEBAR_OPEN_KEY, true));
+  const [expandedMemberId, setExpandedMemberId] = useState<string | null>(null);
+  const [customMemberModelId, setCustomMemberModelId] = useState<string | null>(null);
+  const [agentModelsMap, setAgentModelsMap] = useState<Record<string, ImAgentModelOption[]>>({});
   const [knowledgeTitle, setKnowledgeTitle] = useState("");
   const [knowledgeBody, setKnowledgeBody] = useState("");
   const [knowledgeUrl, setKnowledgeUrl] = useState("");
@@ -405,7 +441,6 @@ export function ImPanel(): ReactPortal | null {
   const permissionOwner = activeJob
     ? members.find((member) => member.memberId === activeJob.memberId)
     : undefined;
-  const canDispatch = Boolean(room?.project.localPath);
   const mentioned = mentionIds
     .map((id) => members.find((member) => member.memberId === id))
     .filter((member): member is ImMember => Boolean(member));
@@ -515,17 +550,19 @@ export function ImPanel(): ReactPortal | null {
   }, [selectedProjectId]);
 
   useEffect(() => {
-    if (!selectionMenu && !selectionResult) return;
+    if (!selectionMenu && !selectionResult && !folderMenu) return;
     const onPointer = (event: MouseEvent) => {
       const target = event.target;
       if (!(target instanceof Element)) return;
-      if (target.closest(".im-selection-menu, .im-selection-result")) return;
+      if (target.closest(".im-selection-menu, .im-selection-result, .im-folder-menu")) return;
       setSelectionMenu(null);
+      setFolderMenu(null);
       if (!selectionResult?.loading) setSelectionResult(null);
     };
     const onKey = (event: globalThis.KeyboardEvent) => {
       if (event.key === "Escape") {
         setSelectionMenu(null);
+        setFolderMenu(null);
         if (!selectionResult?.loading) setSelectionResult(null);
       }
     };
@@ -535,12 +572,31 @@ export function ImPanel(): ReactPortal | null {
       window.removeEventListener("pointerdown", onPointer);
       window.removeEventListener("keydown", onKey);
     };
-  }, [selectionMenu, selectionResult]);
+  }, [selectionMenu, selectionResult, folderMenu]);
 
-  const createProject = useCallback(async (event: FormEvent) => {
-    event.preventDefault();
+  const startCreateChat = useCallback(() => {
+    setCreating(true);
+    setFolderMenu(null);
+    setRenamingProjectId(null);
+  }, []);
+
+  useEffect(() => {
+    if (!active) return;
+    const onShortcut = (event: globalThis.KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey) return;
+      if (event.key.toLowerCase() !== "t") return;
+      event.preventDefault();
+      startCreateChat();
+    };
+    window.addEventListener("keydown", onShortcut);
+    return () => window.removeEventListener("keydown", onShortcut);
+  }, [active, startCreateChat]);
+
+  const createProject = useCallback(async (event?: FormEvent) => {
+    event?.preventDefault();
+    const name = newName.trim() || t("desktop.im.untitledChat");
     try {
-      const project = await desktopApi().imCreateProject({ name: newName });
+      const project = await desktopApi().imCreateProject({ name });
       setNewName("");
       setCreating(false);
       await loadProjects();
@@ -548,20 +604,66 @@ export function ImPanel(): ReactPortal | null {
     } catch (error) {
       setError(error);
     }
-  }, [loadProjects, newName, selectProject, setError]);
+  }, [loadProjects, newName, selectProject, setError, t]);
 
-  const associateFolder = useCallback(async () => {
-    if (!selectedProjectId) return;
+  const associateFolder = useCallback(async (projectId = selectedProjectId) => {
+    if (!projectId) return;
     try {
       const picked = await desktopApi().imPickLocalPath({ title: t("desktop.im.associateFolderTitle") });
       if (!picked.ok) return;
-      const project = await desktopApi().imSetLocalPath({ projectId: selectedProjectId, localPath: picked.path });
+      const project = await desktopApi().imSetLocalPath({ projectId, localPath: picked.path });
       setProjects((current) => current.map((item) => item.projectId === project.projectId ? project : item));
-      setRoom((current) => current ? { ...current, project } : current);
+      setRoom((current) => current && current.project.projectId === project.projectId ? { ...current, project } : current);
     } catch (error) {
       setError(error);
     }
   }, [selectedProjectId, setError, t]);
+
+  const revealFolder = useCallback(async (project: ImProject) => {
+    if (!project.localPath) return;
+    try {
+      await desktopApi().revealProjectInFinder({ projectPath: project.localPath });
+    } catch (error) {
+      setError(error);
+    }
+  }, [setError]);
+
+  const commitRename = useCallback(async (projectId: string) => {
+    const name = renameValue.trim();
+    setRenamingProjectId(null);
+    if (!name) return;
+    try {
+      const project = await desktopApi().imRenameProject({ projectId, name });
+      setProjects((current) => current.map((item) => item.projectId === project.projectId ? project : item));
+      setRoom((current) => current && current.project.projectId === project.projectId ? { ...current, project } : current);
+    } catch (error) {
+      setError(error);
+    }
+  }, [renameValue, setError]);
+
+  const deleteChat = useCallback(async (project: ImProject) => {
+    const confirmed = window.confirm(t("desktop.im.deleteChatConfirm", project.name));
+    if (!confirmed) return;
+    try {
+      await desktopApi().imDeleteProject({ projectId: project.projectId });
+      const remaining = projects.filter((item) => item.projectId !== project.projectId);
+      setProjects(remaining);
+      if (selectedProjectId === project.projectId) {
+        const nextId = remaining[0]?.projectId || "";
+        selectProject(nextId);
+        if (!nextId) setRoom(null);
+      }
+    } catch (error) {
+      setError(error);
+    }
+  }, [projects, selectedProjectId, selectProject, setError, t]);
+
+  const openFolderMenu = useCallback((event: ReactMouseEvent, project: ImProject) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setFolderMenu({ x: event.clientX, y: event.clientY, project });
+    setSelectionMenu(null);
+  }, []);
 
   const stageImageFiles = useCallback(async (files: FileList | File[] | null) => {
     if (!files || !files.length) return;
@@ -632,10 +734,6 @@ export function ImPanel(): ReactPortal | null {
     if (!selectedProjectId || sending) return;
     const body = draft.trim();
     if (!body && !quotes.length && !pendingImages.length) return;
-    if (mentionIds.length && !canDispatch) {
-      setError(new Error(t("desktop.im.needFolder")));
-      return;
-    }
     setSending(true);
     try {
       await desktopApi().imPostMessage({
@@ -656,7 +754,7 @@ export function ImPanel(): ReactPortal | null {
     } finally {
       setSending(false);
     }
-  }, [canDispatch, draft, mentionIds, pendingImages, quotes, selectedProjectId, sending, setError, t]);
+  }, [draft, mentionIds, pendingImages, quotes, selectedProjectId, sending, setError]);
 
   const pickMention = useCallback((member: ImMember) => {
     const at = draft.lastIndexOf("@");
@@ -818,10 +916,58 @@ export function ImPanel(): ReactPortal | null {
         ? { ...current, members: current.members.filter((item) => item.memberId !== member.memberId) }
         : current);
       setMentionIds((current) => current.filter((id) => id !== member.memberId));
+      if (expandedMemberId === member.memberId) setExpandedMemberId(null);
     } catch (error) {
       setError(error);
     }
-  }, [room?.members, selectedProjectId, setError]);
+  }, [expandedMemberId, room?.members, selectedProjectId, setError]);
+
+  const fetchModelsForAgent = useCallback(async (targetAgent: ImAgent) => {
+    if (agentModelsMap[targetAgent]?.length) return agentModelsMap[targetAgent];
+    try {
+      const list = await desktopApi().imListAgentModels({ agent: targetAgent });
+      setAgentModelsMap((curr) => ({ ...curr, [targetAgent]: list }));
+      return list;
+    } catch {
+      const fallback = IM_AGENT_SUGGESTED_MODELS[targetAgent] || [];
+      setAgentModelsMap((curr) => ({ ...curr, [targetAgent]: fallback }));
+      return fallback;
+    }
+  }, [agentModelsMap]);
+
+  const onMemberAgentChange = useCallback(async (member: ImMember, nextAgent: ImAgent) => {
+    try {
+      void fetchModelsForAgent(nextAgent);
+      const updated = await desktopApi().imSetMemberAgent({ memberId: member.memberId, agent: nextAgent });
+      setRoom((current) => current
+        ? { ...current, members: current.members.map((m) => m.memberId === updated.memberId ? updated : m) }
+        : current);
+    } catch (error) {
+      setError(error);
+    }
+  }, [fetchModelsForAgent, setError]);
+
+  const onMemberModelChange = useCallback(async (member: ImMember, nextModel: string) => {
+    try {
+      const updated = await desktopApi().imSetMemberModel({ memberId: member.memberId, model: nextModel.trim() || null });
+      setRoom((current) => current
+        ? { ...current, members: current.members.map((m) => m.memberId === updated.memberId ? updated : m) }
+        : current);
+    } catch (error) {
+      setError(error);
+    }
+  }, [setError]);
+
+  const onMemberResetOverrides = useCallback(async (member: ImMember) => {
+    try {
+      const updated = await desktopApi().imResetMemberOverrides({ memberId: member.memberId });
+      setRoom((current) => current
+        ? { ...current, members: current.members.map((m) => m.memberId === updated.memberId ? updated : m) }
+        : current);
+    } catch (error) {
+      setError(error);
+    }
+  }, [setError]);
 
   const cancelJob = useCallback(async (job: ImJob) => {
     try {
@@ -864,7 +1010,7 @@ export function ImPanel(): ReactPortal | null {
         <aside
           className={`sidebar-folders-pane im-folders-pane${sidebarCollapsed ? " is-collapsed" : ""}`}
           style={sidebarCollapsed ? undefined : { width: sidebarWidth }}
-          aria-label={t("desktop.im.projects")}
+          aria-label={t("desktop.im.chats")}
         >
           {!sidebarCollapsed && (
             <div className="im-folders">
@@ -873,8 +1019,8 @@ export function ImPanel(): ReactPortal | null {
                   <input
                     value={newName}
                     onChange={(event) => setNewName(event.target.value)}
-                    placeholder={t("desktop.im.projectName")}
-                    aria-label={t("desktop.im.projectName")}
+                    placeholder={t("desktop.im.chatName")}
+                    aria-label={t("desktop.im.chatName")}
                     autoFocus
                   />
                   <button type="submit" className="tool-btn">{t("desktop.common.confirm")}</button>
@@ -883,23 +1029,67 @@ export function ImPanel(): ReactPortal | null {
                   </button>
                 </form>
               ) : (
-                <button type="button" className="im-new-project-btn" onClick={() => setCreating(true)}>
+                <button
+                  type="button"
+                  className="im-new-project-btn"
+                  onClick={startCreateChat}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    startCreateChat();
+                  }}
+                  title={`${t("desktop.im.newChat")} (⌘T)`}
+                >
                   <ThemeIcon name="plus" size={14} aria-hidden="true" />
-                  {t("desktop.im.newProject")}
+                  {t("desktop.im.newChat")}
                 </button>
               )}
-              {projects.length ? projects.map((project) => (
-                <button
-                  key={project.projectId}
-                  type="button"
-                  className={`im-folder-row${selectedProjectId === project.projectId ? " active" : ""}`}
-                  onClick={() => selectProject(project.projectId)}
-                >
-                  <span className="im-folder-label">{project.name}</span>
-                  <span className="im-folder-path">{project.localPath ? basename(project.localPath) : t("desktop.im.noFolder")}</span>
-                </button>
-              )) : (
-                <p className="im-empty">{t("desktop.im.noProjects")}</p>
+              {projects.length ? projects.map((project) => {
+                const scratch = isScratchPath(project.localPath);
+                const pathLabel = !project.localPath
+                  ? t("desktop.im.tempFolder")
+                  : scratch
+                    ? t("desktop.im.tempFolder")
+                    : basename(project.localPath);
+                if (renamingProjectId === project.projectId) {
+                  return (
+                    <form
+                      key={project.projectId}
+                      className={`im-folder-row im-folder-rename${selectedProjectId === project.projectId ? " active" : ""}`}
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void commitRename(project.projectId);
+                      }}
+                    >
+                      <input
+                        value={renameValue}
+                        onChange={(event) => setRenameValue(event.target.value)}
+                        aria-label={t("desktop.im.renameChat")}
+                        autoFocus
+                        onBlur={() => void commitRename(project.projectId)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Escape") {
+                            event.preventDefault();
+                            setRenamingProjectId(null);
+                          }
+                        }}
+                      />
+                    </form>
+                  );
+                }
+                return (
+                  <button
+                    key={project.projectId}
+                    type="button"
+                    className={`im-folder-row${selectedProjectId === project.projectId ? " active" : ""}`}
+                    onClick={() => selectProject(project.projectId)}
+                    onContextMenu={(event) => openFolderMenu(event, project)}
+                  >
+                    <span className="im-folder-label">{project.name}</span>
+                    <span className="im-folder-path">{pathLabel}</span>
+                  </button>
+                );
+              }) : (
+                <p className="im-empty">{t("desktop.im.noChats")}</p>
               )}
             </div>
           )}
@@ -932,14 +1122,28 @@ export function ImPanel(): ReactPortal | null {
               <div className="im-room-head">
                 <div>
                   <h2>{room.project.name}</h2>
-                  <p>{room.project.localPath || t("desktop.im.needFolder")}</p>
+                  <p>{room.project.localPath || t("desktop.im.tempFolder")}</p>
                 </div>
                 <div className="im-room-head-actions">
-                  <button type="button" className={`tool-btn ghost-btn${sidebarTab === "knowledge" ? " active" : ""}`} onClick={() => setSidebarTab("knowledge")}>
-                    {t("desktop.im.knowledge")} ({room.knowledge.length})
-                  </button>
                   <button type="button" className="tool-btn" onClick={() => void associateFolder()}>
                     {t("desktop.im.associateFolder")}
+                  </button>
+                  <button
+                    type="button"
+                    className={`tool-btn ghost-btn${rightSidebarOpen ? " active" : ""}`}
+                    onClick={() => {
+                      setRightSidebarOpen((open) => {
+                        const next = !open;
+                        try { localStorage.setItem(RIGHT_SIDEBAR_OPEN_KEY, next ? "1" : "0"); } catch { /* ignore */ }
+                        return next;
+                      });
+                    }}
+                    title={t("desktop.im.toggleDetails")}
+                    aria-label={t("desktop.im.toggleDetails")}
+                    aria-pressed={rightSidebarOpen}
+                  >
+                    <ThemeIcon name="panel-right" size={14} aria-hidden="true" />
+                    <span>{t("desktop.im.toggleDetails")}</span>
                   </button>
                 </div>
               </div>
@@ -1094,16 +1298,7 @@ export function ImPanel(): ReactPortal | null {
                     </Fragment>
                   );
                 }) : (
-                  room?.project.localPath
-                    ? <p className="im-empty">{t("desktop.im.emptyRoom")}</p>
-                    : (
-                      <div className="im-empty im-empty-cta">
-                        <p>{t("desktop.im.emptyRoomNoFolder")}</p>
-                        <button type="button" className="tool-btn" onClick={() => void associateFolder()}>
-                          {t("desktop.im.associateFolder")}
-                        </button>
-                      </div>
-                    )
+                  <p className="im-empty">{t("desktop.im.emptyRoom")}</p>
                 )}
                 {activePendingJobs.map((job) => {
                   const owner = members.find((member) => member.memberId === job.memberId);
@@ -1346,109 +1541,284 @@ export function ImPanel(): ReactPortal | null {
               </div>
             </>
           ) : (
-            <p className="im-empty">{t("desktop.im.selectProject")}</p>
+            <p className="im-empty">{t("desktop.im.selectChat")}</p>
           )}
         </div>
-        <aside className="im-members" aria-label={t("desktop.im.members")}>
-          <div className="im-sidebar-tabs" role="tablist" aria-label={t("desktop.im.members")}>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={sidebarTab === "members"}
-              className={sidebarTab === "members" ? "active" : ""}
-              onClick={() => setSidebarTab("members")}
-            >
-              {t("desktop.im.members")}
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={sidebarTab === "knowledge"}
-              className={sidebarTab === "knowledge" ? "active" : ""}
-              onClick={() => setSidebarTab("knowledge")}
-            >
-              {t("desktop.im.knowledge")} ({room?.knowledge.length ?? 0})
-            </button>
-          </div>
-          {sidebarTab === "knowledge" ? (
-            <div className="im-knowledge-pane" aria-label={t("desktop.im.knowledge")}>
-              {room?.knowledge.length ? room.knowledge.map((item) => (
-                <div key={item.itemId} className="im-knowledge-item">
-                  <span className="im-kind-icon" aria-hidden="true">
-                    <ThemeIcon name={item.kind === "link" ? "globe" : item.kind === "image" ? "file-image" : "file-text"} size={13} />
-                  </span>
-                  <div className="im-knowledge-main">
-                    <strong title={item.title || item.fileName || item.url || ""}>{item.title || item.fileName || item.url}</strong>
-                    <span className="im-folder-path">{item.kind === "link" ? item.url : item.kind === "image" ? item.fileName : item.body.slice(0, 80)}</span>
-                  </div>
-                  <span className="im-knowledge-item-actions">
-                    {item.kind === "link" && item.url ? (
-                      <button
-                        type="button"
-                        className="tool-btn ghost-btn"
-                        title={t("desktop.im.openLink")}
-                        aria-label={t("desktop.im.openLink")}
-                        onClick={() => void desktopApi().openExternalUrl(item.url || "")}
-                      >
-                        <ThemeIcon name="external-link" size={12} />
-                      </button>
-                    ) : null}
-                    <button type="button" className="tool-btn ghost-btn" onClick={() => void removeKnowledge(item)} aria-label={t("desktop.im.removeKnowledge")}>
-                      <ThemeIcon name="close" size={12} />
-                    </button>
-                  </span>
-                </div>
-              )) : <p className="im-empty">{t("desktop.im.knowledgeEmpty")}</p>}
-              <form className="im-knowledge-form" onSubmit={(event) => void addKnowledgeText(event)}>
-                <input value={knowledgeTitle} onChange={(event) => setKnowledgeTitle(event.target.value)} placeholder={t("desktop.im.knowledgeTitle")} aria-label={t("desktop.im.knowledgeTitle")} />
-                <textarea value={knowledgeBody} onChange={(event) => setKnowledgeBody(event.target.value)} placeholder={t("desktop.im.knowledgeText")} aria-label={t("desktop.im.knowledgeText")} rows={2} />
-                <button type="submit" className="tool-btn">{t("desktop.im.addText")}</button>
-              </form>
-              <form className="im-knowledge-form" onSubmit={(event) => void addKnowledgeLink(event)}>
-                <input value={knowledgeUrl} onChange={(event) => setKnowledgeUrl(event.target.value)} placeholder={t("desktop.im.knowledgeUrl")} aria-label={t("desktop.im.knowledgeUrl")} />
-                <button type="submit" className="tool-btn">{t("desktop.im.addLink")}</button>
-                <button type="button" className="tool-btn ghost-btn" onClick={() => void addKnowledgeImage()}>{t("desktop.im.addImage")}</button>
-              </form>
+        {rightSidebarOpen && (
+          <aside className="im-members" aria-label={t("desktop.im.members")}>
+            <div className="im-sidebar-tabs" role="tablist" aria-label={t("desktop.im.members")}>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={sidebarTab === "members"}
+                className={sidebarTab === "members" ? "active" : ""}
+                onClick={() => setSidebarTab("members")}
+              >
+                {t("desktop.im.members")}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={sidebarTab === "knowledge"}
+                className={sidebarTab === "knowledge" ? "active" : ""}
+                onClick={() => setSidebarTab("knowledge")}
+              >
+                {t("desktop.im.knowledge")} ({room?.knowledge.length ?? 0})
+              </button>
             </div>
-          ) : (
-            templates.length ? templates.map((template) => {
-              const enabledMember = members.find((item) => item.templateId === template.templateId);
-              const label = enabledMember
-                ? memberLabel(enabledMember)
-                : builtinRoleLabel(template.templateId, template.name, t);
-              const jobStatus = enabledMember
-                ? room?.jobs.find((item) => item.memberId === enabledMember.memberId && isActiveJobStatus(item.status))?.status ?? "idle"
-                : "idle";
-              const rowColor = roleColor(template.templateId);
-              return (
-                <label key={template.templateId} className="im-member-row">
-                  <span className="im-member-head">
-                    <span className="im-member-ident">
-                      <input
-                        type="checkbox"
-                        checked={Boolean(enabledMember)}
-                        onChange={(event) => void toggleTemplate(template, event.target.checked)}
-                      />
-                      <span className="im-role-avatar" aria-hidden="true" style={{ "--im-role-color": rowColor } as CSSProperties}>
-                        {roleInitial(label)}
-                      </span>
-                      <strong>{label}</strong>
+            {sidebarTab === "knowledge" ? (
+              <div className="im-knowledge-pane" aria-label={t("desktop.im.knowledge")}>
+                {room?.knowledge.length ? room.knowledge.map((item) => (
+                  <div key={item.itemId} className="im-knowledge-item">
+                    <span className="im-kind-icon" aria-hidden="true">
+                      <ThemeIcon name={item.kind === "link" ? "globe" : item.kind === "image" ? "file-image" : "file-text"} size={13} />
                     </span>
-                    {enabledMember && jobStatus !== "idle" ? (
-                      <span
-                        className={`im-job-dot is-${jobStatus}`}
-                        title={t(`desktop.im.job.${jobStatus}`)}
-                        aria-label={t(`desktop.im.job.${jobStatus}`)}
-                      />
-                    ) : <span className="im-job-dot is-idle" aria-hidden="true" />}
-                  </span>
-                  {agentTag(template.agent, template.model, t)}
-                </label>
-              );
-            }) : <p className="im-empty">{t("desktop.im.noMembers")}</p>
-          )}
-        </aside>
+                    <div className="im-knowledge-main">
+                      <strong title={item.title || item.fileName || item.url || ""}>{item.title || item.fileName || item.url}</strong>
+                      <span className="im-folder-path">{item.kind === "link" ? item.url : item.kind === "image" ? item.fileName : item.body.slice(0, 80)}</span>
+                    </div>
+                    <span className="im-knowledge-item-actions">
+                      {item.kind === "link" && item.url ? (
+                        <button
+                          type="button"
+                          className="tool-btn ghost-btn"
+                          title={t("desktop.im.openLink")}
+                          aria-label={t("desktop.im.openLink")}
+                          onClick={() => void desktopApi().openExternalUrl(item.url || "")}
+                        >
+                          <ThemeIcon name="external-link" size={12} />
+                        </button>
+                      ) : null}
+                      <button type="button" className="tool-btn ghost-btn" onClick={() => void removeKnowledge(item)} aria-label={t("desktop.im.removeKnowledge")}>
+                        <ThemeIcon name="close" size={12} />
+                      </button>
+                    </span>
+                  </div>
+                )) : <p className="im-empty">{t("desktop.im.knowledgeEmpty")}</p>}
+                <form className="im-knowledge-form" onSubmit={(event) => void addKnowledgeText(event)}>
+                  <input value={knowledgeTitle} onChange={(event) => setKnowledgeTitle(event.target.value)} placeholder={t("desktop.im.knowledgeTitle")} aria-label={t("desktop.im.knowledgeTitle")} />
+                  <textarea value={knowledgeBody} onChange={(event) => setKnowledgeBody(event.target.value)} placeholder={t("desktop.im.knowledgeText")} aria-label={t("desktop.im.knowledgeText")} rows={2} />
+                  <button type="submit" className="tool-btn">{t("desktop.im.addText")}</button>
+                </form>
+                <form className="im-knowledge-form" onSubmit={(event) => void addKnowledgeLink(event)}>
+                  <input value={knowledgeUrl} onChange={(event) => setKnowledgeUrl(event.target.value)} placeholder={t("desktop.im.knowledgeUrl")} aria-label={t("desktop.im.knowledgeUrl")} />
+                  <button type="submit" className="tool-btn">{t("desktop.im.addLink")}</button>
+                  <button type="button" className="tool-btn ghost-btn" onClick={() => void addKnowledgeImage()}>{t("desktop.im.addImage")}</button>
+                </form>
+              </div>
+            ) : (
+              templates.length ? templates.map((template) => {
+                const enabledMember = members.find((item) => item.templateId === template.templateId);
+                const label = enabledMember
+                  ? memberLabel(enabledMember)
+                  : builtinRoleLabel(template.templateId, template.name, t);
+                const jobStatus = enabledMember
+                  ? room?.jobs.find((item) => item.memberId === enabledMember.memberId && isActiveJobStatus(item.status))?.status ?? "idle"
+                  : "idle";
+                const rowColor = roleColor(template.templateId);
+                const isCustomized = Boolean(
+                  enabledMember && (
+                    enabledMember.agent !== template.agent ||
+                    (enabledMember.model || "") !== (template.model || "")
+                  )
+                );
+                const effectiveAgent = enabledMember ? enabledMember.agent : template.agent;
+                const effectiveModel = enabledMember ? enabledMember.model : template.model;
+                const isExpanded = Boolean(enabledMember && expandedMemberId === enabledMember.memberId);
+
+                return (
+                  <div key={template.templateId} className={`im-member-row${isCustomized ? " is-customized" : ""}`}>
+                    <div className="im-member-head">
+                      <label className="im-member-ident">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(enabledMember)}
+                          onChange={(event) => void toggleTemplate(template, event.target.checked)}
+                        />
+                        <span className="im-role-avatar" aria-hidden="true" style={{ "--im-role-color": rowColor } as CSSProperties}>
+                          {roleInitial(label)}
+                        </span>
+                        <strong>{label}</strong>
+                        {isCustomized ? (
+                          <span className="im-member-custom-badge" title={t("desktop.im.customBadge")}>
+                            {t("desktop.im.customBadge")}
+                          </span>
+                        ) : null}
+                      </label>
+                      <div className="im-member-actions">
+                        {enabledMember && jobStatus !== "idle" ? (
+                          <span
+                            className={`im-job-dot is-${jobStatus}`}
+                            title={t(`desktop.im.job.${jobStatus}`)}
+                            aria-label={t(`desktop.im.job.${jobStatus}`)}
+                          />
+                        ) : <span className="im-job-dot is-idle" aria-hidden="true" />}
+                        {enabledMember ? (
+                          <button
+                            type="button"
+                            className={`tool-btn ghost-btn im-member-config-btn${isExpanded ? " active" : ""}`}
+                            onClick={() => {
+                              const next = isExpanded ? null : enabledMember.memberId;
+                              setExpandedMemberId(next);
+                              if (next) void fetchModelsForAgent(enabledMember.agent);
+                            }}
+                            title={t("desktop.im.configRole")}
+                            aria-label={t("desktop.im.configRole")}
+                            aria-expanded={isExpanded}
+                          >
+                            <ThemeIcon name="settings" size={13} />
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="im-member-tag-line">
+                      {agentTag(effectiveAgent, effectiveModel, t)}
+                    </div>
+                    {isExpanded && enabledMember ? (
+                      (() => {
+                        const memberModels = agentModelsMap[enabledMember.agent] ?? IM_AGENT_SUGGESTED_MODELS[enabledMember.agent] ?? [];
+                        const isCustomMemberModel = Boolean(enabledMember.model && !memberModels.some((m) => m.id === enabledMember.model));
+                        const memberModelGroups: Record<string, ImAgentModelOption[]> = {};
+                        for (const m of memberModels) {
+                          if (!m.id) continue;
+                          const p = m.provider || "Suggested";
+                          if (!memberModelGroups[p]) memberModelGroups[p] = [];
+                          memberModelGroups[p].push(m);
+                        }
+
+                        return (
+                          <div className="im-member-config">
+                            <label>
+                              <span>{t("desktop.im.roleAgent")}</span>
+                              <select
+                                value={enabledMember.agent}
+                                onChange={(event) => void onMemberAgentChange(enabledMember, event.target.value as ImAgent)}
+                              >
+                                {IM_AGENTS.map((agentKey) => (
+                                  <option key={agentKey} value={agentKey}>
+                                    {t(`desktop.im.agent.${agentKey}`)}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label>
+                              <span>{t("desktop.im.roleModel")}</span>
+                              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                                <select
+                                  value={customMemberModelId === enabledMember.memberId || isCustomMemberModel ? "__custom__" : (enabledMember.model ?? "")}
+                                  onChange={(event) => {
+                                    const val = event.target.value;
+                                    if (val === "__custom__") {
+                                      setCustomMemberModelId(enabledMember.memberId);
+                                    } else {
+                                      setCustomMemberModelId(null);
+                                      void onMemberModelChange(enabledMember, val);
+                                    }
+                                  }}
+                                >
+                                  <option value="">{t("desktop.im.defaultModel")}</option>
+                                  {Object.entries(memberModelGroups).map(([groupName, items]) => (
+                                    <optgroup key={groupName} label={groupName}>
+                                      {items.map((item) => (
+                                        <option key={item.id} value={item.id}>
+                                          {item.label}
+                                        </option>
+                                      ))}
+                                    </optgroup>
+                                  ))}
+                                  <option value="__custom__">{t("desktop.im.customModelOption")}</option>
+                                </select>
+                                {(customMemberModelId === enabledMember.memberId || isCustomMemberModel) && (
+                                  <input
+                                    value={enabledMember.model ?? ""}
+                                    placeholder="Enter model ID…"
+                                    onChange={(event) => void onMemberModelChange(enabledMember, event.target.value)}
+                                    autoFocus
+                                  />
+                                )}
+                              </div>
+                            </label>
+                            {isCustomized ? (
+                              <div className="im-member-config-footer">
+                                <button
+                                  type="button"
+                                  className="tool-btn ghost-btn"
+                                  onClick={() => void onMemberResetOverrides(enabledMember)}
+                                >
+                                  {t("desktop.im.resetDefault")}
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })()
+                    ) : null}
+                  </div>
+                );
+              }) : <p className="im-empty">{t("desktop.im.noMembers")}</p>
+            )}
+          </aside>
+        )}
       </div>
+      {folderMenu ? createPortal(
+        <div
+          className="im-folder-menu chat-context-menu"
+          role="menu"
+          style={{
+            left: Math.max(8, Math.min(folderMenu.x, window.innerWidth - 200)),
+            top: Math.max(8, Math.min(folderMenu.y, window.innerHeight - 180))
+          }}
+          onPointerDown={(event) => event.stopPropagation()}
+          onContextMenu={(event) => event.preventDefault()}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setRenameValue(folderMenu.project.name);
+              setRenamingProjectId(folderMenu.project.projectId);
+              setFolderMenu(null);
+            }}
+          >
+            {t("desktop.im.renameChat")}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              const projectId = folderMenu.project.projectId;
+              setFolderMenu(null);
+              void associateFolder(projectId);
+            }}
+          >
+            {t("desktop.im.associateFolder")}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={!folderMenu.project.localPath}
+            onClick={() => {
+              const project = folderMenu.project;
+              setFolderMenu(null);
+              void revealFolder(project);
+            }}
+          >
+            {t("desktop.common.revealInFinder")}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              const project = folderMenu.project;
+              setFolderMenu(null);
+              void deleteChat(project);
+            }}
+          >
+            {t("desktop.im.deleteChat")}
+          </button>
+        </div>,
+        document.body
+      ) : null}
       {selectionMenu ? createPortal(
         <div
           className="im-selection-menu chat-context-menu"

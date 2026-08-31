@@ -147,17 +147,24 @@ describe("ImConductor", () => {
     expect(messages.some((item) => item.kind === "role.say" && item.body === "The repo is a desktop IM app.")).toBe(true);
   });
 
-  it("refuses dispatch until a local folder is associated", async () => {
+  it("creates a scratch folder and dispatches when no local folder is associated", async () => {
     const store = await createStore();
     const project = await store.createProject("No folder");
+    expect(project.localPath).toBeNull();
     const room = await store.getRoom(project.projectId);
-    const conductor = new ImConductor(store, () => undefined, vi.fn(async () => undefined), vi.fn(async () => undefined));
-    await expect(conductor.postMessage({
+    const connect = vi.fn(async () => undefined);
+    const prompt = vi.fn(async () => undefined);
+    const conductor = new ImConductor(store, () => undefined, connect, prompt);
+    const result = await conductor.postMessage({
       projectId: project.projectId,
       body: "please implement this",
       quoteIds: [],
       mentionRoleIds: [room.members[0]!.memberId]
-    })).rejects.toThrow(/local folder/i);
+    });
+    expect(result.job).not.toBeNull();
+    const updated = await store.getProject(project.projectId);
+    expect(updated?.localPath).toMatch(/\.desktop\/scratch\/im\//);
+    await expect(fs.stat(updated!.localPath!)).resolves.toMatchObject({ });
   });
 
   it("sets model dynamically when dispatching a job for a role with configured model", async () => {
@@ -187,6 +194,35 @@ describe("ImConductor", () => {
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(connect).toHaveBeenCalled();
     expect(setModel).toHaveBeenCalledWith(expect.any(String), "claude-opus");
+    expect(prompt).toHaveBeenCalled();
+  });
+
+  it("prioritizes chat member agent and model override over template default", async () => {
+    const store = await createStore();
+    const project = await store.createProject("Override dispatch");
+    await store.setLocalPath(project.projectId, process.cwd());
+    const room = await store.getRoom(project.projectId);
+    const dev = room.members.find((m) => m.templateId === "role_developer")!;
+
+    // Override member to Codex + o3-mini in this chat
+    await store.setMemberAgent(dev.memberId, "codex");
+    await store.setMemberModel(dev.memberId, "o3-mini");
+
+    const connect = vi.fn(async () => undefined);
+    const prompt = vi.fn(async () => undefined);
+    const setModel = vi.fn(async () => undefined);
+    const conductor = new ImConductor(store, () => undefined, connect, prompt, undefined, setModel);
+
+    await conductor.postMessage({
+      projectId: project.projectId,
+      body: "Write code with o3-mini",
+      quoteIds: [],
+      mentionRoleIds: [dev.memberId]
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(connect).toHaveBeenCalled();
+    expect(setModel).toHaveBeenCalledWith(expect.any(String), "o3-mini");
     expect(prompt).toHaveBeenCalled();
   });
 

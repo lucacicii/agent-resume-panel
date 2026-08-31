@@ -591,7 +591,7 @@ export interface DesktopApi {
   acpDisconnect(args: { chatId: string }): Promise<{ ok: boolean }>;
   onAcpStream(callback: (event: Record<string, unknown>) => void): () => void;
   imListProjects(): Promise<ImProject[]>;
-  imCreateProject(args: { name: string }): Promise<ImProject>;
+  imCreateProject(args: { name: string; localPath?: string }): Promise<ImProject>;
   imRenameProject(args: { projectId: string; name: string }): Promise<ImProject>;
   imDeleteProject(args: { projectId: string }): Promise<{ ok: boolean }>;
   imPickLocalPath(args?: { title?: string }): Promise<{ ok: true; path: string } | { ok: false; canceled: true }>;
@@ -616,6 +616,9 @@ export interface DesktopApi {
   imDeleteTemplate(args: { templateId: string }): Promise<{ ok: boolean }>;
   imGetRoom(args: { projectId: string }): Promise<ImRoom>;
   imSetMemberAgent(args: { memberId: string; agent: ImAgent }): Promise<ImMember>;
+  imSetMemberModel(args: { memberId: string; model: string | null }): Promise<ImMember>;
+  imResetMemberOverrides(args: { memberId: string }): Promise<ImMember>;
+  imListAgentModels(args: { agent: ImAgent }): Promise<Array<{ id: string; label: string; provider?: string }>>;
   imCreateRole(args: {
     projectId: string;
     name: string;
@@ -1650,6 +1653,9 @@ const api: DesktopApi = {
   imDeleteTemplate: (args) => ipcRenderer.invoke("im:deleteTemplate", args),
   imGetRoom: (args) => ipcRenderer.invoke("im:getRoom", args),
   imSetMemberAgent: (args) => ipcRenderer.invoke("im:setMemberAgent", args),
+  imSetMemberModel: (args) => ipcRenderer.invoke("im:setMemberModel", args),
+  imResetMemberOverrides: (args) => ipcRenderer.invoke("im:resetMemberOverrides", args),
+  imListAgentModels: (args) => ipcRenderer.invoke("im:listAgentModels", args),
   imCreateRole: (args) => ipcRenderer.invoke("im:createRole", args),
   imAddMember: (args) => ipcRenderer.invoke("im:addMember", args),
   imRemoveMember: (args) => ipcRenderer.invoke("im:removeMember", args),

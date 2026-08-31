@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { PanelSettings } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { listProviderModels } from "./providerPool";
@@ -7,6 +7,7 @@ import {
   isBuiltinSelectionActionId,
   isBuiltinTemplateId,
   type ImAgent,
+  type ImAgentModelOption,
   type ImRoleTemplate,
   type ImRoleTools,
   type ImSelectionAction,
@@ -36,6 +37,9 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
   const [model, setModel] = useState("");
   const [tools, setTools] = useState<ImRoleTools>(emptyDraft().tools);
   const [status, setStatus] = useState("");
+  const [agentModels, setAgentModels] = useState<ImAgentModelOption[]>(() => IM_AGENT_SUGGESTED_MODELS[agent] || []);
+  const [fetchingModels, setFetchingModels] = useState(false);
+  const [customModelMode, setCustomModelMode] = useState(false);
   const [settings, setSettings] = useState<PanelSettings | null>(null);
   const [actions, setActions] = useState<ImSelectionAction[]>([]);
   const [selectedActionId, setSelectedActionId] = useState("");
@@ -48,7 +52,36 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
   const [actionEnabled, setActionEnabled] = useState(true);
   const selectedAction = actions.find((item) => item.actionId === selectedActionId) ?? null;
 
+  const loadAgentModels = useCallback(async (targetAgent: ImAgent) => {
+    setFetchingModels(true);
+    try {
+      const list = await desktopApi().imListAgentModels({ agent: targetAgent });
+      setAgentModels(list);
+    } catch {
+      setAgentModels(IM_AGENT_SUGGESTED_MODELS[targetAgent] || []);
+    } finally {
+      setFetchingModels(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadAgentModels(agent);
+  }, [agent, loadAgentModels]);
+
   const selected = templates.find((item) => item.templateId === selectedId) ?? null;
+
+  const modelGroups = useMemo(() => {
+    const groups: Record<string, ImAgentModelOption[]> = {};
+    for (const m of agentModels) {
+      if (!m.id) continue;
+      const p = m.provider || "Suggested";
+      if (!groups[p]) groups[p] = [];
+      groups[p].push(m);
+    }
+    return groups;
+  }, [agentModels]);
+
+  const isCustomModel = Boolean(model && !agentModels.some((m) => m.id === model));
 
   const load = useCallback(async () => {
     const [list, nextActions, currentSettings] = await Promise.all([
@@ -230,21 +263,52 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
             </label>
             <label className="settings-field">
               <span className="settings-field-label">{t("desktop.settings.imModel")}</span>
-              <input
-                value={model}
-                list="im-model-suggestions"
-                placeholder={t("desktop.settings.imModelPlaceholder")}
-                onChange={(event) => setModel(event.target.value)}
-              />
-              <datalist id="im-model-suggestions">
-                {(IM_AGENT_SUGGESTED_MODELS[agent] ?? [])
-                  .filter((item) => item.id)
-                  .map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.label} ({item.id})
-                    </option>
-                  ))}
-              </datalist>
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <div style={{ display: "flex", gap: "6px" }}>
+                  <select
+                    style={{ flex: 1 }}
+                    value={customModelMode || isCustomModel ? "__custom__" : model}
+                    onChange={(event) => {
+                      const val = event.target.value;
+                      if (val === "__custom__") {
+                        setCustomModelMode(true);
+                      } else {
+                        setCustomModelMode(false);
+                        setModel(val);
+                      }
+                    }}
+                  >
+                    <option value="">{t("desktop.im.defaultModel")}</option>
+                    {Object.entries(modelGroups).map(([groupName, items]) => (
+                      <optgroup key={groupName} label={groupName}>
+                        {items.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.label}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                    <option value="__custom__">{t("desktop.im.customModelOption")}</option>
+                  </select>
+                  <button
+                    type="button"
+                    className="ghost-btn"
+                    disabled={fetchingModels}
+                    onClick={() => void loadAgentModels(agent)}
+                    title={t("desktop.im.fetchModels")}
+                  >
+                    {fetchingModels ? t("desktop.common.loading") : t("desktop.im.fetchModels")}
+                  </button>
+                </div>
+                {(customModelMode || isCustomModel) && (
+                  <input
+                    value={model}
+                    placeholder={t("desktop.settings.imModelPlaceholder")}
+                    onChange={(event) => setModel(event.target.value)}
+                    autoFocus
+                  />
+                )}
+              </div>
               <p className="settings-footnote">{t("desktop.settings.imModelHint")}</p>
             </label>
             <label className="settings-field">

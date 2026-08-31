@@ -6,15 +6,27 @@ import type { ImProject, ImRoom } from "../../../shared/imTypes";
 
 const messages = {
   "desktop.im.title": "IM",
-  "desktop.im.projects": "Projects",
-  "desktop.im.newProject": "New project",
-  "desktop.im.projectName": "Project name",
-  "desktop.im.noProjects": "No IM projects yet",
-  "desktop.im.noFolder": "No folder",
+  "desktop.im.chats": "Chats",
+  "desktop.im.newChat": "New chat",
+  "desktop.im.chatName": "Chat name",
+  "desktop.im.untitledChat": "Untitled chat",
+  "desktop.im.noChats": "No chats yet",
+  "desktop.im.tempFolder": "Temporary folder",
+  "desktop.im.renameChat": "Rename",
+  "desktop.im.deleteChat": "Delete chat",
+  "desktop.im.deleteChatConfirm": "Delete chat \"{0}\"? Associated agent sessions and temporary files will be removed.",
   "desktop.im.associateFolder": "Associate folder",
   "desktop.im.associateFolderTitle": "Select folder",
-  "desktop.im.needFolder": "Associate a local folder before asking a role to work.",
-  "desktop.im.selectProject": "Select or create a project.",
+  "desktop.im.toggleDetails": "Roles & Background",
+  "desktop.im.selectChat": "Select or create a chat.",
+  "desktop.im.configRole": "Configure role",
+  "desktop.im.roleAgent": "Agent",
+  "desktop.im.roleModel": "Model",
+  "desktop.im.defaultModel": "Default (Follow template)",
+  "desktop.im.resetDefault": "Reset to default",
+  "desktop.im.fetchModels": "Fetch models",
+  "desktop.im.customBadge": "Custom",
+  "desktop.common.revealInFinder": "Reveal in Finder",
   "desktop.im.emptyRoom": "Quote a message and @ a role to dispatch work.",
   "desktop.im.transcript": "Room transcript",
   "desktop.im.mentions": "Mentioned roles",
@@ -129,10 +141,13 @@ function renderIm() {
     getI18nBundle: async () => ({ locale: "en", messages }),
     onLocaleChanged: () => () => undefined,
     imListProjects: vi.fn(async () => [created]),
-    imCreateProject: vi.fn(async ({ name }: { name: string }) => project({ name })),
+    imCreateProject: vi.fn(async ({ name }: { name: string }) => project({ name, localPath: `/tmp/scratch/${name}` })),
+    imRenameProject: vi.fn(async ({ projectId, name }: { projectId: string; name: string }) => project({ projectId, name })),
+    imDeleteProject: vi.fn(async () => ({ ok: true })),
     imGetRoom: vi.fn(async () => roomFor(created)),
     imPickLocalPath: vi.fn(async () => ({ ok: true as const, path: "/tmp/app" })),
-    imSetLocalPath: vi.fn(async () => created),
+    imSetLocalPath: vi.fn(async ({ projectId, localPath }: { projectId: string; localPath: string | null }) => project({ projectId, localPath })),
+    revealProjectInFinder: vi.fn(async () => ({ ok: true, path: created.localPath })),
     imListTemplates: vi.fn(async () => roomFor(created).members.map((item) => ({
       templateId: item.templateId,
       name: item.name,
@@ -151,6 +166,31 @@ function renderIm() {
     imRunSelectionAction: vi.fn(async () => ({ text: "translated" })),
     imAddMember: vi.fn(async () => roomFor(created).members[0]),
     imRemoveMember: vi.fn(async () => ({ ok: true })),
+    imSetMemberAgent: vi.fn(async ({ memberId, agent }: { memberId: string; agent: string }) => {
+      const mem = roomFor(created).members.find((m) => m.memberId === memberId) || roomFor(created).members[0]!;
+      return { ...mem, agent };
+    }),
+    imSetMemberModel: vi.fn(async ({ memberId, model }: { memberId: string; model: string | null }) => {
+      const mem = roomFor(created).members.find((m) => m.memberId === memberId) || roomFor(created).members[0]!;
+      return { ...mem, model: model ?? undefined };
+    }),
+    imResetMemberOverrides: vi.fn(async ({ memberId }: { memberId: string }) => {
+      const mem = roomFor(created).members.find((m) => m.memberId === memberId) || roomFor(created).members[0]!;
+      return { ...mem, agent: "claude", model: undefined };
+    }),
+    imListAgentModels: vi.fn(async ({ agent }: { agent: string }) => {
+      if (agent === "codex") {
+        return [
+          { id: "", label: "Default" },
+          { id: "o3-mini", label: "o3-mini" },
+          { id: "gpt-4o", label: "GPT-4o" }
+        ];
+      }
+      return [
+        { id: "", label: "Default" },
+        { id: "claude-3-7-sonnet-20250219", label: "Claude 3.7 Sonnet" }
+      ];
+    }),
     imPostMessage: vi.fn(async () => ({
       message: {
         messageId: "m1",
@@ -740,5 +780,97 @@ describe("ImPanel", () => {
     expect(pendingBubble?.textContent).toContain("Product Manager");
     expect(pendingBubble?.textContent).toContain("Typing…");
     expect(document.querySelector(".im-jumping-dots")).not.toBeNull();
+  });
+
+  it("toggles right sidebar containing roles and background when clicking the toggle button", async () => {
+    const currentProject = project();
+    const currentRoom = roomFor(currentProject);
+    const api = renderIm();
+    (api.imGetRoom as ReturnType<typeof vi.fn>).mockResolvedValue(currentRoom);
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+
+    await waitFor(() => expect(document.querySelector(".im-members")).not.toBeNull());
+    const toggleBtn = screen.getByRole("button", { name: "Roles & Background" });
+    expect(toggleBtn).not.toBeNull();
+
+    // Click to hide right sidebar
+    fireEvent.click(toggleBtn);
+    expect(document.querySelector(".im-members")).toBeNull();
+
+    // Click to show right sidebar again
+    fireEvent.click(toggleBtn);
+    expect(document.querySelector(".im-members")).not.toBeNull();
+  });
+
+  it("opens a chat context menu with rename and associate folder actions", async () => {
+    const api = renderIm();
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+    const row = await screen.findByRole("button", { name: /Room One/ });
+    fireEvent.contextMenu(row);
+    expect(await screen.findByRole("menuitem", { name: "Rename" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Associate folder" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Reveal in Finder" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Delete chat" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Associate folder" }));
+    await waitFor(() => expect(api.imPickLocalPath).toHaveBeenCalled());
+    await waitFor(() => expect(api.imSetLocalPath).toHaveBeenCalledWith({
+      projectId: "proj-1",
+      localPath: "/tmp/app"
+    }));
+  });
+
+  it("starts a new chat from Cmd+T", async () => {
+    renderIm();
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+    expect(await screen.findByRole("button", { name: /New chat/ })).toBeTruthy();
+    fireEvent.keyDown(window, { key: "t", metaKey: true });
+    expect(await screen.findByLabelText("Chat name")).toBeTruthy();
+  });
+
+  it("configures custom agent and model per chat member and loads models automatically", async () => {
+    const currentProject = project();
+    const currentRoom = roomFor(currentProject);
+    const api = renderIm();
+    (api.imGetRoom as ReturnType<typeof vi.fn>).mockResolvedValue(currentRoom);
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+
+    await waitFor(() => expect(document.querySelector(".im-members")).not.toBeNull());
+    const configButtons = screen.getAllByRole("button", { name: "Configure role" });
+    expect(configButtons.length).toBeGreaterThan(0);
+
+    // Open first member's configuration
+    fireEvent.click(configButtons[0]!);
+    expect(await screen.findByDisplayValue("Claude Code")).toBeTruthy();
+
+    // Change agent to Codex -> auto fetches models
+    const agentSelect = screen.getByDisplayValue("Claude Code");
+    fireEvent.change(agentSelect, { target: { value: "codex" } });
+
+    await waitFor(() => expect(api.imSetMemberAgent).toHaveBeenCalledWith({
+      memberId: "mem-pm",
+      agent: "codex"
+    }));
+    await waitFor(() => expect(api.imListAgentModels).toHaveBeenCalledWith({
+      agent: "codex"
+    }));
+
+    // Change model via dropdown
+    const modelSelect = screen.getByDisplayValue("Default (Follow template)");
+    fireEvent.change(modelSelect, { target: { value: "o3-mini" } });
+    await waitFor(() => expect(api.imSetMemberModel).toHaveBeenCalledWith({
+      memberId: "mem-pm",
+      model: "o3-mini"
+    }));
   });
 });

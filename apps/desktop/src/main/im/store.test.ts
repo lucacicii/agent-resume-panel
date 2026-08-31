@@ -7,7 +7,7 @@ import { buildDispatchPrompt, fillSelectionPrompt, ImStore } from "./store";
 
 const homes: string[] = [];
 
-async function createStore(): Promise<ImStore> {
+async function createStoreWithHome(): Promise<{ store: ImStore; panelHome: string }> {
   const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-im-"));
   homes.push(panelHome);
   const dbPath = desktopDbPath(panelHome);
@@ -15,7 +15,11 @@ async function createStore(): Promise<ImStore> {
   await ensureDesktopDbSchema(dbPath);
   const store = new ImStore(dbPath);
   await store.initialize();
-  return store;
+  return { store, panelHome };
+}
+
+async function createStore(): Promise<ImStore> {
+  return (await createStoreWithHome()).store;
 }
 
 afterEach(async () => {
@@ -296,5 +300,73 @@ describe("ImStore", () => {
     expect(loaded?.images).toHaveLength(1);
     expect(loaded?.images?.[0]?.fileName).toBe("mockup.png");
     expect(loaded?.thinking).toBe("Thinking about design...");
+  });
+
+  it("creates a scratch folder when panel home is provided without a local path", async () => {
+    const { store, panelHome } = await createStoreWithHome();
+    const project = await store.createProject("Scratch chat", panelHome);
+    expect(project.localPath).toBe(path.join(panelHome, ".desktop", "scratch", "im", project.projectId));
+    const stat = await fs.stat(project.localPath!);
+    expect(stat.isDirectory()).toBe(true);
+  });
+
+  it("assigns a scratch folder to chats that still have no local path", async () => {
+    const { store, panelHome } = await createStoreWithHome();
+    const project = await store.createProject("Legacy chat");
+    expect(project.localPath).toBeNull();
+    const cwd = await store.ensureProjectLocalPath(project.projectId, panelHome);
+    expect(cwd).toBe(path.join(panelHome, ".desktop", "scratch", "im", project.projectId));
+    expect((await store.getProject(project.projectId))?.localPath).toBe(cwd);
+  });
+
+  it("deletes associated ACP chat ids, scratch dir, and attachments", async () => {
+    const { store, panelHome } = await createStoreWithHome();
+    const project = await store.createProject("Delete me", panelHome);
+    const room = await store.getRoom(project.projectId);
+    const member = room.members[0]!;
+    await store.setMemberAcpChatId(member.memberId, "acp-chat-1");
+    const job = await store.createJob({
+      projectId: project.projectId,
+      memberId: member.memberId,
+      messageId: null,
+      brief: { persona: "", instruction: "", cwd: project.localPath || "/tmp", quotes: [], knowledge: [] },
+      status: "completed"
+    });
+    await store.updateJob(job.jobId, { acpChatId: "acp-chat-2" });
+    const scratchDir = path.join(panelHome, ".desktop", "scratch", "im", project.projectId);
+    const attachmentsDir = path.join(panelHome, ".desktop", "im", project.projectId);
+    await fs.mkdir(attachmentsDir, { recursive: true });
+    await fs.writeFile(path.join(attachmentsDir, "note.txt"), "hi");
+
+    const result = await store.deleteProject(project.projectId, panelHome);
+    expect(result.deletedAcpChatIds.sort()).toEqual(["acp-chat-1", "acp-chat-2"]);
+    expect(await store.getProject(project.projectId)).toBeUndefined();
+    await expect(fs.stat(scratchDir)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(fs.stat(attachmentsDir)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("allows overriding agent and model per room member and resetting to defaults", async () => {
+    const store = await createStore();
+    const project = await store.createProject("Custom Role Room");
+    const room = await store.getRoom(project.projectId);
+    const dev = room.members.find((m) => m.templateId === "role_developer")!;
+    expect(dev.agent).toBe("claude");
+    expect(dev.model).toBeUndefined();
+
+    // Override agent and model for this room's member
+    const updatedAgent = await store.setMemberAgent(dev.memberId, "codex");
+    expect(updatedAgent.agent).toBe("codex");
+
+    const updatedModel = await store.setMemberModel(dev.memberId, "o3-mini");
+    expect(updatedModel.model).toBe("o3-mini");
+
+    const refetched = await store.getMember(dev.memberId);
+    expect(refetched?.agent).toBe("codex");
+    expect(refetched?.model).toBe("o3-mini");
+
+    // Reset overrides to template default
+    const reset = await store.resetMemberOverrides(dev.memberId);
+    expect(reset.agent).toBe("claude");
+    expect(reset.model).toBeUndefined();
   });
 });

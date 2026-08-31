@@ -181,6 +181,10 @@ function renderKanban(options: {
     onLocaleChanged: () => () => undefined,
     listSessions: async () => sessions,
     listSessionGtdStatuses: async () => statuses,
+    querySessionsPage: async ({ gtdStatus }: { gtdStatus: GtdStatus }) => {
+      const matched = sessions.filter((s) => (statuses[`${s.provider}:${s.id}`] ?? "next") === gtdStatus);
+      return { sessions: matched, total: matched.length };
+    },
     notesList: async () => notes,
     listProjects: async () => [
       { projectId: "proj-a", portableKey: "/work/agent-resume-panel", alias: "Agent Resume", hidden: false, pinned: true, lastSeenAtMs: null, updatedAtMs: 0, localPath: "/work/agent-resume-panel", pathMissing: false, sessionCount: 1 },
@@ -510,6 +514,11 @@ describe("KanbanPanel", () => {
 
   it("bails out of the deleting state when the delete never settles", async () => {
     const stub = vi.spyOn(window, "confirm").mockReturnValue(true);
+    let notificationText: string | undefined;
+    const onNotify = (event: Event) => {
+      notificationText = (event as CustomEvent).detail?.text;
+    };
+    window.addEventListener("agent-resume:notification", onNotify);
     renderKanban();
     activate();
     const noteCard = await screen.findByRole("button", { name: /Quarterly plan/ });
@@ -530,9 +539,10 @@ describe("KanbanPanel", () => {
       // The delete never resolves; the timeout must restore the button.
       await act(async () => { await vi.advanceTimersByTimeAsync(45_000); });
       expect(within(dialog).getByText("Delete note")).toBeTruthy();
-      expect(within(dialog).getByText("Deletion is taking too long. Please try again.")).toBeTruthy();
+      expect(notificationText).toBe("Deletion is taking too long. Please try again.");
     } finally {
       vi.useRealTimers();
+      window.removeEventListener("agent-resume:notification", onNotify);
       stub.mockRestore();
     }
   });

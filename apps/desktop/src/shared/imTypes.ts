@@ -63,7 +63,13 @@ export function parseImRoleTools(value: unknown, fallback?: ImRoleTools): ImRole
   };
 }
 
-export const IM_AGENT_SUGGESTED_MODELS: Record<ImAgent, Array<{ id: string; label: string }>> = {
+export interface ImAgentModelOption {
+  id: string;
+  label: string;
+  provider?: string;
+}
+
+export const IM_AGENT_SUGGESTED_MODELS: Record<ImAgent, ImAgentModelOption[]> = {
   claude: [
     { id: "", label: "Default" },
     { id: "claude-3-7-sonnet-20250219", label: "Claude 3.7 Sonnet" },
@@ -75,10 +81,19 @@ export const IM_AGENT_SUGGESTED_MODELS: Record<ImAgent, Array<{ id: string; labe
     { id: "", label: "Default" },
     { id: "o3-mini", label: "o3-mini" },
     { id: "gpt-4o", label: "GPT-4o" },
-    { id: "gpt-4o-mini", label: "GPT-4o mini" }
+    { id: "gpt-4o-mini", label: "GPT-4o mini" },
+    { id: "o1", label: "o1" },
+    { id: "o1-mini", label: "o1-mini" }
   ],
   pi: [
-    { id: "", label: "Default" }
+    { id: "", label: "Default" },
+    { id: "claude-3-7-sonnet-20250219", label: "Claude 3.7 Sonnet" },
+    { id: "claude-3-5-sonnet-20241022", label: "Claude 3.5 Sonnet" },
+    { id: "gpt-4o", label: "GPT-4o" },
+    { id: "deepseek-chat", label: "DeepSeek Chat" },
+    { id: "deepseek-reasoner", label: "DeepSeek Reasoner (R1)" },
+    { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
+    { id: "gemini-2.0-flash", label: "Gemini 2.0 Flash" }
   ]
 };
 

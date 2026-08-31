@@ -369,14 +369,16 @@ function mapTemplate(row: TemplateRow): ImRoleTemplate {
 
 function mapMember(row: MemberRow, template?: ImRoleTemplate): ImMember {
   const tools = template?.tools ?? builtinToolsFor(row.template_id);
+  const rowAgent = isImAgent(row.agent) ? row.agent : undefined;
+  const rowModel = row.model?.trim() || undefined;
   return {
     memberId: row.member_id,
     projectId: row.project_id,
     templateId: row.template_id,
     name: template?.name ?? row.name,
     persona: template?.persona ?? row.persona,
-    agent: template?.agent ?? (isImAgent(row.agent) ? row.agent : "claude"),
-    model: template?.model ?? (row.model?.trim() || undefined),
+    agent: rowAgent ?? template?.agent ?? "claude",
+    model: rowModel ?? template?.model ?? undefined,
     permissions: template?.permissions ?? (isImPermission(row.permissions) ? row.permissions : "write"),
     tools,
     enabled: row.enabled === 1,
@@ -704,24 +706,42 @@ export class ImStore {
     return rows[0] ? mapProject(rows[0]) : undefined;
   }
 
-  async createProject(name: string): Promise<ImProject> {
+  async createProject(name: string, panelHome?: string, localPath?: string | null): Promise<ImProject> {
     const trimmed = name.trim();
     if (!trimmed) throw new Error("Project name is required.");
     const now = nowMs();
+    const projectId = randomUUID();
+    let initialPath = localPath?.trim() ? path.resolve(expandHome(localPath.trim())) : null;
+    if (!initialPath && panelHome) {
+      initialPath = path.join(path.resolve(expandHome(panelHome)), ".desktop", "scratch", "im", projectId);
+      await fs.mkdir(initialPath, { recursive: true }).catch(() => undefined);
+    }
     const project: ImProject = {
-      projectId: randomUUID(),
+      projectId,
       name: trimmed,
-      localPath: null,
+      localPath: initialPath,
       createdAtMs: now,
       updatedAtMs: now
     };
     await runSqlite(
       this.dbPath,
       `INSERT INTO im_projects (project_id, name, local_path, created_at_ms, updated_at_ms)
-       VALUES (${sqlString(project.projectId)}, ${sqlString(project.name)}, NULL, ${now}, ${now});`
+       VALUES (${sqlString(project.projectId)}, ${sqlString(project.name)}, ${sqlNullOrString(project.localPath)}, ${now}, ${now});`
     );
     await this.seedBuiltinMembers(project.projectId);
     return project;
+  }
+
+  async ensureProjectLocalPath(projectId: string, panelHome: string): Promise<string> {
+    const project = await this.requireProject(projectId);
+    if (project.localPath) {
+      await fs.mkdir(project.localPath, { recursive: true }).catch(() => undefined);
+      return project.localPath;
+    }
+    const scratchPath = path.join(path.resolve(expandHome(panelHome)), ".desktop", "scratch", "im", projectId);
+    await fs.mkdir(scratchPath, { recursive: true }).catch(() => undefined);
+    await this.setLocalPath(projectId, scratchPath);
+    return scratchPath;
   }
 
   private async seedBuiltinMembers(projectId: string): Promise<void> {
@@ -765,8 +785,35 @@ export class ImStore {
     return { ...project, localPath: nextPath, updatedAtMs: now };
   }
 
-  async deleteProject(projectId: string): Promise<void> {
+  async deleteProject(projectId: string, panelHome?: string): Promise<{ deletedAcpChatIds: string[] }> {
     await this.requireProject(projectId);
+    // 1. Collect all ACP chat ids linked to this project
+    const memberRows = await runSqliteJson<{ acp_chat_id: string | null }>(
+      this.dbPath,
+      `SELECT acp_chat_id FROM im_members WHERE project_id = ${sqlString(projectId)} AND acp_chat_id IS NOT NULL;`
+    );
+    const jobRows = await runSqliteJson<{ acp_chat_id: string | null }>(
+      this.dbPath,
+      `SELECT acp_chat_id FROM im_jobs WHERE project_id = ${sqlString(projectId)} AND acp_chat_id IS NOT NULL;`
+    );
+    const acpChatIds = [
+      ...new Set(
+        [...memberRows, ...jobRows]
+          .map((r) => r.acp_chat_id?.trim())
+          .filter((id): id is string => Boolean(id))
+      )
+    ];
+
+    // 2. Clean up files on disk if panelHome is provided
+    if (panelHome) {
+      const home = path.resolve(expandHome(panelHome));
+      const scratchDir = path.join(home, ".desktop", "scratch", "im", projectId);
+      const attachmentsDir = path.join(home, ".desktop", "im", projectId);
+      await fs.rm(scratchDir, { recursive: true, force: true }).catch(() => undefined);
+      await fs.rm(attachmentsDir, { recursive: true, force: true }).catch(() => undefined);
+    }
+
+    // 3. Delete from SQLite
     await runSqlite(
       this.dbPath,
       [
@@ -777,6 +824,8 @@ export class ImStore {
         `DELETE FROM im_projects WHERE project_id = ${sqlString(projectId)};`
       ].join("\n")
     );
+
+    return { deletedAcpChatIds: acpChatIds };
   }
 
   async listTemplates(): Promise<ImRoleTemplate[]> {
@@ -1010,6 +1059,34 @@ export class ImStore {
        WHERE member_id = ${sqlString(memberId)};`
     );
     return { ...member, agent, acpChatId: null, updatedAtMs: now };
+  }
+
+  async setMemberModel(memberId: string, model: string | null): Promise<ImMember> {
+    const member = await this.requireMember(memberId);
+    const now = nowMs();
+    const nextModel = model?.trim() || null;
+    await runSqlite(
+      this.dbPath,
+      `UPDATE im_members SET model = ${sqlNullOrString(nextModel)}, updated_at_ms = ${now}
+       WHERE member_id = ${sqlString(memberId)};`
+    );
+    const template = await this.getTemplate(member.templateId);
+    const effectiveModel = nextModel ?? template?.model ?? undefined;
+    return { ...member, model: effectiveModel, updatedAtMs: now };
+  }
+
+  async resetMemberOverrides(memberId: string): Promise<ImMember> {
+    const member = await this.requireMember(memberId);
+    const template = await this.getTemplate(member.templateId);
+    const now = nowMs();
+    const defaultAgent = template?.agent ?? "claude";
+    const defaultModel = template?.model ?? null;
+    await runSqlite(
+      this.dbPath,
+      `UPDATE im_members SET agent = ${sqlString(defaultAgent)}, model = ${sqlNullOrString(defaultModel)}, acp_chat_id = NULL, updated_at_ms = ${now}
+       WHERE member_id = ${sqlString(memberId)};`
+    );
+    return { ...member, agent: defaultAgent, model: defaultModel ?? undefined, acpChatId: null, updatedAtMs: now };
   }
 
   async setMemberAcpChatId(memberId: string, acpChatId: string): Promise<ImMember> {

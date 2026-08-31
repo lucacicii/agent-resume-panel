@@ -64,13 +64,12 @@ export class ImConductor {
       throw new Error("Message is empty.");
     }
     const mentionIds = [...new Set(input.mentionRoleIds.filter(Boolean))];
-    const cwd = room.project.localPath;
-    if (mentionIds.length && !cwd) {
-      throw new Error("Associate a local folder before asking a role to work.");
-    }
     const quotes = await this.store.resolveQuotes(input.projectId, input.quoteIds);
     const settings = await loadSettings();
     const panelHome = effectivePanelHome(settings);
+    const cwd = mentionIds.length
+      ? await this.store.ensureProjectLocalPath(input.projectId, panelHome)
+      : room.project.localPath;
     const savedImages: ImImageAttachment[] = [];
     if (input.images?.length) {
       for (const img of input.images) {
@@ -350,26 +349,24 @@ export class ImConductor {
     const member = await this.store.getMember(job.memberId);
     if (!member) throw new Error("Room member not found.");
     const template = await this.store.getTemplate(member.templateId);
-    const agent = template?.agent ?? member.agent;
-    const model = template?.model ?? member.model;
-    const project = (await this.store.getRoom(job.projectId)).project;
-    if (!project.localPath) throw new Error("Associate a local folder before asking a role to work.");
+    const agent = member.agent || template?.agent || "claude";
+    const model = member.model || template?.model || undefined;
+    const settings = await loadSettings();
+    const panelHome = effectivePanelHome(settings);
+    const cwd = await this.store.ensureProjectLocalPath(job.projectId, panelHome);
     if (!isImAgent(agent)) throw new Error("IM only supports Pi, Claude Code, and Codex.");
 
     let connecting = await this.store.updateJob(jobId, { status: "connecting" });
     this.emit({ type: "job", projectId: job.projectId, job: connecting });
-
-    const settings = await loadSettings();
-    const panelHome = effectivePanelHome(settings);
     let chatId = member.acpChatId;
     if (chatId) {
       const existing = await getAcpRecord(panelHome, chatId);
-      if (!existing || existing.provider !== agent || existing.projectPath !== project.localPath) {
+      if (!existing || existing.provider !== agent || existing.projectPath !== cwd) {
         chatId = null;
       }
     }
     if (!chatId) {
-      const record = await createAcpRecord(panelHome, project.localPath, agent as AcpAgentProvider);
+      const record = await createAcpRecord(panelHome, cwd, agent as AcpAgentProvider);
       chatId = record.id;
       const updatedMember = await this.store.setMemberAcpChatId(member.memberId, chatId);
       this.emit({ type: "member", projectId: job.projectId, member: updatedMember });

@@ -7,10 +7,21 @@ import {
   preparePanelDatabasesFromSettings
 } from "@agent-resume/core";
 import { safeHandle } from "../ipcUtils";
+import { disposeAcpController } from "../acp/acpHost";
+import { deleteAcpRecord } from "../acp/store";
+import { resolveAgentModels } from "./agentModelResolver";
 import { ImConductor, emitImEvent } from "./conductor";
 import { runIndependentSelectionAction } from "./selectionRunner";
 import { ImStore } from "./store";
-import { isImAgent, isImSelectionActionKind, parseImRoleTools, type ImAgent, type ImEvent, type ImSelectionActionKind } from "./types";
+import {
+  IM_AGENT_SUGGESTED_MODELS,
+  isImAgent,
+  isImSelectionActionKind,
+  parseImRoleTools,
+  type ImAgent,
+  type ImEvent,
+  type ImSelectionActionKind
+} from "./types";
 import type { AcpStreamEvent } from "../acp/types";
 
 let store: ImStore | null = null;
@@ -65,10 +76,13 @@ export function registerImIpc(deps: {
     return im.listProjects();
   });
 
-  safeHandle("im:createProject", async (_event, args?: { name?: unknown }) => {
+  safeHandle("im:createProject", async (_event, args?: { name?: unknown; localPath?: unknown }) => {
     const name = typeof args?.name === "string" ? args.name : "";
+    const localPath = typeof args?.localPath === "string" ? args.localPath : undefined;
+    const settings = await loadSettings();
+    const panelHome = effectivePanelHome(settings);
     const im = await getStore();
-    return im.createProject(name);
+    return im.createProject(name, panelHome, localPath);
   });
 
   safeHandle("im:renameProject", async (_event, args: { projectId?: unknown; name?: unknown }) => {
@@ -82,8 +96,18 @@ export function registerImIpc(deps: {
   safeHandle("im:deleteProject", async (_event, args: { projectId?: unknown }) => {
     if (typeof args?.projectId !== "string") throw new Error("Project id is required.");
     const im = await getStore();
-    await im.deleteProject(args.projectId);
-    return { ok: true };
+    const settings = await loadSettings();
+    const panelHome = effectivePanelHome(settings);
+    const result = await im.deleteProject(args.projectId, panelHome);
+    for (const chatId of result.deletedAcpChatIds) {
+      try {
+        disposeAcpController(chatId);
+        await deleteAcpRecord(panelHome, chatId);
+      } catch (err) {
+        console.warn(`[IM Delete] Failed to clean up ACP session ${chatId}:`, err);
+      }
+    }
+    return { ok: true, deletedAcpChatIds: result.deletedAcpChatIds };
   });
 
   safeHandle("im:pickLocalPath", async (_event, args?: { title?: unknown }) => {
@@ -182,7 +206,32 @@ export function registerImIpc(deps: {
       throw new Error("IM only supports Pi, Claude Code, and Codex.");
     }
     const im = await getStore();
-    return im.setMemberAgent(args.memberId, args.agent as ImAgent);
+    const member = await im.setMemberAgent(args.memberId, args.agent as ImAgent);
+    emit({ type: "member", projectId: member.projectId, member });
+    return member;
+  });
+
+  safeHandle("im:setMemberModel", async (_event, args: { memberId?: unknown; model?: unknown }) => {
+    if (typeof args?.memberId !== "string") throw new Error("Member id is required.");
+    const model = typeof args?.model === "string" ? args.model : null;
+    const im = await getStore();
+    const member = await im.setMemberModel(args.memberId, model);
+    emit({ type: "member", projectId: member.projectId, member });
+    return member;
+  });
+
+  safeHandle("im:resetMemberOverrides", async (_event, args: { memberId?: unknown }) => {
+    if (typeof args?.memberId !== "string") throw new Error("Member id is required.");
+    const im = await getStore();
+    const member = await im.resetMemberOverrides(args.memberId);
+    emit({ type: "member", projectId: member.projectId, member });
+    return member;
+  });
+
+  safeHandle("im:listAgentModels", async (_event, args?: { agent?: unknown }) => {
+    const agent = typeof args?.agent === "string" && isImAgent(args.agent) ? (args.agent as ImAgent) : "claude";
+    const settings = await loadSettings();
+    return resolveAgentModels(agent, settings);
   });
 
   safeHandle("im:createRole", async (_event, args: {
