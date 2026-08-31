@@ -17168,11 +17168,15 @@ html[data-window-mode="browser"] #react-chrome {
 }
 .im-split {
   display: flex;
+  min-width: 0;
   min-height: 0;
   flex: 1 1 auto;
+  overflow: hidden;
+  width: 100%;
 }
 .im-folders-pane {
   min-width: 0;
+  flex-shrink: 0;
 }
 .im-folders {
   display: flex;
@@ -17221,7 +17225,9 @@ html[data-window-mode="browser"] #react-chrome {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
   flex: 1 1 auto;
+  overflow: hidden;
 }
 .im-room-head {
   display: flex;
@@ -17269,22 +17275,28 @@ html[data-window-mode="browser"] #react-chrome {
 }
 .im-transcript {
   flex: 1 1 auto;
+  min-width: 0;
   min-height: 0;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 12px;
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 .im-message {
-  width: 76%;
-  max-width: 76%;
+  width: fit-content;
+  max-width: 85%;
+  min-width: 0;
+  box-sizing: border-box;
   border: 0;
   border-radius: 12px;
-  padding: 8px 10px;
+  padding: 8px 12px;
   background: var(--chat-bubble-assistant);
   color: var(--chat-bubble-assistant-text);
   align-self: flex-start;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 .im-message.is-human {
   align-self: flex-end;
@@ -17317,7 +17329,35 @@ html[data-window-mode="browser"] #react-chrome {
   color: inherit;
   font-size: inherit;
   line-height: inherit;
+  min-width: 0;
+  max-width: 100%;
   overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.im-message .markdown-body .code-block,
+.im-message .markdown-body pre {
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  box-sizing: border-box;
+}
+.im-message .markdown-body pre code {
+  white-space: pre;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+.im-message .markdown-body table {
+  display: block;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  box-sizing: border-box;
+  border-collapse: collapse;
+}
+.im-message .markdown-body img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
 }
 .im-message-mentions {
   display: flex;
@@ -17400,6 +17440,9 @@ html[data-window-mode="browser"] #react-chrome {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 .im-composer textarea {
   width: 100%;
@@ -17457,6 +17500,7 @@ html[data-window-mode="browser"] #react-chrome {
 .im-members {
   width: 220px;
   min-width: 180px;
+  flex-shrink: 0;
   border-left: 1px solid var(--color-separator);
   padding: 10px;
   overflow: auto;
@@ -17527,8 +17571,10 @@ html[data-window-mode="browser"] #react-chrome {
 .im-transcript-wrap {
   position: relative;
   flex: 1 1 auto;
+  min-width: 0;
   min-height: 0;
   display: flex;
+  overflow: hidden;
 }
 .im-date-separator {
   align-self: center;
@@ -17600,6 +17646,186 @@ html[data-window-mode="browser"] #react-chrome {
 .im-new-below:hover {
   border-color: var(--color-accent);
   color: var(--color-accent);
+}
+/* --- Floating Timeline on right side of chat transcript --- */
+.im-timeline {
+  position: absolute;
+  right: 10px;
+  top: 12px;
+  bottom: 12px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: none;
+}
+.im-timeline-control {
+  pointer-events: auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-control-bg);
+  border: 1px solid var(--color-separator);
+  color: var(--color-label-secondary);
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.15s, transform 0.15s, background 0.15s;
+}
+.im-timeline-control:hover {
+  opacity: 1;
+  transform: scale(1.1);
+  background: var(--color-window-bg);
+  color: var(--color-label-primary);
+}
+.im-timeline-track {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 3px;
+  margin: 4px 0;
+  overflow-y: auto;
+  max-height: calc(100% - 60px);
+  scrollbar-width: none;
+  background: color-mix(in srgb, var(--color-window-bg) 65%, transparent);
+  border-radius: 12px;
+  backdrop-filter: blur(8px);
+  border: 1px solid color-mix(in srgb, var(--color-separator) 60%, transparent);
+}
+.im-timeline-track::-webkit-scrollbar {
+  display: none;
+}
+.im-timeline-node {
+  position: relative;
+  border: 0;
+  background: transparent;
+  padding: 2px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+  transition: transform 0.15s ease;
+}
+.im-timeline-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-label-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+.im-timeline-node.is-user .im-timeline-dot {
+  background: var(--color-accent, #3b82f6);
+}
+.im-timeline-node.is-role .im-timeline-dot {
+  background: var(--im-role-color, var(--color-label-secondary));
+  width: 14px;
+  height: 14px;
+}
+.im-timeline-node-avatar {
+  font-size: 8px;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1;
+  text-transform: uppercase;
+}
+.im-timeline-node.is-active .im-timeline-dot {
+  box-shadow: 0 0 0 2px var(--color-window-bg), 0 0 0 3.5px var(--color-accent, #3b82f6);
+  transform: scale(1.15);
+}
+.im-timeline-node:hover .im-timeline-dot {
+  transform: scale(1.25);
+}
+.im-timeline-popover {
+  position: absolute;
+  right: 36px;
+  transform: translateY(-50%);
+  width: min(280px, calc(100vw - 80px));
+  padding: 8px 12px;
+  border-radius: var(--radius-lg, 8px);
+  background: var(--color-elevated-bg, var(--color-control-bg));
+  border: 1px solid var(--color-separator);
+  box-shadow: var(--shadow-popover);
+  text-align: left;
+  z-index: 30;
+  pointer-events: none;
+  animation: im-popover-in 0.12s ease-out;
+}
+@keyframes im-popover-in {
+  from {
+    opacity: 0;
+    transform: translateY(-50%) translateX(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-50%) translateX(0);
+  }
+}
+.im-timeline-popover-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.im-timeline-popover-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--im-role-color, var(--color-accent, #3b82f6));
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+.im-timeline-popover-author {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-label-primary);
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.im-timeline-popover-time {
+  font-size: 10px;
+  color: var(--color-label-tertiary);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+.im-timeline-popover-snippet {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--color-label-secondary);
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+.im-message.is-flashing {
+  animation: im-message-flash 1.5s ease-out;
+}
+@keyframes im-message-flash {
+  0% {
+    box-shadow: 0 0 0 3px var(--color-accent, #3b82f6);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
 }
 .im-empty-cta {
   display: flex;
@@ -17726,6 +17952,9 @@ html[data-window-mode="browser"] #react-chrome {
 /* --- Markdown code blocks: language header + hover-only copy button --- */
 .code-block {
   position: relative;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 .code-block-head {
   display: flex;
@@ -17768,6 +17997,10 @@ html[data-window-mode="browser"] #react-chrome {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
+  max-width: calc(100% - 24px);
+  box-sizing: border-box;
+  overflow: hidden;
 }
 .im-active-jobs-header {
   display: flex;

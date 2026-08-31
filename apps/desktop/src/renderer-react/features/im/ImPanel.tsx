@@ -1,7 +1,9 @@
 import { ThemeIcon } from "../../components/ThemeIcon";
 import { renderMarkdown } from "../../components/Markdown";
+import { ImTimeline } from "./ImTimeline";
+import { buildTimelineNodes } from "./timelineModel";
 import { createPortal } from "react-dom";
-import { Fragment, useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent, type JSX, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactPortal } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type JSX, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactPortal } from "react";
 import { desktopApi } from "../../bridge";
 import { notifyDesktop } from "../../components/Notifications";
 import { useI18n } from "../../i18n";
@@ -140,6 +142,8 @@ export function ImPanel(): ReactPortal | null {
   const [knowledgeUrl, setKnowledgeUrl] = useState("");
   const [pinnedToBottom, setPinnedToBottom] = useState(true);
   const [hasNewBelow, setHasNewBelow] = useState(false);
+  const [activeTimelineMessageId, setActiveTimelineMessageId] = useState<string | undefined>();
+  const [flashingMessageId, setFlashingMessageId] = useState<string | null>(null);
   const transcriptRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const prevMsgCount = useRef(0);
@@ -268,12 +272,41 @@ export function ImPanel(): ReactPortal | null {
     area.remove();
   }, []);
 
+  const memberLabel = useCallback((member: ImMember) => roleLabel(member, t), [t]);
+
+  const visibleMessages = (room?.messages ?? []).filter((message) => {
+    if (message.kind !== "job.card") return true;
+    const job = room?.jobs.find((item) => item.jobId === message.jobId);
+    return job?.status === "failed";
+  });
+
   const scrollToBottom = useCallback(() => {
     const node = transcriptRef.current;
     if (!node) return;
-    node.scrollTop = node.scrollHeight;
+    node.scrollTo({ top: node.scrollHeight, behavior: "smooth" });
     setPinnedToBottom(true);
     setHasNewBelow(false);
+  }, []);
+
+  const scrollToTop = useCallback(() => {
+    const node = transcriptRef.current;
+    if (!node) return;
+    node.scrollTo({ top: 0, behavior: "smooth" });
+    if (visibleMessages[0]) setActiveTimelineMessageId(visibleMessages[0].messageId);
+  }, [visibleMessages]);
+
+  const jumpToMessage = useCallback((messageId: string) => {
+    const node = transcriptRef.current;
+    if (!node) return;
+    const el = document.getElementById(`im-msg-${messageId}`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      setFlashingMessageId(messageId);
+      setActiveTimelineMessageId(messageId);
+      window.setTimeout(() => {
+        setFlashingMessageId((current) => (current === messageId ? null : current));
+      }, 1500);
+    }
   }, []);
 
   const onTranscriptScroll = useCallback(() => {
@@ -282,6 +315,18 @@ export function ImPanel(): ReactPortal | null {
     const nearBottom = node.scrollHeight - node.scrollTop - node.clientHeight < 60;
     setPinnedToBottom(nearBottom);
     if (nearBottom) setHasNewBelow(false);
+
+    const articles = node.querySelectorAll<HTMLElement>("article.im-message");
+    const containerTop = node.getBoundingClientRect().top;
+    let closestId: string | undefined;
+    for (const article of articles) {
+      const rect = article.getBoundingClientRect();
+      if (rect.bottom >= containerTop + 20) {
+        closestId = article.id.replace("im-msg-", "");
+        break;
+      }
+    }
+    if (closestId) setActiveTimelineMessageId(closestId);
   }, []);
 
   const insertIntoComposer = useCallback((text: string) => {
@@ -293,6 +338,17 @@ export function ImPanel(): ReactPortal | null {
   }, []);
 
   const members = room?.members.filter((member) => member.enabled) ?? [];
+  const timelineNodes = useMemo(() => {
+    return buildTimelineNodes(
+      visibleMessages,
+      members,
+      roleColor,
+      memberLabel,
+      roleInitial,
+      formatTime,
+      (ms) => formatDay(ms, t)
+    );
+  }, [formatTime, memberLabel, members, t, visibleMessages]);
   const mentionQuery = (() => {
     const at = draft.lastIndexOf("@");
     if (at < 0) return "";
@@ -312,11 +368,6 @@ export function ImPanel(): ReactPortal | null {
   const mentioned = mentionIds
     .map((id) => members.find((member) => member.memberId === id))
     .filter((member): member is ImMember => Boolean(member));
-  const visibleMessages = (room?.messages ?? []).filter((message) => {
-    if (message.kind !== "job.card") return true;
-    const job = room?.jobs.find((item) => item.jobId === message.jobId);
-    return job?.status === "failed";
-  });
 
   const quoteSelection = useCallback((message: ImMessage, body: string, extraDraft?: string) => {
     const clipped = body.length > 4000 ? `${body.slice(0, 3999)}…` : body;
@@ -566,8 +617,6 @@ export function ImPanel(): ReactPortal | null {
     }
   }, [setError]);
 
-  const memberLabel = useCallback((member: ImMember) => roleLabel(member, t), [t]);
-
   useEffect(() => {
     if (!mentionOpen) return;
     setMentionIndex((current) => {
@@ -802,7 +851,8 @@ export function ImPanel(): ReactPortal | null {
                         <div className="im-date-separator" aria-hidden="true">{formatDay(message.createdAtMs, t)}</div>
                       )}
                       <article
-                        className={`im-message is-${message.kind.replace(".", "-")}`}
+                        id={`im-msg-${message.messageId}`}
+                        className={`im-message is-${message.kind.replace(".", "-")}${flashingMessageId === message.messageId ? " is-flashing" : ""}`}
                         style={roleColorValue ? { "--im-role-color": roleColorValue } as CSSProperties : undefined}
                         onContextMenu={(event) => openSelectionMenu(event, message)}
                       >
@@ -895,6 +945,14 @@ export function ImPanel(): ReactPortal | null {
                     )
                 )}
                 </div>
+                <ImTimeline
+                  nodes={timelineNodes}
+                  activeMessageId={activeTimelineMessageId}
+                  onJump={jumpToMessage}
+                  onJumpTop={scrollToTop}
+                  onJumpBottom={scrollToBottom}
+                  t={t}
+                />
                 {hasNewBelow && (
                   <button type="button" className="im-new-below" onClick={scrollToBottom}>
                     <ThemeIcon name="arrow-down" size={12} aria-hidden="true" />

@@ -524,4 +524,73 @@ describe("ImPanel", () => {
     expect(document.querySelector(".im-active-jobs-banner")?.textContent).toContain("Current job");
     expect(document.querySelector(".im-active-jobs-banner")?.textContent).toContain("Waiting for you");
   });
+
+  it("renders floating timeline when room has multiple messages and navigates on node click", async () => {
+    const scrollIntoViewMock = vi.fn();
+    window.HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
+
+    const currentProject = project();
+    const currentRoom = roomFor(currentProject);
+    const api = renderIm();
+    (api.imGetRoom as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...currentRoom,
+      messages: [
+        {
+          messageId: "msg-1",
+          projectId: currentProject.projectId,
+          kind: "human",
+          authorMemberId: null,
+          authorLabel: "You",
+          body: "First message",
+          quoteIds: [],
+          quotes: [],
+          mentionRoleIds: [],
+          jobId: null,
+          createdAtMs: 1000
+        },
+        {
+          messageId: "msg-2",
+          projectId: currentProject.projectId,
+          kind: "role.say",
+          authorMemberId: currentRoom.members[0]!.memberId,
+          authorLabel: "Developer",
+          body: "Second message",
+          quoteIds: [],
+          quotes: [],
+          mentionRoleIds: [],
+          jobId: "j1",
+          createdAtMs: 2000
+        },
+        {
+          messageId: "msg-3",
+          projectId: currentProject.projectId,
+          kind: "human",
+          authorMemberId: null,
+          authorLabel: "You",
+          body: "Third message",
+          quoteIds: [],
+          quotes: [],
+          mentionRoleIds: [],
+          jobId: null,
+          createdAtMs: 3000
+        }
+      ]
+    });
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+
+    await waitFor(() => expect(document.querySelector(".im-timeline")).not.toBeNull());
+    const nodes = document.querySelectorAll(".im-timeline-node");
+    expect(nodes).toHaveLength(3);
+
+    // Hover to trigger preview popover
+    fireEvent.mouseEnter(nodes[1]!);
+    expect(document.querySelector(".im-timeline-popover")).not.toBeNull();
+    expect(document.querySelector(".im-timeline-popover-author")?.textContent).toBe("Product Manager");
+    expect(document.querySelector(".im-timeline-popover-snippet")?.textContent).toBe("Second message");
+
+    fireEvent.click(nodes[0]!);
+    expect(scrollIntoViewMock).toHaveBeenCalled();
+  });
 });
