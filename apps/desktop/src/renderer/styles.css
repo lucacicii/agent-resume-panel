@@ -17307,6 +17307,47 @@ html[data-window-mode="browser"] #react-chrome {
   border-left: 3px solid var(--im-role-color, transparent);
   background: color-mix(in srgb, var(--im-role-color, transparent) 8%, var(--chat-bubble-assistant));
 }
+.im-message.is-pending-job {
+  animation: im-popover-in 0.15s ease-out;
+}
+.im-pending-job-body {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-label-secondary);
+  padding: 2px 0;
+}
+.im-pending-job-label {
+  font-weight: 500;
+}
+.im-jumping-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 2px;
+}
+.im-jumping-dot {
+  width: 3.5px;
+  height: 3.5px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.4;
+  animation: im-dot-jump 1s ease-in-out infinite;
+}
+.im-jumping-dot:nth-child(1) { animation-delay: 0ms; }
+.im-jumping-dot:nth-child(2) { animation-delay: 150ms; }
+.im-jumping-dot:nth-child(3) { animation-delay: 300ms; }
+@keyframes im-dot-jump {
+  0%, 60%, 100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
 .im-message.is-system,
 .im-message.is-job-card {
   align-self: center;

@@ -174,6 +174,19 @@ export function ImPanel(): ReactPortal | null {
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const prevMsgCount = useRef(0);
 
+  const memberLabel = useCallback((member: ImMember) => roleLabel(member, t), [t]);
+
+  const members = room?.members.filter((member) => member.enabled) ?? [];
+  const visibleMessages = (room?.messages ?? []).filter((message) => {
+    if (message.kind !== "job.card") return true;
+    const job = room?.jobs.find((item) => item.jobId === message.jobId);
+    return job?.status === "failed";
+  });
+  const activeJobs = room?.jobs.filter((job) => isActiveJobStatus(job.status)) ?? [];
+  const activePendingJobs = activeJobs.filter(
+    (job) => !visibleMessages.some((msg) => msg.jobId === job.jobId)
+  );
+
   const setError = useCallback((error: unknown) => {
     notifyDesktop({
       text: error instanceof Error ? error.message : String(error),
@@ -281,7 +294,7 @@ export function ImPanel(): ReactPortal | null {
   useEffect(() => {
     const node = transcriptRef.current;
     if (!node) return;
-    const count = room?.messages.length ?? 0;
+    const count = (room?.messages.length ?? 0) + activePendingJobs.length;
     const grew = count > prevMsgCount.current;
     prevMsgCount.current = count;
     if (pinnedToBottom) {
@@ -289,7 +302,7 @@ export function ImPanel(): ReactPortal | null {
     } else if (grew) {
       setHasNewBelow(true);
     }
-  }, [pinnedToBottom, room?.messages.length]);
+  }, [activePendingJobs.length, pinnedToBottom, room?.messages.length]);
 
   const copyText = useCallback(async (text: string) => {
     try {
@@ -308,14 +321,6 @@ export function ImPanel(): ReactPortal | null {
     document.execCommand("copy");
     area.remove();
   }, []);
-
-  const memberLabel = useCallback((member: ImMember) => roleLabel(member, t), [t]);
-
-  const visibleMessages = (room?.messages ?? []).filter((message) => {
-    if (message.kind !== "job.card") return true;
-    const job = room?.jobs.find((item) => item.jobId === message.jobId);
-    return job?.status === "failed";
-  });
 
   const scrollToBottom = useCallback(() => {
     const node = transcriptRef.current;
@@ -374,7 +379,6 @@ export function ImPanel(): ReactPortal | null {
     textareaRef.current?.focus();
   }, []);
 
-  const members = room?.members.filter((member) => member.enabled) ?? [];
   const timelineNodes = useMemo(() => {
     return buildTimelineNodes(
       visibleMessages,
@@ -1101,6 +1105,49 @@ export function ImPanel(): ReactPortal | null {
                       </div>
                     )
                 )}
+                {activePendingJobs.map((job) => {
+                  const owner = members.find((member) => member.memberId === job.memberId);
+                  const roleColorValue = owner ? roleColor(owner.templateId) : undefined;
+                  const label = owner ? memberLabel(owner) : "Role";
+                  return (
+                    <article
+                      key={`pending-job-${job.jobId}`}
+                      className="im-message is-role-say is-pending-job"
+                      style={roleColorValue ? { "--im-role-color": roleColorValue } as CSSProperties : undefined}
+                    >
+                      <header>
+                        <span className="im-message-author">
+                          {roleColorValue && (
+                            <span className="im-role-avatar" aria-hidden="true" style={{ "--im-role-color": roleColorValue } as CSSProperties}>
+                              {roleInitial(label)}
+                            </span>
+                          )}
+                          <strong>
+                            {label}
+                            {owner ? <> {agentTag(owner.agent, owner.model, t)}</> : null}
+                          </strong>
+                        </span>
+                      </header>
+                      <div className="im-pending-job-body">
+                        <span className={`im-job-dot is-${job.status}`} aria-hidden="true" />
+                        <span className="im-pending-job-label">
+                          {job.status === "queued"
+                            ? t("desktop.im.inQueue")
+                            : job.status === "connecting"
+                              ? t("desktop.im.connecting")
+                              : job.status === "awaiting_user"
+                                ? t("desktop.im.job.awaiting_user")
+                                : t("desktop.im.typing")}
+                        </span>
+                        <span className="im-jumping-dots" aria-hidden="true">
+                          <span className="im-jumping-dot" />
+                          <span className="im-jumping-dot" />
+                          <span className="im-jumping-dot" />
+                        </span>
+                      </div>
+                    </article>
+                  );
+                })}
                 </div>
                 <ImTimeline
                   nodes={timelineNodes}

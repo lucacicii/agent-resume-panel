@@ -34,6 +34,9 @@ const messages = {
   "desktop.im.agent.claude": "Claude Code",
   "desktop.im.agent.codex": "Codex",
   "desktop.im.currentJob": "Current job",
+  "desktop.im.typing": "Typing…",
+  "desktop.im.connecting": "Connecting…",
+  "desktop.im.inQueue": "Waiting in queue…",
   "desktop.im.permissionTitle": "Permission request",
   "desktop.im.job.queued": "Queued",
   "desktop.im.job.connecting": "Connecting",
@@ -687,5 +690,55 @@ describe("ImPanel", () => {
     const closeBtn = document.querySelector(".im-image-lightbox-close") as HTMLButtonElement;
     fireEvent.click(closeBtn);
     expect(document.querySelector(".im-image-lightbox")).toBeNull();
+  });
+
+  it("renders in-chat typing/status bubbles immediately when active jobs are dispatched", async () => {
+    const currentProject = project();
+    const currentRoom = roomFor(currentProject);
+    const api = renderIm();
+    (api.imGetRoom as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...currentRoom,
+      messages: [
+        {
+          messageId: "msg-user-1",
+          projectId: currentProject.projectId,
+          kind: "human",
+          authorMemberId: null,
+          authorLabel: "You",
+          body: "@Developer please implement auth",
+          quoteIds: [],
+          quotes: [],
+          mentionRoleIds: [currentRoom.members[0]!.memberId],
+          jobId: null,
+          createdAtMs: 1000
+        }
+      ],
+      jobs: [
+        {
+          jobId: "job-running-now",
+          projectId: currentProject.projectId,
+          memberId: currentRoom.members[0]!.memberId,
+          messageId: "msg-user-1",
+          acpChatId: "chat-1",
+          status: "running",
+          brief: { persona: "", instruction: "implement auth", cwd: "/tmp", quotes: [], knowledge: [] },
+          error: null,
+          filesChanged: [],
+          permission: null,
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+          finishedAtMs: null
+        }
+      ]
+    });
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+
+    await waitFor(() => expect(document.querySelector(".im-message.is-pending-job")).not.toBeNull());
+    const pendingBubble = document.querySelector(".im-message.is-pending-job");
+    expect(pendingBubble?.textContent).toContain("Product Manager");
+    expect(pendingBubble?.textContent).toContain("Typing…");
+    expect(document.querySelector(".im-jumping-dots")).not.toBeNull();
   });
 });
