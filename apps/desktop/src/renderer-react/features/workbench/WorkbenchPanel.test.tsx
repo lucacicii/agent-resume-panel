@@ -6974,4 +6974,67 @@ describe("WorkbenchPanel", () => {
     expect(listItem("Fix renderer").classList.contains("is-selected")).toBe(true);
     expect(listItem("Review tests").classList.contains("is-selected")).toBe(false);
   });
+
+  it("opens a working-tree diff from an IM reveal event without a full git status scan", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const terminalGitStatus = vi.fn();
+    const terminalGitDiffSides = vi.fn(async ({ staged }: { cwd: string; path: string; staged?: boolean }) => ({
+      oldLabel: staged ? "HEAD" : "HEAD",
+      newLabel: staged ? "Staged" : "Working Tree",
+      oldText: "old",
+      newText: "new",
+      hunks: staged ? [] : [{ key: "1", header: "@@", oldStart: 1, oldLines: 1, newStart: 1, newLines: 1 }]
+    }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects",
+        "desktop.notes.projectFilter": "Project filter",
+        "desktop.common.search": "Search",
+        "desktop.common.all": "All",
+        "desktop.common.active": "Active",
+        "desktop.common.pinned": "Pinned",
+        "desktop.common.refresh": "Refresh",
+        "desktop.workbench.allSessions": "All sessions",
+        "desktop.workbench.noSessionsInProject": "No sessions",
+        "desktop.workbench.noProjects": "No projects",
+        "desktop.workbench.sidePanelExplorer": "Explorer",
+        "desktop.workbench.sidePanelGit": "Git",
+        "desktop.workbench.newTerminal": "New terminal",
+        "desktop.workbench.newSession": "New session",
+        "desktop.workbench.selectSessionHint": "Select a session",
+        "desktop.workbench.selectProjectHint": "Select a project",
+        "desktop.workbench.externalTerminalHint": "Opened externally",
+        "desktop.workbench.terminalLabel": "Terminal {0}"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      listProjects: async () => [{ id: "p1", path: "/work/app", label: "app", sessionCount: 0, pendingCount: 0, folderAssignments: [] }],
+      terminalGitStatus,
+      terminalGitDiffSides
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-open-diff", {
+        detail: { projectPath: "/work/app", filePath: "/work/app/src/one.ts" }
+      }));
+    });
+    await waitFor(() => expect(terminalGitDiffSides).toHaveBeenCalledWith({
+      cwd: "/work/app",
+      path: "src/one.ts",
+      staged: false
+    }));
+    expect(terminalGitDiffSides.mock.calls.some((call) => call[0]?.staged === true)).toBe(false);
+    expect(terminalGitStatus.mock.calls.every((call) => call[0]?.nestedScan)).toBe(true);
+  });
 });

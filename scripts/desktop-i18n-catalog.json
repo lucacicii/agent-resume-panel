@@ -93,6 +93,8 @@
       "desktop.im.fileModifiedSingle": "Modified 1 file",
       "desktop.im.copyPath": "Copy path",
       "desktop.im.copiedPath": "Copied",
+      "desktop.im.revealInWorkbench": "Reveal in Workbench",
+      "desktop.im.noGitDiffFallback": "No git diff for this file. Opened the current file instead.",
       "desktop.im.typing": "Typing…",
       "desktop.im.connecting": "Connecting…",
       "desktop.im.inQueue": "Waiting in queue…",
@@ -1632,7 +1634,9 @@
       "desktop.im.resetDefault": "恢复默认",
       "desktop.im.fetchModels": "获取模型列表",
       "desktop.im.customBadge": "自定义",
-      "desktop.im.customModelOption": "自定义模型 ID…"
+      "desktop.im.customModelOption": "自定义模型 ID…",
+      "desktop.im.revealInWorkbench": "在 Workbench 中打开",
+      "desktop.im.noGitDiffFallback": "没有可显示的 git diff，已打开当前文件。"
     }
   },
   "ja": {

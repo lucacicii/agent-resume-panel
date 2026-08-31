@@ -2730,6 +2730,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const openingSessionKeysRef = useRef(new Set<string>());
   /** Latest openSession closure for the agent-resume:workbench-open-session listener. */
   const openSessionRef = useRef<(session: AgentSession) => Promise<void>>(() => Promise.resolve());
+  const openDiffForPathRef = useRef<(projectPath: string, filePath: string) => Promise<void>>(async () => undefined);
   const settingsRef = useRef<PanelSettings | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const sessionSearchInputRef = useRef<HTMLInputElement>(null);
@@ -2751,6 +2752,8 @@ export function WorkbenchPanel(): ReactPortal | null {
   useEffect(() => { terminalsRef.current = terminals; }, [terminals]);
   useEffect(() => { editorsRef.current = editors; }, [editors]);
   useEffect(() => { diffsRef.current = diffs; }, [diffs]);
+  const gitRef = useRef<GitStatusResult | null>(null);
+  useEffect(() => { gitRef.current = git; }, [git]);
   useEffect(() => { selectedProjectRef.current = selectedProject; }, [selectedProject]);
   useEffect(() => { catalogProjectsRef.current = catalogProjects; }, [catalogProjects]);
   useEffect(() => { activeRef.current = active; }, [active]);
@@ -5003,6 +5006,19 @@ export function WorkbenchPanel(): ReactPortal | null {
     return () => window.removeEventListener("agent-resume:workbench-focus-session", onFocusSession);
   }, [focusWorkbenchSessionFromRail]);
 
+  useEffect(() => {
+    const onOpenDiff = (event: Event) => {
+      const detail = (event as CustomEvent<{ projectPath?: string; filePath?: string }>).detail;
+      const projectPath = detail?.projectPath?.trim();
+      const filePath = detail?.filePath?.trim();
+      if (!projectPath || !filePath) return;
+      selectProject(projectPath, { keepSessionKey: true });
+      void openDiffForPathRef.current(projectPath, filePath);
+    };
+    window.addEventListener("agent-resume:workbench-open-diff", onOpenDiff);
+    return () => window.removeEventListener("agent-resume:workbench-open-diff", onOpenDiff);
+  }, []);
+
   const projectMenu = (event: React.MouseEvent, project: WorkbenchProject) => {
     event.preventDefault();
     const menu: WorkbenchContextMenu = {
@@ -6448,25 +6464,105 @@ export function WorkbenchPanel(): ReactPortal | null {
     };
   }, [active, autoFetchGit, refreshGit, selectedProject]);
 
-  const openDiff = async (change: GitChange, staged: boolean) => {
-    if (!selectedProject) return;
+  const openDiff = async (change: GitChange, staged: boolean, projectPath = selectedProjectRef.current) => {
+    if (!projectPath) return;
     const key = `diff:${change.repoRoot}:${change.repoPath}:${staged}`;
-    if (diffs.some((item) => item.key === key)) { setActivePane(key); return; }
+    if (diffsRef.current.some((item) => item.key === key)) {
+      setActivePane(key, projectPath);
+      return;
+    }
     try {
       const result = await desktopApi().terminalGitDiffSides({ cwd: change.repoRoot, path: change.repoPath, staged });
       const source = staged ? "staged" : change.status === "?" ? "untracked" : "working-tree";
       setDiffs((current) => [...current, {
         key,
-        projectPath: selectedProject,
+        projectPath,
         repoRoot: change.repoRoot,
         repoPath: change.repoPath,
         path: change.path,
         source,
         ...result
       }]);
-      setActivePane(key);
+      setActivePane(key, projectPath);
     } catch (error) { notifyGitFailure("desktop.workbench.sidePanelDiffFailed", error); }
   };
+
+  const matchCachedGitChange = (filePath: string): { change: GitChange; staged: boolean } | null => {
+    const target = normalizeWorkbenchPath(filePath);
+    const cached = gitRef.current;
+    if (!cached) return null;
+    const matchIn = (entries: GitChange[]) => entries.find((change) => {
+      const abs = normalizeWorkbenchPath(gitChangeFilePath(change));
+      const display = normalizeWorkbenchPath(change.path);
+      return abs === target || display === target || target.endsWith(`/${display}`);
+    });
+    const unstaged = matchIn(cached.unstaged);
+    if (unstaged) return { change: unstaged, staged: false };
+    const staged = matchIn(cached.staged);
+    if (staged) return { change: staged, staged: true };
+    return null;
+  };
+
+  const openDiffForPath = async (projectPath: string, filePath: string) => {
+    const absPath = normalizeWorkbenchPath(filePath);
+    const root = normalizeWorkbenchPath(projectPath);
+    const relative = absPath === root
+      ? ""
+      : absPath.startsWith(`${root}/`)
+        ? absPath.slice(root.length + 1)
+        : absPath;
+    if (!relative) {
+      await openFile(absPath, undefined, projectPath);
+      return;
+    }
+    const cached = matchCachedGitChange(absPath);
+    if (cached) {
+      await openDiff(cached.change, cached.staged, projectPath);
+      return;
+    }
+    const addDiffPane = (
+      result: Awaited<ReturnType<DesktopApi["terminalGitDiffSides"]>>,
+      staged: boolean
+    ) => {
+      const repoRoot = projectPath;
+      const key = `diff:${repoRoot}:${relative}:${staged}`;
+      if (diffsRef.current.some((item) => item.key === key)) {
+        setActivePane(key, projectPath);
+        return;
+      }
+      setDiffs((current) => [...current, {
+        key,
+        projectPath,
+        repoRoot,
+        repoPath: relative,
+        path: relative,
+        source: staged ? "staged" : "working-tree",
+        ...result
+      }]);
+      setActivePane(key, projectPath);
+    };
+    try {
+      const working = await desktopApi().terminalGitDiffSides({ cwd: projectPath, path: relative, staged: false });
+      if (working.hunks.length) {
+        addDiffPane(working, false);
+        return;
+      }
+    } catch {
+      // Fall through to staged / editor.
+    }
+    try {
+      const stagedDiff = await desktopApi().terminalGitDiffSides({ cwd: projectPath, path: relative, staged: true });
+      if (stagedDiff.hunks.length) {
+        addDiffPane(stagedDiff, true);
+        return;
+      }
+    } catch {
+      // Fall through to editor.
+    }
+    notifyDesktop({ text: t("desktop.im.noGitDiffFallback"), kind: "info" });
+    await openFile(absPath, undefined, projectPath);
+  };
+  openDiffForPathRef.current = openDiffForPath;
 
   const discardGitChanges = async (changes: GitChange[], targetPath: string, isDirectory: boolean) => {
     const uniqueChanges = uniqueGitChanges(changes);

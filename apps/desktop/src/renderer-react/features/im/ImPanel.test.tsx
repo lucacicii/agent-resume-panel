@@ -63,6 +63,7 @@ const messages = {
   "desktop.im.fileModifiedSingle": "Modified 1 file",
   "desktop.im.copyPath": "Copy path",
   "desktop.im.copiedPath": "Copied",
+  "desktop.im.revealInWorkbench": "Reveal in Workbench",
   "desktop.im.typing": "Typing…",
   "desktop.im.connecting": "Connecting…",
   "desktop.im.inQueue": "Waiting in queue…",
@@ -170,6 +171,7 @@ function renderIm() {
     revealProjectInFinder: vi.fn(async () => ({ ok: true, path: created.localPath })),
     clipboardWriteText: vi.fn(async () => undefined),
     workbenchOpenPath: vi.fn(async () => ({ ok: true })),
+    workbenchRevealPath: vi.fn(async () => ({ ok: true })),
     workbenchListDirectory: vi.fn(async ({ dirPath }: { dirPath: string }) => ({
       entries: dirPath === "/tmp/app"
         ? [{ name: "package.json", path: "/tmp/app/package.json", isDirectory: false }]
@@ -987,7 +989,25 @@ describe("ImPanel", () => {
     const revealButtons = screen.getAllByRole("button", { name: "Reveal in Finder" });
     expect(revealButtons.length).toBeGreaterThan(0);
     fireEvent.click(revealButtons[0]!);
-    expect(api.revealProjectInFinder).toHaveBeenCalledWith({ projectPath: "/workspace/project/src/components/Header.tsx" });
+    expect(api.workbenchRevealPath).toHaveBeenCalledWith({
+      rootPath: "/workspace/project",
+      targetPath: "/workspace/project/src/components/Header.tsx"
+    });
+
+    const tabRequests: string[] = [];
+    const diffs: Array<{ projectPath?: string; filePath?: string }> = [];
+    const onTab = (event: Event) => tabRequests.push((event as CustomEvent<string>).detail);
+    const onDiff = (event: Event) => diffs.push((event as CustomEvent<{ projectPath?: string; filePath?: string }>).detail);
+    window.addEventListener("agent-resume:tab-request", onTab);
+    window.addEventListener("agent-resume:workbench-open-diff", onDiff);
+    fireEvent.click(screen.getAllByRole("button", { name: "Reveal in Workbench" })[0]!);
+    window.removeEventListener("agent-resume:tab-request", onTab);
+    window.removeEventListener("agent-resume:workbench-open-diff", onDiff);
+    expect(tabRequests).toEqual(["workbench"]);
+    expect(diffs).toEqual([{
+      projectPath: "/workspace/project",
+      filePath: "/workspace/project/src/components/Header.tsx"
+    }]);
   });
 
   it("disables project tools until a real folder is associated", async () => {

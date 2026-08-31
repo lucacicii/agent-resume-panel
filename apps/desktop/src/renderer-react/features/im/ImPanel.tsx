@@ -1450,11 +1450,33 @@ export function ImPanel(): ReactPortal | null {
                                         <button
                                           type="button"
                                           className="im-message-file-btn"
-                                          onClick={() => void desktopApi().revealProjectInFinder({ projectPath: absPath })}
+                                          disabled={!room?.project.localPath}
+                                          onClick={() => {
+                                            const rootPath = room?.project.localPath;
+                                            if (!rootPath) return;
+                                            void desktopApi().workbenchRevealPath({ rootPath, targetPath: absPath });
+                                          }}
                                           title={t("desktop.common.revealInFinder")}
                                           aria-label={t("desktop.common.revealInFinder")}
                                         >
                                           <ThemeIcon name="external-link" size={11} aria-hidden="true" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="im-message-file-btn"
+                                          disabled={!room?.project.localPath || isScratchPath(room.project.localPath)}
+                                          onClick={() => {
+                                            const projectPath = room?.project.localPath;
+                                            if (!projectPath || isScratchPath(projectPath)) return;
+                                            window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
+                                            window.dispatchEvent(new CustomEvent("agent-resume:workbench-open-diff", {
+                                              detail: { projectPath, filePath: absPath }
+                                            }));
+                                          }}
+                                          title={t("desktop.im.revealInWorkbench")}
+                                          aria-label={t("desktop.im.revealInWorkbench")}
+                                        >
+                                          <ThemeIcon name="file-diff" size={11} aria-hidden="true" />
                                         </button>
                                       </div>
                                     </div>
