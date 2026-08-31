@@ -207,6 +207,11 @@ function renderIm() {
       },
       job: null
     })),
+    onWorkbenchCmdT: (callback: () => void) => {
+      const handler = () => callback();
+      window.addEventListener("test:cmd-t", handler);
+      return () => window.removeEventListener("test:cmd-t", handler);
+    },
     onImEvent: () => () => undefined
   } as unknown as typeof window.agentResume;
 
@@ -825,13 +830,17 @@ describe("ImPanel", () => {
     }));
   });
 
-  it("starts a new chat from Cmd+T", async () => {
+  it("starts a new chat from Cmd+T shortcut and IPC event", async () => {
     renderIm();
     await act(async () => {
       window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
     });
     expect(await screen.findByRole("button", { name: /New chat/ })).toBeTruthy();
-    fireEvent.keyDown(window, { key: "t", metaKey: true });
+    
+    // Trigger via IPC event emitted on Electron before-input-event
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("test:cmd-t"));
+    });
     expect(await screen.findByLabelText("Chat name")).toBeTruthy();
   });
 

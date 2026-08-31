@@ -207,6 +207,7 @@ export function ImPanel(): ReactPortal | null {
   const [previewModalUrl, setPreviewModalUrl] = useState<string | null>(null);
   const transcriptRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const newChatInputRef = useRef<HTMLInputElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const prevMsgCount = useRef(0);
 
@@ -575,21 +576,42 @@ export function ImPanel(): ReactPortal | null {
   }, [selectionMenu, selectionResult, folderMenu]);
 
   const startCreateChat = useCallback(() => {
+    setSidebarCollapsed(false);
+    try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, "0"); } catch { /* ignore */ }
     setCreating(true);
     setFolderMenu(null);
     setRenamingProjectId(null);
   }, []);
 
   useEffect(() => {
+    if (creating) {
+      setTimeout(() => {
+        newChatInputRef.current?.focus();
+        newChatInputRef.current?.select();
+      }, 0);
+    }
+  }, [creating]);
+
+  useEffect(() => {
     if (!active) return;
     const onShortcut = (event: globalThis.KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey) return;
-      if (event.key.toLowerCase() !== "t") return;
-      event.preventDefault();
-      startCreateChat();
+      if (event.key.toLowerCase() === "t" || event.code === "KeyT") {
+        event.preventDefault();
+        event.stopPropagation();
+        startCreateChat();
+      }
     };
-    window.addEventListener("keydown", onShortcut);
-    return () => window.removeEventListener("keydown", onShortcut);
+    window.addEventListener("keydown", onShortcut, true);
+    const stopIpc = typeof desktopApi().onWorkbenchCmdT === "function"
+      ? desktopApi().onWorkbenchCmdT(() => {
+          startCreateChat();
+        })
+      : undefined;
+    return () => {
+      window.removeEventListener("keydown", onShortcut, true);
+      stopIpc?.();
+    };
   }, [active, startCreateChat]);
 
   const createProject = useCallback(async (event?: FormEvent) => {
@@ -1017,6 +1039,7 @@ export function ImPanel(): ReactPortal | null {
               {creating ? (
                 <form className="im-new-project" onSubmit={(event) => void createProject(event)}>
                   <input
+                    ref={newChatInputRef}
                     value={newName}
                     onChange={(event) => setNewName(event.target.value)}
                     placeholder={t("desktop.im.chatName")}
