@@ -2,7 +2,7 @@ import * as crypto from "node:crypto";
 import type { BrowserWindow } from "electron";
 import { shell } from "electron";
 import type { PanelSettings } from "@agent-resume/core";
-import { effectivePanelHome } from "@agent-resume/core";
+import { effectivePanelHome, extractPreviewContent } from "@agent-resume/core";
 import type { RequestPermissionRequest, RequestPermissionResponse } from "@agentclientprotocol/sdk" with {
   "resolution-mode": "import"
 };
@@ -100,6 +100,7 @@ class AcpChatController {
   private streamingAssistantId?: string;
   private turnAssistantId?: string;
   private streamingText = "";
+  private streamingThinking = "";
   private activeAcpSessionId?: string;
   private isReplayingLoadedHistory = false;
   private historyReplayDone?: () => void;
@@ -394,15 +395,21 @@ class AcpChatController {
   }
 
   private handleAgentChunk(update: Record<string, unknown>): void {
-    const delta = extractTextFromContent(update.content);
-    if (!delta || !this.turnAssistantId) return;
+    const extracted = extractPreviewContent(update.content);
+    if (!extracted.text && !extracted.thinking) return;
+    if (!this.turnAssistantId) return;
     if (!this.streamingAssistantId) {
       this.streamingAssistantId = this.turnAssistantId;
-      this.streamingText = delta;
+      this.streamingText = extracted.text;
+      this.streamingThinking = extracted.thinking;
     } else {
-      this.streamingText += delta;
+      if (extracted.text) this.streamingText += (this.streamingText ? "" : "") + extracted.text;
+      if (extracted.thinking) this.streamingThinking += (this.streamingThinking ? "" : "") + extracted.thinking;
     }
-    this.postAssistantUpdate(this.getAssistantMessage(this.turnAssistantId));
+    const assistant = this.getAssistantMessage(this.turnAssistantId);
+    assistant.text = this.streamingText;
+    assistant.thinking = this.streamingThinking || undefined;
+    this.postAssistantUpdate(assistant);
   }
 
   private getAssistantMessage(id: string): AcpChatMessage {
@@ -412,6 +419,7 @@ class AcpChatController {
       id,
       role: "assistant",
       text: id === this.streamingAssistantId ? this.streamingText : "",
+      thinking: id === this.streamingAssistantId && this.streamingThinking ? this.streamingThinking : undefined,
       timestamp: Date.now(),
       toolCalls: []
     };
@@ -458,6 +466,7 @@ class AcpChatController {
         chatId: this.record.id,
         id: assistant.id,
         text: assistant.text,
+        thinking: assistant.thinking,
         toolCalls: assistant.toolCalls ?? [],
         streaming: true
       });
@@ -570,6 +579,7 @@ class AcpChatController {
     this.turnAssistantId = crypto.randomUUID();
     this.streamingAssistantId = undefined;
     this.streamingText = "";
+    this.streamingThinking = "";
     this.status("thinking", true, false);
 
     const turnId = this.turnAssistantId;
@@ -769,23 +779,27 @@ class AcpChatController {
     const turnId = this.streamingAssistantId ?? this.turnAssistantId;
     if (!turnId) {
       this.streamingText = "";
+      this.streamingThinking = "";
       return;
     }
     const index = this.messages.findIndex((entry) => entry.id === turnId);
     const existing = index >= 0 ? this.messages[index] : undefined;
     const text = this.streamingText.trim() || existing?.text?.trim() || "";
+    const thinking = this.streamingThinking.trim() || existing?.thinking?.trim() || undefined;
     const toolCalls = existing?.toolCalls;
-    if (!text && !toolCalls?.length) {
+    if (!text && !thinking && !toolCalls?.length) {
       if (index >= 0) this.messages.splice(index, 1);
       this.streamingAssistantId = undefined;
       this.turnAssistantId = undefined;
       this.streamingText = "";
+      this.streamingThinking = "";
       return;
     }
     const assistantMessage: AcpChatMessage = {
       id: turnId,
       role: "assistant",
       text,
+      thinking,
       timestamp: existing?.timestamp ?? Date.now(),
       toolCalls: toolCalls?.length ? toolCalls : undefined
     };
@@ -801,6 +815,7 @@ class AcpChatController {
     this.streamingAssistantId = undefined;
     this.turnAssistantId = undefined;
     this.streamingText = "";
+    this.streamingThinking = "";
   }
 
   private async buildPromptBlocks(

@@ -133,6 +133,8 @@ export interface ImMessage {
   authorMemberId: string | null;
   authorLabel: string;
   body: string;
+  thinking?: string;
+  streaming?: boolean;
   quoteIds: string[];
   quotes: ImQuotedMessage[];
   mentionRoleIds: string[];
@@ -211,6 +213,7 @@ export interface ImRoom {
 export type ImEvent =
   | { type: "room"; room: ImRoom }
   | { type: "message"; projectId: string; message: ImMessage }
+  | { type: "messageUpdate"; projectId: string; message: ImMessage }
   | { type: "job"; projectId: string; job: ImJob }
   | { type: "member"; projectId: string; member: ImMember };
 

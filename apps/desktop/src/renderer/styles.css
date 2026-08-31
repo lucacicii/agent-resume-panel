@@ -17359,6 +17359,77 @@ html[data-window-mode="browser"] #react-chrome {
   height: auto;
   border-radius: 6px;
 }
+/* --- IM Thinking and streaming styles --- */
+.im-message-thinking {
+  margin: 0 0 8px;
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-md, 6px);
+  background: var(--color-fill-tertiary, color-mix(in srgb, var(--color-label-primary) 4%, transparent));
+  max-width: 100%;
+  overflow: hidden;
+}
+.im-message-thinking-toggle {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  margin: 0;
+  padding: 5px 8px;
+  border: none;
+  background: transparent;
+  color: var(--color-label-secondary);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+}
+.im-message-thinking-toggle:hover {
+  color: var(--color-label-primary);
+}
+.im-message-thinking-toggle .lucide-chevron-right {
+  transition: transform 0.15s ease;
+  flex-shrink: 0;
+}
+.im-message-thinking-toggle .lucide-chevron-right.is-expanded {
+  transform: rotate(90deg);
+}
+.im-message-thinking-body {
+  padding: 0 8px 8px;
+  font-size: 12px;
+  color: var(--color-label-secondary);
+  border-top: 1px solid color-mix(in srgb, var(--color-separator) 50%, transparent);
+  padding-top: 6px;
+}
+.im-thinking-spinner {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-left: 6px;
+  border: 1.5px solid var(--color-label-tertiary);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: im-spin 0.8s linear infinite;
+  vertical-align: middle;
+}
+@keyframes im-spin {
+  to { transform: rotate(360deg); }
+}
+.im-streaming-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1.1em;
+  margin-left: 3px;
+  vertical-align: text-bottom;
+  background: var(--color-label-primary);
+  animation: im-cursor-blink 0.8s infinite ease-in-out;
+}
+@keyframes im-cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
 .im-message-mentions {
   display: flex;
   flex-wrap: wrap;

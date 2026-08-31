@@ -189,4 +189,75 @@ describe("ImConductor", () => {
     expect(setModel).toHaveBeenCalledWith(expect.any(String), "claude-opus");
     expect(prompt).toHaveBeenCalled();
   });
+
+  it("streams assistant text and thinking deltas in real-time and persists on done", async () => {
+    const store = await createStore();
+    const project = await store.createProject("Streaming test");
+    const room = await store.getRoom(project.projectId);
+    const pm = room.members.find((member) => member.templateId === "role_product_manager")!;
+    const emittedEvents: any[] = [];
+    const conductor = new ImConductor(store, (event) => emittedEvents.push(event), vi.fn(async () => undefined), vi.fn(async () => undefined));
+
+    const job = await store.createJob({
+      projectId: project.projectId,
+      memberId: pm.memberId,
+      messageId: null,
+      brief: { persona: pm.persona, instruction: "plan", cwd: process.cwd(), quotes: [], knowledge: [] },
+      status: "running"
+    });
+    await store.updateJob(job.jobId, { acpChatId: "chat-stream-1" });
+
+    // Step 1: Thinking delta
+    await conductor.handleAcpStream({
+      type: "assistantDelta",
+      chatId: "chat-stream-1",
+      id: "delta-1",
+      text: "",
+      thinking: "Analyzing requirements...",
+      streaming: true,
+      toolCalls: []
+    });
+
+    const firstMsgEvent = emittedEvents.find((e) => e.type === "message");
+    expect(firstMsgEvent).toBeDefined();
+    expect(firstMsgEvent.message.thinking).toBe("Analyzing requirements...");
+    expect(firstMsgEvent.message.streaming).toBe(true);
+
+    // Step 2: Content text delta
+    await conductor.handleAcpStream({
+      type: "assistantDelta",
+      chatId: "chat-stream-1",
+      id: "delta-2",
+      text: "Here is the plan.",
+      thinking: "Analyzing requirements...",
+      streaming: true,
+      toolCalls: []
+    });
+
+    const updateEvent = emittedEvents.filter((e) => e.type === "messageUpdate").at(-1);
+    expect(updateEvent).toBeDefined();
+    expect(updateEvent.message.body).toBe("Here is the plan.");
+    expect(updateEvent.message.thinking).toBe("Analyzing requirements...");
+    expect(updateEvent.message.streaming).toBe(true);
+
+    // Step 3: Done
+    await conductor.handleAcpStream({
+      type: "assistantDone",
+      chatId: "chat-stream-1",
+      streaming: false,
+      message: {
+        id: "msg-done",
+        role: "assistant",
+        text: "Here is the plan. All set.",
+        thinking: "Analyzing requirements... Done.",
+        timestamp: Date.now(),
+        toolCalls: []
+      }
+    });
+
+    const finalMessages = await store.listMessages(project.projectId);
+    expect(finalMessages).toHaveLength(1);
+    expect(finalMessages[0]?.body).toBe("Here is the plan. All set.");
+    expect(finalMessages[0]?.thinking).toBe("Analyzing requirements... Done.");
+  });
 });

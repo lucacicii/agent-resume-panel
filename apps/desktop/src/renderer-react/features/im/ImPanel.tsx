@@ -144,6 +144,7 @@ export function ImPanel(): ReactPortal | null {
   const [hasNewBelow, setHasNewBelow] = useState(false);
   const [activeTimelineMessageId, setActiveTimelineMessageId] = useState<string | undefined>();
   const [flashingMessageId, setFlashingMessageId] = useState<string | null>(null);
+  const [expandedThinking, setExpandedThinking] = useState<Record<string, boolean>>({});
   const transcriptRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const prevMsgCount = useRef(0);
@@ -220,8 +221,19 @@ export function ImPanel(): ReactPortal | null {
       setRoom((current) => {
         if (!current) return current;
         if (event.type === "message") {
-          if (current.messages.some((item) => item.messageId === event.message.messageId)) return current;
+          if (current.messages.some((item) => item.messageId === event.message.messageId)) {
+            return {
+              ...current,
+              messages: current.messages.map((item) => item.messageId === event.message.messageId ? event.message : item)
+            };
+          }
           return { ...current, messages: [...current.messages, event.message] };
+        }
+        if (event.type === "messageUpdate") {
+          const messages = current.messages.some((item) => item.messageId === event.message.messageId)
+            ? current.messages.map((item) => item.messageId === event.message.messageId ? event.message : item)
+            : [...current.messages, event.message];
+          return { ...current, messages };
         }
         if (event.type === "job") {
           const jobs = current.jobs.some((item) => item.jobId === event.job.jobId)
@@ -903,10 +915,47 @@ export function ImPanel(): ReactPortal | null {
                             })}
                           </div>
                         )}
-                        <div
-                          className="markdown-body"
-                          dangerouslySetInnerHTML={{ __html: renderMarkdown(displayBody) }}
-                        />
+                        {message.thinking ? (
+                          <div className="im-message-thinking">
+                            <button
+                              type="button"
+                              className="im-message-thinking-toggle"
+                              aria-expanded={expandedThinking[message.messageId] === true}
+                              onClick={() => setExpandedThinking((curr) => ({
+                                ...curr,
+                                [message.messageId]: !curr[message.messageId]
+                              }))}
+                            >
+                              <ThemeIcon
+                                name="chevron-right"
+                                className={expandedThinking[message.messageId] ? "is-expanded" : ""}
+                                size={12}
+                                aria-hidden="true"
+                              />
+                              <span>
+                                {t("desktop.im.thinking")}
+                                {message.streaming && !message.body ? (
+                                  <span className="im-thinking-spinner" aria-hidden="true" />
+                                ) : null}
+                              </span>
+                            </button>
+                            {expandedThinking[message.messageId] ? (
+                              <div
+                                className="im-message-thinking-body markdown-body"
+                                dangerouslySetInnerHTML={{ __html: renderMarkdown(message.thinking) }}
+                              />
+                            ) : null}
+                          </div>
+                        ) : null}
+                        {displayBody ? (
+                          <div
+                            className="markdown-body"
+                            dangerouslySetInnerHTML={{ __html: renderMarkdown(displayBody) }}
+                          />
+                        ) : null}
+                        {message.streaming && (
+                          <span className="im-streaming-cursor" aria-hidden="true" />
+                        )}
                         {(message.kind === "human" || message.kind === "role.say") && (
                           <div className="im-message-actions">
                             <button type="button" className="im-message-action" onClick={() => void copyText(message.body)}>

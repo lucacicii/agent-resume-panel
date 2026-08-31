@@ -3,7 +3,7 @@ import { effectivePanelHome, loadSettings } from "@agent-resume/core";
 import { createAcpRecord, getAcpRecord } from "../acp/store";
 import type { AcpAgentProvider, AcpStreamEvent, AcpToolCallInfo } from "../acp/types";
 import { buildDispatchPrompt, type ImStore } from "./store";
-import { isImAgent, type ImEvent, type ImJob, type ImJobStatus, type ImMember, type ImRoleTools } from "./types";
+import { isImAgent, type ImEvent, type ImJob, type ImJobStatus, type ImMember, type ImMessage, type ImRoleTools } from "./types";
 
 type ConnectFn = (chatId: string) => Promise<void>;
 type PromptFn = (chatId: string, text: string) => Promise<void>;
@@ -33,6 +33,7 @@ function collectFiles(toolCalls: AcpToolCallInfo[] | undefined, current: string[
 export class ImConductor {
   private readonly jobsByChat = new Map<string, string>();
   private readonly pendingByChat = new Map<string, { resolve: () => void; reject: (error: Error) => void }>();
+  private readonly streamingMessagesByJob = new Map<string, ImMessage>();
 
   constructor(
     private readonly store: ImStore,
@@ -136,6 +137,7 @@ export class ImConductor {
   }
 
   async cancelJob(jobId: string): Promise<ImJob> {
+    this.streamingMessagesByJob.delete(jobId);
     const cancelled = await this.store.cancelJob(jobId);
     this.emit({ type: "job", projectId: cancelled.projectId, job: cancelled });
     const chatId = cancelled.acpChatId;
@@ -241,6 +243,41 @@ export class ImConductor {
         filesChanged
       });
       this.emit({ type: "job", projectId: job.projectId, job });
+
+      const text = event.text || "";
+      const thinking = event.thinking || "";
+      if (text || thinking) {
+        let streamMsg = this.streamingMessagesByJob.get(jobId);
+        if (!streamMsg) {
+          const member = await this.store.getMember(current.memberId);
+          streamMsg = {
+            messageId: crypto.randomUUID(),
+            projectId: current.projectId,
+            kind: "role.say",
+            authorMemberId: current.memberId,
+            authorLabel: member?.name || "Role",
+            body: text,
+            thinking: thinking || undefined,
+            streaming: true,
+            quoteIds: [],
+            quotes: [],
+            mentionRoleIds: [],
+            jobId,
+            createdAtMs: Date.now()
+          };
+          this.streamingMessagesByJob.set(jobId, streamMsg);
+          this.emit({ type: "message", projectId: current.projectId, message: streamMsg });
+        } else {
+          streamMsg = {
+            ...streamMsg,
+            body: text,
+            thinking: thinking || undefined,
+            streaming: true
+          };
+          this.streamingMessagesByJob.set(jobId, streamMsg);
+          this.emit({ type: "messageUpdate", projectId: current.projectId, message: streamMsg });
+        }
+      }
       return;
     }
 
@@ -248,17 +285,41 @@ export class ImConductor {
       const filesChanged = collectFiles(event.message.toolCalls, current.filesChanged);
       const job = await this.store.updateJob(jobId, { filesChanged, status: "running" });
       this.emit({ type: "job", projectId: job.projectId, job });
-      if (event.message.text.trim()) {
+
+      const streamMsg = this.streamingMessagesByJob.get(jobId);
+      const finalBody = event.message.text.trim();
+      const finalThinking = event.message.thinking?.trim();
+      if (streamMsg) {
+        this.streamingMessagesByJob.delete(jobId);
+        if (finalBody || finalThinking) {
+          const persisted = await this.store.insertMessage({
+            messageId: streamMsg.messageId,
+            projectId: job.projectId,
+            kind: "role.say",
+            authorMemberId: job.memberId,
+            authorLabel: streamMsg.authorLabel,
+            body: finalBody,
+            thinking: finalThinking,
+            jobId
+          });
+          this.emit({
+            type: "messageUpdate",
+            projectId: job.projectId,
+            message: { ...persisted, streaming: false }
+          });
+        }
+      } else if (finalBody || finalThinking) {
         const member = await this.store.getMember(job.memberId);
         const say = await this.store.insertMessage({
           projectId: job.projectId,
           kind: "role.say",
           authorMemberId: job.memberId,
           authorLabel: member?.name || "Role",
-          body: event.message.text.trim(),
+          body: finalBody,
+          thinking: finalThinking,
           jobId
         });
-        this.emit({ type: "message", projectId: job.projectId, message: say });
+        this.emit({ type: "message", projectId: job.projectId, message: { ...say, streaming: false } });
       }
     }
   }

@@ -593,4 +593,49 @@ describe("ImPanel", () => {
     fireEvent.click(nodes[0]!);
     expect(scrollIntoViewMock).toHaveBeenCalled();
   });
+
+  it("renders thinking collapsed by default and expands on toggle click, and shows streaming cursor", async () => {
+    const currentProject = project();
+    const currentRoom = roomFor(currentProject);
+    const api = renderIm();
+    (api.imGetRoom as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...currentRoom,
+      messages: [
+        {
+          messageId: "msg-streaming",
+          projectId: currentProject.projectId,
+          kind: "role.say",
+          authorMemberId: currentRoom.members[0]!.memberId,
+          authorLabel: "Developer",
+          body: "Partial streaming content",
+          thinking: "Deep thought analysis",
+          streaming: true,
+          quoteIds: [],
+          quotes: [],
+          mentionRoleIds: [],
+          jobId: "j1",
+          createdAtMs: 1000
+        }
+      ]
+    });
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+
+    await waitFor(() => expect(document.querySelector(".im-message-thinking")).not.toBeNull());
+    // Thinking toggle exists
+    const toggle = document.querySelector(".im-message-thinking-toggle") as HTMLButtonElement;
+    expect(toggle).not.toBeNull();
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    // Body is not visible by default
+    expect(document.querySelector(".im-message-thinking-body")).toBeNull();
+    // Streaming cursor is visible
+    expect(document.querySelector(".im-streaming-cursor")).not.toBeNull();
+
+    // Click to expand
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(document.querySelector(".im-message-thinking-body")).not.toBeNull();
+    expect(document.querySelector(".im-message-thinking-body")?.textContent).toContain("Deep thought analysis");
+  });
 });

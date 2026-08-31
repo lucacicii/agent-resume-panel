@@ -18,6 +18,10 @@ ALTER TABLE im_role_templates ADD COLUMN model TEXT;
 ALTER TABLE im_members ADD COLUMN model TEXT;
 `;
 
+export const IM_MESSAGE_THINKING_MIGRATION_SQL = `
+ALTER TABLE im_messages ADD COLUMN thinking TEXT;
+`;
+
 export const IM_SELECTION_ACTION_MODEL_MIGRATION_SQL = `
 ALTER TABLE im_selection_actions ADD COLUMN provider_id TEXT;
 ALTER TABLE im_selection_actions ADD COLUMN model_id TEXT;
@@ -316,6 +320,7 @@ CREATE TABLE IF NOT EXISTS im_messages (
   author_member_id TEXT,
   author_label TEXT NOT NULL,
   body TEXT NOT NULL,
+  thinking TEXT,
   quote_ids_json TEXT NOT NULL DEFAULT '[]',
   mention_role_ids_json TEXT NOT NULL DEFAULT '[]',
   job_id TEXT,

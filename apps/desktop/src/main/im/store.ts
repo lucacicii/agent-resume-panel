@@ -168,6 +168,7 @@ interface MessageRow {
   author_member_id: string | null;
   author_label: string;
   body: string;
+  thinking: string | null;
   quote_ids_json: string;
   mention_role_ids_json: string;
   job_id: string | null;
@@ -1009,23 +1010,26 @@ export class ImStore {
   }
 
   async insertMessage(input: {
+    messageId?: string;
     projectId: string;
     kind: ImMessageKind;
     authorMemberId?: string | null;
     authorLabel: string;
     body: string;
+    thinking?: string;
     quoteIds?: string[];
     mentionRoleIds?: string[];
     jobId?: string | null;
   }): Promise<ImMessage> {
     const now = nowMs();
-    const messageId = randomUUID();
+    const messageId = input.messageId || randomUUID();
     const quoteIds = input.quoteIds ?? [];
     const mentionRoleIds = input.mentionRoleIds ?? [];
+    const thinking = input.thinking?.trim() || null;
     await runSqlite(
       this.dbPath,
       `INSERT INTO im_messages (
-        message_id, project_id, kind, author_member_id, author_label, body, quote_ids_json, mention_role_ids_json, job_id, created_at_ms
+        message_id, project_id, kind, author_member_id, author_label, body, thinking, quote_ids_json, mention_role_ids_json, job_id, created_at_ms
       ) VALUES (
         ${sqlString(messageId)},
         ${sqlString(input.projectId)},
@@ -1033,6 +1037,7 @@ export class ImStore {
         ${sqlNullOrString(input.authorMemberId ?? null)},
         ${sqlString(input.authorLabel)},
         ${sqlString(input.body)},
+        ${sqlNullOrString(thinking)},
         ${sqlString(JSON.stringify(quoteIds))},
         ${sqlString(JSON.stringify(mentionRoleIds))},
         ${sqlNullOrString(input.jobId ?? null)},
@@ -1046,6 +1051,34 @@ export class ImStore {
     const created = await this.getMessage(messageId);
     if (!created) throw new Error("Failed to load created message.");
     return created;
+  }
+
+  async updateMessage(
+    messageId: string,
+    patch: {
+      body?: string;
+      thinking?: string | null;
+    }
+  ): Promise<ImMessage> {
+    const current = await this.getMessage(messageId);
+    if (!current) throw new Error("Message not found.");
+    const now = nowMs();
+    const body = patch.body !== undefined ? patch.body : current.body;
+    const thinking = patch.thinking !== undefined ? (patch.thinking?.trim() || null) : (current.thinking ?? null);
+    await runSqlite(
+      this.dbPath,
+      `UPDATE im_messages SET
+        body = ${sqlString(body)},
+        thinking = ${sqlNullOrString(thinking)}
+       WHERE message_id = ${sqlString(messageId)};`
+    );
+    await runSqlite(
+      this.dbPath,
+      `UPDATE im_projects SET updated_at_ms = ${now} WHERE project_id = ${sqlString(current.projectId)};`
+    );
+    const updated = await this.getMessage(messageId);
+    if (!updated) throw new Error("Failed to load updated message.");
+    return updated;
   }
 
   async attachJobToMessage(messageId: string, jobId: string): Promise<void> {
@@ -1418,6 +1451,7 @@ export class ImStore {
       authorMemberId: row.author_member_id,
       authorLabel: row.author_label,
       body: row.body,
+      thinking: row.thinking?.trim() || undefined,
       quoteIds,
       quotes,
       mentionRoleIds: parseJsonArray(row.mention_role_ids_json),

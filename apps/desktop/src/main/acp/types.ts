@@ -61,6 +61,7 @@ export interface AcpChatMessage {
   id: string;
   role: AcpChatMessageRole;
   text: string;
+  thinking?: string;
   timestamp: number;
   images?: AcpImageAttachment[];
   files?: AcpFileAttachment[];
@@ -138,7 +139,7 @@ export type AcpStreamEvent =
   | { type: "history"; chatId: string; messages: AcpChatMessage[] }
   | { type: "message"; chatId: string; message: AcpChatMessage }
   | { type: "messageUpdate"; chatId: string; message: AcpChatMessage }
-  | { type: "assistantDelta"; chatId: string; id: string; text: string; toolCalls: AcpToolCallInfo[]; streaming: boolean }
+  | { type: "assistantDelta"; chatId: string; id: string; text: string; thinking?: string; toolCalls: AcpToolCallInfo[]; streaming: boolean }
   | { type: "assistantDone"; chatId: string; message: AcpChatMessage; streaming: boolean }
   | {
       type: "permissionRequest";
