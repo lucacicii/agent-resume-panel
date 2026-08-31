@@ -1248,13 +1248,21 @@ export function ImPanel(): ReactPortal | null {
               <div className="im-room-head">
                 <div>
                   <h2>{room.project.name}</h2>
-                  <p>{room.project.localPath || t("desktop.im.tempFolder")}</p>
+                  <p className="im-room-path">
+                    <span>{room.project.localPath || t("desktop.im.tempFolder")}</span>
+                    <button
+                      type="button"
+                      className="im-room-path-btn"
+                      onClick={() => void associateFolder()}
+                      title={t("desktop.im.associateFolder")}
+                      aria-label={t("desktop.im.associateFolder")}
+                    >
+                      <ThemeIcon name="folder" size={13} aria-hidden="true" />
+                    </button>
+                  </p>
                 </div>
                 <div className="im-room-head-actions">
                   {projectTools.toolbar}
-                  <button type="button" className="tool-btn" onClick={() => void associateFolder()}>
-                    {t("desktop.im.associateFolder")}
-                  </button>
                   <button
                     type="button"
                     className={`tool-btn ghost-btn${rightSidebarOpen ? " active" : ""}`}
@@ -1269,8 +1277,7 @@ export function ImPanel(): ReactPortal | null {
                     aria-label={t("desktop.im.toggleDetails")}
                     aria-pressed={rightSidebarOpen}
                   >
-                    <ThemeIcon name="panel-right" size={14} aria-hidden="true" />
-                    <span>{t("desktop.im.toggleDetails")}</span>
+                    <ThemeIcon name="settings" size={14} aria-hidden="true" />
                   </button>
                 </div>
               </div>
