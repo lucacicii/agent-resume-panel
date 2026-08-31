@@ -23,9 +23,17 @@ const messages = {
   "desktop.im.roleAgent": "Agent",
   "desktop.im.roleModel": "Model",
   "desktop.im.defaultModel": "Default (Follow template)",
+  "desktop.im.roleThoughtLevel": "Thinking level",
+  "desktop.im.defaultThoughtLevel": "Default (Agent default)",
+  "desktop.im.thoughtLevel.low": "Low",
+  "desktop.im.thoughtLevel.medium": "Medium",
+  "desktop.im.thoughtLevel.high": "High",
+  "desktop.im.customThoughtLevelOption": "Custom thinking level…",
+  "desktop.settings.imThoughtLevelPlaceholder": "e.g. low, medium, high",
   "desktop.im.resetDefault": "Reset to default",
   "desktop.im.fetchModels": "Fetch models",
   "desktop.im.customBadge": "Custom",
+  "desktop.im.customModelOption": "Custom model ID…",
   "desktop.workbench.autoRename": "Auto rename",
   "desktop.common.revealInFinder": "Reveal in Finder",
   "desktop.im.emptyRoom": "Quote a message and @ a role to dispatch work.",
@@ -181,9 +189,13 @@ function renderIm() {
       const mem = roomFor(created).members.find((m) => m.memberId === memberId) || roomFor(created).members[0]!;
       return { ...mem, model: model ?? undefined };
     }),
+    imSetMemberThoughtLevel: vi.fn(async ({ memberId, thoughtLevel }: { memberId: string; thoughtLevel: string | null }) => {
+      const mem = roomFor(created).members.find((m) => m.memberId === memberId) || roomFor(created).members[0]!;
+      return { ...mem, thoughtLevel: thoughtLevel ?? undefined };
+    }),
     imResetMemberOverrides: vi.fn(async ({ memberId }: { memberId: string }) => {
       const mem = roomFor(created).members.find((m) => m.memberId === memberId) || roomFor(created).members[0]!;
-      return { ...mem, agent: "claude", model: undefined };
+      return { ...mem, agent: "claude", model: undefined, thoughtLevel: undefined };
     }),
     imListAgentModels: vi.fn(async ({ agent }: { agent: string }) => {
       if (agent === "codex") {
@@ -888,6 +900,13 @@ describe("ImPanel", () => {
     await waitFor(() => expect(api.imSetMemberModel).toHaveBeenCalledWith({
       memberId: "mem-pm",
       model: "o3-mini"
+    }));
+
+    const thoughtSelect = screen.getByDisplayValue("Default (Agent default)");
+    fireEvent.change(thoughtSelect, { target: { value: "high" } });
+    await waitFor(() => expect(api.imSetMemberThoughtLevel).toHaveBeenCalledWith({
+      memberId: "mem-pm",
+      thoughtLevel: "high"
     }));
   });
 

@@ -143,6 +143,7 @@ interface TemplateRow {
   persona: string;
   agent: string;
   model: string | null;
+  thought_level: string | null;
   permissions: string;
   tools_json: string | null;
   created_at_ms: number;
@@ -157,6 +158,7 @@ interface MemberRow {
   persona: string;
   agent: string;
   model: string | null;
+  thought_level: string | null;
   permissions: string;
   enabled: number;
   acp_chat_id: string | null;
@@ -406,6 +408,7 @@ function mapTemplate(row: TemplateRow): ImRoleTemplate {
     persona: row.persona,
     agent: isImAgent(row.agent) ? row.agent : "claude",
     model: row.model?.trim() || undefined,
+    thoughtLevel: row.thought_level?.trim() || undefined,
     permissions: tools.fsWrite ? "write" : "read",
     tools,
     createdAtMs: row.created_at_ms,
@@ -417,6 +420,7 @@ function mapMember(row: MemberRow, template?: ImRoleTemplate): ImMember {
   const tools = template?.tools ?? builtinToolsFor(row.template_id);
   const rowAgent = isImAgent(row.agent) ? row.agent : undefined;
   const rowModel = row.model?.trim() || undefined;
+  const rowThoughtLevel = row.thought_level?.trim() || undefined;
   return {
     memberId: row.member_id,
     projectId: row.project_id,
@@ -425,6 +429,7 @@ function mapMember(row: MemberRow, template?: ImRoleTemplate): ImMember {
     persona: template?.persona ?? row.persona,
     agent: rowAgent ?? template?.agent ?? "claude",
     model: rowModel ?? template?.model ?? undefined,
+    thoughtLevel: rowThoughtLevel ?? template?.thoughtLevel ?? undefined,
     permissions: template?.permissions ?? (isImPermission(row.permissions) ? row.permissions : "write"),
     tools,
     enabled: row.enabled === 1,
@@ -944,6 +949,7 @@ export class ImStore {
     persona: string;
     agent: ImAgent;
     model?: string;
+    thoughtLevel?: string;
     tools?: ImRoleTools;
   }): Promise<ImRoleTemplate> {
     const name = input.name.trim();
@@ -951,18 +957,20 @@ export class ImStore {
     if (!isImAgent(input.agent)) throw new Error("IM only supports Pi, Claude Code, and Codex.");
     const tools = parseImRoleTools({ ...input.tools, fsRead: true });
     const model = input.model?.trim() || null;
+    const thoughtLevel = input.thoughtLevel?.trim() || null;
     const now = nowMs();
     const templateId = randomUUID();
     await runSqlite(
       this.dbPath,
       `INSERT INTO im_role_templates (
-        template_id, name, persona, agent, model, permissions, tools_json, created_at_ms, updated_at_ms
+        template_id, name, persona, agent, model, thought_level, permissions, tools_json, created_at_ms, updated_at_ms
       ) VALUES (
         ${sqlString(templateId)},
         ${sqlString(name)},
         ${sqlString(input.persona.trim())},
         ${sqlString(input.agent)},
         ${sqlNullOrString(model)},
+        ${sqlNullOrString(thoughtLevel)},
         ${sqlString(tools.fsWrite ? "write" : "read")},
         ${sqlString(JSON.stringify(tools))},
         ${now},
@@ -980,6 +988,7 @@ export class ImStore {
     persona?: string;
     agent?: ImAgent;
     model?: string | null;
+    thoughtLevel?: string | null;
     tools?: ImRoleTools;
   }): Promise<ImRoleTemplate> {
     const current = await this.getTemplate(input.templateId);
@@ -989,6 +998,7 @@ export class ImStore {
     const agent = input.agent ?? current.agent;
     if (!isImAgent(agent)) throw new Error("IM only supports Pi, Claude Code, and Codex.");
     const model = input.model !== undefined ? (input.model?.trim() || null) : (current.model ?? null);
+    const thoughtLevel = input.thoughtLevel !== undefined ? (input.thoughtLevel?.trim() || null) : (current.thoughtLevel ?? null);
     const persona = input.persona ?? current.persona;
     const tools = input.tools ? parseImRoleTools({ ...input.tools, fsRead: true }) : { ...current.tools, fsRead: true };
     const now = nowMs();
@@ -999,15 +1009,16 @@ export class ImStore {
         persona = ${sqlString(persona)},
         agent = ${sqlString(agent)},
         model = ${sqlNullOrString(model)},
+        thought_level = ${sqlNullOrString(thoughtLevel)},
         permissions = ${sqlString(tools.fsWrite ? "write" : "read")},
         tools_json = ${sqlString(JSON.stringify(tools))},
         updated_at_ms = ${now}
        WHERE template_id = ${sqlString(input.templateId)};`
     );
-    if (agent !== current.agent || model !== (current.model ?? null)) {
+    if (agent !== current.agent || model !== (current.model ?? null) || thoughtLevel !== (current.thoughtLevel ?? null)) {
       await runSqlite(
         this.dbPath,
-        `UPDATE im_members SET acp_chat_id = NULL, agent = ${sqlString(agent)}, model = ${sqlNullOrString(model)}, updated_at_ms = ${now}
+        `UPDATE im_members SET acp_chat_id = NULL, agent = ${sqlString(agent)}, model = ${sqlNullOrString(model)}, thought_level = ${sqlNullOrString(thoughtLevel)}, updated_at_ms = ${now}
          WHERE template_id = ${sqlString(input.templateId)};`
       );
     }
@@ -1035,6 +1046,7 @@ export class ImStore {
     persona: string;
     agent: ImAgent;
     model?: string;
+    thoughtLevel?: string;
     tools?: ImRoleTools;
   }): Promise<{ template: ImRoleTemplate; member: ImMember }> {
     await this.requireProject(input.projectId);
@@ -1115,6 +1127,7 @@ export class ImStore {
       persona: template.persona,
       agent: template.agent,
       model: template.model,
+      thoughtLevel: template.thoughtLevel,
       permissions: template.permissions,
       tools: template.tools,
       enabled: true,
@@ -1125,7 +1138,7 @@ export class ImStore {
     await runSqlite(
       this.dbPath,
       `INSERT INTO im_members (
-        member_id, project_id, template_id, name, persona, agent, model, permissions, enabled, acp_chat_id, created_at_ms, updated_at_ms
+        member_id, project_id, template_id, name, persona, agent, model, thought_level, permissions, enabled, acp_chat_id, created_at_ms, updated_at_ms
       ) VALUES (
         ${sqlString(member.memberId)},
         ${sqlString(projectId)},
@@ -1134,6 +1147,7 @@ export class ImStore {
         ${sqlString(member.persona)},
         ${sqlString(member.agent)},
         ${sqlNullOrString(member.model)},
+        ${sqlNullOrString(member.thoughtLevel)},
         ${sqlString(member.permissions)},
         1,
         NULL,
@@ -1170,18 +1184,40 @@ export class ImStore {
     return { ...member, model: effectiveModel, updatedAtMs: now };
   }
 
+  async setMemberThoughtLevel(memberId: string, thoughtLevel: string | null): Promise<ImMember> {
+    const member = await this.requireMember(memberId);
+    const now = nowMs();
+    const nextThoughtLevel = thoughtLevel?.trim() || null;
+    await runSqlite(
+      this.dbPath,
+      `UPDATE im_members SET thought_level = ${sqlNullOrString(nextThoughtLevel)}, updated_at_ms = ${now}
+       WHERE member_id = ${sqlString(memberId)};`
+    );
+    const template = await this.getTemplate(member.templateId);
+    const effectiveThoughtLevel = nextThoughtLevel ?? template?.thoughtLevel ?? undefined;
+    return { ...member, thoughtLevel: effectiveThoughtLevel, updatedAtMs: now };
+  }
+
   async resetMemberOverrides(memberId: string): Promise<ImMember> {
     const member = await this.requireMember(memberId);
     const template = await this.getTemplate(member.templateId);
     const now = nowMs();
     const defaultAgent = template?.agent ?? "claude";
     const defaultModel = template?.model ?? null;
+    const defaultThoughtLevel = template?.thoughtLevel ?? null;
     await runSqlite(
       this.dbPath,
-      `UPDATE im_members SET agent = ${sqlString(defaultAgent)}, model = ${sqlNullOrString(defaultModel)}, acp_chat_id = NULL, updated_at_ms = ${now}
+      `UPDATE im_members SET agent = ${sqlString(defaultAgent)}, model = ${sqlNullOrString(defaultModel)}, thought_level = ${sqlNullOrString(defaultThoughtLevel)}, acp_chat_id = NULL, updated_at_ms = ${now}
        WHERE member_id = ${sqlString(memberId)};`
     );
-    return { ...member, agent: defaultAgent, model: defaultModel ?? undefined, acpChatId: null, updatedAtMs: now };
+    return {
+      ...member,
+      agent: defaultAgent,
+      model: defaultModel ?? undefined,
+      thoughtLevel: defaultThoughtLevel ?? undefined,
+      acpChatId: null,
+      updatedAtMs: now
+    };
   }
 
   async setMemberAcpChatId(memberId: string, acpChatId: string): Promise<ImMember> {

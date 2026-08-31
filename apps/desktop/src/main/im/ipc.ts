@@ -37,6 +37,7 @@ type AcpHostApi = {
   ) => Promise<void>;
   denyPermission: (requestId: string) => Promise<void>;
   setModel?: (chatId: string, modelId: string) => Promise<void>;
+  setThoughtLevel?: (chatId: string, thoughtLevel: string) => Promise<void>;
 };
 
 async function getStore(): Promise<ImStore> {
@@ -65,7 +66,8 @@ export function registerImIpc(deps: {
         deps.acp.connect,
         deps.acp.prompt,
         deps.acp.denyPermission,
-        deps.acp.setModel
+        deps.acp.setModel,
+        deps.acp.setThoughtLevel
       );
     }
     return conductor;
@@ -163,6 +165,7 @@ export function registerImIpc(deps: {
     persona?: unknown;
     agent?: unknown;
     model?: unknown;
+    thoughtLevel?: unknown;
     tools?: unknown;
   }) => {
     if (typeof args?.name !== "string" || typeof args?.agent !== "string" || !isImAgent(args.agent)) {
@@ -174,6 +177,7 @@ export function registerImIpc(deps: {
       persona: typeof args.persona === "string" ? args.persona : "",
       agent: args.agent as ImAgent,
       model: typeof args.model === "string" ? args.model : undefined,
+      thoughtLevel: typeof args.thoughtLevel === "string" ? args.thoughtLevel : undefined,
       tools: parseImRoleTools(args.tools)
     });
   });
@@ -184,6 +188,7 @@ export function registerImIpc(deps: {
     persona?: unknown;
     agent?: unknown;
     model?: unknown;
+    thoughtLevel?: unknown;
     tools?: unknown;
   }) => {
     if (typeof args?.templateId !== "string") throw new Error("Template id is required.");
@@ -197,6 +202,7 @@ export function registerImIpc(deps: {
       persona: typeof args.persona === "string" ? args.persona : undefined,
       agent: typeof args.agent === "string" ? args.agent as ImAgent : undefined,
       model: args.model === null ? null : typeof args.model === "string" ? args.model : undefined,
+      thoughtLevel: args.thoughtLevel === null ? null : typeof args.thoughtLevel === "string" ? args.thoughtLevel : undefined,
       tools: args.tools === undefined ? undefined : parseImRoleTools(args.tools)
     });
   });
@@ -233,6 +239,15 @@ export function registerImIpc(deps: {
     return member;
   });
 
+  safeHandle("im:setMemberThoughtLevel", async (_event, args: { memberId?: unknown; thoughtLevel?: unknown }) => {
+    if (typeof args?.memberId !== "string") throw new Error("Member id is required.");
+    const thoughtLevel = typeof args?.thoughtLevel === "string" ? args.thoughtLevel : null;
+    const im = await getStore();
+    const member = await im.setMemberThoughtLevel(args.memberId, thoughtLevel);
+    emit({ type: "member", projectId: member.projectId, member });
+    return member;
+  });
+
   safeHandle("im:resetMemberOverrides", async (_event, args: { memberId?: unknown }) => {
     if (typeof args?.memberId !== "string") throw new Error("Member id is required.");
     const im = await getStore();
@@ -253,6 +268,7 @@ export function registerImIpc(deps: {
     persona?: unknown;
     agent?: unknown;
     model?: unknown;
+    thoughtLevel?: unknown;
   }) => {
     if (typeof args?.projectId !== "string" || typeof args?.name !== "string") {
       throw new Error("Project id and role name are required.");
@@ -266,7 +282,8 @@ export function registerImIpc(deps: {
       name: args.name,
       persona: typeof args.persona === "string" ? args.persona : "",
       agent: args.agent as ImAgent,
-      model: typeof args.model === "string" ? args.model : undefined
+      model: typeof args.model === "string" ? args.model : undefined,
+      thoughtLevel: typeof args.thoughtLevel === "string" ? args.thoughtLevel : undefined
     });
   });
 

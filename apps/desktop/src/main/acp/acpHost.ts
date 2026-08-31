@@ -663,6 +663,19 @@ class AcpChatController {
     }
   }
 
+  async setThoughtLevel(thoughtLevel: string): Promise<void> {
+    if (!thoughtLevel) return;
+    const thoughtOpt = this.configOptions.find(
+      (option) => option.type === "select" && option.category === "thought_level"
+    );
+    if (!thoughtOpt || thoughtOpt.type !== "select") {
+      console.warn(`[ACP] No thought_level config option on chat ${this.record.id}; skipping ${thoughtLevel}.`);
+      return;
+    }
+    if (thoughtOpt.currentValue === thoughtLevel) return;
+    await this.setConfigOption(thoughtOpt.id, thoughtLevel);
+  }
+
   async setConfigOption(configId: string, value: string | boolean): Promise<void> {
     if (!configId || !this.connection || !this.activeAcpSessionId || this.isRunning) return;
     try {
@@ -988,6 +1001,13 @@ export async function setAcpModel(chatId: string, modelId: string): Promise<void
   const controller = controllers.get(chatId);
   if (controller && modelId) {
     await controller.setModel(modelId);
+  }
+}
+
+export async function setAcpThoughtLevel(chatId: string, thoughtLevel: string): Promise<void> {
+  const controller = controllers.get(chatId);
+  if (controller && thoughtLevel) {
+    await controller.setThoughtLevel(thoughtLevel);
   }
 }
 

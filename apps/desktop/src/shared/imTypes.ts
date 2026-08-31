@@ -69,6 +69,13 @@ export interface ImAgentModelOption {
   provider?: string;
 }
 
+export const IM_SUGGESTED_THOUGHT_LEVELS = ["low", "medium", "high"] as const;
+export type ImThoughtLevel = (typeof IM_SUGGESTED_THOUGHT_LEVELS)[number];
+
+export function isSuggestedThoughtLevel(value: string): value is ImThoughtLevel {
+  return (IM_SUGGESTED_THOUGHT_LEVELS as readonly string[]).includes(value);
+}
+
 export const IM_AGENT_SUGGESTED_MODELS: Record<ImAgent, ImAgentModelOption[]> = {
   claude: [
     { id: "", label: "Default" },
@@ -111,6 +118,7 @@ export interface ImRoleTemplate {
   persona: string;
   agent: ImAgent;
   model?: string;
+  thoughtLevel?: string;
   permissions: ImPermission;
   tools: ImRoleTools;
   createdAtMs: number;
@@ -125,6 +133,7 @@ export interface ImMember {
   persona: string;
   agent: ImAgent;
   model?: string;
+  thoughtLevel?: string;
   permissions: ImPermission;
   tools: ImRoleTools;
   enabled: boolean;

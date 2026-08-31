@@ -604,6 +604,7 @@ export interface DesktopApi {
     persona: string;
     agent: ImAgent;
     model?: string;
+    thoughtLevel?: string;
     tools?: { fsRead: boolean; fsWrite: boolean; execute: boolean };
   }): Promise<ImRoleTemplate>;
   imUpdateTemplate(args: {
@@ -612,12 +613,14 @@ export interface DesktopApi {
     persona?: string;
     agent?: ImAgent;
     model?: string | null;
+    thoughtLevel?: string | null;
     tools?: { fsRead: boolean; fsWrite: boolean; execute: boolean };
   }): Promise<ImRoleTemplate>;
   imDeleteTemplate(args: { templateId: string }): Promise<{ ok: boolean }>;
   imGetRoom(args: { projectId: string }): Promise<ImRoom>;
   imSetMemberAgent(args: { memberId: string; agent: ImAgent }): Promise<ImMember>;
   imSetMemberModel(args: { memberId: string; model: string | null }): Promise<ImMember>;
+  imSetMemberThoughtLevel(args: { memberId: string; thoughtLevel: string | null }): Promise<ImMember>;
   imResetMemberOverrides(args: { memberId: string }): Promise<ImMember>;
   imListAgentModels(args: { agent: ImAgent }): Promise<Array<{ id: string; label: string; provider?: string }>>;
   imCreateRole(args: {
@@ -626,6 +629,7 @@ export interface DesktopApi {
     persona: string;
     agent: ImAgent;
     model?: string;
+    thoughtLevel?: string;
   }): Promise<{ template: ImRoleTemplate; member: ImMember }>;
   imAddMember(args: { projectId: string; templateId: string }): Promise<ImMember>;
   imRemoveMember(args: { memberId: string }): Promise<{ ok: boolean }>;
@@ -1656,6 +1660,7 @@ const api: DesktopApi = {
   imGetRoom: (args) => ipcRenderer.invoke("im:getRoom", args),
   imSetMemberAgent: (args) => ipcRenderer.invoke("im:setMemberAgent", args),
   imSetMemberModel: (args) => ipcRenderer.invoke("im:setMemberModel", args),
+  imSetMemberThoughtLevel: (args) => ipcRenderer.invoke("im:setMemberThoughtLevel", args),
   imResetMemberOverrides: (args) => ipcRenderer.invoke("im:resetMemberOverrides", args),
   imListAgentModels: (args) => ipcRenderer.invoke("im:listAgentModels", args),
   imCreateRole: (args) => ipcRenderer.invoke("im:createRole", args),

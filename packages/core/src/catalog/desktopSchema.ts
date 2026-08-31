@@ -18,6 +18,11 @@ ALTER TABLE im_role_templates ADD COLUMN model TEXT;
 ALTER TABLE im_members ADD COLUMN model TEXT;
 `;
 
+export const IM_ROLE_THOUGHT_LEVEL_MIGRATION_SQL = `
+ALTER TABLE im_role_templates ADD COLUMN thought_level TEXT;
+ALTER TABLE im_members ADD COLUMN thought_level TEXT;
+`;
+
 export const IM_MESSAGE_THINKING_MIGRATION_SQL = `
 ALTER TABLE im_messages ADD COLUMN thinking TEXT;
 `;
@@ -278,6 +283,7 @@ CREATE TABLE IF NOT EXISTS im_role_templates (
   persona TEXT NOT NULL DEFAULT '',
   agent TEXT NOT NULL,
   model TEXT,
+  thought_level TEXT,
   permissions TEXT NOT NULL DEFAULT 'write',
   tools_json TEXT,
   created_at_ms INTEGER NOT NULL,
@@ -292,6 +298,7 @@ CREATE TABLE IF NOT EXISTS im_members (
   persona TEXT NOT NULL DEFAULT '',
   agent TEXT NOT NULL,
   model TEXT,
+  thought_level TEXT,
   permissions TEXT NOT NULL DEFAULT 'write',
   enabled INTEGER NOT NULL DEFAULT 1,
   acp_chat_id TEXT,

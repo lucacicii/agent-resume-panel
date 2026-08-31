@@ -148,6 +148,7 @@ import {
   promptAcpChat,
   registerAcpIpc,
   setAcpModel,
+  setAcpThoughtLevel,
   setAcpRecordProjectPath
 } from "./acp/acpHost";
 import { registerImIpc } from "./im/ipc";
@@ -3330,7 +3331,8 @@ app.whenReady().then(async () => {
       connect: (chatId) => connectAcpChat(chatId),
       prompt: (chatId, text, images) => promptAcpChat(chatId, text, images ?? []),
       denyPermission: (requestId) => denyAcpPermission(requestId),
-      setModel: (chatId, modelId) => setAcpModel(chatId, modelId)
+      setModel: (chatId, modelId) => setAcpModel(chatId, modelId),
+      setThoughtLevel: (chatId, thoughtLevel) => setAcpThoughtLevel(chatId, thoughtLevel)
     }
   });
   registerWorkbenchFsIpc();

@@ -166,6 +166,43 @@ describe("ImStore", () => {
     expect(developer?.persona).toBe("Ship small diffs only.");
   });
 
+  it("persists thought level on role templates and propagates to room members", async () => {
+    const store = await createStore();
+    const created = await store.createTemplate({
+      name: "Architect",
+      persona: "You are Lead Architect.",
+      agent: "codex",
+      thoughtLevel: "high"
+    });
+    expect(created.thoughtLevel).toBe("high");
+
+    const project = await store.createProject("Thought Test");
+    await store.addMember(project.projectId, created.templateId);
+    let room = await store.getRoom(project.projectId);
+    let architect = room.members.find((member) => member.templateId === created.templateId);
+    expect(architect?.thoughtLevel).toBe("high");
+
+    const updated = await store.updateTemplate({
+      templateId: created.templateId,
+      thoughtLevel: "low"
+    });
+    expect(updated.thoughtLevel).toBe("low");
+
+    room = await store.getRoom(project.projectId);
+    architect = room.members.find((member) => member.templateId === created.templateId);
+    expect(architect?.thoughtLevel).toBe("low");
+
+    const cleared = await store.updateTemplate({
+      templateId: created.templateId,
+      thoughtLevel: ""
+    });
+    expect(cleared.thoughtLevel).toBeUndefined();
+
+    room = await store.getRoom(project.projectId);
+    architect = room.members.find((member) => member.templateId === created.templateId);
+    expect(architect?.thoughtLevel).toBeUndefined();
+  });
+
   it("persists model configuration on role templates and propagates to room members", async () => {
     const store = await createStore();
     const created = await store.createTemplate({
@@ -360,14 +397,19 @@ describe("ImStore", () => {
     const updatedModel = await store.setMemberModel(dev.memberId, "o3-mini");
     expect(updatedModel.model).toBe("o3-mini");
 
+    const updatedThought = await store.setMemberThoughtLevel(dev.memberId, "high");
+    expect(updatedThought.thoughtLevel).toBe("high");
+
     const refetched = await store.getMember(dev.memberId);
     expect(refetched?.agent).toBe("codex");
     expect(refetched?.model).toBe("o3-mini");
+    expect(refetched?.thoughtLevel).toBe("high");
 
     // Reset overrides to template default
     const reset = await store.resetMemberOverrides(dev.memberId);
     expect(reset.agent).toBe("claude");
     expect(reset.model).toBeUndefined();
+    expect(reset.thoughtLevel).toBeUndefined();
   });
 
   it("defaults to 'New chat' when creating a project without a name and auto-renames with autoRenameProject", async () => {

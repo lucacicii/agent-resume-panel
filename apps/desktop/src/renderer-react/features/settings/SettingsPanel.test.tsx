@@ -34,6 +34,16 @@ const messages = {
   "desktop.settings.imModelCustom": "Custom",
   "desktop.settings.imModelPlaceholder": "e.g. claude-3-7-sonnet-20250219",
   "desktop.settings.imModelHint": "Model hint",
+  "desktop.settings.imThoughtLevel": "Thinking level",
+  "desktop.settings.imThoughtLevelDefault": "Default (Agent default)",
+  "desktop.settings.imThoughtLevelPlaceholder": "e.g. low, medium, high",
+  "desktop.settings.imThoughtLevelHint": "Thought level hint",
+  "desktop.im.thoughtLevel.low": "Low",
+  "desktop.im.thoughtLevel.medium": "Medium",
+  "desktop.im.thoughtLevel.high": "High",
+  "desktop.im.customThoughtLevelOption": "Custom thinking level…",
+  "desktop.im.customModelOption": "Custom model ID…",
+  "desktop.im.defaultModel": "Default (Follow template)",
   "desktop.settings.imPrompt": "Prompt",
   "desktop.settings.imTools": "Tools",
   "desktop.settings.imToolRead": "Read files",
@@ -511,6 +521,48 @@ describe("SettingsPanel (window)", () => {
         expect.objectContaining({
           templateId: "role_developer",
           model: "claude-opus"
+        })
+      );
+    });
+  });
+
+  it("allows selecting a thinking level for role templates in IM settings", async () => {
+    const imUpdateTemplate = vi.fn(async () => ({ templateId: "role_developer" }));
+    const { host } = renderWindowSettings("im", {
+      imListTemplates: vi.fn(async () => [
+        {
+          templateId: "role_developer",
+          name: "Developer",
+          persona: "You are Developer.",
+          agent: "codex",
+          model: "o3-mini",
+          thoughtLevel: "medium",
+          permissions: "write",
+          tools: { fsRead: true, fsWrite: true, execute: true },
+          createdAtMs: 1000,
+          updatedAtMs: 1000
+        }
+      ]),
+      imUpdateTemplate
+    });
+
+    await waitFor(() => expect(host.textContent).toContain("Developer"));
+    await waitFor(() => expect(host.querySelector(".im-settings-editor")).not.toBeNull());
+    const thoughtSelect = Array.from(host.querySelectorAll(".im-settings-editor select")).find(
+      (el) => (el as HTMLSelectElement).value === "medium"
+    ) as HTMLSelectElement | undefined;
+    expect(thoughtSelect).toBeTruthy();
+    expect(thoughtSelect!.value).toBe("medium");
+
+    fireEvent.change(thoughtSelect!, { target: { value: "high" } });
+    const saveBtn = host.querySelector(".im-add-role-actions button.btn.primary") as HTMLButtonElement;
+    fireEvent.click(saveBtn);
+
+    await waitFor(() => {
+      expect(imUpdateTemplate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          templateId: "role_developer",
+          thoughtLevel: "high"
         })
       );
     });

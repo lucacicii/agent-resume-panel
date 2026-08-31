@@ -244,6 +244,69 @@ describe("ImConductor", () => {
     expect(prompt).toHaveBeenCalled();
   });
 
+  it("sets thought level after model when dispatching a job", async () => {
+    const store = await createStore();
+    const project = await store.createProject("Thought dispatch");
+    await store.setLocalPath(project.projectId, process.cwd());
+    const architect = await store.createTemplate({
+      name: "Architect",
+      persona: "Lead Architect.",
+      agent: "codex",
+      model: "o3-mini",
+      thoughtLevel: "high"
+    });
+    const member = await store.addMember(project.projectId, architect.templateId);
+
+    const connect = vi.fn(async () => undefined);
+    const prompt = vi.fn(async () => undefined);
+    const setModel = vi.fn(async () => undefined);
+    const setThoughtLevel = vi.fn(async () => undefined);
+    const conductor = new ImConductor(store, () => undefined, connect, prompt, undefined, setModel, setThoughtLevel);
+
+    await conductor.postMessage({
+      projectId: project.projectId,
+      body: "Plan architecture",
+      quoteIds: [],
+      mentionRoleIds: [member.memberId]
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(connect).toHaveBeenCalled();
+    expect(setModel).toHaveBeenCalledWith(expect.any(String), "o3-mini");
+    expect(setThoughtLevel).toHaveBeenCalledWith(expect.any(String), "high");
+    expect(setModel.mock.invocationCallOrder[0]!).toBeLessThan(setThoughtLevel.mock.invocationCallOrder[0]!);
+    expect(prompt).toHaveBeenCalled();
+  });
+
+  it("does not call setThoughtLevel when the role has no thought level", async () => {
+    const store = await createStore();
+    const project = await store.createProject("No thought");
+    await store.setLocalPath(project.projectId, process.cwd());
+    const room = await store.getRoom(project.projectId);
+    const dev = room.members.find((m) => m.templateId === "role_developer")!;
+
+    const setThoughtLevel = vi.fn(async () => undefined);
+    const conductor = new ImConductor(
+      store,
+      () => undefined,
+      vi.fn(async () => undefined),
+      vi.fn(async () => undefined),
+      undefined,
+      undefined,
+      setThoughtLevel
+    );
+
+    await conductor.postMessage({
+      projectId: project.projectId,
+      body: "Write code",
+      quoteIds: [],
+      mentionRoleIds: [dev.memberId]
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(setThoughtLevel).not.toHaveBeenCalled();
+  });
+
   it("streams assistant text and thinking deltas in real-time and persists on done", async () => {
     const store = await createStore();
     const project = await store.createProject("Streaming test");

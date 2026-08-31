@@ -15,6 +15,7 @@ type PromptFn = (
 ) => Promise<void>;
 type DenyPermissionFn = (requestId: string) => Promise<void>;
 type SetModelFn = (chatId: string, modelId: string) => Promise<void>;
+type SetThoughtLevelFn = (chatId: string, thoughtLevel: string) => Promise<void>;
 
 const WRITER_BUSY: ReadonlySet<ImJobStatus> = new Set([
   "queued",
@@ -87,7 +88,8 @@ export class ImConductor {
     private readonly connectChat: ConnectFn,
     private readonly promptChat: PromptFn,
     private readonly denyPermission?: DenyPermissionFn,
-    private readonly setModel?: SetModelFn
+    private readonly setModel?: SetModelFn,
+    private readonly setThoughtLevel?: SetThoughtLevelFn
   ) {}
 
   async postMessage(input: {
@@ -405,6 +407,7 @@ export class ImConductor {
     const template = await this.store.getTemplate(member.templateId);
     const agent = member.agent || template?.agent || "claude";
     const model = member.model || template?.model || undefined;
+    const thoughtLevel = member.thoughtLevel || template?.thoughtLevel || undefined;
     const settings = await loadSettings();
     const panelHome = effectivePanelHome(settings);
     const cwd = await this.store.ensureProjectLocalPath(job.projectId, panelHome);
@@ -436,6 +439,13 @@ export class ImConductor {
         await this.setModel(chatId, model);
       } catch (error) {
         console.warn(`[IM Conductor] Failed to set model ${model} on chat ${chatId}:`, error);
+      }
+    }
+    if (thoughtLevel && this.setThoughtLevel) {
+      try {
+        await this.setThoughtLevel(chatId, thoughtLevel);
+      } catch (error) {
+        console.warn(`[IM Conductor] Failed to set thought level ${thoughtLevel} on chat ${chatId}:`, error);
       }
     }
     const running = await this.store.updateJob(jobId, { status: "running", acpChatId: chatId });

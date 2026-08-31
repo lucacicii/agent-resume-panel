@@ -11,7 +11,9 @@ import { storedWidth } from "../../storage";
 import {
   IM_AGENTS,
   IM_AGENT_SUGGESTED_MODELS,
+  IM_SUGGESTED_THOUGHT_LEVELS,
   isBuiltinTemplateId,
+  isSuggestedThoughtLevel,
   type ImAgent,
   type ImAgentModelOption,
   type ImEvent,
@@ -233,6 +235,7 @@ export function ImPanel(): ReactPortal | null {
   const [rightSidebarOpen, setRightSidebarOpen] = useState(() => storageBoolean(RIGHT_SIDEBAR_OPEN_KEY, true));
   const [expandedMemberId, setExpandedMemberId] = useState<string | null>(null);
   const [customMemberModelId, setCustomMemberModelId] = useState<string | null>(null);
+  const [customMemberThoughtId, setCustomMemberThoughtId] = useState<string | null>(null);
   const [agentModelsMap, setAgentModelsMap] = useState<Record<string, ImAgentModelOption[]>>({});
   const [knowledgeTitle, setKnowledgeTitle] = useState("");
   const [knowledgeBody, setKnowledgeBody] = useState("");
@@ -1051,9 +1054,25 @@ export function ImPanel(): ReactPortal | null {
     }
   }, [setError]);
 
+  const onMemberThoughtLevelChange = useCallback(async (member: ImMember, nextThoughtLevel: string) => {
+    try {
+      const updated = await desktopApi().imSetMemberThoughtLevel({
+        memberId: member.memberId,
+        thoughtLevel: nextThoughtLevel.trim() || null
+      });
+      setRoom((current) => current
+        ? { ...current, members: current.members.map((m) => m.memberId === updated.memberId ? updated : m) }
+        : current);
+    } catch (error) {
+      setError(error);
+    }
+  }, [setError]);
+
   const onMemberResetOverrides = useCallback(async (member: ImMember) => {
     try {
       const updated = await desktopApi().imResetMemberOverrides({ memberId: member.memberId });
+      setCustomMemberModelId((current) => current === member.memberId ? null : current);
+      setCustomMemberThoughtId((current) => current === member.memberId ? null : current);
       setRoom((current) => current
         ? { ...current, members: current.members.map((m) => m.memberId === updated.memberId ? updated : m) }
         : current);
@@ -1782,7 +1801,8 @@ export function ImPanel(): ReactPortal | null {
                 const isCustomized = Boolean(
                   enabledMember && (
                     enabledMember.agent !== template.agent ||
-                    (enabledMember.model || "") !== (template.model || "")
+                    (enabledMember.model || "") !== (template.model || "") ||
+                    (enabledMember.thoughtLevel || "") !== (template.thoughtLevel || "")
                   )
                 );
                 const effectiveAgent = enabledMember ? enabledMember.agent : template.agent;
@@ -1841,6 +1861,7 @@ export function ImPanel(): ReactPortal | null {
                       (() => {
                         const memberModels = agentModelsMap[enabledMember.agent] ?? IM_AGENT_SUGGESTED_MODELS[enabledMember.agent] ?? [];
                         const isCustomMemberModel = Boolean(enabledMember.model && !memberModels.some((m) => m.id === enabledMember.model));
+                        const isCustomMemberThought = Boolean(enabledMember.thoughtLevel && !isSuggestedThoughtLevel(enabledMember.thoughtLevel));
                         const memberModelGroups: Record<string, ImAgentModelOption[]> = {};
                         for (const m of memberModels) {
                           if (!m.id) continue;
@@ -1896,6 +1917,39 @@ export function ImPanel(): ReactPortal | null {
                                     value={enabledMember.model ?? ""}
                                     placeholder="Enter model ID…"
                                     onChange={(event) => void onMemberModelChange(enabledMember, event.target.value)}
+                                    autoFocus
+                                  />
+                                )}
+                              </div>
+                            </label>
+                            <label>
+                              <span>{t("desktop.im.roleThoughtLevel")}</span>
+                              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                                <select
+                                  value={customMemberThoughtId === enabledMember.memberId || isCustomMemberThought ? "__custom__" : (enabledMember.thoughtLevel ?? "")}
+                                  onChange={(event) => {
+                                    const val = event.target.value;
+                                    if (val === "__custom__") {
+                                      setCustomMemberThoughtId(enabledMember.memberId);
+                                    } else {
+                                      setCustomMemberThoughtId(null);
+                                      void onMemberThoughtLevelChange(enabledMember, val);
+                                    }
+                                  }}
+                                >
+                                  <option value="">{t("desktop.im.defaultThoughtLevel")}</option>
+                                  {IM_SUGGESTED_THOUGHT_LEVELS.map((level) => (
+                                    <option key={level} value={level}>
+                                      {t(`desktop.im.thoughtLevel.${level}`)}
+                                    </option>
+                                  ))}
+                                  <option value="__custom__">{t("desktop.im.customThoughtLevelOption")}</option>
+                                </select>
+                                {(customMemberThoughtId === enabledMember.memberId || isCustomMemberThought) && (
+                                  <input
+                                    value={enabledMember.thoughtLevel ?? ""}
+                                    placeholder={t("desktop.settings.imThoughtLevelPlaceholder")}
+                                    onChange={(event) => void onMemberThoughtLevelChange(enabledMember, event.target.value)}
                                     autoFocus
                                   />
                                 )}
