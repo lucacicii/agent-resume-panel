@@ -172,6 +172,8 @@ export function ImPanel(): ReactPortal | null {
   const [folderMenu, setFolderMenu] = useState<{ x: number; y: number; project: ImProject } | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => storageBoolean(SIDEBAR_COLLAPSED_KEY));
   const [sidebarWidth, setSidebarWidth] = useState(() => storedWidth(SIDEBAR_WIDTH_KEY, 240, 160, 360));
+  const [expandedFiles, setExpandedFiles] = useState<Record<string, boolean>>({});
+  const [copiedFilePath, setCopiedFilePath] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [selectionActions, setSelectionActions] = useState<ImSelectionAction[]>([]);
   const [selectionMenu, setSelectionMenu] = useState<{
@@ -424,9 +426,10 @@ export function ImPanel(): ReactPortal | null {
       memberLabel,
       roleInitial,
       formatTime,
-      (ms) => formatDay(ms, t)
+      (ms) => formatDay(ms, t),
+      room?.jobs
     );
-  }, [formatTime, memberLabel, members, t, visibleMessages]);
+  }, [formatTime, memberLabel, members, room?.jobs, t, visibleMessages]);
   const mentionQuery = (() => {
     const at = draft.lastIndexOf("@");
     if (at < 0) return "";
@@ -574,6 +577,18 @@ export function ImPanel(): ReactPortal | null {
       window.removeEventListener("keydown", onKey);
     };
   }, [selectionMenu, selectionResult, folderMenu]);
+
+  const copyFilePath = useCallback(async (pathStr: string) => {
+    try {
+      await navigator.clipboard.writeText(pathStr);
+      setCopiedFilePath(pathStr);
+      setTimeout(() => {
+        setCopiedFilePath((current) => (current === pathStr ? null : current));
+      }, 2000);
+    } catch {
+      // ignore
+    }
+  }, []);
 
   const startCreateChat = useCallback(async () => {
     setSidebarCollapsed(false);
@@ -1198,6 +1213,8 @@ export function ImPanel(): ReactPortal | null {
                   const roleColorValue = speaker ? roleColor(speaker.templateId) : undefined;
                   const prevVisible = visibleMessages[index - 1];
                   const showDate = !prevVisible || dayKey(prevVisible.createdAtMs) !== dayKey(message.createdAtMs);
+                  const linkedJob = message.jobId ? room?.jobs.find((j) => j.jobId === message.jobId) : undefined;
+                  const filesChanged = linkedJob?.filesChanged ?? [];
                   return (
                     <Fragment key={message.messageId}>
                       {showDate && (
@@ -1310,6 +1327,70 @@ export function ImPanel(): ReactPortal | null {
                             dangerouslySetInnerHTML={{ __html: renderMarkdown(displayBody) }}
                           />
                         ) : null}
+                        {filesChanged.length > 0 && (
+                          <div className="im-message-files">
+                            <button
+                              type="button"
+                              className="im-message-files-toggle"
+                              aria-expanded={expandedFiles[message.messageId] !== false}
+                              onClick={() => setExpandedFiles((curr) => ({
+                                ...curr,
+                                [message.messageId]: curr[message.messageId] === false ? true : false
+                              }))}
+                            >
+                              <ThemeIcon
+                                name="chevron-right"
+                                className={expandedFiles[message.messageId] !== false ? "is-expanded" : ""}
+                                size={12}
+                                aria-hidden="true"
+                              />
+                              <ThemeIcon name="file-text" size={13} aria-hidden="true" />
+                              <span>
+                                {filesChanged.length === 1
+                                  ? t("desktop.im.fileModifiedSingle")
+                                  : t("desktop.im.filesModified", filesChanged.length)}
+                              </span>
+                            </button>
+                            {expandedFiles[message.messageId] !== false ? (
+                              <div className="im-message-files-list">
+                                {filesChanged.map((filePath) => {
+                                  const absPath = room?.project.localPath && !filePath.startsWith("/")
+                                    ? `${room.project.localPath.replace(/\/+$/, "")}/${filePath}`
+                                    : filePath;
+                                  const displayPath = room?.project.localPath && filePath.startsWith(room.project.localPath)
+                                    ? filePath.slice(room.project.localPath.length).replace(/^\/+/, "")
+                                    : filePath;
+                                  return (
+                                    <div key={filePath} className="im-message-file-item" title={absPath}>
+                                      <ThemeIcon name="file-text" size={12} aria-hidden="true" />
+                                      <span className="im-message-file-path">{displayPath}</span>
+                                      <div className="im-message-file-actions">
+                                        <button
+                                          type="button"
+                                          className="im-message-file-btn"
+                                          onClick={() => void copyFilePath(absPath)}
+                                          title={copiedFilePath === absPath ? t("desktop.im.copiedPath") : t("desktop.im.copyPath")}
+                                          aria-label={t("desktop.im.copyPath")}
+                                        >
+                                          <ThemeIcon name={copiedFilePath === absPath ? "check" : "copy"} size={11} aria-hidden="true" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="im-message-file-btn"
+                                          onClick={() => void desktopApi().revealProjectInFinder({ projectPath: absPath })}
+                                          title={t("desktop.common.revealInFinder")}
+                                          aria-label={t("desktop.common.revealInFinder")}
+                                        >
+                                          <ThemeIcon name="external-link" size={11} aria-hidden="true" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : null}
+                          </div>
+                        )}
                         {message.streaming && (
                           <span className="im-streaming-cursor" aria-hidden="true" />
                         )}

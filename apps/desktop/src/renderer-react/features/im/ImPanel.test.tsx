@@ -47,6 +47,11 @@ const messages = {
   "desktop.im.agent.claude": "Claude Code",
   "desktop.im.agent.codex": "Codex",
   "desktop.im.currentJob": "Current job",
+  "desktop.im.thinking": "Thinking process",
+  "desktop.im.filesModified": "Modified {0} files",
+  "desktop.im.fileModifiedSingle": "Modified 1 file",
+  "desktop.im.copyPath": "Copy path",
+  "desktop.im.copiedPath": "Copied",
   "desktop.im.typing": "Typing…",
   "desktop.im.connecting": "Connecting…",
   "desktop.im.inQueue": "Waiting in queue…",
@@ -884,5 +889,62 @@ describe("ImPanel", () => {
       memberId: "mem-pm",
       model: "o3-mini"
     }));
+  });
+
+  it("renders modified files block on assistant messages linked to jobs with file changes", async () => {
+    const currentProject = project({ localPath: "/workspace/project" });
+    const currentRoom = roomFor(currentProject);
+    const dev = currentRoom.members.find((m) => m.templateId === "role_developer")!;
+    const testJob = {
+      jobId: "job-files-1",
+      projectId: currentProject.projectId,
+      memberId: dev.memberId,
+      messageId: null,
+      brief: { persona: dev.persona, instruction: "code", cwd: "/workspace/project", quotes: [], knowledge: [] },
+      status: "completed" as const,
+      filesChanged: ["src/components/Header.tsx", "src/styles.css"],
+      error: null,
+      acpChatId: null,
+      permission: null,
+      finished: true,
+      finishedAtMs: 2000,
+      createdAtMs: 1000,
+      updatedAtMs: 2000
+    };
+    currentRoom.jobs = [testJob];
+    currentRoom.messages = [
+      {
+        messageId: "msg-mod-1",
+        projectId: currentProject.projectId,
+        kind: "role.say",
+        authorMemberId: dev.memberId,
+        authorLabel: "Developer",
+        body: "I updated the header component and styles.",
+        thinking: undefined,
+        images: undefined,
+        quoteIds: [],
+        quotes: [],
+        mentionRoleIds: [],
+        jobId: "job-files-1",
+        streaming: false,
+        createdAtMs: 2000
+      }
+    ];
+
+    const api = renderIm();
+    (api.imGetRoom as ReturnType<typeof vi.fn>).mockResolvedValue(currentRoom);
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+
+    expect(await screen.findByText("Modified 2 files")).toBeTruthy();
+    expect(screen.getByText("src/components/Header.tsx")).toBeTruthy();
+    expect(screen.getByText("src/styles.css")).toBeTruthy();
+
+    const revealButtons = screen.getAllByRole("button", { name: "Reveal in Finder" });
+    expect(revealButtons.length).toBeGreaterThan(0);
+    fireEvent.click(revealButtons[0]!);
+    expect(api.revealProjectInFinder).toHaveBeenCalledWith({ projectPath: "/workspace/project/src/components/Header.tsx" });
   });
 });

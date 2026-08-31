@@ -89,6 +89,16 @@ export function ImTimeline({
             </span>
           </div>
           <p className="im-timeline-popover-snippet">{hoveredNode.snippet}</p>
+          {hoveredNode.filesChangedCount ? (
+            <div className="im-timeline-popover-files">
+              <ThemeIcon name="file-text" size={11} aria-hidden="true" />
+              <span>
+                {hoveredNode.filesChangedCount === 1
+                  ? t("desktop.im.fileModifiedSingle")
+                  : t("desktop.im.filesModified", hoveredNode.filesChangedCount)}
+              </span>
+            </div>
+          ) : null}
         </div>
       )}
       <button

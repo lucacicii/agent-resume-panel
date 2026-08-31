@@ -23,14 +23,54 @@ const WRITER_BUSY: ReadonlySet<ImJobStatus> = new Set([
   "awaiting_user"
 ]);
 
-function collectFiles(toolCalls: AcpToolCallInfo[] | undefined, current: string[]): string[] {
+function isMutatingToolCall(call: AcpToolCallInfo): boolean {
+  const kind = call.kind?.toLowerCase();
+  if (kind === "edit" || kind === "write" || kind === "delete" || kind === "move" || kind === "create") {
+    return true;
+  }
+  if (kind === "read" || kind === "search" || kind === "think" || kind === "fetch") {
+    return false;
+  }
+  const title = (call.title || "").toLowerCase();
+  if (/edit|write|delete|move|create|update|patch|remove/i.test(title)) {
+    return true;
+  }
+  if (call.rawInput && typeof call.rawInput === "object" && !Array.isArray(call.rawInput)) {
+    const input = call.rawInput as Record<string, unknown>;
+    if ("old_string" in input || "new_string" in input || "target_file" in input || "target_directory" in input) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function extractPathsFromToolCall(call: AcpToolCallInfo): string[] {
+  const paths: string[] = [];
+  if (call.locations?.length) {
+    for (const loc of call.locations) {
+      if (loc.path?.trim()) paths.push(loc.path.trim());
+    }
+  }
+  if (call.rawInput && typeof call.rawInput === "object" && !Array.isArray(call.rawInput)) {
+    const input = call.rawInput as Record<string, unknown>;
+    for (const key of ["file_path", "filePath", "path", "target_file", "file"]) {
+      const val = input[key];
+      if (typeof val === "string" && val.trim()) {
+        paths.push(val.trim());
+      }
+    }
+  }
+  return paths;
+}
+
+export function collectFiles(toolCalls: AcpToolCallInfo[] | undefined, current: string[]): string[] {
   if (!toolCalls?.length) return current;
   const next = new Set(current);
   for (const call of toolCalls) {
-    const mutating = call.kind === "edit" || call.kind === "delete" || call.kind === "move" || call.kind === "write";
-    if (!mutating) continue;
-    for (const location of call.locations ?? []) {
-      if (location.path) next.add(location.path);
+    if (!isMutatingToolCall(call)) continue;
+    const paths = extractPathsFromToolCall(call);
+    for (const p of paths) {
+      next.add(p);
     }
   }
   return [...next];

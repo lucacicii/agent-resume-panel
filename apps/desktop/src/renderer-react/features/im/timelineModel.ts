@@ -1,4 +1,4 @@
-import type { ImMember, ImMessage } from "../../../shared/imTypes";
+import type { ImJob, ImMember, ImMessage } from "../../../shared/imTypes";
 
 export interface TimelineNode {
   messageId: string;
@@ -11,6 +11,7 @@ export interface TimelineNode {
   kind: string;
   snippet: string;
   isUser: boolean;
+  filesChangedCount?: number;
 }
 
 export function cleanSnippet(body: string, max = 160): string {
@@ -33,9 +34,11 @@ export function buildTimelineNodes(
   memberLabelFn: (member: ImMember) => string,
   roleInitialFn: (label: string) => string,
   formatTimeFn: (ms: number) => string,
-  formatDayFn: (ms: number) => string
+  formatDayFn: (ms: number) => string,
+  jobs?: ImJob[]
 ): TimelineNode[] {
   const memberById = new Map(members.map((m) => [m.memberId, m]));
+  const jobById = new Map(jobs?.map((j) => [j.jobId, j]) ?? []);
   return messages
     .filter((msg) => msg.kind === "human" || msg.kind === "role.say")
     .map((msg) => {
@@ -44,6 +47,8 @@ export function buildTimelineNodes(
       const authorLabel = member ? memberLabelFn(member) : msg.authorLabel;
       const authorInitial = roleInitialFn(authorLabel);
       const color = member ? roleColorFn(member.templateId) : undefined;
+      const job = msg.jobId ? jobById.get(msg.jobId) : undefined;
+      const filesChangedCount = job?.filesChanged?.length || undefined;
       return {
         messageId: msg.messageId,
         timestamp: msg.createdAtMs,
@@ -54,7 +59,8 @@ export function buildTimelineNodes(
         roleColor: color,
         kind: msg.kind,
         snippet: cleanSnippet(msg.body),
-        isUser
+        isUser,
+        filesChangedCount
       };
     });
 }

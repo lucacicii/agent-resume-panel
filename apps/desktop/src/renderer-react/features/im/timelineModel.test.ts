@@ -69,6 +69,25 @@ describe("timelineModel", () => {
       }
     ];
 
+    const jobs = [
+      {
+        jobId: "j1",
+        projectId: "p1",
+        memberId: "m1",
+        messageId: null,
+        brief: { persona: "", instruction: "", cwd: "", quotes: [], knowledge: [] },
+        status: "completed" as const,
+        filesChanged: ["src/index.ts", "src/styles.css"],
+        error: null,
+        acpChatId: null,
+        permission: null,
+        finished: true,
+        finishedAtMs: null,
+        createdAtMs: 2000,
+        updatedAtMs: 2100
+      }
+    ];
+
     const nodes = buildTimelineNodes(
       messages,
       [member],
@@ -76,7 +95,8 @@ describe("timelineModel", () => {
       (m) => m.name,
       (label) => label.slice(0, 1).toUpperCase(),
       () => "10:00",
-      () => "Today"
+      () => "Today",
+      jobs
     );
 
     expect(nodes).toHaveLength(2); // skips system messages
@@ -85,5 +105,6 @@ describe("timelineModel", () => {
     expect(nodes[1]?.authorLabel).toBe("Developer");
     expect(nodes[1]?.roleColor).toBe("#10b981");
     expect(nodes[1]?.authorInitial).toBe("D");
+    expect(nodes[1]?.filesChangedCount).toBe(2);
   });
 });

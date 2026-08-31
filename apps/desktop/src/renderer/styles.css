@@ -18143,6 +18143,112 @@ html[data-window-mode="browser"] #react-chrome {
   overflow: hidden;
   word-break: break-word;
 }
+/* --- IM Modified Files block --- */
+.im-message-files {
+  margin: 6px 0 8px;
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-md, 6px);
+  background: var(--color-fill-tertiary, color-mix(in srgb, var(--color-label-primary) 3%, transparent));
+  max-width: 100%;
+  overflow: hidden;
+}
+.im-message-files-toggle {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  margin: 0;
+  padding: 5px 8px;
+  border: none;
+  background: transparent;
+  color: var(--color-label-secondary);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+}
+.im-message-files-toggle:hover {
+  color: var(--color-label-primary);
+}
+.im-message-files-toggle .lucide-chevron-right {
+  transition: transform 0.15s ease;
+  flex-shrink: 0;
+}
+.im-message-files-toggle .lucide-chevron-right.is-expanded {
+  transform: rotate(90deg);
+}
+.im-message-files-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 6px 6px;
+  border-top: 1px solid color-mix(in srgb, var(--color-separator) 50%, transparent);
+}
+.im-message-file-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border-radius: var(--radius-sm, 4px);
+  font-size: 11px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  color: var(--color-label-secondary);
+  background: color-mix(in srgb, var(--color-label-primary) 2%, transparent);
+}
+.im-message-file-item:hover {
+  background: color-mix(in srgb, var(--color-label-primary) 5%, transparent);
+  color: var(--color-label-primary);
+}
+.im-message-file-path {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.im-message-file-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  opacity: 0.6;
+  transition: opacity 0.15s ease;
+}
+.im-message-file-item:hover .im-message-file-actions {
+  opacity: 1;
+}
+.im-message-file-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm, 4px);
+  background: transparent;
+  color: var(--color-label-secondary);
+  cursor: pointer;
+}
+.im-message-file-btn:hover {
+  background: var(--color-control-bg-hover, color-mix(in srgb, var(--color-label-primary) 10%, transparent));
+  color: var(--color-label-primary);
+}
+.im-timeline-popover-files {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 5px;
+  padding-top: 4px;
+  border-top: 1px solid var(--color-separator);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-accent, #3b82f6);
+}
+
 .im-message.is-flashing {
   animation: im-message-flash 1.5s ease-out;
 }

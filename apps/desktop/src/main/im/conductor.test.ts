@@ -352,4 +352,97 @@ describe("ImConductor", () => {
       ])
     );
   });
+
+  it("captures modified files from tool calls with locations or rawInput across stream events", async () => {
+    const store = await createStore();
+    const project = await store.createProject("Tool file capture test");
+    const room = await store.getRoom(project.projectId);
+    const dev = room.members.find((member) => member.templateId === "role_developer")!;
+    const conductor = new ImConductor(store, () => undefined, vi.fn(async () => undefined), vi.fn(async () => undefined));
+
+    const job = await store.createJob({
+      projectId: project.projectId,
+      memberId: dev.memberId,
+      messageId: null,
+      brief: { persona: dev.persona, instruction: "code", cwd: process.cwd(), quotes: [], knowledge: [] },
+      status: "running"
+    });
+    await store.updateJob(job.jobId, { acpChatId: "chat-tool-1" });
+
+    // Step 1: Delta with edit tool call using locations
+    await conductor.handleAcpStream({
+      type: "assistantDelta",
+      chatId: "chat-tool-1",
+      id: "delta-1",
+      text: "Editing components...",
+      streaming: true,
+      toolCalls: [
+        {
+          toolCallId: "t1",
+          kind: "edit",
+          status: "completed",
+          locations: [{ path: "src/components/Button.tsx" }]
+        }
+      ]
+    });
+
+    let currentJob = await store.getJob(job.jobId);
+    expect(currentJob?.filesChanged).toEqual(["src/components/Button.tsx"]);
+
+    // Step 2: Delta with write tool call using rawInput file_path
+    await conductor.handleAcpStream({
+      type: "assistantDelta",
+      chatId: "chat-tool-1",
+      id: "delta-2",
+      text: "Writing tests...",
+      streaming: true,
+      toolCalls: [
+        {
+          toolCallId: "t2",
+          title: "Write file Button.test.tsx",
+          status: "completed",
+          rawInput: { file_path: "src/components/Button.test.tsx" }
+        }
+      ]
+    });
+
+    currentJob = await store.getJob(job.jobId);
+    expect(currentJob?.filesChanged).toEqual([
+      "src/components/Button.tsx",
+      "src/components/Button.test.tsx"
+    ]);
+
+    // Step 3: Done with tool calls
+    await conductor.handleAcpStream({
+      type: "assistantDone",
+      chatId: "chat-tool-1",
+      streaming: false,
+      message: {
+        id: "msg-done",
+        role: "assistant",
+        text: "Finished editing files.",
+        timestamp: Date.now(),
+        toolCalls: [
+          {
+            toolCallId: "t1",
+            kind: "edit",
+            status: "completed",
+            locations: [{ path: "src/components/Button.tsx" }]
+          },
+          {
+            toolCallId: "t2",
+            title: "Write file Button.test.tsx",
+            status: "completed",
+            rawInput: { file_path: "src/components/Button.test.tsx" }
+          }
+        ]
+      }
+    });
+
+    currentJob = await store.getJob(job.jobId);
+    expect(currentJob?.filesChanged).toEqual([
+      "src/components/Button.tsx",
+      "src/components/Button.test.tsx"
+    ]);
+  });
 });
