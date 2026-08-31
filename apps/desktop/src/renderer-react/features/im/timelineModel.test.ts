@@ -107,4 +107,53 @@ describe("timelineModel", () => {
     expect(nodes[1]?.authorInitial).toBe("D");
     expect(nodes[1]?.filesChangedCount).toBe(2);
   });
+
+  it("resolves role color and initial with fallback when authorMemberId is not matched or matches templateId", () => {
+    const messages: ImMessage[] = [
+      {
+        messageId: "msg-dev",
+        projectId: "p1",
+        kind: "role.say",
+        authorMemberId: "role_developer",
+        authorLabel: "Developer",
+        body: "Building frontend...",
+        quoteIds: [],
+        quotes: [],
+        mentionRoleIds: [],
+        jobId: null,
+        createdAtMs: 1000
+      },
+      {
+        messageId: "msg-ui",
+        projectId: "p1",
+        kind: "role.say",
+        authorMemberId: null,
+        authorLabel: "UI Designer",
+        body: "Designed the mockups.",
+        quoteIds: [],
+        quotes: [],
+        mentionRoleIds: [],
+        jobId: null,
+        createdAtMs: 2000
+      }
+    ];
+
+    const nodes = buildTimelineNodes(
+      messages,
+      [],
+      (tpl) => (tpl.toLowerCase().includes("dev") ? "#10b981" : "#ec4899"),
+      (m) => m.name,
+      (label) => label.slice(0, 1).toUpperCase(),
+      () => "10:00",
+      () => "Today"
+    );
+
+    expect(nodes).toHaveLength(2);
+    expect(nodes[0]?.authorLabel).toBe("Developer");
+    expect(nodes[0]?.authorInitial).toBe("D");
+    expect(nodes[0]?.roleColor).toBe("#10b981");
+    expect(nodes[1]?.authorLabel).toBe("UI Designer");
+    expect(nodes[1]?.authorInitial).toBe("U");
+    expect(nodes[1]?.roleColor).toBe("#ec4899");
+  });
 });

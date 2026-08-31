@@ -60,7 +60,7 @@ export function ImTimeline({
               aria-label={`${node.authorLabel} (${node.timeLabel})`}
             >
               <span className="im-timeline-dot">
-                {!node.isUser && node.roleColor ? (
+                {!node.isUser ? (
                   <span className="im-timeline-node-avatar" aria-hidden="true">
                     {node.authorInitial}
                   </span>

@@ -51,13 +51,31 @@ function isScratchPath(value?: string | null): boolean {
   return normalized.includes("/.desktop/scratch/im/") || normalized.endsWith("/.desktop/scratch/im");
 }
 
-const BUILTIN_ROLE_KEYS = {
+const BUILTIN_ROLE_KEYS: Record<string, "productManager" | "projectManager" | "uiDesigner" | "developer" | "tester"> = {
   role_product_manager: "productManager",
+  product_manager: "productManager",
+  productManager: "productManager",
+  "Product Manager": "productManager",
   role_project_manager: "projectManager",
+  project_manager: "projectManager",
+  projectManager: "projectManager",
+  "Project Manager": "projectManager",
   role_ui_designer: "uiDesigner",
+  ui_designer: "uiDesigner",
+  uiDesigner: "uiDesigner",
+  "UI Designer": "uiDesigner",
+  ui: "uiDesigner",
+  UI: "uiDesigner",
   role_developer: "developer",
-  role_tester: "tester"
-} as const;
+  developer: "developer",
+  Developer: "developer",
+  develop: "developer",
+  dev: "developer",
+  role_tester: "tester",
+  tester: "tester",
+  Tester: "tester",
+  qa: "tester"
+};
 
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -84,14 +102,32 @@ const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "i
 // Stable brand colors for built-in roles; custom templates hash to a hue.
 const BUILTIN_ROLE_COLORS: Record<string, string> = {
   role_product_manager: "hsl(265 70% 58%)",
+  product_manager: "hsl(265 70% 58%)",
+  productManager: "hsl(265 70% 58%)",
+  "Product Manager": "hsl(265 70% 58%)",
   role_project_manager: "hsl(199 92% 52%)",
+  project_manager: "hsl(199 92% 52%)",
+  projectManager: "hsl(199 92% 52%)",
+  "Project Manager": "hsl(199 92% 52%)",
   role_ui_designer: "hsl(330 72% 58%)",
+  ui_designer: "hsl(330 72% 58%)",
+  uiDesigner: "hsl(330 72% 58%)",
+  "UI Designer": "hsl(330 72% 58%)",
+  ui: "hsl(330 72% 58%)",
+  UI: "hsl(330 72% 58%)",
   role_developer: "hsl(152 76% 42%)",
-  role_tester: "hsl(35 92% 52%)"
+  developer: "hsl(152 76% 42%)",
+  Developer: "hsl(152 76% 42%)",
+  develop: "hsl(152 76% 42%)",
+  dev: "hsl(152 76% 42%)",
+  role_tester: "hsl(35 92% 52%)",
+  tester: "hsl(35 92% 52%)",
+  Tester: "hsl(35 92% 52%)",
+  qa: "hsl(35 92% 52%)"
 };
 
 function roleColor(templateId: string): string {
-  const builtin = BUILTIN_ROLE_COLORS[templateId];
+  const builtin = BUILTIN_ROLE_COLORS[templateId] || BUILTIN_ROLE_COLORS[templateId?.toLowerCase()];
   if (builtin) return builtin;
   let hash = 0;
   for (let i = 0; i < templateId.length; i++) {
@@ -134,8 +170,9 @@ function isActiveJobStatus(status: string): boolean {
 type Translate = (key: string, ...args: Array<string | number>) => string;
 
 function builtinRoleLabel(templateId: string, fallback: string, t: Translate): string {
-  if (!isBuiltinTemplateId(templateId)) return fallback;
-  return t(`desktop.im.role.${BUILTIN_ROLE_KEYS[templateId]}`);
+  const key = BUILTIN_ROLE_KEYS[templateId] || BUILTIN_ROLE_KEYS[templateId?.toLowerCase()];
+  if (!key) return fallback;
+  return t(`desktop.im.role.${key}`);
 }
 
 function roleLabel(member: ImMember, t: Translate): string {
@@ -215,7 +252,8 @@ export function ImPanel(): ReactPortal | null {
 
   const memberLabel = useCallback((member: ImMember) => roleLabel(member, t), [t]);
 
-  const members = room?.members.filter((member) => member.enabled) ?? [];
+  const allMembers = room?.members ?? [];
+  const members = allMembers.filter((member) => member.enabled);
   const visibleMessages = (room?.messages ?? []).filter((message) => {
     if (message.kind !== "job.card") return true;
     const job = room?.jobs.find((item) => item.jobId === message.jobId);
@@ -421,7 +459,7 @@ export function ImPanel(): ReactPortal | null {
   const timelineNodes = useMemo(() => {
     return buildTimelineNodes(
       visibleMessages,
-      members,
+      allMembers,
       roleColor,
       memberLabel,
       roleInitial,
@@ -429,7 +467,7 @@ export function ImPanel(): ReactPortal | null {
       (ms) => formatDay(ms, t),
       room?.jobs
     );
-  }, [formatTime, memberLabel, members, room?.jobs, t, visibleMessages]);
+  }, [allMembers, formatTime, memberLabel, room?.jobs, t, visibleMessages]);
   const mentionQuery = (() => {
     const at = draft.lastIndexOf("@");
     if (at < 0) return "";
@@ -1206,11 +1244,13 @@ export function ImPanel(): ReactPortal | null {
               <div className="im-transcript-wrap">
                 <div ref={transcriptRef} className="im-transcript" aria-label={t("desktop.im.transcript")} onScroll={onTranscriptScroll}>
                 {visibleMessages.length ? visibleMessages.map((message, index) => {
-                  const speaker = members.find((member) => member.memberId === message.authorMemberId);
+                  const speaker = allMembers.find((member) => member.memberId === message.authorMemberId)
+                    || allMembers.find((member) => member.templateId === message.authorMemberId)
+                    || allMembers.find((member) => member.name === message.authorLabel || roleLabel(member, t) === message.authorLabel);
                   const displayBody = translations[message.messageId] ?? message.body;
                   const isTranslating = translatingIds.has(message.messageId);
                   const translated = Boolean(translations[message.messageId]);
-                  const roleColorValue = speaker ? roleColor(speaker.templateId) : undefined;
+                  const roleColorValue = speaker ? roleColor(speaker.templateId) : (message.kind === "role.say" ? roleColor(message.authorLabel) : undefined);
                   const prevVisible = visibleMessages[index - 1];
                   const showDate = !prevVisible || dayKey(prevVisible.createdAtMs) !== dayKey(message.createdAtMs);
                   const linkedJob = message.jobId ? room?.jobs.find((j) => j.jobId === message.jobId) : undefined;
@@ -1423,8 +1463,9 @@ export function ImPanel(): ReactPortal | null {
                   <p className="im-empty">{t("desktop.im.emptyRoom")}</p>
                 )}
                 {activePendingJobs.map((job) => {
-                  const owner = members.find((member) => member.memberId === job.memberId);
-                  const roleColorValue = owner ? roleColor(owner.templateId) : undefined;
+                  const owner = allMembers.find((member) => member.memberId === job.memberId)
+                    || allMembers.find((member) => member.templateId === job.memberId);
+                  const roleColorValue = owner ? roleColor(owner.templateId) : roleColor("developer");
                   const label = owner ? memberLabel(owner) : "Role";
                   return (
                     <article

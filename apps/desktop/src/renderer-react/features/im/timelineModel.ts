@@ -42,11 +42,15 @@ export function buildTimelineNodes(
   return messages
     .filter((msg) => msg.kind === "human" || msg.kind === "role.say")
     .map((msg) => {
-      const member = msg.authorMemberId ? memberById.get(msg.authorMemberId) : undefined;
       const isUser = msg.kind === "human";
+      const member = msg.authorMemberId
+        ? (memberById.get(msg.authorMemberId) || members.find((m) => m.templateId === msg.authorMemberId))
+        : members.find((m) => m.name === msg.authorLabel || memberLabelFn(m) === msg.authorLabel || m.templateId === msg.authorLabel);
       const authorLabel = member ? memberLabelFn(member) : msg.authorLabel;
       const authorInitial = roleInitialFn(authorLabel);
-      const color = member ? roleColorFn(member.templateId) : undefined;
+      const color = isUser
+        ? undefined
+        : (member ? roleColorFn(member.templateId) : roleColorFn(msg.authorMemberId || msg.authorLabel || "Role"));
       const job = msg.jobId ? jobById.get(msg.jobId) : undefined;
       const filesChangedCount = job?.filesChanged?.length || undefined;
       return {
