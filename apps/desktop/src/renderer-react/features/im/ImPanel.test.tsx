@@ -77,6 +77,7 @@ const messages = {
   "desktop.common.cancel": "Cancel",
   "desktop.common.send": "Send",
   "desktop.im.role.developer": "Developer",
+  "desktop.im.role.architect": "Architect",
   "desktop.im.role.productManager": "Product Manager",
   "desktop.im.role.projectManager": "Project Manager",
   "desktop.im.role.uiDesigner": "UI Designer",
@@ -138,6 +139,7 @@ function roomFor(nextProject: ImProject): ImRoom {
     project: nextProject,
     members: [
       member(nextProject, "role_product_manager", "Product Manager", "mem-pm"),
+      member(nextProject, "role_architect", "Architect", "mem-arch"),
       member(nextProject, "role_project_manager", "Project Manager", "mem-pj"),
       member(nextProject, "role_ui_designer", "UI Designer", "mem-ui"),
       member(nextProject, "role_developer", "Developer", "mem-dev"),
@@ -272,11 +274,12 @@ describe("ImPanel", () => {
       window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
     });
     expect(await screen.findByText("Product Manager")).toBeTruthy();
+    expect(screen.getByText("Architect")).toBeTruthy();
     expect(screen.getByText("Project Manager")).toBeTruthy();
     expect(screen.getByText("UI Designer")).toBeTruthy();
     expect(screen.getByText("Developer")).toBeTruthy();
     expect(screen.getByText("Tester")).toBeTruthy();
-    expect(screen.getAllByRole("checkbox")).toHaveLength(5);
+    expect(screen.getAllByRole("checkbox")).toHaveLength(6);
   });
 
   it("keeps multiple mention chips after picking two roles", async () => {
@@ -304,9 +307,9 @@ describe("ImPanel", () => {
     expect(first.getAttribute("aria-selected")).toBe("true");
     fireEvent.keyDown(composer, { key: "ArrowDown" });
     await waitFor(() => {
-      expect(screen.getByRole("option", { name: /Project Manager/ }).getAttribute("aria-selected")).toBe("true");
+      expect(screen.getByRole("option", { name: /Architect/ }).getAttribute("aria-selected")).toBe("true");
     });
-    expect(list.querySelector(".active")?.textContent).toMatch(/Project Manager/);
+    expect(list.querySelector(".active")?.textContent).toMatch(/Architect/);
   });
 
   it("hides tool-call job cards and keeps the role answer", async () => {

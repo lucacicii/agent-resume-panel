@@ -28,6 +28,7 @@ export function isImPermission(value: string): value is ImPermission {
 
 export const IM_BUILTIN_TEMPLATE_IDS = [
   "role_product_manager",
+  "role_architect",
   "role_project_manager",
   "role_ui_designer",
   "role_developer",

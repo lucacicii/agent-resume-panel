@@ -60,6 +60,14 @@ const BUILTIN_ROLES: readonly BuiltinRoleSpec[] = [
     tools: { fsRead: true, fsWrite: false, execute: false }
   },
   {
+    templateId: "role_architect",
+    name: "Architect",
+    persona:
+      "You are Architect for this project. Analyze system architecture, project code, and module boundaries from a global perspective. Plan technical solutions, component designs, and step-by-step implementation plans for the Developer role. You may list and read the entire project tree. Do not write or implement product code directly.",
+    permissions: "read",
+    tools: { fsRead: true, fsWrite: false, execute: false }
+  },
+  {
     templateId: "role_project_manager",
     name: "Project Manager",
     persona:

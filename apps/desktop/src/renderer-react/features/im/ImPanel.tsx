@@ -53,11 +53,15 @@ function isScratchPath(value?: string | null): boolean {
   return normalized.includes("/.desktop/scratch/im/") || normalized.endsWith("/.desktop/scratch/im");
 }
 
-const BUILTIN_ROLE_KEYS: Record<string, "productManager" | "projectManager" | "uiDesigner" | "developer" | "tester"> = {
+const BUILTIN_ROLE_KEYS: Record<string, "productManager" | "architect" | "projectManager" | "uiDesigner" | "developer" | "tester"> = {
   role_product_manager: "productManager",
   product_manager: "productManager",
   productManager: "productManager",
   "Product Manager": "productManager",
+  role_architect: "architect",
+  architect: "architect",
+  Architect: "architect",
+  arch: "architect",
   role_project_manager: "projectManager",
   project_manager: "projectManager",
   projectManager: "projectManager",
@@ -107,6 +111,10 @@ const BUILTIN_ROLE_COLORS: Record<string, string> = {
   product_manager: "hsl(265 70% 58%)",
   productManager: "hsl(265 70% 58%)",
   "Product Manager": "hsl(265 70% 58%)",
+  role_architect: "hsl(217 91% 60%)",
+  architect: "hsl(217 91% 60%)",
+  Architect: "hsl(217 91% 60%)",
+  arch: "hsl(217 91% 60%)",
   role_project_manager: "hsl(199 92% 52%)",
   project_manager: "hsl(199 92% 52%)",
   projectManager: "hsl(199 92% 52%)",

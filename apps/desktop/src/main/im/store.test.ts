@@ -27,13 +27,14 @@ afterEach(async () => {
 });
 
 describe("ImStore", () => {
-  it("creates a user-owned project with the five builtin roles", async () => {
+  it("creates a user-owned project with the six builtin roles", async () => {
     const store = await createStore();
     const project = await store.createProject("Room One");
     const room = await store.getRoom(project.projectId);
     expect(project.localPath).toBeNull();
     expect(room.members.map((member) => member.templateId)).toEqual([
       "role_product_manager",
+      "role_architect",
       "role_project_manager",
       "role_ui_designer",
       "role_developer",
@@ -47,6 +48,7 @@ describe("ImStore", () => {
     const templates = await store.listTemplates();
     expect(templates.map((template) => template.templateId)).toEqual([
       "role_product_manager",
+      "role_architect",
       "role_project_manager",
       "role_ui_designer",
       "role_developer",
@@ -54,7 +56,7 @@ describe("ImStore", () => {
     ]);
     await store.initialize();
     const again = await store.listTemplates();
-    expect(again).toHaveLength(5);
+    expect(again).toHaveLength(6);
   });
 
   it("seeds builtin selection actions and blocks deleting them", async () => {
@@ -92,9 +94,11 @@ describe("ImStore", () => {
     const developer = room.members.find((member) => member.templateId === "role_developer")!;
     const tester = room.members.find((member) => member.templateId === "role_tester")!;
     const pm = room.members.find((member) => member.templateId === "role_product_manager")!;
+    const architect = room.members.find((member) => member.templateId === "role_architect")!;
     expect(store.memberNeedsExclusiveLock(developer)).toBe(true);
     expect(store.memberNeedsExclusiveLock(tester)).toBe(true);
     expect(store.memberNeedsExclusiveLock(pm)).toBe(false);
+    expect(store.memberNeedsExclusiveLock(architect)).toBe(false);
   });
 
   it("does not revive a builtin role removed from a fully seeded room", async () => {
@@ -107,7 +111,7 @@ describe("ImStore", () => {
     await store.initialize();
     const after = await store.getRoom(project.projectId);
     expect(after.members.some((member) => member.templateId === "role_tester")).toBe(false);
-    expect(after.members).toHaveLength(4);
+    expect(after.members).toHaveLength(5);
   });
 
   it("adds a custom template only when a room enables it", async () => {
