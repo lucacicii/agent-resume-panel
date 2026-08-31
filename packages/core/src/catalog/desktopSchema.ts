@@ -41,6 +41,7 @@ ALTER TABLE im_role_templates ADD COLUMN callable_template_ids_json TEXT;
 ALTER TABLE im_role_templates ADD COLUMN auto_dispatch INTEGER;
 ALTER TABLE im_members ADD COLUMN callable_template_ids_json TEXT;
 ALTER TABLE im_members ADD COLUMN auto_dispatch INTEGER;
+ALTER TABLE im_messages ADD COLUMN delegation_proposals_json TEXT;
 `;
 
 export const DESKTOP_ONLY_SCHEMA_SQL = `
@@ -345,6 +346,7 @@ CREATE TABLE IF NOT EXISTS im_messages (
   body TEXT NOT NULL,
   thinking TEXT,
   images_json TEXT,
+  delegation_proposals_json TEXT,
   quote_ids_json TEXT NOT NULL DEFAULT '[]',
   mention_role_ids_json TEXT NOT NULL DEFAULT '[]',
   job_id TEXT,

@@ -9,6 +9,7 @@ import {
   DEFAULT_BUILTIN_CALLABLE_TEMPLATE_IDS,
   isBuiltinTemplateId,
   isImAgent,
+  type ImDelegationProposal,
   type ImDispatchBlock,
   type ImEvent,
   type ImImageAttachment,
@@ -425,6 +426,8 @@ export class ImConductor {
       const streamMsg = this.streamingMessagesByJob.get(jobId);
       const finalBody = event.message.text.trim();
       const finalThinking = event.message.thinking?.trim();
+      const proposals = await this.buildProposalsForJob(job, finalBody);
+
       if (streamMsg) {
         this.streamingMessagesByJob.delete(jobId);
         if (finalBody || finalThinking) {
@@ -436,6 +439,7 @@ export class ImConductor {
             authorLabel: streamMsg.authorLabel,
             body: finalBody,
             thinking: finalThinking,
+            delegationProposals: proposals.length ? proposals : undefined,
             jobId
           });
           this.emit({
@@ -453,68 +457,165 @@ export class ImConductor {
           authorLabel: member?.name || "Role",
           body: finalBody,
           thinking: finalThinking,
+          delegationProposals: proposals.length ? proposals : undefined,
           jobId
         });
         this.emit({ type: "message", projectId: job.projectId, message: { ...say, streaming: false } });
       }
 
-      if (finalBody) {
-        await this.handleDispatchDelegation(job, finalBody);
+      if (proposals.length > 0) {
+        await this.executeAutoDispatches(job, proposals);
       }
     }
   }
 
-  private async handleDispatchDelegation(job: ImJob, body: string): Promise<void> {
+  private async buildProposalsForJob(job: ImJob, body: string): Promise<ImDelegationProposal[]> {
     const blocks = parseDispatchBlocks(body);
-    if (!blocks.length) return;
+    if (!blocks.length) return [];
     const member = await this.store.getMember(job.memberId);
-    if (!member) return;
+    if (!member) return [];
     const room = await this.store.getRoom(job.projectId);
     const allowedCalleeIds = member.callableTemplateIds ?? (
       isBuiltinTemplateId(member.templateId) ? [...DEFAULT_BUILTIN_CALLABLE_TEMPLATE_IDS[member.templateId]] : []
     );
     const enabledMembers = room.members.filter((m) => m.enabled && m.memberId !== member.memberId);
-
     const chain = job.brief.dispatchChain ?? [member.templateId];
     const MAX_CHAIN_DEPTH = 5;
 
+    const proposals: ImDelegationProposal[] = [];
     for (const block of blocks) {
       const targetMember = resolveDispatchTarget(block.target, allowedCalleeIds, enabledMembers);
-      if (!targetMember) continue;
+      const isLoop = targetMember ? chain.includes(targetMember.templateId) : false;
+      const isTooDeep = chain.length >= MAX_CHAIN_DEPTH;
+      const willAutoDispatch = Boolean(member.autoDispatch && targetMember && !isLoop && !isTooDeep);
 
+      proposals.push({
+        id: crypto.randomUUID(),
+        targetTemplateId: targetMember?.templateId ?? block.target,
+        targetRoleName: targetMember?.name ?? block.target,
+        instruction: block.instruction,
+        reason: block.reason,
+        status: willAutoDispatch ? "auto_dispatched" : "pending",
+        createdAtMs: Date.now()
+      });
+    }
+    return proposals;
+  }
+
+  private async executeAutoDispatches(job: ImJob, proposals: ImDelegationProposal[]): Promise<void> {
+    const member = await this.store.getMember(job.memberId);
+    if (!member || !member.autoDispatch) return;
+    const room = await this.store.getRoom(job.projectId);
+    const chain = job.brief.dispatchChain ?? [member.templateId];
+    const MAX_CHAIN_DEPTH = 5;
+
+    for (const proposal of proposals) {
+      if (proposal.status !== "auto_dispatched") continue;
+      const targetMember = room.members.find((m) => m.templateId === proposal.targetTemplateId && m.enabled);
+      if (!targetMember) continue;
       const isLoop = chain.includes(targetMember.templateId);
       const isTooDeep = chain.length >= MAX_CHAIN_DEPTH;
+      if (isLoop || isTooDeep) continue;
 
-      if (member.autoDispatch && !isLoop && !isTooDeep) {
-        const targetTemplate = await this.store.getTemplate(targetMember.templateId);
-        const targetPersona = targetTemplate?.persona ?? targetMember.persona;
-        const settings = await loadSettings();
-        const panelHome = effectivePanelHome(settings);
-        const cwd = await this.store.ensureProjectLocalPath(job.projectId, panelHome);
-        const targetBrief: ImJobBrief = {
-          persona: targetPersona,
-          instruction: block.instruction,
-          cwd,
-          quotes: job.brief.quotes,
-          knowledge: job.brief.knowledge,
-          dispatchChain: [...chain, targetMember.templateId]
-        };
-        const nextJob = await this.store.createJob({
-          projectId: job.projectId,
-          memberId: targetMember.memberId,
-          messageId: null,
-          brief: targetBrief,
-          status: "queued"
-        });
-        this.emit({ type: "job", projectId: job.projectId, job: nextJob });
-        const exclusive = this.store.memberNeedsExclusiveLock(targetMember);
-        const exclusiveBusy = Boolean(await this.store.findActiveWriterJob(job.projectId));
-        const startNow = !exclusive || !exclusiveBusy;
-        if (startNow) {
-          this.launchJob(nextJob.jobId, targetMember);
-        }
+      const targetTemplate = await this.store.getTemplate(targetMember.templateId);
+      const targetPersona = targetTemplate?.persona ?? targetMember.persona;
+      const settings = await loadSettings();
+      const panelHome = effectivePanelHome(settings);
+      const cwd = await this.store.ensureProjectLocalPath(job.projectId, panelHome);
+      const targetBrief: ImJobBrief = {
+        persona: targetPersona,
+        instruction: proposal.instruction,
+        cwd,
+        quotes: job.brief.quotes,
+        knowledge: job.brief.knowledge,
+        dispatchChain: [...chain, targetMember.templateId]
+      };
+      const nextJob = await this.store.createJob({
+        projectId: job.projectId,
+        memberId: targetMember.memberId,
+        messageId: null,
+        brief: targetBrief,
+        status: "queued"
+      });
+      proposal.dispatchedJobId = nextJob.jobId;
+      this.emit({ type: "job", projectId: job.projectId, job: nextJob });
+      const exclusive = this.store.memberNeedsExclusiveLock(targetMember);
+      const exclusiveBusy = Boolean(await this.store.findActiveWriterJob(job.projectId));
+      const startNow = !exclusive || !exclusiveBusy;
+      if (startNow) {
+        this.launchJob(nextJob.jobId, targetMember);
       }
     }
+  }
+
+  async dispatchProposal(input: {
+    projectId: string;
+    messageId: string;
+    proposalId: string;
+  }): Promise<{ message: ImMessage; job: ImJob }> {
+    const message = await this.store.getMessage(input.messageId);
+    if (!message) throw new Error("Message not found.");
+    const proposal = message.delegationProposals?.find((p) => p.id === input.proposalId);
+    if (!proposal) throw new Error("Proposal not found.");
+    if (proposal.status === "dispatched" || proposal.status === "auto_dispatched") {
+      throw new Error("Proposal has already been dispatched.");
+    }
+
+    const room = await this.store.getRoom(input.projectId);
+    const targetMember = room.members.find((m) => m.templateId === proposal.targetTemplateId && m.enabled);
+    if (!targetMember) throw new Error("Target role is not enabled in this room.");
+
+    const targetTemplate = await this.store.getTemplate(targetMember.templateId);
+    const targetPersona = targetTemplate?.persona ?? targetMember.persona;
+    const settings = await loadSettings();
+    const panelHome = effectivePanelHome(settings);
+    const cwd = await this.store.ensureProjectLocalPath(input.projectId, panelHome);
+
+    const targetBrief: ImJobBrief = {
+      persona: targetPersona,
+      instruction: proposal.instruction,
+      cwd,
+      quotes: message.quotes,
+      knowledge: this.store.snapshotKnowledge(room.knowledge),
+      dispatchChain: [proposal.targetTemplateId]
+    };
+
+    const job = await this.store.createJob({
+      projectId: input.projectId,
+      memberId: targetMember.memberId,
+      messageId: null,
+      brief: targetBrief,
+      status: "queued"
+    });
+    this.emit({ type: "job", projectId: input.projectId, job });
+
+    const updatedMessage = await this.store.updateMessageProposal(input.messageId, input.proposalId, {
+      status: "dispatched",
+      dispatchedJobId: job.jobId,
+      resolvedAtMs: Date.now()
+    });
+    this.emit({ type: "messageUpdate", projectId: input.projectId, message: updatedMessage });
+
+    const exclusive = this.store.memberNeedsExclusiveLock(targetMember);
+    const exclusiveBusy = Boolean(await this.store.findActiveWriterJob(input.projectId));
+    const startNow = !exclusive || !exclusiveBusy;
+    if (startNow) {
+      this.launchJob(job.jobId, targetMember);
+    }
+    return { message: updatedMessage, job };
+  }
+
+  async dismissProposal(input: {
+    projectId: string;
+    messageId: string;
+    proposalId: string;
+  }): Promise<ImMessage> {
+    const updatedMessage = await this.store.updateMessageProposal(input.messageId, input.proposalId, {
+      status: "dismissed",
+      resolvedAtMs: Date.now()
+    });
+    this.emit({ type: "messageUpdate", projectId: input.projectId, message: updatedMessage });
+    return updatedMessage;
   }
 
   private async runJob(jobId: string): Promise<void> {

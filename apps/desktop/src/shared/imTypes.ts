@@ -173,6 +173,19 @@ export interface ImImageAttachment {
   sizeBytes?: number;
 }
 
+export interface ImDelegationProposal {
+  id: string;
+  targetTemplateId: string;
+  targetRoleName?: string;
+  instruction: string;
+  reason?: string;
+  status: "pending" | "dispatched" | "dismissed" | "auto_dispatched";
+  dispatchedMessageId?: string;
+  dispatchedJobId?: string;
+  createdAtMs: number;
+  resolvedAtMs?: number;
+}
+
 export interface ImMessage {
   messageId: string;
   projectId: string;
@@ -182,6 +195,7 @@ export interface ImMessage {
   body: string;
   thinking?: string;
   images?: ImImageAttachment[];
+  delegationProposals?: ImDelegationProposal[];
   streaming?: boolean;
   quoteIds: string[];
   quotes: ImQuotedMessage[];

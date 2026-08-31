@@ -627,5 +627,68 @@ Implement the search indexing algorithm as designed.
     expect(devJob).toBeTruthy();
     expect(devJob?.brief.instruction).toBe("Implement the search indexing algorithm as designed.");
     expect(devJob?.brief.dispatchChain).toEqual(["role_architect", "role_developer"]);
+
+    const archMsg = (await store.listMessages(project.projectId)).find((m) => m.jobId === job.jobId);
+    expect(archMsg?.delegationProposals).toHaveLength(1);
+    expect(archMsg?.delegationProposals?.[0]?.status).toBe("auto_dispatched");
+  });
+
+  it("supports manual dispatchProposal and dismissProposal", async () => {
+    const store = await createStore();
+    const project = await store.createProject("Manual Proposal Test");
+    await store.setLocalPath(project.projectId, process.cwd());
+
+    const room = await store.getRoom(project.projectId);
+    const architect = room.members.find((m) => m.templateId === "role_architect")!;
+    const developer = room.members.find((m) => m.templateId === "role_developer")!;
+
+    const msg = await store.insertMessage({
+      projectId: project.projectId,
+      kind: "role.say",
+      authorMemberId: architect.memberId,
+      authorLabel: architect.name,
+      body: "Design finished.",
+      delegationProposals: [
+        {
+          id: "prop-1",
+          targetTemplateId: "role_developer",
+          targetRoleName: "Developer",
+          instruction: "Write the backend service.",
+          reason: "Need service",
+          status: "pending",
+          createdAtMs: Date.now()
+        },
+        {
+          id: "prop-2",
+          targetTemplateId: "role_tester",
+          targetRoleName: "Tester",
+          instruction: "Test edge cases.",
+          status: "pending",
+          createdAtMs: Date.now()
+        }
+      ]
+    });
+
+    const conductor = new ImConductor(store, () => undefined, vi.fn(async () => undefined), vi.fn(async () => undefined));
+
+    // Dispatch proposal 1
+    const { message: afterDispatch, job } = await conductor.dispatchProposal({
+      projectId: project.projectId,
+      messageId: msg.messageId,
+      proposalId: "prop-1"
+    });
+
+    expect(job).toBeTruthy();
+    expect(job.memberId).toBe(developer.memberId);
+    expect(job.brief.instruction).toBe("Write the backend service.");
+    expect(afterDispatch.delegationProposals?.find((p) => p.id === "prop-1")?.status).toBe("dispatched");
+
+    // Dismiss proposal 2
+    const afterDismiss = await conductor.dismissProposal({
+      projectId: project.projectId,
+      messageId: msg.messageId,
+      proposalId: "prop-2"
+    });
+    expect(afterDismiss.delegationProposals?.find((p) => p.id === "prop-2")?.status).toBe("dismissed");
   });
 });

@@ -86,6 +86,15 @@ const messages = {
   "desktop.im.role.projectManager": "Project Manager",
   "desktop.im.role.uiDesigner": "UI Designer",
   "desktop.im.role.tester": "Tester",
+  "desktop.im.dispatchTo": "Dispatch to @{0}",
+  "desktop.im.delegationProposal": "Proposed delegation to {0}",
+  "desktop.im.delegationApprove": "Approve & Dispatch",
+  "desktop.im.delegationEdit": "Edit in Composer",
+  "desktop.im.delegationDismiss": "Dismiss",
+  "desktop.im.delegationStatus.pending": "Pending review",
+  "desktop.im.delegationStatus.dispatched": "Dispatched",
+  "desktop.im.delegationStatus.auto_dispatched": "Auto-dispatched",
+  "desktop.im.delegationStatus.dismissed": "Dismissed",
   "desktop.im.addRole": "Add role",
   "desktop.im.removeRole": "Remove from room",
   "desktop.im.roleName": "Role name",
@@ -249,6 +258,66 @@ function renderIm() {
         createdAtMs: Date.now()
       },
       job: null
+    })),
+    imDispatchProposal: vi.fn(async () => ({
+      message: {
+        messageId: "m-prop",
+        projectId: created.projectId,
+        kind: "role.say",
+        authorMemberId: "mem-arch",
+        authorLabel: "Architect",
+        body: "Design complete.",
+        quoteIds: [],
+        quotes: [],
+        mentionRoleIds: [],
+        jobId: "j-arch",
+        delegationProposals: [{
+          id: "prop-1",
+          targetTemplateId: "role_developer",
+          targetRoleName: "Developer",
+          instruction: "Implement backend",
+          status: "dispatched",
+          createdAtMs: 1
+        }],
+        createdAtMs: 1
+      },
+      job: {
+        jobId: "j-dev",
+        projectId: created.projectId,
+        memberId: "mem-dev",
+        messageId: null,
+        brief: { persona: "", instruction: "Implement backend", cwd: "/tmp", quotes: [], knowledge: [] },
+        status: "queued" as const,
+        filesChanged: [],
+        error: null,
+        acpChatId: null,
+        permission: null,
+        finished: false,
+        finishedAtMs: null,
+        createdAtMs: 1,
+        updatedAtMs: 1
+      }
+    })),
+    imDismissProposal: vi.fn(async () => ({
+      messageId: "m-prop",
+      projectId: created.projectId,
+      kind: "role.say",
+      authorMemberId: "mem-arch",
+      authorLabel: "Architect",
+      body: "Design complete.",
+      quoteIds: [],
+      quotes: [],
+      mentionRoleIds: [],
+      jobId: "j-arch",
+      delegationProposals: [{
+        id: "prop-1",
+        targetTemplateId: "role_developer",
+        targetRoleName: "Developer",
+        instruction: "Implement backend",
+        status: "dismissed",
+        createdAtMs: 1
+      }],
+      createdAtMs: 1
     })),
     onWorkbenchCmdT: (callback: () => void) => {
       const handler = () => callback();
@@ -1039,5 +1108,68 @@ describe("ImPanel", () => {
     expect(await screen.findByText("package.json")).toBeTruthy();
     expect(document.querySelector(".im-project-tools-panel")).not.toBeNull();
     expect(api.workbenchListDirectory).toHaveBeenCalled();
+  });
+
+  it("renders interactive delegation proposals on messages and handles approve/dismiss", async () => {
+    const currentProject = project();
+    const currentRoom = roomFor(currentProject);
+    const arch = currentRoom.members.find((m) => m.templateId === "role_architect")!;
+    currentRoom.messages = [
+      {
+        messageId: "msg-prop-test",
+        projectId: currentProject.projectId,
+        kind: "role.say",
+        authorMemberId: arch.memberId,
+        authorLabel: "Architect",
+        body: `I have designed the microservices architecture.
+<im_dispatch target="role_developer" reason="Implementation required">
+Build the user service endpoints.
+</im_dispatch>`,
+        delegationProposals: [
+          {
+            id: "prop-unit-1",
+            targetTemplateId: "role_developer",
+            targetRoleName: "Developer",
+            instruction: "Build the user service endpoints.",
+            reason: "Implementation required",
+            status: "pending",
+            createdAtMs: 1000
+          }
+        ],
+        quoteIds: [],
+        quotes: [],
+        mentionRoleIds: [],
+        jobId: "j-arch-1",
+        createdAtMs: 1000
+      }
+    ];
+
+    const api = renderIm();
+    (api.imGetRoom as ReturnType<typeof vi.fn>).mockResolvedValue(currentRoom);
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+
+    expect(await screen.findByText("Proposed delegation to Developer")).toBeTruthy();
+    expect(screen.getByText("Implementation required")).toBeTruthy();
+    expect(screen.getByText("Build the user service endpoints.")).toBeTruthy();
+    expect(screen.getByText("Pending review")).toBeTruthy();
+
+    const approveBtn = screen.getByRole("button", { name: "Approve & Dispatch" });
+    fireEvent.click(approveBtn);
+    expect(api.imDispatchProposal).toHaveBeenCalledWith({
+      projectId: currentProject.projectId,
+      messageId: "msg-prop-test",
+      proposalId: "prop-unit-1"
+    });
+
+    const dismissBtn = screen.getByRole("button", { name: "Dismiss" });
+    fireEvent.click(dismissBtn);
+    expect(api.imDismissProposal).toHaveBeenCalledWith({
+      projectId: currentProject.projectId,
+      messageId: "msg-prop-test",
+      proposalId: "prop-unit-1"
+    });
   });
 });

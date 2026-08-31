@@ -355,6 +355,38 @@ export function registerImIpc(deps: {
     return runner.cancelJob(args.jobId);
   });
 
+  safeHandle("im:dispatchProposal", async (_event, args: {
+    projectId?: unknown;
+    messageId?: unknown;
+    proposalId?: unknown;
+  }) => {
+    if (typeof args?.projectId !== "string" || typeof args?.messageId !== "string" || typeof args?.proposalId !== "string") {
+      throw new Error("Project id, message id, and proposal id are required.");
+    }
+    const runner = await getConductor();
+    return runner.dispatchProposal({
+      projectId: args.projectId,
+      messageId: args.messageId,
+      proposalId: args.proposalId
+    });
+  });
+
+  safeHandle("im:dismissProposal", async (_event, args: {
+    projectId?: unknown;
+    messageId?: unknown;
+    proposalId?: unknown;
+  }) => {
+    if (typeof args?.projectId !== "string" || typeof args?.messageId !== "string" || typeof args?.proposalId !== "string") {
+      throw new Error("Project id, message id, and proposal id are required.");
+    }
+    const runner = await getConductor();
+    return runner.dismissProposal({
+      projectId: args.projectId,
+      messageId: args.messageId,
+      proposalId: args.proposalId
+    });
+  });
+
   safeHandle("im:listKnowledge", async (_event, args: { projectId?: unknown }) => {
     if (typeof args?.projectId !== "string") throw new Error("Project id is required.");
     const im = await getStore();

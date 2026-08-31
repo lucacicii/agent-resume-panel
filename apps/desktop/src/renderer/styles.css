@@ -18009,6 +18009,30 @@ html[data-window-mode="browser"] #react-chrome {
   gap: 6px;
   font-size: 12px;
 }
+.im-dispatch-status {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--color-separator);
+  background: var(--color-control-bg);
+  color: var(--color-label-secondary);
+}
+.im-dispatch-status.is-auto,
+.im-dispatch-status.is-dispatched {
+  color: #10b981;
+  border-color: color-mix(in srgb, #10b981 30%, var(--color-separator));
+  background: color-mix(in srgb, #10b981 10%, transparent);
+}
+.im-dispatch-status.is-dismissed {
+  color: var(--color-label-tertiary);
+  opacity: 0.7;
+}
+.im-dispatch-status.is-pending {
+  color: var(--color-accent, #3b82f6);
+  border-color: color-mix(in srgb, var(--color-accent, #3b82f6) 30%, var(--color-separator));
+  background: color-mix(in srgb, var(--color-accent, #3b82f6) 10%, transparent);
+}
 .im-dispatch-reason {
   font-size: 11px;
   color: var(--color-label-tertiary);

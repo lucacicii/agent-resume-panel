@@ -19,6 +19,7 @@ import {
   parseImRoleTools,
   type ImAgent,
   type ImBuiltinTemplateId,
+  type ImDelegationProposal,
   type ImImageAttachment,
   type ImJob,
   type ImJobBrief,
@@ -189,6 +190,7 @@ interface MessageRow {
   body: string;
   thinking: string | null;
   images_json: string | null;
+  delegation_proposals_json: string | null;
   quote_ids_json: string;
   mention_role_ids_json: string;
   job_id: string | null;
@@ -273,6 +275,17 @@ function parseImagesJson(raw: string | null | undefined): ImImageAttachment[] {
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     return parsed.filter((item): item is ImImageAttachment => Boolean(item && typeof item === "object" && item.id && item.fileName));
+  } catch {
+    return [];
+  }
+}
+
+function parseProposalsJson(raw: string | null | undefined): ImDelegationProposal[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is ImDelegationProposal => Boolean(item && typeof item === "object" && item.id && item.targetTemplateId));
   } catch {
     return [];
   }
@@ -1398,6 +1411,7 @@ export class ImStore {
     body: string;
     thinking?: string;
     images?: ImImageAttachment[];
+    delegationProposals?: ImDelegationProposal[];
     quoteIds?: string[];
     mentionRoleIds?: string[];
     jobId?: string | null;
@@ -1408,10 +1422,11 @@ export class ImStore {
     const mentionRoleIds = input.mentionRoleIds ?? [];
     const thinking = input.thinking?.trim() || null;
     const imagesJson = input.images?.length ? JSON.stringify(input.images) : null;
+    const proposalsJson = input.delegationProposals?.length ? JSON.stringify(input.delegationProposals) : null;
     await runSqlite(
       this.dbPath,
       `INSERT INTO im_messages (
-        message_id, project_id, kind, author_member_id, author_label, body, thinking, images_json, quote_ids_json, mention_role_ids_json, job_id, created_at_ms
+        message_id, project_id, kind, author_member_id, author_label, body, thinking, images_json, delegation_proposals_json, quote_ids_json, mention_role_ids_json, job_id, created_at_ms
       ) VALUES (
         ${sqlString(messageId)},
         ${sqlString(input.projectId)},
@@ -1421,6 +1436,7 @@ export class ImStore {
         ${sqlString(input.body)},
         ${sqlNullOrString(thinking)},
         ${sqlNullOrString(imagesJson)},
+        ${sqlNullOrString(proposalsJson)},
         ${sqlString(JSON.stringify(quoteIds))},
         ${sqlString(JSON.stringify(mentionRoleIds))},
         ${sqlNullOrString(input.jobId ?? null)},
@@ -1434,6 +1450,35 @@ export class ImStore {
     const created = await this.getMessage(messageId);
     if (!created) throw new Error("Failed to load created message.");
     return created;
+  }
+
+  async updateMessageProposal(
+    messageId: string,
+    proposalId: string,
+    patch: Partial<ImDelegationProposal>
+  ): Promise<ImMessage> {
+    const message = await this.getMessage(messageId);
+    if (!message) throw new Error("Message not found.");
+    const proposals = message.delegationProposals ?? [];
+    const index = proposals.findIndex((p) => p.id === proposalId);
+    if (index < 0) throw new Error("Proposal not found.");
+    const updatedProposal = { ...proposals[index]!, ...patch };
+    const nextProposals = [...proposals];
+    nextProposals[index] = updatedProposal;
+    const now = nowMs();
+    await runSqlite(
+      this.dbPath,
+      `UPDATE im_messages SET
+        delegation_proposals_json = ${sqlString(JSON.stringify(nextProposals))}
+       WHERE message_id = ${sqlString(messageId)};`
+    );
+    await runSqlite(
+      this.dbPath,
+      `UPDATE im_projects SET updated_at_ms = ${now} WHERE project_id = ${sqlString(message.projectId)};`
+    );
+    const updated = await this.getMessage(messageId);
+    if (!updated) throw new Error("Failed to load updated message.");
+    return updated;
   }
 
   async updateMessage(
@@ -1828,6 +1873,7 @@ export class ImStore {
       });
     }
     const images = parseImagesJson(row.images_json);
+    const proposals = parseProposalsJson(row.delegation_proposals_json);
     return {
       messageId: row.message_id,
       projectId: row.project_id,
@@ -1837,6 +1883,7 @@ export class ImStore {
       body: row.body,
       thinking: row.thinking?.trim() || undefined,
       images: images.length ? images : undefined,
+      delegationProposals: proposals.length ? proposals : undefined,
       quoteIds,
       quotes,
       mentionRoleIds: parseJsonArray(row.mention_role_ids_json),

@@ -1426,47 +1426,105 @@ export function ImPanel(): ReactPortal | null {
                             dangerouslySetInnerHTML={{ __html: renderMarkdown(cleanBody) }}
                           />
                         ) : null}
-                        {dispatchBlocks.length > 0 && (
+                        {((message.delegationProposals && message.delegationProposals.length > 0) || dispatchBlocks.length > 0) && (
                           <div className="im-message-dispatches">
-                            {dispatchBlocks.map((block, idx) => {
+                            {(message.delegationProposals?.length ? message.delegationProposals : dispatchBlocks.map((b, idx) => ({
+                              id: `fallback-${idx}`,
+                              targetTemplateId: b.target,
+                              targetRoleName: b.target,
+                              instruction: b.instruction,
+                              reason: b.reason,
+                              status: "pending" as const,
+                              createdAtMs: message.createdAtMs
+                            }))).map((proposal) => {
                               const targetMember = allMembers.find((m) =>
-                                m.templateId === block.target ||
-                                m.memberId === block.target ||
-                                m.name.toLowerCase() === block.target.toLowerCase() ||
-                                m.templateId.toLowerCase() === block.target.toLowerCase()
+                                m.templateId === proposal.targetTemplateId ||
+                                m.memberId === proposal.targetTemplateId ||
+                                m.name.toLowerCase() === (proposal.targetRoleName || proposal.targetTemplateId).toLowerCase() ||
+                                m.templateId.toLowerCase() === proposal.targetTemplateId.toLowerCase()
                               );
-                              const targetLabel = targetMember ? memberLabel(targetMember) : block.target;
-                              const targetColor = targetMember ? roleColor(targetMember.templateId) : roleColor(block.target);
+                              const targetLabel = targetMember ? memberLabel(targetMember) : (proposal.targetRoleName || proposal.targetTemplateId);
+                              const targetColor = targetMember ? roleColor(targetMember.templateId) : roleColor(proposal.targetTemplateId);
+                              const isPending = proposal.status === "pending";
                               return (
-                                <div key={idx} className="im-dispatch-card" style={{ "--im-role-color": targetColor } as CSSProperties}>
+                                <div key={proposal.id} className="im-dispatch-card" style={{ "--im-role-color": targetColor } as CSSProperties}>
                                   <div className="im-dispatch-header">
                                     <span className="im-role-avatar" aria-hidden="true" style={{ "--im-role-color": targetColor } as CSSProperties}>
                                       {roleInitial(targetLabel)}
                                     </span>
                                     <strong>{t("desktop.im.delegationProposal", targetLabel)}</strong>
-                                    {block.reason ? <span className="im-dispatch-reason">{block.reason}</span> : null}
+                                    <span className={`im-dispatch-status is-${proposal.status.replace("_", "-")}`}>
+                                      {t(`desktop.im.delegationStatus.${proposal.status}`)}
+                                    </span>
+                                    {proposal.reason ? <span className="im-dispatch-reason">{proposal.reason}</span> : null}
                                   </div>
                                   <div className="im-dispatch-instruction">
-                                    {block.instruction}
+                                    {proposal.instruction}
                                   </div>
                                   <div className="im-dispatch-actions">
-                                    <button
-                                      type="button"
-                                      className="btn small primary"
-                                      onClick={() => {
-                                        if (targetMember) {
-                                          setMentionIds((curr) => curr.includes(targetMember.memberId) ? curr : [...curr, targetMember.memberId]);
-                                        }
-                                        setDraft((curr) => {
-                                          const base = curr.trim();
-                                          return base ? `${base}\n${block.instruction}` : block.instruction;
-                                        });
-                                        textareaRef.current?.focus();
-                                      }}
-                                    >
-                                      <ThemeIcon name="send" size={12} aria-hidden="true" />
-                                      <span>{t("desktop.im.dispatchTo", targetLabel)}</span>
-                                    </button>
+                                    {isPending && room ? (
+                                      <>
+                                        <button
+                                          type="button"
+                                          className="btn small primary"
+                                          onClick={() => void desktopApi().imDispatchProposal({
+                                            projectId: room.project.projectId,
+                                            messageId: message.messageId,
+                                            proposalId: proposal.id
+                                          })}
+                                        >
+                                          <ThemeIcon name="send" size={12} aria-hidden="true" />
+                                          <span>{t("desktop.im.delegationApprove")}</span>
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="ghost-btn small"
+                                          onClick={() => {
+                                            if (targetMember) {
+                                              setMentionIds((curr) => curr.includes(targetMember.memberId) ? curr : [...curr, targetMember.memberId]);
+                                            }
+                                            setDraft((curr) => {
+                                              const base = curr.trim();
+                                              return base ? `${base}\n${proposal.instruction}` : proposal.instruction;
+                                            });
+                                            textareaRef.current?.focus();
+                                          }}
+                                        >
+                                          <ThemeIcon name="pencil" size={12} aria-hidden="true" />
+                                          <span>{t("desktop.im.delegationEdit")}</span>
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="ghost-btn small"
+                                          onClick={() => void desktopApi().imDismissProposal({
+                                            projectId: room.project.projectId,
+                                            messageId: message.messageId,
+                                            proposalId: proposal.id
+                                          })}
+                                        >
+                                          <ThemeIcon name="close" size={12} aria-hidden="true" />
+                                          <span>{t("desktop.im.delegationDismiss")}</span>
+                                        </button>
+                                      </>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        className="ghost-btn small"
+                                        onClick={() => {
+                                          if (targetMember) {
+                                            setMentionIds((curr) => curr.includes(targetMember.memberId) ? curr : [...curr, targetMember.memberId]);
+                                          }
+                                          setDraft((curr) => {
+                                            const base = curr.trim();
+                                            return base ? `${base}\n${proposal.instruction}` : proposal.instruction;
+                                          });
+                                          textareaRef.current?.focus();
+                                        }}
+                                      >
+                                        <ThemeIcon name="pencil" size={12} aria-hidden="true" />
+                                        <span>{t("desktop.im.delegationEdit")}</span>
+                                      </button>
+                                    )}
                                   </div>
                                 </div>
                               );
