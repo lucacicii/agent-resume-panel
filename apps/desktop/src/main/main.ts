@@ -3328,7 +3328,7 @@ app.whenReady().then(async () => {
     getMainWindow: () => mainWindow,
     acp: {
       connect: (chatId) => connectAcpChat(chatId),
-      prompt: (chatId, text) => promptAcpChat(chatId, text),
+      prompt: (chatId, text, images) => promptAcpChat(chatId, text, images ?? []),
       denyPermission: (requestId) => denyAcpPermission(requestId),
       setModel: (chatId, modelId) => setAcpModel(chatId, modelId)
     }

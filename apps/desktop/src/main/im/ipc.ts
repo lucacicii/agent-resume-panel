@@ -19,7 +19,11 @@ let storeKey = "";
 
 type AcpHostApi = {
   connect: (chatId: string) => Promise<void>;
-  prompt: (chatId: string, text: string) => Promise<void>;
+  prompt: (
+    chatId: string,
+    text: string,
+    images?: Array<{ mimeType: string; fileName: string; data: string }>
+  ) => Promise<void>;
   denyPermission: (requestId: string) => Promise<void>;
   setModel?: (chatId: string, modelId: string) => Promise<void>;
 };
@@ -224,6 +228,7 @@ export function registerImIpc(deps: {
     body?: unknown;
     quoteIds?: unknown;
     mentionRoleIds?: unknown;
+    images?: unknown;
   }) => {
     if (typeof args?.projectId !== "string") throw new Error("Project id is required.");
     const quoteIds = Array.isArray(args.quoteIds)
@@ -232,12 +237,24 @@ export function registerImIpc(deps: {
     const mentionRoleIds = Array.isArray(args.mentionRoleIds)
       ? args.mentionRoleIds.filter((item): item is string => typeof item === "string")
       : [];
+    const images = Array.isArray(args.images)
+      ? args.images.filter((img): img is { fileName: string; mimeType: string; data: string } =>
+          Boolean(
+            img &&
+            typeof img === "object" &&
+            typeof img.fileName === "string" &&
+            typeof img.mimeType === "string" &&
+            typeof img.data === "string"
+          )
+        )
+      : undefined;
     const runner = await getConductor();
     return runner.postMessage({
       projectId: args.projectId,
       body: typeof args.body === "string" ? args.body : "",
       quoteIds,
-      mentionRoleIds
+      mentionRoleIds,
+      images
     });
   });
 

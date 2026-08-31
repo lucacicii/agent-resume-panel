@@ -38,8 +38,8 @@ function collectParts(content: unknown, textParts: string[], thinkingParts: stri
     if (content.trim()) textParts.push(content);
     return;
   }
-  if (!Array.isArray(content)) return;
-  for (const block of content) {
+  const blocks = Array.isArray(content) ? content : isRecord(content) ? [content] : [];
+  for (const block of blocks) {
     if (typeof block === "string") {
       if (block.trim()) textParts.push(block);
       continue;

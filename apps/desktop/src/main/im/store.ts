@@ -16,6 +16,7 @@ import {
   parseImRoleTools,
   type ImAgent,
   type ImBuiltinTemplateId,
+  type ImImageAttachment,
   type ImJob,
   type ImJobBrief,
   type ImJobStatus,
@@ -169,6 +170,7 @@ interface MessageRow {
   author_label: string;
   body: string;
   thinking: string | null;
+  images_json: string | null;
   quote_ids_json: string;
   mention_role_ids_json: string;
   job_id: string | null;
@@ -245,6 +247,40 @@ function parseJsonArray(raw: string | null | undefined): string[] {
 function clipBody(body: string, max = QUOTE_BODY_MAX): { body: string; truncated: boolean } {
   if (body.length <= max) return { body, truncated: false };
   return { body: `${body.slice(0, max - 1)}…`, truncated: true };
+}
+
+function parseImagesJson(raw: string | null | undefined): ImImageAttachment[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is ImImageAttachment => Boolean(item && typeof item === "object" && item.id && item.fileName));
+  } catch {
+    return [];
+  }
+}
+
+export async function saveImMessageImage(
+  panelHome: string,
+  projectId: string,
+  image: { fileName: string; mimeType: string; data: string }
+): Promise<ImImageAttachment> {
+  const id = randomUUID();
+  const ext = path.extname(image.fileName) || mimeExtension(image.mimeType);
+  const storagePath = path.join(".desktop", "im", projectId, "attachments", `${id}${ext}`);
+  const abs = path.join(path.resolve(expandHome(panelHome)), storagePath);
+  await fs.mkdir(path.dirname(abs), { recursive: true });
+  const buffer = Buffer.from(image.data, "base64");
+  await fs.writeFile(abs, buffer);
+  const previewUrl = `data:${image.mimeType};base64,${image.data}`;
+  return {
+    id,
+    fileName: image.fileName,
+    mimeType: image.mimeType,
+    storagePath,
+    previewUrl,
+    sizeBytes: buffer.length
+  };
 }
 
 function mimeExtension(mimeType: string): string {
@@ -359,7 +395,8 @@ function mapJob(row: JobRow): ImJob {
       instruction: typeof parsed.instruction === "string" ? parsed.instruction : "",
       cwd: typeof parsed.cwd === "string" ? parsed.cwd : "",
       quotes: Array.isArray(parsed.quotes) ? parsed.quotes : [],
-      knowledge: Array.isArray(parsed.knowledge) ? parsed.knowledge as ImKnowledgeSnapshot[] : []
+      knowledge: Array.isArray(parsed.knowledge) ? parsed.knowledge as ImKnowledgeSnapshot[] : [],
+      images: Array.isArray(parsed.images) ? parsed.images as ImImageAttachment[] : undefined
     };
   } catch {
     // keep empty brief
@@ -1017,6 +1054,7 @@ export class ImStore {
     authorLabel: string;
     body: string;
     thinking?: string;
+    images?: ImImageAttachment[];
     quoteIds?: string[];
     mentionRoleIds?: string[];
     jobId?: string | null;
@@ -1026,10 +1064,11 @@ export class ImStore {
     const quoteIds = input.quoteIds ?? [];
     const mentionRoleIds = input.mentionRoleIds ?? [];
     const thinking = input.thinking?.trim() || null;
+    const imagesJson = input.images?.length ? JSON.stringify(input.images) : null;
     await runSqlite(
       this.dbPath,
       `INSERT INTO im_messages (
-        message_id, project_id, kind, author_member_id, author_label, body, thinking, quote_ids_json, mention_role_ids_json, job_id, created_at_ms
+        message_id, project_id, kind, author_member_id, author_label, body, thinking, images_json, quote_ids_json, mention_role_ids_json, job_id, created_at_ms
       ) VALUES (
         ${sqlString(messageId)},
         ${sqlString(input.projectId)},
@@ -1038,6 +1077,7 @@ export class ImStore {
         ${sqlString(input.authorLabel)},
         ${sqlString(input.body)},
         ${sqlNullOrString(thinking)},
+        ${sqlNullOrString(imagesJson)},
         ${sqlString(JSON.stringify(quoteIds))},
         ${sqlString(JSON.stringify(mentionRoleIds))},
         ${sqlNullOrString(input.jobId ?? null)},
@@ -1444,6 +1484,7 @@ export class ImStore {
         truncated: clipped.truncated
       });
     }
+    const images = parseImagesJson(row.images_json);
     return {
       messageId: row.message_id,
       projectId: row.project_id,
@@ -1452,6 +1493,7 @@ export class ImStore {
       authorLabel: row.author_label,
       body: row.body,
       thinking: row.thinking?.trim() || undefined,
+      images: images.length ? images : undefined,
       quoteIds,
       quotes,
       mentionRoleIds: parseJsonArray(row.mention_role_ids_json),

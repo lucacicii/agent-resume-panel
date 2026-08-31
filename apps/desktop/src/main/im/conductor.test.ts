@@ -260,4 +260,42 @@ describe("ImConductor", () => {
     expect(finalMessages[0]?.body).toBe("Here is the plan. All set.");
     expect(finalMessages[0]?.thinking).toBe("Analyzing requirements... Done.");
   });
+
+  it("passes image attachments to ACP agent prompt when message contains images", async () => {
+    const store = await createStore();
+    const project = await store.createProject("Image prompt test");
+    await store.setLocalPath(project.projectId, process.cwd());
+    const room = await store.getRoom(project.projectId);
+    const pm = room.members.find((member) => member.templateId === "role_product_manager")!;
+    const connect = vi.fn(async () => undefined);
+    const prompt = vi.fn(async () => undefined);
+    const conductor = new ImConductor(store, () => undefined, connect, prompt);
+
+    await conductor.postMessage({
+      projectId: project.projectId,
+      body: "Analyze this diagram",
+      quoteIds: [],
+      mentionRoleIds: [pm.memberId],
+      images: [
+        {
+          fileName: "diagram.png",
+          mimeType: "image/png",
+          data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+        }
+      ]
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(connect).toHaveBeenCalled();
+    expect(prompt).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.stringContaining("Analyze this diagram"),
+      expect.arrayContaining([
+        expect.objectContaining({
+          fileName: "diagram.png",
+          mimeType: "image/png"
+        })
+      ])
+    );
+  });
 });

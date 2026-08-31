@@ -266,4 +266,35 @@ describe("ImStore", () => {
     expect(cancelled.status).toBe("cancelled");
     expect((await store.getJob(job.jobId))?.status).toBe("cancelled");
   });
+
+  it("persists and loads message image attachments and thinking", async () => {
+    const store = await createStore();
+    const project = await store.createProject("Image Msg Test");
+
+    const message = await store.insertMessage({
+      projectId: project.projectId,
+      kind: "human",
+      authorLabel: "You",
+      body: "Look at this mockup",
+      thinking: "Thinking about design...",
+      images: [
+        {
+          id: "img-1",
+          fileName: "mockup.png",
+          mimeType: "image/png",
+          storagePath: ".desktop/im/img.png",
+          previewUrl: "data:image/png;base64,AAAA"
+        }
+      ]
+    });
+
+    expect(message.images).toHaveLength(1);
+    expect(message.images?.[0]?.fileName).toBe("mockup.png");
+    expect(message.thinking).toBe("Thinking about design...");
+
+    const loaded = await store.getMessage(message.messageId);
+    expect(loaded?.images).toHaveLength(1);
+    expect(loaded?.images?.[0]?.fileName).toBe("mockup.png");
+    expect(loaded?.thinking).toBe("Thinking about design...");
+  });
 });

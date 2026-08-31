@@ -1,12 +1,18 @@
 import type { BrowserWindow } from "electron";
-import { effectivePanelHome, loadSettings } from "@agent-resume/core";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import { effectivePanelHome, expandHome, loadSettings } from "@agent-resume/core";
 import { createAcpRecord, getAcpRecord } from "../acp/store";
 import type { AcpAgentProvider, AcpStreamEvent, AcpToolCallInfo } from "../acp/types";
-import { buildDispatchPrompt, type ImStore } from "./store";
-import { isImAgent, type ImEvent, type ImJob, type ImJobStatus, type ImMember, type ImMessage, type ImRoleTools } from "./types";
+import { buildDispatchPrompt, saveImMessageImage, type ImStore } from "./store";
+import { isImAgent, type ImEvent, type ImImageAttachment, type ImJob, type ImJobStatus, type ImMember, type ImMessage, type ImRoleTools } from "./types";
 
 type ConnectFn = (chatId: string) => Promise<void>;
-type PromptFn = (chatId: string, text: string) => Promise<void>;
+type PromptFn = (
+  chatId: string,
+  text: string,
+  images?: Array<{ mimeType: string; fileName: string; data: string }>
+) => Promise<void>;
 type DenyPermissionFn = (requestId: string) => Promise<void>;
 type SetModelFn = (chatId: string, modelId: string) => Promise<void>;
 
@@ -49,10 +55,12 @@ export class ImConductor {
     body: string;
     quoteIds: string[];
     mentionRoleIds: string[];
+    images?: Array<{ fileName: string; mimeType: string; data: string }>;
   }): Promise<{ message: Awaited<ReturnType<ImStore["insertMessage"]>>; job: ImJob | null }> {
     const room = await this.store.getRoom(input.projectId);
     const body = this.store.clipInstruction(input.body);
-    if (!body.trim() && !input.quoteIds.length) {
+    const hasImages = Boolean(input.images?.length);
+    if (!body.trim() && !input.quoteIds.length && !hasImages) {
       throw new Error("Message is empty.");
     }
     const mentionIds = [...new Set(input.mentionRoleIds.filter(Boolean))];
@@ -61,11 +69,22 @@ export class ImConductor {
       throw new Error("Associate a local folder before asking a role to work.");
     }
     const quotes = await this.store.resolveQuotes(input.projectId, input.quoteIds);
+    const settings = await loadSettings();
+    const panelHome = effectivePanelHome(settings);
+    const savedImages: ImImageAttachment[] = [];
+    if (input.images?.length) {
+      for (const img of input.images) {
+        const saved = await saveImMessageImage(panelHome, input.projectId, img);
+        savedImages.push(saved);
+      }
+    }
+
     const message = await this.store.insertMessage({
       projectId: input.projectId,
       kind: "human",
       authorLabel: "You",
-      body: body.trim() || "(quoted messages)",
+      body: body.trim() || (savedImages.length ? "(attached images)" : "(quoted messages)"),
+      images: savedImages.length ? savedImages : undefined,
       quoteIds: quotes.map((quote) => quote.messageId),
       mentionRoleIds: mentionIds
     });
@@ -99,7 +118,8 @@ export class ImConductor {
           instruction: body.trim(),
           cwd: cwd!,
           quotes,
-          knowledge
+          knowledge,
+          images: savedImages.length ? savedImages : undefined
         },
         status: "queued"
       });
@@ -371,7 +391,22 @@ export class ImConductor {
     this.emit({ type: "job", projectId: job.projectId, job: running });
 
     const prompt = buildDispatchPrompt(job.brief);
-    await this.promptAndWait(chatId, prompt);
+    const imagesToPass: Array<{ mimeType: string; fileName: string; data: string }> = [];
+    if (job.brief.images?.length) {
+      for (const img of job.brief.images) {
+        if (img.previewUrl && img.previewUrl.startsWith("data:")) {
+          const data = img.previewUrl.split(",")[1] || "";
+          imagesToPass.push({ fileName: img.fileName, mimeType: img.mimeType, data });
+        } else if (img.storagePath) {
+          const abs = path.join(path.resolve(expandHome(panelHome)), img.storagePath);
+          const buf = await fs.readFile(abs).catch(() => null);
+          if (buf) {
+            imagesToPass.push({ fileName: img.fileName, mimeType: img.mimeType, data: buf.toString("base64") });
+          }
+        }
+      }
+    }
+    await this.promptAndWait(chatId, prompt, imagesToPass);
 
     const latest = await this.store.getJob(jobId);
     if (!latest || latest.status === "failed" || latest.status === "cancelled") return;
@@ -398,7 +433,11 @@ export class ImConductor {
     this.launchJob(next.jobId, member);
   }
 
-  private promptAndWait(chatId: string, text: string): Promise<void> {
+  private promptAndWait(
+    chatId: string,
+    text: string,
+    images: Array<{ mimeType: string; fileName: string; data: string }> = []
+  ): Promise<void> {
     return new Promise((resolve, reject) => {
       this.pendingByChat.set(chatId, {
         resolve: () => {
@@ -410,7 +449,7 @@ export class ImConductor {
           reject(error);
         }
       });
-      void this.promptChat(chatId, text).then(
+      void this.promptChat(chatId, text, images).then(
         () => this.pendingByChat.get(chatId)?.resolve(),
         (error: unknown) => {
           const next = error instanceof Error ? error : new Error(String(error));

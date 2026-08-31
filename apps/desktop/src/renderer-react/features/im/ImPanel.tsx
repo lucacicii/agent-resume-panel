@@ -3,7 +3,7 @@ import { renderMarkdown } from "../../components/Markdown";
 import { ImTimeline } from "./ImTimeline";
 import { buildTimelineNodes } from "./timelineModel";
 import { createPortal } from "react-dom";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type JSX, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactPortal } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ClipboardEvent as ReactClipboardEvent, type DragEvent as ReactDragEvent, type FormEvent, type JSX, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactPortal } from "react";
 import { desktopApi } from "../../bridge";
 import { notifyDesktop } from "../../components/Notifications";
 import { useI18n } from "../../i18n";
@@ -29,6 +29,28 @@ const BUILTIN_ROLE_KEYS = {
   role_developer: "developer",
   role_tester: "tester"
 } as const;
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("Failed to read file"));
+    reader.readAsDataURL(file);
+  });
+}
+
+interface PendingImage {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  data: string;
+  previewUrl: string;
+  sizeBytes: number;
+}
+
+const MAX_IMAGES = 4;
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 
 // Stable brand colors for built-in roles; custom templates hash to a hue.
 const BUILTIN_ROLE_COLORS: Record<string, string> = {
@@ -145,8 +167,11 @@ export function ImPanel(): ReactPortal | null {
   const [activeTimelineMessageId, setActiveTimelineMessageId] = useState<string | undefined>();
   const [flashingMessageId, setFlashingMessageId] = useState<string | null>(null);
   const [expandedThinking, setExpandedThinking] = useState<Record<string, boolean>>({});
+  const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
+  const [previewModalUrl, setPreviewModalUrl] = useState<string | null>(null);
   const transcriptRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
   const prevMsgCount = useRef(0);
 
   const setError = useCallback((error: unknown) => {
@@ -534,10 +559,75 @@ export function ImPanel(): ReactPortal | null {
     }
   }, [selectedProjectId, setError, t]);
 
+  const stageImageFiles = useCallback(async (files: FileList | File[] | null) => {
+    if (!files || !files.length) return;
+    const list = Array.from(files as ArrayLike<File>);
+    const next: PendingImage[] = [];
+    let currentCount = pendingImages.length;
+    for (const file of list) {
+      if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
+        setError(new Error(t("desktop.im.imageInvalidType")));
+        continue;
+      }
+      if (file.size > MAX_IMAGE_BYTES) {
+        setError(new Error(t("desktop.im.imageTooLarge", file.name)));
+        continue;
+      }
+      if (currentCount >= MAX_IMAGES) {
+        setError(new Error(t("desktop.im.tooManyImages", MAX_IMAGES)));
+        break;
+      }
+      try {
+        const dataUrl = await readFileAsDataUrl(file);
+        const data = dataUrl.split(",")[1] || "";
+        next.push({
+          id: crypto.randomUUID(),
+          fileName: file.name || "image.png",
+          mimeType: file.type || "image/png",
+          data,
+          previewUrl: dataUrl,
+          sizeBytes: file.size
+        });
+        currentCount += 1;
+      } catch (err) {
+        setError(err);
+      }
+    }
+    if (next.length) {
+      setPendingImages((curr) => [...curr, ...next]);
+    }
+  }, [pendingImages.length, setError, t]);
+
+  const onComposerPaste = useCallback((event: ReactClipboardEvent<HTMLTextAreaElement>) => {
+    const items = [...(event.clipboardData?.items ?? [])];
+    const imageItems = items.filter((item) => item.type.startsWith("image/"));
+    if (!imageItems.length) return;
+    event.preventDefault();
+    const files: File[] = [];
+    for (const item of imageItems) {
+      const file = item.getAsFile();
+      if (file) files.push(file);
+    }
+    void stageImageFiles(files);
+  }, [stageImageFiles]);
+
+  const onDragOver = useCallback((event: ReactDragEvent) => {
+    if (event.dataTransfer?.types?.includes("Files")) {
+      event.preventDefault();
+    }
+  }, []);
+
+  const onDrop = useCallback((event: ReactDragEvent) => {
+    if (event.dataTransfer?.files?.length) {
+      event.preventDefault();
+      void stageImageFiles(event.dataTransfer.files);
+    }
+  }, [stageImageFiles]);
+
   const send = useCallback(async () => {
     if (!selectedProjectId || sending) return;
     const body = draft.trim();
-    if (!body && !quotes.length) return;
+    if (!body && !quotes.length && !pendingImages.length) return;
     if (mentionIds.length && !canDispatch) {
       setError(new Error(t("desktop.im.needFolder")));
       return;
@@ -548,11 +638,13 @@ export function ImPanel(): ReactPortal | null {
         projectId: selectedProjectId,
         body,
         quoteIds: quotes.map((quote) => quote.messageId),
-        mentionRoleIds: mentionIds
+        mentionRoleIds: mentionIds,
+        images: pendingImages.map(({ fileName, mimeType, data }) => ({ fileName, mimeType, data }))
       });
       setDraft("");
       setQuotes([]);
       setMentionIds([]);
+      setPendingImages([]);
       setMentionOpen(false);
       setMentionIndex(0);
     } catch (error) {
@@ -560,7 +652,7 @@ export function ImPanel(): ReactPortal | null {
     } finally {
       setSending(false);
     }
-  }, [canDispatch, draft, mentionIds, quotes, selectedProjectId, sending, setError, t]);
+  }, [canDispatch, draft, mentionIds, pendingImages, quotes, selectedProjectId, sending, setError, t]);
 
   const pickMention = useCallback((member: ImMember) => {
     const at = draft.lastIndexOf("@");
@@ -947,6 +1039,22 @@ export function ImPanel(): ReactPortal | null {
                             ) : null}
                           </div>
                         ) : null}
+                        {message.images && message.images.length > 0 && (
+                          <div className="im-message-images">
+                            {message.images.map((img) => (
+                              <button
+                                key={img.id}
+                                type="button"
+                                className="im-message-image-card"
+                                onClick={() => setPreviewModalUrl(img.previewUrl || "")}
+                                title={img.fileName}
+                              >
+                                <img src={img.previewUrl || ""} alt={img.fileName} loading="lazy" />
+                                <span className="im-message-image-name">{img.fileName}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
                         {displayBody ? (
                           <div
                             className="markdown-body"
@@ -1069,7 +1177,36 @@ export function ImPanel(): ReactPortal | null {
                   </div>
                 </div>
               )}
-              <div className="im-composer">
+              <div className="im-composer" onDragOver={onDragOver} onDrop={onDrop}>
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  multiple
+                  style={{ display: "none" }}
+                  onChange={(e) => {
+                    void stageImageFiles(e.target.files);
+                    e.target.value = "";
+                  }}
+                />
+                {pendingImages.length > 0 && (
+                  <div className="im-pending-images" aria-label="Attached images">
+                    {pendingImages.map((img) => (
+                      <div key={img.id} className="im-pending-image-card">
+                        <img src={img.previewUrl} alt={img.fileName} onClick={() => setPreviewModalUrl(img.previewUrl)} />
+                        <span className="im-pending-image-name" title={img.fileName}>{img.fileName}</span>
+                        <button
+                          type="button"
+                          className="im-pending-image-remove"
+                          onClick={() => setPendingImages((curr) => curr.filter((item) => item.id !== img.id))}
+                          aria-label={t("desktop.common.delete")}
+                        >
+                          <ThemeIcon name="close" size={11} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {quotes.length > 0 && (
                   <div className="im-quote-chips">
                     {quotes.map((quote) => (
@@ -1128,11 +1265,21 @@ export function ImPanel(): ReactPortal | null {
                   value={draft}
                   onChange={(event) => setDraft(event.target.value)}
                   onKeyDown={onComposerKey}
+                  onPaste={onComposerPaste}
                   placeholder={t("desktop.im.placeholder")}
                   aria-label={t("desktop.im.placeholder")}
                   rows={3}
                 />
                 <div className="im-composer-actions">
+                  <button
+                    type="button"
+                    className="tool-btn ghost-btn"
+                    onClick={() => imageInputRef.current?.click()}
+                    title={t("desktop.im.addImage")}
+                    aria-label={t("desktop.im.addImage")}
+                  >
+                    <ThemeIcon name="file-image" size={14} aria-hidden="true" />
+                  </button>
                   <button type="button" className="tool-btn ghost-btn" onClick={() => {
                     setMentionOpen((open) => !open);
                     setMentionIndex(0);
@@ -1144,7 +1291,7 @@ export function ImPanel(): ReactPortal | null {
                     type="button"
                     className="tool-btn"
                     onClick={() => void send()}
-                    disabled={sending || (!draft.trim() && !quotes.length)}
+                    disabled={sending || (!draft.trim() && !quotes.length && !pendingImages.length)}
                   >
                     {t("desktop.common.send")}
                   </button>
@@ -1300,6 +1447,27 @@ export function ImPanel(): ReactPortal | null {
           {selectionResult.loading
             ? <p className="im-empty">{t("desktop.im.actionRunning")}</p>
             : <div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(selectionResult.text) }} />}
+        </div>,
+        document.body
+      ) : null}
+      {previewModalUrl ? createPortal(
+        <div
+          className="im-image-lightbox"
+          role="dialog"
+          aria-label="Image preview"
+          onClick={() => setPreviewModalUrl(null)}
+        >
+          <div className="im-image-lightbox-content" onClick={(e) => e.stopPropagation()}>
+            <img src={previewModalUrl} alt="Enlarged preview" />
+            <button
+              type="button"
+              className="im-image-lightbox-close"
+              onClick={() => setPreviewModalUrl(null)}
+              aria-label={t("desktop.common.close")}
+            >
+              <ThemeIcon name="close" size={16} />
+            </button>
+          </div>
         </div>,
         document.body
       ) : null}

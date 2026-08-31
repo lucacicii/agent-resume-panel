@@ -638,4 +638,54 @@ describe("ImPanel", () => {
     expect(document.querySelector(".im-message-thinking-body")).not.toBeNull();
     expect(document.querySelector(".im-message-thinking-body")?.textContent).toContain("Deep thought analysis");
   });
+
+  it("renders image thumbnails in message bubbles and opens lightbox on click", async () => {
+    const currentProject = project();
+    const currentRoom = roomFor(currentProject);
+    const api = renderIm();
+    (api.imGetRoom as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...currentRoom,
+      messages: [
+        {
+          messageId: "msg-img-1",
+          projectId: currentProject.projectId,
+          kind: "human",
+          authorMemberId: null,
+          authorLabel: "You",
+          body: "Check this screenshot",
+          images: [
+            {
+              id: "img-1",
+              fileName: "screenshot.png",
+              mimeType: "image/png",
+              storagePath: ".desktop/im/screenshot.png",
+              previewUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+            }
+          ],
+          quoteIds: [],
+          quotes: [],
+          mentionRoleIds: [],
+          jobId: null,
+          createdAtMs: 1000
+        }
+      ]
+    });
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+
+    await waitFor(() => expect(document.querySelector(".im-message-images")).not.toBeNull());
+    const card = document.querySelector(".im-message-image-card") as HTMLButtonElement;
+    expect(card).not.toBeNull();
+    expect(card.textContent).toContain("screenshot.png");
+
+    // Click to open lightbox
+    fireEvent.click(card);
+    expect(document.querySelector(".im-image-lightbox")).not.toBeNull();
+
+    // Click close button
+    const closeBtn = document.querySelector(".im-image-lightbox-close") as HTMLButtonElement;
+    fireEvent.click(closeBtn);
+    expect(document.querySelector(".im-image-lightbox")).toBeNull();
+  });
 });

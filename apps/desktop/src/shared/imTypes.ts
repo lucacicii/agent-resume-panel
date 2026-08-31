@@ -126,6 +126,15 @@ export interface ImQuotedMessage {
   truncated: boolean;
 }
 
+export interface ImImageAttachment {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  storagePath: string;
+  previewUrl?: string;
+  sizeBytes?: number;
+}
+
 export interface ImMessage {
   messageId: string;
   projectId: string;
@@ -134,6 +143,7 @@ export interface ImMessage {
   authorLabel: string;
   body: string;
   thinking?: string;
+  images?: ImImageAttachment[];
   streaming?: boolean;
   quoteIds: string[];
   quotes: ImQuotedMessage[];
@@ -178,6 +188,7 @@ export interface ImJobBrief {
   cwd: string;
   quotes: ImQuotedMessage[];
   knowledge: ImKnowledgeSnapshot[];
+  images?: ImImageAttachment[];
 }
 
 export interface ImPermissionRequest {

@@ -630,6 +630,7 @@ export interface DesktopApi {
     body: string;
     quoteIds: string[];
     mentionRoleIds: string[];
+    images?: Array<{ fileName: string; mimeType: string; data: string }>;
   }): Promise<{ message: ImMessage; job: ImJob | null }>;
   imCancelJob(args: { jobId: string }): Promise<ImJob>;
   imListKnowledge(args: { projectId: string }): Promise<ImKnowledgeItem[]>;

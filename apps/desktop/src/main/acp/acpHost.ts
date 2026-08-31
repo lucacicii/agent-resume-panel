@@ -395,7 +395,7 @@ class AcpChatController {
   }
 
   private handleAgentChunk(update: Record<string, unknown>): void {
-    const extracted = extractPreviewContent(update.content);
+    const extracted = extractChunkContent(update.content);
     if (!extracted.text && !extracted.thinking) return;
     if (!this.turnAssistantId) return;
     if (!this.streamingAssistantId) {
@@ -403,8 +403,8 @@ class AcpChatController {
       this.streamingText = extracted.text;
       this.streamingThinking = extracted.thinking;
     } else {
-      if (extracted.text) this.streamingText += (this.streamingText ? "" : "") + extracted.text;
-      if (extracted.thinking) this.streamingThinking += (this.streamingThinking ? "" : "") + extracted.thinking;
+      this.streamingText += extracted.text;
+      this.streamingThinking += extracted.thinking;
     }
     const assistant = this.getAssistantMessage(this.turnAssistantId);
     assistant.text = this.streamingText;
@@ -1294,6 +1294,34 @@ export function disposeAllAcpControllers(): void {
   setPermissionPromptHandler(null);
   setAskUserQuestionHandler(null);
   setPlanWriteListener(null);
+}
+
+function extractChunkContent(content: unknown): { text: string; thinking: string } {
+  if (typeof content === "string") {
+    return { text: content, thinking: "" };
+  }
+  if (!content) return { text: "", thinking: "" };
+  const blocks = Array.isArray(content) ? content : typeof content === "object" ? [content] : [];
+  let text = "";
+  let thinking = "";
+  for (const block of blocks) {
+    if (typeof block === "string") {
+      text += block;
+      continue;
+    }
+    if (!block || typeof block !== "object") continue;
+    const b = block as Record<string, unknown>;
+    const type = typeof b.type === "string" ? b.type.toLowerCase() : "";
+    if (type === "thinking" || type === "thought" || type === "reasoning" || typeof b.thinking === "string") {
+      const piece = typeof b.thinking === "string" ? b.thinking : typeof b.text === "string" ? b.text : "";
+      thinking += piece;
+    } else if (typeof b.text === "string") {
+      text += b.text;
+    } else if (typeof b.delta === "string") {
+      text += b.delta;
+    }
+  }
+  return { text, thinking };
 }
 
 function extractTextFromContent(content: unknown): string {
