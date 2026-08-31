@@ -1,9 +1,10 @@
 import type { BrowserWindow } from "electron";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { effectivePanelHome, expandHome, loadSettings } from "@agent-resume/core";
+import { desktopDbPath, effectivePanelHome, expandHome, loadSettings } from "@agent-resume/core";
 import { createAcpRecord, getAcpRecord } from "../acp/store";
 import type { AcpAgentProvider, AcpStreamEvent, AcpToolCallInfo } from "../acp/types";
+import { routeMessageIntent } from "./intentRouter";
 import { buildDispatchPrompt, extractFirstQuestionTitle, isDefaultChatName, saveImMessageImage, type ImStore } from "./store";
 import {
   DEFAULT_BUILTIN_CALLABLE_TEMPLATE_IDS,
@@ -208,6 +209,61 @@ export class ImConductor {
     }
 
     if (!mentionIds.length) {
+      if (body.trim()) {
+        const enabledMembers = room.members.filter((m) => m.enabled);
+        if (enabledMembers.length > 0) {
+          const routeResult = await routeMessageIntent({
+            text: body.trim(),
+            roomMembers: enabledMembers,
+            settings,
+            desktopDb: desktopDbPath(panelHome)
+          });
+          if (routeResult.matched && routeResult.targetMemberId) {
+            const targetMember = enabledMembers.find((m) => m.memberId === routeResult.targetMemberId);
+            if (targetMember) {
+              const updatedMessage = await this.store.updateMessageRouting(message.messageId, {
+                autoRouted: true,
+                routedRoleName: targetMember.name
+              });
+              this.emit({ type: "messageUpdate", projectId: input.projectId, message: updatedMessage });
+
+              const targetTemplate = await this.store.getTemplate(targetMember.templateId);
+              const targetPersona = targetTemplate?.persona ?? targetMember.persona;
+              const targetCwd = await this.store.ensureProjectLocalPath(input.projectId, panelHome);
+              const exclusive = this.store.memberNeedsExclusiveLock(targetMember);
+              const exclusiveBusy = Boolean(await this.store.findActiveWriterJob(input.projectId));
+              const startNow = !exclusive || !exclusiveBusy;
+
+              const job = await this.store.createJob({
+                projectId: input.projectId,
+                memberId: targetMember.memberId,
+                messageId: message.messageId,
+                brief: {
+                  persona: targetPersona,
+                  instruction: body.trim(),
+                  cwd: targetCwd,
+                  quotes,
+                  knowledge: this.store.snapshotKnowledge(room.knowledge),
+                  images: savedImages.length ? savedImages : undefined,
+                  dispatchChain: [targetMember.templateId]
+                },
+                status: "queued"
+              });
+              await this.store.attachJobToMessage(message.messageId, job.jobId);
+              this.emit({ type: "job", projectId: input.projectId, job });
+              if (startNow) this.launchJob(job.jobId, targetMember);
+              return { message: updatedMessage, job };
+            }
+          } else if (routeResult.tip) {
+            const updatedMessage = await this.store.updateMessageRouting(message.messageId, {
+              routingTip: routeResult.tip,
+              routingTimedOut: Boolean(routeResult.timedOut)
+            });
+            this.emit({ type: "messageUpdate", projectId: input.projectId, message: updatedMessage });
+            return { message: updatedMessage, job: null };
+          }
+        }
+      }
       return { message, job: null };
     }
 
@@ -428,10 +484,11 @@ export class ImConductor {
       const finalThinking = event.message.thinking?.trim();
       const proposals = await this.buildProposalsForJob(job, finalBody);
 
+      let persistedMessage: ImMessage | null = null;
       if (streamMsg) {
         this.streamingMessagesByJob.delete(jobId);
         if (finalBody || finalThinking) {
-          const persisted = await this.store.insertMessage({
+          persistedMessage = await this.store.insertMessage({
             messageId: streamMsg.messageId,
             projectId: job.projectId,
             kind: "role.say",
@@ -445,12 +502,12 @@ export class ImConductor {
           this.emit({
             type: "messageUpdate",
             projectId: job.projectId,
-            message: { ...persisted, streaming: false }
+            message: { ...persistedMessage, streaming: false }
           });
         }
       } else if (finalBody || finalThinking) {
         const member = await this.store.getMember(job.memberId);
-        const say = await this.store.insertMessage({
+        persistedMessage = await this.store.insertMessage({
           projectId: job.projectId,
           kind: "role.say",
           authorMemberId: job.memberId,
@@ -460,11 +517,11 @@ export class ImConductor {
           delegationProposals: proposals.length ? proposals : undefined,
           jobId
         });
-        this.emit({ type: "message", projectId: job.projectId, message: { ...say, streaming: false } });
+        this.emit({ type: "message", projectId: job.projectId, message: { ...persistedMessage, streaming: false } });
       }
 
-      if (proposals.length > 0) {
-        await this.executeAutoDispatches(job, proposals);
+      if (proposals.length > 0 && persistedMessage) {
+        await this.executeAutoDispatches(job, persistedMessage.messageId, proposals);
       }
     }
   }
@@ -502,7 +559,11 @@ export class ImConductor {
     return proposals;
   }
 
-  private async executeAutoDispatches(job: ImJob, proposals: ImDelegationProposal[]): Promise<void> {
+  private async executeAutoDispatches(
+    job: ImJob,
+    messageId: string,
+    proposals: ImDelegationProposal[]
+  ): Promise<void> {
     const member = await this.store.getMember(job.memberId);
     if (!member || !member.autoDispatch) return;
     const room = await this.store.getRoom(job.projectId);
@@ -538,6 +599,11 @@ export class ImConductor {
         status: "queued"
       });
       proposal.dispatchedJobId = nextJob.jobId;
+      proposal.resolvedAtMs = Date.now();
+      await this.store.updateMessageProposal(messageId, proposal.id, {
+        dispatchedJobId: nextJob.jobId,
+        resolvedAtMs: proposal.resolvedAtMs
+      });
       this.emit({ type: "job", projectId: job.projectId, job: nextJob });
       const exclusive = this.store.memberNeedsExclusiveLock(targetMember);
       const exclusiveBusy = Boolean(await this.store.findActiveWriterJob(job.projectId));

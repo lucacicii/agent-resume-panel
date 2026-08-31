@@ -631,6 +631,7 @@ Implement the search indexing algorithm as designed.
     const archMsg = (await store.listMessages(project.projectId)).find((m) => m.jobId === job.jobId);
     expect(archMsg?.delegationProposals).toHaveLength(1);
     expect(archMsg?.delegationProposals?.[0]?.status).toBe("auto_dispatched");
+    expect(archMsg?.delegationProposals?.[0]?.dispatchedJobId).toBe(devJob?.jobId);
   });
 
   it("supports manual dispatchProposal and dismissProposal", async () => {
@@ -690,5 +691,24 @@ Implement the search indexing algorithm as designed.
       proposalId: "prop-2"
     });
     expect(afterDismiss.delegationProposals?.find((p) => p.id === "prop-2")?.status).toBe("dismissed");
+  });
+
+  it("records unmatched tip when no-mention message is sent with filler text", async () => {
+    const store = await createStore();
+    const project = await store.createProject("Unmatched Tip Test");
+    await store.setLocalPath(project.projectId, process.cwd());
+
+    const conductor = new ImConductor(store, () => undefined, vi.fn(async () => undefined), vi.fn(async () => undefined));
+
+    const result = await conductor.postMessage({
+      projectId: project.projectId,
+      body: "好的",
+      quoteIds: [],
+      mentionRoleIds: []
+    });
+
+    expect(result.job).toBeNull();
+    expect(result.message.routingTip).toBe("desktop.im.routingUnmatchedTip");
+    expect(result.message.routingTimedOut).toBeUndefined();
   });
 });

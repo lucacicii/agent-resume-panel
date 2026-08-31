@@ -191,6 +191,10 @@ interface MessageRow {
   thinking: string | null;
   images_json: string | null;
   delegation_proposals_json: string | null;
+  auto_routed: number | null;
+  routed_role_name: string | null;
+  routing_tip: string | null;
+  routing_timed_out: number | null;
   quote_ids_json: string;
   mention_role_ids_json: string;
   job_id: string | null;
@@ -1412,6 +1416,10 @@ export class ImStore {
     thinking?: string;
     images?: ImImageAttachment[];
     delegationProposals?: ImDelegationProposal[];
+    autoRouted?: boolean;
+    routedRoleName?: string;
+    routingTip?: string;
+    routingTimedOut?: boolean;
     quoteIds?: string[];
     mentionRoleIds?: string[];
     jobId?: string | null;
@@ -1423,10 +1431,12 @@ export class ImStore {
     const thinking = input.thinking?.trim() || null;
     const imagesJson = input.images?.length ? JSON.stringify(input.images) : null;
     const proposalsJson = input.delegationProposals?.length ? JSON.stringify(input.delegationProposals) : null;
+    const autoRouted = input.autoRouted ? 1 : 0;
+    const routingTimedOut = input.routingTimedOut ? 1 : 0;
     await runSqlite(
       this.dbPath,
       `INSERT INTO im_messages (
-        message_id, project_id, kind, author_member_id, author_label, body, thinking, images_json, delegation_proposals_json, quote_ids_json, mention_role_ids_json, job_id, created_at_ms
+        message_id, project_id, kind, author_member_id, author_label, body, thinking, images_json, delegation_proposals_json, auto_routed, routed_role_name, routing_tip, routing_timed_out, quote_ids_json, mention_role_ids_json, job_id, created_at_ms
       ) VALUES (
         ${sqlString(messageId)},
         ${sqlString(input.projectId)},
@@ -1437,6 +1447,10 @@ export class ImStore {
         ${sqlNullOrString(thinking)},
         ${sqlNullOrString(imagesJson)},
         ${sqlNullOrString(proposalsJson)},
+        ${autoRouted},
+        ${sqlNullOrString(input.routedRoleName ?? null)},
+        ${sqlNullOrString(input.routingTip ?? null)},
+        ${routingTimedOut},
         ${sqlString(JSON.stringify(quoteIds))},
         ${sqlString(JSON.stringify(mentionRoleIds))},
         ${sqlNullOrString(input.jobId ?? null)},
@@ -1450,6 +1464,41 @@ export class ImStore {
     const created = await this.getMessage(messageId);
     if (!created) throw new Error("Failed to load created message.");
     return created;
+  }
+
+  async updateMessageRouting(
+    messageId: string,
+    patch: {
+      autoRouted?: boolean;
+      routedRoleName?: string | null;
+      routingTip?: string | null;
+      routingTimedOut?: boolean;
+    }
+  ): Promise<ImMessage> {
+    const current = await this.getMessage(messageId);
+    if (!current) throw new Error("Message not found.");
+    const now = nowMs();
+    const autoRouted = patch.autoRouted !== undefined ? (patch.autoRouted ? 1 : 0) : (current.autoRouted ? 1 : 0);
+    const routedRoleName = patch.routedRoleName !== undefined ? patch.routedRoleName : (current.routedRoleName ?? null);
+    const routingTip = patch.routingTip !== undefined ? patch.routingTip : (current.routingTip ?? null);
+    const routingTimedOut = patch.routingTimedOut !== undefined ? (patch.routingTimedOut ? 1 : 0) : (current.routingTimedOut ? 1 : 0);
+
+    await runSqlite(
+      this.dbPath,
+      `UPDATE im_messages SET
+        auto_routed = ${autoRouted},
+        routed_role_name = ${sqlNullOrString(routedRoleName)},
+        routing_tip = ${sqlNullOrString(routingTip)},
+        routing_timed_out = ${routingTimedOut}
+       WHERE message_id = ${sqlString(messageId)};`
+    );
+    await runSqlite(
+      this.dbPath,
+      `UPDATE im_projects SET updated_at_ms = ${now} WHERE project_id = ${sqlString(current.projectId)};`
+    );
+    const updated = await this.getMessage(messageId);
+    if (!updated) throw new Error("Failed to load updated message.");
+    return updated;
   }
 
   async updateMessageProposal(
@@ -1884,6 +1933,10 @@ export class ImStore {
       thinking: row.thinking?.trim() || undefined,
       images: images.length ? images : undefined,
       delegationProposals: proposals.length ? proposals : undefined,
+      autoRouted: row.auto_routed === 1 ? true : undefined,
+      routedRoleName: row.routed_role_name || undefined,
+      routingTip: row.routing_tip || undefined,
+      routingTimedOut: row.routing_timed_out === 1 ? true : undefined,
       quoteIds,
       quotes,
       mentionRoleIds: parseJsonArray(row.mention_role_ids_json),

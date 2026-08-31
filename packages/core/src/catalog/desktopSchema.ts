@@ -44,6 +44,13 @@ ALTER TABLE im_members ADD COLUMN auto_dispatch INTEGER;
 ALTER TABLE im_messages ADD COLUMN delegation_proposals_json TEXT;
 `;
 
+export const IM_SMART_ROUTING_MIGRATION_SQL = `
+ALTER TABLE im_messages ADD COLUMN auto_routed INTEGER DEFAULT 0;
+ALTER TABLE im_messages ADD COLUMN routed_role_name TEXT;
+ALTER TABLE im_messages ADD COLUMN routing_tip TEXT;
+ALTER TABLE im_messages ADD COLUMN routing_timed_out INTEGER DEFAULT 0;
+`;
+
 export const DESKTOP_ONLY_SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS gtd_ai_audit (
   id TEXT PRIMARY KEY,
@@ -347,6 +354,10 @@ CREATE TABLE IF NOT EXISTS im_messages (
   thinking TEXT,
   images_json TEXT,
   delegation_proposals_json TEXT,
+  auto_routed INTEGER DEFAULT 0,
+  routed_role_name TEXT,
+  routing_tip TEXT,
+  routing_timed_out INTEGER DEFAULT 0,
   quote_ids_json TEXT NOT NULL DEFAULT '[]',
   mention_role_ids_json TEXT NOT NULL DEFAULT '[]',
   job_id TEXT,

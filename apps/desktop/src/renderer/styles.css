@@ -18054,6 +18054,51 @@ html[data-window-mode="browser"] #react-chrome {
   justify-content: flex-end;
   gap: 6px;
 }
+/* --- IM Auto-Routed Badge & Routing Tip --- */
+.im-auto-routed-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-accent, #3b82f6) 12%, transparent);
+  color: var(--color-accent, #3b82f6);
+  border: 1px solid color-mix(in srgb, var(--color-accent, #3b82f6) 30%, transparent);
+  vertical-align: middle;
+}
+.im-routing-tip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm, 6px);
+  font-size: 11px;
+  line-height: 1.4;
+  cursor: pointer;
+  user-select: none;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+.im-routing-tip.is-unmatched {
+  background: color-mix(in srgb, var(--color-label-primary) 4%, transparent);
+  color: var(--color-label-secondary);
+  border: 1px solid color-mix(in srgb, var(--color-separator) 60%, transparent);
+}
+.im-routing-tip.is-unmatched:hover {
+  background: color-mix(in srgb, var(--color-label-primary) 7%, transparent);
+  color: var(--color-label-primary);
+}
+.im-routing-tip.is-timeout {
+  background: color-mix(in srgb, #f59e0b 8%, transparent);
+  color: color-mix(in srgb, #f59e0b 90%, var(--color-label-primary));
+  border: 1px solid color-mix(in srgb, #f59e0b 25%, transparent);
+}
+.im-routing-tip.is-timeout:hover {
+  background: color-mix(in srgb, #f59e0b 14%, transparent);
+}
 /* --- IM role identity, member + knowledge sidebar, smart scroll --- */
 .im-transcript-wrap {
   position: relative;

@@ -196,6 +196,10 @@ export interface ImMessage {
   thinking?: string;
   images?: ImImageAttachment[];
   delegationProposals?: ImDelegationProposal[];
+  autoRouted?: boolean;
+  routedRoleName?: string;
+  routingTip?: string;
+  routingTimedOut?: boolean;
   streaming?: boolean;
   quoteIds: string[];
   quotes: ImQuotedMessage[];
@@ -248,6 +252,17 @@ export interface ImDispatchBlock {
   target: string;
   reason?: string;
   instruction: string;
+}
+
+export interface IntentRouteResult {
+  matched: boolean;
+  targetMemberId?: string;
+  targetTemplateId?: string;
+  targetRoleName?: string;
+  reason?: string;
+  confidence?: number;
+  timedOut?: boolean;
+  tip?: string;
 }
 
 export interface ImPermissionRequest {

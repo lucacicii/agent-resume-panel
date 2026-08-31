@@ -95,6 +95,9 @@ const messages = {
   "desktop.im.delegationStatus.dispatched": "Dispatched",
   "desktop.im.delegationStatus.auto_dispatched": "Auto-dispatched",
   "desktop.im.delegationStatus.dismissed": "Dismissed",
+  "desktop.im.autoRoutedTo": "Auto-assigned to @{0}",
+  "desktop.im.routingTimeoutTip": "Intent analysis timed out (30s). You can use @ in the composer to manually assign a role.",
+  "desktop.im.routingUnmatchedTip": "No matching role identified. You can use @ in the composer to assign a task.",
   "desktop.im.addRole": "Add role",
   "desktop.im.removeRole": "Remove from room",
   "desktop.im.roleName": "Role name",
@@ -1171,5 +1174,70 @@ Build the user service endpoints.
       messageId: "msg-prop-test",
       proposalId: "prop-unit-1"
     });
+  });
+
+  it("renders auto-routed badge and routing tips (unmatched and timeout)", async () => {
+    const currentProject = project();
+    const currentRoom = roomFor(currentProject);
+    currentRoom.messages = [
+      {
+        messageId: "msg-routed",
+        projectId: currentProject.projectId,
+        kind: "human",
+        authorMemberId: null,
+        authorLabel: "You",
+        body: "Can you fix the login issue?",
+        autoRouted: true,
+        routedRoleName: "Developer",
+        quoteIds: [],
+        quotes: [],
+        mentionRoleIds: [],
+        jobId: "j-dev",
+        createdAtMs: 1000
+      },
+      {
+        messageId: "msg-tip-unmatched",
+        projectId: currentProject.projectId,
+        kind: "human",
+        authorMemberId: null,
+        authorLabel: "You",
+        body: "Hello there",
+        routingTip: "desktop.im.routingUnmatchedTip",
+        routingTimedOut: false,
+        quoteIds: [],
+        quotes: [],
+        mentionRoleIds: [],
+        jobId: null,
+        createdAtMs: 2000
+      },
+      {
+        messageId: "msg-tip-timeout",
+        projectId: currentProject.projectId,
+        kind: "human",
+        authorMemberId: null,
+        authorLabel: "You",
+        body: "Analyze complex cross-cutting system concern",
+        routingTip: "desktop.im.routingTimeoutTip",
+        routingTimedOut: true,
+        quoteIds: [],
+        quotes: [],
+        mentionRoleIds: [],
+        jobId: null,
+        createdAtMs: 3000
+      }
+    ];
+
+    const api = renderIm();
+    (api.imGetRoom as ReturnType<typeof vi.fn>).mockResolvedValue(currentRoom);
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+
+    expect(await screen.findByText("Auto-assigned to @Developer")).toBeTruthy();
+    expect(screen.getByText("No matching role identified. You can use @ in the composer to assign a task.")).toBeTruthy();
+    expect(screen.getByText("Intent analysis timed out (30s). You can use @ in the composer to manually assign a role.")).toBeTruthy();
+    expect(document.querySelector(".im-routing-tip.is-timeout")).not.toBeNull();
+    expect(document.querySelector(".im-routing-tip.is-unmatched")).not.toBeNull();
   });
 });

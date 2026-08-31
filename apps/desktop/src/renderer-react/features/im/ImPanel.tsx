@@ -1337,6 +1337,12 @@ export function ImPanel(): ReactPortal | null {
                                 {speaker ? memberLabel(speaker) : message.authorLabel}
                                 {speaker ? <> {agentTag(speaker.agent, speaker.model, t)}</> : null}
                               </strong>
+                              {message.autoRouted && message.routedRoleName && (
+                                <span className="im-auto-routed-badge" title={t("desktop.im.autoRoutedTo", message.routedRoleName)}>
+                                  <ThemeIcon name="sparkles" size={11} aria-hidden="true" />
+                                  <span>{t("desktop.im.autoRoutedTo", message.routedRoleName)}</span>
+                                </span>
+                              )}
                             </span>
                             <span className="im-message-meta">
                               <time dateTime={new Date(message.createdAtMs).toISOString()} className="im-message-time">
@@ -1615,6 +1621,21 @@ export function ImPanel(): ReactPortal | null {
                                 })}
                               </div>
                             ) : null}
+                          </div>
+                        )}
+                        {message.routingTip && (
+                          <div
+                            className={`im-routing-tip${message.routingTimedOut ? " is-timeout" : " is-unmatched"}`}
+                            onClick={() => {
+                              textareaRef.current?.focus();
+                            }}
+                          >
+                            <ThemeIcon
+                              name={message.routingTimedOut ? "history" : "sparkles"}
+                              size={12}
+                              aria-hidden="true"
+                            />
+                            <span>{t(message.routingTip) || message.routingTip}</span>
                           </div>
                         )}
                         {message.streaming && (
