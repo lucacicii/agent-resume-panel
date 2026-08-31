@@ -496,6 +496,13 @@ function formatKnowledgeBlock(items: ImKnowledgeSnapshot[]): string {
   return lines.join("\n\n");
 }
 
+export async function ensureArpDir(localPath: string): Promise<string> {
+  const resolved = path.resolve(expandHome(localPath));
+  const arpDir = path.join(resolved, ".arp");
+  await fs.mkdir(arpDir, { recursive: true }).catch(() => undefined);
+  return arpDir;
+}
+
 export function buildDispatchPrompt(brief: ImJobBrief): string {
   const quoteBlock = brief.quotes.length
     ? brief.quotes
@@ -520,7 +527,7 @@ export function buildDispatchPrompt(brief: ImJobBrief): string {
     "",
     "[Project cwd]",
     brief.cwd
-      ? `${brief.cwd}\nYou may list and read the entire tree under this directory. Stay inside it. Background links are URLs only — fetch them yourself if needed.`
+      ? `${brief.cwd}\nYou may list and read the entire tree under this directory. Stay inside it. Background links are URLs only — fetch them yourself if needed. Auxiliary documents, notes, design specs, and chat-generated artifacts should be saved under .arp/ (e.g. .arp/docs/, .arp/specs/) if appropriate to keep the workspace clean.`
       : ""
   ].join("\n");
 }
@@ -761,6 +768,9 @@ export class ImStore {
       initialPath = path.join(path.resolve(expandHome(panelHome)), ".desktop", "scratch", "im", projectId);
       await fs.mkdir(initialPath, { recursive: true }).catch(() => undefined);
     }
+    if (initialPath) {
+      await ensureArpDir(initialPath);
+    }
     const project: ImProject = {
       projectId,
       name: trimmed,
@@ -781,10 +791,12 @@ export class ImStore {
     const project = await this.requireProject(projectId);
     if (project.localPath) {
       await fs.mkdir(project.localPath, { recursive: true }).catch(() => undefined);
+      await ensureArpDir(project.localPath);
       return project.localPath;
     }
     const scratchPath = path.join(path.resolve(expandHome(panelHome)), ".desktop", "scratch", "im", projectId);
     await fs.mkdir(scratchPath, { recursive: true }).catch(() => undefined);
+    await ensureArpDir(scratchPath);
     await this.setLocalPath(projectId, scratchPath);
     return scratchPath;
   }
@@ -857,6 +869,7 @@ export class ImStore {
       const stat = await fs.stat(resolved).catch(() => null);
       if (!stat?.isDirectory()) throw new Error("Selected folder is not a valid directory.");
       nextPath = resolved;
+      await ensureArpDir(nextPath);
     }
     const now = nowMs();
     await runSqlite(

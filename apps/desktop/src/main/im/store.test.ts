@@ -386,4 +386,26 @@ describe("ImStore", () => {
     expect(renamed.title).toContain("How do I build a search bar with fuzzy matching");
     expect((await store.getProject(project.projectId))?.name).toBe(renamed.title);
   });
+
+  it("ensures .arp directory exists under associated folder and guides roles in dispatch prompt", async () => {
+    const { store, panelHome } = await createStoreWithHome();
+    const targetDir = path.join(panelHome, "my-code-repo");
+    await fs.mkdir(targetDir, { recursive: true });
+
+    const project = await store.createProject("Repo Chat");
+    await store.setLocalPath(project.projectId, targetDir);
+
+    const arpDir = path.join(targetDir, ".arp");
+    const stat = await fs.stat(arpDir);
+    expect(stat.isDirectory()).toBe(true);
+
+    const prompt = buildDispatchPrompt({
+      persona: "You are Developer.",
+      instruction: "build feature",
+      cwd: targetDir,
+      quotes: [],
+      knowledge: []
+    });
+    expect(prompt).toContain(".arp/");
+  });
 });
