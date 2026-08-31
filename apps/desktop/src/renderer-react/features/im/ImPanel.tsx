@@ -1,6 +1,7 @@
 import { ThemeIcon } from "../../components/ThemeIcon";
 import { renderMarkdown } from "../../components/Markdown";
 import { ImTimeline } from "./ImTimeline";
+import { useImProjectTools } from "./ImProjectTools";
 import { buildTimelineNodes } from "./timelineModel";
 import { createPortal } from "react-dom";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ClipboardEvent as ReactClipboardEvent, type DragEvent as ReactDragEvent, type FormEvent, type JSX, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactPortal } from "react";
@@ -274,6 +275,10 @@ export function ImPanel(): ReactPortal | null {
   const activePendingJobs = activeJobs.filter(
     (job) => !visibleMessages.some((msg) => msg.jobId === job.jobId)
   );
+  const projectRoot = room?.project.localPath && !isScratchPath(room.project.localPath)
+    ? room.project.localPath
+    : null;
+  const projectTools = useImProjectTools(projectRoot);
 
   const setError = useCallback((error: unknown) => {
     notifyDesktop({
@@ -1246,6 +1251,7 @@ export function ImPanel(): ReactPortal | null {
                   <p>{room.project.localPath || t("desktop.im.tempFolder")}</p>
                 </div>
                 <div className="im-room-head-actions">
+                  {projectTools.toolbar}
                   <button type="button" className="tool-btn" onClick={() => void associateFolder()}>
                     {t("desktop.im.associateFolder")}
                   </button>
@@ -1734,6 +1740,7 @@ export function ImPanel(): ReactPortal | null {
             <p className="im-empty">{t("desktop.im.selectChat")}</p>
           )}
         </div>
+        {projectTools.pane}
         {rightSidebarOpen && (
           <aside className="im-members" aria-label={t("desktop.im.members")}>
             <div className="im-sidebar-tabs" role="tablist" aria-label={t("desktop.im.members")}>

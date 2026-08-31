@@ -17259,7 +17259,31 @@ html[data-window-mode="browser"] #react-chrome {
 }
 .im-room-head-actions {
   display: flex;
+  align-items: center;
   gap: 8px;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.im-project-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.im-project-tools .wb-terminal-status {
+  padding: 0;
+  border-top: none;
+  background: transparent;
+  color: var(--color-label-secondary, var(--muted));
+}
+.im-project-tools .wb-terminal-status-branch {
+  cursor: default;
+}
+.im-project-tools-panel {
+  flex: 0 0 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 .im-knowledge {
   border-bottom: 1px solid var(--color-separator);

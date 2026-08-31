@@ -17,6 +17,9 @@ const messages = {
   "desktop.im.deleteChatConfirm": "Delete chat \"{0}\"? Associated agent sessions and temporary files will be removed.",
   "desktop.im.associateFolder": "Associate folder",
   "desktop.im.associateFolderTitle": "Select folder",
+  "desktop.im.associateFolderFirst": "Associate a project folder first",
+  "desktop.workbench.sidePanelExplorer": "Explorer",
+  "desktop.workbench.resizeSidePanel": "Resize side panel",
   "desktop.im.toggleDetails": "Roles & Background",
   "desktop.im.selectChat": "Select or create a chat.",
   "desktop.im.configRole": "Configure role",
@@ -165,6 +168,23 @@ function renderIm() {
     imPickLocalPath: vi.fn(async () => ({ ok: true as const, path: "/tmp/app" })),
     imSetLocalPath: vi.fn(async ({ projectId, localPath }: { projectId: string; localPath: string | null }) => project({ projectId, localPath })),
     revealProjectInFinder: vi.fn(async () => ({ ok: true, path: created.localPath })),
+    clipboardWriteText: vi.fn(async () => undefined),
+    workbenchOpenPath: vi.fn(async () => ({ ok: true })),
+    workbenchListDirectory: vi.fn(async ({ dirPath }: { dirPath: string }) => ({
+      entries: dirPath === "/tmp/app"
+        ? [{ name: "package.json", path: "/tmp/app/package.json", isDirectory: false }]
+        : []
+    })),
+    workbenchListScripts: vi.fn(async () => ({ packages: [], truncated: false, scannedDirs: 0 })),
+    workbenchSearchText: vi.fn(async () => ({ matches: [], truncated: false, filesSearched: 0, engine: "node" })),
+    workbenchSearchTextCancel: vi.fn(async () => ({ ok: true })),
+    terminalGitStatus: vi.fn(async () => ({
+      isRepo: true,
+      root: created.localPath,
+      staged: [],
+      unstaged: [],
+      tracking: [{ repoRoot: created.localPath, branch: "main", upstream: null, ahead: 0, behind: 0 }]
+    })),
     imListTemplates: vi.fn(async () => roomFor(created).members.map((item) => ({
       templateId: item.templateId,
       name: item.name,
@@ -968,5 +988,36 @@ describe("ImPanel", () => {
     expect(revealButtons.length).toBeGreaterThan(0);
     fireEvent.click(revealButtons[0]!);
     expect(api.revealProjectInFinder).toHaveBeenCalledWith({ projectPath: "/workspace/project/src/components/Header.tsx" });
+  });
+
+  it("disables project tools until a real folder is associated", async () => {
+    const currentProject = project({ localPath: null });
+    const api = renderIm();
+    (api.imListProjects as ReturnType<typeof vi.fn>).mockResolvedValue([currentProject]);
+    (api.imGetRoom as ReturnType<typeof vi.fn>).mockResolvedValue(roomFor(currentProject));
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+
+    const explorer = await screen.findByRole("button", { name: "Explorer" });
+    expect(explorer).toHaveProperty("disabled", true);
+    expect(screen.queryByRole("button", { name: "Scripts" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Search" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Git" })).toBeNull();
+  });
+
+  it("opens the Explorer pane for an associated project folder", async () => {
+    const api = renderIm();
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+
+    const explorer = await screen.findByRole("button", { name: "Explorer" });
+    expect(explorer).toHaveProperty("disabled", false);
+    fireEvent.click(explorer);
+    expect(await screen.findByText("package.json")).toBeTruthy();
+    expect(document.querySelector(".im-project-tools-panel")).not.toBeNull();
+    expect(api.workbenchListDirectory).toHaveBeenCalled();
   });
 });
