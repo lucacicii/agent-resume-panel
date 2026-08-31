@@ -93,6 +93,21 @@ function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
+function parseDispatchBlocks(text: string): Array<{ target: string; reason?: string; instruction: string }> {
+  const regex = /<im_dispatch\s+target="([^"]+)"(?:\s+reason="([^"]*)")?>([\s\S]*?)<\/im_dispatch>/gi;
+  const blocks: Array<{ target: string; reason?: string; instruction: string }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(text)) !== null) {
+    const target = match[1]?.trim() || "";
+    const reason = match[2]?.trim() || undefined;
+    const instruction = match[3]?.trim() || "";
+    if (target && instruction) {
+      blocks.push({ target, reason, instruction });
+    }
+  }
+  return blocks;
+}
+
 interface PendingImage {
   id: string;
   fileName: string;
@@ -1295,6 +1310,10 @@ export function ImPanel(): ReactPortal | null {
                   const showDate = !prevVisible || dayKey(prevVisible.createdAtMs) !== dayKey(message.createdAtMs);
                   const linkedJob = message.jobId ? room?.jobs.find((j) => j.jobId === message.jobId) : undefined;
                   const filesChanged = linkedJob?.filesChanged ?? [];
+                  const dispatchBlocks = message.kind === "role.say" ? parseDispatchBlocks(displayBody) : [];
+                  const cleanBody = dispatchBlocks.length > 0
+                    ? displayBody.replace(/<im_dispatch[\s\S]*?<\/im_dispatch>/gi, "").trim()
+                    : displayBody;
                   return (
                     <Fragment key={message.messageId}>
                       {showDate && (
@@ -1401,12 +1420,59 @@ export function ImPanel(): ReactPortal | null {
                             ))}
                           </div>
                         )}
-                        {displayBody ? (
+                        {cleanBody ? (
                           <div
                             className="markdown-body"
-                            dangerouslySetInnerHTML={{ __html: renderMarkdown(displayBody) }}
+                            dangerouslySetInnerHTML={{ __html: renderMarkdown(cleanBody) }}
                           />
                         ) : null}
+                        {dispatchBlocks.length > 0 && (
+                          <div className="im-message-dispatches">
+                            {dispatchBlocks.map((block, idx) => {
+                              const targetMember = allMembers.find((m) =>
+                                m.templateId === block.target ||
+                                m.memberId === block.target ||
+                                m.name.toLowerCase() === block.target.toLowerCase() ||
+                                m.templateId.toLowerCase() === block.target.toLowerCase()
+                              );
+                              const targetLabel = targetMember ? memberLabel(targetMember) : block.target;
+                              const targetColor = targetMember ? roleColor(targetMember.templateId) : roleColor(block.target);
+                              return (
+                                <div key={idx} className="im-dispatch-card" style={{ "--im-role-color": targetColor } as CSSProperties}>
+                                  <div className="im-dispatch-header">
+                                    <span className="im-role-avatar" aria-hidden="true" style={{ "--im-role-color": targetColor } as CSSProperties}>
+                                      {roleInitial(targetLabel)}
+                                    </span>
+                                    <strong>{t("desktop.im.delegationProposal", targetLabel)}</strong>
+                                    {block.reason ? <span className="im-dispatch-reason">{block.reason}</span> : null}
+                                  </div>
+                                  <div className="im-dispatch-instruction">
+                                    {block.instruction}
+                                  </div>
+                                  <div className="im-dispatch-actions">
+                                    <button
+                                      type="button"
+                                      className="btn small primary"
+                                      onClick={() => {
+                                        if (targetMember) {
+                                          setMentionIds((curr) => curr.includes(targetMember.memberId) ? curr : [...curr, targetMember.memberId]);
+                                        }
+                                        setDraft((curr) => {
+                                          const base = curr.trim();
+                                          return base ? `${base}\n${block.instruction}` : block.instruction;
+                                        });
+                                        textareaRef.current?.focus();
+                                      }}
+                                    >
+                                      <ThemeIcon name="send" size={12} aria-hidden="true" />
+                                      <span>{t("desktop.im.dispatchTo", targetLabel)}</span>
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                         {filesChanged.length > 0 && (
                           <div className="im-message-files">
                             <button

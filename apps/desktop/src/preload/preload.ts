@@ -606,6 +606,9 @@ export interface DesktopApi {
     model?: string;
     thoughtLevel?: string;
     tools?: { fsRead: boolean; fsWrite: boolean; execute: boolean };
+    callableTemplateIds?: string[];
+    incomingCallerIds?: string[];
+    autoDispatch?: boolean;
   }): Promise<ImRoleTemplate>;
   imUpdateTemplate(args: {
     templateId: string;
@@ -615,6 +618,9 @@ export interface DesktopApi {
     model?: string | null;
     thoughtLevel?: string | null;
     tools?: { fsRead: boolean; fsWrite: boolean; execute: boolean };
+    callableTemplateIds?: string[];
+    incomingCallerIds?: string[];
+    autoDispatch?: boolean;
   }): Promise<ImRoleTemplate>;
   imDeleteTemplate(args: { templateId: string }): Promise<{ ok: boolean }>;
   imGetRoom(args: { projectId: string }): Promise<ImRoom>;

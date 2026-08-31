@@ -41,6 +41,15 @@ export function isBuiltinTemplateId(value: string): value is ImBuiltinTemplateId
   return (IM_BUILTIN_TEMPLATE_IDS as readonly string[]).includes(value);
 }
 
+export const DEFAULT_BUILTIN_CALLABLE_TEMPLATE_IDS: Record<ImBuiltinTemplateId, readonly string[]> = {
+  role_product_manager: ["role_architect", "role_project_manager", "role_ui_designer"],
+  role_architect: ["role_developer"],
+  role_project_manager: ["role_architect", "role_ui_designer", "role_developer", "role_tester"],
+  role_ui_designer: ["role_developer"],
+  role_developer: ["role_tester"],
+  role_tester: ["role_developer"]
+};
+
 export interface ImRoleTools {
   fsRead: boolean;
   fsWrite: boolean;
@@ -122,6 +131,8 @@ export interface ImRoleTemplate {
   thoughtLevel?: string;
   permissions: ImPermission;
   tools: ImRoleTools;
+  callableTemplateIds?: string[];
+  autoDispatch?: boolean;
   createdAtMs: number;
   updatedAtMs: number;
 }
@@ -137,6 +148,8 @@ export interface ImMember {
   thoughtLevel?: string;
   permissions: ImPermission;
   tools: ImRoleTools;
+  callableTemplateIds?: string[];
+  autoDispatch?: boolean;
   enabled: boolean;
   acpChatId: string | null;
   createdAtMs: number;
@@ -214,6 +227,13 @@ export interface ImJobBrief {
   quotes: ImQuotedMessage[];
   knowledge: ImKnowledgeSnapshot[];
   images?: ImImageAttachment[];
+  dispatchChain?: string[];
+}
+
+export interface ImDispatchBlock {
+  target: string;
+  reason?: string;
+  instruction: string;
 }
 
 export interface ImPermissionRequest {

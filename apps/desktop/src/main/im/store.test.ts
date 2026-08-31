@@ -454,4 +454,61 @@ describe("ImStore", () => {
     });
     expect(prompt).toContain(".arp/");
   });
+
+  it("supports bi-directional delegation relationship configuration and pruning on deletion", async () => {
+    const store = await createStore();
+    const devOps = await store.createTemplate({
+      name: "DevOps",
+      persona: "You are DevOps engineer.",
+      agent: "claude",
+      callableTemplateIds: ["role_developer", "role_tester"],
+      incomingCallerIds: ["role_architect"],
+      autoDispatch: true
+    });
+
+    expect(devOps.callableTemplateIds).toEqual(["role_developer", "role_tester"]);
+    expect(devOps.autoDispatch).toBe(true);
+
+    // Verify incomingCaller was updated
+    const architect = await store.getTemplate("role_architect");
+    expect(architect?.callableTemplateIds).toContain(devOps.templateId);
+
+    // Update incoming callers
+    await store.updateTemplate({
+      templateId: devOps.templateId,
+      incomingCallerIds: ["role_product_manager"]
+    });
+
+    const architectAfter = await store.getTemplate("role_architect");
+    expect(architectAfter?.callableTemplateIds).not.toContain(devOps.templateId);
+
+    const pmAfter = await store.getTemplate("role_product_manager");
+    expect(pmAfter?.callableTemplateIds).toContain(devOps.templateId);
+
+    // Delete template and verify pruning
+    await store.deleteTemplate(devOps.templateId);
+    const pmFinal = await store.getTemplate("role_product_manager");
+    expect(pmFinal?.callableTemplateIds).not.toContain(devOps.templateId);
+  });
+
+  it("injects callable downstream roles into dispatch prompt", () => {
+    const prompt = buildDispatchPrompt(
+      {
+        persona: "You are Architect.",
+        instruction: "design system",
+        cwd: "/tmp",
+        quotes: [],
+        knowledge: []
+      },
+      [
+        { templateId: "role_developer", name: "Developer", persona: "Implement features." },
+        { templateId: "tpl_devops", name: "DevOps", persona: "Deploy apps." }
+      ]
+    );
+
+    expect(prompt).toContain("[Callable Downstream Roles]");
+    expect(prompt).toContain("Developer (id: role_developer)");
+    expect(prompt).toContain("DevOps (id: tpl_devops)");
+    expect(prompt).toContain("<im_dispatch");
+  });
 });

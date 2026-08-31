@@ -17963,6 +17963,73 @@ html[data-window-mode="browser"] #react-chrome {
   border-radius: 8px;
   padding: 8px 10px;
 }
+.im-settings-delegation-fieldset {
+  margin-top: 4px;
+}
+.im-settings-delegation-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--color-separator);
+}
+.im-settings-checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 6px 12px;
+}
+.im-settings-checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+/* --- IM Delegation Proposals in Messages --- */
+.im-message-dispatches {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+.im-dispatch-card {
+  border: 1px solid color-mix(in srgb, var(--im-role-color, var(--color-accent)) 40%, var(--color-separator));
+  background: color-mix(in srgb, var(--im-role-color, var(--color-accent)) 6%, var(--color-control-bg));
+  border-radius: var(--radius-md, 8px);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.im-dispatch-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.im-dispatch-reason {
+  font-size: 11px;
+  color: var(--color-label-tertiary);
+  margin-left: auto;
+  font-style: italic;
+}
+.im-dispatch-instruction {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--color-label-secondary);
+  background: color-mix(in srgb, var(--color-window-bg) 60%, transparent);
+  padding: 6px 8px;
+  border-radius: var(--radius-sm, 6px);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.im-dispatch-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
 /* --- IM role identity, member + knowledge sidebar, smart scroll --- */
 .im-transcript-wrap {
   position: relative;

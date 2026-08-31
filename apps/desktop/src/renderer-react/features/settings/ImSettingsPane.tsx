@@ -3,6 +3,7 @@ import type { PanelSettings } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { listProviderModels } from "./providerPool";
 import {
+  DEFAULT_BUILTIN_CALLABLE_TEMPLATE_IDS,
   IM_AGENT_SUGGESTED_MODELS,
   IM_SUGGESTED_THOUGHT_LEVELS,
   isBuiltinSelectionActionId,
@@ -41,6 +42,9 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
   const [thoughtLevel, setThoughtLevel] = useState("");
   const [customThoughtLevelMode, setCustomThoughtLevelMode] = useState(false);
   const [tools, setTools] = useState<ImRoleTools>(emptyDraft().tools);
+  const [autoDispatch, setAutoDispatch] = useState(false);
+  const [outgoingCallees, setOutgoingCallees] = useState<string[]>([]);
+  const [incomingCallers, setIncomingCallers] = useState<string[]>([]);
   const [status, setStatus] = useState("");
   const [agentModels, setAgentModels] = useState<ImAgentModelOption[]>(() => IM_AGENT_SUGGESTED_MODELS[agent] || []);
   const [fetchingModels, setFetchingModels] = useState(false);
@@ -115,6 +119,9 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
       setThoughtLevel(draft.thoughtLevel);
       setCustomThoughtLevelMode(false);
       setTools(draft.tools);
+      setAutoDispatch(false);
+      setOutgoingCallees([]);
+      setIncomingCallers([]);
       return;
     }
     if (!selected) return;
@@ -125,7 +132,18 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
     setThoughtLevel(selected.thoughtLevel ?? "");
     setCustomThoughtLevelMode(Boolean(selected.thoughtLevel && !isSuggestedThoughtLevel(selected.thoughtLevel)));
     setTools(selected.tools);
-  }, [creating, selected]);
+    setAutoDispatch(Boolean(selected.autoDispatch));
+    setOutgoingCallees(
+      selected.callableTemplateIds ?? (
+        isBuiltinTemplateId(selected.templateId) ? [...DEFAULT_BUILTIN_CALLABLE_TEMPLATE_IDS[selected.templateId]] : []
+      )
+    );
+    setIncomingCallers(
+      templates
+        .filter((t) => t.templateId !== selected.templateId && t.callableTemplateIds?.includes(selected.templateId))
+        .map((t) => t.templateId)
+    );
+  }, [creating, selected, templates]);
 
   useEffect(() => {
     if (creatingAction) {
@@ -155,7 +173,10 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
           agent,
           model: model.trim() || undefined,
           thoughtLevel: thoughtLevel.trim() || undefined,
-          tools
+          tools,
+          callableTemplateIds: outgoingCallees,
+          incomingCallerIds: incomingCallers,
+          autoDispatch
         });
         setCreating(false);
         await load();
@@ -168,7 +189,10 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
           agent,
           model: model.trim() || null,
           thoughtLevel: thoughtLevel.trim() || null,
-          tools
+          tools,
+          callableTemplateIds: outgoingCallees,
+          incomingCallerIds: incomingCallers,
+          autoDispatch
         });
         await load();
       }
@@ -176,7 +200,7 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
     }
-  }, [agent, creating, load, model, name, persona, selected, t, thoughtLevel, tools]);
+  }, [agent, autoDispatch, creating, incomingCallers, load, model, name, outgoingCallees, persona, selected, t, thoughtLevel, tools]);
 
   const remove = useCallback(async () => {
     if (!selected || isBuiltinTemplateId(selected.templateId)) return;
@@ -372,6 +396,57 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
                 {t("desktop.settings.imToolExecute")}
               </label>
               {tools.execute ? <p className="settings-footnote im-tool-danger-hint">{t("desktop.settings.imExecuteWarning")}</p> : null}
+            </fieldset>
+            <fieldset className="im-settings-tools im-settings-delegation-fieldset">
+              <legend>{t("desktop.settings.imDelegation")}</legend>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={autoDispatch}
+                  onChange={(event) => setAutoDispatch(event.target.checked)}
+                />
+                {t("desktop.settings.imAutoDispatch")}
+              </label>
+              <div className="im-settings-delegation-section">
+                <span className="settings-field-label">{t("desktop.settings.imOutgoingCallees")}</span>
+                <div className="im-settings-checkbox-grid">
+                  {templates.filter((t) => !selected || t.templateId !== selected.templateId).map((t) => (
+                    <label key={t.templateId} className="im-settings-checkbox-item">
+                      <input
+                        type="checkbox"
+                        checked={outgoingCallees.includes(t.templateId)}
+                        onChange={(event) => {
+                          const checked = event.target.checked;
+                          setOutgoingCallees((curr) =>
+                            checked ? [...new Set([...curr, t.templateId])] : curr.filter((id) => id !== t.templateId)
+                          );
+                        }}
+                      />
+                      <span>{t.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="im-settings-delegation-section">
+                <span className="settings-field-label">{t("desktop.settings.imIncomingCallers")}</span>
+                <div className="im-settings-checkbox-grid">
+                  {templates.filter((t) => !selected || t.templateId !== selected.templateId).map((t) => (
+                    <label key={t.templateId} className="im-settings-checkbox-item">
+                      <input
+                        type="checkbox"
+                        checked={incomingCallers.includes(t.templateId)}
+                        onChange={(event) => {
+                          const checked = event.target.checked;
+                          setIncomingCallers((curr) =>
+                            checked ? [...new Set([...curr, t.templateId])] : curr.filter((id) => id !== t.templateId)
+                          );
+                        }}
+                      />
+                      <span>{t.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
             </fieldset>
             <div className="im-add-role-actions">
               <button type="button" className="btn primary" onClick={() => void save()}>{t("desktop.settings.save")}</button>

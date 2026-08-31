@@ -36,6 +36,13 @@ ALTER TABLE im_selection_actions ADD COLUMN provider_id TEXT;
 ALTER TABLE im_selection_actions ADD COLUMN model_id TEXT;
 `;
 
+export const IM_ROLE_DELEGATION_MIGRATION_SQL = `
+ALTER TABLE im_role_templates ADD COLUMN callable_template_ids_json TEXT;
+ALTER TABLE im_role_templates ADD COLUMN auto_dispatch INTEGER;
+ALTER TABLE im_members ADD COLUMN callable_template_ids_json TEXT;
+ALTER TABLE im_members ADD COLUMN auto_dispatch INTEGER;
+`;
+
 export const DESKTOP_ONLY_SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS gtd_ai_audit (
   id TEXT PRIMARY KEY,
@@ -286,6 +293,8 @@ CREATE TABLE IF NOT EXISTS im_role_templates (
   thought_level TEXT,
   permissions TEXT NOT NULL DEFAULT 'write',
   tools_json TEXT,
+  callable_template_ids_json TEXT,
+  auto_dispatch INTEGER,
   created_at_ms INTEGER NOT NULL,
   updated_at_ms INTEGER NOT NULL
 );
@@ -300,6 +309,9 @@ CREATE TABLE IF NOT EXISTS im_members (
   model TEXT,
   thought_level TEXT,
   permissions TEXT NOT NULL DEFAULT 'write',
+  tools_json TEXT,
+  callable_template_ids_json TEXT,
+  auto_dispatch INTEGER,
   enabled INTEGER NOT NULL DEFAULT 1,
   acp_chat_id TEXT,
   created_at_ms INTEGER NOT NULL,

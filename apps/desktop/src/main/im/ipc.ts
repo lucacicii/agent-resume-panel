@@ -167,6 +167,9 @@ export function registerImIpc(deps: {
     model?: unknown;
     thoughtLevel?: unknown;
     tools?: unknown;
+    callableTemplateIds?: unknown;
+    incomingCallerIds?: unknown;
+    autoDispatch?: unknown;
   }) => {
     if (typeof args?.name !== "string" || typeof args?.agent !== "string" || !isImAgent(args.agent)) {
       throw new Error("Role name and a Pi / Claude / Codex agent are required.");
@@ -178,7 +181,10 @@ export function registerImIpc(deps: {
       agent: args.agent as ImAgent,
       model: typeof args.model === "string" ? args.model : undefined,
       thoughtLevel: typeof args.thoughtLevel === "string" ? args.thoughtLevel : undefined,
-      tools: parseImRoleTools(args.tools)
+      tools: parseImRoleTools(args.tools),
+      callableTemplateIds: Array.isArray(args.callableTemplateIds) ? args.callableTemplateIds.filter((id): id is string => typeof id === "string") : undefined,
+      incomingCallerIds: Array.isArray(args.incomingCallerIds) ? args.incomingCallerIds.filter((id): id is string => typeof id === "string") : undefined,
+      autoDispatch: typeof args.autoDispatch === "boolean" ? args.autoDispatch : undefined
     });
   });
 
@@ -190,6 +196,9 @@ export function registerImIpc(deps: {
     model?: unknown;
     thoughtLevel?: unknown;
     tools?: unknown;
+    callableTemplateIds?: unknown;
+    incomingCallerIds?: unknown;
+    autoDispatch?: unknown;
   }) => {
     if (typeof args?.templateId !== "string") throw new Error("Template id is required.");
     if (args.agent !== undefined && (typeof args.agent !== "string" || !isImAgent(args.agent))) {
@@ -203,7 +212,10 @@ export function registerImIpc(deps: {
       agent: typeof args.agent === "string" ? args.agent as ImAgent : undefined,
       model: args.model === null ? null : typeof args.model === "string" ? args.model : undefined,
       thoughtLevel: args.thoughtLevel === null ? null : typeof args.thoughtLevel === "string" ? args.thoughtLevel : undefined,
-      tools: args.tools === undefined ? undefined : parseImRoleTools(args.tools)
+      tools: args.tools === undefined ? undefined : parseImRoleTools(args.tools),
+      callableTemplateIds: Array.isArray(args.callableTemplateIds) ? args.callableTemplateIds.filter((id): id is string => typeof id === "string") : undefined,
+      incomingCallerIds: Array.isArray(args.incomingCallerIds) ? args.incomingCallerIds.filter((id): id is string => typeof id === "string") : undefined,
+      autoDispatch: typeof args.autoDispatch === "boolean" ? args.autoDispatch : undefined
     });
   });
 

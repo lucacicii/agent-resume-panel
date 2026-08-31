@@ -5,7 +5,20 @@ import { effectivePanelHome, expandHome, loadSettings } from "@agent-resume/core
 import { createAcpRecord, getAcpRecord } from "../acp/store";
 import type { AcpAgentProvider, AcpStreamEvent, AcpToolCallInfo } from "../acp/types";
 import { buildDispatchPrompt, extractFirstQuestionTitle, isDefaultChatName, saveImMessageImage, type ImStore } from "./store";
-import { isImAgent, type ImEvent, type ImImageAttachment, type ImJob, type ImJobStatus, type ImMember, type ImMessage, type ImRoleTools } from "./types";
+import {
+  DEFAULT_BUILTIN_CALLABLE_TEMPLATE_IDS,
+  isBuiltinTemplateId,
+  isImAgent,
+  type ImDispatchBlock,
+  type ImEvent,
+  type ImImageAttachment,
+  type ImJob,
+  type ImJobBrief,
+  type ImJobStatus,
+  type ImMember,
+  type ImMessage,
+  type ImRoleTools
+} from "./types";
 
 type ConnectFn = (chatId: string) => Promise<void>;
 type PromptFn = (
@@ -62,6 +75,54 @@ function extractPathsFromToolCall(call: AcpToolCallInfo): string[] {
     }
   }
   return paths;
+}
+
+export function parseDispatchBlocks(text: string): ImDispatchBlock[] {
+  const regex = /<im_dispatch\s+target="([^"]+)"(?:\s+reason="([^"]*)")?>([\s\S]*?)<\/im_dispatch>/gi;
+  const blocks: ImDispatchBlock[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(text)) !== null) {
+    const target = match[1]?.trim() || "";
+    const reason = match[2]?.trim() || undefined;
+    const instruction = match[3]?.trim() || "";
+    if (target && instruction) {
+      blocks.push({ target, reason, instruction });
+    }
+  }
+  return blocks;
+}
+
+export function resolveDispatchTarget(
+  target: string,
+  allowedCalleeIds: string[],
+  enabledMembers: ImMember[]
+): ImMember | undefined {
+  const trimmed = target.trim();
+  const lower = trimmed.toLowerCase();
+
+  // Level 1: exact templateId / memberId match
+  let found = enabledMembers.find((m) => m.templateId === trimmed || m.memberId === trimmed);
+
+  // Level 2: case-insensitive name match, templateId match, or alias
+  if (!found) {
+    found = enabledMembers.find((m) =>
+      m.name.toLowerCase() === lower ||
+      m.templateId.toLowerCase() === lower ||
+      m.templateId.replace(/^role_/, "").toLowerCase() === lower ||
+      (lower === "developer" && m.templateId === "role_developer") ||
+      (lower === "architect" && m.templateId === "role_architect") ||
+      (lower === "pm" && m.templateId === "role_product_manager") ||
+      (lower === "tester" && m.templateId === "role_tester") ||
+      (lower === "qa" && m.templateId === "role_tester") ||
+      (lower === "ui" && m.templateId === "role_ui_designer")
+    );
+  }
+
+  // Security check: Must be in allowedCalleeIds
+  if (found && allowedCalleeIds.includes(found.templateId)) {
+    return found;
+  }
+  return undefined;
 }
 
 export function collectFiles(toolCalls: AcpToolCallInfo[] | undefined, current: string[]): string[] {
@@ -396,6 +457,63 @@ export class ImConductor {
         });
         this.emit({ type: "message", projectId: job.projectId, message: { ...say, streaming: false } });
       }
+
+      if (finalBody) {
+        await this.handleDispatchDelegation(job, finalBody);
+      }
+    }
+  }
+
+  private async handleDispatchDelegation(job: ImJob, body: string): Promise<void> {
+    const blocks = parseDispatchBlocks(body);
+    if (!blocks.length) return;
+    const member = await this.store.getMember(job.memberId);
+    if (!member) return;
+    const room = await this.store.getRoom(job.projectId);
+    const allowedCalleeIds = member.callableTemplateIds ?? (
+      isBuiltinTemplateId(member.templateId) ? [...DEFAULT_BUILTIN_CALLABLE_TEMPLATE_IDS[member.templateId]] : []
+    );
+    const enabledMembers = room.members.filter((m) => m.enabled && m.memberId !== member.memberId);
+
+    const chain = job.brief.dispatchChain ?? [member.templateId];
+    const MAX_CHAIN_DEPTH = 5;
+
+    for (const block of blocks) {
+      const targetMember = resolveDispatchTarget(block.target, allowedCalleeIds, enabledMembers);
+      if (!targetMember) continue;
+
+      const isLoop = chain.includes(targetMember.templateId);
+      const isTooDeep = chain.length >= MAX_CHAIN_DEPTH;
+
+      if (member.autoDispatch && !isLoop && !isTooDeep) {
+        const targetTemplate = await this.store.getTemplate(targetMember.templateId);
+        const targetPersona = targetTemplate?.persona ?? targetMember.persona;
+        const settings = await loadSettings();
+        const panelHome = effectivePanelHome(settings);
+        const cwd = await this.store.ensureProjectLocalPath(job.projectId, panelHome);
+        const targetBrief: ImJobBrief = {
+          persona: targetPersona,
+          instruction: block.instruction,
+          cwd,
+          quotes: job.brief.quotes,
+          knowledge: job.brief.knowledge,
+          dispatchChain: [...chain, targetMember.templateId]
+        };
+        const nextJob = await this.store.createJob({
+          projectId: job.projectId,
+          memberId: targetMember.memberId,
+          messageId: null,
+          brief: targetBrief,
+          status: "queued"
+        });
+        this.emit({ type: "job", projectId: job.projectId, job: nextJob });
+        const exclusive = this.store.memberNeedsExclusiveLock(targetMember);
+        const exclusiveBusy = Boolean(await this.store.findActiveWriterJob(job.projectId));
+        const startNow = !exclusive || !exclusiveBusy;
+        if (startNow) {
+          this.launchJob(nextJob.jobId, targetMember);
+        }
+      }
     }
   }
 
@@ -451,7 +569,15 @@ export class ImConductor {
     const running = await this.store.updateJob(jobId, { status: "running", acpChatId: chatId });
     this.emit({ type: "job", projectId: job.projectId, job: running });
 
-    const prompt = buildDispatchPrompt(job.brief);
+    const room = await this.store.getRoom(job.projectId);
+    const enabledMembers = room.members.filter((m) => m.enabled && m.memberId !== member.memberId);
+    const allowedCalleeIds = member.callableTemplateIds ?? (
+      isBuiltinTemplateId(member.templateId) ? [...DEFAULT_BUILTIN_CALLABLE_TEMPLATE_IDS[member.templateId]] : []
+    );
+    const callableMembers = enabledMembers
+      .filter((m) => allowedCalleeIds.includes(m.templateId))
+      .map((m) => ({ templateId: m.templateId, name: m.name, persona: m.persona }));
+    const prompt = buildDispatchPrompt(job.brief, callableMembers);
     const imagesToPass: Array<{ mimeType: string; fileName: string; data: string }> = [];
     if (job.brief.images?.length) {
       for (const img of job.brief.images) {

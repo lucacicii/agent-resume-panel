@@ -26,7 +26,7 @@ vi.mock("@agent-resume/core", async () => {
 });
 
 import { desktopDbPath, ensureDesktopDbSchema } from "@agent-resume/core";
-import { ImConductor } from "./conductor";
+import { ImConductor, parseDispatchBlocks, resolveDispatchTarget } from "./conductor";
 import { ImStore } from "./store";
 
 const homes: string[] = [];
@@ -507,5 +507,125 @@ describe("ImConductor", () => {
       "src/components/Button.tsx",
       "src/components/Button.test.tsx"
     ]);
+  });
+
+  it("parses dispatch blocks from assistant output", () => {
+    const text = `Here is my architecture plan:
+1. Setup DB
+2. Build UI
+
+<im_dispatch target="role_developer" reason="Need backend CRUD implementation">
+Please implement the user model and DB migration.
+</im_dispatch>
+
+<im_dispatch target="DevOps Engineer">
+Setup Docker compose for postgres.
+</im_dispatch>`;
+
+    const blocks = parseDispatchBlocks(text);
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0]?.target).toBe("role_developer");
+    expect(blocks[0]?.reason).toBe("Need backend CRUD implementation");
+    expect(blocks[0]?.instruction).toBe("Please implement the user model and DB migration.");
+    expect(blocks[1]?.target).toBe("DevOps Engineer");
+    expect(blocks[1]?.reason).toBeUndefined();
+    expect(blocks[1]?.instruction).toBe("Setup Docker compose for postgres.");
+  });
+
+  it("resolves dispatch target with exact ID, case-insensitive name, and alias with security check", () => {
+    const members = [
+      {
+        memberId: "m-dev",
+        projectId: "p1",
+        templateId: "role_developer",
+        name: "Developer",
+        persona: "",
+        agent: "claude" as const,
+        permissions: "write" as const,
+        tools: { fsRead: true, fsWrite: true, execute: true },
+        enabled: true,
+        acpChatId: null,
+        createdAtMs: 1,
+        updatedAtMs: 1
+      },
+      {
+        memberId: "m-devops",
+        projectId: "p1",
+        templateId: "tpl_devops_123",
+        name: "DevOps Engineer",
+        persona: "",
+        agent: "pi" as const,
+        permissions: "write" as const,
+        tools: { fsRead: true, fsWrite: true, execute: true },
+        enabled: true,
+        acpChatId: null,
+        createdAtMs: 1,
+        updatedAtMs: 1
+      }
+    ];
+
+    // Allowed callees includes dev and devops
+    const allowed = ["role_developer", "tpl_devops_123"];
+
+    // Exact match
+    expect(resolveDispatchTarget("role_developer", allowed, members)?.memberId).toBe("m-dev");
+    // Name match
+    expect(resolveDispatchTarget("DevOps Engineer", allowed, members)?.memberId).toBe("m-devops");
+    // Case-insensitive alias match
+    expect(resolveDispatchTarget("developer", allowed, members)?.memberId).toBe("m-dev");
+
+    // Security check: if not in allowed list, rejected
+    expect(resolveDispatchTarget("role_developer", ["tpl_devops_123"], members)).toBeUndefined();
+  });
+
+  it("auto-dispatches task when role has autoDispatch enabled and detects loops", async () => {
+    const store = await createStore();
+    const project = await store.createProject("Auto Dispatch Test");
+    await store.setLocalPath(project.projectId, process.cwd());
+
+    // Enable autoDispatch on Architect
+    await store.updateTemplate({
+      templateId: "role_architect",
+      autoDispatch: true,
+      callableTemplateIds: ["role_developer"]
+    });
+
+    const room = await store.getRoom(project.projectId);
+    const architect = room.members.find((m) => m.templateId === "role_architect")!;
+    const developer = room.members.find((m) => m.templateId === "role_developer")!;
+
+    const job = await store.createJob({
+      projectId: project.projectId,
+      memberId: architect.memberId,
+      messageId: null,
+      brief: { persona: architect.persona, instruction: "design", cwd: process.cwd(), quotes: [], knowledge: [] },
+      status: "running"
+    });
+    await store.updateJob(job.jobId, { acpChatId: "chat-arch-auto" });
+
+    const conductor = new ImConductor(store, () => undefined, vi.fn(async () => undefined), vi.fn(async () => undefined));
+
+    // Simulate assistant finishing with delegation tag
+    await conductor.handleAcpStream({
+      type: "assistantDone",
+      chatId: "chat-arch-auto",
+      streaming: false,
+      message: {
+        id: "msg-arch-done",
+        role: "assistant",
+        text: `Design is complete.
+<im_dispatch target="role_developer" reason="Ready for code implementation">
+Implement the search indexing algorithm as designed.
+</im_dispatch>`,
+        timestamp: Date.now()
+      }
+    });
+
+    // Verify developer job was automatically created and queued/dispatched
+    const updatedRoom = await store.getRoom(project.projectId);
+    const devJob = updatedRoom.jobs.find((j) => j.memberId === developer.memberId);
+    expect(devJob).toBeTruthy();
+    expect(devJob?.brief.instruction).toBe("Implement the search indexing algorithm as designed.");
+    expect(devJob?.brief.dispatchChain).toEqual(["role_architect", "role_developer"]);
   });
 });

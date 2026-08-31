@@ -11,6 +11,7 @@ import {
   type PanelSettings
 } from "@agent-resume/core";
 import {
+  DEFAULT_BUILTIN_CALLABLE_TEMPLATE_IDS,
   IM_BUILTIN_TEMPLATE_IDS,
   isBuiltinTemplateId,
   isImAgent,
@@ -154,6 +155,8 @@ interface TemplateRow {
   thought_level: string | null;
   permissions: string;
   tools_json: string | null;
+  callable_template_ids_json: string | null;
+  auto_dispatch: number | null;
   created_at_ms: number;
   updated_at_ms: number;
 }
@@ -168,6 +171,9 @@ interface MemberRow {
   model: string | null;
   thought_level: string | null;
   permissions: string;
+  tools_json: string | null;
+  callable_template_ids_json: string | null;
+  auto_dispatch: number | null;
   enabled: number;
   acp_chat_id: string | null;
   created_at_ms: number;
@@ -410,6 +416,10 @@ export function fillSelectionPrompt(template: string, selection: string): string
 
 function mapTemplate(row: TemplateRow): ImRoleTemplate {
   const tools = parseToolsJson(row.tools_json, row.template_id);
+  const callable = parseJsonArray(row.callable_template_ids_json);
+  const defaultCallable = isBuiltinTemplateId(row.template_id)
+    ? DEFAULT_BUILTIN_CALLABLE_TEMPLATE_IDS[row.template_id]
+    : [];
   return {
     templateId: row.template_id,
     name: row.name,
@@ -419,6 +429,10 @@ function mapTemplate(row: TemplateRow): ImRoleTemplate {
     thoughtLevel: row.thought_level?.trim() || undefined,
     permissions: tools.fsWrite ? "write" : "read",
     tools,
+    callableTemplateIds: callable.length > 0 || row.callable_template_ids_json !== null
+      ? callable
+      : [...defaultCallable],
+    autoDispatch: row.auto_dispatch === 1,
     createdAtMs: row.created_at_ms,
     updatedAtMs: row.updated_at_ms
   };
@@ -429,6 +443,9 @@ function mapMember(row: MemberRow, template?: ImRoleTemplate): ImMember {
   const rowAgent = isImAgent(row.agent) ? row.agent : undefined;
   const rowModel = row.model?.trim() || undefined;
   const rowThoughtLevel = row.thought_level?.trim() || undefined;
+  const memberCallable = row.callable_template_ids_json !== null
+    ? parseJsonArray(row.callable_template_ids_json)
+    : undefined;
   return {
     memberId: row.member_id,
     projectId: row.project_id,
@@ -440,6 +457,10 @@ function mapMember(row: MemberRow, template?: ImRoleTemplate): ImMember {
     thoughtLevel: rowThoughtLevel ?? template?.thoughtLevel ?? undefined,
     permissions: template?.permissions ?? (isImPermission(row.permissions) ? row.permissions : "write"),
     tools,
+    callableTemplateIds: memberCallable ?? template?.callableTemplateIds ?? (
+      isBuiltinTemplateId(row.template_id) ? [...DEFAULT_BUILTIN_CALLABLE_TEMPLATE_IDS[row.template_id]] : []
+    ),
+    autoDispatch: row.auto_dispatch !== null ? row.auto_dispatch === 1 : Boolean(template?.autoDispatch),
     enabled: row.enabled === 1,
     acpChatId: row.acp_chat_id,
     createdAtMs: row.created_at_ms,
@@ -457,7 +478,8 @@ function mapJob(row: JobRow): ImJob {
       cwd: typeof parsed.cwd === "string" ? parsed.cwd : "",
       quotes: Array.isArray(parsed.quotes) ? parsed.quotes : [],
       knowledge: Array.isArray(parsed.knowledge) ? parsed.knowledge as ImKnowledgeSnapshot[] : [],
-      images: Array.isArray(parsed.images) ? parsed.images as ImImageAttachment[] : undefined
+      images: Array.isArray(parsed.images) ? parsed.images as ImImageAttachment[] : undefined,
+      dispatchChain: Array.isArray(parsed.dispatchChain) ? parsed.dispatchChain.filter((item): item is string => typeof item === "string") : undefined
     };
   } catch {
     // keep empty brief
@@ -516,7 +538,10 @@ export async function ensureArpDir(localPath: string): Promise<string> {
   return arpDir;
 }
 
-export function buildDispatchPrompt(brief: ImJobBrief): string {
+export function buildDispatchPrompt(
+  brief: ImJobBrief,
+  callableMembers: Array<{ templateId: string; name: string; persona: string }> = []
+): string {
   const quoteBlock = brief.quotes.length
     ? brief.quotes
         .map((quote, index) => {
@@ -525,6 +550,20 @@ export function buildDispatchPrompt(brief: ImJobBrief): string {
         })
         .join("\n\n")
     : "(none)";
+
+  const downstreamBlock = callableMembers.length > 0
+    ? [
+        "[Callable Downstream Roles]",
+        "You can delegate follow-up tasks to the following active roles in this room:",
+        ...callableMembers.map((m) => `- ${m.name} (id: ${m.templateId}): ${m.persona.slice(0, 140)}`),
+        "",
+        "If you determine that follow-up work should be delegated to one or more of these roles after completing your response, append your delegation block(s) at the very end of your response using this exact XML format:",
+        '<im_dispatch target="<target_id_or_name>" reason="<brief_explanation>">',
+        "[Actionable instructions for the target role]",
+        "</im_dispatch>"
+      ].join("\n")
+    : "";
+
   return [
     "[Role persona]",
     brief.persona.trim() || BUILTIN_ROLES.find((role) => role.templateId === "role_developer")?.persona || "",
@@ -534,6 +573,7 @@ export function buildDispatchPrompt(brief: ImJobBrief): string {
     "",
     "[Quoted messages]",
     quoteBlock,
+    ...(downstreamBlock ? ["", downstreamBlock] : []),
     "",
     "[User instruction]",
     brief.instruction.trim(),
@@ -719,10 +759,11 @@ export class ImStore {
     const now = nowMs();
     for (const role of BUILTIN_ROLES) {
       if (known.has(role.templateId)) continue;
+      const defaultCallable = DEFAULT_BUILTIN_CALLABLE_TEMPLATE_IDS[role.templateId] ?? [];
       await runSqlite(
         this.dbPath,
         `INSERT INTO im_role_templates (
-          template_id, name, persona, agent, permissions, tools_json, created_at_ms, updated_at_ms
+          template_id, name, persona, agent, permissions, tools_json, callable_template_ids_json, auto_dispatch, created_at_ms, updated_at_ms
         ) VALUES (
           ${sqlString(role.templateId)},
           ${sqlString(role.name)},
@@ -730,6 +771,8 @@ export class ImStore {
           ${sqlString("claude")},
           ${sqlString(role.permissions)},
           ${sqlString(JSON.stringify(role.tools))},
+          ${sqlString(JSON.stringify(defaultCallable))},
+          0,
           ${now},
           ${now}
         );`
@@ -959,6 +1002,9 @@ export class ImStore {
     model?: string;
     thoughtLevel?: string;
     tools?: ImRoleTools;
+    callableTemplateIds?: string[];
+    incomingCallerIds?: string[];
+    autoDispatch?: boolean;
   }): Promise<ImRoleTemplate> {
     const name = input.name.trim();
     if (!name) throw new Error("Role name is required.");
@@ -966,12 +1012,14 @@ export class ImStore {
     const tools = parseImRoleTools({ ...input.tools, fsRead: true });
     const model = input.model?.trim() || null;
     const thoughtLevel = input.thoughtLevel?.trim() || null;
+    const callableJson = input.callableTemplateIds ? JSON.stringify(input.callableTemplateIds) : JSON.stringify([]);
+    const autoDispatch = input.autoDispatch ? 1 : 0;
     const now = nowMs();
     const templateId = randomUUID();
     await runSqlite(
       this.dbPath,
       `INSERT INTO im_role_templates (
-        template_id, name, persona, agent, model, thought_level, permissions, tools_json, created_at_ms, updated_at_ms
+        template_id, name, persona, agent, model, thought_level, permissions, tools_json, callable_template_ids_json, auto_dispatch, created_at_ms, updated_at_ms
       ) VALUES (
         ${sqlString(templateId)},
         ${sqlString(name)},
@@ -981,10 +1029,15 @@ export class ImStore {
         ${sqlNullOrString(thoughtLevel)},
         ${sqlString(tools.fsWrite ? "write" : "read")},
         ${sqlString(JSON.stringify(tools))},
+        ${sqlString(callableJson)},
+        ${autoDispatch},
         ${now},
         ${now}
       );`
     );
+    if (input.incomingCallerIds?.length) {
+      await this.syncIncomingCallers(templateId, input.incomingCallerIds);
+    }
     const created = await this.getTemplate(templateId);
     if (!created) throw new Error("Failed to load created template.");
     return created;
@@ -998,6 +1051,9 @@ export class ImStore {
     model?: string | null;
     thoughtLevel?: string | null;
     tools?: ImRoleTools;
+    callableTemplateIds?: string[];
+    incomingCallerIds?: string[];
+    autoDispatch?: boolean;
   }): Promise<ImRoleTemplate> {
     const current = await this.getTemplate(input.templateId);
     if (!current) throw new Error("Role template not found.");
@@ -1009,6 +1065,12 @@ export class ImStore {
     const thoughtLevel = input.thoughtLevel !== undefined ? (input.thoughtLevel?.trim() || null) : (current.thoughtLevel ?? null);
     const persona = input.persona ?? current.persona;
     const tools = input.tools ? parseImRoleTools({ ...input.tools, fsRead: true }) : { ...current.tools, fsRead: true };
+    const callable = input.callableTemplateIds !== undefined
+      ? input.callableTemplateIds
+      : (current.callableTemplateIds ?? []);
+    const autoDispatch = input.autoDispatch !== undefined
+      ? (input.autoDispatch ? 1 : 0)
+      : (current.autoDispatch ? 1 : 0);
     const now = nowMs();
     await runSqlite(
       this.dbPath,
@@ -1020,6 +1082,8 @@ export class ImStore {
         thought_level = ${sqlNullOrString(thoughtLevel)},
         permissions = ${sqlString(tools.fsWrite ? "write" : "read")},
         tools_json = ${sqlString(JSON.stringify(tools))},
+        callable_template_ids_json = ${sqlString(JSON.stringify(callable))},
+        auto_dispatch = ${autoDispatch},
         updated_at_ms = ${now}
        WHERE template_id = ${sqlString(input.templateId)};`
     );
@@ -1030,15 +1094,56 @@ export class ImStore {
          WHERE template_id = ${sqlString(input.templateId)};`
       );
     }
+    await runSqlite(
+      this.dbPath,
+      `UPDATE im_members SET
+        callable_template_ids_json = ${sqlString(JSON.stringify(callable))},
+        auto_dispatch = ${autoDispatch},
+        updated_at_ms = ${now}
+       WHERE template_id = ${sqlString(input.templateId)};`
+    );
+    if (input.incomingCallerIds !== undefined) {
+      await this.syncIncomingCallers(input.templateId, input.incomingCallerIds);
+    }
     const updated = await this.getTemplate(input.templateId);
     if (!updated) throw new Error("Failed to load updated template.");
     return updated;
+  }
+
+  private async syncIncomingCallers(targetTemplateId: string, incomingCallerIds: string[]): Promise<void> {
+    const templates = await this.listTemplates();
+    const desired = new Set(incomingCallerIds);
+    const now = nowMs();
+    for (const t of templates) {
+      if (t.templateId === targetTemplateId) continue;
+      const currentCallables = new Set(t.callableTemplateIds ?? []);
+      const shouldHave = desired.has(t.templateId);
+      let changed = false;
+      if (shouldHave && !currentCallables.has(targetTemplateId)) {
+        currentCallables.add(targetTemplateId);
+        changed = true;
+      } else if (!shouldHave && currentCallables.has(targetTemplateId)) {
+        currentCallables.delete(targetTemplateId);
+        changed = true;
+      }
+      if (changed) {
+        const nextList = [...currentCallables];
+        await runSqlite(
+          this.dbPath,
+          `UPDATE im_role_templates SET callable_template_ids_json = ${sqlString(JSON.stringify(nextList))}, updated_at_ms = ${now}
+           WHERE template_id = ${sqlString(t.templateId)};
+           UPDATE im_members SET callable_template_ids_json = ${sqlString(JSON.stringify(nextList))}, updated_at_ms = ${now}
+           WHERE template_id = ${sqlString(t.templateId)};`
+        );
+      }
+    }
   }
 
   async deleteTemplate(templateId: string): Promise<void> {
     if (isBuiltinTemplateId(templateId)) throw new Error("Builtin role templates cannot be deleted.");
     const current = await this.getTemplate(templateId);
     if (!current) throw new Error("Role template not found.");
+    const now = nowMs();
     await runSqlite(
       this.dbPath,
       [
@@ -1046,6 +1151,19 @@ export class ImStore {
         `DELETE FROM im_role_templates WHERE template_id = ${sqlString(templateId)};`
       ].join("\n")
     );
+    const templates = await this.listTemplates();
+    for (const t of templates) {
+      if (t.callableTemplateIds?.includes(templateId)) {
+        const nextList = t.callableTemplateIds.filter((id) => id !== templateId);
+        await runSqlite(
+          this.dbPath,
+          `UPDATE im_role_templates SET callable_template_ids_json = ${sqlString(JSON.stringify(nextList))}, updated_at_ms = ${now}
+           WHERE template_id = ${sqlString(t.templateId)};
+           UPDATE im_members SET callable_template_ids_json = ${sqlString(JSON.stringify(nextList))}, updated_at_ms = ${now}
+           WHERE template_id = ${sqlString(t.templateId)};`
+        );
+      }
+    }
   }
 
   async createRole(input: {
@@ -1127,6 +1245,10 @@ export class ImStore {
     const found = existing.find((member) => member.templateId === template.templateId);
     if (found) return found;
     const now = nowMs();
+    const callable = template.callableTemplateIds ?? (
+      isBuiltinTemplateId(template.templateId) ? [...DEFAULT_BUILTIN_CALLABLE_TEMPLATE_IDS[template.templateId]] : []
+    );
+    const autoDispatch = template.autoDispatch ? 1 : 0;
     const member: ImMember = {
       memberId: randomUUID(),
       projectId,
@@ -1138,6 +1260,8 @@ export class ImStore {
       thoughtLevel: template.thoughtLevel,
       permissions: template.permissions,
       tools: template.tools,
+      callableTemplateIds: callable,
+      autoDispatch: template.autoDispatch,
       enabled: true,
       acpChatId: null,
       createdAtMs: now,
@@ -1146,7 +1270,7 @@ export class ImStore {
     await runSqlite(
       this.dbPath,
       `INSERT INTO im_members (
-        member_id, project_id, template_id, name, persona, agent, model, thought_level, permissions, enabled, acp_chat_id, created_at_ms, updated_at_ms
+        member_id, project_id, template_id, name, persona, agent, model, thought_level, permissions, tools_json, callable_template_ids_json, auto_dispatch, enabled, acp_chat_id, created_at_ms, updated_at_ms
       ) VALUES (
         ${sqlString(member.memberId)},
         ${sqlString(projectId)},
@@ -1157,6 +1281,9 @@ export class ImStore {
         ${sqlNullOrString(member.model)},
         ${sqlNullOrString(member.thoughtLevel)},
         ${sqlString(member.permissions)},
+        ${sqlString(JSON.stringify(member.tools))},
+        ${sqlString(JSON.stringify(callable))},
+        ${autoDispatch},
         1,
         NULL,
         ${now},
