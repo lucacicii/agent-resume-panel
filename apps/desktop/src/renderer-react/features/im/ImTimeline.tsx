@@ -152,7 +152,7 @@ export function ImTimeline({
       </div>
       {hoveredNode && (
         <div
-          className="im-timeline-popover"
+          className={`im-timeline-popover${hoveredNode.isUser ? " is-user" : " is-role"}`}
           role="tooltip"
           style={{ top: hoverTop }}
         >
