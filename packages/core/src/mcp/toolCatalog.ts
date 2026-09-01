@@ -48,6 +48,7 @@ export const AGENT_TOOL_CATALOG: readonly AgentToolDescriptor[] = [
   { name: "note_set_gtd", description: "Set or clear a note's GTD status", category: "notes" },
 
   // reports
+  { name: "memory_retrieve", description: "Retrieve relevant memory digests, notes, and sessions in one shot", category: "reports" },
   { name: "report_search", description: "Semantic search over memory digests", category: "reports" },
   { name: "report_read", description: "Read a full memory digest by reportId", category: "reports" },
   { name: "report_list", description: "List memory digests by level and period", category: "reports" },

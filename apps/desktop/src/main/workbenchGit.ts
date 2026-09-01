@@ -691,11 +691,27 @@ export function registerWorkbenchGitIpc(getSystemLocale: () => string): void {
     const previouslyStaged = stagedRepoPaths(parseGitStatusPorcelainV1Z(statusText));
     const selected = new Set(rawPaths);
     const toUnstage = previouslyStaged.filter((path) => !selected.has(path));
+
+    const existingPaths: string[] = [];
+    const deletedPaths: string[] = [];
+    for (const p of paths) {
+      if (fs.existsSync(path.join(repoRoot, p))) existingPaths.push(p);
+      else deletedPaths.push(p);
+    }
+
     try {
-      await execFileAsync("git", ["-C", repoRoot, "add", "--", ...paths], {
-        timeout: 30000,
-        maxBuffer: 1024 * 1024
-      });
+      if (existingPaths.length) {
+        await execFileAsync("git", ["-C", repoRoot, "add", "--", ...existingPaths], {
+          timeout: 30000,
+          maxBuffer: 1024 * 1024
+        });
+      }
+      if (deletedPaths.length) {
+        await execFileAsync("git", ["-C", repoRoot, "rm", "--cached", "--ignore-unmatch", "--", ...deletedPaths], {
+          timeout: 30000,
+          maxBuffer: 1024 * 1024
+        });
+      }
       if (toUnstage.length) {
         await execFileAsync("git", ["-C", repoRoot, "restore", "--staged", "--", ...toUnstage], {
           timeout: 30000,
@@ -781,11 +797,25 @@ export function registerWorkbenchGitIpc(getSystemLocale: () => string): void {
     if (!paths.length) {
       throw new Error("请选择要暂存的文件");
     }
+    const existingPaths: string[] = [];
+    const deletedPaths: string[] = [];
+    for (const p of paths) {
+      if (fs.existsSync(path.join(repoRoot, p))) existingPaths.push(p);
+      else deletedPaths.push(p);
+    }
     try {
-      await execFileAsync("git", ["-C", repoRoot, "add", "--", ...paths], {
-        timeout: 30000,
-        maxBuffer: 1024 * 1024
-      });
+      if (existingPaths.length) {
+        await execFileAsync("git", ["-C", repoRoot, "add", "--", ...existingPaths], {
+          timeout: 30000,
+          maxBuffer: 1024 * 1024
+        });
+      }
+      if (deletedPaths.length) {
+        await execFileAsync("git", ["-C", repoRoot, "rm", "--cached", "--ignore-unmatch", "--", ...deletedPaths], {
+          timeout: 30000,
+          maxBuffer: 1024 * 1024
+        });
+      }
     } catch (error) {
       throw new Error(formatExecError(error));
     }

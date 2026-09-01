@@ -128,7 +128,9 @@ export function resolveDispatchTarget(
       (lower === "pm" && m.templateId === "role_product_manager") ||
       (lower === "tester" && m.templateId === "role_tester") ||
       (lower === "qa" && m.templateId === "role_tester") ||
-      (lower === "ui" && m.templateId === "role_ui_designer")
+      (lower === "ui" && m.templateId === "role_ui_designer") ||
+      (lower === "memory" && m.templateId === "role_memory") ||
+      (lower === "archivist" && m.templateId === "role_memory")
     );
   }
 

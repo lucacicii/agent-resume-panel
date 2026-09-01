@@ -113,8 +113,28 @@ export const ImMessageItem = memo(function ImMessageItem({
   }, [isThinkingExpanded, message.thinking]);
 
   const renderedCleanBody = useMemo(() => {
-    return cleanBody ? renderMarkdown(cleanBody) : "";
+    if (!cleanBody) return "";
+    const html = renderMarkdown(cleanBody);
+    return html.replace(
+      /\[(N|S|D)(\d+)\]/g,
+      '<a class="agent-citation-link" data-agent-citation="$1$2" href="#citation-$1$2">[$1$2]</a>'
+    );
   }, [cleanBody]);
+
+  const handleBodyClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+    const target = (event.target as HTMLElement).closest<HTMLAnchorElement>("a[data-agent-citation]");
+    if (!target) return;
+    event.preventDefault();
+    const marker = target.dataset.agentCitation || "";
+    const prefix = marker.charAt(0);
+    if (prefix === "N") {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "notes" }));
+    } else if (prefix === "S") {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
+    } else if (prefix === "D") {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "report" }));
+    }
+  };
 
   const proposals = useMemo(() => {
     if (message.delegationProposals && message.delegationProposals.length > 0) {
@@ -253,6 +273,7 @@ export const ImMessageItem = memo(function ImMessageItem({
           <div
             className="markdown-body"
             dangerouslySetInnerHTML={{ __html: renderedCleanBody }}
+            onClick={handleBodyClick}
           />
         ) : null}
         {proposals.length > 0 && (

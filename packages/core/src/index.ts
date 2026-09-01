@@ -779,6 +779,11 @@ export {
   linkGraphTraceSchema
 } from "./mcp/linkGraphTools";
 export type { LinkGraphMcpResult, LinkGraphTraceInput } from "./mcp/linkGraphTools";
+export {
+  handleMemoryRetrieve,
+  memoryRetrieveSchema
+} from "./mcp/memoryTools";
+export type { MemoryToolContext } from "./mcp/memoryTools";
 export type { NoteToolContext, NoteMcpResult, NoteRelationshipIndex } from "./mcp/tools";
 export type { AgentMcpContext } from "./mcp/server";
 export {

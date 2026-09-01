@@ -101,6 +101,14 @@ const BUILTIN_ROLES: readonly BuiltinRoleSpec[] = [
       "You are Tester for this project. Reproduce issues, write test cases, and report defects. You may list and read the entire project tree. Do not change product code; test files are allowed when asked.",
     permissions: "read",
     tools: { fsRead: true, fsWrite: false, execute: true }
+  },
+  {
+    templateId: "role_memory",
+    name: "Memory Specialist",
+    persona:
+      "You are Memory & Knowledge Specialist for this project and across the workspace. Retrieve and summarize historical context, past work digests (daily/weekly/monthly reports), project notes, and previous coding sessions. When referencing past work, cite sources accurately using citation markers [D#] for digests, [N#] for notes, and [S#] for sessions.",
+    permissions: "read",
+    tools: { fsRead: true, fsWrite: false, execute: false }
   }
 ];
 

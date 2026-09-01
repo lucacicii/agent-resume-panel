@@ -103,6 +103,7 @@ test("MCP server exposes all note, report, session, and project tools", async ()
       "entity_tag_remove",
       "entity_tags_get",
       "link_graph_trace",
+      "memory_retrieve",
       "note_append",
       "note_create",
       "note_delete",
@@ -740,6 +741,30 @@ test("report_list returns seeded daily digest", async () => {
     assert.ok(result.content[0].text.includes("Listed 1 daily"));
     assert.ok(result.content[0].text.includes(entry.id));
     assert.ok(result.content[0].text.includes("Test Daily"));
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+test("memory_retrieve returns unified context across memory sources", async () => {
+  const { ctx, catalogDb, store } = await setupTestContext();
+  await store.createLibraryNote("# Architecture\n\nNotes about microservices and auth.");
+  await seedSession(catalogDb, { id: "sess-mem-1", title: "Refactor auth middleware", projectPath: "/tmp/auth" });
+  const server = createNoteMcpServer(ctx);
+  const client = await connectClient(server);
+
+  try {
+    const result = await client.callTool({
+      name: "memory_retrieve",
+      arguments: { query: "auth" }
+    });
+    assert.notEqual(result.isError, true);
+    const data = parseToolJson(result);
+    assert.ok(Array.isArray(data.notes));
+    assert.ok(Array.isArray(data.sessions));
+    assert.ok(Array.isArray(data.digests));
+    assert.ok(Array.isArray(data.citations));
   } finally {
     await client.close();
     await server.close();

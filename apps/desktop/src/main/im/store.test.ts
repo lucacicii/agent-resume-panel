@@ -27,7 +27,7 @@ afterEach(async () => {
 });
 
 describe("ImStore", () => {
-  it("creates a user-owned project with the six builtin roles", async () => {
+  it("creates a user-owned project with the seven builtin roles", async () => {
     const store = await createStore();
     const project = await store.createProject("Room One");
     const room = await store.getRoom(project.projectId);
@@ -38,7 +38,8 @@ describe("ImStore", () => {
       "role_project_manager",
       "role_ui_designer",
       "role_developer",
-      "role_tester"
+      "role_tester",
+      "role_memory"
     ]);
     expect(room.members.every((member) => member.agent === "claude")).toBe(true);
   });
@@ -52,11 +53,12 @@ describe("ImStore", () => {
       "role_project_manager",
       "role_ui_designer",
       "role_developer",
-      "role_tester"
+      "role_tester",
+      "role_memory"
     ]);
     await store.initialize();
     const again = await store.listTemplates();
-    expect(again).toHaveLength(6);
+    expect(again).toHaveLength(7);
   });
 
   it("seeds builtin selection actions and blocks deleting them", async () => {
@@ -111,7 +113,7 @@ describe("ImStore", () => {
     await store.initialize();
     const after = await store.getRoom(project.projectId);
     expect(after.members.some((member) => member.templateId === "role_tester")).toBe(false);
-    expect(after.members).toHaveLength(5);
+    expect(after.members).toHaveLength(6);
   });
 
   it("adds a custom template only when a room enables it", async () => {

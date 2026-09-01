@@ -17,6 +17,11 @@ export {
 } from "./reportTools";
 export type { ReportToolContext } from "./reportTools";
 export {
+  memoryRetrieveSchema,
+  handleMemoryRetrieve
+} from "./memoryTools";
+export type { MemoryToolContext } from "./memoryTools";
+export {
   noteSearchSchema,
   noteListSchema,
   noteCreateSchema,

@@ -9,17 +9,7 @@ import {
   discoverSkills,
   readSkillContent,
   skillToToolDescriptor,
-  runAgentChat,
-  clearAgentMessages,
   clearReportJobsByStatus,
-  deleteAgentMessagesFromSortOrder,
-  listOlderAgentMessages,
-  listAgentNoteAudit,
-  listRecentAgentMessages,
-  listAgentThreads,
-  createAgentThread,
-  renameAgentThread,
-  deleteAgentThread,
   autoRenameSessionAction,
   suggestSessionRenameAction,
   backfillReportDigests,
@@ -430,13 +420,6 @@ let registeredRecentStandaloneNoteShortcut = "";
 let appQuitInFlight: Promise<void> | null = null;
 let allowAppQuit = false;
 let quitCleanupDone = false;
-let activeAskAbort: AbortController | null = null;
-const activeAskApprovals = new Map<string, { senderId: number; resolve: (approved: boolean) => void }>();
-
-function rejectActiveAskApprovals(): void {
-  for (const pending of activeAskApprovals.values()) pending.resolve(false);
-  activeAskApprovals.clear();
-}
 let sessionSyncTimer: NodeJS.Timeout | null = null;
 let sessionSyncInFlight: Promise<AgentSessionSyncResult> | null = null;
 let workbenchActive = false;
@@ -2634,115 +2617,6 @@ function registerIpc(): void {
     }
   );
 
-  ipcMain.handle(
-    "agent:ask",
-    async (
-      event,
-      args: {
-        query: string;
-        history?: Array<{ role: "user" | "assistant"; content: string }>;
-        threadId?: string;
-        enableTools?: boolean;
-        /** When set and non-empty, only these MCP tool names are exposed to the model. */
-        enabledTools?: string[];
-        projectPath?: string;
-      }
-    ) => {
-      activeAskAbort?.abort();
-      rejectActiveAskApprovals();
-      activeAskAbort = new AbortController();
-      const signal = activeAskAbort.signal;
-      const settings = await loadSettings();
-      try {
-        return await runAgentChat({
-          query: args.query,
-          history: args.history,
-          threadId: args.threadId,
-          enableTools: args.enableTools ?? true,
-          enabledTools: args.enabledTools,
-          projectPath: args.projectPath,
-          systemLocale: app.getLocale(),
-          signal,
-          requestToolApproval: async (call) => {
-            const alwaysAllow = settings.desktop?.alwaysAllowAgentNonDestructiveOperations === true ||
-              settings.desktop?.alwaysAllowAgentWriteOperations === true;
-            if (alwaysAllow && call.impact !== "delete" && call.impact !== "destructive" && call.impact !== "unknown") {
-              return true;
-            }
-            return new Promise<boolean>((resolve) => {
-                const rejectOnAbort = () => {
-                  activeAskApprovals.delete(call.id);
-                  resolve(false);
-                };
-                if (signal.aborted) {
-                  rejectOnAbort();
-                  return;
-                }
-                activeAskApprovals.set(call.id, {
-                  senderId: event.sender.id,
-                  resolve: (approved) => {
-                    signal.removeEventListener("abort", rejectOnAbort);
-                    activeAskApprovals.delete(call.id);
-                    resolve(approved);
-                  }
-                });
-                signal.addEventListener("abort", rejectOnAbort, { once: true });
-                event.sender.send("agent:askStream", {
-                  phase: "tool_approval_required",
-                  toolCallId: call.id,
-                  toolName: call.toolName,
-                  toolImpact: call.impact,
-                  toolArgs: call.args,
-                  toolStatus: "awaiting_approval"
-                });
-              });
-          },
-          onResumeSession: async ({ provider, sessionId }) => {
-            try {
-              const result = await resumeCatalogSession(provider, sessionId);
-              // xterm mode only returns command/cwd — Workbench must open the terminal.
-              if (!result.external && result.command) {
-                const payload = {
-                  provider,
-                  id: sessionId,
-                  command: result.command,
-                  cwd: result.cwd,
-                  title: result.session?.title || sessionId,
-                  projectPath: result.session?.projectPath || result.cwd,
-                  mode: result.mode
-                };
-                broadcastToRenderers("workbench:resumeFromAgent", payload);
-              }
-              return {
-                ok: true,
-                command: result.command,
-                cwd: result.cwd,
-                mode: result.mode,
-                external: result.external === true
-              };
-            } catch (error) {
-              return {
-                ok: false,
-                error: error instanceof Error ? error.message : String(error)
-              };
-            }
-          },
-          onStream: async (streamEvent) => {
-            event.sender.send("agent:askStream", streamEvent);
-            if (streamEvent.phase === "chunk") {
-              await new Promise<void>((resolve) => setImmediate(resolve));
-            }
-          }
-        });
-      } finally {
-        rejectActiveAskApprovals();
-        if (activeAskAbort?.signal === signal) {
-          activeAskAbort = null;
-        }
-      }
-    }
-  );
-
   ipcMain.handle("agent:listTools", async (_event, args?: { projectPath?: string }) => {
     const coreTools = [...AGENT_TOOL_CATALOG];
     try {
@@ -2773,94 +2647,6 @@ function registerIpc(): void {
   ipcMain.handle("skills:read", async (_event, args: { location: string }) => {
     return readSkillContent(args.location);
   });
-
-  ipcMain.handle("agent:cancelAsk", async () => {
-    activeAskAbort?.abort();
-    rejectActiveAskApprovals();
-    activeAskAbort = null;
-    return { ok: true };
-  });
-
-  ipcMain.handle("agent:respondToolApproval", async (event, args: { toolCallId?: string; approved?: boolean }) => {
-    const toolCallId = args?.toolCallId?.trim();
-    const pending = toolCallId ? activeAskApprovals.get(toolCallId) : undefined;
-    if (!pending || pending.senderId !== event.sender.id) return { ok: false };
-    pending.resolve(args.approved === true);
-    return { ok: true };
-  });
-
-  ipcMain.handle("agent:listAgentChat", async (_event, args?: { limit?: number; threadId?: string }) => {
-    const paths = await loadPanelDbPaths();
-    return listRecentAgentMessages(paths.desktopDb, { limit: args?.limit, threadId: args?.threadId });
-  });
-
-  ipcMain.handle(
-    "agent:listOlderAgentChat",
-    async (_event, args: { beforeSortOrder: number; limit?: number; threadId?: string }) => {
-      const paths = await loadPanelDbPaths();
-      return listOlderAgentMessages(paths.desktopDb, {
-        beforeSortOrder: args.beforeSortOrder,
-        limit: args?.limit,
-        threadId: args?.threadId
-      });
-    }
-  );
-
-  ipcMain.handle("agent:clearAgentChat", async (_event, args?: { threadId?: string }) => {
-    const paths = await loadPanelDbPaths();
-    await clearAgentMessages(paths.desktopDb, args?.threadId);
-    return { ok: true };
-  });
-
-  ipcMain.handle(
-    "agent:truncateAgentChat",
-    async (_event, args: { threadId: string; fromSortOrder: number }) => {
-      const paths = await loadPanelDbPaths();
-      await deleteAgentMessagesFromSortOrder(paths.desktopDb, {
-        threadId: args.threadId,
-        fromSortOrder: args.fromSortOrder
-      });
-      return { ok: true };
-    }
-  );
-
-  ipcMain.handle("agent:listThreads", async () => {
-    const paths = await loadPanelDbPaths();
-    return listAgentThreads(paths.desktopDb);
-  });
-
-  ipcMain.handle("agent:createThread", async (_event, args: { title: string }) => {
-    const paths = await loadPanelDbPaths();
-    return createAgentThread(paths.desktopDb, args);
-  });
-
-  ipcMain.handle("agent:renameThread", async (_event, args: { id: string; title: string }) => {
-    const paths = await loadPanelDbPaths();
-    await renameAgentThread(paths.desktopDb, args.id, args.title);
-    return { ok: true };
-  });
-
-  ipcMain.handle("agent:deleteThread", async (_event, args: { id: string }) => {
-    const paths = await loadPanelDbPaths();
-    await deleteAgentThread(paths.desktopDb, args.id);
-    return { ok: true };
-  });
-
-  ipcMain.handle(
-    "agent:listAgentNoteAudit",
-    async (
-      _event,
-      args?: {
-        limit?: number;
-        noteId?: string;
-        traceId?: string;
-        status?: AgentNoteAuditStatus;
-      }
-    ) => {
-      const paths = await loadPanelDbPaths();
-      return listAgentNoteAudit(paths.desktopDb, args);
-    }
-  );
 
   ipcMain.handle(
     "workflow:previewReportGtdSync",

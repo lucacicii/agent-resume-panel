@@ -16,7 +16,7 @@ export const MAX_IMAGES = 4;
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 export const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 
-export const BUILTIN_ROLE_KEYS: Record<string, "productManager" | "architect" | "projectManager" | "uiDesigner" | "developer" | "tester"> = {
+export const BUILTIN_ROLE_KEYS: Record<string, "productManager" | "architect" | "projectManager" | "uiDesigner" | "developer" | "tester" | "memory"> = {
   role_product_manager: "productManager",
   product_manager: "productManager",
   productManager: "productManager",
@@ -43,7 +43,11 @@ export const BUILTIN_ROLE_KEYS: Record<string, "productManager" | "architect" | 
   role_tester: "tester",
   tester: "tester",
   Tester: "tester",
-  qa: "tester"
+  qa: "tester",
+  role_memory: "memory",
+  memory: "memory",
+  Memory: "memory",
+  archivist: "memory"
 };
 
 export const BUILTIN_ROLE_COLORS: Record<string, string> = {
@@ -73,7 +77,10 @@ export const BUILTIN_ROLE_COLORS: Record<string, string> = {
   role_tester: "hsl(35 92% 52%)",
   tester: "hsl(35 92% 52%)",
   Tester: "hsl(35 92% 52%)",
-  qa: "hsl(35 92% 52%)"
+  qa: "hsl(35 92% 52%)",
+  role_memory: "hsl(175 80% 40%)",
+  memory: "hsl(175 80% 40%)",
+  Memory: "hsl(175 80% 40%)"
 };
 
 export function storageBoolean(key: string, fallback = false): boolean {

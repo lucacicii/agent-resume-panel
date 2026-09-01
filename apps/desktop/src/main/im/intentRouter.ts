@@ -53,7 +53,10 @@ export function parseIntentClassification(
           (lowerId.includes("product") && m.templateId === "role_product_manager") ||
           (lowerId.includes("project") && m.templateId === "role_project_manager") ||
           (lowerId.includes("test") && m.templateId === "role_tester") ||
-          (lowerId.includes("ui") && m.templateId === "role_ui_designer")
+          (lowerId.includes("ui") && m.templateId === "role_ui_designer") ||
+          (lowerId.includes("mem") && m.templateId === "role_memory") ||
+          (lowerId.includes("know") && m.templateId === "role_memory") ||
+          (lowerId.includes("note") && m.templateId === "role_memory")
       );
     }
     if (found) {

@@ -1099,48 +1099,12 @@ export interface DesktopApi {
     level?: string;
     limit?: number;
   }): Promise<ReportSearchHit[]>;
-  askAgent(args: {
-    query: string;
-    history?: Array<{ role: "user" | "assistant"; content: string }>;
-    threadId?: string;
-    enableTools?: boolean;
-    /** When set and non-empty, only these MCP tool names are exposed to the model. */
-    enabledTools?: string[];
-    projectPath?: string;
-  }): Promise<AgentChatResult>;
-  /** Static catalog of Ask chat tools and discovered skills/mcp tools. */
+  /** Static catalog of chat tools and discovered skills/mcp tools. */
   listAgentTools(args?: { projectPath?: string }): Promise<AgentToolDescriptor[]>;
   /** Discover available skills for workspace / user. */
   listSkills(args?: { projectPath?: string }): Promise<SkillDescriptor[]>;
   /** Read full content of a SKILL.md. */
   readSkill(args: { location: string }): Promise<string>;
-  cancelAskAgent(): Promise<{ ok: boolean }>;
-  respondToolApproval(args: { toolCallId: string; approved: boolean }): Promise<{ ok: boolean }>;
-  listAgentChat(args?: { limit?: number; threadId?: string }): Promise<{
-    messages: AgentChatMessage[];
-    hasMore: boolean;
-  }>;
-  listOlderAgentChat(args: {
-    beforeSortOrder: number;
-    limit?: number;
-    threadId?: string;
-  }): Promise<{
-    messages: AgentChatMessage[];
-    hasMore: boolean;
-  }>;
-  clearAgentChat(args?: { threadId?: string }): Promise<{ ok: boolean }>;
-  truncateAgentChat(args: { threadId: string; fromSortOrder: number }): Promise<{ ok: boolean }>;
-  listAgentThreads(): Promise<AgentThread[]>;
-  createAgentThread(args: { title: string }): Promise<AgentThread>;
-  renameAgentThread(args: { id: string; title: string }): Promise<{ ok: boolean }>;
-  deleteAgentThread(args: { id: string }): Promise<{ ok: boolean }>;
-  listAgentNoteAudit(args?: {
-    limit?: number;
-    noteId?: string;
-    traceId?: string;
-    status?: string;
-  }): Promise<AgentNoteAuditEvent[]>;
-  onAskStream(callback: (event: AgentStreamEvent) => void): () => void;
   onNotesIndexProgress(callback: (event: NoteIndexProgressEvent) => void): () => void;
   previewReportGtdSync(args?: {
     ensureDigests?: boolean;
@@ -1842,30 +1806,9 @@ const api: DesktopApi = {
     };
   },
   searchReports: (args) => ipcRenderer.invoke("report:search", args),
-  askAgent: (args) => ipcRenderer.invoke("agent:ask", args),
   listAgentTools: (args) => ipcRenderer.invoke("agent:listTools", args),
   listSkills: (args) => ipcRenderer.invoke("skills:list", args),
   readSkill: (args) => ipcRenderer.invoke("skills:read", args),
-  cancelAskAgent: () => ipcRenderer.invoke("agent:cancelAsk"),
-  respondToolApproval: (args) => ipcRenderer.invoke("agent:respondToolApproval", args),
-  listAgentChat: (args) => ipcRenderer.invoke("agent:listAgentChat", args),
-  listOlderAgentChat: (args) => ipcRenderer.invoke("agent:listOlderAgentChat", args),
-  clearAgentChat: (args) => ipcRenderer.invoke("agent:clearAgentChat", args),
-  truncateAgentChat: (args) => ipcRenderer.invoke("agent:truncateAgentChat", args),
-  listAgentThreads: () => ipcRenderer.invoke("agent:listThreads"),
-  createAgentThread: (args) => ipcRenderer.invoke("agent:createThread", args),
-  renameAgentThread: (args) => ipcRenderer.invoke("agent:renameThread", args),
-  deleteAgentThread: (args) => ipcRenderer.invoke("agent:deleteThread", args),
-  listAgentNoteAudit: (args) => ipcRenderer.invoke("agent:listAgentNoteAudit", args),
-  onAskStream: (callback) => {
-    const handler = (_event: Electron.IpcRendererEvent, streamEvent: AgentStreamEvent) => {
-      callback(streamEvent);
-    };
-    ipcRenderer.on("agent:askStream", handler);
-    return () => {
-      ipcRenderer.removeListener("agent:askStream", handler);
-    };
-  },
   onNotesIndexProgress: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, progress: NoteIndexProgressEvent) => {
       callback(progress);

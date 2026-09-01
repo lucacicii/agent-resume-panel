@@ -32,7 +32,8 @@ export const IM_BUILTIN_TEMPLATE_IDS = [
   "role_project_manager",
   "role_ui_designer",
   "role_developer",
-  "role_tester"
+  "role_tester",
+  "role_memory"
 ] as const;
 
 export type ImBuiltinTemplateId = (typeof IM_BUILTIN_TEMPLATE_IDS)[number];
@@ -42,12 +43,13 @@ export function isBuiltinTemplateId(value: string): value is ImBuiltinTemplateId
 }
 
 export const DEFAULT_BUILTIN_CALLABLE_TEMPLATE_IDS: Record<ImBuiltinTemplateId, readonly string[]> = {
-  role_product_manager: ["role_architect", "role_project_manager", "role_ui_designer"],
-  role_architect: ["role_developer"],
-  role_project_manager: ["role_architect", "role_ui_designer", "role_developer", "role_tester"],
+  role_product_manager: ["role_architect", "role_project_manager", "role_ui_designer", "role_memory"],
+  role_architect: ["role_developer", "role_memory"],
+  role_project_manager: ["role_architect", "role_ui_designer", "role_developer", "role_tester", "role_memory"],
   role_ui_designer: ["role_developer"],
-  role_developer: ["role_tester"],
-  role_tester: ["role_developer"]
+  role_developer: ["role_tester", "role_memory"],
+  role_tester: ["role_developer"],
+  role_memory: ["role_developer", "role_product_manager", "role_architect"]
 };
 
 export interface ImRoleTools {
