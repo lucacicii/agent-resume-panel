@@ -233,6 +233,7 @@ export function ImPanel(): ReactPortal | null {
   const [room, setRoom] = useState<ImRoom | null>(null);
   const [draft, setDraft] = useState("");
   const [quotes, setQuotes] = useState<ImQuotedMessage[]>([]);
+  const [followUpTo, setFollowUpTo] = useState<ImMessage | null>(null);
   const [mentionIds, setMentionIds] = useState<string[]>([]);
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionIndex, setMentionIndex] = useState(0);
@@ -554,8 +555,20 @@ export function ImPanel(): ReactPortal | null {
   }, []);
 
   const quoteMessage = useCallback((message: ImMessage) => {
+    setFollowUpTo(null);
     quoteSelection(message, message.body);
   }, [quoteSelection]);
+
+  const continueAsk = useCallback((message: ImMessage) => {
+    if (message.kind !== "role.say" || !message.authorMemberId) return;
+    const owner = allMembers.find((member) => member.memberId === message.authorMemberId && member.enabled);
+    if (!owner) return;
+    setFollowUpTo(message);
+    setQuotes([]);
+    setMentionIds([owner.memberId]);
+    setMentionOpen(false);
+    textareaRef.current?.focus();
+  }, [allMembers]);
 
   const selectedTextIn = useCallback((root: HTMLElement): string => {
     const selection = window.getSelection();
@@ -880,12 +893,14 @@ export function ImPanel(): ReactPortal | null {
       await desktopApi().imPostMessage({
         projectId: selectedProjectId,
         body,
-        quoteIds: quotes.map((quote) => quote.messageId),
+        quoteIds: followUpTo ? [] : quotes.map((quote) => quote.messageId),
         mentionRoleIds: mentionIds,
-        images: pendingImages.map(({ fileName, mimeType, data }) => ({ fileName, mimeType, data }))
+        images: pendingImages.map(({ fileName, mimeType, data }) => ({ fileName, mimeType, data })),
+        followUpToMessageId: followUpTo?.messageId
       });
       setDraft("");
       setQuotes([]);
+      setFollowUpTo(null);
       setMentionIds([]);
       setPendingImages([]);
       setMentionOpen(false);
@@ -895,7 +910,7 @@ export function ImPanel(): ReactPortal | null {
     } finally {
       setSending(false);
     }
-  }, [draft, mentionIds, pendingImages, quotes, selectedProjectId, sending, setError]);
+  }, [draft, followUpTo, mentionIds, pendingImages, quotes, selectedProjectId, sending, setError]);
 
   const resendUserMessage = useCallback((message: ImMessage) => {
     setSelectionMenu(null);
@@ -1349,12 +1364,18 @@ export function ImPanel(): ReactPortal | null {
                   const speaker = allMembers.find((member) => member.memberId === message.authorMemberId)
                     || allMembers.find((member) => member.templateId === message.authorMemberId)
                     || allMembers.find((member) => member.name === message.authorLabel || roleLabel(member, t) === message.authorLabel);
-                  const displayBody = translations[message.messageId] ?? message.body;
+                  const displayBody = translations[message.messageId]
+                    ?? (message.kind === "system" && message.body.startsWith("desktop.") ? (t(message.body) || message.body) : message.body);
                   const isTranslating = translatingIds.has(message.messageId);
                   const translated = Boolean(translations[message.messageId]);
                   const roleColorValue = speaker ? roleColor(speaker.templateId) : (message.kind === "role.say" ? roleColor(message.authorLabel) : undefined);
                   const prevVisible = visibleMessages[index - 1];
                   const showDate = !prevVisible || dayKey(prevVisible.createdAtMs) !== dayKey(message.createdAtMs);
+                  const showThreadBreak = Boolean(
+                    message.threadId &&
+                    prevVisible?.threadId &&
+                    prevVisible.threadId !== message.threadId
+                  );
                   const linkedJob = message.jobId ? room?.jobs.find((j) => j.jobId === message.jobId) : undefined;
                   const filesChanged = linkedJob?.filesChanged ?? [];
                   const dispatchBlocks = message.kind === "role.say" ? parseDispatchBlocks(displayBody) : [];
@@ -1365,6 +1386,9 @@ export function ImPanel(): ReactPortal | null {
                     <Fragment key={message.messageId}>
                       {showDate && (
                         <div className="im-date-separator" aria-hidden="true">{formatDay(message.createdAtMs, t)}</div>
+                      )}
+                      {showThreadBreak && (
+                        <div className="im-thread-separator" role="separator">{t("desktop.im.newConversation")}</div>
                       )}
                       <article
                         id={`im-msg-${message.messageId}`}
@@ -1488,6 +1512,9 @@ export function ImPanel(): ReactPortal | null {
                               instruction: b.instruction,
                               reason: b.reason,
                               status: "pending" as const,
+                              dispatchedMessageId: undefined,
+                              dispatchedJobId: undefined,
+                              resolvedAtMs: undefined,
                               createdAtMs: message.createdAtMs
                             }))).map((proposal) => {
                               const targetMember = allMembers.find((m) =>
@@ -1499,7 +1526,7 @@ export function ImPanel(): ReactPortal | null {
                               const targetLabel = targetMember ? memberLabel(targetMember) : (proposal.targetRoleName || proposal.targetTemplateId);
                               const targetColor = targetMember ? roleColor(targetMember.templateId) : roleColor(proposal.targetTemplateId);
                               const isPending = proposal.status === "pending";
-                              const dispatchedJob = proposal.dispatchedJobId
+                              const dispatchedJob = "dispatchedJobId" in proposal && proposal.dispatchedJobId
                                 ? room?.jobs.find((item) => item.jobId === proposal.dispatchedJobId)
                                 : undefined;
                               const canResumeDispatch = isResumableJob(dispatchedJob, room?.jobs ?? []);
@@ -1743,6 +1770,16 @@ export function ImPanel(): ReactPortal | null {
                                   ? t("desktop.im.actionRunning")
                                   : t("desktop.im.translate")}
                             </button>
+                            {message.kind === "role.say" && speaker && speaker.enabled && !message.streaming && !isResumableJob(linkedJob, room?.jobs ?? []) && (
+                              <button
+                                type="button"
+                                className="im-message-action"
+                                disabled={Boolean(room?.jobs.some((job) => job.memberId === speaker.memberId && isActiveJobStatus(job.status)))}
+                                onClick={() => continueAsk(message)}
+                              >
+                                {t("desktop.im.continueAsk")}
+                              </button>
+                            )}
                           </div>
                         )}
                       </article>
@@ -1922,6 +1959,22 @@ export function ImPanel(): ReactPortal | null {
                             </button>
                           </div>
                         ))}
+                      </div>
+                    )}
+                    {followUpTo && (
+                      <div className="im-quote-chips">
+                        <button
+                          type="button"
+                          className="im-quote-chip im-followup-chip"
+                          onClick={() => {
+                            setFollowUpTo(null);
+                            setMentionIds([]);
+                          }}
+                          aria-label={t("desktop.im.removeFollowUp")}
+                        >
+                          {t("desktop.im.continuingWith", followUpTo.authorLabel)}
+                          <ThemeIcon name="close" size={12} aria-hidden="true" />
+                        </button>
                       </div>
                     )}
                     {quotes.length > 0 && (

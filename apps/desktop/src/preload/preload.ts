@@ -645,6 +645,7 @@ export interface DesktopApi {
     quoteIds: string[];
     mentionRoleIds: string[];
     images?: Array<{ fileName: string; mimeType: string; data: string }>;
+    followUpToMessageId?: string;
   }): Promise<{ message: ImMessage; job: ImJob | null }>;
   imCancelJob(args: { jobId: string }): Promise<ImJob>;
   imResumeJob(args: { jobId: string }): Promise<{ job: ImJob }>;

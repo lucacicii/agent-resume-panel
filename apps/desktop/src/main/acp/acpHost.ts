@@ -952,7 +952,7 @@ function resolveChatIdForSession(sessionId: string | undefined): string | null {
 
 let acpHostDeps: { loadSettings: LoadSettings; getMainWindow: GetMainWindow } | null = null;
 
-export async function connectAcpChat(chatId: string, force = false): Promise<void> {
+export async function connectAcpChat(chatId: string, force = false): Promise<{ rebuilt: boolean }> {
   if (!acpHostDeps) throw new Error("ACP host is not registered.");
   const { loadSettings, getMainWindow } = acpHostDeps;
   const settings = await loadSettings();
@@ -964,8 +964,9 @@ export async function connectAcpChat(chatId: string, force = false): Promise<voi
   if (controller && !force && controller.isLive()) {
     lastActiveChatId = chatId;
     controller.repostSnapshot();
-    return;
+    return { rebuilt: false };
   }
+  const previousSessionId = record.acpSessionId;
   if (controller) {
     controller.dispose();
     controllers.delete(chatId);
@@ -976,6 +977,8 @@ export async function connectAcpChat(chatId: string, force = false): Promise<voi
   controllers.set(chatId, controller);
   lastActiveChatId = chatId;
   await controller.bootstrap();
+  const nextSessionId = controller.getRecord().acpSessionId;
+  return { rebuilt: !previousSessionId || nextSessionId !== previousSessionId };
 }
 
 export async function promptAcpChat(

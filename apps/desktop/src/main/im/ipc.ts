@@ -29,7 +29,7 @@ let conductor: ImConductor | null = null;
 let storeKey = "";
 
 type AcpHostApi = {
-  connect: (chatId: string) => Promise<void>;
+  connect: (chatId: string) => Promise<{ rebuilt?: boolean } | void>;
   prompt: (
     chatId: string,
     text: string,
@@ -320,6 +320,7 @@ export function registerImIpc(deps: {
     quoteIds?: unknown;
     mentionRoleIds?: unknown;
     images?: unknown;
+    followUpToMessageId?: unknown;
   }) => {
     if (typeof args?.projectId !== "string") throw new Error("Project id is required.");
     const quoteIds = Array.isArray(args.quoteIds)
@@ -345,7 +346,8 @@ export function registerImIpc(deps: {
       body: typeof args.body === "string" ? args.body : "",
       quoteIds,
       mentionRoleIds,
-      images
+      images,
+      followUpToMessageId: typeof args.followUpToMessageId === "string" ? args.followUpToMessageId : undefined
     });
   });
 

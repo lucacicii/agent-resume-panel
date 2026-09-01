@@ -198,6 +198,7 @@ interface MessageRow {
   quote_ids_json: string;
   mention_role_ids_json: string;
   job_id: string | null;
+  thread_id: string | null;
   created_at_ms: number;
 }
 
@@ -239,6 +240,7 @@ interface JobRow {
   error: string | null;
   files_json: string;
   permission_json: string | null;
+  thread_id: string | null;
   created_at_ms: number;
   updated_at_ms: number;
   finished_at_ms: number | null;
@@ -520,6 +522,7 @@ function mapJob(row: JobRow): ImJob {
     error: row.error,
     filesChanged: parseJsonArray(row.files_json),
     permission,
+    threadId: row.thread_id || undefined,
     createdAtMs: row.created_at_ms,
     updatedAtMs: row.updated_at_ms,
     finishedAtMs: row.finished_at_ms
@@ -559,14 +562,7 @@ export function buildDispatchPrompt(
   brief: ImJobBrief,
   callableMembers: Array<{ templateId: string; name: string; persona: string }> = []
 ): string {
-  const quoteBlock = brief.quotes.length
-    ? brief.quotes
-        .map((quote, index) => {
-          const truncated = quote.truncated ? " [truncated]" : "";
-          return `${index + 1}. ${quote.authorLabel}${truncated}:\n${quote.body}`;
-        })
-        .join("\n\n")
-    : "(none)";
+  const quoteBlock = brief.quotes.length ? formatQuoteBlock(brief.quotes) : "(none)";
 
   const downstreamBlock = callableMembers.length > 0
     ? [
@@ -599,6 +595,28 @@ export function buildDispatchPrompt(
     brief.cwd
       ? `${brief.cwd}\nYou may list and read the entire tree under this directory. Stay inside it. Background links are URLs only — fetch them yourself if needed. Auxiliary documents, notes, design specs, and chat-generated artifacts should be saved under .arp/ (e.g. .arp/docs/, .arp/specs/) if appropriate to keep the workspace clean.`
       : ""
+  ].join("\n");
+}
+
+function formatQuoteBlock(quotes: ImQuotedMessage[]): string {
+  return quotes
+    .map((quote, index) => {
+      const truncated = quote.truncated ? " [truncated]" : "";
+      return `${index + 1}. ${quote.authorLabel}${truncated}:\n${quote.body}`;
+    })
+    .join("\n\n");
+}
+
+/** Incremental user turn for an already-bootstrapped ACP session. Never repeats persona/knowledge/cwd. */
+export function buildIncrementalPrompt(brief: ImJobBrief): string {
+  const instruction = brief.instruction.trim();
+  if (!brief.quotes.length) return instruction;
+  return [
+    "[Quoted messages]",
+    formatQuoteBlock(brief.quotes),
+    "",
+    "[User instruction]",
+    instruction
   ].join("\n");
 }
 
@@ -1423,11 +1441,13 @@ export class ImStore {
     quoteIds?: string[];
     mentionRoleIds?: string[];
     jobId?: string | null;
+    threadId?: string | null;
   }): Promise<ImMessage> {
     const now = nowMs();
     const messageId = input.messageId || randomUUID();
     const quoteIds = input.quoteIds ?? [];
     const mentionRoleIds = input.mentionRoleIds ?? [];
+    const threadId = input.threadId?.trim() || null;
     const thinking = input.thinking?.trim() || null;
     const imagesJson = input.images?.length ? JSON.stringify(input.images) : null;
     const proposalsJson = input.delegationProposals?.length ? JSON.stringify(input.delegationProposals) : null;
@@ -1436,7 +1456,7 @@ export class ImStore {
     await runSqlite(
       this.dbPath,
       `INSERT INTO im_messages (
-        message_id, project_id, kind, author_member_id, author_label, body, thinking, images_json, delegation_proposals_json, auto_routed, routed_role_name, routing_tip, routing_timed_out, quote_ids_json, mention_role_ids_json, job_id, created_at_ms
+        message_id, project_id, kind, author_member_id, author_label, body, thinking, images_json, delegation_proposals_json, auto_routed, routed_role_name, routing_tip, routing_timed_out, quote_ids_json, mention_role_ids_json, job_id, thread_id, created_at_ms
       ) VALUES (
         ${sqlString(messageId)},
         ${sqlString(input.projectId)},
@@ -1454,6 +1474,7 @@ export class ImStore {
         ${sqlString(JSON.stringify(quoteIds))},
         ${sqlString(JSON.stringify(mentionRoleIds))},
         ${sqlNullOrString(input.jobId ?? null)},
+        ${sqlNullOrString(threadId)},
         ${now}
       );`
     );
@@ -1571,20 +1592,29 @@ export class ImStore {
     );
   }
 
+  async setMessageThreadId(messageId: string, threadId: string): Promise<void> {
+    await runSqlite(
+      this.dbPath,
+      `UPDATE im_messages SET thread_id = ${sqlString(threadId)} WHERE message_id = ${sqlString(messageId)};`
+    );
+  }
+
   async createJob(input: {
     projectId: string;
     memberId: string;
     messageId: string | null;
     brief: ImJobBrief;
     status?: ImJobStatus;
+    threadId?: string | null;
   }): Promise<ImJob> {
     const now = nowMs();
     const jobId = randomUUID();
     const status = input.status ?? "queued";
+    const threadId = input.threadId?.trim() || null;
     await runSqlite(
       this.dbPath,
       `INSERT INTO im_jobs (
-        job_id, project_id, member_id, message_id, acp_chat_id, status, brief_json, error, files_json, permission_json, created_at_ms, updated_at_ms, finished_at_ms
+        job_id, project_id, member_id, message_id, acp_chat_id, status, brief_json, error, files_json, permission_json, thread_id, created_at_ms, updated_at_ms, finished_at_ms
       ) VALUES (
         ${sqlString(jobId)},
         ${sqlString(input.projectId)},
@@ -1596,6 +1626,7 @@ export class ImStore {
         NULL,
         ${sqlString("[]")},
         NULL,
+        ${sqlNullOrString(threadId)},
         ${now},
         ${now},
         NULL
@@ -1947,6 +1978,7 @@ export class ImStore {
       quotes,
       mentionRoleIds: parseJsonArray(row.mention_role_ids_json),
       jobId: row.job_id,
+      threadId: row.thread_id || undefined,
       createdAtMs: row.created_at_ms
     };
   }

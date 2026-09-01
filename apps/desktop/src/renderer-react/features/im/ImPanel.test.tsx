@@ -44,6 +44,10 @@ const messages = {
   "desktop.im.transcript": "Room transcript",
   "desktop.im.mentions": "Mentioned roles",
   "desktop.im.quote": "Quote",
+  "desktop.im.continueAsk": "Ask again",
+  "desktop.im.continuingWith": "Continuing with {0}",
+  "desktop.im.removeFollowUp": "Stop continuing this reply",
+  "desktop.im.newConversation": "New conversation",
   "desktop.im.translate": "Translate",
   "desktop.im.restore": "Restore",
   "desktop.im.explain": "Explain",
@@ -1363,5 +1367,116 @@ Build the user service endpoints.
     expect(screen.getByText("Intent analysis timed out (30s). You can use @ in the composer to manually assign a role.")).toBeTruthy();
     expect(document.querySelector(".im-routing-tip.is-timeout")).not.toBeNull();
     expect(document.querySelector(".im-routing-tip.is-unmatched")).not.toBeNull();
+  });
+
+  it("adds Ask again on completed agent replies and sends a follow-up on the same role", async () => {
+    const api = renderIm();
+    const next = roomFor(project());
+    (api.imGetRoom as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...next,
+      messages: [
+        {
+          messageId: "msg-user",
+          projectId: "proj-1",
+          kind: "human",
+          authorMemberId: null,
+          authorLabel: "You",
+          body: "plan this",
+          quoteIds: [],
+          quotes: [],
+          mentionRoleIds: ["mem-pm"],
+          jobId: "job-1",
+          threadId: "thread-1",
+          createdAtMs: 1
+        },
+        {
+          messageId: "msg-agent",
+          projectId: "proj-1",
+          kind: "role.say",
+          authorMemberId: "mem-pm",
+          authorLabel: "Product Manager",
+          body: "Here is the plan",
+          quoteIds: [],
+          quotes: [],
+          mentionRoleIds: [],
+          jobId: "job-1",
+          threadId: "thread-1",
+          createdAtMs: 2
+        }
+      ],
+      jobs: [{
+        jobId: "job-1",
+        projectId: "proj-1",
+        memberId: "mem-pm",
+        messageId: "msg-user",
+        brief: { persona: "", instruction: "plan this", cwd: "/tmp", quotes: [], knowledge: [] },
+        status: "completed" as const,
+        filesChanged: [],
+        error: null,
+        acpChatId: "chat-1",
+        permission: null,
+        finishedAtMs: 2,
+        createdAtMs: 1,
+        updatedAtMs: 2,
+        threadId: "thread-1"
+      }]
+    });
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+    expect(screen.queryAllByRole("button", { name: "Ask again" })).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Ask again" }));
+    expect(await screen.findByLabelText("Stop continuing this reply")).toBeTruthy();
+    const composer = screen.getByLabelText("Message the room. @ a role. Enter to send, Shift+Enter for a new line.");
+    fireEvent.change(composer, { target: { value: "add more detail" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(api.imPostMessage).toHaveBeenCalledWith(expect.objectContaining({
+      body: "add more detail",
+      mentionRoleIds: ["mem-pm"],
+      followUpToMessageId: "msg-agent",
+      quoteIds: []
+    })));
+  });
+
+  it("does not show Ask again on interrupted replies that still have Resume", async () => {
+    const currentProject = project();
+    const currentRoom = roomFor(currentProject);
+    const developer = currentRoom.members.find((m) => m.templateId === "role_developer")!;
+    currentRoom.messages = [{
+      messageId: "msg-dev-draft",
+      projectId: currentProject.projectId,
+      kind: "role.say",
+      authorMemberId: developer.memberId,
+      authorLabel: "Developer",
+      body: "Step 1 is done.",
+      quoteIds: [],
+      quotes: [],
+      mentionRoleIds: [],
+      jobId: "job-dev-interrupted",
+      createdAtMs: 1100
+    }];
+    currentRoom.jobs = [{
+      jobId: "job-dev-interrupted",
+      projectId: currentProject.projectId,
+      memberId: developer.memberId,
+      messageId: null,
+      acpChatId: "chat-1",
+      status: "cancelled",
+      brief: { persona: "", instruction: "Implement the plan.", cwd: "/tmp", quotes: [], knowledge: [] },
+      error: "App restarted while job was running",
+      filesChanged: [],
+      permission: null,
+      createdAtMs: 1050,
+      updatedAtMs: 1200,
+      finishedAtMs: 1200
+    }];
+    const api = renderIm();
+    (api.imGetRoom as ReturnType<typeof vi.fn>).mockResolvedValue(currentRoom);
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+    expect(await screen.findByText("Interrupted before finishing. Saved draft is kept.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Ask again" })).toBeNull();
+    expect(screen.getAllByRole("button", { name: "Continue" }).length).toBeGreaterThan(0);
   });
 });

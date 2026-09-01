@@ -18122,6 +18122,22 @@ html[data-window-mode="browser"] #react-chrome {
   border-radius: 999px;
   margin: 2px 0 4px;
 }
+.im-thread-separator {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 6px;
+  font-size: 11px;
+  color: var(--color-label-tertiary);
+}
+.im-thread-separator::before,
+.im-thread-separator::after {
+  content: "";
+  flex: 1 1 auto;
+  height: 1px;
+  background: var(--color-separator);
+}
 .im-role-avatar {
   width: 16px;
   height: 16px;

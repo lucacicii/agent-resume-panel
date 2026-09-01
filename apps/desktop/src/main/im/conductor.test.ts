@@ -3,18 +3,46 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../acp/store", () => ({
-  createAcpRecord: vi.fn(async (_home: string, projectPath: string, provider: string) => ({
-    id: `chat-${provider}`,
-    title: "test",
-    projectPath,
-    provider,
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-    messageCount: 0
-  })),
-  getAcpRecord: vi.fn(async () => undefined)
-}));
+vi.mock("../acp/store", () => {
+  const acpRecords = new Map<string, {
+    id: string;
+    title: string;
+    projectPath: string;
+    provider: string;
+    createdAt: number;
+    updatedAt: number;
+    messageCount: number;
+  }>();
+  return {
+    createAcpRecord: vi.fn(async (_home: string, projectPath: string, provider: string) => {
+      const record = {
+        id: `chat-${provider}-${acpRecords.size + 1}`,
+        title: "test",
+        projectPath,
+        provider,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        messageCount: 0
+      };
+      acpRecords.set(record.id, record);
+      return record;
+    }),
+    getAcpRecord: vi.fn(async (_home: string, chatId: string) => {
+      const existing = acpRecords.get(chatId);
+      if (existing) return existing;
+      if (!chatId) return undefined;
+      return {
+        id: chatId,
+        title: "test",
+        projectPath: process.cwd(),
+        provider: "claude",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        messageCount: 0
+      };
+    })
+  };
+});
 
 vi.mock("@agent-resume/core", async () => {
   const actual = await vi.importActual<typeof import("@agent-resume/core")>("@agent-resume/core");
@@ -26,6 +54,7 @@ vi.mock("@agent-resume/core", async () => {
 });
 
 import { desktopDbPath, ensureDesktopDbSchema } from "@agent-resume/core";
+import { createAcpRecord } from "../acp/store";
 import { ImConductor, parseDispatchBlocks, resolveDispatchTarget } from "./conductor";
 import { ImStore } from "./store";
 
@@ -795,5 +824,141 @@ Implement the search indexing algorithm as designed.
     expect(msg?.routingTip).toBe("desktop.im.routingUnmatchedTip");
     expect(msg?.routingTimedOut).toBeUndefined();
     expect(emit).toHaveBeenCalledWith(expect.objectContaining({ type: "messageUpdate" }));
+  });
+
+  it("reuses one ACP session per role and sends incremental prompts after bootstrap", async () => {
+    const store = await createStore();
+    const project = await store.createProject("Reuse session");
+    await store.setLocalPath(project.projectId, process.cwd());
+    const room = await store.getRoom(project.projectId);
+    const pm = room.members.find((member) => member.templateId === "role_product_manager")!;
+    const connect = vi.fn(async () => undefined);
+    const prompt = vi.fn(async (_chatId: string, _text: string, _images?: any) => undefined);
+    const conductor = new ImConductor(store, () => undefined, connect, prompt);
+    const createdBefore = (createAcpRecord as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    await conductor.postMessage({
+      projectId: project.projectId,
+      body: "first question",
+      quoteIds: [],
+      mentionRoleIds: [pm.memberId]
+    });
+    await vi.waitFor(() => expect(prompt).toHaveBeenCalledTimes(1));
+    expect(prompt.mock.calls[0]?.[1]).toContain("[Role persona]");
+    expect(createAcpRecord).toHaveBeenCalledTimes(createdBefore + 1);
+
+    await conductor.postMessage({
+      projectId: project.projectId,
+      body: "second question",
+      quoteIds: [],
+      mentionRoleIds: [pm.memberId]
+    });
+    await vi.waitFor(() => expect(prompt).toHaveBeenCalledTimes(2));
+    expect(prompt.mock.calls[1]?.[1]).toBe("second question");
+    expect(prompt.mock.calls[1]?.[1]).not.toContain("[Role persona]");
+    expect(createAcpRecord).toHaveBeenCalledTimes(createdBefore + 1);
+  });
+
+  it("follow-up reuses the same ACP session and sends only the new question", async () => {
+    const store = await createStore();
+    const project = await store.createProject("Follow up");
+    await store.setLocalPath(project.projectId, process.cwd());
+    const room = await store.getRoom(project.projectId);
+    const pm = room.members.find((member) => member.templateId === "role_product_manager")!;
+    const connect = vi.fn(async () => undefined);
+    const prompt = vi.fn(async (_chatId: string, _text: string, _images?: any) => undefined);
+    const conductor = new ImConductor(store, () => undefined, connect, prompt);
+    const createdBefore = (createAcpRecord as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    const first = await conductor.postMessage({
+      projectId: project.projectId,
+      body: "plan this",
+      quoteIds: [],
+      mentionRoleIds: [pm.memberId]
+    });
+    await vi.waitFor(() => expect(prompt).toHaveBeenCalledTimes(1));
+    const reply = await store.insertMessage({
+      projectId: project.projectId,
+      kind: "role.say",
+      authorMemberId: pm.memberId,
+      authorLabel: pm.name,
+      body: "Here is the plan",
+      jobId: first.job?.jobId,
+      threadId: first.job?.threadId || first.message.threadId
+    });
+
+    const follow = await conductor.postMessage({
+      projectId: project.projectId,
+      body: "add more detail",
+      quoteIds: [],
+      mentionRoleIds: [],
+      followUpToMessageId: reply.messageId
+    });
+    await vi.waitFor(() => expect(prompt).toHaveBeenCalledTimes(2));
+    expect(follow.message.mentionRoleIds).toEqual([pm.memberId]);
+    expect(follow.message.threadId).toBe(reply.threadId);
+    expect(prompt.mock.calls[1]?.[1]).toBe("add more detail");
+    expect(createAcpRecord).toHaveBeenCalledTimes(createdBefore + 1);
+  });
+
+  it("resumes an interrupted job on the existing ACP session without a bootstrap prompt", async () => {
+    const store = await createStore();
+    const project = await store.createProject("Resume incremental");
+    await store.setLocalPath(project.projectId, process.cwd());
+    const room = await store.getRoom(project.projectId);
+    const pm = room.members.find((member) => member.templateId === "role_product_manager")!;
+    const connect = vi.fn(async () => undefined);
+    const prompt = vi.fn(async (_chatId: string, _text: string, _images?: any) => undefined);
+    const conductor = new ImConductor(store, () => undefined, connect, prompt);
+    const createdBefore = (createAcpRecord as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    const job = await store.createJob({
+      projectId: project.projectId,
+      memberId: pm.memberId,
+      messageId: null,
+      brief: { persona: pm.persona, instruction: "Write the full plan", cwd: process.cwd(), quotes: [], knowledge: [] },
+      status: "cancelled",
+      threadId: "thread-resume"
+    });
+    await store.updateJob(job.jobId, { acpChatId: "chat-resume-live", finished: true });
+    await store.insertMessage({
+      projectId: project.projectId,
+      kind: "role.say",
+      authorMemberId: pm.memberId,
+      authorLabel: pm.name,
+      body: "Step 1 is done.",
+      jobId: job.jobId,
+      threadId: "thread-resume"
+    });
+
+    const resumed = await conductor.resumeJob(job.jobId);
+    expect(resumed.job.threadId).toBe("thread-resume");
+    await vi.waitFor(() => expect(prompt).toHaveBeenCalled(), { timeout: 3000 });
+    expect(prompt.mock.calls[0]?.[1]).toContain("Interrupted previous attempt");
+    expect(prompt.mock.calls[0]?.[1]).not.toContain("[Role persona]");
+    expect(createAcpRecord).toHaveBeenCalledTimes(createdBefore);
+  });
+
+  it("falls back to a full brief when a reused ACP session is rebuilt", async () => {
+    const store = await createStore();
+    const project = await store.createProject("Rebuilt session");
+    await store.setLocalPath(project.projectId, process.cwd());
+    const room = await store.getRoom(project.projectId);
+    const pm = room.members.find((member) => member.templateId === "role_product_manager")!;
+    await store.setMemberAcpChatId(pm.memberId, "chat-rebuilt");
+    const connect = vi.fn(async () => ({ rebuilt: true }));
+    const prompt = vi.fn(async (_chatId: string, _text: string, _images?: any) => undefined);
+    const conductor = new ImConductor(store, () => undefined, connect, prompt);
+
+    await conductor.postMessage({
+      projectId: project.projectId,
+      body: "continue after crash",
+      quoteIds: [],
+      mentionRoleIds: [pm.memberId]
+    });
+    await vi.waitFor(() => expect(prompt).toHaveBeenCalled());
+    expect(prompt.mock.calls[0]?.[1]).toContain("[Role persona]");
+    const messages = await store.listMessages(project.projectId);
+    expect(messages.some((item) => item.kind === "system" && item.body === "desktop.im.sessionRebuilt")).toBe(true);
   });
 });

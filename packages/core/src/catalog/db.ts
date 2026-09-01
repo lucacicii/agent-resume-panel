@@ -12,6 +12,7 @@ import {
   IM_SMART_ROUTING_MIGRATION_SQL,
   IM_ROLE_THOUGHT_LEVEL_MIGRATION_SQL,
   IM_SELECTION_ACTION_MODEL_MIGRATION_SQL,
+  IM_THREAD_MIGRATION_SQL,
   IM_TOOLS_MIGRATION_SQL,
   SYNC_STATE_DESKTOP_MIGRATION_SQL
 } from "./desktopSchema";
@@ -121,6 +122,7 @@ export async function ensureDesktopDbSchema(desktopDb: string): Promise<void> {
     await runIdempotentStatements(target, IM_MESSAGE_THINKING_MIGRATION_SQL);
     await runIdempotentStatements(target, IM_MESSAGE_IMAGES_MIGRATION_SQL);
     await runIdempotentStatements(target, IM_SELECTION_ACTION_MODEL_MIGRATION_SQL);
+    await runIdempotentStatements(target, IM_THREAD_MIGRATION_SQL);
     verifiedDesktopDbPaths.add(target);
   })().finally(() => {
     desktopDbInFlight.delete(target);

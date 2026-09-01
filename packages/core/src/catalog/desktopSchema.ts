@@ -52,6 +52,11 @@ ALTER TABLE im_messages ADD COLUMN routing_tip TEXT;
 ALTER TABLE im_messages ADD COLUMN routing_timed_out INTEGER DEFAULT 0;
 `;
 
+export const IM_THREAD_MIGRATION_SQL = `
+ALTER TABLE im_messages ADD COLUMN thread_id TEXT;
+ALTER TABLE im_jobs ADD COLUMN thread_id TEXT;
+`;
+
 export const DESKTOP_ONLY_SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS gtd_ai_audit (
   id TEXT PRIMARY KEY,
@@ -362,6 +367,7 @@ CREATE TABLE IF NOT EXISTS im_messages (
   quote_ids_json TEXT NOT NULL DEFAULT '[]',
   mention_role_ids_json TEXT NOT NULL DEFAULT '[]',
   job_id TEXT,
+  thread_id TEXT,
   created_at_ms INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_im_messages_project ON im_messages(project_id, created_at_ms);
@@ -377,6 +383,7 @@ CREATE TABLE IF NOT EXISTS im_jobs (
   error TEXT,
   files_json TEXT NOT NULL DEFAULT '[]',
   permission_json TEXT,
+  thread_id TEXT,
   created_at_ms INTEGER NOT NULL,
   updated_at_ms INTEGER NOT NULL,
   finished_at_ms INTEGER

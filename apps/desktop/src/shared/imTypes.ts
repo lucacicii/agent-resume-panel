@@ -205,6 +205,7 @@ export interface ImMessage {
   quotes: ImQuotedMessage[];
   mentionRoleIds: string[];
   jobId: string | null;
+  threadId?: string;
   createdAtMs: number;
 }
 
@@ -282,6 +283,7 @@ export interface ImJob {
   error: string | null;
   filesChanged: string[];
   permission: ImPermissionRequest | null;
+  threadId?: string;
   createdAtMs: number;
   updatedAtMs: number;
   finishedAtMs: number | null;

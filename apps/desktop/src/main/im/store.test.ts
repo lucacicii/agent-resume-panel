@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { desktopDbPath, ensureDesktopDbSchema } from "@agent-resume/core";
-import { buildDispatchPrompt, fillSelectionPrompt, ImStore } from "./store";
+import { buildDispatchPrompt, buildIncrementalPrompt, fillSelectionPrompt, ImStore } from "./store";
 
 const homes: string[] = [];
 
@@ -149,6 +149,37 @@ describe("ImStore", () => {
     expect(prompt).toContain("https://example.com/docs");
     expect(prompt).toContain("fetch the page yourself");
     expect(prompt).toContain("You may list and read the entire tree");
+  });
+
+  it("builds an incremental prompt without repeating persona or knowledge", () => {
+    const followUp = buildIncrementalPrompt({
+      persona: "You are Developer.",
+      instruction: "add more detail",
+      cwd: "/tmp/app",
+      quotes: [],
+      knowledge: []
+    });
+    expect(followUp).toBe("add more detail");
+    expect(followUp).not.toContain("[Role persona]");
+
+    const quoted = buildIncrementalPrompt({
+      persona: "You are Developer.",
+      instruction: "rewrite this",
+      cwd: "/tmp/app",
+      quotes: [{
+        messageId: "m1",
+        authorLabel: "You",
+        body: "old plan",
+        createdAtMs: 1,
+        truncated: false
+      }],
+      knowledge: []
+    });
+    expect(quoted).toContain("[Quoted messages]");
+    expect(quoted).toContain("old plan");
+    expect(quoted).toContain("rewrite this");
+    expect(quoted).not.toContain("[Role persona]");
+    expect(quoted).not.toContain("[Background knowledge]");
   });
 
   it("rejects non-http knowledge links", async () => {
