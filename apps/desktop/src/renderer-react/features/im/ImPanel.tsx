@@ -8,6 +8,8 @@ import { useImProjectTools } from "./ImProjectTools";
 import { buildTimelineNodes } from "./timelineModel";
 import { createPortal } from "react-dom";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type JSX, type MouseEvent as ReactMouseEvent, type ReactPortal, type UIEvent } from "react";
+import type { AgentToolDescriptor } from "@agent-resume/core";
+import { type AskToolPrefs } from "../../components/ToolSettingsPopover";
 import { desktopApi } from "../../bridge";
 import { notifyDesktop } from "../../components/Notifications";
 import { useI18n } from "../../i18n";
@@ -51,6 +53,34 @@ const SIDEBAR_COLLAPSED_KEY = "im-sidebar-collapsed";
 const SIDEBAR_WIDTH_KEY = "im-sidebar-width";
 const SELECTED_PROJECT_KEY = "im-selected-project";
 const RIGHT_SIDEBAR_OPEN_KEY = "im-right-sidebar-open";
+const IM_PROJECT_TOOLS_KEY_PREFIX = "im-project-tools:";
+
+function imProjectToolsKey(projectId: string): string {
+  return `${IM_PROJECT_TOOLS_KEY_PREFIX}${projectId}`;
+}
+
+function readImProjectTools(projectId: string): AskToolPrefs {
+  try {
+    const raw = localStorage.getItem(imProjectToolsKey(projectId));
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<AskToolPrefs>;
+      if (parsed.mode === "auto" || parsed.mode === "custom" || parsed.mode === "off") {
+        return { mode: parsed.mode, enabledTools: Array.isArray(parsed.enabledTools) ? parsed.enabledTools : [] };
+      }
+    }
+  } catch {
+    // fallback
+  }
+  return { mode: "auto", enabledTools: [] };
+}
+
+function writeImProjectTools(projectId: string, prefs: AskToolPrefs): void {
+  try {
+    localStorage.setItem(imProjectToolsKey(projectId), JSON.stringify(prefs));
+  } catch {
+    // ignore
+  }
+}
 type TranscriptItem =
   | { kind: "message"; message: ImMessage }
   | { kind: "pending"; job: ImJob };
@@ -113,6 +143,8 @@ export function ImPanel(): ReactPortal | null {
   const [expandedThinking, setExpandedThinking] = useState<Record<string, boolean>>({});
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const [previewModalUrl, setPreviewModalUrl] = useState<string | null>(null);
+  const [toolPrefs, setToolPrefs] = useState<AskToolPrefs>(() => readImProjectTools(selectedProjectId));
+  const [toolCatalog, setToolCatalog] = useState<AgentToolDescriptor[] | null>(null);
   const transcriptVirtualizerRef = useRef<VariableVirtualListHandle | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const newChatInputRef = useRef<HTMLInputElement | null>(null);
@@ -212,6 +244,20 @@ export function ImPanel(): ReactPortal | null {
     setHasNewBelow(false);
     prevMsgCount.current = 0;
   }, [selectedProjectId]);
+
+  useEffect(() => {
+    if (!selectedProjectId) return;
+    setToolPrefs(readImProjectTools(selectedProjectId));
+  }, [selectedProjectId]);
+
+  useEffect(() => {
+    if (toolCatalog) return;
+    const api = desktopApi();
+    if (typeof api.listAgentTools !== "function") return;
+    void api.listAgentTools({ projectPath: projectRoot || undefined })
+      .then((list) => setToolCatalog(list))
+      .catch(() => setToolCatalog([]));
+  }, [toolCatalog, projectRoot]);
 
   useEffect(() => {
     const stop = desktopApi().onImEvent((event: ImEvent) => {
@@ -1247,6 +1293,13 @@ export function ImPanel(): ReactPortal | null {
                 pendingImages={pendingImages}
                 sending={sending}
                 mentionOpen={mentionOpen}
+                toolPrefs={toolPrefs}
+                toolCatalog={toolCatalog}
+                projectPath={projectRoot}
+                onToolPrefsChange={(next) => {
+                  setToolPrefs(next);
+                  if (selectedProjectId) writeImProjectTools(selectedProjectId, next);
+                }}
                 setMentionOpen={setMentionOpen}
                 onDraftChange={setDraft}
                 onQuotesChange={setQuotes}

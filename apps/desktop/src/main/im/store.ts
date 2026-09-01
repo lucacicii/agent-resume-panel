@@ -560,7 +560,8 @@ export async function ensureArpDir(localPath: string): Promise<string> {
 
 export function buildDispatchPrompt(
   brief: ImJobBrief,
-  callableMembers: Array<{ templateId: string; name: string; persona: string }> = []
+  callableMembers: Array<{ templateId: string; name: string; persona: string }> = [],
+  skillsPrompt = ""
 ): string {
   const quoteBlock = brief.quotes.length ? formatQuoteBlock(brief.quotes) : "(none)";
 
@@ -577,6 +578,14 @@ export function buildDispatchPrompt(
       ].join("\n")
     : "";
 
+  const skillsBlock = skillsPrompt.trim()
+    ? [
+        "[Available Skills]",
+        "You have access to the following skills and specialized instructions:",
+        skillsPrompt.trim()
+      ].join("\n")
+    : "";
+
   return [
     "[Role persona]",
     brief.persona.trim() || BUILTIN_ROLES.find((role) => role.templateId === "role_developer")?.persona || "",
@@ -587,6 +596,7 @@ export function buildDispatchPrompt(
     "[Quoted messages]",
     quoteBlock,
     ...(downstreamBlock ? ["", downstreamBlock] : []),
+    ...(skillsBlock ? ["", skillsBlock] : []),
     "",
     "[User instruction]",
     brief.instruction.trim(),

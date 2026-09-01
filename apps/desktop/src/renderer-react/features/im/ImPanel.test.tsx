@@ -117,6 +117,27 @@ const messages = {
   "desktop.im.addText": "Add text",
   "desktop.im.addLink": "Add link",
   "desktop.im.addImage": "Add image",
+  "desktop.agent.toolsOn": "Tools on",
+  "desktop.agent.toolsOffTitle": "Tools off",
+  "desktop.agent.toolsToggle": "Tools toggle",
+  "desktop.agent.toolsDialogTitle": "Tools",
+  "desktop.agent.toolsModeTitle": "Tool mode",
+  "desktop.agent.toolsMode.auto": "Auto",
+  "desktop.agent.toolsMode.custom": "Custom",
+  "desktop.agent.toolsMode.off": "Off",
+  "desktop.agent.toolsSelectAll": "All",
+  "desktop.agent.toolsClearAll": "None",
+  "desktop.agent.toolsCustomEmpty": "No tools selected",
+  "desktop.agent.toolsFoot": "Auto lets the assistant choose",
+  "desktop.agent.toolCategory.notes": "Notes",
+  "desktop.agent.toolCategory.reports": "Reports",
+  "desktop.agent.toolCategory.sessions": "Sessions",
+  "desktop.agent.toolCategory.projects": "Projects",
+  "desktop.agent.toolCategory.link_graph": "Link graph",
+  "desktop.agent.toolCategory.tags": "Tags",
+  "desktop.agent.toolCategory.skills": "Skills",
+  "desktop.agent.toolCategory.browser": "Browser",
+  "desktop.agent.toolCategory.mcp": "MCP",
   "desktop.im.removeKnowledge": "Remove"
 };
 
@@ -199,6 +220,7 @@ function renderIm() {
     workbenchListScripts: vi.fn(async () => ({ packages: [], truncated: false, scannedDirs: 0 })),
     workbenchSearchText: vi.fn(async () => ({ matches: [], truncated: false, filesSearched: 0, engine: "node" })),
     workbenchSearchTextCancel: vi.fn(async () => ({ ok: true })),
+    listAgentTools: vi.fn(async () => []),
     terminalGitStatus: vi.fn(async () => ({
       isRepo: true,
       root: created.localPath,
@@ -1478,5 +1500,32 @@ Build the user service endpoints.
     expect(await screen.findByText("Interrupted before finishing. Saved draft is kept.")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Ask again" })).toBeNull();
     expect(screen.getAllByRole("button", { name: "Continue" }).length).toBeGreaterThan(0);
+  });
+
+  it("opens the tools popover in composer and displays tool mode options", async () => {
+    const currentProject = project();
+    const currentRoom = roomFor(currentProject);
+    const api = renderIm();
+    (api.imGetRoom as ReturnType<typeof vi.fn>).mockResolvedValue(currentRoom);
+    (api.listAgentTools as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { name: "note_list", description: "List notes", category: "notes" },
+      { name: "skill:dividend-cows", description: "Dividend stocks", category: "skills", kind: "skill" }
+    ]);
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+
+    const toolsBtn = await screen.findByRole("button", { name: "Tools toggle" });
+    expect(toolsBtn).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(toolsBtn);
+    });
+
+    expect(await screen.findByRole("dialog", { name: "Tools" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Auto" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Custom" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Off" })).toBeTruthy();
   });
 });

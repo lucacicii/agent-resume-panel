@@ -20,6 +20,7 @@ import type {
   RunWeeklyDigestResult,
   AgentSessionSyncResult,
   AgentToolDescriptor,
+  SkillDescriptor,
   GtdEvidence,
   GtdStatus,
   WorkbenchSessionFolder,
@@ -1107,8 +1108,12 @@ export interface DesktopApi {
     enabledTools?: string[];
     projectPath?: string;
   }): Promise<AgentChatResult>;
-  /** Static catalog of Ask chat tools (for the tools popover checklist). */
-  listAgentTools(): Promise<AgentToolDescriptor[]>;
+  /** Static catalog of Ask chat tools and discovered skills/mcp tools. */
+  listAgentTools(args?: { projectPath?: string }): Promise<AgentToolDescriptor[]>;
+  /** Discover available skills for workspace / user. */
+  listSkills(args?: { projectPath?: string }): Promise<SkillDescriptor[]>;
+  /** Read full content of a SKILL.md. */
+  readSkill(args: { location: string }): Promise<string>;
   cancelAskAgent(): Promise<{ ok: boolean }>;
   respondToolApproval(args: { toolCallId: string; approved: boolean }): Promise<{ ok: boolean }>;
   listAgentChat(args?: { limit?: number; threadId?: string }): Promise<{
@@ -1838,7 +1843,9 @@ const api: DesktopApi = {
   },
   searchReports: (args) => ipcRenderer.invoke("report:search", args),
   askAgent: (args) => ipcRenderer.invoke("agent:ask", args),
-  listAgentTools: () => ipcRenderer.invoke("agent:listTools"),
+  listAgentTools: (args) => ipcRenderer.invoke("agent:listTools", args),
+  listSkills: (args) => ipcRenderer.invoke("skills:list", args),
+  readSkill: (args) => ipcRenderer.invoke("skills:read", args),
   cancelAskAgent: () => ipcRenderer.invoke("agent:cancelAsk"),
   respondToolApproval: (args) => ipcRenderer.invoke("agent:respondToolApproval", args),
   listAgentChat: (args) => ipcRenderer.invoke("agent:listAgentChat", args),

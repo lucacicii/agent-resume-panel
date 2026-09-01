@@ -783,9 +783,23 @@ export type { NoteToolContext, NoteMcpResult, NoteRelationshipIndex } from "./mc
 export type { AgentMcpContext } from "./mcp/server";
 export {
   AGENT_TOOL_CATALOG,
-  AGENT_TOOL_NAMES
+  AGENT_TOOL_NAMES,
+  skillToToolDescriptor
 } from "./mcp/toolCatalog";
 export type { AgentToolCategory, AgentToolDescriptor } from "./mcp/toolCatalog";
+export {
+  discoverSkills,
+  parseSkillFile,
+  parseSkillFrontmatter,
+  parseSkillMarkdownFallback,
+  readSkillContent,
+  formatSkillsCatalogPrompt
+} from "./skills";
+export type {
+  SkillDescriptor,
+  SkillScope,
+  DiscoverSkillsOptions
+} from "./skills";
 export {
   handleSessionSearch,
   handleSessionList,

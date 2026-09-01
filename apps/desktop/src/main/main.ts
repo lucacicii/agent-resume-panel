@@ -5,6 +5,10 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
   AGENT_TOOL_CATALOG,
+  type AgentToolDescriptor,
+  discoverSkills,
+  readSkillContent,
+  skillToToolDescriptor,
   runAgentChat,
   clearAgentMessages,
   clearReportJobsByStatus,
@@ -166,6 +170,7 @@ import {
   disposeBrowserController,
   disposeBrowserMcpServer,
   ensureBrowserMcpReadyForExternal,
+  listBrowserToolDescriptors,
   registerBrowserIpc,
   syncBrowserExternalMcpRegistration
 } from "./browser";
@@ -2736,7 +2741,36 @@ function registerIpc(): void {
     }
   );
 
-  ipcMain.handle("agent:listTools", () => AGENT_TOOL_CATALOG);
+  ipcMain.handle("agent:listTools", async (_event, args?: { projectPath?: string }) => {
+    const coreTools = [...AGENT_TOOL_CATALOG];
+    try {
+      const skills = await discoverSkills({ projectPath: args?.projectPath });
+      const skillTools = skills.map(skillToToolDescriptor);
+
+      const settings = await loadSettings();
+      const browserEnabled = settings.desktop?.browser?.enabled !== false;
+      const browserTools: AgentToolDescriptor[] = browserEnabled
+        ? listBrowserToolDescriptors().map((tool) => ({
+            name: tool.name,
+            description: tool.description,
+            category: "browser" as const,
+            kind: "browser_mcp" as const
+          }))
+        : [];
+
+      return [...coreTools, ...browserTools, ...skillTools];
+    } catch {
+      return coreTools;
+    }
+  });
+
+  ipcMain.handle("skills:list", async (_event, args?: { projectPath?: string }) => {
+    return discoverSkills({ projectPath: args?.projectPath });
+  });
+
+  ipcMain.handle("skills:read", async (_event, args: { location: string }) => {
+    return readSkillContent(args.location);
+  });
 
   ipcMain.handle("agent:cancelAsk", async () => {
     activeAskAbort?.abort();

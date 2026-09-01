@@ -1,7 +1,15 @@
 import type { BrowserWindow } from "electron";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { desktopDbPath, effectivePanelHome, expandHome, loadSettings, type PanelSettings } from "@agent-resume/core";
+import {
+  desktopDbPath,
+  discoverSkills,
+  effectivePanelHome,
+  expandHome,
+  formatSkillsCatalogPrompt,
+  loadSettings,
+  type PanelSettings
+} from "@agent-resume/core";
 import { createAcpRecord, getAcpRecord } from "../acp/store";
 import type { AcpAgentProvider, AcpStreamEvent, AcpToolCallInfo } from "../acp/types";
 import { routeMessageIntent } from "./intentRouter";
@@ -830,9 +838,16 @@ export class ImConductor {
       });
       this.emit({ type: "message", projectId: job.projectId, message: notice });
     }
+    let skillsPrompt = "";
+    try {
+      const skills = await discoverSkills({ projectPath: cwd, panelHome });
+      skillsPrompt = formatSkillsCatalogPrompt(skills);
+    } catch {
+      // ignore
+    }
     const prompt = useIncremental
       ? buildIncrementalPrompt(job.brief)
-      : buildDispatchPrompt(job.brief, callableMembers);
+      : buildDispatchPrompt(job.brief, callableMembers, skillsPrompt);
     const imagesToPass: Array<{ mimeType: string; fileName: string; data: string }> = [];
     if (job.brief.images?.length) {
       for (const img of job.brief.images) {

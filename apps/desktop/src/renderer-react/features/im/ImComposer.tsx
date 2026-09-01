@@ -11,7 +11,9 @@ import {
   type KeyboardEvent,
   type RefObject
 } from "react";
+import type { AgentToolDescriptor } from "@agent-resume/core";
 import { ThemeIcon } from "../../components/ThemeIcon";
+import { ToolSettingsPopover, type AskToolPrefs } from "../../components/ToolSettingsPopover";
 import type { ImMember, ImMessage, ImQuotedMessage } from "../../../shared/imTypes";
 import {
   ALLOWED_IMAGE_TYPES,
@@ -34,6 +36,10 @@ export interface ImComposerProps {
   pendingImages: PendingImage[];
   sending: boolean;
   mentionOpen: boolean;
+  toolPrefs?: AskToolPrefs;
+  toolCatalog?: AgentToolDescriptor[] | null;
+  projectPath?: string | null;
+  onToolPrefsChange?: (prefs: AskToolPrefs) => void;
   setMentionOpen: (val: boolean | ((curr: boolean) => boolean)) => void;
   onDraftChange: (text: string) => void;
   onQuotesChange: (quotes: ImQuotedMessage[] | ((curr: ImQuotedMessage[]) => ImQuotedMessage[])) => void;
@@ -57,6 +63,10 @@ export const ImComposer = memo(function ImComposer({
   pendingImages,
   sending,
   mentionOpen,
+  toolPrefs = { mode: "auto", enabledTools: [] },
+  toolCatalog = null,
+  projectPath = null,
+  onToolPrefsChange,
   setMentionOpen,
   onDraftChange,
   onQuotesChange,
@@ -71,8 +81,37 @@ export const ImComposer = memo(function ImComposer({
   t
 }: ImComposerProps) {
   const [mentionIndex, setMentionIndex] = useState(0);
+  const [toolsPopoverOpen, setToolsPopoverOpen] = useState(false);
   const mentionListRef = useRef<HTMLDivElement | null>(null);
+  const toolsPopoverRef = useRef<HTMLSpanElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
+
+  const toolsEffectiveOn =
+    toolPrefs.mode === "auto" ||
+    (toolPrefs.mode === "custom" && toolPrefs.enabledTools.length > 0);
+
+  const visibleTools = useMemo(
+    () => (toolCatalog ? (projectPath ? toolCatalog : toolCatalog.filter((tool) => tool.category !== "link_graph")) : []),
+    [toolCatalog, projectPath]
+  );
+
+  useEffect(() => {
+    if (!toolsPopoverOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (toolsPopoverRef.current && !toolsPopoverRef.current.contains(event.target as Node)) {
+        setToolsPopoverOpen(false);
+      }
+    };
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") setToolsPopoverOpen(false);
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [toolsPopoverOpen]);
 
   const mentionQuery = useMemo(() => {
     const at = draft.lastIndexOf("@");
@@ -383,6 +422,30 @@ export const ImComposer = memo(function ImComposer({
           >
             <ThemeIcon name="at-sign" size={16} aria-hidden="true" />
           </button>
+          <span className="chat-tools-wrap" ref={toolsPopoverRef}>
+            <button
+              type="button"
+              className={`chat-tools-toggle${toolsEffectiveOn ? " active" : ""}`}
+              title={toolsEffectiveOn ? t("desktop.agent.toolsOn") : t("desktop.agent.toolsOffTitle")}
+              aria-label={t("desktop.agent.toolsToggle")}
+              aria-pressed={toolsEffectiveOn}
+              aria-expanded={toolsPopoverOpen}
+              aria-haspopup="dialog"
+              disabled={sending}
+              onClick={() => setToolsPopoverOpen((value) => !value)}
+            >
+              <ThemeIcon name="wrench" size={16} />
+            </button>
+            {toolsPopoverOpen && onToolPrefsChange && (
+              <ToolSettingsPopover
+                prefs={toolPrefs}
+                tools={visibleTools}
+                onPrefsChange={onToolPrefsChange}
+                onClose={() => setToolsPopoverOpen(false)}
+                t={t}
+              />
+            )}
+          </span>
           <span className="chat-compose-toolbar-spacer" />
           <button
             type="button"

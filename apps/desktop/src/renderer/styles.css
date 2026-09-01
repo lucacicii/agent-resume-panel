@@ -5658,6 +5658,8 @@ code {
 }
 
 .chat-compose {
+  position: relative;
+  z-index: 50;
   display: flex;
   padding: var(--space-3) var(--space-4) var(--space-4);
   background: var(--chat-compose-bg);
@@ -13711,16 +13713,17 @@ textarea.notes-editor-host:focus {
 .chat-tools-wrap {
   position: relative;
   display: inline-flex;
+  z-index: 100;
 }
 
 .chat-tools-popover {
-  --chat-tools-popover-width: 300px;
+  --chat-tools-popover-width: 320px;
   position: absolute;
-  /* Center the popover horizontally on the toggle button so it is not clipped by the sidebar. */
-  right: calc(var(--chat-tools-popover-width) / -2);
+  left: 0;
   bottom: calc(100% + var(--space-2));
-  z-index: 40;
+  z-index: 1000;
   width: var(--chat-tools-popover-width);
+  max-width: calc(100vw - 32px);
   max-height: min(70vh, 480px);
   display: flex;
   flex-direction: column;
@@ -17279,12 +17282,12 @@ html[data-window-mode="browser"] #react-chrome {
   cursor: default;
 }
 .im-main {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
   flex: 1 1 auto;
-  overflow: hidden;
 }
 .im-room-head {
   display: flex;
@@ -17805,6 +17808,7 @@ html[data-window-mode="browser"] #react-chrome {
 }
 .im-composer {
   position: relative;
+  z-index: 50;
 }
 .im-composer .im-pending-images {
   margin-bottom: 6px;
