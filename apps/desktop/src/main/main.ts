@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, screen, shell } from "electron";
+import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, powerMonitor, screen, shell } from "electron";
 import { existsSync, readFileSync } from "node:fs";
 import { constants } from "node:fs";
 import * as fs from "node:fs/promises";
@@ -899,15 +899,30 @@ function syncSessions(): Promise<AgentSessionSyncResult> {
   return sessionSyncInFlight;
 }
 
+function shouldScheduleBackgroundAnalysis(): boolean {
+  if (!mainWindow || mainWindow.isDestroyed()) return true;
+  if (mainWindow.isMinimized()) return false;
+  if (mainWindow.isFocused()) {
+    try {
+      return powerMonitor.getSystemIdleTime() >= 30;
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
+
 async function syncAndNotify(): Promise<AgentSessionSyncResult> {
   const result = await syncSessions();
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send("sessions:synced", result);
   }
-  scheduleSessionSummaryAuto(2_000);
-  scheduleSessionTranscriptIndexAuto(3_000);
-  scheduleSessionEmbeddingIndexAuto(4_000);
-  scheduleAutoTagging(5_000);
+  if (shouldScheduleBackgroundAnalysis()) {
+    scheduleSessionSummaryAuto(2_000);
+    scheduleSessionTranscriptIndexAuto(3_000);
+    scheduleSessionEmbeddingIndexAuto(4_000);
+    scheduleAutoTagging(5_000);
+  }
   return result;
 }
 
@@ -3368,68 +3383,80 @@ app.whenReady().then(async () => {
       error
     });
   }
-  // Rewrite any client configs still pointing at the old GUI Electron MCP entry.
-  try {
-    const settings = await loadSettings();
-    const launch = createExternalMcpLaunchConfig({
-      executablePath: process.execPath,
-      cliPath: resolveExternalMcpCliPath({
-        isPackaged: app.isPackaged,
-        resourcesPath: process.resourcesPath,
-        appPath: app.getAppPath()
-      }),
-      panelHome: resolvePanelHome(settings.panelHome)
-    });
-    const migrated = await migrateLegacyAgentResumeRegistrations(launch);
-    if (migrated.migrated.length > 0) {
-      console.log(`[agent-resume] Migrated MCP clients to headless CLI: ${migrated.migrated.join(", ")}`);
-    }
-    for (const failure of migrated.failed) {
-      void recordAppError({
-        source: "mcp-migrate",
-        message: `MCP migrate failed (${failure.target}): ${failure.error}`
-      });
-    }
-  } catch (error) {
-    void recordAppError({
-      source: "mcp-migrate",
-      message: "MCP legacy migration failed.",
-      error
-    });
-  }
-  // Publish browser MCP endpoint + register TUI/CLI stdio proxy when enabled.
-  try {
-    const settings = await loadSettings();
-    browserSettingsCache = settings.desktop?.browser || null;
-    await ensureBrowserMcpReadyForExternal(settings);
-    const browserMcp = await syncBrowserExternalMcpRegistration(settings);
-    if (browserMcp.registered.length) {
-      console.log(
-        `[agent-resume] Browser MCP registered for: ${browserMcp.registered.join(", ")}`
-      );
-    }
-    for (const failure of browserMcp.failed) {
-      void recordAppError({
-        source: "browser-mcp",
-        message: `Browser MCP sync failed (${failure.target}): ${failure.error}`
-      });
-    }
-  } catch (error) {
-    void recordAppError({
-      source: "browser-mcp",
-      message: "Browser MCP external startup failed.",
-      error
-    });
-  }
   createWindow();
-  initializeStandaloneNoteShortcut(await loadSettings());
-  await installApplicationMenu();
-  startDesktopNotesIndexer();
-  startSessionSummaryAuto();
-  startSessionTranscriptIndexAuto();
-  startSessionEmbeddingIndexAuto();
-  startAutoTaggingService();
-  await refreshMemorySchedulerFromSettings();
+
+  void (async () => {
+    try {
+      const settings = await loadSettings();
+      initializeStandaloneNoteShortcut(settings);
+      await installApplicationMenu();
+      startDesktopNotesIndexer();
+      startSessionSummaryAuto();
+      startSessionTranscriptIndexAuto();
+      startSessionEmbeddingIndexAuto();
+      startAutoTaggingService();
+      await refreshMemorySchedulerFromSettings();
+
+      // Rewrite any client configs still pointing at the old GUI Electron MCP entry in background.
+      try {
+        const launch = createExternalMcpLaunchConfig({
+          executablePath: process.execPath,
+          cliPath: resolveExternalMcpCliPath({
+            isPackaged: app.isPackaged,
+            resourcesPath: process.resourcesPath,
+            appPath: app.getAppPath()
+          }),
+          panelHome: resolvePanelHome(settings.panelHome)
+        });
+        const migrated = await migrateLegacyAgentResumeRegistrations(launch);
+        if (migrated.migrated.length > 0) {
+          console.log(`[agent-resume] Migrated MCP clients to headless CLI: ${migrated.migrated.join(", ")}`);
+        }
+        for (const failure of migrated.failed) {
+          void recordAppError({
+            source: "mcp-migrate",
+            message: `MCP migrate failed (${failure.target}): ${failure.error}`
+          });
+        }
+      } catch (error) {
+        void recordAppError({
+          source: "mcp-migrate",
+          message: "MCP legacy migration failed.",
+          error
+        });
+      }
+
+      // Publish browser MCP endpoint + register TUI/CLI stdio proxy when enabled.
+      try {
+        browserSettingsCache = settings.desktop?.browser || null;
+        await ensureBrowserMcpReadyForExternal(settings);
+        const browserMcp = await syncBrowserExternalMcpRegistration(settings);
+        if (browserMcp.registered.length) {
+          console.log(
+            `[agent-resume] Browser MCP registered for: ${browserMcp.registered.join(", ")}`
+          );
+        }
+        for (const failure of browserMcp.failed) {
+          void recordAppError({
+            source: "browser-mcp",
+            message: `Browser MCP sync failed (${failure.target}): ${failure.error}`
+          });
+        }
+      } catch (error) {
+        void recordAppError({
+          source: "browser-mcp",
+          message: "Browser MCP external startup failed.",
+          error
+        });
+      }
+    } catch (error) {
+      void recordAppError({
+        source: "startup-background",
+        message: "Background startup initialization failed.",
+        error
+      });
+    }
+  })();
   app.on("activate", () => {
     if (!mainWindow || mainWindow.isDestroyed()) {
       // Invariant fallback: settings must not outlive main

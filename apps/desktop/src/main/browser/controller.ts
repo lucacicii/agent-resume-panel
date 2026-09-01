@@ -428,9 +428,14 @@ export class BrowserController {
     const session = this.sessions.get(browserId);
     if (!session) return;
     if (session.state.surface.kind !== "window") return;
-    try {
-      this.setSurface(browserId, "workbench");
-    } catch {
+    const hasAcpOwner = session.state.owners.some((o) => o.kind === "acp");
+    if (hasAcpOwner) {
+      try {
+        this.setSurface(browserId, "workbench");
+      } catch {
+        this.destroy(browserId);
+      }
+    } else {
       this.destroy(browserId);
     }
   }

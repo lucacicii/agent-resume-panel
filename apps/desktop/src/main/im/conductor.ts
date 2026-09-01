@@ -444,11 +444,14 @@ export class ImConductor {
 
     if (event.type === "assistantDelta") {
       const filesChanged = collectFiles(event.toolCalls, current.filesChanged);
-      const job = await this.store.updateJob(jobId, {
-        status: "running",
-        filesChanged
-      });
-      this.emit({ type: "job", projectId: job.projectId, job });
+      const filesCountChanged = filesChanged.length !== current.filesChanged.length;
+      if (filesCountChanged || current.status !== "running") {
+        const job = await this.store.updateJob(jobId, {
+          status: "running",
+          filesChanged
+        });
+        this.emit({ type: "job", projectId: job.projectId, job });
+      }
 
       const text = event.text || "";
       const thinking = event.thinking || "";
@@ -1053,9 +1056,33 @@ export class ImConductor {
   }
 }
 
+const pendingImEvents = new Map<string, { getMainWindow: () => BrowserWindow | null; event: ImEvent; timer: ReturnType<typeof setTimeout> }>();
+
 export function emitImEvent(getMainWindow: () => BrowserWindow | null, event: ImEvent): void {
   const win = getMainWindow();
-  if (win && !win.isDestroyed()) {
-    win.webContents.send("im:event", event);
+  if (!win || win.isDestroyed()) return;
+
+  // Coalesce cumulative streaming updates per message. This keeps the renderer
+  // at roughly one IPC update per frame without delaying discrete state events.
+  if (event.type === "messageUpdate" && event.message.streaming) {
+    const key = `${event.projectId}:${event.message.messageId}`;
+    const existing = pendingImEvents.get(key);
+    if (existing) {
+      existing.event = event;
+      return;
+    }
+    const timer = setTimeout(() => {
+      const pending = pendingImEvents.get(key);
+      if (!pending) return;
+      pendingImEvents.delete(key);
+      const target = pending.getMainWindow();
+      if (target && !target.isDestroyed()) {
+        target.webContents.send("im:event", pending.event);
+      }
+    }, 16);
+    pendingImEvents.set(key, { getMainWindow, event, timer });
+    return;
   }
+
+  win.webContents.send("im:event", event);
 }

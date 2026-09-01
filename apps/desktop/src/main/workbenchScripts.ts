@@ -581,10 +581,7 @@ function sortPackages(packages: ScriptPackage[]): ScriptPackage[] {
   });
 }
 
-/**
- * Discover runnable scripts under a project root (static manifest parsing only).
- */
-export function listWorkbenchScripts(
+function scanScriptsUnder(
   rootPath: string,
   options?: ScriptScanOptions
 ): ListScriptsResult {
@@ -652,6 +649,88 @@ export function listWorkbenchScripts(
   };
 }
 
+async function scanScriptsUnderAsync(
+  rootPath: string,
+  options?: ScriptScanOptions
+): Promise<ListScriptsResult> {
+  const projectRoot = resolveCwd(rootPath);
+  const { maxDepth, maxPackages, ignoreDirs } = normalizeScriptScanOptions(options);
+
+  const packages: ScriptPackage[] = [];
+  let truncated = false;
+  let scannedDirs = 0;
+
+  type QueueItem = { dir: string; depth: number };
+  const queue: QueueItem[] = [{ dir: projectRoot, depth: 0 }];
+  const visited = new Set<string>();
+
+  while (queue.length) {
+    const item = queue.shift();
+    if (!item) break;
+    let realDir: string;
+    try {
+      realDir = await fs.promises.realpath(item.dir);
+    } catch {
+      realDir = path.resolve(item.dir);
+    }
+    if (visited.has(realDir)) continue;
+    visited.add(realDir);
+    scannedDirs += 1;
+
+    if (packages.length >= maxPackages) {
+      truncated = true;
+      break;
+    }
+
+    const found = discoverPackagesInDir(projectRoot, item.dir);
+    for (const pkg of found) {
+      if (packages.length >= maxPackages) {
+        truncated = true;
+        break;
+      }
+      packages.push(pkg);
+    }
+
+    if (item.depth >= maxDepth) continue;
+
+    let entries: fs.Dirent[];
+    try {
+      entries = await fs.promises.readdir(item.dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const name = entry.name;
+      if (name === "." || name === "..") continue;
+      if (name.startsWith(".")) continue;
+      if (ignoreDirs.has(name.toLowerCase())) continue;
+      queue.push({ dir: path.join(item.dir, name), depth: item.depth + 1 });
+    }
+  }
+
+  return {
+    packages: sortPackages(packages),
+    truncated,
+    scannedDirs
+  };
+}
+
+export function listWorkbenchScripts(
+  rootPath: string,
+  options?: ScriptScanOptions
+): ListScriptsResult {
+  return scanScriptsUnder(rootPath, options);
+}
+
+export async function listWorkbenchScriptsAsync(
+  rootPath: string,
+  options?: ScriptScanOptions
+): Promise<ListScriptsResult> {
+  return scanScriptsUnderAsync(rootPath, options);
+}
+
 export function registerWorkbenchScriptsIpc(): void {
   safeHandle(
     "workbench:listScripts",
@@ -671,7 +750,7 @@ export function registerWorkbenchScriptsIpc(): void {
       const rootPath = resolveCwd(args.rootPath);
       // Ensure no funny business with options-only escape (root is absolute).
       resolvePathWithinRoot(rootPath, rootPath);
-      return listWorkbenchScripts(rootPath, {
+      return listWorkbenchScriptsAsync(rootPath, {
         maxDepth: args.maxDepth,
         maxPackages: args.maxPackages,
         ignoreDirs: args.ignoreDirs

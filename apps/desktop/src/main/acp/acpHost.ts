@@ -914,12 +914,37 @@ class AcpChatController {
 }
 
 let imStreamHandler: ((event: AcpStreamEvent) => Promise<void>) | null | undefined;
+const pendingWindowStreamEvents = new Map<string, { getMainWindow: GetMainWindow; event: AcpStreamEvent; timer: ReturnType<typeof setTimeout> }>();
+
+function emitStreamEventToWindow(getMainWindow: GetMainWindow, event: AcpStreamEvent): void {
+  const win = getMainWindow();
+  if (!win || win.isDestroyed()) return;
+
+  if (event.type === "assistantDelta" && event.streaming) {
+    const key = `${event.chatId}:${event.id}`;
+    const existing = pendingWindowStreamEvents.get(key);
+    if (existing) {
+      existing.event = event;
+      return;
+    }
+    const timer = setTimeout(() => {
+      const pending = pendingWindowStreamEvents.get(key);
+      if (!pending) return;
+      pendingWindowStreamEvents.delete(key);
+      const target = pending.getMainWindow();
+      if (target && !target.isDestroyed()) {
+        target.webContents.send("acp:stream", pending.event);
+      }
+    }, 16);
+    pendingWindowStreamEvents.set(key, { getMainWindow, event, timer });
+    return;
+  }
+
+  win.webContents.send("acp:stream", event);
+}
 
 function emitToWindow(getMainWindow: GetMainWindow, event: AcpStreamEvent): void {
-  const win = getMainWindow();
-  if (win && !win.isDestroyed()) {
-    win.webContents.send("acp:stream", event);
-  }
+  emitStreamEventToWindow(getMainWindow, event);
   if (imStreamHandler === undefined) {
     imStreamHandler = null;
     void import("../im/ipc").then((mod) => {

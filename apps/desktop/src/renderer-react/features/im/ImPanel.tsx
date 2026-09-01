@@ -1,4 +1,5 @@
 import { ThemeIcon } from "../../components/ThemeIcon";
+import { VariableVirtualList, type VariableVirtualListHandle } from "../../components/VariableVirtualList";
 import { renderMarkdown } from "../../components/Markdown";
 import { ImTimeline } from "./ImTimeline";
 import { ImMessageItem } from "./ImMessageItem";
@@ -6,7 +7,7 @@ import { ImComposer } from "./ImComposer";
 import { useImProjectTools } from "./ImProjectTools";
 import { buildTimelineNodes } from "./timelineModel";
 import { createPortal } from "react-dom";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type JSX, type MouseEvent as ReactMouseEvent, type ReactPortal } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type JSX, type MouseEvent as ReactMouseEvent, type ReactPortal, type UIEvent } from "react";
 import { desktopApi } from "../../bridge";
 import { notifyDesktop } from "../../components/Notifications";
 import { useI18n } from "../../i18n";
@@ -50,6 +51,10 @@ const SIDEBAR_COLLAPSED_KEY = "im-sidebar-collapsed";
 const SIDEBAR_WIDTH_KEY = "im-sidebar-width";
 const SELECTED_PROJECT_KEY = "im-selected-project";
 const RIGHT_SIDEBAR_OPEN_KEY = "im-right-sidebar-open";
+type TranscriptItem =
+  | { kind: "message"; message: ImMessage }
+  | { kind: "pending"; job: ImJob };
+
 
 export function ImPanel(): ReactPortal | null {
   const host = document.getElementById("react-im");
@@ -108,7 +113,7 @@ export function ImPanel(): ReactPortal | null {
   const [expandedThinking, setExpandedThinking] = useState<Record<string, boolean>>({});
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const [previewModalUrl, setPreviewModalUrl] = useState<string | null>(null);
-  const transcriptRef = useRef<HTMLDivElement | null>(null);
+  const transcriptVirtualizerRef = useRef<VariableVirtualListHandle | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const newChatInputRef = useRef<HTMLInputElement | null>(null);
   const prevMsgCount = useRef(0);
@@ -130,6 +135,17 @@ export function ImPanel(): ReactPortal | null {
       (job) => !visibleMessages.some((msg) => msg.jobId === job.jobId)
     );
   }, [activeJobs, visibleMessages]);
+  const transcriptItems = useMemo<TranscriptItem[]>(() => [
+    ...visibleMessages.map((message) => ({ kind: "message" as const, message })),
+    ...activePendingJobs.map((job) => ({ kind: "pending" as const, job }))
+  ], [activePendingJobs, visibleMessages]);
+  const messageIndexById = useMemo(() => {
+    const index = new Map<string, number>();
+    transcriptItems.forEach((item, itemIndex) => {
+      if (item.kind === "message") index.set(item.message.messageId, itemIndex);
+    });
+    return index;
+  }, [transcriptItems]);
   const projectRoot = room?.project.localPath && !isScratchPath(room.project.localPath)
     ? room.project.localPath
     : null;
@@ -240,17 +256,15 @@ export function ImPanel(): ReactPortal | null {
   }, [selectedProjectId]);
 
   useEffect(() => {
-    const node = transcriptRef.current;
-    if (!node) return;
-    const count = (room?.messages.length ?? 0) + activePendingJobs.length;
+    const count = transcriptItems.length;
     const grew = count > prevMsgCount.current;
     prevMsgCount.current = count;
-    if (pinnedToBottom) {
-      node.scrollTop = node.scrollHeight;
+    if (pinnedToBottom && count > 0) {
+      transcriptVirtualizerRef.current?.scrollToIndex(count - 1, { align: "end", behavior: "auto" });
     } else if (grew) {
       setHasNewBelow(true);
     }
-  }, [activePendingJobs.length, pinnedToBottom, room?.messages.length]);
+  }, [pinnedToBottom, transcriptItems.length]);
 
   const copyText = useCallback(async (text: string) => {
     try {
@@ -271,61 +285,41 @@ export function ImPanel(): ReactPortal | null {
   }, []);
 
   const scrollToBottom = useCallback(() => {
-    const node = transcriptRef.current;
-    if (!node) return;
-    if (typeof node.scrollTo === "function") {
-      node.scrollTo({ top: node.scrollHeight, behavior: "smooth" });
-    } else {
-      node.scrollTop = node.scrollHeight;
-    }
+    const lastIndex = transcriptItems.length - 1;
+    if (lastIndex < 0) return;
+    transcriptVirtualizerRef.current?.scrollToIndex(lastIndex, { align: "end", behavior: "smooth" });
     setPinnedToBottom(true);
     setHasNewBelow(false);
-  }, []);
+  }, [transcriptItems.length]);
 
   const scrollToTop = useCallback(() => {
-    const node = transcriptRef.current;
-    if (!node) return;
-    if (typeof node.scrollTo === "function") {
-      node.scrollTo({ top: 0, behavior: "smooth" });
-    } else {
-      node.scrollTop = 0;
-    }
+    if (!transcriptItems.length) return;
+    transcriptVirtualizerRef.current?.scrollToIndex(0, { align: "start", behavior: "smooth" });
     if (visibleMessages[0]) setActiveTimelineMessageId(visibleMessages[0].messageId);
-  }, [visibleMessages]);
+  }, [transcriptItems.length, visibleMessages]);
 
   const jumpToMessage = useCallback((messageId: string) => {
-    const node = transcriptRef.current;
-    if (!node) return;
-    const el = document.getElementById(`im-msg-${messageId}`);
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "center" });
-      setFlashingMessageId(messageId);
-      setActiveTimelineMessageId(messageId);
-      window.setTimeout(() => {
-        setFlashingMessageId((current) => (current === messageId ? null : current));
-      }, 1500);
-    }
-  }, []);
+    const index = messageIndexById.get(messageId);
+    if (index == null) return;
+    transcriptVirtualizerRef.current?.scrollToIndex(index, { align: "start", behavior: "smooth" });
+    setFlashingMessageId(messageId);
+    setActiveTimelineMessageId(messageId);
+    window.setTimeout(() => {
+      setFlashingMessageId((current) => (current === messageId ? null : current));
+    }, 1500);
+  }, [messageIndexById]);
 
-  const onTranscriptScroll = useCallback(() => {
-    const node = transcriptRef.current;
-    if (!node) return;
+  const onTranscriptScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
+    const node = event.currentTarget;
     const nearBottom = node.scrollHeight - node.scrollTop - node.clientHeight < 60;
     setPinnedToBottom(nearBottom);
     if (nearBottom) setHasNewBelow(false);
-
-    const articles = node.querySelectorAll<HTMLElement>("article.im-message");
-    const containerTop = node.getBoundingClientRect().top;
-    let closestId: string | undefined;
-    for (const article of articles) {
-      const rect = article.getBoundingClientRect();
-      if (rect.bottom >= containerTop + 20) {
-        closestId = article.id.replace("im-msg-", "");
-        break;
-      }
-    }
-    if (closestId) setActiveTimelineMessageId(closestId);
   }, []);
+
+  const onTranscriptVisibleRange = useCallback((startIndex: number) => {
+    const item = transcriptItems[startIndex];
+    if (item?.kind === "message") setActiveTimelineMessageId(item.message.messageId);
+  }, [transcriptItems]);
 
   const insertIntoComposer = useCallback((text: string) => {
     setDraft((current) => {
@@ -1076,90 +1070,99 @@ export function ImPanel(): ReactPortal | null {
                 </div>
               </div>
               <div className="im-transcript-wrap">
-                <div ref={transcriptRef} className="im-transcript" aria-label={t("desktop.im.transcript")} onScroll={onTranscriptScroll}>
-                {visibleMessages.length ? visibleMessages.map((message, index) => {
-                  const displayBody = translations[message.messageId]
-                    ?? (message.kind === "system" && message.body.startsWith("desktop.") ? (t(message.body) || message.body) : message.body);
-                  const isTranslating = translatingIds.has(message.messageId);
-                  const translated = Boolean(translations[message.messageId]);
-                  return (
-                    <ImMessageItem
-                      key={message.messageId}
-                      message={message}
-                      prevMessage={visibleMessages[index - 1]}
-                      allMembers={allMembers}
-                      room={room}
-                      displayBody={displayBody}
-                      isTranslating={isTranslating}
-                      translated={translated}
-                      isFlashing={flashingMessageId === message.messageId}
-                      isThinkingExpanded={expandedThinking[message.messageId] === true}
-                      isFilesExpanded={expandedFiles[message.messageId] !== false}
-                      copiedFilePath={copiedFilePath}
-                      memberLabel={memberLabel}
-                      onToggleThinking={handleToggleThinking}
-                      onToggleFiles={handleToggleFiles}
-                      onCopyText={copyText}
-                      onQuoteMessage={quoteMessage}
-                      onTranslateMessage={translateMessage}
-                      onContinueAsk={continueAsk}
-                      onResumeJob={resumeJob}
-                      onPreviewImage={setPreviewModalUrl}
-                      onCopyFilePath={copyFilePath}
-                      onEditDelegation={handleEditDelegation}
-                      onOpenSelectionMenu={openSelectionMenu}
-                      onRoutingTipClick={handleRoutingTipClick}
-                      t={t}
-                    />
-                  );
-                }) : (
-                  <p className="im-empty">{t("desktop.im.emptyRoom")}</p>
-                )}
-                {activePendingJobs.map((job) => {
-                  const owner = allMembers.find((member) => member.memberId === job.memberId)
-                    || allMembers.find((member) => member.templateId === job.memberId);
-                  const roleColorValue = owner ? roleColor(owner.templateId) : roleColor("developer");
-                  const label = owner ? memberLabel(owner) : "Role";
-                  return (
-                    <article
-                      key={`pending-job-${job.jobId}`}
-                      className="im-message is-role-say is-pending-job"
-                      style={roleColorValue ? { "--im-role-color": roleColorValue } as CSSProperties : undefined}
-                    >
-                      <header>
-                        <span className="im-message-author">
-                          {roleColorValue && (
-                            <span className="im-role-avatar" aria-hidden="true" style={{ "--im-role-color": roleColorValue } as CSSProperties}>
-                              {roleInitial(label)}
-                            </span>
-                          )}
-                          <strong>
-                            {label}
-                            {owner ? <> {agentTag(owner.agent, owner.model, t)}</> : null}
-                          </strong>
-                        </span>
-                      </header>
-                      <div className="im-pending-job-body">
-                        <span className={`im-job-dot is-${job.status}`} aria-hidden="true" />
-                        <span className="im-pending-job-label">
-                          {job.status === "queued"
-                            ? t("desktop.im.inQueue")
-                            : job.status === "connecting"
-                              ? t("desktop.im.connecting")
-                              : job.status === "awaiting_user"
-                                ? t("desktop.im.job.awaiting_user")
-                                : t("desktop.im.typing")}
-                        </span>
-                        <span className="im-jumping-dots" aria-hidden="true">
-                          <span className="im-jumping-dot" />
-                          <span className="im-jumping-dot" />
-                          <span className="im-jumping-dot" />
-                        </span>
-                      </div>
-                    </article>
-                  );
-                })}
-                </div>
+                <VariableVirtualList
+                  ref={transcriptVirtualizerRef}
+                  className="im-transcript"
+                  items={transcriptItems}
+                  getKey={(item) => item.kind === "message" ? item.message.messageId : `pending-job-${item.job.jobId}`}
+                  gap={20}
+                  estimateSize={(item) => item.kind === "pending" ? 88 : 120}
+                  onVisibleRangeChange={onTranscriptVisibleRange}
+                  onScroll={onTranscriptScroll}
+                  empty={<p className="im-empty">{t("desktop.im.emptyRoom")}</p>}
+                  renderItem={(item, transcriptIndex) => {
+                    if (item.kind === "message") {
+                      const message = item.message;
+                      const messageIndex = visibleMessages.findIndex((entry) => entry.messageId === message.messageId);
+                      const displayBody = translations[message.messageId]
+                        ?? (message.kind === "system" && message.body.startsWith("desktop.") ? (t(message.body) || message.body) : message.body);
+                      return (
+                        <ImMessageItem
+                          message={message}
+                          prevMessage={messageIndex > 0 ? visibleMessages[messageIndex - 1] : undefined}
+                          allMembers={allMembers}
+                          room={room}
+                          displayBody={displayBody}
+                          isTranslating={translatingIds.has(message.messageId)}
+                          translated={Boolean(translations[message.messageId])}
+                          isFlashing={flashingMessageId === message.messageId}
+                          isThinkingExpanded={expandedThinking[message.messageId] === true}
+                          isFilesExpanded={expandedFiles[message.messageId] !== false}
+                          copiedFilePath={copiedFilePath}
+                          memberLabel={memberLabel}
+                          onToggleThinking={handleToggleThinking}
+                          onToggleFiles={handleToggleFiles}
+                          onCopyText={copyText}
+                          onQuoteMessage={quoteMessage}
+                          onTranslateMessage={translateMessage}
+                          onContinueAsk={continueAsk}
+                          onResumeJob={resumeJob}
+                          onPreviewImage={setPreviewModalUrl}
+                          onCopyFilePath={copyFilePath}
+                          onEditDelegation={handleEditDelegation}
+                          onOpenSelectionMenu={openSelectionMenu}
+                          onRoutingTipClick={handleRoutingTipClick}
+                          t={t}
+                        />
+                      );
+                    }
+
+                    const job = item.job;
+                    const owner = allMembers.find((member) => member.memberId === job.memberId)
+                      || allMembers.find((member) => member.templateId === job.memberId);
+                    const roleColorValue = owner ? roleColor(owner.templateId) : roleColor("developer");
+                    const label = owner ? memberLabel(owner) : "Role";
+                    return (
+                      <article
+                        key={`pending-job-${job.jobId}`}
+                        className="im-message is-role-say is-pending-job"
+                        style={roleColorValue ? { "--im-role-color": roleColorValue } as CSSProperties : undefined}
+                        data-transcript-index={transcriptIndex}
+                      >
+                        <header>
+                          <span className="im-message-author">
+                            {roleColorValue && (
+                              <span className="im-role-avatar" aria-hidden="true" style={{ "--im-role-color": roleColorValue } as CSSProperties}>
+                                {roleInitial(label)}
+                              </span>
+                            )}
+                            <strong>
+                              {label}
+                              {owner ? <> {agentTag(owner.agent, owner.model, t)}</> : null}
+                            </strong>
+                          </span>
+                        </header>
+                        <div className="im-pending-job-body">
+                          <span className={`im-job-dot is-${job.status}`} aria-hidden="true" />
+                          <span className="im-pending-job-label">
+                            {job.status === "queued"
+                              ? t("desktop.im.inQueue")
+                              : job.status === "connecting"
+                                ? t("desktop.im.connecting")
+                                : job.status === "awaiting_user"
+                                  ? t("desktop.im.job.awaiting_user")
+                                  : t("desktop.im.typing")}
+                          </span>
+                          <span className="im-jumping-dots" aria-hidden="true">
+                            <span className="im-jumping-dot" />
+                            <span className="im-jumping-dot" />
+                            <span className="im-jumping-dot" />
+                          </span>
+                        </div>
+                      </article>
+                    );
+                  }}
+                />
                 <ImTimeline
                   nodes={timelineNodes}
                   activeMessageId={activeTimelineMessageId}

@@ -4,6 +4,7 @@ import {
   resolveSessionEmbeddingIndexSettings,
   runAutoSessionEmbeddings
 } from "@agent-resume/core";
+import { enqueueDesktopBackgroundWork, shouldRunDesktopBackgroundWork } from "./backgroundWork";
 import { loadPanelDbPaths } from "./panelDatabases";
 import { recordAppError } from "./appErrorLog";
 
@@ -51,10 +52,11 @@ export function scheduleSessionEmbeddingIndexAuto(delayMs = 4_000): void {
 }
 
 async function runEmbeddingIndexSafe(): Promise<void> {
+  if (!shouldRunDesktopBackgroundWork()) return;
   if (inFlight) {
     return inFlight;
   }
-  inFlight = runEmbeddingIndex()
+  inFlight = enqueueDesktopBackgroundWork(runEmbeddingIndex)
     .catch((error) => {
       void recordAppError({ source: "session-embedding-index-auto", error });
     })

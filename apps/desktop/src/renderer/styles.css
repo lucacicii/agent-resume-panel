@@ -5026,6 +5026,25 @@ code {
   width: 100%;
 }
 
+.variable-virtual-list {
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+}
+
+.variable-virtual-list-inner {
+  position: relative;
+  width: 100%;
+}
+
+.virtual-list-row-variable {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  box-sizing: border-box;
+}
+
+
 .chat-virtual-window {
   position: absolute;
   left: 0;
@@ -9103,6 +9122,8 @@ select.wb-acp-toolbar-select option {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  content-visibility: auto;
+  contain-intrinsic-size: 0 96px;
 }
 
 .wb-acp-day-separator {
@@ -17390,6 +17411,8 @@ html[data-window-mode="browser"] #react-chrome {
   gap: 10px;
 }
 .im-message {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 120px;
   width: fit-content;
   max-width: 85%;
   min-width: 0;
