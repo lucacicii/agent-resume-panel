@@ -35,6 +35,7 @@ type AcpHostApi = {
     text: string,
     images?: Array<{ mimeType: string; fileName: string; data: string }>
   ) => Promise<void>;
+  cancel?: (chatId: string) => Promise<void>;
   denyPermission: (requestId: string) => Promise<void>;
   setModel?: (chatId: string, modelId: string) => Promise<void>;
   setThoughtLevel?: (chatId: string, thoughtLevel: string) => Promise<void>;
@@ -67,7 +68,8 @@ export function registerImIpc(deps: {
         deps.acp.prompt,
         deps.acp.denyPermission,
         deps.acp.setModel,
-        deps.acp.setThoughtLevel
+        deps.acp.setThoughtLevel,
+        deps.acp.cancel
       );
     }
     return conductor;

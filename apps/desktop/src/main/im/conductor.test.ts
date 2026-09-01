@@ -963,4 +963,59 @@ Implement the search indexing algorithm as designed.
     const messages = await store.listMessages(project.projectId);
     expect(messages.some((item) => item.kind === "system" && item.body === "desktop.im.sessionRebuilt")).toBe(true);
   });
+
+  it("cancels an active job, flushes streaming message with streaming: false, and triggers cancelChat", async () => {
+    const store = await createStore();
+    const project = await store.createProject("Cancel job test");
+    await store.setLocalPath(project.projectId, process.cwd());
+    const room = await store.getRoom(project.projectId);
+    const pm = room.members.find((member) => member.templateId === "role_product_manager")!;
+    const connect = vi.fn(async () => undefined);
+    const prompt = vi.fn(async () => undefined);
+    const cancelChat = vi.fn(async () => undefined);
+    const emitted: any[] = [];
+    const conductor = new ImConductor(
+      store,
+      (event) => emitted.push(event),
+      connect,
+      prompt,
+      undefined,
+      undefined,
+      undefined,
+      cancelChat
+    );
+
+    const job = await store.createJob({
+      projectId: project.projectId,
+      memberId: pm.memberId,
+      messageId: null,
+      brief: { persona: pm.persona, instruction: "Long task", cwd: process.cwd(), quotes: [], knowledge: [] },
+      status: "running"
+    });
+    await store.updateJob(job.jobId, { acpChatId: "chat-cancel-test" });
+
+    await conductor.handleAcpStream({
+      type: "assistantDelta",
+      chatId: "chat-cancel-test",
+      id: "delta-1",
+      text: "Streaming in progress...",
+      streaming: true,
+      toolCalls: []
+    });
+
+    const cancelledJob = await conductor.cancelJob(job.jobId);
+    expect(cancelledJob.status).toBe("cancelled");
+    expect(cancelChat).toHaveBeenCalledWith("chat-cancel-test");
+
+    const messageUpdate = emitted.find((e) => e.type === "messageUpdate" && e.message.streaming === false);
+    expect(messageUpdate).toBeTruthy();
+    expect(messageUpdate.message.body).toBe("Streaming in progress...");
+
+    const savedMessages = await store.listMessages(project.projectId);
+    expect(savedMessages).toHaveLength(1);
+    expect(savedMessages[0]?.body).toBe("Streaming in progress...");
+
+    const savedJob = await store.getJob(job.jobId);
+    expect(savedJob?.status).toBe("cancelled");
+  });
 });

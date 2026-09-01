@@ -1025,6 +1025,13 @@ export async function denyAcpPermission(requestId: string): Promise<void> {
   waiter.resolve({ outcome: { outcome: "cancelled" } });
 }
 
+export async function cancelAcpChat(chatId: string): Promise<void> {
+  const controller = controllers.get(chatId);
+  if (controller) {
+    await controller.cancel();
+  }
+}
+
 export async function setAcpModel(chatId: string, modelId: string): Promise<void> {
   const controller = controllers.get(chatId);
   if (controller && modelId) {

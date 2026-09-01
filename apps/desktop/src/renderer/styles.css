@@ -17238,7 +17238,6 @@ html[data-window-mode="browser"] #react-chrome {
 .im-folder-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
   width: 100%;
   text-align: left;
@@ -17248,26 +17247,38 @@ html[data-window-mode="browser"] #react-chrome {
   padding: 6px 8px;
   border-radius: 6px;
 }
+.im-new-project-btn {
+  justify-content: flex-start;
+}
 .im-folder-row.active,
 .im-new-project-btn:hover,
 .im-folder-row:hover {
   background: var(--color-control-bg);
 }
-.im-folder-label,
-.im-folder-path {
+.im-folder-label {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .im-folder-path {
+  flex: 0 0 auto;
+  max-width: 36%;
   color: var(--color-label-tertiary);
   font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .im-folder-rename {
-  padding: 2px 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
 }
 .im-folder-rename input {
+  flex: 1 1 auto;
   width: 100%;
   min-width: 0;
   border: 1px solid var(--color-separator);
@@ -17296,6 +17307,19 @@ html[data-window-mode="browser"] #react-chrome {
   gap: 12px;
   padding: 10px 12px;
   border-bottom: 1px solid var(--color-separator);
+}
+.im-room-head-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.im-room-head-titles {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
 }
 .im-room-path {
   display: flex;
@@ -18089,6 +18113,33 @@ html[data-window-mode="browser"] #react-chrome {
   justify-content: flex-end;
   gap: 6px;
 }
+.im-generating-bar {
+  display: flex;
+  align-items: center;
+  margin-top: 6px;
+}
+.im-stop-generating-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: var(--color-danger, #ef4444);
+  border: 1px solid color-mix(in srgb, var(--color-danger, #ef4444) 30%, var(--color-separator));
+  background: color-mix(in srgb, var(--color-danger, #ef4444) 6%, transparent);
+  cursor: pointer;
+  line-height: 1.4;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+.im-stop-generating-btn:hover {
+  background: color-mix(in srgb, var(--color-danger, #ef4444) 14%, transparent);
+  border-color: color-mix(in srgb, var(--color-danger, #ef4444) 55%, var(--color-separator));
+  color: var(--color-danger, #ef4444);
+}
+.im-stop-generating-btn svg {
+  fill: currentColor;
+}
 .im-interrupted-bar {
   display: flex;
   align-items: center;
@@ -18195,6 +18246,41 @@ html[data-window-mode="browser"] #react-chrome {
   font-weight: 600;
   line-height: 1;
   user-select: none;
+}
+.im-chat-avatar {
+  position: relative;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: var(--color-control-bg);
+  box-shadow: 0 0 0 1px var(--color-separator);
+  box-sizing: border-box;
+  user-select: none;
+}
+.im-chat-avatar-role {
+  position: absolute;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-weight: 600;
+  line-height: 1;
+  user-select: none;
+  box-shadow: 0 0 0 1.5px var(--color-window-bg, #1a1a1a);
+  background: color-mix(in srgb, var(--im-role-color, var(--color-accent)) 85%, black);
+  overflow: hidden;
+}
+.im-chat-avatar-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-fill-secondary);
+}
+.im-chat-avatar-placeholder {
+  color: var(--color-label-tertiary);
+  font-weight: 600;
+  line-height: 1;
 }
 .im-message-author {
   display: inline-flex;

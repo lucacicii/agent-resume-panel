@@ -148,6 +148,7 @@ import {
   disposeAllAcpControllers,
   getAcpRuntimeMetrics,
   connectAcpChat,
+  cancelAcpChat,
   denyAcpPermission,
   promptAcpChat,
   registerAcpIpc,
@@ -3384,6 +3385,7 @@ app.whenReady().then(async () => {
     acp: {
       connect: (chatId) => connectAcpChat(chatId),
       prompt: (chatId, text, images) => promptAcpChat(chatId, text, images ?? []),
+      cancel: (chatId) => cancelAcpChat(chatId),
       denyPermission: (requestId) => denyAcpPermission(requestId),
       setModel: (chatId, modelId) => setAcpModel(chatId, modelId),
       setThoughtLevel: (chatId, thoughtLevel) => setAcpThoughtLevel(chatId, thoughtLevel)

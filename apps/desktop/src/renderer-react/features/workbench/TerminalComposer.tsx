@@ -158,7 +158,10 @@ export function TerminalComposer(props: {
   useEffect(() => {
     if (!directoryOpen || !directorySuggestions.length) return;
     const frame = requestAnimationFrame(() => {
-      directoryItemRefs.current[activeDirectory]?.scrollIntoView({ block: "nearest" });
+      const el = directoryItemRefs.current[activeDirectory];
+      if (typeof el?.scrollIntoView === "function") {
+        el.scrollIntoView({ block: "nearest" });
+      }
     });
     return () => cancelAnimationFrame(frame);
   }, [activeDirectory, directoryOpen, directorySuggestions]);

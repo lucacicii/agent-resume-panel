@@ -8,6 +8,7 @@ import {
   dayKey,
   formatDay,
   formatTime,
+  isActiveJobStatus,
   isResumableJob,
   isScratchPath,
   parseDispatchBlocks,
@@ -37,6 +38,7 @@ export interface ImMessageItemProps {
   onTranslateMessage: (message: ImMessage) => void;
   onContinueAsk: (message: ImMessage) => void;
   onResumeJob: (job: ImJob) => void;
+  onCancelJob?: (job: ImJob) => void;
   onPreviewImage: (url: string) => void;
   onCopyFilePath: (pathStr: string) => void;
   onEditDelegation: (instruction: string, targetMember?: ImMember) => void;
@@ -65,6 +67,7 @@ export const ImMessageItem = memo(function ImMessageItem({
   onTranslateMessage,
   onContinueAsk,
   onResumeJob,
+  onCancelJob,
   onPreviewImage,
   onCopyFilePath,
   onEditDelegation,
@@ -87,6 +90,12 @@ export const ImMessageItem = memo(function ImMessageItem({
   );
 
   const linkedJob = message.jobId ? room?.jobs.find((j) => j.jobId === message.jobId) : undefined;
+  const activeJobForSpeaker = (message.kind === "role.say" && speaker)
+    ? room?.jobs.find((j) => j.memberId === speaker.memberId && isActiveJobStatus(j.status))
+    : undefined;
+  const currentActiveJob = (linkedJob && isActiveJobStatus(linkedJob.status)) ? linkedJob : activeJobForSpeaker;
+  const isAnswering = Boolean(message.kind === "role.say" && (message.streaming || currentActiveJob));
+  const cancelTargetJob = currentActiveJob ?? (message.jobId ? ({ jobId: message.jobId } as ImJob) : undefined);
   const filesChanged = linkedJob?.filesChanged ?? [];
 
   const dispatchBlocks = useMemo(() => {
@@ -440,7 +449,21 @@ export const ImMessageItem = memo(function ImMessageItem({
         {message.streaming && (
           <span className="im-streaming-cursor" aria-hidden="true" />
         )}
-        {isResumableJob(linkedJob, room?.jobs ?? []) && linkedJob && (
+        {isAnswering && cancelTargetJob && (
+          <div className="im-generating-bar">
+            <button
+              type="button"
+              className="btn small ghost-btn im-stop-generating-btn"
+              onClick={() => void onCancelJob?.(cancelTargetJob)}
+              aria-label={t("desktop.im.stopAnswer")}
+              title={t("desktop.im.stopAnswer")}
+            >
+              <ThemeIcon name="square" size={11} aria-hidden="true" />
+              <span>{t("desktop.im.stopAnswer")}</span>
+            </button>
+          </div>
+        )}
+        {isResumableJob(linkedJob, room?.jobs ?? []) && linkedJob && !isAnswering && (
           <div className="im-interrupted-bar">
             <span>{t("desktop.im.jobInterrupted")}</span>
             <button
@@ -453,7 +476,7 @@ export const ImMessageItem = memo(function ImMessageItem({
             </button>
           </div>
         )}
-        {(message.kind === "human" || message.kind === "role.say") && (
+        {(message.kind === "human" || message.kind === "role.say") && !isAnswering && (
           <div className="im-message-actions">
             <button type="button" className="im-message-action" onClick={() => void onCopyText(message.body)}>
               {t("desktop.common.copy")}

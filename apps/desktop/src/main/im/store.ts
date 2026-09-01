@@ -33,6 +33,7 @@ import {
   type ImPermission,
   type ImPermissionRequest,
   type ImProject,
+  type ImProjectRoleSummary,
   type ImQuotedMessage,
   type ImRoleTemplate,
   type ImRoleTools,
@@ -387,13 +388,14 @@ export function extractFirstQuestionTitle(text: string): string {
   return `${firstLine.slice(0, 47)}…`;
 }
 
-function mapProject(row: ProjectRow): ImProject {
+function mapProject(row: ProjectRow, roles?: ImProjectRoleSummary[]): ImProject {
   return {
     projectId: row.project_id,
     name: row.name,
     localPath: row.local_path,
     createdAtMs: row.created_at_ms,
-    updatedAtMs: row.updated_at_ms
+    updatedAtMs: row.updated_at_ms,
+    roles: roles ?? []
   };
 }
 
@@ -849,7 +851,17 @@ export class ImStore {
       this.dbPath,
       "SELECT * FROM im_projects ORDER BY updated_at_ms DESC;"
     );
-    return rows.map(mapProject);
+    const memberRows = await runSqliteJson<{ project_id: string; template_id: string; name: string }>(
+      this.dbPath,
+      "SELECT project_id, template_id, name FROM im_members ORDER BY created_at_ms ASC;"
+    );
+    const membersByProject = new Map<string, ImProjectRoleSummary[]>();
+    for (const m of memberRows) {
+      const list = membersByProject.get(m.project_id) ?? [];
+      list.push({ templateId: m.template_id, name: m.name });
+      membersByProject.set(m.project_id, list);
+    }
+    return rows.map((r) => mapProject(r, membersByProject.get(r.project_id)));
   }
 
   async getProject(projectId: string): Promise<ImProject | undefined> {
@@ -857,7 +869,13 @@ export class ImStore {
       this.dbPath,
       `SELECT * FROM im_projects WHERE project_id = ${sqlString(projectId)} LIMIT 1;`
     );
-    return rows[0] ? mapProject(rows[0]) : undefined;
+    if (!rows[0]) return undefined;
+    const memberRows = await runSqliteJson<{ template_id: string; name: string }>(
+      this.dbPath,
+      `SELECT template_id, name FROM im_members WHERE project_id = ${sqlString(projectId)} ORDER BY created_at_ms ASC;`
+    );
+    const roles: ImProjectRoleSummary[] = memberRows.map((m) => ({ templateId: m.template_id, name: m.name }));
+    return mapProject(rows[0], roles);
   }
 
   async createProject(name?: string, panelHome?: string, localPath?: string | null): Promise<ImProject> {
@@ -872,19 +890,14 @@ export class ImStore {
     if (initialPath) {
       await ensureArpDir(initialPath);
     }
-    const project: ImProject = {
-      projectId,
-      name: trimmed,
-      localPath: initialPath,
-      createdAtMs: now,
-      updatedAtMs: now
-    };
     await runSqlite(
       this.dbPath,
       `INSERT INTO im_projects (project_id, name, local_path, created_at_ms, updated_at_ms)
-       VALUES (${sqlString(project.projectId)}, ${sqlString(project.name)}, ${sqlNullOrString(project.localPath)}, ${now}, ${now});`
+       VALUES (${sqlString(projectId)}, ${sqlString(trimmed)}, ${sqlNullOrString(initialPath)}, ${now}, ${now});`
     );
-    await this.seedBuiltinMembers(project.projectId);
+    await this.seedBuiltinMembers(projectId);
+    const project = await this.getProject(projectId);
+    if (!project) throw new Error("Failed to load newly created project.");
     return project;
   }
 

@@ -114,12 +114,18 @@ export const IM_AGENT_SUGGESTED_MODELS: Record<ImAgent, ImAgentModelOption[]> = 
   ]
 };
 
+export interface ImProjectRoleSummary {
+  templateId: string;
+  name: string;
+}
+
 export interface ImProject {
   projectId: string;
   name: string;
   localPath: string | null;
   createdAtMs: number;
   updatedAtMs: number;
+  roles?: ImProjectRoleSummary[];
 }
 
 export interface ImRoleTemplate {

@@ -41,6 +41,7 @@ type PromptFn = (
 type DenyPermissionFn = (requestId: string) => Promise<void>;
 type SetModelFn = (chatId: string, modelId: string) => Promise<void>;
 type SetThoughtLevelFn = (chatId: string, thoughtLevel: string) => Promise<void>;
+type CancelChatFn = (chatId: string) => Promise<void>;
 
 const WRITER_BUSY: ReadonlySet<ImJobStatus> = new Set([
   "queued",
@@ -189,7 +190,8 @@ export class ImConductor {
     private readonly promptChat: PromptFn,
     private readonly denyPermission?: DenyPermissionFn,
     private readonly setModel?: SetModelFn,
-    private readonly setThoughtLevel?: SetThoughtLevelFn
+    private readonly setThoughtLevel?: SetThoughtLevelFn,
+    private readonly cancelChat?: CancelChatFn
   ) {}
 
   async postMessage(input: {
@@ -350,7 +352,15 @@ export class ImConductor {
   }
 
   async cancelJob(jobId: string): Promise<ImJob> {
-    await this.flushStreamingMessage(jobId);
+    const streamMsg = this.streamingMessagesByJob.get(jobId);
+    if (streamMsg?.body || streamMsg?.thinking) {
+      const persisted = await this.persistStreamingMessage(jobId);
+      this.emit({
+        type: "messageUpdate",
+        projectId: persisted.projectId,
+        message: { ...persisted, streaming: false }
+      });
+    }
     this.forgetStreamingMessage(jobId);
     const cancelled = await this.store.cancelJob(jobId);
     this.emit({ type: "job", projectId: cancelled.projectId, job: cancelled });
@@ -358,6 +368,13 @@ export class ImConductor {
     if (chatId) {
       this.jobsByChat.delete(chatId);
       this.settlePrompt(chatId, new Error("Job cancelled by user"));
+      if (this.cancelChat) {
+        try {
+          await this.cancelChat(chatId);
+        } catch (err) {
+          console.warn(`[IM Conductor] Failed to cancel ACP chat ${chatId}:`, err);
+        }
+      }
     }
     try {
       await this.pumpExclusiveQueue(cancelled.projectId);

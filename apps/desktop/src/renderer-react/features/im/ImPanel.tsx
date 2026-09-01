@@ -4,6 +4,7 @@ import { renderMarkdown } from "../../components/Markdown";
 import { ImTimeline } from "./ImTimeline";
 import { ImMessageItem } from "./ImMessageItem";
 import { ImComposer } from "./ImComposer";
+import { ImChatAvatar } from "./ImChatAvatar";
 import { useImProjectTools } from "./ImProjectTools";
 import { buildTimelineNodes } from "./timelineModel";
 import { createPortal } from "react-dom";
@@ -842,6 +843,10 @@ export function ImPanel(): ReactPortal | null {
         setRoom((current) => current && !current.members.some((item) => item.memberId === member.memberId)
           ? { ...current, members: [...current.members, member] }
           : current);
+        setProjects((current) => current.map((p) => p.projectId === selectedProjectId ? {
+          ...p,
+          roles: [...(p.roles ?? []).filter((r) => r.templateId !== template.templateId), { templateId: member.templateId, name: member.name }]
+        } : p));
         return;
       }
       const member = room?.members.find((item) => item.templateId === template.templateId);
@@ -850,6 +855,10 @@ export function ImPanel(): ReactPortal | null {
       setRoom((current) => current
         ? { ...current, members: current.members.filter((item) => item.memberId !== member.memberId) }
         : current);
+      setProjects((current) => current.map((p) => p.projectId === selectedProjectId ? {
+        ...p,
+        roles: (p.roles ?? []).filter((r) => r.templateId !== template.templateId)
+      } : p));
       setMentionIds((current) => current.filter((id) => id !== member.memberId));
       if (expandedMemberId === member.memberId) setExpandedMemberId(null);
     } catch (error) {
@@ -1010,6 +1019,10 @@ export function ImPanel(): ReactPortal | null {
                   : scratch
                     ? t("desktop.im.tempFolder")
                     : basename(project.localPath);
+                const activeRoles = project.projectId === selectedProjectId && room
+                  ? room.members.filter((m) => m.enabled).map((m) => ({ templateId: m.templateId, name: memberLabel(m) }))
+                  : (project.roles ?? []).map((r) => ({ templateId: r.templateId, name: builtinRoleLabel(r.templateId, r.name, t) }));
+
                 if (renamingProjectId === project.projectId) {
                   return (
                     <form
@@ -1020,6 +1033,7 @@ export function ImPanel(): ReactPortal | null {
                         void commitRename(project.projectId);
                       }}
                     >
+                      <ImChatAvatar roles={activeRoles} size={28} />
                       <input
                         value={renameValue}
                         onChange={(event) => setRenameValue(event.target.value)}
@@ -1044,6 +1058,7 @@ export function ImPanel(): ReactPortal | null {
                     onClick={() => selectProject(project.projectId)}
                     onContextMenu={(event) => openFolderMenu(event, project)}
                   >
+                    <ImChatAvatar roles={activeRoles} size={28} />
                     <span className="im-folder-label">{project.name}</span>
                     <span className="im-folder-path">{pathLabel}</span>
                   </button>
@@ -1080,20 +1095,26 @@ export function ImPanel(): ReactPortal | null {
           {room ? (
             <>
               <div className="im-room-head">
-                <div>
-                  <h2>{room.project.name}</h2>
-                  <p className="im-room-path">
-                    <span>{room.project.localPath || t("desktop.im.tempFolder")}</span>
-                    <button
-                      type="button"
-                      className="im-room-path-btn"
-                      onClick={() => void associateFolder()}
-                      title={t("desktop.im.associateFolder")}
-                      aria-label={t("desktop.im.associateFolder")}
-                    >
-                      <ThemeIcon name="folder" size={13} aria-hidden="true" />
-                    </button>
-                  </p>
+                <div className="im-room-head-info">
+                  <ImChatAvatar
+                    roles={members.map((m) => ({ templateId: m.templateId, name: memberLabel(m) }))}
+                    size={34}
+                  />
+                  <div className="im-room-head-titles">
+                    <h2>{room.project.name}</h2>
+                    <p className="im-room-path">
+                      <span>{room.project.localPath || t("desktop.im.tempFolder")}</span>
+                      <button
+                        type="button"
+                        className="im-room-path-btn"
+                        onClick={() => void associateFolder()}
+                        title={t("desktop.im.associateFolder")}
+                        aria-label={t("desktop.im.associateFolder")}
+                      >
+                        <ThemeIcon name="folder" size={13} aria-hidden="true" />
+                      </button>
+                    </p>
+                  </div>
                 </div>
                 <div className="im-room-head-actions">
                   {projectTools.toolbar}
@@ -1153,6 +1174,7 @@ export function ImPanel(): ReactPortal | null {
                           onTranslateMessage={translateMessage}
                           onContinueAsk={continueAsk}
                           onResumeJob={resumeJob}
+                          onCancelJob={cancelJob}
                           onPreviewImage={setPreviewModalUrl}
                           onCopyFilePath={copyFilePath}
                           onEditDelegation={handleEditDelegation}
@@ -1204,6 +1226,18 @@ export function ImPanel(): ReactPortal | null {
                             <span className="im-jumping-dot" />
                             <span className="im-jumping-dot" />
                           </span>
+                        </div>
+                        <div className="im-generating-bar">
+                          <button
+                            type="button"
+                            className="btn small ghost-btn im-stop-generating-btn"
+                            onClick={() => void cancelJob(job)}
+                            aria-label={t("desktop.im.stopAnswer")}
+                            title={t("desktop.im.stopAnswer")}
+                          >
+                            <ThemeIcon name="square" size={11} aria-hidden="true" />
+                            <span>{t("desktop.im.stopAnswer")}</span>
+                          </button>
                         </div>
                       </article>
                     );
