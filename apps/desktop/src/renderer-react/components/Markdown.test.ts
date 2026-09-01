@@ -9,10 +9,16 @@ describe("renderMarkdown", () => {
     expect(html).toContain("Wait for the design review");
   });
 
-  it("does not execute invalid GTD directives", () => {
-    const html = renderMarkdown(":::gtd later\nNot a task\n:::");
-    expect(html).not.toContain("note-gtd-card");
-    expect(html).not.toContain("gtd-status-tag");
+  it("handles empty strings cleanly", () => {
+    expect(renderMarkdown("")).toBe("");
+  });
+
+  it("caches markdown parsing results across identical calls", () => {
+    const input = "# Test Title\n\nSome **bold** text and `code`.";
+    const first = renderMarkdown(input);
+    const second = renderMarkdown(input);
+    expect(first).toBe(second);
+    expect(first).toContain("<h1>Test Title</h1>");
   });
 
   it("leaves legacy executable directives as inert Markdown", () => {

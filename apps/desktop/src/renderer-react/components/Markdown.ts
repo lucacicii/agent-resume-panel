@@ -58,6 +58,12 @@ if (typeof document !== "undefined") {
   });
 }
 
+const MARKDOWN_CACHE_MAX = 500;
+const markdownCache = new Map<string, string>();
+
+const sharedRenderer = new marked.Renderer();
+sharedRenderer.code = codeToken;
+
 function parseMarkdown(value: string, renderer: Renderer): string {
   return marked.parse(value, {
     gfm: true,
@@ -67,12 +73,28 @@ function parseMarkdown(value: string, renderer: Renderer): string {
 }
 
 export function renderMarkdown(value: string): string {
-  const renderer = new marked.Renderer();
-  renderer.code = codeToken;
-  return DOMPurify.sanitize(parseMarkdown(value, renderer), {
+  if (!value) return "";
+  const cached = markdownCache.get(value);
+  if (cached !== undefined) {
+    markdownCache.delete(value);
+    markdownCache.set(value, cached);
+    return cached;
+  }
+
+  const parsed = DOMPurify.sanitize(parseMarkdown(value, sharedRenderer), {
     USE_PROFILES: { html: true },
     FORBID_TAGS: ["script", "style", "iframe", "object", "embed"],
     FORBID_ATTR: ["style"],
     ALLOW_UNKNOWN_PROTOCOLS: false
   });
+
+  if (markdownCache.size >= MARKDOWN_CACHE_MAX) {
+    const oldestKey = markdownCache.keys().next().value;
+    if (oldestKey !== undefined) {
+      markdownCache.delete(oldestKey);
+    }
+  }
+  markdownCache.set(value, parsed);
+
+  return parsed;
 }

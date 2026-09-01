@@ -1,10 +1,12 @@
 import { ThemeIcon } from "../../components/ThemeIcon";
 import { renderMarkdown } from "../../components/Markdown";
 import { ImTimeline } from "./ImTimeline";
+import { ImMessageItem } from "./ImMessageItem";
+import { ImComposer } from "./ImComposer";
 import { useImProjectTools } from "./ImProjectTools";
 import { buildTimelineNodes } from "./timelineModel";
 import { createPortal } from "react-dom";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ClipboardEvent as ReactClipboardEvent, type DragEvent as ReactDragEvent, type FormEvent, type JSX, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactPortal } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type JSX, type MouseEvent as ReactMouseEvent, type ReactPortal } from "react";
 import { desktopApi } from "../../bridge";
 import { notifyDesktop } from "../../components/Notifications";
 import { useI18n } from "../../i18n";
@@ -28,199 +30,26 @@ import {
   type ImRoom,
   type ImSelectionAction
 } from "../../../shared/imTypes";
+import {
+  agentTag,
+  basename,
+  builtinRoleLabel,
+  formatDay,
+  formatTime,
+  isActiveJobStatus,
+  isResumableJob,
+  isScratchPath,
+  roleColor,
+  roleInitial,
+  roleLabel,
+  storageBoolean,
+  type PendingImage
+} from "./imUtils";
 
 const SIDEBAR_COLLAPSED_KEY = "im-sidebar-collapsed";
 const SIDEBAR_WIDTH_KEY = "im-sidebar-width";
 const SELECTED_PROJECT_KEY = "im-selected-project";
 const RIGHT_SIDEBAR_OPEN_KEY = "im-right-sidebar-open";
-
-function storageBoolean(key: string, fallback = false): boolean {
-  try {
-    const val = localStorage.getItem(key);
-    if (val == null) return fallback;
-    return val === "1";
-  } catch {
-    return fallback;
-  }
-}
-
-function basename(value = ""): string {
-  return value.replaceAll("\\", "/").split("/").filter(Boolean).at(-1) || value;
-}
-
-function isScratchPath(value?: string | null): boolean {
-  if (!value) return true;
-  const normalized = value.replaceAll("\\", "/");
-  return normalized.includes("/.desktop/scratch/im/") || normalized.endsWith("/.desktop/scratch/im");
-}
-
-const BUILTIN_ROLE_KEYS: Record<string, "productManager" | "architect" | "projectManager" | "uiDesigner" | "developer" | "tester"> = {
-  role_product_manager: "productManager",
-  product_manager: "productManager",
-  productManager: "productManager",
-  "Product Manager": "productManager",
-  role_architect: "architect",
-  architect: "architect",
-  Architect: "architect",
-  arch: "architect",
-  role_project_manager: "projectManager",
-  project_manager: "projectManager",
-  projectManager: "projectManager",
-  "Project Manager": "projectManager",
-  role_ui_designer: "uiDesigner",
-  ui_designer: "uiDesigner",
-  uiDesigner: "uiDesigner",
-  "UI Designer": "uiDesigner",
-  ui: "uiDesigner",
-  UI: "uiDesigner",
-  role_developer: "developer",
-  developer: "developer",
-  Developer: "developer",
-  develop: "developer",
-  dev: "developer",
-  role_tester: "tester",
-  tester: "tester",
-  Tester: "tester",
-  qa: "tester"
-};
-
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = () => reject(reader.error || new Error("Failed to read file"));
-    reader.readAsDataURL(file);
-  });
-}
-
-function parseDispatchBlocks(text: string): Array<{ target: string; reason?: string; instruction: string }> {
-  const regex = /<im_dispatch\s+target="([^"]+)"(?:\s+reason="([^"]*)")?>([\s\S]*?)<\/im_dispatch>/gi;
-  const blocks: Array<{ target: string; reason?: string; instruction: string }> = [];
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(text)) !== null) {
-    const target = match[1]?.trim() || "";
-    const reason = match[2]?.trim() || undefined;
-    const instruction = match[3]?.trim() || "";
-    if (target && instruction) {
-      blocks.push({ target, reason, instruction });
-    }
-  }
-  return blocks;
-}
-
-interface PendingImage {
-  id: string;
-  fileName: string;
-  mimeType: string;
-  data: string;
-  previewUrl: string;
-  sizeBytes: number;
-}
-
-const MAX_IMAGES = 4;
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
-
-// Stable brand colors for built-in roles; custom templates hash to a hue.
-const BUILTIN_ROLE_COLORS: Record<string, string> = {
-  role_product_manager: "hsl(265 70% 58%)",
-  product_manager: "hsl(265 70% 58%)",
-  productManager: "hsl(265 70% 58%)",
-  "Product Manager": "hsl(265 70% 58%)",
-  role_architect: "hsl(217 91% 60%)",
-  architect: "hsl(217 91% 60%)",
-  Architect: "hsl(217 91% 60%)",
-  arch: "hsl(217 91% 60%)",
-  role_project_manager: "hsl(199 92% 52%)",
-  project_manager: "hsl(199 92% 52%)",
-  projectManager: "hsl(199 92% 52%)",
-  "Project Manager": "hsl(199 92% 52%)",
-  role_ui_designer: "hsl(330 72% 58%)",
-  ui_designer: "hsl(330 72% 58%)",
-  uiDesigner: "hsl(330 72% 58%)",
-  "UI Designer": "hsl(330 72% 58%)",
-  ui: "hsl(330 72% 58%)",
-  UI: "hsl(330 72% 58%)",
-  role_developer: "hsl(152 76% 42%)",
-  developer: "hsl(152 76% 42%)",
-  Developer: "hsl(152 76% 42%)",
-  develop: "hsl(152 76% 42%)",
-  dev: "hsl(152 76% 42%)",
-  role_tester: "hsl(35 92% 52%)",
-  tester: "hsl(35 92% 52%)",
-  Tester: "hsl(35 92% 52%)",
-  qa: "hsl(35 92% 52%)"
-};
-
-function roleColor(templateId: string): string {
-  const builtin = BUILTIN_ROLE_COLORS[templateId] || BUILTIN_ROLE_COLORS[templateId?.toLowerCase()];
-  if (builtin) return builtin;
-  let hash = 0;
-  for (let i = 0; i < templateId.length; i++) {
-    hash = (hash << 5) - hash + templateId.charCodeAt(i);
-    hash |= 0;
-  }
-  return `hsl(${Math.abs(hash) % 360} 65% 50%)`;
-}
-
-function roleInitial(label: string): string {
-  return label.trim().charAt(0).toUpperCase() || "?";
-}
-
-function dayKey(millis: number): string {
-  const date = new Date(millis);
-  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
-}
-
-function formatDay(millis: number, t: Translate): string {
-  const date = new Date(millis);
-  const now = new Date();
-  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const startTarget = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-  const diffDays = Math.round((startToday - startTarget) / 86_400_000);
-  if (diffDays === 0) return t("desktop.im.today");
-  if (diffDays === 1) return t("desktop.im.yesterday");
-  return date.toLocaleDateString();
-}
-
-function formatTime(millis: number): string {
-  return new Date(millis).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-}
-
-const ACTIVE_JOB_STATUSES = ["queued", "connecting", "running", "awaiting_user"] as const;
-
-function isActiveJobStatus(status: string): boolean {
-  return (ACTIVE_JOB_STATUSES as readonly string[]).includes(status);
-}
-
-function isInterruptedJobStatus(status: string): boolean {
-  return status === "cancelled" || status === "failed";
-}
-
-function isResumableJob(job: ImJob | undefined, jobs: ImJob[]): boolean {
-  if (!job || !isInterruptedJobStatus(job.status)) return false;
-  return !jobs.some((item) => item.memberId === job.memberId && item.createdAtMs > job.createdAtMs);
-}
-
-type Translate = (key: string, ...args: Array<string | number>) => string;
-
-function builtinRoleLabel(templateId: string, fallback: string, t: Translate): string {
-  const key = BUILTIN_ROLE_KEYS[templateId] || BUILTIN_ROLE_KEYS[templateId?.toLowerCase()];
-  if (!key) return fallback;
-  return t(`desktop.im.role.${key}`);
-}
-
-function roleLabel(member: ImMember, t: Translate): string {
-  return builtinRoleLabel(member.templateId, member.name, t);
-}
-
-function agentTag(agent: string, model: string | undefined, t: Translate): JSX.Element {
-  return (
-    <span className="s-provider-tag" data-provider={agent}>
-      {t(`desktop.im.agent.${agent}`)}{model ? ` · ${model}` : ""}
-    </span>
-  );
-}
 
 export function ImPanel(): ReactPortal | null {
   const host = document.getElementById("react-im");
@@ -236,8 +65,6 @@ export function ImPanel(): ReactPortal | null {
   const [followUpTo, setFollowUpTo] = useState<ImMessage | null>(null);
   const [mentionIds, setMentionIds] = useState<string[]>([]);
   const [mentionOpen, setMentionOpen] = useState(false);
-  const [mentionIndex, setMentionIndex] = useState(0);
-  const mentionListRef = useRef<HTMLDivElement | null>(null);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [renamingProjectId, setRenamingProjectId] = useState<string | null>(null);
@@ -284,22 +111,25 @@ export function ImPanel(): ReactPortal | null {
   const transcriptRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const newChatInputRef = useRef<HTMLInputElement | null>(null);
-  const imageInputRef = useRef<HTMLInputElement | null>(null);
   const prevMsgCount = useRef(0);
 
   const memberLabel = useCallback((member: ImMember) => roleLabel(member, t), [t]);
 
-  const allMembers = room?.members ?? [];
-  const members = allMembers.filter((member) => member.enabled);
-  const visibleMessages = (room?.messages ?? []).filter((message) => {
-    if (message.kind !== "job.card") return true;
-    const job = room?.jobs.find((item) => item.jobId === message.jobId);
-    return job?.status === "failed";
-  });
-  const activeJobs = room?.jobs.filter((job) => isActiveJobStatus(job.status)) ?? [];
-  const activePendingJobs = activeJobs.filter(
-    (job) => !visibleMessages.some((msg) => msg.jobId === job.jobId)
-  );
+  const allMembers = useMemo(() => room?.members ?? [], [room?.members]);
+  const members = useMemo(() => allMembers.filter((member) => member.enabled), [allMembers]);
+  const visibleMessages = useMemo(() => {
+    return (room?.messages ?? []).filter((message) => {
+      if (message.kind !== "job.card") return true;
+      const job = room?.jobs.find((item) => item.jobId === message.jobId);
+      return job?.status === "failed";
+    });
+  }, [room?.jobs, room?.messages]);
+  const activeJobs = useMemo(() => room?.jobs.filter((job) => isActiveJobStatus(job.status)) ?? [], [room?.jobs]);
+  const activePendingJobs = useMemo(() => {
+    return activeJobs.filter(
+      (job) => !visibleMessages.some((msg) => msg.jobId === job.jobId)
+    );
+  }, [activeJobs, visibleMessages]);
   const projectRoot = room?.project.localPath && !isScratchPath(room.project.localPath)
     ? room.project.localPath
     : null;
@@ -516,25 +346,52 @@ export function ImPanel(): ReactPortal | null {
       (ms) => formatDay(ms, t),
       room?.jobs
     );
-  }, [allMembers, formatTime, memberLabel, room?.jobs, t, visibleMessages]);
-  const mentionQuery = (() => {
-    const at = draft.lastIndexOf("@");
-    if (at < 0) return "";
-    const after = draft.slice(at + 1);
-    if (/\s/.test(after)) return "";
-    return after.trim().toLowerCase();
-  })();
-  const mentionOptions = (mentionQuery
-    ? members.filter((member) => roleLabel(member, t).toLowerCase().includes(mentionQuery) || member.agent.includes(mentionQuery))
-    : members
-  ).filter((member) => !mentionIds.includes(member.memberId));
-  const activeJob = room?.jobs.find((job) => isActiveJobStatus(job.status)) ?? null;
-  const permissionOwner = activeJob
-    ? members.find((member) => member.memberId === activeJob.memberId)
-    : undefined;
-  const mentioned = mentionIds
-    .map((id) => members.find((member) => member.memberId === id))
-    .filter((member): member is ImMember => Boolean(member));
+  }, [allMembers, memberLabel, room?.jobs, t, visibleMessages]);
+
+  const activeJob = useMemo(() => {
+    return room?.jobs.find((job) => isActiveJobStatus(job.status)) ?? null;
+  }, [room?.jobs]);
+
+  const permissionOwner = useMemo(() => {
+    return activeJob
+      ? members.find((member) => member.memberId === activeJob.memberId)
+      : undefined;
+  }, [activeJob, members]);
+
+  const handleToggleThinking = useCallback((messageId: string) => {
+    setExpandedThinking((curr) => ({
+      ...curr,
+      [messageId]: !curr[messageId]
+    }));
+  }, []);
+
+  const handleToggleFiles = useCallback((messageId: string) => {
+    setExpandedFiles((curr) => ({
+      ...curr,
+      [messageId]: curr[messageId] === false ? true : false
+    }));
+  }, []);
+
+  const handleEditDelegation = useCallback((instruction: string, targetMember?: ImMember) => {
+    if (targetMember) {
+      setMentionIds((curr) => curr.includes(targetMember.memberId) ? curr : [...curr, targetMember.memberId]);
+    }
+    setDraft((curr) => {
+      const base = curr.trim();
+      return base ? `${base}\n${instruction}` : instruction;
+    });
+    textareaRef.current?.focus();
+  }, []);
+
+  const handleRoutingTipClick = useCallback(() => {
+    setDraft((curr) => {
+      const trimmed = curr.trim();
+      if (!trimmed) return "@";
+      return curr.endsWith(" ") ? `${curr}@` : `${curr} @`;
+    });
+    setMentionOpen(true);
+    textareaRef.current?.focus();
+  }, []);
 
   const quoteSelection = useCallback((message: ImMessage, body: string, extraDraft?: string) => {
     const clipped = body.length > 4000 ? `${body.slice(0, 3999)}…` : body;
@@ -819,71 +676,6 @@ export function ImPanel(): ReactPortal | null {
     setSelectionMenu(null);
   }, []);
 
-  const stageImageFiles = useCallback(async (files: FileList | File[] | null) => {
-    if (!files || !files.length) return;
-    const list = Array.from(files as ArrayLike<File>);
-    const next: PendingImage[] = [];
-    let currentCount = pendingImages.length;
-    for (const file of list) {
-      if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
-        setError(new Error(t("desktop.im.imageInvalidType")));
-        continue;
-      }
-      if (file.size > MAX_IMAGE_BYTES) {
-        setError(new Error(t("desktop.im.imageTooLarge", file.name)));
-        continue;
-      }
-      if (currentCount >= MAX_IMAGES) {
-        setError(new Error(t("desktop.im.tooManyImages", MAX_IMAGES)));
-        break;
-      }
-      try {
-        const dataUrl = await readFileAsDataUrl(file);
-        const data = dataUrl.split(",")[1] || "";
-        next.push({
-          id: crypto.randomUUID(),
-          fileName: file.name || "image.png",
-          mimeType: file.type || "image/png",
-          data,
-          previewUrl: dataUrl,
-          sizeBytes: file.size
-        });
-        currentCount += 1;
-      } catch (err) {
-        setError(err);
-      }
-    }
-    if (next.length) {
-      setPendingImages((curr) => [...curr, ...next]);
-    }
-  }, [pendingImages.length, setError, t]);
-
-  const onComposerPaste = useCallback((event: ReactClipboardEvent<HTMLTextAreaElement>) => {
-    const items = [...(event.clipboardData?.items ?? [])];
-    const imageItems = items.filter((item) => item.type.startsWith("image/"));
-    if (!imageItems.length) return;
-    event.preventDefault();
-    const files: File[] = [];
-    for (const item of imageItems) {
-      const file = item.getAsFile();
-      if (file) files.push(file);
-    }
-    void stageImageFiles(files);
-  }, [stageImageFiles]);
-
-  const onDragOver = useCallback((event: ReactDragEvent) => {
-    if (event.dataTransfer?.types?.includes("Files")) {
-      event.preventDefault();
-    }
-  }, []);
-
-  const onDrop = useCallback((event: ReactDragEvent) => {
-    if (event.dataTransfer?.files?.length) {
-      event.preventDefault();
-      void stageImageFiles(event.dataTransfer.files);
-    }
-  }, [stageImageFiles]);
-
   const send = useCallback(async () => {
     if (!selectedProjectId || sending) return;
     const body = draft.trim();
@@ -904,7 +696,6 @@ export function ImPanel(): ReactPortal | null {
       setMentionIds([]);
       setPendingImages([]);
       setMentionOpen(false);
-      setMentionIndex(0);
     } catch (error) {
       setError(error);
     } finally {
@@ -934,60 +725,6 @@ export function ImPanel(): ReactPortal | null {
     scrollToBottom();
   }, [scrollToBottom]);
 
-  const pickMention = useCallback((member: ImMember) => {
-    const at = draft.lastIndexOf("@");
-    const nextDraft = at >= 0 ? `${draft.slice(0, at).trimEnd()} ` : draft;
-    setDraft(nextDraft.trimStart());
-    setMentionIds((current) => current.includes(member.memberId) ? current : [...current, member.memberId]);
-    setMentionOpen(false);
-    setMentionIndex(0);
-    textareaRef.current?.focus();
-  }, [draft]);
-
-  const onComposerKey = useCallback((event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "@") {
-      setMentionOpen(true);
-      setMentionIndex(0);
-    }
-    if (mentionOpen && mentionOptions.length) {
-      if (event.key === "ArrowDown") {
-        event.preventDefault();
-        setMentionIndex((current) => (current + 1) % mentionOptions.length);
-        return;
-      }
-      if (event.key === "ArrowUp") {
-        event.preventDefault();
-        setMentionIndex((current) => (current - 1 + mentionOptions.length) % mentionOptions.length);
-        return;
-      }
-      if (event.key === "Enter" && !event.shiftKey) {
-        event.preventDefault();
-        const selected = mentionOptions[mentionIndex] ?? mentionOptions[0];
-        if (selected) pickMention(selected);
-        return;
-      }
-      if (event.key === "Tab") {
-        event.preventDefault();
-        const selected = mentionOptions[mentionIndex] ?? mentionOptions[0];
-        if (selected) pickMention(selected);
-        return;
-      }
-    }
-    if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
-      void send();
-    }
-    if (event.key === "Backspace" && !draft && !mentionOpen && mentionIds.length) {
-      event.preventDefault();
-      setMentionIds((current) => current.slice(0, -1));
-      return;
-    }
-    if (event.key === "Escape") {
-      setMentionOpen(false);
-      setMentionIndex(0);
-    }
-  }, [draft, mentionIds.length, mentionIndex, mentionOpen, mentionOptions, pickMention, send]);
-
   const respondPermission = useCallback(async (job: ImJob, optionId?: string, cancelled?: boolean) => {
     if (!job.permission) return;
     try {
@@ -1000,26 +737,6 @@ export function ImPanel(): ReactPortal | null {
       setError(error);
     }
   }, [setError]);
-
-  useEffect(() => {
-    if (!mentionOpen) return;
-    setMentionIndex((current) => {
-      if (!mentionOptions.length) return 0;
-      return Math.min(current, mentionOptions.length - 1);
-    });
-  }, [mentionOpen, mentionOptions.length]);
-
-  useEffect(() => {
-    if (!mentionOpen) return;
-    const list = mentionListRef.current;
-    const option = mentionOptions[mentionIndex];
-    if (!list || !option) return;
-    const row = document.getElementById(option.memberId);
-    if (row && list.contains(row) && typeof row.scrollIntoView === "function") {
-      row.scrollIntoView({ block: "nearest" });
-    }
-  }, [mentionIndex, mentionOpen, mentionOptions]);
-
 
   const addKnowledgeText = useCallback(async (event: FormEvent) => {
     event.preventDefault();
@@ -1361,429 +1078,39 @@ export function ImPanel(): ReactPortal | null {
               <div className="im-transcript-wrap">
                 <div ref={transcriptRef} className="im-transcript" aria-label={t("desktop.im.transcript")} onScroll={onTranscriptScroll}>
                 {visibleMessages.length ? visibleMessages.map((message, index) => {
-                  const speaker = allMembers.find((member) => member.memberId === message.authorMemberId)
-                    || allMembers.find((member) => member.templateId === message.authorMemberId)
-                    || allMembers.find((member) => member.name === message.authorLabel || roleLabel(member, t) === message.authorLabel);
                   const displayBody = translations[message.messageId]
                     ?? (message.kind === "system" && message.body.startsWith("desktop.") ? (t(message.body) || message.body) : message.body);
                   const isTranslating = translatingIds.has(message.messageId);
                   const translated = Boolean(translations[message.messageId]);
-                  const roleColorValue = speaker ? roleColor(speaker.templateId) : (message.kind === "role.say" ? roleColor(message.authorLabel) : undefined);
-                  const prevVisible = visibleMessages[index - 1];
-                  const showDate = !prevVisible || dayKey(prevVisible.createdAtMs) !== dayKey(message.createdAtMs);
-                  const showThreadBreak = Boolean(
-                    message.threadId &&
-                    prevVisible?.threadId &&
-                    prevVisible.threadId !== message.threadId
-                  );
-                  const linkedJob = message.jobId ? room?.jobs.find((j) => j.jobId === message.jobId) : undefined;
-                  const filesChanged = linkedJob?.filesChanged ?? [];
-                  const dispatchBlocks = message.kind === "role.say" ? parseDispatchBlocks(displayBody) : [];
-                  const cleanBody = dispatchBlocks.length > 0
-                    ? displayBody.replace(/<im_dispatch[\s\S]*?<\/im_dispatch>/gi, "").trim()
-                    : displayBody;
                   return (
-                    <Fragment key={message.messageId}>
-                      {showDate && (
-                        <div className="im-date-separator" aria-hidden="true">{formatDay(message.createdAtMs, t)}</div>
-                      )}
-                      {showThreadBreak && (
-                        <div className="im-thread-separator" role="separator">{t("desktop.im.newConversation")}</div>
-                      )}
-                      <article
-                        id={`im-msg-${message.messageId}`}
-                        className={`im-message is-${message.kind.replace(".", "-")}${flashingMessageId === message.messageId ? " is-flashing" : ""}`}
-                        style={roleColorValue ? { "--im-role-color": roleColorValue } as CSSProperties : undefined}
-                        onContextMenu={(event) => openSelectionMenu(event, message)}
-                      >
-                        {message.kind !== "system" && (
-                          <header>
-                            <span className="im-message-author">
-                              {roleColorValue && (
-                                <span className="im-role-avatar" aria-hidden="true" style={{ "--im-role-color": roleColorValue } as CSSProperties}>
-                                  {roleInitial(speaker ? memberLabel(speaker) : message.authorLabel)}
-                                </span>
-                              )}
-                              <strong>
-                                {speaker ? memberLabel(speaker) : message.authorLabel}
-                                {speaker ? <> {agentTag(speaker.agent, speaker.model, t)}</> : null}
-                              </strong>
-                              {message.autoRouted && message.routedRoleName && (
-                                <span className="im-auto-routed-badge" title={t("desktop.im.autoRoutedTo", message.routedRoleName)}>
-                                  <ThemeIcon name="sparkles" size={11} aria-hidden="true" />
-                                  <span>{t("desktop.im.autoRoutedTo", message.routedRoleName)}</span>
-                                </span>
-                              )}
-                            </span>
-                            <span className="im-message-meta">
-                              <time dateTime={new Date(message.createdAtMs).toISOString()} className="im-message-time">
-                                {formatTime(message.createdAtMs)}
-                              </time>
-                            </span>
-                          </header>
-                        )}
-                        {message.quotes.length > 0 && (
-                          <div className="im-quote-list">
-                            {message.quotes.map((quote) => (
-                              <blockquote key={quote.messageId}>
-                                <span>{quote.authorLabel}</span>
-                                {quote.body}
-                              </blockquote>
-                            ))}
-                          </div>
-                        )}
-                        {message.mentionRoleIds.length > 0 && (
-                          <div className="im-message-mentions" aria-label={t("desktop.im.mentions")}>
-                            {message.mentionRoleIds.map((mentionId) => {
-                              const mentionMember = room?.members.find((item) => item.memberId === mentionId);
-                              const mentionColor = mentionMember ? roleColor(mentionMember.templateId) : undefined;
-                              return (
-                                <span
-                                  key={mentionId}
-                                  className="im-message-mention"
-                                  style={mentionColor ? { "--im-role-color": mentionColor } as CSSProperties : undefined}
-                                >
-                                  @{mentionMember ? memberLabel(mentionMember) : mentionId}
-                                </span>
-                              );
-                            })}
-                          </div>
-                        )}
-                        {message.thinking ? (
-                          <div className="im-message-thinking">
-                            <button
-                              type="button"
-                              className="im-message-thinking-toggle"
-                              aria-expanded={expandedThinking[message.messageId] === true}
-                              onClick={() => setExpandedThinking((curr) => ({
-                                ...curr,
-                                [message.messageId]: !curr[message.messageId]
-                              }))}
-                            >
-                              <ThemeIcon
-                                name="chevron-right"
-                                className={expandedThinking[message.messageId] ? "is-expanded" : ""}
-                                size={12}
-                                aria-hidden="true"
-                              />
-                              <span>
-                                {t("desktop.im.thinking")}
-                                {message.streaming && !message.body ? (
-                                  <span className="im-thinking-spinner" aria-hidden="true" />
-                                ) : null}
-                              </span>
-                            </button>
-                            {expandedThinking[message.messageId] ? (
-                              <div
-                                className="im-message-thinking-body markdown-body"
-                                dangerouslySetInnerHTML={{ __html: renderMarkdown(message.thinking) }}
-                              />
-                            ) : null}
-                          </div>
-                        ) : null}
-                        {message.images && message.images.length > 0 && (
-                          <div className="im-message-images">
-                            {message.images.map((img) => (
-                              <button
-                                key={img.id}
-                                type="button"
-                                className="im-message-image-card"
-                                onClick={() => setPreviewModalUrl(img.previewUrl || "")}
-                                title={img.fileName}
-                              >
-                                <img src={img.previewUrl || ""} alt={img.fileName} loading="lazy" />
-                                <span className="im-message-image-name">{img.fileName}</span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                        {cleanBody ? (
-                          <div
-                            className="markdown-body"
-                            dangerouslySetInnerHTML={{ __html: renderMarkdown(cleanBody) }}
-                          />
-                        ) : null}
-                        {((message.delegationProposals && message.delegationProposals.length > 0) || dispatchBlocks.length > 0) && (
-                          <div className="im-message-dispatches">
-                            {(message.delegationProposals?.length ? message.delegationProposals : dispatchBlocks.map((b, idx) => ({
-                              id: `fallback-${idx}`,
-                              targetTemplateId: b.target,
-                              targetRoleName: b.target,
-                              instruction: b.instruction,
-                              reason: b.reason,
-                              status: "pending" as const,
-                              dispatchedMessageId: undefined,
-                              dispatchedJobId: undefined,
-                              resolvedAtMs: undefined,
-                              createdAtMs: message.createdAtMs
-                            }))).map((proposal) => {
-                              const targetMember = allMembers.find((m) =>
-                                m.templateId === proposal.targetTemplateId ||
-                                m.memberId === proposal.targetTemplateId ||
-                                m.name.toLowerCase() === (proposal.targetRoleName || proposal.targetTemplateId).toLowerCase() ||
-                                m.templateId.toLowerCase() === proposal.targetTemplateId.toLowerCase()
-                              );
-                              const targetLabel = targetMember ? memberLabel(targetMember) : (proposal.targetRoleName || proposal.targetTemplateId);
-                              const targetColor = targetMember ? roleColor(targetMember.templateId) : roleColor(proposal.targetTemplateId);
-                              const isPending = proposal.status === "pending";
-                              const dispatchedJob = "dispatchedJobId" in proposal && proposal.dispatchedJobId
-                                ? room?.jobs.find((item) => item.jobId === proposal.dispatchedJobId)
-                                : undefined;
-                              const canResumeDispatch = isResumableJob(dispatchedJob, room?.jobs ?? []);
-                              return (
-                                <div key={proposal.id} className="im-dispatch-card" style={{ "--im-role-color": targetColor } as CSSProperties}>
-                                  <div className="im-dispatch-header">
-                                    <span className="im-role-avatar" aria-hidden="true" style={{ "--im-role-color": targetColor } as CSSProperties}>
-                                      {roleInitial(targetLabel)}
-                                    </span>
-                                    <strong>{t("desktop.im.delegationProposal", targetLabel)}</strong>
-                                    <span className={`im-dispatch-status is-${proposal.status.replace("_", "-")}`}>
-                                      {t(`desktop.im.delegationStatus.${proposal.status}`)}
-                                    </span>
-                                    {proposal.reason ? <span className="im-dispatch-reason">{proposal.reason}</span> : null}
-                                  </div>
-                                  <div className="im-dispatch-instruction">
-                                    {proposal.instruction}
-                                  </div>
-                                  <div className="im-dispatch-actions">
-                                    {isPending && room ? (
-                                      <>
-                                        <button
-                                          type="button"
-                                          className="btn small primary"
-                                          onClick={() => void desktopApi().imDispatchProposal({
-                                            projectId: room.project.projectId,
-                                            messageId: message.messageId,
-                                            proposalId: proposal.id
-                                          })}
-                                        >
-                                          <ThemeIcon name="send" size={12} aria-hidden="true" />
-                                          <span>{t("desktop.im.delegationApprove")}</span>
-                                        </button>
-                                        <button
-                                          type="button"
-                                          className="ghost-btn small"
-                                          onClick={() => {
-                                            if (targetMember) {
-                                              setMentionIds((curr) => curr.includes(targetMember.memberId) ? curr : [...curr, targetMember.memberId]);
-                                            }
-                                            setDraft((curr) => {
-                                              const base = curr.trim();
-                                              return base ? `${base}\n${proposal.instruction}` : proposal.instruction;
-                                            });
-                                            textareaRef.current?.focus();
-                                          }}
-                                        >
-                                          <ThemeIcon name="pencil" size={12} aria-hidden="true" />
-                                          <span>{t("desktop.im.delegationEdit")}</span>
-                                        </button>
-                                        <button
-                                          type="button"
-                                          className="ghost-btn small"
-                                          onClick={() => void desktopApi().imDismissProposal({
-                                            projectId: room.project.projectId,
-                                            messageId: message.messageId,
-                                            proposalId: proposal.id
-                                          })}
-                                        >
-                                          <ThemeIcon name="close" size={12} aria-hidden="true" />
-                                          <span>{t("desktop.im.delegationDismiss")}</span>
-                                        </button>
-                                      </>
-                                    ) : (
-                                      <>
-                                        {canResumeDispatch && dispatchedJob ? (
-                                          <button
-                                            type="button"
-                                            className="btn small primary"
-                                            onClick={() => void resumeJob(dispatchedJob)}
-                                          >
-                                            <ThemeIcon name="refresh" size={12} aria-hidden="true" />
-                                            <span>{t("desktop.im.resumeJob")}</span>
-                                          </button>
-                                        ) : null}
-                                        <button
-                                          type="button"
-                                          className="ghost-btn small"
-                                          onClick={() => {
-                                            if (targetMember) {
-                                              setMentionIds((curr) => curr.includes(targetMember.memberId) ? curr : [...curr, targetMember.memberId]);
-                                            }
-                                            setDraft((curr) => {
-                                              const base = curr.trim();
-                                              return base ? `${base}\n${proposal.instruction}` : proposal.instruction;
-                                            });
-                                            textareaRef.current?.focus();
-                                          }}
-                                        >
-                                          <ThemeIcon name="pencil" size={12} aria-hidden="true" />
-                                          <span>{t("desktop.im.delegationEdit")}</span>
-                                        </button>
-                                      </>
-                                    )}
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                        {filesChanged.length > 0 && (
-                          <div className="im-message-files">
-                            <button
-                              type="button"
-                              className="im-message-files-toggle"
-                              aria-expanded={expandedFiles[message.messageId] !== false}
-                              onClick={() => setExpandedFiles((curr) => ({
-                                ...curr,
-                                [message.messageId]: curr[message.messageId] === false ? true : false
-                              }))}
-                            >
-                              <ThemeIcon
-                                name="chevron-right"
-                                className={expandedFiles[message.messageId] !== false ? "is-expanded" : ""}
-                                size={12}
-                                aria-hidden="true"
-                              />
-                              <ThemeIcon name="file-text" size={13} aria-hidden="true" />
-                              <span>
-                                {filesChanged.length === 1
-                                  ? t("desktop.im.fileModifiedSingle")
-                                  : t("desktop.im.filesModified", filesChanged.length)}
-                              </span>
-                            </button>
-                            {expandedFiles[message.messageId] !== false ? (
-                              <div className="im-message-files-list">
-                                {filesChanged.map((filePath) => {
-                                  const absPath = room?.project.localPath && !filePath.startsWith("/")
-                                    ? `${room.project.localPath.replace(/\/+$/, "")}/${filePath}`
-                                    : filePath;
-                                  const displayPath = room?.project.localPath && filePath.startsWith(room.project.localPath)
-                                    ? filePath.slice(room.project.localPath.length).replace(/^\/+/, "")
-                                    : filePath;
-                                  return (
-                                    <div key={filePath} className="im-message-file-item" title={absPath}>
-                                      <ThemeIcon name="file-text" size={12} aria-hidden="true" />
-                                      <span className="im-message-file-path">{displayPath}</span>
-                                      <div className="im-message-file-actions">
-                                        <button
-                                          type="button"
-                                          className="im-message-file-btn"
-                                          onClick={() => void copyFilePath(absPath)}
-                                          title={copiedFilePath === absPath ? t("desktop.im.copiedPath") : t("desktop.im.copyPath")}
-                                          aria-label={t("desktop.im.copyPath")}
-                                        >
-                                          <ThemeIcon name={copiedFilePath === absPath ? "check" : "copy"} size={11} aria-hidden="true" />
-                                        </button>
-                                        <button
-                                          type="button"
-                                          className="im-message-file-btn"
-                                          disabled={!room?.project.localPath}
-                                          onClick={() => {
-                                            const rootPath = room?.project.localPath;
-                                            if (!rootPath) return;
-                                            void desktopApi().workbenchRevealPath({ rootPath, targetPath: absPath });
-                                          }}
-                                          title={t("desktop.common.revealInFinder")}
-                                          aria-label={t("desktop.common.revealInFinder")}
-                                        >
-                                          <ThemeIcon name="external-link" size={11} aria-hidden="true" />
-                                        </button>
-                                        <button
-                                          type="button"
-                                          className="im-message-file-btn"
-                                          disabled={!room?.project.localPath || isScratchPath(room.project.localPath)}
-                                          onClick={() => {
-                                            const projectPath = room?.project.localPath;
-                                            if (!projectPath || isScratchPath(projectPath)) return;
-                                            window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
-                                            window.dispatchEvent(new CustomEvent("agent-resume:workbench-open-diff", {
-                                              detail: { projectPath, filePath: absPath }
-                                            }));
-                                          }}
-                                          title={t("desktop.im.revealInWorkbench")}
-                                          aria-label={t("desktop.im.revealInWorkbench")}
-                                        >
-                                          <ThemeIcon name="file-diff" size={11} aria-hidden="true" />
-                                        </button>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            ) : null}
-                          </div>
-                        )}
-                        {message.routingTip && (
-                          <div
-                            className={`im-routing-tip${message.routingTimedOut ? " is-timeout" : " is-unmatched"}`}
-                            onClick={() => {
-                              setDraft((curr) => {
-                                const trimmed = curr.trim();
-                                if (!trimmed) return "@";
-                                return curr.endsWith(" ") ? `${curr}@` : `${curr} @`;
-                              });
-                              setMentionOpen(true);
-                              textareaRef.current?.focus();
-                            }}
-                          >
-                            <ThemeIcon
-                              name={message.routingTimedOut ? "history" : "sparkles"}
-                              size={12}
-                              aria-hidden="true"
-                            />
-                            <span>{t(message.routingTip) || message.routingTip}</span>
-                          </div>
-                        )}
-                        {message.streaming && (
-                          <span className="im-streaming-cursor" aria-hidden="true" />
-                        )}
-                        {isResumableJob(linkedJob, room?.jobs ?? []) && linkedJob && (
-                          <div className="im-interrupted-bar">
-                            <span>{t("desktop.im.jobInterrupted")}</span>
-                            <button
-                              type="button"
-                              className="btn small primary"
-                              onClick={() => void resumeJob(linkedJob)}
-                            >
-                              <ThemeIcon name="refresh" size={12} aria-hidden="true" />
-                              <span>{t("desktop.im.resumeJob")}</span>
-                            </button>
-                          </div>
-                        )}
-                        {(message.kind === "human" || message.kind === "role.say") && (
-                          <div className="im-message-actions">
-                            <button type="button" className="im-message-action" onClick={() => void copyText(message.body)}>
-                              {t("desktop.common.copy")}
-                            </button>
-                            <button type="button" className="im-message-action im-quote-btn" onClick={() => quoteMessage(message)}>
-                              {t("desktop.im.quote")}
-                            </button>
-                            <button
-                              type="button"
-                              className="im-message-action"
-                              disabled={isTranslating}
-                              onClick={() => void translateMessage(message)}
-                            >
-                              {translated
-                                ? t("desktop.im.restore")
-                                : isTranslating
-                                  ? t("desktop.im.actionRunning")
-                                  : t("desktop.im.translate")}
-                            </button>
-                            {message.kind === "role.say" && speaker && speaker.enabled && !message.streaming && !isResumableJob(linkedJob, room?.jobs ?? []) && (
-                              <button
-                                type="button"
-                                className="im-message-action"
-                                disabled={Boolean(room?.jobs.some((job) => job.memberId === speaker.memberId && isActiveJobStatus(job.status)))}
-                                onClick={() => continueAsk(message)}
-                              >
-                                {t("desktop.im.continueAsk")}
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </article>
-                    </Fragment>
+                    <ImMessageItem
+                      key={message.messageId}
+                      message={message}
+                      prevMessage={visibleMessages[index - 1]}
+                      allMembers={allMembers}
+                      room={room}
+                      displayBody={displayBody}
+                      isTranslating={isTranslating}
+                      translated={translated}
+                      isFlashing={flashingMessageId === message.messageId}
+                      isThinkingExpanded={expandedThinking[message.messageId] === true}
+                      isFilesExpanded={expandedFiles[message.messageId] !== false}
+                      copiedFilePath={copiedFilePath}
+                      memberLabel={memberLabel}
+                      onToggleThinking={handleToggleThinking}
+                      onToggleFiles={handleToggleFiles}
+                      onCopyText={copyText}
+                      onQuoteMessage={quoteMessage}
+                      onTranslateMessage={translateMessage}
+                      onContinueAsk={continueAsk}
+                      onResumeJob={resumeJob}
+                      onPreviewImage={setPreviewModalUrl}
+                      onCopyFilePath={copyFilePath}
+                      onEditDelegation={handleEditDelegation}
+                      onOpenSelectionMenu={openSelectionMenu}
+                      onRoutingTipClick={handleRoutingTipClick}
+                      t={t}
+                    />
                   );
                 }) : (
                   <p className="im-empty">{t("desktop.im.emptyRoom")}</p>
@@ -1908,154 +1235,28 @@ export function ImPanel(): ReactPortal | null {
                   </div>
                 </div>
               )}
-              <div className="chat-compose im-composer" onDragOver={onDragOver} onDrop={onDrop}>
-                <input
-                  ref={imageInputRef}
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp,image/gif"
-                  multiple
-                  style={{ display: "none" }}
-                  onChange={(e) => {
-                    void stageImageFiles(e.target.files);
-                    e.target.value = "";
-                  }}
-                />
-                <div className="chat-compose-frame">
-                  <div className="chat-compose-field">
-                    {mentionOpen && mentionOptions.length > 0 && (
-                      <div ref={mentionListRef} className="im-mention-menu" role="listbox" aria-label={t("desktop.im.mention")} aria-activedescendant={mentionOptions[mentionIndex]?.memberId}>
-                        {mentionOptions.map((member, index) => (
-                          <button
-                            key={member.memberId}
-                            id={member.memberId}
-                            type="button"
-                            role="option"
-                            aria-selected={index === mentionIndex}
-                            className={index === mentionIndex ? "active" : undefined}
-                            onMouseEnter={() => setMentionIndex(index)}
-                            onClick={() => pickMention(member)}
-                          >
-                            <span className="im-role-avatar" aria-hidden="true" style={{ "--im-role-color": roleColor(member.templateId) } as CSSProperties}>
-                              {roleInitial(memberLabel(member))}
-                            </span>
-                            @{memberLabel(member)} {agentTag(member.agent, member.model, t)}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    {pendingImages.length > 0 && (
-                      <div className="im-pending-images" aria-label="Attached images">
-                        {pendingImages.map((img) => (
-                          <div key={img.id} className="im-pending-image-card">
-                            <img src={img.previewUrl} alt={img.fileName} onClick={() => setPreviewModalUrl(img.previewUrl)} />
-                            <span className="im-pending-image-name" title={img.fileName}>{img.fileName}</span>
-                            <button
-                              type="button"
-                              className="im-pending-image-remove"
-                              onClick={() => setPendingImages((curr) => curr.filter((item) => item.id !== img.id))}
-                              aria-label={t("desktop.common.delete")}
-                            >
-                              <ThemeIcon name="close" size={11} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {followUpTo && (
-                      <div className="im-quote-chips">
-                        <button
-                          type="button"
-                          className="im-quote-chip im-followup-chip"
-                          onClick={() => {
-                            setFollowUpTo(null);
-                            setMentionIds([]);
-                          }}
-                          aria-label={t("desktop.im.removeFollowUp")}
-                        >
-                          {t("desktop.im.continuingWith", followUpTo.authorLabel)}
-                          <ThemeIcon name="close" size={12} aria-hidden="true" />
-                        </button>
-                      </div>
-                    )}
-                    {quotes.length > 0 && (
-                      <div className="im-quote-chips">
-                        {quotes.map((quote) => (
-                          <button
-                            key={quote.messageId}
-                            type="button"
-                            className="im-quote-chip"
-                            onClick={() => setQuotes((current) => current.filter((item) => item.messageId !== quote.messageId))}
-                            aria-label={t("desktop.im.removeQuote")}
-                          >
-                            {quote.authorLabel}: {quote.body.slice(0, 40)}
-                            <ThemeIcon name="close" size={12} aria-hidden="true" />
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    {mentioned.length > 0 && (
-                      <div className="im-quote-chips">
-                        {mentioned.map((member) => (
-                          <button
-                            key={member.memberId}
-                            type="button"
-                            className="im-mention-chip"
-                            onClick={() => setMentionIds((current) => current.filter((id) => id !== member.memberId))}
-                            aria-label={t("desktop.im.removeMention")}
-                          >
-                            @{memberLabel(member)}
-                            <ThemeIcon name="close" size={12} />
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    <textarea
-                      ref={textareaRef}
-                      value={draft}
-                      onChange={(event) => setDraft(event.target.value)}
-                      onKeyDown={onComposerKey}
-                      onPaste={onComposerPaste}
-                      placeholder={t("desktop.im.placeholder")}
-                      aria-label={t("desktop.im.placeholder")}
-                      rows={1}
-                    />
-                  </div>
-                  <div className="chat-compose-toolbar">
-                    <button
-                      type="button"
-                      className="chat-tools-toggle"
-                      onClick={() => imageInputRef.current?.click()}
-                      title={t("desktop.im.addImage")}
-                      aria-label={t("desktop.im.addImage")}
-                    >
-                      <ThemeIcon name="file-image" size={16} aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      className={`chat-tools-toggle im-mention-btn${mentionOpen ? " active" : ""}`}
-                      onClick={() => {
-                        setMentionOpen((open) => !open);
-                        setMentionIndex(0);
-                        textareaRef.current?.focus();
-                      }}
-                      title={t("desktop.im.mention")}
-                      aria-label={t("desktop.im.mention")}
-                    >
-                      <ThemeIcon name="at-sign" size={16} aria-hidden="true" />
-                    </button>
-                    <span className="chat-compose-toolbar-spacer" />
-                    <button
-                      type="button"
-                      className="chat-send-btn"
-                      onClick={() => void send()}
-                      disabled={sending || (!draft.trim() && !quotes.length && !pendingImages.length)}
-                      aria-label={t("desktop.common.send")}
-                    >
-                      <ThemeIcon name="send" size={18} />
-                    </button>
-                  </div>
-                </div>
-              </div>
+              <ImComposer
+                members={members}
+                draft={draft}
+                quotes={quotes}
+                followUpTo={followUpTo}
+                mentionIds={mentionIds}
+                pendingImages={pendingImages}
+                sending={sending}
+                mentionOpen={mentionOpen}
+                setMentionOpen={setMentionOpen}
+                onDraftChange={setDraft}
+                onQuotesChange={setQuotes}
+                onFollowUpToChange={setFollowUpTo}
+                onMentionIdsChange={setMentionIds}
+                onPendingImagesChange={setPendingImages}
+                onSend={() => void send()}
+                onPreviewImage={setPreviewModalUrl}
+                onError={setError}
+                memberLabel={memberLabel}
+                textareaRef={textareaRef}
+                t={t}
+              />
             </>
           ) : (
             <p className="im-empty">{t("desktop.im.selectChat")}</p>
