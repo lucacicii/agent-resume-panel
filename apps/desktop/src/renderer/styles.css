@@ -17438,8 +17438,6 @@ html[data-window-mode="browser"] #react-chrome {
   gap: 10px;
 }
 .im-message {
-  content-visibility: auto;
-  contain-intrinsic-size: 0 120px;
   width: fit-content;
   max-width: 85%;
   min-width: 0;

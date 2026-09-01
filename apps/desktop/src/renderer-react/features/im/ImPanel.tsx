@@ -86,6 +86,14 @@ type TranscriptItem =
   | { kind: "message"; message: ImMessage }
   | { kind: "pending"; job: ImJob };
 
+function estimateTranscriptItemSize(item: TranscriptItem): number {
+  if (item.kind === "pending") return 88;
+  const body = item.message.body ?? "";
+  const lines = Math.max(1, body.split("\n").length);
+  const wrapped = Math.ceil(body.length / 72);
+  return Math.min(720, 88 + Math.max(lines, wrapped) * 18);
+}
+
 
 export function ImPanel(): ReactPortal | null {
   const host = document.getElementById("react-im");
@@ -150,6 +158,7 @@ export function ImPanel(): ReactPortal | null {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const newChatInputRef = useRef<HTMLInputElement | null>(null);
   const prevMsgCount = useRef(0);
+  const timelineJumpLockRef = useRef<string | null>(null);
 
   const memberLabel = useCallback((member: ImMember) => roleLabel(member, t), [t]);
 
@@ -345,17 +354,23 @@ export function ImPanel(): ReactPortal | null {
 
   const scrollToTop = useCallback(() => {
     if (!transcriptItems.length) return;
+    const topMessageId = visibleMessages[0]?.messageId ?? null;
+    timelineJumpLockRef.current = topMessageId;
+    setPinnedToBottom(false);
     transcriptVirtualizerRef.current?.scrollToIndex(0, { align: "start", behavior: "smooth" });
-    if (visibleMessages[0]) setActiveTimelineMessageId(visibleMessages[0].messageId);
+    if (topMessageId) setActiveTimelineMessageId(topMessageId);
   }, [transcriptItems.length, visibleMessages]);
 
   const jumpToMessage = useCallback((messageId: string) => {
     const index = messageIndexById.get(messageId);
     if (index == null) return;
-    transcriptVirtualizerRef.current?.scrollToIndex(index, { align: "start", behavior: "smooth" });
+    timelineJumpLockRef.current = messageId;
+    setPinnedToBottom(false);
     setFlashingMessageId(messageId);
     setActiveTimelineMessageId(messageId);
+    transcriptVirtualizerRef.current?.scrollToIndex(index, { align: "start", behavior: "smooth" });
     window.setTimeout(() => {
+      if (timelineJumpLockRef.current === messageId) timelineJumpLockRef.current = null;
       setFlashingMessageId((current) => (current === messageId ? null : current));
     }, 1500);
   }, [messageIndexById]);
@@ -368,10 +383,18 @@ export function ImPanel(): ReactPortal | null {
     if (nearBottom) setHasNewBelow(false);
   }, []);
 
-  const onTranscriptVisibleRange = useCallback((startIndex: number) => {
+  const onTranscriptVisibleRange = useCallback((startIndex: number, endIndex: number) => {
+    const lockedId = timelineJumpLockRef.current;
+    if (lockedId) {
+      const lockedIndex = messageIndexById.get(lockedId);
+      if (lockedIndex == null || (lockedIndex >= startIndex && lockedIndex <= endIndex)) {
+        timelineJumpLockRef.current = null;
+      }
+      return;
+    }
     const item = transcriptItems[startIndex];
     if (item?.kind === "message") setActiveTimelineMessageId(item.message.messageId);
-  }, [transcriptItems]);
+  }, [messageIndexById, transcriptItems]);
 
   const insertIntoComposer = useCallback((text: string) => {
     setDraft((current) => {
@@ -1148,7 +1171,7 @@ export function ImPanel(): ReactPortal | null {
                   items={transcriptItems}
                   getKey={(item) => item.kind === "message" ? item.message.messageId : `pending-job-${item.job.jobId}`}
                   gap={20}
-                  estimateSize={(item) => item.kind === "pending" ? 88 : 120}
+                  estimateSize={estimateTranscriptItemSize}
                   pinToBottom={pinnedToBottom}
                   onVisibleRangeChange={onTranscriptVisibleRange}
                   onScroll={onTranscriptScroll}

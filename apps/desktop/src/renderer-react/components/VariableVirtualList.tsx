@@ -33,6 +33,40 @@ interface VariableVirtualListProps<T> {
 
 type Layout = { key: string; top: number; height: number };
 
+type PendingScroll = {
+  index: number;
+  key: string;
+  align: "start" | "center" | "end";
+  steps: number;
+};
+
+const MAX_SCROLL_SETTLE_STEPS = 48;
+const SCROLL_SETTLE_EPSILON = 1;
+
+function clampScrollTop(top: number, totalHeight: number, viewportHeight: number): number {
+  return Math.max(0, Math.min(Math.max(0, totalHeight - viewportHeight), top));
+}
+
+function alignedScrollTop(
+  layout: Layout,
+  viewportHeight: number,
+  totalHeight: number,
+  align: "start" | "center" | "end"
+): number {
+  const raw = align === "start"
+    ? layout.top
+    : align === "end"
+      ? layout.top + layout.height - viewportHeight
+      : layout.top + layout.height / 2 - viewportHeight / 2;
+  return clampScrollTop(raw, totalHeight, viewportHeight);
+}
+
+function totalLayoutHeight(layouts: Layout[]): number {
+  if (!layouts.length) return 0;
+  const last = layouts[layouts.length - 1];
+  return last.top + last.height;
+}
+
 function VirtualRow({
   layout,
   children,
@@ -99,12 +133,10 @@ function VariableVirtualListInner<T>(
   const [renderedVersion, setRenderedVersion] = useState(0);
   const measuredHeights = useRef(new Map<string, number>());
   const renderedRows = useRef(new Map<string, HTMLElement>());
-  const pendingScroll = useRef<{
-    index: number;
-    key: string;
-    align: "start" | "center" | "end";
-    behavior: ScrollBehavior;
-  } | null>(null);
+  const pendingScroll = useRef<PendingScroll | null>(null);
+  const programmaticScroll = useRef(false);
+  const pinHoldRef = useRef(false);
+  const layoutsRef = useRef<Layout[]>([]);
 
   const layouts = useMemo(() => {
     const result: Layout[] = [];
@@ -120,7 +152,8 @@ function VariableVirtualListInner<T>(
     return result;
   }, [estimateSize, gap, getKey, items, layoutVersion]);
 
-  const totalHeight = layouts.length ? layouts[layouts.length - 1].top + layouts[layouts.length - 1].height : 0;
+  layoutsRef.current = layouts;
+  const totalHeight = totalLayoutHeight(layouts);
   const visibleRange = useMemo(() => {
     let start = 0;
     while (start < layouts.length && layouts[start].top + layouts[start].height < scrollTop) start += 1;
@@ -128,8 +161,10 @@ function VariableVirtualListInner<T>(
     const bottom = scrollTop + viewportHeight;
     while (end < layouts.length && layouts[end].top <= bottom) end += 1;
     return {
-      start: Math.max(0, start - overscan),
-      end: Math.min(layouts.length, end + overscan)
+      start,
+      end,
+      renderStart: Math.max(0, start - overscan),
+      renderEnd: Math.min(layouts.length, end + overscan)
     };
   }, [layouts, overscan, scrollTop, viewportHeight]);
 
@@ -144,27 +179,82 @@ function VariableVirtualListInner<T>(
     renderedRows.current.delete(key);
   }, []);
 
-  const alignRenderedRow = useCallback((node: HTMLElement, align: "start" | "center" | "end", behavior: ScrollBehavior) => {
-    const viewport = viewportRef.current;
-    if (!viewport) return;
-    if (typeof node.scrollIntoView === "function") {
-      node.scrollIntoView({
-        block: align === "start" ? "start" : align === "end" ? "end" : "center",
-        inline: "nearest",
-        behavior
-      });
+  const applyViewportScroll = useCallback((top: number) => {
+    const node = viewportRef.current;
+    if (!node) return;
+    programmaticScroll.current = true;
+    node.scrollTop = top;
+    setScrollTop(top);
+  }, []);
+
+  const settlePendingScroll = useCallback(() => {
+    const request = pendingScroll.current;
+    const node = viewportRef.current;
+    if (!request || !node) return;
+    const currentLayouts = layoutsRef.current;
+    if (request.index < 0 || request.index >= currentLayouts.length) {
+      pendingScroll.current = null;
       return;
     }
+    const layout = currentLayouts[request.index];
+    request.key = layout.key;
+    const nextTop = alignedScrollTop(
+      layout,
+      node.clientHeight || viewportHeight,
+      totalLayoutHeight(currentLayouts),
+      request.align
+    );
+    const measured = measuredHeights.current.has(layout.key);
+    const rendered = renderedRows.current.has(layout.key);
+    const closeEnough = Math.abs(node.scrollTop - nextTop) < SCROLL_SETTLE_EPSILON;
+    if (rendered && measured && closeEnough) {
+      pendingScroll.current = null;
+      return;
+    }
+    if (closeEnough) return;
+    request.steps += 1;
+    if (request.steps > MAX_SCROLL_SETTLE_STEPS) {
+      pendingScroll.current = null;
+      return;
+    }
+    applyViewportScroll(nextTop);
+  }, [applyViewportScroll, viewportHeight]);
 
-    const nodeRect = node.getBoundingClientRect();
-    const viewportRect = viewport.getBoundingClientRect();
-    const delta = align === "start"
-      ? nodeRect.top - viewportRect.top
-      : align === "end"
-        ? nodeRect.bottom - viewportRect.bottom
-        : (nodeRect.top + nodeRect.height / 2) - (viewportRect.top + viewportRect.height / 2);
-    viewport.scrollTop += delta;
-  }, []);
+  const startScrollToIndex = useCallback((index: number, options: {
+    align?: "start" | "center" | "end";
+    behavior?: ScrollBehavior;
+  } = {}) => {
+    const node = viewportRef.current;
+    const currentLayouts = layoutsRef.current;
+    if (!node || index < 0 || index >= currentLayouts.length) return;
+    const layout = currentLayouts[index];
+    const align = options.align ?? "center";
+    const behavior = options.behavior ?? "smooth";
+    const nextTop = alignedScrollTop(
+      layout,
+      node.clientHeight || viewportHeight,
+      totalLayoutHeight(currentLayouts),
+      align
+    );
+    pinHoldRef.current = index !== currentLayouts.length - 1;
+    const rendered = renderedRows.current.has(layout.key);
+    const measured = measuredHeights.current.has(layout.key);
+    const useSmooth = behavior === "smooth" && rendered && measured;
+    if (useSmooth) {
+      pendingScroll.current = null;
+      programmaticScroll.current = true;
+      if (typeof node.scrollTo === "function") {
+        node.scrollTo({ top: nextTop, behavior: "smooth" });
+      } else {
+        node.scrollTop = nextTop;
+      }
+      setScrollTop(nextTop);
+      return;
+    }
+    pendingScroll.current = { index, key: layout.key, align, steps: 0 };
+    applyViewportScroll(nextTop);
+    settlePendingScroll();
+  }, [applyViewportScroll, settlePendingScroll, viewportHeight]);
 
   const measureRow = useCallback((key: string, height: number) => {
     if (!Number.isFinite(height) || height <= 0) return;
@@ -181,31 +271,9 @@ function VariableVirtualListInner<T>(
 
   useImperativeHandle(forwardedRef, () => ({
     scrollToIndex(index, options = {}) {
-      const node = viewportRef.current;
-      if (!node || index < 0 || index >= layouts.length) return;
-      const layout = layouts[index];
-      const align = options.align ?? "center";
-      const behavior = options.behavior ?? "smooth";
-      const target = align === "start"
-        ? layout.top
-        : align === "end"
-          ? layout.top + layout.height - node.clientHeight
-          : layout.top + layout.height / 2 - node.clientHeight / 2;
-      pendingScroll.current = { index, key: layout.key, align, behavior };
-      const renderedRow = renderedRows.current.get(layout.key);
-      if (renderedRow) {
-        alignRenderedRow(renderedRow, align, behavior);
-        pendingScroll.current = null;
-        return;
-      }
-      const nextTop = Math.max(0, Math.min(totalHeight - node.clientHeight, target));
-      if (typeof node.scrollTo === "function") {
-        node.scrollTo({ top: nextTop, behavior });
-      } else {
-        node.scrollTop = nextTop;
-      }
+      startScrollToIndex(index, options);
     }
-  }), [layouts, totalHeight]);
+  }), [startScrollToIndex]);
 
   useLayoutEffect(() => {
     const node = viewportRef.current;
@@ -219,28 +287,33 @@ function VariableVirtualListInner<T>(
   }, []);
 
   useLayoutEffect(() => {
-    const request = pendingScroll.current;
-    if (!request || !layouts[request.index]) return;
-    const renderedRow = renderedRows.current.get(request.key);
-    if (!renderedRow) return;
-    alignRenderedRow(renderedRow, request.align, "auto");
-    pendingScroll.current = null;
-  }, [alignRenderedRow, layouts, renderedVersion]);
+    settlePendingScroll();
+  }, [layouts, renderedVersion, scrollTop, settlePendingScroll]);
 
   useLayoutEffect(() => {
-    if (!pinToBottom || !items.length) return;
+    if (!pinToBottom) pinHoldRef.current = false;
+  }, [pinToBottom]);
+
+  useLayoutEffect(() => {
+    if (!pinToBottom || !items.length || pendingScroll.current || pinHoldRef.current) return;
     const node = viewportRef.current;
     if (!node || node.clientHeight <= 0) return;
     const last = layouts[layouts.length - 1];
     if (!last) return;
     const nextTop = Math.max(0, last.top + last.height - node.clientHeight);
     if (Math.abs(node.scrollTop - nextTop) < 1) return;
+    programmaticScroll.current = true;
     node.scrollTop = nextTop;
+    setScrollTop(nextTop);
   }, [items.length, layouts, pinToBottom, viewportHeight]);
 
   useLayoutEffect(() => {
-    onVisibleRangeChange?.(visibleRange.start, Math.max(visibleRange.start, visibleRange.end - 1));
-  }, [onVisibleRangeChange, visibleRange]);
+    if (!layouts.length) return;
+    onVisibleRangeChange?.(
+      visibleRange.start,
+      Math.max(visibleRange.start, visibleRange.end - 1)
+    );
+  }, [layouts.length, onVisibleRangeChange, visibleRange]);
 
   if (!items.length) return <>{empty}</>;
 
@@ -248,14 +321,22 @@ function VariableVirtualListInner<T>(
     <div
       ref={measureViewport}
       className={`variable-virtual-list${className ? ` ${className}` : ""}`}
+      onWheel={() => {
+        if (pendingScroll.current) pendingScroll.current = null;
+      }}
       onScroll={(event) => {
         setScrollTop(event.currentTarget.scrollTop);
+        if (programmaticScroll.current) {
+          programmaticScroll.current = false;
+        } else if (pendingScroll.current) {
+          pendingScroll.current = null;
+        }
         onScroll?.(event);
       }}
     >
       <div className="variable-virtual-list-inner" style={{ height: totalHeight }}>
-        {layouts.slice(visibleRange.start, visibleRange.end).map((layout, offset) => {
-          const index = visibleRange.start + offset;
+        {layouts.slice(visibleRange.renderStart, visibleRange.renderEnd).map((layout, offset) => {
+          const index = visibleRange.renderStart + offset;
           return (
             <VirtualRow
               key={layout.key}

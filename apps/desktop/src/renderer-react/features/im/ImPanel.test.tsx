@@ -139,7 +139,10 @@ const messages = {
   "desktop.agent.toolCategory.skills": "Skills",
   "desktop.agent.toolCategory.browser": "Browser",
   "desktop.agent.toolCategory.mcp": "MCP",
-  "desktop.im.removeKnowledge": "Remove"
+  "desktop.im.removeKnowledge": "Remove",
+  "desktop.im.timeline": "Timeline",
+  "desktop.im.jumpTop": "Jump to top",
+  "desktop.im.jumpBottom": "Jump to bottom"
 };
 
 function project(overrides: Partial<ImProject> = {}): ImProject {
@@ -759,9 +762,6 @@ describe("ImPanel", () => {
   });
 
   it("renders floating timeline when room has multiple messages and navigates on node click", async () => {
-    const scrollIntoViewMock = vi.fn();
-    window.HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
-
     const currentProject = project();
     const currentRoom = roomFor(currentProject);
     const api = renderIm();
@@ -832,7 +832,11 @@ describe("ImPanel", () => {
     expect(nodes[1]?.classList.contains("is-dock-focused")).toBe(false);
 
     fireEvent.click(nodes[0]!);
-    expect(scrollIntoViewMock).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(document.querySelector('[data-virtual-key="msg-1"]')).not.toBeNull();
+      expect(document.querySelector(".im-message.is-flashing")).not.toBeNull();
+    });
+    expect(document.querySelector(".im-timeline-node.is-active")?.getAttribute("aria-label")).toContain("You");
   });
 
   it("renders thinking collapsed by default and expands on toggle click, and shows streaming cursor", async () => {
