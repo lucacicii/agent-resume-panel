@@ -593,4 +593,24 @@ describe("AgentPanel", () => {
     expect(screen.getByRole("tab", { name: "Custom" }).getAttribute("aria-selected")).toBe("true");
     expect((screen.getByRole("checkbox", { name: /note_search/ }) as HTMLInputElement).checked).toBe(true);
   });
+
+  it("opens a thread at the latest message", async () => {
+    const host = document.createElement("div"); host.id = "react-agent"; document.body.append(host);
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages }), onLocaleChanged: () => () => undefined,
+      listAgentThreads: async () => [thread], listAgentChat: async () => ({ messages: [
+        { id: "m-old", role: "user", content: "Oldest question", createdAtMs: 1, sortOrder: 1 },
+        { id: "m-latest", role: "assistant", content: "Latest answer", createdAtMs: 2, sortOrder: 2 }
+      ], hasMore: false }),
+      listOlderAgentChat: async () => ({ messages: [], hasMore: false }),
+      createAgentThread: async () => thread, deleteAgentThread: async () => ({ ok: true }), renameAgentThread: async () => ({ ok: true }),
+      askAgent: async () => ({ answer: "", citations: [], fallback: false, digests: [] }), cancelAskAgent: async () => ({ ok: true }), onAskStream: () => () => undefined
+    } as unknown as typeof window.agentResume;
+    render(<I18nProvider><AgentPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "agent" })));
+    const latest = await screen.findByText("Latest answer");
+    const log = document.querySelector(".chat-log") as HTMLElement;
+    expect(log.textContent).toContain("Latest answer");
+    expect(latest.closest(".chat-message")).toBeTruthy();
+  });
 });

@@ -136,6 +136,10 @@ class AcpChatController {
     );
   }
 
+  isBusy(): boolean {
+    return this.isRunning || this.isConnecting;
+  }
+
   /**
    * Re-push history + init + status without respawning the agent.
    * Used when the renderer re-activates an already-connected chat.
@@ -515,14 +519,14 @@ class AcpChatController {
     const text = rawText.trim();
     let images = rawImages.filter((image) => image.data);
     const files = rawFiles.filter((file) => file.absolutePath?.trim() || file.data);
-    if (
-      (!text && !images.length && !files.length) ||
-      this.isRunning ||
-      this.isConnecting ||
-      !this.connection ||
-      !this.activeAcpSessionId
-    ) {
-      return;
+    if (!text && !images.length && !files.length) {
+      throw new Error("ACP prompt is empty.");
+    }
+    if (this.isRunning) {
+      throw new Error("ACP session is still running the previous turn.");
+    }
+    if (this.isConnecting || !this.connection || !this.activeAcpSessionId) {
+      throw new Error("ACP session is not ready.");
     }
 
     if (images.length) {
@@ -1004,6 +1008,18 @@ export async function connectAcpChat(chatId: string, force = false): Promise<{ r
   await controller.bootstrap();
   const nextSessionId = controller.getRecord().acpSessionId;
   return { rebuilt: !previousSessionId || nextSessionId !== previousSessionId };
+}
+
+export function inspectAcpChat(chatId: string): { live: boolean; running: boolean } {
+  const controller = controllers.get(chatId);
+  if (!controller) return { live: false, running: false };
+  return { live: controller.isLive(), running: controller.isBusy() };
+}
+
+export function listLiveAcpChatIds(): string[] {
+  return [...controllers.entries()]
+    .filter(([, controller]) => controller.isLive() || controller.isBusy())
+    .map(([chatId]) => chatId);
 }
 
 export async function promptAcpChat(

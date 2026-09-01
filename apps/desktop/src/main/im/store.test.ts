@@ -324,6 +324,41 @@ describe("ImStore", () => {
     }
   });
 
+  it("keeps live ACP jobs running across store reinitialization", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "im-store-live-"));
+    try {
+      const dbPath = path.join(dir, "desktop.db");
+      const firstStore = new ImStore(dbPath);
+      await firstStore.initialize();
+      const project = await firstStore.createProject("Live ACP");
+      const room = await firstStore.getRoom(project.projectId);
+      const pm = room.members.find((m) => m.templateId === "role_product_manager")!;
+      const live = await firstStore.createJob({
+        projectId: project.projectId,
+        memberId: pm.memberId,
+        messageId: null,
+        brief: { persona: "", instruction: "keep going", cwd: "/tmp", quotes: [], knowledge: [] },
+        status: "running"
+      });
+      await firstStore.updateJob(live.jobId, { acpChatId: "chat-still-live" });
+      const dead = await firstStore.createJob({
+        projectId: project.projectId,
+        memberId: pm.memberId,
+        messageId: null,
+        brief: { persona: "", instruction: "stale", cwd: "/tmp", quotes: [], knowledge: [] },
+        status: "queued"
+      });
+
+      const restarted = new ImStore(dbPath);
+      const kept = await restarted.initialize({ liveAcpChatIds: ["chat-still-live"] });
+      expect(kept.map((job) => job.jobId)).toEqual([live.jobId]);
+      expect((await restarted.getJob(live.jobId))?.status).toBe("running");
+      expect((await restarted.getJob(dead.jobId))?.status).toBe("cancelled");
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("allows cancelling active jobs via cancelJob", async () => {
     const store = await createStore();
     const project = await store.createProject("Cancel Test");

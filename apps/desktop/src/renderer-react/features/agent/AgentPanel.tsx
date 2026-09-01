@@ -390,6 +390,7 @@ export function AgentPanel(): ReactPortal | null {
     const onTab = (event: Event) => {
       const show = (event as CustomEvent<string>).detail === "agent";
       setActive(show);
+      if (show) stickToBottom.current = true;
       if (show && !threads.length) void loadThreads();
     };
     window.addEventListener("agent-resume:tab-change", onTab);
@@ -412,22 +413,23 @@ export function AgentPanel(): ReactPortal | null {
     streamOff.current?.();
     clearIndexHideTimer();
   }, []);
-  useEffect(() => {
+  const scrollLogToBottom = useCallback(() => {
+    const node = logRef.current;
+    if (!node || !stickToBottom.current || node.clientHeight <= 0) return;
+    node.scrollTop = node.scrollHeight;
+  }, []);
+
+  useLayoutEffect(() => {
     const pending = prependScroll.current;
     if (pending) {
-      requestAnimationFrame(() => {
-        if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight - pending.height + pending.top;
-        prependScroll.current = null;
-        stickToBottom.current = false;
-      });
+      const node = logRef.current;
+      if (node) node.scrollTop = node.scrollHeight - pending.height + pending.top;
+      prependScroll.current = null;
+      stickToBottom.current = false;
       return;
     }
-    if (stickToBottom.current) {
-      requestAnimationFrame(() => {
-        if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
-      });
-    }
-  }, [turns]);
+    if (active) scrollLogToBottom();
+  }, [active, scrollLogToBottom, turns]);
   useEffect(() => {
     const dismiss = () => setContext(null);
     window.addEventListener("pointerdown", dismiss);
@@ -463,6 +465,7 @@ export function AgentPanel(): ReactPortal | null {
 
   const selectThread = async (id: string) => {
     if (id === threadId || sending) return;
+    stickToBottom.current = true;
     setThreadId(id);
     setProjectPath(readThreadProject(id));
     setToolPrefs(readThreadTools(id));
@@ -766,7 +769,9 @@ export function AgentPanel(): ReactPortal | null {
   };
   const onLogScroll = (event: React.UIEvent<HTMLDivElement>) => {
     const log = event.currentTarget;
-    stickToBottom.current = log.scrollHeight - log.scrollTop - log.clientHeight < 48;
+    if (log.clientHeight > 0) {
+      stickToBottom.current = log.scrollHeight - log.scrollTop - log.clientHeight < 48;
+    }
     if (log && log.scrollTop < 72 && hasMore && !loadingOlder && threadId) void loadMessages(threadId, true);
     setContext(null);
   };
@@ -831,7 +836,7 @@ return createPortal(
               {indexProgress ? <IndexProgressView progress={indexProgress} t={t} /> : null}
               {auditOpen ? <Audit items={audit} loading={auditLoading} t={t} onRefresh={() => void loadAudit()} /> : null}
             </div> : null}
-            <VirtualChatLog ref={logRef} turns={turns} hasMore={hasMore} loadingOlder={loadingOlder} t={t} onOpenTrace={setTraceDrawerTurnId} onOpenCitations={setCitationDrawerTurnId} onOpenCitation={openCitation} onScroll={onLogScroll} editingTurnId={editingTurnId} editDraft={editDraft} sending={sending} onEditDraftChange={setEditDraft} onCancelEdit={cancelEdit} onConfirmEdit={() => { if (editingTurnId) void send(editDraft, { fromTurnId: editingTurnId }); }} onUserContext={(event, turn) => {
+            <VirtualChatLog ref={logRef} turns={turns} hasMore={hasMore} loadingOlder={loadingOlder} stickToBottomRef={stickToBottom} t={t} onOpenTrace={setTraceDrawerTurnId} onOpenCitations={setCitationDrawerTurnId} onOpenCitation={openCitation} onScroll={onLogScroll} editingTurnId={editingTurnId} editDraft={editDraft} sending={sending} onEditDraftChange={setEditDraft} onCancelEdit={cancelEdit} onConfirmEdit={() => { if (editingTurnId) void send(editDraft, { fromTurnId: editingTurnId }); }} onUserContext={(event, turn) => {
               event.preventDefault();
               event.stopPropagation();
               setContext({
@@ -881,6 +886,7 @@ const VirtualChatLog = forwardRef<HTMLDivElement, {
   turns: Turn[];
   hasMore: boolean;
   loadingOlder: boolean;
+  stickToBottomRef: { current: boolean };
   t: Translate;
   onOpenTrace: (turnId: string) => void;
   onOpenCitations: (turnId: string) => void;
@@ -894,7 +900,7 @@ const VirtualChatLog = forwardRef<HTMLDivElement, {
   onConfirmEdit: () => void;
   onUserContext: (event: React.MouseEvent, turn: Turn) => void;
   onCopy: (content: string) => void;
-}>(({ turns, hasMore, loadingOlder, t, onOpenTrace, onOpenCitations, onOpenCitation, onScroll, editingTurnId, editDraft, sending, onEditDraftChange, onCancelEdit, onConfirmEdit, onUserContext, onCopy }, ref) => {
+}>(({ turns, hasMore, loadingOlder, stickToBottomRef, t, onOpenTrace, onOpenCitations, onOpenCitation, onScroll, editingTurnId, editDraft, sending, onEditDraftChange, onCancelEdit, onConfirmEdit, onUserContext, onCopy }, ref) => {
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
   const heights = useRef(new Map<string, number>());
@@ -928,6 +934,22 @@ const VirtualChatLog = forwardRef<HTMLDivElement, {
     heights.current.set(id, height);
     forceLayout((value) => value + 1);
   }, []);
+  useLayoutEffect(() => {
+    if (!stickToBottomRef.current) return;
+    const node = typeof ref === "function" ? null : ref?.current;
+    if (!node || node.clientHeight <= 0) return;
+    node.scrollTop = node.scrollHeight;
+  }, [layout.total, ref, stickToBottomRef, turns.length]);
+  useLayoutEffect(() => {
+    const node = typeof ref === "function" ? null : ref?.current;
+    if (!node || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      if (node.clientHeight > 0) setViewportHeight(node.clientHeight);
+      if (stickToBottomRef.current && node.clientHeight > 0) node.scrollTop = node.scrollHeight;
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [ref, stickToBottomRef, turns.length]);
   if (!turns.length) return <div ref={setLogRef} className="chat-log" onScroll={onScroll}><div className="chat-empty-state"><p className="chat-empty-title">{t("desktop.agent.emptyChat")}</p><p className="chat-empty-hint">{t("desktop.agent.emptyHint")}</p></div></div>;
   return <div ref={setLogRef} className="chat-log" onScroll={(event) => { setScrollTop(event.currentTarget.scrollTop); setViewportHeight(event.currentTarget.clientHeight); onScroll(event); }}><div className="chat-virtual-inner" style={{ height: layout.total }}><div className="chat-virtual-window" style={{ transform: `translateY(${layout.offsets[range.start] || 0}px)` }}>{hasMore && range.start === 0 ? <p className="muted chat-load-older">{loadingOlder ? t("desktop.common.loading") : t("desktop.agent.loadOlder")}</p> : null}{turns.slice(range.start, range.end + 1).map((turn) => <MeasuredTurn key={turn.id} turn={turn} onHeight={onRowHeight}><TurnView turn={turn} t={t} onOpenTrace={onOpenTrace} onOpenCitations={onOpenCitations} onOpenCitation={onOpenCitation} editing={editingTurnId === turn.id} editDraft={editDraft} sending={sending} onEditDraftChange={onEditDraftChange} onCancelEdit={onCancelEdit} onConfirmEdit={onConfirmEdit} onUserContext={onUserContext} onCopy={onCopy} /></MeasuredTurn>)}</div></div></div>;
 });

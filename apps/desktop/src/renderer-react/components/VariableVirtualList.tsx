@@ -25,6 +25,7 @@ interface VariableVirtualListProps<T> {
   className?: string;
   gap?: number;
   overscan?: number;
+  pinToBottom?: boolean;
   onVisibleRangeChange?: (startIndex: number, endIndex: number) => void;
   onScroll?: (event: React.UIEvent<HTMLDivElement>) => void;
   empty?: ReactNode;
@@ -84,6 +85,7 @@ function VariableVirtualListInner<T>(
     className = "",
     gap = 0,
     overscan = 4,
+    pinToBottom = false,
     onVisibleRangeChange,
     onScroll,
     empty
@@ -224,6 +226,17 @@ function VariableVirtualListInner<T>(
     alignRenderedRow(renderedRow, request.align, "auto");
     pendingScroll.current = null;
   }, [alignRenderedRow, layouts, renderedVersion]);
+
+  useLayoutEffect(() => {
+    if (!pinToBottom || !items.length) return;
+    const node = viewportRef.current;
+    if (!node || node.clientHeight <= 0) return;
+    const last = layouts[layouts.length - 1];
+    if (!last) return;
+    const nextTop = Math.max(0, last.top + last.height - node.clientHeight);
+    if (Math.abs(node.scrollTop - nextTop) < 1) return;
+    node.scrollTop = nextTop;
+  }, [items.length, layouts, pinToBottom, viewportHeight]);
 
   useLayoutEffect(() => {
     onVisibleRangeChange?.(visibleRange.start, Math.max(visibleRange.start, visibleRange.end - 1));

@@ -345,16 +345,34 @@ export function AcpChatView({
   /** Last native ACP session id that triggered a parent session-list refresh. */
   const notifiedSessionIdRef = useRef<string | undefined>(undefined);
 
-  const scrollToBottom = useCallback(() => {
-    if (!stickToBottom.current || !logRef.current) return;
-    requestAnimationFrame(() => {
-      if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
-    });
+  const scrollToBottom = useCallback((force = false) => {
+    const node = logRef.current;
+    if (!node) return;
+    if (!force && !stickToBottom.current) return;
+    if (node.clientHeight <= 0) return;
+    node.scrollTop = node.scrollHeight;
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    if (!active) return;
+    stickToBottom.current = true;
+    scrollToBottom(true);
+  }, [active, scrollToBottom]);
+
+  useLayoutEffect(() => {
+    if (!active) return;
     scrollToBottom();
-  }, [messages, scrollToBottom]);
+  }, [active, messages, scrollToBottom]);
+
+  useLayoutEffect(() => {
+    const node = logRef.current;
+    if (!node || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      if (active) scrollToBottom();
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [active, scrollToBottom]);
 
   useEffect(() => {
     setHeaderTitle(title);
@@ -1118,6 +1136,7 @@ export function AcpChatView({
         ref={logRef}
         onScroll={(event) => {
           const node = event.currentTarget;
+          if (node.clientHeight <= 0) return;
           stickToBottom.current = node.scrollHeight - node.scrollTop - node.clientHeight < 80;
         }}
       >

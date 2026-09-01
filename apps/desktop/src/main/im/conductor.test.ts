@@ -1018,4 +1018,76 @@ Implement the search indexing algorithm as designed.
     const savedJob = await store.getJob(job.jobId);
     expect(savedJob?.status).toBe("cancelled");
   });
+
+  it("revives an interrupted job when ACP is still streaming", async () => {
+    const store = await createStore();
+    const project = await store.createProject("Revive stream");
+    const room = await store.getRoom(project.projectId);
+    const pm = room.members.find((member) => member.templateId === "role_product_manager")!;
+    const emit = vi.fn();
+    const conductor = new ImConductor(store, emit, vi.fn(async () => undefined), vi.fn(async () => undefined));
+    const job = await store.createJob({
+      projectId: project.projectId,
+      memberId: pm.memberId,
+      messageId: null,
+      brief: { persona: pm.persona, instruction: "plan", cwd: process.cwd(), quotes: [], knowledge: [] },
+      status: "cancelled"
+    });
+    await store.updateJob(job.jobId, {
+      acpChatId: "chat-revive",
+      error: "App restarted while job was running",
+      finished: true
+    });
+
+    await conductor.handleAcpStream({
+      type: "assistantDelta",
+      chatId: "chat-revive",
+      id: "delta-1",
+      text: "Still working on it.",
+      streaming: true,
+      toolCalls: []
+    });
+
+    const revived = await store.getJob(job.jobId);
+    expect(revived?.status).toBe("running");
+    expect(revived?.finishedAtMs).toBeNull();
+    const messages = await store.listMessages(project.projectId);
+    expect(messages.some((item) => item.body === "Still working on it.")).toBe(true);
+    expect(emit).toHaveBeenCalledWith(expect.objectContaining({ type: "job", job: expect.objectContaining({ status: "running" }) }));
+  });
+
+  it("waits for a live ACP turn to finish before sending the next prompt", async () => {
+    const store = await createStore();
+    const project = await store.createProject("Wait idle");
+    await store.setLocalPath(project.projectId, process.cwd());
+    const room = await store.getRoom(project.projectId);
+    const pm = room.members.find((member) => member.templateId === "role_product_manager")!;
+    await store.setMemberAcpChatId(pm.memberId, "chat-busy");
+    let running = true;
+    const inspect = vi.fn(() => ({ live: true, running }));
+    const prompt = vi.fn(async () => undefined);
+    const conductor = new ImConductor(
+      store,
+      () => undefined,
+      vi.fn(async () => undefined),
+      prompt,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      inspect
+    );
+    const pending = conductor.postMessage({
+      projectId: project.projectId,
+      body: "next question",
+      quoteIds: [],
+      mentionRoleIds: [pm.memberId]
+    });
+    await vi.waitFor(() => expect(inspect).toHaveBeenCalled());
+    expect(prompt).not.toHaveBeenCalled();
+    running = false;
+    await pending;
+    await vi.waitFor(() => expect(prompt).toHaveBeenCalled());
+    expect(prompt.mock.calls[0]?.[1]).toContain("next question");
+  });
 });

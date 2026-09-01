@@ -42,6 +42,7 @@ type DenyPermissionFn = (requestId: string) => Promise<void>;
 type SetModelFn = (chatId: string, modelId: string) => Promise<void>;
 type SetThoughtLevelFn = (chatId: string, thoughtLevel: string) => Promise<void>;
 type CancelChatFn = (chatId: string) => Promise<void>;
+type InspectChatFn = (chatId: string) => { live: boolean; running: boolean };
 
 const WRITER_BUSY: ReadonlySet<ImJobStatus> = new Set([
   "queued",
@@ -191,7 +192,8 @@ export class ImConductor {
     private readonly denyPermission?: DenyPermissionFn,
     private readonly setModel?: SetModelFn,
     private readonly setThoughtLevel?: SetThoughtLevelFn,
-    private readonly cancelChat?: CancelChatFn
+    private readonly cancelChat?: CancelChatFn,
+    private readonly inspectChat?: InspectChatFn
   ) {}
 
   async postMessage(input: {
@@ -386,8 +388,19 @@ export class ImConductor {
 
   async handleAcpStream(event: AcpStreamEvent): Promise<void> {
     const chatId = event.chatId;
-    const jobId = this.jobsByChat.get(chatId) ?? (await this.store.findJobByAcpChatId(chatId))?.jobId;
-    if (!jobId) return;
+    let jobId = this.jobsByChat.get(chatId) ?? (await this.store.findJobByAcpChatId(chatId))?.jobId;
+    if (!jobId) {
+      const interrupted = await this.store.findInterruptedJobByAcpChatId(chatId);
+      if (!interrupted) return;
+      const revived = await this.store.updateJob(interrupted.jobId, {
+        status: event.type === "status" && (event.isConnecting || event.status === "connecting") ? "connecting" : "running",
+        error: null,
+        finished: false
+      });
+      this.jobsByChat.set(chatId, revived.jobId);
+      this.emit({ type: "job", projectId: revived.projectId, job: revived });
+      jobId = revived.jobId;
+    }
     const current = await this.store.getJob(jobId);
     if (!current || !WRITER_BUSY.has(current.status)) return;
 
@@ -816,6 +829,9 @@ export class ImConductor {
     this.jobsByChat.set(chatId, jobId);
     this.emit({ type: "job", projectId: job.projectId, job: connecting });
 
+    if (this.inspectChat?.(chatId)?.running) {
+      await this.waitForChatIdle(chatId);
+    }
     const connectResult = await this.connectChat(chatId);
     const sessionRebuilt = Boolean(connectResult && typeof connectResult === "object" && connectResult.rebuilt);
     if (model && this.setModel) {
@@ -975,6 +991,38 @@ export class ImConductor {
     const member = await this.store.getMember(next.memberId);
     if (!member) return;
     this.launchJob(next.jobId, member);
+  }
+
+  async adoptLiveJobs(liveChatIds: string[]): Promise<void> {
+    for (const chatId of liveChatIds) {
+      if (!chatId) continue;
+      const active = await this.store.findJobByAcpChatId(chatId);
+      if (active) {
+        this.jobsByChat.set(chatId, active.jobId);
+        continue;
+      }
+      const interrupted = await this.store.findInterruptedJobByAcpChatId(chatId);
+      if (!interrupted) continue;
+      const state = this.inspectChat?.(chatId);
+      if (!state?.live && !state?.running) continue;
+      const revived = await this.store.updateJob(interrupted.jobId, {
+        status: state.running ? "running" : "connecting",
+        error: null,
+        finished: false
+      });
+      this.jobsByChat.set(chatId, revived.jobId);
+      this.emit({ type: "job", projectId: revived.projectId, job: revived });
+    }
+  }
+
+  private async waitForChatIdle(chatId: string, timeoutMs = 120_000): Promise<void> {
+    const started = Date.now();
+    while (this.inspectChat?.(chatId)?.running) {
+      if (Date.now() - started > timeoutMs) {
+        throw new Error("ACP session is still running the previous turn.");
+      }
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    }
   }
 
   private promptAndWait(

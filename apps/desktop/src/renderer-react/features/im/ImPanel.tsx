@@ -226,7 +226,11 @@ export function ImPanel(): ReactPortal | null {
     const onTab = (event: Event) => {
       const show = (event as CustomEvent<string>).detail === "im";
       setActive(show);
-      if (show) void loadProjects();
+      if (show) {
+        setPinnedToBottom(true);
+        setHasNewBelow(false);
+        void loadProjects();
+      }
     };
     window.addEventListener("agent-resume:tab-change", onTab);
     return () => window.removeEventListener("agent-resume:tab-change", onTab);
@@ -311,7 +315,7 @@ export function ImPanel(): ReactPortal | null {
     } else if (grew) {
       setHasNewBelow(true);
     }
-  }, [pinnedToBottom, transcriptItems.length]);
+  }, [pinnedToBottom, transcriptItems]);
 
   const copyText = useCallback(async (text: string) => {
     try {
@@ -358,6 +362,7 @@ export function ImPanel(): ReactPortal | null {
 
   const onTranscriptScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
     const node = event.currentTarget;
+    if (node.clientHeight <= 0) return;
     const nearBottom = node.scrollHeight - node.scrollTop - node.clientHeight < 60;
     setPinnedToBottom(nearBottom);
     if (nearBottom) setHasNewBelow(false);
@@ -1144,6 +1149,7 @@ export function ImPanel(): ReactPortal | null {
                   getKey={(item) => item.kind === "message" ? item.message.messageId : `pending-job-${item.job.jobId}`}
                   gap={20}
                   estimateSize={(item) => item.kind === "pending" ? 88 : 120}
+                  pinToBottom={pinnedToBottom}
                   onVisibleRangeChange={onTranscriptVisibleRange}
                   onScroll={onTranscriptScroll}
                   empty={<p className="im-empty">{t("desktop.im.emptyRoom")}</p>}

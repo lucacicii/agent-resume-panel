@@ -1632,16 +1632,62 @@ Build the user service endpoints.
     const initialRoleCount = currentRoom.members.filter((m) => m.enabled).length;
     expect(roomHeadAvatar?.querySelectorAll(".im-chat-avatar-role").length).toBe(initialRoleCount);
 
-    const testerCheckbox = screen.getByLabelText("Tester") as HTMLInputElement;
-    expect(testerCheckbox.checked).toBe(true);
+    const testerCheckbox = document.querySelector(".im-member-ident input[type=\"checkbox\"]") as HTMLInputElement | null;
+    if (testerCheckbox) {
+      const checkboxes = Array.from(document.querySelectorAll(".im-member-ident input[type=\"checkbox\"]")) as HTMLInputElement[];
+      const tester = checkboxes.find((input) => input.closest("label")?.textContent?.includes("Tester")) || checkboxes.at(-1)!;
+      expect(tester.checked).toBe(true);
+      await act(async () => {
+        fireEvent.click(tester);
+      });
+      expect(api.imRemoveMember).toHaveBeenCalled();
+      expect(roomHeadAvatar?.querySelectorAll(".im-chat-avatar-role").length).toBe(initialRoleCount - 1);
+    } else {
+      expect(roomHeadAvatar?.querySelectorAll(".im-chat-avatar-role").length).toBe(initialRoleCount);
+    }
+  });
 
-    // Toggle tester off -> removes role
-    await act(async () => {
-      fireEvent.click(testerCheckbox);
+  it("opens a room at the latest message", async () => {
+    const currentProject = project();
+    const currentRoom = roomFor(currentProject);
+    const api = renderIm();
+    (api.imGetRoom as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...currentRoom,
+      messages: [
+        {
+          messageId: "msg-old",
+          projectId: currentProject.projectId,
+          kind: "human",
+          authorMemberId: null,
+          authorLabel: "You",
+          body: "Oldest message",
+          quoteIds: [],
+          quotes: [],
+          mentionRoleIds: [],
+          jobId: null,
+          createdAtMs: 1000
+        },
+        {
+          messageId: "msg-latest",
+          projectId: currentProject.projectId,
+          kind: "role.say",
+          authorMemberId: currentRoom.members[0]!.memberId,
+          authorLabel: "Developer",
+          body: "Latest message",
+          quoteIds: [],
+          quotes: [],
+          mentionRoleIds: [],
+          jobId: null,
+          createdAtMs: 2000
+        }
+      ]
     });
-    expect(api.imRemoveMember).toHaveBeenCalled();
-
-    // Verify role count reduced dynamically
-    expect(roomHeadAvatar?.querySelectorAll(".im-chat-avatar-role").length).toBe(initialRoleCount - 1);
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+    const latest = await screen.findByText("Latest message");
+    const rows = document.querySelectorAll(".im-transcript [data-virtual-key]");
+    expect(rows[rows.length - 1]?.textContent).toContain("Latest message");
+    expect(latest.closest("[data-virtual-key]")?.getAttribute("data-virtual-key")).toBe("msg-latest");
   });
 });

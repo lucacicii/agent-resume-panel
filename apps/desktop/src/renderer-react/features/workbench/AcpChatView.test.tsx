@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
@@ -275,6 +275,62 @@ describe("AcpChatView modes and plan preview", () => {
     fireEvent.click(screen.getByRole("button", { name: /^preview$/i }));
     expect(await screen.findByRole("dialog", { name: /plan preview/i })).toBeTruthy();
     expect(screen.getByText("Ship plan preview")).toBeTruthy();
+  });
+});
+
+function mockChatLogMetrics(log: HTMLElement, metrics: { scrollHeight: number; clientHeight: number }): void {
+  Object.defineProperty(log, "scrollHeight", { configurable: true, value: metrics.scrollHeight });
+  Object.defineProperty(log, "clientHeight", { configurable: true, value: metrics.clientHeight });
+}
+
+describe("AcpChatView latest messages", () => {
+  it("scrolls to the latest message when an inactive pane is opened", async () => {
+    window.agentResume = {
+      getI18nBundle: vi.fn(async () => ({ locale: "en", messages: {} })),
+      onLocaleChanged: vi.fn(() => () => undefined),
+      onAcpStream: (listener: (event: Record<string, unknown>) => void) => {
+        streamListeners.add(listener);
+        return () => streamListeners.delete(listener);
+      },
+      acpConnect: vi.fn(async () => ({
+        ok: true,
+        record: {
+          id: "chat-1",
+          title: "Chat",
+          projectPath: "/work/app",
+          provider: "codex",
+          acpSessionId: "native-1",
+          createdAt: 1,
+          updatedAt: 2,
+          messageCount: 0
+        }
+      })),
+      acpDisconnect: vi.fn(async () => ({ ok: true }))
+    } as unknown as typeof window.agentResume;
+
+    const view = (active: boolean) => (
+      <I18nProvider>
+        <AcpChatView recordId="chat-1" provider="codex" projectPath="/work/app" title="Chat" active={active} />
+      </I18nProvider>
+    );
+    const rendered = render(view(false));
+    await waitFor(() => expect(streamListeners.size).toBe(1));
+    emit({
+      type: "history",
+      chatId: "chat-1",
+      messages: [
+        { id: "u1", role: "user", text: "oldest", timestamp: 1 },
+        { id: "a1", role: "assistant", text: "latest", timestamp: 2 }
+      ]
+    });
+    const log = document.querySelector(".wb-acp-log") as HTMLElement;
+    mockChatLogMetrics(log, { scrollHeight: 2400, clientHeight: 400 });
+    log.scrollTop = 0;
+
+    await act(async () => {
+      rendered.rerender(view(true));
+    });
+    await waitFor(() => expect(log.scrollTop).toBe(2400));
   });
 });
 

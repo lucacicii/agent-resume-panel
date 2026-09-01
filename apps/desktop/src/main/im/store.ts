@@ -635,26 +635,41 @@ export function buildIncrementalPrompt(brief: ImJobBrief): string {
 export class ImStore {
   constructor(private readonly dbPath: string) {}
 
-  async initialize(): Promise<void> {
+  async initialize(options?: { liveAcpChatIds?: Iterable<string> }): Promise<ImJob[]> {
     await ensureDesktopDbSchema(this.dbPath);
     await this.ensureBuiltinTemplates();
     await this.ensureBuiltinSelectionActions();
     await this.backfillBuiltinMembersOnce();
-    await this.reconcileStaleJobs();
+    return this.reconcileStaleJobs(options?.liveAcpChatIds);
   }
 
-  private async reconcileStaleJobs(): Promise<void> {
-    const now = nowMs();
-    await runSqlite(
+  async reconcileStaleJobs(liveAcpChatIds?: Iterable<string>): Promise<ImJob[]> {
+    const live = new Set([...liveAcpChatIds ?? []].filter((id) => id.trim()));
+    const rows = await runSqliteJson<JobRow>(
       this.dbPath,
-      `UPDATE im_jobs
-       SET status = 'cancelled',
-           error = coalesce(error, 'App restarted while job was running'),
-           permission_json = NULL,
-           updated_at_ms = ${now},
-           finished_at_ms = ${now}
-       WHERE status IN ('queued', 'connecting', 'running', 'awaiting_user');`
+      `SELECT * FROM im_jobs WHERE status IN ('queued','connecting','running','awaiting_user');`
     );
+    const kept: ImJob[] = [];
+    const now = nowMs();
+    for (const row of rows) {
+      const job = mapJob(row);
+      const keepLive = Boolean(job.acpChatId && live.has(job.acpChatId) && job.status !== "queued");
+      if (keepLive) {
+        kept.push(job);
+        continue;
+      }
+      await runSqlite(
+        this.dbPath,
+        `UPDATE im_jobs
+         SET status = 'cancelled',
+             error = coalesce(error, 'App restarted while job was running'),
+             permission_json = NULL,
+             updated_at_ms = ${now},
+             finished_at_ms = ${now}
+         WHERE job_id = ${sqlString(job.jobId)};`
+      );
+    }
+    return kept;
   }
 
   private async ensureBuiltinSelectionActions(): Promise<void> {
@@ -1714,6 +1729,17 @@ export class ImStore {
     return rows[0] ? mapJob(rows[0]) : undefined;
   }
 
+  async findInterruptedJobByAcpChatId(acpChatId: string): Promise<ImJob | undefined> {
+    const rows = await runSqliteJson<JobRow>(
+      this.dbPath,
+      `SELECT * FROM im_jobs
+       WHERE acp_chat_id = ${sqlString(acpChatId)}
+         AND status IN ('cancelled','failed')
+       ORDER BY updated_at_ms DESC LIMIT 1;`
+    );
+    return rows[0] ? mapJob(rows[0]) : undefined;
+  }
+
   async updateJob(
     jobId: string,
     patch: {
@@ -1728,7 +1754,7 @@ export class ImStore {
     const current = await this.getJob(jobId);
     if (!current) throw new Error("Job not found.");
     const now = nowMs();
-    const finishedAt = patch.finished ? now : current.finishedAtMs;
+    const finishedAt = patch.finished === true ? now : patch.finished === false ? null : current.finishedAtMs;
     const nextStatus = patch.status ?? current.status;
     const nextAcp = patch.acpChatId === undefined ? current.acpChatId : patch.acpChatId;
     const nextError = patch.error === undefined ? current.error : patch.error;

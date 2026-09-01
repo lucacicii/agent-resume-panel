@@ -7,7 +7,7 @@ import {
   preparePanelDatabasesFromSettings
 } from "@agent-resume/core";
 import { safeHandle } from "../ipcUtils";
-import { disposeAcpController } from "../acp/acpHost";
+import { disposeAcpController, inspectAcpChat, listLiveAcpChatIds } from "../acp/acpHost";
 import { deleteAcpRecord } from "../acp/store";
 import { resolveAgentModels } from "./agentModelResolver";
 import { ImConductor, emitImEvent } from "./conductor";
@@ -36,6 +36,7 @@ type AcpHostApi = {
     images?: Array<{ mimeType: string; fileName: string; data: string }>
   ) => Promise<void>;
   cancel?: (chatId: string) => Promise<void>;
+  inspect?: (chatId: string) => { live: boolean; running: boolean };
   denyPermission: (requestId: string) => Promise<void>;
   setModel?: (chatId: string, modelId: string) => Promise<void>;
   setThoughtLevel?: (chatId: string, thoughtLevel: string) => Promise<void>;
@@ -46,8 +47,12 @@ async function getStore(): Promise<ImStore> {
   const key = paths.desktopDb;
   if (!store || storeKey !== key) {
     store = new ImStore(paths.desktopDb);
-    await store.initialize();
+    const liveIds = listLiveAcpChatIds();
+    const kept = await store.initialize({ liveAcpChatIds: liveIds });
     storeKey = key;
+    if (conductor) {
+      await conductor.adoptLiveJobs(kept.map((job) => job.acpChatId).filter((id): id is string => Boolean(id)));
+    }
   }
   return store;
 }
@@ -69,8 +74,11 @@ export function registerImIpc(deps: {
         deps.acp.denyPermission,
         deps.acp.setModel,
         deps.acp.setThoughtLevel,
-        deps.acp.cancel
+        deps.acp.cancel,
+        deps.acp.inspect ?? inspectAcpChat
       );
+      const liveIds = listLiveAcpChatIds();
+      await conductor.adoptLiveJobs(liveIds);
     }
     return conductor;
   };
