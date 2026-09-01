@@ -8,6 +8,22 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## English
 
+### [0.2.18]
+
+#### Added
+
+- **Skills System & Tool Settings**: introduced extensible Skills management framework scanning project-level and user-level `SKILL.md` definitions; added interactive Tool Settings popover for toggling MCP servers and individual skills per role or room
+- **ACP Interrupted Session Revival & Atomic Queuing**: automatically inspects live ACP jobs on restart/reconnect and revives interrupted sessions without losing state; waits for busy sessions before dispatching prompts to prevent dropped jobs
+- **macOS Dock Magnification on IM Timeline**: added dynamic magnification wave animation on timeline node hover with active milestone tracking and jump-locking
+- **Resend User Messages in IM**: added a "Resend" action in human message context menus to pre-fill the composer with original prompt text, mentions, and image attachments
+- **ImChatAvatar & Visual Badges**: added specialized avatar component with fallback initials and role indicator badges across IM chat bubbles
+
+#### Improved
+
+- **VariableVirtualList Settling & Scrolling Performance**: implemented multi-step layout settling for dynamic unmeasured list heights, smooth pin-to-bottom tracking, and robust programmatic navigation
+- **Background Work Scheduler & IPC Event Coalescing**: added idle-aware background task queue to defer expensive indexing/embedding tasks, and throttled streaming IPC updates to minimize renderer repaints
+- **Modular IM Architecture**: separated IM panel into modular `ImComposer` and `ImMessageItem` components with LRU Markdown parsing cache for instantaneous rendering
+
 ### [0.2.17]
 
 #### Added
@@ -422,6 +438,22 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 ---
 
 ## 简体中文
+
+### [0.2.18]
+
+#### 新增
+
+- **Skills 技能系统与工具配置弹窗**：引入可扩展的 Skills 技能管理体系，支持扫描并解析项目级与用户级 `SKILL.md`；新增工具设置弹窗（Tool Settings），支持按角色或房间精细化启用/禁用 MCP 服务器与专属 Skills
+- **ACP 中断会话自动恢复与并发保护**：在应用重启或连接中断重连时自动检测并恢复运行中的 ACP 任务，避免状态丢失；在会话繁忙时智能等待排队，确保任务原子性执行
+- **IM 时间轴 macOS Dock 放大动效**：在 IM 对话时间轴悬停时呈现平滑的波浪放大动效，支持当前高亮里程碑跟随与快速跳转锁定
+- **用户消息重发（Resend）**：在人类消息右键菜单中增加「重新发送」操作，一键将原消息文本、`@` 角色提及与附件图片回填至输入框
+- **专属聊天头像与角色标识**：新增 `ImChatAvatar` 组件，提供优雅的文字首字母回退展示与角色专属色彩标识
+
+#### 改进
+
+- **虚拟列表渲染与平滑滚动优化**：`VariableVirtualList` 引入多步高度沉降计算（Scroll Settling），支持动态高度精确测量、底部锁定（Pin to Bottom）与无抖动的编程跳转
+- **后台空闲任务调度与 IPC 事件合并**：新增基于系统空闲检测的后台任务队列，智能延后重度索引与嵌入任务；合并流式 IPC 消息推送频率，大幅降低渲染进程重绘开销
+- **IM 架构模块化与 Markdown 渲染缓存**：将 IM 拆分为独立的 `ImComposer` 与 `ImMessageItem` 组件，并引入 LRU Markdown 渲染缓存，提升大对话下的界面流畅度
 
 ### [0.2.17]
 
