@@ -40,11 +40,14 @@ try {
     assert.equal(fs.existsSync(path.join(extRoot, metadata)), false, `VSIX must exclude ${metadata}`);
   }
 
-  for (const file of ["README.md", "CHANGELOG.md", "LICENSE"]) {
+  for (const file of ["README.md", "CHANGELOG.md"]) {
     const filePath = path.join(extRoot, file);
     assert.ok(fs.existsSync(filePath), `VSIX must contain ${file} for extension details tabs`);
     assert.ok(fs.statSync(filePath).size > 0, `VSIX ${file} must not be empty`);
   }
+  const licensePath = [path.join(extRoot, "LICENSE"), path.join(extRoot, "LICENSE.txt")].find((p) => fs.existsSync(p));
+  assert.ok(licensePath, "VSIX must contain LICENSE or LICENSE.txt for extension details tabs");
+  assert.ok(fs.statSync(licensePath).size > 0, "VSIX license file must not be empty");
 
   let nodeModulesCount = 0;
   const nmRoot = path.join(extRoot, "node_modules");

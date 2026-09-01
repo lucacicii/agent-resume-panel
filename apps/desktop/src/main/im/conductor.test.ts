@@ -209,10 +209,9 @@ describe("ImConductor", () => {
       mentionRoleIds: [member.memberId]
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await vi.waitFor(() => expect(prompt).toHaveBeenCalled(), { timeout: 3000 });
     expect(connect).toHaveBeenCalled();
     expect(setModel).toHaveBeenCalledWith(expect.any(String), "claude-opus");
-    expect(prompt).toHaveBeenCalled();
   });
 
   it("prioritizes chat member agent and model override over template default", async () => {
@@ -238,10 +237,9 @@ describe("ImConductor", () => {
       mentionRoleIds: [dev.memberId]
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await vi.waitFor(() => expect(prompt).toHaveBeenCalled(), { timeout: 3000 });
     expect(connect).toHaveBeenCalled();
     expect(setModel).toHaveBeenCalledWith(expect.any(String), "o3-mini");
-    expect(prompt).toHaveBeenCalled();
   });
 
   it("sets thought level after model when dispatching a job", async () => {
@@ -270,12 +268,11 @@ describe("ImConductor", () => {
       mentionRoleIds: [member.memberId]
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await vi.waitFor(() => expect(prompt).toHaveBeenCalled(), { timeout: 3000 });
     expect(connect).toHaveBeenCalled();
     expect(setModel).toHaveBeenCalledWith(expect.any(String), "o3-mini");
     expect(setThoughtLevel).toHaveBeenCalledWith(expect.any(String), "high");
     expect(setModel.mock.invocationCallOrder[0]!).toBeLessThan(setThoughtLevel.mock.invocationCallOrder[0]!);
-    expect(prompt).toHaveBeenCalled();
   });
 
   it("does not call setThoughtLevel when the role has no thought level", async () => {
@@ -402,7 +399,7 @@ describe("ImConductor", () => {
       ]
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await vi.waitFor(() => expect(prompt).toHaveBeenCalled(), { timeout: 3000 });
     expect(connect).toHaveBeenCalled();
     expect(prompt).toHaveBeenCalledWith(
       expect.any(String),

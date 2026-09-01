@@ -8,6 +8,21 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## English
 
+### [0.2.17]
+
+#### Added
+
+- **Smart Intent Routing & Automatic Role Dispatch**: introduced intelligent intent parsing in IM chat to automatically determine role responsibilities, route user requests to matching specialized roles, and provide dispatch proposals with interactive confirmation
+- **Role Delegation Graph & Custom Roles**: support configuring multi-role collaborative delegation workflows (e.g. PM → UI Designer → Developer → Tester) with visual dependency tracking, circular dispatch protection, and custom ACP role templates
+- **IM Project Management & Workspace Association**: associate local workspace folders with IM projects, guide role tools to persist artifacts under `.arp/`, and link project knowledge snapshots for context-aware collaboration
+- **Floating Timeline Navigation**: added an interactive timeline alongside IM conversations with hover previews, role color coding, and quick jump to key dialogue milestones
+- **Intelligent Conversation Title Generation**: automatically renames newly created chats upon the user's first prompt, and provides manual LLM auto-rename via context menu
+
+#### Improved
+
+- **Multi-Role Conductor Scheduling & Parallelism**: enhanced task queueing, read-only parallel dispatch, thought level propagation, and live streaming of thinking deltas and assistant tokens
+- **Proxy Model Parser & Message Attribution**: robust proxy endpoint response handling, accurate tool-call file capture, and refined role avatar/color fallback styling
+
 ### [0.2.16]
 
 #### Added
@@ -407,6 +422,21 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 ---
 
 ## 简体中文
+
+### [0.2.17]
+
+#### 新增
+
+- **智能意图路由与自动角色分发**：在 IM 面板中引入智能意图分析器，根据用户问题自动识别并推荐匹配的专业角色进行任务分发，支持带交互确认的派发建议与快速触发
+- **角色协作关系拓扑与自定义角色**：支持配置多角色协作委托关系链（如产品经理 → UI 设计师 → 开发工程师 → 测试工程师），具备依赖关系追踪、防循环派发保护及自定义 ACP 角色模板扩展
+- **IM 项目管理与工作区本地关联**：支持为 IM 项目关联本地工作目录，引导角色将产物沉淀于 `.arp/` 目录，并支持嵌入项目知识库快照进行上下文增强
+- **浮动时间轴导航**：在 IM 对话侧边新增时间轴视图，支持悬停消息预览、角色专属色彩标识及对话里程碑快速跳转
+- **智能会话命名**：在用户发送首条消息时自动将默认标题提炼替换为问题摘要，并支持在右键菜单中手动触发基于大模型的「自动重命名」
+
+#### 改进
+
+- **多角色调度器（Conductor）与并发优化**：增强任务队列管理、只读角色并行分发、思考等级（Thought Level）动态传递以及思考过程与文本增量实时流式渲染
+- **代理模型解析与消息展示优化**：完善各类 Proxy 模型响应解析器与工具调用修改文件追踪，优化角色头像、色彩回退与国际化文案
 
 ### [0.2.16]
 

@@ -1161,6 +1161,9 @@ describe("WorkbenchPanel", () => {
       listSessions: async () => [
         { provider: "codex" as const, id: "session-1", title: "App work", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 }
       ],
+      querySessionsPage: querySessionsPageFromList(async () => [
+        { provider: "codex" as const, id: "session-1", title: "App work", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 }
+      ]),
       listProjects: async () => [
         { projectId: "project-1", portableKey: "/work/app", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/app", pathMissing: false, sessionCount: 1 }
       ],
@@ -1173,7 +1176,7 @@ describe("WorkbenchPanel", () => {
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
     fireEvent.contextMenu(await screen.findByRole("button", { name: /App work/ }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Move to project…" }));
-    expect(await screen.findByText("No other projects available to move into.")).toBeTruthy();
+    await waitFor(() => expect(notificationMocks.notifyDesktop).toHaveBeenCalledWith({ text: "No other projects available to move into.", kind: "error" }));
     expect(moveSessionToProject).not.toHaveBeenCalled();
   });
 
@@ -2045,6 +2048,7 @@ describe("WorkbenchPanel", () => {
       listProjectAliases: async () => ({}),
       getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
       listSessions: async () => [],
+      querySessionsPage: querySessionsPageFromList(async () => []),
       listProjects: async () => [],
       addProject: async () => { throw new Error("Selected folder is not accessible."); }
     } as unknown as typeof window.agentResume;
@@ -2052,7 +2056,7 @@ describe("WorkbenchPanel", () => {
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
     fireEvent.click(await screen.findByRole("button", { name: "Add project" }));
-    expect(await screen.findByText("Selected folder is not accessible.")).toBeTruthy();
+    await waitFor(() => expect(notificationMocks.notifyDesktop).toHaveBeenCalledWith({ text: "Selected folder is not accessible.", kind: "error" }));
   });
 
   it("lists sessions for a path-missing project by projectId", async () => {
@@ -2289,6 +2293,7 @@ describe("WorkbenchPanel", () => {
       listProjectAliases: async () => ({}),
       getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
       listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      querySessionsPage: querySessionsPageFromList(async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }]),
       workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: "/work/app" }),
       terminalSpawn,
       terminalAttach: async () => ({ ok: true, replay: "" }),
@@ -2302,6 +2307,7 @@ describe("WorkbenchPanel", () => {
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
     fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
     await waitFor(() => expect(terminalSpawn).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(document.querySelector(".wb-terminal-host")).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "Close terminal" }));
     await waitFor(() => expect(terminalDestroy).toHaveBeenCalledWith({ id: 21 }));
   });

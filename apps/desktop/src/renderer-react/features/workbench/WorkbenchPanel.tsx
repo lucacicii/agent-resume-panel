@@ -2745,7 +2745,6 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   const notifyGitFailure = useCallback((key: string, error: unknown) => {
     const message = t(key, gitOperationError(error));
-    setStatus({ text: message, kind: "error" });
     notifyDesktop({ text: message, kind: "error" });
   }, [t]);
 
