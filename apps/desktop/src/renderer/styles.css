@@ -17368,7 +17368,7 @@ html[data-window-mode="browser"] #react-chrome {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 12px;
+  padding: 12px 48px 12px 16px;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -18182,7 +18182,7 @@ html[data-window-mode="browser"] #react-chrome {
 /* --- Floating Timeline on right side of chat transcript --- */
 .im-timeline {
   position: absolute;
-  right: 10px;
+  right: 14px;
   top: 12px;
   bottom: 12px;
   z-index: 10;

@@ -11,6 +11,7 @@ ALTER TABLE agent_messages ADD COLUMN tool_trace_json TEXT;
 
 export const IM_TOOLS_MIGRATION_SQL = `
 ALTER TABLE im_role_templates ADD COLUMN tools_json TEXT;
+ALTER TABLE im_members ADD COLUMN tools_json TEXT;
 `;
 
 export const IM_ROLE_MODEL_MIGRATION_SQL = `
