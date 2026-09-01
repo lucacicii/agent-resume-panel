@@ -102,10 +102,6 @@ test("MCP server exposes all note, report, session, and project tools", async ()
       "entity_tag_add",
       "entity_tag_remove",
       "entity_tags_get",
-      "flow_node_complete",
-      "flow_read",
-      "flow_sync",
-      "flow_validate",
       "link_graph_trace",
       "note_append",
       "note_create",
@@ -137,56 +133,6 @@ test("MCP server exposes all note, report, session, and project tools", async ()
       "tag_list",
       "tag_search"
     ]);
-  } finally {
-    await client.close();
-    await server.close();
-  }
-});
-
-test("Flow MCP synchronizes one deterministic Jira Flow from a Project Note subtree", async () => {
-  const setup = await setupTestContext();
-  await ensureDesktopDbSchema(setup.desktopDb);
-  const root = await setup.store.createProjectNote("/tmp/jira-flow-project", "# JIRA-1 Root\n");
-  const child = await setup.store.createLinkedChildNote(root.noteId, "# JIRA-2 Leaf\n\n## Execution brief\n\nImplement and verify.\n");
-  const server = createNoteMcpServer(setup.ctx);
-  const client = await connectClient(server);
-  try {
-    const synced = parseToolJson(await client.callTool({
-      name: "flow_sync",
-      arguments: {
-        sourceKind: "jira",
-        sourceKey: "JIRA-1",
-        rootNoteId: root.noteId,
-        name: "JIRA-1 Root",
-        nodes: [{ externalKey: "JIRA-2", noteId: child.noteId, title: "Leaf", provider: "codex", priority: 0 }],
-        edges: []
-      }
-    }));
-    assert.equal(synced.created, true);
-    assert.equal(synced.flow.sourceKind, "jira");
-    assert.equal(synced.flow.nodes[0].externalKey, "JIRA-2");
-
-    const repeated = parseToolJson(await client.callTool({
-      name: "flow_sync",
-      arguments: {
-        sourceKind: "jira",
-        sourceKey: "JIRA-1",
-        rootNoteId: root.noteId,
-        name: "JIRA-1 Root",
-        nodes: [{ externalKey: "JIRA-2", noteId: child.noteId, title: "Leaf updated", provider: "codex", priority: 0 }],
-        edges: []
-      }
-    }));
-    assert.equal(repeated.created, false);
-    assert.equal(repeated.flow.flowId, synced.flow.flowId);
-    assert.equal(repeated.flow.nodes[0].nodeId, synced.flow.nodes[0].nodeId);
-
-    const validation = parseToolJson(await client.callTool({
-      name: "flow_validate",
-      arguments: { sourceKind: "jira", sourceKey: "JIRA-1" }
-    }));
-    assert.equal(validation.valid, true);
-    assert.match(await setup.store.readNoteContent(root.noteId), /## Flow Status/);
   } finally {
     await client.close();
     await server.close();

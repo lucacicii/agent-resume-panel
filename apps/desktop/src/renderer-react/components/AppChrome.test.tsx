@@ -18,8 +18,8 @@ function renderChrome(options?: {
         "desktop.tabs.agent": "Agent",
         "desktop.tabs.workbench": "Workbench",
         "desktop.tabs.notes": "Notes",
-        "desktop.tabs.flow": "Flow",
         "desktop.tabs.kanban": "Kanban",
+        "desktop.tabs.im": "IM",
         "desktop.notes.floatingDots": "Floating notes",
         "desktop.workbench.sessionDots": "Active sessions",
         "desktop.workbench.sessionDot.awaiting": "Waiting for you",
@@ -71,13 +71,17 @@ describe("AppChrome", () => {
     );
   });
 
-  it("places Flow immediately after Notes in primary navigation", async () => {
+  it("places Kanban immediately after Notes in primary navigation", async () => {
     renderChrome();
-    await screen.findByRole("button", { name: "Flow" });
+    await screen.findByRole("button", { name: "Kanban" });
     const labels = [...document.querySelectorAll(".app-nav-rail .rail-btn")].map((item) =>
       item.getAttribute("aria-label")
     );
-    expect(labels).toEqual(["Report", "Agent", "Workbench", "Notes", "Flow", "Kanban"]);
+    expect(labels).toEqual(["Report", "Agent", "Workbench", "Notes", "Kanban", "IM"]);
+    const icons = [...document.querySelectorAll(".app-nav-rail .rail-btn [data-theme-icon]")].map((item) =>
+      item.getAttribute("data-theme-icon")
+    );
+    expect(icons).toEqual(["activity", "bot", "terminal", "file-text", "square-kanban", "message-square"]);
   });
 
   it("requests the primary tab when a rail button is clicked", async () => {

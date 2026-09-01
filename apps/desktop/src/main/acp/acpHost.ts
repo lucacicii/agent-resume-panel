@@ -2,7 +2,7 @@ import * as crypto from "node:crypto";
 import type { BrowserWindow } from "electron";
 import { shell } from "electron";
 import type { PanelSettings } from "@agent-resume/core";
-import { effectivePanelHome } from "@agent-resume/core";
+import { effectivePanelHome, extractPreviewContent } from "@agent-resume/core";
 import type { RequestPermissionRequest, RequestPermissionResponse } from "@agentclientprotocol/sdk" with {
   "resolution-mode": "import"
 };
@@ -100,6 +100,7 @@ class AcpChatController {
   private streamingAssistantId?: string;
   private turnAssistantId?: string;
   private streamingText = "";
+  private streamingThinking = "";
   private activeAcpSessionId?: string;
   private isReplayingLoadedHistory = false;
   private historyReplayDone?: () => void;
@@ -114,6 +115,14 @@ class AcpChatController {
 
   getRecord(): AcpSessionRecord {
     return this.record;
+  }
+
+  getConfigOptions(): AcpConfigOption[] {
+    return this.configOptions;
+  }
+
+  getModels(): AcpModelsState | null {
+    return this.models;
   }
 
   getActiveAcpSessionId(): string | undefined {
@@ -394,15 +403,21 @@ class AcpChatController {
   }
 
   private handleAgentChunk(update: Record<string, unknown>): void {
-    const delta = extractTextFromContent(update.content);
-    if (!delta || !this.turnAssistantId) return;
+    const extracted = extractChunkContent(update.content);
+    if (!extracted.text && !extracted.thinking) return;
+    if (!this.turnAssistantId) return;
     if (!this.streamingAssistantId) {
       this.streamingAssistantId = this.turnAssistantId;
-      this.streamingText = delta;
+      this.streamingText = extracted.text;
+      this.streamingThinking = extracted.thinking;
     } else {
-      this.streamingText += delta;
+      this.streamingText += extracted.text;
+      this.streamingThinking += extracted.thinking;
     }
-    this.postAssistantUpdate(this.getAssistantMessage(this.turnAssistantId));
+    const assistant = this.getAssistantMessage(this.turnAssistantId);
+    assistant.text = this.streamingText;
+    assistant.thinking = this.streamingThinking || undefined;
+    this.postAssistantUpdate(assistant);
   }
 
   private getAssistantMessage(id: string): AcpChatMessage {
@@ -412,6 +427,7 @@ class AcpChatController {
       id,
       role: "assistant",
       text: id === this.streamingAssistantId ? this.streamingText : "",
+      thinking: id === this.streamingAssistantId && this.streamingThinking ? this.streamingThinking : undefined,
       timestamp: Date.now(),
       toolCalls: []
     };
@@ -458,6 +474,7 @@ class AcpChatController {
         chatId: this.record.id,
         id: assistant.id,
         text: assistant.text,
+        thinking: assistant.thinking,
         toolCalls: assistant.toolCalls ?? [],
         streaming: true
       });
@@ -570,6 +587,7 @@ class AcpChatController {
     this.turnAssistantId = crypto.randomUUID();
     this.streamingAssistantId = undefined;
     this.streamingText = "";
+    this.streamingThinking = "";
     this.status("thinking", true, false);
 
     const turnId = this.turnAssistantId;
@@ -629,6 +647,33 @@ class AcpChatController {
     } catch (error) {
       this.emit({ type: "error", chatId: this.record.id, message: `Mode switch failed: ${formatError(error)}` });
     }
+  }
+
+  async setModel(modelId: string): Promise<void> {
+    if (!modelId) return;
+    const modelOpt = this.configOptions.find(
+      (option) => option.type === "select" && (option.category === "model" || option.id === "model" || option.id === "model_id")
+    );
+    if (modelOpt && modelOpt.type === "select") {
+      if (modelOpt.currentValue !== modelId) {
+        await this.setConfigOption(modelOpt.id, modelId);
+      }
+    } else {
+      await this.setConfigOption("model", modelId);
+    }
+  }
+
+  async setThoughtLevel(thoughtLevel: string): Promise<void> {
+    if (!thoughtLevel) return;
+    const thoughtOpt = this.configOptions.find(
+      (option) => option.type === "select" && option.category === "thought_level"
+    );
+    if (!thoughtOpt || thoughtOpt.type !== "select") {
+      console.warn(`[ACP] No thought_level config option on chat ${this.record.id}; skipping ${thoughtLevel}.`);
+      return;
+    }
+    if (thoughtOpt.currentValue === thoughtLevel) return;
+    await this.setConfigOption(thoughtOpt.id, thoughtLevel);
   }
 
   async setConfigOption(configId: string, value: string | boolean): Promise<void> {
@@ -755,23 +800,27 @@ class AcpChatController {
     const turnId = this.streamingAssistantId ?? this.turnAssistantId;
     if (!turnId) {
       this.streamingText = "";
+      this.streamingThinking = "";
       return;
     }
     const index = this.messages.findIndex((entry) => entry.id === turnId);
     const existing = index >= 0 ? this.messages[index] : undefined;
     const text = this.streamingText.trim() || existing?.text?.trim() || "";
+    const thinking = this.streamingThinking.trim() || existing?.thinking?.trim() || undefined;
     const toolCalls = existing?.toolCalls;
-    if (!text && !toolCalls?.length) {
+    if (!text && !thinking && !toolCalls?.length) {
       if (index >= 0) this.messages.splice(index, 1);
       this.streamingAssistantId = undefined;
       this.turnAssistantId = undefined;
       this.streamingText = "";
+      this.streamingThinking = "";
       return;
     }
     const assistantMessage: AcpChatMessage = {
       id: turnId,
       role: "assistant",
       text,
+      thinking,
       timestamp: existing?.timestamp ?? Date.now(),
       toolCalls: toolCalls?.length ? toolCalls : undefined
     };
@@ -787,6 +836,7 @@ class AcpChatController {
     this.streamingAssistantId = undefined;
     this.turnAssistantId = undefined;
     this.streamingText = "";
+    this.streamingThinking = "";
   }
 
   private async buildPromptBlocks(
@@ -863,11 +913,24 @@ class AcpChatController {
   }
 }
 
+let imStreamHandler: ((event: AcpStreamEvent) => Promise<void>) | null | undefined;
+
 function emitToWindow(getMainWindow: GetMainWindow, event: AcpStreamEvent): void {
   const win = getMainWindow();
   if (win && !win.isDestroyed()) {
     win.webContents.send("acp:stream", event);
   }
+  if (imStreamHandler === undefined) {
+    imStreamHandler = null;
+    void import("../im/ipc").then((mod) => {
+      imStreamHandler = mod.handleImAcpStream;
+      return mod.handleImAcpStream(event);
+    }).catch(() => {
+      imStreamHandler = null;
+    });
+    return;
+  }
+  if (imStreamHandler) void imStreamHandler(event);
 }
 
 function findControllerChatIdByAcpSessionId(sessionId: string | undefined): string | null {
@@ -887,10 +950,72 @@ function resolveChatIdForSession(sessionId: string | undefined): string | null {
   );
 }
 
+let acpHostDeps: { loadSettings: LoadSettings; getMainWindow: GetMainWindow } | null = null;
+
+export async function connectAcpChat(chatId: string, force = false): Promise<void> {
+  if (!acpHostDeps) throw new Error("ACP host is not registered.");
+  const { loadSettings, getMainWindow } = acpHostDeps;
+  const settings = await loadSettings();
+  const panelHome = effectivePanelHome(settings);
+  const record = await getAcpRecord(panelHome, chatId);
+  if (!record) throw new Error("ACP session not found.");
+
+  let controller = controllers.get(chatId);
+  if (controller && !force && controller.isLive()) {
+    lastActiveChatId = chatId;
+    controller.repostSnapshot();
+    return;
+  }
+  if (controller) {
+    controller.dispose();
+    controllers.delete(chatId);
+  }
+  controller = new AcpChatController(record, panelHome, settings, (event) =>
+    emitToWindow(getMainWindow, event)
+  );
+  controllers.set(chatId, controller);
+  lastActiveChatId = chatId;
+  await controller.bootstrap();
+}
+
+export async function promptAcpChat(
+  chatId: string,
+  text: string,
+  images: IncomingAcpImage[] = [],
+  files: IncomingAcpFile[] = []
+): Promise<void> {
+  const controller = controllers.get(chatId);
+  if (!controller) throw new Error("ACP chat is not connected.");
+  lastActiveChatId = chatId;
+  await controller.sendMessage(text, images, files);
+}
+
+export async function denyAcpPermission(requestId: string): Promise<void> {
+  const waiter = permissionWaiters.get(requestId);
+  if (!waiter) return;
+  permissionWaiters.delete(requestId);
+  waiter.resolve({ outcome: { outcome: "cancelled" } });
+}
+
+export async function setAcpModel(chatId: string, modelId: string): Promise<void> {
+  const controller = controllers.get(chatId);
+  if (controller && modelId) {
+    await controller.setModel(modelId);
+  }
+}
+
+export async function setAcpThoughtLevel(chatId: string, thoughtLevel: string): Promise<void> {
+  const controller = controllers.get(chatId);
+  if (controller && thoughtLevel) {
+    await controller.setThoughtLevel(thoughtLevel);
+  }
+}
+
 export function registerAcpIpc(deps: {
   loadSettings: LoadSettings;
   getMainWindow: GetMainWindow;
 }): void {
+  acpHostDeps = deps;
   const { loadSettings, getMainWindow } = deps;
 
   setPermissionPromptHandler(async (params: RequestPermissionRequest): Promise<RequestPermissionResponse> => {
@@ -1042,30 +1167,12 @@ export function registerAcpIpc(deps: {
   });
 
   safeHandle("acp:connect", async (_event, args: { chatId: string; force?: boolean }) => {
-    const settings = await loadSettings();
-    const panelHome = effectivePanelHome(settings);
-    const record = await getAcpRecord(panelHome, args.chatId);
-    if (!record) throw new Error("ACP session not found.");
-
-    let controller = controllers.get(args.chatId);
-    // Keep-alive: reusing a live controller avoids respawning the agent on every
-    // tab focus / active flip. force=true rebuilds (settings change, error retry).
-    if (controller && !args.force && controller.isLive()) {
-      lastActiveChatId = args.chatId;
-      controller.repostSnapshot();
-      return { ok: true, record: controller.getRecord(), reused: true };
-    }
-    if (controller) {
-      controller.dispose();
-      controllers.delete(args.chatId);
-    }
-    controller = new AcpChatController(record, panelHome, settings, (event) =>
-      emitToWindow(getMainWindow, event)
-    );
-    controllers.set(args.chatId, controller);
-    lastActiveChatId = args.chatId;
-    await controller.bootstrap();
-    return { ok: true, record: controller.getRecord(), reused: false };
+    const existed = controllers.get(args.chatId);
+    const reused = Boolean(existed && !args.force && existed.isLive());
+    await connectAcpChat(args.chatId, args.force === true);
+    const controller = controllers.get(args.chatId);
+    if (!controller) throw new Error("ACP session not found.");
+    return { ok: true, record: controller.getRecord(), reused };
   });
 
   safeHandle(
@@ -1074,10 +1181,7 @@ export function registerAcpIpc(deps: {
       _event,
       args: { chatId: string; text?: string; images?: IncomingAcpImage[]; files?: IncomingAcpFile[] }
     ) => {
-      const controller = controllers.get(args.chatId);
-      if (!controller) throw new Error("ACP chat is not connected.");
-      lastActiveChatId = args.chatId;
-      await controller.sendMessage(args.text ?? "", args.images ?? [], args.files ?? []);
+      await promptAcpChat(args.chatId, args.text ?? "", args.images ?? [], args.files ?? []);
       return { ok: true };
     }
   );
@@ -1200,6 +1304,42 @@ export function disposeAcpController(chatId: string): void {
   }
 }
 
+export function getLiveAcpAgentModels(provider: string): Array<{ id: string; label: string }> {
+  const result: Array<{ id: string; label: string }> = [];
+  const seen = new Set<string>();
+  for (const controller of controllers.values()) {
+    if (controller.getRecord().provider !== provider) continue;
+    const configOptions = controller.getConfigOptions();
+    for (const opt of configOptions) {
+      if (opt.type === "select" && (opt.category === "model" || opt.id === "model" || opt.id === "model_id")) {
+        for (const item of opt.options) {
+          if ("value" in item && item.value && !seen.has(item.value)) {
+            seen.add(item.value);
+            result.push({ id: item.value, label: item.name || item.value });
+          } else if ("options" in item && Array.isArray(item.options)) {
+            for (const sub of item.options) {
+              if (sub.value && !seen.has(sub.value)) {
+                seen.add(sub.value);
+                result.push({ id: sub.value, label: `${sub.name || sub.value} (${item.name || item.group})` });
+              }
+            }
+          }
+        }
+      }
+    }
+    const legacyModels = controller.getModels();
+    if (legacyModels?.availableModels) {
+      for (const m of legacyModels.availableModels) {
+        if (m.modelId && !seen.has(m.modelId)) {
+          seen.add(m.modelId);
+          result.push({ id: m.modelId, label: m.name || m.modelId });
+        }
+      }
+    }
+  }
+  return result;
+}
+
 export function getAcpRuntimeMetrics(): { count: number; liveCount: number } {
   let liveCount = 0;
   for (const controller of controllers.values()) {
@@ -1218,6 +1358,34 @@ export function disposeAllAcpControllers(): void {
   setPermissionPromptHandler(null);
   setAskUserQuestionHandler(null);
   setPlanWriteListener(null);
+}
+
+function extractChunkContent(content: unknown): { text: string; thinking: string } {
+  if (typeof content === "string") {
+    return { text: content, thinking: "" };
+  }
+  if (!content) return { text: "", thinking: "" };
+  const blocks = Array.isArray(content) ? content : typeof content === "object" ? [content] : [];
+  let text = "";
+  let thinking = "";
+  for (const block of blocks) {
+    if (typeof block === "string") {
+      text += block;
+      continue;
+    }
+    if (!block || typeof block !== "object") continue;
+    const b = block as Record<string, unknown>;
+    const type = typeof b.type === "string" ? b.type.toLowerCase() : "";
+    if (type === "thinking" || type === "thought" || type === "reasoning" || typeof b.thinking === "string") {
+      const piece = typeof b.thinking === "string" ? b.thinking : typeof b.text === "string" ? b.text : "";
+      thinking += piece;
+    } else if (typeof b.text === "string") {
+      text += b.text;
+    } else if (typeof b.delta === "string") {
+      text += b.delta;
+    }
+  }
+  return { text, thinking };
 }
 
 function extractTextFromContent(content: unknown): string {

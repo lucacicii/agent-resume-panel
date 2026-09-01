@@ -2,15 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { desktopApi } from "../../bridge";
 import { renderMarkdown } from "../../components/Markdown";
 import { ProviderIcon } from "../../components/ProviderIcon";
-import { Status } from "../../components/Status";
+
 import { ThemeIcon } from "../../components/ThemeIcon";
 import { useI18n } from "../../i18n";
 import {
   buildSessionTranscriptModel,
   filterSessionTranscript,
+  sameTranscriptPreview,
   type TranscriptMessage,
   type TranscriptPreviewMessage
 } from "./sessionTranscriptModel";
+import { applyTranscriptPointerSelection } from "./transcriptTextSelection";
 
 type TranscriptPreview = {
   title: string;
@@ -47,10 +49,21 @@ export function SessionTranscriptPane({
   const [renderMarkdownView, setRenderMarkdownView] = useState(true);
   const [expandedThinking, setExpandedThinking] = useState<Record<string, boolean>>({});
   const bodyRef = useRef<HTMLDivElement>(null);
+  const previewRef = useRef<TranscriptPreview | null>(null);
   const requestRef = useRef(0);
+  const pointerSelectAnchorRef = useRef<Range | null>(null);
+
+  const selectionInsideTranscript = (): boolean => {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0) return false;
+    const root = bodyRef.current;
+    const anchor = selection.anchorNode;
+    return Boolean(root && anchor && root.contains(anchor));
+  };
 
   const loadPreview = useCallback(async (silent = false) => {
     if (!provider || !sessionId) return;
+    if (silent && selectionInsideTranscript()) return;
     const requestId = requestRef.current + 1;
     requestRef.current = requestId;
     if (!silent) {
@@ -60,11 +73,18 @@ export function SessionTranscriptPane({
     try {
       const result = await desktopApi().previewSession({ provider, id: sessionId });
       if (requestRef.current !== requestId) return;
-      setPreview(result.preview);
+      if (silent && selectionInsideTranscript()) return;
+      if (!sameTranscriptPreview(previewRef.current, result.preview)) {
+        previewRef.current = result.preview;
+        setPreview(result.preview);
+      }
       if (silent) setError("");
     } catch (caught) {
       if (requestRef.current !== requestId) return;
-      if (!silent) setPreview(null);
+      if (!silent) {
+        previewRef.current = null;
+        setPreview(null);
+      }
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
       if (requestRef.current === requestId && !silent) setLoading(false);
@@ -74,6 +94,7 @@ export function SessionTranscriptPane({
   useEffect(() => {
     setQuery("");
     setSelectedId(null);
+    previewRef.current = null;
     setPreview(null);
     setError("");
     setExpandedThinking({});
@@ -175,8 +196,8 @@ export function SessionTranscriptPane({
       {loading && !preview ? (
         <p className="muted wb-transcript-status" role="status">{t("desktop.common.loadingPreview")}</p>
       ) : null}
-      {error ? <Status kind="error">{error}</Status> : null}
-      {preview?.warning ? <Status kind="warning">{preview.warning}</Status> : null}
+      {error ? <p className="status error">{error}</p> : null}
+      {preview?.warning ? <p className="status warning">{preview.warning}</p> : null}
       {preview?.truncated ? <p className="muted wb-transcript-status">{t("desktop.sessions.truncated")}</p> : null}
 
       {!loading && preview && !model.messages.length ? (
@@ -221,6 +242,37 @@ export function SessionTranscriptPane({
             className="wb-transcript-body"
             ref={bodyRef}
             style={{ ["--wb-transcript-font-size" as string]: `${fontSize}px` }}
+            onPointerDown={(event) => {
+              if (event.pointerType === "mouse" && event.button !== 2) return;
+              if (event.pointerType === "mouse" && event.button === 2) event.preventDefault();
+              const root = bodyRef.current;
+              if (!root) return;
+              pointerSelectAnchorRef.current = applyTranscriptPointerSelection(
+                root,
+                event.clientX,
+                event.clientY,
+                null
+              );
+            }}
+            onPointerMove={(event) => {
+              if (!pointerSelectAnchorRef.current) return;
+              if (event.pointerType === "mouse" && event.buttons !== 2) return;
+              event.preventDefault();
+              const root = bodyRef.current;
+              if (!root) return;
+              applyTranscriptPointerSelection(
+                root,
+                event.clientX,
+                event.clientY,
+                pointerSelectAnchorRef.current
+              );
+            }}
+            onPointerUp={() => {
+              pointerSelectAnchorRef.current = null;
+            }}
+            onPointerCancel={() => {
+              pointerSelectAnchorRef.current = null;
+            }}
           >
             {visible.messages.length ? visible.messages.map((message) => {
               const stamp = formatTimestamp(message.timestamp);

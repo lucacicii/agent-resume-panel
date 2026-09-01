@@ -181,29 +181,8 @@ CREATE TABLE IF NOT EXISTS catalog_meta (
 );
 `;
 
+import { ensureExtensionCatalogSchema } from "@agent-resume/core/extension";
+
 export async function ensureCatalogSchema(dbPath: string): Promise<void> {
-  await fs.mkdir(path.dirname(dbPath), { recursive: true });
-  await runSqlite(dbPath, SCHEMA_SQL);
-  await runCatalogMigrations(dbPath);
-  // First-class projects + portable_key migration (shared with Desktop / core).
-  const { ensureProjectsCatalogSchema } = await import("@agent-resume/core/extension");
-  await ensureProjectsCatalogSchema(dbPath);
-}
-
-async function runCatalogMigrations(dbPath: string): Promise<void> {
-  const statements = MIGRATION_SQL.split(";")
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  for (const statement of statements) {
-    try {
-      await runSqlite(dbPath, `${statement};`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (message.includes("duplicate column name")) {
-        continue;
-      }
-      throw error;
-    }
-  }
+  await ensureExtensionCatalogSchema(dbPath);
 }

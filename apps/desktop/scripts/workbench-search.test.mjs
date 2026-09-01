@@ -97,7 +97,10 @@ try {
   try {
     // Searching a valid root is fine; path escape is enforced when resolving root.
     const missing = path.join(outside, "does-not-exist");
-    await assert.rejects(() => searchWorkbenchText({ rootPath: missing, query: "x" }));
+    await assert.rejects(
+      () => searchWorkbenchText({ rootPath: missing, query: "x" }),
+      (error) => error instanceof Error && error.message.startsWith("工作目录不存在:") && !error.message.includes("ENOENT")
+    );
   } finally {
     fs.rmSync(outside, { recursive: true, force: true });
   }

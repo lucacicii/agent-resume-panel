@@ -7,11 +7,48 @@ ALTER TABLE sync_state ADD COLUMN warning TEXT;
 
 export const DESKTOP_AGENT_TRACE_MIGRATION_SQL = `
 ALTER TABLE agent_messages ADD COLUMN tool_trace_json TEXT;
-ALTER TABLE flow_workflows ADD COLUMN source_kind TEXT;
-ALTER TABLE flow_workflows ADD COLUMN source_key TEXT;
-ALTER TABLE flow_nodes ADD COLUMN external_key TEXT;
-CREATE UNIQUE INDEX IF NOT EXISTS idx_flow_workflows_source ON flow_workflows(source_kind, source_key);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_flow_nodes_external ON flow_nodes(flow_id, external_key);
+`;
+
+export const IM_TOOLS_MIGRATION_SQL = `
+ALTER TABLE im_role_templates ADD COLUMN tools_json TEXT;
+`;
+
+export const IM_ROLE_MODEL_MIGRATION_SQL = `
+ALTER TABLE im_role_templates ADD COLUMN model TEXT;
+ALTER TABLE im_members ADD COLUMN model TEXT;
+`;
+
+export const IM_ROLE_THOUGHT_LEVEL_MIGRATION_SQL = `
+ALTER TABLE im_role_templates ADD COLUMN thought_level TEXT;
+ALTER TABLE im_members ADD COLUMN thought_level TEXT;
+`;
+
+export const IM_MESSAGE_THINKING_MIGRATION_SQL = `
+ALTER TABLE im_messages ADD COLUMN thinking TEXT;
+`;
+
+export const IM_MESSAGE_IMAGES_MIGRATION_SQL = `
+ALTER TABLE im_messages ADD COLUMN images_json TEXT;
+`;
+
+export const IM_SELECTION_ACTION_MODEL_MIGRATION_SQL = `
+ALTER TABLE im_selection_actions ADD COLUMN provider_id TEXT;
+ALTER TABLE im_selection_actions ADD COLUMN model_id TEXT;
+`;
+
+export const IM_ROLE_DELEGATION_MIGRATION_SQL = `
+ALTER TABLE im_role_templates ADD COLUMN callable_template_ids_json TEXT;
+ALTER TABLE im_role_templates ADD COLUMN auto_dispatch INTEGER;
+ALTER TABLE im_members ADD COLUMN callable_template_ids_json TEXT;
+ALTER TABLE im_members ADD COLUMN auto_dispatch INTEGER;
+ALTER TABLE im_messages ADD COLUMN delegation_proposals_json TEXT;
+`;
+
+export const IM_SMART_ROUTING_MIGRATION_SQL = `
+ALTER TABLE im_messages ADD COLUMN auto_routed INTEGER DEFAULT 0;
+ALTER TABLE im_messages ADD COLUMN routed_role_name TEXT;
+ALTER TABLE im_messages ADD COLUMN routing_tip TEXT;
+ALTER TABLE im_messages ADD COLUMN routing_timed_out INTEGER DEFAULT 0;
 `;
 
 export const DESKTOP_ONLY_SCHEMA_SQL = `
@@ -200,94 +237,6 @@ CREATE INDEX IF NOT EXISTS idx_agent_note_audit_created ON agent_note_audit(crea
 CREATE INDEX IF NOT EXISTS idx_agent_note_audit_trace ON agent_note_audit(trace_id);
 CREATE INDEX IF NOT EXISTS idx_agent_note_audit_note ON agent_note_audit(note_id, created_at_ms DESC);
 
-CREATE TABLE IF NOT EXISTS flow_workflows (
-  flow_id TEXT PRIMARY KEY,
-  project_id TEXT NOT NULL,
-  project_path TEXT NOT NULL,
-  name TEXT NOT NULL,
-  root_note_id TEXT NOT NULL,
-  source_kind TEXT,
-  source_key TEXT,
-  status TEXT NOT NULL DEFAULT 'idle',
-  revision INTEGER NOT NULL DEFAULT 1,
-  created_at_ms INTEGER NOT NULL,
-  updated_at_ms INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_flow_workflows_project ON flow_workflows(project_id, updated_at_ms DESC);
-CREATE TABLE IF NOT EXISTS flow_nodes (
-  node_id TEXT PRIMARY KEY,
-  flow_id TEXT NOT NULL,
-  note_id TEXT NOT NULL,
-  external_key TEXT,
-  title TEXT NOT NULL,
-  provider TEXT NOT NULL,
-  binding_mode TEXT NOT NULL DEFAULT 'new-yolo',
-  session_provider TEXT,
-  session_id TEXT,
-  status TEXT NOT NULL DEFAULT 'idle',
-  position_x REAL NOT NULL DEFAULT 0,
-  position_y REAL NOT NULL DEFAULT 0,
-  priority INTEGER NOT NULL DEFAULT 0,
-  created_at_ms INTEGER NOT NULL,
-  updated_at_ms INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_flow_nodes_flow ON flow_nodes(flow_id, priority, position_y, created_at_ms);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_flow_nodes_note ON flow_nodes(note_id);
-CREATE TABLE IF NOT EXISTS flow_edges (
-  edge_id TEXT PRIMARY KEY,
-  flow_id TEXT NOT NULL,
-  source_node_id TEXT NOT NULL,
-  target_node_id TEXT NOT NULL,
-  created_at_ms INTEGER NOT NULL
-);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_flow_edges_pair ON flow_edges(flow_id, source_node_id, target_node_id);
-
-CREATE TABLE IF NOT EXISTS flow_templates (
-  template_id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  description TEXT NOT NULL DEFAULT '',
-  definition_json TEXT NOT NULL,
-  created_at_ms INTEGER NOT NULL,
-  updated_at_ms INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_flow_templates_updated ON flow_templates(updated_at_ms DESC);
-
-CREATE TABLE IF NOT EXISTS flow_runs (
-  run_id TEXT PRIMARY KEY,
-  flow_id TEXT NOT NULL,
-  status TEXT NOT NULL,
-  revision INTEGER NOT NULL,
-  definition_json TEXT NOT NULL,
-  started_at_ms INTEGER NOT NULL,
-  finished_at_ms INTEGER
-);
-CREATE INDEX IF NOT EXISTS idx_flow_runs_flow ON flow_runs(flow_id, started_at_ms DESC);
-
-CREATE TABLE IF NOT EXISTS flow_run_nodes (
-  run_id TEXT NOT NULL,
-  node_id TEXT NOT NULL,
-  status TEXT NOT NULL,
-  attempt INTEGER NOT NULL DEFAULT 1,
-  provider TEXT,
-  session_id TEXT,
-  result_status TEXT,
-  result_text TEXT,
-  started_at_ms INTEGER,
-  finished_at_ms INTEGER,
-  PRIMARY KEY (run_id, node_id)
-);
-CREATE INDEX IF NOT EXISTS idx_flow_run_nodes_status ON flow_run_nodes(run_id, status);
-
-CREATE TABLE IF NOT EXISTS flow_run_events (
-  event_id TEXT PRIMARY KEY,
-  run_id TEXT NOT NULL,
-  node_id TEXT,
-  status TEXT NOT NULL,
-  summary TEXT NOT NULL DEFAULT '',
-  created_at_ms INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_flow_run_events_run ON flow_run_events(run_id, created_at_ms);
-
 CREATE TABLE IF NOT EXISTS catalog_meta (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
@@ -333,4 +282,118 @@ CREATE TABLE IF NOT EXISTS tag_definitions (
 );
 CREATE INDEX IF NOT EXISTS idx_tag_defs_counts ON tag_definitions(status, active_entity_count DESC);
 CREATE INDEX IF NOT EXISTS idx_tag_defs_category ON tag_definitions(category, status, global_weight DESC);
+
+CREATE TABLE IF NOT EXISTS im_projects (
+  project_id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  local_path TEXT,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_im_projects_updated ON im_projects(updated_at_ms DESC);
+
+CREATE TABLE IF NOT EXISTS im_role_templates (
+  template_id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  persona TEXT NOT NULL DEFAULT '',
+  agent TEXT NOT NULL,
+  model TEXT,
+  thought_level TEXT,
+  permissions TEXT NOT NULL DEFAULT 'write',
+  tools_json TEXT,
+  callable_template_ids_json TEXT,
+  auto_dispatch INTEGER,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS im_members (
+  member_id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  template_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  persona TEXT NOT NULL DEFAULT '',
+  agent TEXT NOT NULL,
+  model TEXT,
+  thought_level TEXT,
+  permissions TEXT NOT NULL DEFAULT 'write',
+  tools_json TEXT,
+  callable_template_ids_json TEXT,
+  auto_dispatch INTEGER,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  acp_chat_id TEXT,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_im_members_project ON im_members(project_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_im_members_project_template
+  ON im_members(project_id, template_id);
+
+CREATE TABLE IF NOT EXISTS im_knowledge (
+  item_id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  title TEXT NOT NULL DEFAULT '',
+  body TEXT NOT NULL DEFAULT '',
+  url TEXT,
+  storage_path TEXT,
+  mime_type TEXT,
+  file_name TEXT,
+  size_bytes INTEGER,
+  created_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_im_knowledge_project ON im_knowledge(project_id, created_at_ms);
+
+CREATE TABLE IF NOT EXISTS im_messages (
+  message_id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  author_member_id TEXT,
+  author_label TEXT NOT NULL,
+  body TEXT NOT NULL,
+  thinking TEXT,
+  images_json TEXT,
+  delegation_proposals_json TEXT,
+  auto_routed INTEGER DEFAULT 0,
+  routed_role_name TEXT,
+  routing_tip TEXT,
+  routing_timed_out INTEGER DEFAULT 0,
+  quote_ids_json TEXT NOT NULL DEFAULT '[]',
+  mention_role_ids_json TEXT NOT NULL DEFAULT '[]',
+  job_id TEXT,
+  created_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_im_messages_project ON im_messages(project_id, created_at_ms);
+
+CREATE TABLE IF NOT EXISTS im_jobs (
+  job_id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  member_id TEXT NOT NULL,
+  message_id TEXT,
+  acp_chat_id TEXT,
+  status TEXT NOT NULL,
+  brief_json TEXT NOT NULL,
+  error TEXT,
+  files_json TEXT NOT NULL DEFAULT '[]',
+  permission_json TEXT,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  finished_at_ms INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_im_jobs_project ON im_jobs(project_id, updated_at_ms DESC);
+
+CREATE TABLE IF NOT EXISTS im_selection_actions (
+  action_id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  prompt TEXT NOT NULL DEFAULT '',
+  provider_id TEXT,
+  model_id TEXT,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_im_selection_actions_sort
+  ON im_selection_actions(sort_order, created_at_ms);
 `;

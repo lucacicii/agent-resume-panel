@@ -505,14 +505,20 @@ export function activate(context: vscode.ExtensionContext): void {
     projectAliasStore.initialize(context),
     sessionGtdStore.initialize(),
     notesStore.initialize()
-  ]).then(() => {
-    if (gtdTree) {
-      applyProjectAndGtdResolvers(tree, acpTree, gtdTree);
-    }
-    notesTree?.setProjectDisplayName((projectPath) => tree.getProjectDisplayName(projectPath));
-    void refresh(tree, false);
-    void refreshAcpChats(acpTree, false);
-  });
+  ])
+    .then(() => {
+      if (gtdTree) {
+        applyProjectAndGtdResolvers(tree, acpTree, gtdTree);
+      }
+      notesTree?.setProjectDisplayName((projectPath) => tree.getProjectDisplayName(projectPath));
+      void refresh(tree, false);
+      void refreshAcpChats(acpTree, false);
+    })
+    .catch((error) => {
+      console.error("[agent-resume] Failed to initialize catalog stores during activate:", error);
+      void refresh(tree, false);
+      void refreshAcpChats(acpTree, false);
+    });
   void consumePendingResumeForWorkspace(context);
 
   const notesWatcher = vscode.workspace.createFileSystemWatcher(

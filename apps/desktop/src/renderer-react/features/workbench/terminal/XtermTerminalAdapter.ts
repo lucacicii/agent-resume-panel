@@ -157,7 +157,12 @@ export class XtermTerminalAdapter implements ITerminalAdapter {
   fit(): void {
     if (this.isDisposed) return;
     try {
+      const buffer = this.terminal.buffer.active;
+      const wasAtBottom = buffer.type === "normal" && buffer.viewportY >= buffer.baseY;
       this.fitAddon.fit();
+      if (wasAtBottom && this.terminal.buffer.active.type === "normal") {
+        this.terminal.scrollToBottom();
+      }
     } catch {
       /* hidden panes ignore fit failures */
     }

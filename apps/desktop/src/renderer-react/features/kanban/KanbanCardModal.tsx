@@ -3,7 +3,7 @@ import { desktopApi } from "../../bridge";
 import { CodeEditor } from "../../components/CodeEditor";
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { Sheet } from "../../components/Sheet";
-import { Status, type StatusKind } from "../../components/Status";
+import { notifyDesktop } from "../../components/Notifications";
 import { ThemeIcon } from "../../components/ThemeIcon";
 import { renderMarkdown } from "../../components/Markdown";
 import { isNoteSessionResumable } from "./noteSessionResume";
@@ -34,7 +34,9 @@ interface KanbanCardModalProps {
 
 export function KanbanCardModal({ note, session, onClose, onNoteMoved }: KanbanCardModalProps): ReactNode | null {
   const { t } = useI18n();
-  const [status, setStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
+  const setStatus = (s: { text: string; kind?: "error" | "ok" | "warning" }) => {
+    if (s.text) notifyDesktop({ text: s.text, kind: (s.kind ?? "info") as "error" | "ok" | "info" });
+  };
 
   // Note: edit/preview state.
   const [noteView, setNoteView] = useState<"preview" | "edit">("edit");
@@ -353,7 +355,6 @@ export function KanbanCardModal({ note, session, onClose, onNoteMoved }: KanbanC
               {projectOptions.map((project) => <option value={project.value} key={project.value}>{project.label}</option>)}
             </select>
           </div>
-          <Status kind={status.kind}>{status.text}</Status>
           {noteLoading ? (
             <p className="muted">{t("desktop.common.loadingPreview")}</p>
           ) : noteView === "edit" ? (
@@ -386,14 +387,13 @@ export function KanbanCardModal({ note, session, onClose, onNoteMoved }: KanbanC
               <div className="muted session-preview-meta">
                 {session!.provider}{" · "}{session!.id}{" · "}{session!.projectPath}
               </div>
-              <Status kind={status.kind}>{status.text}</Status>
               {previewSummary && (
                 <div className="session-summary-box">
                   <div className="session-summary-label">Summary</div>
                   <div className="session-summary-body">{previewSummary}</div>
                 </div>
               )}
-              {preview.warning && <Status kind="error">{preview.warning}</Status>}
+              {preview.warning ? <p className="status error">{preview.warning}</p> : null}
               {!preview.messages.length ? (
                 <p className="muted">{t("desktop.sessions.noMessages")}</p>
               ) : (
@@ -407,7 +407,6 @@ export function KanbanCardModal({ note, session, onClose, onNoteMoved }: KanbanC
               {preview.truncated && <p className="muted">{t("desktop.sessions.truncated")}</p>}
             </>
           )}
-          {!previewLoading && !preview && status.text && <Status kind={status.kind}>{status.text}</Status>}
         </div>
       )}
     </Sheet>

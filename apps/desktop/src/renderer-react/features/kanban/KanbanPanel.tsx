@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactPortal } f
 import type { AgentSession } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { SegmentedControl } from "../../components/SegmentedControl";
-import { Status, type StatusKind } from "../../components/Status";
+import { notifyDesktop } from "../../components/Notifications";
 import { KanbanCardModal } from "./KanbanCardModal";
 import { isNoteSessionResumable } from "./noteSessionResume";
 import { ThemeIcon } from "../../components/ThemeIcon";
@@ -20,7 +20,6 @@ type KanbanCard =
   | { kind: "note"; key: string; note: Note; status: GtdStatus };
 
 type SourceFilter = "all" | "sessions" | "notes";
-type PanelStatus = { text: string; kind?: StatusKind };
 
 type CatalogProject = {
   projectId: string;
@@ -107,7 +106,9 @@ export function KanbanPanel(): ReactPortal | null {
   const { t } = useI18n();
   const [active, setActive] = useState(false);
   const [cards, setCards] = useState<KanbanCard[]>([]);
-  const [status, setStatus] = useState<PanelStatus>({ text: "" });
+  const setStatus = (s: { text: string; kind?: "error" | "ok" | "warning" }) => {
+    if (s.text) notifyDesktop({ text: s.text, kind: (s.kind ?? "info") as "error" | "ok" | "info" });
+  };
   const [query, setQuery] = useState("");
   const [source, setSource] = useState<SourceFilter>("all");
   const [loading, setLoading] = useState(false);
@@ -619,13 +620,6 @@ export function KanbanPanel(): ReactPortal | null {
       </div>
       </div>
 
-      <div className="kanban-status">
-        {total === 0 && !loading ? (
-          <Status>{t("desktop.kanban.empty")}</Status>
-        ) : (
-         <Status kind={status.kind}>{status.text}</Status>
-        )}
-      </div>
       <KanbanCardModal
         note={detail?.kind === "note" ? detail.note : null}
         session={detail?.kind === "session" ? detail.session : null}

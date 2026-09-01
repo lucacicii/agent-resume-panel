@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildSessionTranscriptModel,
   filterSessionTranscript,
+  sameTranscriptPreview,
   transcriptOutlineTitle
 } from "./sessionTranscriptModel";
 
@@ -28,6 +29,35 @@ describe("buildSessionTranscriptModel", () => {
       { id: "transcript-turn-2", messageId: "transcript-msg-4", index: 2, title: "Keep the terminal visible." }
     ]);
   });
+});
+
+describe("sameTranscriptPreview", () => {
+  const preview = {
+    title: "Fix renderer",
+    truncated: false,
+    warning: "",
+    messages: [
+      { role: "user", text: "Add a transcript pane", timestamp: "1" },
+      { role: "assistant", text: "Dock it beside the TUI.", thinking: "Keep selection stable." }
+    ]
+  };
+
+  it("treats equivalent preview payloads as unchanged",
+    () => {
+      expect(sameTranscriptPreview(preview, {
+        ...preview,
+        messages: preview.messages.map((message) => ({ ...message }))
+      })).toBe(true);
+    });
+
+  it("detects visible text, thinking, and metadata changes",
+    () => {
+      expect(sameTranscriptPreview(preview, { ...preview, title: "Renamed" })).toBe(false);
+      expect(sameTranscriptPreview(preview, {
+        ...preview,
+        messages: [{ ...preview.messages[0]! }, { ...preview.messages[1]!, thinking: "Changed." }]
+      })).toBe(false);
+    });
 });
 
 describe("filterSessionTranscript", () => {

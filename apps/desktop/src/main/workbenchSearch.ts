@@ -114,9 +114,17 @@ let activeAbort: AbortController | null = null;
 
 function resolveCwd(raw?: string): string {
   const cwd = expandHome(raw?.trim() || process.cwd());
-  const stat = fs.statSync(cwd);
-  if (!stat.isDirectory()) {
-    throw new Error(`工作目录不是文件夹: ${cwd}`);
+  try {
+    const stat = fs.statSync(cwd);
+    if (!stat.isDirectory()) {
+      throw new Error(`工作目录不是文件夹: ${cwd}`);
+    }
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") {
+      throw new Error(`工作目录不存在: ${cwd}`);
+    }
+    throw error;
   }
   return path.resolve(cwd);
 }

@@ -8,6 +8,13 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.11.2]
+
+#### 修复
+
+- **SQLite 并发锁冲突**：接入 core 统一的 SQLite 执行引擎，配置 `-cmd ".timeout 15000"`、标准输入管道、WAL 模式 (`PRAGMA journal_mode=WAL;`) 以及指数退避重试机制，彻底解决并发读写或打开搜索时报错 `Error: in prepare, database is locked (5)` 的问题。
+- **启动自动同步**：优化插件激活流程中的 Schema 迁移，合并并发迁移任务与缓存已验证数据库路径；并在初始化链路上添加异常恢复机制，确保插件启动时会话自动同步至侧边栏。
+
 ### [2.11.1]
 
 #### 变更
@@ -509,6 +516,13 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 - 更新 README 与扩展描述，涵盖搜索、重命名、预览功能。
 
 ## English
+
+### [2.11.2]
+
+#### Fixed
+
+- **SQLite concurrent lock contention**: switched to the unified core SQLite execution engine with `-cmd ".timeout 15000"`, stdin piping, WAL mode (`PRAGMA journal_mode=WAL;`), and exponential backoff retries, resolving `Error: in prepare, database is locked (5)` during concurrent operations or Search Sessions.
+- **Startup auto-sync**: deduplicated concurrent schema migrations and cached verified database paths during extension activation; added error recovery to ensure sessions always synchronize automatically on startup.
 
 ### [2.11.1]
 

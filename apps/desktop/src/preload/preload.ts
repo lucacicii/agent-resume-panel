@@ -28,15 +28,32 @@ import type {
 import type { McpClientInfo } from "../main/mcpRegistration";
 import type { BackupPreview, BackupProgressEvent, BackupResult, BackupStorageTarget, BackupStorageTargetStatus, BackupStoredItem } from "../main/backupService";
 import type { GitDiffHunk, GitDiffHunkTarget, GitDiffLineTarget } from "../main/workbenchGitDiff";
-import type { ModelTestKind, ModelsTestDraft, TestModelConnectionResult } from "../main/settingsTestModel";
+import type {
+  ProviderDraft,
+  ProviderFetchModelsResult,
+  ProviderTestConnectionResult,
+  ProviderTestKind
+} from "../main/providerSettings";
 import type { WorkbenchFileSystemChangedEvent } from "../main/workbenchWatcher";
-import type { FlowAdvanceResult, FlowDefinition, FlowGraphEdgeInput, FlowGraphNodeInput, FlowNodeStatus, FlowResultStatus, FlowRun, FlowTemplate, FlowWorkflow } from "../shared/flowTypes";
 import type {
   LinkGraphAnalyzeArgs,
   LinkGraphAnalyzeResult,
   LinkGraphProgressEvent
 } from "../shared/linkGraphTypes";
 import type { WorkbenchArrowDirection } from "../shared/workbenchShortcuts";
+import type {
+  ImAgent,
+  ImEvent,
+  ImJob,
+  ImKnowledgeItem,
+  ImMember,
+  ImMessage,
+  ImProject,
+  ImRoleTemplate,
+  ImRoom,
+  ImSelectionAction,
+  ImSelectionActionKind
+} from "../shared/imTypes";
 
 export type {
   BrowserIpcEvent,
@@ -78,11 +95,14 @@ export interface DesktopApi {
     settings: PanelSettings,
     options?: { triggerSync?: boolean; section?: string }
   ): Promise<{ file: string; settings: PanelSettings; schedulerEnabled?: boolean; sync?: AgentSessionSyncResult }>;
-  /** Probe Tool / Chat / Embedding using current Models form values (Save not required). */
-  testModelConnection(args: {
-    kind: ModelTestKind;
-    draft: ModelsTestDraft;
-  }): Promise<TestModelConnectionResult>;
+  /** Probe a provider's model (text/embedding) using current Providers form values (Save not required). */
+  providersTestConnection(args: {
+    kind: ProviderTestKind;
+    provider: ProviderDraft;
+    modelId: string;
+  }): Promise<ProviderTestConnectionResult>;
+  /** Fetch the model list of a provider using current Providers form values. */
+  providersFetchModels(args: { baseUrl: string; apiKey?: string }): Promise<ProviderFetchModelsResult>;
   openSettingsWindow(options?: { pane?: string }): Promise<void>;
   closeSettingsWindow(): Promise<{ ok: boolean }>;
   onOpenSessions(callback: () => void): () => void;
@@ -329,6 +349,7 @@ export interface DesktopApi {
     nativeError?: string;
   }>;
   hideSession(args: { provider: string; id: string }): Promise<{ ok: boolean }>;
+  hideSessions(args: { sessions: Array<{ provider: string; id: string }> }): Promise<{ ok: boolean }>;
   moveSessionToProject(args: {
     provider: string;
     id: string;
@@ -569,6 +590,84 @@ export interface DesktopApi {
   acpOpenPath(args: { path: string }): Promise<{ ok: boolean }>;
   acpDisconnect(args: { chatId: string }): Promise<{ ok: boolean }>;
   onAcpStream(callback: (event: Record<string, unknown>) => void): () => void;
+  imListProjects(): Promise<ImProject[]>;
+  imCreateProject(args: { name?: string; localPath?: string }): Promise<ImProject>;
+  imRenameProject(args: { projectId: string; name: string }): Promise<ImProject>;
+  imAutoRenameProject(args: { projectId: string }): Promise<ImProject>;
+  imDeleteProject(args: { projectId: string }): Promise<{ ok: boolean }>;
+  imPickLocalPath(args?: { title?: string }): Promise<{ ok: true; path: string } | { ok: false; canceled: true }>;
+  imSetLocalPath(args: { projectId: string; localPath: string | null }): Promise<ImProject>;
+  imListTemplates(): Promise<ImRoleTemplate[]>;
+  imSetTemplateAgent(args: { templateId: string; agent: ImAgent }): Promise<ImRoleTemplate>;
+  imCreateTemplate(args: {
+    name: string;
+    persona: string;
+    agent: ImAgent;
+    model?: string;
+    thoughtLevel?: string;
+    tools?: { fsRead: boolean; fsWrite: boolean; execute: boolean };
+    callableTemplateIds?: string[];
+    incomingCallerIds?: string[];
+    autoDispatch?: boolean;
+  }): Promise<ImRoleTemplate>;
+  imUpdateTemplate(args: {
+    templateId: string;
+    name?: string;
+    persona?: string;
+    agent?: ImAgent;
+    model?: string | null;
+    thoughtLevel?: string | null;
+    tools?: { fsRead: boolean; fsWrite: boolean; execute: boolean };
+    callableTemplateIds?: string[];
+    incomingCallerIds?: string[];
+    autoDispatch?: boolean;
+  }): Promise<ImRoleTemplate>;
+  imDeleteTemplate(args: { templateId: string }): Promise<{ ok: boolean }>;
+  imGetRoom(args: { projectId: string }): Promise<ImRoom>;
+  imSetMemberAgent(args: { memberId: string; agent: ImAgent }): Promise<ImMember>;
+  imSetMemberModel(args: { memberId: string; model: string | null }): Promise<ImMember>;
+  imSetMemberThoughtLevel(args: { memberId: string; thoughtLevel: string | null }): Promise<ImMember>;
+  imResetMemberOverrides(args: { memberId: string }): Promise<ImMember>;
+  imListAgentModels(args: { agent: ImAgent }): Promise<Array<{ id: string; label: string; provider?: string }>>;
+  imCreateRole(args: {
+    projectId: string;
+    name: string;
+    persona: string;
+    agent: ImAgent;
+    model?: string;
+    thoughtLevel?: string;
+  }): Promise<{ template: ImRoleTemplate; member: ImMember }>;
+  imAddMember(args: { projectId: string; templateId: string }): Promise<ImMember>;
+  imRemoveMember(args: { memberId: string }): Promise<{ ok: boolean }>;
+  imPostMessage(args: {
+    projectId: string;
+    body: string;
+    quoteIds: string[];
+    mentionRoleIds: string[];
+    images?: Array<{ fileName: string; mimeType: string; data: string }>;
+  }): Promise<{ message: ImMessage; job: ImJob | null }>;
+  imCancelJob(args: { jobId: string }): Promise<ImJob>;
+  imDispatchProposal(args: { projectId: string; messageId: string; proposalId: string }): Promise<{ message: ImMessage; job: ImJob }>;
+  imDismissProposal(args: { projectId: string; messageId: string; proposalId: string }): Promise<ImMessage>;
+  imListKnowledge(args: { projectId: string }): Promise<ImKnowledgeItem[]>;
+  imAddKnowledgeText(args: { projectId: string; title: string; body: string }): Promise<ImKnowledgeItem>;
+  imAddKnowledgeLink(args: { projectId: string; url: string; title?: string; note?: string }): Promise<ImKnowledgeItem>;
+  imAddKnowledgeImage(args: { projectId: string }): Promise<{ ok: true; item: ImKnowledgeItem } | { ok: false; canceled: true }>;
+  imRemoveKnowledge(args: { itemId: string }): Promise<{ ok: boolean }>;
+  imListSelectionActions(): Promise<ImSelectionAction[]>;
+  imCreateSelectionAction(args: { name: string; kind: ImSelectionActionKind; prompt?: string; providerId?: string; modelId?: string }): Promise<ImSelectionAction>;
+  imUpdateSelectionAction(args: {
+    actionId: string;
+    name?: string;
+    kind?: ImSelectionActionKind;
+    prompt?: string;
+    providerId?: string | null;
+    modelId?: string | null;
+    enabled?: boolean;
+  }): Promise<ImSelectionAction>;
+  imDeleteSelectionAction(args: { actionId: string }): Promise<{ ok: boolean }>;
+  imRunSelectionAction(args: { actionId: string; text: string }): Promise<{ text: string }>;
+  onImEvent(callback: (event: ImEvent) => void): () => void;
   terminalSpawn(args: {
     cwd: string;
     command?: string;
@@ -1323,12 +1422,29 @@ export interface DesktopApi {
       alias: string;
       hidden: boolean;
       pinned: boolean;
+      keptVisible: boolean;
       lastSeenAtMs: number | null;
       updatedAtMs: number;
       localPath: string | null;
       pathMissing: boolean;
       sessionCount: number;
     }>
+  >;
+  addProject(args: { title?: string }): Promise<
+    | { ok: true; project: {
+      projectId: string;
+      portableKey: string;
+      alias: string;
+      hidden: boolean;
+      pinned: boolean;
+      keptVisible: boolean;
+      lastSeenAtMs: number | null;
+      updatedAtMs: number;
+      localPath: string | null;
+      pathMissing: boolean;
+      sessionCount: number;
+    } }
+    | { ok: false; canceled: true }
   >;
   hideProject(args: { projectId?: string; projectPath?: string }): Promise<{
     projectId: string;
@@ -1359,26 +1475,6 @@ export interface DesktopApi {
     sourceProjectId: string;
     absolutePath: string;
   }): Promise<{ projectId: string; movedSessions: number; created: boolean }>;
-  flowList(args?: { projectId?: string }): Promise<FlowWorkflow[]>;
-  flowGet(args: { flowId: string }): Promise<FlowDefinition>;
-  flowCreate(args: { projectId: string; projectPath: string; name: string }): Promise<FlowDefinition>;
-  flowUpdateGraph(args: { flowId: string; name?: string; nodes: FlowGraphNodeInput[]; edges: FlowGraphEdgeInput[] }): Promise<FlowDefinition>;
-  flowDelete(args: { flowId: string }): Promise<{ ok: true }>;
-  flowTemplatesList(): Promise<FlowTemplate[]>;
-  flowTemplateSave(args: { flowId: string; name: string; description?: string }): Promise<FlowTemplate>;
-  flowTemplateDelete(args: { templateId: string }): Promise<{ ok: true }>;
-  flowTemplateInstantiate(args: { templateId: string; projectId: string; projectPath: string; name?: string }): Promise<FlowDefinition>;
-  flowRunStart(args: { flowId: string }): Promise<FlowAdvanceResult>;
-  flowRunGet(args: { runId: string }): Promise<FlowRun>;
-  flowRunLatest(args: { flowId: string }): Promise<FlowRun | null>;
-  flowRunMarkNodeRunning(args: { runId: string; nodeId: string }): Promise<FlowAdvanceResult>;
-  flowBindSession(args: { flowId: string; nodeId: string; provider: string; sessionId: string }): Promise<FlowDefinition>;
-  flowRunCompleteNode(args: { runId: string; nodeId: string; status: FlowResultStatus; summary: string }): Promise<FlowAdvanceResult>;
-  flowRunSetNodeStatus(args: { flowId: string; runId?: string; nodeId: string; status: FlowNodeStatus }): Promise<FlowDefinition>;
-  flowRunRetryNode(args: { runId: string; nodeId: string }): Promise<FlowAdvanceResult>;
-  flowRunSkipNode(args: { runId: string; nodeId: string }): Promise<FlowAdvanceResult>;
-  flowRunCancel(args: { runId: string }): Promise<FlowAdvanceResult>;
-  onFlowChanged(callback: (detail: { flowId?: string; runId?: string }) => void): () => void;
   getI18nBundle(): Promise<{ locale: string; messages: Record<string, string> }>;
   getAppVersion(): Promise<string>;
   checkForUpdate(options?: { force?: boolean }): Promise<UpdateCheckResult>;
@@ -1406,7 +1502,8 @@ const api: DesktopApi = {
   removeMcpClient: (args) => ipcRenderer.invoke("mcp:remove", args),
   registerAllMcpClients: (args) => ipcRenderer.invoke("mcp:registerAll", args),
   saveSettings: (settings, options) => ipcRenderer.invoke("settings:save", settings, options),
-  testModelConnection: (args) => ipcRenderer.invoke("settings:testModel", args),
+  providersTestConnection: (args) => ipcRenderer.invoke("providers:testConnection", args),
+  providersFetchModels: (args) => ipcRenderer.invoke("providers:fetchModels", args),
   openSettingsWindow: (options) => ipcRenderer.invoke("settings:openWindow", options),
   closeSettingsWindow: () => ipcRenderer.invoke("settings:closeWindow"),
   standaloneNoteOpen: (args) => ipcRenderer.invoke("standalone-note:open", args),
@@ -1499,6 +1596,7 @@ const api: DesktopApi = {
   suggestSessionRename: (args) => ipcRenderer.invoke("sessions:suggestRename", args),
   renameSession: (args) => ipcRenderer.invoke("sessions:rename", args),
   hideSession: (args) => ipcRenderer.invoke("sessions:hide", args),
+  hideSessions: (args) => ipcRenderer.invoke("sessions:hideMany", args),
   moveSessionToProject: (args) => ipcRenderer.invoke("sessions:moveToProject", args),
   createScratchDir: () => ipcRenderer.invoke("workbench:createScratchDir"),
   workbenchGetProjectEditor: () => ipcRenderer.invoke("workbench:getProjectEditor"),
@@ -1554,6 +1652,46 @@ const api: DesktopApi = {
     const handler = (_event: Electron.IpcRendererEvent, payload: Record<string, unknown>) => callback(payload);
     ipcRenderer.on("acp:stream", handler);
     return () => ipcRenderer.removeListener("acp:stream", handler);
+  },
+  imListProjects: () => ipcRenderer.invoke("im:listProjects"),
+  imCreateProject: (args) => ipcRenderer.invoke("im:createProject", args),
+  imRenameProject: (args) => ipcRenderer.invoke("im:renameProject", args),
+  imAutoRenameProject: (args) => ipcRenderer.invoke("im:autoRenameProject", args),
+  imDeleteProject: (args) => ipcRenderer.invoke("im:deleteProject", args),
+  imPickLocalPath: (args) => ipcRenderer.invoke("im:pickLocalPath", args),
+  imSetLocalPath: (args) => ipcRenderer.invoke("im:setLocalPath", args),
+  imListTemplates: () => ipcRenderer.invoke("im:listTemplates"),
+  imSetTemplateAgent: (args) => ipcRenderer.invoke("im:setTemplateAgent", args),
+  imCreateTemplate: (args) => ipcRenderer.invoke("im:createTemplate", args),
+  imUpdateTemplate: (args) => ipcRenderer.invoke("im:updateTemplate", args),
+  imDeleteTemplate: (args) => ipcRenderer.invoke("im:deleteTemplate", args),
+  imGetRoom: (args) => ipcRenderer.invoke("im:getRoom", args),
+  imSetMemberAgent: (args) => ipcRenderer.invoke("im:setMemberAgent", args),
+  imSetMemberModel: (args) => ipcRenderer.invoke("im:setMemberModel", args),
+  imSetMemberThoughtLevel: (args) => ipcRenderer.invoke("im:setMemberThoughtLevel", args),
+  imResetMemberOverrides: (args) => ipcRenderer.invoke("im:resetMemberOverrides", args),
+  imListAgentModels: (args) => ipcRenderer.invoke("im:listAgentModels", args),
+  imCreateRole: (args) => ipcRenderer.invoke("im:createRole", args),
+  imAddMember: (args) => ipcRenderer.invoke("im:addMember", args),
+  imRemoveMember: (args) => ipcRenderer.invoke("im:removeMember", args),
+  imPostMessage: (args) => ipcRenderer.invoke("im:postMessage", args),
+  imCancelJob: (args) => ipcRenderer.invoke("im:cancelJob", args),
+  imDispatchProposal: (args) => ipcRenderer.invoke("im:dispatchProposal", args),
+  imDismissProposal: (args) => ipcRenderer.invoke("im:dismissProposal", args),
+  imListKnowledge: (args) => ipcRenderer.invoke("im:listKnowledge", args),
+  imAddKnowledgeText: (args) => ipcRenderer.invoke("im:addKnowledgeText", args),
+  imAddKnowledgeLink: (args) => ipcRenderer.invoke("im:addKnowledgeLink", args),
+  imAddKnowledgeImage: (args) => ipcRenderer.invoke("im:addKnowledgeImage", args),
+  imRemoveKnowledge: (args) => ipcRenderer.invoke("im:removeKnowledge", args),
+  imListSelectionActions: () => ipcRenderer.invoke("im:listSelectionActions"),
+  imCreateSelectionAction: (args) => ipcRenderer.invoke("im:createSelectionAction", args),
+  imUpdateSelectionAction: (args) => ipcRenderer.invoke("im:updateSelectionAction", args),
+  imDeleteSelectionAction: (args) => ipcRenderer.invoke("im:deleteSelectionAction", args),
+  imRunSelectionAction: (args) => ipcRenderer.invoke("im:runSelectionAction", args),
+  onImEvent: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: ImEvent) => callback(payload);
+    ipcRenderer.on("im:event", handler);
+    return () => ipcRenderer.removeListener("im:event", handler);
   },
   terminalSpawn: (args) => ipcRenderer.invoke("terminal:spawn", args),
   terminalAttach: (args) => ipcRenderer.invoke("terminal:attach", args),
@@ -1769,6 +1907,7 @@ const api: DesktopApi = {
   listProjectAliases: () => ipcRenderer.invoke("projects:listAliases"),
   setProjectAlias: (args) => ipcRenderer.invoke("projects:setAlias", args),
   listProjects: (opts) => ipcRenderer.invoke("projects:list", opts),
+  addProject: (args) => ipcRenderer.invoke("projects:addProject", args),
   hideProject: (args) => ipcRenderer.invoke("projects:hide", args),
   setProjectLocalPath: (args) => ipcRenderer.invoke("projects:setLocalPath", args),
   pickProjectLocalPath: (args) => ipcRenderer.invoke("projects:pickLocalPath", args),
@@ -1779,30 +1918,6 @@ const api: DesktopApi = {
   listProjectPathVariants: (args) => ipcRenderer.invoke("projects:listPathVariants", args),
   mergeProjects: (args) => ipcRenderer.invoke("projects:merge", args),
   splitProjectPath: (args) => ipcRenderer.invoke("projects:splitPath", args),
-  flowList: (args) => ipcRenderer.invoke("flow:list", args),
-  flowGet: (args) => ipcRenderer.invoke("flow:get", args),
-  flowCreate: (args) => ipcRenderer.invoke("flow:create", args),
-  flowUpdateGraph: (args) => ipcRenderer.invoke("flow:updateGraph", args),
-  flowDelete: (args) => ipcRenderer.invoke("flow:delete", args),
-  flowTemplatesList: () => ipcRenderer.invoke("flow:templatesList"),
-  flowTemplateSave: (args) => ipcRenderer.invoke("flow:templateSave", args),
-  flowTemplateDelete: (args) => ipcRenderer.invoke("flow:templateDelete", args),
-  flowTemplateInstantiate: (args) => ipcRenderer.invoke("flow:templateInstantiate", args),
-  flowRunStart: (args) => ipcRenderer.invoke("flow:runStart", args),
-  flowRunGet: (args) => ipcRenderer.invoke("flow:runGet", args),
-  flowRunLatest: (args) => ipcRenderer.invoke("flow:runLatest", args),
-  flowRunMarkNodeRunning: (args) => ipcRenderer.invoke("flow:runMarkNodeRunning", args),
-  flowBindSession: (args) => ipcRenderer.invoke("flow:bindSession", args),
-  flowRunCompleteNode: (args) => ipcRenderer.invoke("flow:runCompleteNode", args),
-  flowRunSetNodeStatus: (args) => ipcRenderer.invoke("flow:runSetNodeStatus", args),
-  flowRunRetryNode: (args) => ipcRenderer.invoke("flow:runRetryNode", args),
-  flowRunSkipNode: (args) => ipcRenderer.invoke("flow:runSkipNode", args),
-  flowRunCancel: (args) => ipcRenderer.invoke("flow:runCancel", args),
-  onFlowChanged: (callback) => {
-    const handler = (_event: Electron.IpcRendererEvent, detail: { flowId?: string; runId?: string }) => callback(detail);
-    ipcRenderer.on("flow:changed", handler);
-    return () => ipcRenderer.removeListener("flow:changed", handler);
-  },
   getI18nBundle: () => ipcRenderer.invoke("i18n:getBundle"),
   getAppVersion: async () => {
     const result = (await ipcRenderer.invoke("app:getVersion")) as { version?: string };

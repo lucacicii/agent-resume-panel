@@ -1,5 +1,6 @@
 import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, screen, shell } from "electron";
 import { existsSync, readFileSync } from "node:fs";
+import { constants } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
@@ -49,6 +50,9 @@ import {
   setProjectAliasInCatalog,
   setProjectLocalPath,
   setProjectPinnedInCatalog,
+  ensureProjectForPath,
+  unhideProjectInCatalog,
+  setProjectKeptVisibleInCatalog,
   resolveProjectCwd,
   resolveProjectCwdForPath,
   listProjectPathVariants,
@@ -119,7 +123,6 @@ import {
   type TagStatus
 } from "@agent-resume/core";
 import { safeHandle } from "./ipcUtils";
-import { registerFlowIpc } from "./flow/flowIpc";
 import { registerLinkGraphIpc } from "./linkgraph/linkGraphIpc";
 import {
   createExternalMcpLaunchConfig,
@@ -131,14 +134,24 @@ import {
   resolveExternalMcpCliPath,
   type McpClientId
 } from "./mcpRegistration";
-import { testModelConnectionFromDraft, type ModelsTestDraft } from "./settingsTestModel";
+import {
+  fetchProviderModelsFromDraft,
+  testProviderConnectionFromDraft,
+  type ProviderTestConnectionArgs
+} from "./providerSettings";
 import {
   disposeAcpController,
   disposeAllAcpControllers,
   getAcpRuntimeMetrics,
+  connectAcpChat,
+  denyAcpPermission,
+  promptAcpChat,
   registerAcpIpc,
+  setAcpModel,
+  setAcpThoughtLevel,
   setAcpRecordProjectPath
 } from "./acp/acpHost";
+import { registerImIpc } from "./im/ipc";
 import { getAcpRecord, updateAcpRecord } from "./acp/store";
 import { registerWorkbenchFsIpc } from "./workbenchFs";
 import {
@@ -426,7 +439,7 @@ const SESSION_SYNC_INTERVAL_MS = 60_000;
 
 const SETTINGS_PANES = [
   "general",
-  "models",
+  "providers",
   "sessions",
   "workbench",
   "notes",
@@ -1372,9 +1385,16 @@ function registerIpc(): void {
   });
 
   safeHandle(
-    "settings:testModel",
-    async (_event, args?: { kind?: unknown; draft?: ModelsTestDraft | null }) => {
-      return testModelConnectionFromDraft(args || {});
+    "providers:testConnection",
+    async (_event, args?: ProviderTestConnectionArgs | null) => {
+      return testProviderConnectionFromDraft(args || {});
+    }
+  );
+
+  safeHandle(
+    "providers:fetchModels",
+    async (_event, args?: { baseUrl?: unknown; apiKey?: unknown } | null) => {
+      return fetchProviderModelsFromDraft(args || {});
     }
   );
 
@@ -2156,6 +2176,21 @@ function registerIpc(): void {
         disposeAcpController(args.id);
       }
       await hideSessionAction({ provider: args.provider, id: args.id });
+      return { ok: true };
+    }
+  );
+
+  ipcMain.handle(
+    "sessions:hideMany",
+    async (_event, args: { sessions: Array<{ provider: AgentProvider; id: string }> }) => {
+      const sessions = Array.isArray(args?.sessions) ? args.sessions : [];
+      for (const session of sessions) {
+        const provider = session?.provider;
+        const id = String(session?.id || "").trim();
+        if (!provider || !id) continue;
+        if (provider === "chat") disposeAcpController(id);
+        await hideSessionAction({ provider, id });
+      }
       return { ok: true };
     }
   );
@@ -3102,6 +3137,39 @@ function registerIpc(): void {
   });
 
   ipcMain.handle(
+    "projects:addProject",
+    async (_event, args: { title?: string }) => {
+      const result = await dialog.showOpenDialog({
+        properties: ["openDirectory", "createDirectory"],
+        title: args.title || "Select project folder"
+      });
+      if (result.canceled || !result.filePaths[0]) {
+        return { ok: false as const, canceled: true as const };
+      }
+      const absolutePath = result.filePaths[0];
+      const stat = await fs.stat(absolutePath).catch(() => null);
+      if (!stat?.isDirectory()) {
+        throw new Error("Selected folder is not a valid directory.");
+      }
+      await fs.access(absolutePath, constants.R_OK).catch(() => {
+        throw new Error("Selected folder is not accessible.");
+      });
+      const paths = await loadPanelDbPaths();
+      const projectId = await ensureProjectForPath(paths.catalogDb, absolutePath, {
+        bindLocalPath: true,
+        touchSeen: true
+      });
+      await unhideProjectInCatalog(paths.catalogDb, projectId);
+      await setProjectKeptVisibleInCatalog(paths.catalogDb, projectId, true);
+      const project = (await listProjects(paths.catalogDb)).find((item) => item.projectId === projectId);
+      if (!project) {
+        throw new Error("Added project could not be loaded.");
+      }
+      return { ok: true as const, project };
+    }
+  );
+
+  ipcMain.handle(
     "projects:hide",
     async (_event, args: { projectId?: string; projectPath?: string }) => {
       return hideProjectAction(args);
@@ -3257,6 +3325,16 @@ app.whenReady().then(async () => {
     loadSettings,
     getMainWindow: () => mainWindow
   });
+  registerImIpc({
+    getMainWindow: () => mainWindow,
+    acp: {
+      connect: (chatId) => connectAcpChat(chatId),
+      prompt: (chatId, text, images) => promptAcpChat(chatId, text, images ?? []),
+      denyPermission: (requestId) => denyAcpPermission(requestId),
+      setModel: (chatId, modelId) => setAcpModel(chatId, modelId),
+      setThoughtLevel: (chatId, thoughtLevel) => setAcpThoughtLevel(chatId, thoughtLevel)
+    }
+  });
   registerWorkbenchFsIpc();
   registerWorkbenchWatcherIpc(() => mainWindow);
   registerWorkbenchGitIpc(() => app.getLocale());
@@ -3274,7 +3352,6 @@ app.whenReady().then(async () => {
       browserSettingsCache = settings.desktop?.browser || null;
     })
     .catch(() => undefined);
-  registerFlowIpc();
   registerLinkGraphIpc(() => mainWindow, () => app.getLocale());
   tryRegisterPtyIpc();
   try {

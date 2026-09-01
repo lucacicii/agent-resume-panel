@@ -54,8 +54,16 @@ function clampInt(value: unknown, fallback: number, min: number, max: number): n
 
 function resolveRoot(raw: string): string {
   const root = path.resolve(expandHome(raw.trim()));
-  const stat = fs.statSync(root);
-  if (!stat.isDirectory()) throw new Error(`工作目录不是文件夹: ${root}`);
+  try {
+    const stat = fs.statSync(root);
+    if (!stat.isDirectory()) throw new Error(`工作目录不是文件夹: ${root}`);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") {
+      throw new Error(`工作目录不存在: ${root}`);
+    }
+    throw error;
+  }
   return root;
 }
 

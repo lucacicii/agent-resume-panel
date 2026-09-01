@@ -71,7 +71,8 @@ export type {
   AgentHomesSettings,
   AgentSessionSyncSettings,
   AgentSessionSyncFilters,
-  SessionSyncStalePolicy
+  SessionSyncStalePolicy,
+  NotificationsSettings
 } from "./settings/types";
 export {
   DEFAULT_SETTINGS,
@@ -107,9 +108,6 @@ export {
   setNoteGtdStatus,
   clearNoteGtdStatus
 } from "./notes/gtd";
-export * from "./flow/types";
-export { validateFlowDag, chooseReadyFlowNodeId } from "./flow/model";
-export { readFlowDefinition, readFlowRun, syncFlowDefinition, validateFlowDefinition, completeFlowNode, writeFlowStatus } from "./flow/runtime";
 export type { UiLocale, UiLanguagePreference } from "./i18n/locales";
 export {
   UI_LANGUAGE_SETTING,
@@ -152,7 +150,8 @@ export {
   ensureDesktopDbSchema,
   ensureExtensionCatalogSchema,
   ensureCatalogSyncStateDesktop,
-  syncStateHasExtendedColumns
+  syncStateHasExtendedColumns,
+  resetCatalogSchemaCache
 } from "./catalog/db";
 
 export { listSessions, listSessionsInRange, listSessionsInRangePage, listAllSessionsInRange, getSessionById, countSessions, querySessionsPage } from "./catalog/query";
@@ -216,6 +215,8 @@ export {
   setProjectLocalPath,
   setProjectPinnedInCatalog,
   hideProjectInCatalog,
+  unhideProjectInCatalog,
+  setProjectKeptVisibleInCatalog,
   unhideAllProjectsInCatalog,
   getProjectById,
   listProjectPathVariants,
@@ -268,8 +269,34 @@ export { testChatLlmConnection, testEmbeddingConnection } from "./llm/testConnec
 export {
   llmConfigFromSettings,
   chatLlmConfigFromSettings,
-  embeddingConfigFromSettings
+  embeddingConfigFromSettings,
+  listProviderModels,
+  resolveSelectedModel,
+  toolOutputLanguagePreference,
+  type PoolModelRef
 } from "./llm/fromSettings";
+export {
+  fetchProviderModels,
+  buildModelsUrl
+} from "./providers/fetch";
+export { classifyModelKind } from "./providers/classify";
+export { migrateLegacyModelSettings, normalizeProviderPool } from "./providers/migrate";
+export {
+  isModelKind,
+  isModelUse,
+  MODEL_KINDS,
+  MODEL_USES,
+  normalizeProvider,
+  normalizeProviderModel,
+  normalizeSelection,
+  selectionIsEmpty,
+  type AiProvider,
+  type LlmUseOptions,
+  type ModelKind,
+  type ModelSelection,
+  type ModelUse,
+  type ProviderModel
+} from "./providers/types";
 export {
   recordLlmUsage,
   listLlmUsageEvents,
@@ -613,6 +640,10 @@ export {
   hideSessionAction,
   hideProjectAction
 } from "./session/actions";
+export {
+  suggestSessionTitleFromMessages,
+  summarizeSessionMessages
+} from "./session/assist";
 export type {
   SessionActionOptions,
   SummarizeSessionResult,
@@ -718,7 +749,7 @@ export type { RenameHomes } from "./session/rename";
 export { updateNativeSessionCwd } from "./session/nativeCwd";
 export type { NativeCwdUpdateResult, NativeCwdUpdateReason } from "./session/nativeCwd";
 
-// Link graph engine (domain — no Notes/Session/Flow deps; MCP + Desktop both call this)
+// Link graph engine (domain — no Notes/Session deps; MCP + Desktop both call this)
 export { runLinkGraphTrace } from "./linkgraph/agent";
 export {
   factsFromSteps,

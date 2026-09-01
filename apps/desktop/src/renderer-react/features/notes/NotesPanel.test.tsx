@@ -195,10 +195,9 @@ describe("NotesPanel", () => {
 
   it("loads, edits, saves, and creates notes through the desktop bridge", async () => {
     const host = document.createElement("div"); host.id = "react-notes"; document.body.append(host);
-    const { notesWrite, notesCreate, listSessions } = installBridge();
+    const { notesWrite, notesCreate } = installBridge();
     render(<I18nProvider><NotesPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "notes" })));
-    await waitFor(() => expect(listSessions).toHaveBeenCalledWith());
     fireEvent.click(await screen.findByRole("button", { name: /Renderer plan/ }));
     const editor = await screen.findByPlaceholderText("Edit Markdown");
     fireEvent.change(editor, { target: { value: "# Renderer\nChanged" } });

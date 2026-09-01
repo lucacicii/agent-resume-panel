@@ -79,7 +79,7 @@ export function estimateDailyForSessions(
   const summaryCallCount = sessions.filter(summaryNeedsRefresh).length;
   const digestCallCount = estimateHierarchicalCallCount(
     sessions.map(estimatedSessionSourceLength),
-    settings.llm.maxContextChars
+    settings.llmOptions?.tool?.maxContextChars
   );
   const estimatedLlmCalls = summaryCallCount + digestCallCount;
   const callBudget = digestCallBudget(settings);
@@ -161,7 +161,7 @@ export async function estimateDigestRun(options: {
       dailySourceLengths.push(Math.max(500, dailyLength.get(day) || 4_000));
     }
   }
-  digestCallCount += estimateHierarchicalCallCount(dailySourceLengths, settings.llm.maxContextChars);
+  digestCallCount += estimateHierarchicalCallCount(dailySourceLengths, settings.llmOptions?.tool?.maxContextChars);
   const estimatedLlmCalls = summaryCallCount + digestCallCount;
   const callBudget = digestCallBudget(settings);
   return {

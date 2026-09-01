@@ -18,6 +18,7 @@ Use the **⚙** button in the top bar. Settings panes:
 | **Models** | OpenAI-compatible LLM / embeddings endpoints and models |
 | **Sessions** | Agent home paths, session list / sync related options |
 | **Workbench** | Default agent, ⌘T behavior, **terminal theme** and related defaults |
+| **IM** | Role templates (agent, prompt, read/write/execute tools) used by IM rooms |
 | **Report** | Digest / memory related preferences |
 | **Data** | Panel home path, open data folder, **backup export / merge import** |
 | **Logs** | Application error / warning log (redacted), clear, reveal in Finder |

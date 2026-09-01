@@ -200,10 +200,15 @@ describe("ReportPanel", () => {
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:report-focus", { detail: { type: "week", key: week } })));
     await screen.findByText(`Sessions · Week ${week}`);
     expect(document.querySelector(".cal-detail")?.textContent).not.toContain(`Daily ${day}`);
+    const onNotification = vi.fn();
+    window.addEventListener("agent-resume:notification", onNotification);
     fireEvent.click(screen.getByRole("button", { name: "Regenerate" }));
-    await screen.findByText("desktop.report.taskBusyGenWeekly");
+    await waitFor(() => expect(onNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ detail: expect.objectContaining({ text: "desktop.report.taskBusyGenWeekly", kind: "error" }) })
+    ));
     expect(runWeeklyDigest).not.toHaveBeenCalled();
     expect(document.querySelector(".cal-week-btn.generating")).toBeNull();
+    window.removeEventListener("agent-resume:notification", onNotification);
 
     await act(async () => emitProgress?.({ phase: "digest", level: "daily", periodLabel: day, message: "Daily progress" }));
     expect(document.querySelector(".cal-detail")?.textContent).not.toContain("Daily progress");

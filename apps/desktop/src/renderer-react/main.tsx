@@ -14,10 +14,12 @@ import { StandaloneNoteWindow } from "./features/notes/StandaloneNoteWindow";
 import { BrowserStandaloneWindow } from "./features/browser/BrowserStandaloneWindow";
 import { WorkbenchPanel } from "./features/workbench/WorkbenchPanel";
 import { DiffWorkerPool } from "./features/workbench/diffWorkerPool";
-import { FlowPanel } from "./features/flow/FlowPanel";
 import { KanbanPanel } from "./features/kanban/KanbanPanel";
+import { ImPanel } from "./features/im/ImPanel";
 import { GtdSheet } from "./features/report/GtdSheet";
 import { settingsChangedToCustomEvents } from "./settingsBroadcast";
+import { updateConfig } from "./components/notificationStore";
+import type { PanelSettings } from "@agent-resume/core";
 import { applyDesktopAppearance, appearanceStateFromSettings, type DesktopAppearanceState } from "./themes";
 
 export function applyTheme(settings: Parameters<typeof appearanceStateFromSettings>[0]): DesktopAppearanceState {
@@ -36,6 +38,14 @@ function applyAppearanceState(state: DesktopAppearanceState): void {
   const dark = document.getElementById("hljsDarkCss") as HTMLLinkElement | null;
   if (light) light.disabled = state.appearance === "dark";
   if (dark) dark.disabled = state.appearance !== "dark";
+}
+
+function syncNotificationConfig(settings: PanelSettings): void {
+  const n = settings.notifications;
+  updateConfig({
+    autoClearMinutes: typeof n?.autoClearMinutes === "number" ? n.autoClearMinutes : 60,
+    maxHistory: typeof n?.maxHistory === "number" ? n.maxHistory : 100
+  });
 }
 
 export function getDesktopWindowMode(): "main" | "settings" | "standalone-note" | "browser" {
@@ -89,10 +99,14 @@ function MainRuntimeBootstrap(): null {
     media.addEventListener("change", onSystemAppearance);
     reduceMotion.addEventListener("change", onSystemAppearance);
     void window.agentResume.getSettings().then((settings) => {
-      if (active) applyTheme(settings);
+      if (active) {
+        applyTheme(settings);
+        syncNotificationConfig(settings);
+      }
     }).catch(() => undefined);
     const stopSettings = typeof window.agentResume.onSettingsChanged === "function"
       ? window.agentResume.onSettingsChanged((detail) => {
+          if (active) syncNotificationConfig(detail.settings);
           for (const ev of settingsChangedToCustomEvents(detail)) {
             window.dispatchEvent(new CustomEvent(ev.name, { detail: ev.detail }));
           }
@@ -178,8 +192,8 @@ function MainRendererRuntime(): React.JSX.Element {
         <WorkbenchPanel />
       </DiffWorkerPool>
       <NotesPanel />
-      <FlowPanel />
       <KanbanPanel />
+      <ImPanel />
       <SessionsSheet />
       <Notifications />
     </>

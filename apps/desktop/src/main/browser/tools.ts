@@ -1,3 +1,4 @@
+import { statSync } from "node:fs";
 import type { WebContents } from "electron";
 import type { BrowserController } from "./controller";
 import type {
@@ -11,6 +12,8 @@ import {
   clickByBackendNodeId,
   clickBySelector,
   pressKey,
+  setFileInputFilesByBackendNodeId,
+  setFileInputFilesBySelector,
   typeByBackendNodeId,
   typeBySelector,
   type BrowserSnapshot
@@ -160,6 +163,7 @@ export const BROWSER_TOOL_NAMES = [
   "browser_fill",
   "browser_select",
   "browser_press",
+  "browser_upload",
   "browser_wait",
   "browser_tabs",
   "browser_clear_cookies"
@@ -174,7 +178,8 @@ export const BROWSER_TOOL_INSTRUCTIONS = [
   "3. Re-snapshot after navigation or significant DOM changes.",
   "4. Prefer snapshot over screenshot.",
   "5. Never echo cookie values, Authorization headers, or password field contents into chat.",
-  "6. browser_set_surface moves the live view between workbench and a standalone window without reloading."
+  "6. browser_set_surface moves the live view between workbench and a standalone window without reloading.",
+  "7. browser_upload injects local files into a <input type=file> ref (path or paths, upload order)."
 ].join(" ");
 
 export async function invokeBrowserTool(
@@ -392,6 +397,34 @@ export async function invokeBrowserTool(
           return textResult({ ok: true, key, browserId: session.id, tabId: activeTabId });
         });
       }
+      case "browser_upload": {
+        const browserId = typeof args.browserId === "string" ? args.browserId : undefined;
+        const tabId = typeof args.tabId === "string" ? args.tabId : undefined;
+        const ref = typeof args.ref === "string" ? args.ref : "";
+        if (!ref) throw new Error("ref is required (file input from browser_snapshot)");
+        const rawPaths = Array.isArray(args.paths)
+          ? args.paths.map(String)
+          : typeof args.path === "string"
+            ? [args.path]
+            : [];
+        const paths = rawPaths.map((p) => p.trim()).filter((p) => p.length > 0);
+        if (!paths.length) throw new Error("path or paths is required");
+        if (paths.length > 20) throw new Error("Too many files (max 20 per upload).");
+        for (const p of paths) {
+          const st = statSync(p);
+          if (!st.isFile()) throw new Error(`Not a regular file: ${p}`);
+        }
+        return withActiveWebContents(ctx, browserId, tabId, async (wc, session, activeTabId) => {
+          const refs = loadRefs(session.id, activeTabId);
+          if (!refs) throw new Error("No snapshot refs. Call browser_snapshot first.");
+          const backend = refs.backend.get(ref);
+          const selector = refs.selector.get(ref);
+          if (backend) await setFileInputFilesByBackendNodeId(wc, backend, paths);
+          else if (selector) await setFileInputFilesBySelector(wc, selector, paths);
+          else throw new Error(`Unknown ref: ${ref}. Re-run browser_snapshot.`);
+          return textResult({ ok: true, ref, count: paths.length, browserId: session.id, tabId: activeTabId });
+        });
+      }
       case "browser_wait": {
         const browserId = typeof args.browserId === "string" ? args.browserId : undefined;
         const tabId = typeof args.tabId === "string" ? args.tabId : undefined;
@@ -580,6 +613,25 @@ export function listBrowserToolDescriptors(): BrowserToolDescriptor[] {
         type: "object",
         properties: { browserId, tabId, key: { type: "string" } },
         required: ["key"]
+      }
+    },
+    {
+      name: "browser_upload",
+      description: "Upload local file(s) into a <input type=file> element by snapshot ref (first path = first image).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          browserId,
+          tabId,
+          ref,
+          path: { type: "string", description: "Single absolute local file path" },
+          paths: {
+            type: "array",
+            items: { type: "string" },
+            description: "Multiple absolute local file paths, in upload order"
+          }
+        },
+        required: ["ref"]
       }
     },
     {

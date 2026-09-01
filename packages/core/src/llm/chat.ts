@@ -89,13 +89,66 @@ function handleLlmFetchError(error: unknown, timeoutMs: number, url: string): ne
   throw error;
 }
 
-async function readLlmErrorMessage(response: Response, url: string): Promise<string> {
-  try {
-    const payload = (await response.json()) as ChatCompletionResponse;
-    return payload.error?.message || `LLM request failed with status ${response.status}. (endpoint: ${url})`;
-  } catch {
-    return `LLM request failed with status ${response.status}. (endpoint: ${url})`;
+async function parseResponseBody(response: Response): Promise<{ rawText: string; payload: unknown }> {
+  if (typeof response.text === "function") {
+    try {
+      const rawText = await response.text();
+      try {
+        return { rawText, payload: JSON.parse(rawText) };
+      } catch {
+        return { rawText, payload: undefined };
+      }
+    } catch {
+      return { rawText: "", payload: undefined };
+    }
   }
+  if (typeof response.json === "function") {
+    try {
+      const payload = await response.json();
+      return { rawText: JSON.stringify(payload), payload };
+    } catch {
+      return { rawText: "", payload: undefined };
+    }
+  }
+  return { rawText: "", payload: undefined };
+}
+
+async function parseLlmErrorFromText(
+  raw: string,
+  payload: unknown,
+  status: number,
+  url: string,
+  model?: string
+): Promise<string> {
+  let errorDetail = "";
+  if (payload && typeof payload === "object") {
+    const obj = payload as Record<string, unknown>;
+    const errObj = obj.error as Record<string, unknown> | string | undefined;
+    if (typeof errObj === "string") {
+      errorDetail = errObj;
+    } else if (errObj && typeof errObj === "object" && typeof errObj.message === "string") {
+      errorDetail = errObj.message;
+    } else if (typeof obj.message === "string") {
+      errorDetail = obj.message;
+    } else if (typeof obj.detail === "string") {
+      errorDetail = obj.detail;
+    } else if (Array.isArray(obj.detail) && obj.detail[0]?.msg) {
+      errorDetail = String(obj.detail[0].msg);
+    }
+  }
+  if (!errorDetail && raw) {
+    errorDetail = raw.trim().slice(0, 500);
+  }
+  const modelInfo = model ? ` (model: ${model})` : "";
+  if (errorDetail) {
+    return `${errorDetail} [HTTP ${status}] (endpoint: ${url}${modelInfo})`;
+  }
+  return `LLM request failed with status ${status}. (endpoint: ${url}${modelInfo})`;
+}
+
+async function readLlmErrorMessage(response: Response, url: string, model?: string): Promise<string> {
+  const { rawText, payload } = await parseResponseBody(response);
+  return parseLlmErrorFromText(rawText, payload, response.status, url, model);
 }
 
 export async function chatCompletionDetailed(
@@ -129,19 +182,14 @@ export async function chatCompletionDetailed(
     handleLlmFetchError(error, timeoutMs, url);
   }
 
-  let payload: ChatCompletionResponse;
-  try {
-    payload = (await response.json()) as ChatCompletionResponse;
-  } catch {
-    throw new Error(`LLM request failed with status ${response.status}.`);
+  const { rawText, payload: rawPayload } = await parseResponseBody(response);
+  if (!response.ok) {
+    throw new Error(await parseLlmErrorFromText(rawText, rawPayload, response.status, url, config.model));
   }
+
+  const payload = (rawPayload as ChatCompletionResponse | undefined) ?? (JSON.parse(rawText || "{}") as ChatCompletionResponse);
 
   const durationMs = Date.now() - started;
-
-  if (!response.ok) {
-    const message = payload.error?.message || `LLM request failed with status ${response.status}.`;
-    throw new Error(`${message} (endpoint: ${url})`);
-  }
 
   const choice = payload.choices?.[0];
   const content = choice?.message?.content?.trim();
@@ -199,19 +247,14 @@ export async function chatCompletionWithTools(
     handleLlmFetchError(error, timeoutMs, url);
   }
 
-  let payload: ChatCompletionResponse;
-  try {
-    payload = (await response.json()) as ChatCompletionResponse;
-  } catch {
-    throw new Error(`LLM request failed with status ${response.status}.`);
+  const { rawText, payload: rawPayload } = await parseResponseBody(response);
+  if (!response.ok) {
+    throw new Error(await parseLlmErrorFromText(rawText, rawPayload, response.status, url, config.model));
   }
+
+  const payload = (rawPayload as ChatCompletionResponse | undefined) ?? (JSON.parse(rawText || "{}") as ChatCompletionResponse);
 
   const durationMs = Date.now() - started;
-
-  if (!response.ok) {
-    const message = payload.error?.message || `LLM request failed with status ${response.status}.`;
-    throw new Error(`${message} (endpoint: ${url})`);
-  }
 
   const choice = payload.choices?.[0];
   const content = choice?.message?.content?.trim() || "";
@@ -280,7 +323,7 @@ export async function chatCompletionStream(
   }
 
   if (!response.ok) {
-    throw new Error(await readLlmErrorMessage(response, url));
+    throw new Error(await readLlmErrorMessage(response, url, config.model));
   }
 
   const reader = response.body?.getReader();

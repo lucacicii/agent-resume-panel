@@ -8,6 +8,54 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## English
 
+### [0.2.17]
+
+#### Added
+
+- **Smart Intent Routing & Automatic Role Dispatch**: introduced intelligent intent parsing in IM chat to automatically determine role responsibilities, route user requests to matching specialized roles, and provide dispatch proposals with interactive confirmation
+- **Role Delegation Graph & Custom Roles**: support configuring multi-role collaborative delegation workflows (e.g. PM → UI Designer → Developer → Tester) with visual dependency tracking, circular dispatch protection, and custom ACP role templates
+- **IM Project Management & Workspace Association**: associate local workspace folders with IM projects, guide role tools to persist artifacts under `.arp/`, and link project knowledge snapshots for context-aware collaboration
+- **Floating Timeline Navigation**: added an interactive timeline alongside IM conversations with hover previews, role color coding, and quick jump to key dialogue milestones
+- **Intelligent Conversation Title Generation**: automatically renames newly created chats upon the user's first prompt, and provides manual LLM auto-rename via context menu
+
+#### Improved
+
+- **Multi-Role Conductor Scheduling & Parallelism**: enhanced task queueing, read-only parallel dispatch, thought level propagation, and live streaming of thinking deltas and assistant tokens
+- **Proxy Model Parser & Message Attribution**: robust proxy endpoint response handling, accurate tool-call file capture, and refined role avatar/color fallback styling
+
+### [0.2.16]
+
+#### Added
+
+- **Multi-Role IM Group Chat with ACP Agent Dispatch**: introduced real-time multi-agent IM group chat with built-in role templates (PM, Project Manager, UI Designer, Developer, Tester) and custom ACP roles (Pi, Claude, Codex), supporting multi-role `@mention` fan-out, read-only parallelism, room-level execution serialization, Markdown transcript rendering, and background knowledge snapshots
+- **IM Selection Actions & Context Popover**: text selection in IM messages triggers quick actions (quote context, translate, explain, or custom prompt actions); independent actions execute via Chat LLM and display inline result popovers with token usage tracking
+- **Provider-Centric AI Model Pool**: redesigned model configuration into a unified Provider Pool with baseUrl/apiKey and categorized models (`text`, `image`, `embedding`); features discovery via `GET /models` with heuristic classification, fine-grained per-feature model assignments, and automatic migration from legacy settings
+
+#### Improved
+
+- **Automatic Model Resolution & Selection Auto-Populate**: automatically falls back to the first available model of the matching kind from the provider pool when specific use-case selections are unset, and auto-populates empty tool/chat/embedding choices upon adding new models
+- **Enhanced LLM Error Detail Extraction**: parses deep error payloads from API response JSON across `error`, `message`, and `detail` fields, formatting error notifications with HTTP status codes and target model names
+- **IM Mentions & Roles Configuration**: rendered inline mention tags for referenced roles directly inside message bubbles, and polished Roles settings layout and scrolling
+
+### [0.2.15]
+
+#### Added
+
+- **Global Notification Center**: added a persistent notification history popover and header bell button across Workbench, Agent, Notes, Kanban, Report, and Settings panels, capturing system alerts and background activity
+- **Workbench batch session selection & multi-removal**: multi-select sessions using Finder-style Cmd/Ctrl+Click and Shift+Range selection; batch-remove sessions from panel with clean ACP controller disposal, selected count indicator, and Escape to clear selection
+- **Multi-repository Git grouping in Workbench**: group file changes by Git repository root when workspace contains nested or sibling repositories, with per-repository stage/unstage controls and persistent collapse states
+- **In-app browser upload tool (`browser_upload`)**: extended `agent-resume-browser` MCP with file upload automation via Chrome DevTools Protocol (`DOM.setFileInputFiles`)
+
+#### Improved
+
+- **Session transcript interaction & caret positioning**: clicking or right-clicking in Markdown transcripts accurately places caret at cursor position for seamless text selection and copying
+- **Workbench project search & missing path handling**: polished workspace search UX with friendly error feedback when working directories are missing or inaccessible, and stripped raw Electron IPC wrappers from status notifications
+- **Database & schema reliability**: unified SQLite database engine and improved concurrency resilience during schema initialization
+
+#### Removed
+
+- **Flow DAG experimental module**: removed legacy Flow DAG canvas and MCP tools (`flow_sync`, `flow_read`, etc.) to streamline Project Note tree associations and Kanban task boards
+
 ### [0.2.14]
 
 #### Added
@@ -374,6 +422,54 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 ---
 
 ## 简体中文
+
+### [0.2.17]
+
+#### 新增
+
+- **智能意图路由与自动角色分发**：在 IM 面板中引入智能意图分析器，根据用户问题自动识别并推荐匹配的专业角色进行任务分发，支持带交互确认的派发建议与快速触发
+- **角色协作关系拓扑与自定义角色**：支持配置多角色协作委托关系链（如产品经理 → UI 设计师 → 开发工程师 → 测试工程师），具备依赖关系追踪、防循环派发保护及自定义 ACP 角色模板扩展
+- **IM 项目管理与工作区本地关联**：支持为 IM 项目关联本地工作目录，引导角色将产物沉淀于 `.arp/` 目录，并支持嵌入项目知识库快照进行上下文增强
+- **浮动时间轴导航**：在 IM 对话侧边新增时间轴视图，支持悬停消息预览、角色专属色彩标识及对话里程碑快速跳转
+- **智能会话命名**：在用户发送首条消息时自动将默认标题提炼替换为问题摘要，并支持在右键菜单中手动触发基于大模型的「自动重命名」
+
+#### 改进
+
+- **多角色调度器（Conductor）与并发优化**：增强任务队列管理、只读角色并行分发、思考等级（Thought Level）动态传递以及思考过程与文本增量实时流式渲染
+- **代理模型解析与消息展示优化**：完善各类 Proxy 模型响应解析器与工具调用修改文件追踪，优化角色头像、色彩回退与国际化文案
+
+### [0.2.16]
+
+#### 新增
+
+- **IM 多角色群聊与 ACP Agent 调度**：引入支持多 Agent 协同的即时通讯（IM）群聊面板，提供内置角色模板（产品经理、项目经理、UI 设计师、开发工程师、测试工程师）与自定义 ACP 角色（接入 Pi、Claude、Codex 等），支持单条消息 `@` 多个角色并行分发、只读并行与写入串行调度、Markdown 转录渲染及背景知识快照
+- **IM 划词动作与即时结果弹窗**：在 IM 消息中选中文本即可触发划词快捷操作（引用、翻译、解释或自定义 Prompt 动作），独立动作通过 Chat LLM 异步执行并在原地弹窗展示结果，自动记录使用量与 Token 消耗
+- **以 Provider 为中心的 AI 模型池**：全新重构模型配置体系为统一 Provider 模型池（Base URL、API Key 及文本/图像/嵌入分类模型列表），支持一键探测（`GET /models`）与启发式分类，精细化分配各场景模型，并支持旧版配置自动平滑迁移
+
+#### 改进
+
+- **模型池智能回退与自动填充**：未显式指定功能模型时，自动从模型池中匹配对应类型的可用模型进行回退，并在新增模型时自动填充未配置的 Tool / Chat / Embedding 选项
+- **LLM 错误详情提取与友好提示**：深度解析 API 响应 JSON 中的 `error`、`message` 与 `detail` 错误细节，在错误提示中携带 HTTP 状态码与模型名称，大幅提升排错效率
+- **IM 提及标签展示与角色配置优化**：在消息气泡中以直观的内联标签展示被 `@` 提及的角色列表，并优化设置页「角色」面板的布局与滚动交互
+
+### [0.2.15]
+
+#### 新增
+
+- **全局通知中心与铃铛面板**：在顶栏新增通知中心铃铛按钮与历史通知浮窗，并在 Workbench、Agent、Notes、看板、Report 及设置等各面板统一聚合系统提醒与后台任务通知
+- **Workbench 会话批量选择与批量移除**：支持类似访达（Finder）的 Cmd/Ctrl 多选与 Shift 范围连选；支持从工具栏或右键菜单一键批量将多个会话从面板中移除（自动释放 ACP 会话控制器），并在工具栏实时展示选中数量，按 Escape 快速取消选择
+- **Workbench 多仓库 Git 分组显示**：在工作区包含多个 Git 子仓库时，变更列表按仓库根目录分组聚合展示，支持按仓库一键暂存/取消暂存所有变更并保持分组折叠状态
+- **内置浏览器文件上传 MCP 工具（`browser_upload`）**：在 `agent-resume-browser` MCP 中新增文件上传工具，通过 Chrome DevTools Protocol（`DOM.setFileInputFiles`）支持自动化向网页表单上传本地文件
+
+#### 改进
+
+- **会话转录文本交互与右键光标定位**：支持在 Markdown 转录面板中右键或点击时精准定位光标位置，便于快速选中文本与摘录内容
+- **项目搜索交互与缺失路径容错**：优化工作台文件与项目搜索交互体验，当工作目录不存在或已被删除时给出友好的提示信息，并清理搜索错误通知中的 Electron IPC 包装层
+- **数据库与 Schema 迁移稳定性**：统一 SQLite 数据库引擎底层依赖，提升并发初始化与迁移过程的稳定性
+
+#### 移除
+
+- **Flow DAG 实验模块**：移除早期 Flow DAG 画布及相关 MCP 流程调度工具（`flow_sync`、`flow_read` 等），聚焦优化项目笔记父子关联树与敏捷看板视图
 
 ### [0.2.14]
 

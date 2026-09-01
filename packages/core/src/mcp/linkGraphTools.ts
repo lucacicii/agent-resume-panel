@@ -1,6 +1,6 @@
 /**
  * MCP tool adapter for link_graph_trace.
- * Independent of Notes / Session / Flow tool contexts.
+ * Independent of Notes / Session tool contexts.
  */
 
 import { z } from "zod";

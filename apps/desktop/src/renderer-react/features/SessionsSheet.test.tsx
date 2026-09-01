@@ -21,6 +21,11 @@ function renderSessions(sessionList: AgentSession[] = [session]) {
     nativeRenamed: true
   }));
 
+  const querySessionsPage = vi.fn(async ({ limit = 100 }: { limit?: number; cursor?: { updatedAt: number; provider: string; id: string } } = {}) => ({
+    sessions: sessionList,
+    total: sessionList.length,
+    nextCursor: undefined
+  }));
   const listSessions = vi.fn(async () => sessionList);
   window.agentResume = {
     getI18nBundle: async () => ({
@@ -45,6 +50,7 @@ function renderSessions(sessionList: AgentSession[] = [session]) {
     }),
     onLocaleChanged: () => () => undefined,
     listSessions,
+    querySessionsPage,
     previewSession: async () => ({
       session,
       preview: { title: session.title, messages: [{ role: "user", text: "Please migrate the renderer." }] }
@@ -60,20 +66,20 @@ function renderSessions(sessionList: AgentSession[] = [session]) {
       <SessionsSheet />
     </I18nProvider>
   );
-  return { summarizeSession, autoRenameSession, listSessions };
+  return { summarizeSession, autoRenameSession, listSessions, querySessionsPage };
 }
 
 describe("SessionsSheet", () => {
   afterEach(() => cleanup());
 
   it("loads a session preview and supports summary and rename actions", async () => {
-    const { summarizeSession, autoRenameSession, listSessions } = renderSessions();
+    const { summarizeSession, autoRenameSession, querySessionsPage } = renderSessions();
 
     await act(async () => {
       window.dispatchEvent(new Event("agent-resume:sessions-open"));
     });
     const row = await screen.findByRole("button", { name: /Implement renderer migration/ });
-    expect(listSessions).toHaveBeenCalledWith();
+    expect(querySessionsPage).toHaveBeenCalledWith({ limit: 100 });
     fireEvent.click(row);
     await screen.findByText("Please migrate the renderer.");
 
@@ -94,13 +100,13 @@ describe("SessionsSheet", () => {
       projectPath: "/work/agent-resume-panel",
       updatedAt: 1_700_000_000_000 - index
     }));
-    const { listSessions } = renderSessions(manySessions);
+    const { querySessionsPage } = renderSessions(manySessions);
 
     await act(async () => {
       window.dispatchEvent(new Event("agent-resume:sessions-open"));
     });
-    await screen.findByText("1000 sessions · sync every 1 min");
-    expect(listSessions).toHaveBeenCalledWith();
+    await screen.findByText("1000 / 1000 sessions · sync every 1 min");
+    expect(querySessionsPage).toHaveBeenCalledWith({ limit: 100 });
 
     const viewport = document.querySelector<HTMLElement>(".sessions-list");
     expect(viewport?.dataset.virtualCount).toBe("1000");
