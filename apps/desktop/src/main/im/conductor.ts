@@ -778,7 +778,7 @@ export class ImConductor {
       }
     }
     if (!chatId) {
-      const record = await createAcpRecord(panelHome, cwd, agent as AcpAgentProvider);
+      const record = await createAcpRecord(panelHome, cwd, agent as AcpAgentProvider, { source: "im" });
       chatId = record.id;
       const updatedMember = await this.store.setMemberAcpChatId(member.memberId, chatId);
       this.emit({ type: "member", projectId: job.projectId, member: updatedMember });

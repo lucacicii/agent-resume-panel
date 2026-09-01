@@ -14,15 +14,16 @@ vi.mock("../acp/store", () => {
     messageCount: number;
   }>();
   return {
-    createAcpRecord: vi.fn(async (_home: string, projectPath: string, provider: string) => {
+    createAcpRecord: vi.fn(async (_home: string, projectPath: string, provider: string, options?: { source?: string; title?: string }) => {
       const record = {
         id: `chat-${provider}-${acpRecords.size + 1}`,
-        title: "test",
+        title: options?.title || "test",
         projectPath,
         provider,
         createdAt: Date.now(),
         updatedAt: Date.now(),
-        messageCount: 0
+        messageCount: 0,
+        source: options?.source || "acp"
       };
       acpRecords.set(record.id, record);
       return record;
@@ -846,6 +847,7 @@ Implement the search indexing algorithm as designed.
     await vi.waitFor(() => expect(prompt).toHaveBeenCalledTimes(1));
     expect(prompt.mock.calls[0]?.[1]).toContain("[Role persona]");
     expect(createAcpRecord).toHaveBeenCalledTimes(createdBefore + 1);
+    expect(createAcpRecord).toHaveBeenLastCalledWith(expect.any(String), expect.any(String), expect.any(String), { source: "im" });
 
     await conductor.postMessage({
       projectId: project.projectId,

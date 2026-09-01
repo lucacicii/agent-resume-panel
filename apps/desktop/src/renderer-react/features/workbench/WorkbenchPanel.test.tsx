@@ -802,6 +802,49 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(workbenchOpenSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1" }));
   });
 
+  it("renders IM badge on sessions created via IM", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+
+    const listSessions = vi.fn(async () => [
+      { provider: "chat" as const, id: "chat-im-1", title: "IM Feature Discussion", projectPath: "/work/app", updatedAt: 200, source: "im", acpProvider: "claude" as const },
+      { provider: "codex" as const, id: "session-1", title: "Normal Codex Session", projectPath: "/work/app", updatedAt: 100 }
+    ]);
+
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.workbench.allSessions": "All sessions",
+        "desktop.workbench.noSessionsInProject": "No sessions",
+        "desktop.workbench.noProjects": "No projects",
+        "desktop.workbench.imSessionBadge": "IM",
+        "desktop.workbench.imSessionBadgeHint": "Created via IM"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions,
+      workbenchOpenSession: vi.fn(async () => ({}))
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+
+    const imRow = await screen.findByRole("button", { name: /IM Feature Discussion/ });
+    const imBadge = imRow.querySelector(".wb-im-session-badge");
+    expect(imBadge).not.toBeNull();
+    expect(imBadge?.textContent).toBe("IM");
+    expect(imBadge?.getAttribute("title")).toBe("Created via IM");
+
+    const normalRow = screen.getByRole("button", { name: /Normal Codex Session/ });
+    expect(normalRow.querySelector(".wb-im-session-badge")).toBeNull();
+  });
+
   it("activates the assigned project when resuming a moved session", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";

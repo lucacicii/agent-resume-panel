@@ -54,16 +54,22 @@ export async function getAcpRecord(panelHome: string, id: string): Promise<AcpSe
   return getAcpSessionRecord<AcpSessionRecord>(panelHome, id);
 }
 
-export async function createAcpRecord(panelHome: string, projectPath: string, provider: AcpAgentProvider): Promise<AcpSessionRecord> {
+export async function createAcpRecord(
+  panelHome: string,
+  projectPath: string,
+  provider: AcpAgentProvider,
+  options?: { source?: string; title?: string }
+): Promise<AcpSessionRecord> {
   const now = Date.now();
   const record: AcpSessionRecord = {
     id: crypto.randomUUID(),
-    title: "New ACP Chat",
+    title: options?.title || "New ACP Chat",
     projectPath,
     provider,
     createdAt: now,
     updatedAt: now,
-    messageCount: 0
+    messageCount: 0,
+    ...(options?.source ? { source: options.source } : {})
   };
   await insertAcpSessionRecord(panelHome, record);
   await mirrorAcpRecordToCatalog(panelHome, record);
@@ -91,7 +97,8 @@ async function mirrorAcpRecordToCatalog(panelHome: string, record: AcpSessionRec
       acpProvider: record.provider,
       updatedAt: record.updatedAt,
       messageCount: record.messageCount,
-      model: record.provider
+      model: record.provider,
+      source: record.source || "acp"
     });
   } catch {
     // Dual-write must not break ACP chat; session sync backfills catalog.

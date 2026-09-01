@@ -579,7 +579,9 @@
       "desktop.workbench.scratchSearch": "scratch",
       "desktop.workbench.projectFilterMeta": "Projects{0}{1} · {2}",
       "desktop.workbench.listMeta": "{0} · {1} sessions",
-      "desktop.workbench.listMetaSearch": "{0} · search \"{1}\" · {2} sessions"
+      "desktop.workbench.listMetaSearch": "{0} · search \"{1}\" · {2} sessions",
+      "desktop.workbench.imSessionBadge": "IM",
+      "desktop.workbench.imSessionBadgeHint": "Created via IM"
     },
     "sessions": {
       "desktop.sessions.sheetTitle": "Sessions (reference)",
@@ -1316,7 +1318,9 @@
       "desktop.workbench.scratchSearch": "临时目录",
       "desktop.workbench.projectFilterMeta": "项目{0}{1} · {2}",
       "desktop.workbench.listMeta": "{0} · {1} 条",
-      "desktop.workbench.listMetaSearch": "{0} · 搜索「{1}」· {2} 条"
+      "desktop.workbench.listMetaSearch": "{0} · 搜索「{1}」· {2} 条",
+      "desktop.workbench.imSessionBadge": "IM",
+      "desktop.workbench.imSessionBadgeHint": "通过 IM 创建"
     },
     "sessions": {
       "desktop.sessions.sheetTitle": "Sessions（参考）",
@@ -1718,7 +1722,10 @@
     "calendar": {},
     "agent": {},
     "notes": {},
-    "workbench": {},
+    "workbench": {
+      "desktop.workbench.imSessionBadge": "IM",
+      "desktop.workbench.imSessionBadgeHint": "IM から作成"
+    },
     "sessions": {},
     "sheet": {},
     "settings": {

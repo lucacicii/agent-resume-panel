@@ -113,6 +113,34 @@ describe("mergeCatalogAndAcpSessions", () => {
     expect(merged).toHaveLength(650);
     expect(merged[0]?.id).toBe("acp-49");
   });
+
+  it("preserves source: im when merging catalog and acp store sessions", () => {
+    const catalog: AgentSession[] = [
+      {
+        provider: "chat",
+        id: "im-1",
+        title: "IM Chat",
+        projectPath: "/p",
+        updatedAt: 100,
+        source: "im",
+        acpProvider: "claude"
+      }
+    ];
+    const acp: AgentSession[] = [
+      {
+        provider: "chat",
+        id: "im-1",
+        title: "IM Chat",
+        projectPath: "/p",
+        updatedAt: 200,
+        source: "im",
+        acpProvider: "claude"
+      }
+    ];
+    const merged = mergeCatalogAndAcpSessions(catalog, acp);
+    expect(merged).toHaveLength(1);
+    expect(merged[0]?.source).toBe("im");
+  });
 });
 
 describe("isAcpAgentSession", () => {

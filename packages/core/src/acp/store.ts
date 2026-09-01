@@ -13,6 +13,7 @@ export interface AcpSessionStoreRecord {
   createdAt: number;
   updatedAt: number;
   messageCount: number;
+  source?: string;
 }
 
 export interface AcpThreadStoreMessage {

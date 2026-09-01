@@ -10,7 +10,7 @@ export function acpRecordToAgentSession(record: AcpSessionRecord): AgentSession 
     projectPath: record.projectPath,
     updatedAt: record.updatedAt,
     messageCount: record.messageCount,
-    source: "acp",
+    source: record.source || "acp",
     acpProvider: record.provider,
     model: record.provider
   };
@@ -63,7 +63,7 @@ export function mergeCatalogAndAcpSessions(
         ...session,
         // Preserve acpProvider if catalog row had it and store mapping is same id
         acpProvider: session.acpProvider || existing?.acpProvider,
-        source: session.source || existing?.source || "acp"
+        source: (session.source && session.source !== "acp") ? session.source : (existing?.source || session.source || "acp")
       };
       // A user-moved chat (projectOverridden) must keep the catalog's effective
       // project path even when the ACP store (possibly rewritten by another
