@@ -1819,7 +1819,7 @@ export function ImPanel(): ReactPortal | null {
                   </div>
                 </div>
               )}
-              <div className="im-composer" onDragOver={onDragOver} onDrop={onDrop}>
+              <div className="chat-compose im-composer" onDragOver={onDragOver} onDrop={onDrop}>
                 <input
                   ref={imageInputRef}
                   type="file"
@@ -1831,112 +1831,124 @@ export function ImPanel(): ReactPortal | null {
                     e.target.value = "";
                   }}
                 />
-                {pendingImages.length > 0 && (
-                  <div className="im-pending-images" aria-label="Attached images">
-                    {pendingImages.map((img) => (
-                      <div key={img.id} className="im-pending-image-card">
-                        <img src={img.previewUrl} alt={img.fileName} onClick={() => setPreviewModalUrl(img.previewUrl)} />
-                        <span className="im-pending-image-name" title={img.fileName}>{img.fileName}</span>
-                        <button
-                          type="button"
-                          className="im-pending-image-remove"
-                          onClick={() => setPendingImages((curr) => curr.filter((item) => item.id !== img.id))}
-                          aria-label={t("desktop.common.delete")}
-                        >
-                          <ThemeIcon name="close" size={11} />
-                        </button>
+                <div className="chat-compose-frame">
+                  <div className="chat-compose-field">
+                    {mentionOpen && mentionOptions.length > 0 && (
+                      <div ref={mentionListRef} className="im-mention-menu" role="listbox" aria-label={t("desktop.im.mention")} aria-activedescendant={mentionOptions[mentionIndex]?.memberId}>
+                        {mentionOptions.map((member, index) => (
+                          <button
+                            key={member.memberId}
+                            id={member.memberId}
+                            type="button"
+                            role="option"
+                            aria-selected={index === mentionIndex}
+                            className={index === mentionIndex ? "active" : undefined}
+                            onMouseEnter={() => setMentionIndex(index)}
+                            onClick={() => pickMention(member)}
+                          >
+                            <span className="im-role-avatar" aria-hidden="true" style={{ "--im-role-color": roleColor(member.templateId) } as CSSProperties}>
+                              {roleInitial(memberLabel(member))}
+                            </span>
+                            @{memberLabel(member)} {agentTag(member.agent, member.model, t)}
+                          </button>
+                        ))}
                       </div>
-                    ))}
+                    )}
+                    {pendingImages.length > 0 && (
+                      <div className="im-pending-images" aria-label="Attached images">
+                        {pendingImages.map((img) => (
+                          <div key={img.id} className="im-pending-image-card">
+                            <img src={img.previewUrl} alt={img.fileName} onClick={() => setPreviewModalUrl(img.previewUrl)} />
+                            <span className="im-pending-image-name" title={img.fileName}>{img.fileName}</span>
+                            <button
+                              type="button"
+                              className="im-pending-image-remove"
+                              onClick={() => setPendingImages((curr) => curr.filter((item) => item.id !== img.id))}
+                              aria-label={t("desktop.common.delete")}
+                            >
+                              <ThemeIcon name="close" size={11} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {quotes.length > 0 && (
+                      <div className="im-quote-chips">
+                        {quotes.map((quote) => (
+                          <button
+                            key={quote.messageId}
+                            type="button"
+                            className="im-quote-chip"
+                            onClick={() => setQuotes((current) => current.filter((item) => item.messageId !== quote.messageId))}
+                            aria-label={t("desktop.im.removeQuote")}
+                          >
+                            {quote.authorLabel}: {quote.body.slice(0, 40)}
+                            <ThemeIcon name="close" size={12} aria-hidden="true" />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {mentioned.length > 0 && (
+                      <div className="im-quote-chips">
+                        {mentioned.map((member) => (
+                          <button
+                            key={member.memberId}
+                            type="button"
+                            className="im-mention-chip"
+                            onClick={() => setMentionIds((current) => current.filter((id) => id !== member.memberId))}
+                            aria-label={t("desktop.im.removeMention")}
+                          >
+                            @{memberLabel(member)}
+                            <ThemeIcon name="close" size={12} />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <textarea
+                      ref={textareaRef}
+                      value={draft}
+                      onChange={(event) => setDraft(event.target.value)}
+                      onKeyDown={onComposerKey}
+                      onPaste={onComposerPaste}
+                      placeholder={t("desktop.im.placeholder")}
+                      aria-label={t("desktop.im.placeholder")}
+                      rows={1}
+                    />
                   </div>
-                )}
-                {quotes.length > 0 && (
-                  <div className="im-quote-chips">
-                    {quotes.map((quote) => (
-                      <button
-                        key={quote.messageId}
-                        type="button"
-                        className="im-quote-chip"
-                        onClick={() => setQuotes((current) => current.filter((item) => item.messageId !== quote.messageId))}
-                        aria-label={t("desktop.im.removeQuote")}
-                      >
-                        {quote.authorLabel}: {quote.body.slice(0, 40)}
-                        <ThemeIcon name="close" size={12} aria-hidden="true" />
-                      </button>
-                    ))}
+                  <div className="chat-compose-toolbar">
+                    <button
+                      type="button"
+                      className="chat-tools-toggle"
+                      onClick={() => imageInputRef.current?.click()}
+                      title={t("desktop.im.addImage")}
+                      aria-label={t("desktop.im.addImage")}
+                    >
+                      <ThemeIcon name="file-image" size={16} aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      className={`chat-tools-toggle im-mention-btn${mentionOpen ? " active" : ""}`}
+                      onClick={() => {
+                        setMentionOpen((open) => !open);
+                        setMentionIndex(0);
+                        textareaRef.current?.focus();
+                      }}
+                      title={t("desktop.im.mention")}
+                      aria-label={t("desktop.im.mention")}
+                    >
+                      <ThemeIcon name="at-sign" size={16} aria-hidden="true" />
+                    </button>
+                    <span className="chat-compose-toolbar-spacer" />
+                    <button
+                      type="button"
+                      className="chat-send-btn"
+                      onClick={() => void send()}
+                      disabled={sending || (!draft.trim() && !quotes.length && !pendingImages.length)}
+                      aria-label={t("desktop.common.send")}
+                    >
+                      <ThemeIcon name="send" size={18} />
+                    </button>
                   </div>
-                )}
-                {mentionOpen && mentionOptions.length > 0 && (
-                  <div ref={mentionListRef} className="im-mention-menu" role="listbox" aria-label={t("desktop.im.mention")} aria-activedescendant={mentionOptions[mentionIndex]?.memberId}>
-                    {mentionOptions.map((member, index) => (
-                      <button
-                        key={member.memberId}
-                        id={member.memberId}
-                        type="button"
-                        role="option"
-                        aria-selected={index === mentionIndex}
-                        className={index === mentionIndex ? "active" : undefined}
-                        onMouseEnter={() => setMentionIndex(index)}
-                        onClick={() => pickMention(member)}
-                      >
-                        <span className="im-role-avatar" aria-hidden="true" style={{ "--im-role-color": roleColor(member.templateId) } as CSSProperties}>
-                          {roleInitial(memberLabel(member))}
-                        </span>
-                        @{memberLabel(member)} {agentTag(member.agent, member.model, t)}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {mentioned.length > 0 && (
-                  <div className="im-quote-chips">
-                    {mentioned.map((member) => (
-                      <button
-                        key={member.memberId}
-                        type="button"
-                        className="im-mention-chip"
-                        onClick={() => setMentionIds((current) => current.filter((id) => id !== member.memberId))}
-                        aria-label={t("desktop.im.removeMention")}
-                      >
-                        @{memberLabel(member)}
-                        <ThemeIcon name="close" size={12} />
-                      </button>
-                    ))}
-                  </div>
-                )}
-                <textarea
-                  ref={textareaRef}
-                  value={draft}
-                  onChange={(event) => setDraft(event.target.value)}
-                  onKeyDown={onComposerKey}
-                  onPaste={onComposerPaste}
-                  placeholder={t("desktop.im.placeholder")}
-                  aria-label={t("desktop.im.placeholder")}
-                  rows={3}
-                />
-                <div className="im-composer-actions">
-                  <button
-                    type="button"
-                    className="tool-btn ghost-btn"
-                    onClick={() => imageInputRef.current?.click()}
-                    title={t("desktop.im.addImage")}
-                    aria-label={t("desktop.im.addImage")}
-                  >
-                    <ThemeIcon name="file-image" size={14} aria-hidden="true" />
-                  </button>
-                  <button type="button" className="tool-btn ghost-btn" onClick={() => {
-                    setMentionOpen((open) => !open);
-                    setMentionIndex(0);
-                    textareaRef.current?.focus();
-                  }}>
-                    @
-                  </button>
-                  <button
-                    type="button"
-                    className="tool-btn"
-                    onClick={() => void send()}
-                    disabled={sending || (!draft.trim() && !quotes.length && !pendingImages.length)}
-                  >
-                    {t("desktop.common.send")}
-                  </button>
                 </div>
               </div>
             </>

@@ -1,6 +1,6 @@
 import type { JSX } from "react";
 import {
-  Activity, Archive, ArrowDown, ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUp, ArrowUpToLine, Bell, Bot, Check,
+  Activity, Archive, ArrowDown, ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUp, ArrowUpToLine, AtSign, Bell, Bot, Check,
   ChevronDown, ChevronLeft, ChevronRight, Circle, Clipboard, Cloud, Command,
   Copy, Download, ExternalLink, Eye, EyeOff, File, FileArchive, FileAudio,
   FileCode2, FileCog, FileDiff, FileImage, FileJson, FilePlus2,
@@ -17,7 +17,7 @@ import {
 const ICONS = {
   activity: Activity, archive: Archive, "arrow-down": ArrowDown, "arrow-down-to-line": ArrowDownToLine,
   "arrow-left": ArrowLeft, "arrow-right": ArrowRight,
-  "arrow-up": ArrowUp, "arrow-up-to-line": ArrowUpToLine, bell: Bell, bot: Bot, check: Check,
+  "arrow-up": ArrowUp, "arrow-up-to-line": ArrowUpToLine, "at-sign": AtSign, bell: Bell, bot: Bot, check: Check,
   "chevron-down": ChevronDown, "chevron-left": ChevronLeft, "chevron-right": ChevronRight,
   circle: Circle, clipboard: Clipboard, cloud: Cloud, command: Command, copy: Copy,
   download: Download, "external-link": ExternalLink, eye: Eye, "eye-off": EyeOff,
