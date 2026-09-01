@@ -546,6 +546,33 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
         </div>
       </div>
     </section>
+    <section className="settings-group">
+      <h3 className="settings-group-title">{t("desktop.settings.imSmartRouting")}</h3>
+      <div className="settings-group-body">
+        <label className="settings-checkbox-row">
+          <input
+            type="checkbox"
+            checked={settings?.im?.smartRoutingEnabled !== false}
+            onChange={async (event) => {
+              if (!settings) return;
+              const next: PanelSettings = {
+                ...settings,
+                im: {
+                  ...settings.im,
+                  smartRoutingEnabled: event.target.checked
+                }
+              };
+              setSettings(next);
+              await desktopApi().saveSettings(next);
+            }}
+          />
+          <div className="settings-checkbox-label">
+            <strong>{t("desktop.settings.imSmartRouting")}</strong>
+            <p className="settings-footnote">{t("desktop.settings.imSmartRoutingDesc")}</p>
+          </div>
+        </label>
+      </div>
+    </section>
     </>
   );
 }

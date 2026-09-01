@@ -1690,6 +1690,12 @@ export function ImPanel(): ReactPortal | null {
                           <div
                             className={`im-routing-tip${message.routingTimedOut ? " is-timeout" : " is-unmatched"}`}
                             onClick={() => {
+                              setDraft((curr) => {
+                                const trimmed = curr.trim();
+                                if (!trimmed) return "@";
+                                return curr.endsWith(" ") ? `${curr}@` : `${curr} @`;
+                              });
+                              setMentionOpen(true);
                               textareaRef.current?.focus();
                             }}
                           >

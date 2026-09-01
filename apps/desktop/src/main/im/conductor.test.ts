@@ -44,7 +44,7 @@ async function createStore(): Promise<ImStore> {
 
 afterEach(async () => {
   await new Promise((resolve) => setTimeout(resolve, 150));
-  await Promise.all(homes.splice(0).map((home) => fs.rm(home, { recursive: true, force: true })));
+  await Promise.all(homes.splice(0).map((home) => fs.rm(home, { recursive: true, force: true }).catch(() => undefined)));
 });
 
 describe("ImConductor", () => {
@@ -778,7 +778,8 @@ Implement the search indexing algorithm as designed.
     const project = await store.createProject("Unmatched Tip Test");
     await store.setLocalPath(project.projectId, process.cwd());
 
-    const conductor = new ImConductor(store, () => undefined, vi.fn(async () => undefined), vi.fn(async () => undefined));
+    const emit = vi.fn();
+    const conductor = new ImConductor(store, emit, vi.fn(async () => undefined), vi.fn(async () => undefined));
 
     const result = await conductor.postMessage({
       projectId: project.projectId,
@@ -788,7 +789,11 @@ Implement the search indexing algorithm as designed.
     });
 
     expect(result.job).toBeNull();
-    expect(result.message.routingTip).toBe("desktop.im.routingUnmatchedTip");
-    expect(result.message.routingTimedOut).toBeUndefined();
+    // Non-blocking: intent routing runs in background and updates via messageUpdate
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const msg = await store.getMessage(result.message.messageId);
+    expect(msg?.routingTip).toBe("desktop.im.routingUnmatchedTip");
+    expect(msg?.routingTimedOut).toBeUndefined();
+    expect(emit).toHaveBeenCalledWith(expect.objectContaining({ type: "messageUpdate" }));
   });
 });

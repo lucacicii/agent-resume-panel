@@ -1,7 +1,7 @@
 import type { BrowserWindow } from "electron";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { desktopDbPath, effectivePanelHome, expandHome, loadSettings } from "@agent-resume/core";
+import { desktopDbPath, effectivePanelHome, expandHome, loadSettings, type PanelSettings } from "@agent-resume/core";
 import { createAcpRecord, getAcpRecord } from "../acp/store";
 import type { AcpAgentProvider, AcpStreamEvent, AcpToolCallInfo } from "../acp/types";
 import { routeMessageIntent } from "./intentRouter";
@@ -17,8 +17,10 @@ import {
   type ImJob,
   type ImJobBrief,
   type ImJobStatus,
+  type ImKnowledgeSnapshot,
   type ImMember,
   type ImMessage,
+  type ImQuotedMessage,
   type ImRoleTools
 } from "./types";
 
@@ -227,59 +229,20 @@ export class ImConductor {
     }
 
     if (!mentionIds.length) {
-      if (body.trim()) {
+      if (body.trim() && settings.im?.smartRoutingEnabled !== false) {
         const enabledMembers = room.members.filter((m) => m.enabled);
         if (enabledMembers.length > 0) {
-          const routeResult = await routeMessageIntent({
+          void this.performAsyncIntentRouting({
+            projectId: input.projectId,
+            message,
             text: body.trim(),
-            roomMembers: enabledMembers,
+            enabledMembers,
+            quotes,
+            knowledge: this.store.snapshotKnowledge(room.knowledge),
+            savedImages,
             settings,
-            desktopDb: desktopDbPath(panelHome)
+            panelHome
           });
-          if (routeResult.matched && routeResult.targetMemberId) {
-            const targetMember = enabledMembers.find((m) => m.memberId === routeResult.targetMemberId);
-            if (targetMember) {
-              const updatedMessage = await this.store.updateMessageRouting(message.messageId, {
-                autoRouted: true,
-                routedRoleName: targetMember.name
-              });
-              this.emit({ type: "messageUpdate", projectId: input.projectId, message: updatedMessage });
-
-              const targetTemplate = await this.store.getTemplate(targetMember.templateId);
-              const targetPersona = targetTemplate?.persona ?? targetMember.persona;
-              const targetCwd = await this.store.ensureProjectLocalPath(input.projectId, panelHome);
-              const exclusive = this.store.memberNeedsExclusiveLock(targetMember);
-              const exclusiveBusy = Boolean(await this.store.findActiveWriterJob(input.projectId));
-              const startNow = !exclusive || !exclusiveBusy;
-
-              const job = await this.store.createJob({
-                projectId: input.projectId,
-                memberId: targetMember.memberId,
-                messageId: message.messageId,
-                brief: {
-                  persona: targetPersona,
-                  instruction: body.trim(),
-                  cwd: targetCwd,
-                  quotes,
-                  knowledge: this.store.snapshotKnowledge(room.knowledge),
-                  images: savedImages.length ? savedImages : undefined,
-                  dispatchChain: [targetMember.templateId]
-                },
-                status: "queued"
-              });
-              await this.store.attachJobToMessage(message.messageId, job.jobId);
-              this.emit({ type: "job", projectId: input.projectId, job });
-              if (startNow) this.launchJob(job.jobId, targetMember);
-              return { message: updatedMessage, job };
-            }
-          } else if (routeResult.tip) {
-            const updatedMessage = await this.store.updateMessageRouting(message.messageId, {
-              routingTip: routeResult.tip,
-              routingTimedOut: Boolean(routeResult.timedOut)
-            });
-            this.emit({ type: "messageUpdate", projectId: input.projectId, message: updatedMessage });
-            return { message: updatedMessage, job: null };
-          }
         }
       }
       return { message, job: null };
@@ -841,6 +804,71 @@ export class ImConductor {
       await this.pumpExclusiveQueue(completed.projectId);
     } catch {
       // ignore queue errors after teardown
+    }
+  }
+
+  private async performAsyncIntentRouting(options: {
+    projectId: string;
+    message: ImMessage;
+    text: string;
+    enabledMembers: ImMember[];
+    quotes: ImQuotedMessage[];
+    knowledge: ImKnowledgeSnapshot[];
+    savedImages: ImImageAttachment[];
+    settings: PanelSettings;
+    panelHome: string;
+  }): Promise<void> {
+    try {
+      const routeResult = await routeMessageIntent({
+        text: options.text,
+        roomMembers: options.enabledMembers,
+        settings: options.settings,
+        desktopDb: desktopDbPath(options.panelHome)
+      });
+      if (routeResult.matched && routeResult.targetMemberId) {
+        const targetMember = options.enabledMembers.find((m) => m.memberId === routeResult.targetMemberId);
+        if (targetMember) {
+          const updatedMessage = await this.store.updateMessageRouting(options.message.messageId, {
+            autoRouted: true,
+            routedRoleName: targetMember.name
+          });
+          this.emit({ type: "messageUpdate", projectId: options.projectId, message: updatedMessage });
+
+          const targetTemplate = await this.store.getTemplate(targetMember.templateId);
+          const targetPersona = targetTemplate?.persona ?? targetMember.persona;
+          const targetCwd = await this.store.ensureProjectLocalPath(options.projectId, options.panelHome);
+          const exclusive = this.store.memberNeedsExclusiveLock(targetMember);
+          const exclusiveBusy = Boolean(await this.store.findActiveWriterJob(options.projectId));
+          const startNow = !exclusive || !exclusiveBusy;
+
+          const job = await this.store.createJob({
+            projectId: options.projectId,
+            memberId: targetMember.memberId,
+            messageId: options.message.messageId,
+            brief: {
+              persona: targetPersona,
+              instruction: options.text,
+              cwd: targetCwd,
+              quotes: options.quotes,
+              knowledge: options.knowledge,
+              images: options.savedImages.length ? options.savedImages : undefined,
+              dispatchChain: [targetMember.templateId]
+            },
+            status: "queued"
+          });
+          await this.store.attachJobToMessage(options.message.messageId, job.jobId);
+          this.emit({ type: "job", projectId: options.projectId, job });
+          if (startNow) this.launchJob(job.jobId, targetMember);
+        }
+      } else if (routeResult.tip) {
+        const updatedMessage = await this.store.updateMessageRouting(options.message.messageId, {
+          routingTip: routeResult.tip,
+          routingTimedOut: Boolean(routeResult.timedOut)
+        });
+        this.emit({ type: "messageUpdate", projectId: options.projectId, message: updatedMessage });
+      }
+    } catch {
+      // best-effort async intent routing
     }
   }
 
