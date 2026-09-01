@@ -433,7 +433,11 @@ export function ImPanel(): ReactPortal | null {
   const scrollToBottom = useCallback(() => {
     const node = transcriptRef.current;
     if (!node) return;
-    node.scrollTo({ top: node.scrollHeight, behavior: "smooth" });
+    if (typeof node.scrollTo === "function") {
+      node.scrollTo({ top: node.scrollHeight, behavior: "smooth" });
+    } else {
+      node.scrollTop = node.scrollHeight;
+    }
     setPinnedToBottom(true);
     setHasNewBelow(false);
   }, []);
@@ -441,7 +445,11 @@ export function ImPanel(): ReactPortal | null {
   const scrollToTop = useCallback(() => {
     const node = transcriptRef.current;
     if (!node) return;
-    node.scrollTo({ top: 0, behavior: "smooth" });
+    if (typeof node.scrollTo === "function") {
+      node.scrollTo({ top: 0, behavior: "smooth" });
+    } else {
+      node.scrollTop = 0;
+    }
     if (visibleMessages[0]) setActiveTimelineMessageId(visibleMessages[0].messageId);
   }, [visibleMessages]);
 
@@ -879,6 +887,28 @@ export function ImPanel(): ReactPortal | null {
       setSending(false);
     }
   }, [draft, mentionIds, pendingImages, quotes, selectedProjectId, sending, setError]);
+
+  const resendUserMessage = useCallback((message: ImMessage) => {
+    setSelectionMenu(null);
+    setDraft(message.body);
+    setMentionIds(message.mentionRoleIds ? [...message.mentionRoleIds] : []);
+    setQuotes(message.quotes ? [...message.quotes] : []);
+    if (message.images?.length) {
+      const restoredImages: PendingImage[] = message.images.map((img) => ({
+        id: img.id,
+        fileName: img.fileName,
+        mimeType: img.mimeType,
+        previewUrl: img.previewUrl || "",
+        data: img.previewUrl && img.previewUrl.startsWith("data:") ? img.previewUrl.split(",")[1] || "" : "",
+        sizeBytes: img.sizeBytes || 0
+      }));
+      setPendingImages(restoredImages);
+    } else {
+      setPendingImages([]);
+    }
+    textareaRef.current?.focus();
+    scrollToBottom();
+  }, [scrollToBottom]);
 
   const pickMention = useCallback((member: ImMember) => {
     const at = draft.lastIndexOf("@");
@@ -2247,6 +2277,19 @@ export function ImPanel(): ReactPortal | null {
               {actionLabel(action)}
             </button>
           ))}
+          {selectionMenu.message.kind === "human" && (
+            <>
+              <hr className="context-menu-separator" />
+              <button
+                type="button"
+                role="menuitem"
+                disabled={sending}
+                onClick={() => void resendUserMessage(selectionMenu.message)}
+              >
+                {t("desktop.common.resend")}
+              </button>
+            </>
+          )}
         </div>,
         document.body
       ) : null}

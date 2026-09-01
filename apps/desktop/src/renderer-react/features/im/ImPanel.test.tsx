@@ -38,6 +38,7 @@ const messages = {
   "desktop.im.customBadge": "Custom",
   "desktop.im.customModelOption": "Custom model ID…",
   "desktop.workbench.autoRename": "Auto rename",
+  "desktop.common.resend": "Resend",
   "desktop.common.revealInFinder": "Reveal in Finder",
   "desktop.im.emptyRoom": "Quote a message and @ a role to dispatch work.",
   "desktop.im.transcript": "Room transcript",
@@ -589,6 +590,43 @@ describe("ImPanel", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Quote" }));
     const chip = await screen.findByLabelText("Remove quote");
     expect(chip.textContent).toContain("Whole message body");
+    expect(screen.queryByRole("menuitem", { name: "Resend" })).toBeNull();
+  });
+
+  it("shows Resend in context menu for human messages and fills composer draft and mentions", async () => {
+    const api = renderIm();
+    const next = roomFor(project());
+    (api.imGetRoom as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...next,
+      messages: [{
+        messageId: "user-msg-1",
+        projectId: "proj-1",
+        kind: "human",
+        authorMemberId: null,
+        authorLabel: "You",
+        body: "Please refactor the database migration logic",
+        quoteIds: [],
+        quotes: [],
+        mentionRoleIds: [next.members[0]!.memberId],
+        jobId: null,
+        createdAtMs: 1000
+      }]
+    });
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+    await waitFor(() => expect(document.querySelector(".im-message.is-human")).not.toBeNull());
+    window.getSelection()?.removeAllRanges();
+    const article = document.querySelector(".im-message.is-human") as HTMLElement;
+    expect(article).not.toBeNull();
+    fireEvent.contextMenu(article);
+    const resendBtn = await screen.findByRole("menuitem", { name: "Resend" });
+    expect(resendBtn).toBeTruthy();
+    fireEvent.click(resendBtn);
+    const textarea = document.querySelector(".im-composer textarea") as HTMLTextAreaElement;
+    expect(textarea.value).toBe("Please refactor the database migration logic");
+    expect(document.activeElement).toBe(textarea);
+    expect(screen.getByLabelText("Remove mention")).toBeTruthy();
   });
 
   it("runs an independent action and shows the result popover", async () => {
