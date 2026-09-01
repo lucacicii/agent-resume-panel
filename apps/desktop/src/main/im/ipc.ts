@@ -355,6 +355,12 @@ export function registerImIpc(deps: {
     return runner.cancelJob(args.jobId);
   });
 
+  safeHandle("im:resumeJob", async (_event, args: { jobId?: unknown }) => {
+    if (typeof args?.jobId !== "string") throw new Error("Job id is required.");
+    const runner = await getConductor();
+    return runner.resumeJob(args.jobId);
+  });
+
   safeHandle("im:dispatchProposal", async (_event, args: {
     projectId?: unknown;
     messageId?: unknown;
@@ -523,6 +529,11 @@ export function registerImIpc(deps: {
 export async function handleImAcpStream(event: AcpStreamEvent): Promise<void> {
   if (!conductor) return;
   await conductor.handleAcpStream(event);
+}
+
+export async function flushImStreamingMessages(): Promise<void> {
+  if (!conductor) return;
+  await conductor.flushStreamingMessages();
 }
 
 export function resetImRuntimeForTests(): void {

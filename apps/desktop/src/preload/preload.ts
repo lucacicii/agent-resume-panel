@@ -647,6 +647,7 @@ export interface DesktopApi {
     images?: Array<{ fileName: string; mimeType: string; data: string }>;
   }): Promise<{ message: ImMessage; job: ImJob | null }>;
   imCancelJob(args: { jobId: string }): Promise<ImJob>;
+  imResumeJob(args: { jobId: string }): Promise<{ job: ImJob }>;
   imDispatchProposal(args: { projectId: string; messageId: string; proposalId: string }): Promise<{ message: ImMessage; job: ImJob }>;
   imDismissProposal(args: { projectId: string; messageId: string; proposalId: string }): Promise<ImMessage>;
   imListKnowledge(args: { projectId: string }): Promise<ImKnowledgeItem[]>;
@@ -1676,6 +1677,7 @@ const api: DesktopApi = {
   imRemoveMember: (args) => ipcRenderer.invoke("im:removeMember", args),
   imPostMessage: (args) => ipcRenderer.invoke("im:postMessage", args),
   imCancelJob: (args) => ipcRenderer.invoke("im:cancelJob", args),
+  imResumeJob: (args) => ipcRenderer.invoke("im:resumeJob", args),
   imDispatchProposal: (args) => ipcRenderer.invoke("im:dispatchProposal", args),
   imDismissProposal: (args) => ipcRenderer.invoke("im:dismissProposal", args),
   imListKnowledge: (args) => ipcRenderer.invoke("im:listKnowledge", args),

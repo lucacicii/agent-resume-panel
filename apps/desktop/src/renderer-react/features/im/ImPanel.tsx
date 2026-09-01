@@ -193,6 +193,15 @@ function isActiveJobStatus(status: string): boolean {
   return (ACTIVE_JOB_STATUSES as readonly string[]).includes(status);
 }
 
+function isInterruptedJobStatus(status: string): boolean {
+  return status === "cancelled" || status === "failed";
+}
+
+function isResumableJob(job: ImJob | undefined, jobs: ImJob[]): boolean {
+  if (!job || !isInterruptedJobStatus(job.status)) return false;
+  return !jobs.some((item) => item.memberId === job.memberId && item.createdAtMs > job.createdAtMs);
+}
+
 type Translate = (key: string, ...args: Array<string | number>) => string;
 
 function builtinRoleLabel(templateId: string, fallback: string, t: Translate): string {
@@ -1147,6 +1156,14 @@ export function ImPanel(): ReactPortal | null {
     }
   }, [setError]);
 
+  const resumeJob = useCallback(async (job: ImJob) => {
+    try {
+      await desktopApi().imResumeJob({ jobId: job.jobId });
+    } catch (error) {
+      setError(error);
+    }
+  }, [setError]);
+
   if (!host) return null;
   const headerSlot = document.getElementById("app-header-slot");
   const toolbar = (
@@ -1482,6 +1499,10 @@ export function ImPanel(): ReactPortal | null {
                               const targetLabel = targetMember ? memberLabel(targetMember) : (proposal.targetRoleName || proposal.targetTemplateId);
                               const targetColor = targetMember ? roleColor(targetMember.templateId) : roleColor(proposal.targetTemplateId);
                               const isPending = proposal.status === "pending";
+                              const dispatchedJob = proposal.dispatchedJobId
+                                ? room?.jobs.find((item) => item.jobId === proposal.dispatchedJobId)
+                                : undefined;
+                              const canResumeDispatch = isResumableJob(dispatchedJob, room?.jobs ?? []);
                               return (
                                 <div key={proposal.id} className="im-dispatch-card" style={{ "--im-role-color": targetColor } as CSSProperties}>
                                   <div className="im-dispatch-header">
@@ -1543,23 +1564,35 @@ export function ImPanel(): ReactPortal | null {
                                         </button>
                                       </>
                                     ) : (
-                                      <button
-                                        type="button"
-                                        className="ghost-btn small"
-                                        onClick={() => {
-                                          if (targetMember) {
-                                            setMentionIds((curr) => curr.includes(targetMember.memberId) ? curr : [...curr, targetMember.memberId]);
-                                          }
-                                          setDraft((curr) => {
-                                            const base = curr.trim();
-                                            return base ? `${base}\n${proposal.instruction}` : proposal.instruction;
-                                          });
-                                          textareaRef.current?.focus();
-                                        }}
-                                      >
-                                        <ThemeIcon name="pencil" size={12} aria-hidden="true" />
-                                        <span>{t("desktop.im.delegationEdit")}</span>
-                                      </button>
+                                      <>
+                                        {canResumeDispatch && dispatchedJob ? (
+                                          <button
+                                            type="button"
+                                            className="btn small primary"
+                                            onClick={() => void resumeJob(dispatchedJob)}
+                                          >
+                                            <ThemeIcon name="refresh" size={12} aria-hidden="true" />
+                                            <span>{t("desktop.im.resumeJob")}</span>
+                                          </button>
+                                        ) : null}
+                                        <button
+                                          type="button"
+                                          className="ghost-btn small"
+                                          onClick={() => {
+                                            if (targetMember) {
+                                              setMentionIds((curr) => curr.includes(targetMember.memberId) ? curr : [...curr, targetMember.memberId]);
+                                            }
+                                            setDraft((curr) => {
+                                              const base = curr.trim();
+                                              return base ? `${base}\n${proposal.instruction}` : proposal.instruction;
+                                            });
+                                            textareaRef.current?.focus();
+                                          }}
+                                        >
+                                          <ThemeIcon name="pencil" size={12} aria-hidden="true" />
+                                          <span>{t("desktop.im.delegationEdit")}</span>
+                                        </button>
+                                      </>
                                     )}
                                   </div>
                                 </div>
@@ -1670,6 +1703,19 @@ export function ImPanel(): ReactPortal | null {
                         )}
                         {message.streaming && (
                           <span className="im-streaming-cursor" aria-hidden="true" />
+                        )}
+                        {isResumableJob(linkedJob, room?.jobs ?? []) && linkedJob && (
+                          <div className="im-interrupted-bar">
+                            <span>{t("desktop.im.jobInterrupted")}</span>
+                            <button
+                              type="button"
+                              className="btn small primary"
+                              onClick={() => void resumeJob(linkedJob)}
+                            >
+                              <ThemeIcon name="refresh" size={12} aria-hidden="true" />
+                              <span>{t("desktop.im.resumeJob")}</span>
+                            </button>
+                          </div>
                         )}
                         {(message.kind === "human" || message.kind === "role.say") && (
                           <div className="im-message-actions">

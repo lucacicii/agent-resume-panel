@@ -18046,6 +18046,19 @@ html[data-window-mode="browser"] #react-chrome {
   justify-content: flex-end;
   gap: 6px;
 }
+.im-interrupted-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid color-mix(in srgb, var(--color-accent, #3b82f6) 24%, var(--color-separator));
+  background: color-mix(in srgb, var(--color-accent, #3b82f6) 8%, transparent);
+  color: var(--color-label-secondary);
+  font-size: 12px;
+}
 /* --- IM Auto-Routed Badge & Routing Tip --- */
 .im-auto-routed-badge {
   display: inline-flex;

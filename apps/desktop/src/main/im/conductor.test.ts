@@ -375,6 +375,89 @@ describe("ImConductor", () => {
     expect(finalMessages[0]?.thinking).toBe("Analyzing requirements... Done.");
   });
 
+  it("persists in-flight role replies so a restarted store can load them", async () => {
+    const store = await createStore();
+    const project = await store.createProject("Restart mid-stream");
+    const room = await store.getRoom(project.projectId);
+    const pm = room.members.find((member) => member.templateId === "role_product_manager")!;
+    const conductor = new ImConductor(store, () => undefined, vi.fn(async () => undefined), vi.fn(async () => undefined));
+
+    const job = await store.createJob({
+      projectId: project.projectId,
+      memberId: pm.memberId,
+      messageId: null,
+      brief: { persona: pm.persona, instruction: "plan", cwd: process.cwd(), quotes: [], knowledge: [] },
+      status: "running"
+    });
+    await store.updateJob(job.jobId, { acpChatId: "chat-restart-stream" });
+
+    await conductor.handleAcpStream({
+      type: "assistantDelta",
+      chatId: "chat-restart-stream",
+      id: "delta-1",
+      text: "Please implement the following fixes.",
+      thinking: "Drafting the repair plan...",
+      streaming: true,
+      toolCalls: []
+    });
+
+    const liveMessages = await store.listMessages(project.projectId);
+    expect(liveMessages).toHaveLength(1);
+    expect(liveMessages[0]?.kind).toBe("role.say");
+    expect(liveMessages[0]?.jobId).toBe(job.jobId);
+    expect(liveMessages[0]?.body).toBe("Please implement the following fixes.");
+    expect(liveMessages[0]?.thinking).toBe("Drafting the repair plan...");
+
+    const restarted = new ImStore(desktopDbPath(homes[homes.length - 1]!));
+    await restarted.initialize();
+    const recovered = await restarted.listMessages(project.projectId);
+    expect(recovered).toHaveLength(1);
+    expect(recovered[0]?.body).toBe("Please implement the following fixes.");
+    expect(recovered[0]?.thinking).toBe("Drafting the repair plan...");
+    expect((await restarted.getJob(job.jobId))?.status).toBe("cancelled");
+  });
+
+  it("resumes an interrupted job from the saved draft", async () => {
+    const store = await createStore();
+    const project = await store.createProject("Resume mid-stream");
+    await store.setLocalPath(project.projectId, process.cwd());
+    const room = await store.getRoom(project.projectId);
+    const pm = room.members.find((member) => member.templateId === "role_product_manager")!;
+    const connect = vi.fn(async () => undefined);
+    const prompt = vi.fn(async () => undefined);
+    const conductor = new ImConductor(store, () => undefined, connect, prompt);
+
+    const job = await store.createJob({
+      projectId: project.projectId,
+      memberId: pm.memberId,
+      messageId: null,
+      brief: { persona: pm.persona, instruction: "Write the full plan", cwd: process.cwd(), quotes: [], knowledge: [] },
+      status: "running"
+    });
+    await store.updateJob(job.jobId, { acpChatId: "chat-resume-stream" });
+    await conductor.handleAcpStream({
+      type: "assistantDelta",
+      chatId: "chat-resume-stream",
+      id: "delta-1",
+      text: "Step 1 is done.",
+      streaming: true,
+      toolCalls: []
+    });
+    await store.updateJob(job.jobId, {
+      status: "cancelled",
+      error: "App restarted while job was running",
+      finished: true
+    });
+
+    const resumed = await conductor.resumeJob(job.jobId);
+    expect(resumed.job.jobId).not.toBe(job.jobId);
+    expect(resumed.job.status === "queued" || resumed.job.status === "connecting" || resumed.job.status === "running").toBe(true);
+    expect(resumed.job.brief.instruction).toContain("Write the full plan");
+    expect(resumed.job.brief.instruction).toContain("Interrupted previous attempt");
+    expect(resumed.job.brief.instruction).toContain("Step 1 is done.");
+    await vi.waitFor(() => expect(prompt).toHaveBeenCalled(), { timeout: 3000 });
+  });
+
   it("passes image attachments to ACP agent prompt when message contains images", async () => {
     const store = await createStore();
     const project = await store.createProject("Image prompt test");

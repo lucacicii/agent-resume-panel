@@ -151,7 +151,7 @@ import {
   setAcpThoughtLevel,
   setAcpRecordProjectPath
 } from "./acp/acpHost";
-import { registerImIpc } from "./im/ipc";
+import { flushImStreamingMessages, registerImIpc } from "./im/ipc";
 import { getAcpRecord, updateAcpRecord } from "./acp/store";
 import { registerWorkbenchFsIpc } from "./workbenchFs";
 import {
@@ -854,6 +854,7 @@ function performQuitCleanup(): void {
   stopSessionTranscriptIndexAuto();
   stopSessionEmbeddingIndexAuto();
   stopAutoTaggingService();
+  void flushImStreamingMessages();
   disposeAllAcpControllers();
   tryDestroyPtyOnQuit();
 }
@@ -1188,10 +1189,14 @@ function createWindow(): void {
     resumeSessionSync();
   });
   mainWindow.on("restore", resumeSessionSync);
-  mainWindow.on("hide", stopSessionSyncTimer);
+  mainWindow.on("hide", () => {
+    stopSessionSyncTimer();
+    void flushImStreamingMessages();
+  });
   mainWindow.on("minimize", stopSessionSyncTimer);
   mainWindow.on("closed", () => {
     stopSessionSyncTimer();
+    void flushImStreamingMessages();
     workbenchActive = false;
     floatingNoteFocused = false;
     modalOpen = false;

@@ -76,6 +76,8 @@ const messages = {
   "desktop.im.job.completed": "Finished",
   "desktop.im.job.failed": "Failed",
   "desktop.im.job.cancelled": "Cancelled",
+  "desktop.im.resumeJob": "Continue",
+  "desktop.im.jobInterrupted": "Interrupted before finishing. Saved draft is kept.",
   "desktop.common.showSidebar": "Show sidebar",
   "desktop.common.hideSidebar": "Hide sidebar",
   "desktop.common.confirm": "Confirm",
@@ -247,6 +249,7 @@ function renderIm() {
         { id: "claude-3-7-sonnet-20250219", label: "Claude 3.7 Sonnet" }
       ];
     }),
+    imResumeJob: vi.fn(async () => ({ job: { jobId: "j-resume" } })),
     imPostMessage: vi.fn(async () => ({
       message: {
         messageId: "m1",
@@ -1220,6 +1223,81 @@ Build the user service endpoints.
       messageId: "msg-prop-test",
       proposalId: "prop-unit-1"
     });
+  });
+
+  it("offers continue on interrupted dispatched jobs and saved drafts", async () => {
+    const currentProject = project();
+    const currentRoom = roomFor(currentProject);
+    const arch = currentRoom.members.find((m) => m.templateId === "role_architect")!;
+    const developer = currentRoom.members.find((m) => m.templateId === "role_developer")!;
+    currentRoom.messages = [
+      {
+        messageId: "msg-prop-interrupted",
+        projectId: currentProject.projectId,
+        kind: "role.say",
+        authorMemberId: arch.memberId,
+        authorLabel: "Architect",
+        body: "Design finished.",
+        delegationProposals: [
+          {
+            id: "prop-interrupted-1",
+            targetTemplateId: "role_developer",
+            targetRoleName: "Developer",
+            instruction: "Implement the plan.",
+            status: "dispatched",
+            dispatchedJobId: "job-dev-interrupted",
+            createdAtMs: 1000
+          }
+        ],
+        quoteIds: [],
+        quotes: [],
+        mentionRoleIds: [],
+        jobId: "job-arch-1",
+        createdAtMs: 1000
+      },
+      {
+        messageId: "msg-dev-draft",
+        projectId: currentProject.projectId,
+        kind: "role.say",
+        authorMemberId: developer.memberId,
+        authorLabel: "Developer",
+        body: "I started implementing auth.",
+        quoteIds: [],
+        quotes: [],
+        mentionRoleIds: [],
+        jobId: "job-dev-interrupted",
+        createdAtMs: 1100
+      }
+    ];
+    currentRoom.jobs = [
+      {
+        jobId: "job-dev-interrupted",
+        projectId: currentProject.projectId,
+        memberId: developer.memberId,
+        messageId: null,
+        acpChatId: "chat-1",
+        status: "cancelled",
+        brief: { persona: "", instruction: "Implement the plan.", cwd: "/tmp", quotes: [], knowledge: [] },
+        error: "App restarted while job was running",
+        filesChanged: [],
+        permission: null,
+        createdAtMs: 1050,
+        updatedAtMs: 1200,
+        finishedAtMs: 1200
+      }
+    ];
+
+    const api = renderIm();
+    (api.imGetRoom as ReturnType<typeof vi.fn>).mockResolvedValue(currentRoom);
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+
+    expect(await screen.findByText("Interrupted before finishing. Saved draft is kept.")).toBeTruthy();
+    const continueButtons = screen.getAllByRole("button", { name: "Continue" });
+    expect(continueButtons.length).toBeGreaterThan(0);
+    fireEvent.click(continueButtons[0]!);
+    expect(api.imResumeJob).toHaveBeenCalledWith({ jobId: "job-dev-interrupted" });
   });
 
   it("renders auto-routed badge and routing tips (unmatched and timeout)", async () => {

@@ -127,6 +127,19 @@ export function resolveDispatchTarget(
   return undefined;
 }
 
+function buildResumeInstruction(original: string, draft?: ImMessage): string {
+  const instruction = original.trim();
+  const saved = [draft?.thinking, draft?.body].filter((part) => part?.trim()).join("\n\n").trim();
+  if (!saved) return instruction;
+  return [
+    instruction,
+    "",
+    "[Interrupted previous attempt]",
+    "Your previous reply was cut off by an app restart. Continue from this saved draft. Do not repeat completed sections. Finish the remaining work.",
+    saved
+  ].join("\n");
+}
+
 export function collectFiles(toolCalls: AcpToolCallInfo[] | undefined, current: string[]): string[] {
   if (!toolCalls?.length) return current;
   const next = new Set(current);
@@ -140,10 +153,15 @@ export function collectFiles(toolCalls: AcpToolCallInfo[] | undefined, current: 
   return [...next];
 }
 
+const STREAM_PERSIST_MS = 500;
+
 export class ImConductor {
   private readonly jobsByChat = new Map<string, string>();
   private readonly pendingByChat = new Map<string, { resolve: () => void; reject: (error: Error) => void }>();
   private readonly streamingMessagesByJob = new Map<string, ImMessage>();
+  private readonly streamingPersistAt = new Map<string, number>();
+  private readonly streamingPersistChain = new Map<string, Promise<void>>();
+  private readonly persistedStreamingIds = new Set<string>();
 
   constructor(
     private readonly store: ImStore,
@@ -307,6 +325,8 @@ export class ImConductor {
   private launchJob(jobId: string, member: ImMember): void {
     void this.runJob(jobId).catch(async (error) => {
       try {
+        await this.flushStreamingMessage(jobId);
+        this.forgetStreamingMessage(jobId);
         const failed = await this.store.updateJob(jobId, {
           status: "failed",
           error: error instanceof Error ? error.message : String(error),
@@ -330,7 +350,8 @@ export class ImConductor {
   }
 
   async cancelJob(jobId: string): Promise<ImJob> {
-    this.streamingMessagesByJob.delete(jobId);
+    await this.flushStreamingMessage(jobId);
+    this.forgetStreamingMessage(jobId);
     const cancelled = await this.store.cancelJob(jobId);
     this.emit({ type: "job", projectId: cancelled.projectId, job: cancelled });
     const chatId = cancelled.acpChatId;
@@ -470,6 +491,11 @@ export class ImConductor {
           this.streamingMessagesByJob.set(jobId, streamMsg);
           this.emit({ type: "messageUpdate", projectId: current.projectId, message: streamMsg });
         }
+        if (!this.persistedStreamingIds.has(streamMsg.messageId)) {
+          await this.flushStreamingMessage(jobId);
+        } else {
+          this.scheduleStreamingPersist(jobId);
+        }
       }
       return;
     }
@@ -486,18 +512,11 @@ export class ImConductor {
 
       let persistedMessage: ImMessage | null = null;
       if (streamMsg) {
-        this.streamingMessagesByJob.delete(jobId);
         if (finalBody || finalThinking) {
-          persistedMessage = await this.store.insertMessage({
-            messageId: streamMsg.messageId,
-            projectId: job.projectId,
-            kind: "role.say",
-            authorMemberId: job.memberId,
-            authorLabel: streamMsg.authorLabel,
+          persistedMessage = await this.persistStreamingMessage(jobId, {
             body: finalBody,
             thinking: finalThinking,
-            delegationProposals: proposals.length ? proposals : undefined,
-            jobId
+            delegationProposals: proposals.length ? proposals : undefined
           });
           this.emit({
             type: "messageUpdate",
@@ -505,6 +524,7 @@ export class ImConductor {
             message: { ...persistedMessage, streaming: false }
           });
         }
+        this.forgetStreamingMessage(jobId);
       } else if (finalBody || finalThinking) {
         const member = await this.store.getMember(job.memberId);
         persistedMessage = await this.store.insertMessage({
@@ -671,6 +691,52 @@ export class ImConductor {
     return { message: updatedMessage, job };
   }
 
+  async resumeJob(jobId: string): Promise<{ job: ImJob }> {
+    const job = await this.store.getJob(jobId);
+    if (!job) throw new Error("Job not found.");
+    if (job.status !== "cancelled" && job.status !== "failed") {
+      throw new Error("Only interrupted jobs can be resumed.");
+    }
+    const member = await this.store.getMember(job.memberId);
+    if (!member?.enabled) throw new Error("Target role is not enabled in this room.");
+
+    const room = await this.store.getRoom(job.projectId);
+    if (room.jobs.some((item) => item.memberId === job.memberId && item.createdAtMs > job.createdAtMs)) {
+      throw new Error("A newer job already exists for this role.");
+    }
+    const draft = [...room.messages]
+      .reverse()
+      .find((message) => message.jobId === job.jobId && message.kind === "role.say");
+    const nextBrief: ImJobBrief = {
+      ...job.brief,
+      instruction: buildResumeInstruction(job.brief.instruction, draft)
+    };
+    const nextJob = await this.store.createJob({
+      projectId: job.projectId,
+      memberId: job.memberId,
+      messageId: job.messageId,
+      brief: nextBrief,
+      status: "queued"
+    });
+    this.emit({ type: "job", projectId: job.projectId, job: nextJob });
+
+    for (const message of room.messages) {
+      const proposal = message.delegationProposals?.find((item) => item.dispatchedJobId === job.jobId);
+      if (!proposal) continue;
+      const updatedMessage = await this.store.updateMessageProposal(message.messageId, proposal.id, {
+        dispatchedJobId: nextJob.jobId
+      });
+      this.emit({ type: "messageUpdate", projectId: job.projectId, message: updatedMessage });
+    }
+
+    const exclusive = this.store.memberNeedsExclusiveLock(member);
+    const exclusiveBusy = Boolean(await this.store.findActiveWriterJob(job.projectId));
+    if (!exclusive || !exclusiveBusy) {
+      this.launchJob(nextJob.jobId, member);
+    }
+    return { job: nextJob };
+  }
+
   async dismissProposal(input: {
     projectId: string;
     messageId: string;
@@ -818,6 +884,82 @@ export class ImConductor {
     if (!pending) return;
     if (error) pending.reject(error);
     else pending.resolve();
+  }
+
+  async flushStreamingMessages(): Promise<void> {
+    const jobIds = [...this.streamingMessagesByJob.keys()];
+    await Promise.all(jobIds.map((jobId) => this.flushStreamingMessage(jobId)));
+  }
+
+  private scheduleStreamingPersist(jobId: string): void {
+    const last = this.streamingPersistAt.get(jobId) ?? 0;
+    const now = Date.now();
+    if (now - last < STREAM_PERSIST_MS) return;
+    this.streamingPersistAt.set(jobId, now);
+    void this.flushStreamingMessage(jobId);
+  }
+
+  private async flushStreamingMessage(jobId: string): Promise<void> {
+    const streamMsg = this.streamingMessagesByJob.get(jobId);
+    if (!streamMsg?.body && !streamMsg?.thinking) return;
+    await this.persistStreamingMessage(jobId);
+  }
+
+  private persistStreamingMessage(
+    jobId: string,
+    patch?: {
+      body?: string;
+      thinking?: string;
+      delegationProposals?: ImDelegationProposal[];
+    }
+  ): Promise<ImMessage> {
+    const previous = this.streamingPersistChain.get(jobId) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(() => this.writeStreamingMessage(jobId, patch));
+    this.streamingPersistChain.set(jobId, next.then(() => undefined, () => undefined));
+    return next;
+  }
+
+  private async writeStreamingMessage(
+    jobId: string,
+    patch?: {
+      body?: string;
+      thinking?: string;
+      delegationProposals?: ImDelegationProposal[];
+    }
+  ): Promise<ImMessage> {
+    const streamMsg = this.streamingMessagesByJob.get(jobId);
+    if (!streamMsg) throw new Error("Streaming message not found.");
+    const body = patch?.body ?? streamMsg.body;
+    const thinking = patch?.thinking ?? streamMsg.thinking;
+    const proposals = patch?.delegationProposals;
+    if (this.persistedStreamingIds.has(streamMsg.messageId)) {
+      return this.store.updateMessage(streamMsg.messageId, {
+        body,
+        thinking: thinking ?? null,
+        delegationProposals: proposals
+      });
+    }
+    const created = await this.store.insertMessage({
+      messageId: streamMsg.messageId,
+      projectId: streamMsg.projectId,
+      kind: "role.say",
+      authorMemberId: streamMsg.authorMemberId,
+      authorLabel: streamMsg.authorLabel,
+      body,
+      thinking,
+      delegationProposals: proposals?.length ? proposals : undefined,
+      jobId
+    });
+    this.persistedStreamingIds.add(streamMsg.messageId);
+    return created;
+  }
+
+  private forgetStreamingMessage(jobId: string): void {
+    const streamMsg = this.streamingMessagesByJob.get(jobId);
+    this.streamingMessagesByJob.delete(jobId);
+    this.streamingPersistAt.delete(jobId);
+    this.streamingPersistChain.delete(jobId);
+    if (streamMsg) this.persistedStreamingIds.delete(streamMsg.messageId);
   }
 }
 

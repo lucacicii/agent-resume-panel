@@ -1535,6 +1535,7 @@ export class ImStore {
     patch: {
       body?: string;
       thinking?: string | null;
+      delegationProposals?: ImDelegationProposal[];
     }
   ): Promise<ImMessage> {
     const current = await this.getMessage(messageId);
@@ -1542,11 +1543,16 @@ export class ImStore {
     const now = nowMs();
     const body = patch.body !== undefined ? patch.body : current.body;
     const thinking = patch.thinking !== undefined ? (patch.thinking?.trim() || null) : (current.thinking ?? null);
+    const proposals = patch.delegationProposals !== undefined
+      ? patch.delegationProposals
+      : current.delegationProposals;
+    const proposalsJson = proposals?.length ? JSON.stringify(proposals) : null;
     await runSqlite(
       this.dbPath,
       `UPDATE im_messages SET
         body = ${sqlString(body)},
-        thinking = ${sqlNullOrString(thinking)}
+        thinking = ${sqlNullOrString(thinking)},
+        delegation_proposals_json = ${sqlNullOrString(proposalsJson)}
        WHERE message_id = ${sqlString(messageId)};`
     );
     await runSqlite(
