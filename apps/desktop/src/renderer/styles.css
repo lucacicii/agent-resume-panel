@@ -18210,16 +18210,18 @@ html[data-window-mode="browser"] #react-chrome {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 6px 3px;
+  gap: 5px;
+  padding: 8px 6px;
   margin: 4px 0;
   overflow-y: auto;
+  overflow-x: visible;
   max-height: calc(100% - 60px);
   scrollbar-width: none;
-  background: color-mix(in srgb, var(--color-window-bg) 65%, transparent);
-  border-radius: 12px;
-  backdrop-filter: blur(8px);
+  background: color-mix(in srgb, var(--color-window-bg) 75%, transparent);
+  border-radius: 14px;
+  backdrop-filter: blur(12px);
   border: 1px solid color-mix(in srgb, var(--color-separator) 60%, transparent);
+  box-shadow: 0 4px 16px color-mix(in srgb, #000 10%, transparent);
 }
 .im-timeline-track::-webkit-scrollbar {
   display: none;
@@ -18235,7 +18237,10 @@ html[data-window-mode="browser"] #react-chrome {
   align-items: center;
   justify-content: center;
   color: inherit;
-  transition: transform 0.15s ease;
+  transform: scale(var(--im-dock-scale, 1)) translateX(var(--im-dock-offset-x, 0px));
+  transform-origin: center right;
+  transition: transform 0.18s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.18s ease, filter 0.18s ease;
+  will-change: transform;
 }
 .im-timeline-dot {
   width: 7px;
@@ -18245,7 +18250,7 @@ html[data-window-mode="browser"] #react-chrome {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s ease;
+  transition: all 0.18s cubic-bezier(0.2, 0, 0, 1);
 }
 .im-timeline-node.is-user .im-timeline-dot {
   background: var(--color-accent, #3b82f6);
@@ -18264,10 +18269,12 @@ html[data-window-mode="browser"] #react-chrome {
 }
 .im-timeline-node.is-active .im-timeline-dot {
   box-shadow: 0 0 0 2px var(--color-window-bg), 0 0 0 3.5px var(--color-accent, #3b82f6);
-  transform: scale(1.15);
 }
-.im-timeline-node:hover .im-timeline-dot {
-  transform: scale(1.25);
+.im-timeline-node.is-dock-focused .im-timeline-dot {
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.28));
+}
+.im-timeline-node.is-dock-neighbor-1 .im-timeline-dot {
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.18));
 }
 .im-timeline-popover {
   position: absolute;

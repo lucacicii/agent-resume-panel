@@ -786,11 +786,19 @@ describe("ImPanel", () => {
     const nodes = document.querySelectorAll(".im-timeline-node");
     expect(nodes).toHaveLength(3);
 
-    // Hover to trigger preview popover
+    // Hover to trigger preview popover and macOS dock magnification effect
     fireEvent.mouseEnter(nodes[1]!);
     expect(document.querySelector(".im-timeline-popover")).not.toBeNull();
     expect(document.querySelector(".im-timeline-popover-author")?.textContent).toBe("Product Manager");
     expect(document.querySelector(".im-timeline-popover-snippet")?.textContent).toBe("Second message");
+    expect(nodes[1]?.classList.contains("is-dock-focused")).toBe(true);
+    expect(nodes[0]?.classList.contains("is-dock-neighbor-1")).toBe(true);
+    expect(nodes[2]?.classList.contains("is-dock-neighbor-1")).toBe(true);
+
+    // Mouse leave resets dock focus
+    fireEvent.mouseLeave(document.querySelector(".im-timeline")!);
+    expect(document.querySelector(".im-timeline-popover")).toBeNull();
+    expect(nodes[1]?.classList.contains("is-dock-focused")).toBe(false);
 
     fireEvent.click(nodes[0]!);
     expect(scrollIntoViewMock).toHaveBeenCalled();
