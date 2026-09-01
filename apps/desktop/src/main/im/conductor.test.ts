@@ -1065,7 +1065,7 @@ Implement the search indexing algorithm as designed.
     await store.setMemberAcpChatId(pm.memberId, "chat-busy");
     let running = true;
     const inspect = vi.fn(() => ({ live: true, running }));
-    const prompt = vi.fn(async () => undefined);
+    const prompt = vi.fn(async (_chatId: string, _text: string, _images?: unknown) => undefined);
     const conductor = new ImConductor(
       store,
       () => undefined,
