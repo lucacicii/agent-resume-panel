@@ -5,6 +5,8 @@ import { desktopApi } from "../../bridge";
 import { useI18n } from "../../i18n";
 import { storedWidth } from "../../storage";
 import { WorkbenchFileExplorer } from "../workbench/WorkbenchFileExplorer";
+import { ImCallChainPane } from "./ImCallChainPane";
+import type { ImMember, ImRoom } from "../../../shared/imTypes";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 const SIDE_WIDTH_KEY = "im-project-tools-width";
@@ -13,13 +15,30 @@ function statusError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export function useImProjectTools(rootPath: string | null): {
+export interface UseImProjectToolsOptions {
+  rootPath: string | null;
+  room?: ImRoom | null;
+  allMembers?: ImMember[];
+  onJumpToMessage?: (messageId: string) => void;
+}
+
+export type ImActiveSidePane = "explorer" | "call_chain" | null;
+
+export function useImProjectTools(optionsOrRoot: UseImProjectToolsOptions | string | null): {
   toolbar: ReactNode;
   pane: ReactNode;
+  activePane: ImActiveSidePane;
+  setActivePane: (pane: ImActiveSidePane) => void;
 } {
   const { t } = useI18n();
-  const [explorerOpen, setExplorerOpen] = useState(false);
-  const [sideWidth, setSideWidth] = useState(() => storedWidth(SIDE_WIDTH_KEY, 280, 220, 520));
+  const options: UseImProjectToolsOptions =
+    typeof optionsOrRoot === "string" || optionsOrRoot === null
+      ? { rootPath: optionsOrRoot }
+      : optionsOrRoot;
+
+  const { rootPath, room, allMembers, onJumpToMessage } = options;
+  const [activePane, setActivePane] = useState<ImActiveSidePane>(null);
+  const [sideWidth, setSideWidth] = useState(() => storedWidth(SIDE_WIDTH_KEY, 300, 240, 560));
   const [branchLabel, setBranchLabel] = useState<string | null>(null);
 
   const hasRoot = Boolean(rootPath);
@@ -49,9 +68,11 @@ export function useImProjectTools(rootPath: string | null): {
   }, [rootPath]);
 
   useEffect(() => {
-    setExplorerOpen(false);
+    if (activePane === "explorer" && !rootPath) {
+      setActivePane(null);
+    }
     setBranchLabel(null);
-  }, [rootPath]);
+  }, [activePane, rootPath]);
 
   useEffect(() => {
     if (!rootPath) {
@@ -74,14 +95,26 @@ export function useImProjectTools(rootPath: string | null): {
       <div className="wb-detail-tools">
         <button
           type="button"
-          className={`wb-detail-tool${explorerOpen ? " active" : ""}`}
-          aria-pressed={explorerOpen}
+          className={`wb-detail-tool${activePane === "call_chain" ? " active" : ""}`}
+          aria-pressed={activePane === "call_chain"}
+          title={t("desktop.im.callChain")}
+          aria-label={t("desktop.im.callChain")}
+          onClick={() => {
+            setActivePane((current) => (current === "call_chain" ? null : "call_chain"));
+          }}
+        >
+          <ThemeIcon name="waypoints" size={16} />
+        </button>
+        <button
+          type="button"
+          className={`wb-detail-tool${activePane === "explorer" ? " active" : ""}`}
+          aria-pressed={activePane === "explorer"}
           disabled={toolsDisabled}
           title={toolsDisabled ? disabledTitle : t("desktop.workbench.sidePanelExplorer")}
           aria-label={t("desktop.workbench.sidePanelExplorer")}
           onClick={() => {
             if (toolsDisabled) return;
-            setExplorerOpen((current) => !current);
+            setActivePane((current) => (current === "explorer" ? null : "explorer"));
           }}
         >
           <ThemeIcon name="folder-tree" size={16} />
@@ -90,12 +123,12 @@ export function useImProjectTools(rootPath: string | null): {
     </div>
   );
 
-  const pane = explorerOpen && hasRoot ? (
+  const pane = activePane === "explorer" && hasRoot ? (
     <>
       <ResizeHandle
         label={t("desktop.workbench.resizeSidePanel")}
         onDelta={(delta) => {
-          const next = Math.max(220, Math.min(520, sideWidth - delta));
+          const next = Math.max(240, Math.min(560, sideWidth - delta));
           setSideWidth(next);
           try { localStorage.setItem(SIDE_WIDTH_KEY, String(next)); } catch { /* ignore */ }
         }}
@@ -111,7 +144,27 @@ export function useImProjectTools(rootPath: string | null): {
         </div>
       </aside>
     </>
+  ) : activePane === "call_chain" ? (
+    <>
+      <ResizeHandle
+        label={t("desktop.workbench.resizeSidePanel")}
+        onDelta={(delta) => {
+          const next = Math.max(240, Math.min(560, sideWidth - delta));
+          setSideWidth(next);
+          try { localStorage.setItem(SIDE_WIDTH_KEY, String(next)); } catch { /* ignore */ }
+        }}
+      />
+      <aside className="wb-side-panel im-project-tools-panel im-call-chain-side-panel" style={{ width: sideWidth }}>
+        <ImCallChainPane
+          room={room ?? null}
+          allMembers={allMembers ?? []}
+          onJumpToMessage={(msgId) => onJumpToMessage?.(msgId)}
+          onClose={() => setActivePane(null)}
+          t={t}
+        />
+      </aside>
+    </>
   ) : null;
 
-  return { toolbar, pane };
+  return { toolbar, pane, activePane, setActivePane };
 }

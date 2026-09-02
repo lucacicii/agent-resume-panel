@@ -91,6 +91,46 @@ function extractPathsFromToolCall(call: AcpToolCallInfo): string[] {
   return paths;
 }
 
+export const HANDOFF_QUOTE_BODY_MAX = 4000;
+
+export function stripDispatchBlocks(text: string): string {
+  if (!text) return "";
+  return text
+    .replace(/<im_dispatch\s+target="([^"]+)"(?:\s+reason="([^"]*)")?>([\s\S]*?)<\/im_dispatch>/gi, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+export function toHandoffQuote(message?: ImMessage | null): ImQuotedMessage | undefined {
+  if (!message || message.kind !== "role.say") return undefined;
+  const cleanedBody = stripDispatchBlocks(message.body);
+  if (!cleanedBody.trim()) return undefined;
+
+  let body = cleanedBody.trim();
+  let truncated = false;
+  if (body.length > HANDOFF_QUOTE_BODY_MAX) {
+    body = `${body.slice(0, HANDOFF_QUOTE_BODY_MAX - 1)}…`;
+    truncated = true;
+  }
+
+  return {
+    messageId: message.messageId,
+    authorLabel: message.authorLabel || "Role",
+    body,
+    createdAtMs: message.createdAtMs || Date.now(),
+    truncated
+  };
+}
+
+export function mergeHandoffQuotes(
+  handoffQuote: ImQuotedMessage | undefined,
+  existingQuotes: ImQuotedMessage[] = []
+): ImQuotedMessage[] {
+  if (!handoffQuote) return [...existingQuotes];
+  const filtered = existingQuotes.filter((q) => q.messageId !== handoffQuote.messageId);
+  return [handoffQuote, ...filtered];
+}
+
 export function parseDispatchBlocks(text: string): ImDispatchBlock[] {
   const regex = /<im_dispatch\s+target="([^"]+)"(?:\s+reason="([^"]*)")?>([\s\S]*?)<\/im_dispatch>/gi;
   const blocks: ImDispatchBlock[] = [];
@@ -605,7 +645,7 @@ export class ImConductor {
       }
 
       if (proposals.length > 0 && persistedMessage) {
-        await this.executeAutoDispatches(job, persistedMessage.messageId, proposals);
+        await this.executeAutoDispatches(job, persistedMessage, proposals);
       }
     }
   }
@@ -645,7 +685,7 @@ export class ImConductor {
 
   private async executeAutoDispatches(
     job: ImJob,
-    messageId: string,
+    sourceMessage: ImMessage,
     proposals: ImDelegationProposal[]
   ): Promise<void> {
     const member = await this.store.getMember(job.memberId);
@@ -653,6 +693,8 @@ export class ImConductor {
     const room = await this.store.getRoom(job.projectId);
     const chain = job.brief.dispatchChain ?? [member.templateId];
     const MAX_CHAIN_DEPTH = 5;
+    const handoffQuote = toHandoffQuote(sourceMessage);
+    const quotes = mergeHandoffQuotes(handoffQuote, job.brief.quotes);
 
     for (const proposal of proposals) {
       if (proposal.status !== "auto_dispatched") continue;
@@ -671,7 +713,7 @@ export class ImConductor {
         persona: targetPersona,
         instruction: proposal.instruction,
         cwd,
-        quotes: job.brief.quotes,
+        quotes,
         knowledge: job.brief.knowledge,
         dispatchChain: [...chain, targetMember.templateId]
       };
@@ -685,7 +727,7 @@ export class ImConductor {
       });
       proposal.dispatchedJobId = nextJob.jobId;
       proposal.resolvedAtMs = Date.now();
-      await this.store.updateMessageProposal(messageId, proposal.id, {
+      await this.store.updateMessageProposal(sourceMessage.messageId, proposal.id, {
         dispatchedJobId: nextJob.jobId,
         resolvedAtMs: proposal.resolvedAtMs
       });
@@ -722,11 +764,14 @@ export class ImConductor {
     const panelHome = effectivePanelHome(settings);
     const cwd = await this.store.ensureProjectLocalPath(input.projectId, panelHome);
 
+    const handoffQuote = toHandoffQuote(message);
+    const quotes = mergeHandoffQuotes(handoffQuote, message.quotes);
+
     const targetBrief: ImJobBrief = {
       persona: targetPersona,
       instruction: proposal.instruction,
       cwd,
-      quotes: message.quotes,
+      quotes,
       knowledge: this.store.snapshotKnowledge(room.knowledge),
       dispatchChain: [proposal.targetTemplateId]
     };

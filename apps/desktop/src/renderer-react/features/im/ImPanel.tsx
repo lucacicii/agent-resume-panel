@@ -214,7 +214,6 @@ export function ImPanel(): ReactPortal | null {
   const projectRoot = room?.project.localPath && !isScratchPath(room.project.localPath)
     ? room.project.localPath
     : null;
-  const projectTools = useImProjectTools(projectRoot);
 
   const setError = useCallback((error: unknown) => {
     notifyDesktop({
@@ -417,6 +416,13 @@ export function ImPanel(): ReactPortal | null {
       setFlashingMessageId((current) => (current === messageId ? null : current));
     }, 1500);
   }, [messageIndexById]);
+
+  const projectTools = useImProjectTools({
+    rootPath: projectRoot,
+    room,
+    allMembers,
+    onJumpToMessage: jumpToMessage
+  });
 
   const onTranscriptScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
     const node = event.currentTarget;

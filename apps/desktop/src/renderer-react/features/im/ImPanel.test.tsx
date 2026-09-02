@@ -66,6 +66,9 @@ const messages = {
   "desktop.im.agent.codex": "Codex",
   "desktop.im.currentJob": "Current job",
   "desktop.im.stopAnswer": "Stop",
+  "desktop.im.callChain": "Invocation Chain",
+  "desktop.im.callChainEmpty": "No call chains yet",
+  "desktop.im.callChainEmptyHint": "When tasks are assigned to roles, the chain will appear here.",
   "desktop.im.thinking": "Thinking process",
   "desktop.im.filesModified": "Modified {0} files",
   "desktop.im.fileModifiedSingle": "Modified 1 file",
@@ -1718,5 +1721,25 @@ Build the user service endpoints.
     const rows = document.querySelectorAll(".im-transcript [data-virtual-key]");
     expect(rows[rows.length - 1]?.textContent).toContain("Latest message");
     expect(latest.closest("[data-virtual-key]")?.getAttribute("data-virtual-key")).toBe("msg-latest");
+  });
+
+  it("toggles call chain side panel when clicking the invocation chain action button", async () => {
+    renderIm();
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+
+    const chainBtn = await screen.findByRole("button", { name: "Invocation Chain" });
+    expect(chainBtn).toBeTruthy();
+    expect(document.querySelector(".im-call-chain-side-panel")).toBeNull();
+
+    // Open call chain side panel
+    fireEvent.click(chainBtn);
+    expect(document.querySelector(".im-call-chain-side-panel")).not.toBeNull();
+    expect(screen.getByText("No call chains yet")).toBeTruthy();
+
+    // Toggle close
+    fireEvent.click(chainBtn);
+    expect(document.querySelector(".im-call-chain-side-panel")).toBeNull();
   });
 });

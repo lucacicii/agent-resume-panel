@@ -56,7 +56,15 @@ vi.mock("@agent-resume/core", async () => {
 
 import { desktopDbPath, ensureDesktopDbSchema } from "@agent-resume/core";
 import { createAcpRecord } from "../acp/store";
-import { ImConductor, parseDispatchBlocks, resolveDispatchTarget } from "./conductor";
+import {
+  HANDOFF_QUOTE_BODY_MAX,
+  ImConductor,
+  mergeHandoffQuotes,
+  parseDispatchBlocks,
+  resolveDispatchTarget,
+  stripDispatchBlocks,
+  toHandoffQuote
+} from "./conductor";
 import { ImStore } from "./store";
 
 const homes: string[] = [];
@@ -642,6 +650,130 @@ Setup Docker compose for postgres.
     expect(blocks[1]?.instruction).toBe("Setup Docker compose for postgres.");
   });
 
+  it("strips dispatch blocks cleanly from message text", () => {
+    const text = `Here is my architecture plan:
+1. Setup DB
+2. Build UI
+
+<im_dispatch target="role_developer" reason="Need backend CRUD implementation">
+Please implement the user model and DB migration.
+</im_dispatch>
+
+Additional notes after dispatch.`;
+
+    const stripped = stripDispatchBlocks(text);
+    expect(stripped).toBe(`Here is my architecture plan:
+1. Setup DB
+2. Build UI
+
+Additional notes after dispatch.`);
+    expect(stripped).not.toContain("<im_dispatch");
+    expect(stripped).not.toContain("Please implement the user model");
+  });
+
+  it("converts role.say message to handoff quote, stripping dispatch and truncating if needed", () => {
+    const quote = toHandoffQuote({
+      messageId: "msg-123",
+      projectId: "proj-1",
+      kind: "role.say",
+      authorMemberId: "mem-1",
+      authorLabel: "Architect",
+      body: `System design v1.
+<im_dispatch target="role_developer">
+Do dev
+</im_dispatch>`,
+      quoteIds: [],
+      quotes: [],
+      mentionRoleIds: [],
+      jobId: "job-1",
+      createdAtMs: 1000
+    });
+
+    expect(quote).toEqual({
+      messageId: "msg-123",
+      authorLabel: "Architect",
+      body: "System design v1.",
+      createdAtMs: 1000,
+      truncated: false
+    });
+
+    // Ignores non role.say
+    expect(toHandoffQuote({
+      messageId: "msg-human",
+      projectId: "p1",
+      kind: "human",
+      authorMemberId: null,
+      authorLabel: "You",
+      body: "hello",
+      quoteIds: [],
+      quotes: [],
+      mentionRoleIds: [],
+      jobId: null,
+      createdAtMs: 1000
+    })).toBeUndefined();
+
+    // Ignores message where body is solely dispatch tags
+    expect(toHandoffQuote({
+      messageId: "msg-empty",
+      projectId: "p1",
+      kind: "role.say",
+      authorMemberId: "m1",
+      authorLabel: "Architect",
+      body: `<im_dispatch target="role_developer">Do dev</im_dispatch>`,
+      quoteIds: [],
+      quotes: [],
+      mentionRoleIds: [],
+      jobId: "j1",
+      createdAtMs: 1000
+    })).toBeUndefined();
+
+    // Truncates long body
+    const longText = "A".repeat(HANDOFF_QUOTE_BODY_MAX + 500);
+    const truncatedQuote = toHandoffQuote({
+      messageId: "msg-long",
+      projectId: "p1",
+      kind: "role.say",
+      authorMemberId: "m1",
+      authorLabel: "Architect",
+      body: longText,
+      quoteIds: [],
+      quotes: [],
+      mentionRoleIds: [],
+      jobId: "j1",
+      createdAtMs: 1000
+    });
+    expect(truncatedQuote?.truncated).toBe(true);
+    expect(truncatedQuote?.body.length).toBe(HANDOFF_QUOTE_BODY_MAX);
+    expect(truncatedQuote?.body.endsWith("…")).toBe(true);
+  });
+
+  it("merges handoff quote with existing user quotes, prepending handoff and deduplicating", () => {
+    const handoff = {
+      messageId: "msg-handoff",
+      authorLabel: "Architect",
+      body: "Architect conclusion",
+      createdAtMs: 2000,
+      truncated: false
+    };
+    const userQuote = {
+      messageId: "msg-user",
+      authorLabel: "You",
+      body: "Initial goal",
+      createdAtMs: 1000,
+      truncated: false
+    };
+
+    const merged = mergeHandoffQuotes(handoff, [userQuote]);
+    expect(merged).toEqual([handoff, userQuote]);
+
+    // Deduplication by messageId
+    const deduped = mergeHandoffQuotes(handoff, [userQuote, handoff]);
+    expect(deduped).toEqual([handoff, userQuote]);
+
+    // Undefined handoff keeps existing quotes intact
+    expect(mergeHandoffQuotes(undefined, [userQuote])).toEqual([userQuote]);
+  });
+
   it("resolves dispatch target with exact ID, case-insensitive name, and alias with security check", () => {
     const members = [
       {
@@ -737,6 +869,11 @@ Implement the search indexing algorithm as designed.
     expect(devJob).toBeTruthy();
     expect(devJob?.brief.instruction).toBe("Implement the search indexing algorithm as designed.");
     expect(devJob?.brief.dispatchChain).toEqual(["role_architect", "role_developer"]);
+    expect(devJob?.brief.quotes).toHaveLength(1);
+    expect(devJob?.brief.quotes[0]?.authorLabel).toBe("Architect");
+    expect(devJob?.brief.quotes[0]?.body).toBe("Design is complete.");
+    expect(devJob?.brief.quotes[0]?.body).not.toContain("<im_dispatch");
+    expect(devJob?.brief.quotes[0]?.truncated).toBe(false);
 
     const archMsg = (await store.listMessages(project.projectId)).find((m) => m.jobId === job.jobId);
     expect(archMsg?.delegationProposals).toHaveLength(1);
@@ -792,6 +929,9 @@ Implement the search indexing algorithm as designed.
     expect(job).toBeTruthy();
     expect(job.memberId).toBe(developer.memberId);
     expect(job.brief.instruction).toBe("Write the backend service.");
+    expect(job.brief.quotes).toHaveLength(1);
+    expect(job.brief.quotes[0]?.authorLabel).toBe("Architect");
+    expect(job.brief.quotes[0]?.body).toBe("Design finished.");
     expect(afterDispatch.delegationProposals?.find((p) => p.id === "prop-1")?.status).toBe("dispatched");
 
     // Dismiss proposal 2
@@ -1162,10 +1302,13 @@ Implement the search indexing algorithm as designed.
     await conductor.handleAcpStream({
       type: "assistantDone",
       chatId: "chat-multiturn-test",
+      streaming: false,
       message: {
         id: "turn-1",
+        role: "assistant",
         text: "The",
-        toolCalls: [{ id: "tool-1", title: "note_create", kind: "create" }]
+        timestamp: Date.now(),
+        toolCalls: [{ toolCallId: "tool-1", title: "note_create", kind: "create", status: "completed" }]
       }
     });
 
@@ -1182,9 +1325,12 @@ Implement the search indexing algorithm as designed.
     await conductor.handleAcpStream({
       type: "assistantDone",
       chatId: "chat-multiturn-test",
+      streaming: false,
       message: {
         id: "turn-2",
+        role: "assistant",
         text: "The user wants me to output the conclusion to a note. Created note successfully.",
+        timestamp: Date.now(),
         toolCalls: []
       }
     });
