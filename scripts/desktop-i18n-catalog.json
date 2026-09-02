@@ -30,7 +30,6 @@
       "desktop.common.next": "Next",
       "desktop.common.closeFind": "Close find",
       "desktop.common.send": "Send",
-      "desktop.common.resend": "Resend",
       "desktop.common.today": "Today",
       "desktop.common.year": "Year",
       "desktop.common.month": "Month",
@@ -194,7 +193,9 @@
       "desktop.im.resetDefault": "Reset to default",
       "desktop.im.fetchModels": "Fetch models",
       "desktop.im.customBadge": "Custom",
-      "desktop.im.customModelOption": "Custom model ID…"
+      "desktop.im.customModelOption": "Custom model ID…",
+      "desktop.im.selectAll": "Select all",
+      "desktop.im.deselectAll": "Deselect all"
     },
     "top": {
       "desktop.top.sessionsRef": "Sessions",
@@ -916,7 +917,6 @@
       "desktop.common.next": "下一个",
       "desktop.common.closeFind": "关闭查找",
       "desktop.common.send": "发送",
-      "desktop.common.resend": "重新发送",
       "desktop.common.today": "今天",
       "desktop.common.year": "年",
       "desktop.common.month": "月",
@@ -1764,7 +1764,9 @@
       "desktop.im.customBadge": "自定义",
       "desktop.im.customModelOption": "自定义模型 ID…",
       "desktop.im.revealInWorkbench": "在 Workbench 中打开",
-      "desktop.im.noGitDiffFallback": "没有可显示的 git diff，已打开当前文件。"
+      "desktop.im.noGitDiffFallback": "没有可显示的 git diff，已打开当前文件。",
+      "desktop.im.selectAll": "全选",
+      "desktop.im.deselectAll": "取消全选"
     }
   },
   "ja": {
@@ -1974,7 +1976,9 @@
       "desktop.im.resetDefault": "デフォルトに戻す",
       "desktop.im.fetchModels": "モデルを取得",
       "desktop.im.customBadge": "カスタム",
-      "desktop.im.customModelOption": "カスタムモデルID…"
+      "desktop.im.customModelOption": "カスタムモデルID…",
+      "desktop.im.selectAll": "すべて選択",
+      "desktop.im.deselectAll": "選択を解除"
     },
     "usage": {},
     "backfill": {},

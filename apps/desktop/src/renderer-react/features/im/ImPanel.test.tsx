@@ -37,6 +37,8 @@ const messages = {
   "desktop.im.fetchModels": "Fetch models",
   "desktop.im.customBadge": "Custom",
   "desktop.im.customModelOption": "Custom model ID…",
+  "desktop.im.selectAll": "Select all",
+  "desktop.im.deselectAll": "Deselect all",
   "desktop.workbench.autoRename": "Auto rename",
   "desktop.common.resend": "Resend",
   "desktop.common.revealInFinder": "Reveal in Finder",
@@ -402,13 +404,22 @@ describe("ImPanel", () => {
     await act(async () => {
       window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
     });
+    const avatar = await waitFor(() => {
+      const node = document.querySelector(".im-room-head-info .im-chat-avatar") as HTMLElement | null;
+      expect(node).not.toBeNull();
+      return node!;
+    });
+    fireEvent.click(avatar);
     expect(await screen.findByText("Product Manager")).toBeTruthy();
     expect(screen.getByText("Architect")).toBeTruthy();
     expect(screen.getByText("Project Manager")).toBeTruthy();
     expect(screen.getByText("UI Designer")).toBeTruthy();
     expect(screen.getByText("Developer")).toBeTruthy();
     expect(screen.getByText("Tester")).toBeTruthy();
-    expect(screen.getAllByRole("checkbox")).toHaveLength(6);
+    // 6 role checkboxes + 1 select-all checkbox in drawer
+    expect(screen.getAllByRole("checkbox")).toHaveLength(7);
+    expect(screen.getByLabelText("Deselect all")).toBeTruthy();
+    expect(screen.getByText("6/6")).toBeTruthy();
   });
 
   it("keeps multiple mention chips after picking two roles", async () => {
@@ -994,17 +1005,25 @@ describe("ImPanel", () => {
       window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
     });
 
-    await waitFor(() => expect(document.querySelector(".im-members")).not.toBeNull());
-    const toggleBtn = screen.getByRole("button", { name: "Roles & Background" });
-    expect(toggleBtn).not.toBeNull();
-
-    // Click to hide right sidebar
-    fireEvent.click(toggleBtn);
     expect(document.querySelector(".im-members")).toBeNull();
+    const avatar = await waitFor(() => {
+      const node = document.querySelector(".im-room-head-info .im-chat-avatar") as HTMLElement | null;
+      expect(node).not.toBeNull();
+      return node!;
+    });
+    fireEvent.click(avatar);
+    await waitFor(() => expect(document.querySelector(".im-members")).not.toBeNull());
+    expect(document.querySelector(".sheet-panel")).not.toBeNull();
 
-    // Click to show right sidebar again
-    fireEvent.click(toggleBtn);
-    expect(document.querySelector(".im-members")).not.toBeNull();
+    // Close drawer via close button
+    const closeBtn = document.querySelector(".sheet-panel .icon-btn") as HTMLElement | null;
+    expect(closeBtn).not.toBeNull();
+    fireEvent.click(closeBtn!);
+    await waitFor(() => expect(document.querySelector(".im-members")).toBeNull());
+
+    // Re-open via avatar again
+    fireEvent.click(avatar);
+    await waitFor(() => expect(document.querySelector(".im-members")).not.toBeNull());
   });
 
   it("opens a chat context menu with rename, auto rename, and associate folder actions", async () => {
@@ -1052,6 +1071,12 @@ describe("ImPanel", () => {
       window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
     });
 
+    const avatar2 = await waitFor(() => {
+      const node = document.querySelector(".im-room-head-info .im-chat-avatar") as HTMLElement | null;
+      expect(node).not.toBeNull();
+      return node!;
+    });
+    fireEvent.click(avatar2);
     await waitFor(() => expect(document.querySelector(".im-members")).not.toBeNull());
     const configButtons = screen.getAllByRole("button", { name: "Configure role" });
     expect(configButtons.length).toBeGreaterThan(0);

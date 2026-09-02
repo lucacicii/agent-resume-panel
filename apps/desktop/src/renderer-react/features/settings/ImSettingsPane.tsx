@@ -387,25 +387,25 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
             <fieldset className="im-settings-tools">
               <legend>{t("desktop.settings.imTools")}</legend>
               <p className="settings-footnote">{t("desktop.settings.imToolReadAlways")}</p>
-              <label>
+              <label className="im-settings-checkbox-item">
                 <input type="checkbox" checked={tools.fsWrite} onChange={(event) => setTools({ ...tools, fsRead: true, fsWrite: event.target.checked })} />
-                {t("desktop.settings.imToolWrite")}
+                <span>{t("desktop.settings.imToolWrite")}</span>
               </label>
-              <label className={tools.execute ? "im-tool-danger" : ""}>
+              <label className={`im-settings-checkbox-item${tools.execute ? " im-tool-danger" : ""}`}>
                 <input type="checkbox" checked={tools.execute} onChange={(event) => setTools({ ...tools, fsRead: true, execute: event.target.checked })} />
-                {t("desktop.settings.imToolExecute")}
+                <span>{t("desktop.settings.imToolExecute")}</span>
               </label>
               {tools.execute ? <p className="settings-footnote im-tool-danger-hint">{t("desktop.settings.imExecuteWarning")}</p> : null}
             </fieldset>
             <fieldset className="im-settings-tools im-settings-delegation-fieldset">
               <legend>{t("desktop.settings.imDelegation")}</legend>
-              <label>
+              <label className="im-settings-checkbox-item">
                 <input
                   type="checkbox"
                   checked={autoDispatch}
                   onChange={(event) => setAutoDispatch(event.target.checked)}
                 />
-                {t("desktop.settings.imAutoDispatch")}
+                <span>{t("desktop.settings.imAutoDispatch")}</span>
               </label>
               <div className="im-settings-delegation-section">
                 <span className="settings-field-label">{t("desktop.settings.imOutgoingCallees")}</span>

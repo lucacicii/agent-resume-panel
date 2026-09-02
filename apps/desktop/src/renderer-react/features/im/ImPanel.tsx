@@ -11,6 +11,7 @@ import { createPortal } from "react-dom";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type JSX, type MouseEvent as ReactMouseEvent, type ReactPortal, type UIEvent } from "react";
 import type { AgentCitation, AgentToolDescriptor } from "@agent-resume/core";
 import { type AskToolPrefs } from "../../components/ToolSettingsPopover";
+import { Sheet } from "../../components/Sheet";
 import { CitationSheet, extractCitationsFromMessage, isNote, isSession, periodFromCitation } from "./CitationSheet";
 import { desktopApi } from "../../bridge";
 import { notifyDesktop } from "../../components/Notifications";
@@ -54,7 +55,6 @@ import {
 const SIDEBAR_COLLAPSED_KEY = "im-sidebar-collapsed";
 const SIDEBAR_WIDTH_KEY = "im-sidebar-width";
 const SELECTED_PROJECT_KEY = "im-selected-project";
-const RIGHT_SIDEBAR_OPEN_KEY = "im-right-sidebar-open";
 const IM_PROJECT_TOOLS_KEY_PREFIX = "im-project-tools:";
 
 function imProjectToolsKey(projectId: string): string {
@@ -138,8 +138,10 @@ export function ImPanel(): ReactPortal | null {
   const [translatingIds, setTranslatingIds] = useState<Set<string>>(() => new Set());
   const [templates, setTemplates] = useState<ImRoleTemplate[]>([]);
   const [sidebarTab, setSidebarTab] = useState<"members" | "knowledge">("members");
-  const [rightSidebarOpen, setRightSidebarOpen] = useState(() => storageBoolean(RIGHT_SIDEBAR_OPEN_KEY, true));
+  const [membersDrawerOpen, setMembersDrawerOpen] = useState(false);
   const [expandedMemberId, setExpandedMemberId] = useState<string | null>(null);
+  const [popoverAnchorRect, setPopoverAnchorRect] = useState<DOMRect | null>(null);
+  const [isTogglingAll, setIsTogglingAll] = useState(false);
   const [customMemberModelId, setCustomMemberModelId] = useState<string | null>(null);
   const [customMemberThoughtId, setCustomMemberThoughtId] = useState<string | null>(null);
   const [agentModelsMap, setAgentModelsMap] = useState<Record<string, ImAgentModelOption[]>>({});
@@ -900,6 +902,84 @@ export function ImPanel(): ReactPortal | null {
     }
   }, [expandedMemberId, room?.members, selectedProjectId, setError]);
 
+  const allMemberChecked = useMemo(() => {
+    if (!templates.length) return false;
+    return templates.every((tpl) => members.some((m) => m.templateId === tpl.templateId));
+  }, [templates, members]);
+  const someMemberChecked = useMemo(() => {
+    if (!templates.length) return false;
+    return templates.some((tpl) => members.some((m) => m.templateId === tpl.templateId));
+  }, [templates, members]);
+
+  const toggleAllMembers = useCallback(async (nextChecked: boolean) => {
+    if (!selectedProjectId || isTogglingAll) return;
+    setIsTogglingAll(true);
+    try {
+      if (nextChecked) {
+        const toEnable = templates.filter((tpl) => !members.some((m) => m.templateId === tpl.templateId));
+        for (const tpl of toEnable) {
+          await desktopApi().imAddMember({ projectId: selectedProjectId, templateId: tpl.templateId }).then((member) => {
+            setRoom((cur) => cur && !cur.members.some((it) => it.memberId === member.memberId) ? { ...cur, members: [...cur.members, member] } : cur);
+            setProjects((cur) => cur.map((p) => p.projectId === selectedProjectId ? { ...p, roles: [...(p.roles ?? []).filter((r) => r.templateId !== tpl.templateId), { templateId: member.templateId, name: member.name }] } : p));
+          });
+        }
+      } else {
+        const toDisable = [...members];
+        for (const m of toDisable) {
+          const tpl = templates.find((t) => t.templateId === m.templateId);
+          if (!tpl) continue;
+          await desktopApi().imRemoveMember({ memberId: m.memberId }).then(() => {
+            setRoom((cur) => cur ? { ...cur, members: cur.members.filter((it) => it.memberId !== m.memberId) } : cur);
+            setProjects((cur) => cur.map((p) => p.projectId === selectedProjectId ? { ...p, roles: (p.roles ?? []).filter((r) => r.templateId !== tpl.templateId) } : p));
+            setMentionIds((cur) => cur.filter((id) => id !== m.memberId));
+            if (expandedMemberId === m.memberId) {
+              setExpandedMemberId(null);
+              setPopoverAnchorRect(null);
+            }
+          });
+        }
+      }
+    } catch (error) {
+      setError(error);
+    } finally {
+      setIsTogglingAll(false);
+    }
+  }, [selectedProjectId, isTogglingAll, templates, members, expandedMemberId, setError]);
+
+  useEffect(() => {
+    if (!expandedMemberId) {
+      setPopoverAnchorRect(null);
+      return;
+    }
+    const onPointer = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest(".im-member-config-popover") || target.closest(".im-member-config-btn")) return;
+      setExpandedMemberId(null);
+      setPopoverAnchorRect(null);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setExpandedMemberId(null);
+        setPopoverAnchorRect(null);
+      }
+    };
+    const onScrollOrResize = () => {
+      setExpandedMemberId(null);
+      setPopoverAnchorRect(null);
+    };
+    window.addEventListener("pointerdown", onPointer, true);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("resize", onScrollOrResize);
+    window.addEventListener("scroll", onScrollOrResize, true);
+    return () => {
+      window.removeEventListener("pointerdown", onPointer, true);
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", onScrollOrResize);
+      window.removeEventListener("scroll", onScrollOrResize, true);
+    };
+  }, [expandedMemberId]);
+
   const fetchModelsForAgent = useCallback(async (targetAgent: ImAgent) => {
     if (agentModelsMap[targetAgent]?.length) return agentModelsMap[targetAgent];
     try {
@@ -1196,6 +1276,7 @@ export function ImPanel(): ReactPortal | null {
                   <ImChatAvatar
                     roles={members.map((m) => ({ templateId: m.templateId, name: memberLabel(m) }))}
                     size={34}
+                    onClick={() => setMembersDrawerOpen(true)}
                   />
                   <div className="im-room-head-titles">
                     <h2>{room.project.name}</h2>
@@ -1215,22 +1296,6 @@ export function ImPanel(): ReactPortal | null {
                 </div>
                 <div className="im-room-head-actions">
                   {projectTools.toolbar}
-                  <button
-                    type="button"
-                    className={`tool-btn ghost-btn${rightSidebarOpen ? " active" : ""}`}
-                    onClick={() => {
-                      setRightSidebarOpen((open) => {
-                        const next = !open;
-                        try { localStorage.setItem(RIGHT_SIDEBAR_OPEN_KEY, next ? "1" : "0"); } catch { /* ignore */ }
-                        return next;
-                      });
-                    }}
-                    title={t("desktop.im.toggleDetails")}
-                    aria-label={t("desktop.im.toggleDetails")}
-                    aria-pressed={rightSidebarOpen}
-                  >
-                    <ThemeIcon name="settings" size={14} aria-hidden="true" />
-                  </button>
                 </div>
               </div>
               <div className="im-transcript-wrap">
@@ -1452,8 +1517,9 @@ export function ImPanel(): ReactPortal | null {
           )}
         </div>
         {projectTools.pane}
-        {rightSidebarOpen && (
-          <aside className="im-members" aria-label={t("desktop.im.members")}>
+      </div>
+      <Sheet open={membersDrawerOpen} title={t("desktop.im.members")} onClose={() => setMembersDrawerOpen(false)} bodyClassName="im-members-drawer">
+        <div className="im-members" aria-label={t("desktop.im.members")}>
             <div className="im-sidebar-tabs" role="tablist" aria-label={t("desktop.im.members")}>
               <button
                 type="button"
@@ -1515,7 +1581,25 @@ export function ImPanel(): ReactPortal | null {
                 </form>
               </div>
             ) : (
-              templates.length ? templates.map((template) => {
+              <>
+                <div className="im-members-select-all">
+                  <label className="im-members-select-all-label">
+                    <input
+                      type="checkbox"
+                      checked={allMemberChecked}
+                      ref={(el) => {
+                        if (el) el.indeterminate = !allMemberChecked && someMemberChecked;
+                      }}
+                      disabled={!selectedProjectId || !templates.length || isTogglingAll}
+                      onChange={(event) => void toggleAllMembers(event.target.checked)}
+                      aria-label={allMemberChecked ? t("desktop.im.deselectAll") : t("desktop.im.selectAll")}
+                    />
+                    <span>{allMemberChecked ? t("desktop.im.deselectAll") : t("desktop.im.selectAll")}</span>
+                  </label>
+                  <span className="im-members-select-all-count">{members.length}/{templates.length}</span>
+                </div>
+                <div className="im-members-list">
+                  {templates.length ? templates.map((template) => {
                 const enabledMember = members.find((item) => item.templateId === template.templateId);
                 const label = enabledMember
                   ? memberLabel(enabledMember)
@@ -1566,8 +1650,13 @@ export function ImPanel(): ReactPortal | null {
                           <button
                             type="button"
                             className={`tool-btn ghost-btn im-member-config-btn${isExpanded ? " active" : ""}`}
-                            onClick={() => {
+                            onClick={(event) => {
                               const next = isExpanded ? null : enabledMember.memberId;
+                              if (next && event.currentTarget instanceof HTMLElement) {
+                                setPopoverAnchorRect(event.currentTarget.getBoundingClientRect());
+                              } else if (!next) {
+                                setPopoverAnchorRect(null);
+                              }
                               setExpandedMemberId(next);
                               if (next) void fetchModelsForAgent(enabledMember.agent);
                             }}
@@ -1583,126 +1672,113 @@ export function ImPanel(): ReactPortal | null {
                     <div className="im-member-tag-line">
                       {agentTag(effectiveAgent, effectiveModel, t)}
                     </div>
-                    {isExpanded && enabledMember ? (
-                      (() => {
-                        const memberModels = agentModelsMap[enabledMember.agent] ?? IM_AGENT_SUGGESTED_MODELS[enabledMember.agent] ?? [];
-                        const isCustomMemberModel = Boolean(enabledMember.model && !memberModels.some((m) => m.id === enabledMember.model));
-                        const isCustomMemberThought = Boolean(enabledMember.thoughtLevel && !isSuggestedThoughtLevel(enabledMember.thoughtLevel));
-                        const memberModelGroups: Record<string, ImAgentModelOption[]> = {};
-                        for (const m of memberModels) {
-                          if (!m.id) continue;
-                          const p = m.provider || "Suggested";
-                          if (!memberModelGroups[p]) memberModelGroups[p] = [];
-                          memberModelGroups[p].push(m);
-                        }
-
-                        return (
-                          <div className="im-member-config">
-                            <label>
-                              <span>{t("desktop.im.roleAgent")}</span>
-                              <select
-                                value={enabledMember.agent}
-                                onChange={(event) => void onMemberAgentChange(enabledMember, event.target.value as ImAgent)}
-                              >
-                                {IM_AGENTS.map((agentKey) => (
-                                  <option key={agentKey} value={agentKey}>
-                                    {t(`desktop.im.agent.${agentKey}`)}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                            <label>
-                              <span>{t("desktop.im.roleModel")}</span>
-                              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                                <select
-                                  value={customMemberModelId === enabledMember.memberId || isCustomMemberModel ? "__custom__" : (enabledMember.model ?? "")}
-                                  onChange={(event) => {
-                                    const val = event.target.value;
-                                    if (val === "__custom__") {
-                                      setCustomMemberModelId(enabledMember.memberId);
-                                    } else {
-                                      setCustomMemberModelId(null);
-                                      void onMemberModelChange(enabledMember, val);
-                                    }
-                                  }}
-                                >
-                                  <option value="">{t("desktop.im.defaultModel")}</option>
-                                  {Object.entries(memberModelGroups).map(([groupName, items]) => (
-                                    <optgroup key={groupName} label={groupName}>
-                                      {items.map((item) => (
-                                        <option key={item.id} value={item.id}>
-                                          {item.label}
-                                        </option>
-                                      ))}
-                                    </optgroup>
-                                  ))}
-                                  <option value="__custom__">{t("desktop.im.customModelOption")}</option>
-                                </select>
-                                {(customMemberModelId === enabledMember.memberId || isCustomMemberModel) && (
-                                  <input
-                                    value={enabledMember.model ?? ""}
-                                    placeholder="Enter model ID…"
-                                    onChange={(event) => void onMemberModelChange(enabledMember, event.target.value)}
-                                    autoFocus
-                                  />
-                                )}
-                              </div>
-                            </label>
-                            <label>
-                              <span>{t("desktop.im.roleThoughtLevel")}</span>
-                              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                                <select
-                                  value={customMemberThoughtId === enabledMember.memberId || isCustomMemberThought ? "__custom__" : (enabledMember.thoughtLevel ?? "")}
-                                  onChange={(event) => {
-                                    const val = event.target.value;
-                                    if (val === "__custom__") {
-                                      setCustomMemberThoughtId(enabledMember.memberId);
-                                    } else {
-                                      setCustomMemberThoughtId(null);
-                                      void onMemberThoughtLevelChange(enabledMember, val);
-                                    }
-                                  }}
-                                >
-                                  <option value="">{t("desktop.im.defaultThoughtLevel")}</option>
-                                  {IM_SUGGESTED_THOUGHT_LEVELS.map((level) => (
-                                    <option key={level} value={level}>
-                                      {t(`desktop.im.thoughtLevel.${level}`)}
-                                    </option>
-                                  ))}
-                                  <option value="__custom__">{t("desktop.im.customThoughtLevelOption")}</option>
-                                </select>
-                                {(customMemberThoughtId === enabledMember.memberId || isCustomMemberThought) && (
-                                  <input
-                                    value={enabledMember.thoughtLevel ?? ""}
-                                    placeholder={t("desktop.settings.imThoughtLevelPlaceholder")}
-                                    onChange={(event) => void onMemberThoughtLevelChange(enabledMember, event.target.value)}
-                                    autoFocus
-                                  />
-                                )}
-                              </div>
-                            </label>
-                            {isCustomized ? (
-                              <div className="im-member-config-footer">
-                                <button
-                                  type="button"
-                                  className="tool-btn ghost-btn"
-                                  onClick={() => void onMemberResetOverrides(enabledMember)}
-                                >
-                                  {t("desktop.im.resetDefault")}
-                                </button>
-                              </div>
-                            ) : null}
-                          </div>
-                        );
-                      })()
-                    ) : null}
                   </div>
                 );
-              }) : <p className="im-empty">{t("desktop.im.noMembers")}</p>
+                  }) : <p className="im-empty">{t("desktop.im.noMembers")}</p>}
+                </div>
+                {expandedMemberId && popoverAnchorRect && (() => {
+                  const member = members.find((m) => m.memberId === expandedMemberId);
+                  if (!member) return null;
+                  const template = templates.find((t) => t.templateId === member.templateId);
+                  const memberModels = agentModelsMap[member.agent] ?? IM_AGENT_SUGGESTED_MODELS[member.agent] ?? [];
+                  const isCustomMemberModel = Boolean(member.model && !memberModels.some((m) => m.id === member.model));
+                  const isCustomMemberThought = Boolean(member.thoughtLevel && !isSuggestedThoughtLevel(member.thoughtLevel));
+                  const memberModelGroups: Record<string, ImAgentModelOption[]> = {};
+                  for (const m of memberModels) {
+                    if (!m.id) continue;
+                    const p = m.provider || "Suggested";
+                    if (!memberModelGroups[p]) memberModelGroups[p] = [];
+                    memberModelGroups[p].push(m);
+                  }
+                  const isCustomized = Boolean(
+                    template && (
+                      member.agent !== template.agent ||
+                      (member.model || "") !== (template.model || "") ||
+                      (member.thoughtLevel || "") !== (template.thoughtLevel || "")
+                    )
+                  );
+                  const popoverStyle: CSSProperties = {
+                    position: "fixed",
+                    left: Math.min(popoverAnchorRect.right + 8, window.innerWidth - 344),
+                    top: Math.max(8, Math.min(popoverAnchorRect.top, window.innerHeight - 360)),
+                    width: 320,
+                    zIndex: 70,
+                  };
+                  // Keep popover inside viewport horizontally
+                  if (popoverStyle.left !== undefined && typeof popoverStyle.left === "number" && popoverStyle.left < 8) popoverStyle.left = 8;
+                  return createPortal(
+                    <div className="im-member-config-popover" role="dialog" aria-label={t("desktop.im.configRole")} style={popoverStyle}>
+                      <div className="im-member-config-popover-head">
+                        <strong>{memberLabel(member)}</strong>
+                        <button type="button" className="icon-btn" aria-label={t("desktop.common.close")} onClick={() => { setExpandedMemberId(null); setPopoverAnchorRect(null); }}>
+                          <ThemeIcon name="close" size={12} aria-hidden="true" />
+                        </button>
+                      </div>
+                      <div className="im-member-config">
+                        <label>
+                          <span>{t("desktop.im.roleAgent")}</span>
+                          <select value={member.agent} onChange={(event) => void onMemberAgentChange(member, event.target.value as ImAgent)}>
+                            {IM_AGENTS.map((agentKey) => (
+                              <option key={agentKey} value={agentKey}>
+                                {t(`desktop.im.agent.${agentKey}`)}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label>
+                          <span>{t("desktop.im.roleModel")}</span>
+                          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                            <select value={customMemberModelId === member.memberId || isCustomMemberModel ? "__custom__" : (member.model ?? "")} onChange={(event) => { const val = event.target.value; if (val === "__custom__") { setCustomMemberModelId(member.memberId); } else { setCustomMemberModelId(null); void onMemberModelChange(member, val); } }}>
+                              <option value="">{t("desktop.im.defaultModel")}</option>
+                              {Object.entries(memberModelGroups).map(([groupName, items]) => (
+                                <optgroup key={groupName} label={groupName}>
+                                  {items.map((item) => (
+                                    <option key={item.id} value={item.id}>
+                                      {item.label}
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              ))}
+                              <option value="__custom__">{t("desktop.im.customModelOption")}</option>
+                            </select>
+                            {(customMemberModelId === member.memberId || isCustomMemberModel) && (
+                              <input value={member.model ?? ""} placeholder="Enter model ID…" onChange={(event) => void onMemberModelChange(member, event.target.value)} autoFocus />
+                            )}
+                          </div>
+                        </label>
+                        <label>
+                          <span>{t("desktop.im.roleThoughtLevel")}</span>
+                          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                            <select value={customMemberThoughtId === member.memberId || isCustomMemberThought ? "__custom__" : (member.thoughtLevel ?? "")} onChange={(event) => { const val = event.target.value; if (val === "__custom__") { setCustomMemberThoughtId(member.memberId); } else { setCustomMemberThoughtId(null); void onMemberThoughtLevelChange(member, val); } }}>
+                              <option value="">{t("desktop.im.defaultThoughtLevel")}</option>
+                              {IM_SUGGESTED_THOUGHT_LEVELS.map((level) => (
+                                <option key={level} value={level}>
+                                  {t(`desktop.im.thoughtLevel.${level}`)}
+                                </option>
+                              ))}
+                              <option value="__custom__">{t("desktop.im.customThoughtLevelOption")}</option>
+                            </select>
+                            {(customMemberThoughtId === member.memberId || isCustomMemberThought) && (
+                              <input value={member.thoughtLevel ?? ""} placeholder={t("desktop.settings.imThoughtLevelPlaceholder")} onChange={(event) => void onMemberThoughtLevelChange(member, event.target.value)} autoFocus />
+                            )}
+                          </div>
+                        </label>
+                        {isCustomized ? (
+                          <div className="im-member-config-footer">
+                            <button type="button" className="tool-btn ghost-btn" onClick={() => void onMemberResetOverrides(member)}>
+                              {t("desktop.im.resetDefault")}
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>,
+                    document.body
+                  );
+                })()}
+              </>
             )}
-          </aside>
-        )}
-      </div>
+        </div>
+      </Sheet>
       {folderMenu ? createPortal(
         <div
           className="im-folder-menu chat-context-menu"

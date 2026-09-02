@@ -18082,12 +18082,25 @@ html[data-window-mode="browser"] #react-chrome {
   gap: 6px 12px;
 }
 .im-settings-checkbox-item {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
   font-size: 12px;
   cursor: pointer;
   user-select: none;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+.im-settings-checkbox-item input[type="checkbox"] {
+  flex: 0 0 auto;
+}
+.im-settings-checkbox-item span {
+  white-space: nowrap;
+}
+.im-settings-tools > .im-settings-checkbox-item,
+.im-settings-delegation-fieldset > .im-settings-checkbox-item {
+  align-self: flex-start;
+  max-width: 100%;
 }
 /* --- IM Delegation Proposals in Messages --- */
 .im-message-dispatches {
@@ -18324,6 +18337,94 @@ html[data-window-mode="browser"] #react-chrome {
   color: var(--color-label-tertiary);
   font-weight: 600;
   line-height: 1;
+}
+.im-chat-avatar-interactive {
+  cursor: pointer;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+  border: 0;
+  padding: 0;
+  appearance: none;
+}
+.im-chat-avatar-interactive:hover {
+  box-shadow: 0 0 0 2px var(--color-focus-ring), 0 0 0 1px var(--color-separator);
+  transform: scale(1.04);
+}
+.im-chat-avatar-interactive:active {
+  transform: scale(0.98);
+}
+.im-chat-avatar-interactive:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+.im-members-drawer {
+  padding: 0 !important;
+  overflow: auto;
+}
+.im-members-drawer .im-members {
+  width: 100%;
+  min-width: 0;
+  flex-shrink: 1;
+  border-left: none;
+  padding: 10px;
+  animation: none;
+}
+.im-members-select-all {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 2px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--color-separator);
+  font-size: 12px;
+}
+.im-members-select-all-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  color: var(--color-label-primary);
+}
+.im-members-select-all-label input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--color-accent);
+}
+.im-members-select-all-count {
+  font-size: 11px;
+  color: var(--color-label-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.im-members-list {
+  display: flex;
+  flex-direction: column;
+}
+.im-member-config-popover {
+  background: var(--color-elevated-bg);
+  border: 1px solid var(--color-separator);
+  border-radius: 8px;
+  box-shadow: var(--shadow-popover);
+  padding: 0;
+  overflow: hidden;
+  animation: im-popover-in 0.12s ease-out;
+}
+.im-member-config-popover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--color-separator);
+  font-size: 12px;
+  font-weight: 600;
+}
+.im-member-config-popover .im-member-config {
+  margin-top: 0;
+  border: none;
+  background: transparent;
+  border-radius: 0;
+  padding: 10px;
 }
 .im-message-author {
   display: inline-flex;

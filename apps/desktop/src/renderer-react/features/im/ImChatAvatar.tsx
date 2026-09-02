@@ -12,6 +12,7 @@ export interface ImChatAvatarProps {
   size?: number;
   className?: string;
   title?: string;
+  onClick?: () => void;
 }
 
 interface CircleLayout {
@@ -109,7 +110,8 @@ export function ImChatAvatar({
   roles = [],
   size = 28,
   className = "",
-  title
+  title,
+  onClick
 }: ImChatAvatarProps): JSX.Element {
   const visibleRoles = roles;
   const count = visibleRoles.length;
@@ -122,7 +124,26 @@ export function ImChatAvatar({
     return visibleRoles.map((r) => r.label || r.name || r.templateId).join(", ");
   }, [title, visibleRoles]);
 
+  const interactive = typeof onClick === "function";
+  const interactiveClass = interactive ? " im-chat-avatar-interactive" : "";
+
   if (count === 0) {
+    if (interactive) {
+      return (
+        <button
+          type="button"
+          className={`im-chat-avatar im-chat-avatar-empty${interactiveClass} ${className}`.trim()}
+          style={{ width: size, height: size, minWidth: size, minHeight: size }}
+          title={defaultTitle}
+          aria-label={defaultTitle}
+          onClick={onClick}
+        >
+          <span className="im-chat-avatar-placeholder" aria-hidden="true" style={{ fontSize: `${Math.round(size * 0.45)}px` }}>
+            #
+          </span>
+        </button>
+      );
+    }
     return (
       <div
         className={`im-chat-avatar im-chat-avatar-empty ${className}`.trim()}
@@ -134,6 +155,54 @@ export function ImChatAvatar({
           #
         </span>
       </div>
+    );
+  }
+
+  if (interactive) {
+    return (
+      <button
+        type="button"
+        className={`im-chat-avatar${interactiveClass} ${className}`.trim()}
+        style={{
+          width: size,
+          height: size,
+          minWidth: size,
+          minHeight: size,
+          fontSize: `${fontSizePx}px`
+        }}
+        title={defaultTitle}
+        aria-label={defaultTitle}
+        onClick={onClick}
+      >
+        {visibleRoles.map((role, idx) => {
+          const layout = layouts[idx] || layouts[0];
+          const initial = roleInitial(role.label || role.name || role.templateId);
+          const bg = roleColor(role.templateId);
+          const roleStyle: CSSProperties = {
+            position: "absolute",
+            top: layout.top,
+            left: layout.left,
+            bottom: layout.bottom,
+            right: layout.right,
+            width: layout.width,
+            height: layout.height,
+            zIndex: layout.zIndex,
+            backgroundColor: bg,
+            "--im-role-color": bg
+          } as CSSProperties;
+
+          return (
+            <span
+              key={`${role.templateId}-${idx}`}
+              className="im-chat-avatar-role"
+              style={roleStyle}
+              aria-hidden="true"
+            >
+              {initial}
+            </span>
+          );
+        })}
+      </button>
     );
   }
 
