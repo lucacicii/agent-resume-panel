@@ -1,3 +1,5 @@
+import type { AgentCitation } from "@agent-resume/core";
+
 export const IM_AGENTS = ["pi", "claude", "codex"] as const;
 export type ImAgent = (typeof IM_AGENTS)[number];
 
@@ -202,6 +204,7 @@ export interface ImMessage {
   authorLabel: string;
   body: string;
   thinking?: string;
+  citations?: AgentCitation[];
   images?: ImImageAttachment[];
   delegationProposals?: ImDelegationProposal[];
   autoRouted?: boolean;

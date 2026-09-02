@@ -17553,6 +17553,51 @@ html[data-window-mode="browser"] #react-chrome {
   height: auto;
   border-radius: 6px;
 }
+.im-message .markdown-body .agent-citation-link,
+.im-message .markdown-body .im-note-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 4px;
+  border-radius: var(--radius-sm, 4px);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  color: var(--color-accent);
+  font-weight: var(--font-weight-medium, 500);
+  text-decoration: none;
+  cursor: pointer;
+  transition: background var(--duration-fast, 0.15s), color var(--duration-fast, 0.15s);
+}
+.im-message .markdown-body .agent-citation-link:hover,
+.im-message .markdown-body .im-note-link:hover {
+  background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+  color: var(--color-accent-hover, var(--color-accent));
+}
+.im-message-citations-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+.im-citations-pill {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--color-separator);
+  border-radius: 12px;
+  background: var(--color-fill-tertiary);
+  color: var(--color-label-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.im-citations-pill:hover {
+  background: var(--color-fill-secondary);
+  color: var(--color-label-primary);
+  border-color: var(--color-accent);
+}
 /* --- IM Thinking and streaming styles --- */
 .im-message-thinking {
   margin: 0 0 8px;

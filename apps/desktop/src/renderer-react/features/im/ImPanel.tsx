@@ -9,8 +9,9 @@ import { useImProjectTools } from "./ImProjectTools";
 import { buildTimelineNodes } from "./timelineModel";
 import { createPortal } from "react-dom";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type JSX, type MouseEvent as ReactMouseEvent, type ReactPortal, type UIEvent } from "react";
-import type { AgentToolDescriptor } from "@agent-resume/core";
+import type { AgentCitation, AgentToolDescriptor } from "@agent-resume/core";
 import { type AskToolPrefs } from "../../components/ToolSettingsPopover";
+import { CitationSheet, extractCitationsFromMessage, isNote, isSession, periodFromCitation } from "./CitationSheet";
 import { desktopApi } from "../../bridge";
 import { notifyDesktop } from "../../components/Notifications";
 import { useI18n } from "../../i18n";
@@ -152,6 +153,11 @@ export function ImPanel(): ReactPortal | null {
   const [expandedThinking, setExpandedThinking] = useState<Record<string, boolean>>({});
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const [previewModalUrl, setPreviewModalUrl] = useState<string | null>(null);
+  const [citationDrawerState, setCitationDrawerState] = useState<{
+    open: boolean;
+    citations: AgentCitation[];
+    initialMarker?: string | null;
+  }>({ open: false, citations: [] });
   const [toolPrefs, setToolPrefs] = useState<AskToolPrefs>(() => readImProjectTools(selectedProjectId));
   const [toolCatalog, setToolCatalog] = useState<AgentToolDescriptor[] | null>(null);
   const transcriptVirtualizerRef = useRef<VariableVirtualListHandle | null>(null);
@@ -973,6 +979,69 @@ export function ImPanel(): ReactPortal | null {
     }
   }, [setError]);
 
+  const handleOpenCitations = useCallback((message: ImMessage, marker?: string) => {
+    const citations = extractCitationsFromMessage(message, room);
+    setCitationDrawerState({
+      open: true,
+      citations,
+      initialMarker: marker
+    });
+  }, [room]);
+
+  const handleOpenCitation = useCallback((citation: AgentCitation) => {
+    if (isNote(citation)) {
+      if (citation.noteId) {
+        window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "notes" }));
+        window.dispatchEvent(new CustomEvent("agent-resume:open-note", { detail: citation.noteId }));
+      } else {
+        window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "notes" }));
+      }
+      return;
+    }
+    if (isSession(citation)) {
+      const session = citation.session;
+      if (session?.provider && session.id) {
+        window.dispatchEvent(
+          new CustomEvent("agent-resume:sessions-preview", {
+            detail: {
+              provider: session.provider,
+              id: session.id,
+              title: citation.title || session.id,
+              projectPath: session.projectPath || "",
+              updatedAt: citation.periodStartMs || Date.now()
+            }
+          })
+        );
+      } else {
+        window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
+      }
+      return;
+    }
+    const period = periodFromCitation(citation);
+    if (period) {
+      window.dispatchEvent(new CustomEvent("agent-resume:report-focus", { detail: period }));
+    }
+    window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "report" }));
+  }, []);
+
+  const handleResumeCitationSession = useCallback(async (citation: AgentCitation) => {
+    const session = citation.session;
+    if (!session?.provider || !session.id) {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
+      return;
+    }
+    try {
+      const result = await desktopApi().workbenchOpenSession({ provider: session.provider, id: session.id });
+      if (result.external) {
+        notifyDesktop({ text: t("desktop.im.resumeStarted", session.provider, session.id), kind: "info" });
+        return;
+      }
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-open-session", { detail: session }));
+    } catch (error) {
+      setError(error);
+    }
+  }, [setError, t]);
+
   if (!host) return null;
   const headerSlot = document.getElementById("app-header-slot");
   const toolbar = (
@@ -1209,6 +1278,7 @@ export function ImPanel(): ReactPortal | null {
                           onEditDelegation={handleEditDelegation}
                           onOpenSelectionMenu={openSelectionMenu}
                           onRoutingTipClick={handleRoutingTipClick}
+                          onOpenCitations={handleOpenCitations}
                           t={t}
                         />
                       );
@@ -1785,6 +1855,15 @@ export function ImPanel(): ReactPortal | null {
         </div>,
         document.body
       ) : null}
+      <CitationSheet
+        open={citationDrawerState.open}
+        citations={citationDrawerState.citations}
+        initialMarker={citationDrawerState.initialMarker}
+        onClose={() => setCitationDrawerState({ open: false, citations: [] })}
+        onOpenCitation={handleOpenCitation}
+        onResumeSession={handleResumeCitationSession}
+        t={t}
+      />
     </section>,
     host
   );

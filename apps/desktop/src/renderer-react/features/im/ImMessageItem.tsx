@@ -3,6 +3,7 @@ import { ThemeIcon } from "../../components/ThemeIcon";
 import { renderMarkdown } from "../../components/Markdown";
 import { desktopApi } from "../../bridge";
 import type { ImJob, ImMember, ImMessage, ImRoom } from "../../../shared/imTypes";
+import { extractCitationsFromMessage } from "./CitationSheet";
 import {
   agentTag,
   dayKey,
@@ -44,6 +45,7 @@ export interface ImMessageItemProps {
   onEditDelegation: (instruction: string, targetMember?: ImMember) => void;
   onOpenSelectionMenu: (event: ReactMouseEvent<HTMLElement>, message: ImMessage) => void;
   onRoutingTipClick: () => void;
+  onOpenCitations?: (message: ImMessage, marker?: string) => void;
   t: Translate;
 }
 
@@ -73,6 +75,7 @@ export const ImMessageItem = memo(function ImMessageItem({
   onEditDelegation,
   onOpenSelectionMenu,
   onRoutingTipClick,
+  onOpenCitations,
   t
 }: ImMessageItemProps) {
   const speaker = useMemo(() => {
@@ -114,27 +117,59 @@ export const ImMessageItem = memo(function ImMessageItem({
 
   const renderedCleanBody = useMemo(() => {
     if (!cleanBody) return "";
-    const html = renderMarkdown(cleanBody);
-    return html.replace(
+    let html = renderMarkdown(cleanBody);
+    // 1. Transform [N1], [S1], [D1] markers into clickable citation badges
+    html = html.replace(
       /\[(N|S|D)(\d+)\]/g,
       '<a class="agent-citation-link" data-agent-citation="$1$2" href="#citation-$1$2">[$1$2]</a>'
     );
-  }, [cleanBody]);
+    // 2. Transform noteId: <uuid> or noteId：<uuid> into clickable note link
+    html = html.replace(
+      /(noteId[:：]\s*(?:<code>)?)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})((?:<\/code>)?)/gi,
+      (_match, p1, uuid, p3) => `${p1}<a class="agent-citation-link im-note-link" data-note-id="${uuid}" href="#note-${uuid}" title="${t("desktop.im.openInNotes", "Open in Notes")}">${uuid} ↗</a>${p3}`
+    );
+    // 3. Transform note links with href="note:<uuid>" or href="#note-<uuid>"
+    html = html.replace(
+      /<a href="(?:note:|#note-)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"([^>]*)>(.*?)<\/a>/gi,
+      '<a class="agent-citation-link im-note-link" data-note-id="$1"$2>$3 ↗</a>'
+    );
+    return html;
+  }, [cleanBody, t]);
 
   const handleBodyClick = (event: ReactMouseEvent<HTMLDivElement>) => {
-    const target = (event.target as HTMLElement).closest<HTMLAnchorElement>("a[data-agent-citation]");
-    if (!target) return;
-    event.preventDefault();
-    const marker = target.dataset.agentCitation || "";
-    const prefix = marker.charAt(0);
-    if (prefix === "N") {
-      window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "notes" }));
-    } else if (prefix === "S") {
-      window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
-    } else if (prefix === "D") {
-      window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "report" }));
+    const noteTarget = (event.target as HTMLElement).closest<HTMLAnchorElement>("a[data-note-id]");
+    if (noteTarget) {
+      event.preventDefault();
+      const noteId = noteTarget.dataset.noteId;
+      if (noteId) {
+        window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "notes" }));
+        window.dispatchEvent(new CustomEvent("agent-resume:open-note", { detail: noteId }));
+      }
+      return;
+    }
+
+    const citationTarget = (event.target as HTMLElement).closest<HTMLAnchorElement>("a[data-agent-citation]");
+    if (citationTarget) {
+      event.preventDefault();
+      const marker = citationTarget.dataset.agentCitation || "";
+      if (onOpenCitations) {
+        onOpenCitations(message, marker);
+        return;
+      }
+      const prefix = marker.charAt(0);
+      if (prefix === "N") {
+        window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "notes" }));
+      } else if (prefix === "S") {
+        window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
+      } else if (prefix === "D") {
+        window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "report" }));
+      }
     }
   };
+
+  const citations = useMemo(() => {
+    return extractCitationsFromMessage(message, room);
+  }, [message, room]);
 
   const proposals = useMemo(() => {
     if (message.delegationProposals && message.delegationProposals.length > 0) {
@@ -276,6 +311,19 @@ export const ImMessageItem = memo(function ImMessageItem({
             onClick={handleBodyClick}
           />
         ) : null}
+        {citations.length > 0 && (
+          <div className="im-message-citations-bar">
+            <button
+              type="button"
+              className="im-citations-pill"
+              onClick={() => onOpenCitations?.(message)}
+              title={t("desktop.im.citationsTitle", "Citations")}
+            >
+              <ThemeIcon name="file-text" size={13} aria-hidden="true" />
+              <span>{t("desktop.im.citationCount", `${citations.length} citations`, citations.length)}</span>
+            </button>
+          </div>
+        )}
         {proposals.length > 0 && (
           <div className="im-message-dispatches">
             {proposals.map((proposal) => {
