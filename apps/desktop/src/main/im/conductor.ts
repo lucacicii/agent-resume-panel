@@ -499,25 +499,38 @@ export class ImConductor {
       if (text || thinking) {
         let streamMsg = this.streamingMessagesByJob.get(jobId);
         if (!streamMsg) {
-          const member = await this.store.getMember(current.memberId);
-          streamMsg = {
-            messageId: crypto.randomUUID(),
-            projectId: current.projectId,
-            kind: "role.say",
-            authorMemberId: current.memberId,
-            authorLabel: member?.name || "Role",
-            body: text,
-            thinking: thinking || undefined,
-            streaming: true,
-            quoteIds: [],
-            quotes: [],
-            mentionRoleIds: [],
-            jobId,
-            threadId: current.threadId,
-            createdAtMs: Date.now()
-          };
-          this.streamingMessagesByJob.set(jobId, streamMsg);
-          this.emit({ type: "message", projectId: current.projectId, message: streamMsg });
+          const existingMessage = await this.store.findMessageByJobId(jobId);
+          if (existingMessage) {
+            streamMsg = {
+              ...existingMessage,
+              body: text,
+              thinking: thinking || existingMessage.thinking,
+              streaming: true
+            };
+            this.streamingMessagesByJob.set(jobId, streamMsg);
+            this.persistedStreamingIds.add(existingMessage.messageId);
+            this.emit({ type: "messageUpdate", projectId: current.projectId, message: streamMsg });
+          } else {
+            const member = await this.store.getMember(current.memberId);
+            streamMsg = {
+              messageId: crypto.randomUUID(),
+              projectId: current.projectId,
+              kind: "role.say",
+              authorMemberId: current.memberId,
+              authorLabel: member?.name || "Role",
+              body: text,
+              thinking: thinking || undefined,
+              streaming: true,
+              quoteIds: [],
+              quotes: [],
+              mentionRoleIds: [],
+              jobId,
+              threadId: current.threadId,
+              createdAtMs: Date.now()
+            };
+            this.streamingMessagesByJob.set(jobId, streamMsg);
+            this.emit({ type: "message", projectId: current.projectId, message: streamMsg });
+          }
         } else {
           streamMsg = {
             ...streamMsg,
@@ -561,21 +574,34 @@ export class ImConductor {
             message: { ...persistedMessage, streaming: false }
           });
         }
-        this.forgetStreamingMessage(jobId);
       } else if (finalBody || finalThinking) {
-        const member = await this.store.getMember(job.memberId);
-        persistedMessage = await this.store.insertMessage({
-          projectId: job.projectId,
-          kind: "role.say",
-          authorMemberId: job.memberId,
-          authorLabel: member?.name || "Role",
-          body: finalBody,
-          thinking: finalThinking,
-          delegationProposals: proposals.length ? proposals : undefined,
-          jobId,
-          threadId: job.threadId
-        });
-        this.emit({ type: "message", projectId: job.projectId, message: { ...persistedMessage, streaming: false } });
+        const existingMessage = await this.store.findMessageByJobId(jobId);
+        if (existingMessage) {
+          persistedMessage = await this.store.updateMessage(existingMessage.messageId, {
+            body: finalBody,
+            thinking: finalThinking,
+            delegationProposals: proposals.length ? proposals : undefined
+          });
+          this.emit({
+            type: "messageUpdate",
+            projectId: job.projectId,
+            message: { ...persistedMessage, streaming: false }
+          });
+        } else {
+          const member = await this.store.getMember(job.memberId);
+          persistedMessage = await this.store.insertMessage({
+            projectId: job.projectId,
+            kind: "role.say",
+            authorMemberId: job.memberId,
+            authorLabel: member?.name || "Role",
+            body: finalBody,
+            thinking: finalThinking,
+            delegationProposals: proposals.length ? proposals : undefined,
+            jobId,
+            threadId: job.threadId
+          });
+          this.emit({ type: "message", projectId: job.projectId, message: { ...persistedMessage, streaming: false } });
+        }
       }
 
       if (proposals.length > 0 && persistedMessage) {
@@ -900,6 +926,9 @@ export class ImConductor {
       }
     }
     await this.promptAndWait(chatId, prompt, imagesToPass);
+
+    await this.flushStreamingMessage(jobId);
+    this.forgetStreamingMessage(jobId);
 
     const latest = await this.store.getJob(jobId);
     if (!latest || latest.status === "failed" || latest.status === "cancelled") return;

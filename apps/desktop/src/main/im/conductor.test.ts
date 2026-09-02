@@ -1126,4 +1126,73 @@ Implement the search indexing algorithm as designed.
     const resolvedByName = resolveDispatchTarget("DBA Specialist", ["project_role_dba", "role_developer"], enabledMembers);
     expect(resolvedByName?.templateId).toBe("project_role_dba");
   });
+
+  it("updates a single message across multi-turn tool calls within the same job without creating duplicate message cards", async () => {
+    const store = await createStore();
+    const project = await store.createProject("Multi-turn tool test");
+    const room = await store.getRoom(project.projectId);
+    const mem = room.members.find((m) => m.templateId === "role_memory")!;
+    const emitted: any[] = [];
+    const conductor = new ImConductor(
+      store,
+      (event) => emitted.push(event),
+      vi.fn(async () => undefined),
+      vi.fn(async () => undefined)
+    );
+
+    const job = await store.createJob({
+      projectId: project.projectId,
+      memberId: mem.memberId,
+      messageId: null,
+      brief: { persona: mem.persona, instruction: "Save note", cwd: process.cwd(), quotes: [], knowledge: [] },
+      status: "running"
+    });
+    await store.updateJob(job.jobId, { acpChatId: "chat-multiturn-test" });
+
+    // Turn 1: Initial brief text before tool use
+    await conductor.handleAcpStream({
+      type: "assistantDelta",
+      chatId: "chat-multiturn-test",
+      id: "delta-1",
+      text: "The",
+      streaming: true,
+      toolCalls: []
+    });
+
+    await conductor.handleAcpStream({
+      type: "assistantDone",
+      chatId: "chat-multiturn-test",
+      message: {
+        id: "turn-1",
+        text: "The",
+        toolCalls: [{ id: "tool-1", title: "note_create", kind: "create" }]
+      }
+    });
+
+    // Turn 2: Continued response after tool execution
+    await conductor.handleAcpStream({
+      type: "assistantDelta",
+      chatId: "chat-multiturn-test",
+      id: "delta-2",
+      text: "The user wants me to output the conclusion to a note. Created note successfully.",
+      streaming: true,
+      toolCalls: []
+    });
+
+    await conductor.handleAcpStream({
+      type: "assistantDone",
+      chatId: "chat-multiturn-test",
+      message: {
+        id: "turn-2",
+        text: "The user wants me to output the conclusion to a note. Created note successfully.",
+        toolCalls: []
+      }
+    });
+
+    const messages = await store.listMessages(project.projectId);
+    // MUST be only 1 role.say message for this job, not 2 separate messages!
+    const roleMessages = messages.filter((m) => m.kind === "role.say" && m.jobId === job.jobId);
+    expect(roleMessages).toHaveLength(1);
+    expect(roleMessages[0]?.body).toBe("The user wants me to output the conclusion to a note. Created note successfully.");
+  });
 });

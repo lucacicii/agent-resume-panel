@@ -174,11 +174,25 @@ export function ImPanel(): ReactPortal | null {
   const allMembers = useMemo(() => room?.members ?? [], [room?.members]);
   const members = useMemo(() => allMembers.filter((member) => member.enabled), [allMembers]);
   const visibleMessages = useMemo(() => {
-    return (room?.messages ?? []).filter((message) => {
+    const raw = (room?.messages ?? []).filter((message) => {
       if (message.kind !== "job.card") return true;
       const job = room?.jobs.find((item) => item.jobId === message.jobId);
       return job?.status === "failed";
     });
+
+    const seenJobMessages = new Set<string>();
+    const result: ImMessage[] = [];
+    for (let i = raw.length - 1; i >= 0; i--) {
+      const msg = raw[i]!;
+      if (msg.kind === "role.say" && msg.jobId) {
+        if (seenJobMessages.has(msg.jobId)) {
+          continue;
+        }
+        seenJobMessages.add(msg.jobId);
+      }
+      result.unshift(msg);
+    }
+    return result;
   }, [room?.jobs, room?.messages]);
   const activeJobs = useMemo(() => room?.jobs.filter((job) => isActiveJobStatus(job.status)) ?? [], [room?.jobs]);
   const activePendingJobs = useMemo(() => {
@@ -298,13 +312,33 @@ export function ImPanel(): ReactPortal | null {
               messages: current.messages.map((item) => item.messageId === event.message.messageId ? event.message : item)
             };
           }
+          if (event.message.jobId && event.message.kind === "role.say") {
+            const existingJobIndex = current.messages.findIndex((item) => item.jobId === event.message.jobId && item.kind === "role.say");
+            if (existingJobIndex >= 0) {
+              const nextMessages = [...current.messages];
+              nextMessages[existingJobIndex] = event.message;
+              return { ...current, messages: nextMessages };
+            }
+          }
           return { ...current, messages: [...current.messages, event.message] };
         }
         if (event.type === "messageUpdate") {
-          const messages = current.messages.some((item) => item.messageId === event.message.messageId)
-            ? current.messages.map((item) => item.messageId === event.message.messageId ? event.message : item)
-            : [...current.messages, event.message];
-          return { ...current, messages };
+          const hasMessageId = current.messages.some((item) => item.messageId === event.message.messageId);
+          if (hasMessageId) {
+            return {
+              ...current,
+              messages: current.messages.map((item) => item.messageId === event.message.messageId ? event.message : item)
+            };
+          }
+          if (event.message.jobId && event.message.kind === "role.say") {
+            const existingJobIndex = current.messages.findIndex((item) => item.jobId === event.message.jobId && item.kind === "role.say");
+            if (existingJobIndex >= 0) {
+              const nextMessages = [...current.messages];
+              nextMessages[existingJobIndex] = event.message;
+              return { ...current, messages: nextMessages };
+            }
+          }
+          return { ...current, messages: [...current.messages, event.message] };
         }
         if (event.type === "job") {
           const jobs = current.jobs.some((item) => item.jobId === event.job.jobId)

@@ -1630,6 +1630,20 @@ export class ImStore {
     return this.mapMessage(row, new Map(siblings.map((item) => [item.message_id, item])));
   }
 
+  async findMessageByJobId(jobId: string): Promise<ImMessage | undefined> {
+    const rows = await runSqliteJson<MessageRow>(
+      this.dbPath,
+      `SELECT * FROM im_messages WHERE job_id = ${sqlString(jobId)} ORDER BY created_at_ms DESC LIMIT 1;`
+    );
+    const row = rows[0];
+    if (!row) return undefined;
+    const siblings = await runSqliteJson<MessageRow>(
+      this.dbPath,
+      `SELECT * FROM im_messages WHERE project_id = ${sqlString(row.project_id)};`
+    );
+    return this.mapMessage(row, new Map(siblings.map((item) => [item.message_id, item])));
+  }
+
   async insertMessage(input: {
     messageId?: string;
     projectId: string;
