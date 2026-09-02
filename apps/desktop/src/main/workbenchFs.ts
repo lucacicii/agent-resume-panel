@@ -264,30 +264,22 @@ export async function gitStatusForRepo(repoRoot: string): Promise<{ staged: GitF
 }
 
 async function queryGitTrackingForRepo(repoRoot: string): Promise<GitRepoTracking> {
-  let branch: string | null = null;
-  try {
-    const { stdout } = await execFileAsync("git", ["-C", repoRoot, "rev-parse", "--abbrev-ref", "HEAD"], {
+  // Branch and upstream queries are independent git spawns: run them concurrently.
+  // Each one resolves independently so a failing upstream query never hides the branch.
+  const [branchResult, upstreamResult] = await Promise.allSettled([
+    execFileAsync("git", ["-C", repoRoot, "rev-parse", "--abbrev-ref", "HEAD"], {
       timeout: GIT_TRACKING_TIMEOUT_MS,
       maxBuffer: 4096
-    });
-    const trimmed = String(stdout).trim();
-    branch = trimmed && trimmed !== "HEAD" ? trimmed : trimmed || null;
-  } catch {
-    branch = null;
-  }
-
-  let upstream: string | null = null;
-  try {
-    const { stdout } = await execFileAsync(
-      "git",
-      ["-C", repoRoot, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
-      { timeout: GIT_TRACKING_TIMEOUT_MS, maxBuffer: 4096 }
-    );
-    const trimmed = String(stdout).trim();
-    upstream = trimmed || null;
-  } catch {
-    upstream = null;
-  }
+    }).then(({ stdout }) => String(stdout).trim()),
+    execFileAsync("git", ["-C", repoRoot, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"], {
+      timeout: GIT_TRACKING_TIMEOUT_MS,
+      maxBuffer: 4096
+    }).then(({ stdout }) => String(stdout).trim())
+  ]);
+  const branch = branchResult.status === "fulfilled"
+    ? branchResult.value && branchResult.value !== "HEAD" ? branchResult.value : branchResult.value || null
+    : null;
+  const upstream = upstreamResult.status === "fulfilled" ? upstreamResult.value || null : null;
 
   if (!upstream) {
     return { repoRoot, branch, upstream: null, ahead: 0, behind: 0 };
@@ -307,18 +299,10 @@ async function queryGitTrackingForRepo(repoRoot: string): Promise<GitRepoTrackin
 }
 
 async function queryTrackingForRoots(repoRoots: string[]): Promise<GitRepoTracking[]> {
-  const tracking: GitRepoTracking[] = [];
-  const seen = new Set<string>();
-  for (const root of repoRoots) {
-    if (!root || seen.has(root)) continue;
-    seen.add(root);
-    try {
-      tracking.push(await queryGitTrackingForRepo(root));
-    } catch {
-      // skip roots that fail tracking query
-    }
-  }
-  return tracking;
+  const roots = [...new Set(repoRoots.filter(Boolean))];
+  // Parallel across repositories to cut status latency on multi-repo workspaces.
+  const results = await Promise.allSettled(roots.map((root) => queryGitTrackingForRepo(root)));
+  return results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
 }
 
 async function gitShowAtRef(cwd: string, ref: string, filePath: string): Promise<string> {
