@@ -1458,6 +1458,61 @@ html[data-window-mode="main"] body > main {
   line-height: var(--line-height-tight);
   border-bottom: 1px solid var(--color-separator);
   background: color-mix(in srgb, var(--panel) 88%, var(--bg));
+  white-space: nowrap;
+}
+
+.settings-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-separator);
+  background: color-mix(in srgb, var(--panel) 88%, var(--bg));
+}
+
+.settings-group-header .settings-group-title {
+  padding: 0;
+  border-bottom: none;
+  background: transparent;
+  flex-shrink: 0;
+}
+
+.settings-view-segmented {
+  --segment-inset: 2px;
+  display: inline-flex;
+  position: relative;
+  align-items: center;
+  background: var(--color-control-bg);
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-md, 6px);
+  padding: var(--segment-inset);
+  flex-shrink: 0;
+  min-width: 280px;
+}
+
+.settings-view-segmented button {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 0;
+  min-width: 0;
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--color-label-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+  white-space: nowrap;
+  text-align: center;
+  transition: color 0.15s ease;
+}
+
+.settings-view-segmented button.active {
+  color: var(--color-label-primary);
+  font-weight: 600;
 }
 
 .settings-group-body {
@@ -19060,3 +19115,293 @@ html[data-window-mode="browser"] #react-chrome {
   overflow: hidden;
   clip: rect(0 0 0 0);
 }
+
+/* IM Delegation Matrix Grid & DAG Dashboard */
+.matrix-badge-repo {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  border-radius: var(--radius-sm, 4px);
+  font-size: 10px;
+  font-weight: var(--font-weight-semibold, 600);
+  background: color-mix(in srgb, var(--color-accent, #0070f3) 15%, transparent);
+  color: var(--color-accent, #0070f3);
+  border: 1px solid color-mix(in srgb, var(--color-accent, #0070f3) 35%, transparent);
+  line-height: 1.2;
+}
+
+.matrix-badge-builtin {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  border-radius: var(--radius-sm, 4px);
+  font-size: 10px;
+  font-weight: var(--font-weight-normal, 400);
+  background: var(--color-control-bg);
+  color: var(--color-label-tertiary);
+  border: 1px solid var(--color-separator);
+  line-height: 1.2;
+}
+
+.delegation-matrix-container,
+.delegation-dag-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+.delegation-matrix-header-bar,
+.delegation-dag-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--color-control-bg);
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-md, 6px);
+}
+
+.delegation-matrix-legend,
+.delegation-dag-legend {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--color-label-secondary);
+}
+
+.legend-item,
+.dag-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-sm, 4px);
+  font-size: 11px;
+  font-weight: bold;
+}
+.legend-badge.is-active {
+  background: var(--color-accent, #0070f3);
+  color: #fff;
+}
+.legend-badge.is-auto {
+  background: #10b981;
+  color: #fff;
+}
+.legend-badge.is-disabled {
+  background: var(--color-separator);
+  color: var(--color-label-tertiary);
+}
+
+.dag-legend-line {
+  display: inline-block;
+  width: 20px;
+  height: 2px;
+  border-radius: 1px;
+}
+.dag-legend-line.is-normal {
+  background: var(--color-label-secondary);
+}
+.dag-legend-line.is-auto {
+  background: #10b981;
+  border-bottom: 2px dashed #10b981;
+}
+.dag-legend-item.is-cycle-alert {
+  color: #f59e0b;
+  font-weight: 500;
+}
+
+.delegation-matrix-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-md, 6px);
+  background: var(--color-window-bg);
+}
+
+.delegation-matrix-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  text-align: left;
+}
+
+.delegation-matrix-table th,
+.delegation-matrix-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--color-separator);
+  border-right: 1px solid var(--color-separator);
+  white-space: nowrap;
+}
+
+.matrix-corner-cell {
+  background: var(--color-control-bg);
+  min-width: 180px;
+}
+.matrix-axis-caller {
+  display: block;
+  font-size: 11px;
+  color: var(--color-label-primary);
+  font-weight: 600;
+}
+.matrix-axis-callee {
+  display: block;
+  font-size: 11px;
+  color: var(--color-label-tertiary);
+}
+
+.matrix-th-auto-dispatch {
+  text-align: center;
+  width: 50px;
+  background: var(--color-control-bg);
+  font-size: 11px;
+}
+.matrix-th-actions {
+  text-align: center;
+  width: 60px;
+  background: var(--color-control-bg);
+  font-size: 11px;
+}
+
+.matrix-callee-th {
+  background: var(--color-control-bg);
+  min-width: 110px;
+}
+.matrix-role-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.matrix-role-name {
+  font-weight: 500;
+  color: var(--color-label-primary);
+}
+
+.matrix-caller-td {
+  background: var(--color-control-bg);
+}
+.matrix-caller-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.matrix-caller-name {
+  color: var(--color-label-primary);
+}
+
+.matrix-auto-dispatch-td,
+.matrix-actions-td {
+  text-align: center;
+}
+
+.matrix-auto-dispatch-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm, 4px);
+  border: 1px solid var(--color-separator);
+  background: transparent;
+  color: var(--color-label-tertiary);
+  cursor: pointer;
+  font-size: 12px;
+}
+.matrix-auto-dispatch-btn.is-active {
+  background: color-mix(in srgb, #10b981 18%, transparent);
+  color: #10b981;
+  border-color: #10b981;
+}
+
+.matrix-cell {
+  text-align: center;
+  padding: 4px !important;
+}
+.matrix-cell.is-self {
+  background: color-mix(in srgb, var(--color-separator) 30%, transparent);
+}
+.matrix-self-marker {
+  color: var(--color-label-tertiary);
+}
+
+.matrix-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm, 4px);
+  border: 1px solid var(--color-separator);
+  background: transparent;
+  color: var(--color-label-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: bold;
+  transition: all 0.12s ease-in-out;
+}
+.matrix-toggle-btn:hover {
+  background: var(--color-control-bg);
+  border-color: var(--color-label-tertiary);
+}
+.matrix-toggle-btn.is-checked {
+  background: var(--color-accent, #0070f3);
+  color: #fff;
+  border-color: var(--color-accent, #0070f3);
+}
+.matrix-toggle-btn.is-checked.is-auto {
+  background: #10b981;
+  color: #fff;
+  border-color: #10b981;
+}
+
+/* DAG SVG Canvas */
+.delegation-dag-canvas-wrap {
+  overflow: auto;
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-md, 6px);
+  background: var(--color-window-bg);
+  min-height: 400px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.delegation-dag-svg {
+  display: block;
+}
+
+.dag-node-group {
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+.dag-node-group:hover {
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.25));
+}
+.dag-node-card-bg {
+  transition: stroke 0.15s ease, stroke-width 0.15s ease;
+}
+.dag-edge {
+  transition: opacity 0.15s ease, stroke-width 0.15s ease;
+}
+.dag-edge.is-cycle {
+  animation: dag-cycle-pulse 2s infinite ease-in-out;
+}
+@keyframes dag-cycle-pulse {
+  0%, 100% {
+    stroke-width: 2.5;
+    opacity: 1;
+  }
+  50% {
+    stroke-width: 3.5;
+    opacity: 0.7;
+  }
+}
+

@@ -44,6 +44,12 @@ export function isBuiltinTemplateId(value: string): value is ImBuiltinTemplateId
   return (IM_BUILTIN_TEMPLATE_IDS as readonly string[]).includes(value);
 }
 
+export function isProjectRoleTemplateId(value: string): boolean {
+  return value.startsWith("project_role_");
+}
+
+export type ImRoleSource = "builtin" | "custom" | "project";
+
 export const DEFAULT_BUILTIN_CALLABLE_TEMPLATE_IDS: Record<ImBuiltinTemplateId, readonly string[]> = {
   role_product_manager: ["role_architect", "role_project_manager", "role_ui_designer", "role_memory"],
   role_architect: ["role_developer", "role_memory"],
@@ -143,6 +149,8 @@ export interface ImRoleTemplate {
   tools: ImRoleTools;
   callableTemplateIds?: string[];
   autoDispatch?: boolean;
+  source?: ImRoleSource;
+  filePath?: string;
   createdAtMs: number;
   updatedAtMs: number;
 }
@@ -160,6 +168,8 @@ export interface ImMember {
   tools: ImRoleTools;
   callableTemplateIds?: string[];
   autoDispatch?: boolean;
+  source?: ImRoleSource;
+  filePath?: string;
   enabled: boolean;
   acpChatId: string | null;
   createdAtMs: number;

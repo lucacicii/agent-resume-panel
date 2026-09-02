@@ -22,6 +22,7 @@ import {
   IM_AGENT_SUGGESTED_MODELS,
   IM_SUGGESTED_THOUGHT_LEVELS,
   isBuiltinTemplateId,
+  isProjectRoleTemplateId,
   isSuggestedThoughtLevel,
   type ImAgent,
   type ImAgentModelOption,
@@ -1608,6 +1609,7 @@ export function ImPanel(): ReactPortal | null {
                   ? room?.jobs.find((item) => item.memberId === enabledMember.memberId && isActiveJobStatus(item.status))?.status ?? "idle"
                   : "idle";
                 const rowColor = roleColor(template.templateId);
+                const isProject = template.source === "project" || isProjectRoleTemplateId(template.templateId);
                 const isCustomized = Boolean(
                   enabledMember && (
                     enabledMember.agent !== template.agent ||
@@ -1632,6 +1634,7 @@ export function ImPanel(): ReactPortal | null {
                           {roleInitial(label)}
                         </span>
                         <strong>{label}</strong>
+                        {isProject ? <span className="matrix-badge-repo">Repo</span> : null}
                         {isCustomized ? (
                           <span className="im-member-custom-badge" title={t("desktop.im.customBadge")}>
                             {t("desktop.im.customBadge")}

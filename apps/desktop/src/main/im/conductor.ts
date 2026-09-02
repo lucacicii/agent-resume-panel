@@ -123,6 +123,7 @@ export function resolveDispatchTarget(
       m.name.toLowerCase() === lower ||
       m.templateId.toLowerCase() === lower ||
       m.templateId.replace(/^role_/, "").toLowerCase() === lower ||
+      m.templateId.replace(/^project_role_/, "").toLowerCase() === lower ||
       (lower === "developer" && m.templateId === "role_developer") ||
       (lower === "architect" && m.templateId === "role_architect") ||
       (lower === "pm" && m.templateId === "role_product_manager") ||

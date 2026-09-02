@@ -1090,4 +1090,40 @@ Implement the search indexing algorithm as designed.
     await vi.waitFor(() => expect(prompt).toHaveBeenCalled());
     expect(prompt.mock.calls[0]?.[1]).toContain("next question");
   });
+
+  it("resolves project-scoped file role in delegation target and creates proposal", async () => {
+    const store = await createStore();
+    const project = await store.createProject("Project Role Delegation");
+    const room = await store.getRoom(project.projectId);
+    const arch = room.members.find((m) => m.templateId === "role_architect")!;
+
+    const dbaMember = await store.addMemberFromTemplate(project.projectId, {
+      templateId: "project_role_dba",
+      name: "DBA Specialist",
+      persona: "You are DBA.",
+      agent: "pi",
+      permissions: "write",
+      tools: { fsRead: true, fsWrite: true, execute: true },
+      source: "project",
+      createdAtMs: Date.now(),
+      updatedAtMs: Date.now()
+    });
+
+    // Update arch to be able to call dba
+    await store.updateTemplate({
+      templateId: "role_architect",
+      callableTemplateIds: ["role_developer", "project_role_dba"]
+    });
+
+    const updatedArch = (await store.getRoom(project.projectId)).members.find((m) => m.templateId === "role_architect")!;
+    const enabledMembers = [updatedArch, dbaMember];
+
+    const resolved = resolveDispatchTarget("dba", ["project_role_dba", "role_developer"], enabledMembers);
+    expect(resolved).toBeDefined();
+    expect(resolved?.templateId).toBe("project_role_dba");
+    expect(resolved?.name).toBe("DBA Specialist");
+
+    const resolvedByName = resolveDispatchTarget("DBA Specialist", ["project_role_dba", "role_developer"], enabledMembers);
+    expect(resolvedByName?.templateId).toBe("project_role_dba");
+  });
 });

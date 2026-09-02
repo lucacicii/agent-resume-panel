@@ -579,4 +579,59 @@ describe("ImStore", () => {
     expect(prompt).toContain("DevOps (id: tpl_devops)");
     expect(prompt).toContain("<im_dispatch");
   });
+
+  it("automatically synchronizes project-scoped file roles from .arp/roles/*.md", async () => {
+    const { store, panelHome } = await createStoreWithHome();
+    const repoDir = path.join(panelHome, "repo-with-roles");
+    const rolesDir = path.join(repoDir, ".arp", "roles");
+    await fs.mkdir(rolesDir, { recursive: true });
+
+    // 1. Create .arp/roles/dba.md
+    await fs.writeFile(
+      path.join(rolesDir, "dba.md"),
+      `---
+name: DBA Specialist
+agent: pi
+model: deepseek-reasoner
+callable:
+  - Developer
+autoDispatch: true
+---
+You are DBA.`
+    );
+
+    const project = await store.createProject("DB Project");
+    await store.setLocalPath(project.projectId, repoDir);
+
+    const room = await store.getRoom(project.projectId);
+    const dbaMember = room.members.find((m) => m.templateId === "project_role_dba");
+    expect(dbaMember).toBeDefined();
+    expect(dbaMember?.name).toBe("DBA Specialist");
+    expect(dbaMember?.agent).toBe("pi");
+    expect(dbaMember?.model).toBe("deepseek-reasoner");
+    expect(dbaMember?.source).toBe("project");
+    expect(dbaMember?.callableTemplateIds).toContain("role_developer");
+    expect(dbaMember?.autoDispatch).toBe(true);
+
+    // 2. Update .arp/roles/dba.md
+    await fs.writeFile(
+      path.join(rolesDir, "dba.md"),
+      `---
+name: Lead DBA
+agent: claude
+---
+Updated persona.`
+    );
+
+    const updatedRoom = await store.getRoom(project.projectId);
+    const updatedDba = updatedRoom.members.find((m) => m.templateId === "project_role_dba");
+    expect(updatedDba?.name).toBe("Lead DBA");
+    expect(updatedDba?.agent).toBe("claude");
+    expect(updatedDba?.persona).toBe("Updated persona.");
+
+    // 3. Delete .arp/roles/dba.md
+    await fs.rm(path.join(rolesDir, "dba.md"));
+    const cleanedRoom = await store.getRoom(project.projectId);
+    expect(cleanedRoom.members.some((m) => m.templateId === "project_role_dba")).toBe(false);
+  });
 });

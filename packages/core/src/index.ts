@@ -806,6 +806,17 @@ export type {
   DiscoverSkillsOptions
 } from "./skills";
 export {
+  discoverProjectRoles,
+  parseRoleMarkdown
+} from "./roles";
+export type {
+  ProjectRoleAgent,
+  ProjectRolePermission,
+  ProjectRoleTools,
+  ProjectRoleDescriptor,
+  DiscoverProjectRolesOptions
+} from "./roles";
+export {
   handleSessionSearch,
   handleSessionList,
   handleSessionRead,

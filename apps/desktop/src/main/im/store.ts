@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
+  discoverProjectRoles,
   ensureDesktopDbSchema,
   escapeSqlLiteral,
   expandHome,
@@ -14,6 +15,7 @@ import {
   DEFAULT_BUILTIN_CALLABLE_TEMPLATE_IDS,
   IM_BUILTIN_TEMPLATE_IDS,
   isBuiltinTemplateId,
+  isProjectRoleTemplateId,
   isImAgent,
   isImPermission,
   parseImRoleTools,
@@ -449,6 +451,11 @@ function mapTemplate(row: TemplateRow): ImRoleTemplate {
   const defaultCallable = isBuiltinTemplateId(row.template_id)
     ? DEFAULT_BUILTIN_CALLABLE_TEMPLATE_IDS[row.template_id]
     : [];
+  const source = isBuiltinTemplateId(row.template_id)
+    ? "builtin"
+    : isProjectRoleTemplateId(row.template_id)
+      ? "project"
+      : "custom";
   return {
     templateId: row.template_id,
     name: row.name,
@@ -462,6 +469,7 @@ function mapTemplate(row: TemplateRow): ImRoleTemplate {
       ? callable
       : [...defaultCallable],
     autoDispatch: row.auto_dispatch === 1,
+    source,
     createdAtMs: row.created_at_ms,
     updatedAtMs: row.updated_at_ms
   };
@@ -475,6 +483,11 @@ function mapMember(row: MemberRow, template?: ImRoleTemplate): ImMember {
   const memberCallable = row.callable_template_ids_json !== null
     ? parseJsonArray(row.callable_template_ids_json)
     : undefined;
+  const source = isBuiltinTemplateId(row.template_id)
+    ? "builtin"
+    : isProjectRoleTemplateId(row.template_id)
+      ? "project"
+      : "custom";
   return {
     memberId: row.member_id,
     projectId: row.project_id,
@@ -490,6 +503,7 @@ function mapMember(row: MemberRow, template?: ImRoleTemplate): ImMember {
       isBuiltinTemplateId(row.template_id) ? [...DEFAULT_BUILTIN_CALLABLE_TEMPLATE_IDS[row.template_id]] : []
     ),
     autoDispatch: row.auto_dispatch !== null ? row.auto_dispatch === 1 : Boolean(template?.autoDispatch),
+    source,
     enabled: row.enabled === 1,
     acpChatId: row.acp_chat_id,
     createdAtMs: row.created_at_ms,
@@ -929,13 +943,156 @@ export class ImStore {
     if (project.localPath) {
       await fs.mkdir(project.localPath, { recursive: true }).catch(() => undefined);
       await ensureArpDir(project.localPath);
+      await this.syncProjectFileRoles(projectId, project.localPath);
       return project.localPath;
     }
     const scratchPath = path.join(path.resolve(expandHome(panelHome)), ".desktop", "scratch", "im", projectId);
     await fs.mkdir(scratchPath, { recursive: true }).catch(() => undefined);
     await ensureArpDir(scratchPath);
     await this.setLocalPath(projectId, scratchPath);
+    await this.syncProjectFileRoles(projectId, scratchPath);
     return scratchPath;
+  }
+
+  async syncProjectFileRoles(projectId: string, localPath?: string | null): Promise<ImMember[]> {
+    let resolvedPath = localPath?.trim() || null;
+    if (!resolvedPath) {
+      const project = await this.getProject(projectId);
+      resolvedPath = project?.localPath || null;
+    }
+    if (!resolvedPath) return this.listMembers(projectId);
+
+    const discovered = await discoverProjectRoles({ projectPath: resolvedPath });
+    const allTemplates = await this.listTemplates();
+    const existingMembers = await this.listMembers(projectId);
+    const existingMemberByTplId = new Map(existingMembers.map((m) => [m.templateId, m]));
+    const discoveredTplIds = new Set(discovered.map((d) => d.id));
+    const now = nowMs();
+
+    const resolveRef = (ref: string): string => {
+      const trimmed = ref.trim();
+      const lower = trimmed.toLowerCase();
+      if (allTemplates.some((t) => t.templateId === trimmed) || discovered.some((d) => d.id === trimmed)) {
+        return trimmed;
+      }
+      const matchTpl = allTemplates.find((t) => t.name.toLowerCase() === lower);
+      if (matchTpl) return matchTpl.templateId;
+      const matchDisc = discovered.find((d) => d.name.toLowerCase() === lower || d.slug === lower);
+      if (matchDisc) return matchDisc.id;
+      if (lower === "developer" || lower === "dev") return "role_developer";
+      if (lower === "architect" || lower === "arch") return "role_architect";
+      if (lower === "pm" || lower === "product manager") return "role_product_manager";
+      if (lower === "project manager" || lower === "pmg") return "role_project_manager";
+      if (lower === "ui" || lower === "ui designer") return "role_ui_designer";
+      if (lower === "tester" || lower === "qa") return "role_tester";
+      if (lower === "memory" || lower === "memory specialist") return "role_memory";
+      return trimmed;
+    };
+
+    for (const d of discovered) {
+      const callableIds = d.callable.map(resolveRef);
+      const callableJson = JSON.stringify(callableIds);
+      const toolsJson = JSON.stringify(d.tools);
+      const autoDispatchInt = d.autoDispatch ? 1 : 0;
+      const enabledInt = d.enabled ? 1 : 0;
+
+      // 1. Upsert template in im_role_templates
+      const existingTpl = allTemplates.find((t) => t.templateId === d.id);
+      if (!existingTpl) {
+        await runSqlite(
+          this.dbPath,
+          `INSERT INTO im_role_templates (
+            template_id, name, persona, agent, model, thought_level, permissions, tools_json, callable_template_ids_json, auto_dispatch, created_at_ms, updated_at_ms
+          ) VALUES (
+            ${sqlString(d.id)},
+            ${sqlString(d.name)},
+            ${sqlString(d.persona)},
+            ${sqlString(d.agent)},
+            ${sqlNullOrString(d.model ?? null)},
+            ${sqlNullOrString(d.thoughtLevel ?? null)},
+            ${sqlString(d.permissions)},
+            ${sqlString(toolsJson)},
+            ${sqlString(callableJson)},
+            ${autoDispatchInt},
+            ${now},
+            ${now}
+          );`
+        );
+      } else {
+        await runSqlite(
+          this.dbPath,
+          `UPDATE im_role_templates SET
+            name = ${sqlString(d.name)},
+            persona = ${sqlString(d.persona)},
+            agent = ${sqlString(d.agent)},
+            model = ${sqlNullOrString(d.model ?? null)},
+            thought_level = ${sqlNullOrString(d.thoughtLevel ?? null)},
+            permissions = ${sqlString(d.permissions)},
+            tools_json = ${sqlString(toolsJson)},
+            callable_template_ids_json = ${sqlString(callableJson)},
+            auto_dispatch = ${autoDispatchInt},
+            updated_at_ms = ${now}
+           WHERE template_id = ${sqlString(d.id)};`
+        );
+      }
+
+      // 2. Upsert member in im_members
+      const existingMember = existingMemberByTplId.get(d.id);
+      if (!existingMember) {
+        const memberId = randomUUID();
+        await runSqlite(
+          this.dbPath,
+          `INSERT INTO im_members (
+            member_id, project_id, template_id, name, persona, agent, model, thought_level, permissions, tools_json, callable_template_ids_json, auto_dispatch, enabled, acp_chat_id, created_at_ms, updated_at_ms
+          ) VALUES (
+            ${sqlString(memberId)},
+            ${sqlString(projectId)},
+            ${sqlString(d.id)},
+            ${sqlString(d.name)},
+            ${sqlString(d.persona)},
+            ${sqlString(d.agent)},
+            ${sqlNullOrString(d.model ?? null)},
+            ${sqlNullOrString(d.thoughtLevel ?? null)},
+            ${sqlString(d.permissions)},
+            ${sqlString(toolsJson)},
+            ${sqlString(callableJson)},
+            ${autoDispatchInt},
+            ${enabledInt},
+            NULL,
+            ${now},
+            ${now}
+          );`
+        );
+      } else {
+        await runSqlite(
+          this.dbPath,
+          `UPDATE im_members SET
+            name = ${sqlString(d.name)},
+            persona = ${sqlString(d.persona)},
+            agent = ${sqlString(d.agent)},
+            model = ${sqlNullOrString(d.model ?? null)},
+            thought_level = ${sqlNullOrString(d.thoughtLevel ?? null)},
+            permissions = ${sqlString(d.permissions)},
+            tools_json = ${sqlString(toolsJson)},
+            callable_template_ids_json = ${sqlString(callableJson)},
+            auto_dispatch = ${autoDispatchInt},
+            updated_at_ms = ${now}
+           WHERE member_id = ${sqlString(existingMember.memberId)};`
+        );
+      }
+    }
+
+    // 3. Remove deleted file roles for this project
+    for (const m of existingMembers) {
+      if (m.templateId.startsWith("project_role_") && !discoveredTplIds.has(m.templateId)) {
+        await runSqlite(
+          this.dbPath,
+          `DELETE FROM im_members WHERE member_id = ${sqlString(m.memberId)};`
+        );
+      }
+    }
+
+    return this.listMembers(projectId);
   }
 
   private async seedBuiltinMembers(projectId: string): Promise<void> {
@@ -1014,6 +1171,9 @@ export class ImStore {
       `UPDATE im_projects SET local_path = ${sqlNullOrString(nextPath)}, updated_at_ms = ${now}
        WHERE project_id = ${sqlString(projectId)};`
     );
+    if (nextPath) {
+      await this.syncProjectFileRoles(projectId, nextPath);
+    }
     return { ...project, localPath: nextPath, updatedAtMs: now };
   }
 
@@ -1987,6 +2147,9 @@ export class ImStore {
 
   async getRoom(projectId: string): Promise<ImRoom> {
     const project = await this.requireProject(projectId);
+    if (project.localPath) {
+      await this.syncProjectFileRoles(projectId, project.localPath);
+    }
     const [members, messages, jobs, knowledge] = await Promise.all([
       this.listMembers(projectId),
       this.listMessages(projectId),
