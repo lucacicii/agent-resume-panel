@@ -4,11 +4,11 @@ import { renderMarkdown } from "../../components/Markdown";
 import { desktopApi } from "../../bridge";
 import type { ImJob, ImMember, ImMessage, ImRoom } from "../../../shared/imTypes";
 import { extractCitationsFromMessage } from "./CitationSheet";
-import { cleanSnippet } from "./timelineModel";
 import { ImGraphGutter } from "./ImGraphGutter";
 import type { MessageGraphMeta } from "./imTranscriptGraphModel";
 import {
   agentTag,
+  cleanSnippet,
   dayKey,
   formatDay,
   formatTime,
@@ -90,9 +90,20 @@ export const ImMessageItem = memo(function ImMessageItem({
   t
 }: ImMessageItemProps) {
   const speaker = useMemo(() => {
-    return allMembers.find((member) => member.memberId === message.authorMemberId)
-      || allMembers.find((member) => member.templateId === message.authorMemberId)
-      || allMembers.find((member) => member.name === message.authorLabel || roleLabel(member, t) === message.authorLabel);
+    if (!allMembers.length) return undefined;
+    const authorId = message.authorMemberId?.trim();
+    const label = message.authorLabel?.trim();
+    const lowerLabel = label?.toLowerCase();
+
+    return (
+      allMembers.find((m) => authorId && (m.memberId === authorId || m.templateId === authorId)) ||
+      allMembers.find((m) => label && (m.name === label || roleLabel(m, t) === label)) ||
+      allMembers.find((m) => lowerLabel && (
+        m.name.toLowerCase() === lowerLabel ||
+        m.templateId.toLowerCase() === lowerLabel ||
+        m.templateId.replace(/^role_/, "").toLowerCase() === lowerLabel
+      ))
+    );
   }, [allMembers, message.authorLabel, message.authorMemberId, t]);
 
   const roleColorValue = speaker ? roleColor(speaker.templateId) : (message.kind === "role.say" ? roleColor(message.authorLabel) : undefined);
@@ -104,12 +115,11 @@ export const ImMessageItem = memo(function ImMessageItem({
   );
 
   const linkedJob = message.jobId ? room?.jobs.find((j) => j.jobId === message.jobId) : undefined;
-  const activeJobForSpeaker = (message.kind === "role.say" && speaker)
-    ? room?.jobs.find((j) => j.memberId === speaker.memberId && isActiveJobStatus(j.status))
-    : undefined;
-  const currentActiveJob = (linkedJob && isActiveJobStatus(linkedJob.status)) ? linkedJob : activeJobForSpeaker;
-  const isAnswering = Boolean(message.kind === "role.say" && (message.streaming || currentActiveJob));
-  const cancelTargetJob = currentActiveJob ?? (message.jobId ? ({ jobId: message.jobId } as ImJob) : undefined);
+  const isMessageStreaming = Boolean(message.streaming);
+  const isLinkedJobActive = Boolean(linkedJob && isActiveJobStatus(linkedJob.status));
+  const isAnswering = isMessageStreaming || isLinkedJobActive;
+  const isResumable = Boolean(linkedJob && isResumableJob(linkedJob, room?.jobs ?? []));
+  const cancelTargetJob = isLinkedJobActive ? linkedJob : (isMessageStreaming && message.jobId ? ({ jobId: message.jobId } as ImJob) : undefined);
   const filesChanged = linkedJob?.filesChanged ?? [];
 
   const dispatchBlocks = useMemo(() => {
@@ -202,6 +212,73 @@ export const ImMessageItem = memo(function ImMessageItem({
     }
     return [];
   }, [dispatchBlocks, message.createdAtMs, message.delegationProposals]);
+
+  const renderActions = () => {
+    if (message.kind !== "human" && message.kind !== "role.say") return null;
+    if (isAnswering) return null;
+
+    return (
+      <div className="im-compact-actions">
+        {message.kind === "role.say" && !isResumable && (
+          <button
+            type="button"
+            className="im-compact-action-btn im-continue-ask-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              onContinueAsk(message);
+            }}
+            title={t("desktop.im.continueAsk")}
+          >
+            <ThemeIcon name="corner-down-right" size={11} aria-hidden="true" />
+            <span>{t("desktop.im.continueAsk")}</span>
+          </button>
+        )}
+        <button
+          type="button"
+          className="im-compact-action-btn im-quote-btn"
+          onClick={(e) => {
+            e.stopPropagation();
+            onQuoteMessage(message);
+          }}
+          title={t("desktop.im.quote")}
+        >
+          <ThemeIcon name="quote" size={11} aria-hidden="true" />
+          <span>{t("desktop.im.quote")}</span>
+        </button>
+        <button
+          type="button"
+          className="im-compact-action-btn"
+          disabled={isTranslating}
+          onClick={(e) => {
+            e.stopPropagation();
+            void onTranslateMessage(message);
+          }}
+          title={translated ? t("desktop.im.restore") : t("desktop.im.translate")}
+        >
+          <ThemeIcon name="globe" size={11} aria-hidden="true" />
+          <span>
+            {translated
+              ? t("desktop.im.restore")
+              : isTranslating
+                ? t("desktop.im.actionRunning")
+                : t("desktop.im.translate")}
+          </span>
+        </button>
+        <button
+          type="button"
+          className="im-compact-action-btn"
+          onClick={(e) => {
+            e.stopPropagation();
+            void onCopyText(message.body);
+          }}
+          title={t("desktop.common.copy")}
+        >
+          <ThemeIcon name="copy" size={11} aria-hidden="true" />
+          <span>{t("desktop.common.copy")}</span>
+        </button>
+      </div>
+    );
+  };
 
   if (!isExpanded && message.kind !== "system") {
     const compactSnippet = cleanSnippet(cleanBody || message.body || "");
@@ -309,6 +386,7 @@ export const ImMessageItem = memo(function ImMessageItem({
             {compactSnippet ? (
               <div className="im-compact-snippet">{compactSnippet}</div>
             ) : null}
+            {renderActions()}
           </article>
         </div>
       </>
@@ -711,38 +789,7 @@ export const ImMessageItem = memo(function ImMessageItem({
             </button>
           </div>
         )}
-        {(message.kind === "human" || message.kind === "role.say") && !isAnswering && (
-          <div className="im-message-actions">
-            <button type="button" className="im-message-action" onClick={() => void onCopyText(message.body)}>
-              {t("desktop.common.copy")}
-            </button>
-            <button type="button" className="im-message-action im-quote-btn" onClick={() => onQuoteMessage(message)}>
-              {t("desktop.im.quote")}
-            </button>
-            <button
-              type="button"
-              className="im-message-action"
-              disabled={isTranslating}
-              onClick={() => void onTranslateMessage(message)}
-            >
-              {translated
-                ? t("desktop.im.restore")
-                : isTranslating
-                  ? t("desktop.im.actionRunning")
-                  : t("desktop.im.translate")}
-            </button>
-            {message.kind === "role.say" && speaker && speaker.enabled && !message.streaming && !isResumableJob(linkedJob, room?.jobs ?? []) && (
-              <button
-                type="button"
-                className="im-message-action"
-                disabled={Boolean(room?.jobs.some((job) => job.memberId === speaker.memberId && job.status !== "failed" && job.status !== "cancelled" && job.status !== "completed"))}
-                onClick={() => onContinueAsk(message)}
-              >
-                {t("desktop.im.continueAsk")}
-              </button>
-            )}
-          </div>
-        )}
+        {renderActions()}
       </article>
       </div>
     </>

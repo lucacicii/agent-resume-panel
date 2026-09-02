@@ -112,6 +112,19 @@ export function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
+export function cleanSnippet(body: string, max = 160): string {
+  const plain = body
+    .replace(/```[\s\S]*?```/g, " [code] ")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/#+\s+/g, "")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/[*_~>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (plain.length <= max) return plain;
+  return `${plain.slice(0, max - 1)}…`;
+}
+
 export function parseDispatchBlocks(text: string): Array<{ target: string; reason?: string; instruction: string }> {
   const regex = /<im_dispatch\s+target="([^"]+)"(?:\s+reason="([^"]*)")?>([\s\S]*?)<\/im_dispatch>/gi;
   const blocks: Array<{ target: string; reason?: string; instruction: string }> = [];

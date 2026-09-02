@@ -17768,6 +17768,40 @@ html[data-window-mode="browser"] #react-chrome {
   overflow: hidden;
   margin-top: 2px;
 }
+.im-compact-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+  padding-top: 5px;
+  border-top: 1px dashed var(--color-separator, rgba(255, 255, 255, 0.08));
+  opacity: 1;
+  visibility: visible;
+}
+.im-compact-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 4px;
+  border: 1px solid var(--color-separator, rgba(255, 255, 255, 0.1));
+  background: var(--color-fill-secondary, rgba(255, 255, 255, 0.04));
+  color: var(--color-label-secondary, #ccc);
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+.im-compact-action-btn:hover:not(:disabled) {
+  background: var(--color-fill-tertiary, rgba(255, 255, 255, 0.1));
+  border-color: var(--primary, #3b82f6);
+  color: var(--color-label-primary, #fff);
+}
+.im-compact-action-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 
 /* Collapse / Expand Toggle Buttons */
 .im-message-collapse-btn,
@@ -18095,37 +18129,6 @@ html[data-window-mode="browser"] #react-chrome {
   font-size: 11px;
   color: var(--color-label-secondary);
   background: color-mix(in srgb, var(--im-role-color, var(--color-fill-secondary)) 8%, var(--color-fill-secondary));
-}
-.im-message-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 6px;
-  margin-top: 6px;
-  visibility: hidden;
-  opacity: 0;
-  transition: opacity 0.12s ease;
-}
-.im-message:hover .im-message-actions,
-.im-message:focus-within .im-message-actions {
-  visibility: visible;
-  opacity: 1;
-}
-.im-message-action {
-  border: 0;
-  background: transparent;
-  color: var(--color-label-tertiary);
-  font-size: 11px;
-  padding: 1px 8px;
-  border-radius: 999px;
-  cursor: pointer;
-}
-.im-message-action:hover:not(:disabled) {
-  background: var(--color-fill-secondary);
-  color: var(--color-label-primary);
-}
-.im-message-action:disabled {
-  opacity: 0.6;
-  cursor: default;
 }
 .im-message .markdown-body > :first-child {
   margin-top: 0;
@@ -18729,9 +18732,6 @@ html[data-window-mode="browser"] #react-chrome {
   color: var(--color-label-tertiary);
   font-variant-numeric: tabular-nums;
 }
-.im-message-actions {
-  gap: 4px;
-}
 .im-new-below {
   position: absolute;
   bottom: 16px;
@@ -18753,177 +18753,6 @@ html[data-window-mode="browser"] #react-chrome {
 .im-new-below:hover {
   border-color: var(--color-accent);
   color: var(--color-accent);
-}
-/* --- Floating Timeline on right side of chat transcript --- */
-.im-timeline {
-  position: absolute;
-  right: 14px;
-  top: 12px;
-  bottom: 12px;
-  z-index: 10;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: space-between;
-  pointer-events: none;
-}
-.im-timeline-control {
-  pointer-events: auto;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--color-control-bg);
-  border: 1px solid var(--color-separator);
-  color: var(--color-label-secondary);
-  cursor: pointer;
-  opacity: 0.7;
-  transition: opacity 0.15s, transform 0.15s, background 0.15s;
-}
-.im-timeline-control:hover {
-  opacity: 1;
-  transform: scale(1.1);
-  background: var(--color-window-bg);
-  color: var(--color-label-primary);
-}
-.im-timeline-track {
-  pointer-events: auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 5px;
-  padding: 8px 20px;
-  margin: 4px 0;
-  overflow-y: auto;
-  overflow-x: visible;
-  max-height: calc(100% - 60px);
-  scrollbar-width: none;
-}
-.im-timeline-track::-webkit-scrollbar {
-  display: none;
-}
-.im-timeline-node {
-  position: relative;
-  border: 0;
-  background: transparent;
-  padding: 2px;
-  border-radius: 50%;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: inherit;
-  transform: scale(var(--im-dock-scale, 1)) translateX(var(--im-dock-offset-x, 0px));
-  transform-origin: center right;
-  transition: transform 0.18s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.18s ease, filter 0.18s ease;
-  will-change: transform;
-}
-.im-timeline-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--color-label-tertiary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.18s cubic-bezier(0.2, 0, 0, 1);
-}
-.im-timeline-node.is-user .im-timeline-dot {
-  background: var(--color-accent, #3b82f6);
-}
-.im-timeline-node.is-role .im-timeline-dot {
-  background: var(--im-role-color, var(--color-label-secondary));
-  width: 14px;
-  height: 14px;
-}
-.im-timeline-node-avatar {
-  font-size: 8px;
-  font-weight: 700;
-  color: #fff;
-  line-height: 1;
-  text-transform: uppercase;
-}
-.im-timeline-node.is-active .im-timeline-dot {
-  box-shadow: 0 0 0 2px var(--color-window-bg), 0 0 0 3.5px var(--color-accent, #3b82f6);
-}
-.im-timeline-node.is-dock-focused .im-timeline-dot {
-  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.28));
-}
-.im-timeline-node.is-dock-neighbor-1 .im-timeline-dot {
-  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.18));
-}
-.im-timeline-popover {
-  position: absolute;
-  right: 56px;
-  transform: translateY(-50%);
-  width: min(280px, calc(100vw - 80px));
-  padding: 8px 12px;
-  border-radius: var(--radius-lg, 8px);
-  background: var(--color-elevated-bg, var(--color-control-bg));
-  border: 1px solid var(--color-separator);
-  box-shadow: var(--shadow-popover);
-  text-align: left;
-  z-index: 30;
-  pointer-events: none;
-  animation: im-popover-in 0.12s ease-out;
-}
-@keyframes im-popover-in {
-  from {
-    opacity: 0;
-    transform: translateY(-50%) translateX(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(-50%) translateX(0);
-  }
-}
-.im-timeline-popover-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 4px;
-}
-.im-timeline-popover-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--im-role-color, var(--color-accent, #3b82f6));
-  color: #fff;
-  font-size: 9px;
-  font-weight: 700;
-  text-transform: uppercase;
-  flex-shrink: 0;
-}
-.im-timeline-popover-author {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--color-label-primary);
-  flex: 1 1 auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.im-timeline-popover-time {
-  font-size: 10px;
-  color: var(--color-label-tertiary);
-  font-variant-numeric: tabular-nums;
-  flex-shrink: 0;
-}
-.im-timeline-popover-snippet {
-  font-size: 11px;
-  line-height: 1.4;
-  color: var(--color-label-secondary);
-  margin: 0;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  word-break: break-word;
 }
 /* --- IM Modified Files block --- */
 .im-message-files {

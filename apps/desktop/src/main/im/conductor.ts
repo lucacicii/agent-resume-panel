@@ -539,7 +539,7 @@ export class ImConductor {
       if (text || thinking) {
         let streamMsg = this.streamingMessagesByJob.get(jobId);
         if (!streamMsg) {
-          const existingMessage = await this.store.findMessageByJobId(jobId);
+          const existingMessage = await this.store.findMessageByJobId(jobId, "role.say");
           if (existingMessage) {
             streamMsg = {
               ...existingMessage,
@@ -615,7 +615,7 @@ export class ImConductor {
           });
         }
       } else if (finalBody || finalThinking) {
-        const existingMessage = await this.store.findMessageByJobId(jobId);
+        const existingMessage = await this.store.findMessageByJobId(jobId, "role.say");
         if (existingMessage) {
           persistedMessage = await this.store.updateMessage(existingMessage.messageId, {
             body: finalBody,

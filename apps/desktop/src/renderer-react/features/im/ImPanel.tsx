@@ -540,15 +540,27 @@ export function ImPanel(): ReactPortal | null {
   }, [quoteSelection]);
 
   const continueAsk = useCallback((message: ImMessage) => {
-    if (message.kind !== "role.say" || !message.authorMemberId) return;
-    const owner = allMembers.find((member) => member.memberId === message.authorMemberId && member.enabled);
+    if (message.kind !== "role.say") return;
+    const authorId = message.authorMemberId?.trim();
+    const label = message.authorLabel?.trim();
+    const lowerLabel = label?.toLowerCase();
+
+    const owner =
+      allMembers.find((m) => authorId && (m.memberId === authorId || m.templateId === authorId)) ||
+      allMembers.find((m) => label && (m.name === label || roleLabel(m, t) === label)) ||
+      allMembers.find((m) => lowerLabel && (
+        m.name.toLowerCase() === lowerLabel ||
+        m.templateId.toLowerCase() === lowerLabel ||
+        m.templateId.replace(/^role_/, "").toLowerCase() === lowerLabel
+      ));
+
     if (!owner) return;
     setFollowUpTo(message);
     setQuotes([]);
     setMentionIds([owner.memberId]);
     setMentionOpen(false);
     textareaRef.current?.focus();
-  }, [allMembers]);
+  }, [allMembers, t]);
 
   const selectedTextIn = useCallback((root: HTMLElement): string => {
     const selection = window.getSelection();

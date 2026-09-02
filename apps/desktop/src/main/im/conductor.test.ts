@@ -1341,4 +1341,65 @@ Implement the search indexing algorithm as designed.
     expect(roleMessages).toHaveLength(1);
     expect(roleMessages[0]?.body).toBe("The user wants me to output the conclusion to a note. Created note successfully.");
   });
+
+  it("does not overwrite the human prompt message when streaming and finalizing assistant reply", async () => {
+    const store = await createStore();
+    const project = await store.createProject("Prompt preservation");
+    await store.setLocalPath(project.projectId, process.cwd());
+    const room = await store.getRoom(project.projectId);
+    const dev = room.members.find((m) => m.templateId === "role_developer")!;
+
+    const conductor = new ImConductor(store, () => undefined, vi.fn(async () => undefined), vi.fn(async () => undefined));
+
+    const { message: humanMsg, job } = await conductor.postMessage({
+      projectId: project.projectId,
+      body: "Please write a test",
+      quoteIds: [],
+      mentionRoleIds: [dev.memberId]
+    });
+
+    expect(job).not.toBeNull();
+    const humanInDb = await store.getMessage(humanMsg.messageId);
+    expect(humanInDb?.jobId).toBe(job?.jobId);
+    expect(humanInDb?.kind).toBe("human");
+    expect(humanInDb?.body).toBe("Please write a test");
+
+    await store.updateJob(job!.jobId, { acpChatId: "chat-preserve-test" });
+
+    // Stream first delta
+    await conductor.handleAcpStream({
+      type: "assistantDelta",
+      chatId: "chat-preserve-test",
+      id: "delta-1",
+      text: "Here is the test code",
+      streaming: true,
+      toolCalls: []
+    });
+
+    // Complete stream
+    await conductor.handleAcpStream({
+      type: "assistantDone",
+      chatId: "chat-preserve-test",
+      streaming: false,
+      message: {
+        id: "msg-done",
+        role: "assistant",
+        text: "Here is the test code",
+        timestamp: Date.now(),
+        toolCalls: []
+      }
+    });
+
+    const allMessages = await store.listMessages(project.projectId);
+    const humanAfter = allMessages.find((m) => m.messageId === humanMsg.messageId);
+    expect(humanAfter?.kind).toBe("human");
+    expect(humanAfter?.authorLabel).toBe("You");
+    expect(humanAfter?.body).toBe("Please write a test");
+
+    const roleSayMsg = allMessages.find((m) => m.kind === "role.say" && m.jobId === job?.jobId);
+    expect(roleSayMsg).toBeDefined();
+    expect(roleSayMsg?.authorLabel).toBe("Developer");
+    expect(roleSayMsg?.authorMemberId).toBe(dev.memberId);
+    expect(roleSayMsg?.body).toBe("Here is the test code");
+  });
 });

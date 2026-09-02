@@ -1630,10 +1630,10 @@ export class ImStore {
     return this.mapMessage(row, new Map(siblings.map((item) => [item.message_id, item])));
   }
 
-  async findMessageByJobId(jobId: string): Promise<ImMessage | undefined> {
+  async findMessageByJobId(jobId: string, kind: ImMessageKind = "role.say"): Promise<ImMessage | undefined> {
     const rows = await runSqliteJson<MessageRow>(
       this.dbPath,
-      `SELECT * FROM im_messages WHERE job_id = ${sqlString(jobId)} ORDER BY created_at_ms DESC LIMIT 1;`
+      `SELECT * FROM im_messages WHERE job_id = ${sqlString(jobId)} AND kind = ${sqlString(kind)} ORDER BY created_at_ms DESC LIMIT 1;`
     );
     const row = rows[0];
     if (!row) return undefined;

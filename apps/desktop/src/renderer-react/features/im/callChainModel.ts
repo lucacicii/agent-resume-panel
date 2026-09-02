@@ -1,5 +1,5 @@
 import type { ImDelegationProposal, ImJob, ImMember, ImMessage } from "../../../shared/imTypes";
-import { cleanSnippet } from "./timelineModel";
+import { cleanSnippet } from "./imUtils";
 
 export type CallTriggerType =
   | "user_prompt"
