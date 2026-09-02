@@ -1777,4 +1777,40 @@ Build the user service endpoints.
     expect(document.querySelector(".im-origin-capsule")).not.toBeNull();
     expect(document.querySelector(".im-origin-snippet")?.textContent).toContain("Design indexing module");
   });
+
+  it("opens the role config popover when clicking the external role avatar button", async () => {
+    const currentProject = project();
+    const currentRoom = roomFor(currentProject);
+    const api = renderIm();
+    (api.imGetRoom as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...currentRoom,
+      messages: [
+        {
+          messageId: "msg-role-1",
+          projectId: currentProject.projectId,
+          kind: "role.say",
+          authorMemberId: currentRoom.members[0]!.memberId,
+          authorLabel: "Developer",
+          body: "I completed the implementation.",
+          quoteIds: [],
+          quotes: [],
+          mentionRoleIds: [],
+          jobId: null,
+          createdAtMs: 2000
+        }
+      ]
+    });
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+
+    const avatarBtn = await screen.findByRole("button", { name: "Configure role" });
+    expect(avatarBtn).toBeTruthy();
+    expect(document.querySelector(".im-member-config-popover")).toBeNull();
+
+    // Click large circular avatar to open role configuration popover
+    fireEvent.click(avatarBtn);
+    expect(document.querySelector(".im-member-config-popover")).not.toBeNull();
+    expect(document.querySelector(".im-member-config-popover strong")?.textContent).toContain("Product Manager");
+  });
 });

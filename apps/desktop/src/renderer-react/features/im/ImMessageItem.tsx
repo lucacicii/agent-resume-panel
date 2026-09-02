@@ -38,6 +38,7 @@ export interface ImMessageItemProps {
   copiedFilePath: string | null;
   memberLabel: (member: ImMember) => string;
   onJumpToMessage?: (messageId: string) => void;
+  onConfigureRole?: (member: ImMember, anchorRect: DOMRect) => void;
   onToggleExpand?: (messageId: string) => void;
   onToggleThinking: (messageId: string) => void;
   onToggleFiles: (messageId: string) => void;
@@ -73,6 +74,7 @@ export const ImMessageItem = memo(function ImMessageItem({
   copiedFilePath,
   memberLabel,
   onJumpToMessage,
+  onConfigureRole,
   onToggleExpand,
   onToggleThinking,
   onToggleFiles,
@@ -349,30 +351,37 @@ export const ImMessageItem = memo(function ImMessageItem({
     );
   };
 
-  const renderHeader = () => {
-    if (message.kind === "system") return null;
+  const renderRoleHeaderExternal = () => {
+    if (message.kind !== "role.say") return null;
     const authorName = speaker ? memberLabel(speaker) : message.authorLabel;
 
     return (
-      <header>
+      <header className="im-role-header-external">
         <span className="im-message-author">
           {roleColorValue ? (
-            <span className="im-role-avatar" aria-hidden="true" style={{ "--im-role-color": roleColorValue } as CSSProperties}>
+            <button
+              type="button"
+              className="im-role-avatar is-large is-clickable"
+              style={{ "--im-role-color": roleColorValue } as CSSProperties}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (speaker) {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  onConfigureRole?.(speaker, rect);
+                }
+              }}
+              aria-label={t("desktop.im.configRole")}
+              title={speaker ? t("desktop.im.configRoleForChat", memberLabel(speaker)) : authorName}
+            >
+              {roleInitial(authorName)}
+            </button>
+          ) : (
+            <span className="im-role-avatar is-large" aria-hidden="true">
               {roleInitial(authorName)}
             </span>
-          ) : (
-            <span className="im-role-avatar is-user" aria-hidden="true">
-              <ThemeIcon name="user" size={11} />
-            </span>
           )}
-          <strong>{authorName}</strong>
+          <strong className="im-role-author-name">{authorName}</strong>
           {speaker ? <span className="im-compact-agent-tag">{agentTag(speaker.agent, speaker.model, t)}</span> : null}
-          {message.autoRouted && message.routedRoleName ? (
-            <span className="im-auto-routed-badge" title={t("desktop.im.autoRoutedTo", message.routedRoleName)}>
-              <ThemeIcon name="sparkles" size={11} aria-hidden="true" />
-              <span>{t("desktop.im.autoRoutedTo", message.routedRoleName)}</span>
-            </span>
-          ) : null}
           {!isExpanded && filesChanged.length > 0 && (
             <span className="im-compact-files-badge">
               <ThemeIcon name="file-code" size={11} aria-hidden="true" />
@@ -385,16 +394,14 @@ export const ImMessageItem = memo(function ImMessageItem({
               <span>{citations.length}</span>
             </span>
           )}
-        </span>
-
-        <span className="im-message-meta">
+          <span className="im-header-dot-sep" aria-hidden="true">·</span>
           <time dateTime={new Date(message.createdAtMs).toISOString()} className="im-message-time">
             {formatTime(message.createdAtMs)}
           </time>
           {onToggleExpand && (
             <button
               type="button"
-              className="im-message-collapse-btn"
+              className="im-message-collapse-btn is-prominent"
               onClick={(e) => {
                 e.stopPropagation();
                 onToggleExpand(message.messageId);
@@ -402,9 +409,48 @@ export const ImMessageItem = memo(function ImMessageItem({
               aria-label={t(isExpanded ? "desktop.im.collapseMessage" : "desktop.im.expandMessage")}
               title={t(isExpanded ? "desktop.im.collapseMessage" : "desktop.im.expandMessage")}
             >
-              <ThemeIcon name={isExpanded ? "chevron-up" : "chevron-down"} size={12} aria-hidden="true" />
+              <ThemeIcon name={isExpanded ? "chevron-up" : "chevron-down"} size={16} aria-hidden="true" />
             </button>
           )}
+        </span>
+      </header>
+    );
+  };
+
+  const renderHumanHeaderExternal = () => {
+    if (message.kind !== "human") return null;
+
+    return (
+      <header className="im-human-header-external">
+        <span className="im-message-author">
+          {onToggleExpand && (
+            <button
+              type="button"
+              className="im-message-collapse-btn is-prominent"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleExpand(message.messageId);
+              }}
+              aria-label={t(isExpanded ? "desktop.im.collapseMessage" : "desktop.im.expandMessage")}
+              title={t(isExpanded ? "desktop.im.collapseMessage" : "desktop.im.expandMessage")}
+            >
+              <ThemeIcon name={isExpanded ? "chevron-up" : "chevron-down"} size={16} aria-hidden="true" />
+            </button>
+          )}
+          <time dateTime={new Date(message.createdAtMs).toISOString()} className="im-message-time">
+            {formatTime(message.createdAtMs)}
+          </time>
+          <span className="im-header-dot-sep" aria-hidden="true">·</span>
+          {message.autoRouted && message.routedRoleName ? (
+            <span className="im-auto-routed-badge" title={t("desktop.im.autoRoutedTo", message.routedRoleName)}>
+              <ThemeIcon name="sparkles" size={11} aria-hidden="true" />
+              <span>{t("desktop.im.autoRoutedTo", message.routedRoleName)}</span>
+            </span>
+          ) : null}
+          <strong className="im-human-author-name">{message.authorLabel || "You"}</strong>
+          <span className="im-role-avatar is-user" aria-hidden="true">
+            <ThemeIcon name="user" size={14} />
+          </span>
         </span>
       </header>
     );
@@ -442,18 +488,19 @@ export const ImMessageItem = memo(function ImMessageItem({
         <div className="im-thread-separator" role="separator">{t("desktop.im.newConversation")}</div>
       )}
       <div className={`im-message-row is-${message.kind.replace(".", "-")}${!isExpanded ? " is-row-collapsed" : ""}`}>
-        <article
-          id={`im-msg-${message.messageId}`}
-          className={`im-message is-${message.kind.replace(".", "-")}${!isExpanded ? " is-collapsed" : ""}${isFlashing ? " is-flashing" : ""}`}
-          style={roleColorValue ? { "--im-role-color": roleColorValue } as CSSProperties : undefined}
-          onClick={!isExpanded ? () => onToggleExpand?.(message.messageId) : undefined}
-          onContextMenu={(event) => onOpenSelectionMenu(event, message)}
-          role={!isExpanded ? "button" : undefined}
-          tabIndex={!isExpanded ? 0 : undefined}
-          title={!isExpanded ? t("desktop.im.expandMessage") : undefined}
-        >
-          {renderOriginCapsule()}
-          {renderHeader()}
+        <div className="im-message-card-wrap">
+          {message.kind === "role.say" ? renderRoleHeaderExternal() : renderHumanHeaderExternal()}
+          <article
+            id={`im-msg-${message.messageId}`}
+            className={`im-message is-${message.kind.replace(".", "-")}${!isExpanded ? " is-collapsed" : ""}${isFlashing ? " is-flashing" : ""}`}
+            style={roleColorValue ? { "--im-role-color": roleColorValue } as CSSProperties : undefined}
+            onClick={!isExpanded ? () => onToggleExpand?.(message.messageId) : undefined}
+            onContextMenu={(event) => onOpenSelectionMenu(event, message)}
+            role={!isExpanded ? "button" : undefined}
+            tabIndex={!isExpanded ? 0 : undefined}
+            title={!isExpanded ? t("desktop.im.expandMessage") : undefined}
+          >
+            {renderOriginCapsule()}
 
           {!isExpanded ? (
             <>
@@ -785,6 +832,7 @@ export const ImMessageItem = memo(function ImMessageItem({
         )}
         {renderActions()}
       </article>
+      </div>
       </div>
     </>
   );

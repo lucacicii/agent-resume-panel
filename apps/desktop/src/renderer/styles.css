@@ -17580,7 +17580,7 @@ html[data-window-mode="browser"] #react-chrome {
   width: 100%;
   position: relative;
   min-width: 0;
-  padding: 2px 0;
+  padding: 4px 0;
 }
 .im-message-row.is-human {
   justify-content: flex-end;
@@ -17590,6 +17590,122 @@ html[data-window-mode="browser"] #react-chrome {
 }
 .im-message-row.is-system {
   justify-content: center;
+}
+
+.im-message-card-wrap {
+  display: flex;
+  flex-direction: column;
+  max-width: 85%;
+  min-width: 0;
+  gap: 4px;
+}
+.im-message-row.is-human .im-message-card-wrap {
+  align-items: flex-end;
+}
+.im-message-row.is-role-say .im-message-card-wrap {
+  align-items: flex-start;
+  width: 100%;
+}
+
+/* External Header above the Card */
+.im-role-header-external,
+.im-human-header-external {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 0 2px 2px;
+  margin-bottom: 3px;
+  min-width: 0;
+  user-select: none;
+}
+.im-role-header-external {
+  justify-content: flex-start;
+}
+.im-human-header-external {
+  justify-content: flex-end;
+}
+.im-role-header-external .im-message-author,
+.im-human-header-external .im-message-author {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 13px;
+  min-width: 0;
+}
+.im-role-author-name,
+.im-human-author-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-label-primary, #fff);
+}
+.im-header-dot-sep {
+  color: var(--color-label-tertiary, #666);
+  font-size: 11px;
+  margin: 0 1px;
+}
+.im-message-collapse-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--color-separator, rgba(255, 255, 255, 0.1));
+  background: var(--color-fill-secondary, rgba(255, 255, 255, 0.04));
+  color: var(--color-label-secondary, #999);
+  border-radius: 6px;
+  cursor: pointer;
+  opacity: 0.85;
+  transition: opacity 0.15s ease, background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+}
+.im-message-collapse-btn:hover {
+  opacity: 1;
+  background: var(--color-fill-tertiary, rgba(255, 255, 255, 0.12));
+  border-color: var(--primary, #3b82f6);
+  color: var(--color-label-primary, #fff);
+  transform: scale(1.08);
+}
+
+/* Prominent Circular Avatar */
+.im-role-avatar.is-large,
+.im-role-avatar.is-user {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  border-radius: 50%;
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--im-role-color, #3b82f6);
+  color: #fff;
+  line-height: 1;
+  text-transform: uppercase;
+  flex-shrink: 0;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+
+.im-role-avatar.is-user {
+  background: var(--color-fill-secondary, rgba(255, 255, 255, 0.12));
+  color: var(--color-label-primary, #ddd);
+}
+
+.im-role-avatar.is-clickable {
+  border: none;
+  cursor: pointer;
+  position: relative;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, outline-color 0.15s ease;
+  outline: 2px solid transparent;
+  outline-offset: 1.5px;
+}
+.im-role-avatar.is-clickable:hover {
+  transform: scale(1.12);
+  box-shadow: 0 0 10px var(--im-role-color, #3b82f6);
+  outline-color: var(--im-role-color, #3b82f6);
 }
 
 /* Origin Capsule (Derived from previous message) */
