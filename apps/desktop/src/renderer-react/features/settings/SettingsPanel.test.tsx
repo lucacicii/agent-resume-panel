@@ -297,13 +297,17 @@ describe("SettingsPanel (window)", () => {
     await act(async () => {
       navigateHandlers[0]?.({ pane: "providers" });
     });
-    await waitFor(() => expect(host.querySelectorAll(".settings-group")).toHaveLength(3));
+    await waitFor(() => expect(host.querySelectorAll(".settings-group")).toHaveLength(2));
     expect(host.textContent).toContain("Tool LLM");
   });
 
   it("renders the provider pool with kind badges and per-use-case model selectors", async () => {
     const { host } = renderWindowSettings("providers");
     await waitFor(() => expect(host.querySelector(".settings-provider-list")).not.toBeNull());
+    expect(Array.from(host.querySelectorAll(".settings-group-title")).map((el) => el.textContent)).toEqual([
+      "Providers",
+      "Use-case models"
+    ]);
     expect(host.querySelectorAll(".settings-provider-item")).toHaveLength(1);
     expect(host.textContent).toContain("Example");
     expect(host.textContent).toContain("Tool LLM");
