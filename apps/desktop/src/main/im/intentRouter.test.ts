@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ImMember } from "../../shared/imTypes";
-import { parseIntentClassification, routeMessageIntent } from "./intentRouter";
+import { buildRolesRoutingPrompt, parseIntentClassification, routeMessageIntent } from "./intentRouter";
 
 const mockMembers: ImMember[] = [
   {
@@ -46,6 +46,23 @@ const mockMembers: ImMember[] = [
     updatedAtMs: 1
   }
 ];
+
+const memoryMember: ImMember = {
+  memberId: "mem-mem",
+  projectId: "p1",
+  templateId: "role_memory",
+  name: "Memory Specialist",
+  persona: "Memory & Knowledge Specialist. Maintain project notes, digests, and past sessions.",
+  agent: "claude",
+  permissions: "read",
+  tools: { fsRead: true, fsWrite: false, execute: false },
+  enabled: true,
+  acpChatId: null,
+  createdAtMs: 1,
+  updatedAtMs: 1
+};
+
+const mockMembersWithMemory: ImMember[] = [...mockMembers, memoryMember];
 
 describe("intentRouter", () => {
   describe("parseIntentClassification", () => {
@@ -96,6 +113,51 @@ describe("intentRouter", () => {
       const result = parseIntentClassification(raw, mockMembers);
       expect(result.matched).toBe(false);
       expect(result.targetMember).toBeUndefined();
+    });
+
+    it("matches memory role when targetName echoes the persona wording", () => {
+      const raw = JSON.stringify({
+        matched: true,
+        targetId: "memory_specialist",
+        targetName: "Memory & Knowledge Specialist",
+        reason: "Notes question"
+      });
+      const result = parseIntentClassification(raw, mockMembersWithMemory);
+      expect(result.matched).toBe(true);
+      expect(result.targetMember?.memberId).toBe("mem-mem");
+    });
+
+    it("matches note-related ids to the memory role", () => {
+      const raw = JSON.stringify({
+        matched: true,
+        targetId: "notes",
+        targetName: "",
+        reason: "Note taking"
+      });
+      const result = parseIntentClassification(raw, mockMembersWithMemory);
+      expect(result.matched).toBe(true);
+      expect(result.targetMember?.templateId).toBe("role_memory");
+    });
+  });
+
+  describe("buildRolesRoutingPrompt", () => {
+    it("appends builtin responsibility hints with note keywords", () => {
+      const prompt = buildRolesRoutingPrompt(mockMembersWithMemory);
+      const memoryLine = prompt.split("\n").find((line) => line.includes("role_memory"))!;
+      expect(memoryLine).toContain("笔记");
+      expect(memoryLine).toContain("knowledge base");
+    });
+
+    it("keeps custom-role lines persona-only", () => {
+      const custom: ImMember = {
+        ...mockMembers[0],
+        memberId: "mem-custom",
+        templateId: "custom_role",
+        name: "Custom Role"
+      };
+      const prompt = buildRolesRoutingPrompt([custom]);
+      expect(prompt).not.toContain("Responsibilities include");
+      expect(prompt).toContain("Clarify requirements");
     });
   });
 

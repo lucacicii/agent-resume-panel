@@ -2,8 +2,8 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { desktopDbPath, ensureDesktopDbSchema } from "@agent-resume/core";
-import { buildDispatchPrompt, buildIncrementalPrompt, fillSelectionPrompt, ImStore } from "./store";
+import { desktopDbPath, ensureDesktopDbSchema, escapeSqlLiteral, runSqlite } from "@agent-resume/core";
+import { buildDispatchPrompt, buildIncrementalPrompt, fillSelectionPrompt, ImStore, SHIPPED_BUILTIN_PERSONAS } from "./store";
 
 const homes: string[] = [];
 
@@ -59,6 +59,33 @@ describe("ImStore", () => {
     await store.initialize();
     const again = await store.listTemplates();
     expect(again).toHaveLength(7);
+  });
+
+  it("refreshes stock builtin personas on initialize and syncs member rows", async () => {
+    const { store, panelHome } = await createStoreWithHome();
+    const dbPath = desktopDbPath(panelHome);
+    const project = await store.createProject("Persona Sync");
+    const current = (await store.getTemplate("role_memory"))!.persona;
+    const legacy = SHIPPED_BUILTIN_PERSONAS.role_memory![0];
+    expect(legacy).not.toEqual(current);
+    // Simulate a database created before the persona update: template and member rows carry the shipped default.
+    await store.updateTemplate({ templateId: "role_memory", persona: legacy });
+    await runSqlite(
+      dbPath,
+      `UPDATE im_members SET persona = '${escapeSqlLiteral(legacy)}' WHERE template_id = 'role_memory';`
+    );
+    await store.initialize();
+    expect((await store.getTemplate("role_memory"))!.persona).toBe(current);
+    const room = await store.getRoom(project.projectId);
+    const memoryMember = room.members.find((member) => member.templateId === "role_memory")!;
+    expect(memoryMember.persona).toBe(current);
+  });
+
+  it("leaves user-customized builtin personas untouched", async () => {
+    const store = await createStore();
+    await store.updateTemplate({ templateId: "role_memory", persona: "My custom memory persona." });
+    await store.initialize();
+    expect((await store.getTemplate("role_memory"))!.persona).toBe("My custom memory persona.");
   });
 
   it("seeds builtin selection actions and blocks deleting them", async () => {

@@ -108,11 +108,24 @@ const BUILTIN_ROLES: readonly BuiltinRoleSpec[] = [
     templateId: "role_memory",
     name: "Memory Specialist",
     persona:
-      "You are Memory & Knowledge Specialist for this project and across the workspace. Retrieve, summarize, create, and maintain historical context, past work digests (daily/weekly/monthly reports), project notes, and previous coding sessions.\n\nCRITICAL CITATION & NAVIGATION RULES:\n1. Whenever you reference, search, create, update, or delete notes, always include citation marker [N1], [N2]... and note title/ID in your reply.\n2. When citing digests, use [D1], [D2]...; when citing sessions, use [S1], [S2]...\n3. When you create or update a note (using note_create/note_write/note_append), ALWAYS output citation tag [N1] right next to the note title and noteId (for example: `[N1] 📝 标题：[Note Title](noteId) · noteId: <uuid>`), so the user can directly click the citation badge or note link in the chat to immediately open and view the note in the Notes panel.\n4. Always make note IDs, session IDs, and report IDs explicit and traceable.",
+      "You are Memory & Knowledge Specialist for this project and across the workspace. You own the project's historical context: project notes, past work digests (daily/weekly/monthly reports), and previous coding sessions.\n\nBUILT-IN TOOLS (use them for ALL memory work):\nThis session has the built-in `agent-resume` MCP server. Always work through its tools instead of listing/reading files yourself; the file system is only a fallback for content the tools cannot reach.\n- Retrieve first: memory_retrieve, note_search, note_list, note_read, note_tree_read, report_search, report_read, report_list, session_search, session_list, session_read, session_read_transcript.\n- Create and maintain: note_create, note_write, note_append, note_set_gtd, note_set_parent, note_move, note_rename, tag_list, tag_search, entity_tags_get, entity_tag_add, entity_tag_remove.\n- Never guess noteId/sessionId/reportId; find the real ID with a search tool first. Never overwrite or delete an existing note unless the user explicitly asks.\n- If the `agent-resume-browser` MCP is available in this session, you may use it to open web links cited in notes.\n\nCRITICAL CITATION & NAVIGATION RULES:\n1. Whenever you reference, search, create, update, or delete notes, always include citation marker [N1], [N2]... and note title/ID in your reply.\n2. When citing digests, use [D1], [D2]...; when citing sessions, use [S1], [S2]...\n3. When you create or update a note (via note_create/note_write/note_append), ALWAYS output citation tag [N1] right next to the note title and noteId (for example: `[N1] 📝 标题：[Note Title](noteId) · noteId: <uuid>`), so the user can directly click the citation badge or note link in the chat to immediately open and view the note in the Notes panel.\n4. Always make note IDs, session IDs, and report IDs explicit and traceable.",
     permissions: "read",
     tools: { fsRead: true, fsWrite: false, execute: false }
   }
 ];
+
+/**
+ * Builtin role personas shipped by earlier releases. On initialize, a stored
+ * builtin template persona that still equals one of these (i.e. the user never
+ * edited it in the role editor) is refreshed to the current BUILTIN_ROLES
+ * persona, and member rows are synced. Personas that match neither the current
+ * spec nor a shipped default are user-customized and left untouched.
+ */
+export const SHIPPED_BUILTIN_PERSONAS: Partial<Record<ImBuiltinTemplateId, readonly string[]>> = {
+  role_memory: [
+    "You are Memory & Knowledge Specialist for this project and across the workspace. Retrieve, summarize, create, and maintain historical context, past work digests (daily/weekly/monthly reports), project notes, and previous coding sessions.\n\nCRITICAL CITATION & NAVIGATION RULES:\n1. Whenever you reference, search, create, update, or delete notes, always include citation marker [N1], [N2]... and note title/ID in your reply.\n2. When citing digests, use [D1], [D2]...; when citing sessions, use [S1], [S2]...\n3. When you create or update a note (using note_create/note_write/note_append), ALWAYS output citation tag [N1] right next to the note title and noteId (for example: `[N1] 📝 标题：[Note Title](noteId) · noteId: <uuid>`), so the user can directly click the citation badge or note link in the chat to immediately open and view the note in the Notes panel.\n4. Always make note IDs, session IDs, and report IDs explicit and traceable."
+  ]
+};
 
 const QUOTE_BODY_MAX = 4000;
 const INSTRUCTION_MAX = 16_000;
@@ -860,6 +873,33 @@ export class ImStore {
           ${now},
           ${now}
         );`
+      );
+    }
+    await this.refreshBuiltinPersonas(existing, now);
+  }
+
+  /**
+   * Builtin roles are product-managed: refresh stored personas that still match
+   * a previously shipped default so prompt updates reach existing databases,
+   * while user-customized personas stay untouched. Member rows copy the
+   * template persona for dispatch and intent-routing prompts, so sync them too.
+   */
+  private async refreshBuiltinPersonas(templates: ImRoleTemplate[], now: number): Promise<void> {
+    const byTemplateId = new Map(templates.map((template) => [template.templateId, template]));
+    for (const role of BUILTIN_ROLES) {
+      const template = byTemplateId.get(role.templateId);
+      if (!template || template.persona === role.persona) continue;
+      const shipped = SHIPPED_BUILTIN_PERSONAS[role.templateId] ?? [];
+      if (!shipped.includes(template.persona)) continue;
+      await runSqlite(
+        this.dbPath,
+        `UPDATE im_role_templates SET persona = ${sqlString(role.persona)}, updated_at_ms = ${now}
+         WHERE template_id = ${sqlString(role.templateId)};`
+      );
+      await runSqlite(
+        this.dbPath,
+        `UPDATE im_members SET persona = ${sqlString(role.persona)}, updated_at_ms = ${now}
+         WHERE template_id = ${sqlString(role.templateId)};`
       );
     }
   }
