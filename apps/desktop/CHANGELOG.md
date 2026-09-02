@@ -8,6 +8,27 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## English
 
+### [0.2.19]
+
+#### Added
+
+- **IM Invocation Chain Pane**: added a per-message invocation chain view that visualizes the tool call sequence inside assistant jobs — each tool call, its status, and its output hop rendered as an inspectable chain for debugging multi-turn agent work
+- **IM Transcript Graph View**: introduced a graph visualization of IM transcripts, turning conversations into navigable node graphs of user requests, role dispatches, and assistant responses
+- **Citations Sheet for AI Answers**: answers in IM and Agent views can now expose a Citations sheet listing the reports, notes, and sessions used as sources, with grouped citation chips and hover previews
+- **Memory Retrieval MCP Tool**: registered a `memory_retrieve` tool on the built-in MCP server so external agents can query memory digests, project notes, and historical sessions in one shot, with `[D#]` / `[N#]` / `[S#]` citation tags and optional project-scoped boosting
+- **Role Delegation Management UI**: new Delegation DAG view and matrix grid in IM settings for inspecting and editing role-to-role delegation rules, with cycle detection and visual dependency edges
+
+#### Improved
+
+- **Intent Routing Accuracy & Builtin Persona Sync**: refined IM intent routing heuristics and synced builtin personas so requests dispatch to the intended role more reliably
+- **Provider Settings Layout**: refactored the model provider settings pane into a cleaner list/detail layout
+- **Workbench Git Panel Performance**: parallelized branch and upstream tracking queries across repositories, added optimistic staging for instant checkbox feedback, discarded stale git status on project switch, and serialized index writes to avoid lock contention
+
+#### Fixed
+
+- **IM**: no longer overwrites a human message when a job finalizes its stream
+- **IM**: multi-turn tool-call jobs now update a single coherent message card instead of creating duplicates
+
 ### [0.2.18]
 
 #### Added
@@ -438,6 +459,27 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 ---
 
 ## 简体中文
+
+### [0.2.19]
+
+#### 新增
+
+- **IM 调用链面板**：为每条助手消息新增调用链（Invocation Chain）视图，将任务内部的工具调用顺序可视化为可检查的链路——每个工具调用、执行状态与输出跳转一目了然，便于排查多轮 Agent 任务
+- **IM 对话图谱视图**：引入 IM 对话的图谱可视化，将对话转为可导航的节点图，串联用户请求、角色分派与助手响应
+- **AI 回答引用来源（Citations）**：IM 与 Agent 视图中的回答可展开引用来源面板，列出所参考的 reports、笔记与 sessions，支持分组引用标签与悬停预览
+- **记忆检索 MCP 工具**：在内置 MCP 服务器上注册 `memory_retrieve` 工具，外部 Agent 可一次检索记忆 digests、项目笔记与历史 session，返回带 `[D#]` / `[N#]` / `[S#]` 引用标记的结果，并支持按项目路径加权
+- **角色委托管理界面**：IM 设置新增委托 DAG 视图与矩阵表格，支持查看和编辑角色间委托规则，含循环依赖检测与可视化依赖边
+
+#### 改进
+
+- **意图路由准确度与内置角色同步**：优化 IM 意图路由启发式规则并同步内置角色配置，请求分派更精准
+- **模型提供方设置布局**：重构设置中模型提供方面板为更清晰的列表/详情布局
+- **工作台 Git 面板性能**：跨仓库并行查询分支与上游跟踪状态，暂存操作即时反馈（乐观更新），切换项目时丢弃过期 git 状态，并串行化索引写入避免锁竞争
+
+#### 修复
+
+- **IM**：任务流结束时不再覆盖用户发送的人类消息
+- **IM**：多轮工具调用任务现在更新同一条消息卡片，不再产生重复卡片
 
 ### [0.2.18]
 
