@@ -17570,6 +17570,229 @@ html[data-window-mode="browser"] #react-chrome {
 .im-message.is-job-card {
   color: var(--color-destructive);
 }
+
+/* ==========================================================================
+   IM Graph Gutter & Tree Lanes
+   ========================================================================== */
+
+.im-message-row {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  position: relative;
+  min-width: 0;
+}
+
+.im-graph-gutter {
+  flex: 0 0 auto;
+  position: relative;
+  display: flex;
+  min-height: 100%;
+}
+
+.im-graph-svg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.im-graph-trunk-line {
+  stroke: var(--color-separator, rgba(255, 255, 255, 0.14));
+  stroke-width: 2px;
+  stroke-linecap: round;
+}
+
+.im-graph-trunk-line.is-outgoing {
+  stroke: var(--im-graph-color, var(--primary, #3b82f6));
+  opacity: 0.75;
+}
+
+.im-graph-branch-curve {
+  stroke: var(--im-graph-color, var(--primary, #3b82f6));
+  stroke-width: 2px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.im-graph-port-circle {
+  fill: var(--im-graph-color, var(--primary, #3b82f6));
+  stroke: var(--bg-surface, var(--panel-bg, #1a1a1a));
+  stroke-width: 2px;
+  transition: r 0.2s ease;
+}
+
+.im-graph-port-circle.is-root {
+  fill: var(--color-label-tertiary, #666);
+}
+
+.im-graph-port-circle.is-active {
+  filter: drop-shadow(0 0 4px var(--im-graph-color, #3b82f6));
+}
+
+.im-graph-pulse-ring {
+  fill: none;
+  stroke: var(--im-graph-color, #3b82f6);
+  stroke-width: 1.5px;
+  animation: im-port-pulse 1.8s infinite ease-out;
+}
+
+@keyframes im-port-pulse {
+  0% {
+    r: 5px;
+    opacity: 0.9;
+  }
+  100% {
+    r: 13px;
+    opacity: 0;
+  }
+}
+
+.im-graph-trigger-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 5px;
+  height: 16px;
+  font-size: 9.5px;
+  font-weight: 500;
+  border-radius: 4px;
+}
+
+.im-graph-trigger-tag.type-auto_dispatched {
+  background: rgba(34, 197, 94, 0.15);
+  color: #4ade80;
+}
+
+.im-graph-trigger-tag.type-manual_dispatched {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+}
+
+.im-graph-trigger-tag.type-auto_routed {
+  background: rgba(168, 85, 247, 0.15);
+  color: #c084fc;
+}
+
+.im-graph-trigger-tag.type-mention {
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+}
+
+.im-graph-trigger-tag.type-follow_up {
+  background: rgba(14, 165, 233, 0.15);
+  color: #38bdf8;
+}
+
+/* Collapsed Message Card State */
+.im-message.is-collapsed {
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--color-separator, rgba(255, 255, 255, 0.08));
+  border-left: 3.5px solid var(--im-role-color, var(--color-label-tertiary, #666));
+  background: var(--color-fill-secondary, rgba(255, 255, 255, 0.03));
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+  max-width: 90%;
+  flex: 1 1 auto;
+}
+.im-message.is-collapsed:hover {
+  background: var(--color-fill-tertiary, rgba(255, 255, 255, 0.06));
+  border-color: var(--color-separator-active, rgba(255, 255, 255, 0.15));
+}
+.im-message.is-collapsed .im-compact-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 2px;
+  min-width: 0;
+}
+.im-message.is-collapsed .im-compact-header .im-message-author {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.im-message.is-collapsed .im-compact-header .im-message-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.im-compact-agent-tag {
+  font-size: 11px;
+  opacity: 0.85;
+}
+.im-compact-files-badge,
+.im-compact-citations-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  height: 18px;
+  font-size: 10px;
+  font-weight: 500;
+  border-radius: 4px;
+  background: var(--color-fill-tertiary, rgba(255, 255, 255, 0.08));
+  color: var(--color-label-secondary, #aaa);
+  flex-shrink: 0;
+}
+.im-compact-files-badge {
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+}
+.im-compact-reason {
+  font-size: 11px;
+  color: var(--color-label-secondary, #bbb);
+  margin: 1px 0 3px;
+  line-height: 1.35;
+}
+.im-compact-reason-label {
+  font-weight: 500;
+  color: var(--color-label-tertiary, #888);
+}
+.im-compact-snippet {
+  font-size: 12px;
+  color: var(--color-label-secondary, #aaa);
+  line-height: 1.4;
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-top: 2px;
+}
+
+/* Collapse / Expand Toggle Buttons */
+.im-message-collapse-btn,
+.im-message-expand-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--color-label-secondary, #888);
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+.im-message-collapse-btn:hover,
+.im-message-expand-btn:hover {
+  opacity: 1;
+  background: var(--color-fill-secondary, rgba(255, 255, 255, 0.08));
+  color: var(--color-label-primary, #fff);
+}
+
 .im-message header {
   display: flex;
   align-items: center;

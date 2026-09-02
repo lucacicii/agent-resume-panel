@@ -775,7 +775,7 @@ describe("ImPanel", () => {
     expect(document.querySelector(".im-active-jobs-banner")?.textContent).toContain("Waiting for you");
   });
 
-  it("renders floating timeline when room has multiple messages and navigates on node click", async () => {
+  it("collapses historical messages by default while keeping latest 2 messages expanded and toggles expansion", async () => {
     const currentProject = project();
     const currentRoom = roomFor(currentProject);
     const api = renderIm();
@@ -788,7 +788,7 @@ describe("ImPanel", () => {
           kind: "human",
           authorMemberId: null,
           authorLabel: "You",
-          body: "First message",
+          body: "First message (historical)",
           quoteIds: [],
           quotes: [],
           mentionRoleIds: [],
@@ -801,7 +801,7 @@ describe("ImPanel", () => {
           kind: "role.say",
           authorMemberId: currentRoom.members[0]!.memberId,
           authorLabel: "Developer",
-          body: "Second message",
+          body: "Second message (recent)",
           quoteIds: [],
           quotes: [],
           mentionRoleIds: [],
@@ -814,7 +814,7 @@ describe("ImPanel", () => {
           kind: "human",
           authorMemberId: null,
           authorLabel: "You",
-          body: "Third message",
+          body: "Third message (latest)",
           quoteIds: [],
           quotes: [],
           mentionRoleIds: [],
@@ -827,30 +827,19 @@ describe("ImPanel", () => {
       window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
     });
 
-    await waitFor(() => expect(document.querySelector(".im-timeline")).not.toBeNull());
-    const nodes = document.querySelectorAll(".im-timeline-node");
-    expect(nodes).toHaveLength(3);
+    // msg-1 is historical (index 0 of 3) -> collapsed
+    const msg1 = await screen.findByText("First message (historical)");
+    const article1 = msg1.closest("article");
+    expect(article1?.classList.contains("is-collapsed")).toBe(true);
 
-    // Hover to trigger preview popover and macOS dock magnification effect
-    fireEvent.mouseEnter(nodes[1]!);
-    expect(document.querySelector(".im-timeline-popover")).not.toBeNull();
-    expect(document.querySelector(".im-timeline-popover-author")?.textContent).toBe("Product Manager");
-    expect(document.querySelector(".im-timeline-popover-snippet")?.textContent).toBe("Second message");
-    expect(nodes[1]?.classList.contains("is-dock-focused")).toBe(true);
-    expect(nodes[0]?.classList.contains("is-dock-neighbor-1")).toBe(true);
-    expect(nodes[2]?.classList.contains("is-dock-neighbor-1")).toBe(true);
+    // msg-2 and msg-3 are latest 2 -> expanded
+    const msg2 = await screen.findByText("Second message (recent)");
+    const article2 = msg2.closest("article");
+    expect(article2?.classList.contains("is-collapsed")).toBe(false);
 
-    // Mouse leave resets dock focus
-    fireEvent.mouseLeave(document.querySelector(".im-timeline")!);
-    expect(document.querySelector(".im-timeline-popover")).toBeNull();
-    expect(nodes[1]?.classList.contains("is-dock-focused")).toBe(false);
-
-    fireEvent.click(nodes[0]!);
-    await waitFor(() => {
-      expect(document.querySelector('[data-virtual-key="msg-1"]')).not.toBeNull();
-      expect(document.querySelector(".im-message.is-flashing")).not.toBeNull();
-    });
-    expect(document.querySelector(".im-timeline-node.is-active")?.getAttribute("aria-label")).toContain("You");
+    // Clicking collapsed msg-1 expands it
+    fireEvent.click(article1!);
+    expect(article1?.classList.contains("is-collapsed")).toBe(false);
   });
 
   it("renders thinking collapsed by default and expands on toggle click, and shows streaming cursor", async () => {
@@ -1741,5 +1730,55 @@ Build the user service endpoints.
     // Toggle close
     fireEvent.click(chainBtn);
     expect(document.querySelector(".im-call-chain-side-panel")).toBeNull();
+  });
+
+  it("renders graph gutter lanes and port circles for parent-child relationship tree", async () => {
+    const currentProject = project();
+    const currentRoom = roomFor(currentProject);
+    const api = renderIm();
+    (api.imGetRoom as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...currentRoom,
+      messages: [
+        {
+          messageId: "msg-root",
+          projectId: currentProject.projectId,
+          kind: "human",
+          authorMemberId: null,
+          authorLabel: "You",
+          body: "@Architect Design indexing",
+          autoRouted: true,
+          quoteIds: [],
+          quotes: [],
+          mentionRoleIds: ["m-arch"],
+          jobId: "job-1",
+          createdAtMs: 1000
+        },
+        {
+          messageId: "msg-arch",
+          projectId: currentProject.projectId,
+          kind: "role.say",
+          authorMemberId: currentRoom.members[0]!.memberId,
+          authorLabel: "Architect",
+          body: "Design complete.",
+          quoteIds: [],
+          quotes: [],
+          mentionRoleIds: [],
+          jobId: "job-1",
+          createdAtMs: 2000
+        }
+      ]
+    });
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+
+    const gutters = document.querySelectorAll(".im-graph-gutter");
+    expect(gutters.length).toBeGreaterThanOrEqual(2);
+
+    // Root prompt has outgoing trunk line
+    expect(document.querySelector(".im-graph-gutter.has-children")).not.toBeNull();
+    // Child has branch curve and port circle
+    expect(document.querySelector(".im-graph-branch-curve")).not.toBeNull();
+    expect(document.querySelector(".im-graph-port-circle")).not.toBeNull();
   });
 });

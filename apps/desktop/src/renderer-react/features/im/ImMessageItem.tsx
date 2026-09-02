@@ -4,6 +4,9 @@ import { renderMarkdown } from "../../components/Markdown";
 import { desktopApi } from "../../bridge";
 import type { ImJob, ImMember, ImMessage, ImRoom } from "../../../shared/imTypes";
 import { extractCitationsFromMessage } from "./CitationSheet";
+import { cleanSnippet } from "./timelineModel";
+import { ImGraphGutter } from "./ImGraphGutter";
+import type { MessageGraphMeta } from "./imTranscriptGraphModel";
 import {
   agentTag,
   dayKey,
@@ -28,10 +31,14 @@ export interface ImMessageItemProps {
   isTranslating: boolean;
   translated: boolean;
   isFlashing: boolean;
+  isExpanded?: boolean;
+  depth?: number;
+  graphMeta?: MessageGraphMeta;
   isThinkingExpanded: boolean;
   isFilesExpanded: boolean;
   copiedFilePath: string | null;
   memberLabel: (member: ImMember) => string;
+  onToggleExpand?: (messageId: string) => void;
   onToggleThinking: (messageId: string) => void;
   onToggleFiles: (messageId: string) => void;
   onCopyText: (text: string) => void;
@@ -58,10 +65,14 @@ export const ImMessageItem = memo(function ImMessageItem({
   isTranslating,
   translated,
   isFlashing,
+  isExpanded = true,
+  depth = 0,
+  graphMeta,
   isThinkingExpanded,
   isFilesExpanded,
   copiedFilePath,
   memberLabel,
+  onToggleExpand,
   onToggleThinking,
   onToggleFiles,
   onCopyText,
@@ -192,6 +203,118 @@ export const ImMessageItem = memo(function ImMessageItem({
     return [];
   }, [dispatchBlocks, message.createdAtMs, message.delegationProposals]);
 
+  if (!isExpanded && message.kind !== "system") {
+    const compactSnippet = cleanSnippet(cleanBody || message.body || "");
+    const authorName = speaker ? memberLabel(speaker) : message.authorLabel;
+    return (
+      <>
+        {showDate && (
+          <div className="im-date-separator" aria-hidden="true">{formatDay(message.createdAtMs, t)}</div>
+        )}
+        {showThreadBreak && (
+          <div className="im-thread-separator" role="separator">{t("desktop.im.newConversation")}</div>
+        )}
+        <div className={`im-message-row${graphMeta?.depth ? ` depth-${graphMeta.depth}` : ""}`}>
+          <ImGraphGutter
+            meta={graphMeta}
+            roleColor={roleColorValue}
+            isHuman={message.kind === "human"}
+            isActive={isAnswering}
+          />
+          <article
+            id={`im-msg-${message.messageId}`}
+            className={`im-message is-${message.kind.replace(".", "-")} is-collapsed${isFlashing ? " is-flashing" : ""}`}
+            style={roleColorValue ? { "--im-role-color": roleColorValue } as CSSProperties : undefined}
+            onClick={() => onToggleExpand?.(message.messageId)}
+            onContextMenu={(event) => onOpenSelectionMenu(event, message)}
+            role="button"
+            tabIndex={0}
+            title={t("desktop.im.expandMessage")}
+          >
+            <header className="im-compact-header">
+              <span className="im-message-author">
+                {roleColorValue ? (
+                  <span className="im-role-avatar" aria-hidden="true" style={{ "--im-role-color": roleColorValue } as CSSProperties}>
+                    {roleInitial(authorName)}
+                  </span>
+                ) : (
+                  <span className="im-role-avatar is-user" aria-hidden="true">
+                    <ThemeIcon name="user" size={11} />
+                  </span>
+                )}
+                <strong>{authorName}</strong>
+                {speaker ? <span className="im-compact-agent-tag">{agentTag(speaker.agent, speaker.model, t)}</span> : null}
+                {graphMeta?.triggerKind === "auto_dispatched" ? (
+                  <span className="im-graph-trigger-tag type-auto_dispatched" title={t("desktop.im.callChainAutoDispatched")}>
+                    <ThemeIcon name="zap" size={10} aria-hidden="true" />
+                    <span>{t("desktop.im.callChainAutoDispatched")}</span>
+                  </span>
+                ) : graphMeta?.triggerKind === "manual_dispatched" ? (
+                  <span className="im-graph-trigger-tag type-manual_dispatched" title={t("desktop.im.callChainManualDispatched")}>
+                    <ThemeIcon name="waypoints" size={10} aria-hidden="true" />
+                    <span>{t("desktop.im.callChainManualDispatched")}</span>
+                  </span>
+                ) : (message.autoRouted && message.routedRoleName) || graphMeta?.triggerKind === "auto_routed" ? (
+                  <span className="im-auto-routed-badge" title={t("desktop.im.autoRoutedTo", message.routedRoleName || "")}>
+                    <ThemeIcon name="sparkles" size={11} aria-hidden="true" />
+                    <span>{t("desktop.im.autoRoutedTo", message.routedRoleName || "")}</span>
+                  </span>
+                ) : graphMeta?.triggerKind === "mention" ? (
+                  <span className="im-graph-trigger-tag type-mention" title={t("desktop.im.callChainMentioned")}>
+                    <ThemeIcon name="at-sign" size={10} aria-hidden="true" />
+                    <span>{t("desktop.im.callChainMentioned")}</span>
+                  </span>
+                ) : graphMeta?.triggerKind === "follow_up" ? (
+                  <span className="im-graph-trigger-tag type-follow_up" title={t("desktop.im.callChainFollowUp")}>
+                    <ThemeIcon name="corner-down-right" size={10} aria-hidden="true" />
+                    <span>{t("desktop.im.callChainFollowUp")}</span>
+                  </span>
+                ) : null}
+              </span>
+              {filesChanged.length > 0 && (
+                <span className="im-compact-files-badge">
+                  <ThemeIcon name="file-code" size={11} aria-hidden="true" />
+                  <span>{t("desktop.im.filesModified", filesChanged.length)}</span>
+                </span>
+              )}
+              {citations.length > 0 && (
+                <span className="im-compact-citations-badge">
+                  <ThemeIcon name="file-text" size={11} aria-hidden="true" />
+                  <span>{citations.length}</span>
+                </span>
+              )}
+              <span className="im-message-meta">
+                <time dateTime={new Date(message.createdAtMs).toISOString()} className="im-message-time">
+                  {formatTime(message.createdAtMs)}
+                </time>
+                <button
+                  type="button"
+                  className="im-message-expand-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleExpand?.(message.messageId);
+                  }}
+                  aria-label={t("desktop.im.expandMessage")}
+                  title={t("desktop.im.expandMessage")}
+                >
+                  <ThemeIcon name="chevron-down" size={12} aria-hidden="true" />
+                </button>
+              </span>
+            </header>
+            {graphMeta?.triggerReason ? (
+              <div className="im-compact-reason">
+                <span className="im-compact-reason-label">{t("desktop.im.delegationReason")}:</span> {graphMeta.triggerReason}
+              </div>
+            ) : null}
+            {compactSnippet ? (
+              <div className="im-compact-snippet">{compactSnippet}</div>
+            ) : null}
+          </article>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       {showDate && (
@@ -200,38 +323,81 @@ export const ImMessageItem = memo(function ImMessageItem({
       {showThreadBreak && (
         <div className="im-thread-separator" role="separator">{t("desktop.im.newConversation")}</div>
       )}
-      <article
-        id={`im-msg-${message.messageId}`}
-        className={`im-message is-${message.kind.replace(".", "-")}${isFlashing ? " is-flashing" : ""}`}
-        style={roleColorValue ? { "--im-role-color": roleColorValue } as CSSProperties : undefined}
-        onContextMenu={(event) => onOpenSelectionMenu(event, message)}
-      >
+      <div className={`im-message-row${graphMeta?.depth ? ` depth-${graphMeta.depth}` : ""}`}>
         {message.kind !== "system" && (
-          <header>
-            <span className="im-message-author">
-              {roleColorValue && (
-                <span className="im-role-avatar" aria-hidden="true" style={{ "--im-role-color": roleColorValue } as CSSProperties}>
-                  {roleInitial(speaker ? memberLabel(speaker) : message.authorLabel)}
-                </span>
-              )}
-              <strong>
-                {speaker ? memberLabel(speaker) : message.authorLabel}
-                {speaker ? <> {agentTag(speaker.agent, speaker.model, t)}</> : null}
-              </strong>
-              {message.autoRouted && message.routedRoleName && (
-                <span className="im-auto-routed-badge" title={t("desktop.im.autoRoutedTo", message.routedRoleName)}>
-                  <ThemeIcon name="sparkles" size={11} aria-hidden="true" />
-                  <span>{t("desktop.im.autoRoutedTo", message.routedRoleName)}</span>
-                </span>
-              )}
-            </span>
-            <span className="im-message-meta">
-              <time dateTime={new Date(message.createdAtMs).toISOString()} className="im-message-time">
-                {formatTime(message.createdAtMs)}
-              </time>
-            </span>
-          </header>
+          <ImGraphGutter
+            meta={graphMeta}
+            roleColor={roleColorValue}
+            isHuman={message.kind === "human"}
+            isActive={isAnswering}
+          />
         )}
+        <article
+          id={`im-msg-${message.messageId}`}
+          className={`im-message is-${message.kind.replace(".", "-")}${isFlashing ? " is-flashing" : ""}`}
+          style={roleColorValue ? { "--im-role-color": roleColorValue } as CSSProperties : undefined}
+          onContextMenu={(event) => onOpenSelectionMenu(event, message)}
+        >
+          {message.kind !== "system" && (
+            <header>
+              <span className="im-message-author">
+                {roleColorValue && (
+                  <span className="im-role-avatar" aria-hidden="true" style={{ "--im-role-color": roleColorValue } as CSSProperties}>
+                    {roleInitial(speaker ? memberLabel(speaker) : message.authorLabel)}
+                  </span>
+                )}
+                <strong>
+                  {speaker ? memberLabel(speaker) : message.authorLabel}
+                  {speaker ? <> {agentTag(speaker.agent, speaker.model, t)}</> : null}
+                </strong>
+                {graphMeta?.triggerKind === "auto_dispatched" ? (
+                  <span className="im-graph-trigger-tag type-auto_dispatched" title={t("desktop.im.callChainAutoDispatched")}>
+                    <ThemeIcon name="zap" size={10} aria-hidden="true" />
+                    <span>{t("desktop.im.callChainAutoDispatched")}</span>
+                  </span>
+                ) : graphMeta?.triggerKind === "manual_dispatched" ? (
+                  <span className="im-graph-trigger-tag type-manual_dispatched" title={t("desktop.im.callChainManualDispatched")}>
+                    <ThemeIcon name="waypoints" size={10} aria-hidden="true" />
+                    <span>{t("desktop.im.callChainManualDispatched")}</span>
+                  </span>
+                ) : (message.autoRouted && message.routedRoleName) || graphMeta?.triggerKind === "auto_routed" ? (
+                  <span className="im-auto-routed-badge" title={t("desktop.im.autoRoutedTo", message.routedRoleName || "")}>
+                    <ThemeIcon name="sparkles" size={11} aria-hidden="true" />
+                    <span>{t("desktop.im.autoRoutedTo", message.routedRoleName || "")}</span>
+                  </span>
+                ) : graphMeta?.triggerKind === "mention" ? (
+                  <span className="im-graph-trigger-tag type-mention" title={t("desktop.im.callChainMentioned")}>
+                    <ThemeIcon name="at-sign" size={10} aria-hidden="true" />
+                    <span>{t("desktop.im.callChainMentioned")}</span>
+                  </span>
+                ) : graphMeta?.triggerKind === "follow_up" ? (
+                  <span className="im-graph-trigger-tag type-follow_up" title={t("desktop.im.callChainFollowUp")}>
+                    <ThemeIcon name="corner-down-right" size={10} aria-hidden="true" />
+                    <span>{t("desktop.im.callChainFollowUp")}</span>
+                  </span>
+                ) : null}
+              </span>
+              <span className="im-message-meta">
+                <time dateTime={new Date(message.createdAtMs).toISOString()} className="im-message-time">
+                  {formatTime(message.createdAtMs)}
+                </time>
+                {onToggleExpand && (
+                  <button
+                    type="button"
+                    className="im-message-collapse-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleExpand(message.messageId);
+                    }}
+                    aria-label={t("desktop.im.collapseMessage")}
+                    title={t("desktop.im.collapseMessage")}
+                  >
+                    <ThemeIcon name="chevron-up" size={12} aria-hidden="true" />
+                  </button>
+                )}
+              </span>
+            </header>
+          )}
         {message.quotes.length > 0 && (
           <div className="im-quote-list">
             {message.quotes.map((quote) => (
@@ -578,6 +744,7 @@ export const ImMessageItem = memo(function ImMessageItem({
           </div>
         )}
       </article>
+      </div>
     </>
   );
 });

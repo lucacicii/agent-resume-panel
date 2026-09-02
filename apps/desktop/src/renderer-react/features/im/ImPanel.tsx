@@ -1,12 +1,11 @@
 import { ThemeIcon } from "../../components/ThemeIcon";
 import { VariableVirtualList, type VariableVirtualListHandle } from "../../components/VariableVirtualList";
 import { renderMarkdown } from "../../components/Markdown";
-import { ImTimeline } from "./ImTimeline";
 import { ImMessageItem } from "./ImMessageItem";
 import { ImComposer } from "./ImComposer";
 import { ImChatAvatar } from "./ImChatAvatar";
 import { useImProjectTools } from "./ImProjectTools";
-import { buildTimelineNodes } from "./timelineModel";
+import { computeTranscriptGraph } from "./imTranscriptGraphModel";
 import { createPortal } from "react-dom";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type JSX, type MouseEvent as ReactMouseEvent, type ReactPortal, type UIEvent } from "react";
 import type { AgentCitation, AgentToolDescriptor } from "@agent-resume/core";
@@ -151,7 +150,7 @@ export function ImPanel(): ReactPortal | null {
   const [knowledgeUrl, setKnowledgeUrl] = useState("");
   const [pinnedToBottom, setPinnedToBottom] = useState(true);
   const [hasNewBelow, setHasNewBelow] = useState(false);
-  const [activeTimelineMessageId, setActiveTimelineMessageId] = useState<string | undefined>();
+  const [customExpandedMessages, setCustomExpandedMessages] = useState<Record<string, boolean>>({});
   const [flashingMessageId, setFlashingMessageId] = useState<string | null>(null);
   const [expandedThinking, setExpandedThinking] = useState<Record<string, boolean>>({});
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
@@ -167,7 +166,6 @@ export function ImPanel(): ReactPortal | null {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const newChatInputRef = useRef<HTMLInputElement | null>(null);
   const prevMsgCount = useRef(0);
-  const timelineJumpLockRef = useRef<string | null>(null);
 
   const memberLabel = useCallback((member: ImMember) => roleLabel(member, t), [t]);
 
@@ -396,26 +394,55 @@ export function ImPanel(): ReactPortal | null {
 
   const scrollToTop = useCallback(() => {
     if (!transcriptItems.length) return;
-    const topMessageId = visibleMessages[0]?.messageId ?? null;
-    timelineJumpLockRef.current = topMessageId;
     setPinnedToBottom(false);
     transcriptVirtualizerRef.current?.scrollToIndex(0, { align: "start", behavior: "smooth" });
-    if (topMessageId) setActiveTimelineMessageId(topMessageId);
-  }, [transcriptItems.length, visibleMessages]);
+  }, [transcriptItems.length]);
 
   const jumpToMessage = useCallback((messageId: string) => {
+    setCustomExpandedMessages((prev) => ({ ...prev, [messageId]: true }));
     const index = messageIndexById.get(messageId);
     if (index == null) return;
-    timelineJumpLockRef.current = messageId;
     setPinnedToBottom(false);
     setFlashingMessageId(messageId);
-    setActiveTimelineMessageId(messageId);
     transcriptVirtualizerRef.current?.scrollToIndex(index, { align: "start", behavior: "smooth" });
     window.setTimeout(() => {
-      if (timelineJumpLockRef.current === messageId) timelineJumpLockRef.current = null;
       setFlashingMessageId((current) => (current === messageId ? null : current));
     }, 1500);
   }, [messageIndexById]);
+
+  const isMessageExpanded = useCallback((message: ImMessage, index: number, totalCount: number) => {
+    if (customExpandedMessages[message.messageId] !== undefined) {
+      return customExpandedMessages[message.messageId];
+    }
+    const job = message.jobId ? room?.jobs.find((j) => j.jobId === message.jobId) : undefined;
+    const isJobActive = Boolean(job && isActiveJobStatus(job.status));
+    if (message.streaming || isJobActive) return true;
+    if (index >= totalCount - 2) return true;
+    return false;
+  }, [customExpandedMessages, room?.jobs]);
+
+  const handleToggleExpand = useCallback((messageId: string) => {
+    const index = visibleMessages.findIndex((m) => m.messageId === messageId);
+    if (index === -1) return;
+    const currentlyExpanded = isMessageExpanded(visibleMessages[index]!, index, visibleMessages.length);
+    setCustomExpandedMessages((prev) => ({
+      ...prev,
+      [messageId]: !currentlyExpanded
+    }));
+  }, [isMessageExpanded, visibleMessages]);
+
+  const getMessageDepth = useCallback((message: ImMessage) => {
+    if (message.kind === "human") return 0;
+    const job = message.jobId ? room?.jobs.find((j) => j.jobId === message.jobId) : undefined;
+    if (job?.brief?.dispatchChain?.length) {
+      return Math.min(3, Math.max(1, job.brief.dispatchChain.length - 1));
+    }
+    return 1;
+  }, [room?.jobs]);
+
+  const graphMetaMap = useMemo(() => {
+    return computeTranscriptGraph(visibleMessages, room?.jobs ?? []);
+  }, [room?.jobs, visibleMessages]);
 
   const projectTools = useImProjectTools({
     rootPath: projectRoot,
@@ -432,18 +459,9 @@ export function ImPanel(): ReactPortal | null {
     if (nearBottom) setHasNewBelow(false);
   }, []);
 
-  const onTranscriptVisibleRange = useCallback((startIndex: number, endIndex: number) => {
-    const lockedId = timelineJumpLockRef.current;
-    if (lockedId) {
-      const lockedIndex = messageIndexById.get(lockedId);
-      if (lockedIndex == null || (lockedIndex >= startIndex && lockedIndex <= endIndex)) {
-        timelineJumpLockRef.current = null;
-      }
-      return;
-    }
-    const item = transcriptItems[startIndex];
-    if (item?.kind === "message") setActiveTimelineMessageId(item.message.messageId);
-  }, [messageIndexById, transcriptItems]);
+  const onTranscriptVisibleRange = useCallback((_startIndex: number, _endIndex: number) => {
+    // Range track for virtual list
+  }, []);
 
   const insertIntoComposer = useCallback((text: string) => {
     setDraft((current) => {
@@ -452,19 +470,6 @@ export function ImPanel(): ReactPortal | null {
     });
     textareaRef.current?.focus();
   }, []);
-
-  const timelineNodes = useMemo(() => {
-    return buildTimelineNodes(
-      visibleMessages,
-      allMembers,
-      roleColor,
-      memberLabel,
-      roleInitial,
-      formatTime,
-      (ms) => formatDay(ms, t),
-      room?.jobs
-    );
-  }, [allMembers, memberLabel, room?.jobs, t, visibleMessages]);
 
   const activeJob = useMemo(() => {
     return room?.jobs.find((job) => isActiveJobStatus(job.status)) ?? null;
@@ -1357,6 +1362,9 @@ export function ImPanel(): ReactPortal | null {
                       const messageIndex = visibleMessages.findIndex((entry) => entry.messageId === message.messageId);
                       const displayBody = translations[message.messageId]
                         ?? (message.kind === "system" && message.body.startsWith("desktop.") ? (t(message.body) || message.body) : message.body);
+                      const isExpanded = isMessageExpanded(message, messageIndex, visibleMessages.length);
+                      const graphMeta = graphMetaMap.get(message.messageId);
+                      const depth = graphMeta?.depth ?? getMessageDepth(message);
                       return (
                         <ImMessageItem
                           message={message}
@@ -1367,6 +1375,10 @@ export function ImPanel(): ReactPortal | null {
                           isTranslating={translatingIds.has(message.messageId)}
                           translated={Boolean(translations[message.messageId])}
                           isFlashing={flashingMessageId === message.messageId}
+                          isExpanded={isExpanded}
+                          depth={depth}
+                          graphMeta={graphMeta}
+                          onToggleExpand={handleToggleExpand}
                           isThinkingExpanded={expandedThinking[message.messageId] === true}
                           isFilesExpanded={expandedFiles[message.messageId] !== false}
                           copiedFilePath={copiedFilePath}
@@ -1447,14 +1459,6 @@ export function ImPanel(): ReactPortal | null {
                       </article>
                     );
                   }}
-                />
-                <ImTimeline
-                  nodes={timelineNodes}
-                  activeMessageId={activeTimelineMessageId}
-                  onJump={jumpToMessage}
-                  onJumpTop={scrollToTop}
-                  onJumpBottom={scrollToBottom}
-                  t={t}
                 />
                 {hasNewBelow && (
                   <button type="button" className="im-new-below" onClick={scrollToBottom}>

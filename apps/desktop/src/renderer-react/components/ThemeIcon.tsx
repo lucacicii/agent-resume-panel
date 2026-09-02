@@ -1,14 +1,14 @@
 import type { JSX } from "react";
 import {
   Activity, Archive, ArrowDown, ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUp, ArrowUpToLine, AtSign, Bell, Bot, Check,
-  ChevronDown, ChevronLeft, ChevronRight, Circle, Clipboard, Cloud, Command,
-  Copy, Download, ExternalLink, Eye, EyeOff, File, FileArchive, FileAudio,
+  ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Circle, Clipboard, Cloud, Command,
+  Copy, CornerDownRight, Download, ExternalLink, Eye, EyeOff, File, FileArchive, FileAudio,
   FileCode2, FileCog, FileDiff, FileImage, FileJson, FilePlus2,
   FileSpreadsheet, FileTerminal, FileText, FileVideo, Folder, FolderOpen,
   FolderTree, GitBranch, Globe, GripVertical, History, LoaderCircle,
   MessageSquare, MessageSquarePlus, MessageSquareWarning, PanelRight, Paperclip, Pencil, Pin, Play, Plus,
   Quote, RefreshCw, Save, Search, Send, Settings, ShieldCheck, Sparkles, Square,
-  SquareKanban, TerminalSquare, Trash2, Undo2, Upload, User, Waypoints, Wrench, X,
+  SquareKanban, TerminalSquare, Trash2, Undo2, Upload, User, Waypoints, Wrench, X, Zap,
   type LucideIcon,
   type LucideProps
 } from "lucide-react";
@@ -18,7 +18,7 @@ const ICONS = {
   activity: Activity, archive: Archive, "arrow-down": ArrowDown, "arrow-down-to-line": ArrowDownToLine,
   "arrow-left": ArrowLeft, "arrow-right": ArrowRight,
   "arrow-up": ArrowUp, "arrow-up-to-line": ArrowUpToLine, "at-sign": AtSign, bell: Bell, bot: Bot, check: Check,
-  "chevron-down": ChevronDown, "chevron-left": ChevronLeft, "chevron-right": ChevronRight,
+  "chevron-down": ChevronDown, "chevron-left": ChevronLeft, "chevron-right": ChevronRight, "chevron-up": ChevronUp,
   circle: Circle, clipboard: Clipboard, cloud: Cloud, command: Command, copy: Copy,
   download: Download, "external-link": ExternalLink, eye: Eye, "eye-off": EyeOff,
   file: File, "file-archive": FileArchive, "file-audio": FileAudio, "file-code": FileCode2,
@@ -32,7 +32,8 @@ const ICONS = {
   quote: Quote, refresh: RefreshCw, save: Save, search: Search, send: Send, settings: Settings,
   "shield-check": ShieldCheck, sparkles: Sparkles, square: Square, "square-kanban": SquareKanban,
   terminal: TerminalSquare,
-  trash: Trash2, undo: Undo2, upload: Upload, user: User, waypoints: Waypoints, wrench: Wrench, close: X
+  trash: Trash2, undo: Undo2, upload: Upload, user: User, waypoints: Waypoints, wrench: Wrench, close: X,
+  zap: Zap, "corner-down-right": CornerDownRight
 } as const satisfies Record<string, LucideIcon>;
 
 export type ThemeIconName = keyof typeof ICONS;
