@@ -1668,27 +1668,14 @@ html[data-window-mode="main"] body > main {
 }
 
 .settings-provider-list {
-  border: 1px solid var(--color-separator-opaque);
-  border-radius: var(--radius-xl);
-  background: var(--panel);
-  padding: 8px;
   display: flex;
   flex-direction: column;
   gap: 4px;
   max-height: 480px;
   overflow-y: auto;
-}
-
-.settings-provider-list-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 2px 2px 6px;
-}
-
-.settings-provider-list-header .settings-field-label {
-  margin: 0;
+  min-width: 0;
+  padding-right: 8px;
+  border-right: 1px solid var(--color-separator);
 }
 
 .settings-provider-item {
@@ -1762,6 +1749,14 @@ html[data-window-mode="main"] body > main {
   gap: 12px;
   min-width: 0;
   flex-shrink: 0;
+}
+
+.settings-provider-models {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-separator);
 }
 
 .settings-provider-actions {
@@ -1870,6 +1865,14 @@ html[data-window-mode="main"] body > main {
 @media (max-width: 760px) {
   .settings-provider-layout {
     grid-template-columns: 1fr;
+  }
+
+  .settings-provider-list {
+    max-height: 240px;
+    padding-right: 0;
+    padding-bottom: 8px;
+    border-right: none;
+    border-bottom: 1px solid var(--color-separator);
   }
 }
 

@@ -676,20 +676,22 @@ function ProvidersPane({ draft, setDraft, t }: { draft: ProvidersDraft; setDraft
 
   const modelCount = selectedProvider?.models.length ?? 0;
   return <>
-    <div className="settings-provider-layout">
-      <aside className="settings-provider-list" aria-label={t("desktop.settings.providerListLabel")}>
-        <div className="settings-provider-list-header">
-          <span className="settings-field-label">{t("desktop.settings.providerList")}</span>
-          <button
-            type="button"
-            className="ghost-btn"
-            data-testid="settings-add-provider"
-            onClick={addProvider}
-          >
-            + {t("desktop.settings.providerAdd")}
-          </button>
-        </div>
-        {draft.providers.length === 0 ? (
+    <section className="settings-group">
+      <div className="settings-group-header">
+        <h3 className="settings-group-title">{t("desktop.settings.providerList")}</h3>
+        <button
+          type="button"
+          className="ghost-btn"
+          data-testid="settings-add-provider"
+          onClick={addProvider}
+        >
+          + {t("desktop.settings.providerAdd")}
+        </button>
+      </div>
+      <div className="settings-group-body">
+        <div className="settings-provider-layout">
+          <aside className="settings-provider-list" aria-label={t("desktop.settings.providerListLabel")}>
+            {draft.providers.length === 0 ? (
           <p className="settings-footnote">{t("desktop.settings.providerListEmpty")}</p>
         ) : (
           draft.providers.map((provider) => (
@@ -721,11 +723,8 @@ function ProvidersPane({ draft, setDraft, t }: { draft: ProvidersDraft; setDraft
         )}
       </aside>
       <div className="settings-provider-detail">
-        {selectedProvider ? (
-          <>
-            <section className="settings-group">
-              <h3 className="settings-group-title">{selectedProvider.name || t("desktop.settings.providerDetail")}</h3>
-              <div className="settings-group-body">
+            {selectedProvider ? (
+              <>
                 <label className="settings-field">
                   <span className="settings-field-label">{t("desktop.settings.providerName")}</span>
                   <input
@@ -811,13 +810,10 @@ function ProvidersPane({ draft, setDraft, t }: { draft: ProvidersDraft; setDraft
                   </button>
                   {testStatus.text ? <Status kind={testStatus.kind}>{testStatus.text}</Status> : null}
                 </div>
-                <p className="settings-footnote">{t("desktop.settings.providerModelsFootnote")}</p>
-              </div>
-            </section>
-            <section className="settings-group">
-              <h3 className="settings-group-title">{t("desktop.settings.providerModels")}</h3>
-              <div className="settings-group-body">
-                {modelCount === 0 ? (
+                <div className="settings-provider-models">
+                  <span className="settings-field-label">{t("desktop.settings.providerModels")}</span>
+                  <p className="settings-footnote">{t("desktop.settings.providerModelsFootnote")}</p>
+                  {modelCount === 0 ? (
                   <p className="settings-footnote">{t("desktop.settings.providerNoModels")}</p>
                 ) : (
                   <div className="settings-provider-models-list">
@@ -908,14 +904,15 @@ function ProvidersPane({ draft, setDraft, t }: { draft: ProvidersDraft; setDraft
                     {t("desktop.settings.modelAdd")}
                   </button>
                 </div>
-              </div>
-            </section>
-          </>
-        ) : (
-          <p className="settings-footnote">{t("desktop.settings.providerDetailEmpty")}</p>
-        )}
+                </div>
+              </>
+            ) : (
+              <p className="settings-footnote">{t("desktop.settings.providerDetailEmpty")}</p>
+            )}
+          </div>
+        </div>
       </div>
-    </div>
+    </section>
     <section className="settings-group">
       <h3 className="settings-group-title">{t("desktop.settings.useCaseModels")}</h3>
       <div className="settings-group-body">
