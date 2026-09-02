@@ -13,6 +13,7 @@ export interface AcpSessionStoreRecord {
   createdAt: number;
   updatedAt: number;
   messageCount: number;
+  source?: string;
 }
 
 export interface AcpThreadStoreMessage {
@@ -135,7 +136,6 @@ async function writeAcpSessionRecords(panelHome: string, records: AcpSessionStor
   const handle = await fs.open(temporaryPath, "wx", 0o600);
   try {
     await handle.writeFile(body ? `${body}\n` : "", "utf8");
-    await handle.sync();
   } finally {
     await handle.close();
   }

@@ -3,18 +3,47 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../acp/store", () => ({
-  createAcpRecord: vi.fn(async (_home: string, projectPath: string, provider: string) => ({
-    id: `chat-${provider}`,
-    title: "test",
-    projectPath,
-    provider,
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-    messageCount: 0
-  })),
-  getAcpRecord: vi.fn(async () => undefined)
-}));
+vi.mock("../acp/store", () => {
+  const acpRecords = new Map<string, {
+    id: string;
+    title: string;
+    projectPath: string;
+    provider: string;
+    createdAt: number;
+    updatedAt: number;
+    messageCount: number;
+  }>();
+  return {
+    createAcpRecord: vi.fn(async (_home: string, projectPath: string, provider: string, options?: { source?: string; title?: string }) => {
+      const record = {
+        id: `chat-${provider}-${acpRecords.size + 1}`,
+        title: options?.title || "test",
+        projectPath,
+        provider,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        messageCount: 0,
+        source: options?.source || "acp"
+      };
+      acpRecords.set(record.id, record);
+      return record;
+    }),
+    getAcpRecord: vi.fn(async (_home: string, chatId: string) => {
+      const existing = acpRecords.get(chatId);
+      if (existing) return existing;
+      if (!chatId) return undefined;
+      return {
+        id: chatId,
+        title: "test",
+        projectPath: process.cwd(),
+        provider: "claude",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        messageCount: 0
+      };
+    })
+  };
+});
 
 vi.mock("@agent-resume/core", async () => {
   const actual = await vi.importActual<typeof import("@agent-resume/core")>("@agent-resume/core");
@@ -26,7 +55,16 @@ vi.mock("@agent-resume/core", async () => {
 });
 
 import { desktopDbPath, ensureDesktopDbSchema } from "@agent-resume/core";
-import { ImConductor, parseDispatchBlocks, resolveDispatchTarget } from "./conductor";
+import { createAcpRecord } from "../acp/store";
+import {
+  HANDOFF_QUOTE_BODY_MAX,
+  ImConductor,
+  mergeHandoffQuotes,
+  parseDispatchBlocks,
+  resolveDispatchTarget,
+  stripDispatchBlocks,
+  toHandoffQuote
+} from "./conductor";
 import { ImStore } from "./store";
 
 const homes: string[] = [];
@@ -44,7 +82,7 @@ async function createStore(): Promise<ImStore> {
 
 afterEach(async () => {
   await new Promise((resolve) => setTimeout(resolve, 150));
-  await Promise.all(homes.splice(0).map((home) => fs.rm(home, { recursive: true, force: true })));
+  await Promise.all(homes.splice(0).map((home) => fs.rm(home, { recursive: true, force: true }).catch(() => undefined)));
 });
 
 describe("ImConductor", () => {
@@ -375,6 +413,89 @@ describe("ImConductor", () => {
     expect(finalMessages[0]?.thinking).toBe("Analyzing requirements... Done.");
   });
 
+  it("persists in-flight role replies so a restarted store can load them", async () => {
+    const store = await createStore();
+    const project = await store.createProject("Restart mid-stream");
+    const room = await store.getRoom(project.projectId);
+    const pm = room.members.find((member) => member.templateId === "role_product_manager")!;
+    const conductor = new ImConductor(store, () => undefined, vi.fn(async () => undefined), vi.fn(async () => undefined));
+
+    const job = await store.createJob({
+      projectId: project.projectId,
+      memberId: pm.memberId,
+      messageId: null,
+      brief: { persona: pm.persona, instruction: "plan", cwd: process.cwd(), quotes: [], knowledge: [] },
+      status: "running"
+    });
+    await store.updateJob(job.jobId, { acpChatId: "chat-restart-stream" });
+
+    await conductor.handleAcpStream({
+      type: "assistantDelta",
+      chatId: "chat-restart-stream",
+      id: "delta-1",
+      text: "Please implement the following fixes.",
+      thinking: "Drafting the repair plan...",
+      streaming: true,
+      toolCalls: []
+    });
+
+    const liveMessages = await store.listMessages(project.projectId);
+    expect(liveMessages).toHaveLength(1);
+    expect(liveMessages[0]?.kind).toBe("role.say");
+    expect(liveMessages[0]?.jobId).toBe(job.jobId);
+    expect(liveMessages[0]?.body).toBe("Please implement the following fixes.");
+    expect(liveMessages[0]?.thinking).toBe("Drafting the repair plan...");
+
+    const restarted = new ImStore(desktopDbPath(homes[homes.length - 1]!));
+    await restarted.initialize();
+    const recovered = await restarted.listMessages(project.projectId);
+    expect(recovered).toHaveLength(1);
+    expect(recovered[0]?.body).toBe("Please implement the following fixes.");
+    expect(recovered[0]?.thinking).toBe("Drafting the repair plan...");
+    expect((await restarted.getJob(job.jobId))?.status).toBe("cancelled");
+  });
+
+  it("resumes an interrupted job from the saved draft", async () => {
+    const store = await createStore();
+    const project = await store.createProject("Resume mid-stream");
+    await store.setLocalPath(project.projectId, process.cwd());
+    const room = await store.getRoom(project.projectId);
+    const pm = room.members.find((member) => member.templateId === "role_product_manager")!;
+    const connect = vi.fn(async () => undefined);
+    const prompt = vi.fn(async () => undefined);
+    const conductor = new ImConductor(store, () => undefined, connect, prompt);
+
+    const job = await store.createJob({
+      projectId: project.projectId,
+      memberId: pm.memberId,
+      messageId: null,
+      brief: { persona: pm.persona, instruction: "Write the full plan", cwd: process.cwd(), quotes: [], knowledge: [] },
+      status: "running"
+    });
+    await store.updateJob(job.jobId, { acpChatId: "chat-resume-stream" });
+    await conductor.handleAcpStream({
+      type: "assistantDelta",
+      chatId: "chat-resume-stream",
+      id: "delta-1",
+      text: "Step 1 is done.",
+      streaming: true,
+      toolCalls: []
+    });
+    await store.updateJob(job.jobId, {
+      status: "cancelled",
+      error: "App restarted while job was running",
+      finished: true
+    });
+
+    const resumed = await conductor.resumeJob(job.jobId);
+    expect(resumed.job.jobId).not.toBe(job.jobId);
+    expect(resumed.job.status === "queued" || resumed.job.status === "connecting" || resumed.job.status === "running").toBe(true);
+    expect(resumed.job.brief.instruction).toContain("Write the full plan");
+    expect(resumed.job.brief.instruction).toContain("Interrupted previous attempt");
+    expect(resumed.job.brief.instruction).toContain("Step 1 is done.");
+    await vi.waitFor(() => expect(prompt).toHaveBeenCalled(), { timeout: 3000 });
+  });
+
   it("passes image attachments to ACP agent prompt when message contains images", async () => {
     const store = await createStore();
     const project = await store.createProject("Image prompt test");
@@ -529,6 +650,130 @@ Setup Docker compose for postgres.
     expect(blocks[1]?.instruction).toBe("Setup Docker compose for postgres.");
   });
 
+  it("strips dispatch blocks cleanly from message text", () => {
+    const text = `Here is my architecture plan:
+1. Setup DB
+2. Build UI
+
+<im_dispatch target="role_developer" reason="Need backend CRUD implementation">
+Please implement the user model and DB migration.
+</im_dispatch>
+
+Additional notes after dispatch.`;
+
+    const stripped = stripDispatchBlocks(text);
+    expect(stripped).toBe(`Here is my architecture plan:
+1. Setup DB
+2. Build UI
+
+Additional notes after dispatch.`);
+    expect(stripped).not.toContain("<im_dispatch");
+    expect(stripped).not.toContain("Please implement the user model");
+  });
+
+  it("converts role.say message to handoff quote, stripping dispatch and truncating if needed", () => {
+    const quote = toHandoffQuote({
+      messageId: "msg-123",
+      projectId: "proj-1",
+      kind: "role.say",
+      authorMemberId: "mem-1",
+      authorLabel: "Architect",
+      body: `System design v1.
+<im_dispatch target="role_developer">
+Do dev
+</im_dispatch>`,
+      quoteIds: [],
+      quotes: [],
+      mentionRoleIds: [],
+      jobId: "job-1",
+      createdAtMs: 1000
+    });
+
+    expect(quote).toEqual({
+      messageId: "msg-123",
+      authorLabel: "Architect",
+      body: "System design v1.",
+      createdAtMs: 1000,
+      truncated: false
+    });
+
+    // Ignores non role.say
+    expect(toHandoffQuote({
+      messageId: "msg-human",
+      projectId: "p1",
+      kind: "human",
+      authorMemberId: null,
+      authorLabel: "You",
+      body: "hello",
+      quoteIds: [],
+      quotes: [],
+      mentionRoleIds: [],
+      jobId: null,
+      createdAtMs: 1000
+    })).toBeUndefined();
+
+    // Ignores message where body is solely dispatch tags
+    expect(toHandoffQuote({
+      messageId: "msg-empty",
+      projectId: "p1",
+      kind: "role.say",
+      authorMemberId: "m1",
+      authorLabel: "Architect",
+      body: `<im_dispatch target="role_developer">Do dev</im_dispatch>`,
+      quoteIds: [],
+      quotes: [],
+      mentionRoleIds: [],
+      jobId: "j1",
+      createdAtMs: 1000
+    })).toBeUndefined();
+
+    // Truncates long body
+    const longText = "A".repeat(HANDOFF_QUOTE_BODY_MAX + 500);
+    const truncatedQuote = toHandoffQuote({
+      messageId: "msg-long",
+      projectId: "p1",
+      kind: "role.say",
+      authorMemberId: "m1",
+      authorLabel: "Architect",
+      body: longText,
+      quoteIds: [],
+      quotes: [],
+      mentionRoleIds: [],
+      jobId: "j1",
+      createdAtMs: 1000
+    });
+    expect(truncatedQuote?.truncated).toBe(true);
+    expect(truncatedQuote?.body.length).toBe(HANDOFF_QUOTE_BODY_MAX);
+    expect(truncatedQuote?.body.endsWith("…")).toBe(true);
+  });
+
+  it("merges handoff quote with existing user quotes, prepending handoff and deduplicating", () => {
+    const handoff = {
+      messageId: "msg-handoff",
+      authorLabel: "Architect",
+      body: "Architect conclusion",
+      createdAtMs: 2000,
+      truncated: false
+    };
+    const userQuote = {
+      messageId: "msg-user",
+      authorLabel: "You",
+      body: "Initial goal",
+      createdAtMs: 1000,
+      truncated: false
+    };
+
+    const merged = mergeHandoffQuotes(handoff, [userQuote]);
+    expect(merged).toEqual([handoff, userQuote]);
+
+    // Deduplication by messageId
+    const deduped = mergeHandoffQuotes(handoff, [userQuote, handoff]);
+    expect(deduped).toEqual([handoff, userQuote]);
+
+    // Undefined handoff keeps existing quotes intact
+    expect(mergeHandoffQuotes(undefined, [userQuote])).toEqual([userQuote]);
+  });
+
   it("resolves dispatch target with exact ID, case-insensitive name, and alias with security check", () => {
     const members = [
       {
@@ -624,6 +869,11 @@ Implement the search indexing algorithm as designed.
     expect(devJob).toBeTruthy();
     expect(devJob?.brief.instruction).toBe("Implement the search indexing algorithm as designed.");
     expect(devJob?.brief.dispatchChain).toEqual(["role_architect", "role_developer"]);
+    expect(devJob?.brief.quotes).toHaveLength(1);
+    expect(devJob?.brief.quotes[0]?.authorLabel).toBe("Architect");
+    expect(devJob?.brief.quotes[0]?.body).toBe("Design is complete.");
+    expect(devJob?.brief.quotes[0]?.body).not.toContain("<im_dispatch");
+    expect(devJob?.brief.quotes[0]?.truncated).toBe(false);
 
     const archMsg = (await store.listMessages(project.projectId)).find((m) => m.jobId === job.jobId);
     expect(archMsg?.delegationProposals).toHaveLength(1);
@@ -679,6 +929,9 @@ Implement the search indexing algorithm as designed.
     expect(job).toBeTruthy();
     expect(job.memberId).toBe(developer.memberId);
     expect(job.brief.instruction).toBe("Write the backend service.");
+    expect(job.brief.quotes).toHaveLength(1);
+    expect(job.brief.quotes[0]?.authorLabel).toBe("Architect");
+    expect(job.brief.quotes[0]?.body).toBe("Design finished.");
     expect(afterDispatch.delegationProposals?.find((p) => p.id === "prop-1")?.status).toBe("dispatched");
 
     // Dismiss proposal 2
@@ -695,7 +948,8 @@ Implement the search indexing algorithm as designed.
     const project = await store.createProject("Unmatched Tip Test");
     await store.setLocalPath(project.projectId, process.cwd());
 
-    const conductor = new ImConductor(store, () => undefined, vi.fn(async () => undefined), vi.fn(async () => undefined));
+    const emit = vi.fn();
+    const conductor = new ImConductor(store, emit, vi.fn(async () => undefined), vi.fn(async () => undefined));
 
     const result = await conductor.postMessage({
       projectId: project.projectId,
@@ -705,7 +959,447 @@ Implement the search indexing algorithm as designed.
     });
 
     expect(result.job).toBeNull();
-    expect(result.message.routingTip).toBe("desktop.im.routingUnmatchedTip");
-    expect(result.message.routingTimedOut).toBeUndefined();
+    // Non-blocking: intent routing runs in background and updates via messageUpdate
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const msg = await store.getMessage(result.message.messageId);
+    expect(msg?.routingTip).toBe("desktop.im.routingUnmatchedTip");
+    expect(msg?.routingTimedOut).toBeUndefined();
+    expect(emit).toHaveBeenCalledWith(expect.objectContaining({ type: "messageUpdate" }));
+  });
+
+  it("reuses one ACP session per role and sends incremental prompts after bootstrap", async () => {
+    const store = await createStore();
+    const project = await store.createProject("Reuse session");
+    await store.setLocalPath(project.projectId, process.cwd());
+    const room = await store.getRoom(project.projectId);
+    const pm = room.members.find((member) => member.templateId === "role_product_manager")!;
+    const connect = vi.fn(async () => undefined);
+    const prompt = vi.fn(async (_chatId: string, _text: string, _images?: any) => undefined);
+    const conductor = new ImConductor(store, () => undefined, connect, prompt);
+    const createdBefore = (createAcpRecord as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    await conductor.postMessage({
+      projectId: project.projectId,
+      body: "first question",
+      quoteIds: [],
+      mentionRoleIds: [pm.memberId]
+    });
+    await vi.waitFor(() => expect(prompt).toHaveBeenCalledTimes(1));
+    expect(prompt.mock.calls[0]?.[1]).toContain("[Role persona]");
+    expect(createAcpRecord).toHaveBeenCalledTimes(createdBefore + 1);
+    expect(createAcpRecord).toHaveBeenLastCalledWith(expect.any(String), expect.any(String), expect.any(String), { source: "im" });
+
+    await conductor.postMessage({
+      projectId: project.projectId,
+      body: "second question",
+      quoteIds: [],
+      mentionRoleIds: [pm.memberId]
+    });
+    await vi.waitFor(() => expect(prompt).toHaveBeenCalledTimes(2));
+    expect(prompt.mock.calls[1]?.[1]).toBe("second question");
+    expect(prompt.mock.calls[1]?.[1]).not.toContain("[Role persona]");
+    expect(createAcpRecord).toHaveBeenCalledTimes(createdBefore + 1);
+  });
+
+  it("follow-up reuses the same ACP session and sends only the new question", async () => {
+    const store = await createStore();
+    const project = await store.createProject("Follow up");
+    await store.setLocalPath(project.projectId, process.cwd());
+    const room = await store.getRoom(project.projectId);
+    const pm = room.members.find((member) => member.templateId === "role_product_manager")!;
+    const connect = vi.fn(async () => undefined);
+    const prompt = vi.fn(async (_chatId: string, _text: string, _images?: any) => undefined);
+    const conductor = new ImConductor(store, () => undefined, connect, prompt);
+    const createdBefore = (createAcpRecord as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    const first = await conductor.postMessage({
+      projectId: project.projectId,
+      body: "plan this",
+      quoteIds: [],
+      mentionRoleIds: [pm.memberId]
+    });
+    await vi.waitFor(() => expect(prompt).toHaveBeenCalledTimes(1));
+    const reply = await store.insertMessage({
+      projectId: project.projectId,
+      kind: "role.say",
+      authorMemberId: pm.memberId,
+      authorLabel: pm.name,
+      body: "Here is the plan",
+      jobId: first.job?.jobId,
+      threadId: first.job?.threadId || first.message.threadId
+    });
+
+    const follow = await conductor.postMessage({
+      projectId: project.projectId,
+      body: "add more detail",
+      quoteIds: [],
+      mentionRoleIds: [],
+      followUpToMessageId: reply.messageId
+    });
+    await vi.waitFor(() => expect(prompt).toHaveBeenCalledTimes(2));
+    expect(follow.message.mentionRoleIds).toEqual([pm.memberId]);
+    expect(follow.message.threadId).toBe(reply.threadId);
+    expect(prompt.mock.calls[1]?.[1]).toBe("add more detail");
+    expect(createAcpRecord).toHaveBeenCalledTimes(createdBefore + 1);
+  });
+
+  it("resumes an interrupted job on the existing ACP session without a bootstrap prompt", async () => {
+    const store = await createStore();
+    const project = await store.createProject("Resume incremental");
+    await store.setLocalPath(project.projectId, process.cwd());
+    const room = await store.getRoom(project.projectId);
+    const pm = room.members.find((member) => member.templateId === "role_product_manager")!;
+    const connect = vi.fn(async () => undefined);
+    const prompt = vi.fn(async (_chatId: string, _text: string, _images?: any) => undefined);
+    const conductor = new ImConductor(store, () => undefined, connect, prompt);
+    const createdBefore = (createAcpRecord as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    const job = await store.createJob({
+      projectId: project.projectId,
+      memberId: pm.memberId,
+      messageId: null,
+      brief: { persona: pm.persona, instruction: "Write the full plan", cwd: process.cwd(), quotes: [], knowledge: [] },
+      status: "cancelled",
+      threadId: "thread-resume"
+    });
+    await store.updateJob(job.jobId, { acpChatId: "chat-resume-live", finished: true });
+    await store.insertMessage({
+      projectId: project.projectId,
+      kind: "role.say",
+      authorMemberId: pm.memberId,
+      authorLabel: pm.name,
+      body: "Step 1 is done.",
+      jobId: job.jobId,
+      threadId: "thread-resume"
+    });
+
+    const resumed = await conductor.resumeJob(job.jobId);
+    expect(resumed.job.threadId).toBe("thread-resume");
+    await vi.waitFor(() => expect(prompt).toHaveBeenCalled(), { timeout: 3000 });
+    expect(prompt.mock.calls[0]?.[1]).toContain("Interrupted previous attempt");
+    expect(prompt.mock.calls[0]?.[1]).not.toContain("[Role persona]");
+    expect(createAcpRecord).toHaveBeenCalledTimes(createdBefore);
+  });
+
+  it("falls back to a full brief when a reused ACP session is rebuilt", async () => {
+    const store = await createStore();
+    const project = await store.createProject("Rebuilt session");
+    await store.setLocalPath(project.projectId, process.cwd());
+    const room = await store.getRoom(project.projectId);
+    const pm = room.members.find((member) => member.templateId === "role_product_manager")!;
+    await store.setMemberAcpChatId(pm.memberId, "chat-rebuilt");
+    const connect = vi.fn(async () => ({ rebuilt: true }));
+    const prompt = vi.fn(async (_chatId: string, _text: string, _images?: any) => undefined);
+    const conductor = new ImConductor(store, () => undefined, connect, prompt);
+
+    await conductor.postMessage({
+      projectId: project.projectId,
+      body: "continue after crash",
+      quoteIds: [],
+      mentionRoleIds: [pm.memberId]
+    });
+    await vi.waitFor(() => expect(prompt).toHaveBeenCalled());
+    expect(prompt.mock.calls[0]?.[1]).toContain("[Role persona]");
+    const messages = await store.listMessages(project.projectId);
+    expect(messages.some((item) => item.kind === "system" && item.body === "desktop.im.sessionRebuilt")).toBe(true);
+  });
+
+  it("cancels an active job, flushes streaming message with streaming: false, and triggers cancelChat", async () => {
+    const store = await createStore();
+    const project = await store.createProject("Cancel job test");
+    await store.setLocalPath(project.projectId, process.cwd());
+    const room = await store.getRoom(project.projectId);
+    const pm = room.members.find((member) => member.templateId === "role_product_manager")!;
+    const connect = vi.fn(async () => undefined);
+    const prompt = vi.fn(async () => undefined);
+    const cancelChat = vi.fn(async () => undefined);
+    const emitted: any[] = [];
+    const conductor = new ImConductor(
+      store,
+      (event) => emitted.push(event),
+      connect,
+      prompt,
+      undefined,
+      undefined,
+      undefined,
+      cancelChat
+    );
+
+    const job = await store.createJob({
+      projectId: project.projectId,
+      memberId: pm.memberId,
+      messageId: null,
+      brief: { persona: pm.persona, instruction: "Long task", cwd: process.cwd(), quotes: [], knowledge: [] },
+      status: "running"
+    });
+    await store.updateJob(job.jobId, { acpChatId: "chat-cancel-test" });
+
+    await conductor.handleAcpStream({
+      type: "assistantDelta",
+      chatId: "chat-cancel-test",
+      id: "delta-1",
+      text: "Streaming in progress...",
+      streaming: true,
+      toolCalls: []
+    });
+
+    const cancelledJob = await conductor.cancelJob(job.jobId);
+    expect(cancelledJob.status).toBe("cancelled");
+    expect(cancelChat).toHaveBeenCalledWith("chat-cancel-test");
+
+    const messageUpdate = emitted.find((e) => e.type === "messageUpdate" && e.message.streaming === false);
+    expect(messageUpdate).toBeTruthy();
+    expect(messageUpdate.message.body).toBe("Streaming in progress...");
+
+    const savedMessages = await store.listMessages(project.projectId);
+    expect(savedMessages).toHaveLength(1);
+    expect(savedMessages[0]?.body).toBe("Streaming in progress...");
+
+    const savedJob = await store.getJob(job.jobId);
+    expect(savedJob?.status).toBe("cancelled");
+  });
+
+  it("revives an interrupted job when ACP is still streaming", async () => {
+    const store = await createStore();
+    const project = await store.createProject("Revive stream");
+    const room = await store.getRoom(project.projectId);
+    const pm = room.members.find((member) => member.templateId === "role_product_manager")!;
+    const emit = vi.fn();
+    const conductor = new ImConductor(store, emit, vi.fn(async () => undefined), vi.fn(async () => undefined));
+    const job = await store.createJob({
+      projectId: project.projectId,
+      memberId: pm.memberId,
+      messageId: null,
+      brief: { persona: pm.persona, instruction: "plan", cwd: process.cwd(), quotes: [], knowledge: [] },
+      status: "cancelled"
+    });
+    await store.updateJob(job.jobId, {
+      acpChatId: "chat-revive",
+      error: "App restarted while job was running",
+      finished: true
+    });
+
+    await conductor.handleAcpStream({
+      type: "assistantDelta",
+      chatId: "chat-revive",
+      id: "delta-1",
+      text: "Still working on it.",
+      streaming: true,
+      toolCalls: []
+    });
+
+    const revived = await store.getJob(job.jobId);
+    expect(revived?.status).toBe("running");
+    expect(revived?.finishedAtMs).toBeNull();
+    const messages = await store.listMessages(project.projectId);
+    expect(messages.some((item) => item.body === "Still working on it.")).toBe(true);
+    expect(emit).toHaveBeenCalledWith(expect.objectContaining({ type: "job", job: expect.objectContaining({ status: "running" }) }));
+  });
+
+  it("waits for a live ACP turn to finish before sending the next prompt", async () => {
+    const store = await createStore();
+    const project = await store.createProject("Wait idle");
+    await store.setLocalPath(project.projectId, process.cwd());
+    const room = await store.getRoom(project.projectId);
+    const pm = room.members.find((member) => member.templateId === "role_product_manager")!;
+    await store.setMemberAcpChatId(pm.memberId, "chat-busy");
+    let running = true;
+    const inspect = vi.fn(() => ({ live: true, running }));
+    const prompt = vi.fn(async (_chatId: string, _text: string, _images?: unknown) => undefined);
+    const conductor = new ImConductor(
+      store,
+      () => undefined,
+      vi.fn(async () => undefined),
+      prompt,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      inspect
+    );
+    const pending = conductor.postMessage({
+      projectId: project.projectId,
+      body: "next question",
+      quoteIds: [],
+      mentionRoleIds: [pm.memberId]
+    });
+    await vi.waitFor(() => expect(inspect).toHaveBeenCalled());
+    expect(prompt).not.toHaveBeenCalled();
+    running = false;
+    await pending;
+    await vi.waitFor(() => expect(prompt).toHaveBeenCalled());
+    expect(prompt.mock.calls[0]?.[1]).toContain("next question");
+  });
+
+  it("resolves project-scoped file role in delegation target and creates proposal", async () => {
+    const store = await createStore();
+    const project = await store.createProject("Project Role Delegation");
+    const room = await store.getRoom(project.projectId);
+    const arch = room.members.find((m) => m.templateId === "role_architect")!;
+
+    const dbaMember = await store.addMemberFromTemplate(project.projectId, {
+      templateId: "project_role_dba",
+      name: "DBA Specialist",
+      persona: "You are DBA.",
+      agent: "pi",
+      permissions: "write",
+      tools: { fsRead: true, fsWrite: true, execute: true },
+      source: "project",
+      createdAtMs: Date.now(),
+      updatedAtMs: Date.now()
+    });
+
+    // Update arch to be able to call dba
+    await store.updateTemplate({
+      templateId: "role_architect",
+      callableTemplateIds: ["role_developer", "project_role_dba"]
+    });
+
+    const updatedArch = (await store.getRoom(project.projectId)).members.find((m) => m.templateId === "role_architect")!;
+    const enabledMembers = [updatedArch, dbaMember];
+
+    const resolved = resolveDispatchTarget("dba", ["project_role_dba", "role_developer"], enabledMembers);
+    expect(resolved).toBeDefined();
+    expect(resolved?.templateId).toBe("project_role_dba");
+    expect(resolved?.name).toBe("DBA Specialist");
+
+    const resolvedByName = resolveDispatchTarget("DBA Specialist", ["project_role_dba", "role_developer"], enabledMembers);
+    expect(resolvedByName?.templateId).toBe("project_role_dba");
+  });
+
+  it("updates a single message across multi-turn tool calls within the same job without creating duplicate message cards", async () => {
+    const store = await createStore();
+    const project = await store.createProject("Multi-turn tool test");
+    const room = await store.getRoom(project.projectId);
+    const mem = room.members.find((m) => m.templateId === "role_memory")!;
+    const emitted: any[] = [];
+    const conductor = new ImConductor(
+      store,
+      (event) => emitted.push(event),
+      vi.fn(async () => undefined),
+      vi.fn(async () => undefined)
+    );
+
+    const job = await store.createJob({
+      projectId: project.projectId,
+      memberId: mem.memberId,
+      messageId: null,
+      brief: { persona: mem.persona, instruction: "Save note", cwd: process.cwd(), quotes: [], knowledge: [] },
+      status: "running"
+    });
+    await store.updateJob(job.jobId, { acpChatId: "chat-multiturn-test" });
+
+    // Turn 1: Initial brief text before tool use
+    await conductor.handleAcpStream({
+      type: "assistantDelta",
+      chatId: "chat-multiturn-test",
+      id: "delta-1",
+      text: "The",
+      streaming: true,
+      toolCalls: []
+    });
+
+    await conductor.handleAcpStream({
+      type: "assistantDone",
+      chatId: "chat-multiturn-test",
+      streaming: false,
+      message: {
+        id: "turn-1",
+        role: "assistant",
+        text: "The",
+        timestamp: Date.now(),
+        toolCalls: [{ toolCallId: "tool-1", title: "note_create", kind: "create", status: "completed" }]
+      }
+    });
+
+    // Turn 2: Continued response after tool execution
+    await conductor.handleAcpStream({
+      type: "assistantDelta",
+      chatId: "chat-multiturn-test",
+      id: "delta-2",
+      text: "The user wants me to output the conclusion to a note. Created note successfully.",
+      streaming: true,
+      toolCalls: []
+    });
+
+    await conductor.handleAcpStream({
+      type: "assistantDone",
+      chatId: "chat-multiturn-test",
+      streaming: false,
+      message: {
+        id: "turn-2",
+        role: "assistant",
+        text: "The user wants me to output the conclusion to a note. Created note successfully.",
+        timestamp: Date.now(),
+        toolCalls: []
+      }
+    });
+
+    const messages = await store.listMessages(project.projectId);
+    // MUST be only 1 role.say message for this job, not 2 separate messages!
+    const roleMessages = messages.filter((m) => m.kind === "role.say" && m.jobId === job.jobId);
+    expect(roleMessages).toHaveLength(1);
+    expect(roleMessages[0]?.body).toBe("The user wants me to output the conclusion to a note. Created note successfully.");
+  });
+
+  it("does not overwrite the human prompt message when streaming and finalizing assistant reply", async () => {
+    const store = await createStore();
+    const project = await store.createProject("Prompt preservation");
+    await store.setLocalPath(project.projectId, process.cwd());
+    const room = await store.getRoom(project.projectId);
+    const dev = room.members.find((m) => m.templateId === "role_developer")!;
+
+    const conductor = new ImConductor(store, () => undefined, vi.fn(async () => undefined), vi.fn(async () => undefined));
+
+    const { message: humanMsg, job } = await conductor.postMessage({
+      projectId: project.projectId,
+      body: "Please write a test",
+      quoteIds: [],
+      mentionRoleIds: [dev.memberId]
+    });
+
+    expect(job).not.toBeNull();
+    const humanInDb = await store.getMessage(humanMsg.messageId);
+    expect(humanInDb?.jobId).toBe(job?.jobId);
+    expect(humanInDb?.kind).toBe("human");
+    expect(humanInDb?.body).toBe("Please write a test");
+
+    await store.updateJob(job!.jobId, { acpChatId: "chat-preserve-test" });
+
+    // Stream first delta
+    await conductor.handleAcpStream({
+      type: "assistantDelta",
+      chatId: "chat-preserve-test",
+      id: "delta-1",
+      text: "Here is the test code",
+      streaming: true,
+      toolCalls: []
+    });
+
+    // Complete stream
+    await conductor.handleAcpStream({
+      type: "assistantDone",
+      chatId: "chat-preserve-test",
+      streaming: false,
+      message: {
+        id: "msg-done",
+        role: "assistant",
+        text: "Here is the test code",
+        timestamp: Date.now(),
+        toolCalls: []
+      }
+    });
+
+    const allMessages = await store.listMessages(project.projectId);
+    const humanAfter = allMessages.find((m) => m.messageId === humanMsg.messageId);
+    expect(humanAfter?.kind).toBe("human");
+    expect(humanAfter?.authorLabel).toBe("You");
+    expect(humanAfter?.body).toBe("Please write a test");
+
+    const roleSayMsg = allMessages.find((m) => m.kind === "role.say" && m.jobId === job?.jobId);
+    expect(roleSayMsg).toBeDefined();
+    expect(roleSayMsg?.authorLabel).toBe("Developer");
+    expect(roleSayMsg?.authorMemberId).toBe(dev.memberId);
+    expect(roleSayMsg?.body).toBe("Here is the test code");
   });
 });

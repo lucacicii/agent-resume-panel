@@ -1,21 +1,15 @@
-import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, screen, shell } from "electron";
+import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, powerMonitor, screen, shell } from "electron";
 import { existsSync, readFileSync } from "node:fs";
 import { constants } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
   AGENT_TOOL_CATALOG,
-  runAgentChat,
-  clearAgentMessages,
+  type AgentToolDescriptor,
+  discoverSkills,
+  readSkillContent,
+  skillToToolDescriptor,
   clearReportJobsByStatus,
-  deleteAgentMessagesFromSortOrder,
-  listOlderAgentMessages,
-  listAgentNoteAudit,
-  listRecentAgentMessages,
-  listAgentThreads,
-  createAgentThread,
-  renameAgentThread,
-  deleteAgentThread,
   autoRenameSessionAction,
   suggestSessionRenameAction,
   backfillReportDigests,
@@ -144,6 +138,8 @@ import {
   disposeAllAcpControllers,
   getAcpRuntimeMetrics,
   connectAcpChat,
+  cancelAcpChat,
+  inspectAcpChat,
   denyAcpPermission,
   promptAcpChat,
   registerAcpIpc,
@@ -151,7 +147,7 @@ import {
   setAcpThoughtLevel,
   setAcpRecordProjectPath
 } from "./acp/acpHost";
-import { registerImIpc } from "./im/ipc";
+import { flushImStreamingMessages, registerImIpc } from "./im/ipc";
 import { getAcpRecord, updateAcpRecord } from "./acp/store";
 import { registerWorkbenchFsIpc } from "./workbenchFs";
 import {
@@ -166,6 +162,7 @@ import {
   disposeBrowserController,
   disposeBrowserMcpServer,
   ensureBrowserMcpReadyForExternal,
+  listBrowserToolDescriptors,
   registerBrowserIpc,
   syncBrowserExternalMcpRegistration
 } from "./browser";
@@ -423,13 +420,6 @@ let registeredRecentStandaloneNoteShortcut = "";
 let appQuitInFlight: Promise<void> | null = null;
 let allowAppQuit = false;
 let quitCleanupDone = false;
-let activeAskAbort: AbortController | null = null;
-const activeAskApprovals = new Map<string, { senderId: number; resolve: (approved: boolean) => void }>();
-
-function rejectActiveAskApprovals(): void {
-  for (const pending of activeAskApprovals.values()) pending.resolve(false);
-  activeAskApprovals.clear();
-}
 let sessionSyncTimer: NodeJS.Timeout | null = null;
 let sessionSyncInFlight: Promise<AgentSessionSyncResult> | null = null;
 let workbenchActive = false;
@@ -854,6 +844,7 @@ function performQuitCleanup(): void {
   stopSessionTranscriptIndexAuto();
   stopSessionEmbeddingIndexAuto();
   stopAutoTaggingService();
+  void flushImStreamingMessages();
   disposeAllAcpControllers();
   tryDestroyPtyOnQuit();
 }
@@ -898,15 +889,30 @@ function syncSessions(): Promise<AgentSessionSyncResult> {
   return sessionSyncInFlight;
 }
 
+function shouldScheduleBackgroundAnalysis(): boolean {
+  if (!mainWindow || mainWindow.isDestroyed()) return true;
+  if (mainWindow.isMinimized()) return false;
+  if (mainWindow.isFocused()) {
+    try {
+      return powerMonitor.getSystemIdleTime() >= 30;
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
+
 async function syncAndNotify(): Promise<AgentSessionSyncResult> {
   const result = await syncSessions();
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send("sessions:synced", result);
   }
-  scheduleSessionSummaryAuto(2_000);
-  scheduleSessionTranscriptIndexAuto(3_000);
-  scheduleSessionEmbeddingIndexAuto(4_000);
-  scheduleAutoTagging(5_000);
+  if (shouldScheduleBackgroundAnalysis()) {
+    scheduleSessionSummaryAuto(2_000);
+    scheduleSessionTranscriptIndexAuto(3_000);
+    scheduleSessionEmbeddingIndexAuto(4_000);
+    scheduleAutoTagging(5_000);
+  }
   return result;
 }
 
@@ -1188,10 +1194,14 @@ function createWindow(): void {
     resumeSessionSync();
   });
   mainWindow.on("restore", resumeSessionSync);
-  mainWindow.on("hide", stopSessionSyncTimer);
+  mainWindow.on("hide", () => {
+    stopSessionSyncTimer();
+    void flushImStreamingMessages();
+  });
   mainWindow.on("minimize", stopSessionSyncTimer);
   mainWindow.on("closed", () => {
     stopSessionSyncTimer();
+    void flushImStreamingMessages();
     workbenchActive = false;
     floatingNoteFocused = false;
     modalOpen = false;
@@ -2607,204 +2617,36 @@ function registerIpc(): void {
     }
   );
 
-  ipcMain.handle(
-    "agent:ask",
-    async (
-      event,
-      args: {
-        query: string;
-        history?: Array<{ role: "user" | "assistant"; content: string }>;
-        threadId?: string;
-        enableTools?: boolean;
-        /** When set and non-empty, only these MCP tool names are exposed to the model. */
-        enabledTools?: string[];
-        projectPath?: string;
-      }
-    ) => {
-      activeAskAbort?.abort();
-      rejectActiveAskApprovals();
-      activeAskAbort = new AbortController();
-      const signal = activeAskAbort.signal;
+  ipcMain.handle("agent:listTools", async (_event, args?: { projectPath?: string }) => {
+    const coreTools = [...AGENT_TOOL_CATALOG];
+    try {
+      const skills = await discoverSkills({ projectPath: args?.projectPath });
+      const skillTools = skills.map(skillToToolDescriptor);
+
       const settings = await loadSettings();
-      try {
-        return await runAgentChat({
-          query: args.query,
-          history: args.history,
-          threadId: args.threadId,
-          enableTools: args.enableTools ?? true,
-          enabledTools: args.enabledTools,
-          projectPath: args.projectPath,
-          systemLocale: app.getLocale(),
-          signal,
-          requestToolApproval: async (call) => {
-            const alwaysAllow = settings.desktop?.alwaysAllowAgentNonDestructiveOperations === true ||
-              settings.desktop?.alwaysAllowAgentWriteOperations === true;
-            if (alwaysAllow && call.impact !== "delete" && call.impact !== "destructive" && call.impact !== "unknown") {
-              return true;
-            }
-            return new Promise<boolean>((resolve) => {
-                const rejectOnAbort = () => {
-                  activeAskApprovals.delete(call.id);
-                  resolve(false);
-                };
-                if (signal.aborted) {
-                  rejectOnAbort();
-                  return;
-                }
-                activeAskApprovals.set(call.id, {
-                  senderId: event.sender.id,
-                  resolve: (approved) => {
-                    signal.removeEventListener("abort", rejectOnAbort);
-                    activeAskApprovals.delete(call.id);
-                    resolve(approved);
-                  }
-                });
-                signal.addEventListener("abort", rejectOnAbort, { once: true });
-                event.sender.send("agent:askStream", {
-                  phase: "tool_approval_required",
-                  toolCallId: call.id,
-                  toolName: call.toolName,
-                  toolImpact: call.impact,
-                  toolArgs: call.args,
-                  toolStatus: "awaiting_approval"
-                });
-              });
-          },
-          onResumeSession: async ({ provider, sessionId }) => {
-            try {
-              const result = await resumeCatalogSession(provider, sessionId);
-              // xterm mode only returns command/cwd — Workbench must open the terminal.
-              if (!result.external && result.command) {
-                const payload = {
-                  provider,
-                  id: sessionId,
-                  command: result.command,
-                  cwd: result.cwd,
-                  title: result.session?.title || sessionId,
-                  projectPath: result.session?.projectPath || result.cwd,
-                  mode: result.mode
-                };
-                broadcastToRenderers("workbench:resumeFromAgent", payload);
-              }
-              return {
-                ok: true,
-                command: result.command,
-                cwd: result.cwd,
-                mode: result.mode,
-                external: result.external === true
-              };
-            } catch (error) {
-              return {
-                ok: false,
-                error: error instanceof Error ? error.message : String(error)
-              };
-            }
-          },
-          onStream: async (streamEvent) => {
-            event.sender.send("agent:askStream", streamEvent);
-            if (streamEvent.phase === "chunk") {
-              await new Promise<void>((resolve) => setImmediate(resolve));
-            }
-          }
-        });
-      } finally {
-        rejectActiveAskApprovals();
-        if (activeAskAbort?.signal === signal) {
-          activeAskAbort = null;
-        }
-      }
+      const browserEnabled = settings.desktop?.browser?.enabled !== false;
+      const browserTools: AgentToolDescriptor[] = browserEnabled
+        ? listBrowserToolDescriptors().map((tool) => ({
+            name: tool.name,
+            description: tool.description,
+            category: "browser" as const,
+            kind: "browser_mcp" as const
+          }))
+        : [];
+
+      return [...coreTools, ...browserTools, ...skillTools];
+    } catch {
+      return coreTools;
     }
-  );
-
-  ipcMain.handle("agent:listTools", () => AGENT_TOOL_CATALOG);
-
-  ipcMain.handle("agent:cancelAsk", async () => {
-    activeAskAbort?.abort();
-    rejectActiveAskApprovals();
-    activeAskAbort = null;
-    return { ok: true };
   });
 
-  ipcMain.handle("agent:respondToolApproval", async (event, args: { toolCallId?: string; approved?: boolean }) => {
-    const toolCallId = args?.toolCallId?.trim();
-    const pending = toolCallId ? activeAskApprovals.get(toolCallId) : undefined;
-    if (!pending || pending.senderId !== event.sender.id) return { ok: false };
-    pending.resolve(args.approved === true);
-    return { ok: true };
+  ipcMain.handle("skills:list", async (_event, args?: { projectPath?: string }) => {
+    return discoverSkills({ projectPath: args?.projectPath });
   });
 
-  ipcMain.handle("agent:listAgentChat", async (_event, args?: { limit?: number; threadId?: string }) => {
-    const paths = await loadPanelDbPaths();
-    return listRecentAgentMessages(paths.desktopDb, { limit: args?.limit, threadId: args?.threadId });
+  ipcMain.handle("skills:read", async (_event, args: { location: string }) => {
+    return readSkillContent(args.location);
   });
-
-  ipcMain.handle(
-    "agent:listOlderAgentChat",
-    async (_event, args: { beforeSortOrder: number; limit?: number; threadId?: string }) => {
-      const paths = await loadPanelDbPaths();
-      return listOlderAgentMessages(paths.desktopDb, {
-        beforeSortOrder: args.beforeSortOrder,
-        limit: args?.limit,
-        threadId: args?.threadId
-      });
-    }
-  );
-
-  ipcMain.handle("agent:clearAgentChat", async (_event, args?: { threadId?: string }) => {
-    const paths = await loadPanelDbPaths();
-    await clearAgentMessages(paths.desktopDb, args?.threadId);
-    return { ok: true };
-  });
-
-  ipcMain.handle(
-    "agent:truncateAgentChat",
-    async (_event, args: { threadId: string; fromSortOrder: number }) => {
-      const paths = await loadPanelDbPaths();
-      await deleteAgentMessagesFromSortOrder(paths.desktopDb, {
-        threadId: args.threadId,
-        fromSortOrder: args.fromSortOrder
-      });
-      return { ok: true };
-    }
-  );
-
-  ipcMain.handle("agent:listThreads", async () => {
-    const paths = await loadPanelDbPaths();
-    return listAgentThreads(paths.desktopDb);
-  });
-
-  ipcMain.handle("agent:createThread", async (_event, args: { title: string }) => {
-    const paths = await loadPanelDbPaths();
-    return createAgentThread(paths.desktopDb, args);
-  });
-
-  ipcMain.handle("agent:renameThread", async (_event, args: { id: string; title: string }) => {
-    const paths = await loadPanelDbPaths();
-    await renameAgentThread(paths.desktopDb, args.id, args.title);
-    return { ok: true };
-  });
-
-  ipcMain.handle("agent:deleteThread", async (_event, args: { id: string }) => {
-    const paths = await loadPanelDbPaths();
-    await deleteAgentThread(paths.desktopDb, args.id);
-    return { ok: true };
-  });
-
-  ipcMain.handle(
-    "agent:listAgentNoteAudit",
-    async (
-      _event,
-      args?: {
-        limit?: number;
-        noteId?: string;
-        traceId?: string;
-        status?: AgentNoteAuditStatus;
-      }
-    ) => {
-      const paths = await loadPanelDbPaths();
-      return listAgentNoteAudit(paths.desktopDb, args);
-    }
-  );
 
   ipcMain.handle(
     "workflow:previewReportGtdSync",
@@ -3330,6 +3172,8 @@ app.whenReady().then(async () => {
     acp: {
       connect: (chatId) => connectAcpChat(chatId),
       prompt: (chatId, text, images) => promptAcpChat(chatId, text, images ?? []),
+      cancel: (chatId) => cancelAcpChat(chatId),
+      inspect: (chatId) => inspectAcpChat(chatId),
       denyPermission: (requestId) => denyAcpPermission(requestId),
       setModel: (chatId, modelId) => setAcpModel(chatId, modelId),
       setThoughtLevel: (chatId, thoughtLevel) => setAcpThoughtLevel(chatId, thoughtLevel)
@@ -3363,68 +3207,80 @@ app.whenReady().then(async () => {
       error
     });
   }
-  // Rewrite any client configs still pointing at the old GUI Electron MCP entry.
-  try {
-    const settings = await loadSettings();
-    const launch = createExternalMcpLaunchConfig({
-      executablePath: process.execPath,
-      cliPath: resolveExternalMcpCliPath({
-        isPackaged: app.isPackaged,
-        resourcesPath: process.resourcesPath,
-        appPath: app.getAppPath()
-      }),
-      panelHome: resolvePanelHome(settings.panelHome)
-    });
-    const migrated = await migrateLegacyAgentResumeRegistrations(launch);
-    if (migrated.migrated.length > 0) {
-      console.log(`[agent-resume] Migrated MCP clients to headless CLI: ${migrated.migrated.join(", ")}`);
-    }
-    for (const failure of migrated.failed) {
-      void recordAppError({
-        source: "mcp-migrate",
-        message: `MCP migrate failed (${failure.target}): ${failure.error}`
-      });
-    }
-  } catch (error) {
-    void recordAppError({
-      source: "mcp-migrate",
-      message: "MCP legacy migration failed.",
-      error
-    });
-  }
-  // Publish browser MCP endpoint + register TUI/CLI stdio proxy when enabled.
-  try {
-    const settings = await loadSettings();
-    browserSettingsCache = settings.desktop?.browser || null;
-    await ensureBrowserMcpReadyForExternal(settings);
-    const browserMcp = await syncBrowserExternalMcpRegistration(settings);
-    if (browserMcp.registered.length) {
-      console.log(
-        `[agent-resume] Browser MCP registered for: ${browserMcp.registered.join(", ")}`
-      );
-    }
-    for (const failure of browserMcp.failed) {
-      void recordAppError({
-        source: "browser-mcp",
-        message: `Browser MCP sync failed (${failure.target}): ${failure.error}`
-      });
-    }
-  } catch (error) {
-    void recordAppError({
-      source: "browser-mcp",
-      message: "Browser MCP external startup failed.",
-      error
-    });
-  }
   createWindow();
-  initializeStandaloneNoteShortcut(await loadSettings());
-  await installApplicationMenu();
-  startDesktopNotesIndexer();
-  startSessionSummaryAuto();
-  startSessionTranscriptIndexAuto();
-  startSessionEmbeddingIndexAuto();
-  startAutoTaggingService();
-  await refreshMemorySchedulerFromSettings();
+
+  void (async () => {
+    try {
+      const settings = await loadSettings();
+      initializeStandaloneNoteShortcut(settings);
+      await installApplicationMenu();
+      startDesktopNotesIndexer();
+      startSessionSummaryAuto();
+      startSessionTranscriptIndexAuto();
+      startSessionEmbeddingIndexAuto();
+      startAutoTaggingService();
+      await refreshMemorySchedulerFromSettings();
+
+      // Rewrite any client configs still pointing at the old GUI Electron MCP entry in background.
+      try {
+        const launch = createExternalMcpLaunchConfig({
+          executablePath: process.execPath,
+          cliPath: resolveExternalMcpCliPath({
+            isPackaged: app.isPackaged,
+            resourcesPath: process.resourcesPath,
+            appPath: app.getAppPath()
+          }),
+          panelHome: resolvePanelHome(settings.panelHome)
+        });
+        const migrated = await migrateLegacyAgentResumeRegistrations(launch);
+        if (migrated.migrated.length > 0) {
+          console.log(`[agent-resume] Migrated MCP clients to headless CLI: ${migrated.migrated.join(", ")}`);
+        }
+        for (const failure of migrated.failed) {
+          void recordAppError({
+            source: "mcp-migrate",
+            message: `MCP migrate failed (${failure.target}): ${failure.error}`
+          });
+        }
+      } catch (error) {
+        void recordAppError({
+          source: "mcp-migrate",
+          message: "MCP legacy migration failed.",
+          error
+        });
+      }
+
+      // Publish browser MCP endpoint + register TUI/CLI stdio proxy when enabled.
+      try {
+        browserSettingsCache = settings.desktop?.browser || null;
+        await ensureBrowserMcpReadyForExternal(settings);
+        const browserMcp = await syncBrowserExternalMcpRegistration(settings);
+        if (browserMcp.registered.length) {
+          console.log(
+            `[agent-resume] Browser MCP registered for: ${browserMcp.registered.join(", ")}`
+          );
+        }
+        for (const failure of browserMcp.failed) {
+          void recordAppError({
+            source: "browser-mcp",
+            message: `Browser MCP sync failed (${failure.target}): ${failure.error}`
+          });
+        }
+      } catch (error) {
+        void recordAppError({
+          source: "browser-mcp",
+          message: "Browser MCP external startup failed.",
+          error
+        });
+      }
+    } catch (error) {
+      void recordAppError({
+        source: "startup-background",
+        message: "Background startup initialization failed.",
+        error
+      });
+    }
+  })();
   app.on("activate", () => {
     if (!mainWindow || mainWindow.isDestroyed()) {
       // Invariant fallback: settings must not outlive main

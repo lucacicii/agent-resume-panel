@@ -2,8 +2,8 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { desktopDbPath, ensureDesktopDbSchema } from "@agent-resume/core";
-import { buildDispatchPrompt, fillSelectionPrompt, ImStore } from "./store";
+import { desktopDbPath, ensureDesktopDbSchema, escapeSqlLiteral, runSqlite } from "@agent-resume/core";
+import { buildDispatchPrompt, buildIncrementalPrompt, fillSelectionPrompt, ImStore, SHIPPED_BUILTIN_PERSONAS } from "./store";
 
 const homes: string[] = [];
 
@@ -27,7 +27,7 @@ afterEach(async () => {
 });
 
 describe("ImStore", () => {
-  it("creates a user-owned project with the six builtin roles", async () => {
+  it("creates a user-owned project with the seven builtin roles", async () => {
     const store = await createStore();
     const project = await store.createProject("Room One");
     const room = await store.getRoom(project.projectId);
@@ -38,7 +38,8 @@ describe("ImStore", () => {
       "role_project_manager",
       "role_ui_designer",
       "role_developer",
-      "role_tester"
+      "role_tester",
+      "role_memory"
     ]);
     expect(room.members.every((member) => member.agent === "claude")).toBe(true);
   });
@@ -52,11 +53,39 @@ describe("ImStore", () => {
       "role_project_manager",
       "role_ui_designer",
       "role_developer",
-      "role_tester"
+      "role_tester",
+      "role_memory"
     ]);
     await store.initialize();
     const again = await store.listTemplates();
-    expect(again).toHaveLength(6);
+    expect(again).toHaveLength(7);
+  });
+
+  it("refreshes stock builtin personas on initialize and syncs member rows", async () => {
+    const { store, panelHome } = await createStoreWithHome();
+    const dbPath = desktopDbPath(panelHome);
+    const project = await store.createProject("Persona Sync");
+    const current = (await store.getTemplate("role_memory"))!.persona;
+    const legacy = SHIPPED_BUILTIN_PERSONAS.role_memory![0];
+    expect(legacy).not.toEqual(current);
+    // Simulate a database created before the persona update: template and member rows carry the shipped default.
+    await store.updateTemplate({ templateId: "role_memory", persona: legacy });
+    await runSqlite(
+      dbPath,
+      `UPDATE im_members SET persona = '${escapeSqlLiteral(legacy)}' WHERE template_id = 'role_memory';`
+    );
+    await store.initialize();
+    expect((await store.getTemplate("role_memory"))!.persona).toBe(current);
+    const room = await store.getRoom(project.projectId);
+    const memoryMember = room.members.find((member) => member.templateId === "role_memory")!;
+    expect(memoryMember.persona).toBe(current);
+  });
+
+  it("leaves user-customized builtin personas untouched", async () => {
+    const store = await createStore();
+    await store.updateTemplate({ templateId: "role_memory", persona: "My custom memory persona." });
+    await store.initialize();
+    expect((await store.getTemplate("role_memory"))!.persona).toBe("My custom memory persona.");
   });
 
   it("seeds builtin selection actions and blocks deleting them", async () => {
@@ -111,7 +140,7 @@ describe("ImStore", () => {
     await store.initialize();
     const after = await store.getRoom(project.projectId);
     expect(after.members.some((member) => member.templateId === "role_tester")).toBe(false);
-    expect(after.members).toHaveLength(5);
+    expect(after.members).toHaveLength(6);
   });
 
   it("adds a custom template only when a room enables it", async () => {
@@ -149,6 +178,37 @@ describe("ImStore", () => {
     expect(prompt).toContain("https://example.com/docs");
     expect(prompt).toContain("fetch the page yourself");
     expect(prompt).toContain("You may list and read the entire tree");
+  });
+
+  it("builds an incremental prompt without repeating persona or knowledge", () => {
+    const followUp = buildIncrementalPrompt({
+      persona: "You are Developer.",
+      instruction: "add more detail",
+      cwd: "/tmp/app",
+      quotes: [],
+      knowledge: []
+    });
+    expect(followUp).toBe("add more detail");
+    expect(followUp).not.toContain("[Role persona]");
+
+    const quoted = buildIncrementalPrompt({
+      persona: "You are Developer.",
+      instruction: "rewrite this",
+      cwd: "/tmp/app",
+      quotes: [{
+        messageId: "m1",
+        authorLabel: "You",
+        body: "old plan",
+        createdAtMs: 1,
+        truncated: false
+      }],
+      knowledge: []
+    });
+    expect(quoted).toContain("[Quoted messages]");
+    expect(quoted).toContain("old plan");
+    expect(quoted).toContain("rewrite this");
+    expect(quoted).not.toContain("[Role persona]");
+    expect(quoted).not.toContain("[Background knowledge]");
   });
 
   it("rejects non-http knowledge links", async () => {
@@ -288,6 +348,41 @@ describe("ImStore", () => {
       // Verify no active writer jobs remain to block the queue
       const activeWriter = await restartedStore.findActiveWriterJob(project.projectId);
       expect(activeWriter).toBeUndefined();
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps live ACP jobs running across store reinitialization", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "im-store-live-"));
+    try {
+      const dbPath = path.join(dir, "desktop.db");
+      const firstStore = new ImStore(dbPath);
+      await firstStore.initialize();
+      const project = await firstStore.createProject("Live ACP");
+      const room = await firstStore.getRoom(project.projectId);
+      const pm = room.members.find((m) => m.templateId === "role_product_manager")!;
+      const live = await firstStore.createJob({
+        projectId: project.projectId,
+        memberId: pm.memberId,
+        messageId: null,
+        brief: { persona: "", instruction: "keep going", cwd: "/tmp", quotes: [], knowledge: [] },
+        status: "running"
+      });
+      await firstStore.updateJob(live.jobId, { acpChatId: "chat-still-live" });
+      const dead = await firstStore.createJob({
+        projectId: project.projectId,
+        memberId: pm.memberId,
+        messageId: null,
+        brief: { persona: "", instruction: "stale", cwd: "/tmp", quotes: [], knowledge: [] },
+        status: "queued"
+      });
+
+      const restarted = new ImStore(dbPath);
+      const kept = await restarted.initialize({ liveAcpChatIds: ["chat-still-live"] });
+      expect(kept.map((job) => job.jobId)).toEqual([live.jobId]);
+      expect((await restarted.getJob(live.jobId))?.status).toBe("running");
+      expect((await restarted.getJob(dead.jobId))?.status).toBe("cancelled");
     } finally {
       await fs.rm(dir, { recursive: true, force: true });
     }
@@ -510,5 +605,60 @@ describe("ImStore", () => {
     expect(prompt).toContain("Developer (id: role_developer)");
     expect(prompt).toContain("DevOps (id: tpl_devops)");
     expect(prompt).toContain("<im_dispatch");
+  });
+
+  it("automatically synchronizes project-scoped file roles from .arp/roles/*.md", async () => {
+    const { store, panelHome } = await createStoreWithHome();
+    const repoDir = path.join(panelHome, "repo-with-roles");
+    const rolesDir = path.join(repoDir, ".arp", "roles");
+    await fs.mkdir(rolesDir, { recursive: true });
+
+    // 1. Create .arp/roles/dba.md
+    await fs.writeFile(
+      path.join(rolesDir, "dba.md"),
+      `---
+name: DBA Specialist
+agent: pi
+model: deepseek-reasoner
+callable:
+  - Developer
+autoDispatch: true
+---
+You are DBA.`
+    );
+
+    const project = await store.createProject("DB Project");
+    await store.setLocalPath(project.projectId, repoDir);
+
+    const room = await store.getRoom(project.projectId);
+    const dbaMember = room.members.find((m) => m.templateId === "project_role_dba");
+    expect(dbaMember).toBeDefined();
+    expect(dbaMember?.name).toBe("DBA Specialist");
+    expect(dbaMember?.agent).toBe("pi");
+    expect(dbaMember?.model).toBe("deepseek-reasoner");
+    expect(dbaMember?.source).toBe("project");
+    expect(dbaMember?.callableTemplateIds).toContain("role_developer");
+    expect(dbaMember?.autoDispatch).toBe(true);
+
+    // 2. Update .arp/roles/dba.md
+    await fs.writeFile(
+      path.join(rolesDir, "dba.md"),
+      `---
+name: Lead DBA
+agent: claude
+---
+Updated persona.`
+    );
+
+    const updatedRoom = await store.getRoom(project.projectId);
+    const updatedDba = updatedRoom.members.find((m) => m.templateId === "project_role_dba");
+    expect(updatedDba?.name).toBe("Lead DBA");
+    expect(updatedDba?.agent).toBe("claude");
+    expect(updatedDba?.persona).toBe("Updated persona.");
+
+    // 3. Delete .arp/roles/dba.md
+    await fs.rm(path.join(rolesDir, "dba.md"));
+    const cleanedRoom = await store.getRoom(project.projectId);
+    expect(cleanedRoom.members.some((m) => m.templateId === "project_role_dba")).toBe(false);
   });
 });

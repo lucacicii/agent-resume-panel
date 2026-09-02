@@ -40,6 +40,10 @@ import {
   reportSearchSchema
 } from "./reportTools";
 import {
+  handleMemoryRetrieve,
+  memoryRetrieveSchema
+} from "./memoryTools";
+import {
   handleSessionList,
   handleSessionRead,
   handleSessionReadTranscript,
@@ -256,7 +260,19 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
     async (args: { noteId: string; status: import("../gtd/types").GtdStatus | null }) => runNoteTool(() => handleNoteSetGtd(args, ctx))
   );
 
-  const reportCtx = { dbPath: ctx.dbPath, panelHome: ctx.panelHome };
+  const reportCtx = { dbPath: ctx.dbPath, panelHome: ctx.panelHome, catalogDb: ctx.catalogDb };
+
+  server.registerTool(
+    "memory_retrieve",
+    {
+      description:
+        "Retrieve relevant context across all local memory: memory digests (daily/weekly/monthly reports), project notes, and historical agent sessions in one shot with citation markers [D#], [N#], [S#].",
+      inputSchema: memoryRetrieveSchema
+    },
+    async (args: { query: string; projectPath?: string; limit?: number }) => {
+      return handleMemoryRetrieve(reportCtx, args);
+    }
+  );
 
   server.registerTool(
     "report_search",

@@ -1,11 +1,19 @@
 import type { BrowserWindow } from "electron";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { desktopDbPath, effectivePanelHome, expandHome, loadSettings } from "@agent-resume/core";
+import {
+  desktopDbPath,
+  discoverSkills,
+  effectivePanelHome,
+  expandHome,
+  formatSkillsCatalogPrompt,
+  loadSettings,
+  type PanelSettings
+} from "@agent-resume/core";
 import { createAcpRecord, getAcpRecord } from "../acp/store";
 import type { AcpAgentProvider, AcpStreamEvent, AcpToolCallInfo } from "../acp/types";
 import { routeMessageIntent } from "./intentRouter";
-import { buildDispatchPrompt, extractFirstQuestionTitle, isDefaultChatName, saveImMessageImage, type ImStore } from "./store";
+import { buildDispatchPrompt, buildIncrementalPrompt, extractFirstQuestionTitle, isDefaultChatName, saveImMessageImage, type ImStore } from "./store";
 import {
   DEFAULT_BUILTIN_CALLABLE_TEMPLATE_IDS,
   isBuiltinTemplateId,
@@ -17,12 +25,14 @@ import {
   type ImJob,
   type ImJobBrief,
   type ImJobStatus,
+  type ImKnowledgeSnapshot,
   type ImMember,
   type ImMessage,
+  type ImQuotedMessage,
   type ImRoleTools
 } from "./types";
 
-type ConnectFn = (chatId: string) => Promise<void>;
+type ConnectFn = (chatId: string) => Promise<{ rebuilt?: boolean } | void>;
 type PromptFn = (
   chatId: string,
   text: string,
@@ -31,6 +41,8 @@ type PromptFn = (
 type DenyPermissionFn = (requestId: string) => Promise<void>;
 type SetModelFn = (chatId: string, modelId: string) => Promise<void>;
 type SetThoughtLevelFn = (chatId: string, thoughtLevel: string) => Promise<void>;
+type CancelChatFn = (chatId: string) => Promise<void>;
+type InspectChatFn = (chatId: string) => { live: boolean; running: boolean };
 
 const WRITER_BUSY: ReadonlySet<ImJobStatus> = new Set([
   "queued",
@@ -79,6 +91,46 @@ function extractPathsFromToolCall(call: AcpToolCallInfo): string[] {
   return paths;
 }
 
+export const HANDOFF_QUOTE_BODY_MAX = 4000;
+
+export function stripDispatchBlocks(text: string): string {
+  if (!text) return "";
+  return text
+    .replace(/<im_dispatch\s+target="([^"]+)"(?:\s+reason="([^"]*)")?>([\s\S]*?)<\/im_dispatch>/gi, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+export function toHandoffQuote(message?: ImMessage | null): ImQuotedMessage | undefined {
+  if (!message || message.kind !== "role.say") return undefined;
+  const cleanedBody = stripDispatchBlocks(message.body);
+  if (!cleanedBody.trim()) return undefined;
+
+  let body = cleanedBody.trim();
+  let truncated = false;
+  if (body.length > HANDOFF_QUOTE_BODY_MAX) {
+    body = `${body.slice(0, HANDOFF_QUOTE_BODY_MAX - 1)}…`;
+    truncated = true;
+  }
+
+  return {
+    messageId: message.messageId,
+    authorLabel: message.authorLabel || "Role",
+    body,
+    createdAtMs: message.createdAtMs || Date.now(),
+    truncated
+  };
+}
+
+export function mergeHandoffQuotes(
+  handoffQuote: ImQuotedMessage | undefined,
+  existingQuotes: ImQuotedMessage[] = []
+): ImQuotedMessage[] {
+  if (!handoffQuote) return [...existingQuotes];
+  const filtered = existingQuotes.filter((q) => q.messageId !== handoffQuote.messageId);
+  return [handoffQuote, ...filtered];
+}
+
 export function parseDispatchBlocks(text: string): ImDispatchBlock[] {
   const regex = /<im_dispatch\s+target="([^"]+)"(?:\s+reason="([^"]*)")?>([\s\S]*?)<\/im_dispatch>/gi;
   const blocks: ImDispatchBlock[] = [];
@@ -111,12 +163,15 @@ export function resolveDispatchTarget(
       m.name.toLowerCase() === lower ||
       m.templateId.toLowerCase() === lower ||
       m.templateId.replace(/^role_/, "").toLowerCase() === lower ||
+      m.templateId.replace(/^project_role_/, "").toLowerCase() === lower ||
       (lower === "developer" && m.templateId === "role_developer") ||
       (lower === "architect" && m.templateId === "role_architect") ||
       (lower === "pm" && m.templateId === "role_product_manager") ||
       (lower === "tester" && m.templateId === "role_tester") ||
       (lower === "qa" && m.templateId === "role_tester") ||
-      (lower === "ui" && m.templateId === "role_ui_designer")
+      (lower === "ui" && m.templateId === "role_ui_designer") ||
+      (lower === "memory" && m.templateId === "role_memory") ||
+      (lower === "archivist" && m.templateId === "role_memory")
     );
   }
 
@@ -125,6 +180,19 @@ export function resolveDispatchTarget(
     return found;
   }
   return undefined;
+}
+
+function buildResumeInstruction(original: string, draft?: ImMessage): string {
+  const instruction = original.trim();
+  const saved = [draft?.thinking, draft?.body].filter((part) => part?.trim()).join("\n\n").trim();
+  if (!saved) return instruction;
+  return [
+    instruction,
+    "",
+    "[Interrupted previous attempt]",
+    "Your previous reply was cut off by an app restart. Continue from this saved draft. Do not repeat completed sections. Finish the remaining work.",
+    saved
+  ].join("\n");
 }
 
 export function collectFiles(toolCalls: AcpToolCallInfo[] | undefined, current: string[]): string[] {
@@ -140,10 +208,24 @@ export function collectFiles(toolCalls: AcpToolCallInfo[] | undefined, current: 
   return [...next];
 }
 
+const STREAM_PERSIST_MS = 500;
+
+/**
+ * Session model: one ImMember keeps one ACP chat (`acpChatId`).
+ * Quote, @, continue-ask, and resume all reuse that chat. A new ACP record is
+ * created only when the agent changes, cwd no longer matches, the record is
+ * missing, or session restore falls through to session/new.
+ * Prompt mode is separate: bootstrap sends the full brief; incremental sends
+ * only this turn so prefix KV cache can hit on a live session.
+ */
+
 export class ImConductor {
   private readonly jobsByChat = new Map<string, string>();
   private readonly pendingByChat = new Map<string, { resolve: () => void; reject: (error: Error) => void }>();
   private readonly streamingMessagesByJob = new Map<string, ImMessage>();
+  private readonly streamingPersistAt = new Map<string, number>();
+  private readonly streamingPersistChain = new Map<string, Promise<void>>();
+  private readonly persistedStreamingIds = new Set<string>();
 
   constructor(
     private readonly store: ImStore,
@@ -152,7 +234,9 @@ export class ImConductor {
     private readonly promptChat: PromptFn,
     private readonly denyPermission?: DenyPermissionFn,
     private readonly setModel?: SetModelFn,
-    private readonly setThoughtLevel?: SetThoughtLevelFn
+    private readonly setThoughtLevel?: SetThoughtLevelFn,
+    private readonly cancelChat?: CancelChatFn,
+    private readonly inspectChat?: InspectChatFn
   ) {}
 
   async postMessage(input: {
@@ -161,6 +245,7 @@ export class ImConductor {
     quoteIds: string[];
     mentionRoleIds: string[];
     images?: Array<{ fileName: string; mimeType: string; data: string }>;
+    followUpToMessageId?: string;
   }): Promise<{ message: Awaited<ReturnType<ImStore["insertMessage"]>>; job: ImJob | null }> {
     const room = await this.store.getRoom(input.projectId);
     const body = this.store.clipInstruction(input.body);
@@ -168,7 +253,23 @@ export class ImConductor {
     if (!body.trim() && !input.quoteIds.length && !hasImages) {
       throw new Error("Message is empty.");
     }
-    const mentionIds = [...new Set(input.mentionRoleIds.filter(Boolean))];
+    let mentionIds = [...new Set(input.mentionRoleIds.filter(Boolean))];
+    let followUp: ImMessage | undefined;
+    let threadId: string | undefined;
+    if (input.followUpToMessageId) {
+      followUp = await this.store.getMessage(input.followUpToMessageId);
+      if (!followUp || followUp.projectId !== input.projectId || followUp.kind !== "role.say") {
+        throw new Error("Follow-up target is not an agent reply in this room.");
+      }
+      if (!followUp.authorMemberId) throw new Error("Follow-up target has no role.");
+      const authorMemberId = followUp.authorMemberId;
+      const followMember = room.members.find((item) => item.memberId === authorMemberId && item.enabled);
+      if (!followMember) throw new Error("Target role is not enabled in this room.");
+      const busy = room.jobs.some((job) => job.memberId === followMember.memberId && WRITER_BUSY.has(job.status));
+      if (busy) throw new Error("That role is already working.");
+      mentionIds = [followMember.memberId];
+      threadId = followUp.threadId || followUp.jobId || followUp.messageId;
+    }
     const quotes = await this.store.resolveQuotes(input.projectId, input.quoteIds);
     const settings = await loadSettings();
     const panelHome = effectivePanelHome(settings);
@@ -183,6 +284,7 @@ export class ImConductor {
       }
     }
 
+    if (!threadId && mentionIds.length) threadId = crypto.randomUUID();
     const message = await this.store.insertMessage({
       projectId: input.projectId,
       kind: "human",
@@ -190,7 +292,8 @@ export class ImConductor {
       body: body.trim() || (savedImages.length ? "(attached images)" : "(quoted messages)"),
       images: savedImages.length ? savedImages : undefined,
       quoteIds: quotes.map((quote) => quote.messageId),
-      mentionRoleIds: mentionIds
+      mentionRoleIds: mentionIds,
+      threadId
     });
     this.emit({ type: "message", projectId: input.projectId, message });
 
@@ -209,59 +312,20 @@ export class ImConductor {
     }
 
     if (!mentionIds.length) {
-      if (body.trim()) {
+      if (body.trim() && settings.im?.smartRoutingEnabled !== false) {
         const enabledMembers = room.members.filter((m) => m.enabled);
         if (enabledMembers.length > 0) {
-          const routeResult = await routeMessageIntent({
+          void this.performAsyncIntentRouting({
+            projectId: input.projectId,
+            message,
             text: body.trim(),
-            roomMembers: enabledMembers,
+            enabledMembers,
+            quotes,
+            knowledge: this.store.snapshotKnowledge(room.knowledge),
+            savedImages,
             settings,
-            desktopDb: desktopDbPath(panelHome)
+            panelHome
           });
-          if (routeResult.matched && routeResult.targetMemberId) {
-            const targetMember = enabledMembers.find((m) => m.memberId === routeResult.targetMemberId);
-            if (targetMember) {
-              const updatedMessage = await this.store.updateMessageRouting(message.messageId, {
-                autoRouted: true,
-                routedRoleName: targetMember.name
-              });
-              this.emit({ type: "messageUpdate", projectId: input.projectId, message: updatedMessage });
-
-              const targetTemplate = await this.store.getTemplate(targetMember.templateId);
-              const targetPersona = targetTemplate?.persona ?? targetMember.persona;
-              const targetCwd = await this.store.ensureProjectLocalPath(input.projectId, panelHome);
-              const exclusive = this.store.memberNeedsExclusiveLock(targetMember);
-              const exclusiveBusy = Boolean(await this.store.findActiveWriterJob(input.projectId));
-              const startNow = !exclusive || !exclusiveBusy;
-
-              const job = await this.store.createJob({
-                projectId: input.projectId,
-                memberId: targetMember.memberId,
-                messageId: message.messageId,
-                brief: {
-                  persona: targetPersona,
-                  instruction: body.trim(),
-                  cwd: targetCwd,
-                  quotes,
-                  knowledge: this.store.snapshotKnowledge(room.knowledge),
-                  images: savedImages.length ? savedImages : undefined,
-                  dispatchChain: [targetMember.templateId]
-                },
-                status: "queued"
-              });
-              await this.store.attachJobToMessage(message.messageId, job.jobId);
-              this.emit({ type: "job", projectId: input.projectId, job });
-              if (startNow) this.launchJob(job.jobId, targetMember);
-              return { message: updatedMessage, job };
-            }
-          } else if (routeResult.tip) {
-            const updatedMessage = await this.store.updateMessageRouting(message.messageId, {
-              routingTip: routeResult.tip,
-              routingTimedOut: Boolean(routeResult.timedOut)
-            });
-            this.emit({ type: "messageUpdate", projectId: input.projectId, message: updatedMessage });
-            return { message: updatedMessage, job: null };
-          }
         }
       }
       return { message, job: null };
@@ -290,11 +354,12 @@ export class ImConductor {
           persona,
           instruction: body.trim(),
           cwd: cwd!,
-          quotes,
+          quotes: followUp ? [] : quotes,
           knowledge,
           images: savedImages.length ? savedImages : undefined
         },
-        status: "queued"
+        status: "queued",
+        threadId
       });
       if (jobs.length === 0) await this.store.attachJobToMessage(message.messageId, job.jobId);
       this.emit({ type: "job", projectId: input.projectId, job });
@@ -307,6 +372,8 @@ export class ImConductor {
   private launchJob(jobId: string, member: ImMember): void {
     void this.runJob(jobId).catch(async (error) => {
       try {
+        await this.flushStreamingMessage(jobId);
+        this.forgetStreamingMessage(jobId);
         const failed = await this.store.updateJob(jobId, {
           status: "failed",
           error: error instanceof Error ? error.message : String(error),
@@ -330,13 +397,29 @@ export class ImConductor {
   }
 
   async cancelJob(jobId: string): Promise<ImJob> {
-    this.streamingMessagesByJob.delete(jobId);
+    const streamMsg = this.streamingMessagesByJob.get(jobId);
+    if (streamMsg?.body || streamMsg?.thinking) {
+      const persisted = await this.persistStreamingMessage(jobId);
+      this.emit({
+        type: "messageUpdate",
+        projectId: persisted.projectId,
+        message: { ...persisted, streaming: false }
+      });
+    }
+    this.forgetStreamingMessage(jobId);
     const cancelled = await this.store.cancelJob(jobId);
     this.emit({ type: "job", projectId: cancelled.projectId, job: cancelled });
     const chatId = cancelled.acpChatId;
     if (chatId) {
       this.jobsByChat.delete(chatId);
       this.settlePrompt(chatId, new Error("Job cancelled by user"));
+      if (this.cancelChat) {
+        try {
+          await this.cancelChat(chatId);
+        } catch (err) {
+          console.warn(`[IM Conductor] Failed to cancel ACP chat ${chatId}:`, err);
+        }
+      }
     }
     try {
       await this.pumpExclusiveQueue(cancelled.projectId);
@@ -348,8 +431,19 @@ export class ImConductor {
 
   async handleAcpStream(event: AcpStreamEvent): Promise<void> {
     const chatId = event.chatId;
-    const jobId = this.jobsByChat.get(chatId) ?? (await this.store.findJobByAcpChatId(chatId))?.jobId;
-    if (!jobId) return;
+    let jobId = this.jobsByChat.get(chatId) ?? (await this.store.findJobByAcpChatId(chatId))?.jobId;
+    if (!jobId) {
+      const interrupted = await this.store.findInterruptedJobByAcpChatId(chatId);
+      if (!interrupted) return;
+      const revived = await this.store.updateJob(interrupted.jobId, {
+        status: event.type === "status" && (event.isConnecting || event.status === "connecting") ? "connecting" : "running",
+        error: null,
+        finished: false
+      });
+      this.jobsByChat.set(chatId, revived.jobId);
+      this.emit({ type: "job", projectId: revived.projectId, job: revived });
+      jobId = revived.jobId;
+    }
     const current = await this.store.getJob(jobId);
     if (!current || !WRITER_BUSY.has(current.status)) return;
 
@@ -431,35 +525,52 @@ export class ImConductor {
 
     if (event.type === "assistantDelta") {
       const filesChanged = collectFiles(event.toolCalls, current.filesChanged);
-      const job = await this.store.updateJob(jobId, {
-        status: "running",
-        filesChanged
-      });
-      this.emit({ type: "job", projectId: job.projectId, job });
+      const filesCountChanged = filesChanged.length !== current.filesChanged.length;
+      if (filesCountChanged || current.status !== "running") {
+        const job = await this.store.updateJob(jobId, {
+          status: "running",
+          filesChanged
+        });
+        this.emit({ type: "job", projectId: job.projectId, job });
+      }
 
       const text = event.text || "";
       const thinking = event.thinking || "";
       if (text || thinking) {
         let streamMsg = this.streamingMessagesByJob.get(jobId);
         if (!streamMsg) {
-          const member = await this.store.getMember(current.memberId);
-          streamMsg = {
-            messageId: crypto.randomUUID(),
-            projectId: current.projectId,
-            kind: "role.say",
-            authorMemberId: current.memberId,
-            authorLabel: member?.name || "Role",
-            body: text,
-            thinking: thinking || undefined,
-            streaming: true,
-            quoteIds: [],
-            quotes: [],
-            mentionRoleIds: [],
-            jobId,
-            createdAtMs: Date.now()
-          };
-          this.streamingMessagesByJob.set(jobId, streamMsg);
-          this.emit({ type: "message", projectId: current.projectId, message: streamMsg });
+          const existingMessage = await this.store.findMessageByJobId(jobId, "role.say");
+          if (existingMessage) {
+            streamMsg = {
+              ...existingMessage,
+              body: text,
+              thinking: thinking || existingMessage.thinking,
+              streaming: true
+            };
+            this.streamingMessagesByJob.set(jobId, streamMsg);
+            this.persistedStreamingIds.add(existingMessage.messageId);
+            this.emit({ type: "messageUpdate", projectId: current.projectId, message: streamMsg });
+          } else {
+            const member = await this.store.getMember(current.memberId);
+            streamMsg = {
+              messageId: crypto.randomUUID(),
+              projectId: current.projectId,
+              kind: "role.say",
+              authorMemberId: current.memberId,
+              authorLabel: member?.name || "Role",
+              body: text,
+              thinking: thinking || undefined,
+              streaming: true,
+              quoteIds: [],
+              quotes: [],
+              mentionRoleIds: [],
+              jobId,
+              threadId: current.threadId,
+              createdAtMs: Date.now()
+            };
+            this.streamingMessagesByJob.set(jobId, streamMsg);
+            this.emit({ type: "message", projectId: current.projectId, message: streamMsg });
+          }
         } else {
           streamMsg = {
             ...streamMsg,
@@ -469,6 +580,11 @@ export class ImConductor {
           };
           this.streamingMessagesByJob.set(jobId, streamMsg);
           this.emit({ type: "messageUpdate", projectId: current.projectId, message: streamMsg });
+        }
+        if (!this.persistedStreamingIds.has(streamMsg.messageId)) {
+          await this.flushStreamingMessage(jobId);
+        } else {
+          this.scheduleStreamingPersist(jobId);
         }
       }
       return;
@@ -486,18 +602,11 @@ export class ImConductor {
 
       let persistedMessage: ImMessage | null = null;
       if (streamMsg) {
-        this.streamingMessagesByJob.delete(jobId);
         if (finalBody || finalThinking) {
-          persistedMessage = await this.store.insertMessage({
-            messageId: streamMsg.messageId,
-            projectId: job.projectId,
-            kind: "role.say",
-            authorMemberId: job.memberId,
-            authorLabel: streamMsg.authorLabel,
+          persistedMessage = await this.persistStreamingMessage(jobId, {
             body: finalBody,
             thinking: finalThinking,
-            delegationProposals: proposals.length ? proposals : undefined,
-            jobId
+            delegationProposals: proposals.length ? proposals : undefined
           });
           this.emit({
             type: "messageUpdate",
@@ -506,22 +615,37 @@ export class ImConductor {
           });
         }
       } else if (finalBody || finalThinking) {
-        const member = await this.store.getMember(job.memberId);
-        persistedMessage = await this.store.insertMessage({
-          projectId: job.projectId,
-          kind: "role.say",
-          authorMemberId: job.memberId,
-          authorLabel: member?.name || "Role",
-          body: finalBody,
-          thinking: finalThinking,
-          delegationProposals: proposals.length ? proposals : undefined,
-          jobId
-        });
-        this.emit({ type: "message", projectId: job.projectId, message: { ...persistedMessage, streaming: false } });
+        const existingMessage = await this.store.findMessageByJobId(jobId, "role.say");
+        if (existingMessage) {
+          persistedMessage = await this.store.updateMessage(existingMessage.messageId, {
+            body: finalBody,
+            thinking: finalThinking,
+            delegationProposals: proposals.length ? proposals : undefined
+          });
+          this.emit({
+            type: "messageUpdate",
+            projectId: job.projectId,
+            message: { ...persistedMessage, streaming: false }
+          });
+        } else {
+          const member = await this.store.getMember(job.memberId);
+          persistedMessage = await this.store.insertMessage({
+            projectId: job.projectId,
+            kind: "role.say",
+            authorMemberId: job.memberId,
+            authorLabel: member?.name || "Role",
+            body: finalBody,
+            thinking: finalThinking,
+            delegationProposals: proposals.length ? proposals : undefined,
+            jobId,
+            threadId: job.threadId
+          });
+          this.emit({ type: "message", projectId: job.projectId, message: { ...persistedMessage, streaming: false } });
+        }
       }
 
       if (proposals.length > 0 && persistedMessage) {
-        await this.executeAutoDispatches(job, persistedMessage.messageId, proposals);
+        await this.executeAutoDispatches(job, persistedMessage, proposals);
       }
     }
   }
@@ -561,7 +685,7 @@ export class ImConductor {
 
   private async executeAutoDispatches(
     job: ImJob,
-    messageId: string,
+    sourceMessage: ImMessage,
     proposals: ImDelegationProposal[]
   ): Promise<void> {
     const member = await this.store.getMember(job.memberId);
@@ -569,6 +693,8 @@ export class ImConductor {
     const room = await this.store.getRoom(job.projectId);
     const chain = job.brief.dispatchChain ?? [member.templateId];
     const MAX_CHAIN_DEPTH = 5;
+    const handoffQuote = toHandoffQuote(sourceMessage);
+    const quotes = mergeHandoffQuotes(handoffQuote, job.brief.quotes);
 
     for (const proposal of proposals) {
       if (proposal.status !== "auto_dispatched") continue;
@@ -587,7 +713,7 @@ export class ImConductor {
         persona: targetPersona,
         instruction: proposal.instruction,
         cwd,
-        quotes: job.brief.quotes,
+        quotes,
         knowledge: job.brief.knowledge,
         dispatchChain: [...chain, targetMember.templateId]
       };
@@ -596,11 +722,12 @@ export class ImConductor {
         memberId: targetMember.memberId,
         messageId: null,
         brief: targetBrief,
-        status: "queued"
+        status: "queued",
+        threadId: job.threadId
       });
       proposal.dispatchedJobId = nextJob.jobId;
       proposal.resolvedAtMs = Date.now();
-      await this.store.updateMessageProposal(messageId, proposal.id, {
+      await this.store.updateMessageProposal(sourceMessage.messageId, proposal.id, {
         dispatchedJobId: nextJob.jobId,
         resolvedAtMs: proposal.resolvedAtMs
       });
@@ -637,11 +764,14 @@ export class ImConductor {
     const panelHome = effectivePanelHome(settings);
     const cwd = await this.store.ensureProjectLocalPath(input.projectId, panelHome);
 
+    const handoffQuote = toHandoffQuote(message);
+    const quotes = mergeHandoffQuotes(handoffQuote, message.quotes);
+
     const targetBrief: ImJobBrief = {
       persona: targetPersona,
       instruction: proposal.instruction,
       cwd,
-      quotes: message.quotes,
+      quotes,
       knowledge: this.store.snapshotKnowledge(room.knowledge),
       dispatchChain: [proposal.targetTemplateId]
     };
@@ -651,7 +781,8 @@ export class ImConductor {
       memberId: targetMember.memberId,
       messageId: null,
       brief: targetBrief,
-      status: "queued"
+      status: "queued",
+      threadId: message.threadId
     });
     this.emit({ type: "job", projectId: input.projectId, job });
 
@@ -669,6 +800,57 @@ export class ImConductor {
       this.launchJob(job.jobId, targetMember);
     }
     return { message: updatedMessage, job };
+  }
+
+  async resumeJob(jobId: string): Promise<{ job: ImJob }> {
+    const job = await this.store.getJob(jobId);
+    if (!job) throw new Error("Job not found.");
+    if (job.status !== "cancelled" && job.status !== "failed") {
+      throw new Error("Only interrupted jobs can be resumed.");
+    }
+    let member = await this.store.getMember(job.memberId);
+    if (!member?.enabled) throw new Error("Target role is not enabled in this room.");
+    if (!member.acpChatId && job.acpChatId) {
+      member = await this.store.setMemberAcpChatId(member.memberId, job.acpChatId);
+      this.emit({ type: "member", projectId: job.projectId, member });
+    }
+
+    const room = await this.store.getRoom(job.projectId);
+    if (room.jobs.some((item) => item.memberId === job.memberId && item.createdAtMs > job.createdAtMs)) {
+      throw new Error("A newer job already exists for this role.");
+    }
+    const draft = [...room.messages]
+      .reverse()
+      .find((message) => message.jobId === job.jobId && message.kind === "role.say");
+    const nextBrief: ImJobBrief = {
+      ...job.brief,
+      instruction: buildResumeInstruction(job.brief.instruction, draft)
+    };
+    const nextJob = await this.store.createJob({
+      projectId: job.projectId,
+      memberId: job.memberId,
+      messageId: job.messageId,
+      brief: nextBrief,
+      status: "queued",
+      threadId: job.threadId || draft?.threadId || job.jobId
+    });
+    this.emit({ type: "job", projectId: job.projectId, job: nextJob });
+
+    for (const message of room.messages) {
+      const proposal = message.delegationProposals?.find((item) => item.dispatchedJobId === job.jobId);
+      if (!proposal) continue;
+      const updatedMessage = await this.store.updateMessageProposal(message.messageId, proposal.id, {
+        dispatchedJobId: nextJob.jobId
+      });
+      this.emit({ type: "messageUpdate", projectId: job.projectId, message: updatedMessage });
+    }
+
+    const exclusive = this.store.memberNeedsExclusiveLock(member);
+    const exclusiveBusy = Boolean(await this.store.findActiveWriterJob(job.projectId));
+    if (!exclusive || !exclusiveBusy) {
+      this.launchJob(nextJob.jobId, member);
+    }
+    return { job: nextJob };
   }
 
   async dismissProposal(input: {
@@ -701,14 +883,17 @@ export class ImConductor {
     let connecting = await this.store.updateJob(jobId, { status: "connecting" });
     this.emit({ type: "job", projectId: job.projectId, job: connecting });
     let chatId = member.acpChatId;
+    let reusedExistingChat = false;
     if (chatId) {
       const existing = await getAcpRecord(panelHome, chatId);
       if (!existing || existing.provider !== agent || existing.projectPath !== cwd) {
         chatId = null;
+      } else {
+        reusedExistingChat = true;
       }
     }
     if (!chatId) {
-      const record = await createAcpRecord(panelHome, cwd, agent as AcpAgentProvider);
+      const record = await createAcpRecord(panelHome, cwd, agent as AcpAgentProvider, { source: "im" });
       chatId = record.id;
       const updatedMember = await this.store.setMemberAcpChatId(member.memberId, chatId);
       this.emit({ type: "member", projectId: job.projectId, member: updatedMember });
@@ -718,7 +903,11 @@ export class ImConductor {
     this.jobsByChat.set(chatId, jobId);
     this.emit({ type: "job", projectId: job.projectId, job: connecting });
 
-    await this.connectChat(chatId);
+    if (this.inspectChat?.(chatId)?.running) {
+      await this.waitForChatIdle(chatId);
+    }
+    const connectResult = await this.connectChat(chatId);
+    const sessionRebuilt = Boolean(connectResult && typeof connectResult === "object" && connectResult.rebuilt);
     if (model && this.setModel) {
       try {
         await this.setModel(chatId, model);
@@ -744,7 +933,28 @@ export class ImConductor {
     const callableMembers = enabledMembers
       .filter((m) => allowedCalleeIds.includes(m.templateId))
       .map((m) => ({ templateId: m.templateId, name: m.name, persona: m.persona }));
-    const prompt = buildDispatchPrompt(job.brief, callableMembers);
+    const useIncremental = reusedExistingChat && !sessionRebuilt;
+    if (reusedExistingChat && sessionRebuilt) {
+      const notice = await this.store.insertMessage({
+        projectId: job.projectId,
+        kind: "system",
+        authorLabel: "IM",
+        body: "desktop.im.sessionRebuilt",
+        jobId,
+        threadId: job.threadId
+      });
+      this.emit({ type: "message", projectId: job.projectId, message: notice });
+    }
+    let skillsPrompt = "";
+    try {
+      const skills = await discoverSkills({ projectPath: cwd, panelHome });
+      skillsPrompt = formatSkillsCatalogPrompt(skills);
+    } catch {
+      // ignore
+    }
+    const prompt = useIncremental
+      ? buildIncrementalPrompt(job.brief)
+      : buildDispatchPrompt(job.brief, callableMembers, skillsPrompt);
     const imagesToPass: Array<{ mimeType: string; fileName: string; data: string }> = [];
     if (job.brief.images?.length) {
       for (const img of job.brief.images) {
@@ -762,6 +972,9 @@ export class ImConductor {
     }
     await this.promptAndWait(chatId, prompt, imagesToPass);
 
+    await this.flushStreamingMessage(jobId);
+    this.forgetStreamingMessage(jobId);
+
     const latest = await this.store.getJob(jobId);
     if (!latest || latest.status === "failed" || latest.status === "cancelled") return;
     const completed = await this.store.updateJob(jobId, {
@@ -778,6 +991,76 @@ export class ImConductor {
     }
   }
 
+  private async performAsyncIntentRouting(options: {
+    projectId: string;
+    message: ImMessage;
+    text: string;
+    enabledMembers: ImMember[];
+    quotes: ImQuotedMessage[];
+    knowledge: ImKnowledgeSnapshot[];
+    savedImages: ImImageAttachment[];
+    settings: PanelSettings;
+    panelHome: string;
+  }): Promise<void> {
+    try {
+      const routeResult = await routeMessageIntent({
+        text: options.text,
+        roomMembers: options.enabledMembers,
+        settings: options.settings,
+        desktopDb: desktopDbPath(options.panelHome)
+      });
+      if (routeResult.matched && routeResult.targetMemberId) {
+        const targetMember = options.enabledMembers.find((m) => m.memberId === routeResult.targetMemberId);
+        if (targetMember) {
+          const updatedMessage = await this.store.updateMessageRouting(options.message.messageId, {
+            autoRouted: true,
+            routedRoleName: targetMember.name
+          });
+          this.emit({ type: "messageUpdate", projectId: options.projectId, message: updatedMessage });
+
+          const targetTemplate = await this.store.getTemplate(targetMember.templateId);
+          const targetPersona = targetTemplate?.persona ?? targetMember.persona;
+          const targetCwd = await this.store.ensureProjectLocalPath(options.projectId, options.panelHome);
+          const exclusive = this.store.memberNeedsExclusiveLock(targetMember);
+          const exclusiveBusy = Boolean(await this.store.findActiveWriterJob(options.projectId));
+          const startNow = !exclusive || !exclusiveBusy;
+
+          const threadId = options.message.threadId || crypto.randomUUID();
+          if (!options.message.threadId) {
+            await this.store.setMessageThreadId(options.message.messageId, threadId);
+          }
+          const job = await this.store.createJob({
+            projectId: options.projectId,
+            memberId: targetMember.memberId,
+            messageId: options.message.messageId,
+            brief: {
+              persona: targetPersona,
+              instruction: options.text,
+              cwd: targetCwd,
+              quotes: options.quotes,
+              knowledge: options.knowledge,
+              images: options.savedImages.length ? options.savedImages : undefined,
+              dispatchChain: [targetMember.templateId]
+            },
+            status: "queued",
+            threadId
+          });
+          await this.store.attachJobToMessage(options.message.messageId, job.jobId);
+          this.emit({ type: "job", projectId: options.projectId, job });
+          if (startNow) this.launchJob(job.jobId, targetMember);
+        }
+      } else if (routeResult.tip) {
+        const updatedMessage = await this.store.updateMessageRouting(options.message.messageId, {
+          routingTip: routeResult.tip,
+          routingTimedOut: Boolean(routeResult.timedOut)
+        });
+        this.emit({ type: "messageUpdate", projectId: options.projectId, message: updatedMessage });
+      }
+    } catch (error) {
+      console.warn("[IM Conductor] Async intent routing failed:", error);
+    }
+  }
+
   private async pumpExclusiveQueue(projectId: string): Promise<void> {
     if (await this.store.findActiveWriterJob(projectId)) return;
     const next = (await this.store.listQueuedExclusiveJobs(projectId))[0];
@@ -785,6 +1068,38 @@ export class ImConductor {
     const member = await this.store.getMember(next.memberId);
     if (!member) return;
     this.launchJob(next.jobId, member);
+  }
+
+  async adoptLiveJobs(liveChatIds: string[]): Promise<void> {
+    for (const chatId of liveChatIds) {
+      if (!chatId) continue;
+      const active = await this.store.findJobByAcpChatId(chatId);
+      if (active) {
+        this.jobsByChat.set(chatId, active.jobId);
+        continue;
+      }
+      const interrupted = await this.store.findInterruptedJobByAcpChatId(chatId);
+      if (!interrupted) continue;
+      const state = this.inspectChat?.(chatId);
+      if (!state?.live && !state?.running) continue;
+      const revived = await this.store.updateJob(interrupted.jobId, {
+        status: state.running ? "running" : "connecting",
+        error: null,
+        finished: false
+      });
+      this.jobsByChat.set(chatId, revived.jobId);
+      this.emit({ type: "job", projectId: revived.projectId, job: revived });
+    }
+  }
+
+  private async waitForChatIdle(chatId: string, timeoutMs = 120_000): Promise<void> {
+    const started = Date.now();
+    while (this.inspectChat?.(chatId)?.running) {
+      if (Date.now() - started > timeoutMs) {
+        throw new Error("ACP session is still running the previous turn.");
+      }
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    }
   }
 
   private promptAndWait(
@@ -819,11 +1134,112 @@ export class ImConductor {
     if (error) pending.reject(error);
     else pending.resolve();
   }
+
+  async flushStreamingMessages(): Promise<void> {
+    const jobIds = [...this.streamingMessagesByJob.keys()];
+    await Promise.all(jobIds.map((jobId) => this.flushStreamingMessage(jobId)));
+  }
+
+  private scheduleStreamingPersist(jobId: string): void {
+    const last = this.streamingPersistAt.get(jobId) ?? 0;
+    const now = Date.now();
+    if (now - last < STREAM_PERSIST_MS) return;
+    this.streamingPersistAt.set(jobId, now);
+    void this.flushStreamingMessage(jobId);
+  }
+
+  private async flushStreamingMessage(jobId: string): Promise<void> {
+    const streamMsg = this.streamingMessagesByJob.get(jobId);
+    if (!streamMsg?.body && !streamMsg?.thinking) return;
+    await this.persistStreamingMessage(jobId);
+  }
+
+  private persistStreamingMessage(
+    jobId: string,
+    patch?: {
+      body?: string;
+      thinking?: string;
+      delegationProposals?: ImDelegationProposal[];
+    }
+  ): Promise<ImMessage> {
+    const previous = this.streamingPersistChain.get(jobId) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(() => this.writeStreamingMessage(jobId, patch));
+    this.streamingPersistChain.set(jobId, next.then(() => undefined, () => undefined));
+    return next;
+  }
+
+  private async writeStreamingMessage(
+    jobId: string,
+    patch?: {
+      body?: string;
+      thinking?: string;
+      delegationProposals?: ImDelegationProposal[];
+    }
+  ): Promise<ImMessage> {
+    const streamMsg = this.streamingMessagesByJob.get(jobId);
+    if (!streamMsg) throw new Error("Streaming message not found.");
+    const body = patch?.body ?? streamMsg.body;
+    const thinking = patch?.thinking ?? streamMsg.thinking;
+    const proposals = patch?.delegationProposals;
+    if (this.persistedStreamingIds.has(streamMsg.messageId)) {
+      return this.store.updateMessage(streamMsg.messageId, {
+        body,
+        thinking: thinking ?? null,
+        delegationProposals: proposals
+      });
+    }
+    const created = await this.store.insertMessage({
+      messageId: streamMsg.messageId,
+      projectId: streamMsg.projectId,
+      kind: "role.say",
+      authorMemberId: streamMsg.authorMemberId,
+      authorLabel: streamMsg.authorLabel,
+      body,
+      thinking,
+      delegationProposals: proposals?.length ? proposals : undefined,
+      jobId,
+      threadId: streamMsg.threadId
+    });
+    this.persistedStreamingIds.add(streamMsg.messageId);
+    return created;
+  }
+
+  private forgetStreamingMessage(jobId: string): void {
+    const streamMsg = this.streamingMessagesByJob.get(jobId);
+    this.streamingMessagesByJob.delete(jobId);
+    this.streamingPersistAt.delete(jobId);
+    this.streamingPersistChain.delete(jobId);
+    if (streamMsg) this.persistedStreamingIds.delete(streamMsg.messageId);
+  }
 }
+
+const pendingImEvents = new Map<string, { getMainWindow: () => BrowserWindow | null; event: ImEvent; timer: ReturnType<typeof setTimeout> }>();
 
 export function emitImEvent(getMainWindow: () => BrowserWindow | null, event: ImEvent): void {
   const win = getMainWindow();
-  if (win && !win.isDestroyed()) {
-    win.webContents.send("im:event", event);
+  if (!win || win.isDestroyed()) return;
+
+  // Coalesce cumulative streaming updates per message. This keeps the renderer
+  // at roughly one IPC update per frame without delaying discrete state events.
+  if (event.type === "messageUpdate" && event.message.streaming) {
+    const key = `${event.projectId}:${event.message.messageId}`;
+    const existing = pendingImEvents.get(key);
+    if (existing) {
+      existing.event = event;
+      return;
+    }
+    const timer = setTimeout(() => {
+      const pending = pendingImEvents.get(key);
+      if (!pending) return;
+      pendingImEvents.delete(key);
+      const target = pending.getMainWindow();
+      if (target && !target.isDestroyed()) {
+        target.webContents.send("im:event", pending.event);
+      }
+    }, 16);
+    pendingImEvents.set(key, { getMainWindow, event, timer });
+    return;
   }
+
+  win.webContents.send("im:event", event);
 }

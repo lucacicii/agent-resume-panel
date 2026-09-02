@@ -280,6 +280,9 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
     // Desktop ACP (permissions, launch overrides, experimental vendor UI).
     // Must merge or Workbench ACP toggles never persist across save/reload.
     acp: mergeAcpSettings(base.acp, partial.acp),
+    im: {
+      smartRoutingEnabled: partial.im?.smartRoutingEnabled ?? base.im?.smartRoutingEnabled ?? true
+    },
     ghosttyExecutable: partial.ghosttyExecutable?.trim() || base.ghosttyExecutable,
     ghosttyLaunchMode: partial.ghosttyLaunchMode || base.ghosttyLaunchMode,
     ghosttyAutoPasteDelayMs: partial.ghosttyAutoPasteDelayMs ?? base.ghosttyAutoPasteDelayMs

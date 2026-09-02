@@ -2,12 +2,16 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { PanelSettings } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { listProviderModels } from "./providerPool";
+import { DelegationMatrixGrid } from "./DelegationMatrixGrid";
+import { DelegationDagView } from "./DelegationDagView";
+import { SegmentedControl } from "../../components/SegmentedControl";
 import {
   DEFAULT_BUILTIN_CALLABLE_TEMPLATE_IDS,
   IM_AGENT_SUGGESTED_MODELS,
   IM_SUGGESTED_THOUGHT_LEVELS,
   isBuiltinSelectionActionId,
   isBuiltinTemplateId,
+  isProjectRoleTemplateId,
   isSuggestedThoughtLevel,
   type ImAgent,
   type ImAgentModelOption,
@@ -45,6 +49,7 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
   const [autoDispatch, setAutoDispatch] = useState(false);
   const [outgoingCallees, setOutgoingCallees] = useState<string[]>([]);
   const [incomingCallers, setIncomingCallers] = useState<string[]>([]);
+  const [viewMode, setViewMode] = useState<"editor" | "matrix" | "dag">("editor");
   const [status, setStatus] = useState("");
   const [agentModels, setAgentModels] = useState<ImAgentModelOption[]>(() => IM_AGENT_SUGGESTED_MODELS[agent] || []);
   const [fetchingModels, setFetchingModels] = useState(false);
@@ -257,28 +262,75 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
     }
   }, [load, selectedAction, t]);
 
+  const handleMatrixUpdate = useCallback(
+    async (input: {
+      templateId: string;
+      callableTemplateIds?: string[];
+      autoDispatch?: boolean;
+    }) => {
+      try {
+        await desktopApi().imUpdateTemplate(input);
+        await load();
+        setStatus(t("desktop.settings.imSaved"));
+      } catch (error) {
+        setStatus(error instanceof Error ? error.message : String(error));
+      }
+    },
+    [load, t]
+  );
+
   return (
     <>
     <section className="settings-group">
-      <h3 className="settings-group-title">{t("desktop.settings.imTemplates")}</h3>
+      <div className="settings-group-header">
+        <h3 className="settings-group-title">{t("desktop.settings.imTemplates")}</h3>
+        <SegmentedControl
+          className="settings-view-segmented"
+          value={viewMode}
+          options={["editor", "matrix", "dag"] as const}
+          onChange={setViewMode}
+          getLabel={(mode) => {
+            if (mode === "editor") return t("desktop.settings.imViewEditor", "Role Editor");
+            if (mode === "matrix") return t("desktop.settings.imViewMatrix", "Delegation Matrix");
+            return t("desktop.settings.imViewDag", "Topology DAG");
+          }}
+        />
+      </div>
       <div className="settings-group-body im-settings-layout">
         <p className="settings-footnote">{t("desktop.settings.imTemplatesHint")}</p>
+        {viewMode === "matrix" && (
+          <DelegationMatrixGrid
+            templates={templates}
+            t={t}
+            onUpdateTemplate={handleMatrixUpdate}
+          />
+        )}
+        {viewMode === "dag" && (
+          <DelegationDagView
+            templates={templates}
+            t={t}
+          />
+        )}
+        {viewMode === "editor" && (
         <div className="im-settings-split">
           <div className="im-settings-list">
-            {templates.map((template) => (
-              <button
-                key={template.templateId}
-                type="button"
-                className={`im-settings-item${selectedId === template.templateId && !creating ? " active" : ""}`}
-                onClick={() => {
-                  setCreating(false);
-                  setSelectedId(template.templateId);
-                }}
-              >
-                {template.name}
-                {isBuiltinTemplateId(template.templateId) ? <span>{t("desktop.settings.imBuiltin")}</span> : null}
-              </button>
-            ))}
+            {templates.map((template) => {
+              const isProject = template.source === "project" || isProjectRoleTemplateId(template.templateId);
+              return (
+                <button
+                  key={template.templateId}
+                  type="button"
+                  className={`im-settings-item${selectedId === template.templateId && !creating ? " active" : ""}`}
+                  onClick={() => {
+                    setCreating(false);
+                    setSelectedId(template.templateId);
+                  }}
+                >
+                  {template.name}
+                  {isProject ? <span className="matrix-badge-repo">Repo</span> : isBuiltinTemplateId(template.templateId) ? <span>{t("desktop.settings.imBuiltin")}</span> : null}
+                </button>
+              );
+            })}
             <button type="button" className="im-settings-item" onClick={() => setCreating(true)}>
               {t("desktop.settings.imNewTemplate")}
             </button>
@@ -387,25 +439,25 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
             <fieldset className="im-settings-tools">
               <legend>{t("desktop.settings.imTools")}</legend>
               <p className="settings-footnote">{t("desktop.settings.imToolReadAlways")}</p>
-              <label>
+              <label className="im-settings-checkbox-item">
                 <input type="checkbox" checked={tools.fsWrite} onChange={(event) => setTools({ ...tools, fsRead: true, fsWrite: event.target.checked })} />
-                {t("desktop.settings.imToolWrite")}
+                <span>{t("desktop.settings.imToolWrite")}</span>
               </label>
-              <label className={tools.execute ? "im-tool-danger" : ""}>
+              <label className={`im-settings-checkbox-item${tools.execute ? " im-tool-danger" : ""}`}>
                 <input type="checkbox" checked={tools.execute} onChange={(event) => setTools({ ...tools, fsRead: true, execute: event.target.checked })} />
-                {t("desktop.settings.imToolExecute")}
+                <span>{t("desktop.settings.imToolExecute")}</span>
               </label>
               {tools.execute ? <p className="settings-footnote im-tool-danger-hint">{t("desktop.settings.imExecuteWarning")}</p> : null}
             </fieldset>
             <fieldset className="im-settings-tools im-settings-delegation-fieldset">
               <legend>{t("desktop.settings.imDelegation")}</legend>
-              <label>
+              <label className="im-settings-checkbox-item">
                 <input
                   type="checkbox"
                   checked={autoDispatch}
                   onChange={(event) => setAutoDispatch(event.target.checked)}
                 />
-                {t("desktop.settings.imAutoDispatch")}
+                <span>{t("desktop.settings.imAutoDispatch")}</span>
               </label>
               <div className="im-settings-delegation-section">
                 <span className="settings-field-label">{t("desktop.settings.imOutgoingCallees")}</span>
@@ -457,6 +509,7 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
             {status ? <p className="settings-footnote">{status}</p> : null}
           </div>
         </div>
+        )}
       </div>
     </section>
     <section className="settings-group">
@@ -532,9 +585,9 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
               <textarea rows={6} value={actionPrompt} onChange={(event) => setActionPrompt(event.target.value)} />
             </label>
             <p className="settings-footnote">{t("desktop.settings.imActionPromptHint")}</p>
-            <label>
+            <label className="im-settings-checkbox-item">
               <input type="checkbox" checked={actionEnabled} onChange={(event) => setActionEnabled(event.target.checked)} />
-              {t("desktop.settings.imActionEnabled")}
+              <span>{t("desktop.settings.imActionEnabled")}</span>
             </label>
             <div className="im-add-role-actions">
               <button type="button" className="btn primary" onClick={() => void saveAction()}>{t("desktop.settings.save")}</button>
@@ -543,6 +596,32 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
               ) : null}
             </div>
           </div>
+        </div>
+      </div>
+    </section>
+    <section className="settings-group">
+      <div className="settings-group-body">
+        <div className="settings-row">
+          <div className="settings-row-label">
+            <strong className="settings-row-title">{t("desktop.settings.imSmartRouting")}</strong>
+            <span className="settings-row-desc">{t("desktop.settings.imSmartRoutingDesc")}</span>
+          </div>
+          <input
+            type="checkbox"
+            checked={settings?.im?.smartRoutingEnabled !== false}
+            onChange={async (event) => {
+              if (!settings) return;
+              const next: PanelSettings = {
+                ...settings,
+                im: {
+                  ...settings.im,
+                  smartRoutingEnabled: event.target.checked
+                }
+              };
+              setSettings(next);
+              await desktopApi().saveSettings(next);
+            }}
+          />
         </div>
       </div>
     </section>

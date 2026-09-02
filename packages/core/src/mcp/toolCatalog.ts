@@ -12,13 +12,24 @@ export type AgentToolCategory =
   | "sessions"
   | "projects"
   | "link_graph"
-  | "tags";
+  | "tags"
+  | "skills"
+  | "browser"
+  | "mcp";
 
 export interface AgentToolDescriptor {
   name: string;
   /** Short human-readable description (English; used as popover tooltip). */
   description: string;
   category: AgentToolCategory;
+  /** Optional unique identifier when tool name is not unique across sources (e.g. skills). */
+  id?: string;
+  /** Source kind of this tool descriptor. */
+  kind?: "core_mcp" | "skill" | "browser_mcp" | "external_mcp";
+  /** File path for skills or external endpoints. */
+  location?: string;
+  /** Scope if applicable (project/user/pi). */
+  scope?: string;
 }
 
 export const AGENT_TOOL_CATALOG: readonly AgentToolDescriptor[] = [
@@ -37,6 +48,7 @@ export const AGENT_TOOL_CATALOG: readonly AgentToolDescriptor[] = [
   { name: "note_set_gtd", description: "Set or clear a note's GTD status", category: "notes" },
 
   // reports
+  { name: "memory_retrieve", description: "Retrieve relevant memory digests, notes, and sessions in one shot", category: "reports" },
   { name: "report_search", description: "Semantic search over memory digests", category: "reports" },
   { name: "report_read", description: "Read a full memory digest by reportId", category: "reports" },
   { name: "report_list", description: "List memory digests by level and period", category: "reports" },
@@ -72,3 +84,23 @@ export const AGENT_TOOL_CATALOG: readonly AgentToolDescriptor[] = [
 export const AGENT_TOOL_NAMES: ReadonlySet<string> = new Set(
   AGENT_TOOL_CATALOG.map((tool) => tool.name)
 );
+
+/**
+ * Convert a skill descriptor to an AgentToolDescriptor for unified tool listing.
+ */
+export function skillToToolDescriptor(skill: {
+  name: string;
+  description: string;
+  location: string;
+  scope?: string;
+}): AgentToolDescriptor {
+  return {
+    id: `skill:${skill.name}`,
+    name: skill.name,
+    description: skill.description,
+    category: "skills",
+    kind: "skill",
+    location: skill.location,
+    scope: skill.scope
+  };
+}

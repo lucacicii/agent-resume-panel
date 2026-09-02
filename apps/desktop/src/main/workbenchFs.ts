@@ -264,30 +264,22 @@ export async function gitStatusForRepo(repoRoot: string): Promise<{ staged: GitF
 }
 
 async function queryGitTrackingForRepo(repoRoot: string): Promise<GitRepoTracking> {
-  let branch: string | null = null;
-  try {
-    const { stdout } = await execFileAsync("git", ["-C", repoRoot, "rev-parse", "--abbrev-ref", "HEAD"], {
+  // Branch and upstream queries are independent git spawns: run them concurrently.
+  // Each one resolves independently so a failing upstream query never hides the branch.
+  const [branchResult, upstreamResult] = await Promise.allSettled([
+    execFileAsync("git", ["-C", repoRoot, "rev-parse", "--abbrev-ref", "HEAD"], {
       timeout: GIT_TRACKING_TIMEOUT_MS,
       maxBuffer: 4096
-    });
-    const trimmed = String(stdout).trim();
-    branch = trimmed && trimmed !== "HEAD" ? trimmed : trimmed || null;
-  } catch {
-    branch = null;
-  }
-
-  let upstream: string | null = null;
-  try {
-    const { stdout } = await execFileAsync(
-      "git",
-      ["-C", repoRoot, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
-      { timeout: GIT_TRACKING_TIMEOUT_MS, maxBuffer: 4096 }
-    );
-    const trimmed = String(stdout).trim();
-    upstream = trimmed || null;
-  } catch {
-    upstream = null;
-  }
+    }).then(({ stdout }) => String(stdout).trim()),
+    execFileAsync("git", ["-C", repoRoot, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"], {
+      timeout: GIT_TRACKING_TIMEOUT_MS,
+      maxBuffer: 4096
+    }).then(({ stdout }) => String(stdout).trim())
+  ]);
+  const branch = branchResult.status === "fulfilled"
+    ? branchResult.value && branchResult.value !== "HEAD" ? branchResult.value : branchResult.value || null
+    : null;
+  const upstream = upstreamResult.status === "fulfilled" ? upstreamResult.value || null : null;
 
   if (!upstream) {
     return { repoRoot, branch, upstream: null, ahead: 0, behind: 0 };
@@ -307,18 +299,10 @@ async function queryGitTrackingForRepo(repoRoot: string): Promise<GitRepoTrackin
 }
 
 async function queryTrackingForRoots(repoRoots: string[]): Promise<GitRepoTracking[]> {
-  const tracking: GitRepoTracking[] = [];
-  const seen = new Set<string>();
-  for (const root of repoRoots) {
-    if (!root || seen.has(root)) continue;
-    seen.add(root);
-    try {
-      tracking.push(await queryGitTrackingForRepo(root));
-    } catch {
-      // skip roots that fail tracking query
-    }
-  }
-  return tracking;
+  const roots = [...new Set(repoRoots.filter(Boolean))];
+  // Parallel across repositories to cut status latency on multi-repo workspaces.
+  const results = await Promise.allSettled(roots.map((root) => queryGitTrackingForRepo(root)));
+  return results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
 }
 
 async function gitShowAtRef(cwd: string, ref: string, filePath: string): Promise<string> {
@@ -342,24 +326,24 @@ async function gitShowAtRef(cwd: string, ref: string, filePath: string): Promise
   }
 }
 
-function readWorkingFile(absPath: string, maxBytes = DEFAULT_MAX_BYTES): string {
-  const stat = fs.statSync(absPath);
+async function readWorkingFile(absPath: string, maxBytes = DEFAULT_MAX_BYTES): Promise<string> {
+  const stat = await fs.promises.stat(absPath);
   if (!stat.isFile()) return "";
   if (stat.size > maxBytes) {
     throw new Error(`文件过大（超过 ${Math.round(maxBytes / 1024)}KB）`);
   }
-  return fs.readFileSync(absPath, "utf8");
+  return fs.promises.readFile(absPath, "utf8");
 }
 
 async function listDirectoryEntries(rootPath: string, dirPath: string): Promise<DirectoryEntry[]> {
   const root = resolvePathWithinRoot(rootPath, rootPath);
   const dir = resolvePathWithinRoot(dirPath, rootPath);
-  const stat = fs.statSync(dir);
+  const stat = await fs.promises.stat(dir);
   if (!stat.isDirectory()) {
     throw new Error("不是文件夹");
   }
 
-  const names = fs.readdirSync(dir, { withFileTypes: true });
+  const names = await fs.promises.readdir(dir, { withFileTypes: true });
   const entries: DirectoryEntry[] = [];
   for (const dirent of names) {
     if (entries.length >= MAX_DIRECTORY_ENTRIES) break;
@@ -475,8 +459,11 @@ async function queryGitDiffSides(
     }
   } else {
     try {
-      if (fs.existsSync(absPath) && fs.statSync(absPath).isFile()) {
-        newText = readWorkingFile(absPath);
+      if (fs.existsSync(absPath)) {
+        const stat = await fs.promises.stat(absPath);
+        if (stat.isFile()) {
+          newText = await readWorkingFile(absPath);
+        }
       }
     } catch (error) {
       throw error instanceof Error ? error : new Error(formatExecError(error));
@@ -856,7 +843,7 @@ export function registerWorkbenchFsIpc(): void {
     async (_event, args: { rootPath: string; filePath: string; maxBytes?: number }) => {
       const rootPath = resolveCwd(args.rootPath);
       const filePath = resolvePathWithinRoot(args.filePath, rootPath);
-      const stat = fs.statSync(filePath);
+      const stat = await fs.promises.stat(filePath);
       if (!stat.isFile()) {
         throw new Error("不是文件");
       }
@@ -867,7 +854,8 @@ export function registerWorkbenchFsIpc(): void {
       if (stat.size > maxBytes) {
         throw new Error(`文件过大（超过 ${Math.round(maxBytes / 1024)}KB）`);
       }
-      return { content: fs.readFileSync(filePath, "utf8"), truncated: false };
+      const content = await fs.promises.readFile(filePath, "utf8");
+      return { content, truncated: false };
     }
   );
 

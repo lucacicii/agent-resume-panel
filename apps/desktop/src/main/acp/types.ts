@@ -16,6 +16,7 @@ export interface AcpSessionRecord {
   createdAt: number;
   updatedAt: number;
   messageCount: number;
+  source?: string;
 }
 
 export type AcpChatMessageRole = "user" | "assistant" | "system" | "tool" | "plan";

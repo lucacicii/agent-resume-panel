@@ -1,10 +1,17 @@
 import { ThemeIcon } from "../../components/ThemeIcon";
+import { VariableVirtualList, type VariableVirtualListHandle } from "../../components/VariableVirtualList";
 import { renderMarkdown } from "../../components/Markdown";
-import { ImTimeline } from "./ImTimeline";
+import { ImMessageItem } from "./ImMessageItem";
+import { ImComposer } from "./ImComposer";
+import { ImChatAvatar } from "./ImChatAvatar";
 import { useImProjectTools } from "./ImProjectTools";
-import { buildTimelineNodes } from "./timelineModel";
+import { computeTranscriptGraph } from "./imTranscriptGraphModel";
 import { createPortal } from "react-dom";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ClipboardEvent as ReactClipboardEvent, type DragEvent as ReactDragEvent, type FormEvent, type JSX, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactPortal } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type JSX, type MouseEvent as ReactMouseEvent, type ReactPortal, type UIEvent } from "react";
+import type { AgentCitation, AgentToolDescriptor } from "@agent-resume/core";
+import { type AskToolPrefs } from "../../components/ToolSettingsPopover";
+import { Sheet } from "../../components/Sheet";
+import { CitationSheet, extractCitationsFromMessage, isNote, isSession, periodFromCitation } from "./CitationSheet";
 import { desktopApi } from "../../bridge";
 import { notifyDesktop } from "../../components/Notifications";
 import { useI18n } from "../../i18n";
@@ -14,6 +21,7 @@ import {
   IM_AGENT_SUGGESTED_MODELS,
   IM_SUGGESTED_THOUGHT_LEVELS,
   isBuiltinTemplateId,
+  isProjectRoleTemplateId,
   isSuggestedThoughtLevel,
   type ImAgent,
   type ImAgentModelOption,
@@ -28,190 +36,65 @@ import {
   type ImRoom,
   type ImSelectionAction
 } from "../../../shared/imTypes";
+import {
+  agentTag,
+  basename,
+  builtinRoleLabel,
+  formatDay,
+  formatTime,
+  isActiveJobStatus,
+  isResumableJob,
+  isScratchPath,
+  roleColor,
+  roleInitial,
+  roleLabel,
+  storageBoolean,
+  type PendingImage
+} from "./imUtils";
 
 const SIDEBAR_COLLAPSED_KEY = "im-sidebar-collapsed";
 const SIDEBAR_WIDTH_KEY = "im-sidebar-width";
 const SELECTED_PROJECT_KEY = "im-selected-project";
-const RIGHT_SIDEBAR_OPEN_KEY = "im-right-sidebar-open";
+const IM_PROJECT_TOOLS_KEY_PREFIX = "im-project-tools:";
 
-function storageBoolean(key: string, fallback = false): boolean {
+function imProjectToolsKey(projectId: string): string {
+  return `${IM_PROJECT_TOOLS_KEY_PREFIX}${projectId}`;
+}
+
+function readImProjectTools(projectId: string): AskToolPrefs {
   try {
-    const val = localStorage.getItem(key);
-    if (val == null) return fallback;
-    return val === "1";
-  } catch {
-    return fallback;
-  }
-}
-
-function basename(value = ""): string {
-  return value.replaceAll("\\", "/").split("/").filter(Boolean).at(-1) || value;
-}
-
-function isScratchPath(value?: string | null): boolean {
-  if (!value) return true;
-  const normalized = value.replaceAll("\\", "/");
-  return normalized.includes("/.desktop/scratch/im/") || normalized.endsWith("/.desktop/scratch/im");
-}
-
-const BUILTIN_ROLE_KEYS: Record<string, "productManager" | "architect" | "projectManager" | "uiDesigner" | "developer" | "tester"> = {
-  role_product_manager: "productManager",
-  product_manager: "productManager",
-  productManager: "productManager",
-  "Product Manager": "productManager",
-  role_architect: "architect",
-  architect: "architect",
-  Architect: "architect",
-  arch: "architect",
-  role_project_manager: "projectManager",
-  project_manager: "projectManager",
-  projectManager: "projectManager",
-  "Project Manager": "projectManager",
-  role_ui_designer: "uiDesigner",
-  ui_designer: "uiDesigner",
-  uiDesigner: "uiDesigner",
-  "UI Designer": "uiDesigner",
-  ui: "uiDesigner",
-  UI: "uiDesigner",
-  role_developer: "developer",
-  developer: "developer",
-  Developer: "developer",
-  develop: "developer",
-  dev: "developer",
-  role_tester: "tester",
-  tester: "tester",
-  Tester: "tester",
-  qa: "tester"
-};
-
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = () => reject(reader.error || new Error("Failed to read file"));
-    reader.readAsDataURL(file);
-  });
-}
-
-function parseDispatchBlocks(text: string): Array<{ target: string; reason?: string; instruction: string }> {
-  const regex = /<im_dispatch\s+target="([^"]+)"(?:\s+reason="([^"]*)")?>([\s\S]*?)<\/im_dispatch>/gi;
-  const blocks: Array<{ target: string; reason?: string; instruction: string }> = [];
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(text)) !== null) {
-    const target = match[1]?.trim() || "";
-    const reason = match[2]?.trim() || undefined;
-    const instruction = match[3]?.trim() || "";
-    if (target && instruction) {
-      blocks.push({ target, reason, instruction });
+    const raw = localStorage.getItem(imProjectToolsKey(projectId));
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<AskToolPrefs>;
+      if (parsed.mode === "auto" || parsed.mode === "custom" || parsed.mode === "off") {
+        return { mode: parsed.mode, enabledTools: Array.isArray(parsed.enabledTools) ? parsed.enabledTools : [] };
+      }
     }
+  } catch {
+    // fallback
   }
-  return blocks;
+  return { mode: "auto", enabledTools: [] };
 }
 
-interface PendingImage {
-  id: string;
-  fileName: string;
-  mimeType: string;
-  data: string;
-  previewUrl: string;
-  sizeBytes: number;
-}
-
-const MAX_IMAGES = 4;
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
-
-// Stable brand colors for built-in roles; custom templates hash to a hue.
-const BUILTIN_ROLE_COLORS: Record<string, string> = {
-  role_product_manager: "hsl(265 70% 58%)",
-  product_manager: "hsl(265 70% 58%)",
-  productManager: "hsl(265 70% 58%)",
-  "Product Manager": "hsl(265 70% 58%)",
-  role_architect: "hsl(217 91% 60%)",
-  architect: "hsl(217 91% 60%)",
-  Architect: "hsl(217 91% 60%)",
-  arch: "hsl(217 91% 60%)",
-  role_project_manager: "hsl(199 92% 52%)",
-  project_manager: "hsl(199 92% 52%)",
-  projectManager: "hsl(199 92% 52%)",
-  "Project Manager": "hsl(199 92% 52%)",
-  role_ui_designer: "hsl(330 72% 58%)",
-  ui_designer: "hsl(330 72% 58%)",
-  uiDesigner: "hsl(330 72% 58%)",
-  "UI Designer": "hsl(330 72% 58%)",
-  ui: "hsl(330 72% 58%)",
-  UI: "hsl(330 72% 58%)",
-  role_developer: "hsl(152 76% 42%)",
-  developer: "hsl(152 76% 42%)",
-  Developer: "hsl(152 76% 42%)",
-  develop: "hsl(152 76% 42%)",
-  dev: "hsl(152 76% 42%)",
-  role_tester: "hsl(35 92% 52%)",
-  tester: "hsl(35 92% 52%)",
-  Tester: "hsl(35 92% 52%)",
-  qa: "hsl(35 92% 52%)"
-};
-
-function roleColor(templateId: string): string {
-  const builtin = BUILTIN_ROLE_COLORS[templateId] || BUILTIN_ROLE_COLORS[templateId?.toLowerCase()];
-  if (builtin) return builtin;
-  let hash = 0;
-  for (let i = 0; i < templateId.length; i++) {
-    hash = (hash << 5) - hash + templateId.charCodeAt(i);
-    hash |= 0;
+function writeImProjectTools(projectId: string, prefs: AskToolPrefs): void {
+  try {
+    localStorage.setItem(imProjectToolsKey(projectId), JSON.stringify(prefs));
+  } catch {
+    // ignore
   }
-  return `hsl(${Math.abs(hash) % 360} 65% 50%)`;
+}
+type TranscriptItem =
+  | { kind: "message"; message: ImMessage }
+  | { kind: "pending"; job: ImJob };
+
+function estimateTranscriptItemSize(item: TranscriptItem): number {
+  if (item.kind === "pending") return 88;
+  const body = item.message.body ?? "";
+  const lines = Math.max(1, body.split("\n").length);
+  const wrapped = Math.ceil(body.length / 72);
+  return Math.min(720, 88 + Math.max(lines, wrapped) * 18);
 }
 
-function roleInitial(label: string): string {
-  return label.trim().charAt(0).toUpperCase() || "?";
-}
-
-function dayKey(millis: number): string {
-  const date = new Date(millis);
-  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
-}
-
-function formatDay(millis: number, t: Translate): string {
-  const date = new Date(millis);
-  const now = new Date();
-  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const startTarget = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-  const diffDays = Math.round((startToday - startTarget) / 86_400_000);
-  if (diffDays === 0) return t("desktop.im.today");
-  if (diffDays === 1) return t("desktop.im.yesterday");
-  return date.toLocaleDateString();
-}
-
-function formatTime(millis: number): string {
-  return new Date(millis).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-}
-
-const ACTIVE_JOB_STATUSES = ["queued", "connecting", "running", "awaiting_user"] as const;
-
-function isActiveJobStatus(status: string): boolean {
-  return (ACTIVE_JOB_STATUSES as readonly string[]).includes(status);
-}
-
-type Translate = (key: string, ...args: Array<string | number>) => string;
-
-function builtinRoleLabel(templateId: string, fallback: string, t: Translate): string {
-  const key = BUILTIN_ROLE_KEYS[templateId] || BUILTIN_ROLE_KEYS[templateId?.toLowerCase()];
-  if (!key) return fallback;
-  return t(`desktop.im.role.${key}`);
-}
-
-function roleLabel(member: ImMember, t: Translate): string {
-  return builtinRoleLabel(member.templateId, member.name, t);
-}
-
-function agentTag(agent: string, model: string | undefined, t: Translate): JSX.Element {
-  return (
-    <span className="s-provider-tag" data-provider={agent}>
-      {t(`desktop.im.agent.${agent}`)}{model ? ` · ${model}` : ""}
-    </span>
-  );
-}
 
 export function ImPanel(): ReactPortal | null {
   const host = document.getElementById("react-im");
@@ -224,10 +107,9 @@ export function ImPanel(): ReactPortal | null {
   const [room, setRoom] = useState<ImRoom | null>(null);
   const [draft, setDraft] = useState("");
   const [quotes, setQuotes] = useState<ImQuotedMessage[]>([]);
+  const [followUpTo, setFollowUpTo] = useState<ImMessage | null>(null);
   const [mentionIds, setMentionIds] = useState<string[]>([]);
   const [mentionOpen, setMentionOpen] = useState(false);
-  const [mentionIndex, setMentionIndex] = useState(0);
-  const mentionListRef = useRef<HTMLDivElement | null>(null);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [renamingProjectId, setRenamingProjectId] = useState<string | null>(null);
@@ -256,8 +138,10 @@ export function ImPanel(): ReactPortal | null {
   const [translatingIds, setTranslatingIds] = useState<Set<string>>(() => new Set());
   const [templates, setTemplates] = useState<ImRoleTemplate[]>([]);
   const [sidebarTab, setSidebarTab] = useState<"members" | "knowledge">("members");
-  const [rightSidebarOpen, setRightSidebarOpen] = useState(() => storageBoolean(RIGHT_SIDEBAR_OPEN_KEY, true));
+  const [membersDrawerOpen, setMembersDrawerOpen] = useState(false);
   const [expandedMemberId, setExpandedMemberId] = useState<string | null>(null);
+  const [popoverAnchorRect, setPopoverAnchorRect] = useState<DOMRect | null>(null);
+  const [isTogglingAll, setIsTogglingAll] = useState(false);
   const [customMemberModelId, setCustomMemberModelId] = useState<string | null>(null);
   const [customMemberThoughtId, setCustomMemberThoughtId] = useState<string | null>(null);
   const [agentModelsMap, setAgentModelsMap] = useState<Record<string, ImAgentModelOption[]>>({});
@@ -266,34 +150,68 @@ export function ImPanel(): ReactPortal | null {
   const [knowledgeUrl, setKnowledgeUrl] = useState("");
   const [pinnedToBottom, setPinnedToBottom] = useState(true);
   const [hasNewBelow, setHasNewBelow] = useState(false);
-  const [activeTimelineMessageId, setActiveTimelineMessageId] = useState<string | undefined>();
+  const [customExpandedMessages, setCustomExpandedMessages] = useState<Record<string, boolean>>({});
   const [flashingMessageId, setFlashingMessageId] = useState<string | null>(null);
   const [expandedThinking, setExpandedThinking] = useState<Record<string, boolean>>({});
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const [previewModalUrl, setPreviewModalUrl] = useState<string | null>(null);
-  const transcriptRef = useRef<HTMLDivElement | null>(null);
+  const [citationDrawerState, setCitationDrawerState] = useState<{
+    open: boolean;
+    citations: AgentCitation[];
+    initialMarker?: string | null;
+  }>({ open: false, citations: [] });
+  const [toolPrefs, setToolPrefs] = useState<AskToolPrefs>(() => readImProjectTools(selectedProjectId));
+  const [toolCatalog, setToolCatalog] = useState<AgentToolDescriptor[] | null>(null);
+  const transcriptVirtualizerRef = useRef<VariableVirtualListHandle | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const newChatInputRef = useRef<HTMLInputElement | null>(null);
-  const imageInputRef = useRef<HTMLInputElement | null>(null);
   const prevMsgCount = useRef(0);
 
   const memberLabel = useCallback((member: ImMember) => roleLabel(member, t), [t]);
 
-  const allMembers = room?.members ?? [];
-  const members = allMembers.filter((member) => member.enabled);
-  const visibleMessages = (room?.messages ?? []).filter((message) => {
-    if (message.kind !== "job.card") return true;
-    const job = room?.jobs.find((item) => item.jobId === message.jobId);
-    return job?.status === "failed";
-  });
-  const activeJobs = room?.jobs.filter((job) => isActiveJobStatus(job.status)) ?? [];
-  const activePendingJobs = activeJobs.filter(
-    (job) => !visibleMessages.some((msg) => msg.jobId === job.jobId)
-  );
+  const allMembers = useMemo(() => room?.members ?? [], [room?.members]);
+  const members = useMemo(() => allMembers.filter((member) => member.enabled), [allMembers]);
+  const visibleMessages = useMemo(() => {
+    const raw = (room?.messages ?? []).filter((message) => {
+      if (message.kind !== "job.card") return true;
+      const job = room?.jobs.find((item) => item.jobId === message.jobId);
+      return job?.status === "failed";
+    });
+
+    const seenJobMessages = new Set<string>();
+    const result: ImMessage[] = [];
+    for (let i = raw.length - 1; i >= 0; i--) {
+      const msg = raw[i]!;
+      if (msg.kind === "role.say" && msg.jobId) {
+        if (seenJobMessages.has(msg.jobId)) {
+          continue;
+        }
+        seenJobMessages.add(msg.jobId);
+      }
+      result.unshift(msg);
+    }
+    return result;
+  }, [room?.jobs, room?.messages]);
+  const activeJobs = useMemo(() => room?.jobs.filter((job) => isActiveJobStatus(job.status)) ?? [], [room?.jobs]);
+  const activePendingJobs = useMemo(() => {
+    return activeJobs.filter(
+      (job) => !visibleMessages.some((msg) => msg.jobId === job.jobId)
+    );
+  }, [activeJobs, visibleMessages]);
+  const transcriptItems = useMemo<TranscriptItem[]>(() => [
+    ...visibleMessages.map((message) => ({ kind: "message" as const, message })),
+    ...activePendingJobs.map((job) => ({ kind: "pending" as const, job }))
+  ], [activePendingJobs, visibleMessages]);
+  const messageIndexById = useMemo(() => {
+    const index = new Map<string, number>();
+    transcriptItems.forEach((item, itemIndex) => {
+      if (item.kind === "message") index.set(item.message.messageId, itemIndex);
+    });
+    return index;
+  }, [transcriptItems]);
   const projectRoot = room?.project.localPath && !isScratchPath(room.project.localPath)
     ? room.project.localPath
     : null;
-  const projectTools = useImProjectTools(projectRoot);
 
   const setError = useCallback((error: unknown) => {
     notifyDesktop({
@@ -337,7 +255,11 @@ export function ImPanel(): ReactPortal | null {
     const onTab = (event: Event) => {
       const show = (event as CustomEvent<string>).detail === "im";
       setActive(show);
-      if (show) void loadProjects();
+      if (show) {
+        setPinnedToBottom(true);
+        setHasNewBelow(false);
+        void loadProjects();
+      }
     };
     window.addEventListener("agent-resume:tab-change", onTab);
     return () => window.removeEventListener("agent-resume:tab-change", onTab);
@@ -358,6 +280,20 @@ export function ImPanel(): ReactPortal | null {
   }, [selectedProjectId]);
 
   useEffect(() => {
+    if (!selectedProjectId) return;
+    setToolPrefs(readImProjectTools(selectedProjectId));
+  }, [selectedProjectId]);
+
+  useEffect(() => {
+    if (toolCatalog) return;
+    const api = desktopApi();
+    if (typeof api.listAgentTools !== "function") return;
+    void api.listAgentTools({ projectPath: projectRoot || undefined })
+      .then((list) => setToolCatalog(list))
+      .catch(() => setToolCatalog([]));
+  }, [toolCatalog, projectRoot]);
+
+  useEffect(() => {
     const stop = desktopApi().onImEvent((event: ImEvent) => {
       if (event.type === "room") {
         if (event.room.project.projectId === selectedProjectId) setRoom(event.room);
@@ -373,13 +309,33 @@ export function ImPanel(): ReactPortal | null {
               messages: current.messages.map((item) => item.messageId === event.message.messageId ? event.message : item)
             };
           }
+          if (event.message.jobId && event.message.kind === "role.say") {
+            const existingJobIndex = current.messages.findIndex((item) => item.jobId === event.message.jobId && item.kind === "role.say");
+            if (existingJobIndex >= 0) {
+              const nextMessages = [...current.messages];
+              nextMessages[existingJobIndex] = event.message;
+              return { ...current, messages: nextMessages };
+            }
+          }
           return { ...current, messages: [...current.messages, event.message] };
         }
         if (event.type === "messageUpdate") {
-          const messages = current.messages.some((item) => item.messageId === event.message.messageId)
-            ? current.messages.map((item) => item.messageId === event.message.messageId ? event.message : item)
-            : [...current.messages, event.message];
-          return { ...current, messages };
+          const hasMessageId = current.messages.some((item) => item.messageId === event.message.messageId);
+          if (hasMessageId) {
+            return {
+              ...current,
+              messages: current.messages.map((item) => item.messageId === event.message.messageId ? event.message : item)
+            };
+          }
+          if (event.message.jobId && event.message.kind === "role.say") {
+            const existingJobIndex = current.messages.findIndex((item) => item.jobId === event.message.jobId && item.kind === "role.say");
+            if (existingJobIndex >= 0) {
+              const nextMessages = [...current.messages];
+              nextMessages[existingJobIndex] = event.message;
+              return { ...current, messages: nextMessages };
+            }
+          }
+          return { ...current, messages: [...current.messages, event.message] };
         }
         if (event.type === "job") {
           const jobs = current.jobs.some((item) => item.jobId === event.job.jobId)
@@ -400,17 +356,15 @@ export function ImPanel(): ReactPortal | null {
   }, [selectedProjectId]);
 
   useEffect(() => {
-    const node = transcriptRef.current;
-    if (!node) return;
-    const count = (room?.messages.length ?? 0) + activePendingJobs.length;
+    const count = transcriptItems.length;
     const grew = count > prevMsgCount.current;
     prevMsgCount.current = count;
-    if (pinnedToBottom) {
-      node.scrollTop = node.scrollHeight;
+    if (pinnedToBottom && count > 0) {
+      transcriptVirtualizerRef.current?.scrollToIndex(count - 1, { align: "end", behavior: "auto" });
     } else if (grew) {
       setHasNewBelow(true);
     }
-  }, [activePendingJobs.length, pinnedToBottom, room?.messages.length]);
+  }, [pinnedToBottom, transcriptItems]);
 
   const copyText = useCallback(async (text: string) => {
     try {
@@ -431,52 +385,82 @@ export function ImPanel(): ReactPortal | null {
   }, []);
 
   const scrollToBottom = useCallback(() => {
-    const node = transcriptRef.current;
-    if (!node) return;
-    node.scrollTo({ top: node.scrollHeight, behavior: "smooth" });
+    const lastIndex = transcriptItems.length - 1;
+    if (lastIndex < 0) return;
+    transcriptVirtualizerRef.current?.scrollToIndex(lastIndex, { align: "end", behavior: "smooth" });
     setPinnedToBottom(true);
     setHasNewBelow(false);
-  }, []);
+  }, [transcriptItems.length]);
 
   const scrollToTop = useCallback(() => {
-    const node = transcriptRef.current;
-    if (!node) return;
-    node.scrollTo({ top: 0, behavior: "smooth" });
-    if (visibleMessages[0]) setActiveTimelineMessageId(visibleMessages[0].messageId);
-  }, [visibleMessages]);
+    if (!transcriptItems.length) return;
+    setPinnedToBottom(false);
+    transcriptVirtualizerRef.current?.scrollToIndex(0, { align: "start", behavior: "smooth" });
+  }, [transcriptItems.length]);
 
   const jumpToMessage = useCallback((messageId: string) => {
-    const node = transcriptRef.current;
-    if (!node) return;
-    const el = document.getElementById(`im-msg-${messageId}`);
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "center" });
-      setFlashingMessageId(messageId);
-      setActiveTimelineMessageId(messageId);
-      window.setTimeout(() => {
-        setFlashingMessageId((current) => (current === messageId ? null : current));
-      }, 1500);
-    }
-  }, []);
+    setCustomExpandedMessages((prev) => ({ ...prev, [messageId]: true }));
+    const index = messageIndexById.get(messageId);
+    if (index == null) return;
+    setPinnedToBottom(false);
+    setFlashingMessageId(messageId);
+    transcriptVirtualizerRef.current?.scrollToIndex(index, { align: "start", behavior: "smooth" });
+    window.setTimeout(() => {
+      setFlashingMessageId((current) => (current === messageId ? null : current));
+    }, 1500);
+  }, [messageIndexById]);
 
-  const onTranscriptScroll = useCallback(() => {
-    const node = transcriptRef.current;
-    if (!node) return;
+  const isMessageExpanded = useCallback((message: ImMessage, index: number, totalCount: number) => {
+    if (customExpandedMessages[message.messageId] !== undefined) {
+      return customExpandedMessages[message.messageId];
+    }
+    const job = message.jobId ? room?.jobs.find((j) => j.jobId === message.jobId) : undefined;
+    const isJobActive = Boolean(job && isActiveJobStatus(job.status));
+    if (message.streaming || isJobActive) return true;
+    if (index >= totalCount - 2) return true;
+    return false;
+  }, [customExpandedMessages, room?.jobs]);
+
+  const handleToggleExpand = useCallback((messageId: string) => {
+    const index = visibleMessages.findIndex((m) => m.messageId === messageId);
+    if (index === -1) return;
+    const currentlyExpanded = isMessageExpanded(visibleMessages[index]!, index, visibleMessages.length);
+    setCustomExpandedMessages((prev) => ({
+      ...prev,
+      [messageId]: !currentlyExpanded
+    }));
+  }, [isMessageExpanded, visibleMessages]);
+
+  const getMessageDepth = useCallback((message: ImMessage) => {
+    if (message.kind === "human") return 0;
+    const job = message.jobId ? room?.jobs.find((j) => j.jobId === message.jobId) : undefined;
+    if (job?.brief?.dispatchChain?.length) {
+      return Math.min(3, Math.max(1, job.brief.dispatchChain.length - 1));
+    }
+    return 1;
+  }, [room?.jobs]);
+
+  const graphMetaMap = useMemo(() => {
+    return computeTranscriptGraph(visibleMessages, room?.jobs ?? []);
+  }, [room?.jobs, visibleMessages]);
+
+  const projectTools = useImProjectTools({
+    rootPath: projectRoot,
+    room,
+    allMembers,
+    onJumpToMessage: jumpToMessage
+  });
+
+  const onTranscriptScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
+    const node = event.currentTarget;
+    if (node.clientHeight <= 0) return;
     const nearBottom = node.scrollHeight - node.scrollTop - node.clientHeight < 60;
     setPinnedToBottom(nearBottom);
     if (nearBottom) setHasNewBelow(false);
+  }, []);
 
-    const articles = node.querySelectorAll<HTMLElement>("article.im-message");
-    const containerTop = node.getBoundingClientRect().top;
-    let closestId: string | undefined;
-    for (const article of articles) {
-      const rect = article.getBoundingClientRect();
-      if (rect.bottom >= containerTop + 20) {
-        closestId = article.id.replace("im-msg-", "");
-        break;
-      }
-    }
-    if (closestId) setActiveTimelineMessageId(closestId);
+  const onTranscriptVisibleRange = useCallback((_startIndex: number, _endIndex: number) => {
+    // Range track for virtual list
   }, []);
 
   const insertIntoComposer = useCallback((text: string) => {
@@ -487,36 +471,50 @@ export function ImPanel(): ReactPortal | null {
     textareaRef.current?.focus();
   }, []);
 
-  const timelineNodes = useMemo(() => {
-    return buildTimelineNodes(
-      visibleMessages,
-      allMembers,
-      roleColor,
-      memberLabel,
-      roleInitial,
-      formatTime,
-      (ms) => formatDay(ms, t),
-      room?.jobs
-    );
-  }, [allMembers, formatTime, memberLabel, room?.jobs, t, visibleMessages]);
-  const mentionQuery = (() => {
-    const at = draft.lastIndexOf("@");
-    if (at < 0) return "";
-    const after = draft.slice(at + 1);
-    if (/\s/.test(after)) return "";
-    return after.trim().toLowerCase();
-  })();
-  const mentionOptions = (mentionQuery
-    ? members.filter((member) => roleLabel(member, t).toLowerCase().includes(mentionQuery) || member.agent.includes(mentionQuery))
-    : members
-  ).filter((member) => !mentionIds.includes(member.memberId));
-  const activeJob = room?.jobs.find((job) => isActiveJobStatus(job.status)) ?? null;
-  const permissionOwner = activeJob
-    ? members.find((member) => member.memberId === activeJob.memberId)
-    : undefined;
-  const mentioned = mentionIds
-    .map((id) => members.find((member) => member.memberId === id))
-    .filter((member): member is ImMember => Boolean(member));
+  const activeJob = useMemo(() => {
+    return room?.jobs.find((job) => isActiveJobStatus(job.status)) ?? null;
+  }, [room?.jobs]);
+
+  const permissionOwner = useMemo(() => {
+    return activeJob
+      ? members.find((member) => member.memberId === activeJob.memberId)
+      : undefined;
+  }, [activeJob, members]);
+
+  const handleToggleThinking = useCallback((messageId: string) => {
+    setExpandedThinking((curr) => ({
+      ...curr,
+      [messageId]: !curr[messageId]
+    }));
+  }, []);
+
+  const handleToggleFiles = useCallback((messageId: string) => {
+    setExpandedFiles((curr) => ({
+      ...curr,
+      [messageId]: curr[messageId] === false ? true : false
+    }));
+  }, []);
+
+  const handleEditDelegation = useCallback((instruction: string, targetMember?: ImMember) => {
+    if (targetMember) {
+      setMentionIds((curr) => curr.includes(targetMember.memberId) ? curr : [...curr, targetMember.memberId]);
+    }
+    setDraft((curr) => {
+      const base = curr.trim();
+      return base ? `${base}\n${instruction}` : instruction;
+    });
+    textareaRef.current?.focus();
+  }, []);
+
+  const handleRoutingTipClick = useCallback(() => {
+    setDraft((curr) => {
+      const trimmed = curr.trim();
+      if (!trimmed) return "@";
+      return curr.endsWith(" ") ? `${curr}@` : `${curr} @`;
+    });
+    setMentionOpen(true);
+    textareaRef.current?.focus();
+  }, []);
 
   const quoteSelection = useCallback((message: ImMessage, body: string, extraDraft?: string) => {
     const clipped = body.length > 4000 ? `${body.slice(0, 3999)}…` : body;
@@ -537,8 +535,37 @@ export function ImPanel(): ReactPortal | null {
   }, []);
 
   const quoteMessage = useCallback((message: ImMessage) => {
+    setFollowUpTo(null);
     quoteSelection(message, message.body);
   }, [quoteSelection]);
+
+  const handleConfigureRole = useCallback((member: ImMember, anchorRect: DOMRect) => {
+    setExpandedMemberId(member.memberId);
+    setPopoverAnchorRect(anchorRect);
+  }, []);
+
+  const continueAsk = useCallback((message: ImMessage) => {
+    if (message.kind !== "role.say") return;
+    const authorId = message.authorMemberId?.trim();
+    const label = message.authorLabel?.trim();
+    const lowerLabel = label?.toLowerCase();
+
+    const owner =
+      allMembers.find((m) => authorId && (m.memberId === authorId || m.templateId === authorId)) ||
+      allMembers.find((m) => label && (m.name === label || roleLabel(m, t) === label)) ||
+      allMembers.find((m) => lowerLabel && (
+        m.name.toLowerCase() === lowerLabel ||
+        m.templateId.toLowerCase() === lowerLabel ||
+        m.templateId.replace(/^role_/, "").toLowerCase() === lowerLabel
+      ));
+
+    if (!owner) return;
+    setFollowUpTo(message);
+    setQuotes([]);
+    setMentionIds([owner.memberId]);
+    setMentionOpen(false);
+    textareaRef.current?.focus();
+  }, [allMembers, t]);
 
   const selectedTextIn = useCallback((root: HTMLElement): string => {
     const selection = window.getSelection();
@@ -789,71 +816,6 @@ export function ImPanel(): ReactPortal | null {
     setSelectionMenu(null);
   }, []);
 
-  const stageImageFiles = useCallback(async (files: FileList | File[] | null) => {
-    if (!files || !files.length) return;
-    const list = Array.from(files as ArrayLike<File>);
-    const next: PendingImage[] = [];
-    let currentCount = pendingImages.length;
-    for (const file of list) {
-      if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
-        setError(new Error(t("desktop.im.imageInvalidType")));
-        continue;
-      }
-      if (file.size > MAX_IMAGE_BYTES) {
-        setError(new Error(t("desktop.im.imageTooLarge", file.name)));
-        continue;
-      }
-      if (currentCount >= MAX_IMAGES) {
-        setError(new Error(t("desktop.im.tooManyImages", MAX_IMAGES)));
-        break;
-      }
-      try {
-        const dataUrl = await readFileAsDataUrl(file);
-        const data = dataUrl.split(",")[1] || "";
-        next.push({
-          id: crypto.randomUUID(),
-          fileName: file.name || "image.png",
-          mimeType: file.type || "image/png",
-          data,
-          previewUrl: dataUrl,
-          sizeBytes: file.size
-        });
-        currentCount += 1;
-      } catch (err) {
-        setError(err);
-      }
-    }
-    if (next.length) {
-      setPendingImages((curr) => [...curr, ...next]);
-    }
-  }, [pendingImages.length, setError, t]);
-
-  const onComposerPaste = useCallback((event: ReactClipboardEvent<HTMLTextAreaElement>) => {
-    const items = [...(event.clipboardData?.items ?? [])];
-    const imageItems = items.filter((item) => item.type.startsWith("image/"));
-    if (!imageItems.length) return;
-    event.preventDefault();
-    const files: File[] = [];
-    for (const item of imageItems) {
-      const file = item.getAsFile();
-      if (file) files.push(file);
-    }
-    void stageImageFiles(files);
-  }, [stageImageFiles]);
-
-  const onDragOver = useCallback((event: ReactDragEvent) => {
-    if (event.dataTransfer?.types?.includes("Files")) {
-      event.preventDefault();
-    }
-  }, []);
-
-  const onDrop = useCallback((event: ReactDragEvent) => {
-    if (event.dataTransfer?.files?.length) {
-      event.preventDefault();
-      void stageImageFiles(event.dataTransfer.files);
-    }
-  }, [stageImageFiles]);
-
   const send = useCallback(async () => {
     if (!selectedProjectId || sending) return;
     const body = draft.trim();
@@ -863,76 +825,45 @@ export function ImPanel(): ReactPortal | null {
       await desktopApi().imPostMessage({
         projectId: selectedProjectId,
         body,
-        quoteIds: quotes.map((quote) => quote.messageId),
+        quoteIds: followUpTo ? [] : quotes.map((quote) => quote.messageId),
         mentionRoleIds: mentionIds,
-        images: pendingImages.map(({ fileName, mimeType, data }) => ({ fileName, mimeType, data }))
+        images: pendingImages.map(({ fileName, mimeType, data }) => ({ fileName, mimeType, data })),
+        followUpToMessageId: followUpTo?.messageId
       });
       setDraft("");
       setQuotes([]);
+      setFollowUpTo(null);
       setMentionIds([]);
       setPendingImages([]);
       setMentionOpen(false);
-      setMentionIndex(0);
     } catch (error) {
       setError(error);
     } finally {
       setSending(false);
     }
-  }, [draft, mentionIds, pendingImages, quotes, selectedProjectId, sending, setError]);
+  }, [draft, followUpTo, mentionIds, pendingImages, quotes, selectedProjectId, sending, setError]);
 
-  const pickMention = useCallback((member: ImMember) => {
-    const at = draft.lastIndexOf("@");
-    const nextDraft = at >= 0 ? `${draft.slice(0, at).trimEnd()} ` : draft;
-    setDraft(nextDraft.trimStart());
-    setMentionIds((current) => current.includes(member.memberId) ? current : [...current, member.memberId]);
-    setMentionOpen(false);
-    setMentionIndex(0);
+  const resendUserMessage = useCallback((message: ImMessage) => {
+    setSelectionMenu(null);
+    setDraft(message.body);
+    setMentionIds(message.mentionRoleIds ? [...message.mentionRoleIds] : []);
+    setQuotes(message.quotes ? [...message.quotes] : []);
+    if (message.images?.length) {
+      const restoredImages: PendingImage[] = message.images.map((img) => ({
+        id: img.id,
+        fileName: img.fileName,
+        mimeType: img.mimeType,
+        previewUrl: img.previewUrl || "",
+        data: img.previewUrl && img.previewUrl.startsWith("data:") ? img.previewUrl.split(",")[1] || "" : "",
+        sizeBytes: img.sizeBytes || 0
+      }));
+      setPendingImages(restoredImages);
+    } else {
+      setPendingImages([]);
+    }
     textareaRef.current?.focus();
-  }, [draft]);
-
-  const onComposerKey = useCallback((event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "@") {
-      setMentionOpen(true);
-      setMentionIndex(0);
-    }
-    if (mentionOpen && mentionOptions.length) {
-      if (event.key === "ArrowDown") {
-        event.preventDefault();
-        setMentionIndex((current) => (current + 1) % mentionOptions.length);
-        return;
-      }
-      if (event.key === "ArrowUp") {
-        event.preventDefault();
-        setMentionIndex((current) => (current - 1 + mentionOptions.length) % mentionOptions.length);
-        return;
-      }
-      if (event.key === "Enter" && !event.shiftKey) {
-        event.preventDefault();
-        const selected = mentionOptions[mentionIndex] ?? mentionOptions[0];
-        if (selected) pickMention(selected);
-        return;
-      }
-      if (event.key === "Tab") {
-        event.preventDefault();
-        const selected = mentionOptions[mentionIndex] ?? mentionOptions[0];
-        if (selected) pickMention(selected);
-        return;
-      }
-    }
-    if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
-      void send();
-    }
-    if (event.key === "Backspace" && !draft && !mentionOpen && mentionIds.length) {
-      event.preventDefault();
-      setMentionIds((current) => current.slice(0, -1));
-      return;
-    }
-    if (event.key === "Escape") {
-      setMentionOpen(false);
-      setMentionIndex(0);
-    }
-  }, [draft, mentionIds.length, mentionIndex, mentionOpen, mentionOptions, pickMention, send]);
+    scrollToBottom();
+  }, [scrollToBottom]);
 
   const respondPermission = useCallback(async (job: ImJob, optionId?: string, cancelled?: boolean) => {
     if (!job.permission) return;
@@ -946,26 +877,6 @@ export function ImPanel(): ReactPortal | null {
       setError(error);
     }
   }, [setError]);
-
-  useEffect(() => {
-    if (!mentionOpen) return;
-    setMentionIndex((current) => {
-      if (!mentionOptions.length) return 0;
-      return Math.min(current, mentionOptions.length - 1);
-    });
-  }, [mentionOpen, mentionOptions.length]);
-
-  useEffect(() => {
-    if (!mentionOpen) return;
-    const list = mentionListRef.current;
-    const option = mentionOptions[mentionIndex];
-    if (!list || !option) return;
-    const row = document.getElementById(option.memberId);
-    if (row && list.contains(row) && typeof row.scrollIntoView === "function") {
-      row.scrollIntoView({ block: "nearest" });
-    }
-  }, [mentionIndex, mentionOpen, mentionOptions]);
-
 
   const addKnowledgeText = useCallback(async (event: FormEvent) => {
     event.preventDefault();
@@ -1031,6 +942,10 @@ export function ImPanel(): ReactPortal | null {
         setRoom((current) => current && !current.members.some((item) => item.memberId === member.memberId)
           ? { ...current, members: [...current.members, member] }
           : current);
+        setProjects((current) => current.map((p) => p.projectId === selectedProjectId ? {
+          ...p,
+          roles: [...(p.roles ?? []).filter((r) => r.templateId !== template.templateId), { templateId: member.templateId, name: member.name }]
+        } : p));
         return;
       }
       const member = room?.members.find((item) => item.templateId === template.templateId);
@@ -1039,12 +954,94 @@ export function ImPanel(): ReactPortal | null {
       setRoom((current) => current
         ? { ...current, members: current.members.filter((item) => item.memberId !== member.memberId) }
         : current);
+      setProjects((current) => current.map((p) => p.projectId === selectedProjectId ? {
+        ...p,
+        roles: (p.roles ?? []).filter((r) => r.templateId !== template.templateId)
+      } : p));
       setMentionIds((current) => current.filter((id) => id !== member.memberId));
       if (expandedMemberId === member.memberId) setExpandedMemberId(null);
     } catch (error) {
       setError(error);
     }
   }, [expandedMemberId, room?.members, selectedProjectId, setError]);
+
+  const allMemberChecked = useMemo(() => {
+    if (!templates.length) return false;
+    return templates.every((tpl) => members.some((m) => m.templateId === tpl.templateId));
+  }, [templates, members]);
+  const someMemberChecked = useMemo(() => {
+    if (!templates.length) return false;
+    return templates.some((tpl) => members.some((m) => m.templateId === tpl.templateId));
+  }, [templates, members]);
+
+  const toggleAllMembers = useCallback(async (nextChecked: boolean) => {
+    if (!selectedProjectId || isTogglingAll) return;
+    setIsTogglingAll(true);
+    try {
+      if (nextChecked) {
+        const toEnable = templates.filter((tpl) => !members.some((m) => m.templateId === tpl.templateId));
+        for (const tpl of toEnable) {
+          await desktopApi().imAddMember({ projectId: selectedProjectId, templateId: tpl.templateId }).then((member) => {
+            setRoom((cur) => cur && !cur.members.some((it) => it.memberId === member.memberId) ? { ...cur, members: [...cur.members, member] } : cur);
+            setProjects((cur) => cur.map((p) => p.projectId === selectedProjectId ? { ...p, roles: [...(p.roles ?? []).filter((r) => r.templateId !== tpl.templateId), { templateId: member.templateId, name: member.name }] } : p));
+          });
+        }
+      } else {
+        const toDisable = [...members];
+        for (const m of toDisable) {
+          const tpl = templates.find((t) => t.templateId === m.templateId);
+          if (!tpl) continue;
+          await desktopApi().imRemoveMember({ memberId: m.memberId }).then(() => {
+            setRoom((cur) => cur ? { ...cur, members: cur.members.filter((it) => it.memberId !== m.memberId) } : cur);
+            setProjects((cur) => cur.map((p) => p.projectId === selectedProjectId ? { ...p, roles: (p.roles ?? []).filter((r) => r.templateId !== tpl.templateId) } : p));
+            setMentionIds((cur) => cur.filter((id) => id !== m.memberId));
+            if (expandedMemberId === m.memberId) {
+              setExpandedMemberId(null);
+              setPopoverAnchorRect(null);
+            }
+          });
+        }
+      }
+    } catch (error) {
+      setError(error);
+    } finally {
+      setIsTogglingAll(false);
+    }
+  }, [selectedProjectId, isTogglingAll, templates, members, expandedMemberId, setError]);
+
+  useEffect(() => {
+    if (!expandedMemberId) {
+      setPopoverAnchorRect(null);
+      return;
+    }
+    const onPointer = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest(".im-member-config-popover") || target.closest(".im-member-config-btn")) return;
+      setExpandedMemberId(null);
+      setPopoverAnchorRect(null);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setExpandedMemberId(null);
+        setPopoverAnchorRect(null);
+      }
+    };
+    const onScrollOrResize = () => {
+      setExpandedMemberId(null);
+      setPopoverAnchorRect(null);
+    };
+    window.addEventListener("pointerdown", onPointer, true);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("resize", onScrollOrResize);
+    window.addEventListener("scroll", onScrollOrResize, true);
+    return () => {
+      window.removeEventListener("pointerdown", onPointer, true);
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", onScrollOrResize);
+      window.removeEventListener("scroll", onScrollOrResize, true);
+    };
+  }, [expandedMemberId]);
 
   const fetchModelsForAgent = useCallback(async (targetAgent: ImAgent) => {
     if (agentModelsMap[targetAgent]?.length) return agentModelsMap[targetAgent];
@@ -1116,6 +1113,77 @@ export function ImPanel(): ReactPortal | null {
       setError(error);
     }
   }, [setError]);
+
+  const resumeJob = useCallback(async (job: ImJob) => {
+    try {
+      await desktopApi().imResumeJob({ jobId: job.jobId });
+    } catch (error) {
+      setError(error);
+    }
+  }, [setError]);
+
+  const handleOpenCitations = useCallback((message: ImMessage, marker?: string) => {
+    const citations = extractCitationsFromMessage(message, room);
+    setCitationDrawerState({
+      open: true,
+      citations,
+      initialMarker: marker
+    });
+  }, [room]);
+
+  const handleOpenCitation = useCallback((citation: AgentCitation) => {
+    if (isNote(citation)) {
+      if (citation.noteId) {
+        window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "notes" }));
+        window.dispatchEvent(new CustomEvent("agent-resume:open-note", { detail: citation.noteId }));
+      } else {
+        window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "notes" }));
+      }
+      return;
+    }
+    if (isSession(citation)) {
+      const session = citation.session;
+      if (session?.provider && session.id) {
+        window.dispatchEvent(
+          new CustomEvent("agent-resume:sessions-preview", {
+            detail: {
+              provider: session.provider,
+              id: session.id,
+              title: citation.title || session.id,
+              projectPath: session.projectPath || "",
+              updatedAt: citation.periodStartMs || Date.now()
+            }
+          })
+        );
+      } else {
+        window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
+      }
+      return;
+    }
+    const period = periodFromCitation(citation);
+    if (period) {
+      window.dispatchEvent(new CustomEvent("agent-resume:report-focus", { detail: period }));
+    }
+    window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "report" }));
+  }, []);
+
+  const handleResumeCitationSession = useCallback(async (citation: AgentCitation) => {
+    const session = citation.session;
+    if (!session?.provider || !session.id) {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
+      return;
+    }
+    try {
+      const result = await desktopApi().workbenchOpenSession({ provider: session.provider, id: session.id });
+      if (result.external) {
+        notifyDesktop({ text: t("desktop.im.resumeStarted", session.provider, session.id), kind: "info" });
+        return;
+      }
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-open-session", { detail: session }));
+    } catch (error) {
+      setError(error);
+    }
+  }, [setError, t]);
 
   if (!host) return null;
   const headerSlot = document.getElementById("app-header-slot");
@@ -1191,6 +1259,10 @@ export function ImPanel(): ReactPortal | null {
                   : scratch
                     ? t("desktop.im.tempFolder")
                     : basename(project.localPath);
+                const activeRoles = project.projectId === selectedProjectId && room
+                  ? room.members.filter((m) => m.enabled).map((m) => ({ templateId: m.templateId, name: memberLabel(m) }))
+                  : (project.roles ?? []).map((r) => ({ templateId: r.templateId, name: builtinRoleLabel(r.templateId, r.name, t) }));
+
                 if (renamingProjectId === project.projectId) {
                   return (
                     <form
@@ -1201,6 +1273,7 @@ export function ImPanel(): ReactPortal | null {
                         void commitRename(project.projectId);
                       }}
                     >
+                      <ImChatAvatar roles={activeRoles} size={28} />
                       <input
                         value={renameValue}
                         onChange={(event) => setRenameValue(event.target.value)}
@@ -1225,6 +1298,7 @@ export function ImPanel(): ReactPortal | null {
                     onClick={() => selectProject(project.projectId)}
                     onContextMenu={(event) => openFolderMenu(event, project)}
                   >
+                    <ImChatAvatar roles={activeRoles} size={28} />
                     <span className="im-folder-label">{project.name}</span>
                     <span className="im-folder-path">{pathLabel}</span>
                   </button>
@@ -1261,466 +1335,149 @@ export function ImPanel(): ReactPortal | null {
           {room ? (
             <>
               <div className="im-room-head">
-                <div>
-                  <h2>{room.project.name}</h2>
-                  <p className="im-room-path">
-                    <span>{room.project.localPath || t("desktop.im.tempFolder")}</span>
-                    <button
-                      type="button"
-                      className="im-room-path-btn"
-                      onClick={() => void associateFolder()}
-                      title={t("desktop.im.associateFolder")}
-                      aria-label={t("desktop.im.associateFolder")}
-                    >
-                      <ThemeIcon name="folder" size={13} aria-hidden="true" />
-                    </button>
-                  </p>
+                <div className="im-room-head-info">
+                  <ImChatAvatar
+                    roles={members.map((m) => ({ templateId: m.templateId, name: memberLabel(m) }))}
+                    size={34}
+                    onClick={() => setMembersDrawerOpen(true)}
+                  />
+                  <div className="im-room-head-titles">
+                    <h2>{room.project.name}</h2>
+                    <p className="im-room-path">
+                      <span>{room.project.localPath || t("desktop.im.tempFolder")}</span>
+                      <button
+                        type="button"
+                        className="im-room-path-btn"
+                        onClick={() => void associateFolder()}
+                        title={t("desktop.im.associateFolder")}
+                        aria-label={t("desktop.im.associateFolder")}
+                      >
+                        <ThemeIcon name="folder" size={13} aria-hidden="true" />
+                      </button>
+                    </p>
+                  </div>
                 </div>
                 <div className="im-room-head-actions">
                   {projectTools.toolbar}
-                  <button
-                    type="button"
-                    className={`tool-btn ghost-btn${rightSidebarOpen ? " active" : ""}`}
-                    onClick={() => {
-                      setRightSidebarOpen((open) => {
-                        const next = !open;
-                        try { localStorage.setItem(RIGHT_SIDEBAR_OPEN_KEY, next ? "1" : "0"); } catch { /* ignore */ }
-                        return next;
-                      });
-                    }}
-                    title={t("desktop.im.toggleDetails")}
-                    aria-label={t("desktop.im.toggleDetails")}
-                    aria-pressed={rightSidebarOpen}
-                  >
-                    <ThemeIcon name="settings" size={14} aria-hidden="true" />
-                  </button>
                 </div>
               </div>
               <div className="im-transcript-wrap">
-                <div ref={transcriptRef} className="im-transcript" aria-label={t("desktop.im.transcript")} onScroll={onTranscriptScroll}>
-                {visibleMessages.length ? visibleMessages.map((message, index) => {
-                  const speaker = allMembers.find((member) => member.memberId === message.authorMemberId)
-                    || allMembers.find((member) => member.templateId === message.authorMemberId)
-                    || allMembers.find((member) => member.name === message.authorLabel || roleLabel(member, t) === message.authorLabel);
-                  const displayBody = translations[message.messageId] ?? message.body;
-                  const isTranslating = translatingIds.has(message.messageId);
-                  const translated = Boolean(translations[message.messageId]);
-                  const roleColorValue = speaker ? roleColor(speaker.templateId) : (message.kind === "role.say" ? roleColor(message.authorLabel) : undefined);
-                  const prevVisible = visibleMessages[index - 1];
-                  const showDate = !prevVisible || dayKey(prevVisible.createdAtMs) !== dayKey(message.createdAtMs);
-                  const linkedJob = message.jobId ? room?.jobs.find((j) => j.jobId === message.jobId) : undefined;
-                  const filesChanged = linkedJob?.filesChanged ?? [];
-                  const dispatchBlocks = message.kind === "role.say" ? parseDispatchBlocks(displayBody) : [];
-                  const cleanBody = dispatchBlocks.length > 0
-                    ? displayBody.replace(/<im_dispatch[\s\S]*?<\/im_dispatch>/gi, "").trim()
-                    : displayBody;
-                  return (
-                    <Fragment key={message.messageId}>
-                      {showDate && (
-                        <div className="im-date-separator" aria-hidden="true">{formatDay(message.createdAtMs, t)}</div>
-                      )}
+                <VariableVirtualList
+                  ref={transcriptVirtualizerRef}
+                  className="im-transcript"
+                  items={transcriptItems}
+                  getKey={(item) => item.kind === "message" ? item.message.messageId : `pending-job-${item.job.jobId}`}
+                  gap={20}
+                  estimateSize={estimateTranscriptItemSize}
+                  pinToBottom={pinnedToBottom}
+                  onVisibleRangeChange={onTranscriptVisibleRange}
+                  onScroll={onTranscriptScroll}
+                  empty={<p className="im-empty">{t("desktop.im.emptyRoom")}</p>}
+                  renderItem={(item, transcriptIndex) => {
+                    if (item.kind === "message") {
+                      const message = item.message;
+                      const messageIndex = visibleMessages.findIndex((entry) => entry.messageId === message.messageId);
+                      const displayBody = translations[message.messageId]
+                        ?? (message.kind === "system" && message.body.startsWith("desktop.") ? (t(message.body) || message.body) : message.body);
+                      const isExpanded = isMessageExpanded(message, messageIndex, visibleMessages.length);
+                      const graphMeta = graphMetaMap.get(message.messageId);
+                      const depth = graphMeta?.depth ?? getMessageDepth(message);
+                      return (
+                        <ImMessageItem
+                          message={message}
+                          prevMessage={messageIndex > 0 ? visibleMessages[messageIndex - 1] : undefined}
+                          allMembers={allMembers}
+                          room={room}
+                          displayBody={displayBody}
+                          isTranslating={translatingIds.has(message.messageId)}
+                          translated={Boolean(translations[message.messageId])}
+                          isFlashing={flashingMessageId === message.messageId}
+                          isExpanded={isExpanded}
+                          depth={depth}
+                          graphMeta={graphMeta}
+                          onJumpToMessage={jumpToMessage}
+                          onConfigureRole={handleConfigureRole}
+                          onToggleExpand={handleToggleExpand}
+                          isThinkingExpanded={expandedThinking[message.messageId] === true}
+                          isFilesExpanded={expandedFiles[message.messageId] !== false}
+                          copiedFilePath={copiedFilePath}
+                          memberLabel={memberLabel}
+                          onToggleThinking={handleToggleThinking}
+                          onToggleFiles={handleToggleFiles}
+                          onCopyText={copyText}
+                          onQuoteMessage={quoteMessage}
+                          onTranslateMessage={translateMessage}
+                          onContinueAsk={continueAsk}
+                          onResumeJob={resumeJob}
+                          onCancelJob={cancelJob}
+                          onPreviewImage={setPreviewModalUrl}
+                          onCopyFilePath={copyFilePath}
+                          onEditDelegation={handleEditDelegation}
+                          onOpenSelectionMenu={openSelectionMenu}
+                          onRoutingTipClick={handleRoutingTipClick}
+                          onOpenCitations={handleOpenCitations}
+                          t={t}
+                        />
+                      );
+                    }
+
+                    const job = item.job;
+                    const owner = allMembers.find((member) => member.memberId === job.memberId)
+                      || allMembers.find((member) => member.templateId === job.memberId);
+                    const roleColorValue = owner ? roleColor(owner.templateId) : roleColor("developer");
+                    const label = owner ? memberLabel(owner) : "Role";
+                    return (
                       <article
-                        id={`im-msg-${message.messageId}`}
-                        className={`im-message is-${message.kind.replace(".", "-")}${flashingMessageId === message.messageId ? " is-flashing" : ""}`}
+                        key={`pending-job-${job.jobId}`}
+                        className="im-message is-role-say is-pending-job"
                         style={roleColorValue ? { "--im-role-color": roleColorValue } as CSSProperties : undefined}
-                        onContextMenu={(event) => openSelectionMenu(event, message)}
+                        data-transcript-index={transcriptIndex}
                       >
-                        {message.kind !== "system" && (
-                          <header>
-                            <span className="im-message-author">
-                              {roleColorValue && (
-                                <span className="im-role-avatar" aria-hidden="true" style={{ "--im-role-color": roleColorValue } as CSSProperties}>
-                                  {roleInitial(speaker ? memberLabel(speaker) : message.authorLabel)}
-                                </span>
-                              )}
-                              <strong>
-                                {speaker ? memberLabel(speaker) : message.authorLabel}
-                                {speaker ? <> {agentTag(speaker.agent, speaker.model, t)}</> : null}
-                              </strong>
-                              {message.autoRouted && message.routedRoleName && (
-                                <span className="im-auto-routed-badge" title={t("desktop.im.autoRoutedTo", message.routedRoleName)}>
-                                  <ThemeIcon name="sparkles" size={11} aria-hidden="true" />
-                                  <span>{t("desktop.im.autoRoutedTo", message.routedRoleName)}</span>
-                                </span>
-                              )}
-                            </span>
-                            <span className="im-message-meta">
-                              <time dateTime={new Date(message.createdAtMs).toISOString()} className="im-message-time">
-                                {formatTime(message.createdAtMs)}
-                              </time>
-                            </span>
-                          </header>
-                        )}
-                        {message.quotes.length > 0 && (
-                          <div className="im-quote-list">
-                            {message.quotes.map((quote) => (
-                              <blockquote key={quote.messageId}>
-                                <span>{quote.authorLabel}</span>
-                                {quote.body}
-                              </blockquote>
-                            ))}
-                          </div>
-                        )}
-                        {message.mentionRoleIds.length > 0 && (
-                          <div className="im-message-mentions" aria-label={t("desktop.im.mentions")}>
-                            {message.mentionRoleIds.map((mentionId) => {
-                              const mentionMember = room?.members.find((item) => item.memberId === mentionId);
-                              const mentionColor = mentionMember ? roleColor(mentionMember.templateId) : undefined;
-                              return (
-                                <span
-                                  key={mentionId}
-                                  className="im-message-mention"
-                                  style={mentionColor ? { "--im-role-color": mentionColor } as CSSProperties : undefined}
-                                >
-                                  @{mentionMember ? memberLabel(mentionMember) : mentionId}
-                                </span>
-                              );
-                            })}
-                          </div>
-                        )}
-                        {message.thinking ? (
-                          <div className="im-message-thinking">
-                            <button
-                              type="button"
-                              className="im-message-thinking-toggle"
-                              aria-expanded={expandedThinking[message.messageId] === true}
-                              onClick={() => setExpandedThinking((curr) => ({
-                                ...curr,
-                                [message.messageId]: !curr[message.messageId]
-                              }))}
-                            >
-                              <ThemeIcon
-                                name="chevron-right"
-                                className={expandedThinking[message.messageId] ? "is-expanded" : ""}
-                                size={12}
-                                aria-hidden="true"
-                              />
-                              <span>
-                                {t("desktop.im.thinking")}
-                                {message.streaming && !message.body ? (
-                                  <span className="im-thinking-spinner" aria-hidden="true" />
-                                ) : null}
+                        <header>
+                          <span className="im-message-author">
+                            {roleColorValue && (
+                              <span className="im-role-avatar" aria-hidden="true" style={{ "--im-role-color": roleColorValue } as CSSProperties}>
+                                {roleInitial(label)}
                               </span>
-                            </button>
-                            {expandedThinking[message.messageId] ? (
-                              <div
-                                className="im-message-thinking-body markdown-body"
-                                dangerouslySetInnerHTML={{ __html: renderMarkdown(message.thinking) }}
-                              />
-                            ) : null}
-                          </div>
-                        ) : null}
-                        {message.images && message.images.length > 0 && (
-                          <div className="im-message-images">
-                            {message.images.map((img) => (
-                              <button
-                                key={img.id}
-                                type="button"
-                                className="im-message-image-card"
-                                onClick={() => setPreviewModalUrl(img.previewUrl || "")}
-                                title={img.fileName}
-                              >
-                                <img src={img.previewUrl || ""} alt={img.fileName} loading="lazy" />
-                                <span className="im-message-image-name">{img.fileName}</span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                        {cleanBody ? (
-                          <div
-                            className="markdown-body"
-                            dangerouslySetInnerHTML={{ __html: renderMarkdown(cleanBody) }}
-                          />
-                        ) : null}
-                        {((message.delegationProposals && message.delegationProposals.length > 0) || dispatchBlocks.length > 0) && (
-                          <div className="im-message-dispatches">
-                            {(message.delegationProposals?.length ? message.delegationProposals : dispatchBlocks.map((b, idx) => ({
-                              id: `fallback-${idx}`,
-                              targetTemplateId: b.target,
-                              targetRoleName: b.target,
-                              instruction: b.instruction,
-                              reason: b.reason,
-                              status: "pending" as const,
-                              createdAtMs: message.createdAtMs
-                            }))).map((proposal) => {
-                              const targetMember = allMembers.find((m) =>
-                                m.templateId === proposal.targetTemplateId ||
-                                m.memberId === proposal.targetTemplateId ||
-                                m.name.toLowerCase() === (proposal.targetRoleName || proposal.targetTemplateId).toLowerCase() ||
-                                m.templateId.toLowerCase() === proposal.targetTemplateId.toLowerCase()
-                              );
-                              const targetLabel = targetMember ? memberLabel(targetMember) : (proposal.targetRoleName || proposal.targetTemplateId);
-                              const targetColor = targetMember ? roleColor(targetMember.templateId) : roleColor(proposal.targetTemplateId);
-                              const isPending = proposal.status === "pending";
-                              return (
-                                <div key={proposal.id} className="im-dispatch-card" style={{ "--im-role-color": targetColor } as CSSProperties}>
-                                  <div className="im-dispatch-header">
-                                    <span className="im-role-avatar" aria-hidden="true" style={{ "--im-role-color": targetColor } as CSSProperties}>
-                                      {roleInitial(targetLabel)}
-                                    </span>
-                                    <strong>{t("desktop.im.delegationProposal", targetLabel)}</strong>
-                                    <span className={`im-dispatch-status is-${proposal.status.replace("_", "-")}`}>
-                                      {t(`desktop.im.delegationStatus.${proposal.status}`)}
-                                    </span>
-                                    {proposal.reason ? <span className="im-dispatch-reason">{proposal.reason}</span> : null}
-                                  </div>
-                                  <div className="im-dispatch-instruction">
-                                    {proposal.instruction}
-                                  </div>
-                                  <div className="im-dispatch-actions">
-                                    {isPending && room ? (
-                                      <>
-                                        <button
-                                          type="button"
-                                          className="btn small primary"
-                                          onClick={() => void desktopApi().imDispatchProposal({
-                                            projectId: room.project.projectId,
-                                            messageId: message.messageId,
-                                            proposalId: proposal.id
-                                          })}
-                                        >
-                                          <ThemeIcon name="send" size={12} aria-hidden="true" />
-                                          <span>{t("desktop.im.delegationApprove")}</span>
-                                        </button>
-                                        <button
-                                          type="button"
-                                          className="ghost-btn small"
-                                          onClick={() => {
-                                            if (targetMember) {
-                                              setMentionIds((curr) => curr.includes(targetMember.memberId) ? curr : [...curr, targetMember.memberId]);
-                                            }
-                                            setDraft((curr) => {
-                                              const base = curr.trim();
-                                              return base ? `${base}\n${proposal.instruction}` : proposal.instruction;
-                                            });
-                                            textareaRef.current?.focus();
-                                          }}
-                                        >
-                                          <ThemeIcon name="pencil" size={12} aria-hidden="true" />
-                                          <span>{t("desktop.im.delegationEdit")}</span>
-                                        </button>
-                                        <button
-                                          type="button"
-                                          className="ghost-btn small"
-                                          onClick={() => void desktopApi().imDismissProposal({
-                                            projectId: room.project.projectId,
-                                            messageId: message.messageId,
-                                            proposalId: proposal.id
-                                          })}
-                                        >
-                                          <ThemeIcon name="close" size={12} aria-hidden="true" />
-                                          <span>{t("desktop.im.delegationDismiss")}</span>
-                                        </button>
-                                      </>
-                                    ) : (
-                                      <button
-                                        type="button"
-                                        className="ghost-btn small"
-                                        onClick={() => {
-                                          if (targetMember) {
-                                            setMentionIds((curr) => curr.includes(targetMember.memberId) ? curr : [...curr, targetMember.memberId]);
-                                          }
-                                          setDraft((curr) => {
-                                            const base = curr.trim();
-                                            return base ? `${base}\n${proposal.instruction}` : proposal.instruction;
-                                          });
-                                          textareaRef.current?.focus();
-                                        }}
-                                      >
-                                        <ThemeIcon name="pencil" size={12} aria-hidden="true" />
-                                        <span>{t("desktop.im.delegationEdit")}</span>
-                                      </button>
-                                    )}
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                        {filesChanged.length > 0 && (
-                          <div className="im-message-files">
-                            <button
-                              type="button"
-                              className="im-message-files-toggle"
-                              aria-expanded={expandedFiles[message.messageId] !== false}
-                              onClick={() => setExpandedFiles((curr) => ({
-                                ...curr,
-                                [message.messageId]: curr[message.messageId] === false ? true : false
-                              }))}
-                            >
-                              <ThemeIcon
-                                name="chevron-right"
-                                className={expandedFiles[message.messageId] !== false ? "is-expanded" : ""}
-                                size={12}
-                                aria-hidden="true"
-                              />
-                              <ThemeIcon name="file-text" size={13} aria-hidden="true" />
-                              <span>
-                                {filesChanged.length === 1
-                                  ? t("desktop.im.fileModifiedSingle")
-                                  : t("desktop.im.filesModified", filesChanged.length)}
-                              </span>
-                            </button>
-                            {expandedFiles[message.messageId] !== false ? (
-                              <div className="im-message-files-list">
-                                {filesChanged.map((filePath) => {
-                                  const absPath = room?.project.localPath && !filePath.startsWith("/")
-                                    ? `${room.project.localPath.replace(/\/+$/, "")}/${filePath}`
-                                    : filePath;
-                                  const displayPath = room?.project.localPath && filePath.startsWith(room.project.localPath)
-                                    ? filePath.slice(room.project.localPath.length).replace(/^\/+/, "")
-                                    : filePath;
-                                  return (
-                                    <div key={filePath} className="im-message-file-item" title={absPath}>
-                                      <ThemeIcon name="file-text" size={12} aria-hidden="true" />
-                                      <span className="im-message-file-path">{displayPath}</span>
-                                      <div className="im-message-file-actions">
-                                        <button
-                                          type="button"
-                                          className="im-message-file-btn"
-                                          onClick={() => void copyFilePath(absPath)}
-                                          title={copiedFilePath === absPath ? t("desktop.im.copiedPath") : t("desktop.im.copyPath")}
-                                          aria-label={t("desktop.im.copyPath")}
-                                        >
-                                          <ThemeIcon name={copiedFilePath === absPath ? "check" : "copy"} size={11} aria-hidden="true" />
-                                        </button>
-                                        <button
-                                          type="button"
-                                          className="im-message-file-btn"
-                                          disabled={!room?.project.localPath}
-                                          onClick={() => {
-                                            const rootPath = room?.project.localPath;
-                                            if (!rootPath) return;
-                                            void desktopApi().workbenchRevealPath({ rootPath, targetPath: absPath });
-                                          }}
-                                          title={t("desktop.common.revealInFinder")}
-                                          aria-label={t("desktop.common.revealInFinder")}
-                                        >
-                                          <ThemeIcon name="external-link" size={11} aria-hidden="true" />
-                                        </button>
-                                        <button
-                                          type="button"
-                                          className="im-message-file-btn"
-                                          disabled={!room?.project.localPath || isScratchPath(room.project.localPath)}
-                                          onClick={() => {
-                                            const projectPath = room?.project.localPath;
-                                            if (!projectPath || isScratchPath(projectPath)) return;
-                                            window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
-                                            window.dispatchEvent(new CustomEvent("agent-resume:workbench-open-diff", {
-                                              detail: { projectPath, filePath: absPath }
-                                            }));
-                                          }}
-                                          title={t("desktop.im.revealInWorkbench")}
-                                          aria-label={t("desktop.im.revealInWorkbench")}
-                                        >
-                                          <ThemeIcon name="file-diff" size={11} aria-hidden="true" />
-                                        </button>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            ) : null}
-                          </div>
-                        )}
-                        {message.routingTip && (
-                          <div
-                            className={`im-routing-tip${message.routingTimedOut ? " is-timeout" : " is-unmatched"}`}
-                            onClick={() => {
-                              textareaRef.current?.focus();
-                            }}
+                            )}
+                            <strong>
+                              {label}
+                              {owner ? <> {agentTag(owner.agent, owner.model, t)}</> : null}
+                            </strong>
+                          </span>
+                        </header>
+                        <div className="im-pending-job-body">
+                          <span className={`im-job-dot is-${job.status}`} aria-hidden="true" />
+                          <span className="im-pending-job-label">
+                            {job.status === "queued"
+                              ? t("desktop.im.inQueue")
+                              : job.status === "connecting"
+                                ? t("desktop.im.connecting")
+                                : job.status === "awaiting_user"
+                                  ? t("desktop.im.job.awaiting_user")
+                                  : t("desktop.im.typing")}
+                          </span>
+                          <span className="im-jumping-dots" aria-hidden="true">
+                            <span className="im-jumping-dot" />
+                            <span className="im-jumping-dot" />
+                            <span className="im-jumping-dot" />
+                          </span>
+                        </div>
+                        <div className="im-generating-bar">
+                          <button
+                            type="button"
+                            className="btn small ghost-btn im-stop-generating-btn"
+                            onClick={() => void cancelJob(job)}
+                            aria-label={t("desktop.im.stopAnswer")}
+                            title={t("desktop.im.stopAnswer")}
                           >
-                            <ThemeIcon
-                              name={message.routingTimedOut ? "history" : "sparkles"}
-                              size={12}
-                              aria-hidden="true"
-                            />
-                            <span>{t(message.routingTip) || message.routingTip}</span>
-                          </div>
-                        )}
-                        {message.streaming && (
-                          <span className="im-streaming-cursor" aria-hidden="true" />
-                        )}
-                        {(message.kind === "human" || message.kind === "role.say") && (
-                          <div className="im-message-actions">
-                            <button type="button" className="im-message-action" onClick={() => void copyText(message.body)}>
-                              {t("desktop.common.copy")}
-                            </button>
-                            <button type="button" className="im-message-action im-quote-btn" onClick={() => quoteMessage(message)}>
-                              {t("desktop.im.quote")}
-                            </button>
-                            <button
-                              type="button"
-                              className="im-message-action"
-                              disabled={isTranslating}
-                              onClick={() => void translateMessage(message)}
-                            >
-                              {translated
-                                ? t("desktop.im.restore")
-                                : isTranslating
-                                  ? t("desktop.im.actionRunning")
-                                  : t("desktop.im.translate")}
-                            </button>
-                          </div>
-                        )}
+                            <ThemeIcon name="square" size={11} aria-hidden="true" />
+                            <span>{t("desktop.im.stopAnswer")}</span>
+                          </button>
+                        </div>
                       </article>
-                    </Fragment>
-                  );
-                }) : (
-                  <p className="im-empty">{t("desktop.im.emptyRoom")}</p>
-                )}
-                {activePendingJobs.map((job) => {
-                  const owner = allMembers.find((member) => member.memberId === job.memberId)
-                    || allMembers.find((member) => member.templateId === job.memberId);
-                  const roleColorValue = owner ? roleColor(owner.templateId) : roleColor("developer");
-                  const label = owner ? memberLabel(owner) : "Role";
-                  return (
-                    <article
-                      key={`pending-job-${job.jobId}`}
-                      className="im-message is-role-say is-pending-job"
-                      style={roleColorValue ? { "--im-role-color": roleColorValue } as CSSProperties : undefined}
-                    >
-                      <header>
-                        <span className="im-message-author">
-                          {roleColorValue && (
-                            <span className="im-role-avatar" aria-hidden="true" style={{ "--im-role-color": roleColorValue } as CSSProperties}>
-                              {roleInitial(label)}
-                            </span>
-                          )}
-                          <strong>
-                            {label}
-                            {owner ? <> {agentTag(owner.agent, owner.model, t)}</> : null}
-                          </strong>
-                        </span>
-                      </header>
-                      <div className="im-pending-job-body">
-                        <span className={`im-job-dot is-${job.status}`} aria-hidden="true" />
-                        <span className="im-pending-job-label">
-                          {job.status === "queued"
-                            ? t("desktop.im.inQueue")
-                            : job.status === "connecting"
-                              ? t("desktop.im.connecting")
-                              : job.status === "awaiting_user"
-                                ? t("desktop.im.job.awaiting_user")
-                                : t("desktop.im.typing")}
-                        </span>
-                        <span className="im-jumping-dots" aria-hidden="true">
-                          <span className="im-jumping-dot" />
-                          <span className="im-jumping-dot" />
-                          <span className="im-jumping-dot" />
-                        </span>
-                      </div>
-                    </article>
-                  );
-                })}
-                </div>
-                <ImTimeline
-                  nodes={timelineNodes}
-                  activeMessageId={activeTimelineMessageId}
-                  onJump={jumpToMessage}
-                  onJumpTop={scrollToTop}
-                  onJumpBottom={scrollToBottom}
-                  t={t}
+                    );
+                  }}
                 />
                 {hasNewBelow && (
                   <button type="button" className="im-new-below" onClick={scrollToBottom}>
@@ -1789,134 +1546,44 @@ export function ImPanel(): ReactPortal | null {
                   </div>
                 </div>
               )}
-              <div className="im-composer" onDragOver={onDragOver} onDrop={onDrop}>
-                <input
-                  ref={imageInputRef}
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp,image/gif"
-                  multiple
-                  style={{ display: "none" }}
-                  onChange={(e) => {
-                    void stageImageFiles(e.target.files);
-                    e.target.value = "";
-                  }}
-                />
-                {pendingImages.length > 0 && (
-                  <div className="im-pending-images" aria-label="Attached images">
-                    {pendingImages.map((img) => (
-                      <div key={img.id} className="im-pending-image-card">
-                        <img src={img.previewUrl} alt={img.fileName} onClick={() => setPreviewModalUrl(img.previewUrl)} />
-                        <span className="im-pending-image-name" title={img.fileName}>{img.fileName}</span>
-                        <button
-                          type="button"
-                          className="im-pending-image-remove"
-                          onClick={() => setPendingImages((curr) => curr.filter((item) => item.id !== img.id))}
-                          aria-label={t("desktop.common.delete")}
-                        >
-                          <ThemeIcon name="close" size={11} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {quotes.length > 0 && (
-                  <div className="im-quote-chips">
-                    {quotes.map((quote) => (
-                      <button
-                        key={quote.messageId}
-                        type="button"
-                        className="im-quote-chip"
-                        onClick={() => setQuotes((current) => current.filter((item) => item.messageId !== quote.messageId))}
-                        aria-label={t("desktop.im.removeQuote")}
-                      >
-                        {quote.authorLabel}: {quote.body.slice(0, 40)}
-                        <ThemeIcon name="close" size={12} aria-hidden="true" />
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {mentionOpen && mentionOptions.length > 0 && (
-                  <div ref={mentionListRef} className="im-mention-menu" role="listbox" aria-label={t("desktop.im.mention")} aria-activedescendant={mentionOptions[mentionIndex]?.memberId}>
-                    {mentionOptions.map((member, index) => (
-                      <button
-                        key={member.memberId}
-                        id={member.memberId}
-                        type="button"
-                        role="option"
-                        aria-selected={index === mentionIndex}
-                        className={index === mentionIndex ? "active" : undefined}
-                        onMouseEnter={() => setMentionIndex(index)}
-                        onClick={() => pickMention(member)}
-                      >
-                        <span className="im-role-avatar" aria-hidden="true" style={{ "--im-role-color": roleColor(member.templateId) } as CSSProperties}>
-                          {roleInitial(memberLabel(member))}
-                        </span>
-                        @{memberLabel(member)} {agentTag(member.agent, member.model, t)}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {mentioned.length > 0 && (
-                  <div className="im-quote-chips">
-                    {mentioned.map((member) => (
-                      <button
-                        key={member.memberId}
-                        type="button"
-                        className="im-mention-chip"
-                        onClick={() => setMentionIds((current) => current.filter((id) => id !== member.memberId))}
-                        aria-label={t("desktop.im.removeMention")}
-                      >
-                        @{memberLabel(member)}
-                        <ThemeIcon name="close" size={12} />
-                      </button>
-                    ))}
-                  </div>
-                )}
-                <textarea
-                  ref={textareaRef}
-                  value={draft}
-                  onChange={(event) => setDraft(event.target.value)}
-                  onKeyDown={onComposerKey}
-                  onPaste={onComposerPaste}
-                  placeholder={t("desktop.im.placeholder")}
-                  aria-label={t("desktop.im.placeholder")}
-                  rows={3}
-                />
-                <div className="im-composer-actions">
-                  <button
-                    type="button"
-                    className="tool-btn ghost-btn"
-                    onClick={() => imageInputRef.current?.click()}
-                    title={t("desktop.im.addImage")}
-                    aria-label={t("desktop.im.addImage")}
-                  >
-                    <ThemeIcon name="file-image" size={14} aria-hidden="true" />
-                  </button>
-                  <button type="button" className="tool-btn ghost-btn" onClick={() => {
-                    setMentionOpen((open) => !open);
-                    setMentionIndex(0);
-                    textareaRef.current?.focus();
-                  }}>
-                    @
-                  </button>
-                  <button
-                    type="button"
-                    className="tool-btn"
-                    onClick={() => void send()}
-                    disabled={sending || (!draft.trim() && !quotes.length && !pendingImages.length)}
-                  >
-                    {t("desktop.common.send")}
-                  </button>
-                </div>
-              </div>
+              <ImComposer
+                members={members}
+                draft={draft}
+                quotes={quotes}
+                followUpTo={followUpTo}
+                mentionIds={mentionIds}
+                pendingImages={pendingImages}
+                sending={sending}
+                mentionOpen={mentionOpen}
+                toolPrefs={toolPrefs}
+                toolCatalog={toolCatalog}
+                projectPath={projectRoot}
+                onToolPrefsChange={(next) => {
+                  setToolPrefs(next);
+                  if (selectedProjectId) writeImProjectTools(selectedProjectId, next);
+                }}
+                setMentionOpen={setMentionOpen}
+                onDraftChange={setDraft}
+                onQuotesChange={setQuotes}
+                onFollowUpToChange={setFollowUpTo}
+                onMentionIdsChange={setMentionIds}
+                onPendingImagesChange={setPendingImages}
+                onSend={() => void send()}
+                onPreviewImage={setPreviewModalUrl}
+                onError={setError}
+                memberLabel={memberLabel}
+                textareaRef={textareaRef}
+                t={t}
+              />
             </>
           ) : (
             <p className="im-empty">{t("desktop.im.selectChat")}</p>
           )}
         </div>
         {projectTools.pane}
-        {rightSidebarOpen && (
-          <aside className="im-members" aria-label={t("desktop.im.members")}>
+      </div>
+      <Sheet open={membersDrawerOpen} title={t("desktop.im.members")} onClose={() => setMembersDrawerOpen(false)} bodyClassName="im-members-drawer">
+        <div className="im-members" aria-label={t("desktop.im.members")}>
             <div className="im-sidebar-tabs" role="tablist" aria-label={t("desktop.im.members")}>
               <button
                 type="button"
@@ -1978,7 +1645,25 @@ export function ImPanel(): ReactPortal | null {
                 </form>
               </div>
             ) : (
-              templates.length ? templates.map((template) => {
+              <>
+                <div className="im-members-select-all">
+                  <label className="im-members-select-all-label">
+                    <input
+                      type="checkbox"
+                      checked={allMemberChecked}
+                      ref={(el) => {
+                        if (el) el.indeterminate = !allMemberChecked && someMemberChecked;
+                      }}
+                      disabled={!selectedProjectId || !templates.length || isTogglingAll}
+                      onChange={(event) => void toggleAllMembers(event.target.checked)}
+                      aria-label={allMemberChecked ? t("desktop.im.deselectAll") : t("desktop.im.selectAll")}
+                    />
+                    <span>{allMemberChecked ? t("desktop.im.deselectAll") : t("desktop.im.selectAll")}</span>
+                  </label>
+                  <span className="im-members-select-all-count">{members.length}/{templates.length}</span>
+                </div>
+                <div className="im-members-list">
+                  {templates.length ? templates.map((template) => {
                 const enabledMember = members.find((item) => item.templateId === template.templateId);
                 const label = enabledMember
                   ? memberLabel(enabledMember)
@@ -1987,6 +1672,7 @@ export function ImPanel(): ReactPortal | null {
                   ? room?.jobs.find((item) => item.memberId === enabledMember.memberId && isActiveJobStatus(item.status))?.status ?? "idle"
                   : "idle";
                 const rowColor = roleColor(template.templateId);
+                const isProject = template.source === "project" || isProjectRoleTemplateId(template.templateId);
                 const isCustomized = Boolean(
                   enabledMember && (
                     enabledMember.agent !== template.agent ||
@@ -2011,6 +1697,7 @@ export function ImPanel(): ReactPortal | null {
                           {roleInitial(label)}
                         </span>
                         <strong>{label}</strong>
+                        {isProject ? <span className="matrix-badge-repo">Repo</span> : null}
                         {isCustomized ? (
                           <span className="im-member-custom-badge" title={t("desktop.im.customBadge")}>
                             {t("desktop.im.customBadge")}
@@ -2029,8 +1716,13 @@ export function ImPanel(): ReactPortal | null {
                           <button
                             type="button"
                             className={`tool-btn ghost-btn im-member-config-btn${isExpanded ? " active" : ""}`}
-                            onClick={() => {
+                            onClick={(event) => {
                               const next = isExpanded ? null : enabledMember.memberId;
+                              if (next && event.currentTarget instanceof HTMLElement) {
+                                setPopoverAnchorRect(event.currentTarget.getBoundingClientRect());
+                              } else if (!next) {
+                                setPopoverAnchorRect(null);
+                              }
                               setExpandedMemberId(next);
                               if (next) void fetchModelsForAgent(enabledMember.agent);
                             }}
@@ -2046,126 +1738,14 @@ export function ImPanel(): ReactPortal | null {
                     <div className="im-member-tag-line">
                       {agentTag(effectiveAgent, effectiveModel, t)}
                     </div>
-                    {isExpanded && enabledMember ? (
-                      (() => {
-                        const memberModels = agentModelsMap[enabledMember.agent] ?? IM_AGENT_SUGGESTED_MODELS[enabledMember.agent] ?? [];
-                        const isCustomMemberModel = Boolean(enabledMember.model && !memberModels.some((m) => m.id === enabledMember.model));
-                        const isCustomMemberThought = Boolean(enabledMember.thoughtLevel && !isSuggestedThoughtLevel(enabledMember.thoughtLevel));
-                        const memberModelGroups: Record<string, ImAgentModelOption[]> = {};
-                        for (const m of memberModels) {
-                          if (!m.id) continue;
-                          const p = m.provider || "Suggested";
-                          if (!memberModelGroups[p]) memberModelGroups[p] = [];
-                          memberModelGroups[p].push(m);
-                        }
-
-                        return (
-                          <div className="im-member-config">
-                            <label>
-                              <span>{t("desktop.im.roleAgent")}</span>
-                              <select
-                                value={enabledMember.agent}
-                                onChange={(event) => void onMemberAgentChange(enabledMember, event.target.value as ImAgent)}
-                              >
-                                {IM_AGENTS.map((agentKey) => (
-                                  <option key={agentKey} value={agentKey}>
-                                    {t(`desktop.im.agent.${agentKey}`)}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                            <label>
-                              <span>{t("desktop.im.roleModel")}</span>
-                              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                                <select
-                                  value={customMemberModelId === enabledMember.memberId || isCustomMemberModel ? "__custom__" : (enabledMember.model ?? "")}
-                                  onChange={(event) => {
-                                    const val = event.target.value;
-                                    if (val === "__custom__") {
-                                      setCustomMemberModelId(enabledMember.memberId);
-                                    } else {
-                                      setCustomMemberModelId(null);
-                                      void onMemberModelChange(enabledMember, val);
-                                    }
-                                  }}
-                                >
-                                  <option value="">{t("desktop.im.defaultModel")}</option>
-                                  {Object.entries(memberModelGroups).map(([groupName, items]) => (
-                                    <optgroup key={groupName} label={groupName}>
-                                      {items.map((item) => (
-                                        <option key={item.id} value={item.id}>
-                                          {item.label}
-                                        </option>
-                                      ))}
-                                    </optgroup>
-                                  ))}
-                                  <option value="__custom__">{t("desktop.im.customModelOption")}</option>
-                                </select>
-                                {(customMemberModelId === enabledMember.memberId || isCustomMemberModel) && (
-                                  <input
-                                    value={enabledMember.model ?? ""}
-                                    placeholder="Enter model ID…"
-                                    onChange={(event) => void onMemberModelChange(enabledMember, event.target.value)}
-                                    autoFocus
-                                  />
-                                )}
-                              </div>
-                            </label>
-                            <label>
-                              <span>{t("desktop.im.roleThoughtLevel")}</span>
-                              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                                <select
-                                  value={customMemberThoughtId === enabledMember.memberId || isCustomMemberThought ? "__custom__" : (enabledMember.thoughtLevel ?? "")}
-                                  onChange={(event) => {
-                                    const val = event.target.value;
-                                    if (val === "__custom__") {
-                                      setCustomMemberThoughtId(enabledMember.memberId);
-                                    } else {
-                                      setCustomMemberThoughtId(null);
-                                      void onMemberThoughtLevelChange(enabledMember, val);
-                                    }
-                                  }}
-                                >
-                                  <option value="">{t("desktop.im.defaultThoughtLevel")}</option>
-                                  {IM_SUGGESTED_THOUGHT_LEVELS.map((level) => (
-                                    <option key={level} value={level}>
-                                      {t(`desktop.im.thoughtLevel.${level}`)}
-                                    </option>
-                                  ))}
-                                  <option value="__custom__">{t("desktop.im.customThoughtLevelOption")}</option>
-                                </select>
-                                {(customMemberThoughtId === enabledMember.memberId || isCustomMemberThought) && (
-                                  <input
-                                    value={enabledMember.thoughtLevel ?? ""}
-                                    placeholder={t("desktop.settings.imThoughtLevelPlaceholder")}
-                                    onChange={(event) => void onMemberThoughtLevelChange(enabledMember, event.target.value)}
-                                    autoFocus
-                                  />
-                                )}
-                              </div>
-                            </label>
-                            {isCustomized ? (
-                              <div className="im-member-config-footer">
-                                <button
-                                  type="button"
-                                  className="tool-btn ghost-btn"
-                                  onClick={() => void onMemberResetOverrides(enabledMember)}
-                                >
-                                  {t("desktop.im.resetDefault")}
-                                </button>
-                              </div>
-                            ) : null}
-                          </div>
-                        );
-                      })()
-                    ) : null}
                   </div>
                 );
-              }) : <p className="im-empty">{t("desktop.im.noMembers")}</p>
+                  }) : <p className="im-empty">{t("desktop.im.noMembers")}</p>}
+                </div>
+              </>
             )}
-          </aside>
-        )}
-      </div>
+        </div>
+      </Sheet>
       {folderMenu ? createPortal(
         <div
           className="im-folder-menu chat-context-menu"
@@ -2247,6 +1827,19 @@ export function ImPanel(): ReactPortal | null {
               {actionLabel(action)}
             </button>
           ))}
+          {selectionMenu.message.kind === "human" && (
+            <>
+              <hr className="context-menu-separator" />
+              <button
+                type="button"
+                role="menuitem"
+                disabled={sending}
+                onClick={() => void resendUserMessage(selectionMenu.message)}
+              >
+                {t("desktop.common.resend")}
+              </button>
+            </>
+          )}
         </div>,
         document.body
       ) : null}
@@ -2305,6 +1898,114 @@ export function ImPanel(): ReactPortal | null {
         </div>,
         document.body
       ) : null}
+      <CitationSheet
+        open={citationDrawerState.open}
+        citations={citationDrawerState.citations}
+        initialMarker={citationDrawerState.initialMarker}
+        onClose={() => setCitationDrawerState({ open: false, citations: [] })}
+        onOpenCitation={handleOpenCitation}
+        onResumeSession={handleResumeCitationSession}
+        t={t}
+      />
+      {expandedMemberId && popoverAnchorRect && (() => {
+        const member = allMembers.find((m) => m.memberId === expandedMemberId);
+        if (!member) return null;
+        const template = templates.find((t) => t.templateId === member.templateId);
+        const memberModels = agentModelsMap[member.agent] ?? IM_AGENT_SUGGESTED_MODELS[member.agent] ?? [];
+        const isCustomMemberModel = Boolean(member.model && !memberModels.some((m) => m.id === member.model));
+        const isCustomMemberThought = Boolean(member.thoughtLevel && !isSuggestedThoughtLevel(member.thoughtLevel));
+        const memberModelGroups: Record<string, ImAgentModelOption[]> = {};
+        for (const m of memberModels) {
+          if (!m.id) continue;
+          const p = m.provider || "Suggested";
+          if (!memberModelGroups[p]) memberModelGroups[p] = [];
+          memberModelGroups[p].push(m);
+        }
+        const isCustomized = Boolean(
+          template && (
+            member.agent !== template.agent ||
+            (member.model || "") !== (template.model || "") ||
+            (member.thoughtLevel || "") !== (template.thoughtLevel || "")
+          )
+        );
+        const popoverStyle: CSSProperties = {
+          position: "fixed",
+          left: Math.min(popoverAnchorRect.right + 8, window.innerWidth - 344),
+          top: Math.max(8, Math.min(popoverAnchorRect.top, window.innerHeight - 360)),
+          width: 320,
+          zIndex: 70,
+        };
+        // Keep popover inside viewport horizontally
+        if (popoverStyle.left !== undefined && typeof popoverStyle.left === "number" && popoverStyle.left < 8) popoverStyle.left = 8;
+        return createPortal(
+          <div className="im-member-config-popover" role="dialog" aria-label={t("desktop.im.configRole")} style={popoverStyle}>
+            <div className="im-member-config-popover-head">
+              <strong>{memberLabel(member)}</strong>
+              <button type="button" className="icon-btn" aria-label={t("desktop.common.close")} onClick={() => { setExpandedMemberId(null); setPopoverAnchorRect(null); }}>
+                <ThemeIcon name="close" size={12} aria-hidden="true" />
+              </button>
+            </div>
+            <div className="im-member-config">
+              <label>
+                <span>{t("desktop.im.roleAgent")}</span>
+                <select value={member.agent} onChange={(event) => void onMemberAgentChange(member, event.target.value as ImAgent)}>
+                  {IM_AGENTS.map((agentKey) => (
+                    <option key={agentKey} value={agentKey}>
+                      {t(`desktop.im.agent.${agentKey}`)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>{t("desktop.im.roleModel")}</span>
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                  <select value={customMemberModelId === member.memberId || isCustomMemberModel ? "__custom__" : (member.model ?? "")} onChange={(event) => { const val = event.target.value; if (val === "__custom__") { setCustomMemberModelId(member.memberId); } else { setCustomMemberModelId(null); void onMemberModelChange(member, val); } }}>
+                    <option value="">{t("desktop.im.defaultModel")}</option>
+                    {Object.entries(memberModelGroups).map(([groupName, items]) => (
+                      <optgroup key={groupName} label={groupName}>
+                        {items.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.label}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                    <option value="__custom__">{t("desktop.im.customModelOption")}</option>
+                  </select>
+                  {(customMemberModelId === member.memberId || isCustomMemberModel) && (
+                    <input value={member.model ?? ""} placeholder="Enter model ID…" onChange={(event) => void onMemberModelChange(member, event.target.value)} autoFocus />
+                  )}
+                </div>
+              </label>
+              <label>
+                <span>{t("desktop.im.roleThoughtLevel")}</span>
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                  <select value={customMemberThoughtId === member.memberId || isCustomMemberThought ? "__custom__" : (member.thoughtLevel ?? "")} onChange={(event) => { const val = event.target.value; if (val === "__custom__") { setCustomMemberThoughtId(member.memberId); } else { setCustomMemberThoughtId(null); void onMemberThoughtLevelChange(member, val); } }}>
+                    <option value="">{t("desktop.im.defaultThoughtLevel")}</option>
+                    {IM_SUGGESTED_THOUGHT_LEVELS.map((level) => (
+                      <option key={level} value={level}>
+                        {t(`desktop.im.thoughtLevel.${level}`)}
+                      </option>
+                    ))}
+                    <option value="__custom__">{t("desktop.im.customThoughtLevelOption")}</option>
+                  </select>
+                  {(customMemberThoughtId === member.memberId || isCustomMemberThought) && (
+                    <input value={member.thoughtLevel ?? ""} placeholder={t("desktop.settings.imThoughtLevelPlaceholder")} onChange={(event) => void onMemberThoughtLevelChange(member, event.target.value)} autoFocus />
+                  )}
+                </div>
+              </label>
+              {isCustomized ? (
+                <div className="im-member-config-footer">
+                  <button type="button" className="tool-btn ghost-btn" onClick={() => void onMemberResetOverrides(member)}>
+                    {t("desktop.im.resetDefault")}
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </div>,
+          document.body
+        );
+      })()}
     </section>,
     host
   );

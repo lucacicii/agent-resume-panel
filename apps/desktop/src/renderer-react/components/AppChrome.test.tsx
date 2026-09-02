@@ -15,7 +15,6 @@ function renderChrome(options?: {
       locale: "en",
       messages: {
         "desktop.tabs.report": "Report",
-        "desktop.tabs.agent": "Agent",
         "desktop.tabs.workbench": "Workbench",
         "desktop.tabs.notes": "Notes",
         "desktop.tabs.kanban": "Kanban",
@@ -64,10 +63,10 @@ describe("AppChrome", () => {
     expect(report.classList.contains("active")).toBe(true);
 
     await act(async () => {
-      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "agent" }));
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
     });
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Agent" }).classList.contains("active")).toBe(true)
+      expect(screen.getByRole("button", { name: "IM" }).classList.contains("active")).toBe(true)
     );
   });
 
@@ -77,11 +76,11 @@ describe("AppChrome", () => {
     const labels = [...document.querySelectorAll(".app-nav-rail .rail-btn")].map((item) =>
       item.getAttribute("aria-label")
     );
-    expect(labels).toEqual(["Report", "Agent", "Workbench", "Notes", "Kanban", "IM"]);
+    expect(labels).toEqual(["Report", "Workbench", "Notes", "Kanban", "IM"]);
     const icons = [...document.querySelectorAll(".app-nav-rail .rail-btn [data-theme-icon]")].map((item) =>
       item.getAttribute("data-theme-icon")
     );
-    expect(icons).toEqual(["activity", "bot", "terminal", "file-text", "square-kanban", "message-square"]);
+    expect(icons).toEqual(["activity", "terminal", "file-text", "square-kanban", "message-square"]);
   });
 
   it("requests the primary tab when a rail button is clicked", async () => {

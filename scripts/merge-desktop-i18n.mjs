@@ -18,6 +18,7 @@ const obsoleteDesktopKeys = new Set([
   "desktop.workbench.generatingTitle",
   "desktop.workbench.titleSuggested",
   "desktop.workbench.titleEmpty",
+  "desktop.im.emptyRoomNoFolder",
   // Link Graph: removed dig/continue/branches UI (core agent only)
   "desktop.workbench.linkGraphIncomplete",
   "desktop.workbench.linkGraphMeta",

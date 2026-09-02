@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
+  discoverProjectRoles,
   ensureDesktopDbSchema,
   escapeSqlLiteral,
   expandHome,
@@ -14,6 +15,7 @@ import {
   DEFAULT_BUILTIN_CALLABLE_TEMPLATE_IDS,
   IM_BUILTIN_TEMPLATE_IDS,
   isBuiltinTemplateId,
+  isProjectRoleTemplateId,
   isImAgent,
   isImPermission,
   parseImRoleTools,
@@ -33,6 +35,7 @@ import {
   type ImPermission,
   type ImPermissionRequest,
   type ImProject,
+  type ImProjectRoleSummary,
   type ImQuotedMessage,
   type ImRoleTemplate,
   type ImRoleTools,
@@ -100,8 +103,29 @@ const BUILTIN_ROLES: readonly BuiltinRoleSpec[] = [
       "You are Tester for this project. Reproduce issues, write test cases, and report defects. You may list and read the entire project tree. Do not change product code; test files are allowed when asked.",
     permissions: "read",
     tools: { fsRead: true, fsWrite: false, execute: true }
+  },
+  {
+    templateId: "role_memory",
+    name: "Memory Specialist",
+    persona:
+      "You are Memory & Knowledge Specialist for this project and across the workspace. You own the project's historical context: project notes, past work digests (daily/weekly/monthly reports), and previous coding sessions.\n\nBUILT-IN TOOLS (use them for ALL memory work):\nThis session has the built-in `agent-resume` MCP server. Always work through its tools instead of listing/reading files yourself; the file system is only a fallback for content the tools cannot reach.\n- Retrieve first: memory_retrieve, note_search, note_list, note_read, note_tree_read, report_search, report_read, report_list, session_search, session_list, session_read, session_read_transcript.\n- Create and maintain: note_create, note_write, note_append, note_set_gtd, note_set_parent, note_move, note_rename, tag_list, tag_search, entity_tags_get, entity_tag_add, entity_tag_remove.\n- Never guess noteId/sessionId/reportId; find the real ID with a search tool first. Never overwrite or delete an existing note unless the user explicitly asks.\n- If the `agent-resume-browser` MCP is available in this session, you may use it to open web links cited in notes.\n\nCRITICAL CITATION & NAVIGATION RULES:\n1. Whenever you reference, search, create, update, or delete notes, always include citation marker [N1], [N2]... and note title/ID in your reply.\n2. When citing digests, use [D1], [D2]...; when citing sessions, use [S1], [S2]...\n3. When you create or update a note (via note_create/note_write/note_append), ALWAYS output citation tag [N1] right next to the note title and noteId (for example: `[N1] 📝 标题：[Note Title](noteId) · noteId: <uuid>`), so the user can directly click the citation badge or note link in the chat to immediately open and view the note in the Notes panel.\n4. Always make note IDs, session IDs, and report IDs explicit and traceable.",
+    permissions: "read",
+    tools: { fsRead: true, fsWrite: false, execute: false }
   }
 ];
+
+/**
+ * Builtin role personas shipped by earlier releases. On initialize, a stored
+ * builtin template persona that still equals one of these (i.e. the user never
+ * edited it in the role editor) is refreshed to the current BUILTIN_ROLES
+ * persona, and member rows are synced. Personas that match neither the current
+ * spec nor a shipped default are user-customized and left untouched.
+ */
+export const SHIPPED_BUILTIN_PERSONAS: Partial<Record<ImBuiltinTemplateId, readonly string[]>> = {
+  role_memory: [
+    "You are Memory & Knowledge Specialist for this project and across the workspace. Retrieve, summarize, create, and maintain historical context, past work digests (daily/weekly/monthly reports), project notes, and previous coding sessions.\n\nCRITICAL CITATION & NAVIGATION RULES:\n1. Whenever you reference, search, create, update, or delete notes, always include citation marker [N1], [N2]... and note title/ID in your reply.\n2. When citing digests, use [D1], [D2]...; when citing sessions, use [S1], [S2]...\n3. When you create or update a note (using note_create/note_write/note_append), ALWAYS output citation tag [N1] right next to the note title and noteId (for example: `[N1] 📝 标题：[Note Title](noteId) · noteId: <uuid>`), so the user can directly click the citation badge or note link in the chat to immediately open and view the note in the Notes panel.\n4. Always make note IDs, session IDs, and report IDs explicit and traceable."
+  ]
+};
 
 const QUOTE_BODY_MAX = 4000;
 const INSTRUCTION_MAX = 16_000;
@@ -198,6 +222,7 @@ interface MessageRow {
   quote_ids_json: string;
   mention_role_ids_json: string;
   job_id: string | null;
+  thread_id: string | null;
   created_at_ms: number;
 }
 
@@ -239,6 +264,7 @@ interface JobRow {
   error: string | null;
   files_json: string;
   permission_json: string | null;
+  thread_id: string | null;
   created_at_ms: number;
   updated_at_ms: number;
   finished_at_ms: number | null;
@@ -385,13 +411,14 @@ export function extractFirstQuestionTitle(text: string): string {
   return `${firstLine.slice(0, 47)}…`;
 }
 
-function mapProject(row: ProjectRow): ImProject {
+function mapProject(row: ProjectRow, roles?: ImProjectRoleSummary[]): ImProject {
   return {
     projectId: row.project_id,
     name: row.name,
     localPath: row.local_path,
     createdAtMs: row.created_at_ms,
-    updatedAtMs: row.updated_at_ms
+    updatedAtMs: row.updated_at_ms,
+    roles: roles ?? []
   };
 }
 
@@ -437,6 +464,11 @@ function mapTemplate(row: TemplateRow): ImRoleTemplate {
   const defaultCallable = isBuiltinTemplateId(row.template_id)
     ? DEFAULT_BUILTIN_CALLABLE_TEMPLATE_IDS[row.template_id]
     : [];
+  const source = isBuiltinTemplateId(row.template_id)
+    ? "builtin"
+    : isProjectRoleTemplateId(row.template_id)
+      ? "project"
+      : "custom";
   return {
     templateId: row.template_id,
     name: row.name,
@@ -450,6 +482,7 @@ function mapTemplate(row: TemplateRow): ImRoleTemplate {
       ? callable
       : [...defaultCallable],
     autoDispatch: row.auto_dispatch === 1,
+    source,
     createdAtMs: row.created_at_ms,
     updatedAtMs: row.updated_at_ms
   };
@@ -463,6 +496,11 @@ function mapMember(row: MemberRow, template?: ImRoleTemplate): ImMember {
   const memberCallable = row.callable_template_ids_json !== null
     ? parseJsonArray(row.callable_template_ids_json)
     : undefined;
+  const source = isBuiltinTemplateId(row.template_id)
+    ? "builtin"
+    : isProjectRoleTemplateId(row.template_id)
+      ? "project"
+      : "custom";
   return {
     memberId: row.member_id,
     projectId: row.project_id,
@@ -478,6 +516,7 @@ function mapMember(row: MemberRow, template?: ImRoleTemplate): ImMember {
       isBuiltinTemplateId(row.template_id) ? [...DEFAULT_BUILTIN_CALLABLE_TEMPLATE_IDS[row.template_id]] : []
     ),
     autoDispatch: row.auto_dispatch !== null ? row.auto_dispatch === 1 : Boolean(template?.autoDispatch),
+    source,
     enabled: row.enabled === 1,
     acpChatId: row.acp_chat_id,
     createdAtMs: row.created_at_ms,
@@ -520,6 +559,7 @@ function mapJob(row: JobRow): ImJob {
     error: row.error,
     filesChanged: parseJsonArray(row.files_json),
     permission,
+    threadId: row.thread_id || undefined,
     createdAtMs: row.created_at_ms,
     updatedAtMs: row.updated_at_ms,
     finishedAtMs: row.finished_at_ms
@@ -557,16 +597,10 @@ export async function ensureArpDir(localPath: string): Promise<string> {
 
 export function buildDispatchPrompt(
   brief: ImJobBrief,
-  callableMembers: Array<{ templateId: string; name: string; persona: string }> = []
+  callableMembers: Array<{ templateId: string; name: string; persona: string }> = [],
+  skillsPrompt = ""
 ): string {
-  const quoteBlock = brief.quotes.length
-    ? brief.quotes
-        .map((quote, index) => {
-          const truncated = quote.truncated ? " [truncated]" : "";
-          return `${index + 1}. ${quote.authorLabel}${truncated}:\n${quote.body}`;
-        })
-        .join("\n\n")
-    : "(none)";
+  const quoteBlock = brief.quotes.length ? formatQuoteBlock(brief.quotes) : "(none)";
 
   const downstreamBlock = callableMembers.length > 0
     ? [
@@ -581,6 +615,14 @@ export function buildDispatchPrompt(
       ].join("\n")
     : "";
 
+  const skillsBlock = skillsPrompt.trim()
+    ? [
+        "[Available Skills]",
+        "You have access to the following skills and specialized instructions:",
+        skillsPrompt.trim()
+      ].join("\n")
+    : "";
+
   return [
     "[Role persona]",
     brief.persona.trim() || BUILTIN_ROLES.find((role) => role.templateId === "role_developer")?.persona || "",
@@ -591,6 +633,7 @@ export function buildDispatchPrompt(
     "[Quoted messages]",
     quoteBlock,
     ...(downstreamBlock ? ["", downstreamBlock] : []),
+    ...(skillsBlock ? ["", skillsBlock] : []),
     "",
     "[User instruction]",
     brief.instruction.trim(),
@@ -602,29 +645,66 @@ export function buildDispatchPrompt(
   ].join("\n");
 }
 
+function formatQuoteBlock(quotes: ImQuotedMessage[]): string {
+  return quotes
+    .map((quote, index) => {
+      const truncated = quote.truncated ? " [truncated]" : "";
+      return `${index + 1}. ${quote.authorLabel}${truncated}:\n${quote.body}`;
+    })
+    .join("\n\n");
+}
+
+/** Incremental user turn for an already-bootstrapped ACP session. Never repeats persona/knowledge/cwd. */
+export function buildIncrementalPrompt(brief: ImJobBrief): string {
+  const instruction = brief.instruction.trim();
+  if (!brief.quotes.length) return instruction;
+  return [
+    "[Quoted messages]",
+    formatQuoteBlock(brief.quotes),
+    "",
+    "[User instruction]",
+    instruction
+  ].join("\n");
+}
+
 export class ImStore {
   constructor(private readonly dbPath: string) {}
 
-  async initialize(): Promise<void> {
+  async initialize(options?: { liveAcpChatIds?: Iterable<string> }): Promise<ImJob[]> {
     await ensureDesktopDbSchema(this.dbPath);
     await this.ensureBuiltinTemplates();
     await this.ensureBuiltinSelectionActions();
     await this.backfillBuiltinMembersOnce();
-    await this.reconcileStaleJobs();
+    return this.reconcileStaleJobs(options?.liveAcpChatIds);
   }
 
-  private async reconcileStaleJobs(): Promise<void> {
-    const now = nowMs();
-    await runSqlite(
+  async reconcileStaleJobs(liveAcpChatIds?: Iterable<string>): Promise<ImJob[]> {
+    const live = new Set([...liveAcpChatIds ?? []].filter((id) => id.trim()));
+    const rows = await runSqliteJson<JobRow>(
       this.dbPath,
-      `UPDATE im_jobs
-       SET status = 'cancelled',
-           error = coalesce(error, 'App restarted while job was running'),
-           permission_json = NULL,
-           updated_at_ms = ${now},
-           finished_at_ms = ${now}
-       WHERE status IN ('queued', 'connecting', 'running', 'awaiting_user');`
+      `SELECT * FROM im_jobs WHERE status IN ('queued','connecting','running','awaiting_user');`
     );
+    const kept: ImJob[] = [];
+    const now = nowMs();
+    for (const row of rows) {
+      const job = mapJob(row);
+      const keepLive = Boolean(job.acpChatId && live.has(job.acpChatId) && job.status !== "queued");
+      if (keepLive) {
+        kept.push(job);
+        continue;
+      }
+      await runSqlite(
+        this.dbPath,
+        `UPDATE im_jobs
+         SET status = 'cancelled',
+             error = coalesce(error, 'App restarted while job was running'),
+             permission_json = NULL,
+             updated_at_ms = ${now},
+             finished_at_ms = ${now}
+         WHERE job_id = ${sqlString(job.jobId)};`
+      );
+    }
+    return kept;
   }
 
   private async ensureBuiltinSelectionActions(): Promise<void> {
@@ -795,6 +875,33 @@ export class ImStore {
         );`
       );
     }
+    await this.refreshBuiltinPersonas(existing, now);
+  }
+
+  /**
+   * Builtin roles are product-managed: refresh stored personas that still match
+   * a previously shipped default so prompt updates reach existing databases,
+   * while user-customized personas stay untouched. Member rows copy the
+   * template persona for dispatch and intent-routing prompts, so sync them too.
+   */
+  private async refreshBuiltinPersonas(templates: ImRoleTemplate[], now: number): Promise<void> {
+    const byTemplateId = new Map(templates.map((template) => [template.templateId, template]));
+    for (const role of BUILTIN_ROLES) {
+      const template = byTemplateId.get(role.templateId);
+      if (!template || template.persona === role.persona) continue;
+      const shipped = SHIPPED_BUILTIN_PERSONAS[role.templateId] ?? [];
+      if (!shipped.includes(template.persona)) continue;
+      await runSqlite(
+        this.dbPath,
+        `UPDATE im_role_templates SET persona = ${sqlString(role.persona)}, updated_at_ms = ${now}
+         WHERE template_id = ${sqlString(role.templateId)};`
+      );
+      await runSqlite(
+        this.dbPath,
+        `UPDATE im_members SET persona = ${sqlString(role.persona)}, updated_at_ms = ${now}
+         WHERE template_id = ${sqlString(role.templateId)};`
+      );
+    }
   }
 
   private async backfillBuiltinMembersOnce(): Promise<void> {
@@ -821,7 +928,17 @@ export class ImStore {
       this.dbPath,
       "SELECT * FROM im_projects ORDER BY updated_at_ms DESC;"
     );
-    return rows.map(mapProject);
+    const memberRows = await runSqliteJson<{ project_id: string; template_id: string; name: string }>(
+      this.dbPath,
+      "SELECT project_id, template_id, name FROM im_members ORDER BY created_at_ms ASC;"
+    );
+    const membersByProject = new Map<string, ImProjectRoleSummary[]>();
+    for (const m of memberRows) {
+      const list = membersByProject.get(m.project_id) ?? [];
+      list.push({ templateId: m.template_id, name: m.name });
+      membersByProject.set(m.project_id, list);
+    }
+    return rows.map((r) => mapProject(r, membersByProject.get(r.project_id)));
   }
 
   async getProject(projectId: string): Promise<ImProject | undefined> {
@@ -829,7 +946,13 @@ export class ImStore {
       this.dbPath,
       `SELECT * FROM im_projects WHERE project_id = ${sqlString(projectId)} LIMIT 1;`
     );
-    return rows[0] ? mapProject(rows[0]) : undefined;
+    if (!rows[0]) return undefined;
+    const memberRows = await runSqliteJson<{ template_id: string; name: string }>(
+      this.dbPath,
+      `SELECT template_id, name FROM im_members WHERE project_id = ${sqlString(projectId)} ORDER BY created_at_ms ASC;`
+    );
+    const roles: ImProjectRoleSummary[] = memberRows.map((m) => ({ templateId: m.template_id, name: m.name }));
+    return mapProject(rows[0], roles);
   }
 
   async createProject(name?: string, panelHome?: string, localPath?: string | null): Promise<ImProject> {
@@ -844,19 +967,14 @@ export class ImStore {
     if (initialPath) {
       await ensureArpDir(initialPath);
     }
-    const project: ImProject = {
-      projectId,
-      name: trimmed,
-      localPath: initialPath,
-      createdAtMs: now,
-      updatedAtMs: now
-    };
     await runSqlite(
       this.dbPath,
       `INSERT INTO im_projects (project_id, name, local_path, created_at_ms, updated_at_ms)
-       VALUES (${sqlString(project.projectId)}, ${sqlString(project.name)}, ${sqlNullOrString(project.localPath)}, ${now}, ${now});`
+       VALUES (${sqlString(projectId)}, ${sqlString(trimmed)}, ${sqlNullOrString(initialPath)}, ${now}, ${now});`
     );
-    await this.seedBuiltinMembers(project.projectId);
+    await this.seedBuiltinMembers(projectId);
+    const project = await this.getProject(projectId);
+    if (!project) throw new Error("Failed to load newly created project.");
     return project;
   }
 
@@ -865,13 +983,156 @@ export class ImStore {
     if (project.localPath) {
       await fs.mkdir(project.localPath, { recursive: true }).catch(() => undefined);
       await ensureArpDir(project.localPath);
+      await this.syncProjectFileRoles(projectId, project.localPath);
       return project.localPath;
     }
     const scratchPath = path.join(path.resolve(expandHome(panelHome)), ".desktop", "scratch", "im", projectId);
     await fs.mkdir(scratchPath, { recursive: true }).catch(() => undefined);
     await ensureArpDir(scratchPath);
     await this.setLocalPath(projectId, scratchPath);
+    await this.syncProjectFileRoles(projectId, scratchPath);
     return scratchPath;
+  }
+
+  async syncProjectFileRoles(projectId: string, localPath?: string | null): Promise<ImMember[]> {
+    let resolvedPath = localPath?.trim() || null;
+    if (!resolvedPath) {
+      const project = await this.getProject(projectId);
+      resolvedPath = project?.localPath || null;
+    }
+    if (!resolvedPath) return this.listMembers(projectId);
+
+    const discovered = await discoverProjectRoles({ projectPath: resolvedPath });
+    const allTemplates = await this.listTemplates();
+    const existingMembers = await this.listMembers(projectId);
+    const existingMemberByTplId = new Map(existingMembers.map((m) => [m.templateId, m]));
+    const discoveredTplIds = new Set(discovered.map((d) => d.id));
+    const now = nowMs();
+
+    const resolveRef = (ref: string): string => {
+      const trimmed = ref.trim();
+      const lower = trimmed.toLowerCase();
+      if (allTemplates.some((t) => t.templateId === trimmed) || discovered.some((d) => d.id === trimmed)) {
+        return trimmed;
+      }
+      const matchTpl = allTemplates.find((t) => t.name.toLowerCase() === lower);
+      if (matchTpl) return matchTpl.templateId;
+      const matchDisc = discovered.find((d) => d.name.toLowerCase() === lower || d.slug === lower);
+      if (matchDisc) return matchDisc.id;
+      if (lower === "developer" || lower === "dev") return "role_developer";
+      if (lower === "architect" || lower === "arch") return "role_architect";
+      if (lower === "pm" || lower === "product manager") return "role_product_manager";
+      if (lower === "project manager" || lower === "pmg") return "role_project_manager";
+      if (lower === "ui" || lower === "ui designer") return "role_ui_designer";
+      if (lower === "tester" || lower === "qa") return "role_tester";
+      if (lower === "memory" || lower === "memory specialist") return "role_memory";
+      return trimmed;
+    };
+
+    for (const d of discovered) {
+      const callableIds = d.callable.map(resolveRef);
+      const callableJson = JSON.stringify(callableIds);
+      const toolsJson = JSON.stringify(d.tools);
+      const autoDispatchInt = d.autoDispatch ? 1 : 0;
+      const enabledInt = d.enabled ? 1 : 0;
+
+      // 1. Upsert template in im_role_templates
+      const existingTpl = allTemplates.find((t) => t.templateId === d.id);
+      if (!existingTpl) {
+        await runSqlite(
+          this.dbPath,
+          `INSERT INTO im_role_templates (
+            template_id, name, persona, agent, model, thought_level, permissions, tools_json, callable_template_ids_json, auto_dispatch, created_at_ms, updated_at_ms
+          ) VALUES (
+            ${sqlString(d.id)},
+            ${sqlString(d.name)},
+            ${sqlString(d.persona)},
+            ${sqlString(d.agent)},
+            ${sqlNullOrString(d.model ?? null)},
+            ${sqlNullOrString(d.thoughtLevel ?? null)},
+            ${sqlString(d.permissions)},
+            ${sqlString(toolsJson)},
+            ${sqlString(callableJson)},
+            ${autoDispatchInt},
+            ${now},
+            ${now}
+          );`
+        );
+      } else {
+        await runSqlite(
+          this.dbPath,
+          `UPDATE im_role_templates SET
+            name = ${sqlString(d.name)},
+            persona = ${sqlString(d.persona)},
+            agent = ${sqlString(d.agent)},
+            model = ${sqlNullOrString(d.model ?? null)},
+            thought_level = ${sqlNullOrString(d.thoughtLevel ?? null)},
+            permissions = ${sqlString(d.permissions)},
+            tools_json = ${sqlString(toolsJson)},
+            callable_template_ids_json = ${sqlString(callableJson)},
+            auto_dispatch = ${autoDispatchInt},
+            updated_at_ms = ${now}
+           WHERE template_id = ${sqlString(d.id)};`
+        );
+      }
+
+      // 2. Upsert member in im_members
+      const existingMember = existingMemberByTplId.get(d.id);
+      if (!existingMember) {
+        const memberId = randomUUID();
+        await runSqlite(
+          this.dbPath,
+          `INSERT INTO im_members (
+            member_id, project_id, template_id, name, persona, agent, model, thought_level, permissions, tools_json, callable_template_ids_json, auto_dispatch, enabled, acp_chat_id, created_at_ms, updated_at_ms
+          ) VALUES (
+            ${sqlString(memberId)},
+            ${sqlString(projectId)},
+            ${sqlString(d.id)},
+            ${sqlString(d.name)},
+            ${sqlString(d.persona)},
+            ${sqlString(d.agent)},
+            ${sqlNullOrString(d.model ?? null)},
+            ${sqlNullOrString(d.thoughtLevel ?? null)},
+            ${sqlString(d.permissions)},
+            ${sqlString(toolsJson)},
+            ${sqlString(callableJson)},
+            ${autoDispatchInt},
+            ${enabledInt},
+            NULL,
+            ${now},
+            ${now}
+          );`
+        );
+      } else {
+        await runSqlite(
+          this.dbPath,
+          `UPDATE im_members SET
+            name = ${sqlString(d.name)},
+            persona = ${sqlString(d.persona)},
+            agent = ${sqlString(d.agent)},
+            model = ${sqlNullOrString(d.model ?? null)},
+            thought_level = ${sqlNullOrString(d.thoughtLevel ?? null)},
+            permissions = ${sqlString(d.permissions)},
+            tools_json = ${sqlString(toolsJson)},
+            callable_template_ids_json = ${sqlString(callableJson)},
+            auto_dispatch = ${autoDispatchInt},
+            updated_at_ms = ${now}
+           WHERE member_id = ${sqlString(existingMember.memberId)};`
+        );
+      }
+    }
+
+    // 3. Remove deleted file roles for this project
+    for (const m of existingMembers) {
+      if (m.templateId.startsWith("project_role_") && !discoveredTplIds.has(m.templateId)) {
+        await runSqlite(
+          this.dbPath,
+          `DELETE FROM im_members WHERE member_id = ${sqlString(m.memberId)};`
+        );
+      }
+    }
+
+    return this.listMembers(projectId);
   }
 
   private async seedBuiltinMembers(projectId: string): Promise<void> {
@@ -950,6 +1211,9 @@ export class ImStore {
       `UPDATE im_projects SET local_path = ${sqlNullOrString(nextPath)}, updated_at_ms = ${now}
        WHERE project_id = ${sqlString(projectId)};`
     );
+    if (nextPath) {
+      await this.syncProjectFileRoles(projectId, nextPath);
+    }
     return { ...project, localPath: nextPath, updatedAtMs: now };
   }
 
@@ -1406,6 +1670,20 @@ export class ImStore {
     return this.mapMessage(row, new Map(siblings.map((item) => [item.message_id, item])));
   }
 
+  async findMessageByJobId(jobId: string, kind: ImMessageKind = "role.say"): Promise<ImMessage | undefined> {
+    const rows = await runSqliteJson<MessageRow>(
+      this.dbPath,
+      `SELECT * FROM im_messages WHERE job_id = ${sqlString(jobId)} AND kind = ${sqlString(kind)} ORDER BY created_at_ms DESC LIMIT 1;`
+    );
+    const row = rows[0];
+    if (!row) return undefined;
+    const siblings = await runSqliteJson<MessageRow>(
+      this.dbPath,
+      `SELECT * FROM im_messages WHERE project_id = ${sqlString(row.project_id)};`
+    );
+    return this.mapMessage(row, new Map(siblings.map((item) => [item.message_id, item])));
+  }
+
   async insertMessage(input: {
     messageId?: string;
     projectId: string;
@@ -1423,11 +1701,13 @@ export class ImStore {
     quoteIds?: string[];
     mentionRoleIds?: string[];
     jobId?: string | null;
+    threadId?: string | null;
   }): Promise<ImMessage> {
     const now = nowMs();
     const messageId = input.messageId || randomUUID();
     const quoteIds = input.quoteIds ?? [];
     const mentionRoleIds = input.mentionRoleIds ?? [];
+    const threadId = input.threadId?.trim() || null;
     const thinking = input.thinking?.trim() || null;
     const imagesJson = input.images?.length ? JSON.stringify(input.images) : null;
     const proposalsJson = input.delegationProposals?.length ? JSON.stringify(input.delegationProposals) : null;
@@ -1436,7 +1716,7 @@ export class ImStore {
     await runSqlite(
       this.dbPath,
       `INSERT INTO im_messages (
-        message_id, project_id, kind, author_member_id, author_label, body, thinking, images_json, delegation_proposals_json, auto_routed, routed_role_name, routing_tip, routing_timed_out, quote_ids_json, mention_role_ids_json, job_id, created_at_ms
+        message_id, project_id, kind, author_member_id, author_label, body, thinking, images_json, delegation_proposals_json, auto_routed, routed_role_name, routing_tip, routing_timed_out, quote_ids_json, mention_role_ids_json, job_id, thread_id, created_at_ms
       ) VALUES (
         ${sqlString(messageId)},
         ${sqlString(input.projectId)},
@@ -1454,6 +1734,7 @@ export class ImStore {
         ${sqlString(JSON.stringify(quoteIds))},
         ${sqlString(JSON.stringify(mentionRoleIds))},
         ${sqlNullOrString(input.jobId ?? null)},
+        ${sqlNullOrString(threadId)},
         ${now}
       );`
     );
@@ -1535,6 +1816,7 @@ export class ImStore {
     patch: {
       body?: string;
       thinking?: string | null;
+      delegationProposals?: ImDelegationProposal[];
     }
   ): Promise<ImMessage> {
     const current = await this.getMessage(messageId);
@@ -1542,11 +1824,16 @@ export class ImStore {
     const now = nowMs();
     const body = patch.body !== undefined ? patch.body : current.body;
     const thinking = patch.thinking !== undefined ? (patch.thinking?.trim() || null) : (current.thinking ?? null);
+    const proposals = patch.delegationProposals !== undefined
+      ? patch.delegationProposals
+      : current.delegationProposals;
+    const proposalsJson = proposals?.length ? JSON.stringify(proposals) : null;
     await runSqlite(
       this.dbPath,
       `UPDATE im_messages SET
         body = ${sqlString(body)},
-        thinking = ${sqlNullOrString(thinking)}
+        thinking = ${sqlNullOrString(thinking)},
+        delegation_proposals_json = ${sqlNullOrString(proposalsJson)}
        WHERE message_id = ${sqlString(messageId)};`
     );
     await runSqlite(
@@ -1565,20 +1852,29 @@ export class ImStore {
     );
   }
 
+  async setMessageThreadId(messageId: string, threadId: string): Promise<void> {
+    await runSqlite(
+      this.dbPath,
+      `UPDATE im_messages SET thread_id = ${sqlString(threadId)} WHERE message_id = ${sqlString(messageId)};`
+    );
+  }
+
   async createJob(input: {
     projectId: string;
     memberId: string;
     messageId: string | null;
     brief: ImJobBrief;
     status?: ImJobStatus;
+    threadId?: string | null;
   }): Promise<ImJob> {
     const now = nowMs();
     const jobId = randomUUID();
     const status = input.status ?? "queued";
+    const threadId = input.threadId?.trim() || null;
     await runSqlite(
       this.dbPath,
       `INSERT INTO im_jobs (
-        job_id, project_id, member_id, message_id, acp_chat_id, status, brief_json, error, files_json, permission_json, created_at_ms, updated_at_ms, finished_at_ms
+        job_id, project_id, member_id, message_id, acp_chat_id, status, brief_json, error, files_json, permission_json, thread_id, created_at_ms, updated_at_ms, finished_at_ms
       ) VALUES (
         ${sqlString(jobId)},
         ${sqlString(input.projectId)},
@@ -1590,6 +1886,7 @@ export class ImStore {
         NULL,
         ${sqlString("[]")},
         NULL,
+        ${sqlNullOrString(threadId)},
         ${now},
         ${now},
         NULL
@@ -1654,6 +1951,17 @@ export class ImStore {
     return rows[0] ? mapJob(rows[0]) : undefined;
   }
 
+  async findInterruptedJobByAcpChatId(acpChatId: string): Promise<ImJob | undefined> {
+    const rows = await runSqliteJson<JobRow>(
+      this.dbPath,
+      `SELECT * FROM im_jobs
+       WHERE acp_chat_id = ${sqlString(acpChatId)}
+         AND status IN ('cancelled','failed')
+       ORDER BY updated_at_ms DESC LIMIT 1;`
+    );
+    return rows[0] ? mapJob(rows[0]) : undefined;
+  }
+
   async updateJob(
     jobId: string,
     patch: {
@@ -1668,7 +1976,7 @@ export class ImStore {
     const current = await this.getJob(jobId);
     if (!current) throw new Error("Job not found.");
     const now = nowMs();
-    const finishedAt = patch.finished ? now : current.finishedAtMs;
+    const finishedAt = patch.finished === true ? now : patch.finished === false ? null : current.finishedAtMs;
     const nextStatus = patch.status ?? current.status;
     const nextAcp = patch.acpChatId === undefined ? current.acpChatId : patch.acpChatId;
     const nextError = patch.error === undefined ? current.error : patch.error;
@@ -1893,6 +2201,9 @@ export class ImStore {
 
   async getRoom(projectId: string): Promise<ImRoom> {
     const project = await this.requireProject(projectId);
+    if (project.localPath) {
+      await this.syncProjectFileRoles(projectId, project.localPath);
+    }
     const [members, messages, jobs, knowledge] = await Promise.all([
       this.listMembers(projectId),
       this.listMessages(projectId),
@@ -1941,6 +2252,7 @@ export class ImStore {
       quotes,
       mentionRoleIds: parseJsonArray(row.mention_role_ids_json),
       jobId: row.job_id,
+      threadId: row.thread_id || undefined,
       createdAtMs: row.created_at_ms
     };
   }

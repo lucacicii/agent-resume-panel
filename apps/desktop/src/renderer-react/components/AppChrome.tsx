@@ -6,12 +6,11 @@ import { type ActiveSessionDot, type SessionDotStatus } from "../features/workbe
 import { Tooltip } from "./Tooltip";
 import { BellNotificationButton } from "./BellNotificationButton";
 
-type PrimaryTab = "report" | "agent" | "workbench" | "notes" | "kanban" | "im";
+type PrimaryTab = "report" | "workbench" | "notes" | "kanban" | "im";
 type FloatingNoteDot = { noteId: string; title: string };
 
 const tabs: Array<{ id: PrimaryTab; icon: ThemeIconName; key: string; fallback: string }> = [
   { id: "report", icon: "activity", key: "desktop.tabs.report", fallback: "Report" },
-  { id: "agent", icon: "bot", key: "desktop.tabs.agent", fallback: "Agent" },
   { id: "workbench", icon: "terminal", key: "desktop.tabs.workbench", fallback: "Workbench" },
   { id: "notes", icon: "file-text", key: "desktop.tabs.notes", fallback: "Notes" },
   { id: "kanban", icon: "square-kanban", key: "desktop.tabs.kanban", fallback: "Kanban" },

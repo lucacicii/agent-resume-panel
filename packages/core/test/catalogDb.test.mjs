@@ -79,3 +79,49 @@ test("desktop schema creates report and agent tables in panelHome/.desktop/deskt
     await fs.rm(panelHome, { recursive: true, force: true });
   }
 });
+
+test("desktop schema adds tools_json to existing im_members tables", async () => {
+  const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-catalog-"));
+  const desktopDb = desktopDbPath(panelHome);
+
+  try {
+    await fs.mkdir(path.dirname(desktopDb), { recursive: true });
+    await runSqlite(
+      desktopDb,
+      `CREATE TABLE im_members (
+        member_id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        template_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        persona TEXT NOT NULL DEFAULT '',
+        agent TEXT NOT NULL,
+        permissions TEXT NOT NULL DEFAULT 'write',
+        enabled INTEGER NOT NULL DEFAULT 1,
+        acp_chat_id TEXT,
+        created_at_ms INTEGER NOT NULL,
+        updated_at_ms INTEGER NOT NULL
+      );`
+    );
+
+    await ensureDesktopDbSchema(desktopDb);
+
+    const columns = await runSqliteJson(desktopDb, "PRAGMA table_info(im_members);");
+    const names = columns.map((column) => column.name);
+    assert.ok(names.includes("tools_json"));
+    assert.ok(names.includes("model"));
+    assert.ok(names.includes("thought_level"));
+    assert.ok(names.includes("callable_template_ids_json"));
+    assert.ok(names.includes("auto_dispatch"));
+
+    await runSqlite(
+      desktopDb,
+      `INSERT INTO im_members (
+        member_id, project_id, template_id, name, persona, agent, permissions, tools_json, enabled, created_at_ms, updated_at_ms
+      ) VALUES (
+        'member-1', 'project-1', 'role_developer', 'Developer', '', 'claude', 'write', '{}', 1, 1, 1
+      );`
+    );
+  } finally {
+    await fs.rm(panelHome, { recursive: true, force: true });
+  }
+});

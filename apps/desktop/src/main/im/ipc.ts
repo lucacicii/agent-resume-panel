@@ -7,7 +7,7 @@ import {
   preparePanelDatabasesFromSettings
 } from "@agent-resume/core";
 import { safeHandle } from "../ipcUtils";
-import { disposeAcpController } from "../acp/acpHost";
+import { disposeAcpController, inspectAcpChat, listLiveAcpChatIds } from "../acp/acpHost";
 import { deleteAcpRecord } from "../acp/store";
 import { resolveAgentModels } from "./agentModelResolver";
 import { ImConductor, emitImEvent } from "./conductor";
@@ -29,12 +29,14 @@ let conductor: ImConductor | null = null;
 let storeKey = "";
 
 type AcpHostApi = {
-  connect: (chatId: string) => Promise<void>;
+  connect: (chatId: string) => Promise<{ rebuilt?: boolean } | void>;
   prompt: (
     chatId: string,
     text: string,
     images?: Array<{ mimeType: string; fileName: string; data: string }>
   ) => Promise<void>;
+  cancel?: (chatId: string) => Promise<void>;
+  inspect?: (chatId: string) => { live: boolean; running: boolean };
   denyPermission: (requestId: string) => Promise<void>;
   setModel?: (chatId: string, modelId: string) => Promise<void>;
   setThoughtLevel?: (chatId: string, thoughtLevel: string) => Promise<void>;
@@ -45,8 +47,12 @@ async function getStore(): Promise<ImStore> {
   const key = paths.desktopDb;
   if (!store || storeKey !== key) {
     store = new ImStore(paths.desktopDb);
-    await store.initialize();
+    const liveIds = listLiveAcpChatIds();
+    const kept = await store.initialize({ liveAcpChatIds: liveIds });
     storeKey = key;
+    if (conductor) {
+      await conductor.adoptLiveJobs(kept.map((job) => job.acpChatId).filter((id): id is string => Boolean(id)));
+    }
   }
   return store;
 }
@@ -67,8 +73,12 @@ export function registerImIpc(deps: {
         deps.acp.prompt,
         deps.acp.denyPermission,
         deps.acp.setModel,
-        deps.acp.setThoughtLevel
+        deps.acp.setThoughtLevel,
+        deps.acp.cancel,
+        deps.acp.inspect ?? inspectAcpChat
       );
+      const liveIds = listLiveAcpChatIds();
+      await conductor.adoptLiveJobs(liveIds);
     }
     return conductor;
   };
@@ -320,6 +330,7 @@ export function registerImIpc(deps: {
     quoteIds?: unknown;
     mentionRoleIds?: unknown;
     images?: unknown;
+    followUpToMessageId?: unknown;
   }) => {
     if (typeof args?.projectId !== "string") throw new Error("Project id is required.");
     const quoteIds = Array.isArray(args.quoteIds)
@@ -345,7 +356,8 @@ export function registerImIpc(deps: {
       body: typeof args.body === "string" ? args.body : "",
       quoteIds,
       mentionRoleIds,
-      images
+      images,
+      followUpToMessageId: typeof args.followUpToMessageId === "string" ? args.followUpToMessageId : undefined
     });
   });
 
@@ -353,6 +365,12 @@ export function registerImIpc(deps: {
     if (typeof args?.jobId !== "string") throw new Error("Job id is required.");
     const runner = await getConductor();
     return runner.cancelJob(args.jobId);
+  });
+
+  safeHandle("im:resumeJob", async (_event, args: { jobId?: unknown }) => {
+    if (typeof args?.jobId !== "string") throw new Error("Job id is required.");
+    const runner = await getConductor();
+    return runner.resumeJob(args.jobId);
   });
 
   safeHandle("im:dispatchProposal", async (_event, args: {
@@ -523,6 +541,11 @@ export function registerImIpc(deps: {
 export async function handleImAcpStream(event: AcpStreamEvent): Promise<void> {
   if (!conductor) return;
   await conductor.handleAcpStream(event);
+}
+
+export async function flushImStreamingMessages(): Promise<void> {
+  if (!conductor) return;
+  await conductor.flushStreamingMessages();
 }
 
 export function resetImRuntimeForTests(): void {

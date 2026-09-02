@@ -802,6 +802,49 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(workbenchOpenSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1" }));
   });
 
+  it("renders IM badge on sessions created via IM", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+
+    const listSessions = vi.fn(async () => [
+      { provider: "chat" as const, id: "chat-im-1", title: "IM Feature Discussion", projectPath: "/work/app", updatedAt: 200, source: "im", acpProvider: "claude" as const },
+      { provider: "codex" as const, id: "session-1", title: "Normal Codex Session", projectPath: "/work/app", updatedAt: 100 }
+    ]);
+
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.workbench.allSessions": "All sessions",
+        "desktop.workbench.noSessionsInProject": "No sessions",
+        "desktop.workbench.noProjects": "No projects",
+        "desktop.workbench.imSessionBadge": "IM",
+        "desktop.workbench.imSessionBadgeHint": "Created via IM"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions,
+      workbenchOpenSession: vi.fn(async () => ({}))
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+
+    const imRow = await screen.findByRole("button", { name: /IM Feature Discussion/ });
+    const imBadge = imRow.querySelector(".wb-im-session-badge");
+    expect(imBadge).not.toBeNull();
+    expect(imBadge?.textContent).toBe("IM");
+    expect(imBadge?.getAttribute("title")).toBe("Created via IM");
+
+    const normalRow = screen.getByRole("button", { name: /Normal Codex Session/ });
+    expect(normalRow.querySelector(".wb-im-session-badge")).toBeNull();
+  });
+
   it("activates the assigned project when resuming a moved session", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
@@ -6502,6 +6545,323 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(terminalGitStatus.mock.calls.length).toBeGreaterThan(statusCalls));
     await waitFor(() => expect(document.querySelector<HTMLButtonElement>('.wb-file-tree-label[title="src"]')?.closest("button")?.getAttribute("aria-expanded")).toBe("false"));
     expect(screen.queryByTitle("src/app.ts")).toBeNull();
+  });
+
+  it("expands newly appeared Git directories by default while keeping collapsed ones collapsed", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const gitFile = {
+      path: "src/app.ts",
+      repoPath: "src/app.ts",
+      repoRoot: "/work/app",
+      status: "M",
+      staged: false,
+      unstaged: true
+    };
+    const newFile = {
+      path: "lib/util.ts",
+      repoPath: "lib/util.ts",
+      repoRoot: "/work/app",
+      status: "M",
+      staged: false,
+      unstaged: true
+    };
+    let hasNewDir = false;
+    const terminalGitStatus = vi.fn(async () => ({
+      isRepo: true,
+      root: "/work/app",
+      staged: [],
+      unstaged: hasNewDir ? [gitFile, newFile] : [gitFile],
+      nestedRepos: [],
+      tracking: []
+    }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects",
+        "desktop.notes.projectFilter": "Project filter",
+        "desktop.common.search": "Search",
+        "desktop.common.all": "All",
+        "desktop.common.active": "Active",
+        "desktop.common.pinned": "Pinned",
+        "desktop.common.close": "Close",
+        "desktop.common.cancel": "Cancel",
+        "desktop.common.refresh": "Refresh",
+        "desktop.workbench.allSessions": "All sessions",
+        "desktop.workbench.noSessionsInProject": "No sessions",
+        "desktop.workbench.noProjects": "No projects",
+        "desktop.workbench.sidePanelExplorer": "Explorer",
+        "desktop.workbench.sidePanelGit": "Git",
+        "desktop.workbench.sidePanelNoChanges": "No changes",
+        "desktop.workbench.sidePanelStaged": "Staged",
+        "desktop.workbench.sidePanelChanges": "Changes",
+        "desktop.workbench.sidePanelGitUnavailable": "Git unavailable",
+        "desktop.workbench.sidePanelNoRoot": "No root",
+        "desktop.workbench.newTerminal": "New terminal",
+        "desktop.workbench.newSession": "New session",
+        "desktop.workbench.selectSessionHint": "Select a session",
+        "desktop.workbench.selectProjectHint": "Select a project",
+        "desktop.workbench.externalTerminalHint": "Opened externally",
+        "desktop.workbench.terminalLabel": "Terminal {0}",
+        "desktop.workbench.gitLog": "Git log",
+        "desktop.workbench.gitSync": "Sync",
+        "desktop.workbench.gitDiscard": "Discard changes"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      terminalGitStatus,
+      terminalGitFetch: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByTitle("/work/app"));
+    fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
+    const directoryToggle = await waitFor(() => {
+      const button = document.querySelector<HTMLButtonElement>('.wb-file-tree-label[title="src"]')?.closest("button");
+      if (!button) throw new Error("Git directory toggle missing");
+      return button;
+    });
+    expect(directoryToggle.getAttribute("aria-expanded")).toBe("true");
+    // Collapse the user's directory; the new directory must still default to expanded.
+    fireEvent.click(directoryToggle);
+    await waitFor(() => expect(directoryToggle.getAttribute("aria-expanded")).toBe("false"));
+
+    hasNewDir = true;
+    const statusCalls = terminalGitStatus.mock.calls.length;
+    fireEvent.click(document.querySelector<HTMLButtonElement>('.wb-git-actions button[aria-label="Refresh"]')!);
+    await waitFor(() => expect(terminalGitStatus.mock.calls.length).toBeGreaterThan(statusCalls));
+    await waitFor(() => {
+      const srcButton = document.querySelector<HTMLButtonElement>('.wb-file-tree-label[title="src"]')?.closest("button");
+      const libButton = document.querySelector<HTMLButtonElement>('.wb-file-tree-label[title="lib"]')?.closest("button");
+      if (!srcButton || !libButton) throw new Error("Git directory toggles missing");
+      expect(srcButton.getAttribute("aria-expanded")).toBe("false");
+      expect(libButton.getAttribute("aria-expanded")).toBe("true");
+    });
+    expect(screen.queryByTitle("src/app.ts")).toBeNull();
+    expect(screen.getByTitle("lib/util.ts")).toBeTruthy();
+  });
+
+  it("stages two files clicked in quick succession without dropping the second click", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const files = [
+      { path: "a.ts", repoPath: "a.ts", repoRoot: "/work/app", status: "M", staged: false, unstaged: true },
+      { path: "b.ts", repoPath: "b.ts", repoRoot: "/work/app", status: "M", staged: false, unstaged: true }
+    ];
+    const stagedPaths = new Set<string>();
+    let releaseFirstStage: () => void = () => {};
+    const firstStageGate = new Promise<void>((resolve) => { releaseFirstStage = resolve; });
+    let firstStage = true;
+    const terminalGitStage = vi.fn(async (args: { repoRoot: string; paths: string[] }) => {
+      if (firstStage) {
+        firstStage = false;
+        await firstStageGate;
+      }
+      for (const path of args.paths) stagedPaths.add(path);
+      return { ok: true };
+    });
+    const terminalGitStatus = vi.fn(async () => ({
+      isRepo: true,
+      root: "/work/app",
+      staged: files.filter((file) => stagedPaths.has(file.path)).map((file) => ({ ...file, staged: true, unstaged: false })),
+      unstaged: files.filter((file) => !stagedPaths.has(file.path)),
+      nestedRepos: [],
+      tracking: []
+    }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects",
+        "desktop.notes.projectFilter": "Project filter",
+        "desktop.common.search": "Search",
+        "desktop.common.all": "All",
+        "desktop.common.active": "Active",
+        "desktop.common.pinned": "Pinned",
+        "desktop.common.close": "Close",
+        "desktop.common.cancel": "Cancel",
+        "desktop.common.refresh": "Refresh",
+        "desktop.workbench.allSessions": "All sessions",
+        "desktop.workbench.noSessionsInProject": "No sessions",
+        "desktop.workbench.noProjects": "No projects",
+        "desktop.workbench.sidePanelExplorer": "Explorer",
+        "desktop.workbench.sidePanelGit": "Git",
+        "desktop.workbench.sidePanelNoChanges": "No changes",
+        "desktop.workbench.sidePanelStaged": "Staged",
+        "desktop.workbench.sidePanelChanges": "Changes",
+        "desktop.workbench.sidePanelGitUnavailable": "Git unavailable",
+        "desktop.workbench.sidePanelNoRoot": "No root",
+        "desktop.workbench.newTerminal": "New terminal",
+        "desktop.workbench.newSession": "New session",
+        "desktop.workbench.selectSessionHint": "Select a session",
+        "desktop.workbench.selectProjectHint": "Select a project",
+        "desktop.workbench.externalTerminalHint": "Opened externally",
+        "desktop.workbench.terminalLabel": "Terminal {0}",
+        "desktop.workbench.gitLog": "Git log",
+        "desktop.workbench.gitSync": "Sync",
+        "desktop.workbench.gitDiscard": "Discard changes",
+        "desktop.workbench.gitCommit": "Commit",
+        "desktop.workbench.gitCommitAndPush": "Commit & Push",
+        "desktop.workbench.gitCommitDialogTitle": "Commit changes",
+        "desktop.workbench.resizeCommitInput": "Resize commit input",
+        "desktop.workbench.gitCommitAutoGenerate": "Auto generate",
+        "desktop.workbench.gitCommitSuggestedLlm": "AI message",
+        "desktop.workbench.gitCommitSuggestedUnconfigured": "Rule message",
+        "desktop.workbench.gitCommitSuggestedFallback": "Fallback message",
+        "desktop.workbench.gitStageFailed": "Stage failed",
+        "desktop.workbench.gitUnstageFailed": "Unstage failed"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      terminalGitStatus,
+      terminalGitFetch: async () => ({ ok: true }),
+      terminalGitStage
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByTitle("/work/app"));
+    fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: "a.ts" })).toBeTruthy());
+
+    // First stage call is in flight when the second checkbox is clicked.
+    fireEvent.click(screen.getByRole("checkbox", { name: "a.ts" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "b.ts" }));
+    await act(async () => releaseFirstStage());
+
+    await waitFor(() => expect(terminalGitStage).toHaveBeenCalledTimes(2));
+    expect(terminalGitStage).toHaveBeenNthCalledWith(1, { repoRoot: "/work/app", paths: ["a.ts"] });
+    expect(terminalGitStage).toHaveBeenNthCalledWith(2, { repoRoot: "/work/app", paths: ["b.ts"] });
+    // Both files end up in the Staged section after the optimistic moves converge
+    // with the authoritative refresh.
+    await waitFor(() => {
+      expect(screen.getByRole("checkbox", { name: "a.ts" }).getAttribute("aria-checked")).toBe("true");
+      expect(screen.getByRole("checkbox", { name: "b.ts" }).getAttribute("aria-checked")).toBe("true");
+    });
+  });
+
+  it("discards a stale git status from a previous project after switching projects", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const appFile = {
+      path: "app-src/old.ts",
+      repoPath: "app-src/old.ts",
+      repoRoot: "/work/app",
+      status: "M",
+      staged: false,
+      unstaged: true
+    };
+    const docsFile = {
+      path: "docs-mod/new.ts",
+      repoPath: "docs-mod/new.ts",
+      repoRoot: "/work/docs",
+      status: "M",
+      staged: false,
+      unstaged: true
+    };
+    const pending = new Map<string, Array<() => void>>();
+    const gate = (project: string) => new Promise<void>((resolve) => {
+      const list = pending.get(project) || [];
+      list.push(resolve);
+      pending.set(project, list);
+    });
+    const terminalGitStatus = vi.fn(async (args: { cwd: string }) => {
+      await gate(args.cwd);
+      return args.cwd === "/work/app"
+        ? { isRepo: true, root: "/work/app", staged: [], unstaged: [appFile], nestedRepos: [], tracking: [] }
+        : { isRepo: true, root: "/work/docs", staged: [], unstaged: [docsFile], nestedRepos: [], tracking: [] };
+    });
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects",
+        "desktop.notes.projectFilter": "Project filter",
+        "desktop.common.search": "Search",
+        "desktop.common.all": "All",
+        "desktop.common.active": "Active",
+        "desktop.common.pinned": "Pinned",
+        "desktop.common.close": "Close",
+        "desktop.common.cancel": "Cancel",
+        "desktop.common.refresh": "Refresh",
+        "desktop.workbench.allSessions": "All sessions",
+        "desktop.workbench.noSessionsInProject": "No sessions",
+        "desktop.workbench.noProjects": "No projects",
+        "desktop.workbench.sidePanelExplorer": "Explorer",
+        "desktop.workbench.sidePanelGit": "Git",
+        "desktop.workbench.sidePanelNoChanges": "No changes",
+        "desktop.workbench.sidePanelStaged": "Staged",
+        "desktop.workbench.sidePanelChanges": "Changes",
+        "desktop.workbench.sidePanelGitUnavailable": "Git unavailable",
+        "desktop.workbench.sidePanelNoRoot": "No root",
+        "desktop.workbench.newTerminal": "New terminal",
+        "desktop.workbench.newSession": "New session",
+        "desktop.workbench.selectSessionHint": "Select a session",
+        "desktop.workbench.selectProjectHint": "Select a project",
+        "desktop.workbench.externalTerminalHint": "Opened externally",
+        "desktop.workbench.terminalLabel": "Terminal {0}",
+        "desktop.workbench.gitLog": "Git log",
+        "desktop.workbench.gitSync": "Sync",
+        "desktop.workbench.gitDiscard": "Discard changes"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [
+        { provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 },
+        { provider: "codex", id: "session-2", title: "Docs work", projectPath: "/work/docs", updatedAt: 1 }
+      ],
+      terminalGitStatus,
+      terminalGitFetch: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByTitle("/work/app"));
+    fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
+    await waitFor(() => expect(terminalGitStatus.mock.calls.length).toBeGreaterThanOrEqual(1));
+
+    // Switch to the other project while the /work/app status query is still in flight.
+    fireEvent.click(await screen.findByTitle("/work/docs"));
+    fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
+    // The stale /work/app result must be discarded entirely.
+    await act(async () => { pending.get("/work/app")?.forEach((resolveGate) => resolveGate()); });
+    await waitFor(() => expect(screen.queryByTitle("app-src/old.ts")).toBeNull());
+    // The stale result was discarded: no git tree rows (and no legacy file rows) are rendered.
+    expect(document.querySelector(".wb-file-tree-row")).toBeNull();
+    expect(document.querySelector(".wb-git-file")).toBeNull();
+    expect(document.querySelector<HTMLElement>(".react-git-panel")?.textContent).toContain("Git unavailable");
+
+    // The next project's first status refresh defaults to a fully expanded tree.
+    fireEvent.click(document.querySelector<HTMLButtonElement>('.wb-git-actions button[aria-label="Refresh"]')!);
+    await waitFor(() => expect(terminalGitStatus.mock.calls.some(([args]) => args.cwd === "/work/docs")).toBe(true));
+    await act(async () => { pending.get("/work/docs")?.forEach((resolveGate) => resolveGate()); });
+    const docsToggle = await waitFor(() => {
+      const button = document.querySelector<HTMLButtonElement>('.wb-file-tree-label[title="docs-mod"]')?.closest("button");
+      if (!button) throw new Error("Docs Git directory toggle missing");
+      return button;
+    });
+    expect(docsToggle.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByTitle("docs-mod/new.ts")).toBeTruthy();
+    expect(screen.queryByTitle("app-src/old.ts")).toBeNull();
   });
 
   it("toggles a Markdown editor tab between Preview and Edit from the tab context menu", async () => {

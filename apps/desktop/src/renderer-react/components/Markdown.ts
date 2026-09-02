@@ -2,12 +2,28 @@ import DOMPurify from "dompurify";
 import hljs from "highlight.js";
 import { marked, type Renderer, type Tokens } from "marked";
 
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 function codeToken(token: Tokens.Code): string {
   const requested = token.lang?.trim().toLowerCase();
   const language = requested && hljs.getLanguage(requested) ? requested : "plaintext";
-  const content = language === "plaintext"
-    ? hljs.highlightAuto(token.text).value
-    : hljs.highlight(token.text, { language, ignoreIllegals: true }).value;
+  let content = "";
+  if (language === "plaintext") {
+    content = escapeHtml(token.text);
+  } else {
+    try {
+      content = hljs.highlight(token.text, { language, ignoreIllegals: true }).value;
+    } catch {
+      content = escapeHtml(token.text);
+    }
+  }
   const langLabel = language === "plaintext" ? "" : `<span class="code-block-lang">${language}</span>`;
   const copyButton = `<button type="button" class="code-copy-btn" aria-label="Copy code"><span class="code-copy-label">Copy</span></button>`;
   return `<div class="code-block"><div class="code-block-head">${langLabel}${copyButton}</div><pre><code class="hljs language-${language}">${content}</code></pre></div>`;
@@ -58,6 +74,12 @@ if (typeof document !== "undefined") {
   });
 }
 
+const MARKDOWN_CACHE_MAX = 500;
+const markdownCache = new Map<string, string>();
+
+const sharedRenderer = new marked.Renderer();
+sharedRenderer.code = codeToken;
+
 function parseMarkdown(value: string, renderer: Renderer): string {
   return marked.parse(value, {
     gfm: true,
@@ -67,12 +89,28 @@ function parseMarkdown(value: string, renderer: Renderer): string {
 }
 
 export function renderMarkdown(value: string): string {
-  const renderer = new marked.Renderer();
-  renderer.code = codeToken;
-  return DOMPurify.sanitize(parseMarkdown(value, renderer), {
+  if (!value) return "";
+  const cached = markdownCache.get(value);
+  if (cached !== undefined) {
+    markdownCache.delete(value);
+    markdownCache.set(value, cached);
+    return cached;
+  }
+
+  const parsed = DOMPurify.sanitize(parseMarkdown(value, sharedRenderer), {
     USE_PROFILES: { html: true },
     FORBID_TAGS: ["script", "style", "iframe", "object", "embed"],
     FORBID_ATTR: ["style"],
     ALLOW_UNKNOWN_PROTOCOLS: false
   });
+
+  if (markdownCache.size >= MARKDOWN_CACHE_MAX) {
+    const oldestKey = markdownCache.keys().next().value;
+    if (oldestKey !== undefined) {
+      markdownCache.delete(oldestKey);
+    }
+  }
+  markdownCache.set(value, parsed);
+
+  return parsed;
 }

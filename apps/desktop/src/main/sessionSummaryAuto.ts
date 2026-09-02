@@ -5,6 +5,7 @@ import {
   resolveSessionSummaryAutoSettings,
   runAutoSessionSummaries
 } from "@agent-resume/core";
+import { enqueueDesktopBackgroundWork, shouldRunDesktopBackgroundWork } from "./backgroundWork";
 import { loadPanelDbPaths } from "./panelDatabases";
 import { recordAppError } from "./appErrorLog";
 
@@ -54,10 +55,11 @@ export function scheduleSessionSummaryAuto(delayMs = 2_000): void {
 }
 
 async function runSessionSummaryAutoSafe(): Promise<void> {
+  if (!shouldRunDesktopBackgroundWork()) return;
   if (inFlight) {
     return inFlight;
   }
-  inFlight = runSessionSummaryAuto()
+  inFlight = enqueueDesktopBackgroundWork(runSessionSummaryAuto)
     .catch((error) => {
       void recordAppError({ source: "session-summary-auto", error });
     })

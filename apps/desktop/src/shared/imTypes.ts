@@ -1,3 +1,5 @@
+import type { AgentCitation } from "@agent-resume/core";
+
 export const IM_AGENTS = ["pi", "claude", "codex"] as const;
 export type ImAgent = (typeof IM_AGENTS)[number];
 
@@ -32,7 +34,8 @@ export const IM_BUILTIN_TEMPLATE_IDS = [
   "role_project_manager",
   "role_ui_designer",
   "role_developer",
-  "role_tester"
+  "role_tester",
+  "role_memory"
 ] as const;
 
 export type ImBuiltinTemplateId = (typeof IM_BUILTIN_TEMPLATE_IDS)[number];
@@ -41,13 +44,20 @@ export function isBuiltinTemplateId(value: string): value is ImBuiltinTemplateId
   return (IM_BUILTIN_TEMPLATE_IDS as readonly string[]).includes(value);
 }
 
+export function isProjectRoleTemplateId(value: string): boolean {
+  return value.startsWith("project_role_");
+}
+
+export type ImRoleSource = "builtin" | "custom" | "project";
+
 export const DEFAULT_BUILTIN_CALLABLE_TEMPLATE_IDS: Record<ImBuiltinTemplateId, readonly string[]> = {
-  role_product_manager: ["role_architect", "role_project_manager", "role_ui_designer"],
-  role_architect: ["role_developer"],
-  role_project_manager: ["role_architect", "role_ui_designer", "role_developer", "role_tester"],
+  role_product_manager: ["role_architect", "role_project_manager", "role_ui_designer", "role_memory"],
+  role_architect: ["role_developer", "role_memory"],
+  role_project_manager: ["role_architect", "role_ui_designer", "role_developer", "role_tester", "role_memory"],
   role_ui_designer: ["role_developer"],
-  role_developer: ["role_tester"],
-  role_tester: ["role_developer"]
+  role_developer: ["role_tester", "role_memory"],
+  role_tester: ["role_developer"],
+  role_memory: ["role_developer", "role_product_manager", "role_architect"]
 };
 
 export interface ImRoleTools {
@@ -114,12 +124,18 @@ export const IM_AGENT_SUGGESTED_MODELS: Record<ImAgent, ImAgentModelOption[]> = 
   ]
 };
 
+export interface ImProjectRoleSummary {
+  templateId: string;
+  name: string;
+}
+
 export interface ImProject {
   projectId: string;
   name: string;
   localPath: string | null;
   createdAtMs: number;
   updatedAtMs: number;
+  roles?: ImProjectRoleSummary[];
 }
 
 export interface ImRoleTemplate {
@@ -133,6 +149,8 @@ export interface ImRoleTemplate {
   tools: ImRoleTools;
   callableTemplateIds?: string[];
   autoDispatch?: boolean;
+  source?: ImRoleSource;
+  filePath?: string;
   createdAtMs: number;
   updatedAtMs: number;
 }
@@ -150,6 +168,8 @@ export interface ImMember {
   tools: ImRoleTools;
   callableTemplateIds?: string[];
   autoDispatch?: boolean;
+  source?: ImRoleSource;
+  filePath?: string;
   enabled: boolean;
   acpChatId: string | null;
   createdAtMs: number;
@@ -194,6 +214,7 @@ export interface ImMessage {
   authorLabel: string;
   body: string;
   thinking?: string;
+  citations?: AgentCitation[];
   images?: ImImageAttachment[];
   delegationProposals?: ImDelegationProposal[];
   autoRouted?: boolean;
@@ -205,6 +226,7 @@ export interface ImMessage {
   quotes: ImQuotedMessage[];
   mentionRoleIds: string[];
   jobId: string | null;
+  threadId?: string;
   createdAtMs: number;
 }
 
@@ -282,6 +304,7 @@ export interface ImJob {
   error: string | null;
   filesChanged: string[];
   permission: ImPermissionRequest | null;
+  threadId?: string;
   createdAtMs: number;
   updatedAtMs: number;
   finishedAtMs: number | null;

@@ -8,7 +8,6 @@ import { useI18n } from "./i18n";
 import { SessionsSheet } from "./features/SessionsSheet";
 import { SettingsPanel } from "./features/settings/SettingsPanel";
 import { ReportPanel } from "./features/report/ReportPanel";
-import { AgentPanel } from "./features/agent/AgentPanel";
 import { NotesPanel } from "./features/notes/NotesPanel";
 import { StandaloneNoteWindow } from "./features/notes/StandaloneNoteWindow";
 import { BrowserStandaloneWindow } from "./features/browser/BrowserStandaloneWindow";
@@ -187,7 +186,6 @@ function MainRendererRuntime(): React.JSX.Element {
       <AppChrome />
       <ReportPanel />
       <GtdSheet />
-      <AgentPanel />
       <DiffWorkerPool>
         <WorkbenchPanel />
       </DiffWorkerPool>

@@ -452,6 +452,10 @@ export interface NotificationsSettings {
   maxHistory?: number;
 }
 
+export interface DesktopImSettings {
+  smartRoutingEnabled?: boolean;
+}
+
 export interface PanelSettings {
   /** Optional override; default ~/.agent-resume-panel. */
   panelHome?: string;
@@ -496,6 +500,8 @@ export interface PanelSettings {
   ghosttyAutoPasteDelayMs?: number;
   /** Desktop notification history and auto-clear preferences. */
   notifications?: NotificationsSettings;
+  /** Desktop IM room preferences. */
+  im?: DesktopImSettings;
 }
 
 export const DEFAULT_SETTINGS: PanelSettings = {
@@ -586,6 +592,9 @@ export const DEFAULT_SETTINGS: PanelSettings = {
   notes: {
     newStandaloneNoteShortcut: "CommandOrControl+D",
     recentStandaloneNoteShortcut: "CommandOrControl+Shift+D"
+  },
+  im: {
+    smartRoutingEnabled: true
   },
   notifications: {
     autoClearMinutes: 60,

@@ -47,6 +47,30 @@ test("upsertAcpSessionInCatalog writes chat row with acp_provider and transcript
   await fs.rm(dir, { recursive: true, force: true });
 });
 
+test("upsertAcpSessionInCatalog writes custom source e.g. im", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "acp-catalog-im-"));
+  const dbPath = path.join(dir, "catalog.db");
+  await ensureExtensionCatalogSchema(dbPath);
+
+  await upsertAcpSessionInCatalog(dbPath, dir, {
+    id: "chat-im-1",
+    title: "IM Dispatched Task",
+    projectPath: "/tmp/project",
+    acpProvider: "claude",
+    updatedAt: 1_700_000_000_000,
+    messageCount: 1,
+    source: "im"
+  });
+
+  const session = await getSessionById(dbPath, "chat", "chat-im-1");
+  assert.ok(session);
+  assert.equal(session.provider, "chat");
+  assert.equal(session.title, "IM Dispatched Task");
+  assert.equal(session.source, "im");
+
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
 test("syncAcpRecordsIntoCatalog is idempotent and preserves user_title", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "acp-catalog-sync-"));
   const dbPath = path.join(dir, "catalog.db");

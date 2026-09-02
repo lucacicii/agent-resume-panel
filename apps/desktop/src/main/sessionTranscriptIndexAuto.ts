@@ -5,6 +5,7 @@ import {
   resolveSessionTranscriptIndexSettings,
   runAutoTranscriptIndex
 } from "@agent-resume/core";
+import { enqueueDesktopBackgroundWork, shouldRunDesktopBackgroundWork } from "./backgroundWork";
 import { loadPanelDbPaths } from "./panelDatabases";
 import { recordAppError } from "./appErrorLog";
 
@@ -54,10 +55,11 @@ export function scheduleSessionTranscriptIndexAuto(delayMs = 2_000): void {
 }
 
 async function runTranscriptIndexSafe(): Promise<void> {
+  if (!shouldRunDesktopBackgroundWork()) return;
   if (inFlight) {
     return inFlight;
   }
-  inFlight = runTranscriptIndex()
+  inFlight = enqueueDesktopBackgroundWork(runTranscriptIndex)
     .catch((error) => {
       void recordAppError({ source: "session-transcript-index-auto", error });
     })

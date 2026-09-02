@@ -11,6 +11,7 @@ export interface AcpCatalogRecordInput {
   updatedAt: number;
   messageCount?: number;
   model?: string;
+  source?: string;
 }
 
 export function acpThreadRelPath(sessionId: string): string {
@@ -73,7 +74,7 @@ export async function upsertAcpSessionInCatalog(
     ) VALUES (
       'chat', ${sql(id)}, ${sql(title)}, ${sql(projectPath)}, ${sql(projectPath)}, ${updatedAt}, 0,
       ${numberOrNull(messageCount)}, ${nullable(model)}, NULL,
-      'acp', ${sql(acpProvider)}, 0, ${syncTimeMs}, 'acp', ${sql(refs)}
+      ${sql(record.source || 'acp')}, ${sql(acpProvider)}, 0, ${syncTimeMs}, 'acp', ${sql(refs)}
     )
     ON CONFLICT(provider, agent_session_id) DO UPDATE SET
       title=excluded.title,

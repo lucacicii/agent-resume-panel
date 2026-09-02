@@ -779,13 +779,43 @@ export {
   linkGraphTraceSchema
 } from "./mcp/linkGraphTools";
 export type { LinkGraphMcpResult, LinkGraphTraceInput } from "./mcp/linkGraphTools";
+export {
+  handleMemoryRetrieve,
+  memoryRetrieveSchema
+} from "./mcp/memoryTools";
+export type { MemoryToolContext } from "./mcp/memoryTools";
 export type { NoteToolContext, NoteMcpResult, NoteRelationshipIndex } from "./mcp/tools";
 export type { AgentMcpContext } from "./mcp/server";
 export {
   AGENT_TOOL_CATALOG,
-  AGENT_TOOL_NAMES
+  AGENT_TOOL_NAMES,
+  skillToToolDescriptor
 } from "./mcp/toolCatalog";
 export type { AgentToolCategory, AgentToolDescriptor } from "./mcp/toolCatalog";
+export {
+  discoverSkills,
+  parseSkillFile,
+  parseSkillFrontmatter,
+  parseSkillMarkdownFallback,
+  readSkillContent,
+  formatSkillsCatalogPrompt
+} from "./skills";
+export type {
+  SkillDescriptor,
+  SkillScope,
+  DiscoverSkillsOptions
+} from "./skills";
+export {
+  discoverProjectRoles,
+  parseRoleMarkdown
+} from "./roles";
+export type {
+  ProjectRoleAgent,
+  ProjectRolePermission,
+  ProjectRoleTools,
+  ProjectRoleDescriptor,
+  DiscoverProjectRolesOptions
+} from "./roles";
 export {
   handleSessionSearch,
   handleSessionList,

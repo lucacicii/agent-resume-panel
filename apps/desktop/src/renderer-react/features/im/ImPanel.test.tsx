@@ -37,12 +37,19 @@ const messages = {
   "desktop.im.fetchModels": "Fetch models",
   "desktop.im.customBadge": "Custom",
   "desktop.im.customModelOption": "Custom model ID…",
+  "desktop.im.selectAll": "Select all",
+  "desktop.im.deselectAll": "Deselect all",
   "desktop.workbench.autoRename": "Auto rename",
+  "desktop.common.resend": "Resend",
   "desktop.common.revealInFinder": "Reveal in Finder",
   "desktop.im.emptyRoom": "Quote a message and @ a role to dispatch work.",
   "desktop.im.transcript": "Room transcript",
   "desktop.im.mentions": "Mentioned roles",
   "desktop.im.quote": "Quote",
+  "desktop.im.continueAsk": "Ask again",
+  "desktop.im.continuingWith": "Continuing with {0}",
+  "desktop.im.removeFollowUp": "Stop continuing this reply",
+  "desktop.im.newConversation": "New conversation",
   "desktop.im.translate": "Translate",
   "desktop.im.restore": "Restore",
   "desktop.im.explain": "Explain",
@@ -58,6 +65,10 @@ const messages = {
   "desktop.im.agent.claude": "Claude Code",
   "desktop.im.agent.codex": "Codex",
   "desktop.im.currentJob": "Current job",
+  "desktop.im.stopAnswer": "Stop",
+  "desktop.im.callChain": "Invocation Chain",
+  "desktop.im.callChainEmpty": "No call chains yet",
+  "desktop.im.callChainEmptyHint": "When tasks are assigned to roles, the chain will appear here.",
   "desktop.im.thinking": "Thinking process",
   "desktop.im.filesModified": "Modified {0} files",
   "desktop.im.fileModifiedSingle": "Modified 1 file",
@@ -75,6 +86,8 @@ const messages = {
   "desktop.im.job.completed": "Finished",
   "desktop.im.job.failed": "Failed",
   "desktop.im.job.cancelled": "Cancelled",
+  "desktop.im.resumeJob": "Continue",
+  "desktop.im.jobInterrupted": "Interrupted before finishing. Saved draft is kept.",
   "desktop.common.showSidebar": "Show sidebar",
   "desktop.common.hideSidebar": "Hide sidebar",
   "desktop.common.confirm": "Confirm",
@@ -110,7 +123,31 @@ const messages = {
   "desktop.im.addText": "Add text",
   "desktop.im.addLink": "Add link",
   "desktop.im.addImage": "Add image",
-  "desktop.im.removeKnowledge": "Remove"
+  "desktop.agent.toolsOn": "Tools on",
+  "desktop.agent.toolsOffTitle": "Tools off",
+  "desktop.agent.toolsToggle": "Tools toggle",
+  "desktop.agent.toolsDialogTitle": "Tools",
+  "desktop.agent.toolsModeTitle": "Tool mode",
+  "desktop.agent.toolsMode.auto": "Auto",
+  "desktop.agent.toolsMode.custom": "Custom",
+  "desktop.agent.toolsMode.off": "Off",
+  "desktop.agent.toolsSelectAll": "All",
+  "desktop.agent.toolsClearAll": "None",
+  "desktop.agent.toolsCustomEmpty": "No tools selected",
+  "desktop.agent.toolsFoot": "Auto lets the assistant choose",
+  "desktop.agent.toolCategory.notes": "Notes",
+  "desktop.agent.toolCategory.reports": "Reports",
+  "desktop.agent.toolCategory.sessions": "Sessions",
+  "desktop.agent.toolCategory.projects": "Projects",
+  "desktop.agent.toolCategory.link_graph": "Link graph",
+  "desktop.agent.toolCategory.tags": "Tags",
+  "desktop.agent.toolCategory.skills": "Skills",
+  "desktop.agent.toolCategory.browser": "Browser",
+  "desktop.agent.toolCategory.mcp": "MCP",
+  "desktop.im.removeKnowledge": "Remove",
+  "desktop.im.timeline": "Timeline",
+  "desktop.im.jumpTop": "Jump to top",
+  "desktop.im.jumpBottom": "Jump to bottom"
 };
 
 function project(overrides: Partial<ImProject> = {}): ImProject {
@@ -192,6 +229,7 @@ function renderIm() {
     workbenchListScripts: vi.fn(async () => ({ packages: [], truncated: false, scannedDirs: 0 })),
     workbenchSearchText: vi.fn(async () => ({ matches: [], truncated: false, filesSearched: 0, engine: "node" })),
     workbenchSearchTextCancel: vi.fn(async () => ({ ok: true })),
+    listAgentTools: vi.fn(async () => []),
     terminalGitStatus: vi.fn(async () => ({
       isRepo: true,
       root: created.localPath,
@@ -246,6 +284,8 @@ function renderIm() {
         { id: "claude-3-7-sonnet-20250219", label: "Claude 3.7 Sonnet" }
       ];
     }),
+    imResumeJob: vi.fn(async () => ({ job: { jobId: "j-resume" } })),
+    imCancelJob: vi.fn(async ({ jobId }: { jobId: string }) => ({ jobId, status: "cancelled" })),
     imPostMessage: vi.fn(async () => ({
       message: {
         messageId: "m1",
@@ -367,13 +407,22 @@ describe("ImPanel", () => {
     await act(async () => {
       window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
     });
+    const avatar = await waitFor(() => {
+      const node = document.querySelector(".im-room-head-info .im-chat-avatar") as HTMLElement | null;
+      expect(node).not.toBeNull();
+      return node!;
+    });
+    fireEvent.click(avatar);
     expect(await screen.findByText("Product Manager")).toBeTruthy();
     expect(screen.getByText("Architect")).toBeTruthy();
     expect(screen.getByText("Project Manager")).toBeTruthy();
     expect(screen.getByText("UI Designer")).toBeTruthy();
     expect(screen.getByText("Developer")).toBeTruthy();
     expect(screen.getByText("Tester")).toBeTruthy();
-    expect(screen.getAllByRole("checkbox")).toHaveLength(6);
+    // 6 role checkboxes + 1 select-all checkbox in drawer
+    expect(screen.getAllByRole("checkbox")).toHaveLength(7);
+    expect(screen.getByLabelText("Deselect all")).toBeTruthy();
+    expect(screen.getByText("6/6")).toBeTruthy();
   });
 
   it("keeps multiple mention chips after picking two roles", async () => {
@@ -589,6 +638,43 @@ describe("ImPanel", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Quote" }));
     const chip = await screen.findByLabelText("Remove quote");
     expect(chip.textContent).toContain("Whole message body");
+    expect(screen.queryByRole("menuitem", { name: "Resend" })).toBeNull();
+  });
+
+  it("shows Resend in context menu for human messages and fills composer draft and mentions", async () => {
+    const api = renderIm();
+    const next = roomFor(project());
+    (api.imGetRoom as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...next,
+      messages: [{
+        messageId: "user-msg-1",
+        projectId: "proj-1",
+        kind: "human",
+        authorMemberId: null,
+        authorLabel: "You",
+        body: "Please refactor the database migration logic",
+        quoteIds: [],
+        quotes: [],
+        mentionRoleIds: [next.members[0]!.memberId],
+        jobId: null,
+        createdAtMs: 1000
+      }]
+    });
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+    await waitFor(() => expect(document.querySelector(".im-message.is-human")).not.toBeNull());
+    window.getSelection()?.removeAllRanges();
+    const article = document.querySelector(".im-message.is-human") as HTMLElement;
+    expect(article).not.toBeNull();
+    fireEvent.contextMenu(article);
+    const resendBtn = await screen.findByRole("menuitem", { name: "Resend" });
+    expect(resendBtn).toBeTruthy();
+    fireEvent.click(resendBtn);
+    const textarea = document.querySelector(".im-composer textarea") as HTMLTextAreaElement;
+    expect(textarea.value).toBe("Please refactor the database migration logic");
+    expect(document.activeElement).toBe(textarea);
+    expect(screen.getByLabelText("Remove mention")).toBeTruthy();
   });
 
   it("runs an independent action and shows the result popover", async () => {
@@ -689,10 +775,7 @@ describe("ImPanel", () => {
     expect(document.querySelector(".im-active-jobs-banner")?.textContent).toContain("Waiting for you");
   });
 
-  it("renders floating timeline when room has multiple messages and navigates on node click", async () => {
-    const scrollIntoViewMock = vi.fn();
-    window.HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
-
+  it("collapses historical messages by default while keeping latest 2 messages expanded and toggles expansion", async () => {
     const currentProject = project();
     const currentRoom = roomFor(currentProject);
     const api = renderIm();
@@ -705,7 +788,7 @@ describe("ImPanel", () => {
           kind: "human",
           authorMemberId: null,
           authorLabel: "You",
-          body: "First message",
+          body: "First message (historical)",
           quoteIds: [],
           quotes: [],
           mentionRoleIds: [],
@@ -718,7 +801,7 @@ describe("ImPanel", () => {
           kind: "role.say",
           authorMemberId: currentRoom.members[0]!.memberId,
           authorLabel: "Developer",
-          body: "Second message",
+          body: "Second message (recent)",
           quoteIds: [],
           quotes: [],
           mentionRoleIds: [],
@@ -731,7 +814,7 @@ describe("ImPanel", () => {
           kind: "human",
           authorMemberId: null,
           authorLabel: "You",
-          body: "Third message",
+          body: "Third message (latest)",
           quoteIds: [],
           quotes: [],
           mentionRoleIds: [],
@@ -744,18 +827,19 @@ describe("ImPanel", () => {
       window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
     });
 
-    await waitFor(() => expect(document.querySelector(".im-timeline")).not.toBeNull());
-    const nodes = document.querySelectorAll(".im-timeline-node");
-    expect(nodes).toHaveLength(3);
+    // msg-1 is historical (index 0 of 3) -> collapsed
+    const msg1 = await screen.findByText("First message (historical)");
+    const article1 = msg1.closest("article");
+    expect(article1?.classList.contains("is-collapsed")).toBe(true);
 
-    // Hover to trigger preview popover
-    fireEvent.mouseEnter(nodes[1]!);
-    expect(document.querySelector(".im-timeline-popover")).not.toBeNull();
-    expect(document.querySelector(".im-timeline-popover-author")?.textContent).toBe("Product Manager");
-    expect(document.querySelector(".im-timeline-popover-snippet")?.textContent).toBe("Second message");
+    // msg-2 and msg-3 are latest 2 -> expanded
+    const msg2 = await screen.findByText("Second message (recent)");
+    const article2 = msg2.closest("article");
+    expect(article2?.classList.contains("is-collapsed")).toBe(false);
 
-    fireEvent.click(nodes[0]!);
-    expect(scrollIntoViewMock).toHaveBeenCalled();
+    // Clicking collapsed msg-1 expands it
+    fireEvent.click(article1!);
+    expect(article1?.classList.contains("is-collapsed")).toBe(false);
   });
 
   it("renders thinking collapsed by default and expands on toggle click, and shows streaming cursor", async () => {
@@ -913,17 +997,25 @@ describe("ImPanel", () => {
       window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
     });
 
-    await waitFor(() => expect(document.querySelector(".im-members")).not.toBeNull());
-    const toggleBtn = screen.getByRole("button", { name: "Roles & Background" });
-    expect(toggleBtn).not.toBeNull();
-
-    // Click to hide right sidebar
-    fireEvent.click(toggleBtn);
     expect(document.querySelector(".im-members")).toBeNull();
+    const avatar = await waitFor(() => {
+      const node = document.querySelector(".im-room-head-info .im-chat-avatar") as HTMLElement | null;
+      expect(node).not.toBeNull();
+      return node!;
+    });
+    fireEvent.click(avatar);
+    await waitFor(() => expect(document.querySelector(".im-members")).not.toBeNull());
+    expect(document.querySelector(".sheet-panel")).not.toBeNull();
 
-    // Click to show right sidebar again
-    fireEvent.click(toggleBtn);
-    expect(document.querySelector(".im-members")).not.toBeNull();
+    // Close drawer via close button
+    const closeBtn = document.querySelector(".sheet-panel .icon-btn") as HTMLElement | null;
+    expect(closeBtn).not.toBeNull();
+    fireEvent.click(closeBtn!);
+    await waitFor(() => expect(document.querySelector(".im-members")).toBeNull());
+
+    // Re-open via avatar again
+    fireEvent.click(avatar);
+    await waitFor(() => expect(document.querySelector(".im-members")).not.toBeNull());
   });
 
   it("opens a chat context menu with rename, auto rename, and associate folder actions", async () => {
@@ -971,6 +1063,12 @@ describe("ImPanel", () => {
       window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
     });
 
+    const avatar2 = await waitFor(() => {
+      const node = document.querySelector(".im-room-head-info .im-chat-avatar") as HTMLElement | null;
+      expect(node).not.toBeNull();
+      return node!;
+    });
+    fireEvent.click(avatar2);
     await waitFor(() => expect(document.querySelector(".im-members")).not.toBeNull());
     const configButtons = screen.getAllByRole("button", { name: "Configure role" });
     expect(configButtons.length).toBeGreaterThan(0);
@@ -1176,6 +1274,81 @@ Build the user service endpoints.
     });
   });
 
+  it("offers continue on interrupted dispatched jobs and saved drafts", async () => {
+    const currentProject = project();
+    const currentRoom = roomFor(currentProject);
+    const arch = currentRoom.members.find((m) => m.templateId === "role_architect")!;
+    const developer = currentRoom.members.find((m) => m.templateId === "role_developer")!;
+    currentRoom.messages = [
+      {
+        messageId: "msg-prop-interrupted",
+        projectId: currentProject.projectId,
+        kind: "role.say",
+        authorMemberId: arch.memberId,
+        authorLabel: "Architect",
+        body: "Design finished.",
+        delegationProposals: [
+          {
+            id: "prop-interrupted-1",
+            targetTemplateId: "role_developer",
+            targetRoleName: "Developer",
+            instruction: "Implement the plan.",
+            status: "dispatched",
+            dispatchedJobId: "job-dev-interrupted",
+            createdAtMs: 1000
+          }
+        ],
+        quoteIds: [],
+        quotes: [],
+        mentionRoleIds: [],
+        jobId: "job-arch-1",
+        createdAtMs: 1000
+      },
+      {
+        messageId: "msg-dev-draft",
+        projectId: currentProject.projectId,
+        kind: "role.say",
+        authorMemberId: developer.memberId,
+        authorLabel: "Developer",
+        body: "I started implementing auth.",
+        quoteIds: [],
+        quotes: [],
+        mentionRoleIds: [],
+        jobId: "job-dev-interrupted",
+        createdAtMs: 1100
+      }
+    ];
+    currentRoom.jobs = [
+      {
+        jobId: "job-dev-interrupted",
+        projectId: currentProject.projectId,
+        memberId: developer.memberId,
+        messageId: null,
+        acpChatId: "chat-1",
+        status: "cancelled",
+        brief: { persona: "", instruction: "Implement the plan.", cwd: "/tmp", quotes: [], knowledge: [] },
+        error: "App restarted while job was running",
+        filesChanged: [],
+        permission: null,
+        createdAtMs: 1050,
+        updatedAtMs: 1200,
+        finishedAtMs: 1200
+      }
+    ];
+
+    const api = renderIm();
+    (api.imGetRoom as ReturnType<typeof vi.fn>).mockResolvedValue(currentRoom);
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+
+    expect(await screen.findByText("Interrupted before finishing. Saved draft is kept.")).toBeTruthy();
+    const continueButtons = screen.getAllByRole("button", { name: "Continue" });
+    expect(continueButtons.length).toBeGreaterThan(0);
+    fireEvent.click(continueButtons[0]!);
+    expect(api.imResumeJob).toHaveBeenCalledWith({ jobId: "job-dev-interrupted" });
+  });
+
   it("renders auto-routed badge and routing tips (unmatched and timeout)", async () => {
     const currentProject = project();
     const currentRoom = roomFor(currentProject);
@@ -1239,5 +1412,405 @@ Build the user service endpoints.
     expect(screen.getByText("Intent analysis timed out (30s). You can use @ in the composer to manually assign a role.")).toBeTruthy();
     expect(document.querySelector(".im-routing-tip.is-timeout")).not.toBeNull();
     expect(document.querySelector(".im-routing-tip.is-unmatched")).not.toBeNull();
+  });
+
+  it("adds Ask again on completed agent replies and sends a follow-up on the same role", async () => {
+    const api = renderIm();
+    const next = roomFor(project());
+    (api.imGetRoom as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...next,
+      messages: [
+        {
+          messageId: "msg-user",
+          projectId: "proj-1",
+          kind: "human",
+          authorMemberId: null,
+          authorLabel: "You",
+          body: "plan this",
+          quoteIds: [],
+          quotes: [],
+          mentionRoleIds: ["mem-pm"],
+          jobId: "job-1",
+          threadId: "thread-1",
+          createdAtMs: 1
+        },
+        {
+          messageId: "msg-agent",
+          projectId: "proj-1",
+          kind: "role.say",
+          authorMemberId: "mem-pm",
+          authorLabel: "Product Manager",
+          body: "Here is the plan",
+          quoteIds: [],
+          quotes: [],
+          mentionRoleIds: [],
+          jobId: "job-1",
+          threadId: "thread-1",
+          createdAtMs: 2
+        }
+      ],
+      jobs: [{
+        jobId: "job-1",
+        projectId: "proj-1",
+        memberId: "mem-pm",
+        messageId: "msg-user",
+        brief: { persona: "", instruction: "plan this", cwd: "/tmp", quotes: [], knowledge: [] },
+        status: "completed" as const,
+        filesChanged: [],
+        error: null,
+        acpChatId: "chat-1",
+        permission: null,
+        finishedAtMs: 2,
+        createdAtMs: 1,
+        updatedAtMs: 2,
+        threadId: "thread-1"
+      }]
+    });
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+    expect(screen.queryAllByRole("button", { name: "Ask again" })).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Ask again" }));
+    expect(await screen.findByLabelText("Stop continuing this reply")).toBeTruthy();
+    const composer = screen.getByLabelText("Message the room. @ a role. Enter to send, Shift+Enter for a new line.");
+    fireEvent.change(composer, { target: { value: "add more detail" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(api.imPostMessage).toHaveBeenCalledWith(expect.objectContaining({
+      body: "add more detail",
+      mentionRoleIds: ["mem-pm"],
+      followUpToMessageId: "msg-agent",
+      quoteIds: []
+    })));
+  });
+
+  it("does not show Ask again on interrupted replies that still have Resume", async () => {
+    const currentProject = project();
+    const currentRoom = roomFor(currentProject);
+    const developer = currentRoom.members.find((m) => m.templateId === "role_developer")!;
+    currentRoom.messages = [{
+      messageId: "msg-dev-draft",
+      projectId: currentProject.projectId,
+      kind: "role.say",
+      authorMemberId: developer.memberId,
+      authorLabel: "Developer",
+      body: "Step 1 is done.",
+      quoteIds: [],
+      quotes: [],
+      mentionRoleIds: [],
+      jobId: "job-dev-interrupted",
+      createdAtMs: 1100
+    }];
+    currentRoom.jobs = [{
+      jobId: "job-dev-interrupted",
+      projectId: currentProject.projectId,
+      memberId: developer.memberId,
+      messageId: null,
+      acpChatId: "chat-1",
+      status: "cancelled",
+      brief: { persona: "", instruction: "Implement the plan.", cwd: "/tmp", quotes: [], knowledge: [] },
+      error: "App restarted while job was running",
+      filesChanged: [],
+      permission: null,
+      createdAtMs: 1050,
+      updatedAtMs: 1200,
+      finishedAtMs: 1200
+    }];
+    const api = renderIm();
+    (api.imGetRoom as ReturnType<typeof vi.fn>).mockResolvedValue(currentRoom);
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+    expect(await screen.findByText("Interrupted before finishing. Saved draft is kept.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Ask again" })).toBeNull();
+    expect(screen.getAllByRole("button", { name: "Continue" }).length).toBeGreaterThan(0);
+  });
+
+  it("opens the tools popover in composer and displays tool mode options", async () => {
+    const currentProject = project();
+    const currentRoom = roomFor(currentProject);
+    const api = renderIm();
+    (api.imGetRoom as ReturnType<typeof vi.fn>).mockResolvedValue(currentRoom);
+    (api.listAgentTools as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { name: "note_list", description: "List notes", category: "notes" },
+      { name: "skill:dividend-cows", description: "Dividend stocks", category: "skills", kind: "skill" }
+    ]);
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+
+    const toolsBtn = await screen.findByRole("button", { name: "Tools toggle" });
+    expect(toolsBtn).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(toolsBtn);
+    });
+
+    expect(await screen.findByRole("dialog", { name: "Tools" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Auto" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Custom" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Off" })).toBeTruthy();
+  });
+
+  it("shows a stop button below a pending agent job and cancels the job on click", async () => {
+    const currentProject = project();
+    const currentRoom = roomFor(currentProject);
+    const developer = currentRoom.members.find((m) => m.templateId === "role_developer")!;
+    currentRoom.jobs = [{
+      jobId: "job-dev-pending",
+      projectId: currentProject.projectId,
+      memberId: developer.memberId,
+      messageId: null,
+      acpChatId: "chat-1",
+      status: "running",
+      brief: { persona: "", instruction: "Implement feature", cwd: "/tmp", quotes: [], knowledge: [] },
+      error: null,
+      filesChanged: [],
+      permission: null,
+      createdAtMs: 1000,
+      updatedAtMs: 1000,
+      finishedAtMs: null
+    }];
+    const api = renderIm();
+    (api.imGetRoom as ReturnType<typeof vi.fn>).mockResolvedValue(currentRoom);
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+    const stopBtn = await screen.findByRole("button", { name: "Stop" });
+    expect(stopBtn).toBeTruthy();
+    fireEvent.click(stopBtn);
+    expect(api.imCancelJob).toHaveBeenCalledWith({ jobId: "job-dev-pending" });
+  });
+
+  it("shows a stop button below a streaming agent reply and cancels the job on click", async () => {
+    const currentProject = project();
+    const currentRoom = roomFor(currentProject);
+    const developer = currentRoom.members.find((m) => m.templateId === "role_developer")!;
+    currentRoom.messages = [{
+      messageId: "msg-dev-streaming",
+      projectId: currentProject.projectId,
+      kind: "role.say",
+      authorMemberId: developer.memberId,
+      authorLabel: "Developer",
+      body: "Working on it...",
+      streaming: true,
+      quoteIds: [],
+      quotes: [],
+      mentionRoleIds: [],
+      jobId: "job-dev-streaming",
+      createdAtMs: 1100
+    }];
+    currentRoom.jobs = [{
+      jobId: "job-dev-streaming",
+      projectId: currentProject.projectId,
+      memberId: developer.memberId,
+      messageId: "msg-dev-streaming",
+      acpChatId: "chat-1",
+      status: "running",
+      brief: { persona: "", instruction: "Implement feature", cwd: "/tmp", quotes: [], knowledge: [] },
+      error: null,
+      filesChanged: [],
+      permission: null,
+      createdAtMs: 1000,
+      updatedAtMs: 1100,
+      finishedAtMs: null
+    }];
+    const api = renderIm();
+    (api.imGetRoom as ReturnType<typeof vi.fn>).mockResolvedValue(currentRoom);
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+    const stopBtn = await screen.findByRole("button", { name: "Stop" });
+    expect(stopBtn).toBeTruthy();
+    fireEvent.click(stopBtn);
+    expect(api.imCancelJob).toHaveBeenCalledWith({ jobId: "job-dev-streaming" });
+  });
+
+  it("renders composite chat avatars in chat list and room header, dynamically updating when roles change", async () => {
+    const currentProject = project({
+      roles: [
+        { templateId: "role_product_manager", name: "Product Manager" },
+        { templateId: "role_developer", name: "Developer" }
+      ]
+    });
+    const currentRoom = roomFor(currentProject);
+    const api = renderIm();
+    (api.imListProjects as ReturnType<typeof vi.fn>).mockResolvedValue([currentProject]);
+    (api.imGetRoom as ReturnType<typeof vi.fn>).mockResolvedValue(currentRoom);
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+
+    const roomHead = await screen.findByRole("heading", { name: currentProject.name });
+    expect(roomHead).toBeTruthy();
+
+    const avatars = document.querySelectorAll(".im-chat-avatar");
+    expect(avatars.length).toBeGreaterThanOrEqual(2);
+
+    const roomHeadAvatar = document.querySelector(".im-room-head-info .im-chat-avatar");
+    expect(roomHeadAvatar).not.toBeNull();
+    const initialRoleCount = currentRoom.members.filter((m) => m.enabled).length;
+    expect(roomHeadAvatar?.querySelectorAll(".im-chat-avatar-role").length).toBe(initialRoleCount);
+
+    const testerCheckbox = document.querySelector(".im-member-ident input[type=\"checkbox\"]") as HTMLInputElement | null;
+    if (testerCheckbox) {
+      const checkboxes = Array.from(document.querySelectorAll(".im-member-ident input[type=\"checkbox\"]")) as HTMLInputElement[];
+      const tester = checkboxes.find((input) => input.closest("label")?.textContent?.includes("Tester")) || checkboxes.at(-1)!;
+      expect(tester.checked).toBe(true);
+      await act(async () => {
+        fireEvent.click(tester);
+      });
+      expect(api.imRemoveMember).toHaveBeenCalled();
+      expect(roomHeadAvatar?.querySelectorAll(".im-chat-avatar-role").length).toBe(initialRoleCount - 1);
+    } else {
+      expect(roomHeadAvatar?.querySelectorAll(".im-chat-avatar-role").length).toBe(initialRoleCount);
+    }
+  });
+
+  it("opens a room at the latest message", async () => {
+    const currentProject = project();
+    const currentRoom = roomFor(currentProject);
+    const api = renderIm();
+    (api.imGetRoom as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...currentRoom,
+      messages: [
+        {
+          messageId: "msg-old",
+          projectId: currentProject.projectId,
+          kind: "human",
+          authorMemberId: null,
+          authorLabel: "You",
+          body: "Oldest message",
+          quoteIds: [],
+          quotes: [],
+          mentionRoleIds: [],
+          jobId: null,
+          createdAtMs: 1000
+        },
+        {
+          messageId: "msg-latest",
+          projectId: currentProject.projectId,
+          kind: "role.say",
+          authorMemberId: currentRoom.members[0]!.memberId,
+          authorLabel: "Developer",
+          body: "Latest message",
+          quoteIds: [],
+          quotes: [],
+          mentionRoleIds: [],
+          jobId: null,
+          createdAtMs: 2000
+        }
+      ]
+    });
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+    const latest = await screen.findByText("Latest message");
+    const rows = document.querySelectorAll(".im-transcript [data-virtual-key]");
+    expect(rows[rows.length - 1]?.textContent).toContain("Latest message");
+    expect(latest.closest("[data-virtual-key]")?.getAttribute("data-virtual-key")).toBe("msg-latest");
+  });
+
+  it("toggles call chain side panel when clicking the invocation chain action button", async () => {
+    renderIm();
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+
+    const chainBtn = await screen.findByRole("button", { name: "Invocation Chain" });
+    expect(chainBtn).toBeTruthy();
+    expect(document.querySelector(".im-call-chain-side-panel")).toBeNull();
+
+    // Open call chain side panel
+    fireEvent.click(chainBtn);
+    expect(document.querySelector(".im-call-chain-side-panel")).not.toBeNull();
+    expect(screen.getByText("No call chains yet")).toBeTruthy();
+
+    // Toggle close
+    fireEvent.click(chainBtn);
+    expect(document.querySelector(".im-call-chain-side-panel")).toBeNull();
+  });
+
+  it("renders origin capsule with parent snippet and trigger tag for derived messages", async () => {
+    const currentProject = project();
+    const currentRoom = roomFor(currentProject);
+    const api = renderIm();
+    (api.imGetRoom as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...currentRoom,
+      messages: [
+        {
+          messageId: "msg-root",
+          projectId: currentProject.projectId,
+          kind: "human",
+          authorMemberId: null,
+          authorLabel: "You",
+          body: "@Architect Design indexing module",
+          autoRouted: true,
+          quoteIds: [],
+          quotes: [],
+          mentionRoleIds: ["m-arch"],
+          jobId: "job-1",
+          createdAtMs: 1000
+        },
+        {
+          messageId: "msg-arch",
+          projectId: currentProject.projectId,
+          kind: "role.say",
+          authorMemberId: currentRoom.members[0]!.memberId,
+          authorLabel: "Architect",
+          body: "Design complete.",
+          quoteIds: [],
+          quotes: [],
+          mentionRoleIds: [],
+          jobId: "job-1",
+          createdAtMs: 2000
+        }
+      ]
+    });
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+
+    const capsule = await screen.findByRole("button", { name: /You/ });
+    expect(capsule).toBeTruthy();
+    expect(document.querySelector(".im-origin-capsule")).not.toBeNull();
+    expect(document.querySelector(".im-origin-snippet")?.textContent).toContain("Design indexing module");
+  });
+
+  it("opens the role config popover when clicking the external role avatar button", async () => {
+    const currentProject = project();
+    const currentRoom = roomFor(currentProject);
+    const api = renderIm();
+    (api.imGetRoom as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...currentRoom,
+      messages: [
+        {
+          messageId: "msg-role-1",
+          projectId: currentProject.projectId,
+          kind: "role.say",
+          authorMemberId: currentRoom.members[0]!.memberId,
+          authorLabel: "Developer",
+          body: "I completed the implementation.",
+          quoteIds: [],
+          quotes: [],
+          mentionRoleIds: [],
+          jobId: null,
+          createdAtMs: 2000
+        }
+      ]
+    });
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+
+    const avatarBtn = await screen.findByRole("button", { name: "Configure role" });
+    expect(avatarBtn).toBeTruthy();
+    expect(document.querySelector(".im-member-config-popover")).toBeNull();
+
+    // Click large circular avatar to open role configuration popover
+    fireEvent.click(avatarBtn);
+    expect(document.querySelector(".im-member-config-popover")).not.toBeNull();
+    expect(document.querySelector(".im-member-config-popover strong")?.textContent).toContain("Product Manager");
   });
 });

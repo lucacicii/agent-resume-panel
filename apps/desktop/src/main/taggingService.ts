@@ -5,6 +5,7 @@ import {
   resolveAutoTaggingSettings,
   runAutoTagging
 } from "@agent-resume/core";
+import { enqueueDesktopBackgroundWork, shouldRunDesktopBackgroundWork } from "./backgroundWork";
 import { loadPanelDbPaths } from "./panelDatabases";
 import { recordAppError } from "./appErrorLog";
 
@@ -55,10 +56,11 @@ export function scheduleAutoTagging(delayMs = 3_000): void {
 }
 
 async function runAutoTaggingSafe(): Promise<void> {
+  if (!shouldRunDesktopBackgroundWork()) return;
   if (inFlight) {
     return inFlight;
   }
-  inFlight = runAutoTaggingTick()
+  inFlight = enqueueDesktopBackgroundWork(runAutoTaggingTick)
     .catch((error) => {
       void recordAppError({ source: "auto-tagging", error });
     })

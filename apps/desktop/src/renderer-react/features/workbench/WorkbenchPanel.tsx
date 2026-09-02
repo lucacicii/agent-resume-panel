@@ -132,6 +132,10 @@ type GitTreeNode = {
   isDirectory: boolean;
   children: GitTreeNode[];
   change?: GitChange;
+  /** Precomputed flattened changes of the subtree (directories); the single change for files. */
+  changes: GitChange[];
+  /** Precomputed repo-relative paths of the subtree (directories). */
+  repoPaths: string[];
 };
 type EditorPane = Extract<FileInspection, { kind: "text" }> & {
   key: string;
@@ -692,12 +696,12 @@ function buildGitChangeTree(changes: GitChange[]): GitTreeNode[] {
       const isFile = index === parts.length - 1;
       const path = parentPath ? `${parentPath}/${name}` : name;
       if (isFile) {
-        siblings.push({ name, path: treePath, isDirectory: false, children: [], change });
+        siblings.push({ name, path: treePath, isDirectory: false, children: [], change, changes: [], repoPaths: [] });
         continue;
       }
       let directory = directories.get(path);
       if (!directory) {
-        directory = { name, path, isDirectory: true, children: [] };
+        directory = { name, path, isDirectory: true, children: [], changes: [], repoPaths: [] };
         directories.set(path, directory);
         siblings.push(directory);
       }
@@ -711,7 +715,27 @@ function buildGitChangeTree(changes: GitChange[]): GitTreeNode[] {
     nodes.filter((node) => node.isDirectory).forEach((node) => sort(node.children));
   };
   sort(roots);
+  roots.forEach(computeGitNodeMetadata);
   return roots;
+}
+
+/** One pass over the tree caching each directory's flattened changes/repo paths for cheap re-renders. */
+function computeGitNodeMetadata(node: GitTreeNode): void {
+  if (!node.isDirectory) {
+    const change = node.change;
+    node.changes = change ? [change] : [];
+    node.repoPaths = change ? [change.repoPath] : [];
+    return;
+  }
+  const changes: GitChange[] = [];
+  const repoPaths: string[] = [];
+  for (const child of node.children) {
+    computeGitNodeMetadata(child);
+    changes.push(...child.changes);
+    repoPaths.push(...child.repoPaths);
+  }
+  node.changes = changes;
+  node.repoPaths = repoPaths;
 }
 
 function gitDirectoryExpandKey(repoRoot: string, directoryPath: string): string {
@@ -729,10 +753,6 @@ function gitDirectoryKeys(changes: GitChange[]): Set<string> {
     }
   }
   return keys;
-}
-
-function expandedGitDirectories(changes: GitChange[]): Set<string> {
-  return gitDirectoryKeys(changes);
 }
 
 function reconcileExpandedGitDirectories(current: Set<string>, changes: GitChange[]): Set<string> {
@@ -798,27 +818,10 @@ export function workbenchActiveFilePath(
   return isWorkbenchPathWithin(displayFilePath, projectPath) ? displayFilePath : repoFilePath;
 }
 
-function collectNodeChanges(node: GitTreeNode): GitChange[] {
-  if (!node.isDirectory) return node.change ? [node.change] : [];
-  return node.children.flatMap(collectNodeChanges);
-}
-
-/** Repo-relative paths under a node, deduplicated, for stage/unstage. */
-function uniqueRepoPaths(changes: GitChange[]): string[] {
-  const seen = new Set<string>();
-  const paths: string[] = [];
-  for (const change of changes) {
-    if (seen.has(change.repoPath)) continue;
-    seen.add(change.repoPath);
-    paths.push(change.repoPath);
-  }
-  return paths;
-}
-
 /** Absolute drag path for a Git tree node, or null when it cannot be resolved. */
 function gitNodeDragPath(node: GitTreeNode): string | null {
   if (!node.isDirectory) return node.change ? gitChangeFilePath(node.change) : null;
-  const repoRoot = collectNodeChanges(node)[0]?.repoRoot || "";
+  const repoRoot = node.changes[0]?.repoRoot || "";
   return repoRoot ? gitChangeFilePath({ repoRoot, repoPath: node.path }) : null;
 }
 
@@ -826,6 +829,47 @@ function uniqueGitChanges(changes: GitChange[]): GitChange[] {
   const unique = new Map<string, GitChange>();
   for (const change of changes) unique.set(gitChangeKey(change), change);
   return [...unique.values()];
+}
+
+/**
+ * Move targeted changes between the staged/unstaged lists locally so checkbox
+ * clicks respond instantly; a trailing status refresh converges the details.
+ */
+function stageGitChangesOptimistically(
+  state: GitStatusResult,
+  targets: GitStageTarget[],
+  targetStaged: boolean
+): GitStatusResult {
+  const wanted = new Set<string>();
+  for (const target of targets) {
+    for (const repoPath of target.paths) {
+      wanted.add(gitChangeKey({ repoRoot: target.repoRoot, repoPath }));
+    }
+  }
+  const place = (change: GitChange): GitChange => targetStaged
+    ? { ...change, staged: true, unstaged: false }
+    : { ...change, staged: false, unstaged: true };
+  const staged: GitChange[] = [];
+  const seenStaged = new Set<string>();
+  const unstaged: GitChange[] = [];
+  const seenUnstaged = new Set<string>();
+  const push = (list: GitChange[], seen: Set<string>, change: GitChange) => {
+    const key = gitChangeKey(change);
+    if (seen.has(key)) return;
+    seen.add(key);
+    list.push(change);
+  };
+  for (const change of state.staged) {
+    const key = gitChangeKey(change);
+    if (wanted.has(key) && !targetStaged) push(unstaged, seenUnstaged, place(change));
+    else push(staged, seenStaged, change);
+  }
+  for (const change of state.unstaged) {
+    const key = gitChangeKey(change);
+    if (wanted.has(key) && targetStaged) push(staged, seenStaged, place(change));
+    else push(unstaged, seenUnstaged, change);
+  }
+  return { ...state, staged, unstaged };
 }
 
 type GitStageTarget = { repoRoot: string; paths: string[] };
@@ -929,9 +973,9 @@ function GitChangeTree({
 }): React.JSX.Element {
   return <>{nodes.map((node) => {
     if (node.isDirectory) {
-      const nodeChanges = collectNodeChanges(node);
+      const nodeChanges = node.changes;
       const keys = nodeChanges.map(gitChangeKey);
-      const repoPaths = uniqueRepoPaths(nodeChanges);
+      const repoPaths = node.repoPaths;
       const directoryDiscarding = keys.some((key) => discarding.has(key));
       const repoRoot = nodeChanges[0]?.repoRoot || "";
       const expandKey = gitDirectoryExpandKey(repoRoot, node.path);
@@ -2655,6 +2699,8 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [gitRoot, setGitRoot] = useState("");
   const [gitExpandedDirs, setGitExpandedDirs] = useState<Set<string>>(new Set());
   const gitExpandInitializedRef = useRef(false);
+  /** Directory keys from the last status refresh, so newly appeared directories default to expanded. */
+  const gitSeenDirectoryKeysRef = useRef<Set<string>>(new Set());
   const [gitLog, setGitLog] = useState<GitLog | null>(null);
   const [gitShow, setGitShow] = useState<GitShow | null>(null);
   const [gitHistoryContext, setGitHistoryContext] = useState<GitHistoryContext | null>(null);
@@ -2666,7 +2712,8 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [commitBusy, setCommitBusy] = useState(false);
   const [commitSuggestion, setCommitSuggestion] = useState<CommitSuggestion | null>(null);
   const [discardingGitPaths, setDiscardingGitPaths] = useState<Set<string>>(() => new Set());
-  const gitStageBusyRef = useRef(false);
+  /** Per-repo promise queues: git index operations are serialized per repo to avoid index.lock contention. */
+  const gitStageQueuesRef = useRef(new Map<string, Promise<void>>());
   const [branchPane, setBranchPane] = useState<TerminalPane | null>(null);
   const [branchMenuPosition, setBranchMenuPosition] = useState<BranchMenuPosition | null>(null);
   const [branchResult, setBranchResult] = useState<TerminalGitBranches | null>(null);
@@ -2704,6 +2751,10 @@ export function WorkbenchPanel(): ReactPortal | null {
   const folderExpandTimerRef = useRef(0);
   const gitRefreshTimers = useRef(new Map<string, number>());
   const gitStatusInFlightRef = useRef(false);
+  /** A background status refresh requested while one is in flight: rerun once it finishes. */
+  const gitRefreshPendingRef = useRef(false);
+  /** Latest refreshGit callback so a trailing re-run never uses a stale project closure. */
+  const refreshGitRef = useRef<(withNotification?: boolean) => Promise<void>>(async () => {});
   const gitFetchInFlightRef = useRef(false);
   const gitLastFetchAtRef = useRef(0);
   const gitLogRequestRef = useRef(0);
@@ -6270,23 +6321,33 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   const refreshGit = useCallback(async (withNotification = false) => {
     if (!selectedProject) return;
+    const project = selectedProject;
     if (gitStatusInFlightRef.current) {
-      if (!withNotification) return;
-      // Manual refresh waits for the in-flight call to finish, then runs once more.
-      while (gitStatusInFlightRef.current) {
-        await new Promise((resolve) => window.setTimeout(resolve, 50));
+      if (withNotification) {
+        // Manual refresh waits for the in-flight call to finish, then runs once more.
+        while (gitStatusInFlightRef.current) {
+          await new Promise((resolve) => window.setTimeout(resolve, 50));
+        }
+      } else {
+        // Background refresh while one is in flight: converge after the current call finishes.
+        gitRefreshPendingRef.current = true;
+        return;
       }
     }
     gitStatusInFlightRef.current = true;
     if (withNotification) setGitRefreshing(true);
     try {
       const result = await desktopApi().terminalGitStatus({
-        cwd: selectedProject,
+        cwd: project,
         nestedScan: {
           maxDepth: settings?.workbench?.gitNestedScanMaxDepth,
           ignoreDirs: settings?.workbench?.gitNestedScanIgnoreDirs
         }
       });
+      // The user may have switched projects while the status query was in flight:
+      // discard the stale result (data and expansion init) so the next project's
+      // first refresh still defaults to a fully expanded tree.
+      if (selectedProjectRef.current !== project) return;
       setGit(result);
       const roots = collectGitRoots(result);
       gitRootsRef.current = roots;
@@ -6295,12 +6356,22 @@ export function WorkbenchPanel(): ReactPortal | null {
         return result.root || result.nestedRepos?.[0]?.root || roots[0] || "";
       });
       const nextChanges = [...result.staged, ...result.unstaged];
+      const available = gitDirectoryKeys(nextChanges);
       setGitExpandedDirs((current) => {
         if (!gitExpandInitializedRef.current) {
+          // First status for this project: everything expanded by default.
           gitExpandInitializedRef.current = true;
-          return expandedGitDirectories(nextChanges);
+          gitSeenDirectoryKeysRef.current = new Set(available);
+          return new Set(available);
         }
-        return reconcileExpandedGitDirectories(current, nextChanges);
+        const next = reconcileExpandedGitDirectories(current, nextChanges);
+        // Directories that appeared after the previous status also default to
+        // expanded, while directories the user collapsed stay collapsed.
+        for (const key of available) {
+          if (!gitSeenDirectoryKeysRef.current.has(key)) next.add(key);
+        }
+        gitSeenDirectoryKeysRef.current = new Set(available);
+        return next;
       });
     } catch (error) {
       if (withNotification) notifyGitFailure("desktop.workbench.gitStatusRefreshFailed", error);
@@ -6309,8 +6380,18 @@ export function WorkbenchPanel(): ReactPortal | null {
     } finally {
       gitStatusInFlightRef.current = false;
       if (withNotification) setGitRefreshing(false);
+      // Coalesced trailing refresh: a background refresh requested while the
+      // previous call was still in flight runs once the dust settles. Use the
+      // latest callback so the re-run targets the current project, never the
+      // stale one this closure was created for.
+      if (gitRefreshPendingRef.current) {
+        gitRefreshPendingRef.current = false;
+        void refreshGitRef.current(false);
+      }
     }
   }, [collectGitRoots, notifyGitFailure, selectedProject, settings?.workbench?.gitNestedScanIgnoreDirs, settings?.workbench?.gitNestedScanMaxDepth, side]);
+
+  useEffect(() => { refreshGitRef.current = refreshGit; }, [refreshGit]);
 
   // Re-fetch content for open diff panes whose underlying file changed on disk
   // so the diff stays live alongside the git tree. `changedPaths` holds the
@@ -6420,6 +6501,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     gitRootsRef.current = [];
     gitLastFetchAtRef.current = 0;
     gitExpandInitializedRef.current = false;
+    gitSeenDirectoryKeysRef.current = new Set();
     setGit(null);
     setGitRoot("");
     setGitExpandedDirs(new Set());
@@ -6814,24 +6896,40 @@ export function WorkbenchPanel(): ReactPortal | null {
     } catch (error) { notifyGitFailure("desktop.workbench.checkoutBranchFailed", error); }
   };
 
+  /** Queue a git index operation per repo so concurrent clicks never collide on index.lock. */
+  const enqueueGitStage = useCallback((repoRoot: string, operation: () => Promise<unknown>): Promise<void> => {
+    const queues = gitStageQueuesRef.current;
+    const previous = queues.get(repoRoot) || Promise.resolve();
+    const next = previous.catch(() => undefined).then(operation).then(() => undefined);
+    queues.set(repoRoot, next.catch(() => undefined));
+    return next;
+  }, []);
+
   const toggleGitStage = useCallback(async (targets: GitStageTarget | GitStageTarget[], targetStaged: boolean) => {
     const groups = normalizeGitStageTargets(targets);
-    if (!groups.length || gitStageBusyRef.current) return;
-    gitStageBusyRef.current = true;
-    try {
-      for (const group of groups) {
-        if (targetStaged) await desktopApi().terminalGitStage({ repoRoot: group.repoRoot, paths: group.paths });
-        else await desktopApi().terminalGitUnstage({ repoRoot: group.repoRoot, paths: group.paths });
+    if (!groups.length) return;
+    const results = await Promise.all(groups.map(async (group) => {
+      try {
+        await enqueueGitStage(group.repoRoot, () => targetStaged
+          ? desktopApi().terminalGitStage({ repoRoot: group.repoRoot, paths: group.paths })
+          : desktopApi().terminalGitUnstage({ repoRoot: group.repoRoot, paths: group.paths }));
+        // Reflect the toggle in local state right away so checkboxes respond
+        // instantly; the coalesced trailing refresh converges to authoritative
+        // git status (status letters, mixed staged+modified files, ...).
+        setGit((current) => current ? stageGitChangesOptimistically(current, [group], targetStaged) : current);
+        return null;
+      } catch (error) {
+        return error;
       }
-      await refreshGit();
-      currentTerminals.forEach((pane) => void refreshTerminalGit(pane.key));
-    } catch (error) {
-      notifyGitFailure(targetStaged ? "desktop.workbench.gitStageFailed" : "desktop.workbench.gitUnstageFailed", error);
-      await refreshGit();
-    } finally {
-      gitStageBusyRef.current = false;
+    }));
+    const failures = results.filter((error): error is Error => Boolean(error));
+    if (failures.length) {
+      notifyGitFailure(targetStaged ? "desktop.workbench.gitStageFailed" : "desktop.workbench.gitUnstageFailed", failures[0]);
     }
-  }, [notifyGitFailure, refreshGit]);
+    currentTerminals.forEach((pane) => void refreshTerminalGit(pane.key));
+    // Never block the click on a full status scan; converge in the background.
+    void refreshGit(false);
+  }, [enqueueGitStage, notifyGitFailure, refreshGit, refreshTerminalGit]);
 
   const stagedCommitPaths = useMemo(() => {
     if (!gitRoot || !git) return [] as string[];
@@ -7816,7 +7914,7 @@ export function WorkbenchPanel(): ReactPortal | null {
               onContextMenu={(event) => sessionMenu(event, session)}
               onClick={(event) => handleCatalogSessionClick(event, session)}
               title={otherMachine ? t("desktop.workbench.otherMachineSessionHint", session.projectPath) : undefined}
-            ><span className="wb-list-item-top"><span className="wb-session-title-wrap">{isOpen ? <span className="wb-session-activity-dot" aria-hidden="true" /> : null}<span className="wb-list-item-title" ref={(el) => syncTruncationTitle(el)}>{session.title || session.id}</span>{otherMachine ? <span className="wb-other-machine-badge" aria-label={t("desktop.workbench.otherMachineBadge")}>{t("desktop.workbench.otherMachineBadge")}</span> : null}</span></span><span className="wb-list-item-preview" ref={(el) => syncTruncationTitle(el)}><span className="wb-list-item-date">{formatDateTime(session.updatedAt)}</span><span className="s-provider-tag" data-provider={session.acpProvider || session.provider}>{session.acpProvider ? `acp/${session.acpProvider}` : session.provider}</span><span className={`wb-gtd-status-badge is-${gtdStatus}`} aria-label={t("desktop.workbench.gtdStatusLabel", t(`desktop.workbench.gtdStatus.${gtdStatus}`))}>{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</span>{" · "}{aliases[session.projectPath] || basename(session.projectPath)}</span></button>;
+            ><span className="wb-list-item-top"><span className="wb-session-title-wrap">{isOpen ? <span className="wb-session-activity-dot" aria-hidden="true" /> : null}<span className="wb-list-item-title" ref={(el) => syncTruncationTitle(el)}>{session.title || session.id}</span>{session.source === "im" ? <span className="wb-im-session-badge" aria-label={t("desktop.workbench.imSessionBadge")} title={t("desktop.workbench.imSessionBadgeHint")}>{t("desktop.workbench.imSessionBadge")}</span> : null}{otherMachine ? <span className="wb-other-machine-badge" aria-label={t("desktop.workbench.otherMachineBadge")}>{t("desktop.workbench.otherMachineBadge")}</span> : null}</span></span><span className="wb-list-item-preview" ref={(el) => syncTruncationTitle(el)}><span className="wb-list-item-date">{formatDateTime(session.updatedAt)}</span><span className="s-provider-tag" data-provider={session.acpProvider || session.provider}>{session.acpProvider ? `acp/${session.acpProvider}` : session.provider}</span><span className={`wb-gtd-status-badge is-${gtdStatus}`} aria-label={t("desktop.workbench.gtdStatusLabel", t(`desktop.workbench.gtdStatus.${gtdStatus}`))}>{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</span>{" · "}{aliases[session.projectPath] || basename(session.projectPath)}</span></button>;
           }}
         /> : <div className="wb-list"><p className="muted wb-list-empty">{sessionFilter === "active" ? t("desktop.workbench.noFilterSessions") : sessionQuery ? t("desktop.workbench.noMatchingSessions") : t("desktop.workbench.noSessionsInProject")}</p></div>}
       </aside>

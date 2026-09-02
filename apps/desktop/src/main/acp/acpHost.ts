@@ -136,6 +136,10 @@ class AcpChatController {
     );
   }
 
+  isBusy(): boolean {
+    return this.isRunning || this.isConnecting;
+  }
+
   /**
    * Re-push history + init + status without respawning the agent.
    * Used when the renderer re-activates an already-connected chat.
@@ -515,14 +519,14 @@ class AcpChatController {
     const text = rawText.trim();
     let images = rawImages.filter((image) => image.data);
     const files = rawFiles.filter((file) => file.absolutePath?.trim() || file.data);
-    if (
-      (!text && !images.length && !files.length) ||
-      this.isRunning ||
-      this.isConnecting ||
-      !this.connection ||
-      !this.activeAcpSessionId
-    ) {
-      return;
+    if (!text && !images.length && !files.length) {
+      throw new Error("ACP prompt is empty.");
+    }
+    if (this.isRunning) {
+      throw new Error("ACP session is still running the previous turn.");
+    }
+    if (this.isConnecting || !this.connection || !this.activeAcpSessionId) {
+      throw new Error("ACP session is not ready.");
     }
 
     if (images.length) {
@@ -914,12 +918,37 @@ class AcpChatController {
 }
 
 let imStreamHandler: ((event: AcpStreamEvent) => Promise<void>) | null | undefined;
+const pendingWindowStreamEvents = new Map<string, { getMainWindow: GetMainWindow; event: AcpStreamEvent; timer: ReturnType<typeof setTimeout> }>();
+
+function emitStreamEventToWindow(getMainWindow: GetMainWindow, event: AcpStreamEvent): void {
+  const win = getMainWindow();
+  if (!win || win.isDestroyed()) return;
+
+  if (event.type === "assistantDelta" && event.streaming) {
+    const key = `${event.chatId}:${event.id}`;
+    const existing = pendingWindowStreamEvents.get(key);
+    if (existing) {
+      existing.event = event;
+      return;
+    }
+    const timer = setTimeout(() => {
+      const pending = pendingWindowStreamEvents.get(key);
+      if (!pending) return;
+      pendingWindowStreamEvents.delete(key);
+      const target = pending.getMainWindow();
+      if (target && !target.isDestroyed()) {
+        target.webContents.send("acp:stream", pending.event);
+      }
+    }, 16);
+    pendingWindowStreamEvents.set(key, { getMainWindow, event, timer });
+    return;
+  }
+
+  win.webContents.send("acp:stream", event);
+}
 
 function emitToWindow(getMainWindow: GetMainWindow, event: AcpStreamEvent): void {
-  const win = getMainWindow();
-  if (win && !win.isDestroyed()) {
-    win.webContents.send("acp:stream", event);
-  }
+  emitStreamEventToWindow(getMainWindow, event);
   if (imStreamHandler === undefined) {
     imStreamHandler = null;
     void import("../im/ipc").then((mod) => {
@@ -952,7 +981,7 @@ function resolveChatIdForSession(sessionId: string | undefined): string | null {
 
 let acpHostDeps: { loadSettings: LoadSettings; getMainWindow: GetMainWindow } | null = null;
 
-export async function connectAcpChat(chatId: string, force = false): Promise<void> {
+export async function connectAcpChat(chatId: string, force = false): Promise<{ rebuilt: boolean }> {
   if (!acpHostDeps) throw new Error("ACP host is not registered.");
   const { loadSettings, getMainWindow } = acpHostDeps;
   const settings = await loadSettings();
@@ -964,8 +993,9 @@ export async function connectAcpChat(chatId: string, force = false): Promise<voi
   if (controller && !force && controller.isLive()) {
     lastActiveChatId = chatId;
     controller.repostSnapshot();
-    return;
+    return { rebuilt: false };
   }
+  const previousSessionId = record.acpSessionId;
   if (controller) {
     controller.dispose();
     controllers.delete(chatId);
@@ -976,6 +1006,20 @@ export async function connectAcpChat(chatId: string, force = false): Promise<voi
   controllers.set(chatId, controller);
   lastActiveChatId = chatId;
   await controller.bootstrap();
+  const nextSessionId = controller.getRecord().acpSessionId;
+  return { rebuilt: !previousSessionId || nextSessionId !== previousSessionId };
+}
+
+export function inspectAcpChat(chatId: string): { live: boolean; running: boolean } {
+  const controller = controllers.get(chatId);
+  if (!controller) return { live: false, running: false };
+  return { live: controller.isLive(), running: controller.isBusy() };
+}
+
+export function listLiveAcpChatIds(): string[] {
+  return [...controllers.entries()]
+    .filter(([, controller]) => controller.isLive() || controller.isBusy())
+    .map(([chatId]) => chatId);
 }
 
 export async function promptAcpChat(
@@ -995,6 +1039,13 @@ export async function denyAcpPermission(requestId: string): Promise<void> {
   if (!waiter) return;
   permissionWaiters.delete(requestId);
   waiter.resolve({ outcome: { outcome: "cancelled" } });
+}
+
+export async function cancelAcpChat(chatId: string): Promise<void> {
+  const controller = controllers.get(chatId);
+  if (controller) {
+    await controller.cancel();
+  }
 }
 
 export async function setAcpModel(chatId: string, modelId: string): Promise<void> {
