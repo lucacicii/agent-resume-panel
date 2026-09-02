@@ -1390,6 +1390,7 @@ export function ImPanel(): ReactPortal | null {
                           isExpanded={isExpanded}
                           depth={depth}
                           graphMeta={graphMeta}
+                          onJumpToMessage={jumpToMessage}
                           onToggleExpand={handleToggleExpand}
                           isThinkingExpanded={expandedThinking[message.messageId] === true}
                           isFilesExpanded={expandedFiles[message.messageId] !== false}

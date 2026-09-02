@@ -212,6 +212,7 @@
       "desktop.im.callChainPendingProposal": "Pending proposal",
       "desktop.im.callChainNoResults": "No matching invocation chains",
       "desktop.im.delegationReason": "Reason",
+      "desktop.im.derivedFrom": "Derived from {0}",
       "desktop.im.expandMessage": "Expand message",
       "desktop.im.collapseMessage": "Collapse message",
       "desktop.im.jumpToMessage": "Jump to message"
@@ -1838,6 +1839,7 @@
       "desktop.im.callChainPendingProposal": "待确认派工",
       "desktop.im.callChainNoResults": "没有匹配的调用链路",
       "desktop.im.delegationReason": "原因",
+      "desktop.im.derivedFrom": "派生自 {0}",
       "desktop.im.expandMessage": "展开消息",
       "desktop.im.collapseMessage": "收起消息",
       "desktop.im.jumpToMessage": "跳转到消息"
@@ -2087,6 +2089,7 @@
       "desktop.im.callChainPendingProposal": "確認待ちの委譲",
       "desktop.im.callChainNoResults": "一致する呼び出しチェーンがありません",
       "desktop.im.delegationReason": "理由",
+      "desktop.im.derivedFrom": "{0} から派生",
       "desktop.im.expandMessage": "メッセージを展開",
       "desktop.im.collapseMessage": "メッセージを折りたたむ",
       "desktop.im.jumpToMessage": "メッセージにジャンプ"

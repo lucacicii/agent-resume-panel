@@ -1732,7 +1732,7 @@ Build the user service endpoints.
     expect(document.querySelector(".im-call-chain-side-panel")).toBeNull();
   });
 
-  it("renders graph gutter lanes and port circles for parent-child relationship tree", async () => {
+  it("renders origin capsule with parent snippet and trigger tag for derived messages", async () => {
     const currentProject = project();
     const currentRoom = roomFor(currentProject);
     const api = renderIm();
@@ -1745,7 +1745,7 @@ Build the user service endpoints.
           kind: "human",
           authorMemberId: null,
           authorLabel: "You",
-          body: "@Architect Design indexing",
+          body: "@Architect Design indexing module",
           autoRouted: true,
           quoteIds: [],
           quotes: [],
@@ -1772,13 +1772,9 @@ Build the user service endpoints.
       window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
     });
 
-    const gutters = document.querySelectorAll(".im-graph-gutter");
-    expect(gutters.length).toBeGreaterThanOrEqual(2);
-
-    // Root prompt has outgoing trunk line
-    expect(document.querySelector(".im-graph-gutter.has-children")).not.toBeNull();
-    // Child has branch curve and port circle
-    expect(document.querySelector(".im-graph-branch-curve")).not.toBeNull();
-    expect(document.querySelector(".im-graph-port-circle")).not.toBeNull();
+    const capsule = await screen.findByRole("button", { name: /You/ });
+    expect(capsule).toBeTruthy();
+    expect(document.querySelector(".im-origin-capsule")).not.toBeNull();
+    expect(document.querySelector(".im-origin-snippet")?.textContent).toContain("Design indexing module");
   });
 });
