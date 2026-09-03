@@ -341,7 +341,7 @@ class AcpChatController {
         break;
       case "agent_message_chunk":
       case "agent_thought_chunk":
-        this.handleAgentChunk(update);
+        this.handleAgentChunk(update, kind === "agent_thought_chunk");
         break;
       case "tool_call":
         this.upsertTurnToolCall(parseToolCallFromUpdate(update, "pending"));
@@ -406,17 +406,31 @@ class AcpChatController {
     }
   }
 
-  private handleAgentChunk(update: Record<string, unknown>): void {
+  private handleAgentChunk(update: Record<string, unknown>, isThoughtChunk = false): void {
     const extracted = extractChunkContent(update.content);
-    if (!extracted.text && !extracted.thinking) return;
+    // When the session update kind is agent_thought_chunk, all content is
+    // thinking regardless of the content block structure.  Some ACP adapters
+    // (e.g. opencode-go / pi-acp for DeepSeek) send plain-string content in
+    // agent_thought_chunk updates which extractChunkContent would otherwise
+    // classify as regular text.
+    let text: string;
+    let thinking: string;
+    if (isThoughtChunk) {
+      text = "";
+      thinking = (extracted.thinking || "") + (extracted.text || "");
+    } else {
+      text = extracted.text;
+      thinking = extracted.thinking;
+    }
+    if (!text && !thinking) return;
     if (!this.turnAssistantId) return;
     if (!this.streamingAssistantId) {
       this.streamingAssistantId = this.turnAssistantId;
-      this.streamingText = extracted.text;
-      this.streamingThinking = extracted.thinking;
+      this.streamingText = text;
+      this.streamingThinking = thinking;
     } else {
-      this.streamingText += extracted.text;
-      this.streamingThinking += extracted.thinking;
+      this.streamingText += text;
+      this.streamingThinking += thinking;
     }
     const assistant = this.getAssistantMessage(this.turnAssistantId);
     assistant.text = this.streamingText;
