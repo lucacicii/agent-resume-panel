@@ -924,6 +924,21 @@
     },
     "dialog": {
       "desktop.dialog.markdown": "Markdown"
+    },
+    "artifact": {
+      "desktop.artifact.preview": "Preview",
+      "desktop.artifact.code": "Code",
+      "desktop.artifact.reload": "Reload",
+      "desktop.artifact.fullscreen": "Fullscreen",
+      "desktop.artifact.exitFullscreen": "Exit Fullscreen",
+      "desktop.artifact.copy": "Copy Code",
+      "desktop.artifact.copied": "Copied",
+      "desktop.artifact.save": "Save to File",
+      "desktop.artifact.bgChecker": "Checkerboard",
+      "desktop.artifact.bgDark": "Dark",
+      "desktop.artifact.bgLight": "Light",
+      "desktop.artifact.htmlTitle": "HTML Preview",
+      "desktop.artifact.svgTitle": "SVG Graphic"
     }
   },
   "zh-cn": {
@@ -1847,6 +1862,21 @@
       "desktop.im.expandMessage": "展开消息",
       "desktop.im.collapseMessage": "收起消息",
       "desktop.im.jumpToMessage": "跳转到消息"
+    },
+    "artifact": {
+      "desktop.artifact.preview": "预览",
+      "desktop.artifact.code": "代码",
+      "desktop.artifact.reload": "重新加载",
+      "desktop.artifact.fullscreen": "全屏预览",
+      "desktop.artifact.exitFullscreen": "退出全屏",
+      "desktop.artifact.copy": "复制代码",
+      "desktop.artifact.copied": "已复制",
+      "desktop.artifact.save": "保存到文件",
+      "desktop.artifact.bgChecker": "透明棋盘格",
+      "desktop.artifact.bgDark": "深色背景",
+      "desktop.artifact.bgLight": "浅色背景",
+      "desktop.artifact.htmlTitle": "HTML 实时预览",
+      "desktop.artifact.svgTitle": "SVG 矢量图"
     }
   },
   "ja": {
@@ -2102,6 +2132,21 @@
     },
     "usage": {},
     "backfill": {},
-    "dialog": {}
+    "dialog": {},
+    "artifact": {
+      "desktop.artifact.preview": "プレビュー",
+      "desktop.artifact.code": "コード",
+      "desktop.artifact.reload": "再読み込み",
+      "desktop.artifact.fullscreen": "全画面表示",
+      "desktop.artifact.exitFullscreen": "全画面終了",
+      "desktop.artifact.copy": "コードをコピー",
+      "desktop.artifact.copied": "コピーしました",
+      "desktop.artifact.save": "ファイルに保存",
+      "desktop.artifact.bgChecker": "市松模様",
+      "desktop.artifact.bgDark": "ダーク",
+      "desktop.artifact.bgLight": "ライト",
+      "desktop.artifact.htmlTitle": "HTMLプレビュー",
+      "desktop.artifact.svgTitle": "SVGグラフィック"
+    }
   }
 }
