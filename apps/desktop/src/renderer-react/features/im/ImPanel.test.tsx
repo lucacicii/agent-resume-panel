@@ -58,6 +58,7 @@ const messages = {
   "desktop.im.mention": "Mention a role",
   "desktop.im.removeMention": "Remove mention",
   "desktop.im.placeholder": "Message the room. @ a role. Enter to send, Shift+Enter for a new line.",
+  "desktop.im.placeholderSingle": "Message {0}. Enter to send, Shift+Enter for a new line.",
   "desktop.im.members": "Roles",
   "desktop.im.noMembers": "No roles in this room",
   "desktop.im.agentLabel": "Agent",
@@ -1812,5 +1813,52 @@ Build the user service endpoints.
     fireEvent.click(avatarBtn);
     expect(document.querySelector(".im-member-config-popover")).not.toBeNull();
     expect(document.querySelector(".im-member-config-popover strong")?.textContent).toContain("Product Manager");
+  });
+
+  it("adapts UI to ACP 1-on-1 mode when only 1 role is enabled, and returns to group mode when multi-role", async () => {
+    const currentProject = project();
+    const currentRoom = roomFor(currentProject);
+    const singleRoleRoom = {
+      ...currentRoom,
+      members: [
+        {
+          ...currentRoom.members[0]!,
+          templateId: "role_developer",
+          name: "Developer",
+          enabled: true
+        }
+      ],
+      messages: [
+        {
+          messageId: "msg-dev-1",
+          projectId: currentProject.projectId,
+          kind: "role.say",
+          authorMemberId: currentRoom.members[0]!.memberId,
+          authorLabel: "Developer",
+          body: "Hello, ready to code.",
+          quoteIds: [],
+          quotes: [],
+          mentionRoleIds: [],
+          jobId: null,
+          createdAtMs: 2000
+        }
+      ]
+    };
+
+    const api = renderIm();
+    (api.imGetRoom as ReturnType<typeof vi.fn>).mockResolvedValue(singleRoleRoom);
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+
+    // 1. In 1-role mode: placeholder includes the role name
+    const textarea = (await screen.findByRole("textbox")) as HTMLTextAreaElement;
+    expect(textarea.placeholder).toContain("Developer");
+
+    // 2. In 1-role mode: @ mention button is hidden
+    expect(document.querySelector(".im-mention-btn")).toBeNull();
+
+    // 3. In 1-role mode: continueAsk button is hidden on role reply
+    expect(document.querySelector(".im-continue-ask-btn")).toBeNull();
   });
 });

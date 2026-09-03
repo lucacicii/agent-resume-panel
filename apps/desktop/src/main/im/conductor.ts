@@ -273,7 +273,9 @@ export class ImConductor {
     const quotes = await this.store.resolveQuotes(input.projectId, input.quoteIds);
     const settings = await loadSettings();
     const panelHome = effectivePanelHome(settings);
-    const cwd = mentionIds.length
+    const enabledMembers = room.members.filter((m) => m.enabled);
+    const isSingleRoleDirect = !mentionIds.length && enabledMembers.length === 1;
+    const cwd = (mentionIds.length || isSingleRoleDirect)
       ? await this.store.ensureProjectLocalPath(input.projectId, panelHome)
       : room.project.localPath;
     const savedImages: ImImageAttachment[] = [];
@@ -284,7 +286,7 @@ export class ImConductor {
       }
     }
 
-    if (!threadId && mentionIds.length) threadId = crypto.randomUUID();
+    if (!threadId && (mentionIds.length || isSingleRoleDirect)) threadId = crypto.randomUUID();
     const message = await this.store.insertMessage({
       projectId: input.projectId,
       kind: "human",
@@ -311,9 +313,16 @@ export class ImConductor {
       }
     }
 
-    if (!mentionIds.length) {
+    const targetMembers: ImMember[] = mentionIds.length
+      ? mentionIds.map((mentionId) => {
+          const member = room.members.find((item) => item.memberId === mentionId && item.enabled);
+          if (!member) throw new Error("Mentioned role is not in this room.");
+          return member;
+        })
+      : (isSingleRoleDirect ? [enabledMembers[0]!] : []);
+
+    if (!targetMembers.length) {
       if (body.trim() && settings.im?.smartRoutingEnabled !== false) {
-        const enabledMembers = room.members.filter((m) => m.enabled);
         if (enabledMembers.length > 0) {
           void this.performAsyncIntentRouting({
             projectId: input.projectId,
@@ -334,9 +343,7 @@ export class ImConductor {
     const knowledge = this.store.snapshotKnowledge(room.knowledge);
     const jobs: ImJob[] = [];
     let exclusiveBusy = Boolean(await this.store.findActiveWriterJob(input.projectId));
-    for (const mentionId of mentionIds) {
-      const member = room.members.find((item) => item.memberId === mentionId && item.enabled);
-      if (!member) throw new Error("Mentioned role is not in this room.");
+    for (const member of targetMembers) {
       const template = await this.store.getTemplate(member.templateId);
       const agent = template?.agent ?? member.agent;
       const persona = template?.persona ?? member.persona;

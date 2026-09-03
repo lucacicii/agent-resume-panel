@@ -216,13 +216,18 @@ export const ImMessageItem = memo(function ImMessageItem({
     return [];
   }, [dispatchBlocks, message.createdAtMs, message.delegationProposals]);
 
+  const isSingleRole = useMemo(() => {
+    const enabled = room?.members?.filter((m) => m.enabled) ?? [];
+    return enabled.length === 1;
+  }, [room?.members]);
+
   const renderActions = () => {
     if (message.kind !== "human" && message.kind !== "role.say") return null;
     if (isAnswering) return null;
 
     return (
       <div className="im-compact-actions">
-        {message.kind === "role.say" && !isResumable && (
+        {message.kind === "role.say" && !isResumable && !isSingleRole && (
           <button
             type="button"
             className="im-compact-action-btn im-continue-ask-btn"

@@ -113,20 +113,25 @@ export const ImComposer = memo(function ImComposer({
     };
   }, [toolsPopoverOpen]);
 
+  const isSingleRole = members.length === 1;
+  const singleMember = isSingleRole ? members[0] : undefined;
+
   const mentionQuery = useMemo(() => {
+    if (isSingleRole) return "";
     const at = draft.lastIndexOf("@");
     if (at < 0) return "";
     const after = draft.slice(at + 1);
     if (/\s/.test(after)) return "";
     return after.trim().toLowerCase();
-  }, [draft]);
+  }, [draft, isSingleRole]);
 
   const mentionOptions = useMemo(() => {
+    if (isSingleRole) return [];
     return (mentionQuery
       ? members.filter((member) => memberLabel(member).toLowerCase().includes(mentionQuery) || member.agent.includes(mentionQuery))
       : members
     ).filter((member) => !mentionIds.includes(member.memberId));
-  }, [members, mentionIds, mentionQuery, memberLabel]);
+  }, [isSingleRole, members, mentionIds, mentionQuery, memberLabel]);
 
   const mentioned = useMemo(() => {
     return mentionIds
@@ -212,7 +217,7 @@ export const ImComposer = memo(function ImComposer({
   }, [stageImageFiles]);
 
   const onComposerKey = useCallback((event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "@") {
+    if (event.key === "@" && !isSingleRole) {
       setMentionOpen(true);
       setMentionIndex(0);
     }
@@ -394,8 +399,16 @@ export const ImComposer = memo(function ImComposer({
             onChange={(event) => onDraftChange(event.target.value)}
             onKeyDown={onComposerKey}
             onPaste={onComposerPaste}
-            placeholder={t("desktop.im.placeholder")}
-            aria-label={t("desktop.im.placeholder")}
+            placeholder={
+              singleMember
+                ? t("desktop.im.placeholderSingle", memberLabel(singleMember))
+                : t("desktop.im.placeholder")
+            }
+            aria-label={
+              singleMember
+                ? t("desktop.im.placeholderSingle", memberLabel(singleMember))
+                : t("desktop.im.placeholder")
+            }
             rows={1}
           />
         </div>
@@ -409,19 +422,21 @@ export const ImComposer = memo(function ImComposer({
           >
             <ThemeIcon name="file-image" size={16} aria-hidden="true" />
           </button>
-          <button
-            type="button"
-            className={`chat-tools-toggle im-mention-btn${mentionOpen ? " active" : ""}`}
-            onClick={() => {
-              setMentionOpen((open) => !open);
-              setMentionIndex(0);
-              textareaRef.current?.focus();
-            }}
-            title={t("desktop.im.mention")}
-            aria-label={t("desktop.im.mention")}
-          >
-            <ThemeIcon name="at-sign" size={16} aria-hidden="true" />
-          </button>
+          {!isSingleRole && (
+            <button
+              type="button"
+              className={`chat-tools-toggle im-mention-btn${mentionOpen ? " active" : ""}`}
+              onClick={() => {
+                setMentionOpen((open) => !open);
+                setMentionIndex(0);
+                textareaRef.current?.focus();
+              }}
+              title={t("desktop.im.mention")}
+              aria-label={t("desktop.im.mention")}
+            >
+              <ThemeIcon name="at-sign" size={16} aria-hidden="true" />
+            </button>
+          )}
           <span className="chat-tools-wrap" ref={toolsPopoverRef}>
             <button
               type="button"

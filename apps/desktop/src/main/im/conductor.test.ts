@@ -967,6 +967,52 @@ Implement the search indexing algorithm as designed.
     expect(emit).toHaveBeenCalledWith(expect.objectContaining({ type: "messageUpdate" }));
   });
 
+  it("directly dispatches no-mention messages to the single role in 1-role room like ACP chat", async () => {
+    const store = await createStore();
+    const project = await store.createProject("Single Role Room");
+    await store.setLocalPath(project.projectId, process.cwd());
+    const room = await store.getRoom(project.projectId);
+
+    // Keep only the developer role
+    const dev = room.members.find((m) => m.templateId === "role_developer")!;
+    for (const member of room.members) {
+      if (member.memberId !== dev.memberId) {
+        await store.removeMember(member.memberId);
+      }
+    }
+
+    const connect = vi.fn(async () => undefined);
+    const prompt = vi.fn(async (_chatId: string, _text: string, _images?: any) => undefined);
+    const conductor = new ImConductor(store, () => undefined, connect, prompt);
+
+    // 1. Regular message without @ should dispatch immediately to the single role
+    const result1 = await conductor.postMessage({
+      projectId: project.projectId,
+      body: "Write a hello world function",
+      quoteIds: [],
+      mentionRoleIds: []
+    });
+
+    expect(result1.job).not.toBeNull();
+    expect(result1.job?.memberId).toBe(dev.memberId);
+    expect(result1.message.mentionRoleIds).toEqual([]);
+    expect(result1.message.autoRouted).toBeFalsy();
+    expect(result1.message.routingTip).toBeUndefined();
+
+    // 2. Filler words like "好的" or "ok" should ALSO directly dispatch without being intercepted
+    const result2 = await conductor.postMessage({
+      projectId: project.projectId,
+      body: "好的",
+      quoteIds: [],
+      mentionRoleIds: []
+    });
+
+    expect(result2.job).not.toBeNull();
+    expect(result2.job?.memberId).toBe(dev.memberId);
+    expect(result2.message.autoRouted).toBeFalsy();
+    expect(result2.message.routingTip).toBeUndefined();
+  });
+
   it("reuses one ACP session per role and sends incremental prompts after bootstrap", async () => {
     const store = await createStore();
     const project = await store.createProject("Reuse session");
