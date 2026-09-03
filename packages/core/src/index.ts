@@ -311,6 +311,13 @@ export {
   COMPOSER_SEND_TEXT_MAX,
   COMPOSER_SEND_LIST_MAX
 } from "./workbench/composerSends";
+export {
+  importComposerSendsForSession,
+  shouldImportComposerSendText
+} from "./workbench/composerSendsImport";
+export type {
+  ImportComposerSendsResult
+} from "./workbench/composerSendsImport";
 export type {
   ComposerSendRecord,
   ComposerSendAppendInput

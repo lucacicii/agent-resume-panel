@@ -2870,11 +2870,10 @@ export function WorkbenchPanel(): ReactPortal | null {
     .map((pane) => `${pane.key}::${pane.sessionKey || ""}`)
     .join("|"), [terminals]);
 
-  useEffect(() => {
+  const loadComposerTipsFromDb = useCallback(() => {
     const list = desktopApi().workbenchComposerSendList;
     if (typeof list !== "function") return;
     const sessionPanes = terminalsRef.current.filter((pane) => pane.group === "session");
-    let cancelled = false;
     void Promise.all(sessionPanes.map(async (pane) => {
       const identity = sessionIdentityFromKey(pane.sessionKey);
       const records = await list({
@@ -2888,7 +2887,6 @@ export function WorkbenchPanel(): ReactPortal | null {
         tips: records.map((record) => ({ id: record.id, text: record.text, createdAtMs: record.createdAtMs }))
       };
     })).then((rows) => {
-      if (cancelled) return;
       setComposerTips((current) => {
         let changed = false;
         const next = { ...current };
@@ -2911,8 +2909,11 @@ export function WorkbenchPanel(): ReactPortal | null {
         return changed ? next : current;
       });
     }).catch(() => undefined);
-    return () => { cancelled = true; };
-  }, [composerHistoryKeys]);
+  }, []);
+
+  useEffect(() => {
+    loadComposerTipsFromDb();
+  }, [composerHistoryKeys, loadComposerTipsFromDb]);
 
   // Drop runtime rows for panes that are no longer open.
   useEffect(() => {
@@ -5026,6 +5027,49 @@ export function WorkbenchPanel(): ReactPortal | null {
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [active, closeEditorFind, currentEditor, editorFindOpen, openEditorFind, runEditorFind]);
 
+  /** Sessions already auto-imported into composer_sends this app run (append-only dedupe happens in core too). */
+  const composerImportKeysRef = useRef(new Set<string>());
+
+  const autoImportComposerSends = (session: AgentSession) => {
+    const key = `${session.provider}:${session.id}`;
+    if (composerImportKeysRef.current.has(key)) return;
+    const fn = desktopApi().workbenchComposerSendImport;
+    if (typeof fn !== "function") return;
+    composerImportKeysRef.current.add(key);
+    void fn({ provider: session.provider, id: session.id })
+      .then((result) => {
+        if (result.imported > 0) {
+          loadComposerTipsFromDb();
+        }
+      })
+      .catch(() => undefined);
+  };
+
+  // Restore-triggered composer panes (app reload / session pane reopen) do not
+  // pass through openSession. When a session-bound pane shows no DB history,
+  // auto-import its transcript user inputs once per app run.
+  useEffect(() => {
+    const sessionPanes = terminalsRef.current.filter((pane) => pane.group === "session" && pane.sessionKey);
+    if (!sessionPanes.length) return;
+    for (const pane of sessionPanes) {
+      const key = composerHistoryKey(pane);
+      const tips = composerTips[key] || composerTips[pane.key] || [];
+      if (tips.length) continue;
+      const identity = sessionIdentityFromKey(pane.sessionKey);
+      if (!identity) continue;
+      const importKey = `${identity.provider}:${identity.sessionId}`;
+      if (composerImportKeysRef.current.has(importKey)) continue;
+      composerImportKeysRef.current.add(importKey);
+      const fn = desktopApi().workbenchComposerSendImport;
+      if (typeof fn !== "function") continue;
+      void fn({ provider: identity.provider, id: identity.sessionId })
+        .then((result) => {
+          if (result.imported > 0) loadComposerTipsFromDb();
+        })
+        .catch(() => undefined);
+    }
+  }, [composerTips, loadComposerTipsFromDb]);
+
   const openSession = async (session: AgentSession) => {
     const key = sessionKey(session);
 
@@ -5050,6 +5094,7 @@ export function WorkbenchPanel(): ReactPortal | null {
           projectPath: projectPath || session.projectPath
         });
         setActiveSessionKey(key);
+        autoImportComposerSends(session);
       } catch (error) {
         setStatus({ text: statusError(error), kind: "error" });
       } finally {
@@ -5081,6 +5126,7 @@ export function WorkbenchPanel(): ReactPortal | null {
           projectPath: acpProject
         });
         setActiveSessionKey(key);
+        autoImportComposerSends(session);
         return;
       }
       if (result.external || result.mode === "external-system") {
@@ -5106,6 +5152,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       // (deferred until the PTY spawns). Shell panes keep raw xterm focus.
       focusWorkbenchPane(terminalKey);
       setActiveSessionKey(key);
+      autoImportComposerSends(session);
     } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
     finally { openingSessionKeysRef.current.delete(key); }
   };

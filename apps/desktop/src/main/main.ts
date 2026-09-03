@@ -26,6 +26,7 @@ import {
   getUsageSummary,
   appendComposerSend,
   listComposerSends,
+  importComposerSendsForSession,
   hideSessionAction,
   hideProjectAction,
   listLlmUsageEvents,
@@ -2292,6 +2293,20 @@ function registerIpc(): void {
         agentSessionId: args?.agentSessionId,
         limit: args?.limit
       });
+    }
+  );
+
+  safeHandle(
+    "workbench:composerSendImport",
+    async (_event, args: { provider: AgentProvider; id: string }) => {
+      const settings = await loadSettings();
+      const paths = await loadPanelDbPaths(settings);
+      const session = await getSessionById(paths.catalogDb, args.provider, args.id);
+      if (!session) {
+        return { imported: 0, skipped: 0, found: 0 };
+      }
+      const homes = resolvePreviewHomes(settings);
+      return importComposerSendsForSession(paths.desktopDb, session, homes);
     }
   );
 

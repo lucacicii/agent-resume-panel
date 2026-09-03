@@ -714,6 +714,10 @@ export interface DesktopApi {
     agentSessionId: string | null;
     text: string;
   }>>;
+  workbenchComposerSendImport(args: {
+    provider: string;
+    id: string;
+  }): Promise<{ imported: number; skipped: number; found: number }>;
   workbenchGetRuntimeMetrics(): Promise<{
     watcherCount: number;
     pollingCount: number;
@@ -1705,6 +1709,7 @@ const api: DesktopApi = {
   terminalDestroy: (args) => ipcRenderer.invoke("terminal:destroy", args),
   workbenchComposerSendAppend: (args) => ipcRenderer.invoke("workbench:composerSendAppend", args),
   workbenchComposerSendList: (args) => ipcRenderer.invoke("workbench:composerSendList", args),
+  workbenchComposerSendImport: (args) => ipcRenderer.invoke("workbench:composerSendImport", args),
   workbenchGetRuntimeMetrics: () => ipcRenderer.invoke("workbench:getRuntimeMetrics"),
   terminalGitInfo: (args) => ipcRenderer.invoke("terminal:gitInfo", args),
   terminalGitBranches: (args) => ipcRenderer.invoke("terminal:gitBranches", args),
