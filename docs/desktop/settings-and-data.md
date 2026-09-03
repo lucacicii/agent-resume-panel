@@ -28,6 +28,28 @@ Use the **⚙** button in the top bar. Settings panes:
 
 Desktop settings are **not** VS Code `agentResume.*` settings. Shared values (e.g. LLM) may live in panel-home files so both products can reuse them; Desktop also keeps desktop-specific config (e.g. under panel home / `.desktop`).
 
+### Project `.arp/config.json`
+
+Commit-message style in **Settings → Workbench** is the user default. A repo can override it with a committed `<repo>/.arp/config.json`:
+
+```json
+{
+  "version": 1,
+  "shared": {},
+  "workbench": {
+    "git": {
+      "commitMessage": {
+        "style": "conventional",
+        "extraInstructions": "Use the package name as scope when it is clear."
+      }
+    }
+  },
+  "im": {}
+}
+```
+
+`workbench`, `im`, and `shared` are separate groups. Missing groups mean unset, not an empty override. Do not put API keys, themes, or panel-home paths in this file.
+
 ### Agent action approvals
 
 **General → Agent actions** includes **Always allow non-delete Agent actions**. It is off by default. When enabled, classified write, launch, command, and network actions in Agent Q&A skip the per-action confirmation. Delete and unknown-risk actions still require confirmation every time. The [Agent execution flow](agent.md#execution-flow-and-approvals) shows the resulting status and source for each action.
@@ -108,6 +130,28 @@ CLI transcripts remain in native agent homes. Change panel home only if you unde
 | **关于** | 版本、更新检查入口 |
 
 Desktop 设置 **不是** VS Code 的 `agentResume.*`。可共用的值（如 LLM）可能写在 panel home 文件中供两产品复用；Desktop 另有桌面端专用配置（如 `.desktop`）。
+
+### 项目级 `.arp/config.json`
+
+**设置 → Workbench** 中的提交信息格式是用户默认。仓库可用已提交的 `<repo>/.arp/config.json` 覆盖：
+
+```json
+{
+  "version": 1,
+  "shared": {},
+  "workbench": {
+    "git": {
+      "commitMessage": {
+        "style": "conventional",
+        "extraInstructions": "范围能确定时使用包名作为 scope。"
+      }
+    }
+  },
+  "im": {}
+}
+```
+
+`workbench`、`im`、`shared` 是独立分组；缺省分组表示未配置，不是空覆盖。不要把 API Key、主题或 panel home 写进该文件。
 
 ### Agent 操作授权
 

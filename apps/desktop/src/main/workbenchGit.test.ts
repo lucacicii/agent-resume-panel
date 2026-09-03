@@ -9,6 +9,16 @@ vi.mock("electron", () => ({
   ipcMain: { removeHandler: vi.fn(), handle: vi.fn() }
 }));
 
+vi.mock("@agent-resume/core", async () => {
+  const actual = await vi.importActual<typeof import("@agent-resume/core")>("@agent-resume/core");
+  return {
+    ...actual,
+    loadSettings: vi.fn(actual.loadSettings),
+    llmConfigFromSettings: vi.fn(() => null)
+  };
+});
+
+import { llmConfigFromSettings, loadSettings } from "@agent-resume/core";
 import { collectGitCommitContext, queryGitCommitFileDiffSides, queryGitFileLog, registerWorkbenchGitIpc } from "./workbenchGit";
 
 const roots: string[] = [];
@@ -220,6 +230,34 @@ describe("collectGitCommitContext", () => {
   it("rejects an empty selected path list", async () => {
     const repo = createRepo();
     await expect(collectGitCommitContext(repo, [])).rejects.toThrow("请选择要生成提交信息的文件");
+  });
+});
+
+describe("terminal:gitSuggestCommit", () => {
+  it("uses .arp workbench git config instead of global settings", async () => {
+    const repo = createRepo();
+    fs.writeFileSync(path.join(repo, "app.ts"), "changed\n");
+    fs.mkdirSync(path.join(repo, ".arp"), { recursive: true });
+    fs.writeFileSync(
+      path.join(repo, ".arp", "config.json"),
+      JSON.stringify({
+        version: 1,
+        workbench: { git: { commitMessage: { style: "gitmoji" } } }
+      })
+    );
+    vi.mocked(loadSettings).mockResolvedValue({
+      workbench: { gitCommitMessageStyle: "conventional" }
+    } as never);
+    vi.mocked(llmConfigFromSettings).mockReturnValue(null);
+
+    registerWorkbenchGitIpc(() => "en");
+    const registration = vi.mocked(ipcMain.handle).mock.calls.find(([channel]) => channel === "terminal:gitSuggestCommit");
+    expect(registration).toBeTruthy();
+    const handler = registration![1];
+    const result = await handler({} as never, { repoRoot: repo, paths: ["app.ts"] }) as { message: string; source: string };
+
+    expect(result.source).toBe("heuristic");
+    expect(result.message).toBe("🔧 chore: update app.ts");
   });
 });
 

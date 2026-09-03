@@ -1,8 +1,12 @@
 export type CommitMessageStyle = "conventional" | "gitmoji" | "custom";
 
+export const COMMIT_INSTRUCTION_MAX_CHARS = 4000;
+
 export interface CommitMessagePromptOptions {
   style?: CommitMessageStyle;
   customInstructions?: string;
+  /** Project-level rules appended after the selected style. */
+  extraInstructions?: string;
 }
 
 export const DEFAULT_CONVENTIONAL_COMMIT_INSTRUCTIONS = [
@@ -58,7 +62,12 @@ export function normalizeCommitMessageStyle(value: unknown): CommitMessageStyle 
 
 export function normalizeCustomCommitInstructions(value: unknown): string {
   const instructions = typeof value === "string" ? value.trim() : "";
-  return instructions ? instructions.slice(0, 4000) : DEFAULT_CONVENTIONAL_COMMIT_INSTRUCTIONS;
+  return instructions ? instructions.slice(0, COMMIT_INSTRUCTION_MAX_CHARS) : DEFAULT_CONVENTIONAL_COMMIT_INSTRUCTIONS;
+}
+
+export function normalizeExtraCommitInstructions(value: unknown): string {
+  const instructions = typeof value === "string" ? value.trim() : "";
+  return instructions ? instructions.slice(0, COMMIT_INSTRUCTION_MAX_CHARS) : "";
 }
 
 function inferConventionalType(subject: string): { type: (typeof CONVENTIONAL_TYPES)[number]; description: string } {
@@ -109,14 +118,19 @@ function applyCommitMessageStyle(message: string, options?: CommitMessagePromptO
 }
 
 function formatInstructions(options?: CommitMessagePromptOptions): string {
+  let base: string;
   switch (normalizeCommitMessageStyle(options?.style)) {
     case "gitmoji":
-      return GITMOJI_COMMIT_INSTRUCTIONS;
+      base = GITMOJI_COMMIT_INSTRUCTIONS;
+      break;
     case "custom":
-      return normalizeCustomCommitInstructions(options?.customInstructions);
+      base = normalizeCustomCommitInstructions(options?.customInstructions);
+      break;
     default:
-      return DEFAULT_CONVENTIONAL_COMMIT_INSTRUCTIONS;
+      base = DEFAULT_CONVENTIONAL_COMMIT_INSTRUCTIONS;
   }
+  const extra = normalizeExtraCommitInstructions(options?.extraInstructions);
+  return extra ? `${base} ADDITIONAL PROJECT RULES: ${extra}` : base;
 }
 
 export function buildCommitMessageSystemPrompt(

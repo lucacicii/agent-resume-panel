@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "shared": {},
+  "workbench": {
+    "git": {
+      "commitMessage": {
+        "style": "conventional",
+        "extraInstructions": "Write the entire commit message in English, even if the user or tool language is Chinese. Use the package or feature directory as scope when it can be inferred reliably (core, desktop, extension, im)."
+      }
+    }
+  },
+  "im": {}
+}

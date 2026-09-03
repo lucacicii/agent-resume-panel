@@ -46,3 +46,19 @@ test("keeps fixed constraints while allowing custom format rules", () => {
     "Update app.ts"
   );
 });
+
+test("appends extraInstructions after the selected style", () => {
+  const conventional = buildCommitMessageSystemPrompt("English", {
+    extraInstructions: "scope must be a package name"
+  });
+  assert.match(conventional, /Use Conventional Commits format/);
+  assert.match(conventional, /ADDITIONAL PROJECT RULES: scope must be a package name/);
+
+  const custom = buildCommitMessageSystemPrompt("English", {
+    style: "custom",
+    customInstructions: "Use release-note style: category - description.",
+    extraInstructions: "Mention the ticket id."
+  });
+  assert.match(custom, /Use release-note style: category - description/);
+  assert.match(custom, /ADDITIONAL PROJECT RULES: Mention the ticket id/);
+});

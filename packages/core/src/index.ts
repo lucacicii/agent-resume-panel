@@ -671,9 +671,29 @@ export {
   normalizeSuggestedCommitMessage,
   normalizeCommitMessageStyle,
   normalizeCustomCommitInstructions,
-  DEFAULT_CONVENTIONAL_COMMIT_INSTRUCTIONS
+  normalizeExtraCommitInstructions,
+  DEFAULT_CONVENTIONAL_COMMIT_INSTRUCTIONS,
+  COMMIT_INSTRUCTION_MAX_CHARS
 } from "./git/prompts";
 export type { CommitMessagePromptOptions } from "./git/prompts";
+export {
+  ARP_CONFIG_VERSION,
+  ARP_DIR_NAME,
+  ARP_CONFIG_FILE_NAME,
+  normalizeArpConfig,
+  arpConfigPath,
+  loadArpConfig,
+  resolveCommitMessagePromptOptions
+} from "./arp";
+export type {
+  ArpConfig,
+  ArpSharedConfig,
+  ArpImConfig,
+  ArpWorkbenchConfig,
+  ArpWorkbenchGitConfig,
+  ArpGitCommitMessageConfig,
+  CommitMessageSettingsSource
+} from "./arp";
 export { buildResumeCommand, buildNewSessionCommand, supportsNewSessionYoloMode } from "./terminal/commands";
 export type { NewSessionExecutionMode } from "./terminal/commands";
 export {
