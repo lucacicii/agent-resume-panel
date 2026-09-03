@@ -10209,7 +10209,34 @@ textarea.wb-editor-host {
   }
 }
 
-/* TUI composer — primary input for agent-session panes (floating bottom bar). */
+/* TUI composer — Workbench-level floating stack for agent-session panes. */
+.wb-terminal-composer-stack {
+  position: absolute;
+  left: 10px;
+  bottom: 8px;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  width: min(560px, calc(100% - 24px));
+  max-width: min(560px, calc(100% - 24px));
+  pointer-events: none;
+}
+
+.wb-terminal-composer-stack > .wb-terminal-composer-grip,
+.wb-terminal-composer-stack-list {
+  pointer-events: auto;
+}
+
+.wb-terminal-composer-stack-list {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
 .wb-terminal-composer {
   --tui-compose-bg: color-mix(in srgb, var(--color-elevated-bg) 92%, #000);
   --tui-compose-border: var(--color-separator-opaque);
@@ -10217,14 +10244,15 @@ textarea.wb-editor-host {
   --tui-compose-muted: var(--color-label-secondary);
   --tui-compose-accent: var(--color-accent);
   --tui-compose-shadow: var(--shadow-popover);
-  position: absolute;
-  left: 10px;
-  bottom: 8px;
+  position: relative;
+  left: auto;
+  bottom: auto;
   z-index: 8;
   display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  padding: 4px 6px 4px 2px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  padding: 6px 8px 6px 8px;
   border-radius: 12px;
   border: 1px solid transparent;
   background: transparent;
@@ -10237,25 +10265,41 @@ textarea.wb-editor-host {
 }
 
 .wb-terminal-composer.is-collapsed {
-  width: auto;
-  /* Grow with the draft so a long input stays fully readable; capped at the
-     same width as the expanded composer, wrapping past that. */
-  max-width: min(560px, calc(100% - 24px));
-  padding: 0;
-  align-items: center;
+  width: 100%;
+  max-width: none;
+  padding: 4px 6px;
   border-color: transparent;
   background: transparent;
   box-shadow: none;
 }
 
 .wb-terminal-composer.is-expanded {
-  width: min(560px, calc(100% - 24px));
+  width: 100%;
+  max-width: none;
   min-height: 40px;
   border-color: var(--tui-compose-border);
   background: var(--tui-compose-bg);
   box-shadow: var(--tui-compose-shadow);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
+}
+
+.wb-terminal-composer-stack-list .wb-terminal-composer {
+  width: 100%;
+  max-width: none;
+  align-self: stretch;
+}
+
+.wb-terminal-composer.is-active-pane {
+  border-color: var(--color-focus-ring);
+  background: var(--tui-compose-bg);
+  box-shadow: var(--tui-compose-shadow);
+}
+
+.wb-terminal-composer.is-inactive-pane {
+  opacity: 0.78;
+  background: color-mix(in srgb, var(--color-secondary-bg) 70%, transparent);
+  border-color: var(--color-separator);
 }
 
 .wb-terminal-composer.is-expanded:focus-within {
@@ -10268,37 +10312,161 @@ textarea.wb-editor-host {
   box-shadow: inset 0 0 0 2px var(--color-accent);
 }
 
+.wb-terminal-composer-stack > .wb-terminal-composer-grip,
 .wb-terminal-composer-grip {
   appearance: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  align-self: stretch;
+  width: auto;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--color-separator);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-elevated-bg) 88%, transparent);
+  color: var(--color-label-secondary);
+  cursor: grab;
+  touch-action: none;
+  box-shadow: var(--shadow-popover);
+}
+
+.wb-terminal-composer-stack > .wb-terminal-composer-grip:hover,
+.wb-terminal-composer-grip:hover {
+  color: var(--color-label-primary);
+  background: var(--color-elevated-bg);
+}
+
+.wb-terminal-composer-stack > .wb-terminal-composer-grip:active,
+.wb-terminal-composer-grip:active {
+  cursor: grabbing;
+}
+
+.wb-terminal-composer-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.wb-terminal-composer-head .rail-session-dot-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 0;
+  width: 18px;
+  height: 18px;
   display: grid;
   place-items: center;
   flex-shrink: 0;
-  align-self: flex-end;
+  pointer-events: none;
+}
+
+.wb-terminal-composer-head .rail-session-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-success);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-success) 18%, transparent);
+}
+
+.wb-terminal-composer-head .rail-session-dot.is-awaiting {
+  background: var(--color-warning);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-warning) 22%, transparent);
+  animation: rail-session-dot-pulse 1.4s ease-in-out infinite;
+}
+
+.wb-terminal-composer-head .rail-session-dot.is-running {
+  background: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
+}
+
+.wb-terminal-composer-head .rail-session-dot.is-connecting {
+  background: var(--color-label-tertiary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-label-tertiary) 20%, transparent);
+}
+
+.wb-terminal-composer-head .rail-session-dot.is-error {
+  background: var(--color-destructive);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-destructive) 22%, transparent);
+}
+
+.wb-terminal-composer-project {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.wb-terminal-composer-project-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: var(--font-weight-medium, 500);
+  color: var(--color-label-primary);
+  line-height: 1.2;
+}
+
+.wb-terminal-composer-session-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  color: var(--color-label-tertiary);
+  line-height: 1.2;
+}
+
+.wb-terminal-composer-close {
+  appearance: none;
+  display: grid;
+  place-items: center;
   width: 20px;
-  height: 28px;
-  margin: 0 0 4px;
+  height: 20px;
+  margin: 0;
   padding: 0;
   border: none;
   border-radius: 6px;
   background: transparent;
-  color: var(--tui-compose-muted);
-  cursor: grab;
-  touch-action: none;
+  color: var(--color-label-tertiary);
+  cursor: pointer;
 }
 
-.wb-terminal-composer.is-collapsed .wb-terminal-composer-grip {
-  align-self: center;
-  height: 24px;
+.wb-terminal-composer-close:hover {
+  color: var(--color-label-primary);
+  background: var(--color-fill-tertiary);
+}
+
+.wb-terminal-composer-close:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+}
+
+.wb-terminal-composer-tips {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 3px;
   margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 92px;
+  overflow: hidden;
 }
 
-.wb-terminal-composer-grip:hover {
-  color: var(--tui-compose-text);
-  background: color-mix(in srgb, var(--color-label-secondary) 10%, transparent);
-}
-
-.wb-terminal-composer-grip:active {
-  cursor: grabbing;
+.wb-terminal-composer-tip {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color-fill-secondary) 80%, transparent);
+  color: var(--color-label-secondary);
+  font-size: 11px;
+  line-height: 1.3;
 }
 
 .wb-terminal-composer-grip:focus-visible {
@@ -10307,8 +10475,8 @@ textarea.wb-editor-host {
 }
 
 .wb-terminal-composer-grip svg {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
 }
 
 .wb-terminal-composer-input {
@@ -10347,12 +10515,10 @@ textarea.wb-editor-host {
 }
 
 .wb-terminal-composer.is-collapsed .wb-terminal-composer-input {
-  flex: 0 1 auto;
-  /* Fit the whole draft instead of clipping it at a fixed width: the strip
-     sizes to the text and only wraps (growing in height) past the cap above. */
+  flex: 1 1 auto;
   width: auto;
-  min-width: min(200px, 40vw);
-  max-width: 100%;
+  min-width: 0;
+  max-width: none;
   height: auto;
   min-height: 26px;
   max-height: none;
@@ -10360,7 +10526,6 @@ textarea.wb-editor-host {
   overflow: hidden;
   white-space: pre-wrap;
   opacity: .9;
-  field-sizing: content;
 }
 
 .wb-terminal-composer-tools {

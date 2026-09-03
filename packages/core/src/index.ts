@@ -305,6 +305,16 @@ export {
   startScheduleRun,
   finishScheduleRun
 } from "./usage/store";
+export {
+  appendComposerSend,
+  listComposerSends,
+  COMPOSER_SEND_TEXT_MAX,
+  COMPOSER_SEND_LIST_MAX
+} from "./workbench/composerSends";
+export type {
+  ComposerSendRecord,
+  ComposerSendAppendInput
+} from "./workbench/composerSends";
 export type {
   LlmUsageEvent,
   LlmUsageKind,

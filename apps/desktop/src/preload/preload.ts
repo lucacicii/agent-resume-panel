@@ -682,6 +682,37 @@ export interface DesktopApi {
   terminalInput(args: { id: number; data: string }): Promise<{ ok: boolean }>;
   terminalResize(args: { id: number; cols: number; rows: number }): Promise<{ ok: boolean }>;
   terminalDestroy(args: { id: number }): Promise<{ ok: boolean }>;
+  workbenchComposerSendAppend(args: {
+    paneKey: string;
+    projectPath: string;
+    sessionKey?: string | null;
+    provider?: string | null;
+    agentSessionId?: string | null;
+    text: string;
+  }): Promise<{
+    id: string;
+    createdAtMs: number;
+    paneKey: string;
+    projectPath: string;
+    sessionKey: string | null;
+    provider: string | null;
+    agentSessionId: string | null;
+    text: string;
+  }>;
+  workbenchComposerSendList(args: {
+    paneKey?: string;
+    sessionKey?: string;
+    limit?: number;
+  }): Promise<Array<{
+    id: string;
+    createdAtMs: number;
+    paneKey: string;
+    projectPath: string;
+    sessionKey: string | null;
+    provider: string | null;
+    agentSessionId: string | null;
+    text: string;
+  }>>;
   workbenchGetRuntimeMetrics(): Promise<{
     watcherCount: number;
     pollingCount: number;
@@ -1671,6 +1702,8 @@ const api: DesktopApi = {
   terminalInput: (args) => ipcRenderer.invoke("terminal:input", args),
   terminalResize: (args) => ipcRenderer.invoke("terminal:resize", args),
   terminalDestroy: (args) => ipcRenderer.invoke("terminal:destroy", args),
+  workbenchComposerSendAppend: (args) => ipcRenderer.invoke("workbench:composerSendAppend", args),
+  workbenchComposerSendList: (args) => ipcRenderer.invoke("workbench:composerSendList", args),
   workbenchGetRuntimeMetrics: () => ipcRenderer.invoke("workbench:getRuntimeMetrics"),
   terminalGitInfo: (args) => ipcRenderer.invoke("terminal:gitInfo", args),
   terminalGitBranches: (args) => ipcRenderer.invoke("terminal:gitBranches", args),

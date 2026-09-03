@@ -24,6 +24,8 @@ import {
   getReportEntryById,
   getSessionById,
   getUsageSummary,
+  appendComposerSend,
+  listComposerSends,
   hideSessionAction,
   hideProjectAction,
   listLlmUsageEvents,
@@ -2255,6 +2257,40 @@ function registerIpc(): void {
         }
       }
       return { ...result, nativeUpdated };
+    }
+  );
+
+  safeHandle(
+    "workbench:composerSendAppend",
+    async (_event, args: {
+      paneKey?: string;
+      projectPath?: string;
+      sessionKey?: string | null;
+      provider?: string | null;
+      agentSessionId?: string | null;
+      text?: string;
+    }) => {
+      const paths = await loadPanelDbPaths();
+      return appendComposerSend(paths.desktopDb, {
+        paneKey: args?.paneKey || "",
+        projectPath: args?.projectPath || "",
+        sessionKey: args?.sessionKey,
+        provider: args?.provider,
+        agentSessionId: args?.agentSessionId,
+        text: args?.text || ""
+      });
+    }
+  );
+
+  safeHandle(
+    "workbench:composerSendList",
+    async (_event, args?: { paneKey?: string; sessionKey?: string; limit?: number }) => {
+      const paths = await loadPanelDbPaths();
+      return listComposerSends(paths.desktopDb, {
+        paneKey: args?.paneKey,
+        sessionKey: args?.sessionKey,
+        limit: args?.limit
+      });
     }
   );
 

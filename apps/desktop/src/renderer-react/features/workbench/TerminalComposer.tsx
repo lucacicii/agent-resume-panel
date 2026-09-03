@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import { ThemeIcon } from "../../components/ThemeIcon";
 import { desktopApi } from "../../bridge";
 import { useI18n } from "../../i18n";
+import type { SessionDotStatus } from "./activeSessionDots";
 import {
   hasWorkbenchPathDnd,
   shellQuotePath,
@@ -9,9 +10,7 @@ import {
 } from "./workbenchDnd";
 import {
   loadTerminalComposerHistory,
-  loadTerminalComposerPosition,
-  pushTerminalComposerHistory,
-  saveTerminalComposerPosition
+  pushTerminalComposerHistory
 } from "./terminalComposerHistory";
 
 /** The composer only needs these fields of the module-local TerminalPane. */
@@ -21,6 +20,14 @@ export type TerminalComposerPane = {
   group: "session" | "terminal";
   projectPath?: string;
 };
+
+export type ComposerSendTip = {
+  id: string;
+  text: string;
+  createdAtMs: number;
+};
+
+export const COMPOSER_TIP_LIMIT = 8;
 
 /** Static fallback suggestions (no LLM). History recency beats these. */
 export const TERMINAL_COMPOSER_STATIC_COMMANDS = [
@@ -42,6 +49,11 @@ function hashTokenAtCursor(value: string, cursor: number): { start: number; quer
   const token = before.slice(start);
   if (!token.startsWith("#") || token.slice(1).includes("#")) return null;
   return { start, query: token.slice(1) };
+}
+
+function statusDotClass(status: SessionDotStatus): string {
+  if (status === "open") return "rail-session-dot";
+  return `rail-session-dot is-${status === "awaiting_user" ? "awaiting" : status}`;
 }
 
 /**
@@ -76,25 +88,44 @@ export function computeSuggestions(value: string, history: string[]): string[] {
 }
 
 /**
- * Custom primary input for agent/TUI session panes. Sends a full line to the
- * PTY on Enter; Shift+Enter inserts a newline; the terminal remains clickable
- * for raw-key input. Collapses to a slim hint strip when the terminal has
- * focus (zero permanent space cost).
+ * Floating per-session input. Enter / the send button paste into the TUI
+ * without submitting; drafts stay bound to the session pane.
  */
 export function TerminalComposer(props: {
   pane: TerminalComposerPane;
   ptyId: number | null;
-  active: boolean;
+  activePane: boolean;
+  projectName: string;
+  sessionTitle?: string;
+  showSessionTitle?: boolean;
+  status?: SessionDotStatus;
+  value: string;
+  onChange: (value: string) => void;
+  tips?: ComposerSendTip[];
+  onSendToTerminal: () => void;
+  onActivate: () => void;
+  onClose: () => void;
   registerFocus: (key: string, focus: () => void) => () => void;
-  variant?: "floating" | "docked";
 }): React.JSX.Element {
-  const { pane, ptyId, active, registerFocus, variant = "floating" } = props;
-  const docked = variant === "docked";
+  const {
+    pane,
+    ptyId,
+    activePane,
+    projectName,
+    sessionTitle,
+    showSessionTitle,
+    status = "open",
+    value,
+    onChange,
+    tips = [],
+    onSendToTerminal,
+    onActivate,
+    onClose,
+    registerFocus
+  } = props;
   const { t } = useI18n();
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const composerRef = useRef<HTMLDivElement>(null);
   const listId = useId();
-  const [value, setValue] = useState("");
   const [rows, setRows] = useState(1);
   const [focused, setFocused] = useState(false);
   const [history, setHistory] = useState<string[]>(() => loadTerminalComposerHistory(pane.cwd));
@@ -125,28 +156,28 @@ export function TerminalComposer(props: {
   const [activeDirectory, setActiveDirectory] = useState(0);
   const [dragOver, setDragOver] = useState(false);
   const dragDepth = useRef(0);
-  const [position, setPosition] = useState(() => loadTerminalComposerPosition(pane.cwd));
-  const positionRef = useRef(position);
-  useEffect(() => {
-    positionRef.current = position;
-  }, [position]);
-  const dragRef = useRef<{
-    pointerId: number;
-    startX: number;
-    startY: number;
-    origX: number;
-    origY: number;
-  } | null>(null);
 
-  const disabled = ptyId === null || !active;
+  const sendDisabled = ptyId === null || !value.trim();
 
   const suggestions = useMemo(() => computeSuggestions(value, history), [value, history]);
-  const directoryOpen = focused && !disabled && Boolean(hashToken) && !directoriesDismissed;
-  const suggestionsOpen = !directoryOpen && focused && !disabled && suggestions.length > 0 && !suggestionsDismissed;
+  const directoryOpen = focused && Boolean(hashToken) && !directoriesDismissed;
+  const suggestionsOpen = !directoryOpen && focused && suggestions.length > 0 && !suggestionsDismissed;
   const activeListId = directoryOpen ? `${listId}-directories` : suggestionsOpen ? `${listId}-suggestions` : undefined;
   const activeOptionId = directoryOpen
     ? directorySuggestions.length ? `${listId}-directory-${activeDirectory}` : undefined
     : suggestionsOpen && activeSuggestion >= 0 ? `${listId}-suggestion-${activeSuggestion}` : undefined;
+  const visibleTips = tips.slice(0, COMPOSER_TIP_LIMIT);
+  const statusLabel = t(
+    status === "awaiting_user"
+      ? "desktop.workbench.sessionDot.awaiting"
+      : status === "connecting"
+        ? "desktop.workbench.sessionDot.connecting"
+        : status === "error"
+          ? "desktop.workbench.sessionDot.error"
+          : status === "running"
+            ? "desktop.workbench.sessionDot.running"
+            : "desktop.workbench.sessionDots"
+  );
 
   useEffect(() => {
     setDirectories(null);
@@ -184,18 +215,14 @@ export function TerminalComposer(props: {
     return () => { cancelled = true; };
   }, [directories, directoriesError, directoryOpen, directoryRoot]);
 
-  // Keep the collapsed state when the pane (or workbench tab) goes inactive.
   useEffect(() => {
-    if (!active) setFocused(false);
-  }, [active]);
+    if (!activePane) setFocused(false);
+  }, [activePane]);
 
-  // Box-primary: once the composer mounts (PTY ready) on the active pane, take
-  // focus so typing lands in the box immediately. Hidden/background panes are
-  // disabled and skip this — navigation there routes through focusWorkbenchPane.
   const didInitialFocusRef = useRef(false);
   useEffect(() => {
     if (didInitialFocusRef.current) return;
-    if (disabled) return;
+    if (!activePane || ptyId === null) return;
     didInitialFocusRef.current = true;
     const el = inputRef.current;
     if (el) {
@@ -203,15 +230,13 @@ export function TerminalComposer(props: {
       setFocused(true);
       setCursor(el.selectionStart || 0);
     }
-  }, [disabled]);
+  }, [activePane, ptyId]);
 
-  // Register a focus handle for parent pane navigation; live-check disabled so
-  // a not-yet-ready PTY never steals focus. Unregister on unmount.
   useEffect(
     () =>
       registerFocus(pane.key, () => {
         const el = inputRef.current;
-        if (el && !el.disabled) el.focus();
+        if (el) el.focus();
       }),
     [pane.key, registerFocus]
   );
@@ -224,8 +249,6 @@ export function TerminalComposer(props: {
       setRows(newlineRows);
       return;
     }
-    // Temporarily apply text so scrollHeight reflects soft wraps even when the
-    // controlled value hasn't re-rendered yet (e.g. history restore).
     const previous = el.value;
     if (previous !== text) el.value = text;
     el.rows = newlineRows;
@@ -237,48 +260,56 @@ export function TerminalComposer(props: {
     setRows(nextRows);
   }, []);
 
-  const send = useCallback(() => {
+  useEffect(() => {
+    resizeRows(value);
+  }, [resizeRows, value]);
+
+  const applyValue = useCallback((next: string) => {
+    onChange(next);
+    resizeRows(next);
+  }, [onChange, resizeRows]);
+
+  const sendToTerminal = useCallback(() => {
     const text = value.trim();
-    if (!text || ptyId === null || !active) return;
-    void desktopApi().terminalInput({ id: ptyId, data: `${text}\r` });
-    setHistory((current) => pushTerminalComposerHistory(pane.cwd, text));
-    setValue("");
-    setRows(1);
+    if (!text || ptyId === null) return;
+    setHistory((current) => {
+      void current;
+      return pushTerminalComposerHistory(pane.cwd, text);
+    });
     setHistoryIndex(-1);
-    draftRef.current = "";
+    draftRef.current = value;
     setSuggestionsDismissed(false);
     setDirectoriesDismissed(false);
     setActiveSuggestion(0);
     setActiveDirectory(0);
-    inputRef.current?.focus();
-  }, [active, pane.cwd, ptyId, value]);
+    onSendToTerminal();
+    applyValue("");
+    draftRef.current = "";
+  }, [applyValue, onSendToTerminal, pane.cwd, ptyId, value]);
 
   const acceptSuggestion = useCallback((command: string) => {
-    setValue(command);
-    resizeRows(command);
+    applyValue(command);
     setSuggestionsDismissed(true);
     setActiveSuggestion(0);
     inputRef.current?.focus();
-  }, [resizeRows]);
+  }, [applyValue]);
 
   const acceptDirectory = useCallback((name: string) => {
     if (!hashToken) return;
     const inserted = `#${name}`;
     const next = `${value.slice(0, hashToken.start)}${inserted}${value.slice(cursor)}`;
     const nextCursor = hashToken.start + inserted.length;
-    setValue(next);
-    resizeRows(next);
+    applyValue(next);
     setCursor(nextCursor);
     setDirectoriesDismissed(true);
     setActiveDirectory(0);
     requestAnimationFrame(() => inputRef.current?.setSelectionRange(nextCursor, nextCursor));
     inputRef.current?.focus();
-  }, [cursor, hashToken, resizeRows, value]);
+  }, [applyValue, cursor, hashToken, value]);
 
   const onInputChange = useCallback((event: React.ChangeEvent<HTMLTextAreaElement>) => {
     const next = event.target.value;
-    setValue(next);
-    resizeRows(next);
+    applyValue(next);
     setHistoryIndex(-1);
     draftRef.current = next;
     setSuggestionsDismissed(false);
@@ -286,48 +317,9 @@ export function TerminalComposer(props: {
     setActiveSuggestion(0);
     setActiveDirectory(0);
     setCursor(event.target.selectionStart || next.length);
-  }, [resizeRows]);
-
-  // --- Floating position drag ---
-
-  const beginComposerDrag = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
-    if (disabled) return;
-    event.preventDefault();
-    dragRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      origX: position.x,
-      origY: position.y
-    };
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-  }, [disabled, position.x, position.y]);
-
-  const moveComposerDrag = useCallback((event: React.PointerEvent) => {
-    const drag = dragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    const pane = composerRef.current?.closest<HTMLElement>(".wb-terminal-pane");
-    const paneWidth = pane?.clientWidth || window.innerWidth;
-    const paneHeight = pane?.clientHeight || window.innerHeight;
-    const selfWidth = composerRef.current?.clientWidth || 0;
-    const selfHeight = composerRef.current?.clientHeight || 0;
-    // Reserve room for the expanded width so growing the bar never clips.
-    const maxX = Math.max(4, Math.min(paneWidth - 564, paneWidth - selfWidth - 4));
-    const maxY = Math.max(4, paneHeight - selfHeight - 4);
-    const x = Math.min(Math.max(4, drag.origX + event.clientX - drag.startX), maxX);
-    const y = Math.min(Math.max(4, drag.origY - (event.clientY - drag.startY)), maxY);
-    setPosition({ x, y });
-  }, []);
-
-  const endComposerDrag = useCallback((event: React.PointerEvent) => {
-    const drag = dragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    dragRef.current = null;
-    saveTerminalComposerPosition(pane.cwd, positionRef.current);
-  }, [pane.cwd]);
+  }, [applyValue]);
 
   const onKeyDown = useCallback((event: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (disabled) return;
     const isEnter = event.key === "Enter";
     const isTab = event.key === "Tab";
 
@@ -376,19 +368,15 @@ export function TerminalComposer(props: {
       if (isEnter || isTab) {
         const pick = suggestions[activeSuggestion >= 0 ? activeSuggestion : 0];
         if (pick && pick !== value) {
-          // Accept the highlighted suggestion; keep focus, do not send yet.
           event.preventDefault();
           acceptSuggestion(pick);
           return;
         }
         if (isEnter && pick === value) {
-          // Exact match — Enter means send, not accept-loop.
           event.preventDefault();
-          send();
+          sendToTerminal();
           return;
         }
-        // pick === value on Tab (or Enter without a pick): swallow to avoid a
-        // focus jump while the listbox is open.
         event.preventDefault();
         return;
       }
@@ -402,13 +390,11 @@ export function TerminalComposer(props: {
 
     if (isEnter && !event.shiftKey) {
       event.preventDefault();
-      send();
+      sendToTerminal();
       return;
     }
 
     const plainArrow = !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey;
-    // Single-line values recall history like a shell on any ↑/↓; multi-line
-    // values keep native cursor movement except at the value's very edge.
     const inputEl = inputRef.current;
     const hasNewline = value.includes("\n");
     const atStart = hasNewline
@@ -426,8 +412,7 @@ export function TerminalComposer(props: {
         if (historyIndex === -1) draftRef.current = value;
         const nextValue = history[nextIndex] || "";
         setHistoryIndex(nextIndex);
-        setValue(nextValue);
-        resizeRows(nextValue);
+        applyValue(nextValue);
         setSuggestionsDismissed(true);
         requestAnimationFrame(() => {
           const el = inputRef.current;
@@ -441,8 +426,7 @@ export function TerminalComposer(props: {
         event.preventDefault();
         const nextValue = historyIndex === 0 ? draftRef.current : history[historyIndex - 1] || "";
         setHistoryIndex(historyIndex === 0 ? -1 : historyIndex - 1);
-        setValue(nextValue);
-        resizeRows(nextValue);
+        applyValue(nextValue);
         setSuggestionsDismissed(true);
         requestAnimationFrame(() => {
           const el = inputRef.current;
@@ -451,7 +435,7 @@ export function TerminalComposer(props: {
       }
       return;
     }
-  }, [acceptDirectory, acceptSuggestion, activeDirectory, disabled, directoryOpen, directorySuggestions, history, historyIndex, resizeRows, send, suggestions, suggestionsOpen, activeSuggestion, value]);
+  }, [acceptDirectory, acceptSuggestion, activeDirectory, applyValue, directoryOpen, directorySuggestions, history, historyIndex, sendToTerminal, suggestions, suggestionsOpen, activeSuggestion, value]);
 
   const onDragEnter = (event: React.DragEvent) => {
     if (!hasWorkbenchPathDnd(event.dataTransfer)) return;
@@ -479,8 +463,7 @@ export function TerminalComposer(props: {
     const start = el ? el.selectionStart ?? value.length : value.length;
     const end = el ? el.selectionEnd ?? value.length : value.length;
     const next = `${value.slice(0, start)}${quoted}${value.slice(end)}`;
-    setValue(next);
-    resizeRows(next);
+    applyValue(next);
     setSuggestionsDismissed(false);
     setActiveSuggestion(0);
     requestAnimationFrame(() => {
@@ -492,36 +475,49 @@ export function TerminalComposer(props: {
 
   return (
     <div
-      ref={composerRef}
-      className={`wb-terminal-composer${docked ? " is-docked" : focused ? " is-expanded" : " is-collapsed"}${dragOver ? " is-drag-over" : ""}`}
-      style={docked ? undefined : { left: position.x, bottom: position.y }}
+      className={`wb-terminal-composer${focused ? " is-expanded" : " is-collapsed"}${activePane ? " is-active-pane" : " is-inactive-pane"}${dragOver ? " is-drag-over" : ""}`}
+      data-pane-key={pane.key}
       title={t("desktop.workbench.terminalComposerHint")}
       onDragEnter={onDragEnter}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
-      {docked ? null : (
-      <button
-        type="button"
-        className="wb-terminal-composer-grip"
-        aria-label={t("desktop.workbench.terminalComposerMove")}
-        title={t("desktop.workbench.terminalComposerMove")}
-        onPointerDown={beginComposerDrag}
-        onPointerMove={moveComposerDrag}
-        onPointerUp={endComposerDrag}
-        onPointerCancel={endComposerDrag}
-        onLostPointerCapture={endComposerDrag}
-      >
-        <ThemeIcon name="grip-vertical" size={14} aria-hidden="true" />
-      </button>
-      )}
+      <div className="wb-terminal-composer-head">
+        <span className="rail-session-dot-btn" data-status={status} aria-label={statusLabel} title={statusLabel}>
+          <span className={statusDotClass(status)} aria-hidden="true" />
+        </span>
+        <span className="wb-terminal-composer-project">
+          <span className="wb-terminal-composer-project-name">{projectName}</span>
+          {showSessionTitle && sessionTitle ? (
+            <span className="wb-terminal-composer-session-title">{sessionTitle}</span>
+          ) : null}
+        </span>
+        <button
+          type="button"
+          className="wb-terminal-composer-close"
+          aria-label={t("desktop.workbench.terminalComposerClose")}
+          title={t("desktop.workbench.terminalComposerClose")}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={onClose}
+        >
+          <ThemeIcon name="close" size={13} />
+        </button>
+      </div>
+      {visibleTips.length ? (
+        <ul className="wb-terminal-composer-tips" aria-label={t("desktop.workbench.terminalComposerTips")}>
+          {visibleTips.map((tip) => (
+            <li key={tip.id} className="wb-terminal-composer-tip" title={tip.text}>
+              {tip.text}
+            </li>
+          ))}
+        </ul>
+      ) : null}
       <textarea
         ref={inputRef}
         className="wb-terminal-composer-input"
         rows={rows}
         value={value}
-        disabled={disabled}
         placeholder={t("desktop.workbench.terminalComposerPlaceholder")}
         aria-label={t("desktop.workbench.terminalComposerPlaceholder")}
         aria-autocomplete="list"
@@ -534,7 +530,11 @@ export function TerminalComposer(props: {
         onKeyDown={onKeyDown}
         onSelect={(event) => setCursor(event.currentTarget.selectionStart || 0)}
         onClick={(event) => setCursor(event.currentTarget.selectionStart || 0)}
-        onFocus={(event) => { setFocused(true); setCursor(event.currentTarget.selectionStart || 0); }}
+        onFocus={(event) => {
+          setFocused(true);
+          setCursor(event.currentTarget.selectionStart || 0);
+        }}
+        onPointerDown={() => onActivate()}
         onBlur={() => setFocused(false)}
       />
       <div className="wb-terminal-composer-tools">
@@ -546,9 +546,9 @@ export function TerminalComposer(props: {
           className="wb-terminal-composer-send"
           aria-label={t("desktop.workbench.terminalComposerSend")}
           title={t("desktop.workbench.terminalComposerSend")}
-          disabled={disabled || !value.trim()}
+          disabled={sendDisabled}
           onMouseDown={(event) => event.preventDefault()}
-          onClick={send}
+          onClick={sendToTerminal}
         >
           <ThemeIcon name="send" size={16} />
         </button>

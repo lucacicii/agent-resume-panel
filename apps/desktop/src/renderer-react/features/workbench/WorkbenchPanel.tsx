@@ -54,7 +54,8 @@ import {
   detectTuiSessionStatus,
   type TuiDebounceState
 } from "./tuiSessionStatus";
-import { TerminalComposer } from "./TerminalComposer";
+import { COMPOSER_TIP_LIMIT, type ComposerSendTip } from "./TerminalComposer";
+import { TerminalComposerStack } from "./TerminalComposerStack";
 import {
   FloatingSessionNote,
   sessionNoteMatchesTarget,
@@ -1875,7 +1876,7 @@ function resolveTransparentTerminalTheme(themeId: WorkbenchTerminalThemeId, appe
   return { ...resolveTerminalTheme(themeId, appearance), background: "rgba(0, 0, 0, 0)" };
 }
 
-function TerminalView({ pane, active, themeId, appearance, rendererMode, engineType = "xterm", onPty, onDetach, onInput, onInitialPromptSubmitted, mouseTracking, registerFocus }: {
+function TerminalView({ pane, active, themeId, appearance, rendererMode, engineType = "xterm", onPty, onDetach, onInput, onInitialPromptSubmitted, mouseTracking }: {
   pane: TerminalPane;
   active: boolean;
   themeId: WorkbenchTerminalThemeId;
@@ -1889,7 +1890,6 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, engineT
   onInitialPromptSubmitted: (key: string) => void;
   /** Per-pty mouse-tracking state parsed from the PTY data stream (stable ref). */
   mouseTracking: { current: Map<number, boolean> };
-  registerFocus: (key: string, focus: () => void) => () => void;
 }): React.JSX.Element {
   const { t } = useI18n();
   const host = useRef<HTMLDivElement>(null);
@@ -2461,12 +2461,6 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, engineT
       data-terminal-engine={engineType}
       ref={host}
     />
-    {pane.group === "session" ? <TerminalComposer
-      pane={{ key: pane.key, cwd: pane.cwd, group: pane.group, projectPath: pane.projectPath }}
-      ptyId={pane.ptyId ?? null}
-      active={active}
-      registerFocus={registerFocus}
-    /> : null}
     {tuiControlVisible ? (
       <div className={`wb-terminal-tui-nav${searchOpen ? " is-below-search" : ""}${scrollState.tuiInteractive ? "" : " is-unavailable"}`}>
         <button
@@ -2778,6 +2772,8 @@ export function WorkbenchPanel(): ReactPortal | null {
   const focusPaneAfterPtyRef = useRef("");
   /** Agent-session composer focus handles keyed by pane key (registered by TerminalComposer). */
   const composerFocusRefs = useRef(new Map<string, () => void>());
+  const [composerDrafts, setComposerDrafts] = useState<Record<string, string>>({});
+  const [composerTips, setComposerTips] = useState<Record<string, ComposerSendTip[]>>({});
   const openingSessionKeysRef = useRef(new Set<string>());
   /** Latest openSession closure for the agent-resume:workbench-open-session listener. */
   const openSessionRef = useRef<(session: AgentSession) => Promise<void>>(() => Promise.resolve());
@@ -2863,6 +2859,35 @@ export function WorkbenchPanel(): ReactPortal | null {
   useEffect(() => {
     window.dispatchEvent(new CustomEvent("agent-resume:active-sessions", { detail: activeSessionDots }));
   }, [activeSessionDots]);
+
+  useEffect(() => {
+    const list = desktopApi().workbenchComposerSendList;
+    if (typeof list !== "function") return;
+    const sessionPanes = terminals.filter((pane) => pane.group === "session");
+    let cancelled = false;
+    void Promise.all(sessionPanes.map(async (pane) => {
+      const records = await list({
+        paneKey: pane.key,
+        sessionKey: pane.sessionKey || undefined,
+        limit: COMPOSER_TIP_LIMIT
+      });
+      return { key: pane.key, tips: records.map((record) => ({ id: record.id, text: record.text, createdAtMs: record.createdAtMs })) };
+    })).then((rows) => {
+      if (cancelled) return;
+      setComposerTips((current) => {
+        let changed = false;
+        const next = { ...current };
+        for (const row of rows) {
+          if (current[row.key]?.length) continue;
+          if (!row.tips.length) continue;
+          next[row.key] = row.tips;
+          changed = true;
+        }
+        return changed ? next : current;
+      });
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [terminals]);
 
   // Drop runtime rows for panes that are no longer open.
   useEffect(() => {
@@ -3829,6 +3854,28 @@ export function WorkbenchPanel(): ReactPortal | null {
   const currentFilePath = workbenchActiveFilePath(selectedProject, currentEditor?.path, currentDiff);
   const currentAcpChat = currentAcpChats.find((pane) => pane.key === activePane);
   const currentBrowser = currentBrowsers.find((pane) => pane.key === activePane);
+  const composerItems = useMemo(() => {
+    const sessionPanes = terminals.filter((pane) => pane.group === "session");
+    const projectCounts = new Map<string, number>();
+    for (const pane of sessionPanes) {
+      projectCounts.set(pane.projectPath, (projectCounts.get(pane.projectPath) || 0) + 1);
+    }
+    return sessionPanes.map((pane) => {
+      const projectName = aliases[pane.projectPath] || basename(pane.projectPath);
+      const sessionTitle = sessionTabTitle(pane, sessionTitles);
+      return {
+        pane: { key: pane.key, cwd: pane.cwd, group: pane.group, projectPath: pane.projectPath },
+        ptyId: pane.ptyId ?? null,
+        activePane: pane.key === activePane,
+        projectName,
+        sessionTitle,
+        showSessionTitle: (projectCounts.get(pane.projectPath) || 0) > 1,
+        status: sessionRuntimeByPaneKey.get(pane.key)?.status ?? "open",
+        value: composerDrafts[pane.key] || "",
+        tips: composerTips[pane.key] || []
+      };
+    });
+  }, [activePane, aliases, composerDrafts, composerTips, sessionRuntimeByPaneKey, sessionTitles, terminals]);
   const activeTranscriptTarget = useMemo(() => {
     if (currentAcpChat) {
       return { provider: "chat", sessionId: currentAcpChat.recordId, iconProvider: currentAcpChat.provider };
@@ -4027,6 +4074,10 @@ export function WorkbenchPanel(): ReactPortal | null {
     setActivePane(paneKey, selectedProject);
     focusWorkbenchPane(paneKey);
   }, [focusWorkbenchPane, selectedProject, setActivePane]);
+
+  const setComposerDraft = useCallback((paneKey: string, value: string) => {
+    setComposerDrafts((current) => current[paneKey] === value ? current : { ...current, [paneKey]: value });
+  }, []);
 
   const navigateWorkbenchPanes = useCallback((direction: WorkbenchArrowDirection) => {
     const currentGroupIndex = workbenchPaneGroups.findIndex((group) => group.keys.includes(activePane));
@@ -4303,6 +4354,61 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
   }, [refreshTerminalGit]);
 
+  const activateComposerPane = useCallback((paneKey: string) => {
+    const pane = terminalsRef.current.find((item) => item.key === paneKey);
+    if (!pane || pane.group !== "session") return;
+    if (pane.projectPath !== selectedProjectRef.current) {
+      selectProject(pane.projectPath, { keepSessionKey: true, keepSide: true });
+    }
+    setActivePane(paneKey, pane.projectPath);
+  }, [setActivePane]);
+
+  const sendComposerToTerminal = useCallback((paneKey: string) => {
+    const pane = terminalsRef.current.find((item) => item.key === paneKey);
+    if (!pane || pane.group !== "session") return;
+    const text = (composerDrafts[paneKey] || "").trim();
+    if (!text || pane.ptyId == null) return;
+    if (pane.projectPath !== selectedProjectRef.current) {
+      selectProject(pane.projectPath, { keepSessionKey: true, keepSide: true });
+    }
+    setActivePane(paneKey, pane.projectPath);
+    void desktopApi().terminalInput({ id: pane.ptyId, data: text });
+    onTerminalInput(paneKey);
+    const identity = sessionIdentityFromKey(pane.sessionKey);
+    const localTip: ComposerSendTip = {
+      id: `local:${paneKey}:${Date.now()}`,
+      text,
+      createdAtMs: Date.now()
+    };
+    setComposerTips((current) => {
+      const existing = current[paneKey] || [];
+      return { ...current, [paneKey]: [localTip, ...existing].slice(0, COMPOSER_TIP_LIMIT) };
+    });
+    const append = desktopApi().workbenchComposerSendAppend;
+    if (typeof append === "function") {
+      void append({
+        paneKey,
+        projectPath: pane.projectPath,
+        sessionKey: pane.sessionKey || null,
+        provider: identity?.provider || null,
+        agentSessionId: identity?.sessionId || null,
+        text
+      }).then((record) => {
+        setComposerTips((current) => {
+          const existing = current[paneKey] || [];
+          const withoutLocal = existing.filter((tip) => tip.id !== localTip.id);
+          return {
+            ...current,
+            [paneKey]: [{ id: record.id, text: record.text, createdAtMs: record.createdAtMs }, ...withoutLocal].slice(0, COMPOSER_TIP_LIMIT)
+          };
+        });
+      }).catch(() => undefined);
+    }
+    window.requestAnimationFrame(() => {
+      terminalRefs.current.get(pane.ptyId!)?.focus();
+    });
+  }, [composerDrafts, onTerminalInput, setActivePane]);
+
   const onPtyDetach = useCallback((id: number) => {
     terminalRefs.current.delete(id);
   }, []);
@@ -4427,6 +4533,18 @@ export function WorkbenchPanel(): ReactPortal | null {
     const remaining = terminalsRef.current.filter((item) => item.key !== key);
     terminalsRef.current = remaining;
     setTerminals(remaining);
+    setComposerDrafts((current) => {
+      if (!(key in current)) return current;
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+    setComposerTips((current) => {
+      if (!(key in current)) return current;
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
     setPendingSessions((current) => current.filter((pending) => pending.terminalKey !== key));
     if (pane) {
       deferSessionPaneAutoRename(pane);
@@ -7923,8 +8041,8 @@ export function WorkbenchPanel(): ReactPortal | null {
         {active && headerSlot ? createPortal(<>{collapseToggle}{detailHead}</>, headerSlot) : null}
         <div className="wb-detail-body">
           <div className="wb-terminal-shell">{paneTabGroups}<div className="wb-terminal-stack">{terminals.filter((pane) => pane.projectPath === selectedProject && pane.key === activePane).map((pane) => {
-            return <div key={pane.key} className="wb-terminal-pane-wrap"><TerminalView pane={pane} active={active} themeId={terminalThemeId} appearance={desktopAppearance} rendererMode={terminalRendererMode} engineType={terminalEngine} onPty={onPty} onDetach={onPtyDetach} onInput={onTerminalInput} onInitialPromptSubmitted={onInitialPromptSubmitted} mouseTracking={terminalMouseTrackingRef} registerFocus={registerComposerFocus} /></div>;
-          })}{editorFindOpen && currentEditor ? <div className="wb-editor-find-bar app-inline-search" role="search">
+            return <div key={pane.key} className="wb-terminal-pane-wrap"><TerminalView pane={pane} active={active} themeId={terminalThemeId} appearance={desktopAppearance} rendererMode={terminalRendererMode} engineType={terminalEngine} onPty={onPty} onDetach={onPtyDetach} onInput={onTerminalInput} onInitialPromptSubmitted={onInitialPromptSubmitted} mouseTracking={terminalMouseTrackingRef} /></div>;
+          })}<TerminalComposerStack items={composerItems} onChange={setComposerDraft} onSendToTerminal={sendComposerToTerminal} onActivate={activateComposerPane} onClose={closeTerminal} registerFocus={registerComposerFocus} />{editorFindOpen && currentEditor ? <div className="wb-editor-find-bar app-inline-search" role="search">
             <ThemeIcon name="search" size={14} aria-hidden="true" />
             <input
               ref={editorFindInputRef}
