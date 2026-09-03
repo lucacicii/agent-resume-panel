@@ -17675,6 +17675,8 @@ html[data-window-mode="browser"] #react-chrome {
   height: 32px;
   min-width: 32px;
   min-height: 32px;
+  border: none;
+  padding: 0;
   border-radius: 50%;
   font-size: 14px;
   font-weight: 700;
@@ -17696,16 +17698,15 @@ html[data-window-mode="browser"] #react-chrome {
 
 .im-role-avatar.is-clickable {
   border: none;
+  padding: 0;
+  outline: none;
   cursor: pointer;
   position: relative;
-  transition: transform 0.15s ease, box-shadow 0.15s ease, outline-color 0.15s ease;
-  outline: 2px solid transparent;
-  outline-offset: 1.5px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 .im-role-avatar.is-clickable:hover {
   transform: scale(1.12);
   box-shadow: 0 0 10px var(--im-role-color, #3b82f6);
-  outline-color: var(--im-role-color, #3b82f6);
 }
 
 /* Origin Capsule (Derived from previous message) */
