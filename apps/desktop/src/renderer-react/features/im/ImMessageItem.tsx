@@ -277,7 +277,7 @@ export const ImMessageItem = memo(function ImMessageItem({
           className="im-compact-action-btn"
           onClick={(e) => {
             e.stopPropagation();
-            void onCopyText(message.body);
+            void onCopyText(cleanBody || message.body);
           }}
           title={t("desktop.common.copy")}
         >
