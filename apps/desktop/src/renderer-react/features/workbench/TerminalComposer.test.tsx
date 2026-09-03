@@ -48,12 +48,12 @@ async function renderComposer(options: {
   projectPath?: string;
   projectName?: string;
   sessionTitle?: string;
-  showSessionTitle?: boolean;
   value?: string;
   tips?: Array<{ id: string; text: string; createdAtMs: number }>;
   onChange?: (value: string) => void;
   onSendToTerminal?: () => void;
   onActivate?: () => void;
+  onOpenTip?: (tip: { id: string; text: string; createdAtMs: number }) => void;
   onClose?: () => void;
 } = {}): Promise<{
   map: RegisterMap;
@@ -91,8 +91,7 @@ async function renderComposer(options: {
         ptyId={options.ptyId !== undefined ? options.ptyId : 7}
         activePane={options.activePane !== undefined ? options.activePane : true}
         projectName={options.projectName ?? "app"}
-        sessionTitle={options.sessionTitle}
-        showSessionTitle={options.showSessionTitle}
+        sessionTitle={options.sessionTitle ?? "Fix renderer"}
         value={value}
         tips={options.tips}
         onChange={(next) => {
@@ -101,6 +100,7 @@ async function renderComposer(options: {
         }}
         onSendToTerminal={onSendToTerminal}
         onActivate={onActivate}
+        onOpenTip={options.onOpenTip}
         onClose={onClose}
         registerFocus={registerSpy}
       />
@@ -202,9 +202,9 @@ describe("TerminalComposer", () => {
   });
 
   it("shows project name, status dot, and close control", async () => {
-    const { container, onClose } = await renderComposer({ projectName: "agent-resume", sessionTitle: "Fix renderer", showSessionTitle: true });
-    expect(container.querySelector(".wb-terminal-composer-project-name")?.textContent).toBe("agent-resume");
+    const { container, onClose } = await renderComposer({ projectName: "agent-resume", sessionTitle: "Fix renderer" });
     expect(container.querySelector(".wb-terminal-composer-session-title")?.textContent).toBe("Fix renderer");
+    expect(container.querySelector(".wb-terminal-composer-project-name")?.textContent).toBe("agent-resume");
     expect(container.querySelector(".rail-session-dot")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Close session" }));
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -354,14 +354,17 @@ describe("TerminalComposer", () => {
   });
 
   it("renders user-message tips above the input", async () => {
+    const onOpenTip = vi.fn();
     await renderComposer({
       tips: [
         { id: "1", text: "inspect src", createdAtMs: 1 },
         { id: "2", text: "run tests", createdAtMs: 2 }
-      ]
+      ],
+      onOpenTip
     });
     const list = screen.getByRole("list", { name: "Sent messages" });
     expect(within(list).getByText("inspect src")).toBeTruthy();
-    expect(within(list).getByText("run tests")).toBeTruthy();
+    fireEvent.click(within(list).getByRole("button", { name: "run tests" }));
+    expect(onOpenTip).toHaveBeenCalledWith({ id: "2", text: "run tests", createdAtMs: 2 });
   });
 });

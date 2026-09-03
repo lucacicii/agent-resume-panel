@@ -20,7 +20,6 @@ export type TerminalComposerStackItem = {
   activePane: boolean;
   projectName: string;
   sessionTitle: string;
-  showSessionTitle: boolean;
   status: SessionDotStatus;
   value: string;
   tips: ComposerSendTip[];
@@ -31,10 +30,11 @@ export function TerminalComposerStack(props: {
   onChange: (paneKey: string, value: string) => void;
   onSendToTerminal: (paneKey: string) => void;
   onActivate: (paneKey: string) => void;
+  onOpenTip: (paneKey: string, tip: ComposerSendTip) => void;
   onClose: (paneKey: string) => void;
   registerFocus: (key: string, focus: () => void) => () => void;
 }): React.JSX.Element | null {
-  const { items, onChange, onSendToTerminal, onActivate, onClose, registerFocus } = props;
+  const { items, onChange, onSendToTerminal, onActivate, onOpenTip, onClose, registerFocus } = props;
   const { t } = useI18n();
   const stackRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState(() => loadTerminalComposerPosition(COMPOSER_STACK_POSITION_KEY));
@@ -114,13 +114,13 @@ export function TerminalComposerStack(props: {
             activePane={item.activePane}
             projectName={item.projectName}
             sessionTitle={item.sessionTitle}
-            showSessionTitle={item.showSessionTitle}
             status={item.status}
             value={item.value}
             tips={item.tips}
             onChange={(value) => onChange(item.pane.key, value)}
             onSendToTerminal={() => onSendToTerminal(item.pane.key)}
             onActivate={() => onActivate(item.pane.key)}
+            onOpenTip={(tip) => onOpenTip(item.pane.key, tip)}
             onClose={() => onClose(item.pane.key)}
             registerFocus={registerFocus}
           />

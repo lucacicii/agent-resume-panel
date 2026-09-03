@@ -12,6 +12,7 @@ import {
   type TranscriptMessage,
   type TranscriptPreviewMessage
 } from "./sessionTranscriptModel";
+import { findTranscriptUserMessage } from "./composerTipMatch";
 import { applyTranscriptPointerSelection } from "./transcriptTextSelection";
 
 type TranscriptPreview = {
@@ -29,7 +30,8 @@ export function SessionTranscriptPane({
   iconProvider,
   active,
   autoRefreshMs = TRANSCRIPT_AUTO_REFRESH_MS,
-  fontSize = 14
+  fontSize = 14,
+  focusUserMessage
 }: {
   provider: string;
   sessionId: string;
@@ -37,6 +39,7 @@ export function SessionTranscriptPane({
   active: boolean;
   autoRefreshMs?: number;
   fontSize?: number;
+  focusUserMessage?: { text: string; sentAtMs?: number; nonce: number } | null;
 }): React.JSX.Element {
   const roleIconProvider = iconProvider || provider;
   const { locale, t } = useI18n();
@@ -122,6 +125,18 @@ export function SessionTranscriptPane({
     const node = bodyRef.current?.querySelector<HTMLElement>(`[data-transcript-id="${messageId}"]`);
     node?.scrollIntoView({ block: "start" });
   };
+
+  useEffect(() => {
+    if (!focusUserMessage?.text || !model.messages.length) return;
+    const hit = findTranscriptUserMessage(
+      model.messages.filter((message) => message.role === "user"),
+      focusUserMessage.text,
+      focusUserMessage.sentAtMs
+    );
+    if (!hit) return;
+    const frame = window.requestAnimationFrame(() => scrollToMessage(hit.id));
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusUserMessage, model.messages]);
 
   const formatTimestamp = (value?: string): string => {
     if (!value) return "";

@@ -10401,7 +10401,7 @@ textarea.wb-editor-host {
   gap: 1px;
 }
 
-.wb-terminal-composer-project-name {
+.wb-terminal-composer-session-title {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -10411,7 +10411,7 @@ textarea.wb-editor-host {
   line-height: 1.2;
 }
 
-.wb-terminal-composer-session-title {
+.wb-terminal-composer-project-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -10452,21 +10452,38 @@ textarea.wb-editor-host {
   margin: 0;
   padding: 0;
   list-style: none;
-  max-height: 92px;
-  overflow: hidden;
+  max-height: 180px;
+  overflow-y: auto;
 }
 
 .wb-terminal-composer-tip {
+  appearance: none;
+  display: block;
+  width: 100%;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  margin: 0;
   padding: 3px 8px;
+  border: none;
   border-radius: 6px;
   background: color-mix(in srgb, var(--color-fill-secondary) 80%, transparent);
   color: var(--color-label-secondary);
   font-size: 11px;
   line-height: 1.3;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wb-terminal-composer-tip:hover {
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+  color: var(--color-label-primary);
+}
+
+.wb-terminal-composer-tip:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
 }
 
 .wb-terminal-composer-grip:focus-visible {

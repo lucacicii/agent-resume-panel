@@ -110,22 +110,31 @@ export async function listComposerSends(
   options: {
     paneKey?: string;
     sessionKey?: string;
+    agentSessionId?: string;
     limit?: number;
   }
 ): Promise<ComposerSendRecord[]> {
   const limit = Math.max(1, Math.min(options.limit ?? 8, COMPOSER_SEND_LIST_MAX));
-  const clauses: string[] = [];
   const paneKey = optionalString(options.paneKey, 512);
   const sessionKey = optionalString(options.sessionKey, 512);
-  if (paneKey) clauses.push(`pane_key = '${escapeSqlLiteral(paneKey)}'`);
+  const agentSessionId = optionalString(options.agentSessionId, 512);
+  const clauses: string[] = [];
+  if (agentSessionId) clauses.push(`agent_session_id = '${escapeSqlLiteral(agentSessionId)}'`);
   if (sessionKey) clauses.push(`session_key = '${escapeSqlLiteral(sessionKey)}'`);
-  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  if (paneKey) {
+    clauses.push(
+      agentSessionId || sessionKey
+        ? `(session_key IS NULL AND agent_session_id IS NULL AND pane_key = '${escapeSqlLiteral(paneKey)}')`
+        : `pane_key = '${escapeSqlLiteral(paneKey)}'`
+    );
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(" OR ")}` : "";
   const rows = await runSqliteJson<ComposerSendRow>(
     dbPath,
     `SELECT id, created_at_ms, pane_key, project_path, session_key, provider, agent_session_id, text
      FROM workbench_composer_sends
      ${where}
-     ORDER BY created_at_ms DESC
+     ORDER BY created_at_ms DESC, id DESC
      LIMIT ${limit};`
   );
   return rows.map(mapRow);

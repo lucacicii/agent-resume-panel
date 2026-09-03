@@ -57,6 +57,32 @@ describe("SessionTranscriptPane", () => {
     HTMLElement.prototype.scrollIntoView = original;
   });
 
+  it("scrolls to a composer tip that is only a suffix of the user message", async () => {
+    apiMocks.previewSession.mockResolvedValue({
+      session: { provider: "codex", id: "session-1" },
+      preview: {
+        title: "Fix renderer",
+        messages: [
+          { role: "user", text: "./shot.png please inspect src" },
+          { role: "assistant", text: "Looking." }
+        ]
+      }
+    });
+    const scrollIntoView = vi.fn();
+    const original = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+    render(<SessionTranscriptPane
+      provider="codex"
+      sessionId="session-1"
+      active
+      focusUserMessage={{ text: "please inspect src", nonce: 1 }}
+    />);
+    await screen.findByRole("button", { name: /please inspect src/ });
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledWith({ block: "start" }));
+    expect(document.querySelector('[data-transcript-id="transcript-msg-0"]')?.className).toContain("is-selected");
+    HTMLElement.prototype.scrollIntoView = original;
+  });
+
   it("filters outline and body together", async () => {
     apiMocks.previewSession.mockResolvedValue({
       session: { provider: "claude", id: "session-2" },

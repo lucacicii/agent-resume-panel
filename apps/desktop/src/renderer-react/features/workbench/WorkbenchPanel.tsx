@@ -17,14 +17,14 @@ import {
   Utf8Base64,
   writeTerminalSelection
 } from "./terminalClipboard";
-import type {
-  AgentProvider,
-  AgentSession,
-  GtdStatus,
-  PanelSettings,
-  WorkbenchProjectContextMenuAction,
-  WorkbenchSessionFolder,
-  WorkbenchSessionFolderAssignment
+import {
+  type AgentProvider,
+  type AgentSession,
+  type GtdStatus,
+  type PanelSettings,
+  type WorkbenchProjectContextMenuAction,
+  type WorkbenchSessionFolder,
+  type WorkbenchSessionFolderAssignment
 } from "@agent-resume/core";
 import {
   DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU,
@@ -590,6 +590,10 @@ function sessionIdentityFromKey(value: string | undefined): { provider: string; 
   const separator = value.indexOf(":");
   if (separator <= 0 || separator === value.length - 1) return null;
   return { provider: value.slice(0, separator), sessionId: value.slice(separator + 1) };
+}
+
+function composerHistoryKey(pane: Pick<TerminalPane, "key" | "sessionKey">): string {
+  return pane.sessionKey || pane.key;
 }
 
 function terminalSessionNoteTarget(pane: TerminalPane, projectName?: string): FloatingSessionNoteTarget | null {
@@ -2774,6 +2778,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const composerFocusRefs = useRef(new Map<string, () => void>());
   const [composerDrafts, setComposerDrafts] = useState<Record<string, string>>({});
   const [composerTips, setComposerTips] = useState<Record<string, ComposerSendTip[]>>({});
+  const [transcriptFocus, setTranscriptFocus] = useState<{ text: string; sentAtMs?: number; nonce: number } | null>(null);
   const openingSessionKeysRef = useRef(new Set<string>());
   /** Latest openSession closure for the agent-resume:workbench-open-session listener. */
   const openSessionRef = useRef<(session: AgentSession) => Promise<void>>(() => Promise.resolve());
@@ -2860,34 +2865,54 @@ export function WorkbenchPanel(): ReactPortal | null {
     window.dispatchEvent(new CustomEvent("agent-resume:active-sessions", { detail: activeSessionDots }));
   }, [activeSessionDots]);
 
+  const composerHistoryKeys = useMemo(() => terminals
+    .filter((pane) => pane.group === "session")
+    .map((pane) => `${pane.key}::${pane.sessionKey || ""}`)
+    .join("|"), [terminals]);
+
   useEffect(() => {
     const list = desktopApi().workbenchComposerSendList;
     if (typeof list !== "function") return;
-    const sessionPanes = terminals.filter((pane) => pane.group === "session");
+    const sessionPanes = terminalsRef.current.filter((pane) => pane.group === "session");
     let cancelled = false;
     void Promise.all(sessionPanes.map(async (pane) => {
+      const identity = sessionIdentityFromKey(pane.sessionKey);
       const records = await list({
         paneKey: pane.key,
         sessionKey: pane.sessionKey || undefined,
+        agentSessionId: identity?.sessionId,
         limit: COMPOSER_TIP_LIMIT
       });
-      return { key: pane.key, tips: records.map((record) => ({ id: record.id, text: record.text, createdAtMs: record.createdAtMs })) };
+      return {
+        key: composerHistoryKey(pane),
+        tips: records.map((record) => ({ id: record.id, text: record.text, createdAtMs: record.createdAtMs }))
+      };
     })).then((rows) => {
       if (cancelled) return;
       setComposerTips((current) => {
         let changed = false;
         const next = { ...current };
         for (const row of rows) {
-          if (current[row.key]?.length) continue;
-          if (!row.tips.length) continue;
-          next[row.key] = row.tips;
+          const existing = current[row.key] || [];
+          const byId = new Map<string, ComposerSendTip>();
+          for (const tip of row.tips) byId.set(tip.id, tip);
+          for (const tip of existing) {
+            if (!byId.has(tip.id)) byId.set(tip.id, tip);
+          }
+          const merged = [...byId.values()]
+            .sort((a, b) => b.createdAtMs - a.createdAtMs)
+            .slice(0, COMPOSER_TIP_LIMIT);
+          const same = merged.length === existing.length
+            && merged.every((tip, index) => tip.id === existing[index]?.id && tip.text === existing[index]?.text);
+          if (same) continue;
+          next[row.key] = merged;
           changed = true;
         }
         return changed ? next : current;
       });
     }).catch(() => undefined);
     return () => { cancelled = true; };
-  }, [terminals]);
+  }, [composerHistoryKeys]);
 
   // Drop runtime rows for panes that are no longer open.
   useEffect(() => {
@@ -3856,10 +3881,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   const currentBrowser = currentBrowsers.find((pane) => pane.key === activePane);
   const composerItems = useMemo(() => {
     const sessionPanes = terminals.filter((pane) => pane.group === "session");
-    const projectCounts = new Map<string, number>();
-    for (const pane of sessionPanes) {
-      projectCounts.set(pane.projectPath, (projectCounts.get(pane.projectPath) || 0) + 1);
-    }
     return sessionPanes.map((pane) => {
       const projectName = aliases[pane.projectPath] || basename(pane.projectPath);
       const sessionTitle = sessionTabTitle(pane, sessionTitles);
@@ -3869,10 +3890,9 @@ export function WorkbenchPanel(): ReactPortal | null {
         activePane: pane.key === activePane,
         projectName,
         sessionTitle,
-        showSessionTitle: (projectCounts.get(pane.projectPath) || 0) > 1,
         status: sessionRuntimeByPaneKey.get(pane.key)?.status ?? "open",
         value: composerDrafts[pane.key] || "",
-        tips: composerTips[pane.key] || []
+        tips: composerTips[composerHistoryKey(pane)] || composerTips[pane.key] || []
       };
     });
   }, [activePane, aliases, composerDrafts, composerTips, sessionRuntimeByPaneKey, sessionTitles, terminals]);
@@ -4363,6 +4383,12 @@ export function WorkbenchPanel(): ReactPortal | null {
     setActivePane(paneKey, pane.projectPath);
   }, [setActivePane]);
 
+  const openComposerTip = useCallback((paneKey: string, tip: ComposerSendTip) => {
+    activateComposerPane(paneKey);
+    setSide("transcript");
+    setTranscriptFocus({ text: tip.text, sentAtMs: tip.createdAtMs, nonce: Date.now() });
+  }, [activateComposerPane]);
+
   const sendComposerToTerminal = useCallback((paneKey: string) => {
     const pane = terminalsRef.current.find((item) => item.key === paneKey);
     if (!pane || pane.group !== "session") return;
@@ -4380,9 +4406,10 @@ export function WorkbenchPanel(): ReactPortal | null {
       text,
       createdAtMs: Date.now()
     };
+    const historyKey = composerHistoryKey(pane);
     setComposerTips((current) => {
-      const existing = current[paneKey] || [];
-      return { ...current, [paneKey]: [localTip, ...existing].slice(0, COMPOSER_TIP_LIMIT) };
+      const existing = current[historyKey] || current[paneKey] || [];
+      return { ...current, [historyKey]: [localTip, ...existing].slice(0, COMPOSER_TIP_LIMIT) };
     });
     const append = desktopApi().workbenchComposerSendAppend;
     if (typeof append === "function") {
@@ -4395,11 +4422,11 @@ export function WorkbenchPanel(): ReactPortal | null {
         text
       }).then((record) => {
         setComposerTips((current) => {
-          const existing = current[paneKey] || [];
+          const existing = current[historyKey] || current[paneKey] || [];
           const withoutLocal = existing.filter((tip) => tip.id !== localTip.id);
           return {
             ...current,
-            [paneKey]: [{ id: record.id, text: record.text, createdAtMs: record.createdAtMs }, ...withoutLocal].slice(0, COMPOSER_TIP_LIMIT)
+            [historyKey]: [{ id: record.id, text: record.text, createdAtMs: record.createdAtMs }, ...withoutLocal].slice(0, COMPOSER_TIP_LIMIT)
           };
         });
       }).catch(() => undefined);
@@ -8042,7 +8069,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         <div className="wb-detail-body">
           <div className="wb-terminal-shell">{paneTabGroups}<div className="wb-terminal-stack">{terminals.filter((pane) => pane.projectPath === selectedProject && pane.key === activePane).map((pane) => {
             return <div key={pane.key} className="wb-terminal-pane-wrap"><TerminalView pane={pane} active={active} themeId={terminalThemeId} appearance={desktopAppearance} rendererMode={terminalRendererMode} engineType={terminalEngine} onPty={onPty} onDetach={onPtyDetach} onInput={onTerminalInput} onInitialPromptSubmitted={onInitialPromptSubmitted} mouseTracking={terminalMouseTrackingRef} /></div>;
-          })}<TerminalComposerStack items={composerItems} onChange={setComposerDraft} onSendToTerminal={sendComposerToTerminal} onActivate={activateComposerPane} onClose={closeTerminal} registerFocus={registerComposerFocus} />{editorFindOpen && currentEditor ? <div className="wb-editor-find-bar app-inline-search" role="search">
+          })}<TerminalComposerStack items={composerItems} onChange={setComposerDraft} onSendToTerminal={sendComposerToTerminal} onActivate={activateComposerPane} onOpenTip={openComposerTip} onClose={closeTerminal} registerFocus={registerComposerFocus} />{editorFindOpen && currentEditor ? <div className="wb-editor-find-bar app-inline-search" role="search">
             <ThemeIcon name="search" size={14} aria-hidden="true" />
             <input
               ref={editorFindInputRef}
@@ -8221,7 +8248,7 @@ export function WorkbenchPanel(): ReactPortal | null {
                 column: target.column || 1,
                 endColumn: target.endColumn || (target.column || 1) + 1
               });
-            }} /> : side === "transcript" ? <SessionTranscriptPane provider={activeTranscriptTarget?.provider || ""} sessionId={activeTranscriptTarget?.sessionId || ""} iconProvider={activeTranscriptTarget?.iconProvider || activeTranscriptTarget?.provider || ""} active={active && side === "transcript"} fontSize={settings?.workbench?.transcriptFontSize ?? 14} /> : <div className="wb-side-pane">
+            }} /> : side === "transcript" ? <SessionTranscriptPane provider={activeTranscriptTarget?.provider || ""} sessionId={activeTranscriptTarget?.sessionId || ""} iconProvider={activeTranscriptTarget?.iconProvider || activeTranscriptTarget?.provider || ""} active={active && side === "transcript"} fontSize={settings?.workbench?.transcriptFontSize ?? 14} focusUserMessage={transcriptFocus} /> : <div className="wb-side-pane">
             <div className="wb-side-pane-head wb-git-pane-head">
               <span className="wb-side-pane-title">{gitHistoryContext ? gitHistoryTitle : t("desktop.workbench.sidePanelGit")}</span>
               <div className="wb-git-actions">{gitHistoryContext ? <>

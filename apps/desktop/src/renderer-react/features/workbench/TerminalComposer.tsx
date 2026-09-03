@@ -27,7 +27,7 @@ export type ComposerSendTip = {
   createdAtMs: number;
 };
 
-export const COMPOSER_TIP_LIMIT = 8;
+export const COMPOSER_TIP_LIMIT = 24;
 
 /** Static fallback suggestions (no LLM). History recency beats these. */
 export const TERMINAL_COMPOSER_STATIC_COMMANDS = [
@@ -96,14 +96,14 @@ export function TerminalComposer(props: {
   ptyId: number | null;
   activePane: boolean;
   projectName: string;
-  sessionTitle?: string;
-  showSessionTitle?: boolean;
+  sessionTitle: string;
   status?: SessionDotStatus;
   value: string;
   onChange: (value: string) => void;
   tips?: ComposerSendTip[];
   onSendToTerminal: () => void;
   onActivate: () => void;
+  onOpenTip?: (tip: ComposerSendTip) => void;
   onClose: () => void;
   registerFocus: (key: string, focus: () => void) => () => void;
 }): React.JSX.Element {
@@ -113,13 +113,13 @@ export function TerminalComposer(props: {
     activePane,
     projectName,
     sessionTitle,
-    showSessionTitle,
     status = "open",
     value,
     onChange,
     tips = [],
     onSendToTerminal,
     onActivate,
+    onOpenTip,
     onClose,
     registerFocus
   } = props;
@@ -488,10 +488,8 @@ export function TerminalComposer(props: {
           <span className={statusDotClass(status)} aria-hidden="true" />
         </span>
         <span className="wb-terminal-composer-project">
-          <span className="wb-terminal-composer-project-name">{projectName}</span>
-          {showSessionTitle && sessionTitle ? (
-            <span className="wb-terminal-composer-session-title">{sessionTitle}</span>
-          ) : null}
+          <span className="wb-terminal-composer-session-title">{sessionTitle}</span>
+          {projectName ? <span className="wb-terminal-composer-project-name">{projectName}</span> : null}
         </span>
         <button
           type="button"
@@ -507,8 +505,15 @@ export function TerminalComposer(props: {
       {visibleTips.length ? (
         <ul className="wb-terminal-composer-tips" aria-label={t("desktop.workbench.terminalComposerTips")}>
           {visibleTips.map((tip) => (
-            <li key={tip.id} className="wb-terminal-composer-tip" title={tip.text}>
-              {tip.text}
+            <li key={tip.id}>
+              <button
+                type="button"
+                className="wb-terminal-composer-tip"
+                title={tip.text}
+                onClick={() => onOpenTip?.(tip)}
+              >
+                {tip.text}
+              </button>
             </li>
           ))}
         </ul>

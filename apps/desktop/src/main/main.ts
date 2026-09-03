@@ -2284,11 +2284,12 @@ function registerIpc(): void {
 
   safeHandle(
     "workbench:composerSendList",
-    async (_event, args?: { paneKey?: string; sessionKey?: string; limit?: number }) => {
+    async (_event, args?: { paneKey?: string; sessionKey?: string; agentSessionId?: string; limit?: number }) => {
       const paths = await loadPanelDbPaths();
       return listComposerSends(paths.desktopDb, {
         paneKey: args?.paneKey,
         sessionKey: args?.sessionKey,
+        agentSessionId: args?.agentSessionId,
         limit: args?.limit
       });
     }

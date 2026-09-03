@@ -702,6 +702,7 @@ export interface DesktopApi {
   workbenchComposerSendList(args: {
     paneKey?: string;
     sessionKey?: string;
+    agentSessionId?: string;
     limit?: number;
   }): Promise<Array<{
     id: string;

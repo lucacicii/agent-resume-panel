@@ -14,7 +14,7 @@ vi.mock("@agent-resume/core", async () => {
   return {
     ...actual,
     loadSettings: vi.fn(actual.loadSettings),
-    llmConfigFromSettings: vi.fn(() => null)
+    llmConfigFromSettings: vi.fn(() => undefined)
   };
 });
 
@@ -248,7 +248,7 @@ describe("terminal:gitSuggestCommit", () => {
     vi.mocked(loadSettings).mockResolvedValue({
       workbench: { gitCommitMessageStyle: "conventional" }
     } as never);
-    vi.mocked(llmConfigFromSettings).mockReturnValue(null);
+    vi.mocked(llmConfigFromSettings).mockReturnValue(undefined);
 
     registerWorkbenchGitIpc(() => "en");
     const registration = vi.mocked(ipcMain.handle).mock.calls.find(([channel]) => channel === "terminal:gitSuggestCommit");

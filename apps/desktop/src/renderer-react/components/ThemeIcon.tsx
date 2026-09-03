@@ -45,5 +45,6 @@ export type ThemeIconProps = LucideProps & { name: ThemeIconName };
  */
 export function ThemeIcon({ name, ...props }: ThemeIconProps): JSX.Element {
   const Icon = ICONS[name];
+  if (!Icon) return <span className="theme-icon-missing" data-theme-icon={name} aria-hidden="true" />;
   return <Icon data-theme-icon={name} {...props} />;
 }
