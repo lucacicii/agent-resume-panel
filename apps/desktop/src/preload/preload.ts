@@ -629,7 +629,7 @@ export interface DesktopApi {
   imSetMemberModel(args: { memberId: string; model: string | null }): Promise<ImMember>;
   imSetMemberThoughtLevel(args: { memberId: string; thoughtLevel: string | null }): Promise<ImMember>;
   imResetMemberOverrides(args: { memberId: string }): Promise<ImMember>;
-  imListAgentModels(args: { agent: ImAgent }): Promise<Array<{ id: string; label: string; provider?: string }>>;
+  imListAgentModels(args: { agent: ImAgent; refresh?: boolean }): Promise<Array<{ id: string; label: string; provider?: string }>>;
   imCreateRole(args: {
     projectId: string;
     name: string;

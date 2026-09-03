@@ -1,56 +1,46 @@
-import { describe, expect, it } from "vitest";
-import type { PanelSettings } from "@agent-resume/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { getLiveAcpAgentModels, probeAcpAgentModels } from "../acp/acpHost";
 import { resolveAgentModels } from "./agentModelResolver";
 
+vi.mock("../acp/acpHost", () => ({
+  getLiveAcpAgentModels: vi.fn(),
+  probeAcpAgentModels: vi.fn()
+}));
+
 describe("agentModelResolver", () => {
-  it("retrieves text models from all configured Desktop providers", async () => {
-    const settings = {
-      providers: [
-        {
-          id: "prov-openai",
-          name: "OpenAI",
-          baseUrl: "https://api.openai.com/v1",
-          models: [
-            { id: "gpt-4o", kind: "text" },
-            { id: "o3-mini", kind: "text" },
-            { id: "text-embedding-3-small", kind: "embedding" }
-          ]
-        },
-        {
-          id: "prov-anthropic",
-          name: "Anthropic",
-          baseUrl: "https://api.anthropic.com/v1",
-          models: [
-            { id: "claude-3-7-sonnet", kind: "text" }
-          ]
-        }
-      ]
-    } as unknown as PanelSettings;
-
-    const models = await resolveAgentModels("claude", settings);
-    const modelIds = models.map((m) => m.id);
-
-    expect(modelIds).toEqual(["gpt-4o", "o3-mini", "claude-3-7-sonnet"]);
-    expect(modelIds).not.toContain("text-embedding-3-small");
-
-    const gpt = models.find((m) => m.id === "gpt-4o");
-    expect(gpt?.label).toBe("gpt-4o (OpenAI)");
-    expect(gpt?.provider).toBe("OpenAI");
-
-    const claude = models.find((m) => m.id === "claude-3-7-sonnet");
-    expect(claude?.label).toBe("claude-3-7-sonnet (Anthropic)");
-    expect(claude?.provider).toBe("Anthropic");
+  beforeEach(() => {
+    vi.mocked(getLiveAcpAgentModels).mockReset();
+    vi.mocked(probeAcpAgentModels).mockReset();
   });
 
-  it("falls back to curated models when no provider models are configured", async () => {
-    const settings = {
-      providers: []
-    } as unknown as PanelSettings;
+  it("returns live ACP session models without spawning a probe", async () => {
+    vi.mocked(getLiveAcpAgentModels).mockReturnValue([
+      { id: "claude-sonnet-4-5", label: "Claude Sonnet 4.5" },
+      { id: "claude-opus-4-1", label: "" }
+    ]);
 
-    const models = await resolveAgentModels("claude", settings);
-    const modelIds = models.map((m) => m.id);
+    const models = await resolveAgentModels("claude");
 
-    expect(modelIds).toContain("claude-3-7-sonnet-20250219");
-    expect(modelIds).toContain("claude-3-5-sonnet-20241022");
+    expect(models).toEqual([
+      { id: "claude-sonnet-4-5", label: "Claude Sonnet 4.5", provider: "ACP" },
+      { id: "claude-opus-4-1", label: "claude-opus-4-1", provider: "ACP" }
+    ]);
+    expect(getLiveAcpAgentModels).toHaveBeenCalledWith("claude");
+    expect(probeAcpAgentModels).not.toHaveBeenCalled();
+  });
+
+  it("probes a throwaway ACP session when refresh is requested", async () => {
+    vi.mocked(probeAcpAgentModels).mockResolvedValue([{ id: "o3-mini", label: "o3 mini" }]);
+
+    const models = await resolveAgentModels("codex", { refresh: true });
+
+    expect(probeAcpAgentModels).toHaveBeenCalledWith("codex");
+    expect(models).toEqual([{ id: "o3-mini", label: "o3 mini", provider: "ACP" }]);
+  });
+
+  it("returns an empty list when no live ACP session exists", async () => {
+    vi.mocked(getLiveAcpAgentModels).mockReturnValue([]);
+
+    expect(await resolveAgentModels("codex")).toEqual([]);
   });
 });

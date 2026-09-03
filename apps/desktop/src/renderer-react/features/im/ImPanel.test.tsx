@@ -1165,7 +1165,8 @@ describe("ImPanel", () => {
       agent: "codex"
     }));
     await waitFor(() => expect(api.imListAgentModels).toHaveBeenCalledWith({
-      agent: "codex"
+      agent: "codex",
+      refresh: true
     }));
 
     // Change model via dropdown

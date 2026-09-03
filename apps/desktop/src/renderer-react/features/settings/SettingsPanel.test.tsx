@@ -492,6 +492,10 @@ describe("SettingsPanel (window)", () => {
   it("allows selecting and typing a model for role templates in IM settings", async () => {
     const imUpdateTemplate = vi.fn(async () => ({ templateId: "role_developer" }));
     const { host } = renderWindowSettings("im", {
+      imListAgentModels: vi.fn(async () => [
+        { id: "claude-3-7-sonnet-20250219", label: "Claude 3.7 Sonnet", provider: "ACP" },
+        { id: "claude-opus", label: "Claude Opus", provider: "ACP" }
+      ]),
       imListTemplates: vi.fn(async () => [
         {
           templateId: "role_developer",

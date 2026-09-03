@@ -1369,40 +1369,78 @@ export function disposeAcpController(chatId: string): void {
   }
 }
 
-export function getLiveAcpAgentModels(provider: string): Array<{ id: string; label: string }> {
-  const result: Array<{ id: string; label: string }> = [];
-  const seen = new Set<string>();
-  for (const controller of controllers.values()) {
-    if (controller.getRecord().provider !== provider) continue;
-    const configOptions = controller.getConfigOptions();
-    for (const opt of configOptions) {
-      if (opt.type === "select" && (opt.category === "model" || opt.id === "model" || opt.id === "model_id")) {
-        for (const item of opt.options) {
-          if ("value" in item && item.value && !seen.has(item.value)) {
-            seen.add(item.value);
-            result.push({ id: item.value, label: item.name || item.value });
-          } else if ("options" in item && Array.isArray(item.options)) {
-            for (const sub of item.options) {
-              if (sub.value && !seen.has(sub.value)) {
-                seen.add(sub.value);
-                result.push({ id: sub.value, label: `${sub.name || sub.value} (${item.name || item.group})` });
-              }
+function collectControllerAgentModels(
+  controller: AcpChatController,
+  result: Array<{ id: string; label: string }>,
+  seen: Set<string>
+): void {
+  const configOptions = controller.getConfigOptions();
+  for (const opt of configOptions) {
+    if (opt.type === "select" && (opt.category === "model" || opt.id === "model" || opt.id === "model_id")) {
+      for (const item of opt.options) {
+        if ("value" in item && item.value && !seen.has(item.value)) {
+          seen.add(item.value);
+          result.push({ id: item.value, label: item.name || item.value });
+        } else if ("options" in item && Array.isArray(item.options)) {
+          for (const sub of item.options) {
+            if (sub.value && !seen.has(sub.value)) {
+              seen.add(sub.value);
+              result.push({ id: sub.value, label: `${sub.name || sub.value} (${item.name || item.group})` });
             }
           }
         }
       }
     }
-    const legacyModels = controller.getModels();
-    if (legacyModels?.availableModels) {
-      for (const m of legacyModels.availableModels) {
-        if (m.modelId && !seen.has(m.modelId)) {
-          seen.add(m.modelId);
-          result.push({ id: m.modelId, label: m.name || m.modelId });
-        }
+  }
+  const legacyModels = controller.getModels();
+  if (legacyModels?.availableModels) {
+    for (const m of legacyModels.availableModels) {
+      if (m.modelId && !seen.has(m.modelId)) {
+        seen.add(m.modelId);
+        result.push({ id: m.modelId, label: m.name || m.modelId });
       }
     }
   }
+}
+
+export function getLiveAcpAgentModels(provider: string): Array<{ id: string; label: string }> {
+  const result: Array<{ id: string; label: string }> = [];
+  const seen = new Set<string>();
+  for (const controller of controllers.values()) {
+    if (controller.getRecord().provider !== provider) continue;
+    collectControllerAgentModels(controller, result, seen);
+  }
   return result;
+}
+
+/**
+ * Discovers the provider's real model list on demand. Reuses live sessions
+ * when available; otherwise boots a throwaway ACP session, harvests its
+ * config options, then disposes the session and deletes the record.
+ */
+export async function probeAcpAgentModels(provider: AcpAgentProvider): Promise<Array<{ id: string; label: string }>> {
+  const live = getLiveAcpAgentModels(provider);
+  if (live.length > 0) return live;
+  if (!acpHostDeps) return [];
+  const { loadSettings } = acpHostDeps;
+  const settings = await loadSettings();
+  const panelHome = effectivePanelHome(settings);
+  const record = await createAcpRecord(panelHome, panelHome, provider, { source: "im" });
+  try {
+    const controller = new AcpChatController(record, panelHome, settings, () => undefined);
+    controllers.set(record.id, controller);
+    try {
+      await controller.bootstrap();
+      const result: Array<{ id: string; label: string }> = [];
+      collectControllerAgentModels(controller, result, new Set());
+      return result;
+    } finally {
+      controller.dispose();
+      controllers.delete(record.id);
+    }
+  } finally {
+    await deleteAcpRecord(panelHome, record.id);
+  }
 }
 
 export function getAcpRuntimeMetrics(): { count: number; liveCount: number } {

@@ -18,7 +18,6 @@ import { useI18n } from "../../i18n";
 import { storedWidth } from "../../storage";
 import {
   IM_AGENTS,
-  IM_AGENT_SUGGESTED_MODELS,
   IM_SUGGESTED_THOUGHT_LEVELS,
   isBuiltinTemplateId,
   isProjectRoleTemplateId,
@@ -1043,22 +1042,28 @@ export function ImPanel(): ReactPortal | null {
     };
   }, [expandedMemberId]);
 
-  const fetchModelsForAgent = useCallback(async (targetAgent: ImAgent) => {
-    if (agentModelsMap[targetAgent]?.length) return agentModelsMap[targetAgent];
+  const fetchModelsForAgent = useCallback(async (targetAgent: ImAgent, refresh = false) => {
+    if (!refresh && agentModelsMap[targetAgent]?.length) return agentModelsMap[targetAgent];
     try {
-      const list = await desktopApi().imListAgentModels({ agent: targetAgent });
+      const list = await desktopApi().imListAgentModels({ agent: targetAgent, refresh });
       setAgentModelsMap((curr) => ({ ...curr, [targetAgent]: list }));
       return list;
     } catch {
-      const fallback = IM_AGENT_SUGGESTED_MODELS[targetAgent] || [];
-      setAgentModelsMap((curr) => ({ ...curr, [targetAgent]: fallback }));
-      return fallback;
+      setAgentModelsMap((curr) => ({ ...curr, [targetAgent]: [] }));
+      return [];
     }
   }, [agentModelsMap]);
 
+  useEffect(() => {
+    if (!expandedMemberId) return;
+    const member = allMembers.find((m) => m.memberId === expandedMemberId);
+    if (!member || agentModelsMap[member.agent] !== undefined) return;
+    void fetchModelsForAgent(member.agent);
+  }, [expandedMemberId, allMembers, agentModelsMap, fetchModelsForAgent]);
+
   const onMemberAgentChange = useCallback(async (member: ImMember, nextAgent: ImAgent) => {
     try {
-      void fetchModelsForAgent(nextAgent);
+      void fetchModelsForAgent(nextAgent, true);
       const updated = await desktopApi().imSetMemberAgent({ memberId: member.memberId, agent: nextAgent });
       setRoom((current) => current
         ? { ...current, members: current.members.map((m) => m.memberId === updated.memberId ? updated : m) }
@@ -1911,7 +1916,7 @@ export function ImPanel(): ReactPortal | null {
         const member = allMembers.find((m) => m.memberId === expandedMemberId);
         if (!member) return null;
         const template = templates.find((t) => t.templateId === member.templateId);
-        const memberModels = agentModelsMap[member.agent] ?? IM_AGENT_SUGGESTED_MODELS[member.agent] ?? [];
+        const memberModels = agentModelsMap[member.agent] ?? [];
         const isCustomMemberModel = Boolean(member.model && !memberModels.some((m) => m.id === member.model));
         const isCustomMemberThought = Boolean(member.thoughtLevel && !isSuggestedThoughtLevel(member.thoughtLevel));
         const memberModelGroups: Record<string, ImAgentModelOption[]> = {};
