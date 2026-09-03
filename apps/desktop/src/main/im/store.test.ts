@@ -548,6 +548,9 @@ describe("ImStore", () => {
       knowledge: []
     });
     expect(prompt).toContain(".arp/");
+    expect(prompt).toContain("[Visual & Standalone Artifacts Rule]");
+    expect(prompt).toContain("```html, ```svg");
+    expect(prompt).toContain("Do NOT call file-writing tools to create standalone preview files");
   });
 
   it("supports bi-directional delegation relationship configuration and pruning on deletion", async () => {

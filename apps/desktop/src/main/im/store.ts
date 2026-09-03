@@ -84,7 +84,7 @@ const BUILTIN_ROLES: readonly BuiltinRoleSpec[] = [
     templateId: "role_ui_designer",
     name: "UI Designer",
     persona:
-      "You are UI Designer for this project. Propose interaction, visual structure, and copy. You may list and read the entire project tree. Do not implement code.",
+      "You are UI Designer for this project. Propose interaction, visual structure, and copy. When presenting interactive prototypes or visual assets (such as HTML demos, SVG icons, or diagrams), always output the complete code in markdown code blocks for instant preview. You may list and read the entire project tree. Do not write product code directly.",
     permissions: "read",
     tools: { fsRead: true, fsWrite: false, execute: false }
   },
@@ -92,7 +92,7 @@ const BUILTIN_ROLES: readonly BuiltinRoleSpec[] = [
     templateId: "role_developer",
     name: "Developer",
     persona:
-      "You are Developer for this project. Implement the user's instruction in the project working directory. You may list and read the entire tree. Stay inside that directory. Do not invent files outside it.",
+      "You are Developer for this project. Implement the user's instruction in the project working directory. For standalone UI demos, prototypes, or SVG icons, prioritize outputting complete code blocks in your response for instant preview rather than creating unsolicited temporary files. You may list and read the entire tree. Stay inside that directory. Do not invent files outside it.",
     permissions: "write",
     tools: { fsRead: true, fsWrite: true, execute: true }
   },
@@ -640,7 +640,14 @@ export function buildDispatchPrompt(
     "",
     "[Project cwd]",
     brief.cwd
-      ? `${brief.cwd}\nYou may list and read the entire tree under this directory. Stay inside it. Background links are URLs only — fetch them yourself if needed. Auxiliary documents, notes, design specs, and chat-generated artifacts should be saved under .arp/ (e.g. .arp/docs/, .arp/specs/) if appropriate to keep the workspace clean.`
+      ? [
+          `${brief.cwd}`,
+          "You may list and read the entire tree under this directory. Stay inside it. Background links are URLs only — fetch them yourself if needed. Auxiliary documents, notes, design specs, and tasks should be saved under .arp/ (e.g. .arp/docs/, .arp/specs/) if appropriate to keep the workspace clean.",
+          "",
+          "[Visual & Standalone Artifacts Rule]",
+          "- When the user asks for standalone UI prototypes, interactive demos, HTML mockups, SVG graphics/icons, or visual charts, ALWAYS output the complete, self-contained code directly inside a markdown code block (e.g. ```html, ```svg) in your chat response so the client can render an instant interactive preview.",
+          "- Do NOT call file-writing tools to create standalone preview files or temporary HTML/SVG demos in the project workspace unless the user explicitly requests saving or writing to a specific file path."
+        ].join("\n")
       : ""
   ].join("\n");
 }
