@@ -148,7 +148,14 @@ const messages = {
   "desktop.im.removeKnowledge": "Remove",
   "desktop.im.timeline": "Timeline",
   "desktop.im.jumpTop": "Jump to top",
-  "desktop.im.jumpBottom": "Jump to bottom"
+  "desktop.im.jumpBottom": "Jump to bottom",
+  "desktop.im.filePickerLabel": "Insert file or folder",
+  "desktop.im.filePickerLoading": "Loading…",
+  "desktop.im.filePickerError": "Failed to load: {0}",
+  "desktop.im.filePickerEmpty": "No matches",
+  "desktop.im.filePickerSearchResults": "Search results",
+  "desktop.im.filePickerSelectDir": "Select this folder",
+  "desktop.im.filePickerUp": "Parent folder"
 };
 
 function project(overrides: Partial<ImProject> = {}): ImProject {
@@ -224,9 +231,16 @@ function renderIm() {
     workbenchRevealPath: vi.fn(async () => ({ ok: true })),
     workbenchListDirectory: vi.fn(async ({ dirPath }: { dirPath: string }) => ({
       entries: dirPath === "/tmp/app"
-        ? [{ name: "package.json", path: "/tmp/app/package.json", isDirectory: false }]
-        : []
+        ? [
+            { name: "src", path: "/tmp/app/src", isDirectory: true },
+            { name: "package.json", path: "/tmp/app/package.json", isDirectory: false }
+          ]
+        : dirPath === "/tmp/app/src"
+          ? [{ name: "a.ts", path: "/tmp/app/src/a.ts", isDirectory: false }]
+          : []
     })),
+    workbenchSearchPaths: vi.fn(async () => ({ files: [], truncated: false, engine: "node" })),
+    workbenchSearchPathsCancel: vi.fn(async () => ({ ok: true })),
     workbenchListScripts: vi.fn(async () => ({ packages: [], truncated: false, scannedDirs: 0 })),
     workbenchSearchText: vi.fn(async () => ({ matches: [], truncated: false, filesSearched: 0, engine: "node" })),
     workbenchSearchTextCancel: vi.fn(async () => ({ ok: true })),
@@ -454,6 +468,70 @@ describe("ImPanel", () => {
       expect(screen.getByRole("option", { name: /Architect/ }).getAttribute("aria-selected")).toBe("true");
     });
     expect(list.querySelector(".active")?.textContent).toMatch(/Architect/);
+  });
+
+  it("opens the # file picker, drills into a folder, and inserts the folder path without sending", async () => {
+    const api = renderIm();
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+    const composer = (await screen.findByLabelText(
+      "Message the room. @ a role. Enter to send, Shift+Enter for a new line."
+    )) as HTMLTextAreaElement;
+
+    fireEvent.change(composer, { target: { value: "#" } });
+    const list = await screen.findByRole("listbox", { name: "Insert file or folder" });
+    expect(await screen.findByRole("option", { name: "src/" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "package.json" })).toBeTruthy();
+
+    // Enter on the active first row (src/) drills in instead of sending.
+    fireEvent.keyDown(composer, { key: "Enter" });
+    await waitFor(() => expect(composer.value).toBe("#src/"));
+    expect((api.imPostMessage as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(0);
+
+    // Rows inside a subdirectory: ../, select-this-folder, then entries.
+    await screen.findByRole("option", { name: "../ Parent folder" });
+    expect(screen.getByRole("option", { name: "#src/ Select this folder" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "a.ts" })).toBeTruthy();
+
+    // Focus the select-this-folder row and finish the pick.
+    fireEvent.keyDown(composer, { key: "ArrowDown" });
+    fireEvent.keyDown(composer, { key: "Enter" });
+    await waitFor(() => expect(composer.value).toBe("#src/ "));
+    expect((api.imPostMessage as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(0);
+    // The picker closed after the selection.
+    await waitFor(() => {
+      expect(screen.queryByRole("listbox", { name: "Insert file or folder" })).toBeNull();
+    });
+  });
+
+  it("inserts a # file pick and dismisses the picker with Escape before sending", async () => {
+    const api = renderIm();
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+    const composer = (await screen.findByLabelText(
+      "Message the room. @ a role. Enter to send, Shift+Enter for a new line."
+    )) as HTMLTextAreaElement;
+
+    fireEvent.change(composer, { target: { value: "#pack" } });
+    await screen.findByRole("listbox", { name: "Insert file or folder" });
+    // Local filter narrows to package.json; Enter picks it.
+    fireEvent.keyDown(composer, { key: "Enter" });
+    await waitFor(() => expect(composer.value).toBe("#package.json "));
+    expect((api.imPostMessage as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(0);
+
+    // Escape dismisses a reopened picker and Enter then sends the draft.
+    fireEvent.change(composer, { target: { value: "#package.json #" } });
+    await screen.findByRole("listbox", { name: "Insert file or folder" });
+    fireEvent.keyDown(composer, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.queryByRole("listbox", { name: "Insert file or folder" })).toBeNull();
+    });
+    fireEvent.keyDown(composer, { key: "Enter" });
+    await waitFor(() => {
+      expect((api.imPostMessage as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(1);
+    });
   });
 
   it("hides tool-call job cards and keeps the role answer", async () => {

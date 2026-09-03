@@ -18309,6 +18309,72 @@ html[data-window-mode="browser"] #react-chrome {
 .im-mention-menu button:hover {
   background: var(--color-window-bg);
 }
+.im-file-picker {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 264px;
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid var(--color-separator);
+  border-radius: 8px;
+  background: var(--color-control-bg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+.im-file-picker button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 6px 8px;
+  border-radius: 6px;
+  min-width: 0;
+}
+.im-file-picker button.active,
+.im-file-picker button:hover {
+  background: var(--color-window-bg);
+}
+.im-file-picker .im-file-picker-name {
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.im-file-picker .im-file-picker-meta {
+  flex: none;
+  margin-left: auto;
+  font-size: 11px;
+  opacity: 0.65;
+  white-space: nowrap;
+}
+.im-file-picker .im-file-picker-entry-icon[data-directory="true"] {
+  color: #dcb67a;
+}
+.im-file-picker .im-file-picker-section {
+  display: flex;
+  align-items: center;
+  padding: 6px 8px 2px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.55;
+  border-top: 1px solid var(--color-separator);
+  margin-top: 4px;
+}
+.im-file-picker .im-file-picker-state {
+  padding: 8px;
+  font-size: 12px;
+  opacity: 0.7;
+}
 .im-quote-chip,
 .im-mention-chip {
   display: inline-flex;

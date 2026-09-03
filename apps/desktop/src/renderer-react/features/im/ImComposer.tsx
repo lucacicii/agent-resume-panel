@@ -15,11 +15,14 @@ import type { AgentToolDescriptor } from "@agent-resume/core";
 import { ThemeIcon } from "../../components/ThemeIcon";
 import { ToolSettingsPopover, type AskToolPrefs } from "../../components/ToolSettingsPopover";
 import type { ImMember, ImMessage, ImQuotedMessage } from "../../../shared/imTypes";
+import { ImFilePicker, type ImFilePickerHandle } from "./ImFilePicker";
 import {
   ALLOWED_IMAGE_TYPES,
   MAX_IMAGES,
   MAX_IMAGE_BYTES,
   agentTag,
+  formatImHashPath,
+  imHashTokenAtCursor,
   readFileAsDataUrl,
   roleColor,
   roleInitial,
@@ -82,7 +85,10 @@ export const ImComposer = memo(function ImComposer({
 }: ImComposerProps) {
   const [mentionIndex, setMentionIndex] = useState(0);
   const [toolsPopoverOpen, setToolsPopoverOpen] = useState(false);
+  const [cursor, setCursor] = useState(0);
+  const [filePickerDismissed, setFilePickerDismissed] = useState(false);
   const mentionListRef = useRef<HTMLDivElement | null>(null);
+  const filePickerRef = useRef<ImFilePickerHandle | null>(null);
   const toolsPopoverRef = useRef<HTMLSpanElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -139,10 +145,50 @@ export const ImComposer = memo(function ImComposer({
       .filter((member): member is ImMember => Boolean(member));
   }, [members, mentionIds]);
 
+  const hashToken = useMemo(
+    () => (projectPath ? imHashTokenAtCursor(draft, cursor) : null),
+    [cursor, draft, projectPath]
+  );
+  const filePickerOpen = Boolean(hashToken) && !filePickerDismissed;
+
+  // Any edit re-arms the picker after an explicit Escape dismissal.
+  useEffect(() => {
+    setFilePickerDismissed(false);
+  }, [draft]);
+
+  const focusComposerAt = useCallback((position: number) => {
+    setCursor(position);
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (el) {
+        el.setSelectionRange(position, position);
+        el.focus();
+      }
+    });
+  }, [textareaRef]);
+
+  const navigateHash = useCallback((nextQuery: string) => {
+    if (!hashToken) return;
+    const next = `${draft.slice(0, hashToken.start)}#${nextQuery}${draft.slice(cursor)}`;
+    onDraftChange(next);
+    focusComposerAt(hashToken.start + 1 + nextQuery.length);
+  }, [cursor, draft, focusComposerAt, hashToken, onDraftChange]);
+
+  const selectHashPath = useCallback((relativePath: string) => {
+    if (!hashToken) return;
+    const inserted = `#${formatImHashPath(relativePath)} `;
+    const next = `${draft.slice(0, hashToken.start)}${inserted}${draft.slice(cursor)}`;
+    onDraftChange(next);
+    setFilePickerDismissed(true);
+    focusComposerAt(hashToken.start + inserted.length);
+  }, [cursor, draft, focusComposerAt, hashToken, onDraftChange]);
+
   const pickMention = useCallback((member: ImMember) => {
     const at = draft.lastIndexOf("@");
     const nextDraft = at >= 0 ? `${draft.slice(0, at).trimEnd()} ` : draft;
-    onDraftChange(nextDraft.trimStart());
+    const normalized = nextDraft.trimStart();
+    onDraftChange(normalized);
+    setCursor(normalized.length);
     onMentionIdsChange((current) => current.includes(member.memberId) ? current : [...current, member.memberId]);
     setMentionOpen(false);
     setMentionIndex(0);
@@ -221,6 +267,7 @@ export const ImComposer = memo(function ImComposer({
       setMentionOpen(true);
       setMentionIndex(0);
     }
+    if (filePickerOpen && filePickerRef.current?.handleKeyDown(event)) return;
     if (mentionOpen && mentionOptions.length) {
       if (event.key === "ArrowDown") {
         event.preventDefault();
@@ -258,7 +305,7 @@ export const ImComposer = memo(function ImComposer({
       setMentionOpen(false);
       setMentionIndex(0);
     }
-  }, [draft, mentionIds.length, mentionIndex, mentionOpen, mentionOptions, onMentionIdsChange, onSend, pickMention, setMentionOpen]);
+  }, [draft, filePickerOpen, mentionIds.length, mentionIndex, mentionOpen, mentionOptions, onMentionIdsChange, onSend, pickMention, setMentionOpen]);
 
   useEffect(() => {
     if (!mentionOpen) return;
@@ -296,7 +343,7 @@ export const ImComposer = memo(function ImComposer({
       />
       <div className="chat-compose-frame">
         <div className="chat-compose-field">
-          {mentionOpen && mentionOptions.length > 0 && (
+          {mentionOpen && !filePickerOpen && mentionOptions.length > 0 && (
             <div
               ref={mentionListRef}
               className="im-mention-menu"
@@ -326,6 +373,17 @@ export const ImComposer = memo(function ImComposer({
                 </button>
               ))}
             </div>
+          )}
+          {filePickerOpen && hashToken && (
+            <ImFilePicker
+              ref={filePickerRef}
+              projectPath={projectPath || ""}
+              query={hashToken.query}
+              onNavigate={navigateHash}
+              onSelect={selectHashPath}
+              onDismiss={() => setFilePickerDismissed(true)}
+              t={t}
+            />
           )}
           {pendingImages.length > 0 && (
             <div className="im-pending-images" aria-label="Attached images">
@@ -396,7 +454,12 @@ export const ImComposer = memo(function ImComposer({
           <textarea
             ref={textareaRef}
             value={draft}
-            onChange={(event) => onDraftChange(event.target.value)}
+            onChange={(event) => {
+              onDraftChange(event.target.value);
+              setCursor(event.target.selectionStart || event.target.value.length);
+            }}
+            onSelect={(event) => setCursor(event.currentTarget.selectionStart ?? 0)}
+            onClick={(event) => setCursor(event.currentTarget.selectionStart ?? 0)}
             onKeyDown={onComposerKey}
             onPaste={onComposerPaste}
             placeholder={
