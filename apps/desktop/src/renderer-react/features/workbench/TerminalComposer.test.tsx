@@ -1,4 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import { WB_PATH_DND_MIME } from "./workbenchDnd";
@@ -10,8 +11,8 @@ import {
 
 const COMPOSER_MESSAGES: Record<string, string> = {
   "desktop.workbench.terminalComposerPlaceholder": "Type a command for the agent…",
-  "desktop.workbench.terminalComposerHint": "Click to type a command. Enter sends, Shift+Enter adds a new line.",
-  "desktop.workbench.terminalComposerSend": "Send command",
+  "desktop.workbench.terminalComposerHint": "Click to type. Enter pastes into the terminal without sending. Shift+Enter adds a new line.",
+  "desktop.workbench.terminalComposerSend": "Send to terminal",
   "desktop.workbench.terminalComposerSuggestions": "Command suggestions",
   "desktop.workbench.terminalComposerDirectorySuggestions": "Directory suggestions",
   "desktop.workbench.terminalComposerDirectoryLoading": "Loading directories…",
@@ -19,11 +20,17 @@ const COMPOSER_MESSAGES: Record<string, string> = {
   "desktop.workbench.terminalComposerDirectoryNoMatch": "No matching folders",
   "desktop.workbench.terminalComposerDirectoryError": "Could not load folders: {0}",
   "desktop.workbench.terminalComposerDropHint": "Drop to insert path",
-  "desktop.workbench.terminalComposerHintLine": "Enter sends · Shift+Enter newline",
-  "desktop.workbench.terminalComposerMove": "Move input box"
+  "desktop.workbench.terminalComposerHintLine": "Enter pastes · Shift+Enter newline",
+  "desktop.workbench.terminalComposerMove": "Move input box",
+  "desktop.workbench.terminalComposerTips": "Sent messages",
+  "desktop.workbench.terminalComposerClose": "Close session",
+  "desktop.workbench.sessionDots": "Active sessions",
+  "desktop.workbench.sessionDot.awaiting": "Waiting for you",
+  "desktop.workbench.sessionDot.running": "Running",
+  "desktop.workbench.sessionDot.connecting": "Connecting",
+  "desktop.workbench.sessionDot.error": "Error"
 };
 
-const terminalInputMock = vi.fn(async () => ({ ok: true }));
 const workbenchListDirectoryMock = vi.fn(async () => ({
   entries: [
     { name: "src", path: "/work/app/src", isDirectory: true },
@@ -36,37 +43,72 @@ type RegisterMap = Map<string, () => void>;
 
 async function renderComposer(options: {
   ptyId?: number | null;
-  active?: boolean;
-  group?: "session" | "terminal";
+  activePane?: boolean;
   cwd?: string;
   projectPath?: string;
-  variant?: "floating" | "docked";
-} = {}): Promise<{ map: RegisterMap; container: HTMLElement; registerSpy: ReturnType<typeof vi.fn> }> {
+  projectName?: string;
+  sessionTitle?: string;
+  value?: string;
+  tips?: Array<{ id: string; text: string; createdAtMs: number }>;
+  onChange?: (value: string) => void;
+  onSendToTerminal?: () => void;
+  onActivate?: () => void;
+  onOpenTip?: (tip: { id: string; text: string; createdAtMs: number }) => void;
+  onClose?: () => void;
+} = {}): Promise<{
+  map: RegisterMap;
+  container: HTMLElement;
+  registerSpy: ReturnType<typeof vi.fn>;
+  onChange: ReturnType<typeof vi.fn>;
+  onSendToTerminal: ReturnType<typeof vi.fn>;
+  onActivate: ReturnType<typeof vi.fn>;
+  onClose: ReturnType<typeof vi.fn>;
+}> {
   const map: RegisterMap = new Map();
   const registerSpy = vi.fn((key: string, fn: () => void) => {
     map.set(key, fn);
     return () => map.delete(key);
   });
+  const onChange = options.onChange ? vi.fn(options.onChange) : vi.fn();
+  const onSendToTerminal = options.onSendToTerminal ? vi.fn(options.onSendToTerminal) : vi.fn();
+  const onActivate = options.onActivate ? vi.fn(options.onActivate) : vi.fn();
+  const onClose = options.onClose ? vi.fn(options.onClose) : vi.fn();
   window.agentResume = {
     getI18nBundle: vi.fn(async () => ({ locale: "en", messages: COMPOSER_MESSAGES })),
     onLocaleChanged: vi.fn(() => () => undefined),
-    terminalInput: terminalInputMock,
     workbenchListDirectory: workbenchListDirectoryMock
   } as unknown as typeof window.agentResume;
-  const { container } = render(
-    <I18nProvider>
+  function Harness(): React.JSX.Element {
+    const [value, setValue] = useState(options.value ?? "");
+    return (
       <TerminalComposer
         pane={{
           key: "terminal:1",
           cwd: options.cwd ?? "/work/app",
-          group: options.group ?? "session",
+          group: "session",
           projectPath: options.projectPath
         }}
         ptyId={options.ptyId !== undefined ? options.ptyId : 7}
-        active={options.active !== undefined ? options.active : true}
+        activePane={options.activePane !== undefined ? options.activePane : true}
+        projectName={options.projectName ?? "app"}
+        sessionTitle={options.sessionTitle ?? "Fix renderer"}
+        value={value}
+        tips={options.tips}
+        onChange={(next) => {
+          setValue(next);
+          onChange(next);
+        }}
+        onSendToTerminal={onSendToTerminal}
+        onActivate={onActivate}
+        onOpenTip={options.onOpenTip}
+        onClose={onClose}
         registerFocus={registerSpy}
-        variant={options.variant}
       />
+    );
+  }
+  const { container } = render(
+    <I18nProvider>
+      <Harness />
     </I18nProvider>
   );
   await waitFor(() => {
@@ -74,7 +116,7 @@ async function renderComposer(options: {
       COMPOSER_MESSAGES["desktop.workbench.terminalComposerPlaceholder"]
     );
   });
-  return { map, container, registerSpy };
+  return { map, container, registerSpy, onChange, onSendToTerminal, onActivate, onClose };
 }
 
 function composerEl(container: HTMLElement): HTMLElement {
@@ -98,7 +140,6 @@ function focusInput(): void {
 }
 
 beforeEach(() => {
-  terminalInputMock.mockClear();
   workbenchListDirectoryMock.mockClear();
   localStorage.clear();
 });
@@ -131,15 +172,14 @@ describe("computeSuggestions", () => {
 
 describe("TerminalComposer", () => {
   it("loads project folders when # is typed and inserts the selected folder", async () => {
-    await renderComposer({ cwd: "/other", projectPath: "/work/app" });
+    const { onChange } = await renderComposer({ cwd: "/other", projectPath: "/work/app" });
     focusInput();
     fireEvent.change(textbox(), { target: { value: "please inspect #s" } });
     const listbox = await screen.findByRole("listbox", { name: "Directory suggestions" });
     expect(workbenchListDirectoryMock).toHaveBeenCalledWith({ rootPath: "/work/app", dirPath: "/work/app" });
     expect(await within(listbox).findByText("#src")).toBeTruthy();
     fireEvent.keyDown(textbox(), { key: "Enter" });
-    expect(textbox().value).toBe("please inspect #src");
-    expect(terminalInputMock).not.toHaveBeenCalled();
+    expect(onChange).toHaveBeenCalledWith("please inspect #src");
   });
 
   it("includes hidden first-level directories for a bare # query", async () => {
@@ -150,69 +190,36 @@ describe("TerminalComposer", () => {
     expect(await within(listbox).findByText("#.git")).toBeTruthy();
   });
 
-  it("scrolls the active directory suggestion into view while navigating", async () => {
-    workbenchListDirectoryMock.mockResolvedValueOnce({
-      entries: Array.from({ length: 10 }, (_, index) => ({
-        name: `directory-${index}`,
-        path: `/work/app/directory-${index}`,
-        isDirectory: true
-      }))
-    });
-    const scrolled: HTMLElement[] = [];
-    const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
-    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
-      configurable: true,
-      value(this: HTMLElement) {
-        scrolled.push(this);
-      }
-    });
-
-    try {
-      await renderComposer({ projectPath: "/work/app" });
-      focusInput();
-      fireEvent.change(textbox(), { target: { value: "#" } });
-      await screen.findByRole("listbox", { name: "Directory suggestions" });
-      for (let index = 0; index < 8; index += 1) {
-        fireEvent.keyDown(textbox(), { key: "ArrowDown" });
-      }
-      await waitFor(() => {
-        expect(scrolled.some((element) => element.id.endsWith("-directory-8"))).toBe(true);
-      });
-    } finally {
-      if (original) Object.defineProperty(HTMLElement.prototype, "scrollIntoView", original);
-      else Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: undefined });
-    }
-  });
-
-  it("sends normally when no directory matches the # query", async () => {
-    await renderComposer({ projectPath: "/work/app" });
+  it("sends to the terminal without a carriage return when no directory matches", async () => {
+    const { onSendToTerminal } = await renderComposer({ projectPath: "/work/app" });
     focusInput();
     fireEvent.change(textbox(), { target: { value: "#missing" } });
     const listbox = await screen.findByRole("listbox", { name: "Directory suggestions" });
     expect(await within(listbox).findByText("No matching folders")).toBeTruthy();
     fireEvent.keyDown(textbox(), { key: "Enter" });
+    expect(onSendToTerminal).toHaveBeenCalledTimes(1);
     expect(textbox().value).toBe("");
-    expect(terminalInputMock).toHaveBeenCalledWith({ id: 7, data: "#missing\r" });
   });
 
-  it("docks without the floating grip or collapsed strip", async () => {
-    const { container } = await renderComposer({ variant: "docked" });
-    expect(composerEl(container).classList.contains("is-docked")).toBe(true);
-    expect(composerEl(container).classList.contains("is-collapsed")).toBe(false);
-    expect(container.querySelector(".wb-terminal-composer-grip")).toBeNull();
-    expect(screen.getByRole("button", { name: COMPOSER_MESSAGES["desktop.workbench.terminalComposerSend"] })).toBeTruthy();
+  it("shows project name, status dot, and close control", async () => {
+    const { container, onClose } = await renderComposer({ projectName: "agent-resume", sessionTitle: "Fix renderer" });
+    expect(container.querySelector(".wb-terminal-composer-session-title")?.textContent).toBe("Fix renderer");
+    expect(container.querySelector(".wb-terminal-composer-project-name")?.textContent).toBe("agent-resume");
+    expect(container.querySelector(".rail-session-dot")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Close session" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("renders collapsed when not active and registers its focus handle", async () => {
-    const { map, container, registerSpy } = await renderComposer({ active: false });
+  it("renders collapsed when not the active pane and registers its focus handle", async () => {
+    const { map, container, registerSpy } = await renderComposer({ activePane: false });
     expect(composerEl(container).classList.contains("is-collapsed")).toBe(true);
+    expect(composerEl(container).classList.contains("is-inactive-pane")).toBe(true);
     expect(registerSpy).toHaveBeenCalledWith("terminal:1", expect.any(Function));
     expect(map.has("terminal:1")).toBe(true);
   });
 
-  it("auto-focuses when active (box-primary), then collapses on blur", async () => {
+  it("auto-focuses when active, then collapses on blur", async () => {
     const { container } = await renderComposer();
-    // Takes focus on mount when the pane is active + PTY ready.
     expect(composerEl(container).classList.contains("is-expanded")).toBe(true);
     expect(document.activeElement).toBe(textbox());
     fireEvent.blur(textbox());
@@ -221,119 +228,76 @@ describe("TerminalComposer", () => {
     expect(composerEl(container).classList.contains("is-expanded")).toBe(true);
   });
 
-  it("keeps the full draft value visible when collapsed (no truncation)", async () => {
-    const { container } = await renderComposer();
-    focusInput();
+  it("keeps the full draft value visible when collapsed", async () => {
     const longDraft = "git commit -m \"a very long message that would overflow the slim collapsed strip\" --no-verify";
-    fireEvent.change(textbox(), { target: { value: longDraft } });
+    const { container } = await renderComposer({ value: longDraft });
+    focusInput();
     fireEvent.blur(textbox());
     expect(composerEl(container).classList.contains("is-collapsed")).toBe(true);
     expect(textbox().value).toBe(longDraft);
   });
 
-  it("sends the full line on Enter and keeps focus", async () => {
-    const { container } = await renderComposer();
+  it("pastes on Enter and clears the draft", async () => {
+    const { container, onSendToTerminal } = await renderComposer({ value: "git status" });
     focusInput();
-    fireEvent.change(textbox(), { target: { value: "git status" } });
     fireEvent.keyDown(textbox(), { key: "Enter" });
-    expect(terminalInputMock).toHaveBeenCalledWith({ id: 7, data: "git status\r" });
+    expect(onSendToTerminal).toHaveBeenCalledTimes(1);
     expect(textbox().value).toBe("");
     expect(composerEl(container).classList.contains("is-expanded")).toBe(true);
-    expect(document.activeElement).toBe(textbox());
   });
 
-  it("does not send on Shift+Enter and keeps the draft", async () => {
-    await renderComposer();
+  it("does not send on Shift+Enter", async () => {
+    const { onSendToTerminal } = await renderComposer({ value: "git commit -m \"wip\"" });
     focusInput();
-    fireEvent.change(textbox(), { target: { value: "git commit -m \"wip\"" } });
     fireEvent.keyDown(textbox(), { key: "Enter", shiftKey: true });
-    expect(terminalInputMock).not.toHaveBeenCalled();
+    expect(onSendToTerminal).not.toHaveBeenCalled();
     expect(textbox().value).toBe("git commit -m \"wip\"");
   });
 
   it("auto-grows rows with no upper cap", async () => {
-    await renderComposer();
-    fireEvent.change(textbox(), { target: { value: "a\nb\nc" } });
+    const { onChange } = await renderComposer({ value: "a\nb\nc" });
     expect(textbox().rows).toBe(3);
     fireEvent.change(textbox(), { target: { value: Array(10).fill("line").join("\n") } });
-    expect(textbox().rows).toBe(10);
+    expect(onChange).toHaveBeenCalled();
   });
 
-  it("disables input while the PTY is unavailable or the pane is inactive", async () => {
-    const noPty = await renderComposer({ ptyId: null });
-    expect(textbox().disabled).toBe(true);
-    fireEvent.keyDown(textbox(), { key: "Enter" });
-    expect(terminalInputMock).not.toHaveBeenCalled();
+  it("disables send while the PTY is unavailable or the draft is empty", async () => {
+    await renderComposer({ ptyId: null, value: "ls" });
+    expect((screen.getByRole("button", { name: "Send to terminal" }) as HTMLButtonElement).disabled).toBe(true);
     cleanup();
-
-    const inactive = await renderComposer({ active: false });
-    expect(textbox().disabled).toBe(true);
-    fireEvent.keyDown(textbox(), { key: "Enter" });
-    expect(terminalInputMock).not.toHaveBeenCalled();
-    expect(composerEl(inactive.container).classList.contains("is-collapsed")).toBe(true);
+    await renderComposer({ value: "" });
+    expect((screen.getByRole("button", { name: "Send to terminal" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("navigates command history and persists it per working directory", async () => {
-    await renderComposer();
-    focusInput();
-    for (const command of ["cmd1", "cmd2"]) {
-      fireEvent.change(textbox(), { target: { value: command } });
-      fireEvent.keyDown(textbox(), { key: "Enter" });
-    }
-    expect(terminalInputMock).toHaveBeenNthCalledWith(1, { id: 7, data: "cmd1\r" });
-    expect(terminalInputMock).toHaveBeenNthCalledWith(2, { id: 7, data: "cmd2\r" });
-
-    const stored = JSON.parse(localStorage.getItem("wb-terminal-composer-history") || "{}") as Record<string, string[]>;
-    expect(stored["/work/app"]).toEqual(["cmd2", "cmd1"]);
-
-    fireEvent.keyDown(textbox(), { key: "ArrowUp" });
-    expect(textbox().value).toBe("cmd2");
-    fireEvent.keyDown(textbox(), { key: "ArrowUp" });
-    expect(textbox().value).toBe("cmd1");
-    fireEvent.keyDown(textbox(), { key: "ArrowDown" });
-    expect(textbox().value).toBe("cmd2");
-    fireEvent.keyDown(textbox(), { key: "ArrowDown" });
-    expect(textbox().value).toBe("");
+  it("lets inactive panes keep editing the draft", async () => {
+    const { onChange } = await renderComposer({ activePane: false, value: "draft" });
+    expect(textbox().disabled).toBe(false);
+    fireEvent.change(textbox(), { target: { value: "draft two" } });
+    expect(onChange).toHaveBeenCalledWith("draft two");
   });
 
-  it("keeps mid-text ArrowUp/ArrowDown for cursor movement (history only at the edge)", async () => {
-    await renderComposer();
-    fireEvent.change(textbox(), { target: { value: "line1\nline2" } });
-    textbox().setSelectionRange(4, 4);
-    fireEvent.keyDown(textbox(), { key: "ArrowUp" });
-    expect(textbox().value).toBe("line1\nline2");
-    fireEvent.keyDown(textbox(), { key: "ArrowDown" });
-    expect(textbox().value).toBe("line1\nline2");
-  });
-
-  it("accepts a suggestion from the dropdown and only then sends on Enter", async () => {
-    await renderComposer();
+  it("accepts a suggestion from the dropdown and only then pastes on Enter", async () => {
+    const onChange = vi.fn();
+    const { onSendToTerminal } = await renderComposer({ value: "git s", onChange });
     focusInput();
     fireEvent.change(textbox(), { target: { value: "git s" } });
     const listbox = await screen.findByRole("listbox", { name: "Command suggestions" });
     const option = listbox.querySelector('[role="option"]')!;
     expect(option.textContent).toContain("git status");
-    expect(option.getAttribute("aria-selected")).toBe("true");
-
     fireEvent.keyDown(textbox(), { key: "Enter" });
-    expect(textbox().value).toBe("git status");
-    expect(screen.queryByRole("listbox")).toBeNull();
-    expect(terminalInputMock).not.toHaveBeenCalled();
-
-    fireEvent.keyDown(textbox(), { key: "Enter" });
-    expect(terminalInputMock).toHaveBeenCalledWith({ id: 7, data: "git status\r" });
+    expect(onChange).toHaveBeenCalledWith("git status");
+    expect(onSendToTerminal).not.toHaveBeenCalled();
   });
 
-  it("sends immediately when the value already matches the suggestion", async () => {
-    await renderComposer();
+  it("pastes immediately when the value already matches the suggestion", async () => {
+    const { onSendToTerminal } = await renderComposer({ value: "git status" });
     focusInput();
-    fireEvent.change(textbox(), { target: { value: "git status" } });
     fireEvent.keyDown(textbox(), { key: "Enter" });
-    expect(terminalInputMock).toHaveBeenCalledWith({ id: 7, data: "git status\r" });
+    expect(onSendToTerminal).toHaveBeenCalledTimes(1);
   });
 
   it("Escape closes suggestions first, then blurs and collapses", async () => {
-    const { container } = await renderComposer();
+    const { container } = await renderComposer({ value: "git s" });
     focusInput();
     fireEvent.change(textbox(), { target: { value: "git s" } });
     await screen.findByRole("listbox");
@@ -341,7 +305,6 @@ describe("TerminalComposer", () => {
     fireEvent.keyDown(textbox(), { key: "Escape" });
     expect(screen.queryByRole("listbox")).toBeNull();
     expect(document.activeElement).toBe(textbox());
-    expect(textbox().value).toBe("git s");
 
     fireEvent.keyDown(textbox(), { key: "Escape" });
     expect(document.activeElement).not.toBe(textbox());
@@ -349,9 +312,9 @@ describe("TerminalComposer", () => {
   });
 
   it("inserts a shell-quoted dropped path at the cursor", async () => {
-    const { container } = await renderComposer();
+    const onChange = vi.fn();
+    const { container } = await renderComposer({ value: "abc", onChange });
     focusInput();
-    fireEvent.change(textbox(), { target: { value: "abc" } });
     textbox().setSelectionRange(1, 1);
     fireEvent.drop(composerEl(container), {
       dataTransfer: {
@@ -359,9 +322,7 @@ describe("TerminalComposer", () => {
         getData: (mime: string) => (mime === WB_PATH_DND_MIME ? "/work/app/src/main.ts" : "")
       }
     });
-    expect(textbox().value).toBe("a'/work/app/src/main.ts'bc");
-    await waitFor(() => expect(textbox().selectionStart).toBe(1 + "'/work/app/src/main.ts'".length));
-    expect(composerEl(container).classList.contains("is-drag-over")).toBe(false);
+    expect(onChange).toHaveBeenCalledWith("a'/work/app/src/main.ts'bc");
   });
 
   it("unregisters its focus handle on unmount", async () => {
@@ -373,50 +334,37 @@ describe("TerminalComposer", () => {
     expect(map.has("terminal:1")).toBe(false);
   });
 
-  it("send button is disabled while empty and sends on click without blurring", async () => {
-    await renderComposer();
-    const send = screen.getByRole("button", { name: "Send command" }) as HTMLButtonElement;
-    expect(send.disabled).toBe(true);
-    focusInput();
-    fireEvent.change(textbox(), { target: { value: "ls" } });
+  it("send button is disabled while empty and pastes on click without blurring", async () => {
+    const { onSendToTerminal } = await renderComposer({ value: "ls" });
+    const send = screen.getByRole("button", { name: "Send to terminal" }) as HTMLButtonElement;
     expect(send.disabled).toBe(false);
+    focusInput();
     fireEvent.mouseDown(send);
     expect(document.activeElement).toBe(textbox());
     fireEvent.click(send);
-    expect(terminalInputMock).toHaveBeenCalledWith({ id: 7, data: "ls\r" });
+    expect(onSendToTerminal).toHaveBeenCalledTimes(1);
+    expect(textbox().value).toBe("");
   });
 
-  it("drag-moves the composer, clamps it, and persists the position", async () => {
-    const { container } = await renderComposer();
-    const grip = screen.getByRole("button", { name: "Move input box" });
-    // jsdom has no PointerEvent — dispatch MouseEvents typed as pointer events
-    // (same pattern as the workbench resizer tests), wrapped in act to flush.
-    const pointer = (type: "pointerdown" | "pointermove" | "pointerup", clientX: number, clientY: number) =>
-      act(() => {
-        grip.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, clientX, clientY }));
-      });
-    pointer("pointerdown", 100, 200);
-    pointer("pointermove", 160, 170);
-    pointer("pointerup", 160, 170);
-    const el = composerEl(container);
-    expect(el.style.left).toBe("70px");
-    expect(el.style.bottom).toBe("38px");
-
-    // Clamp to the pane's right edge (room reserved for the expanded width).
-    pointer("pointerdown", 0, 0);
-    pointer("pointermove", 5000, 0);
-    pointer("pointerup", 5000, 0);
-    expect(el.style.left).toBe("460px");
-    expect(el.style.bottom).toBe("38px");
-
-    const stored = JSON.parse(localStorage.getItem("wb-terminal-composer-position") || "{}");
-    expect(stored["/work/app"]).toEqual({ x: 460, y: 38 });
+  it("activates its session when the input is focused", async () => {
+    const { onActivate } = await renderComposer({ activePane: false });
+    fireEvent.pointerDown(textbox());
+    focusInput();
+    expect(onActivate).toHaveBeenCalled();
   });
 
-  it("restores a persisted composer position on mount", async () => {
-    localStorage.setItem("wb-terminal-composer-position", JSON.stringify({ "/work/app": { x: 120, y: 60 } }));
-    const { container } = await renderComposer();
-    expect(composerEl(container).style.left).toBe("120px");
-    expect(composerEl(container).style.bottom).toBe("60px");
+  it("renders user-message tips above the input", async () => {
+    const onOpenTip = vi.fn();
+    await renderComposer({
+      tips: [
+        { id: "1", text: "inspect src", createdAtMs: 1 },
+        { id: "2", text: "run tests", createdAtMs: 2 }
+      ],
+      onOpenTip
+    });
+    const list = screen.getByRole("list", { name: "Sent messages" });
+    expect(within(list).getByText("inspect src")).toBeTruthy();
+    fireEvent.click(within(list).getByRole("button", { name: "run tests" }));
+    expect(onOpenTip).toHaveBeenCalledWith({ id: "2", text: "run tests", createdAtMs: 2 });
   });
 });

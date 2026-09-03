@@ -359,10 +359,13 @@ const ARROW_TEST_MESSAGES: Record<string, string> = {
   "desktop.sessions.truncated": "(truncated)",
   "desktop.workbench.terminalComposerPlaceholder": "Type a command for the agent…",
   "desktop.workbench.terminalComposerHint": "Click to type a command.",
-  "desktop.workbench.terminalComposerSend": "Send command",
+  "desktop.workbench.terminalComposerSend": "Send to terminal",
   "desktop.workbench.terminalComposerSuggestions": "Command suggestions",
   "desktop.workbench.terminalComposerDropHint": "Drop to insert path",
-  "desktop.workbench.terminalComposerHintLine": "Enter sends",
+  "desktop.workbench.terminalComposerHintLine": "Enter pastes",
+  "desktop.workbench.terminalComposerMove": "Move input box",
+  "desktop.workbench.terminalComposerClose": "Close session",
+  "desktop.workbench.terminalComposerTips": "Sent messages",
   "desktop.workbench.resizeSidePanel": "Resize side panel"
 };
 
@@ -1681,12 +1684,15 @@ describe("WorkbenchPanel", () => {
       getI18nBundle: async () => ({ locale: "en", messages: { ...ARROW_TEST_MESSAGES,
         "desktop.workbench.terminalComposerPlaceholder": "Type a command for the agent…",
         "desktop.workbench.terminalComposerHint": "Click to type a command.",
-        "desktop.workbench.terminalComposerSend": "Send command",
+        "desktop.workbench.terminalComposerSend": "Send to terminal",
         "desktop.workbench.terminalComposerSuggestions": "Command suggestions",
         "desktop.workbench.terminalComposerDirectorySuggestions": "Directory suggestions",
         "desktop.workbench.terminalComposerDirectoryLoading": "Loading directories…",
         "desktop.workbench.terminalComposerDropHint": "Drop to insert path",
-        "desktop.workbench.terminalComposerHintLine": "Enter sends"
+        "desktop.workbench.terminalComposerHintLine": "Enter pastes",
+        "desktop.workbench.terminalComposerMove": "Move input box",
+        "desktop.workbench.terminalComposerTips": "Sent messages",
+        "desktop.workbench.closeTerminal": "Close terminal"
       } }),
       onLocaleChanged: () => () => undefined,
       onWorkbenchCmdT: () => () => undefined,
@@ -1728,9 +1734,10 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => {
       expect(document.activeElement?.classList.contains("wb-terminal-composer-input")).toBe(true);
     });
-    const composerInput = document.querySelector<HTMLTextAreaElement>(".wb-terminal-pane .wb-terminal-composer-input");
+    const composerInput = document.querySelector<HTMLTextAreaElement>(".wb-terminal-shell .wb-terminal-composer-input");
     if (!composerInput) throw new Error("Session pane composer input not mounted");
-    expect(document.querySelector(".wb-terminal-pane .wb-terminal-composer")).toBeTruthy();
+    expect(document.querySelector(".wb-terminal-shell .wb-terminal-composer")).toBeTruthy();
+    expect(document.querySelector(".wb-terminal-pane .wb-terminal-composer")).toBeNull();
     expect(document.querySelector(".wb-transcript-compose .wb-terminal-composer")).toBeNull();
     expect(xtermMocks.instances[0].focusCalls).toBe(0);
 
@@ -1771,6 +1778,73 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(xtermMocks.instances).toHaveLength(1));
     expect(document.querySelector(".wb-terminal-composer")).toBeNull();
     expect(document.querySelector<HTMLElement>(".wb-terminal-host")?.classList.contains("is-session")).toBe(false);
+  });
+
+  it("pastes composer text into the TUI without submitting and keeps a user tip", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const terminalSpawn = vi.fn(async () => ({ id: 1 }));
+    const terminalInput = vi.fn(async () => ({ ok: true }));
+    const workbenchComposerSendAppend = vi.fn(async (args: { text: string }) => ({
+      id: "send-1",
+      createdAtMs: 1,
+      paneKey: "terminal:1",
+      projectPath: "/work/app",
+      sessionKey: "codex:session-1",
+      provider: "codex",
+      agentSessionId: "session-1",
+      text: args.text
+    }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: { ...ARROW_TEST_MESSAGES } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listProjects: async () => [{
+        projectId: "project-1",
+        portableKey: "/work/app",
+        alias: "",
+        hidden: false,
+        pinned: false,
+        lastSeenAtMs: 1,
+        updatedAtMs: 1,
+        localPath: "/work/app",
+        pathMissing: false,
+        sessionCount: 1
+      }],
+      querySessionsPage: async () => ({
+        sessions: [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+        total: 1
+      }),
+      workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: "/work/app" }),
+      terminalSpawn,
+      terminalDestroy: async () => ({ ok: true }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalResize: async () => ({ ok: true }),
+      terminalInput,
+      workbenchComposerSendAppend,
+      workbenchComposerSendList: async () => []
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
+    await waitFor(() => expect(terminalSpawn).toHaveBeenCalledTimes(1));
+    const composerInput = document.querySelector<HTMLTextAreaElement>(".wb-terminal-shell .wb-terminal-composer-input");
+    if (!composerInput) throw new Error("composer input missing");
+    fireEvent.change(composerInput, { target: { value: "inspect src" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send to terminal" }));
+    await waitFor(() => expect(terminalInput).toHaveBeenCalledWith({ id: 1, data: "inspect src" }));
+    expect(composerInput.value).toBe("");
+    expect(workbenchComposerSendAppend).toHaveBeenCalledWith(expect.objectContaining({ text: "inspect src", projectPath: "/work/app" }));
+    await waitFor(() => expect(document.querySelector(".wb-terminal-composer-tip")?.textContent).toBe("inspect src"));
+    await waitFor(() => expect(xtermMocks.instances[0].focusCalls).toBeGreaterThan(0));
   });
 
   it("auto renames a closed session after two minutes", async () => {
@@ -2403,7 +2477,8 @@ describe("WorkbenchPanel", () => {
     expect(document.querySelector(".wb-git-pane-head")).toBeNull();
     expect(previewSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1" });
     expect(document.querySelector(".wb-terminal-host")).not.toBeNull();
-    expect(document.querySelector(".wb-terminal-pane .wb-terminal-composer")).toBeTruthy();
+    expect(document.querySelector(".wb-terminal-shell .wb-terminal-composer")).toBeTruthy();
+    expect(document.querySelector(".wb-terminal-pane .wb-terminal-composer")).toBeNull();
     expect(document.querySelector(".wb-transcript-compose .wb-terminal-composer")).toBeNull();
     expect(document.querySelector(".wb-side-panel")).not.toBeNull();
     expect(document.querySelector(".sheet")).toBeNull();

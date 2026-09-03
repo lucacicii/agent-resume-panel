@@ -14,7 +14,6 @@ import { ImConductor, emitImEvent } from "./conductor";
 import { runIndependentSelectionAction } from "./selectionRunner";
 import { ImStore } from "./store";
 import {
-  IM_AGENT_SUGGESTED_MODELS,
   isImAgent,
   isImSelectionActionKind,
   parseImRoleTools,
@@ -278,10 +277,9 @@ export function registerImIpc(deps: {
     return member;
   });
 
-  safeHandle("im:listAgentModels", async (_event, args?: { agent?: unknown }) => {
+  safeHandle("im:listAgentModels", async (_event, args?: { agent?: unknown; refresh?: unknown }) => {
     const agent = typeof args?.agent === "string" && isImAgent(args.agent) ? (args.agent as ImAgent) : "claude";
-    const settings = await loadSettings();
-    return resolveAgentModels(agent, settings);
+    return resolveAgentModels(agent, { refresh: args?.refresh === true });
   });
 
   safeHandle("im:createRole", async (_event, args: {

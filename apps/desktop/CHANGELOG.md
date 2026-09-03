@@ -8,6 +8,28 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## English
 
+### [0.2.20]
+
+#### Added
+
+- **Workbench Terminal Composer Stack**: terminal sessions now get a stacked composer for sending prompts, with composer-send history tracked per session so previous inputs stay available across panes
+- **Composer Send Auto-Import from Transcripts**: user inputs already present in a session transcript are imported into composer history automatically
+- **Project-level Git Commit Message Config**: repos can override Workbench commit-message style via committed `<repo>/.arp/config.json` (`workbench.git.commitMessage`)
+- **IM Composer File Picker**: attach local files from the IM composer
+- **Streamdown Renderer & Artifacts**: streaming markdown renderer plus artifact cards, HTML sandbox, and SVG viewer; IM prefers inline code previews over standalone artifact files
+
+#### Improved
+
+- **Composer Tips → Transcript**: composer history tips are clickable and jump to the matching user message in the transcript pane, with fuzzy matching for TUI image prefixes/suffixes, a higher tip limit, and the session title shown next to the project name
+- **IM Agent Model Discovery**: role model lists now come from live ACP sessions or a one-shot ACP probe instead of curated fallback lists
+- **IM Composer & Message Rendering**: cleaner composer/message presentation and i18n updates
+
+#### Fixed
+
+- **ACP thinking chunks**: `agent_thought_chunk` updates are always treated as thinking, including adapters that send plain-string content
+- **Markdown prose sanitization**: unsafe tags such as `<style>` and `<script>` no longer truncate following markdown
+- **IM role avatars**: 32px borderless avatars; models resolve only from configured providers
+
 ### [0.2.19]
 
 #### Added
@@ -459,6 +481,28 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 ---
 
 ## 简体中文
+
+### [0.2.20]
+
+#### 新增
+
+- **工作台终端 Composer 堆叠**: 终端会话新增可堆叠的 Composer 输入栏，按会话记录历史发送，跨面板也能继续用
+- **从会话转录自动导入 Composer 历史**: 已经出现在 session transcript 里的用户输入会自动导入 Composer 历史
+- **项目级 Git 提交信息配置**: 仓库可通过提交的 `<repo>/.arp/config.json`（`workbench.git.commitMessage`）覆盖工作台的 commit message 风格
+- **IM Composer 文件选择器**: 在 IM 输入框中直接附加本地文件
+- **Streamdown 渲染与 Artifacts**: 新增流式 Markdown 渲染器，以及 artifact 卡片、HTML sandbox 与 SVG 查看器；IM 优先内联代码预览，而不再单独落地为 artifact 文件
+
+#### 改进
+
+- **Composer 历史提示 → 转录**: 点击历史提示可跳到 transcript 中对应的用户消息，并对 TUI 图片前缀/后缀做模糊匹配；提示上限提高，项目名旁侧同时显示会话标题
+- **IM Agent 模型发现**: 角色模型列表改为从活动 ACP 会话或一次性 ACP 探测获取，不再依赖固定备选列表
+- **IM Composer 与消息展示**: 优化输入框与消息渲染，并更新国际化文案
+
+#### 修复
+
+- **ACP thinking 块**: `agent_thought_chunk` 更新一律视为 thinking，包括发送纯字符串内容的适配器
+- **Markdown 正文清洗**: `<style>`、`<script>` 等不安全标签不再截断后续 Markdown
+- **IM 角色头像**: 32px 无边框头像；模型仅从已配置的 Provider 解析
 
 ### [0.2.19]
 

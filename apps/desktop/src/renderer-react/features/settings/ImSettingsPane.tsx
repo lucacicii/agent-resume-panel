@@ -7,7 +7,6 @@ import { DelegationDagView } from "./DelegationDagView";
 import { SegmentedControl } from "../../components/SegmentedControl";
 import {
   DEFAULT_BUILTIN_CALLABLE_TEMPLATE_IDS,
-  IM_AGENT_SUGGESTED_MODELS,
   IM_SUGGESTED_THOUGHT_LEVELS,
   isBuiltinSelectionActionId,
   isBuiltinTemplateId,
@@ -51,7 +50,7 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
   const [incomingCallers, setIncomingCallers] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<"editor" | "matrix" | "dag">("editor");
   const [status, setStatus] = useState("");
-  const [agentModels, setAgentModels] = useState<ImAgentModelOption[]>(() => IM_AGENT_SUGGESTED_MODELS[agent] || []);
+  const [agentModels, setAgentModels] = useState<ImAgentModelOption[]>([]);
   const [fetchingModels, setFetchingModels] = useState(false);
   const [customModelMode, setCustomModelMode] = useState(false);
   const [settings, setSettings] = useState<PanelSettings | null>(null);
@@ -66,13 +65,13 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
   const [actionEnabled, setActionEnabled] = useState(true);
   const selectedAction = actions.find((item) => item.actionId === selectedActionId) ?? null;
 
-  const loadAgentModels = useCallback(async (targetAgent: ImAgent) => {
+  const loadAgentModels = useCallback(async (targetAgent: ImAgent, refresh = false) => {
     setFetchingModels(true);
     try {
-      const list = await desktopApi().imListAgentModels({ agent: targetAgent });
+      const list = await desktopApi().imListAgentModels({ agent: targetAgent, refresh });
       setAgentModels(list);
     } catch {
-      setAgentModels(IM_AGENT_SUGGESTED_MODELS[targetAgent] || []);
+      setAgentModels([]);
     } finally {
       setFetchingModels(false);
     }
@@ -381,7 +380,7 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
                     type="button"
                     className="ghost-btn"
                     disabled={fetchingModels}
-                    onClick={() => void loadAgentModels(agent)}
+                    onClick={() => void loadAgentModels(agent, true)}
                     title={t("desktop.im.fetchModels")}
                   >
                     {fetchingModels ? t("desktop.common.loading") : t("desktop.im.fetchModels")}

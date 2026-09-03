@@ -404,4 +404,25 @@ CREATE TABLE IF NOT EXISTS im_selection_actions (
 );
 CREATE INDEX IF NOT EXISTS idx_im_selection_actions_sort
   ON im_selection_actions(sort_order, created_at_ms);
+
+CREATE TABLE IF NOT EXISTS workbench_composer_sends (
+  id TEXT PRIMARY KEY,
+  created_at_ms INTEGER NOT NULL,
+  pane_key TEXT NOT NULL,
+  project_path TEXT NOT NULL,
+  session_key TEXT,
+  provider TEXT,
+  agent_session_id TEXT,
+  text TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_workbench_composer_sends_created
+  ON workbench_composer_sends(created_at_ms DESC);
+CREATE INDEX IF NOT EXISTS idx_workbench_composer_sends_project
+  ON workbench_composer_sends(project_path, created_at_ms DESC);
+CREATE INDEX IF NOT EXISTS idx_workbench_composer_sends_session
+  ON workbench_composer_sends(provider, agent_session_id, created_at_ms DESC);
+CREATE INDEX IF NOT EXISTS idx_workbench_composer_sends_pane
+  ON workbench_composer_sends(pane_key, created_at_ms DESC);
+CREATE INDEX IF NOT EXISTS idx_workbench_composer_sends_session_key
+  ON workbench_composer_sends(session_key, created_at_ms DESC);
 `;

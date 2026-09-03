@@ -93,6 +93,37 @@ export function storageBoolean(key: string, fallback = false): boolean {
   }
 }
 
+/** A `#` path token under the text cursor, e.g. `{ start: 0, query: "src/comp" }`. */
+export interface ImHashToken {
+  start: number;
+  query: string;
+}
+
+/**
+ * Detects a `#path` token ending at the cursor (whitespace-delimited). The
+ * query may contain `/` segments for drilling into directories, matching the
+ * IM file picker's browse model. Same contract as TerminalComposer's helper.
+ */
+export function imHashTokenAtCursor(value: string, cursor: number): ImHashToken | null {
+  const before = value.slice(0, cursor);
+  const start = Math.max(before.lastIndexOf(" "), before.lastIndexOf("\n"), before.lastIndexOf("\t")) + 1;
+  const token = before.slice(start);
+  if (!token.startsWith("#") || token.slice(1).includes("#")) return null;
+  return { start, query: token.slice(1) };
+}
+
+/** Splits a `#` query into the browse directory (trailing `/` included) and the local filter. */
+export function splitImHashQuery(query: string): { dirPart: string; filter: string } {
+  const slash = query.lastIndexOf("/");
+  if (slash < 0) return { dirPart: "", filter: query };
+  return { dirPart: query.slice(0, slash + 1), filter: query.slice(slash + 1) };
+}
+
+/** Formats a picked relative path for insertion after `#`; quotes paths containing whitespace. */
+export function formatImHashPath(relativePath: string): string {
+  return /\s/.test(relativePath) ? `"${relativePath}"` : relativePath;
+}
+
 export function basename(value = ""): string {
   return value.replaceAll("\\", "/").split("/").filter(Boolean).at(-1) || value;
 }

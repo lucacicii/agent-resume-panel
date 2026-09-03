@@ -24,6 +24,9 @@ import {
   getReportEntryById,
   getSessionById,
   getUsageSummary,
+  appendComposerSend,
+  listComposerSends,
+  importComposerSendsForSession,
   hideSessionAction,
   hideProjectAction,
   listLlmUsageEvents,
@@ -2255,6 +2258,55 @@ function registerIpc(): void {
         }
       }
       return { ...result, nativeUpdated };
+    }
+  );
+
+  safeHandle(
+    "workbench:composerSendAppend",
+    async (_event, args: {
+      paneKey?: string;
+      projectPath?: string;
+      sessionKey?: string | null;
+      provider?: string | null;
+      agentSessionId?: string | null;
+      text?: string;
+    }) => {
+      const paths = await loadPanelDbPaths();
+      return appendComposerSend(paths.desktopDb, {
+        paneKey: args?.paneKey || "",
+        projectPath: args?.projectPath || "",
+        sessionKey: args?.sessionKey,
+        provider: args?.provider,
+        agentSessionId: args?.agentSessionId,
+        text: args?.text || ""
+      });
+    }
+  );
+
+  safeHandle(
+    "workbench:composerSendList",
+    async (_event, args?: { paneKey?: string; sessionKey?: string; agentSessionId?: string; limit?: number }) => {
+      const paths = await loadPanelDbPaths();
+      return listComposerSends(paths.desktopDb, {
+        paneKey: args?.paneKey,
+        sessionKey: args?.sessionKey,
+        agentSessionId: args?.agentSessionId,
+        limit: args?.limit
+      });
+    }
+  );
+
+  safeHandle(
+    "workbench:composerSendImport",
+    async (_event, args: { provider: AgentProvider; id: string }) => {
+      const settings = await loadSettings();
+      const paths = await loadPanelDbPaths(settings);
+      const session = await getSessionById(paths.catalogDb, args.provider, args.id);
+      if (!session) {
+        return { imported: 0, skipped: 0, found: 0 };
+      }
+      const homes = resolvePreviewHomes(settings);
+      return importComposerSendsForSession(paths.desktopDb, session, homes);
     }
   );
 

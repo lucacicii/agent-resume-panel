@@ -1,92 +1,46 @@
-import * as fs from "node:fs/promises";
-import * as os from "node:os";
-import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { PanelSettings } from "@agent-resume/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { getLiveAcpAgentModels, probeAcpAgentModels } from "../acp/acpHost";
 import { resolveAgentModels } from "./agentModelResolver";
 
+vi.mock("../acp/acpHost", () => ({
+  getLiveAcpAgentModels: vi.fn(),
+  probeAcpAgentModels: vi.fn()
+}));
+
 describe("agentModelResolver", () => {
-  let tmpDir: string;
-
-  beforeEach(async () => {
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "agent-model-resolver-"));
+  beforeEach(() => {
+    vi.mocked(getLiveAcpAgentModels).mockReset();
+    vi.mocked(probeAcpAgentModels).mockReset();
   });
 
-  afterEach(async () => {
-    await fs.rm(tmpDir, { recursive: true, force: true });
+  it("returns live ACP session models without spawning a probe", async () => {
+    vi.mocked(getLiveAcpAgentModels).mockReturnValue([
+      { id: "claude-sonnet-4-5", label: "Claude Sonnet 4.5" },
+      { id: "claude-opus-4-1", label: "" }
+    ]);
+
+    const models = await resolveAgentModels("claude");
+
+    expect(models).toEqual([
+      { id: "claude-sonnet-4-5", label: "Claude Sonnet 4.5", provider: "ACP" },
+      { id: "claude-opus-4-1", label: "claude-opus-4-1", provider: "ACP" }
+    ]);
+    expect(getLiveAcpAgentModels).toHaveBeenCalledWith("claude");
+    expect(probeAcpAgentModels).not.toHaveBeenCalled();
   });
 
-  it("discovers models from Pi native configuration files", async () => {
-    const piDir = path.join(tmpDir, "pi");
-    await fs.mkdir(piDir, { recursive: true });
+  it("probes a throwaway ACP session when refresh is requested", async () => {
+    vi.mocked(probeAcpAgentModels).mockResolvedValue([{ id: "o3-mini", label: "o3 mini" }]);
 
-    // Write models.json
-    await fs.writeFile(
-      path.join(piDir, "models.json"),
-      JSON.stringify({
-        providers: {
-          "my-provider": {
-            name: "My Custom Provider",
-            models: [
-              { id: "gpt-5.6-luna", name: "GPT 5.6 Luna" },
-              { id: "gpt-5.6-terra", name: "GPT 5.6 Terra" }
-            ]
-          }
-        }
-      })
-    );
+    const models = await resolveAgentModels("codex", { refresh: true });
 
-    // Write settings.json
-    await fs.writeFile(
-      path.join(piDir, "settings.json"),
-      JSON.stringify({
-        defaultModel: "deepseek-v4-flash",
-        enabledModels: ["custom-model-1"]
-      })
-    );
-
-    const settings = {
-      agentHomes: {
-        piHome: piDir
-      }
-    } as unknown as PanelSettings;
-
-    const models = await resolveAgentModels("pi", settings);
-    const modelIds = models.map((m) => m.id);
-
-    expect(modelIds).toContain("gpt-5.6-luna");
-    expect(modelIds).toContain("gpt-5.6-terra");
-    expect(modelIds).toContain("deepseek-v4-flash");
-    expect(modelIds).toContain("custom-model-1");
-
-    const luna = models.find((m) => m.id === "gpt-5.6-luna");
-    expect(luna?.label).toContain("GPT 5.6 Luna");
-    expect(luna?.provider).toBe("My Custom Provider");
+    expect(probeAcpAgentModels).toHaveBeenCalledWith("codex");
+    expect(models).toEqual([{ id: "o3-mini", label: "o3 mini", provider: "ACP" }]);
   });
 
-  it("merges Desktop provider models and curated models", async () => {
-    const settings = {
-      agentHomes: {
-        piHome: path.join(tmpDir, "empty")
-      },
-      providers: [
-        {
-          id: "prov-1",
-          name: "OpenAI Gateway",
-          baseUrl: "https://api.openai.com/v1",
-          models: [
-            { id: "custom-llm", kind: "text" },
-            { id: "custom-embed", kind: "embedding" }
-          ]
-        }
-      ]
-    } as unknown as PanelSettings;
+  it("returns an empty list when no live ACP session exists", async () => {
+    vi.mocked(getLiveAcpAgentModels).mockReturnValue([]);
 
-    const models = await resolveAgentModels("claude", settings);
-    const modelIds = models.map((m) => m.id);
-
-    expect(modelIds).toContain("claude-3-7-sonnet-20250219");
-    expect(modelIds).toContain("custom-llm");
-    expect(modelIds).not.toContain("custom-embed");
+    expect(await resolveAgentModels("codex")).toEqual([]);
   });
 });

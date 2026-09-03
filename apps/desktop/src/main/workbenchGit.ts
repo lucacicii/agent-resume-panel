@@ -5,9 +5,11 @@ import {
   ensureExtensionCatalogSchema,
   expandHome,
   llmConfigFromSettings,
+  loadArpConfig,
   loadSettings,
   preparePanelDatabasesFromSettings,
   recordLlmUsage,
+  resolveCommitMessagePromptOptions,
   suggestCommitMessageFromGitContext
 } from "@agent-resume/core";
 import * as fs from "node:fs";
@@ -594,10 +596,8 @@ async function suggestCommitMessage(
   }
 
   const settings = await loadSettings();
-  const commitPrompt = {
-    style: settings.workbench?.gitCommitMessageStyle,
-    customInstructions: settings.workbench?.gitCommitCustomInstructions
-  };
+  const arp = await loadArpConfig(repoRoot);
+  const commitPrompt = resolveCommitMessagePromptOptions(arp, settings);
   const llm = llmConfigFromSettings(settings, systemLocale);
   if (!llm) {
     return { message: buildHeuristicCommitMessage(statusText, commitPrompt), source: "heuristic", fallbackReason: "unconfigured" };

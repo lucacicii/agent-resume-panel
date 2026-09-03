@@ -629,7 +629,7 @@ export interface DesktopApi {
   imSetMemberModel(args: { memberId: string; model: string | null }): Promise<ImMember>;
   imSetMemberThoughtLevel(args: { memberId: string; thoughtLevel: string | null }): Promise<ImMember>;
   imResetMemberOverrides(args: { memberId: string }): Promise<ImMember>;
-  imListAgentModels(args: { agent: ImAgent }): Promise<Array<{ id: string; label: string; provider?: string }>>;
+  imListAgentModels(args: { agent: ImAgent; refresh?: boolean }): Promise<Array<{ id: string; label: string; provider?: string }>>;
   imCreateRole(args: {
     projectId: string;
     name: string;
@@ -682,6 +682,42 @@ export interface DesktopApi {
   terminalInput(args: { id: number; data: string }): Promise<{ ok: boolean }>;
   terminalResize(args: { id: number; cols: number; rows: number }): Promise<{ ok: boolean }>;
   terminalDestroy(args: { id: number }): Promise<{ ok: boolean }>;
+  workbenchComposerSendAppend(args: {
+    paneKey: string;
+    projectPath: string;
+    sessionKey?: string | null;
+    provider?: string | null;
+    agentSessionId?: string | null;
+    text: string;
+  }): Promise<{
+    id: string;
+    createdAtMs: number;
+    paneKey: string;
+    projectPath: string;
+    sessionKey: string | null;
+    provider: string | null;
+    agentSessionId: string | null;
+    text: string;
+  }>;
+  workbenchComposerSendList(args: {
+    paneKey?: string;
+    sessionKey?: string;
+    agentSessionId?: string;
+    limit?: number;
+  }): Promise<Array<{
+    id: string;
+    createdAtMs: number;
+    paneKey: string;
+    projectPath: string;
+    sessionKey: string | null;
+    provider: string | null;
+    agentSessionId: string | null;
+    text: string;
+  }>>;
+  workbenchComposerSendImport(args: {
+    provider: string;
+    id: string;
+  }): Promise<{ imported: number; skipped: number; found: number }>;
   workbenchGetRuntimeMetrics(): Promise<{
     watcherCount: number;
     pollingCount: number;
@@ -1671,6 +1707,9 @@ const api: DesktopApi = {
   terminalInput: (args) => ipcRenderer.invoke("terminal:input", args),
   terminalResize: (args) => ipcRenderer.invoke("terminal:resize", args),
   terminalDestroy: (args) => ipcRenderer.invoke("terminal:destroy", args),
+  workbenchComposerSendAppend: (args) => ipcRenderer.invoke("workbench:composerSendAppend", args),
+  workbenchComposerSendList: (args) => ipcRenderer.invoke("workbench:composerSendList", args),
+  workbenchComposerSendImport: (args) => ipcRenderer.invoke("workbench:composerSendImport", args),
   workbenchGetRuntimeMetrics: () => ipcRenderer.invoke("workbench:getRuntimeMetrics"),
   terminalGitInfo: (args) => ipcRenderer.invoke("terminal:gitInfo", args),
   terminalGitBranches: (args) => ipcRenderer.invoke("terminal:gitBranches", args),

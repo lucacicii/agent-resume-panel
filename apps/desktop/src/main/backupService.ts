@@ -225,7 +225,8 @@ const DESKTOP_APPEND_TABLES: Record<string, string[]> = {
   llm_usage_events: ["id"],
   schedule_run_logs: ["id"],
   agent_messages: ["id"],
-  agent_note_audit: ["id"]
+  agent_note_audit: ["id"],
+  workbench_composer_sends: ["id"]
 };
 
 function sql(value: string): string {
