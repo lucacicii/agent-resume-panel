@@ -5,15 +5,23 @@ import { I18nProvider } from "../../i18n";
 import { WB_PATH_DND_MIME } from "./workbenchDnd";
 import {
   computeSuggestions,
+  filterComposerSlashPhrases,
+  slashQueryFromValue,
+  slashTokenAtCursor,
   TERMINAL_COMPOSER_STATIC_COMMANDS,
   TerminalComposer
 } from "./TerminalComposer";
+import {
+  orderComposerStackItems,
+  type TerminalComposerStackItem
+} from "./TerminalComposerStack";
 
 const COMPOSER_MESSAGES: Record<string, string> = {
   "desktop.workbench.terminalComposerPlaceholder": "Type a command for the agent…",
   "desktop.workbench.terminalComposerHint": "Click to type. Enter pastes into the terminal without sending. Shift+Enter adds a new line.",
   "desktop.workbench.terminalComposerSend": "Send to terminal",
   "desktop.workbench.terminalComposerSuggestions": "Command suggestions",
+  "desktop.workbench.terminalComposerSlashSuggestions": "Slash phrases",
   "desktop.workbench.terminalComposerDirectorySuggestions": "Directory suggestions",
   "desktop.workbench.terminalComposerDirectoryLoading": "Loading directories…",
   "desktop.workbench.terminalComposerDirectoryEmpty": "No folders in this project",
@@ -28,7 +36,8 @@ const COMPOSER_MESSAGES: Record<string, string> = {
   "desktop.workbench.sessionDot.awaiting": "Waiting for you",
   "desktop.workbench.sessionDot.running": "Running",
   "desktop.workbench.sessionDot.connecting": "Connecting",
-  "desktop.workbench.sessionDot.error": "Error"
+  "desktop.workbench.sessionDot.error": "Error",
+  "desktop.workbench.sessionDot.idle": "Idle"
 };
 
 const workbenchListDirectoryMock = vi.fn(async () => ({
@@ -48,6 +57,7 @@ async function renderComposer(options: {
   projectPath?: string;
   projectName?: string;
   sessionTitle?: string;
+  status?: "open" | "running" | "awaiting_user" | "connecting" | "error";
   value?: string;
   tips?: Array<{ id: string; text: string; createdAtMs: number }>;
   onChange?: (value: string) => void;
@@ -55,6 +65,7 @@ async function renderComposer(options: {
   onActivate?: () => void;
   onOpenTip?: (tip: { id: string; text: string; createdAtMs: number }) => void;
   onClose?: () => void;
+  slashPhrases?: Array<{ trigger: string; phrase: string; description?: string }>;
 } = {}): Promise<{
   map: RegisterMap;
   container: HTMLElement;
@@ -92,6 +103,7 @@ async function renderComposer(options: {
         activePane={options.activePane !== undefined ? options.activePane : true}
         projectName={options.projectName ?? "app"}
         sessionTitle={options.sessionTitle ?? "Fix renderer"}
+        status={options.status}
         value={value}
         tips={options.tips}
         onChange={(next) => {
@@ -103,6 +115,7 @@ async function renderComposer(options: {
         onOpenTip={options.onOpenTip}
         onClose={onClose}
         registerFocus={registerSpy}
+        slashPhrases={options.slashPhrases}
       />
     );
   }
@@ -146,6 +159,32 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+});
+
+describe("slashTokenAtCursor", () => {
+  it("matches a leading slash token and ignores paths", () => {
+    expect(slashTokenAtCursor("/rev", 4)).toEqual({ start: 0, query: "rev" });
+    expect(slashTokenAtCursor("/", 1)).toEqual({ start: 0, query: "" });
+    expect(slashTokenAtCursor("/usr/bin", 8)).toBeNull();
+    expect(slashQueryFromValue("/rev")).toBe("rev");
+  });
+
+  it("matches a slash token after whitespace in the middle of text", () => {
+    expect(slashTokenAtCursor("please /re", 10)).toEqual({ start: 7, query: "re" });
+    expect(slashTokenAtCursor("line\n/fix", 10)).toEqual({ start: 5, query: "fix" });
+    expect(slashTokenAtCursor("please/re", 9)).toBeNull();
+  });
+});
+
+describe("filterComposerSlashPhrases", () => {
+  it("filters by case-insensitive trigger prefix", () => {
+    const phrases = [
+      { trigger: "review", phrase: "Please review." },
+      { trigger: "fix", phrase: "Fix tests." }
+    ];
+    expect(filterComposerSlashPhrases(phrases, "Re").map((item) => item.trigger)).toEqual(["review"]);
+    expect(filterComposerSlashPhrases(phrases, "")).toEqual(phrases);
+  });
 });
 
 describe("computeSuggestions", () => {
@@ -206,8 +245,19 @@ describe("TerminalComposer", () => {
     expect(container.querySelector(".wb-terminal-composer-session-title")?.textContent).toBe("Fix renderer");
     expect(container.querySelector(".wb-terminal-composer-project-name")?.textContent).toBe("agent-resume");
     expect(container.querySelector(".rail-session-dot")).toBeTruthy();
+    expect(container.querySelector(".rail-session-dot-status")?.textContent).toBe("Idle");
     fireEvent.click(screen.getByRole("button", { name: "Close session" }));
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the session status label after the active composer dot", async () => {
+    const { container } = await renderComposer({ status: "running" });
+    expect(container.querySelector(".rail-session-dot-status")?.textContent).toBe("Running");
+  });
+
+  it("shows the session status label on inactive composers", async () => {
+    const { container } = await renderComposer({ activePane: false, status: "running" });
+    expect(container.querySelector(".rail-session-dot-status")?.textContent).toBe("Running");
   });
 
   it("renders collapsed when not the active pane and registers its focus handle", async () => {
@@ -353,6 +403,76 @@ describe("TerminalComposer", () => {
     expect(onActivate).toHaveBeenCalled();
   });
 
+  it("opens slash phrases on a leading / and inserts without sending", async () => {
+    const { onChange, onSendToTerminal } = await renderComposer({
+      slashPhrases: [
+        { trigger: "review", phrase: "Please review this change.", description: "code review" },
+        { trigger: "fix", phrase: "Fix the failing tests." }
+      ]
+    });
+    focusInput();
+    fireEvent.change(textbox(), { target: { value: "/re" } });
+    const listbox = await screen.findByRole("listbox", { name: "Slash phrases" });
+    expect(within(listbox).getByText("/review")).toBeTruthy();
+    expect(within(listbox).queryByText("/fix")).toBeNull();
+    fireEvent.keyDown(textbox(), { key: "Enter" });
+    expect(onChange).toHaveBeenCalledWith("Please review this change.");
+    expect(onSendToTerminal).not.toHaveBeenCalled();
+    expect(screen.queryByRole("listbox", { name: "Slash phrases" })).toBeNull();
+  });
+
+  it("inserts a slash phrase in the middle of existing text", async () => {
+    const { onChange, onSendToTerminal } = await renderComposer({
+      slashPhrases: [{ trigger: "review", phrase: "Please review this change." }]
+    });
+    focusInput();
+    fireEvent.change(textbox(), { target: { value: "please /re" } });
+    const listbox = await screen.findByRole("listbox", { name: "Slash phrases" });
+    expect(within(listbox).getByText("/review")).toBeTruthy();
+    fireEvent.keyDown(textbox(), { key: "Enter" });
+    expect(onChange).toHaveBeenCalledWith("please Please review this change.");
+    expect(onSendToTerminal).not.toHaveBeenCalled();
+  });
+
+  it("does not open slash phrases without configuration or for path-like input", async () => {
+    await renderComposer();
+    focusInput();
+    fireEvent.change(textbox(), { target: { value: "/review" } });
+    expect(screen.queryByRole("listbox", { name: "Slash phrases" })).toBeNull();
+    cleanup();
+    await renderComposer({
+      slashPhrases: [{ trigger: "review", phrase: "Please review this change." }]
+    });
+    focusInput();
+    fireEvent.change(textbox(), { target: { value: "/usr/bin" } });
+    expect(screen.queryByRole("listbox", { name: "Slash phrases" })).toBeNull();
+  });
+
+  it("keeps directory suggestions above slash phrases", async () => {
+    await renderComposer({
+      projectPath: "/work/app",
+      slashPhrases: [{ trigger: "src", phrase: "look at src" }]
+    });
+    focusInput();
+    fireEvent.change(textbox(), { target: { value: "#s" } });
+    const listbox = await screen.findByRole("listbox", { name: "Directory suggestions" });
+    expect(await within(listbox).findByText("#src")).toBeTruthy();
+    expect(screen.queryByRole("listbox", { name: "Slash phrases" })).toBeNull();
+  });
+
+  it("Escape dismisses slash phrases without sending", async () => {
+    const { onSendToTerminal } = await renderComposer({
+      slashPhrases: [{ trigger: "review", phrase: "Please review this change." }]
+    });
+    focusInput();
+    fireEvent.change(textbox(), { target: { value: "/re" } });
+    await screen.findByRole("listbox", { name: "Slash phrases" });
+    fireEvent.keyDown(textbox(), { key: "Escape" });
+    expect(screen.queryByRole("listbox", { name: "Slash phrases" })).toBeNull();
+    expect(onSendToTerminal).not.toHaveBeenCalled();
+    expect(textbox().value).toBe("/re");
+  });
+
   it("renders user-message tips above the input", async () => {
     const onOpenTip = vi.fn();
     await renderComposer({
@@ -366,5 +486,41 @@ describe("TerminalComposer", () => {
     expect(within(list).getByText("inspect src")).toBeTruthy();
     fireEvent.click(within(list).getByRole("button", { name: "run tests" }));
     expect(onOpenTip).toHaveBeenCalledWith({ id: "2", text: "run tests", createdAtMs: 2 });
+  });
+
+  it("hides user-message tips on inactive composers", async () => {
+    await renderComposer({
+      activePane: false,
+      tips: [
+        { id: "1", text: "inspect src", createdAtMs: 1 }
+      ]
+    });
+    expect(screen.queryByRole("list", { name: "Sent messages" })).toBeNull();
+    expect(screen.queryByText("inspect src")).toBeNull();
+  });
+});
+
+function stackItem(key: string, activePane: boolean): TerminalComposerStackItem {
+  return {
+    pane: { key, cwd: "/work/app", group: "session", projectPath: "/work/app" },
+    ptyId: 1,
+    activePane,
+    projectName: "app",
+    sessionTitle: key,
+    status: "open",
+    value: "",
+    tips: []
+  };
+}
+
+describe("orderComposerStackItems", () => {
+  it("keeps input order when no session is active", () => {
+    const items = [stackItem("a", false), stackItem("b", false), stackItem("c", false)];
+    expect(orderComposerStackItems(items).map((item) => item.pane.key)).toEqual(["a", "b", "c"]);
+  });
+
+  it("moves the active session composer to the visual bottom", () => {
+    const items = [stackItem("a", false), stackItem("b", true), stackItem("c", false)];
+    expect(orderComposerStackItems(items).map((item) => item.pane.key)).toEqual(["a", "c", "b"]);
   });
 });

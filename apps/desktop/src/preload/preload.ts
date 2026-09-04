@@ -12,6 +12,7 @@ import type {
   ReportEntry,
   ReportLinkRow,
   ReportSearchHit,
+  PeriodInsights,
   NoteIndexProgressEvent,
   PanelSettings,
   DailyDigestRefreshCheck,
@@ -42,6 +43,11 @@ import type {
   LinkGraphProgressEvent
 } from "../shared/linkGraphTypes";
 import type { WorkbenchArrowDirection } from "../shared/workbenchShortcuts";
+import type {
+  WorkbenchActiveSessionDot,
+  WorkbenchSendSelectionRequest,
+  WorkbenchSendSelectionResult
+} from "../shared/workbenchSelection";
 import type {
   ImAgent,
   ImEvent,
@@ -349,6 +355,11 @@ export interface DesktopApi {
     nativeRenamed: boolean;
     nativeError?: string;
   }>;
+  setSessionStatus(args: {
+    provider: string;
+    id: string;
+    status: "completed" | "active" | "blocked";
+  }): Promise<{ summary: string }>;
   hideSession(args: { provider: string; id: string }): Promise<{ ok: boolean }>;
   hideSessions(args: { sessions: Array<{ provider: string; id: string }> }): Promise<{ ok: boolean }>;
   moveSessionToProject(args: {
@@ -393,6 +404,16 @@ export interface DesktopApi {
     acp?: { chatId: string; provider: string; title?: string };
     session?: AgentSession;
   }>;
+  /** Publish the currently open Workbench session dots to every renderer, including floating notes. */
+  setWorkbenchActiveSessions(sessions: WorkbenchActiveSessionDot[]): void;
+  /** Snapshot of currently open Workbench sessions (for note menus that mount later). */
+  getWorkbenchActiveSessions(): Promise<WorkbenchActiveSessionDot[]>;
+  /** Live open-session list for note selection menus (main window + floating notes). */
+  onWorkbenchActiveSessions(callback: (sessions: WorkbenchActiveSessionDot[]) => void): () => void;
+  /** Send selected note text to Workbench: open a new agent session or an already-open pane. */
+  workbenchSendSelection(args: WorkbenchSendSelectionRequest): Promise<WorkbenchSendSelectionResult>;
+  /** Main-window Workbench listener for note selection sends. */
+  onWorkbenchSendSelection(callback: (payload: WorkbenchSendSelectionRequest) => void): () => void;
   /** Agent tool/citation resume when terminal mode is xterm — open Workbench terminal. */
   onWorkbenchResumeFromAgent(
     callback: (payload: {
@@ -1117,6 +1138,7 @@ export interface DesktopApi {
     fromMs?: number;
     toMs?: number;
   }): Promise<ReportEntry[]>;
+  getPeriodInsights(args: { fromMs: number; toMs: number }): Promise<PeriodInsights | null>;
   getReportEntry(reportId: string): Promise<ReportEntry | null>;
   getReportLinks(reportId: string): Promise<ReportLinkRow[]>;
   listDailyDigests(limit?: number): Promise<ReportEntry[]>;
@@ -1602,6 +1624,7 @@ const api: DesktopApi = {
   autoRenameSession: (args) => ipcRenderer.invoke("sessions:autoRename", args),
   suggestSessionRename: (args) => ipcRenderer.invoke("sessions:suggestRename", args),
   renameSession: (args) => ipcRenderer.invoke("sessions:rename", args),
+  setSessionStatus: (args) => ipcRenderer.invoke("sessions:setStatus", args),
   hideSession: (args) => ipcRenderer.invoke("sessions:hide", args),
   hideSessions: (args) => ipcRenderer.invoke("sessions:hideMany", args),
   moveSessionToProject: (args) => ipcRenderer.invoke("sessions:moveToProject", args),
@@ -1609,6 +1632,29 @@ const api: DesktopApi = {
   workbenchGetProjectEditor: () => ipcRenderer.invoke("workbench:getProjectEditor"),
   workbenchOpenProjectInEditor: (args) => ipcRenderer.invoke("workbench:openProjectInEditor", args),
   workbenchOpenSession: (args) => ipcRenderer.invoke("workbench:openSession", args),
+  setWorkbenchActiveSessions: (sessions) => {
+    ipcRenderer.send("workbench:activeSessions", sessions);
+  },
+  getWorkbenchActiveSessions: () => ipcRenderer.invoke("workbench:getActiveSessions"),
+  onWorkbenchActiveSessions: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, sessions: WorkbenchActiveSessionDot[]) => {
+      callback(sessions);
+    };
+    ipcRenderer.on("workbench:activeSessions", handler);
+    return () => {
+      ipcRenderer.removeListener("workbench:activeSessions", handler);
+    };
+  },
+  workbenchSendSelection: (args) => ipcRenderer.invoke("workbench:sendSelection", args),
+  onWorkbenchSendSelection: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: WorkbenchSendSelectionRequest) => {
+      callback(payload);
+    };
+    ipcRenderer.on("workbench:sendSelection", handler);
+    return () => {
+      ipcRenderer.removeListener("workbench:sendSelection", handler);
+    };
+  },
   onWorkbenchResumeFromAgent: (callback) => {
     const handler = (
       _event: Electron.IpcRendererEvent,
@@ -1820,6 +1866,7 @@ const api: DesktopApi = {
     return () => ipcRenderer.removeListener("workbench:cmdShiftF", handler);
   },
   listReports: (opts) => ipcRenderer.invoke("report:list", opts),
+  getPeriodInsights: (args) => ipcRenderer.invoke("report:getPeriodInsights", args),
   getReportEntry: (reportId) => ipcRenderer.invoke("report:getEntry", reportId),
   getReportLinks: (reportId) => ipcRenderer.invoke("report:getLinks", reportId),
   listDailyDigests: (limit) => ipcRenderer.invoke("report:listDaily", limit),

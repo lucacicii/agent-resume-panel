@@ -241,6 +241,34 @@ describe("settings model", () => {
     expect(patch.workbench?.transcriptFontSize).toBe(14);
   });
 
+  it("round-trips composer slash phrases and drops invalid triggers", () => {
+    const draft = workbenchDraftFromSettings(settings);
+    expect(draft.composerSlashPhrases).toEqual([]);
+
+    const patched = workbenchPatch(settings, {
+      ...draft,
+      composerSlashPhrases: [
+        { trigger: "/Review", phrase: "Please review this change." },
+        { trigger: "review", phrase: "duplicate" },
+        { trigger: "bad trigger", phrase: "no spaces" },
+        { trigger: "fix", phrase: "Fix the failing tests.", description: "  unit  " }
+      ]
+    });
+    expect(patched.workbench?.composerSlashPhrases).toEqual([
+      { trigger: "Review", phrase: "Please review this change." },
+      { trigger: "fix", phrase: "Fix the failing tests.", description: "unit" }
+    ]);
+
+    const loaded = workbenchDraftFromSettings({
+      ...settings,
+      workbench: patched.workbench
+    });
+    expect(loaded.composerSlashPhrases).toEqual(patched.workbench?.composerSlashPhrases);
+
+    const emptied = workbenchPatch(settings, { ...draft, composerSlashPhrases: [] });
+    expect(emptied.workbench?.composerSlashPhrases).toEqual([]);
+  });
+
   it("defaults and clamps workbench transcript markdown font size", () => {
     expect(workbenchDraftFromSettings(settings).transcriptFontSize).toBe(14);
 

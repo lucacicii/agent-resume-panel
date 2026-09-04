@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import { collectPreviewSearchRanges, NotesPanel } from "./NotesPanel";
 
+const editorSelectedText = { current: "" };
+
 vi.mock("../../components/CodeEditor", () => ({
   CodeEditor: forwardRef(({ value, onChange, onBlur, ariaLabel }: { value: string; onChange: (value: string) => void; onBlur?: () => void; ariaLabel: string }, ref) => {
     const search = useRef({ query: "", current: 0, total: 0 });
@@ -35,7 +37,7 @@ vi.mock("../../components/CodeEditor", () => ({
       },
       clearSearch: () => { search.current = { query: "", current: 0, total: 0 }; },
       getSearchResult: () => ({ current: search.current.current, total: search.current.total }),
-      getSelectedText: () => ""
+      getSelectedText: () => editorSelectedText.current
     }));
     return <textarea value={value} placeholder={ariaLabel} onChange={(event) => onChange(event.target.value)} onBlur={onBlur} />;
   })
@@ -87,6 +89,25 @@ const messages = {
   "desktop.notes.pinNote": "Pin note",
   "desktop.notes.unpinNote": "Unpin note",
   "desktop.notes.openAsFloating": "Open as floating note",
+  "desktop.notes.sendToAgent": "Send to agent",
+  "desktop.notes.sendToSession": "Send to session",
+  "desktop.notes.noActiveSessions": "No open sessions",
+  "desktop.settings.newSessionGroupCli": "CLI",
+  "desktop.settings.newSessionGroupAcp": "ACP",
+  "desktop.settings.newSessionTarget.cli_pi": "Pi",
+  "desktop.settings.newSessionTarget.cli_codex": "Codex",
+  "desktop.settings.newSessionTarget.cli_claude": "Claude",
+  "desktop.settings.newSessionTarget.cli_grok": "Grok",
+  "desktop.settings.newSessionTarget.cli_agy": "Antigravity",
+  "desktop.settings.newSessionTarget.cli_opencode": "OpenCode",
+  "desktop.settings.newSessionTarget.cli_cursor": "Cursor CLI",
+  "desktop.settings.newSessionTarget.cli_prime": "Prime Agent",
+  "desktop.settings.newSessionTarget.acp_claude": "ACP · Claude Code",
+  "desktop.settings.newSessionTarget.acp_codex": "ACP · Codex",
+  "desktop.settings.newSessionTarget.acp_grok": "ACP · Grok Build",
+  "desktop.settings.newSessionTarget.acp_opencode": "ACP · OpenCode",
+  "desktop.settings.newSessionTarget.acp_pi": "ACP · Pi",
+  "desktop.settings.newSessionTarget.acp_prime": "ACP · Prime Agent",
   "desktop.notes.dragOutToFloat": "Drag outside the window to open as a floating note",
   "desktop.notes.openStandaloneUnavailable": "Floating notes require a rebuilt Desktop app.",
   "desktop.notes.renameProject": "Rename project",
@@ -131,6 +152,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   localStorage.clear();
+  editorSelectedText.current = "";
   document.getElementById("react-notes")?.remove();
   document.getElementById("app-header-slot")?.remove();
 });
@@ -179,8 +201,16 @@ function installBridge() {
     notesReveal: async () => ({ ok: true }),
     notesOpenFolder: async () => ({ ok: true }),
     standaloneNoteOpen,
+    workbenchSendSelection: vi.fn(async () => ({ ok: true as const })),
+    getWorkbenchActiveSessions: async () => ([
+      { paneKey: "terminal:1", title: "Pi session", projectPath: "/work/panel", sessionKey: "pi:abc", status: "open" as const }
+    ]),
+    onWorkbenchActiveSessions: (callback: (sessions: Array<{ paneKey: string; title: string; projectPath: string; sessionKey: string; status: "open" }>) => void) => {
+      callback([{ paneKey: "terminal:1", title: "Pi session", projectPath: "/work/panel", sessionKey: "pi:abc", status: "open" }]);
+      return () => undefined;
+    }
   } as unknown as typeof window.agentResume;
-  return { notesWrite, notesCreate, listSessions, standaloneNoteOpen };
+  return { notesWrite, notesCreate, listSessions, standaloneNoteOpen, workbenchSendSelection: window.agentResume.workbenchSendSelection };
 }
 
 describe("NotesPanel", () => {
@@ -337,6 +367,39 @@ describe("NotesPanel", () => {
       x: 1800,
       y: 200,
       requireOutsideMainWindow: true
+    }));
+  });
+
+  it("sends selected note text to a new agent or an open session", async () => {
+    const host = document.createElement("div"); host.id = "react-notes"; document.body.append(host);
+    const { workbenchSendSelection } = installBridge();
+    editorSelectedText.current = "review this paragraph";
+    render(<I18nProvider><NotesPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "notes" })));
+    fireEvent.click(await screen.findByRole("button", { name: /Renderer plan/ }));
+    const surface = await waitFor(() => {
+      const node = document.querySelector(".notes-editor-surface");
+      if (!(node instanceof HTMLElement)) throw new Error("missing editor surface");
+      return node;
+    });
+    fireEvent.contextMenu(surface);
+    fireEvent.mouseEnter(await screen.findByRole("menuitem", { name: "Send to agent" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Pi" }));
+    await waitFor(() => expect(workbenchSendSelection).toHaveBeenCalledWith({
+      kind: "new-agent",
+      text: "review this paragraph",
+      target: "cli:pi"
+    }));
+
+    editorSelectedText.current = "send to open pane";
+    fireEvent.contextMenu(surface);
+    fireEvent.mouseEnter(await screen.findByRole("menuitem", { name: "Send to session" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Pi session" }));
+    await waitFor(() => expect(workbenchSendSelection).toHaveBeenCalledWith({
+      kind: "existing-session",
+      text: "send to open pane",
+      paneKey: "terminal:1",
+      projectPath: "/work/panel"
     }));
   });
 });

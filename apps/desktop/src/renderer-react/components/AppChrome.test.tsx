@@ -80,7 +80,7 @@ describe("AppChrome", () => {
     const icons = [...document.querySelectorAll(".app-nav-rail .rail-btn [data-theme-icon]")].map((item) =>
       item.getAttribute("data-theme-icon")
     );
-    expect(icons).toEqual(["activity", "terminal", "file-text", "square-kanban", "message-square"]);
+    expect(icons).toEqual(["layout-dashboard", "terminal", "file-text", "square-kanban", "message-square"]);
   });
 
   it("requests the primary tab when a rail button is clicked", async () => {

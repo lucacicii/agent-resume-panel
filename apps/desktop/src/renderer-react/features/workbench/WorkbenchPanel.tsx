@@ -41,8 +41,11 @@ import { VirtualList } from "../../components/VirtualList";
 import type { TerminalEngineType } from "./terminal";
 import { useI18n } from "../../i18n";
 import { AcpChatView } from "./AcpChatView";
+import { SelectionSendItems } from "../../selection/SelectionSendMenu";
+import { registerTerminalSelection } from "../../selection/terminalSelection";
 import { BrowserPaneView } from "../browser/BrowserPaneView";
 import type { BrowserSessionState } from "../../../shared/browserTypes";
+import type { WorkbenchSendSelectionRequest } from "../../../shared/workbenchSelection";
 import {
   acpRuntimeToStatus,
   collectActiveSessionDots,
@@ -218,6 +221,7 @@ type AcpChatPane = {
   title: string;
   provider: string;
   projectPath: string;
+  initialPrompt?: string;
 };
 type BrowserPane = {
   key: string;
@@ -1905,6 +1909,7 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, engineT
   const rendererModeRef = useRef<TerminalRendererMode>(rendererMode);
   const ptyId = useRef<number | null>(null);
   const initialPromptRef = useRef(pane.initialPrompt);
+  initialPromptRef.current = pane.initialPrompt;
   /** Whether the user is anchored at the bottom of the normal buffer (session
    *  panes only). Updated solely from user scroll input; write-side re-anchors
    *  read it so they never fight an intentional scroll-up. */
@@ -1936,6 +1941,16 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, engineT
     if (direction === "next") addon.findNext(q, opts);
     else addon.findPrevious(q, opts);
   }, []);
+
+  useEffect(() => {
+    const hostEl = host.current;
+    if (!hostEl) return;
+    return registerTerminalSelection({
+      element: hostEl,
+      getSelectedText: () => terminalRef.current?.getSelection() || "",
+      projectPath: pane.projectPath
+    });
+  }, [pane.projectPath, ready]);
 
   const closeSearch = useCallback(() => {
     setSearchOpen(false);
@@ -2659,7 +2674,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     const stored = storageString("wb-linkgraph-lang");
     return stored === "en" || stored === "zh-cn" || stored === "ja" || stored === "auto" ? stored : "auto";
   });
-  const [editorContextMenu, setEditorContextMenu] = useState<{ x: number; y: number; hasSelection: boolean } | null>(null);
+  const [editorContextMenu, setEditorContextMenu] = useState<{ x: number; y: number; hasSelection: boolean; selectedText: string } | null>(null);
   const linkGraphSeedRef = useRef<LinkGraphAnalyzeArgs | null>(null);
   const linkGraphLanguageRef = useRef(linkGraphLanguage);
   linkGraphLanguageRef.current = linkGraphLanguage;
@@ -2858,11 +2873,13 @@ export function WorkbenchPanel(): ReactPortal | null {
     [acpChats, sessionRuntimeByPaneKey, sessionTitles, terminals]
   );
 
-  // Broadcast the live session-dot set to the nav rail (sibling component).
+  // Broadcast the live session-dot set to the nav rail (sibling component)
+  // and to floating note windows via main-process IPC.
   // StrictMode double-invoke on mount is harmless: AppChrome just sets state
   // to an identical payload. No loop: nothing listens back to this event here.
   useEffect(() => {
     window.dispatchEvent(new CustomEvent("agent-resume:active-sessions", { detail: activeSessionDots }));
+    desktopApi().setWorkbenchActiveSessions?.(activeSessionDots);
   }, [activeSessionDots]);
 
   const composerHistoryKeys = useMemo(() => terminals
@@ -4617,11 +4634,15 @@ export function WorkbenchPanel(): ReactPortal | null {
     title: string;
     provider: string;
     projectPath: string;
-  }) => {
+  }, launch?: { initialPrompt?: string }) => {
     const key = `acp:${record.id}`;
     const projectPath = record.projectPath;
+    const initialPrompt = launch?.initialPrompt?.trim() || undefined;
     setAcpChats((current) => {
-      if (current.some((pane) => pane.key === key)) return current;
+      if (current.some((pane) => pane.key === key)) {
+        if (!initialPrompt) return current;
+        return current.map((pane) => pane.key === key && !pane.initialPrompt ? { ...pane, initialPrompt } : pane);
+      }
       return [
         ...current,
         {
@@ -4629,7 +4650,8 @@ export function WorkbenchPanel(): ReactPortal | null {
           recordId: record.id,
           title: record.title || t("desktop.workbench.acpChat"),
           provider: record.provider,
-          projectPath
+          projectPath,
+          ...(initialPrompt ? { initialPrompt } : {})
         }
       ];
     });
@@ -4787,7 +4809,8 @@ export function WorkbenchPanel(): ReactPortal | null {
   const launchNewSession = useCallback(async (
     target: WorkbenchNewSessionTarget,
     targetProject?: string,
-    projectId?: string
+    projectId?: string,
+    initialPrompt?: string
   ) => {
     if (terminalCreating) return;
     setTerminalCreating(true);
@@ -4809,9 +4832,10 @@ export function WorkbenchPanel(): ReactPortal | null {
         && projectPathKey(cwd) === projectPathKey(selectedProject)
         ? { projectId: selectedProjectMeta.id, folderId: selectedFolderId }
         : null;
+      const prompt = initialPrompt?.trim() || "";
       if (target.channel === "acp") {
         const record = await desktopApi().acpCreateSession({ projectPath: cwd, provider: target.provider });
-        addAcpChat(record);
+        addAcpChat(record, prompt ? { initialPrompt: prompt } : undefined);
         if (focusedFolder && typeof desktopApi().assignWorkbenchSessionToFolder === "function") {
           try {
             await desktopApi().assignWorkbenchSessionToFolder({
@@ -4837,17 +4861,19 @@ export function WorkbenchPanel(): ReactPortal | null {
         }
         if (result.external || result.mode === "external-system") {
           setStatus({
-            text: result.copied
-              ? t("desktop.workbench.externalCommandCopied")
-              : result.command || t("desktop.workbench.externalTerminalHint"),
-            kind: "ok"
+            text: prompt
+              ? t("desktop.notes.sendSelectionExternal")
+              : result.copied
+                ? t("desktop.workbench.externalCommandCopied")
+                : result.command || t("desktop.workbench.externalTerminalHint"),
+            kind: prompt ? "warning" : "ok"
           });
           await loadSessions();
           return;
         }
         if (result.mode === "xterm" && result.command) {
           const title = t("desktop.workbench.newSessionTitle", basename(cwd));
-          const terminalKey = addTerminal(title, result.cwd, result.command, cwd, undefined, "session");
+          const terminalKey = addTerminal(title, result.cwd, result.command, cwd, undefined, "session", prompt ? { initialPrompt: prompt } : undefined);
           addPendingSession(terminalKey, target.provider, cwd, title, focusedFolder || undefined);
         }
         await loadSessions();
@@ -4879,6 +4905,66 @@ export function WorkbenchPanel(): ReactPortal | null {
     setNewSessionPicker(null);
     await launchNewSession(target, picker.projectPath, picker.projectId);
   }, [launchNewSession, newSessionPicker, parseNewSessionTarget]);
+
+  const queueTerminalPrompt = useCallback((paneKey: string, text: string) => {
+    const prompt = text.trim();
+    if (!prompt) return;
+    setTerminals((current) => {
+      const next = current.map((pane) => pane.key === paneKey ? { ...pane, initialPrompt: prompt } : pane);
+      terminalsRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const sendSelectionToOpenPane = useCallback((paneKey: string, text: string) => {
+    const prompt = text.trim();
+    if (!prompt) return false;
+    const terminal = terminalsRef.current.find((pane) => pane.key === paneKey);
+    if (terminal) {
+      selectProject(terminal.projectPath, { keepSessionKey: true });
+      setActivePane(terminal.key, terminal.projectPath);
+      if (terminal.sessionKey) setActiveSessionKey(terminal.sessionKey);
+      focusWorkbenchPane(terminal.key);
+      if (terminal.ptyId != null) {
+        void desktopApi().terminalInput({ id: terminal.ptyId, data: `${prompt}\r` });
+      } else {
+        queueTerminalPrompt(terminal.key, prompt);
+      }
+      return true;
+    }
+    const chat = acpChatsRef.current.find((pane) => pane.key === paneKey);
+    if (chat) {
+      selectProject(chat.projectPath, { keepSessionKey: true });
+      setActivePane(chat.key, chat.projectPath);
+      setActiveSessionKey(acpListSessionKey(chat.recordId));
+      focusWorkbenchPane(chat.key);
+      setAcpChats((current) => current.map((pane) => pane.key === paneKey ? { ...pane, initialPrompt: prompt } : pane));
+      return true;
+    }
+    return false;
+  }, [focusWorkbenchPane, queueTerminalPrompt, selectProject, setActivePane]);
+
+  const handleSelectionSend = useCallback((payload: WorkbenchSendSelectionRequest) => {
+    window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
+    if (payload.kind === "existing-session") {
+      if (!sendSelectionToOpenPane(payload.paneKey, payload.text)) {
+        setStatus({ text: t("desktop.notes.sendSelectionMissingSession"), kind: "error" });
+      }
+      return;
+    }
+    const target = parseNewSessionTarget(payload.target);
+    if (!target) {
+      setStatus({ text: t("desktop.notes.sendSelectionMissingSession"), kind: "error" });
+      return;
+    }
+    void launchNewSession(target, payload.projectPath, undefined, payload.text);
+  }, [launchNewSession, parseNewSessionTarget, sendSelectionToOpenPane, setStatus, t]);
+
+  useEffect(() => {
+    const api = desktopApi();
+    if (typeof api.onWorkbenchSendSelection !== "function") return;
+    return api.onWorkbenchSendSelection((payload) => handleSelectionSend(payload));
+  }, [handleSelectionSend]);
 
   const handleNewSessionPickerKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
     if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
@@ -8116,7 +8202,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         <div className="wb-detail-body">
           <div className="wb-terminal-shell">{paneTabGroups}<div className="wb-terminal-stack">{terminals.filter((pane) => pane.projectPath === selectedProject && pane.key === activePane).map((pane) => {
             return <div key={pane.key} className="wb-terminal-pane-wrap"><TerminalView pane={pane} active={active} themeId={terminalThemeId} appearance={desktopAppearance} rendererMode={terminalRendererMode} engineType={terminalEngine} onPty={onPty} onDetach={onPtyDetach} onInput={onTerminalInput} onInitialPromptSubmitted={onInitialPromptSubmitted} mouseTracking={terminalMouseTrackingRef} /></div>;
-          })}<TerminalComposerStack items={composerItems} onChange={setComposerDraft} onSendToTerminal={sendComposerToTerminal} onActivate={activateComposerPane} onOpenTip={openComposerTip} onClose={closeTerminal} registerFocus={registerComposerFocus} />{editorFindOpen && currentEditor ? <div className="wb-editor-find-bar app-inline-search" role="search">
+          })}{editorFindOpen && currentEditor ? <div className="wb-editor-find-bar app-inline-search" role="search">
             <ThemeIcon name="search" size={14} aria-hidden="true" />
             <input
               ref={editorFindInputRef}
@@ -8150,7 +8236,7 @@ export function WorkbenchPanel(): ReactPortal | null {
             <button type="button" className="wb-editor-find-btn app-inline-search-btn" aria-label={t("desktop.common.findPrev")} onClick={() => runEditorFind("backward")}><ThemeIcon name="arrow-up" size={14} /></button>
             <button type="button" className="wb-editor-find-btn app-inline-search-btn" aria-label={t("desktop.common.findNext")} onClick={() => runEditorFind("forward")}><ThemeIcon name="arrow-down" size={14} /></button>
             <button type="button" className="wb-editor-find-btn app-inline-search-btn" aria-label={t("desktop.common.closeFind")} onClick={closeEditorFind}><ThemeIcon name="close" size={14} /></button>
-          </div> : null}{currentEditor ? <div className="wb-editor-pane" onContextMenu={(event) => { event.preventDefault(); const hasSelection = Boolean(editorRef.current?.getSelectedText().trim()); setEditorContextMenu({ x: event.clientX, y: event.clientY, hasSelection }); }}>{editorDiskAlert}{currentEditor.view === "preview" ? <div className="wb-editor-preview markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(currentEditor.content) }} /> : <CodeEditor ref={editorRef} className="wb-editor-host" value={currentEditor.content} onChange={(value) => updateEditorContent(currentEditor.key, value)} onBlur={() => { if (currentEditor.dirty) void saveEditor(currentEditor.key); }} ariaLabel={currentEditor.path} filePath={currentEditor.path} readOnly={editorSettings?.editable === false} fontSize={editorSettings?.fontSize ?? 13} wordWrap={editorSettings?.wordWrap ?? false} tabSize={editorSettings?.tabSize ?? 4} appearance={editorAppearance} />}<div className="wb-editor-status"><span className="wb-editor-status-path">{currentEditor.path}</span><span className="wb-editor-status-state">{currentEditor.saving ? t("desktop.workbench.fileSaving") : currentEditor.diskState === "changed" ? t("desktop.workbench.fileConflict") : currentEditor.diskState === "deleted" ? t("desktop.workbench.fileDeletedOnDisk") : currentEditor.diskState === "external" ? t("desktop.workbench.fileUnavailableOnDisk") : currentEditor.dirty ? t("desktop.workbench.fileModified") : t("desktop.workbench.fileSaved")}</span><button type="button" className="wb-git-action-btn" disabled={!currentEditor.dirty || currentEditor.saving || Boolean(currentEditor.diskState) || editorSettings?.editable === false} onClick={() => void saveEditor(currentEditor.key)} aria-label={t("desktop.common.save")}><ThemeIcon name="save" size={15} /></button></div></div> : null}{currentDiff ? <div className="wb-git-diff-pane"><div className="wb-diff-head"><strong className="wb-diff-title">{currentDiff.path}</strong><button type="button" className="wb-git-action-btn wb-diff-open" aria-label={t("desktop.workbench.fileOpen")} title={t("desktop.workbench.fileOpen")} onClick={() => void openFile(gitChangeFilePath(currentDiff))}><ThemeIcon name="file" size={14} /></button></div><div className="wb-diff-labels"><span className="wb-diff-label">{currentDiff.oldLabel}</span><span className="wb-diff-label">{currentDiff.newLabel}</span></div><WorkbenchDiffView diff={currentDiff} appearance={editorAppearance} onDiscardHunk={(target) => void discardGitHunk(currentDiff, target)} onDiscardLine={(target) => void discardGitLine(currentDiff, target)} onStageHunk={(target) => void stageGitHunk(currentDiff, target)} onUnstageHunk={(target) => void unstageGitHunk(currentDiff, target)} onStageLine={(target) => void stageGitLine(currentDiff, target)} onUnstageLine={(target) => void unstageGitLine(currentDiff, target)} /></div> : null}{acpChats.map((pane) => {
+          </div> : null}{currentEditor ? <div className="wb-editor-pane" onContextMenu={(event) => { event.preventDefault(); const selectedText = editorRef.current?.getSelectedText().trim() || ""; setEditorContextMenu({ x: event.clientX, y: event.clientY, hasSelection: Boolean(selectedText), selectedText }); }}>{editorDiskAlert}{currentEditor.view === "preview" ? <div className="wb-editor-preview markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(currentEditor.content) }} /> : <CodeEditor ref={editorRef} className="wb-editor-host" value={currentEditor.content} onChange={(value) => updateEditorContent(currentEditor.key, value)} onBlur={() => { if (currentEditor.dirty) void saveEditor(currentEditor.key); }} ariaLabel={currentEditor.path} filePath={currentEditor.path} selectionProjectPath={currentEditor.projectPath} readOnly={editorSettings?.editable === false} fontSize={editorSettings?.fontSize ?? 13} wordWrap={editorSettings?.wordWrap ?? false} tabSize={editorSettings?.tabSize ?? 4} appearance={editorAppearance} />}<div className="wb-editor-status"><span className="wb-editor-status-path">{currentEditor.path}</span><span className="wb-editor-status-state">{currentEditor.saving ? t("desktop.workbench.fileSaving") : currentEditor.diskState === "changed" ? t("desktop.workbench.fileConflict") : currentEditor.diskState === "deleted" ? t("desktop.workbench.fileDeletedOnDisk") : currentEditor.diskState === "external" ? t("desktop.workbench.fileUnavailableOnDisk") : currentEditor.dirty ? t("desktop.workbench.fileModified") : t("desktop.workbench.fileSaved")}</span><button type="button" className="wb-git-action-btn" disabled={!currentEditor.dirty || currentEditor.saving || Boolean(currentEditor.diskState) || editorSettings?.editable === false} onClick={() => void saveEditor(currentEditor.key)} aria-label={t("desktop.common.save")}><ThemeIcon name="save" size={15} /></button></div></div> : null}{currentDiff ? <div className="wb-git-diff-pane"><div className="wb-diff-head"><strong className="wb-diff-title">{currentDiff.path}</strong><button type="button" className="wb-git-action-btn wb-diff-open" aria-label={t("desktop.workbench.fileOpen")} title={t("desktop.workbench.fileOpen")} onClick={() => void openFile(gitChangeFilePath(currentDiff))}><ThemeIcon name="file" size={14} /></button></div><div className="wb-diff-labels"><span className="wb-diff-label">{currentDiff.oldLabel}</span><span className="wb-diff-label">{currentDiff.newLabel}</span></div><WorkbenchDiffView diff={currentDiff} appearance={editorAppearance} onDiscardHunk={(target) => void discardGitHunk(currentDiff, target)} onDiscardLine={(target) => void discardGitLine(currentDiff, target)} onStageHunk={(target) => void stageGitHunk(currentDiff, target)} onUnstageHunk={(target) => void unstageGitHunk(currentDiff, target)} onStageLine={(target) => void stageGitLine(currentDiff, target)} onUnstageLine={(target) => void unstageGitLine(currentDiff, target)} /></div> : null}{acpChats.map((pane) => {
             const visible = pane.projectPath === selectedProject && activePane === pane.key;
             return <AcpChatView
               key={pane.key}
@@ -8159,6 +8245,7 @@ export function WorkbenchPanel(): ReactPortal | null {
               projectPath={pane.projectPath}
               title={pane.title}
               active={active && visible}
+              initialPrompt={pane.initialPrompt}
               onTitleChange={(nextTitle) => {
                 setAcpChats((current) => current.map((item) => item.key === pane.key ? { ...item, title: nextTitle } : item));
                 setSessions((current) => current.map((item) =>
@@ -8166,6 +8253,9 @@ export function WorkbenchPanel(): ReactPortal | null {
                 ));
               }}
               onSessionReady={refreshSessionsAfterAcpConnect}
+              onInitialPromptSubmitted={() => {
+                setAcpChats((current) => current.map((item) => item.key === pane.key ? { ...item, initialPrompt: undefined } : item));
+              }}
             />;
           })}{browsers.map((pane) => {
             const visible = pane.projectPath === selectedProject && activePane === pane.key;
@@ -8341,9 +8431,20 @@ export function WorkbenchPanel(): ReactPortal | null {
           </div>}</aside></> : null}
         </div>
       </main>
+      <TerminalComposerStack items={composerItems} onChange={setComposerDraft} onSendToTerminal={sendComposerToTerminal} onActivate={activateComposerPane} onOpenTip={openComposerTip} onClose={closeTerminal} registerFocus={registerComposerFocus} slashPhrases={settings?.workbench?.composerSlashPhrases ?? []} />
     </div>
     {branchPane ? <div className="wb-git-branch-popover" style={branchMenuPosition || undefined}>{branchResult?.mode === "nested" ? <div className="wb-git-branch-list">{renderBranchMenu()}</div> : <><div className="wb-git-branch-repo-head">{branchResult?.repoRoot || branchPane.repoRoot || branchPane.cwd}</div><div className="wb-git-branch-list">{renderBranchMenu()}</div></>}</div> : null}
-    {editorContextMenu ? <div className="wb-context-menu" role="menu" style={{ left: Math.max(8, Math.min(editorContextMenu.x, window.innerWidth - 200)), top: Math.max(8, Math.min(editorContextMenu.y, window.innerHeight - 80)) }} onContextMenu={(event) => event.preventDefault()}>
+    {editorContextMenu ? <div className="wb-context-menu notes-selection-menu" role="menu" style={{ left: Math.max(8, Math.min(editorContextMenu.x, window.innerWidth - 220)), top: Math.max(8, Math.min(editorContextMenu.y, window.innerHeight - 120)) }} onContextMenu={(event) => event.preventDefault()}>
+      {editorContextMenu.selectedText ? (
+        <>
+          <SelectionSendItems
+            text={editorContextMenu.selectedText}
+            projectPath={currentEditor?.projectPath || selectedProject || undefined}
+            onSent={() => setEditorContextMenu(null)}
+          />
+          <div className="context-menu-separator" role="separator" />
+        </>
+      ) : null}
       <button type="button" role="menuitem" disabled={!editorContextMenu.hasSelection} onClick={() => { setEditorContextMenu(null); openLinkGraphFromEditor(); }}>{t("desktop.workbench.linkGraphView")}</button>
     </div> : null}
     {gitLogContextMenu ? <div

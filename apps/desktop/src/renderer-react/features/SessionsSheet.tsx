@@ -57,7 +57,7 @@ export function SessionsSheet(): React.JSX.Element {
   const [previewState, setPreviewState] = useState<PreviewState | null>(null);
   const [loading, setLoading] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
-  const [assist, setAssist] = useState<"summary" | "rename" | null>(null);
+  const [assist, setAssist] = useState<"summary" | "rename" | "status" | null>(null);
   const [lastSyncedAt, setLastSyncedAt] = useState(0);
   const setStatus = (s: StatusState) => {
     if (s.text) notifyDesktop({ text: s.text, kind: (s.kind ?? "info") as "error" | "ok" | "info" });
@@ -185,6 +185,39 @@ export function SessionsSheet(): React.JSX.Element {
     }
   };
 
+  const changeStatus = async (status: "completed" | "active" | "blocked") => {
+    if (!previewState) return;
+    setAssist("status");
+    try {
+      const result = await desktopApi().setSessionStatus({
+        provider: previewState.session.provider,
+        id: previewState.session.id,
+        status
+      });
+      setPreviewState((current) =>
+        current
+          ? {
+              ...current,
+              summary: result.summary,
+              session: { ...current.session, sessionSummary: result.summary }
+            }
+          : current
+      );
+      setStatus({
+        text: t(
+          "desktop.sessions.statusUpdated",
+          t(`desktop.report.insights${status.charAt(0).toUpperCase() + status.slice(1)}`)
+        ),
+        kind: "ok"
+      });
+      window.dispatchEvent(new CustomEvent("agent-resume:sessions-mutated", { detail: { kind: "session-status" } }));
+    } catch (error) {
+      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    } finally {
+      setAssist(null);
+    }
+  };
+
   const autoRename = async () => {
     if (!previewState) return;
     setAssist("rename");
@@ -299,12 +332,53 @@ export function SessionsSheet(): React.JSX.Element {
             <div className="muted session-preview-meta">
               {previewState.session.provider}{" · "}{previewState.session.id}{" · "}{previewState.session.projectPath}
             </div>
-            {previewState.summary && (
-              <div className="session-summary-box">
-                <div className="session-summary-label">Summary</div>
-                <div className="session-summary-body">{previewState.summary}</div>
-              </div>
-            )}
+            {(() => {
+              const currentStatus = previewState.summary.includes("State: completed")
+                ? "completed"
+                : previewState.summary.includes("State: blocked")
+                  ? "blocked"
+                  : previewState.summary.includes("State: active")
+                    ? "active"
+                    : null;
+              return (
+                <div className="session-summary-box">
+                  <div className="session-summary-head-row">
+                    <div className="session-summary-label">Summary</div>
+                    <div className="session-status-switcher">
+                      <span className="session-status-switcher-label">{t("desktop.sessions.statusLabel")}:</span>
+                      <button
+                        type="button"
+                        className={`session-status-btn completed${currentStatus === "completed" ? " active" : ""}`}
+                        disabled={assist !== null}
+                        onClick={() => void changeStatus("completed")}
+                        title={t("desktop.report.insightsCompleted")}
+                      >
+                        ✓ {t("desktop.report.insightsCompleted")}
+                      </button>
+                      <button
+                        type="button"
+                        className={`session-status-btn active-pill${currentStatus === "active" ? " active" : ""}`}
+                        disabled={assist !== null}
+                        onClick={() => void changeStatus("active")}
+                        title={t("desktop.report.insightsActive")}
+                      >
+                        ● {t("desktop.report.insightsActive")}
+                      </button>
+                      <button
+                        type="button"
+                        className={`session-status-btn blocked${currentStatus === "blocked" ? " active" : ""}`}
+                        disabled={assist !== null}
+                        onClick={() => void changeStatus("blocked")}
+                        title={t("desktop.report.insightsBlocked")}
+                      >
+                        ! {t("desktop.report.insightsBlocked")}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="session-summary-body">{previewState.summary || <span className="muted">No summary yet</span>}</div>
+                </div>
+              );
+            })()}
             {previewState.preview.warning ? <p className="status error">{previewState.preview.warning}</p> : null}
             {!previewState.preview.messages.length ? (
               <p className="muted">{t("desktop.sessions.noMessages")}</p>

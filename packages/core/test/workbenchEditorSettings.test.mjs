@@ -73,6 +73,45 @@ test("workbench editor settings normalize persisted values", async () => {
   }
 });
 
+test("workbench composer slash phrases persist, strip slashes, and drop invalid entries", async () => {
+  const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-slash-phrases-"));
+  try {
+    await saveSettings(
+      {
+        ...structuredClone(DEFAULT_SETTINGS),
+        panelHome,
+        workbench: {
+          composerSlashPhrases: [
+            { trigger: "/Review", phrase: "Please review this change." },
+            { trigger: "review", phrase: "duplicate should drop" },
+            { trigger: "bad trigger", phrase: "spaces are invalid" },
+            { trigger: "empty", phrase: "   " },
+            { trigger: "fix", phrase: "Fix the failing tests.", description: "  unit tests  " }
+          ]
+        }
+      },
+      panelHome
+    );
+    const loaded = await loadSettings(panelHome);
+    assert.deepEqual(loaded.workbench.composerSlashPhrases, [
+      { trigger: "Review", phrase: "Please review this change." },
+      { trigger: "fix", phrase: "Fix the failing tests.", description: "unit tests" }
+    ]);
+
+    await saveSettings(
+      {
+        ...loaded,
+        workbench: { ...loaded.workbench, composerSlashPhrases: [] }
+      },
+      panelHome
+    );
+    const emptied = await loadSettings(panelHome);
+    assert.deepEqual(emptied.workbench.composerSlashPhrases, []);
+  } finally {
+    await fs.rm(panelHome, { recursive: true, force: true });
+  }
+});
+
 test("workbench editor settings deep-merge partial preferences", async () => {
   const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-editor-settings-"));
   try {

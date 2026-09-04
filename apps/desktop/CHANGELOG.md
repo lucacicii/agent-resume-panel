@@ -8,6 +8,20 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## English
 
+### [0.2.21]
+
+#### Added
+
+- **Report Period Insights Dashboard**: Memory reports now include a period insights dashboard with session/provider donut charts, daily trends, tag chips, and click-through filters by status, tag, and project
+- **Composer Send Analytics**: period insights surface composer send volume, intent mix, smoothness/friction, hourly intensity, and top phrases
+- **Shared Selection Send Menu**: highlight text in IM, Notes, the standalone note window, Workbench editor, and terminal, then send it to a new agent or an active session
+- **Workbench Embedded Editor Settings**: Settings → Workbench now exposes editor editable, font size, word wrap, tab size, and auto-save delay
+
+#### Improved
+
+- **Terminal Composer Stack**: the active session composer stays at the bottom of the stack, drag is constrained to the workbench layout, and the session status label is shown next to the status dot
+- **Report Insights Layout**: charts, composer analytics, manual status filters, and a scrollable dashboard layout
+
 ### [0.2.20]
 
 #### Added
@@ -481,6 +495,20 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 ---
 
 ## 简体中文
+
+### [0.2.21]
+
+#### 新增
+
+- **报告周期洞察仪表盘**: Memory 报告新增周期 insights 面板，含会话/提供方饼图、日趋势、标签芯片，并可按状态、标签与项目点击筛选
+- **Composer 发送分析**: 周期 insights 展示 Composer 发送量、意图分布、顺畅/摩擦、小时强度与高频短语
+- **通用选中发送菜单**: 在 IM、笔记、独立笔记窗、工作台编辑器与终端中选中文本，可发送到新 Agent 或当前活跃会话
+- **工作台内嵌编辑器设置**: 设置 → 工作台新增可编辑开关、字号、自动换行、Tab 宽度与自动保存延迟
+
+#### 改进
+
+- **终端 Composer 堆叠**: 活跃会话的 Composer 固定在堆叠底部，拖拽范围约束在工作台布局内，状态点旁显示会话状态文案
+- **报告 Insights 布局**: 图表、Composer 分析、手动状态筛选与可滚动仪表盘布局
 
 ### [0.2.20]
 

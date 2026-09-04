@@ -18,6 +18,7 @@ import { Decoration, drawSelection, EditorView, keymap, type DecorationSet } fro
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { bracketMatching } from "@codemirror/language";
 import { codeMirrorThemeExtensions, type CodeMirrorAppearance } from "./codeMirrorThemes";
+import { registerCodeMirrorSelection } from "../selection/codeMirrorSelection";
 
 export interface CodeEditorProps {
   value: string;
@@ -37,6 +38,8 @@ export interface CodeEditorProps {
   language?: string;
   shouldHandlePaste?: () => boolean;
   onPasteImage?: () => Promise<string | null>;
+  /** Optional project cwd hint for selection-send menus. */
+  selectionProjectPath?: string;
 }
 
 export interface CodeEditorFindOptions {
@@ -285,7 +288,8 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
   filePath,
   language: languageId,
   shouldHandlePaste,
-  onPasteImage
+  onPasteImage,
+  selectionProjectPath
 }, ref): React.JSX.Element {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
@@ -517,6 +521,20 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
     if (!instance) return;
     instance.dispatch({ effects: theme.reconfigure(codeMirrorThemeExtensions(appearance)) });
   }, [appearance]);
+
+  useEffect(() => {
+    const element = host.current;
+    const instance = view.current;
+    if (!element || !instance) return;
+    return registerCodeMirrorSelection({
+      element,
+      getSelectedText: () => {
+        const { from, to } = instance.state.selection.main;
+        return from === to ? "" : instance.state.sliceDoc(from, to);
+      },
+      projectPath: selectionProjectPath
+    });
+  }, [selectionProjectPath]);
 
   return <div className={className} ref={host} style={{ fontSize: `${fontSize}px` }} />;
 });

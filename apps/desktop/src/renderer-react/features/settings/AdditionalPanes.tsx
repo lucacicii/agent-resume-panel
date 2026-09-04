@@ -39,6 +39,7 @@ export function WorkbenchPane({ draft, setDraft, t }: { draft: WorkbenchDraft; s
     const next = { ...draft, [key]: value };
     setDraft(next);
   };
+  const slashPhrases = draft.composerSlashPhrases ?? [];
   return <>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.newSessionGroup")}</h3><div className="settings-group-body">
       <SelectRow
@@ -87,6 +88,68 @@ export function WorkbenchPane({ draft, setDraft, t }: { draft: WorkbenchDraft; s
         onChange={(value) => update("acpExperimentalGrokVendorUi", value)}
       />
       <label className="settings-field"><span className="settings-field-label">{t("desktop.settings.scratchDir")}</span><input value={draft.scratchDir} placeholder="~/.agent-resume-panel/.desktop/scratch" onChange={(event) => update("scratchDir", event.target.value)} /></label>
+    </div></section>
+    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.composerSlashGroup")}</h3><div className="settings-group-body">
+      <p className="settings-footnote">{t("desktop.settings.composerSlashDesc")}</p>
+      {slashPhrases.length === 0 ? <p className="settings-footnote">{t("desktop.settings.composerSlashEmpty")}</p> : null}
+      {slashPhrases.map((item, index) => (
+        <div className="settings-slash-phrase" key={`slash-${index}`}>
+          <label className="settings-field">
+            <span className="settings-field-label">{t("desktop.settings.composerSlashTrigger")}</span>
+            <input
+              value={item.trigger}
+              spellCheck={false}
+              autoCapitalize="off"
+              autoCorrect="off"
+              placeholder={t("desktop.settings.composerSlashTriggerPlaceholder")}
+              onChange={(event) => {
+                const next = slashPhrases.map((phrase, phraseIndex) => phraseIndex === index ? { ...phrase, trigger: event.target.value } : phrase);
+                update("composerSlashPhrases", next);
+              }}
+            />
+          </label>
+          <label className="settings-field">
+            <span className="settings-field-label">{t("desktop.settings.composerSlashPhrase")}</span>
+            <textarea
+              rows={3}
+              maxLength={4000}
+              spellCheck={false}
+              value={item.phrase}
+              placeholder={t("desktop.settings.composerSlashPhrasePlaceholder")}
+              onChange={(event) => {
+                const next = slashPhrases.map((phrase, phraseIndex) => phraseIndex === index ? { ...phrase, phrase: event.target.value } : phrase);
+                update("composerSlashPhrases", next);
+              }}
+            />
+          </label>
+          <label className="settings-field">
+            <span className="settings-field-label">{t("desktop.settings.composerSlashDescription")}</span>
+            <input
+              value={item.description ?? ""}
+              spellCheck={false}
+              placeholder={t("desktop.settings.composerSlashDescriptionPlaceholder")}
+              onChange={(event) => {
+                const next = slashPhrases.map((phrase, phraseIndex) => phraseIndex === index ? { ...phrase, description: event.target.value } : phrase);
+                update("composerSlashPhrases", next);
+              }}
+            />
+          </label>
+          <div className="settings-action-row">
+            <button
+              type="button"
+              className="tool-btn"
+              onClick={() => update("composerSlashPhrases", slashPhrases.filter((_, phraseIndex) => phraseIndex !== index))}
+            >{t("desktop.settings.composerSlashRemove")}</button>
+          </div>
+        </div>
+      ))}
+      <div className="settings-action-row">
+        <button
+          type="button"
+          className="tool-btn"
+          onClick={() => update("composerSlashPhrases", [...slashPhrases, { trigger: "", phrase: "" }])}
+        >{t("desktop.settings.composerSlashAdd")}</button>
+      </div>
     </div></section>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.embeddedEditorGroup")}</h3><div className="settings-group-body">
       <ToggleRow title={t("desktop.settings.editorEditable")} description={t("desktop.settings.editorEditableDesc")} checked={draft.editorEditable} onChange={(value) => update("editorEditable", value)} />

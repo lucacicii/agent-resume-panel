@@ -22,6 +22,7 @@ import {
   estimateDigestRun,
   expandHome,
   getReportEntryById,
+  getPeriodInsights,
   getSessionById,
   getUsageSummary,
   appendComposerSend,
@@ -31,6 +32,7 @@ import {
   hideProjectAction,
   listLlmUsageEvents,
   listProjects,
+  setSessionDeliveryStatusInCatalog,
   listReportEntries,
   listReportEntriesInRange,
   listReportLinks,
@@ -177,6 +179,10 @@ import {
   workbenchArrowDirectionFromInput
 } from "./desktopShortcuts";
 import { STANDALONE_NOTE_INITIAL_CONTENT } from "../shared/standaloneNote";
+import {
+  parseWorkbenchActiveSessionDots,
+  parseWorkbenchSendSelectionRequest
+} from "../shared/workbenchSelection";
 import { checkForDesktopUpdate, getAppVersion } from "./updateCheck";
 import { loadPanelDbPaths } from "./panelDatabases";
 import { buildI18nBundle, desktopT, initI18nService } from "./i18nService";
@@ -428,6 +434,7 @@ let sessionSyncInFlight: Promise<AgentSessionSyncResult> | null = null;
 let workbenchActive = false;
 let floatingNoteFocused = false;
 let modalOpen = false;
+let workbenchActiveSessions: ReturnType<typeof parseWorkbenchActiveSessionDots> = [];
 const SESSION_SYNC_INTERVAL_MS = 60_000;
 
 const SETTINGS_PANES = [
@@ -1357,6 +1364,24 @@ function registerIpc(): void {
     }
   });
 
+  ipcMain.on("workbench:activeSessions", (event, payload: unknown) => {
+    if (event.sender !== mainWindow?.webContents) return;
+    workbenchActiveSessions = parseWorkbenchActiveSessionDots(payload);
+    broadcastToRenderers("workbench:activeSessions", workbenchActiveSessions);
+  });
+
+  safeHandle("workbench:getActiveSessions", async () => workbenchActiveSessions);
+
+  safeHandle("workbench:sendSelection", async (_event, payload: unknown) => {
+    const request = parseWorkbenchSendSelectionRequest(payload);
+    const target = mainWindow;
+    if (!target || target.isDestroyed()) {
+      throw new Error("Workbench window is not available.");
+    }
+    target.webContents.send("workbench:sendSelection", request);
+    return { ok: true as const };
+  });
+
   safeHandle("workbench:getRuntimeMetrics", async (event) => {
     if (event.sender !== mainWindow?.webContents) throw new Error("无效的窗口来源");
     const pty = (() => {
@@ -2182,6 +2207,26 @@ function registerIpc(): void {
   );
 
   ipcMain.handle(
+    "sessions:setStatus",
+    async (
+      _event,
+      args: {
+        provider: AgentProvider;
+        id: string;
+        status: "completed" | "active" | "blocked";
+      }
+    ) => {
+      const paths = await loadPanelDbPaths();
+      return setSessionDeliveryStatusInCatalog(
+        paths.catalogDb,
+        args.provider,
+        args.id,
+        args.status
+      );
+    }
+  );
+
+  ipcMain.handle(
     "sessions:hide",
     async (_event, args: { provider: AgentProvider; id: string }) => {
       // Drop live ACP process before deleting store/catalog so remove cannot race reconnect.
@@ -2521,6 +2566,48 @@ function registerIpc(): void {
         String(args?.provider || ""),
         String(args?.agentSessionId || "")
       );
+    }
+  );
+
+  ipcMain.handle(
+    "report:getPeriodInsights",
+    async (_event, args?: { fromMs?: number; toMs?: number }) => {
+      try {
+        const settings = await loadSettings();
+        const paths = await loadPanelDbPaths(settings);
+        const fromMs = Number(args?.fromMs);
+        const toMs = Number(args?.toMs);
+        if (!Number.isFinite(fromMs) || !Number.isFinite(toMs)) {
+          return null;
+        }
+
+        // Real-time sync: import transcript user messages for recent active sessions in this period
+        try {
+          const recentSessions = await listSessionsInRange(paths.catalogDb, fromMs, toMs, 10);
+          const homes = resolvePreviewHomes(settings);
+          await Promise.all(
+            recentSessions.map((s) =>
+              importComposerSendsForSession(paths.desktopDb, s, homes).catch(() => undefined)
+            )
+          );
+        } catch {
+          // best-effort sync
+        }
+
+        return await getPeriodInsights({
+          catalogDb: paths.catalogDb,
+          desktopDb: paths.desktopDb,
+          fromMs,
+          toMs
+        });
+      } catch (error) {
+        void recordAppError({
+          source: "report",
+          message: "report:getPeriodInsights failed.",
+          error
+        });
+        return null;
+      }
     }
   );
 

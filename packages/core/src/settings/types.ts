@@ -184,6 +184,16 @@ export type WorkbenchEditorTabSize = 2 | 4 | 8;
 export type WorkbenchEditorAutoSaveDelayMs = 300 | 600 | 1000 | 2000;
 export type { CommitMessageStyle } from "../git/prompts";
 
+/** User-defined `/trigger` expansion in the Workbench terminal composer. */
+export interface WorkbenchComposerSlashPhrase {
+  /** Slash token without a leading `/`. Letters, digits, `_`, and `-` only. */
+  trigger: string;
+  /** Text inserted into the composer when the trigger is chosen. */
+  phrase: string;
+  /** Optional menu subtitle. */
+  description?: string;
+}
+
 /** Project row context-menu actions (Workbench). */
 export type WorkbenchProjectContextMenuAction =
   | "pin"
@@ -321,6 +331,8 @@ export interface WorkbenchSettings {
    * When unset, defaults to newSession, note, reveal, remove.
    */
   projectContextMenu?: WorkbenchProjectContextMenuAction[];
+  /** User-defined `/trigger` expansions for the terminal composer. Default empty. */
+  composerSlashPhrases?: WorkbenchComposerSlashPhrase[];
 }
 
 export type GhosttyLaunchMode = "pasteCommand" | "copyCommand" | "executeCommand";
@@ -572,6 +584,7 @@ export const DEFAULT_SETTINGS: PanelSettings = {
     gitCommitMessageStyle: "conventional",
     gitCommitCustomInstructions: DEFAULT_CONVENTIONAL_COMMIT_INSTRUCTIONS,
     projectContextMenu: [...DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU],
+    composerSlashPhrases: [],
     transcriptFontSize: 14,
     editor: {
       editable: true,

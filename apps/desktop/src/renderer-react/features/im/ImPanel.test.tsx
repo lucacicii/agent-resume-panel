@@ -41,6 +41,25 @@ const messages = {
   "desktop.im.deselectAll": "Deselect all",
   "desktop.workbench.autoRename": "Auto rename",
   "desktop.common.resend": "Resend",
+  "desktop.notes.sendToAgent": "Send to agent",
+  "desktop.notes.sendToSession": "Send to session",
+  "desktop.notes.noActiveSessions": "No open sessions",
+  "desktop.settings.newSessionGroupCli": "CLI",
+  "desktop.settings.newSessionGroupAcp": "ACP",
+  "desktop.settings.newSessionTarget.cli_pi": "Pi",
+  "desktop.settings.newSessionTarget.cli_codex": "Codex",
+  "desktop.settings.newSessionTarget.cli_claude": "Claude",
+  "desktop.settings.newSessionTarget.cli_grok": "Grok",
+  "desktop.settings.newSessionTarget.cli_agy": "Antigravity",
+  "desktop.settings.newSessionTarget.cli_opencode": "OpenCode",
+  "desktop.settings.newSessionTarget.cli_cursor": "Cursor CLI",
+  "desktop.settings.newSessionTarget.cli_prime": "Prime Agent",
+  "desktop.settings.newSessionTarget.acp_claude": "ACP · Claude Code",
+  "desktop.settings.newSessionTarget.acp_codex": "ACP · Codex",
+  "desktop.settings.newSessionTarget.acp_grok": "ACP · Grok Build",
+  "desktop.settings.newSessionTarget.acp_opencode": "ACP · OpenCode",
+  "desktop.settings.newSessionTarget.acp_pi": "ACP · Pi",
+  "desktop.settings.newSessionTarget.acp_prime": "ACP · Prime Agent",
   "desktop.common.revealInFinder": "Reveal in Finder",
   "desktop.im.emptyRoom": "Quote a message and @ a role to dispatch work.",
   "desktop.im.transcript": "Room transcript",
@@ -217,6 +236,9 @@ function renderIm() {
   window.agentResume = {
     getI18nBundle: async () => ({ locale: "en", messages }),
     onLocaleChanged: () => () => undefined,
+    getWorkbenchActiveSessions: async () => [],
+    onWorkbenchActiveSessions: () => () => undefined,
+    workbenchSendSelection: vi.fn(async () => ({ ok: true as const })),
     imListProjects: vi.fn(async () => [created]),
     imCreateProject: vi.fn(async ({ name }: { name: string }) => project({ name, localPath: `/tmp/scratch/${name}` })),
     imRenameProject: vi.fn(async ({ projectId, name }: { projectId: string; name: string }) => project({ projectId, name })),
@@ -622,6 +644,8 @@ describe("ImPanel", () => {
     selection?.removeAllRanges();
     selection?.addRange(range);
     fireEvent.contextMenu(body);
+    expect(await screen.findByRole("menuitem", { name: "Send to agent" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Send to session" })).toBeTruthy();
     expect(await screen.findByRole("menuitem", { name: "Quote" })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "Translate" })).toBeTruthy();
     fireEvent.click(screen.getByRole("menuitem", { name: "Quote" }));

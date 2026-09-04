@@ -23,6 +23,7 @@ export type ComposerSendAppendInput = {
   provider?: string | null;
   agentSessionId?: string | null;
   text: string;
+  createdAtMs?: number | null;
 };
 
 type ComposerSendRow = {
@@ -74,7 +75,10 @@ export async function appendComposerSend(
   if (!projectPath) throw new Error("composer send requires projectPath");
   if (!text) throw new Error("composer send requires text");
   const id = randomUUID();
-  const createdAtMs = Date.now();
+  const createdAtMs =
+    Number.isFinite(input.createdAtMs) && (input.createdAtMs as number) > 0
+      ? Math.floor(input.createdAtMs as number)
+      : Date.now();
   const sessionKey = optionalString(input.sessionKey, 512);
   const provider = optionalString(input.provider, 64);
   const agentSessionId = optionalString(input.agentSessionId, 512);
