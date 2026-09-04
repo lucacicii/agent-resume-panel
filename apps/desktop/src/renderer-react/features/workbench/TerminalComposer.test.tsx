@@ -11,6 +11,10 @@ import {
   TERMINAL_COMPOSER_STATIC_COMMANDS,
   TerminalComposer
 } from "./TerminalComposer";
+import {
+  orderComposerStackItems,
+  type TerminalComposerStackItem
+} from "./TerminalComposerStack";
 
 const COMPOSER_MESSAGES: Record<string, string> = {
   "desktop.workbench.terminalComposerPlaceholder": "Type a command for the agent…",
@@ -32,7 +36,8 @@ const COMPOSER_MESSAGES: Record<string, string> = {
   "desktop.workbench.sessionDot.awaiting": "Waiting for you",
   "desktop.workbench.sessionDot.running": "Running",
   "desktop.workbench.sessionDot.connecting": "Connecting",
-  "desktop.workbench.sessionDot.error": "Error"
+  "desktop.workbench.sessionDot.error": "Error",
+  "desktop.workbench.sessionDot.idle": "Idle"
 };
 
 const workbenchListDirectoryMock = vi.fn(async () => ({
@@ -52,6 +57,7 @@ async function renderComposer(options: {
   projectPath?: string;
   projectName?: string;
   sessionTitle?: string;
+  status?: "open" | "running" | "awaiting_user" | "connecting" | "error";
   value?: string;
   tips?: Array<{ id: string; text: string; createdAtMs: number }>;
   onChange?: (value: string) => void;
@@ -97,6 +103,7 @@ async function renderComposer(options: {
         activePane={options.activePane !== undefined ? options.activePane : true}
         projectName={options.projectName ?? "app"}
         sessionTitle={options.sessionTitle ?? "Fix renderer"}
+        status={options.status}
         value={value}
         tips={options.tips}
         onChange={(next) => {
@@ -238,8 +245,19 @@ describe("TerminalComposer", () => {
     expect(container.querySelector(".wb-terminal-composer-session-title")?.textContent).toBe("Fix renderer");
     expect(container.querySelector(".wb-terminal-composer-project-name")?.textContent).toBe("agent-resume");
     expect(container.querySelector(".rail-session-dot")).toBeTruthy();
+    expect(container.querySelector(".rail-session-dot-status")?.textContent).toBe("Idle");
     fireEvent.click(screen.getByRole("button", { name: "Close session" }));
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the session status label after the active composer dot", async () => {
+    const { container } = await renderComposer({ status: "running" });
+    expect(container.querySelector(".rail-session-dot-status")?.textContent).toBe("Running");
+  });
+
+  it("shows the session status label on inactive composers", async () => {
+    const { container } = await renderComposer({ activePane: false, status: "running" });
+    expect(container.querySelector(".rail-session-dot-status")?.textContent).toBe("Running");
   });
 
   it("renders collapsed when not the active pane and registers its focus handle", async () => {
@@ -468,5 +486,41 @@ describe("TerminalComposer", () => {
     expect(within(list).getByText("inspect src")).toBeTruthy();
     fireEvent.click(within(list).getByRole("button", { name: "run tests" }));
     expect(onOpenTip).toHaveBeenCalledWith({ id: "2", text: "run tests", createdAtMs: 2 });
+  });
+
+  it("hides user-message tips on inactive composers", async () => {
+    await renderComposer({
+      activePane: false,
+      tips: [
+        { id: "1", text: "inspect src", createdAtMs: 1 }
+      ]
+    });
+    expect(screen.queryByRole("list", { name: "Sent messages" })).toBeNull();
+    expect(screen.queryByText("inspect src")).toBeNull();
+  });
+});
+
+function stackItem(key: string, activePane: boolean): TerminalComposerStackItem {
+  return {
+    pane: { key, cwd: "/work/app", group: "session", projectPath: "/work/app" },
+    ptyId: 1,
+    activePane,
+    projectName: "app",
+    sessionTitle: key,
+    status: "open",
+    value: "",
+    tips: []
+  };
+}
+
+describe("orderComposerStackItems", () => {
+  it("keeps input order when no session is active", () => {
+    const items = [stackItem("a", false), stackItem("b", false), stackItem("c", false)];
+    expect(orderComposerStackItems(items).map((item) => item.pane.key)).toEqual(["a", "b", "c"]);
+  });
+
+  it("moves the active session composer to the visual bottom", () => {
+    const items = [stackItem("a", false), stackItem("b", true), stackItem("c", false)];
+    expect(orderComposerStackItems(items).map((item) => item.pane.key)).toEqual(["a", "c", "b"]);
   });
 });

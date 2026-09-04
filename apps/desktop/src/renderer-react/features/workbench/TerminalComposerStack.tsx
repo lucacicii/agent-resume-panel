@@ -26,6 +26,14 @@ export type TerminalComposerStackItem = {
   tips: ComposerSendTip[];
 };
 
+/** Active session composer last (visual bottom). No active session keeps input order. */
+export function orderComposerStackItems(items: TerminalComposerStackItem[]): TerminalComposerStackItem[] {
+  const activeIndex = items.findIndex((item) => item.activePane);
+  if (activeIndex < 0) return items;
+  const active = items[activeIndex];
+  return [...items.filter((item) => !item.activePane), active];
+}
+
 export function TerminalComposerStack(props: {
   items: TerminalComposerStackItem[];
   onChange: (paneKey: string, value: string) => void;
@@ -54,12 +62,21 @@ export function TerminalComposerStack(props: {
 
   const beginStackDrag = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
+    const layout = stackRef.current?.closest<HTMLElement>(".workbench-layout");
+    const stack = stackRef.current;
+    const layoutRect = layout?.getBoundingClientRect();
+    const stackRect = stack?.getBoundingClientRect();
+    const origX = layoutRect && stackRect ? Math.round(stackRect.left - layoutRect.left) : position.x;
+    const origY = layoutRect && stackRect ? Math.round(layoutRect.bottom - stackRect.bottom) : position.y;
+    if (origX !== position.x || origY !== position.y) {
+      setPosition({ x: origX, y: origY });
+    }
     dragRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
-      origX: position.x,
-      origY: position.y
+      origX,
+      origY
     };
     event.currentTarget.setPointerCapture?.(event.pointerId);
   }, [position.x, position.y]);
@@ -67,13 +84,13 @@ export function TerminalComposerStack(props: {
   const moveStackDrag = useCallback((event: React.PointerEvent) => {
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
-    const body = stackRef.current?.closest<HTMLElement>(".wb-detail-body");
-    const bodyWidth = body?.clientWidth || window.innerWidth;
-    const bodyHeight = body?.clientHeight || window.innerHeight;
+    const layout = stackRef.current?.closest<HTMLElement>(".workbench-layout");
+    const layoutWidth = layout?.clientWidth || window.innerWidth;
+    const layoutHeight = layout?.clientHeight || window.innerHeight;
     const selfWidth = stackRef.current?.clientWidth || 0;
     const selfHeight = stackRef.current?.clientHeight || 0;
-    const maxX = Math.max(4, bodyWidth - selfWidth - 4);
-    const maxY = Math.max(4, bodyHeight - selfHeight - 4);
+    const maxX = Math.max(4, layoutWidth - selfWidth - 4);
+    const maxY = Math.max(4, layoutHeight - selfHeight - 4);
     const x = Math.min(Math.max(4, drag.origX + event.clientX - drag.startX), maxX);
     const y = Math.min(Math.max(4, drag.origY - (event.clientY - drag.startY)), maxY);
     setPosition({ x, y });
@@ -87,6 +104,7 @@ export function TerminalComposerStack(props: {
   }, []);
 
   if (!items.length) return null;
+  const orderedItems = orderComposerStackItems(items);
 
   return (
     <div
@@ -108,7 +126,7 @@ export function TerminalComposerStack(props: {
         <ThemeIcon name="grip-vertical" size={16} aria-hidden="true" />
       </button>
       <div className="wb-terminal-composer-stack-list">
-        {items.map((item) => (
+        {orderedItems.map((item) => (
           <TerminalComposer
             key={item.pane.key}
             pane={item.pane}

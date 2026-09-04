@@ -218,18 +218,16 @@ export function TerminalComposer(props: {
       : suggestionsOpen && activeSuggestion >= 0
         ? `${listId}-suggestion-${activeSuggestion}`
         : undefined;
-  const visibleTips = tips.slice(0, COMPOSER_TIP_LIMIT);
-  const statusLabel = t(
-    status === "awaiting_user"
-      ? "desktop.workbench.sessionDot.awaiting"
-      : status === "connecting"
-        ? "desktop.workbench.sessionDot.connecting"
-        : status === "error"
-          ? "desktop.workbench.sessionDot.error"
-          : status === "running"
-            ? "desktop.workbench.sessionDot.running"
-            : "desktop.workbench.sessionDots"
-  );
+  const visibleTips = activePane ? tips.slice(0, COMPOSER_TIP_LIMIT) : [];
+  const statusLabel = status === "awaiting_user"
+    ? t("desktop.workbench.sessionDot.awaiting")
+    : status === "connecting"
+      ? t("desktop.workbench.sessionDot.connecting")
+      : status === "error"
+        ? t("desktop.workbench.sessionDot.error")
+        : status === "running"
+          ? t("desktop.workbench.sessionDot.running")
+          : t("desktop.workbench.sessionDot.idle");
 
   useEffect(() => {
     setDirectories(null);
@@ -590,6 +588,7 @@ export function TerminalComposer(props: {
         <span className="rail-session-dot-btn" data-status={status} aria-label={statusLabel} title={statusLabel}>
           <span className={statusDotClass(status)} aria-hidden="true" />
         </span>
+        <span className="rail-session-dot-status" title={statusLabel}>{statusLabel}</span>
         <span className="wb-terminal-composer-project">
           <span className="wb-terminal-composer-session-title">{sessionTitle}</span>
           {projectName ? <span className="wb-terminal-composer-project-name">{projectName}</span> : null}

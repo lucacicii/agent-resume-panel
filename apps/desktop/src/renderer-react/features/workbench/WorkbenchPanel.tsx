@@ -8429,9 +8429,9 @@ export function WorkbenchPanel(): ReactPortal | null {
               {!changes.some((section) => section.entries.length) ? <p className="muted wb-git-empty">{t("desktop.workbench.sidePanelNoChanges")}</p> : null}
             </> : <p className="muted wb-git-empty">{selectedProject ? t("desktop.workbench.sidePanelGitUnavailable") : t("desktop.workbench.sidePanelNoRoot")}</p>}</div>}
           </div>}</aside></> : null}
-          <TerminalComposerStack items={composerItems} onChange={setComposerDraft} onSendToTerminal={sendComposerToTerminal} onActivate={activateComposerPane} onOpenTip={openComposerTip} onClose={closeTerminal} registerFocus={registerComposerFocus} slashPhrases={settings?.workbench?.composerSlashPhrases ?? []} />
         </div>
       </main>
+      <TerminalComposerStack items={composerItems} onChange={setComposerDraft} onSendToTerminal={sendComposerToTerminal} onActivate={activateComposerPane} onOpenTip={openComposerTip} onClose={closeTerminal} registerFocus={registerComposerFocus} slashPhrases={settings?.workbench?.composerSlashPhrases ?? []} />
     </div>
     {branchPane ? <div className="wb-git-branch-popover" style={branchMenuPosition || undefined}>{branchResult?.mode === "nested" ? <div className="wb-git-branch-list">{renderBranchMenu()}</div> : <><div className="wb-git-branch-repo-head">{branchResult?.repoRoot || branchPane.repoRoot || branchPane.cwd}</div><div className="wb-git-branch-list">{renderBranchMenu()}</div></>}</div> : null}
     {editorContextMenu ? <div className="wb-context-menu notes-selection-menu" role="menu" style={{ left: Math.max(8, Math.min(editorContextMenu.x, window.innerWidth - 220)), top: Math.max(8, Math.min(editorContextMenu.y, window.innerHeight - 120)) }} onContextMenu={(event) => event.preventDefault()}>

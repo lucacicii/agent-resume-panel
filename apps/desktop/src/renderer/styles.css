@@ -7631,6 +7631,8 @@ code {
   flex: 1;
   min-height: 0;
   gap: 0;
+  position: relative;
+  overflow: hidden;
 }
 
 .wb-detail {
@@ -7780,7 +7782,6 @@ code {
   min-height: 0;
   min-width: 0;
   overflow: hidden;
-  position: relative;
 }
 
 .wb-detail-body .wb-terminal-shell {
@@ -11398,8 +11399,8 @@ textarea.wb-editor-host {
   flex-direction: column;
   align-items: stretch;
   gap: 6px;
-  width: min(560px, calc(100% - 24px));
-  max-width: min(560px, calc(100% - 24px));
+  width: 560px;
+  max-width: calc(100% - 8px);
   pointer-events: none;
 }
 
@@ -11410,7 +11411,7 @@ textarea.wb-editor-host {
 
 .wb-terminal-composer-stack-list {
   display: flex;
-  flex-direction: column-reverse;
+  flex-direction: column;
   gap: 8px;
   min-width: 0;
   flex: 1 1 auto;
@@ -11470,14 +11471,15 @@ textarea.wb-editor-host {
 }
 
 .wb-terminal-composer.is-active-pane {
-  border-color: var(--color-focus-ring);
+  border-color: var(--color-accent);
   background: var(--tui-compose-bg);
-  box-shadow: var(--tui-compose-shadow);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 35%, transparent),
+    var(--tui-compose-shadow);
 }
 
 .wb-terminal-composer.is-inactive-pane {
-  opacity: 0.78;
-  background: color-mix(in srgb, var(--color-secondary-bg) 70%, transparent);
+  opacity: 1;
+  background: var(--color-secondary-bg);
   border-color: var(--color-separator);
 }
 
@@ -11541,6 +11543,18 @@ textarea.wb-editor-host {
   place-items: center;
   flex-shrink: 0;
   pointer-events: none;
+}
+
+.wb-terminal-composer-head .rail-session-dot-status {
+  flex-shrink: 0;
+  max-width: 7em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  font-weight: var(--font-weight-medium, 500);
+  color: var(--color-label-secondary);
+  line-height: 1.2;
 }
 
 .wb-terminal-composer-head .rail-session-dot {

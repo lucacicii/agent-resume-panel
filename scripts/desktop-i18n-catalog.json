@@ -709,7 +709,8 @@
       "desktop.workbench.terminalComposerDirectoryNoMatch": "No matching folders",
       "desktop.workbench.terminalComposerDirectoryError": "Could not load folders: {0}",
       "desktop.workbench.terminalComposerDropHint": "Drop to insert path",
-      "desktop.workbench.terminalComposerTips": "Sent messages"
+      "desktop.workbench.terminalComposerTips": "Sent messages",
+      "desktop.workbench.sessionDot.idle": "Idle"
     },
     "sessions": {
       "desktop.sessions.sheetTitle": "Sessions (reference)",
@@ -1565,7 +1566,8 @@
       "desktop.workbench.terminalComposerDirectoryNoMatch": "没有匹配的文件夹",
       "desktop.workbench.terminalComposerDirectoryError": "无法加载文件夹：{0}",
       "desktop.workbench.terminalComposerDropHint": "拖放到此处插入路径",
-      "desktop.workbench.terminalComposerTips": "已发送消息"
+      "desktop.workbench.terminalComposerTips": "已发送消息",
+      "desktop.workbench.sessionDot.idle": "空闲"
     },
     "sessions": {
       "desktop.sessions.sheetTitle": "Sessions（参考）",
@@ -2125,7 +2127,8 @@
     "notes": {},
     "workbench": {
       "desktop.workbench.imSessionBadge": "IM",
-      "desktop.workbench.imSessionBadgeHint": "IM から作成"
+      "desktop.workbench.imSessionBadgeHint": "IM から作成",
+      "desktop.workbench.sessionDot.idle": "待機中"
     },
     "sessions": {
       "desktop.sessions.statusLabel": "状態",
