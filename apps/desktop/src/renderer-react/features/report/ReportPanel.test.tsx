@@ -93,6 +93,8 @@ function mockAgentResume(overrides: Partial<typeof window.agentResume> = {}): ty
     runDailyDigest: async () => ({ replaced: false, sessionCount: 1, summaryReadyCount: 1 }),
     runWeeklyDigest: async () => ({}),
     runMonthlyDigest: async () => ({}),
+    getPeriodInsights: async () => null,
+    setSessionStatus: async () => ({ summary: "State: completed" }),
     onDigestProgress: () => () => undefined,
     ...overrides
   } as unknown as typeof window.agentResume;
@@ -136,6 +138,7 @@ describe("ReportPanel", () => {
       runDailyDigest,
       runWeeklyDigest: async () => ({}),
       runMonthlyDigest: async () => ({}),
+      getPeriodInsights: async () => null,
       onDigestProgress: () => () => undefined
     } as unknown as typeof window.agentResume;
     render(<I18nProvider><ReportPanel /></I18nProvider>);
@@ -188,6 +191,7 @@ describe("ReportPanel", () => {
       runDailyDigest: async () => { await dailyDone; return { replaced: false, sessionCount: 1, summaryReadyCount: 1 }; },
       runWeeklyDigest,
       runMonthlyDigest: async () => ({}),
+      getPeriodInsights: async () => null,
       onDigestProgress: (callback: (event: DigestProgressEvent) => void) => { emitProgress = callback; return () => undefined; }
     } as unknown as typeof window.agentResume;
     render(<I18nProvider><ReportPanel /></I18nProvider>);

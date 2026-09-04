@@ -7,6 +7,7 @@ import {
   computeSuggestions,
   filterComposerSlashPhrases,
   slashQueryFromValue,
+  slashTokenAtCursor,
   TERMINAL_COMPOSER_STATIC_COMMANDS,
   TerminalComposer
 } from "./TerminalComposer";
@@ -153,12 +154,18 @@ afterEach(() => {
   cleanup();
 });
 
-describe("slashQueryFromValue", () => {
+describe("slashTokenAtCursor", () => {
   it("matches a leading slash token and ignores paths", () => {
+    expect(slashTokenAtCursor("/rev", 4)).toEqual({ start: 0, query: "rev" });
+    expect(slashTokenAtCursor("/", 1)).toEqual({ start: 0, query: "" });
+    expect(slashTokenAtCursor("/usr/bin", 8)).toBeNull();
     expect(slashQueryFromValue("/rev")).toBe("rev");
-    expect(slashQueryFromValue("/")).toBe("");
-    expect(slashQueryFromValue("/usr/bin")).toBeNull();
-    expect(slashQueryFromValue("please /review")).toBeNull();
+  });
+
+  it("matches a slash token after whitespace in the middle of text", () => {
+    expect(slashTokenAtCursor("please /re", 10)).toEqual({ start: 7, query: "re" });
+    expect(slashTokenAtCursor("line\n/fix", 10)).toEqual({ start: 5, query: "fix" });
+    expect(slashTokenAtCursor("please/re", 9)).toBeNull();
   });
 });
 
@@ -394,6 +401,19 @@ describe("TerminalComposer", () => {
     expect(onChange).toHaveBeenCalledWith("Please review this change.");
     expect(onSendToTerminal).not.toHaveBeenCalled();
     expect(screen.queryByRole("listbox", { name: "Slash phrases" })).toBeNull();
+  });
+
+  it("inserts a slash phrase in the middle of existing text", async () => {
+    const { onChange, onSendToTerminal } = await renderComposer({
+      slashPhrases: [{ trigger: "review", phrase: "Please review this change." }]
+    });
+    focusInput();
+    fireEvent.change(textbox(), { target: { value: "please /re" } });
+    const listbox = await screen.findByRole("listbox", { name: "Slash phrases" });
+    expect(within(listbox).getByText("/review")).toBeTruthy();
+    fireEvent.keyDown(textbox(), { key: "Enter" });
+    expect(onChange).toHaveBeenCalledWith("please Please review this change.");
+    expect(onSendToTerminal).not.toHaveBeenCalled();
   });
 
   it("does not open slash phrases without configuration or for path-like input", async () => {

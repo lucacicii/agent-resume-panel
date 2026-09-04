@@ -12,6 +12,7 @@ import type {
   ReportEntry,
   ReportLinkRow,
   ReportSearchHit,
+  PeriodInsights,
   NoteIndexProgressEvent,
   PanelSettings,
   DailyDigestRefreshCheck,
@@ -354,6 +355,11 @@ export interface DesktopApi {
     nativeRenamed: boolean;
     nativeError?: string;
   }>;
+  setSessionStatus(args: {
+    provider: string;
+    id: string;
+    status: "completed" | "active" | "blocked";
+  }): Promise<{ summary: string }>;
   hideSession(args: { provider: string; id: string }): Promise<{ ok: boolean }>;
   hideSessions(args: { sessions: Array<{ provider: string; id: string }> }): Promise<{ ok: boolean }>;
   moveSessionToProject(args: {
@@ -1132,6 +1138,7 @@ export interface DesktopApi {
     fromMs?: number;
     toMs?: number;
   }): Promise<ReportEntry[]>;
+  getPeriodInsights(args: { fromMs: number; toMs: number }): Promise<PeriodInsights | null>;
   getReportEntry(reportId: string): Promise<ReportEntry | null>;
   getReportLinks(reportId: string): Promise<ReportLinkRow[]>;
   listDailyDigests(limit?: number): Promise<ReportEntry[]>;
@@ -1617,6 +1624,7 @@ const api: DesktopApi = {
   autoRenameSession: (args) => ipcRenderer.invoke("sessions:autoRename", args),
   suggestSessionRename: (args) => ipcRenderer.invoke("sessions:suggestRename", args),
   renameSession: (args) => ipcRenderer.invoke("sessions:rename", args),
+  setSessionStatus: (args) => ipcRenderer.invoke("sessions:setStatus", args),
   hideSession: (args) => ipcRenderer.invoke("sessions:hide", args),
   hideSessions: (args) => ipcRenderer.invoke("sessions:hideMany", args),
   moveSessionToProject: (args) => ipcRenderer.invoke("sessions:moveToProject", args),
@@ -1858,6 +1866,7 @@ const api: DesktopApi = {
     return () => ipcRenderer.removeListener("workbench:cmdShiftF", handler);
   },
   listReports: (opts) => ipcRenderer.invoke("report:list", opts),
+  getPeriodInsights: (args) => ipcRenderer.invoke("report:getPeriodInsights", args),
   getReportEntry: (reportId) => ipcRenderer.invoke("report:getEntry", reportId),
   getReportLinks: (reportId) => ipcRenderer.invoke("report:getLinks", reportId),
   listDailyDigests: (limit) => ipcRenderer.invoke("report:listDaily", limit),

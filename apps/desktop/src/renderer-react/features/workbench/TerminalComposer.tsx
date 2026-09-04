@@ -44,18 +44,34 @@ export const TERMINAL_COMPOSER_STATIC_COMMANDS = [
 
 const MAX_SUGGESTIONS = 6;
 
-function hashTokenAtCursor(value: string, cursor: number): { start: number; query: string } | null {
+function tokenStartAtCursor(value: string, cursor: number): number {
   const before = value.slice(0, cursor);
-  const start = Math.max(before.lastIndexOf(" "), before.lastIndexOf("\n"), before.lastIndexOf("\t")) + 1;
-  const token = before.slice(start);
+  return Math.max(before.lastIndexOf(" "), before.lastIndexOf("\n"), before.lastIndexOf("\t")) + 1;
+}
+
+function hashTokenAtCursor(value: string, cursor: number): { start: number; query: string } | null {
+  const start = tokenStartAtCursor(value, cursor);
+  const token = value.slice(start, cursor);
   if (!token.startsWith("#") || token.slice(1).includes("#")) return null;
   return { start, query: token.slice(1) };
 }
 
-/** Leading `/token` only — paths like `/usr/bin` never open the phrase menu. */
+/**
+ * `/token` at the cursor, including mid-text after whitespace.
+ * Paths like `/usr/bin` never open the phrase menu.
+ */
+export function slashTokenAtCursor(value: string, cursor: number): { start: number; query: string } | null {
+  const start = tokenStartAtCursor(value, cursor);
+  const token = value.slice(start, cursor);
+  if (!token.startsWith("/")) return null;
+  const query = token.slice(1);
+  if (query.includes("/") || /\s/.test(query)) return null;
+  return { start, query };
+}
+
+/** @deprecated Prefer slashTokenAtCursor; kept for existing tests. */
 export function slashQueryFromValue(value: string): string | null {
-  const match = value.match(/^\/([^\s\/]*)$/);
-  return match ? match[1] : null;
+  return slashTokenAtCursor(value, value.length)?.query ?? null;
 }
 
 export function filterComposerSlashPhrases(
@@ -161,10 +177,11 @@ export function TerminalComposer(props: {
   const directoryItemRefs = useRef<Array<HTMLLIElement | null>>([]);
   const directoryRoot = pane.projectPath || pane.cwd;
   const hashToken = useMemo(() => hashTokenAtCursor(value, cursor), [cursor, value]);
-  const slashQuery = useMemo(() => slashQueryFromValue(value), [value]);
+  const slashToken = useMemo(() => slashTokenAtCursor(value, cursor), [cursor, value]);
+  const slashQuery = slashToken?.query ?? null;
   const slashMatches = useMemo(
-    () => (slashQuery === null ? [] : filterComposerSlashPhrases(slashPhrases, slashQuery)),
-    [slashPhrases, slashQuery]
+    () => (slashToken === null ? [] : filterComposerSlashPhrases(slashPhrases, slashToken.query)),
+    [slashPhrases, slashToken]
   );
   const directorySuggestions = useMemo(() => {
     if (!hashToken || !directories) return [];
@@ -336,15 +353,21 @@ export function TerminalComposer(props: {
   }, [applyValue]);
 
   const acceptSlashPhrase = useCallback((phrase: WorkbenchComposerSlashPhrase) => {
-    applyValue(phrase.phrase);
+    const start = slashToken?.start ?? 0;
+    const prefix = value.slice(0, start);
+    const suffix = value.slice(cursor);
+    const padLeft = prefix && !/\s$/.test(prefix) ? " " : "";
+    const padRight = suffix && !/^\s/.test(suffix) ? " " : "";
+    const inserted = `${padLeft}${phrase.phrase}${padRight}`;
+    const next = `${prefix}${inserted}${suffix}`;
+    const nextCursor = start + inserted.length;
+    applyValue(next);
+    setCursor(nextCursor);
     setSlashDismissed(true);
     setActiveSlash(0);
-    requestAnimationFrame(() => {
-      const el = inputRef.current;
-      if (el) el.setSelectionRange(el.value.length, el.value.length);
-    });
+    requestAnimationFrame(() => inputRef.current?.setSelectionRange(nextCursor, nextCursor));
     inputRef.current?.focus();
-  }, [applyValue]);
+  }, [applyValue, cursor, slashToken, value]);
 
   const acceptDirectory = useCallback((name: string) => {
     if (!hashToken) return;

@@ -22,6 +22,7 @@ import {
   estimateDigestRun,
   expandHome,
   getReportEntryById,
+  getPeriodInsights,
   getSessionById,
   getUsageSummary,
   appendComposerSend,
@@ -31,6 +32,7 @@ import {
   hideProjectAction,
   listLlmUsageEvents,
   listProjects,
+  setSessionDeliveryStatusInCatalog,
   listReportEntries,
   listReportEntriesInRange,
   listReportLinks,
@@ -2205,6 +2207,26 @@ function registerIpc(): void {
   );
 
   ipcMain.handle(
+    "sessions:setStatus",
+    async (
+      _event,
+      args: {
+        provider: AgentProvider;
+        id: string;
+        status: "completed" | "active" | "blocked";
+      }
+    ) => {
+      const paths = await loadPanelDbPaths();
+      return setSessionDeliveryStatusInCatalog(
+        paths.catalogDb,
+        args.provider,
+        args.id,
+        args.status
+      );
+    }
+  );
+
+  ipcMain.handle(
     "sessions:hide",
     async (_event, args: { provider: AgentProvider; id: string }) => {
       // Drop live ACP process before deleting store/catalog so remove cannot race reconnect.
@@ -2544,6 +2566,33 @@ function registerIpc(): void {
         String(args?.provider || ""),
         String(args?.agentSessionId || "")
       );
+    }
+  );
+
+  ipcMain.handle(
+    "report:getPeriodInsights",
+    async (_event, args?: { fromMs?: number; toMs?: number }) => {
+      try {
+        const paths = await loadPanelDbPaths();
+        const fromMs = Number(args?.fromMs);
+        const toMs = Number(args?.toMs);
+        if (!Number.isFinite(fromMs) || !Number.isFinite(toMs)) {
+          return null;
+        }
+        return await getPeriodInsights({
+          catalogDb: paths.catalogDb,
+          desktopDb: paths.desktopDb,
+          fromMs,
+          toMs
+        });
+      } catch (error) {
+        void recordAppError({
+          source: "report",
+          message: "report:getPeriodInsights failed.",
+          error
+        });
+        return null;
+      }
     }
   );
 

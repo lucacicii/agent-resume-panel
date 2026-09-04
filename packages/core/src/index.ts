@@ -174,6 +174,7 @@ export type {
 export {
   setUserTitleInCatalog,
   setSessionSummaryInCatalog,
+  setSessionDeliveryStatusInCatalog,
   hideSessionsInCatalog,
   unhideAllSessionsInCatalog,
   unhideSessionInCatalog,
@@ -421,6 +422,19 @@ export type { RunMonthlyDigestOptions, RunMonthlyDigestResult } from "./report/m
 export { searchReportsByEmbedding } from "./report/search";
 export type { SearchReportsOptions, ReportSearchHit } from "./report/search";
 export { cosineSimilarity, parseEmbeddingJson } from "./report/cosine";
+export { getPeriodInsights } from "./report/insights";
+export type {
+  PeriodInsights,
+  PeriodDailyTrendItem,
+  PeriodLlmUsageTrendPoint,
+  PeriodSessionStats,
+  PeriodBlockedSession,
+  PeriodActiveSession,
+  PeriodTagItem,
+  PeriodTagStats,
+  PeriodLlmUsage,
+  GetPeriodInsightsOptions
+} from "./report/insights";
 
 export type { PreviewHomes, PreviewMessage, SessionPreviewResult } from "./transcript/types";
 export {

@@ -193,3 +193,43 @@ export async function setSessionSummaryInCatalog(
     throw new Error(`Session not found in catalog: ${provider}:${sessionId}`);
   }
 }
+
+export async function setSessionDeliveryStatusInCatalog(
+  dbPath: string,
+  provider: AgentProvider,
+  sessionId: string,
+  status: "completed" | "active" | "blocked"
+): Promise<{ summary: string }> {
+  const rows = await runSqliteJson<{
+    session_summary: string | null;
+    session_summary_language: string | null;
+  }>(
+    dbPath,
+    `SELECT session_summary, session_summary_language FROM sessions
+     WHERE provider = '${escapeSqlLiteral(provider)}' AND agent_session_id = '${escapeSqlLiteral(sessionId)}'
+     LIMIT 1;`
+  );
+
+  if (!rows.length) {
+    throw new Error(`Session not found in catalog: ${provider}:${sessionId}`);
+  }
+
+  const existing = rows[0].session_summary?.trim() || "";
+  const language = rows[0].session_summary_language?.trim() || "zh-CN";
+
+  let updatedSummary = "";
+  if (existing) {
+    if (/(?:^|\n)State:\s*[^\n]*/i.test(existing)) {
+      updatedSummary = existing.replace(/(?:^|\n)State:\s*[^\n]*/i, (match) => {
+        return match.startsWith("\n") ? `\nState: ${status}` : `State: ${status}`;
+      });
+    } else {
+      updatedSummary = `State: ${status}\n${existing}`;
+    }
+  } else {
+    updatedSummary = `State: ${status}\nOutcome: Manual state change\nOpen work: None\nNext action: None\nEvidence: Manually set by user`;
+  }
+
+  await setSessionSummaryInCatalog(dbPath, provider, sessionId, language, updatedSummary);
+  return { summary: updatedSummary };
+}
