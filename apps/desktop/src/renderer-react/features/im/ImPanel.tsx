@@ -13,6 +13,7 @@ import { type AskToolPrefs } from "../../components/ToolSettingsPopover";
 import { Sheet } from "../../components/Sheet";
 import { CitationSheet, extractCitationsFromMessage, isNote, isSession, periodFromCitation } from "./CitationSheet";
 import { desktopApi } from "../../bridge";
+import { SelectionSendItems } from "../../selection/SelectionSendMenu";
 import { notifyDesktop } from "../../components/Notifications";
 import { useI18n } from "../../i18n";
 import { storedWidth } from "../../storage";
@@ -124,6 +125,7 @@ export function ImPanel(): ReactPortal | null {
     x: number;
     y: number;
     text: string;
+    highlightedText: string;
     message: ImMessage;
   } | null>(null);
   const [selectionResult, setSelectionResult] = useState<{
@@ -581,10 +583,12 @@ export function ImPanel(): ReactPortal | null {
     if (!text) return;
     event.preventDefault();
     setSelectionResult(null);
+    const highlighted = selectedTextIn(event.currentTarget);
     setSelectionMenu({
       x: Math.min(event.clientX, window.innerWidth - 220),
       y: Math.min(event.clientY, window.innerHeight - 160),
       text,
+      highlightedText: highlighted,
       message
     });
   }, [selectedTextIn]);
@@ -1827,6 +1831,16 @@ export function ImPanel(): ReactPortal | null {
           role="menu"
           style={{ left: selectionMenu.x, top: selectionMenu.y }}
         >
+          {selectionMenu.highlightedText ? (
+            <>
+              <SelectionSendItems
+                text={selectionMenu.highlightedText}
+                onSent={() => setSelectionMenu(null)}
+                className="im-selection-menu notes-selection-menu"
+              />
+              <hr className="context-menu-separator" />
+            </>
+          ) : null}
           {selectionActions.map((action) => (
             <button key={action.actionId} type="button" role="menuitem" onClick={() => void runSelectionAction(action)}>
               {actionLabel(action)}

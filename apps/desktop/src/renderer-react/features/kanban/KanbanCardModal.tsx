@@ -362,6 +362,7 @@ export function KanbanCardModal({ note, session, onClose, onNoteMoved }: KanbanC
               className="notes-editor-host kanban-note-editor"
               value={noteContent}
               language="markdown"
+              selectionProjectPath={note?.projectPath}
               ariaLabel={t("desktop.notes.editorPlaceholder")}
               onChange={editNote}
               onBlur={() => void saveNote()}

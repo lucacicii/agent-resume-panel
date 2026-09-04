@@ -4,6 +4,7 @@ import { I18nProvider } from "./i18n";
 import { AppChrome } from "./components/AppChrome";
 import { StartupMask } from "./components/StartupMask";
 import { Notifications } from "./components/Notifications";
+import { SelectionSendHost } from "./selection/SelectionSendHost";
 import { useI18n } from "./i18n";
 import { SessionsSheet } from "./features/SessionsSheet";
 import { SettingsPanel } from "./features/settings/SettingsPanel";
@@ -193,6 +194,7 @@ function MainRendererRuntime(): React.JSX.Element {
       <KanbanPanel />
       <ImPanel />
       <SessionsSheet />
+      <SelectionSendHost />
       <Notifications />
     </>
   );

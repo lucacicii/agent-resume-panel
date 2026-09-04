@@ -677,6 +677,7 @@ export function FloatingSessionNote({
           onChange={updateContent}
           ariaLabel={t("desktop.workbench.floatingNoteEditor")}
           language="markdown"
+          selectionProjectPath={isSessionTarget(target) || target.kind === "project" ? target.projectPath : undefined}
           fontSize={13}
           wordWrap
         />
