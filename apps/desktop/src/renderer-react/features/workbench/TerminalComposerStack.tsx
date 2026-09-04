@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ThemeIcon } from "../../components/ThemeIcon";
 import { useI18n } from "../../i18n";
 import type { SessionDotStatus } from "./activeSessionDots";
+import type { WorkbenchComposerSlashPhrase } from "@agent-resume/core";
 import {
   TerminalComposer,
   type ComposerSendTip,
@@ -33,8 +34,9 @@ export function TerminalComposerStack(props: {
   onOpenTip: (paneKey: string, tip: ComposerSendTip) => void;
   onClose: (paneKey: string) => void;
   registerFocus: (key: string, focus: () => void) => () => void;
+  slashPhrases?: WorkbenchComposerSlashPhrase[];
 }): React.JSX.Element | null {
-  const { items, onChange, onSendToTerminal, onActivate, onOpenTip, onClose, registerFocus } = props;
+  const { items, onChange, onSendToTerminal, onActivate, onOpenTip, onClose, registerFocus, slashPhrases = [] } = props;
   const { t } = useI18n();
   const stackRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState(() => loadTerminalComposerPosition(COMPOSER_STACK_POSITION_KEY));
@@ -123,6 +125,7 @@ export function TerminalComposerStack(props: {
             onOpenTip={(tip) => onOpenTip(item.pane.key, tip)}
             onClose={() => onClose(item.pane.key)}
             registerFocus={registerFocus}
+            slashPhrases={slashPhrases}
           />
         ))}
       </div>

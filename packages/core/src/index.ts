@@ -56,6 +56,7 @@ export type {
   WorkbenchEditorTabSize,
   WorkbenchEditorAutoSaveDelayMs,
   WorkbenchProjectContextMenuAction,
+  WorkbenchComposerSlashPhrase,
   WorkbenchNewSessionTarget,
   AcpAgentProvider,
   AcpAutoApprovePermissions,
@@ -87,6 +88,7 @@ export {
 } from "./settings/types";
 export {
   normalizeWorkbenchProjectContextMenu,
+  normalizeWorkbenchComposerSlashPhrases,
   normalizeWorkbenchTerminalTheme,
   normalizeWorkbenchTerminalEngine,
   normalizeWorkbenchTerminalRenderer,

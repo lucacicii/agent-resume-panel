@@ -22,6 +22,7 @@ import {
   type DesktopTheme,
   type DesktopThemeEffects,
   type DesktopVisualThemeId,
+  type WorkbenchComposerSlashPhrase,
   type WorkbenchTerminalEngine,
   type WorkbenchTerminalRenderer,
   type WorkbenchTerminalThemeId
@@ -101,6 +102,37 @@ export function normalizeWorkbenchProjectContextMenu(
     output.push(entry);
   }
   // Empty explicit array is allowed (hide all); only fall back when unset/invalid.
+  return output;
+}
+
+const COMPOSER_SLASH_TRIGGER = /^[A-Za-z0-9_-]{1,40}$/;
+const COMPOSER_SLASH_PHRASE_MAX = 4000;
+const COMPOSER_SLASH_DESCRIPTION_MAX = 200;
+const COMPOSER_SLASH_PHRASES_MAX = 100;
+
+export function normalizeWorkbenchComposerSlashPhrases(
+  value: WorkbenchComposerSlashPhrase[] | undefined | null
+): WorkbenchComposerSlashPhrase[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const output: WorkbenchComposerSlashPhrase[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object") continue;
+    const trigger = String(entry.trigger ?? "").trim().replace(/^\/+/, "");
+    const phrase = String(entry.phrase ?? "");
+    if (!COMPOSER_SLASH_TRIGGER.test(trigger) || !phrase.trim()) continue;
+    const key = trigger.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const description = String(entry.description ?? "").trim();
+    const item: WorkbenchComposerSlashPhrase = {
+      trigger,
+      phrase: phrase.slice(0, COMPOSER_SLASH_PHRASE_MAX)
+    };
+    if (description) item.description = description.slice(0, COMPOSER_SLASH_DESCRIPTION_MAX);
+    output.push(item);
+    if (output.length >= COMPOSER_SLASH_PHRASES_MAX) break;
+  }
   return output;
 }
 
@@ -271,6 +303,9 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
       ),
       projectContextMenu: normalizeWorkbenchProjectContextMenu(
         partial.workbench?.projectContextMenu ?? base.workbench?.projectContextMenu
+      ),
+      composerSlashPhrases: normalizeWorkbenchComposerSlashPhrases(
+        partial.workbench?.composerSlashPhrases ?? base.workbench?.composerSlashPhrases
       ),
       transcriptFontSize: normalizeWorkbenchTranscriptFontSize(
         partial.workbench?.transcriptFontSize ?? base.workbench?.transcriptFontSize

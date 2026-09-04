@@ -1937,6 +1937,19 @@ html[data-window-mode="main"] body > main {
   gap: 8px;
 }
 
+.settings-slash-phrase {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  padding-bottom: var(--space-3, 12px);
+  border-bottom: 1px solid var(--color-separator);
+}
+
+.settings-slash-phrase:last-of-type {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
 .settings-mcp-actions {
   display: inline-flex;
   align-items: center;
@@ -10643,6 +10656,17 @@ textarea.wb-editor-host {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.wb-terminal-composer-suggestion-desc {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-label-secondary);
+  font-family: inherit;
+  font-size: 11px;
 }
 
 .wb-terminal-composer-suggestion-kbd {

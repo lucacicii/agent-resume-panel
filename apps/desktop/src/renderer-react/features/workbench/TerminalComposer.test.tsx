@@ -5,6 +5,8 @@ import { I18nProvider } from "../../i18n";
 import { WB_PATH_DND_MIME } from "./workbenchDnd";
 import {
   computeSuggestions,
+  filterComposerSlashPhrases,
+  slashQueryFromValue,
   TERMINAL_COMPOSER_STATIC_COMMANDS,
   TerminalComposer
 } from "./TerminalComposer";
@@ -14,6 +16,7 @@ const COMPOSER_MESSAGES: Record<string, string> = {
   "desktop.workbench.terminalComposerHint": "Click to type. Enter pastes into the terminal without sending. Shift+Enter adds a new line.",
   "desktop.workbench.terminalComposerSend": "Send to terminal",
   "desktop.workbench.terminalComposerSuggestions": "Command suggestions",
+  "desktop.workbench.terminalComposerSlashSuggestions": "Slash phrases",
   "desktop.workbench.terminalComposerDirectorySuggestions": "Directory suggestions",
   "desktop.workbench.terminalComposerDirectoryLoading": "Loading directories…",
   "desktop.workbench.terminalComposerDirectoryEmpty": "No folders in this project",
@@ -55,6 +58,7 @@ async function renderComposer(options: {
   onActivate?: () => void;
   onOpenTip?: (tip: { id: string; text: string; createdAtMs: number }) => void;
   onClose?: () => void;
+  slashPhrases?: Array<{ trigger: string; phrase: string; description?: string }>;
 } = {}): Promise<{
   map: RegisterMap;
   container: HTMLElement;
@@ -103,6 +107,7 @@ async function renderComposer(options: {
         onOpenTip={options.onOpenTip}
         onClose={onClose}
         registerFocus={registerSpy}
+        slashPhrases={options.slashPhrases}
       />
     );
   }
@@ -146,6 +151,26 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+});
+
+describe("slashQueryFromValue", () => {
+  it("matches a leading slash token and ignores paths", () => {
+    expect(slashQueryFromValue("/rev")).toBe("rev");
+    expect(slashQueryFromValue("/")).toBe("");
+    expect(slashQueryFromValue("/usr/bin")).toBeNull();
+    expect(slashQueryFromValue("please /review")).toBeNull();
+  });
+});
+
+describe("filterComposerSlashPhrases", () => {
+  it("filters by case-insensitive trigger prefix", () => {
+    const phrases = [
+      { trigger: "review", phrase: "Please review." },
+      { trigger: "fix", phrase: "Fix tests." }
+    ];
+    expect(filterComposerSlashPhrases(phrases, "Re").map((item) => item.trigger)).toEqual(["review"]);
+    expect(filterComposerSlashPhrases(phrases, "")).toEqual(phrases);
+  });
 });
 
 describe("computeSuggestions", () => {
@@ -351,6 +376,63 @@ describe("TerminalComposer", () => {
     fireEvent.pointerDown(textbox());
     focusInput();
     expect(onActivate).toHaveBeenCalled();
+  });
+
+  it("opens slash phrases on a leading / and inserts without sending", async () => {
+    const { onChange, onSendToTerminal } = await renderComposer({
+      slashPhrases: [
+        { trigger: "review", phrase: "Please review this change.", description: "code review" },
+        { trigger: "fix", phrase: "Fix the failing tests." }
+      ]
+    });
+    focusInput();
+    fireEvent.change(textbox(), { target: { value: "/re" } });
+    const listbox = await screen.findByRole("listbox", { name: "Slash phrases" });
+    expect(within(listbox).getByText("/review")).toBeTruthy();
+    expect(within(listbox).queryByText("/fix")).toBeNull();
+    fireEvent.keyDown(textbox(), { key: "Enter" });
+    expect(onChange).toHaveBeenCalledWith("Please review this change.");
+    expect(onSendToTerminal).not.toHaveBeenCalled();
+    expect(screen.queryByRole("listbox", { name: "Slash phrases" })).toBeNull();
+  });
+
+  it("does not open slash phrases without configuration or for path-like input", async () => {
+    await renderComposer();
+    focusInput();
+    fireEvent.change(textbox(), { target: { value: "/review" } });
+    expect(screen.queryByRole("listbox", { name: "Slash phrases" })).toBeNull();
+    cleanup();
+    await renderComposer({
+      slashPhrases: [{ trigger: "review", phrase: "Please review this change." }]
+    });
+    focusInput();
+    fireEvent.change(textbox(), { target: { value: "/usr/bin" } });
+    expect(screen.queryByRole("listbox", { name: "Slash phrases" })).toBeNull();
+  });
+
+  it("keeps directory suggestions above slash phrases", async () => {
+    await renderComposer({
+      projectPath: "/work/app",
+      slashPhrases: [{ trigger: "src", phrase: "look at src" }]
+    });
+    focusInput();
+    fireEvent.change(textbox(), { target: { value: "#s" } });
+    const listbox = await screen.findByRole("listbox", { name: "Directory suggestions" });
+    expect(await within(listbox).findByText("#src")).toBeTruthy();
+    expect(screen.queryByRole("listbox", { name: "Slash phrases" })).toBeNull();
+  });
+
+  it("Escape dismisses slash phrases without sending", async () => {
+    const { onSendToTerminal } = await renderComposer({
+      slashPhrases: [{ trigger: "review", phrase: "Please review this change." }]
+    });
+    focusInput();
+    fireEvent.change(textbox(), { target: { value: "/re" } });
+    await screen.findByRole("listbox", { name: "Slash phrases" });
+    fireEvent.keyDown(textbox(), { key: "Escape" });
+    expect(screen.queryByRole("listbox", { name: "Slash phrases" })).toBeNull();
+    expect(onSendToTerminal).not.toHaveBeenCalled();
+    expect(textbox().value).toBe("/re");
   });
 
   it("renders user-message tips above the input", async () => {

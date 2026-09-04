@@ -8,6 +8,7 @@ import {
   shellQuotePath,
   WB_PATH_DND_MIME
 } from "./workbenchDnd";
+import type { WorkbenchComposerSlashPhrase } from "@agent-resume/core";
 import {
   loadTerminalComposerHistory,
   pushTerminalComposerHistory
@@ -49,6 +50,20 @@ function hashTokenAtCursor(value: string, cursor: number): { start: number; quer
   const token = before.slice(start);
   if (!token.startsWith("#") || token.slice(1).includes("#")) return null;
   return { start, query: token.slice(1) };
+}
+
+/** Leading `/token` only — paths like `/usr/bin` never open the phrase menu. */
+export function slashQueryFromValue(value: string): string | null {
+  const match = value.match(/^\/([^\s\/]*)$/);
+  return match ? match[1] : null;
+}
+
+export function filterComposerSlashPhrases(
+  phrases: WorkbenchComposerSlashPhrase[],
+  query: string
+): WorkbenchComposerSlashPhrase[] {
+  const needle = query.toLowerCase();
+  return phrases.filter((phrase) => phrase.trigger.toLowerCase().startsWith(needle));
 }
 
 function statusDotClass(status: SessionDotStatus): string {
@@ -106,6 +121,7 @@ export function TerminalComposer(props: {
   onOpenTip?: (tip: ComposerSendTip) => void;
   onClose: () => void;
   registerFocus: (key: string, focus: () => void) => () => void;
+  slashPhrases?: WorkbenchComposerSlashPhrase[];
 }): React.JSX.Element {
   const {
     pane,
@@ -121,7 +137,8 @@ export function TerminalComposer(props: {
     onActivate,
     onOpenTip,
     onClose,
-    registerFocus
+    registerFocus,
+    slashPhrases = []
   } = props;
   const { t } = useI18n();
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -139,9 +156,16 @@ export function TerminalComposer(props: {
   const [directoriesLoading, setDirectoriesLoading] = useState(false);
   const [directoriesError, setDirectoriesError] = useState("");
   const [directoriesDismissed, setDirectoriesDismissed] = useState(false);
+  const [slashDismissed, setSlashDismissed] = useState(false);
+  const [activeSlash, setActiveSlash] = useState(0);
   const directoryItemRefs = useRef<Array<HTMLLIElement | null>>([]);
   const directoryRoot = pane.projectPath || pane.cwd;
   const hashToken = useMemo(() => hashTokenAtCursor(value, cursor), [cursor, value]);
+  const slashQuery = useMemo(() => slashQueryFromValue(value), [value]);
+  const slashMatches = useMemo(
+    () => (slashQuery === null ? [] : filterComposerSlashPhrases(slashPhrases, slashQuery)),
+    [slashPhrases, slashQuery]
+  );
   const directorySuggestions = useMemo(() => {
     if (!hashToken || !directories) return [];
     const query = hashToken.query.toLowerCase();
@@ -161,11 +185,22 @@ export function TerminalComposer(props: {
 
   const suggestions = useMemo(() => computeSuggestions(value, history), [value, history]);
   const directoryOpen = focused && Boolean(hashToken) && !directoriesDismissed;
-  const suggestionsOpen = !directoryOpen && focused && suggestions.length > 0 && !suggestionsDismissed;
-  const activeListId = directoryOpen ? `${listId}-directories` : suggestionsOpen ? `${listId}-suggestions` : undefined;
+  const slashOpen = !directoryOpen && focused && slashMatches.length > 0 && !slashDismissed;
+  const suggestionsOpen = !directoryOpen && !slashOpen && focused && suggestions.length > 0 && !suggestionsDismissed;
+  const activeListId = directoryOpen
+    ? `${listId}-directories`
+    : slashOpen
+      ? `${listId}-slash`
+      : suggestionsOpen
+        ? `${listId}-suggestions`
+        : undefined;
   const activeOptionId = directoryOpen
     ? directorySuggestions.length ? `${listId}-directory-${activeDirectory}` : undefined
-    : suggestionsOpen && activeSuggestion >= 0 ? `${listId}-suggestion-${activeSuggestion}` : undefined;
+    : slashOpen && slashMatches.length
+      ? `${listId}-slash-${activeSlash}`
+      : suggestionsOpen && activeSuggestion >= 0
+        ? `${listId}-suggestion-${activeSuggestion}`
+        : undefined;
   const visibleTips = tips.slice(0, COMPOSER_TIP_LIMIT);
   const statusLabel = t(
     status === "awaiting_user"
@@ -185,6 +220,10 @@ export function TerminalComposer(props: {
     setDirectoriesDismissed(false);
     setActiveDirectory(0);
   }, [directoryRoot]);
+
+  useEffect(() => {
+    setActiveSlash(0);
+  }, [slashQuery, slashPhrases]);
 
   useEffect(() => {
     if (!directoryOpen || !directorySuggestions.length) return;
@@ -280,8 +319,10 @@ export function TerminalComposer(props: {
     draftRef.current = value;
     setSuggestionsDismissed(false);
     setDirectoriesDismissed(false);
+    setSlashDismissed(false);
     setActiveSuggestion(0);
     setActiveDirectory(0);
+    setActiveSlash(0);
     onSendToTerminal();
     applyValue("");
     draftRef.current = "";
@@ -291,6 +332,17 @@ export function TerminalComposer(props: {
     applyValue(command);
     setSuggestionsDismissed(true);
     setActiveSuggestion(0);
+    inputRef.current?.focus();
+  }, [applyValue]);
+
+  const acceptSlashPhrase = useCallback((phrase: WorkbenchComposerSlashPhrase) => {
+    applyValue(phrase.phrase);
+    setSlashDismissed(true);
+    setActiveSlash(0);
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (el) el.setSelectionRange(el.value.length, el.value.length);
+    });
     inputRef.current?.focus();
   }, [applyValue]);
 
@@ -314,8 +366,10 @@ export function TerminalComposer(props: {
     draftRef.current = next;
     setSuggestionsDismissed(false);
     setDirectoriesDismissed(false);
+    setSlashDismissed(false);
     setActiveSuggestion(0);
     setActiveDirectory(0);
+    setActiveSlash(0);
     setCursor(event.target.selectionStart || next.length);
   }, [applyValue]);
 
@@ -344,6 +398,32 @@ export function TerminalComposer(props: {
           event.preventDefault();
           const pick = directorySuggestions[activeDirectory];
           if (pick) acceptDirectory(pick);
+          return;
+        }
+      }
+    }
+
+    if (slashOpen) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setSlashDismissed(true);
+        return;
+      }
+      if (slashMatches.length) {
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          setActiveSlash((current) => (current + 1) % slashMatches.length);
+          return;
+        }
+        if (event.key === "ArrowUp") {
+          event.preventDefault();
+          setActiveSlash((current) => (current - 1 + slashMatches.length) % slashMatches.length);
+          return;
+        }
+        if (isEnter || isTab) {
+          event.preventDefault();
+          const pick = slashMatches[activeSlash] ?? slashMatches[0];
+          if (pick) acceptSlashPhrase(pick);
           return;
         }
       }
@@ -435,7 +515,7 @@ export function TerminalComposer(props: {
       }
       return;
     }
-  }, [acceptDirectory, acceptSuggestion, activeDirectory, applyValue, directoryOpen, directorySuggestions, history, historyIndex, sendToTerminal, suggestions, suggestionsOpen, activeSuggestion, value]);
+  }, [acceptDirectory, acceptSlashPhrase, acceptSuggestion, activeDirectory, activeSlash, applyValue, directoryOpen, directorySuggestions, history, historyIndex, sendToTerminal, slashMatches, slashOpen, suggestions, suggestionsOpen, activeSuggestion, value]);
 
   const onDragEnter = (event: React.DragEvent) => {
     if (!hasWorkbenchPathDnd(event.dataTransfer)) return;
@@ -594,6 +674,29 @@ export function TerminalComposer(props: {
               <span className="wb-terminal-composer-suggestion-text">{directories && directories.length ? t("desktop.workbench.terminalComposerDirectoryNoMatch") : t("desktop.workbench.terminalComposerDirectoryEmpty")}</span>
             </li>
           )}
+        </ul>
+      ) : slashOpen ? (
+        <ul
+          id={`${listId}-slash`}
+          className="wb-terminal-composer-suggestions"
+          role="listbox"
+          aria-label={t("desktop.workbench.terminalComposerSlashSuggestions")}
+        >
+          {slashMatches.map((phrase, index) => (
+            <li
+              key={phrase.trigger}
+              id={`${listId}-slash-${index}`}
+              role="option"
+              aria-selected={index === activeSlash}
+              className={`wb-terminal-composer-suggestion${index === activeSlash ? " is-active" : ""}`}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => acceptSlashPhrase(phrase)}
+            >
+              <span className="wb-terminal-composer-suggestion-text">/{phrase.trigger}</span>
+              {phrase.description ? <span className="wb-terminal-composer-suggestion-desc">{phrase.description}</span> : null}
+              <span className="wb-terminal-composer-suggestion-kbd" aria-hidden="true">↵</span>
+            </li>
+          ))}
         </ul>
       ) : suggestionsOpen ? (
         <ul

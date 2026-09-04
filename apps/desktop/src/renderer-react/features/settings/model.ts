@@ -6,6 +6,7 @@ import type {
   ModelUse,
   PanelSettings,
   ProviderModel,
+  WorkbenchComposerSlashPhrase,
   WorkbenchProjectContextMenuAction
 } from "@agent-resume/core";
 import {
@@ -50,6 +51,38 @@ export function normalizeProjectContextMenu(
     if (!PROJECT_MENU_SET.has(entry) || seen.has(entry)) continue;
     seen.add(entry);
     output.push(entry);
+  }
+  return output;
+}
+
+const COMPOSER_SLASH_TRIGGER = /^[A-Za-z0-9_-]{1,40}$/;
+const COMPOSER_SLASH_PHRASE_MAX = 4000;
+const COMPOSER_SLASH_DESCRIPTION_MAX = 200;
+const COMPOSER_SLASH_PHRASES_MAX = 100;
+
+/** Keep in sync with packages/core normalizeWorkbenchComposerSlashPhrases. */
+export function normalizeComposerSlashPhrases(
+  value: WorkbenchComposerSlashPhrase[] | undefined | null
+): WorkbenchComposerSlashPhrase[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const output: WorkbenchComposerSlashPhrase[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object") continue;
+    const trigger = String(entry.trigger ?? "").trim().replace(/^\/+/, "");
+    const phrase = String(entry.phrase ?? "");
+    if (!COMPOSER_SLASH_TRIGGER.test(trigger) || !phrase.trim()) continue;
+    const key = trigger.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const description = String(entry.description ?? "").trim();
+    const item: WorkbenchComposerSlashPhrase = {
+      trigger,
+      phrase: phrase.slice(0, COMPOSER_SLASH_PHRASE_MAX)
+    };
+    if (description) item.description = description.slice(0, COMPOSER_SLASH_DESCRIPTION_MAX);
+    output.push(item);
+    if (output.length >= COMPOSER_SLASH_PHRASES_MAX) break;
   }
   return output;
 }
@@ -150,6 +183,8 @@ export interface WorkbenchDraft {
   gitNestedScanIgnoreDirs: string;
   /** Enabled Workbench project context-menu actions. */
   projectContextMenu: WorkbenchProjectContextMenuAction[];
+  /** User-defined `/trigger` expansions for the terminal composer. */
+  composerSlashPhrases: WorkbenchComposerSlashPhrase[];
   /** ACP permission policy */
   acpAutoApprovePermissions: "ask" | "allowAll";
   /** Experimental Grok Build vendor ACP UI (model + reasoning effort). */
@@ -540,6 +575,7 @@ export function workbenchDraftFromSettings(settings: PanelSettings): WorkbenchDr
     projectContextMenu: normalizeProjectContextMenu(
       workbench?.projectContextMenu ?? DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU
     ),
+    composerSlashPhrases: normalizeComposerSlashPhrases(workbench?.composerSlashPhrases),
     acpAutoApprovePermissions: settings.acp?.autoApprovePermissions === "allowAll" ? "allowAll" : "ask",
     acpExperimentalGrokVendorUi: settings.acp?.experimentalGrokVendorUi === true
   };
@@ -591,7 +627,8 @@ export function workbenchPatch(settings: PanelSettings, draft: WorkbenchDraft): 
       gitCommitCustomInstructions: draft.gitCommitCustomInstructions,
       gitNestedScanMaxDepth: numberInRange(draft.gitNestedScanMaxDepth, 6, 1, 10),
       gitNestedScanIgnoreDirs: draft.gitNestedScanIgnoreDirs.split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean),
-      projectContextMenu: normalizeProjectContextMenu(draft.projectContextMenu)
+      projectContextMenu: normalizeProjectContextMenu(draft.projectContextMenu),
+      composerSlashPhrases: normalizeComposerSlashPhrases(draft.composerSlashPhrases)
     },
     acp: {
       ...settings.acp,
