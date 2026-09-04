@@ -1734,9 +1734,9 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => {
       expect(document.activeElement?.classList.contains("wb-terminal-composer-input")).toBe(true);
     });
-    const composerInput = document.querySelector<HTMLTextAreaElement>(".wb-terminal-shell .wb-terminal-composer-input");
+    const composerInput = document.querySelector<HTMLTextAreaElement>(".wb-detail-body .wb-terminal-composer-input");
     if (!composerInput) throw new Error("Session pane composer input not mounted");
-    expect(document.querySelector(".wb-terminal-shell .wb-terminal-composer")).toBeTruthy();
+    expect(document.querySelector(".wb-detail-body > .wb-terminal-composer-stack")).toBeTruthy();
     expect(document.querySelector(".wb-terminal-pane .wb-terminal-composer")).toBeNull();
     expect(document.querySelector(".wb-transcript-compose .wb-terminal-composer")).toBeNull();
     expect(xtermMocks.instances[0].focusCalls).toBe(0);
@@ -1836,7 +1836,7 @@ describe("WorkbenchPanel", () => {
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
     fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
     await waitFor(() => expect(terminalSpawn).toHaveBeenCalledTimes(1));
-    const composerInput = document.querySelector<HTMLTextAreaElement>(".wb-terminal-shell .wb-terminal-composer-input");
+    const composerInput = document.querySelector<HTMLTextAreaElement>(".wb-detail-body .wb-terminal-composer-input");
     if (!composerInput) throw new Error("composer input missing");
     fireEvent.change(composerInput, { target: { value: "inspect src" } });
     fireEvent.click(screen.getByRole("button", { name: "Send to terminal" }));
@@ -2477,7 +2477,7 @@ describe("WorkbenchPanel", () => {
     expect(document.querySelector(".wb-git-pane-head")).toBeNull();
     expect(previewSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1" });
     expect(document.querySelector(".wb-terminal-host")).not.toBeNull();
-    expect(document.querySelector(".wb-terminal-shell .wb-terminal-composer")).toBeTruthy();
+    expect(document.querySelector(".wb-detail-body > .wb-terminal-composer-stack")).toBeTruthy();
     expect(document.querySelector(".wb-terminal-pane .wb-terminal-composer")).toBeNull();
     expect(document.querySelector(".wb-transcript-compose .wb-terminal-composer")).toBeNull();
     expect(document.querySelector(".wb-side-panel")).not.toBeNull();

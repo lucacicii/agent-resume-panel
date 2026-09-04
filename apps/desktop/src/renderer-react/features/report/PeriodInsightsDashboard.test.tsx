@@ -112,7 +112,52 @@ const mockInsights: PeriodInsights = {
       activeCount: 2,
       blockedCount: 1
     }
-  ]
+  ],
+  composerInsights: {
+    totalSends: 25,
+    avgLength: 64,
+    intentDistribution: {
+      feature: 15,
+      query: 4,
+      flowControl: 3,
+      errorDiagnosis: 1,
+      multimodal: 1,
+      constraint: 1
+    },
+    smoothness: {
+      smoothSends: 23,
+      frictionSends: 2,
+      frictionRate: 8,
+      singleTurnSessions: 3,
+      multiTurnSessions: 5,
+      avgSendsPerSession: 3.1
+    },
+    frictionSessions: [
+      {
+        provider: "pi",
+        id: "ses-fric-1",
+        title: "Fix invoice error",
+        projectPath: "/work/app1",
+        frictionReasons: ["未达预期", "意外变更"],
+        sendCount: 6
+      }
+    ],
+    lengthTiers: {
+      micro: 8,
+      short: 10,
+      medium: 5,
+      long: 2
+    },
+    topPhrases: [
+      { phrase: "commit(中文) and push", count: 5 },
+      { phrase: "继续", count: 3 }
+    ],
+    hourlyIntensity: Array.from({ length: 24 }, (_, h) => ({
+      hour: h,
+      label: `${String(h).padStart(2, "0")}:00`,
+      count: h === 10 ? 8 : h === 15 ? 12 : 1
+    }))
+  }
 };
 
 const fakeTranslate = (key: string, ...args: Array<string | number>) => {
@@ -133,6 +178,23 @@ const fakeTranslate = (key: string, ...args: Array<string | number>) => {
   if (key === "desktop.report.insightsTrendHint") return "Click a day to view its daily digest";
   if (key === "desktop.report.insightsInputTokens") return "Prompt";
   if (key === "desktop.report.insightsOutputTokens") return "Completion";
+  if (key === "desktop.report.composerInsightsTitle") return "User Instructions Profile";
+  if (key === "desktop.report.composerSendsHeadline") return `${args[0]} sends · avg ${args[1]} chars`;
+  if (key === "desktop.report.composerIntentTitle") return "Intent Distribution";
+  if (key === "desktop.report.composerIntentFeature") return "Feature Dev";
+  if (key === "desktop.report.composerHelpTitle") return "Glossary & Metrics";
+  if (key === "desktop.report.composerHelpIntent") return "Intent explanation";
+  if (key === "desktop.report.composerHelpSmooth") return "Smoothness explanation";
+  if (key === "desktop.report.composerHelpHourly") return "Hourly explanation";
+  if (key === "desktop.report.composerHelpMacros") return "Macros explanation";
+  if (key === "desktop.report.composerSmoothnessTitle") return "Smoothness & Turns";
+  if (key === "desktop.report.composerSmoothRate") return `Smooth: ${args[0]}% (${args[1]})`;
+  if (key === "desktop.report.composerFrictionRate") return `Friction: ${args[0]}% (${args[1]})`;
+  if (key === "desktop.report.composerSingleTurn") return `One-shot: ${args[0]}%`;
+  if (key === "desktop.report.composerAvgTurns") return `Avg ${args[0]} sends/session`;
+  if (key === "desktop.report.composerHourlyTitle") return "Hourly Intensity (24h)";
+  if (key === "desktop.report.composerTopPhrasesTitle") return "Frequent Macros TOP";
+  if (key === "desktop.report.composerFrictionSessionsTitle") return "Sessions with Friction & Revisions";
   return key;
 };
 
@@ -184,8 +246,8 @@ describe("PeriodInsightsDashboard", () => {
     expect(screen.getByText(/Request API credentials/)).toBeTruthy();
 
     // Click on View blocked session
-    const viewBtn = screen.getByText("View");
-    fireEvent.click(viewBtn);
+    const blockerViewBtn = screen.getAllByText("View")[1];
+    fireEvent.click(blockerViewBtn);
     expect(onOpenSession).toHaveBeenCalledWith("pi", "ses-blocked-1");
 
     // Click on completed filter pill
@@ -210,6 +272,27 @@ describe("PeriodInsightsDashboard", () => {
     const tueCol = screen.getByText("Tue");
     fireEvent.click(tueCol);
     expect(onSelectDay).toHaveBeenCalledWith("2026-09-02");
+
+    // Verify composer sends insights (5 dimensions)
+    expect(screen.getByText(/User Instructions Profile/)).toBeTruthy();
+    expect(screen.getByText("?")).toBeTruthy();
+    expect(screen.getByText("Glossary & Metrics")).toBeTruthy();
+    expect(screen.getByText(/25 sends · avg 64 chars/)).toBeTruthy();
+    expect(screen.getAllByText("Intent Distribution").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Smoothness & Turns").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/Smooth: 92% \(23\)/)).toBeTruthy();
+    expect(screen.getByText(/Friction: 8% \(2\)/)).toBeTruthy();
+    expect(screen.getAllByText("Hourly Intensity (24h)").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Frequent Macros TOP").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("commit(中文) and push")).toBeTruthy();
+
+    // Verify friction session item & click
+    expect(screen.getByText("Fix invoice error")).toBeTruthy();
+    expect(screen.getByText("未达预期")).toBeTruthy();
+    expect(screen.getByText("意外变更")).toBeTruthy();
+    const frictionViewBtn = screen.getAllByText("View")[0];
+    fireEvent.click(frictionViewBtn);
+    expect(onOpenSession).toHaveBeenCalledWith("pi", "ses-fric-1");
   });
 
   it("returns null if insights has 0 sessions", () => {

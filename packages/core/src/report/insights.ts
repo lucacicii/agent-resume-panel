@@ -74,6 +74,62 @@ export interface PeriodDailyTrendItem {
   blockedCount: number;
 }
 
+export interface PeriodComposerIntentDistribution {
+  feature: number;
+  query: number;
+  flowControl: number;
+  errorDiagnosis: number;
+  multimodal: number;
+  constraint: number;
+}
+
+export interface PeriodComposerSmoothness {
+  smoothSends: number;
+  frictionSends: number;
+  frictionRate: number;
+  singleTurnSessions: number;
+  multiTurnSessions: number;
+  avgSendsPerSession: number;
+}
+
+export interface PeriodFrictionSession {
+  provider: string;
+  id: string;
+  title: string;
+  projectPath: string;
+  frictionReasons: string[];
+  sendCount: number;
+}
+
+export interface PeriodComposerLengthTiers {
+  micro: number;
+  short: number;
+  medium: number;
+  long: number;
+}
+
+export interface PeriodComposerTopPhrase {
+  phrase: string;
+  count: number;
+}
+
+export interface PeriodHourlyIntensity {
+  hour: number;
+  label: string;
+  count: number;
+}
+
+export interface PeriodComposerSendInsights {
+  totalSends: number;
+  avgLength: number;
+  intentDistribution: PeriodComposerIntentDistribution;
+  smoothness: PeriodComposerSmoothness;
+  frictionSessions: PeriodFrictionSession[];
+  lengthTiers: PeriodComposerLengthTiers;
+  topPhrases: PeriodComposerTopPhrase[];
+  hourlyIntensity: PeriodHourlyIntensity[];
+}
+
 export interface PeriodInsights {
   fromMs: number;
   toMs: number;
@@ -83,6 +139,7 @@ export interface PeriodInsights {
   tagStats: PeriodTagStats;
   llmUsage: PeriodLlmUsage;
   dailyTrend: PeriodDailyTrendItem[];
+  composerInsights: PeriodComposerSendInsights | null;
 }
 
 export interface GetPeriodInsightsOptions {
@@ -173,7 +230,8 @@ export async function getPeriodInsights(
       topModels: [],
       trend: []
     },
-    dailyTrend: []
+    dailyTrend: [],
+    composerInsights: null
   };
 
   if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || fromMs >= toMs) {
@@ -574,6 +632,238 @@ export async function getPeriodInsights(
 
   const dailyTrend = Array.from(trendMap.values());
 
+  // 5. Compute composer send insights from workbench_composer_sends
+  let composerInsights: PeriodComposerSendInsights | null = null;
+  try {
+    const sendRows = await runSqliteJson<{
+      id: string;
+      created_at_ms: number;
+      project_path: string;
+      provider: string;
+      agent_session_id: string;
+      text: string;
+    }>(
+      desktopDb,
+      `SELECT 
+         id,
+         created_at_ms,
+         project_path,
+         provider,
+         agent_session_id,
+         text
+       FROM workbench_composer_sends
+       WHERE created_at_ms >= ${Number(fromMs)}
+         AND created_at_ms < ${Number(toMs)}
+       ORDER BY created_at_ms ASC;`
+    );
+
+    if (sendRows.length > 0) {
+      let feature = 0;
+      let query = 0;
+      let flowControl = 0;
+      let errorDiagnosis = 0;
+      let multimodal = 0;
+      let constraint = 0;
+
+      let micro = 0;
+      let short = 0;
+      let medium = 0;
+      let long = 0;
+
+      let totalChars = 0;
+      let frictionSends = 0;
+
+      const sessionSendsCount = new Map<string, number>();
+      const frictionMap = new Map<
+        string,
+        {
+          provider: string;
+          id: string;
+          projectPath: string;
+          reasons: Set<string>;
+        }
+      >();
+
+      const phraseCounts = new Map<string, number>();
+      const hourlyCounts = new Array(24).fill(0);
+
+      const sessionTitleMap = new Map<string, string>();
+      for (const s of sessions) {
+        sessionTitleMap.set(`${s.provider}:${s.id}`, s.user_title?.trim() || s.title?.trim() || s.id);
+      }
+
+      for (const row of sendRows) {
+        const raw = row.text || "";
+        const t = raw.trim();
+        const lower = t.toLowerCase();
+        const len = t.length;
+        totalChars += len;
+
+        if (t.includes("[Image #") || t.includes(".png") || t.includes("截图") || t.includes("看图")) {
+          multimodal++;
+        } else if (
+          t.includes("[ERROR]") ||
+          t.includes("报错") ||
+          t.includes("Could not resolve") ||
+          t.includes("failed with code") ||
+          lower.includes("error:") ||
+          lower.includes("exception") ||
+          lower.includes("typeerror")
+        ) {
+          errorDiagnosis++;
+        } else if (
+          t.includes("先规划") ||
+          t.includes("不要改代码") ||
+          t.includes("不做任何修改") ||
+          t.includes("只修改") ||
+          t.includes("不要改其他") ||
+          t.includes("参考其他页面")
+        ) {
+          constraint++;
+        } else if (
+          t.startsWith("commit") ||
+          t.includes("commit(中文)") ||
+          t.includes("Implement the plan") ||
+          t === "继续" ||
+          t === "continue" ||
+          t === "执行" ||
+          t === "测试" ||
+          t === "ok" ||
+          t === "exit"
+        ) {
+          flowControl++;
+        } else if (
+          t.includes("查一下") ||
+          t.includes("帮我看") ||
+          t.includes("为什么") ||
+          t.includes("在哪") ||
+          t.includes("怎么回事") ||
+          t.includes("接口参数") ||
+          t.includes("字段是什么") ||
+          t.includes("?") ||
+          t.includes("？")
+        ) {
+          query++;
+        } else {
+          feature++;
+        }
+
+        if (len <= 20) micro++;
+        else if (len <= 100) short++;
+        else if (len <= 500) medium++;
+        else long++;
+
+        const sKey = row.agent_session_id ? `${row.provider}:${row.agent_session_id}` : "";
+        if (sKey) {
+          sessionSendsCount.set(sKey, (sessionSendsCount.get(sKey) || 0) + 1);
+        }
+
+        const detectedFrictions: string[] = [];
+        if (t.includes("<turn_aborted>")) detectedFrictions.push("手动中止");
+        if (t.includes("不对") || t.includes("不是这个") || t.includes("理解错")) detectedFrictions.push("指正否定");
+        if (t.includes("还是不行") || t.includes("没用") || t.includes("没有啊")) detectedFrictions.push("未达预期");
+        if (t.includes("不要改") || t.includes("改回") || t.includes("回滚") || t.includes("还原")) detectedFrictions.push("要求回退");
+        if (t.includes("为什么多加") || t.includes("怎么多加了")) detectedFrictions.push("意外变更");
+
+        if (detectedFrictions.length > 0) {
+          frictionSends++;
+          if (sKey) {
+            if (!frictionMap.has(sKey)) {
+              frictionMap.set(sKey, {
+                provider: row.provider || "",
+                id: row.agent_session_id,
+                projectPath: row.project_path || "",
+                reasons: new Set()
+              });
+            }
+            const entry = frictionMap.get(sKey)!;
+            detectedFrictions.forEach((f) => entry.reasons.add(f));
+          }
+        }
+
+        if (len >= 2 && len <= 60 && !t.includes("\n") && !t.includes("<turn_aborted>")) {
+          phraseCounts.set(t, (phraseCounts.get(t) || 0) + 1);
+        }
+
+        const d = new Date(row.created_at_ms);
+        const h = d.getHours();
+        if (h >= 0 && h < 24) {
+          hourlyCounts[h]++;
+        }
+      }
+
+      const totalSends = sendRows.length;
+      const avgLength = Math.round(totalChars / totalSends);
+      const frictionRate = totalSends > 0 ? Math.round((frictionSends / totalSends) * 100) : 0;
+      const distinctSessions = sessionSendsCount.size;
+      let singleTurnSessions = 0;
+      let multiTurnSessions = 0;
+      for (const count of sessionSendsCount.values()) {
+        if (count === 1) singleTurnSessions++;
+        else multiTurnSessions++;
+      }
+
+      const avgSendsPerSession =
+        distinctSessions > 0 ? Number((totalSends / distinctSessions).toFixed(1)) : 0;
+
+      const frictionSessions: PeriodFrictionSession[] = Array.from(frictionMap.entries())
+        .map(([sKey, data]) => ({
+          provider: data.provider,
+          id: data.id,
+          title: sessionTitleMap.get(sKey) || data.id,
+          projectPath: data.projectPath,
+          frictionReasons: Array.from(data.reasons),
+          sendCount: sessionSendsCount.get(sKey) || 0
+        }))
+        .sort((a, b) => b.sendCount - a.sendCount)
+        .slice(0, 5);
+
+      const topPhrases: PeriodComposerTopPhrase[] = Array.from(phraseCounts.entries())
+        .filter(([_, count]) => count >= 2)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([phrase, count]) => ({ phrase, count }));
+
+      const hourlyIntensity: PeriodHourlyIntensity[] = hourlyCounts.map((count, hour) => ({
+        hour,
+        label: `${String(hour).padStart(2, "0")}:00`,
+        count
+      }));
+
+      composerInsights = {
+        totalSends,
+        avgLength,
+        intentDistribution: {
+          feature,
+          query,
+          flowControl,
+          errorDiagnosis,
+          multimodal,
+          constraint
+        },
+        smoothness: {
+          smoothSends: totalSends - frictionSends,
+          frictionSends,
+          frictionRate,
+          singleTurnSessions,
+          multiTurnSessions,
+          avgSendsPerSession
+        },
+        frictionSessions,
+        lengthTiers: {
+          micro,
+          short,
+          medium,
+          long
+        },
+        topPhrases,
+        hourlyIntensity
+      };
+    }
+  } catch {
+    // workbench_composer_sends table might not exist in some environments
+  }
+
   return {
     fromMs,
     toMs,
@@ -582,6 +872,7 @@ export async function getPeriodInsights(
     activeSessions,
     tagStats,
     llmUsage,
-    dailyTrend
+    dailyTrend,
+    composerInsights
   };
 }

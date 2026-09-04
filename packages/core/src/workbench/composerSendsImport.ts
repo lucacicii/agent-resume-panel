@@ -19,6 +19,16 @@ const NOISE_PATTERNS: RegExp[] = [
 
 const MIN_TIP_TEXT_LENGTH = 2;
 
+function parseTimestampMs(value?: string | number | null): number | undefined {
+  if (value == null) return undefined;
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
+  const num = Number(value);
+  if (Number.isFinite(num) && num > 0) return num;
+  const parsed = Date.parse(String(value));
+  if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  return undefined;
+}
+
 function isNoise(text: string): boolean {
   return NOISE_PATTERNS.some((pattern) => pattern.test(text));
 }
@@ -74,9 +84,14 @@ export async function importComposerSendsForSession(
 
   const existing = await listComposerSends(dbPath, {
     agentSessionId: session.id,
-    limit: 500
+    limit: 1000
   });
-  const seen = new Set(existing.map((record) => record.text));
+
+  const isAlreadyImported = (text: string, timeMs: number) => {
+    return existing.some(
+      (record) => record.text === text && Math.abs(record.createdAtMs - timeMs) < 5000
+    );
+  };
 
   let found = 0;
   let imported = 0;
@@ -97,19 +112,21 @@ export async function importComposerSendsForSession(
       skipped += 1;
       continue;
     }
-    if (seen.has(text)) {
+    const messageTime = parseTimestampMs(message.timestamp) || session.updatedAt || Date.now();
+    if (isAlreadyImported(text, messageTime)) {
       skipped += 1;
       continue;
     }
     try {
-      await appendComposerSend(dbPath, {
+      const record = await appendComposerSend(dbPath, {
         paneKey,
         projectPath,
         provider: session.provider,
         agentSessionId: session.id,
-        text
+        text,
+        createdAtMs: messageTime
       });
-      seen.add(text);
+      existing.push(record);
       imported += 1;
     } catch {
       skipped += 1;

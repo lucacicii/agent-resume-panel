@@ -67,13 +67,13 @@ export function TerminalComposerStack(props: {
   const moveStackDrag = useCallback((event: React.PointerEvent) => {
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
-    const shell = stackRef.current?.closest<HTMLElement>(".wb-terminal-shell");
-    const shellWidth = shell?.clientWidth || window.innerWidth;
-    const shellHeight = shell?.clientHeight || window.innerHeight;
+    const body = stackRef.current?.closest<HTMLElement>(".wb-detail-body");
+    const bodyWidth = body?.clientWidth || window.innerWidth;
+    const bodyHeight = body?.clientHeight || window.innerHeight;
     const selfWidth = stackRef.current?.clientWidth || 0;
     const selfHeight = stackRef.current?.clientHeight || 0;
-    const maxX = Math.max(4, Math.min(shellWidth - 564, shellWidth - selfWidth - 4));
-    const maxY = Math.max(4, shellHeight - selfHeight - 4);
+    const maxX = Math.max(4, bodyWidth - selfWidth - 4);
+    const maxY = Math.max(4, bodyHeight - selfHeight - 4);
     const x = Math.min(Math.max(4, drag.origX + event.clientX - drag.startX), maxX);
     const y = Math.min(Math.max(4, drag.origY - (event.clientY - drag.startY)), maxY);
     setPosition({ x, y });

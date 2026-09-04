@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { PeriodDailyTrendItem, PeriodInsights, PeriodTagItem } from "@agent-resume/core";
+import type { PeriodComposerSendInsights, PeriodDailyTrendItem, PeriodHourlyIntensity, PeriodInsights, PeriodTagItem } from "@agent-resume/core";
 
 export type StatusFilter = "all" | "completed" | "active" | "blocked";
 
@@ -81,7 +81,7 @@ export function PeriodInsightsDashboard({
     return null;
   }
 
-  const { sessionStats, blockedSessions, tagStats, llmUsage, dailyTrend } = insights;
+  const { sessionStats, blockedSessions, tagStats, llmUsage, dailyTrend, composerInsights } = insights;
 
   // Group tags into 4 intuitive categories
   const taskTags = tagStats.byCategory.task_type || [];
@@ -236,7 +236,16 @@ export function PeriodInsightsDashboard({
         </div>
       </div>
 
-      {/* 2. Daily Activity Trend (Shown for Week & Month spans) */}
+      {/* 2. User Instructions & Interaction Profile (Composer Sends - 5 Dimensions) */}
+      {composerInsights && composerInsights.totalSends > 0 && (
+        <ComposerSendInsightsSection
+          insights={composerInsights}
+          onOpenSession={onOpenSession}
+          t={t}
+        />
+      )}
+
+      {/* 3. Daily Activity Trend (Shown for Week & Month spans) */}
       {dailyTrend && dailyTrend.length > 1 && (
         <PeriodDailyTrendChart
           trend={dailyTrend}
@@ -245,7 +254,7 @@ export function PeriodInsightsDashboard({
         />
       )}
 
-      {/* 3. Blocked Watchlist Card (shown if there are blocked sessions) */}
+      {/* 4. Blocked Watchlist Card (shown if there are blocked sessions) */}
       {blockedSessions.length > 0 && (
         <div className="insights-blocker-section">
           <div className="insights-blocker-head">
@@ -288,7 +297,7 @@ export function PeriodInsightsDashboard({
         </div>
       )}
 
-      {/* 4. Tags & Knowledge Spectrum */}
+      {/* 5. Tags & Knowledge Spectrum */}
       {tagStats.totalTags > 0 && (
         <div className="insights-tags-section">
           <div className="insights-tags-head">
@@ -747,6 +756,275 @@ function PeriodDailyTrendChart({
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+/** Composer Send Insights Section (5 Dimensions + Friction Callout) */
+function ComposerSendInsightsSection({
+  insights,
+  onOpenSession,
+  t
+}: {
+  insights: PeriodComposerSendInsights;
+  onOpenSession: (provider: string, id: string) => void;
+  t: Translate;
+}) {
+  const maxH = Math.max(1, ...insights.hourlyIntensity.map((x) => x.count));
+  const peakItem = insights.hourlyIntensity.reduce(
+    (max, item) => (item.count > max.count ? item : max),
+    { hour: 0, label: "00:00", count: 0 }
+  );
+
+  return (
+    <div className="insights-composer-section">
+      <div className="insights-composer-head">
+        <div className="insights-composer-title-group">
+          <strong>💬 {t("desktop.report.composerInsightsTitle")}</strong>
+          <span
+            className="insights-help-icon"
+            tabIndex={0}
+            role="button"
+            aria-label={t("desktop.report.composerHelpTitle")}
+          >
+            ?
+            <div className="insights-help-popover" role="tooltip">
+              <div className="help-title">{t("desktop.report.composerHelpTitle")}</div>
+              <ul className="help-list">
+                <li>
+                  <strong>{t("desktop.report.composerIntentTitle")}</strong>:{" "}
+                  {t("desktop.report.composerHelpIntent")}
+                </li>
+                <li>
+                  <strong>{t("desktop.report.composerSmoothnessTitle")}</strong>:{" "}
+                  {t("desktop.report.composerHelpSmooth")}
+                </li>
+                <li>
+                  <strong>{t("desktop.report.composerHourlyTitle")}</strong>:{" "}
+                  {t("desktop.report.composerHelpHourly")}
+                </li>
+                <li>
+                  <strong>{t("desktop.report.composerTopPhrasesTitle")}</strong>:{" "}
+                  {t("desktop.report.composerHelpMacros")}
+                </li>
+              </ul>
+            </div>
+          </span>
+          <span className="muted insights-composer-headline">
+            {t("desktop.report.composerSendsHeadline", insights.totalSends, insights.avgLength)}
+          </span>
+        </div>
+      </div>
+      <div className="insights-composer-grid">
+        {/* Col 1: Intent Spectrum */}
+        <div className="insights-composer-col">
+          <div className="insights-subhead">{t("desktop.report.composerIntentTitle")}</div>
+          <div className="insights-intent-bars">
+            {renderIntentRow(t("desktop.report.composerIntentFeature"), insights.intentDistribution.feature, insights.totalSends, "#3b82f6")}
+            {renderIntentRow(t("desktop.report.composerIntentQuery"), insights.intentDistribution.query, insights.totalSends, "#06b6d4")}
+            {renderIntentRow(t("desktop.report.composerIntentFlow"), insights.intentDistribution.flowControl, insights.totalSends, "#10b981")}
+            {renderIntentRow(t("desktop.report.composerIntentError"), insights.intentDistribution.errorDiagnosis, insights.totalSends, "#ef4444")}
+            {renderIntentRow(t("desktop.report.composerIntentImage"), insights.intentDistribution.multimodal, insights.totalSends, "#8b5cf6")}
+            {renderIntentRow(t("desktop.report.composerIntentConstraint"), insights.intentDistribution.constraint, insights.totalSends, "#f59e0b")}
+          </div>
+        </div>
+
+        {/* Col 2: Smoothness & Turn Depth */}
+        <div className="insights-composer-col">
+          <div className="insights-subhead">{t("desktop.report.composerSmoothnessTitle")}</div>
+          <div className="insights-smoothness-stats">
+            <div className="smooth-stat-row">
+              <span className="stat-bullet ok" />
+              <span>{t("desktop.report.composerSmoothRate", 100 - insights.smoothness.frictionRate, insights.smoothness.smoothSends)}</span>
+            </div>
+            {insights.smoothness.frictionSends > 0 && (
+              <div className="smooth-stat-row">
+                <span className="stat-bullet warn" />
+                <span>{t("desktop.report.composerFrictionRate", insights.smoothness.frictionRate, insights.smoothness.frictionSends)}</span>
+              </div>
+            )}
+            <div className="smooth-stat-meta">
+              <span className="meta-pill">
+                {t(
+                  "desktop.report.composerSingleTurn",
+                  Math.round(
+                    (insights.smoothness.singleTurnSessions /
+                      Math.max(
+                        1,
+                        insights.smoothness.singleTurnSessions + insights.smoothness.multiTurnSessions
+                      )) *
+                      100
+                  )
+                )}
+              </span>
+              <span className="meta-pill">
+                {t("desktop.report.composerAvgTurns", insights.smoothness.avgSendsPerSession)}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Col 3: Hourly Intensity (24h) - 维度五 */}
+        <div className="insights-composer-col insights-hourly-col">
+          <HourlyIntensityChart
+            hourlyIntensity={insights.hourlyIntensity}
+            totalSends={insights.totalSends}
+            peakItem={peakItem}
+            t={t}
+          />
+        </div>
+
+        {/* Col 4: Frequent Macros TOP */}
+        <div className="insights-composer-col">
+          <div className="insights-subhead">{t("desktop.report.composerTopPhrasesTitle")}</div>
+          <div className="insights-top-phrases">
+            {insights.topPhrases.length > 0 ? (
+              insights.topPhrases.map((p, idx) => (
+                <div key={idx} className="top-phrase-row" title={p.phrase}>
+                  <span className="phrase-rank">{idx + 1}.</span>
+                  <span className="phrase-text">{p.phrase}</span>
+                  <span className="phrase-count">×{p.count}</span>
+                </div>
+              ))
+            ) : (
+              <span className="muted" style={{ fontSize: 10 }}>None</span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Friction Sessions Callout Footer */}
+      {insights.frictionSessions.length > 0 && (
+        <div className="insights-friction-sessions-footer">
+          <div className="friction-sessions-head">
+            <span className="friction-badge">⚡</span>
+            <strong>{t("desktop.report.composerFrictionSessionsTitle")}</strong>
+          </div>
+          <div className="friction-sessions-list">
+            {insights.frictionSessions.map((fs) => (
+              <div key={`${fs.provider}:${fs.id}`} className="friction-session-item">
+                <div className="friction-item-main">
+                  <span className="s-provider-tag" data-provider={fs.provider}>
+                    {fs.provider}
+                  </span>
+                  <strong className="friction-session-title">{fs.title}</strong>
+                  <span className="muted friction-session-proj">
+                    {fs.projectPath?.split(/[\\/]/).filter(Boolean).at(-1) || ""}
+                  </span>
+                  <span className="friction-reasons-chips">
+                    {fs.frictionReasons.map((r, i) => (
+                      <span key={i} className="friction-reason-badge">
+                        {r}
+                      </span>
+                    ))}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="tool-btn ghost-btn friction-view-btn"
+                  onClick={() => onOpenSession(fs.provider, fs.id)}
+                >
+                  View
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HourlyIntensityChart({
+  hourlyIntensity,
+  totalSends,
+  peakItem,
+  t
+}: {
+  hourlyIntensity: PeriodHourlyIntensity[];
+  totalSends: number;
+  peakItem: PeriodHourlyIntensity | null;
+  t: Translate;
+}) {
+  const [hoveredHour, setHoveredHour] = useState<PeriodHourlyIntensity | null>(null);
+  const maxH = Math.max(1, ...hourlyIntensity.map((x) => x.count));
+
+  return (
+    <>
+      <div className="insights-subhead-row">
+        <span className="insights-subhead">{t("desktop.report.composerHourlyTitle")}</span>
+        {hoveredHour ? (
+          <span className="insights-hourly-hover-badge">
+            {hoveredHour.label} · <strong>{hoveredHour.count}</strong> 次
+          </span>
+        ) : peakItem && peakItem.count > 0 ? (
+          <span className="insights-hourly-peak-badge" title="Peak Hour">
+            {peakItem.label} ({peakItem.count})
+          </span>
+        ) : null}
+      </div>
+      <div
+        className="insights-hourly-chart-area"
+        onMouseLeave={() => setHoveredHour(null)}
+      >
+        <div className="insights-hourly-bars-grid">
+          {hourlyIntensity.map((h) => {
+            const pct = maxH > 0 ? Math.round((h.count / maxH) * 100) : 0;
+            const isPeak = peakItem && h.count === peakItem.count && h.count > 0;
+            const isHovered = hoveredHour?.hour === h.hour;
+            const countPct = totalSends > 0 ? Math.round((h.count / totalSends) * 100) : 0;
+
+            return (
+              <div
+                key={h.hour}
+                className={`hourly-bar-slot${h.count > 0 ? " has-data" : ""}${isPeak ? " is-peak" : ""}${isHovered ? " is-hovered" : ""}`}
+                onMouseEnter={() => setHoveredHour(h)}
+                title={`${h.label}: ${h.count} sends (${countPct}%)`}
+              >
+                {/* Floating Tooltip displaying number */}
+                {isHovered && (
+                  <div className="hourly-bar-tooltip">
+                    <span className="tooltip-count">{h.count}</span>
+                  </div>
+                )}
+                <div
+                  className="hourly-bar-fill"
+                  style={{ height: h.count > 0 ? `${Math.max(14, pct)}%` : "0%" }}
+                />
+              </div>
+            );
+          })}
+        </div>
+        <div className="insights-hourly-baseline" />
+        <div className="insights-hourly-axis">
+          <span>00:00</span>
+          <span>06:00</span>
+          <span>12:00</span>
+          <span>18:00</span>
+          <span>23:00</span>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function renderIntentRow(label: string, count: number, total: number, color: string) {
+  if (count <= 0) return null;
+  const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+  return (
+    <div key={label} className="insights-intent-row">
+      <div className="intent-meta">
+        <span className="intent-label">{label}</span>
+        <span className="intent-val">
+          {count} ({pct}%)
+        </span>
+      </div>
+      <div className="intent-track">
+        <div
+          className="intent-fill"
+          style={{ width: `${Math.max(4, pct)}%`, backgroundColor: color }}
+        />
       </div>
     </div>
   );

@@ -269,10 +269,32 @@ export function ReportPanel(): ReactPortal | null {
   useEffect(() => { void loadMonth(); }, [loadMonth]);
   useEffect(() => { setPreview(null); setPreviewAssist(null); notifyPreviewStatus({ text: "" }); void loadSessions(); }, [loadSessions]);
   useEffect(() => {
-    const onTab = (event: Event) => setActive((event as CustomEvent<string>).detail === "report");
+    const onTab = (event: Event) => {
+      const isReport = (event as CustomEvent<string>).detail === "report";
+      setActive(isReport);
+      if (isReport) {
+        void loadSessions();
+      }
+    };
     window.addEventListener("agent-resume:tab-change", onTab);
     return () => window.removeEventListener("agent-resume:tab-change", onTab);
-  }, []);
+  }, [loadSessions]);
+  useEffect(() => {
+    const reload = () => {
+      void loadSessions();
+    };
+    window.addEventListener("agent-resume:sessions-mutated", reload);
+    const unsubsSync =
+      typeof desktopApi().onSessionsSynced === "function"
+        ? desktopApi().onSessionsSynced(() => {
+            void loadSessions();
+          })
+        : undefined;
+    return () => {
+      window.removeEventListener("agent-resume:sessions-mutated", reload);
+      unsubsSync?.();
+    };
+  }, [loadSessions]);
   useEffect(() => {
     const onFocus = (event: Event) => {
       const next = (event as CustomEvent<Focus | undefined>).detail;

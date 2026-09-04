@@ -76,6 +76,16 @@ test("getPeriodInsights computes sessions, delivery states, tags, and usage", as
      ('u2', 1600000, 'chat', 'summarize', 'gpt-5.5', 200, 100, 300, 2000, 1);`
   );
 
+  // Insert workbench composer sends into desktopDb
+  await runSqlite(
+    desktopDb,
+    `INSERT INTO workbench_composer_sends (id, created_at_ms, pane_key, project_path, provider, agent_session_id, text)
+     VALUES
+     ('cs1', 1500000, 'terminal:1', '/Users/test/repo1', 'pi', 's1', '添加用户管理组件'),
+     ('cs2', 1510000, 'terminal:1', '/Users/test/repo1', 'pi', 's1', 'commit(中文) and push'),
+     ('cs3', 1700000, 'terminal:1', '/Users/test/repo2', 'pi', 's3', '还是不行，接口报错了');`
+  );
+
   const insights = await getPeriodInsights({
     catalogDb,
     desktopDb,
@@ -126,6 +136,15 @@ test("getPeriodInsights computes sessions, delivery states, tags, and usage", as
   // Check dailyTrend
   assert.ok(Array.isArray(insights.dailyTrend));
   assert.ok(insights.dailyTrend.length > 0);
+
+  // Check composerInsights
+  assert.ok(insights.composerInsights);
+  assert.equal(insights.composerInsights.totalSends, 3);
+  assert.equal(insights.composerInsights.intentDistribution.feature, 1);
+  assert.equal(insights.composerInsights.intentDistribution.flowControl, 1);
+  assert.equal(insights.composerInsights.smoothness.frictionSends, 1);
+  assert.equal(insights.composerInsights.frictionSessions.length, 1);
+  assert.equal(insights.composerInsights.frictionSessions[0].id, "s3");
 
   await fs.rm(panelHome, { recursive: true, force: true });
 });

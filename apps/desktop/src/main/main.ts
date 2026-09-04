@@ -2573,12 +2573,27 @@ function registerIpc(): void {
     "report:getPeriodInsights",
     async (_event, args?: { fromMs?: number; toMs?: number }) => {
       try {
-        const paths = await loadPanelDbPaths();
+        const settings = await loadSettings();
+        const paths = await loadPanelDbPaths(settings);
         const fromMs = Number(args?.fromMs);
         const toMs = Number(args?.toMs);
         if (!Number.isFinite(fromMs) || !Number.isFinite(toMs)) {
           return null;
         }
+
+        // Real-time sync: import transcript user messages for recent active sessions in this period
+        try {
+          const recentSessions = await listSessionsInRange(paths.catalogDb, fromMs, toMs, 10);
+          const homes = resolvePreviewHomes(settings);
+          await Promise.all(
+            recentSessions.map((s) =>
+              importComposerSendsForSession(paths.desktopDb, s, homes).catch(() => undefined)
+            )
+          );
+        } catch {
+          // best-effort sync
+        }
+
         return await getPeriodInsights({
           catalogDb: paths.catalogDb,
           desktopDb: paths.desktopDb,
