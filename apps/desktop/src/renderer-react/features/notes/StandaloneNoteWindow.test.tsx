@@ -23,6 +23,25 @@ vi.mock("../../components/CodeEditor", () => ({
 const messages = {
   "desktop.standaloneNote.title": "Standalone Note",
   "desktop.standaloneNote.editor": "Standalone note editor",
+  "desktop.notes.sendToAgent": "Send to agent",
+  "desktop.notes.sendToSession": "Send to session",
+  "desktop.notes.noActiveSessions": "No open sessions",
+  "desktop.settings.newSessionGroupCli": "CLI",
+  "desktop.settings.newSessionGroupAcp": "ACP",
+  "desktop.settings.newSessionTarget.cli_pi": "Pi",
+  "desktop.settings.newSessionTarget.cli_codex": "Codex",
+  "desktop.settings.newSessionTarget.cli_claude": "Claude",
+  "desktop.settings.newSessionTarget.cli_grok": "Grok",
+  "desktop.settings.newSessionTarget.cli_agy": "Antigravity",
+  "desktop.settings.newSessionTarget.cli_opencode": "OpenCode",
+  "desktop.settings.newSessionTarget.cli_cursor": "Cursor CLI",
+  "desktop.settings.newSessionTarget.cli_prime": "Prime Agent",
+  "desktop.settings.newSessionTarget.acp_claude": "ACP · Claude Code",
+  "desktop.settings.newSessionTarget.acp_codex": "ACP · Codex",
+  "desktop.settings.newSessionTarget.acp_grok": "ACP · Grok Build",
+  "desktop.settings.newSessionTarget.acp_opencode": "ACP · OpenCode",
+  "desktop.settings.newSessionTarget.acp_pi": "ACP · Pi",
+  "desktop.settings.newSessionTarget.acp_prime": "ACP · Prime Agent",
   "desktop.standaloneNote.close": "Close note",
   "desktop.standaloneNote.pin": "Keep note above all apps",
   "desktop.standaloneNote.unpin": "Stop keeping note above all apps",
@@ -119,6 +138,7 @@ function installBridge(overrides: Partial<typeof window.agentResume> = {}) {
   const standaloneNoteSetAlwaysOnTop = vi.fn(async ({ pinned }: { pinned: boolean }) => ({ pinned }));
   const standaloneNoteClose = vi.fn(async () => ({ ok: true }));
   const standaloneNoteCloseReady = vi.fn(async ({ ok }: { ok: boolean }) => ({ ok }));
+  const workbenchSendSelection = vi.fn(async () => ({ ok: true as const }));
   window.agentResume = {
     getI18nBundle: async () => ({ locale: "en", messages }),
     onLocaleChanged: () => () => undefined,
@@ -133,9 +153,15 @@ function installBridge(overrides: Partial<typeof window.agentResume> = {}) {
     standaloneNoteClose,
     standaloneNoteCloseReady,
     onStandaloneNoteCloseRequested: closeRequested,
+    workbenchSendSelection,
+    getWorkbenchActiveSessions: async () => [],
+    onWorkbenchActiveSessions: (callback: (sessions: Array<{ paneKey: string; title: string; projectPath: string; sessionKey: string; status: "open" }>) => void) => {
+      callback([]);
+      return () => undefined;
+    },
     ...overrides
   } as unknown as typeof window.agentResume;
-  return { closeRequested, getCloseCallback: () => closeCallback, notesWrite, notesDelete, notesSetGtdStatus, notesRead, notesMove, listProjects, standaloneNoteSetAlwaysOnTop, standaloneNoteClose, standaloneNoteCloseReady };
+  return { closeRequested, getCloseCallback: () => closeCallback, notesWrite, notesDelete, notesSetGtdStatus, notesRead, notesMove, listProjects, standaloneNoteSetAlwaysOnTop, standaloneNoteClose, standaloneNoteCloseReady, workbenchSendSelection };
 }
 
 afterEach(() => {
@@ -347,5 +373,20 @@ describe("StandaloneNoteWindow", () => {
     await act(async () => { handler?.(); });
     await waitFor(() => expect(notesWrite).toHaveBeenLastCalledWith({ noteId: "note-1", content: "# Standalone note\nBefore quit" }));
     await waitFor(() => expect(standaloneNoteCloseReady).toHaveBeenCalledWith({ ok: true }));
+  });
+
+  it("sends selected text from the floating note to a new agent", async () => {
+    editorHandle.getSelectedText.mockReturnValue("draft this change");
+    const { workbenchSendSelection } = installBridge();
+    render(<I18nProvider><StandaloneNoteWindow noteId="note-1" /></I18nProvider>);
+    await screen.findByRole("textbox", { name: "Standalone note editor" });
+    fireEvent.contextMenu(document.querySelector(".standalone-note-window-editor-surface") as HTMLElement);
+    fireEvent.mouseEnter(await screen.findByRole("menuitem", { name: "Send to agent" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Pi" }));
+    await waitFor(() => expect(workbenchSendSelection).toHaveBeenCalledWith({
+      kind: "new-agent",
+      text: "draft this change",
+      target: "cli:pi"
+    }));
   });
 });

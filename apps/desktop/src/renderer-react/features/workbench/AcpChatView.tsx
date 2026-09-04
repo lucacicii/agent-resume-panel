@@ -16,8 +16,10 @@ export type AcpChatPaneProps = {
   projectPath: string;
   title: string;
   active: boolean;
+  initialPrompt?: string;
   onTitleChange?: (title: string) => void;
   onSessionReady?: (acpSessionId: string) => void;
+  onInitialPromptSubmitted?: () => void;
 };
 
 type ToolCall = {
@@ -301,8 +303,10 @@ export function AcpChatView({
   projectPath,
   title,
   active,
+  initialPrompt,
   onTitleChange,
-  onSessionReady
+  onSessionReady,
+  onInitialPromptSubmitted
 }: AcpChatPaneProps): React.JSX.Element {
   const { t } = useI18n();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -344,6 +348,29 @@ export function AcpChatView({
   const sessionConnectedRef = useRef(false);
   /** Last native ACP session id that triggered a parent session-list refresh. */
   const notifiedSessionIdRef = useRef<string | undefined>(undefined);
+  const pendingInitialPromptRef = useRef(initialPrompt?.trim() || "");
+  const queuedPromptValueRef = useRef(initialPrompt?.trim() || "");
+  const initialPromptSentRef = useRef(false);
+  const onInitialPromptSubmittedRef = useRef(onInitialPromptSubmitted);
+  onInitialPromptSubmittedRef.current = onInitialPromptSubmitted;
+
+  const flushQueuedPrompt = useCallback(() => {
+    const queued = pendingInitialPromptRef.current;
+    if (!queued || initialPromptSentRef.current || !sessionConnectedRef.current || isRunning) return;
+    initialPromptSentRef.current = true;
+    pendingInitialPromptRef.current = "";
+    void desktopApi().acpPrompt({ chatId: recordId, text: queued, images: [], files: [] })
+      .then(() => {
+        queuedPromptValueRef.current = "";
+        onInitialPromptSubmittedRef.current?.();
+      })
+      .catch((error) => {
+        initialPromptSentRef.current = false;
+        pendingInitialPromptRef.current = queued;
+        queuedPromptValueRef.current = "";
+        setStatus({ text: errorMessage(error), kind: "error" });
+      });
+  }, [isRunning, recordId]);
 
   const scrollToBottom = useCallback((force = false) => {
     const node = logRef.current;
@@ -602,6 +629,7 @@ export function AcpChatView({
           setConnectionStatus((status) =>
             status === "connecting" || status === "error" ? "ready" : status
           );
+          flushQueuedPrompt();
         }
       } catch (error) {
         if (!cancelled && connectGenerationRef.current === generation) {
@@ -615,7 +643,16 @@ export function AcpChatView({
     return () => {
       cancelled = true;
     };
-  }, [active, onSessionReady, recordId]);
+  }, [active, flushQueuedPrompt, onSessionReady, recordId]);
+
+  useEffect(() => {
+    const next = initialPrompt?.trim() || "";
+    if (!active || !next || queuedPromptValueRef.current === next) return;
+    queuedPromptValueRef.current = next;
+    pendingInitialPromptRef.current = next;
+    initialPromptSentRef.current = false;
+    flushQueuedPrompt();
+  }, [active, flushQueuedPrompt, initialPrompt]);
 
   useEffect(() => {
     return () => {

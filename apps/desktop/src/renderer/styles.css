@@ -11075,6 +11075,7 @@ textarea.wb-editor-host {
 }
 
 .wb-context-menu button:disabled,
+.notes-context-menu button:disabled,
 .chat-context-menu button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
@@ -13643,6 +13644,15 @@ body.is-pane-resizing-row * {
 
 .notes-editor-layout.mode-view .notes-editor-host {
   display: none;
+}
+
+.notes-editor-surface,
+.standalone-note-window-editor-surface {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
 }
 
 .notes-editor-host {

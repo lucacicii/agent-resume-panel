@@ -11,6 +11,7 @@ import { GTD_STATUSES } from "../../gtd";
 import { useI18n } from "../../i18n";
 import { storedWidth } from "../../storage";
 import { NoteLinkTree } from "./NoteLinkTree";
+import { NoteSelectionContextMenu, type NoteSelectionMenuState } from "./NoteSelectionContextMenu";
 
 type Note = Awaited<ReturnType<ReturnType<typeof desktopApi>["notesList"]>>[number];
 type NoteTreeNode = {
@@ -361,6 +362,7 @@ export function NotesPanel(): ReactPortal | null {
   const [target, setTarget] = useState<TargetState | null>(null);
   const [targetQuery, setTargetQuery] = useState("");
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
+  const [selectionMenu, setSelectionMenu] = useState<NoteSelectionMenuState | null>(null);
   const [renameDialog, setRenameDialog] = useState<RenameDialog | null>(null);
   const [findOpen, setFindOpen] = useState(false);
   const [findQuery, setFindQuery] = useState("");
@@ -1640,11 +1642,30 @@ export function NotesPanel(): ReactPortal | null {
                 </button>
               </div>
             ) : null}
-            {view === "edit" ? <CodeEditor ref={editorRef} className="notes-editor-host" value={content} language="markdown" ariaLabel={t("desktop.notes.editorPlaceholder")} onChange={editContent} onBlur={() => void save()} shouldHandlePaste={() => desktopApi().notesClipboardHasImage()} onPasteImage={pasteImage} /> : <div ref={previewRef} className="notes-preview markdown-body" onClick={(event) => { if (event.target instanceof HTMLImageElement) setImagePreview(event.target.src); }} dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />}
+            <div
+              className="notes-editor-surface"
+              onContextMenu={(event) => {
+                const selectedText = view === "edit"
+                  ? editorRef.current?.getSelectedText() || ""
+                  : (selectedPreviewRange(previewRef.current)?.toString() || "");
+                const text = selectedText.trim();
+                if (!text) return;
+                event.preventDefault();
+                setSelectionMenu({
+                  x: event.clientX,
+                  y: event.clientY,
+                  text,
+                  ...(selected?.projectPath ? { projectPath: selected.projectPath } : {})
+                });
+              }}
+            >
+              {view === "edit" ? <CodeEditor ref={editorRef} className="notes-editor-host" value={content} language="markdown" ariaLabel={t("desktop.notes.editorPlaceholder")} onChange={editContent} onBlur={() => void save()} shouldHandlePaste={() => desktopApi().notesClipboardHasImage()} onPasteImage={pasteImage} /> : <div ref={previewRef} className="notes-preview markdown-body" onClick={(event) => { if (event.target instanceof HTMLImageElement) setImagePreview(event.target.src); }} dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />}
+            </div>
             </div>
           </div> : <div className="notes-empty-state"><p className="muted notes-hint">{t("desktop.notes.selectOrCreate")}</p><button type="button" className="tool-btn" onClick={() => void desktopApi().notesOpenFolder()}>{t("desktop.common.revealInFinder")}</button></div>}
         </main>
       </div>
+      {selectionMenu ? <NoteSelectionContextMenu menu={selectionMenu} onClose={() => setSelectionMenu(null)} /> : null}
       {contextMenu ? <div className="notes-context-menu" role="menu" style={{ left: Math.max(8, Math.min(contextMenu.x, window.innerWidth - 220)), top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - (contextMenu.kind === "note" ? 520 : 260))) }} onContextMenu={(event) => event.preventDefault()}>
         {contextMenu.kind === "project" ? <>
           <button type="button" role="menuitem" onClick={() => { void togglePinnedProject(contextMenu.projectPath, contextMenu.projectId); setContextMenu(null); }}>{t(

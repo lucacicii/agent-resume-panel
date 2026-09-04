@@ -7478,4 +7478,84 @@ describe("WorkbenchPanel", () => {
     expect(terminalGitDiffSides.mock.calls.some((call) => call[0]?.staged === true)).toBe(false);
     expect(terminalGitStatus.mock.calls.every((call) => call[0]?.nestedScan)).toBe(true);
   });
+
+  it("sends selected note text to a new CLI session and an open pane", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const workbenchNewSession = vi.fn(async () => ({ mode: "xterm", command: "pi", cwd: "/work/app" }));
+    const acpCreateSession = vi.fn(async ({ projectPath, provider }: { projectPath: string; provider: string }) => ({
+      id: "acp-new",
+      title: "ACP session",
+      projectPath,
+      provider,
+      createdAt: 1,
+      updatedAt: 1,
+      messageCount: 0
+    }));
+    const terminalInput = vi.fn(async () => ({ ok: true }));
+    const setWorkbenchActiveSessions = vi.fn();
+    let sendSelection: ((payload: { kind: string; text: string; target?: string; paneKey?: string; projectPath?: string }) => void) | undefined;
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        ...ARROW_TEST_MESSAGES,
+        "desktop.workbench.newSessionTitle": "New session {0}",
+        "desktop.notes.sendSelectionMissingSession": "That session is no longer open.",
+        "desktop.settings.newSessionTarget.cli_pi": "Pi"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      workbenchNewSession,
+      acpCreateSession,
+      onAcpStream: () => () => undefined,
+      acpConnect: async () => ({ record: { id: "acp-new", title: "ACP session", projectPath: "/work/app", provider: "pi", createdAt: 1, updatedAt: 1, messageCount: 0 }, init: {} }),
+      acpDisconnect: async () => ({ ok: true }),
+      setWorkbenchActiveSessions,
+      getWorkbenchActiveSessions: async () => [],
+      onWorkbenchSendSelection: (callback: typeof sendSelection) => {
+        sendSelection = callback;
+        return () => undefined;
+      },
+      terminalSpawn: async () => ({ id: 21 }),
+      terminalInput,
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByTitle("/work/app"));
+    await waitFor(() => expect(sendSelection).toBeTypeOf("function"));
+    await waitFor(() => expect(setWorkbenchActiveSessions).toHaveBeenCalled());
+
+    await act(async () => sendSelection?.({
+      kind: "new-agent",
+      text: "review this",
+      target: "cli:pi",
+      projectPath: "/work/app"
+    }));
+    await waitFor(() => expect(workbenchNewSession).toHaveBeenCalledWith({
+      cwd: "/work/app",
+      provider: "pi",
+      executionMode: "standard"
+    }));
+    await waitFor(() => expect(document.querySelectorAll('[data-pane-group="session"] .wb-terminal-tab')).toHaveLength(1));
+    const paneKey = setWorkbenchActiveSessions.mock.calls.at(-1)?.[0]?.[0]?.paneKey as string;
+    expect(paneKey).toBeTruthy();
+
+    await act(async () => sendSelection?.({
+      kind: "existing-session",
+      text: "follow up",
+      paneKey
+    }));
+    await waitFor(() => expect(terminalInput).toHaveBeenCalledWith({ id: 21, data: "follow up\r" }));
+  });
 });

@@ -177,6 +177,10 @@ import {
   workbenchArrowDirectionFromInput
 } from "./desktopShortcuts";
 import { STANDALONE_NOTE_INITIAL_CONTENT } from "../shared/standaloneNote";
+import {
+  parseWorkbenchActiveSessionDots,
+  parseWorkbenchSendSelectionRequest
+} from "../shared/workbenchSelection";
 import { checkForDesktopUpdate, getAppVersion } from "./updateCheck";
 import { loadPanelDbPaths } from "./panelDatabases";
 import { buildI18nBundle, desktopT, initI18nService } from "./i18nService";
@@ -428,6 +432,7 @@ let sessionSyncInFlight: Promise<AgentSessionSyncResult> | null = null;
 let workbenchActive = false;
 let floatingNoteFocused = false;
 let modalOpen = false;
+let workbenchActiveSessions: ReturnType<typeof parseWorkbenchActiveSessionDots> = [];
 const SESSION_SYNC_INTERVAL_MS = 60_000;
 
 const SETTINGS_PANES = [
@@ -1355,6 +1360,24 @@ function registerIpc(): void {
       workbenchActive = active === true;
       setWorkbenchWatcherActive(workbenchActive);
     }
+  });
+
+  ipcMain.on("workbench:activeSessions", (event, payload: unknown) => {
+    if (event.sender !== mainWindow?.webContents) return;
+    workbenchActiveSessions = parseWorkbenchActiveSessionDots(payload);
+    broadcastToRenderers("workbench:activeSessions", workbenchActiveSessions);
+  });
+
+  safeHandle("workbench:getActiveSessions", async () => workbenchActiveSessions);
+
+  safeHandle("workbench:sendSelection", async (_event, payload: unknown) => {
+    const request = parseWorkbenchSendSelectionRequest(payload);
+    const target = mainWindow;
+    if (!target || target.isDestroyed()) {
+      throw new Error("Workbench window is not available.");
+    }
+    target.webContents.send("workbench:sendSelection", request);
+    return { ok: true as const };
   });
 
   safeHandle("workbench:getRuntimeMetrics", async (event) => {

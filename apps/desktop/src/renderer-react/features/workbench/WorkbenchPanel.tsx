@@ -43,6 +43,7 @@ import { useI18n } from "../../i18n";
 import { AcpChatView } from "./AcpChatView";
 import { BrowserPaneView } from "../browser/BrowserPaneView";
 import type { BrowserSessionState } from "../../../shared/browserTypes";
+import type { WorkbenchSendSelectionRequest } from "../../../shared/workbenchSelection";
 import {
   acpRuntimeToStatus,
   collectActiveSessionDots,
@@ -218,6 +219,7 @@ type AcpChatPane = {
   title: string;
   provider: string;
   projectPath: string;
+  initialPrompt?: string;
 };
 type BrowserPane = {
   key: string;
@@ -1905,6 +1907,7 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, engineT
   const rendererModeRef = useRef<TerminalRendererMode>(rendererMode);
   const ptyId = useRef<number | null>(null);
   const initialPromptRef = useRef(pane.initialPrompt);
+  initialPromptRef.current = pane.initialPrompt;
   /** Whether the user is anchored at the bottom of the normal buffer (session
    *  panes only). Updated solely from user scroll input; write-side re-anchors
    *  read it so they never fight an intentional scroll-up. */
@@ -2858,11 +2861,13 @@ export function WorkbenchPanel(): ReactPortal | null {
     [acpChats, sessionRuntimeByPaneKey, sessionTitles, terminals]
   );
 
-  // Broadcast the live session-dot set to the nav rail (sibling component).
+  // Broadcast the live session-dot set to the nav rail (sibling component)
+  // and to floating note windows via main-process IPC.
   // StrictMode double-invoke on mount is harmless: AppChrome just sets state
   // to an identical payload. No loop: nothing listens back to this event here.
   useEffect(() => {
     window.dispatchEvent(new CustomEvent("agent-resume:active-sessions", { detail: activeSessionDots }));
+    desktopApi().setWorkbenchActiveSessions?.(activeSessionDots);
   }, [activeSessionDots]);
 
   const composerHistoryKeys = useMemo(() => terminals
@@ -4617,11 +4622,15 @@ export function WorkbenchPanel(): ReactPortal | null {
     title: string;
     provider: string;
     projectPath: string;
-  }) => {
+  }, launch?: { initialPrompt?: string }) => {
     const key = `acp:${record.id}`;
     const projectPath = record.projectPath;
+    const initialPrompt = launch?.initialPrompt?.trim() || undefined;
     setAcpChats((current) => {
-      if (current.some((pane) => pane.key === key)) return current;
+      if (current.some((pane) => pane.key === key)) {
+        if (!initialPrompt) return current;
+        return current.map((pane) => pane.key === key && !pane.initialPrompt ? { ...pane, initialPrompt } : pane);
+      }
       return [
         ...current,
         {
@@ -4629,7 +4638,8 @@ export function WorkbenchPanel(): ReactPortal | null {
           recordId: record.id,
           title: record.title || t("desktop.workbench.acpChat"),
           provider: record.provider,
-          projectPath
+          projectPath,
+          ...(initialPrompt ? { initialPrompt } : {})
         }
       ];
     });
@@ -4787,7 +4797,8 @@ export function WorkbenchPanel(): ReactPortal | null {
   const launchNewSession = useCallback(async (
     target: WorkbenchNewSessionTarget,
     targetProject?: string,
-    projectId?: string
+    projectId?: string,
+    initialPrompt?: string
   ) => {
     if (terminalCreating) return;
     setTerminalCreating(true);
@@ -4809,9 +4820,10 @@ export function WorkbenchPanel(): ReactPortal | null {
         && projectPathKey(cwd) === projectPathKey(selectedProject)
         ? { projectId: selectedProjectMeta.id, folderId: selectedFolderId }
         : null;
+      const prompt = initialPrompt?.trim() || "";
       if (target.channel === "acp") {
         const record = await desktopApi().acpCreateSession({ projectPath: cwd, provider: target.provider });
-        addAcpChat(record);
+        addAcpChat(record, prompt ? { initialPrompt: prompt } : undefined);
         if (focusedFolder && typeof desktopApi().assignWorkbenchSessionToFolder === "function") {
           try {
             await desktopApi().assignWorkbenchSessionToFolder({
@@ -4837,17 +4849,19 @@ export function WorkbenchPanel(): ReactPortal | null {
         }
         if (result.external || result.mode === "external-system") {
           setStatus({
-            text: result.copied
-              ? t("desktop.workbench.externalCommandCopied")
-              : result.command || t("desktop.workbench.externalTerminalHint"),
-            kind: "ok"
+            text: prompt
+              ? t("desktop.notes.sendSelectionExternal")
+              : result.copied
+                ? t("desktop.workbench.externalCommandCopied")
+                : result.command || t("desktop.workbench.externalTerminalHint"),
+            kind: prompt ? "warning" : "ok"
           });
           await loadSessions();
           return;
         }
         if (result.mode === "xterm" && result.command) {
           const title = t("desktop.workbench.newSessionTitle", basename(cwd));
-          const terminalKey = addTerminal(title, result.cwd, result.command, cwd, undefined, "session");
+          const terminalKey = addTerminal(title, result.cwd, result.command, cwd, undefined, "session", prompt ? { initialPrompt: prompt } : undefined);
           addPendingSession(terminalKey, target.provider, cwd, title, focusedFolder || undefined);
         }
         await loadSessions();
@@ -4879,6 +4893,66 @@ export function WorkbenchPanel(): ReactPortal | null {
     setNewSessionPicker(null);
     await launchNewSession(target, picker.projectPath, picker.projectId);
   }, [launchNewSession, newSessionPicker, parseNewSessionTarget]);
+
+  const queueTerminalPrompt = useCallback((paneKey: string, text: string) => {
+    const prompt = text.trim();
+    if (!prompt) return;
+    setTerminals((current) => {
+      const next = current.map((pane) => pane.key === paneKey ? { ...pane, initialPrompt: prompt } : pane);
+      terminalsRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const sendSelectionToOpenPane = useCallback((paneKey: string, text: string) => {
+    const prompt = text.trim();
+    if (!prompt) return false;
+    const terminal = terminalsRef.current.find((pane) => pane.key === paneKey);
+    if (terminal) {
+      selectProject(terminal.projectPath, { keepSessionKey: true });
+      setActivePane(terminal.key, terminal.projectPath);
+      if (terminal.sessionKey) setActiveSessionKey(terminal.sessionKey);
+      focusWorkbenchPane(terminal.key);
+      if (terminal.ptyId != null) {
+        void desktopApi().terminalInput({ id: terminal.ptyId, data: `${prompt}\r` });
+      } else {
+        queueTerminalPrompt(terminal.key, prompt);
+      }
+      return true;
+    }
+    const chat = acpChatsRef.current.find((pane) => pane.key === paneKey);
+    if (chat) {
+      selectProject(chat.projectPath, { keepSessionKey: true });
+      setActivePane(chat.key, chat.projectPath);
+      setActiveSessionKey(acpListSessionKey(chat.recordId));
+      focusWorkbenchPane(chat.key);
+      setAcpChats((current) => current.map((pane) => pane.key === paneKey ? { ...pane, initialPrompt: prompt } : pane));
+      return true;
+    }
+    return false;
+  }, [focusWorkbenchPane, queueTerminalPrompt, selectProject, setActivePane]);
+
+  const handleSelectionSend = useCallback((payload: WorkbenchSendSelectionRequest) => {
+    window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
+    if (payload.kind === "existing-session") {
+      if (!sendSelectionToOpenPane(payload.paneKey, payload.text)) {
+        setStatus({ text: t("desktop.notes.sendSelectionMissingSession"), kind: "error" });
+      }
+      return;
+    }
+    const target = parseNewSessionTarget(payload.target);
+    if (!target) {
+      setStatus({ text: t("desktop.notes.sendSelectionMissingSession"), kind: "error" });
+      return;
+    }
+    void launchNewSession(target, payload.projectPath, undefined, payload.text);
+  }, [launchNewSession, parseNewSessionTarget, sendSelectionToOpenPane, setStatus, t]);
+
+  useEffect(() => {
+    const api = desktopApi();
+    if (typeof api.onWorkbenchSendSelection !== "function") return;
+    return api.onWorkbenchSendSelection((payload) => handleSelectionSend(payload));
+  }, [handleSelectionSend]);
 
   const handleNewSessionPickerKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
     if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
@@ -8159,6 +8233,7 @@ export function WorkbenchPanel(): ReactPortal | null {
               projectPath={pane.projectPath}
               title={pane.title}
               active={active && visible}
+              initialPrompt={pane.initialPrompt}
               onTitleChange={(nextTitle) => {
                 setAcpChats((current) => current.map((item) => item.key === pane.key ? { ...item, title: nextTitle } : item));
                 setSessions((current) => current.map((item) =>
@@ -8166,6 +8241,9 @@ export function WorkbenchPanel(): ReactPortal | null {
                 ));
               }}
               onSessionReady={refreshSessionsAfterAcpConnect}
+              onInitialPromptSubmitted={() => {
+                setAcpChats((current) => current.map((item) => item.key === pane.key ? { ...item, initialPrompt: undefined } : item));
+              }}
             />;
           })}{browsers.map((pane) => {
             const visible = pane.projectPath === selectedProject && activePane === pane.key;

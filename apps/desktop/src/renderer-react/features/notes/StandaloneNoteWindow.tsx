@@ -6,6 +6,7 @@ import { GTD_STATUSES, type GtdStatus } from "../../gtd";
 import { useI18n } from "../../i18n";
 import { basename, projectMatchesNote, projectPathFor, type Project } from "./noteProject";
 import { STANDALONE_NOTE_INITIAL_CONTENT } from "../../../shared/standaloneNote";
+import { NoteSelectionContextMenu, type NoteSelectionMenuState } from "./NoteSelectionContextMenu";
 
 type Note = Awaited<ReturnType<ReturnType<typeof desktopApi>["notesList"]>>[number];
 
@@ -25,6 +26,7 @@ export function StandaloneNoteWindow({ noteId }: { noteId: string }): React.JSX.
   const [deleting, setDeleting] = useState(false);
   const [moving, setMoving] = useState(false);
   const [error, setError] = useState("");
+  const [selectionMenu, setSelectionMenu] = useState<NoteSelectionMenuState | null>(null);
   const [findOpen, setFindOpen] = useState(false);
   const [findQuery, setFindQuery] = useState("");
   const [findResult, setFindResult] = useState<CodeEditorSearchResult | null>(null);
@@ -489,16 +491,32 @@ export function StandaloneNoteWindow({ noteId }: { noteId: string }): React.JSX.
                 </button>
               </div>
             ) : null}
-            <CodeEditor
-              ref={editorRef}
-              className="standalone-note-window-editor"
-              value={content}
-              onChange={updateContent}
-              ariaLabel={t("desktop.standaloneNote.editor")}
-              language="markdown"
-              fontSize={13}
-              wordWrap
-            />
+            <div
+              className="standalone-note-window-editor-surface"
+              onContextMenu={(event) => {
+                const text = (editorRef.current?.getSelectedText() || "").trim();
+                if (!text) return;
+                event.preventDefault();
+                setSelectionMenu({
+                  x: event.clientX,
+                  y: event.clientY,
+                  text,
+                  ...(record?.projectPath ? { projectPath: record.projectPath } : {})
+                });
+              }}
+            >
+              <CodeEditor
+                ref={editorRef}
+                className="standalone-note-window-editor"
+                value={content}
+                onChange={updateContent}
+                ariaLabel={t("desktop.standaloneNote.editor")}
+                language="markdown"
+                fontSize={13}
+                wordWrap
+              />
+            </div>
+            {selectionMenu ? <NoteSelectionContextMenu menu={selectionMenu} onClose={() => setSelectionMenu(null)} /> : null}
           </div>
           <footer className="standalone-note-window-foot">
             <span className={error ? "is-error" : undefined} role={error ? "alert" : "status"} aria-live="polite">

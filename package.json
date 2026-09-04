@@ -36,7 +36,8 @@
     "test:locale": "pnpm --filter agent-resume-panel run test:locale",
     "merge:desktop-i18n": "node scripts/merge-desktop-i18n.mjs",
     "patch:menus": "node apps/extension/scripts/patch-project-menu-package.mjs",
-    "doctor:desktop": "node apps/desktop/scripts/doctor-desktop.mjs"
+    "doctor:desktop": "node apps/desktop/scripts/doctor-desktop.mjs",
+    "backfill:composer-sends": "node scripts/backfill-composer-sends.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.13.1",
