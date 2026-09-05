@@ -8,6 +8,23 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## English
 
+### [0.2.22]
+
+#### Added
+
+- **IM tool calls on role answers**: role messages now persist ACP tool calls (`tool_calls_json`, `acp_message_id`, `origin`) and render them as status chips, with a compact count badge in collapsed view
+- **IM ACP history backfill**: opening a room backfills missing assistant turns from ACP history, patches truncated drafts with the full text, and stays idempotent across reopens
+- **IM live ACP tail**: ACP activity produced outside IM (no job) now live-tails onto the bound member instead of being dropped
+
+#### Improved
+
+- **Composer-send import quality**: full-transcript import without the message cap, session+text dedupe so repeated backfills are no-ops, noise filtering (injected context, shell/build echoes, tool output, terminal bursts), and Codex `input_text` re-scan
+- **Report loading feedback**: stale day insights hide while switching days with a spinner/skeleton in the detail pane; calendar clicks skip transcript re-parse when import rows already exist
+
+#### Fixed
+
+- **Composer-send backfill cleanup**: backfill script cleans polluted import rows (duplicates/noise/live twins) via `--cleanup-only` / `--skip-cleanup`
+
 ### [0.2.21]
 
 #### Added
@@ -495,6 +512,23 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 ---
 
 ## 简体中文
+
+### [0.2.22]
+
+#### 新增
+
+- **IM 角色消息工具调用**: 角色消息持久化 ACP 工具调用（`tool_calls_json`、`acp_message_id`、`origin`），以状态芯片展示，折叠视图显示紧凑数量徽标
+- **IM ACP 历史回填**: 打开房间时从 ACP 历史回填缺失的助手消息，用完整文本修补被截断的草稿，多次打开保持幂等
+- **IM 外部 ACP 实时跟随**: IM 之外产生的 ACP 活动（无任务）会实时跟随到绑定的角色成员，不再丢弃
+
+#### 改进
+
+- **Composer 发送导入质量**: 全量转录导入（去掉消息数上限）、按会话+文本去重（重复回填无操作）、噪声过滤（注入上下文、shell/build 回显、工具输出、终端突发），并重扫 Codex `input_text`
+- **报告加载反馈**: 切换日期时隐藏过期 insights 并显示加载 spinner/骨架屏；已有导入记录的会话在日历点击时跳过转录重解析
+
+#### 修复
+
+- **Composer 发送回填清理**: 回填脚本可清理被污染的导入行（重复/噪声/live 孪生），支持 `--cleanup-only` / `--skip-cleanup`
 
 ### [0.2.21]
 
