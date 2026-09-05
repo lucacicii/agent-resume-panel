@@ -3,6 +3,7 @@ import { AgentSession } from "../catalog/types";
 import { readJsonLines } from "./jsonl";
 import { PreviewHomes, SessionPreviewResult } from "./types";
 import { extractPreviewContent, finalizePreviewMessages, isUserOrAssistantRole } from "./text";
+import type { FinalizePreviewOptions } from "./text";
 import { listJsonlFiles } from "./fs";
 
 interface CodexRolloutRow {
@@ -18,7 +19,8 @@ interface CodexRolloutRow {
 
 export async function previewCodexSession(
   session: AgentSession,
-  homes: PreviewHomes
+  homes: PreviewHomes,
+  options?: FinalizePreviewOptions
 ): Promise<SessionPreviewResult> {
   const roots = [
     path.join(homes.codexHome, "sessions"),
@@ -68,5 +70,5 @@ export async function previewCodexSession(
     throw new Error("Codex transcript is empty for this session.");
   }
 
-  return finalizePreviewMessages(session.title, messages);
+  return finalizePreviewMessages(session.title, messages, undefined, options);
 }

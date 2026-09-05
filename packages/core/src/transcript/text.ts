@@ -33,6 +33,45 @@ function blockType(block: Record<string, unknown>): string {
   return typeof block.type === "string" ? block.type : "";
 }
 
+const INPUT_TEXT_TYPE_ALIASES = new Set(["input_text", "input-text", "inputText"]);
+const INJECTED_INPUT_TEXT_PREFIXES = ["# agents.md instructions", "<environment_context>", "<environment-context>"];
+
+function blockText(block: Record<string, unknown>, type: string): string {
+  if (typeof block.text === "string") return block.text;
+  if (typeof block.input === "string") return block.input;
+  if (typeof block.content === "string") return block.content;
+  if (INPUT_TEXT_TYPE_ALIASES.has(type)) {
+    for (const key of ["text", "input", "content", "value"] as const) {
+      const value = (block as Record<string, unknown>)[key];
+      if (typeof value === "string") return value;
+    }
+  }
+  return "";
+}
+
+function pushBlockText(
+  block: Record<string, unknown>,
+  textParts: string[],
+  thinkingParts: string[]
+): void {
+  if (isToolishBlock(block)) return;
+  const type = blockType(block);
+  const raw = blockText(block, type);
+  if (!raw.trim() || THINKING_BLOCK_TYPES.has(type)) {
+    const thinkingText =
+      typeof block.thinking === "string"
+        ? block.thinking
+        : type && THINKING_BLOCK_TYPES.has(type) && typeof block.text === "string"
+          ? block.text
+          : "";
+    if (thinkingText.trim()) thinkingParts.push(thinkingText);
+    return;
+  }
+  const marker = raw.trimStart().slice(0, 32).toLowerCase();
+  if (INJECTED_INPUT_TEXT_PREFIXES.some((prefix) => marker.startsWith(prefix))) return;
+  textParts.push(raw);
+}
+
 function collectParts(content: unknown, textParts: string[], thinkingParts: string[]): void {
   if (typeof content === "string") {
     if (content.trim()) textParts.push(content);
@@ -44,20 +83,8 @@ function collectParts(content: unknown, textParts: string[], thinkingParts: stri
       if (block.trim()) textParts.push(block);
       continue;
     }
-    if (!isRecord(block) || isToolishBlock(block)) continue;
-    const type = blockType(block);
-    const thinkingText = typeof block.thinking === "string"
-      ? block.thinking
-      : type && THINKING_BLOCK_TYPES.has(type) && typeof block.text === "string"
-        ? block.text
-        : "";
-    if (thinkingText.trim()) {
-      thinkingParts.push(thinkingText);
-      continue;
-    }
-    if (typeof block.text === "string" && block.text.trim() && !THINKING_BLOCK_TYPES.has(type)) {
-      textParts.push(block.text);
-    }
+    if (!isRecord(block)) continue;
+    pushBlockText(block, textParts, thinkingParts);
   }
 }
 
@@ -88,10 +115,16 @@ export function isConversationPreviewText(text: string): boolean {
   return Boolean(trimmed) && !NOISE_TEXT.test(trimmed);
 }
 
+export interface FinalizePreviewOptions {
+  /** Cap on returned messages. Omit or pass Infinity for no cap (import flows). */
+  maxMessages?: number;
+}
+
 export function finalizePreviewMessages(
   title: string,
   messages: PreviewMessage[],
-  warning?: string
+  warning?: string,
+  options?: FinalizePreviewOptions
 ): { title: string; messages: PreviewMessage[]; truncated?: boolean; warning?: string } {
   const merged: PreviewMessage[] = [];
   for (const message of messages) {
@@ -124,13 +157,14 @@ export function finalizePreviewMessages(
   }
 
   const visible = merged.filter((message) => message.role === "user" || message.text || message.thinking);
-  if (visible.length <= MAX_PREVIEW_MESSAGES) {
+  const cap = options?.maxMessages ?? MAX_PREVIEW_MESSAGES;
+  if (!Number.isFinite(cap) || cap <= 0 || visible.length <= cap) {
     return { title, messages: visible, warning };
   }
 
   return {
     title,
-    messages: visible.slice(-MAX_PREVIEW_MESSAGES),
+    messages: visible.slice(-cap),
     truncated: true,
     warning
   };

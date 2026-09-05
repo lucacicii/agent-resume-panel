@@ -27,6 +27,7 @@ import {
   getUsageSummary,
   appendComposerSend,
   listComposerSends,
+  listSessionsMissingComposerImport,
   importComposerSendsForSession,
   hideSessionAction,
   hideProjectAction,
@@ -2581,15 +2582,27 @@ function registerIpc(): void {
           return null;
         }
 
-        // Real-time sync: import transcript user messages for recent active sessions in this period
+        // Real-time sync: only parse transcripts for sessions that have no
+        // `import:` rows yet (the historical backfill already covers the rest).
+        // This keeps calendar-click insights cheap — a single indexed SELECT
+        // decides whether any transcript parse is needed at all.
         try {
           const recentSessions = await listSessionsInRange(paths.catalogDb, fromMs, toMs, 10);
-          const homes = resolvePreviewHomes(settings);
-          await Promise.all(
-            recentSessions.map((s) =>
-              importComposerSendsForSession(paths.desktopDb, s, homes).catch(() => undefined)
-            )
-          );
+          const missing = await listSessionsMissingComposerImport(paths.desktopDb, recentSessions);
+          if (missing.length) {
+            const homes = resolvePreviewHomes(settings);
+            const byKey = new Map(
+              recentSessions.map((s) => [`${s.provider}:${s.id}`, s])
+            );
+            await Promise.all(
+              missing.map(({ provider, id }) => {
+                const session = byKey.get(`${provider}:${id}`);
+                return session
+                  ? importComposerSendsForSession(paths.desktopDb, session, homes).catch(() => undefined)
+                  : Promise.resolve();
+              })
+            );
+          }
         } catch {
           // best-effort sync
         }

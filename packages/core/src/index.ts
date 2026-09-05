@@ -311,16 +311,28 @@ export {
 export {
   appendComposerSend,
   listComposerSends,
+  listComposerSendsForImport,
+  listSessionsMissingComposerImport,
   COMPOSER_SEND_TEXT_MAX,
   COMPOSER_SEND_LIST_MAX
 } from "./workbench/composerSends";
 export {
+  cleanupImportedComposerSends,
   importComposerSendsForSession,
   shouldImportComposerSendText
 } from "./workbench/composerSendsImport";
+export {
+  filterComposerImportCandidates,
+  isComposerSendNoise
+} from "./workbench/composerSendNoise";
 export type {
+  CleanupComposerSendsResult,
   ImportComposerSendsResult
 } from "./workbench/composerSendsImport";
+export type {
+  ComposerImportCandidate
+} from "./workbench/composerSendNoise";
+export type { FinalizePreviewOptions } from "./transcript/text";
 export type {
   ComposerSendRecord,
   ComposerSendAppendInput

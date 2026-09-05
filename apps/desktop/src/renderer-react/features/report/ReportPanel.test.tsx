@@ -286,4 +286,39 @@ describe("ReportPanel", () => {
     expect((spy.mock.calls.at(-1)?.[0] as CustomEvent).detail).toEqual({ type: "day", key: day });
     window.removeEventListener("agent-resume:report-focus", spy);
   });
+
+  it("shows loading feedback when switching days while the range query is pending", async () => {
+    const host = document.createElement("div");
+    host.id = "react-report";
+    document.body.append(host);
+    // Defer only the day-range (focus) query so we can assert the loading UI;
+    // the month-wide call used by loadMonth must resolve so the calendar fills.
+    let resolveSessions: ((value: AgentSession[]) => void) | undefined;
+    const sessionsDeferred = new Promise<AgentSession[]>((resolve) => { resolveSessions = resolve; });
+    const listSessionsInRange = vi.fn((options: { limit?: number }) =>
+      (options?.limit ?? 0) > 500 ? Promise.resolve([]) : sessionsDeferred
+    );
+    window.agentResume = mockAgentResume({
+      listSessionsInRange,
+      getPeriodInsights: async () => null
+    });
+    render(<I18nProvider><ReportPanel /></I18nProvider>);
+    await screen.findByText("Daily digest");
+
+    // Pick another day cell in the same month that is not today.
+    const tomorrow = new Date(now.getTime() + 86400000);
+    const otherDay = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, "0")}-${String(tomorrow.getDate()).padStart(2, "0")}`;
+    const cells = document.querySelectorAll<HTMLButtonElement>(".cal-cell");
+    const target = Array.from(cells).find((cell) => cell.querySelector(".day-num")?.textContent === String(tomorrow.getDate()));
+    expect(target).toBeTruthy();
+
+    fireEvent.click(target!);
+    // Right pane should show loading while the range query is pending and no digest exists yet.
+    await waitFor(() => expect(document.querySelector(".cal-detail-loading")).toBeTruthy());
+    expect(document.querySelector(".cal-detail-loading")?.textContent).toContain("Loading");
+
+    await act(async () => resolveSessions!([]));
+    await waitFor(() => expect(document.querySelector(".cal-detail-loading")).toBeNull());
+    expect(document.querySelector(".report-detail-head strong")?.textContent).toContain(otherDay);
+  });
 });

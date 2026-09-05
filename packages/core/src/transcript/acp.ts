@@ -2,6 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { AgentSession } from "../catalog/types";
 import { MAX_PREVIEW_MESSAGES, PreviewHomes, PreviewMessage, SessionPreviewResult } from "./types";
+import type { FinalizePreviewOptions } from "./text";
 
 interface AcpThreadLine {
   id?: string;
@@ -16,7 +17,8 @@ interface AcpThreadLine {
  */
 export async function previewAcpSession(
   session: AgentSession,
-  homes: PreviewHomes
+  homes: PreviewHomes,
+  options?: FinalizePreviewOptions
 ): Promise<SessionPreviewResult> {
   const threadPath = path.join(homes.panelHome, "acp", "threads", `${session.id}.jsonl`);
   let raw = "";
@@ -56,9 +58,10 @@ export async function previewAcpSession(
     });
   }
 
+  const cap = options?.maxMessages ?? MAX_PREVIEW_MESSAGES;
   const sorted = [...byId.values()].sort((a, b) => a.ts - b.ts);
-  const truncated = sorted.length > MAX_PREVIEW_MESSAGES;
-  const slice = truncated ? sorted.slice(-MAX_PREVIEW_MESSAGES) : sorted;
+  const truncated = Number.isFinite(cap) && cap > 0 && sorted.length > cap;
+  const slice = truncated ? sorted.slice(-cap) : sorted;
   return {
     title: session.title || session.id,
     messages: slice.map(({ role, text, timestamp }) => ({ role, text, timestamp })),

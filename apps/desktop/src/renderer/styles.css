@@ -4394,6 +4394,47 @@ legend {
   font-size: 13px;
 }
 
+.cal-detail-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 2px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.cal-detail-spinner {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  border-top-color: var(--accent);
+  animation: cal-cell-spin 0.7s linear infinite;
+}
+
+.insights-dashboard.loading .insights-loading-skeleton {
+  height: 140px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background:
+    linear-gradient(
+      100deg,
+      transparent 20%,
+      color-mix(in srgb, var(--text) 6%, transparent) 50%,
+      transparent 80%
+    ),
+    color-mix(in srgb, var(--bg) 40%, var(--panel));
+  background-size: 200% 100%;
+  animation: insights-shimmer 1.4s linear infinite;
+}
+
+@keyframes insights-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
 .cal-detail .empty-hint.error {
   color: var(--danger, #c44);
 }

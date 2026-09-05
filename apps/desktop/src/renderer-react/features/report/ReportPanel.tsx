@@ -332,6 +332,13 @@ export function ReportPanel(): ReactPortal | null {
     setSelectedTag(null);
     setStatusFilter("all");
     setSelectedProject(null);
+    // Drop the previous day's content immediately so the loading state is
+    // visible while the slow range query runs (instead of stale numbers).
+    setSessions([]);
+    setInsights(null);
+    setPreview(null);
+    setPreviewAssist(null);
+    notifyPreviewStatus({ text: "" });
     setFocus(next);
   };
   const navigate = (delta: number) => {
@@ -506,7 +513,7 @@ export function ReportPanel(): ReactPortal | null {
   const focusedPeriodKey = digestProgressKey(focus.type, focus.key);
   const focusedRunning = runningPeriods.has(focusedPeriodKey);
   const focusedProgress = progressByPeriod.get(focusedPeriodKey);
-  const detail = preview ? <SessionDetail preview={preview} locale={locale} t={t} assist={previewAssist} onSummarize={() => void summarizePreview()} onAutoRename={() => void renamePreview()} onChangeStatus={(status) => void changePreviewStatus(status)} /> : <DigestDetail entry={selectedEntry} focus={focus} hasSessions={sessions.length > 0} stale={stale.has(`${levelFor(focus.type)}:${focus.key}`)} running={focusedRunning} locale={locale} t={t} links={reportLinks} onRun={() => void run(focus.type)} onGtd={() => window.dispatchEvent(new CustomEvent("agent-resume:gtd-open", { detail: { level: levelFor(focus.type), reportId: selectedEntry?.id } }))} />;
+  const detail = preview ? <SessionDetail preview={preview} locale={locale} t={t} assist={previewAssist} onSummarize={() => void summarizePreview()} onAutoRename={() => void renamePreview()} onChangeStatus={(status) => void changePreviewStatus(status)} /> : <DigestDetail entry={selectedEntry} focus={focus} hasSessions={sessions.length > 0} loading={sessionsLoading} stale={stale.has(`${levelFor(focus.type)}:${focus.key}`)} running={focusedRunning} locale={locale} t={t} links={reportLinks} onRun={() => void run(focus.type)} onGtd={() => window.dispatchEvent(new CustomEvent("agent-resume:gtd-open", { detail: { level: levelFor(focus.type), reportId: selectedEntry?.id } }))} />;
   const detailProgress = !preview && focusedRunning ? <DigestProgressCard focus={focus} progress={focusedProgress} t={t} /> : null;
   const hasMonthDigest = index.has(`monthly:${monthKey}`);
   // The toolbar lives in the app header while the Report view is active.
@@ -561,9 +568,12 @@ function DigestProgressCard({ focus, progress, t }: { focus: Focus; progress?: D
   return <div className="detail-progress gen-progress is-loading" role="status" aria-live="polite"><div className="gen-progress-line">{progressText}</div>{sessionText ? <div className="gen-progress-session-row"><span className="gen-progress-pulse" aria-hidden="true" /><span className="gen-progress-session">{sessionText}</span></div> : null}<div className="gen-progress-bar-wrap"><div className="gen-progress-bar" style={{ width: progressWidth }} /></div></div>;
 }
 
-function DigestDetail({ entry, focus, hasSessions, stale, running, locale, t, links, onRun, onGtd }: { entry?: ReportEntry; focus: Focus; hasSessions: boolean; stale: boolean; running: boolean; locale: string; t: Translate; links: ReportLinkRow[]; onRun: () => void; onGtd: () => void }) {
+function DigestDetail({ entry, focus, hasSessions, loading, stale, running, locale, t, links, onRun, onGtd }: { entry?: ReportEntry; focus: Focus; hasSessions: boolean; loading: boolean; stale: boolean; running: boolean; locale: string; t: Translate; links: ReportLinkRow[]; onRun: () => void; onGtd: () => void }) {
   if (running) {
     return <div className="detail-generating"><p className="empty-hint">{t("desktop.report.generatingStrong")} {" "}<strong>{digestLabel(focus.type, t)}</strong><span className="detail-generating-key">{focus.key}</span></p><p className="muted detail-generating-hint">{t("desktop.report.generatingHint")}</p></div>;
+  }
+  if (loading && !entry) {
+    return <div className="cal-detail-loading" role="status"><span className="cal-detail-spinner" aria-hidden="true" /><span>{t("desktop.common.loading")}…</span></div>;
   }
   if (isFuture(focus.type, focus.key)) return <p className="empty-hint muted">{t("desktop.report.futureDateHint", digestLabel(focus.type, t))}</p>;
   if (!entry) return <div className={`digest-panel digest-panel-empty${hasSessions ? "" : " digest-panel-quiet"}`}><header className="digest-panel-head"><h3><span className={`badge ${levelFor(focus.type)}`}>{levelFor(focus.type)}</span>{digestLabel(focus.type, t)} · {focus.key}</h3></header><p className="empty-hint muted">{hasSessions ? t("desktop.report.emptyHasSessions", scopeLabel(focus.type, t), digestLabel(focus.type, t)) : t("desktop.report.emptyNoSessions", scopeLabel(focus.type, t), digestLabel(focus.type, t))}</p>{hasSessions ? <button type="button" className="tool-btn" onClick={onRun}>{t("desktop.report.generateBtn", digestLabel(focus.type, t))}</button> : null}</div>;

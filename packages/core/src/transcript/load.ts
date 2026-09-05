@@ -1,4 +1,5 @@
 import { AgentSession } from "../catalog/types";
+import type { FinalizePreviewOptions } from "./text";
 import { previewAcpSession } from "./acp";
 import { previewAgySession } from "./agy";
 import { previewClaudeSession } from "./claude";
@@ -11,27 +12,28 @@ import { PreviewHomes, PreviewMessage, SessionPreviewResult } from "./types";
 
 export async function loadSessionPreview(
   session: AgentSession,
-  homes: PreviewHomes
+  homes: PreviewHomes,
+  options?: FinalizePreviewOptions
 ): Promise<SessionPreviewResult> {
   switch (session.provider) {
     case "codex":
-      return previewCodexSession(session, homes);
+      return previewCodexSession(session, homes, options);
     case "claude":
-      return previewClaudeSession(session, homes);
+      return previewClaudeSession(session, homes, options);
     case "agy":
-      return previewAgySession(session, homes);
+      return previewAgySession(session, homes, options);
     case "grok":
-      return previewGrokSession(session, homes);
+      return previewGrokSession(session, homes, options);
     case "opencode":
-      return previewOpenCodeSession(session, homes);
+      return previewOpenCodeSession(session, homes, options);
     case "pi":
-      return previewPiSession(session, homes);
+      return previewPiSession(session, homes, options);
     case "prime":
-      return previewPrimeSession(session, homes);
+      return previewPrimeSession(session, homes, options);
     case "cursor":
-      return previewCursorSession(session, homes);
+      return previewCursorSession(session, homes, options);
     case "chat":
-      return previewAcpSession(session, homes);
+      return previewAcpSession(session, homes, options);
     default:
       throw new Error(`Preview is not supported for provider ${session.provider}.`);
   }
