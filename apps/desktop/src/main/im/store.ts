@@ -32,6 +32,8 @@ import {
   type ImMember,
   type ImMessage,
   type ImMessageKind,
+  type ImMessageOrigin,
+  type ImToolCall,
   type ImPermission,
   type ImPermissionRequest,
   type ImProject,
@@ -223,6 +225,9 @@ interface MessageRow {
   mention_role_ids_json: string;
   job_id: string | null;
   thread_id: string | null;
+  tool_calls_json: string | null;
+  acp_message_id: string | null;
+  origin: string | null;
   created_at_ms: number;
 }
 
@@ -319,6 +324,23 @@ function parseProposalsJson(raw: string | null | undefined): ImDelegationProposa
   } catch {
     return [];
   }
+}
+
+function parseToolCallsJson(raw: string | null | undefined): ImToolCall[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is ImToolCall => Boolean(
+      item && typeof item === "object" && typeof item.toolCallId === "string" && item.toolCallId.trim()
+    ));
+  } catch {
+    return [];
+  }
+}
+
+function serializeToolCalls(toolCalls?: ImToolCall[] | null): string | null {
+  return toolCalls?.length ? JSON.stringify(toolCalls) : null;
 }
 
 export async function saveImMessageImage(
@@ -1654,6 +1676,17 @@ export class ImStore {
     return { ...member, acpChatId, updatedAtMs: now };
   }
 
+  async findMemberByAcpChatId(acpChatId: string): Promise<ImMember | undefined> {
+    const rows = await runSqliteJson<MemberRow>(
+      this.dbPath,
+      `SELECT * FROM im_members WHERE acp_chat_id = ${sqlString(acpChatId)} ORDER BY updated_at_ms DESC LIMIT 1;`
+    );
+    const row = rows[0];
+    if (!row) return undefined;
+    const template = await this.getTemplate(row.template_id);
+    return mapMember(row, template);
+  }
+
   async listMessages(projectId: string): Promise<ImMessage[]> {
     const rows = await runSqliteJson<MessageRow>(
       this.dbPath,
@@ -1673,6 +1706,38 @@ export class ImStore {
     const siblings = await runSqliteJson<MessageRow>(
       this.dbPath,
       `SELECT * FROM im_messages WHERE project_id = ${sqlString(row.project_id)};`
+    );
+    return this.mapMessage(row, new Map(siblings.map((item) => [item.message_id, item])));
+  }
+
+  async findMessageByAcpMessageId(acpMessageId: string): Promise<ImMessage | undefined> {
+    const rows = await runSqliteJson<MessageRow>(
+      this.dbPath,
+      `SELECT * FROM im_messages WHERE acp_message_id = ${sqlString(acpMessageId)} LIMIT 1;`
+    );
+    const row = rows[0];
+    if (!row) return undefined;
+    const siblings = await runSqliteJson<MessageRow>(
+      this.dbPath,
+      `SELECT * FROM im_messages WHERE project_id = ${sqlString(row.project_id)};`
+    );
+    return this.mapMessage(row, new Map(siblings.map((item) => [item.message_id, item])));
+  }
+
+  async findLastRoleSayForMember(projectId: string, memberId: string): Promise<ImMessage | undefined> {
+    const rows = await runSqliteJson<MessageRow>(
+      this.dbPath,
+      `SELECT * FROM im_messages
+       WHERE project_id = ${sqlString(projectId)}
+         AND author_member_id = ${sqlString(memberId)}
+         AND kind = 'role.say'
+       ORDER BY created_at_ms DESC LIMIT 1;`
+    );
+    const row = rows[0];
+    if (!row) return undefined;
+    const siblings = await runSqliteJson<MessageRow>(
+      this.dbPath,
+      `SELECT * FROM im_messages WHERE project_id = ${sqlString(projectId)};`
     );
     return this.mapMessage(row, new Map(siblings.map((item) => [item.message_id, item])));
   }
@@ -1709,8 +1774,13 @@ export class ImStore {
     mentionRoleIds?: string[];
     jobId?: string | null;
     threadId?: string | null;
+    toolCalls?: ImToolCall[];
+    acpMessageId?: string | null;
+    origin?: ImMessageOrigin;
+    createdAtMs?: number;
   }): Promise<ImMessage> {
     const now = nowMs();
+    const createdAt = input.createdAtMs ?? now;
     const messageId = input.messageId || randomUUID();
     const quoteIds = input.quoteIds ?? [];
     const mentionRoleIds = input.mentionRoleIds ?? [];
@@ -1718,12 +1788,15 @@ export class ImStore {
     const thinking = input.thinking?.trim() || null;
     const imagesJson = input.images?.length ? JSON.stringify(input.images) : null;
     const proposalsJson = input.delegationProposals?.length ? JSON.stringify(input.delegationProposals) : null;
+    const toolCallsJson = serializeToolCalls(input.toolCalls);
+    const acpMessageId = input.acpMessageId?.trim() || null;
+    const origin = input.origin ?? "im";
     const autoRouted = input.autoRouted ? 1 : 0;
     const routingTimedOut = input.routingTimedOut ? 1 : 0;
     await runSqlite(
       this.dbPath,
       `INSERT INTO im_messages (
-        message_id, project_id, kind, author_member_id, author_label, body, thinking, images_json, delegation_proposals_json, auto_routed, routed_role_name, routing_tip, routing_timed_out, quote_ids_json, mention_role_ids_json, job_id, thread_id, created_at_ms
+        message_id, project_id, kind, author_member_id, author_label, body, thinking, images_json, delegation_proposals_json, auto_routed, routed_role_name, routing_tip, routing_timed_out, quote_ids_json, mention_role_ids_json, job_id, thread_id, tool_calls_json, acp_message_id, origin, created_at_ms
       ) VALUES (
         ${sqlString(messageId)},
         ${sqlString(input.projectId)},
@@ -1742,7 +1815,10 @@ export class ImStore {
         ${sqlString(JSON.stringify(mentionRoleIds))},
         ${sqlNullOrString(input.jobId ?? null)},
         ${sqlNullOrString(threadId)},
-        ${now}
+        ${sqlNullOrString(toolCallsJson)},
+        ${sqlNullOrString(acpMessageId)},
+        ${sqlString(origin)},
+        ${createdAt}
       );`
     );
     await runSqlite(
@@ -1824,6 +1900,9 @@ export class ImStore {
       body?: string;
       thinking?: string | null;
       delegationProposals?: ImDelegationProposal[];
+      toolCalls?: ImToolCall[] | null;
+      acpMessageId?: string | null;
+      origin?: ImMessageOrigin;
     }
   ): Promise<ImMessage> {
     const current = await this.getMessage(messageId);
@@ -1835,12 +1914,21 @@ export class ImStore {
       ? patch.delegationProposals
       : current.delegationProposals;
     const proposalsJson = proposals?.length ? JSON.stringify(proposals) : null;
+    const toolCalls = patch.toolCalls !== undefined ? patch.toolCalls : current.toolCalls;
+    const toolCallsJson = serializeToolCalls(toolCalls);
+    const acpMessageId = patch.acpMessageId !== undefined
+      ? (patch.acpMessageId?.trim() || null)
+      : (current.acpMessageId ?? null);
+    const origin = patch.origin ?? current.origin ?? "im";
     await runSqlite(
       this.dbPath,
       `UPDATE im_messages SET
         body = ${sqlString(body)},
         thinking = ${sqlNullOrString(thinking)},
-        delegation_proposals_json = ${sqlNullOrString(proposalsJson)}
+        delegation_proposals_json = ${sqlNullOrString(proposalsJson)},
+        tool_calls_json = ${sqlNullOrString(toolCallsJson)},
+        acp_message_id = ${sqlNullOrString(acpMessageId)},
+        origin = ${sqlString(origin)}
        WHERE message_id = ${sqlString(messageId)};`
     );
     await runSqlite(
@@ -2241,6 +2329,8 @@ export class ImStore {
     }
     const images = parseImagesJson(row.images_json);
     const proposals = parseProposalsJson(row.delegation_proposals_json);
+    const toolCalls = parseToolCallsJson(row.tool_calls_json);
+    const origin = row.origin === "acp" ? "acp" : row.origin === "im" ? "im" : undefined;
     return {
       messageId: row.message_id,
       projectId: row.project_id,
@@ -2260,6 +2350,9 @@ export class ImStore {
       mentionRoleIds: parseJsonArray(row.mention_role_ids_json),
       jobId: row.job_id,
       threadId: row.thread_id || undefined,
+      toolCalls: toolCalls.length ? toolCalls : undefined,
+      acpMessageId: row.acp_message_id || undefined,
+      origin,
       createdAtMs: row.created_at_ms
     };
   }

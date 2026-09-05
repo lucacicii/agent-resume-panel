@@ -57,6 +57,13 @@ ALTER TABLE im_messages ADD COLUMN thread_id TEXT;
 ALTER TABLE im_jobs ADD COLUMN thread_id TEXT;
 `;
 
+export const IM_MESSAGE_ACP_SYNC_MIGRATION_SQL = `
+ALTER TABLE im_messages ADD COLUMN tool_calls_json TEXT;
+ALTER TABLE im_messages ADD COLUMN acp_message_id TEXT;
+ALTER TABLE im_messages ADD COLUMN origin TEXT;
+CREATE INDEX IF NOT EXISTS idx_im_messages_acp_message ON im_messages(acp_message_id);
+`;
+
 export const DESKTOP_ONLY_SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS gtd_ai_audit (
   id TEXT PRIMARY KEY,
@@ -368,6 +375,9 @@ CREATE TABLE IF NOT EXISTS im_messages (
   mention_role_ids_json TEXT NOT NULL DEFAULT '[]',
   job_id TEXT,
   thread_id TEXT,
+  tool_calls_json TEXT,
+  acp_message_id TEXT,
+  origin TEXT NOT NULL DEFAULT 'im',
   created_at_ms INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_im_messages_project ON im_messages(project_id, created_at_ms);

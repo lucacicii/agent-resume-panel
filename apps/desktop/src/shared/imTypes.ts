@@ -178,6 +178,27 @@ export interface ImDelegationProposal {
   resolvedAtMs?: number;
 }
 
+export const IM_MESSAGE_ORIGINS = ["im", "acp"] as const;
+export type ImMessageOrigin = (typeof IM_MESSAGE_ORIGINS)[number];
+
+export type ImToolCallStatus = "pending" | "in_progress" | "completed" | "failed";
+
+export interface ImToolCallLocation {
+  path: string;
+  line?: number;
+}
+
+export interface ImToolCall {
+  toolCallId: string;
+  title?: string;
+  kind?: string;
+  status: ImToolCallStatus;
+  locations?: ImToolCallLocation[];
+  content?: unknown[];
+  rawInput?: unknown;
+  rawOutput?: unknown;
+}
+
 export interface ImMessage {
   messageId: string;
   projectId: string;
@@ -199,6 +220,9 @@ export interface ImMessage {
   mentionRoleIds: string[];
   jobId: string | null;
   threadId?: string;
+  toolCalls?: ImToolCall[];
+  acpMessageId?: string;
+  origin?: ImMessageOrigin;
   createdAtMs: number;
 }
 

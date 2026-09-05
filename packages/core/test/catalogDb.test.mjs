@@ -114,6 +114,12 @@ test("desktop schema adds tools_json to existing im_members tables", async () =>
     assert.ok(names.includes("callable_template_ids_json"));
     assert.ok(names.includes("auto_dispatch"));
 
+    const messageColumns = await runSqliteJson(desktopDb, "PRAGMA table_info(im_messages);");
+    const messageNames = messageColumns.map((column) => column.name);
+    assert.ok(messageNames.includes("tool_calls_json"));
+    assert.ok(messageNames.includes("acp_message_id"));
+    assert.ok(messageNames.includes("origin"));
+
     await runSqlite(
       desktopDb,
       `INSERT INTO im_members (
@@ -121,6 +127,46 @@ test("desktop schema adds tools_json to existing im_members tables", async () =>
       ) VALUES (
         'member-1', 'project-1', 'role_developer', 'Developer', '', 'claude', 'write', '{}', 1, 1, 1
       );`
+    );
+  } finally {
+    await fs.rm(panelHome, { recursive: true, force: true });
+  }
+});
+
+test("desktop schema adds ACP sync columns to an existing im_messages table", async () => {
+  const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-catalog-"));
+  const desktopDb = desktopDbPath(panelHome);
+
+  try {
+    await fs.mkdir(path.dirname(desktopDb), { recursive: true });
+    await runSqlite(
+      desktopDb,
+      `CREATE TABLE im_messages (
+        message_id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        author_member_id TEXT,
+        author_label TEXT NOT NULL,
+        body TEXT NOT NULL,
+        quote_ids_json TEXT NOT NULL DEFAULT '[]',
+        mention_role_ids_json TEXT NOT NULL DEFAULT '[]',
+        job_id TEXT,
+        created_at_ms INTEGER NOT NULL
+      );`
+    );
+
+    await ensureDesktopDbSchema(desktopDb);
+
+    const columns = await runSqliteJson(desktopDb, "PRAGMA table_info(im_messages);");
+    const names = columns.map((column) => column.name);
+    assert.ok(names.includes("tool_calls_json"));
+    assert.ok(names.includes("acp_message_id"));
+    assert.ok(names.includes("origin"));
+    await runSqlite(
+      desktopDb,
+      `INSERT INTO im_messages (
+        message_id, project_id, kind, author_label, body, created_at_ms
+      ) VALUES ('msg-1', 'project-1', 'human', 'You', 'hi', 1);`
     );
   } finally {
     await fs.rm(panelHome, { recursive: true, force: true });

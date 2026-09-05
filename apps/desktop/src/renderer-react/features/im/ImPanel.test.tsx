@@ -90,6 +90,8 @@ const messages = {
   "desktop.im.callChainEmpty": "No call chains yet",
   "desktop.im.callChainEmptyHint": "When tasks are assigned to roles, the chain will appear here.",
   "desktop.im.thinking": "Thinking process",
+  "desktop.im.toolCallSingle": "1 tool call",
+  "desktop.im.toolCalls": "{0} tool calls",
   "desktop.im.filesModified": "Modified {0} files",
   "desktop.im.fileModifiedSingle": "Modified 1 file",
   "desktop.im.copyPath": "Copy path",
@@ -586,7 +588,14 @@ describe("ImPanel", () => {
           quotes: [],
           mentionRoleIds: [],
           jobId: "job-1",
-          createdAtMs: 2
+          createdAtMs: 2,
+          toolCalls: [{
+            toolCallId: "tool-1",
+            title: "Read",
+            kind: "read",
+            status: "completed",
+            locations: [{ path: "README.md" }]
+          }]
         }
       ],
       jobs: [{
@@ -611,6 +620,8 @@ describe("ImPanel", () => {
     expect(await screen.findByText("desktop")).toBeTruthy();
     expect(document.querySelector(".im-message.is-role-say .markdown-body strong")?.textContent).toBe("desktop");
     expect(screen.queryByText("Read · README.md")).toBeNull();
+    expect(document.querySelector(".im-message.is-job-card")).toBeNull();
+    expect(document.querySelector(".im-tool-chip")?.textContent).toContain("Read");
     expect(document.querySelector(".im-message.is-role-say")).toBeTruthy();
   });
 

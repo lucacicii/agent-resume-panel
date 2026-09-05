@@ -28,6 +28,7 @@ vi.mock("../acp/store", () => {
       acpRecords.set(record.id, record);
       return record;
     }),
+    loadAcpMessages: vi.fn(async () => []),
     getAcpRecord: vi.fn(async (_home: string, chatId: string) => {
       const existing = acpRecords.get(chatId);
       if (existing) return existing;
@@ -55,7 +56,7 @@ vi.mock("@agent-resume/core", async () => {
 });
 
 import { desktopDbPath, ensureDesktopDbSchema } from "@agent-resume/core";
-import { createAcpRecord } from "../acp/store";
+import { createAcpRecord, loadAcpMessages } from "../acp/store";
 import {
   HANDOFF_QUOTE_BODY_MAX,
   ImConductor,
@@ -152,7 +153,7 @@ describe("ImConductor", () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
   });
 
-  it("keeps tool-call activity off the transcript", async () => {
+  it("keeps tool-call activity on the role answer instead of a job card", async () => {
     const store = await createStore();
     const project = await store.createProject("Quiet tools");
     const room = await store.getRoom(project.projectId);
@@ -200,7 +201,96 @@ describe("ImConductor", () => {
     });
     const messages = await store.listMessages(project.projectId);
     expect(messages.filter((item) => item.kind === "job.card")).toHaveLength(0);
-    expect(messages.some((item) => item.kind === "role.say" && item.body === "The repo is a desktop IM app.")).toBe(true);
+    const answer = messages.find((item) => item.kind === "role.say" && item.body === "The repo is a desktop IM app.");
+    expect(answer).toBeTruthy();
+    expect(answer?.toolCalls).toEqual([
+      expect.objectContaining({ toolCallId: "tool-1", title: "Read", kind: "read", status: "completed" })
+    ]);
+  });
+
+  it("live-tails ACP stream onto the bound member without a job", async () => {
+    const store = await createStore();
+    const project = await store.createProject("Live tail");
+    const room = await store.getRoom(project.projectId);
+    const pm = room.members.find((member) => member.templateId === "role_product_manager")!;
+    await store.setMemberAcpChatId(pm.memberId, "chat-orphan");
+    const conductor = new ImConductor(store, () => undefined, vi.fn(async () => undefined), vi.fn(async () => undefined));
+    await conductor.handleAcpStream({
+      type: "assistantDelta",
+      chatId: "chat-orphan",
+      id: "acp-live-1",
+      text: "Working outside IM.",
+      thinking: "hmm",
+      streaming: true,
+      toolCalls: [{
+        toolCallId: "tool-live",
+        title: "Read",
+        kind: "read",
+        status: "in_progress",
+        locations: [{ path: "README.md" }]
+      }]
+    });
+    await conductor.handleAcpStream({
+      type: "assistantDone",
+      chatId: "chat-orphan",
+      streaming: false,
+      message: {
+        id: "acp-live-1",
+        role: "assistant",
+        text: "Working outside IM.",
+        thinking: "hmm",
+        timestamp: Date.now(),
+        toolCalls: [{
+          toolCallId: "tool-live",
+          title: "Read",
+          kind: "read",
+          status: "completed",
+          locations: [{ path: "README.md" }]
+        }]
+      }
+    });
+    const messages = await store.listMessages(project.projectId);
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.jobId).toBeNull();
+    expect(messages[0]?.origin).toBe("acp");
+    expect(messages[0]?.acpMessageId).toBe("acp-live-1");
+    expect(messages[0]?.thinking).toBe("hmm");
+    expect(messages[0]?.toolCalls?.[0]?.status).toBe("completed");
+    expect(await store.listJobs(project.projectId)).toHaveLength(0);
+  });
+
+  it("syncs truncated IM drafts from ACP history", async () => {
+    const store = await createStore();
+    const project = await store.createProject("History sync");
+    const room = await store.getRoom(project.projectId);
+    const pm = room.members.find((member) => member.templateId === "role_product_manager")!;
+    await store.setMemberAcpChatId(pm.memberId, "chat-history");
+    await store.insertMessage({
+      projectId: project.projectId,
+      kind: "role.say",
+      authorMemberId: pm.memberId,
+      authorLabel: pm.name,
+      body: "Step 1 is done."
+    });
+    vi.mocked(loadAcpMessages).mockResolvedValueOnce([
+      {
+        id: "acp-full",
+        role: "assistant",
+        text: "Step 1 is done. Step 2 follows.",
+        thinking: "plan",
+        timestamp: 99,
+        toolCalls: [{ toolCallId: "t1", title: "Read", kind: "read", status: "completed" }]
+      }
+    ]);
+    const conductor = new ImConductor(store, () => undefined, vi.fn(async () => undefined), vi.fn(async () => undefined));
+    const imported = await conductor.syncRoomFromAcp(project.projectId, os.tmpdir());
+    expect(imported).toHaveLength(1);
+    const messages = await store.listMessages(project.projectId);
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.body).toBe("Step 1 is done. Step 2 follows.");
+    expect(messages[0]?.acpMessageId).toBe("acp-full");
+    expect(messages[0]?.thinking).toBe("plan");
+    expect(messages[0]?.origin).toBe("acp");
   });
 
   it("creates a scratch folder and dispatches when no local folder is associated", async () => {
