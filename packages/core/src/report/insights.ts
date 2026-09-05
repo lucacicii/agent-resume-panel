@@ -1,4 +1,5 @@
 import { escapeSqlLiteral, runSqliteJson } from "../sqlite";
+import { isComposerSendNoise } from "../workbench/composerSendNoise";
 
 export interface PeriodSessionStats {
   total: number;
@@ -781,7 +782,7 @@ export async function getPeriodInsights(
           }
         }
 
-        if (len >= 2 && len <= 60 && !t.includes("\n") && !t.includes("<turn_aborted>")) {
+        if (len >= 2 && len <= 60 && !t.includes("\n") && !isComposerSendNoise(t)) {
           phraseCounts.set(t, (phraseCounts.get(t) || 0) + 1);
         }
 

@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  cleanupImportedComposerSends,
   ensureDesktopDbSchema,
   importComposerSendsForSession,
   loadSettings,
@@ -19,6 +20,8 @@ function parseArgs(args) {
     provider: null,
     limit: null,
     verbose: false,
+    cleanupOnly: false,
+    skipCleanup: false,
     help: false
   };
 
@@ -34,6 +37,10 @@ function parseArgs(args) {
       if (Number.isFinite(parsed) && parsed > 0) {
         options.limit = Math.floor(parsed);
       }
+    } else if (arg === "--cleanup-only") {
+      options.cleanupOnly = true;
+    } else if (arg === "--skip-cleanup") {
+      options.skipCleanup = true;
     }
   }
 
@@ -49,6 +56,8 @@ Idempotent and append-only: duplicate texts under the same session are skipped.
 Options:
   --provider=<name>  Only process sessions from this provider (e.g. pi, codex, claude)
   --limit=<number>   Max number of sessions to scan
+  --cleanup-only     Only delete duplicate/noise/live-shadowed import rows, skip re-import
+  --skip-cleanup     Skip the pre-import cleanup (not recommended on a polluted db)
   --verbose, -v      Print results for every session (default: only show imported > 0)
   --help, -h         Show this help message
 `);
@@ -75,6 +84,21 @@ async function main() {
 
   await ensureDesktopDbSchema(paths.desktopDb);
   const homes = resolvePreviewHomes(settings);
+
+  if (!options.skipCleanup) {
+    console.log("[backfill] Cleaning duplicate/noise import rows first...");
+    const cleanup = await cleanupImportedComposerSends(paths.desktopDb);
+    console.log(
+      `[backfill] Cleanup: -${cleanup.deletedDuplicates} duplicates, ` +
+      `-${cleanup.deletedNoise} noise, -${cleanup.deletedLiveConflicts} live twins ` +
+      `(kept ${cleanup.keptLiveRows} live rows).\n`
+    );
+  }
+
+  if (options.cleanupOnly) {
+    console.log("[backfill] Cleanup-only mode: skipping re-import.");
+    return;
+  }
 
   let whereClause = "";
   if (options.provider) {

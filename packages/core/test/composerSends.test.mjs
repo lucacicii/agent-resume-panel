@@ -8,6 +8,7 @@ import {
   desktopDbPath,
   ensureDesktopDbSchema,
   listComposerSends,
+  listSessionsMissingComposerImport,
   runSqliteJson
 } from "../dist/index.js";
 
@@ -58,6 +59,40 @@ test("composer sends are append-only and survive listing by pane or session", as
       "SELECT COUNT(*) AS n FROM workbench_composer_sends;"
     );
     assert.equal(rows[0].n, 3);
+  } finally {
+    await fs.rm(panelHome, { recursive: true, force: true });
+  }
+});
+
+test("listSessionsMissingComposerImport only returns sessions without import rows", async () => {
+  const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-composer-missing-"));
+  const desktopDb = desktopDbPath(panelHome);
+  try {
+    await ensureDesktopDbSchema(desktopDb);
+    await appendComposerSend(desktopDb, {
+      paneKey: "import:codex:s1",
+      projectPath: "/w",
+      provider: "codex",
+      agentSessionId: "s1",
+      text: "already covered"
+    });
+    // A live tip row without import prefix does not count as covered.
+    await appendComposerSend(desktopDb, {
+      paneKey: "terminal:1",
+      projectPath: "/w",
+      provider: "pi",
+      agentSessionId: "s2",
+      text: "live only"
+    });
+    const missing = await listSessionsMissingComposerImport(desktopDb, [
+      { provider: "codex", id: "s1" },
+      { provider: "pi", id: "s2" },
+      { provider: "claude", id: "s3" }
+    ]);
+    assert.deepEqual(missing, [
+      { provider: "pi", id: "s2" },
+      { provider: "claude", id: "s3" }
+    ]);
   } finally {
     await fs.rm(panelHome, { recursive: true, force: true });
   }

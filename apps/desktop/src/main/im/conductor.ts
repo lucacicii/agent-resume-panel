@@ -10,8 +10,9 @@ import {
   loadSettings,
   type PanelSettings
 } from "@agent-resume/core";
-import { createAcpRecord, getAcpRecord } from "../acp/store";
+import { createAcpRecord, getAcpRecord, loadAcpMessages } from "../acp/store";
 import type { AcpAgentProvider, AcpStreamEvent, AcpToolCallInfo } from "../acp/types";
+import { planAcpHistorySync, toImToolCalls } from "./acpHistorySync";
 import { routeMessageIntent } from "./intentRouter";
 import { buildDispatchPrompt, buildIncrementalPrompt, extractFirstQuestionTitle, isDefaultChatName, saveImMessageImage, type ImStore } from "./store";
 import {
@@ -29,7 +30,8 @@ import {
   type ImMember,
   type ImMessage,
   type ImQuotedMessage,
-  type ImRoleTools
+  type ImRoleTools,
+  type ImToolCall
 } from "./types";
 
 type ConnectFn = (chatId: string) => Promise<{ rebuilt?: boolean } | void>;
@@ -405,7 +407,7 @@ export class ImConductor {
 
   async cancelJob(jobId: string): Promise<ImJob> {
     const streamMsg = this.streamingMessagesByJob.get(jobId);
-    if (streamMsg?.body || streamMsg?.thinking) {
+    if (streamMsg?.body || streamMsg?.thinking || streamMsg?.toolCalls?.length) {
       const persisted = await this.persistStreamingMessage(jobId);
       this.emit({
         type: "messageUpdate",
@@ -441,18 +443,26 @@ export class ImConductor {
     let jobId = this.jobsByChat.get(chatId) ?? (await this.store.findJobByAcpChatId(chatId))?.jobId;
     if (!jobId) {
       const interrupted = await this.store.findInterruptedJobByAcpChatId(chatId);
-      if (!interrupted) return;
-      const revived = await this.store.updateJob(interrupted.jobId, {
-        status: event.type === "status" && (event.isConnecting || event.status === "connecting") ? "connecting" : "running",
-        error: null,
-        finished: false
-      });
-      this.jobsByChat.set(chatId, revived.jobId);
-      this.emit({ type: "job", projectId: revived.projectId, job: revived });
-      jobId = revived.jobId;
+      if (interrupted) {
+        const revived = await this.store.updateJob(interrupted.jobId, {
+          status: event.type === "status" && (event.isConnecting || event.status === "connecting") ? "connecting" : "running",
+          error: null,
+          finished: false
+        });
+        this.jobsByChat.set(chatId, revived.jobId);
+        this.emit({ type: "job", projectId: revived.projectId, job: revived });
+        jobId = revived.jobId;
+      }
+    }
+    if (!jobId) {
+      await this.handleOrphanAcpStream(event);
+      return;
     }
     const current = await this.store.getJob(jobId);
-    if (!current || !WRITER_BUSY.has(current.status)) return;
+    if (!current || !WRITER_BUSY.has(current.status)) {
+      await this.handleOrphanAcpStream(event);
+      return;
+    }
 
     if (event.type === "status") {
       let status: ImJobStatus = current.status;
@@ -543,7 +553,8 @@ export class ImConductor {
 
       const text = event.text || "";
       const thinking = event.thinking || "";
-      if (text || thinking) {
+      const toolCalls = toImToolCalls(event.toolCalls);
+      if (text || thinking || toolCalls?.length) {
         let streamMsg = this.streamingMessagesByJob.get(jobId);
         if (!streamMsg) {
           const existingMessage = await this.store.findMessageByJobId(jobId, "role.say");
@@ -552,6 +563,7 @@ export class ImConductor {
               ...existingMessage,
               body: text,
               thinking: thinking || existingMessage.thinking,
+              toolCalls: toolCalls ?? existingMessage.toolCalls,
               streaming: true
             };
             this.streamingMessagesByJob.set(jobId, streamMsg);
@@ -567,12 +579,14 @@ export class ImConductor {
               authorLabel: member?.name || "Role",
               body: text,
               thinking: thinking || undefined,
+              toolCalls,
               streaming: true,
               quoteIds: [],
               quotes: [],
               mentionRoleIds: [],
               jobId,
               threadId: current.threadId,
+              origin: "im",
               createdAtMs: Date.now()
             };
             this.streamingMessagesByJob.set(jobId, streamMsg);
@@ -583,6 +597,7 @@ export class ImConductor {
             ...streamMsg,
             body: text,
             thinking: thinking || undefined,
+            toolCalls: toolCalls ?? streamMsg.toolCalls,
             streaming: true
           };
           this.streamingMessagesByJob.set(jobId, streamMsg);
@@ -605,14 +620,18 @@ export class ImConductor {
       const streamMsg = this.streamingMessagesByJob.get(jobId);
       const finalBody = event.message.text.trim();
       const finalThinking = event.message.thinking?.trim();
+      const finalToolCalls = toImToolCalls(event.message.toolCalls);
       const proposals = await this.buildProposalsForJob(job, finalBody);
+      const hasContent = Boolean(finalBody || finalThinking || finalToolCalls?.length);
 
       let persistedMessage: ImMessage | null = null;
       if (streamMsg) {
-        if (finalBody || finalThinking) {
+        if (hasContent) {
           persistedMessage = await this.persistStreamingMessage(jobId, {
             body: finalBody,
             thinking: finalThinking,
+            toolCalls: finalToolCalls,
+            acpMessageId: event.message.id,
             delegationProposals: proposals.length ? proposals : undefined
           });
           this.emit({
@@ -621,12 +640,14 @@ export class ImConductor {
             message: { ...persistedMessage, streaming: false }
           });
         }
-      } else if (finalBody || finalThinking) {
+      } else if (hasContent) {
         const existingMessage = await this.store.findMessageByJobId(jobId, "role.say");
         if (existingMessage) {
           persistedMessage = await this.store.updateMessage(existingMessage.messageId, {
             body: finalBody,
             thinking: finalThinking,
+            toolCalls: finalToolCalls,
+            acpMessageId: event.message.id,
             delegationProposals: proposals.length ? proposals : undefined
           });
           this.emit({
@@ -643,6 +664,9 @@ export class ImConductor {
             authorLabel: member?.name || "Role",
             body: finalBody,
             thinking: finalThinking,
+            toolCalls: finalToolCalls,
+            acpMessageId: event.message.id,
+            origin: "im",
             delegationProposals: proposals.length ? proposals : undefined,
             jobId,
             threadId: job.threadId
@@ -1157,41 +1181,53 @@ export class ImConductor {
 
   private async flushStreamingMessage(jobId: string): Promise<void> {
     const streamMsg = this.streamingMessagesByJob.get(jobId);
-    if (!streamMsg?.body && !streamMsg?.thinking) return;
+    if (!streamMsg?.body && !streamMsg?.thinking && !streamMsg?.toolCalls?.length) return;
     await this.persistStreamingMessage(jobId);
   }
 
   private persistStreamingMessage(
-    jobId: string,
+    streamKey: string,
     patch?: {
       body?: string;
       thinking?: string;
+      toolCalls?: ImToolCall[];
+      acpMessageId?: string | null;
+      origin?: ImMessage["origin"];
       delegationProposals?: ImDelegationProposal[];
     }
   ): Promise<ImMessage> {
-    const previous = this.streamingPersistChain.get(jobId) ?? Promise.resolve();
-    const next = previous.catch(() => undefined).then(() => this.writeStreamingMessage(jobId, patch));
-    this.streamingPersistChain.set(jobId, next.then(() => undefined, () => undefined));
+    const previous = this.streamingPersistChain.get(streamKey) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(() => this.writeStreamingMessage(streamKey, patch));
+    this.streamingPersistChain.set(streamKey, next.then(() => undefined, () => undefined));
     return next;
   }
 
   private async writeStreamingMessage(
-    jobId: string,
+    streamKey: string,
     patch?: {
       body?: string;
       thinking?: string;
+      toolCalls?: ImToolCall[];
+      acpMessageId?: string | null;
+      origin?: ImMessage["origin"];
       delegationProposals?: ImDelegationProposal[];
     }
   ): Promise<ImMessage> {
-    const streamMsg = this.streamingMessagesByJob.get(jobId);
+    const streamMsg = this.streamingMessagesByJob.get(streamKey);
     if (!streamMsg) throw new Error("Streaming message not found.");
     const body = patch?.body ?? streamMsg.body;
     const thinking = patch?.thinking ?? streamMsg.thinking;
+    const toolCalls = patch?.toolCalls ?? streamMsg.toolCalls;
+    const acpMessageId = patch?.acpMessageId !== undefined ? patch.acpMessageId : streamMsg.acpMessageId;
+    const origin = patch?.origin ?? streamMsg.origin;
     const proposals = patch?.delegationProposals;
     if (this.persistedStreamingIds.has(streamMsg.messageId)) {
       return this.store.updateMessage(streamMsg.messageId, {
         body,
         thinking: thinking ?? null,
+        toolCalls,
+        acpMessageId: acpMessageId ?? null,
+        origin,
         delegationProposals: proposals
       });
     }
@@ -1203,12 +1239,187 @@ export class ImConductor {
       authorLabel: streamMsg.authorLabel,
       body,
       thinking,
+      toolCalls,
+      acpMessageId,
+      origin,
       delegationProposals: proposals?.length ? proposals : undefined,
-      jobId,
+      jobId: streamMsg.jobId,
       threadId: streamMsg.threadId
     });
     this.persistedStreamingIds.add(streamMsg.messageId);
     return created;
+  }
+
+  private liveStreamKey(chatId: string): string {
+    return `live:${chatId}`;
+  }
+
+  private async handleOrphanAcpStream(event: AcpStreamEvent): Promise<void> {
+    if (event.type !== "assistantDelta" && event.type !== "assistantDone" && event.type !== "error") {
+      return;
+    }
+    const member = await this.store.findMemberByAcpChatId(event.chatId);
+    if (!member) return;
+    const streamKey = this.liveStreamKey(event.chatId);
+
+    if (event.type === "error") {
+      const streamMsg = this.streamingMessagesByJob.get(streamKey);
+      if (streamMsg) {
+        const persisted = await this.persistStreamingMessage(streamKey);
+        this.emit({
+          type: "messageUpdate",
+          projectId: persisted.projectId,
+          message: { ...persisted, streaming: false }
+        });
+        this.forgetStreamingMessage(streamKey);
+      }
+      return;
+    }
+
+    if (event.type === "assistantDelta") {
+      const text = event.text || "";
+      const thinking = event.thinking || "";
+      const toolCalls = toImToolCalls(event.toolCalls);
+      if (!text && !thinking && !toolCalls?.length) return;
+      let streamMsg = this.streamingMessagesByJob.get(streamKey);
+      if (!streamMsg) {
+        streamMsg = {
+          messageId: crypto.randomUUID(),
+          projectId: member.projectId,
+          kind: "role.say",
+          authorMemberId: member.memberId,
+          authorLabel: member.name,
+          body: text,
+          thinking: thinking || undefined,
+          toolCalls,
+          streaming: true,
+          quoteIds: [],
+          quotes: [],
+          mentionRoleIds: [],
+          jobId: null,
+          origin: "acp",
+          acpMessageId: event.id,
+          createdAtMs: Date.now()
+        };
+        this.streamingMessagesByJob.set(streamKey, streamMsg);
+        this.emit({ type: "message", projectId: member.projectId, message: streamMsg });
+      } else {
+        streamMsg = {
+          ...streamMsg,
+          body: text,
+          thinking: thinking || undefined,
+          toolCalls: toolCalls ?? streamMsg.toolCalls,
+          acpMessageId: event.id || streamMsg.acpMessageId,
+          streaming: true
+        };
+        this.streamingMessagesByJob.set(streamKey, streamMsg);
+        this.emit({ type: "messageUpdate", projectId: member.projectId, message: streamMsg });
+      }
+      if (!this.persistedStreamingIds.has(streamMsg.messageId)) {
+        await this.flushStreamingMessage(streamKey);
+      } else {
+        this.scheduleStreamingPersist(streamKey);
+      }
+      return;
+    }
+
+    const streamMsg = this.streamingMessagesByJob.get(streamKey);
+    const finalBody = event.message.text.trim();
+    const finalThinking = event.message.thinking?.trim();
+    const finalToolCalls = toImToolCalls(event.message.toolCalls);
+    const hasContent = Boolean(finalBody || finalThinking || finalToolCalls?.length);
+    if (streamMsg) {
+      if (hasContent) {
+        const persisted = await this.persistStreamingMessage(streamKey, {
+          body: finalBody,
+          thinking: finalThinking,
+          toolCalls: finalToolCalls,
+          acpMessageId: event.message.id,
+          origin: "acp"
+        });
+        this.emit({
+          type: "messageUpdate",
+          projectId: persisted.projectId,
+          message: { ...persisted, streaming: false }
+        });
+      }
+      this.forgetStreamingMessage(streamKey);
+      return;
+    }
+    if (!hasContent) return;
+    const created = await this.store.insertMessage({
+      projectId: member.projectId,
+      kind: "role.say",
+      authorMemberId: member.memberId,
+      authorLabel: member.name,
+      body: finalBody,
+      thinking: finalThinking,
+      toolCalls: finalToolCalls,
+      acpMessageId: event.message.id,
+      origin: "acp"
+    });
+    this.emit({ type: "message", projectId: member.projectId, message: { ...created, streaming: false } });
+  }
+
+  async syncRoomFromAcp(projectId: string, panelHome: string): Promise<ImMessage[]> {
+    const room = await this.store.getRoom(projectId);
+    const imported: ImMessage[] = [];
+    const streamingIds = new Set(
+      [...this.streamingMessagesByJob.values()].map((message) => message.messageId)
+    );
+    for (const member of room.members) {
+      const chatId = member.acpChatId?.trim();
+      if (!chatId) continue;
+      let acpMessages;
+      try {
+        acpMessages = await loadAcpMessages(panelHome, chatId);
+      } catch (error) {
+        console.warn(`[IM] Failed to load ACP history for ${chatId}:`, error);
+        continue;
+      }
+      const plans = planAcpHistorySync({
+        acpMessages,
+        imMessages: room.messages,
+        member: { memberId: member.memberId, name: member.name, projectId: member.projectId },
+        skipStreamingMessageIds: streamingIds
+      });
+      for (const plan of plans) {
+        try {
+          if (plan.type === "update") {
+            const updated = await this.store.updateMessage(plan.messageId, {
+              body: plan.body,
+              thinking: plan.thinking ?? null,
+              toolCalls: plan.toolCalls,
+              acpMessageId: plan.acpMessageId,
+              origin: "acp"
+            });
+            imported.push(updated);
+            this.emit({ type: "messageUpdate", projectId, message: updated });
+            const index = room.messages.findIndex((item) => item.messageId === updated.messageId);
+            if (index >= 0) room.messages[index] = updated;
+          } else {
+            const created = await this.store.insertMessage({
+              projectId,
+              kind: "role.say",
+              authorMemberId: member.memberId,
+              authorLabel: member.name,
+              body: plan.body,
+              thinking: plan.thinking,
+              toolCalls: plan.toolCalls,
+              acpMessageId: plan.acpMessageId,
+              origin: "acp",
+              createdAtMs: plan.createdAtMs
+            });
+            imported.push(created);
+            room.messages.push(created);
+            this.emit({ type: "message", projectId, message: created });
+          }
+        } catch (error) {
+          console.warn(`[IM] Failed to sync ACP message ${plan.acpMessageId}:`, error);
+        }
+      }
+    }
+    return imported;
   }
 
   private forgetStreamingMessage(jobId: string): void {

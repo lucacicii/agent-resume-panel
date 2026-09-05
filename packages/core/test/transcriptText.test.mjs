@@ -16,6 +16,15 @@ test("extractTextFromContent ignores tool_result and tool_use blocks", () => {
   assert.equal(text, "Branch created.");
 });
 
+test("extractPreviewContent drops codex injected input_text blocks", () => {
+  const extracted = extractPreviewContent([
+    { type: "input_text", text: "# AGENTS.md instructions for /x\n\ncall me Master;" },
+    { type: "input_text", text: "<environment_context>\n  <cwd>/x</cwd>" },
+    { type: "input_text", text: "在 设置 页面 模型配置页面添加 connect test" }
+  ]);
+  assert.equal(extracted.text, "在 设置 页面 模型配置页面添加 connect test");
+});
+
 test("isConversationPreviewText drops slash-command and token wrappers", () => {
   assert.equal(isConversationPreviewText("<command-name>/model</command-name>"), false);
   assert.equal(isConversationPreviewText("<local-command-stdout>Set model to Sonnet</local-command-stdout>"), false);

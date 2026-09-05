@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { AgentSession } from "../catalog/types";
 import { isNodeError, readJsonLines } from "./jsonl";
 import { extractPreviewContent, finalizePreviewMessages, isUserOrAssistantRole } from "./text";
+import type { FinalizePreviewOptions } from "./text";
 import { PreviewHomes, SessionPreviewResult } from "./types";
 
 export interface CursorChatMeta {
@@ -65,7 +66,8 @@ export async function findCursorTranscriptFile(cursorHome: string, sessionId: st
 
 export async function previewCursorSession(
   session: AgentSession,
-  homes: PreviewHomes
+  homes: PreviewHomes,
+  options?: FinalizePreviewOptions
 ): Promise<SessionPreviewResult> {
   const transcript = await findCursorTranscriptFile(homes.cursorHome, session.id);
   if (!transcript) {
@@ -89,7 +91,7 @@ export async function previewCursorSession(
   if (!messages.length) {
     throw new Error("Cursor CLI transcript is empty for this session.");
   }
-  return finalizePreviewMessages(session.title, messages);
+  return finalizePreviewMessages(session.title, messages, undefined, options);
 }
 
 async function readMeta(filePath: string): Promise<Omit<CursorChatMeta, "id"> | undefined> {

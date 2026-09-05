@@ -3,6 +3,7 @@ import { AgentSession } from "../catalog/types";
 import { escapeSqlLiteral, runSqliteJson } from "../sqlite";
 import { PreviewHomes, SessionPreviewResult } from "./types";
 import { finalizePreviewMessages, isUserOrAssistantRole } from "./text";
+import type { FinalizePreviewOptions } from "./text";
 
 interface OpenCodeMessageRow {
   id: string;
@@ -31,7 +32,8 @@ type OpenCodePartBucket = {
 
 export async function previewOpenCodeSession(
   session: AgentSession,
-  homes: PreviewHomes
+  homes: PreviewHomes,
+  options?: FinalizePreviewOptions
 ): Promise<SessionPreviewResult> {
   const dbPath = path.join(homes.opencodeHome, "opencode.db");
   const messageSql = `
@@ -105,5 +107,5 @@ export async function previewOpenCodeSession(
     throw new Error("OpenCode transcript is empty for this session.");
   }
 
-  return finalizePreviewMessages(session.title, previewMessages);
+  return finalizePreviewMessages(session.title, previewMessages, undefined, options);
 }

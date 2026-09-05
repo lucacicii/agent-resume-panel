@@ -23,10 +23,6 @@ import {
 } from "./types";
 import type { AcpStreamEvent } from "../acp/types";
 
-let store: ImStore | null = null;
-let conductor: ImConductor | null = null;
-let storeKey = "";
-
 type AcpHostApi = {
   connect: (chatId: string) => Promise<{ rebuilt?: boolean } | void>;
   prompt: (
@@ -40,6 +36,12 @@ type AcpHostApi = {
   setModel?: (chatId: string, modelId: string) => Promise<void>;
   setThoughtLevel?: (chatId: string, thoughtLevel: string) => Promise<void>;
 };
+
+let store: ImStore | null = null;
+let conductor: ImConductor | null = null;
+let storeKey = "";
+let acpHost: AcpHostApi | null = null;
+let emitIm: ((event: ImEvent) => void) | null = null;
 
 async function getStore(): Promise<ImStore> {
   const paths = await preparePanelDatabasesFromSettings();
@@ -56,31 +58,33 @@ async function getStore(): Promise<ImStore> {
   return store;
 }
 
+async function getConductor(): Promise<ImConductor> {
+  const nextStore = await getStore();
+  if (!conductor) {
+    if (!acpHost || !emitIm) throw new Error("IM IPC is not registered.");
+    conductor = new ImConductor(
+      nextStore,
+      emitIm,
+      acpHost.connect,
+      acpHost.prompt,
+      acpHost.denyPermission,
+      acpHost.setModel,
+      acpHost.setThoughtLevel,
+      acpHost.cancel,
+      acpHost.inspect ?? inspectAcpChat
+    );
+    const liveIds = listLiveAcpChatIds();
+    await conductor.adoptLiveJobs(liveIds);
+  }
+  return conductor;
+}
+
 export function registerImIpc(deps: {
   getMainWindow: () => BrowserWindow | null;
   acp: AcpHostApi;
 }): void {
-  const emit = (event: ImEvent) => emitImEvent(deps.getMainWindow, event);
-
-  const getConductor = async (): Promise<ImConductor> => {
-    const nextStore = await getStore();
-    if (!conductor) {
-      conductor = new ImConductor(
-        nextStore,
-        emit,
-        deps.acp.connect,
-        deps.acp.prompt,
-        deps.acp.denyPermission,
-        deps.acp.setModel,
-        deps.acp.setThoughtLevel,
-        deps.acp.cancel,
-        deps.acp.inspect ?? inspectAcpChat
-      );
-      const liveIds = listLiveAcpChatIds();
-      await conductor.adoptLiveJobs(liveIds);
-    }
-    return conductor;
-  };
+  acpHost = deps.acp;
+  emitIm = (event: ImEvent) => emitImEvent(deps.getMainWindow, event);
 
   safeHandle("im:listProjects", async () => {
     const im = await getStore();
@@ -103,7 +107,7 @@ export function registerImIpc(deps: {
     const im = await getStore();
     const project = await im.renameProject(args.projectId, args.name);
     const room = await im.getRoom(args.projectId);
-    emit({ type: "room", room });
+    emitIm?.({ type: "room", room });
     return project;
   });
 
@@ -113,7 +117,7 @@ export function registerImIpc(deps: {
     const settings = await loadSettings();
     const result = await im.autoRenameProject(args.projectId, settings);
     const room = await im.getRoom(args.projectId);
-    emit({ type: "room", room });
+    emitIm?.({ type: "room", room });
     return result.project;
   });
 
@@ -238,6 +242,14 @@ export function registerImIpc(deps: {
   safeHandle("im:getRoom", async (_event, args: { projectId?: unknown }) => {
     if (typeof args?.projectId !== "string") throw new Error("Project id is required.");
     const im = await getStore();
+    try {
+      const runner = await getConductor();
+      const settings = await loadSettings();
+      const panelHome = effectivePanelHome(settings);
+      await runner.syncRoomFromAcp(args.projectId, panelHome);
+    } catch (error) {
+      console.warn("[IM] ACP history sync failed:", error);
+    }
     return im.getRoom(args.projectId);
   });
 
@@ -247,7 +259,7 @@ export function registerImIpc(deps: {
     }
     const im = await getStore();
     const member = await im.setMemberAgent(args.memberId, args.agent as ImAgent);
-    emit({ type: "member", projectId: member.projectId, member });
+    emitIm?.({ type: "member", projectId: member.projectId, member });
     return member;
   });
 
@@ -256,7 +268,7 @@ export function registerImIpc(deps: {
     const model = typeof args?.model === "string" ? args.model : null;
     const im = await getStore();
     const member = await im.setMemberModel(args.memberId, model);
-    emit({ type: "member", projectId: member.projectId, member });
+    emitIm?.({ type: "member", projectId: member.projectId, member });
     return member;
   });
 
@@ -265,7 +277,7 @@ export function registerImIpc(deps: {
     const thoughtLevel = typeof args?.thoughtLevel === "string" ? args.thoughtLevel : null;
     const im = await getStore();
     const member = await im.setMemberThoughtLevel(args.memberId, thoughtLevel);
-    emit({ type: "member", projectId: member.projectId, member });
+    emitIm?.({ type: "member", projectId: member.projectId, member });
     return member;
   });
 
@@ -273,7 +285,7 @@ export function registerImIpc(deps: {
     if (typeof args?.memberId !== "string") throw new Error("Member id is required.");
     const im = await getStore();
     const member = await im.resetMemberOverrides(args.memberId);
-    emit({ type: "member", projectId: member.projectId, member });
+    emitIm?.({ type: "member", projectId: member.projectId, member });
     return member;
   });
 
@@ -537,8 +549,9 @@ export function registerImIpc(deps: {
 }
 
 export async function handleImAcpStream(event: AcpStreamEvent): Promise<void> {
-  if (!conductor) return;
-  await conductor.handleAcpStream(event);
+  if (!acpHost || !emitIm) return;
+  const runner = await getConductor();
+  await runner.handleAcpStream(event);
 }
 
 export async function flushImStreamingMessages(): Promise<void> {
@@ -550,4 +563,6 @@ export function resetImRuntimeForTests(): void {
   store = null;
   conductor = null;
   storeKey = "";
+  acpHost = null;
+  emitIm = null;
 }

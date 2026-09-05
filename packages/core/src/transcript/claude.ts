@@ -3,6 +3,7 @@ import { AgentSession } from "../catalog/types";
 import { readJsonLines } from "./jsonl";
 import { PreviewHomes, SessionPreviewResult } from "./types";
 import { extractPreviewContent, finalizePreviewMessages, isUserOrAssistantRole } from "./text";
+import type { FinalizePreviewOptions } from "./text";
 import { listJsonlFiles } from "./fs";
 
 interface ClaudeProjectRow {
@@ -18,7 +19,8 @@ interface ClaudeProjectRow {
 
 export async function previewClaudeSession(
   session: AgentSession,
-  homes: PreviewHomes
+  homes: PreviewHomes,
+  options?: FinalizePreviewOptions
 ): Promise<SessionPreviewResult> {
   const projectRoot = path.join(homes.claudeHome, "projects");
   const files = await listJsonlFiles(projectRoot);
@@ -57,7 +59,7 @@ export async function previewClaudeSession(
     }
 
     if (messages.length) {
-      return finalizePreviewMessages(session.title, messages);
+      return finalizePreviewMessages(session.title, messages, undefined, options);
     }
   }
 

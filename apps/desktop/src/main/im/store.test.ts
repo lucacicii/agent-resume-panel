@@ -664,4 +664,33 @@ Updated persona.`
     const cleanedRoom = await store.getRoom(project.projectId);
     expect(cleanedRoom.members.some((m) => m.templateId === "project_role_dba")).toBe(false);
   });
+
+  it("persists ACP tool calls and origin on IM messages", async () => {
+    const store = await createStore();
+    const project = await store.createProject("ACP sync fields");
+    const room = await store.getRoom(project.projectId);
+    const pm = room.members.find((member) => member.templateId === "role_product_manager")!;
+    const created = await store.insertMessage({
+      projectId: project.projectId,
+      kind: "role.say",
+      authorMemberId: pm.memberId,
+      authorLabel: pm.name,
+      body: "cut off",
+      origin: "im"
+    });
+    const updated = await store.updateMessage(created.messageId, {
+      body: "cut off, then finished",
+      thinking: "plan",
+      toolCalls: [{ toolCallId: "t1", title: "Read", kind: "read", status: "completed" }],
+      acpMessageId: "acp-1",
+      origin: "acp"
+    });
+    expect(updated.origin).toBe("acp");
+    expect(updated.acpMessageId).toBe("acp-1");
+    expect(updated.toolCalls?.[0]?.title).toBe("Read");
+    const byAcp = await store.findMessageByAcpMessageId("acp-1");
+    expect(byAcp?.messageId).toBe(created.messageId);
+    const last = await store.findLastRoleSayForMember(project.projectId, pm.memberId);
+    expect(last?.acpMessageId).toBe("acp-1");
+  });
 });

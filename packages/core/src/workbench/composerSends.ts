@@ -109,6 +109,63 @@ export async function appendComposerSend(
   };
 }
 
+/**
+ * Cheap pre-check: which of the given sessions already have import rows?
+ * Returns only sessions that have no `import:` rows yet (so a transcript
+ * parse is actually needed). Used to keep calendar-click insights fast.
+ */
+export async function listSessionsMissingComposerImport(
+  dbPath: string,
+  sessions: Array<{ provider?: string | null; id?: string | null }>
+): Promise<Array<{ provider: string; id: string }>> {
+  const keyed = sessions
+    .filter((session) => session.provider && session.id)
+    .map((session) => ({ provider: String(session.provider), id: String(session.id) }));
+  if (!keyed.length) return [];
+
+  const sessionClause = keyed
+    .map(
+      (session) =>
+        `(provider = '${escapeSqlLiteral(session.provider)}' AND agent_session_id = '${escapeSqlLiteral(session.id)}')`
+    )
+    .join(" OR ");
+  const rows = await runSqliteJson<{ provider: string; agent_session_id: string }>(
+    dbPath,
+    `SELECT DISTINCT provider, agent_session_id
+     FROM workbench_composer_sends
+     WHERE pane_key LIKE 'import:%'
+       AND (${sessionClause});`
+  );
+  const covered = new Set(rows.map((row) => `${row.provider}:${row.agent_session_id}`));
+  return keyed.filter((session) => !covered.has(`${session.provider}:${session.id}`));
+}
+
+export async function listComposerSendsForImport(
+  dbPath: string,
+  options: {
+    /** Include live composer tip rows (pane_key NOT LIKE 'import:%'). Default: import rows only. */
+    includeTipRows?: boolean;
+    provider?: string;
+    agentSessionId?: string;
+  }
+): Promise<ComposerSendRecord[]> {
+  const provider = optionalString(options.provider, 64);
+  const agentSessionId = optionalString(options.agentSessionId, 512);
+  const clauses: string[] = [];
+  if (!options.includeTipRows) clauses.push("pane_key LIKE 'import:%'");
+  if (agentSessionId) clauses.push(`agent_session_id = '${escapeSqlLiteral(agentSessionId)}'`);
+  if (provider) clauses.push(`provider = '${escapeSqlLiteral(provider)}'`);
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  const rows = await runSqliteJson<ComposerSendRow>(
+    dbPath,
+    `SELECT id, created_at_ms, pane_key, project_path, session_key, provider, agent_session_id, text
+     FROM workbench_composer_sends
+     ${where}
+     ORDER BY created_at_ms ASC, id ASC;`
+  );
+  return rows.map(mapRow);
+}
+
 export async function listComposerSends(
   dbPath: string,
   options: {

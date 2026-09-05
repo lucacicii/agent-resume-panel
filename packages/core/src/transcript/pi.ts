@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { AgentSession } from "../catalog/types";
 import { PreviewHomes, SessionPreviewResult } from "./types";
 import { extractPreviewContent, finalizePreviewMessages, isUserOrAssistantRole } from "./text";
+import type { FinalizePreviewOptions } from "./text";
 import { listJsonlFiles } from "./fs";
 
 interface JsonlSessionHeader {
@@ -19,15 +20,15 @@ interface JsonlMessageEntry {
   };
 }
 
-export async function previewPiSession(session: AgentSession, homes: PreviewHomes): Promise<SessionPreviewResult> {
-  return previewJsonlSession(session, path.join(homes.piHome, "sessions"));
+export async function previewPiSession(session: AgentSession, homes: PreviewHomes, options?: FinalizePreviewOptions): Promise<SessionPreviewResult> {
+  return previewJsonlSession(session, path.join(homes.piHome, "sessions"), options);
 }
 
-export async function previewPrimeSession(session: AgentSession, homes: PreviewHomes): Promise<SessionPreviewResult> {
-  return previewJsonlSession(session, path.join(homes.primeHome, "sessions"));
+export async function previewPrimeSession(session: AgentSession, homes: PreviewHomes, options?: FinalizePreviewOptions): Promise<SessionPreviewResult> {
+  return previewJsonlSession(session, path.join(homes.primeHome, "sessions"), options);
 }
 
-async function previewJsonlSession(session: AgentSession, sessionsRoot: string): Promise<SessionPreviewResult> {
+async function previewJsonlSession(session: AgentSession, sessionsRoot: string, options?: FinalizePreviewOptions): Promise<SessionPreviewResult> {
   const sessionFiles = await listJsonlFiles(sessionsRoot);
   const messages: SessionPreviewResult["messages"] = [];
 
@@ -87,7 +88,7 @@ async function previewJsonlSession(session: AgentSession, sessionsRoot: string):
     }
 
     if (messages.length) {
-      return finalizePreviewMessages(session.title, messages);
+      return finalizePreviewMessages(session.title, messages, undefined, options);
     }
   }
 

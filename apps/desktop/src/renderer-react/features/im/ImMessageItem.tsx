@@ -3,7 +3,8 @@ import { ThemeIcon } from "../../components/ThemeIcon";
 import { renderMarkdown } from "../../components/Markdown";
 import { StreamdownRenderer } from "../../components/StreamdownRenderer";
 import { desktopApi } from "../../bridge";
-import type { ImJob, ImMember, ImMessage, ImRoom } from "../../../shared/imTypes";
+import type { ImJob, ImMember, ImMessage, ImRoom, ImToolCall } from "../../../shared/imTypes";
+import { toolCallLabel } from "../workbench/toolLabels";
 import { extractCitationsFromMessage } from "./CitationSheet";
 import type { MessageGraphMeta } from "./imTranscriptGraphModel";
 import {
@@ -124,7 +125,10 @@ export const ImMessageItem = memo(function ImMessageItem({
   const isAnswering = isMessageStreaming || isLinkedJobActive;
   const isResumable = Boolean(linkedJob && isResumableJob(linkedJob, room?.jobs ?? []));
   const cancelTargetJob = isLinkedJobActive ? linkedJob : (isMessageStreaming && message.jobId ? ({ jobId: message.jobId } as ImJob) : undefined);
-  const filesChanged = linkedJob?.filesChanged ?? [];
+  const toolCalls = message.toolCalls ?? [];
+  const filesChanged = linkedJob?.filesChanged?.length
+    ? linkedJob.filesChanged
+    : uniqueToolPaths(toolCalls);
 
   const dispatchBlocks = useMemo(() => {
     return message.kind === "role.say" ? parseDispatchBlocks(displayBody) : [];
@@ -336,6 +340,16 @@ export const ImMessageItem = memo(function ImMessageItem({
           )}
           <strong className="im-role-author-name">{authorName}</strong>
           {speaker ? <span className="im-compact-agent-tag">{agentTag(speaker.agent, speaker.model, t)}</span> : null}
+          {!isExpanded && toolCalls.length > 0 && (
+            <span className="im-compact-tools-badge">
+              <ThemeIcon name="wrench" size={11} aria-hidden="true" />
+              <span>
+                {toolCalls.length === 1
+                  ? t("desktop.im.toolCallSingle")
+                  : t("desktop.im.toolCalls", toolCalls.length)}
+              </span>
+            </span>
+          )}
           {!isExpanded && filesChanged.length > 0 && (
             <span className="im-compact-files-badge">
               <ThemeIcon name="file-code" size={11} aria-hidden="true" />
@@ -523,6 +537,13 @@ export const ImMessageItem = memo(function ImMessageItem({
                 dangerouslySetInnerHTML={{ __html: renderedThinking }}
               />
             ) : null}
+          </div>
+        ) : null}
+        {toolCalls.length > 0 ? (
+          <div className="im-message-tools" aria-label={t("desktop.im.toolCalls", toolCalls.length)}>
+            {toolCalls.map((tool) => (
+              <ImToolChip key={tool.toolCallId} tool={tool} t={t} />
+            ))}
           </div>
         ) : null}
         {message.images && message.images.length > 0 && (
@@ -809,3 +830,35 @@ export const ImMessageItem = memo(function ImMessageItem({
     </>
   );
 });
+
+function uniqueToolPaths(toolCalls: ImToolCall[]): string[] {
+  const paths: string[] = [];
+  const seen = new Set<string>();
+  for (const call of toolCalls) {
+    for (const location of call.locations ?? []) {
+      const next = location.path?.trim();
+      if (!next || seen.has(next)) continue;
+      seen.add(next);
+      paths.push(next);
+    }
+  }
+  return paths;
+}
+
+function ImToolChip({ tool, t }: { tool: ImToolCall; t: Translate }) {
+  const label = toolCallLabel(tool, t);
+  const path = tool.locations?.map((item) => item.path).find((item) => item?.trim());
+  const busy = tool.status === "pending" || tool.status === "in_progress";
+  return (
+    <span className={`im-tool-chip is-${tool.status}`} title={path ? `${label} · ${path}` : label}>
+      <ThemeIcon
+        name={busy ? "loader" : tool.status === "failed" ? "close" : "check"}
+        size={12}
+        className={busy ? "spin" : undefined}
+        aria-hidden="true"
+      />
+      <span className="im-tool-chip-label">{label}</span>
+      {path ? <span className="im-tool-chip-path">{path}</span> : null}
+    </span>
+  );
+}

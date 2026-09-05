@@ -3,6 +3,7 @@ import { AgentSession } from "../catalog/types";
 import { readJsonLines } from "./jsonl";
 import { PreviewHomes, SessionPreviewResult } from "./types";
 import { extractPreviewContent, finalizePreviewMessages, isUserOrAssistantRole } from "./text";
+import type { FinalizePreviewOptions } from "./text";
 import { findFilesByName } from "./fs";
 
 interface GrokChatRow {
@@ -14,7 +15,8 @@ interface GrokChatRow {
 
 export async function previewGrokSession(
   session: AgentSession,
-  homes: PreviewHomes
+  homes: PreviewHomes,
+  options?: FinalizePreviewOptions
 ): Promise<SessionPreviewResult> {
   const sessionsRoot = path.join(homes.grokHome, "sessions");
   const chatFiles = await findFilesByName(sessionsRoot, "chat_history.jsonl");
@@ -51,5 +53,5 @@ export async function previewGrokSession(
     throw new Error("Grok transcript is empty for this session.");
   }
 
-  return finalizePreviewMessages(session.title, messages);
+  return finalizePreviewMessages(session.title, messages, undefined, options);
 }
