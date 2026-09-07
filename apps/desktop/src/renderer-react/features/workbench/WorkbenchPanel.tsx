@@ -236,8 +236,7 @@ type BrowserPane = {
 type SideView = "files" | "git" | "search" | "scripts" | "linkgraph" | "transcript" | null;
 type SearchMatch = Awaited<ReturnType<DesktopApi["workbenchSearchText"]>>["matches"][number];
 type SearchReveal = { path: string; line: number; column: number; endColumn: number };
-type ProjectFilter = "all" | "pinned" | "active";
-type SessionFilter = "all" | "active";
+type ProjectFilter = "all" | "pinned";
 type WorkbenchSidebarView = "projects" | "gtd" | "tags";
 type TagCategoryFilter =
   | "all"
@@ -2645,7 +2644,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [projectQuery, setProjectQuery] = useState("");
   const [sessionQuery, setSessionQuery] = useState("");
   const [sessionSearchOpen, setSessionSearchOpen] = useState(false);
-  const [sessionFilter, setSessionFilter] = useState<SessionFilter>("all");
   const [selectedSessionKeys, setSelectedSessionKeys] = useState<Set<string>>(() => new Set());
   const [selectionAnchorKey, setSelectionAnchorKey] = useState("");
   const [activeSessionKey, setActiveSessionKey] = useState("");
@@ -3801,7 +3799,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     const query = projectQuery.trim().toLowerCase();
     return allProjects.filter((project) =>
       (!query || `${project.label} ${project.path} ${project.portableKey}`.toLowerCase().includes(query))
-      && (projectFilter === "all" || (projectFilter === "pinned" ? project.pinned : project.active))
+      && (projectFilter === "all" || project.pinned)
     );
   }, [allProjects, projectFilter, projectQuery]);
 
@@ -3867,10 +3865,9 @@ export function WorkbenchPanel(): ReactPortal | null {
       : selectedFolderId === UNCLASSIFIED_FOLDER_ID
         ? t("desktop.workbench.unclassifiedSessions")
         : selectedFolder?.name || (selectedProject ? basename(selectedProject) : t("desktop.workbench.allSessions"));
-  const visibleSessions = useMemo(() => selectedSessions.filter((session) => {
-    const matchesQuery = `${session.title} ${session.id} ${session.provider}`.toLowerCase().includes(sessionQuery.trim().toLowerCase());
-    return matchesQuery && (sessionFilter === "all" || openSessionKeys.has(sessionKey(session)));
-  }).sort((a, b) => b.updatedAt - a.updatedAt), [openSessionKeys, selectedSessions, sessionFilter, sessionQuery]);
+  const visibleSessions = useMemo(() => selectedSessions.filter((session) =>
+    `${session.title} ${session.id} ${session.provider}`.toLowerCase().includes(sessionQuery.trim().toLowerCase())
+  ).sort((a, b) => b.updatedAt - a.updatedAt), [selectedSessions, sessionQuery]);
   const selectedPendingSessions = useMemo(() => pendingSessions.filter((pending) => {
     if (sidebarView === "gtd" || sidebarView === "tags") return false;
     if (!selectedProject) return true;
@@ -8043,7 +8040,7 @@ export function WorkbenchPanel(): ReactPortal | null {
           {sidebarView === "projects" ? <SegmentedControl
               aria-label={t("desktop.notes.projectFilter")}
               value={projectFilter}
-              options={["all", "pinned", "active"] as const satisfies readonly ProjectFilter[]}
+              options={["all", "pinned"] as const satisfies readonly ProjectFilter[]}
               onChange={setProjectFilter}
               getLabel={(filter) => t(`desktop.common.${filter}`)}
             /> : null}
@@ -8146,19 +8143,6 @@ export function WorkbenchPanel(): ReactPortal | null {
               if (!sessionSearchToolbarRef.current?.contains(document.activeElement)) setSessionSearchOpen(false);
             }, 0);
           }} />
-          <SegmentedControl
-            aria-label={t("desktop.workbench.sessionFilter")}
-            value={sessionFilter}
-            options={["all", "active"] as const satisfies readonly SessionFilter[]}
-            onChange={(filter) => {
-              if (filter !== sessionFilter) {
-                setSelectedSessionKeys((current) => current.size ? new Set() : current);
-                setSelectionAnchorKey((current) => current ? "" : current);
-              }
-              setSessionFilter(filter);
-            }}
-            getLabel={(filter) => t(`desktop.common.${filter}`)}
-          />
         </div>
         <div className="wb-list-meta-row"><p className="wb-list-meta">{selectedSessionKeys.size > 1 ? t("desktop.workbench.selectedCount", selectedSessionKeys.size) : sessionQuery ? t("desktop.workbench.listMetaSearch", selectedSessionScope, sessionQuery, visibleSessions.length + visiblePendingSessions.length) : `${visibleSessions.length + visiblePendingSessions.length} / ${sessionsTotal + selectedPendingSessions.length}`}</p>{selectedSessionKeys.size > 1 ? <button type="button" className="wb-list-remove-btn" onClick={() => {
           const targets = visibleSessions.filter((item) => selectedSessionKeys.has(sessionKey(item)));
@@ -8211,7 +8195,7 @@ export function WorkbenchPanel(): ReactPortal | null {
               title={otherMachine ? t("desktop.workbench.otherMachineSessionHint", session.projectPath) : undefined}
             ><span className="wb-list-item-top"><span className="wb-session-title-wrap">{isOpen ? <span className="wb-session-activity-dot" aria-hidden="true" /> : null}<span className="wb-list-item-title" ref={(el) => syncTruncationTitle(el)}>{session.title || session.id}</span>{session.source === "im" ? <span className="wb-im-session-badge" aria-label={t("desktop.workbench.imSessionBadge")} title={t("desktop.workbench.imSessionBadgeHint")}>{t("desktop.workbench.imSessionBadge")}</span> : null}{otherMachine ? <span className="wb-other-machine-badge" aria-label={t("desktop.workbench.otherMachineBadge")}>{t("desktop.workbench.otherMachineBadge")}</span> : null}</span></span><span className="wb-list-item-preview" ref={(el) => syncTruncationTitle(el)}><span className="wb-list-item-date">{formatDateTime(session.updatedAt)}</span><span className="s-provider-tag" data-provider={session.acpProvider || session.provider}>{session.acpProvider ? `acp/${session.acpProvider}` : session.provider}</span><span className={`wb-gtd-status-badge is-${gtdStatus}`} aria-label={t("desktop.workbench.gtdStatusLabel", t(`desktop.workbench.gtdStatus.${gtdStatus}`))}>{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</span>{" · "}{aliases[session.projectPath] || basename(session.projectPath)}</span></button>;
           }}
-        /> : <div className="wb-list"><p className="muted wb-list-empty">{sessionFilter === "active" ? t("desktop.workbench.noFilterSessions") : sessionQuery ? t("desktop.workbench.noMatchingSessions") : t("desktop.workbench.noSessionsInProject")}</p></div>}
+        /> : <div className="wb-list"><p className="muted wb-list-empty">{sessionQuery ? t("desktop.workbench.noMatchingSessions") : t("desktop.workbench.noSessionsInProject")}</p></div>}
       </aside>
       <ResizeHandle label={t("desktop.workbench.resizeSessions")} onDelta={(delta) => setWidth("list", delta)} />
       <main className="wb-detail">

@@ -3344,7 +3344,7 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(document.querySelector(".wb-terminal-tab-label")?.textContent).toBe("Renamed ACP chat"));
   });
 
-  it("marks and filters only sessions whose workbench terminal remains open", async () => {
+  it("marks open workbench sessions with an activity dot until the terminal closes", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
     document.body.append(host);
@@ -3373,22 +3373,15 @@ describe("WorkbenchPanel", () => {
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    await screen.findByRole("button", { name: /Recently updated/ });
-    const sessionFilters = document.querySelectorAll<HTMLButtonElement>(".wb-session-filter-wrap [role=tab]");
-    fireEvent.click(sessionFilters[1]);
-    expect(screen.queryByRole("button", { name: /Recently updated/ })).toBeNull();
-
-    fireEvent.click(sessionFilters[0]);
-    fireEvent.click(screen.getByRole("button", { name: /Recently updated/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Recently updated/ }));
     await screen.findByRole("button", { name: "Close terminal" });
-    await waitFor(() => expect(document.querySelector(".wb-list-item .wb-session-activity-dot")).not.toBeNull());
-
-    fireEvent.click(sessionFilters[1]);
-    expect(document.querySelector(".wb-list-item")?.textContent).toContain("Recently updated");
-    expect(screen.queryByRole("button", { name: /Older session/ })).toBeNull();
+    await waitFor(() => expect(document.querySelector(".wb-list-item.has-wb-activity .wb-session-activity-dot")).not.toBeNull());
+    expect(screen.getByRole("button", { name: /Older session/ })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Close terminal" }));
-    await waitFor(() => expect(screen.queryByRole("button", { name: /Recently updated/ })).toBeNull());
+    await waitFor(() => expect(document.querySelector(".wb-list-item .wb-session-activity-dot")).toBeNull());
+    expect(screen.getByRole("button", { name: /Recently updated/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Older session/ })).toBeTruthy();
   });
 
   it("closes the active terminal when the main-process Cmd+W bridge fires", async () => {

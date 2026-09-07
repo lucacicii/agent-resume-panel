@@ -13455,8 +13455,7 @@ body.is-pane-resizing-row * {
   flex: 0 0 auto;
 }
 
-.notes-list-search-wrap .sidebar-project-filter-segmented,
-.wb-session-filter-wrap .sidebar-project-filter-segmented {
+.notes-list-search-wrap .sidebar-project-filter-segmented {
   --segment-count: 2;
   flex: 1 0 100%;
   min-width: 0;
@@ -13499,8 +13498,7 @@ body.is-pane-resizing-row * {
   display: block;
 }
 
-.notes-list-search-wrap.is-search-open .sidebar-project-filter-segmented,
-.wb-session-filter-wrap.is-search-open .sidebar-project-filter-segmented {
+.notes-list-search-wrap.is-search-open .sidebar-project-filter-segmented {
   flex: 1 0 100%;
   min-width: 0;
   max-width: none;
