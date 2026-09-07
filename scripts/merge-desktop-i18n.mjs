@@ -11,6 +11,23 @@ const extensionLocalesDir = join(root, "apps", "extension", "locales");
 const desktopLocalesDir = join(root, "apps", "desktop", "locales");
 const settingsOverlayLocales = new Set(["ja"]);
 const obsoleteDesktopKeys = new Set([
+  "desktop.settings.visualTheme",
+  "desktop.settings.visualThemeDesc",
+  "desktop.settings.visualThemeClassic",
+  "desktop.settings.visualThemeClassicDesc",
+  "desktop.settings.visualThemeCyberpunk",
+  "desktop.settings.visualThemeCyberpunkDesc",
+  "desktop.settings.visualThemeDos",
+  "desktop.settings.visualThemeDosDesc",
+  "desktop.settings.themeDarkOnly",
+  "desktop.settings.themeEffects",
+  "desktop.settings.themeEffectsDesc",
+  "desktop.settings.themeEffectsFull",
+  "desktop.settings.themeEffectsReduced",
+  "desktop.settings.dosStyle",
+  "desktop.settings.dosStyleDesc",
+  "desktop.settings.dosStyleAmber",
+  "desktop.settings.dosStyleGreen",
   "desktop.workbench.terminalScrollPosition",
   "desktop.workbench.sidePanelBack",
   "desktop.workbench.renameSession",

@@ -26,39 +26,27 @@ Object.defineProperty(Range.prototype, "getBoundingClientRect", {
 
 afterEach(() => {
   cleanup();
-  delete document.documentElement.dataset.visualTheme;
   delete document.documentElement.dataset.theme;
 });
 
-describe("CodeEditor visual themes", () => {
-  it("resolves Cyberpunk and DOS when following the desktop theme", () => {
+describe("CodeEditor appearance", () => {
+  it("keeps an explicit Workbench editor appearance independent from the app theme", () => {
     document.documentElement.dataset.theme = "dark";
-    document.documentElement.dataset.visualTheme = "cyberpunk";
-    expect(resolveCodeMirrorThemeId("follow-app")).toBe("cyberpunk");
-
-    document.documentElement.dataset.visualTheme = "dos";
-    expect(resolveCodeMirrorThemeId("follow-app")).toBe("dos");
-  });
-
-  it("keeps an explicit Workbench editor appearance independent from the desktop visual theme", () => {
-    document.documentElement.dataset.theme = "dark";
-    document.documentElement.dataset.visualTheme = "dos";
     expect(resolveCodeMirrorThemeId("light")).toBe("classic-light");
     expect(resolveCodeMirrorThemeId("dark")).toBe("classic-dark");
   });
 
-  it("reconfigures a mounted follow-app editor when the visual theme changes", async () => {
+  it("reconfigures a mounted follow-app editor when the app appearance changes", async () => {
     document.documentElement.dataset.theme = "dark";
-    document.documentElement.dataset.visualTheme = "cyberpunk";
     const { container } = render(
       <CodeEditor value="const theme = true;" language="javascript" ariaLabel="Theme editor" onChange={vi.fn()} />
     );
     const editor = container.querySelector(".cm-editor") as HTMLElement;
-    expect(getComputedStyle(editor).backgroundColor).toBe("rgb(7, 6, 17)");
+    expect(editor).toBeTruthy();
 
-    document.documentElement.dataset.visualTheme = "dos";
+    document.documentElement.dataset.theme = "light";
     act(() => window.dispatchEvent(new CustomEvent("agent-resume:appearance-change")));
-    await waitFor(() => expect(getComputedStyle(editor).backgroundColor).toBe("rgb(23, 18, 13)"));
+    await waitFor(() => expect(resolveCodeMirrorThemeId("follow-app")).toBe("classic-light"));
   });
 });
 

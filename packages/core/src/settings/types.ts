@@ -49,15 +49,6 @@ export interface EmbeddingSettings {
 }
 
 export type DesktopTheme = "system" | "light" | "dark";
-/** Official visual theme packages bundled with the Desktop renderer. */
-export type DesktopVisualThemeId = "classic" | "cyberpunk" | "dos";
-export const DESKTOP_VISUAL_THEME_IDS: readonly DesktopVisualThemeId[] = [
-  "classic",
-  "cyberpunk",
-  "dos"
-] as const;
-/** Decorative effects preference. The OS reduced-motion preference always wins at runtime. */
-export type DesktopThemeEffects = "full" | "reduced";
 
 export type DesktopBrowserPartitionMode = "per-project" | "shared";
 export type DesktopBrowserDefaultSurface = "workbench" | "window" | "last-used";
@@ -123,10 +114,6 @@ export interface DesktopSettings {
   windowHeight?: number;
   /** UI appearance; default follows OS. */
   theme?: DesktopTheme;
-  /** Theme package controlling the visual language; defaults to Classic. */
-  visualTheme?: DesktopVisualThemeId;
-  /** User preference for decorative effects; system reduced motion overrides it. */
-  themeEffects?: DesktopThemeEffects;
   /** @deprecated Replaced by alwaysAllowAgentNonDestructiveOperations. */
   alwaysAllowAgentWriteOperations?: boolean;
   /** Allow classified write, launch, exec, and outbound-network actions without per-call confirmation. */
@@ -303,7 +290,7 @@ export interface WorkbenchSettings {
   terminalMode?: WorkbenchTerminalMode;
   /** Embedded terminal emulator engine: `xterm` (default) or `ghostty-web`. */
   terminalEngine?: WorkbenchTerminalEngine;
-  /** Embedded xterm color preset. `follow-app` follows the active visual theme. */
+  /** Embedded xterm color preset. `follow-app` follows the application appearance. */
   terminalTheme?: WorkbenchTerminalThemeId;
   /** Workbench CodeMirror scheme. `follow-app` is the default. */
   editorTheme?: "follow-app" | "light" | "dark";
@@ -596,8 +583,6 @@ export const DEFAULT_SETTINGS: PanelSettings = {
   },
   desktop: {
     theme: "system",
-    visualTheme: "classic",
-    themeEffects: "full",
     alwaysAllowAgentWriteOperations: false,
     alwaysAllowAgentNonDestructiveOperations: false,
     browser: { ...DEFAULT_DESKTOP_BROWSER_SETTINGS, defaultPolicy: { ...DEFAULT_DESKTOP_BROWSER_SETTINGS.defaultPolicy, allowHosts: [], blockHosts: [...DEFAULT_DESKTOP_BROWSER_SETTINGS.defaultPolicy.blockHosts] }, chromeCookieImport: { ...DEFAULT_DESKTOP_BROWSER_SETTINGS.chromeCookieImport } }

@@ -30,16 +30,16 @@ describe("settingsChangedToCustomEvents", () => {
     expect(events[0]).toEqual({ name: "agent-resume:settings-saved", detail: { settings: base, section: "workbench" } });
     expect(events[1]).toMatchObject({
       name: "agent-resume:appearance-change",
-      detail: { visualTheme: "classic", requestedAppearance: "system", effects: "full", density: "comfortable" }
+      detail: { requestedAppearance: "system" }
     });
   });
 
-  it("forces the dark-only theme state across windows", () => {
-    const settings = { ...base, desktop: { theme: "light" as const, visualTheme: "dos" as const, themeEffects: "reduced" as const } };
+  it("broadcasts an explicit dark appearance across windows", () => {
+    const settings = { ...base, desktop: { theme: "dark" as const } };
     const events = settingsChangedToCustomEvents({ settings, section: "general" });
     expect(events[1]).toEqual({
       name: "agent-resume:appearance-change",
-      detail: expect.objectContaining({ visualTheme: "dos", requestedAppearance: "dark", appearance: "dark", effects: "reduced", density: "compact" })
+      detail: expect.objectContaining({ requestedAppearance: "dark", appearance: "dark" })
     });
   });
 });

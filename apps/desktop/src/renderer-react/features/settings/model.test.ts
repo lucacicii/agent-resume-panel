@@ -352,17 +352,13 @@ describe("settings model", () => {
     expect(defaultDraft.editorTheme).toBe("follow-app");
   });
 
-  it("forces dark appearance for dark-only visual themes and persists effects", () => {
+  it("persists the selected light, dark, or system appearance", () => {
     const draft = generalDraftFromSettings(settings);
     const patch = generalPatch(settings, {
       ...draft,
-      visualTheme: "cyberpunk",
-      desktopTheme: "light",
-      themeEffects: "reduced"
+      desktopTheme: "dark"
     });
-    expect(patch.desktop?.visualTheme).toBe("cyberpunk");
     expect(patch.desktop?.theme).toBe("dark");
-    expect(patch.desktop?.themeEffects).toBe("reduced");
   });
 
   it("defaults and persists workbench terminal renderer (webgl / force canvas)", () => {

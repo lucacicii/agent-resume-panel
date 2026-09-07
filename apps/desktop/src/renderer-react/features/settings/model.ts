@@ -1,7 +1,5 @@
 import type {
   AiProvider,
-  DesktopThemeEffects,
-  DesktopVisualThemeId,
   ModelSelection,
   ModelUse,
   PanelSettings,
@@ -96,8 +94,6 @@ export interface NotificationsDraft {
 export interface GeneralDraft {
   uiLanguage: UiLanguageValue;
   desktopTheme: "system" | "light" | "dark";
-  visualTheme: DesktopVisualThemeId;
-  themeEffects: DesktopThemeEffects;
   alwaysAllowAgentNonDestructiveOperations: boolean;
   notifications: NotificationsDraft;
 }
@@ -266,8 +262,6 @@ export function generalDraftFromSettings(settings: PanelSettings): GeneralDraft 
   return {
     uiLanguage: normalizeOutputLanguage(settings.uiLanguage),
     desktopTheme: settings.desktop?.theme || "system",
-    visualTheme: settings.desktop?.visualTheme === "cyberpunk" || settings.desktop?.visualTheme === "dos" ? settings.desktop.visualTheme : "classic",
-    themeEffects: settings.desktop?.themeEffects === "reduced" ? "reduced" : "full",
     alwaysAllowAgentNonDestructiveOperations: settings.desktop?.alwaysAllowAgentNonDestructiveOperations === true || settings.desktop?.alwaysAllowAgentWriteOperations === true,
     notifications: notificationsDraftFromSettings(settings)
   };
@@ -392,9 +386,7 @@ export function generalPatch(settings: PanelSettings, draft: GeneralDraft): Part
     uiLanguage: draft.uiLanguage,
     desktop: {
       ...settings.desktop,
-      theme: draft.visualTheme === "cyberpunk" || draft.visualTheme === "dos" ? "dark" : draft.desktopTheme,
-      visualTheme: draft.visualTheme,
-      themeEffects: draft.themeEffects,
+      theme: draft.desktopTheme,
       alwaysAllowAgentWriteOperations: false,
       alwaysAllowAgentNonDestructiveOperations: draft.alwaysAllowAgentNonDestructiveOperations
     },

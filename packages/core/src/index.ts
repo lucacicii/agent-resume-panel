@@ -49,8 +49,6 @@ export type {
   DesktopBrowserSnapshotMode,
   NotesSettings,
   DesktopTheme,
-  DesktopVisualThemeId,
-  DesktopThemeEffects,
   WorkbenchSettings,
   WorkbenchEditorSettings,
   WorkbenchEditorTabSize,
@@ -83,7 +81,6 @@ export {
   WORKBENCH_TERMINAL_THEME_IDS,
   WORKBENCH_TERMINAL_RENDERERS,
   WORKBENCH_TERMINAL_ENGINES,
-  DESKTOP_VISUAL_THEME_IDS,
   ACP_AGENT_PROVIDERS
 } from "./settings/types";
 export {
@@ -92,8 +89,6 @@ export {
   normalizeWorkbenchTerminalTheme,
   normalizeWorkbenchTerminalEngine,
   normalizeWorkbenchTerminalRenderer,
-  normalizeDesktopVisualTheme,
-  normalizeDesktopThemeEffects,
   normalizeDesktopTheme,
   normalizeWorkbenchEditorTheme
 } from "./settings/store";

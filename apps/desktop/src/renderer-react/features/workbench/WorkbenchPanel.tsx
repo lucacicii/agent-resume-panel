@@ -1336,10 +1336,7 @@ function GitChangesPanel({
           title={labels.autoGenerate}
           onClick={onSuggestCommit}
         >
-          {commitBusy ? <>
-            <ThemeIcon name="loader" className="spin wb-git-default-loading" size={16} />
-            <span className="wb-git-cyber-loading" aria-hidden="true" />
-          </> : <ThemeIcon name="sparkles" size={16} />}
+          {commitBusy ? <ThemeIcon name="loader" className="spin wb-git-default-loading" size={16} /> : <ThemeIcon name="sparkles" size={16} />}
         </button>
         <button
           type="button"

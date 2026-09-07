@@ -4245,7 +4245,7 @@ describe("WorkbenchPanel", () => {
     }));
     expect(autoGenerate.getAttribute("aria-busy")).toBe("true");
     expect(autoGenerate.classList.contains("is-loading")).toBe(true);
-    expect(autoGenerate.querySelector(".wb-git-cyber-loading")).not.toBeNull();
+    expect(autoGenerate.querySelector(".wb-git-default-loading")).not.toBeNull();
     await act(async () => resolveCommitSuggestion?.({ message: "fix: generated selection", source: "llm" }));
     await waitFor(() => expect(messageField).toHaveProperty("value", "fix: generated selection"));
     expect(autoGenerate.getAttribute("aria-busy")).toBe("false");
