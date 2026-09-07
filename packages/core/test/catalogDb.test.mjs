@@ -63,8 +63,6 @@ test("desktop schema creates report and agent tables in panelHome/.desktop/deskt
     assert.ok(desktopNames.includes("session_embeddings"));
     assert.ok(desktopNames.includes("session_transcript_chunks"));
     assert.ok(desktopNames.includes("session_transcript_index"));
-    assert.ok(desktopNames.includes("entity_tags"));
-    assert.ok(desktopNames.includes("tag_definitions"));
     assert.ok(desktopNames.includes("im_projects"));
     assert.ok(desktopNames.includes("im_role_templates"));
     assert.ok(desktopNames.includes("im_members"));

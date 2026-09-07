@@ -95,9 +95,7 @@ function MainRuntimeBootstrap(): null {
     };
     window.addEventListener("agent-resume:appearance-change", onAppearanceChange);
     const media = window.matchMedia("(prefers-color-scheme: dark)");
-    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     media.addEventListener("change", onSystemAppearance);
-    reduceMotion.addEventListener("change", onSystemAppearance);
     void window.agentResume.getSettings().then((settings) => {
       if (active) {
         applyTheme(settings);
@@ -116,7 +114,6 @@ function MainRuntimeBootstrap(): null {
       active = false;
       window.removeEventListener("agent-resume:appearance-change", onAppearanceChange);
       media.removeEventListener("change", onSystemAppearance);
-      reduceMotion.removeEventListener("change", onSystemAppearance);
       stopSettings();
     };
   }, []);
@@ -133,10 +130,8 @@ function SettingsRuntimeBootstrap(): null {
       }).catch(() => undefined);
     };
     const media = window.matchMedia("(prefers-color-scheme: dark)");
-    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     window.addEventListener("agent-resume:appearance-change", onAppearanceChange);
     media.addEventListener("change", onSystemAppearance);
-    reduceMotion.addEventListener("change", onSystemAppearance);
     void window.agentResume.getSettings().then((settings) => {
       if (active) applyTheme(settings);
     }).catch(() => undefined);
@@ -150,7 +145,6 @@ function SettingsRuntimeBootstrap(): null {
       active = false;
       window.removeEventListener("agent-resume:appearance-change", onAppearanceChange);
       media.removeEventListener("change", onSystemAppearance);
-      reduceMotion.removeEventListener("change", onSystemAppearance);
       stopSettings();
     };
   }, []);

@@ -233,44 +233,11 @@ type BrowserPane = {
   startUrl?: string;
   surfaceKind: "workbench" | "window";
 };
-type SideView = "files" | "git" | "search" | "scripts" | "linkgraph" | "transcript" | null;
+type SideView = "files" | "git" | "search" | "scripts" | "linkgraph" | null;
 type SearchMatch = Awaited<ReturnType<DesktopApi["workbenchSearchText"]>>["matches"][number];
 type SearchReveal = { path: string; line: number; column: number; endColumn: number };
-type ProjectFilter = "all" | "pinned" | "active";
-type SessionFilter = "all" | "active";
-type WorkbenchSidebarView = "projects" | "gtd" | "tags";
-type TagCategoryFilter =
-  | "all"
-  | "tech_stack"
-  | "business_domain"
-  | "architecture"
-  | "task_type"
-  | "problem_domain"
-  | "concept_knowledge"
-  | "context_env";
-type WorkbenchTagItem = {
-  tag: string;
-  normalizedTag: string;
-  category: string;
-  sessionCount: number;
-  noteCount: number;
-  activeEntityCount: number;
-  totalHits: number;
-  globalWeight: number;
-  status: string;
-  pinned: boolean;
-  updatedAtMs: number;
-};
-const TAG_CATEGORY_FILTERS = [
-  "all",
-  "tech_stack",
-  "business_domain",
-  "architecture",
-  "task_type",
-  "problem_domain",
-  "concept_knowledge",
-  "context_env"
-] as const satisfies readonly TagCategoryFilter[];
+type ProjectFilter = "all" | "pinned";
+type WorkbenchSidebarView = "projects" | "gtd";
 const GTD_STATUSES = ["inbox", "next", "waiting", "someday", "reference", "done"] as const satisfies readonly GtdStatus[];
 const GTD_ACTIVE_STATUSES = ["inbox", "next", "waiting", "someday", "reference"] as const satisfies readonly GtdStatus[];
 const WORKBENCH_SESSION_ROW_HEIGHT = 64;
@@ -440,8 +407,9 @@ const FOLDERS_COLLAPSED_KEY = "wb-folders-collapsed";
 const FOLDERS_WIDTH_KEY = "sidebar-folders-width";
 const LIST_WIDTH_KEY = "wb-list-pane-width";
 const SIDE_WIDTH_KEY = "wb-side-panel-width";
+const SESSION_VIEW_MODE_KEY = "wb-session-view-mode";
+const TUI_SPLIT_HEIGHT_KEY = "wb-tui-split-height";
 const DEFAULT_SIDE_WIDTH = 320;
-const TRANSCRIPT_SIDE_WIDTH = 420;
 const ALL_PROJECTS_PANE_KEY = "__all_projects__";
 const UNCLASSIFIED_FOLDER_ID = "__workbench_unclassified__";
 
@@ -920,6 +888,26 @@ function gitRepositoryCount(git: GitStatusResult): number {
   return roots.size;
 }
 
+function dirtyGitRoots(result: GitStatusResult): string[] {
+  const roots = new Set<string>();
+  for (const change of [...result.staged, ...result.unstaged]) {
+    if (change.repoRoot) roots.add(change.repoRoot);
+  }
+  return [...roots];
+}
+
+function defaultGitRoot(result: GitStatusResult, availableRoots: string[]): string {
+  const dirty = new Set(dirtyGitRoots(result));
+  if (dirty.size) {
+    const fromNested = (result.nestedRepos || []).find((repository) => dirty.has(repository.root));
+    if (fromNested) return fromNested.root;
+    if (result.root && dirty.has(result.root)) return result.root;
+    const sorted = [...dirty].sort((left, right) => left.localeCompare(right));
+    if (sorted[0]) return sorted[0];
+  }
+  return result.root || result.nestedRepos?.[0]?.root || availableRoots[0] || "";
+}
+
 function GitTreeCheckbox({
   state,
   ariaLabel,
@@ -1316,10 +1304,7 @@ function GitChangesPanel({
           title={labels.autoGenerate}
           onClick={onSuggestCommit}
         >
-          {commitBusy ? <>
-            <ThemeIcon name="loader" className="spin wb-git-default-loading" size={16} />
-            <span className="wb-git-cyber-loading" aria-hidden="true" />
-          </> : <ThemeIcon name="sparkles" size={16} />}
+          {commitBusy ? <ThemeIcon name="loader" className="spin wb-git-default-loading" size={16} /> : <ThemeIcon name="sparkles" size={16} />}
         </button>
         <button
           type="button"
@@ -2612,23 +2597,16 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [expandedProjectIds, setExpandedProjectIds] = useState<Set<string>>(() => new Set());
   const [sidebarView, setSidebarView] = useState<WorkbenchSidebarView>(() => {
     const stored = storageString(SIDEBAR_VIEW_KEY);
-    if (stored === "gtd" || stored === "tags" || stored === "projects") return stored;
+    if (stored === "gtd" || stored === "projects") return stored;
     return "projects";
   });
   const [selectedGtdStatus, setSelectedGtdStatus] = useState<GtdStatus>("inbox");
   const [completedGtdExpanded, setCompletedGtdExpanded] = useState(false);
-  const [tagItems, setTagItems] = useState<WorkbenchTagItem[]>([]);
-  const [selectedTag, setSelectedTag] = useState<string | null>(null);
-  const [tagCategoryFilter, setTagCategoryFilter] = useState<TagCategoryFilter>("all");
-  const [showObsoleteTags, setShowObsoleteTags] = useState(false);
-  const [tagEntityKeys, setTagEntityKeys] = useState<Set<string>>(new Set());
-  const [tagsLoading, setTagsLoading] = useState(false);
   const [pinnedProjects, setPinnedProjects] = useState<Set<string>>(loadPinnedProjects);
   const [projectFilter, setProjectFilter] = useState<ProjectFilter>("all");
   const [projectQuery, setProjectQuery] = useState("");
   const [sessionQuery, setSessionQuery] = useState("");
   const [sessionSearchOpen, setSessionSearchOpen] = useState(false);
-  const [sessionFilter, setSessionFilter] = useState<SessionFilter>("all");
   const [selectedSessionKeys, setSelectedSessionKeys] = useState<Set<string>>(() => new Set());
   const [selectionAnchorKey, setSelectionAnchorKey] = useState("");
   const [activeSessionKey, setActiveSessionKey] = useState("");
@@ -2636,6 +2614,12 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [foldersWidth, setFoldersWidth] = useState(() => storedWidth(FOLDERS_WIDTH_KEY, 260, 140, 560));
   const [listWidth, setListWidth] = useState(() => storedWidth(LIST_WIDTH_KEY, 324, 240, 720));
   const [sideWidth, setSideWidth] = useState(() => storedWidth(SIDE_WIDTH_KEY, 320, 240, 840));
+  const [sessionViewMode, setSessionViewMode] = useState<"hybrid" | "terminal">(() => {
+    const stored = storageString(SESSION_VIEW_MODE_KEY);
+    return stored === "terminal" ? "terminal" : "hybrid";
+  });
+  const [tuiSplitHeight, setTuiSplitHeight] = useState(() => storedWidth(TUI_SPLIT_HEIGHT_KEY, 180, 80, 600));
+  const [tuiCollapsed, setTuiCollapsed] = useState(false);
   const [terminals, setTerminals] = useState<TerminalPane[]>([]);
   const [pendingSessions, setPendingSessions] = useState<PendingWorkbenchSession[]>([]);
   const [terminalCreating, setTerminalCreating] = useState(false);
@@ -2645,7 +2629,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [browsers, setBrowsers] = useState<BrowserPane[]>([]);
   const [activePanes, setActivePanes] = useState<Record<string, string>>({});
   const [side, setSide] = useState<SideView>(null);
-  const lastAutoTranscriptKey = useRef("");
   const [scriptPackages, setScriptPackages] = useState<ScriptPackageView[]>([]);
   const [scriptsLoading, setScriptsLoading] = useState(false);
   const [scriptsError, setScriptsError] = useState("");
@@ -3124,7 +3107,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       search: sessionQuery.trim() || undefined
     };
     if (sidebarView === "gtd") request.gtdStatus = selectedGtdStatus;
-    else if (sidebarView === "tags" && selectedTag) request.tag = selectedTag;
     else {
       const selected = selectedProjectRef.current;
       if (selected) {
@@ -3148,7 +3130,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       if (keys.length) request.keys = keys;
     }
     return request;
-  }, [catalogProjects, selectedFolderId, selectedGtdStatus, selectedProject, selectedTag, sessionQuery, sidebarView, workbenchFolderData]);
+  }, [catalogProjects, selectedFolderId, selectedGtdStatus, selectedProject, sessionQuery, sidebarView, workbenchFolderData]);
 
   const loadProjectMetadata = useCallback(async () => {
     const listProjects = typeof desktopApi().listProjects === "function"
@@ -3245,7 +3227,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
     const timer = window.setTimeout(() => { void loadSessions(); }, 250);
     return () => window.clearTimeout(timer);
-  }, [active, loadSessions, reloadWorkbench, selectedFolderId, selectedGtdStatus, selectedProject, selectedTag, sessionQuery, sidebarView, workbenchFolderData]);
+  }, [active, loadSessions, reloadWorkbench, selectedFolderId, selectedGtdStatus, selectedProject, sessionQuery, sidebarView, workbenchFolderData]);
 
   const loadMoreSessions = useCallback(async () => {
     if (!sessionsCursor || sessionsLoadingMore) return;
@@ -3784,7 +3766,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     const query = projectQuery.trim().toLowerCase();
     return allProjects.filter((project) =>
       (!query || `${project.label} ${project.path} ${project.portableKey}`.toLowerCase().includes(query))
-      && (projectFilter === "all" || (projectFilter === "pinned" ? project.pinned : project.active))
+      && (projectFilter === "all" || project.pinned)
     );
   }, [allProjects, projectFilter, projectQuery]);
 
@@ -3804,10 +3786,6 @@ export function WorkbenchPanel(): ReactPortal | null {
         const matchesQuery = !query || `${session.title} ${session.projectPath} ${session.provider}`.toLowerCase().includes(query);
         return matchesQuery && effectiveGtdStatus(gtdStatuses, session) === selectedGtdStatus;
       });
-    }
-    if (sidebarView === "tags") {
-      if (!selectedTag || tagEntityKeys.size === 0) return [];
-      return sessions.filter((session) => tagEntityKeys.has(sessionKey(session)));
     }
     if (!selectedProject) return sessions;
     let projectSessions: AgentSession[];
@@ -3830,7 +3808,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     return projectSessions.filter((session) => selectedFolderId === UNCLASSIFIED_FOLDER_ID
       ? !assignments.has(sessionKey(session))
       : assignments.get(sessionKey(session)) === selectedFolderId);
-  }, [gtdStatuses, projectQuery, selectedFolderId, selectedGtdStatus, selectedProject, selectedProjectMeta, selectedTag, sessions, sidebarView, tagEntityKeys]);
+  }, [gtdStatuses, projectQuery, selectedFolderId, selectedGtdStatus, selectedProject, selectedProjectMeta, sessions, sidebarView]);
   const gtdStatusCounts = useMemo(() => {
     const query = projectQuery.trim().toLowerCase();
     const counts = new Map<GtdStatus, number>(GTD_STATUSES.map((status) => [status, 0] as const));
@@ -3845,17 +3823,14 @@ export function WorkbenchPanel(): ReactPortal | null {
   }, [gtdStatuses, projectQuery, sessions]);
   const selectedSessionScope = sidebarView === "gtd"
     ? t(`desktop.workbench.gtdStatus.${selectedGtdStatus}`)
-    : sidebarView === "tags"
-      ? (selectedTag || t("desktop.workbench.tagsView"))
-      : selectedFolderId === UNCLASSIFIED_FOLDER_ID
-        ? t("desktop.workbench.unclassifiedSessions")
+    : selectedFolderId === UNCLASSIFIED_FOLDER_ID
+      ? t("desktop.workbench.unclassifiedSessions")
         : selectedFolder?.name || (selectedProject ? basename(selectedProject) : t("desktop.workbench.allSessions"));
-  const visibleSessions = useMemo(() => selectedSessions.filter((session) => {
-    const matchesQuery = `${session.title} ${session.id} ${session.provider}`.toLowerCase().includes(sessionQuery.trim().toLowerCase());
-    return matchesQuery && (sessionFilter === "all" || openSessionKeys.has(sessionKey(session)));
-  }).sort((a, b) => b.updatedAt - a.updatedAt), [openSessionKeys, selectedSessions, sessionFilter, sessionQuery]);
+  const visibleSessions = useMemo(() => selectedSessions.filter((session) =>
+    `${session.title} ${session.id} ${session.provider}`.toLowerCase().includes(sessionQuery.trim().toLowerCase())
+  ).sort((a, b) => b.updatedAt - a.updatedAt), [selectedSessions, sessionQuery]);
   const selectedPendingSessions = useMemo(() => pendingSessions.filter((pending) => {
-    if (sidebarView === "gtd" || sidebarView === "tags") return false;
+    if (sidebarView === "gtd") return false;
     if (!selectedProject) return true;
     const selectedPath = selectedProjectMeta?.path || selectedProject;
     return projectPathKey(pending.projectPath) === projectPathKey(selectedPath);
@@ -3914,28 +3889,24 @@ export function WorkbenchPanel(): ReactPortal | null {
       };
     });
   }, [activePane, aliases, composerDrafts, composerTips, sessionRuntimeByPaneKey, sessionTitles, terminals]);
-  const activeTranscriptTarget = useMemo(() => {
+  const activeTranscriptRunning = useMemo(() => {
     if (currentAcpChat) {
-      return { provider: "chat", sessionId: currentAcpChat.recordId, iconProvider: currentAcpChat.provider };
+      const runtime = acpRuntimeByPaneKey[currentAcpChat.key];
+      return runtime?.status === "running";
     }
-    const identity = sessionIdentityFromKey(activeTerminal?.sessionKey);
-    return identity ? { ...identity, iconProvider: identity.provider } : null;
-  }, [activeTerminal?.sessionKey, currentAcpChat]);
-  useEffect(() => {
-    if (!activeTranscriptTarget) {
-      lastAutoTranscriptKey.current = "";
-      if (side === "transcript") setSide(null);
-      return;
+    if (activeTerminal) {
+      const runtime = sessionRuntimeByPaneKey.get(activeTerminal.key);
+      return runtime?.status === "running";
     }
-    const key = `${activeTranscriptTarget.provider}:${activeTranscriptTarget.sessionId}`;
-    if (lastAutoTranscriptKey.current === key) return;
-    lastAutoTranscriptKey.current = key;
-    if (sideWidth === DEFAULT_SIDE_WIDTH) {
-      setSideWidth(TRANSCRIPT_SIDE_WIDTH);
-      localStorage.setItem(SIDE_WIDTH_KEY, String(TRANSCRIPT_SIDE_WIDTH));
-    }
-    setSide("transcript");
-  }, [activeTranscriptTarget, sideWidth]);
+    return false;
+  }, [acpRuntimeByPaneKey, activeTerminal, currentAcpChat, sessionRuntimeByPaneKey]);
+  const toggleSessionViewMode = useCallback(() => {
+    setSessionViewMode((current) => {
+      const next = current === "hybrid" ? "terminal" : "hybrid";
+      localStorage.setItem(SESSION_VIEW_MODE_KEY, next);
+      return next;
+    });
+  }, []);
   const workbenchPaneGroups: Array<{ group: WorkbenchPaneGroup; keys: string[] }> = [
     {
       group: "session",
@@ -4216,72 +4187,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
     setSidebarView(view);
     try { localStorage.setItem(SIDEBAR_VIEW_KEY, view); } catch { /* persistence is optional */ }
-    if (view === "tags") {
-      void loadTagItems();
-    }
   };
-
-  const loadTagItems = useCallback(async () => {
-    setTagsLoading(true);
-    try {
-      const api = desktopApi();
-      if (!api.listTags) {
-        setTagItems([]);
-        return;
-      }
-      const rows = await api.listTags({
-        status: showObsoleteTags ? "all" : "active",
-        entityType: "session",
-        category: tagCategoryFilter === "all" ? undefined : tagCategoryFilter,
-        query: projectQuery.trim() || undefined,
-        sortBy: "weight",
-        limit: 200
-      });
-      setTagItems((rows || []) as WorkbenchTagItem[]);
-    } catch {
-      setTagItems([]);
-    } finally {
-      setTagsLoading(false);
-    }
-  }, [projectQuery, showObsoleteTags, tagCategoryFilter]);
-
-  const selectTag = useCallback(async (tag: WorkbenchTagItem) => {
-    const nextTag = tag.normalizedTag || tag.tag;
-    if (nextTag !== selectedTag) {
-      setSelectedSessionKeys((current) => current.size ? new Set() : current);
-      setSelectionAnchorKey((current) => current ? "" : current);
-    }
-    setSelectedTag(nextTag);
-    try {
-      const api = desktopApi();
-      if (!api.listTagEntities) {
-        setTagEntityKeys(new Set());
-        return;
-      }
-      const entities = await api.listTagEntities({
-        tag: tag.normalizedTag || tag.tag,
-        entityType: "session",
-        includeObsolete: showObsoleteTags,
-        limit: 500
-      });
-      const keys = new Set<string>();
-      for (const entity of entities || []) {
-        const id = String(entity.entityId || "");
-        const colon = id.indexOf(":");
-        if (colon > 0) {
-          keys.add(`${id.slice(0, colon)}:${id.slice(colon + 1)}`);
-        }
-      }
-      setTagEntityKeys(keys);
-    } catch {
-      setTagEntityKeys(new Set());
-    }
-  }, [selectedTag, showObsoleteTags]);
-
-  useEffect(() => {
-    if (sidebarView !== "tags") return;
-    void loadTagItems();
-  }, [loadTagItems, sidebarView]);
 
   const togglePinnedProject = async (path: string, projectId?: string) => {
     const currentlyPinned = pinnedProjects.has(path)
@@ -4403,7 +4309,7 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   const openComposerTip = useCallback((paneKey: string, tip: ComposerSendTip) => {
     activateComposerPane(paneKey);
-    setSide("transcript");
+    setSessionViewMode("hybrid");
     setTranscriptFocus({ text: tip.text, sentAtMs: tip.createdAtMs, nonce: Date.now() });
   }, [activateComposerPane]);
 
@@ -6631,7 +6537,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       gitRootsRef.current = roots;
       setGitRoot((current) => {
         if (current && roots.includes(current)) return current;
-        return result.root || result.nestedRepos?.[0]?.root || roots[0] || "";
+        return defaultGitRoot(result, roots);
       });
       const nextChanges = [...result.staged, ...result.unstaged];
       const available = gitDirectoryKeys(nextChanges);
@@ -7601,17 +7507,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   }, [searchMatches]);
   const searchFileCount = searchGroups.length;
   const searchMatchCount = searchMatches.length;
-  const openTranscriptSide = (forceOpen = false) => {
-    if (!forceOpen && side === "transcript") {
-      setSide(null);
-      return;
-    }
-    if (sideWidth === DEFAULT_SIDE_WIDTH) {
-      setSideWidth(TRANSCRIPT_SIDE_WIDTH);
-      localStorage.setItem(SIDE_WIDTH_KEY, String(TRANSCRIPT_SIDE_WIDTH));
-    }
-    setSide("transcript");
-  };
   const setWidth = (kind: "folders" | "list" | "side", delta: number) => {
     const current = kind === "folders" ? foldersWidth : kind === "list" ? listWidth : sideWidth;
     const limits = kind === "folders" ? [140, 560] : kind === "list" ? [240, 720] : [240, 840];
@@ -8010,7 +7905,6 @@ export function WorkbenchPanel(): ReactPortal | null {
           <button type="button" className={`wb-detail-tool${side === "scripts" ? " active" : ""}`} aria-pressed={side === "scripts"} aria-label={t("desktop.workbench.sidePanelScripts")} title={t("desktop.workbench.sidePanelScripts")} onClick={() => setSide((current) => current === "scripts" ? null : "scripts")}><ThemeIcon name="play" size={16} /></button>
           <button type="button" className={`wb-detail-tool${side === "search" ? " active" : ""}`} aria-pressed={side === "search"} aria-label={t("desktop.workbench.sidePanelSearch")} title={t("desktop.workbench.sidePanelSearch")} onClick={() => setSide((current) => current === "search" ? null : "search")}><ThemeIcon name="search" size={16} /></button>
           <button type="button" className={`wb-detail-tool${side === "linkgraph" ? " active" : ""}`} aria-pressed={side === "linkgraph"} aria-label={t("desktop.workbench.sidePanelLinkGraph")} title={t("desktop.workbench.sidePanelLinkGraph")} onClick={() => setSide((current) => current === "linkgraph" ? null : "linkgraph")}><ThemeIcon name="waypoints" size={16} /></button>
-          {activeTranscriptTarget ? <button type="button" className={`wb-detail-tool${side === "transcript" ? " active" : ""}`} aria-pressed={side === "transcript"} aria-label={t("desktop.workbench.sidePanelTranscript")} title={t("desktop.workbench.sidePanelTranscript")} onClick={() => openTranscriptSide()}><ThemeIcon name="history" size={16} /></button> : null}
           <button type="button" className={`wb-detail-tool${side === "git" ? " active" : ""}`} aria-pressed={side === "git"} aria-label={t("desktop.workbench.sidePanelGit")} title={t("desktop.workbench.sidePanelGit")} onClick={() => setSide((current) => current === "git" ? null : "git")}><ThemeIcon name="git-branch" size={16} /></button>
         </div>
       </div>
@@ -8021,27 +7915,15 @@ export function WorkbenchPanel(): ReactPortal | null {
     <div className="workbench-layout" style={{ "--sidebar-folders-width": `${foldersCollapsed ? 0 : foldersWidth}px`, "--wb-list-width": `${listWidth}px`, "--wb-side-panel-width": `${sideWidth}px` } as React.CSSProperties}>
       <aside className={`sidebar-folders-pane wb-folders-pane${foldersCollapsed ? " is-collapsed" : ""}`}>
         <div className="sidebar-project-filter-wrap">
-          <SegmentedControl aria-label={t("desktop.workbench.sidebarView")} value={sidebarView} options={["projects", "gtd", "tags"] as const satisfies readonly WorkbenchSidebarView[]} onChange={selectSidebarView} getLabel={(view) => t(view === "projects" ? "desktop.workbench.projectsView" : view === "gtd" ? "desktop.workbench.gtdView" : "desktop.workbench.tagsView")} className="sidebar-project-filter-segmented wb-sidebar-view-segmented" />
-          <div className="sidebar-project-search-wrap"><input type="search" className="sidebar-project-search" aria-label={t(sidebarView === "projects" ? "desktop.workbench.filterProjects" : sidebarView === "gtd" ? "desktop.workbench.filterGtdSessions" : "desktop.workbench.filterTags")} placeholder={t(sidebarView === "projects" ? "desktop.workbench.filterProjects" : sidebarView === "gtd" ? "desktop.workbench.filterGtdSessions" : "desktop.workbench.filterTags")} value={projectQuery} autoComplete="off" spellCheck={false} onChange={(event) => setProjectQuery(event.target.value)} /></div>
+          <SegmentedControl aria-label={t("desktop.workbench.sidebarView")} value={sidebarView} options={["projects", "gtd"] as const satisfies readonly WorkbenchSidebarView[]} onChange={selectSidebarView} getLabel={(view) => t(view === "projects" ? "desktop.workbench.projectsView" : "desktop.workbench.gtdView")} className="sidebar-project-filter-segmented wb-sidebar-view-segmented" />
+          <div className="sidebar-project-search-wrap"><input type="search" className="sidebar-project-search" aria-label={t(sidebarView === "projects" ? "desktop.workbench.filterProjects" : "desktop.workbench.filterGtdSessions")} placeholder={t(sidebarView === "projects" ? "desktop.workbench.filterProjects" : "desktop.workbench.filterGtdSessions")} value={projectQuery} autoComplete="off" spellCheck={false} onChange={(event) => setProjectQuery(event.target.value)} /></div>
           {sidebarView === "projects" ? <SegmentedControl
               aria-label={t("desktop.notes.projectFilter")}
               value={projectFilter}
-              options={["all", "pinned", "active"] as const satisfies readonly ProjectFilter[]}
+              options={["all", "pinned"] as const satisfies readonly ProjectFilter[]}
               onChange={setProjectFilter}
               getLabel={(filter) => t(`desktop.common.${filter}`)}
             /> : null}
-          {sidebarView === "tags" ? <div className="wb-tag-category-pills" role="listbox" aria-label={t("desktop.workbench.allTagCategories")}>
-            {TAG_CATEGORY_FILTERS.map((cat) => (
-              <button
-                key={cat}
-                type="button"
-                className={`wb-tag-category-pill${tagCategoryFilter === cat ? " active" : ""}`}
-                onClick={() => setTagCategoryFilter(cat)}
-              >
-                {cat === "all" ? t("desktop.workbench.allTagCategories") : t(`desktop.tagging.category.${cat}`)}
-              </button>
-            ))}
-          </div> : null}
         </div>
         <div className="wb-folders">
           {sidebarView === "projects" ? <>
@@ -8071,7 +7953,7 @@ export function WorkbenchPanel(): ReactPortal | null {
               </Fragment>;
               }) : <p className="muted wb-folders-empty">{t("desktop.workbench.noProjects")}</p>}
             </div>
-          </> : sidebarView === "gtd" ? <div className="wb-folder-section wb-gtd-folder-section"><div className="wb-folder-section-label">{t("desktop.workbench.gtdView")}</div>{GTD_ACTIVE_STATUSES.map((gtdStatus) => <button type="button" className={`wb-folder-row wb-gtd-folder-row${selectedGtdStatus === gtdStatus ? " active" : ""}`} key={gtdStatus} onClick={() => {
+          </> : <div className="wb-folder-section wb-gtd-folder-section"><div className="wb-folder-section-label">{t("desktop.workbench.gtdView")}</div>{GTD_ACTIVE_STATUSES.map((gtdStatus) => <button type="button" className={`wb-folder-row wb-gtd-folder-row${selectedGtdStatus === gtdStatus ? " active" : ""}`} key={gtdStatus} onClick={() => {
                 if (gtdStatus !== selectedGtdStatus) {
                   setSelectedSessionKeys((current) => current.size ? new Set() : current);
                   setSelectionAnchorKey((current) => current ? "" : current);
@@ -8083,35 +7965,7 @@ export function WorkbenchPanel(): ReactPortal | null {
                     setSelectionAnchorKey((current) => current ? "" : current);
                   }
                   setSelectedGtdStatus("done");
-                }}><span className="wb-gtd-status-dot is-done" aria-hidden="true" /><span className="wb-folder-row-label">{t("desktop.workbench.gtdStatus.done")}</span><span className="wb-folder-row-count">{gtdStatusCounts.get("done") || 0}</span></button> : null}</div></div>
-          : <div className="wb-folder-section wb-tags-folder-section">
-            <div className="wb-folder-section-label">{t("desktop.workbench.tagsView")}</div>
-            <label className="wb-tags-obsolete-toggle">
-              <input type="checkbox" checked={showObsoleteTags} onChange={(event) => setShowObsoleteTags(event.target.checked)} />
-              <span>{t("desktop.workbench.showObsoleteTags")}</span>
-            </label>
-            {tagsLoading ? <p className="muted wb-folders-empty">{t("desktop.common.loading")}</p>
-              : tagItems.length ? tagItems.map((tag) => (
-                <button
-                  type="button"
-                  key={tag.normalizedTag}
-                  className={`wb-folder-row wb-tag-row${selectedTag === tag.normalizedTag ? " active" : ""}${tag.status === "obsolete" ? " is-obsolete" : ""}`}
-                  onClick={() => void selectTag(tag)}
-                  title={t("desktop.tagging.consensusBadge", tag.activeEntityCount)}
-                >
-                  <span className={`wb-tag-category-dot is-${tag.category}`} aria-hidden="true" />
-                  <span className="wb-folder-row-text">
-                    <span className="wb-folder-row-label">#{tag.tag}</span>
-                    <span className="wb-folder-row-desc">
-                      {t(`desktop.tagging.category.${tag.category}`)}
-                      {tag.activeEntityCount > 1 ? ` · 🔗${tag.activeEntityCount}` : ""}
-                      {tag.globalWeight >= 2 ? " · 🔥" : ""}
-                    </span>
-                  </span>
-                  <span className="wb-folder-row-count">{tag.sessionCount}</span>
-                </button>
-              )) : <p className="muted wb-folders-empty">{t("desktop.workbench.noTags")}</p>}
-          </div>}
+                }}><span className="wb-gtd-status-dot is-done" aria-hidden="true" /><span className="wb-folder-row-label">{t("desktop.workbench.gtdStatus.done")}</span><span className="wb-folder-row-count">{gtdStatusCounts.get("done") || 0}</span></button> : null}</div></div>}
         </div>
       </aside>
       <ResizeHandle label={t("desktop.workbench.resizeProjects")} onDelta={(delta) => setWidth("folders", delta)} />
@@ -8129,19 +7983,6 @@ export function WorkbenchPanel(): ReactPortal | null {
               if (!sessionSearchToolbarRef.current?.contains(document.activeElement)) setSessionSearchOpen(false);
             }, 0);
           }} />
-          <SegmentedControl
-            aria-label={t("desktop.workbench.sessionFilter")}
-            value={sessionFilter}
-            options={["all", "active"] as const satisfies readonly SessionFilter[]}
-            onChange={(filter) => {
-              if (filter !== sessionFilter) {
-                setSelectedSessionKeys((current) => current.size ? new Set() : current);
-                setSelectionAnchorKey((current) => current ? "" : current);
-              }
-              setSessionFilter(filter);
-            }}
-            getLabel={(filter) => t(`desktop.common.${filter}`)}
-          />
         </div>
         <div className="wb-list-meta-row"><p className="wb-list-meta">{selectedSessionKeys.size > 1 ? t("desktop.workbench.selectedCount", selectedSessionKeys.size) : sessionQuery ? t("desktop.workbench.listMetaSearch", selectedSessionScope, sessionQuery, visibleSessions.length + visiblePendingSessions.length) : `${visibleSessions.length + visiblePendingSessions.length} / ${sessionsTotal + selectedPendingSessions.length}`}</p>{selectedSessionKeys.size > 1 ? <button type="button" className="wb-list-remove-btn" onClick={() => {
           const targets = visibleSessions.filter((item) => selectedSessionKeys.has(sessionKey(item)));
@@ -8194,14 +8035,115 @@ export function WorkbenchPanel(): ReactPortal | null {
               title={otherMachine ? t("desktop.workbench.otherMachineSessionHint", session.projectPath) : undefined}
             ><span className="wb-list-item-top"><span className="wb-session-title-wrap">{isOpen ? <span className="wb-session-activity-dot" aria-hidden="true" /> : null}<span className="wb-list-item-title" ref={(el) => syncTruncationTitle(el)}>{session.title || session.id}</span>{session.source === "im" ? <span className="wb-im-session-badge" aria-label={t("desktop.workbench.imSessionBadge")} title={t("desktop.workbench.imSessionBadgeHint")}>{t("desktop.workbench.imSessionBadge")}</span> : null}{otherMachine ? <span className="wb-other-machine-badge" aria-label={t("desktop.workbench.otherMachineBadge")}>{t("desktop.workbench.otherMachineBadge")}</span> : null}</span></span><span className="wb-list-item-preview" ref={(el) => syncTruncationTitle(el)}><span className="wb-list-item-date">{formatDateTime(session.updatedAt)}</span><span className="s-provider-tag" data-provider={session.acpProvider || session.provider}>{session.acpProvider ? `acp/${session.acpProvider}` : session.provider}</span><span className={`wb-gtd-status-badge is-${gtdStatus}`} aria-label={t("desktop.workbench.gtdStatusLabel", t(`desktop.workbench.gtdStatus.${gtdStatus}`))}>{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</span>{" · "}{aliases[session.projectPath] || basename(session.projectPath)}</span></button>;
           }}
-        /> : <div className="wb-list"><p className="muted wb-list-empty">{sessionFilter === "active" ? t("desktop.workbench.noFilterSessions") : sessionQuery ? t("desktop.workbench.noMatchingSessions") : t("desktop.workbench.noSessionsInProject")}</p></div>}
+        /> : <div className="wb-list"><p className="muted wb-list-empty">{sessionQuery ? t("desktop.workbench.noMatchingSessions") : t("desktop.workbench.noSessionsInProject")}</p></div>}
       </aside>
       <ResizeHandle label={t("desktop.workbench.resizeSessions")} onDelta={(delta) => setWidth("list", delta)} />
       <main className="wb-detail">
         {active && headerSlot ? createPortal(<>{collapseToggle}{detailHead}</>, headerSlot) : null}
         <div className="wb-detail-body">
           <div className="wb-terminal-shell">{paneTabGroups}<div className="wb-terminal-stack">{terminals.filter((pane) => pane.projectPath === selectedProject && pane.key === activePane).map((pane) => {
-            return <div key={pane.key} className="wb-terminal-pane-wrap"><TerminalView pane={pane} active={active} themeId={terminalThemeId} appearance={desktopAppearance} rendererMode={terminalRendererMode} engineType={terminalEngine} onPty={onPty} onDetach={onPtyDetach} onInput={onTerminalInput} onInitialPromptSubmitted={onInitialPromptSubmitted} mouseTracking={terminalMouseTrackingRef} /></div>;
+            const sessionIdentity = sessionIdentityFromKey(pane.sessionKey);
+            const isSession = pane.group === "session" && Boolean(sessionIdentity);
+            const showSplit = isSession && sessionViewMode === "hybrid" && Boolean(sessionIdentity);
+
+            if (showSplit && sessionIdentity) {
+              return (
+                <div key={pane.key} className="wb-terminal-pane-wrap wb-terminal-pane-split">
+                  <div className="wb-session-split-transcript">
+                    <SessionTranscriptPane
+                      provider={sessionIdentity.provider}
+                      sessionId={sessionIdentity.sessionId}
+                      iconProvider={sessionIdentity.provider}
+                      active={active}
+                      isRunning={activeTranscriptRunning}
+                      fontSize={settings?.workbench?.transcriptFontSize ?? 14}
+                      focusUserMessage={transcriptFocus}
+                    />
+                  </div>
+                  <ResizeHandle
+                    orientation="horizontal"
+                    label={t("desktop.workbench.resizeTerminalSplit")}
+                    onDelta={(delta) => {
+                      setTuiSplitHeight((prev) => {
+                        const next = Math.max(80, Math.min(600, prev - delta));
+                        localStorage.setItem(TUI_SPLIT_HEIGHT_KEY, String(next));
+                        return next;
+                      });
+                    }}
+                  />
+                  <div
+                    className={`wb-session-split-tui${tuiCollapsed ? " is-collapsed" : ""}`}
+                    style={{ height: tuiCollapsed ? "28px" : `${tuiSplitHeight}px` }}
+                  >
+                    <div
+                      className="wb-session-split-tui-head"
+                      onClick={() => setTuiCollapsed((c) => !c)}
+                    >
+                      <span className="wb-session-split-tui-title">
+                        <ThemeIcon name="terminal" size={13} />
+                        <span>{t("desktop.workbench.terminalConsole")}</span>
+                      </span>
+                      <div className="wb-session-split-tui-actions" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          className="wb-git-action-btn"
+                          onClick={() => setTuiCollapsed((c) => !c)}
+                          title={tuiCollapsed ? t("desktop.common.expand") : t("desktop.common.collapse")}
+                          aria-label={tuiCollapsed ? t("desktop.common.expand") : t("desktop.common.collapse")}
+                        >
+                          <ThemeIcon name={tuiCollapsed ? "chevron-up" : "chevron-down"} size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          className="wb-git-action-btn"
+                          onClick={toggleSessionViewMode}
+                          title={t("desktop.workbench.fullTerminalMode")}
+                          aria-label={t("desktop.workbench.fullTerminalMode")}
+                        >
+                          <ThemeIcon name="terminal" size={13} />
+                        </button>
+                      </div>
+                    </div>
+                    {!tuiCollapsed ? (
+                      <div className="wb-session-split-tui-body">
+                        <TerminalView
+                          pane={pane}
+                          active={active}
+                          themeId={terminalThemeId}
+                          appearance={desktopAppearance}
+                          rendererMode={terminalRendererMode}
+                          engineType={terminalEngine}
+                          onPty={onPty}
+                          onDetach={onPtyDetach}
+                          onInput={onTerminalInput}
+                          onInitialPromptSubmitted={onInitialPromptSubmitted}
+                          mouseTracking={terminalMouseTrackingRef}
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              <div key={pane.key} className="wb-terminal-pane-wrap">
+                {isSession ? (
+                  <div className="wb-terminal-fullscreen-bar">
+                    <button
+                      type="button"
+                      className="wb-terminal-mode-toggle-btn"
+                      onClick={toggleSessionViewMode}
+                      title={t("desktop.workbench.splitViewMode")}
+                    >
+                      <ThemeIcon name="file-text" size={13} />
+                      <span>{t("desktop.workbench.splitViewMode")}</span>
+                    </button>
+                  </div>
+                ) : null}
+                <TerminalView pane={pane} active={active} themeId={terminalThemeId} appearance={desktopAppearance} rendererMode={terminalRendererMode} engineType={terminalEngine} onPty={onPty} onDetach={onPtyDetach} onInput={onTerminalInput} onInitialPromptSubmitted={onInitialPromptSubmitted} mouseTracking={terminalMouseTrackingRef} />
+              </div>
+            );
           })}{editorFindOpen && currentEditor ? <div className="wb-editor-find-bar app-inline-search" role="search">
             <ThemeIcon name="search" size={14} aria-hidden="true" />
             <input
@@ -8385,7 +8327,7 @@ export function WorkbenchPanel(): ReactPortal | null {
                 column: target.column || 1,
                 endColumn: target.endColumn || (target.column || 1) + 1
               });
-            }} /> : side === "transcript" ? <SessionTranscriptPane provider={activeTranscriptTarget?.provider || ""} sessionId={activeTranscriptTarget?.sessionId || ""} iconProvider={activeTranscriptTarget?.iconProvider || activeTranscriptTarget?.provider || ""} active={active && side === "transcript"} fontSize={settings?.workbench?.transcriptFontSize ?? 14} focusUserMessage={transcriptFocus} /> : <div className="wb-side-pane">
+            }} /> : <div className="wb-side-pane">
             <div className="wb-side-pane-head wb-git-pane-head">
               <span className="wb-side-pane-title">{gitHistoryContext ? gitHistoryTitle : t("desktop.workbench.sidePanelGit")}</span>
               <div className="wb-git-actions">{gitHistoryContext ? <>

@@ -99,9 +99,6 @@ test("MCP server exposes all note, report, session, and project tools", async ()
     const result = await client.listTools();
     const names = result.tools.map((t) => t.name).sort();
     assert.deepEqual(names, [
-      "entity_tag_add",
-      "entity_tag_remove",
-      "entity_tags_get",
       "link_graph_trace",
       "memory_retrieve",
       "note_append",
@@ -129,10 +126,7 @@ test("MCP server exposes all note, report, session, and project tools", async ()
       "session_read_transcript",
       "session_resume",
       "session_search",
-      "session_set_gtd",
-      "tag_entities_list",
-      "tag_list",
-      "tag_search"
+      "session_set_gtd"
     ]);
   } finally {
     await client.close();

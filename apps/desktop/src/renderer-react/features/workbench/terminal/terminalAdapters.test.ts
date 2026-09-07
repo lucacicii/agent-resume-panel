@@ -22,11 +22,8 @@ beforeAll(() => {
 
 describe("Terminal Adapters", () => {
   const defaultAppearance: DesktopAppearanceState = {
-    visualTheme: "classic",
     requestedAppearance: "dark",
-    appearance: "dark",
-    effects: "full",
-    density: "comfortable"
+    appearance: "dark"
   };
 
   const defaultOptions = {

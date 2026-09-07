@@ -45,6 +45,7 @@ import {
   pasteMacClipboardIntoWorkbench,
   readMacPasteboardFilePaths
 } from "./workbenchFileClipboard";
+import { pasteWorkbenchClipboardImage } from "./workbenchClipboardImage";
 
 export type { GitRepoTracking } from "./gitTracking";
 export { parseLeftRightCount } from "./gitTracking";
@@ -827,6 +828,8 @@ export function registerWorkbenchFsIpc(): void {
       return pasteMacClipboardIntoWorkbench(rootPath, args.targetDirectory);
     }
   );
+
+  safeHandle("workbench:pasteClipboardImage", async () => pasteWorkbenchClipboardImage());
 
   safeHandle(
     "workbench:listDirectory",

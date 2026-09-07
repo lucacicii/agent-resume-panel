@@ -2480,11 +2480,10 @@ describe("WorkbenchPanel", () => {
     expect(document.querySelector(".workbench-layout > .wb-terminal-composer-stack")).toBeTruthy();
     expect(document.querySelector(".wb-terminal-pane .wb-terminal-composer")).toBeNull();
     expect(document.querySelector(".wb-transcript-compose .wb-terminal-composer")).toBeNull();
-    expect(document.querySelector(".wb-side-panel")).not.toBeNull();
+    expect(document.querySelector(".wb-session-split-transcript")).not.toBeNull();
     expect(document.querySelector(".sheet")).toBeNull();
     expect(terminalDestroy).not.toHaveBeenCalled();
     expect(xtermMocks.instances).toHaveLength(1);
-    expect(localStorage.getItem("wb-side-panel-width")).toBe("420");
   });
 
   it("hides session scrollbars from launch and shows only the TUI waterdrop in the alternate buffer", async () => {
@@ -2972,7 +2971,7 @@ describe("WorkbenchPanel", () => {
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
     fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
     await waitFor(() => expect(document.querySelector(".wb-terminal-loading")).toBeNull());
-    await screen.findByRole("button", { name: "Transcript" });
+    await waitFor(() => expect(document.querySelector(".wb-session-split-transcript")).not.toBeNull());
 
     fireEvent.click(screen.getAllByRole("button", { name: "Explorer" })[0]!);
     await waitFor(() => expect(document.querySelector(".wb-explorer-side-pane")).not.toBeNull());
@@ -3054,7 +3053,7 @@ describe("WorkbenchPanel", () => {
     fireEvent.click(await screen.findByTitle("/work/app"));
     fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
     await waitFor(() => expect(document.querySelector(".wb-terminal-loading")).toBeNull());
-    await screen.findByRole("button", { name: "Transcript" });
+    await waitFor(() => expect(document.querySelector(".wb-session-split-transcript")).not.toBeNull());
 
     fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
     await waitFor(() => expect(document.querySelector(".wb-git-panel")).not.toBeNull());
@@ -3183,7 +3182,7 @@ describe("WorkbenchPanel", () => {
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
     fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
     await waitFor(() => expect(document.querySelector(".wb-terminal-loading")).toBeNull());
-    await screen.findByRole("button", { name: "Transcript" });
+    await waitFor(() => expect(document.querySelector(".wb-session-split-transcript")).not.toBeNull());
 
     fireEvent.click(screen.getAllByRole("button", { name: "Explorer" })[0]!);
     await waitFor(() => expect(document.querySelector(".wb-explorer-side-pane")).not.toBeNull());
@@ -3344,7 +3343,7 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(document.querySelector(".wb-terminal-tab-label")?.textContent).toBe("Renamed ACP chat"));
   });
 
-  it("marks and filters only sessions whose workbench terminal remains open", async () => {
+  it("marks open workbench sessions with an activity dot until the terminal closes", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
     document.body.append(host);
@@ -3373,22 +3372,15 @@ describe("WorkbenchPanel", () => {
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    await screen.findByRole("button", { name: /Recently updated/ });
-    const sessionFilters = document.querySelectorAll<HTMLButtonElement>(".wb-session-filter-wrap [role=tab]");
-    fireEvent.click(sessionFilters[1]);
-    expect(screen.queryByRole("button", { name: /Recently updated/ })).toBeNull();
-
-    fireEvent.click(sessionFilters[0]);
-    fireEvent.click(screen.getByRole("button", { name: /Recently updated/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Recently updated/ }));
     await screen.findByRole("button", { name: "Close terminal" });
-    await waitFor(() => expect(document.querySelector(".wb-list-item .wb-session-activity-dot")).not.toBeNull());
-
-    fireEvent.click(sessionFilters[1]);
-    expect(document.querySelector(".wb-list-item")?.textContent).toContain("Recently updated");
-    expect(screen.queryByRole("button", { name: /Older session/ })).toBeNull();
+    await waitFor(() => expect(document.querySelector(".wb-list-item.has-wb-activity .wb-session-activity-dot")).not.toBeNull());
+    expect(screen.getByRole("button", { name: /Older session/ })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Close terminal" }));
-    await waitFor(() => expect(screen.queryByRole("button", { name: /Recently updated/ })).toBeNull());
+    await waitFor(() => expect(document.querySelector(".wb-list-item .wb-session-activity-dot")).toBeNull());
+    expect(screen.getByRole("button", { name: /Recently updated/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Older session/ })).toBeTruthy();
   });
 
   it("closes the active terminal when the main-process Cmd+W bridge fires", async () => {
@@ -4245,7 +4237,7 @@ describe("WorkbenchPanel", () => {
     }));
     expect(autoGenerate.getAttribute("aria-busy")).toBe("true");
     expect(autoGenerate.classList.contains("is-loading")).toBe(true);
-    expect(autoGenerate.querySelector(".wb-git-cyber-loading")).not.toBeNull();
+    expect(autoGenerate.querySelector(".wb-git-default-loading")).not.toBeNull();
     await act(async () => resolveCommitSuggestion?.({ message: "fix: generated selection", source: "llm" }));
     await waitFor(() => expect(messageField).toHaveProperty("value", "fix: generated selection"));
     expect(autoGenerate.getAttribute("aria-busy")).toBe("false");
@@ -4420,6 +4412,94 @@ describe("WorkbenchPanel", () => {
       repoRoot: "/work/monorepo/packages/core",
       paths: ["src/core.ts"]
     }));
+  });
+
+  it("defaults the commit repo selector to the dirty nested repository", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const coreFile = {
+      path: "packages/core/src/core.ts",
+      repoPath: "src/core.ts",
+      repoRoot: "/work/monorepo/packages/core",
+      status: "M",
+      staged: false,
+      unstaged: true
+    };
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects",
+        "desktop.notes.projectFilter": "Project filter",
+        "desktop.common.search": "Search",
+        "desktop.common.all": "All",
+        "desktop.common.active": "Active",
+        "desktop.common.pinned": "Pinned",
+        "desktop.common.close": "Close",
+        "desktop.common.cancel": "Cancel",
+        "desktop.common.refresh": "Refresh",
+        "desktop.workbench.allSessions": "All sessions",
+        "desktop.workbench.noSessionsInProject": "No sessions",
+        "desktop.workbench.noProjects": "No projects",
+        "desktop.workbench.sidePanelExplorer": "Explorer",
+        "desktop.workbench.sidePanelGit": "Git",
+        "desktop.workbench.sidePanelNoChanges": "No changes",
+        "desktop.workbench.sidePanelStaged": "Staged",
+        "desktop.workbench.sidePanelChanges": "Changes",
+        "desktop.workbench.sidePanelGitUnavailable": "Git unavailable",
+        "desktop.workbench.sidePanelNoRoot": "No root",
+        "desktop.workbench.newTerminal": "New terminal",
+        "desktop.workbench.newSession": "New session",
+        "desktop.workbench.selectSessionHint": "Select a session",
+        "desktop.workbench.selectProjectHint": "Select a project",
+        "desktop.workbench.externalTerminalHint": "Opened externally",
+        "desktop.workbench.terminalLabel": "Terminal {0}",
+        "desktop.workbench.gitCommit": "Commit",
+        "desktop.workbench.gitCommitAndPush": "Commit & Push",
+        "desktop.workbench.gitCommitDialogTitle": "Commit changes",
+        "desktop.workbench.resizeCommitInput": "Resize commit input",
+        "desktop.workbench.gitCommitAutoGenerate": "Auto generate",
+        "desktop.workbench.gitLog": "Git log",
+        "desktop.workbench.gitSync": "Sync",
+        "desktop.workbench.gitRepoSelect": "Git repository",
+        "desktop.workbench.switchBranch": "Switch branch",
+        "desktop.workbench.gitDiscard": "Discard changes"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/monorepo", updatedAt: 1 }],
+      terminalGitStatus: async () => ({
+        isRepo: true,
+        root: null,
+        staged: [],
+        unstaged: [coreFile],
+        nestedRepos: [
+          { root: "/work/monorepo/packages/app", displayPath: "packages/app" },
+          { root: "/work/monorepo/packages/core", displayPath: "packages/core" }
+        ],
+        tracking: [
+          { repoRoot: "/work/monorepo/packages/app", branch: "main", upstream: "origin/main", ahead: 0, behind: 0 },
+          { repoRoot: "/work/monorepo/packages/core", branch: "dev", upstream: "origin/dev", ahead: 0, behind: 0 }
+        ]
+      }),
+      terminalGitFetch: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByTitle("/work/monorepo"));
+    fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
+
+    const repoSelect = await screen.findByRole("combobox", { name: "Git repository" });
+    expect(repoSelect).toHaveProperty("value", "/work/monorepo/packages/core");
+    expect(await screen.findByRole("button", { name: "Switch branch: dev" })).toBeTruthy();
+    expect(screen.queryByTitle("/work/monorepo/packages/app")).toBeNull();
+    expect(screen.getByTitle("/work/monorepo/packages/core")).toBeTruthy();
   });
 
   it("marks a repo group mixed when only some of its files are staged", async () => {

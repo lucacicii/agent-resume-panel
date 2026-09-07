@@ -14,7 +14,7 @@ Use the **⚙** button in the top bar. Settings panes:
 
 | Pane | Typical contents |
 |------|------------------|
-| **General** | Language, **visual theme** (Default Dark, Cyberpunk, DOS Amber, Clean Light), historical backfill, startup-related options, Agent action approvals |
+| **General** | Language, appearance (system / light / dark), Agent action approvals |
 | **Models** | OpenAI-compatible LLM / embeddings endpoints and models |
 | **Sessions** | Agent home paths, session list / sync related options |
 | **Workbench** | Default agent, ⌘T behavior, **terminal theme** and related defaults |
@@ -118,7 +118,7 @@ CLI transcripts remain in native agent homes. Change panel home only if you unde
 
 | 页 | 常见内容 |
 |----|----------|
-| **通用** | 语言、**视觉主题**（默认暗色、赛博朋克、DOS 琥珀、简约亮色）、历史回填、启动相关、Agent 操作授权 |
+| **通用** | 语言、外观（跟随系统 / 浅色 / 深色）、Agent 操作授权 |
 | **模型** | OpenAI 兼容 LLM / embeddings 端点与模型 |
 | **Sessions** | 各 Agent 目录、会话列表 / 同步相关 |
 | **Workbench** | 默认 Agent、⌘T 行为、**终端主题** 与相关默认 |

@@ -206,28 +206,6 @@ describe("settings model", () => {
     expect(patch.sessionEmbeddingIndex?.concurrency).toBe(4);
   });
 
-  it("persists auto-tagging settings with clamps", () => {
-    const draft = sessionsDraftFromSettings(settings);
-    expect(draft.autoTaggingEnabled).toBe(true);
-    expect(draft.autoTagHalfLifeDays).toBe(7);
-    expect(draft.autoTagMaxTagsPerItem).toBe(6);
-    const patch = sessionsPatch(settings, {
-      ...draft,
-      autoTaggingEnabled: false,
-      autoTagHalfLifeDays: 999,
-      autoTagPruneThreshold: 0,
-      autoTagMaxTagsPerItem: 1,
-      autoTagHitBoost: 99,
-      autoTagConsensusFactor: 0
-    });
-    expect(patch.autoTagging?.enabled).toBe(false);
-    expect(patch.autoTagging?.halfLifeDays).toBe(90);
-    expect(patch.autoTagging?.pruneThreshold).toBe(0.1);
-    expect(patch.autoTagging?.maxTagsPerItem).toBe(3);
-    expect(patch.autoTagging?.hitBoost).toBe(5);
-    expect(patch.autoTagging?.consensusFactor).toBe(0.5);
-  });
-
   it("normalizes workbench editor values and persists nested scan inputs", () => {
     const invalidSettings = { ...settings, workbench: { editor: { fontSize: 99, tabSize: 3, autoSaveDelayMs: 50 } } } as unknown as PanelSettings;
     const draft = workbenchDraftFromSettings(invalidSettings);
@@ -352,17 +330,13 @@ describe("settings model", () => {
     expect(defaultDraft.editorTheme).toBe("follow-app");
   });
 
-  it("forces dark appearance for dark-only visual themes and persists effects", () => {
+  it("persists the selected light, dark, or system appearance", () => {
     const draft = generalDraftFromSettings(settings);
     const patch = generalPatch(settings, {
       ...draft,
-      visualTheme: "cyberpunk",
-      desktopTheme: "light",
-      themeEffects: "reduced"
+      desktopTheme: "dark"
     });
-    expect(patch.desktop?.visualTheme).toBe("cyberpunk");
     expect(patch.desktop?.theme).toBe("dark");
-    expect(patch.desktop?.themeEffects).toBe("reduced");
   });
 
   it("defaults and persists workbench terminal renderer (webgl / force canvas)", () => {

@@ -8,7 +8,7 @@ Languages: [English](#english) | [简体中文](#简体中文)
 
 Agent Resume Desktop provides one local **Agent Resume MCP** service. It uses stdio, starts only when an MCP client invokes it, and reads the same local data directory as Desktop: `~/.agent-resume-panel` by default. Registration configures a **headless Node** entry (`ELECTRON_RUN_AS_NODE` + the bundled core MCP CLI) so clients do not spawn a second Electron Dock icon.
 
-This is one service with **33 tools**, not 33 independent services:
+This is one service with **27 tools**, not 27 independent services:
 
 | Area | Tools | Access |
 |---|---:|---|
@@ -17,7 +17,6 @@ This is one service with **33 tools**, not 33 independent services:
 | Sessions | 7 | Read, GTD update, move, and resume-command generation |
 | Projects | 4 | Read, merge, tidy, and reconcile |
 | Link graph | 1 | Read-only code lineage (`link_graph_trace`) |
-| Tags | 6 | Read and write knowledge tags |
 
 The service does not listen on a network port and does not add an authentication layer. Any client registered on this Mac receives the same access as the local Desktop data store. Register only agents and configurations you trust.
 
@@ -127,7 +126,7 @@ An external MCP invocation cannot open Desktop's Workbench. Therefore, `session_
 
 Agent Resume Desktop 提供一个本机 **Agent Resume MCP** 服务。它使用 stdio，仅在 MCP 客户端调用时启动，并读取与 Desktop 相同的本机数据目录，默认是 `~/.agent-resume-panel`。注册时写入 **无界面 Node** 启动方式（`ELECTRON_RUN_AS_NODE` + 内置 core MCP CLI），避免每个客户端再拉起一个 Electron Dock 图标。
 
-这是一个服务，包含 **33 个工具**，不是 33 个相互独立的服务：
+这是一个服务，包含 **27 个工具**，不是 27 个相互独立的服务：
 
 | 范围 | 工具数 | 权限 |
 |---|---:|---|
@@ -136,7 +135,6 @@ Agent Resume Desktop 提供一个本机 **Agent Resume MCP** 服务。它使用 
 | Sessions | 7 | 读取、更新 GTD、移动、生成恢复命令 |
 | Projects | 4 | 读取、合并、整理、协调 |
 | 链路图 | 1 | 只读代码血缘（`link_graph_trace`） |
-| Tags | 6 | 读写知识标签 |
 
 服务不会监听网络端口，也不会额外增加认证层。本机上注册的任意客户端都会获得访问 Desktop 本机数据的权限，因此只应注册你信任的 Agent 与配置。
 

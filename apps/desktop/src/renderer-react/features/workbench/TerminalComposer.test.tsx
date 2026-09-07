@@ -28,10 +28,14 @@ const COMPOSER_MESSAGES: Record<string, string> = {
   "desktop.workbench.terminalComposerDirectoryNoMatch": "No matching folders",
   "desktop.workbench.terminalComposerDirectoryError": "Could not load folders: {0}",
   "desktop.workbench.terminalComposerDropHint": "Drop to insert path",
+  "desktop.workbench.terminalComposerPastedImages": "Pasted images",
+  "desktop.workbench.terminalComposerRemoveImage": "Remove image",
+  "desktop.workbench.terminalComposerImagePreview": "Image preview",
   "desktop.workbench.terminalComposerHintLine": "Enter pastes · Shift+Enter newline",
   "desktop.workbench.terminalComposerMove": "Move input box",
   "desktop.workbench.terminalComposerTips": "Sent messages",
   "desktop.workbench.terminalComposerClose": "Close session",
+  "desktop.common.close": "Close",
   "desktop.workbench.sessionDots": "Active sessions",
   "desktop.workbench.sessionDot.awaiting": "Waiting for you",
   "desktop.workbench.sessionDot.running": "Running",
@@ -87,7 +91,9 @@ async function renderComposer(options: {
   window.agentResume = {
     getI18nBundle: vi.fn(async () => ({ locale: "en", messages: COMPOSER_MESSAGES })),
     onLocaleChanged: vi.fn(() => () => undefined),
-    workbenchListDirectory: workbenchListDirectoryMock
+    workbenchListDirectory: workbenchListDirectoryMock,
+    notesClipboardHasImage: vi.fn(() => false),
+    workbenchPasteClipboardImage: vi.fn(async () => null)
   } as unknown as typeof window.agentResume;
   function Harness(): React.JSX.Element {
     const [value, setValue] = useState(options.value ?? "");
@@ -229,6 +235,18 @@ describe("TerminalComposer", () => {
     expect(await within(listbox).findByText("#.git")).toBeTruthy();
   });
 
+  it("does not accept a directory suggestion on Shift+Enter", async () => {
+    const { onChange, onSendToTerminal } = await renderComposer({ projectPath: "/work/app" });
+    focusInput();
+    fireEvent.change(textbox(), { target: { value: "#" } });
+    await screen.findByRole("listbox", { name: "Directory suggestions" });
+    onChange.mockClear();
+    fireEvent.keyDown(textbox(), { key: "Enter", shiftKey: true });
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onSendToTerminal).not.toHaveBeenCalled();
+    expect(textbox().value).toBe("#");
+  });
+
   it("sends to the terminal without a carriage return when no directory matches", async () => {
     const { onSendToTerminal } = await renderComposer({ projectPath: "/work/app" });
     focusInput();
@@ -304,6 +322,18 @@ describe("TerminalComposer", () => {
     expect(textbox().value).toBe("git commit -m \"wip\"");
   });
 
+  it("does not accept a command suggestion on Shift+Enter", async () => {
+    const { onChange, onSendToTerminal } = await renderComposer();
+    focusInput();
+    fireEvent.change(textbox(), { target: { value: "git s" } });
+    await screen.findByRole("listbox", { name: "Command suggestions" });
+    onChange.mockClear();
+    fireEvent.keyDown(textbox(), { key: "Enter", shiftKey: true });
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onSendToTerminal).not.toHaveBeenCalled();
+    expect(textbox().value).toBe("git s");
+  });
+
   it("auto-grows rows with no upper cap", async () => {
     const { onChange } = await renderComposer({ value: "a\nb\nc" });
     expect(textbox().rows).toBe(3);
@@ -375,6 +405,85 @@ describe("TerminalComposer", () => {
     expect(onChange).toHaveBeenCalledWith("a'/work/app/src/main.ts'bc");
   });
 
+  it("pastes a clipboard image as a quoted path with a thumbnail", async () => {
+    const previewUrl = "data:image/png;base64,AAAA";
+    const { container, onChange } = await renderComposer({ value: "look " });
+    window.agentResume.notesClipboardHasImage = () => true;
+    window.agentResume.workbenchPasteClipboardImage = vi.fn(async () => ({
+      path: "/tmp/agent-resume-clipboard-1.png",
+      previewUrl
+    }));
+    focusInput();
+    textbox().setSelectionRange(5, 5);
+    fireEvent.paste(textbox(), {
+      clipboardData: {
+        items: [{ type: "image/png", getAsFile: () => null }]
+      }
+    });
+    await waitFor(() => {
+      expect(onChange).toHaveBeenCalledWith("look '/tmp/agent-resume-clipboard-1.png'");
+    });
+    const preview = container.querySelector(".wb-terminal-composer-pending-image img") as HTMLImageElement;
+    expect(preview?.src).toBe(previewUrl);
+    fireEvent.click(screen.getByRole("button", { name: "Image preview" }));
+    expect(document.querySelector(".notes-image-preview img")?.getAttribute("src")).toBe(previewUrl);
+  });
+
+  it("leaves plain-text paste to the browser", async () => {
+    const { onChange } = await renderComposer({ value: "draft" });
+    const pasteImage = vi.fn(async () => null);
+    window.agentResume.workbenchPasteClipboardImage = pasteImage;
+    focusInput();
+    fireEvent.paste(textbox(), {
+      clipboardData: {
+        items: [{ type: "text/plain", getAsFile: () => null }],
+        getData: () => "hello"
+      }
+    });
+    expect(pasteImage).not.toHaveBeenCalled();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("removes a pasted image and its path from the draft", async () => {
+    const { container, onChange } = await renderComposer({ value: "see " });
+    window.agentResume.notesClipboardHasImage = () => true;
+    window.agentResume.workbenchPasteClipboardImage = vi.fn(async () => ({
+      path: "/tmp/agent-resume-clipboard-2.png",
+      previewUrl: "data:image/png;base64,BBBB"
+    }));
+    focusInput();
+    textbox().setSelectionRange(4, 4);
+    fireEvent.paste(textbox(), {
+      clipboardData: { items: [{ type: "image/png", getAsFile: () => null }] }
+    });
+    await waitFor(() => {
+      expect(textbox().value).toBe("see '/tmp/agent-resume-clipboard-2.png'");
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Remove image" }));
+    expect(onChange).toHaveBeenCalledWith("see ");
+    expect(container.querySelector(".wb-terminal-composer-pending-image")).toBeNull();
+  });
+
+  it("clears pasted image previews after send", async () => {
+    const { container, onSendToTerminal } = await renderComposer({ value: "" });
+    window.agentResume.notesClipboardHasImage = () => true;
+    window.agentResume.workbenchPasteClipboardImage = vi.fn(async () => ({
+      path: "/tmp/agent-resume-clipboard-3.png",
+      previewUrl: "data:image/png;base64,CCCC"
+    }));
+    focusInput();
+    fireEvent.paste(textbox(), {
+      clipboardData: { items: [{ type: "image/png", getAsFile: () => null }] }
+    });
+    await waitFor(() => {
+      expect(textbox().value).toBe("'/tmp/agent-resume-clipboard-3.png'");
+    });
+    fireEvent.keyDown(textbox(), { key: "Enter" });
+    expect(onSendToTerminal).toHaveBeenCalledTimes(1);
+    expect(textbox().value).toBe("");
+    expect(container.querySelector(".wb-terminal-composer-pending-image")).toBeNull();
+  });
+
   it("unregisters its focus handle on unmount", async () => {
     const { map } = await renderComposer();
     const focus = map.get("terminal:1")!;
@@ -419,6 +528,20 @@ describe("TerminalComposer", () => {
     expect(onChange).toHaveBeenCalledWith("Please review this change.");
     expect(onSendToTerminal).not.toHaveBeenCalled();
     expect(screen.queryByRole("listbox", { name: "Slash phrases" })).toBeNull();
+  });
+
+  it("does not accept a slash phrase on Shift+Enter", async () => {
+    const { onChange, onSendToTerminal } = await renderComposer({
+      slashPhrases: [{ trigger: "review", phrase: "Please review this change." }]
+    });
+    focusInput();
+    fireEvent.change(textbox(), { target: { value: "/re" } });
+    await screen.findByRole("listbox", { name: "Slash phrases" });
+    onChange.mockClear();
+    fireEvent.keyDown(textbox(), { key: "Enter", shiftKey: true });
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onSendToTerminal).not.toHaveBeenCalled();
+    expect(textbox().value).toBe("/re");
   });
 
   it("inserts a slash phrase in the middle of existing text", async () => {

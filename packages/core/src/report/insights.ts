@@ -32,23 +32,6 @@ export interface PeriodActiveSession {
   nextAction?: string;
 }
 
-export interface PeriodTagItem {
-  tag: string;
-  normalizedTag: string;
-  displayName: string;
-  category: string;
-  sessionCount: number;
-  weight: number;
-  sessionIds: string[];
-}
-
-export interface PeriodTagStats {
-  totalTags: number;
-  totalHits: number;
-  byCategory: Record<string, PeriodTagItem[]>;
-  topTags: PeriodTagItem[];
-}
-
 export interface PeriodLlmUsageTrendPoint {
   label: string;
   calls: number;
@@ -137,7 +120,6 @@ export interface PeriodInsights {
   sessionStats: PeriodSessionStats;
   blockedSessions: PeriodBlockedSession[];
   activeSessions: PeriodActiveSession[];
-  tagStats: PeriodTagStats;
   llmUsage: PeriodLlmUsage;
   dailyTrend: PeriodDailyTrendItem[];
   composerInsights: PeriodComposerSendInsights | null;
@@ -217,12 +199,6 @@ export async function getPeriodInsights(
     },
     blockedSessions: [],
     activeSessions: [],
-    tagStats: {
-      totalTags: 0,
-      totalHits: 0,
-      byCategory: {},
-      topTags: []
-    },
     llmUsage: {
       totalCalls: 0,
       totalTokens: 0,
@@ -347,101 +323,7 @@ export async function getPeriodInsights(
     quickTurnCount
   };
 
-  // 2. Fetch tags from desktopDb for active period sessions
-  const entityIds = sessions.map((s) => `${s.provider}:${s.id}`);
-  const byNormTag = new Map<
-    string,
-    {
-      tag: string;
-      normalizedTag: string;
-      displayName: string;
-      category: string;
-      weight: number;
-      sessionIds: Set<string>;
-    }
-  >();
-
-  if (entityIds.length > 0) {
-    const CHUNK_SIZE = 300;
-    for (let i = 0; i < entityIds.length; i += CHUNK_SIZE) {
-      const chunk = entityIds.slice(i, i + CHUNK_SIZE);
-      const inList = chunk.map((id) => `'${escapeSqlLiteral(id)}'`).join(", ");
-      try {
-        const tagRows = await runSqliteJson<{
-          entity_id: string;
-          tag: string;
-          normalized_tag: string;
-          category: string;
-          weight: number;
-          display_name: string | null;
-        }>(
-          desktopDb,
-          `SELECT 
-             e.entity_id,
-             e.tag,
-             e.normalized_tag,
-             e.category,
-             e.weight,
-             t.display_name
-           FROM entity_tags e
-           LEFT JOIN tag_definitions t ON e.normalized_tag = t.normalized_tag
-           WHERE e.entity_type = 'session'
-             AND e.status = 'active'
-             AND e.entity_id IN (${inList});`
-        );
-
-        for (const row of tagRows) {
-          const norm = row.normalized_tag;
-          if (!byNormTag.has(norm)) {
-            byNormTag.set(norm, {
-              tag: row.tag,
-              normalizedTag: norm,
-              displayName: row.display_name || row.tag,
-              category: row.category || "tech_stack",
-              weight: 0,
-              sessionIds: new Set()
-            });
-          }
-          const item = byNormTag.get(norm)!;
-          item.sessionIds.add(row.entity_id);
-          item.weight += Number(row.weight) || 0;
-        }
-      } catch {
-        // Tag table might be empty or missing in test environments
-      }
-    }
-  }
-
-  const allTagItems: PeriodTagItem[] = Array.from(byNormTag.values())
-    .map((item) => ({
-      tag: item.tag,
-      normalizedTag: item.normalizedTag,
-      displayName: item.displayName,
-      category: item.category,
-      sessionCount: item.sessionIds.size,
-      weight: Number(item.weight.toFixed(1)),
-      sessionIds: Array.from(item.sessionIds)
-    }))
-    .sort((a, b) => b.sessionCount - a.sessionCount || b.weight - a.weight);
-
-  const byCategory: Record<string, PeriodTagItem[]> = {};
-  let totalHits = 0;
-  for (const item of allTagItems) {
-    totalHits += item.sessionCount;
-    if (!byCategory[item.category]) {
-      byCategory[item.category] = [];
-    }
-    byCategory[item.category].push(item);
-  }
-
-  const tagStats: PeriodTagStats = {
-    totalTags: allTagItems.length,
-    totalHits,
-    byCategory,
-    topTags: allTagItems.slice(0, 15)
-  };
-
-  // 3. Fetch LLM usage from desktopDb
+  // Fetch LLM usage from desktopDb
   let llmUsage: PeriodLlmUsage = {
     totalCalls: 0,
     totalTokens: 0,
@@ -871,7 +753,6 @@ export async function getPeriodInsights(
     sessionStats,
     blockedSessions,
     activeSessions,
-    tagStats,
     llmUsage,
     dailyTrend,
     composerInsights

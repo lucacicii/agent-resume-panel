@@ -13,15 +13,12 @@ import {
   DEFAULT_DESKTOP_BROWSER_SETTINGS,
   DEFAULT_SETTINGS,
   DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU,
-  DESKTOP_VISUAL_THEME_IDS,
   PanelSettings,
   WORKBENCH_TERMINAL_THEME_IDS,
   WORKBENCH_TERMINAL_RENDERERS,
   WORKBENCH_TERMINAL_ENGINES,
   WorkbenchProjectContextMenuAction,
   type DesktopTheme,
-  type DesktopThemeEffects,
-  type DesktopVisualThemeId,
   type WorkbenchComposerSlashPhrase,
   type WorkbenchTerminalEngine,
   type WorkbenchTerminalRenderer,
@@ -39,20 +36,8 @@ const PROJECT_MENU_ACTIONS = new Set<string>(ALL_WORKBENCH_PROJECT_CONTEXT_MENU)
 const TERMINAL_THEME_IDS = new Set<string>(WORKBENCH_TERMINAL_THEME_IDS);
 const TERMINAL_RENDERERS = new Set<string>(WORKBENCH_TERMINAL_RENDERERS);
 const TERMINAL_ENGINES = new Set<string>(WORKBENCH_TERMINAL_ENGINES);
-const VISUAL_THEME_IDS = new Set<string>(DESKTOP_VISUAL_THEME_IDS);
 
-export function normalizeDesktopVisualTheme(value: string | undefined | null): DesktopVisualThemeId {
-  return value && VISUAL_THEME_IDS.has(value)
-    ? value as DesktopVisualThemeId
-    : "classic";
-}
-
-export function normalizeDesktopThemeEffects(value: string | undefined | null): DesktopThemeEffects {
-  return value === "reduced" ? "reduced" : "full";
-}
-
-export function normalizeDesktopTheme(value: string | undefined | null, visualTheme: DesktopVisualThemeId): DesktopTheme {
-  if (visualTheme === "cyberpunk" || visualTheme === "dos") return "dark";
+export function normalizeDesktopTheme(value: string | undefined | null): DesktopTheme {
   return value === "light" || value === "dark" || value === "system" ? value : "system";
 }
 
@@ -217,7 +202,7 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
       ...base.report,
       ...(partial.report || {})
     },
-    // Desktop session auto jobs (summary / embeddings / transcript index / tagging).
+    // Desktop session auto jobs (summary / embeddings / transcript index).
     // Must be merged or Settings → Sessions saves report success but never persist.
     sessionSummaryAuto: {
       ...base.sessionSummaryAuto,
@@ -231,10 +216,6 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
       ...base.sessionTranscriptIndex,
       ...(partial.sessionTranscriptIndex || {})
     },
-    autoTagging: {
-      ...base.autoTagging,
-      ...(partial.autoTagging || {})
-    },
     agentHomes: sanitizeAgentHomes({
       ...base.agentHomes,
       ...(partial.agentHomes || {})
@@ -246,12 +227,7 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
     desktop: {
       ...base.desktop,
       ...(partial.desktop || {}),
-      visualTheme: normalizeDesktopVisualTheme(partial.desktop?.visualTheme ?? base.desktop?.visualTheme),
-      themeEffects: normalizeDesktopThemeEffects(partial.desktop?.themeEffects ?? base.desktop?.themeEffects),
-      theme: normalizeDesktopTheme(
-        partial.desktop?.theme ?? base.desktop?.theme,
-        normalizeDesktopVisualTheme(partial.desktop?.visualTheme ?? base.desktop?.visualTheme)
-      ),
+      theme: normalizeDesktopTheme(partial.desktop?.theme ?? base.desktop?.theme),
       browser: {
         ...DEFAULT_DESKTOP_BROWSER_SETTINGS,
         ...base.desktop?.browser,

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import React from "react";
-import { render, within, cleanup } from "@testing-library/react";
+import { render, within, cleanup, fireEvent } from "@testing-library/react";
 import { StreamdownRenderer } from "./StreamdownRenderer";
 
 describe("StreamdownRenderer integration test suite", () => {
@@ -83,5 +83,40 @@ describe("StreamdownRenderer integration test suite", () => {
     const card = container.querySelector(".artifact-card");
     expect(card).toBeDefined();
     expect(within(card as HTMLElement).getByText("HTML")).toBeDefined();
+  });
+
+  it("renders markdown tables with controls and supports fullscreen toggle", () => {
+    const tableMd = [
+      "| Name | Path |",
+      "| --- | --- |",
+      "| Page | src/views/index.vue |"
+    ].join("\n");
+
+    const { container } = render(<StreamdownRenderer content={tableMd} />);
+
+    const wrapper = container.querySelector('[data-streamdown="table-wrapper"]');
+    expect(wrapper).toBeTruthy();
+
+    const table = container.querySelector('[data-streamdown="table"]');
+    expect(table).toBeTruthy();
+    expect(table?.textContent).toContain("Page");
+    expect(table?.textContent).toContain("src/views/index.vue");
+
+    // All 3 action buttons (Copy, Download, Fullscreen) should exist
+    const buttons = wrapper?.querySelectorAll("button") || [];
+    expect(buttons.length).toBeGreaterThanOrEqual(3);
+    const fullscreenBtn = wrapper?.querySelector('button[title*="全屏"], button[title*="Fullscreen"], button[title*="fullscreen" i]') as HTMLButtonElement;
+    expect(fullscreenBtn).toBeTruthy();
+
+    // Clicking fullscreen button mounts portal into document.body
+    fireEvent.click(fullscreenBtn);
+    let fullscreenOverlay = document.body.querySelector('[data-streamdown="table-fullscreen"]');
+    expect(fullscreenOverlay).toBeTruthy();
+    expect(fullscreenOverlay?.querySelector('[data-streamdown="table"]')?.textContent).toContain("src/views/index.vue");
+
+    // Pressing Escape should close fullscreen
+    fireEvent.keyDown(document, { key: "Escape" });
+    fullscreenOverlay = document.body.querySelector('[data-streamdown="table-fullscreen"]');
+    expect(fullscreenOverlay).toBeNull();
   });
 });

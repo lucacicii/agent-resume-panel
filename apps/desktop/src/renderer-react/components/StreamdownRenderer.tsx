@@ -121,12 +121,29 @@ export const StreamdownRenderer = memo(function StreamdownRenderer({
   onCitationClick,
   onNoteClick
 }: StreamdownRendererProps) {
+  const { t } = useSafeI18n();
+
   // Pre-sanitize prose to protect generic types List<T>, <style>, <script> etc., and format links
   const sanitizedMarkdown = useMemo(() => {
     if (!content) return "";
     const linked = preprocessLinks(content);
     return sanitizeMarkdownProseTags(linked);
   }, [content]);
+
+  const translations = useMemo(() => ({
+    copyTable: t("desktop.artifact.copy", "Copy"),
+    copyTableAsMarkdown: "Markdown",
+    copyTableAsCsv: "CSV",
+    copyTableAsTsv: "TSV",
+    downloadTable: t("desktop.artifact.save", "Save"),
+    downloadTableAsCsv: "CSV",
+    downloadTableAsMarkdown: "Markdown",
+    viewFullscreen: t("desktop.artifact.fullscreen", "Fullscreen"),
+    exitFullscreen: t("desktop.artifact.exitFullscreen", "Exit Fullscreen"),
+    tableFormatCsv: "CSV",
+    tableFormatMarkdown: "Markdown",
+    tableFormatTsv: "TSV"
+  }), [t]);
 
   const components = useMemo(() => {
     return {
@@ -226,6 +243,9 @@ export const StreamdownRenderer = memo(function StreamdownRenderer({
       <Streamdown
         components={components}
         isAnimating={isAnimating}
+        animated={isAnimating ? { animation: "fadeIn", duration: 120 } : false}
+        caret={isAnimating ? "block" : undefined}
+        translations={translations}
       >
         {sanitizedMarkdown}
       </Streamdown>

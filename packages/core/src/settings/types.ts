@@ -49,15 +49,6 @@ export interface EmbeddingSettings {
 }
 
 export type DesktopTheme = "system" | "light" | "dark";
-/** Official visual theme packages bundled with the Desktop renderer. */
-export type DesktopVisualThemeId = "classic" | "cyberpunk" | "dos";
-export const DESKTOP_VISUAL_THEME_IDS: readonly DesktopVisualThemeId[] = [
-  "classic",
-  "cyberpunk",
-  "dos"
-] as const;
-/** Decorative effects preference. The OS reduced-motion preference always wins at runtime. */
-export type DesktopThemeEffects = "full" | "reduced";
 
 export type DesktopBrowserPartitionMode = "per-project" | "shared";
 export type DesktopBrowserDefaultSurface = "workbench" | "window" | "last-used";
@@ -123,10 +114,6 @@ export interface DesktopSettings {
   windowHeight?: number;
   /** UI appearance; default follows OS. */
   theme?: DesktopTheme;
-  /** Theme package controlling the visual language; defaults to Classic. */
-  visualTheme?: DesktopVisualThemeId;
-  /** User preference for decorative effects; system reduced motion overrides it. */
-  themeEffects?: DesktopThemeEffects;
   /** @deprecated Replaced by alwaysAllowAgentNonDestructiveOperations. */
   alwaysAllowAgentWriteOperations?: boolean;
   /** Allow classified write, launch, exec, and outbound-network actions without per-call confirmation. */
@@ -303,7 +290,7 @@ export interface WorkbenchSettings {
   terminalMode?: WorkbenchTerminalMode;
   /** Embedded terminal emulator engine: `xterm` (default) or `ghostty-web`. */
   terminalEngine?: WorkbenchTerminalEngine;
-  /** Embedded xterm color preset. `follow-app` follows the active visual theme. */
+  /** Embedded xterm color preset. `follow-app` follows the application appearance. */
   terminalTheme?: WorkbenchTerminalThemeId;
   /** Workbench CodeMirror scheme. `follow-app` is the default. */
   editorTheme?: "follow-app" | "light" | "dark";
@@ -438,24 +425,6 @@ export interface SessionEmbeddingIndexSettings {
   maxPerTick?: number;
 }
 
-/**
- * Desktop-only: auto-tagging, hit tracking, and weight decay for Sessions and Notes.
- */
-export interface AutoTaggingSettings {
-  /** Master switch. Default true. */
-  enabled?: boolean;
-  /** Half-life for exponential weight decay in days. Default 7. */
-  halfLifeDays?: number;
-  /** Weight threshold below which tags are marked obsolete. Default 0.1. */
-  pruneThreshold?: number;
-  /** Max tags extracted per item. Default 6. */
-  maxTagsPerItem?: number;
-  /** Weight boost added on recall / search hit. Default 0.5. */
-  hitBoost?: number;
-  /** Multi-entity consensus boost coefficient. Default 0.5. */
-  consensusFactor?: number;
-}
-
 /** Desktop-only: notification history and auto-clear preferences. */
 export interface NotificationsSettings {
   /** Auto-clear notifications older than this many minutes. 0 = keep all. Default 60. */
@@ -498,8 +467,6 @@ export interface PanelSettings {
   sessionEmbeddingIndex?: SessionEmbeddingIndexSettings;
   /** Auto transcript-chunk index (Desktop main; independent of summaries). */
   sessionTranscriptIndex?: SessionTranscriptIndexSettings;
-  /** Auto tagging and weight decay for Sessions and Notes. */
-  autoTagging?: AutoTaggingSettings;
   agentHomes?: AgentHomesSettings;
   sessionSync?: AgentSessionSyncSettings;
   desktop?: DesktopSettings;
@@ -557,14 +524,6 @@ export const DEFAULT_SETTINGS: PanelSettings = {
     concurrency: 1,
     maxPerTick: 3
   },
-  autoTagging: {
-    enabled: true,
-    halfLifeDays: 7,
-    pruneThreshold: 0.1,
-    maxTagsPerItem: 6,
-    hitBoost: 0.5,
-    consensusFactor: 0.5
-  },
   sessionSync: {
     maxItems: 10_000,
     stalePolicy: "off",
@@ -596,8 +555,6 @@ export const DEFAULT_SETTINGS: PanelSettings = {
   },
   desktop: {
     theme: "system",
-    visualTheme: "classic",
-    themeEffects: "full",
     alwaysAllowAgentWriteOperations: false,
     alwaysAllowAgentNonDestructiveOperations: false,
     browser: { ...DEFAULT_DESKTOP_BROWSER_SETTINGS, defaultPolicy: { ...DEFAULT_DESKTOP_BROWSER_SETTINGS.defaultPolicy, allowHosts: [], blockHosts: [...DEFAULT_DESKTOP_BROWSER_SETTINGS.defaultPolicy.blockHosts] }, chromeCookieImport: { ...DEFAULT_DESKTOP_BROWSER_SETTINGS.chromeCookieImport } }

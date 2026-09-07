@@ -41,45 +41,6 @@ const mockInsights: PeriodInsights = {
       nextAction: "Write unit tests"
     }
   ],
-  tagStats: {
-    totalTags: 3,
-    totalHits: 8,
-    byCategory: {
-      task_type: [
-        {
-          tag: "Bug Fix",
-          normalizedTag: "bug-fix",
-          displayName: "Bug Fix",
-          category: "task_type",
-          sessionCount: 4,
-          weight: 4.5,
-          sessionIds: ["pi:s1", "pi:s2"]
-        }
-      ],
-      tech_stack: [
-        {
-          tag: "React",
-          normalizedTag: "react",
-          displayName: "React",
-          category: "tech_stack",
-          sessionCount: 3,
-          weight: 3.0,
-          sessionIds: ["pi:s1"]
-        }
-      ]
-    },
-    topTags: [
-      {
-        tag: "Bug Fix",
-        normalizedTag: "bug-fix",
-        displayName: "Bug Fix",
-        category: "task_type",
-        sessionCount: 4,
-        weight: 4.5,
-        sessionIds: ["pi:s1", "pi:s2"]
-      }
-    ]
-  },
   llmUsage: {
     totalCalls: 24,
     totalTokens: 125000,
@@ -171,9 +132,6 @@ const fakeTranslate = (key: string, ...args: Array<string | number>) => {
   if (key === "desktop.report.insightsTokens") return "LLM Usage";
   if (key === "desktop.report.insightsCalls") return `${args[0]} calls · ${args[1]}`;
   if (key === "desktop.report.insightsBlockedList") return "Blocked Watchlist";
-  if (key === "desktop.report.insightsTags") return "Tags & Knowledge";
-  if (key === "desktop.report.insightsCategoryTaskType") return "Task Types";
-  if (key === "desktop.report.insightsCategoryTechStack") return "Tech Stack";
   if (key === "desktop.report.insightsTrendTitle") return "Activity Trend";
   if (key === "desktop.report.insightsTrendHint") return "Click a day to view its daily digest";
   if (key === "desktop.report.insightsInputTokens") return "Prompt";
@@ -199,8 +157,7 @@ const fakeTranslate = (key: string, ...args: Array<string | number>) => {
 };
 
 describe("PeriodInsightsDashboard", () => {
-  it("renders metrics, blocked watchlist, and tag chips correctly", () => {
-    const onSelectTag = vi.fn();
+  it("renders metrics, blocked watchlist, and charts correctly", () => {
     const onSelectStatus = vi.fn();
     const onSelectProject = vi.fn();
     const onOpenSession = vi.fn();
@@ -210,10 +167,8 @@ describe("PeriodInsightsDashboard", () => {
       <PeriodInsightsDashboard
         insights={mockInsights}
         loading={false}
-        selectedTag={null}
         statusFilter="all"
         selectedProject={null}
-        onSelectTag={onSelectTag}
         onSelectStatus={onSelectStatus}
         onSelectProject={onSelectProject}
         onOpenSession={onOpenSession}
@@ -261,11 +216,6 @@ describe("PeriodInsightsDashboard", () => {
     fireEvent.click(app1Item!);
     expect(onSelectProject).toHaveBeenCalledWith("/work/app1");
 
-    // Click on tag chip
-    const tagChip = screen.getByText("Bug Fix");
-    fireEvent.click(tagChip);
-    expect(onSelectTag).toHaveBeenCalledWith("bug-fix");
-
     // Verify activity trend and click on a day bar
     expect(screen.getByText(/Activity Trend/)).toBeTruthy();
     expect(screen.getByText("Mon")).toBeTruthy();
@@ -308,10 +258,8 @@ describe("PeriodInsightsDashboard", () => {
       <PeriodInsightsDashboard
         insights={emptyInsights}
         loading={false}
-        selectedTag={null}
         statusFilter="all"
         selectedProject={null}
-        onSelectTag={vi.fn()}
         onSelectStatus={vi.fn()}
         onSelectProject={vi.fn()}
         onOpenSession={vi.fn()}
