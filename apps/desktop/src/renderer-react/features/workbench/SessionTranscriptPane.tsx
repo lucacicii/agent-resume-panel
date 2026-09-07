@@ -94,7 +94,7 @@ type TranscriptPreview = {
   warning?: string;
 };
 
-const LIVE_REFRESH_INTERVAL_MS = 1_500;
+const LIVE_REFRESH_INTERVAL_MS = 500;
 
 export function SessionTranscriptPane({
   provider,
@@ -121,9 +121,11 @@ export function SessionTranscriptPane({
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [outlineOpen, setOutlineOpen] = useState(true);
+  const [showScrollBottom, setShowScrollBottom] = useState(false);
   const [renderMarkdownView, setRenderMarkdownView] = useState(true);
   const [expandedThinking, setExpandedThinking] = useState<Record<string, boolean>>({});
   const bodyRef = useRef<HTMLDivElement>(null);
+  const userScrolledUpRef = useRef(false);
   const previewRef = useRef<TranscriptPreview | null>(null);
   const requestRef = useRef(0);
   const currentSessionKeyRef = useRef("");
@@ -159,6 +161,8 @@ export function SessionTranscriptPane({
       return;
     }
     currentSessionKeyRef.current = sessionKey;
+    userScrolledUpRef.current = false;
+    setShowScrollBottom(false);
     setQuery("");
     setSelectedId(null);
     previewRef.current = null;
@@ -204,8 +208,35 @@ export function SessionTranscriptPane({
   );
   const visible = useMemo(() => filterSessionTranscript(model, query), [model, query]);
 
+  const scrollToBottom = useCallback((smooth = false) => {
+    userScrolledUpRef.current = false;
+    setShowScrollBottom(false);
+    if (bodyRef.current) {
+      bodyRef.current.scrollTo({
+        top: bodyRef.current.scrollHeight,
+        behavior: smooth ? "smooth" : "instant"
+      });
+    }
+  }, []);
+
+  const handleScroll = useCallback(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= 80;
+    userScrolledUpRef.current = !isNearBottom;
+    setShowScrollBottom(!isNearBottom);
+  }, []);
+
+  useEffect(() => {
+    if (!userScrolledUpRef.current && bodyRef.current) {
+      bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
+    }
+  }, [preview?.messages]);
+
   const scrollToMessage = (messageId: string) => {
     setSelectedId(messageId);
+    userScrolledUpRef.current = true;
+    setShowScrollBottom(true);
     const node = bodyRef.current?.querySelector<HTMLElement>(`[data-transcript-id="${messageId}"]`);
     node?.scrollIntoView({ block: "start" });
   };
@@ -304,8 +335,40 @@ export function SessionTranscriptPane({
       ) : null}
 
       {model.messages.length ? (
-        <>
-          <section className="wb-transcript-outline">
+        <div className="wb-transcript-content-wrap">
+          <div
+            className={`wb-transcript-body${outlineOpen ? " has-outline-open" : ""}`}
+            ref={bodyRef}
+            onScroll={handleScroll}
+            style={{ ["--wb-transcript-font-size" as string]: `${fontSize}px` }}
+          >
+            {visible.messages.length ? visible.messages.map((message, index) => {
+              const isLast = index === visible.messages.length - 1;
+              const isStreaming = isRunning && isLast && message.role === "assistant";
+              return (
+                <TranscriptMessageRow
+                  key={message.id}
+                  message={message}
+                  isSelected={selectedId === message.id}
+                  roleIconProvider={roleIconProvider}
+                  roleLabelText={roleLabel(message)}
+                  stamp={formatTimestamp(message.timestamp)}
+                  thinkingExpanded={expandedThinking[message.id] === true}
+                  onToggleThinking={() => setExpandedThinking((current) => ({
+                    ...current,
+                    [message.id]: !current[message.id]
+                  }))}
+                  thinkingLabel={t("desktop.workbench.transcriptThinking")}
+                  renderMarkdownView={renderMarkdownView}
+                  isStreaming={isStreaming}
+                />
+              );
+            }) : (
+              <p className="muted wb-transcript-status">{t("desktop.workbench.transcriptNoMatches")}</p>
+            )}
+          </div>
+
+          <aside className={`wb-transcript-outline${outlineOpen ? " is-open" : " is-collapsed"}`}>
             <button
               type="button"
               className="wb-transcript-outline-toggle"
@@ -335,39 +398,20 @@ export function SessionTranscriptPane({
                 <p className="muted wb-transcript-status">{t("desktop.workbench.transcriptNoMatches")}</p>
               )
             ) : null}
-          </section>
+          </aside>
 
-          <div
-            className="wb-transcript-body"
-            ref={bodyRef}
-            style={{ ["--wb-transcript-font-size" as string]: `${fontSize}px` }}
-          >
-            {visible.messages.length ? visible.messages.map((message, index) => {
-              const isLast = index === visible.messages.length - 1;
-              const isStreaming = isRunning && isLast && message.role === "assistant";
-              return (
-                <TranscriptMessageRow
-                  key={message.id}
-                  message={message}
-                  isSelected={selectedId === message.id}
-                  roleIconProvider={roleIconProvider}
-                  roleLabelText={roleLabel(message)}
-                  stamp={formatTimestamp(message.timestamp)}
-                  thinkingExpanded={expandedThinking[message.id] === true}
-                  onToggleThinking={() => setExpandedThinking((current) => ({
-                    ...current,
-                    [message.id]: !current[message.id]
-                  }))}
-                  thinkingLabel={t("desktop.workbench.transcriptThinking")}
-                  renderMarkdownView={renderMarkdownView}
-                  isStreaming={isStreaming}
-                />
-              );
-            }) : (
-              <p className="muted wb-transcript-status">{t("desktop.workbench.transcriptNoMatches")}</p>
-            )}
-          </div>
-        </>
+          {showScrollBottom ? (
+            <button
+              type="button"
+              className="wb-transcript-scroll-bottom-btn"
+              onClick={() => scrollToBottom(true)}
+              aria-label={t("desktop.workbench.transcriptScrollToBottom", "Scroll to bottom")}
+              title={t("desktop.workbench.transcriptScrollToBottom", "Scroll to bottom")}
+            >
+              <ThemeIcon name="chevron-down" size={14} />
+            </button>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );

@@ -242,7 +242,7 @@ describe("SessionTranscriptPane", () => {
     };
 
     await waitFor(() => expect(apiMocks.previewSession.mock.calls.length).toBeGreaterThan(1), { timeout: 3500 });
-    expect(await screen.findByText("Starting... token 1")).toBeTruthy();
+    await waitFor(() => expect(document.querySelector(".wb-transcript-body")?.textContent).toContain("Starting... token 1"));
   });
 
   it("does not fetch while inactive", async () => {

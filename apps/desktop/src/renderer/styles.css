@@ -6937,7 +6937,11 @@ code {
 }
 
 .wb-session-split-transcript .wb-transcript-body {
-  padding: 16px 24px 24px;
+  padding: 16px 16px 24px 24px;
+}
+
+.wb-session-split-transcript .wb-transcript-body.has-outline-open {
+  padding-right: var(--transcript-outline-gutter, 272px);
 }
 
 .wb-session-split-transcript .wb-transcript-md.markdown-body {
@@ -7452,24 +7456,53 @@ body.is-pane-resizing-v * {
   font-size: 12px;
 }
 
-.wb-transcript-outline {
-  flex: 0 0 auto;
-  max-height: 38%;
+.wb-transcript-content-wrap {
+  flex: 1 1 auto;
   min-height: 0;
+  position: relative;
+  display: flex;
+  overflow: hidden;
+  --transcript-outline-width: 240px;
+  --transcript-outline-gutter: 272px;
+}
+
+.wb-transcript-outline {
+  position: absolute;
+  top: 10px;
+  right: 16px;
+  z-index: 15;
   display: flex;
   flex-direction: column;
-  border-bottom: 1px solid var(--color-separator);
+  max-height: calc(100% - 20px);
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-lg, 8px);
+  background: color-mix(in srgb, var(--color-window-bg) 88%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  box-sizing: border-box;
+  transition: width 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.15s ease;
+  overflow: hidden;
+}
+
+.wb-transcript-outline.is-open {
+  width: var(--transcript-outline-width, 240px);
+}
+
+.wb-transcript-outline.is-collapsed {
+  width: auto;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
 }
 
 .wb-transcript-outline-toggle {
   appearance: none;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   width: 100%;
   min-height: 28px;
   margin: 0;
-  padding: 4px 10px;
+  padding: 5px 10px;
   border: none;
   background: transparent;
   color: var(--color-label-secondary, var(--muted));
@@ -7478,11 +7511,28 @@ body.is-pane-resizing-v * {
   font-weight: 600;
   text-align: left;
   cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.wb-transcript-outline-toggle svg {
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+
+.wb-transcript-outline-toggle .is-expanded {
+  transform: rotate(90deg);
+}
+
+.wb-transcript-outline.is-open .wb-transcript-outline-toggle {
+  border-bottom: 1px solid var(--color-separator);
+  background: var(--color-fill-tertiary, color-mix(in srgb, var(--text) 3%, transparent));
 }
 
 .wb-transcript-outline-toggle:hover {
   color: var(--color-label-primary, var(--text));
-  background: var(--color-fill-tertiary, color-mix(in srgb, var(--text) 4%, transparent));
+  background: var(--color-fill-secondary, color-mix(in srgb, var(--text) 6%, transparent));
 }
 
 .wb-transcript-outline-toggle:focus-visible {
@@ -7492,10 +7542,12 @@ body.is-pane-resizing-v * {
 
 .wb-transcript-outline-list {
   margin: 0;
-  padding: 0 6px 8px;
+  padding: 4px 6px 6px;
   list-style: none;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   min-height: 0;
+  flex: 1 1 auto;
 }
 
 .wb-transcript-outline-item {
@@ -7514,6 +7566,7 @@ body.is-pane-resizing-v * {
   font-size: 12px;
   text-align: left;
   cursor: pointer;
+  box-sizing: border-box;
 }
 
 .wb-transcript-outline-item:hover {
@@ -7547,11 +7600,46 @@ body.is-pane-resizing-v * {
 .wb-transcript-body {
   flex: 1 1 auto;
   min-height: 0;
+  min-width: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 8px 10px 12px;
+  padding: 8px 16px 12px;
   user-select: text;
   -webkit-user-select: text;
+  box-sizing: border-box;
+  transition: padding-right 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.wb-transcript-body.has-outline-open {
+  padding-right: var(--transcript-outline-gutter, 272px);
+}
+
+.wb-transcript-scroll-bottom-btn {
+  position: absolute;
+  bottom: 16px;
+  right: 28px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--color-separator);
+  background: var(--color-elevated-bg, var(--panel));
+  color: var(--color-label-primary, var(--text));
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease, opacity 0.15s ease;
+}
+
+.wb-transcript-content-wrap:has(.wb-transcript-outline.is-open) .wb-transcript-scroll-bottom-btn {
+  right: calc(var(--transcript-outline-gutter, 272px) + 12px);
+}
+
+.wb-transcript-scroll-bottom-btn:hover {
+  transform: translateY(-2px);
+  background: var(--color-secondary-bg, var(--panel));
 }
 
 .wb-transcript-body .preview-msg .role {
@@ -7778,9 +7866,10 @@ body.is-pane-resizing-v * {
   border-color: color-mix(in srgb, var(--color-accent, var(--accent)) 42%, var(--color-separator, var(--border)));
 }
 
-@media (max-width: 300px) {
-  .wb-transcript-outline {
-    max-height: 28%;
+@media (max-width: 420px) {
+  .wb-transcript-content-wrap {
+    --transcript-outline-width: 180px;
+    --transcript-outline-gutter: 196px;
   }
 }
 
@@ -19801,5 +19890,43 @@ html[data-window-mode="browser"] #react-chrome {
 [data-streamdown="table-fullscreen"] [data-streamdown="table"] td {
   padding: 8px 14px !important;
   font-size: 13px !important;
+}
+
+/* ==========================================================================
+   Streamdown Streaming Animation & Terminal Caret
+   ========================================================================== */
+
+@keyframes sd-fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+[data-sd-animate] {
+  animation: var(--sd-animation, sd-fadeIn) var(--sd-duration, 120ms) var(--sd-easing, ease) var(--sd-delay, 0ms) both;
+}
+
+@keyframes streamdownCaretBlink {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+.markdown-body[style*="--streamdown-caret"] > :last-child::after,
+.wb-transcript-md[style*="--streamdown-caret"] > :last-child::after {
+  content: var(--streamdown-caret, " ▋");
+  display: inline;
+  vertical-align: baseline;
+  color: var(--color-accent, #0a84ff);
+  font-weight: bold;
+  animation: streamdownCaretBlink 0.8s infinite;
 }
 

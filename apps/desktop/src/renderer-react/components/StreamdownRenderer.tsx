@@ -243,6 +243,8 @@ export const StreamdownRenderer = memo(function StreamdownRenderer({
       <Streamdown
         components={components}
         isAnimating={isAnimating}
+        animated={isAnimating ? { animation: "fadeIn", duration: 120 } : false}
+        caret={isAnimating ? "block" : undefined}
         translations={translations}
       >
         {sanitizedMarkdown}
