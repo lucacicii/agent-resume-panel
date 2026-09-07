@@ -182,7 +182,6 @@ export interface SessionQueryRequest {
   projectPath?: string;
   projectId?: string;
   gtdStatus?: string;
-  tag?: string;
   keys?: Array<{ provider: string; id: string }>;
 }
 
