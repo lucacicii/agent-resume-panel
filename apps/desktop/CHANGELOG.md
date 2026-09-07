@@ -8,6 +8,24 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## English
 
+### [0.2.23]
+
+#### Added
+
+- **Visual theme settings**: new Theme panel in Settings lets you switch between light/dark/system themes, with theme-aware code editor rendering in Workbench
+- **Clipboard image paste**: paste images from clipboard directly into the Workbench composer for inline sends
+- **Live session polling**: running session transcripts now poll for real-time updates so you see new turns without manual refresh
+
+#### Improved
+
+- **Transcript scrolling and outline overlay**: smoother scrolling in the transcript pane with an improved outline overlay for quick navigation
+- **ResizeHandle and WorkbenchPanel layout**: more responsive resize behavior and cleaner panel rendering in the Workbench
+- **Session activity indicator**: replaced the session activity filter with a compact activity dot marker for at-a-glance status
+
+#### Removed
+
+- **Tagging feature**: removed the tagging system and related MCP tools from core and desktop
+
 ### [0.2.22]
 
 #### Added
@@ -512,6 +530,24 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 ---
 
 ## 简体中文
+
+### [0.2.23]
+
+#### 新增
+
+- **视觉主题设置**: 设置中新增主题面板，支持切换浅色/深色/跟随系统主题，Workbench 代码编辑器主题同步适配
+- **剪贴板图片粘贴**: 支持直接将剪贴板图片粘贴到 Workbench Composer 中内联发送
+- **会话实时轮询**: 运行中的会话转录文本现在自动轮询实时更新，无需手动刷新
+
+#### 改进
+
+- **转录滚动与大纲覆盖层**: 转录面板滚动更流畅，大纲覆盖层导航更清晰
+- **ResizeHandle 与 WorkbenchPanel 布局**: 调整大小行为更灵敏，面板渲染更整洁
+- **会话活动指示器**: 用紧凑的活动点标记替代原来的活动筛选器，一目了然
+
+#### 移除
+
+- **标签功能**: 移除了标签系统及相关的 MCP 工具
 
 ### [0.2.22]
 
