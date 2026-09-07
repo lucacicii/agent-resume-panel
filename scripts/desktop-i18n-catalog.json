@@ -711,6 +711,9 @@
       "desktop.workbench.terminalComposerDirectoryNoMatch": "No matching folders",
       "desktop.workbench.terminalComposerDirectoryError": "Could not load folders: {0}",
       "desktop.workbench.terminalComposerDropHint": "Drop to insert path",
+      "desktop.workbench.terminalComposerPastedImages": "Pasted images",
+      "desktop.workbench.terminalComposerRemoveImage": "Remove image",
+      "desktop.workbench.terminalComposerImagePreview": "Image preview",
       "desktop.workbench.terminalComposerTips": "Sent messages",
       "desktop.workbench.sessionDot.idle": "Idle"
     },
@@ -1568,6 +1571,9 @@
       "desktop.workbench.terminalComposerDirectoryNoMatch": "没有匹配的文件夹",
       "desktop.workbench.terminalComposerDirectoryError": "无法加载文件夹：{0}",
       "desktop.workbench.terminalComposerDropHint": "拖放到此处插入路径",
+      "desktop.workbench.terminalComposerPastedImages": "已粘贴图片",
+      "desktop.workbench.terminalComposerRemoveImage": "移除图片",
+      "desktop.workbench.terminalComposerImagePreview": "图片预览",
       "desktop.workbench.terminalComposerTips": "已发送消息",
       "desktop.workbench.sessionDot.idle": "空闲"
     },
@@ -2132,7 +2138,10 @@
     "workbench": {
       "desktop.workbench.imSessionBadge": "IM",
       "desktop.workbench.imSessionBadgeHint": "IM から作成",
-      "desktop.workbench.sessionDot.idle": "待機中"
+      "desktop.workbench.sessionDot.idle": "待機中",
+      "desktop.workbench.terminalComposerPastedImages": "貼り付けた画像",
+      "desktop.workbench.terminalComposerRemoveImage": "画像を削除",
+      "desktop.workbench.terminalComposerImagePreview": "画像プレビュー"
     },
     "sessions": {
       "desktop.sessions.statusLabel": "状態",

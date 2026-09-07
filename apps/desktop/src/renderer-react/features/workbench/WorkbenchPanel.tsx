@@ -920,6 +920,26 @@ function gitRepositoryCount(git: GitStatusResult): number {
   return roots.size;
 }
 
+function dirtyGitRoots(result: GitStatusResult): string[] {
+  const roots = new Set<string>();
+  for (const change of [...result.staged, ...result.unstaged]) {
+    if (change.repoRoot) roots.add(change.repoRoot);
+  }
+  return [...roots];
+}
+
+function defaultGitRoot(result: GitStatusResult, availableRoots: string[]): string {
+  const dirty = new Set(dirtyGitRoots(result));
+  if (dirty.size) {
+    const fromNested = (result.nestedRepos || []).find((repository) => dirty.has(repository.root));
+    if (fromNested) return fromNested.root;
+    if (result.root && dirty.has(result.root)) return result.root;
+    const sorted = [...dirty].sort((left, right) => left.localeCompare(right));
+    if (sorted[0]) return sorted[0];
+  }
+  return result.root || result.nestedRepos?.[0]?.root || availableRoots[0] || "";
+}
+
 function GitTreeCheckbox({
   state,
   ariaLabel,
@@ -6631,7 +6651,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       gitRootsRef.current = roots;
       setGitRoot((current) => {
         if (current && roots.includes(current)) return current;
-        return result.root || result.nestedRepos?.[0]?.root || roots[0] || "";
+        return defaultGitRoot(result, roots);
       });
       const nextChanges = [...result.staged, ...result.unstaged];
       const available = gitDirectoryKeys(nextChanges);

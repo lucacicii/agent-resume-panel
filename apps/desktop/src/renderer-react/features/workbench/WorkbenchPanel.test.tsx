@@ -4422,6 +4422,94 @@ describe("WorkbenchPanel", () => {
     }));
   });
 
+  it("defaults the commit repo selector to the dirty nested repository", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const coreFile = {
+      path: "packages/core/src/core.ts",
+      repoPath: "src/core.ts",
+      repoRoot: "/work/monorepo/packages/core",
+      status: "M",
+      staged: false,
+      unstaged: true
+    };
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects",
+        "desktop.notes.projectFilter": "Project filter",
+        "desktop.common.search": "Search",
+        "desktop.common.all": "All",
+        "desktop.common.active": "Active",
+        "desktop.common.pinned": "Pinned",
+        "desktop.common.close": "Close",
+        "desktop.common.cancel": "Cancel",
+        "desktop.common.refresh": "Refresh",
+        "desktop.workbench.allSessions": "All sessions",
+        "desktop.workbench.noSessionsInProject": "No sessions",
+        "desktop.workbench.noProjects": "No projects",
+        "desktop.workbench.sidePanelExplorer": "Explorer",
+        "desktop.workbench.sidePanelGit": "Git",
+        "desktop.workbench.sidePanelNoChanges": "No changes",
+        "desktop.workbench.sidePanelStaged": "Staged",
+        "desktop.workbench.sidePanelChanges": "Changes",
+        "desktop.workbench.sidePanelGitUnavailable": "Git unavailable",
+        "desktop.workbench.sidePanelNoRoot": "No root",
+        "desktop.workbench.newTerminal": "New terminal",
+        "desktop.workbench.newSession": "New session",
+        "desktop.workbench.selectSessionHint": "Select a session",
+        "desktop.workbench.selectProjectHint": "Select a project",
+        "desktop.workbench.externalTerminalHint": "Opened externally",
+        "desktop.workbench.terminalLabel": "Terminal {0}",
+        "desktop.workbench.gitCommit": "Commit",
+        "desktop.workbench.gitCommitAndPush": "Commit & Push",
+        "desktop.workbench.gitCommitDialogTitle": "Commit changes",
+        "desktop.workbench.resizeCommitInput": "Resize commit input",
+        "desktop.workbench.gitCommitAutoGenerate": "Auto generate",
+        "desktop.workbench.gitLog": "Git log",
+        "desktop.workbench.gitSync": "Sync",
+        "desktop.workbench.gitRepoSelect": "Git repository",
+        "desktop.workbench.switchBranch": "Switch branch",
+        "desktop.workbench.gitDiscard": "Discard changes"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/monorepo", updatedAt: 1 }],
+      terminalGitStatus: async () => ({
+        isRepo: true,
+        root: null,
+        staged: [],
+        unstaged: [coreFile],
+        nestedRepos: [
+          { root: "/work/monorepo/packages/app", displayPath: "packages/app" },
+          { root: "/work/monorepo/packages/core", displayPath: "packages/core" }
+        ],
+        tracking: [
+          { repoRoot: "/work/monorepo/packages/app", branch: "main", upstream: "origin/main", ahead: 0, behind: 0 },
+          { repoRoot: "/work/monorepo/packages/core", branch: "dev", upstream: "origin/dev", ahead: 0, behind: 0 }
+        ]
+      }),
+      terminalGitFetch: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByTitle("/work/monorepo"));
+    fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
+
+    const repoSelect = await screen.findByRole("combobox", { name: "Git repository" });
+    expect(repoSelect).toHaveProperty("value", "/work/monorepo/packages/core");
+    expect(await screen.findByRole("button", { name: "Switch branch: dev" })).toBeTruthy();
+    expect(screen.queryByTitle("/work/monorepo/packages/app")).toBeNull();
+    expect(screen.getByTitle("/work/monorepo/packages/core")).toBeTruthy();
+  });
+
   it("marks a repo group mixed when only some of its files are staged", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";

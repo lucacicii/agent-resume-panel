@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ThemeIcon } from "../../components/ThemeIcon";
 import { desktopApi } from "../../bridge";
 import { useI18n } from "../../i18n";
@@ -43,6 +44,21 @@ export const TERMINAL_COMPOSER_STATIC_COMMANDS = [
 ] as const;
 
 const MAX_SUGGESTIONS = 6;
+
+type PastedComposerImage = {
+  id: string;
+  path: string;
+  previewUrl: string;
+};
+
+function clipboardHasImageItem(data: DataTransfer | null): boolean {
+  if (!data?.items) return false;
+  return [...data.items].some((item) => item.type.startsWith("image/"));
+}
+
+function newPastedImageId(): string {
+  return `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
 
 function tokenStartAtCursor(value: string, cursor: number): number {
   const before = value.slice(0, cursor);
@@ -197,6 +213,8 @@ export function TerminalComposer(props: {
   const [activeDirectory, setActiveDirectory] = useState(0);
   const [dragOver, setDragOver] = useState(false);
   const dragDepth = useRef(0);
+  const [pendingImages, setPendingImages] = useState<PastedComposerImage[]>([]);
+  const [imagePreview, setImagePreview] = useState("");
 
   const sendDisabled = ptyId === null || !value.trim();
 
@@ -341,6 +359,8 @@ export function TerminalComposer(props: {
     onSendToTerminal();
     applyValue("");
     draftRef.current = "";
+    setPendingImages([]);
+    setImagePreview("");
   }, [applyValue, onSendToTerminal, pane.cwd, ptyId, value]);
 
   const acceptSuggestion = useCallback((command: string) => {
@@ -415,7 +435,7 @@ export function TerminalComposer(props: {
           setActiveDirectory((current) => (current - 1 + directorySuggestions.length) % directorySuggestions.length);
           return;
         }
-        if (isEnter || isTab) {
+        if ((isEnter && !event.shiftKey) || isTab) {
           event.preventDefault();
           const pick = directorySuggestions[activeDirectory];
           if (pick) acceptDirectory(pick);
@@ -441,7 +461,7 @@ export function TerminalComposer(props: {
           setActiveSlash((current) => (current - 1 + slashMatches.length) % slashMatches.length);
           return;
         }
-        if (isEnter || isTab) {
+        if ((isEnter && !event.shiftKey) || isTab) {
           event.preventDefault();
           const pick = slashMatches[activeSlash] ?? slashMatches[0];
           if (pick) acceptSlashPhrase(pick);
@@ -466,7 +486,7 @@ export function TerminalComposer(props: {
         setSuggestionsDismissed(true);
         return;
       }
-      if (isEnter || isTab) {
+      if ((isEnter && !event.shiftKey) || isTab) {
         const pick = suggestions[activeSuggestion >= 0 ? activeSuggestion : 0];
         if (pick && pick !== value) {
           event.preventDefault();
@@ -538,6 +558,61 @@ export function TerminalComposer(props: {
     }
   }, [acceptDirectory, acceptSlashPhrase, acceptSuggestion, activeDirectory, activeSlash, applyValue, directoryOpen, directorySuggestions, history, historyIndex, sendToTerminal, slashMatches, slashOpen, suggestions, suggestionsOpen, activeSuggestion, value]);
 
+  const insertAtCursor = useCallback((text: string) => {
+    const el = inputRef.current;
+    const start = el ? el.selectionStart ?? value.length : value.length;
+    const end = el ? el.selectionEnd ?? value.length : value.length;
+    const next = `${value.slice(0, start)}${text}${value.slice(end)}`;
+    applyValue(next);
+    setSuggestionsDismissed(false);
+    setActiveSuggestion(0);
+    requestAnimationFrame(() => {
+      const input = inputRef.current;
+      if (input) input.setSelectionRange(start + text.length, start + text.length);
+    });
+    el?.focus();
+  }, [applyValue, value]);
+
+  const removePendingImage = useCallback((id: string) => {
+    const target = pendingImages.find((item) => item.id === id);
+    if (!target) return;
+    const quoted = shellQuotePath(target.path);
+    const index = value.indexOf(quoted);
+    if (index >= 0) {
+      applyValue(`${value.slice(0, index)}${value.slice(index + quoted.length)}`);
+    }
+    setPendingImages((current) => current.filter((item) => item.id !== id));
+    setImagePreview((current) => (current === target.previewUrl ? "" : current));
+  }, [applyValue, pendingImages, value]);
+
+  const onPaste = useCallback((event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const api = desktopApi();
+    const hasImage = clipboardHasImageItem(event.clipboardData) || Boolean(api.notesClipboardHasImage?.());
+    if (!hasImage || typeof api.workbenchPasteClipboardImage !== "function") return;
+    event.preventDefault();
+    const el = event.currentTarget;
+    const start = el.selectionStart ?? value.length;
+    const end = el.selectionEnd ?? value.length;
+    const currentValue = value;
+    void api.workbenchPasteClipboardImage()
+      .then((result) => {
+        if (!result?.path) return;
+        const quoted = shellQuotePath(result.path);
+        applyValue(`${currentValue.slice(0, start)}${quoted}${currentValue.slice(end)}`);
+        setPendingImages((current) => [
+          ...current,
+          { id: newPastedImageId(), path: result.path, previewUrl: result.previewUrl }
+        ]);
+        setSuggestionsDismissed(false);
+        setActiveSuggestion(0);
+        requestAnimationFrame(() => {
+          const input = inputRef.current;
+          if (input) input.setSelectionRange(start + quoted.length, start + quoted.length);
+        });
+      })
+      .catch(() => undefined);
+  }, [applyValue, value]);
+
   const onDragEnter = (event: React.DragEvent) => {
     if (!hasWorkbenchPathDnd(event.dataTransfer)) return;
     dragDepth.current += 1;
@@ -559,19 +634,7 @@ export function TerminalComposer(props: {
     setDragOver(false);
     const path = event.dataTransfer.getData(WB_PATH_DND_MIME);
     if (!path) return;
-    const quoted = shellQuotePath(path);
-    const el = inputRef.current;
-    const start = el ? el.selectionStart ?? value.length : value.length;
-    const end = el ? el.selectionEnd ?? value.length : value.length;
-    const next = `${value.slice(0, start)}${quoted}${value.slice(end)}`;
-    applyValue(next);
-    setSuggestionsDismissed(false);
-    setActiveSuggestion(0);
-    requestAnimationFrame(() => {
-      const input = inputRef.current;
-      if (input) input.setSelectionRange(start + quoted.length, start + quoted.length);
-    });
-    el?.focus();
+    insertAtCursor(shellQuotePath(path));
   };
 
   return (
@@ -620,6 +683,33 @@ export function TerminalComposer(props: {
           ))}
         </ul>
       ) : null}
+      {pendingImages.length ? (
+        <div className="wb-terminal-composer-pending-images" aria-label={t("desktop.workbench.terminalComposerPastedImages")}>
+          {pendingImages.map((image) => (
+            <div className="wb-terminal-composer-pending-image" key={image.id}>
+              <button
+                type="button"
+                className="wb-terminal-composer-pending-image-open"
+                aria-label={t("desktop.workbench.terminalComposerImagePreview")}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => setImagePreview(image.previewUrl)}
+              >
+                <img src={image.previewUrl} alt="" />
+              </button>
+              <button
+                type="button"
+                className="wb-terminal-composer-pending-image-remove"
+                aria-label={t("desktop.workbench.terminalComposerRemoveImage")}
+                title={t("desktop.workbench.terminalComposerRemoveImage")}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => removePendingImage(image.id)}
+              >
+                <ThemeIcon name="close" size={11} />
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
       <textarea
         ref={inputRef}
         className="wb-terminal-composer-input"
@@ -634,6 +724,7 @@ export function TerminalComposer(props: {
         spellCheck={false}
         enterKeyHint="send"
         onChange={onInputChange}
+        onPaste={onPaste}
         onKeyDown={onKeyDown}
         onSelect={(event) => setCursor(event.currentTarget.selectionStart || 0)}
         onClick={(event) => setCursor(event.currentTarget.selectionStart || 0)}
@@ -747,6 +838,26 @@ export function TerminalComposer(props: {
         <div className="wb-terminal-composer-drop-hint" aria-hidden="true">
           {t("desktop.workbench.terminalComposerDropHint")}
         </div>
+      ) : null}
+      {imagePreview ? createPortal(
+        <div
+          className="notes-image-preview"
+          role="dialog"
+          aria-modal="true"
+          aria-label={t("desktop.workbench.terminalComposerImagePreview")}
+          onClick={() => setImagePreview("")}
+        >
+          <img src={imagePreview} alt="" />
+          <button
+            type="button"
+            className="notes-image-preview-close"
+            aria-label={t("desktop.common.close")}
+            onClick={() => setImagePreview("")}
+          >
+            <ThemeIcon name="close" size={16} />
+          </button>
+        </div>,
+        document.body
       ) : null}
     </div>
   );
