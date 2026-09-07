@@ -101,7 +101,7 @@ export const overridesByKey = {
   "desktop.settings.linkExtensionDocDesc": row("VS Code サイドバー拡張機能"),
   "desktop.settings.linkReportIssueDesc": row("GitHub でバグ報告と機能要望"),
   "desktop.settings.toolModelUse": row("ツール LLM"),
-  "desktop.settings.toolModelUseDesc": row("要約、自動リネーム、定期 digest、タグ付け"),
+  "desktop.settings.toolModelUseDesc": row("要約、自動リネーム、定期 digest"),
   "desktop.settings.embeddingModelUse": row("埋め込み"),
   "desktop.settings.embeddingModelUseDesc": row("意味検索とトランスクリプト索引"),
   "desktop.settings.imageModelUse": row("画像"),

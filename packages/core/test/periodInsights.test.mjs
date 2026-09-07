@@ -30,13 +30,12 @@ test("getPeriodInsights handles empty databases and out-of-range queries cleanly
   assert.equal(insights.sessionStats.completed, 0);
   assert.equal(insights.sessionStats.blocked, 0);
   assert.equal(insights.blockedSessions.length, 0);
-  assert.equal(insights.tagStats.totalTags, 0);
   assert.equal(insights.llmUsage.totalCalls, 0);
 
   await fs.rm(panelHome, { recursive: true, force: true });
 });
 
-test("getPeriodInsights computes sessions, delivery states, tags, and usage", async () => {
+test("getPeriodInsights computes sessions, delivery states, and usage", async () => {
   const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-insights-populated-"));
   const catalogDb = path.join(panelHome, "catalog.db");
   const desktopDb = path.join(panelHome, ".desktop", "desktop.db");
@@ -57,22 +56,11 @@ test("getPeriodInsights computes sessions, delivery states, tags, and usage", as
      ('pi', 's3', 'Integrate payments', '/Users/test/repo2', 1700000, 10, 'State: blocked\nOpen work: waiting for keys\nEvidence: API 403 Forbidden\nNext action: get api key');`
   );
 
-  // Insert tags into desktopDb
-  await runSqlite(
-    desktopDb,
-    `INSERT INTO entity_tags (id, entity_type, entity_id, tag, normalized_tag, category, weight, hit_count, consensus_count, status, source, created_at_ms, updated_at_ms, last_hit_at_ms, last_decay_at_ms)
-     VALUES
-     ('t1', 'session', 'pi:s1', 'Electron', 'electron', 'tech_stack', 3.5, 1, 1, 'active', 'auto', 1500000, 1500000, 1500000, 1500000),
-     ('t2', 'session', 'pi:s1', 'Bug Fix', 'bug-fix', 'task_type', 2.0, 1, 1, 'active', 'auto', 1500000, 1500000, 1500000, 1500000),
-     ('t3', 'session', 'pi:s3', 'Electron', 'electron', 'tech_stack', 4.0, 1, 1, 'active', 'auto', 1700000, 1700000, 1700000, 1700000);`
-  );
-
   // Insert LLM usage into desktopDb
   await runSqlite(
     desktopDb,
     `INSERT INTO llm_usage_events (id, created_at_ms, kind, source, model, prompt_tokens, completion_tokens, total_tokens, duration_ms, ok)
      VALUES
-     ('u1', 1500000, 'chat', 'auto_tag', 'gpt-5.5', 100, 50, 150, 1200, 1),
      ('u2', 1600000, 'chat', 'summarize', 'gpt-5.5', 200, 100, 300, 2000, 1);`
   );
 
@@ -117,21 +105,12 @@ test("getPeriodInsights computes sessions, delivery states, tags, and usage", as
   assert.equal(insights.activeSessions[0].id, "s2");
   assert.equal(insights.activeSessions[0].nextAction, "run migrations");
 
-  // Check tags
-  assert.equal(insights.tagStats.totalTags, 2);
-  assert.equal(insights.tagStats.topTags[0].normalizedTag, "electron");
-  assert.equal(insights.tagStats.topTags[0].sessionCount, 2); // s1 and s3
-  assert.deepEqual(insights.tagStats.topTags[0].sessionIds.sort(), ["pi:s1", "pi:s3"]);
-  assert.equal(insights.tagStats.byCategory.tech_stack.length, 1);
-  assert.equal(insights.tagStats.byCategory.task_type.length, 1);
-
-  // Check LLM usage
-  assert.equal(insights.llmUsage.totalCalls, 2);
-  assert.equal(insights.llmUsage.totalTokens, 450);
-  assert.equal(insights.llmUsage.promptTokens, 300);
-  assert.equal(insights.llmUsage.completionTokens, 150);
+  assert.equal(insights.llmUsage.totalCalls, 1);
+  assert.equal(insights.llmUsage.totalTokens, 300);
+  assert.equal(insights.llmUsage.promptTokens, 200);
+  assert.equal(insights.llmUsage.completionTokens, 100);
   assert.equal(insights.llmUsage.topModels[0].model, "gpt-5.5");
-  assert.equal(insights.llmUsage.topModels[0].count, 2);
+  assert.equal(insights.llmUsage.topModels[0].count, 1);
 
   // Check dailyTrend
   assert.ok(Array.isArray(insights.dailyTrend));

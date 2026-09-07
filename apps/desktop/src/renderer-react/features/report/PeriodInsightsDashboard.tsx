@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { PeriodComposerSendInsights, PeriodDailyTrendItem, PeriodHourlyIntensity, PeriodInsights, PeriodTagItem } from "@agent-resume/core";
+import type { PeriodComposerSendInsights, PeriodDailyTrendItem, PeriodHourlyIntensity, PeriodInsights } from "@agent-resume/core";
 
 export type StatusFilter = "all" | "completed" | "active" | "blocked";
 
@@ -8,10 +8,8 @@ type Translate = (key: string, ...args: Array<string | number>) => string;
 export interface PeriodInsightsDashboardProps {
   insights: PeriodInsights | null;
   loading: boolean;
-  selectedTag: string | null;
   statusFilter: StatusFilter;
   selectedProject: string | null;
-  onSelectTag: (tag: string | null) => void;
   onSelectStatus: (status: StatusFilter) => void;
   onSelectProject: (projectPath: string | null) => void;
   onOpenSession: (provider: string, id: string) => void;
@@ -59,10 +57,8 @@ function generateBezierPath(points: Array<{ x: number; y: number }>): string {
 export function PeriodInsightsDashboard({
   insights,
   loading,
-  selectedTag,
   statusFilter,
   selectedProject,
-  onSelectTag,
   onSelectStatus,
   onSelectProject,
   onOpenSession,
@@ -81,36 +77,7 @@ export function PeriodInsightsDashboard({
     return null;
   }
 
-  const { sessionStats, blockedSessions, tagStats, llmUsage, dailyTrend, composerInsights } = insights;
-
-  // Group tags into 4 intuitive categories
-  const taskTags = tagStats.byCategory.task_type || [];
-  const techTags = tagStats.byCategory.tech_stack || [];
-  const bizAndArchTags = [
-    ...(tagStats.byCategory.business_domain || []),
-    ...(tagStats.byCategory.architecture || [])
-  ];
-  const problemAndEnvTags = [
-    ...(tagStats.byCategory.problem_domain || []),
-    ...(tagStats.byCategory.context_env || []),
-    ...(tagStats.byCategory.concept_knowledge || [])
-  ];
-
-  const renderTagChip = (item: PeriodTagItem) => {
-    const isSelected = selectedTag === item.normalizedTag;
-    return (
-      <button
-        key={item.normalizedTag}
-        type="button"
-        className={`insights-tag-chip${isSelected ? " active" : ""}`}
-        onClick={() => onSelectTag(isSelected ? null : item.normalizedTag)}
-        title={`${item.displayName} (${item.sessionCount} sessions)`}
-      >
-        <span className="insights-tag-name">{item.displayName}</span>
-        <span className="insights-tag-count">{item.sessionCount}</span>
-      </button>
-    );
-  };
+  const { sessionStats, blockedSessions, llmUsage, dailyTrend, composerInsights } = insights;
 
   return (
     <section className="insights-dashboard" aria-label={t("desktop.report.insightsTitle")}>
@@ -293,58 +260,6 @@ export function PeriodInsightsDashboard({
                 </button>
               </div>
             ))}
-          </div>
-        </div>
-      )}
-
-      {/* 5. Tags & Knowledge Spectrum */}
-      {tagStats.totalTags > 0 && (
-        <div className="insights-tags-section">
-          <div className="insights-tags-head">
-            <strong>🏷️ {t("desktop.report.insightsTags")}</strong>
-            {selectedTag && (
-              <button
-                type="button"
-                className="tool-btn ghost-btn insights-clear-filter-btn"
-                onClick={() => onSelectTag(null)}
-              >
-                {t("desktop.report.insightsFilterClear")}
-              </button>
-            )}
-          </div>
-          <div className="insights-tag-categories">
-            {taskTags.length > 0 && (
-              <div className="insights-tag-group">
-                <span className="insights-tag-group-label">
-                  {t("desktop.report.insightsCategoryTaskType")}:
-                </span>
-                <div className="insights-tag-chips">{taskTags.map(renderTagChip)}</div>
-              </div>
-            )}
-            {techTags.length > 0 && (
-              <div className="insights-tag-group">
-                <span className="insights-tag-group-label">
-                  {t("desktop.report.insightsCategoryTechStack")}:
-                </span>
-                <div className="insights-tag-chips">{techTags.map(renderTagChip)}</div>
-              </div>
-            )}
-            {bizAndArchTags.length > 0 && (
-              <div className="insights-tag-group">
-                <span className="insights-tag-group-label">
-                  {t("desktop.report.insightsCategoryBusiness")}:
-                </span>
-                <div className="insights-tag-chips">{bizAndArchTags.map(renderTagChip)}</div>
-              </div>
-            )}
-            {problemAndEnvTags.length > 0 && (
-              <div className="insights-tag-group">
-                <span className="insights-tag-group-label">
-                  {t("desktop.report.insightsCategoryProblems")}:
-                </span>
-                <div className="insights-tag-chips">{problemAndEnvTags.map(renderTagChip)}</div>
-              </div>
-            )}
           </div>
         </div>
       )}

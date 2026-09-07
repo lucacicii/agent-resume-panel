@@ -162,7 +162,6 @@ const messages = {
   "desktop.agent.toolCategory.sessions": "Sessions",
   "desktop.agent.toolCategory.projects": "Projects",
   "desktop.agent.toolCategory.link_graph": "Link graph",
-  "desktop.agent.toolCategory.tags": "Tags",
   "desktop.agent.toolCategory.skills": "Skills",
   "desktop.agent.toolCategory.browser": "Browser",
   "desktop.agent.toolCategory.mcp": "MCP",
