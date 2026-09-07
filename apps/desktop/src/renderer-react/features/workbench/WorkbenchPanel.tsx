@@ -3890,6 +3890,17 @@ export function WorkbenchPanel(): ReactPortal | null {
     const identity = sessionIdentityFromKey(activeTerminal?.sessionKey);
     return identity ? { ...identity, iconProvider: identity.provider } : null;
   }, [activeTerminal?.sessionKey, currentAcpChat]);
+  const activeTranscriptRunning = useMemo(() => {
+    if (currentAcpChat) {
+      const runtime = acpRuntimeByPaneKey[currentAcpChat.key];
+      return runtime?.status === "running";
+    }
+    if (activeTerminal) {
+      const runtime = sessionRuntimeByPaneKey.get(activeTerminal.key);
+      return runtime?.status === "running";
+    }
+    return false;
+  }, [acpRuntimeByPaneKey, activeTerminal, currentAcpChat, sessionRuntimeByPaneKey]);
   useEffect(() => {
     if (!activeTranscriptTarget) {
       lastAutoTranscriptKey.current = "";
@@ -8236,7 +8247,7 @@ export function WorkbenchPanel(): ReactPortal | null {
                 column: target.column || 1,
                 endColumn: target.endColumn || (target.column || 1) + 1
               });
-            }} /> : side === "transcript" ? <SessionTranscriptPane provider={activeTranscriptTarget?.provider || ""} sessionId={activeTranscriptTarget?.sessionId || ""} iconProvider={activeTranscriptTarget?.iconProvider || activeTranscriptTarget?.provider || ""} active={active && side === "transcript"} fontSize={settings?.workbench?.transcriptFontSize ?? 14} focusUserMessage={transcriptFocus} /> : <div className="wb-side-pane">
+            }} /> : side === "transcript" ? <SessionTranscriptPane provider={activeTranscriptTarget?.provider || ""} sessionId={activeTranscriptTarget?.sessionId || ""} iconProvider={activeTranscriptTarget?.iconProvider || activeTranscriptTarget?.provider || ""} active={active && side === "transcript"} isRunning={activeTranscriptRunning} fontSize={settings?.workbench?.transcriptFontSize ?? 14} focusUserMessage={transcriptFocus} /> : <div className="wb-side-pane">
             <div className="wb-side-pane-head wb-git-pane-head">
               <span className="wb-side-pane-title">{gitHistoryContext ? gitHistoryTitle : t("desktop.workbench.sidePanelGit")}</span>
               <div className="wb-git-actions">{gitHistoryContext ? <>

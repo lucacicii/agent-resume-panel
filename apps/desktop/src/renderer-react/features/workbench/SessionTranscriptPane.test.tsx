@@ -222,6 +222,29 @@ describe("SessionTranscriptPane", () => {
     expect(table.textContent).toContain("Val 1");
   });
 
+  it("silently synchronizes live preview when isRunning is true", async () => {
+    let preview = {
+      title: "Live",
+      messages: [{ role: "assistant", text: "Starting..." }]
+    };
+    apiMocks.previewSession.mockImplementation(async () => ({
+      session: { provider: "codex", id: "session-live" },
+      preview
+    }));
+
+    render(<SessionTranscriptPane provider="codex" sessionId="session-live" active isRunning />);
+    expect(await screen.findByText("Starting...")).toBeTruthy();
+    expect(apiMocks.previewSession).toHaveBeenCalledTimes(1);
+
+    preview = {
+      title: "Live",
+      messages: [{ role: "assistant", text: "Starting... token 1" }]
+    };
+
+    await waitFor(() => expect(apiMocks.previewSession.mock.calls.length).toBeGreaterThan(1), { timeout: 3500 });
+    expect(await screen.findByText("Starting... token 1")).toBeTruthy();
+  });
+
   it("does not fetch while inactive", async () => {
     render(<SessionTranscriptPane provider="codex" sessionId="session-1" active={false} />);
     await act(async () => undefined);

@@ -23,7 +23,8 @@ const TranscriptMessageRow = React.memo(function TranscriptMessageRow({
   thinkingExpanded,
   onToggleThinking,
   thinkingLabel,
-  renderMarkdownView
+  renderMarkdownView,
+  isStreaming = false
 }: {
   message: TranscriptMessage;
   isSelected: boolean;
@@ -34,6 +35,7 @@ const TranscriptMessageRow = React.memo(function TranscriptMessageRow({
   onToggleThinking: () => void;
   thinkingLabel: string;
   renderMarkdownView: boolean;
+  isStreaming?: boolean;
 }): React.JSX.Element {
   return (
     <article
@@ -74,6 +76,7 @@ const TranscriptMessageRow = React.memo(function TranscriptMessageRow({
         renderMarkdownView ? (
           <StreamdownRenderer
             content={message.text}
+            isAnimating={isStreaming}
             className="wb-transcript-md markdown-body"
           />
         ) : (
@@ -91,11 +94,14 @@ type TranscriptPreview = {
   warning?: string;
 };
 
+const LIVE_REFRESH_INTERVAL_MS = 1_500;
+
 export function SessionTranscriptPane({
   provider,
   sessionId,
   iconProvider,
   active,
+  isRunning = false,
   fontSize = 14,
   focusUserMessage
 }: {
@@ -103,6 +109,7 @@ export function SessionTranscriptPane({
   sessionId: string;
   iconProvider?: string;
   active: boolean;
+  isRunning?: boolean;
   fontSize?: number;
   focusUserMessage?: { text: string; sentAtMs?: number; nonce: number } | null;
 }): React.JSX.Element {
@@ -160,6 +167,36 @@ export function SessionTranscriptPane({
     setExpandedThinking({});
     void loadPreview();
   }, [active, loadPreview, provider, sessionId]);
+
+  const hasActiveSelection = (): boolean => {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0) return false;
+    const root = bodyRef.current;
+    const anchor = selection.anchorNode;
+    return Boolean(root && anchor && root.contains(anchor));
+  };
+
+  const syncLivePreview = useCallback(async () => {
+    if (!provider || !sessionId) return;
+    if (hasActiveSelection()) return;
+    try {
+      const result = await desktopApi().previewSession({ provider, id: sessionId });
+      if (!sameTranscriptPreview(previewRef.current, result.preview)) {
+        previewRef.current = result.preview;
+        setPreview(result.preview);
+      }
+    } catch {
+      // Silent poll failures are ignored to avoid disrupting the UI
+    }
+  }, [provider, sessionId]);
+
+  useEffect(() => {
+    if (!active || !provider || !sessionId || !isRunning) return;
+    const timer = window.setInterval(() => {
+      void syncLivePreview();
+    }, LIVE_REFRESH_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [active, isRunning, provider, sessionId, syncLivePreview]);
 
   const model = useMemo(
     () => buildSessionTranscriptModel(preview?.messages || []),
@@ -305,23 +342,28 @@ export function SessionTranscriptPane({
             ref={bodyRef}
             style={{ ["--wb-transcript-font-size" as string]: `${fontSize}px` }}
           >
-            {visible.messages.length ? visible.messages.map((message) => (
-              <TranscriptMessageRow
-                key={message.id}
-                message={message}
-                isSelected={selectedId === message.id}
-                roleIconProvider={roleIconProvider}
-                roleLabelText={roleLabel(message)}
-                stamp={formatTimestamp(message.timestamp)}
-                thinkingExpanded={expandedThinking[message.id] === true}
-                onToggleThinking={() => setExpandedThinking((current) => ({
-                  ...current,
-                  [message.id]: !current[message.id]
-                }))}
-                thinkingLabel={t("desktop.workbench.transcriptThinking")}
-                renderMarkdownView={renderMarkdownView}
-              />
-            )) : (
+            {visible.messages.length ? visible.messages.map((message, index) => {
+              const isLast = index === visible.messages.length - 1;
+              const isStreaming = isRunning && isLast && message.role === "assistant";
+              return (
+                <TranscriptMessageRow
+                  key={message.id}
+                  message={message}
+                  isSelected={selectedId === message.id}
+                  roleIconProvider={roleIconProvider}
+                  roleLabelText={roleLabel(message)}
+                  stamp={formatTimestamp(message.timestamp)}
+                  thinkingExpanded={expandedThinking[message.id] === true}
+                  onToggleThinking={() => setExpandedThinking((current) => ({
+                    ...current,
+                    [message.id]: !current[message.id]
+                  }))}
+                  thinkingLabel={t("desktop.workbench.transcriptThinking")}
+                  renderMarkdownView={renderMarkdownView}
+                  isStreaming={isStreaming}
+                />
+              );
+            }) : (
               <p className="muted wb-transcript-status">{t("desktop.workbench.transcriptNoMatches")}</p>
             )}
           </div>
