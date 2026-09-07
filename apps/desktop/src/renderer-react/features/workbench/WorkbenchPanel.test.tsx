@@ -2480,11 +2480,10 @@ describe("WorkbenchPanel", () => {
     expect(document.querySelector(".workbench-layout > .wb-terminal-composer-stack")).toBeTruthy();
     expect(document.querySelector(".wb-terminal-pane .wb-terminal-composer")).toBeNull();
     expect(document.querySelector(".wb-transcript-compose .wb-terminal-composer")).toBeNull();
-    expect(document.querySelector(".wb-side-panel")).not.toBeNull();
+    expect(document.querySelector(".wb-session-split-transcript")).not.toBeNull();
     expect(document.querySelector(".sheet")).toBeNull();
     expect(terminalDestroy).not.toHaveBeenCalled();
     expect(xtermMocks.instances).toHaveLength(1);
-    expect(localStorage.getItem("wb-side-panel-width")).toBe("420");
   });
 
   it("hides session scrollbars from launch and shows only the TUI waterdrop in the alternate buffer", async () => {
@@ -2972,7 +2971,7 @@ describe("WorkbenchPanel", () => {
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
     fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
     await waitFor(() => expect(document.querySelector(".wb-terminal-loading")).toBeNull());
-    await screen.findByRole("button", { name: "Transcript" });
+    await waitFor(() => expect(document.querySelector(".wb-session-split-transcript")).not.toBeNull());
 
     fireEvent.click(screen.getAllByRole("button", { name: "Explorer" })[0]!);
     await waitFor(() => expect(document.querySelector(".wb-explorer-side-pane")).not.toBeNull());
@@ -3054,7 +3053,7 @@ describe("WorkbenchPanel", () => {
     fireEvent.click(await screen.findByTitle("/work/app"));
     fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
     await waitFor(() => expect(document.querySelector(".wb-terminal-loading")).toBeNull());
-    await screen.findByRole("button", { name: "Transcript" });
+    await waitFor(() => expect(document.querySelector(".wb-session-split-transcript")).not.toBeNull());
 
     fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
     await waitFor(() => expect(document.querySelector(".wb-git-panel")).not.toBeNull());
@@ -3183,7 +3182,7 @@ describe("WorkbenchPanel", () => {
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
     fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
     await waitFor(() => expect(document.querySelector(".wb-terminal-loading")).toBeNull());
-    await screen.findByRole("button", { name: "Transcript" });
+    await waitFor(() => expect(document.querySelector(".wb-session-split-transcript")).not.toBeNull());
 
     fireEvent.click(screen.getAllByRole("button", { name: "Explorer" })[0]!);
     await waitFor(() => expect(document.querySelector(".wb-explorer-side-pane")).not.toBeNull());

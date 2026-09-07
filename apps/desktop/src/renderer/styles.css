@@ -6911,6 +6911,139 @@ code {
   flex: 1 1 auto;
 }
 
+/* Hybrid split: top Markdown observation + bottom TUI console */
+#react-workbench .wb-terminal-pane-wrap.wb-terminal-pane-split {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+}
+
+.wb-session-split-transcript {
+  flex: 1 1 auto;
+  min-height: 100px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.wb-session-split-transcript .wb-side-pane {
+  flex: 1 1 auto;
+  height: 100%;
+}
+
+.wb-session-split-transcript .wb-transcript-body {
+  padding: 16px 24px 24px;
+}
+
+.wb-session-split-transcript .wb-transcript-md.markdown-body {
+  max-width: 100%;
+}
+
+.wb-session-split-tui {
+  flex: 0 0 auto;
+  min-height: 28px;
+  display: flex;
+  flex-direction: column;
+  background: var(--wb-terminal-surface, #1e1e1e);
+  border-top: 1px solid var(--color-separator);
+  overflow: hidden;
+}
+
+.wb-session-split-tui.is-collapsed {
+  height: 28px !important;
+}
+
+.wb-session-split-tui-head {
+  flex: 0 0 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px 0 12px;
+  background: var(--color-window-bg);
+  border-bottom: 1px solid var(--color-separator);
+  user-select: none;
+  cursor: pointer;
+}
+
+.wb-session-split-tui-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.wb-session-split-tui-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.wb-session-split-tui-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+.wb-session-split-tui-body .wb-terminal-pane {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.wb-terminal-fullscreen-bar {
+  position: absolute;
+  top: 8px;
+  right: 14px;
+  z-index: 10;
+  opacity: 0.82;
+  transition: opacity 0.15s ease;
+}
+
+.wb-terminal-fullscreen-bar:hover {
+  opacity: 1;
+}
+
+.wb-terminal-mode-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm, 4px);
+  border: 1px solid var(--color-separator);
+  background: var(--color-control-bg);
+  color: var(--color-label-primary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.wb-terminal-mode-toggle-btn:hover {
+  background: var(--color-secondary-bg);
+}
+
+body.is-pane-resizing-v {
+  cursor: row-resize !important;
+  user-select: none;
+}
+
+body.is-pane-resizing-v * {
+  cursor: row-resize !important;
+}
+
 #react-workbench .wb-git-diff-pane {
   display: flex;
   flex: 1 1 auto;
@@ -7475,7 +7608,7 @@ code {
   max-width: 100%;
 }
 
-.wb-transcript-body .markdown-body table {
+.wb-transcript-body .markdown-body table:not([data-streamdown="table"]) {
   display: block;
   max-width: 100%;
   min-width: 0;
@@ -19397,5 +19530,276 @@ html[data-window-mode="browser"] #react-chrome {
     opacity: 1;
     transform: scale(1);
   }
+}
+
+/* ==========================================================================
+   Streamdown Table & Fullscreen Controls
+   ========================================================================== */
+
+/* Normal table card container in markdown prose */
+[data-streamdown="table-wrapper"] {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+  margin: 10px 0 !important;
+  border: 1px solid var(--color-separator, var(--border)) !important;
+  border-radius: var(--radius-md, 8px) !important;
+  background: var(--color-fill-tertiary, color-mix(in srgb, var(--text) 3%, transparent)) !important;
+  padding: 6px 8px 8px !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  min-width: 0 !important;
+}
+
+/* Action toolbar row (top-right of table) */
+[data-streamdown="table-wrapper"] > div:first-child:not(:last-child) {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 4px !important;
+  margin-bottom: 2px !important;
+  flex-shrink: 0 !important;
+}
+
+/* Common toolbar buttons (Copy, Download, Fullscreen) */
+[data-streamdown="table-wrapper"] button {
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-label-secondary, var(--muted));
+  border-radius: var(--radius-sm, 4px);
+  padding: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  width: 26px;
+  height: 26px;
+  box-sizing: border-box;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+[data-streamdown="table-wrapper"] button:hover:not(:disabled) {
+  background: var(--color-fill-secondary, rgba(255, 255, 255, 0.08));
+  color: var(--color-label-primary, var(--text));
+  border-color: var(--color-separator, rgba(255, 255, 255, 0.1));
+}
+
+[data-streamdown="table-wrapper"] button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+[data-streamdown="table-wrapper"] button svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+/* Dropdown positioning container for copy / download */
+[data-streamdown="table-wrapper"] .relative {
+  position: relative !important;
+  display: inline-flex !important;
+}
+
+/* Dropdown popover menu */
+[data-streamdown="table-wrapper"] .relative > div {
+  position: absolute !important;
+  top: calc(100% + 4px) !important;
+  right: 0 !important;
+  z-index: 1000 !important;
+  min-width: 130px !important;
+  background: var(--color-elevated-bg, var(--panel)) !important;
+  border: 1px solid var(--color-separator, var(--border)) !important;
+  border-radius: var(--radius-md, 6px) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35) !important;
+  padding: 4px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 2px !important;
+}
+
+/* Dropdown menu items */
+[data-streamdown="table-wrapper"] .relative > div button {
+  display: flex !important;
+  width: 100% !important;
+  height: auto !important;
+  text-align: left !important;
+  padding: 6px 10px !important;
+  font-size: 12px !important;
+  line-height: 1.4 !important;
+  border-radius: var(--radius-sm, 4px) !important;
+  border: none !important;
+  color: var(--color-label-primary, var(--text)) !important;
+  background: transparent !important;
+  justify-content: flex-start !important;
+}
+
+[data-streamdown="table-wrapper"] .relative > div button:hover {
+  background: var(--color-fill-secondary, rgba(255, 255, 255, 0.08)) !important;
+  color: var(--color-label-primary, var(--text)) !important;
+}
+
+/* Scroll container wrapping the table */
+[data-streamdown="table-wrapper"] > div:last-child {
+  display: block !important;
+  overflow-x: auto !important;
+  overflow-y: auto !important;
+  border-radius: var(--radius-sm, 6px) !important;
+  border: 1px solid var(--color-separator, var(--border)) !important;
+  background: var(--color-control-bg, var(--panel)) !important;
+  max-width: 100% !important;
+  max-height: 420px;
+}
+
+/* Table element */
+[data-streamdown="table"] {
+  display: table !important;
+  width: 100% !important;
+  min-width: 100% !important;
+  border-collapse: collapse !important;
+  font-size: 12.5px !important;
+  line-height: 1.45 !important;
+  margin: 0 !important;
+}
+
+[data-streamdown="table"] thead {
+  background: color-mix(in srgb, var(--text) 6%, var(--color-control-bg, var(--panel))) !important;
+}
+
+[data-streamdown="table"] th {
+  padding: 6px 10px !important;
+  font-weight: 600 !important;
+  font-size: 12px !important;
+  text-align: left !important;
+  color: var(--color-label-primary, var(--text)) !important;
+  border: 1px solid var(--color-separator, var(--border)) !important;
+  white-space: nowrap !important;
+}
+
+[data-streamdown="table"] td {
+  padding: 6px 10px !important;
+  font-size: 12px !important;
+  color: var(--color-label-primary, var(--text)) !important;
+  border: 1px solid var(--color-separator, var(--border)) !important;
+  vertical-align: top !important;
+}
+
+[data-streamdown="table"] tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--text) 2.5%, transparent) !important;
+}
+
+[data-streamdown="table"] tbody tr:hover {
+  background: color-mix(in srgb, var(--text) 5%, transparent) !important;
+}
+
+/* Fullscreen Table Overlay */
+[data-streamdown="table-fullscreen"] {
+  position: fixed !important;
+  inset: 0 !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 99999 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  background: var(--color-window-bg, #1e1e1e) !important;
+  color: var(--color-label-primary, #ffffff) !important;
+  box-sizing: border-box !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  animation: tableFullscreenFadeIn 0.15s ease-out;
+}
+
+@keyframes tableFullscreenFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.995);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+[data-streamdown="table-fullscreen"] [data-streamdown="table-wrapper"] {
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100% !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+}
+
+[data-streamdown="table-fullscreen"] [data-streamdown="table-wrapper"] > div:first-child {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 8px !important;
+  padding: 10px 18px !important;
+  border-bottom: 1px solid var(--color-separator, var(--border)) !important;
+  background: var(--color-secondary-bg, var(--panel)) !important;
+  box-sizing: border-box !important;
+  flex-shrink: 0 !important;
+  -webkit-app-region: no-drag;
+}
+
+[data-streamdown="table-fullscreen"] button {
+  width: 28px !important;
+  height: 28px !important;
+  border-radius: var(--radius-sm, 5px) !important;
+}
+
+[data-streamdown="table-fullscreen"] button:hover {
+  background: var(--color-fill-secondary, rgba(255, 255, 255, 0.1)) !important;
+  color: var(--color-label-primary, var(--text)) !important;
+}
+
+[data-streamdown="table-fullscreen"] button[title*="fullscreen" i]:hover,
+[data-streamdown="table-fullscreen"] button:last-child:hover {
+  background: rgba(239, 68, 68, 0.2) !important;
+  color: #fca5a5 !important;
+}
+
+[data-streamdown="table-fullscreen"] [data-streamdown="table-wrapper"] > div:last-child {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: auto !important;
+  padding: 16px 20px !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background: var(--color-window-bg, var(--bg)) !important;
+  box-sizing: border-box !important;
+}
+
+[data-streamdown="table-fullscreen"] [data-streamdown="table"] thead {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 10 !important;
+  background: var(--color-secondary-bg, var(--panel)) !important;
+  box-shadow: 0 1px 0 var(--color-separator, var(--border)) !important;
+}
+
+[data-streamdown="table-fullscreen"] [data-streamdown="table"] th {
+  padding: 10px 14px !important;
+  font-size: 13px !important;
+  background: var(--color-secondary-bg, var(--panel)) !important;
+}
+
+[data-streamdown="table-fullscreen"] [data-streamdown="table"] td {
+  padding: 8px 14px !important;
+  font-size: 13px !important;
 }
 

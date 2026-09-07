@@ -233,7 +233,7 @@ type BrowserPane = {
   startUrl?: string;
   surfaceKind: "workbench" | "window";
 };
-type SideView = "files" | "git" | "search" | "scripts" | "linkgraph" | "transcript" | null;
+type SideView = "files" | "git" | "search" | "scripts" | "linkgraph" | null;
 type SearchMatch = Awaited<ReturnType<DesktopApi["workbenchSearchText"]>>["matches"][number];
 type SearchReveal = { path: string; line: number; column: number; endColumn: number };
 type ProjectFilter = "all" | "pinned";
@@ -407,8 +407,9 @@ const FOLDERS_COLLAPSED_KEY = "wb-folders-collapsed";
 const FOLDERS_WIDTH_KEY = "sidebar-folders-width";
 const LIST_WIDTH_KEY = "wb-list-pane-width";
 const SIDE_WIDTH_KEY = "wb-side-panel-width";
+const SESSION_VIEW_MODE_KEY = "wb-session-view-mode";
+const TUI_SPLIT_HEIGHT_KEY = "wb-tui-split-height";
 const DEFAULT_SIDE_WIDTH = 320;
-const TRANSCRIPT_SIDE_WIDTH = 420;
 const ALL_PROJECTS_PANE_KEY = "__all_projects__";
 const UNCLASSIFIED_FOLDER_ID = "__workbench_unclassified__";
 
@@ -2613,6 +2614,12 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [foldersWidth, setFoldersWidth] = useState(() => storedWidth(FOLDERS_WIDTH_KEY, 260, 140, 560));
   const [listWidth, setListWidth] = useState(() => storedWidth(LIST_WIDTH_KEY, 324, 240, 720));
   const [sideWidth, setSideWidth] = useState(() => storedWidth(SIDE_WIDTH_KEY, 320, 240, 840));
+  const [sessionViewMode, setSessionViewMode] = useState<"hybrid" | "terminal">(() => {
+    const stored = storageString(SESSION_VIEW_MODE_KEY);
+    return stored === "terminal" ? "terminal" : "hybrid";
+  });
+  const [tuiSplitHeight, setTuiSplitHeight] = useState(() => storedWidth(TUI_SPLIT_HEIGHT_KEY, 180, 80, 600));
+  const [tuiCollapsed, setTuiCollapsed] = useState(false);
   const [terminals, setTerminals] = useState<TerminalPane[]>([]);
   const [pendingSessions, setPendingSessions] = useState<PendingWorkbenchSession[]>([]);
   const [terminalCreating, setTerminalCreating] = useState(false);
@@ -2622,7 +2629,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [browsers, setBrowsers] = useState<BrowserPane[]>([]);
   const [activePanes, setActivePanes] = useState<Record<string, string>>({});
   const [side, setSide] = useState<SideView>(null);
-  const lastAutoTranscriptKey = useRef("");
   const [scriptPackages, setScriptPackages] = useState<ScriptPackageView[]>([]);
   const [scriptsLoading, setScriptsLoading] = useState(false);
   const [scriptsError, setScriptsError] = useState("");
@@ -3883,13 +3889,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       };
     });
   }, [activePane, aliases, composerDrafts, composerTips, sessionRuntimeByPaneKey, sessionTitles, terminals]);
-  const activeTranscriptTarget = useMemo(() => {
-    if (currentAcpChat) {
-      return { provider: "chat", sessionId: currentAcpChat.recordId, iconProvider: currentAcpChat.provider };
-    }
-    const identity = sessionIdentityFromKey(activeTerminal?.sessionKey);
-    return identity ? { ...identity, iconProvider: identity.provider } : null;
-  }, [activeTerminal?.sessionKey, currentAcpChat]);
   const activeTranscriptRunning = useMemo(() => {
     if (currentAcpChat) {
       const runtime = acpRuntimeByPaneKey[currentAcpChat.key];
@@ -3901,21 +3900,13 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
     return false;
   }, [acpRuntimeByPaneKey, activeTerminal, currentAcpChat, sessionRuntimeByPaneKey]);
-  useEffect(() => {
-    if (!activeTranscriptTarget) {
-      lastAutoTranscriptKey.current = "";
-      if (side === "transcript") setSide(null);
-      return;
-    }
-    const key = `${activeTranscriptTarget.provider}:${activeTranscriptTarget.sessionId}`;
-    if (lastAutoTranscriptKey.current === key) return;
-    lastAutoTranscriptKey.current = key;
-    if (sideWidth === DEFAULT_SIDE_WIDTH) {
-      setSideWidth(TRANSCRIPT_SIDE_WIDTH);
-      localStorage.setItem(SIDE_WIDTH_KEY, String(TRANSCRIPT_SIDE_WIDTH));
-    }
-    setSide("transcript");
-  }, [activeTranscriptTarget, sideWidth]);
+  const toggleSessionViewMode = useCallback(() => {
+    setSessionViewMode((current) => {
+      const next = current === "hybrid" ? "terminal" : "hybrid";
+      localStorage.setItem(SESSION_VIEW_MODE_KEY, next);
+      return next;
+    });
+  }, []);
   const workbenchPaneGroups: Array<{ group: WorkbenchPaneGroup; keys: string[] }> = [
     {
       group: "session",
@@ -4318,7 +4309,7 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   const openComposerTip = useCallback((paneKey: string, tip: ComposerSendTip) => {
     activateComposerPane(paneKey);
-    setSide("transcript");
+    setSessionViewMode("hybrid");
     setTranscriptFocus({ text: tip.text, sentAtMs: tip.createdAtMs, nonce: Date.now() });
   }, [activateComposerPane]);
 
@@ -7516,17 +7507,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   }, [searchMatches]);
   const searchFileCount = searchGroups.length;
   const searchMatchCount = searchMatches.length;
-  const openTranscriptSide = (forceOpen = false) => {
-    if (!forceOpen && side === "transcript") {
-      setSide(null);
-      return;
-    }
-    if (sideWidth === DEFAULT_SIDE_WIDTH) {
-      setSideWidth(TRANSCRIPT_SIDE_WIDTH);
-      localStorage.setItem(SIDE_WIDTH_KEY, String(TRANSCRIPT_SIDE_WIDTH));
-    }
-    setSide("transcript");
-  };
   const setWidth = (kind: "folders" | "list" | "side", delta: number) => {
     const current = kind === "folders" ? foldersWidth : kind === "list" ? listWidth : sideWidth;
     const limits = kind === "folders" ? [140, 560] : kind === "list" ? [240, 720] : [240, 840];
@@ -7925,7 +7905,6 @@ export function WorkbenchPanel(): ReactPortal | null {
           <button type="button" className={`wb-detail-tool${side === "scripts" ? " active" : ""}`} aria-pressed={side === "scripts"} aria-label={t("desktop.workbench.sidePanelScripts")} title={t("desktop.workbench.sidePanelScripts")} onClick={() => setSide((current) => current === "scripts" ? null : "scripts")}><ThemeIcon name="play" size={16} /></button>
           <button type="button" className={`wb-detail-tool${side === "search" ? " active" : ""}`} aria-pressed={side === "search"} aria-label={t("desktop.workbench.sidePanelSearch")} title={t("desktop.workbench.sidePanelSearch")} onClick={() => setSide((current) => current === "search" ? null : "search")}><ThemeIcon name="search" size={16} /></button>
           <button type="button" className={`wb-detail-tool${side === "linkgraph" ? " active" : ""}`} aria-pressed={side === "linkgraph"} aria-label={t("desktop.workbench.sidePanelLinkGraph")} title={t("desktop.workbench.sidePanelLinkGraph")} onClick={() => setSide((current) => current === "linkgraph" ? null : "linkgraph")}><ThemeIcon name="waypoints" size={16} /></button>
-          {activeTranscriptTarget ? <button type="button" className={`wb-detail-tool${side === "transcript" ? " active" : ""}`} aria-pressed={side === "transcript"} aria-label={t("desktop.workbench.sidePanelTranscript")} title={t("desktop.workbench.sidePanelTranscript")} onClick={() => openTranscriptSide()}><ThemeIcon name="history" size={16} /></button> : null}
           <button type="button" className={`wb-detail-tool${side === "git" ? " active" : ""}`} aria-pressed={side === "git"} aria-label={t("desktop.workbench.sidePanelGit")} title={t("desktop.workbench.sidePanelGit")} onClick={() => setSide((current) => current === "git" ? null : "git")}><ThemeIcon name="git-branch" size={16} /></button>
         </div>
       </div>
@@ -8063,7 +8042,108 @@ export function WorkbenchPanel(): ReactPortal | null {
         {active && headerSlot ? createPortal(<>{collapseToggle}{detailHead}</>, headerSlot) : null}
         <div className="wb-detail-body">
           <div className="wb-terminal-shell">{paneTabGroups}<div className="wb-terminal-stack">{terminals.filter((pane) => pane.projectPath === selectedProject && pane.key === activePane).map((pane) => {
-            return <div key={pane.key} className="wb-terminal-pane-wrap"><TerminalView pane={pane} active={active} themeId={terminalThemeId} appearance={desktopAppearance} rendererMode={terminalRendererMode} engineType={terminalEngine} onPty={onPty} onDetach={onPtyDetach} onInput={onTerminalInput} onInitialPromptSubmitted={onInitialPromptSubmitted} mouseTracking={terminalMouseTrackingRef} /></div>;
+            const sessionIdentity = sessionIdentityFromKey(pane.sessionKey);
+            const isSession = pane.group === "session" && Boolean(sessionIdentity);
+            const showSplit = isSession && sessionViewMode === "hybrid" && Boolean(sessionIdentity);
+
+            if (showSplit && sessionIdentity) {
+              return (
+                <div key={pane.key} className="wb-terminal-pane-wrap wb-terminal-pane-split">
+                  <div className="wb-session-split-transcript">
+                    <SessionTranscriptPane
+                      provider={sessionIdentity.provider}
+                      sessionId={sessionIdentity.sessionId}
+                      iconProvider={sessionIdentity.provider}
+                      active={active}
+                      isRunning={activeTranscriptRunning}
+                      fontSize={settings?.workbench?.transcriptFontSize ?? 14}
+                      focusUserMessage={transcriptFocus}
+                    />
+                  </div>
+                  <ResizeHandle
+                    orientation="horizontal"
+                    label={t("desktop.workbench.resizeTerminalSplit")}
+                    onDelta={(delta) => {
+                      setTuiSplitHeight((prev) => {
+                        const next = Math.max(80, Math.min(600, prev - delta));
+                        localStorage.setItem(TUI_SPLIT_HEIGHT_KEY, String(next));
+                        return next;
+                      });
+                    }}
+                  />
+                  <div
+                    className={`wb-session-split-tui${tuiCollapsed ? " is-collapsed" : ""}`}
+                    style={{ height: tuiCollapsed ? "28px" : `${tuiSplitHeight}px` }}
+                  >
+                    <div
+                      className="wb-session-split-tui-head"
+                      onClick={() => setTuiCollapsed((c) => !c)}
+                    >
+                      <span className="wb-session-split-tui-title">
+                        <ThemeIcon name="terminal" size={13} />
+                        <span>{t("desktop.workbench.terminalConsole")}</span>
+                      </span>
+                      <div className="wb-session-split-tui-actions" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          className="wb-git-action-btn"
+                          onClick={() => setTuiCollapsed((c) => !c)}
+                          title={tuiCollapsed ? t("desktop.common.expand") : t("desktop.common.collapse")}
+                          aria-label={tuiCollapsed ? t("desktop.common.expand") : t("desktop.common.collapse")}
+                        >
+                          <ThemeIcon name={tuiCollapsed ? "chevron-up" : "chevron-down"} size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          className="wb-git-action-btn"
+                          onClick={toggleSessionViewMode}
+                          title={t("desktop.workbench.fullTerminalMode")}
+                          aria-label={t("desktop.workbench.fullTerminalMode")}
+                        >
+                          <ThemeIcon name="terminal" size={13} />
+                        </button>
+                      </div>
+                    </div>
+                    {!tuiCollapsed ? (
+                      <div className="wb-session-split-tui-body">
+                        <TerminalView
+                          pane={pane}
+                          active={active}
+                          themeId={terminalThemeId}
+                          appearance={desktopAppearance}
+                          rendererMode={terminalRendererMode}
+                          engineType={terminalEngine}
+                          onPty={onPty}
+                          onDetach={onPtyDetach}
+                          onInput={onTerminalInput}
+                          onInitialPromptSubmitted={onInitialPromptSubmitted}
+                          mouseTracking={terminalMouseTrackingRef}
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              <div key={pane.key} className="wb-terminal-pane-wrap">
+                {isSession ? (
+                  <div className="wb-terminal-fullscreen-bar">
+                    <button
+                      type="button"
+                      className="wb-terminal-mode-toggle-btn"
+                      onClick={toggleSessionViewMode}
+                      title={t("desktop.workbench.splitViewMode")}
+                    >
+                      <ThemeIcon name="file-text" size={13} />
+                      <span>{t("desktop.workbench.splitViewMode")}</span>
+                    </button>
+                  </div>
+                ) : null}
+                <TerminalView pane={pane} active={active} themeId={terminalThemeId} appearance={desktopAppearance} rendererMode={terminalRendererMode} engineType={terminalEngine} onPty={onPty} onDetach={onPtyDetach} onInput={onTerminalInput} onInitialPromptSubmitted={onInitialPromptSubmitted} mouseTracking={terminalMouseTrackingRef} />
+              </div>
+            );
           })}{editorFindOpen && currentEditor ? <div className="wb-editor-find-bar app-inline-search" role="search">
             <ThemeIcon name="search" size={14} aria-hidden="true" />
             <input
@@ -8247,7 +8327,7 @@ export function WorkbenchPanel(): ReactPortal | null {
                 column: target.column || 1,
                 endColumn: target.endColumn || (target.column || 1) + 1
               });
-            }} /> : side === "transcript" ? <SessionTranscriptPane provider={activeTranscriptTarget?.provider || ""} sessionId={activeTranscriptTarget?.sessionId || ""} iconProvider={activeTranscriptTarget?.iconProvider || activeTranscriptTarget?.provider || ""} active={active && side === "transcript"} isRunning={activeTranscriptRunning} fontSize={settings?.workbench?.transcriptFontSize ?? 14} focusUserMessage={transcriptFocus} /> : <div className="wb-side-pane">
+            }} /> : <div className="wb-side-pane">
             <div className="wb-side-pane-head wb-git-pane-head">
               <span className="wb-side-pane-title">{gitHistoryContext ? gitHistoryTitle : t("desktop.workbench.sidePanelGit")}</span>
               <div className="wb-git-actions">{gitHistoryContext ? <>
