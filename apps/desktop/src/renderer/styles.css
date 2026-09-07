@@ -7414,8 +7414,11 @@ code {
 .wb-transcript-body {
   flex: 1 1 auto;
   min-height: 0;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 8px 10px 12px;
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .wb-transcript-body .preview-msg .role {
@@ -7439,11 +7442,15 @@ code {
   white-space: normal;
   word-break: normal;
   overflow-wrap: break-word;
-  user-select: none;
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
 }
 
 .wb-transcript-body .preview-msg .role {
   user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
 }
 
 .wb-transcript-plain {
@@ -7464,6 +7471,17 @@ code {
   white-space: normal;
   word-break: normal;
   overflow-wrap: break-word;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.wb-transcript-body .markdown-body table {
+  display: block;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  box-sizing: border-box;
+  border-collapse: collapse;
 }
 
 .wb-transcript-md.markdown-body pre,
