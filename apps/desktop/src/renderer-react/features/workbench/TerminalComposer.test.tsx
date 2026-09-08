@@ -21,7 +21,22 @@ const COMPOSER_MESSAGES: Record<string, string> = {
   "desktop.workbench.terminalComposerHint": "Click to type. Enter pastes into the terminal without sending. Shift+Enter adds a new line.",
   "desktop.workbench.terminalComposerSend": "Send to terminal",
   "desktop.workbench.terminalComposerSuggestions": "Command suggestions",
-  "desktop.workbench.terminalComposerSlashSuggestions": "Slash phrases",
+  "desktop.workbench.terminalComposerSlashSuggestions": "Slash commands",
+  "desktop.workbench.tuiSlash.help": "Show TUI commands",
+  "desktop.workbench.tuiSlash.clear": "Clear the conversation",
+  "desktop.workbench.tuiSlash.compact": "Compact context",
+  "desktop.workbench.tuiSlash.model": "Switch model",
+  "desktop.workbench.tuiSlash.new": "Start a new session",
+  "desktop.workbench.tuiSlash.quit": "Quit the agent",
+  "desktop.workbench.tuiSlash.exit": "Exit the agent",
+  "desktop.workbench.tuiSlash.review": "Review changes",
+  "desktop.workbench.tuiSlash.undo": "Undo last change",
+  "desktop.workbench.tuiSlash.redo": "Redo last change",
+  "desktop.workbench.tuiSlash.resume": "Resume a session",
+  "desktop.workbench.tuiSlash.tokens": "Show token usage",
+  "desktop.workbench.tuiSlash.init": "Initialize project files",
+  "desktop.workbench.tuiSlash.share": "Share this session",
+  "desktop.workbench.tuiSlash.permissions": "Permission settings",
   "desktop.workbench.terminalComposerDirectorySuggestions": "Directory suggestions",
   "desktop.workbench.terminalComposerDirectoryLoading": "Loading directories…",
   "desktop.workbench.terminalComposerDirectoryEmpty": "No folders in this project",
@@ -66,6 +81,8 @@ async function renderComposer(options: {
   tips?: Array<{ id: string; text: string; createdAtMs: number }>;
   onChange?: (value: string) => void;
   onSendToTerminal?: () => void;
+  onRunSlashCommand?: (command: { name: string }, args?: string) => void;
+  tuiSlashCommands?: Array<{ name: string; descriptionKey: string; needsTerminalFocus: boolean }>;
   onActivate?: () => void;
   onOpenTip?: (tip: { id: string; text: string; createdAtMs: number }) => void;
   onClose?: () => void;
@@ -76,6 +93,7 @@ async function renderComposer(options: {
   registerSpy: ReturnType<typeof vi.fn>;
   onChange: ReturnType<typeof vi.fn>;
   onSendToTerminal: ReturnType<typeof vi.fn>;
+  onRunSlashCommand: ReturnType<typeof vi.fn>;
   onActivate: ReturnType<typeof vi.fn>;
   onClose: ReturnType<typeof vi.fn>;
 }> {
@@ -86,6 +104,7 @@ async function renderComposer(options: {
   });
   const onChange = options.onChange ? vi.fn(options.onChange) : vi.fn();
   const onSendToTerminal = options.onSendToTerminal ? vi.fn(options.onSendToTerminal) : vi.fn();
+  const onRunSlashCommand = options.onRunSlashCommand ? vi.fn(options.onRunSlashCommand) : vi.fn();
   const onActivate = options.onActivate ? vi.fn(options.onActivate) : vi.fn();
   const onClose = options.onClose ? vi.fn(options.onClose) : vi.fn();
   window.agentResume = {
@@ -117,11 +136,13 @@ async function renderComposer(options: {
           onChange(next);
         }}
         onSendToTerminal={onSendToTerminal}
+        onRunSlashCommand={onRunSlashCommand}
         onActivate={onActivate}
         onOpenTip={options.onOpenTip}
         onClose={onClose}
         registerFocus={registerSpy}
         slashPhrases={options.slashPhrases}
+        tuiSlashCommands={options.tuiSlashCommands}
       />
     );
   }
@@ -135,7 +156,7 @@ async function renderComposer(options: {
       COMPOSER_MESSAGES["desktop.workbench.terminalComposerPlaceholder"]
     );
   });
-  return { map, container, registerSpy, onChange, onSendToTerminal, onActivate, onClose };
+  return { map, container, registerSpy, onChange, onSendToTerminal, onRunSlashCommand, onActivate, onClose };
 }
 
 function composerEl(container: HTMLElement): HTMLElement {
@@ -512,6 +533,128 @@ describe("TerminalComposer", () => {
     expect(onActivate).toHaveBeenCalled();
   });
 
+  it("scrolls the active slash command into view when arrowing through a long list", async () => {
+    const { onRunSlashCommand } = await renderComposer({
+      tuiSlashCommands: [
+        { name: "help", descriptionKey: "desktop.workbench.tuiSlash.help", needsTerminalFocus: false },
+        { name: "clear", descriptionKey: "desktop.workbench.tuiSlash.clear", needsTerminalFocus: false },
+        { name: "compact", descriptionKey: "desktop.workbench.tuiSlash.compact", needsTerminalFocus: true },
+        { name: "model", descriptionKey: "desktop.workbench.tuiSlash.model", needsTerminalFocus: true },
+        { name: "new", descriptionKey: "desktop.workbench.tuiSlash.new", needsTerminalFocus: false },
+        { name: "quit", descriptionKey: "desktop.workbench.tuiSlash.quit", needsTerminalFocus: false },
+        { name: "exit", descriptionKey: "desktop.workbench.tuiSlash.exit", needsTerminalFocus: false }
+      ]
+    });
+    focusInput();
+    fireEvent.change(textbox(), { target: { value: "/" } });
+    const listbox = await screen.findByRole("listbox", { name: "Slash commands" });
+    const options = within(listbox).getAllByRole("option");
+    const spies = options.map((option) => {
+      const spy = vi.fn();
+      Object.defineProperty(option, "scrollIntoView", { configurable: true, value: spy });
+      return spy;
+    });
+    fireEvent.keyDown(textbox(), { key: "ArrowDown" });
+    await waitFor(() => expect(spies[1]).toHaveBeenCalledWith({ block: "nearest" }));
+    fireEvent.keyDown(textbox(), { key: "ArrowDown" });
+    fireEvent.keyDown(textbox(), { key: "ArrowDown" });
+    fireEvent.keyDown(textbox(), { key: "ArrowDown" });
+    fireEvent.keyDown(textbox(), { key: "ArrowDown" });
+    fireEvent.keyDown(textbox(), { key: "ArrowDown" });
+    await waitFor(() => expect(spies[6]).toHaveBeenCalledWith({ block: "nearest" }));
+    expect(onRunSlashCommand).not.toHaveBeenCalled();
+  });
+
+  it("keeps the arrow-key slash highlight when the command list is replaced with an equivalent array", async () => {
+    const commands = [
+      { name: "help", descriptionKey: "desktop.workbench.tuiSlash.help", needsTerminalFocus: false },
+      { name: "clear", descriptionKey: "desktop.workbench.tuiSlash.clear", needsTerminalFocus: false },
+      { name: "compact", descriptionKey: "desktop.workbench.tuiSlash.compact", needsTerminalFocus: true }
+    ];
+    function HighlightHarness(): React.JSX.Element {
+      const [value, setValue] = useState("");
+      const [tick, setTick] = useState(0);
+      return (
+        <>
+          <button type="button" onClick={() => setTick((current) => current + 1)}>rerender</button>
+          <TerminalComposer
+            pane={{ key: "terminal:1", cwd: "/work/app", group: "session", projectPath: "/work/app" }}
+            ptyId={7}
+            activePane
+            projectName="app"
+            sessionTitle="Fix renderer"
+            value={value}
+            onChange={setValue}
+            onSendToTerminal={() => undefined}
+            onActivate={() => undefined}
+            onClose={() => undefined}
+            registerFocus={() => () => undefined}
+            tuiSlashCommands={commands.map((item) => ({ ...item, tick }))}
+          />
+        </>
+      );
+    }
+    window.agentResume = {
+      getI18nBundle: vi.fn(async () => ({ locale: "en", messages: COMPOSER_MESSAGES })),
+      onLocaleChanged: vi.fn(() => () => undefined),
+      workbenchListDirectory: workbenchListDirectoryMock,
+      notesClipboardHasImage: vi.fn(() => false),
+      workbenchPasteClipboardImage: vi.fn(async () => null)
+    } as unknown as typeof window.agentResume;
+    render(<I18nProvider><HighlightHarness /></I18nProvider>);
+    await waitFor(() => expect(screen.getByRole("textbox")).toBeTruthy());
+    focusInput();
+    fireEvent.change(textbox(), { target: { value: "/" } });
+    const listbox = await screen.findByRole("listbox", { name: "Slash commands" });
+    expect(within(listbox).getByText("/help").closest("[role=option]")?.classList.contains("is-active")).toBe(true);
+    fireEvent.keyDown(textbox(), { key: "ArrowDown" });
+    expect(within(listbox).getByText("/clear").closest("[role=option]")?.classList.contains("is-active")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "rerender" }));
+    expect(within(listbox).getByText("/clear").closest("[role=option]")?.classList.contains("is-active")).toBe(true);
+  });
+
+  it("runs a TUI slash command from the merged menu without inserting a phrase", async () => {
+    const { onChange, onSendToTerminal, onRunSlashCommand } = await renderComposer({
+      tuiSlashCommands: [
+        { name: "clear", descriptionKey: "desktop.workbench.tuiSlash.clear", needsTerminalFocus: false },
+        { name: "compact", descriptionKey: "desktop.workbench.tuiSlash.compact", needsTerminalFocus: true }
+      ],
+      slashPhrases: [{ trigger: "review", phrase: "Please review this change." }]
+    });
+    focusInput();
+    fireEvent.change(textbox(), { target: { value: "/cle" } });
+    const listbox = await screen.findByRole("listbox", { name: "Slash commands" });
+    expect(within(listbox).getByText("/clear")).toBeTruthy();
+    expect(within(listbox).queryByText("/review")).toBeNull();
+    fireEvent.keyDown(textbox(), { key: "Enter" });
+    expect(onRunSlashCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "clear" }),
+      ""
+    );
+    expect(onSendToTerminal).not.toHaveBeenCalled();
+    expect(onChange).toHaveBeenCalledWith("");
+    expect(screen.queryByRole("listbox", { name: "Slash commands" })).toBeNull();
+  });
+
+  it("sends a whole-input TUI slash command on Enter even after dismissing the menu", async () => {
+    const { onSendToTerminal, onRunSlashCommand } = await renderComposer({
+      tuiSlashCommands: [
+        { name: "clear", descriptionKey: "desktop.workbench.tuiSlash.clear", needsTerminalFocus: false }
+      ]
+    });
+    focusInput();
+    fireEvent.change(textbox(), { target: { value: "/clear" } });
+    await screen.findByRole("listbox", { name: "Slash commands" });
+    fireEvent.keyDown(textbox(), { key: "Escape" });
+    expect(screen.queryByRole("listbox", { name: "Slash commands" })).toBeNull();
+    fireEvent.keyDown(textbox(), { key: "Enter" });
+    expect(onRunSlashCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "clear" }),
+      ""
+    );
+    expect(onSendToTerminal).not.toHaveBeenCalled();
+  });
+
   it("opens slash phrases on a leading / and inserts without sending", async () => {
     const { onChange, onSendToTerminal } = await renderComposer({
       slashPhrases: [
@@ -521,13 +664,13 @@ describe("TerminalComposer", () => {
     });
     focusInput();
     fireEvent.change(textbox(), { target: { value: "/re" } });
-    const listbox = await screen.findByRole("listbox", { name: "Slash phrases" });
+    const listbox = await screen.findByRole("listbox", { name: "Slash commands" });
     expect(within(listbox).getByText("/review")).toBeTruthy();
     expect(within(listbox).queryByText("/fix")).toBeNull();
     fireEvent.keyDown(textbox(), { key: "Enter" });
     expect(onChange).toHaveBeenCalledWith("Please review this change.");
     expect(onSendToTerminal).not.toHaveBeenCalled();
-    expect(screen.queryByRole("listbox", { name: "Slash phrases" })).toBeNull();
+    expect(screen.queryByRole("listbox", { name: "Slash commands" })).toBeNull();
   });
 
   it("does not accept a slash phrase on Shift+Enter", async () => {
@@ -536,7 +679,7 @@ describe("TerminalComposer", () => {
     });
     focusInput();
     fireEvent.change(textbox(), { target: { value: "/re" } });
-    await screen.findByRole("listbox", { name: "Slash phrases" });
+    await screen.findByRole("listbox", { name: "Slash commands" });
     onChange.mockClear();
     fireEvent.keyDown(textbox(), { key: "Enter", shiftKey: true });
     expect(onChange).not.toHaveBeenCalled();
@@ -550,7 +693,7 @@ describe("TerminalComposer", () => {
     });
     focusInput();
     fireEvent.change(textbox(), { target: { value: "please /re" } });
-    const listbox = await screen.findByRole("listbox", { name: "Slash phrases" });
+    const listbox = await screen.findByRole("listbox", { name: "Slash commands" });
     expect(within(listbox).getByText("/review")).toBeTruthy();
     fireEvent.keyDown(textbox(), { key: "Enter" });
     expect(onChange).toHaveBeenCalledWith("please Please review this change.");
@@ -561,14 +704,14 @@ describe("TerminalComposer", () => {
     await renderComposer();
     focusInput();
     fireEvent.change(textbox(), { target: { value: "/review" } });
-    expect(screen.queryByRole("listbox", { name: "Slash phrases" })).toBeNull();
+    expect(screen.queryByRole("listbox", { name: "Slash commands" })).toBeNull();
     cleanup();
     await renderComposer({
       slashPhrases: [{ trigger: "review", phrase: "Please review this change." }]
     });
     focusInput();
     fireEvent.change(textbox(), { target: { value: "/usr/bin" } });
-    expect(screen.queryByRole("listbox", { name: "Slash phrases" })).toBeNull();
+    expect(screen.queryByRole("listbox", { name: "Slash commands" })).toBeNull();
   });
 
   it("keeps directory suggestions above slash phrases", async () => {
@@ -580,7 +723,7 @@ describe("TerminalComposer", () => {
     fireEvent.change(textbox(), { target: { value: "#s" } });
     const listbox = await screen.findByRole("listbox", { name: "Directory suggestions" });
     expect(await within(listbox).findByText("#src")).toBeTruthy();
-    expect(screen.queryByRole("listbox", { name: "Slash phrases" })).toBeNull();
+    expect(screen.queryByRole("listbox", { name: "Slash commands" })).toBeNull();
   });
 
   it("Escape dismisses slash phrases without sending", async () => {
@@ -589,9 +732,9 @@ describe("TerminalComposer", () => {
     });
     focusInput();
     fireEvent.change(textbox(), { target: { value: "/re" } });
-    await screen.findByRole("listbox", { name: "Slash phrases" });
+    await screen.findByRole("listbox", { name: "Slash commands" });
     fireEvent.keyDown(textbox(), { key: "Escape" });
-    expect(screen.queryByRole("listbox", { name: "Slash phrases" })).toBeNull();
+    expect(screen.queryByRole("listbox", { name: "Slash commands" })).toBeNull();
     expect(onSendToTerminal).not.toHaveBeenCalled();
     expect(textbox().value).toBe("/re");
   });

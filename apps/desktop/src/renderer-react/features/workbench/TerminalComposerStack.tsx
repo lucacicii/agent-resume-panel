@@ -9,6 +9,10 @@ import {
   type TerminalComposerPane
 } from "./TerminalComposer";
 import {
+  tuiSlashCommandsForProvider,
+  type TuiSlashCommand
+} from "./tuiSlashCommands";
+import {
   loadTerminalComposerPosition,
   saveTerminalComposerPosition
 } from "./terminalComposerHistory";
@@ -24,6 +28,7 @@ export type TerminalComposerStackItem = {
   status: SessionDotStatus;
   value: string;
   tips: ComposerSendTip[];
+  provider?: string;
 };
 
 /** Active session composer last (visual bottom). No active session keeps input order. */
@@ -38,13 +43,14 @@ export function TerminalComposerStack(props: {
   items: TerminalComposerStackItem[];
   onChange: (paneKey: string, value: string) => void;
   onSendToTerminal: (paneKey: string) => void;
+  onRunSlashCommand?: (paneKey: string, command: TuiSlashCommand, args?: string) => void;
   onActivate: (paneKey: string) => void;
   onOpenTip: (paneKey: string, tip: ComposerSendTip) => void;
   onClose: (paneKey: string) => void;
-  registerFocus: (key: string, focus: () => void) => () => void;
+  registerFocus: (key: string, focus: (options?: { caret?: "end" }) => void) => () => void;
   slashPhrases?: WorkbenchComposerSlashPhrase[];
 }): React.JSX.Element | null {
-  const { items, onChange, onSendToTerminal, onActivate, onOpenTip, onClose, registerFocus, slashPhrases = [] } = props;
+  const { items, onChange, onSendToTerminal, onRunSlashCommand, onActivate, onOpenTip, onClose, registerFocus, slashPhrases = [] } = props;
   const { t } = useI18n();
   const stackRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState(() => loadTerminalComposerPosition(COMPOSER_STACK_POSITION_KEY));
@@ -139,11 +145,13 @@ export function TerminalComposerStack(props: {
             tips={item.tips}
             onChange={(value) => onChange(item.pane.key, value)}
             onSendToTerminal={() => onSendToTerminal(item.pane.key)}
+            onRunSlashCommand={onRunSlashCommand ? (command, args) => onRunSlashCommand(item.pane.key, command, args) : undefined}
             onActivate={() => onActivate(item.pane.key)}
             onOpenTip={(tip) => onOpenTip(item.pane.key, tip)}
             onClose={() => onClose(item.pane.key)}
             registerFocus={registerFocus}
             slashPhrases={slashPhrases}
+            tuiSlashCommands={tuiSlashCommandsForProvider(item.provider)}
           />
         ))}
       </div>
