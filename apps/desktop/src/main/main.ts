@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, powerMonitor, screen, shell } from "electron";
+import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, powerMonitor, screen, shell, Tray } from "electron";
 import { existsSync, readFileSync } from "node:fs";
 import { constants } from "node:fs";
 import * as fs from "node:fs/promises";
@@ -166,8 +166,15 @@ import {
 import { STANDALONE_NOTE_INITIAL_CONTENT } from "../shared/standaloneNote";
 import {
   parseWorkbenchActiveSessionDots,
+  parseWorkbenchFocusSessionRequest,
   parseWorkbenchSendSelectionRequest
 } from "../shared/workbenchSelection";
+import {
+  hitTestTrayDotFromScreen,
+  sessionDotsTrayImage,
+  trayTooltip,
+  visibleTrayDots
+} from "./sessionDotsTray";
 import { checkForDesktopUpdate, getAppVersion } from "./updateCheck";
 import { loadPanelDbPaths } from "./panelDatabases";
 import { buildI18nBundle, desktopT, initI18nService } from "./i18nService";
@@ -381,12 +388,22 @@ let mainWindow: BrowserWindow | null = null;
 let mainWindowReadyToShow = false;
 let mainWindowRendererReady = false;
 let settingsWindow: BrowserWindow | null = null;
+let sessionDotsTray: Tray | null = null;
+let pendingTrayFocus: { paneKey: string; projectPath?: string } | null = null;
 let browserSettingsCache: import("@agent-resume/core").DesktopBrowserSettings | null = null;
+
+function flushPendingTrayFocus(): void {
+  if (!pendingTrayFocus || !mainWindow || mainWindow.isDestroyed() || !mainWindowRendererReady) return;
+  const payload = pendingTrayFocus;
+  pendingTrayFocus = null;
+  mainWindow.webContents.send("workbench:focusSession", payload);
+}
 
 function showMainWindowIfReady(): void {
   if (!mainWindowReadyToShow || !mainWindowRendererReady) return;
-  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.isVisible()) return;
-  mainWindow.show();
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (!mainWindow.isVisible()) mainWindow.show();
+  flushPendingTrayFocus();
 }
 type StandaloneNoteWindowState = {
   noteId: string;
@@ -454,6 +471,59 @@ function closeSettingsWindowIfOpen(): void {
     settingsWindow.close();
   }
   settingsWindow = null;
+}
+
+function syncSessionDotsTray(): void {
+  if (process.platform !== "darwin") return;
+  const dots = workbenchActiveSessions;
+  const image = sessionDotsTrayImage(dots);
+  const tooltip = trayTooltip(dots);
+  if (!sessionDotsTray) {
+    sessionDotsTray = new Tray(image);
+    sessionDotsTray.setIgnoreDoubleClickEvents(true);
+    sessionDotsTray.on("click", (_event, bounds, position) => {
+      const visible = visibleTrayDots(workbenchActiveSessions);
+      if (visible.length === 0) {
+        revealMainWindow();
+        return;
+      }
+      const trayBounds = sessionDotsTray?.getBounds() || bounds;
+      const cursor = screen.getCursorScreenPoint();
+      const index = hitTestTrayDotFromScreen(cursor.x, trayBounds, visible.length, position);
+      const target = index == null ? visible[0] : visible[index];
+      if (!target) {
+        revealMainWindow();
+        return;
+      }
+      pendingTrayFocus = {
+        paneKey: target.paneKey,
+        projectPath: target.projectPath || undefined
+      };
+      const window = revealMainWindow();
+      if (!window || window.isDestroyed()) return;
+      if (mainWindowRendererReady) flushPendingTrayFocus();
+    });
+  } else {
+    sessionDotsTray.setImage(image);
+  }
+  sessionDotsTray.setToolTip(tooltip);
+}
+
+function destroySessionDotsTray(): void {
+  if (!sessionDotsTray) return;
+  sessionDotsTray.destroy();
+  sessionDotsTray = null;
+}
+
+function revealMainWindow(): BrowserWindow | null {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createWindow();
+    return mainWindow;
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+  return mainWindow;
 }
 
 function configuredStandaloneNoteShortcut(settings: PanelSettings): string {
@@ -817,6 +887,7 @@ function initializeStandaloneNoteShortcut(settings: PanelSettings): void {
 function performQuitCleanup(): void {
   if (quitCleanupDone) return;
   quitCleanupDone = true;
+  destroySessionDotsTray();
   if (registeredStandaloneNoteShortcut) {
     globalShortcut.unregister(registeredStandaloneNoteShortcut);
     registeredStandaloneNoteShortcut = "";
@@ -1162,10 +1233,16 @@ function createWindow(): void {
   });
   mainWindow.on("restore", resumeSessionSync);
   mainWindow.on("hide", () => {
-    stopSessionSyncTimer();
     void flushImStreamingMessages();
   });
   mainWindow.on("minimize", stopSessionSyncTimer);
+  mainWindow.on("close", (event) => {
+    if (allowAppQuit) return;
+    const keepHidden = process.platform === "darwin" || standaloneNoteWindows.size > 0;
+    if (!keepHidden) return;
+    event.preventDefault();
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
+  });
   mainWindow.on("closed", () => {
     stopSessionSyncTimer();
     void flushImStreamingMessages();
@@ -1256,6 +1333,7 @@ async function installApplicationMenu(): Promise<void> {
   const sessionsItem: Electron.MenuItemConstructorOptions = {
     label: sessionsLabel,
     click: () => {
+      revealMainWindow();
       mainWindow?.webContents.send("sessions:open");
     }
   };
@@ -1312,6 +1390,7 @@ function registerIpc(): void {
     if (event.sender !== mainWindow?.webContents) return;
     mainWindowRendererReady = true;
     showMainWindowIfReady();
+    flushPendingTrayFocus();
   });
 
   ipcMain.on("workbench:setActive", (event, active: unknown) => {
@@ -1324,14 +1403,25 @@ function registerIpc(): void {
   ipcMain.on("workbench:activeSessions", (event, payload: unknown) => {
     if (event.sender !== mainWindow?.webContents) return;
     workbenchActiveSessions = parseWorkbenchActiveSessionDots(payload);
+    syncSessionDotsTray();
     broadcastToRenderers("workbench:activeSessions", workbenchActiveSessions);
   });
 
   safeHandle("workbench:getActiveSessions", async () => workbenchActiveSessions);
 
+  safeHandle("workbench:focusSession", async (_event, payload: unknown) => {
+    const request = parseWorkbenchFocusSessionRequest(payload);
+    const target = revealMainWindow();
+    if (!target || target.isDestroyed()) {
+      throw new Error("Workbench window is not available.");
+    }
+    target.webContents.send("workbench:focusSession", request);
+    return { ok: true as const };
+  });
+
   safeHandle("workbench:sendSelection", async (_event, payload: unknown) => {
     const request = parseWorkbenchSendSelectionRequest(payload);
-    const target = mainWindow;
+    const target = revealMainWindow();
     if (!target || target.isDestroyed()) {
       throw new Error("Workbench window is not available.");
     }
@@ -2976,6 +3066,8 @@ app.whenReady().then(async () => {
     });
   }
   createWindow();
+  syncSessionDotsTray();
+  nativeTheme.on("updated", () => syncSessionDotsTray());
 
   void (async () => {
     try {
@@ -3053,6 +3145,7 @@ app.whenReady().then(async () => {
       // Invariant fallback: settings must not outlive main
       closeSettingsWindowIfOpen();
       createWindow();
+      syncSessionDotsTray();
       startDesktopNotesIndexer();
       startSessionSummaryAuto();
       startSessionTranscriptIndexAuto();
@@ -3061,13 +3154,7 @@ app.whenReady().then(async () => {
       void refreshMemorySchedulerFromSettings();
       return;
     }
-    if (mainWindow.isMinimized()) {
-      mainWindow.restore();
-    }
-    showMainWindowIfReady();
-    if (mainWindow.isVisible()) {
-      mainWindow.focus();
-    }
+    revealMainWindow();
     void refreshMemorySchedulerFromSettings();
   });
 });
@@ -3080,13 +3167,15 @@ app.on("before-quit", (event) => {
     });
     return;
   }
+  allowAppQuit = true;
   performQuitCleanup();
 });
 
 app.on("window-all-closed", () => {
+  const notesOpen = standaloneNoteWindows.size > 0;
   // macOS: app stays in Dock without windows — keep scheduler/notes indexer running so
-  // scheduled digests still fire. Only non-darwin quits here; cleanup is in before-quit.
-  if (process.platform !== "darwin") {
+  // scheduled digests still fire. Hide-on-close also keeps the hidden main window alive.
+  if (process.platform !== "darwin" && !notesOpen) {
     stopMemoryScheduler();
     stopNotesIndexer();
     stopSessionSummaryAuto();
@@ -3094,8 +3183,6 @@ app.on("window-all-closed", () => {
     stopSessionEmbeddingIndexAuto();
     tryDestroyPtyOnQuit();
     app.quit();
-  } else {
-    tryDestroyPtyOnQuit();
   }
 });
 }

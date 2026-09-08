@@ -46,7 +46,7 @@ import { SelectionSendItems } from "../../selection/SelectionSendMenu";
 import { registerTerminalSelection } from "../../selection/terminalSelection";
 import { BrowserPaneView } from "../browser/BrowserPaneView";
 import type { BrowserSessionState } from "../../../shared/browserTypes";
-import type { WorkbenchSendSelectionRequest } from "../../../shared/workbenchSelection";
+import type { WorkbenchFocusSessionRequest, WorkbenchSendSelectionRequest } from "../../../shared/workbenchSelection";
 import {
   acpRuntimeToStatus,
   collectActiveSessionDots,
@@ -5251,7 +5251,17 @@ export function WorkbenchPanel(): ReactPortal | null {
       focusWorkbenchSessionFromRail(detail.paneKey, detail.projectPath || selectedProjectRef.current || "");
     };
     window.addEventListener("agent-resume:workbench-focus-session", onFocusSession);
-    return () => window.removeEventListener("agent-resume:workbench-focus-session", onFocusSession);
+    const api = desktopApi();
+    const stopIpc = typeof api.onWorkbenchFocusSession === "function"
+      ? api.onWorkbenchFocusSession((payload: WorkbenchFocusSessionRequest) => {
+          window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
+          focusWorkbenchSessionFromRail(payload.paneKey, payload.projectPath || selectedProjectRef.current || "");
+        })
+      : undefined;
+    return () => {
+      window.removeEventListener("agent-resume:workbench-focus-session", onFocusSession);
+      stopIpc?.();
+    };
   }, [focusWorkbenchSessionFromRail]);
 
   useEffect(() => {

@@ -727,7 +727,12 @@
       "desktop.workbench.tuiSlash.init": "Initialize project files",
       "desktop.workbench.tuiSlash.share": "Share this session",
       "desktop.workbench.tuiSlash.permissions": "Permission settings",
-      "desktop.workbench.sessionDot.idle": "Idle"
+      "desktop.workbench.sessionDot.idle": "Idle",
+      "desktop.workbench.sessionDots": "Active sessions",
+      "desktop.workbench.sessionDotsPet": "Session dots",
+      "desktop.workbench.sessionDotsPetEmpty": "No open sessions",
+      "desktop.workbench.sessionDotsOpenPet": "Open session dots window",
+      "desktop.menu.sessionDots": "Session Dots"
     },
     "sessions": {
       "desktop.sessions.sheetTitle": "Sessions (reference)",
@@ -1604,7 +1609,12 @@
       "desktop.workbench.tuiSlash.init": "初始化项目文件",
       "desktop.workbench.tuiSlash.share": "分享此会话",
       "desktop.workbench.tuiSlash.permissions": "权限设置",
-      "desktop.workbench.sessionDot.idle": "空闲"
+      "desktop.workbench.sessionDot.idle": "空闲",
+      "desktop.workbench.sessionDots": "活动会话",
+      "desktop.workbench.sessionDotsPet": "会话指示",
+      "desktop.workbench.sessionDotsPetEmpty": "暂无打开的会话",
+      "desktop.workbench.sessionDotsOpenPet": "打开会话指示窗口",
+      "desktop.menu.sessionDots": "会话指示"
     },
     "sessions": {
       "desktop.sessions.sheetTitle": "Sessions（参考）",
@@ -2170,6 +2180,11 @@
       "desktop.workbench.imSessionBadge": "IM",
       "desktop.workbench.imSessionBadgeHint": "IM から作成",
       "desktop.workbench.sessionDot.idle": "待機中",
+      "desktop.workbench.sessionDots": "アクティブなセッション",
+      "desktop.workbench.sessionDotsPet": "セッションドット",
+      "desktop.workbench.sessionDotsPetEmpty": "開いているセッションはありません",
+      "desktop.workbench.sessionDotsOpenPet": "セッションドットウィンドウを開く",
+      "desktop.menu.sessionDots": "セッションドット",
       "desktop.workbench.terminalComposerPastedImages": "貼り付けた画像",
       "desktop.workbench.terminalComposerRemoveImage": "画像を削除",
       "desktop.workbench.terminalComposerImagePreview": "画像プレビュー",

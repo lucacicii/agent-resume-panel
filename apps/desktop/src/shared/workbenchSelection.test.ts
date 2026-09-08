@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   parseWorkbenchActiveSessionDots,
+  parseWorkbenchFocusSessionRequest,
   parseWorkbenchSendSelectionRequest
 } from "./workbenchSelection";
 
@@ -53,6 +54,28 @@ describe("parseWorkbenchSendSelectionRequest", () => {
       text: "hello",
       paneKey: " "
     })).toThrow(/pane/i);
+  });
+});
+
+describe("parseWorkbenchFocusSessionRequest", () => {
+  it("accepts a pane key and optional project path", () => {
+    expect(parseWorkbenchFocusSessionRequest({
+      paneKey: "  terminal:9  ",
+      projectPath: " /work/app "
+    })).toEqual({
+      paneKey: "terminal:9",
+      projectPath: "/work/app"
+    });
+  });
+
+  it("omits a missing project path", () => {
+    expect(parseWorkbenchFocusSessionRequest({
+      paneKey: "acp:1"
+    })).toEqual({ paneKey: "acp:1" });
+  });
+
+  it("rejects a missing pane key", () => {
+    expect(() => parseWorkbenchFocusSessionRequest({ paneKey: " " })).toThrow(/pane/i);
   });
 });
 

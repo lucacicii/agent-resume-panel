@@ -476,7 +476,7 @@ textarea:focus-visible,
 }
 
 .app-nav-rail .rail-notes-dots,
-.app-nav-rail .rail-session-dots {
+.app-nav-rail .session-dots-cluster {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -493,18 +493,26 @@ textarea:focus-visible,
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent, var(--color-accent)) 18%, transparent);
 }
 
-/* Session cluster: neutral fill; stronger divider when notes sit above. */
-.app-nav-rail .rail-session-dots {
+/* Session cluster: shared by the nav rail and the desktop pet window. */
+.session-dots-cluster {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  -webkit-app-region: no-drag;
+}
+
+.app-nav-rail .session-dots-cluster {
   background: color-mix(in srgb, var(--color-fill-tertiary, var(--muted)) 35%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-separator, var(--border)) 70%, transparent);
 }
 
-.app-nav-rail .rail-session-dots:not(:first-child) {
+.app-nav-rail .session-dots-cluster:not(:first-child) {
   position: relative;
   margin-top: 2px;
 }
 
-.app-nav-rail .rail-session-dots:not(:first-child)::before {
+.app-nav-rail .session-dots-cluster:not(:first-child)::before {
   content: "";
   position: absolute;
   top: -5px;
@@ -527,23 +535,56 @@ textarea:focus-visible,
   pointer-events: none;
 }
 
+.session-dots-heading {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 14px;
+  margin-bottom: 1px;
+  color: var(--muted);
+  opacity: 0.85;
+}
+
 .app-nav-rail .rail-notes-dots .rail-dots-heading {
   color: var(--accent, var(--color-accent));
   opacity: 1;
 }
 
-.app-nav-rail .rail-session-dots .rail-dots-heading {
+.session-dots-heading {
   color: var(--color-success, var(--muted));
   opacity: 1;
 }
 
-.app-nav-rail .rail-dots-heading svg {
+.session-dots-heading-btn {
+  -webkit-app-region: no-drag;
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  pointer-events: auto;
+  cursor: pointer;
+  border-radius: var(--radius-md);
+}
+
+.session-dots-heading-btn:hover {
+  background: var(--color-fill-tertiary);
+}
+
+.session-dots-heading-btn:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+}
+
+.app-nav-rail .rail-dots-heading svg,
+.session-dots-heading svg {
   width: 12px;
   height: 12px;
 }
 
 .app-nav-rail .rail-note-dot-btn,
-.app-nav-rail .rail-session-dot-btn {
+.session-dot-btn {
   -webkit-app-region: no-drag;
   appearance: none;
   border: none;
@@ -559,12 +600,12 @@ textarea:focus-visible,
 }
 
 .app-nav-rail .rail-note-dot-btn:hover,
-.app-nav-rail .rail-session-dot-btn:hover {
+.session-dot-btn:hover {
   background: var(--color-fill-tertiary);
 }
 
 .app-nav-rail .rail-note-dot-btn:focus-visible,
-.app-nav-rail .rail-session-dot-btn:focus-visible {
+.session-dot-btn:focus-visible {
   outline: 2px solid var(--color-focus-ring);
   outline-offset: -2px;
 }
@@ -579,7 +620,7 @@ textarea:focus-visible,
   pointer-events: none;
 }
 
-.app-nav-rail .rail-session-dot {
+.session-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
@@ -588,34 +629,34 @@ textarea:focus-visible,
   pointer-events: none;
 }
 
-.app-nav-rail .rail-session-dot.is-awaiting {
+.session-dot.is-awaiting {
   background: var(--color-warning);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-warning) 22%, transparent);
-  animation: rail-session-dot-pulse 1.4s ease-in-out infinite;
+  animation: session-dot-pulse 1.4s ease-in-out infinite;
 }
 
-.app-nav-rail .rail-session-dot.is-running {
+.session-dot.is-running {
   background: var(--color-accent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
 }
 
-.app-nav-rail .rail-session-dot.is-connecting {
+.session-dot.is-connecting {
   background: var(--color-label-tertiary);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-label-tertiary) 20%, transparent);
 }
 
-.app-nav-rail .rail-session-dot.is-error {
+.session-dot.is-error {
   background: var(--color-destructive);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-destructive) 22%, transparent);
 }
 
-@keyframes rail-session-dot-pulse {
+@keyframes session-dot-pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.72; transform: scale(0.92); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .app-nav-rail .rail-session-dot.is-awaiting {
+  .session-dot.is-awaiting {
     animation: none;
   }
 }
