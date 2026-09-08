@@ -170,10 +170,10 @@ import {
   parseWorkbenchSendSelectionRequest
 } from "../shared/workbenchSelection";
 import {
+  composeTrayItems,
   hitTestTrayDotFromScreen,
   sessionDotsTrayImage,
-  trayTooltip,
-  visibleTrayDots
+  trayTooltip
 } from "./sessionDotsTray";
 import { checkForDesktopUpdate, getAppVersion } from "./updateCheck";
 import { loadPanelDbPaths } from "./panelDatabases";
@@ -475,24 +475,33 @@ function closeSettingsWindowIfOpen(): void {
 
 function syncSessionDotsTray(): void {
   if (process.platform !== "darwin") return;
-  const dots = workbenchActiveSessions;
-  const image = sessionDotsTrayImage(dots);
-  const tooltip = trayTooltip(dots);
+  const notes = listOpenStandaloneNotes();
+  const sessions = workbenchActiveSessions;
+  const items = composeTrayItems(notes, sessions);
+  const extra = notes.length + sessions.length - items.length;
+  const image = sessionDotsTrayImage(items);
+  const tooltip = trayTooltip(items, extra);
   if (!sessionDotsTray) {
     sessionDotsTray = new Tray(image);
     sessionDotsTray.setIgnoreDoubleClickEvents(true);
     sessionDotsTray.on("click", (_event, bounds, position) => {
-      const visible = visibleTrayDots(workbenchActiveSessions);
-      if (visible.length === 0) {
+      const current = composeTrayItems(listOpenStandaloneNotes(), workbenchActiveSessions);
+      if (current.length === 0) {
         revealMainWindow();
         return;
       }
       const trayBounds = sessionDotsTray?.getBounds() || bounds;
       const cursor = screen.getCursorScreenPoint();
-      const index = hitTestTrayDotFromScreen(cursor.x, trayBounds, visible.length, position);
-      const target = index == null ? visible[0] : visible[index];
+      const index = hitTestTrayDotFromScreen(cursor.x, trayBounds, current.length, position);
+      const target = index == null ? current[0] : current[index];
       if (!target) {
         revealMainWindow();
+        return;
+      }
+      if (target.kind === "note") {
+        void openStandaloneNoteById(target.noteId).catch((error) => {
+          void recordAppError({ source: "session-dots", message: "Could not focus floating note from tray.", error });
+        });
         return;
       }
       pendingTrayFocus = {
@@ -562,6 +571,7 @@ function listOpenStandaloneNotes(): OpenStandaloneNoteDot[] {
 
 function broadcastOpenStandaloneNotes(): void {
   broadcastToRenderers("standalone-note:changed", listOpenStandaloneNotes());
+  syncSessionDotsTray();
 }
 
 function settleStandaloneNoteCloseRequest(state: StandaloneNoteWindowState, closed: boolean): void {

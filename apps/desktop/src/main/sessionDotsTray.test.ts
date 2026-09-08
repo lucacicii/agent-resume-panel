@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  composeTrayItems,
   hitTestTrayDot,
   hitTestTrayDotFromScreen,
   renderSessionDotsTrayPng,
@@ -62,6 +63,23 @@ describe("hitTestTrayDot", () => {
   });
 });
 
+describe("composeTrayItems", () => {
+  it("puts notes first, then sessions, and caps the list", () => {
+    const items = composeTrayItems(
+      [{ noteId: "n1", title: "Scratch" }, { noteId: "n2", title: "Inbox" }],
+      dots
+    );
+    expect(items.map((item) => item.kind)).toEqual(["note", "note", "session", "session", "session"]);
+    expect(items[0]).toMatchObject({ kind: "note", noteId: "n1" });
+    const overflow = composeTrayItems(
+      Array.from({ length: 4 }, (_, i) => ({ noteId: `n${i}`, title: `N${i}` })),
+      Array.from({ length: 8 }, (_, i) => ({ paneKey: `t:${i}`, projectPath: "/p", title: `S${i}`, status: "open" as const }))
+    );
+    expect(overflow).toHaveLength(TRAY_MAX_DOTS);
+    expect(overflow.filter((item) => item.kind === "note")).toHaveLength(4);
+  });
+});
+
 describe("trayTooltip", () => {
   it("lists titles with status and overflow", () => {
     const many = [
@@ -73,7 +91,9 @@ describe("trayTooltip", () => {
         status: "open" as const
       }))
     ];
-    const tip = trayTooltip(many);
+    const items = composeTrayItems([], many);
+    const extra = many.length - items.length;
+    const tip = trayTooltip(items, extra);
     expect(tip).toContain("Needs you · Waiting");
     expect(tip).toContain("Busy · Running");
     expect(tip).toMatch(/\+\d+ more/);
@@ -82,11 +102,15 @@ describe("trayTooltip", () => {
   it("uses an empty-state line when nothing is open", () => {
     expect(trayTooltip([])).toBe("No open sessions");
   });
+
+  it("lists floating note titles without a session suffix", () => {
+    expect(trayTooltip(composeTrayItems([{ noteId: "n1", title: "Scratch pad" }], []))).toBe("Scratch pad");
+  });
 });
 
 describe("renderSessionDotsTrayPng", () => {
   it("writes a PNG whose size matches the visible layout at 2x", () => {
-    const png = renderSessionDotsTrayPng(dots, { scale: 2, dark: true });
+    const png = renderSessionDotsTrayPng(composeTrayItems([], dots), { scale: 2, dark: true });
     expect(png.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))).toBe(true);
     const width = png.readUInt32BE(16);
     const height = png.readUInt32BE(20);
