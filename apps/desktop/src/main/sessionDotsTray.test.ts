@@ -3,7 +3,11 @@ import {
   composeTrayItems,
   hitTestTrayDot,
   hitTestTrayDotFromScreen,
+  NOTE_COLOR_DARK,
+  NOTE_COLOR_LIGHT,
   renderSessionDotsTrayPng,
+  STATUS_COLORS_DARK,
+  STATUS_COLORS_LIGHT,
   trayDotCenterX,
   trayIconSize,
   trayTooltip,
@@ -119,3 +123,19 @@ describe("renderSessionDotsTrayPng", () => {
     expect(height).toBe(logical.height * 2);
   });
 });
+
+describe("tray color scheme", () => {
+  it("maps quiet slate gray for open, energetic green for running, and memo gold for notes", () => {
+    expect(STATUS_COLORS_LIGHT.open).toEqual([142, 142, 147]);
+    expect(STATUS_COLORS_DARK.open).toEqual([99, 99, 102]);
+    expect(STATUS_COLORS_LIGHT.running).toEqual([52, 199, 89]);
+    expect(STATUS_COLORS_DARK.running).toEqual([48, 209, 88]);
+    expect(STATUS_COLORS_LIGHT.connecting).toEqual([0, 122, 255]);
+    expect(STATUS_COLORS_DARK.connecting).toEqual([10, 132, 255]);
+    expect(STATUS_COLORS_LIGHT.awaiting_user).toEqual([255, 149, 0]);
+    expect(STATUS_COLORS_DARK.awaiting_user).toEqual([255, 159, 10]);
+    expect(NOTE_COLOR_LIGHT).toEqual([255, 204, 0]);
+    expect(NOTE_COLOR_DARK).toEqual([255, 214, 10]);
+  });
+});
+

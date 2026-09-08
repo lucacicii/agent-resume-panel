@@ -8,26 +8,26 @@ export const TRAY_GAP = 12;
 export const TRAY_DOT_DIAMETER = 11;
 export const TRAY_HEIGHT = 22;
 
-const STATUS_COLORS_LIGHT: Record<WorkbenchSessionDotStatus, [number, number, number]> = {
+export const STATUS_COLORS_LIGHT: Record<WorkbenchSessionDotStatus, [number, number, number]> = {
   awaiting_user: [255, 149, 0],
   error: [255, 59, 48],
-  running: [0, 122, 255],
-  connecting: [142, 142, 147],
-  open: [52, 199, 89]
+  running: [52, 199, 89],
+  connecting: [0, 122, 255],
+  open: [142, 142, 147]
 };
 
-const STATUS_COLORS_DARK: Record<WorkbenchSessionDotStatus, [number, number, number]> = {
+export const STATUS_COLORS_DARK: Record<WorkbenchSessionDotStatus, [number, number, number]> = {
   awaiting_user: [255, 159, 10],
   error: [255, 69, 58],
-  running: [10, 132, 255],
-  connecting: [174, 174, 178],
-  open: [48, 209, 88]
+  running: [48, 209, 88],
+  connecting: [10, 132, 255],
+  open: [99, 99, 102]
 };
 
-const IDLE_COLOR_LIGHT: [number, number, number] = [174, 174, 178];
-const IDLE_COLOR_DARK: [number, number, number] = [99, 99, 102];
-const NOTE_COLOR_LIGHT: [number, number, number] = [0, 122, 255];
-const NOTE_COLOR_DARK: [number, number, number] = [10, 132, 255];
+export const IDLE_COLOR_LIGHT: [number, number, number] = [174, 174, 178];
+export const IDLE_COLOR_DARK: [number, number, number] = [99, 99, 102];
+export const NOTE_COLOR_LIGHT: [number, number, number] = [255, 204, 0];
+export const NOTE_COLOR_DARK: [number, number, number] = [255, 214, 10];
 
 export type TrayNoteItem = { kind: "note"; noteId: string; title: string };
 export type TraySessionItem = {

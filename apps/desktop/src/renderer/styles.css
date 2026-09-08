@@ -21,6 +21,7 @@
   --color-destructive: #ff3b30;
   --color-success: #34c759;
   --color-warning: #ff9500;
+  --color-note: #ffcc00;
   --color-fill-primary: rgba(0, 122, 255, 0.14);
   --color-fill-secondary: rgba(0, 0, 0, 0.06);
   --color-fill-tertiary: rgba(0, 0, 0, 0.04);
@@ -147,6 +148,7 @@
   --color-destructive: #ff3b30;
   --color-success: #34c759;
   --color-warning: #ff9500;
+  --color-note: #ffcc00;
   --color-fill-primary: rgba(0, 122, 255, 0.14);
   --color-fill-secondary: rgba(0, 0, 0, 0.06);
   --color-fill-tertiary: rgba(0, 0, 0, 0.04);
@@ -191,6 +193,7 @@
   --color-destructive: #ff453a;
   --color-success: #30d158;
   --color-warning: #ff9f0a;
+  --color-note: #ffd60a;
   --color-fill-primary: rgba(10, 132, 255, 0.18);
   --color-fill-secondary: rgba(255, 255, 255, 0.08);
   --color-fill-tertiary: rgba(255, 255, 255, 0.05);
@@ -246,6 +249,7 @@
     --color-destructive: #ff453a;
     --color-success: #30d158;
     --color-warning: #ff9f0a;
+    --color-note: #ffd60a;
     --color-fill-primary: rgba(10, 132, 255, 0.18);
     --color-fill-secondary: rgba(255, 255, 255, 0.08);
     --color-fill-tertiary: rgba(255, 255, 255, 0.05);
@@ -615,8 +619,8 @@ textarea:focus-visible,
   width: 8px;
   height: 8px;
   border-radius: 2.5px;
-  background: var(--accent, var(--color-accent));
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, var(--color-accent)) 22%, transparent);
+  background: var(--color-note, #ffcc00);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-note, #ffcc00) 22%, transparent);
   pointer-events: none;
 }
 
@@ -624,8 +628,8 @@ textarea:focus-visible,
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--color-success);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-success) 18%, transparent);
+  background: var(--color-label-tertiary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-label-tertiary) 18%, transparent);
   pointer-events: none;
 }
 
@@ -636,13 +640,13 @@ textarea:focus-visible,
 }
 
 .session-dot.is-running {
-  background: var(--color-accent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
+  background: var(--color-success);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-success) 22%, transparent);
 }
 
 .session-dot.is-connecting {
-  background: var(--color-label-tertiary);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-label-tertiary) 20%, transparent);
+  background: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
 }
 
 .session-dot.is-error {
