@@ -1757,7 +1757,7 @@ describe("WorkbenchPanel", () => {
     });
     const composerInput = document.querySelector<HTMLTextAreaElement>(".workbench-layout .wb-terminal-composer-input");
     if (!composerInput) throw new Error("Session pane composer input not mounted");
-    expect(document.querySelector(".workbench-layout > .wb-terminal-composer-stack")).toBeTruthy();
+    expect(document.querySelector(".wb-terminal-pane-split .wb-terminal-composer-stack")).toBeTruthy();
     expect(document.querySelector(".wb-terminal-pane .wb-terminal-composer")).toBeNull();
     expect(document.querySelector(".wb-transcript-compose .wb-terminal-composer")).toBeNull();
     expect(xtermMocks.instances[0].focusCalls).toBe(0);
@@ -1801,7 +1801,7 @@ describe("WorkbenchPanel", () => {
     expect(document.querySelector<HTMLElement>(".wb-terminal-host")?.classList.contains("is-session")).toBe(false);
   });
 
-  it("pastes composer text into the TUI without submitting and keeps a user tip", async () => {
+  it("pastes composer text into the TUI without submitting and logs a user send", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
     document.body.append(host);
@@ -1864,11 +1864,10 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(terminalInput).toHaveBeenCalledWith({ id: 1, data: "inspect src" }));
     expect(composerInput.value).toBe("");
     expect(workbenchComposerSendAppend).toHaveBeenCalledWith(expect.objectContaining({ text: "inspect src", projectPath: "/work/app" }));
-    await waitFor(() => expect(document.querySelector(".wb-terminal-composer-tip")?.textContent).toBe("inspect src"));
     await waitFor(() => expect(xtermMocks.instances[0].focusCalls).toBeGreaterThan(0));
   });
 
-  it("runs a TUI slash command with a carriage return and skips composer tips", async () => {
+  it("runs a TUI slash command with a carriage return and skips composer send logging", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
     document.body.append(host);
@@ -1934,7 +1933,6 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(terminalInput).toHaveBeenCalledWith({ id: 1, data: "/clear\r" }));
     expect(workbenchComposerSendAppend).not.toHaveBeenCalled();
     expect(composerInput.value).toBe("");
-    expect(document.querySelector(".wb-terminal-composer-tip")).toBeNull();
     await waitFor(() => expect(xtermMocks.instances[0].focusCalls).toBeGreaterThan(0));
   });
 
@@ -2675,7 +2673,7 @@ describe("WorkbenchPanel", () => {
     expect(document.querySelector(".wb-git-pane-head")).toBeNull();
     expect(previewSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1" });
     expect(document.querySelector(".wb-terminal-host")).not.toBeNull();
-    expect(document.querySelector(".workbench-layout > .wb-terminal-composer-stack")).toBeTruthy();
+    expect(document.querySelector(".wb-terminal-pane-split .wb-terminal-composer-stack")).toBeTruthy();
     expect(document.querySelector(".wb-terminal-pane .wb-terminal-composer")).toBeNull();
     expect(document.querySelector(".wb-transcript-compose .wb-terminal-composer")).toBeNull();
     expect(document.querySelector(".wb-session-split-transcript")).not.toBeNull();

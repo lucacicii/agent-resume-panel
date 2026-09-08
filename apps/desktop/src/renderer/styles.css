@@ -11305,79 +11305,50 @@ textarea.wb-editor-host {
   }
 }
 
-/* TUI composer — Workbench-level floating stack for agent-session panes. */
+/* TUI composer — docked input bar under wb-session-split-tui. */
 .wb-terminal-composer-stack {
-  position: absolute;
-  left: 10px;
-  bottom: 8px;
-  z-index: 8;
+  position: relative;
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 6px;
-  width: 560px;
-  max-width: calc(100% - 8px);
-  pointer-events: none;
-}
-
-.wb-terminal-composer-stack > .wb-terminal-composer-grip,
-.wb-terminal-composer-stack-list {
-  pointer-events: auto;
+  background: var(--color-window-bg);
+  border-top: 1px solid var(--color-separator);
 }
 
 .wb-terminal-composer-stack-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
   min-width: 0;
   flex: 1 1 auto;
 }
 
 .wb-terminal-composer {
-  --tui-compose-bg: color-mix(in srgb, var(--color-elevated-bg) 92%, #000);
+  --tui-compose-bg: var(--color-secondary-bg);
   --tui-compose-border: var(--color-separator-opaque);
   --tui-compose-text: var(--color-label-primary);
   --tui-compose-muted: var(--color-label-secondary);
   --tui-compose-accent: var(--color-accent);
-  --tui-compose-shadow: var(--shadow-popover);
   position: relative;
   left: auto;
   bottom: auto;
-  z-index: 8;
+  z-index: auto;
+  width: 100%;
+  max-width: none;
+  min-height: 38px;
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 4px;
-  padding: 6px 8px 6px 8px;
-  border-radius: 12px;
-  border: 1px solid transparent;
-  background: transparent;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--tui-compose-border);
+  background: var(--tui-compose-bg);
   box-shadow: none;
   color: var(--tui-compose-text);
-  transition: width var(--duration-normal) var(--ease-out),
-    border-color var(--duration-fast) var(--ease-out),
+  transition: border-color var(--duration-fast) var(--ease-out),
     background var(--duration-fast) var(--ease-out),
     box-shadow var(--duration-fast) var(--ease-out);
-}
-
-.wb-terminal-composer.is-collapsed {
-  width: 100%;
-  max-width: none;
-  padding: 4px 6px;
-  border-color: transparent;
-  background: transparent;
-  box-shadow: none;
-}
-
-.wb-terminal-composer.is-expanded {
-  width: 100%;
-  max-width: none;
-  min-height: 40px;
-  border-color: var(--tui-compose-border);
-  background: var(--tui-compose-bg);
-  box-shadow: var(--tui-compose-shadow);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
 }
 
 .wb-terminal-composer-stack-list .wb-terminal-composer {
@@ -11386,223 +11357,13 @@ textarea.wb-editor-host {
   align-self: stretch;
 }
 
-.wb-terminal-composer.is-active-pane {
-  border-color: var(--color-accent);
-  background: var(--tui-compose-bg);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 35%, transparent),
-    var(--tui-compose-shadow);
-}
-
-.wb-terminal-composer.is-inactive-pane {
-  opacity: 1;
-  background: var(--color-secondary-bg);
-  border-color: var(--color-separator);
-}
-
-.wb-terminal-composer.is-expanded:focus-within {
+.wb-terminal-composer:focus-within {
   border-color: var(--color-focus-ring);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-focus-ring) 45%, transparent),
-    var(--tui-compose-shadow);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-focus-ring) 45%, transparent);
 }
 
 .wb-terminal-composer.is-drag-over {
   box-shadow: inset 0 0 0 2px var(--color-accent);
-}
-
-.wb-terminal-composer-stack > .wb-terminal-composer-grip,
-.wb-terminal-composer-grip {
-  appearance: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  align-self: flex-start;
-  width: 24px;
-  height: 24px;
-  margin: 0;
-  padding: 0;
-  border: none;
-  border-radius: 8px;
-  background: var(--color-accent);
-  color: #fff;
-  cursor: grab;
-  touch-action: none;
-  box-shadow: var(--shadow-popover);
-}
-
-.wb-terminal-composer-stack > .wb-terminal-composer-grip:hover,
-.wb-terminal-composer-grip:hover {
-  background: var(--color-accent-hover);
-  color: #fff;
-}
-
-.wb-terminal-composer-stack > .wb-terminal-composer-grip:active,
-.wb-terminal-composer-grip:active {
-  cursor: grabbing;
-}
-
-.wb-terminal-composer-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.wb-terminal-composer-head .rail-session-dot-btn {
-  appearance: none;
-  border: none;
-  background: transparent;
-  padding: 0;
-  width: 18px;
-  height: 18px;
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-  pointer-events: none;
-}
-
-.wb-terminal-composer-head .rail-session-dot-status {
-  flex-shrink: 0;
-  max-width: 7em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 10px;
-  font-weight: var(--font-weight-medium, 500);
-  color: var(--color-label-secondary);
-  line-height: 1.2;
-}
-
-.wb-terminal-composer-head .rail-session-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--color-success);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-success) 18%, transparent);
-}
-
-.wb-terminal-composer-head .rail-session-dot.is-awaiting {
-  background: var(--color-warning);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-warning) 22%, transparent);
-  animation: rail-session-dot-pulse 1.4s ease-in-out infinite;
-}
-
-.wb-terminal-composer-head .rail-session-dot.is-running {
-  background: var(--color-accent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
-}
-
-.wb-terminal-composer-head .rail-session-dot.is-connecting {
-  background: var(--color-label-tertiary);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-label-tertiary) 20%, transparent);
-}
-
-.wb-terminal-composer-head .rail-session-dot.is-error {
-  background: var(--color-destructive);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-destructive) 22%, transparent);
-}
-
-.wb-terminal-composer-project {
-  min-width: 0;
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.wb-terminal-composer-session-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 11px;
-  font-weight: var(--font-weight-medium, 500);
-  color: var(--color-label-primary);
-  line-height: 1.2;
-}
-
-.wb-terminal-composer-project-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 10px;
-  color: var(--color-label-tertiary);
-  line-height: 1.2;
-}
-
-.wb-terminal-composer-close {
-  appearance: none;
-  display: grid;
-  place-items: center;
-  width: 20px;
-  height: 20px;
-  margin: 0;
-  padding: 0;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--color-label-tertiary);
-  cursor: pointer;
-}
-
-.wb-terminal-composer-close:hover {
-  color: var(--color-label-primary);
-  background: var(--color-fill-tertiary);
-}
-
-.wb-terminal-composer-close:focus-visible {
-  outline: 2px solid var(--color-focus-ring);
-  outline-offset: -2px;
-}
-
-.wb-terminal-composer-tips {
-  display: flex;
-  flex-direction: column-reverse;
-  gap: 3px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  max-height: 180px;
-  overflow-y: auto;
-}
-
-.wb-terminal-composer-tip {
-  appearance: none;
-  display: block;
-  width: 100%;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  margin: 0;
-  padding: 3px 8px;
-  border: none;
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--color-fill-secondary) 80%, transparent);
-  color: var(--color-label-secondary);
-  font-size: 11px;
-  line-height: 1.3;
-  text-align: left;
-  cursor: pointer;
-}
-
-.wb-terminal-composer-tip:hover {
-  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
-  color: var(--color-label-primary);
-}
-
-.wb-terminal-composer-tip:focus-visible {
-  outline: 2px solid var(--color-focus-ring);
-  outline-offset: -2px;
-}
-
-.wb-terminal-composer-grip:focus-visible {
-  outline: 2px solid var(--color-focus-ring);
-  outline-offset: -2px;
-}
-
-.wb-terminal-composer-grip svg {
-  width: 16px;
-  height: 16px;
 }
 
 .wb-terminal-composer-pending-images {
@@ -11702,29 +11463,33 @@ textarea.wb-editor-host {
   field-sizing: content;
 }
 
+.wb-terminal-composer-input {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 24px;
+  max-height: 120px;
+  margin: 0;
+  padding: 2px 4px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-label-primary);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  resize: none;
+  outline: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+  field-sizing: content;
+  overflow-y: auto;
+  opacity: 1;
+}
+
 .wb-terminal-composer-input::placeholder {
   color: var(--color-label-secondary);
   white-space: nowrap;
-}
-
-.wb-terminal-composer.is-expanded .wb-terminal-composer-input {
-  height: auto;
-  max-height: none;
-  overflow-y: hidden;
-}
-
-.wb-terminal-composer.is-collapsed .wb-terminal-composer-input {
-  flex: 1 1 auto;
-  width: auto;
-  min-width: 0;
-  max-width: none;
-  height: auto;
-  min-height: 26px;
-  max-height: none;
-  padding: 3px 10px;
-  overflow: hidden;
-  white-space: pre-wrap;
-  opacity: .9;
 }
 
 .wb-terminal-composer-tools {
@@ -11733,11 +11498,7 @@ textarea.wb-editor-host {
   align-self: flex-end;
   gap: 8px;
   flex-shrink: 0;
-  padding-bottom: 4px;
-}
-
-.wb-terminal-composer.is-collapsed .wb-terminal-composer-tools {
-  display: none;
+  padding-bottom: 2px;
 }
 
 .wb-terminal-composer-hint {
@@ -11787,8 +11548,8 @@ textarea.wb-editor-host {
 
 .wb-terminal-composer-suggestions {
   position: absolute;
-  left: 8px;
-  right: 8px;
+  left: 0;
+  right: 0;
   bottom: calc(100% + 6px);
   z-index: 12;
   max-height: min(240px, 40vh);

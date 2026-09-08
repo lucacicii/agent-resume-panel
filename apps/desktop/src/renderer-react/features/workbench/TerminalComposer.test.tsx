@@ -11,10 +11,6 @@ import {
   TERMINAL_COMPOSER_STATIC_COMMANDS,
   TerminalComposer
 } from "./TerminalComposer";
-import {
-  orderComposerStackItems,
-  type TerminalComposerStackItem
-} from "./TerminalComposerStack";
 
 const COMPOSER_MESSAGES: Record<string, string> = {
   "desktop.workbench.terminalComposerPlaceholder": "Type a command for the agent…",
@@ -277,26 +273,6 @@ describe("TerminalComposer", () => {
     fireEvent.keyDown(textbox(), { key: "Enter" });
     expect(onSendToTerminal).toHaveBeenCalledTimes(1);
     expect(textbox().value).toBe("");
-  });
-
-  it("shows project name, status dot, and close control", async () => {
-    const { container, onClose } = await renderComposer({ projectName: "agent-resume", sessionTitle: "Fix renderer" });
-    expect(container.querySelector(".wb-terminal-composer-session-title")?.textContent).toBe("Fix renderer");
-    expect(container.querySelector(".wb-terminal-composer-project-name")?.textContent).toBe("agent-resume");
-    expect(container.querySelector(".rail-session-dot")).toBeTruthy();
-    expect(container.querySelector(".rail-session-dot-status")?.textContent).toBe("Idle");
-    fireEvent.click(screen.getByRole("button", { name: "Close session" }));
-    expect(onClose).toHaveBeenCalledTimes(1);
-  });
-
-  it("shows the session status label after the active composer dot", async () => {
-    const { container } = await renderComposer({ status: "running" });
-    expect(container.querySelector(".rail-session-dot-status")?.textContent).toBe("Running");
-  });
-
-  it("shows the session status label on inactive composers", async () => {
-    const { container } = await renderComposer({ activePane: false, status: "running" });
-    expect(container.querySelector(".rail-session-dot-status")?.textContent).toBe("Running");
   });
 
   it("renders collapsed when not the active pane and registers its focus handle", async () => {
@@ -737,56 +713,5 @@ describe("TerminalComposer", () => {
     expect(screen.queryByRole("listbox", { name: "Slash commands" })).toBeNull();
     expect(onSendToTerminal).not.toHaveBeenCalled();
     expect(textbox().value).toBe("/re");
-  });
-
-  it("renders user-message tips above the input", async () => {
-    const onOpenTip = vi.fn();
-    await renderComposer({
-      tips: [
-        { id: "1", text: "inspect src", createdAtMs: 1 },
-        { id: "2", text: "run tests", createdAtMs: 2 }
-      ],
-      onOpenTip
-    });
-    const list = screen.getByRole("list", { name: "Sent messages" });
-    expect(within(list).getByText("inspect src")).toBeTruthy();
-    fireEvent.click(within(list).getByRole("button", { name: "run tests" }));
-    expect(onOpenTip).toHaveBeenCalledWith({ id: "2", text: "run tests", createdAtMs: 2 });
-  });
-
-  it("hides user-message tips on inactive composers", async () => {
-    await renderComposer({
-      activePane: false,
-      tips: [
-        { id: "1", text: "inspect src", createdAtMs: 1 }
-      ]
-    });
-    expect(screen.queryByRole("list", { name: "Sent messages" })).toBeNull();
-    expect(screen.queryByText("inspect src")).toBeNull();
-  });
-});
-
-function stackItem(key: string, activePane: boolean): TerminalComposerStackItem {
-  return {
-    pane: { key, cwd: "/work/app", group: "session", projectPath: "/work/app" },
-    ptyId: 1,
-    activePane,
-    projectName: "app",
-    sessionTitle: key,
-    status: "open",
-    value: "",
-    tips: []
-  };
-}
-
-describe("orderComposerStackItems", () => {
-  it("keeps input order when no session is active", () => {
-    const items = [stackItem("a", false), stackItem("b", false), stackItem("c", false)];
-    expect(orderComposerStackItems(items).map((item) => item.pane.key)).toEqual(["a", "b", "c"]);
-  });
-
-  it("moves the active session composer to the visual bottom", () => {
-    const items = [stackItem("a", false), stackItem("b", true), stackItem("c", false)];
-    expect(orderComposerStackItems(items).map((item) => item.pane.key)).toEqual(["a", "c", "b"]);
   });
 });

@@ -104,11 +104,6 @@ export function filterComposerSlashPhrases(
   return phrases.filter((phrase) => phrase.trigger.toLowerCase().startsWith(needle));
 }
 
-function statusDotClass(status: SessionDotStatus): string {
-  if (status === "open") return "rail-session-dot";
-  return `rail-session-dot is-${status === "awaiting_user" ? "awaiting" : status}`;
-}
-
 /**
  * Prefix matches before substring matches (case-insensitive), history recency
  * before the static list, deduped by exact string.
@@ -148,8 +143,8 @@ export function TerminalComposer(props: {
   pane: TerminalComposerPane;
   ptyId: number | null;
   activePane: boolean;
-  projectName: string;
-  sessionTitle: string;
+  projectName?: string;
+  sessionTitle?: string;
   status?: SessionDotStatus;
   value: string;
   onChange: (value: string) => void;
@@ -158,7 +153,7 @@ export function TerminalComposer(props: {
   onRunSlashCommand?: (command: TuiSlashCommand, args?: string) => void;
   onActivate: () => void;
   onOpenTip?: (tip: ComposerSendTip) => void;
-  onClose: () => void;
+  onClose?: () => void;
   registerFocus: (key: string, focus: (options?: { caret?: "end" }) => void) => () => void;
   slashPhrases?: WorkbenchComposerSlashPhrase[];
   tuiSlashCommands?: TuiSlashCommand[];
@@ -167,17 +162,11 @@ export function TerminalComposer(props: {
     pane,
     ptyId,
     activePane,
-    projectName,
-    sessionTitle,
-    status = "open",
     value,
     onChange,
-    tips = [],
     onSendToTerminal,
     onRunSlashCommand,
     onActivate,
-    onOpenTip,
-    onClose,
     registerFocus,
     slashPhrases = [],
     tuiSlashCommands = []
@@ -247,16 +236,6 @@ export function TerminalComposer(props: {
       : suggestionsOpen && activeSuggestion >= 0
         ? `${listId}-suggestion-${activeSuggestion}`
         : undefined;
-  const visibleTips = activePane ? tips.slice(0, COMPOSER_TIP_LIMIT) : [];
-  const statusLabel = status === "awaiting_user"
-    ? t("desktop.workbench.sessionDot.awaiting")
-    : status === "connecting"
-      ? t("desktop.workbench.sessionDot.connecting")
-      : status === "error"
-        ? t("desktop.workbench.sessionDot.error")
-        : status === "running"
-          ? t("desktop.workbench.sessionDot.running")
-          : t("desktop.workbench.sessionDot.idle");
 
   useEffect(() => {
     setDirectories(null);
@@ -720,42 +699,6 @@ export function TerminalComposer(props: {
       onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
-      <div className="wb-terminal-composer-head">
-        <span className="rail-session-dot-btn" data-status={status} aria-label={statusLabel} title={statusLabel}>
-          <span className={statusDotClass(status)} aria-hidden="true" />
-        </span>
-        <span className="rail-session-dot-status" title={statusLabel}>{statusLabel}</span>
-        <span className="wb-terminal-composer-project">
-          <span className="wb-terminal-composer-session-title">{sessionTitle}</span>
-          {projectName ? <span className="wb-terminal-composer-project-name">{projectName}</span> : null}
-        </span>
-        <button
-          type="button"
-          className="wb-terminal-composer-close"
-          aria-label={t("desktop.workbench.terminalComposerClose")}
-          title={t("desktop.workbench.terminalComposerClose")}
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={onClose}
-        >
-          <ThemeIcon name="close" size={13} />
-        </button>
-      </div>
-      {visibleTips.length ? (
-        <ul className="wb-terminal-composer-tips" aria-label={t("desktop.workbench.terminalComposerTips")}>
-          {visibleTips.map((tip) => (
-            <li key={tip.id}>
-              <button
-                type="button"
-                className="wb-terminal-composer-tip"
-                title={tip.text}
-                onClick={() => onOpenTip?.(tip)}
-              >
-                {tip.text}
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
       {pendingImages.length ? (
         <div className="wb-terminal-composer-pending-images" aria-label={t("desktop.workbench.terminalComposerPastedImages")}>
           {pendingImages.map((image) => (

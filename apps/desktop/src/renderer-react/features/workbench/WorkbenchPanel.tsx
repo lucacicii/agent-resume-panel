@@ -3906,25 +3906,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   const currentFilePath = workbenchActiveFilePath(selectedProject, currentEditor?.path, currentDiff);
   const currentAcpChat = currentAcpChats.find((pane) => pane.key === activePane);
   const currentBrowser = currentBrowsers.find((pane) => pane.key === activePane);
-  const composerItems = useMemo(() => {
-    const sessionPanes = terminals.filter((pane) => pane.group === "session");
-    return sessionPanes.map((pane) => {
-      const projectName = aliases[pane.projectPath] || basename(pane.projectPath);
-      const sessionTitle = sessionTabTitle(pane, sessionTitles);
-      return {
-        pane: { key: pane.key, cwd: pane.cwd, group: pane.group, projectPath: pane.projectPath },
-        ptyId: pane.ptyId ?? null,
-        activePane: pane.key === activePane,
-        projectName,
-        sessionTitle,
-        status: sessionRuntimeByPaneKey.get(pane.key)?.status ?? "open",
-        value: composerDrafts[pane.key] || "",
-        tips: composerTips[composerHistoryKey(pane)] || composerTips[pane.key] || [],
-        provider: sessionIdentityFromKey(pane.sessionKey)?.provider
-          || pendingSessions.find((pending) => pending.terminalKey === pane.key)?.provider
-      };
-    });
-  }, [activePane, aliases, composerDrafts, composerTips, pendingSessions, sessionRuntimeByPaneKey, sessionTitles, terminals]);
   const activeTranscriptRunning = useMemo(() => {
     if (currentAcpChat) {
       const runtime = acpRuntimeByPaneKey[currentAcpChat.key];
@@ -8190,6 +8171,22 @@ export function WorkbenchPanel(): ReactPortal | null {
                       </div>
                     ) : null}
                   </div>
+                  <TerminalComposerStack
+                    items={[{
+                      pane: { key: pane.key, cwd: pane.cwd, group: pane.group, projectPath: pane.projectPath },
+                      ptyId: pane.ptyId ?? null,
+                      activePane: true,
+                      value: composerDrafts[pane.key] || "",
+                      provider: sessionIdentity.provider || pendingSessions.find((pending) => pending.terminalKey === pane.key)?.provider
+                    }]}
+                    onChange={setComposerDraft}
+                    onSendToTerminal={sendComposerToTerminal}
+                    onRunSlashCommand={runComposerSlashCommand}
+                    onActivate={activateComposerPane}
+                    onClose={closeTerminal}
+                    registerFocus={registerComposerFocus}
+                    slashPhrases={settings?.workbench?.composerSlashPhrases ?? []}
+                  />
                 </div>
               );
             }
@@ -8209,7 +8206,25 @@ export function WorkbenchPanel(): ReactPortal | null {
                     </button>
                   </div>
                 ) : null}
-                <TerminalView pane={pane} active={active} themeId={terminalThemeId} appearance={desktopAppearance} rendererMode={terminalRendererMode} engineType={terminalEngine} onPty={onPty} onDetach={onPtyDetach} onInput={onTerminalInput} onInitialPromptSubmitted={onInitialPromptSubmitted} mouseTracking={terminalMouseTrackingRef} onComposerSlash={isSession ? interceptComposerSlash : undefined} />
+                <TerminalView pane={pane} active={active} themeId={terminalThemeId} appearance={desktopAppearance} rendererMode={terminalRendererMode} engineType={terminalEngine} onPty={onPty} onDetach={onPtyDetach} onInput={onTerminalInput} onInitialPromptSubmitted={onInitialPromptSubmitted} mouseTracking={terminalMouseTrackingRef} onComposerSlash={pane.group === "session" ? interceptComposerSlash : undefined} />
+                {pane.group === "session" ? (
+                  <TerminalComposerStack
+                    items={[{
+                      pane: { key: pane.key, cwd: pane.cwd, group: pane.group, projectPath: pane.projectPath },
+                      ptyId: pane.ptyId ?? null,
+                      activePane: true,
+                      value: composerDrafts[pane.key] || "",
+                      provider: sessionIdentity?.provider || pendingSessions.find((pending) => pending.terminalKey === pane.key)?.provider
+                    }]}
+                    onChange={setComposerDraft}
+                    onSendToTerminal={sendComposerToTerminal}
+                    onRunSlashCommand={runComposerSlashCommand}
+                    onActivate={activateComposerPane}
+                    onClose={closeTerminal}
+                    registerFocus={registerComposerFocus}
+                    slashPhrases={settings?.workbench?.composerSlashPhrases ?? []}
+                  />
+                ) : null}
               </div>
             );
           })}{editorFindOpen && currentEditor ? <div className="wb-editor-find-bar app-inline-search" role="search">
@@ -8441,7 +8456,6 @@ export function WorkbenchPanel(): ReactPortal | null {
           </div>}</aside></> : null}
         </div>
       </main>
-      <TerminalComposerStack items={composerItems} onChange={setComposerDraft} onSendToTerminal={sendComposerToTerminal} onRunSlashCommand={runComposerSlashCommand} onActivate={activateComposerPane} onOpenTip={openComposerTip} onClose={closeTerminal} registerFocus={registerComposerFocus} slashPhrases={settings?.workbench?.composerSlashPhrases ?? []} />
     </div>
     {branchPane ? <div className="wb-git-branch-popover" style={branchMenuPosition || undefined}>{branchResult?.mode === "nested" ? <div className="wb-git-branch-list">{renderBranchMenu()}</div> : <><div className="wb-git-branch-repo-head">{branchResult?.repoRoot || branchPane.repoRoot || branchPane.cwd}</div><div className="wb-git-branch-list">{renderBranchMenu()}</div></>}</div> : null}
     {editorContextMenu ? <div className="wb-context-menu notes-selection-menu" role="menu" style={{ left: Math.max(8, Math.min(editorContextMenu.x, window.innerWidth - 220)), top: Math.max(8, Math.min(editorContextMenu.y, window.innerHeight - 120)) }} onContextMenu={(event) => event.preventDefault()}>
