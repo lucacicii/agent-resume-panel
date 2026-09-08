@@ -1936,7 +1936,7 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(xtermMocks.instances[0].focusCalls).toBeGreaterThan(0));
   });
 
-  it("routes xterm / into the session composer without sending it to the PTY", async () => {
+  it("leaves native TUI slash input on xterm instead of hijacking it into the composer", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
     document.body.append(host);
@@ -1981,13 +1981,11 @@ describe("WorkbenchPanel", () => {
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
     fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
     await waitFor(() => expect(terminalSpawn).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(xtermMocks.instances[0].customKeyEventHandler).toBeTruthy());
-    const handled = xtermMocks.instances[0].customKeyEventHandler?.(new KeyboardEvent("keydown", { key: "/" }));
-    expect(handled).toBe(false);
-    expect(terminalInput).not.toHaveBeenCalled();
+    expect(xtermMocks.instances[0].customKeyEventHandler).toBeNull();
     const composerInput = document.querySelector<HTMLTextAreaElement>(".workbench-layout .wb-terminal-composer-input");
     if (!composerInput) throw new Error("composer input missing");
-    await waitFor(() => expect(composerInput.value).toBe("/"));
+    expect(composerInput.value).toBe("");
+    expect(terminalInput).not.toHaveBeenCalled();
   });
 
   it("shows TUI slash commands on a new session before the catalog binds", async () => {

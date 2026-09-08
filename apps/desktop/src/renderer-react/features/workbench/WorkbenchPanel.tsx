@@ -58,7 +58,7 @@ import {
   detectTuiSessionStatus,
   type TuiDebounceState
 } from "./tuiSessionStatus";
-import { COMPOSER_TIP_LIMIT, slashTokenAtCursor, type ComposerSendTip } from "./TerminalComposer";
+import { COMPOSER_TIP_LIMIT, type ComposerSendTip } from "./TerminalComposer";
 import { TerminalComposerStack } from "./TerminalComposerStack";
 import { formatTuiSlashInput, type TuiSlashCommand } from "./tuiSlashCommands";
 import {
@@ -1871,7 +1871,7 @@ function resolveTransparentTerminalTheme(themeId: WorkbenchTerminalThemeId, appe
   return { ...resolveTerminalTheme(themeId, appearance), background: "rgba(0, 0, 0, 0)" };
 }
 
-function TerminalView({ pane, active, themeId, appearance, rendererMode, engineType = "xterm", onPty, onDetach, onInput, onInitialPromptSubmitted, mouseTracking, onComposerSlash }: {
+function TerminalView({ pane, active, themeId, appearance, rendererMode, engineType = "xterm", onPty, onDetach, onInput, onInitialPromptSubmitted, mouseTracking }: {
   pane: TerminalPane;
   active: boolean;
   themeId: WorkbenchTerminalThemeId;
@@ -1885,8 +1885,6 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, engineT
   onInitialPromptSubmitted: (key: string) => void;
   /** Per-pty mouse-tracking state parsed from the PTY data stream (stable ref). */
   mouseTracking: { current: Map<number, boolean> };
-  /** Session panes: intercept `/` so composer owns the TUI slash menu. */
-  onComposerSlash?: (paneKey: string) => void;
 }): React.JSX.Element {
   const { t } = useI18n();
   const host = useRef<HTMLDivElement>(null);
@@ -1913,10 +1911,6 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, engineT
   const tuiScrollIntentRef = useRef<{ direction: "up" | "down"; ticks: number } | null>(null);
   const [tuiPull, setTuiPull] = useState<{ direction: "idle" | "up" | "down"; strength: number }>({ direction: "idle", strength: 0 });
   const [scrollState, setScrollState] = useState({ tuiMode: false, tuiInteractive: false });
-  const onComposerSlashRef = useRef(onComposerSlash);
-  onComposerSlashRef.current = onComposerSlash;
-  const searchOpenRef = useRef(searchOpen);
-  searchOpenRef.current = searchOpen;
 
   const runSearch = useCallback((direction: "next" | "prev", term: string) => {
     const addon = searchAddonRef.current;
@@ -2131,18 +2125,6 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, engineT
     const viewport = window.visualViewport;
     viewport?.addEventListener("resize", scheduleFit);
 
-    if (pane.group === "session") {
-      terminal.attachCustomKeyEventHandler((event) => {
-        if (event.type !== "keydown") return true;
-        if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) return true;
-        if (searchOpenRef.current) return true;
-        const intercept = onComposerSlashRef.current;
-        if (!intercept) return true;
-        event.preventDefault();
-        intercept(pane.key);
-        return false;
-      });
-    }
     const input = terminal.onData((data) => {
       if (ptyId.current !== null) void desktopApi().terminalInput({ id: ptyId.current, data });
       onInput(pane.key);
@@ -4391,22 +4373,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       terminalRefs.current.get(pane.ptyId!)?.focus();
     });
   }, [onTerminalInput, setActivePane, setComposerDraft]);
-
-  const interceptComposerSlash = useCallback((paneKey: string) => {
-    const pane = terminalsRef.current.find((item) => item.key === paneKey);
-    if (!pane || pane.group !== "session") return;
-    activateComposerPane(paneKey);
-    const current = composerDrafts[paneKey] || "";
-    if (!slashTokenAtCursor(current, current.length)) {
-      const prefix = current && !/\s$/.test(current) ? " " : "";
-      setComposerDraft(paneKey, `${current}${prefix}/`);
-    }
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
-        composerFocusRefs.current.get(paneKey)?.({ caret: "end" });
-      });
-    });
-  }, [activateComposerPane, composerDrafts, setComposerDraft]);
 
   const onPtyDetach = useCallback((id: number) => {
     terminalRefs.current.delete(id);
@@ -8166,7 +8132,6 @@ export function WorkbenchPanel(): ReactPortal | null {
                           onInput={onTerminalInput}
                           onInitialPromptSubmitted={onInitialPromptSubmitted}
                           mouseTracking={terminalMouseTrackingRef}
-                          onComposerSlash={interceptComposerSlash}
                         />
                       </div>
                     ) : null}
@@ -8206,7 +8171,7 @@ export function WorkbenchPanel(): ReactPortal | null {
                     </button>
                   </div>
                 ) : null}
-                <TerminalView pane={pane} active={active} themeId={terminalThemeId} appearance={desktopAppearance} rendererMode={terminalRendererMode} engineType={terminalEngine} onPty={onPty} onDetach={onPtyDetach} onInput={onTerminalInput} onInitialPromptSubmitted={onInitialPromptSubmitted} mouseTracking={terminalMouseTrackingRef} onComposerSlash={pane.group === "session" ? interceptComposerSlash : undefined} />
+                <TerminalView pane={pane} active={active} themeId={terminalThemeId} appearance={desktopAppearance} rendererMode={terminalRendererMode} engineType={terminalEngine} onPty={onPty} onDetach={onPtyDetach} onInput={onTerminalInput} onInitialPromptSubmitted={onInitialPromptSubmitted} mouseTracking={terminalMouseTrackingRef} />
                 {pane.group === "session" ? (
                   <TerminalComposerStack
                     items={[{

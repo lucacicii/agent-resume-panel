@@ -50,6 +50,8 @@ export const TERMINAL_COMPOSER_STATIC_COMMANDS = [
 ] as const;
 
 const MAX_SUGGESTIONS = 6;
+/** Soft wraps can need more than newline count, but CSS max-height still clips. */
+const MAX_COMPOSER_ROWS = 24;
 
 type PastedComposerImage = {
   id: string;
@@ -321,9 +323,9 @@ export function TerminalComposer(props: {
     [pane.key, registerFocus]
   );
 
-  /** Grow the textarea to fit content (newlines + soft wraps); no row cap. */
+  /** Grow the textarea to fit content (newlines + soft wraps) until CSS max-height. */
   const resizeRows = useCallback((text: string) => {
-    const newlineRows = Math.max(1, text.split("\n").length);
+    const newlineRows = Math.max(1, Math.min(MAX_COMPOSER_ROWS, text.split("\n").length));
     const el = inputRef.current;
     if (!el) {
       setRows(newlineRows);
@@ -332,10 +334,13 @@ export function TerminalComposer(props: {
     const previous = el.value;
     if (previous !== text) el.value = text;
     el.rows = newlineRows;
-    while (el.scrollHeight > el.clientHeight + 1) {
+    let nextRows = newlineRows;
+    while (nextRows < MAX_COMPOSER_ROWS && el.scrollHeight > el.clientHeight + 1) {
+      const before = el.scrollHeight;
       el.rows += 1;
+      nextRows = el.rows;
+      if (el.scrollHeight <= before) break;
     }
-    const nextRows = el.rows;
     if (previous !== text) el.value = previous;
     setRows(nextRows);
   }, []);

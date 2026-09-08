@@ -243,7 +243,7 @@ export type RenderMarkdownOptions = MarkdownImageOptions & {
   imageLabels?: Partial<MarkdownImageLabels>;
 };
 
-function htmlToken(token: string | Tokens.HTML): string {
+function htmlToken(token: Tokens.HTML | Tokens.Tag | string): string {
   const raw = typeof token === "string" ? token : token.text;
   const tagMatch = raw.match(/^<\/?([a-zA-Z][a-zA-Z0-9_-]*)/);
   if (tagMatch && SAFE_HTML_TAGS.has(tagMatch[1].toLowerCase())) {

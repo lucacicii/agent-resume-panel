@@ -331,11 +331,13 @@ describe("TerminalComposer", () => {
     expect(textbox().value).toBe("git s");
   });
 
-  it("auto-grows rows with no upper cap", async () => {
-    const { onChange } = await renderComposer({ value: "a\nb\nc" });
-    expect(textbox().rows).toBe(3);
-    fireEvent.change(textbox(), { target: { value: Array(10).fill("line").join("\n") } });
-    expect(onChange).toHaveBeenCalled();
+  it("stops growing when extra rows no longer increase height", async () => {
+    await renderComposer({ value: "wrap" });
+    const el = textbox();
+    Object.defineProperty(el, "scrollHeight", { configurable: true, get: () => 400 });
+    Object.defineProperty(el, "clientHeight", { configurable: true, get: () => 120 });
+    fireEvent.change(el, { target: { value: "one long wrapping line that exceeds the composer max-height" } });
+    expect(el.rows).toBe(2);
   });
 
   it("disables send while the PTY is unavailable or the draft is empty", async () => {
