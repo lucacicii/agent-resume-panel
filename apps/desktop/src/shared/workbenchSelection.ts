@@ -58,6 +58,13 @@ export type WorkbenchSendSelectionRequest =
 
 export type WorkbenchSendSelectionResult = { ok: true };
 
+export type WorkbenchFocusSessionRequest = {
+  paneKey: string;
+  projectPath?: string;
+};
+
+export type WorkbenchFocusSessionResult = { ok: true };
+
 const SEND_SELECTION_TARGET_SET = new Set<string>(WORKBENCH_SEND_SELECTION_TARGETS);
 const SESSION_DOT_STATUS_SET = new Set<string>(WORKBENCH_SESSION_DOT_STATUSES);
 const AWAITING_CONFIDENCE_SET = new Set<string>(WORKBENCH_SESSION_AWAITING_CONFIDENCE);
@@ -142,4 +149,15 @@ export function parseWorkbenchSendSelectionRequest(value: unknown): WorkbenchSen
   }
 
   throw new Error("Unsupported selection action.");
+}
+
+export function parseWorkbenchFocusSessionRequest(value: unknown): WorkbenchFocusSessionRequest {
+  if (!value || typeof value !== "object") {
+    throw new Error("Session focus payload is required.");
+  }
+  const record = value as Record<string, unknown>;
+  const paneKey = asTrimmedString(record.paneKey);
+  if (!paneKey) throw new Error("Session pane is required.");
+  const projectPath = asOptionalPath(record.projectPath);
+  return projectPath ? { paneKey, projectPath } : { paneKey };
 }

@@ -41,7 +41,9 @@
       "desktop.common.daysAgo": "{0} d ago",
       "desktop.common.yearSuffix": "{0}",
       "desktop.common.oneMinute": "1 min",
-      "desktop.common.intervalSeconds": "{0}s"
+      "desktop.common.intervalSeconds": "{0}s",
+      "desktop.common.expand": "Expand",
+      "desktop.common.collapse": "Collapse"
     },
     "tabs": {
       "desktop.tabs.report": "Report",
@@ -636,6 +638,9 @@
       "desktop.workbench.terminalConsole": "Terminal Console",
       "desktop.workbench.splitViewMode": "Split View",
       "desktop.workbench.fullTerminalMode": "Full Terminal",
+      "desktop.workbench.transcriptNewSessionHint": "New session is ready. Send a message to preview the dialogue transcript here.",
+      "desktop.workbench.transcriptNeedSession": "Open a session to preview its conversation beside the terminal.",
+      "desktop.workbench.transcriptScrollToBottom": "Scroll to bottom",
       "desktop.workbench.allSessions": "All Sessions",
       "desktop.workbench.allSessionsCount": "All Sessions ({0})",
       "desktop.workbench.allSessionsWithTotal": "All Sessions ({0} / {1})",
@@ -701,7 +706,7 @@
       "desktop.workbench.terminalComposerClose": "Close session",
       "desktop.workbench.terminalComposerMove": "Move input box",
       "desktop.workbench.terminalComposerSuggestions": "Command suggestions",
-      "desktop.workbench.terminalComposerSlashSuggestions": "Slash phrases",
+      "desktop.workbench.terminalComposerSlashSuggestions": "Slash commands",
       "desktop.workbench.terminalComposerDirectorySuggestions": "Directory suggestions",
       "desktop.workbench.terminalComposerDirectoryLoading": "Loading directories…",
       "desktop.workbench.terminalComposerDirectoryEmpty": "No folders in this project",
@@ -712,7 +717,27 @@
       "desktop.workbench.terminalComposerRemoveImage": "Remove image",
       "desktop.workbench.terminalComposerImagePreview": "Image preview",
       "desktop.workbench.terminalComposerTips": "Sent messages",
-      "desktop.workbench.sessionDot.idle": "Idle"
+      "desktop.workbench.tuiSlash.help": "Show TUI commands",
+      "desktop.workbench.tuiSlash.clear": "Clear the conversation",
+      "desktop.workbench.tuiSlash.compact": "Compact context",
+      "desktop.workbench.tuiSlash.model": "Switch model",
+      "desktop.workbench.tuiSlash.new": "Start a new session",
+      "desktop.workbench.tuiSlash.quit": "Quit the agent",
+      "desktop.workbench.tuiSlash.exit": "Exit the agent",
+      "desktop.workbench.tuiSlash.review": "Review changes",
+      "desktop.workbench.tuiSlash.undo": "Undo last change",
+      "desktop.workbench.tuiSlash.redo": "Redo last change",
+      "desktop.workbench.tuiSlash.resume": "Resume a session",
+      "desktop.workbench.tuiSlash.tokens": "Show token usage",
+      "desktop.workbench.tuiSlash.init": "Initialize project files",
+      "desktop.workbench.tuiSlash.share": "Share this session",
+      "desktop.workbench.tuiSlash.permissions": "Permission settings",
+      "desktop.workbench.sessionDot.idle": "Idle",
+      "desktop.workbench.sessionDots": "Active sessions",
+      "desktop.workbench.sessionDotsPet": "Session dots",
+      "desktop.workbench.sessionDotsPetEmpty": "No open sessions",
+      "desktop.workbench.sessionDotsOpenPet": "Open session dots window",
+      "desktop.menu.sessionDots": "Session Dots"
     },
     "sessions": {
       "desktop.sessions.sheetTitle": "Sessions (reference)",
@@ -844,7 +869,7 @@
       "desktop.settings.cmdTNewTerminal": "New Terminal",
       "desktop.settings.cmdTNewSession": "New Session",
       "desktop.settings.composerSlashGroup": "Composer slash phrases",
-      "desktop.settings.composerSlashDesc": "Type / in the Workbench composer to insert a saved phrase. Works at the start of the input or after a space.",
+      "desktop.settings.composerSlashDesc": "Type / in the Workbench composer to run TUI commands or insert a saved phrase. Agent commands run immediately; phrases expand in the input. Works at the start of the input or after a space.",
       "desktop.settings.composerSlashEmpty": "No slash phrases yet.",
       "desktop.settings.composerSlashTrigger": "Trigger",
       "desktop.settings.composerSlashTriggerPlaceholder": "review",
@@ -1018,6 +1043,11 @@
     "dialog": {
       "desktop.dialog.markdown": "Markdown"
     },
+    "markdown": {
+      "desktop.markdown.openInBrowser": "Open in browser",
+      "desktop.markdown.imageUnavailable": "Image unavailable",
+      "desktop.markdown.remoteImage": "Remote image"
+    },
     "artifact": {
       "desktop.artifact.preview": "Preview",
       "desktop.artifact.code": "Code",
@@ -1076,7 +1106,9 @@
       "desktop.common.daysAgo": "{0} 天前",
       "desktop.common.yearSuffix": "{0} 年",
       "desktop.common.oneMinute": "1 分钟",
-      "desktop.common.intervalSeconds": "{0}s"
+      "desktop.common.intervalSeconds": "{0}s",
+      "desktop.common.expand": "展开",
+      "desktop.common.collapse": "折叠"
     },
     "tabs": {
       "desktop.tabs.report": "报告",
@@ -1493,6 +1525,9 @@
       "desktop.workbench.terminalConsole": "终端控制台",
       "desktop.workbench.splitViewMode": "观测分屏",
       "desktop.workbench.fullTerminalMode": "全屏终端",
+      "desktop.workbench.transcriptNewSessionHint": "新会话已就绪，发送首条消息后即可在此预览对话记录。",
+      "desktop.workbench.transcriptNeedSession": "打开一个会话，即可在终端旁预览对话原文。",
+      "desktop.workbench.transcriptScrollToBottom": "滚动到底部",
       "desktop.workbench.allSessions": "全部 Sessions",
       "desktop.workbench.allSessionsCount": "全部 Sessions（{0}）",
       "desktop.workbench.allSessionsWithTotal": "全部 Sessions（{0} / {1}）",
@@ -1558,7 +1593,7 @@
       "desktop.workbench.terminalComposerClose": "关闭会话",
       "desktop.workbench.terminalComposerMove": "移动输入框",
       "desktop.workbench.terminalComposerSuggestions": "命令建议",
-      "desktop.workbench.terminalComposerSlashSuggestions": "斜杠短语",
+      "desktop.workbench.terminalComposerSlashSuggestions": "斜杠命令",
       "desktop.workbench.terminalComposerDirectorySuggestions": "目录建议",
       "desktop.workbench.terminalComposerDirectoryLoading": "正在加载目录…",
       "desktop.workbench.terminalComposerDirectoryEmpty": "此项目没有文件夹",
@@ -1569,7 +1604,27 @@
       "desktop.workbench.terminalComposerRemoveImage": "移除图片",
       "desktop.workbench.terminalComposerImagePreview": "图片预览",
       "desktop.workbench.terminalComposerTips": "已发送消息",
-      "desktop.workbench.sessionDot.idle": "空闲"
+      "desktop.workbench.tuiSlash.help": "显示 TUI 命令",
+      "desktop.workbench.tuiSlash.clear": "清空对话",
+      "desktop.workbench.tuiSlash.compact": "压缩上下文",
+      "desktop.workbench.tuiSlash.model": "切换模型",
+      "desktop.workbench.tuiSlash.new": "开始新会话",
+      "desktop.workbench.tuiSlash.quit": "退出 Agent",
+      "desktop.workbench.tuiSlash.exit": "退出 Agent",
+      "desktop.workbench.tuiSlash.review": "审查改动",
+      "desktop.workbench.tuiSlash.undo": "撤销上次改动",
+      "desktop.workbench.tuiSlash.redo": "重做上次改动",
+      "desktop.workbench.tuiSlash.resume": "恢复会话",
+      "desktop.workbench.tuiSlash.tokens": "显示 token 用量",
+      "desktop.workbench.tuiSlash.init": "初始化项目文件",
+      "desktop.workbench.tuiSlash.share": "分享此会话",
+      "desktop.workbench.tuiSlash.permissions": "权限设置",
+      "desktop.workbench.sessionDot.idle": "空闲",
+      "desktop.workbench.sessionDots": "活动会话",
+      "desktop.workbench.sessionDotsPet": "会话指示",
+      "desktop.workbench.sessionDotsPetEmpty": "暂无打开的会话",
+      "desktop.workbench.sessionDotsOpenPet": "打开会话指示窗口",
+      "desktop.menu.sessionDots": "会话指示"
     },
     "sessions": {
       "desktop.sessions.sheetTitle": "Sessions（参考）",
@@ -1701,7 +1756,7 @@
       "desktop.settings.cmdTNewTerminal": "新建 Terminal",
       "desktop.settings.cmdTNewSession": "新建 Session",
       "desktop.settings.composerSlashGroup": "Composer 斜杠短语",
-      "desktop.settings.composerSlashDesc": "在工作台输入框输入 / 可插入已保存的短语。可在开头或空格后触发。",
+      "desktop.settings.composerSlashDesc": "在工作台输入框输入 / 可执行 TUI 命令或插入已保存的短语。Agent 命令会立即发送；短语只展开到输入框。可在开头或空格后触发。",
       "desktop.settings.composerSlashEmpty": "还没有斜杠短语。",
       "desktop.settings.composerSlashTrigger": "触发词",
       "desktop.settings.composerSlashTriggerPlaceholder": "review",
@@ -1874,6 +1929,11 @@
     },
     "dialog": {
       "desktop.dialog.markdown": "Markdown"
+    },
+    "markdown": {
+      "desktop.markdown.openInBrowser": "在浏览器中打开",
+      "desktop.markdown.imageUnavailable": "图片无法显示",
+      "desktop.markdown.remoteImage": "远程图片"
     },
     "im": {
       "desktop.im.title": "IM",
@@ -2070,7 +2130,9 @@
     "common": {
       "desktop.common.resend": "再送信",
       "desktop.common.clear": "クリア",
-      "desktop.common.selectAll": "すべて選択"
+      "desktop.common.selectAll": "すべて選択",
+      "desktop.common.expand": "展開",
+      "desktop.common.collapse": "折りたたむ"
     },
     "tabs": {},
     "top": {},
@@ -2127,12 +2189,36 @@
       "desktop.workbench.terminalConsole": "ターミナルコンソール",
       "desktop.workbench.splitViewMode": "分割ビュー",
       "desktop.workbench.fullTerminalMode": "フルターミナル",
+      "desktop.workbench.transcriptNewSessionHint": "新しいセッションの準備が完了しました。最初のメッセージを送信すると、ここに対話ログがプレビューされます。",
+      "desktop.workbench.transcriptNeedSession": "セッションを開くと、ターミナルの横で会話をプレビューできます。",
+      "desktop.workbench.transcriptScrollToBottom": "一番下までスクロール",
       "desktop.workbench.imSessionBadge": "IM",
       "desktop.workbench.imSessionBadgeHint": "IM から作成",
       "desktop.workbench.sessionDot.idle": "待機中",
+      "desktop.workbench.sessionDots": "アクティブなセッション",
+      "desktop.workbench.sessionDotsPet": "セッションドット",
+      "desktop.workbench.sessionDotsPetEmpty": "開いているセッションはありません",
+      "desktop.workbench.sessionDotsOpenPet": "セッションドットウィンドウを開く",
+      "desktop.menu.sessionDots": "セッションドット",
       "desktop.workbench.terminalComposerPastedImages": "貼り付けた画像",
       "desktop.workbench.terminalComposerRemoveImage": "画像を削除",
-      "desktop.workbench.terminalComposerImagePreview": "画像プレビュー"
+      "desktop.workbench.terminalComposerImagePreview": "画像プレビュー",
+      "desktop.workbench.terminalComposerSlashSuggestions": "スラッシュコマンド",
+      "desktop.workbench.tuiSlash.help": "TUI コマンドを表示",
+      "desktop.workbench.tuiSlash.clear": "会話をクリア",
+      "desktop.workbench.tuiSlash.compact": "コンテキストを圧縮",
+      "desktop.workbench.tuiSlash.model": "モデルを切り替え",
+      "desktop.workbench.tuiSlash.new": "新しいセッションを開始",
+      "desktop.workbench.tuiSlash.quit": "エージェントを終了",
+      "desktop.workbench.tuiSlash.exit": "エージェントを終了",
+      "desktop.workbench.tuiSlash.review": "変更をレビュー",
+      "desktop.workbench.tuiSlash.undo": "直前の変更を取り消す",
+      "desktop.workbench.tuiSlash.redo": "直前の変更をやり直す",
+      "desktop.workbench.tuiSlash.resume": "セッションを再開",
+      "desktop.workbench.tuiSlash.tokens": "トークン使用量を表示",
+      "desktop.workbench.tuiSlash.init": "プロジェクトファイルを初期化",
+      "desktop.workbench.tuiSlash.share": "このセッションを共有",
+      "desktop.workbench.tuiSlash.permissions": "権限設定"
     },
     "sessions": {
       "desktop.sessions.statusLabel": "状態",
@@ -2384,6 +2470,11 @@
     "usage": {},
     "backfill": {},
     "dialog": {},
+    "markdown": {
+      "desktop.markdown.openInBrowser": "ブラウザで開く",
+      "desktop.markdown.imageUnavailable": "画像を表示できません",
+      "desktop.markdown.remoteImage": "リモート画像"
+    },
     "artifact": {
       "desktop.artifact.preview": "プレビュー",
       "desktop.artifact.code": "コード",

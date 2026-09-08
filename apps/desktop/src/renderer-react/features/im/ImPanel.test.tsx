@@ -175,7 +175,10 @@ const messages = {
   "desktop.im.filePickerEmpty": "No matches",
   "desktop.im.filePickerSearchResults": "Search results",
   "desktop.im.filePickerSelectDir": "Select this folder",
-  "desktop.im.filePickerUp": "Parent folder"
+  "desktop.im.filePickerUp": "Parent folder",
+  "desktop.markdown.openInBrowser": "Open in browser",
+  "desktop.markdown.imageUnavailable": "Image unavailable",
+  "desktop.markdown.remoteImage": "Remote image"
 };
 
 function project(overrides: Partial<ImProject> = {}): ImProject {
@@ -1048,6 +1051,39 @@ describe("ImPanel", () => {
     const closeBtn = document.querySelector(".im-image-lightbox-close") as HTMLButtonElement;
     fireEvent.click(closeBtn);
     expect(document.querySelector(".im-image-lightbox")).toBeNull();
+  });
+
+  it("renders markdown images in message bubbles and opens lightbox on click", async () => {
+    const currentProject = project();
+    const currentRoom = roomFor(currentProject);
+    const api = renderIm();
+    (api.imGetRoom as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...currentRoom,
+      messages: [{
+        messageId: "msg-md-img",
+        projectId: currentProject.projectId,
+        kind: "role.say",
+        authorMemberId: "mem-pm",
+        authorLabel: "Product Manager",
+        body: "See ![Shot](./shot.png)",
+        quoteIds: [],
+        quotes: [],
+        mentionRoleIds: [],
+        jobId: null,
+        createdAtMs: 1000
+      }]
+    });
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+    const img = await waitFor(() => {
+      const node = document.querySelector(".im-message .markdown-body img") as HTMLImageElement | null;
+      expect(node).not.toBeNull();
+      return node!;
+    });
+    expect(img.getAttribute("src")).toBe("file:///tmp/app/shot.png");
+    fireEvent.click(img);
+    expect(document.querySelector(".im-image-lightbox img")?.getAttribute("src")).toBe("file:///tmp/app/shot.png");
   });
 
   it("renders in-chat typing/status bubbles immediately when active jobs are dispatched", async () => {

@@ -171,7 +171,7 @@ const messages = {
   "desktop.settings.acpExperimentalGrokVendorUiDesc": "Experimental",
   "desktop.settings.scratchDir": "Scratch directory",
   "desktop.settings.composerSlashGroup": "Composer slash phrases",
-  "desktop.settings.composerSlashDesc": "Type / in the Workbench composer to insert a saved phrase.",
+  "desktop.settings.composerSlashDesc": "Type / in the Workbench composer to run TUI commands or insert a saved phrase.",
   "desktop.settings.composerSlashEmpty": "No slash phrases yet.",
   "desktop.settings.composerSlashTrigger": "Trigger",
   "desktop.settings.composerSlashTriggerPlaceholder": "review",

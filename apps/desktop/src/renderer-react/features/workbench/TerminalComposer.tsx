@@ -14,6 +14,12 @@ import {
   loadTerminalComposerHistory,
   pushTerminalComposerHistory
 } from "./terminalComposerHistory";
+import {
+  mergeComposerSlashItems,
+  parseLeadingTuiSlash,
+  type ComposerSlashItem,
+  type TuiSlashCommand
+} from "./tuiSlashCommands";
 
 /** The composer only needs these fields of the module-local TerminalPane. */
 export type TerminalComposerPane = {
@@ -44,6 +50,8 @@ export const TERMINAL_COMPOSER_STATIC_COMMANDS = [
 ] as const;
 
 const MAX_SUGGESTIONS = 6;
+/** Soft wraps can need more than newline count, but CSS max-height still clips. */
+const MAX_COMPOSER_ROWS = 24;
 
 type PastedComposerImage = {
   id: string;
@@ -98,11 +106,6 @@ export function filterComposerSlashPhrases(
   return phrases.filter((phrase) => phrase.trigger.toLowerCase().startsWith(needle));
 }
 
-function statusDotClass(status: SessionDotStatus): string {
-  if (status === "open") return "rail-session-dot";
-  return `rail-session-dot is-${status === "awaiting_user" ? "awaiting" : status}`;
-}
-
 /**
  * Prefix matches before substring matches (case-insensitive), history recency
  * before the static list, deduped by exact string.
@@ -142,35 +145,33 @@ export function TerminalComposer(props: {
   pane: TerminalComposerPane;
   ptyId: number | null;
   activePane: boolean;
-  projectName: string;
-  sessionTitle: string;
+  projectName?: string;
+  sessionTitle?: string;
   status?: SessionDotStatus;
   value: string;
   onChange: (value: string) => void;
   tips?: ComposerSendTip[];
   onSendToTerminal: () => void;
+  onRunSlashCommand?: (command: TuiSlashCommand, args?: string) => void;
   onActivate: () => void;
   onOpenTip?: (tip: ComposerSendTip) => void;
-  onClose: () => void;
-  registerFocus: (key: string, focus: () => void) => () => void;
+  onClose?: () => void;
+  registerFocus: (key: string, focus: (options?: { caret?: "end" }) => void) => () => void;
   slashPhrases?: WorkbenchComposerSlashPhrase[];
+  tuiSlashCommands?: TuiSlashCommand[];
 }): React.JSX.Element {
   const {
     pane,
     ptyId,
     activePane,
-    projectName,
-    sessionTitle,
-    status = "open",
     value,
     onChange,
-    tips = [],
     onSendToTerminal,
+    onRunSlashCommand,
     onActivate,
-    onOpenTip,
-    onClose,
     registerFocus,
-    slashPhrases = []
+    slashPhrases = [],
+    tuiSlashCommands = []
   } = props;
   const { t } = useI18n();
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -191,13 +192,14 @@ export function TerminalComposer(props: {
   const [slashDismissed, setSlashDismissed] = useState(false);
   const [activeSlash, setActiveSlash] = useState(0);
   const directoryItemRefs = useRef<Array<HTMLLIElement | null>>([]);
+  const slashItemRefs = useRef<Array<HTMLLIElement | null>>([]);
   const directoryRoot = pane.projectPath || pane.cwd;
   const hashToken = useMemo(() => hashTokenAtCursor(value, cursor), [cursor, value]);
   const slashToken = useMemo(() => slashTokenAtCursor(value, cursor), [cursor, value]);
   const slashQuery = slashToken?.query ?? null;
   const slashMatches = useMemo(
-    () => (slashToken === null ? [] : filterComposerSlashPhrases(slashPhrases, slashToken.query)),
-    [slashPhrases, slashToken]
+    () => (slashToken === null ? [] : mergeComposerSlashItems(tuiSlashCommands, slashPhrases, slashToken.query)),
+    [slashPhrases, slashToken, tuiSlashCommands]
   );
   const directorySuggestions = useMemo(() => {
     if (!hashToken || !directories) return [];
@@ -236,16 +238,6 @@ export function TerminalComposer(props: {
       : suggestionsOpen && activeSuggestion >= 0
         ? `${listId}-suggestion-${activeSuggestion}`
         : undefined;
-  const visibleTips = activePane ? tips.slice(0, COMPOSER_TIP_LIMIT) : [];
-  const statusLabel = status === "awaiting_user"
-    ? t("desktop.workbench.sessionDot.awaiting")
-    : status === "connecting"
-      ? t("desktop.workbench.sessionDot.connecting")
-      : status === "error"
-        ? t("desktop.workbench.sessionDot.error")
-        : status === "running"
-          ? t("desktop.workbench.sessionDot.running")
-          : t("desktop.workbench.sessionDot.idle");
 
   useEffect(() => {
     setDirectories(null);
@@ -256,7 +248,7 @@ export function TerminalComposer(props: {
 
   useEffect(() => {
     setActiveSlash(0);
-  }, [slashQuery, slashPhrases]);
+  }, [slashQuery]);
 
   useEffect(() => {
     if (!directoryOpen || !directorySuggestions.length) return;
@@ -268,6 +260,17 @@ export function TerminalComposer(props: {
     });
     return () => cancelAnimationFrame(frame);
   }, [activeDirectory, directoryOpen, directorySuggestions]);
+
+  useEffect(() => {
+    if (!slashOpen || !slashMatches.length) return;
+    const frame = requestAnimationFrame(() => {
+      const el = slashItemRefs.current[activeSlash];
+      if (typeof el?.scrollIntoView === "function") {
+        el.scrollIntoView({ block: "nearest" });
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [activeSlash, slashMatches, slashOpen]);
 
   useEffect(() => {
     if (!directoryOpen || directories !== null || directoriesError) return;
@@ -306,16 +309,23 @@ export function TerminalComposer(props: {
 
   useEffect(
     () =>
-      registerFocus(pane.key, () => {
+      registerFocus(pane.key, (options) => {
         const el = inputRef.current;
-        if (el) el.focus();
+        if (!el) return;
+        el.focus();
+        if (options?.caret === "end") {
+          const end = el.value.length;
+          el.setSelectionRange(end, end);
+          setCursor(end);
+        }
+        setFocused(true);
       }),
     [pane.key, registerFocus]
   );
 
-  /** Grow the textarea to fit content (newlines + soft wraps); no row cap. */
+  /** Grow the textarea to fit content (newlines + soft wraps) until CSS max-height. */
   const resizeRows = useCallback((text: string) => {
-    const newlineRows = Math.max(1, text.split("\n").length);
+    const newlineRows = Math.max(1, Math.min(MAX_COMPOSER_ROWS, text.split("\n").length));
     const el = inputRef.current;
     if (!el) {
       setRows(newlineRows);
@@ -324,10 +334,13 @@ export function TerminalComposer(props: {
     const previous = el.value;
     if (previous !== text) el.value = text;
     el.rows = newlineRows;
-    while (el.scrollHeight > el.clientHeight + 1) {
+    let nextRows = newlineRows;
+    while (nextRows < MAX_COMPOSER_ROWS && el.scrollHeight > el.clientHeight + 1) {
+      const before = el.scrollHeight;
       el.rows += 1;
+      nextRows = el.rows;
+      if (el.scrollHeight <= before) break;
     }
-    const nextRows = el.rows;
     if (previous !== text) el.value = previous;
     setRows(nextRows);
   }, []);
@@ -344,6 +357,29 @@ export function TerminalComposer(props: {
   const sendToTerminal = useCallback(() => {
     const text = value.trim();
     if (!text || ptyId === null) return;
+    const parsed = parseLeadingTuiSlash(text, tuiSlashCommands);
+    if (parsed && onRunSlashCommand) {
+      onRunSlashCommand(
+        tuiSlashCommands.find((command) => command.name === parsed.name) || {
+          name: parsed.name,
+          descriptionKey: "",
+          needsTerminalFocus: parsed.needsTerminalFocus
+        },
+        parsed.args
+      );
+      applyValue("");
+      draftRef.current = "";
+      setHistoryIndex(-1);
+      setSuggestionsDismissed(false);
+      setDirectoriesDismissed(false);
+      setSlashDismissed(false);
+      setActiveSuggestion(0);
+      setActiveDirectory(0);
+      setActiveSlash(0);
+      setPendingImages([]);
+      setImagePreview("");
+      return;
+    }
     setHistory((current) => {
       void current;
       return pushTerminalComposerHistory(pane.cwd, text);
@@ -361,7 +397,7 @@ export function TerminalComposer(props: {
     draftRef.current = "";
     setPendingImages([]);
     setImagePreview("");
-  }, [applyValue, onSendToTerminal, pane.cwd, ptyId, value]);
+  }, [applyValue, onRunSlashCommand, onSendToTerminal, pane.cwd, ptyId, tuiSlashCommands, value]);
 
   const acceptSuggestion = useCallback((command: string) => {
     applyValue(command);
@@ -386,6 +422,27 @@ export function TerminalComposer(props: {
     requestAnimationFrame(() => inputRef.current?.setSelectionRange(nextCursor, nextCursor));
     inputRef.current?.focus();
   }, [applyValue, cursor, slashToken, value]);
+
+  const acceptSlashItem = useCallback((item: ComposerSlashItem) => {
+    if (item.kind === "command") {
+      if (onRunSlashCommand) {
+        onRunSlashCommand(item.command, "");
+        applyValue("");
+        draftRef.current = "";
+        setSlashDismissed(true);
+        setActiveSlash(0);
+        setPendingImages([]);
+        setImagePreview("");
+        return;
+      }
+      applyValue(`/${item.command.name}`);
+      setSlashDismissed(true);
+      setActiveSlash(0);
+      inputRef.current?.focus();
+      return;
+    }
+    acceptSlashPhrase(item);
+  }, [acceptSlashPhrase, applyValue, onRunSlashCommand]);
 
   const acceptDirectory = useCallback((name: string) => {
     if (!hashToken) return;
@@ -435,7 +492,7 @@ export function TerminalComposer(props: {
           setActiveDirectory((current) => (current - 1 + directorySuggestions.length) % directorySuggestions.length);
           return;
         }
-        if ((isEnter && !event.shiftKey) || isTab) {
+        if (isTab) {
           event.preventDefault();
           const pick = directorySuggestions[activeDirectory];
           if (pick) acceptDirectory(pick);
@@ -461,10 +518,10 @@ export function TerminalComposer(props: {
           setActiveSlash((current) => (current - 1 + slashMatches.length) % slashMatches.length);
           return;
         }
-        if ((isEnter && !event.shiftKey) || isTab) {
+        if (isTab) {
           event.preventDefault();
           const pick = slashMatches[activeSlash] ?? slashMatches[0];
-          if (pick) acceptSlashPhrase(pick);
+          if (pick) acceptSlashItem(pick);
           return;
         }
       }
@@ -486,19 +543,12 @@ export function TerminalComposer(props: {
         setSuggestionsDismissed(true);
         return;
       }
-      if ((isEnter && !event.shiftKey) || isTab) {
+      if (isTab) {
+        event.preventDefault();
         const pick = suggestions[activeSuggestion >= 0 ? activeSuggestion : 0];
         if (pick && pick !== value) {
-          event.preventDefault();
           acceptSuggestion(pick);
-          return;
         }
-        if (isEnter && pick === value) {
-          event.preventDefault();
-          sendToTerminal();
-          return;
-        }
-        event.preventDefault();
         return;
       }
     }
@@ -556,7 +606,7 @@ export function TerminalComposer(props: {
       }
       return;
     }
-  }, [acceptDirectory, acceptSlashPhrase, acceptSuggestion, activeDirectory, activeSlash, applyValue, directoryOpen, directorySuggestions, history, historyIndex, sendToTerminal, slashMatches, slashOpen, suggestions, suggestionsOpen, activeSuggestion, value]);
+  }, [acceptDirectory, acceptSlashItem, acceptSuggestion, activeDirectory, activeSlash, applyValue, directoryOpen, directorySuggestions, history, historyIndex, sendToTerminal, slashMatches, slashOpen, suggestions, suggestionsOpen, activeSuggestion, value]);
 
   const insertAtCursor = useCallback((text: string) => {
     const el = inputRef.current;
@@ -647,42 +697,6 @@ export function TerminalComposer(props: {
       onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
-      <div className="wb-terminal-composer-head">
-        <span className="rail-session-dot-btn" data-status={status} aria-label={statusLabel} title={statusLabel}>
-          <span className={statusDotClass(status)} aria-hidden="true" />
-        </span>
-        <span className="rail-session-dot-status" title={statusLabel}>{statusLabel}</span>
-        <span className="wb-terminal-composer-project">
-          <span className="wb-terminal-composer-session-title">{sessionTitle}</span>
-          {projectName ? <span className="wb-terminal-composer-project-name">{projectName}</span> : null}
-        </span>
-        <button
-          type="button"
-          className="wb-terminal-composer-close"
-          aria-label={t("desktop.workbench.terminalComposerClose")}
-          title={t("desktop.workbench.terminalComposerClose")}
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={onClose}
-        >
-          <ThemeIcon name="close" size={13} />
-        </button>
-      </div>
-      {visibleTips.length ? (
-        <ul className="wb-terminal-composer-tips" aria-label={t("desktop.workbench.terminalComposerTips")}>
-          {visibleTips.map((tip) => (
-            <li key={tip.id}>
-              <button
-                type="button"
-                className="wb-terminal-composer-tip"
-                title={tip.text}
-                onClick={() => onOpenTip?.(tip)}
-              >
-                {tip.text}
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
       {pendingImages.length ? (
         <div className="wb-terminal-composer-pending-images" aria-label={t("desktop.workbench.terminalComposerPastedImages")}>
           {pendingImages.map((image) => (
@@ -780,7 +794,7 @@ export function TerminalComposer(props: {
               onClick={() => acceptDirectory(name)}
             >
               <span className="wb-terminal-composer-suggestion-text">#{name}</span>
-              <span className="wb-terminal-composer-suggestion-kbd" aria-hidden="true">↵</span>
+              <span className="wb-terminal-composer-suggestion-kbd" aria-hidden="true">Tab</span>
             </li>
           )) : (
             <li className="wb-terminal-composer-suggestion" role="option" aria-disabled="true">
@@ -795,21 +809,30 @@ export function TerminalComposer(props: {
           role="listbox"
           aria-label={t("desktop.workbench.terminalComposerSlashSuggestions")}
         >
-          {slashMatches.map((phrase, index) => (
-            <li
-              key={phrase.trigger}
-              id={`${listId}-slash-${index}`}
-              role="option"
-              aria-selected={index === activeSlash}
-              className={`wb-terminal-composer-suggestion${index === activeSlash ? " is-active" : ""}`}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => acceptSlashPhrase(phrase)}
-            >
-              <span className="wb-terminal-composer-suggestion-text">/{phrase.trigger}</span>
-              {phrase.description ? <span className="wb-terminal-composer-suggestion-desc">{phrase.description}</span> : null}
-              <span className="wb-terminal-composer-suggestion-kbd" aria-hidden="true">↵</span>
-            </li>
-          ))}
+          {slashMatches.map((item, index) => {
+            const trigger = item.kind === "command" ? item.command.name : item.trigger;
+            const description = item.kind === "command"
+              ? t(item.command.descriptionKey)
+              : item.description;
+            return (
+              <li
+                ref={(element) => {
+                  slashItemRefs.current[index] = element;
+                }}
+                key={`${item.kind}:${trigger}`}
+                id={`${listId}-slash-${index}`}
+                role="option"
+                aria-selected={index === activeSlash}
+                className={`wb-terminal-composer-suggestion${index === activeSlash ? " is-active" : ""}`}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => acceptSlashItem(item)}
+              >
+                <span className="wb-terminal-composer-suggestion-text">/{trigger}</span>
+                {description ? <span className="wb-terminal-composer-suggestion-desc">{description}</span> : null}
+                <span className="wb-terminal-composer-suggestion-kbd" aria-hidden="true">Tab</span>
+              </li>
+            );
+          })}
         </ul>
       ) : suggestionsOpen ? (
         <ul
@@ -829,7 +852,7 @@ export function TerminalComposer(props: {
               onClick={() => acceptSuggestion(suggestion)}
             >
               <span className="wb-terminal-composer-suggestion-text">{suggestion}</span>
-              <span className="wb-terminal-composer-suggestion-kbd" aria-hidden="true">↵</span>
+              <span className="wb-terminal-composer-suggestion-kbd" aria-hidden="true">Tab</span>
             </li>
           ))}
         </ul>

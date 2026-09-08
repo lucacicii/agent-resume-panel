@@ -114,7 +114,7 @@ describe("AppChrome", () => {
         { paneKey: "acp:abc", projectPath: "/proj/a", title: "Short", sessionKey: "chat:abc", status: "open" }
       ] }));
     });
-    const dots = [...document.querySelectorAll<HTMLButtonElement>(".rail-session-dot-btn")];
+    const dots = [...document.querySelectorAll<HTMLButtonElement>(".session-dot-btn")];
     expect(dots).toHaveLength(2);
     expect(dots[0].getAttribute("aria-label")).toBe("A very long session title here");
     expect(dots[0].hasAttribute("title")).toBe(false);
@@ -154,10 +154,10 @@ describe("AppChrome", () => {
         }
       ] }));
     });
-    const dots = [...document.querySelectorAll<HTMLButtonElement>(".rail-session-dot-btn")];
+    const dots = [...document.querySelectorAll<HTMLButtonElement>(".session-dot-btn")];
     expect(dots).toHaveLength(3);
-    expect(dots[0].querySelector(".rail-session-dot")?.classList.contains("is-awaiting")).toBe(true);
-    expect(dots[1].querySelector(".rail-session-dot")?.classList.contains("is-running")).toBe(true);
+    expect(dots[0].querySelector(".session-dot")?.classList.contains("is-awaiting")).toBe(true);
+    expect(dots[1].querySelector(".session-dot")?.classList.contains("is-running")).toBe(true);
     expect(dots[0].getAttribute("aria-label")).toContain("Waiting for you");
     expect(dots[1].getAttribute("aria-label")).toContain("Running");
     expect(dots[2].getAttribute("aria-label")).toContain("May need attention");
@@ -169,7 +169,7 @@ describe("AppChrome", () => {
     await act(async () => {
       window.dispatchEvent(new CustomEvent("agent-resume:active-sessions", { detail: [] }));
     });
-    expect(document.querySelectorAll(".rail-session-dot-btn").length).toBe(0);
+    expect(document.querySelectorAll(".session-dot-btn").length).toBe(0);
   });
 
   it("requests workbench and focuses the session when a dot is clicked", async () => {
@@ -184,7 +184,7 @@ describe("AppChrome", () => {
         { paneKey: "terminal:9", projectPath: "/proj/x", title: "Alpha", sessionKey: "cli:s9", status: "open" }
       ] }));
     });
-    const dot = document.querySelector<HTMLButtonElement>(".rail-session-dot-btn");
+    const dot = document.querySelector<HTMLButtonElement>(".session-dot-btn");
     expect(dot).not.toBeNull();
     fireEvent.click(dot!);
     expect(tabReq).toHaveBeenCalledWith(expect.objectContaining({ detail: "workbench" }));
@@ -211,13 +211,13 @@ describe("AppChrome", () => {
     const bottom = document.querySelector(".rail-bottom-dots");
     expect(bottom).not.toBeNull();
     const notesCluster = bottom!.querySelector(".rail-notes-dots");
-    const sessionsCluster = bottom!.querySelector(".rail-session-dots");
+    const sessionsCluster = bottom!.querySelector(".session-dots-cluster");
     expect(notesCluster).not.toBeNull();
     expect(sessionsCluster).not.toBeNull();
     expect(notesCluster!.getAttribute("aria-label")).toBe("Floating notes");
     expect(sessionsCluster!.getAttribute("aria-label")).toBe("Active sessions");
     expect(notesCluster!.querySelector(".rail-dots-heading")).not.toBeNull();
-    expect(sessionsCluster!.querySelector(".rail-dots-heading")).not.toBeNull();
+    expect(sessionsCluster!.querySelector(".session-dots-heading")).not.toBeNull();
     expect(
       Boolean(notesCluster!.compareDocumentPosition(sessionsCluster!) & Node.DOCUMENT_POSITION_FOLLOWING)
     ).toBe(true);
@@ -235,7 +235,7 @@ describe("AppChrome", () => {
       pushNoteDots([]);
     });
     expect(document.querySelectorAll(".rail-note-dot-btn").length).toBe(0);
-    expect(document.querySelector(".rail-session-dots")).not.toBeNull();
+    expect(document.querySelector(".session-dots-cluster")).not.toBeNull();
   });
 
   it("updates floating note dots when the open-notes list changes", async () => {
@@ -253,4 +253,5 @@ describe("AppChrome", () => {
     expect(dots).toHaveLength(2);
     expect(dots.map((dot) => dot.getAttribute("aria-label"))).toEqual(["Alpha note", "Beta note"]);
   });
+
 });

@@ -1,16 +1,10 @@
 /**
- * TerminalComposer persistence: per-working-directory (cwd) command history and
- * floating position, both stored in localStorage, best-effort (try/catch) so
- * loss is never fatal.
+ * TerminalComposer persistence: per-working-directory (cwd) command history,
+ * stored in localStorage, best-effort (try/catch) so loss is never fatal.
  */
 
 const STORAGE_KEY = "wb-terminal-composer-history";
 const HISTORY_CAP = 100;
-
-const POSITION_KEY = "wb-terminal-composer-position";
-/** Bottom-left offset (px) matching the `.wb-terminal-composer` CSS defaults. */
-export const DEFAULT_COMPOSER_POSITION = { x: 10, y: 8 } as const;
-export type ComposerPosition = { x: number; y: number };
 
 function readStore(): Record<string, string[]> {
   try {
@@ -55,33 +49,4 @@ export function pushTerminalComposerHistory(cwd: string, command: string): strin
   store[cwd] = next;
   writeStore(store);
   return next;
-}
-
-/** Load the floating composer position for a working directory. */
-export function loadTerminalComposerPosition(cwd: string): ComposerPosition {
-  try {
-    const raw = localStorage.getItem(POSITION_KEY);
-    if (!raw) return { ...DEFAULT_COMPOSER_POSITION };
-    const parsed: unknown = JSON.parse(raw);
-    const entry = (parsed as Record<string, unknown>)?.[cwd] as Partial<ComposerPosition> | undefined;
-    if (entry && Number.isFinite(entry.x) && Number.isFinite(entry.y)) {
-      return { x: Math.round(entry.x as number), y: Math.round(entry.y as number) };
-    }
-  } catch {
-    // fall through to default
-  }
-  return { ...DEFAULT_COMPOSER_POSITION };
-}
-
-/** Persist the floating composer position for a working directory. */
-export function saveTerminalComposerPosition(cwd: string, position: ComposerPosition): void {
-  try {
-    const raw = localStorage.getItem(POSITION_KEY);
-    const store = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
-    if (typeof store !== "object" || store === null) return;
-    store[cwd] = { x: Math.round(position.x), y: Math.round(position.y) };
-    localStorage.setItem(POSITION_KEY, JSON.stringify(store));
-  } catch {
-    // storage unavailable (quota / private mode) — position is best-effort
-  }
 }

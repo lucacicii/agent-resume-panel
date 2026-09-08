@@ -1420,6 +1420,8 @@ export function ImPanel(): ReactPortal | null {
                           onResumeJob={resumeJob}
                           onCancelJob={cancelJob}
                           onPreviewImage={setPreviewModalUrl}
+                          imageBaseDir={projectRoot}
+                          imageRootDir={projectRoot}
                           onCopyFilePath={copyFilePath}
                           onEditDelegation={handleEditDelegation}
                           onOpenSelectionMenu={openSelectionMenu}

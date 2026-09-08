@@ -5,6 +5,7 @@ import type { AgentSession, GtdStatus } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { CodeEditor, type CodeEditorHandle, type CodeEditorSearchResult } from "../../components/CodeEditor";
 import { renderMarkdown } from "../../components/Markdown";
+import { imageSrcFromElement, posixDirname, posixJoin } from "../../components/markdownImage";
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { notifyDesktop } from "../../components/Notifications";
 import { GTD_STATUSES } from "../../gtd";
@@ -317,6 +318,7 @@ export function NotesPanel(): ReactPortal | null {
   const [findQuery, setFindQuery] = useState("");
   const [findResult, setFindResult] = useState<CodeEditorSearchResult | null>(null);
   const [imagePreview, setImagePreview] = useState("");
+  const [panelHome, setPanelHome] = useState("");
   const setStatus = (s: { text: string; kind?: "error" | "ok" | "warning" }) => {
     if (s.text) notifyDesktop({ text: s.text, kind: (s.kind ?? "info") as "error" | "ok" | "info" });
   };
@@ -368,6 +370,13 @@ export function NotesPanel(): ReactPortal | null {
     } catch {
       setSubtree(null);
     }
+  }, []);
+
+  useEffect(() => {
+    if (typeof desktopApi().getPanelHome !== "function") return;
+    void desktopApi().getPanelHome().then((home) => {
+      if (typeof home === "string") setPanelHome(home.replace(/\\/g, "/").replace(/\/$/, ""));
+    }).catch(() => undefined);
   }, []);
 
   const load = useCallback(async () => {
@@ -1424,7 +1433,7 @@ export function NotesPanel(): ReactPortal | null {
                 });
               }}
             >
-              {view === "edit" ? <CodeEditor ref={editorRef} className="notes-editor-host" value={content} language="markdown" selectionProjectPath={selected?.projectPath} ariaLabel={t("desktop.notes.editorPlaceholder")} onChange={editContent} onBlur={() => void save()} shouldHandlePaste={() => desktopApi().notesClipboardHasImage()} onPasteImage={pasteImage} /> : <div ref={previewRef} className="notes-preview markdown-body" onClick={(event) => { if (event.target instanceof HTMLImageElement) setImagePreview(event.target.src); }} dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />}
+              {view === "edit" ? <CodeEditor ref={editorRef} className="notes-editor-host" value={content} language="markdown" selectionProjectPath={selected?.projectPath} ariaLabel={t("desktop.notes.editorPlaceholder")} onChange={editContent} onBlur={() => void save()} shouldHandlePaste={() => desktopApi().notesClipboardHasImage()} onPasteImage={pasteImage} /> : <div ref={previewRef} className="notes-preview markdown-body" onClick={(event) => { const src = imageSrcFromElement(event.target); if (src) setImagePreview(src); }} dangerouslySetInnerHTML={{ __html: renderMarkdown(content, selected && panelHome ? { baseDir: posixDirname(posixJoin(panelHome, selected.relMdPath)), rootDir: posixJoin(panelHome, "notes"), imageLabels: { openInBrowser: t("desktop.markdown.openInBrowser"), unavailable: t("desktop.markdown.imageUnavailable"), remoteImage: t("desktop.markdown.remoteImage") } } : undefined) }} />}
             </div>
             </div>
           </div> : <div className="notes-empty-state"><p className="muted notes-hint">{t("desktop.notes.selectOrCreate")}</p><button type="button" className="tool-btn" onClick={() => void desktopApi().notesOpenFolder()}>{t("desktop.common.revealInFinder")}</button></div>}

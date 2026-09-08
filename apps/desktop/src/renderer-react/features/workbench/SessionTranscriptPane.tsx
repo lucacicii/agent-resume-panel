@@ -24,7 +24,9 @@ const TranscriptMessageRow = React.memo(function TranscriptMessageRow({
   onToggleThinking,
   thinkingLabel,
   renderMarkdownView,
-  isStreaming = false
+  isStreaming = false,
+  isSearchTarget = false,
+  onImageClick
 }: {
   message: TranscriptMessage;
   isSelected: boolean;
@@ -36,11 +38,13 @@ const TranscriptMessageRow = React.memo(function TranscriptMessageRow({
   thinkingLabel: string;
   renderMarkdownView: boolean;
   isStreaming?: boolean;
+  isSearchTarget?: boolean;
+  onImageClick?: (url: string) => void;
 }): React.JSX.Element {
   return (
     <article
       data-transcript-id={message.id}
-      className={`preview-msg ${message.role}${isSelected ? " is-selected" : ""}`}
+      className={`preview-msg ${message.role}${isSelected ? " is-selected" : ""}${isSearchTarget ? " is-search-target" : ""}`}
     >
       <div className="role">
         {message.role === "assistant"
@@ -65,6 +69,7 @@ const TranscriptMessageRow = React.memo(function TranscriptMessageRow({
               <StreamdownRenderer
                 content={message.thinking}
                 className="wb-transcript-thinking-body wb-transcript-md markdown-body"
+                onImageClick={onImageClick}
               />
             ) : (
               <div className="wb-transcript-thinking-body wb-transcript-plain">{message.thinking}</div>
@@ -78,6 +83,7 @@ const TranscriptMessageRow = React.memo(function TranscriptMessageRow({
             content={message.text}
             isAnimating={isStreaming}
             className="wb-transcript-md markdown-body"
+            onImageClick={onImageClick}
           />
         ) : (
           <div className="wb-transcript-plain">{message.text}</div>
@@ -96,6 +102,43 @@ type TranscriptPreview = {
 
 const LIVE_REFRESH_INTERVAL_MS = 500;
 
+function findTextRanges(root: HTMLElement, needle: string): Range[] {
+  const ranges: Range[] = [];
+  if (!needle || !root) return ranges;
+  const lowerNeedle = needle.toLowerCase();
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      if (!node.textContent || !node.textContent.toLowerCase().includes(lowerNeedle)) {
+        return NodeFilter.FILTER_SKIP;
+      }
+      const parent = node.parentElement;
+      if (parent && (parent.closest("button") || parent.closest(".wb-transcript-head-search") || parent.closest(".wb-transcript-outline"))) {
+        return NodeFilter.FILTER_REJECT;
+      }
+      return NodeFilter.FILTER_ACCEPT;
+    }
+  });
+
+  let textNode: Text | null;
+  while ((textNode = walker.nextNode() as Text | null)) {
+    const text = textNode.textContent || "";
+    const lowerText = text.toLowerCase();
+    let pos = 0;
+    while ((pos = lowerText.indexOf(lowerNeedle, pos)) !== -1) {
+      try {
+        const range = new Range();
+        range.setStart(textNode, pos);
+        range.setEnd(textNode, pos + needle.length);
+        ranges.push(range);
+      } catch {
+        // Range safety
+      }
+      pos += needle.length;
+    }
+  }
+  return ranges;
+}
+
 export function SessionTranscriptPane({
   provider,
   sessionId,
@@ -103,7 +146,8 @@ export function SessionTranscriptPane({
   active,
   isRunning = false,
   fontSize = 14,
-  focusUserMessage
+  focusUserMessage,
+  isPending = false
 }: {
   provider: string;
   sessionId: string;
@@ -112,6 +156,7 @@ export function SessionTranscriptPane({
   isRunning?: boolean;
   fontSize?: number;
   focusUserMessage?: { text: string; sentAtMs?: number; nonce: number } | null;
+  isPending?: boolean;
 }): React.JSX.Element {
   const roleIconProvider = iconProvider || provider;
   const { locale, t } = useI18n();
@@ -124,6 +169,7 @@ export function SessionTranscriptPane({
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const [renderMarkdownView, setRenderMarkdownView] = useState(true);
   const [expandedThinking, setExpandedThinking] = useState<Record<string, boolean>>({});
+  const [imagePreview, setImagePreview] = useState("");
   const bodyRef = useRef<HTMLDivElement>(null);
   const userScrolledUpRef = useRef(false);
   const previewRef = useRef<TranscriptPreview | null>(null);
@@ -206,7 +252,56 @@ export function SessionTranscriptPane({
     () => buildSessionTranscriptModel(preview?.messages || []),
     [preview?.messages]
   );
-  const visible = useMemo(() => filterSessionTranscript(model, query), [model, query]);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const normalizedQuery = query.trim().toLowerCase();
+
+  const matchedMessageIds = useMemo(() => {
+    if (!normalizedQuery) return [];
+    const hits: string[] = [];
+    for (const msg of model.messages) {
+      if (
+        msg.text.toLowerCase().includes(normalizedQuery) ||
+        (msg.thinking && msg.thinking.toLowerCase().includes(normalizedQuery))
+      ) {
+        hits.push(msg.id);
+      }
+    }
+    return hits;
+  }, [model.messages, normalizedQuery]);
+
+  const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
+  const [totalMatches, setTotalMatches] = useState(0);
+  const rangesRef = useRef<Range[]>([]);
+
+  const applyHighlightRanges = useCallback((ranges: Range[], activeIdx: number) => {
+    const cssObj = (window as unknown as { CSS?: { highlights?: Map<string, unknown> } }).CSS;
+    const highlightCtor = (window as unknown as { Highlight?: new (...ranges: Range[]) => unknown }).Highlight;
+    if (!cssObj?.highlights || typeof highlightCtor !== "function") return;
+    try {
+      if (ranges.length === 0) {
+        cssObj.highlights.delete("transcript-search");
+        cssObj.highlights.delete("transcript-search-active");
+        return;
+      }
+      const allHighlight = new highlightCtor(...ranges);
+      cssObj.highlights.set("transcript-search", allHighlight);
+
+      const targetRange = ranges[activeIdx];
+      if (targetRange) {
+        cssObj.highlights.set("transcript-search-active", new highlightCtor(targetRange));
+        const el = targetRange.startContainer.parentElement;
+        if (el && typeof el.scrollIntoView === "function") {
+          userScrolledUpRef.current = true;
+          setShowScrollBottom(true);
+          el.scrollIntoView({ block: "center", behavior: "smooth" });
+        }
+      } else {
+        cssObj.highlights.delete("transcript-search-active");
+      }
+    } catch {
+      // Highlight API safety
+    }
+  }, []);
 
   const scrollToBottom = useCallback((smooth = false) => {
     userScrolledUpRef.current = false;
@@ -233,13 +328,95 @@ export function SessionTranscriptPane({
     }
   }, [preview?.messages]);
 
-  const scrollToMessage = (messageId: string) => {
+  const scrollToMessage = useCallback((messageId: string) => {
     setSelectedId(messageId);
     userScrolledUpRef.current = true;
     setShowScrollBottom(true);
     const node = bodyRef.current?.querySelector<HTMLElement>(`[data-transcript-id="${messageId}"]`);
-    node?.scrollIntoView({ block: "start" });
+    if (typeof node?.scrollIntoView === "function") {
+      node.scrollIntoView({ block: "start" });
+    }
+  }, []);
+
+  useEffect(() => {
+    const root = bodyRef.current;
+    if (!normalizedQuery || !root) {
+      rangesRef.current = [];
+      setTotalMatches(0);
+      setCurrentMatchIndex(0);
+      const cssObj = (window as unknown as { CSS?: { highlights?: Map<string, unknown> } }).CSS;
+      if (cssObj?.highlights) {
+        cssObj.highlights.delete("transcript-search");
+        cssObj.highlights.delete("transcript-search-active");
+      }
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      if (!bodyRef.current) return;
+      const ranges = findTextRanges(bodyRef.current, normalizedQuery);
+      rangesRef.current = ranges;
+      setTotalMatches(ranges.length);
+      const initialIdx = 0;
+      setCurrentMatchIndex(initialIdx);
+      applyHighlightRanges(ranges, initialIdx);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      const cssObj = (window as unknown as { CSS?: { highlights?: Map<string, unknown> } }).CSS;
+      if (cssObj?.highlights) {
+        cssObj.highlights.delete("transcript-search");
+        cssObj.highlights.delete("transcript-search-active");
+      }
+    };
+  }, [normalizedQuery, preview?.messages, renderMarkdownView, applyHighlightRanges]);
+
+  const nextMatch = useCallback(() => {
+    const count = rangesRef.current.length;
+    if (count === 0) return;
+    const nextIdx = (currentMatchIndex + 1) % count;
+    setCurrentMatchIndex(nextIdx);
+    applyHighlightRanges(rangesRef.current, nextIdx);
+  }, [currentMatchIndex, applyHighlightRanges]);
+
+  const prevMatch = useCallback(() => {
+    const count = rangesRef.current.length;
+    if (count === 0) return;
+    const prevIdx = (currentMatchIndex - 1 + count) % count;
+    setCurrentMatchIndex(prevIdx);
+    applyHighlightRanges(rangesRef.current, prevIdx);
+  }, [currentMatchIndex, applyHighlightRanges]);
+
+  const onSearchKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      if (event.shiftKey) {
+        prevMatch();
+      } else {
+        nextMatch();
+      }
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      setQuery("");
+      searchInputRef.current?.blur();
+    }
   };
+
+  useEffect(() => {
+    if (!active) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const isFind = (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "f";
+      if (isFind) {
+        event.preventDefault();
+        event.stopPropagation();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [active]);
 
   useEffect(() => {
     if (!focusUserMessage?.text || !model.messages.length) return;
@@ -273,13 +450,17 @@ export function SessionTranscriptPane({
       : t("desktop.workbench.transcriptRoleAssistant")
   );
 
-  if (!provider || !sessionId) {
+  if (isPending || !provider || !sessionId) {
     return (
       <div className="wb-side-pane wb-transcript-pane">
         <div className="wb-side-pane-head">
           <span className="wb-side-pane-title">{t("desktop.workbench.sidePanelTranscript")}</span>
         </div>
-        <p className="muted wb-transcript-status">{t("desktop.workbench.transcriptNeedSession")}</p>
+        <p className="muted wb-transcript-status">
+          {isPending || (provider && !sessionId)
+            ? t("desktop.workbench.transcriptNewSessionHint")
+            : t("desktop.workbench.transcriptNeedSession")}
+        </p>
       </div>
     );
   }
@@ -308,19 +489,48 @@ export function SessionTranscriptPane({
         >
           <ThemeIcon name={renderMarkdownView ? "file-text" : "eye"} size={14} />
         </button>
-      </div>
-
-      <div className="wb-transcript-toolbar">
-        <input
-          type="search"
-          className="wb-search-input"
-          value={query}
-          placeholder={t("desktop.workbench.transcriptSearchPlaceholder")}
-          aria-label={t("desktop.workbench.transcriptSearchPlaceholder")}
-          autoComplete="off"
-          spellCheck={false}
-          onChange={(event) => setQuery(event.target.value)}
-        />
+        <div className="wb-transcript-head-search">
+          <ThemeIcon name="search" size={12} className="wb-transcript-head-search-icon" aria-hidden="true" />
+          <input
+            ref={searchInputRef}
+            type="search"
+            className="wb-transcript-head-search-input"
+            value={query}
+            placeholder={t("desktop.workbench.transcriptSearchPlaceholder")}
+            aria-label={t("desktop.workbench.transcriptSearchPlaceholder")}
+            autoComplete="off"
+            spellCheck={false}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={onSearchKeyDown}
+          />
+          {normalizedQuery ? (
+            <span className={`wb-transcript-head-search-count${(totalMatches || matchedMessageIds.length) === 0 ? " is-empty" : ""}`}>
+              {(totalMatches || matchedMessageIds.length) > 0 ? `${currentMatchIndex + 1}/${totalMatches || matchedMessageIds.length}` : "0/0"}
+            </span>
+          ) : null}
+          {normalizedQuery && (totalMatches || matchedMessageIds.length) > 0 ? (
+            <div className="wb-transcript-head-search-nav">
+              <button
+                type="button"
+                className="wb-transcript-head-search-btn"
+                onClick={prevMatch}
+                title={t("desktop.common.findPrev", "Previous match (Shift+Enter)")}
+                aria-label={t("desktop.common.findPrev", "Previous match")}
+              >
+                <ThemeIcon name="arrow-up" size={11} />
+              </button>
+              <button
+                type="button"
+                className="wb-transcript-head-search-btn"
+                onClick={nextMatch}
+                title={t("desktop.common.findNext", "Next match (Enter)")}
+                aria-label={t("desktop.common.findNext", "Next match")}
+              >
+                <ThemeIcon name="arrow-down" size={11} />
+              </button>
+            </div>
+          ) : null}
+        </div>
       </div>
 
       {loading && !preview ? (
@@ -342,14 +552,20 @@ export function SessionTranscriptPane({
             onScroll={handleScroll}
             style={{ ["--wb-transcript-font-size" as string]: `${fontSize}px` }}
           >
-            {visible.messages.length ? visible.messages.map((message, index) => {
-              const isLast = index === visible.messages.length - 1;
+            {model.messages.length ? model.messages.map((message, index) => {
+              const isLast = index === model.messages.length - 1;
               const isStreaming = isRunning && isLast && message.role === "assistant";
+              const isSearchTarget = Boolean(
+                normalizedQuery &&
+                matchedMessageIds.length > 0 &&
+                matchedMessageIds[currentMatchIndex] === message.id
+              );
               return (
                 <TranscriptMessageRow
                   key={message.id}
                   message={message}
                   isSelected={selectedId === message.id}
+                  isSearchTarget={isSearchTarget}
                   roleIconProvider={roleIconProvider}
                   roleLabelText={roleLabel(message)}
                   stamp={formatTimestamp(message.timestamp)}
@@ -361,6 +577,7 @@ export function SessionTranscriptPane({
                   thinkingLabel={t("desktop.workbench.transcriptThinking")}
                   renderMarkdownView={renderMarkdownView}
                   isStreaming={isStreaming}
+                  onImageClick={setImagePreview}
                 />
               );
             }) : (
@@ -376,12 +593,12 @@ export function SessionTranscriptPane({
               onClick={() => setOutlineOpen((current) => !current)}
             >
               <ThemeIcon name="chevron-right" className={outlineOpen ? "is-expanded" : ""} size={12} />
-              <span>{t("desktop.workbench.transcriptOutline")} · {visible.outline.length}</span>
+              <span>{t("desktop.workbench.transcriptOutline")} · {model.outline.length}</span>
             </button>
             {outlineOpen ? (
-              visible.outline.length ? (
+              model.outline.length ? (
                 <ol className="wb-transcript-outline-list">
-                  {visible.outline.map((item) => (
+                  {model.outline.map((item) => (
                     <li key={item.id}>
                       <button
                         type="button"
@@ -413,6 +630,7 @@ export function SessionTranscriptPane({
           ) : null}
         </div>
       ) : null}
+      {imagePreview ? <div className="notes-image-preview" role="dialog" aria-modal="true" onClick={() => setImagePreview("")}><img src={imagePreview} alt="" /><button type="button" className="notes-image-preview-close" aria-label={t("desktop.common.close")} onClick={() => setImagePreview("")}><ThemeIcon name="close" size={16} /></button></div> : null}
     </div>
   );
 }

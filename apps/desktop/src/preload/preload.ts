@@ -45,6 +45,8 @@ import type {
 import type { WorkbenchArrowDirection } from "../shared/workbenchShortcuts";
 import type {
   WorkbenchActiveSessionDot,
+  WorkbenchFocusSessionRequest,
+  WorkbenchFocusSessionResult,
   WorkbenchSendSelectionRequest,
   WorkbenchSendSelectionResult
 } from "../shared/workbenchSelection";
@@ -303,6 +305,10 @@ export interface DesktopApi {
   getWorkbenchActiveSessions(): Promise<WorkbenchActiveSessionDot[]>;
   /** Live open-session list for note selection menus (main window + floating notes). */
   onWorkbenchActiveSessions(callback: (sessions: WorkbenchActiveSessionDot[]) => void): () => void;
+  /** Focus an already-open Workbench pane from the menu-bar tray. */
+  focusWorkbenchSession(args: WorkbenchFocusSessionRequest): Promise<WorkbenchFocusSessionResult>;
+  /** Main-window Workbench listener for tray / note session focus. */
+  onWorkbenchFocusSession(callback: (payload: WorkbenchFocusSessionRequest) => void): () => void;
   /** Send selected note text to Workbench: open a new agent session or an already-open pane. */
   workbenchSendSelection(args: WorkbenchSendSelectionRequest): Promise<WorkbenchSendSelectionResult>;
   /** Main-window Workbench listener for note selection sends. */
@@ -1528,6 +1534,16 @@ const api: DesktopApi = {
     ipcRenderer.on("workbench:activeSessions", handler);
     return () => {
       ipcRenderer.removeListener("workbench:activeSessions", handler);
+    };
+  },
+  focusWorkbenchSession: (args) => ipcRenderer.invoke("workbench:focusSession", args),
+  onWorkbenchFocusSession: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: WorkbenchFocusSessionRequest) => {
+      callback(payload);
+    };
+    ipcRenderer.on("workbench:focusSession", handler);
+    return () => {
+      ipcRenderer.removeListener("workbench:focusSession", handler);
     };
   },
   workbenchSendSelection: (args) => ipcRenderer.invoke("workbench:sendSelection", args),

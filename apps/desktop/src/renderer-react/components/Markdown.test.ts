@@ -85,4 +85,25 @@ describe("renderMarkdown", () => {
     expect(html).toContain("<b>bold</b>");
     expect(html).toContain("<br>");
   });
+
+  it("rewrites relative markdown images to file URLs when a base directory is provided", () => {
+    const html = renderMarkdown("![Shot](./shot.png)", {
+      baseDir: "/work/app/docs",
+      rootDir: "/work/app"
+    });
+    expect(html).toContain('src="file:///work/app/docs/shot.png"');
+    expect(html).toContain('class="md-preview-img"');
+  });
+
+  it("does not emit https img src for remote markdown images", () => {
+    const html = renderMarkdown("![Remote](https://cdn.example.com/a.png)");
+    expect(html).not.toContain('<img');
+    expect(html).toContain("cdn.example.com");
+  });
+
+  it("renders composer clipboard image paths as images", () => {
+    const src = "/var/folders/jg/xxx/T/pi-clipboard-abc.png";
+    const html = renderMarkdown(`look '${src}' then continue`);
+    expect(html).toContain(`src="file://${src}"`);
+  });
 });

@@ -1,6 +1,7 @@
 import { memo, useMemo, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
 import { ThemeIcon } from "../../components/ThemeIcon";
 import { renderMarkdown } from "../../components/Markdown";
+import { imageSrcFromElement } from "../../components/markdownImage";
 import { StreamdownRenderer } from "../../components/StreamdownRenderer";
 import { desktopApi } from "../../bridge";
 import type { ImJob, ImMember, ImMessage, ImRoom, ImToolCall } from "../../../shared/imTypes";
@@ -51,6 +52,8 @@ export interface ImMessageItemProps {
   onResumeJob: (job: ImJob) => void;
   onCancelJob?: (job: ImJob) => void;
   onPreviewImage: (url: string) => void;
+  imageBaseDir?: string | null;
+  imageRootDir?: string | null;
   onCopyFilePath: (pathStr: string) => void;
   onEditDelegation: (instruction: string, targetMember?: ImMember) => void;
   onOpenSelectionMenu: (event: ReactMouseEvent<HTMLElement>, message: ImMessage) => void;
@@ -87,6 +90,8 @@ export const ImMessageItem = memo(function ImMessageItem({
   onResumeJob,
   onCancelJob,
   onPreviewImage,
+  imageBaseDir,
+  imageRootDir,
   onCopyFilePath,
   onEditDelegation,
   onOpenSelectionMenu,
@@ -140,9 +145,18 @@ export const ImMessageItem = memo(function ImMessageItem({
       : displayBody;
   }, [dispatchBlocks.length, displayBody]);
 
+  const imageOptions = useMemo(() => {
+    if (!imageBaseDir) return undefined;
+    return { baseDir: imageBaseDir, rootDir: imageRootDir || imageBaseDir };
+  }, [imageBaseDir, imageRootDir]);
+  const imageLabels = useMemo(() => ({
+    openInBrowser: t("desktop.markdown.openInBrowser"),
+    unavailable: t("desktop.markdown.imageUnavailable"),
+    remoteImage: t("desktop.markdown.remoteImage")
+  }), [t]);
   const renderedThinking = useMemo(() => {
-    return message.thinking && isThinkingExpanded ? renderMarkdown(message.thinking) : "";
-  }, [isThinkingExpanded, message.thinking]);
+    return message.thinking && isThinkingExpanded ? renderMarkdown(message.thinking, imageOptions ? { ...imageOptions, imageLabels } : { imageLabels }) : "";
+  }, [imageLabels, imageOptions, isThinkingExpanded, message.thinking]);
 
   const citations = useMemo(() => {
     return extractCitationsFromMessage(message, room);
@@ -534,6 +548,10 @@ export const ImMessageItem = memo(function ImMessageItem({
             {isThinkingExpanded && renderedThinking ? (
               <div
                 className="im-message-thinking-body markdown-body"
+                onClick={(event) => {
+                  const src = imageSrcFromElement(event.target);
+                  if (src) onPreviewImage(src);
+                }}
                 dangerouslySetInnerHTML={{ __html: renderedThinking }}
               />
             ) : null}
@@ -567,6 +585,9 @@ export const ImMessageItem = memo(function ImMessageItem({
             content={cleanBody}
             isAnimating={Boolean(message.streaming)}
             className="markdown-body"
+            imageOptions={imageOptions}
+            imageLabels={imageLabels}
+            onImageClick={onPreviewImage}
             onCitationClick={(marker) => {
               if (onOpenCitations) {
                 onOpenCitations(message, marker);

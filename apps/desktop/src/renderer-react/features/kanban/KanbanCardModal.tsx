@@ -6,6 +6,7 @@ import { Sheet } from "../../components/Sheet";
 import { notifyDesktop } from "../../components/Notifications";
 import { ThemeIcon } from "../../components/ThemeIcon";
 import { renderMarkdown } from "../../components/Markdown";
+import { imageSrcFromElement, posixDirname, posixJoin } from "../../components/markdownImage";
 import { isNoteSessionResumable } from "./noteSessionResume";
 import { useI18n } from "../../i18n";
 import { basename, projectMatchesNote, projectPathFor, type Project } from "../notes/noteProject";
@@ -55,6 +56,15 @@ export function KanbanCardModal({ note, session, onClose, onNoteMoved }: KanbanC
   const [projects, setProjects] = useState<Project[]>([]);
   const [moving, setMoving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [panelHome, setPanelHome] = useState("");
+  const [imagePreview, setImagePreview] = useState("");
+
+  useEffect(() => {
+    if (typeof desktopApi().getPanelHome !== "function") return;
+    void desktopApi().getPanelHome().then((home) => {
+      if (typeof home === "string") setPanelHome(home.replace(/\\/g, "/").replace(/\/$/, ""));
+    }).catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     if (!note) return;
@@ -322,6 +332,7 @@ export function KanbanCardModal({ note, session, onClose, onNoteMoved }: KanbanC
   );
 
   return (
+    <>
     <Sheet open title={title} onClose={onClose} modal wide bodyClassName="kanban-detail-body" actions={actions}>
       {note ? (
         <>
@@ -374,7 +385,7 @@ export function KanbanCardModal({ note, session, onClose, onNoteMoved }: KanbanC
               }}
             />
           ) : (
-            <div className="kanban-note-preview markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(noteContent) }} />
+            <div className="kanban-note-preview markdown-body" onClick={(event) => { const src = imageSrcFromElement(event.target); if (src) setImagePreview(src); }} dangerouslySetInnerHTML={{ __html: renderMarkdown(noteContent, note && panelHome ? { baseDir: posixDirname(posixJoin(panelHome, note.relMdPath)), rootDir: posixJoin(panelHome, "notes"), imageLabels: { openInBrowser: t("desktop.markdown.openInBrowser"), unavailable: t("desktop.markdown.imageUnavailable"), remoteImage: t("desktop.markdown.remoteImage") } } : undefined) }} />
           )}
         </>
       ) : (
@@ -411,5 +422,7 @@ export function KanbanCardModal({ note, session, onClose, onNoteMoved }: KanbanC
         </div>
       )}
     </Sheet>
+    {imagePreview ? <div className="notes-image-preview" role="dialog" aria-modal="true" onClick={() => setImagePreview("")}><img src={imagePreview} alt="" /><button type="button" className="notes-image-preview-close" aria-label={t("desktop.common.close")} onClick={() => setImagePreview("")}><ThemeIcon name="close" size={16} /></button></div> : null}
+    </>
   );
 }

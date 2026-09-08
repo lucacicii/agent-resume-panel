@@ -1,6 +1,14 @@
 import DOMPurify from "dompurify";
 import hljs from "highlight.js";
 import { marked, type Renderer, type Tokens } from "marked";
+import {
+  imageHtml,
+  promoteBareImagePaths,
+  resolveMarkdownImageSrc,
+  rewriteMarkdownImages,
+  type MarkdownImageLabels,
+  type MarkdownImageOptions
+} from "./markdownImage";
 
 function escapeHtml(text: string): string {
   return text
@@ -231,40 +239,64 @@ export function sanitizeMarkdownProseTags(markdown: string): string {
 const MARKDOWN_CACHE_MAX = 500;
 const markdownCache = new Map<string, string>();
 
-const sharedRenderer = new marked.Renderer();
-sharedRenderer.code = codeToken;
-sharedRenderer.html = (token) => {
+export type RenderMarkdownOptions = MarkdownImageOptions & {
+  imageLabels?: Partial<MarkdownImageLabels>;
+};
+
+function htmlToken(token: Tokens.HTML | Tokens.Tag | string): string {
   const raw = typeof token === "string" ? token : token.text;
   const tagMatch = raw.match(/^<\/?([a-zA-Z][a-zA-Z0-9_-]*)/);
   if (tagMatch && SAFE_HTML_TAGS.has(tagMatch[1].toLowerCase())) {
     return raw;
   }
   return escapeHtml(raw);
-};
+}
 
-function parseMarkdown(value: string, renderer: Renderer): string {
-  return marked.parse(sanitizeMarkdownProseTags(value), {
+function createRenderer(options?: RenderMarkdownOptions): Renderer {
+  const renderer = new marked.Renderer();
+  renderer.code = codeToken;
+  renderer.html = htmlToken;
+  renderer.image = ({ href, text }: Tokens.Image) => {
+    return imageHtml(resolveMarkdownImageSrc(href, options), text, options?.imageLabels);
+  };
+  return renderer;
+}
+
+function parseMarkdown(value: string, renderer: Renderer, options?: RenderMarkdownOptions): string {
+  return marked.parse(sanitizeMarkdownProseTags(promoteBareImagePaths(value, options)), {
     gfm: true,
     breaks: true,
     renderer
   }) as string;
 }
 
-export function renderMarkdown(value: string): string {
+function cacheKey(value: string, options?: RenderMarkdownOptions): string {
+  if (!options?.baseDir && !options?.rootDir) return value;
+  return `${value} ${options.baseDir || ""} ${options.rootDir || ""}`;
+}
+
+export function renderMarkdown(value: string, options?: RenderMarkdownOptions): string {
   if (!value) return "";
-  const cached = markdownCache.get(value);
+  const key = cacheKey(value, options);
+  const cached = markdownCache.get(key);
   if (cached !== undefined) {
-    markdownCache.delete(value);
-    markdownCache.set(value, cached);
+    markdownCache.delete(key);
+    markdownCache.set(key, cached);
     return cached;
   }
 
-  const parsed = DOMPurify.sanitize(parseMarkdown(value, sharedRenderer), {
+  const parsed = DOMPurify.sanitize(parseMarkdown(value, createRenderer(options), options), {
     USE_PROFILES: { html: true },
     FORBID_TAGS: ["script", "style", "iframe", "object", "embed"],
     FORBID_ATTR: ["style"],
-    ALLOW_UNKNOWN_PROTOCOLS: false
+    ALLOW_UNKNOWN_PROTOCOLS: false,
+    ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|file|data):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+    ADD_TAGS: ["span"],
+    ADD_ATTR: ["class", "target", "rel", "loading", "data-md-open-external"]
   });
+  const rewritten = parsed.includes("<img")
+    ? rewriteMarkdownImages(parsed, options, options?.imageLabels)
+    : parsed;
 
   if (markdownCache.size >= MARKDOWN_CACHE_MAX) {
     const oldestKey = markdownCache.keys().next().value;
@@ -272,7 +304,7 @@ export function renderMarkdown(value: string): string {
       markdownCache.delete(oldestKey);
     }
   }
-  markdownCache.set(value, parsed);
+  markdownCache.set(key, rewritten);
 
-  return parsed;
+  return rewritten;
 }

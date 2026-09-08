@@ -8,6 +8,23 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## English
 
+### [0.2.24]
+
+#### Added
+
+- **TUI slash commands in the Workbench composer**: typing `/` opens a provider-aware menu of TUI slash commands (`/help`, `/clear`, `/model`, `/new`, `/review`, `/undo`, `/resume`…), filtered as you type; sending a whole-input command writes it to the agent and hands interactive pickers back to the terminal
+- **Session transcript pane**: the hybrid session view now shows the live session transcript beside the terminal, including a pending placeholder for sessions that are still starting up
+- **In-place transcript search**: search the current session transcript with live match highlighting and previous/next navigation
+- **Session dots tray and cluster UI**: active sessions appear as color-coded status dots — running, connecting, awaiting you, error — in a macOS menu-bar tray and in the workbench title cluster, with floating notes shown in their own color
+- **Floating notes in the tray**: open floating Markdown notes appear as tray items alongside session dots for one-click focus
+- **Markdown image rendering**: images referenced in Markdown are resolved and rendered inline in IM messages, notes, kanban cards, and transcripts, supporting local files, pasted data URIs, and remote images
+
+#### Improved
+
+- **Composer input**: suggestions are accepted with Tab while Enter always sends, the composer row count is capped, and typing `/` for TUI commands is no longer hijacked by suggestion completion
+- **Docked composer stack**: the terminal composer stack is now docked inside session panes instead of floating, for a cleaner workbench layout
+- **Markdown typography**: consistent Markdown typography and element colors (light/dark variables) across renderers
+
 ### [0.2.23]
 
 #### Added
@@ -530,6 +547,23 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 ---
 
 ## 简体中文
+
+### [0.2.24]
+
+#### 新增
+
+- **Workbench Composer 支持 TUI 斜杠命令**: 输入 `/` 弹出按 provider 区分的斜杠命令菜单（`/help`、`/clear`、`/model`、`/new`、`/review`、`/undo`、`/resume` 等），随输入过滤；整行命令直接发送给 agent，需要交互的命令会把焦点交还终端
+- **会话转录面板**: 混合会话视图现在会在终端旁展示实时会话转录，正在启动的会话先显示占位转录
+- **转录就地搜索**: 可在会话转录面板内搜索，支持实时命中高亮与上一条/下一条跳转
+- **会话状态点托盘与聚合 UI**: 运行中的会话以彩色状态点展示——运行中 / 连接中 / 等待你 / 出错——出现在 macOS 菜单栏托盘与工作台顶部聚合区，浮动便签单独着色
+- **托盘中的浮动便签**: 打开的浮动 Markdown 便签与会话状态点一同显示在托盘，点击即可聚焦
+- **Markdown 图片渲染**: Markdown 中引用的图片现在可在 IM 消息、便签、看板卡片与转录中内联渲染，支持本地文件、粘贴的 data URI 与远程图片
+
+#### 改进
+
+- **Composer 输入**: Tab 接受补全建议、Enter 始终发送；限制 composer 最大行数，输入 `/` 触发 TUI 命令时不再被补全抢焦点
+- **停靠式 composer 堆叠**: 终端 composer 堆叠改为停靠在会话面板内而非浮动，工作台布局更整洁
+- **Markdown 排版**: 统一各渲染器中的 Markdown 排版与元素配色（浅/深色变量）
 
 ### [0.2.23]
 
