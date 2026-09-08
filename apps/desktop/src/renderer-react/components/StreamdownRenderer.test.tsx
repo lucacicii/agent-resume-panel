@@ -119,4 +119,31 @@ describe("StreamdownRenderer integration test suite", () => {
     fullscreenOverlay = document.body.querySelector('[data-streamdown="table-fullscreen"]');
     expect(fullscreenOverlay).toBeNull();
   });
+
+  it("renders composer clipboard image paths as images", () => {
+    const src = "/var/folders/jg/xxx/T/pi-clipboard-abc.png";
+    const { container } = render(<StreamdownRenderer content={`look '${src}' then continue`} />);
+    const img = container.querySelector("img") as HTMLImageElement;
+    expect(img).toBeTruthy();
+    expect(img.getAttribute("src")).toBe(`file://${src}`);
+  });
+
+  it("renders local markdown images and remote placeholders", () => {
+    const md = "![Shot](./shot.png)\n\n![Remote](https://cdn.example.com/a.png)";
+    const onImageClick = vi.fn();
+    const { container } = render(
+      <StreamdownRenderer
+        content={md}
+        imageOptions={{ baseDir: "/work/app/docs", rootDir: "/work/app" }}
+        onImageClick={onImageClick}
+      />
+    );
+    const img = container.querySelector("img") as HTMLImageElement;
+    expect(img).toBeTruthy();
+    expect(img.getAttribute("src")).toBe("file:///work/app/docs/shot.png");
+    fireEvent.click(img);
+    expect(onImageClick).toHaveBeenCalledWith("file:///work/app/docs/shot.png");
+    expect(container.querySelector("img[src^=\"https://\"]")).toBeNull();
+    expect(container.textContent).toContain("cdn.example.com");
+  });
 });

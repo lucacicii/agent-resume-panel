@@ -5,6 +5,14 @@ import { ThemeIcon } from "./ThemeIcon";
 import { useI18n } from "../i18n";
 import { sanitizeMarkdownProseTags } from "./Markdown";
 import { ArtifactCard } from "./artifact/ArtifactCard";
+import {
+  fromStreamdownSafeSrc,
+  promoteBareImagePaths,
+  resolveMarkdownImageSrc,
+  rewriteMarkdownImageSyntax,
+  type MarkdownImageLabels,
+  type MarkdownImageOptions
+} from "./markdownImage";
 
 export interface StreamdownRendererProps {
   content: string;
@@ -12,6 +20,9 @@ export interface StreamdownRendererProps {
   className?: string;
   onCitationClick?: (citationId: string) => void;
   onNoteClick?: (noteId: string) => void;
+  onImageClick?: (url: string) => void;
+  imageOptions?: MarkdownImageOptions;
+  imageLabels?: Partial<MarkdownImageLabels>;
 }
 
 function escapeHtml(text: string): string {
@@ -119,7 +130,10 @@ export const StreamdownRenderer = memo(function StreamdownRenderer({
   isAnimating = false,
   className = "markdown-body",
   onCitationClick,
-  onNoteClick
+  onNoteClick,
+  onImageClick,
+  imageOptions,
+  imageLabels
 }: StreamdownRendererProps) {
   const { t } = useSafeI18n();
 
@@ -127,8 +141,10 @@ export const StreamdownRenderer = memo(function StreamdownRenderer({
   const sanitizedMarkdown = useMemo(() => {
     if (!content) return "";
     const linked = preprocessLinks(content);
-    return sanitizeMarkdownProseTags(linked);
-  }, [content]);
+    const promoted = promoteBareImagePaths(linked, imageOptions);
+    const rewritten = rewriteMarkdownImageSyntax(promoted, imageOptions);
+    return sanitizeMarkdownProseTags(rewritten);
+  }, [content, imageOptions]);
 
   const translations = useMemo(() => ({
     copyTable: t("desktop.artifact.copy", "Copy"),
@@ -232,20 +248,63 @@ export const StreamdownRenderer = memo(function StreamdownRenderer({
             {children}
           </a>
         );
+      },
+
+      img({ src, alt, ...props }: any) {
+        const rawSrc = typeof src === "string" ? src : "";
+        const resolved = fromStreamdownSafeSrc(rawSrc) || resolveMarkdownImageSrc(rawSrc, imageOptions);
+        if (resolved.kind === "local" || resolved.kind === "data") {
+          return (
+            <img
+              {...props}
+              src={resolved.url}
+              alt={alt || ""}
+              className="md-preview-img"
+              loading="lazy"
+              onClick={() => onImageClick?.(resolved.url)}
+            />
+          );
+        }
+        if (resolved.kind === "remote") {
+          return (
+            <span className="md-image-remote">
+              <span className="md-image-remote-label">
+                {imageLabels?.remoteImage || t("desktop.markdown.remoteImage", "Remote image")} · {resolved.host}
+              </span>
+              <a href={resolved.href} target="_blank" rel="noopener noreferrer">
+                {imageLabels?.openInBrowser || t("desktop.markdown.openInBrowser", "Open in browser")}
+              </a>
+            </span>
+          );
+        }
+        return (
+          <span className="md-image-missing">
+            {alt || imageLabels?.unavailable || t("desktop.markdown.imageUnavailable", "Image unavailable")}
+          </span>
+        );
       }
     };
-  }, [isAnimating, onCitationClick, onNoteClick]);
+  }, [imageLabels, imageOptions, isAnimating, onCitationClick, onImageClick, onNoteClick, t]);
+
+  const handlePreviewClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    if (!(event.target instanceof HTMLImageElement)) return;
+    const src = event.target.getAttribute("src") || event.target.src || "";
+    if (src) onImageClick?.(src);
+  }, [onImageClick]);
+
+  const urlTransform = useCallback((url: string) => url, []);
 
   if (!sanitizedMarkdown) return null;
 
   return (
-    <div className={className}>
+    <div className={className} onClick={handlePreviewClick}>
       <Streamdown
         components={components}
         isAnimating={isAnimating}
         animated={isAnimating ? { animation: "fadeIn", duration: 120 } : false}
         caret={isAnimating ? "block" : undefined}
         translations={translations}
+        urlTransform={urlTransform}
       >
         {sanitizedMarkdown}
       </Streamdown>

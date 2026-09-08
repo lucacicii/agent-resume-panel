@@ -7371,6 +7371,39 @@ describe("WorkbenchPanel", () => {
     expect(screen.queryByPlaceholderText("/work/app/README.md")).toBeNull();
   });
 
+  it("renders local markdown images in preview and opens a lightbox on click", async () => {
+    const { openQuickFiles } = setupWorkbenchEditorTest(
+      "/work/app/docs/guide.md",
+      "# Guide\n\n![Shot](./shot.png)\n"
+    );
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await act(async () => openQuickFiles());
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "guide" } });
+    const option = await waitFor(() => {
+      const el = [...document.querySelectorAll('[role="option"]')].find((node) =>
+        (node as HTMLElement).textContent?.includes("guide.md")
+      ) as HTMLElement | undefined;
+      expect(el).not.toBeUndefined();
+      return el!;
+    });
+    fireEvent.click(option);
+    const editorTab = await waitFor(() => {
+      const tab = document.querySelector<HTMLElement>('[data-pane-group="code"] .wb-terminal-tab.is-editor');
+      expect(tab).not.toBeNull();
+      return tab!;
+    });
+    fireEvent.contextMenu(editorTab);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Preview" }));
+    const previewImg = await waitFor(() => {
+      const img = document.querySelector<HTMLImageElement>(".wb-editor-preview img");
+      expect(img).not.toBeNull();
+      return img!;
+    });
+    expect(previewImg.getAttribute("src")).toBe("file:///work/app/docs/shot.png");
+    fireEvent.click(previewImg);
+    expect(document.querySelector(".notes-image-preview img")?.getAttribute("src")).toBe("file:///work/app/docs/shot.png");
+  });
+
   const SESSION_SELECT_MESSAGES: Record<string, string> = {
     "desktop.notes.filterProjects": "Filter projects",
     "desktop.notes.projectFilter": "Project filter",

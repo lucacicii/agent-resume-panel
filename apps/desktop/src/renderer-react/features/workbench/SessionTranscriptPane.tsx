@@ -25,7 +25,8 @@ const TranscriptMessageRow = React.memo(function TranscriptMessageRow({
   thinkingLabel,
   renderMarkdownView,
   isStreaming = false,
-  isSearchTarget = false
+  isSearchTarget = false,
+  onImageClick
 }: {
   message: TranscriptMessage;
   isSelected: boolean;
@@ -38,6 +39,7 @@ const TranscriptMessageRow = React.memo(function TranscriptMessageRow({
   renderMarkdownView: boolean;
   isStreaming?: boolean;
   isSearchTarget?: boolean;
+  onImageClick?: (url: string) => void;
 }): React.JSX.Element {
   return (
     <article
@@ -67,6 +69,7 @@ const TranscriptMessageRow = React.memo(function TranscriptMessageRow({
               <StreamdownRenderer
                 content={message.thinking}
                 className="wb-transcript-thinking-body wb-transcript-md markdown-body"
+                onImageClick={onImageClick}
               />
             ) : (
               <div className="wb-transcript-thinking-body wb-transcript-plain">{message.thinking}</div>
@@ -80,6 +83,7 @@ const TranscriptMessageRow = React.memo(function TranscriptMessageRow({
             content={message.text}
             isAnimating={isStreaming}
             className="wb-transcript-md markdown-body"
+            onImageClick={onImageClick}
           />
         ) : (
           <div className="wb-transcript-plain">{message.text}</div>
@@ -163,6 +167,7 @@ export function SessionTranscriptPane({
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const [renderMarkdownView, setRenderMarkdownView] = useState(true);
   const [expandedThinking, setExpandedThinking] = useState<Record<string, boolean>>({});
+  const [imagePreview, setImagePreview] = useState("");
   const bodyRef = useRef<HTMLDivElement>(null);
   const userScrolledUpRef = useRef(false);
   const previewRef = useRef<TranscriptPreview | null>(null);
@@ -566,6 +571,7 @@ export function SessionTranscriptPane({
                   thinkingLabel={t("desktop.workbench.transcriptThinking")}
                   renderMarkdownView={renderMarkdownView}
                   isStreaming={isStreaming}
+                  onImageClick={setImagePreview}
                 />
               );
             }) : (
@@ -618,6 +624,7 @@ export function SessionTranscriptPane({
           ) : null}
         </div>
       ) : null}
+      {imagePreview ? <div className="notes-image-preview" role="dialog" aria-modal="true" onClick={() => setImagePreview("")}><img src={imagePreview} alt="" /><button type="button" className="notes-image-preview-close" aria-label={t("desktop.common.close")} onClick={() => setImagePreview("")}><ThemeIcon name="close" size={16} /></button></div> : null}
     </div>
   );
 }

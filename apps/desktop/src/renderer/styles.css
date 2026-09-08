@@ -17365,10 +17365,28 @@ html[data-window-mode="browser"] #react-chrome {
   box-sizing: border-box;
   border-collapse: collapse;
 }
-.im-message .markdown-body img {
+.im-message .markdown-body img,
+.markdown-body img.md-preview-img {
   max-width: 100%;
   height: auto;
   border-radius: 6px;
+  cursor: zoom-in;
+}
+.markdown-body .md-image-remote,
+.markdown-body .md-image-missing {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 6px 8px;
+  border: 1px dashed var(--color-separator, rgba(255, 255, 255, 0.16));
+  border-radius: 6px;
+  color: var(--color-label-secondary);
+  font-size: 12px;
+}
+.markdown-body .md-image-remote a {
+  color: var(--color-accent);
+  text-decoration: none;
 }
 .im-message .markdown-body .agent-citation-link,
 .im-message .markdown-body .im-note-link {
