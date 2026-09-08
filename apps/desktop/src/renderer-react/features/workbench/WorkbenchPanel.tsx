@@ -2292,10 +2292,23 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, engineT
     const onKeyDown = (event: KeyboardEvent) => {
       const isFind = (event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "f";
       if (isFind) {
-        event.preventDefault();
-        event.stopPropagation();
-        setSearchOpen(true);
-        requestAnimationFrame(() => searchInputRef.current?.focus());
+        const terminalWrap = host.current?.closest(".wb-session-split-tui") || host.current;
+        const isTerminalTarget = Boolean(
+          terminalWrap && (
+            terminalWrap.contains(document.activeElement) ||
+            (typeof terminalWrap.matches === "function" && (
+              terminalWrap.matches(":hover") ||
+              terminalWrap.matches(":focus-within")
+            ))
+          )
+        );
+        if (isTerminalTarget) {
+          event.preventDefault();
+          event.stopPropagation();
+          setSearchOpen(true);
+          requestAnimationFrame(() => searchInputRef.current?.focus());
+          return;
+        }
         return;
       }
       if (event.key === "Escape" && searchOpen) {

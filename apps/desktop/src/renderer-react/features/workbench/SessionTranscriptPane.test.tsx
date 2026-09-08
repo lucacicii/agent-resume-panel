@@ -83,7 +83,7 @@ describe("SessionTranscriptPane", () => {
     HTMLElement.prototype.scrollIntoView = original;
   });
 
-  it("filters outline and body together", async () => {
+  it("searches markdown content without hiding messages and supports match navigation", async () => {
     apiMocks.previewSession.mockResolvedValue({
       session: { provider: "claude", id: "session-2" },
       preview: {
@@ -97,10 +97,18 @@ describe("SessionTranscriptPane", () => {
     });
     render(<SessionTranscriptPane provider="claude" sessionId="session-2" active />);
     await screen.findByRole("button", { name: /Add a minimap/ });
-    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "original" } });
-    expect(screen.getByRole("button", { name: /Show the original transcript instead/ })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /Add a minimap/ })).toBeNull();
-    expect(screen.queryByText("A content minimap will not work.")).toBeNull();
+    const searchInput = screen.getByRole("searchbox") as HTMLInputElement;
+
+    // Cmd+F focuses search input
+    fireEvent.keyDown(window, { key: "f", metaKey: true });
+    expect(document.activeElement).toBe(searchInput);
+
+    // Typing query finds matches without hiding messages
+    fireEvent.change(searchInput, { target: { value: "original" } });
+    expect(screen.getByText("A content minimap will not work.")).toBeTruthy();
+    expect(screen.getAllByText(/Show the original transcript instead/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("1/1")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Add a minimap/ })).toBeTruthy();
   });
 
   it("shows warning, truncated, and empty states from the preview payload", async () => {
