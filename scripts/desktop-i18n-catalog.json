@@ -41,7 +41,9 @@
       "desktop.common.daysAgo": "{0} d ago",
       "desktop.common.yearSuffix": "{0}",
       "desktop.common.oneMinute": "1 min",
-      "desktop.common.intervalSeconds": "{0}s"
+      "desktop.common.intervalSeconds": "{0}s",
+      "desktop.common.expand": "Expand",
+      "desktop.common.collapse": "Collapse"
     },
     "tabs": {
       "desktop.tabs.report": "Report",
@@ -636,6 +638,9 @@
       "desktop.workbench.terminalConsole": "Terminal Console",
       "desktop.workbench.splitViewMode": "Split View",
       "desktop.workbench.fullTerminalMode": "Full Terminal",
+      "desktop.workbench.transcriptNewSessionHint": "New session is ready. Send a message to preview the dialogue transcript here.",
+      "desktop.workbench.transcriptNeedSession": "Open a session to preview its conversation beside the terminal.",
+      "desktop.workbench.transcriptScrollToBottom": "Scroll to bottom",
       "desktop.workbench.allSessions": "All Sessions",
       "desktop.workbench.allSessionsCount": "All Sessions ({0})",
       "desktop.workbench.allSessionsWithTotal": "All Sessions ({0} / {1})",
@@ -1101,7 +1106,9 @@
       "desktop.common.daysAgo": "{0} 天前",
       "desktop.common.yearSuffix": "{0} 年",
       "desktop.common.oneMinute": "1 分钟",
-      "desktop.common.intervalSeconds": "{0}s"
+      "desktop.common.intervalSeconds": "{0}s",
+      "desktop.common.expand": "展开",
+      "desktop.common.collapse": "折叠"
     },
     "tabs": {
       "desktop.tabs.report": "报告",
@@ -1518,6 +1525,9 @@
       "desktop.workbench.terminalConsole": "终端控制台",
       "desktop.workbench.splitViewMode": "观测分屏",
       "desktop.workbench.fullTerminalMode": "全屏终端",
+      "desktop.workbench.transcriptNewSessionHint": "新会话已就绪，发送首条消息后即可在此预览对话记录。",
+      "desktop.workbench.transcriptNeedSession": "打开一个会话，即可在终端旁预览对话原文。",
+      "desktop.workbench.transcriptScrollToBottom": "滚动到底部",
       "desktop.workbench.allSessions": "全部 Sessions",
       "desktop.workbench.allSessionsCount": "全部 Sessions（{0}）",
       "desktop.workbench.allSessionsWithTotal": "全部 Sessions（{0} / {1}）",
@@ -2120,7 +2130,9 @@
     "common": {
       "desktop.common.resend": "再送信",
       "desktop.common.clear": "クリア",
-      "desktop.common.selectAll": "すべて選択"
+      "desktop.common.selectAll": "すべて選択",
+      "desktop.common.expand": "展開",
+      "desktop.common.collapse": "折りたたむ"
     },
     "tabs": {},
     "top": {},
@@ -2177,6 +2189,9 @@
       "desktop.workbench.terminalConsole": "ターミナルコンソール",
       "desktop.workbench.splitViewMode": "分割ビュー",
       "desktop.workbench.fullTerminalMode": "フルターミナル",
+      "desktop.workbench.transcriptNewSessionHint": "新しいセッションの準備が完了しました。最初のメッセージを送信すると、ここに対話ログがプレビューされます。",
+      "desktop.workbench.transcriptNeedSession": "セッションを開くと、ターミナルの横で会話をプレビューできます。",
+      "desktop.workbench.transcriptScrollToBottom": "一番下までスクロール",
       "desktop.workbench.imSessionBadge": "IM",
       "desktop.workbench.imSessionBadgeHint": "IM から作成",
       "desktop.workbench.sessionDot.idle": "待機中",

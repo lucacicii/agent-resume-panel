@@ -146,7 +146,8 @@ export function SessionTranscriptPane({
   active,
   isRunning = false,
   fontSize = 14,
-  focusUserMessage
+  focusUserMessage,
+  isPending = false
 }: {
   provider: string;
   sessionId: string;
@@ -155,6 +156,7 @@ export function SessionTranscriptPane({
   isRunning?: boolean;
   fontSize?: number;
   focusUserMessage?: { text: string; sentAtMs?: number; nonce: number } | null;
+  isPending?: boolean;
 }): React.JSX.Element {
   const roleIconProvider = iconProvider || provider;
   const { locale, t } = useI18n();
@@ -448,13 +450,17 @@ export function SessionTranscriptPane({
       : t("desktop.workbench.transcriptRoleAssistant")
   );
 
-  if (!provider || !sessionId) {
+  if (isPending || !provider || !sessionId) {
     return (
       <div className="wb-side-pane wb-transcript-pane">
         <div className="wb-side-pane-head">
           <span className="wb-side-pane-title">{t("desktop.workbench.sidePanelTranscript")}</span>
         </div>
-        <p className="muted wb-transcript-status">{t("desktop.workbench.transcriptNeedSession")}</p>
+        <p className="muted wb-transcript-status">
+          {isPending || (provider && !sessionId)
+            ? t("desktop.workbench.transcriptNewSessionHint")
+            : t("desktop.workbench.transcriptNeedSession")}
+        </p>
       </div>
     );
   }

@@ -26,6 +26,12 @@ describe("SessionTranscriptPane", () => {
     expect(apiMocks.previewSession).not.toHaveBeenCalled();
   });
 
+  it("shows the new session hint when the session is pending", () => {
+    render(<SessionTranscriptPane provider="codex" sessionId="" isPending active />);
+    expect(screen.getByText("desktop.workbench.transcriptNewSessionHint")).toBeTruthy();
+    expect(apiMocks.previewSession).not.toHaveBeenCalled();
+  });
+
   it("renders a user outline and scrolls the matching message without touching xterm", async () => {
     apiMocks.previewSession.mockResolvedValue({
       session: { provider: "codex", id: "session-1" },

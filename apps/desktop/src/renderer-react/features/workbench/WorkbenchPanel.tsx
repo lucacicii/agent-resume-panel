@@ -4795,6 +4795,8 @@ export function WorkbenchPanel(): ReactPortal | null {
           const title = t("desktop.workbench.newSessionTitle", basename(cwd));
           const terminalKey = addTerminal(title, result.cwd, result.command, cwd, undefined, "session", prompt ? { initialPrompt: prompt } : undefined);
           addPendingSession(terminalKey, target.provider, cwd, title, focusedFolder || undefined);
+          setSessionViewMode("hybrid");
+          localStorage.setItem(SESSION_VIEW_MODE_KEY, "hybrid");
         }
         await loadSessions();
       }
@@ -5154,6 +5156,8 @@ export function WorkbenchPanel(): ReactPortal | null {
       const projectPath = session.projectPath?.trim() || cwd;
       selectProject(projectPath, { keepSessionKey: true });
       const terminalKey = addTerminal(session.title || session.id, cwd, command, projectPath, key);
+      setSessionViewMode("hybrid");
+      localStorage.setItem(SESSION_VIEW_MODE_KEY, "hybrid");
       // Box-primary: an agent session pane lands text entry in its composer
       // (deferred until the PTY spawns). Shell panes keep raw xterm focus.
       focusWorkbenchPane(terminalKey);
@@ -5193,6 +5197,8 @@ export function WorkbenchPanel(): ReactPortal | null {
     const projectPath = detail.projectPath || detail.cwd;
     selectProject(projectPath);
     const paneKey = addTerminal(detail.title || detail.id, detail.cwd, detail.command, projectPath, key, "session", detail.initialPrompt ? { initialPrompt: detail.initialPrompt } : undefined);
+    setSessionViewMode("hybrid");
+    localStorage.setItem(SESSION_VIEW_MODE_KEY, "hybrid");
     setActiveSessionKey(key);
     focusWorkbenchPane(paneKey);
   }, [addTerminal, focusWorkbenchPane, selectProject, setActivePane]);
@@ -8067,21 +8073,25 @@ export function WorkbenchPanel(): ReactPortal | null {
         <div className="wb-detail-body">
           <div className="wb-terminal-shell">{paneTabGroups}<div className="wb-terminal-stack">{terminals.filter((pane) => pane.projectPath === selectedProject && pane.key === activePane).map((pane) => {
             const sessionIdentity = sessionIdentityFromKey(pane.sessionKey);
-            const isSession = pane.group === "session" && Boolean(sessionIdentity);
-            const showSplit = isSession && sessionViewMode === "hybrid" && Boolean(sessionIdentity);
+            const pending = pendingSessions.find((item) => item.terminalKey === pane.key);
+            const isSession = pane.group === "session";
+            const showSplit = isSession && sessionViewMode === "hybrid";
 
-            if (showSplit && sessionIdentity) {
+            if (showSplit) {
+              const provider = sessionIdentity?.provider || pending?.provider || "codex";
+              const sessionId = sessionIdentity?.sessionId || "";
               return (
                 <div key={pane.key} className="wb-terminal-pane-wrap wb-terminal-pane-split">
                   <div className="wb-session-split-transcript">
                     <SessionTranscriptPane
-                      provider={sessionIdentity.provider}
-                      sessionId={sessionIdentity.sessionId}
-                      iconProvider={sessionIdentity.provider}
+                      provider={provider}
+                      sessionId={sessionId}
+                      iconProvider={provider}
                       active={active}
                       isRunning={activeTranscriptRunning}
                       fontSize={settings?.workbench?.transcriptFontSize ?? 14}
                       focusUserMessage={transcriptFocus}
+                      isPending={!sessionId}
                     />
                   </div>
                   <ResizeHandle
@@ -8152,7 +8162,7 @@ export function WorkbenchPanel(): ReactPortal | null {
                       ptyId: pane.ptyId ?? null,
                       activePane: true,
                       value: composerDrafts[pane.key] || "",
-                      provider: sessionIdentity.provider || pendingSessions.find((pending) => pending.terminalKey === pane.key)?.provider
+                      provider: sessionIdentity?.provider || pending?.provider
                     }]}
                     onChange={setComposerDraft}
                     onSendToTerminal={sendComposerToTerminal}

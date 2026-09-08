@@ -4040,6 +4040,8 @@ describe("WorkbenchPanel", () => {
       .find((item) => item.textContent?.includes("Existing session"))?.hasAttribute("draggable")).toBe(true);
     expect(document.querySelector(".wb-folder-row.has-wb-activity .wb-folder-activity-dot")).not.toBeNull();
     expect(document.querySelectorAll(".wb-session-activity-dot")).toHaveLength(1);
+    expect(document.querySelector(".wb-session-split-transcript")).not.toBeNull();
+    expect(document.querySelector(".wb-terminal-pane-split")).not.toBeNull();
     fireEvent.click(pending);
     expect(workbenchOpenSession).not.toHaveBeenCalled();
 
@@ -4056,6 +4058,42 @@ describe("WorkbenchPanel", () => {
       .find((item) => item.textContent?.includes("Catalog session"))?.classList.contains("active")).toBe(true));
     await waitFor(() => expect([...document.querySelectorAll(".wb-list-item")].some((item) => item.textContent?.includes("New session app"))).toBe(false));
     expect(document.querySelectorAll(".wb-session-activity-dot")).toHaveLength(1);
+  });
+
+  it("defaults to hybrid split view mode with transcript when opening a new session even if previously in terminal mode", async () => {
+    localStorage.setItem("wb-session-view-mode", "terminal");
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.newSessionTitle": "New session {0}"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex" as const, id: "existing", title: "Existing session", projectPath: "/work/app", updatedAt: 1 }],
+      workbenchNewSession: async () => ({ mode: "xterm", command: "codex", cwd: "/work/app" }),
+      terminalSpawn: async () => ({ id: 1 }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByTitle("/work/app"));
+    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+
+    await waitFor(() => {
+      expect(document.querySelector(".wb-session-split-transcript")).not.toBeNull();
+    });
+    expect(localStorage.getItem("wb-session-view-mode")).toBe("hybrid");
   });
 
   it("auto-assigns a new CLI session to the focused subfolder once the catalog binds it", async () => {
