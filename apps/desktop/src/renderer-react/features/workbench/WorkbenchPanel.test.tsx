@@ -1766,7 +1766,7 @@ describe("WorkbenchPanel", () => {
     const listbox = await screen.findByRole("listbox", { name: "Directory suggestions" });
     expect(workbenchListDirectory).toHaveBeenCalledWith({ rootPath: "/work/app", dirPath: "/work/app" });
     expect(await within(listbox).findByText("#src")).toBeTruthy();
-    fireEvent.keyDown(composerInput!, { key: "Enter" });
+    fireEvent.keyDown(composerInput!, { key: "Tab" });
     expect(composerInput.value).toBe("please inspect #src");
   });
 
@@ -1929,7 +1929,7 @@ describe("WorkbenchPanel", () => {
     fireEvent.change(composerInput, { target: { value: "/cle" } });
     const listbox = await screen.findByRole("listbox", { name: "Slash commands" });
     expect(within(listbox).getByText("/clear")).toBeTruthy();
-    fireEvent.keyDown(composerInput, { key: "Enter" });
+    fireEvent.keyDown(composerInput, { key: "Tab" });
     await waitFor(() => expect(terminalInput).toHaveBeenCalledWith({ id: 1, data: "/clear\r" }));
     expect(workbenchComposerSendAppend).not.toHaveBeenCalled();
     expect(composerInput.value).toBe("");

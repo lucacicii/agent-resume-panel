@@ -492,7 +492,7 @@ export function TerminalComposer(props: {
           setActiveDirectory((current) => (current - 1 + directorySuggestions.length) % directorySuggestions.length);
           return;
         }
-        if ((isEnter && !event.shiftKey) || isTab) {
+        if (isTab) {
           event.preventDefault();
           const pick = directorySuggestions[activeDirectory];
           if (pick) acceptDirectory(pick);
@@ -518,7 +518,7 @@ export function TerminalComposer(props: {
           setActiveSlash((current) => (current - 1 + slashMatches.length) % slashMatches.length);
           return;
         }
-        if ((isEnter && !event.shiftKey) || isTab) {
+        if (isTab) {
           event.preventDefault();
           const pick = slashMatches[activeSlash] ?? slashMatches[0];
           if (pick) acceptSlashItem(pick);
@@ -543,19 +543,12 @@ export function TerminalComposer(props: {
         setSuggestionsDismissed(true);
         return;
       }
-      if ((isEnter && !event.shiftKey) || isTab) {
+      if (isTab) {
+        event.preventDefault();
         const pick = suggestions[activeSuggestion >= 0 ? activeSuggestion : 0];
         if (pick && pick !== value) {
-          event.preventDefault();
           acceptSuggestion(pick);
-          return;
         }
-        if (isEnter && pick === value) {
-          event.preventDefault();
-          sendToTerminal();
-          return;
-        }
-        event.preventDefault();
         return;
       }
     }
@@ -801,7 +794,7 @@ export function TerminalComposer(props: {
               onClick={() => acceptDirectory(name)}
             >
               <span className="wb-terminal-composer-suggestion-text">#{name}</span>
-              <span className="wb-terminal-composer-suggestion-kbd" aria-hidden="true">↵</span>
+              <span className="wb-terminal-composer-suggestion-kbd" aria-hidden="true">Tab</span>
             </li>
           )) : (
             <li className="wb-terminal-composer-suggestion" role="option" aria-disabled="true">
@@ -836,7 +829,7 @@ export function TerminalComposer(props: {
               >
                 <span className="wb-terminal-composer-suggestion-text">/{trigger}</span>
                 {description ? <span className="wb-terminal-composer-suggestion-desc">{description}</span> : null}
-                <span className="wb-terminal-composer-suggestion-kbd" aria-hidden="true">↵</span>
+                <span className="wb-terminal-composer-suggestion-kbd" aria-hidden="true">Tab</span>
               </li>
             );
           })}
@@ -859,7 +852,7 @@ export function TerminalComposer(props: {
               onClick={() => acceptSuggestion(suggestion)}
             >
               <span className="wb-terminal-composer-suggestion-text">{suggestion}</span>
-              <span className="wb-terminal-composer-suggestion-kbd" aria-hidden="true">↵</span>
+              <span className="wb-terminal-composer-suggestion-kbd" aria-hidden="true">Tab</span>
             </li>
           ))}
         </ul>

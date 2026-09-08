@@ -240,8 +240,20 @@ describe("TerminalComposer", () => {
     const listbox = await screen.findByRole("listbox", { name: "Directory suggestions" });
     expect(workbenchListDirectoryMock).toHaveBeenCalledWith({ rootPath: "/work/app", dirPath: "/work/app" });
     expect(await within(listbox).findByText("#src")).toBeTruthy();
-    fireEvent.keyDown(textbox(), { key: "Enter" });
+    fireEvent.keyDown(textbox(), { key: "Tab" });
     expect(onChange).toHaveBeenCalledWith("please inspect #src");
+  });
+
+  it("sends directly on Enter without accepting directory suggestions", async () => {
+    const { onChange, onSendToTerminal } = await renderComposer({ projectPath: "/work/app" });
+    focusInput();
+    fireEvent.change(textbox(), { target: { value: "please inspect #s" } });
+    await screen.findByRole("listbox", { name: "Directory suggestions" });
+    onChange.mockClear();
+    fireEvent.keyDown(textbox(), { key: "Enter" });
+    expect(onChange).not.toHaveBeenCalledWith("please inspect #src");
+    expect(onSendToTerminal).toHaveBeenCalledTimes(1);
+    expect(textbox().value).toBe("");
   });
 
   it("includes hidden first-level directories for a bare # query", async () => {
@@ -355,7 +367,7 @@ describe("TerminalComposer", () => {
     expect(onChange).toHaveBeenCalledWith("draft two");
   });
 
-  it("accepts a suggestion from the dropdown and only then pastes on Enter", async () => {
+  it("accepts a suggestion from the dropdown on Tab and only then pastes on Enter", async () => {
     const onChange = vi.fn();
     const { onSendToTerminal } = await renderComposer({ value: "git s", onChange });
     focusInput();
@@ -363,9 +375,21 @@ describe("TerminalComposer", () => {
     const listbox = await screen.findByRole("listbox", { name: "Command suggestions" });
     const option = listbox.querySelector('[role="option"]')!;
     expect(option.textContent).toContain("git status");
-    fireEvent.keyDown(textbox(), { key: "Enter" });
+    fireEvent.keyDown(textbox(), { key: "Tab" });
     expect(onChange).toHaveBeenCalledWith("git status");
     expect(onSendToTerminal).not.toHaveBeenCalled();
+  });
+
+  it("sends directly on Enter without accepting command suggestions", async () => {
+    const onChange = vi.fn();
+    const { onSendToTerminal } = await renderComposer({ value: "git s", onChange });
+    focusInput();
+    fireEvent.change(textbox(), { target: { value: "git s" } });
+    await screen.findByRole("listbox", { name: "Command suggestions" });
+    onChange.mockClear();
+    fireEvent.keyDown(textbox(), { key: "Enter" });
+    expect(onChange).not.toHaveBeenCalledWith("git status");
+    expect(onSendToTerminal).toHaveBeenCalledTimes(1);
   });
 
   it("pastes immediately when the value already matches the suggestion", async () => {
@@ -591,7 +615,7 @@ describe("TerminalComposer", () => {
     expect(within(listbox).getByText("/clear").closest("[role=option]")?.classList.contains("is-active")).toBe(true);
   });
 
-  it("runs a TUI slash command from the merged menu without inserting a phrase", async () => {
+  it("runs a TUI slash command from the merged menu on Tab without inserting a phrase", async () => {
     const { onChange, onSendToTerminal, onRunSlashCommand } = await renderComposer({
       tuiSlashCommands: [
         { name: "clear", descriptionKey: "desktop.workbench.tuiSlash.clear", needsTerminalFocus: false },
@@ -604,7 +628,7 @@ describe("TerminalComposer", () => {
     const listbox = await screen.findByRole("listbox", { name: "Slash commands" });
     expect(within(listbox).getByText("/clear")).toBeTruthy();
     expect(within(listbox).queryByText("/review")).toBeNull();
-    fireEvent.keyDown(textbox(), { key: "Enter" });
+    fireEvent.keyDown(textbox(), { key: "Tab" });
     expect(onRunSlashCommand).toHaveBeenCalledWith(
       expect.objectContaining({ name: "clear" }),
       ""
@@ -612,6 +636,21 @@ describe("TerminalComposer", () => {
     expect(onSendToTerminal).not.toHaveBeenCalled();
     expect(onChange).toHaveBeenCalledWith("");
     expect(screen.queryByRole("listbox", { name: "Slash commands" })).toBeNull();
+  });
+
+  it("sends partial slash input on Enter to terminal without running unaccepted slash command", async () => {
+    const { onSendToTerminal, onRunSlashCommand } = await renderComposer({
+      tuiSlashCommands: [
+        { name: "clear", descriptionKey: "desktop.workbench.tuiSlash.clear", needsTerminalFocus: false }
+      ]
+    });
+    focusInput();
+    fireEvent.change(textbox(), { target: { value: "/cle" } });
+    await screen.findByRole("listbox", { name: "Slash commands" });
+    fireEvent.keyDown(textbox(), { key: "Enter" });
+    expect(onRunSlashCommand).not.toHaveBeenCalled();
+    expect(onSendToTerminal).toHaveBeenCalledTimes(1);
+    expect(textbox().value).toBe("");
   });
 
   it("sends a whole-input TUI slash command on Enter even after dismissing the menu", async () => {
@@ -645,7 +684,7 @@ describe("TerminalComposer", () => {
     const listbox = await screen.findByRole("listbox", { name: "Slash commands" });
     expect(within(listbox).getByText("/review")).toBeTruthy();
     expect(within(listbox).queryByText("/fix")).toBeNull();
-    fireEvent.keyDown(textbox(), { key: "Enter" });
+    fireEvent.keyDown(textbox(), { key: "Tab" });
     expect(onChange).toHaveBeenCalledWith("Please review this change.");
     expect(onSendToTerminal).not.toHaveBeenCalled();
     expect(screen.queryByRole("listbox", { name: "Slash commands" })).toBeNull();
@@ -673,7 +712,7 @@ describe("TerminalComposer", () => {
     fireEvent.change(textbox(), { target: { value: "please /re" } });
     const listbox = await screen.findByRole("listbox", { name: "Slash commands" });
     expect(within(listbox).getByText("/review")).toBeTruthy();
-    fireEvent.keyDown(textbox(), { key: "Enter" });
+    fireEvent.keyDown(textbox(), { key: "Tab" });
     expect(onChange).toHaveBeenCalledWith("please Please review this change.");
     expect(onSendToTerminal).not.toHaveBeenCalled();
   });
