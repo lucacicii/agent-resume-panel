@@ -56,7 +56,11 @@ import {
   applyTuiDebounce,
   createTuiDebounceState,
   detectTuiSessionStatus,
-  type TuiDebounceState
+  parseOscAgentStatus,
+  stripOscAgentStatus,
+  type OscParsedStatus,
+  type TuiDebounceState,
+  type TuiDetectResult
 } from "./tuiSessionStatus";
 import { COMPOSER_TIP_LIMIT, type ComposerSendTip } from "./TerminalComposer";
 import { TerminalComposerStack } from "./TerminalComposerStack";
@@ -1655,6 +1659,13 @@ const TUI_WHEEL_JUMP = 400;
 /** DEC private modes whose enablement makes the app own wheel scrolling. */
 const TUI_MOUSE_TRACKING_MODES = new Set([1000, 1002, 1003]);
 const MOUSE_TRACKING_SEQUENCE = /\x1b\[\?([0-9;]+)([hl])/g;
+const CURSOR_VISIBILITY_SEQUENCE = /\x1b\[\?25([hl])/g;
+
+function trackTerminalCursorModes(id: number, chunk: string, tracking: Map<number, boolean>): void {
+  for (const match of chunk.matchAll(CURSOR_VISIBILITY_SEQUENCE)) {
+    tracking.set(id, match[1] === "l");
+  }
+}
 
 /**
  * Track DEC private mode 1000/1002/1003 (mouse tracking) per pty from the raw
@@ -2762,6 +2773,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [dragTargetKey, setDragTargetKey] = useState<string | null>(null);
   const terminalRefs = useRef(new Map<number, Terminal>());
   const terminalMouseTrackingRef = useRef(new Map<number, boolean>());
+  const terminalCursorHiddenRef = useRef(new Map<number, boolean>());
   /** ACP chat runtime keyed by pane key (`acp:${recordId}`). */
   const [acpRuntimeByPaneKey, setAcpRuntimeByPaneKey] = useState<Record<string, SessionDotRuntime>>({});
   /** TUI session-pane runtime keyed by terminal pane key. */
@@ -2770,6 +2782,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const acpFlagsRef = useRef(new Map<string, { isRunning: boolean; isConnecting: boolean; status: string }>());
   const tuiLastOutputAtRef = useRef(new Map<string, number>());
   const tuiDebounceRef = useRef(new Map<string, TuiDebounceState>());
+  const tuiProtocolOverrideRef = useRef(new Map<string, OscParsedStatus>());
   const tuiSampleTimerRef = useRef(0);
   const pendingSessionsRef = useRef<PendingWorkbenchSession[]>([]);
   const draggedSessionRef = useRef<AgentSession | null>(null);
@@ -2977,6 +2990,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       if (!openTerminalKeys.has(key)) {
         tuiLastOutputAtRef.current.delete(key);
         tuiDebounceRef.current.delete(key);
+        tuiProtocolOverrideRef.current.delete(key);
       }
     }
   }, [acpChats, terminals]);
@@ -3066,26 +3080,45 @@ export function WorkbenchPanel(): ReactPortal | null {
     const now = Date.now();
     const updates: Record<string, SessionDotRuntime> = {};
     for (const pane of terminalsRef.current) {
-      if (pane.group !== "session" || pane.ptyId == null) continue;
-      const terminal = terminalRefs.current.get(pane.ptyId);
-      if (!terminal) continue;
-      const buffer = terminal.buffer.active;
-      // Read the bottom of the visible viewport (permission dialogs sit near the prompt).
-      const rows = Math.min(30, terminal.rows);
-      const start = Math.max(0, buffer.viewportY + terminal.rows - rows);
-      const lines: string[] = [];
-      for (let i = 0; i < rows; i += 1) {
-        const line = buffer.getLine(start + i);
-        if (line) lines.push(line.translateToString(true));
-      }
+      if (pane.group !== "session") continue;
       const lastOutputAt = tuiLastOutputAtRef.current.get(pane.key) ?? now;
-      const sample = detectTuiSessionStatus({
-        visibleText: lines.join("\n"),
-        lastOutputAt,
-        now,
-        isAlternateBuffer: buffer.type === "alternate",
-        isSessionPane: true
-      });
+      const protocolOverride = tuiProtocolOverrideRef.current.get(pane.key) ?? null;
+      const terminal = pane.ptyId != null ? terminalRefs.current.get(pane.ptyId) : null;
+      const cursorHidden = pane.ptyId != null ? (terminalCursorHiddenRef.current.get(pane.ptyId) ?? false) : false;
+
+      let sample: TuiDetectResult;
+      if (terminal) {
+        const buffer = terminal.buffer.active;
+        // Read the bottom of the active screen (use baseY to avoid user scroll corrupting detection)
+        const rows = Math.min(30, terminal.rows);
+        const start = Math.max(0, buffer.baseY + terminal.rows - rows);
+        const lines: string[] = [];
+        for (let i = 0; i < rows; i += 1) {
+          const line = buffer.getLine(start + i);
+          if (line) lines.push(line.translateToString(true));
+        }
+        sample = detectTuiSessionStatus({
+          visibleText: lines.join("\n"),
+          lastOutputAt,
+          now,
+          isAlternateBuffer: buffer.type === "alternate",
+          isSessionPane: true,
+          cursorHidden,
+          protocolOverride
+        });
+      } else {
+        // Background session without active DOM terminal
+        sample = detectTuiSessionStatus({
+          visibleText: "",
+          lastOutputAt,
+          now,
+          isAlternateBuffer: false,
+          isSessionPane: true,
+          cursorHidden: false,
+          protocolOverride
+        });
+      }
+
       const debounced = applyTuiDebounce(tuiDebounceRef.current.get(pane.key) || createTuiDebounceState(), sample);
       tuiDebounceRef.current.set(pane.key, debounced.state);
       updates[pane.key] = {
@@ -3118,8 +3151,9 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   useEffect(() => {
     // Keep idle/awaiting timers advancing even without further PTY output.
-    if (!active) return;
-    const timer = window.setInterval(() => sampleTuiSessionStatus(), 2_000);
+    // In background, use a 4s interval to keep tray / nav rail session dots accurate without burning CPU.
+    const intervalMs = active ? 2_000 : 4_000;
+    const timer = window.setInterval(() => sampleTuiSessionStatus(), intervalMs);
     return () => {
       window.clearInterval(timer);
       if (tuiSampleTimerRef.current) {
@@ -4303,6 +4337,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     if (pane?.group === "session") {
       tuiLastOutputAtRef.current.set(key, Date.now());
       tuiDebounceRef.current.set(key, createTuiDebounceState());
+      tuiProtocolOverrideRef.current.delete(key);
       setTuiRuntimeByPaneKey((current) => {
         if (current[key]?.status === "running" && !current[key]?.awaitingConfidence) return current;
         return { ...current, [key]: { status: "running" } };
@@ -7606,21 +7641,32 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   useEffect(() => {
     const data = desktopApi().onTerminalData(({ id, data: value }) => {
+      const pane = terminalsRef.current.find((item) => item.ptyId === id);
+      if (pane?.group === "session") {
+        tuiLastOutputAtRef.current.set(pane.key, Date.now());
+        const osc = parseOscAgentStatus(value);
+        if (osc) {
+          tuiProtocolOverrideRef.current.set(pane.key, osc);
+        } else if (tuiProtocolOverrideRef.current.has(pane.key) && tuiProtocolOverrideRef.current.get(pane.key)?.status === "awaiting_user") {
+          tuiProtocolOverrideRef.current.delete(pane.key);
+        }
+        scheduleTuiSample();
+      }
+      trackTerminalCursorModes(id, value, terminalCursorHiddenRef.current);
       const terminal = terminalRefs.current.get(id);
       if (!terminal) return;
       trackTerminalMouseModes(id, value, terminalMouseTrackingRef.current);
       trackTuiRedraw(value, terminal);
-      terminal.write(value);
-      const pane = terminalsRef.current.find((item) => item.ptyId === id);
-      if (pane?.group === "session") {
-        tuiLastOutputAtRef.current.set(pane.key, Date.now());
-        scheduleTuiSample();
-      }
+      terminal.write(stripOscAgentStatus(value));
     });
     const exited = desktopApi().onTerminalExit(({ id }) => {
       terminalRefs.current.get(id)?.write(`\r\n${t("desktop.workbench.terminalClosed")}\r\n`);
+      terminalCursorHiddenRef.current.delete(id);
       const pane = terminalsRef.current.find((item) => item.ptyId === id);
-      if (pane) scheduleSessionPaneAutoRename(pane);
+      if (pane) {
+        tuiProtocolOverrideRef.current.delete(pane.key);
+        scheduleSessionPaneAutoRename(pane);
+      }
     });
     const respawned = desktopApi().onTerminalRespawned(({ id }) => terminalRefs.current.get(id)?.write(`\r\n${t("desktop.workbench.shellRestored")}\r\n`));
     return () => { data(); exited(); respawned(); };

@@ -3,7 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionTranscriptPane } from "./SessionTranscriptPane";
 
 const apiMocks = vi.hoisted(() => ({
-  previewSession: vi.fn()
+  previewSession: vi.fn(),
+  imRunSelectionAction: vi.fn()
 }));
 
 vi.mock("../../bridge", () => ({ desktopApi: () => apiMocks }));
@@ -17,6 +18,12 @@ vi.mock("../../i18n", () => ({
 afterEach(() => {
   cleanup();
   apiMocks.previewSession.mockReset();
+  apiMocks.imRunSelectionAction.mockReset();
+  try {
+    Reflect.deleteProperty(navigator, "clipboard");
+  } catch {
+    // Clipboard stays undefined in environments without it.
+  }
 });
 
 describe("SessionTranscriptPane", () => {
@@ -263,5 +270,78 @@ describe("SessionTranscriptPane", () => {
     render(<SessionTranscriptPane provider="codex" sessionId="session-1" active={false} />);
     await act(async () => undefined);
     expect(apiMocks.previewSession).not.toHaveBeenCalled();
+  });
+
+  it("copies a message text via the per-message copy action", async () => {
+    apiMocks.previewSession.mockResolvedValue({
+      session: { provider: "codex", id: "session-copy" },
+      preview: {
+        title: "Copy",
+        messages: [
+          { role: "user", text: "Add a transcript pane" },
+          { role: "assistant", text: "Dock it beside the TUI." }
+        ]
+      }
+    });
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+
+    render(<SessionTranscriptPane provider="codex" sessionId="session-copy" active />);
+    await screen.findByText("Dock it beside the TUI.");
+    const row = document.querySelector('[data-transcript-id="transcript-msg-1"]') as HTMLElement;
+    const copyBtn = row.querySelector('button[aria-label="desktop.common.copy"]') as HTMLButtonElement;
+    expect(copyBtn).toBeTruthy();
+    fireEvent.click(copyBtn);
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("Dock it beside the TUI."));
+  });
+
+  it("translates a message inline and restores the original via the action chip", async () => {
+    apiMocks.previewSession.mockResolvedValue({
+      session: { provider: "codex", id: "session-tr" },
+      preview: {
+        title: "Translate",
+        messages: [{ role: "assistant", text: "Dock it beside the TUI." }]
+      }
+    });
+    apiMocks.imRunSelectionAction.mockResolvedValue({ text: "translated body" });
+
+    render(<SessionTranscriptPane provider="codex" sessionId="session-tr" active />);
+    expect(await screen.findByText("Dock it beside the TUI.")).toBeTruthy();
+    const row = document.querySelector('[data-transcript-id="transcript-msg-0"]') as HTMLElement;
+    const translateBtn = row.querySelector('button[aria-label="desktop.workbench.transcriptTranslate"]') as HTMLButtonElement;
+    expect(translateBtn).toBeTruthy();
+    fireEvent.click(translateBtn);
+
+    await waitFor(() => expect(apiMocks.imRunSelectionAction).toHaveBeenCalledWith({
+      actionId: "translate",
+      text: "Dock it beside the TUI."
+    }));
+    expect(await screen.findByText("translated body")).toBeTruthy();
+    expect(screen.queryByText("Dock it beside the TUI.")).toBeNull();
+
+    const restoreBtn = row.querySelector('button[aria-label="desktop.workbench.transcriptRestore"]') as HTMLButtonElement;
+    expect(restoreBtn).toBeTruthy();
+    fireEvent.click(restoreBtn);
+    await waitFor(() => expect(screen.queryByText("translated body")).toBeNull());
+    expect(screen.getByText("Dock it beside the TUI.")).toBeTruthy();
+    expect(apiMocks.imRunSelectionAction).toHaveBeenCalledTimes(1);
+  });
+
+  it("surfaces a translate failure in the transcript status", async () => {
+    apiMocks.previewSession.mockResolvedValue({
+      session: { provider: "codex", id: "session-err" },
+      preview: {
+        title: "Error",
+        messages: [{ role: "assistant", text: "Dock it beside the TUI." }]
+      }
+    });
+    apiMocks.imRunSelectionAction.mockRejectedValue(new Error("Conversation LLM is not configured."));
+
+    render(<SessionTranscriptPane provider="codex" sessionId="session-err" active />);
+    expect(await screen.findByText("Dock it beside the TUI.")).toBeTruthy();
+    const row = document.querySelector('[data-transcript-id="transcript-msg-0"]') as HTMLElement;
+    const translateBtn = row.querySelector('button[aria-label="desktop.workbench.transcriptTranslate"]') as HTMLButtonElement;
+    fireEvent.click(translateBtn);
+    await waitFor(() => expect(screen.getByText("Conversation LLM is not configured.")).toBeTruthy());
   });
 });

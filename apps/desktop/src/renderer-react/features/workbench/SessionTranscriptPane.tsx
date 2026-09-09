@@ -26,7 +26,16 @@ const TranscriptMessageRow = React.memo(function TranscriptMessageRow({
   renderMarkdownView,
   isStreaming = false,
   isSearchTarget = false,
-  onImageClick
+  onImageClick,
+  displayText,
+  translated = false,
+  isTranslating = false,
+  translateLabel,
+  restoreLabel,
+  translatingLabel,
+  copyLabel,
+  onTranslate,
+  onCopy
 }: {
   message: TranscriptMessage;
   isSelected: boolean;
@@ -40,6 +49,15 @@ const TranscriptMessageRow = React.memo(function TranscriptMessageRow({
   isStreaming?: boolean;
   isSearchTarget?: boolean;
   onImageClick?: (url: string) => void;
+  displayText: string;
+  translated?: boolean;
+  isTranslating?: boolean;
+  translateLabel: string;
+  restoreLabel: string;
+  translatingLabel: string;
+  copyLabel: string;
+  onTranslate: () => void;
+  onCopy: (text: string) => void;
 }): React.JSX.Element {
   return (
     <article
@@ -80,14 +98,45 @@ const TranscriptMessageRow = React.memo(function TranscriptMessageRow({
       {message.text ? (
         renderMarkdownView ? (
           <StreamdownRenderer
-            content={message.text}
+            content={displayText}
             isAnimating={isStreaming}
             className="wb-transcript-md markdown-body"
             onImageClick={onImageClick}
           />
         ) : (
-          <div className="wb-transcript-plain">{message.text}</div>
+          <div className="wb-transcript-plain">{displayText}</div>
         )
+      ) : null}
+      {message.text && !isStreaming ? (
+        <div className="wb-transcript-actions">
+          <button
+            type="button"
+            className={`wb-transcript-action-btn${translated ? " is-restore" : ""}`}
+            disabled={isTranslating}
+            onClick={onTranslate}
+            title={translated ? restoreLabel : translateLabel}
+            aria-label={translated ? restoreLabel : translateLabel}
+          >
+            <ThemeIcon name="globe" size={11} aria-hidden="true" />
+            <span>
+              {translated
+                ? restoreLabel
+                : isTranslating
+                  ? translatingLabel
+                  : translateLabel}
+            </span>
+          </button>
+          <button
+            type="button"
+            className="wb-transcript-action-btn"
+            onClick={() => onCopy(message.text)}
+            title={copyLabel}
+            aria-label={copyLabel}
+          >
+            <ThemeIcon name="copy" size={11} aria-hidden="true" />
+            <span>{copyLabel}</span>
+          </button>
+        </div>
       ) : null}
     </article>
   );
@@ -169,6 +218,8 @@ export function SessionTranscriptPane({
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const [renderMarkdownView, setRenderMarkdownView] = useState(true);
   const [expandedThinking, setExpandedThinking] = useState<Record<string, boolean>>({});
+  const [translations, setTranslations] = useState<Record<string, string>>({});
+  const [translatingIds, setTranslatingIds] = useState<Set<string>>(new Set());
   const [imagePreview, setImagePreview] = useState("");
   const bodyRef = useRef<HTMLDivElement>(null);
   const userScrolledUpRef = useRef(false);
@@ -215,6 +266,8 @@ export function SessionTranscriptPane({
     setPreview(null);
     setError("");
     setExpandedThinking({});
+    setTranslations({});
+    setTranslatingIds(new Set());
     void loadPreview();
   }, [active, loadPreview, provider, sessionId]);
 
@@ -450,6 +503,53 @@ export function SessionTranscriptPane({
       : t("desktop.workbench.transcriptRoleAssistant")
   );
 
+  const copyMessageText = useCallback(async (text: string) => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+    } catch { /* fall through to legacy path */ }
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.select();
+    document.execCommand("copy");
+    area.remove();
+  }, []);
+
+  const toggleTranslate = useCallback(async (messageId: string, text: string) => {
+    if (!text.trim()) return;
+    if (translations[messageId]) {
+      setTranslations((current) => {
+        const next = { ...current };
+        delete next[messageId];
+        return next;
+      });
+      return;
+    }
+    setTranslatingIds((current) => {
+      const next = new Set(current);
+      next.add(messageId);
+      return next;
+    });
+    try {
+      const result = await desktopApi().imRunSelectionAction({ actionId: "translate", text });
+      setTranslations((current) => ({ ...current, [messageId]: result.text }));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setTranslatingIds((current) => {
+        const next = new Set(current);
+        next.delete(messageId);
+        return next;
+      });
+    }
+  }, [setError, translations]);
+
   if (isPending || !provider || !sessionId) {
     return (
       <div className="wb-side-pane wb-transcript-pane">
@@ -560,6 +660,7 @@ export function SessionTranscriptPane({
                 matchedMessageIds.length > 0 &&
                 matchedMessageIds[currentMatchIndex] === message.id
               );
+              const translatedText = translations[message.id];
               return (
                 <TranscriptMessageRow
                   key={message.id}
@@ -578,6 +679,15 @@ export function SessionTranscriptPane({
                   renderMarkdownView={renderMarkdownView}
                   isStreaming={isStreaming}
                   onImageClick={setImagePreview}
+                  displayText={translatedText || message.text}
+                  translated={Boolean(translatedText)}
+                  isTranslating={translatingIds.has(message.id)}
+                  translateLabel={t("desktop.workbench.transcriptTranslate")}
+                  restoreLabel={t("desktop.workbench.transcriptRestore")}
+                  translatingLabel={t("desktop.workbench.transcriptTranslating")}
+                  copyLabel={t("desktop.common.copy")}
+                  onTranslate={() => void toggleTranslate(message.id, message.text)}
+                  onCopy={(text) => void copyMessageText(text)}
                 />
               );
             }) : (

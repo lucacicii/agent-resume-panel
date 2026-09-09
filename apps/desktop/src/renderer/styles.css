@@ -8118,6 +8118,47 @@ body.is-pane-resizing-v * {
   background: color-mix(in srgb, var(--color-accent) 12%, var(--color-secondary-bg, var(--panel))) !important;
 }
 
+.wb-transcript-body .wb-transcript-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+  padding-top: 5px;
+  border-top: 1px dashed var(--color-separator, var(--border));
+}
+
+.wb-transcript-body .wb-transcript-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 4px;
+  border: 1px solid var(--color-separator, var(--border));
+  background: transparent;
+  color: var(--color-label-secondary, var(--muted));
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.wb-transcript-body .wb-transcript-action-btn:hover:not(:disabled) {
+  background: var(--color-fill-tertiary, color-mix(in srgb, var(--text) 10%, transparent));
+  border-color: var(--color-accent, var(--accent));
+  color: var(--color-label-primary, var(--text));
+}
+
+.wb-transcript-body .wb-transcript-action-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.wb-transcript-body .wb-transcript-action-btn.is-restore {
+  color: var(--color-accent, var(--accent));
+  border-color: color-mix(in srgb, var(--color-accent, var(--accent)) 42%, var(--color-separator, var(--border)));
+}
+
 @media (max-width: 420px) {
   .wb-transcript-content-wrap {
     --transcript-outline-width: 180px;
