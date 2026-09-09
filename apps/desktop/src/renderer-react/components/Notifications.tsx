@@ -1,6 +1,6 @@
 import { createPortal } from "react-dom";
 import { useEffect, useRef, useState } from "react";
-import type { DesktopNotificationInput, NotificationKind } from "./notificationStore";
+import { notify, type DesktopNotificationInput, type NotificationKind } from "./notificationStore";
 import type { NotificationEntry } from "./notificationStore";
 
 export type { DesktopNotificationInput, NotificationEntry };
@@ -18,7 +18,7 @@ const DEFAULT_DURATION_MS = 3000;
 
 /** Publish a transient notification from any Desktop renderer feature. */
 export function notifyDesktop(input: DesktopNotificationInput): void {
-  window.dispatchEvent(new CustomEvent<DesktopNotificationInput>("agent-resume:notification", { detail: input }));
+  notify(input);
 }
 
 export function Notifications(): React.ReactPortal | null {

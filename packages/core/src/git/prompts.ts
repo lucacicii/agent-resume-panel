@@ -4,6 +4,8 @@ export const COMMIT_INSTRUCTION_MAX_CHARS = 4000;
 
 export interface CommitMessagePromptOptions {
   style?: CommitMessageStyle;
+  /** Language for commit message output (e.g. "en", "English", "zh-cn"). */
+  language?: string;
   customInstructions?: string;
   /** Project-level rules appended after the selected style. */
   extraInstructions?: string;

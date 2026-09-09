@@ -14,11 +14,12 @@ vi.mock("@agent-resume/core", async () => {
   return {
     ...actual,
     loadSettings: vi.fn(actual.loadSettings),
-    llmConfigFromSettings: vi.fn(() => undefined)
+    llmConfigFromSettings: vi.fn(() => undefined),
+    gitCommitLlmConfigFromSettings: vi.fn(() => undefined)
   };
 });
 
-import { llmConfigFromSettings, loadSettings } from "@agent-resume/core";
+import { gitCommitLlmConfigFromSettings, llmConfigFromSettings, loadSettings } from "@agent-resume/core";
 import { collectGitCommitContext, queryGitCommitFileDiffSides, queryGitFileLog, registerWorkbenchGitIpc } from "./workbenchGit";
 
 const roots: string[] = [];
@@ -248,6 +249,7 @@ describe("terminal:gitSuggestCommit", () => {
     vi.mocked(loadSettings).mockResolvedValue({
       workbench: { gitCommitMessageStyle: "conventional" }
     } as never);
+    vi.mocked(gitCommitLlmConfigFromSettings).mockReturnValue(undefined);
     vi.mocked(llmConfigFromSettings).mockReturnValue(undefined);
 
     registerWorkbenchGitIpc(() => "en");

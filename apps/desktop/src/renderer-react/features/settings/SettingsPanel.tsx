@@ -496,7 +496,14 @@ function ProvidersPane({ draft, setDraft, t }: { draft: ProvidersDraft; setDraft
       toolSelection: clearIfSelected(draft.toolSelection),
       chatSelection: clearIfSelected(draft.chatSelection),
       embeddingSelection: clearIfSelected(draft.embeddingSelection),
-      imageSelection: clearIfSelected(draft.imageSelection)
+      imageSelection: clearIfSelected(draft.imageSelection),
+      gitCommitSelection: clearIfSelected(draft.gitCommitSelection),
+      sessionRenameSelection: clearIfSelected(draft.sessionRenameSelection),
+      sessionSummarySelection: clearIfSelected(draft.sessionSummarySelection),
+      reportSelection: clearIfSelected(draft.reportSelection),
+      gtdSelection: clearIfSelected(draft.gtdSelection),
+      imRoutingSelection: clearIfSelected(draft.imRoutingSelection),
+      translateSelection: clearIfSelected(draft.translateSelection)
     });
     if (selectedProviderId === providerId) {
       setSelectedProviderId(providers[0]?.id ?? "");
@@ -568,11 +575,21 @@ function ProvidersPane({ draft, setDraft, t }: { draft: ProvidersDraft; setDraft
       providers: nextProviders
     };
     if (newModelKind === "text") {
-      if (!draft.toolSelection?.providerId) {
-        nextDraft.toolSelection = { providerId: selectedProvider.id, modelId: id };
-      }
-      if (!draft.chatSelection?.providerId) {
-        nextDraft.chatSelection = { providerId: selectedProvider.id, modelId: id };
+      const textKeys = [
+        "toolSelection",
+        "chatSelection",
+        "gitCommitSelection",
+        "sessionRenameSelection",
+        "sessionSummarySelection",
+        "reportSelection",
+        "gtdSelection",
+        "imRoutingSelection",
+        "translateSelection"
+      ] as const;
+      for (const key of textKeys) {
+        if (!draft[key]?.providerId) {
+          nextDraft[key] = { providerId: selectedProvider.id, modelId: id };
+        }
       }
     } else if (newModelKind === "embedding") {
       if (!draft.embeddingSelection?.providerId) {
@@ -618,7 +635,9 @@ function ProvidersPane({ draft, setDraft, t }: { draft: ProvidersDraft; setDraft
     descKey: string,
     kind: ModelKind,
     selection: ModelSelection,
-    onChange: (value: ModelSelection) => void
+    onChange: (value: ModelSelection) => void,
+    placeholderOverride?: string,
+    testIdOverride?: string
   ) => {
     const options = listProviderModels(draft.providers, kind);
     const value = selection.providerId && selection.modelId && options.some(
@@ -641,14 +660,19 @@ function ProvidersPane({ draft, setDraft, t }: { draft: ProvidersDraft; setDraft
         {options.length ? (
           <select
             className="settings-row-control"
-            data-testid={`settings-model-select-${kind}`}
+            data-testid={testIdOverride || `settings-model-select-${kind}`}
             value={value}
             onChange={(event) => {
-              const [providerId, modelId] = event.target.value.split(":");
-              onChange({ providerId, modelId });
+              const val = event.target.value;
+              if (!val) {
+                onChange({});
+                return;
+              }
+              const [providerId, modelId] = val.split(":");
+              onChange({ providerId: providerId || undefined, modelId: modelId || undefined });
             }}
           >
-            <option value="">{t("desktop.settings.modelPlaceholder")}</option>
+            <option value="">{placeholderOverride || t("desktop.settings.modelPlaceholder")}</option>
             {options.map((option) => (
               <option key={`${option.providerId}:${option.modelId}`} value={`${option.providerId}:${option.modelId}`}>
                 {option.providerName} / {option.modelId}
@@ -902,15 +926,63 @@ function ProvidersPane({ draft, setDraft, t }: { draft: ProvidersDraft; setDraft
       </div>
     </section>
     <section className="settings-group">
-      <h3 className="settings-group-title">{t("desktop.settings.useCaseModels")}</h3>
+      <h3 className="settings-group-title">{t("desktop.settings.specificFeatureModels")}</h3>
       <div className="settings-group-body">
-        <p className="settings-footnote">{t("desktop.settings.useCaseModelsFootnote")}</p>
+        <p className="settings-footnote">{t("desktop.settings.specificFeatureModelsFootnote")}</p>
         {selectionRow(
-          "desktop.settings.toolModelUse",
-          "desktop.settings.toolModelUseDesc",
+          "desktop.settings.chatModelUse",
+          "desktop.settings.chatModelUseDesc",
           "text",
-          draft.toolSelection,
-          (value) => update("toolSelection", value)
+          draft.chatSelection,
+          (value) => update("chatSelection", value),
+          t("desktop.settings.modelPlaceholder"),
+          "settings-model-select-chat"
+        )}
+        <label className="settings-row">
+          <span className="settings-row-label">
+            <span className="settings-row-title">{t("desktop.settings.disableThinking")}</span>
+            <span className="settings-row-desc">{t("desktop.settings.disableThinkingChatDesc")}</span>
+          </span>
+          <span className="settings-toggle">
+            <input type="checkbox" role="switch" checked={draft.chatDisableThinking} onChange={(event) => update("chatDisableThinking", event.target.checked)} />
+            <span className="settings-toggle-track" aria-hidden="true" />
+          </span>
+        </label>
+        {selectionRow(
+          "desktop.settings.gitCommitModelUse",
+          "desktop.settings.gitCommitModelUseDesc",
+          "text",
+          draft.gitCommitSelection,
+          (value) => update("gitCommitSelection", value),
+          t("desktop.settings.modelPlaceholder"),
+          "settings-model-select-git-commit"
+        )}
+        {selectionRow(
+          "desktop.settings.sessionRenameModelUse",
+          "desktop.settings.sessionRenameModelUseDesc",
+          "text",
+          draft.sessionRenameSelection,
+          (value) => update("sessionRenameSelection", value),
+          t("desktop.settings.modelPlaceholder"),
+          "settings-model-select-session-rename"
+        )}
+        {selectionRow(
+          "desktop.settings.sessionSummaryModelUse",
+          "desktop.settings.sessionSummaryModelUseDesc",
+          "text",
+          draft.sessionSummarySelection,
+          (value) => update("sessionSummarySelection", value),
+          t("desktop.settings.modelPlaceholder"),
+          "settings-model-select-session-summary"
+        )}
+        {selectionRow(
+          "desktop.settings.reportModelUse",
+          "desktop.settings.reportModelUseDesc",
+          "text",
+          draft.reportSelection,
+          (value) => update("reportSelection", value),
+          t("desktop.settings.modelPlaceholder"),
+          "settings-model-select-report"
         )}
         <label className="settings-row">
           <span className="settings-row-label">
@@ -924,46 +996,50 @@ function ProvidersPane({ draft, setDraft, t }: { draft: ProvidersDraft; setDraft
             <option value="ja">日本語</option>
           </select>
         </label>
-        <label className="settings-row">
-          <span className="settings-row-label">
-            <span className="settings-row-title">{t("desktop.settings.disableThinking")}</span>
-            <span className="settings-row-desc">{t("desktop.settings.disableThinkingDesc")}</span>
-          </span>
-          <span className="settings-toggle">
-            <input type="checkbox" role="switch" checked={draft.toolDisableThinking} onChange={(event) => update("toolDisableThinking", event.target.checked)} />
-            <span className="settings-toggle-track" aria-hidden="true" />
-          </span>
-        </label>
         {selectionRow(
-          "desktop.settings.chatModelUse",
-          "desktop.settings.chatModelUseDesc",
+          "desktop.settings.gtdModelUse",
+          "desktop.settings.gtdModelUseDesc",
           "text",
-          draft.chatSelection,
-          (value) => update("chatSelection", value)
+          draft.gtdSelection,
+          (value) => update("gtdSelection", value),
+          t("desktop.settings.modelPlaceholder"),
+          "settings-model-select-gtd"
         )}
-        <label className="settings-row">
-          <span className="settings-row-label">
-            <span className="settings-row-title">{t("desktop.settings.disableThinking")}</span>
-            <span className="settings-row-desc">{t("desktop.settings.disableThinkingChatDesc")}</span>
-          </span>
-          <span className="settings-toggle">
-            <input type="checkbox" role="switch" checked={draft.chatDisableThinking} onChange={(event) => update("chatDisableThinking", event.target.checked)} />
-            <span className="settings-toggle-track" aria-hidden="true" />
-          </span>
-        </label>
+        {selectionRow(
+          "desktop.settings.imRoutingModelUse",
+          "desktop.settings.imRoutingModelUseDesc",
+          "text",
+          draft.imRoutingSelection,
+          (value) => update("imRoutingSelection", value),
+          t("desktop.settings.modelPlaceholder"),
+          "settings-model-select-im-routing"
+        )}
+        {selectionRow(
+          "desktop.settings.translateModelUse",
+          "desktop.settings.translateModelUseDesc",
+          "text",
+          draft.translateSelection,
+          (value) => update("translateSelection", value),
+          t("desktop.settings.modelPlaceholder"),
+          "settings-model-select-translate"
+        )}
         {selectionRow(
           "desktop.settings.embeddingModelUse",
           "desktop.settings.embeddingModelUseDesc",
           "embedding",
           draft.embeddingSelection,
-          (value) => update("embeddingSelection", value)
+          (value) => update("embeddingSelection", value),
+          t("desktop.settings.modelPlaceholder"),
+          "settings-model-select-embedding"
         )}
         {selectionRow(
           "desktop.settings.imageModelUse",
           "desktop.settings.imageModelUseDesc",
           "image",
           draft.imageSelection,
-          (value) => update("imageSelection", value)
+          (value) => update("imageSelection", value),
+          t("desktop.settings.modelPlaceholder"),
+          "settings-model-select-image"
         )}
       </div>
     </section>

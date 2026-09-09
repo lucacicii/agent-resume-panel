@@ -8,6 +8,27 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## English
 
+### [0.2.25]
+
+#### Added
+
+- **Find in Files**: press **⌘⇧F / Ctrl+Shift+F** to open Search and search file contents across the selected project — with match case / whole word / regex toggles and **files to include / files to exclude** glob fields (comma or newline separated, e.g. `src/**` or `**/*.test.ts`) that filter results live as you type; include globs can reach build-output folders like `dist/` that are skipped by default
+- **Replace in Files**: switch Search to replace mode for **Replace All**, plus per-file and per-occurrence replacement on result rows. Regex replace supports `$1…$9`, `$&` and `$$` placeholders. Unsaved open files are skipped with a notice, and open editors refresh after replacements land on disk; Replace All stays disabled while results are truncated
+- **Find in Folder**: right-click a file or folder in the Explorer and choose **Find in Folder** to search inside just that scope
+- **Transcript translation**: the conversation transcript pane now offers a one-click **Translate / Restore** action to translate the transcript in place
+- **Translate model assignment**: Settings → Models lets you assign a dedicated text model for translation, and IM intent routing now honors the model assigned to its use instead of always falling back to the chat model
+- **`.arp` commit message language**: a new `language` option in the `.arp` `commitMessage` config controls the language of generated commit messages; project-level `.arp` git settings now take precedence without leaking system custom instructions
+
+#### Improved
+
+- **Background session live activity**: running workbench sessions that are not attached keep sending throttled live updates with an output tail, so transcripts stay current while you work elsewhere
+- **TUI status detection**: sampling covers the full visible screen with extended output tail buffering, awaiting detection is faster (single-sample fast attack with slow decay), and Pi plan-mode prompts are recognized; a best-effort agent-resume bridge reports Pi prompt/running/idle states when a PTY host starts
+- **Notifications**: desktop notifications now flow through a shared notification store
+
+#### Fixed
+
+- **Workbench**: a manually selected git repository is preserved when session status refreshes
+
 ### [0.2.24]
 
 #### Added
@@ -547,6 +568,27 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 ---
 
 ## 简体中文
+
+### [0.2.25]
+
+#### 新增
+
+- **全局查找**: 按 **⌘⇧F / Ctrl+Shift+F** 打开 Search 面板，在所选项目内全文检索——支持大小写 / 整词 / 正则切换，以及**要包含的文件 / 要排除的文件** glob 输入（逗号或换行分隔，如 `src/**`、`**/*.test.ts`），输入即实时过滤结果；包含 glob 可搜到默认跳过的构建目录（如 `dist/`）
+- **全局替换**: Search 切换替换模式支持**全部替换**、按文件替换、按结果替换。正则替换支持 `$1…$9`、`$&` 与 `$$` 占位符。在编辑器中打开且未保存的文件会被跳过并提示，替换落盘后已打开的编辑器自动刷新；结果被截断时全部替换保持禁用
+- **在文件夹中查找**: 在 Explorer 中右键文件或文件夹选择**在文件夹中查找**，即可只在该目录范围内检索
+- **转录翻译**: 会话转录面板新增一键**翻译 / 恢复**操作，可原地翻译转录内容
+- **翻译模型指派**: Settings → Models 可为翻译指定专用文本模型；IM 意图路由也会使用为其指派的任务模型，不再一律回退到聊天模型
+- **`.arp` 提交信息语言**: `.arp` 的 `commitMessage` 配置新增 `language` 选项，控制生成提交信息的语言；项目级 `.arp` git 配置优先生效，且不再泄漏系统自定义指令
+
+#### 改进
+
+- **后台会话实时活动**: 未附着的运行中会话会以节流方式持续推送带输出尾部的实时更新，转录在你处理其他面板时也保持最新
+- **TUI 状态检测**: 采样覆盖整个可见屏幕、输出尾部缓冲加长、等待检测更快（单次采样快速命中 + 慢衰减），并识别 Pi plan 模式提示；PTY host 启动时会注入 agent-resume 桥接，上报 Pi 的 prompt / 运行中 / 空闲状态
+- **通知**: 桌面通知统一走共享通知 store
+
+#### 修复
+
+- **Workbench**: 状态刷新后保留手动选择的 git 仓库
 
 ### [0.2.24]
 

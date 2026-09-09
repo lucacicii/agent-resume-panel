@@ -120,7 +120,7 @@ test("loadArpConfig returns null for missing files, bad JSON, and parent-only co
   });
 });
 
-test("resolveCommitMessagePromptOptions overlays project git fields onto panel settings", () => {
+test("resolveCommitMessagePromptOptions uses project git fields when present and falls back to system settings", () => {
   const panel = {
     workbench: {
       gitCommitMessageStyle: "custom",
@@ -128,11 +128,13 @@ test("resolveCommitMessagePromptOptions overlays project git fields onto panel s
     }
   };
 
+  // No .arp config -> uses system settings completely
   assert.deepEqual(resolveCommitMessagePromptOptions(null, panel), {
     style: "custom",
     customInstructions: "Use release-note style."
   });
 
+  // .arp specifies conventional -> uses conventional without leaking system custom instructions
   assert.deepEqual(
     resolveCommitMessagePromptOptions(
       {
@@ -143,10 +145,11 @@ test("resolveCommitMessagePromptOptions overlays project git fields onto panel s
     ),
     {
       style: "conventional",
-      customInstructions: "Use release-note style."
+      customInstructions: undefined
     }
   );
 
+  // .arp specifies conventional, language, and extraInstructions
   assert.deepEqual(
     resolveCommitMessagePromptOptions(
       {
@@ -155,6 +158,7 @@ test("resolveCommitMessagePromptOptions overlays project git fields onto panel s
           git: {
             commitMessage: {
               style: "conventional",
+              language: "en",
               extraInstructions: "scope must be a package name"
             }
           }
@@ -164,11 +168,13 @@ test("resolveCommitMessagePromptOptions overlays project git fields onto panel s
     ),
     {
       style: "conventional",
-      customInstructions: "Use release-note style.",
+      language: "en",
+      customInstructions: undefined,
       extraInstructions: "scope must be a package name"
     }
   );
 
+  // .arp specifies custom with customInstructions -> uses project custom
   assert.deepEqual(
     resolveCommitMessagePromptOptions(
       {
@@ -188,6 +194,27 @@ test("resolveCommitMessagePromptOptions overlays project git fields onto panel s
     {
       style: "custom",
       customInstructions: "Use ticket IDs."
+    }
+  );
+
+  // .arp specifies customInstructions without explicit style -> automatically infers style: custom
+  assert.deepEqual(
+    resolveCommitMessagePromptOptions(
+      {
+        version: 1,
+        workbench: {
+          git: {
+            commitMessage: {
+              customInstructions: "Format: [TAG] subject"
+            }
+          }
+        }
+      },
+      panel
+    ),
+    {
+      style: "custom",
+      customInstructions: "Format: [TAG] subject"
     }
   );
 });

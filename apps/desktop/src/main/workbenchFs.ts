@@ -34,6 +34,7 @@ import {
   cancelActiveWorkbenchSearch,
   searchWorkbenchText
 } from "./workbenchSearch";
+import { replaceWorkbenchText } from "./workbenchReplace";
 import {
   cancelActiveWorkbenchFileList,
   cancelActiveWorkbenchPathSearch,
@@ -949,6 +950,8 @@ export function registerWorkbenchFsIpc(): void {
         matchCase?: boolean;
         wholeWord?: boolean;
         useRegex?: boolean;
+        filesToInclude?: string;
+        filesToExclude?: string;
         maxResults?: number;
         maxFileSizeBytes?: number;
       }
@@ -965,6 +968,8 @@ export function registerWorkbenchFsIpc(): void {
         matchCase: Boolean(args.matchCase),
         wholeWord: Boolean(args.wholeWord),
         useRegex: Boolean(args.useRegex),
+        filesToInclude: args.filesToInclude,
+        filesToExclude: args.filesToExclude,
         maxResults: args.maxResults,
         maxFileSizeBytes: args.maxFileSizeBytes
       });
@@ -975,6 +980,46 @@ export function registerWorkbenchFsIpc(): void {
     cancelActiveWorkbenchSearch();
     return { ok: true };
   });
+
+  safeHandle(
+    "workbench:replaceText",
+    async (
+      _event,
+      args: {
+        rootPath: string;
+        query: string;
+        replaceWith: string;
+        matchCase?: boolean;
+        wholeWord?: boolean;
+        useRegex?: boolean;
+        files: string[];
+        only?: Array<{ path: string; ordinal: number }>;
+      }
+    ) => {
+      if (typeof args?.rootPath !== "string" || !args.rootPath.trim()) {
+        throw new Error("无效的项目路径");
+      }
+      if (typeof args?.query !== "string" || !args.query.trim()) {
+        throw new Error("无效的搜索参数");
+      }
+      if (typeof args?.replaceWith !== "string") {
+        throw new Error("无效的替换参数");
+      }
+      if (!Array.isArray(args?.files) || !args.files.every((item) => typeof item === "string" && item)) {
+        throw new Error("无效的替换目标");
+      }
+      return replaceWorkbenchText({
+        rootPath: args.rootPath,
+        query: args.query,
+        replaceWith: args.replaceWith,
+        matchCase: Boolean(args.matchCase),
+        wholeWord: Boolean(args.wholeWord),
+        useRegex: Boolean(args.useRegex),
+        files: args.files,
+        only: args.only
+      });
+    }
+  );
 
   safeHandle(
     "terminal:gitStatus",

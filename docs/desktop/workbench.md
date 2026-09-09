@@ -27,12 +27,19 @@ Languages: [English](#english) | [简体中文](#简体中文)
 
 | Tool | Purpose |
 |------|---------|
-| **Explorer** | Browse project files; right-click a file for all-branch Git history and rename tracking |
-| **Search** | Find text in the selected project (match case, whole word, regex); open hits in the file editor |
+| **Explorer** | Browse project files; right-click a file for all-branch Git history and rename tracking, or right-click a file/folder and choose **Find in Folder** to search inside it |
+| **Search** | Find text in the selected project (match case, whole word, regex); narrow with **files to include / files to exclude** globs, or switch to **replace** mode for Replace All, per-file, or per-occurrence replacement |
 | **Scripts** | Discover and run project scripts (npm / pnpm / yarn / bun, Make, Gradle, Python, Cargo) into the active terminal |
 | **Nested git scan** | Discover git repos under the project tree |
 | **Git changes** | Stage/select files, commit only selected paths, push / pull, and inspect diffs |
 | **Git log graph** | Branch graph and commit node details in the side panel |
+
+### Find in Files
+
+Press **⌘⇧F / Ctrl+Shift+F** (or open **Search**) to search file contents across the selected project, VS Code style:
+
+- **Aa / Ab / .*** toggle match case, whole word, and regular expressions. The **ellipsis** toggle reveals **files to include** and **files to exclude** fields (comma or newline separated globs such as `src/**` or `**/*.test.ts`); results update live as you type. Include globs can reach build-output folders like `dist/` that are skipped by default.
+- The **replace toggle** adds a replace field and **Replace All**, plus per-file and per-occurrence replace buttons on result rows. Regex replace supports `$1…$9`, `$&` and `$$` placeholders. Files open in the editor with unsaved changes are skipped (with a notice), and open editors refresh after replacements land on disk. When results were limited, Replace All is disabled until you refine the search.
 
 ### ACP visual chat
 
@@ -45,6 +52,7 @@ Choose an **ACP · …** default agent in **Settings → Workbench → New Sessi
 
 ### Keyboard & defaults
 
+- **⌘⇧F / Ctrl+Shift+F** opens **Find in Files** (the Search side panel).  
 - **⌘T** can be configured for **new session** or **new terminal** under Workbench settings.  
 - **⌘← / ⌘→** switch to the previous / next tab within the current group.  
 - **⌘↑ / ⌘↓** switch between the **session**, **terminal**, and **code** groups, skipping empty groups. When the selected tab is a terminal session, focus moves to its TUI input.
@@ -87,12 +95,19 @@ Choose an **ACP · …** default agent in **Settings → Workbench → New Sessi
 
 | 工具 | 作用 |
 |------|------|
-| **Explorer** | 浏览项目文件；右键查看全分支 Git 历史并跟踪文件改名 |
-| **Search** | 在当前项目中检索文本（大小写 / 整词 / 正则），点击结果在编辑器中打开 |
+| **Explorer** | 浏览项目文件；右键查看全分支 Git 历史并跟踪文件改名，右键文件 / 文件夹选择 **在文件夹中查找** 可在其内部检索 |
+| **Search** | 在当前项目中检索文本（大小写 / 整词 / 正则）；用 **要包含 / 要排除的文件** glob 收窄范围，或切换到 **替换** 模式执行全部替换、按文件替换、按结果替换 |
 | **Scripts** | 发现并运行项目脚本（npm / pnpm / yarn / bun、Make、Gradle、Python、Cargo），写入当前终端 |
 | **嵌套 Git 扫描** | 发现项目树下的 git 仓库 |
 | **Git 变更** | 勾选文件、仅提交选中路径、push / pull 与 diff 查看 |
 | **Git Log 图** | 侧边栏分支图与提交节点信息 |
+
+### 全局查找
+
+按 **⌘⇧F / Ctrl+Shift+F**（或打开 **Search**）可在当前项目文件中全文检索，用法类似 VS Code：
+
+- **Aa / Ab / .*** 切换大小写、整词与正则。**省略号按钮**展开 **要包含的文件** 与 **要排除的文件** 输入框（逗号或换行分隔的 glob，如 `src/**`、`**/*.test.ts`），输入即实时更新结果；包含 glob 可以搜到默认跳过的构建目录（如 `dist/`）。
+- **替换按钮**展开替换输入框与 **全部替换**，结果行的每个文件与每条匹配上也有对应的替换按钮。正则替换支持 `$1…$9`、`$&` 与 `$$` 占位符。在编辑器中打开且未保存的文件会被跳过并提示；替换落盘后已打开的编辑器会自动刷新。结果被截断时，全部替换会禁用，直到缩小搜索范围。
 
 ### ACP 可视化聊天
 
@@ -105,6 +120,7 @@ Choose an **ACP · …** default agent in **Settings → Workbench → New Sessi
 
 ### 快捷键与默认值
 
+- **⌘⇧F / Ctrl+Shift+F** 打开**全局查找**（Search 侧边栏）。  
 - **⌘T** 可在 Workbench 设置中配置为 **新建会话** 或 **新建终端**。  
 - **⌘← / ⌘→** 在当前组内切换到前一个 / 后一个标签。  
 - **⌘↑ / ⌘↓** 在 **session / terminal / code** 三组之间切换并跳过空组；跳转到会话终端后会自动聚焦 TUI 输入框。

@@ -349,4 +349,52 @@ describe("WorkbenchFileExplorer", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "desktop.common.copyPath" }));
     expect(apiMocks.clipboardWriteText).toHaveBeenLastCalledWith("/work/app/package.json");
   });
+
+  it("offers Find in Folder for directories and scopes files to their parent folder", async () => {
+    apiMocks.workbenchListDirectory.mockResolvedValue({
+      entries: [
+        { name: "src", path: "/work/app/src", isDirectory: true },
+        { name: "package.json", path: "/work/app/package.json", isDirectory: false }
+      ]
+    });
+    apiMocks.workbenchClipboardHasFiles.mockResolvedValue({ hasFiles: false });
+    const onFindInFolder = vi.fn();
+
+    render(<WorkbenchFileExplorer
+      rootPath="/work/app"
+      onOpenFile={() => undefined}
+      onFindInFolder={onFindInFolder}
+      onError={() => undefined}
+    />);
+
+    // A directory searches inside itself.
+    const directoryRow = (await screen.findByText("src")).closest("[role=treeitem]")!;
+    fireEvent.contextMenu(directoryRow, { clientX: 20, clientY: 30 });
+    fireEvent.click(screen.getByRole("menuitem", { name: "desktop.workbench.findInFolder" }));
+    expect(onFindInFolder).toHaveBeenCalledWith("/work/app/src");
+    expect(screen.queryByRole("menu")).toBeNull();
+
+    // A file searches its containing folder.
+    const fileRow = screen.getByText("package.json").closest("[role=treeitem]")!;
+    fireEvent.contextMenu(fileRow, { clientX: 20, clientY: 30 });
+    fireEvent.click(screen.getByRole("menuitem", { name: "desktop.workbench.findInFolder" }));
+    expect(onFindInFolder).toHaveBeenLastCalledWith("/work/app");
+  });
+
+  it("hides Find in Folder when no handler is wired", async () => {
+    apiMocks.workbenchListDirectory.mockResolvedValue({
+      entries: [{ name: "src", path: "/work/app/src", isDirectory: true }]
+    });
+    apiMocks.workbenchClipboardHasFiles.mockResolvedValue({ hasFiles: false });
+
+    render(<WorkbenchFileExplorer
+      rootPath="/work/app"
+      onOpenFile={() => undefined}
+      onError={() => undefined}
+    />);
+
+    const directoryRow = (await screen.findByText("src")).closest("[role=treeitem]")!;
+    fireEvent.contextMenu(directoryRow, { clientX: 20, clientY: 30 });
+    expect(screen.queryByRole("menuitem", { name: "desktop.workbench.findInFolder" })).toBeNull();
+  });
 });

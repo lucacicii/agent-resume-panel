@@ -459,6 +459,13 @@ export interface PanelSettings {
   llmOptions?: {
     tool?: LlmUseOptions;
     chat?: Pick<LlmUseOptions, "disableThinking">;
+    gitCommit?: Pick<LlmUseOptions, "disableThinking">;
+    sessionRename?: Pick<LlmUseOptions, "disableThinking">;
+    sessionSummary?: Pick<LlmUseOptions, "disableThinking">;
+    report?: Pick<LlmUseOptions, "disableThinking">;
+    gtd?: Pick<LlmUseOptions, "disableThinking">;
+    imRouting?: Pick<LlmUseOptions, "disableThinking">;
+    translate?: Pick<LlmUseOptions, "disableThinking">;
   };
   report?: ReportSettings;
   /** Auto session_summary generation (Desktop main process). */

@@ -1,6 +1,7 @@
 import {
   chatCompletionDetailed,
   chatLlmConfigFromSettings,
+  imRoutingLlmConfigFromSettings,
   recordLlmUsage,
   type PanelSettings
 } from "@agent-resume/core";
@@ -137,7 +138,7 @@ export async function routeMessageIntent(options: {
     };
   }
 
-  const llm = chatLlmConfigFromSettings(settings);
+  const llm = imRoutingLlmConfigFromSettings(settings);
   if (!llm) {
     return {
       matched: false,

@@ -82,6 +82,16 @@ export function catalogLanguageForLocale(locale: UiLocale): string {
   return UI_LOCALE_TO_CATALOG_LANGUAGE[locale] ?? DEFAULT_CATALOG_OUTPUT_LANGUAGE;
 }
 
+export function resolvePromptLanguageName(lang?: string): string | undefined {
+  if (!lang || !lang.trim()) return undefined;
+  const trimmed = lang.trim();
+  const pref = normalizeOutputLanguagePreference(trimmed);
+  if (pref && pref !== OUTPUT_LANGUAGE_AUTO) {
+    return catalogLanguageForLocale(pref);
+  }
+  return trimmed;
+}
+
 export function resolveEffectiveOutputLanguage(input: {
   outputPreference?: string;
   uiPreference?: string;

@@ -3,7 +3,10 @@ import { AgentProvider, AgentSession } from "../catalog/types";
 import { chatCompletionDetailed } from "../llm/chat";
 import { DEFAULT_CATALOG_OUTPUT_LANGUAGE } from "../i18n/outputLanguage";
 import { createUiText } from "../i18n/uiText";
-import { llmConfigFromSettings } from "../llm/fromSettings";
+import {
+  gtdLlmConfigFromSettings,
+  llmConfigFromSettings
+} from "../llm/fromSettings";
 import { listReportLinks, getReportEntryById, listReportEntries } from "../report/store";
 import { ReportEntry } from "../report/schema";
 import { PanelSettings } from "../settings/types";
@@ -139,7 +142,7 @@ export async function analyzeReportForGtd(input: {
   systemLocale?: string;
 }): Promise<{ proposals: GtdProposal[]; warnings: string[]; raw?: string }> {
   const pt = createUiText(input.settings, input.systemLocale);
-  const llm = llmConfigFromSettings(input.settings);
+  const llm = gtdLlmConfigFromSettings(input.settings);
   if (!llm) {
     throw new Error(
       "LLM is not configured. Set llm.baseUrl, llm.model, and llm.apiKey in settings.json."

@@ -6,6 +6,7 @@ import {
   loadSettings,
   normalizeBaseUrl,
   recordLlmUsage,
+  translateLlmConfigFromSettings,
   type LlmRuntimeConfig,
   type PanelSettings
 } from "@agent-resume/core";
@@ -53,6 +54,7 @@ export async function runIndependentSelectionAction(
   if (!selection.trim()) throw new Error("Select some text first.");
   const settings = await loadSettings();
   const llm = (action.providerId && action.modelId ? resolveActionLlm(settings, action.providerId, action.modelId) : undefined)
+    ?? (action.actionId === "translate" ? translateLlmConfigFromSettings(settings) : undefined)
     ?? chatLlmConfigFromSettings(settings);
   if (!llm) {
     throw new Error("Conversation LLM is not configured. Select an Ask/Chat model in Settings → Providers.");

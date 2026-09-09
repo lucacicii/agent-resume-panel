@@ -90,6 +90,24 @@ const messages = {
   "desktop.settings.imageModelUseDesc": "Image generation",
   "desktop.settings.useCaseModels": "Use-case models",
   "desktop.settings.useCaseModelsFootnote": "Each feature picks a model by kind.",
+  "desktop.settings.specificFeatureModels": "Feature-specific models",
+  "desktop.settings.specificFeatureModelsFootnote": "Overrides for individual tasks.",
+  "desktop.settings.gitCommitModelUse": "Git Commit Messages",
+  "desktop.settings.gitCommitModelUseDesc": "Git commit desc",
+  "desktop.settings.sessionRenameModelUse": "Session Auto-Rename",
+  "desktop.settings.sessionRenameModelUseDesc": "Session rename desc",
+  "desktop.settings.sessionSummaryModelUse": "Session Summaries",
+  "desktop.settings.sessionSummaryModelUseDesc": "Session summary desc",
+  "desktop.settings.reportModelUse": "Scheduled Digests",
+  "desktop.settings.reportModelUseDesc": "Report desc",
+  "desktop.settings.gtdModelUse": "GTD Task Analysis",
+  "desktop.settings.gtdModelUseDesc": "GTD desc",
+  "desktop.settings.imRoutingModelUse": "IM Smart Routing",
+  "desktop.settings.imRoutingModelUseDesc": "IM routing desc",
+  "desktop.settings.translateModelUse": "Translation",
+  "desktop.settings.translateModelUseDesc": "Translation desc",
+  "desktop.settings.modelFollowToolDefault": "Default (Follows Tool LLM)",
+  "desktop.settings.modelFollowChatDefault": "Default (Follows Ask / Chat)",
   "desktop.settings.providerList": "Providers",
   "desktop.settings.providerListLabel": "Provider list",
   "desktop.settings.providerListEmpty": "No providers yet.",
@@ -370,7 +388,7 @@ describe("SettingsPanel (window)", () => {
       navigateHandlers[0]?.({ pane: "providers" });
     });
     await waitFor(() => expect(host.querySelectorAll(".settings-group")).toHaveLength(2));
-    expect(host.textContent).toContain("Tool LLM");
+    expect(host.textContent).toContain("Ask / Chat");
   });
 
   it("shows composer slash phrases at the top of the Workbench pane", async () => {
@@ -388,21 +406,34 @@ describe("SettingsPanel (window)", () => {
     await waitFor(() => expect(host.querySelector(".settings-provider-list")).not.toBeNull());
     expect(Array.from(host.querySelectorAll(".settings-group-title")).map((el) => el.textContent)).toEqual([
       "Providers",
-      "Use-case models"
+      "Feature-specific models"
     ]);
     expect(host.querySelectorAll(".settings-provider-item")).toHaveLength(1);
     expect(host.textContent).toContain("Example");
-    expect(host.textContent).toContain("Tool LLM");
     expect(host.textContent).toContain("Ask / Chat");
     expect(host.textContent).toContain("Embedding");
     expect(host.textContent).toContain("Image");
-    // Use-case selectors enumerate the provider pool filtered by kind.
-    expect(host.querySelectorAll('[data-testid^="settings-model-select-"]')).toHaveLength(3);
-    expect(host.querySelector('[data-testid="settings-model-select-text"]')).not.toBeNull();
+    expect(host.textContent).toContain("Git Commit Messages");
+    expect(host.textContent).toContain("Session Auto-Rename");
+    expect(host.textContent).toContain("Session Summaries");
+    expect(host.textContent).toContain("Scheduled Digests");
+    expect(host.textContent).toContain("GTD Task Analysis");
+    expect(host.textContent).toContain("IM Smart Routing");
+    expect(host.textContent).toContain("Translation");
+    // 8 text selectors + 1 embedding selector = 9 selectors (image selector shows empty hint because pool has no image models).
+    expect(host.querySelectorAll('[data-testid^="settings-model-select-"]')).toHaveLength(9);
+    expect(host.querySelector('[data-testid="settings-model-select-chat"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="settings-model-select-git-commit"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="settings-model-select-session-rename"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="settings-model-select-session-summary"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="settings-model-select-report"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="settings-model-select-gtd"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="settings-model-select-im-routing"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="settings-model-select-translate"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="settings-model-select-embedding"]')).not.toBeNull();
     // No image models in the pool → the image selector shows an empty hint instead.
     expect(host.querySelector('[data-testid="settings-model-select-image"]')).toBeNull();
     expect(host.textContent).toContain("No image models.");
-    expect(host.querySelector('[data-testid="settings-model-select-embedding"]')).not.toBeNull();
     // Kind badges on fetched/manual model rows.
     expect(host.querySelectorAll('[data-testid^="settings-provider-model-kind-"]')).toHaveLength(2);
   });

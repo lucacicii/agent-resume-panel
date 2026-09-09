@@ -1,4 +1,4 @@
-import { DEFAULT_CATALOG_OUTPUT_LANGUAGE } from "../i18n/outputLanguage";
+import { DEFAULT_CATALOG_OUTPUT_LANGUAGE, resolvePromptLanguageName } from "../i18n/outputLanguage";
 import { chatCompletionDetailed } from "../llm/chat";
 import { LlmRuntimeConfig } from "../llm/types";
 import {
@@ -79,7 +79,7 @@ export async function suggestCommitMessageFromGitContext(
   usage?: import("../usage/types").TokenUsage;
   durationMs: number;
 }> {
-  const lang = config.outputLanguage?.trim() || DEFAULT_CATALOG_OUTPUT_LANGUAGE;
+  const lang = resolvePromptLanguageName(options?.language) || config.outputLanguage?.trim() || DEFAULT_CATALOG_OUTPUT_LANGUAGE;
   const maxChars = Math.min(config.maxContextChars ?? DEFAULT_MAX_DIFF_CHARS, DEFAULT_MAX_DIFF_CHARS);
   const status = truncateDiff(statusText, 4000);
   const diff = truncateDiff(diffText, maxChars);

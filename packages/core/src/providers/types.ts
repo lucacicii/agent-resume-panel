@@ -29,10 +29,48 @@ export interface AiProvider {
 /**
  * What the model is used for. Each use case picks one (providerId, modelId)
  * from the pool; the model must match the use case's ModelKind.
+ *
+ * Base uses:
+ * - "tool": default Tool LLM (summarize, title suggest, git commit, reports, GTD)
+ * - "chat": default conversational / Ask LLM (workbench chat, intent routing)
+ * - "embedding": semantic search and vector indexing
+ * - "image": image generation
+ *
+ * Specific override uses:
+ * - "gitCommit": Git commit message generation
+ * - "sessionRename": Session title suggest / auto rename
+ * - "sessionSummary": Session summary generation
+ * - "report": Daily / weekly / monthly digest generation
+ * - "gtd": GTD task analysis from digest
+ * - "imRouting": IM message smart intent routing
+ * - "translate": inline transcript and IM message translation
  */
-export type ModelUse = "tool" | "chat" | "embedding" | "image";
+export type ModelUse =
+  | "tool"
+  | "chat"
+  | "embedding"
+  | "image"
+  | "gitCommit"
+  | "sessionRename"
+  | "sessionSummary"
+  | "report"
+  | "gtd"
+  | "imRouting"
+  | "translate";
 
-export const MODEL_USES: readonly ModelUse[] = ["tool", "chat", "embedding", "image"];
+export const MODEL_USES: readonly ModelUse[] = [
+  "tool",
+  "chat",
+  "embedding",
+  "image",
+  "gitCommit",
+  "sessionRename",
+  "sessionSummary",
+  "report",
+  "gtd",
+  "imRouting",
+  "translate"
+];
 
 export interface ModelSelection {
   providerId?: string;
@@ -52,8 +90,10 @@ export function isModelKind(value: unknown): value is ModelKind {
   return value === "text" || value === "image" || value === "embedding";
 }
 
+const MODEL_USE_SET = new Set<string>(MODEL_USES);
+
 export function isModelUse(value: unknown): value is ModelUse {
-  return value === "tool" || value === "chat" || value === "embedding" || value === "image";
+  return typeof value === "string" && MODEL_USE_SET.has(value);
 }
 
 export function normalizeProviderModel(value: unknown): ProviderModel | undefined {

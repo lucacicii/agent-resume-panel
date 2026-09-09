@@ -59,11 +59,38 @@ describe("settings model", () => {
     expect(draft.toolSelection).toEqual({ providerId: "p1", modelId: "tool" });
     expect(draft.chatSelection).toEqual({ providerId: "p1", modelId: "tool" });
     expect(draft.embeddingSelection).toEqual({ providerId: "p1", modelId: "text-embedding-3-small" });
+    expect(draft.gitCommitSelection).toEqual({ providerId: "p1", modelId: "tool" });
+    expect(draft.sessionRenameSelection).toEqual({ providerId: "p1", modelId: "tool" });
+    expect(draft.sessionSummarySelection).toEqual({ providerId: "p1", modelId: "tool" });
+    expect(draft.reportSelection).toEqual({ providerId: "p1", modelId: "tool" });
+    expect(draft.gtdSelection).toEqual({ providerId: "p1", modelId: "tool" });
+    expect(draft.imRoutingSelection).toEqual({ providerId: "p1", modelId: "tool" });
+    expect(draft.translateSelection).toEqual({ providerId: "p1", modelId: "tool" });
     expect(draft.toolOutputLanguage).toBe("auto");
     expect(draft.toolMaxContextChars).toBe(120_000);
     expect(draft.chatDisableThinking).toBe(false);
     expect(generalDraftFromSettings(settings).desktopTheme).toBe("system");
     expect(generalDraftFromSettings(settings).alwaysAllowAgentNonDestructiveOperations).toBe(false);
+  });
+
+  it("persists specialized model selections when set", () => {
+    const patch = providersPatch(settings, {
+      ...providersDraftFromSettings(settings),
+      gitCommitSelection: { providerId: "p1", modelId: "tool" },
+      sessionRenameSelection: { providerId: "p1", modelId: "tool" },
+      sessionSummarySelection: { providerId: "p1", modelId: "tool" },
+      reportSelection: { providerId: "p1", modelId: "tool" },
+      gtdSelection: { providerId: "p1", modelId: "tool" },
+      imRoutingSelection: { providerId: "p1", modelId: "tool" },
+      translateSelection: { providerId: "p1", modelId: "tool" }
+    });
+    expect(patch.modelSelections?.gitCommit).toEqual({ providerId: "p1", modelId: "tool" });
+    expect(patch.modelSelections?.sessionRename).toEqual({ providerId: "p1", modelId: "tool" });
+    expect(patch.modelSelections?.sessionSummary).toEqual({ providerId: "p1", modelId: "tool" });
+    expect(patch.modelSelections?.report).toEqual({ providerId: "p1", modelId: "tool" });
+    expect(patch.modelSelections?.gtd).toEqual({ providerId: "p1", modelId: "tool" });
+    expect(patch.modelSelections?.imRouting).toEqual({ providerId: "p1", modelId: "tool" });
+    expect(patch.modelSelections?.translate).toEqual({ providerId: "p1", modelId: "tool" });
   });
 
   it("persists the provider pool and drops empty/invalid selections on save", () => {

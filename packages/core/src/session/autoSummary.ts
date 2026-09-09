@@ -1,6 +1,6 @@
 import { getSessionById } from "../catalog/query";
 import { CatalogSessionRow, toAgentSession, type AgentSession } from "../catalog/types";
-import { llmConfigFromSettings } from "../llm/fromSettings";
+import { sessionSummaryLlmConfigFromSettings } from "../llm/fromSettings";
 import type { PanelSettings, SessionSummaryAutoSettings } from "../settings/types";
 import { DEFAULT_SETTINGS } from "../settings/types";
 import { runSqliteJson } from "../sqlite";
@@ -192,7 +192,7 @@ export async function runAutoSessionSummaries(
   if (!auto.enabled) {
     return { skippedReason: "disabled", candidates: [] };
   }
-  if (!llmConfigFromSettings(options.settings, options.systemLocale)) {
+  if (!sessionSummaryLlmConfigFromSettings(options.settings, options.systemLocale)) {
     return { skippedReason: "no_llm", candidates: [] };
   }
 
