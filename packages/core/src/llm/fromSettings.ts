@@ -1,5 +1,5 @@
 import { resolveEffectiveOutputLanguage } from "../i18n/outputLanguage";
-import type { AiProvider, ModelKind, ModelSelection } from "../providers/types";
+import type { AiProvider, ModelKind, ModelSelection, ModelUse } from "../providers/types";
 import { PanelSettings } from "../settings/types";
 import { EmbeddingRuntimeConfig, LlmRuntimeConfig, normalizeBaseUrl } from "./types";
 
@@ -54,7 +54,7 @@ function findFirstValidModel(
 /** Resolve a use case's selected model to its provider + model id. Falls back to pool defaults. */
 export function resolveSelectedModel(
   settings: PanelSettings,
-  use: "tool" | "chat" | "embedding" | "image"
+  use: ModelUse
 ): { provider: AiProvider; modelId: string } | undefined {
   const selection: ModelSelection | undefined = settings.modelSelections?.[use];
   if (selection?.providerId && selection?.modelId) {
@@ -65,6 +65,18 @@ export function resolveSelectedModel(
         return { provider, modelId: model.id };
       }
     }
+  }
+  if (
+    use === "gitCommit" ||
+    use === "sessionRename" ||
+    use === "sessionSummary" ||
+    use === "report" ||
+    use === "gtd"
+  ) {
+    return resolveSelectedModel(settings, "tool");
+  }
+  if (use === "imRouting") {
+    return resolveSelectedModel(settings, "chat");
   }
   if (use === "chat") {
     return resolveSelectedModel(settings, "tool") ?? findFirstValidModel(settings, "text");
@@ -94,12 +106,41 @@ export function toolOutputLanguagePreference(settings: PanelSettings): string | 
   return settings.llmOptions?.tool?.outputLanguage;
 }
 
-/** Tool LLM: summarize, rename, digests. Prefer a fast, low-cost model. */
-export function llmConfigFromSettings(
+export type SpecializedModelUse =
+  | "gitCommit"
+  | "sessionRename"
+  | "sessionSummary"
+  | "report"
+  | "gtd"
+  | "imRouting";
+
+export const SPECIALIZED_MODEL_USES: readonly SpecializedModelUse[] = [
+  "gitCommit",
+  "sessionRename",
+  "sessionSummary",
+  "report",
+  "gtd",
+  "imRouting"
+] as const;
+
+export function isSpecializedModelUse(use: ModelUse): use is SpecializedModelUse {
+  return (
+    use === "gitCommit" ||
+    use === "sessionRename" ||
+    use === "sessionSummary" ||
+    use === "report" ||
+    use === "gtd" ||
+    use === "imRouting"
+  );
+}
+
+/** General helper to build an LLM runtime config for any ModelUse scenario. */
+export function llmConfigForUse(
   settings: PanelSettings,
+  use: ModelUse,
   systemLocale?: string
 ): LlmRuntimeConfig | undefined {
-  const resolved = resolveSelectedModel(settings, "tool");
+  const resolved = resolveSelectedModel(settings, use);
   if (!resolved) return undefined;
   const apiKey = resolved.provider.apiKey?.trim();
   const baseUrl = normalizeBaseUrl(resolved.provider.baseUrl);
@@ -107,16 +148,31 @@ export function llmConfigFromSettings(
   if (!apiKey || !baseUrl || !model) {
     return undefined;
   }
-  const options = settings.llmOptions?.tool;
+  const toolOptions = settings.llmOptions?.tool;
+  // Specialized feature models default to disableThinking: true to prevent reasoning models
+  // from burning max_tokens budget on deterministic batch/auxiliary tasks.
+  const disableThinking = isSpecializedModelUse(use)
+    ? (settings.llmOptions?.[use]?.disableThinking ?? true)
+    : use === "chat"
+      ? (settings.llmOptions?.chat?.disableThinking ?? toolOptions?.disableThinking)
+      : toolOptions?.disableThinking;
   return {
     baseUrl,
     model,
     apiKey,
-    maxContextChars: options?.maxContextChars,
+    maxContextChars: toolOptions?.maxContextChars,
     outputLanguage: resolvedOutputLanguage(settings, systemLocale),
-    requestTimeoutMs: options?.requestTimeoutMs,
-    disableThinking: options?.disableThinking
+    requestTimeoutMs: toolOptions?.requestTimeoutMs,
+    disableThinking
   };
+}
+
+/** Tool LLM: default for summarize, rename, digests. Prefer a fast, low-cost model. */
+export function llmConfigFromSettings(
+  settings: PanelSettings,
+  systemLocale?: string
+): LlmRuntimeConfig | undefined {
+  return llmConfigForUse(settings, "tool", systemLocale);
 }
 
 /**
@@ -127,24 +183,55 @@ export function chatLlmConfigFromSettings(
   settings: PanelSettings,
   systemLocale?: string
 ): LlmRuntimeConfig | undefined {
-  const resolved = resolveSelectedModel(settings, "chat") ?? resolveSelectedModel(settings, "tool");
-  if (!resolved) return undefined;
-  const apiKey = resolved.provider.apiKey?.trim();
-  const baseUrl = normalizeBaseUrl(resolved.provider.baseUrl);
-  const model = resolved.modelId?.trim();
-  if (!apiKey || !baseUrl || !model) {
-    return undefined;
-  }
-  const toolOptions = settings.llmOptions?.tool;
-  return {
-    baseUrl,
-    model,
-    apiKey,
-    maxContextChars: toolOptions?.maxContextChars,
-    outputLanguage: resolvedOutputLanguage(settings, systemLocale),
-    requestTimeoutMs: toolOptions?.requestTimeoutMs,
-    disableThinking: settings.llmOptions?.chat?.disableThinking
-  };
+  return llmConfigForUse(settings, "chat", systemLocale);
+}
+
+/** Git commit message generation model. Falls back to tool selection when unset. */
+export function gitCommitLlmConfigFromSettings(
+  settings: PanelSettings,
+  systemLocale?: string
+): LlmRuntimeConfig | undefined {
+  return llmConfigForUse(settings, "gitCommit", systemLocale);
+}
+
+/** Session auto-rename / suggested title model. Falls back to tool selection when unset. */
+export function sessionRenameLlmConfigFromSettings(
+  settings: PanelSettings,
+  systemLocale?: string
+): LlmRuntimeConfig | undefined {
+  return llmConfigForUse(settings, "sessionRename", systemLocale);
+}
+
+/** Session summary generation model. Falls back to tool selection when unset. */
+export function sessionSummaryLlmConfigFromSettings(
+  settings: PanelSettings,
+  systemLocale?: string
+): LlmRuntimeConfig | undefined {
+  return llmConfigForUse(settings, "sessionSummary", systemLocale);
+}
+
+/** Daily, weekly, monthly report digests model. Falls back to tool selection when unset. */
+export function reportLlmConfigFromSettings(
+  settings: PanelSettings,
+  systemLocale?: string
+): LlmRuntimeConfig | undefined {
+  return llmConfigForUse(settings, "report", systemLocale);
+}
+
+/** GTD action item analysis model. Falls back to tool selection when unset. */
+export function gtdLlmConfigFromSettings(
+  settings: PanelSettings,
+  systemLocale?: string
+): LlmRuntimeConfig | undefined {
+  return llmConfigForUse(settings, "gtd", systemLocale);
+}
+
+/** IM message smart intent routing model. Falls back to chat selection when unset. */
+export function imRoutingLlmConfigFromSettings(
+  settings: PanelSettings,
+  systemLocale?: string
+): LlmRuntimeConfig | undefined {
+  return llmConfigForUse(settings, "imRouting", systemLocale);
 }
 
 export function embeddingConfigFromSettings(settings: PanelSettings): EmbeddingRuntimeConfig | undefined {

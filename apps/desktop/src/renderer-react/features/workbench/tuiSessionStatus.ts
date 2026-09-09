@@ -109,13 +109,13 @@ export function detectInteractiveSelector(visibleText: string, cursorHidden?: bo
   if (/\b(?:cat|echo|tee)\s*<<?\s*\S+/i.test(text)) return false;
 
   // Active selector pointer or radio indicators on lines:
-  // e.g. "❯ Option 1", "› Run plan", "● Task A", "[x] Choice B", "(*) Option C"
+  // e.g. "→ Execute the plan", "❯ Option 1", "› Run plan", "● Task A", "[x] Choice B", "(*) Option C"
   const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
   let hasPointer = false;
   let hasChoices = 0;
 
   for (const line of lines) {
-    if (/^[❯›▶●◉]\s+\S+/.test(line) || /^\(\*\)\s+\S+/.test(line)) {
+    if (/^[❯›▶●◉→\u2192]\s+\S+/.test(line) || /^(?:->|=>)\s+\S+/.test(line) || /^\(\*\)\s+\S+/.test(line)) {
       hasPointer = true;
       hasChoices += 1;
     } else if (/^[○◯]\s+\S+/.test(line) || /^\(\s*\)\s+\S+/.test(line) || /^\[[ xX*]\]\s+\S+/.test(line)) {
@@ -123,11 +123,15 @@ export function detectInteractiveSelector(visibleText: string, cursorHidden?: bo
     }
   }
 
-  // Navigation hint patterns
-  const hasNavHint = /(?:use arrow keys|↑\/↓|上下键(?:选择|移动)|按回车(?:确认|选择)|press (?:enter|return) to (?:select|confirm)|select (?:a|an|one)|choose (?:a|an|one))/i.test(text);
+  // Navigation hint patterns (e.g. "↑↓ navigate enter select", "↑/↓", "use arrow keys", "Plan mode — what next?")
+  const hasNavHint = /(?:use arrow keys|[↑▲]\s*[↓▼]|↑\/?↓|上下键(?:选择|移动)?|按回车(?:确认|选择)?|\bnavigate\b|\benter select\b|press (?:enter|return) to (?:select|confirm)|select (?:a|an|one)|choose (?:a|an|one)|\bwhat next\b|\bplan mode\b)/i.test(text);
 
   // If selector glyph + navigation instruction or multiple radio items:
   if (hasPointer && (hasNavHint || hasChoices >= 2 || cursorHidden === true)) {
+    return true;
+  }
+
+  if (hasNavHint && hasPointer) {
     return true;
   }
 

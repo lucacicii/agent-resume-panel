@@ -2,7 +2,10 @@ import { listAllSessionsInRange } from "../catalog/query";
 import { AgentSession } from "../catalog/types";
 import { preparePanelDatabasesFromSettings } from "../dbPaths";
 import { DEFAULT_CATALOG_OUTPUT_LANGUAGE } from "../i18n/outputLanguage";
-import { llmConfigFromSettings } from "../llm/fromSettings";
+import {
+  llmConfigFromSettings,
+  reportLlmConfigFromSettings
+} from "../llm/fromSettings";
 import { effectivePanelHome, loadSettings } from "../settings/store";
 import type { PanelSettings } from "../settings/types";
 import { ensureSummariesForSessions } from "../session/ensureSummaries";
@@ -241,7 +244,7 @@ export async function runDailyDigest(
       message: pt("desktop.report.startDaily", dateLabel)
     });
 
-    const llm = llmConfigFromSettings(settings);
+    const llm = reportLlmConfigFromSettings(settings);
     if (!llm) {
       throw new Error(
         "LLM is not configured. Set llm.baseUrl, llm.model, and llm.apiKey in Desktop Settings."

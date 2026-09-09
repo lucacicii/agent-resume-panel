@@ -4,7 +4,10 @@ import { preparePanelDatabasesFromSettings } from "../dbPaths";
 import { DigestProgressCallback, sessionProgressRef } from "../report/progress";
 import { DEFAULT_CATALOG_OUTPUT_LANGUAGE } from "../i18n/outputLanguage";
 import { createReportProgressText } from "../report/progressI18n";
-import { llmConfigFromSettings } from "../llm/fromSettings";
+import {
+  llmConfigFromSettings,
+  sessionSummaryLlmConfigFromSettings
+} from "../llm/fromSettings";
 import { LlmRuntimeConfig } from "../llm/types";
 import { PanelSettings } from "../settings/types";
 import { resolvePreviewHomes } from "../transcript/homes";
@@ -63,7 +66,7 @@ export interface EnsureSummariesResult {
 export async function ensureSummariesForSessions(
   options: EnsureSummariesOptions
 ): Promise<EnsureSummariesResult> {
-  const llmConfig = llmConfigFromSettings(options.settings, options.systemLocale);
+  const llmConfig = sessionSummaryLlmConfigFromSettings(options.settings, options.systemLocale);
   if (!llmConfig) {
     throw new Error(
       "LLM is not configured. Set llm.baseUrl, llm.model, and llm.apiKey in settings."

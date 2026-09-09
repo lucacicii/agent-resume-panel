@@ -4,6 +4,7 @@ import {
   buildHeuristicCommitMessage,
   ensureExtensionCatalogSchema,
   expandHome,
+  gitCommitLlmConfigFromSettings,
   llmConfigFromSettings,
   loadArpConfig,
   loadSettings,
@@ -598,7 +599,7 @@ async function suggestCommitMessage(
   const settings = await loadSettings();
   const arp = await loadArpConfig(repoRoot);
   const commitPrompt = resolveCommitMessagePromptOptions(arp, settings);
-  const llm = llmConfigFromSettings(settings, systemLocale);
+  const llm = gitCommitLlmConfigFromSettings(settings, systemLocale);
   if (!llm) {
     return { message: buildHeuristicCommitMessage(statusText, commitPrompt), source: "heuristic", fallbackReason: "unconfigured" };
   }

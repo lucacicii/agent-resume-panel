@@ -2781,6 +2781,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const acpPendingRequestsRef = useRef(new Map<string, Set<string>>());
   const acpFlagsRef = useRef(new Map<string, { isRunning: boolean; isConnecting: boolean; status: string }>());
   const tuiLastOutputAtRef = useRef(new Map<string, number>());
+  const tuiLastTailRef = useRef(new Map<string, string>());
   const tuiDebounceRef = useRef(new Map<string, TuiDebounceState>());
   const tuiProtocolOverrideRef = useRef(new Map<string, OscParsedStatus>());
   const tuiSampleTimerRef = useRef(0);
@@ -2989,6 +2990,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     for (const key of [...tuiLastOutputAtRef.current.keys()]) {
       if (!openTerminalKeys.has(key)) {
         tuiLastOutputAtRef.current.delete(key);
+        tuiLastTailRef.current.delete(key);
         tuiDebounceRef.current.delete(key);
         tuiProtocolOverrideRef.current.delete(key);
       }
@@ -3107,9 +3109,10 @@ export function WorkbenchPanel(): ReactPortal | null {
           protocolOverride
         });
       } else {
-        // Background session without active DOM terminal
+        // Background session without active DOM terminal - use tail from PTY activity!
+        const backgroundTail = tuiLastTailRef.current.get(pane.key) || "";
         sample = detectTuiSessionStatus({
-          visibleText: "",
+          visibleText: backgroundTail,
           lastOutputAt,
           now,
           isAlternateBuffer: false,
@@ -7644,6 +7647,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       const pane = terminalsRef.current.find((item) => item.ptyId === id);
       if (pane?.group === "session") {
         tuiLastOutputAtRef.current.set(pane.key, Date.now());
+        tuiLastTailRef.current.set(pane.key, value.slice(-4096));
         const osc = parseOscAgentStatus(value);
         if (osc) {
           tuiProtocolOverrideRef.current.set(pane.key, osc);
@@ -7659,17 +7663,38 @@ export function WorkbenchPanel(): ReactPortal | null {
       trackTuiRedraw(value, terminal);
       terminal.write(stripOscAgentStatus(value));
     });
+    const onTerminalActivity = desktopApi().onTerminalActivity;
+    const activity = typeof onTerminalActivity === "function"
+      ? onTerminalActivity(({ id, tail, timestamp }) => {
+          const pane = terminalsRef.current.find((item) => item.ptyId === id);
+          if (pane?.group === "session") {
+            const time = timestamp || Date.now();
+            tuiLastOutputAtRef.current.set(pane.key, time);
+            if (tail) {
+              tuiLastTailRef.current.set(pane.key, tail);
+              const osc = parseOscAgentStatus(tail);
+              if (osc) {
+                tuiProtocolOverrideRef.current.set(pane.key, osc);
+              } else if (tuiProtocolOverrideRef.current.has(pane.key) && tuiProtocolOverrideRef.current.get(pane.key)?.status === "awaiting_user") {
+                tuiProtocolOverrideRef.current.delete(pane.key);
+              }
+            }
+            scheduleTuiSample();
+          }
+        })
+      : () => undefined;
     const exited = desktopApi().onTerminalExit(({ id }) => {
       terminalRefs.current.get(id)?.write(`\r\n${t("desktop.workbench.terminalClosed")}\r\n`);
       terminalCursorHiddenRef.current.delete(id);
       const pane = terminalsRef.current.find((item) => item.ptyId === id);
       if (pane) {
         tuiProtocolOverrideRef.current.delete(pane.key);
+        tuiLastTailRef.current.delete(pane.key);
         scheduleSessionPaneAutoRename(pane);
       }
     });
     const respawned = desktopApi().onTerminalRespawned(({ id }) => terminalRefs.current.get(id)?.write(`\r\n${t("desktop.workbench.shellRestored")}\r\n`));
-    return () => { data(); exited(); respawned(); };
+    return () => { data(); activity(); exited(); respawned(); };
   }, [scheduleSessionPaneAutoRename, scheduleTuiSample, t]);
 
   const changes = git ? [{ title: t("desktop.workbench.sidePanelStaged"), staged: true, entries: git.staged }, { title: t("desktop.workbench.sidePanelChanges"), staged: false, entries: git.unstaged }] : [];

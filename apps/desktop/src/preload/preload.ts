@@ -1032,6 +1032,7 @@ export interface DesktopApi {
     target: GitDiffLineTarget;
   }): Promise<{ ok: boolean }>;
   onTerminalData(callback: (payload: { id: number; data: string }) => void): () => void;
+  onTerminalActivity?(callback: (payload: { id: number; tail?: string; timestamp?: number }) => void): () => void;
   onTerminalExit(callback: (payload: { id: number }) => void): () => void;
   onTerminalRespawned(callback: (payload: { id: number }) => void): () => void;
   setWorkbenchActive(active: boolean): void;
@@ -1740,6 +1741,12 @@ const api: DesktopApi = {
       callback(payload);
     ipcRenderer.on("terminal:data", handler);
     return () => ipcRenderer.removeListener("terminal:data", handler);
+  },
+  onTerminalActivity: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: { id: number; tail?: string; timestamp?: number }) =>
+      callback(payload);
+    ipcRenderer.on("terminal:activity", handler);
+    return () => ipcRenderer.removeListener("terminal:activity", handler);
   },
   onTerminalExit: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, payload: { id: number }) => callback(payload);

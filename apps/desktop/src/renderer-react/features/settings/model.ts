@@ -105,6 +105,12 @@ export interface ProvidersDraft {
   chatSelection: ModelSelection;
   embeddingSelection: ModelSelection;
   imageSelection: ModelSelection;
+  gitCommitSelection: ModelSelection;
+  sessionRenameSelection: ModelSelection;
+  sessionSummarySelection: ModelSelection;
+  reportSelection: ModelSelection;
+  gtdSelection: ModelSelection;
+  imRoutingSelection: ModelSelection;
   /** Tool-use options (summaries / digests output language, budgets). */
   toolOutputLanguage: UiLanguageValue;
   toolMaxContextChars: number;
@@ -263,12 +269,20 @@ export function generalDraftFromSettings(settings: PanelSettings): GeneralDraft 
 export function providersDraftFromSettings(settings: PanelSettings): ProvidersDraft {
   const toolOptions = settings.llmOptions?.tool;
   const chatOptions = settings.llmOptions?.chat;
+  const legacyTool = settings.modelSelections?.tool ?? {};
+  const legacyChat = settings.modelSelections?.chat ?? {};
   return {
     providers: settings.providers ?? [],
-    toolSelection: settings.modelSelections?.tool ?? {},
-    chatSelection: settings.modelSelections?.chat ?? {},
+    toolSelection: legacyTool,
+    chatSelection: settings.modelSelections?.chat ?? legacyTool,
     embeddingSelection: settings.modelSelections?.embedding ?? {},
     imageSelection: settings.modelSelections?.image ?? {},
+    gitCommitSelection: settings.modelSelections?.gitCommit ?? legacyTool,
+    sessionRenameSelection: settings.modelSelections?.sessionRename ?? legacyTool,
+    sessionSummarySelection: settings.modelSelections?.sessionSummary ?? legacyTool,
+    reportSelection: settings.modelSelections?.report ?? legacyTool,
+    gtdSelection: settings.modelSelections?.gtd ?? legacyTool,
+    imRoutingSelection: settings.modelSelections?.imRouting ?? legacyChat,
     toolOutputLanguage: normalizeOutputLanguage(toolOptions?.outputLanguage),
     toolMaxContextChars: typeof toolOptions?.maxContextChars === "number" ? toolOptions.maxContextChars : 120_000,
     toolRequestTimeoutMs: typeof toolOptions?.requestTimeoutMs === "number" ? toolOptions.requestTimeoutMs : 300_000,
@@ -303,7 +317,13 @@ function normalizeDraftSelections(draft: ProvidersDraft): Partial<Record<ModelUs
     ["tool", draft.toolSelection],
     ["chat", draft.chatSelection],
     ["embedding", draft.embeddingSelection],
-    ["image", draft.imageSelection]
+    ["image", draft.imageSelection],
+    ["gitCommit", draft.gitCommitSelection],
+    ["sessionRename", draft.sessionRenameSelection],
+    ["sessionSummary", draft.sessionSummarySelection],
+    ["report", draft.reportSelection],
+    ["gtd", draft.gtdSelection],
+    ["imRouting", draft.imRoutingSelection]
   ];
   for (const [use, selection] of entries) {
     const providerId = selection.providerId?.trim();
@@ -312,6 +332,9 @@ function normalizeDraftSelections(draft: ProvidersDraft): Partial<Record<ModelUs
     const provider = draft.providers.find((entry) => entry.id === providerId);
     if (!provider || !(provider.models ?? []).some((model) => model.id === modelId)) continue;
     output[use] = { providerId, modelId };
+  }
+  if (!output.tool) {
+    output.tool = output.sessionSummary || output.gitCommit || output.chat;
   }
   return output;
 }

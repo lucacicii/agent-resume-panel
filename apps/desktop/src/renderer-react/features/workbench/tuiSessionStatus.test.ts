@@ -59,6 +59,19 @@ describe("stripOscAgentStatus", () => {
 });
 
 describe("detectInteractiveSelector (Tier 2 Fingerprint)", () => {
+  it("matches user reported Pi plan mode selector menu", () => {
+    const userPrompt = [
+      "Plan mode — what next?",
+      "",
+      " → Execute the plan",
+      "   Stay in plan mode",
+      "   Refine the plan",
+      "",
+      " ↑↓ navigate  enter select  escape/ctrl+c cancel"
+    ].join("\n");
+    expect(detectInteractiveSelector(userPrompt)).toBe(true);
+  });
+
   it("matches Pi plan plugin menu with up/down arrow selection", () => {
     const planMenu = [
       "Select an action for the current plan:",

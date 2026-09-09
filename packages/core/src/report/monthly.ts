@@ -1,6 +1,9 @@
 import { preparePanelDatabasesFromSettings } from "../dbPaths";
 import { DEFAULT_CATALOG_OUTPUT_LANGUAGE } from "../i18n/outputLanguage";
-import { llmConfigFromSettings } from "../llm/fromSettings";
+import {
+  llmConfigFromSettings,
+  reportLlmConfigFromSettings
+} from "../llm/fromSettings";
 import { recordLlmUsage } from "../usage/store";
 import { effectivePanelHome, loadSettings } from "../settings/store";
 import { buildMonthlySourceLines } from "./context";
@@ -74,7 +77,7 @@ export async function runMonthlyDigest(
       message: pt("desktop.report.generatingMonthlyCascade", period.label)
     });
 
-    const llm = llmConfigFromSettings(settings);
+    const llm = reportLlmConfigFromSettings(settings);
     if (!llm) {
       throw new Error(
         "LLM is not configured. Set llm.baseUrl, llm.model, and llm.apiKey in ~/.agent-resume-panel/settings.json"

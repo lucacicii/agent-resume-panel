@@ -29,6 +29,8 @@ interface PtySession {
   flushTimer: NodeJS.Timeout | null;
   outputBytes: number;
   forwardedBytes: number;
+  lastActivitySentAt: number;
+  activityTimer: NodeJS.Timeout | null;
 }
 
 export type PtyRuntimeMetrics = {
@@ -70,6 +72,18 @@ function replayText(session: PtySession): string {
   return session.replayChunks.join("");
 }
 
+function replayTail(session: PtySession, maxBytes = 4096): string {
+  if (!session.replayChunks.length) return "";
+  let accumulated = "";
+  for (let i = session.replayChunks.length - 1; i >= 0; i -= 1) {
+    accumulated = session.replayChunks[i] + accumulated;
+    if (accumulated.length >= maxBytes) {
+      return accumulated.slice(-maxBytes);
+    }
+  }
+  return accumulated;
+}
+
 function createPtySession(
   ptyInstance: pty.IPty,
   cwd: string,
@@ -93,7 +107,9 @@ function createPtySession(
     pendingForwardBytes: 0,
     flushTimer: null,
     outputBytes: 0,
-    forwardedBytes: 0
+    forwardedBytes: 0,
+    lastActivitySentAt: 0,
+    activityTimer: null
   };
 }
 
@@ -102,8 +118,28 @@ function clearForwardQueue(session: PtySession): void {
     clearTimeout(session.flushTimer);
     session.flushTimer = null;
   }
+  if (session.activityTimer) {
+    clearTimeout(session.activityTimer);
+    session.activityTimer = null;
+  }
   session.pendingForward = [];
   session.pendingForwardBytes = 0;
+}
+
+const ACTIVITY_THROTTLE_MS = 300;
+
+function queueActivity(id: number, session: PtySession, win: BrowserWindow | null): void {
+  if (!win || win.isDestroyed()) return;
+  if (!session.activityTimer) {
+    session.activityTimer = setTimeout(() => {
+      session.activityTimer = null;
+      if (!win || win.isDestroyed() || session.attached) return;
+      session.lastActivitySentAt = Date.now();
+      const tail = replayTail(session, 4096);
+      win.webContents.send("terminal:activity", { id, tail, timestamp: Date.now() });
+    }, ACTIVITY_THROTTLE_MS);
+    session.activityTimer.unref?.();
+  }
 }
 
 function flushForward(id: number, win: BrowserWindow | null): void {
@@ -421,7 +457,11 @@ function attachPtyHandlers(
     // Always drain. Pause means "don't forward to xterm", never "stop reading".
     appendReplay(session, data);
     session.outputBytes += data.length;
-    if (session.attached) queueForward(id, data, win);
+    if (session.attached) {
+      queueForward(id, data, win);
+    } else {
+      queueActivity(id, session, win);
+    }
   });
   ptyInstance.onExit(() => {
     const session = ptySessions.get(id);
@@ -518,6 +558,7 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
   safeHandle("terminal:attach", (_event, args: { id: number }) => {
     const session = ptySessions.get(Math.floor(args.id));
     if (!session) return { ok: false as const, replay: "" };
+    clearForwardQueue(session);
     session.attached = true;
     const replay = replayText(session);
     session.replayChunks = replay ? [replay] : [];

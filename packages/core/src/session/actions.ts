@@ -7,7 +7,11 @@ import { ensureExtensionCatalogSchema } from "../catalog/db";
 import { AgentProvider, AgentSession } from "../catalog/types";
 import { preparePanelDatabasesFromSettings } from "../dbPaths";
 import { DEFAULT_CATALOG_OUTPUT_LANGUAGE } from "../i18n/outputLanguage";
-import { llmConfigFromSettings } from "../llm/fromSettings";
+import {
+  llmConfigFromSettings,
+  sessionRenameLlmConfigFromSettings,
+  sessionSummaryLlmConfigFromSettings
+} from "../llm/fromSettings";
 import { catalogDbFromSettings, effectivePanelHome, loadSettings } from "../settings/store";
 import { loadSessionPreview } from "../transcript/load";
 import { resolvePreviewHomes } from "../transcript/homes";
@@ -43,7 +47,10 @@ export interface SuggestSessionRenameResult {
   previousTitle: string;
 }
 
-async function loadSessionContext(opts: SessionActionOptions) {
+async function loadSessionContext(
+  opts: SessionActionOptions,
+  use: "sessionSummary" | "sessionRename" = "sessionSummary"
+) {
   const settings = await loadSettings();
   const paths = await preparePanelDatabasesFromSettings();
   const catalogDb = paths.catalogDb;
@@ -53,7 +60,9 @@ async function loadSessionContext(opts: SessionActionOptions) {
   if (!session) {
     throw new Error(`Session not found: ${opts.provider} ${opts.id}`);
   }
-  const llm = llmConfigFromSettings(settings, opts.systemLocale);
+  const llm = use === "sessionRename"
+    ? sessionRenameLlmConfigFromSettings(settings, opts.systemLocale)
+    : sessionSummaryLlmConfigFromSettings(settings, opts.systemLocale);
   if (!llm) {
     throw new Error("LLM is not configured. Open Settings to set API base URL, model, and API key.");
   }
@@ -69,7 +78,7 @@ async function loadSessionContext(opts: SessionActionOptions) {
 export async function summarizeSessionAction(
   opts: SessionActionOptions
 ): Promise<SummarizeSessionResult> {
-  const { settings, catalogDb, desktopDb, session, llm, preview } = await loadSessionContext(opts);
+  const { settings, catalogDb, desktopDb, session, llm, preview } = await loadSessionContext(opts, "sessionSummary");
   const language = llm.outputLanguage?.trim() || DEFAULT_CATALOG_OUTPUT_LANGUAGE;
 
   try {
@@ -133,7 +142,7 @@ export async function autoRenameSessionAction(
   opts: SessionActionOptions & { persist?: boolean }
 ): Promise<AutoRenameSessionResult> {
   const persist = opts.persist !== false;
-  const { catalogDb, desktopDb, session, llm, homes, preview } = await loadSessionContext(opts);
+  const { catalogDb, desktopDb, session, llm, homes, preview } = await loadSessionContext(opts, "sessionRename");
   const previousTitle = session.title;
 
   try {
