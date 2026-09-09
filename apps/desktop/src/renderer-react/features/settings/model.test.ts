@@ -65,6 +65,7 @@ describe("settings model", () => {
     expect(draft.reportSelection).toEqual({ providerId: "p1", modelId: "tool" });
     expect(draft.gtdSelection).toEqual({ providerId: "p1", modelId: "tool" });
     expect(draft.imRoutingSelection).toEqual({ providerId: "p1", modelId: "tool" });
+    expect(draft.translateSelection).toEqual({ providerId: "p1", modelId: "tool" });
     expect(draft.toolOutputLanguage).toBe("auto");
     expect(draft.toolMaxContextChars).toBe(120_000);
     expect(draft.chatDisableThinking).toBe(false);
@@ -80,7 +81,8 @@ describe("settings model", () => {
       sessionSummarySelection: { providerId: "p1", modelId: "tool" },
       reportSelection: { providerId: "p1", modelId: "tool" },
       gtdSelection: { providerId: "p1", modelId: "tool" },
-      imRoutingSelection: { providerId: "p1", modelId: "tool" }
+      imRoutingSelection: { providerId: "p1", modelId: "tool" },
+      translateSelection: { providerId: "p1", modelId: "tool" }
     });
     expect(patch.modelSelections?.gitCommit).toEqual({ providerId: "p1", modelId: "tool" });
     expect(patch.modelSelections?.sessionRename).toEqual({ providerId: "p1", modelId: "tool" });
@@ -88,6 +90,7 @@ describe("settings model", () => {
     expect(patch.modelSelections?.report).toEqual({ providerId: "p1", modelId: "tool" });
     expect(patch.modelSelections?.gtd).toEqual({ providerId: "p1", modelId: "tool" });
     expect(patch.modelSelections?.imRouting).toEqual({ providerId: "p1", modelId: "tool" });
+    expect(patch.modelSelections?.translate).toEqual({ providerId: "p1", modelId: "tool" });
   });
 
   it("persists the provider pool and drops empty/invalid selections on save", () => {

@@ -502,7 +502,8 @@ function ProvidersPane({ draft, setDraft, t }: { draft: ProvidersDraft; setDraft
       sessionSummarySelection: clearIfSelected(draft.sessionSummarySelection),
       reportSelection: clearIfSelected(draft.reportSelection),
       gtdSelection: clearIfSelected(draft.gtdSelection),
-      imRoutingSelection: clearIfSelected(draft.imRoutingSelection)
+      imRoutingSelection: clearIfSelected(draft.imRoutingSelection),
+      translateSelection: clearIfSelected(draft.translateSelection)
     });
     if (selectedProviderId === providerId) {
       setSelectedProviderId(providers[0]?.id ?? "");
@@ -582,7 +583,8 @@ function ProvidersPane({ draft, setDraft, t }: { draft: ProvidersDraft; setDraft
         "sessionSummarySelection",
         "reportSelection",
         "gtdSelection",
-        "imRoutingSelection"
+        "imRoutingSelection",
+        "translateSelection"
       ] as const;
       for (const key of textKeys) {
         if (!draft[key]?.providerId) {
@@ -1011,6 +1013,15 @@ function ProvidersPane({ draft, setDraft, t }: { draft: ProvidersDraft; setDraft
           (value) => update("imRoutingSelection", value),
           t("desktop.settings.modelPlaceholder"),
           "settings-model-select-im-routing"
+        )}
+        {selectionRow(
+          "desktop.settings.translateModelUse",
+          "desktop.settings.translateModelUseDesc",
+          "text",
+          draft.translateSelection,
+          (value) => update("translateSelection", value),
+          t("desktop.settings.modelPlaceholder"),
+          "settings-model-select-translate"
         )}
         {selectionRow(
           "desktop.settings.embeddingModelUse",

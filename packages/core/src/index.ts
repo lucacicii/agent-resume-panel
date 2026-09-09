@@ -272,6 +272,7 @@ export {
   reportLlmConfigFromSettings,
   gtdLlmConfigFromSettings,
   imRoutingLlmConfigFromSettings,
+  translateLlmConfigFromSettings,
   isSpecializedModelUse,
   SPECIALIZED_MODEL_USES,
   llmConfigForUse,

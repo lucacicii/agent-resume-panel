@@ -111,6 +111,7 @@ export interface ProvidersDraft {
   reportSelection: ModelSelection;
   gtdSelection: ModelSelection;
   imRoutingSelection: ModelSelection;
+  translateSelection: ModelSelection;
   /** Tool-use options (summaries / digests output language, budgets). */
   toolOutputLanguage: UiLanguageValue;
   toolMaxContextChars: number;
@@ -283,6 +284,7 @@ export function providersDraftFromSettings(settings: PanelSettings): ProvidersDr
     reportSelection: settings.modelSelections?.report ?? legacyTool,
     gtdSelection: settings.modelSelections?.gtd ?? legacyTool,
     imRoutingSelection: settings.modelSelections?.imRouting ?? legacyChat,
+    translateSelection: settings.modelSelections?.translate ?? legacyTool,
     toolOutputLanguage: normalizeOutputLanguage(toolOptions?.outputLanguage),
     toolMaxContextChars: typeof toolOptions?.maxContextChars === "number" ? toolOptions.maxContextChars : 120_000,
     toolRequestTimeoutMs: typeof toolOptions?.requestTimeoutMs === "number" ? toolOptions.requestTimeoutMs : 300_000,
@@ -323,7 +325,8 @@ function normalizeDraftSelections(draft: ProvidersDraft): Partial<Record<ModelUs
     ["sessionSummary", draft.sessionSummarySelection],
     ["report", draft.reportSelection],
     ["gtd", draft.gtdSelection],
-    ["imRouting", draft.imRoutingSelection]
+    ["imRouting", draft.imRoutingSelection],
+    ["translate", draft.translateSelection]
   ];
   for (const [use, selection] of entries) {
     const providerId = selection.providerId?.trim();

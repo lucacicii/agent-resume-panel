@@ -71,7 +71,8 @@ export function resolveSelectedModel(
     use === "sessionRename" ||
     use === "sessionSummary" ||
     use === "report" ||
-    use === "gtd"
+    use === "gtd" ||
+    use === "translate"
   ) {
     return resolveSelectedModel(settings, "tool");
   }
@@ -112,7 +113,8 @@ export type SpecializedModelUse =
   | "sessionSummary"
   | "report"
   | "gtd"
-  | "imRouting";
+  | "imRouting"
+  | "translate";
 
 export const SPECIALIZED_MODEL_USES: readonly SpecializedModelUse[] = [
   "gitCommit",
@@ -120,7 +122,8 @@ export const SPECIALIZED_MODEL_USES: readonly SpecializedModelUse[] = [
   "sessionSummary",
   "report",
   "gtd",
-  "imRouting"
+  "imRouting",
+  "translate"
 ] as const;
 
 export function isSpecializedModelUse(use: ModelUse): use is SpecializedModelUse {
@@ -130,7 +133,8 @@ export function isSpecializedModelUse(use: ModelUse): use is SpecializedModelUse
     use === "sessionSummary" ||
     use === "report" ||
     use === "gtd" ||
-    use === "imRouting"
+    use === "imRouting" ||
+    use === "translate"
   );
 }
 
@@ -232,6 +236,14 @@ export function imRoutingLlmConfigFromSettings(
   systemLocale?: string
 ): LlmRuntimeConfig | undefined {
   return llmConfigForUse(settings, "imRouting", systemLocale);
+}
+
+/** Inline transcript and IM message translation model. Falls back to tool selection when unset. */
+export function translateLlmConfigFromSettings(
+  settings: PanelSettings,
+  systemLocale?: string
+): LlmRuntimeConfig | undefined {
+  return llmConfigForUse(settings, "translate", systemLocale);
 }
 
 export function embeddingConfigFromSettings(settings: PanelSettings): EmbeddingRuntimeConfig | undefined {

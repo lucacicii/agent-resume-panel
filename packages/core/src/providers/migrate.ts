@@ -103,7 +103,7 @@ function sanitizeLlmOptions(value: PanelSettings["llmOptions"] | undefined): Pan
   const chat = value.chat && typeof value.chat === "object" ? value.chat : undefined;
   if (!tool && !chat) return undefined;
   const specialized: Record<string, { disableThinking?: boolean }> = {};
-  for (const key of ["gitCommit", "sessionRename", "sessionSummary", "report", "gtd", "imRouting"] as const) {
+  for (const key of ["gitCommit", "sessionRename", "sessionSummary", "report", "gtd", "imRouting", "translate"] as const) {
     const entry = (value as Record<string, unknown>)[key];
     if (entry && typeof entry === "object" && typeof (entry as { disableThinking?: unknown }).disableThinking === "boolean") {
       specialized[key] = { disableThinking: (entry as { disableThinking: boolean }).disableThinking };

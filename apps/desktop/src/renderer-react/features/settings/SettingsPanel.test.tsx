@@ -104,6 +104,8 @@ const messages = {
   "desktop.settings.gtdModelUseDesc": "GTD desc",
   "desktop.settings.imRoutingModelUse": "IM Smart Routing",
   "desktop.settings.imRoutingModelUseDesc": "IM routing desc",
+  "desktop.settings.translateModelUse": "Translation",
+  "desktop.settings.translateModelUseDesc": "Translation desc",
   "desktop.settings.modelFollowToolDefault": "Default (Follows Tool LLM)",
   "desktop.settings.modelFollowChatDefault": "Default (Follows Ask / Chat)",
   "desktop.settings.providerList": "Providers",
@@ -417,8 +419,9 @@ describe("SettingsPanel (window)", () => {
     expect(host.textContent).toContain("Scheduled Digests");
     expect(host.textContent).toContain("GTD Task Analysis");
     expect(host.textContent).toContain("IM Smart Routing");
-    // 7 text selectors + 1 embedding selector = 8 selectors (image selector shows empty hint because pool has no image models).
-    expect(host.querySelectorAll('[data-testid^="settings-model-select-"]')).toHaveLength(8);
+    expect(host.textContent).toContain("Translation");
+    // 8 text selectors + 1 embedding selector = 9 selectors (image selector shows empty hint because pool has no image models).
+    expect(host.querySelectorAll('[data-testid^="settings-model-select-"]')).toHaveLength(9);
     expect(host.querySelector('[data-testid="settings-model-select-chat"]')).not.toBeNull();
     expect(host.querySelector('[data-testid="settings-model-select-git-commit"]')).not.toBeNull();
     expect(host.querySelector('[data-testid="settings-model-select-session-rename"]')).not.toBeNull();
@@ -426,6 +429,7 @@ describe("SettingsPanel (window)", () => {
     expect(host.querySelector('[data-testid="settings-model-select-report"]')).not.toBeNull();
     expect(host.querySelector('[data-testid="settings-model-select-gtd"]')).not.toBeNull();
     expect(host.querySelector('[data-testid="settings-model-select-im-routing"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="settings-model-select-translate"]')).not.toBeNull();
     expect(host.querySelector('[data-testid="settings-model-select-embedding"]')).not.toBeNull();
     // No image models in the pool → the image selector shows an empty hint instead.
     expect(host.querySelector('[data-testid="settings-model-select-image"]')).toBeNull();
