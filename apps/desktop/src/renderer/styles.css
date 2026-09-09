@@ -9178,19 +9178,15 @@ body.is-pane-resizing-v * {
 
 .wb-search-file-row,
 .wb-search-match-row {
-  appearance: none;
-  border: none;
-  background: transparent;
   width: 100%;
   display: flex;
   align-items: center;
   gap: 4px;
   min-height: 22px;
-  padding: 0 8px;
-  text-align: left;
-  color: var(--text);
-  cursor: pointer;
-  font: inherit;
+}
+
+.wb-search-file-row {
+  padding: 0 4px 0 8px;
 }
 
 .wb-search-file-row:hover,
@@ -9198,8 +9194,38 @@ body.is-pane-resizing-v * {
   background: var(--color-fill-secondary, rgba(0, 0, 0, 0.04));
 }
 
+.wb-search-match-row {
+  padding: 0 4px 0 28px;
+  gap: 8px;
+}
+
 .wb-search-match-row.is-selected {
   background: var(--color-fill-primary, rgba(0, 122, 255, 0.14));
+}
+
+.wb-search-file-main,
+.wb-search-match-main {
+  appearance: none;
+  border: none;
+  background: transparent;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0;
+  text-align: left;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+}
+
+.wb-search-file-main {
+  gap: 4px;
+}
+
+.wb-search-match-main {
+  gap: 8px;
 }
 
 .wb-search-file-label {
@@ -9223,11 +9249,6 @@ body.is-pane-resizing-v * {
   flex-direction: column;
 }
 
-.wb-search-match-row {
-  padding-left: 28px;
-  gap: 8px;
-}
-
 .wb-search-match-line {
   flex: 0 0 auto;
   min-width: 28px;
@@ -9245,6 +9266,127 @@ body.is-pane-resizing-v * {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text);
+}
+
+/* VS Code style Find in Files extras: details + replace controls */
+
+.wb-search-options-spacer {
+  flex: 1 1 auto;
+}
+
+.wb-search-option-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  min-width: 24px;
+  padding: 0;
+}
+
+.wb-search-extras {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wb-search-extras > .wb-search-input {
+  min-height: 24px;
+  padding: 3px 8px;
+}
+
+.wb-search-glob-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.wb-search-glob-label {
+  font-size: 10px;
+  line-height: 1.2;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.wb-search-glob-input {
+  min-height: 24px;
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
+.wb-search-meta-row {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 4px 10px;
+}
+
+.wb-search-meta-row .wb-search-meta {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.wb-search-replace-all {
+  appearance: none;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: var(--radius-md, 6px);
+  border: 1px solid color-mix(in srgb, var(--color-accent, #007aff) 30%, transparent);
+  background: var(--color-fill-primary, rgba(0, 122, 255, 0.14));
+  color: var(--color-accent, #007aff);
+  font: 600 11px/1 inherit;
+  cursor: pointer;
+}
+
+.wb-search-replace-all:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-fill-primary, rgba(0, 122, 255, 0.14)) 70%, var(--color-accent, #007aff) 12%);
+}
+
+.wb-search-replace-all:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.wb-search-action-btn {
+  appearance: none;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-sm, 4px);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0;
+}
+
+.wb-search-file-row:hover .wb-search-action-btn,
+.wb-search-match-row:hover .wb-search-action-btn,
+.wb-search-action-btn:focus-visible {
+  opacity: 1;
+}
+
+.wb-search-action-btn:hover:not(:disabled) {
+  background: var(--color-fill-secondary, rgba(0, 0, 0, 0.04));
+  color: var(--color-accent, #007aff);
+}
+
+.wb-search-action-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 .wb-git-panel {

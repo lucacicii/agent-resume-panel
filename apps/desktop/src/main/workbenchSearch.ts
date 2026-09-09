@@ -18,6 +18,10 @@ export interface WorkbenchSearchOptions {
   matchCase?: boolean;
   wholeWord?: boolean;
   useRegex?: boolean;
+  /** Comma / newline separated VS Code style globs limiting which files are searched. */
+  filesToInclude?: string;
+  /** Comma / newline separated VS Code style globs excluding files from the search. */
+  filesToExclude?: string;
   maxResults?: number;
   maxFileSizeBytes?: number;
   maxFilesScanned?: number;
@@ -60,6 +64,175 @@ export const WORKBENCH_SKIP_DIR_NAMES = new Set([
   "Pods",
   "DerivedData"
 ]);
+
+/**
+ * Skip dirs kept even when the user narrows the search with "files to include"
+ * globs. Build/dependency output dirs are dropped in that case so patterns such
+ * as `dist/**` can match; repository metadata stays out of results.
+ */
+const WORKBENCH_HARD_SKIP_DIR_NAMES = new Set([
+  "node_modules",
+  ".git",
+  ".hg",
+  ".svn",
+  ".yarn",
+  ".pnpm-store"
+]);
+
+/** VS Code style glob matcher for the Node fallback engine (see compileGlobPattern). */
+type CompiledGlob = { file: RegExp; dir: RegExp };
+
+/** Split a "files to include/exclude" text field into trimmed glob patterns. */
+export function splitGlobList(raw: string | undefined): string[] {
+  const parts: string[] = [];
+  let current = "";
+  let depth = 0;
+  for (const char of String(raw || "")) {
+    if (char === "{" || char === "[") depth += 1;
+    else if (char === "}" || char === "]") depth = Math.max(0, depth - 1);
+    // Commas and newlines separate patterns, but never inside {a,b} / [abc] groups.
+    if ((char === "," || char === "\n") && depth === 0) {
+      const trimmed = current.trim();
+      if (trimmed) parts.push(trimmed);
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+  const trailing = current.trim();
+  if (trailing) parts.push(trailing);
+  return parts;
+}
+
+function globToRegexSource(pattern: string): string | null {
+  let out = "";
+  let index = 0;
+  const length = pattern.length;
+  const pushEscaped = (value: string) => {
+    out += value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  };
+  while (index < length) {
+    const char = pattern[index];
+    if (char === "*") {
+      if (pattern[index + 1] === "*") {
+        // "**" crosses directory separators
+        if (pattern[index + 2] === "/") {
+          out += "(?:.*/)?";
+          index += 3;
+        } else {
+          out += ".*";
+          index += 2;
+        }
+      } else {
+        out += "[^/]*";
+        index += 1;
+      }
+      continue;
+    }
+    if (char === "?") {
+      out += "[^/]";
+      index += 1;
+      continue;
+    }
+    if (char === "{") {
+      const closing = pattern.indexOf("}", index + 1);
+      if (closing > index + 1) {
+        const body = pattern.slice(index + 1, closing);
+        if (!body.includes("{") && !body.includes("}")) {
+          const alternatives = body.split(",");
+          if (alternatives.length > 1) {
+            const parts: string[] = [];
+            let valid = true;
+            for (const alternative of alternatives) {
+              const source = globToRegexSource(alternative);
+              if (source === null) {
+                valid = false;
+                break;
+              }
+              parts.push(source);
+            }
+            if (valid) {
+              out += `(?:${parts.join("|")})`;
+              index = closing + 1;
+              continue;
+            }
+          }
+        }
+      }
+      pushEscaped(char);
+      index += 1;
+      continue;
+    }
+    if (char === "[") {
+      const closing = pattern.indexOf("]", index + 1);
+      if (closing > index + 1) {
+        let content = pattern.slice(index + 1, closing);
+        if (content.startsWith("!")) content = `^${content.slice(1)}`;
+        // Keep the class as-is; invalid classes fall back to a literal via try/catch below.
+        out += `[${content}]`;
+        index = closing + 1;
+        continue;
+      }
+      pushEscaped(char);
+      index += 1;
+      continue;
+    }
+    pushEscaped(char);
+    index += 1;
+  }
+  return out;
+}
+
+/**
+ * Compile one user glob into anchored matchers used against POSIX relative paths.
+ * Patterns without a slash match a basename at any depth (gitignore style); the
+ * `dir` regex additionally matches the directory that a trailing slash-star-star
+ * glob covers, so excluding `dist` also excludes every file under it.
+ */
+export function compileGlobPattern(rawPattern: string): CompiledGlob | null {
+  const pattern = String(rawPattern || "").trim();
+  if (!pattern) return null;
+  const anchored = pattern.includes("/");
+  const dirPattern = pattern.endsWith("/**") ? pattern.slice(0, -3) : pattern;
+  const build = (source: string, prefix: string): RegExp | null => {
+    try {
+      return new RegExp(`${prefix}${source}$`);
+    } catch {
+      return null;
+    }
+  };
+  const fileSource = globToRegexSource(pattern);
+  if (fileSource === null) return null;
+  const dirSource = globToRegexSource(dirPattern);
+  if (dirSource === null) return null;
+  const prefix = anchored ? "^" : "^(?:.*/)?";
+  const file = build(fileSource, prefix);
+  const dir = build(dirSource, prefix);
+  if (file === null || dir === null) return null;
+  return { file, dir };
+}
+
+function matchesGlobList(
+  relativePath: string,
+  globs: CompiledGlob[]
+): boolean {
+  if (!globs.length) return false;
+  // A glob matches when it matches the path itself or a parent directory
+  // (e.g. "dist" or "**/dist/**" covers every file under dist).
+  let current = relativePath;
+  while (true) {
+    for (const glob of globs) {
+      if (glob.dir.test(current)) return true;
+    }
+    const slash = current.lastIndexOf("/");
+    if (slash <= 0) break;
+    current = current.slice(0, slash);
+  }
+  for (const glob of globs) {
+    if (glob.file.test(relativePath)) return true;
+  }
+  return false;
+}
 
 const SKIP_FILE_EXTENSIONS = new Set([
   ".png",
@@ -197,7 +370,7 @@ export function cancelActiveWorkbenchSearch(): void {
   activeAbort = null;
 }
 
-function buildSearchRegex(
+export function buildSearchRegex(
   query: string,
   options: { matchCase: boolean; wholeWord: boolean; useRegex: boolean }
 ): RegExp {
@@ -225,6 +398,46 @@ function looksBinary(buffer: Buffer): boolean {
   return sample.includes(0);
 }
 
+/**
+ * Visit every match of `regex` in `text`, scanning line by line (a match can
+ * never cross a line break, mirroring ripgrep without `-U`). The callback
+ * receives the 0-based line index, the match span inside that line, the line
+ * text and the exec groups (`groups[0]` is the full match) and may return true
+ * to stop early. Zero-length matches advance by one code unit so the loop
+ * always terminates.
+ */
+export function scanLineMatches(
+  text: string,
+  regex: RegExp,
+  visit: (
+    lineIndex: number,
+    start: number,
+    end: number,
+    lineText: string,
+    groups: string[]
+  ) => boolean | void
+): void {
+  const lines = text.split(/\r?\n/);
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const lineText = lines[lineIndex];
+    regex.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(lineText)) !== null) {
+      const start = match.index;
+      const length = match[0].length;
+      const end = start + length;
+      const groups: string[] = [];
+      for (let i = 0; i < match.length; i += 1) {
+        groups.push(match[i] ?? "");
+      }
+      if (visit(lineIndex, start, end, lineText, groups)) return;
+      if (length === 0) {
+        regex.lastIndex = start + 1;
+      }
+    }
+  }
+}
+
 function collectMatchesInText(
   text: string,
   absolutePath: string,
@@ -233,30 +446,24 @@ function collectMatchesInText(
   maxResults: number,
   matches: WorkbenchSearchMatch[]
 ): boolean {
-  const lines = text.split(/\r?\n/);
   const relativePath = toPosixRelative(root, absolutePath);
-  for (let i = 0; i < lines.length; i += 1) {
-    const lineText = lines[i];
-    regex.lastIndex = 0;
-    let match: RegExpExecArray | null;
-    while ((match = regex.exec(lineText)) !== null) {
-      const start = match.index;
-      const length = match[0].length || 1;
-      matches.push({
-        path: absolutePath,
-        relativePath,
-        line: i + 1,
-        column: start + 1,
-        endColumn: start + length + 1,
-        preview: truncatePreview(lineText)
-      });
-      if (matches.length >= maxResults) return true;
-      if (match[0].length === 0) {
-        regex.lastIndex = start + 1;
-      }
+  let hitCap = false;
+  scanLineMatches(text, regex, (lineIndex, start, end, lineText) => {
+    matches.push({
+      path: absolutePath,
+      relativePath,
+      line: lineIndex + 1,
+      column: start + 1,
+      endColumn: end + 1,
+      preview: truncatePreview(lineText)
+    });
+    if (matches.length >= maxResults) {
+      hitCap = true;
+      return true;
     }
-  }
-  return false;
+    return false;
+  });
+  return hitCap;
 }
 
 async function searchWithNodeWalk(
@@ -266,6 +473,9 @@ async function searchWithNodeWalk(
     matchCase: boolean;
     wholeWord: boolean;
     useRegex: boolean;
+    includeGlobs: CompiledGlob[];
+    excludeGlobs: CompiledGlob[];
+    skipDirNames: Set<string>;
     maxResults: number;
     maxFileSizeBytes: number;
     maxFilesScanned: number;
@@ -279,6 +489,7 @@ async function searchWithNodeWalk(
   let truncated = false;
   const started = Date.now();
   const stack: string[] = [root];
+  const hasInclude = options.includeGlobs.length > 0;
 
   while (stack.length) {
     throwIfAborted(options.signal);
@@ -317,12 +528,16 @@ async function searchWithNodeWalk(
       const fullPath = path.join(dir, name);
 
       if (entry.isDirectory()) {
-        if (WORKBENCH_SKIP_DIR_NAMES.has(name)) continue;
+        if (options.skipDirNames.has(name)) continue;
         stack.push(fullPath);
         continue;
       }
       if (!entry.isFile()) continue;
       if (isSkippedFileName(name)) continue;
+
+      const relativePath = toPosixRelative(root, fullPath);
+      if (hasInclude && !matchesGlobList(relativePath, options.includeGlobs)) continue;
+      if (matchesGlobList(relativePath, options.excludeGlobs)) continue;
 
       let stat: fs.Stats;
       try {
@@ -379,6 +594,9 @@ async function searchWithRipgrep(
     matchCase: boolean;
     wholeWord: boolean;
     useRegex: boolean;
+    includeGlobs: string[];
+    excludeGlobs: string[];
+    skipDirNames: Set<string>;
     maxResults: number;
     maxFileSizeBytes: number;
     timeBudgetMs: number;
@@ -395,9 +613,17 @@ async function searchWithRipgrep(
   ];
 
   // Always exclude heavy build/deps dirs even if not in .gitignore
-  for (const dir of WORKBENCH_SKIP_DIR_NAMES) {
+  for (const dir of options.skipDirNames) {
     args.push("--glob", `!${dir}`);
     args.push("--glob", `!**/${dir}/**`);
+  }
+  // User "files to include" globs constrain the search; ripgrep unions them.
+  for (const pattern of options.includeGlobs) {
+    args.push("--glob", pattern);
+  }
+  // User "files to exclude" globs win over includes (gitignore negation style).
+  for (const pattern of options.excludeGlobs) {
+    args.push("--glob", `!${pattern}`);
   }
 
   if (!options.matchCase) args.push("-i");
@@ -557,6 +783,24 @@ export async function searchWorkbenchText(rawOptions: WorkbenchSearchOptions): P
     const matchCase = Boolean(rawOptions.matchCase);
     const wholeWord = Boolean(rawOptions.wholeWord);
     const useRegex = Boolean(rawOptions.useRegex);
+    const includeRaw = splitGlobList(rawOptions.filesToInclude);
+    const excludeRaw = splitGlobList(rawOptions.filesToExclude);
+    // Build output / dependency dirs are only searched when the user narrows the
+    // search with explicit include globs (e.g. `dist/**`); VCS metadata and
+    // package stores always stay out.
+    const skipDirNames = includeRaw.length
+      ? WORKBENCH_HARD_SKIP_DIR_NAMES
+      : WORKBENCH_SKIP_DIR_NAMES;
+    const includeGlobs: CompiledGlob[] = [];
+    const excludeGlobs: CompiledGlob[] = [];
+    for (const pattern of includeRaw) {
+      const compiled = compileGlobPattern(pattern);
+      if (compiled) includeGlobs.push(compiled);
+    }
+    for (const pattern of excludeRaw) {
+      const compiled = compileGlobPattern(pattern);
+      if (compiled) excludeGlobs.push(compiled);
+    }
     const maxResults = clampInt(rawOptions.maxResults, DEFAULT_MAX_RESULTS, 1, 10_000);
     const maxFileSizeBytes = clampInt(
       rawOptions.maxFileSizeBytes,
@@ -579,6 +823,9 @@ export async function searchWorkbenchText(rawOptions: WorkbenchSearchOptions): P
           matchCase,
           wholeWord,
           useRegex,
+          includeGlobs: includeRaw,
+          excludeGlobs: excludeRaw,
+          skipDirNames,
           maxResults,
           maxFileSizeBytes,
           timeBudgetMs,
@@ -595,6 +842,9 @@ export async function searchWorkbenchText(rawOptions: WorkbenchSearchOptions): P
       matchCase,
       wholeWord,
       useRegex,
+      includeGlobs,
+      excludeGlobs,
+      skipDirNames,
       maxResults,
       maxFileSizeBytes,
       maxFilesScanned,

@@ -220,8 +220,10 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
   /** Opens an `.md` file directly in preview mode. */
   onOpenPreview?: (path: string) => void | Promise<void>;
   onShowGitHistory?: (path: string) => void | Promise<void>;
+  /** Search scope target: the folder itself, or the parent folder for files. */
+  onFindInFolder?: (directoryPath: string) => void | Promise<void>;
   onError: (message: string) => void;
-}>(function WorkbenchFileExplorer({ rootPath, activePath = "", onOpenFile, onOpenPreview, onShowGitHistory, onError }, ref) {
+}>(function WorkbenchFileExplorer({ rootPath, activePath = "", onOpenFile, onOpenPreview, onShowGitHistory, onFindInFolder, onError }, ref) {
   const { t } = useI18n();
   const [directories, setDirectories] = useState<Record<string, DirectoryEntry[]>>({});
   const [openDirectories, setOpenDirectories] = useState<Set<string>>(new Set());
@@ -504,6 +506,15 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
     await onShowGitHistory(target.path);
   };
 
+  const findInFolderTarget = (target: ExplorerTarget) => {
+    if (!onFindInFolder) return;
+    // A file scopes to its containing folder; a folder scopes to itself.
+    const scope = target.isDirectory ? target.path : parentPath(target.path);
+    if (!scope) return;
+    setContextMenu(null);
+    void onFindInFolder(scope);
+  };
+
   const previewTarget = (target: ExplorerTarget) => {
     if (target.isDirectory || !onOpenPreview) return;
     setContextMenu(null);
@@ -625,6 +636,7 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
       <button type="button" role="menuitem" disabled={!contextMenu.clipboardHasFiles} onClick={() => void pasteTarget(contextMenu.target)}>{t("desktop.common.paste")}</button>
       <div className="context-menu-separator" role="separator" />
       {!contextMenu.target.isDirectory && onShowGitHistory ? <button type="button" role="menuitem" onClick={() => void showGitHistoryTarget(contextMenu.target)}>{t("desktop.workbench.explorerGitFileHistory")}</button> : null}
+      {onFindInFolder ? <button type="button" role="menuitem" onClick={() => findInFolderTarget(contextMenu.target)}>{t("desktop.workbench.findInFolder")}</button> : null}
       <button type="button" role="menuitem" onClick={() => void revealTarget(contextMenu.target)}>{t("desktop.workbench.explorerRevealInFinder")}</button>
     </div> : null}
   </>;

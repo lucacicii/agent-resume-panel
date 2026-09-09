@@ -5235,6 +5235,222 @@ describe("WorkbenchPanel", () => {
     expect(screen.getByText("Search")).toBeTruthy();
   });
 
+  const searchI18nMessages: Record<string, string> = {
+    "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.findCount": "{0} / {1}", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelSearch": "Search", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.sidePanelNoRoot": "Select a project", "desktop.workbench.searchPlaceholder": "Search in project", "desktop.workbench.searchOptions": "Search options", "desktop.workbench.searchMatchCase": "Match Case", "desktop.workbench.searchWholeWord": "Match Whole Word", "desktop.workbench.searchUseRegex": "Use Regular Expression", "desktop.workbench.searchHint": "Type to search", "desktop.workbench.searchSearching": "Searching…", "desktop.workbench.searchNoResults": "No results", "desktop.workbench.searchResultSummary": "{0} results in {1} files", "desktop.workbench.searchTruncated": "results limited", "desktop.workbench.searchFailed": "Search failed: {0}", "desktop.workbench.explorerGitFileHistory": "View Git File History", "desktop.workbench.findInFolder": "Find in Folder", "desktop.workbench.searchToggleDetails": "Toggle search details", "desktop.workbench.searchToggleReplace": "Toggle replace", "desktop.workbench.searchReplacePlaceholder": "Replace", "desktop.workbench.searchReplaceAll": "Replace All", "desktop.workbench.searchReplaceInFile": "Replace all in file", "desktop.workbench.searchReplaceMatch": "Replace occurrence", "desktop.workbench.searchReplaceLimited": "Results were limited", "desktop.workbench.searchReplaceDone": "Replaced {0} occurrence(s) in {1} file(s)", "desktop.workbench.searchReplaceSkipped": "{0} skipped (unsaved changes)", "desktop.workbench.searchReplaceBlockedDirty": "Target files have unsaved changes", "desktop.workbench.searchReplaceFailed": "Replace failed: {0}", "desktop.workbench.searchFilesToInclude": "files to include", "desktop.workbench.searchFilesToIncludePlaceholder": "e.g. **/*.{ts,tsx}, src/**", "desktop.workbench.searchFilesToExclude": "files to exclude", "desktop.workbench.searchFilesToExcludePlaceholder": "e.g. **/*.test.ts", "desktop.workbench.quickAccessProjectPlaceholder": "Search projects by name or path", "desktop.workbench.quickAccessSelectProject": "Select project", "desktop.workbench.quickAccessNoProjects": "No matching projects", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.fileSaved": "Saved", "desktop.workbench.fileModified": "Modified", "desktop.workbench.fileSaving": "Saving…", "desktop.common.save": "Save", "desktop.workbench.closeFile": "Close file"
+  };
+
+  function searchHarness(opts: {
+    searchResult?: { matches: unknown[]; truncated: boolean; filesSearched: number; engine: string };
+  }) {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const workbenchSearchText = vi.fn(async (args?: { filesToExclude?: string; filesToInclude?: string }) => opts.searchResult ?? {
+      matches: [{
+        path: "/work/app/src/main.ts",
+        relativePath: "src/main.ts",
+        line: 12,
+        column: 3,
+        endColumn: 9,
+        preview: "const findme = 1;"
+      }],
+      truncated: false,
+      filesSearched: 3,
+      engine: "node" as const
+    });
+    const workbenchReplaceText = vi.fn(async () => ({
+      replaced: [{ path: "src/main.ts", count: 1 }],
+      skipped: [],
+      totalReplaced: 1
+    }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: searchI18nMessages }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      workbenchSearchText,
+      workbenchSearchTextCancel: async () => ({ ok: true }),
+      workbenchReplaceText
+    } as unknown as typeof window.agentResume;
+    return { workbenchSearchText, workbenchReplaceText, host };
+  }
+
+  async function openSearchWithResults(host: HTMLElement): Promise<void> {
+    // Reset persisted pane toggles so each test starts with details/replace closed.
+    localStorage.setItem("wb-search-details-open", "false");
+    localStorage.setItem("wb-search-replace-open", "false");
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByTitle("/work/app"));
+    fireEvent.click(screen.getByRole("button", { name: "Search", pressed: false }));
+    fireEvent.change(await screen.findByRole("searchbox", { name: "Search" }), { target: { value: "findme" } });
+  }
+
+  it("collects files to include / exclude globs into the search request", async () => {
+    const { workbenchSearchText, host } = searchHarness({});
+    openSearchWithResults(host);
+    await screen.findByText("const findme = 1;");
+    expect(workbenchSearchText).toHaveBeenLastCalledWith(
+      expect.objectContaining({ rootPath: "/work/app", query: "findme" })
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle search details" }));
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("files to include"), { target: { value: "src/**" } });
+    });
+    await waitFor(() => expect(workbenchSearchText).toHaveBeenLastCalledWith(
+      expect.objectContaining({ filesToInclude: "src/**" })
+    ));
+    const lastArgs = workbenchSearchText.mock.calls.at(-1)?.[0];
+    expect(lastArgs?.filesToExclude).toBeUndefined();
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("files to exclude"), { target: { value: "**/*.test.ts" } });
+    });
+    await waitFor(() => expect(workbenchSearchText).toHaveBeenLastCalledWith(
+      expect.objectContaining({ filesToInclude: "src/**", filesToExclude: "**/*.test.ts" })
+    ));
+  });
+
+  it("replaces all matches through the replace bridge and re-runs the search", async () => {
+    const { workbenchSearchText, workbenchReplaceText, host } = searchHarness({});
+    openSearchWithResults(host);
+    await screen.findByText("const findme = 1;");
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle replace" }));
+    const replaceInput = await screen.findByLabelText("Replace");
+    fireEvent.change(replaceInput, { target: { value: "replaced" } });
+    const searchCallsBefore = workbenchSearchText.mock.calls.length;
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Replace All" }));
+      // flush the replace → re-search promise chain inside act
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    await waitFor(() => expect(workbenchReplaceText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rootPath: "/work/app",
+        query: "findme",
+        replaceWith: "replaced",
+        files: ["/work/app/src/main.ts"],
+        only: undefined
+      })
+    ));
+    // results refresh after a successful replace
+    await waitFor(() => expect(workbenchSearchText.mock.calls.length).toBeGreaterThan(searchCallsBefore));
+    expect(notificationMocks.notifyDesktop).toHaveBeenLastCalledWith(
+      expect.objectContaining({ text: expect.stringContaining("Replaced 1 occurrence"), kind: "ok" })
+    );
+  });
+
+  it("replaces a single occurrence from a match row", async () => {
+    const { workbenchReplaceText, host } = searchHarness({});
+    openSearchWithResults(host);
+    await screen.findByText("const findme = 1;");
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle replace" }));
+    fireEvent.change(await screen.findByLabelText("Replace"), { target: { value: "replaced" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Replace occurrence" }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    await waitFor(() => expect(workbenchReplaceText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        files: ["/work/app/src/main.ts"],
+        only: [{ path: "/work/app/src/main.ts", ordinal: 0 }]
+      })
+    ));
+  });
+
+  it("disables Replace All when results were truncated", async () => {
+    const { host } = searchHarness({
+      searchResult: {
+        matches: [{
+          path: "/work/app/src/main.ts",
+          relativePath: "src/main.ts",
+          line: 12,
+          column: 3,
+          endColumn: 9,
+          preview: "const findme = 1;"
+        }],
+        truncated: true,
+        filesSearched: 1000,
+        engine: "rg"
+      }
+    });
+    openSearchWithResults(host);
+    await screen.findByText("const findme = 1;");
+    expect(screen.getByText(/results limited/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Toggle replace" }));
+    const replaceAll = await screen.findByRole("button", { name: "Replace All" });
+    expect((replaceAll as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("searches inside an Explorer folder via Find in Folder", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    localStorage.setItem("wb-search-details-open", "false");
+    localStorage.setItem("wb-search-replace-open", "false");
+    const workbenchSearchText = vi.fn(async () => ({
+      matches: [],
+      truncated: false,
+      filesSearched: 1,
+      engine: "node" as const
+    }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: searchI18nMessages }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onWorkbenchCmdShiftF: () => () => undefined,
+      onWorkbenchCmdArrow: () => () => undefined,
+      onWorkbenchFileSystemChanged: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      workbenchSearchText,
+      workbenchSearchTextCancel: async () => ({ ok: true }),
+      workbenchListDirectory: async ({ dirPath }: { dirPath: string }) => ({
+        entries: dirPath === "/work/app"
+          ? [
+              { name: "src", path: "/work/app/src", isDirectory: true },
+              { name: "package.json", path: "/work/app/package.json", isDirectory: false }
+            ]
+          : [{ name: "main.ts", path: "/work/app/src/main.ts", isDirectory: false }]
+      }),
+      workbenchClipboardHasFiles: async () => ({ hasFiles: false }),
+      workbenchSetFileWatch: async () => ({ rootPath: "/work/app" }),
+      terminalGitStatus: async () => ({ isRepo: false, root: null, staged: [], unstaged: [], nestedRepos: [], tracking: [] })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByTitle("/work/app"));
+    fireEvent.click(screen.getByRole("button", { name: "Explorer", pressed: false }));
+    const folderRow = (await screen.findByText("src")).closest("[role=treeitem]")!;
+    fireEvent.contextMenu(folderRow, { clientX: 30, clientY: 40 });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Find in Folder" }));
+
+    // The search pane opens with the folder glob pre-filled and details visible.
+    const searchInput = await screen.findByRole("searchbox", { name: "Search" });
+    await waitFor(() => expect(document.activeElement).toBe(searchInput));
+    expect((screen.getByLabelText("files to include") as HTMLInputElement).value).toBe("src/**");
+    expect(screen.getByRole("button", { name: "Toggle search details" }).getAttribute("aria-pressed")).toBe("true");
+    // Typing a query searches with the folder scope.
+    fireEvent.change(searchInput, { target: { value: "findme" } });
+    await waitFor(() => expect(workbenchSearchText).toHaveBeenLastCalledWith(
+      expect.objectContaining({ rootPath: "/work/app", query: "findme", filesToInclude: "src/**" })
+    ));
+  });
+
   it("shows a clean search error when the project directory is missing", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";

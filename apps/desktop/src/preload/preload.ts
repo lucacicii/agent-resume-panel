@@ -926,6 +926,8 @@ export interface DesktopApi {
     matchCase?: boolean;
     wholeWord?: boolean;
     useRegex?: boolean;
+    filesToInclude?: string;
+    filesToExclude?: string;
     maxResults?: number;
     maxFileSizeBytes?: number;
   }): Promise<{
@@ -942,6 +944,20 @@ export interface DesktopApi {
     engine: "rg" | "node";
   }>;
   workbenchSearchTextCancel(): Promise<{ ok: boolean }>;
+  workbenchReplaceText(args: {
+    rootPath: string;
+    query: string;
+    replaceWith: string;
+    matchCase?: boolean;
+    wholeWord?: boolean;
+    useRegex?: boolean;
+    files: string[];
+    only?: Array<{ path: string; ordinal: number }>;
+  }): Promise<{
+    replaced: Array<{ path: string; count: number }>;
+    skipped: Array<{ path: string; reason: string }>;
+    totalReplaced: number;
+  }>;
   linkGraphAnalyze(args: LinkGraphAnalyzeArgs): Promise<LinkGraphAnalyzeResult>;
   linkGraphCancel(): Promise<{ ok: boolean }>;
   onLinkGraphProgress(callback: (event: LinkGraphProgressEvent) => void): () => void;
@@ -1685,6 +1701,7 @@ const api: DesktopApi = {
   workbenchRevealPath: (args) => ipcRenderer.invoke("workbench:revealPath", args),
   workbenchSearchText: (args) => ipcRenderer.invoke("workbench:searchText", args),
   workbenchSearchTextCancel: () => ipcRenderer.invoke("workbench:searchTextCancel"),
+  workbenchReplaceText: (args) => ipcRenderer.invoke("workbench:replaceText", args),
   linkGraphAnalyze: (args) => ipcRenderer.invoke("linkgraph:analyze", args),
   linkGraphCancel: () => ipcRenderer.invoke("linkgraph:cancel"),
   onLinkGraphProgress: (callback) => {
