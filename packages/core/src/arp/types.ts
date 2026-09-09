@@ -23,6 +23,8 @@ export type ArpImConfig = {
 
 export type ArpGitCommitMessageConfig = {
   style?: CommitMessageStyle;
+  /** Language for commit message output (e.g. "en", "English", "zh-cn"). */
+  language?: string;
   /** Format rules used when `style` is `custom`. */
   customInstructions?: string;
   /** Appended to the selected style (including custom). */

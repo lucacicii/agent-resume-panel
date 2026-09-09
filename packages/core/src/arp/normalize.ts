@@ -35,9 +35,11 @@ function normalizeGitCommitMessage(value: unknown): ArpGitCommitMessageConfig | 
   if (!isRecord(value)) return undefined;
   const commitMessage: ArpGitCommitMessageConfig = {};
   const style = parseCommitMessageStyle(value.style);
-  const customInstructions = parseInstructions(value.customInstructions);
+  const language = typeof value.language === "string" && value.language.trim() ? value.language.trim() : undefined;
+  const customInstructions = parseInstructions(value.customInstructions ?? value.instructions ?? value.prompt);
   const extraInstructions = parseInstructions(value.extraInstructions);
   if (style) commitMessage.style = style;
+  if (language) commitMessage.language = language;
   if (customInstructions) commitMessage.customInstructions = customInstructions;
   if (extraInstructions) commitMessage.extraInstructions = extraInstructions;
   return Object.keys(commitMessage).length ? commitMessage : undefined;

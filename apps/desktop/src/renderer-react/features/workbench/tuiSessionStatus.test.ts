@@ -192,12 +192,12 @@ describe("detectTuiSessionStatus (Multi-Tier Resolution)", () => {
     });
   });
 
-  it("treats active streaming output (< 600ms) as running even with residual prompt text", () => {
+  it("treats active streaming output (< 250ms) as running even with residual prompt text", () => {
     const result = detectTuiSessionStatus({
       ...base,
       visibleText: "Allow once\nDon't allow",
       lastOutputAt: 10_000,
-      now: 10_200 // 200ms ago -> actively streaming!
+      now: 10_100 // 100ms ago -> actively streaming!
     });
     expect(result).toMatchObject({ status: "running", source: "activity" });
   });
@@ -250,8 +250,8 @@ describe("applyTuiDebounce", () => {
     expect(result.state.confirmedTextAwaiting).toBe(true);
   });
 
-  it("requires two fingerprint text hits before confirmed awaiting", () => {
-    let state = createTuiDebounceState();
+  it("immediately activates awaiting on a single fingerprint text hit (fast attack)", () => {
+    const state = createTuiDebounceState();
     const hit = {
       status: "awaiting_user" as const,
       awaitingConfidence: "confirmed" as const,
@@ -259,10 +259,8 @@ describe("applyTuiDebounce", () => {
       source: "fingerprint" as const
     };
     const first = applyTuiDebounce(state, hit);
-    expect(first.status).not.toBe("awaiting_user");
-    state = first.state;
-    const second = applyTuiDebounce(state, hit);
-    expect(second).toMatchObject({ status: "awaiting_user", awaitingConfidence: "confirmed" });
+    expect(first.status).toBe("awaiting_user");
+    expect(first.state.confirmedTextAwaiting).toBe(true);
   });
 
   it("clears confirmed text awaiting after two misses", () => {

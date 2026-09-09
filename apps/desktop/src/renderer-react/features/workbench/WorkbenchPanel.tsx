@@ -3091,11 +3091,11 @@ export function WorkbenchPanel(): ReactPortal | null {
       let sample: TuiDetectResult;
       if (terminal) {
         const buffer = terminal.buffer.active;
-        // Read the bottom of the active screen (use baseY to avoid user scroll corrupting detection)
-        const rows = Math.min(30, terminal.rows);
-        const start = Math.max(0, buffer.baseY + terminal.rows - rows);
+        // Read the full visible screen (from top of screen baseY down to rows, plus small scrollback headroom)
+        const start = Math.max(0, buffer.baseY - 5);
+        const count = terminal.rows + (buffer.baseY - start);
         const lines: string[] = [];
-        for (let i = 0; i < rows; i += 1) {
+        for (let i = 0; i < count; i += 1) {
           const line = buffer.getLine(start + i);
           if (line) lines.push(line.translateToString(true));
         }
@@ -3149,7 +3149,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     tuiSampleTimerRef.current = window.setTimeout(() => {
       tuiSampleTimerRef.current = 0;
       sampleTuiSessionStatus();
-    }, 500);
+    }, 350);
   }, [sampleTuiSessionStatus]);
 
   useEffect(() => {
@@ -7647,7 +7647,8 @@ export function WorkbenchPanel(): ReactPortal | null {
       const pane = terminalsRef.current.find((item) => item.ptyId === id);
       if (pane?.group === "session") {
         tuiLastOutputAtRef.current.set(pane.key, Date.now());
-        tuiLastTailRef.current.set(pane.key, value.slice(-4096));
+        const prevTail = tuiLastTailRef.current.get(pane.key) || "";
+        tuiLastTailRef.current.set(pane.key, (prevTail + value).slice(-8192));
         const osc = parseOscAgentStatus(value);
         if (osc) {
           tuiProtocolOverrideRef.current.set(pane.key, osc);

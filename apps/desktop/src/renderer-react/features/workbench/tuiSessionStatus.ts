@@ -3,10 +3,10 @@ import type { SessionDotStatus } from "./activeSessionDots";
 /** Recent PTY output ⇒ treat as running (5s window accommodates model thinking / TTFT). */
 export const TUI_RUNNING_MS = 5_000;
 /** Minimum quiet window before testing screen dialog/fingerprint (avoids sampling mid-stream). */
-export const TUI_QUIET_FOR_FINGERPRINT_MS = 600;
-/** Consecutive positive text samples required before confirmed awaiting. */
-export const TUI_TEXT_HIT_STREAK = 2;
-/** Consecutive negative samples required to clear text-based awaiting. */
+export const TUI_QUIET_FOR_FINGERPRINT_MS = 250;
+/** Fast attack: single positive sample activates awaiting alert. */
+export const TUI_TEXT_HIT_STREAK = 1;
+/** Slow decay: consecutive negative samples required to clear text-based awaiting. */
 export const TUI_TEXT_MISS_STREAK = 2;
 
 export type SessionStatusSource = "protocol" | "fingerprint" | "activity" | "idle";
@@ -108,6 +108,11 @@ export function detectInteractiveSelector(visibleText: string, cursorHidden?: bo
   // Disregard bash redirect noise (e.g. echo "foo" > file)
   if (/\b(?:cat|echo|tee)\s*<<?\s*\S+/i.test(text)) return false;
 
+  // Direct hit for Pi plan mode prompt
+  if (/\bplan mode\b/i.test(text) && /\b(?:what next|navigate|execute|refine)\b/i.test(text)) {
+    return true;
+  }
+
   // Active selector pointer or radio indicators on lines:
   // e.g. "→ Execute the plan", "❯ Option 1", "› Run plan", "● Task A", "[x] Choice B", "(*) Option C"
   const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
@@ -115,7 +120,7 @@ export function detectInteractiveSelector(visibleText: string, cursorHidden?: bo
   let hasChoices = 0;
 
   for (const line of lines) {
-    if (/^[❯›▶●◉→\u2192]\s+\S+/.test(line) || /^(?:->|=>)\s+\S+/.test(line) || /^\(\*\)\s+\S+/.test(line)) {
+    if (/^[❯›▶▸●◉→\u2192]\s+\S+/.test(line) || /^(?:->|=>)\s+\S+/.test(line) || /^\(\*\)\s+\S+/.test(line)) {
       hasPointer = true;
       hasChoices += 1;
     } else if (/^[○◯]\s+\S+/.test(line) || /^\(\s*\)\s+\S+/.test(line) || /^\[[ xX*]\]\s+\S+/.test(line)) {

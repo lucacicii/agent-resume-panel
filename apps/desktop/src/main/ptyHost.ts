@@ -522,7 +522,54 @@ function destroyPtyById(id: number): void {
   if (ptySessions.size < PTY_SOFT_LIMIT) warnedSoftLimit = false;
 }
 
+export function ensurePiAgentResumeBridge(): void {
+  try {
+    const piAgentDir = path.join(os.homedir(), ".pi", "agent");
+    if (!fs.existsSync(piAgentDir)) return;
+    const piExtensionsDir = path.join(piAgentDir, "extensions");
+    if (!fs.existsSync(piExtensionsDir)) {
+      fs.mkdirSync(piExtensionsDir, { recursive: true });
+    }
+    const bridgePath = path.join(piExtensionsDir, "agent-resume-bridge.ts");
+    const bridgeContent = `// Agent Resume companion bridge — auto-emits terminal status
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+
+export default function agentResumeBridge(pi: ExtensionAPI): void {
+  pi.on("ui_prompt_start", async (event) => {
+    try {
+      process.stdout.write(\`\\x1b]633;AR;awaiting;\${event.kind || "prompt"}\\x07\`);
+    } catch {}
+  });
+
+  pi.on("ui_prompt_end", async () => {
+    try {
+      process.stdout.write("\\x1b]633;AR;running\\x07");
+    } catch {}
+  });
+
+  pi.on("turn_start", async () => {
+    try {
+      process.stdout.write("\\x1b]633;AR;running\\x07");
+    } catch {}
+  });
+
+  pi.on("turn_end", async () => {
+    try {
+      process.stdout.write("\\x1b]633;AR;idle\\x07");
+    } catch {}
+  });
+}
+`;
+    if (!fs.existsSync(bridgePath)) {
+      fs.writeFileSync(bridgePath, bridgeContent, "utf8");
+    }
+  } catch {
+    // Best-effort background enhancement
+  }
+}
+
 export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
+  ensurePiAgentResumeBridge();
   safeHandle(
     "terminal:spawn",
     async (
