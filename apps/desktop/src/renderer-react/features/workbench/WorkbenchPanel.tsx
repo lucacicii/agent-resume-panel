@@ -2733,6 +2733,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const pendingRevealRef = useRef<SearchReveal | null>(null);
   const [git, setGit] = useState<GitStatusResult | null>(null);
   const [gitRoot, setGitRoot] = useState("");
+  const gitRootManuallySelectedRef = useRef(false);
   const [gitExpandedDirs, setGitExpandedDirs] = useState<Set<string>>(new Set());
   const gitExpandInitializedRef = useRef(false);
   /** Directory keys from the last status refresh, so newly appeared directories default to expanded. */
@@ -6709,9 +6710,10 @@ export function WorkbenchPanel(): ReactPortal | null {
       setGit(result);
       const roots = collectGitRoots(result);
       gitRootsRef.current = roots;
+      const preferredRoot = defaultGitRoot(result, roots);
       setGitRoot((current) => {
-        if (current && roots.includes(current)) return current;
-        return defaultGitRoot(result, roots);
+        if (gitRootManuallySelectedRef.current && current && roots.includes(current)) return current;
+        return preferredRoot;
       });
       const nextChanges = [...result.staged, ...result.unstaged];
       const available = gitDirectoryKeys(nextChanges);
@@ -6862,6 +6864,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     gitSeenDirectoryKeysRef.current = new Set();
     setGit(null);
     setGitRoot("");
+    gitRootManuallySelectedRef.current = false;
     setGitExpandedDirs(new Set());
   }, [selectedProject]);
 
@@ -8893,7 +8896,13 @@ export function WorkbenchPanel(): ReactPortal | null {
       commitSuggestion={commitSuggestion}
       canCommit={canCommit}
       syncing={gitSyncing}
-      onSelectRepo={(root) => { setGitRoot(root); setGitLog(null); setGitShow(null); setGitLogError(""); }}
+      onSelectRepo={(root) => {
+        gitRootManuallySelectedRef.current = true;
+        setGitRoot(root);
+        setGitLog(null);
+        setGitShow(null);
+        setGitLogError("");
+      }}
       onSelectBranch={(selection) => void checkoutGitPanelBranch(selection)}
       onSync={() => void syncGitBranch()}
       onToggleDir={toggleGitDirectory}
