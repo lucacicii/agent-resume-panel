@@ -151,6 +151,34 @@ export type TranscriptPendingUser = {
   sentAtMs?: number;
 };
 
+/**
+ * Where the blinking caret goes while the agent is answering.
+ *
+ * `inline` means the caret rides at the end of the streaming message's own
+ * markdown (rendered by the markdown body, so it never re-parses anything), and
+ * `tail` is the standalone caret row used when the running session has no
+ * streaming markdown to attach to — reasoning-only turns, or a transcript that
+ * still lags behind the agent.
+ *
+ * The caller decides "the agent is answering" from the session status; this
+ * helper only maps that verdict onto the transcript that is on screen.
+ */
+export type TranscriptStreamCaret = "none" | "inline" | "tail";
+
+export function transcriptStreamCaret(
+  messages: readonly TranscriptMessage[],
+  isRunning: boolean
+): TranscriptStreamCaret {
+  if (!isRunning) return "none";
+  const last = messages.at(-1);
+  if (!last) return "none";
+  // The optimistic rows own their own signal: the waiting bubble rolls dots and
+  // the user's own prompt is not an answer.
+  if (last.pending) return "none";
+  if (last.role === "assistant" && last.text.trim()) return "inline";
+  return "tail";
+}
+
 function lastMessage(messages: readonly TranscriptMessage[]): TranscriptMessage | undefined {
   return messages[messages.length - 1];
 }
@@ -159,9 +187,22 @@ function assistantHasContent(message: TranscriptMessage | undefined): boolean {
   return Boolean(message && message.role === "assistant" && (message.text.trim() || message.thinking?.trim()));
 }
 
+function samePendingRow(row: TranscriptMessage | undefined, text: string, timestamp?: string): row is TranscriptMessage {
+  return Boolean(
+    row
+    && row.pending
+    && row.text === text
+    && (row.timestamp || "") === (timestamp || "")
+  );
+}
+
 /**
  * Overlay a just-sent composer prompt and a waiting assistant bubble until
  * the on-disk transcript catches up. Pending rows never replace real content.
+ *
+ * Passing the previous merge result back in keeps those overlay rows stable
+ * while the disk transcript is still flushing, so a live poll that changed
+ * nothing visible does not re-render them.
  */
 export function mergePendingTranscript(
   model: SessionTranscriptModel,
@@ -169,13 +210,18 @@ export function mergePendingTranscript(
     pendingUser?: TranscriptPendingUser | null;
     isRunning?: boolean;
     pendingTitle: string;
-  }
+  },
+  previous?: SessionTranscriptModel | null
 ): SessionTranscriptModel {
   const messages = [...model.messages];
   const outline = [...model.outline];
   const pendingText = options.pendingUser?.text.trim() || "";
   const sentAtMs = options.pendingUser?.sentAtMs;
   const pendingUserFresh = sentAtMs == null || Date.now() - sentAtMs < 120_000;
+  const previousUserRow = previous?.messages.find((message) => message.id === TRANSCRIPT_PENDING_USER_ID);
+  const previousAssistantRow = previous?.messages.find((message) => message.id === TRANSCRIPT_PENDING_ASSISTANT_ID);
+  const previousUserOutline = previous?.outline.find((item) => item.messageId === TRANSCRIPT_PENDING_USER_ID);
+  const previousAssistantOutline = previous?.outline.find((item) => item.messageId === TRANSCRIPT_PENDING_ASSISTANT_ID);
 
   if (pendingText && pendingUserFresh) {
     const matched = findTranscriptUserMessage(
@@ -184,17 +230,19 @@ export function mergePendingTranscript(
       options.pendingUser?.sentAtMs
     );
     if (!matched) {
-      messages.push({
+      const timestamp = options.pendingUser?.sentAtMs != null
+        ? String(options.pendingUser.sentAtMs)
+        : undefined;
+      const reused = samePendingRow(previousUserRow, pendingText, timestamp) ? previousUserRow : null;
+      messages.push(reused || {
         id: TRANSCRIPT_PENDING_USER_ID,
         role: "user",
         text: pendingText,
-        timestamp: options.pendingUser?.sentAtMs != null
-          ? String(options.pendingUser.sentAtMs)
-          : undefined,
+        timestamp,
         pending: true
       });
-      outline.push({
-        id: `transcript-turn-${outline.length + 1}`,
+      outline.push(previousUserOutline?.title === transcriptOutlineTitle(pendingText) ? previousUserOutline : {
+        id: "transcript-turn-pending-user",
         messageId: TRANSCRIPT_PENDING_USER_ID,
         index: outline.length + 1,
         title: transcriptOutlineTitle(pendingText),
@@ -204,16 +252,16 @@ export function mergePendingTranscript(
   }
 
   const last = lastMessage(messages);
-  const waitingForAssistant = Boolean(options.isRunning) && !assistantHasContent(last);
+  const waitingForAssistant = Boolean(options.isRunning || pendingText) && !assistantHasContent(last);
   if (waitingForAssistant) {
-    messages.push({
+    messages.push(previousAssistantRow || {
       id: TRANSCRIPT_PENDING_ASSISTANT_ID,
       role: "assistant",
       text: "",
       pending: true
     });
-    outline.push({
-      id: `transcript-turn-${outline.length + 1}`,
+    outline.push(previousAssistantOutline?.title === options.pendingTitle ? previousAssistantOutline : {
+      id: "transcript-turn-pending-assistant",
       messageId: TRANSCRIPT_PENDING_ASSISTANT_ID,
       index: outline.length + 1,
       title: options.pendingTitle,

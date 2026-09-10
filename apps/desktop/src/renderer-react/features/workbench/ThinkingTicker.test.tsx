@@ -1,5 +1,7 @@
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import React from "react";
 import { ThinkingTicker } from "./ThinkingTicker";
 
@@ -94,5 +96,19 @@ describe("ThinkingTicker", () => {
     expect(track(view)).toBe(before);
     expect(trackLines(view)).toEqual(["第二句话在增长"]);
     expect(reel(view).shift).toBe("0");
+  });
+
+  it("rolls at constant speed", () => {
+    const stylesheet = readFileSync(
+      path.join(__dirname, "..", "..", "..", "..", "src", "renderer", "styles.css"),
+      "utf8"
+    );
+    const trackRule = stylesheet.slice(stylesheet.indexOf(".wb-thinking-ticker-track {"));
+    const animation = trackRule.slice(0, trackRule.indexOf("}"));
+    // The reel is a wheel: a steady spin reads as rotation, an eased curve
+    // reads as a settle. The duration stays a variable the component drives.
+    expect(animation).toContain("animation: wb-thinking-roll var(--wb-thinking-duration");
+    expect(animation).toContain("linear");
+    expect(animation).not.toContain("cubic-bezier");
   });
 });

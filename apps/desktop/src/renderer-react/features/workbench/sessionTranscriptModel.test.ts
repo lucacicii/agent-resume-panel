@@ -4,6 +4,7 @@ import {
   filterSessionTranscript,
   mergePendingTranscript,
   sameTranscriptPreview,
+  transcriptStreamCaret,
   TRANSCRIPT_PENDING_ASSISTANT_ID,
   TRANSCRIPT_PENDING_USER_ID,
   transcriptOutlineTitle
@@ -122,6 +123,48 @@ describe("filterSessionTranscript", () => {
   });
 });
 
+describe("transcriptStreamCaret", () => {
+  const withReply = buildSessionTranscriptModel([
+    { role: "user", text: "Why is the folder missing?" },
+    { role: "assistant", text: "Because git drops empty folders." }
+  ]);
+
+  it("shows nothing while the session is idle", () => {
+    expect(transcriptStreamCaret(withReply.messages, false)).toBe("none");
+  });
+
+  it("rides at the end of the streaming message when it has text", () => {
+    expect(transcriptStreamCaret(withReply.messages, true)).toBe("inline");
+  });
+
+  it("falls back to the tail when the running turn has no answer text yet", () => {
+    const reasoningOnly = buildSessionTranscriptModel([
+      { role: "user", text: "Why is the folder missing?" },
+      { role: "assistant", text: "", thinking: "Checking status parsing." }
+    ]);
+    expect(transcriptStreamCaret(reasoningOnly.messages, true)).toBe("tail");
+
+    // The transcript can also lag behind the agent: the user prompt is on
+    // screen while the answer is still being written.
+    const lagging = buildSessionTranscriptModel([{ role: "user", text: "Why is the folder missing?" }]);
+    expect(transcriptStreamCaret(lagging.messages, true)).toBe("tail");
+  });
+
+  it("leaves the optimistic rows to their own activity signal", () => {
+    const merged = mergePendingTranscript(withReply, {
+      pendingUser: { text: "Keep the terminal visible.", sentAtMs: Date.now() },
+      isRunning: true,
+      pendingTitle: "Working…"
+    });
+    expect(merged.messages.at(-1)?.id).toBe(TRANSCRIPT_PENDING_ASSISTANT_ID);
+    expect(transcriptStreamCaret(merged.messages, true)).toBe("none");
+  });
+
+  it("shows nothing at all when there is no transcript", () => {
+    expect(transcriptStreamCaret([], true)).toBe("none");
+  });
+});
+
 describe("mergePendingTranscript", () => {
   const base = buildSessionTranscriptModel([
     { role: "user", text: "Add a transcript pane" },
@@ -172,5 +215,29 @@ describe("mergePendingTranscript", () => {
       "transcript-msg-0",
       "transcript-msg-1"
     ]);
+  });
+
+  it("reuses overlay rows across repeated merges", () => {
+    const options = {
+      pendingUser: { text: "Keep the terminal visible.", sentAtMs: Date.now() },
+      isRunning: true,
+      pendingTitle: "Working…"
+    };
+    const first = mergePendingTranscript(base, options);
+    const second = mergePendingTranscript(base, options, first);
+
+    // Live polls re-run the merge; the overlay rows must keep their identity
+    // so the memoized rows (and their markdown) never re-render.
+    expect(second.messages.at(-2)).toBe(first.messages.at(-2));
+    expect(second.messages.at(-1)).toBe(first.messages.at(-1));
+    expect(second.outline.at(-2)).toBe(first.outline.at(-2));
+    expect(second.outline.at(-1)).toBe(first.outline.at(-1));
+
+    // A different prompt or a different waiting label still rebuilds them.
+    const changed = mergePendingTranscript(base, {
+      ...options,
+      pendingUser: { text: "A different prompt.", sentAtMs: options.pendingUser.sentAtMs }
+    }, first);
+    expect(changed.messages.at(-2)).not.toBe(first.messages.at(-2));
   });
 });

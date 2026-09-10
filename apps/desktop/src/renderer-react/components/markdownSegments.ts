@@ -29,6 +29,13 @@ export type MarkdownSegment = {
   raw: string;
   /** Sanitized markdown handed to the renderer. */
   prepared: string;
+  /**
+   * Whether this segment received text in the build that produced it. Streaming
+   * fades in only what just arrived, and — because the flag is baked into the
+   * segment — a streaming flag that merely flips never invalidates a segment
+   * that did not change.
+   */
+  animate: boolean;
 };
 
 export type MarkdownSegmentState = {
@@ -74,23 +81,25 @@ function takeSegment(
   reusable: readonly MarkdownSegment[],
   index: number,
   raw: string,
-  options: MarkdownImageOptions | undefined
+  options: MarkdownImageOptions | undefined,
+  animateNew: boolean
 ): MarkdownSegment {
   const cached = reusable[index];
   if (cached && cached.raw === raw) return cached;
-  return { raw, prepared: prepareMarkdownFragment(raw, options) };
+  return { raw, prepared: prepareMarkdownFragment(raw, options), animate: animateNew };
 }
 
 /**
  * Idempotent: calling it again with the content it already holds returns the
- * same state object, so a double-invoked render (StrictMode, memo replay) never
- * rebuilds the partition.
+ * same state object, so a double-invoked render (StrictMode, memo replay) or a
+ * parent re-render never rebuilds the partition.
  */
 export function buildMarkdownSegments(
   previous: MarkdownSegmentState | null,
   content: string,
   options?: MarkdownImageOptions,
-  minChars: number = MARKDOWN_SEGMENT_MIN_CHARS
+  minChars: number = MARKDOWN_SEGMENT_MIN_CHARS,
+  animateNew = false
 ): MarkdownSegmentState {
   const optionsKey = markdownOptionsKey(options);
   if (previous && previous.source === content && previous.optionsKey === optionsKey) {
@@ -98,7 +107,7 @@ export function buildMarkdownSegments(
   }
 
   const reusable = previous && previous.optionsKey === optionsKey ? previous.segments : [];
-  const segments = segmentMarkdown(content, reusable, options, minChars);
+  const segments = segmentMarkdown(content, reusable, options, minChars, animateNew);
   return { source: content, optionsKey, segments };
 }
 
@@ -106,25 +115,26 @@ function segmentMarkdown(
   content: string,
   reusable: readonly MarkdownSegment[],
   options: MarkdownImageOptions | undefined,
-  minChars: number
+  minChars: number,
+  animateNew: boolean
 ): MarkdownSegment[] {
   if (!content) return [];
   const blocks = parseMarkdownIntoBlocks(content);
   // `streamdown` splits into concatenated slices; anything else is unexpected
   // and is rendered as a single segment.
   if (!blocks.length || blocks.join("") !== content) {
-    return [{ raw: content, prepared: prepareMarkdownFragment(content, options) }];
+    return [{ raw: content, prepared: prepareMarkdownFragment(content, options), animate: animateNew }];
   }
 
   const segments: MarkdownSegment[] = [];
   let current = "";
   for (const block of blocks) {
     if (current && current.length + block.length > minChars) {
-      segments.push(takeSegment(reusable, segments.length, current, options));
+      segments.push(takeSegment(reusable, segments.length, current, options, animateNew));
       current = "";
     }
     current += block;
   }
-  segments.push(takeSegment(reusable, segments.length, current, options));
+  segments.push(takeSegment(reusable, segments.length, current, options, animateNew));
   return segments;
 }

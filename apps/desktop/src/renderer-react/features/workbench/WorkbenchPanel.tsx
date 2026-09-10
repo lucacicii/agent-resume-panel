@@ -3267,13 +3267,34 @@ export function WorkbenchPanel(): ReactPortal | null {
     void loadSessions();
   }, [loadSessions]);
 
+  const triggerSessionSync = useCallback(() => {
+    if (typeof desktopApi().syncSessions === "function") {
+      void desktopApi().syncSessions().catch(() => undefined);
+    } else {
+      void loadSessions();
+    }
+  }, [loadSessions]);
+
   useEffect(() => {
     if (!pendingSessions.length) return;
-    const timers = [300, 800, 1_500, 3_000, 5_000, 8_000].map((delay) =>
-      window.setTimeout(() => { void loadSessions(); }, delay)
+    triggerSessionSync();
+    const timeouts = [400, 1_200, 2_500].map((delay) =>
+      window.setTimeout(() => { triggerSessionSync(); }, delay)
     );
-    return () => timers.forEach((timer) => window.clearTimeout(timer));
-  }, [loadSessions, pendingSessions.length]);
+    let ticks = 0;
+    const interval = window.setInterval(() => {
+      ticks += 1;
+      if (ticks > 40) {
+        window.clearInterval(interval);
+        return;
+      }
+      triggerSessionSync();
+    }, 2_500);
+    return () => {
+      timeouts.forEach((timer) => window.clearTimeout(timer));
+      window.clearInterval(interval);
+    };
+  }, [pendingSessions.length, triggerSessionSync]);
 
   useEffect(() => {
     if (!pendingSessions.length || !sessions.length) return;
@@ -3759,6 +3780,15 @@ export function WorkbenchPanel(): ReactPortal | null {
     if (!paneKey) return false;
     return sessionRuntimeByPaneKey.get(paneKey)?.status === "running";
   }, [activeTerminal, currentAcpChat, sessionRuntimeByPaneKey]);
+  const prevTranscriptRunningRef = useRef(activeTranscriptRunning);
+  useEffect(() => {
+    if (prevTranscriptRunningRef.current && !activeTranscriptRunning) {
+      if (pendingSessionsRef.current.length > 0) {
+        triggerSessionSync();
+      }
+    }
+    prevTranscriptRunningRef.current = activeTranscriptRunning;
+  }, [activeTranscriptRunning, triggerSessionSync]);
   const toggleSessionViewMode = useCallback(() => {
     setSessionViewMode((current) => {
       const next = current === "hybrid" ? "terminal" : "hybrid";
@@ -4148,8 +4178,11 @@ export function WorkbenchPanel(): ReactPortal | null {
     // User typing into a session TUI counts as immediate activity.
     if (terminalsRef.current.find((item) => item.key === key)?.group === "session") {
       statusStore.markUserInput(key);
+      if (pendingSessionsRef.current.some((pending) => pending.terminalKey === key)) {
+        triggerSessionSync();
+      }
     }
-  }, [refreshTerminalGit, statusStore]);
+  }, [refreshTerminalGit, statusStore, triggerSessionSync]);
 
   const activateComposerPane = useCallback((paneKey: string) => {
     const pane = terminalsRef.current.find((item) => item.key === paneKey);
@@ -4214,6 +4247,9 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
     setTranscriptFocus({ text, sentAtMs: localTip.createdAtMs, nonce: Date.now() });
     setPendingTranscriptUser({ text, sentAtMs: localTip.createdAtMs, paneKey });
+    if (!identity) {
+      triggerSessionSync();
+    }
     if (!submitDirectly) {
       window.requestAnimationFrame(() => {
         terminalRefs.current.get(pane.ptyId!)?.focus();
@@ -4661,9 +4697,13 @@ export function WorkbenchPanel(): ReactPortal | null {
           return;
         }
         if (result.mode === "xterm" && result.command) {
-          const title = t("desktop.workbench.newSessionTitle", basename(cwd));
-          const terminalKey = addTerminal(title, result.cwd, result.command, cwd, undefined, "session", prompt ? { initialPrompt: prompt } : undefined);
-          addPendingSession(terminalKey, target.provider, cwd, title, focusedFolder || undefined);
+          const launchCwd = result.cwd || cwd;
+          const title = t("desktop.workbench.newSessionTitle", basename(launchCwd));
+          const terminalKey = addTerminal(title, launchCwd, result.command, launchCwd, undefined, "session", prompt ? { initialPrompt: prompt } : undefined);
+          addPendingSession(terminalKey, target.provider, launchCwd, title, focusedFolder || undefined);
+          if (prompt) {
+            setPendingTranscriptUser({ text: prompt, sentAtMs: Date.now(), paneKey: terminalKey });
+          }
           setSessionViewMode("hybrid");
           localStorage.setItem(SESSION_VIEW_MODE_KEY, "hybrid");
         }
@@ -8069,6 +8109,7 @@ export function WorkbenchPanel(): ReactPortal | null {
                       focusUserMessage={transcriptFocus}
                       pendingUserMessage={pendingTranscriptUser?.paneKey === pane.key ? pendingTranscriptUser : null}
                       isPending={!sessionId}
+                      onRefresh={triggerSessionSync}
                     />
                   </div>
                   <ResizeHandle

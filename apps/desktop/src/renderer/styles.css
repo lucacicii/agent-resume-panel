@@ -7861,6 +7861,32 @@ body.is-pane-resizing-v * {
   font-weight: 500;
 }
 
+/*
+ * Blinking caret for a running session that has no streaming markdown to carry
+ * it (reasoning-only answers, or a transcript that still lags the agent).
+ */
+.wb-transcript-stream-caret-row {
+  padding: 0 0 10px;
+  line-height: 1;
+}
+
+.wb-transcript-stream-caret {
+  display: inline-block;
+  width: 0.5em;
+  height: 1em;
+  border-radius: 1px;
+  vertical-align: text-bottom;
+  background: var(--color-accent, #0a84ff);
+  animation: streamdownCaretBlink 0.8s infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-transcript-stream-caret {
+    animation: none;
+    opacity: 0.75;
+  }
+}
+
 .wb-transcript-body .preview-msg.is-pending {
   opacity: 0.92;
 }
@@ -8083,7 +8109,7 @@ body.is-pane-resizing-v * {
 
 .wb-thinking-ticker-track {
   transform: translateY(calc(var(--wb-thinking-shift) * var(--wb-thinking-line-height) * -1));
-  animation: wb-thinking-roll var(--wb-thinking-duration, 120ms) cubic-bezier(0.22, 0.9, 0.24, 1) both;
+  animation: wb-thinking-roll var(--wb-thinking-duration, 120ms) linear both;
 }
 
 .wb-thinking-ticker-line {
@@ -20284,12 +20310,25 @@ html[data-window-mode="browser"] #react-chrome {
   }
 }
 
-.markdown-body[style*="--streamdown-caret"] > :last-child::after,
-.wb-transcript-md[style*="--streamdown-caret"] > :last-child::after {
-  content: var(--streamdown-caret, " ▋");
+/*
+ * Streaming caret. It lives on the container (never inside the parsed
+ * markdown), so toggling the streaming state is a class change instead of a
+ * full markdown re-render. The last block of the last segment carries it.
+ */
+.markdown-body.is-streaming > *:last-child > *:last-child::after,
+.markdown-body.is-streaming > *:last-child::after {
+  content: "▋";
   display: inline;
   vertical-align: baseline;
+  margin-left: 1px;
   color: var(--color-accent, #0a84ff);
   font-weight: bold;
   animation: streamdownCaretBlink 0.8s infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .markdown-body.is-streaming > *:last-child > *:last-child::after,
+  .markdown-body.is-streaming > *:last-child::after {
+    animation: none;
+  }
 }
