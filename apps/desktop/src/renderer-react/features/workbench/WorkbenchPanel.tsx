@@ -4383,7 +4383,11 @@ export function WorkbenchPanel(): ReactPortal | null {
       selectProject(pane.projectPath, { keepSessionKey: true, keepSide: true });
     }
     setActivePane(paneKey, pane.projectPath);
-    void desktopApi().terminalInput({ id: pane.ptyId, data: text });
+    const submitDirectly = sessionViewMode === "hybrid" && tuiCollapsed;
+    void desktopApi().terminalInput({
+      id: pane.ptyId,
+      data: submitDirectly ? `${text}\r` : text
+    });
     onTerminalInput(paneKey);
     const identity = sessionIdentityFromKey(pane.sessionKey);
     const localTip: ComposerSendTip = {
@@ -4416,10 +4420,12 @@ export function WorkbenchPanel(): ReactPortal | null {
         });
       }).catch(() => undefined);
     }
-    window.requestAnimationFrame(() => {
-      terminalRefs.current.get(pane.ptyId!)?.focus();
-    });
-  }, [composerDrafts, onTerminalInput, setActivePane]);
+    if (!submitDirectly) {
+      window.requestAnimationFrame(() => {
+        terminalRefs.current.get(pane.ptyId!)?.focus();
+      });
+    }
+  }, [composerDrafts, onTerminalInput, sessionViewMode, setActivePane, tuiCollapsed]);
 
   const runComposerSlashCommand = useCallback((paneKey: string, command: TuiSlashCommand, args = "") => {
     const pane = terminalsRef.current.find((item) => item.key === paneKey);

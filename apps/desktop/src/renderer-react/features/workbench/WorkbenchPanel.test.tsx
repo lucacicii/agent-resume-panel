@@ -387,7 +387,10 @@ const ARROW_TEST_MESSAGES: Record<string, string> = {
   "desktop.workbench.tuiSlash.init": "Initialize project files",
   "desktop.workbench.tuiSlash.share": "Share this session",
   "desktop.workbench.tuiSlash.permissions": "Permission settings",
-  "desktop.workbench.resizeSidePanel": "Resize side panel"
+  "desktop.workbench.resizeSidePanel": "Resize side panel",
+  "desktop.workbench.terminalConsole": "Terminal Console",
+  "desktop.common.collapse": "Collapse",
+  "desktop.common.expand": "Expand"
 };
 
 const FOLDER_DRAG_TEST_MESSAGES: Record<string, string> = {
@@ -1865,6 +1868,77 @@ describe("WorkbenchPanel", () => {
     expect(composerInput.value).toBe("");
     expect(workbenchComposerSendAppend).toHaveBeenCalledWith(expect.objectContaining({ text: "inspect src", projectPath: "/work/app" }));
     await waitFor(() => expect(xtermMocks.instances[0].focusCalls).toBeGreaterThan(0));
+  });
+
+  it("submits composer text with a carriage return when the terminal console is collapsed", async () => {
+    localStorage.setItem("wb-session-view-mode", "hybrid");
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const terminalSpawn = vi.fn(async () => ({ id: 1 }));
+    const terminalInput = vi.fn(async () => ({ ok: true }));
+    const workbenchComposerSendAppend = vi.fn(async (args: { text: string }) => ({
+      id: "send-1",
+      createdAtMs: 1,
+      paneKey: "terminal:1",
+      projectPath: "/work/app",
+      sessionKey: "codex:session-1",
+      provider: "codex",
+      agentSessionId: "session-1",
+      text: args.text
+    }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: { ...ARROW_TEST_MESSAGES } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listProjects: async () => [{
+        projectId: "project-1",
+        portableKey: "/work/app",
+        alias: "",
+        hidden: false,
+        pinned: false,
+        lastSeenAtMs: 1,
+        updatedAtMs: 1,
+        localPath: "/work/app",
+        pathMissing: false,
+        sessionCount: 1
+      }],
+      querySessionsPage: async () => ({
+        sessions: [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+        total: 1
+      }),
+      workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: "/work/app" }),
+      terminalSpawn,
+      terminalDestroy: async () => ({ ok: true }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalResize: async () => ({ ok: true }),
+      terminalInput,
+      workbenchComposerSendAppend,
+      workbenchComposerSendList: async () => []
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
+    await waitFor(() => expect(terminalSpawn).toHaveBeenCalledTimes(1));
+    const composerInput = document.querySelector<HTMLTextAreaElement>(".workbench-layout .wb-terminal-composer-input");
+    if (!composerInput) throw new Error("composer input missing");
+    fireEvent.click(screen.getByRole("button", { name: "Collapse" }));
+    await waitFor(() => expect(document.querySelector(".wb-session-split-tui.is-collapsed")).toBeTruthy());
+    const focusBeforeSend = xtermMocks.instances[0]?.focusCalls ?? 0;
+    fireEvent.change(composerInput, { target: { value: "inspect src" } });
+    fireEvent.keyDown(composerInput, { key: "Enter" });
+    await waitFor(() => expect(terminalInput).toHaveBeenCalledWith({ id: 1, data: "inspect src\r" }));
+    expect(composerInput.value).toBe("");
+    expect(workbenchComposerSendAppend).toHaveBeenCalledWith(expect.objectContaining({ text: "inspect src", projectPath: "/work/app" }));
+    expect(document.querySelector(".wb-session-split-tui.is-collapsed")).toBeTruthy();
+    expect(xtermMocks.instances[0]?.focusCalls ?? 0).toBe(focusBeforeSend);
   });
 
   it("runs a TUI slash command with a carriage return and skips composer send logging", async () => {
