@@ -6,20 +6,6 @@ export type ResolvedSelection = {
   projectPath?: string;
 };
 
-const COMPOSER_SELECTORS = [
-  "input",
-  "textarea",
-  "select",
-  "[contenteditable=\"true\"]",
-  ".im-composer",
-  ".chat-compose",
-  ".wb-terminal-composer",
-  ".wb-git-commit-composer",
-  ".wb-acp-composer",
-  ".wb-acp-chat textarea",
-  ".app-inline-search"
-].join(",");
-
 const OWNED_MENU_SELECTORS = [
   ".im-message",
   ".wb-editor-pane",
@@ -59,8 +45,13 @@ function selectedDomText(target: EventTarget | null): string {
   return selection.toString().trim();
 }
 
-export function isComposerTarget(target: EventTarget | null): boolean {
-  return Boolean(closestElement(target, COMPOSER_SELECTORS));
+function selectedEditableText(target: EventTarget | null): string {
+  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+    const start = target.selectionStart ?? 0;
+    const end = target.selectionEnd ?? 0;
+    return start === end ? "" : target.value.slice(start, end).trim();
+  }
+  return selectedDomText(target);
 }
 
 export function isOwnedSelectionMenuTarget(target: EventTarget | null): boolean {
@@ -72,12 +63,12 @@ export function isObjectMenuTarget(target: EventTarget | null): boolean {
 }
 
 export function resolveSelection(target: EventTarget | null): ResolvedSelection | null {
-  if (isComposerTarget(target) || isObjectMenuTarget(target)) return null;
+  if (isObjectMenuTarget(target)) return null;
   const fromEditor = selectedTextFromCodeMirror(target);
   if (fromEditor) return fromEditor;
   const fromTerminal = selectedTextFromTerminal(target);
   if (fromTerminal) return fromTerminal;
-  const text = selectedDomText(target);
+  const text = selectedEditableText(target);
   if (!text) return null;
   const host = target instanceof Element ? target : target instanceof Node ? target.parentElement : null;
   const projectPath = projectPathFrom(host);

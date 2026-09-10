@@ -42,6 +42,8 @@ type MockTerminalInstance = {
   refreshCalls: number;
   _core: { _bufferService: { buffer: MockBuffer } };
   setBuffer: (type: "normal" | "alternate", viewportY: number, baseY: number) => void;
+  /** Simulates the user typing into the live TUI. */
+  emitData: (data: string) => void;
 };
 const xtermMocks = vi.hoisted(() => ({
   instances: [] as MockTerminalInstance[],
@@ -129,6 +131,7 @@ vi.mock("@xterm/xterm", () => ({ Terminal: class {
       return text === undefined ? undefined : { translateToString: () => text };
     }
   };
+  private dataListeners = new Set<(data: string) => void>();
   private resizeListeners = new Set<(event: { cols: number; rows: number }) => void>();
   private scrollListeners = new Set<(position: number) => void>();
   private writeListeners = new Set<() => void>();
@@ -171,7 +174,11 @@ vi.mock("@xterm/xterm", () => ({ Terminal: class {
   write() { this.writeListeners.forEach((listener) => listener()); }
   getSelection() { return ""; }
   clearTextureAtlas() {}
-  onData() { return { dispose() {} }; }
+  onData(listener: (data: string) => void) {
+    this.dataListeners.add(listener);
+    return { dispose: () => { this.dataListeners.delete(listener); } };
+  }
+  emitData(data: string) { this.dataListeners.forEach((listener) => listener(data)); }
   attachCustomKeyEventHandler(handler: (event: KeyboardEvent) => boolean) {
     this.customKeyEventHandler = handler;
   }
@@ -387,7 +394,10 @@ const ARROW_TEST_MESSAGES: Record<string, string> = {
   "desktop.workbench.tuiSlash.init": "Initialize project files",
   "desktop.workbench.tuiSlash.share": "Share this session",
   "desktop.workbench.tuiSlash.permissions": "Permission settings",
-  "desktop.workbench.resizeSidePanel": "Resize side panel"
+  "desktop.workbench.resizeSidePanel": "Resize side panel",
+  "desktop.workbench.terminalConsole": "Terminal Console",
+  "desktop.common.collapse": "Collapse",
+  "desktop.common.expand": "Expand"
 };
 
 const FOLDER_DRAG_TEST_MESSAGES: Record<string, string> = {
@@ -1867,6 +1877,77 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(xtermMocks.instances[0].focusCalls).toBeGreaterThan(0));
   });
 
+  it("submits composer text with a carriage return when the terminal console is collapsed", async () => {
+    localStorage.setItem("wb-session-view-mode", "hybrid");
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const terminalSpawn = vi.fn(async () => ({ id: 1 }));
+    const terminalInput = vi.fn(async () => ({ ok: true }));
+    const workbenchComposerSendAppend = vi.fn(async (args: { text: string }) => ({
+      id: "send-1",
+      createdAtMs: 1,
+      paneKey: "terminal:1",
+      projectPath: "/work/app",
+      sessionKey: "codex:session-1",
+      provider: "codex",
+      agentSessionId: "session-1",
+      text: args.text
+    }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: { ...ARROW_TEST_MESSAGES } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listProjects: async () => [{
+        projectId: "project-1",
+        portableKey: "/work/app",
+        alias: "",
+        hidden: false,
+        pinned: false,
+        lastSeenAtMs: 1,
+        updatedAtMs: 1,
+        localPath: "/work/app",
+        pathMissing: false,
+        sessionCount: 1
+      }],
+      querySessionsPage: async () => ({
+        sessions: [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+        total: 1
+      }),
+      workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: "/work/app" }),
+      terminalSpawn,
+      terminalDestroy: async () => ({ ok: true }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalResize: async () => ({ ok: true }),
+      terminalInput,
+      workbenchComposerSendAppend,
+      workbenchComposerSendList: async () => []
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
+    await waitFor(() => expect(terminalSpawn).toHaveBeenCalledTimes(1));
+    const composerInput = document.querySelector<HTMLTextAreaElement>(".workbench-layout .wb-terminal-composer-input");
+    if (!composerInput) throw new Error("composer input missing");
+    fireEvent.click(screen.getByRole("button", { name: "Collapse" }));
+    await waitFor(() => expect(document.querySelector(".wb-session-split-tui.is-collapsed")).toBeTruthy());
+    const focusBeforeSend = xtermMocks.instances[0]?.focusCalls ?? 0;
+    fireEvent.change(composerInput, { target: { value: "inspect src" } });
+    fireEvent.keyDown(composerInput, { key: "Enter" });
+    await waitFor(() => expect(terminalInput).toHaveBeenCalledWith({ id: 1, data: "inspect src\r" }));
+    expect(composerInput.value).toBe("");
+    expect(workbenchComposerSendAppend).toHaveBeenCalledWith(expect.objectContaining({ text: "inspect src", projectPath: "/work/app" }));
+    expect(document.querySelector(".wb-session-split-tui.is-collapsed")).toBeTruthy();
+    expect(xtermMocks.instances[0]?.focusCalls ?? 0).toBe(focusBeforeSend);
+  });
+
   it("runs a TUI slash command with a carriage return and skips composer send logging", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
@@ -2678,6 +2759,94 @@ describe("WorkbenchPanel", () => {
     expect(document.querySelector(".sheet")).toBeNull();
     expect(terminalDestroy).not.toHaveBeenCalled();
     expect(xtermMocks.instances).toHaveLength(1);
+  });
+
+  it("keeps transcript markdown untouched while the user types and scrolls in the TUI", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const terminalInput = vi.fn(async () => ({ ok: true }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.common.loadingPreview": "Loading preview…", "desktop.sessions.noMessages": "No messages", "desktop.sessions.truncated": "(truncated)", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.sidePanelTranscript": "Transcript", "desktop.workbench.transcriptOutline": "Turns", "desktop.workbench.transcriptSearchPlaceholder": "Search this conversation", "desktop.workbench.transcriptNeedSession": "Open a session", "desktop.workbench.transcriptNoMatches": "No matching turns", "desktop.workbench.transcriptRoleUser": "User", "desktop.workbench.transcriptRoleAssistant": "Assistant", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.closeTerminal": "Close terminal", "desktop.workbench.resizeSidePanel": "Resize side panel"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: "/work/app" }),
+      previewSession: async () => ({
+        session: { provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 },
+        preview: {
+          title: "Fix renderer",
+          messages: [
+            { role: "user", text: "Add a transcript pane" },
+            { role: "assistant", text: "Keep the TUI visible." }
+          ]
+        }
+      }),
+      terminalSpawn: async () => ({ id: 1 }),
+      terminalInput,
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
+    await waitFor(() => expect(document.querySelector(".wb-session-split-transcript")).not.toBeNull());
+    await screen.findByRole("button", { name: /Add a transcript pane/ });
+
+    const markdown = document.querySelector(".wb-transcript-md") as HTMLElement;
+    const paragraph = markdown.querySelector("p");
+    const mutations: MutationRecord[] = [];
+    const observer = new MutationObserver((records) => mutations.push(...records));
+    // Attributes are excluded on purpose: the streaming caret is a container
+    // class, while any child/character mutation means the markdown re-rendered.
+    observer.observe(markdown, { childList: true, subtree: true, characterData: true });
+
+    const dotPayloads: Array<Array<{ status?: string }>> = [];
+    const onActiveSessions = (event: Event) => {
+      dotPayloads.push((event as CustomEvent<Array<{ status?: string }>>).detail || []);
+    };
+    window.addEventListener("agent-resume:active-sessions", onActiveSessions);
+
+    const composer = document.querySelector(".wb-terminal-composer-input") as HTMLTextAreaElement | null;
+    expect(composer).not.toBeNull();
+    for (let index = 0; index < 6; index += 1) {
+      await act(async () => { fireEvent.change(composer as HTMLTextAreaElement, { target: { value: `typing ${index}` } }); });
+    }
+    // Typing straight into the live TUI: the same path the real terminal uses
+    // (PTY input plus the session activity signal).
+    for (let index = 0; index < 6; index += 1) {
+      await act(async () => { xtermMocks.instances[0]?.emitData(`x${index}`); });
+    }
+    expect(terminalInput).toHaveBeenCalled();
+
+    // Typing straight into the live TUI also feeds the session status store;
+    // the transcript markdown above stayed untouched through all of it.
+    // (A status flip that lands on the pane is covered by the pane test.)
+    window.removeEventListener("agent-resume:active-sessions", onActiveSessions);
+    expect(dotPayloads.every((payload) => payload.every((dot) => Boolean(dot.status)))).toBe(true);
+
+    const terminalHost = document.querySelector(".wb-terminal-host") as HTMLElement;
+    for (let index = 0; index < 6; index += 1) {
+      await act(async () => {
+        terminalHost.dispatchEvent(new WheelEvent("wheel", { deltaY: index % 2 === 0 ? -40 : 40, bubbles: true }));
+      });
+    }
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 120)); });
+    observer.disconnect();
+
+    expect(mutations).toEqual([]);
+    expect(document.querySelector(".wb-transcript-md")).toBe(markdown);
+    expect(document.querySelector(".wb-transcript-md p")).toBe(paragraph);
   });
 
   it("hides session scrollbars from launch and shows only the TUI waterdrop in the alternate buffer", async () => {
@@ -4058,6 +4227,78 @@ describe("WorkbenchPanel", () => {
       .find((item) => item.textContent?.includes("Catalog session"))?.classList.contains("active")).toBe(true));
     await waitFor(() => expect([...document.querySelectorAll(".wb-list-item")].some((item) => item.textContent?.includes("New session app"))).toBe(false));
     expect(document.querySelectorAll(".wb-session-activity-dot")).toHaveLength(1);
+  });
+
+  it("renders optimistic user message and typing indicator in new session, then binds session when catalog syncs", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    let onSessionsSynced: ((result: { syncedAt: number }) => void) | undefined;
+    let catalogSessions = [{ provider: "pi", id: "existing", title: "Existing", projectPath: "/work/app", updatedAt: 1 }];
+    const syncSessions = vi.fn(async () => ({ sessionCount: 1, syncedAt: Date.now(), warnings: [] }));
+    const terminalInput = vi.fn(async () => ({ ok: true }));
+    const previewSession = vi.fn(async ({ id }: { id: string }) => ({
+      session: { provider: "pi", id, title: "Bound Pi Session", projectPath: "/work/app", updatedAt: Date.now() },
+      preview: {
+        title: "Bound Pi Session",
+        messages: [
+          { role: "user", text: "Hello Pi" },
+          { role: "assistant", text: "Hello from Grok!" }
+        ]
+      }
+    }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.newSessionTitle": "New session {0}", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.terminalConsole": "Terminal", "desktop.workbench.terminalComposerPlaceholder": "Prompt", "desktop.workbench.transcriptWorking": "Thinking...", "desktop.workbench.sidePanelTranscript": "Transcript"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onSessionsSynced: (callback: (result: { syncedAt: number }) => void) => { onSessionsSynced = callback; return () => undefined; },
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "pi" } }),
+      listSessions: async () => catalogSessions,
+      querySessionsPage: async () => ({ sessions: catalogSessions, total: catalogSessions.length }),
+      workbenchNewSession: async () => ({ mode: "xterm", command: "pi", cwd: "/work/app" }),
+      syncSessions,
+      previewSession,
+      terminalSpawn: async () => ({ id: 1 }),
+      terminalInput,
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByTitle("/work/app"));
+    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+
+    await waitFor(() => expect(syncSessions).toHaveBeenCalled());
+
+    // Enter a prompt into the bottom composer and send it
+    const composer = await screen.findByPlaceholderText("Prompt");
+    fireEvent.change(composer, { target: { value: "Hello Pi" } });
+    fireEvent.keyDown(composer, { key: "Enter", code: "Enter" });
+
+    // Instantly renders on top in transcript before session is bound
+    await waitFor(() => expect(document.querySelector('[data-transcript-id="transcript-pending-user"]')?.textContent).toContain("Hello Pi"));
+    expect(document.querySelector('[data-transcript-id="transcript-pending-assistant"]')).toBeTruthy();
+    expect(document.querySelector(".wb-transcript-pending-body .im-jumping-dots")).toBeTruthy();
+
+    // Now disk flushes and sync detects the session
+    catalogSessions = [
+      ...catalogSessions,
+      { provider: "pi", id: "pi-session-1", title: "Bound Pi Session", projectPath: "/work/app", updatedAt: Date.now() }
+    ];
+    await act(async () => onSessionsSynced?.({ syncedAt: Date.now() }));
+
+    // Session is bound, real markdown preview loads
+    await waitFor(() => expect(previewSession).toHaveBeenCalledWith(expect.objectContaining({ id: "pi-session-1" })));
+    await waitFor(() => expect(document.querySelector(".wb-transcript-body")?.textContent).toContain("Hello from Grok!"));
   });
 
   it("defaults to hybrid split view mode with transcript when opening a new session even if previously in terminal mode", async () => {

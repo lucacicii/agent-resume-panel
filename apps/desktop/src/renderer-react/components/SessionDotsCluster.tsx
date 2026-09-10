@@ -1,7 +1,8 @@
 import type { JSX } from "react";
 import { ThemeIcon } from "./ThemeIcon";
 import { Tooltip } from "./Tooltip";
-import { type ActiveSessionDot, type SessionDotStatus } from "../features/workbench/activeSessionDots";
+import { type ActiveSessionDot } from "../features/workbench/activeSessionDots";
+import type { SessionDotStatus } from "../features/workbench/sessionStatus";
 
 export function sessionDotStatusClass(status: SessionDotStatus): string {
   if (status === "open") return "";

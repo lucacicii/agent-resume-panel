@@ -13,6 +13,7 @@ import {
   reportLlmConfigFromSettings,
   resolveSelectedModel,
   sessionRenameLlmConfigFromSettings,
+  sessionStatusLlmConfigFromSettings,
   sessionSummaryLlmConfigFromSettings,
   translateLlmConfigFromSettings
 } from "../dist/llm/fromSettings.js";
@@ -195,6 +196,7 @@ test("isModelUse recognizes base and specialized use cases", () => {
   assert.equal(isModelUse("gtd"), true);
   assert.equal(isModelUse("imRouting"), true);
   assert.equal(isModelUse("translate"), true);
+  assert.equal(isModelUse("sessionStatus"), true);
   assert.equal(isModelUse("unknown"), false);
 });
 
@@ -208,6 +210,8 @@ test("specialized use cases fall back to tool or chat by default, and honor over
   assert.equal(gtdLlmConfigFromSettings(poolSettings)?.model, "gpt-4o-mini");
   assert.equal(imRoutingLlmConfigFromSettings(poolSettings)?.model, "llama3");
   assert.equal(translateLlmConfigFromSettings(poolSettings)?.model, "gpt-4o-mini");
+  // Tier 1.5 status adjudication: unset falls back to tool so the layer works out of the box.
+  assert.equal(sessionStatusLlmConfigFromSettings(poolSettings)?.model, "gpt-4o-mini");
 
   // Specialized use cases in this area default to disableThinking: true
   assert.equal(gitCommitLlmConfigFromSettings(poolSettings)?.disableThinking, true);
@@ -217,6 +221,7 @@ test("specialized use cases fall back to tool or chat by default, and honor over
   assert.equal(gtdLlmConfigFromSettings(poolSettings)?.disableThinking, true);
   assert.equal(imRoutingLlmConfigFromSettings(poolSettings)?.disableThinking, true);
   assert.equal(translateLlmConfigFromSettings(poolSettings)?.disableThinking, true);
+  assert.equal(sessionStatusLlmConfigFromSettings(poolSettings)?.disableThinking, true);
 
   // With specific overrides, each specialized use resolves to its explicit model.
   const overridden = {
@@ -229,7 +234,8 @@ test("specialized use cases fall back to tool or chat by default, and honor over
       report: { providerId: "p1", modelId: "gpt-4o" },
       gtd: { providerId: "p2", modelId: "llama3" },
       imRouting: { providerId: "p1", modelId: "gpt-4o-mini" },
-      translate: { providerId: "p1", modelId: "gpt-4o" }
+      translate: { providerId: "p1", modelId: "gpt-4o" },
+      sessionStatus: { providerId: "p2", modelId: "llama3" }
     }
   };
   assert.equal(gitCommitLlmConfigFromSettings(overridden)?.model, "gpt-4o");
@@ -239,6 +245,7 @@ test("specialized use cases fall back to tool or chat by default, and honor over
   assert.equal(gtdLlmConfigFromSettings(overridden)?.model, "llama3");
   assert.equal(imRoutingLlmConfigFromSettings(overridden)?.model, "gpt-4o-mini");
   assert.equal(translateLlmConfigFromSettings(overridden)?.model, "gpt-4o");
+  assert.equal(sessionStatusLlmConfigFromSettings(overridden)?.model, "llama3");
 });
 
 test("migrateLegacyModelSettings seeds the pool from legacy llm/embedding", () => {

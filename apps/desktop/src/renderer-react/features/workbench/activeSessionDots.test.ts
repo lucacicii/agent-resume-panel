@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  acpRuntimeToStatus,
-  collectActiveSessionDots,
-  pickHigherStatus
-} from "./activeSessionDots";
+import { collectActiveSessionDots } from "./activeSessionDots";
 
 describe("collectActiveSessionDots", () => {
   it("collects session-group terminals + acp chats, skips shell terminals", () => {
@@ -69,26 +65,5 @@ describe("collectActiveSessionDots", () => {
 
   it("returns an empty array when nothing is open", () => {
     expect(collectActiveSessionDots([], [], new Map())).toEqual([]);
-  });
-});
-
-describe("acpRuntimeToStatus", () => {
-  it("prioritizes pending requests over running", () => {
-    expect(acpRuntimeToStatus({ isRunning: true, pendingRequestCount: 1 })).toBe("awaiting_user");
-  });
-
-  it("maps connecting / error / running / open", () => {
-    expect(acpRuntimeToStatus({ isConnecting: true })).toBe("connecting");
-    expect(acpRuntimeToStatus({ status: "error" })).toBe("error");
-    expect(acpRuntimeToStatus({ isRunning: true })).toBe("running");
-    expect(acpRuntimeToStatus({ status: "thinking", isRunning: true })).toBe("running");
-    expect(acpRuntimeToStatus({})).toBe("open");
-  });
-});
-
-describe("pickHigherStatus", () => {
-  it("orders awaiting above running", () => {
-    expect(pickHigherStatus("running", "awaiting_user")).toBe("awaiting_user");
-    expect(pickHigherStatus("open", "error")).toBe("error");
   });
 });

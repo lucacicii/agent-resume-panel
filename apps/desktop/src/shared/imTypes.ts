@@ -319,7 +319,8 @@ export type ImEvent =
   | { type: "message"; projectId: string; message: ImMessage }
   | { type: "messageUpdate"; projectId: string; message: ImMessage }
   | { type: "job"; projectId: string; job: ImJob }
-  | { type: "member"; projectId: string; member: ImMember };
+  | { type: "member"; projectId: string; member: ImMember }
+  | { type: "agentModels"; agent: ImAgent; models: ImAgentModelOption[] };
 
 export const IM_SELECTION_ACTION_KINDS = ["context", "independent"] as const;
 export type ImSelectionActionKind = (typeof IM_SELECTION_ACTION_KINDS)[number];

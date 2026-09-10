@@ -13,7 +13,11 @@ import { type AskToolPrefs } from "../../components/ToolSettingsPopover";
 import { Sheet } from "../../components/Sheet";
 import { CitationSheet, extractCitationsFromMessage, isNote, isSession, periodFromCitation } from "./CitationSheet";
 import { desktopApi } from "../../bridge";
-import { SelectionSendItems } from "../../selection/SelectionSendMenu";
+import { SelectionActionItems } from "../../selection/SelectionActionItems";
+import {
+  SelectionActionResult,
+  useSelectionActionResult
+} from "../../selection/SelectionActionResult";
 import { notifyDesktop } from "../../components/Notifications";
 import { useI18n } from "../../i18n";
 import { storedWidth } from "../../storage";
@@ -128,13 +132,12 @@ export function ImPanel(): ReactPortal | null {
     highlightedText: string;
     message: ImMessage;
   } | null>(null);
-  const [selectionResult, setSelectionResult] = useState<{
-    x: number;
-    y: number;
-    title: string;
-    text: string;
-    loading: boolean;
-  } | null>(null);
+  const {
+    selectionResult,
+    runSelectionAction,
+    copySelectionResult,
+    clearSelectionResult
+  } = useSelectionActionResult();
   const [translations, setTranslations] = useState<Record<string, string>>({});
   const [translatingIds, setTranslatingIds] = useState<Set<string>>(() => new Set());
   const [templates, setTemplates] = useState<ImRoleTemplate[]>([]);
@@ -146,6 +149,14 @@ export function ImPanel(): ReactPortal | null {
   const [customMemberModelId, setCustomMemberModelId] = useState<string | null>(null);
   const [customMemberThoughtId, setCustomMemberThoughtId] = useState<string | null>(null);
   const [agentModelsMap, setAgentModelsMap] = useState<Record<string, ImAgentModelOption[]>>({});
+  const [fetchingModelsByAgent, setFetchingModelsByAgent] = useState<Record<string, boolean>>({});
+  const [modelsErrorByAgent, setModelsErrorByAgent] = useState<Record<string, string>>({});
+  const agentModelsMapRef = useRef<Record<string, ImAgentModelOption[]>>({});
+  useEffect(() => {
+    agentModelsMapRef.current = agentModelsMap;
+  }, [agentModelsMap]);
+  const fetchingModelsRef = useRef<Set<string>>(new Set());
+  const lastModelsFetchKeyRef = useRef<string | null>(null);
   const [knowledgeTitle, setKnowledgeTitle] = useState("");
   const [knowledgeBody, setKnowledgeBody] = useState("");
   const [knowledgeUrl, setKnowledgeUrl] = useState("");
@@ -298,6 +309,15 @@ export function ImPanel(): ReactPortal | null {
     const stop = desktopApi().onImEvent((event: ImEvent) => {
       if (event.type === "room") {
         if (event.room.project.projectId === selectedProjectId) setRoom(event.room);
+        return;
+      }
+      if (event.type === "agentModels") {
+        // Live ACP push: no projectId, update sidebar map directly.
+        if (event.models.length) {
+          setAgentModelsMap((curr) => ({ ...curr, [event.agent]: event.models }));
+          setModelsErrorByAgent((curr) => ({ ...curr, [event.agent]: "" }));
+        }
+        setFetchingModelsByAgent((curr) => ({ ...curr, [event.agent]: false }));
         return;
       }
       if (event.projectId !== selectedProjectId) return;
@@ -582,7 +602,7 @@ export function ImPanel(): ReactPortal | null {
     const text = selectedTextIn(event.currentTarget) || message.body.trim();
     if (!text) return;
     event.preventDefault();
-    setSelectionResult(null);
+    clearSelectionResult();
     const highlighted = selectedTextIn(event.currentTarget);
     setSelectionMenu({
       x: Math.min(event.clientX, window.innerWidth - 220),
@@ -591,24 +611,15 @@ export function ImPanel(): ReactPortal | null {
       highlightedText: highlighted,
       message
     });
-  }, [selectedTextIn]);
+  }, [clearSelectionResult, selectedTextIn]);
 
-  const runSelectionAction = useCallback(async (action: ImSelectionAction) => {
+  const runContextSelectionAction = useCallback((action: ImSelectionAction) => {
     if (!selectionMenu) return;
-    const { text, message, x, y } = selectionMenu;
+    const { text, message } = selectionMenu;
     setSelectionMenu(null);
     if (action.kind === "context") {
       const extra = action.actionId === "quote" ? "" : action.prompt.replaceAll("{selection}", text).trim();
       quoteSelection(message, text, extra);
-      return;
-    }
-    setSelectionResult({ x, y, title: action.name, text: "", loading: true });
-    try {
-      const result = await desktopApi().imRunSelectionAction({ actionId: action.actionId, text });
-      setSelectionResult({ x, y, title: action.name, text: result.text, loading: false });
-    } catch (error) {
-      setSelectionResult(null);
-      setError(error);
     }
   }, [quoteSelection, selectionMenu, setError]);
 
@@ -657,16 +668,16 @@ export function ImPanel(): ReactPortal | null {
     const onPointer = (event: MouseEvent) => {
       const target = event.target;
       if (!(target instanceof Element)) return;
-      if (target.closest(".im-selection-menu, .im-selection-result, .im-folder-menu")) return;
+      if (target.closest(".im-selection-menu, .selection-action-result, .im-folder-menu")) return;
       setSelectionMenu(null);
       setFolderMenu(null);
-      if (!selectionResult?.loading) setSelectionResult(null);
+      if (!selectionResult?.loading) clearSelectionResult();
     };
     const onKey = (event: globalThis.KeyboardEvent) => {
       if (event.key === "Escape") {
         setSelectionMenu(null);
         setFolderMenu(null);
-        if (!selectionResult?.loading) setSelectionResult(null);
+        if (!selectionResult?.loading) clearSelectionResult();
       }
     };
     window.addEventListener("pointerdown", onPointer);
@@ -675,7 +686,7 @@ export function ImPanel(): ReactPortal | null {
       window.removeEventListener("pointerdown", onPointer);
       window.removeEventListener("keydown", onKey);
     };
-  }, [selectionMenu, selectionResult, folderMenu]);
+  }, [clearSelectionResult, selectionMenu, selectionResult, folderMenu]);
 
   const copyFilePath = useCallback(async (pathStr: string) => {
     try {
@@ -1047,26 +1058,51 @@ export function ImPanel(): ReactPortal | null {
   }, [expandedMemberId]);
 
   const fetchModelsForAgent = useCallback(async (targetAgent: ImAgent, refresh = false) => {
-    if (!refresh && agentModelsMap[targetAgent]?.length) return agentModelsMap[targetAgent];
+    if (!refresh && agentModelsMapRef.current[targetAgent]?.length) return agentModelsMapRef.current[targetAgent];
+    // Dedup concurrent refresh for the same agent (StrictMode / rapid clicks).
+    if (refresh && fetchingModelsRef.current.has(targetAgent)) return agentModelsMapRef.current[targetAgent] ?? [];
+    fetchingModelsRef.current.add(targetAgent);
+    setFetchingModelsByAgent((curr) => ({ ...curr, [targetAgent]: true }));
+    setModelsErrorByAgent((curr) => ({ ...curr, [targetAgent]: "" }));
     try {
       const list = await desktopApi().imListAgentModels({ agent: targetAgent, refresh });
-      setAgentModelsMap((curr) => ({ ...curr, [targetAgent]: list }));
-      return list;
-    } catch {
-      setAgentModelsMap((curr) => ({ ...curr, [targetAgent]: [] }));
-      return [];
+      // Keep old list on empty: never clear the sidebar, allow retry.
+      if (list.length) {
+        setAgentModelsMap((curr) => ({ ...curr, [targetAgent]: list }));
+        return list;
+      }
+      setModelsErrorByAgent((curr) => ({ ...curr, [targetAgent]: t("desktop.common.unknownError") }));
+      return agentModelsMapRef.current[targetAgent] ?? [];
+    } catch (error) {
+      // Failure fallback: keep old list, surface error for retry.
+      setModelsErrorByAgent((curr) => ({
+        ...curr,
+        [targetAgent]: error instanceof Error && error.message ? error.message : t("desktop.common.unknownError"),
+      }));
+      return agentModelsMapRef.current[targetAgent] ?? [];
+    } finally {
+      fetchingModelsRef.current.delete(targetAgent);
+      setFetchingModelsByAgent((curr) => ({ ...curr, [targetAgent]: false }));
     }
-  }, [agentModelsMap]);
+  }, [t]);
 
   useEffect(() => {
-    if (!expandedMemberId) return;
+    if (!expandedMemberId) {
+      lastModelsFetchKeyRef.current = null;
+      return;
+    }
     const member = allMembers.find((m) => m.memberId === expandedMemberId);
-    if (!member || agentModelsMap[member.agent] !== undefined) return;
-    void fetchModelsForAgent(member.agent);
-  }, [expandedMemberId, allMembers, agentModelsMap, fetchModelsForAgent]);
+    if (!member) return;
+    // Plan B: popover open/switch forces latest via throwaway probe (refresh=true).
+    const key = `${expandedMemberId}:${member.agent}`;
+    if (lastModelsFetchKeyRef.current === key) return;
+    lastModelsFetchKeyRef.current = key;
+    void fetchModelsForAgent(member.agent, true);
+  }, [expandedMemberId, allMembers, fetchModelsForAgent]);
 
   const onMemberAgentChange = useCallback(async (member: ImMember, nextAgent: ImAgent) => {
     try {
+      lastModelsFetchKeyRef.current = `${member.memberId}:${nextAgent}`;
       void fetchModelsForAgent(nextAgent, true);
       const updated = await desktopApi().imSetMemberAgent({ memberId: member.memberId, agent: nextAgent });
       setRoom((current) => current
@@ -1735,7 +1771,7 @@ export function ImPanel(): ReactPortal | null {
                                 setPopoverAnchorRect(null);
                               }
                               setExpandedMemberId(next);
-                              if (next) void fetchModelsForAgent(enabledMember.agent);
+                              if (next) void fetchModelsForAgent(enabledMember.agent, true);
                             }}
                             title={t("desktop.im.configRole")}
                             aria-label={t("desktop.im.configRole")}
@@ -1835,16 +1871,21 @@ export function ImPanel(): ReactPortal | null {
         >
           {selectionMenu.highlightedText ? (
             <>
-              <SelectionSendItems
+              <SelectionActionItems
                 text={selectionMenu.highlightedText}
                 onSent={() => setSelectionMenu(null)}
+                onActionStart={() => setSelectionMenu(null)}
+                actions={selectionActions}
+                runAction={runSelectionAction}
+                x={selectionMenu.x}
+                y={selectionMenu.y}
                 className="im-selection-menu notes-selection-menu"
               />
               <hr className="context-menu-separator" />
             </>
           ) : null}
-          {selectionActions.map((action) => (
-            <button key={action.actionId} type="button" role="menuitem" onClick={() => void runSelectionAction(action)}>
+          {selectionActions.filter((action) => action.kind === "context").map((action) => (
+            <button key={action.actionId} type="button" role="menuitem" onClick={() => runContextSelectionAction(action)}>
               {actionLabel(action)}
             </button>
           ))}
@@ -1865,37 +1906,11 @@ export function ImPanel(): ReactPortal | null {
         document.body
       ) : null}
       {selectionResult ? createPortal(
-        <div
-          className="im-selection-result"
-          role="dialog"
-          aria-label={selectionResult.title}
-          style={{ left: Math.min(selectionResult.x, window.innerWidth - 320), top: Math.min(selectionResult.y, window.innerHeight - 220) }}
-        >
-          <header>
-            <strong>{selectionResult.title}</strong>
-            <span className="im-selection-result-actions">
-              {!selectionResult.loading ? (
-                <>
-                  <button type="button" className="tool-btn ghost-btn" onClick={() => void copyText(selectionResult.text)}>
-                    {t("desktop.common.copy")}
-                  </button>
-                  <button type="button" className="tool-btn ghost-btn" onClick={() => {
-                    insertIntoComposer(selectionResult.text);
-                    setSelectionResult(null);
-                  }}>
-                    {t("desktop.im.sendToComposer")}
-                  </button>
-                </>
-              ) : null}
-              <button type="button" className="tool-btn ghost-btn" onClick={() => setSelectionResult(null)} aria-label={t("desktop.common.cancel")}>
-                <ThemeIcon name="close" size={12} />
-              </button>
-            </span>
-          </header>
-          {selectionResult.loading
-            ? <p className="im-empty">{t("desktop.im.actionRunning")}</p>
-            : <div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(selectionResult.text) }} />}
-        </div>,
+        <SelectionActionResult
+          result={selectionResult}
+          onClose={clearSelectionResult}
+          onCopy={copySelectionResult}
+        />,
         document.body
       ) : null}
       {previewModalUrl ? createPortal(
@@ -1993,6 +2008,17 @@ export function ImPanel(): ReactPortal | null {
                     ))}
                     <option value="__custom__">{t("desktop.im.customModelOption")}</option>
                   </select>
+                  {fetchingModelsByAgent[member.agent] ? (
+                    <span className="im-hint">{t("desktop.common.loading")}</span>
+                  ) : null}
+                  {modelsErrorByAgent[member.agent] ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                      <span className="im-hint" role="alert">{modelsErrorByAgent[member.agent]}</span>
+                      <button type="button" className="tool-btn ghost-btn" onClick={() => void fetchModelsForAgent(member.agent, true)}>
+                        {t("desktop.im.fetchModels")}
+                      </button>
+                    </div>
+                  ) : null}
                   {(customMemberModelId === member.memberId || isCustomMemberModel) && (
                     <input value={member.model ?? ""} placeholder="Enter model ID…" onChange={(event) => void onMemberModelChange(member, event.target.value)} autoFocus />
                   )}

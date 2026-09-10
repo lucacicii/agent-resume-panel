@@ -8,6 +8,22 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## English
 
+### [0.2.26]
+
+#### Added
+
+- **Selection action menu**: selected text in Workbench and IM now offers follow-up actions (send, explain, rewrite) with inline result cards instead of only a send-to-session menu
+- **Awaiting-you notifications**: native desktop notifications fire when a session enters a confirmed awaiting-user state, with per-episode dedupe and click-to-focus
+- **Thinking ticker**: Workbench transcripts show a rolling thinking indicator while the agent is reasoning, with process-probe and prompt-based session status judging
+- **Streaming caret**: a blinking caret stays on the live answer (or a tail row when there is no streaming markdown yet) so you can see the agent is still writing
+
+#### Improved
+
+- **Session status**: TUI status tracking moved to a dedicated `sessionStatus` module (fingerprint, protocol, resolver, store) used by the dots cluster, transcript pane, composer, and IM
+- **Composer send with collapsed terminal**: submitting from the composer still works when the terminal console is collapsed
+- **Transcript stability**: markdown segments keep their identity while the answer grows, so typing or scrolling in the TUI no longer re-renders settled transcript blocks; pending overlay rows stay stable across live polls
+- **Pending session binding**: new sessions poll catalog sync more aggressively until the terminal binds to a real session id
+
 ### [0.2.25]
 
 #### Added
@@ -568,6 +584,22 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 ---
 
 ## 简体中文
+
+### [0.2.26]
+
+#### 新增
+
+- **选区操作菜单**: 在 Workbench 与 IM 中选中文本后，可直接执行发送 / 解释 / 改写等后续操作，结果以内联卡片展示，不再只有「发送到会话」
+- **等待你操作的通知**: 会话进入确认的「等待用户」状态时发出系统通知，按会话回合去重，点击即可聚焦该会话
+- **思考指示器**: 工作台转录在 agent 推理时显示滚动思考条，并结合进程探测与提示词判断会话状态
+- **流式光标**: 正在生成的回答末尾（或尚无流式 Markdown 时的尾部行）显示闪烁光标，标明 agent 仍在输出
+
+#### 改进
+
+- **会话状态**: TUI 状态跟踪迁到独立的 `sessionStatus` 模块（fingerprint / protocol / resolver / store），供状态点聚合、转录面板、composer 与 IM 共用
+- **折叠终端时仍可发送**: 终端控制台折叠时，composer 提交仍然生效
+- **转录稳定性**: 回答增长时已闭合的 Markdown 分段保持身份，在 TUI 中打字或滚动不再重绘已稳定的转录块；实时轮询时待写入的 overlay 行也保持稳定
+- **待绑定会话**: 新会话更积极地轮询 catalog 同步，直到终端绑定到真实 session id
 
 ### [0.2.25]
 

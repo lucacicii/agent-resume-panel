@@ -35,6 +35,8 @@ const messages = {
   "desktop.settings.imThoughtLevelPlaceholder": "e.g. low, medium, high",
   "desktop.im.resetDefault": "Reset to default",
   "desktop.im.fetchModels": "Fetch models",
+  "desktop.common.loading": "Loading…",
+  "desktop.common.unknownError": "Unknown error",
   "desktop.im.customBadge": "Custom",
   "desktop.im.customModelOption": "Custom model ID…",
   "desktop.im.selectAll": "Select all",
@@ -235,6 +237,8 @@ function roomFor(nextProject: ImProject): ImRoom {
   };
 }
 
+let lastImEventHandler: ((event: never) => void) | null = null;
+
 function renderIm() {
   const created = project();
   window.agentResume = {
@@ -408,7 +412,12 @@ function renderIm() {
       window.addEventListener("test:cmd-t", handler);
       return () => window.removeEventListener("test:cmd-t", handler);
     },
-    onImEvent: () => () => undefined
+    onImEvent: ((callback: (event: never) => void) => {
+      lastImEventHandler = callback;
+      return () => {
+        lastImEventHandler = null;
+      };
+    }) as unknown as typeof window.agentResume.onImEvent
   } as unknown as typeof window.agentResume;
 
   render(
@@ -1253,6 +1262,74 @@ describe("ImPanel", () => {
       memberId: "mem-pm",
       thoughtLevel: "high"
     }));
+  });
+
+  it("forces refresh on popover open and applies live agentModels push", async () => {
+    const currentProject = project();
+    const currentRoom = roomFor(currentProject);
+    const api = renderIm();
+    (api.imGetRoom as ReturnType<typeof vi.fn>).mockResolvedValue(currentRoom);
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+
+    const avatar = await waitFor(() => {
+      const node = document.querySelector(".im-room-head-info .im-chat-avatar") as HTMLElement | null;
+      expect(node).not.toBeNull();
+      return node!;
+    });
+    fireEvent.click(avatar);
+    await waitFor(() => expect(document.querySelector(".im-members")).not.toBeNull());
+    const configButtons = screen.getAllByRole("button", { name: "Configure role" });
+    fireEvent.click(configButtons[0]!);
+    expect(await screen.findByDisplayValue("Claude Code")).toBeTruthy();
+
+    // Plan B: opening the popover forces refresh=true (throwaway probe).
+    await waitFor(() => expect(api.imListAgentModels).toHaveBeenCalledWith({
+      agent: "claude",
+      refresh: true
+    }));
+
+    // Live ACP push updates the map without a second invoke.
+    const callsBefore = (api.imListAgentModels as ReturnType<typeof vi.fn>).mock.calls.length;
+    await act(async () => {
+      lastImEventHandler?.({
+        type: "agentModels",
+        agent: "claude",
+        models: [{ id: "fresh-model", label: "Fresh Model", provider: "ACP" }]
+      } as never);
+    });
+    await waitFor(() => expect(
+      document.querySelector(".im-member-config-popover")?.textContent ?? ""
+    ).toContain("Fresh Model"));
+    expect((api.imListAgentModels as ReturnType<typeof vi.fn>).mock.calls.length).toBe(callsBefore);
+  });
+
+  it("keeps old list and shows retry when refresh returns empty", async () => {
+    const currentProject = project();
+    const currentRoom = roomFor(currentProject);
+    const api = renderIm();
+    (api.imGetRoom as ReturnType<typeof vi.fn>).mockResolvedValue(currentRoom);
+    (api.imListAgentModels as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+    });
+
+    const avatar = await waitFor(() => {
+      const node = document.querySelector(".im-room-head-info .im-chat-avatar") as HTMLElement | null;
+      expect(node).not.toBeNull();
+      return node!;
+    });
+    fireEvent.click(avatar);
+    await waitFor(() => expect(document.querySelector(".im-members")).not.toBeNull());
+    const configButtons = screen.getAllByRole("button", { name: "Configure role" });
+    fireEvent.click(configButtons[0]!);
+    expect(await screen.findByDisplayValue("Claude Code")).toBeTruthy();
+
+    // Empty refresh keeps old UI usable and offers a retry via fetchModels copy.
+    await waitFor(() => expect(screen.getByText("Fetch models")).toBeTruthy());
   });
 
   it("renders modified files block on assistant messages linked to jobs with file changes", async () => {

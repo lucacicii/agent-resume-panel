@@ -72,7 +72,8 @@ export function resolveSelectedModel(
     use === "sessionSummary" ||
     use === "report" ||
     use === "gtd" ||
-    use === "translate"
+    use === "translate" ||
+    use === "sessionStatus"
   ) {
     return resolveSelectedModel(settings, "tool");
   }
@@ -134,7 +135,8 @@ export function isSpecializedModelUse(use: ModelUse): use is SpecializedModelUse
     use === "report" ||
     use === "gtd" ||
     use === "imRouting" ||
-    use === "translate"
+    use === "translate" ||
+    use === "sessionStatus"
   );
 }
 
@@ -244,6 +246,20 @@ export function translateLlmConfigFromSettings(
   systemLocale?: string
 ): LlmRuntimeConfig | undefined {
   return llmConfigForUse(settings, "translate", systemLocale);
+}
+
+/**
+ * Session status adjudication model (Tier 1.5).
+ *
+ * Falls back to the tool selection when unset, so the layer works out of the
+ * box for anyone who already configured a tool model. Returns undefined when
+ * nothing is configured, which disables the layer instead of erroring.
+ */
+export function sessionStatusLlmConfigFromSettings(
+  settings: PanelSettings,
+  systemLocale?: string
+): LlmRuntimeConfig | undefined {
+  return llmConfigForUse(settings, "sessionStatus", systemLocale);
 }
 
 export function embeddingConfigFromSettings(settings: PanelSettings): EmbeddingRuntimeConfig | undefined {

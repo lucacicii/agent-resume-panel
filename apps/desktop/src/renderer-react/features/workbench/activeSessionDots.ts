@@ -1,9 +1,12 @@
-export type SessionDotStatus =
-  | "awaiting_user"
-  | "running"
-  | "connecting"
-  | "error"
-  | "open";
+/**
+ * Rendering model for the session indicators (nav rail, tray, floating notes).
+ *
+ * This module only *shapes* data for display: given the open panes and the
+ * statuses the `sessionStatus` store settled on, it produces one dot per pane.
+ * It performs no detection of its own — see `sessionStatus/`.
+ */
+
+import type { SessionDotRuntime, SessionDotStatus } from "./sessionStatus";
 
 export type ActiveSessionDot = {
   paneKey: string;
@@ -11,12 +14,7 @@ export type ActiveSessionDot = {
   title: string;
   sessionKey: string;
   status: SessionDotStatus;
-  /** Weak heuristic (TUI idle) vs confirmed (ACP permission / strong TUI text). */
-  awaitingConfidence?: "confirmed" | "possible";
-};
-
-export type SessionDotRuntime = {
-  status: SessionDotStatus;
+  /** Weak heuristic (idle TUI) vs confirmed (explicit report / approval UI). */
   awaitingConfidence?: "confirmed" | "possible";
 };
 
@@ -35,29 +33,9 @@ type DotAcpChat = {
   projectPath: string;
 };
 
-const STATUS_RANK: Record<SessionDotStatus, number> = {
-  awaiting_user: 5,
-  error: 4,
-  connecting: 3,
-  running: 2,
-  open: 1
-};
-
-export function pickHigherStatus(a: SessionDotStatus, b: SessionDotStatus): SessionDotStatus {
-  return STATUS_RANK[a] >= STATUS_RANK[b] ? a : b;
-}
-
-export function acpRuntimeToStatus(runtime: {
-  isRunning?: boolean;
-  isConnecting?: boolean;
-  status?: string;
-  pendingRequestCount?: number;
-}): SessionDotStatus {
-  if ((runtime.pendingRequestCount ?? 0) > 0) return "awaiting_user";
-  if (runtime.status === "error") return "error";
-  if (runtime.isConnecting || runtime.status === "connecting") return "connecting";
-  if (runtime.isRunning || runtime.status === "running" || runtime.status === "thinking") return "running";
-  return "open";
+/** ACP panes are keyed `acp:${recordId}` in the status store. */
+export function acpPaneKey(recordId: string): string {
+  return `acp:${recordId}`;
 }
 
 /**
@@ -74,24 +52,26 @@ export function collectActiveSessionDots(
   runtimeByPaneKey: ReadonlyMap<string, SessionDotRuntime> = new Map()
 ): ActiveSessionDot[] {
   const dots: ActiveSessionDot[] = [];
+
   for (const pane of terminals) {
     if (pane.group !== "session") continue;
-    const key = pane.sessionKey;
-    const title = (key ? sessionTitles.get(key)?.trim() : "") || pane.title;
+    const sessionKey = pane.sessionKey;
+    const title = (sessionKey ? sessionTitles.get(sessionKey)?.trim() : "") || pane.title;
     const runtime = runtimeByPaneKey.get(pane.key);
     dots.push({
       paneKey: pane.key,
       projectPath: pane.projectPath,
       title,
-      sessionKey: key || "",
+      sessionKey: sessionKey || "",
       status: runtime?.status ?? "open",
       awaitingConfidence: runtime?.awaitingConfidence
     });
   }
+
   for (const pane of acpChats) {
     const key = `chat:${pane.recordId}`;
     const title = sessionTitles.get(key)?.trim() || pane.title;
-    const runtime = runtimeByPaneKey.get(pane.key) ?? runtimeByPaneKey.get(`acp:${pane.recordId}`);
+    const runtime = runtimeByPaneKey.get(pane.key) ?? runtimeByPaneKey.get(acpPaneKey(pane.recordId));
     dots.push({
       paneKey: pane.key,
       projectPath: pane.projectPath,
@@ -101,5 +81,6 @@ export function collectActiveSessionDots(
       awaitingConfidence: runtime?.awaitingConfidence
     });
   }
+
   return dots;
 }

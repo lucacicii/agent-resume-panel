@@ -7843,6 +7843,61 @@ body.is-pane-resizing-v * {
   white-space: nowrap;
 }
 
+.wb-transcript-outline-item.is-pending .wb-transcript-outline-title {
+  color: var(--color-label-secondary, var(--muted));
+  font-style: italic;
+}
+
+.wb-transcript-pending-body {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-label-secondary, var(--muted));
+  padding: 2px 0;
+}
+
+.wb-transcript-pending-label {
+  font-weight: 500;
+}
+
+/*
+ * Blinking caret for a running session that has no streaming markdown to carry
+ * it (reasoning-only answers, or a transcript that still lags the agent).
+ */
+.wb-transcript-stream-caret-row {
+  padding: 0 0 10px;
+  line-height: 1;
+}
+
+.wb-transcript-stream-caret {
+  display: inline-block;
+  width: 0.5em;
+  height: 1em;
+  border-radius: 1px;
+  vertical-align: text-bottom;
+  background: var(--color-accent, #0a84ff);
+  animation: streamdownCaretBlink 0.8s infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-transcript-stream-caret {
+    animation: none;
+    opacity: 0.75;
+  }
+}
+
+.wb-transcript-body .preview-msg.is-pending {
+  opacity: 0.92;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-transcript-pane .im-jumping-dot {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
 .wb-transcript-body {
   flex: 1 1 auto;
   min-height: 0;
@@ -8015,6 +8070,15 @@ body.is-pane-resizing-v * {
   cursor: pointer;
 }
 
+.wb-transcript-thinking-toggle svg {
+  transition: transform 0.15s ease;
+  flex-shrink: 0;
+}
+
+.wb-transcript-thinking-toggle .is-expanded {
+  transform: rotate(90deg);
+}
+
 .wb-transcript-thinking-toggle:hover,
 .wb-transcript-thinking-toggle:focus-visible {
   color: var(--color-label-primary, var(--text));
@@ -8025,9 +8089,65 @@ body.is-pane-resizing-v * {
   outline-offset: -2px;
 }
 
+/*
+ * iOS-clock style reel: a one-line window over the tail of the reasoning that
+ * rolls upward whenever a new line of thinking arrives.
+ */
+.wb-thinking-ticker {
+  --wb-thinking-line-height: 1.5em;
+  --wb-thinking-shift: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: var(--wb-thinking-line-height);
+  overflow: hidden;
+  font-size: 11px;
+  line-height: var(--wb-thinking-line-height);
+  color: var(--color-label-secondary, var(--muted));
+  mask-image: linear-gradient(to bottom, transparent 0, #000 0.3em, #000 calc(100% - 0.3em), transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 0.3em, #000 calc(100% - 0.3em), transparent 100%);
+}
+
+.wb-thinking-ticker-track {
+  transform: translateY(calc(var(--wb-thinking-shift) * var(--wb-thinking-line-height) * -1));
+  animation: wb-thinking-roll var(--wb-thinking-duration, 120ms) linear both;
+}
+
+.wb-thinking-ticker-line {
+  height: var(--wb-thinking-line-height);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@keyframes wb-thinking-roll {
+  from {
+    transform: translateY(0);
+    opacity: 0.55;
+  }
+  to {
+    transform: translateY(calc(var(--wb-thinking-shift) * var(--wb-thinking-line-height) * -1));
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-thinking-ticker-track {
+    animation: none;
+    opacity: 1;
+  }
+}
+
 .wb-transcript-thinking-body {
   padding: 0 8px 8px;
   color: var(--color-label-secondary, var(--muted));
+}
+
+/* While reasoning is still arriving, the body is a fixed window on the newest
+   lines instead of an ever-growing wall of text. */
+.wb-transcript-thinking-body.is-streaming {
+  max-height: calc(var(--wb-transcript-font-size, 14px) * 1.45 * 9);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .wb-transcript-compose {
@@ -17926,13 +18046,21 @@ html[data-window-mode="browser"] #react-chrome {
   min-height: 280px;
 }
 .im-settings-list {
-  width: 220px;
+  width: 260px;
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
+.im-settings-action-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
 .im-settings-item {
   display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
   justify-content: space-between;
   gap: 8px;
   text-align: left;
@@ -17945,6 +18073,33 @@ html[data-window-mode="browser"] #react-chrome {
 .im-settings-item.active,
 .im-settings-item:hover {
   background: var(--color-control-bg);
+}
+.im-settings-order-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+.im-settings-order-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-label-secondary);
+  cursor: pointer;
+}
+.im-settings-order-btn:hover:not(:disabled),
+.im-settings-order-btn:focus-visible {
+  background: var(--color-control-bg);
+  color: var(--color-label-primary);
+}
+.im-settings-order-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 .im-settings-editor {
   flex: 1 1 auto;
@@ -18586,10 +18741,11 @@ html[data-window-mode="browser"] #react-chrome {
   flex-direction: column;
   align-items: stretch;
 }
-.im-selection-result-actions {
+.selection-action-result-actions {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  flex: none;
 }
 .im-tool-danger {
   display: inline-flex;
@@ -18776,11 +18932,11 @@ html[data-window-mode="browser"] #react-chrome {
   color: var(--color-label-tertiary);
   padding: 12px;
 }
-.im-selection-result {
+.selection-action-result {
   position: fixed;
   z-index: 2001;
-  width: min(320px, calc(100vw - 16px));
-  max-height: min(280px, calc(100vh - 24px));
+  width: min(360px, calc(100vw - 16px));
+  max-height: min(320px, calc(100vh - 24px));
   overflow: auto;
   padding: 8px 10px;
   border: 1px solid var(--color-separator);
@@ -18788,7 +18944,7 @@ html[data-window-mode="browser"] #react-chrome {
   background: var(--color-elevated-bg);
   box-shadow: var(--shadow-popover);
 }
-.im-selection-result header {
+.selection-action-result header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -20154,13 +20310,25 @@ html[data-window-mode="browser"] #react-chrome {
   }
 }
 
-.markdown-body[style*="--streamdown-caret"] > :last-child::after,
-.wb-transcript-md[style*="--streamdown-caret"] > :last-child::after {
-  content: var(--streamdown-caret, " ▋");
+/*
+ * Streaming caret. It lives on the container (never inside the parsed
+ * markdown), so toggling the streaming state is a class change instead of a
+ * full markdown re-render. The last block of the last segment carries it.
+ */
+.markdown-body.is-streaming > *:last-child > *:last-child::after,
+.markdown-body.is-streaming > *:last-child::after {
+  content: "▋";
   display: inline;
   vertical-align: baseline;
+  margin-left: 1px;
   color: var(--color-accent, #0a84ff);
   font-weight: bold;
   animation: streamdownCaretBlink 0.8s infinite;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .markdown-body.is-streaming > *:last-child > *:last-child::after,
+  .markdown-body.is-streaming > *:last-child::after {
+    animation: none;
+  }
+}

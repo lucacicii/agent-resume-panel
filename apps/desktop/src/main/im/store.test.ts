@@ -116,6 +116,27 @@ describe("ImStore", () => {
     expect((await store.listSelectionActions()).map((item) => item.actionId)).toEqual(["quote", "translate", "explain"]);
   });
 
+  it("atomically reorders selection actions after validating the complete id list", async () => {
+    const store = await createStore();
+    const custom = await store.createSelectionAction({
+      name: "Summarize",
+      kind: "independent",
+      prompt: "Summarize:\n{selection}"
+    });
+    const before = await store.listSelectionActions();
+    const ids = before.map((item) => item.actionId);
+    const builtinIds = ids.filter((id) => id !== custom.actionId);
+
+    await expect(store.reorderSelectionActions([ids[0]!, ids[0]!, ids[1]!])).rejects.toThrow(/unique/i);
+    await expect(store.reorderSelectionActions(ids.slice(0, -1))).rejects.toThrow(/exactly once/i);
+    await expect(store.reorderSelectionActions([...ids, "missing-action"])).rejects.toThrow(/exactly once/i);
+    expect((await store.listSelectionActions()).map((item) => item.actionId)).toEqual(ids);
+
+    const reordered = await store.reorderSelectionActions([custom.actionId, ...builtinIds]);
+    expect(reordered.map((item) => item.actionId)).toEqual([custom.actionId, ...builtinIds]);
+    expect(reordered.map((item) => item.sortOrder)).toEqual([0, 1, 2, 3]);
+  });
+
   it("treats write and execute roles as exclusive", async () => {
     const store = await createStore();
     const project = await store.createProject("Locks");

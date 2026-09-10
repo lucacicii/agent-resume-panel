@@ -8,11 +8,15 @@ import { useI18n } from "../../i18n";
 import {
   buildSessionTranscriptModel,
   filterSessionTranscript,
+  mergePendingTranscript,
   sameTranscriptPreview,
+  transcriptStreamCaret,
+  type SessionTranscriptModel,
   type TranscriptMessage,
   type TranscriptPreviewMessage
 } from "./sessionTranscriptModel";
 import { findTranscriptUserMessage } from "./composerTipMatch";
+import { ThinkingTicker } from "./ThinkingTicker";
 
 const TranscriptMessageRow = React.memo(function TranscriptMessageRow({
   message,
@@ -25,6 +29,7 @@ const TranscriptMessageRow = React.memo(function TranscriptMessageRow({
   thinkingLabel,
   renderMarkdownView,
   isStreaming = false,
+  isPendingReply = false,
   isSearchTarget = false,
   onImageClick,
   displayText,
@@ -43,10 +48,11 @@ const TranscriptMessageRow = React.memo(function TranscriptMessageRow({
   roleLabelText: string;
   stamp: string;
   thinkingExpanded: boolean;
-  onToggleThinking: () => void;
+  onToggleThinking: (messageId: string) => void;
   thinkingLabel: string;
   renderMarkdownView: boolean;
   isStreaming?: boolean;
+  isPendingReply?: boolean;
   isSearchTarget?: boolean;
   onImageClick?: (url: string) => void;
   displayText: string;
@@ -56,13 +62,31 @@ const TranscriptMessageRow = React.memo(function TranscriptMessageRow({
   restoreLabel: string;
   translatingLabel: string;
   copyLabel: string;
-  onTranslate: () => void;
+  onTranslate: (messageId: string, text: string) => void;
   onCopy: (text: string) => void;
 }): React.JSX.Element {
+  const messageId = message.id;
+  const thinkingScrollRef = useRef<HTMLDivElement>(null);
+  const thinkingFollowRef = useRef(true);
+
+  // While reasoning streams, keep the newest lines in view unless the user
+  // scrolled back to read earlier ones.
+  useEffect(() => {
+    const node = thinkingScrollRef.current;
+    if (!node || !isStreaming || !thinkingExpanded || !thinkingFollowRef.current) return;
+    node.scrollTop = node.scrollHeight;
+  }, [isStreaming, message.thinking, thinkingExpanded]);
+
+  const handleThinkingScroll = useCallback(() => {
+    const node = thinkingScrollRef.current;
+    if (!node) return;
+    thinkingFollowRef.current = node.scrollHeight - node.scrollTop - node.clientHeight <= 24;
+  }, []);
+
   return (
     <article
       data-transcript-id={message.id}
-      className={`preview-msg ${message.role}${isSelected ? " is-selected" : ""}${isSearchTarget ? " is-search-target" : ""}`}
+      className={`preview-msg ${message.role}${isSelected ? " is-selected" : ""}${isSearchTarget ? " is-search-target" : ""}${message.pending ? " is-pending" : ""}`}
     >
       <div className="role">
         {message.role === "assistant"
@@ -77,25 +101,41 @@ const TranscriptMessageRow = React.memo(function TranscriptMessageRow({
             type="button"
             className="wb-transcript-thinking-toggle"
             aria-expanded={thinkingExpanded}
-            onClick={onToggleThinking}
+            onClick={() => onToggleThinking(messageId)}
           >
             <ThemeIcon name="chevron-right" className={thinkingExpanded ? "is-expanded" : ""} size={12} />
             <span>{thinkingLabel}</span>
+            {thinkingExpanded ? null : <ThinkingTicker text={message.thinking} />}
           </button>
           {thinkingExpanded ? (
-            renderMarkdownView ? (
-              <StreamdownRenderer
-                content={message.thinking}
-                className="wb-transcript-thinking-body wb-transcript-md markdown-body"
-                onImageClick={onImageClick}
-              />
-            ) : (
-              <div className="wb-transcript-thinking-body wb-transcript-plain">{message.thinking}</div>
-            )
+            <div
+              ref={thinkingScrollRef}
+              className={`wb-transcript-thinking-body${isStreaming ? " is-streaming" : ""}`}
+              onScroll={handleThinkingScroll}
+            >
+              {renderMarkdownView ? (
+                <StreamdownRenderer
+                  content={message.thinking}
+                  className="wb-transcript-md markdown-body"
+                  onImageClick={onImageClick}
+                />
+              ) : (
+                <div className="wb-transcript-plain">{message.thinking}</div>
+              )}
+            </div>
           ) : null}
         </div>
       ) : null}
-      {message.text ? (
+      {isPendingReply ? (
+        <div className="wb-transcript-pending-body" aria-live="polite">
+          <span className="wb-transcript-pending-label">{displayText}</span>
+          <span className="im-jumping-dots" aria-hidden="true">
+            <span className="im-jumping-dot" />
+            <span className="im-jumping-dot" />
+            <span className="im-jumping-dot" />
+          </span>
+        </div>
+      ) : message.text ? (
         renderMarkdownView ? (
           <StreamdownRenderer
             content={displayText}
@@ -113,7 +153,7 @@ const TranscriptMessageRow = React.memo(function TranscriptMessageRow({
             type="button"
             className={`wb-transcript-action-btn${translated ? " is-restore" : ""}`}
             disabled={isTranslating}
-            onClick={onTranslate}
+            onClick={() => onTranslate(messageId, message.text)}
             title={translated ? restoreLabel : translateLabel}
             aria-label={translated ? restoreLabel : translateLabel}
           >
@@ -139,6 +179,19 @@ const TranscriptMessageRow = React.memo(function TranscriptMessageRow({
         </div>
       ) : null}
     </article>
+  );
+});
+
+/**
+ * Standalone blinking caret for turns that have no streaming markdown to carry
+ * it — reasoning-only answers, or a transcript that still lags behind the
+ * agent. Decorative: the status is announced elsewhere.
+ */
+const TranscriptStreamCaret = React.memo(function TranscriptStreamCaret(): React.JSX.Element {
+  return (
+    <div className="wb-transcript-stream-caret-row" aria-hidden="true">
+      <span className="wb-transcript-stream-caret" />
+    </div>
   );
 });
 
@@ -188,7 +241,7 @@ function findTextRanges(root: HTMLElement, needle: string): Range[] {
   return ranges;
 }
 
-export function SessionTranscriptPane({
+export const SessionTranscriptPane = React.memo(function SessionTranscriptPane({
   provider,
   sessionId,
   iconProvider,
@@ -196,16 +249,24 @@ export function SessionTranscriptPane({
   isRunning = false,
   fontSize = 14,
   focusUserMessage,
-  isPending = false
+  pendingUserMessage,
+  isPending = false,
+  onRefresh
 }: {
   provider: string;
   sessionId: string;
   iconProvider?: string;
   active: boolean;
+  /**
+   * Session status for this pane: the agent is running right now. Drives the
+   * live preview poll and the streaming caret — never the markdown itself.
+   */
   isRunning?: boolean;
   fontSize?: number;
   focusUserMessage?: { text: string; sentAtMs?: number; nonce: number } | null;
+  pendingUserMessage?: { text: string; sentAtMs?: number } | null;
   isPending?: boolean;
+  onRefresh?: () => void | Promise<void>;
 }): React.JSX.Element {
   const roleIconProvider = iconProvider || provider;
   const { locale, t } = useI18n();
@@ -263,6 +324,8 @@ export function SessionTranscriptPane({
     setQuery("");
     setSelectedId(null);
     previewRef.current = null;
+    diskModelRef.current = null;
+    mergedModelRef.current = null;
     setPreview(null);
     setError("");
     setExpandedThinking({});
@@ -294,19 +357,44 @@ export function SessionTranscriptPane({
   }, [provider, sessionId]);
 
   useEffect(() => {
-    if (!active || !provider || !sessionId || !isRunning) return;
+    const waitingForDisk = Boolean(pendingUserMessage?.text);
+    if (!active || !provider || !sessionId || !(isRunning || waitingForDisk)) return;
     const timer = window.setInterval(() => {
       void syncLivePreview();
     }, LIVE_REFRESH_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [active, isRunning, provider, sessionId, syncLivePreview]);
+  }, [active, isRunning, pendingUserMessage?.text, provider, sessionId, syncLivePreview]);
 
-  const model = useMemo(
-    () => buildSessionTranscriptModel(preview?.messages || []),
-    [preview?.messages]
-  );
+  const diskModelRef = useRef<SessionTranscriptModel | null>(null);
+  const diskModel = useMemo(() => {
+    // Live polls rebuild the preview object; reusing unchanged rows keeps the
+    // memoized message rows (and their markdown) from re-rendering.
+    const next = buildSessionTranscriptModel(preview?.messages || [], diskModelRef.current);
+    diskModelRef.current = next;
+    return next;
+  }, [preview?.messages]);
+  const pendingTitle = t("desktop.workbench.transcriptWorking");
+  const mergedModelRef = useRef<SessionTranscriptModel | null>(null);
+  const model = useMemo(() => {
+    const next = mergePendingTranscript(diskModel, {
+      pendingUser: pendingUserMessage,
+      isRunning,
+      pendingTitle
+    }, mergedModelRef.current);
+    mergedModelRef.current = next;
+    return next;
+  }, [diskModel, isRunning, pendingTitle, pendingUserMessage]);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const normalizedQuery = query.trim().toLowerCase();
+  // One caret, two possible homes: inline at the end of the streaming message
+  // when it has text, otherwise a caret row at the tail of the transcript.
+  const streamCaret = transcriptStreamCaret(model.messages, isRunning);
+  const toggleThinking = useCallback((messageId: string) => {
+    setExpandedThinking((current) => ({
+      ...current,
+      [messageId]: !current[messageId]
+    }));
+  }, []);
 
   const matchedMessageIds = useMemo(() => {
     if (!normalizedQuery) return [];
@@ -521,9 +609,18 @@ export function SessionTranscriptPane({
     area.remove();
   }, []);
 
+  const handleCopy = useCallback((text: string) => {
+    void copyMessageText(text);
+  }, [copyMessageText]);
+
+  const translationsRef = useRef(translations);
+  useEffect(() => {
+    translationsRef.current = translations;
+  }, [translations]);
+
   const toggleTranslate = useCallback(async (messageId: string, text: string) => {
     if (!text.trim()) return;
-    if (translations[messageId]) {
+    if (translationsRef.current[messageId]) {
       setTranslations((current) => {
         const next = { ...current };
         delete next[messageId];
@@ -548,9 +645,9 @@ export function SessionTranscriptPane({
         return next;
       });
     }
-  }, [setError, translations]);
+  }, [setError]);
 
-  if (isPending || !provider || !sessionId) {
+  if ((isPending || !provider || !sessionId) && !model.messages.length) {
     return (
       <div className="wb-side-pane wb-transcript-pane">
         <div className="wb-side-pane-head">
@@ -573,7 +670,10 @@ export function SessionTranscriptPane({
           type="button"
           className="wb-git-action-btn"
           disabled={loading || !active}
-          onClick={() => void loadPreview()}
+          onClick={() => {
+            if (onRefresh) void onRefresh();
+            else void loadPreview();
+          }}
           aria-label={t("desktop.common.refresh")}
           title={t("desktop.common.refresh")}
         >
@@ -640,7 +740,7 @@ export function SessionTranscriptPane({
       {preview?.warning ? <p className="status warning">{preview.warning}</p> : null}
       {preview?.truncated ? <p className="muted wb-transcript-status">{t("desktop.sessions.truncated")}</p> : null}
 
-      {!loading && preview && !model.messages.length ? (
+      {!loading && !model.messages.length && (preview || pendingUserMessage?.text) ? (
         <p className="muted wb-transcript-status">{t("desktop.sessions.noMessages")}</p>
       ) : null}
 
@@ -654,7 +754,8 @@ export function SessionTranscriptPane({
           >
             {model.messages.length ? model.messages.map((message, index) => {
               const isLast = index === model.messages.length - 1;
-              const isStreaming = isRunning && isLast && message.role === "assistant";
+              const isPendingReply = Boolean(message.pending && message.role === "assistant");
+              const isStreaming = isRunning && isLast && message.role === "assistant" && !isPendingReply;
               const isSearchTarget = Boolean(
                 normalizedQuery &&
                 matchedMessageIds.length > 0 &&
@@ -671,28 +772,27 @@ export function SessionTranscriptPane({
                   roleLabelText={roleLabel(message)}
                   stamp={formatTimestamp(message.timestamp)}
                   thinkingExpanded={expandedThinking[message.id] === true}
-                  onToggleThinking={() => setExpandedThinking((current) => ({
-                    ...current,
-                    [message.id]: !current[message.id]
-                  }))}
+                  onToggleThinking={toggleThinking}
                   thinkingLabel={t("desktop.workbench.transcriptThinking")}
                   renderMarkdownView={renderMarkdownView}
                   isStreaming={isStreaming}
+                  isPendingReply={isPendingReply}
                   onImageClick={setImagePreview}
-                  displayText={translatedText || message.text}
+                  displayText={isPendingReply ? pendingTitle : (translatedText || message.text)}
                   translated={Boolean(translatedText)}
                   isTranslating={translatingIds.has(message.id)}
                   translateLabel={t("desktop.workbench.transcriptTranslate")}
                   restoreLabel={t("desktop.workbench.transcriptRestore")}
                   translatingLabel={t("desktop.workbench.transcriptTranslating")}
                   copyLabel={t("desktop.common.copy")}
-                  onTranslate={() => void toggleTranslate(message.id, message.text)}
-                  onCopy={(text) => void copyMessageText(text)}
+                  onTranslate={toggleTranslate}
+                  onCopy={handleCopy}
                 />
               );
             }) : (
               <p className="muted wb-transcript-status">{t("desktop.workbench.transcriptNoMatches")}</p>
             )}
+            {streamCaret === "tail" ? <TranscriptStreamCaret /> : null}
           </div>
 
           <aside className={`wb-transcript-outline${outlineOpen ? " is-open" : " is-collapsed"}`}>
@@ -712,7 +812,7 @@ export function SessionTranscriptPane({
                     <li key={item.id}>
                       <button
                         type="button"
-                        className={`wb-transcript-outline-item${selectedId === item.messageId ? " is-selected" : ""}`}
+                        className={`wb-transcript-outline-item${selectedId === item.messageId ? " is-selected" : ""}${item.pending ? " is-pending" : ""}`}
                         onClick={() => scrollToMessage(item.messageId)}
                       >
                         <span className="wb-transcript-outline-index">#{item.index}</span>
@@ -743,4 +843,4 @@ export function SessionTranscriptPane({
       {imagePreview ? <div className="notes-image-preview" role="dialog" aria-modal="true" onClick={() => setImagePreview("")}><img src={imagePreview} alt="" /><button type="button" className="notes-image-preview-close" aria-label={t("desktop.common.close")} onClick={() => setImagePreview("")}><ThemeIcon name="close" size={16} /></button></div> : null}
     </div>
   );
-}
+});

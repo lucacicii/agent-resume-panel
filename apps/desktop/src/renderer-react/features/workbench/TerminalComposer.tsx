@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { ThemeIcon } from "../../components/ThemeIcon";
 import { desktopApi } from "../../bridge";
 import { useI18n } from "../../i18n";
-import type { SessionDotStatus } from "./activeSessionDots";
+import type { SessionDotStatus } from "./sessionStatus";
 import {
   hasWorkbenchPathDnd,
   shellQuotePath,
@@ -139,7 +139,9 @@ export function computeSuggestions(value: string, history: string[]): string[] {
 
 /**
  * Floating per-session input. Enter / the send button paste into the TUI
- * without submitting; drafts stay bound to the session pane.
+ * without submitting when the console is visible. When the console is
+ * collapsed, the parent submits the draft with a carriage return instead.
+ * Drafts stay bound to the session pane.
  */
 export function TerminalComposer(props: {
   pane: TerminalComposerPane;

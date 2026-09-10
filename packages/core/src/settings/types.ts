@@ -466,6 +466,7 @@ export interface PanelSettings {
     gtd?: Pick<LlmUseOptions, "disableThinking">;
     imRouting?: Pick<LlmUseOptions, "disableThinking">;
     translate?: Pick<LlmUseOptions, "disableThinking">;
+    sessionStatus?: Pick<LlmUseOptions, "disableThinking">;
   };
   report?: ReportSettings;
   /** Auto session_summary generation (Desktop main process). */
