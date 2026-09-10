@@ -50,6 +50,12 @@ export function probeSessionStatus(input: StatusProbeInput): StatusProbeResult {
 
   const silentFor = Math.max(0, input.now - input.lastOutputAt);
 
+  // Tier 1 — a command is executing beneath the agent. Deterministic: the
+  // agent cannot be waiting for the user while it is running a tool.
+  if (input.toolRunning) {
+    return { status: "running", textHit: false, source: "process" };
+  }
+
   // Live output outranks any residual dialog text still on screen.
   if (silentFor < STREAMING_WINDOW_MS) {
     return { status: "running", textHit: false, source: "activity" };

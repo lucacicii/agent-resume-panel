@@ -47,7 +47,8 @@ export function transcriptOutlineTitle(text: string, max = TRANSCRIPT_OUTLINE_TI
 }
 
 export function buildSessionTranscriptModel(
-  messages: readonly TranscriptPreviewMessage[]
+  messages: readonly TranscriptPreviewMessage[],
+  previous?: SessionTranscriptModel | null
 ): SessionTranscriptModel {
   const nextMessages: TranscriptMessage[] = [];
   const outline: TranscriptOutlineItem[] = [];
@@ -57,20 +58,34 @@ export function buildSessionTranscriptModel(
     const thinking = message.thinking?.trim() || "";
     if (!isTranscriptRole(message.role) || (!text && !thinking)) continue;
     const id = `transcript-msg-${index}`;
-    nextMessages.push({
-      id,
-      role: message.role,
-      text,
-      thinking: thinking || undefined,
-      timestamp: message.timestamp
-    });
+    // Live previews replace the whole message list on every tick. Reusing the
+    // unchanged rows keeps memoized message rows (and their markdown) intact.
+    const cached = previous?.messages[index];
+    const unchanged = cached
+      && cached.id === id
+      && cached.role === message.role
+      && cached.text === text
+      && (cached.thinking || "") === thinking
+      && (cached.timestamp || "") === (message.timestamp || "");
+    nextMessages.push(unchanged
+      ? cached
+      : {
+          id,
+          role: message.role,
+          text,
+          thinking: thinking || undefined,
+          timestamp: message.timestamp
+        });
     if (message.role === "user" && text) {
-      outline.push({
-        id: `transcript-turn-${outline.length + 1}`,
-        messageId: id,
-        index: outline.length + 1,
-        title: transcriptOutlineTitle(text)
-      });
+      const outlineId = `transcript-turn-${outline.length + 1}`;
+      const cachedOutline = previous?.outline[outline.length];
+      const title = transcriptOutlineTitle(text);
+      outline.push(cachedOutline
+        && cachedOutline.id === outlineId
+        && cachedOutline.messageId === id
+        && cachedOutline.title === title
+        ? cachedOutline
+        : { id: outlineId, messageId: id, index: outline.length + 1, title });
     }
   }
 

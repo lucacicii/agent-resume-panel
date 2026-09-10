@@ -10,10 +10,12 @@ import {
   filterSessionTranscript,
   mergePendingTranscript,
   sameTranscriptPreview,
+  type SessionTranscriptModel,
   type TranscriptMessage,
   type TranscriptPreviewMessage
 } from "./sessionTranscriptModel";
 import { findTranscriptUserMessage } from "./composerTipMatch";
+import { ThinkingTicker } from "./ThinkingTicker";
 
 const TranscriptMessageRow = React.memo(function TranscriptMessageRow({
   message,
@@ -45,7 +47,7 @@ const TranscriptMessageRow = React.memo(function TranscriptMessageRow({
   roleLabelText: string;
   stamp: string;
   thinkingExpanded: boolean;
-  onToggleThinking: () => void;
+  onToggleThinking: (messageId: string) => void;
   thinkingLabel: string;
   renderMarkdownView: boolean;
   isStreaming?: boolean;
@@ -59,9 +61,27 @@ const TranscriptMessageRow = React.memo(function TranscriptMessageRow({
   restoreLabel: string;
   translatingLabel: string;
   copyLabel: string;
-  onTranslate: () => void;
+  onTranslate: (messageId: string, text: string) => void;
   onCopy: (text: string) => void;
 }): React.JSX.Element {
+  const messageId = message.id;
+  const thinkingScrollRef = useRef<HTMLDivElement>(null);
+  const thinkingFollowRef = useRef(true);
+
+  // While reasoning streams, keep the newest lines in view unless the user
+  // scrolled back to read earlier ones.
+  useEffect(() => {
+    const node = thinkingScrollRef.current;
+    if (!node || !isStreaming || !thinkingExpanded || !thinkingFollowRef.current) return;
+    node.scrollTop = node.scrollHeight;
+  }, [isStreaming, message.thinking, thinkingExpanded]);
+
+  const handleThinkingScroll = useCallback(() => {
+    const node = thinkingScrollRef.current;
+    if (!node) return;
+    thinkingFollowRef.current = node.scrollHeight - node.scrollTop - node.clientHeight <= 24;
+  }, []);
+
   return (
     <article
       data-transcript-id={message.id}
@@ -80,21 +100,28 @@ const TranscriptMessageRow = React.memo(function TranscriptMessageRow({
             type="button"
             className="wb-transcript-thinking-toggle"
             aria-expanded={thinkingExpanded}
-            onClick={onToggleThinking}
+            onClick={() => onToggleThinking(messageId)}
           >
             <ThemeIcon name="chevron-right" className={thinkingExpanded ? "is-expanded" : ""} size={12} />
             <span>{thinkingLabel}</span>
+            {thinkingExpanded ? null : <ThinkingTicker text={message.thinking} />}
           </button>
           {thinkingExpanded ? (
-            renderMarkdownView ? (
-              <StreamdownRenderer
-                content={message.thinking}
-                className="wb-transcript-thinking-body wb-transcript-md markdown-body"
-                onImageClick={onImageClick}
-              />
-            ) : (
-              <div className="wb-transcript-thinking-body wb-transcript-plain">{message.thinking}</div>
-            )
+            <div
+              ref={thinkingScrollRef}
+              className={`wb-transcript-thinking-body${isStreaming ? " is-streaming" : ""}`}
+              onScroll={handleThinkingScroll}
+            >
+              {renderMarkdownView ? (
+                <StreamdownRenderer
+                  content={message.thinking}
+                  className="wb-transcript-md markdown-body"
+                  onImageClick={onImageClick}
+                />
+              ) : (
+                <div className="wb-transcript-plain">{message.thinking}</div>
+              )}
+            </div>
           ) : null}
         </div>
       ) : null}
@@ -125,7 +152,7 @@ const TranscriptMessageRow = React.memo(function TranscriptMessageRow({
             type="button"
             className={`wb-transcript-action-btn${translated ? " is-restore" : ""}`}
             disabled={isTranslating}
-            onClick={onTranslate}
+            onClick={() => onTranslate(messageId, message.text)}
             title={translated ? restoreLabel : translateLabel}
             aria-label={translated ? restoreLabel : translateLabel}
           >
@@ -277,6 +304,7 @@ export function SessionTranscriptPane({
     setQuery("");
     setSelectedId(null);
     previewRef.current = null;
+    diskModelRef.current = null;
     setPreview(null);
     setError("");
     setExpandedThinking({});
@@ -316,10 +344,14 @@ export function SessionTranscriptPane({
     return () => window.clearInterval(timer);
   }, [active, isRunning, pendingUserMessage?.text, provider, sessionId, syncLivePreview]);
 
-  const diskModel = useMemo(
-    () => buildSessionTranscriptModel(preview?.messages || []),
-    [preview?.messages]
-  );
+  const diskModelRef = useRef<SessionTranscriptModel | null>(null);
+  const diskModel = useMemo(() => {
+    // Live polls rebuild the preview object; reusing unchanged rows keeps the
+    // memoized message rows (and their markdown) from re-rendering.
+    const next = buildSessionTranscriptModel(preview?.messages || [], diskModelRef.current);
+    diskModelRef.current = next;
+    return next;
+  }, [preview?.messages]);
   const pendingTitle = t("desktop.workbench.transcriptWorking");
   const model = useMemo(
     () => mergePendingTranscript(diskModel, {
@@ -331,6 +363,12 @@ export function SessionTranscriptPane({
   );
   const searchInputRef = useRef<HTMLInputElement>(null);
   const normalizedQuery = query.trim().toLowerCase();
+  const toggleThinking = useCallback((messageId: string) => {
+    setExpandedThinking((current) => ({
+      ...current,
+      [messageId]: !current[messageId]
+    }));
+  }, []);
 
   const matchedMessageIds = useMemo(() => {
     if (!normalizedQuery) return [];
@@ -545,9 +583,18 @@ export function SessionTranscriptPane({
     area.remove();
   }, []);
 
+  const handleCopy = useCallback((text: string) => {
+    void copyMessageText(text);
+  }, [copyMessageText]);
+
+  const translationsRef = useRef(translations);
+  useEffect(() => {
+    translationsRef.current = translations;
+  }, [translations]);
+
   const toggleTranslate = useCallback(async (messageId: string, text: string) => {
     if (!text.trim()) return;
-    if (translations[messageId]) {
+    if (translationsRef.current[messageId]) {
       setTranslations((current) => {
         const next = { ...current };
         delete next[messageId];
@@ -572,7 +619,7 @@ export function SessionTranscriptPane({
         return next;
       });
     }
-  }, [setError, translations]);
+  }, [setError]);
 
   if (isPending || !provider || !sessionId) {
     return (
@@ -696,10 +743,7 @@ export function SessionTranscriptPane({
                   roleLabelText={roleLabel(message)}
                   stamp={formatTimestamp(message.timestamp)}
                   thinkingExpanded={expandedThinking[message.id] === true}
-                  onToggleThinking={() => setExpandedThinking((current) => ({
-                    ...current,
-                    [message.id]: !current[message.id]
-                  }))}
+                  onToggleThinking={toggleThinking}
                   thinkingLabel={t("desktop.workbench.transcriptThinking")}
                   renderMarkdownView={renderMarkdownView}
                   isStreaming={isStreaming}
@@ -712,8 +756,8 @@ export function SessionTranscriptPane({
                   restoreLabel={t("desktop.workbench.transcriptRestore")}
                   translatingLabel={t("desktop.workbench.transcriptTranslating")}
                   copyLabel={t("desktop.common.copy")}
-                  onTranslate={() => void toggleTranslate(message.id, message.text)}
-                  onCopy={(text) => void copyMessageText(text)}
+                  onTranslate={toggleTranslate}
+                  onCopy={handleCopy}
                 />
               );
             }) : (

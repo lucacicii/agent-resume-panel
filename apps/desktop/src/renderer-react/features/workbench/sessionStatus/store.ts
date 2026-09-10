@@ -56,6 +56,41 @@ export type SessionStatusSnapshot = {
   sourceByPaneKey: Record<string, SessionStatusSource>;
 };
 
+/**
+ * Tier 1 port: is a command executing beneath each PTY?
+ *
+ * Batched so one OS process-table read serves every open pane. Omit the port
+ * entirely to run without this tier.
+ */
+export type ProcessProbePort = (
+  ptyIds: readonly number[]
+) => Promise<Record<number, { active: boolean; processes: string[] }>>;
+
+/** One pane submitted for adjudication. */
+export type JudgePortRequest = {
+  paneKey: string;
+  screenText: string;
+  silentMs: number;
+  toolRunning: boolean;
+};
+
+/** One verdict returned by the adjudicator. */
+export type JudgePortVerdict = {
+  paneKey: string;
+  awaiting: boolean;
+  reason?: string;
+};
+
+/**
+ * Tier 1.5 port: LLM adjudication for screens the cheaper tiers cannot settle.
+ *
+ * Batched so a group of ambiguous panes costs one model call. Omit the port
+ * to run without this tier.
+ */
+export type StatusJudgePort = (
+  requests: readonly JudgePortRequest[]
+) => Promise<readonly JudgePortVerdict[]>;
+
 const EMPTY_SNAPSHOT: SessionStatusSnapshot = { runtimeByPaneKey: {}, sourceByPaneKey: {} };
 
 /** Silence before the screen is trusted again (avoids sampling mid-stream). */
@@ -67,6 +102,17 @@ const BACKGROUND_INTERVAL_MS = 4_000;
 const SCREEN_HEADROOM_ROWS = 5;
 /** Rolling PTY tail retained per pane while its terminal is unmounted. */
 const TAIL_LIMIT_CHARS = 8_192;
+/** Minimum gap between process-table reads; they are cheap but not free. */
+const PROCESS_PROBE_INTERVAL_MS = 1_000;
+/**
+ * A pane must be quiet this long, with no tool running and no screen verdict,
+ * before we spend money asking the model. Real dialogs settle well inside it.
+ */
+const JUDGE_QUIET_MS = 1_200;
+/** Shortest gap between two adjudication batches. */
+const JUDGE_MIN_INTERVAL_MS = 2_000;
+/** Screens shorter than this carry no usable evidence. */
+const JUDGE_MIN_SCREEN_CHARS = 12;
 
 type AcpFlags = { isRunning: boolean; isConnecting: boolean; status: string };
 
@@ -87,6 +133,18 @@ export class SessionStatusStore {
   private panes: SessionStatusPane[] = [];
   private readonly readers = new Map<number, StatusScreenReader>();
   private readonly cursorHidden = new Map<number, boolean>();
+
+  /** Tier 1 evidence, keyed by pty id. Refreshed asynchronously. */
+  private readonly toolRunning = new Map<number, boolean>();
+  private processProbe: ProcessProbePort | null = null;
+  private processProbeInFlight = false;
+  private lastProcessProbeAt = 0;
+
+  /** Tier 1.5 adjudicator and its race-safe cache, keyed by pane. */
+  private statusJudge: StatusJudgePort | null = null;
+  private judgeInFlight = false;
+  private lastJudgeAt = 0;
+  private readonly judgeCache = new Map<string, { hash: string; awaiting: boolean }>();
 
   private readonly lastOutputAt = new Map<string, number>();
   private readonly tail = new Map<string, string>();
@@ -119,6 +177,10 @@ export class SessionStatusStore {
     this.listeners.clear();
     this.readers.clear();
     this.cursorHidden.clear();
+    this.toolRunning.clear();
+    this.processProbe = null;
+    this.statusJudge = null;
+    this.judgeCache.clear();
     this.lastOutputAt.clear();
     this.tail.clear();
     this.hysteresis.clear();
@@ -166,6 +228,7 @@ export class SessionStatusStore {
       this.tail.delete(key);
       this.hysteresis.delete(key);
       this.reported.delete(key);
+      this.judgeCache.delete(key);
     }
 
     const openAcp = new Set(next.map((pane) => pane.acpRecordId).filter((id): id is string => Boolean(id)));
@@ -183,11 +246,29 @@ export class SessionStatusStore {
     this.readers.set(ptyId, reader);
   }
 
+  /**
+   * Install the Tier 1 process probe. Optional: without it the store behaves
+   * exactly as it did before this tier existed.
+   */
+  setProcessProbe(port: ProcessProbePort | null): void {
+    this.processProbe = port;
+    if (!port) this.toolRunning.clear();
+  }
+
+  /**
+   * Install the Tier 1.5 judge. Optional: without it the store behaves
+   * exactly as it did before this tier existed.
+   */
+  setStatusJudge(port: StatusJudgePort | null): void {
+    this.statusJudge = port;
+    if (!port) this.judgeCache.clear();
+  }
+
   detachTerminal(ptyId: number): void {
     this.readers.delete(ptyId);
     this.cursorHidden.delete(ptyId);
+    this.toolRunning.delete(ptyId);
   }
-
   /** Raw PTY output. Feeds Tier 0 parsing and the activity clock. */
   ingestTerminalData(ptyId: number, chunk: string): void {
     if (!chunk) return;
@@ -336,12 +417,55 @@ export class SessionStatusStore {
   }
 
   /**
+   * Refresh Tier 1 evidence in the background.
+   *
+   * Never awaited by `sample()`: the store stays synchronous, and the result
+   * arrives as evidence for the next tick. Throttled and single-flight so a
+   * burst of output cannot spawn a storm of `ps` calls.
+   */
+  private refreshProcessActivity(ptyIds: readonly number[]): void {
+    const port = this.processProbe;
+    if (!port || this.disposed || this.processProbeInFlight || !ptyIds.length) return;
+    const now = Date.now();
+    if (now - this.lastProcessProbeAt < PROCESS_PROBE_INTERVAL_MS) return;
+
+    this.processProbeInFlight = true;
+    this.lastProcessProbeAt = now;
+    void port(ptyIds)
+      .then((result) => {
+        if (this.disposed) return;
+        let changed = false;
+        for (const ptyId of ptyIds) {
+          const active = result?.[ptyId]?.active === true;
+          if (this.toolRunning.get(ptyId) !== active) {
+            this.toolRunning.set(ptyId, active);
+            changed = true;
+          }
+        }
+        if (changed) this.sample();
+      })
+      .catch(() => {
+        // Probe failure must never disturb status: keep the previous evidence.
+      })
+      .finally(() => {
+        this.processProbeInFlight = false;
+      });
+  }
+
+  /**
    * Read every open pane once and republish if anything settled differently.
    * Runs on a timer as well as after output, so idle decay still advances.
    */
   private sample(): void {
     if (this.disposed) return;
     const now = Date.now();
+
+    // Kick off the (async) Tier 1 refresh; its result feeds a later tick.
+    const ptyIds = this.panes
+      .map((pane) => pane.ptyId)
+      .filter((id): id is number => typeof id === "number");
+    this.refreshProcessActivity(ptyIds);
+
     const runtime: Record<string, SessionDotRuntime> = {};
     const source: Record<string, SessionStatusSource> = {};
     let changed = false;
@@ -365,10 +489,98 @@ export class SessionStatusStore {
     }
 
     const countChanged = Object.keys(this.snapshot.runtimeByPaneKey).length !== Object.keys(runtime).length;
+
+    // Ask the adjudicator for whatever this tick could not settle.
+    const ambiguous = this.collectAmbiguous(now);
+    if (ambiguous.length) changed = true;
+    this.refreshJudge(ambiguous);
+
     if (!changed && !countChanged) return;
 
     this.snapshot = { runtimeByPaneKey: runtime, sourceByPaneKey: source };
     this.emit();
+  }
+
+  /**
+   * Panes that reached the fail-safe idle branch and could therefore be a
+   * dialog nobody recognised. These are the only ones worth paying to judge.
+   */
+  private collectAmbiguous(now: number): JudgePortRequest[] {
+    if (!this.statusJudge) return [];
+    const requests: JudgePortRequest[] = [];
+    for (const pane of this.panes) {
+      if (pane.acpRecordId || pane.ptyId == null) continue;
+      // A known answer or a live command means no ambiguity to resolve.
+      if (this.reported.has(pane.key)) continue;
+      if (this.toolRunning.get(pane.ptyId)) continue;
+
+      const silentMs = now - (this.lastOutputAt.get(pane.key) ?? now);
+      if (silentMs < JUDGE_QUIET_MS) continue;
+
+      const screenText = this.currentScreenText(pane);
+      if (screenText.trim().length < JUDGE_MIN_SCREEN_CHARS) continue;
+
+      const hash = hashScreen(screenText);
+      // Same screen we already judged: reuse the verdict instead of re-asking.
+      if (this.judgeCache.get(pane.key)?.hash === hash) continue;
+
+      requests.push({
+        paneKey: pane.key,
+        screenText,
+        silentMs,
+        toolRunning: false
+      });
+    }
+    return requests;
+  }
+
+  /**
+   * Run one adjudication batch in the background.
+   *
+   * Never awaited by `sample()`: the store stays synchronous and the verdict
+   * lands as evidence on a later tick. Single-flight and rate-limited so a
+   * burst of silence cannot multiply spend.
+   */
+  private refreshJudge(requests: readonly JudgePortRequest[]): void {
+    const port = this.statusJudge;
+    if (!port || this.disposed || this.judgeInFlight || !requests.length) return;
+    const now = Date.now();
+    if (now - this.lastJudgeAt < JUDGE_MIN_INTERVAL_MS) return;
+
+    this.judgeInFlight = true;
+    this.lastJudgeAt = now;
+    // Hash at dispatch time; a verdict is only valid for this exact screen.
+    const hashes = new Map(requests.map((request) => [request.paneKey, hashScreen(request.screenText)]));
+
+    void port(requests)
+      .then((verdicts) => {
+        if (this.disposed) return;
+        for (const verdict of verdicts ?? []) {
+          const expected = hashes.get(verdict.paneKey);
+          if (!expected) continue;
+          // Race guard: the screen changed while we were asking, so the
+          // answer describes something that is no longer on screen.
+          if (hashScreen(this.currentScreenTextByKey(verdict.paneKey)) !== expected) continue;
+          this.judgeCache.set(verdict.paneKey, { hash: expected, awaiting: verdict.awaiting === true });
+        }
+        this.sample();
+      })
+      .catch(() => {
+        // Adjudication failure must never disturb status.
+      })
+      .finally(() => {
+        this.judgeInFlight = false;
+      });
+  }
+
+  private currentScreenText(pane: SessionStatusPane): string {
+    const reader = pane.ptyId != null ? this.readers.get(pane.ptyId) : undefined;
+    return reader ? this.readScreen(reader) : (this.tail.get(pane.key) || "");
+  }
+
+  private currentScreenTextByKey(paneKey: string): string {
+    const pane = this.panes.find((item) => item.key === paneKey);
+    return pane ? this.currentScreenText(pane) : "";
   }
 
   private probePane(pane: SessionStatusPane, now: number): SessionDotRuntime & { source: SessionStatusSource } {
@@ -384,18 +596,24 @@ export class SessionStatusStore {
     }
 
     const lastOutputAt = this.lastOutputAt.get(pane.key);
-    const reader = pane.ptyId != null ? this.readers.get(pane.ptyId) : undefined;
     const probe = probeSessionStatus({
-      visibleText: reader ? this.readScreen(reader) : (this.tail.get(pane.key) || ""),
+      visibleText: this.currentScreenText(pane),
       // A pane with no recorded output has been silent since it was registered.
       lastOutputAt: lastOutputAt ?? now,
       now,
       cursorHidden: pane.ptyId != null ? (this.cursorHidden.get(pane.ptyId) ?? false) : false,
+      toolRunning: pane.ptyId != null ? (this.toolRunning.get(pane.ptyId) ?? false) : false,
       reported: this.reported.get(pane.key) ?? null
     });
 
     const settled = settleStatus(this.hysteresis.get(pane.key) ?? createHysteresis(), probe);
     this.hysteresis.set(pane.key, settled.state);
+
+    // Tier 1.5 verdicts override the fail-safe idle branch. They can only ever
+    // raise an alert the other tiers missed, never suppress a confident one.
+    if (probe.source === "idle" && this.judgeCache.get(pane.key)?.awaiting) {
+      return { status: "awaiting_user", awaitingConfidence: "confirmed", source: "judge" };
+    }
     return { status: settled.status, awaitingConfidence: settled.awaitingConfidence, source: probe.source };
   }
 
@@ -425,4 +643,18 @@ export class SessionStatusStore {
   private emit(): void {
     for (const listener of this.listeners) listener();
   }
+}
+
+/**
+ * Cheap stable digest of a screen, used as a cache key and race guard.
+ *
+ * Not cryptographic: it only needs to differ when the visible text differs,
+ * so a session that redraws identically can reuse its verdict.
+ */
+function hashScreen(text: string): string {
+  let hash = 5381;
+  for (let index = 0; index < text.length; index += 1) {
+    hash = ((hash << 5) + hash + text.charCodeAt(index)) | 0;
+  }
+  return `${text.length}:${hash}`;
 }

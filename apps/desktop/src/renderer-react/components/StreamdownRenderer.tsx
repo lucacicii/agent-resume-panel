@@ -1,15 +1,13 @@
-import React, { memo, useCallback, useMemo, useState } from "react";
-import { Streamdown } from "streamdown";
+import React, { memo, useCallback, useMemo, useRef, useState } from "react";
+import { Streamdown, type Components, type UrlTransform } from "streamdown";
 import hljs from "highlight.js";
 import { ThemeIcon } from "./ThemeIcon";
 import { useI18n } from "../i18n";
-import { sanitizeMarkdownProseTags } from "./Markdown";
 import { ArtifactCard } from "./artifact/ArtifactCard";
+import { buildMarkdownSegments, type MarkdownSegmentState } from "./markdownSegments";
 import {
   fromStreamdownSafeSrc,
-  promoteBareImagePaths,
   resolveMarkdownImageSrc,
-  rewriteMarkdownImageSyntax,
   type MarkdownImageLabels,
   type MarkdownImageOptions
 } from "./markdownImage";
@@ -39,11 +37,15 @@ interface StandardCodeBlockProps {
   code: string;
 }
 
+const FALLBACK_I18N = { t: (key: string, ..._args: Array<string | number>) => key };
+
 function useSafeI18n() {
   try {
     return useI18n();
   } catch {
-    return { t: (key: string, ..._args: Array<string | number>) => key };
+    // Stable fallback: an unstable `t` would invalidate memoized markdown on
+    // every render and re-parse content that did not change.
+    return FALLBACK_I18N;
   }
 }
 
@@ -114,16 +116,40 @@ const StandardCodeBlock = memo(function StandardCodeBlock({ language, code }: St
   );
 });
 
-function preprocessLinks(markdown: string): string {
-  // 1. Transform [N1], [S1], [D1] markers into markdown links: [N1](#citation-N1)
-  let res = markdown.replace(/\[(N|S|D)(\d+)\](?!\()/g, "[$1$2](#citation-$1$2)");
-  // 2. Transform noteId: <uuid> into noteId: [uuid](#note-uuid)
-  res = res.replace(
-    /(noteId[:：]\s*(?:`|<code>)?)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})((?:`|<\/code>)?)/gi,
-    "$1[$2](#note-$2)$3"
+/** Streaming fade-in for content that arrives after the first paint. */
+const STREAM_ANIMATION = { animation: "fadeIn", duration: 120 } as const;
+
+/**
+ * Renders one markdown segment. Segments that already closed keep their
+ * identity while the document only grows, so this memo drops them without
+ * re-parsing or re-rendering their markdown.
+ */
+const MarkdownSegmentView = memo(function MarkdownSegmentView({
+  content,
+  streaming,
+  components,
+  translations,
+  urlTransform
+}: {
+  content: string;
+  streaming: boolean;
+  components: Components;
+  translations: React.ComponentProps<typeof Streamdown>["translations"];
+  urlTransform: UrlTransform;
+}): React.JSX.Element {
+  return (
+    <Streamdown
+      components={components}
+      isAnimating={streaming}
+      animated={streaming ? STREAM_ANIMATION : false}
+      caret={streaming ? "block" : undefined}
+      translations={translations}
+      urlTransform={urlTransform}
+    >
+      {content}
+    </Streamdown>
   );
-  return res;
-}
+});
 
 export const StreamdownRenderer = memo(function StreamdownRenderer({
   content,
@@ -137,13 +163,13 @@ export const StreamdownRenderer = memo(function StreamdownRenderer({
 }: StreamdownRendererProps) {
   const { t } = useSafeI18n();
 
-  // Pre-sanitize prose to protect generic types List<T>, <style>, <script> etc., and format links
-  const sanitizedMarkdown = useMemo(() => {
-    if (!content) return "";
-    const linked = preprocessLinks(content);
-    const promoted = promoteBareImagePaths(linked, imageOptions);
-    const rewritten = rewriteMarkdownImageSyntax(promoted, imageOptions);
-    return sanitizeMarkdownProseTags(rewritten);
+  // Pre-sanitize prose to protect generic types List<T>, <style>, <script> etc.,
+  // and format links. Streaming appends reuse the segments that already closed.
+  const streamStateRef = useRef<MarkdownSegmentState | null>(null);
+  const segments = useMemo(() => {
+    const next = buildMarkdownSegments(streamStateRef.current, content, imageOptions);
+    streamStateRef.current = next;
+    return next.segments;
   }, [content, imageOptions]);
 
   const translations = useMemo(() => ({
@@ -294,20 +320,20 @@ export const StreamdownRenderer = memo(function StreamdownRenderer({
 
   const urlTransform = useCallback((url: string) => url, []);
 
-  if (!sanitizedMarkdown) return null;
+  if (!segments.some((segment) => segment.prepared.length > 0)) return null;
 
   return (
     <div className={className} onClick={handlePreviewClick}>
-      <Streamdown
-        components={components}
-        isAnimating={isAnimating}
-        animated={isAnimating ? { animation: "fadeIn", duration: 120 } : false}
-        caret={isAnimating ? "block" : undefined}
-        translations={translations}
-        urlTransform={urlTransform}
-      >
-        {sanitizedMarkdown}
-      </Streamdown>
+      {segments.map((segment, index) => (
+        <MarkdownSegmentView
+          key={index}
+          content={segment.prepared}
+          streaming={isAnimating && index === segments.length - 1}
+          components={components}
+          translations={translations}
+          urlTransform={urlTransform}
+        />
+      ))}
     </div>
   );
 });

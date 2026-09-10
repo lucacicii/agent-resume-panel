@@ -2883,7 +2883,28 @@ export function WorkbenchPanel(): ReactPortal | null {
     ],
     [acpChats, terminals]
   );
-  const { store: statusStore, snapshot: statusSnapshot } = useSessionStatus(statusPanes, active);
+
+  // Tier 1: main-process process-tree probe. Stable identity so the store is
+  // not re-wired on every render; absent APIs degrade to "no signal".
+  const processStatusProbe = useMemo(() => {
+    const probe = desktopApi().sessionStatusProbeProcesses;
+    if (typeof probe !== "function") return null;
+    return (ptyIds: readonly number[]) => probe({ ptyIds: [...ptyIds] });
+  }, []);
+
+  // Tier 1.5: LLM adjudication for screens the cheaper tiers could not settle.
+  const statusJudgeProbe = useMemo(() => {
+    const judge = desktopApi().sessionStatusJudgeScreens;
+    if (typeof judge !== "function") return null;
+    return (requests: readonly { paneKey: string; screenText: string; silentMs: number; toolRunning: boolean }[]) =>
+      judge({ requests: [...requests] });
+  }, []);
+  const { store: statusStore, snapshot: statusSnapshot } = useSessionStatus(
+    statusPanes,
+    active,
+    processStatusProbe,
+    statusJudgeProbe
+  );
   const sessionRuntimeByPaneKey = useMemo(
     () => new Map(Object.entries(statusSnapshot.runtimeByPaneKey)),
     [statusSnapshot]

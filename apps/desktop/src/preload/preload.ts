@@ -1034,6 +1034,20 @@ export interface DesktopApi {
   }): Promise<{ ok: boolean }>;
   onTerminalData(callback: (payload: { id: number; data: string }) => void): () => void;
   onTerminalActivity?(callback: (payload: { id: number; tail?: string; timestamp?: number }) => void): () => void;
+  /**
+   * Tier 1 status probe: whether an agent is executing a command beneath each
+   * PTY. Deterministic and free; absent on unsupported platforms.
+   */
+  sessionStatusProbeProcesses?(args: { ptyIds: readonly number[] }): Promise<
+    Record<number, { active: boolean; processes: string[] }>
+  >;
+  /**
+   * Tier 1.5: ask the LLM whether each screen is blocked on the user.
+   * Batched — one model call covers every pane.
+   */
+  sessionStatusJudgeScreens?(args: {
+    requests: ReadonlyArray<{ paneKey: string; screenText: string; silentMs: number; toolRunning: boolean }>;
+  }): Promise<Array<{ paneKey: string; awaiting: boolean; reason?: string }>>;
   onTerminalExit(callback: (payload: { id: number }) => void): () => void;
   onTerminalRespawned(callback: (payload: { id: number }) => void): () => void;
   setWorkbenchActive(active: boolean): void;
@@ -1750,6 +1764,8 @@ const api: DesktopApi = {
     ipcRenderer.on("terminal:activity", handler);
     return () => ipcRenderer.removeListener("terminal:activity", handler);
   },
+  sessionStatusProbeProcesses: (args) => ipcRenderer.invoke("sessionStatus:probeProcesses", args),
+  sessionStatusJudgeScreens: (args) => ipcRenderer.invoke("sessionStatus:judgeScreens", args),
   onTerminalExit: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, payload: { id: number }) => callback(payload);
     ipcRenderer.on("terminal:exit", handler);

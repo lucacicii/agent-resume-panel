@@ -30,14 +30,18 @@ export type SessionDotRuntime = {
  *
  * - `native`     — the agent itself reported it (hook, notify, ACP request).
  * - `protocol`   — the agent emitted a status escape sequence (OSC 633;AR).
+ * - `process`    — a command is executing beneath the agent (process tree).
  * - `fingerprint`— detected from screen content (menu / approval dialog).
+ * - `judge`      — an LLM adjudicated an ambiguous screen.
  * - `activity`   — inferred from recent output throughput.
  * - `idle`       — nothing happened; fail-safe default.
  */
 export const SESSION_STATUS_SOURCES = [
   "native",
   "protocol",
+  "process",
   "fingerprint",
+  "judge",
   "activity",
   "idle"
 ] as const;
@@ -46,9 +50,11 @@ export type SessionStatusSource = (typeof SESSION_STATUS_SOURCES)[number];
 
 /** Trust ranking; higher wins when two layers disagree in the same tick. */
 export const SOURCE_TRUST: Record<SessionStatusSource, number> = {
-  native: 5,
-  protocol: 4,
+  native: 6,
+  protocol: 5,
+  process: 4,
   fingerprint: 3,
+  judge: 3,
   activity: 2,
   idle: 1
 };
@@ -70,6 +76,11 @@ export type StatusProbeInput = {
   now: number;
   /** Whether the terminal has hidden its cursor (menu / dialog affordance). */
   cursorHidden?: boolean;
+  /**
+   * Tier 1: a non-infrastructure process is running beneath the agent.
+   * Deterministic evidence that a command is executing.
+   */
+  toolRunning?: boolean;
   /** Tier 0 / 1 verdict that outranks screen scraping. */
   reported?: ReportedStatus | null;
 };

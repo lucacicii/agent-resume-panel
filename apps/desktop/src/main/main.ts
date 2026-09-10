@@ -19,6 +19,7 @@ import {
   type NewSessionExecutionMode,
   updateNativeSessionCwd,
   effectivePanelHome,
+  desktopDbPath,
   estimateDigestRun,
   expandHome,
   getReportEntryById,
@@ -244,11 +245,38 @@ import {
 
 installProcessErrorHandlers();
 
+/**
+ * Last known settings for status-plane consumers (Tier 1.5 judge).
+ *
+ * Resolved lazily and refreshed from the settings IPC path, so it never adds
+ * a disk read to a status tick while still tracking user changes.
+ */
+let sessionStatusSettings: PanelSettings | undefined;
+
+/** Refresh the cached status-plane settings after any settings write. */
+export function refreshSessionStatusSettings(next: PanelSettings): void {
+  sessionStatusSettings = next;
+}
+
 function tryRegisterPtyIpc(): void {
   try {
     // Lazy-load so node-pty native binding issues do not block other IPC handlers.
-    const { registerPtyIpc } = require("./ptyHost") as typeof import("./ptyHost");
+    const { registerPtyIpc, getPtyPid } = require("./ptyHost") as typeof import("./ptyHost");
     registerPtyIpc(() => mainWindow);
+    // Tier 1 status probe: reads the OS process tree under each PTY.
+    // Tier 1.5 judge: LLM adjudication for screens the cheaper tiers cannot settle.
+    const { registerSessionStatusIpc } = require("./sessionStatus/probe") as typeof import("./sessionStatus/probe");
+    registerSessionStatusIpc({
+      getPtyPid,
+      judge: {
+        loadSettings: () => sessionStatusSettings ?? {} as PanelSettings,
+        get desktopDb() {
+          return desktopDbPath(effectivePanelHome(sessionStatusSettings ?? {} as PanelSettings));
+        }
+      }
+    });
+    // Warm the cache without blocking IPC registration.
+    void loadSettings().then(refreshSessionStatusSettings).catch(() => undefined);
   } catch (error) {
     void recordAppError({
       source: "pty-host",
@@ -1685,6 +1713,7 @@ function registerIpc(): void {
         startSessionSummaryAuto();
         startSessionTranscriptIndexAuto();
         startSessionEmbeddingIndexAuto();
+        refreshSessionStatusSettings(saved);
         broadcastToRenderers("settings:changed", { settings: saved, section: "storage" });
         broadcastToRenderers("i18n:localeChanged", bundle);
         broadcastToRenderers("backup:imported", result);
@@ -1790,6 +1819,7 @@ function registerIpc(): void {
       startSessionSummaryAuto();
       startSessionTranscriptIndexAuto();
       startSessionEmbeddingIndexAuto();
+      refreshSessionStatusSettings(saved);
       broadcastToRenderers("settings:changed", {
         settings: saved,
         section: options?.section,

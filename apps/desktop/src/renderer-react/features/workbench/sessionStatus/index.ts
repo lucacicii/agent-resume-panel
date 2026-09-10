@@ -54,6 +54,10 @@ export {
   acpEventToStatus,
   SessionStatusStore,
   type AcpStatusEvent,
+  type JudgePortRequest,
+  type JudgePortVerdict,
+  type ProcessProbePort,
+  type StatusJudgePort,
   type SessionStatusPane,
   type SessionStatusSnapshot,
   type StatusScreenReader

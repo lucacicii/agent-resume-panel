@@ -494,6 +494,13 @@ function attachPtyHandlers(
   });
 }
 
+/** OS pid backing a node-pty session, for process-tree inspection. */
+export function getPtyPid(id: number): number | null {
+  const session = ptySessions.get(Math.floor(id));
+  const pid = session?.pty.pid;
+  return typeof pid === "number" && pid > 0 ? pid : null;
+}
+
 export function getPtyRuntimeMetrics(): PtyRuntimeMetrics {
   let attachedCount = 0;
   let replayBytes = 0;

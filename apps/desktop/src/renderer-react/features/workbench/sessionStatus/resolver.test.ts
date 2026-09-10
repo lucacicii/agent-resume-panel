@@ -59,6 +59,44 @@ describe("probeSessionStatus", () => {
     expect(result).toMatchObject({ status: "running", source: "activity" });
   });
 
+  it("reports running when a tool process is executing beneath the agent", () => {
+    const result = probeSessionStatus({
+      ...BASE,
+      visibleText: "Do you want to proceed?\nAllow once",
+      toolRunning: true
+    });
+    // A real executing command outranks a stale dialog left on screen.
+    expect(result).toMatchObject({ status: "running", source: "process" });
+  });
+
+  it("ignores the process tier when no tool is running", () => {
+    const result = probeSessionStatus({
+      ...BASE,
+      visibleText: "Do you want to proceed?\nAllow once",
+      toolRunning: false
+    });
+    expect(result.source).toBe("fingerprint");
+  });
+
+  it("prefers an explicit report over the process tier", () => {
+    const result = probeSessionStatus({
+      ...BASE,
+      toolRunning: true,
+      reported: { status: "awaiting_user", awaitingConfidence: "confirmed" }
+    });
+    expect(result.source).toBe("native");
+  });
+
+  it("stays idle while no tool runs and nothing is on screen", () => {
+    const result = probeSessionStatus({
+      ...BASE,
+      visibleText: "pi >",
+      toolRunning: false,
+      now: BASE.lastOutputAt + RUNNING_WINDOW_MS + 1_000
+    });
+    expect(result).toMatchObject({ status: "open", source: "idle" });
+  });
+
   it("falls back to idle on silence — never a false 'waiting for you'", () => {
     const result = probeSessionStatus({
       ...BASE,

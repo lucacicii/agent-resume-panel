@@ -32,6 +32,32 @@ describe("buildSessionTranscriptModel", () => {
       { id: "transcript-turn-2", messageId: "transcript-msg-4", index: 2, title: "Keep the terminal visible." }
     ]);
   });
+
+  it("reuses unchanged messages so live polls do not re-render every row", () => {
+    const messages = [
+      { role: "user", text: "Add a transcript pane" },
+      { role: "assistant", text: "Dock it beside the TUI." },
+      { role: "assistant", text: "Growing" }
+    ];
+    const first = buildSessionTranscriptModel(messages);
+    const streaming = buildSessionTranscriptModel([
+      messages[0]!,
+      messages[1]!,
+      { role: "assistant", text: "Growing answer" }
+    ], first);
+
+    expect(streaming.messages[0]).toBe(first.messages[0]);
+    expect(streaming.messages[1]).toBe(first.messages[1]);
+    expect(streaming.messages[2]).not.toBe(first.messages[2]);
+    expect(streaming.outline[0]).toBe(first.outline[0]);
+
+    // Same payload keeps identity, a replaced payload rebuilds.
+    const unchanged = buildSessionTranscriptModel(messages, first);
+    expect(unchanged.messages[0]).toBe(first.messages[0]);
+    expect(unchanged.messages[2]).toBe(first.messages[2]);
+    const rebuilt = buildSessionTranscriptModel([{ role: "user", text: "New session prompt" }], first);
+    expect(rebuilt.messages[0]).not.toBe(first.messages[0]);
+  });
 });
 
 describe("sameTranscriptPreview", () => {

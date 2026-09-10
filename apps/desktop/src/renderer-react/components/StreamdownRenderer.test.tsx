@@ -2,10 +2,56 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import React from "react";
 import { render, within, cleanup, fireEvent } from "@testing-library/react";
 import { StreamdownRenderer } from "./StreamdownRenderer";
+import { buildMarkdownSegments } from "./markdownSegments";
+import * as MarkdownModule from "./Markdown";
+
+vi.mock("./Markdown", async (importOriginal) => {
+  const actual = await importOriginal<typeof MarkdownModule>();
+  return { ...actual, sanitizeMarkdownProseTags: vi.fn(actual.sanitizeMarkdownProseTags) };
+});
+
+function streamingDoc(paragraphs: number): string {
+  const parts = ["# Alpha heading", ""];
+  for (let index = 0; index < paragraphs; index += 1) {
+    parts.push(`Paragraph ${index} with **bold**, \`code\` and a [link](https://example.com/${index}).`);
+    parts.push("");
+  }
+  return parts.join("\n");
+}
 
 describe("StreamdownRenderer integration test suite", () => {
   afterEach(() => {
     cleanup();
+  });
+
+  it("reuses closed markdown segments while streaming content grows", () => {
+    const sanitizeSpy = vi.mocked(MarkdownModule.sanitizeMarkdownProseTags);
+    sanitizeSpy.mockClear();
+    const doc = streamingDoc(40);
+    const initialSegments = buildMarkdownSegments(null, `${doc}tail`, undefined).segments;
+    expect(initialSegments.length).toBeGreaterThan(1);
+    const closedRaw = initialSegments[0].raw;
+    const closedPrepared = initialSegments[0].prepared;
+    sanitizeSpy.mockClear();
+
+    const view = render(<StreamdownRenderer content={`${doc}tail`} isAnimating />);
+    const firstSegmentNode = view.container.querySelector("h1");
+    expect(firstSegmentNode?.textContent).toBe("Alpha heading");
+    const sanitizeCallsForClosed = (): number =>
+      sanitizeSpy.mock.calls.filter(([input]) => input === closedRaw).length;
+    expect(sanitizeCallsForClosed()).toBe(1);
+    sanitizeSpy.mockClear();
+
+    for (let index = 0; index < 3; index += 1) {
+      view.rerender(<StreamdownRenderer content={`${doc}tail ${index}`} isAnimating />);
+      // The closed segment is neither re-sanitized nor re-rendered.
+      expect(sanitizeCallsForClosed()).toBe(0);
+      expect(sanitizeSpy.mock.calls.some(([input]) => input === closedPrepared)).toBe(false);
+      expect(view.container.querySelector("h1")).toBe(firstSegmentNode);
+    }
+
+    expect(view.container.textContent).toContain("tail 2");
+    expect(view.container.textContent).toContain("Paragraph 0 with");
   });
 
   it("renders basic markdown headings and formatting", () => {
@@ -118,6 +164,20 @@ describe("StreamdownRenderer integration test suite", () => {
     fireEvent.keyDown(document, { key: "Escape" });
     fullscreenOverlay = document.body.querySelector('[data-streamdown="table-fullscreen"]');
     expect(fullscreenOverlay).toBeNull();
+  });
+
+  it("streams a growing tail into a single markdown body", () => {
+    const doc = "# Title\n\nFirst paragraph with **bold** text.\n\nSecond paragraph stays stable.\n\n";
+    const view = render(<StreamdownRenderer content={`${doc}tail`} isAnimating />);
+    const firstParagraph = view.container.querySelector("p");
+
+    view.rerender(<StreamdownRenderer content={`${doc}tail grows more`} isAnimating />);
+    const paragraphs = [...view.container.querySelectorAll("p")];
+
+    expect(paragraphs[0]).toBe(firstParagraph);
+    expect(paragraphs[0]?.textContent).toBe("First paragraph with bold text.");
+    expect(paragraphs[1]?.textContent).toBe("Second paragraph stays stable.");
+    expect(view.container.textContent).toContain("tail grows more");
   });
 
   it("renders composer clipboard image paths as images", () => {

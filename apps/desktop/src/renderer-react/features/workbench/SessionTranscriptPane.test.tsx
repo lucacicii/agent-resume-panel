@@ -1,6 +1,23 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { SessionTranscriptPane } from "./SessionTranscriptPane";
+
+const renderCounts = vi.hoisted(() => new Map<string, number>());
+
+// Counts one render per markdown body the pane hands to the renderer, so a
+// live poll that rebuilds untouched rows shows up as extra renders.
+vi.mock("../../components/StreamdownRenderer", async (importOriginal) => {
+  const { createElement } = await import("react");
+  const actual = await importOriginal<typeof import("../../components/StreamdownRenderer")>();
+  return {
+    ...actual,
+    StreamdownRenderer: (props: Parameters<typeof actual.StreamdownRenderer>[0]): React.ReactNode => {
+      renderCounts.set(props.content, (renderCounts.get(props.content) ?? 0) + 1);
+      return createElement(actual.StreamdownRenderer, props);
+    }
+  };
+});
+
+const { SessionTranscriptPane } = await import("./SessionTranscriptPane");
 
 const apiMocks = vi.hoisted(() => ({
   previewSession: vi.fn(),
@@ -19,6 +36,7 @@ afterEach(() => {
   cleanup();
   apiMocks.previewSession.mockReset();
   apiMocks.imRunSelectionAction.mockReset();
+  renderCounts.clear();
   try {
     Reflect.deleteProperty(navigator, "clipboard");
   } catch {
@@ -175,7 +193,7 @@ describe("SessionTranscriptPane", () => {
     expect((document.querySelector(".wb-transcript-body") as HTMLElement | null)?.style.getPropertyValue("--wb-transcript-font-size")).toBe("18px");
   });
 
-  it("keeps thinking collapsed until the user expands it", async () => {
+  it("keeps thinking collapsed behind a rolling reel until the user expands it", async () => {
     apiMocks.previewSession.mockResolvedValue({
       session: { provider: "claude", id: "session-think" },
       preview: {
@@ -183,16 +201,69 @@ describe("SessionTranscriptPane", () => {
         messages: [{
           role: "assistant",
           text: "The folder is empty because git drops it.",
-          thinking: "Inspect status parsing."
+          thinking: "Inspect status parsing.\nThen check the git folder."
         }]
       }
     });
     render(<SessionTranscriptPane provider="claude" sessionId="session-think" active />);
-    expect(await screen.findByRole("button", { name: "desktop.workbench.transcriptThinking" })).toBeTruthy();
-    expect(screen.queryByText("Inspect status parsing.")).toBeNull();
+    const toggle = await screen.findByRole("button", { name: "desktop.workbench.transcriptThinking" });
     expect(screen.getByText("The folder is empty because git drops it.")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "desktop.workbench.transcriptThinking" }));
-    expect(screen.getByText("Inspect status parsing.")).toBeTruthy();
+
+    // Collapsed: no markdown body, but the reel previews the newest line.
+    expect(document.querySelector(".wb-transcript-thinking-body")).toBeNull();
+    const reelLines = [...document.querySelectorAll(".wb-thinking-ticker-line")].map((node) => node.textContent);
+    expect(reelLines).toEqual(["Then check the git folder."]);
+    expect(document.querySelector(".wb-thinking-ticker")?.getAttribute("aria-hidden")).toBe("true");
+
+    fireEvent.click(toggle);
+    // Expanded: the full reasoning renders and the reel steps aside.
+    expect(document.querySelector(".wb-thinking-ticker")).toBeNull();
+    expect(document.querySelector(".wb-transcript-thinking-body")?.textContent)
+      .toContain("Inspect status parsing.");
+    expect(document.querySelector(".wb-transcript-thinking-body")?.textContent)
+      .toContain("Then check the git folder.");
+  });
+
+  it("keeps the newest reasoning in view while the expanded window streams", async () => {
+    let preview = {
+      title: "Think",
+      messages: [
+        { role: "user", text: "Why is the folder missing?" },
+        { role: "assistant", text: "", thinking: "Inspect status parsing." }
+      ]
+    };
+    apiMocks.previewSession.mockImplementation(async () => ({
+      session: { provider: "claude", id: "session-think-stream" },
+      preview
+    }));
+
+    render(<SessionTranscriptPane provider="claude" sessionId="session-think-stream" active isRunning />);
+    fireEvent.click(await screen.findByRole("button", { name: "desktop.workbench.transcriptThinking" }));
+    const body = document.querySelector(".wb-transcript-thinking-body") as HTMLElement;
+    expect(body.className).toContain("is-streaming");
+
+    let scrollTop = 0;
+    Object.defineProperty(body, "scrollHeight", { configurable: true, get: () => 400 });
+    Object.defineProperty(body, "scrollTop", {
+      configurable: true,
+      get: () => scrollTop,
+      set: (value: number) => { scrollTop = value; }
+    });
+
+    preview = {
+      title: "Think",
+      messages: [
+        { role: "user", text: "Why is the folder missing?" },
+        { role: "assistant", text: "", thinking: "Inspect status parsing.\nThen check the git folder." }
+      ]
+    };
+
+    await waitFor(
+      () => expect(document.querySelector(".wb-transcript-thinking-body")?.textContent)
+        .toContain("Then check the git folder."),
+      { timeout: 3500 }
+    );
+    expect(scrollTop).toBe(400);
   });
 
   it("reloads transcript when clicking the refresh button", async () => {
@@ -264,6 +335,49 @@ describe("SessionTranscriptPane", () => {
 
     await waitFor(() => expect(apiMocks.previewSession.mock.calls.length).toBeGreaterThan(1), { timeout: 3500 });
     await waitFor(() => expect(document.querySelector(".wb-transcript-body")?.textContent).toContain("Starting... token 1"));
+  });
+
+  it("only re-renders markdown for the message that changed on a live poll", async () => {
+    const messages = [
+      { role: "user", text: "First question stays stable." },
+      { role: "assistant", text: "First answer stays stable." },
+      { role: "user", text: "Second question stays stable." },
+      { role: "assistant", text: "Streaming answer begins" }
+    ];
+    let preview = { title: "Live", messages };
+    apiMocks.previewSession.mockImplementation(async () => ({
+      session: { provider: "codex", id: "session-parse" },
+      preview
+    }));
+
+    render(<SessionTranscriptPane provider="codex" sessionId="session-parse" active isRunning />);
+    await screen.findByRole("button", { name: /First question stays stable/ });
+    expect(screen.getByText("First answer stays stable.")).toBeTruthy();
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+
+    const stableTexts = messages.slice(0, 3).map((message) => message.text);
+    const stableCounts = stableTexts.map((text) => renderCounts.get(text) ?? 0);
+    expect(stableCounts.every((count) => count > 0)).toBe(true);
+
+    preview = {
+      title: "Live",
+      messages: [
+        ...messages.slice(0, 3),
+        { role: "assistant", text: "Streaming answer begins and grows" }
+      ]
+    };
+
+    await waitFor(
+      () => expect(document.querySelector(".wb-transcript-body")?.textContent)
+        .toContain("Streaming answer begins and grows"),
+      { timeout: 3500 }
+    );
+
+    // Untouched messages keep their rendered markdown; only the message that
+    // received new content goes through the renderer again.
+    const stableCountsAfter = stableTexts.map((text) => renderCounts.get(text) ?? 0);
+    expect(stableCountsAfter).toEqual(stableCounts);
+    expect(renderCounts.get("Streaming answer begins and grows") ?? 0).toBeGreaterThan(0);
   });
 
   it("does not fetch while inactive", async () => {
