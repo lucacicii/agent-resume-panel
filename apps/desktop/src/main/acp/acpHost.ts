@@ -86,6 +86,36 @@ const questionWaiters = new Map<
   { resolve: (value: AskUserQuestionResponse) => void; chatId: string }
 >();
 
+/** IM roles sidebar live model list (Plan B): dedup + timeout + snapshot push. */
+const IM_MODEL_PROBE_TIMEOUT_MS = 30_000;
+const pendingProbeByProvider = new Map<string, Promise<Array<{ id: string; label: string }>>>();
+const imAgentModelSnapshotByProvider = new Map<string, string>();
+/** Throwaway probe session ids: excluded from live snapshot to prevent flicker. */
+const throwawayProbeIds = new Set<string>();
+
+function toImAgentForModels(provider: string): "pi" | "claude" | "codex" | null {
+  return provider === "pi" || provider === "claude" || provider === "codex" ? provider : null;
+}
+
+function pushImAgentModels(provider: string): void {
+  if (!acpHostDeps) return;
+  const agent = toImAgentForModels(provider);
+  if (!agent) return;
+  const live = getLiveAcpAgentModels(provider);
+  // Keep old list on failure/empty: never push an empty list to clear the sidebar.
+  if (!live.length) return;
+  const key = JSON.stringify(live);
+  if (imAgentModelSnapshotByProvider.get(provider) === key) return;
+  imAgentModelSnapshotByProvider.set(provider, key);
+  const win = acpHostDeps.getMainWindow();
+  if (!win || win.isDestroyed()) return;
+  win.webContents.send("im:event", {
+    type: "agentModels",
+    agent,
+    models: live.map((m) => ({ id: m.id, label: m.label || m.id, provider: "ACP" })),
+  });
+}
+
 class AcpChatController {
   private connection?: AcpAgentConnection;
   private messages: AcpChatMessage[] = [];
@@ -186,6 +216,16 @@ class AcpChatController {
         fileUpload: Boolean(this.connection)
       }
     });
+    // IM roles sidebar Plan B: live ACP model changes push to renderer.
+    // Throwaway probe controllers are excluded: probe result is returned via
+    // im:listAgentModels, never via push (prevents transient flicker).
+    if (!throwawayProbeIds.has(this.record.id)) {
+      try {
+        pushImAgentModels(this.record.provider);
+      } catch {
+        // never break ACP init on IM push
+      }
+    }
   }
 
   private status(status: string, isRunning: boolean, isConnecting: boolean): void {
@@ -1406,7 +1446,8 @@ function collectControllerAgentModels(
 export function getLiveAcpAgentModels(provider: string): Array<{ id: string; label: string }> {
   const result: Array<{ id: string; label: string }> = [];
   const seen = new Set<string>();
-  for (const controller of controllers.values()) {
+  for (const [id, controller] of controllers) {
+    if (throwawayProbeIds.has(id)) continue;
     if (controller.getRecord().provider !== provider) continue;
     collectControllerAgentModels(controller, result, seen);
   }
@@ -1414,33 +1455,66 @@ export function getLiveAcpAgentModels(provider: string): Array<{ id: string; lab
 }
 
 /**
- * Discovers the provider's real model list on demand. Reuses live sessions
- * when available; otherwise boots a throwaway ACP session, harvests its
- * config options, then disposes the session and deletes the record.
+ * IM roles sidebar Plan B: always boots a throwaway ACP session for the
+ * latest model list (never reuses in-memory live controllers), with
+ * per-provider dedup and a 30s timeout. Always disposes the controller
+ * and deletes the throwaway record. Never throws empty to clear sidebar:
+ * on failure/empty keeps the previous list (returns live or [] and lets
+ * the caller fall back).
  */
 export async function probeAcpAgentModels(provider: AcpAgentProvider): Promise<Array<{ id: string; label: string }>> {
-  const live = getLiveAcpAgentModels(provider);
-  if (live.length > 0) return live;
-  if (!acpHostDeps) return [];
-  const { loadSettings } = acpHostDeps;
-  const settings = await loadSettings();
-  const panelHome = effectivePanelHome(settings);
-  const record = await createAcpRecord(panelHome, panelHome, provider, { source: "im" });
-  try {
-    const controller = new AcpChatController(record, panelHome, settings, () => undefined);
-    controllers.set(record.id, controller);
+  const pending = pendingProbeByProvider.get(provider);
+  if (pending) return pending;
+  const task = (async (): Promise<Array<{ id: string; label: string }>> => {
+    if (!acpHostDeps) return getLiveAcpAgentModels(provider);
+    const { loadSettings } = acpHostDeps;
+    const settings = await loadSettings();
+    const panelHome = effectivePanelHome(settings);
+    const record = await createAcpRecord(panelHome, panelHome, provider, { source: "im" });
+    throwawayProbeIds.add(record.id);
     try {
-      await controller.bootstrap();
-      const result: Array<{ id: string; label: string }> = [];
-      collectControllerAgentModels(controller, result, new Set());
-      return result;
+      const controller = new AcpChatController(record, panelHome, settings, () => undefined);
+      controllers.set(record.id, controller);
+      try {
+        await withTimeout(controller.bootstrap(), IM_MODEL_PROBE_TIMEOUT_MS, `Timed out fetching ${provider} models.`);
+        const result: Array<{ id: string; label: string }> = [];
+        collectControllerAgentModels(controller, result, new Set());
+        if (!result.length) return getLiveAcpAgentModels(provider);
+        const key = JSON.stringify(result);
+        imAgentModelSnapshotByProvider.set(provider, key);
+        return result;
+      } finally {
+        controller.dispose();
+        controllers.delete(record.id);
+      }
     } finally {
-      controller.dispose();
-      controllers.delete(record.id);
+      throwawayProbeIds.delete(record.id);
+      await deleteAcpRecord(panelHome, record.id).catch(() => undefined);
+    }
+  })();
+  pendingProbeByProvider.set(provider, task);
+  try {
+    return await task;
+  } catch (error) {
+    // Failure fallback: keep old list, never clear the sidebar from here.
+    try {
+      return getLiveAcpAgentModels(provider);
+    } catch {
+      throw error;
     }
   } finally {
-    await deleteAcpRecord(panelHome, record.id);
+    if (pendingProbeByProvider.get(provider) === task) pendingProbeByProvider.delete(provider);
   }
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  }) as Promise<T>;
 }
 
 export function getAcpRuntimeMetrics(): { count: number; liveCount: number } {
@@ -1458,6 +1532,9 @@ export function disposeAllAcpControllers(): void {
   controllers.clear();
   permissionWaiters.clear();
   questionWaiters.clear();
+  pendingProbeByProvider.clear();
+  throwawayProbeIds.clear();
+  imAgentModelSnapshotByProvider.clear();
   setPermissionPromptHandler(null);
   setAskUserQuestionHandler(null);
   setPlanWriteListener(null);

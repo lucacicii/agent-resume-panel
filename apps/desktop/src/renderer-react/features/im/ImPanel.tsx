@@ -149,6 +149,14 @@ export function ImPanel(): ReactPortal | null {
   const [customMemberModelId, setCustomMemberModelId] = useState<string | null>(null);
   const [customMemberThoughtId, setCustomMemberThoughtId] = useState<string | null>(null);
   const [agentModelsMap, setAgentModelsMap] = useState<Record<string, ImAgentModelOption[]>>({});
+  const [fetchingModelsByAgent, setFetchingModelsByAgent] = useState<Record<string, boolean>>({});
+  const [modelsErrorByAgent, setModelsErrorByAgent] = useState<Record<string, string>>({});
+  const agentModelsMapRef = useRef<Record<string, ImAgentModelOption[]>>({});
+  useEffect(() => {
+    agentModelsMapRef.current = agentModelsMap;
+  }, [agentModelsMap]);
+  const fetchingModelsRef = useRef<Set<string>>(new Set());
+  const lastModelsFetchKeyRef = useRef<string | null>(null);
   const [knowledgeTitle, setKnowledgeTitle] = useState("");
   const [knowledgeBody, setKnowledgeBody] = useState("");
   const [knowledgeUrl, setKnowledgeUrl] = useState("");
@@ -301,6 +309,15 @@ export function ImPanel(): ReactPortal | null {
     const stop = desktopApi().onImEvent((event: ImEvent) => {
       if (event.type === "room") {
         if (event.room.project.projectId === selectedProjectId) setRoom(event.room);
+        return;
+      }
+      if (event.type === "agentModels") {
+        // Live ACP push: no projectId, update sidebar map directly.
+        if (event.models.length) {
+          setAgentModelsMap((curr) => ({ ...curr, [event.agent]: event.models }));
+          setModelsErrorByAgent((curr) => ({ ...curr, [event.agent]: "" }));
+        }
+        setFetchingModelsByAgent((curr) => ({ ...curr, [event.agent]: false }));
         return;
       }
       if (event.projectId !== selectedProjectId) return;
@@ -1041,26 +1058,51 @@ export function ImPanel(): ReactPortal | null {
   }, [expandedMemberId]);
 
   const fetchModelsForAgent = useCallback(async (targetAgent: ImAgent, refresh = false) => {
-    if (!refresh && agentModelsMap[targetAgent]?.length) return agentModelsMap[targetAgent];
+    if (!refresh && agentModelsMapRef.current[targetAgent]?.length) return agentModelsMapRef.current[targetAgent];
+    // Dedup concurrent refresh for the same agent (StrictMode / rapid clicks).
+    if (refresh && fetchingModelsRef.current.has(targetAgent)) return agentModelsMapRef.current[targetAgent] ?? [];
+    fetchingModelsRef.current.add(targetAgent);
+    setFetchingModelsByAgent((curr) => ({ ...curr, [targetAgent]: true }));
+    setModelsErrorByAgent((curr) => ({ ...curr, [targetAgent]: "" }));
     try {
       const list = await desktopApi().imListAgentModels({ agent: targetAgent, refresh });
-      setAgentModelsMap((curr) => ({ ...curr, [targetAgent]: list }));
-      return list;
-    } catch {
-      setAgentModelsMap((curr) => ({ ...curr, [targetAgent]: [] }));
-      return [];
+      // Keep old list on empty: never clear the sidebar, allow retry.
+      if (list.length) {
+        setAgentModelsMap((curr) => ({ ...curr, [targetAgent]: list }));
+        return list;
+      }
+      setModelsErrorByAgent((curr) => ({ ...curr, [targetAgent]: t("desktop.common.unknownError") }));
+      return agentModelsMapRef.current[targetAgent] ?? [];
+    } catch (error) {
+      // Failure fallback: keep old list, surface error for retry.
+      setModelsErrorByAgent((curr) => ({
+        ...curr,
+        [targetAgent]: error instanceof Error && error.message ? error.message : t("desktop.common.unknownError"),
+      }));
+      return agentModelsMapRef.current[targetAgent] ?? [];
+    } finally {
+      fetchingModelsRef.current.delete(targetAgent);
+      setFetchingModelsByAgent((curr) => ({ ...curr, [targetAgent]: false }));
     }
-  }, [agentModelsMap]);
+  }, [t]);
 
   useEffect(() => {
-    if (!expandedMemberId) return;
+    if (!expandedMemberId) {
+      lastModelsFetchKeyRef.current = null;
+      return;
+    }
     const member = allMembers.find((m) => m.memberId === expandedMemberId);
-    if (!member || agentModelsMap[member.agent] !== undefined) return;
-    void fetchModelsForAgent(member.agent);
-  }, [expandedMemberId, allMembers, agentModelsMap, fetchModelsForAgent]);
+    if (!member) return;
+    // Plan B: popover open/switch forces latest via throwaway probe (refresh=true).
+    const key = `${expandedMemberId}:${member.agent}`;
+    if (lastModelsFetchKeyRef.current === key) return;
+    lastModelsFetchKeyRef.current = key;
+    void fetchModelsForAgent(member.agent, true);
+  }, [expandedMemberId, allMembers, fetchModelsForAgent]);
 
   const onMemberAgentChange = useCallback(async (member: ImMember, nextAgent: ImAgent) => {
     try {
+      lastModelsFetchKeyRef.current = `${member.memberId}:${nextAgent}`;
       void fetchModelsForAgent(nextAgent, true);
       const updated = await desktopApi().imSetMemberAgent({ memberId: member.memberId, agent: nextAgent });
       setRoom((current) => current
@@ -1729,7 +1771,7 @@ export function ImPanel(): ReactPortal | null {
                                 setPopoverAnchorRect(null);
                               }
                               setExpandedMemberId(next);
-                              if (next) void fetchModelsForAgent(enabledMember.agent);
+                              if (next) void fetchModelsForAgent(enabledMember.agent, true);
                             }}
                             title={t("desktop.im.configRole")}
                             aria-label={t("desktop.im.configRole")}
@@ -1966,6 +2008,17 @@ export function ImPanel(): ReactPortal | null {
                     ))}
                     <option value="__custom__">{t("desktop.im.customModelOption")}</option>
                   </select>
+                  {fetchingModelsByAgent[member.agent] ? (
+                    <span className="im-hint">{t("desktop.common.loading")}</span>
+                  ) : null}
+                  {modelsErrorByAgent[member.agent] ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                      <span className="im-hint" role="alert">{modelsErrorByAgent[member.agent]}</span>
+                      <button type="button" className="tool-btn ghost-btn" onClick={() => void fetchModelsForAgent(member.agent, true)}>
+                        {t("desktop.im.fetchModels")}
+                      </button>
+                    </div>
+                  ) : null}
                   {(customMemberModelId === member.memberId || isCustomMemberModel) && (
                     <input value={member.model ?? ""} placeholder="Enter model ID…" onChange={(event) => void onMemberModelChange(member, event.target.value)} autoFocus />
                   )}

@@ -8,6 +8,7 @@ import { useI18n } from "../../i18n";
 import {
   buildSessionTranscriptModel,
   filterSessionTranscript,
+  mergePendingTranscript,
   sameTranscriptPreview,
   type TranscriptMessage,
   type TranscriptPreviewMessage
@@ -25,6 +26,7 @@ const TranscriptMessageRow = React.memo(function TranscriptMessageRow({
   thinkingLabel,
   renderMarkdownView,
   isStreaming = false,
+  isPendingReply = false,
   isSearchTarget = false,
   onImageClick,
   displayText,
@@ -47,6 +49,7 @@ const TranscriptMessageRow = React.memo(function TranscriptMessageRow({
   thinkingLabel: string;
   renderMarkdownView: boolean;
   isStreaming?: boolean;
+  isPendingReply?: boolean;
   isSearchTarget?: boolean;
   onImageClick?: (url: string) => void;
   displayText: string;
@@ -62,7 +65,7 @@ const TranscriptMessageRow = React.memo(function TranscriptMessageRow({
   return (
     <article
       data-transcript-id={message.id}
-      className={`preview-msg ${message.role}${isSelected ? " is-selected" : ""}${isSearchTarget ? " is-search-target" : ""}`}
+      className={`preview-msg ${message.role}${isSelected ? " is-selected" : ""}${isSearchTarget ? " is-search-target" : ""}${message.pending ? " is-pending" : ""}`}
     >
       <div className="role">
         {message.role === "assistant"
@@ -95,7 +98,16 @@ const TranscriptMessageRow = React.memo(function TranscriptMessageRow({
           ) : null}
         </div>
       ) : null}
-      {message.text ? (
+      {isPendingReply ? (
+        <div className="wb-transcript-pending-body" aria-live="polite">
+          <span className="wb-transcript-pending-label">{displayText}</span>
+          <span className="im-jumping-dots" aria-hidden="true">
+            <span className="im-jumping-dot" />
+            <span className="im-jumping-dot" />
+            <span className="im-jumping-dot" />
+          </span>
+        </div>
+      ) : message.text ? (
         renderMarkdownView ? (
           <StreamdownRenderer
             content={displayText}
@@ -196,6 +208,7 @@ export function SessionTranscriptPane({
   isRunning = false,
   fontSize = 14,
   focusUserMessage,
+  pendingUserMessage,
   isPending = false
 }: {
   provider: string;
@@ -205,6 +218,7 @@ export function SessionTranscriptPane({
   isRunning?: boolean;
   fontSize?: number;
   focusUserMessage?: { text: string; sentAtMs?: number; nonce: number } | null;
+  pendingUserMessage?: { text: string; sentAtMs?: number } | null;
   isPending?: boolean;
 }): React.JSX.Element {
   const roleIconProvider = iconProvider || provider;
@@ -294,16 +308,26 @@ export function SessionTranscriptPane({
   }, [provider, sessionId]);
 
   useEffect(() => {
-    if (!active || !provider || !sessionId || !isRunning) return;
+    const waitingForDisk = Boolean(pendingUserMessage?.text);
+    if (!active || !provider || !sessionId || !(isRunning || waitingForDisk)) return;
     const timer = window.setInterval(() => {
       void syncLivePreview();
     }, LIVE_REFRESH_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [active, isRunning, provider, sessionId, syncLivePreview]);
+  }, [active, isRunning, pendingUserMessage?.text, provider, sessionId, syncLivePreview]);
 
-  const model = useMemo(
+  const diskModel = useMemo(
     () => buildSessionTranscriptModel(preview?.messages || []),
     [preview?.messages]
+  );
+  const pendingTitle = t("desktop.workbench.transcriptWorking");
+  const model = useMemo(
+    () => mergePendingTranscript(diskModel, {
+      pendingUser: pendingUserMessage,
+      isRunning,
+      pendingTitle
+    }),
+    [diskModel, isRunning, pendingTitle, pendingUserMessage]
   );
   const searchInputRef = useRef<HTMLInputElement>(null);
   const normalizedQuery = query.trim().toLowerCase();
@@ -640,7 +664,7 @@ export function SessionTranscriptPane({
       {preview?.warning ? <p className="status warning">{preview.warning}</p> : null}
       {preview?.truncated ? <p className="muted wb-transcript-status">{t("desktop.sessions.truncated")}</p> : null}
 
-      {!loading && preview && !model.messages.length ? (
+      {!loading && !model.messages.length && (preview || pendingUserMessage?.text) ? (
         <p className="muted wb-transcript-status">{t("desktop.sessions.noMessages")}</p>
       ) : null}
 
@@ -654,7 +678,8 @@ export function SessionTranscriptPane({
           >
             {model.messages.length ? model.messages.map((message, index) => {
               const isLast = index === model.messages.length - 1;
-              const isStreaming = isRunning && isLast && message.role === "assistant";
+              const isPendingReply = Boolean(message.pending && message.role === "assistant");
+              const isStreaming = isRunning && isLast && message.role === "assistant" && !isPendingReply;
               const isSearchTarget = Boolean(
                 normalizedQuery &&
                 matchedMessageIds.length > 0 &&
@@ -678,8 +703,9 @@ export function SessionTranscriptPane({
                   thinkingLabel={t("desktop.workbench.transcriptThinking")}
                   renderMarkdownView={renderMarkdownView}
                   isStreaming={isStreaming}
+                  isPendingReply={isPendingReply}
                   onImageClick={setImagePreview}
-                  displayText={translatedText || message.text}
+                  displayText={isPendingReply ? pendingTitle : (translatedText || message.text)}
                   translated={Boolean(translatedText)}
                   isTranslating={translatingIds.has(message.id)}
                   translateLabel={t("desktop.workbench.transcriptTranslate")}
@@ -712,7 +738,7 @@ export function SessionTranscriptPane({
                     <li key={item.id}>
                       <button
                         type="button"
-                        className={`wb-transcript-outline-item${selectedId === item.messageId ? " is-selected" : ""}`}
+                        className={`wb-transcript-outline-item${selectedId === item.messageId ? " is-selected" : ""}${item.pending ? " is-pending" : ""}`}
                         onClick={() => scrollToMessage(item.messageId)}
                       >
                         <span className="wb-transcript-outline-index">#{item.index}</span>

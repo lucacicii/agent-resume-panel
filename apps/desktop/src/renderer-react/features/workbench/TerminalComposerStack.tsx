@@ -1,4 +1,4 @@
-import type { SessionDotStatus } from "./activeSessionDots";
+import type { SessionDotStatus } from "./sessionStatus";
 import type { WorkbenchComposerSlashPhrase } from "@agent-resume/core";
 import {
   TerminalComposer,

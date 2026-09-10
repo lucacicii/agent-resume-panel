@@ -1,4 +1,8 @@
+import { findTranscriptUserMessage } from "./composerTipMatch";
+
 export const TRANSCRIPT_OUTLINE_TITLE_MAX = 48;
+export const TRANSCRIPT_PENDING_USER_ID = "transcript-pending-user";
+export const TRANSCRIPT_PENDING_ASSISTANT_ID = "transcript-pending-assistant";
 
 export type TranscriptMessageRole = "user" | "assistant";
 
@@ -15,6 +19,7 @@ export type TranscriptMessage = {
   text: string;
   thinking?: string;
   timestamp?: string;
+  pending?: boolean;
 };
 
 export type TranscriptOutlineItem = {
@@ -22,6 +27,7 @@ export type TranscriptOutlineItem = {
   messageId: string;
   index: number;
   title: string;
+  pending?: boolean;
 };
 
 export type SessionTranscriptModel = {
@@ -123,4 +129,82 @@ export function filterSessionTranscript(
     messages: model.messages.filter((message) => matchedIds.has(message.id)),
     outline: model.outline.filter((item) => matchedIds.has(item.messageId))
   };
+}
+
+export type TranscriptPendingUser = {
+  text: string;
+  sentAtMs?: number;
+};
+
+function lastMessage(messages: readonly TranscriptMessage[]): TranscriptMessage | undefined {
+  return messages[messages.length - 1];
+}
+
+function assistantHasContent(message: TranscriptMessage | undefined): boolean {
+  return Boolean(message && message.role === "assistant" && (message.text.trim() || message.thinking?.trim()));
+}
+
+/**
+ * Overlay a just-sent composer prompt and a waiting assistant bubble until
+ * the on-disk transcript catches up. Pending rows never replace real content.
+ */
+export function mergePendingTranscript(
+  model: SessionTranscriptModel,
+  options: {
+    pendingUser?: TranscriptPendingUser | null;
+    isRunning?: boolean;
+    pendingTitle: string;
+  }
+): SessionTranscriptModel {
+  const messages = [...model.messages];
+  const outline = [...model.outline];
+  const pendingText = options.pendingUser?.text.trim() || "";
+  const sentAtMs = options.pendingUser?.sentAtMs;
+  const pendingUserFresh = sentAtMs == null || Date.now() - sentAtMs < 120_000;
+
+  if (pendingText && pendingUserFresh) {
+    const matched = findTranscriptUserMessage(
+      messages.filter((message) => message.role === "user"),
+      pendingText,
+      options.pendingUser?.sentAtMs
+    );
+    if (!matched) {
+      messages.push({
+        id: TRANSCRIPT_PENDING_USER_ID,
+        role: "user",
+        text: pendingText,
+        timestamp: options.pendingUser?.sentAtMs != null
+          ? String(options.pendingUser.sentAtMs)
+          : undefined,
+        pending: true
+      });
+      outline.push({
+        id: `transcript-turn-${outline.length + 1}`,
+        messageId: TRANSCRIPT_PENDING_USER_ID,
+        index: outline.length + 1,
+        title: transcriptOutlineTitle(pendingText),
+        pending: true
+      });
+    }
+  }
+
+  const last = lastMessage(messages);
+  const waitingForAssistant = Boolean(options.isRunning) && !assistantHasContent(last);
+  if (waitingForAssistant) {
+    messages.push({
+      id: TRANSCRIPT_PENDING_ASSISTANT_ID,
+      role: "assistant",
+      text: "",
+      pending: true
+    });
+    outline.push({
+      id: `transcript-turn-${outline.length + 1}`,
+      messageId: TRANSCRIPT_PENDING_ASSISTANT_ID,
+      index: outline.length + 1,
+      title: options.pendingTitle,
+      pending: true
+    });
+  }
+
+  return { messages, outline };
 }

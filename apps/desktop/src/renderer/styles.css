@@ -7843,6 +7843,35 @@ body.is-pane-resizing-v * {
   white-space: nowrap;
 }
 
+.wb-transcript-outline-item.is-pending .wb-transcript-outline-title {
+  color: var(--color-label-secondary, var(--muted));
+  font-style: italic;
+}
+
+.wb-transcript-pending-body {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-label-secondary, var(--muted));
+  padding: 2px 0;
+}
+
+.wb-transcript-pending-label {
+  font-weight: 500;
+}
+
+.wb-transcript-body .preview-msg.is-pending {
+  opacity: 0.92;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-transcript-pane .im-jumping-dot {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
 .wb-transcript-body {
   flex: 1 1 auto;
   min-height: 0;

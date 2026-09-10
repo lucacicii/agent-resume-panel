@@ -15,6 +15,7 @@ import {
   isSuggestedThoughtLevel,
   type ImAgent,
   type ImAgentModelOption,
+  type ImEvent,
   type ImRoleTemplate,
   type ImRoleTools,
   type ImSelectionAction,
@@ -70,9 +71,10 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
     setFetchingModels(true);
     try {
       const list = await desktopApi().imListAgentModels({ agent: targetAgent, refresh });
-      setAgentModels(list);
+      // Keep old list on empty/failure: never clear, allow retry.
+      if (list.length) setAgentModels(list);
     } catch {
-      setAgentModels([]);
+      // keep old list
     } finally {
       setFetchingModels(false);
     }
@@ -81,6 +83,17 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
   useEffect(() => {
     void loadAgentModels(agent);
   }, [agent, loadAgentModels]);
+
+  useEffect(() => {
+    const api = desktopApi() as Partial<Pick<ReturnType<typeof desktopApi>, "onImEvent">>;
+    if (typeof api.onImEvent !== "function") return;
+    const stop = api.onImEvent!((event: ImEvent) => {
+      if (event.type !== "agentModels") return;
+      if (event.agent !== agent) return;
+      if (event.models.length) setAgentModels(event.models);
+    });
+    return () => stop();
+  }, [agent]);
 
   const selected = templates.find((item) => item.templateId === selectedId) ?? null;
 

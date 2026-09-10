@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   buildSessionTranscriptModel,
   filterSessionTranscript,
+  mergePendingTranscript,
   sameTranscriptPreview,
+  TRANSCRIPT_PENDING_ASSISTANT_ID,
+  TRANSCRIPT_PENDING_USER_ID,
   transcriptOutlineTitle
 } from "./sessionTranscriptModel";
 
@@ -90,5 +93,58 @@ describe("filterSessionTranscript", () => {
     const filtered = filterSessionTranscript(model, "original");
     expect(filtered.outline.map((item) => item.title)).toEqual(["Show the original transcript instead."]);
     expect(filtered.messages).toHaveLength(1);
+  });
+});
+
+describe("mergePendingTranscript", () => {
+  const base = buildSessionTranscriptModel([
+    { role: "user", text: "Add a transcript pane" },
+    { role: "assistant", text: "Dock it beside the TUI." }
+  ]);
+
+  it("appends an optimistic user turn and a waiting assistant bubble", () => {
+    const merged = mergePendingTranscript(base, {
+      pendingUser: { text: "Keep the terminal visible.", sentAtMs: Date.now() },
+      isRunning: true,
+      pendingTitle: "Working…"
+    });
+    expect(merged.messages.map((message) => message.id)).toEqual([
+      "transcript-msg-0",
+      "transcript-msg-1",
+      TRANSCRIPT_PENDING_USER_ID,
+      TRANSCRIPT_PENDING_ASSISTANT_ID
+    ]);
+    expect(merged.outline.map((item) => item.title)).toEqual([
+      "Add a transcript pane",
+      "Keep the terminal visible.",
+      "Working…"
+    ]);
+    expect(merged.outline.at(-1)?.pending).toBe(true);
+  });
+
+  it("does not duplicate a user prompt already on disk", () => {
+    const merged = mergePendingTranscript(base, {
+      pendingUser: { text: "Add a transcript pane", sentAtMs: Date.now() },
+      isRunning: true,
+      pendingTitle: "Working…"
+    });
+    expect(merged.messages.filter((message) => message.role === "user")).toHaveLength(1);
+    expect(merged.messages.some((message) => message.id === TRANSCRIPT_PENDING_USER_ID)).toBe(false);
+  });
+
+  it("drops the waiting assistant once real assistant content arrives", () => {
+    const withReply = buildSessionTranscriptModel([
+      { role: "user", text: "Keep the terminal visible." },
+      { role: "assistant", text: "Still docking." }
+    ]);
+    const merged = mergePendingTranscript(withReply, {
+      pendingUser: { text: "Keep the terminal visible.", sentAtMs: Date.now() },
+      isRunning: true,
+      pendingTitle: "Working…"
+    });
+    expect(merged.messages.map((message) => message.id)).toEqual([
+      "transcript-msg-0",
+      "transcript-msg-1"
+    ]);
   });
 });

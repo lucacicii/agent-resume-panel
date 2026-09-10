@@ -327,6 +327,33 @@ describe("SessionTranscriptPane", () => {
     expect(apiMocks.imRunSelectionAction).toHaveBeenCalledTimes(1);
   });
 
+  it("shows an optimistic user bubble and waiting assistant while the disk transcript lags", async () => {
+    apiMocks.previewSession.mockResolvedValue({
+      session: { provider: "codex", id: "session-pending" },
+      preview: {
+        title: "Live",
+        messages: [
+          { role: "user", text: "Add a transcript pane" },
+          { role: "assistant", text: "Dock it beside the TUI." }
+        ]
+      }
+    });
+
+    render(<SessionTranscriptPane
+      provider="codex"
+      sessionId="session-pending"
+      active
+      isRunning
+      pendingUserMessage={{ text: "Keep the terminal visible.", sentAtMs: Date.now() }}
+    />);
+
+    expect(await screen.findByRole("button", { name: /Keep the terminal visible/ })).toBeTruthy();
+    expect(document.querySelector('[data-transcript-id="transcript-pending-user"]')?.textContent).toContain("Keep the terminal visible.");
+    expect(document.querySelector('[data-transcript-id="transcript-pending-assistant"]')?.textContent).toContain("desktop.workbench.transcriptWorking");
+    expect(screen.getByRole("button", { name: /desktop.workbench.transcriptWorking/ })).toBeTruthy();
+    expect(document.querySelector(".wb-transcript-pending-body .im-jumping-dots")).toBeTruthy();
+  });
+
   it("surfaces a translate failure in the transcript status", async () => {
     apiMocks.previewSession.mockResolvedValue({
       session: { provider: "codex", id: "session-err" },

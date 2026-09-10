@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { ThemeIcon } from "../../components/ThemeIcon";
 import { desktopApi } from "../../bridge";
 import { useI18n } from "../../i18n";
-import type { SessionDotStatus } from "./activeSessionDots";
+import type { SessionDotStatus } from "./sessionStatus";
 import {
   hasWorkbenchPathDnd,
   shellQuotePath,
