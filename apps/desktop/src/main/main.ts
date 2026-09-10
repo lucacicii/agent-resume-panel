@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, powerMonitor, screen, shell, Tray } from "electron";
+import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, Notification, powerMonitor, screen, shell, Tray } from "electron";
 import { existsSync, readFileSync } from "node:fs";
 import { constants } from "node:fs";
 import * as fs from "node:fs/promises";
@@ -165,6 +165,7 @@ import {
 } from "./desktopShortcuts";
 import { STANDALONE_NOTE_INITIAL_CONTENT } from "../shared/standaloneNote";
 import {
+  type WorkbenchActiveSessionDot,
   parseWorkbenchActiveSessionDots,
   parseWorkbenchFocusSessionRequest,
   parseWorkbenchSendSelectionRequest
@@ -175,6 +176,7 @@ import {
   sessionDotsTrayImage,
   trayTooltip
 } from "./sessionDotsTray";
+import { collectNewConfirmedWaitingSessions } from "./sessionWaitingNotifications";
 import { checkForDesktopUpdate, getAppVersion } from "./updateCheck";
 import { loadPanelDbPaths } from "./panelDatabases";
 import { buildI18nBundle, desktopT, initI18nService } from "./i18nService";
@@ -391,6 +393,7 @@ let settingsWindow: BrowserWindow | null = null;
 let sessionDotsTray: Tray | null = null;
 let pendingTrayFocus: { paneKey: string; projectPath?: string } | null = null;
 let browserSettingsCache: import("@agent-resume/core").DesktopBrowserSettings | null = null;
+let notifiedWaitingSessions = new Set<string>();
 
 function flushPendingTrayFocus(): void {
   if (!pendingTrayFocus || !mainWindow || mainWindow.isDestroyed() || !mainWindowRendererReady) return;
@@ -522,6 +525,47 @@ function destroySessionDotsTray(): void {
   if (!sessionDotsTray) return;
   sessionDotsTray.destroy();
   sessionDotsTray = null;
+}
+
+async function showSessionWaitingNotifications(sessions: readonly WorkbenchActiveSessionDot[]): Promise<void> {
+  if (!Notification.isSupported()) return;
+  let notificationSettings: PanelSettings | undefined;
+  try {
+    notificationSettings = await loadSettings();
+  } catch (error) {
+    void recordAppError({
+      source: "session-dots",
+      message: "Could not load settings for waiting-session notification.",
+      error
+    });
+  }
+  const waitingLabel = desktopT(notificationSettings, "desktop.workbench.sessionDot.awaiting");
+  for (const session of sessions) {
+    try {
+      const projectPath = session.projectPath.trim();
+      const body = projectPath ? `${path.basename(projectPath)}: ${waitingLabel}` : waitingLabel;
+      const notification = new Notification({
+        title: session.title.trim() || desktopT(notificationSettings, "desktop.agent.sessionLevel"),
+        body
+      });
+      notification.on("click", () => {
+        pendingTrayFocus = {
+          paneKey: session.paneKey,
+          projectPath: projectPath || undefined
+        };
+        const window = revealMainWindow();
+        if (!window || window.isDestroyed()) return;
+        if (mainWindowRendererReady) flushPendingTrayFocus();
+      });
+      notification.show();
+    } catch (error) {
+      void recordAppError({
+        source: "session-dots",
+        message: "Could not show waiting-session notification.",
+        error
+      });
+    }
+  }
 }
 
 function revealMainWindow(): BrowserWindow | null {
@@ -1413,8 +1457,10 @@ function registerIpc(): void {
   ipcMain.on("workbench:activeSessions", (event, payload: unknown) => {
     if (event.sender !== mainWindow?.webContents) return;
     workbenchActiveSessions = parseWorkbenchActiveSessionDots(payload);
+    const newlyWaiting = collectNewConfirmedWaitingSessions(workbenchActiveSessions, notifiedWaitingSessions);
     syncSessionDotsTray();
     broadcastToRenderers("workbench:activeSessions", workbenchActiveSessions);
+    if (newlyWaiting.length > 0) void showSessionWaitingNotifications(newlyWaiting);
   });
 
   safeHandle("workbench:getActiveSessions", async () => workbenchActiveSessions);
