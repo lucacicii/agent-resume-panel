@@ -42,7 +42,11 @@ import { VirtualList } from "../../components/VirtualList";
 import type { TerminalEngineType } from "./terminal";
 import { useI18n } from "../../i18n";
 import { AcpChatView } from "./AcpChatView";
-import { SelectionSendItems } from "../../selection/SelectionSendMenu";
+import { SelectionActionItems } from "../../selection/SelectionActionItems";
+import {
+  SelectionActionResult,
+  useSelectionActionResult
+} from "../../selection/SelectionActionResult";
 import { registerTerminalSelection } from "../../selection/terminalSelection";
 import { BrowserPaneView } from "../browser/BrowserPaneView";
 import type { BrowserSessionState } from "../../../shared/browserTypes";
@@ -2695,6 +2699,12 @@ export function WorkbenchPanel(): ReactPortal | null {
     return stored === "en" || stored === "zh-cn" || stored === "ja" || stored === "auto" ? stored : "auto";
   });
   const [editorContextMenu, setEditorContextMenu] = useState<{ x: number; y: number; hasSelection: boolean; selectedText: string } | null>(null);
+  const {
+    selectionResult,
+    runSelectionAction,
+    copySelectionResult,
+    clearSelectionResult
+  } = useSelectionActionResult();
   const linkGraphSeedRef = useRef<LinkGraphAnalyzeArgs | null>(null);
   const linkGraphLanguageRef = useRef(linkGraphLanguage);
   linkGraphLanguageRef.current = linkGraphLanguage;
@@ -8684,16 +8694,27 @@ export function WorkbenchPanel(): ReactPortal | null {
     {editorContextMenu ? <div className="wb-context-menu notes-selection-menu" role="menu" style={{ left: Math.max(8, Math.min(editorContextMenu.x, window.innerWidth - 220)), top: Math.max(8, Math.min(editorContextMenu.y, window.innerHeight - 120)) }} onContextMenu={(event) => event.preventDefault()}>
       {editorContextMenu.selectedText ? (
         <>
-          <SelectionSendItems
+          <SelectionActionItems
             text={editorContextMenu.selectedText}
             projectPath={currentEditor?.projectPath || selectedProject || undefined}
             onSent={() => setEditorContextMenu(null)}
+            onActionStart={() => setEditorContextMenu(null)}
+            runAction={runSelectionAction}
+            x={editorContextMenu.x}
+            y={editorContextMenu.y}
           />
           <div className="context-menu-separator" role="separator" />
         </>
       ) : null}
       <button type="button" role="menuitem" disabled={!editorContextMenu.hasSelection} onClick={() => { setEditorContextMenu(null); openLinkGraphFromEditor(); }}>{t("desktop.workbench.linkGraphView")}</button>
     </div> : null}
+    {selectionResult ? (
+      <SelectionActionResult
+        result={selectionResult}
+        onClose={clearSelectionResult}
+        onCopy={copySelectionResult}
+      />
+    ) : null}
     {gitLogContextMenu ? <div
       className="wb-context-menu wb-git-log-context-menu"
       role="menu"

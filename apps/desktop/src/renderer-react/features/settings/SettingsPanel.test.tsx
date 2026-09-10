@@ -64,6 +64,9 @@ const messages = {
   "desktop.settings.imActionModelDefault": "Default (Ask / Chat model)",
   "desktop.settings.imActionEnabled": "Show in menu",
   "desktop.settings.imActionSaved": "Action saved",
+  "desktop.settings.imActionOrderSaved": "Action order saved",
+  "desktop.settings.imActionMoveUp": "Move {0} up",
+  "desktop.settings.imActionMoveDown": "Move {0} down",
   "desktop.settings.imDeleteAction": "Delete action",
   "desktop.im.agent.pi": "Pi",
   "desktop.im.agent.claude": "Claude Code",
@@ -669,10 +672,13 @@ describe("SettingsPanel (window)", () => {
 
     await waitFor(() => expect(host.textContent).toContain("Developer"));
     await waitFor(() => expect(host.querySelector(".im-settings-editor")).not.toBeNull());
-    const thoughtSelect = Array.from(host.querySelectorAll(".im-settings-editor select")).find(
-      (el) => (el as HTMLSelectElement).value === "medium"
-    ) as HTMLSelectElement | undefined;
-    expect(thoughtSelect).toBeTruthy();
+    let thoughtSelect: HTMLSelectElement | undefined;
+    await waitFor(() => {
+      thoughtSelect = Array.from(host.querySelectorAll(".im-settings-editor select")).find(
+        (el) => (el as HTMLSelectElement).value === "medium"
+      ) as HTMLSelectElement | undefined;
+      expect(thoughtSelect).toBeTruthy();
+    });
     expect(thoughtSelect!.value).toBe("medium");
 
     fireEvent.change(thoughtSelect!, { target: { value: "high" } });
@@ -687,5 +693,88 @@ describe("SettingsPanel (window)", () => {
         })
       );
     });
+  });
+
+  it("reorders selection actions from the IM settings list", async () => {
+    const actions = [
+      {
+        actionId: "translate",
+        name: "Translate",
+        kind: "independent",
+        prompt: "Translate:\n{selection}",
+        sortOrder: 0,
+        enabled: true,
+        createdAtMs: 1,
+        updatedAtMs: 1
+      },
+      {
+        actionId: "explain",
+        name: "Explain",
+        kind: "independent",
+        prompt: "Explain:\n{selection}",
+        sortOrder: 1,
+        enabled: true,
+        createdAtMs: 2,
+        updatedAtMs: 2
+      }
+    ];
+    const imReorderSelectionActions = vi.fn(async () => [actions[1], actions[0]]);
+    const { host } = renderWindowSettings("im", {
+      imListSelectionActions: vi.fn(async () => actions),
+      imReorderSelectionActions
+    });
+
+    await waitFor(() => expect(host.querySelector(".im-settings-action-row")).not.toBeNull());
+    fireEvent.click(host.querySelector('[title="Move Translate down"]') as HTMLButtonElement);
+
+    await waitFor(() => expect(imReorderSelectionActions).toHaveBeenCalledWith({
+      actionIds: ["explain", "translate"]
+    }));
+    await waitFor(() => {
+      const names = [...host.querySelectorAll(".im-settings-action-row .im-settings-item")]
+        .map((item) => item.firstChild?.textContent ?? "");
+      expect(names).toContain("Explain");
+      expect(names.indexOf("Explain")).toBeLessThan(names.indexOf("Translate"));
+    });
+    expect(host.textContent).toContain("Action order saved");
+  });
+
+  it("restores selection action order when reordering fails", async () => {
+    const actions = [
+      {
+        actionId: "translate",
+        name: "Translate",
+        kind: "independent",
+        prompt: "Translate:\n{selection}",
+        sortOrder: 0,
+        enabled: true,
+        createdAtMs: 1,
+        updatedAtMs: 1
+      },
+      {
+        actionId: "explain",
+        name: "Explain",
+        kind: "independent",
+        prompt: "Explain:\n{selection}",
+        sortOrder: 1,
+        enabled: true,
+        createdAtMs: 2,
+        updatedAtMs: 2
+      }
+    ];
+    const { host } = renderWindowSettings("im", {
+      imListSelectionActions: vi.fn(async () => actions),
+      imReorderSelectionActions: vi.fn(async () => {
+        throw new Error("Reorder failed");
+      })
+    });
+
+    await waitFor(() => expect(host.querySelector(".im-settings-action-row")).not.toBeNull());
+    fireEvent.click(host.querySelector('[title="Move Translate down"]') as HTMLButtonElement);
+
+    await waitFor(() => expect(host.textContent).toContain("Reorder failed"));
+    const names = [...host.querySelectorAll(".im-settings-action-row .im-settings-item")]
+      .map((item) => item.firstChild?.textContent ?? "");
+    expect(names.indexOf("Translate")).toBeLessThan(names.indexOf("Explain"));
   });
 });

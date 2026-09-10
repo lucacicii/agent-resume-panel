@@ -875,6 +875,30 @@ export class ImStore {
     );
   }
 
+  async reorderSelectionActions(actionIds: string[]): Promise<ImSelectionAction[]> {
+    const existing = await this.listSelectionActions();
+    const existingIds = new Set(existing.map((item) => item.actionId));
+    const nextIds = new Set(actionIds);
+    if (nextIds.size !== actionIds.length) {
+      throw new Error("Selection action ids must be unique.");
+    }
+    if (actionIds.length !== existingIds.size || actionIds.some((id) => !existingIds.has(id))) {
+      throw new Error("Selection action ids must cover every action exactly once.");
+    }
+    const now = nowMs();
+    await runSqlite(
+      this.dbPath,
+      [
+        "BEGIN IMMEDIATE;",
+        ...actionIds.map((actionId, index) =>
+          `UPDATE im_selection_actions SET sort_order = ${index}, updated_at_ms = ${now} WHERE action_id = ${sqlString(actionId)};`
+        ),
+        "COMMIT;"
+      ].join("\n")
+    );
+    return this.listSelectionActions();
+  }
+
   clipSelectionText(value: string): string {
     return clipBody(value, SELECTION_TEXT_MAX).body;
   }

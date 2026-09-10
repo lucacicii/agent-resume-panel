@@ -17926,13 +17926,21 @@ html[data-window-mode="browser"] #react-chrome {
   min-height: 280px;
 }
 .im-settings-list {
-  width: 220px;
+  width: 260px;
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
+.im-settings-action-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
 .im-settings-item {
   display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
   justify-content: space-between;
   gap: 8px;
   text-align: left;
@@ -17945,6 +17953,33 @@ html[data-window-mode="browser"] #react-chrome {
 .im-settings-item.active,
 .im-settings-item:hover {
   background: var(--color-control-bg);
+}
+.im-settings-order-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+.im-settings-order-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-label-secondary);
+  cursor: pointer;
+}
+.im-settings-order-btn:hover:not(:disabled),
+.im-settings-order-btn:focus-visible {
+  background: var(--color-control-bg);
+  color: var(--color-label-primary);
+}
+.im-settings-order-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 .im-settings-editor {
   flex: 1 1 auto;
@@ -18586,10 +18621,11 @@ html[data-window-mode="browser"] #react-chrome {
   flex-direction: column;
   align-items: stretch;
 }
-.im-selection-result-actions {
+.selection-action-result-actions {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  flex: none;
 }
 .im-tool-danger {
   display: inline-flex;
@@ -18776,11 +18812,11 @@ html[data-window-mode="browser"] #react-chrome {
   color: var(--color-label-tertiary);
   padding: 12px;
 }
-.im-selection-result {
+.selection-action-result {
   position: fixed;
   z-index: 2001;
-  width: min(320px, calc(100vw - 16px));
-  max-height: min(280px, calc(100vh - 24px));
+  width: min(360px, calc(100vw - 16px));
+  max-height: min(320px, calc(100vh - 24px));
   overflow: auto;
   padding: 8px 10px;
   border: 1px solid var(--color-separator);
@@ -18788,7 +18824,7 @@ html[data-window-mode="browser"] #react-chrome {
   background: var(--color-elevated-bg);
   box-shadow: var(--shadow-popover);
 }
-.im-selection-result header {
+.selection-action-result header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -20163,4 +20199,3 @@ html[data-window-mode="browser"] #react-chrome {
   font-weight: bold;
   animation: streamdownCaretBlink 0.8s infinite;
 }
-

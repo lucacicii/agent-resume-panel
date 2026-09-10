@@ -589,6 +589,7 @@ export interface DesktopApi {
     enabled?: boolean;
   }): Promise<ImSelectionAction>;
   imDeleteSelectionAction(args: { actionId: string }): Promise<{ ok: boolean }>;
+  imReorderSelectionActions(args: { actionIds: string[] }): Promise<ImSelectionAction[]>;
   imRunSelectionAction(args: { actionId: string; text: string }): Promise<{ text: string }>;
   onImEvent(callback: (event: ImEvent) => void): () => void;
   terminalSpawn(args: {
@@ -1659,6 +1660,7 @@ const api: DesktopApi = {
   imCreateSelectionAction: (args) => ipcRenderer.invoke("im:createSelectionAction", args),
   imUpdateSelectionAction: (args) => ipcRenderer.invoke("im:updateSelectionAction", args),
   imDeleteSelectionAction: (args) => ipcRenderer.invoke("im:deleteSelectionAction", args),
+  imReorderSelectionActions: (args) => ipcRenderer.invoke("im:reorderSelectionActions", args),
   imRunSelectionAction: (args) => ipcRenderer.invoke("im:runSelectionAction", args),
   onImEvent: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, payload: ImEvent) => callback(payload);

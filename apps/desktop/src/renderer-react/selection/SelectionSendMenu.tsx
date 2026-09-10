@@ -3,6 +3,8 @@ import { ThemeIcon } from "../components/ThemeIcon";
 import { desktopApi } from "../bridge";
 import { notifyDesktop } from "../components/Notifications";
 import { useI18n } from "../i18n";
+import { SelectionActionItems } from "./SelectionActionItems";
+import { SelectionActionResult, useSelectionActionResult } from "./SelectionActionResult";
 import { WORKBENCH_NEW_SESSION_TARGET_OPTIONS } from "../features/settings/model";
 import type {
   WorkbenchActiveSessionDot,
@@ -231,14 +233,33 @@ export function SelectionSendMenu({
   onClose: () => void;
   className?: string;
 }): React.JSX.Element {
+  const [menuOpen, setMenuOpen] = useState(true);
+  const {
+    selectionResult,
+    runSelectionAction,
+    copySelectionResult,
+    clearSelectionResult
+  } = useSelectionActionResult();
+
   useEffect(() => {
+    setMenuOpen(true);
+  }, [menu.x, menu.y, menu.text]);
+
+  const closeAll = () => {
+    clearSelectionResult();
+    onClose();
+  };
+
+  useEffect(() => {
+    if (!menuOpen) return;
     const dismiss = (event: MouseEvent) => {
-      if (!(event.target instanceof Element) || !event.target.closest(".notes-selection-menu")) onClose();
+      if (!(event.target instanceof Element) || event.target.closest(".notes-selection-menu, .selection-action-result")) return;
+      closeAll();
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        onClose();
+        closeAll();
       }
     };
     window.addEventListener("mousedown", dismiss);
@@ -247,17 +268,36 @@ export function SelectionSendMenu({
       window.removeEventListener("mousedown", dismiss);
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [onClose]);
+  }, [menuOpen, clearSelectionResult, onClose]);
 
   return (
-    <div
-      className={className}
-      role="menu"
-      style={{ left: Math.max(8, Math.min(menu.x, window.innerWidth - 220)), top: Math.max(8, Math.min(menu.y, window.innerHeight - 96)) }}
-      onContextMenu={(event) => event.preventDefault()}
-    >
-      <SelectionSendItems text={menu.text} projectPath={menu.projectPath} onSent={onClose} />
-    </div>
+    <>
+      {menuOpen ? (
+        <div
+          className={className}
+          role="menu"
+          style={{ left: Math.max(8, Math.min(menu.x, window.innerWidth - 220)), top: Math.max(8, Math.min(menu.y, window.innerHeight - 96)) }}
+          onContextMenu={(event) => event.preventDefault()}
+        >
+          <SelectionActionItems
+            text={menu.text}
+            projectPath={menu.projectPath}
+            onSent={onClose}
+            onActionStart={() => setMenuOpen(false)}
+            runAction={runSelectionAction}
+            x={menu.x}
+            y={menu.y}
+          />
+        </div>
+      ) : null}
+      {selectionResult ? (
+        <SelectionActionResult
+          result={selectionResult}
+          onClose={closeAll}
+          onCopy={copySelectionResult}
+        />
+      ) : null}
+    </>
   );
 }
 

@@ -541,6 +541,17 @@ export function registerImIpc(deps: {
     return { ok: true };
   });
 
+  safeHandle("im:reorderSelectionActions", async (_event, args: { actionIds?: unknown }) => {
+    if (
+      !Array.isArray(args?.actionIds) ||
+      args.actionIds.some((id) => typeof id !== "string" || !id.trim())
+    ) {
+      throw new Error("A complete list of selection action ids is required.");
+    }
+    const im = await getStore();
+    return im.reorderSelectionActions(args.actionIds as string[]);
+  });
+
   safeHandle("im:runSelectionAction", async (_event, args: { actionId?: unknown; text?: unknown }) => {
     if (typeof args?.actionId !== "string") throw new Error("Action id is required.");
     const im = await getStore();

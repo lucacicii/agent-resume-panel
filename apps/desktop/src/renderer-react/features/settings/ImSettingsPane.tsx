@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { PanelSettings } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
+import { ThemeIcon } from "../../components/ThemeIcon";
 import { listProviderModels } from "./providerPool";
 import { DelegationMatrixGrid } from "./DelegationMatrixGrid";
 import { DelegationDagView } from "./DelegationDagView";
@@ -261,6 +262,26 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
     }
   }, [load, selectedAction, t]);
 
+  const moveAction = useCallback(async (index: number, offset: -1 | 1) => {
+    const nextIndex = index + offset;
+    if (nextIndex < 0 || nextIndex >= actions.length) return;
+    const nextActions = [...actions];
+    const [moved] = nextActions.splice(index, 1);
+    nextActions.splice(nextIndex, 0, moved);
+    const previousActions = actions;
+    setActions(nextActions);
+    try {
+      const saved = await desktopApi().imReorderSelectionActions({
+        actionIds: nextActions.map((action) => action.actionId)
+      });
+      setActions(saved);
+      setStatus(t("desktop.settings.imActionOrderSaved"));
+    } catch (error) {
+      setActions(previousActions);
+      setStatus(error instanceof Error ? error.message : String(error));
+    }
+  }, [actions, t]);
+
   const handleMatrixUpdate = useCallback(
     async (input: {
       templateId: string;
@@ -517,19 +538,42 @@ export function ImSettingsPane({ t }: { t: Translate }): React.JSX.Element {
         <p className="settings-footnote">{t("desktop.settings.imActionsHint")}</p>
         <div className="im-settings-split">
           <div className="im-settings-list">
-            {actions.map((action) => (
-              <button
-                key={action.actionId}
-                type="button"
-                className={`im-settings-item${selectedActionId === action.actionId && !creatingAction ? " active" : ""}`}
-                onClick={() => {
-                  setCreatingAction(false);
-                  setSelectedActionId(action.actionId);
-                }}
-              >
-                {action.name}
-                {isBuiltinSelectionActionId(action.actionId) ? <span>{t("desktop.settings.imBuiltin")}</span> : null}
-              </button>
+            {actions.map((action, index) => (
+              <div className="im-settings-action-row" key={action.actionId}>
+                <button
+                  type="button"
+                  className={`im-settings-item${selectedActionId === action.actionId && !creatingAction ? " active" : ""}`}
+                  onClick={() => {
+                    setCreatingAction(false);
+                    setSelectedActionId(action.actionId);
+                  }}
+                >
+                  {action.name}
+                  {isBuiltinSelectionActionId(action.actionId) ? <span>{t("desktop.settings.imBuiltin")}</span> : null}
+                </button>
+                <span className="im-settings-order-controls">
+                  <button
+                    type="button"
+                    className="im-settings-order-btn"
+                    disabled={index === 0}
+                    aria-label={t("desktop.settings.imActionMoveUp", action.name)}
+                    title={t("desktop.settings.imActionMoveUp", action.name)}
+                    onClick={() => void moveAction(index, -1)}
+                  >
+                    <ThemeIcon name="arrow-up" size={12} aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    className="im-settings-order-btn"
+                    disabled={index === actions.length - 1}
+                    aria-label={t("desktop.settings.imActionMoveDown", action.name)}
+                    title={t("desktop.settings.imActionMoveDown", action.name)}
+                    onClick={() => void moveAction(index, 1)}
+                  >
+                    <ThemeIcon name="arrow-down" size={12} aria-hidden="true" />
+                  </button>
+                </span>
+              </div>
             ))}
             <button type="button" className="im-settings-item" onClick={() => setCreatingAction(true)}>
               {t("desktop.settings.imNewAction")}
