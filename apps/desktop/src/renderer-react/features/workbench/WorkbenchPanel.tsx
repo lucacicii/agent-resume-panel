@@ -87,7 +87,8 @@ import {
   type QuickAccessMode,
   type QuickAccessProject
 } from "./QuickAccess";
-import { ScriptsTree, type ScriptEntryView, type ScriptPackageView } from "./ScriptsTree";
+import { useWorkbenchScripts } from "./scripts/useWorkbenchScripts";
+import { WorkbenchScriptsPane } from "./scripts/WorkbenchScriptsPane";
 import { resolveTerminalTheme, resolveTerminalThemeId } from "./terminalThemes";
 import { appearanceStateFromSettings } from "../../themes";
 import { storedWidth } from "../../storage";
@@ -696,13 +697,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [browsers, setBrowsers] = useState<BrowserPane[]>([]);
   const [activePanes, setActivePanes] = useState<Record<string, string>>({});
   const [side, setSide] = useState<SideView>(null);
-  const [scriptPackages, setScriptPackages] = useState<ScriptPackageView[]>([]);
-  const [scriptsLoading, setScriptsLoading] = useState(false);
-  const [scriptsError, setScriptsError] = useState("");
-  const [scriptsTruncated, setScriptsTruncated] = useState(false);
-  const [scriptsSectionCollapsed, setScriptsSectionCollapsed] = useState(
-    () => storageBoolean("wb-scripts-collapsed")
-  );
   const [searchQuery, setSearchQuery] = useState("");
   const [searchMatchCase, setSearchMatchCase] = useState(false);
   const [searchWholeWord, setSearchWholeWord] = useState(false);
@@ -3945,38 +3939,24 @@ export function WorkbenchPanel(): ReactPortal | null {
     return state.promise;
   }, [syncEditorFromDisk]);
 
-  const loadScripts = useCallback(async (rootPath: string) => {
-    setScriptsLoading(true);
-    setScriptsError("");
-    try {
-      const result = await desktopApi().workbenchListScripts({ rootPath });
-      setScriptPackages(result.packages);
-      setScriptsTruncated(Boolean(result.truncated));
-    } catch (error) {
-      setScriptPackages([]);
-      setScriptsTruncated(false);
-      setScriptsError(statusError(error));
-    } finally {
-      setScriptsLoading(false);
+  const {
+    scriptPackages,
+    scriptsLoading,
+    scriptsError,
+    scriptsTruncated,
+    scriptsSectionCollapsed,
+    loadScripts,
+    runScript,
+    toggleScriptsSectionCollapsed
+  } = useWorkbenchScripts({
+    active,
+    selectedProject,
+    side,
+    runScript: (script, _pkg) => {
+      const projectPath = selectedProject || script.run.cwd;
+      addTerminal(script.name, script.run.cwd, script.run.command, projectPath);
     }
-  }, []);
-
-  useEffect(() => {
-    if (!active || !selectedProject) {
-      setScriptPackages([]);
-      setScriptsError("");
-      setScriptsTruncated(false);
-      return;
-    }
-    if (side === "files" || side === "scripts") {
-      void loadScripts(selectedProject);
-    }
-  }, [active, loadScripts, selectedProject, side]);
-
-  const runScript = useCallback((script: ScriptEntryView, _pkg: ScriptPackageView) => {
-    const projectPath = selectedProject || script.run.cwd;
-    addTerminal(script.name, script.run.cwd, script.run.command, projectPath);
-  }, [addTerminal, selectedProject]);
+  });
 
   const editorSettings = settings?.workbench?.editor;
   const editorAppearance: CodeMirrorAppearance = settings?.workbench?.editorTheme === "light" || settings?.workbench?.editorTheme === "dark"
@@ -5944,7 +5924,7 @@ export function WorkbenchPanel(): ReactPortal | null {
               onDestroyed={() => closeBrowser(pane.key)}
             />;
           })}{terminalCreating && !currentTerminals.some((pane) => pane.projectPath === selectedProject && !pane.ptyId) && !currentAcpChat ? <div className="wb-terminal-loading wb-terminal-loading-stack" role="status" aria-live="polite"><ThemeIcon name="loader" className="spin" size={18} aria-hidden="true" /><span>{t("desktop.common.loading")}</span></div> : null}{!terminalCreating && !currentTerminals.length && !currentEditors.length && !currentDiffs.length && !currentAcpChats.length && !currentBrowsers.length ? <p className="muted wb-terminal-hint">{selectedProject ? t("desktop.workbench.selectSessionHint") : t("desktop.workbench.selectProjectHint")}</p> : null}</div></div>
-          {side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane wb-explorer-side-pane"><WorkbenchFileExplorer ref={fileExplorerRef} rootPath={selectedProject || ""} activePath={currentFilePath} onOpenFile={(path) => void openFile(path)} onOpenPreview={(path) => void openFile(path, undefined, selectedProject, "preview")} onShowGitHistory={(path) => void loadGitFileHistory(path)} onFindInFolder={findInExplorerFolder} onError={(message) => setStatus({ text: message, kind: "error" })} /><div className={`wb-explorer-scripts${scriptsSectionCollapsed ? " is-collapsed" : ""}`}><div className="wb-explorer-scripts-head"><button type="button" className="wb-explorer-scripts-toggle" aria-expanded={!scriptsSectionCollapsed} onClick={() => setScriptsSectionCollapsed((current) => { const next = !current; localStorage.setItem("wb-scripts-collapsed", String(next)); return next; })}><span className={`wb-file-tree-chevron${scriptsSectionCollapsed ? "" : " is-expanded"}`}><ThemeIcon name="chevron-right" size={12} /></span><span className="wb-side-pane-title">{t("desktop.workbench.sidePanelScripts")}</span></button>{selectedProject ? <button type="button" className="wb-git-action-btn" disabled={scriptsLoading} onClick={() => void loadScripts(selectedProject)} aria-label={t("desktop.workbench.scriptsRefresh")} title={t("desktop.workbench.scriptsRefresh")}><ThemeIcon name="refresh" size={14} className={scriptsLoading ? "spin" : undefined} /></button> : null}</div>{!scriptsSectionCollapsed ? <ScriptsTree packages={scriptPackages} loading={scriptsLoading} error={scriptsError || null} truncated={scriptsTruncated} hasProject={Boolean(selectedProject)} compact emptyHint={t("desktop.workbench.scriptsEmpty")} noRootHint={t("desktop.workbench.sidePanelNoRoot")} onRun={runScript} /> : null}</div></div> : side === "scripts" ? <div className="wb-side-pane"><ScriptsTree packages={scriptPackages} loading={scriptsLoading} error={scriptsError || null} truncated={scriptsTruncated} hasProject={Boolean(selectedProject)} emptyHint={t("desktop.workbench.scriptsEmpty")} noRootHint={t("desktop.workbench.sidePanelNoRoot")} onRefresh={selectedProject ? () => void loadScripts(selectedProject) : undefined} onRun={runScript} /></div> : side === "search" ? <div className="wb-side-pane">
+          {side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane wb-explorer-side-pane"><WorkbenchFileExplorer ref={fileExplorerRef} rootPath={selectedProject || ""} activePath={currentFilePath} onOpenFile={(path) => void openFile(path)} onOpenPreview={(path) => void openFile(path, undefined, selectedProject, "preview")} onShowGitHistory={(path) => void loadGitFileHistory(path)} onFindInFolder={findInExplorerFolder} onError={(message) => setStatus({ text: message, kind: "error" })} /><WorkbenchScriptsPane compact hasProject={Boolean(selectedProject)} selectedProject={selectedProject} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} collapsed={scriptsSectionCollapsed} onToggleCollapsed={toggleScriptsSectionCollapsed} onRefresh={selectedProject ? () => void loadScripts(selectedProject) : undefined} onRun={runScript} /></div> : side === "scripts" ? <WorkbenchScriptsPane hasProject={Boolean(selectedProject)} selectedProject={selectedProject} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} onRefresh={selectedProject ? () => void loadScripts(selectedProject) : undefined} onRun={runScript} /> : side === "search" ? <div className="wb-side-pane">
             <div className="wb-side-pane-head"><span className="wb-side-pane-title">{t("desktop.workbench.sidePanelSearch")}</span></div>
             <div className="wb-search-pane">
               <div className="wb-search-form" role="search">
