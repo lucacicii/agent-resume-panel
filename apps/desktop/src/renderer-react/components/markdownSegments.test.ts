@@ -117,27 +117,6 @@ describe("markdownSegments", () => {
     );
   });
 
-  it("marks only the segments that received text as animating", () => {
-    const staticBuild = grow(null, DOC, 120);
-    expect(staticBuild.segments.every((segment) => segment.animate === false)).toBe(true);
-
-    // First streaming build: everything on screen arrived just now.
-    let state = buildMarkdownSegments(null, DOC, undefined, 120, true);
-    expect(state.segments.every((segment) => segment.animate === true)).toBe(true);
-
-    // A growing tail animates, sealed segments are reused as-is, and a parent
-    // re-render that changed nothing keeps the flags untouched.
-    const closed = state.segments.slice(0, -1);
-    state = buildMarkdownSegments(state, `${DOC}more tokens`, undefined, 120, true);
-    expect(state.segments.slice(0, closed.length)).toEqual(closed);
-    expect(state.segments.at(-1)?.animate).toBe(true);
-    expect(buildMarkdownSegments(state, state.source, undefined, 120, true)).toBe(state);
-
-    // Streaming stopped and the text did not move: nothing new to fade in.
-    const quiet = buildMarkdownSegments(state, `${state.source} and one more`, undefined, 120, false);
-    expect(quiet.segments.at(-1)?.animate).toBe(false);
-  });
-
   it("rebuilds when image options change", () => {
     const state = buildMarkdownSegments(null, "![x](./a.png)", { baseDir: "/work/a" });
     expect(state.segments[0].prepared).toContain("agent-resume.local");

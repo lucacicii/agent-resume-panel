@@ -2,7 +2,7 @@ import { ThemeIcon } from "../../components/ThemeIcon";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import { ResizeHandle } from "../../components/ResizeHandle";
 import { createPortal } from "react-dom";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type ReactPortal } from "react";
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type ReactPortal } from "react";
 import { Terminal } from "@xterm/xterm";
 import { CanvasAddon } from "@xterm/addon-canvas";
 import { ClipboardAddon } from "@xterm/addon-clipboard";
@@ -1870,7 +1870,7 @@ function resolveTransparentTerminalTheme(themeId: WorkbenchTerminalThemeId, appe
   return { ...resolveTerminalTheme(themeId, appearance), background: "rgba(0, 0, 0, 0)" };
 }
 
-function TerminalView({ pane, active, themeId, appearance, rendererMode, engineType = "xterm", onPty, onDetach, onInput, onInitialPromptSubmitted, mouseTracking }: {
+const TerminalView = memo(function TerminalView({ pane, active, themeId, appearance, rendererMode, engineType = "xterm", onPty, onDetach, onInput, onInitialPromptSubmitted, mouseTracking }: {
   pane: TerminalPane;
   active: boolean;
   themeId: WorkbenchTerminalThemeId;
@@ -1885,6 +1885,14 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, engineT
   /** Per-pty mouse-tracking state parsed from the PTY data stream (stable ref). */
   mouseTracking: { current: Map<number, boolean> };
 }): React.JSX.Element {
+  const onInputRef = useRef(onInput);
+  onInputRef.current = onInput;
+  const onDetachRef = useRef(onDetach);
+  onDetachRef.current = onDetach;
+  const onPtyRef = useRef(onPty);
+  onPtyRef.current = onPty;
+  const onInitialPromptSubmittedRef = useRef(onInitialPromptSubmitted);
+  onInitialPromptSubmittedRef.current = onInitialPromptSubmitted;
   const { t } = useI18n();
   const host = useRef<HTMLDivElement>(null);
   const scheduleFitRef = useRef<(() => void) | null>(null);
@@ -2126,7 +2134,7 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, engineT
 
     const input = terminal.onData((data) => {
       if (ptyId.current !== null) void desktopApi().terminalInput({ id: ptyId.current, data });
-      onInput(pane.key);
+      onInputRef.current(pane.key);
     });
     // Wheel, scrollbar drags, and PageUp/PageDown move xterm's viewport. Track
     // whether the user stays anchored to the bottom so output re-anchoring
@@ -2145,7 +2153,7 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, engineT
       if (!alive) return;
       ptyId.current = id;
       if (replay) terminal.write(replay);
-      onPty(pane.key, id, terminal);
+      onPtyRef.current(pane.key, id, terminal);
       syncScrollState();
       setReady(true);
       // Re-fit after attach in case layout settled during spawn.
@@ -2156,7 +2164,7 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, engineT
           const initialPrompt = initialPromptRef.current;
           if (!alive || ptyId.current !== id || !initialPrompt) return;
           void desktopApi().terminalInput({ id, data: `${initialPrompt}\r` })
-            .then(() => onInitialPromptSubmitted(pane.key))
+            .then(() => onInitialPromptSubmittedRef.current(pane.key))
             .catch(() => undefined);
         }, 600);
       }
@@ -2240,7 +2248,7 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, engineT
       const currentPtyId = ptyId.current ?? pane.ptyId ?? null;
       ptyId.current = null;
       if (currentPtyId !== null) {
-        onDetach(currentPtyId);
+        onDetachRef.current(currentPtyId);
         if (typeof desktopApi().terminalDetach === "function") {
           void desktopApi().terminalDetach({ id: currentPtyId });
         }
@@ -2249,7 +2257,7 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, engineT
     };
     // pane.ptyId is intentionally omitted: the first spawn writes it via onPty
     // and must not remount/detach the same view.
-  }, [mouseTracking, onDetach, onInitialPromptSubmitted, onInput, onPty, pane.command, pane.cwd, pane.key, t]);
+  }, [mouseTracking, pane.command, pane.cwd, pane.key, t]);
 
   // Hot-swap accelerated renderer when settings change — keep the same PTY/session.
   useEffect(() => {
@@ -2586,7 +2594,7 @@ function TerminalView({ pane, active, themeId, appearance, rendererMode, engineT
       </div>
     ) : null}
   </div>;
-}
+});
 
 export function WorkbenchPanel(): ReactPortal | null {
   const host = document.getElementById("react-workbench");
@@ -2803,7 +2811,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [composerDrafts, setComposerDrafts] = useState<Record<string, string>>({});
   const [composerTips, setComposerTips] = useState<Record<string, ComposerSendTip[]>>({});
   const [transcriptFocus, setTranscriptFocus] = useState<{ text: string; sentAtMs?: number; nonce: number } | null>(null);
-  const [pendingTranscriptUser, setPendingTranscriptUser] = useState<{ text: string; sentAtMs: number; paneKey: string } | null>(null);
   const openingSessionKeysRef = useRef(new Set<string>());
   /** Latest openSession closure for the agent-resume:workbench-open-session listener. */
   const openSessionRef = useRef<(session: AgentSession) => Promise<void>>(() => Promise.resolve());
@@ -3267,32 +3274,23 @@ export function WorkbenchPanel(): ReactPortal | null {
     void loadSessions();
   }, [loadSessions]);
 
+  const loadSessionsRef = useRef(loadSessions);
+  loadSessionsRef.current = loadSessions;
   const triggerSessionSync = useCallback(() => {
     if (typeof desktopApi().syncSessions === "function") {
       void desktopApi().syncSessions().catch(() => undefined);
     } else {
-      void loadSessions();
+      void loadSessionsRef.current();
     }
-  }, [loadSessions]);
+  }, []);
 
   useEffect(() => {
     if (!pendingSessions.length) return;
-    triggerSessionSync();
-    const timeouts = [400, 1_200, 2_500].map((delay) =>
+    const timers = [600, 1_800, 4_000].map((delay) =>
       window.setTimeout(() => { triggerSessionSync(); }, delay)
     );
-    let ticks = 0;
-    const interval = window.setInterval(() => {
-      ticks += 1;
-      if (ticks > 40) {
-        window.clearInterval(interval);
-        return;
-      }
-      triggerSessionSync();
-    }, 2_500);
     return () => {
-      timeouts.forEach((timer) => window.clearTimeout(timer));
-      window.clearInterval(interval);
+      timers.forEach((timer) => window.clearTimeout(timer));
     };
   }, [pendingSessions.length, triggerSessionSync]);
 
@@ -4178,11 +4176,8 @@ export function WorkbenchPanel(): ReactPortal | null {
     // User typing into a session TUI counts as immediate activity.
     if (terminalsRef.current.find((item) => item.key === key)?.group === "session") {
       statusStore.markUserInput(key);
-      if (pendingSessionsRef.current.some((pending) => pending.terminalKey === key)) {
-        triggerSessionSync();
-      }
     }
-  }, [refreshTerminalGit, statusStore, triggerSessionSync]);
+  }, [refreshTerminalGit, statusStore]);
 
   const activateComposerPane = useCallback((paneKey: string) => {
     const pane = terminalsRef.current.find((item) => item.key === paneKey);
@@ -4246,7 +4241,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       }).catch(() => undefined);
     }
     setTranscriptFocus({ text, sentAtMs: localTip.createdAtMs, nonce: Date.now() });
-    setPendingTranscriptUser({ text, sentAtMs: localTip.createdAtMs, paneKey });
     if (!identity) {
       triggerSessionSync();
     }
@@ -4701,9 +4695,6 @@ export function WorkbenchPanel(): ReactPortal | null {
           const title = t("desktop.workbench.newSessionTitle", basename(launchCwd));
           const terminalKey = addTerminal(title, launchCwd, result.command, launchCwd, undefined, "session", prompt ? { initialPrompt: prompt } : undefined);
           addPendingSession(terminalKey, target.provider, launchCwd, title, focusedFolder || undefined);
-          if (prompt) {
-            setPendingTranscriptUser({ text: prompt, sentAtMs: Date.now(), paneKey: terminalKey });
-          }
           setSessionViewMode("hybrid");
           localStorage.setItem(SESSION_VIEW_MODE_KEY, "hybrid");
         }
@@ -8104,10 +8095,8 @@ export function WorkbenchPanel(): ReactPortal | null {
                       sessionId={sessionId}
                       iconProvider={provider}
                       active={active}
-                      isRunning={activeTranscriptRunning}
                       fontSize={settings?.workbench?.transcriptFontSize ?? 14}
                       focusUserMessage={transcriptFocus}
-                      pendingUserMessage={pendingTranscriptUser?.paneKey === pane.key ? pendingTranscriptUser : null}
                       isPending={!sessionId}
                       onRefresh={triggerSessionSync}
                     />

@@ -51,26 +51,22 @@ describe("SessionTranscriptPane", () => {
     expect(apiMocks.previewSession).not.toHaveBeenCalled();
   });
 
-  it("shows the new session hint when the session is pending", () => {
-    render(<SessionTranscriptPane provider="codex" sessionId="" isPending active />);
-    expect(screen.getByText("desktop.workbench.transcriptNewSessionHint")).toBeTruthy();
-    expect(apiMocks.previewSession).not.toHaveBeenCalled();
-  });
-
-  it("renders optimistic user message and waiting assistant bubble when session is pending without sessionId", async () => {
+  it("shows the new session hint when the session is pending, and provides refresh", () => {
+    const onRefresh = vi.fn();
     render(
       <SessionTranscriptPane
         provider="pi"
         sessionId=""
         isPending
         active
-        pendingUserMessage={{ text: "测试消息", sentAtMs: Date.now() }}
+        onRefresh={onRefresh}
       />
     );
-    expect((await screen.findAllByText("测试消息")).length).toBeGreaterThan(0);
-    expect(document.querySelector('[data-transcript-id="transcript-pending-user"]')).toBeTruthy();
-    expect(document.querySelector('[data-transcript-id="transcript-pending-assistant"]')).toBeTruthy();
-    expect(document.querySelector(".wb-transcript-pending-body .im-jumping-dots")).toBeTruthy();
+    expect(screen.getByText("desktop.workbench.transcriptNewSessionHint")).toBeTruthy();
+    const refreshBtn = screen.getByRole("button", { name: "desktop.common.refresh" });
+    expect(refreshBtn).toBeTruthy();
+    fireEvent.click(refreshBtn);
+    expect(onRefresh).toHaveBeenCalled();
   });
 
   it("renders a user outline and scrolls the matching message without touching xterm", async () => {
@@ -225,15 +221,11 @@ describe("SessionTranscriptPane", () => {
     const toggle = await screen.findByRole("button", { name: "desktop.workbench.transcriptThinking" });
     expect(screen.getByText("The folder is empty because git drops it.")).toBeTruthy();
 
-    // Collapsed: no markdown body, but the reel previews the newest line.
+    // Collapsed: no markdown body.
     expect(document.querySelector(".wb-transcript-thinking-body")).toBeNull();
-    const reelLines = [...document.querySelectorAll(".wb-thinking-ticker-line")].map((node) => node.textContent);
-    expect(reelLines).toEqual(["Then check the git folder."]);
-    expect(document.querySelector(".wb-thinking-ticker")?.getAttribute("aria-hidden")).toBe("true");
 
     fireEvent.click(toggle);
-    // Expanded: the full reasoning renders and the reel steps aside.
-    expect(document.querySelector(".wb-thinking-ticker")).toBeNull();
+    // Expanded: the full reasoning renders.
     expect(document.querySelector(".wb-transcript-thinking-body")?.textContent)
       .toContain("Inspect status parsing.");
     expect(document.querySelector(".wb-transcript-thinking-body")?.textContent)
@@ -253,10 +245,9 @@ describe("SessionTranscriptPane", () => {
       preview
     }));
 
-    render(<SessionTranscriptPane provider="claude" sessionId="session-think-stream" active isRunning />);
+    render(<SessionTranscriptPane provider="claude" sessionId="session-think-stream" active />);
     fireEvent.click(await screen.findByRole("button", { name: "desktop.workbench.transcriptThinking" }));
     const body = document.querySelector(".wb-transcript-thinking-body") as HTMLElement;
-    expect(body.className).toContain("is-streaming");
 
     let scrollTop = 0;
     Object.defineProperty(body, "scrollHeight", { configurable: true, get: () => 400 });
@@ -351,90 +342,6 @@ describe("SessionTranscriptPane", () => {
 
     await waitFor(() => expect(apiMocks.previewSession.mock.calls.length).toBeGreaterThan(1), { timeout: 3500 });
     await waitFor(() => expect(document.querySelector(".wb-transcript-body")?.textContent).toContain("Starting... token 1"));
-  });
-
-  it("blinks a caret at the end of the streaming answer while the session status is running", async () => {
-    apiMocks.previewSession.mockResolvedValue({
-      session: { provider: "codex", id: "session-caret" },
-      preview: {
-        title: "Caret",
-        messages: [
-          { role: "user", text: "Add a transcript pane" },
-          { role: "assistant", text: "Dock it beside the TUI." }
-        ]
-      }
-    });
-    const view = render(<SessionTranscriptPane provider="codex" sessionId="session-caret" active isRunning />);
-    await waitFor(() => expect(view.container.querySelectorAll(".wb-transcript-md").length).toBe(2));
-
-    // The inline caret rides on the streaming message's own markdown body, so
-    // the transcript does not need a second caret row.
-    const assistantBody = view.container.querySelector(
-      '[data-transcript-id="transcript-msg-1"] .wb-transcript-md'
-    );
-    expect(assistantBody?.textContent).toContain("Dock it beside the TUI.");
-    expect(assistantBody?.className).toContain("is-streaming");
-    expect(view.container.querySelector(".wb-transcript-stream-caret-row")).toBeNull();
-
-    // Idle session: no caret anywhere.
-    view.rerender(<SessionTranscriptPane provider="codex" sessionId="session-caret" active />);
-    expect(document.querySelector('[data-transcript-id="transcript-msg-1"] .wb-transcript-md')?.className)
-      .not.toContain("is-streaming");
-    expect(view.container.querySelector(".wb-transcript-stream-caret-row")).toBeNull();
-  });
-
-  it("falls back to a caret row when a running turn has no answer text", async () => {
-    apiMocks.previewSession.mockResolvedValue({
-      session: { provider: "claude", id: "session-caret-thinking" },
-      preview: {
-        title: "Caret",
-        messages: [
-          { role: "user", text: "Why is the folder missing?" },
-          { role: "assistant", text: "", thinking: "Checking status parsing." }
-        ]
-      }
-    });
-    const view = render(<SessionTranscriptPane provider="claude" sessionId="session-caret-thinking" active isRunning />);
-    await screen.findByRole("button", { name: "desktop.workbench.transcriptThinking" });
-
-    const caretRow = view.container.querySelector(".wb-transcript-stream-caret-row");
-    expect(caretRow).toBeTruthy();
-    // Decorative only: the caret must not pollute the pane's readable text.
-    expect(caretRow?.getAttribute("aria-hidden")).toBe("true");
-    expect(caretRow?.querySelector(".wb-transcript-stream-caret")).toBeTruthy();
-    // Reasoning-only turns have no markdown body, so the caret row is the only
-    // place the caret can live.
-    expect(view.container.querySelector(".wb-transcript-md.is-streaming")).toBeNull();
-
-    view.rerender(<SessionTranscriptPane provider="claude" sessionId="session-caret-thinking" active />);
-    expect(view.container.querySelector(".wb-transcript-stream-caret-row")).toBeNull();
-  });
-
-  it("leaves the caret off while the agent has not answered yet", async () => {
-    apiMocks.previewSession.mockResolvedValue({
-      session: { provider: "codex", id: "session-caret-pending" },
-      preview: {
-        title: "Caret",
-        messages: [{ role: "user", text: "Add a transcript pane" }]
-      }
-    });
-    const view = render(<SessionTranscriptPane
-      provider="codex"
-      sessionId="session-caret-pending"
-      active
-      isRunning
-      pendingUserMessage={{ text: "Keep the terminal visible.", sentAtMs: Date.now() }}
-    />);
-
-    // The waiting bubble's rolling dots already say "working"; a caret under it
-    // would be a second, conflicting signal.
-    await screen.findAllByText("Keep the terminal visible.");
-    expect(view.container.querySelector("[data-transcript-id=\"transcript-pending-user\"]")?.textContent)
-      .toContain("Keep the terminal visible.");
-    expect(view.container.querySelector("[data-transcript-id=\"transcript-pending-assistant\"]")?.textContent)
-      .toContain("desktop.workbench.transcriptWorking");
-    expect(view.container.querySelector(".wb-transcript-pending-body .im-jumping-dots")).toBeTruthy();
-    expect(view.container.querySelector(".wb-transcript-stream-caret-row")).toBeNull();
   });
 
   it("only re-renders markdown for the message that changed on a live poll", async () => {
@@ -539,33 +446,6 @@ describe("SessionTranscriptPane", () => {
     await waitFor(() => expect(screen.queryByText("translated body")).toBeNull());
     expect(screen.getByText("Dock it beside the TUI.")).toBeTruthy();
     expect(apiMocks.imRunSelectionAction).toHaveBeenCalledTimes(1);
-  });
-
-  it("shows an optimistic user bubble and waiting assistant while the disk transcript lags", async () => {
-    apiMocks.previewSession.mockResolvedValue({
-      session: { provider: "codex", id: "session-pending" },
-      preview: {
-        title: "Live",
-        messages: [
-          { role: "user", text: "Add a transcript pane" },
-          { role: "assistant", text: "Dock it beside the TUI." }
-        ]
-      }
-    });
-
-    render(<SessionTranscriptPane
-      provider="codex"
-      sessionId="session-pending"
-      active
-      isRunning
-      pendingUserMessage={{ text: "Keep the terminal visible.", sentAtMs: Date.now() }}
-    />);
-
-    expect(await screen.findByRole("button", { name: /Keep the terminal visible/ })).toBeTruthy();
-    expect(document.querySelector('[data-transcript-id="transcript-pending-user"]')?.textContent).toContain("Keep the terminal visible.");
-    expect(document.querySelector('[data-transcript-id="transcript-pending-assistant"]')?.textContent).toContain("desktop.workbench.transcriptWorking");
-    expect(screen.getByRole("button", { name: /desktop.workbench.transcriptWorking/ })).toBeTruthy();
-    expect(document.querySelector(".wb-transcript-pending-body .im-jumping-dots")).toBeTruthy();
   });
 
   it("surfaces a translate failure in the transcript status", async () => {
