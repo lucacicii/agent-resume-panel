@@ -331,7 +331,7 @@ describe("SessionTranscriptPane", () => {
       preview
     }));
 
-    render(<SessionTranscriptPane provider="codex" sessionId="session-live" active isRunning />);
+    render(<SessionTranscriptPane provider="codex" sessionId="session-live" active />);
     expect(await screen.findByText("Starting...")).toBeTruthy();
     expect(apiMocks.previewSession).toHaveBeenCalledTimes(1);
 
@@ -357,7 +357,7 @@ describe("SessionTranscriptPane", () => {
       preview
     }));
 
-    render(<SessionTranscriptPane provider="codex" sessionId="session-parse" active isRunning />);
+    render(<SessionTranscriptPane provider="codex" sessionId="session-parse" active />);
     await screen.findByRole("button", { name: /First question stays stable/ });
     expect(screen.getByText("First answer stays stable.")).toBeTruthy();
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });

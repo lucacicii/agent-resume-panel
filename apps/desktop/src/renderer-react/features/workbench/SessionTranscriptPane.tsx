@@ -161,8 +161,6 @@ type TranscriptPreview = {
   warning?: string;
 };
 
-const LIVE_REFRESH_INTERVAL_MS = 500;
-
 function findTextRanges(root: HTMLElement, needle: string): Range[] {
   const ranges: Range[] = [];
   if (!needle || !root) return ranges;
@@ -205,7 +203,6 @@ export const SessionTranscriptPane = React.memo(function SessionTranscriptPane({
   sessionId,
   iconProvider,
   active,
-  isRunning = false,
   fontSize = 14,
   focusUserMessage,
   isPending = false,
@@ -215,7 +212,6 @@ export const SessionTranscriptPane = React.memo(function SessionTranscriptPane({
   sessionId: string;
   iconProvider?: string;
   active: boolean;
-  isRunning?: boolean;
   fontSize?: number;
   focusUserMessage?: { text: string; sentAtMs?: number; nonce: number } | null;
   isPending?: boolean;
