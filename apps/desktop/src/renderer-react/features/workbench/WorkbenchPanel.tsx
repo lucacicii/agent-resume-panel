@@ -73,6 +73,8 @@ import {
 } from "./WorkbenchFileExplorer";
 import { LinkGraphSidePane } from "./LinkGraphSidePane";
 import { useWorkbenchLinkGraph } from "./linkgraph/useWorkbenchLinkGraph";
+import { useWorkbenchSearch } from "./search/useWorkbenchSearch";
+import { WorkbenchSearchSidePane } from "./search/WorkbenchSearchSidePane";
 import { SessionTranscriptPane } from "./SessionTranscriptPane";
 import {
   QuickAccess,
@@ -194,7 +196,6 @@ type BrowserPane = {
   surfaceKind: "workbench" | "window";
 };
 type SideView = "files" | "git" | "search" | "scripts" | "linkgraph" | null;
-type SearchMatch = Awaited<ReturnType<DesktopApi["workbenchSearchText"]>>["matches"][number];
 type SearchReveal = { path: string; line: number; column: number; endColumn: number };
 type ProjectFilter = "all" | "pinned";
 type WorkbenchSidebarView = "projects" | "gtd";
@@ -692,29 +693,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [browsers, setBrowsers] = useState<BrowserPane[]>([]);
   const [activePanes, setActivePanes] = useState<Record<string, string>>({});
   const [side, setSide] = useState<SideView>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchMatchCase, setSearchMatchCase] = useState(false);
-  const [searchWholeWord, setSearchWholeWord] = useState(false);
-  const [searchUseRegex, setSearchUseRegex] = useState(false);
-  const [searchMatches, setSearchMatches] = useState<SearchMatch[]>([]);
-  const [searchTruncated, setSearchTruncated] = useState(false);
-  const [searchLoading, setSearchLoading] = useState(false);
-  const [searchError, setSearchError] = useState("");
-  const [searchExpanded, setSearchExpanded] = useState<Set<string>>(() => new Set());
-  const [searchSelectedKey, setSearchSelectedKey] = useState("");
-  const [searchProjectMode, setSearchProjectMode] = useState(false);
-  const [searchProjectQuery, setSearchProjectQuery] = useState("");
-  const [searchProjectSelectionId, setSearchProjectSelectionId] = useState("");
-  const [searchFilesInclude, setSearchFilesInclude] = useState("");
-  const [searchFilesExclude, setSearchFilesExclude] = useState("");
-  const [searchDetailsOpen, setSearchDetailsOpen] = useState(
-    () => storageBoolean("wb-search-details-open")
-  );
-  const [searchReplaceOpen, setSearchReplaceOpen] = useState(
-    () => storageBoolean("wb-search-replace-open")
-  );
-  const [searchReplaceText, setSearchReplaceText] = useState("");
-  const [searchReplacing, setSearchReplacing] = useState(false);
   const [editorContextMenu, setEditorContextMenu] = useState<{ x: number; y: number; hasSelection: boolean; selectedText: string } | null>(null);
   const {
     selectionResult,
@@ -732,12 +710,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [quickAccessTruncated, setQuickAccessTruncated] = useState(false);
   const [quickAccessError, setQuickAccessError] = useState("");
   const [pendingExplorerReveal, setPendingExplorerReveal] = useState<{ rootPath: string; path: string } | null>(null);
-  const searchSeqRef = useRef(0);
-  const searchTimerRef = useRef(0);
-  const searchInputRef = useRef<HTMLInputElement | null>(null);
-  const searchReplaceInputRef = useRef<HTMLInputElement | null>(null);
-  const searchIncludeInputRef = useRef<HTMLInputElement | null>(null);
-  const searchExcludeInputRef = useRef<HTMLInputElement | null>(null);
   const searchProjectOptionRefs = useRef(new Map<string, HTMLButtonElement>());
   const quickAccessCacheRef = useRef(new Map<string, { files: QuickAccessFile[]; truncated: boolean }>());
   const quickAccessRequestRef = useRef(0);
@@ -4361,168 +4333,62 @@ export function WorkbenchPanel(): ReactPortal | null {
     return () => window.removeEventListener("focus", onFocus);
   }, [reconcileProjectEditors]);
 
-  const runProjectSearch = useCallback(async (query: string, options?: { matchCase?: boolean; wholeWord?: boolean; useRegex?: boolean }) => {
-    const trimmed = query.trim();
-    if (!selectedProject || !trimmed) {
-      searchSeqRef.current += 1;
-      setSearchMatches([]);
-      setSearchTruncated(false);
-      setSearchError("");
-      setSearchLoading(false);
-      void desktopApi().workbenchSearchTextCancel().catch(() => undefined);
-      return;
-    }
-    if (trimmed.length < 2 && !options?.useRegex && !searchUseRegex) {
-      setSearchMatches([]);
-      setSearchTruncated(false);
-      setSearchError("");
-      setSearchLoading(false);
-      return;
-    }
-    const seq = ++searchSeqRef.current;
-    setSearchLoading(true);
-    setSearchError("");
-    try {
-      const result = await desktopApi().workbenchSearchText({
-        rootPath: selectedProject,
-        query: trimmed,
-        matchCase: options?.matchCase ?? searchMatchCase,
-        wholeWord: options?.wholeWord ?? searchWholeWord,
-        useRegex: options?.useRegex ?? searchUseRegex,
-        filesToInclude: searchFilesInclude.trim() || undefined,
-        filesToExclude: searchFilesExclude.trim() || undefined
-      });
-      if (seq !== searchSeqRef.current) return;
-      setSearchMatches(result.matches);
-      setSearchTruncated(result.truncated);
-      const firstFiles = new Set<string>();
-      for (const match of result.matches) {
-        if (firstFiles.size >= 20) break;
-        firstFiles.add(match.path);
-      }
-      setSearchExpanded(firstFiles);
-    } catch (error) {
-      if (seq !== searchSeqRef.current) return;
-      if ((error as Error)?.name === "AbortError" || /cancel/i.test(String((error as Error)?.message || ""))) {
-        setSearchLoading(false);
-        return;
-      }
-      setSearchMatches([]);
-      setSearchTruncated(false);
-      setSearchError(t("desktop.workbench.searchFailed", statusError(error)));
-    } finally {
-      if (seq === searchSeqRef.current) setSearchLoading(false);
-    }
-  }, [searchFilesExclude, searchFilesInclude, searchMatchCase, searchUseRegex, searchWholeWord, selectedProject, t]);
-
-  useEffect(() => {
-    if (side !== "search") return;
-    window.clearTimeout(searchTimerRef.current);
-    searchTimerRef.current = window.setTimeout(() => {
-      void runProjectSearch(searchQuery);
-    }, 300);
-    return () => window.clearTimeout(searchTimerRef.current);
-  }, [runProjectSearch, searchFilesExclude, searchFilesInclude, searchMatchCase, searchQuery, searchUseRegex, searchWholeWord, side, selectedProject]);
-
-  /**
-   * Replace occurrences in files that came from the current search results.
-   * Files with an open dirty editor are skipped so an unsaved buffer can never
-   * be silently clobbered (the disk replace still lands; the editor stays in
-   * its "changed on disk" state for other files). After a successful replace
-   * the search re-runs so the result list refreshes immediately.
-   */
-  const performSearchReplace = useCallback(async (
-    files: string[],
-    onlyByPath?: Map<string, number>
-  ) => {
-    const projectPath = selectedProject;
-    const trimmedQuery = searchQuery.trim();
-    if (!projectPath || !trimmedQuery || searchReplacing || !files.length) return;
-    const dirtyOpen = new Set<string>();
-    for (const editor of editorsRef.current) {
-      if (editor.projectPath === projectPath && editor.dirty) {
-        dirtyOpen.add(normalizeWorkbenchPath(editor.path));
-      }
-    }
-    const normalize = (value: string) => normalizeWorkbenchPath(value);
-    const targets = files.filter((file) => !dirtyOpen.has(normalize(file)));
-    const skippedDirtyCount = files.length - targets.length;
-    if (!targets.length) {
-      setStatus({ text: t("desktop.workbench.searchReplaceBlockedDirty"), kind: "error" });
-      return;
-    }
-    setSearchReplacing(true);
-    try {
-      const result = await desktopApi().workbenchReplaceText({
-        rootPath: projectPath,
-        query: trimmedQuery,
-        replaceWith: searchReplaceText,
-        matchCase: searchMatchCase,
-        wholeWord: searchWholeWord,
-        useRegex: searchUseRegex,
-        files: targets,
-        only: onlyByPath && onlyByPath.size
-          ? [...onlyByPath].map(([path, ordinal]) => ({ path, ordinal }))
-          : undefined
-      });
-      const replacedFiles = result.replaced.length;
-      const skippedCount = skippedDirtyCount + result.skipped.length;
-      if (replacedFiles > 0) {
-        let text = t("desktop.workbench.searchReplaceDone", String(result.totalReplaced), String(replacedFiles));
-        if (skippedCount > 0) {
-          text += ` · ${t("desktop.workbench.searchReplaceSkipped", String(skippedCount))}`;
-        }
-        setStatus({ text, kind: "ok" });
-        window.clearTimeout(searchTimerRef.current);
-        void runProjectSearch(searchQuery);
-        void reconcileProjectEditors(projectPath);
-      } else if (skippedCount > 0) {
-        setStatus({ text: t("desktop.workbench.searchReplaceBlockedDirty"), kind: "error" });
-      }
-    } catch (error) {
-      setStatus({ text: t("desktop.workbench.searchReplaceFailed", statusError(error)), kind: "error" });
-    } finally {
-      setSearchReplacing(false);
-    }
-  }, [reconcileProjectEditors, runProjectSearch, searchFilesExclude, searchFilesInclude, searchMatchCase, searchQuery, searchReplacing, searchReplaceText, searchUseRegex, searchWholeWord, selectedProject, setStatus, t]);
-
-  /**
-   * Explorer "Find in Folder": open the Search pane scoped to a folder by
-   * pre-filling the files-to-include glob (VS Code style), keeping any query
-   * the user already typed so results update for the new scope.
-   */
-  const findInExplorerFolder = useCallback((folderPath: string) => {
-    const projectRoot = selectedProject;
-    if (!projectRoot) return;
-    const root = normalizeWorkbenchPath(projectRoot);
-    const folder = normalizeWorkbenchPath(folderPath);
-    if (folder !== root && !folder.startsWith(`${root}/`)) return;
-    const relative = folder === root ? "" : folder.slice(root.length).replace(/^\/+/, "");
-    setSearchProjectMode(false);
-    setSearchProjectQuery("");
-    if (relative) {
-      setSearchFilesInclude(`${relative}/**`);
-      // Show the scope field so the folder restriction is visible/editable.
-      setSearchDetailsOpen(true);
-      localStorage.setItem("wb-search-details-open", "true");
-    } else {
-      setSearchFilesInclude("");
-    }
-    setSide("search");
-    window.requestAnimationFrame(() => {
-      searchInputRef.current?.focus();
-      searchInputRef.current?.select();
-    });
-  }, [selectedProject]);
-
-  useEffect(() => {
-    if (side === "search") {
-      window.requestAnimationFrame(() => searchInputRef.current?.focus());
-      return;
-    }
-    setSearchProjectMode(false);
-    setSearchProjectQuery("");
-  }, [side]);
+  const {
+    searchQuery,
+    setSearchQuery,
+    searchMatchCase,
+    setSearchMatchCase,
+    searchWholeWord,
+    setSearchWholeWord,
+    searchUseRegex,
+    setSearchUseRegex,
+    searchTruncated,
+    searchLoading,
+    searchError,
+    searchExpanded,
+    setSearchExpanded,
+    searchSelectedKey,
+    setSearchSelectedKey,
+    searchProjectMode,
+    setSearchProjectMode,
+    searchProjectQuery,
+    setSearchProjectQuery,
+    searchProjectSelectionId,
+    setSearchProjectSelectionId,
+    searchFilesInclude,
+    setSearchFilesInclude,
+    searchFilesExclude,
+    setSearchFilesExclude,
+    searchDetailsOpen,
+    searchReplaceOpen,
+    searchReplaceText,
+    setSearchReplaceText,
+    searchReplacing,
+    searchInputRef,
+    searchReplaceInputRef,
+    searchIncludeInputRef,
+    searchExcludeInputRef,
+    searchTimerRef,
+    searchGroups,
+    searchFileCount,
+    searchMatchCount,
+    searchReplaceVisible,
+    runProjectSearch,
+    performSearchReplace,
+    findInExplorerFolder,
+    toggleSearchDetails,
+    toggleSearchReplace,
+    resetSearchProjectMode
+  } = useWorkbenchSearch({
+    selectedProject,
+    side,
+    getDirtyEditorPaths: (projectPath) => editorsRef.current
+      .filter((editor) => editor.projectPath === projectPath && editor.dirty)
+      .map((editor) => editor.path),
+    onStatus: setStatus,
+    onReconcileEditors: (projectPath) => { void reconcileProjectEditors(projectPath); },
+    onOpenSearchSide: () => setSide("search")
+  });
 
   useEffect(() => {
     if (!currentEditor) return;
@@ -5168,29 +5034,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   }, [scheduleSessionPaneAutoRename, statusStore, t]);
 
   const changes = git ? [{ title: t("desktop.workbench.sidePanelStaged"), staged: true, entries: git.staged }, { title: t("desktop.workbench.sidePanelChanges"), staged: false, entries: git.unstaged }] : [];
-  const searchGroups = useMemo(() => {
-    const groups: Array<{ path: string; relativePath: string; matches: SearchMatch[] }> = [];
-    const indexByPath = new Map<string, number>();
-    for (const match of searchMatches) {
-      const existing = indexByPath.get(match.path);
-      if (existing === undefined) {
-        indexByPath.set(match.path, groups.length);
-        groups.push({ path: match.path, relativePath: match.relativePath, matches: [match] });
-      } else {
-        groups[existing].matches.push(match);
-      }
-    }
-    return groups;
-  }, [searchMatches]);
-  const searchFileCount = searchGroups.length;
-  const searchMatchCount = searchMatches.length;
-  /** Replace All / per-match actions are enabled only on complete results. */
-  const searchReplaceVisible = searchReplaceOpen
-    && !searchLoading
-    && !searchReplacing
-    && searchMatchCount > 0
-    && !searchTruncated
-    && Boolean(selectedProject);
   const setWidth = (kind: "folders" | "list" | "side", delta: number) => {
     const current = kind === "folders" ? foldersWidth : kind === "list" ? listWidth : sideWidth;
     const limits = kind === "folders" ? [140, 560] : kind === "list" ? [240, 720] : [240, 840];
@@ -5332,11 +5175,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     if (quickAccessRoot) selectProject(quickAccessRoot);
     window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
     if (view) setSide(view);
-    if (view === "search") {
-      setSearchProjectMode(false);
-      setSearchProjectQuery("");
-      window.requestAnimationFrame(() => searchInputRef.current?.focus());
-    }
+    if (view === "search") resetSearchProjectMode();
   };
   const navigateTo = (tab: "report" | "agent" | "workbench" | "notes") => {
     closeQuickAccess();
@@ -5868,152 +5707,70 @@ export function WorkbenchPanel(): ReactPortal | null {
               onDestroyed={() => closeBrowser(pane.key)}
             />;
           })}{terminalCreating && !currentTerminals.some((pane) => pane.projectPath === selectedProject && !pane.ptyId) && !currentAcpChat ? <div className="wb-terminal-loading wb-terminal-loading-stack" role="status" aria-live="polite"><ThemeIcon name="loader" className="spin" size={18} aria-hidden="true" /><span>{t("desktop.common.loading")}</span></div> : null}{!terminalCreating && !currentTerminals.length && !currentEditors.length && !currentDiffs.length && !currentAcpChats.length && !currentBrowsers.length ? <p className="muted wb-terminal-hint">{selectedProject ? t("desktop.workbench.selectSessionHint") : t("desktop.workbench.selectProjectHint")}</p> : null}</div></div>
-          {side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane wb-explorer-side-pane"><WorkbenchFileExplorer ref={fileExplorerRef} rootPath={selectedProject || ""} activePath={currentFilePath} onOpenFile={(path) => void openFile(path)} onOpenPreview={(path) => void openFile(path, undefined, selectedProject, "preview")} onShowGitHistory={(path) => void loadGitFileHistory(path)} onFindInFolder={findInExplorerFolder} onError={(message) => setStatus({ text: message, kind: "error" })} /><WorkbenchScriptsPane compact hasProject={Boolean(selectedProject)} selectedProject={selectedProject} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} collapsed={scriptsSectionCollapsed} onToggleCollapsed={toggleScriptsSectionCollapsed} onRefresh={selectedProject ? () => void loadScripts(selectedProject) : undefined} onRun={runScript} /></div> : side === "scripts" ? <WorkbenchScriptsPane hasProject={Boolean(selectedProject)} selectedProject={selectedProject} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} onRefresh={selectedProject ? () => void loadScripts(selectedProject) : undefined} onRun={runScript} /> : side === "search" ? <div className="wb-side-pane">
-            <div className="wb-side-pane-head"><span className="wb-side-pane-title">{t("desktop.workbench.sidePanelSearch")}</span></div>
-            <div className="wb-search-pane">
-              <div className="wb-search-form" role="search">
-                <input
-                  ref={searchInputRef}
-                  type="search"
-                  role={searchProjectMode ? "combobox" : undefined}
-                  className="wb-search-input"
-                  value={searchProjectMode ? searchProjectQuery : searchQuery}
-                  placeholder={t(searchProjectMode ? "desktop.workbench.quickAccessProjectPlaceholder" : "desktop.workbench.searchPlaceholder")}
-                  aria-label={t(searchProjectMode ? "desktop.workbench.quickAccessSelectProject" : "desktop.workbench.sidePanelSearch")}
-                  aria-expanded={searchProjectMode ? true : undefined}
-                  aria-controls={searchProjectMode ? "wb-search-project-results" : undefined}
-                  aria-activedescendant={searchProjectMode && searchProjectActive ? searchProjectOptionId(searchProjectActive.id) : undefined}
-                  aria-autocomplete={searchProjectMode ? "list" : undefined}
-                  autoComplete="off"
-                  spellCheck={false}
-                  onChange={(event) => searchProjectMode
-                    ? setSearchProjectQuery(event.target.value)
-                    : setSearchQuery(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (searchProjectMode) {
-                      if (event.key === "Escape") {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        leaveSearchProjectMode();
-                      } else if (event.key === "ArrowDown") {
-                        event.preventDefault();
-                        moveSearchProjectSelection(1);
-                      } else if (event.key === "ArrowUp") {
-                        event.preventDefault();
-                        moveSearchProjectSelection(-1);
-                      } else if (event.key === "Home") {
-                        event.preventDefault();
-                        setSearchProjectSelectionId(searchProjectResults[0]?.id || "");
-                      } else if (event.key === "End") {
-                        event.preventDefault();
-                        setSearchProjectSelectionId(searchProjectResults[searchProjectResults.length - 1]?.id || "");
-                      } else if (event.key === "Enter" && !event.nativeEvent.isComposing) {
-                        event.preventDefault();
-                        activateSearchProject();
-                      }
-                      return;
-                    }
-                    if (event.key === "ArrowLeft"
-                      && event.currentTarget.selectionStart === 0
-                      && event.currentTarget.selectionEnd === 0) {
-                      event.preventDefault();
-                      enterSearchProjectMode();
-                    } else if (event.key === "Enter" && !event.nativeEvent.isComposing) {
-                      event.preventDefault();
-                      window.clearTimeout(searchTimerRef.current);
-                      void runProjectSearch(searchQuery);
-                    }
-                  }}
-                />
-                {!searchProjectMode ? <>
-                  <button
-                    type="button"
-                    className="wb-search-scope"
-                    aria-label={t("desktop.workbench.quickAccessSelectProject")}
-                    title={searchProjectLabel}
-                    onClick={enterSearchProjectMode}
-                  ><ThemeIcon name="chevron-left" size={13} aria-hidden="true" /><span>{searchProjectLabel}</span></button>
-                  <div className="wb-search-options" role="group" aria-label={t("desktop.workbench.searchOptions")}>
-                    <button type="button" className={`wb-search-option${searchMatchCase ? " active" : ""}`} aria-pressed={searchMatchCase} title={t("desktop.workbench.searchMatchCase")} onClick={() => setSearchMatchCase((v) => !v)}>Aa</button>
-                    <button type="button" className={`wb-search-option${searchWholeWord ? " active" : ""}`} aria-pressed={searchWholeWord} title={t("desktop.workbench.searchWholeWord")} onClick={() => setSearchWholeWord((v) => !v)}>Ab</button>
-                    <button type="button" className={`wb-search-option${searchUseRegex ? " active" : ""}`} aria-pressed={searchUseRegex} title={t("desktop.workbench.searchUseRegex")} onClick={() => setSearchUseRegex((v) => !v)}>.*</button>
-                    <span className="wb-search-options-spacer" aria-hidden="true" />
-                    <button type="button" className={`wb-search-option wb-search-option-icon${searchDetailsOpen ? " active" : ""}`} aria-pressed={searchDetailsOpen} aria-label={t("desktop.workbench.searchToggleDetails")} title={t("desktop.workbench.searchToggleDetails")} onClick={() => { const next = !searchDetailsOpen; setSearchDetailsOpen(next); localStorage.setItem("wb-search-details-open", String(next)); }}><ThemeIcon name="ellipsis" size={14} aria-hidden="true" /></button>
-                    <button type="button" className={`wb-search-option wb-search-option-icon${searchReplaceOpen ? " active" : ""}`} aria-pressed={searchReplaceOpen} aria-label={t("desktop.workbench.searchToggleReplace")} title={t("desktop.workbench.searchToggleReplace")} onClick={() => { const next = !searchReplaceOpen; setSearchReplaceOpen(next); localStorage.setItem("wb-search-replace-open", String(next)); if (next) window.requestAnimationFrame(() => searchReplaceInputRef.current?.focus()); }}><ThemeIcon name="replace" size={14} aria-hidden="true" /></button>
-                  </div>
-                  {searchReplaceOpen || searchDetailsOpen ? <div className="wb-search-extras">
-                    {searchReplaceOpen ? <input
-                      ref={searchReplaceInputRef}
-                      type="search"
-                      className="wb-search-input"
-                      value={searchReplaceText}
-                      placeholder={t("desktop.workbench.searchReplacePlaceholder")}
-                      aria-label={t("desktop.workbench.searchReplacePlaceholder")}
-                      autoComplete="off"
-                      spellCheck={false}
-                      onChange={(event) => setSearchReplaceText(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" && !event.nativeEvent.isComposing) {
-                          event.preventDefault();
-                          if (searchReplaceVisible && searchGroups.length) {
-                            void performSearchReplace(searchGroups.map((group) => group.path));
-                          }
-                        }
-                      }}
-                    /> : null}
-                    {searchDetailsOpen ? <>
-                      <label className="wb-search-glob-row"><span className="wb-search-glob-label">{t("desktop.workbench.searchFilesToInclude")}</span><input
-                        ref={searchIncludeInputRef}
-                        type="search"
-                        className="wb-search-input wb-search-glob-input"
-                        value={searchFilesInclude}
-                        placeholder={t("desktop.workbench.searchFilesToIncludePlaceholder")}
-                        aria-label={t("desktop.workbench.searchFilesToInclude")}
-                        autoComplete="off"
-                        spellCheck={false}
-                        onChange={(event) => setSearchFilesInclude(event.target.value)}
-                        onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); window.clearTimeout(searchTimerRef.current); void runProjectSearch(searchQuery); } }}
-                      /></label>
-                      <label className="wb-search-glob-row"><span className="wb-search-glob-label">{t("desktop.workbench.searchFilesToExclude")}</span><input
-                        ref={searchExcludeInputRef}
-                        type="search"
-                        className="wb-search-input wb-search-glob-input"
-                        value={searchFilesExclude}
-                        placeholder={t("desktop.workbench.searchFilesToExcludePlaceholder")}
-                        aria-label={t("desktop.workbench.searchFilesToExclude")}
-                        autoComplete="off"
-                        spellCheck={false}
-                        onChange={(event) => setSearchFilesExclude(event.target.value)}
-                        onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); window.clearTimeout(searchTimerRef.current); void runProjectSearch(searchQuery); } }}
-                      /></label>
-                    </> : null}
-                  </div> : null}
-                </> : null}
-              </div>
-              {searchProjectMode ? <div className="wb-search-project-results" id="wb-search-project-results" role="listbox">
-                {searchProjectResults.length ? searchProjectResults.map((project, index) => {
-                  const disabled = Boolean(project.disabledReason);
-                  const selected = index === searchProjectActiveIndex;
-                  return <button
-                    ref={(node) => { if (node) searchProjectOptionRefs.current.set(project.id, node); else searchProjectOptionRefs.current.delete(project.id); }}
-                    type="button"
-                    role="option"
-                    id={searchProjectOptionId(project.id)}
-                    aria-selected={selected}
-                    aria-disabled={disabled}
-                    className={`wb-search-project-row${selected ? " is-selected" : ""}${disabled ? " is-disabled" : ""}`}
-                    key={project.id}
-                    onMouseMove={() => setSearchProjectSelectionId(project.id)}
-                    onClick={() => activateSearchProject(project)}
-                  >
-                    <ThemeIcon name="folder" size={15} aria-hidden="true" />
-                    <span className="wb-search-project-copy"><span className="wb-search-project-label">{project.label}</span><span className="wb-search-project-detail">{project.disabledReason || project.detail}</span></span>
-                    {project.pinned ? <ThemeIcon name="pin" size={12} aria-hidden="true" /> : null}
-                  </button>;
-                }) : <p className="muted wb-search-status">{t("desktop.workbench.quickAccessNoProjects")}</p>}
-              </div> : !selectedProject ? <p className="muted wb-file-tree-empty">{t("desktop.workbench.sidePanelNoRoot")}</p> : searchLoading ? <p className="muted wb-search-status" role="status">{t("desktop.workbench.searchSearching")}</p> : searchError ? <p className="muted wb-search-status is-error" role="alert">{searchError}</p> : !searchQuery.trim() ? <p className="muted wb-search-status">{t("desktop.workbench.searchHint")}</p> : !searchMatchCount ? <p className="muted wb-search-status">{t("desktop.workbench.searchNoResults")}</p> : <><div className="wb-search-meta-row" aria-live="polite"><p className="wb-search-meta">{t("desktop.workbench.searchResultSummary", String(searchMatchCount), String(searchFileCount))}{searchTruncated ? ` · ${t("desktop.workbench.searchTruncated")}` : ""}</p>{searchReplaceOpen ? <button type="button" className="wb-search-replace-all" disabled={!searchReplaceVisible} title={searchTruncated ? t("desktop.workbench.searchReplaceLimited") : t("desktop.workbench.searchReplaceAll")} onClick={() => void performSearchReplace(searchGroups.map((group) => group.path))}><ThemeIcon name="replace-all" size={13} aria-hidden="true" />{t("desktop.workbench.searchReplaceAll")}</button> : null}</div><div className="wb-search-results" role="tree">{searchGroups.map((group) => { const expanded = searchExpanded.has(group.path); const toggle = () => setSearchExpanded((current) => { const next = new Set(current); if (next.has(group.path)) next.delete(group.path); else next.add(group.path); return next; }); return <div className="wb-search-file-group" key={group.path} role="treeitem" aria-expanded={expanded}><div className="wb-search-file-row"><button type="button" className="wb-search-file-main" onClick={toggle}><span className={`wb-file-tree-chevron${expanded ? " is-expanded" : ""}`}><ThemeIcon name="chevron-right" size={12} /></span><ThemeIcon name="file-code" size={14} className="wb-file-tree-icon" /><span className="wb-search-file-label" title={group.path}>{group.relativePath}</span><span className="wb-search-file-count">{group.matches.length}</span></button>{searchReplaceOpen ? <button type="button" className="wb-search-action-btn" disabled={searchReplacing || searchLoading} title={t("desktop.workbench.searchReplaceInFile")} aria-label={t("desktop.workbench.searchReplaceInFile")} onClick={(event) => { event.stopPropagation(); void performSearchReplace([group.path]); }}><ThemeIcon name="replace-all" size={13} aria-hidden="true" /></button> : null}</div>{expanded ? <div className="wb-search-match-list" role="group">{group.matches.map((match, index) => { const key = `${match.path}:${match.line}:${match.column}:${index}`; return <div className={`wb-search-match-row${searchSelectedKey === key ? " is-selected" : ""}`} key={key}><button type="button" className="wb-search-match-main" onClick={() => { setSearchSelectedKey(key); void openFile(match.path, { path: match.path, line: match.line, column: match.column, endColumn: match.endColumn }); }}><span className="wb-search-match-line">{match.line}</span><span className="wb-search-match-preview">{match.preview}</span></button>{searchReplaceOpen ? <button type="button" className="wb-search-action-btn" disabled={searchReplacing || searchLoading} title={t("desktop.workbench.searchReplaceMatch")} aria-label={t("desktop.workbench.searchReplaceMatch")} onClick={(event) => { event.stopPropagation(); void performSearchReplace([match.path], new Map([[match.path, index]])); }}><ThemeIcon name="replace" size={12} aria-hidden="true" /></button> : null}</div>; })}</div> : null}</div>; })}</div></>}
-            </div>
-          </div> : side === "linkgraph" ? <LinkGraphSidePane result={linkGraphResult} progress={linkGraphProgress} busy={linkGraphBusy} error={linkGraphError} outputLanguage={linkGraphLanguage} onOutputLanguageChange={changeLinkGraphLanguage} onRefresh={linkGraphResult ? refreshLinkGraph : undefined} onCancel={cancelLinkGraph} onOpen={(target) => {
+          {side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane wb-explorer-side-pane"><WorkbenchFileExplorer ref={fileExplorerRef} rootPath={selectedProject || ""} activePath={currentFilePath} onOpenFile={(path) => void openFile(path)} onOpenPreview={(path) => void openFile(path, undefined, selectedProject, "preview")} onShowGitHistory={(path) => void loadGitFileHistory(path)} onFindInFolder={findInExplorerFolder} onError={(message) => setStatus({ text: message, kind: "error" })} /><WorkbenchScriptsPane compact hasProject={Boolean(selectedProject)} selectedProject={selectedProject} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} collapsed={scriptsSectionCollapsed} onToggleCollapsed={toggleScriptsSectionCollapsed} onRefresh={selectedProject ? () => void loadScripts(selectedProject) : undefined} onRun={runScript} /></div> : side === "scripts" ? <WorkbenchScriptsPane hasProject={Boolean(selectedProject)} selectedProject={selectedProject} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} onRefresh={selectedProject ? () => void loadScripts(selectedProject) : undefined} onRun={runScript} /> : side === "search" ? <WorkbenchSearchSidePane
+            selectedProject={selectedProject}
+            searchQuery={searchQuery}
+            onSearchQueryChange={setSearchQuery}
+            searchProjectMode={searchProjectMode}
+            searchProjectQuery={searchProjectQuery}
+            onSearchProjectQueryChange={setSearchProjectQuery}
+            searchProjectResults={searchProjectResults}
+            searchProjectActive={searchProjectActive}
+            searchProjectActiveIndex={searchProjectActiveIndex}
+            searchProjectLabel={searchProjectLabel}
+            searchProjectOptionId={searchProjectOptionId}
+            searchProjectOptionRefs={searchProjectOptionRefs}
+            onEnterSearchProjectMode={enterSearchProjectMode}
+            onLeaveSearchProjectMode={leaveSearchProjectMode}
+            onMoveSearchProjectSelection={moveSearchProjectSelection}
+            onActivateSearchProject={activateSearchProject}
+            onSearchProjectSelectionId={setSearchProjectSelectionId}
+            searchMatchCase={searchMatchCase}
+            searchWholeWord={searchWholeWord}
+            searchUseRegex={searchUseRegex}
+            onToggleMatchCase={() => setSearchMatchCase((v) => !v)}
+            onToggleWholeWord={() => setSearchWholeWord((v) => !v)}
+            onToggleUseRegex={() => setSearchUseRegex((v) => !v)}
+            searchDetailsOpen={searchDetailsOpen}
+            searchReplaceOpen={searchReplaceOpen}
+            onToggleDetails={toggleSearchDetails}
+            onToggleReplace={toggleSearchReplace}
+            searchReplaceText={searchReplaceText}
+            onSearchReplaceTextChange={setSearchReplaceText}
+            searchFilesInclude={searchFilesInclude}
+            onSearchFilesIncludeChange={setSearchFilesInclude}
+            searchFilesExclude={searchFilesExclude}
+            onSearchFilesExcludeChange={setSearchFilesExclude}
+            searchInputRef={searchInputRef}
+            searchReplaceInputRef={searchReplaceInputRef}
+            searchIncludeInputRef={searchIncludeInputRef}
+            searchExcludeInputRef={searchExcludeInputRef}
+            searchLoading={searchLoading}
+            searchError={searchError}
+            searchTruncated={searchTruncated}
+            searchGroups={searchGroups}
+            searchFileCount={searchFileCount}
+            searchMatchCount={searchMatchCount}
+            searchExpanded={searchExpanded}
+            onToggleGroup={(path) => setSearchExpanded((current) => {
+              const next = new Set(current);
+              if (next.has(path)) next.delete(path);
+              else next.add(path);
+              return next;
+            })}
+            searchSelectedKey={searchSelectedKey}
+            searchReplaceVisible={searchReplaceVisible}
+            searchReplacing={searchReplacing}
+            onRunSearch={() => {
+              window.clearTimeout(searchTimerRef.current);
+              void runProjectSearch(searchQuery);
+            }}
+            onReplace={(files, onlyByPath) => void performSearchReplace(files, onlyByPath)}
+            onOpenMatch={(match, key) => {
+              setSearchSelectedKey(key);
+              void openFile(match.path, { path: match.path, line: match.line, column: match.column, endColumn: match.endColumn });
+            }}
+          /> : side === "linkgraph" ? <LinkGraphSidePane result={linkGraphResult} progress={linkGraphProgress} busy={linkGraphBusy} error={linkGraphError} outputLanguage={linkGraphLanguage} onOutputLanguageChange={changeLinkGraphLanguage} onRefresh={linkGraphResult ? refreshLinkGraph : undefined} onCancel={cancelLinkGraph} onOpen={(target) => {
               const root = selectedProject || "";
               const raw = target.path.replaceAll("\\", "/");
               const isAbs = raw.startsWith("/") || /^[A-Za-z]:\//.test(raw);
