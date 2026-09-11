@@ -72,13 +72,8 @@ import {
   type WorkbenchFileExplorerHandle
 } from "./WorkbenchFileExplorer";
 import { LinkGraphSidePane } from "./LinkGraphSidePane";
+import { useWorkbenchLinkGraph } from "./linkgraph/useWorkbenchLinkGraph";
 import { SessionTranscriptPane } from "./SessionTranscriptPane";
-import type {
-  LinkGraphAnalyzeArgs,
-  LinkGraphAnalyzeResult,
-  LinkGraphOutputLanguage,
-  LinkGraphProgressEvent
-} from "../../../shared/linkGraphTypes";
 import {
   QuickAccess,
   rankQuickAccessProjects,
@@ -720,14 +715,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   );
   const [searchReplaceText, setSearchReplaceText] = useState("");
   const [searchReplacing, setSearchReplacing] = useState(false);
-  const [linkGraphResult, setLinkGraphResult] = useState<LinkGraphAnalyzeResult | null>(null);
-  const [linkGraphProgress, setLinkGraphProgress] = useState<LinkGraphProgressEvent | null>(null);
-  const [linkGraphBusy, setLinkGraphBusy] = useState(false);
-  const [linkGraphError, setLinkGraphError] = useState<string | null>(null);
-  const [linkGraphLanguage, setLinkGraphLanguage] = useState<LinkGraphOutputLanguage>(() => {
-    const stored = storageString("wb-linkgraph-lang");
-    return stored === "en" || stored === "zh-cn" || stored === "ja" || stored === "auto" ? stored : "auto";
-  });
   const [editorContextMenu, setEditorContextMenu] = useState<{ x: number; y: number; hasSelection: boolean; selectedText: string } | null>(null);
   const {
     selectionResult,
@@ -735,9 +722,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     copySelectionResult,
     clearSelectionResult
   } = useSelectionActionResult();
-  const linkGraphSeedRef = useRef<LinkGraphAnalyzeArgs | null>(null);
-  const linkGraphLanguageRef = useRef(linkGraphLanguage);
-  linkGraphLanguageRef.current = linkGraphLanguage;
   const [quickAccessOpen, setQuickAccessOpen] = useState(false);
   const [quickAccessMode, setQuickAccessMode] = useState<QuickAccessMode>("files");
   const [quickAccessQuery, setQuickAccessQuery] = useState("");
@@ -876,6 +860,20 @@ export function WorkbenchPanel(): ReactPortal | null {
       terminalsRef.current.forEach((pane) => void refreshTerminalGitRef.current(pane.key));
     },
     notifyStatus: setStatus
+  });
+
+  const {
+    linkGraphResult,
+    linkGraphProgress,
+    linkGraphBusy,
+    linkGraphError,
+    linkGraphLanguage,
+    runLinkGraph,
+    refreshLinkGraph,
+    changeLinkGraphLanguage,
+    cancelLinkGraph
+  } = useWorkbenchLinkGraph({
+    onOpenSide: () => setSide("linkgraph")
   });
 
   useEffect(() => { terminalsRef.current = terminals; }, [terminals]);
@@ -1482,14 +1480,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       window.removeEventListener("agent-resume:settings-saved", onSettingsSaved);
     };
   }, [reloadWorkbench]);
-
-  useEffect(() => {
-    const api = desktopApi();
-    if (typeof api.onLinkGraphProgress !== "function") return;
-    return api.onLinkGraphProgress((event) => {
-      setLinkGraphProgress(event);
-    });
-  }, []);
 
   useEffect(() => {
     if (!editorContextMenu) return;
@@ -4091,52 +4081,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
   };
 
-  const runLinkGraph = useCallback(async (args: LinkGraphAnalyzeArgs) => {
-    const api = desktopApi();
-    if (typeof api.linkGraphAnalyze !== "function") {
-      setLinkGraphError(t("desktop.workbench.linkGraphFailed", "unavailable"));
-      setSide("linkgraph");
-      return;
-    }
-    linkGraphSeedRef.current = { ...args, outputLanguage: linkGraphLanguageRef.current };
-    setSide("linkgraph");
-    setLinkGraphBusy(true);
-    setLinkGraphError(null);
-    setLinkGraphProgress(null);
-    try {
-      const result = await api.linkGraphAnalyze({
-        ...args,
-        outputLanguage: args.outputLanguage || linkGraphLanguageRef.current
-      });
-      setLinkGraphResult(result);
-      if (result.stopReason === "invalid_seed" || result.stopReason === "empty_seed") {
-        setLinkGraphError(t("desktop.workbench.linkGraphNeedSelection"));
-      } else {
-        setLinkGraphError(null);
-      }
-    } catch (error) {
-      setLinkGraphError(t("desktop.workbench.linkGraphFailed", statusError(error)));
-    } finally {
-      setLinkGraphBusy(false);
-    }
-  }, [t]);
-
-  const refreshLinkGraph = useCallback(() => {
-    const seed = linkGraphSeedRef.current;
-    if (!seed) return;
-    void runLinkGraph({ ...seed, outputLanguage: linkGraphLanguageRef.current });
-  }, [runLinkGraph]);
-
-  const changeLinkGraphLanguage = useCallback((value: LinkGraphOutputLanguage) => {
-    setLinkGraphLanguage(value);
-    localStorage.setItem("wb-linkgraph-lang", value);
-    linkGraphLanguageRef.current = value;
-    const seed = linkGraphSeedRef.current;
-    if (seed && (linkGraphResult?.primaryChain.length || linkGraphResult?.hits.length)) {
-      void runLinkGraph({ ...seed, outputLanguage: value });
-    }
-  }, [linkGraphResult?.hits.length, linkGraphResult?.primaryChain.length, runLinkGraph]);
-
   const openLinkGraphFromEditor = useCallback(() => {
     if (!selectedProject || !currentEditor) return;
     const selection = editorRef.current?.getSelectionRange();
@@ -4151,9 +4095,9 @@ export function WorkbenchPanel(): ReactPortal | null {
       selection: text,
       startLine: selection?.startLine || 1,
       endLine: selection?.endLine || selection?.startLine || 1,
-      outputLanguage: linkGraphLanguageRef.current
+      outputLanguage: linkGraphLanguage
     });
-  }, [currentEditor, runLinkGraph, selectedProject, t]);
+  }, [currentEditor, linkGraphLanguage, runLinkGraph, selectedProject, t]);
 
   const quickAccessRoot = selectedProject || storageString(QUICK_ACCESS_PROJECT_KEY) || "";
   const quickAccessProjectLabel = quickAccessRoot
@@ -6069,7 +6013,7 @@ export function WorkbenchPanel(): ReactPortal | null {
                 }) : <p className="muted wb-search-status">{t("desktop.workbench.quickAccessNoProjects")}</p>}
               </div> : !selectedProject ? <p className="muted wb-file-tree-empty">{t("desktop.workbench.sidePanelNoRoot")}</p> : searchLoading ? <p className="muted wb-search-status" role="status">{t("desktop.workbench.searchSearching")}</p> : searchError ? <p className="muted wb-search-status is-error" role="alert">{searchError}</p> : !searchQuery.trim() ? <p className="muted wb-search-status">{t("desktop.workbench.searchHint")}</p> : !searchMatchCount ? <p className="muted wb-search-status">{t("desktop.workbench.searchNoResults")}</p> : <><div className="wb-search-meta-row" aria-live="polite"><p className="wb-search-meta">{t("desktop.workbench.searchResultSummary", String(searchMatchCount), String(searchFileCount))}{searchTruncated ? ` · ${t("desktop.workbench.searchTruncated")}` : ""}</p>{searchReplaceOpen ? <button type="button" className="wb-search-replace-all" disabled={!searchReplaceVisible} title={searchTruncated ? t("desktop.workbench.searchReplaceLimited") : t("desktop.workbench.searchReplaceAll")} onClick={() => void performSearchReplace(searchGroups.map((group) => group.path))}><ThemeIcon name="replace-all" size={13} aria-hidden="true" />{t("desktop.workbench.searchReplaceAll")}</button> : null}</div><div className="wb-search-results" role="tree">{searchGroups.map((group) => { const expanded = searchExpanded.has(group.path); const toggle = () => setSearchExpanded((current) => { const next = new Set(current); if (next.has(group.path)) next.delete(group.path); else next.add(group.path); return next; }); return <div className="wb-search-file-group" key={group.path} role="treeitem" aria-expanded={expanded}><div className="wb-search-file-row"><button type="button" className="wb-search-file-main" onClick={toggle}><span className={`wb-file-tree-chevron${expanded ? " is-expanded" : ""}`}><ThemeIcon name="chevron-right" size={12} /></span><ThemeIcon name="file-code" size={14} className="wb-file-tree-icon" /><span className="wb-search-file-label" title={group.path}>{group.relativePath}</span><span className="wb-search-file-count">{group.matches.length}</span></button>{searchReplaceOpen ? <button type="button" className="wb-search-action-btn" disabled={searchReplacing || searchLoading} title={t("desktop.workbench.searchReplaceInFile")} aria-label={t("desktop.workbench.searchReplaceInFile")} onClick={(event) => { event.stopPropagation(); void performSearchReplace([group.path]); }}><ThemeIcon name="replace-all" size={13} aria-hidden="true" /></button> : null}</div>{expanded ? <div className="wb-search-match-list" role="group">{group.matches.map((match, index) => { const key = `${match.path}:${match.line}:${match.column}:${index}`; return <div className={`wb-search-match-row${searchSelectedKey === key ? " is-selected" : ""}`} key={key}><button type="button" className="wb-search-match-main" onClick={() => { setSearchSelectedKey(key); void openFile(match.path, { path: match.path, line: match.line, column: match.column, endColumn: match.endColumn }); }}><span className="wb-search-match-line">{match.line}</span><span className="wb-search-match-preview">{match.preview}</span></button>{searchReplaceOpen ? <button type="button" className="wb-search-action-btn" disabled={searchReplacing || searchLoading} title={t("desktop.workbench.searchReplaceMatch")} aria-label={t("desktop.workbench.searchReplaceMatch")} onClick={(event) => { event.stopPropagation(); void performSearchReplace([match.path], new Map([[match.path, index]])); }}><ThemeIcon name="replace" size={12} aria-hidden="true" /></button> : null}</div>; })}</div> : null}</div>; })}</div></>}
             </div>
-          </div> : side === "linkgraph" ? <LinkGraphSidePane result={linkGraphResult} progress={linkGraphProgress} busy={linkGraphBusy} error={linkGraphError} outputLanguage={linkGraphLanguage} onOutputLanguageChange={changeLinkGraphLanguage} onRefresh={linkGraphResult ? refreshLinkGraph : undefined} onCancel={() => { void desktopApi().linkGraphCancel().catch(() => undefined); setLinkGraphBusy(false); }} onOpen={(target) => {
+          </div> : side === "linkgraph" ? <LinkGraphSidePane result={linkGraphResult} progress={linkGraphProgress} busy={linkGraphBusy} error={linkGraphError} outputLanguage={linkGraphLanguage} onOutputLanguageChange={changeLinkGraphLanguage} onRefresh={linkGraphResult ? refreshLinkGraph : undefined} onCancel={cancelLinkGraph} onOpen={(target) => {
               const root = selectedProject || "";
               const raw = target.path.replaceAll("\\", "/");
               const isAbs = raw.startsWith("/") || /^[A-Za-z]:\//.test(raw);
