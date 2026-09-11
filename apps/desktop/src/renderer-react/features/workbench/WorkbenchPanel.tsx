@@ -32,7 +32,6 @@ import type { CodeMirrorAppearance } from "../../components/codeMirrorThemes";
 import { renderMarkdown } from "../../components/Markdown";
 import { imageSrcFromElement, posixDirname } from "../../components/markdownImage";
 import { notifyDesktop } from "../../components/Notifications";
-import { SegmentedControl } from "../../components/SegmentedControl";
 import { syncTruncationTitle } from "../../components/truncationTitle";
 import { VirtualList } from "../../components/VirtualList";
 import type { TerminalEngineType } from "./terminal";
@@ -118,6 +117,8 @@ import {
   GitActionIcons,
   BranchGraphNavigation
 } from "./git/GitGraphView";
+import { WorkbenchDetailHeader } from "./layout/WorkbenchDetailHeader";
+import { WorkbenchSidebar } from "./layout/WorkbenchSidebar";
 
 type DesktopApi = ReturnType<typeof desktopApi>;
 type FileInspection = Awaited<ReturnType<DesktopApi["workbenchInspectFile"]>>;
@@ -202,7 +203,6 @@ type SearchReveal = { path: string; line: number; column: number; endColumn: num
 type ProjectFilter = "all" | "pinned";
 type WorkbenchSidebarView = "projects" | "gtd";
 const GTD_STATUSES = ["inbox", "next", "waiting", "someday", "reference", "done"] as const satisfies readonly GtdStatus[];
-const GTD_ACTIVE_STATUSES = ["inbox", "next", "waiting", "someday", "reference"] as const satisfies readonly GtdStatus[];
 const WORKBENCH_SESSION_ROW_HEIGHT = 64;
 type CatalogProject = {
   projectId: string;
@@ -5535,54 +5535,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     void assignDraggedSessionToFolder(project, folderId);
   };
 
-  const renderProjectFolderRows = (project: WorkbenchProject, parentId: string | null, depth = 0): ReactNode => {
-    const children = project.folders
-      .filter((folder) => (folder.parentId || null) === parentId)
-      .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: "base" }));
-    if (!children.length) return null;
-    const assignmentCounts = new Map<string, number>();
-    for (const assignment of project.folderAssignments) {
-      assignmentCounts.set(assignment.folderId, (assignmentCounts.get(assignment.folderId) || 0) + 1);
-    }
-    return children.map((folder) => {
-      const hasChildren = project.folders.some((candidate) => candidate.parentId === folder.folderId);
-      const expanded = expandedFolderIds.has(folder.folderId);
-      return <Fragment key={folder.folderId}>
-      <button
-        type="button"
-        className={`wb-folder-row wb-session-folder-row${selectedProject === project.path && selectedFolderId === folder.folderId ? " active" : ""}${dragTargetKey === `${project.id}:${folder.folderId}` ? " is-drop-target" : ""}`}
-        style={{ paddingLeft: `${18 + depth * 16}px` }}
-        onContextMenu={(event) => folderMenu(event, project, folder)}
-        onDragOver={(event) => handleFolderDragOver(event, project, folder.folderId, hasChildren, expanded)}
-        onDragLeave={(event) => handleFolderDragLeave(event, project, folder.folderId)}
-        onDrop={(event) => handleFolderDrop(event, project, folder.folderId)}
-        onClick={() => selectProjectFolder(project, folder.folderId)}
-        title={folder.name}
-        aria-expanded={hasChildren ? expanded : undefined}
-      >
-        <span
-          className={`wb-session-folder-chevron${expanded ? " is-expanded" : ""}${hasChildren ? " has-children" : ""}`}
-          onClick={(event) => {
-            if (!hasChildren) return;
-            event.preventDefault();
-            event.stopPropagation();
-            setExpandedFolderIds((current) => {
-              const next = new Set(current);
-              if (next.has(folder.folderId)) next.delete(folder.folderId);
-              else next.add(folder.folderId);
-              return next;
-            });
-          }}
-        ><ThemeIcon name="chevron-right" size={12} aria-hidden="true" /></span>
-        <ThemeIcon name="folder" size={14} aria-hidden="true" />
-        <span className="wb-folder-row-label">{folder.name}</span>
-        <span className="wb-folder-row-count">{assignmentCounts.get(folder.folderId) || 0}</span>
-      </button>
-      {expanded ? renderProjectFolderRows(project, folder.folderId, depth + 1) : null}
-    </Fragment>;
-    });
-  };
-
   const paneTabGroups = <div className="wb-pane-tab-groups">
     <div className="wb-terminal-tabs is-session-group" data-pane-group="session">
       <button ref={newSessionButtonRef} type="button" className={`wb-pane-tab-group-label${terminalCreating ? " is-busy" : ""}`} disabled={terminalCreating} aria-label={t("desktop.workbench.newSession")} title={t("desktop.workbench.newSession")} aria-haspopup="menu" aria-expanded={Boolean(newSessionPicker)} onClick={() => { if (newSessionPicker) setNewSessionPicker(null); else void newSession(); }}>{terminalCreating ? <ThemeIcon name="loader" className="spin" size={13} aria-hidden="true" /> : <ThemeIcon name="bot" size={13} aria-hidden="true" />}</button>
@@ -5633,101 +5585,77 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   if (!host) return null;
 
-  // Detail head + folder-collapse toggle live in the app header while Workbench is active.
   const headerSlot = document.getElementById("app-header-slot");
-  const collapseToggle = (
-    <button type="button" className={`sidebar-collapse-toggle${foldersCollapsed ? " is-active" : ""}`} aria-label={t("desktop.workbench.resizeProjects")} onClick={() => setFoldersCollapsed((current) => { const next = !current; localStorage.setItem(FOLDERS_COLLAPSED_KEY, String(next)); return next; })}><ThemeIcon name="panel-right" size={17} /></button>
-  );
-  const detailHead = (
-    <div className="wb-detail-head">
-      <span className="wb-detail-project-label">
-        <span className="wb-detail-project-label-text">{selectedProject ? aliases[selectedProject] || basename(selectedProject) : t("desktop.workbench.allSessions")}</span>
-        {selectedProject ? <span className="wb-detail-project-path">{selectedProject}</span> : null}
-      </span>
-      <div className="wb-detail-head-actions">
-        {branchStatusLabel && branchStatusPane ? (
-          <div className="wb-terminal-status">
-            <button
-              type="button"
-              className="wb-terminal-status-branch"
-              title={branchStatusNested
-                ? branchStatusPane.nestedRepos?.map((repo) => `${repo.displayPath || repo.root}: ${repo.branch || "-"}`).join(", ")
-                : branchStatusLabel}
-              onClick={(event) => void openBranchMenu(branchStatusPane, event.currentTarget)}
-            >
-              <ThemeIcon name="git-branch" size={12} aria-hidden="true" />
-              <span className="wb-terminal-status-branch-label">{branchStatusLabel}</span>
-            </button>
-          </div>
-        ) : null}
-        <div className="wb-detail-tools">
-          <button type="button" className={`wb-detail-tool${side === "files" ? " active" : ""}`} aria-pressed={side === "files"} aria-label={t("desktop.workbench.sidePanelExplorer")} title={t("desktop.workbench.sidePanelExplorer")} onClick={() => setSide((current) => current === "files" ? null : "files")}><ThemeIcon name="folder-tree" size={16} /></button>
-          <button type="button" className={`wb-detail-tool${side === "scripts" ? " active" : ""}`} aria-pressed={side === "scripts"} aria-label={t("desktop.workbench.sidePanelScripts")} title={t("desktop.workbench.sidePanelScripts")} onClick={() => setSide((current) => current === "scripts" ? null : "scripts")}><ThemeIcon name="play" size={16} /></button>
-          <button type="button" className={`wb-detail-tool${side === "search" ? " active" : ""}`} aria-pressed={side === "search"} aria-label={t("desktop.workbench.sidePanelSearch")} title={t("desktop.workbench.sidePanelSearch")} onClick={() => setSide((current) => current === "search" ? null : "search")}><ThemeIcon name="search" size={16} /></button>
-          <button type="button" className={`wb-detail-tool${side === "linkgraph" ? " active" : ""}`} aria-pressed={side === "linkgraph"} aria-label={t("desktop.workbench.sidePanelLinkGraph")} title={t("desktop.workbench.sidePanelLinkGraph")} onClick={() => setSide((current) => current === "linkgraph" ? null : "linkgraph")}><ThemeIcon name="waypoints" size={16} /></button>
-          <button type="button" className={`wb-detail-tool${side === "git" ? " active" : ""}`} aria-pressed={side === "git"} aria-label={t("desktop.workbench.sidePanelGit")} title={t("desktop.workbench.sidePanelGit")} onClick={() => setSide((current) => current === "git" ? null : "git")}><ThemeIcon name="git-branch" size={16} /></button>
-        </div>
-      </div>
-    </div>
+  const detailHeader = (
+    <WorkbenchDetailHeader
+      foldersCollapsed={foldersCollapsed}
+      onToggleFoldersCollapsed={() => setFoldersCollapsed((current) => {
+        const next = !current;
+        localStorage.setItem(FOLDERS_COLLAPSED_KEY, String(next));
+        return next;
+      })}
+      selectedProject={selectedProject}
+      projectLabel={selectedProject ? aliases[selectedProject] || basename(selectedProject) : ""}
+      side={side}
+      branchStatusLabel={branchStatusLabel}
+      branchStatusPane={branchStatusPane}
+      branchStatusNested={branchStatusNested}
+      onOpenBranchMenu={openBranchMenu}
+      onToggleSide={(view) => setSide((current) => current === view ? null : view)}
+    />
   );
 
   return createPortal(<><section className="panel workbench-panel react-workbench-panel" hidden={!active}>
     <div className="workbench-layout" style={{ "--sidebar-folders-width": `${foldersCollapsed ? 0 : foldersWidth}px`, "--wb-list-width": `${listWidth}px`, "--wb-side-panel-width": `${sideWidth}px` } as CSSProperties}>
-      <aside className={`sidebar-folders-pane wb-folders-pane${foldersCollapsed ? " is-collapsed" : ""}`}>
-        <div className="sidebar-project-filter-wrap">
-          <SegmentedControl aria-label={t("desktop.workbench.sidebarView")} value={sidebarView} options={["projects", "gtd"] as const satisfies readonly WorkbenchSidebarView[]} onChange={selectSidebarView} getLabel={(view) => t(view === "projects" ? "desktop.workbench.projectsView" : "desktop.workbench.gtdView")} className="sidebar-project-filter-segmented wb-sidebar-view-segmented" />
-          <div className="sidebar-project-search-wrap"><input type="search" className="sidebar-project-search" aria-label={t(sidebarView === "projects" ? "desktop.workbench.filterProjects" : "desktop.workbench.filterGtdSessions")} placeholder={t(sidebarView === "projects" ? "desktop.workbench.filterProjects" : "desktop.workbench.filterGtdSessions")} value={projectQuery} autoComplete="off" spellCheck={false} onChange={(event) => setProjectQuery(event.target.value)} /></div>
-          {sidebarView === "projects" ? <SegmentedControl
-              aria-label={t("desktop.notes.projectFilter")}
-              value={projectFilter}
-              options={["all", "pinned"] as const satisfies readonly ProjectFilter[]}
-              onChange={setProjectFilter}
-              getLabel={(filter) => t(`desktop.common.${filter}`)}
-            /> : null}
-        </div>
-        <div className="wb-folders">
-          {sidebarView === "projects" ? <>
-            <button type="button" className={`wb-folder-row${!selectedProject ? " active" : ""}`} onClick={() => selectProject(null)}><span className="wb-folder-row-label">{t("desktop.workbench.allSessions")}</span></button>
-            <div className="wb-folder-section">
-              <div className="wb-folder-section-head">
-                <div className="wb-folder-section-label">{t("desktop.notes.projectFilter")}</div>
-                <button type="button" className="wb-icon-btn wb-add-project-btn" aria-label={t("desktop.workbench.addProject")} title={t("desktop.workbench.addProject")} onClick={() => void addProject()}><ThemeIcon name="plus" size={14} /></button>
-              </div>
-              {projects.length ? projects.map((project) => {
-              const assignedCount = new Set(project.folderAssignments.map((assignment) => folderAssignmentKey(assignment.provider, assignment.agentSessionId))).size;
-              const unclassifiedCount = Math.max(0, project.sessionCount - assignedCount) + project.pendingCount;
-              const projectExpanded = expandedProjectIds.has(project.id);
-              return <Fragment key={project.id}>
-                <button type="button" className={`wb-folder-row${selectedProject === project.path || selectedProject === project.id ? " active" : ""}${project.pinned ? " is-pinned" : ""}${project.active ? " has-wb-activity" : ""}${project.pathMissing ? " is-path-missing" : ""}`} title={project.pathMissing ? t("desktop.workbench.pathMissingHint") : project.path} aria-expanded={projectExpanded} onContextMenu={(event) => projectMenu(event, project)} onClick={() => selectProject(project.path)}><span className={`wb-session-folder-chevron has-children${projectExpanded ? " is-expanded" : ""}`} onClick={(event) => { event.preventDefault(); event.stopPropagation(); setExpandedProjectIds((current) => { const next = new Set(current); if (next.has(project.id)) next.delete(project.id); else next.add(project.id); return next; }); }}><ThemeIcon name="chevron-right" size={12} aria-hidden="true" /></span>{project.pinned ? <ThemeIcon name="pin" className="project-pin-icon" size={12} aria-hidden="true" /> : null}{project.active ? <span className="wb-folder-activity-dot" aria-hidden="true" /> : null}<span className="wb-folder-row-text"><span className="wb-folder-row-label">{project.label}</span><span className="wb-folder-row-desc">{project.pathMissing ? t("desktop.workbench.pathMissingLabel", project.portableKey) : project.path}</span></span><span className="wb-folder-row-count">{project.sessionCount + project.pendingCount}</span></button>
-                {projectExpanded ? <>
-                <button
-                  type="button"
-                  className={`wb-folder-row wb-session-folder-root${selectedProject === project.path && selectedFolderId === UNCLASSIFIED_FOLDER_ID ? " active" : ""}${dragTargetKey === `${project.id}:${UNCLASSIFIED_FOLDER_ID}` ? " is-drop-target" : ""}`}
-                  onDragOver={(event) => handleFolderDragOver(event, project, null)}
-                  onDragLeave={(event) => handleFolderDragLeave(event, project, null)}
-                  onDrop={(event) => handleFolderDrop(event, project, null)}
-                  onClick={() => selectProjectFolder(project, UNCLASSIFIED_FOLDER_ID)}
-                ><ThemeIcon name="folder-open" size={14} aria-hidden="true" /><span className="wb-folder-row-label">{t("desktop.workbench.unclassifiedSessions")}</span><span className="wb-folder-row-count">{unclassifiedCount}</span></button>
-                {renderProjectFolderRows(project, null)}
-                </> : null}
-              </Fragment>;
-              }) : <p className="muted wb-folders-empty">{t("desktop.workbench.noProjects")}</p>}
-            </div>
-          </> : <div className="wb-folder-section wb-gtd-folder-section"><div className="wb-folder-section-label">{t("desktop.workbench.gtdView")}</div>{GTD_ACTIVE_STATUSES.map((gtdStatus) => <button type="button" className={`wb-folder-row wb-gtd-folder-row${selectedGtdStatus === gtdStatus ? " active" : ""}`} key={gtdStatus} onClick={() => {
-                if (gtdStatus !== selectedGtdStatus) {
-                  setSelectedSessionKeys((current) => current.size ? new Set() : current);
-                  setSelectionAnchorKey((current) => current ? "" : current);
-                }
-                setSelectedGtdStatus(gtdStatus);
-              }}><span className={`wb-gtd-status-dot is-${gtdStatus}`} aria-hidden="true" /><span className="wb-folder-row-label">{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</span><span className="wb-folder-row-count">{gtdStatusCounts.get(gtdStatus) || 0}</span></button>)}<div className="wb-gtd-completed-group"><button type="button" className="wb-folder-row wb-gtd-folder-row wb-gtd-completed-toggle" aria-expanded={completedGtdExpanded} onClick={() => setCompletedGtdExpanded((value) => !value)}><ThemeIcon name="chevron-right" className={completedGtdExpanded ? "is-expanded" : ""} size={14} aria-hidden="true" /><span className="wb-folder-row-label">{t("desktop.workbench.gtdCompleted")}</span><span className="wb-folder-row-count">{gtdStatusCounts.get("done") || 0}</span></button>{completedGtdExpanded ? <button type="button" className={`wb-folder-row wb-gtd-folder-row wb-gtd-completed-child${selectedGtdStatus === "done" ? " active" : ""}`} onClick={() => {
-                  if (selectedGtdStatus !== "done") {
-                    setSelectedSessionKeys((current) => current.size ? new Set() : current);
-                    setSelectionAnchorKey((current) => current ? "" : current);
-                  }
-                  setSelectedGtdStatus("done");
-                }}><span className="wb-gtd-status-dot is-done" aria-hidden="true" /><span className="wb-folder-row-label">{t("desktop.workbench.gtdStatus.done")}</span><span className="wb-folder-row-count">{gtdStatusCounts.get("done") || 0}</span></button> : null}</div></div>}
-        </div>
-      </aside>
+      <WorkbenchSidebar
+        collapsed={foldersCollapsed}
+        sidebarView={sidebarView}
+        projectFilter={projectFilter}
+        projectQuery={projectQuery}
+        selectedProject={selectedProject}
+        selectedFolderId={selectedFolderId}
+        selectedGtdStatus={selectedGtdStatus}
+        completedGtdExpanded={completedGtdExpanded}
+        expandedProjectIds={expandedProjectIds}
+        expandedFolderIds={expandedFolderIds}
+        dragTargetKey={dragTargetKey}
+        unclassifiedFolderId={UNCLASSIFIED_FOLDER_ID}
+        projects={projects}
+        gtdStatusCounts={gtdStatusCounts}
+        folderAssignmentKey={folderAssignmentKey}
+        onSelectSidebarView={selectSidebarView}
+        onProjectQueryChange={setProjectQuery}
+        onProjectFilterChange={setProjectFilter}
+        onSelectAllSessions={() => selectProject(null)}
+        onAddProject={() => void addProject()}
+        onSelectProject={(path) => selectProject(path)}
+        onToggleProjectExpanded={(projectId) => setExpandedProjectIds((current) => {
+          const next = new Set(current);
+          if (next.has(projectId)) next.delete(projectId);
+          else next.add(projectId);
+          return next;
+        })}
+        onProjectMenu={projectMenu}
+        onSelectFolder={selectProjectFolder}
+        onFolderMenu={folderMenu}
+        onFolderDragOver={handleFolderDragOver}
+        onFolderDragLeave={handleFolderDragLeave}
+        onFolderDrop={handleFolderDrop}
+        onToggleFolderExpanded={(folderId) => setExpandedFolderIds((current) => {
+          const next = new Set(current);
+          if (next.has(folderId)) next.delete(folderId);
+          else next.add(folderId);
+          return next;
+        })}
+        onSelectGtdStatus={(gtdStatus) => {
+          if (gtdStatus !== selectedGtdStatus) {
+            setSelectedSessionKeys((current) => current.size ? new Set() : current);
+            setSelectionAnchorKey((current) => current ? "" : current);
+          }
+          setSelectedGtdStatus(gtdStatus);
+        }}
+        onToggleCompletedGtd={() => setCompletedGtdExpanded((value) => !value)}
+      />
       <ResizeHandle label={t("desktop.workbench.resizeProjects")} onDelta={(delta) => setWidth("folders", delta)} />
       <aside className="wb-list-pane">
         <div ref={sessionSearchToolbarRef} className={`sidebar-project-filter-wrap wb-session-filter-wrap${sessionSearchOpen ? " is-search-open" : ""}`}>
@@ -5799,7 +5727,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       </aside>
       <ResizeHandle label={t("desktop.workbench.resizeSessions")} onDelta={(delta) => setWidth("list", delta)} />
       <main className="wb-detail">
-        {active && headerSlot ? createPortal(<>{collapseToggle}{detailHead}</>, headerSlot) : null}
+        {active && headerSlot ? createPortal(detailHeader, headerSlot) : null}
         <div className="wb-detail-body">
           <div className="wb-terminal-shell">{paneTabGroups}<div className="wb-terminal-stack">{terminals.filter((pane) => pane.projectPath === selectedProject && pane.key === activePane).map((pane) => {
             const sessionIdentity = sessionIdentityFromKey(pane.sessionKey);
