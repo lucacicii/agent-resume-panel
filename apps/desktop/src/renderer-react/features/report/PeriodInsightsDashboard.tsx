@@ -1,16 +1,12 @@
 import { useState } from "react";
 import type { PeriodComposerSendInsights, PeriodDailyTrendItem, PeriodHourlyIntensity, PeriodInsights } from "@agent-resume/core";
 
-export type StatusFilter = "all" | "completed" | "active" | "blocked";
-
 type Translate = (key: string, ...args: Array<string | number>) => string;
 
 export interface PeriodInsightsDashboardProps {
   insights: PeriodInsights | null;
   loading: boolean;
-  statusFilter: StatusFilter;
   selectedProject: string | null;
-  onSelectStatus: (status: StatusFilter) => void;
   onSelectProject: (projectPath: string | null) => void;
   onOpenSession: (provider: string, id: string) => void;
   onSelectDay?: (dayKey: string) => void;
@@ -57,9 +53,7 @@ function generateBezierPath(points: Array<{ x: number; y: number }>): string {
 export function PeriodInsightsDashboard({
   insights,
   loading,
-  statusFilter,
   selectedProject,
-  onSelectStatus,
   onSelectProject,
   onOpenSession,
   onSelectDay,
@@ -77,61 +71,17 @@ export function PeriodInsightsDashboard({
     return null;
   }
 
-  const { sessionStats, blockedSessions, llmUsage, dailyTrend, composerInsights } = insights;
+  const { sessionStats, llmUsage, dailyTrend, composerInsights } = insights;
 
   return (
     <section className="insights-dashboard" aria-label={t("desktop.report.insightsTitle")}>
       {/* 1. Row 1: All 4 charts in one row (15% : 15% : 25% : 45%) */}
       <div className="insights-row-top">
-        {/* Card 1: Session Overview Donut Chart (15%) */}
+        {/* Card 1: Session Overview (15%) */}
         <div className="insights-card insights-sessions-card">
           <div className="insights-card-head">
             <span className="insights-card-title">{t("desktop.report.insightsSessions")}</span>
             <span className="insights-stat-total">{sessionStats.total}</span>
-          </div>
-          <div className="insights-donut-content">
-            <SessionDonutChart
-              total={sessionStats.total}
-              completed={sessionStats.completed}
-              active={sessionStats.active}
-              blocked={sessionStats.blocked}
-              other={sessionStats.other}
-            />
-            <div className="insights-status-pills">
-              {sessionStats.completed > 0 && (
-                <button
-                  type="button"
-                  className={`insights-status-pill completed${statusFilter === "completed" ? " active" : ""}`}
-                  onClick={() => onSelectStatus(statusFilter === "completed" ? "all" : "completed")}
-                  title={t("desktop.report.insightsCompleted")}
-                >
-                  <span className="dot" />
-                  <span>{sessionStats.completed} {t("desktop.report.insightsCompleted")}</span>
-                </button>
-              )}
-              {sessionStats.active > 0 && (
-                <button
-                  type="button"
-                  className={`insights-status-pill active-pill${statusFilter === "active" ? " active" : ""}`}
-                  onClick={() => onSelectStatus(statusFilter === "active" ? "all" : "active")}
-                  title={t("desktop.report.insightsActive")}
-                >
-                  <span className="dot" />
-                  <span>{sessionStats.active} {t("desktop.report.insightsActive")}</span>
-                </button>
-              )}
-              {sessionStats.blocked > 0 && (
-                <button
-                  type="button"
-                  className={`insights-status-pill blocked${statusFilter === "blocked" ? " active" : ""}`}
-                  onClick={() => onSelectStatus(statusFilter === "blocked" ? "all" : "blocked")}
-                  title={t("desktop.report.insightsBlocked")}
-                >
-                  <span className="dot" />
-                  <span>{sessionStats.blocked} {t("desktop.report.insightsBlocked")}</span>
-                </button>
-              )}
-            </div>
           </div>
         </div>
 
@@ -220,128 +170,7 @@ export function PeriodInsightsDashboard({
           t={t}
         />
       )}
-
-      {/* 4. Blocked Watchlist Card (shown if there are blocked sessions) */}
-      {blockedSessions.length > 0 && (
-        <div className="insights-blocker-section">
-          <div className="insights-blocker-head">
-            <strong>⚠️ {t("desktop.report.insightsBlockedList")} ({blockedSessions.length})</strong>
-          </div>
-          <div className="insights-blocker-list">
-            {blockedSessions.map((b) => (
-              <div key={`${b.provider}:${b.id}`} className="insights-blocker-item">
-                <div className="insights-blocker-main">
-                  <div className="insights-blocker-title-row">
-                    <span className="s-provider-tag" data-provider={b.provider}>
-                      {b.provider}
-                    </span>
-                    <strong className="insights-blocker-session-title">{b.title}</strong>
-                    <span className="muted insights-blocker-proj">
-                      {b.projectPath?.split(/[\\/]/).filter(Boolean).at(-1) || ""}
-                    </span>
-                  </div>
-                  {b.blockerReason && (
-                    <div className="insights-blocker-reason">
-                      <span className="badge-reason">Blocker:</span> {b.blockerReason}
-                    </div>
-                  )}
-                  {b.nextAction && (
-                    <div className="insights-blocker-next">
-                      <span className="badge-action">Next:</span> {b.nextAction}
-                    </div>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  className="tool-btn ghost-btn insights-blocker-view-btn"
-                  onClick={() => onOpenSession(b.provider, b.id)}
-                >
-                  View
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </section>
-  );
-}
-
-/** Crisp SVG Donut for Sessions */
-function SessionDonutChart({
-  total,
-  completed,
-  active,
-  blocked,
-  other
-}: {
-  total: number;
-  completed: number;
-  active: number;
-  blocked: number;
-  other: number;
-}) {
-  const size = 54;
-  const r = 21;
-  const cx = size / 2;
-  const cy = size / 2;
-  const strokeWidth = 6;
-  const circ = 2 * Math.PI * r;
-
-  if (total <= 0) {
-    return (
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="insights-donut-svg">
-        <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--border)" strokeWidth={strokeWidth} />
-      </svg>
-    );
-  }
-
-  let offset = 0;
-  const slices = [
-    { len: (completed / total) * circ, color: "#10b981", name: "completed" },
-    { len: (active / total) * circ, color: "#3b82f6", name: "active" },
-    { len: (blocked / total) * circ, color: "#ef4444", name: "blocked" },
-    { len: (other / total) * circ, color: "#94a3b8", name: "other" }
-  ].map((s) => {
-    const item = { ...s, offset };
-    offset += s.len;
-    return item;
-  });
-
-  return (
-    <div className="insights-donut-wrapper">
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="insights-donut-svg">
-        <g transform={`rotate(-90 ${cx} ${cy})`}>
-          <circle
-            cx={cx}
-            cy={cy}
-            r={r}
-            fill="none"
-            stroke="color-mix(in srgb, var(--border) 60%, transparent)"
-            strokeWidth={strokeWidth}
-          />
-          {slices.map(
-            (s) =>
-              s.len > 0 && (
-                <circle
-                  key={s.name}
-                  cx={cx}
-                  cy={cy}
-                  r={r}
-                  fill="none"
-                  stroke={s.color}
-                  strokeWidth={strokeWidth}
-                  strokeDasharray={`${s.len} ${circ - s.len}`}
-                  strokeDashoffset={-s.offset}
-                />
-              )
-          )}
-        </g>
-        <text x={cx} y={cy + 1} textAnchor="middle" dominantBaseline="middle" className="donut-center-text">
-          {total}
-        </text>
-      </svg>
-    </div>
   );
 }
 
@@ -646,7 +475,6 @@ function PeriodDailyTrendChart({
             d.sessionCount > 0
               ? Math.max(6, Math.round((d.sessionCount / maxSessions) * chartHeight))
               : 2;
-          const isBlocked = d.blockedCount > 0;
           const hasActivity = d.sessionCount > 0;
 
           return (
@@ -654,7 +482,7 @@ function PeriodDailyTrendChart({
               key={d.dayKey}
               className={`insights-trend-col${hasActivity ? " has-activity" : ""}`}
               onClick={() => onSelectDay?.(d.dayKey)}
-              title={`${d.dayKey}: ${d.sessionCount} sessions (${d.completedCount} completed, ${d.blockedCount} blocked)`}
+              title={`${d.dayKey}: ${d.sessionCount} sessions`}
               role="button"
               tabIndex={0}
               onKeyDown={(e) => {
@@ -663,7 +491,7 @@ function PeriodDailyTrendChart({
             >
               <div className="insights-trend-bar-slot">
                 <div
-                  className={`insights-trend-bar-fill${isBlocked ? " blocked" : hasActivity ? " active" : " empty"}`}
+                  className={`insights-trend-bar-fill${hasActivity ? " active" : " empty"}`}
                   style={{ height: `${barHeight}px` }}
                 />
               </div>

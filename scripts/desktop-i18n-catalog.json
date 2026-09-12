@@ -421,16 +421,11 @@
       "desktop.report.gtdMdDone": "Done",
       "desktop.report.insightsTitle": "Period Insights",
       "desktop.report.insightsSessions": "Sessions",
-      "desktop.report.insightsCompleted": "Completed",
-      "desktop.report.insightsActive": "Active",
-      "desktop.report.insightsBlocked": "Blocked",
       "desktop.report.insightsProjects": "Projects",
       "desktop.report.insightsProjectsTouched": "{0} projects touched",
       "desktop.report.insightsProviders": "Agents",
       "desktop.report.insightsTokens": "LLM Usage",
       "desktop.report.insightsCalls": "{0} calls · {1} tokens",
-      "desktop.report.insightsBlockedList": "Blocked Watchlist",
-      "desktop.report.insightsFilterStatus": "Status: {0}",
       "desktop.report.insightsFilterClear": "Clear filter",
       "desktop.report.insightsTrendTitle": "Activity Trend",
       "desktop.report.insightsTrendHint": "Click a day to view its daily digest",
@@ -756,9 +751,7 @@
       "desktop.sessions.noMessages": "No messages to preview.",
       "desktop.sessions.truncated": "(truncated)",
       "desktop.sessions.renamed": "Renamed to \"{0}\"",
-      "desktop.sessions.renamedNativeError": " (catalog updated; native: {0})",
-      "desktop.sessions.statusLabel": "Delivery state",
-      "desktop.sessions.statusUpdated": "Status updated to {0}"
+      "desktop.sessions.renamedNativeError": " (catalog updated; native: {0})"
     },
     "sheet": {
       "desktop.sheet.gtdTitle": "Digest → GTD + todolist",
@@ -1373,16 +1366,11 @@
       "desktop.report.gtdMdDone": "完成",
       "desktop.report.insightsTitle": "本期画像与统计",
       "desktop.report.insightsSessions": "会话总览",
-      "desktop.report.insightsCompleted": "已交付",
-      "desktop.report.insightsActive": "进行中",
-      "desktop.report.insightsBlocked": "已阻塞",
       "desktop.report.insightsProjects": "项目分布",
       "desktop.report.insightsProjectsTouched": "涉及 {0} 个项目",
       "desktop.report.insightsProviders": "主力 Agent",
       "desktop.report.insightsTokens": "模型调用与 Token",
       "desktop.report.insightsCalls": "{0} 次调用 · {1} tokens",
-      "desktop.report.insightsBlockedList": "待决与阻塞追踪",
-      "desktop.report.insightsFilterStatus": "状态：{0}",
       "desktop.report.insightsFilterClear": "清除筛选",
       "desktop.report.insightsTrendTitle": "活跃度趋势",
       "desktop.report.insightsTrendHint": "点击柱状条可直接跳转至该日报",
@@ -1708,9 +1696,7 @@
       "desktop.sessions.noMessages": "无消息可预览。",
       "desktop.sessions.truncated": "（已截断）",
       "desktop.sessions.renamed": "已重命名为「{0}」",
-      "desktop.sessions.renamedNativeError": "（catalog 已更新；原生存储：{0}）",
-      "desktop.sessions.statusLabel": "交付状态",
-      "desktop.sessions.statusUpdated": "状态已更新为「{0}」"
+      "desktop.sessions.renamedNativeError": "（catalog 已更新；原生存储：{0}）"
     },
     "sheet": {
       "desktop.sheet.gtdTitle": "Digest → GTD + todolist",
@@ -2272,16 +2258,11 @@
     "report": {
       "desktop.report.insightsTitle": "期間インサイト",
       "desktop.report.insightsSessions": "セッション概要",
-      "desktop.report.insightsCompleted": "完了",
-      "desktop.report.insightsActive": "進行中",
-      "desktop.report.insightsBlocked": "ブロック",
       "desktop.report.insightsProjects": "プロジェクト",
       "desktop.report.insightsProjectsTouched": "{0} 件のプロジェクト",
       "desktop.report.insightsProviders": "エージェント",
       "desktop.report.insightsTokens": "LLM 利用量",
       "desktop.report.insightsCalls": "{0} 回呼出 · {1} tokens",
-      "desktop.report.insightsBlockedList": "ブロック一覧",
-      "desktop.report.insightsFilterStatus": "状態: {0}",
       "desktop.report.insightsFilterClear": "フィルター解除",
       "desktop.report.insightsTrendTitle": "アクティビティ推移",
       "desktop.report.insightsTrendHint": "バーをクリックするとその日の日報に移動します",
@@ -2358,8 +2339,6 @@
       "desktop.workbench.tuiSlash.permissions": "権限設定"
     },
     "sessions": {
-      "desktop.sessions.statusLabel": "状態",
-      "desktop.sessions.statusUpdated": "状態を「{0}」に更新しました"
     },
     "sheet": {},
     "settings": {

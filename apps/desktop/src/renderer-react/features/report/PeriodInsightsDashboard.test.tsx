@@ -8,10 +8,6 @@ const mockInsights: PeriodInsights = {
   toMs: 2000,
   sessionStats: {
     total: 10,
-    completed: 6,
-    active: 3,
-    blocked: 1,
-    other: 0,
     byProvider: { pi: 7, claude: 3 },
     byProject: [
       { projectPath: "/work/app1", projectName: "app1", count: 6 },
@@ -20,27 +16,6 @@ const mockInsights: PeriodInsights = {
     deepTurnCount: 4,
     quickTurnCount: 2
   },
-  blockedSessions: [
-    {
-      provider: "pi",
-      id: "ses-blocked-1",
-      title: "Fix payment issue",
-      projectPath: "/work/app1",
-      updatedAt: 1500,
-      blockerReason: "Gateway returned 403 Forbidden",
-      nextAction: "Request API credentials"
-    }
-  ],
-  activeSessions: [
-    {
-      provider: "claude",
-      id: "ses-active-1",
-      title: "Refactor router",
-      projectPath: "/work/app2",
-      updatedAt: 1600,
-      nextAction: "Write unit tests"
-    }
-  ],
   llmUsage: {
     totalCalls: 24,
     totalTokens: 125000,
@@ -58,20 +33,14 @@ const mockInsights: PeriodInsights = {
       label: "Mon",
       dayOfMonth: 1,
       dayOfWeek: 1,
-      sessionCount: 4,
-      completedCount: 3,
-      activeCount: 1,
-      blockedCount: 0
+      sessionCount: 4
     },
     {
       dayKey: "2026-09-02",
       label: "Tue",
       dayOfMonth: 2,
       dayOfWeek: 2,
-      sessionCount: 6,
-      completedCount: 3,
-      activeCount: 2,
-      blockedCount: 1
+      sessionCount: 6
     }
   ],
   composerInsights: {
@@ -123,15 +92,11 @@ const mockInsights: PeriodInsights = {
 
 const fakeTranslate = (key: string, ...args: Array<string | number>) => {
   if (key === "desktop.report.insightsSessions") return "Sessions";
-  if (key === "desktop.report.insightsCompleted") return "Completed";
-  if (key === "desktop.report.insightsActive") return "Active";
-  if (key === "desktop.report.insightsBlocked") return "Blocked";
   if (key === "desktop.report.insightsProjects") return "Projects";
   if (key === "desktop.report.insightsProjectsTouched") return `${args[0]} projects touched`;
   if (key === "desktop.report.insightsProviders") return "Agents";
   if (key === "desktop.report.insightsTokens") return "LLM Usage";
   if (key === "desktop.report.insightsCalls") return `${args[0]} calls · ${args[1]}`;
-  if (key === "desktop.report.insightsBlockedList") return "Blocked Watchlist";
   if (key === "desktop.report.insightsTrendTitle") return "Activity Trend";
   if (key === "desktop.report.insightsTrendHint") return "Click a day to view its daily digest";
   if (key === "desktop.report.insightsInputTokens") return "Prompt";
@@ -157,8 +122,7 @@ const fakeTranslate = (key: string, ...args: Array<string | number>) => {
 };
 
 describe("PeriodInsightsDashboard", () => {
-  it("renders metrics, blocked watchlist, and charts correctly", () => {
-    const onSelectStatus = vi.fn();
+  it("renders metrics and charts correctly", () => {
     const onSelectProject = vi.fn();
     const onOpenSession = vi.fn();
     const onSelectDay = vi.fn();
@@ -167,9 +131,7 @@ describe("PeriodInsightsDashboard", () => {
       <PeriodInsightsDashboard
         insights={mockInsights}
         loading={false}
-        statusFilter="all"
         selectedProject={null}
-        onSelectStatus={onSelectStatus}
         onSelectProject={onSelectProject}
         onOpenSession={onOpenSession}
         onSelectDay={onSelectDay}
@@ -177,11 +139,8 @@ describe("PeriodInsightsDashboard", () => {
       />
     );
 
-    // Verify session count and status
+    // Verify session count
     expect(screen.getAllByText("10").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText(/6 Completed/)).toBeTruthy();
-    expect(screen.getByText(/3 Active/)).toBeTruthy();
-    expect(screen.getByText(/1 Blocked/)).toBeTruthy();
 
     // Verify projects
     expect(screen.getAllByText("app1").length).toBeGreaterThanOrEqual(1);
@@ -194,21 +153,6 @@ describe("PeriodInsightsDashboard", () => {
 
     // Verify tokens
     expect(screen.getByText(/125\.0k · 24 Calls/)).toBeTruthy();
-
-    // Verify blocked watchlist
-    expect(screen.getByText("Fix payment issue")).toBeTruthy();
-    expect(screen.getByText(/Gateway returned 403 Forbidden/)).toBeTruthy();
-    expect(screen.getByText(/Request API credentials/)).toBeTruthy();
-
-    // Click on View blocked session
-    const blockerViewBtn = screen.getAllByText("View")[1];
-    fireEvent.click(blockerViewBtn);
-    expect(onOpenSession).toHaveBeenCalledWith("pi", "ses-blocked-1");
-
-    // Click on completed filter pill
-    const completedBtn = screen.getByTitle("Completed");
-    fireEvent.click(completedBtn);
-    expect(onSelectStatus).toHaveBeenCalledWith("completed");
 
     // Click on project bar
     const app1Item = screen.getAllByText("app1")[0].closest(".insights-project-bar-item");
@@ -258,9 +202,7 @@ describe("PeriodInsightsDashboard", () => {
       <PeriodInsightsDashboard
         insights={emptyInsights}
         loading={false}
-        statusFilter="all"
         selectedProject={null}
-        onSelectStatus={vi.fn()}
         onSelectProject={vi.fn()}
         onOpenSession={vi.fn()}
         t={fakeTranslate}

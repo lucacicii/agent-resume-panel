@@ -19,10 +19,10 @@ const evidenceSources = [
   }
 ];
 
-test("strict session and report prompts distinguish completed work from explicit next actions", () => {
+test("summarize prompt asks for a concise prose summary while the report prompt keeps strict next-action rules", () => {
   const summaryPrompt = buildSummarizeSystemPrompt("English");
-  assert.match(summaryPrompt, /State: <completed\|active\|blocked\|unclear>/);
-  assert.match(summaryPrompt, /Next action: None/);
+  assert.match(summaryPrompt, /concise, evidence-grounded prose summary/);
+  assert.doesNotMatch(summaryPrompt, /State:/);
 
   const reportPrompt = buildDailySystemPrompt("English");
   assert.match(reportPrompt, /Completed work must not be reintroduced as unfinished/);

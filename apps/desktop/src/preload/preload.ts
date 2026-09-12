@@ -256,11 +256,6 @@ export interface DesktopApi {
     nativeRenamed: boolean;
     nativeError?: string;
   }>;
-  setSessionStatus(args: {
-    provider: string;
-    id: string;
-    status: "completed" | "active" | "blocked";
-  }): Promise<{ summary: string }>;
   hideSession(args: { provider: string; id: string }): Promise<{ ok: boolean }>;
   hideSessions(args: { sessions: Array<{ provider: string; id: string }> }): Promise<{ ok: boolean }>;
   moveSessionToProject(args: {
@@ -1563,7 +1558,6 @@ const api: DesktopApi = {
   autoRenameSession: (args) => ipcRenderer.invoke("sessions:autoRename", args),
   suggestSessionRename: (args) => ipcRenderer.invoke("sessions:suggestRename", args),
   renameSession: (args) => ipcRenderer.invoke("sessions:rename", args),
-  setSessionStatus: (args) => ipcRenderer.invoke("sessions:setStatus", args),
   hideSession: (args) => ipcRenderer.invoke("sessions:hide", args),
   hideSessions: (args) => ipcRenderer.invoke("sessions:hideMany", args),
   moveSessionToProject: (args) => ipcRenderer.invoke("sessions:moveToProject", args),

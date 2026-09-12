@@ -7,7 +7,6 @@ import {
   ensureDesktopDbSchema,
   ensureExtensionCatalogSchema,
   getPeriodInsights,
-  setSessionDeliveryStatusInCatalog,
   runSqlite
 } from "../dist/index.js";
 
@@ -27,15 +26,12 @@ test("getPeriodInsights handles empty databases and out-of-range queries cleanly
   });
 
   assert.equal(insights.sessionStats.total, 0);
-  assert.equal(insights.sessionStats.completed, 0);
-  assert.equal(insights.sessionStats.blocked, 0);
-  assert.equal(insights.blockedSessions.length, 0);
   assert.equal(insights.llmUsage.totalCalls, 0);
 
   await fs.rm(panelHome, { recursive: true, force: true });
 });
 
-test("getPeriodInsights computes sessions, delivery states, and usage", async () => {
+test("getPeriodInsights computes sessions and usage", async () => {
   const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-insights-populated-"));
   const catalogDb = path.join(panelHome, "catalog.db");
   const desktopDb = path.join(panelHome, ".desktop", "desktop.db");
@@ -51,9 +47,9 @@ test("getPeriodInsights computes sessions, delivery states, and usage", async ()
     catalogDb,
     `INSERT INTO sessions (provider, agent_session_id, title, project_path, updated_at_ms, message_count, session_summary)
      VALUES
-     ('pi', 's1', 'Fix bug in auth', '/Users/test/repo1', 1500000, 20, 'State: completed\nOutcome: All done'),
-     ('claude', 's2', 'Setup database schema', '/Users/test/repo1', 1600000, 2, 'State: active\nNext action: run migrations'),
-     ('pi', 's3', 'Integrate payments', '/Users/test/repo2', 1700000, 10, 'State: blocked\nOpen work: waiting for keys\nEvidence: API 403 Forbidden\nNext action: get api key');`
+     ('pi', 's1', 'Fix bug in auth', '/Users/test/repo1', 1500000, 20, 'Shipped the auth fix and verified the flow.'),
+     ('claude', 's2', 'Setup database schema', '/Users/test/repo1', 1600000, 2, 'Schema drafted; migrations still to run.'),
+     ('pi', 's3', 'Integrate payments', '/Users/test/repo2', 1700000, 10, 'Blocked on payment provider credentials.');`
   );
 
   // Insert LLM usage into desktopDb
@@ -83,9 +79,6 @@ test("getPeriodInsights computes sessions, delivery states, and usage", async ()
 
   // Check sessionStats
   assert.equal(insights.sessionStats.total, 3);
-  assert.equal(insights.sessionStats.completed, 1);
-  assert.equal(insights.sessionStats.active, 1);
-  assert.equal(insights.sessionStats.blocked, 1);
   assert.equal(insights.sessionStats.deepTurnCount, 1); // s1 had 20 turns
   assert.equal(insights.sessionStats.quickTurnCount, 1); // s2 had 2 turns
   assert.equal(insights.sessionStats.byProvider.pi, 2);
@@ -93,17 +86,6 @@ test("getPeriodInsights computes sessions, delivery states, and usage", async ()
   assert.equal(insights.sessionStats.byProject.length, 2);
   assert.equal(insights.sessionStats.byProject[0].projectName, "repo1");
   assert.equal(insights.sessionStats.byProject[0].count, 2);
-
-  // Check blocked session details
-  assert.equal(insights.blockedSessions.length, 1);
-  assert.equal(insights.blockedSessions[0].id, "s3");
-  assert.equal(insights.blockedSessions[0].blockerReason, "API 403 Forbidden");
-  assert.equal(insights.blockedSessions[0].nextAction, "get api key");
-
-  // Check active session details
-  assert.equal(insights.activeSessions.length, 1);
-  assert.equal(insights.activeSessions[0].id, "s2");
-  assert.equal(insights.activeSessions[0].nextAction, "run migrations");
 
   assert.equal(insights.llmUsage.totalCalls, 1);
   assert.equal(insights.llmUsage.totalTokens, 300);
@@ -124,30 +106,6 @@ test("getPeriodInsights computes sessions, delivery states, and usage", async ()
   assert.equal(insights.composerInsights.smoothness.frictionSends, 1);
   assert.equal(insights.composerInsights.frictionSessions.length, 1);
   assert.equal(insights.composerInsights.frictionSessions[0].id, "s3");
-
-  await fs.rm(panelHome, { recursive: true, force: true });
-});
-
-test("setSessionDeliveryStatusInCatalog updates state and preserves other fields", async () => {
-  const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-set-status-"));
-  const catalogDb = path.join(panelHome, "catalog.db");
-  await ensureExtensionCatalogSchema(catalogDb);
-
-  await runSqlite(
-    catalogDb,
-    `INSERT INTO sessions (provider, agent_session_id, title, project_path, updated_at_ms, session_summary)
-     VALUES ('pi', 's_mut', 'Test session', '/Users/test/app', 1000, 'State: active\nOutcome: working\nNext action: finish test');`
-  );
-
-  const res = await setSessionDeliveryStatusInCatalog(catalogDb, "pi", "s_mut", "completed");
-  assert.match(res.summary, /^State: completed/);
-  assert.match(res.summary, /Outcome: working/);
-  assert.match(res.summary, /Next action: finish test/);
-
-  // Switch to blocked
-  const resBlocked = await setSessionDeliveryStatusInCatalog(catalogDb, "pi", "s_mut", "blocked");
-  assert.match(resBlocked.summary, /^State: blocked/);
-  assert.match(resBlocked.summary, /Outcome: working/);
 
   await fs.rm(panelHome, { recursive: true, force: true });
 });

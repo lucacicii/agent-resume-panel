@@ -75,6 +75,14 @@ const obsoleteDesktopKeys = new Set([
   "desktop.settings.baseUrlOptional",
   "desktop.settings.apiKeyOptional",
   "desktop.settings.testConnectionHint",
+  // Persisted session delivery state removed; live session status now comes from the agent-status daemon.
+  "desktop.report.insightsCompleted",
+  "desktop.report.insightsActive",
+  "desktop.report.insightsBlocked",
+  "desktop.report.insightsBlockedList",
+  "desktop.report.insightsFilterStatus",
+  "desktop.sessions.statusLabel",
+  "desktop.sessions.statusUpdated",
   // Flow DAG: removed desktop tab, inspector copy, and Ask tool category
   "desktop.tabs.flow",
   "desktop.agent.toolCategory.flow",

@@ -3,33 +3,10 @@ import { isComposerSendNoise } from "../workbench/composerSendNoise";
 
 export interface PeriodSessionStats {
   total: number;
-  completed: number;
-  active: number;
-  blocked: number;
-  other: number;
   byProvider: Record<string, number>;
   byProject: Array<{ projectPath: string; projectName: string; count: number }>;
   deepTurnCount: number;
   quickTurnCount: number;
-}
-
-export interface PeriodBlockedSession {
-  provider: string;
-  id: string;
-  title: string;
-  projectPath: string;
-  updatedAt: number;
-  blockerReason?: string;
-  nextAction?: string;
-}
-
-export interface PeriodActiveSession {
-  provider: string;
-  id: string;
-  title: string;
-  projectPath: string;
-  updatedAt: number;
-  nextAction?: string;
 }
 
 export interface PeriodLlmUsageTrendPoint {
@@ -53,9 +30,6 @@ export interface PeriodDailyTrendItem {
   dayOfMonth: number;
   dayOfWeek: number;
   sessionCount: number;
-  completedCount: number;
-  activeCount: number;
-  blockedCount: number;
 }
 
 export interface PeriodComposerIntentDistribution {
@@ -118,8 +92,6 @@ export interface PeriodInsights {
   fromMs: number;
   toMs: number;
   sessionStats: PeriodSessionStats;
-  blockedSessions: PeriodBlockedSession[];
-  activeSessions: PeriodActiveSession[];
   llmUsage: PeriodLlmUsage;
   dailyTrend: PeriodDailyTrendItem[];
   composerInsights: PeriodComposerSendInsights | null;
@@ -130,16 +102,6 @@ export interface GetPeriodInsightsOptions {
   desktopDb: string;
   fromMs: number;
   toMs: number;
-}
-
-function extractSummaryField(text: string, field: string): string | undefined {
-  const match = text.match(
-    new RegExp(
-      `(?:^|\\n)${field}:\\s*([^\\n]+(?:\\n(?!State:|Outcome:|Open work:|Next action:|Evidence:)[^\\n]+)*)`,
-      "i"
-    )
-  );
-  return match ? match[1].trim() : undefined;
 }
 
 function pad2(value: number): string {
@@ -188,17 +150,11 @@ export async function getPeriodInsights(
     toMs,
     sessionStats: {
       total: 0,
-      completed: 0,
-      active: 0,
-      blocked: 0,
-      other: 0,
       byProvider: {},
       byProject: [],
       deepTurnCount: 0,
       quickTurnCount: 0
     },
-    blockedSessions: [],
-    activeSessions: [],
     llmUsage: {
       totalCalls: 0,
       totalTokens: 0,
@@ -241,15 +197,8 @@ export async function getPeriodInsights(
 
   const byProvider: Record<string, number> = {};
   const byProjectMap = new Map<string, number>();
-  let completed = 0;
-  let active = 0;
-  let blocked = 0;
-  let other = 0;
   let deepTurnCount = 0;
   let quickTurnCount = 0;
-
-  const blockedSessions: PeriodBlockedSession[] = [];
-  const activeSessions: PeriodActiveSession[] = [];
 
   for (const row of sessions) {
     const provider = row.provider || "unknown";
@@ -266,41 +215,6 @@ export async function getPeriodInsights(
     } else if (messageCount > 0 && messageCount <= 2) {
       quickTurnCount += 1;
     }
-
-    const summary = row.session_summary?.trim() || "";
-    const effectiveTitle = row.user_title?.trim() || row.title?.trim() || row.id;
-
-    if (summary.includes("State: blocked")) {
-      blocked += 1;
-      blockedSessions.push({
-        provider: row.provider,
-        id: row.id,
-        title: effectiveTitle,
-        projectPath,
-        updatedAt: row.updated_at_ms,
-        blockerReason:
-          extractSummaryField(summary, "Evidence") ||
-          extractSummaryField(summary, "Open work") ||
-          extractSummaryField(summary, "Outcome"),
-        nextAction: extractSummaryField(summary, "Next action")
-      });
-    } else if (summary.includes("State: completed")) {
-      completed += 1;
-    } else if (summary.includes("State: active")) {
-      active += 1;
-      activeSessions.push({
-        provider: row.provider,
-        id: row.id,
-        title: effectiveTitle,
-        projectPath,
-        updatedAt: row.updated_at_ms,
-        nextAction:
-          extractSummaryField(summary, "Next action") ||
-          extractSummaryField(summary, "Open work")
-      });
-    } else {
-      other += 1;
-    }
   }
 
   const byProject = Array.from(byProjectMap.entries())
@@ -313,10 +227,6 @@ export async function getPeriodInsights(
 
   const sessionStats: PeriodSessionStats = {
     total: sessions.length,
-    completed,
-    active,
-    blocked,
-    other,
     byProvider,
     byProject,
     deepTurnCount,
@@ -494,10 +404,7 @@ export async function getPeriodInsights(
       label: isWeekSpan ? weekdayLabels[dayOfWeek] : String(dayOfMonth),
       dayOfMonth,
       dayOfWeek,
-      sessionCount: 0,
-      completedCount: 0,
-      activeCount: 0,
-      blockedCount: 0
+      sessionCount: 0
     });
   }
 
@@ -506,10 +413,6 @@ export async function getPeriodInsights(
     const item = trendMap.get(dk);
     if (item) {
       item.sessionCount += 1;
-      const summary = row.session_summary?.trim() || "";
-      if (summary.includes("State: blocked")) item.blockedCount += 1;
-      else if (summary.includes("State: completed")) item.completedCount += 1;
-      else if (summary.includes("State: active")) item.activeCount += 1;
     }
   }
 
@@ -751,8 +654,6 @@ export async function getPeriodInsights(
     fromMs,
     toMs,
     sessionStats,
-    blockedSessions,
-    activeSessions,
     llmUsage,
     dailyTrend,
     composerInsights

@@ -34,7 +34,6 @@ import {
   hideProjectAction,
   listLlmUsageEvents,
   listProjects,
-  setSessionDeliveryStatusInCatalog,
   listReportEntries,
   listReportEntriesInRange,
   listReportLinks,
@@ -2080,26 +2079,6 @@ function registerIpc(): void {
         id: args.id,
         title: args.title
       });
-    }
-  );
-
-  ipcMain.handle(
-    "sessions:setStatus",
-    async (
-      _event,
-      args: {
-        provider: AgentProvider;
-        id: string;
-        status: "completed" | "active" | "blocked";
-      }
-    ) => {
-      const paths = await loadPanelDbPaths();
-      return setSessionDeliveryStatusInCatalog(
-        paths.catalogDb,
-        args.provider,
-        args.id,
-        args.status
-      );
     }
   );
 

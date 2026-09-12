@@ -94,7 +94,6 @@ function mockAgentResume(overrides: Partial<typeof window.agentResume> = {}): ty
     runWeeklyDigest: async () => ({}),
     runMonthlyDigest: async () => ({}),
     getPeriodInsights: async () => null,
-    setSessionStatus: async () => ({ summary: "State: completed" }),
     onDigestProgress: () => () => undefined,
     ...overrides
   } as unknown as typeof window.agentResume;

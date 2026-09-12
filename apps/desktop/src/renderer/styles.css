@@ -1214,67 +1214,6 @@ html[data-window-mode="main"] body > main {
   display: none;
 }
 
-.session-summary-head-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 6px;
-}
-
-.session-status-switcher {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.session-status-switcher-label {
-  font-size: 11px;
-  color: var(--muted);
-  margin-right: 2px;
-}
-
-.session-status-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  font-size: 10px;
-  font-weight: 500;
-  padding: 2px 7px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--muted);
-  cursor: pointer;
-  transition: all 0.12s ease;
-}
-
-.session-status-btn:hover:not(:disabled) {
-  border-color: var(--color-accent);
-  color: var(--text);
-}
-
-.session-status-btn.completed.active {
-  background: color-mix(in srgb, #10b981 16%, var(--bg));
-  border-color: #10b981;
-  color: #059669;
-  font-weight: 600;
-}
-
-.session-status-btn.active-pill.active {
-  background: color-mix(in srgb, #3b82f6 16%, var(--bg));
-  border-color: #3b82f6;
-  color: #2563eb;
-  font-weight: 600;
-}
-
-.session-status-btn.blocked.active {
-  background: color-mix(in srgb, #ef4444 16%, var(--bg));
-  border-color: #ef4444;
-  color: #dc2626;
-  font-weight: 600;
-}
-
 .session-summary-label {
   font-size: 10px;
   text-transform: uppercase;
@@ -4603,56 +4542,6 @@ legend {
   text-overflow: ellipsis;
 }
 
-.insights-status-pills {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.insights-status-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 1px 5px;
-  border-radius: 10px;
-  font-size: 10px;
-  font-weight: 500;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--text);
-  cursor: pointer;
-  transition: all 0.12s ease;
-  white-space: nowrap;
-  width: fit-content;
-}
-
-.insights-status-pill .dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.insights-status-pill.completed .dot {
-  background: #10b981;
-}
-
-.insights-status-pill.active-pill .dot {
-  background: #3b82f6;
-}
-
-.insights-status-pill.blocked .dot {
-  background: #ef4444;
-}
-
-.insights-status-pill.active {
-  border-color: var(--color-accent);
-  background: color-mix(in srgb, var(--color-accent) 12%, var(--bg));
-  font-weight: 600;
-}
-
 /* Agent Donut Legend Column */
 .insights-provider-legend-col {
   display: flex;
@@ -5387,10 +5276,6 @@ legend {
   background: var(--color-accent);
 }
 
-.insights-trend-bar-fill.blocked {
-  background: #ef4444;
-}
-
 .insights-trend-bar-fill.empty {
   background: color-mix(in srgb, var(--border) 70%, transparent);
 }
@@ -5403,87 +5288,6 @@ legend {
   user-select: none;
 }
 
-/* Blocked Watchlist */
-.insights-blocker-section {
-  border: 1px solid color-mix(in srgb, #ef4444 35%, var(--border));
-  background: color-mix(in srgb, #ef4444 7%, var(--panel));
-  border-radius: 10px;
-  padding: 8px 12px;
-}
-
-.insights-blocker-head {
-  font-size: 12px;
-  color: #ef4444;
-  margin-bottom: 6px;
-}
-
-.insights-blocker-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.insights-blocker-item {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 5px 0;
-  border-bottom: 1px dashed color-mix(in srgb, #ef4444 20%, var(--border));
-}
-
-.insights-blocker-item:last-child {
-  border-bottom: none;
-}
-
-.insights-blocker-main {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.insights-blocker-title-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 2px;
-  font-size: 12px;
-}
-
-.insights-blocker-session-title {
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 260px;
-}
-
-.insights-blocker-proj {
-  font-size: 11px;
-}
-
-.insights-blocker-reason,
-.insights-blocker-next {
-  font-size: 11px;
-  line-height: 1.4;
-  color: var(--text);
-  margin-top: 1px;
-}
-
-.badge-reason {
-  color: #ef4444;
-  font-weight: 600;
-}
-
-.badge-action {
-  color: #f59e0b;
-  font-weight: 600;
-}
-
-.insights-blocker-view-btn {
-  font-size: 11px;
-  padding: 2px 6px;
-  flex-shrink: 0;
-}
 /* Middle session list filter strip */
 .cal-session-filter-strip {
   display: flex;
@@ -15819,6 +15623,7 @@ html[data-window-mode="standalone-note"] #react-im {
 .kanban-toolbar-count { font-size: 10px; color: var(--color-label-tertiary); }
 .kanban-toolbar-controls { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; min-width: 0; flex-wrap: nowrap; }
 .kanban-source-filter { width: clamp(200px, 24vw, 240px); flex: 0 0 auto; min-width: 0; }
+.kanban-live-filter { width: clamp(200px, 24vw, 260px); flex: 0 0 auto; min-width: 0; }
 .kanban-search { width: 180px; max-width: 26vw; flex: 0 1 auto; min-width: 96px; }
 .kanban-board {
   display: flex;
@@ -15889,6 +15694,14 @@ html[data-window-mode="standalone-note"] #react-im {
 .kanban-card.is-done { opacity: 0.7; }
 .kanban-card-title { margin: 0; font-size: 12px; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .kanban-card-meta { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 6px; font-size: 10px; color: var(--color-label-secondary); }
+.kanban-card-meta-left { display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
+.kanban-card-live {
+  appearance: none; border: 0; background: transparent; padding: 2px; margin: -2px;
+  display: inline-flex; align-items: center; cursor: pointer; border-radius: var(--radius-sm);
+}
+.kanban-card-live:hover { background: var(--color-fill-tertiary); }
+.kanban-card-live:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: 1px; }
+.kanban-session-live { display: flex; align-items: center; gap: 5px; margin-top: 4px; font-size: 11px; color: var(--color-label-secondary); }
 .kanban-card-tag {
   text-transform: capitalize;
   padding: 1px 6px;

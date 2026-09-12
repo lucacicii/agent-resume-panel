@@ -11,6 +11,8 @@ import { GTD_STATUSES, type GtdStatus } from "../../gtd";
 import { useI18n } from "../../i18n";
 import { storedWidth } from "../../storage";
 import { FloatingSessionNote, type FloatingNoteTarget } from "../workbench/FloatingSessionNote";
+import { sessionDotLabel, sessionDotStatusClass } from "../../components/SessionDotsCluster";
+import { type ActiveSessionDot } from "../workbench/activeSessionDots";
 
 type Note = Awaited<ReturnType<ReturnType<typeof desktopApi>["notesList"]>>[number];
 type Session = AgentSession;
@@ -20,6 +22,8 @@ type KanbanCard =
   | { kind: "note"; key: string; note: Note; status: GtdStatus };
 
 type SourceFilter = "all" | "sessions" | "notes";
+
+type LiveFilter = "all" | "awaiting_user" | "running" | "error";
 
 type CatalogProject = {
   projectId: string;
@@ -44,6 +48,15 @@ function storageBoolean(key: string): boolean {
 
 function sessionKey(session: Pick<Session, "provider" | "id">): string {
   return `${session.provider}:${session.id}`;
+}
+
+/** Live status is keyed by catalog session identity for sessions and session-bound notes. */
+function cardDotKey(card: KanbanCard): string | null {
+  if (card.kind === "session") return sessionKey(card.session);
+  const note = card.note;
+  return note.scope === "session" && note.provider && note.agentSessionId
+    ? `${note.provider}:${note.agentSessionId}`
+    : null;
 }
 
 function basename(value = ""): string {
@@ -103,7 +116,7 @@ export function cardProjectId(card: KanbanCard, projects: CatalogProject[]): str
 
 export function KanbanPanel(): ReactPortal | null {
   const host = document.getElementById("react-kanban");
-  const { t } = useI18n();
+  const { ready, t } = useI18n();
   const [active, setActive] = useState(false);
   const [cards, setCards] = useState<KanbanCard[]>([]);
   const setStatus = (s: { text: string; kind?: "error" | "ok" | "warning" }) => {
@@ -111,6 +124,8 @@ export function KanbanPanel(): ReactPortal | null {
   };
   const [query, setQuery] = useState("");
   const [source, setSource] = useState<SourceFilter>("all");
+  const [liveFilter, setLiveFilter] = useState<LiveFilter>("all");
+  const [sessionDots, setSessionDots] = useState<ActiveSessionDot[]>([]);
   const [loading, setLoading] = useState(false);
   const draggingKey = useRef<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
@@ -238,26 +253,69 @@ export function KanbanPanel(): ReactPortal | null {
     return () => window.removeEventListener("agent-resume:notes-mutated", onNotesMutated);
   }, [active, load]);
 
+  // Live session status is broadcast by the Workbench (same feed as the nav rail).
+  // An empty payload simply clears the indicators.
+  useEffect(() => {
+    const onActiveSessions = (event: Event) => {
+      const detail = (event as CustomEvent<ActiveSessionDot[]>).detail;
+      if (Array.isArray(detail)) setSessionDots(detail);
+    };
+    window.addEventListener("agent-resume:active-sessions", onActiveSessions);
+    return () => window.removeEventListener("agent-resume:active-sessions", onActiveSessions);
+  }, []);
+
+  const sessionDotByKey = useMemo(() => {
+    const map = new Map<string, ActiveSessionDot>();
+    for (const dot of sessionDots) {
+      if (dot.sessionKey) map.set(dot.sessionKey, dot);
+    }
+    return map;
+  }, [sessionDots]);
+
+  const liveDotOf = useCallback((card: KanbanCard): ActiveSessionDot | undefined => {
+    const key = cardDotKey(card);
+    return key ? sessionDotByKey.get(key) : undefined;
+  }, [sessionDotByKey]);
+
+  const focusLiveSession = useCallback((dot: ActiveSessionDot) => {
+    window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
+    window.dispatchEvent(new CustomEvent("agent-resume:workbench-focus-session", {
+      detail: { paneKey: dot.paneKey, projectPath: dot.projectPath }
+    }));
+  }, []);
+
+  const text = useCallback(
+    (key: string, fallback: string) => (ready ? t(key) : fallback),
+    [ready, t]
+  );
+
+  const matchesLiveFilter = useCallback((card: KanbanCard): boolean => {
+    if (liveFilter === "all") return true;
+    const dot = liveDotOf(card);
+    return dot?.status === liveFilter;
+  }, [liveDotOf, liveFilter]);
+
   const visible = useMemo(() => {
     const q = query.trim();
     return cards.filter((card) => {
       if (source === "sessions" && card.kind !== "session") return false;
       if (source === "notes" && card.kind !== "note") return false;
+      if (!matchesLiveFilter(card)) return false;
       if (selectedProjectId) {
         const pid = cardProjectId(card, projects);
         if (pid !== selectedProjectId) return false;
       }
       return matchesQuery(card, q);
     });
-  }, [cards, query, selectedProjectId, projects, source]);
+  }, [cards, matchesLiveFilter, query, selectedProjectId, projects, source]);
 
   // Project counts use the source-filtered set (before text query and project selection),
   // matching the Notes/Workbench project-folder count behavior.
   const sourceFiltered = useMemo(() => cards.filter((card) => {
     if (source === "sessions" && card.kind !== "session") return false;
     if (source === "notes" && card.kind !== "note") return false;
-    return true;
-  }), [cards, source]);
+    return matchesLiveFilter(card);
+  }), [cards, matchesLiveFilter, source]);
 
   const projectRows = useMemo(() => {
     const counts = new Map<string, number>();
@@ -399,6 +457,16 @@ export function KanbanPanel(): ReactPortal | null {
           aria-label={t("desktop.kanban.sourceFilter")}
           className="sidebar-project-filter-segmented kanban-source-filter"
           getLabel={(value) => t(`desktop.kanban.source.${value}`)}
+        />
+        <SegmentedControl<LiveFilter>
+          value={liveFilter}
+          options={["all", "awaiting_user", "running", "error"]}
+          onChange={setLiveFilter}
+          aria-label={t("desktop.workbench.sessionDots")}
+          className="sidebar-project-filter-segmented kanban-live-filter"
+          getLabel={(value) => value === "all"
+            ? t("desktop.common.all")
+            : t(`desktop.workbench.sessionDot.${value === "awaiting_user" ? "awaiting" : value}`)}
         />
         <input
           type="search"
@@ -598,7 +666,26 @@ export function KanbanPanel(): ReactPortal | null {
                     )}
                     <p className="kanban-card-title">{titleOf(card)}</p>
                     <div className="kanban-card-meta">
-                      <span className="kanban-card-tag">{card.kind === "session" ? card.session.provider : t(`desktop.kanban.scope.${card.note.scope}`)}</span>
+                      <span className="kanban-card-meta-left">
+                        {(() => {
+                          const dot = liveDotOf(card);
+                          if (!dot) return null;
+                          const label = sessionDotLabel(dot, text);
+                          return (
+                            <button
+                              type="button"
+                              className="kanban-card-live"
+                              onClick={(event) => { event.stopPropagation(); focusLiveSession(dot); }}
+                              onKeyDown={(event) => { if (event.key === "Enter") event.stopPropagation(); }}
+                              title={label}
+                              aria-label={label}
+                            >
+                              <span className={`session-dot${sessionDotStatusClass(dot.status)}`} aria-hidden="true" />
+                            </button>
+                          );
+                        })()}
+                        <span className="kanban-card-tag">{card.kind === "session" ? card.session.provider : t(`desktop.kanban.scope.${card.note.scope}`)}</span>
+                      </span>
                       <span className="kanban-card-time">{relativeTime(card.kind === "session" ? card.session.updatedAt : card.note.updatedAtMs, t)}</span>
                     </div>
                     {card.kind === "session" && card.session.projectPath && (
@@ -623,6 +710,7 @@ export function KanbanPanel(): ReactPortal | null {
       <KanbanCardModal
         note={detail?.kind === "note" ? detail.note : null}
         session={detail?.kind === "session" ? detail.session : null}
+        sessionDot={detail?.kind === "session" ? sessionDotByKey.get(sessionKey(detail.session)) ?? null : null}
         onClose={() => setDetail(null)}
         onNoteMoved={(nextNote) => setDetail({ kind: "note", note: nextNote })}
       />

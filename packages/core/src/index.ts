@@ -170,7 +170,6 @@ export type {
 export {
   setUserTitleInCatalog,
   setSessionSummaryInCatalog,
-  setSessionDeliveryStatusInCatalog,
   hideSessionsInCatalog,
   unhideAllSessionsInCatalog,
   unhideSessionInCatalog,
@@ -454,8 +453,6 @@ export type {
   PeriodComposerTopPhrase,
   PeriodHourlyIntensity,
   PeriodSessionStats,
-  PeriodBlockedSession,
-  PeriodActiveSession,
   PeriodLlmUsage,
   GetPeriodInsightsOptions
 } from "./report/insights";

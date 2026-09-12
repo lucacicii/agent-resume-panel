@@ -53,7 +53,13 @@ const GTD_LABELS = {
   "desktop.workbench.gtdStatus.waiting": "Waiting",
   "desktop.workbench.gtdStatus.someday": "Someday",
   "desktop.workbench.gtdStatus.reference": "Reference",
-  "desktop.workbench.gtdStatus.done": "Done"
+  "desktop.workbench.gtdStatus.done": "Done",
+  "desktop.common.all": "All",
+  "desktop.workbench.sessionDots": "Active sessions",
+  "desktop.workbench.sessionDot.awaiting": "Waiting for you",
+  "desktop.workbench.sessionDot.running": "Running",
+  "desktop.workbench.sessionDot.connecting": "Connecting",
+  "desktop.workbench.sessionDot.error": "Error"
 };
 
 function renderKanban(options: {
@@ -252,6 +258,59 @@ describe("KanbanPanel", () => {
 
     expect(sessionCard.closest(".kanban-column")?.classList.contains("is-next")).toBe(true);
     expect(noteCard.closest(".kanban-column")?.classList.contains("is-waiting")).toBe(true);
+  });
+
+  it("shows a live session status dot and focuses the session in the Workbench", async () => {
+    const focused: unknown[] = [];
+    const onFocus = (event: Event) => focused.push((event as CustomEvent).detail);
+    window.addEventListener("agent-resume:workbench-focus-session", onFocus);
+    try {
+      renderKanban();
+      activate();
+      const sessionCard = await screen.findByRole("button", { name: /Ship Kanban/ });
+      expect(sessionCard.querySelector(".session-dot")).toBeNull();
+
+      act(() => {
+        window.dispatchEvent(new CustomEvent("agent-resume:active-sessions", {
+          detail: [{
+            paneKey: "terminal:1",
+            projectPath: "/work/agent-resume-panel",
+            title: "Ship Kanban",
+            sessionKey: "codex:session-1",
+            status: "awaiting_user"
+          }]
+        }));
+      });
+      await waitFor(() => expect(sessionCard.querySelector(".session-dot.is-awaiting")).toBeTruthy());
+
+      fireEvent.click(within(sessionCard).getByRole("button", { name: "Ship Kanban · Waiting for you" }));
+      expect(focused[0]).toMatchObject({ paneKey: "terminal:1", projectPath: "/work/agent-resume-panel" });
+    } finally {
+      window.removeEventListener("agent-resume:workbench-focus-session", onFocus);
+    }
+  });
+
+  it("filters session cards by live status", async () => {
+    renderKanban();
+    activate();
+    await screen.findByTitle("Ship Kanban");
+    act(() => {
+      window.dispatchEvent(new CustomEvent("agent-resume:active-sessions", {
+        detail: [{
+          paneKey: "terminal:1",
+          projectPath: "/work/agent-resume-panel",
+          title: "Ship Kanban",
+          sessionKey: "codex:session-1",
+          status: "running"
+        }]
+      }));
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Waiting for you" }));
+    await waitFor(() => expect(screen.queryByTitle("Ship Kanban")).toBeNull());
+
+    fireEvent.click(screen.getByRole("tab", { name: "Running" }));
+    await waitFor(() => expect(screen.getByTitle("Ship Kanban")).toBeTruthy());
   });
 
   it("persists a session card move to the dropped status", async () => {

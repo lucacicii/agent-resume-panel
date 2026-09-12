@@ -8,6 +8,8 @@ import { ThemeIcon } from "../../components/ThemeIcon";
 import { renderMarkdown } from "../../components/Markdown";
 import { imageSrcFromElement, posixDirname, posixJoin } from "../../components/markdownImage";
 import { isNoteSessionResumable } from "./noteSessionResume";
+import { sessionDotStatusClass, sessionDotStatusLabel } from "../../components/SessionDotsCluster";
+import { type ActiveSessionDot } from "../workbench/activeSessionDots";
 import { useI18n } from "../../i18n";
 import { basename, projectMatchesNote, projectPathFor, type Project } from "../notes/noteProject";
 import type { AgentSession } from "@agent-resume/core";
@@ -28,13 +30,14 @@ interface SessionPreview {
 interface KanbanCardModalProps {
   note: Note | null;
   session: Session | null;
+  sessionDot?: ActiveSessionDot | null;
   onClose: () => void;
   /** Called after the note is moved between library and projects so the board stays in sync. */
   onNoteMoved?: (note: Note) => void;
 }
 
-export function KanbanCardModal({ note, session, onClose, onNoteMoved }: KanbanCardModalProps): ReactNode | null {
-  const { t } = useI18n();
+export function KanbanCardModal({ note, session, sessionDot, onClose, onNoteMoved }: KanbanCardModalProps): ReactNode | null {
+  const { ready, t } = useI18n();
   const setStatus = (s: { text: string; kind?: "error" | "ok" | "warning" }) => {
     if (s.text) notifyDesktop({ text: s.text, kind: (s.kind ?? "info") as "error" | "ok" | "info" });
   };
@@ -399,6 +402,12 @@ export function KanbanCardModal({ note, session, onClose, onNoteMoved }: KanbanC
               <div className="muted session-preview-meta">
                 {session!.provider}{" · "}{session!.id}{" · "}{session!.projectPath}
               </div>
+              {sessionDot && (
+                <div className="kanban-session-live">
+                  <span className={`session-dot${sessionDotStatusClass(sessionDot.status)}`} aria-hidden="true" />
+                  <span>{sessionDotStatusLabel(sessionDot, (key, fallback) => (ready ? t(key) : fallback))}</span>
+                </div>
+              )}
               {previewSummary && (
                 <div className="session-summary-box">
                   <div className="session-summary-label">Summary</div>
