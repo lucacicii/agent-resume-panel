@@ -49,14 +49,27 @@ export function readJsonObject(file: string): JsonReadResult {
   }
 }
 
-/** Write only when something changed, so re-installing does not touch mtimes. */
+/** Canonical serialization, used for "did anything change" comparisons. */
+export function canonicalJson(value: JsonObject): string {
+  return `${JSON.stringify(value, null, 2)}\n`;
+}
+
+/**
+ * Write the file, unless the canonical form is byte-identical to `previous`.
+ *
+ * `previous` must be taken *before* mutating the object (see `canonicalJson`):
+ * comparing a mutated object against itself silently skips the write, which
+ * made uninstall a no-op.
+ *
+ * @returns true when the file was written.
+ */
 export function writeJsonObjectIfChanged(
   file: string,
   next: JsonObject,
-  previousRaw: JsonObject | null
+  previous: string
 ): boolean {
-  const serialized = `${JSON.stringify(next, null, 2)}\n`;
-  if (previousRaw && `${JSON.stringify(previousRaw, null, 2)}\n` === serialized) return false;
+  const serialized = canonicalJson(next);
+  if (previous === serialized) return false;
   const temporary = `${file}.agent-resume.tmp`;
   writeFileSync(temporary, serialized, { mode: 0o600 });
   renameSync(temporary, file);
@@ -165,89 +178,4 @@ function groupHasCommand(entry: unknown, command: string): boolean {
   const group = entry as { hooks?: unknown };
   if (!Array.isArray(group?.hooks)) return false;
   return group.hooks.some((hook) => (hook as { command?: unknown })?.command === command);
-}
-
-const TOML_FEATURES_HEADER = "[features]";
-
-/**
- * Turn a feature flag on inside `[features]`, creating the table when needed.
- *
- * Line-based on purpose: rewriting TOML through a parser would reformat a user's
- * file (and drop their comments).
- */
-export function ensureTomlFeature(content: string, key: string): string {
-  const lines = content.split("\n");
-  const trailingNewline = content.endsWith("\n");
-  let sectionStart = -1;
-  let sectionEnd = lines.length;
-  let keyIndex = -1;
-
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index] ?? "";
-    const header = line.trim().match(/^\[([^\]]+)\]$/);
-    if (header) {
-      if (sectionStart >= 0) {
-        sectionEnd = index;
-        break;
-      }
-      if (`[${header[1]?.trim()}]` === TOML_FEATURES_HEADER) sectionStart = index;
-      continue;
-    }
-    if (sectionStart >= 0 && new RegExp(`^\\s*${key}\\s*=`).test(line)) keyIndex = index;
-  }
-
-  if (keyIndex >= 0) {
-    if (new RegExp(`^\\s*${key}\\s*=\\s*true\\s*$`).test(lines[keyIndex] ?? "")) return content;
-    lines[keyIndex] = `${key} = true`;
-    return joinLines(lines, trailingNewline);
-  }
-
-  if (sectionStart >= 0) {
-    lines.splice(sectionStart + 1, 0, `${key} = true`);
-    return joinLines(lines, trailingNewline);
-  }
-
-  const trimmed = lines.join("\n").trimEnd();
-  const suffix = `${TOML_FEATURES_HEADER}\n${key} = true`;
-  return trimmed ? `${trimmed}\n\n${suffix}\n` : `${suffix}\n`;
-}
-
-/** Turn a feature flag off, removing the line (and a table left empty). */
-export function removeTomlFeature(content: string, key: string): string {
-  const lines = content.split("\n");
-  const trailingNewline = content.endsWith("\n");
-  const out: string[] = [];
-  let inFeatures = false;
-  let featureHeaderIndex = -1;
-  let removed = false;
-
-  for (const line of lines) {
-    const header = line.trim().match(/^\[([^\]]+)\]$/);
-    if (header) {
-      inFeatures = `[${header[1]?.trim()}]` === TOML_FEATURES_HEADER;
-      if (inFeatures) featureHeaderIndex = out.length;
-    }
-    if (inFeatures && new RegExp(`^\\s*${key}\\s*=`).test(line)) {
-      removed = true;
-      continue;
-    }
-    out.push(line);
-  }
-  if (!removed) return content;
-
-  // Drop a now-empty [features] table so the file does not accumulate husks.
-  if (featureHeaderIndex >= 0) {
-    const body = out.slice(featureHeaderIndex + 1);
-    const nextHeader = body.findIndex((candidate) => /^\s*\[[^\]]+\]\s*$/.test(candidate));
-    const section = nextHeader >= 0 ? body.slice(0, nextHeader) : body;
-    if (!section.some((line) => line.trim())) {
-      out.splice(featureHeaderIndex, 1 + section.length);
-    }
-  }
-  return joinLines(out, trailingNewline).replace(/\n{3,}/g, "\n\n");
-}
-
-function joinLines(lines: string[], trailingNewline: boolean): string {
-  const joined = lines.join("\n");
-  return trailingNewline ? joined : joined.replace(/\n$/, "");
 }

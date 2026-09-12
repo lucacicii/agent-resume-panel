@@ -1,12 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  countOurHooks,
-  ensureCommandHook,
-  ensureHooksObject,
-  ensureTomlFeature,
-  removeOurHooks,
-  removeTomlFeature
-} from "./config";
+import { countOurHooks, ensureCommandHook, ensureHooksObject, removeOurHooks } from "./config";
 
 const OURS = "/Users/x/.agent-resume-panel/.desktop/agent-state/agent-resume-status-claude.sh blocked";
 const isOurs = (command: string) => command.includes("agent-resume-status-");
@@ -71,72 +64,5 @@ describe("ensureHooksObject", () => {
     created.Stop = [];
     expect(container.hooks).toBe(created);
     expect(ensureHooksObject(container)).toBe(created);
-  });
-});
-
-describe("ensureTomlFeature", () => {
-  it("creates the table when the file is empty", () => {
-    expect(ensureTomlFeature("", "hooks")).toBe("[features]\nhooks = true\n");
-  });
-
-  it("inserts the key into an existing table, preserving comments and other keys", () => {
-    const content = [
-      "model = \"gpt-5\"",
-      "",
-      "[features]",
-      "# keep this comment",
-      "web_search = true",
-      "",
-      "[other]",
-      "x = 1"
-    ].join("\n");
-    const next = ensureTomlFeature(content, "hooks");
-    expect(next).toContain("# keep this comment");
-    expect(next).toContain("web_search = true");
-    expect(next.indexOf("hooks = true")).toBeGreaterThan(next.indexOf("[features]"));
-    expect(next.indexOf("hooks = true")).toBeLessThan(next.indexOf("[other]"));
-    expect(next).toContain("model = \"gpt-5\"");
-  });
-
-  it("flips an existing false to true", () => {
-    const next = ensureTomlFeature("[features]\nhooks = false\n", "hooks");
-    expect(next).toBe("[features]\nhooks = true\n");
-  });
-
-  it("is idempotent", () => {
-    const once = ensureTomlFeature("[features]\nhooks = true\n", "hooks");
-    expect(ensureTomlFeature(once, "hooks")).toBe(once);
-  });
-
-  it("appends the table when the file has no features section", () => {
-    expect(ensureTomlFeature("model = \"gpt-5\"\n", "hooks")).toBe(
-      "model = \"gpt-5\"\n\n[features]\nhooks = true\n"
-    );
-  });
-});
-
-describe("removeTomlFeature", () => {
-  it("removes the key and the table it emptied", () => {
-    // Nothing left in the file at all: an empty string, not a stray newline.
-    expect(removeTomlFeature("[features]\nhooks = true\n", "hooks")).toBe("");
-  });
-
-  it("keeps the table when other keys remain", () => {
-    const content = "[features]\nhooks = true\nweb_search = true\n";
-    expect(removeTomlFeature(content, "hooks")).toBe("[features]\nweb_search = true\n");
-  });
-
-  it("leaves everything else untouched", () => {
-    const content = ["model = \"gpt-5\"", "", "[features]", "hooks = true", "", "[other]", "x = 1"].join("\n");
-    const next = removeTomlFeature(content, "hooks");
-    expect(next).toContain("model = \"gpt-5\"");
-    expect(next).toContain("[other]\nx = 1");
-    expect(next).not.toContain("hooks = true");
-    expect(next).not.toContain("[features]");
-  });
-
-  it("reports no change when the key is absent", () => {
-    const content = "[features]\nweb_search = true\n";
-    expect(removeTomlFeature(content, "hooks")).toBe(content);
   });
 });

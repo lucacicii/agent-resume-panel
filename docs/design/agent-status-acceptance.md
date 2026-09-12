@@ -32,29 +32,30 @@ Setup: build a DMG, install it, launch, then **Settings → Background status**.
 3. **Uninstall restores the file**: `diff` the agent config before and after
    install+uninstall — only our entries may differ, and after uninstall the file
    must be byte-identical to the backup.
-4. **Exact state with hooks**: in a workbench pane run `claude`, ask it to do
+4. **Codex hooks are trusted**: after installing, run `codex` once and approve the hook when it asks; `codex`'s hook list must show `trustStatus: trusted` for our five entries (until then they are registered but inert).
+5. **Exact state with hooks**: in a workbench pane run `claude`, ask it to do
    something that needs approval → dot turns to *waiting* while the dialog is on
    screen; approve → back to *running*; finish → no dot.
-5. **Rule state without hooks**: use an agent with no hook installed; its
+6. **Rule state without hooks**: use an agent with no hook installed; its
    approval dialog must still produce *waiting* (rule `live_blocked_form` or its
    fallback) and the pane must not flicker while the TUI redraws.
-6. **No false alarms**: sit in a plain Claude prompt for a minute; scroll back
+7. **No false alarms**: sit in a plain Claude prompt for a minute; scroll back
    through a transcript containing the word "Allow" → the dot must stay off.
-7. **Rules explain themselves**: Settings → Background status → Inspect on a
+8. **Rules explain themselves**: Settings → Background status → Inspect on a
    blocked pane → matched rule, both manifest layers, per-rule reasons, and the
    screen text are shown; the screen text matches what the terminal displayed.
-8. **Window closed**: close the window (`⌘W`), keep the app in the Dock, let an
+9. **Window closed**: close the window (`⌘W`), keep the app in the Dock, let an
    agent block → the tray/rail still shows the session; nothing is notified while
    a window is attached.
-9. **App quit, external agent**: quit the app entirely, run `claude` in an
+10. **App quit, external agent**: quit the app entirely, run `claude` in an
    external terminal (iTerm / VS Code), let it block → a macOS notification
    appears, and re-opening the app lists the external pane in the pane list.
-10. **Daemon restart**: `kill` the daemon, reopen the app → it is replaced and
+11. **Daemon restart**: `kill` the daemon, reopen the app → it is replaced and
     status resumes; `state.json` survived (blocked panes stay blocked).
-11. **Override a rule**: copy a manifest into
+12. **Override a rule**: copy a manifest into
     `~/.agent-resume-panel/.desktop/agent-detection/<agent>.json`, change a
     priority, restart the daemon, confirm the inspector shows `source: override`.
-12. **Diagnostics agree with reality**: `pnpm run doctor:desktop` reports the
+13. **Diagnostics agree with reality**: `pnpm run doctor:desktop` reports the
     daemon pid/API version and the installed hooks.
 
 ## 3. Automated gates

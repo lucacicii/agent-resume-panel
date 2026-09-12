@@ -266,7 +266,7 @@ dev 不打开(否则开发时天天弹窗)。
 | Agent | 位置 | 事件 → 状态 |
 | --- | --- | --- |
 | Claude Code | `~/.claude/settings.json` | `SessionStart`→idle、`UserPromptSubmit`→working、`PreToolUse`→working、`Notification`→**blocked**、`Stop`→idle |
-| Codex | `~/.codex/hooks.json` + `config.toml` 的 `[features] hooks = true` | `SessionStart`→idle、`UserPromptSubmit`→working、`PreToolUse`→working、`PermissionRequest`→**blocked**、`Stop`→idle |
+| Codex | `~/.codex/hooks.json`(`{ hooks: { <Event>: [ { hooks: [handler] } ] } }`;`hooks` 特性已默认开启,不再改 `config.toml`) | `SessionStart`→idle、`UserPromptSubmit`→working、`PreToolUse`→working、`PermissionRequest`→**blocked**、`Stop`→idle |
 | Pi | `~/.pi/agent/extensions/agent-resume-bridge.ts`(App 自动写入) | 提示开始→awaiting、轮次开始→running、轮次结束→idle |
 
 **状态在安装时确定**:每个事件注册一条固定状态的命令,钩子不需要解析 payload;
@@ -290,8 +290,10 @@ payload 只在包装脚本里被粗略 grep 出 `session_id`(作为 session 归�
 - 未知键原样保留;别人的钩子绝不触碰;只删除命令指向我们包装脚本的条目。
 - 解析失败的文件**只报告不改写**(宁可不装,也不能毁掉用户配置)。
 - 内容不变就不写文件(重复安装不 churn mtime)。
-- Codex 的 `[features] hooks = true` 按行编辑:走 TOML 解析器会重排格式并丢掉注释。
+- Codex 的钩子**不需要**改 `config.toml`:`hooks` 特性在 0.146 已 stable 且默认开启(实测:删掉 config.toml 后 `hooks/list` 仍能加载我们的 5 条);写它只会白白改动用户配置。
 - 卸载时,只有当自己的钩子确实清空后才撤掉 `features.hooks`。
+
+**Codex 的 trust 步骤**:Codex 会用 `hooks/list` 把每条钩子标成 `trustStatus: untrusted`,必须由用户在 Codex 里批准后才会执行(自动化场景可用 `codex --dangerously-bypass-hook-trust`)。我们**不代替用户写这个信任记录**——那正是这一步存在的意义;安装行会明确提示需要去 Codex 批准。
 
 **OpenCode 暂不提供安装器**:它的插件注册方式跨版本不同(TUI 插件目录 / CLI `cli.json` 列表 / v2 目录),
 写错一个会直接改坏用户配置,代价大于收益;它继续靠屏幕规则 + 进程身份覆盖。
@@ -426,6 +428,7 @@ node apps/desktop/scripts/agent-status-pipeline-demo.mjs
 | 症状 | 处理 |
 | --- | --- |
 | 设置页显示未运行 | 点"启动";仍失败看 `<panel home>/.desktop/agent-status/daemon.log` |
+| Codex 钩子装了但没反应 | Codex 里批准一次(未批准时 `hooks/list` 的 `trustStatus` 是 `untrusted`) |
 | 钩子没生效 | 看 `<panel home>/.desktop/agent-state/report.log`;确认 pane 内有 `AGENT_RESUME_PANE_ID` |
 | 升级后行为反常 | 多半是旧守护进程:确认 `endpoint.json` 的 `apiVersion`,App 启动会自动替换 |
 | 想彻底卸载 | 设置里移除各 agent 钩子 → 停止守护进程 → 删 `~/Library/LaunchAgents/dev.agentresume.agent-status.plist` → 删 `<panel home>/.desktop/agent-status` 与 `.desktop/agent-state` |

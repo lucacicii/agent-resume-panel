@@ -34,6 +34,8 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 - **Wrapped dialog lines**: a pane narrow enough to break a rule's literal across two rows (common for approval footers) no longer loses the match — the screen mirror undoes soft wraps, and text matching falls back to a line-joined view
 - **Emoji width**: the screen mirror uses the same Unicode 11 width table as the terminal, so lines with emoji wrap where the user sees them wrap
 - **Native panes skip screen rules**: once an agent reports its own state the rules are no longer evaluated for that pane, so the explain view shows only what actually decided
+- **Codex hook install**: Codex's `hooks` feature is enabled by default, so installing no longer edits `config.toml`; the settings row also notes that Codex must trust the hooks once before they run
+- **Uninstalling hooks works again**: uninstall compared the edited config against itself and skipped the write, so removed hooks stayed in `~/.claude/settings.json` and `~/.codex/hooks.json`. Both paths are now covered by an install/uninstall round-trip test that restores the file byte for byte
 
 ### [0.2.26]
 
@@ -638,6 +640,8 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 - **折行的对话框文本**：面板窄到把规则字面量断成两行时（审批提示脚注很常见）不再丢失命中——屏幕镜像会撤销软折行，文本匹配还会退回到“拼接逻辑行”的视图
 - **Emoji 宽度**：屏幕镜像改用与终端一致的 Unicode 11 宽度表，含 emoji 的行会按用户看到的位置折行
 - **native 面板不再跑屏幕规则**：agent 自己上报状态后，该面板不再求值规则，「判定原因」里只剩真正起作用的内容
+- **Codex 钩子安装**: Codex 的 `hooks` 特性已默认开启,安装不再改动 `config.toml`;设置行也会提示 Codex 需要先信任一次这些钩子
+- **卸载钩子恢复生效**: 卸载时把改过的配置和它自己比较,导致跳过写回,已移除的钩子仍留在 `~/.claude/settings.json` 与 `~/.codex/hooks.json` 里。现在两个安装器都有「安装→卸载后文件逐字节还原」的往返测试
 
 ### [0.2.26]
 

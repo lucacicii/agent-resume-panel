@@ -17,13 +17,12 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import * as os from "node:os";
 import * as path from "node:path";
 import {
+  canonicalJson,
   countOurHooks,
   ensureCommandHook,
   ensureHooksObject,
-  ensureTomlFeature,
   readJsonObject,
   removeOurHooks,
-  removeTomlFeature,
   writeJsonObjectIfChanged
 } from "./config";
 import { installPiExtension, piExtensionInstalled, piExtensionPath } from "./pi";
@@ -106,6 +105,7 @@ export function installClaudeHooks(ctx: AgentIntegrationContext): { configPath: 
   if (!read.ok) throw new Error(`could not parse ${configPath}: ${read.error}`);
 
   const settings = read.value;
+  const before = canonicalJson(settings);
   const hooks = ensureHooksObject(settings);
   let changed = false;
   for (const spec of CLAUDE_HOOKS) {
@@ -118,7 +118,7 @@ export function installClaudeHooks(ctx: AgentIntegrationContext): { configPath: 
     ) || changed;
   }
   mkdirSync(path.dirname(configPath), { recursive: true });
-  const wrote = writeJsonObjectIfChanged(configPath, settings, read.existed ? settings : null);
+  const wrote = writeJsonObjectIfChanged(configPath, settings, before);
   return { configPath, changed: changed && wrote };
 }
 
@@ -129,6 +129,7 @@ export function uninstallClaudeHooks(ctx: AgentIntegrationContext): { configPath
   if (!read.existed) return { configPath, changed: false };
 
   const settings = read.value;
+  const before = canonicalJson(settings);
   const hooksValue = settings.hooks;
   if (!hooksValue || typeof hooksValue !== "object" || Array.isArray(hooksValue)) {
     return { configPath, changed: false };
@@ -136,7 +137,7 @@ export function uninstallClaudeHooks(ctx: AgentIntegrationContext): { configPath
   const changed = removeOurHooks(hooksValue as Record<string, unknown>, (command) =>
     isOurCommand(command, { panelHome: ctx.panelHome })
   );
-  if (changed) writeJsonObjectIfChanged(configPath, settings, settings);
+  if (changed) writeJsonObjectIfChanged(configPath, settings, before);
   return { configPath, changed };
 }
 
@@ -168,82 +169,48 @@ export function codexHooksPath(ctx: AgentIntegrationContext): string {
   return path.join(codexDir(ctx), "hooks.json");
 }
 
-export function codexConfigPath(ctx: AgentIntegrationContext): string {
-  return path.join(codexDir(ctx), "config.toml");
-}
-
 export function installCodexHooks(ctx: AgentIntegrationContext): { configPath: string; changed: boolean } {
   const dir = codexDir(ctx);
   const hooksPath = codexHooksPath(ctx);
-  const configPath = codexConfigPath(ctx);
   const wrapper = materializeWrapper(wrapperFor(ctx, "codex"));
   mkdirSync(dir, { recursive: true });
 
   const read = readJsonObject(hooksPath);
   if (!read.ok) throw new Error(`could not parse ${hooksPath}: ${read.error}`);
   const hooksFile = read.value;
+  const before = canonicalJson(hooksFile);
   const hooks = ensureHooksObject(hooksFile);
   let changed = false;
   for (const spec of CODEX_HOOKS) {
     changed = ensureCommandHook(hooks, spec.event, `${wrapper} ${spec.state}`, HOOK_TIMEOUT_SECONDS) || changed;
   }
-  const wroteHooks = writeJsonObjectIfChanged(hooksPath, hooksFile, read.existed ? hooksFile : null);
-
-  const existingConfig = existsSync(configPath) ? readFileSync(configPath, "utf8") : "";
-  const nextConfig = ensureTomlFeature(existingConfig, "hooks");
-  let wroteConfig = false;
-  if (nextConfig !== existingConfig) {
-    const temporary = `${configPath}.agent-resume.tmp`;
-    writeFileSync(temporary, nextConfig, { mode: 0o600 });
-    renameSync(temporary, configPath);
-    wroteConfig = true;
-  }
-  return { configPath, changed: (changed && wroteHooks) || wroteConfig };
+  const wrote = writeJsonObjectIfChanged(hooksPath, hooksFile, before);
+  // `config.toml` is left alone on purpose: Codex's `hooks` feature is stable and
+  // enabled by default, and its trust step (`hooks/list` reports `untrusted`
+  // until the user approves) is the user's decision, not ours to write.
+  return { configPath: hooksPath, changed: changed && wrote };
 }
 
 export function uninstallCodexHooks(ctx: AgentIntegrationContext): { configPath: string; changed: boolean } {
   const hooksPath = codexHooksPath(ctx);
-  const configPath = codexConfigPath(ctx);
-  let changed = false;
-
   const read = readJsonObject(hooksPath);
-  if (read.ok && read.existed) {
-    const hooksFile = read.value;
-    const hooksValue = hooksFile.hooks;
-    if (hooksValue && typeof hooksValue === "object" && !Array.isArray(hooksValue)) {
-      const removed = removeOurHooks(hooksValue as Record<string, unknown>, (command) =>
-        isOurCommand(command, { panelHome: ctx.panelHome })
-      );
-      if (removed) {
-        writeJsonObjectIfChanged(hooksPath, hooksFile, hooksFile);
-        changed = true;
-      }
-    }
-  }
+  if (!read.ok || !read.existed) return { configPath: hooksPath, changed: false };
 
-  if (existsSync(configPath)) {
-    const existing = readFileSync(configPath, "utf8");
-    // Only drop the flag once no hook of ours is left in the hooks file.
-    const stillInstalled = read.ok
-      && typeof read.value.hooks === "object"
-      && countOurHooks(read.value.hooks as Record<string, unknown>, (command) =>
-        isOurCommand(command, { panelHome: ctx.panelHome })
-      ) > 0;
-    if (!stillInstalled) {
-      const next = removeTomlFeature(existing, "hooks");
-      if (next !== existing) {
-        const temporary = `${configPath}.agent-resume.tmp`;
-        writeFileSync(temporary, next, { mode: 0o600 });
-        renameSync(temporary, configPath);
-        changed = true;
-      }
-    }
+  const hooksFile = read.value;
+  const before = canonicalJson(hooksFile);
+  const hooksValue = hooksFile.hooks;
+  if (!hooksValue || typeof hooksValue !== "object" || Array.isArray(hooksValue)) {
+    return { configPath: hooksPath, changed: false };
   }
-  return { configPath, changed };
+  const changed = removeOurHooks(hooksValue as Record<string, unknown>, (command) =>
+    isOurCommand(command, { panelHome: ctx.panelHome })
+  );
+  if (changed) writeJsonObjectIfChanged(hooksPath, hooksFile, before);
+  return { configPath: hooksPath, changed };
 }
 
 function codexStatus(ctx: AgentIntegrationContext): AgentIntegrationStatus {
-  const configPath = codexConfigPath(ctx);
+  const configPath = codexHooksPath(ctx);
   const detected = existsSync(codexDir(ctx));
   const read = readJsonObject(codexHooksPath(ctx));
   const hooks = read.ok ? read.value.hooks : undefined;
@@ -258,7 +225,9 @@ function codexStatus(ctx: AgentIntegrationContext): AgentIntegrationStatus {
     detected,
     installed,
     detail: detected
-      ? `${CODEX_HOOKS.length} lifecycle hooks in hooks.json + features.hooks`
+      ? installed
+        ? `${CODEX_HOOKS.length} lifecycle hooks installed — approve them in Codex (hooks stay untrusted until you do)`
+        : `${CODEX_HOOKS.length} lifecycle hooks in hooks.json`
       : "~/.codex not found; install codex first",
     configPath
   };
