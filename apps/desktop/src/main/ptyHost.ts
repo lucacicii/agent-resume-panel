@@ -12,6 +12,7 @@ import {
 } from "./gitNestedScan";
 import { safeHandle } from "./ipcUtils";
 import { ensureUtf8TerminalEnv } from "./terminalEnv";
+import { installPiExtension } from "./agentStatus/integrations/pi";
 import { getAgentStatusSensor } from "./agentStatus/runtime";
 
 interface PtySession {
@@ -310,7 +311,11 @@ function resolveIntegrationScript(): string | null {
   return null;
 }
 
-function envWithPath(integrationScript: string | null, shell: string): Record<string, string> {
+function envWithPath(
+  integrationScript: string | null,
+  shell: string,
+  extraEnv: Record<string, string> = {}
+): Record<string, string> {
   // Strip undefined env values so node-pty always receives a clean string map.
   const raw: Record<string, string | undefined> = { ...process.env };
   const env = ensureUtf8TerminalEnv(raw) as Record<string, string>;
@@ -337,6 +342,9 @@ function envWithPath(integrationScript: string | null, shell: string): Record<st
   env.PATH = merged.join(path.delimiter);
   if (!env.HOME) env.HOME = home;
   if (!env.TERM) env.TERM = "xterm-256color";
+  // Pane identity for installed agent hooks: it is also the gate that keeps a
+  // globally installed hook from reporting a terminal we do not manage.
+  for (const [key, value] of Object.entries(extraEnv)) env[key] = value;
   if (integrationScript) {
     env.AGENT_RESUME_SHELL_INTEGRATION = integrationScript;
     env.TERM_PROGRAM = "AgentResume";
@@ -397,10 +405,11 @@ function spawnPty(
   cwd: string,
   cols: number,
   rows: number,
-  command?: string
+  command?: string,
+  extraEnv: Record<string, string> = {}
 ): pty.IPty {
   const integrationScript = resolveIntegrationScript();
-  const env = envWithPath(integrationScript, shell);
+  const env = envWithPath(integrationScript, shell, extraEnv);
   const args = buildShellLaunchArgs(shell, integrationScript, command);
   return pty.spawn(shell, args, {
     name: "xterm-256color",
@@ -438,7 +447,9 @@ function attachPtyHandlers(
     const livedMs = Date.now() - startedAt;
     if (respawnOnExit && lastSpawnCwd && livedMs >= 400) {
       try {
-        const newPty = spawnPty(shell, lastSpawnCwd, lastCols, lastRows);
+        const newPty = spawnPty(shell, lastSpawnCwd, lastCols, lastRows, undefined, {
+          AGENT_RESUME_PANE_ID: String(id)
+        });
         const next = createPtySession(newPty, lastSpawnCwd, lastCols, lastRows, shell, attached);
         ptySessions.set(id, next);
         // A fresh shell is a fresh screen: reset the mirror, keep the session.
@@ -499,54 +510,26 @@ function destroyPtyById(id: number): void {
   if (ptySessions.size < PTY_SOFT_LIMIT) warnedSoftLimit = false;
 }
 
+/**
+ * Pi's status channel: a companion extension in `~/.pi/agent`.
+ *
+ * Written once at startup (content lives in `integrations/pi.ts` so the settings
+ * panel can report the same fact). Pi has no hook catalogue to register into, so
+ * the extension emits the status sequence on the terminal stream instead.
+ */
 export function ensurePiAgentResumeBridge(): void {
   try {
     const piAgentDir = path.join(os.homedir(), ".pi", "agent");
     if (!fs.existsSync(piAgentDir)) return;
-    const piExtensionsDir = path.join(piAgentDir, "extensions");
-    if (!fs.existsSync(piExtensionsDir)) {
-      fs.mkdirSync(piExtensionsDir, { recursive: true });
-    }
-    const bridgePath = path.join(piExtensionsDir, "agent-resume-bridge.ts");
-    const bridgeContent = `// Agent Resume companion bridge — auto-emits terminal status
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-
-export default function agentResumeBridge(pi: ExtensionAPI): void {
-  pi.on("ui_prompt_start", async (event) => {
-    try {
-      process.stdout.write(\`\\x1b]633;AR;awaiting;\${event.kind || "prompt"}\\x07\`);
-    } catch {}
-  });
-
-  pi.on("ui_prompt_end", async () => {
-    try {
-      process.stdout.write("\\x1b]633;AR;running\\x07");
-    } catch {}
-  });
-
-  pi.on("turn_start", async () => {
-    try {
-      process.stdout.write("\\x1b]633;AR;running\\x07");
-    } catch {}
-  });
-
-  pi.on("turn_end", async () => {
-    try {
-      process.stdout.write("\\x1b]633;AR;idle\\x07");
-    } catch {}
-  });
-}
-`;
-    if (!fs.existsSync(bridgePath)) {
-      fs.writeFileSync(bridgePath, bridgeContent, "utf8");
-    }
+    installPiExtension();
   } catch {
-    // Best-effort background enhancement
+    // Best-effort background enhancement.
   }
 }
 
 export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
   ensurePiAgentResumeBridge();
+
   safeHandle(
     "terminal:spawn",
     async (
@@ -562,7 +545,7 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
 
       let ptyInstance: pty.IPty;
       try {
-        ptyInstance = spawnPty(shell, cwd, cols, rows, args.command);
+        ptyInstance = spawnPty(shell, cwd, cols, rows, args.command, { AGENT_RESUME_PANE_ID: String(id) });
       } catch (error) {
         const detail = error instanceof Error ? error.message : String(error);
         throw new Error(`无法启动终端 (shell=${shell}, cwd=${cwd}): ${detail}`);

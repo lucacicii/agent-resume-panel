@@ -30,6 +30,33 @@ const execFileAsync = promisify(execFile);
 const DEFAULT_START_TIMEOUT_MS = 5_000;
 const START_POLL_MS = 50;
 
+function resolveCoreRelativePath(relative: string, options: {
+  isPackaged: boolean;
+  resourcesPath: string;
+  appPath: string;
+}): string {
+  const candidates = options.isPackaged
+    ? [
+        path.join(options.resourcesPath, "app.asar.unpacked", relative),
+        path.join(options.resourcesPath, "app.asar", relative),
+        path.join(options.appPath, relative)
+      ]
+    : [path.join(options.appPath, relative)];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
+  }
+  throw new Error(`Unable to resolve ${relative}. Run the Desktop build first.`);
+}
+
+/** Compiled `agent-resume-status` CLI, invoked by installed hooks. */
+export function resolveAgentStatusCliPath(options: {
+  isPackaged: boolean;
+  resourcesPath: string;
+  appPath: string;
+}): string {
+  return resolveCoreRelativePath(path.join("dist", "main", "agentStatus", "cli.js"), options);
+}
+
 /**
  * Locate the compiled daemon entry.
  *
@@ -72,6 +99,8 @@ export async function ensureAgentStatusDaemon(input: {
   execPath: string;
   entryPath: string;
   appVersion: string;
+  /** Let the daemon post macOS notifications while no window is attached. */
+  notify?: boolean;
   timeoutMs?: number;
   log?: (message: string) => void;
 }): Promise<EnsureDaemonResult> {
@@ -95,6 +124,7 @@ export async function ensureAgentStatusDaemon(input: {
     input.appVersion
   ];
   if (replace) args.push("--replace");
+  if (input.notify) args.push("--notify");
 
   let child: ReturnType<typeof spawn>;
   try {
@@ -150,6 +180,58 @@ export async function readAgentStatusEndpoint(
   panelHome: string
 ): Promise<AgentStatusEndpoint | null> {
   return readLiveEndpoint(agentStatusPaths(panelHome));
+}
+
+export type AgentStatusDaemonStatus = {
+  running: boolean;
+  panelHome: string;
+  socketPath: string;
+  pid?: number;
+  apiVersion?: number;
+  appVersion?: string;
+  startedAt?: number;
+  subscriberCount?: number;
+  paneCount?: number;
+  manifests?: { id: string; version: string; engine: number; rules: number; source: string }[];
+  launchAgentInstalled: boolean;
+};
+
+/**
+ * Everything the settings pane shows about the background plane.
+ *
+ * Liveness comes from the endpoint file; the rest is asked of the daemon itself,
+ * so the panel can never disagree with the process that is actually judging panes.
+ */
+export async function readAgentStatusDaemonStatus(panelHome: string): Promise<AgentStatusDaemonStatus> {
+  const paths = agentStatusPaths(panelHome);
+  const endpoint = await readLiveEndpoint(paths);
+  const launchAgentInstalled = await isAgentStatusLaunchAgentInstalled().catch(() => false);
+  const base: AgentStatusDaemonStatus = {
+    running: Boolean(endpoint),
+    panelHome,
+    socketPath: paths.socket,
+    launchAgentInstalled
+  };
+  if (!endpoint) return base;
+
+  base.pid = endpoint.pid;
+  base.apiVersion = endpoint.apiVersion;
+  base.appVersion = endpoint.appVersion;
+  base.startedAt = endpoint.startedAt;
+  try {
+    const client = await connectAgentStatusClient({
+      socketPath: paths.socket,
+      role: "app",
+      connectTimeoutMs: 800
+    });
+    base.subscriberCount = client.hello.subscriberCount;
+    base.paneCount = client.hello.paneCount;
+    base.manifests = await client.request<AgentStatusDaemonStatus["manifests"]>("status.manifests");
+    client.close();
+  } catch {
+    // The endpoint exists but the daemon is wedged: report what we know.
+  }
+  return base;
 }
 
 // --------------------------------------------------------------------------- launchd

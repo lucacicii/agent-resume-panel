@@ -25,7 +25,9 @@ import {
   agentStatusPaths,
   type AgentStatusPaths
 } from "./paths";
+import { createDiscoveryScanner } from "./discovery";
 import { createManifestRegistry, bundledManifestDir } from "./engine/registry";
+import { createBlockedNotifier } from "./notify";
 import { startAgentStatusServer, type AgentStatusServer, type RequestContext } from "./server";
 import { AgentStatusState } from "./state";
 import {
@@ -53,6 +55,10 @@ export type StartDaemonOptions = {
   appVersion?: string;
   /** Overrides the bundled manifest directory; used by tests. */
   manifestDir?: string;
+  /** Report blockers with a macOS notification while no window is attached. */
+  notify?: boolean;
+  /** Scan for agents running outside this app. Off in tests. */
+  discovery?: boolean;
   /** Replace a live daemon instead of exiting (used by the app after an upgrade). */
   replace?: boolean;
   log?: (message: string) => void;
@@ -112,8 +118,26 @@ export async function startAgentStatusDaemon(
     updatedAt: startedAt
   };
 
+  const notifier = createBlockedNotifier({ enabled: options.notify === true, log });
+  const previousStates = new Map<number, AgentState>();
+
+  /**
+   * Publish a new snapshot, and reach the user when a pane starts blocking while
+   * no window is attached — the whole reason the daemon outlives the app.
+   */
   const broadcastSnapshot = (): void => {
-    server.broadcast({ event: "status.changed", data: state.snapshot() });
+    const snapshot = state.snapshot();
+    const startedBlocking: { paneId: number; agent: string }[] = [];
+    for (const pane of Object.values(snapshot.byPaneId)) {
+      const was = previousStates.get(pane.paneId);
+      if (pane.state === "blocked" && was !== "blocked") {
+        startedBlocking.push({ paneId: pane.paneId, agent: pane.agent });
+      }
+    }
+    previousStates.clear();
+    for (const pane of Object.values(snapshot.byPaneId)) previousStates.set(pane.paneId, pane.state);
+    if (startedBlocking.length && server.subscriberCount === 0) notifier.notify(startedBlocking);
+    server.broadcast({ event: "status.changed", data: snapshot });
   };
 
   const server: AgentStatusServer = await startAgentStatusServer({
@@ -133,10 +157,26 @@ export async function startAgentStatusDaemon(
   }, ENDPOINT_HEARTBEAT_MS);
   heartbeat.unref();
 
+  const discovery =
+    options.discovery === false
+      ? null
+      : createDiscoveryScanner({
+          apply: (telemetry) => {
+            if (state.publishTelemetry(telemetry)) broadcastSnapshot();
+          },
+          forget: (paneId) => {
+            if (state.forget(paneId)) broadcastSnapshot();
+          },
+          ownedPids: () => state.ownedProcessPids(),
+          log
+        });
+  void discovery?.scan();
+
   const stop = async (reason: string): Promise<void> => {
     if (stopping) return;
     stopping = true;
     log(`stopping: ${reason}`);
+    discovery?.dispose();
     if (heartbeat) clearInterval(heartbeat);
     server.broadcast({ event: "daemon.shutting_down", data: { reason, at: Date.now() } });
     await server.close();
@@ -205,6 +245,15 @@ async function handleRequest(
       if (paneId == null) throw badRequest("Invalid paneId.");
       const explain: DetectionExplain | null = internals.state.explain(paneId);
       return explain;
+    }
+    case "status.manifests": {
+      return internals.state.manifestSummaries().map((summary) => ({
+        id: summary.id,
+        version: summary.version,
+        engine: summary.engine,
+        rules: summary.rules,
+        source: summary.source
+      }));
     }
     case "pane.screen": {
       const paneId = asPaneId((params as { paneId?: unknown })?.paneId);
@@ -346,6 +395,8 @@ export type DaemonArgs = {
   panelHome: string;
   appVersion: string;
   replace: boolean;
+  notify: boolean;
+  discovery: boolean;
 };
 
 export function parseDaemonArgs(
@@ -355,6 +406,8 @@ export function parseDaemonArgs(
   let panelHome = env[AGENT_STATUS_PANEL_HOME_ENV]?.trim() ?? "";
   let appVersion = env[AGENT_STATUS_APP_VERSION_ENV]?.trim() ?? "";
   let replace = false;
+  let notify = false;
+  let discovery = true;
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index] ?? "";
     const [flag, inline] = arg.includes("=") ? [arg.slice(0, arg.indexOf("=")), arg.slice(arg.indexOf("=") + 1)] : [arg, undefined];
@@ -367,12 +420,18 @@ export function parseDaemonArgs(
       if (inline === undefined) index += 1;
     } else if (flag === "--replace") {
       replace = true;
+    } else if (flag === "--notify") {
+      notify = true;
+    } else if (flag === "--no-discovery") {
+      discovery = false;
     }
   }
   return {
     panelHome: resolvePanelHome(panelHome),
     appVersion: appVersion || "unknown",
-    replace
+    replace,
+    notify,
+    discovery
   };
 }
 
@@ -394,6 +453,8 @@ export async function runAgentStatusDaemon(
       panelHome: args.panelHome,
       appVersion: args.appVersion,
       replace: args.replace,
+      notify: args.notify,
+      discovery: args.discovery,
       log
     });
   } catch (error) {

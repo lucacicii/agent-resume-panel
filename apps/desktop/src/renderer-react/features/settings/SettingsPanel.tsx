@@ -9,6 +9,7 @@ import { Status, type StatusKind } from "../../components/Status";
 import { useI18n } from "../../i18n";
 import { AboutPane, BackupPane, LogsPane, NotesPane, ReportPane, StoragePane, UsagePane, WorkbenchPane, type UsageDetailTab } from "./AdditionalPanes";
 import { ImSettingsPane } from "./ImSettingsPane";
+import { AgentStatusPane } from "./AgentStatusPane";
 import { McpPane } from "./McpPane";
 import {
   embeddingSearchIdentityChanged,
@@ -35,7 +36,7 @@ import {
   type WorkbenchDraft
 } from "./model";
 
-type Pane = "general" | "providers" | "sessions" | "workbench" | "im" | "notes" | "report" | "storage" | "mcp" | "usage" | "logs" | "backup" | "about";
+type Pane = "general" | "providers" | "sessions" | "workbench" | "im" | "notes" | "report" | "storage" | "mcp" | "agentStatus" | "usage" | "logs" | "backup" | "about";
 type EditablePane = Exclude<Pane, "mcp" | "usage" | "logs" | "backup" | "about" | "im">;
 
 function isEditablePane(value: Pane): value is EditablePane {
@@ -58,6 +59,7 @@ const panes: Array<{ id: Pane; key: string; desc: string }> = [
   { id: "report", key: "desktop.settings.paneReport", desc: "desktop.settings.paneReportDesc" },
   { id: "storage", key: "desktop.settings.paneStorage", desc: "desktop.settings.paneStorageDesc" },
   { id: "mcp", key: "desktop.settings.paneMcp", desc: "desktop.settings.paneMcpDesc" },
+  { id: "agentStatus", key: "desktop.settings.paneAgentStatus", desc: "desktop.settings.paneAgentStatusDesc" },
   { id: "usage", key: "desktop.settings.paneUsage", desc: "desktop.settings.paneUsageDesc" },
   { id: "logs", key: "desktop.settings.paneLogs", desc: "desktop.settings.paneLogsDesc" },
   { id: "backup", key: "desktop.settings.paneBackup", desc: "desktop.settings.paneBackupDesc" },
@@ -340,6 +342,7 @@ export function SettingsPanel({
     )
     : pane === "storage" ? <StoragePane draft={storage} setDraft={(value) => setStorage(value)} t={t} />
     : pane === "mcp" ? <McpPane t={t} />
+    : pane === "agentStatus" ? <AgentStatusPane t={t} />
     : pane === "usage" ? <UsagePane t={t} initialDetailTab={usageDetailTab} />
     : pane === "logs" ? <LogsPane t={t} />
     : pane === "backup" ? <BackupPane t={t} /> : <AboutPane t={t} />;
@@ -416,7 +419,7 @@ export function SettingsPanel({
             <div
               className={`settings-pane${pane === "usage" || pane === "logs" ? " settings-pane-usage" : pane === "about" ? " settings-pane-about" : ""}`}
             >
-              {pane === "usage" || pane === "logs" || pane === "about" || pane === "mcp" || pane === "backup" ? body : <div className="settings-pane-body">{pane === "im" ? body : <>{body}
+              {pane === "usage" || pane === "logs" || pane === "about" || pane === "mcp" || pane === "backup" || pane === "agentStatus" ? body : <div className="settings-pane-body">{pane === "im" ? body : <>{body}
                 <div className="settings-pane-actions">
                   <button type="button" className="btn primary" data-testid={`settings-save-${pane}`} disabled={!dirty || saving} onClick={() => void handleSave(pane as EditablePane)}>{saving ? t("desktop.settings.saving") : t("desktop.settings.save")}</button>
                   <button type="button" className="ghost-btn" data-testid={`settings-discard-${pane}`} disabled={!dirty || saving} onClick={() => handleDiscard(pane as EditablePane)}>{t("desktop.settings.discard")}</button>

@@ -264,6 +264,16 @@ export class AgentStatusState {
     };
   }
 
+  /** Pids backing tracked panes, so discovery can ignore them. */
+  ownedProcessPids(): Set<number> {
+    const pids = new Set<number>();
+    for (const record of this.records.values()) {
+      const pid = record.telemetry?.ptyPid;
+      if (typeof pid === "number" && pid > 0) pids.add(pid);
+    }
+    return pids;
+  }
+
   /** Which rules are loaded, for diagnostics and the startup log. */
   manifestSummaries() {
     return this.manifests.summaries();

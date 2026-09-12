@@ -315,7 +315,10 @@ function startAgentStatus(panelHome: string): void {
           resourcesPath: process.resourcesPath,
           appPath: app.getAppPath()
         }),
-        appVersion: app.getVersion()
+        appVersion: app.getVersion(),
+        // Notifications matter exactly when the app is closed, which is a
+        // packaged-build situation; dev runs would spam the developer.
+        notify: app.isPackaged
       });
       ensureAgentStatusRuntime();
       agentStatusBridge?.reconnect();
@@ -348,7 +351,16 @@ function ensureAgentStatusRuntime(): void {
       getPtyPid: (id) => ptyPidResolver?.(id) ?? null
     })
   );
-  registerAgentStatusIpc({ getWindow: () => mainWindow, bridge });
+  registerAgentStatusIpc({
+    getWindow: () => mainWindow,
+    bridge,
+    getPanelHome: () => agentStatusPanelHome,
+    execPath: process.execPath,
+    appVersion: app.getVersion(),
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    appPath: app.getAppPath()
+  });
   bridge.connect();
 }
 

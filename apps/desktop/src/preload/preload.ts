@@ -28,7 +28,12 @@ import type {
   WorkbenchSessionFolderAssignment
 } from "@agent-resume/core";
 import type { McpClientInfo } from "../main/mcpRegistration";
-import type { StatusSnapshot } from "../shared/agentStatusTypes";
+import type {
+  AgentIntegrationId,
+  AgentIntegrationStatus
+} from "../main/agentStatus/integrations";
+import type { AgentStatusDaemonStatus } from "../main/agentStatus/lifecycle";
+import type { DetectionExplain, PaneScreenDump, PaneStatus, StatusSnapshot } from "../shared/agentStatusTypes";
 import type { BackupPreview, BackupProgressEvent, BackupResult, BackupStorageTarget, BackupStorageTargetStatus, BackupStoredItem } from "../main/backupService";
 import type { GitDiffHunk, GitDiffHunkTarget, GitDiffLineTarget } from "../main/workbenchGitDiff";
 import type {
@@ -1045,6 +1050,20 @@ export interface DesktopApi {
   agentStatusGetSnapshot?(): Promise<StatusSnapshot | null>;
   /** Pushes whenever any pane's settled status changes. */
   onAgentStatusChanged?(callback: (snapshot: StatusSnapshot) => void): () => void;
+  /** Which agents can report their own state, and whether their hook is installed. */
+  agentStatusListIntegrations?(): Promise<AgentIntegrationStatus[]>;
+  agentStatusInstallIntegration?(args: { id: AgentIntegrationId }): Promise<AgentIntegrationStatus>;
+  agentStatusUninstallIntegration?(args: { id: AgentIntegrationId }): Promise<AgentIntegrationStatus>;
+  /** Health of the background status daemon. */
+  agentStatusDaemonStatus?(): Promise<AgentStatusDaemonStatus>;
+  agentStatusStartDaemon?(): Promise<AgentStatusDaemonStatus>;
+  agentStatusStopDaemon?(): Promise<AgentStatusDaemonStatus>;
+  /** Every pane the daemon knows about, for the inspector. */
+  agentStatusPanes?(): Promise<PaneStatus[]>;
+  /** Why one pane settled the way it did, rule by rule. */
+  agentStatusExplain?(args: { paneId: number }): Promise<DetectionExplain | null>;
+  /** The screen text the rules were evaluated against. */
+  agentStatusScreen?(args: { paneId: number }): Promise<PaneScreenDump | null>;
   onTerminalExit(callback: (payload: { id: number }) => void): () => void;
   onTerminalRespawned(callback: (payload: { id: number }) => void): () => void;
   setWorkbenchActive(active: boolean): void;
@@ -1762,6 +1781,15 @@ const api: DesktopApi = {
     ipcRenderer.on("agentStatus:changed", handler);
     return () => ipcRenderer.removeListener("agentStatus:changed", handler);
   },
+  agentStatusListIntegrations: () => ipcRenderer.invoke("agentStatus:listIntegrations"),
+  agentStatusInstallIntegration: (args) => ipcRenderer.invoke("agentStatus:installIntegration", args),
+  agentStatusUninstallIntegration: (args) => ipcRenderer.invoke("agentStatus:uninstallIntegration", args),
+  agentStatusDaemonStatus: () => ipcRenderer.invoke("agentStatus:daemonStatus"),
+  agentStatusStartDaemon: () => ipcRenderer.invoke("agentStatus:startDaemon"),
+  agentStatusStopDaemon: () => ipcRenderer.invoke("agentStatus:stopDaemon"),
+  agentStatusPanes: () => ipcRenderer.invoke("agentStatus:panes"),
+  agentStatusExplain: (args) => ipcRenderer.invoke("agentStatus:explain", args),
+  agentStatusScreen: (args) => ipcRenderer.invoke("agentStatus:screen", args),
   onTerminalExit: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, payload: { id: number }) => callback(payload);
     ipcRenderer.on("terminal:exit", handler);

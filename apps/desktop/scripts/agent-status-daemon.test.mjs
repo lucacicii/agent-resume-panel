@@ -55,7 +55,7 @@ const daemons = [];
 const detachedPids = new Set();
 
 function startDaemon(extraArgs = []) {
-  const child = spawn(process.execPath, [daemonEntry, "--panel-home", panelHome, "--app-version", APP_VERSION, ...extraArgs], {
+  const child = spawn(process.execPath, [daemonEntry, "--panel-home", panelHome, "--app-version", APP_VERSION, "--no-discovery", ...extraArgs], {
     env: { ...process.env, AGENT_RESUME_PANEL_HOME: panelHome, AGENT_RESUME_APP_VERSION: APP_VERSION },
     stdio: ["ignore", "pipe", "pipe"]
   });

@@ -91,6 +91,8 @@ export type AgentStatusRequest =
   | { id: string; method: "status.explain"; params: { paneId: number } }
   /** Diagnostics: the screen text and verdict behind a pane, for capture tooling. */
   | { id: string; method: "pane.screen"; params: { paneId: number } }
+  /** Which detection manifests the daemon loaded, for the settings pane. */
+  | { id: string; method: "status.manifests"; params?: Record<string, never> }
   | { id: string; method: "status.subscribe"; params?: Record<string, never> }
   | { id: string; method: "daemon.shutdown"; params: { reason: string } };
 
