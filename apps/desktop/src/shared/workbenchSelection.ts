@@ -10,16 +10,12 @@ export const WORKBENCH_SESSION_DOT_STATUSES = [
 
 export type WorkbenchSessionDotStatus = (typeof WORKBENCH_SESSION_DOT_STATUSES)[number];
 
-export const WORKBENCH_SESSION_AWAITING_CONFIDENCE = ["confirmed", "possible"] as const;
-export type WorkbenchSessionAwaitingConfidence = (typeof WORKBENCH_SESSION_AWAITING_CONFIDENCE)[number];
-
 export type WorkbenchActiveSessionDot = {
   paneKey: string;
   projectPath: string;
   title: string;
   sessionKey: string;
   status: WorkbenchSessionDotStatus;
-  awaitingConfidence?: WorkbenchSessionAwaitingConfidence;
 };
 
 /** Same allowlist as Workbench "New session" picker (`cli:*` / `acp:*`). */
@@ -67,7 +63,6 @@ export type WorkbenchFocusSessionResult = { ok: true };
 
 const SEND_SELECTION_TARGET_SET = new Set<string>(WORKBENCH_SEND_SELECTION_TARGETS);
 const SESSION_DOT_STATUS_SET = new Set<string>(WORKBENCH_SESSION_DOT_STATUSES);
-const AWAITING_CONFIDENCE_SET = new Set<string>(WORKBENCH_SESSION_AWAITING_CONFIDENCE);
 
 const MAX_SELECTION_TEXT_CHARS = 200_000;
 const MAX_ACTIVE_SESSIONS = 200;
@@ -113,9 +108,6 @@ export function parseWorkbenchActiveSessionDots(value: unknown): WorkbenchActive
       sessionKey,
       status
     };
-    if (typeof record.awaitingConfidence === "string" && AWAITING_CONFIDENCE_SET.has(record.awaitingConfidence)) {
-      dot.awaitingConfidence = record.awaitingConfidence as WorkbenchSessionAwaitingConfidence;
-    }
     dots.push(dot);
   }
   return dots;

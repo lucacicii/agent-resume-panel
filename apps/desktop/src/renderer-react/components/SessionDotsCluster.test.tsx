@@ -7,7 +7,6 @@ const TEXT: Record<string, string> = {
   "desktop.workbench.sessionDots": "Active sessions",
   "desktop.workbench.sessionDotsOpenPet": "Open session dots window",
   "desktop.workbench.sessionDot.awaiting": "Waiting for you",
-  "desktop.workbench.sessionDot.possiblyAwaiting": "May need attention",
   "desktop.workbench.sessionDot.running": "Running",
   "desktop.workbench.sessionDot.connecting": "Connecting",
   "desktop.workbench.sessionDot.error": "Error"
@@ -24,8 +23,7 @@ const SAMPLE: ActiveSessionDot[] = [
     projectPath: "/p",
     title: "Needs you",
     sessionKey: "chat:await",
-    status: "awaiting_user",
-    awaitingConfidence: "confirmed"
+    status: "awaiting_user"
   },
   { paneKey: "terminal:run", projectPath: "/p", title: "Busy", sessionKey: "cli:run", status: "running" }
 ];

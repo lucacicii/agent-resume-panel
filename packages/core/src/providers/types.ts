@@ -56,8 +56,7 @@ export type ModelUse =
   | "report"
   | "gtd"
   | "imRouting"
-  | "translate"
-  | "sessionStatus";
+  | "translate";
 
 export const MODEL_USES: readonly ModelUse[] = [
   "tool",
@@ -70,8 +69,7 @@ export const MODEL_USES: readonly ModelUse[] = [
   "report",
   "gtd",
   "imRouting",
-  "translate",
-  "sessionStatus"
+  "translate"
 ];
 
 export interface ModelSelection {

@@ -15,9 +15,6 @@ export function sessionDotStatusLabel(
 ): string {
   const status: SessionDotStatus = dot.status || "open";
   if (status === "awaiting_user") {
-    if (dot.awaitingConfidence === "possible") {
-      return text("desktop.workbench.sessionDot.possiblyAwaiting", "May need attention");
-    }
     return text("desktop.workbench.sessionDot.awaiting", "Waiting for you");
   }
   if (status === "running") return text("desktop.workbench.sessionDot.running", "Running");

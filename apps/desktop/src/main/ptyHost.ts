@@ -12,6 +12,7 @@ import {
 } from "./gitNestedScan";
 import { safeHandle } from "./ipcUtils";
 import { ensureUtf8TerminalEnv } from "./terminalEnv";
+import { getAgentStatusSensor } from "./agentStatus/runtime";
 
 interface PtySession {
   pty: pty.IPty;
@@ -29,8 +30,6 @@ interface PtySession {
   flushTimer: NodeJS.Timeout | null;
   outputBytes: number;
   forwardedBytes: number;
-  lastActivitySentAt: number;
-  activityTimer: NodeJS.Timeout | null;
 }
 
 export type PtyRuntimeMetrics = {
@@ -72,18 +71,6 @@ function replayText(session: PtySession): string {
   return session.replayChunks.join("");
 }
 
-function replayTail(session: PtySession, maxBytes = 4096): string {
-  if (!session.replayChunks.length) return "";
-  let accumulated = "";
-  for (let i = session.replayChunks.length - 1; i >= 0; i -= 1) {
-    accumulated = session.replayChunks[i] + accumulated;
-    if (accumulated.length >= maxBytes) {
-      return accumulated.slice(-maxBytes);
-    }
-  }
-  return accumulated;
-}
-
 function createPtySession(
   ptyInstance: pty.IPty,
   cwd: string,
@@ -107,9 +94,7 @@ function createPtySession(
     pendingForwardBytes: 0,
     flushTimer: null,
     outputBytes: 0,
-    forwardedBytes: 0,
-    lastActivitySentAt: 0,
-    activityTimer: null
+    forwardedBytes: 0
   };
 }
 
@@ -118,28 +103,8 @@ function clearForwardQueue(session: PtySession): void {
     clearTimeout(session.flushTimer);
     session.flushTimer = null;
   }
-  if (session.activityTimer) {
-    clearTimeout(session.activityTimer);
-    session.activityTimer = null;
-  }
   session.pendingForward = [];
   session.pendingForwardBytes = 0;
-}
-
-const ACTIVITY_THROTTLE_MS = 300;
-
-function queueActivity(id: number, session: PtySession, win: BrowserWindow | null): void {
-  if (!win || win.isDestroyed()) return;
-  if (!session.activityTimer) {
-    session.activityTimer = setTimeout(() => {
-      session.activityTimer = null;
-      if (!win || win.isDestroyed() || session.attached) return;
-      session.lastActivitySentAt = Date.now();
-      const tail = replayTail(session, 4096);
-      win.webContents.send("terminal:activity", { id, tail, timestamp: Date.now() });
-    }, ACTIVITY_THROTTLE_MS);
-    session.activityTimer.unref?.();
-  }
 }
 
 function flushForward(id: number, win: BrowserWindow | null): void {
@@ -454,13 +419,14 @@ function attachPtyHandlers(
   ptyInstance.onData((data) => {
     const session = ptySessions.get(id);
     if (!session) return;
+    // The sensor owns status: it mirrors the screen and strips the agent status
+    // sequence, so the renderer only ever sees bytes meant for a terminal.
+    const forwarded = getAgentStatusSensor()?.ingest(id, data) ?? data;
     // Always drain. Pause means "don't forward to xterm", never "stop reading".
-    appendReplay(session, data);
-    session.outputBytes += data.length;
+    appendReplay(session, forwarded);
+    session.outputBytes += forwarded.length;
     if (session.attached) {
-      queueForward(id, data, win);
-    } else {
-      queueActivity(id, session, win);
+      queueForward(id, forwarded, win);
     }
   });
   ptyInstance.onExit(() => {
@@ -469,13 +435,14 @@ function attachPtyHandlers(
 
     const { respawnOnExit, lastSpawnCwd, lastCols, lastRows, shell, startedAt, attached } = session;
     ptySessions.delete(id);
-
     const livedMs = Date.now() - startedAt;
     if (respawnOnExit && lastSpawnCwd && livedMs >= 400) {
       try {
         const newPty = spawnPty(shell, lastSpawnCwd, lastCols, lastRows);
         const next = createPtySession(newPty, lastSpawnCwd, lastCols, lastRows, shell, attached);
         ptySessions.set(id, next);
+        // A fresh shell is a fresh screen: reset the mirror, keep the session.
+        getAgentStatusSensor()?.attach(id, { cols: lastCols, rows: lastRows, cwd: lastSpawnCwd });
         attachPtyHandlers(newPty, id, win);
         if (attached && win && !win.isDestroyed()) {
           win.webContents.send("terminal:respawned", { id });
@@ -488,6 +455,8 @@ function attachPtyHandlers(
       console.warn(`terminal ${id} exited too quickly (${livedMs}ms); skipping respawn`);
     }
 
+    // No process left to sense: the daemon should forget this pane.
+    getAgentStatusSensor()?.detach(id);
     if (win && !win.isDestroyed()) {
       win.webContents.send("terminal:exit", { id });
     }
@@ -520,6 +489,7 @@ function destroyPtyById(id: number): void {
   if (!session) return;
   session.respawnOnExit = false;
   clearForwardQueue(session);
+  getAgentStatusSensor()?.detach(id);
   try {
     session.pty.kill();
   } catch {
@@ -581,7 +551,7 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
     "terminal:spawn",
     async (
       _event,
-      args: { cwd: string; command?: string; cols?: number; rows?: number }
+      args: { cwd: string; command?: string; cols?: number; rows?: number; sessionKey?: string }
     ) => {
       const shell = resolveShell();
       const cols = Math.max(2, Math.floor(args.cols || 80));
@@ -600,6 +570,8 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
 
       // Start detached so boot output lands in the replay buffer until xterm attaches.
       ptySessions.set(id, createPtySession(ptyInstance, cwd, cols, rows, shell, false));
+      // Register with the status sensor before any output can arrive.
+      getAgentStatusSensor()?.attach(id, { cols, rows, cwd, sessionKey: args.sessionKey });
       attachPtyHandlers(ptyInstance, id, win);
       const softLimitReached = ptySessions.size >= PTY_SOFT_LIMIT;
       const warnSoftLimit = softLimitReached && !warnedSoftLimit;
@@ -646,8 +618,25 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
       session.lastRows = rows;
       session.pty.resize(cols, rows);
     }
+    getAgentStatusSensor()?.resize(id, cols, rows);
     return { ok: true };
   });
+
+  /**
+   * Bind the session identity a pane belongs to.
+   *
+   * The renderer knows the session (`cli:<id>`, `chat:<recordId>`) while main
+   * only knows the PTY, and a pane can be spawned before its session resolves —
+   * so this is called again whenever the binding changes.
+   */
+  safeHandle(
+    "terminal:bindSession",
+    (_event, args: { id: number; sessionKey?: string; cwd?: string }) => {
+      const id = Math.floor(args.id);
+      getAgentStatusSensor()?.bindSession(id, { sessionKey: args.sessionKey, cwd: args.cwd });
+      return { ok: true };
+    }
+  );
 
   safeHandle("terminal:destroy", (_event, args: { id: number }) => {
     destroyPtyById(Math.floor(args.id));

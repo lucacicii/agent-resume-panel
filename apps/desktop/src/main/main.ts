@@ -209,6 +209,15 @@ import {
   settingsOpenPanelHome
 } from "./notesService";
 import { refreshMemorySchedulerFromSettings, stopMemoryScheduler } from "./scheduler";
+import {
+  ensureAgentStatusDaemon,
+  resolveDaemonEntryPath,
+  stopAgentStatusDaemon
+} from "./agentStatus/lifecycle";
+import { createAgentStatusBridge, type AgentStatusBridge } from "./agentStatus/bridge";
+import { registerAgentStatusIpc } from "./agentStatus/ipc";
+import { AgentStatusSensor } from "./agentStatus/sensor";
+import { setAgentStatusSensor } from "./agentStatus/runtime";
 import { scheduleNotesIndex, startNotesIndexer, stopNotesIndexer } from "./noteIndexer";
 import {
   scheduleSessionSummaryAuto,
@@ -246,37 +255,23 @@ import {
 installProcessErrorHandlers();
 
 /**
- * Last known settings for status-plane consumers (Tier 1.5 judge).
+ * Agent-status runtime: one bridge and one sensor for the whole process.
  *
- * Resolved lazily and refreshed from the settings IPC path, so it never adds
- * a disk read to a status tick while still tracking user changes.
+ * The daemon is replaceable (upgrade, panel-home change), the in-process pieces
+ * are not — they keep publishing and reconnect on their own.
  */
-let sessionStatusSettings: PanelSettings | undefined;
-
-/** Refresh the cached status-plane settings after any settings write. */
-export function refreshSessionStatusSettings(next: PanelSettings): void {
-  sessionStatusSettings = next;
-}
+let agentStatusPanelHome = resolvePanelHome(undefined);
+let agentStatusBridge: AgentStatusBridge | null = null;
+let agentStatusSensor: AgentStatusSensor | null = null;
+/** Resolved lazily by `tryRegisterPtyIpc`; absent when node-pty failed to load. */
+let ptyPidResolver: ((id: number) => number | null) | null = null;
 
 function tryRegisterPtyIpc(): void {
   try {
     // Lazy-load so node-pty native binding issues do not block other IPC handlers.
     const { registerPtyIpc, getPtyPid } = require("./ptyHost") as typeof import("./ptyHost");
     registerPtyIpc(() => mainWindow);
-    // Tier 1 status probe: reads the OS process tree under each PTY.
-    // Tier 1.5 judge: LLM adjudication for screens the cheaper tiers cannot settle.
-    const { registerSessionStatusIpc } = require("./sessionStatus/probe") as typeof import("./sessionStatus/probe");
-    registerSessionStatusIpc({
-      getPtyPid,
-      judge: {
-        loadSettings: () => sessionStatusSettings ?? {} as PanelSettings,
-        get desktopDb() {
-          return desktopDbPath(effectivePanelHome(sessionStatusSettings ?? {} as PanelSettings));
-        }
-      }
-    });
-    // Warm the cache without blocking IPC registration.
-    void loadSettings().then(refreshSessionStatusSettings).catch(() => undefined);
+    ptyPidResolver = getPtyPid;
   } catch (error) {
     void recordAppError({
       source: "pty-host",
@@ -293,6 +288,79 @@ function tryDestroyPtyOnQuit(): void {
   } catch {
     // ignore
   }
+}
+
+/**
+ * Start the background agent-status daemon and the in-process sensor.
+ *
+ * Packaged builds always run the daemon: pane state must survive the window
+ * closing, and installed agent hooks report to it while the app is gone. Dev
+ * builds run it too (the UI needs real status while developing) and stop it on
+ * quit, so no stray process is left behind. Set
+ * `AGENT_RESUME_AGENT_STATUS_DAEMON=0` to run without one.
+ */
+function startAgentStatus(panelHome: string): void {
+  if (process.env.AGENT_RESUME_AGENT_STATUS_DAEMON === "0") {
+    console.log("[agent-resume] agent-status daemon disabled by AGENT_RESUME_AGENT_STATUS_DAEMON=0");
+    return;
+  }
+  agentStatusPanelHome = panelHome;
+  void (async () => {
+    try {
+      const result = await ensureAgentStatusDaemon({
+        panelHome,
+        execPath: process.execPath,
+        entryPath: resolveDaemonEntryPath({
+          isPackaged: app.isPackaged,
+          resourcesPath: process.resourcesPath,
+          appPath: app.getAppPath()
+        }),
+        appVersion: app.getVersion()
+      });
+      ensureAgentStatusRuntime();
+      agentStatusBridge?.reconnect();
+      console.log(
+        `[agent-resume] agent-status daemon ${result.started ? "started" : "already running"} ` +
+          `(pid ${result.endpoint.pid}, api v${result.endpoint.apiVersion})`
+      );
+    } catch (error) {
+      void recordAppError({
+        source: "agent-status",
+        message: "Background status daemon could not be started.",
+        error
+      });
+    }
+  })();
+}
+
+/** Create the bridge, the sensor, and the renderer IPC exactly once. */
+function ensureAgentStatusRuntime(): void {
+  if (agentStatusSensor) return;
+  const bridge = createAgentStatusBridge({
+    getPanelHome: () => agentStatusPanelHome,
+    appVersion: app.getVersion(),
+    log: (message) => console.log(`[agent-resume] ${message}`)
+  });
+  agentStatusBridge = bridge;
+  setAgentStatusSensor(
+    new AgentStatusSensor({
+      bridge,
+      getPtyPid: (id) => ptyPidResolver?.(id) ?? null
+    })
+  );
+  registerAgentStatusIpc({ getWindow: () => mainWindow, bridge });
+  bridge.connect();
+}
+
+/** Follow a panel-home change: the daemon and its socket live under that path. */
+function refreshAgentStatusSettings(next: PanelSettings): void {
+  const nextHome = effectivePanelHome(next);
+  if (nextHome === agentStatusPanelHome) return;
+  const previousHome = agentStatusPanelHome;
+  void (async () => {
+    await stopAgentStatusDaemon(previousHome).catch(() => undefined);
+    startAgentStatus(nextHome);
+  })();
 }
 
 function resolveWorkbenchTerminalMode(settings: PanelSettings): "xterm" | "external-system" {
@@ -989,6 +1057,10 @@ function performQuitCleanup(): void {
   void flushImStreamingMessages();
   disposeAllAcpControllers();
   tryDestroyPtyOnQuit();
+  // Packaged builds deliberately keep the daemon alive: it holds the status
+  // snapshot and the hook endpoint while the app is closed. Dev builds would
+  // otherwise leave an orphan behind on every reload.
+  if (!app.isPackaged) void stopAgentStatusDaemon(agentStatusPanelHome);
 }
 
 async function beginAppQuit(): Promise<void> {
@@ -1713,7 +1785,7 @@ function registerIpc(): void {
         startSessionSummaryAuto();
         startSessionTranscriptIndexAuto();
         startSessionEmbeddingIndexAuto();
-        refreshSessionStatusSettings(saved);
+        refreshAgentStatusSettings(saved);
         broadcastToRenderers("settings:changed", { settings: saved, section: "storage" });
         broadcastToRenderers("i18n:localeChanged", bundle);
         broadcastToRenderers("backup:imported", result);
@@ -1819,7 +1891,7 @@ function registerIpc(): void {
       startSessionSummaryAuto();
       startSessionTranscriptIndexAuto();
       startSessionEmbeddingIndexAuto();
-      refreshSessionStatusSettings(saved);
+      refreshAgentStatusSettings(saved);
       broadcastToRenderers("settings:changed", {
         settings: saved,
         section: options?.section,
@@ -3142,6 +3214,10 @@ app.whenReady().then(async () => {
     .catch(() => undefined);
   registerLinkGraphIpc(() => mainWindow, () => app.getLocale());
   tryRegisterPtyIpc();
+  // The daemon deliberately outlives this process — see startAgentStatus.
+  void loadSettings()
+    .then((settings) => startAgentStatus(effectivePanelHome(settings)))
+    .catch(() => startAgentStatus(agentStatusPanelHome));
   try {
     await loadPanelDbPaths();
   } catch (error) {

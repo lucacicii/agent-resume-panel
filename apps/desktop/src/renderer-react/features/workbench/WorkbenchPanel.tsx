@@ -46,8 +46,7 @@ import { BrowserPaneView } from "../browser/BrowserPaneView";
 import type { BrowserSessionState } from "../../../shared/browserTypes";
 import type { WorkbenchFocusSessionRequest, WorkbenchSendSelectionRequest } from "../../../shared/workbenchSelection";
 import { collectActiveSessionDots } from "./activeSessionDots";
-import { useSessionStatus } from "./sessionStatus";
-import { stripReportedStatus } from "./sessionStatus";
+import { useAcpStatus, useAgentStatus, type AcpStatusEvent, type SessionDotRuntime } from "./sessionStatus";
 import { COMPOSER_TIP_LIMIT, type ComposerSendTip } from "./TerminalComposer";
 import { TerminalComposerStack } from "./TerminalComposerStack";
 import { formatTuiSlashInput, type TuiSlashCommand } from "./tuiSlashCommands";
@@ -942,55 +941,38 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
     return titles;
   }, [sessions]);
-  // Live session status is owned by the sessionStatus module; this component
-  // only declares which panes exist and whether it is foreground.
+  // Live session status is owned by the agent-status daemon; this component
+  // only declares which panes exist. ACP chats are not PTY panes, so their
+  // lifecycle is tracked locally and merged below.
   const statusPanes = useMemo(
-    () => [
-      ...terminals
-        .filter((pane) => pane.group === "session")
-        .map((pane) => ({ key: pane.key, group: pane.group, ptyId: pane.ptyId ?? null })),
-      ...acpChats.map((pane) => ({ key: pane.key, group: "session", acpRecordId: pane.recordId }))
-    ],
-    [acpChats, terminals]
+    () => terminals
+      .filter((pane) => pane.group === "session")
+      .map((pane) => ({ key: pane.key, ptyId: pane.ptyId ?? null, sessionKey: pane.sessionKey })),
+    [terminals]
   );
 
-  // Tier 1: main-process process-tree probe. Stable identity so the store is
-  // not re-wired on every render; absent APIs degrade to "no signal".
-  const processStatusProbe = useMemo(() => {
-    const probe = desktopApi().sessionStatusProbeProcesses;
-    if (typeof probe !== "function") return null;
-    return (ptyIds: readonly number[]) => probe({ ptyIds: [...ptyIds] });
-  }, []);
-
-  // Tier 1.5: LLM adjudication for screens the cheaper tiers could not settle.
-  const statusJudgeProbe = useMemo(() => {
-    const judge = desktopApi().sessionStatusJudgeScreens;
-    if (typeof judge !== "function") return null;
-    return (requests: readonly { paneKey: string; screenText: string; silentMs: number; toolRunning: boolean }[]) =>
-      judge({ requests: [...requests] });
-  }, []);
-  const { store: statusStore, snapshot: statusSnapshot } = useSessionStatus(
-    statusPanes,
-    active,
-    processStatusProbe,
-    statusJudgeProbe
-  );
-  const sessionRuntimeByPaneKey = useMemo(
-    () => new Map(Object.entries(statusSnapshot.runtimeByPaneKey)),
-    [statusSnapshot]
-  );
+  const statusView = useAgentStatus(statusPanes);
+  const acpStatus = useAcpStatus();
+  const sessionRuntimeByPaneKey = useMemo(() => {
+    const merged = new Map<string, SessionDotRuntime>(statusView.byPaneKey);
+    for (const pane of acpChats) {
+      const runtime = acpStatus.byChatId.get(pane.recordId);
+      if (runtime) merged.set(pane.key, runtime);
+    }
+    return merged;
+  }, [acpChats, acpStatus.byChatId, statusView.byPaneKey]);
   const activeSessionDots = useMemo(
     () => collectActiveSessionDots(terminals, acpChats, sessionTitles, sessionRuntimeByPaneKey),
     [acpChats, sessionRuntimeByPaneKey, sessionTitles, terminals]
   );
 
-  // ACP carries its own structured lifecycle; forward it straight to the store.
+  // ACP carries its own structured lifecycle; feed it to the ACP status hook.
   useEffect(() => {
     const subscribe = desktopApi().onAcpStream;
     if (typeof subscribe !== "function") return;
-    const off = subscribe((raw) => statusStore.ingestAcpEvent(raw as Parameters<typeof statusStore.ingestAcpEvent>[0]));
+    const off = subscribe((raw) => acpStatus.ingest(raw as AcpStatusEvent));
     return () => off();
-  }, [statusStore]);
+  }, [acpStatus.ingest]);
 
   // Broadcast the live session-dot set to the nav rail (sibling component)
   // and to floating note windows via main-process IPC.
@@ -2227,11 +2209,9 @@ export function WorkbenchPanel(): ReactPortal | null {
       gitRefreshTimers.current.delete(key);
       void refreshTerminalGit(key);
     }, 500));
-    // User typing into a session TUI counts as immediate activity.
-    if (terminalsRef.current.find((item) => item.key === key)?.group === "session") {
-      statusStore.markUserInput(key);
-    }
-  }, [refreshTerminalGit, statusStore]);
+    // User typing into a session TUI counts as immediate activity, and the
+    // daemon sees the echoed bytes within a tick.
+  }, [refreshTerminalGit]);
 
   const activateComposerPane = useCallback((paneKey: string) => {
     const pane = terminalsRef.current.find((item) => item.key === paneKey);
@@ -2322,8 +2302,7 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   const onPtyDetach = useCallback((id: number) => {
     terminalRefs.current.delete(id);
-    statusStore.detachTerminal(id);
-  }, [statusStore]);
+  }, []);
 
   const onPty = useCallback((key: string, id: number, terminal: Terminal | null) => {
     const livePane = terminalsRef.current.find((item) => item.key === key);
@@ -2334,11 +2313,8 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
     if (terminal) {
       terminalRefs.current.set(id, terminal);
-      // The store reads the screen through this instance; it never owns it.
-      statusStore.attachTerminal(id, terminal);
     } else {
       terminalRefs.current.delete(id);
-      statusStore.detachTerminal(id);
     }
     setTerminals((current) => {
       const next = current.map((pane) => pane.key === key ? { ...pane, ptyId: id } : pane);
@@ -4885,30 +4861,20 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   useEffect(() => {
     const data = desktopApi().onTerminalData(({ id, data: value }) => {
-      // Feed the status store before touching the terminal: it needs the raw
-      // bytes (status sequences, cursor modes) even when no xterm is mounted.
-      statusStore.ingestTerminalData(id, value);
       const terminal = terminalRefs.current.get(id);
       if (!terminal) return;
       trackTerminalMouseModes(id, value, terminalMouseTrackingRef.current);
       trackTuiRedraw(value, terminal);
-      terminal.write(stripReportedStatus(value));
+      terminal.write(value);
     });
-    const onTerminalActivity = desktopApi().onTerminalActivity;
-    const activity = typeof onTerminalActivity === "function"
-      ? onTerminalActivity(({ id, tail, timestamp }) => {
-          statusStore.ingestTerminalActivity(id, { tail, timestamp });
-        })
-      : () => undefined;
     const exited = desktopApi().onTerminalExit(({ id }) => {
       terminalRefs.current.get(id)?.write(`\r\n${t("desktop.workbench.terminalClosed")}\r\n`);
-      statusStore.detachTerminal(id);
       const pane = terminalsRef.current.find((item) => item.ptyId === id);
       if (pane) scheduleSessionPaneAutoRename(pane);
     });
     const respawned = desktopApi().onTerminalRespawned(({ id }) => terminalRefs.current.get(id)?.write(`\r\n${t("desktop.workbench.shellRestored")}\r\n`));
-    return () => { data(); activity(); exited(); respawned(); };
-  }, [scheduleSessionPaneAutoRename, statusStore, t]);
+    return () => { data(); exited(); respawned(); };
+  }, [scheduleSessionPaneAutoRename, t]);
 
   const changes = git ? [{ title: t("desktop.workbench.sidePanelStaged"), staged: true, entries: git.staged }, { title: t("desktop.workbench.sidePanelChanges"), staged: false, entries: git.unstaged }] : [];
   const setWidth = (kind: "folders" | "list" | "side", delta: number) => {

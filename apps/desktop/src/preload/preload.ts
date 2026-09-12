@@ -28,6 +28,7 @@ import type {
   WorkbenchSessionFolderAssignment
 } from "@agent-resume/core";
 import type { McpClientInfo } from "../main/mcpRegistration";
+import type { StatusSnapshot } from "../shared/agentStatusTypes";
 import type { BackupPreview, BackupProgressEvent, BackupResult, BackupStorageTarget, BackupStorageTargetStatus, BackupStoredItem } from "../main/backupService";
 import type { GitDiffHunk, GitDiffHunkTarget, GitDiffLineTarget } from "../main/workbenchGitDiff";
 import type {
@@ -597,11 +598,15 @@ export interface DesktopApi {
     command?: string;
     cols?: number;
     rows?: number;
+    /** Session the pane belongs to, when the renderer already knows it. */
+    sessionKey?: string;
   }): Promise<{ id: number; count?: number; softLimit?: number; warnSoftLimit?: boolean }>;
   terminalAttach(args: { id: number }): Promise<{ ok: boolean; replay: string }>;
   terminalDetach(args: { id: number }): Promise<{ ok: boolean }>;
   terminalInput(args: { id: number; data: string }): Promise<{ ok: boolean }>;
   terminalResize(args: { id: number; cols: number; rows: number }): Promise<{ ok: boolean }>;
+  /** Bind the session identity a pane belongs to (status attribution). */
+  terminalBindSession(args: { id: number; sessionKey?: string; cwd?: string }): Promise<{ ok: boolean }>;
   terminalDestroy(args: { id: number }): Promise<{ ok: boolean }>;
   workbenchComposerSendAppend(args: {
     paneKey: string;
@@ -1033,21 +1038,13 @@ export interface DesktopApi {
     target: GitDiffLineTarget;
   }): Promise<{ ok: boolean }>;
   onTerminalData(callback: (payload: { id: number; data: string }) => void): () => void;
-  onTerminalActivity?(callback: (payload: { id: number; tail?: string; timestamp?: number }) => void): () => void;
   /**
-   * Tier 1 status probe: whether an agent is executing a command beneath each
-   * PTY. Deterministic and free; absent on unsupported platforms.
+   * Current agent-status snapshot for every pane, or null while the background
+   * daemon is not connected yet. The daemon is the single source of truth.
    */
-  sessionStatusProbeProcesses?(args: { ptyIds: readonly number[] }): Promise<
-    Record<number, { active: boolean; processes: string[] }>
-  >;
-  /**
-   * Tier 1.5: ask the LLM whether each screen is blocked on the user.
-   * Batched — one model call covers every pane.
-   */
-  sessionStatusJudgeScreens?(args: {
-    requests: ReadonlyArray<{ paneKey: string; screenText: string; silentMs: number; toolRunning: boolean }>;
-  }): Promise<Array<{ paneKey: string; awaiting: boolean; reason?: string }>>;
+  agentStatusGetSnapshot?(): Promise<StatusSnapshot | null>;
+  /** Pushes whenever any pane's settled status changes. */
+  onAgentStatusChanged?(callback: (snapshot: StatusSnapshot) => void): () => void;
   onTerminalExit(callback: (payload: { id: number }) => void): () => void;
   onTerminalRespawned(callback: (payload: { id: number }) => void): () => void;
   setWorkbenchActive(active: boolean): void;
@@ -1686,6 +1683,7 @@ const api: DesktopApi = {
   terminalDetach: (args) => ipcRenderer.invoke("terminal:detach", args),
   terminalInput: (args) => ipcRenderer.invoke("terminal:input", args),
   terminalResize: (args) => ipcRenderer.invoke("terminal:resize", args),
+  terminalBindSession: (args) => ipcRenderer.invoke("terminal:bindSession", args),
   terminalDestroy: (args) => ipcRenderer.invoke("terminal:destroy", args),
   workbenchComposerSendAppend: (args) => ipcRenderer.invoke("workbench:composerSendAppend", args),
   workbenchComposerSendList: (args) => ipcRenderer.invoke("workbench:composerSendList", args),
@@ -1758,14 +1756,12 @@ const api: DesktopApi = {
     ipcRenderer.on("terminal:data", handler);
     return () => ipcRenderer.removeListener("terminal:data", handler);
   },
-  onTerminalActivity: (callback) => {
-    const handler = (_event: Electron.IpcRendererEvent, payload: { id: number; tail?: string; timestamp?: number }) =>
-      callback(payload);
-    ipcRenderer.on("terminal:activity", handler);
-    return () => ipcRenderer.removeListener("terminal:activity", handler);
+  agentStatusGetSnapshot: () => ipcRenderer.invoke("agentStatus:getSnapshot"),
+  onAgentStatusChanged: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: StatusSnapshot) => callback(payload);
+    ipcRenderer.on("agentStatus:changed", handler);
+    return () => ipcRenderer.removeListener("agentStatus:changed", handler);
   },
-  sessionStatusProbeProcesses: (args) => ipcRenderer.invoke("sessionStatus:probeProcesses", args),
-  sessionStatusJudgeScreens: (args) => ipcRenderer.invoke("sessionStatus:judgeScreens", args),
   onTerminalExit: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, payload: { id: number }) => callback(payload);
     ipcRenderer.on("terminal:exit", handler);

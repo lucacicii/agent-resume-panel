@@ -18,6 +18,7 @@ export {
   desktopDbPath,
   defaultScratchDir,
   desktopLogsDir,
+  agentStatusDir,
   browserMcpEndpointPath
 } from "./panelHome";
 export { resolveScratchBaseDir, migrateLegacyScratchDir } from "./scratchDir";
@@ -272,7 +273,6 @@ export {
   reportLlmConfigFromSettings,
   gtdLlmConfigFromSettings,
   imRoutingLlmConfigFromSettings,
-  sessionStatusLlmConfigFromSettings,
   translateLlmConfigFromSettings,
   isSpecializedModelUse,
   SPECIALIZED_MODEL_USES,

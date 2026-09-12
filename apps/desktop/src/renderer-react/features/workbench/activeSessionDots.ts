@@ -2,8 +2,8 @@
  * Rendering model for the session indicators (nav rail, tray, floating notes).
  *
  * This module only *shapes* data for display: given the open panes and the
- * statuses the `sessionStatus` store settled on, it produces one dot per pane.
- * It performs no detection of its own — see `sessionStatus/`.
+ * statuses the daemon settled on, it produces one dot per pane. It performs no
+ * detection of its own — see `sessionStatus/`.
  */
 
 import type { SessionDotRuntime, SessionDotStatus } from "./sessionStatus";
@@ -14,8 +14,6 @@ export type ActiveSessionDot = {
   title: string;
   sessionKey: string;
   status: SessionDotStatus;
-  /** Weak heuristic (idle TUI) vs confirmed (explicit report / approval UI). */
-  awaitingConfidence?: "confirmed" | "possible";
 };
 
 type DotTerminal = {
@@ -63,8 +61,7 @@ export function collectActiveSessionDots(
       projectPath: pane.projectPath,
       title,
       sessionKey: sessionKey || "",
-      status: runtime?.status ?? "open",
-      awaitingConfidence: runtime?.awaitingConfidence
+      status: runtime?.status ?? "open"
     });
   }
 
@@ -77,8 +74,7 @@ export function collectActiveSessionDots(
       projectPath: pane.projectPath,
       title,
       sessionKey: key,
-      status: runtime?.status ?? "open",
-      awaitingConfidence: runtime?.awaitingConfidence
+      status: runtime?.status ?? "open"
     });
   }
 

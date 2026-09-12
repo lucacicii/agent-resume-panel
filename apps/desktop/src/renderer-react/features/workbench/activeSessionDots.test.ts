@@ -26,7 +26,7 @@ describe("collectActiveSessionDots", () => {
     ];
     const acpChats = [{ key: "acp:rec1", recordId: "rec1", title: "chat", projectPath: "/s" }];
     const runtime = new Map([
-      ["terminal:1", { status: "awaiting_user" as const, awaitingConfidence: "possible" as const }],
+      ["terminal:1", { status: "awaiting_user" as const }],
       ["acp:rec1", { status: "running" as const }]
     ]);
     expect(collectActiveSessionDots(terminals, acpChats, new Map(), runtime)).toEqual([
@@ -35,16 +35,14 @@ describe("collectActiveSessionDots", () => {
         projectPath: "/p",
         title: "tui",
         sessionKey: "cli:a",
-        status: "awaiting_user",
-        awaitingConfidence: "possible"
+        status: "awaiting_user"
       },
       {
         paneKey: "acp:rec1",
         projectPath: "/s",
         title: "chat",
         sessionKey: "chat:rec1",
-        status: "running",
-        awaitingConfidence: undefined
+        status: "running"
       }
     ]);
   });
