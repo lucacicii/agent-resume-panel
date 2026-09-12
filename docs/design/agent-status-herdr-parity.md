@@ -1,6 +1,11 @@
 # Agent Status — herdr-parity plan (Desktop)
 
-Status: in progress (stages 0–5 landed; every agent the app resumes has its own rules)
+> **This file is the design history**: why the subsystem looks the way it does, what was studied in
+> herdr, and the stage-by-stage record with deviations. The authoritative implementation spec lives in
+> [`agent-status.md`](agent-status.md); the release checklist in
+> [`agent-status-acceptance.md`](agent-status-acceptance.md).
+
+Status: in progress (stages 0–8 landed; ready for dogfooding and release)
 Owner surface: `apps/desktop` only. The extension keeps ACP-native status only.
 Reference implementation studied: [herdr](https://github.com/herdrdev/herdr) — `src/detect/*`,
 `src/pane/agent_detection.rs`, `src/integration/*`.
@@ -98,7 +103,11 @@ the app, by tests, and by the `agent-resume-status` CLI that hooks call.
 | `src/main/agentStatus/processTable.ts` | `ps` table: job control + argv for identity | 3 ✅ |
 | `src/main/agentStatus/engine/*.ts` | manifest, region, evaluate, arbitrate | 4 ✅ |
 | `src/main/agentStatus/engine/manifests/*.json` | per-agent rules + generic base layer | 4–5 ✅ |
-| `src/main/agentStatus/integrations/*.ts` | claude / codex / pi / opencode hooks | 6 |
+| `src/main/agentStatus/integrations/*.ts` | claude / codex hooks, pi extension, installer registry | 6 ✅ |
+| `src/main/agentStatus/cli.ts` | `agent-resume-status` report path for hooks | 6 ✅ |
+| `src/main/agentStatus/discovery.ts` | agents running outside this app | 7 ✅ |
+| `src/main/agentStatus/notify.ts` | macOS notification while no window is attached | 7 ✅ |
+| `src/renderer-react/.../settings/AgentStatusPane.tsx` | settings + inspector pane | 6–7 ✅ |
 | `src/renderer-react/.../sessionStatus/useAgentStatus.ts` | UI subscription | 7 |
 | `scripts/agent-status-daemon.test.mjs` | daemon lifecycle + protocol test | 1 ✅ |
 | `scripts/agent-status-mine.mjs` | offline rule mining and triage (dev only) | 5 ✅ |
@@ -114,9 +123,9 @@ the app, by tests, and by the `agent-resume-status` CLI that hooks call.
 | 3 | Identity + foreground process group (`tpgid`); global discovery deferred to stage 7 | every pane reports its agent | 3–4 ✅ |
 | 4 | Rule engine (region / priority / all-any-not / `visible_*` / `skipStateUpdate`), single authority, `status.explain` | verdicts explainable rule-by-rule | 4–6 ✅ |
 | 5 | Manifests for claude / codex / pi / opencode + offline mining + local override dir | fixture suite green, no online LLM in the runtime path | 5–8 ✅ |
-| 6 | Hook integrations + `agent-resume-status` CLI + settings toggle | uninstall restores user config byte-for-byte | 5–8 |
-| 7 | UI: dots, rollups, notifications (incl. app-closed), explain panel | "who is stuck" visible and actionable | 4–5 |
-| 8 | One-shot release: dogfood, acceptance, CHANGELOG, i18n, pack + notarize | DMG verified on a clean machine | 3–5 |
+| 6 | Hook integrations + `agent-resume-status` CLI + settings toggle | uninstall restores user config byte-for-byte | 5–8 ✅ (opencode deferred) |
+| 7 | UI: dots, rollups, notifications (incl. app-closed), explain panel | "who is stuck" visible and actionable | 4–5 ✅ |
+| 8 | One-shot release: dogfood, acceptance, CHANGELOG, i18n, pack + notarize | DMG verified on a clean machine | 3–5 ✅ (dogfooding pending) |
 
 Total: 32–48 dev-days.
 
@@ -245,6 +254,41 @@ Total: 32–48 dev-days.
 - **Still deferred**: marker-based regions. The agent rules use `bottom_non_empty_lines(n)` and
   `after_last_horizontal_rule`, and their fixtures pin that behaviour; a marker region is worth adding
   only once a real screen proves the approximation insufficient.
+
+## Stage 6–8 notes (landed)
+
+- **Hooks report a state decided at install time.** Claude's `~/.claude/settings.json` and Codex's
+  `~/.codex/hooks.json` get one entry per lifecycle event, each calling a wrapper with a fixed state
+  (`SessionStart`/`Stop` → idle, `UserPromptSubmit`/`PreToolUse` → working, `Notification` /
+  `PermissionRequest` → blocked). The wrapper needs no payload parsing, and it is where the pane gate
+  lives: it exits unless `AGENT_RESUME_PANE_ID` is set, which only panes this app spawns export.
+- **Hook editing is conservative by construction** (`integrations/config.ts`): unknown keys survive,
+  other tools' hooks are never touched, we only remove entries pointing at our wrapper, an
+  unparseable file is reported instead of rewritten, and a file that would not change is not written
+  (so re-installing does not churn mtimes). Codex's `[features] hooks = true` is edited line-wise for
+  the same reason — a TOML round-trip would drop the user's comments.
+- **Hook output is silent by design**: some agents parse hook stdout as instructions, so the wrapper
+  redirects everything to `<panelHome>/.desktop/agent-state/report.log` and always exits 0.
+- **OpenCode has no installer** (deviation from the plan): its plugin registration differs across
+  versions (TUI plugin dir, CLI `cli.json` list, a v2 directory), and shipping a wrong installer that
+  edits the user's config is worse than relying on screen rules and process identity, which already
+  cover it. Pi keeps its companion extension, now owned by `integrations/pi.ts` so the settings pane
+  reports the same fact the terminal does.
+- **The daemon gained the two things only a daemon can do**: notifications for a pane that starts
+  blocking while no window is attached (`notify.ts`, macOS `osascript`), and discovery of agents
+  running outside this app (`discovery.ts`). Discovery reuses the derivation: an external agent is
+  fed as telemetry with `toolRunning` from its own terminal's foreground group, so external panes get
+  process evidence and never a screen verdict. External pane ids are `-pid`, which cannot collide with
+  PTY ids.
+- **The inspector is the settings pane** rather than a new workbench surface: one place lists the
+  daemon's health, hook install state, every tracked pane (external ones included), and per-pane the
+  matched rule, both manifest layers, each rule's reason, and the exact screen text the rules read.
+- **Release prep**: version 0.2.27, CHANGELOG sections in both languages (calling out the removed
+  online adjudicator and the new daemon), `docs/design/agent-status-acceptance.md`, and two new
+  `doctor:desktop` checks (daemon health, installed hooks).
+- **Packaging was verified, not assumed**: the x64 DMG's `app.asar` contains `daemon.js`, `cli.js`
+  and the five manifests; the packaged binary starts the daemon with `ELECTRON_RUN_AS_NODE=1` in ~2s
+  (api v2), and the packaged CLI delivered a hook report that the daemon applied as a native verdict.
 
 ## Deviations from the first draft (and why)
 
