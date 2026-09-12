@@ -1,0 +1,2 @@
+  ▣ Building the project
+  esc to interrupt

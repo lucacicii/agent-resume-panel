@@ -19,6 +19,7 @@ export {
   defaultScratchDir,
   desktopLogsDir,
   agentStatusDir,
+  agentDetectionDir,
   browserMcpEndpointPath
 } from "./panelHome";
 export { resolveScratchBaseDir, migrateLegacyScratchDir } from "./scratchDir";

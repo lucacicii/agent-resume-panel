@@ -1,0 +1,4 @@
+  ⏺ Finished the refactor
+
+  showing detailed transcript (ctrl+o to toggle)
+  ↑↓ scroll · ctrl+e show all · esc to exit

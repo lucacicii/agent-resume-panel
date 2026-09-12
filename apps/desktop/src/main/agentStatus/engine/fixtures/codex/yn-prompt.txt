@@ -1,0 +1,4 @@
+  Running: npm publish --dry-run
+
+  Proceed with the publish? [y/n]
+  yes (y)

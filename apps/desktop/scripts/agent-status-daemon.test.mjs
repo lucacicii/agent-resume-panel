@@ -28,6 +28,9 @@ const { connectAgentStatusClient } = await import(
 );
 const { agentStatusPaths } = await import(path.join(here, "..", "dist", "main", "agentStatus", "paths.js"));
 const { parseDaemonArgs } = await import(path.join(here, "..", "dist", "main", "agentStatus", "daemon.js"));
+const { AGENT_STATUS_API_VERSION } = await import(
+  path.join(here, "..", "dist", "shared", "agentStatusTypes.js")
+);
 const { RUNNING_WINDOW_MS } = await import(
   path.join(here, "..", "dist", "main", "agentStatus", "engine", "arbitrate.js")
 );
@@ -123,7 +126,7 @@ async function main() {
   // ------------------------------------------------------------- daemon startup
   const first = startDaemon();
   const endpoint = await waitFor(() => readLiveEndpoint(paths), "the daemon endpoint");
-  assert.equal(endpoint.apiVersion, 1);
+  assert.equal(endpoint.apiVersion, AGENT_STATUS_API_VERSION);
   assert.equal(endpoint.appVersion, APP_VERSION);
   assert.equal(mode(paths.dir), 0o700, "panel-home daemon dir must be 0700");
   assert.equal(mode(paths.socket), 0o600, "unix socket must be 0600");
@@ -138,7 +141,7 @@ async function main() {
 
   // ------------------------------------------------------------------ handshake
   const client = await connect("app");
-  assert.equal(client.hello.apiVersion, 1);
+  assert.equal(client.hello.apiVersion, AGENT_STATUS_API_VERSION);
   assert.equal(client.hello.appVersion, APP_VERSION);
   assert.equal(client.hello.paneCount, 0);
   assert.equal(client.hello.subscriberCount, 0);
@@ -225,16 +228,30 @@ async function main() {
   snapshot = await client.request("status.snapshot");
   assert.equal(snapshot.byPaneId["3"].state, "blocked");
   assert.equal(snapshot.byPaneId["3"].source, "screen");
-  assert.equal(snapshot.byPaneId["3"].matchedRule.id, "permission_dialog_question");
+  // The pane reports itself as claude, so claude's more specific rule wins over
+  // the base dialog rule even though both match.
+  assert.equal(snapshot.byPaneId["3"].matchedRule.id, "bash_permission_prompt");
+  assert.equal(snapshot.byPaneId["3"].matchedRule.manifest, "claude");
 
   const screenExplain = await client.request("status.explain", { paneId: 3 });
-  assert.equal(screenExplain.manifest.id, "generic");
-  assert.match(screenExplain.manifest.version, /\d/);
+  assert.deepEqual(
+    screenExplain.manifests.map((layer) => layer.id),
+    ["claude", "generic"],
+    "explain must report every layer that answered"
+  );
+  assert.match(screenExplain.manifests[0].version, /\d/);
   assert.ok(Array.isArray(screenExplain.evaluated));
   assert.ok(screenExplain.evaluated.length >= 8, "every rule should be reported");
   const winners = screenExplain.evaluated.filter((row) => row.matched);
-  assert.equal(winners.length, 1);
-  assert.equal(winners[0].id, "permission_dialog_question");
+  // Layered rules can both match; the highest priority must win.
+  assert.ok(winners.length >= 2, "the agent rule and the base rule should both match this dialog");
+  const best = [...winners].sort((left, right) => right.priority - left.priority)[0];
+  assert.equal(best.id, "bash_permission_prompt");
+  assert.equal(best.manifest, "claude");
+  assert.ok(
+    winners.some((row) => row.manifest === "generic"),
+    "the base layer must still be evaluated for a named agent"
+  );
   assert.ok(screenExplain.evaluated.every((row) => row.matched || row.reason.length > 0), "every rule explains itself");
   const optionList = screenExplain.evaluated.find((row) => row.id === "option_list");
   assert.equal(optionList.matched, false);
@@ -250,8 +267,10 @@ async function main() {
     at: now
   });
   snapshot = await client.request("status.snapshot");
+  // Prose mentioning "allow" must not block; claude's own prompt box rule
+  // recognises the visible input line as a live idle prompt.
   assert.equal(snapshot.byPaneId["4"].state, "idle");
-  assert.equal(snapshot.byPaneId["4"].matchedRule, undefined);
+  assert.equal(snapshot.byPaneId["4"].matchedRule.id, "live_prompt_box");
   console.log("ok 10 - screen rules: a dialog blocks, its explanation is complete, prose does not");
 
   // --------------------------------------------------------- native report order

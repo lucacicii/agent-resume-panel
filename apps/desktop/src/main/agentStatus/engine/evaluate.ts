@@ -18,7 +18,7 @@ export type ScreenVerdict = {
   state: AgentState;
   /** OSC-derived rules are reported as `osc`, everything else as `screen`. */
   source: DetectionSource;
-  matchedRule: { id: string; priority: number; region: string };
+  matchedRule: { id: string; priority: number; region: string; manifest: string };
   visible: { idle: boolean; blocker: boolean; working: boolean };
   skipStateUpdate: boolean;
   reason: string;
@@ -71,7 +71,12 @@ export function evaluateRules(
     verdict: {
       state: best.rule.state,
       source,
-      matchedRule: { id: best.rule.id, priority: best.rule.priority, region: best.rule.region },
+      matchedRule: {
+        id: best.rule.id,
+        priority: best.rule.priority,
+        region: best.rule.region,
+        manifest: best.rule.manifest
+      },
       visible: {
         idle: best.rule.visibleIdle,
         blocker: best.rule.visibleBlocker,
@@ -92,6 +97,7 @@ function evaluateRow(
 ): EvaluatedRule {
   return {
     id: rule.id,
+    manifest: rule.manifest,
     priority: rule.priority,
     region: rule.region,
     state: rule.state,
@@ -142,9 +148,9 @@ export function matchRule(rule: CompiledRule, context: RuleContext): { matched: 
   if (rule.any.length) {
     const hit = rule.any.map((gate) => matchGate(gate, context)).find((outcome) => outcome.matched);
     if (!hit) return { matched: false, reason: "no any gate matched" };
-    return { matched: true, reason: `any gate matched: ${hit.reason}` };
+    return { matched: true, reason: hit.reason };
   }
-  return { matched: true, reason: describePositiveEvidence(rule) };
+  return { matched: true, reason: describeGate(rule) };
 }
 
 export function matchGate(gate: CompiledGate, context: RuleContext): { matched: boolean; reason: string } {
@@ -169,9 +175,9 @@ export function matchGate(gate: CompiledGate, context: RuleContext): { matched: 
   if (gate.any.length) {
     const hit = gate.any.map((nested) => matchGate(nested, context)).find((outcome) => outcome.matched);
     if (!hit) return { matched: false, reason: "no any gate matched" };
-    return { matched: true, reason: `any gate matched: ${hit.reason}` };
+    return { matched: true, reason: hit.reason };
   }
-  return { matched: true, reason: "gate matched" };
+  return { matched: true, reason: describeGate(gate) };
 }
 
 /** First needle the region does not contain, or undefined when all are present. */
@@ -188,13 +194,24 @@ function countMatchingLines(lines: readonly string[], patterns: readonly RegExp[
   return hits;
 }
 
-function describePositiveEvidence(rule: CompiledRule): string {
+/** What a matching gate actually looked at, so `explain` reads like a sentence. */
+function describeGate(gate: {
+  contains: string[];
+  regex: RegExp[];
+  lineRegex: RegExp[];
+  all: unknown[];
+  any: unknown[];
+  cursorHidden?: boolean;
+  atLeast?: number | null;
+}): string {
   const parts: string[] = [];
-  if (rule.contains.length) parts.push(`${rule.contains.length} text pattern(s)`);
-  if (rule.regex.length) parts.push(`${rule.regex.length} regex(es)`);
-  if (rule.lineRegex.length) {
-    parts.push(rule.atLeast != null ? `>=${rule.atLeast} option line(s)` : "an option line");
+  if (gate.contains.length) parts.push(`text ${gate.contains.map((value) => JSON.stringify(value)).join(" + ")}`);
+  if (gate.regex.length) parts.push(`${gate.regex.length} regex(es)`);
+  if (gate.lineRegex.length) {
+    parts.push(gate.atLeast != null ? `>=${gate.atLeast} matching line(s)` : "a matching line");
   }
-  if (rule.cursorHidden) parts.push("a hidden cursor");
+  if (gate.all.length) parts.push(`${gate.all.length} all gate(s)`);
+  if (gate.any.length) parts.push(`${gate.any.length} any alternative(s)`);
+  if (gate.cursorHidden) parts.push("a hidden cursor");
   return parts.length ? parts.join(", ") : "no conditions";
 }

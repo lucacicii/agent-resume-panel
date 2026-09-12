@@ -25,6 +25,13 @@ type Expectation = {
   oscProgress?: string;
   /** Optional: the rule that must win, so a fixture pins the reason too. */
   rule?: string;
+  /** Optional: the manifest layer that rule was authored in. */
+  manifest?: string;
+  /** Optional: assert the rule's display flags. */
+  skip?: boolean;
+  visibleIdle?: boolean;
+  visibleWorking?: boolean;
+  visibleBlocker?: boolean;
 };
 
 const engineDir = path.join(process.cwd(), "src", "main", "agentStatus", "engine");
@@ -82,9 +89,21 @@ describe("bundled manifests", () => {
     }
   });
 
-  it("falls back to the generic rules for an agent without a manifest", () => {
-    const fallback = registry().forAgent("claude");
+  it("layers an agent's own rules over the base rules", () => {
+    const claude = registry().forAgent("claude");
+    expect(claude?.id).toBe("claude");
+    const ids = claude!.rules.map((rule) => rule.id);
+    // Own rules first (higher precedence on a tie), then the base layer.
+    expect(ids.indexOf("live_prompt_box")).toBeLessThan(ids.indexOf("option_list"));
+    expect(ids).toContain("permission_dialog_allow");
+    const layers = registry().layersFor("claude").map((layer) => layer.id);
+    expect(layers).toEqual(["claude", "generic"]);
+  });
+
+  it("falls back to the base rules alone for an agent without a manifest", () => {
+    const fallback = registry().forAgent("gemini" as never);
     expect(fallback?.id).toBe("generic");
+    expect(registry().layersFor("gemini" as never).map((layer) => layer.id)).toEqual(["generic"]);
   });
 
   for (const entry of cases) {
@@ -103,6 +122,17 @@ describe("bundled manifests", () => {
       });
       expect(result.verdict?.state ?? null).toBe(expectation.state);
       if (expectation.rule) expect(result.verdict?.matchedRule.id).toBe(expectation.rule);
+      if (expectation.manifest) expect(result.verdict?.matchedRule.manifest).toBe(expectation.manifest);
+      if (expectation.skip !== undefined) expect(result.verdict?.skipStateUpdate).toBe(expectation.skip);
+      if (expectation.visibleIdle !== undefined) {
+        expect(result.verdict?.visible.idle).toBe(expectation.visibleIdle);
+      }
+      if (expectation.visibleWorking !== undefined) {
+        expect(result.verdict?.visible.working).toBe(expectation.visibleWorking);
+      }
+      if (expectation.visibleBlocker !== undefined) {
+        expect(result.verdict?.visible.blocker).toBe(expectation.visibleBlocker);
+      }
     });
   }
 });

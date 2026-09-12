@@ -50,6 +50,14 @@ export function agentStatusDir(panelHome: string): string {
 }
 
 /**
+ * Local agent-detection overrides: `<panelHome>/.desktop/agent-detection`.
+ * A manifest here replaces the bundled one with the same id.
+ */
+export function agentDetectionDir(panelHome: string): string {
+  return path.join(desktopDataDir(panelHome), "agent-detection");
+}
+
+/**
  * Live loopback handle for the Desktop in-app browser MCP
  * (`agent-resume-browser`). Written by Desktop main when the server is up;
  * read by the headless stdio proxy used by TUI/CLI MCP clients.

@@ -24,6 +24,7 @@ export type {
   EvaluatedRule,
   HelloResult,
   PaneAuthority,
+  PaneScreenDump,
   PaneStatus,
   StatusSnapshot
 } from "../../shared/agentStatusTypes";
@@ -88,6 +89,8 @@ export type AgentStatusRequest =
   | { id: string; method: "pane.forget"; params: { paneId: number } }
   | { id: string; method: "status.snapshot"; params?: Record<string, never> }
   | { id: string; method: "status.explain"; params: { paneId: number } }
+  /** Diagnostics: the screen text and verdict behind a pane, for capture tooling. */
+  | { id: string; method: "pane.screen"; params: { paneId: number } }
   | { id: string; method: "status.subscribe"; params?: Record<string, never> }
   | { id: string; method: "daemon.shutdown"; params: { reason: string } };
 

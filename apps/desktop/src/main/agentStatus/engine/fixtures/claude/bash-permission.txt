@@ -1,0 +1,12 @@
+  ⏺ Running the test suite
+
+  Bash command
+
+    pnpm --filter @agent-resume/desktop run build
+
+  Do you want to proceed?
+  ❯ 1. Yes
+    2. Yes, and don't ask again for: pnpm build
+    3. No, and tell Claude what to do differently
+
+  esc to cancel · tab to amend · ctrl+e to explain

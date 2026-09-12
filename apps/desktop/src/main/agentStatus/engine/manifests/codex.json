@@ -1,0 +1,89 @@
+{
+  "id": "codex",
+  "version": "2026.09.12.1",
+  "engine": 2,
+  "description": "Codex CLI screen rules. Shapes adapted from herdr's codex manifest. Codex puts its state in the terminal title as well as on screen, so the title rules are the strongest signal and the screen rules cover trust prompts, interruptions and the working footer. The weak y/n rule is region-limited to the bottom of the screen so a transcript mentioning [y/n] cannot block a pane.",
+  "rules": [
+    {
+      "id": "osc_title_blocked",
+      "state": "blocked",
+      "priority": 1010,
+      "region": "osc_title",
+      "visibleBlocker": true,
+      "contains": ["action required"]
+    },
+    {
+      "id": "transcript_viewer",
+      "state": "unknown",
+      "priority": 1000,
+      "region": "bottom_non_empty_lines(6)",
+      "skipStateUpdate": true,
+      "contains": ["↑/↓ to scroll"],
+      "any": [
+        { "contains": ["esc to edit prev"] },
+        { "contains": ["q to quit"] },
+        { "contains": ["pgup/pgdn to"] }
+      ]
+    },
+    {
+      "id": "osc_title_working",
+      "state": "working",
+      "priority": 990,
+      "region": "osc_title",
+      "visibleWorking": true,
+      "regex": ["[\\u280b\\u2819\\u2839\\u2838\\u283c\\u2834\\u2826\\u2827\\u2807\\u280f]"]
+    },
+    {
+      "id": "trust_directory",
+      "state": "blocked",
+      "priority": 960,
+      "region": "top_non_empty_lines(20)",
+      "visibleBlocker": true,
+      "contains": ["> You are in ", "Do you trust the contents of this directory?"]
+    },
+    {
+      "id": "live_strong_blocker",
+      "state": "blocked",
+      "priority": 950,
+      "region": "whole_recent",
+      "visibleBlocker": true,
+      "any": [
+        { "contains": ["press enter to confirm or esc to cancel"] },
+        { "contains": ["enter to submit answer"] },
+        { "contains": ["enter to submit all"] },
+        { "contains": ["allow command?"] }
+      ]
+    },
+    {
+      "id": "working_interrupt_hint",
+      "state": "working",
+      "priority": 900,
+      "region": "bottom_non_empty_lines(3)",
+      "visibleWorking": true,
+      "lineRegex": ["^\\s*[•◦]\\s+Working \\([^)]*esc to interrupt\\)"],
+      "not": [{ "contains": ["Conversation interrupted"] }]
+    },
+    {
+      "id": "weak_blocker",
+      "state": "blocked",
+      "priority": 600,
+      "region": "bottom_non_empty_lines(8)",
+      "any": [
+        { "contains": ["[y/n]"] },
+        { "contains": ["yes (y)"] }
+      ]
+    },
+    {
+      "id": "osc_title_idle",
+      "state": "idle",
+      "priority": 300,
+      "region": "osc_title",
+      "visibleIdle": true,
+      "regex": ["\\S"],
+      "not": [
+        { "regex": ["[\\u280b\\u2819\\u2839\\u2838\\u283c\\u2834\\u2826\\u2827\\u2807\\u280f]"] },
+        { "contains": ["action required"] }
+      ]
+    }
+  ]
+}

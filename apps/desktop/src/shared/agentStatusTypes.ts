@@ -6,8 +6,15 @@
  * place where "what state is this pane in" is defined.
  */
 
-/** Bumped whenever the daemon wire protocol changes shape. */
-export const AGENT_STATUS_API_VERSION = 1;
+/**
+ * Bumped whenever the daemon wire protocol changes shape.
+ *
+ * v2: the protocol gained `pane.screen` (diagnostics/capture).
+ *
+ * The version is what makes an app upgrade replace a daemon that is still
+ * running with the previous build's behaviour.
+ */
+export const AGENT_STATUS_API_VERSION = 2;
 
 /**
  * Agents the app can manage a session for (see `buildResumeCommand`), plus
@@ -53,8 +60,8 @@ export type PaneStatus = {
   state: AgentState;
   authority: PaneAuthority;
   source: DetectionSource;
-  /** Rule that produced the verdict, once the rule engine lands (stage 4). */
-  matchedRule?: { id: string; priority: number; region: string };
+  /** Rule that produced a screen verdict, when one did. */
+  matchedRule?: { id: string; priority: number; region: string; manifest?: string };
   updatedAt: number;
 };
 
@@ -69,6 +76,8 @@ export type StatusSnapshot = {
 /** One rule's outcome, kept for `status.explain`. */
 export type EvaluatedRule = {
   id: string;
+  /** Manifest the rule was authored in (per-agent rules layer over the base). */
+  manifest: string;
   priority: number;
   region: string;
   state: AgentState;
@@ -92,16 +101,35 @@ export type DetectionExplain = {
   state: AgentState;
   authority: PaneAuthority;
   source: DetectionSource;
-  matchedRule?: { id: string; priority: number; region: string };
+  matchedRule?: { id: string; priority: number; region: string; manifest?: string };
   /** Human-readable reason for the current verdict. */
   reason?: string;
-  /** Which manifest was consulted, if any. */
-  manifest?: { id: string; version: string; source: "bundled" };
+  /** Every manifest layer consulted, in precedence order. */
+  manifests?: { id: string; version: string; source: "bundled" | "override" }[];
   /** Set when a rule deliberately suppressed the screen (transcript viewer). */
   screenSkipped?: string;
   /** Every rule considered this tick, matched or not. */
   evaluated?: EvaluatedRule[];
   updatedAt: number;
+};
+
+/** What the engine saw for one pane, for capture and diagnostics tooling. */
+export type PaneScreenDump = {
+  paneId: number;
+  agent: AgentKind;
+  state: AgentState;
+  source: DetectionSource;
+  authority: PaneAuthority;
+  matchedRule?: { id: string; priority: number; region: string; manifest?: string };
+  reason?: string;
+  /** The screen text the rules were evaluated against. */
+  screenText: string;
+  oscTitle: string;
+  oscProgress: string;
+  cursorHidden: boolean;
+  toolRunning: boolean;
+  /** Timestamp of the telemetry frame this dump came from. */
+  at: number;
 };
 
 /** Response to the daemon handshake. */

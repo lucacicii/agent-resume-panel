@@ -1,6 +1,6 @@
 # Agent Status — herdr-parity plan (Desktop)
 
-Status: in progress (stages 0–4 landed; status is rule-driven and explainable)
+Status: in progress (stages 0–5 landed; every agent the app resumes has its own rules)
 Owner surface: `apps/desktop` only. The extension keeps ACP-native status only.
 Reference implementation studied: [herdr](https://github.com/herdrdev/herdr) — `src/detect/*`,
 `src/pane/agent_detection.rs`, `src/integration/*`.
@@ -50,7 +50,7 @@ renderer (UI only): dots, rollups, explain panel
 The third row is why D2 is a separate product decision: state awareness for our own panes
 cannot outlive the PTY that hosts them.
 
-## Wire protocol (v1)
+## Wire protocol (v2)
 
 Transport: `unix` domain socket at `<panelHome>/.desktop/agent-status/daemon.sock`,
 JSON lines, directory `0700`, socket/endpoint `0600`. No TCP listener on purpose —
@@ -97,12 +97,12 @@ the app, by tests, and by the `agent-resume-status` CLI that hooks call.
 | `src/main/agentStatus/identity.ts` | process → agent, interpreter unwrapping, session hint | 3 ✅ |
 | `src/main/agentStatus/processTable.ts` | `ps` table: job control + argv for identity | 3 ✅ |
 | `src/main/agentStatus/engine/*.ts` | manifest, region, evaluate, arbitrate | 4 ✅ |
-| `src/main/agentStatus/engine/manifests/*.json` | per-agent rules (generic fallback) | 4–5 ✅ / ▶ |
+| `src/main/agentStatus/engine/manifests/*.json` | per-agent rules + generic base layer | 4–5 ✅ |
 | `src/main/agentStatus/integrations/*.ts` | claude / codex / pi / opencode hooks | 6 |
 | `src/renderer-react/.../sessionStatus/useAgentStatus.ts` | UI subscription | 7 |
 | `scripts/agent-status-daemon.test.mjs` | daemon lifecycle + protocol test | 1 ✅ |
-| `scripts/agent-status-mine.mjs` | offline LLM rule mining (dev only) | 5 |
-| `scripts/agent-status-capture.mjs` | capture real screens into fixtures | 0 |
+| `scripts/agent-status-mine.mjs` | offline rule mining and triage (dev only) | 5 ✅ |
+| `scripts/agent-status-capture.mjs` | capture a pane's screen into fixtures | 5 ✅ |
 
 ## Stages
 
@@ -113,7 +113,7 @@ the app, by tests, and by the `agent-resume-status` CLI that hooks call.
 | 2 | Sensor: `@xterm/headless` mirror + scan in main, telemetry to daemon, renderer subscribes; delete `probe.ts` / `statusJudge.ts` / `prompt.ts` / renderer `store.ts` | status correct with the Workbench tab unmounted | 3–5 ✅ |
 | 3 | Identity + foreground process group (`tpgid`); global discovery deferred to stage 7 | every pane reports its agent | 3–4 ✅ |
 | 4 | Rule engine (region / priority / all-any-not / `visible_*` / `skipStateUpdate`), single authority, `status.explain` | verdicts explainable rule-by-rule | 4–6 ✅ |
-| 5 | Manifests for claude / codex / pi / opencode + offline mining + local override dir | fixture suite green, no online LLM in the runtime path | 5–8 |
+| 5 | Manifests for claude / codex / pi / opencode + offline mining + local override dir | fixture suite green, no online LLM in the runtime path | 5–8 ✅ |
 | 6 | Hook integrations + `agent-resume-status` CLI + settings toggle | uninstall restores user config byte-for-byte | 5–8 |
 | 7 | UI: dots, rollups, notifications (incl. app-closed), explain panel | "who is stuck" visible and actionable | 4–5 |
 | 8 | One-shot release: dogfood, acceptance, CHANGELOG, i18n, pack + notarize | DMG verified on a clean machine | 3–5 |
@@ -211,6 +211,41 @@ Total: 32–48 dev-days.
   `after_last_prompt_marker`). They only make sense once per-agent rules define what a marker is, and
   writing them untested now would be speculation. The region set that exists is fully unit-tested.
 
+## Stage 5 notes (landed)
+
+- **Rules are layered, not duplicated.** `generic` is the base layer and runs for every pane; an
+  agent manifest adds what only its UI needs. Per-agent rules are listed first, so a priority tie
+  goes to the agent, and `explain` reports both layers. Copying the dialog rules into each agent
+  file (herdr's approach) was rejected because it guarantees drift.
+- **Four manifests landed** (`claude`, `codex`, `opencode`, `pi`), with the UI literals taken from
+  herdr's captured manifests and re-expressed in this schema. Priorities sit above the base where a
+  rule is more specific, and claude's dialog rules deliberately outrank its title spinner: a box the
+  agent is drawing now is stronger evidence than a title glyph (herdr ranks them the other way).
+- **Fixtures pin the winner, not the author's intent.** One codex fixture is won by a base rule
+  (`yn_permission` claims the `[y/n]` prompt the agent rule was written for), and one claude dialog is
+  won by `bash_permission_prompt` because the form rule needs a navigation hint that screen does not
+  have. The expectations record what actually happens, and `agent-status:mine` fails when that stops
+  being true.
+- **Local overrides**: `<panelHome>/.desktop/agent-detection/<agent>.json` replaces the bundled
+  manifest with the same id (`source: "override"`). An invalid override is ignored with a warning
+  rather than disabling detection.
+- **`pane.screen` + API v2.** A daemon left running from an older build keeps its old behaviour, and
+  the protocol shape is the only thing an app can check — so adding a method bumps
+  `AGENT_STATUS_API_VERSION`, which makes the app replace the daemon on upgrade. Learned the hard
+  way: a stale daemon answered `status.snapshot` happily and rejected the new method.
+- **Two offline tools replace the deleted online judge**:
+  `agent-status:capture` writes the exact bytes the engine judged into `fixtures/<agent>/` and prints
+  the `expected.json` entry; `agent-status:mine` triages fixtures and captured screens (verdicts,
+  stale expectations, screens no rule matches) and, with `--propose`, asks the configured tool model
+  for one candidate rule to review. The LLM helps author rules offline; it never runs in a status tick.
+- **Deviation: the per-agent fixtures are reconstructions.** They were written from herdr's captured
+  shapes rather than live captures, because authoring them needs an authenticated TUI session. The
+  capture script exists so dogfooding replaces them; "one fixture per real screen" stays the
+  standing discipline.
+- **Still deferred**: marker-based regions. The agent rules use `bottom_non_empty_lines(n)` and
+  `after_last_horizontal_rule`, and their fixtures pin that behaviour; a marker region is worth adding
+  only once a real screen proves the approximation insufficient.
+
 ## Deviations from the first draft (and why)
 
 - **The socket lives in the per-user temp dir, not under the panel home.** Unix socket paths are capped
@@ -236,6 +271,13 @@ Total: 32–48 dev-days.
 - The daemon imports the `@agent-resume/core` barrel, which pulls in `node:sqlite` and prints Node's
   SQLite experimental warning into `daemon.log`. Harmless, but a narrow `@agent-resume/core/panel-home`
   export (plus a `moduleResolution` upgrade in the desktop tsconfig) would remove the noise.
+- `pnpm run i18n:check:translations` fails on 589 pre-existing `desktop.*` keys that have no ja
+  translation (mostly `desktop.agent.*`). Unrelated to this work: none of the removed status keys
+  appear in the report.
+- `FloatingSessionNote.test.tsx`, `NotesPanel.test.tsx` and `i18n.test.tsx` can lose a race under
+  full-suite load (a `waitFor` timeout for the two find tests; React flushing the effect that adds
+  `i18n-ready` for the third, where the class only drives CSS anti-FOUC). All pass in isolation and
+  on a re-run; wrapping those assertions in `waitFor` would make the suite deterministic.
 
 ## Open risks
 

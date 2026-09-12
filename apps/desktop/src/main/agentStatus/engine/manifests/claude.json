@@ -1,0 +1,108 @@
+{
+  "id": "claude",
+  "version": "2026.09.12.1",
+  "engine": 2,
+  "description": "Claude Code screen rules. Shapes adapted from herdr's claude manifest (same literals, re-expressed in this schema). Dialogs sit above the title spinner on purpose: a box the agent is drawing now is stronger evidence than a title glyph. The prompt box rule exists so an idle pane is reported as visible idle rather than as unknown.",
+  "rules": [
+    {
+      "id": "transcript_viewer",
+      "state": "unknown",
+      "priority": 1010,
+      "region": "bottom_non_empty_lines(3)",
+      "skipStateUpdate": true,
+      "contains": ["showing detailed transcript"],
+      "any": [
+        { "contains": ["ctrl+o"] },
+        { "contains": ["ctrl+e"] },
+        { "contains": ["↑↓ scroll"] },
+        { "contains": ["? for shortcuts"] }
+      ]
+    },
+    {
+      "id": "live_blocked_form",
+      "state": "blocked",
+      "priority": 980,
+      "region": "after_last_horizontal_rule",
+      "visibleBlocker": true,
+      "contains": ["esc to cancel"],
+      "any": [
+        { "contains": ["enter to confirm"] },
+        {
+          "all": [
+            { "contains": ["enter to select"] },
+            {
+              "any": [
+                { "contains": ["tab/arrow keys to navigate"] },
+                { "contains": ["arrow keys to navigate"] },
+                { "contains": ["↑/↓ to navigate"] },
+                { "contains": ["↑↓ to navigate"] }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "bash_permission_prompt",
+      "state": "blocked",
+      "priority": 950,
+      "region": "whole_recent",
+      "visibleBlocker": true,
+      "contains": ["do you want to proceed?"],
+      "any": [
+        { "contains": ["bash command"] },
+        { "contains": ["bash("] },
+        { "contains": ["tab to amend"] },
+        { "contains": ["ctrl+e to explain"] }
+      ]
+    },
+    {
+      "id": "osc_title_working",
+      "state": "working",
+      "priority": 975,
+      "region": "osc_title",
+      "visibleWorking": true,
+      "regex": ["^[\\u2800-\\u28ff\\u25d0-\\u25d3] "]
+    },
+    {
+      "id": "interrupt_hint_working",
+      "state": "working",
+      "priority": 940,
+      "region": "bottom_non_empty_lines(6)",
+      "visibleWorking": true,
+      "contains": ["esc to interrupt"]
+    },
+    {
+      "id": "live_prompt_box",
+      "state": "idle",
+      "priority": 930,
+      "region": "bottom_non_empty_lines(6)",
+      "visibleIdle": true,
+      "atLeast": 1,
+      "lineRegex": ["^\\s*❯"],
+      "not": [
+        { "contains": ["enter to select"] },
+        { "contains": ["esc to cancel"] },
+        { "contains": ["tab/arrow keys"] },
+        { "contains": ["arrow keys to navigate"] },
+        { "contains": ["↑/↓ to navigate"] }
+      ]
+    },
+    {
+      "id": "osc_title_idle",
+      "state": "idle",
+      "priority": 250,
+      "region": "osc_title",
+      "visibleIdle": true,
+      "regex": ["^\\u2733 "]
+    },
+    {
+      "id": "osc_progress_idle",
+      "state": "idle",
+      "priority": 250,
+      "region": "osc_progress",
+      "visibleIdle": true,
+      "regex": ["^4;0"]
+    }
+  ]
+}

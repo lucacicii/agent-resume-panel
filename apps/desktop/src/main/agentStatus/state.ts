@@ -18,7 +18,7 @@ import {
   type Verdict
 } from "./engine/arbitrate";
 import { evaluateRules, type ScreenVerdict } from "./engine/evaluate";
-import type { ManifestRegistry } from "./engine/registry";
+import type { ManifestRegistry, ManifestSummary } from "./engine/registry";
 import type {
   AgentKind,
   AgentState,
@@ -26,6 +26,7 @@ import type {
   EvaluatedRule,
   NativeReport,
   PaneAuthority,
+  PaneScreenDump,
   PaneStatus,
   PaneTelemetry,
   StatusSnapshot
@@ -45,8 +46,6 @@ type NativeRecord = {
   sessionRef?: { provider: string; sessionId: string };
 };
 
-type ManifestRef = { id: string; version: string; source: "bundled" };
-
 /** Everything the daemon knows about one pane. Status itself is derived. */
 type PaneRecord = {
   paneId: number;
@@ -60,7 +59,8 @@ type PaneRecord = {
   /** Rule outcome for the current frame, recomputed on every telemetry frame. */
   screen: ScreenVerdict | null;
   evaluated: EvaluatedRule[];
-  manifest?: ManifestRef;
+  /** Manifest layers consulted for this pane, in precedence order. */
+  manifests: ManifestSummary[];
   /** Last published state, so a viewer screen keeps showing it. */
   lastState?: AgentState;
 };
@@ -106,6 +106,7 @@ export class AgentStatusState {
         hysteresis: createHysteresis(),
         screen: null,
         evaluated: [],
+        manifests: [],
         lastState: pane.native?.state
       });
     }
@@ -124,7 +125,8 @@ export class AgentStatusState {
       authority: "screen",
       hysteresis: createHysteresis(),
       screen: null,
-      evaluated: []
+      evaluated: [],
+      manifests: []
     };
     record.telemetry = telemetry;
     if (telemetry.sessionKey) record.sessionKey = telemetry.sessionKey;
@@ -163,7 +165,8 @@ export class AgentStatusState {
       authority: "native",
       hysteresis: createHysteresis(),
       screen: null,
-      evaluated: []
+      evaluated: [],
+      manifests: []
     };
     record.native = {
       source: report.source,
@@ -223,10 +226,41 @@ export class AgentStatusState {
         verdict.source === "native" && record.native
           ? `hook report from ${record.native.source}`
           : verdict.reason,
-      manifest: record.manifest,
+      manifests: record.manifests,
       screenSkipped: record.screen?.skipStateUpdate ? record.screen.reason : undefined,
       evaluated: record.evaluated,
       updatedAt: now
+    };
+  }
+
+  /**
+   * The screen and verdict behind a pane.
+   *
+   * Exists for the capture and mining tools: turning a misjudged pane into a
+   * fixture must not require guessing what the engine actually read.
+   */
+  screenDump(paneId: number, now = Date.now()): PaneScreenDump | null {
+    const record = this.records.get(paneId);
+    if (!record) return null;
+    const verdict = this.evaluate(record, now);
+    const telemetry = record.telemetry;
+    return {
+      paneId,
+      agent: record.agent,
+      state: verdict.state,
+      source: verdict.source,
+      authority: record.authority,
+      matchedRule:
+        verdict.source === "screen" || verdict.source === "osc"
+          ? record.screen?.matchedRule
+          : undefined,
+      reason: verdict.reason,
+      screenText: telemetry?.screenText ?? "",
+      oscTitle: telemetry?.oscTitle ?? "",
+      oscProgress: telemetry?.oscProgress ?? "",
+      cursorHidden: telemetry?.cursorHidden === true,
+      toolRunning: telemetry?.toolRunning === true,
+      at: telemetry?.at ?? 0
     };
   }
 
@@ -282,19 +316,24 @@ export class AgentStatusState {
     }, PERSIST_DEBOUNCE_MS);
   }
 
-  /** Run the rules for this pane's agent against its current telemetry. */
+  /**
+   * Run the rules for this pane's agent against its current telemetry.
+   *
+   * Rules are layered (agent manifest over the base manifest), so the engine
+   * sees one rule list while `explain` still reports which layer answered.
+   */
   private applyScreenFrame(record: PaneRecord): void {
     const manifest = this.manifests.forAgent(record.agent);
     if (!manifest) {
       record.screen = null;
       record.evaluated = [];
-      record.manifest = undefined;
+      record.manifests = [];
       return;
     }
     const evaluation = evaluateRules(manifest, record.telemetry);
     record.screen = evaluation.verdict;
     record.evaluated = evaluation.evaluated;
-    record.manifest = { id: manifest.id, version: manifest.version, source: "bundled" };
+    record.manifests = this.manifests.layersFor(record.agent);
   }
 
   private evaluate(record: PaneRecord, now: number): Verdict {

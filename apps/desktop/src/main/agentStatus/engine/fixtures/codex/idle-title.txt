@@ -1,0 +1,5 @@
+  > summarize the diff
+
+  • Done in 3.2s
+
+  › 

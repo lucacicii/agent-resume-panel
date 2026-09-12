@@ -9,7 +9,7 @@
  * Electron-free by construction: this file must never import `electron`.
  */
 
-import { resolvePanelHome } from "@agent-resume/core";
+import { agentDetectionDir, resolvePanelHome } from "@agent-resume/core";
 import { connectAgentStatusClient } from "./client";
 import {
   ensureAgentStatusDir,
@@ -88,7 +88,11 @@ export async function startAgentStatusDaemon(
       `agent-status socket path is too long for this platform (${Buffer.byteLength(paths.socket)} bytes): ${paths.socket}`
     );
   }
-  const manifests = createManifestRegistry({ dir: options.manifestDir ?? bundledManifestDir(), log });
+  const manifests = createManifestRegistry({
+    dir: options.manifestDir ?? bundledManifestDir(),
+    overrideDir: agentDetectionDir(resolvePanelHome(options.panelHome)),
+    log
+  });
   const state = new AgentStatusState(paths, manifests);
   await state.load();
   const summaries = state.manifestSummaries();
@@ -201,6 +205,11 @@ async function handleRequest(
       if (paneId == null) throw badRequest("Invalid paneId.");
       const explain: DetectionExplain | null = internals.state.explain(paneId);
       return explain;
+    }
+    case "pane.screen": {
+      const paneId = asPaneId((params as { paneId?: unknown })?.paneId);
+      if (paneId == null) throw badRequest("Invalid paneId.");
+      return internals.state.screenDump(paneId);
     }
     case "status.subscribe": {
       context.subscribe();

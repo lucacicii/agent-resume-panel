@@ -20,7 +20,7 @@ function screen(overrides: Partial<ScreenVerdict> = {}): ScreenVerdict {
   return {
     state: "blocked",
     source: "screen",
-    matchedRule: { id: "rule", priority: 800, region: "whole_recent" },
+    matchedRule: { id: "rule", priority: 800, region: "whole_recent", manifest: "generic" },
     visible: { idle: false, blocker: false, working: false },
     skipStateUpdate: false,
     reason: "rule rule matched",

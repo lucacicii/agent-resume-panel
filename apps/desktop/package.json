@@ -23,7 +23,9 @@
     "test:workbench-files": "node scripts/workbench-file-io.test.mjs",
     "test:workbench-search": "node scripts/workbench-search.test.mjs",
     "test:workbench-replace": "node scripts/workbench-replace.test.mjs",
-    "test:agent-status": "node scripts/agent-status-daemon.test.mjs"
+    "test:agent-status": "node scripts/agent-status-daemon.test.mjs",
+    "agent-status:capture": "node scripts/agent-status-capture.mjs",
+    "agent-status:mine": "node scripts/agent-status-mine.mjs"
   },
   "dependencies": {
     "@agent-resume/core": "workspace:*",

@@ -72,6 +72,8 @@ export type CompiledGate = {
 
 export type CompiledRule = {
   id: string;
+  /** Id of the manifest this rule was authored in (layered rules need it). */
+  manifest: string;
   state: AgentState;
   priority: number;
   region: string;
@@ -128,7 +130,16 @@ export function compileManifest(raw: unknown): ManifestCompileResult {
   }
   if (!rules.length) return { ok: false, error: `manifest ${id} has no usable rules` };
 
-  return { ok: true, manifest: { id, version, engine, rules }, warnings };
+  return {
+    ok: true,
+    manifest: {
+      id,
+      version,
+      engine,
+      rules: rules.map((rule) => ({ ...rule, manifest: id }))
+    },
+    warnings
+  };
 }
 
 function compileRule(raw: unknown, label: string, warnings: string[]): CompiledRule | null {
@@ -156,6 +167,7 @@ function compileRule(raw: unknown, label: string, warnings: string[]): CompiledR
   if (!gate) return null;
   return {
     id,
+    manifest: "",
     state,
     priority: typeof rule.priority === "number" && Number.isFinite(rule.priority) ? rule.priority : 0,
     region,
