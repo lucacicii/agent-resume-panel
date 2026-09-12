@@ -128,4 +128,15 @@ if (fs.existsSync(shellIntegrationSrc)) {
   console.log("copied shellIntegration → dist/main/shellIntegration");
 }
 
+const manifestSrc = path.join(root, "src", "main", "agentStatus", "engine", "manifests");
+const manifestDest = path.join(root, "dist", "main", "agentStatus", "engine", "manifests");
+if (fs.existsSync(manifestSrc)) {
+  fs.mkdirSync(manifestDest, { recursive: true });
+  for (const name of fs.readdirSync(manifestSrc)) {
+    if (!name.endsWith(".json")) continue;
+    fs.copyFileSync(path.join(manifestSrc, name), path.join(manifestDest, name));
+  }
+  console.log("copied agent detection manifests → dist/main/agentStatus/engine/manifests");
+}
+
 console.log("copied renderer → dist/renderer");

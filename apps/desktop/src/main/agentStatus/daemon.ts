@@ -25,6 +25,7 @@ import {
   agentStatusPaths,
   type AgentStatusPaths
 } from "./paths";
+import { createManifestRegistry, bundledManifestDir } from "./engine/registry";
 import { startAgentStatusServer, type AgentStatusServer, type RequestContext } from "./server";
 import { AgentStatusState } from "./state";
 import {
@@ -50,6 +51,8 @@ export type AgentStatusDaemonHandle = {
 export type StartDaemonOptions = {
   panelHome: string;
   appVersion?: string;
+  /** Overrides the bundled manifest directory; used by tests. */
+  manifestDir?: string;
   /** Replace a live daemon instead of exiting (used by the app after an upgrade). */
   replace?: boolean;
   log?: (message: string) => void;
@@ -85,8 +88,13 @@ export async function startAgentStatusDaemon(
       `agent-status socket path is too long for this platform (${Buffer.byteLength(paths.socket)} bytes): ${paths.socket}`
     );
   }
-  const state = new AgentStatusState(paths);
+  const manifests = createManifestRegistry({ dir: options.manifestDir ?? bundledManifestDir(), log });
+  const state = new AgentStatusState(paths, manifests);
   await state.load();
+  const summaries = state.manifestSummaries();
+  log(
+    `manifests: ${summaries.map((entry) => `${entry.id}@${entry.version} (${entry.rules} rules)`).join(", ") || "none"}`
+  );
 
   const startedAt = Date.now();
   let stopping = false;

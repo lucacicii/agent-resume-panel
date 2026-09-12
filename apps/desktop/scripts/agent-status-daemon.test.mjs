@@ -29,7 +29,7 @@ const { connectAgentStatusClient } = await import(
 const { agentStatusPaths } = await import(path.join(here, "..", "dist", "main", "agentStatus", "paths.js"));
 const { parseDaemonArgs } = await import(path.join(here, "..", "dist", "main", "agentStatus", "daemon.js"));
 const { RUNNING_WINDOW_MS } = await import(
-  path.join(here, "..", "dist", "main", "agentStatus", "derive.js")
+  path.join(here, "..", "dist", "main", "agentStatus", "engine", "arbitrate.js")
 );
 const { buildLaunchAgentPlist } = await import(
   path.join(here, "..", "dist", "main", "agentStatus", "lifecycle.js")
@@ -205,6 +205,55 @@ async function main() {
   assert.equal(snapshot.byPaneId["1"].agent, "claude", "an unresolved frame must not erase a known agent");
   console.log("ok 9 - identity: the sensor names the agent and unknown never erases it");
 
+  // --------------------------------------------------------------- screen rules
+  // A dialog on screen blocks a pane with no hook attached, and `explain`
+  // reports which rule won plus why the others did not.
+  const dialog = [
+    "Do you want to proceed?",
+    "❯ 1. Yes",
+    "  2. Yes, and don't ask again for: rm -rf node_modules",
+    "  3. No, and tell Claude what to do differently",
+    "  esc to cancel · tab to amend"
+  ].join("\n");
+  await client.request("telemetry.publish", {
+    paneId: 3,
+    agent: "claude",
+    screenText: dialog,
+    lastOutputAt: now - 2_000,
+    at: now
+  });
+  snapshot = await client.request("status.snapshot");
+  assert.equal(snapshot.byPaneId["3"].state, "blocked");
+  assert.equal(snapshot.byPaneId["3"].source, "screen");
+  assert.equal(snapshot.byPaneId["3"].matchedRule.id, "permission_dialog_question");
+
+  const screenExplain = await client.request("status.explain", { paneId: 3 });
+  assert.equal(screenExplain.manifest.id, "generic");
+  assert.match(screenExplain.manifest.version, /\d/);
+  assert.ok(Array.isArray(screenExplain.evaluated));
+  assert.ok(screenExplain.evaluated.length >= 8, "every rule should be reported");
+  const winners = screenExplain.evaluated.filter((row) => row.matched);
+  assert.equal(winners.length, 1);
+  assert.equal(winners[0].id, "permission_dialog_question");
+  assert.ok(screenExplain.evaluated.every((row) => row.matched || row.reason.length > 0), "every rule explains itself");
+  const optionList = screenExplain.evaluated.find((row) => row.id === "option_list");
+  assert.equal(optionList.matched, false);
+  assert.match(optionList.reason, /required/, "a count-gated rule reports how short it fell");
+
+  // Prose that merely mentions the words must not block the pane.
+  await client.request("telemetry.publish", {
+    paneId: 4,
+    agent: "claude",
+    screenText: "You should allow the tool to run when it asks.\n\n❯ ",
+    // Quiet well past the running window, so a non-match settles on idle.
+    lastOutputAt: now - RUNNING_WINDOW_MS - 1_000,
+    at: now
+  });
+  snapshot = await client.request("status.snapshot");
+  assert.equal(snapshot.byPaneId["4"].state, "idle");
+  assert.equal(snapshot.byPaneId["4"].matchedRule, undefined);
+  console.log("ok 10 - screen rules: a dialog blocks, its explanation is complete, prose does not");
+
   // --------------------------------------------------------- native report order
   const applied = await client.request("pane.report_state", {
     paneId: 1,
@@ -241,7 +290,7 @@ async function main() {
   assert.deepEqual(subagent, { applied: false });
   snapshot = await client.request("status.snapshot");
   assert.equal(snapshot.byPaneId["1"].state, "blocked", "sub-agent hooks must not own the pane");
-  console.log("ok 10 - native reports: applied, stale dropped, sub-agent dropped");
+  console.log("ok 11 - native reports: applied, stale dropped, sub-agent dropped");
 
   // ------------------------------------------------------------- explain readout
   const explain = await client.request("status.explain", { paneId: 1 });
@@ -249,7 +298,7 @@ async function main() {
   assert.equal(explain.agent, "claude");
   assert.match(explain.reason, /agent-resume:claude/);
   assert.equal(await client.request("status.explain", { paneId: 999 }), null);
-  console.log("ok 11 - explain: authority, source, and reason for a pane");
+  console.log("ok 12 - explain: authority, source, and reason for a pane");
 
   // ----------------------------------------------------------------- subscription
   const received = [];
@@ -263,7 +312,7 @@ async function main() {
   assert.equal(received[0].event, "status.changed");
   assert.equal(received[0].data.byPaneId["2"].state, "working");
   unsubscribe();
-  console.log("ok 12 - subscription: status.changed pushed only on real change");
+  console.log("ok 13 - subscription: status.changed pushed only on real change");
 
   // ------------------------------------------------------------- protocol errors
   await assert.rejects(
@@ -275,7 +324,7 @@ async function main() {
     (error) => error.code === "bad_request"
   );
   assert.ok(await client.request("status.snapshot"), "the daemon must survive bad input");
-  console.log("ok 13 - protocol: unknown method and malformed payload degrade to errors, daemon stays up");
+  console.log("ok 14 - protocol: unknown method and malformed payload degrade to errors, daemon stays up");
 
   // --------------------------------------------------------------- persistence
   await client.request("pane.forget", { paneId: 2 });
@@ -286,10 +335,15 @@ async function main() {
   assert.equal(fs.existsSync(paths.socket), false, "socket file must be unlinked after shutdown");
   const persisted = JSON.parse(fs.readFileSync(paths.state, "utf8"));
   assert.equal(persisted.version, 1);
-  assert.equal(persisted.panes.length, 1, "forgotten panes must not be persisted");
-  assert.equal(persisted.panes[0].native.state, "blocked");
+  assert.equal(
+    persisted.panes.some((pane) => pane.paneId === 2),
+    false,
+    "forgotten panes must not be persisted"
+  );
+  const persistedNative = persisted.panes.find((pane) => pane.paneId === 1);
+  assert.equal(persistedNative.native.state, "blocked");
   assert.equal(JSON.stringify(persisted).includes("screenText"), false, "screen text must never be persisted");
-  console.log("ok 14 - shutdown: socket unlinked, endpoint removed, durable state kept without screen text");
+  console.log("ok 15 - shutdown: socket unlinked, endpoint removed, durable state kept without screen text");
 
   const restarted = startDaemon();
   await waitFor(() => readLiveEndpoint(paths), "the restarted daemon");
@@ -306,7 +360,7 @@ async function main() {
   assert.equal(restored.byPaneId["1"].state, "blocked");
   assert.equal(restored.byPaneId["1"].authority, "native");
   assert.equal(restored.byPaneId["2"], undefined, "forgotten panes must stay forgotten");
-  console.log("ok 15 - restart: native reports are restored from state.json");
+  console.log("ok 16 - restart: native reports are restored from state.json");
 
   // ---------------------------------------------------------- replace + shutdown
   const replacement = startDaemon(["--replace"]);
@@ -328,7 +382,7 @@ async function main() {
   assert.equal(await daemonExited(replacement.child), 0);
   assert.equal(await readEndpointFile(paths), null);
   assert.equal(fs.existsSync(paths.socket), false);
-  console.log("ok 16 - replace and shutdown request: clean handover, no stale socket");
+  console.log("ok 17 - replace and shutdown request: clean handover, no stale socket");
 
   // -------------------------------------------------- app-side ensure / stop
   const ensured = await ensureAgentStatusDaemon({
@@ -355,7 +409,7 @@ async function main() {
   await stopAgentStatusDaemon(panelHome);
   assert.equal(await readLiveEndpoint(paths), null, "stopAgentStatusDaemon must remove the endpoint");
   assert.equal(fs.existsSync(paths.socket), false, "stopAgentStatusDaemon must release the socket");
-  console.log("ok 17 - app lifecycle: ensure reuses a compatible daemon, stop releases the socket");
+  console.log("ok 18 - app lifecycle: ensure reuses a compatible daemon, stop releases the socket");
 }
 
 let failure = null;

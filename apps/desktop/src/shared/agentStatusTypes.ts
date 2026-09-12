@@ -66,6 +66,24 @@ export type StatusSnapshot = {
   bySessionKey: Record<string, PaneStatus>;
 };
 
+/** One rule's outcome, kept for `status.explain`. */
+export type EvaluatedRule = {
+  id: string;
+  priority: number;
+  region: string;
+  state: AgentState;
+  matched: boolean;
+  /** Why it did or did not match, in one line. */
+  reason: string;
+  evidence: {
+    contains: string[];
+    regex: string[];
+    lineRegex: string[];
+    /** Region text size, so an empty region is obvious in the output. */
+    regionBytes: number;
+  };
+};
+
 /** Why a pane settled the way it did, for diagnostics. */
 export type DetectionExplain = {
   paneId: number;
@@ -77,6 +95,12 @@ export type DetectionExplain = {
   matchedRule?: { id: string; priority: number; region: string };
   /** Human-readable reason for the current verdict. */
   reason?: string;
+  /** Which manifest was consulted, if any. */
+  manifest?: { id: string; version: string; source: "bundled" };
+  /** Set when a rule deliberately suppressed the screen (transcript viewer). */
+  screenSkipped?: string;
+  /** Every rule considered this tick, matched or not. */
+  evaluated?: EvaluatedRule[];
   updatedAt: number;
 };
 

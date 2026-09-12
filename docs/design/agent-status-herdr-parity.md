@@ -1,6 +1,6 @@
 # Agent Status — herdr-parity plan (Desktop)
 
-Status: in progress (stages 0–3 landed; the UI reads status from the daemon, panes are named)
+Status: in progress (stages 0–4 landed; status is rule-driven and explainable)
 Owner surface: `apps/desktop` only. The extension keeps ACP-native status only.
 Reference implementation studied: [herdr](https://github.com/herdrdev/herdr) — `src/detect/*`,
 `src/pane/agent_detection.rs`, `src/integration/*`.
@@ -96,8 +96,8 @@ the app, by tests, and by the `agent-resume-status` CLI that hooks call.
 | `src/shared/agentStatusTypes.ts` | cross-process status vocabulary | 2 ✅ |
 | `src/main/agentStatus/identity.ts` | process → agent, interpreter unwrapping, session hint | 3 ✅ |
 | `src/main/agentStatus/processTable.ts` | `ps` table: job control + argv for identity | 3 ✅ |
-| `src/main/agentStatus/engine/*.ts` | manifest, region, evaluate, arbitrate | 4 |
-| `src/main/agentStatus/engine/manifests/*.json` | per-agent rules | 5 |
+| `src/main/agentStatus/engine/*.ts` | manifest, region, evaluate, arbitrate | 4 ✅ |
+| `src/main/agentStatus/engine/manifests/*.json` | per-agent rules (generic fallback) | 4–5 ✅ / ▶ |
 | `src/main/agentStatus/integrations/*.ts` | claude / codex / pi / opencode hooks | 6 |
 | `src/renderer-react/.../sessionStatus/useAgentStatus.ts` | UI subscription | 7 |
 | `scripts/agent-status-daemon.test.mjs` | daemon lifecycle + protocol test | 1 ✅ |
@@ -112,7 +112,7 @@ the app, by tests, and by the `agent-resume-status` CLI that hooks call.
 | 1 | Daemon skeleton: single instance, endpoint, launchd, handshake, socket, `state.json`; app-side ensure; packaged-app check | daemon survives app quit, restarts clean, `test:agent-status` green | 4–6 ✅ |
 | 2 | Sensor: `@xterm/headless` mirror + scan in main, telemetry to daemon, renderer subscribes; delete `probe.ts` / `statusJudge.ts` / `prompt.ts` / renderer `store.ts` | status correct with the Workbench tab unmounted | 3–5 ✅ |
 | 3 | Identity + foreground process group (`tpgid`); global discovery deferred to stage 7 | every pane reports its agent | 3–4 ✅ |
-| 4 | Rule engine (region / priority / all-any-not / `visible_*` / `skipStateUpdate`), single authority, `status.explain` | verdicts explainable rule-by-rule | 4–6 |
+| 4 | Rule engine (region / priority / all-any-not / `visible_*` / `skipStateUpdate`), single authority, `status.explain` | verdicts explainable rule-by-rule | 4–6 ✅ |
 | 5 | Manifests for claude / codex / pi / opencode + offline mining + local override dir | fixture suite green, no online LLM in the runtime path | 5–8 |
 | 6 | Hook integrations + `agent-resume-status` CLI + settings toggle | uninstall restores user config byte-for-byte | 5–8 |
 | 7 | UI: dots, rollups, notifications (incl. app-closed), explain panel | "who is stuck" visible and actionable | 4–5 |
@@ -179,6 +179,37 @@ Total: 32–48 dev-days.
   (notifications and the tray while the app is closed) do not exist yet, and a daemon that records
   panes nobody reads is exactly the kind of unused machinery this repo avoids. Stage 7 is then a
   thin addition: scan, exclude owned pids, register the rest.
+
+## Stage 4 notes (landed)
+
+- **Rules are data, and the engine is small**: `manifest.ts` (schema + compile), `region.ts`
+  (which slice of the screen), `evaluate.ts` (gates, priority, evidence), `registry.ts` (which
+  manifest applies, with the `generic` fallback), `arbitrate.ts` (the trust order). The hard-coded
+  `screen.ts` fingerprint is gone; its heuristics now live in `manifests/generic.json`.
+- **Schema choices that carry their weight**:
+  - `atLeast` — "at least N lines look like options" is what separates a menu from prose containing
+    an arrow. It is the declarative form of the old evidence counting.
+  - `cursorHidden` — a hidden cursor (DEC 25) corroborates a single option line.
+  - one gate = *all* conditions; `any` holds alternatives as separate gates. Inside a gate, `regex`
+    means every pattern must match, so pattern *lists* are written as sibling gates (the nav-hint rule
+    is verbose on purpose).
+  - patterns and `contains` are case-insensitive: the same TUI copy changes case between versions,
+    and matching is about shape, not spelling.
+- **Vetoes before alternatives**: `not` gates are evaluated before `any` short-circuits. Found by a
+  unit test: a rule with both a matching `any` alternative and a matching `not` gate was accepted.
+- **One evaluation per frame, then hysteresis**: the daemon runs the rules when telemetry arrives (not
+  on every snapshot read) and advances hysteresis at that single frame boundary, so reading
+  `status.snapshot` or `status.explain` can never change a verdict.
+- **`visibleBlocker` changes the trust order** — a dialog the agent is drawing *now* outranks the
+  output that drew it; ordinary rule matches stay below fresh output. `visibleIdle` clears a held alert
+  immediately instead of waiting out the miss streak.
+- **`skipStateUpdate` is about the screen, not the pane**: a viewer keeps the last published state
+  (`lastState`), which is why `PaneRecord` tracks it.
+- **The golden fixture harness landed with the engine** (`fixtures/<agent>/<case>.txt` +
+  `expected.json`), so stage 5 only has to add data: it fails today if a manifest has no fixtures.
+- **Deferred to stage 5**: the marker-based regions (`prompt_box_body`,
+  `after_last_prompt_marker`). They only make sense once per-agent rules define what a marker is, and
+  writing them untested now would be speculation. The region set that exists is fully unit-tested.
 
 ## Deviations from the first draft (and why)
 

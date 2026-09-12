@@ -1,0 +1,24 @@
+{
+  "generic/permission-dialog-claude": {
+    "state": "blocked",
+    "rule": "permission_dialog_question"
+  },
+  "generic/permission-dialog-codex": {
+    "state": "blocked",
+    "rule": "permission_pair_allow_deny"
+  },
+  "generic/option-menu-with-hint": {
+    "state": "blocked",
+    "rule": "option_list_with_navigation_hint"
+  },
+  "generic/zh-option-menu": {
+    "state": "blocked",
+    "rule": "option_list_with_navigation_hint"
+  },
+  "generic/prose-mentions-allow": {
+    "state": null
+  },
+  "generic/heredoc-noise": {
+    "state": null
+  }
+}

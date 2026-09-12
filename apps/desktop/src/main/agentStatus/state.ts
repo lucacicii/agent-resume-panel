@@ -2,25 +2,28 @@
  * In-memory status state for the daemon: telemetry frames, native reports, the
  * settled snapshot, and its on-disk subset.
  *
- * Verdict derivation lives in `derive.ts`; this module owns the bookkeeping
- * around it — per-pane hysteresis, sequence ordering, persistence, and the
- * snapshot shape subscribers see.
+ * This module owns the *bookkeeping* around a verdict — one rule evaluation and
+ * one hysteresis step per sensor frame, sequence ordering, persistence, and the
+ * snapshot shape subscribers see. The verdicts themselves come from
+ * `engine/arbitrate.ts` (policy) over `engine/evaluate.ts` (rules).
  */
 
 import type { AgentStatusPaths } from "./paths";
 import { readStateFile, writeStateFile } from "./endpoint";
 import {
   advanceHysteresis,
+  arbitrateStatus,
   createHysteresis,
-  evaluateStatus,
-  screenHitFor,
   type StatusHysteresis,
   type Verdict
-} from "./derive";
+} from "./engine/arbitrate";
+import { evaluateRules, type ScreenVerdict } from "./engine/evaluate";
+import type { ManifestRegistry } from "./engine/registry";
 import type {
   AgentKind,
   AgentState,
   DetectionExplain,
+  EvaluatedRule,
   NativeReport,
   PaneAuthority,
   PaneStatus,
@@ -42,6 +45,8 @@ type NativeRecord = {
   sessionRef?: { provider: string; sessionId: string };
 };
 
+type ManifestRef = { id: string; version: string; source: "bundled" };
+
 /** Everything the daemon knows about one pane. Status itself is derived. */
 type PaneRecord = {
   paneId: number;
@@ -52,6 +57,12 @@ type PaneRecord = {
   telemetry?: PaneTelemetry;
   /** Anti-flicker counters for the screen branch. Never persisted. */
   hysteresis: StatusHysteresis;
+  /** Rule outcome for the current frame, recomputed on every telemetry frame. */
+  screen: ScreenVerdict | null;
+  evaluated: EvaluatedRule[];
+  manifest?: ManifestRef;
+  /** Last published state, so a viewer screen keeps showing it. */
+  lastState?: AgentState;
 };
 
 type PersistedState = {
@@ -70,7 +81,10 @@ export class AgentStatusState {
   private readonly records = new Map<number, PaneRecord>();
   private persistTimer: NodeJS.Timeout | null = null;
 
-  constructor(private readonly paths: AgentStatusPaths) {}
+  constructor(
+    private readonly paths: AgentStatusPaths,
+    private readonly manifests: ManifestRegistry
+  ) {}
 
   // ------------------------------------------------------------------ lifecycle
 
@@ -89,7 +103,10 @@ export class AgentStatusState {
         agent: pane.agent ?? "unknown",
         authority: pane.authority === "native" ? "native" : "screen",
         native: pane.native,
-        hysteresis: createHysteresis()
+        hysteresis: createHysteresis(),
+        screen: null,
+        evaluated: [],
+        lastState: pane.native?.state
       });
     }
   }
@@ -105,7 +122,9 @@ export class AgentStatusState {
       paneId: telemetry.paneId,
       agent: "unknown",
       authority: "screen",
-      hysteresis: createHysteresis()
+      hysteresis: createHysteresis(),
+      screen: null,
+      evaluated: []
     };
     record.telemetry = telemetry;
     if (telemetry.sessionKey) record.sessionKey = telemetry.sessionKey;
@@ -115,8 +134,14 @@ export class AgentStatusState {
     // Hooks stay authoritative for their pane; telemetry only refreshes the
     // sensor-side evidence.
     if (record.authority !== "native") record.authority = "screen";
-    // Exactly one hysteresis step per sensor frame, so reads never change verdicts.
-    record.hysteresis = advanceHysteresis(record.hysteresis, screenHitFor(telemetry, now));
+
+    // Exactly one rule evaluation and one hysteresis step per sensor frame, so
+    // reads never change verdicts.
+    this.applyScreenFrame(record);
+    record.hysteresis = advanceHysteresis(record.hysteresis, {
+      blocked: record.screen?.state === "blocked" && !record.screen.skipStateUpdate,
+      visibleIdle: record.screen?.visible.idle === true
+    });
     return this.finish(record, before, now);
   }
 
@@ -136,7 +161,9 @@ export class AgentStatusState {
       paneId: report.paneId,
       agent: report.agent,
       authority: "native",
-      hysteresis: createHysteresis()
+      hysteresis: createHysteresis(),
+      screen: null,
+      evaluated: []
     };
     record.native = {
       source: report.source,
@@ -183,6 +210,7 @@ export class AgentStatusState {
     const record = this.records.get(paneId);
     if (!record) return null;
     const verdict = this.evaluate(record, now);
+    const fromScreen = verdict.source === "screen" || verdict.source === "osc";
     return {
       paneId: record.paneId,
       sessionKey: record.sessionKey,
@@ -190,12 +218,21 @@ export class AgentStatusState {
       state: verdict.state,
       authority: record.authority,
       source: verdict.source,
+      matchedRule: fromScreen ? record.screen?.matchedRule : undefined,
       reason:
         verdict.source === "native" && record.native
           ? `hook report from ${record.native.source}`
           : verdict.reason,
+      manifest: record.manifest,
+      screenSkipped: record.screen?.skipStateUpdate ? record.screen.reason : undefined,
+      evaluated: record.evaluated,
       updatedAt: now
     };
+  }
+
+  /** Which rules are loaded, for diagnostics and the startup log. */
+  manifestSummaries() {
+    return this.manifests.summaries();
   }
 
   get paneCount(): number {
@@ -228,6 +265,7 @@ export class AgentStatusState {
     this.records.set(record.paneId, record);
     this.schedulePersist();
     const after = this.settle(record, now);
+    record.lastState = after.state;
     return (
       before === undefined
       || before.state !== after.state
@@ -244,12 +282,28 @@ export class AgentStatusState {
     }, PERSIST_DEBOUNCE_MS);
   }
 
+  /** Run the rules for this pane's agent against its current telemetry. */
+  private applyScreenFrame(record: PaneRecord): void {
+    const manifest = this.manifests.forAgent(record.agent);
+    if (!manifest) {
+      record.screen = null;
+      record.evaluated = [];
+      record.manifest = undefined;
+      return;
+    }
+    const evaluation = evaluateRules(manifest, record.telemetry);
+    record.screen = evaluation.verdict;
+    record.evaluated = evaluation.evaluated;
+    record.manifest = { id: manifest.id, version: manifest.version, source: "bundled" };
+  }
+
   private evaluate(record: PaneRecord, now: number): Verdict {
-    return evaluateStatus({
+    return arbitrateStatus({
       nativeState: record.native?.state,
       telemetry: record.telemetry,
       hysteresis: record.hysteresis,
-      screenHit: screenHitFor(record.telemetry, now),
+      screen: record.screen,
+      previousState: record.lastState,
       now
     });
   }
@@ -263,6 +317,10 @@ export class AgentStatusState {
       state: verdict.state,
       authority: record.authority,
       source: verdict.source,
+      matchedRule:
+        verdict.source === "screen" || verdict.source === "osc"
+          ? record.screen?.matchedRule
+          : undefined,
       updatedAt: now
     };
   }

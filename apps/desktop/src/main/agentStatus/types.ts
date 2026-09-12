@@ -21,6 +21,7 @@ export type {
   AgentState,
   DetectionExplain,
   DetectionSource,
+  EvaluatedRule,
   HelloResult,
   PaneAuthority,
   PaneStatus,
