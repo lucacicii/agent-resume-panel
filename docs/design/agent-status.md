@@ -128,6 +128,8 @@ UI 词汇是投影:`blocked → 等待你`,`working → 运行中`,`idle/unknown
 顺序本身就是设计:第 4 条先于第 5 条,第 5 条先于第 6 条。少了任何一条,要么旧对话框长期挂着,
 要么正在弹的对话框被自己的输出盖掉。
 
+**单权威是“连算都不算”**:权威一旦变成 `native`,守护进程不再对该 pane 求值屏幕规则(`applyScreenFrame` 直接返回,`explain.evaluated` 为空)。这样 explain 里不会出现一堆没人使用的规则行,也让“每个 pane 只有一个真相源”在实现层成立。
+
 **迟滞**:只在屏幕分支生效。命中立刻确认;未命中需要连续 2 帧才清除;`visibleIdle`(屏幕明确显示
 实时输入框)立即清除。**每帧只推进一次**,且推进发生在 telemetry 到达时——所以读快照永远不会改变判定。
 
@@ -161,6 +163,7 @@ UI 词汇是投影:`blocked → 等待你`,`working → 运行中`,`idle/unknown
 
 两个 schema 决策值得单独说明:
 
+- **换行容错**:镜像会**撤销软折行**(终端把一条长行断成两行,这里合成一条逻辑行),所以规则字面量(`esc to cancel`)在窄面板里被折断也照样命中;若字面量被应用自己断成两条逻辑行,匹配器还有第二次机会:把逻辑行用空格拼接后再匹配一次(命中时 explain 标注 `matched across a line wrap`)。行级模式(`lineRegex`/`atLeast`)始终按**真实行**计数,不受拼接影响。
 - **`atLeast`** 是"至少 N 行长得像选项",它是"菜单"与"恰好含箭头的散文"的分界线,也是旧实现证据计数的声明式形式。
 - **大小写不敏感**统一施加于 `contains` 与正则:同一 TUI 文案跨版本会变大小写,匹配的是形状而非拼写。
 
@@ -202,7 +205,7 @@ UI 词汇是投影:`blocked → 等待你`,`working → 运行中`,`idle/unknown
 
 | 来源 | 实现 | 说明 |
 | --- | --- | --- |
-| 屏幕镜像 | `mirror.ts` + `@xterm/headless` | 每 pane 一个实例;`flush()` 等待解析完成后再快照(xterm 解析是异步的) |
+| 屏幕镜像 | `mirror.ts` + `@xterm/headless` | 每 pane 一个实例;与渲染层**同宽度表**(Unicode 11,否则 emoji 折行位置不同)、**撤销软折行**;`flush()` 等解析完成再快照(xterm 解析是异步的) |
 | 终端转义 | `scan.ts` | 状态序列 `ESC ] 633 ; AR ; …`、OSC 0/2 标题、OSC 9;4 进度、DEC 25 光标;**跨 chunk 进位缓冲**避免序列被切断 |
 | 进程身份 | `identity.ts` | 可执行名 → agent;`node|bun|deno` 后跟脚本名时解包(pi 就是这种 npm 安装形态);会话键 `cli:<provider>` 作为声明式兜底 |
 | 前台作业 | `processTable.ts` | `ps -Ao pid=,ppid=,pgid=,tpgid=,tty=,comm=` + 独立 `pid=,args=`;`tpgid` 即该终端的前台进程组 |
@@ -386,6 +389,7 @@ ACP 聊天不是 PTY pane,它的生命周期留在渲染进程(`useAcpStatus` �
 | 钩子配置单测 | 幂等、仅删自己的条目、保留他人钩子、TOML 行编辑 | `integrations/config.test.ts`(15 例) |
 | 协议集成 | 真实守护进程:单实例、权限、握手、遥测→快照、seq 乱序、订阅、重启恢复、`--replace`、App 侧 ensure/stop | `scripts/agent-status-daemon.test.mjs`(18 步) |
 | 真实 pty 探针 | 在真 pty 上打印 tty/pgid/tpgid/组成员/`toolRunning`,退出码即结论 | `scripts/process-foreground-baseline.mjs` |
+| 全链路演示 | 把一屏字节走完 字节→旁路信号→屏幕文本→规则→守护进程快照,并逐条断言(含折行容错、宽度表、native 跳过规则) | `scripts/agent-status-pipeline-demo.mjs` |
 | 打包验证 | `app.asar` 内含 daemon/cli/manifests;打包二进制启动守护进程;打包 CLI 上报被应用为 native | 人工(见验收文档) |
 | 环境自检 | `doctor:desktop` 报告守护进程 pid/API/规则包与已安装钩子 | `scripts/doctor-desktop.mjs` |
 
@@ -409,6 +413,13 @@ ACP 聊天不是 PTY pane,它的生命周期留在渲染进程(`useAcpStatus` �
    ```
 4. 只想临时改行为:把规则包复制到
    `~/.agent-resume-panel/.desktop/agent-detection/<agent>.json` 改优先级/条件,重启守护进程即可。
+
+**想看清整条链路**(把一屏字节从 PTY 走到快照,并逐条断言):
+
+```bash
+pnpm --filter @agent-resume/desktop run build
+node apps/desktop/scripts/agent-status-pipeline-demo.mjs
+```
 
 **守护进程相关**
 

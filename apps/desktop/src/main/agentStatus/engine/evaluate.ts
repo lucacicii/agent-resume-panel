@@ -112,8 +112,27 @@ function evaluateRow(
   };
 }
 
-/** All conditions of a rule must hold; the first failure explains itself. */
+/**
+ * All conditions of a rule must hold; the first failure explains itself.
+ *
+ * Text is matched twice: once against the region as read, and — when that fails
+ * and the region has more than one line — once against a view with line breaks
+ * collapsed. The mirror already undoes soft wraps, so what is left here is a
+ * literal the application itself broke across lines; either way, a literal the
+ * user can read should match. Per-line patterns keep using the real lines, so
+ * `atLeast` still counts visible rows.
+ */
 export function matchRule(rule: CompiledRule, context: RuleContext): { matched: boolean; reason: string } {
+  const direct = matchRuleOnce(rule, context);
+  if (direct.matched) return direct;
+  const joined = joinedContext(context);
+  if (!joined) return direct;
+  const tolerant = matchRuleOnce(rule, joined);
+  if (!tolerant.matched) return direct;
+  return { matched: true, reason: `${tolerant.reason} (matched across a line wrap)` };
+}
+
+function matchRuleOnce(rule: CompiledRule, context: RuleContext): { matched: boolean; reason: string } {
   const missingContains = missingText(rule.contains, context);
   if (missingContains) return { matched: false, reason: `missing text ${JSON.stringify(missingContains)}` };
 
@@ -178,6 +197,20 @@ export function matchGate(gate: CompiledGate, context: RuleContext): { matched: 
     return { matched: true, reason: hit.reason };
   }
   return { matched: true, reason: describeGate(gate) };
+}
+
+/**
+ * The same region with line breaks collapsed into single spaces, or null when
+ * the region has nothing to collapse.
+ */
+function joinedContext(context: RuleContext): RuleContext | null {
+  if (context.lines.length < 2) return null;
+  const joined = context.lines
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .join(" ");
+  if (!joined || joined === context.regionText) return null;
+  return { ...context, regionText: joined, regionTextLower: joined.toLowerCase() };
 }
 
 /** First needle the region does not contain, or undefined when all are present. */

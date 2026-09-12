@@ -115,6 +115,44 @@ describe("matchRule", () => {
     expect(matchRule(rule!, context).matched).toBe(true);
   });
 
+  it("matches a literal split across two logical lines", () => {
+    // The mirror undoes soft wraps, so what is left is a literal the app itself
+    // broke across lines: the tolerant view joins those with a space.
+    const manifest = compile([
+      { id: "dialog", state: "blocked", region: "whole_recent", contains: ["esc to cancel"] }
+    ]);
+    const result = evaluateRules(
+      manifest,
+      telemetry({ screenText: "press enter to select · esc to\ncancel\n" })
+    );
+    expect(result.verdict?.state).toBe("blocked");
+    expect(result.verdict?.reason).toMatch(/across a line wrap/);
+  });
+
+  it("keeps per-line counting on real lines, not on the joined view", () => {
+    const manifest = compile([
+      {
+        id: "two-options",
+        state: "blocked",
+        region: "whole_recent",
+        lineRegex: ["^\\s*(?:❯ )?\\d+\\. "],
+        atLeast: 2
+      }
+    ]);
+    const stacked = evaluateRules(manifest, telemetry({ screenText: "❯ 1. Yes\n  2. No" }));
+    const sameLine = evaluateRules(manifest, telemetry({ screenText: "❯ 1. Yes ❯ 2. No" }));
+    expect(stacked.verdict?.state).toBe("blocked");
+    expect(sameLine.verdict ?? null).toBeNull();
+  });
+
+  it("does not join lines for a rule that already matched", () => {
+    const manifest = compile([
+      { id: "dialog", state: "blocked", region: "whole_recent", contains: ["esc to cancel"] }
+    ]);
+    const result = evaluateRules(manifest, telemetry({ screenText: "esc to cancel\nmore" }));
+    expect(result.verdict?.reason).not.toMatch(/across a line wrap/);
+  });
+
   it("honours cursorHidden", () => {
     const [rule] = compile([
       { id: "hidden", state: "blocked", region: "whole_recent", cursorHidden: true, contains: ["proceed"] }

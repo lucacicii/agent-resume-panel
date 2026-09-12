@@ -179,8 +179,12 @@ export class AgentStatusState {
     };
     if (report.agent !== "unknown") record.agent = report.agent;
     record.authority = "native";
-    // Screen evidence from before the hook existed must not resurface later.
+    // Screen evidence from before the hook existed must not resurface later, and
+    // the screen is no longer consulted at all.
     record.hysteresis = createHysteresis();
+    record.screen = null;
+    record.evaluated = [];
+    record.manifests = [];
     if (report.sessionKey) record.sessionKey = report.sessionKey;
     return this.finish(record, before, now);
   }
@@ -331,8 +335,18 @@ export class AgentStatusState {
    *
    * Rules are layered (agent manifest over the base manifest), so the engine
    * sees one rule list while `explain` still reports which layer answered.
+   *
+   * A pane whose authority is `native` is skipped entirely: one authority per
+   * pane means the screen is not consulted, so evaluating rules there would only
+   * produce verdicts nobody reads and an `explain` full of noise.
    */
   private applyScreenFrame(record: PaneRecord): void {
+    if (record.authority === "native") {
+      record.screen = null;
+      record.evaluated = [];
+      record.manifests = [];
+      return;
+    }
     const manifest = this.manifests.forAgent(record.agent);
     if (!manifest) {
       record.screen = null;

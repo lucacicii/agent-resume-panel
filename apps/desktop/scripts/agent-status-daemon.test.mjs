@@ -287,6 +287,13 @@ async function main() {
   assert.equal(snapshot.byPaneId["1"].state, "blocked");
   assert.equal(snapshot.byPaneId["1"].authority, "native");
 
+  // One authority per pane: a native pane must not be judged by the screen.
+  const nativeExplain = await client.request("status.explain", { paneId: 1 });
+  assert.equal(nativeExplain.authority, "native");
+  assert.deepEqual(nativeExplain.evaluated, [], "screen rules must not run for a native pane");
+  assert.deepEqual(nativeExplain.manifests, [], "no rule layers should be reported for a native pane");
+  assert.equal(nativeExplain.source, "native");
+
   const stale = await client.request("pane.report_state", {
     paneId: 1,
     source: "agent-resume:claude",

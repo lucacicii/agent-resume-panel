@@ -29,6 +29,12 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 - **Online LLM status adjudication**: the model call that guessed whether a screen was blocked is gone, along with its settings row and per-pane budget. Authoring rules is an offline job now (`pnpm --filter @agent-resume/desktop run agent-status:mine`)
 - **`terminal:activity` tail streaming** and the renderer-side screen sampling that needed it
 
+#### Fixed
+
+- **Wrapped dialog lines**: a pane narrow enough to break a rule's literal across two rows (common for approval footers) no longer loses the match — the screen mirror undoes soft wraps, and text matching falls back to a line-joined view
+- **Emoji width**: the screen mirror uses the same Unicode 11 width table as the terminal, so lines with emoji wrap where the user sees them wrap
+- **Native panes skip screen rules**: once an agent reports its own state the rules are no longer evaluated for that pane, so the explain view shows only what actually decided
+
 ### [0.2.26]
 
 #### Added
@@ -626,6 +632,12 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 - **在线 LLM 状态裁决**: 用于猜测屏幕是否阻塞的模型调用已移除,连同其设置项与每面板调用预算。规则编写现在是离线工作(`pnpm --filter @agent-resume/desktop run agent-status:mine`)
 - **`terminal:activity` 尾部流** 以及依赖它的渲染层屏幕采样
+
+#### 修复
+
+- **折行的对话框文本**：面板窄到把规则字面量断成两行时（审批提示脚注很常见）不再丢失命中——屏幕镜像会撤销软折行，文本匹配还会退回到“拼接逻辑行”的视图
+- **Emoji 宽度**：屏幕镜像改用与终端一致的 Unicode 11 宽度表，含 emoji 的行会按用户看到的位置折行
+- **native 面板不再跑屏幕规则**：agent 自己上报状态后，该面板不再求值规则，「判定原因」里只剩真正起作用的内容
 
 ### [0.2.26]
 
