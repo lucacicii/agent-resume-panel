@@ -4,7 +4,7 @@ import {
   collectDescendants,
   detectToolActivity,
   parseProcessTable
-} from "./processProbe";
+} from "./processTable";
 
 /** Real `ps -Ao pid=,ppid=,comm=` shapes captured on macOS. */
 const PS_SAMPLE = [

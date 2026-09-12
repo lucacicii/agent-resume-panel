@@ -1,5 +1,5 @@
 /**
- * Tier 1 — process-tree probe.
+ * Process-table probe.
  *
  * An agent that is executing a tool command has a descendant process that is
  * neither the agent itself nor infrastructure we injected. That is a
@@ -15,8 +15,11 @@
  * user, so they must be filtered by our own executable path or every idle pane
  * would look busy.
  *
- * Pure module: parses text, takes no I/O. The caller supplies `ps` output.
+ * Parsing is pure; `readProcessEntries` is the only function that touches the OS.
  */
+
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 
 export type ProcessEntry = {
   pid: number;
@@ -108,4 +111,38 @@ export function detectToolActivity(
   }
 
   return { active: processes.length > 0, processes };
+}
+
+/** `comm` is the executable path and is the last field, so spaces are safe. */
+const PS_ARGS = ["-Ao", "pid=,ppid=,comm="];
+const execFileAsync = promisify(execFile);
+
+/**
+ * PTYs and process groups only exist on POSIX platforms here. Elsewhere the
+ * layer disables itself instead of guessing.
+ */
+export const PROCESS_TABLE_SUPPORTED = process.platform === "darwin" || process.platform === "linux";
+
+/** Read + parse the process table. */
+export async function readProcessEntries(): Promise<ProcessEntry[]> {
+  const { stdout } = await execFileAsync("ps", PS_ARGS, { maxBuffer: 8 * 1024 * 1024 });
+  return parseProcessTable(stdout);
+}
+
+/**
+ * Executables that belong to this application rather than to the agent.
+ *
+ * The MCP bridge we register runs *as our own executable*, so an agent that
+ * has it configured keeps one or two of them as permanent children. Without
+ * this filter every idle pane would look busy.
+ */
+export function buildIgnoredExecutables(extra: readonly string[] = []): Set<string> {
+  const ignored = new Set<string>();
+  const push = (value: string | undefined) => {
+    const trimmed = value?.trim();
+    if (trimmed) ignored.add(trimmed);
+  };
+  push(process.execPath);
+  for (const path of extra) push(path);
+  return ignored;
 }
