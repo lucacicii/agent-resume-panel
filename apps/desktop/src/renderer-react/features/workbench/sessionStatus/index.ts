@@ -1,66 +1,22 @@
 /**
- * Session status — deciding whether an agent session is running, waiting for
- * the user, connecting, or idle.
+ * Session status for the desktop workbench.
  *
- * Layered by trust:
- *   1. `protocol`    — explicit status escape sequences in the PTY stream.
- *   2. `fingerprint` — screen text (menus, approval dialogs).
- *   3. `activity`    — output throughput inference.
- *   4. `idle`        — fail-safe default.
+ * Detection lives in the background `agent-status` daemon (sensor in Electron
+ * main, verdicts in the daemon). The renderer only projects the settled state
+ * into the dot vocabulary the UI renders:
  *
- * The store owns all state; `react.ts` binds it to a component; `store.ts`
- * feeds it. Nothing here imports React or Electron beyond the binding layer.
+ *   - `useAgentStatus`  — daemon snapshot for PTY-backed panes
+ *   - `useAcpStatus`    — ACP chat lifecycle, which never leaves this process
+ *   - `types`           — `AgentState` → `SessionDotStatus` projection
  */
 
 export {
   SESSION_DOT_STATUSES,
-  SESSION_STATUS_SOURCES,
-  SOURCE_TRUST,
-  type ReportedStatus,
-  type SessionAwaitingConfidence,
+  agentStateToDotStatus,
   type SessionDotRuntime,
-  type SessionDotStatus,
-  type SessionStatusSource,
-  type StatusHysteresis,
-  type StatusProbeInput,
-  type StatusProbeResult
+  type SessionDotStatus
 } from "./types";
 
-export {
-  parseReportedStatus,
-  stripAnsi,
-  stripReportedStatus,
-  trackCursorVisibility
-} from "./protocol";
+export { useAgentStatus, type AgentStatusView, type StatusPane } from "./useAgentStatus";
 
-export {
-  detectInteractiveSelector,
-  detectPermissionPromptText,
-  detectScreenFingerprint
-} from "./fingerprint";
-
-export {
-  createHysteresis,
-  HIT_STREAK_TO_CONFIRM,
-  MISS_STREAK_TO_CLEAR,
-  probeSessionStatus,
-  RUNNING_WINDOW_MS,
-  settleStatus,
-  STREAMING_WINDOW_MS,
-  type HysteresisOutcome
-} from "./resolver";
-
-export {
-  acpEventToStatus,
-  SessionStatusStore,
-  type AcpStatusEvent,
-  type JudgePortRequest,
-  type JudgePortVerdict,
-  type ProcessProbePort,
-  type StatusJudgePort,
-  type SessionStatusPane,
-  type SessionStatusSnapshot,
-  type StatusScreenReader
-} from "./store";
-
-export { useSessionStatus, type UseSessionStatusResult } from "./react";
+export { acpStatusFor, useAcpStatus, type AcpStatusEvent } from "./useAcpStatus";

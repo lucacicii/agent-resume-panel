@@ -1,0 +1,8 @@
+Allow command?
+
+  npm publish --access public
+
+› 1. Allow
+  2. Don't allow
+
+press enter to confirm or esc to cancel

@@ -1,0 +1,171 @@
+{
+  "id": "generic",
+  "version": "2026.09.12.1",
+  "engine": 2,
+  "description": "Rules for any agent we cannot name: the declarative form of the heuristics stage 2 hard-coded. Same multi-signal discipline - never one loose keyword - so stage 5 can split per-agent rules out of it. Priorities: 900 plan-mode selector; 850-815 approval dialogs (Claude, Codex, localized); 810-805 option lists, which need corroboration to count. Inside one gate, `regex` means every pattern must match; alternatives are separate gates.",
+  "rules": [
+    {
+      "id": "plan_mode_selector",
+      "state": "blocked",
+      "priority": 900,
+      "region": "whole_recent",
+      "visibleBlocker": true,
+      "regex": ["\\bplan mode\\b"],
+      "any": [{ "regex": ["\\bwhat next\\b"] }, { "regex": ["\\bnavigate\\b"] }, { "regex": ["\\bexecute\\b"] }, { "regex": ["\\brefine\\b"] }]
+    },
+    {
+      "id": "permission_dialog_allow",
+      "state": "blocked",
+      "priority": 850,
+      "region": "whole_recent",
+      "visibleBlocker": true,
+      "regex": ["\\ballow\\b"],
+      "any": [
+        { "contains": ["allow once"] },
+        { "contains": ["and don't ask"] },
+        { "contains": ["and tell"] },
+        { "all": [{ "contains": ["yes"] }, { "contains": ["no"] }] }
+      ],
+      "not": [
+        {
+          "all": [
+            { "contains": ["permission denied"] },
+            { "not": [{ "contains": ["allow once"] }, { "contains": ["do you want"] }] }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "permission_dialog_question",
+      "state": "blocked",
+      "priority": 845,
+      "region": "whole_recent",
+      "visibleBlocker": true,
+      "regex": ["\\bdo you want to\\b"],
+      "any": [
+        { "contains": ["allow once"] },
+        { "contains": ["and don't ask"] },
+        { "contains": ["and tell"] },
+        { "regex": ["\\besc(?:ape)? to\\b"] },
+        { "all": [{ "contains": ["yes"] }, { "contains": ["no"] }] }
+      ]
+    },
+    {
+      "id": "permission_pair_allow_deny",
+      "state": "blocked",
+      "priority": 840,
+      "region": "whole_recent",
+      "visibleBlocker": true,
+      "regex": ["\\ballow\\b"],
+      "all": [{ "regex": ["\\bdon'?t allow\\b"] }]
+    },
+    {
+      "id": "waiting_for_approval",
+      "state": "blocked",
+      "priority": 835,
+      "region": "whole_recent",
+      "visibleBlocker": true,
+      "regex": ["\\b(?:waiting for approval|awaiting (?:confirmation|approval|permission))\\b"]
+    },
+    {
+      "id": "yn_permission",
+      "state": "blocked",
+      "priority": 830,
+      "region": "whole_recent",
+      "visibleBlocker": true,
+      "regex": ["[[(][yY]\\/[nN][\\])]"],
+      "all": [{ "regex": ["\\b(?:allow|permission|approve|proceed|continue|run|execute)\\b"] }]
+    },
+    {
+      "id": "zh_yn_permission",
+      "state": "blocked",
+      "priority": 825,
+      "region": "whole_recent",
+      "visibleBlocker": true,
+      "regex": ["[（(]是\\/否[）)]"],
+      "any": [{ "regex": ["[（(]y\\/n[）)]"] }],
+      "all": [{ "regex": ["是否|允许|执行|继续|批准"] }]
+    },
+    {
+      "id": "zh_confirm_permission",
+      "state": "blocked",
+      "priority": 820,
+      "region": "whole_recent",
+      "visibleBlocker": true,
+      "regex": ["(?:是否|需要)(?:允许|批准|继续|执行|确认)"],
+      "all": [{ "regex": ["(?:确认|取消|继续|按\\s*(?:Enter|回车)|[12][.)])"] }]
+    },
+    {
+      "id": "zh_waiting_approval",
+      "state": "blocked",
+      "priority": 815,
+      "region": "whole_recent",
+      "visibleBlocker": true,
+      "regex": ["等待(?:用户)?确认|等待授权"]
+    },
+    {
+      "id": "option_list",
+      "state": "blocked",
+      "priority": 810,
+      "region": "whole_recent",
+      "visibleBlocker": true,
+      "atLeast": 2,
+      "lineRegex": [
+        "^\\s*[❯›▶▸●◉→]\\s+\\S+",
+        "^\\s*\\(\\*\\)\\s+\\S+",
+        "^\\s*[○◯]\\s+\\S+",
+        "^\\s*\\(\\s*\\)\\s+\\S+",
+        "^\\s*\\[[ xX*]\\]\\s+\\S+",
+        "^\\s*(?:->|=>)\\s+\\S+"
+      ],
+      "not": [{ "regex": ["\\b(?:cat|echo|tee)\\s*<<?\\s*\\S+"] }]
+    },
+    {
+      "id": "option_list_with_navigation_hint",
+      "state": "blocked",
+      "priority": 808,
+      "region": "whole_recent",
+      "visibleBlocker": true,
+      "atLeast": 1,
+      "lineRegex": [
+        "^\\s*[❯›▶▸●◉→]\\s+\\S+",
+        "^\\s*\\(\\*\\)\\s+\\S+",
+        "^\\s*[○◯]\\s+\\S+",
+        "^\\s*\\(\\s*\\)\\s+\\S+",
+        "^\\s*\\[[ xX*]\\]\\s+\\S+",
+        "^\\s*(?:->|=>)\\s+\\S+"
+      ],
+      "any": [
+        { "regex": ["use arrow keys"] },
+        { "regex": ["[↑▲]\\s*[↓▼]"] },
+        { "regex": ["↑\\/?↓"] },
+        { "regex": ["上下键(?:选择|移动)?"] },
+        { "regex": ["按回车(?:确认|选择)?"] },
+        { "regex": ["\\bnavigate\\b"] },
+        { "regex": ["\\benter select\\b"] },
+        { "regex": ["press (?:enter|return) to (?:select|confirm)"] },
+        { "regex": ["select (?:a|an|one)"] },
+        { "regex": ["choose (?:a|an|one)"] },
+        { "regex": ["\\bwhat next\\b"] },
+        { "regex": ["\\bplan mode\\b"] }
+      ]
+    },
+    {
+      "id": "option_list_with_hidden_cursor",
+      "state": "blocked",
+      "priority": 805,
+      "region": "whole_recent",
+      "visibleBlocker": true,
+      "atLeast": 1,
+      "cursorHidden": true,
+      "lineRegex": [
+        "^\\s*[❯›▶▸●◉→]\\s+\\S+",
+        "^\\s*\\(\\*\\)\\s+\\S+",
+        "^\\s*[○◯]\\s+\\S+",
+        "^\\s*\\(\\s*\\)\\s+\\S+",
+        "^\\s*\\[[ xX*]\\]\\s+\\S+",
+        "^\\s*(?:->|=>)\\s+\\S+"
+      ]
+    }
+  ]
+}

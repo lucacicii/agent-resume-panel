@@ -116,23 +116,17 @@ const StandardCodeBlock = memo(function StandardCodeBlock({ language, code }: St
   );
 });
 
-/** Streaming fade-in for content that arrives after the first paint. */
-const STREAM_ANIMATION = { animation: "fadeIn", duration: 120 } as const;
-
 /**
  * Renders one markdown segment. Segments keep their identity while the document
- * only grows, and `animate` is baked into the segment, so neither a growing
- * neighbour nor a streaming flag that merely flips re-parses this markdown.
+ * only grows, so a growing neighbour does not re-parse unchanged markdown.
  */
 const MarkdownSegmentView = memo(function MarkdownSegmentView({
   content,
-  animate,
   components,
   translations,
   urlTransform
 }: {
   content: string;
-  animate: boolean;
   components: Components;
   translations: React.ComponentProps<typeof Streamdown>["translations"];
   urlTransform: UrlTransform;
@@ -140,11 +134,8 @@ const MarkdownSegmentView = memo(function MarkdownSegmentView({
   return (
     <Streamdown
       components={components}
-      // `streamdown` only drives its fade-in timeline while `isAnimating` is
-      // true, so it tracks the segment's own `animate` flag rather than the
-      // session's streaming state.
-      isAnimating={animate}
-      animated={animate ? STREAM_ANIMATION : false}
+      isAnimating={false}
+      animated={false}
       translations={translations}
       urlTransform={urlTransform}
     >
@@ -155,7 +146,6 @@ const MarkdownSegmentView = memo(function MarkdownSegmentView({
 
 export const StreamdownRenderer = memo(function StreamdownRenderer({
   content,
-  isAnimating = false,
   className = "markdown-body",
   onCitationClick,
   onNoteClick,
@@ -166,19 +156,17 @@ export const StreamdownRenderer = memo(function StreamdownRenderer({
   const { t } = useSafeI18n();
 
   // Pre-sanitize prose to protect generic types List<T>, <style>, <script> etc.,
-  // and format links. Streaming appends reuse the segments that already closed.
+  // and format links. Appends reuse the segments that already closed.
   const streamStateRef = useRef<MarkdownSegmentState | null>(null);
   const segments = useMemo(() => {
     const next = buildMarkdownSegments(
       streamStateRef.current,
       content,
-      imageOptions,
-      undefined,
-      isAnimating
+      imageOptions
     );
     streamStateRef.current = next;
     return next.segments;
-  }, [content, imageOptions, isAnimating]);
+  }, [content, imageOptions]);
 
   const translations = useMemo(() => ({
     copyTable: t("desktop.artifact.copy", "Copy"),
@@ -195,10 +183,7 @@ export const StreamdownRenderer = memo(function StreamdownRenderer({
     tableFormatTsv: "TSV"
   }), [t]);
 
-  // Two stable component sets — idle and live. Both keep their identity while
-  // the streaming flag flips, so segments never re-render just because the
-  // session went running or idle.
-  const buildComponents = useCallback((live: boolean): Components => ({
+  const components = useMemo<Components>(() => ({
       code({ inline, className: codeClassName, children, ...props }: any) {
         const codeString = String(children || "").replace(/\n$/, "");
         const match = /language-(\w+)/.exec(codeClassName || "");
@@ -219,7 +204,7 @@ export const StreamdownRenderer = memo(function StreamdownRenderer({
             <ArtifactCard
               language={lang}
               code={codeString}
-              isStreaming={live}
+              isStreaming={false}
             />
           );
         }
@@ -321,9 +306,6 @@ export const StreamdownRenderer = memo(function StreamdownRenderer({
       }
   }), [imageLabels, imageOptions, onCitationClick, onImageClick, onNoteClick, t]);
 
-  const idleComponents = useMemo(() => buildComponents(false), [buildComponents]);
-  const liveComponents = useMemo(() => buildComponents(true), [buildComponents]);
-
   const handlePreviewClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     if (!(event.target instanceof HTMLImageElement)) return;
     const src = event.target.getAttribute("src") || event.target.src || "";
@@ -336,15 +318,14 @@ export const StreamdownRenderer = memo(function StreamdownRenderer({
 
   return (
     <div
-      className={`${className}${isAnimating ? " is-streaming" : ""}`}
+      className={className}
       onClick={handlePreviewClick}
     >
       {segments.map((segment, index) => (
         <MarkdownSegmentView
           key={index}
           content={segment.prepared}
-          animate={segment.animate}
-          components={segment.animate ? liveComponents : idleComponents}
+          components={components}
           translations={translations}
           urlTransform={urlTransform}
         />

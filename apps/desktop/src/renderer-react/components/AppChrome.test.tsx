@@ -22,7 +22,6 @@ function renderChrome(options?: {
         "desktop.notes.floatingDots": "Floating notes",
         "desktop.workbench.sessionDots": "Active sessions",
         "desktop.workbench.sessionDot.awaiting": "Waiting for you",
-        "desktop.workbench.sessionDot.possiblyAwaiting": "May need attention",
         "desktop.workbench.sessionDot.running": "Running",
         "desktop.workbench.sessionDot.connecting": "Connecting",
         "desktop.workbench.sessionDot.error": "Error"
@@ -134,8 +133,7 @@ describe("AppChrome", () => {
           projectPath: "/p",
           title: "Needs you",
           sessionKey: "chat:await",
-          status: "awaiting_user",
-          awaitingConfidence: "confirmed"
+          status: "awaiting_user"
         },
         {
           paneKey: "terminal:run",
@@ -149,8 +147,7 @@ describe("AppChrome", () => {
           projectPath: "/p",
           title: "Quiet TUI",
           sessionKey: "cli:maybe",
-          status: "awaiting_user",
-          awaitingConfidence: "possible"
+          status: "awaiting_user"
         }
       ] }));
     });
@@ -160,7 +157,7 @@ describe("AppChrome", () => {
     expect(dots[1].querySelector(".session-dot")?.classList.contains("is-running")).toBe(true);
     expect(dots[0].getAttribute("aria-label")).toContain("Waiting for you");
     expect(dots[1].getAttribute("aria-label")).toContain("Running");
-    expect(dots[2].getAttribute("aria-label")).toContain("May need attention");
+    expect(dots[2].getAttribute("aria-label")).toContain("Waiting for you");
   });
 
   it("renders no dots when no sessions are open", async () => {

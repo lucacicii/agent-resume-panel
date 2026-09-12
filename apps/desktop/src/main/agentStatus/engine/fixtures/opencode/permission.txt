@@ -1,0 +1,6 @@
+  △ Permission required
+
+  Tool: bash
+  Command: rm -rf dist
+
+  ↑↓ select · enter confirm · esc dismiss

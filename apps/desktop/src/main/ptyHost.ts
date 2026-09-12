@@ -12,6 +12,8 @@ import {
 } from "./gitNestedScan";
 import { safeHandle } from "./ipcUtils";
 import { ensureUtf8TerminalEnv } from "./terminalEnv";
+import { installPiExtension } from "./agentStatus/integrations/pi";
+import { getAgentStatusSensor } from "./agentStatus/runtime";
 
 interface PtySession {
   pty: pty.IPty;
@@ -29,8 +31,6 @@ interface PtySession {
   flushTimer: NodeJS.Timeout | null;
   outputBytes: number;
   forwardedBytes: number;
-  lastActivitySentAt: number;
-  activityTimer: NodeJS.Timeout | null;
 }
 
 export type PtyRuntimeMetrics = {
@@ -72,18 +72,6 @@ function replayText(session: PtySession): string {
   return session.replayChunks.join("");
 }
 
-function replayTail(session: PtySession, maxBytes = 4096): string {
-  if (!session.replayChunks.length) return "";
-  let accumulated = "";
-  for (let i = session.replayChunks.length - 1; i >= 0; i -= 1) {
-    accumulated = session.replayChunks[i] + accumulated;
-    if (accumulated.length >= maxBytes) {
-      return accumulated.slice(-maxBytes);
-    }
-  }
-  return accumulated;
-}
-
 function createPtySession(
   ptyInstance: pty.IPty,
   cwd: string,
@@ -107,9 +95,7 @@ function createPtySession(
     pendingForwardBytes: 0,
     flushTimer: null,
     outputBytes: 0,
-    forwardedBytes: 0,
-    lastActivitySentAt: 0,
-    activityTimer: null
+    forwardedBytes: 0
   };
 }
 
@@ -118,28 +104,8 @@ function clearForwardQueue(session: PtySession): void {
     clearTimeout(session.flushTimer);
     session.flushTimer = null;
   }
-  if (session.activityTimer) {
-    clearTimeout(session.activityTimer);
-    session.activityTimer = null;
-  }
   session.pendingForward = [];
   session.pendingForwardBytes = 0;
-}
-
-const ACTIVITY_THROTTLE_MS = 300;
-
-function queueActivity(id: number, session: PtySession, win: BrowserWindow | null): void {
-  if (!win || win.isDestroyed()) return;
-  if (!session.activityTimer) {
-    session.activityTimer = setTimeout(() => {
-      session.activityTimer = null;
-      if (!win || win.isDestroyed() || session.attached) return;
-      session.lastActivitySentAt = Date.now();
-      const tail = replayTail(session, 4096);
-      win.webContents.send("terminal:activity", { id, tail, timestamp: Date.now() });
-    }, ACTIVITY_THROTTLE_MS);
-    session.activityTimer.unref?.();
-  }
 }
 
 function flushForward(id: number, win: BrowserWindow | null): void {
@@ -345,7 +311,11 @@ function resolveIntegrationScript(): string | null {
   return null;
 }
 
-function envWithPath(integrationScript: string | null, shell: string): Record<string, string> {
+function envWithPath(
+  integrationScript: string | null,
+  shell: string,
+  extraEnv: Record<string, string> = {}
+): Record<string, string> {
   // Strip undefined env values so node-pty always receives a clean string map.
   const raw: Record<string, string | undefined> = { ...process.env };
   const env = ensureUtf8TerminalEnv(raw) as Record<string, string>;
@@ -372,6 +342,9 @@ function envWithPath(integrationScript: string | null, shell: string): Record<st
   env.PATH = merged.join(path.delimiter);
   if (!env.HOME) env.HOME = home;
   if (!env.TERM) env.TERM = "xterm-256color";
+  // Pane identity for installed agent hooks: it is also the gate that keeps a
+  // globally installed hook from reporting a terminal we do not manage.
+  for (const [key, value] of Object.entries(extraEnv)) env[key] = value;
   if (integrationScript) {
     env.AGENT_RESUME_SHELL_INTEGRATION = integrationScript;
     env.TERM_PROGRAM = "AgentResume";
@@ -432,10 +405,11 @@ function spawnPty(
   cwd: string,
   cols: number,
   rows: number,
-  command?: string
+  command?: string,
+  extraEnv: Record<string, string> = {}
 ): pty.IPty {
   const integrationScript = resolveIntegrationScript();
-  const env = envWithPath(integrationScript, shell);
+  const env = envWithPath(integrationScript, shell, extraEnv);
   const args = buildShellLaunchArgs(shell, integrationScript, command);
   return pty.spawn(shell, args, {
     name: "xterm-256color",
@@ -454,13 +428,14 @@ function attachPtyHandlers(
   ptyInstance.onData((data) => {
     const session = ptySessions.get(id);
     if (!session) return;
+    // The sensor owns status: it mirrors the screen and strips the agent status
+    // sequence, so the renderer only ever sees bytes meant for a terminal.
+    const forwarded = getAgentStatusSensor()?.ingest(id, data) ?? data;
     // Always drain. Pause means "don't forward to xterm", never "stop reading".
-    appendReplay(session, data);
-    session.outputBytes += data.length;
+    appendReplay(session, forwarded);
+    session.outputBytes += forwarded.length;
     if (session.attached) {
-      queueForward(id, data, win);
-    } else {
-      queueActivity(id, session, win);
+      queueForward(id, forwarded, win);
     }
   });
   ptyInstance.onExit(() => {
@@ -469,13 +444,16 @@ function attachPtyHandlers(
 
     const { respawnOnExit, lastSpawnCwd, lastCols, lastRows, shell, startedAt, attached } = session;
     ptySessions.delete(id);
-
     const livedMs = Date.now() - startedAt;
     if (respawnOnExit && lastSpawnCwd && livedMs >= 400) {
       try {
-        const newPty = spawnPty(shell, lastSpawnCwd, lastCols, lastRows);
+        const newPty = spawnPty(shell, lastSpawnCwd, lastCols, lastRows, undefined, {
+          AGENT_RESUME_PANE_ID: String(id)
+        });
         const next = createPtySession(newPty, lastSpawnCwd, lastCols, lastRows, shell, attached);
         ptySessions.set(id, next);
+        // A fresh shell is a fresh screen: reset the mirror, keep the session.
+        getAgentStatusSensor()?.attach(id, { cols: lastCols, rows: lastRows, cwd: lastSpawnCwd });
         attachPtyHandlers(newPty, id, win);
         if (attached && win && !win.isDestroyed()) {
           win.webContents.send("terminal:respawned", { id });
@@ -488,6 +466,8 @@ function attachPtyHandlers(
       console.warn(`terminal ${id} exited too quickly (${livedMs}ms); skipping respawn`);
     }
 
+    // No process left to sense: the daemon should forget this pane.
+    getAgentStatusSensor()?.detach(id);
     if (win && !win.isDestroyed()) {
       win.webContents.send("terminal:exit", { id });
     }
@@ -520,6 +500,7 @@ function destroyPtyById(id: number): void {
   if (!session) return;
   session.respawnOnExit = false;
   clearForwardQueue(session);
+  getAgentStatusSensor()?.detach(id);
   try {
     session.pty.kill();
   } catch {
@@ -529,59 +510,31 @@ function destroyPtyById(id: number): void {
   if (ptySessions.size < PTY_SOFT_LIMIT) warnedSoftLimit = false;
 }
 
+/**
+ * Pi's status channel: a companion extension in `~/.pi/agent`.
+ *
+ * Written once at startup (content lives in `integrations/pi.ts` so the settings
+ * panel can report the same fact). Pi has no hook catalogue to register into, so
+ * the extension emits the status sequence on the terminal stream instead.
+ */
 export function ensurePiAgentResumeBridge(): void {
   try {
     const piAgentDir = path.join(os.homedir(), ".pi", "agent");
     if (!fs.existsSync(piAgentDir)) return;
-    const piExtensionsDir = path.join(piAgentDir, "extensions");
-    if (!fs.existsSync(piExtensionsDir)) {
-      fs.mkdirSync(piExtensionsDir, { recursive: true });
-    }
-    const bridgePath = path.join(piExtensionsDir, "agent-resume-bridge.ts");
-    const bridgeContent = `// Agent Resume companion bridge — auto-emits terminal status
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-
-export default function agentResumeBridge(pi: ExtensionAPI): void {
-  pi.on("ui_prompt_start", async (event) => {
-    try {
-      process.stdout.write(\`\\x1b]633;AR;awaiting;\${event.kind || "prompt"}\\x07\`);
-    } catch {}
-  });
-
-  pi.on("ui_prompt_end", async () => {
-    try {
-      process.stdout.write("\\x1b]633;AR;running\\x07");
-    } catch {}
-  });
-
-  pi.on("turn_start", async () => {
-    try {
-      process.stdout.write("\\x1b]633;AR;running\\x07");
-    } catch {}
-  });
-
-  pi.on("turn_end", async () => {
-    try {
-      process.stdout.write("\\x1b]633;AR;idle\\x07");
-    } catch {}
-  });
-}
-`;
-    if (!fs.existsSync(bridgePath)) {
-      fs.writeFileSync(bridgePath, bridgeContent, "utf8");
-    }
+    installPiExtension();
   } catch {
-    // Best-effort background enhancement
+    // Best-effort background enhancement.
   }
 }
 
 export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
   ensurePiAgentResumeBridge();
+
   safeHandle(
     "terminal:spawn",
     async (
       _event,
-      args: { cwd: string; command?: string; cols?: number; rows?: number }
+      args: { cwd: string; command?: string; cols?: number; rows?: number; sessionKey?: string }
     ) => {
       const shell = resolveShell();
       const cols = Math.max(2, Math.floor(args.cols || 80));
@@ -592,7 +545,7 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
 
       let ptyInstance: pty.IPty;
       try {
-        ptyInstance = spawnPty(shell, cwd, cols, rows, args.command);
+        ptyInstance = spawnPty(shell, cwd, cols, rows, args.command, { AGENT_RESUME_PANE_ID: String(id) });
       } catch (error) {
         const detail = error instanceof Error ? error.message : String(error);
         throw new Error(`无法启动终端 (shell=${shell}, cwd=${cwd}): ${detail}`);
@@ -600,6 +553,8 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
 
       // Start detached so boot output lands in the replay buffer until xterm attaches.
       ptySessions.set(id, createPtySession(ptyInstance, cwd, cols, rows, shell, false));
+      // Register with the status sensor before any output can arrive.
+      getAgentStatusSensor()?.attach(id, { cols, rows, cwd, sessionKey: args.sessionKey });
       attachPtyHandlers(ptyInstance, id, win);
       const softLimitReached = ptySessions.size >= PTY_SOFT_LIMIT;
       const warnSoftLimit = softLimitReached && !warnedSoftLimit;
@@ -646,8 +601,25 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
       session.lastRows = rows;
       session.pty.resize(cols, rows);
     }
+    getAgentStatusSensor()?.resize(id, cols, rows);
     return { ok: true };
   });
+
+  /**
+   * Bind the session identity a pane belongs to.
+   *
+   * The renderer knows the session (`cli:<id>`, `chat:<recordId>`) while main
+   * only knows the PTY, and a pane can be spawned before its session resolves —
+   * so this is called again whenever the binding changes.
+   */
+  safeHandle(
+    "terminal:bindSession",
+    (_event, args: { id: number; sessionKey?: string; cwd?: string }) => {
+      const id = Math.floor(args.id);
+      getAgentStatusSensor()?.bindSession(id, { sessionKey: args.sessionKey, cwd: args.cwd });
+      return { ok: true };
+    }
+  );
 
   safeHandle("terminal:destroy", (_event, args: { id: number }) => {
     destroyPtyById(Math.floor(args.id));

@@ -1,0 +1,56 @@
+{
+  "id": "opencode",
+  "version": "2026.09.12.1",
+  "engine": 2,
+  "description": "OpenCode screen rules. Shapes adapted from herdr's opencode manifest: a permission panel, interruption hints, and a progress bar. Everything else falls through to the base manifest.",
+  "rules": [
+    {
+      "id": "permission_required",
+      "state": "blocked",
+      "priority": 900,
+      "region": "whole_recent",
+      "visibleBlocker": true,
+      "any": [
+        { "contains": ["△ Permission required"] },
+        {
+          "all": [
+            { "contains": ["esc dismiss"] },
+            {
+              "any": [
+                { "contains": ["enter confirm"] },
+                { "contains": ["enter submit"] },
+                { "contains": ["enter toggle"] }
+              ]
+            },
+            {
+              "any": [
+                { "contains": ["↑↓ select"] },
+                { "contains": ["⇆ tab"] }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "interrupt_hint_working",
+      "state": "working",
+      "priority": 500,
+      "region": "whole_recent",
+      "visibleWorking": true,
+      "any": [
+        { "contains": ["esc to interrupt"] },
+        { "contains": ["ctrl+c to interrupt"] },
+        { "contains": ["press esc to interrupt"] }
+      ]
+    },
+    {
+      "id": "progress_bar_working",
+      "state": "working",
+      "priority": 400,
+      "region": "whole_recent",
+      "visibleWorking": true,
+      "regex": ["(■|⬝){4,}"]
+    }
+  ]
+}

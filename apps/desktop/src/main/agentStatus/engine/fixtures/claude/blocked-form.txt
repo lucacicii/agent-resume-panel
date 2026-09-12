@@ -1,0 +1,8 @@
+  Reviewed the migration and applied it to the local database.
+
+────────────────────────────────────────────────────────────
+ Do you want to apply this change?
+ ❯ 1. Yes
+   2. No, keep the current schema
+
+ enter to select · tab/arrow keys to navigate · esc to cancel

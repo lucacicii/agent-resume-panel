@@ -1,0 +1,7 @@
+> You are in /Users/someone/work/api
+
+  Do you trust the contents of this directory?
+  You should only trust directories you have reviewed.
+
+› 1. Yes, continue
+  2. No, quit

@@ -1,0 +1,16 @@
+{
+  "id": "pi",
+  "version": "2026.09.12.1",
+  "engine": 2,
+  "description": "Pi screen rules. Pi is normally its own authority in this app: the companion bridge emits an explicit status sequence, so these rules only matter before the bridge reports or when it is not installed. Kept deliberately small - the base manifest carries the dialogs.",
+  "rules": [
+    {
+      "id": "working_literal",
+      "state": "working",
+      "priority": 500,
+      "region": "whole_recent",
+      "visibleWorking": true,
+      "contains": ["Working..."]
+    }
+  ]
+}

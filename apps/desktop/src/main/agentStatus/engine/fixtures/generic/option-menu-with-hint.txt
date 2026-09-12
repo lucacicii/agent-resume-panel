@@ -1,0 +1,9 @@
+  ⏺ Waiting for permission…
+
+  Checked the release notes
+  Applied the migration
+
+❯ 1. Yes
+  2. No
+
+use arrow keys to select

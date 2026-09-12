@@ -8,6 +8,35 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## English
 
+### [0.2.27]
+
+#### Added
+
+- **Background status daemon**: agent status now comes from a small always-on process instead of the window. It keeps working when the window is closed, restores its snapshot after a restart, and posts a macOS notification when an agent starts waiting for you while no window is attached. Manage it in **Settings → Background status**
+- **Agent hooks**: Claude Code (`~/.claude/settings.json`) and Codex (`~/.codex/hooks.json`) can report their own state — exact instead of inferred — installed per agent from Settings. Pi keeps using its companion extension
+- **Rule-driven screen detection**: state is decided by declarative per-agent rules (bundled manifests under `agentStatus/engine/manifests`) with a local override directory (`<panel home>/.desktop/agent-detection`) — no build needed to adjust a rule
+- **Why-panel**: Settings → Background status lists every tracked pane (including agents running in other terminals) and shows the matched rule, every rule that was considered with its reason, and the exact screen text the rules read
+- **Agent identity**: the panel now names the agent in each pane from the process tree, including npm-installed CLIs behind `node`
+
+#### Changed
+
+- **Status detection replaced**: the previous renderer-side fingerprint/resolver/store stack (≈1900 lines) is gone. Detection runs in the main process (screen mirror, terminal escape scanning, foreground job control) and judgements are made by the daemon, so indicators no longer depend on a pane being mounted
+- **Terminal status is now job-control based**: "a command is running" comes from the terminal's foreground process group instead of counting descendant processes
+- **Sessions are attributed by PTY and session key**: main only knows the PTY, so the renderer now binds the session to it (`terminal:bindSession`)
+
+#### Removed
+
+- **Online LLM status adjudication**: the model call that guessed whether a screen was blocked is gone, along with its settings row and per-pane budget. Authoring rules is an offline job now (`pnpm --filter @agent-resume/desktop run agent-status:mine`)
+- **`terminal:activity` tail streaming** and the renderer-side screen sampling that needed it
+
+#### Fixed
+
+- **Wrapped dialog lines**: a pane narrow enough to break a rule's literal across two rows (common for approval footers) no longer loses the match — the screen mirror undoes soft wraps, and text matching falls back to a line-joined view
+- **Emoji width**: the screen mirror uses the same Unicode 11 width table as the terminal, so lines with emoji wrap where the user sees them wrap
+- **Native panes skip screen rules**: once an agent reports its own state the rules are no longer evaluated for that pane, so the explain view shows only what actually decided
+- **Codex hook install**: Codex's `hooks` feature is enabled by default, so installing no longer edits `config.toml`; the settings row also notes that Codex must trust the hooks once before they run
+- **Uninstalling hooks works again**: uninstall compared the edited config against itself and skipped the write, so removed hooks stayed in `~/.claude/settings.json` and `~/.codex/hooks.json`. Both paths are now covered by an install/uninstall round-trip test that restores the file byte for byte
+
 ### [0.2.26]
 
 #### Added
@@ -584,6 +613,35 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 ---
 
 ## 简体中文
+
+### [0.2.27]
+
+#### 新增
+
+- **后台状态守护进程**: Agent 状态改由一个常驻小进程判定,不再依赖窗口。窗口关闭后仍继续工作,重启后恢复快照,并在无窗口连接时用 macOS 通知提醒「有 agent 正在等你」。可在 **设置 → 后台状态** 中管理
+- **Agent 钩子**: Claude Code(`~/.claude/settings.json`)与 Codex(`~/.codex/hooks.json`)可由 agent 自己上报状态——精确,而非推断;在设置中按 agent 安装。Pi 继续使用伴随扩展
+- **规则驱动的屏幕判定**: 状态由声明式的按 agent 规则决定(内置规则包位于 `agentStatus/engine/manifests`),并支持本地覆盖目录(`<panel home>/.desktop/agent-detection`)——调整规则无需重新构建
+- **「为什么」面板**: 设置 → 后台状态 会列出所有被跟踪的面板(含在其他终端里运行的 agent),并展示命中的规则、每条被考虑规则的原因,以及规则读取到的原始屏幕文本
+- **Agent 身份识别**: 面板现在能从进程树判断每个 pane 跑的是哪个 agent,包括以 `node` 启动的 npm 安装版 CLI
+
+#### 变更
+
+- **状态检测整体替换**: 原先渲染进程内的 fingerprint / resolver / store 三层(约 1900 行)已移除。检测改在主进程完成(屏幕镜像、终端转义扫描、前台作业控制),判定集中在守护进程,因此指示灯不再依赖面板是否挂载
+- **终端状态改为作业控制判定**: 「有命令在跑」来自终端的前台进程组,而不再是统计后代进程
+- **会话归属改为 PTY + 会话键**: 主进程只知 PTY,渲染层通过 `terminal:bindSession` 绑定会话
+
+#### 移除
+
+- **在线 LLM 状态裁决**: 用于猜测屏幕是否阻塞的模型调用已移除,连同其设置项与每面板调用预算。规则编写现在是离线工作(`pnpm --filter @agent-resume/desktop run agent-status:mine`)
+- **`terminal:activity` 尾部流** 以及依赖它的渲染层屏幕采样
+
+#### 修复
+
+- **折行的对话框文本**：面板窄到把规则字面量断成两行时（审批提示脚注很常见）不再丢失命中——屏幕镜像会撤销软折行，文本匹配还会退回到“拼接逻辑行”的视图
+- **Emoji 宽度**：屏幕镜像改用与终端一致的 Unicode 11 宽度表，含 emoji 的行会按用户看到的位置折行
+- **native 面板不再跑屏幕规则**：agent 自己上报状态后，该面板不再求值规则，「判定原因」里只剩真正起作用的内容
+- **Codex 钩子安装**: Codex 的 `hooks` 特性已默认开启,安装不再改动 `config.toml`;设置行也会提示 Codex 需要先信任一次这些钩子
+- **卸载钩子恢复生效**: 卸载时把改过的配置和它自己比较,导致跳过写回,已移除的钩子仍留在 `~/.claude/settings.json` 与 `~/.codex/hooks.json` 里。现在两个安装器都有「安装→卸载后文件逐字节还原」的往返测试
 
 ### [0.2.26]
 

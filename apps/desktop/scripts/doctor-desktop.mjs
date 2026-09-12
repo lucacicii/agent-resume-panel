@@ -4,6 +4,8 @@
  * Run after clone / pnpm install when dev or pack fails with env-looking errors.
  */
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import os from "node:os";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -226,6 +228,94 @@ function checkWorkspaceLayout() {
   };
 }
 
+/**
+ * The background status plane is optional, so a missing daemon is a warning in
+ * the report rather than a broken environment: it only means status falls back
+ * to the screen rules while the app is open.
+ */
+function checkAgentStatusDaemon() {
+  const panelHome = process.env.AGENT_RESUME_PANEL_HOME?.trim()
+    || path.join(os.homedir(), ".agent-resume-panel");
+  const paths = agentStatusPaths(panelHome);
+  const endpoint = readEndpointFileSync(paths.endpoint);
+  const manifestsDir = path.join(desktopRoot, "dist", "main", "agentStatus", "engine", "manifests");
+  const manifests = fs.existsSync(manifestsDir)
+    ? fs.readdirSync(manifestsDir).filter((name) => name.endsWith(".json")).length
+    : 0;
+
+  if (!endpoint) {
+    return {
+      ok: true,
+      name: "Agent status daemon",
+      detail: `not running (checked ${paths.endpoint}); it starts with the Desktop app`,
+      fix: "Open Agent Resume Desktop, or Settings → Background status → Start"
+    };
+  }
+  return {
+    ok: true,
+    name: "Agent status daemon",
+    detail: `running (pid ${endpoint.pid}, API v${endpoint.apiVersion}${endpoint.appVersion ? `, app ${endpoint.appVersion}` : ""})` +
+      `, socket ${paths.socket}, ${manifests} bundled manifest(s)`,
+  };
+}
+
+/**
+ * Socket + endpoint paths for a panel home.
+ *
+ * Reimplemented here rather than imported from `dist/`: the doctor must run
+ * before (or without) a build, and this is the one place the derivation matters.
+ */
+function agentStatusPaths(panelHome) {
+  const dir = path.join(panelHome, ".desktop", "agent-status");
+  const uid = typeof process.getuid === "function" ? process.getuid() : 0;
+  const profile = createHash("sha1").update(panelHome).digest("hex").slice(0, 8);
+  return {
+    dir,
+    endpoint: path.join(dir, "endpoint.json"),
+    socket: path.join(os.tmpdir(), `agent-resume-status-${uid}-${profile}.sock`)
+  };
+}
+
+function readEndpointFileSync(file) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
+    return parsed && typeof parsed.pid === "number" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function checkAgentStatusHooks() {
+  const home = os.homedir();
+  const installed = [];
+  for (const [label, file] of [
+    ["claude", path.join(home, ".claude", "settings.json")],
+    ["codex", path.join(home, ".codex", "hooks.json")]
+  ]) {
+    try {
+      const content = fs.readFileSync(file, "utf8");
+      if (content.includes("agent-resume-status-")) installed.push(label);
+    } catch {
+      // Not installed / not present.
+    }
+  }
+  try {
+    if (fs.existsSync(path.join(home, ".pi", "agent", "extensions", "agent-resume-bridge.ts"))) {
+      installed.push("pi");
+    }
+  } catch {
+    // ignore
+  }
+  return {
+    ok: true,
+    name: "Agent status hooks",
+    detail: installed.length
+      ? `installed for ${installed.join(", ")}`
+      : "none installed (status falls back to screen detection)",
+    fix: "Settings → Background status → Install"
+  };
+}
+
 export function runDesktopDoctor() {
   /** @type {Check[]} */
   const checks = [
@@ -235,7 +325,9 @@ export function runDesktopDoctor() {
     checkPnpm(),
     checkElectronDev(),
     checkNodePty(),
-    checkElectronPackCache()
+    checkElectronPackCache(),
+    checkAgentStatusDaemon(),
+    checkAgentStatusHooks()
   ];
   return checks;
 }

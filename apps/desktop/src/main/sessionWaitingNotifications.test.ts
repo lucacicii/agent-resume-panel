@@ -6,8 +6,7 @@ const waiting = {
   projectPath: "/tmp/project",
   title: "Needs input",
   sessionKey: "codex:session-1",
-  status: "awaiting_user" as const,
-  awaitingConfidence: "confirmed" as const
+  status: "awaiting_user" as const
 };
 
 describe("collectNewConfirmedWaitingSessions", () => {
@@ -17,12 +16,12 @@ describe("collectNewConfirmedWaitingSessions", () => {
     expect(collectNewConfirmedWaitingSessions([waiting], notified)).toEqual([]);
   });
 
-  it("ignores possible waiting and clears the previous episode", () => {
+  it("clears the episode once the session stops waiting", () => {
     const notified = new Set<string>();
     expect(collectNewConfirmedWaitingSessions([waiting], notified)).toEqual([waiting]);
 
-    const possible = { ...waiting, awaitingConfidence: "possible" as const };
-    expect(collectNewConfirmedWaitingSessions([possible], notified)).toEqual([]);
+    const idle = { ...waiting, status: "open" as const };
+    expect(collectNewConfirmedWaitingSessions([idle], notified)).toEqual([]);
     expect(collectNewConfirmedWaitingSessions([waiting], notified)).toEqual([waiting]);
   });
 
@@ -30,7 +29,7 @@ describe("collectNewConfirmedWaitingSessions", () => {
     const notified = new Set<string>();
     expect(collectNewConfirmedWaitingSessions([waiting], notified)).toEqual([waiting]);
 
-    const running = { ...waiting, status: "running" as const, awaitingConfidence: undefined };
+    const running = { ...waiting, status: "running" as const };
     expect(collectNewConfirmedWaitingSessions([running], notified)).toEqual([]);
     expect(collectNewConfirmedWaitingSessions([waiting], notified)).toEqual([waiting]);
   });

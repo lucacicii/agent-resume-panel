@@ -88,7 +88,6 @@ describe("parseWorkbenchActiveSessionDots", () => {
         title: "Pi",
         sessionKey: "pi:abc",
         status: "running",
-        awaitingConfidence: "confirmed",
         extra: true
       },
       { title: "missing pane" },
@@ -99,8 +98,7 @@ describe("parseWorkbenchActiveSessionDots", () => {
         projectPath: "/work/app",
         title: "Pi",
         sessionKey: "pi:abc",
-        status: "running",
-        awaitingConfidence: "confirmed"
+        status: "running"
       }
     ]);
   });

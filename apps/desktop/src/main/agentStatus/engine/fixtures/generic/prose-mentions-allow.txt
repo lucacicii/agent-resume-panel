@@ -1,0 +1,8 @@
+▌ Reviewing your changes
+
+I checked the migrations and they look safe to apply. If a tool asks for
+permission you should allow it only when the command is one you recognise.
+
+❯ 
+
+  ? for shortcuts                                       ⏵⏵ bypass permissions on

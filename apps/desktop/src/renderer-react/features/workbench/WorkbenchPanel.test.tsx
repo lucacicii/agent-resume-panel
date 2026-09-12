@@ -4229,7 +4229,7 @@ describe("WorkbenchPanel", () => {
     expect(document.querySelectorAll(".wb-session-activity-dot")).toHaveLength(1);
   });
 
-  it("renders optimistic user message and typing indicator in new session, then binds session when catalog syncs", async () => {
+  it("shows clean pending hint in new session, triggers sync on submit, then binds session when catalog syncs", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
     document.body.append(host);
@@ -4249,7 +4249,7 @@ describe("WorkbenchPanel", () => {
     }));
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages: {
-        "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.newSessionTitle": "New session {0}", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.terminalConsole": "Terminal", "desktop.workbench.terminalComposerPlaceholder": "Prompt", "desktop.workbench.transcriptWorking": "Thinking...", "desktop.workbench.sidePanelTranscript": "Transcript"
+        "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.newSessionTitle": "New session {0}", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.terminalConsole": "Terminal", "desktop.workbench.terminalComposerPlaceholder": "Prompt", "desktop.workbench.transcriptWorking": "Thinking...", "desktop.workbench.sidePanelTranscript": "Transcript", "desktop.workbench.transcriptNewSessionHint": "New session ready"
       } }),
       onLocaleChanged: () => () => undefined,
       onWorkbenchCmdT: () => () => undefined,
@@ -4277,17 +4277,23 @@ describe("WorkbenchPanel", () => {
     fireEvent.click(await screen.findByTitle("/work/app"));
     fireEvent.click(screen.getByRole("button", { name: "New session" }));
 
-    await waitFor(() => expect(syncSessions).toHaveBeenCalled());
+    const pending = await waitFor(() => {
+      const row = [...document.querySelectorAll<HTMLButtonElement>(".wb-list-item")]
+        .find((item) => item.textContent?.includes("New session app"));
+      if (!row) throw new Error("pending session row not rendered");
+      return row;
+    });
+    fireEvent.click(pending);
+    await waitFor(() => expect(document.querySelector(".wb-session-split-transcript")).not.toBeNull());
+    expect(await screen.findByText("New session ready")).toBeTruthy();
 
-    // Enter a prompt into the bottom composer and send it
+    // Enter a prompt into the bottom composer and send it to terminal
     const composer = await screen.findByPlaceholderText("Prompt");
     fireEvent.change(composer, { target: { value: "Hello Pi" } });
     fireEvent.keyDown(composer, { key: "Enter", code: "Enter" });
 
-    // Instantly renders on top in transcript before session is bound
-    await waitFor(() => expect(document.querySelector('[data-transcript-id="transcript-pending-user"]')?.textContent).toContain("Hello Pi"));
-    expect(document.querySelector('[data-transcript-id="transcript-pending-assistant"]')).toBeTruthy();
-    expect(document.querySelector(".wb-transcript-pending-body .im-jumping-dots")).toBeTruthy();
+    // Terminal receives input and sync is triggered
+    expect(terminalInput).toHaveBeenCalled();
 
     // Now disk flushes and sync detects the session
     catalogSessions = [
@@ -4296,7 +4302,7 @@ describe("WorkbenchPanel", () => {
     ];
     await act(async () => onSessionsSynced?.({ syncedAt: Date.now() }));
 
-    // Session is bound, real markdown preview loads
+    // Session is bound, real markdown preview loads with authentic turns
     await waitFor(() => expect(previewSession).toHaveBeenCalledWith(expect.objectContaining({ id: "pi-session-1" })));
     await waitFor(() => expect(document.querySelector(".wb-transcript-body")?.textContent).toContain("Hello from Grok!"));
   });

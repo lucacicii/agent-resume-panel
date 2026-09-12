@@ -1,6 +1,6 @@
 {
   "name": "@agent-resume/desktop",
-  "version": "0.2.26",
+  "version": "0.2.27",
   "private": true,
   "author": "lucacicii",
   "license": "AGPL-3.0-only",
@@ -22,7 +22,10 @@
     "test:doctor": "node scripts/doctor-desktop.test.mjs",
     "test:workbench-files": "node scripts/workbench-file-io.test.mjs",
     "test:workbench-search": "node scripts/workbench-search.test.mjs",
-    "test:workbench-replace": "node scripts/workbench-replace.test.mjs"
+    "test:workbench-replace": "node scripts/workbench-replace.test.mjs",
+    "test:agent-status": "node scripts/agent-status-daemon.test.mjs",
+    "agent-status:capture": "node scripts/agent-status-capture.mjs",
+    "agent-status:mine": "node scripts/agent-status-mine.mjs"
   },
   "dependencies": {
     "@agent-resume/core": "workspace:*",
@@ -58,6 +61,7 @@
     "@xterm/addon-unicode11": "^0.8.0",
     "@xterm/addon-web-links": "^0.11.0",
     "@xterm/addon-webgl": "^0.18.0",
+    "@xterm/headless": "^5.5.0",
     "@xterm/xterm": "^5.5.0",
     "d3-hierarchy": "^3.1.2",
     "d3-shape": "^3.2.0",

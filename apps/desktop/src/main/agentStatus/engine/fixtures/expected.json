@@ -1,0 +1,99 @@
+{
+  "generic/permission-dialog-claude": {
+    "state": "blocked",
+    "rule": "permission_dialog_question",
+    "manifest": "generic"
+  },
+  "generic/permission-dialog-codex": {
+    "state": "blocked",
+    "rule": "permission_pair_allow_deny",
+    "manifest": "generic"
+  },
+  "generic/option-menu-with-hint": {
+    "state": "blocked",
+    "rule": "option_list_with_navigation_hint",
+    "manifest": "generic"
+  },
+  "generic/zh-option-menu": {
+    "state": "blocked",
+    "rule": "option_list_with_navigation_hint",
+    "manifest": "generic"
+  },
+  "generic/prose-mentions-allow": {
+    "state": null
+  },
+  "generic/heredoc-noise": {
+    "state": null
+  },
+  "claude/blocked-form": {
+    "state": "blocked",
+    "rule": "live_blocked_form",
+    "manifest": "claude"
+  },
+  "claude/bash-permission": {
+    "state": "blocked",
+    "rule": "bash_permission_prompt",
+    "manifest": "claude"
+  },
+  "claude/transcript-viewer": {
+    "state": "unknown",
+    "rule": "transcript_viewer",
+    "manifest": "claude",
+    "skip": true
+  },
+  "claude/idle-prompt": {
+    "state": "idle",
+    "rule": "live_prompt_box",
+    "manifest": "claude",
+    "visibleIdle": true
+  },
+  "codex/working-footer": {
+    "state": "working",
+    "rule": "working_interrupt_hint",
+    "manifest": "codex",
+    "visibleWorking": true
+  },
+  "codex/trust-directory": {
+    "state": "blocked",
+    "rule": "trust_directory",
+    "manifest": "codex"
+  },
+  "codex/yn-prompt": {
+    "state": "blocked",
+    "rule": "yn_permission",
+    "manifest": "generic"
+  },
+  "codex/idle-title": {
+    "state": "idle",
+    "rule": "osc_title_idle",
+    "manifest": "codex",
+    "oscTitle": "codex",
+    "visibleIdle": true
+  },
+  "pi/working": {
+    "state": "working",
+    "rule": "working_literal",
+    "manifest": "pi",
+    "visibleWorking": true
+  },
+  "opencode/permission": {
+    "state": "blocked",
+    "rule": "permission_required",
+    "manifest": "opencode"
+  },
+  "opencode/interrupt": {
+    "state": "working",
+    "rule": "interrupt_hint_working",
+    "manifest": "opencode"
+  },
+  "opencode/progress": {
+    "state": "working",
+    "rule": "progress_bar_working",
+    "manifest": "opencode"
+  },
+  "codex/yn-prompt-weak": {
+    "state": "blocked",
+    "rule": "weak_blocker",
+    "manifest": "codex"
+  }
+}

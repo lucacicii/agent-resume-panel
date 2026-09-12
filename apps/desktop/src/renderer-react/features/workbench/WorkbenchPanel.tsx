@@ -3,20 +3,16 @@ import { ProviderIcon } from "../../components/ProviderIcon";
 import { ResizeHandle } from "../../components/ResizeHandle";
 import { createPortal } from "react-dom";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type ReactPortal } from "react";
-import { Terminal } from "@xterm/xterm";
-import { CanvasAddon } from "@xterm/addon-canvas";
-import { ClipboardAddon } from "@xterm/addon-clipboard";
-import { FitAddon } from "@xterm/addon-fit";
-import { ImageAddon } from "@xterm/addon-image";
-import { SearchAddon, type ISearchOptions } from "@xterm/addon-search";
-import { Unicode11Addon } from "@xterm/addon-unicode11";
-import { WebLinksAddon } from "@xterm/addon-web-links";
-import { WebglAddon } from "@xterm/addon-webgl";
+import type { Terminal } from "@xterm/xterm";
 import {
-  createOsc52ClipboardProvider,
-  Utf8Base64,
-  writeTerminalSelection
-} from "./terminalClipboard";
+  TerminalView,
+  trackTerminalMouseModes,
+  trackTuiRedraw,
+  isTerminalAtBottom,
+  type TerminalPane,
+  type WorkbenchPaneGroup,
+  type TerminalRendererMode
+} from "./terminal/TerminalView";
 import {
   type AgentProvider,
   type AgentSession,
@@ -36,7 +32,6 @@ import type { CodeMirrorAppearance } from "../../components/codeMirrorThemes";
 import { renderMarkdown } from "../../components/Markdown";
 import { imageSrcFromElement, posixDirname } from "../../components/markdownImage";
 import { notifyDesktop } from "../../components/Notifications";
-import { SegmentedControl } from "../../components/SegmentedControl";
 import { syncTruncationTitle } from "../../components/truncationTitle";
 import { VirtualList } from "../../components/VirtualList";
 import type { TerminalEngineType } from "./terminal";
@@ -47,16 +42,11 @@ import {
   SelectionActionResult,
   useSelectionActionResult
 } from "../../selection/SelectionActionResult";
-import { registerTerminalSelection } from "../../selection/terminalSelection";
 import { BrowserPaneView } from "../browser/BrowserPaneView";
 import type { BrowserSessionState } from "../../../shared/browserTypes";
 import type { WorkbenchFocusSessionRequest, WorkbenchSendSelectionRequest } from "../../../shared/workbenchSelection";
-import {
-  collectActiveSessionDots,
-  acpPaneKey
-} from "./activeSessionDots";
-import { useSessionStatus } from "./sessionStatus";
-import { stripReportedStatus } from "./sessionStatus";
+import { collectActiveSessionDots } from "./activeSessionDots";
+import { useAcpStatus, useAgentStatus, type AcpStatusEvent, type SessionDotRuntime } from "./sessionStatus";
 import { COMPOSER_TIP_LIMIT, type ComposerSendTip } from "./TerminalComposer";
 import { TerminalComposerStack } from "./TerminalComposerStack";
 import { formatTuiSlashInput, type TuiSlashCommand } from "./tuiSlashCommands";
@@ -81,13 +71,11 @@ import {
   type WorkbenchFileExplorerHandle
 } from "./WorkbenchFileExplorer";
 import { LinkGraphSidePane } from "./LinkGraphSidePane";
+import { useWorkbenchLinkGraph } from "./linkgraph/useWorkbenchLinkGraph";
+import { useWorkbenchSearch } from "./search/useWorkbenchSearch";
+import { WorkbenchSearchSidePane } from "./search/WorkbenchSearchSidePane";
+import { useWorkbenchQuickAccess } from "./quick-access/useWorkbenchQuickAccess";
 import { SessionTranscriptPane } from "./SessionTranscriptPane";
-import type {
-  LinkGraphAnalyzeArgs,
-  LinkGraphAnalyzeResult,
-  LinkGraphOutputLanguage,
-  LinkGraphProgressEvent
-} from "../../../shared/linkGraphTypes";
 import {
   QuickAccess,
   rankQuickAccessProjects,
@@ -96,52 +84,45 @@ import {
   type QuickAccessMode,
   type QuickAccessProject
 } from "./QuickAccess";
-import { ScriptsTree, type ScriptEntryView, type ScriptPackageView } from "./ScriptsTree";
-import { resolveTerminalTheme, resolveTerminalThemeId, type WorkbenchTerminalThemeId } from "./terminalThemes";
-import { WB_PATH_DND_MIME, hasWorkbenchPathDnd, shellQuotePath, startWorkbenchPathDrag } from "./workbenchDnd";
-import { appearanceStateFromSettings, type DesktopAppearanceState } from "../../themes";
+import { useWorkbenchScripts } from "./scripts/useWorkbenchScripts";
+import { WorkbenchScriptsPane } from "./scripts/WorkbenchScriptsPane";
+import { resolveTerminalTheme, resolveTerminalThemeId } from "./terminalThemes";
+import { appearanceStateFromSettings } from "../../themes";
 import { storedWidth } from "../../storage";
 import type { WorkbenchArrowDirection } from "../../../shared/workbenchShortcuts";
 import { startModalOpenReporter } from "./shortcutModalReporter";
+import {
+  type GitStatusResult,
+  type TerminalGitBranches,
+  type GitChange,
+  type GitLog,
+  type GitLogCommit,
+  type GitShow,
+  type GitHistoryContext,
+  GIT_REFRESH_DEBOUNCE_MS,
+  gitOperationError,
+  gitChangeKey,
+  gitChangeFilePath,
+  uniqueGitChanges,
+  formatGitCommitDate,
+  gitCommitBranchNames
+} from "./git/workbenchGitModel";
+import { GitChangesPanel } from "./git/GitChangesPanel";
+import { useWorkbenchGit } from "./git/useWorkbenchGit";
+import {
+  GitGraphPortals,
+  GitCommitBranches,
+  GitActionIcons,
+  BranchGraphNavigation
+} from "./git/GitGraphView";
+import { WorkbenchDetailHeader } from "./layout/WorkbenchDetailHeader";
+import { WorkbenchSidebar } from "./layout/WorkbenchSidebar";
 
 type DesktopApi = ReturnType<typeof desktopApi>;
 type FileInspection = Awaited<ReturnType<DesktopApi["workbenchInspectFile"]>>;
-type GitStatusResult = Awaited<ReturnType<DesktopApi["terminalGitStatus"]>>;
-type GitRepoTracking = NonNullable<GitStatusResult["tracking"]>[number];
-type TerminalGitInfo = Awaited<ReturnType<DesktopApi["terminalGitInfo"]>>;
-type TerminalGitBranches = Awaited<ReturnType<DesktopApi["terminalGitBranches"]>>;
-type GitChange = GitStatusResult["staged"][number];
-type GitLog = Awaited<ReturnType<DesktopApi["terminalGitLog"]>>;
-type GitLogCommit = GitLog["commits"][number];
-type GitShow = Awaited<ReturnType<DesktopApi["terminalGitShow"]>>;
-type GitGraphLayout = GitLog["layout"];
-type GitGraphRow = GitGraphLayout["rows"][number];
-type GitHistoryContext =
-  | { kind: "repository"; repoRoot: string }
-  | { kind: "file"; projectRoot: string; filePath: string; repoRoot: string; repoPath: string };
-type CommitSuggestion = Awaited<ReturnType<DesktopApi["terminalGitSuggestCommit"]>>;
 
-/** Local porcelain status poll while Workbench is active. */
-const GIT_STATUS_POLL_MS = 10_000;
-/** Debounce before re-running status after a watched file change. */
-const GIT_REFRESH_DEBOUNCE_MS = 300;
-/** Remote fetch cadence while Workbench is active. */
-const GIT_AUTO_FETCH_MS = 60_000;
-/** Cap nested monorepo fetch fan-out per sweep. */
-const GIT_AUTO_FETCH_MAX_ROOTS = 8;
 /** Session tabs are auto-renamed after staying inactive this long. */
 const SESSION_AUTO_RENAME_DELAY_MS = 2 * 60_000;
-type GitTreeNode = {
-  name: string;
-  path: string;
-  isDirectory: boolean;
-  children: GitTreeNode[];
-  change?: GitChange;
-  /** Precomputed flattened changes of the subtree (directories); the single change for files. */
-  changes: GitChange[];
-  /** Precomputed repo-relative paths of the subtree (directories). */
-  repoPaths: string[];
-};
 type EditorPane = Extract<FileInspection, { kind: "text" }> & {
   key: string;
   path: string;
@@ -180,27 +161,7 @@ function reconcileEditorInspection(editor: EditorPane, inspected: FileInspection
 type DiffPane = WorkbenchDiffPane & {
   projectPath: string;
 };
-type ActiveGitDiff = {
-  repoRoot: string;
-  repoPath: string;
-  staged: boolean;
-};
-type WorkbenchPaneGroup = "session" | "terminal" | "code" | "browser";
-type TerminalPane = {
-  key: string;
-  title: string;
-  group: Exclude<WorkbenchPaneGroup, "code" | "browser">;
-  sessionKey?: string;
-  projectPath: string;
-  cwd: string;
-  command?: string;
-  initialPrompt?: string;
-  ptyId?: number;
-  branch?: string | null;
-  repoRoot?: string | null;
-  gitMode?: TerminalGitInfo["mode"];
-  nestedRepos?: TerminalGitInfo["nestedRepos"];
-};
+
 type PendingWorkbenchSession = {
   key: string;
   terminalKey: string;
@@ -235,12 +196,10 @@ type BrowserPane = {
   surfaceKind: "workbench" | "window";
 };
 type SideView = "files" | "git" | "search" | "scripts" | "linkgraph" | null;
-type SearchMatch = Awaited<ReturnType<DesktopApi["workbenchSearchText"]>>["matches"][number];
 type SearchReveal = { path: string; line: number; column: number; endColumn: number };
 type ProjectFilter = "all" | "pinned";
 type WorkbenchSidebarView = "projects" | "gtd";
 const GTD_STATUSES = ["inbox", "next", "waiting", "someday", "reference", "done"] as const satisfies readonly GtdStatus[];
-const GTD_ACTIVE_STATUSES = ["inbox", "next", "waiting", "someday", "reference"] as const satisfies readonly GtdStatus[];
 const WORKBENCH_SESSION_ROW_HEIGHT = 64;
 type CatalogProject = {
   projectId: string;
@@ -641,125 +600,6 @@ function statusError(error: unknown): string {
   return message.replace(/^Error invoking remote method '[^']+': Error:\s*/, "");
 }
 
-function gitOperationError(error: unknown): string {
-  return statusError(error).replace(/^Error invoking remote method 'terminal:[^']+': Error:\s*/, "");
-}
-
-function gitStatusLetter(status: string): string {
-  const normalized = status.trim() || "?";
-  if (normalized === "?" || normalized === "A") return "A";
-  if (normalized === "D") return "D";
-  return "M";
-}
-
-function gitStatusClass(status: string): string {
-  const letter = gitStatusLetter(status);
-  return letter === "A" ? "is-add" : letter === "D" ? "is-del" : "is-mod";
-}
-
-function gitChangeTreePath(change: Pick<GitChange, "path" | "repoPath">): string {
-  return change.repoPath || change.path;
-}
-
-function buildGitChangeTree(changes: GitChange[]): GitTreeNode[] {
-  const roots: GitTreeNode[] = [];
-  const directories = new Map<string, GitTreeNode>();
-
-  for (const change of changes) {
-    const treePath = gitChangeTreePath(change);
-    const parts = treePath.split("/").map((part) => part.trim()).filter(Boolean);
-    let parentPath = "";
-    let siblings = roots;
-    for (const [index, name] of parts.entries()) {
-      const isFile = index === parts.length - 1;
-      const path = parentPath ? `${parentPath}/${name}` : name;
-      if (isFile) {
-        siblings.push({ name, path: treePath, isDirectory: false, children: [], change, changes: [], repoPaths: [] });
-        continue;
-      }
-      let directory = directories.get(path);
-      if (!directory) {
-        directory = { name, path, isDirectory: true, children: [], changes: [], repoPaths: [] };
-        directories.set(path, directory);
-        siblings.push(directory);
-      }
-      parentPath = path;
-      siblings = directory.children;
-    }
-  }
-
-  const sort = (nodes: GitTreeNode[]) => {
-    nodes.sort((left, right) => Number(right.isDirectory) - Number(left.isDirectory) || left.name.localeCompare(right.name, undefined, { sensitivity: "base" }));
-    nodes.filter((node) => node.isDirectory).forEach((node) => sort(node.children));
-  };
-  sort(roots);
-  roots.forEach(computeGitNodeMetadata);
-  return roots;
-}
-
-/** One pass over the tree caching each directory's flattened changes/repo paths for cheap re-renders. */
-function computeGitNodeMetadata(node: GitTreeNode): void {
-  if (!node.isDirectory) {
-    const change = node.change;
-    node.changes = change ? [change] : [];
-    node.repoPaths = change ? [change.repoPath] : [];
-    return;
-  }
-  const changes: GitChange[] = [];
-  const repoPaths: string[] = [];
-  for (const child of node.children) {
-    computeGitNodeMetadata(child);
-    changes.push(...child.changes);
-    repoPaths.push(...child.repoPaths);
-  }
-  node.changes = changes;
-  node.repoPaths = repoPaths;
-}
-
-function gitDirectoryExpandKey(repoRoot: string, directoryPath: string): string {
-  return repoRoot ? `${repoRoot}\0${directoryPath}` : directoryPath;
-}
-
-function gitDirectoryKeys(changes: GitChange[]): Set<string> {
-  const keys = new Set<string>();
-  for (const change of changes) {
-    const parts = gitChangeTreePath(change).split("/").map((part) => part.trim()).filter(Boolean);
-    let parentPath = "";
-    for (const name of parts.slice(0, -1)) {
-      parentPath = parentPath ? `${parentPath}/${name}` : name;
-      keys.add(gitDirectoryExpandKey(change.repoRoot, parentPath));
-    }
-  }
-  return keys;
-}
-
-function reconcileExpandedGitDirectories(current: Set<string>, changes: GitChange[]): Set<string> {
-  const available = gitDirectoryKeys(changes);
-  const next = new Set<string>();
-  for (const key of current) {
-    if (available.has(key)) next.add(key);
-  }
-  return next;
-}
-
-function gitGroupCheckboxState(repoRoot: string, stagedEntries: GitChange[], unstagedEntries: GitChange[]): boolean | "mixed" {
-  const stagedCount = stagedEntries.filter((change) => change.repoRoot === repoRoot).length;
-  const unstagedCount = unstagedEntries.filter((change) => change.repoRoot === repoRoot).length;
-  if (stagedCount && unstagedCount) return "mixed";
-  if (stagedCount) return true;
-  return false;
-}
-
-function gitChangeKey(change: Pick<GitChange, "repoRoot" | "repoPath">): string {
-  return `${change.repoRoot}\0${change.repoPath}`;
-}
-
-function gitChangeFilePath(change: Pick<GitChange, "repoRoot" | "repoPath">): string {
-  const repoRoot = change.repoRoot.replace(/[\\/]+$/, "");
-  const repoPath = change.repoPath.replace(/^[\\/]+/, "");
-  return `${repoRoot}/${repoPath}`;
-}
-
 function normalizeWorkbenchPath(value: string): string {
   const normalized = value.replaceAll("\\", "/");
   const prefix = normalized.startsWith("/") ? "/" : "";
@@ -796,1798 +636,7 @@ export function workbenchActiveFilePath(
   return isWorkbenchPathWithin(displayFilePath, projectPath) ? displayFilePath : repoFilePath;
 }
 
-/** Absolute drag path for a Git tree node, or null when it cannot be resolved. */
-function gitNodeDragPath(node: GitTreeNode): string | null {
-  if (!node.isDirectory) return node.change ? gitChangeFilePath(node.change) : null;
-  const repoRoot = node.changes[0]?.repoRoot || "";
-  return repoRoot ? gitChangeFilePath({ repoRoot, repoPath: node.path }) : null;
-}
-
-function uniqueGitChanges(changes: GitChange[]): GitChange[] {
-  const unique = new Map<string, GitChange>();
-  for (const change of changes) unique.set(gitChangeKey(change), change);
-  return [...unique.values()];
-}
-
-/**
- * Move targeted changes between the staged/unstaged lists locally so checkbox
- * clicks respond instantly; a trailing status refresh converges the details.
- */
-function stageGitChangesOptimistically(
-  state: GitStatusResult,
-  targets: GitStageTarget[],
-  targetStaged: boolean
-): GitStatusResult {
-  const wanted = new Set<string>();
-  for (const target of targets) {
-    for (const repoPath of target.paths) {
-      wanted.add(gitChangeKey({ repoRoot: target.repoRoot, repoPath }));
-    }
-  }
-  const place = (change: GitChange): GitChange => targetStaged
-    ? { ...change, staged: true, unstaged: false }
-    : { ...change, staged: false, unstaged: true };
-  const staged: GitChange[] = [];
-  const seenStaged = new Set<string>();
-  const unstaged: GitChange[] = [];
-  const seenUnstaged = new Set<string>();
-  const push = (list: GitChange[], seen: Set<string>, change: GitChange) => {
-    const key = gitChangeKey(change);
-    if (seen.has(key)) return;
-    seen.add(key);
-    list.push(change);
-  };
-  for (const change of state.staged) {
-    const key = gitChangeKey(change);
-    if (wanted.has(key) && !targetStaged) push(unstaged, seenUnstaged, place(change));
-    else push(staged, seenStaged, change);
-  }
-  for (const change of state.unstaged) {
-    const key = gitChangeKey(change);
-    if (wanted.has(key) && targetStaged) push(staged, seenStaged, place(change));
-    else push(unstaged, seenUnstaged, change);
-  }
-  return { ...state, staged, unstaged };
-}
-
-type GitStageTarget = { repoRoot: string; paths: string[] };
-
-function normalizeGitStageTargets(targets: GitStageTarget | GitStageTarget[]): GitStageTarget[] {
-  return (Array.isArray(targets) ? targets : [targets]).filter((target) => target.repoRoot && target.paths.length);
-}
-
-function groupGitChangesByRepo(changes: GitChange[]): GitStageTarget[] {
-  const groups = new Map<string, string[]>();
-  const seen = new Map<string, Set<string>>();
-  for (const change of changes) {
-    if (!change.repoRoot) continue;
-    const paths = groups.get(change.repoRoot) || [];
-    const used = seen.get(change.repoRoot) || new Set<string>();
-    if (!used.has(change.repoPath)) {
-      used.add(change.repoPath);
-      paths.push(change.repoPath);
-      groups.set(change.repoRoot, paths);
-      seen.set(change.repoRoot, used);
-    }
-  }
-  return [...groups.entries()]
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([repoRoot, paths]) => ({ repoRoot, paths }));
-}
-
-function gitRepositoryLabel(git: GitStatusResult, repoRoot: string): string {
-  return git.nestedRepos?.find((repository) => repository.root === repoRoot)?.displayPath || basename(repoRoot);
-}
-
-function gitRepositoryCount(git: GitStatusResult): number {
-  const roots = new Set<string>();
-  if (git.root) roots.add(git.root);
-  git.nestedRepos?.forEach((repository) => roots.add(repository.root));
-  for (const change of [...git.staged, ...git.unstaged]) {
-    if (change.repoRoot) roots.add(change.repoRoot);
-  }
-  return roots.size;
-}
-
-function dirtyGitRoots(result: GitStatusResult): string[] {
-  const roots = new Set<string>();
-  for (const change of [...result.staged, ...result.unstaged]) {
-    if (change.repoRoot) roots.add(change.repoRoot);
-  }
-  return [...roots];
-}
-
-function defaultGitRoot(result: GitStatusResult, availableRoots: string[]): string {
-  const dirty = new Set(dirtyGitRoots(result));
-  if (dirty.size) {
-    const fromNested = (result.nestedRepos || []).find((repository) => dirty.has(repository.root));
-    if (fromNested) return fromNested.root;
-    if (result.root && dirty.has(result.root)) return result.root;
-    const sorted = [...dirty].sort((left, right) => left.localeCompare(right));
-    if (sorted[0]) return sorted[0];
-  }
-  return result.root || result.nestedRepos?.[0]?.root || availableRoots[0] || "";
-}
-
-function GitTreeCheckbox({
-  state,
-  ariaLabel,
-  disabled,
-  onChange
-}: {
-  state: boolean | "mixed";
-  ariaLabel: string;
-  disabled?: boolean;
-  onChange: (checked: boolean) => void;
-}): React.JSX.Element {
-  const checked = state === true;
-  const mixed = state === "mixed";
-  return <button
-    type="button"
-    role="checkbox"
-    className={`wb-git-check${checked ? " is-checked" : ""}${mixed ? " is-mixed" : ""}`}
-    aria-checked={mixed ? "mixed" : checked}
-    aria-label={ariaLabel}
-    disabled={disabled}
-    onClick={(event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      onChange(!(checked || mixed));
-    }}
-  >
-    {checked ? <ThemeIcon name="check" size={11} strokeWidth={3} aria-hidden="true" /> : null}
-    {mixed ? <span className="wb-git-check-dash" aria-hidden="true" /> : null}
-  </button>;
-}
-
-function GitChangeTree({
-  nodes,
-  depth,
-  staged,
-  expanded,
-  activeDiff,
-  discarding,
-  onToggleDir,
-  onToggleStage,
-  onOpen,
-  onContextMenu,
-  onDiscard,
-  onDiscardDirectory,
-  discardLabel
-}: {
-  nodes: GitTreeNode[];
-  depth: number;
-  staged: boolean;
-  expanded: Set<string>;
-  activeDiff?: ActiveGitDiff;
-  discarding: Set<string>;
-  onToggleDir: (path: string) => void;
-  onToggleStage: (targets: GitStageTarget | GitStageTarget[], targetStaged: boolean) => void;
-  onOpen: (change: GitChange) => void;
-  onContextMenu: (event: React.MouseEvent, change: GitChange) => void;
-  onDiscard: (change: GitChange) => void;
-  onDiscardDirectory: (directoryPath: string, repoRoot: string) => void;
-  discardLabel: string;
-}): React.JSX.Element {
-  return <>{nodes.map((node) => {
-    if (node.isDirectory) {
-      const nodeChanges = node.changes;
-      const keys = nodeChanges.map(gitChangeKey);
-      const repoPaths = node.repoPaths;
-      const directoryDiscarding = keys.some((key) => discarding.has(key));
-      const repoRoot = nodeChanges[0]?.repoRoot || "";
-      const expandKey = gitDirectoryExpandKey(repoRoot, node.path);
-      const isExpanded = expanded.has(expandKey);
-      return <div key={`${repoRoot}:${node.path}`}>
-        <div
-          className="wb-file-tree-row wb-git-tree-row"
-          style={{ paddingLeft: `${8 + depth * 14}px` }}
-          draggable
-          onDragStart={(event) => {
-            if (!repoRoot) return;
-            startWorkbenchPathDrag(event, gitChangeFilePath({ repoRoot, repoPath: node.path }));
-          }}
-        >
-          <GitTreeCheckbox state={staged} ariaLabel={node.path} onChange={(checked) => {
-            if (!repoRoot || !repoPaths.length) return;
-            onToggleStage({ repoRoot, paths: repoPaths }, checked);
-          }} />
-          <button type="button" className="wb-git-tree-row-main" aria-expanded={isExpanded} onClick={() => onToggleDir(expandKey)}>
-            <span className={`wb-file-tree-chevron${isExpanded ? " is-expanded" : ""}`}><ThemeIcon name="chevron-right" size={12} /></span>
-            <ThemeIcon name="folder" size={14} className="wb-file-tree-icon" />
-            <span className="wb-file-tree-label" title={node.path}>{node.name}</span>
-          </button>
-          <button
-            type="button"
-            className="wb-git-discard-btn"
-            disabled={directoryDiscarding || !repoRoot}
-            aria-label={`${discardLabel} ${node.path}`}
-            title={discardLabel}
-            onClick={() => onDiscardDirectory(node.path, repoRoot)}
-          >
-            {directoryDiscarding ? <ThemeIcon name="loader" size={13} className="spin" /> : <ThemeIcon name="undo" size={13} />}
-          </button>
-        </div>
-        {isExpanded ? <div className="wb-file-tree-children"><GitChangeTree nodes={node.children} depth={depth + 1} staged={staged} expanded={expanded} activeDiff={activeDiff} discarding={discarding} onToggleDir={onToggleDir} onToggleStage={onToggleStage} onOpen={onOpen} onContextMenu={onContextMenu} onDiscard={onDiscard} onDiscardDirectory={onDiscardDirectory} discardLabel={discardLabel} /></div> : null}
-      </div>;
-    }
-    if (!node.change) return null;
-    const key = gitChangeKey(node.change);
-    const active = activeDiff?.staged === staged
-      && activeDiff.repoRoot === node.change.repoRoot
-      && activeDiff.repoPath === node.change.repoPath;
-    return <div
-      className={`wb-file-tree-row wb-git-tree-file${active ? " is-selected" : ""}`}
-      key={node.path}
-      style={{ paddingLeft: `${8 + depth * 14}px` }}
-      aria-selected={active}
-      draggable
-      onDragStart={(event) => {
-        const path = gitNodeDragPath(node);
-        if (path) startWorkbenchPathDrag(event, path);
-      }}
-      onContextMenu={(event) => onContextMenu(event, node.change!)}
-    >
-      <GitTreeCheckbox state={staged} ariaLabel={gitChangeTreePath(node.change)} onChange={(checked) => {
-        if (!node.change?.repoRoot) return;
-        onToggleStage({ repoRoot: node.change.repoRoot, paths: [node.change.repoPath] }, checked);
-      }} />
-      <button type="button" className="wb-git-tree-row-main" title={gitChangeTreePath(node.change)} onClick={() => onOpen(node.change!)}>
-        <span className="wb-file-tree-chevron is-placeholder" aria-hidden="true" />
-        <span className={`wb-git-file-status ${gitStatusClass(node.change.status)}`}>{gitStatusLetter(node.change.status)}</span>
-        <span className="wb-file-tree-label">{node.name}</span>
-      </button>
-      <button
-        type="button"
-        className="wb-git-discard-btn"
-        disabled={discarding.has(key)}
-        aria-label={`${discardLabel} ${node.change.path}`}
-        title={discardLabel}
-        onClick={() => onDiscard(node.change!)}
-      >
-        {discarding.has(key) ? <ThemeIcon name="loader" size={13} className="spin" /> : <ThemeIcon name="undo" size={13} />}
-      </button>
-    </div>;
-  })}</>;
-}
-
-function trackingForRoot(git: GitStatusResult | null, gitRoot: string): GitRepoTracking | null {
-  if (!git?.tracking?.length) return null;
-  if (gitRoot) {
-    return git.tracking.find((item) => item.repoRoot === gitRoot) || null;
-  }
-  return git.tracking[0] || null;
-}
-
-const COMMIT_INPUT_MIN_HEIGHT = 96;
-const COMMIT_INPUT_MAX_HEIGHT = 190;
-
-function GitChangesPanel({
-  visible,
-  git,
-  gitRoot,
-  repositories,
-  branch,
-  activeDiff,
-  expanded,
-  discarding,
-  commitMessage,
-  commitBusy,
-  commitSuggestion,
-  canCommit,
-  syncing,
-  onSelectRepo,
-  onSelectBranch,
-  onSync,
-  onToggleDir,
-  onToggleStage,
-  onOpenDiff,
-  onOpenFile,
-  onOpenExternal,
-  onCopyPath,
-  onDiscard,
-  onDiscardDirectory,
-  onCommitMessageChange,
-  onSuggestCommit,
-  onCommit,
-  labels
-}: {
-  visible: boolean;
-  git: GitStatusResult | null;
-  gitRoot: string;
-  repositories: Array<{ root: string; label: string }>;
-  branch: string;
-  activeDiff?: ActiveGitDiff;
-  expanded: Set<string>;
-  discarding: Set<string>;
-  commitMessage: string;
-  commitBusy: boolean;
-  commitSuggestion: CommitSuggestion | null;
-  canCommit: boolean;
-  syncing: boolean;
-  onSelectRepo: (root: string) => void;
-  onSelectBranch: (selection: { branch: string; remote?: string }) => void;
-  onSync: () => void;
-  onToggleDir: (path: string) => void;
-  onToggleStage: (targets: GitStageTarget | GitStageTarget[], targetStaged: boolean) => void;
-  onOpenDiff: (change: GitChange, staged: boolean) => void;
-  onOpenFile: (change: GitChange) => void;
-  onOpenExternal: (change: GitChange) => void;
-  onCopyPath: (change: GitChange) => void;
-  onDiscard: (change: GitChange) => void;
-  onDiscardDirectory: (changes: GitChange[], directoryPath: string) => void;
-  onCommitMessageChange: (value: string) => void;
-  onSuggestCommit: () => void;
-  onCommit: (pushAfter: boolean) => void;
-  labels: {
-    stagedTitle: string;
-    changesTitle: string;
-    noChanges: string;
-    unavailable: string;
-    messageLabel: string;
-    resizeInput: string;
-    autoGenerate: string;
-    commit: string;
-    commitAndPush: string;
-    sync: string;
-    suggestedLlm: string;
-    suggestedUnconfigured: string;
-    suggestedFallback: string;
-    openFile: string;
-    openDefault: string;
-    copyPath: string;
-    discard: string;
-  };
-}): ReactPortal | null {
-  const { t } = useI18n();
-  const [host, setHost] = useState<HTMLElement | null>(null);
-  const [contextMenu, setContextMenu] = useState<{ change: GitChange; x: number; y: number } | null>(null);
-  const commitInputRef = useRef<HTMLTextAreaElement | null>(null);
-  const [commitInputHeight, setCommitInputHeight] = useState<number | null>(null);
-  const [commitInputResizing, setCommitInputResizing] = useState(false);
-
-  useEffect(() => {
-    setHost(visible ? document.querySelector<HTMLElement>("#react-workbench .wb-git-panel") : null);
-  }, [visible, git, gitRoot]);
-
-  useEffect(() => {
-    if (!contextMenu) return;
-    const dismiss = (event: MouseEvent) => {
-      if (!(event.target instanceof Element) || !event.target.closest(".wb-context-menu")) setContextMenu(null);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setContextMenu(null);
-    };
-    window.addEventListener("mousedown", dismiss);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("mousedown", dismiss);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [contextMenu]);
-
-  useEffect(() => {
-    setContextMenu(null);
-  }, [visible, gitRoot]);
-
-  const beginCommitInputResize = (event: React.PointerEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    const startY = event.clientY;
-    const startHeight = commitInputHeight ?? commitInputRef.current?.offsetHeight ?? COMMIT_INPUT_MIN_HEIGHT;
-    setCommitInputResizing(true);
-    document.body.classList.add("is-pane-resizing");
-    document.body.classList.add("is-pane-resizing-row");
-    const move = (next: PointerEvent) => {
-      const height = Math.round(Math.min(COMMIT_INPUT_MAX_HEIGHT, Math.max(COMMIT_INPUT_MIN_HEIGHT, startHeight + startY - next.clientY)));
-      setCommitInputHeight(height);
-    };
-    const end = () => {
-      setCommitInputResizing(false);
-      document.body.classList.remove("is-pane-resizing");
-      document.body.classList.remove("is-pane-resizing-row");
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", end);
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", end, { once: true });
-  };
-
-  if (!visible || !host) return null;
-  if (!git?.isRepo && !git?.nestedRepos?.length) {
-    return createPortal(<div className="react-git-panel"><p className="muted wb-git-empty">{labels.unavailable}</p></div>, host);
-  }
-
-  const sections = [
-    { title: labels.stagedTitle, staged: true, entries: uniqueGitChanges(git.staged) },
-    { title: labels.changesTitle, staged: false, entries: uniqueGitChanges(git.unstaged) }
-  ];
-  const allEntries = uniqueGitChanges(sections.flatMap((section) => section.entries));
-  const hasEntries = sections.some((section) => section.entries.length > 0);
-  const hasStagedEntries = sections.some((section) => section.staged && section.entries.length > 0);
-  const showRepoGroups = gitRepositoryCount(git) > 1;
-  const tracking = trackingForRoot(git, gitRoot);
-  const trackingLabel = tracking?.upstream
-    ? t("desktop.workbench.gitBranchTracking", tracking.ahead, tracking.behind)
-    : null;
-  const suggestionText = commitSuggestion
-    ? commitSuggestion.source === "llm"
-      ? labels.suggestedLlm
-      : commitSuggestion.fallbackReason === "unconfigured"
-        ? labels.suggestedUnconfigured
-        : labels.suggestedFallback
-    : null;
-
-  return createPortal(<><div className="react-git-panel wb-git-panel-layout">
-    <div className="wb-git-changes-scroll">
-      {hasEntries ? sections.map((section) => {
-        if (!section.entries.length) return null;
-        const repoGroups = groupGitChangesByRepo(section.entries).map((group) => ({
-          ...group,
-          entries: section.entries.filter((change) => change.repoRoot === group.repoRoot)
-        }));
-        return <section className="wb-git-section" key={section.title}>
-          <div className="wb-git-section-title">
-            <GitTreeCheckbox state={section.staged} ariaLabel={section.title} onChange={(checked) => onToggleStage(repoGroups, checked)} />
-            <span className="wb-git-section-title-text">{section.title}</span>
-            <span className="wb-git-section-count">{section.entries.length}</span>
-          </div>
-          {repoGroups.map((group) => <div className="wb-git-repo-group" key={`${section.title}:${group.repoRoot}`}>
-            {showRepoGroups ? <div className="wb-git-repo-group-title">
-              <GitTreeCheckbox
-                state={gitGroupCheckboxState(group.repoRoot, git.staged, git.unstaged)}
-                ariaLabel={gitRepositoryLabel(git, group.repoRoot)}
-                onChange={(checked) => onToggleStage({ repoRoot: group.repoRoot, paths: group.paths }, checked)}
-              />
-              <span className="wb-git-repo-group-label" title={group.repoRoot}>{gitRepositoryLabel(git, group.repoRoot)}</span>
-              <span className="wb-git-section-count">{group.entries.length}</span>
-            </div> : null}
-            <div className="wb-git-tree" role="tree">
-              <GitChangeTree
-                nodes={buildGitChangeTree(group.entries)}
-                depth={0}
-                staged={section.staged}
-                expanded={expanded}
-                activeDiff={activeDiff}
-                discarding={discarding}
-                onToggleDir={onToggleDir}
-                onToggleStage={onToggleStage}
-                onOpen={(change) => onOpenDiff(change, section.staged)}
-                onContextMenu={(event, change) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  setContextMenu({ change, x: event.clientX, y: event.clientY });
-                }}
-                onDiscard={onDiscard}
-                onDiscardDirectory={(directoryPath, repoRoot) => {
-                  const prefix = `${directoryPath}/`;
-                  const changes = allEntries.filter((change) => (
-                    change.repoRoot === repoRoot && gitChangeTreePath(change).startsWith(prefix)
-                  ));
-                  if (changes.length) onDiscardDirectory(changes, directoryPath);
-                }}
-                discardLabel={labels.discard}
-              />
-            </div>
-          </div>)}
-        </section>;
-      }) : <p className="muted wb-git-empty">{labels.noChanges}</p>}
-    </div>
-    <div className="wb-git-commit-composer">
-      <div className="wb-git-commit-target">
-        <GitRepositorySelector repositories={repositories} value={gitRoot} ariaLabel={t("desktop.workbench.gitRepoSelect")} onChange={onSelectRepo} />
-        <GitBranchSelector repoRoot={gitRoot} value={branch} ariaLabel={t("desktop.workbench.switchBranch")} onChange={onSelectBranch} />
-      </div>
-      {suggestionText ? <p className={`wb-git-commit-suggestion${commitSuggestion?.source === "llm" ? " is-ai" : ""}`}>{suggestionText}</p> : null}
-      <div
-        className={`pane-resizer is-horizontal wb-git-commit-resizer${commitInputResizing ? " is-dragging" : ""}`}
-        role="separator"
-        aria-orientation="horizontal"
-        aria-label={labels.resizeInput}
-        onPointerDown={beginCommitInputResize}
-      />
-      <textarea
-        ref={commitInputRef}
-        className="wb-git-commit-input"
-        value={commitMessage}
-        disabled={commitBusy || !gitRoot}
-        placeholder={labels.messageLabel}
-        aria-label={labels.messageLabel}
-        style={commitInputHeight ? { height: commitInputHeight } : undefined}
-        onChange={(event) => onCommitMessageChange(event.target.value)}
-      />
-      <div className="wb-git-commit-actions">
-        <button
-          type="button"
-          className={`wb-git-action-btn wb-git-commit-auto-btn${commitBusy ? " is-loading" : ""}`}
-          disabled={commitBusy || !gitRoot || !hasStagedEntries}
-          aria-busy={commitBusy}
-          aria-label={labels.autoGenerate}
-          title={labels.autoGenerate}
-          onClick={onSuggestCommit}
-        >
-          {commitBusy ? <ThemeIcon name="loader" className="spin wb-git-default-loading" size={16} /> : <ThemeIcon name="sparkles" size={16} />}
-        </button>
-        <button
-          type="button"
-          className="wb-git-action-btn"
-          disabled={!canCommit}
-          aria-label={labels.commit}
-          title={labels.commit}
-          onClick={() => onCommit(false)}
-        >
-          <ThemeIcon name="check" size={16} />
-        </button>
-        <button
-          type="button"
-          className="wb-git-action-btn primary"
-          disabled={!canCommit}
-          aria-label={labels.commitAndPush}
-          title={labels.commitAndPush}
-          onClick={() => onCommit(true)}
-        >
-          <ThemeIcon name="arrow-up-to-line" size={16} />
-        </button>
-        {trackingLabel ? <button
-          type="button"
-          className="muted wb-git-tracking wb-git-tracking-btn"
-          title={tracking?.upstream ? `${labels.sync} · ${tracking.upstream}` : labels.sync}
-          aria-label={labels.sync}
-          aria-busy={syncing}
-          disabled={syncing}
-          onClick={onSync}
-        >
-          <ThemeIcon
-            name={syncing ? "loader" : "refresh"}
-            size={14}
-            className={`wb-git-tracking-icon${syncing ? " spin" : ""}`}
-            aria-hidden="true"
-          />
-          <span className="wb-git-tracking-label">{trackingLabel}</span>
-        </button> : null}
-      </div>
-    </div>
-  </div>
-    {contextMenu ? createPortal(<div
-      className="wb-context-menu wb-git-context-menu"
-      role="menu"
-      style={{
-        left: Math.max(8, Math.min(contextMenu.x, window.innerWidth - 196)),
-        top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - 120))
-      }}
-      onContextMenu={(event) => event.preventDefault()}
-    >
-      <button type="button" role="menuitem" onClick={() => { onOpenFile(contextMenu.change); setContextMenu(null); }}>{labels.openFile}</button>
-      <button type="button" role="menuitem" onClick={() => { onOpenExternal(contextMenu.change); setContextMenu(null); }}>{labels.openDefault}</button>
-      <button type="button" role="menuitem" onClick={() => { onCopyPath(contextMenu.change); setContextMenu(null); }}>{labels.copyPath}</button>
-    </div>, document.body) : null}
-  </>, host);
-}
-
-function graphColumnX(layout: GitGraphLayout, column: number): number {
-  return column * layout.laneWidth + layout.laneWidth / 2;
-}
-
-function graphCurvePath(fromX: number, toX: number, rowHeight: number, side: "left" | "right"): string {
-  const midY = rowHeight / 2;
-  const bend = Math.max(10, Math.abs(toX - fromX) * 0.75);
-  if (side === "left") return `M ${fromX} ${midY} C ${fromX - bend} ${midY + rowHeight * 0.2}, ${toX + bend * 0.35} ${midY + rowHeight * 0.3}, ${toX} ${rowHeight}`;
-  return `M ${toX} ${rowHeight} C ${toX - bend * 0.35} ${midY + rowHeight * 0.3}, ${fromX + bend} ${midY + rowHeight * 0.2}, ${fromX} ${midY}`;
-}
-
-function GitGraphSvg({ row, layout }: { row: GitGraphRow; layout: GitGraphLayout }): React.JSX.Element {
-  const radius = 4;
-  const midY = layout.rowHeight / 2;
-  const color = (column: number) => layout.columnColors[column] ?? column % 8;
-  const incoming = new Set(row.incomingTracks || []);
-  const outgoing = new Set(row.outgoingTracks || []);
-  return <svg className="wb-git-log-graph-row-canvas" width={layout.maxColumns * layout.laneWidth} height={layout.rowHeight} viewBox={`0 0 ${layout.maxColumns * layout.laneWidth} ${layout.rowHeight}`} aria-hidden="true">
-    {[...incoming].map((column) => <line key={`in-${column}`} x1={graphColumnX(layout, column)} y1={0} x2={graphColumnX(layout, column)} y2={row.commitColumn === column ? midY - radius - 1 : midY} className={`wb-git-graph-lane wb-git-graph-lane-${color(column)}`} />)}
-    {[...outgoing].filter((column) => incoming.has(column)).map((column) => <line key={`out-${column}`} x1={graphColumnX(layout, column)} y1={row.commitColumn === column ? midY + radius + 1 : midY} x2={graphColumnX(layout, column)} y2={layout.rowHeight} className={`wb-git-graph-lane wb-git-graph-lane-${color(column)}`} />)}
-    {(row.curves || []).map((curve, index) => {
-      if (curve.side === "left" && curve.fromCol <= curve.toCol) return null;
-      return <path key={`curve-${index}`} d={graphCurvePath(graphColumnX(layout, curve.fromCol), graphColumnX(layout, curve.toCol), layout.rowHeight, curve.side)} className={`wb-git-graph-lane wb-git-graph-lane-${curve.colorIndex ?? color(curve.fromCol)}`} />;
-    })}
-    {row.commitColumn != null ? <>{row.isHead ? <circle cx={graphColumnX(layout, row.commitColumn)} cy={midY} r={radius + 2.5} className="wb-git-graph-head-ring" /> : null}<circle cx={graphColumnX(layout, row.commitColumn)} cy={midY} r={radius} className={`wb-git-graph-node wb-git-graph-lane-${row.colorIndex ?? color(row.commitColumn)}`} /></> : null}
-  </svg>;
-}
-
-function formatGitCommitDate(dateSeconds: number, locale: string): string {
-  if (!Number.isFinite(dateSeconds)) return "";
-  const date = new Date(dateSeconds * 1000);
-  if (Number.isNaN(date.getTime())) return "";
-  try {
-    return date.toLocaleDateString(locale, { year: "numeric", month: "short", day: "numeric" });
-  } catch {
-    return date.toLocaleDateString();
-  }
-}
-
-function GitGraphPortals({ gitLog, gitShow, keepGraph }: { gitLog: GitLog | null; gitShow: GitShow | null; keepGraph: boolean }): React.JSX.Element | null {
-  const [hosts, setHosts] = useState<HTMLElement[]>([]);
-  useEffect(() => {
-    setHosts(gitLog && (keepGraph || !gitShow) ? [...document.querySelectorAll<HTMLElement>("#react-workbench .wb-git-log-graph-row")] : []);
-  }, [gitLog, gitShow, keepGraph]);
-  if (!gitLog || (gitShow && !keepGraph)) return null;
-  return <>{hosts.map((host, index) => {
-    const row = gitLog.layout.rows[index];
-    return row ? createPortal(<span className="react-git-graph-gutter wb-git-log-graph-gutter" key={gitLog.commits[index]?.hash || index}><GitGraphSvg row={row} layout={gitLog.layout} /></span>, host) : null;
-  })}</>;
-}
-
-function gitCommitBranchNames(commit: GitLogCommit): string[] {
-  return [...new Set([...(commit.refs.heads || []), ...(commit.refs.remotes || [])])];
-}
-
-function GitCommitBranches({ commit }: { commit: GitLogCommit }): React.JSX.Element | null {
-  const branches = gitCommitBranchNames(commit);
-  if (!branches.length) return null;
-  const localBranches = new Set(commit.refs.heads || []);
-  return <span className="wb-git-log-branches" aria-label={branches.join(", ")}>
-    {branches.map((branch) => <span
-      className={`wb-git-log-decoration-pill${localBranches.has(branch) ? " is-local" : " is-remote"}${commit.refs.isHead && commit.refs.primaryLabel === branch ? " is-head" : ""}`}
-      data-branch-name={branch}
-      title={branch}
-      key={branch}
-    >
-      <ThemeIcon name="git-branch" size={10} aria-hidden="true" />
-      <span>{branch}</span>
-    </span>)}
-  </span>;
-}
-
-function GitActionIcons({ visible }: { visible: boolean }): React.JSX.Element | null {
-  const [hosts, setHosts] = useState<HTMLElement[]>([]);
-  useEffect(() => {
-    setHosts(visible ? [...document.querySelectorAll<HTMLElement>("#react-workbench .wb-git-actions button")] : []);
-  }, [visible]);
-  if (!visible) return null;
-  const icons = [
-    { label: "Git log", icon: <ThemeIcon name="history" size={16} /> },
-    { label: "Refresh", icon: <ThemeIcon name="refresh" size={16} /> }
-  ];
-  return <>{hosts.map((host, index) => icons[index] ? createPortal(<span className="react-git-action-icon" title={icons[index].label} aria-hidden="true">{icons[index].icon}</span>, host) : null)}</>;
-}
-
-function GitRepositorySelector({
-  repositories,
-  value,
-  ariaLabel,
-  onChange
-}: {
-  repositories: Array<{ root: string; label: string }>;
-  value: string;
-  ariaLabel: string;
-  onChange: (root: string) => void;
-}): React.JSX.Element {
-  if (repositories.length <= 1) {
-    const only = repositories[0];
-    return <span className="wb-git-repo-select is-static" title={only?.root || value} aria-label={ariaLabel}>{only?.label || basename(value)}</span>;
-  }
-  return <select className="react-git-repo-select wb-git-repo-select" value={value} aria-label={ariaLabel} onChange={(event) => onChange(event.target.value)}>
-    {repositories.map((repository) => <option value={repository.root} key={repository.root}>{repository.label}</option>)}
-  </select>;
-}
-
-function GitBranchSelector({
-  repoRoot,
-  value,
-  ariaLabel,
-  onChange
-}: {
-  repoRoot: string;
-  value: string;
-  ariaLabel: string;
-  onChange: (selection: { branch: string; remote?: string }) => void;
-}): React.JSX.Element | null {
-  const { t } = useI18n();
-  const [branches, setBranches] = useState<TerminalGitBranches | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [open, setOpen] = useState(false);
-  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
-  const requestRef = useRef(0);
-  const buttonRef = useRef<HTMLButtonElement | null>(null);
-
-  useEffect(() => {
-    const requestId = requestRef.current + 1;
-    requestRef.current = requestId;
-    if (!repoRoot) {
-      setBranches(null);
-      setLoading(false);
-      return;
-    }
-    const api = desktopApi();
-    if (typeof api.terminalGitBranches !== "function") {
-      setBranches(null);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    void api.terminalGitBranches({ cwd: repoRoot }).then((result) => {
-      if (requestRef.current === requestId) setBranches(result);
-    }).catch(() => {
-      if (requestRef.current === requestId) setBranches(null);
-    }).finally(() => {
-      if (requestRef.current === requestId) setLoading(false);
-    });
-    return () => { requestRef.current += 1; };
-  }, [repoRoot, value]);
-
-  useEffect(() => {
-    if (!open) return;
-    const dismiss = (event: MouseEvent) => {
-      if (!(event.target instanceof Element) || !event.target.closest(".react-git-branch-control")) setOpen(false);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setOpen(false);
-        buttonRef.current?.focus();
-      }
-    };
-    window.addEventListener("mousedown", dismiss);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("mousedown", dismiss);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open]);
-
-  if (!repoRoot) return null;
-  const localBranches = branches?.mode === "direct" ? branches.localBranches || branches.branches || [] : [];
-  const remoteBranches = branches?.mode === "direct" ? branches.remoteBranches || [] : [];
-  const openMenu = () => {
-    const rect = buttonRef.current?.getBoundingClientRect();
-    if (rect) {
-      setMenuPosition({
-        top: Math.min(rect.bottom + 4, window.innerHeight - 16),
-        left: Math.max(8, Math.min(rect.left, window.innerWidth - 268))
-      });
-    }
-    setOpen((current) => !current);
-  };
-  const selectBranch = (selection: { branch: string; remote?: string }) => {
-    setOpen(false);
-    onChange(selection);
-  };
-  const trigger = <button
-    ref={buttonRef}
-    type="button"
-    className="react-git-branch-control react-git-branch-trigger"
-    aria-label={`${ariaLabel}: ${value || "-"}`}
-    aria-haspopup="menu"
-    aria-expanded={open}
-    onClick={openMenu}
-  >
-    <ThemeIcon name="git-branch" size={12} aria-hidden="true" />
-    <span>{value || "-"}</span>
-    <ThemeIcon name="chevron-down" size={11} aria-hidden="true" />
-  </button>;
-  const menu = open ? createPortal(<div
-    className="react-git-branch-control react-git-branch-popover wb-git-branch-popover"
-    style={menuPosition || undefined}
-    role="menu"
-    aria-label={ariaLabel}
-  >
-    <div className="wb-git-branch-list">
-      {loading && !branches ? <p className="wb-git-branch-empty muted" role="status">{t("desktop.common.loading")}</p> : <>
-        <div className="wb-git-branch-repo-group">
-          <div className="wb-git-branch-repo-head">{t("desktop.workbench.gitLocalBranches")}</div>
-          {localBranches.length ? localBranches.map((branch) => <button
-            type="button"
-            role="menuitemradio"
-            aria-checked={branch === value}
-            className={`wb-git-branch-item${branch === value ? " active" : ""}`}
-            key={branch}
-            onClick={() => selectBranch({ branch })}
-          >{branch}</button>) : <p className="wb-git-branch-empty muted">{t("desktop.workbench.gitNoLocalBranches")}</p>}
-        </div>
-        <div className="wb-git-branch-repo-group">
-          <div className="wb-git-branch-repo-head">{t("desktop.workbench.gitRemoteBranches")}</div>
-          {remoteBranches.length ? remoteBranches.map((branch) => <button
-            type="button"
-            role="menuitem"
-            className="wb-git-branch-item"
-            title={branch.fullName}
-            key={branch.fullName}
-            onClick={() => selectBranch({ branch: branch.name, remote: branch.remote })}
-          >{branch.fullName}</button>) : <p className="wb-git-branch-empty muted">{t("desktop.workbench.gitNoRemoteBranches")}</p>}
-        </div>
-      </>}
-    </div>
-  </div>, document.body) : null;
-  return <>{trigger}{menu}</>;
-}
-
-function BranchGraphNavigation({
-  visible,
-  title,
-  ariaLabel,
-  onBack
-}: {
-  visible: boolean;
-  title: string;
-  ariaLabel: string;
-  onBack: () => void;
-}): ReactPortal | null {
-  const [host, setHost] = useState<HTMLElement | null>(null);
-  useEffect(() => {
-    setHost(visible ? document.querySelector<HTMLElement>("#react-workbench .wb-git-pane-head") : null);
-  }, [visible]);
-  return visible && host ? createPortal(<div className="react-branch-graph-nav">
-    <button type="button" className="wb-diff-back" aria-label={ariaLabel} onClick={onBack}><ThemeIcon name="chevron-left" size={15} /></button>
-    <span className="react-branch-graph-title">{title}</span>
-  </div>, host) : null;
-}
-
-/**
- * OSC 52: allow apps (tmux, neovim, Claude Code, …) to write the system clipboard.
- * Prefer Electron's native clipboard so multi-byte UTF-8 (CJK) is not re-interpreted
- * as Latin-1, and so writes work without a user-gesture permission prompt.
- */
-const writeOnlyClipboardProvider = createOsc52ClipboardProvider({
-  writeText: (text) => {
-    writeTerminalSelection(text, (value) => desktopApi().clipboardWriteText?.(value));
-  }
-});
-
-const TERMINAL_SEARCH_DECORATIONS: NonNullable<ISearchOptions["decorations"]> = {
-  matchBackground: "#515c6a",
-  matchBorder: "#ffffff33",
-  matchOverviewRuler: "#515c6a",
-  activeMatchBackground: "#f5a623",
-  activeMatchBorder: "#ffffff",
-  activeMatchColorOverviewRuler: "#f5a623"
-};
-
-/**
- * Full-screen TUIs (claude code, prime agent, …) switch to the alternate screen
- * buffer, which has no xterm scrollback. They enable mouse tracking and scroll
- * their own viewport, so the waterdrop control emulates wheel bursts through the PTY.
- */
-/** A small, controllable movement for an in-app TUI viewport. */
-const TUI_WHEEL_STEP = 8;
-const TUI_WHEEL_REPEAT_MS = 80;
-const TUI_DRAG_DEAD_ZONE_PX = 8;
-const TUI_DRAG_PIXELS_PER_TICK = 6;
-const TUI_DRAG_MAX_TICKS = 32;
-/** Wheel ticks sent by Home / End; TUIs scroll a few lines per tick. */
-const TUI_WHEEL_JUMP = 400;
-/** DEC private modes whose enablement makes the app own wheel scrolling. */
-const TUI_MOUSE_TRACKING_MODES = new Set([1000, 1002, 1003]);
-const MOUSE_TRACKING_SEQUENCE = /\x1b\[\?([0-9;]+)([hl])/g;
-
-/**
- * Track DEC private mode 1000/1002/1003 (mouse tracking) per pty from the raw
- * PTY data stream. Full-screen TUIs enable these so they receive wheel events
- * and scroll their own viewport; the jump controls mirror that with a burst.
- */
-function trackTerminalMouseModes(id: number, chunk: string, tracking: Map<number, boolean>): void {
-  const previous = tracking.get(id) ?? false;
-  let next = previous;
-  for (const match of chunk.matchAll(MOUSE_TRACKING_SEQUENCE)) {
-    const modes = match[1].split(";").map((mode) => Number(mode));
-    if (!modes.some((mode) => TUI_MOUSE_TRACKING_MODES.has(mode))) continue;
-    next = match[2] === "h";
-  }
-  if (next !== previous) tracking.set(id, next);
-}
-
-/**
- * Inline agent TUIs (prime agent, codex, …) repaint the transcript with a
- * synchronized full-screen clear (`\x1b[?2026h … \x1b[2J … \x1b[?2026l`)
- * whenever content above the visible viewport changes or the transcript
- * shrinks (e.g. compaction). xterm keeps the viewport at the old baseY after
- * that, so the repainted content lands at the top of the screen — the terminal
- * appears to "jump to the top" mid-output. Track those redraw bursts per
- * terminal so TerminalView can re-anchor the viewport to the bottom.
- */
-type TuiRedrawTracker = {
-  /** Rolling tail of the previous chunk so split escape sequences are seen whole. */
-  tail: string;
-  /** Inside a `\x1b[?2026h` … `\x1b[?2026l` synchronized-output block. */
-  inSync: boolean;
-  /** A full-screen erase happened inside the block (redraw pending). */
-  pending: boolean;
-  /** The synchronized block closed after a pending erase (redraw complete). */
-  blockClosed: boolean;
-};
-
-/** Longest tracked sequence is `\x1b[?2026h` (7 bytes); keep a bit of slack. */
-const TUI_REDRAW_TAIL_LENGTH = 10;
-const tuiRedrawTrackers = new WeakMap<Terminal, TuiRedrawTracker>();
-
-function trackTuiRedraw(chunk: string, terminal: Terminal): void {
-  let tracker = tuiRedrawTrackers.get(terminal);
-  if (!tracker) {
-    tracker = { tail: "", inSync: false, pending: false, blockClosed: false };
-    tuiRedrawTrackers.set(terminal, tracker);
-  }
-  const scan = tracker.tail + chunk;
-  tracker.tail = scan.slice(-TUI_REDRAW_TAIL_LENGTH);
-  if (scan.includes("\x1b[?2026h")) tracker.inSync = true;
-  if (tracker.inSync && scan.includes("\x1b[2J")) tracker.pending = true;
-  if (scan.includes("\x1b[?2026l")) {
-    tracker.inSync = false;
-    if (tracker.pending) tracker.blockClosed = true;
-  }
-}
-
-/**
- * Re-anchor a session pane's normal-buffer viewport after the agent TUI
- * repainted the transcript from the top. `scrollToBottom` alone is not enough:
- * xterm's viewport is already at baseY, so a transcript shorter than the
- * screen renders at the top. Pull the viewport up by the trailing blank rows
- * so the transcript tail stays at the bottom of the screen.
- */
-function reanchorTuiViewport(terminal: Terminal): void {
-  try {
-    const buffer = terminal.buffer.active;
-    if (buffer.type !== "normal") return;
-    terminal.scrollToBottom();
-    const rows = terminal.rows;
-    let lastContent = -1;
-    for (let i = rows - 1; i >= 0; i -= 1) {
-      const line = buffer.getLine(buffer.viewportY + i);
-      if (line && line.translateToString(true).trim()) {
-        lastContent = i;
-        break;
-      }
-    }
-    if (lastContent >= 0 && lastContent < rows - 1) {
-      const gap = rows - 1 - lastContent;
-      // The public IBuffer typings only expose viewportY/baseY getters. Set the
-      // internal Buffer field directly instead of scrollLines: a negative
-      // scrollLines flips xterm's "user is scrolling" flag, which would freeze
-      // follow-on output instead of staying anchored.
-      const internal = (terminal as unknown as {
-        _core?: { _bufferService?: { buffer?: { ydisp: number; ybase: number } } };
-      })._core?._bufferService?.buffer;
-      if (internal) {
-        internal.ydisp = Math.max(0, internal.ybase - gap);
-        terminal.refresh(0, rows - 1);
-      }
-    }
-  } catch {
-    /* terminal disposed mid-redraw */
-  }
-}
-
-/**
- * Check whether the terminal viewport is anchored at or following the bottom of
- * output. For normal shells, this is viewportY >= baseY. For TUI surfaces where
- * trailing blank rows were pulled up by reanchorTuiViewport, this checks whether
- * the viewport sits at or below the content anchor (baseY - gap).
- */
-export function isTerminalAtBottom(terminal: Terminal): boolean {
-  try {
-    const buffer = terminal.buffer.active;
-    if (buffer.type !== "normal") return true;
-    if (buffer.viewportY >= buffer.baseY) return true;
-    const rows = terminal.rows;
-    let lastContent = -1;
-    for (let i = rows - 1; i >= 0; i -= 1) {
-      const line = buffer.getLine(buffer.baseY + i);
-      if (line && line.translateToString(true).trim()) {
-        lastContent = i;
-        break;
-      }
-    }
-    const gap = lastContent >= 0 && lastContent < rows - 1 ? rows - 1 - lastContent : 0;
-    const targetY = Math.max(0, buffer.baseY - gap);
-    return buffer.viewportY >= targetY;
-  } catch {
-    return true;
-  }
-}
-
-type TerminalRendererMode = "webgl" | "canvas";
-
-/**
- * Prefer WebGL for throughput; fall back to Canvas 2D, then DOM.
- * When `mode === "canvas"`, skip WebGL entirely (settings: force Canvas).
- *
- * CJK stability still depends on font stack + Unicode11 + rescaleOverlappingGlyphs.
- * On context loss (or WebGL load failure) drop to Canvas so the session stays usable.
- */
-function tryLoadAcceleratedRenderer(
-  terminal: Terminal,
-  mode: TerminalRendererMode = "webgl"
-): { dispose: () => void } {
-  let active: { dispose(): void } | null = null;
-  let contextLossSub: { dispose(): void } | null = null;
-
-  const loadCanvas = (): boolean => {
-    try {
-      contextLossSub?.dispose();
-      contextLossSub = null;
-      try { active?.dispose(); } catch { /* previous renderer already gone */ }
-      active = null;
-      const canvas = new CanvasAddon();
-      terminal.loadAddon(canvas);
-      active = canvas;
-      return true;
-    } catch {
-      active = null;
-      return false;
-    }
-  };
-
-  if (mode === "canvas") {
-    loadCanvas();
-  } else {
-    try {
-      const webgl = new WebglAddon();
-      terminal.loadAddon(webgl);
-      active = webgl;
-      contextLossSub = webgl.onContextLoss(() => {
-        try { webgl.dispose(); } catch { /* ignore */ }
-        active = null;
-        loadCanvas();
-      });
-    } catch {
-      loadCanvas();
-    }
-  }
-
-  return {
-    dispose: () => {
-      contextLossSub?.dispose();
-      contextLossSub = null;
-      try { active?.dispose(); } catch { /* ignore */ }
-      active = null;
-    }
-  };
-}
-
-/**
- * After zoom / DPR / theme changes the WebGL glyph atlas can keep stale samples
- * (looks like scrambled CJK until hover forces a partial redraw). Rebuild atlas
- * and repaint the visible buffer.
- */
-function refreshTerminalGlyphs(terminal: Terminal): void {
-  try {
-    terminal.clearTextureAtlas?.();
-  } catch {
-    /* DOM renderer has no atlas */
-  }
-  try {
-    const last = Math.max(0, terminal.rows - 1);
-    terminal.refresh(0, last);
-  } catch {
-    /* terminal disposed mid-fit */
-  }
-}
-
-/**
- * Latin mono first (cell metrics), then CJK faces so double-width glyphs do not
- * fall back to a proportional UI font that bleeds across neighboring cells.
- */
-const TERMINAL_FONT_FAMILY =
-  'Menlo, Monaco, "SF Mono", Consolas, "Cascadia Mono", "Courier New", "PingFang SC", "Hiragino Sans GB", "Noto Sans Mono CJK SC", "Microsoft YaHei UI", monospace';
-
-function resolveTransparentTerminalTheme(themeId: WorkbenchTerminalThemeId, appearance: DesktopAppearanceState) {
-  // The xterm CSS parser rejects the transparent keyword and falls back to
-  // its opaque default background. Use an explicit zero-alpha color instead.
-  return { ...resolveTerminalTheme(themeId, appearance), background: "rgba(0, 0, 0, 0)" };
-}
-
-function TerminalView({ pane, active, themeId, appearance, rendererMode, engineType = "xterm", onPty, onDetach, onInput, onInitialPromptSubmitted, mouseTracking }: {
-  pane: TerminalPane;
-  active: boolean;
-  themeId: WorkbenchTerminalThemeId;
-  appearance: DesktopAppearanceState;
-  /** webgl (default) or force canvas — hot-swapped without killing the PTY. */
-  rendererMode: TerminalRendererMode;
-  engineType?: TerminalEngineType;
-  onPty: (key: string, id: number, terminal: Terminal | null) => void;
-  onDetach: (id: number) => void;
-  onInput: (key: string) => void;
-  onInitialPromptSubmitted: (key: string) => void;
-  /** Per-pty mouse-tracking state parsed from the PTY data stream (stable ref). */
-  mouseTracking: { current: Map<number, boolean> };
-}): React.JSX.Element {
-  const { t } = useI18n();
-  const host = useRef<HTMLDivElement>(null);
-  const scheduleFitRef = useRef<(() => void) | null>(null);
-  const searchAddonRef = useRef<SearchAddon | null>(null);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const terminalRef = useRef<Terminal | null>(null);
-  const rendererRef = useRef<{ dispose: () => void } | null>(null);
-  const rendererModeRef = useRef<TerminalRendererMode>(rendererMode);
-  const ptyId = useRef<number | null>(null);
-  const initialPromptRef = useRef(pane.initialPrompt);
-  initialPromptRef.current = pane.initialPrompt;
-  /** Whether the user is anchored at the bottom of the normal buffer (session
-   *  panes only). Updated solely from user scroll input; write-side re-anchors
-   *  read it so they never fight an intentional scroll-up. */
-  const followOutputRef = useRef(true);
-  const [ready, setReady] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchMeta, setSearchMeta] = useState<{ index: number; count: number } | null>(null);
-  const [dragOver, setDragOver] = useState(false);
-  const tuiScrollTimer = useRef<number | null>(null);
-  const tuiDragRef = useRef<{ pointerId: number; startY: number } | null>(null);
-  const tuiScrollIntentRef = useRef<{ direction: "up" | "down"; ticks: number } | null>(null);
-  const [tuiPull, setTuiPull] = useState<{ direction: "idle" | "up" | "down"; strength: number }>({ direction: "idle", strength: 0 });
-  const [scrollState, setScrollState] = useState({ tuiMode: false, tuiInteractive: false });
-
-  const runSearch = useCallback((direction: "next" | "prev", term: string) => {
-    const addon = searchAddonRef.current;
-    if (!addon) return;
-    const q = term.trim();
-    if (!q) {
-      addon.clearDecorations();
-      setSearchMeta(null);
-      return;
-    }
-    const opts: ISearchOptions = {
-      caseSensitive: false,
-      decorations: TERMINAL_SEARCH_DECORATIONS
-    };
-    if (direction === "next") addon.findNext(q, opts);
-    else addon.findPrevious(q, opts);
-  }, []);
-
-  useEffect(() => {
-    const hostEl = host.current;
-    if (!hostEl) return;
-    return registerTerminalSelection({
-      element: hostEl,
-      getSelectedText: () => terminalRef.current?.getSelection() || "",
-      projectPath: pane.projectPath
-    });
-  }, [pane.projectPath, ready]);
-
-  const closeSearch = useCallback(() => {
-    setSearchOpen(false);
-    searchAddonRef.current?.clearDecorations();
-    setSearchMeta(null);
-  }, []);
-
-  useEffect(() => {
-    if (!host.current) return;
-    const hostEl = host.current;
-    setReady(false);
-    setSearchOpen(false);
-    setSearchQuery("");
-    setSearchMeta(null);
-    ptyId.current = null;
-    const terminal = new Terminal({
-      allowProposedApi: true,
-      cursorBlink: true,
-      fontFamily: TERMINAL_FONT_FAMILY,
-      fontSize: 13,
-      // Keep cell metrics tight; non-zero letterSpacing skews FitAddon + CJK.
-      letterSpacing: 0,
-      lineHeight: 1.0,
-      // Ambiguous-width / fallback glyphs otherwise spill into the next cell.
-      rescaleOverlappingGlyphs: true,
-      scrollback: 10_000,
-      allowTransparency: true,
-      theme: resolveTransparentTerminalTheme(themeId, appearance)
-    });
-    terminalRef.current = terminal;
-    const fitAddon = new FitAddon();
-    terminal.loadAddon(fitAddon);
-    terminal.open(hostEl);
-
-    // Unicode widths must be active before any write / accelerated paint.
-    const unicode11 = new Unicode11Addon();
-    terminal.loadAddon(unicode11);
-    terminal.unicode.activeVersion = "11";
-
-    const initialMode = rendererModeRef.current;
-    rendererRef.current = tryLoadAcceleratedRenderer(terminal, initialMode);
-
-    terminal.loadAddon(new WebLinksAddon((_event, uri) => {
-      void desktopApi().openExternalUrl(uri).catch(() => undefined);
-    }));
-
-    // Runtime ctor is (base64?, provider?); published .d.ts only documents provider.
-    // Utf8Base64 avoids atob-as-Latin-1 mojibake for CJK OSC 52 payloads.
-    terminal.loadAddon(new (ClipboardAddon as unknown as new (
-      base64?: Utf8Base64,
-      provider?: typeof writeOnlyClipboardProvider
-    ) => ClipboardAddon)(new Utf8Base64(), writeOnlyClipboardProvider));
-
-    // Selection copy (Cmd/Ctrl+C): also push Unicode text through Electron clipboard.
-    // Some Chromium/Electron paths otherwise mishandle multi-byte clipboard data.
-    const onCopySelection = (event: Event) => {
-      const text = terminal.getSelection();
-      if (!text) return;
-      writeTerminalSelection(text, (value) => desktopApi().clipboardWriteText?.(value));
-      const ce = event as ClipboardEvent;
-      if (ce.clipboardData) {
-        ce.clipboardData.setData("text/plain", text);
-        ce.preventDefault();
-      }
-    };
-    hostEl.addEventListener("copy", onCopySelection);
-
-    terminal.loadAddon(new ImageAddon({
-      storageLimit: 64,
-      enableSizeReports: true,
-      // SIXEL's decoder instantiates embedded WebAssembly, which is intentionally
-      // blocked by the Desktop renderer CSP (`script-src 'self'`). Keep iTerm
-      // image protocol support without weakening CSP via unsafe-eval.
-      sixelSupport: false
-    }));
-
-    const searchAddon = new SearchAddon();
-    terminal.loadAddon(searchAddon);
-    searchAddonRef.current = searchAddon;
-    const searchResultsSub = searchAddon.onDidChangeResults?.((event) => {
-      setSearchMeta({ index: event.resultIndex, count: event.resultCount });
-    });
-
-    let alive = true;
-    let lastPtySize = "";
-    const syncScrollState = () => {
-      if (!alive) return;
-      const buffer = terminal.buffer.active;
-      // Alternate-buffer activation can happen before terminalSpawn resolves.
-      // Detect the buffer independently so the TUI affordance is not missed
-      // during the Codex startup handshake.
-      const mouseTrackingActive = ptyId.current !== null && mouseTracking.current.get(ptyId.current) === true;
-      // Agent session panes are TUI surfaces even when the CLI keeps xterm's
-      // normal buffer. Once their PTY exists, allow the waterdrop to send
-      // wheel events; some Codex startup paths do not expose DEC mouse modes
-      // in a single parseable chunk, which must not leave the control inert.
-      const tuiMode = pane.group === "session" || buffer.type === "alternate";
-      const tuiInteractive = tuiMode && (pane.group === "session" || mouseTrackingActive);
-      const next = { tuiMode, tuiInteractive };
-      setScrollState((current) => current.tuiMode === next.tuiMode && current.tuiInteractive === next.tuiInteractive ? current : next);
-    };
-
-    const resizePty = (cols: number, rows: number) => {
-      if (ptyId.current === null) return;
-      const sizeKey = `${cols}x${rows}`;
-      if (sizeKey === lastPtySize) return;
-      lastPtySize = sizeKey;
-      void desktopApi().terminalResize({ id: ptyId.current, cols, rows }).catch(() => {
-        if (lastPtySize === sizeKey) lastPtySize = "";
-      });
-    };
-
-    // FitAddon only updates xterm cols/rows. PTY must be told separately so
-    // fullscreen TUIs and shell line wrapping track window zoom / pane resize.
-    const onTermResize = terminal.onResize(({ cols, rows }) => {
-      resizePty(cols, rows);
-    });
-    followOutputRef.current = true;
-    const onWriteParsed = terminal.onWriteParsed(() => {
-      syncScrollState();
-      if (pane.group !== "session") return;
-      const buffer = terminal.buffer.active;
-      if (buffer.type !== "normal") return;
-      const tracker = tuiRedrawTrackers.get(terminal);
-      const redrawCompleted = tracker?.pending === true && tracker?.blockClosed === true;
-      if (redrawCompleted && tracker) {
-        tracker.pending = false;
-        tracker.blockClosed = false;
-      }
-      // Inline agent TUIs repaint the transcript from the top; xterm then
-      // leaves the viewport at the old baseY so the content appears at the top
-      // of the screen mid-output. Re-anchor the bottom for the user.
-      if (!followOutputRef.current) return;
-      if (redrawCompleted) {
-        reanchorTuiViewport(terminal);
-      } else if (buffer.viewportY < buffer.baseY) {
-        terminal.scrollToBottom();
-      }
-    });
-    const onBufferChange = terminal.buffer.onBufferChange(syncScrollState);
-
-    let lastFitKey = "";
-    const fitHost = () => {
-      if (hostEl.clientWidth < 2 || hostEl.clientHeight < 2) return;
-      try {
-        const proposed = fitAddon.proposeDimensions();
-        if (!proposed || !Number.isFinite(proposed.cols) || !Number.isFinite(proposed.rows)) return;
-        if (proposed.cols === terminal.cols && proposed.rows === terminal.rows) {
-          syncScrollState();
-          return;
-        }
-        const buffer = terminal.buffer.active;
-        const wasAtNormalBufferBottom = buffer.type === "normal" && buffer.viewportY === buffer.baseY;
-        fitAddon.fit();
-        if (wasAtNormalBufferBottom && terminal.buffer.active.type === "normal") terminal.scrollToBottom();
-        // Only rebuild the WebGL glyph atlas when geometry or DPR actually changes.
-        // Continuous ResizeObserver ticks would thrash clearTextureAtlas otherwise.
-        const fitKey = `${terminal.cols}x${terminal.rows}@${window.devicePixelRatio || 1}`;
-        if (fitKey !== lastFitKey) {
-          lastFitKey = fitKey;
-          refreshTerminalGlyphs(terminal);
-        }
-        syncScrollState();
-      } catch {
-        /* hidden panes fit after activation */
-      }
-    };
-
-    let fitFrame = 0;
-    const scheduleFit = () => {
-      if (fitFrame) return;
-      fitFrame = window.requestAnimationFrame(() => {
-        fitFrame = 0;
-        fitHost();
-      });
-    };
-    scheduleFitRef.current = scheduleFit;
-
-    fitHost();
-    syncScrollState();
-    const observer = new ResizeObserver(scheduleFit);
-    observer.observe(hostEl);
-    // Window zoom / electron zoom-factor changes do not always re-fire RO alone.
-    window.addEventListener("resize", scheduleFit);
-    const viewport = window.visualViewport;
-    viewport?.addEventListener("resize", scheduleFit);
-
-    const input = terminal.onData((data) => {
-      if (ptyId.current !== null) void desktopApi().terminalInput({ id: ptyId.current, data });
-      onInput(pane.key);
-    });
-    // Wheel, scrollbar drags, and PageUp/PageDown move xterm's viewport. Track
-    // whether the user stays anchored to the bottom so output re-anchoring
-    // (above) never yanks them back while they are reading history. These run
-    // in the bubble phase, after xterm's own handlers applied the scroll.
-    const syncFollowState = () => {
-      const buffer = terminal.buffer.active;
-      if (buffer.type !== "normal") return;
-      followOutputRef.current = buffer.viewportY >= buffer.baseY;
-    };
-    hostEl.addEventListener("wheel", syncFollowState);
-    hostEl.addEventListener("pointerup", syncFollowState);
-    hostEl.addEventListener("keyup", syncFollowState);
-
-    const bindPty = (id: number, replay: string, sendInitialPrompt: boolean) => {
-      if (!alive) return;
-      ptyId.current = id;
-      if (replay) terminal.write(replay);
-      onPty(pane.key, id, terminal);
-      syncScrollState();
-      setReady(true);
-      // Re-fit after attach in case layout settled during spawn.
-      scheduleFit();
-      resizePty(terminal.cols, terminal.rows);
-      if (sendInitialPrompt && initialPromptRef.current) {
-        window.setTimeout(() => {
-          const initialPrompt = initialPromptRef.current;
-          if (!alive || ptyId.current !== id || !initialPrompt) return;
-          void desktopApi().terminalInput({ id, data: `${initialPrompt}\r` })
-            .then(() => onInitialPromptSubmitted(pane.key))
-            .catch(() => undefined);
-        }, 600);
-      }
-    };
-
-    const persistOrBind = (id: number, replay: string, sendInitialPrompt: boolean) => {
-      if (!alive) {
-        // Project switch: keep the PTY on the pane and stop forwarding.
-        // Close tab: onPty destroys the orphan spawn because the pane is gone.
-        onPty(pane.key, id, null);
-        if (typeof desktopApi().terminalDetach === "function") {
-          void desktopApi().terminalDetach({ id });
-        }
-        return;
-      }
-      bindPty(id, replay, sendInitialPrompt);
-    };
-
-    const existingId = pane.ptyId;
-    const attachExisting = existingId != null && typeof desktopApi().terminalAttach === "function"
-      ? desktopApi().terminalAttach({ id: existingId }).then((result) => {
-          if (result.ok) {
-            persistOrBind(existingId, result.replay || "", false);
-            return;
-          }
-          throw new Error("terminal attach failed");
-        })
-      : existingId != null
-        ? Promise.resolve().then(() => persistOrBind(existingId, "", false))
-        : desktopApi().terminalSpawn({
-            cwd: pane.cwd,
-            command: pane.command,
-            cols: terminal.cols,
-            rows: terminal.rows
-          }).then(async (spawned) => {
-            const { id } = spawned;
-            if (spawned.warnSoftLimit) {
-              notifyDesktop({
-                text: t("desktop.workbench.ptySoftLimit", spawned.count || spawned.softLimit || 12),
-                kind: "info",
-                durationMs: 5000
-              });
-            }
-            let replay = "";
-            if (typeof desktopApi().terminalAttach === "function") {
-              const attached = await desktopApi().terminalAttach({ id });
-              if (attached.ok) replay = attached.replay || "";
-            }
-            persistOrBind(id, replay, true);
-          });
-
-    void attachExisting.catch((error: unknown) => {
-      if (!alive) return;
-      terminal.write(`\r\n${statusError(error)}\r\n`);
-      setReady(true);
-    });
-    return () => {
-      alive = false;
-      observer.disconnect();
-      window.cancelAnimationFrame(fitFrame);
-      if (scheduleFitRef.current === scheduleFit) scheduleFitRef.current = null;
-      window.removeEventListener("resize", scheduleFit);
-      viewport?.removeEventListener("resize", scheduleFit);
-      hostEl.removeEventListener("copy", onCopySelection);
-      hostEl.removeEventListener("wheel", syncFollowState);
-      hostEl.removeEventListener("pointerup", syncFollowState);
-      hostEl.removeEventListener("keyup", syncFollowState);
-      if (tuiScrollTimer.current !== null) {
-        window.clearInterval(tuiScrollTimer.current);
-        tuiScrollTimer.current = null;
-      }
-      onTermResize.dispose();
-      onWriteParsed.dispose();
-      onBufferChange.dispose();
-      input.dispose();
-      searchResultsSub?.dispose();
-      searchAddonRef.current = null;
-      terminalRef.current = null;
-      rendererRef.current?.dispose();
-      rendererRef.current = null;
-      const currentPtyId = ptyId.current ?? pane.ptyId ?? null;
-      ptyId.current = null;
-      if (currentPtyId !== null) {
-        onDetach(currentPtyId);
-        if (typeof desktopApi().terminalDetach === "function") {
-          void desktopApi().terminalDetach({ id: currentPtyId });
-        }
-      }
-      terminal.dispose();
-    };
-    // pane.ptyId is intentionally omitted: the first spawn writes it via onPty
-    // and must not remount/detach the same view.
-  }, [mouseTracking, onDetach, onInitialPromptSubmitted, onInput, onPty, pane.command, pane.cwd, pane.key, t]);
-
-  // Hot-swap accelerated renderer when settings change — keep the same PTY/session.
-  useEffect(() => {
-    if (rendererModeRef.current === rendererMode) return;
-    rendererModeRef.current = rendererMode;
-    const terminal = terminalRef.current;
-    if (!terminal) return;
-    try { rendererRef.current?.dispose(); } catch { /* ignore */ }
-    rendererRef.current = tryLoadAcceleratedRenderer(terminal, rendererMode);
-    refreshTerminalGlyphs(terminal);
-  }, [rendererMode]);
-
-  useEffect(() => {
-    const terminal = terminalRef.current;
-    if (!terminal) return;
-    // Replace full theme object so ANSI colors do not leak from the previous preset.
-    terminal.options.theme = resolveTransparentTerminalTheme(themeId, appearance);
-    refreshTerminalGlyphs(terminal);
-  }, [appearance, themeId]);
-
-  useEffect(() => {
-    if (!active) return;
-    // Double rAF: wait until the pane is display:flex and has real metrics.
-    let outer = 0;
-    let inner = 0;
-    outer = requestAnimationFrame(() => {
-      inner = requestAnimationFrame(() => {
-        try {
-          scheduleFitRef.current?.();
-        } catch { /* fit guard */ }
-      });
-    });
-    return () => {
-      cancelAnimationFrame(outer);
-      cancelAnimationFrame(inner);
-    };
-  }, [active]);
-
-  useEffect(() => {
-    if (!active) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      const isFind = (event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "f";
-      if (isFind) {
-        const terminalWrap = host.current?.closest(".wb-session-split-tui") || host.current;
-        const isTerminalTarget = Boolean(
-          terminalWrap && (
-            terminalWrap.contains(document.activeElement) ||
-            (typeof terminalWrap.matches === "function" && (
-              terminalWrap.matches(":hover") ||
-              terminalWrap.matches(":focus-within")
-            ))
-          )
-        );
-        if (isTerminalTarget) {
-          event.preventDefault();
-          event.stopPropagation();
-          setSearchOpen(true);
-          requestAnimationFrame(() => searchInputRef.current?.focus());
-          return;
-        }
-        return;
-      }
-      if (event.key === "Escape" && searchOpen) {
-        event.preventDefault();
-        closeSearch();
-      }
-    };
-    window.addEventListener("keydown", onKeyDown, true);
-    return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [active, closeSearch, searchOpen]);
-
-  useEffect(() => {
-    if (!searchOpen) return;
-    requestAnimationFrame(() => searchInputRef.current?.focus());
-  }, [searchOpen]);
-
-  // Accept only internal Workbench path drags. On drop, write the POSIX
-  // single-quote escaped absolute path to the current PTY without any trailing
-  // space, newline, or Enter, so it lands at the shell prompt or the active
-  // TUI input position without executing.
-  useEffect(() => {
-    const hostEl = host.current;
-    if (!hostEl) return;
-    let dragDepth = 0;
-    const onDragEnter = (event: DragEvent) => {
-      if (!hasWorkbenchPathDnd(event.dataTransfer)) return;
-      dragDepth += 1;
-      setDragOver(true);
-    };
-    const onDragOver = (event: DragEvent) => {
-      if (!hasWorkbenchPathDnd(event.dataTransfer)) return;
-      event.preventDefault();
-      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
-    };
-    const onDragLeave = () => {
-      dragDepth = Math.max(0, dragDepth - 1);
-      if (dragDepth === 0) setDragOver(false);
-    };
-    const onDrop = (event: DragEvent) => {
-      if (!hasWorkbenchPathDnd(event.dataTransfer)) return;
-      event.preventDefault();
-      dragDepth = 0;
-      setDragOver(false);
-      const path = event.dataTransfer?.getData(WB_PATH_DND_MIME) || "";
-      const id = ptyId.current;
-      if (!path || id === null) return;
-      void desktopApi().terminalInput({ id, data: shellQuotePath(path) });
-      terminalRef.current?.focus();
-    };
-    hostEl.addEventListener("dragenter", onDragEnter);
-    hostEl.addEventListener("dragover", onDragOver);
-    hostEl.addEventListener("dragleave", onDragLeave);
-    hostEl.addEventListener("drop", onDrop);
-    return () => {
-      hostEl.removeEventListener("dragenter", onDragEnter);
-      hostEl.removeEventListener("dragover", onDragOver);
-      hostEl.removeEventListener("dragleave", onDragLeave);
-      hostEl.removeEventListener("drop", onDrop);
-    };
-  }, []);
-
-  const tuiControlVisible = pane.group === "session" || scrollState.tuiMode;
-
-  const sendTuiWheel = (direction: "up" | "down", ticks: number) => {
-    const hostEl = host.current;
-    if (!hostEl || ticks <= 0) return;
-    // Send real wheel events through xterm instead of assuming SGR mouse
-    // encoding. xterm translates each event using the active TUI protocol
-    // (SGR/default/pixel), or scrolls its own normal buffer when appropriate.
-    const target = hostEl.querySelector<HTMLElement>(".xterm-viewport")
-      || hostEl.querySelector<HTMLElement>(".xterm")
-      || hostEl;
-    const screen = hostEl.querySelector<HTMLElement>(".xterm-screen");
-    const rect = (screen || target).getBoundingClientRect();
-    const deltaY = direction === "up" ? -1 : 1;
-    for (let index = 0; index < ticks; index += 1) {
-      target.dispatchEvent(new WheelEvent("wheel", {
-        bubbles: true,
-        cancelable: true,
-        clientX: rect.left + rect.width / 2,
-        clientY: rect.top + rect.height / 2,
-        deltaMode: WheelEvent.DOM_DELTA_LINE,
-        deltaY
-      }));
-    }
-  };
-
-  const stopTuiScroll = (resetShape = true) => {
-    if (tuiScrollTimer.current !== null) {
-      window.clearInterval(tuiScrollTimer.current);
-      tuiScrollTimer.current = null;
-    }
-    tuiDragRef.current = null;
-    tuiScrollIntentRef.current = null;
-    if (resetShape) setTuiPull({ direction: "idle", strength: 0 });
-  };
-
-  useEffect(() => {
-    if (!scrollState.tuiMode || !scrollState.tuiInteractive) stopTuiScroll();
-  }, [scrollState.tuiInteractive, scrollState.tuiMode]);
-
-  useEffect(() => {
-    const onWindowBlur = () => stopTuiScroll();
-    window.addEventListener("blur", onWindowBlur);
-    return () => window.removeEventListener("blur", onWindowBlur);
-  }, []);
-
-  const beginTuiDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
-    if (!scrollState.tuiInteractive || ptyId.current === null) return;
-    event.preventDefault();
-    stopTuiScroll();
-    tuiDragRef.current = { pointerId: event.pointerId, startY: event.clientY };
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-    terminalRef.current?.focus();
-  };
-
-  const updateTuiDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
-    const drag = tuiDragRef.current;
-    if (!scrollState.tuiInteractive || !drag || drag.pointerId !== event.pointerId) return;
-    const delta = event.clientY - drag.startY;
-    const distance = Math.abs(delta);
-    if (distance <= TUI_DRAG_DEAD_ZONE_PX) {
-      tuiScrollIntentRef.current = null;
-      setTuiPull({ direction: "idle", strength: 0 });
-      if (tuiScrollTimer.current !== null) {
-        window.clearInterval(tuiScrollTimer.current);
-        tuiScrollTimer.current = null;
-      }
-      return;
-    }
-    const direction = delta < 0 ? "up" : "down";
-    const ticks = Math.min(TUI_DRAG_MAX_TICKS, Math.max(1, Math.ceil((distance - TUI_DRAG_DEAD_ZONE_PX) / TUI_DRAG_PIXELS_PER_TICK)));
-    const previousDirection = tuiScrollIntentRef.current?.direction;
-    tuiScrollIntentRef.current = { direction, ticks };
-    setTuiPull({ direction, strength: ticks / TUI_DRAG_MAX_TICKS });
-    if (tuiScrollTimer.current === null) {
-      sendTuiWheel(direction, ticks);
-      tuiScrollTimer.current = window.setInterval(() => {
-        const intent = tuiScrollIntentRef.current;
-        if (intent) sendTuiWheel(intent.direction, intent.ticks);
-      }, TUI_WHEEL_REPEAT_MS);
-    } else if (previousDirection && previousDirection !== direction) {
-      sendTuiWheel(direction, ticks);
-    }
-    terminalRef.current?.focus();
-  };
-
-  const onTuiControlKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
-    if (!scrollState.tuiInteractive) return;
-    let direction: "up" | "down";
-    let ticks: number;
-    if (event.key === "ArrowUp") { direction = "up"; ticks = 1; }
-    else if (event.key === "ArrowDown") { direction = "down"; ticks = 1; }
-    else if (event.key === "PageUp") { direction = "up"; ticks = TUI_WHEEL_STEP; }
-    else if (event.key === "PageDown") { direction = "down"; ticks = TUI_WHEEL_STEP; }
-    else if (event.key === "Home") { direction = "up"; ticks = TUI_WHEEL_JUMP; }
-    else if (event.key === "End") { direction = "down"; ticks = TUI_WHEEL_JUMP; }
-    else return;
-    event.preventDefault();
-    sendTuiWheel(direction, ticks);
-    terminalRef.current?.focus();
-  };
-
-  return <div className={`wb-terminal-pane${active ? " active" : ""}`} hidden={!active}>
-    <div
-      className={`wb-terminal-host${pane.group === "session" ? " is-session" : ""}${scrollState.tuiMode ? " is-tui-mode" : ""}${dragOver ? " is-drag-over" : ""}`}
-      data-terminal-engine={engineType}
-      ref={host}
-    />
-    {tuiControlVisible ? (
-      <div className={`wb-terminal-tui-nav${searchOpen ? " is-below-search" : ""}${scrollState.tuiInteractive ? "" : " is-unavailable"}`}>
-        <button
-          type="button"
-          className="wb-terminal-jump is-top"
-          aria-label={t("desktop.workbench.terminalScrollTop")}
-          title={t("desktop.workbench.terminalScrollTop")}
-          disabled={!scrollState.tuiInteractive}
-          onClick={() => { sendTuiWheel("up", TUI_WHEEL_JUMP); terminalRef.current?.focus(); }}
-        >
-          <ThemeIcon name="arrow-up-to-line" size={15} aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          className={`wb-terminal-tui-drop is-${tuiPull.direction}`}
-          aria-disabled={!scrollState.tuiInteractive}
-          aria-label={t("desktop.workbench.terminalTuiScrollControl")}
-          title={t("desktop.workbench.terminalTuiScrollControl")}
-          style={{ "--tui-pull": tuiPull.strength } as CSSProperties}
-          onPointerDown={beginTuiDrag}
-          onPointerMove={updateTuiDrag}
-          onPointerUp={() => stopTuiScroll()}
-          onPointerCancel={() => stopTuiScroll()}
-          onLostPointerCapture={() => stopTuiScroll()}
-          onKeyDown={onTuiControlKeyDown}
-        >
-          <svg className="wb-terminal-tui-drop-shape" viewBox="0 0 200 260" aria-hidden="true">
-            <path d="M 100 20 C 105 50, 165 95, 165 130 C 165 165, 105 210, 100 240 C 95 210, 35 165, 35 130 C 35 95, 95 50, 100 20 Z" />
-          </svg>
-        </button>
-        <button
-          type="button"
-          className="wb-terminal-jump is-bottom"
-          aria-label={t("desktop.workbench.terminalScrollBottom")}
-          title={t("desktop.workbench.terminalScrollBottom")}
-          disabled={!scrollState.tuiInteractive}
-          onClick={() => { sendTuiWheel("down", TUI_WHEEL_JUMP); terminalRef.current?.focus(); }}
-        >
-          <ThemeIcon name="arrow-down-to-line" size={15} aria-hidden="true" />
-        </button>
-      </div>
-    ) : null}
-    {searchOpen ? (
-      <div className="wb-terminal-search" role="search">
-        <ThemeIcon name="search" size={14} aria-hidden="true" />
-        <input
-          ref={searchInputRef}
-          className="wb-terminal-search-input"
-          type="search"
-          value={searchQuery}
-          placeholder={t("desktop.workbench.terminalSearchPlaceholder")}
-          aria-label={t("desktop.workbench.terminalSearchPlaceholder")}
-          onChange={(event) => {
-            const value = event.target.value;
-            setSearchQuery(value);
-            runSearch("next", value);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault();
-              runSearch(event.shiftKey ? "prev" : "next", searchQuery);
-            } else if (event.key === "Escape") {
-              event.preventDefault();
-              closeSearch();
-            }
-          }}
-        />
-        <span className="wb-terminal-search-meta" aria-live="polite">
-          {searchQuery.trim()
-            ? (searchMeta && searchMeta.count > 0
-              ? t("desktop.workbench.terminalSearchCount", String(searchMeta.index + 1), String(searchMeta.count))
-              : t("desktop.workbench.terminalSearchNoResults"))
-            : ""}
-        </span>
-        <button
-          type="button"
-          className="wb-terminal-search-btn"
-          aria-label={t("desktop.workbench.terminalSearchPrev")}
-          onClick={() => runSearch("prev", searchQuery)}
-        >
-          <ThemeIcon name="arrow-up" size={14} />
-        </button>
-        <button
-          type="button"
-          className="wb-terminal-search-btn"
-          aria-label={t("desktop.workbench.terminalSearchNext")}
-          onClick={() => runSearch("next", searchQuery)}
-        >
-          <ThemeIcon name="arrow-down" size={14} />
-        </button>
-        <button
-          type="button"
-          className="wb-terminal-search-btn"
-          aria-label={t("desktop.workbench.terminalSearchClose")}
-          onClick={closeSearch}
-        >
-          <ThemeIcon name="close" size={14} />
-        </button>
-      </div>
-    ) : null}
-    {!ready ? (
-      <div className="wb-terminal-loading" role="status" aria-live="polite">
-        <ThemeIcon name="loader" className="spin" size={18} aria-hidden="true" />
-        <span>{t("desktop.common.loading")}</span>
-      </div>
-    ) : null}
-  </div>;
-}
-
+export { isTerminalAtBottom };
 export function WorkbenchPanel(): ReactPortal | null {
   const host = document.getElementById("react-workbench");
   const { t, locale } = useI18n();
@@ -2644,44 +693,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [browsers, setBrowsers] = useState<BrowserPane[]>([]);
   const [activePanes, setActivePanes] = useState<Record<string, string>>({});
   const [side, setSide] = useState<SideView>(null);
-  const [scriptPackages, setScriptPackages] = useState<ScriptPackageView[]>([]);
-  const [scriptsLoading, setScriptsLoading] = useState(false);
-  const [scriptsError, setScriptsError] = useState("");
-  const [scriptsTruncated, setScriptsTruncated] = useState(false);
-  const [scriptsSectionCollapsed, setScriptsSectionCollapsed] = useState(
-    () => storageBoolean("wb-scripts-collapsed")
-  );
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchMatchCase, setSearchMatchCase] = useState(false);
-  const [searchWholeWord, setSearchWholeWord] = useState(false);
-  const [searchUseRegex, setSearchUseRegex] = useState(false);
-  const [searchMatches, setSearchMatches] = useState<SearchMatch[]>([]);
-  const [searchTruncated, setSearchTruncated] = useState(false);
-  const [searchLoading, setSearchLoading] = useState(false);
-  const [searchError, setSearchError] = useState("");
-  const [searchExpanded, setSearchExpanded] = useState<Set<string>>(() => new Set());
-  const [searchSelectedKey, setSearchSelectedKey] = useState("");
-  const [searchProjectMode, setSearchProjectMode] = useState(false);
-  const [searchProjectQuery, setSearchProjectQuery] = useState("");
-  const [searchProjectSelectionId, setSearchProjectSelectionId] = useState("");
-  const [searchFilesInclude, setSearchFilesInclude] = useState("");
-  const [searchFilesExclude, setSearchFilesExclude] = useState("");
-  const [searchDetailsOpen, setSearchDetailsOpen] = useState(
-    () => storageBoolean("wb-search-details-open")
-  );
-  const [searchReplaceOpen, setSearchReplaceOpen] = useState(
-    () => storageBoolean("wb-search-replace-open")
-  );
-  const [searchReplaceText, setSearchReplaceText] = useState("");
-  const [searchReplacing, setSearchReplacing] = useState(false);
-  const [linkGraphResult, setLinkGraphResult] = useState<LinkGraphAnalyzeResult | null>(null);
-  const [linkGraphProgress, setLinkGraphProgress] = useState<LinkGraphProgressEvent | null>(null);
-  const [linkGraphBusy, setLinkGraphBusy] = useState(false);
-  const [linkGraphError, setLinkGraphError] = useState<string | null>(null);
-  const [linkGraphLanguage, setLinkGraphLanguage] = useState<LinkGraphOutputLanguage>(() => {
-    const stored = storageString("wb-linkgraph-lang");
-    return stored === "en" || stored === "zh-cn" || stored === "ja" || stored === "auto" ? stored : "auto";
-  });
   const [editorContextMenu, setEditorContextMenu] = useState<{ x: number; y: number; hasSelection: boolean; selectedText: string } | null>(null);
   const {
     selectionResult,
@@ -2689,34 +700,8 @@ export function WorkbenchPanel(): ReactPortal | null {
     copySelectionResult,
     clearSelectionResult
   } = useSelectionActionResult();
-  const linkGraphSeedRef = useRef<LinkGraphAnalyzeArgs | null>(null);
-  const linkGraphLanguageRef = useRef(linkGraphLanguage);
-  linkGraphLanguageRef.current = linkGraphLanguage;
-  const [quickAccessOpen, setQuickAccessOpen] = useState(false);
-  const [quickAccessMode, setQuickAccessMode] = useState<QuickAccessMode>("files");
-  const [quickAccessQuery, setQuickAccessQuery] = useState("");
-  const [quickAccessFiles, setQuickAccessFiles] = useState<QuickAccessFile[]>([]);
-  const [quickAccessSearchFiles, setQuickAccessSearchFiles] = useState<QuickAccessFile[]>([]);
-  const [quickAccessSearchTruncated, setQuickAccessSearchTruncated] = useState(false);
-  const [quickAccessLoading, setQuickAccessLoading] = useState(false);
-  const [quickAccessTruncated, setQuickAccessTruncated] = useState(false);
-  const [quickAccessError, setQuickAccessError] = useState("");
   const [pendingExplorerReveal, setPendingExplorerReveal] = useState<{ rootPath: string; path: string } | null>(null);
-  const searchSeqRef = useRef(0);
-  const searchTimerRef = useRef(0);
-  const searchInputRef = useRef<HTMLInputElement | null>(null);
-  const searchReplaceInputRef = useRef<HTMLInputElement | null>(null);
-  const searchIncludeInputRef = useRef<HTMLInputElement | null>(null);
-  const searchExcludeInputRef = useRef<HTMLInputElement | null>(null);
   const searchProjectOptionRefs = useRef(new Map<string, HTMLButtonElement>());
-  const quickAccessCacheRef = useRef(new Map<string, { files: QuickAccessFile[]; truncated: boolean }>());
-  const quickAccessRequestRef = useRef(0);
-  const quickAccessSearchRequestRef = useRef(0);
-  const quickAccessProjectContextRef = useRef<{
-    mode: Exclude<QuickAccessMode, "projects">;
-    query: string;
-    closeOnSelect: boolean;
-  }>({ mode: "files", query: "", closeOnSelect: false });
   const editorRef = useRef<CodeEditorHandle | null>(null);
   const [editorFindOpen, setEditorFindOpen] = useState(false);
   const [editorFindQuery, setEditorFindQuery] = useState("");
@@ -2725,26 +710,12 @@ export function WorkbenchPanel(): ReactPortal | null {
   const editorFindQueryRef = useRef("");
   const previousEditorKeyRef = useRef("");
   const pendingRevealRef = useRef<SearchReveal | null>(null);
-  const [git, setGit] = useState<GitStatusResult | null>(null);
-  const [gitRoot, setGitRoot] = useState("");
-  const gitRootManuallySelectedRef = useRef(false);
-  const [gitExpandedDirs, setGitExpandedDirs] = useState<Set<string>>(new Set());
-  const gitExpandInitializedRef = useRef(false);
-  /** Directory keys from the last status refresh, so newly appeared directories default to expanded. */
-  const gitSeenDirectoryKeysRef = useRef<Set<string>>(new Set());
   const [gitLog, setGitLog] = useState<GitLog | null>(null);
   const [gitShow, setGitShow] = useState<GitShow | null>(null);
   const [gitHistoryContext, setGitHistoryContext] = useState<GitHistoryContext | null>(null);
   const [gitLogLoading, setGitLogLoading] = useState(false);
   const [gitLogError, setGitLogError] = useState("");
-  const [gitRefreshing, setGitRefreshing] = useState(false);
-  const [gitSyncing, setGitSyncing] = useState(false);
-  const [commitMessage, setCommitMessage] = useState("");
-  const [commitBusy, setCommitBusy] = useState(false);
-  const [commitSuggestion, setCommitSuggestion] = useState<CommitSuggestion | null>(null);
   const [discardingGitPaths, setDiscardingGitPaths] = useState<Set<string>>(() => new Set());
-  /** Per-repo promise queues: git index operations are serialized per repo to avoid index.lock contention. */
-  const gitStageQueuesRef = useRef(new Map<string, Promise<void>>());
   const [branchPane, setBranchPane] = useState<TerminalPane | null>(null);
   const [branchMenuPosition, setBranchMenuPosition] = useState<BranchMenuPosition | null>(null);
   const [branchResult, setBranchResult] = useState<TerminalGitBranches | null>(null);
@@ -2772,16 +743,9 @@ export function WorkbenchPanel(): ReactPortal | null {
   const draggedSessionRef = useRef<AgentSession | null>(null);
   const folderExpandTimerRef = useRef(0);
   const gitRefreshTimers = useRef(new Map<string, number>());
-  const gitStatusInFlightRef = useRef(false);
-  /** A background status refresh requested while one is in flight: rerun once it finishes. */
-  const gitRefreshPendingRef = useRef(false);
-  /** Latest refreshGit callback so a trailing re-run never uses a stale project closure. */
-  const refreshGitRef = useRef<(withNotification?: boolean) => Promise<void>>(async () => {});
-  const gitFetchInFlightRef = useRef(false);
-  const gitLastFetchAtRef = useRef(0);
   const gitLogRequestRef = useRef(0);
-  const gitRootsRef = useRef<string[]>([]);
   const terminalsRef = useRef<TerminalPane[]>([]);
+  const refreshTerminalGitRef = useRef<(key: string) => Promise<void>>(async () => {});
   const editorsRef = useRef<EditorPane[]>([]);
   const diffsRef = useRef<DiffPane[]>([]);
   const fileExplorerRef = useRef<WorkbenchFileExplorerHandle | null>(null);
@@ -2803,7 +767,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [composerDrafts, setComposerDrafts] = useState<Record<string, string>>({});
   const [composerTips, setComposerTips] = useState<Record<string, ComposerSendTip[]>>({});
   const [transcriptFocus, setTranscriptFocus] = useState<{ text: string; sentAtMs?: number; nonce: number } | null>(null);
-  const [pendingTranscriptUser, setPendingTranscriptUser] = useState<{ text: string; sentAtMs: number; paneKey: string } | null>(null);
   const openingSessionKeysRef = useRef(new Set<string>());
   /** Latest openSession closure for the agent-resume:workbench-open-session listener. */
   const openSessionRef = useRef<(session: AgentSession) => Promise<void>>(() => Promise.resolve());
@@ -2816,21 +779,127 @@ export function WorkbenchPanel(): ReactPortal | null {
   const newSessionButtonRef = useRef<HTMLButtonElement>(null);
   const newSessionPickerRef = useRef<HTMLDivElement>(null);
 
-  const notifyGitSuccess = useCallback((key: string, ...args: Array<string | number>) => {
-    notifyDesktop({ text: t(key, ...args), kind: "ok" });
-  }, [t]);
 
-  const notifyGitFailure = useCallback((key: string, error: unknown) => {
-    const message = t(key, gitOperationError(error));
-    notifyDesktop({ text: message, kind: "error" });
-  }, [t]);
+  const {
+    git,
+    gitRef,
+    gitRoot,
+    gitExpandedDirs,
+    gitRefreshing,
+    gitSyncing,
+    commitMessage,
+    commitBusy,
+    commitSuggestion,
+    gitRepositories,
+    canCommit,
+    projectTracking,
+    refreshGit,
+    toggleGitDirectory,
+    toggleGitStage,
+    selectGitRoot,
+    setCommitMessage,
+    suggestCommit,
+    commit,
+    syncGitBranch,
+    checkoutGitPanelBranch,
+    notifyGitSuccess,
+    notifyGitFailure
+  } = useWorkbenchGit({
+    active,
+    selectedProject,
+    selectedProjectRef,
+    side,
+    nestedScanMaxDepth: settings?.workbench?.gitNestedScanMaxDepth,
+    nestedScanIgnoreDirs: settings?.workbench?.gitNestedScanIgnoreDirs,
+    onGitMutated: () => {
+      terminalsRef.current.forEach((pane) => void refreshTerminalGitRef.current(pane.key));
+    },
+    notifyStatus: setStatus
+  });
+
+  const {
+    linkGraphResult,
+    linkGraphProgress,
+    linkGraphBusy,
+    linkGraphError,
+    linkGraphLanguage,
+    runLinkGraph,
+    refreshLinkGraph,
+    changeLinkGraphLanguage,
+    cancelLinkGraph
+  } = useWorkbenchLinkGraph({
+    onOpenSide: () => setSide("linkgraph")
+  });
 
   useEffect(() => { terminalsRef.current = terminals; }, [terminals]);
   useEffect(() => { editorsRef.current = editors; }, [editors]);
   useEffect(() => { diffsRef.current = diffs; }, [diffs]);
-  const gitRef = useRef<GitStatusResult | null>(null);
-  useEffect(() => { gitRef.current = git; }, [git]);
   useEffect(() => { selectedProjectRef.current = selectedProject; }, [selectedProject]);
+
+  const refreshOpenGitDiffs = useCallback(async (changedPaths: ReadonlySet<string> | null) => {
+    if (!selectedProject) return;
+    const projectDiffs = diffsRef.current.filter(
+      (pane) => pane.projectPath === selectedProject && pane.source !== "commit"
+    );
+    if (!projectDiffs.length) return;
+    const targets = changedPaths === null
+      ? projectDiffs
+      : projectDiffs.filter((pane) => changedPaths.has(normalizeWorkbenchPath(gitChangeFilePath(pane))));
+    if (!targets.length) return;
+    await Promise.all(targets.map(async (pane) => {
+      try {
+        const refreshed = await desktopApi().terminalGitDiffSides({
+          cwd: pane.repoRoot,
+          path: pane.repoPath,
+          staged: pane.source === "staged"
+        });
+        if (pane.source !== "untracked" && !refreshed.hunks.length) {
+          setDiffs((current) => current.filter((item) => item.key !== pane.key));
+          setActivePanes((current) => {
+            const projectKey = paneProjectKey(selectedProject);
+            return current[projectKey] === pane.key ? { ...current, [projectKey]: "" } : current;
+          });
+        } else if (refreshed.oldText !== pane.oldText || refreshed.newText !== pane.newText) {
+          setDiffs((current) => current.map((item) => item.key === pane.key ? { ...item, ...refreshed } : item));
+        }
+      } catch {
+        // Transient failure: keep the last rendered diff; the next change event re-attempts.
+      }
+    }));
+  }, [selectedProject]);
+
+  const gitRefreshDebounceRef = useRef(0);
+  const gitDiffRefreshPendingRef = useRef<{ paths: Set<string>; fullRescan: boolean }>({
+    paths: new Set(),
+    fullRescan: false
+  });
+  useEffect(() => {
+    const api = desktopApi();
+    if (typeof api.onWorkbenchFileSystemChanged !== "function") return;
+    const unsubscribe = api.onWorkbenchFileSystemChanged((event) => {
+      if (event.type !== "change") return;
+      if (!activeRef.current || projectPathKey(event.rootPath) !== projectPathKey(watchedRootRef.current)) return;
+      const pending = gitDiffRefreshPendingRef.current;
+      if (event.fullRescan || !event.paths.length) {
+        pending.fullRescan = true;
+      } else {
+        for (const changedPath of event.paths) pending.paths.add(normalizeWorkbenchPath(changedPath));
+      }
+      if (gitRefreshDebounceRef.current) window.clearTimeout(gitRefreshDebounceRef.current);
+      gitRefreshDebounceRef.current = window.setTimeout(() => {
+        gitRefreshDebounceRef.current = 0;
+        const { paths, fullRescan } = gitDiffRefreshPendingRef.current;
+        gitDiffRefreshPendingRef.current = { paths: new Set(), fullRescan: false };
+        void refreshGit(false);
+        void refreshOpenGitDiffs(fullRescan ? null : paths);
+      }, GIT_REFRESH_DEBOUNCE_MS);
+    });
+    return () => {
+      if (gitRefreshDebounceRef.current) window.clearTimeout(gitRefreshDebounceRef.current);
+      gitRefreshDebounceRef.current = 0;
+      unsubscribe();
+    };
+  }, [refreshGit, refreshOpenGitDiffs]);
   useEffect(() => { catalogProjectsRef.current = catalogProjects; }, [catalogProjects]);
   useEffect(() => { activeRef.current = active; }, [active]);
   useEffect(() => { activePanesRef.current = activePanes; }, [activePanes]);
@@ -2872,55 +941,38 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
     return titles;
   }, [sessions]);
-  // Live session status is owned by the sessionStatus module; this component
-  // only declares which panes exist and whether it is foreground.
+  // Live session status is owned by the agent-status daemon; this component
+  // only declares which panes exist. ACP chats are not PTY panes, so their
+  // lifecycle is tracked locally and merged below.
   const statusPanes = useMemo(
-    () => [
-      ...terminals
-        .filter((pane) => pane.group === "session")
-        .map((pane) => ({ key: pane.key, group: pane.group, ptyId: pane.ptyId ?? null })),
-      ...acpChats.map((pane) => ({ key: pane.key, group: "session", acpRecordId: pane.recordId }))
-    ],
-    [acpChats, terminals]
+    () => terminals
+      .filter((pane) => pane.group === "session")
+      .map((pane) => ({ key: pane.key, ptyId: pane.ptyId ?? null, sessionKey: pane.sessionKey })),
+    [terminals]
   );
 
-  // Tier 1: main-process process-tree probe. Stable identity so the store is
-  // not re-wired on every render; absent APIs degrade to "no signal".
-  const processStatusProbe = useMemo(() => {
-    const probe = desktopApi().sessionStatusProbeProcesses;
-    if (typeof probe !== "function") return null;
-    return (ptyIds: readonly number[]) => probe({ ptyIds: [...ptyIds] });
-  }, []);
-
-  // Tier 1.5: LLM adjudication for screens the cheaper tiers could not settle.
-  const statusJudgeProbe = useMemo(() => {
-    const judge = desktopApi().sessionStatusJudgeScreens;
-    if (typeof judge !== "function") return null;
-    return (requests: readonly { paneKey: string; screenText: string; silentMs: number; toolRunning: boolean }[]) =>
-      judge({ requests: [...requests] });
-  }, []);
-  const { store: statusStore, snapshot: statusSnapshot } = useSessionStatus(
-    statusPanes,
-    active,
-    processStatusProbe,
-    statusJudgeProbe
-  );
-  const sessionRuntimeByPaneKey = useMemo(
-    () => new Map(Object.entries(statusSnapshot.runtimeByPaneKey)),
-    [statusSnapshot]
-  );
+  const statusView = useAgentStatus(statusPanes);
+  const acpStatus = useAcpStatus();
+  const sessionRuntimeByPaneKey = useMemo(() => {
+    const merged = new Map<string, SessionDotRuntime>(statusView.byPaneKey);
+    for (const pane of acpChats) {
+      const runtime = acpStatus.byChatId.get(pane.recordId);
+      if (runtime) merged.set(pane.key, runtime);
+    }
+    return merged;
+  }, [acpChats, acpStatus.byChatId, statusView.byPaneKey]);
   const activeSessionDots = useMemo(
     () => collectActiveSessionDots(terminals, acpChats, sessionTitles, sessionRuntimeByPaneKey),
     [acpChats, sessionRuntimeByPaneKey, sessionTitles, terminals]
   );
 
-  // ACP carries its own structured lifecycle; forward it straight to the store.
+  // ACP carries its own structured lifecycle; feed it to the ACP status hook.
   useEffect(() => {
     const subscribe = desktopApi().onAcpStream;
     if (typeof subscribe !== "function") return;
-    const off = subscribe((raw) => statusStore.ingestAcpEvent(raw as Parameters<typeof statusStore.ingestAcpEvent>[0]));
+    const off = subscribe((raw) => acpStatus.ingest(raw as AcpStatusEvent));
     return () => off();
-  }, [statusStore]);
+  }, [acpStatus.ingest]);
 
   // Broadcast the live session-dot set to the nav rail (sibling component)
   // and to floating note windows via main-process IPC.
@@ -3267,32 +1319,23 @@ export function WorkbenchPanel(): ReactPortal | null {
     void loadSessions();
   }, [loadSessions]);
 
+  const loadSessionsRef = useRef(loadSessions);
+  loadSessionsRef.current = loadSessions;
   const triggerSessionSync = useCallback(() => {
     if (typeof desktopApi().syncSessions === "function") {
       void desktopApi().syncSessions().catch(() => undefined);
     } else {
-      void loadSessions();
+      void loadSessionsRef.current();
     }
-  }, [loadSessions]);
+  }, []);
 
   useEffect(() => {
     if (!pendingSessions.length) return;
-    triggerSessionSync();
-    const timeouts = [400, 1_200, 2_500].map((delay) =>
+    const timers = [600, 1_800, 4_000].map((delay) =>
       window.setTimeout(() => { triggerSessionSync(); }, delay)
     );
-    let ticks = 0;
-    const interval = window.setInterval(() => {
-      ticks += 1;
-      if (ticks > 40) {
-        window.clearInterval(interval);
-        return;
-      }
-      triggerSessionSync();
-    }, 2_500);
     return () => {
-      timeouts.forEach((timer) => window.clearTimeout(timer));
-      window.clearInterval(interval);
+      timers.forEach((timer) => window.clearTimeout(timer));
     };
   }, [pendingSessions.length, triggerSessionSync]);
 
@@ -3375,14 +1418,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       window.removeEventListener("agent-resume:settings-saved", onSettingsSaved);
     };
   }, [reloadWorkbench]);
-
-  useEffect(() => {
-    const api = desktopApi();
-    if (typeof api.onLinkGraphProgress !== "function") return;
-    return api.onLinkGraphProgress((event) => {
-      setLinkGraphProgress(event);
-    });
-  }, []);
 
   useEffect(() => {
     if (!editorContextMenu) return;
@@ -3818,7 +1853,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   const branchStatusTerminal = activeTerminal
     || currentTerminals.find((pane) => Boolean(pane.branch) || pane.gitMode === "nested")
     || null;
-  const projectTracking = trackingForRoot(git, gitRoot);
   const branchStatusNested = Boolean(
     branchStatusTerminal?.gitMode === "nested" && (branchStatusTerminal.nestedRepos?.length || 0) > 0
   );
@@ -4032,7 +2066,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       setSelectionAnchorKey((current) => current ? "" : current);
     }
     if (!options?.keepSide && projectChanged) setSide(null);
-    setGit(null);
     setGitLog(null);
     setGitShow(null);
     setGitHistoryContext(null);
@@ -4167,6 +2200,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       } : item));
     } catch { /* Git status is supplementary to the terminal */ }
   }, []);
+  useEffect(() => { refreshTerminalGitRef.current = refreshTerminalGit; }, [refreshTerminalGit]);
 
   const onTerminalInput = useCallback((key: string) => {
     const existing = gitRefreshTimers.current.get(key);
@@ -4175,14 +2209,9 @@ export function WorkbenchPanel(): ReactPortal | null {
       gitRefreshTimers.current.delete(key);
       void refreshTerminalGit(key);
     }, 500));
-    // User typing into a session TUI counts as immediate activity.
-    if (terminalsRef.current.find((item) => item.key === key)?.group === "session") {
-      statusStore.markUserInput(key);
-      if (pendingSessionsRef.current.some((pending) => pending.terminalKey === key)) {
-        triggerSessionSync();
-      }
-    }
-  }, [refreshTerminalGit, statusStore, triggerSessionSync]);
+    // User typing into a session TUI counts as immediate activity, and the
+    // daemon sees the echoed bytes within a tick.
+  }, [refreshTerminalGit]);
 
   const activateComposerPane = useCallback((paneKey: string) => {
     const pane = terminalsRef.current.find((item) => item.key === paneKey);
@@ -4246,7 +2275,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       }).catch(() => undefined);
     }
     setTranscriptFocus({ text, sentAtMs: localTip.createdAtMs, nonce: Date.now() });
-    setPendingTranscriptUser({ text, sentAtMs: localTip.createdAtMs, paneKey });
     if (!identity) {
       triggerSessionSync();
     }
@@ -4274,8 +2302,7 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   const onPtyDetach = useCallback((id: number) => {
     terminalRefs.current.delete(id);
-    statusStore.detachTerminal(id);
-  }, [statusStore]);
+  }, []);
 
   const onPty = useCallback((key: string, id: number, terminal: Terminal | null) => {
     const livePane = terminalsRef.current.find((item) => item.key === key);
@@ -4286,11 +2313,8 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
     if (terminal) {
       terminalRefs.current.set(id, terminal);
-      // The store reads the screen through this instance; it never owns it.
-      statusStore.attachTerminal(id, terminal);
     } else {
       terminalRefs.current.delete(id);
-      statusStore.detachTerminal(id);
     }
     setTerminals((current) => {
       const next = current.map((pane) => pane.key === key ? { ...pane, ptyId: id } : pane);
@@ -4701,9 +2725,6 @@ export function WorkbenchPanel(): ReactPortal | null {
           const title = t("desktop.workbench.newSessionTitle", basename(launchCwd));
           const terminalKey = addTerminal(title, launchCwd, result.command, launchCwd, undefined, "session", prompt ? { initialPrompt: prompt } : undefined);
           addPendingSession(terminalKey, target.provider, launchCwd, title, focusedFolder || undefined);
-          if (prompt) {
-            setPendingTranscriptUser({ text: prompt, sentAtMs: Date.now(), paneKey: terminalKey });
-          }
           setSessionViewMode("hybrid");
           localStorage.setItem(SESSION_VIEW_MODE_KEY, "hybrid");
         }
@@ -5840,38 +3861,24 @@ export function WorkbenchPanel(): ReactPortal | null {
     return state.promise;
   }, [syncEditorFromDisk]);
 
-  const loadScripts = useCallback(async (rootPath: string) => {
-    setScriptsLoading(true);
-    setScriptsError("");
-    try {
-      const result = await desktopApi().workbenchListScripts({ rootPath });
-      setScriptPackages(result.packages);
-      setScriptsTruncated(Boolean(result.truncated));
-    } catch (error) {
-      setScriptPackages([]);
-      setScriptsTruncated(false);
-      setScriptsError(statusError(error));
-    } finally {
-      setScriptsLoading(false);
+  const {
+    scriptPackages,
+    scriptsLoading,
+    scriptsError,
+    scriptsTruncated,
+    scriptsSectionCollapsed,
+    loadScripts,
+    runScript,
+    toggleScriptsSectionCollapsed
+  } = useWorkbenchScripts({
+    active,
+    selectedProject,
+    side,
+    runScript: (script, _pkg) => {
+      const projectPath = selectedProject || script.run.cwd;
+      addTerminal(script.name, script.run.cwd, script.run.command, projectPath);
     }
-  }, []);
-
-  useEffect(() => {
-    if (!active || !selectedProject) {
-      setScriptPackages([]);
-      setScriptsError("");
-      setScriptsTruncated(false);
-      return;
-    }
-    if (side === "files" || side === "scripts") {
-      void loadScripts(selectedProject);
-    }
-  }, [active, loadScripts, selectedProject, side]);
-
-  const runScript = useCallback((script: ScriptEntryView, _pkg: ScriptPackageView) => {
-    const projectPath = selectedProject || script.run.cwd;
-    addTerminal(script.name, script.run.cwd, script.run.command, projectPath);
-  }, [addTerminal, selectedProject]);
+  });
 
   const editorSettings = settings?.workbench?.editor;
   const editorAppearance: CodeMirrorAppearance = settings?.workbench?.editorTheme === "light" || settings?.workbench?.editorTheme === "dark"
@@ -6006,52 +4013,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
   };
 
-  const runLinkGraph = useCallback(async (args: LinkGraphAnalyzeArgs) => {
-    const api = desktopApi();
-    if (typeof api.linkGraphAnalyze !== "function") {
-      setLinkGraphError(t("desktop.workbench.linkGraphFailed", "unavailable"));
-      setSide("linkgraph");
-      return;
-    }
-    linkGraphSeedRef.current = { ...args, outputLanguage: linkGraphLanguageRef.current };
-    setSide("linkgraph");
-    setLinkGraphBusy(true);
-    setLinkGraphError(null);
-    setLinkGraphProgress(null);
-    try {
-      const result = await api.linkGraphAnalyze({
-        ...args,
-        outputLanguage: args.outputLanguage || linkGraphLanguageRef.current
-      });
-      setLinkGraphResult(result);
-      if (result.stopReason === "invalid_seed" || result.stopReason === "empty_seed") {
-        setLinkGraphError(t("desktop.workbench.linkGraphNeedSelection"));
-      } else {
-        setLinkGraphError(null);
-      }
-    } catch (error) {
-      setLinkGraphError(t("desktop.workbench.linkGraphFailed", statusError(error)));
-    } finally {
-      setLinkGraphBusy(false);
-    }
-  }, [t]);
-
-  const refreshLinkGraph = useCallback(() => {
-    const seed = linkGraphSeedRef.current;
-    if (!seed) return;
-    void runLinkGraph({ ...seed, outputLanguage: linkGraphLanguageRef.current });
-  }, [runLinkGraph]);
-
-  const changeLinkGraphLanguage = useCallback((value: LinkGraphOutputLanguage) => {
-    setLinkGraphLanguage(value);
-    localStorage.setItem("wb-linkgraph-lang", value);
-    linkGraphLanguageRef.current = value;
-    const seed = linkGraphSeedRef.current;
-    if (seed && (linkGraphResult?.primaryChain.length || linkGraphResult?.hits.length)) {
-      void runLinkGraph({ ...seed, outputLanguage: value });
-    }
-  }, [linkGraphResult?.hits.length, linkGraphResult?.primaryChain.length, runLinkGraph]);
-
   const openLinkGraphFromEditor = useCallback(() => {
     if (!selectedProject || !currentEditor) return;
     const selection = editorRef.current?.getSelectionRange();
@@ -6066,148 +4027,41 @@ export function WorkbenchPanel(): ReactPortal | null {
       selection: text,
       startLine: selection?.startLine || 1,
       endLine: selection?.endLine || selection?.startLine || 1,
-      outputLanguage: linkGraphLanguageRef.current
+      outputLanguage: linkGraphLanguage
     });
-  }, [currentEditor, runLinkGraph, selectedProject, t]);
+  }, [currentEditor, linkGraphLanguage, runLinkGraph, selectedProject, t]);
 
-  const quickAccessRoot = selectedProject || storageString(QUICK_ACCESS_PROJECT_KEY) || "";
+  const {
+    quickAccessOpen,
+    quickAccessMode,
+    setQuickAccessMode,
+    quickAccessQuery,
+    setQuickAccessQuery,
+    quickAccessLoading,
+    quickAccessTruncated,
+    quickAccessError,
+    quickAccessRoot,
+    quickAccessVisibleFiles,
+    quickAccessSearchTruncated,
+    quickAccessProjectContextRef,
+    loadQuickAccessFiles,
+    openQuickAccess,
+    closeQuickAccess,
+    enterQuickAccessProjectMode,
+    leaveQuickAccessProjectMode,
+    invalidateQuickAccessCache
+  } = useWorkbenchQuickAccess({
+    selectedProject,
+    quickAccessProjectKey: QUICK_ACCESS_PROJECT_KEY,
+    onDismissOverlays: () => {
+      setContextMenu(null);
+      setBranchPane(null);
+      setProjectPickDialog(null);
+    }
+  });
   const quickAccessProjectLabel = quickAccessRoot
     ? `${aliases[quickAccessRoot] || basename(quickAccessRoot)} — ${quickAccessRoot}`
     : "";
-
-  const loadQuickAccessFiles = useCallback(async (rootPath: string) => {
-    if (!rootPath) return;
-    quickAccessSearchRequestRef.current += 1;
-    setQuickAccessSearchFiles([]);
-    setQuickAccessSearchTruncated(false);
-    const cacheKey = projectPathKey(rootPath);
-    const cached = quickAccessCacheRef.current.get(cacheKey);
-    if (cached) {
-      setQuickAccessFiles(cached.files);
-      setQuickAccessTruncated(cached.truncated);
-    } else {
-      setQuickAccessFiles([]);
-      setQuickAccessTruncated(false);
-    }
-    const sequence = ++quickAccessRequestRef.current;
-    setQuickAccessLoading(!cached);
-    setQuickAccessError("");
-    try {
-      const api = desktopApi();
-      if (typeof api.workbenchListFiles !== "function") throw new Error(t("desktop.workbench.quickAccessUnavailable"));
-      const result = await api.workbenchListFiles({ rootPath });
-      if (quickAccessRequestRef.current !== sequence) return;
-      quickAccessCacheRef.current.set(cacheKey, { files: result.files, truncated: result.truncated });
-      setQuickAccessFiles(result.files);
-      setQuickAccessTruncated(result.truncated);
-    } catch (error) {
-      if (quickAccessRequestRef.current !== sequence || (error as Error)?.name === "AbortError") return;
-      setQuickAccessError(statusError(error));
-    } finally {
-      if (quickAccessRequestRef.current === sequence) setQuickAccessLoading(false);
-    }
-  }, [t]);
-
-  const openQuickAccess = useCallback((mode: QuickAccessMode) => {
-    if (!quickAccessOpen && document.querySelector('[aria-modal="true"]')) return;
-    setContextMenu(null);
-    setBranchPane(null);
-    setProjectPickDialog(null);
-    quickAccessProjectContextRef.current = { mode: "files", query: "", closeOnSelect: false };
-    setQuickAccessMode(mode);
-    setQuickAccessQuery("");
-    setQuickAccessSearchFiles([]);
-    setQuickAccessSearchTruncated(false);
-    setQuickAccessOpen(true);
-  }, [quickAccessOpen]);
-
-  useEffect(() => {
-    if (quickAccessOpen && quickAccessMode === "files" && quickAccessRoot) {
-      void loadQuickAccessFiles(quickAccessRoot);
-    }
-  }, [loadQuickAccessFiles, quickAccessMode, quickAccessOpen, quickAccessRoot]);
-
-  useEffect(() => {
-    const api = desktopApi();
-    const query = quickAccessQuery.trim();
-    if (!quickAccessOpen || quickAccessMode !== "files" || !quickAccessRoot || !quickAccessTruncated || !query
-      || typeof api.workbenchSearchPaths !== "function") {
-      quickAccessSearchRequestRef.current += 1;
-      setQuickAccessSearchFiles([]);
-      setQuickAccessSearchTruncated(false);
-      if (typeof api.workbenchSearchPathsCancel === "function") {
-        void api.workbenchSearchPathsCancel().catch(() => undefined);
-      }
-      return;
-    }
-
-    const sequence = ++quickAccessSearchRequestRef.current;
-    const timer = window.setTimeout(() => {
-      void api.workbenchSearchPaths({ rootPath: quickAccessRoot, query }).then((result) => {
-        if (quickAccessSearchRequestRef.current !== sequence) return;
-        setQuickAccessSearchFiles(result.files);
-        setQuickAccessSearchTruncated(result.truncated);
-      }).catch((error) => {
-        if (quickAccessSearchRequestRef.current !== sequence || (error as Error)?.name === "AbortError") return;
-        setQuickAccessSearchFiles([]);
-        setQuickAccessSearchTruncated(false);
-      });
-    }, 150);
-
-    return () => {
-      window.clearTimeout(timer);
-      if (typeof api.workbenchSearchPathsCancel === "function") {
-        void api.workbenchSearchPathsCancel().catch(() => undefined);
-      }
-    };
-  }, [quickAccessMode, quickAccessOpen, quickAccessQuery, quickAccessRoot, quickAccessTruncated]);
-
-  const closeQuickAccess = useCallback(() => {
-    quickAccessRequestRef.current += 1;
-    quickAccessSearchRequestRef.current += 1;
-    setQuickAccessOpen(false);
-    const api = desktopApi();
-    if (typeof api.workbenchListFilesCancel === "function") void api.workbenchListFilesCancel().catch(() => undefined);
-    if (typeof api.workbenchSearchPathsCancel === "function") void api.workbenchSearchPathsCancel().catch(() => undefined);
-  }, []);
-
-  const enterQuickAccessProjectMode = useCallback((closeOnSelect = false) => {
-    quickAccessProjectContextRef.current = {
-      mode: quickAccessMode === "commands" ? "commands" : "files",
-      query: quickAccessQuery,
-      closeOnSelect
-    };
-    setQuickAccessMode("projects");
-    setQuickAccessQuery("");
-  }, [quickAccessMode, quickAccessQuery]);
-
-  const leaveQuickAccessProjectMode = useCallback(() => {
-    const context = quickAccessProjectContextRef.current;
-    setQuickAccessMode(context.mode);
-    setQuickAccessQuery(context.query);
-  }, []);
-
-  useEffect(() => {
-    const api = desktopApi();
-    const offCmdP = typeof api.onWorkbenchCmdP === "function"
-      ? api.onWorkbenchCmdP(() => openQuickAccess("files"))
-      : () => undefined;
-    const offCmdShiftP = typeof api.onWorkbenchCmdShiftP === "function"
-      ? api.onWorkbenchCmdShiftP(() => openQuickAccess("commands"))
-      : () => undefined;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (!(event.metaKey || event.ctrlKey) || event.altKey || event.key.toLowerCase() !== "p") return;
-      event.preventDefault();
-      event.stopPropagation();
-      openQuickAccess(event.shiftKey ? "commands" : "files");
-    };
-    window.addEventListener("keydown", onKeyDown, true);
-    return () => {
-      offCmdP();
-      offCmdShiftP();
-      window.removeEventListener("keydown", onKeyDown, true);
-    };
-  }, [openQuickAccess]);
 
   const openQuickAccessFile = useCallback(async (file: QuickAccessFile) => {
     const rootPath = quickAccessRoot;
@@ -6308,7 +4162,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     const api = desktopApi();
     if (typeof api.onWorkbenchFileSystemChanged !== "function") return;
     const unsubscribe = api.onWorkbenchFileSystemChanged((event) => {
-      quickAccessCacheRef.current.delete(projectPathKey(event.rootPath));
+      invalidateQuickAccessCache(event.rootPath);
       if (event.type === "error") {
         if (projectPathKey(event.rootPath) === projectPathKey(watchedRootRef.current)) {
           setStatus({ text: event.message, kind: "error" });
@@ -6320,7 +4174,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       void reconcileProjectEditors(selectedProjectRef.current!);
     });
     return unsubscribe;
-  }, [reconcileProjectEditors]);
+  }, [invalidateQuickAccessCache, reconcileProjectEditors]);
 
   useEffect(() => {
     const onFocus = () => {
@@ -6332,168 +4186,62 @@ export function WorkbenchPanel(): ReactPortal | null {
     return () => window.removeEventListener("focus", onFocus);
   }, [reconcileProjectEditors]);
 
-  const runProjectSearch = useCallback(async (query: string, options?: { matchCase?: boolean; wholeWord?: boolean; useRegex?: boolean }) => {
-    const trimmed = query.trim();
-    if (!selectedProject || !trimmed) {
-      searchSeqRef.current += 1;
-      setSearchMatches([]);
-      setSearchTruncated(false);
-      setSearchError("");
-      setSearchLoading(false);
-      void desktopApi().workbenchSearchTextCancel().catch(() => undefined);
-      return;
-    }
-    if (trimmed.length < 2 && !options?.useRegex && !searchUseRegex) {
-      setSearchMatches([]);
-      setSearchTruncated(false);
-      setSearchError("");
-      setSearchLoading(false);
-      return;
-    }
-    const seq = ++searchSeqRef.current;
-    setSearchLoading(true);
-    setSearchError("");
-    try {
-      const result = await desktopApi().workbenchSearchText({
-        rootPath: selectedProject,
-        query: trimmed,
-        matchCase: options?.matchCase ?? searchMatchCase,
-        wholeWord: options?.wholeWord ?? searchWholeWord,
-        useRegex: options?.useRegex ?? searchUseRegex,
-        filesToInclude: searchFilesInclude.trim() || undefined,
-        filesToExclude: searchFilesExclude.trim() || undefined
-      });
-      if (seq !== searchSeqRef.current) return;
-      setSearchMatches(result.matches);
-      setSearchTruncated(result.truncated);
-      const firstFiles = new Set<string>();
-      for (const match of result.matches) {
-        if (firstFiles.size >= 20) break;
-        firstFiles.add(match.path);
-      }
-      setSearchExpanded(firstFiles);
-    } catch (error) {
-      if (seq !== searchSeqRef.current) return;
-      if ((error as Error)?.name === "AbortError" || /cancel/i.test(String((error as Error)?.message || ""))) {
-        setSearchLoading(false);
-        return;
-      }
-      setSearchMatches([]);
-      setSearchTruncated(false);
-      setSearchError(t("desktop.workbench.searchFailed", statusError(error)));
-    } finally {
-      if (seq === searchSeqRef.current) setSearchLoading(false);
-    }
-  }, [searchFilesExclude, searchFilesInclude, searchMatchCase, searchUseRegex, searchWholeWord, selectedProject, t]);
-
-  useEffect(() => {
-    if (side !== "search") return;
-    window.clearTimeout(searchTimerRef.current);
-    searchTimerRef.current = window.setTimeout(() => {
-      void runProjectSearch(searchQuery);
-    }, 300);
-    return () => window.clearTimeout(searchTimerRef.current);
-  }, [runProjectSearch, searchFilesExclude, searchFilesInclude, searchMatchCase, searchQuery, searchUseRegex, searchWholeWord, side, selectedProject]);
-
-  /**
-   * Replace occurrences in files that came from the current search results.
-   * Files with an open dirty editor are skipped so an unsaved buffer can never
-   * be silently clobbered (the disk replace still lands; the editor stays in
-   * its "changed on disk" state for other files). After a successful replace
-   * the search re-runs so the result list refreshes immediately.
-   */
-  const performSearchReplace = useCallback(async (
-    files: string[],
-    onlyByPath?: Map<string, number>
-  ) => {
-    const projectPath = selectedProject;
-    const trimmedQuery = searchQuery.trim();
-    if (!projectPath || !trimmedQuery || searchReplacing || !files.length) return;
-    const dirtyOpen = new Set<string>();
-    for (const editor of editorsRef.current) {
-      if (editor.projectPath === projectPath && editor.dirty) {
-        dirtyOpen.add(normalizeWorkbenchPath(editor.path));
-      }
-    }
-    const normalize = (value: string) => normalizeWorkbenchPath(value);
-    const targets = files.filter((file) => !dirtyOpen.has(normalize(file)));
-    const skippedDirtyCount = files.length - targets.length;
-    if (!targets.length) {
-      setStatus({ text: t("desktop.workbench.searchReplaceBlockedDirty"), kind: "error" });
-      return;
-    }
-    setSearchReplacing(true);
-    try {
-      const result = await desktopApi().workbenchReplaceText({
-        rootPath: projectPath,
-        query: trimmedQuery,
-        replaceWith: searchReplaceText,
-        matchCase: searchMatchCase,
-        wholeWord: searchWholeWord,
-        useRegex: searchUseRegex,
-        files: targets,
-        only: onlyByPath && onlyByPath.size
-          ? [...onlyByPath].map(([path, ordinal]) => ({ path, ordinal }))
-          : undefined
-      });
-      const replacedFiles = result.replaced.length;
-      const skippedCount = skippedDirtyCount + result.skipped.length;
-      if (replacedFiles > 0) {
-        let text = t("desktop.workbench.searchReplaceDone", String(result.totalReplaced), String(replacedFiles));
-        if (skippedCount > 0) {
-          text += ` · ${t("desktop.workbench.searchReplaceSkipped", String(skippedCount))}`;
-        }
-        setStatus({ text, kind: "ok" });
-        window.clearTimeout(searchTimerRef.current);
-        void runProjectSearch(searchQuery);
-        void reconcileProjectEditors(projectPath);
-      } else if (skippedCount > 0) {
-        setStatus({ text: t("desktop.workbench.searchReplaceBlockedDirty"), kind: "error" });
-      }
-    } catch (error) {
-      setStatus({ text: t("desktop.workbench.searchReplaceFailed", statusError(error)), kind: "error" });
-    } finally {
-      setSearchReplacing(false);
-    }
-  }, [reconcileProjectEditors, runProjectSearch, searchFilesExclude, searchFilesInclude, searchMatchCase, searchQuery, searchReplacing, searchReplaceText, searchUseRegex, searchWholeWord, selectedProject, setStatus, t]);
-
-  /**
-   * Explorer "Find in Folder": open the Search pane scoped to a folder by
-   * pre-filling the files-to-include glob (VS Code style), keeping any query
-   * the user already typed so results update for the new scope.
-   */
-  const findInExplorerFolder = useCallback((folderPath: string) => {
-    const projectRoot = selectedProject;
-    if (!projectRoot) return;
-    const root = normalizeWorkbenchPath(projectRoot);
-    const folder = normalizeWorkbenchPath(folderPath);
-    if (folder !== root && !folder.startsWith(`${root}/`)) return;
-    const relative = folder === root ? "" : folder.slice(root.length).replace(/^\/+/, "");
-    setSearchProjectMode(false);
-    setSearchProjectQuery("");
-    if (relative) {
-      setSearchFilesInclude(`${relative}/**`);
-      // Show the scope field so the folder restriction is visible/editable.
-      setSearchDetailsOpen(true);
-      localStorage.setItem("wb-search-details-open", "true");
-    } else {
-      setSearchFilesInclude("");
-    }
-    setSide("search");
-    window.requestAnimationFrame(() => {
-      searchInputRef.current?.focus();
-      searchInputRef.current?.select();
-    });
-  }, [selectedProject]);
-
-  useEffect(() => {
-    if (side === "search") {
-      window.requestAnimationFrame(() => searchInputRef.current?.focus());
-      return;
-    }
-    setSearchProjectMode(false);
-    setSearchProjectQuery("");
-  }, [side]);
+  const {
+    searchQuery,
+    setSearchQuery,
+    searchMatchCase,
+    setSearchMatchCase,
+    searchWholeWord,
+    setSearchWholeWord,
+    searchUseRegex,
+    setSearchUseRegex,
+    searchTruncated,
+    searchLoading,
+    searchError,
+    searchExpanded,
+    setSearchExpanded,
+    searchSelectedKey,
+    setSearchSelectedKey,
+    searchProjectMode,
+    setSearchProjectMode,
+    searchProjectQuery,
+    setSearchProjectQuery,
+    searchProjectSelectionId,
+    setSearchProjectSelectionId,
+    searchFilesInclude,
+    setSearchFilesInclude,
+    searchFilesExclude,
+    setSearchFilesExclude,
+    searchDetailsOpen,
+    searchReplaceOpen,
+    searchReplaceText,
+    setSearchReplaceText,
+    searchReplacing,
+    searchInputRef,
+    searchReplaceInputRef,
+    searchIncludeInputRef,
+    searchExcludeInputRef,
+    searchTimerRef,
+    searchGroups,
+    searchFileCount,
+    searchMatchCount,
+    searchReplaceVisible,
+    runProjectSearch,
+    performSearchReplace,
+    findInExplorerFolder,
+    toggleSearchDetails,
+    toggleSearchReplace,
+    resetSearchProjectMode
+  } = useWorkbenchSearch({
+    selectedProject,
+    side,
+    getDirtyEditorPaths: (projectPath) => editorsRef.current
+      .filter((editor) => editor.projectPath === projectPath && editor.dirty)
+      .map((editor) => editor.path),
+    onStatus: setStatus,
+    onReconcileEditors: (projectPath) => { void reconcileProjectEditors(projectPath); },
+    onOpenSearchSide: () => setSide("search")
+  });
 
   useEffect(() => {
     if (!currentEditor) return;
@@ -6520,248 +4268,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     });
     return () => window.cancelAnimationFrame(timer);
   }, [currentEditor, activePane]);
-
-  const collectGitRoots = useCallback((result: GitStatusResult, preferredRoot = ""): string[] => {
-    const roots = new Set<string>();
-    if (preferredRoot) roots.add(preferredRoot);
-    if (result.root) roots.add(result.root);
-    (result.nestedRepos || []).forEach((repo) => roots.add(repo.root));
-    [...result.staged, ...result.unstaged].forEach((change) => {
-      if (change.repoRoot) roots.add(change.repoRoot);
-    });
-    (result.tracking || []).forEach((item) => {
-      if (item.repoRoot) roots.add(item.repoRoot);
-    });
-    return [...roots].filter(Boolean);
-  }, []);
-
-  const refreshGit = useCallback(async (withNotification = false) => {
-    if (!selectedProject) return;
-    const project = selectedProject;
-    if (gitStatusInFlightRef.current) {
-      if (withNotification) {
-        // Manual refresh waits for the in-flight call to finish, then runs once more.
-        while (gitStatusInFlightRef.current) {
-          await new Promise((resolve) => window.setTimeout(resolve, 50));
-        }
-      } else {
-        // Background refresh while one is in flight: converge after the current call finishes.
-        gitRefreshPendingRef.current = true;
-        return;
-      }
-    }
-    gitStatusInFlightRef.current = true;
-    if (withNotification) setGitRefreshing(true);
-    try {
-      const result = await desktopApi().terminalGitStatus({
-        cwd: project,
-        nestedScan: {
-          maxDepth: settings?.workbench?.gitNestedScanMaxDepth,
-          ignoreDirs: settings?.workbench?.gitNestedScanIgnoreDirs
-        }
-      });
-      // The user may have switched projects while the status query was in flight:
-      // discard the stale result (data and expansion init) so the next project's
-      // first refresh still defaults to a fully expanded tree.
-      if (selectedProjectRef.current !== project) return;
-      setGit(result);
-      const roots = collectGitRoots(result);
-      gitRootsRef.current = roots;
-      const preferredRoot = defaultGitRoot(result, roots);
-      setGitRoot((current) => {
-        if (gitRootManuallySelectedRef.current && current && roots.includes(current)) return current;
-        return preferredRoot;
-      });
-      const nextChanges = [...result.staged, ...result.unstaged];
-      const available = gitDirectoryKeys(nextChanges);
-      setGitExpandedDirs((current) => {
-        if (!gitExpandInitializedRef.current) {
-          // First status for this project: everything expanded by default.
-          gitExpandInitializedRef.current = true;
-          gitSeenDirectoryKeysRef.current = new Set(available);
-          return new Set(available);
-        }
-        const next = reconcileExpandedGitDirectories(current, nextChanges);
-        // Directories that appeared after the previous status also default to
-        // expanded, while directories the user collapsed stay collapsed.
-        for (const key of available) {
-          if (!gitSeenDirectoryKeysRef.current.has(key)) next.add(key);
-        }
-        gitSeenDirectoryKeysRef.current = new Set(available);
-        return next;
-      });
-    } catch (error) {
-      if (withNotification) notifyGitFailure("desktop.workbench.gitStatusRefreshFailed", error);
-      else if (side === "git") setStatus({ text: gitOperationError(error), kind: "error" });
-      // Silent background polls: ignore transient failures (no toast / status spam).
-    } finally {
-      gitStatusInFlightRef.current = false;
-      if (withNotification) setGitRefreshing(false);
-      // Coalesced trailing refresh: a background refresh requested while the
-      // previous call was still in flight runs once the dust settles. Use the
-      // latest callback so the re-run targets the current project, never the
-      // stale one this closure was created for.
-      if (gitRefreshPendingRef.current) {
-        gitRefreshPendingRef.current = false;
-        void refreshGitRef.current(false);
-      }
-    }
-  }, [collectGitRoots, notifyGitFailure, selectedProject, settings?.workbench?.gitNestedScanIgnoreDirs, settings?.workbench?.gitNestedScanMaxDepth, side]);
-
-  useEffect(() => { refreshGitRef.current = refreshGit; }, [refreshGit]);
-
-  // Re-fetch content for open diff panes whose underlying file changed on disk
-  // so the diff stays live alongside the git tree. `changedPaths` holds the
-  // absolute paths reported by the watcher; pass null to refresh every live
-  // (non-commit) diff pane for the current project.
-  const refreshOpenGitDiffs = useCallback(async (changedPaths: ReadonlySet<string> | null) => {
-    if (!selectedProject) return;
-    const projectDiffs = diffsRef.current.filter(
-      (pane) => pane.projectPath === selectedProject && pane.source !== "commit"
-    );
-    if (!projectDiffs.length) return;
-    const targets = changedPaths === null
-      ? projectDiffs
-      : projectDiffs.filter((pane) => changedPaths.has(normalizeWorkbenchPath(gitChangeFilePath(pane))));
-    if (!targets.length) return;
-    await Promise.all(targets.map(async (pane) => {
-      try {
-        const refreshed = await desktopApi().terminalGitDiffSides({
-          cwd: pane.repoRoot,
-          path: pane.repoPath,
-          staged: pane.source === "staged"
-        });
-        if (pane.source !== "untracked" && !refreshed.hunks.length) {
-          // The working-tree/staged change is gone; close the now-empty pane.
-          setDiffs((current) => current.filter((item) => item.key !== pane.key));
-          setActivePanes((current) => {
-            const projectKey = paneProjectKey(selectedProject);
-            return current[projectKey] === pane.key ? { ...current, [projectKey]: "" } : current;
-          });
-        } else if (refreshed.oldText !== pane.oldText || refreshed.newText !== pane.newText) {
-          // Skip state updates when the content is unchanged (e.g. a save that
-          // wrote identical bytes) so the diff pane is not re-parsed and
-          // re-highlighted on every filesystem event.
-          setDiffs((current) => current.map((item) => item.key === pane.key ? { ...item, ...refreshed } : item));
-        }
-      } catch {
-        // Transient failure (file briefly unavailable, repo churn): keep the
-        // last rendered diff; the next change event re-attempts.
-      }
-    }));
-  }, [selectedProject]);
-
-  // Refresh the git tree promptly when project files change on disk (saves,
-  // external edits, checkouts, discards) instead of waiting for the poll.
-  const gitRefreshDebounceRef = useRef(0);
-  // Absolute paths (normalized) of files changed within the debounce window,
-  // so an open diff pane is re-fetched even when several change events coalesce.
-  const gitDiffRefreshPendingRef = useRef<{ paths: Set<string>; fullRescan: boolean }>({
-    paths: new Set(),
-    fullRescan: false
-  });
-  useEffect(() => {
-    const api = desktopApi();
-    if (typeof api.onWorkbenchFileSystemChanged !== "function") return;
-    const unsubscribe = api.onWorkbenchFileSystemChanged((event) => {
-      if (event.type !== "change") return;
-      if (!activeRef.current || projectPathKey(event.rootPath) !== projectPathKey(watchedRootRef.current)) return;
-      const pending = gitDiffRefreshPendingRef.current;
-      if (event.fullRescan || !event.paths.length) {
-        pending.fullRescan = true;
-      } else {
-        for (const changedPath of event.paths) pending.paths.add(normalizeWorkbenchPath(changedPath));
-      }
-      if (gitRefreshDebounceRef.current) window.clearTimeout(gitRefreshDebounceRef.current);
-      gitRefreshDebounceRef.current = window.setTimeout(() => {
-        gitRefreshDebounceRef.current = 0;
-        const { paths, fullRescan } = gitDiffRefreshPendingRef.current;
-        gitDiffRefreshPendingRef.current = { paths: new Set(), fullRescan: false };
-        void refreshGit(false);
-        void refreshOpenGitDiffs(fullRescan ? null : paths);
-      }, GIT_REFRESH_DEBOUNCE_MS);
-    });
-    return () => {
-      if (gitRefreshDebounceRef.current) window.clearTimeout(gitRefreshDebounceRef.current);
-      gitRefreshDebounceRef.current = 0;
-      unsubscribe();
-    };
-  }, [refreshGit, refreshOpenGitDiffs]);
-
-  const autoFetchGit = useCallback(async (force = false) => {
-    if (!selectedProject || gitFetchInFlightRef.current) return;
-    const now = Date.now();
-    if (!force && now - gitLastFetchAtRef.current < GIT_AUTO_FETCH_MS) return;
-    gitFetchInFlightRef.current = true;
-    try {
-      // Always refresh once when forcing so roots match the current project.
-      if (force || !gitRootsRef.current.length) {
-        await refreshGit(false);
-      }
-      const roots = gitRootsRef.current.slice(0, GIT_AUTO_FETCH_MAX_ROOTS);
-      for (const root of roots) {
-        try {
-          await desktopApi().terminalGitFetch({ repoRoot: root });
-        } catch {
-          // Soft-fail per root (offline remotes, auth prompts, etc.).
-        }
-      }
-      gitLastFetchAtRef.current = Date.now();
-      await refreshGit(false);
-    } finally {
-      gitFetchInFlightRef.current = false;
-    }
-  }, [refreshGit, selectedProject]);
-
-  // Reset cached roots/fetch clock when the selected project changes.
-  useEffect(() => {
-    gitRootsRef.current = [];
-    gitLastFetchAtRef.current = 0;
-    gitExpandInitializedRef.current = false;
-    gitSeenDirectoryKeysRef.current = new Set();
-    setGit(null);
-    setGitRoot("");
-    gitRootManuallySelectedRef.current = false;
-    setGitExpandedDirs(new Set());
-  }, [selectedProject]);
-
-  // Keep status fresh while Workbench is active (Git side panel need not be open).
-  useEffect(() => {
-    if (!active || !selectedProject) return;
-    void refreshGit(false);
-    const poll = window.setInterval(() => {
-      if (document.visibilityState === "visible") void refreshGit(false);
-    }, GIT_STATUS_POLL_MS);
-    return () => window.clearInterval(poll);
-  }, [active, refreshGit, selectedProject]);
-
-  // Periodic remote fetch while Workbench is active.
-  useEffect(() => {
-    if (!active || !selectedProject) return;
-    void autoFetchGit(true);
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible") void autoFetchGit(false);
-    }, GIT_AUTO_FETCH_MS);
-    return () => window.clearInterval(timer);
-  }, [active, autoFetchGit, selectedProject]);
-
-  // Focus / visibility: status immediately; fetch only if stale.
-  useEffect(() => {
-    if (!active || !selectedProject) return;
-    const onFocus = () => {
-      void refreshGit(false);
-      void autoFetchGit(false);
-    };
-    const onVisibility = () => {
-      if (document.visibilityState === "visible") onFocus();
-    };
-    window.addEventListener("focus", onFocus);
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      window.removeEventListener("focus", onFocus);
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, [active, autoFetchGit, refreshGit, selectedProject]);
 
   const openDiff = async (change: GitChange, staged: boolean, projectPath = selectedProjectRef.current) => {
     if (!projectPath) return;
@@ -7066,155 +4572,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     } catch (error) { notifyGitFailure("desktop.workbench.sidePanelDiffFailed", error); }
   };
 
-  const toggleGitDirectory = (path: string) => {
-    setGitExpandedDirs((current) => {
-      const next = new Set(current);
-      if (next.has(path)) next.delete(path); else next.add(path);
-      return next;
-    });
-  };
-
-  const gitRepositories = useMemo(() => {
-    const roots = new Set<string>();
-    if (git?.root) roots.add(git.root);
-    git?.nestedRepos?.forEach((repository) => roots.add(repository.root));
-    [...(git?.staged || []), ...(git?.unstaged || [])].forEach((change) => roots.add(change.repoRoot));
-    return [...roots].filter(Boolean).sort((left, right) => left.localeCompare(right)).map((root) => ({
-      root,
-      label: git?.nestedRepos?.find((repository) => repository.root === root)?.displayPath || basename(root)
-    }));
-  }, [git]);
-
-  // IDEA-style sync: pull remote changes when behind, push local commits when
-  // ahead, and fetch to check for updates when the branch is already in sync.
-  const syncGitBranch = async () => {
-    const root = trackingForRoot(git, gitRoot);
-    const repoRoot = gitRoot || root?.repoRoot;
-    if (!repoRoot) return;
-    setGitSyncing(true);
-    try {
-      if (root && root.behind > 0) await desktopApi().terminalGitPull({ repoRoot });
-      if (root && root.ahead > 0) await desktopApi().terminalGitPush({ repoRoot });
-      if (!root || (root.ahead <= 0 && root.behind <= 0)) await desktopApi().terminalGitFetch({ repoRoot });
-      notifyGitSuccess("desktop.workbench.gitSyncSucceeded");
-      await refreshGit();
-      currentTerminals.forEach((pane) => void refreshTerminalGit(pane.key));
-    } catch (error) { notifyGitFailure("desktop.workbench.gitSyncFailed", error); }
-    finally { setGitSyncing(false); }
-  };
-
-  const checkoutGitPanelBranch = async (selection: { branch: string; remote?: string }) => {
-    if (!gitRoot || !selection.branch) return;
-    try {
-      await desktopApi().terminalGitCheckout({ cwd: gitRoot, ...selection, repoRoot: gitRoot });
-      await refreshGit();
-      currentTerminals.forEach((pane) => void refreshTerminalGit(pane.key));
-      const displayBranch = selection.remote ? `${selection.remote}/${selection.branch}` : selection.branch;
-      notifyGitSuccess("desktop.workbench.checkoutBranchSucceeded", displayBranch);
-    } catch (error) { notifyGitFailure("desktop.workbench.checkoutBranchFailed", error); }
-  };
-
-  /** Queue a git index operation per repo so concurrent clicks never collide on index.lock. */
-  const enqueueGitStage = useCallback((repoRoot: string, operation: () => Promise<unknown>): Promise<void> => {
-    const queues = gitStageQueuesRef.current;
-    const previous = queues.get(repoRoot) || Promise.resolve();
-    const next = previous.catch(() => undefined).then(operation).then(() => undefined);
-    queues.set(repoRoot, next.catch(() => undefined));
-    return next;
-  }, []);
-
-  const toggleGitStage = useCallback(async (targets: GitStageTarget | GitStageTarget[], targetStaged: boolean) => {
-    const groups = normalizeGitStageTargets(targets);
-    if (!groups.length) return;
-    const results = await Promise.all(groups.map(async (group) => {
-      try {
-        await enqueueGitStage(group.repoRoot, () => targetStaged
-          ? desktopApi().terminalGitStage({ repoRoot: group.repoRoot, paths: group.paths })
-          : desktopApi().terminalGitUnstage({ repoRoot: group.repoRoot, paths: group.paths }));
-        // Reflect the toggle in local state right away so checkboxes respond
-        // instantly; the coalesced trailing refresh converges to authoritative
-        // git status (status letters, mixed staged+modified files, ...).
-        setGit((current) => current ? stageGitChangesOptimistically(current, [group], targetStaged) : current);
-        return null;
-      } catch (error) {
-        return error;
-      }
-    }));
-    const failures = results.filter((error): error is Error => Boolean(error));
-    if (failures.length) {
-      notifyGitFailure(targetStaged ? "desktop.workbench.gitStageFailed" : "desktop.workbench.gitUnstageFailed", failures[0]);
-    }
-    currentTerminals.forEach((pane) => void refreshTerminalGit(pane.key));
-    // Never block the click on a full status scan; converge in the background.
-    void refreshGit(false);
-  }, [enqueueGitStage, notifyGitFailure, refreshGit, refreshTerminalGit]);
-
-  const stagedCommitPaths = useMemo(() => {
-    if (!gitRoot || !git) return [] as string[];
-    const paths: string[] = [];
-    const seen = new Set<string>();
-    for (const change of git.staged) {
-      if (change.repoRoot !== gitRoot || seen.has(change.repoPath)) continue;
-      seen.add(change.repoPath);
-      paths.push(change.repoPath);
-    }
-    return paths;
-  }, [git, gitRoot]);
-
-  const canCommit = Boolean(gitRoot && commitMessage.trim() && stagedCommitPaths.length && !commitBusy);
-
-  const suggestCommit = async () => {
-    if (!gitRoot || !stagedCommitPaths.length) return;
-    try {
-      setCommitBusy(true);
-      setCommitSuggestion(null);
-      const result = await desktopApi().terminalGitSuggestCommit({ repoRoot: gitRoot, paths: stagedCommitPaths });
-      setCommitMessage(result.message);
-      setCommitSuggestion(result);
-    } catch (error) { notifyGitFailure("desktop.workbench.gitCommitGenerateFailed", error); }
-    finally { setCommitBusy(false); }
-  };
-
-  const notifySkippedSubmodules = (result: { ok: boolean; skipped?: string[] } | undefined) => {
-    if (!result?.skipped?.length) return;
-    const text = t("desktop.workbench.gitCommitSkippedSubmodules", result.skipped.join(", "));
-    setStatus({ text, kind: "warning" });
-    notifyDesktop({ text, kind: "info" });
-  };
-
-  const commit = async (pushAfter = false) => {
-    if (!gitRoot || !commitMessage.trim() || !stagedCommitPaths.length) return;
-    let result: { ok: boolean; skipped?: string[] } | undefined;
-    try {
-      setCommitBusy(true);
-      result = await desktopApi().terminalGitCommit({
-        repoRoot: gitRoot,
-        message: commitMessage.trim(),
-        paths: stagedCommitPaths
-      });
-    } catch (error) {
-      notifyGitFailure("desktop.workbench.gitCommitFailed", error);
-      setCommitBusy(false);
-      return;
-    }
-    setCommitSuggestion(null);
-    if (pushAfter) {
-      try {
-        await desktopApi().terminalGitPush({ repoRoot: gitRoot });
-        notifySkippedSubmodules(result);
-        notifyGitSuccess("desktop.workbench.gitCommitAndPushSucceeded");
-        setCommitMessage("");
-      } catch (error) { notifyGitFailure("desktop.workbench.gitCommitSucceededPushFailed", error); }
-    } else {
-      notifySkippedSubmodules(result);
-      notifyGitSuccess("desktop.workbench.gitCommitSucceeded");
-      setCommitMessage("");
-    }
-    await refreshGit();
-    currentTerminals.forEach((pane) => void refreshTerminalGit(pane.key));
-    setCommitBusy(false);
-  };
-
   const loadGitLog = async () => {
     if (!gitRoot) return;
     const requestId = gitLogRequestRef.current + 1;
@@ -7504,55 +4861,22 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   useEffect(() => {
     const data = desktopApi().onTerminalData(({ id, data: value }) => {
-      // Feed the status store before touching the terminal: it needs the raw
-      // bytes (status sequences, cursor modes) even when no xterm is mounted.
-      statusStore.ingestTerminalData(id, value);
       const terminal = terminalRefs.current.get(id);
       if (!terminal) return;
       trackTerminalMouseModes(id, value, terminalMouseTrackingRef.current);
       trackTuiRedraw(value, terminal);
-      terminal.write(stripReportedStatus(value));
+      terminal.write(value);
     });
-    const onTerminalActivity = desktopApi().onTerminalActivity;
-    const activity = typeof onTerminalActivity === "function"
-      ? onTerminalActivity(({ id, tail, timestamp }) => {
-          statusStore.ingestTerminalActivity(id, { tail, timestamp });
-        })
-      : () => undefined;
     const exited = desktopApi().onTerminalExit(({ id }) => {
       terminalRefs.current.get(id)?.write(`\r\n${t("desktop.workbench.terminalClosed")}\r\n`);
-      statusStore.detachTerminal(id);
       const pane = terminalsRef.current.find((item) => item.ptyId === id);
       if (pane) scheduleSessionPaneAutoRename(pane);
     });
     const respawned = desktopApi().onTerminalRespawned(({ id }) => terminalRefs.current.get(id)?.write(`\r\n${t("desktop.workbench.shellRestored")}\r\n`));
-    return () => { data(); activity(); exited(); respawned(); };
-  }, [scheduleSessionPaneAutoRename, statusStore, t]);
+    return () => { data(); exited(); respawned(); };
+  }, [scheduleSessionPaneAutoRename, t]);
 
   const changes = git ? [{ title: t("desktop.workbench.sidePanelStaged"), staged: true, entries: git.staged }, { title: t("desktop.workbench.sidePanelChanges"), staged: false, entries: git.unstaged }] : [];
-  const searchGroups = useMemo(() => {
-    const groups: Array<{ path: string; relativePath: string; matches: SearchMatch[] }> = [];
-    const indexByPath = new Map<string, number>();
-    for (const match of searchMatches) {
-      const existing = indexByPath.get(match.path);
-      if (existing === undefined) {
-        indexByPath.set(match.path, groups.length);
-        groups.push({ path: match.path, relativePath: match.relativePath, matches: [match] });
-      } else {
-        groups[existing].matches.push(match);
-      }
-    }
-    return groups;
-  }, [searchMatches]);
-  const searchFileCount = searchGroups.length;
-  const searchMatchCount = searchMatches.length;
-  /** Replace All / per-match actions are enabled only on complete results. */
-  const searchReplaceVisible = searchReplaceOpen
-    && !searchLoading
-    && !searchReplacing
-    && searchMatchCount > 0
-    && !searchTruncated
-    && Boolean(selectedProject);
   const setWidth = (kind: "folders" | "list" | "side", delta: number) => {
     const current = kind === "folders" ? foldersWidth : kind === "list" ? listWidth : sideWidth;
     const limits = kind === "folders" ? [140, 560] : kind === "list" ? [240, 720] : [240, 840];
@@ -7607,12 +4931,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   const quickAccessRecentPaths = (paneHistoryRef.current[paneProjectKey(quickAccessRoot)] || [])
     .filter((key) => key.startsWith("editor:"))
     .map((key) => key.slice("editor:".length));
-  const quickAccessVisibleFiles = useMemo(() => {
-    if (!quickAccessSearchFiles.length) return quickAccessFiles;
-    const byPath = new Map(quickAccessFiles.map((entry) => [entry.path, entry]));
-    for (const entry of quickAccessSearchFiles) byPath.set(entry.path, entry);
-    return [...byPath.values()];
-  }, [quickAccessFiles, quickAccessSearchFiles]);
   const quickAccessProjects = useMemo<QuickAccessProject[]>(() => allProjects.map((project) => ({
     id: project.id,
     path: project.path,
@@ -7694,11 +5012,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     if (quickAccessRoot) selectProject(quickAccessRoot);
     window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
     if (view) setSide(view);
-    if (view === "search") {
-      setSearchProjectMode(false);
-      setSearchProjectQuery("");
-      window.requestAnimationFrame(() => searchInputRef.current?.focus());
-    }
+    if (view === "search") resetSearchProjectMode();
   };
   const navigateTo = (tab: "report" | "agent" | "workbench" | "notes") => {
     closeQuickAccess();
@@ -7821,54 +5135,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     void assignDraggedSessionToFolder(project, folderId);
   };
 
-  const renderProjectFolderRows = (project: WorkbenchProject, parentId: string | null, depth = 0): ReactNode => {
-    const children = project.folders
-      .filter((folder) => (folder.parentId || null) === parentId)
-      .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: "base" }));
-    if (!children.length) return null;
-    const assignmentCounts = new Map<string, number>();
-    for (const assignment of project.folderAssignments) {
-      assignmentCounts.set(assignment.folderId, (assignmentCounts.get(assignment.folderId) || 0) + 1);
-    }
-    return children.map((folder) => {
-      const hasChildren = project.folders.some((candidate) => candidate.parentId === folder.folderId);
-      const expanded = expandedFolderIds.has(folder.folderId);
-      return <Fragment key={folder.folderId}>
-      <button
-        type="button"
-        className={`wb-folder-row wb-session-folder-row${selectedProject === project.path && selectedFolderId === folder.folderId ? " active" : ""}${dragTargetKey === `${project.id}:${folder.folderId}` ? " is-drop-target" : ""}`}
-        style={{ paddingLeft: `${18 + depth * 16}px` }}
-        onContextMenu={(event) => folderMenu(event, project, folder)}
-        onDragOver={(event) => handleFolderDragOver(event, project, folder.folderId, hasChildren, expanded)}
-        onDragLeave={(event) => handleFolderDragLeave(event, project, folder.folderId)}
-        onDrop={(event) => handleFolderDrop(event, project, folder.folderId)}
-        onClick={() => selectProjectFolder(project, folder.folderId)}
-        title={folder.name}
-        aria-expanded={hasChildren ? expanded : undefined}
-      >
-        <span
-          className={`wb-session-folder-chevron${expanded ? " is-expanded" : ""}${hasChildren ? " has-children" : ""}`}
-          onClick={(event) => {
-            if (!hasChildren) return;
-            event.preventDefault();
-            event.stopPropagation();
-            setExpandedFolderIds((current) => {
-              const next = new Set(current);
-              if (next.has(folder.folderId)) next.delete(folder.folderId);
-              else next.add(folder.folderId);
-              return next;
-            });
-          }}
-        ><ThemeIcon name="chevron-right" size={12} aria-hidden="true" /></span>
-        <ThemeIcon name="folder" size={14} aria-hidden="true" />
-        <span className="wb-folder-row-label">{folder.name}</span>
-        <span className="wb-folder-row-count">{assignmentCounts.get(folder.folderId) || 0}</span>
-      </button>
-      {expanded ? renderProjectFolderRows(project, folder.folderId, depth + 1) : null}
-    </Fragment>;
-    });
-  };
-
   const paneTabGroups = <div className="wb-pane-tab-groups">
     <div className="wb-terminal-tabs is-session-group" data-pane-group="session">
       <button ref={newSessionButtonRef} type="button" className={`wb-pane-tab-group-label${terminalCreating ? " is-busy" : ""}`} disabled={terminalCreating} aria-label={t("desktop.workbench.newSession")} title={t("desktop.workbench.newSession")} aria-haspopup="menu" aria-expanded={Boolean(newSessionPicker)} onClick={() => { if (newSessionPicker) setNewSessionPicker(null); else void newSession(); }}>{terminalCreating ? <ThemeIcon name="loader" className="spin" size={13} aria-hidden="true" /> : <ThemeIcon name="bot" size={13} aria-hidden="true" />}</button>
@@ -7919,101 +5185,77 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   if (!host) return null;
 
-  // Detail head + folder-collapse toggle live in the app header while Workbench is active.
   const headerSlot = document.getElementById("app-header-slot");
-  const collapseToggle = (
-    <button type="button" className={`sidebar-collapse-toggle${foldersCollapsed ? " is-active" : ""}`} aria-label={t("desktop.workbench.resizeProjects")} onClick={() => setFoldersCollapsed((current) => { const next = !current; localStorage.setItem(FOLDERS_COLLAPSED_KEY, String(next)); return next; })}><ThemeIcon name="panel-right" size={17} /></button>
-  );
-  const detailHead = (
-    <div className="wb-detail-head">
-      <span className="wb-detail-project-label">
-        <span className="wb-detail-project-label-text">{selectedProject ? aliases[selectedProject] || basename(selectedProject) : t("desktop.workbench.allSessions")}</span>
-        {selectedProject ? <span className="wb-detail-project-path">{selectedProject}</span> : null}
-      </span>
-      <div className="wb-detail-head-actions">
-        {branchStatusLabel && branchStatusPane ? (
-          <div className="wb-terminal-status">
-            <button
-              type="button"
-              className="wb-terminal-status-branch"
-              title={branchStatusNested
-                ? branchStatusPane.nestedRepos?.map((repo) => `${repo.displayPath || repo.root}: ${repo.branch || "-"}`).join(", ")
-                : branchStatusLabel}
-              onClick={(event) => void openBranchMenu(branchStatusPane, event.currentTarget)}
-            >
-              <ThemeIcon name="git-branch" size={12} aria-hidden="true" />
-              <span className="wb-terminal-status-branch-label">{branchStatusLabel}</span>
-            </button>
-          </div>
-        ) : null}
-        <div className="wb-detail-tools">
-          <button type="button" className={`wb-detail-tool${side === "files" ? " active" : ""}`} aria-pressed={side === "files"} aria-label={t("desktop.workbench.sidePanelExplorer")} title={t("desktop.workbench.sidePanelExplorer")} onClick={() => setSide((current) => current === "files" ? null : "files")}><ThemeIcon name="folder-tree" size={16} /></button>
-          <button type="button" className={`wb-detail-tool${side === "scripts" ? " active" : ""}`} aria-pressed={side === "scripts"} aria-label={t("desktop.workbench.sidePanelScripts")} title={t("desktop.workbench.sidePanelScripts")} onClick={() => setSide((current) => current === "scripts" ? null : "scripts")}><ThemeIcon name="play" size={16} /></button>
-          <button type="button" className={`wb-detail-tool${side === "search" ? " active" : ""}`} aria-pressed={side === "search"} aria-label={t("desktop.workbench.sidePanelSearch")} title={t("desktop.workbench.sidePanelSearch")} onClick={() => setSide((current) => current === "search" ? null : "search")}><ThemeIcon name="search" size={16} /></button>
-          <button type="button" className={`wb-detail-tool${side === "linkgraph" ? " active" : ""}`} aria-pressed={side === "linkgraph"} aria-label={t("desktop.workbench.sidePanelLinkGraph")} title={t("desktop.workbench.sidePanelLinkGraph")} onClick={() => setSide((current) => current === "linkgraph" ? null : "linkgraph")}><ThemeIcon name="waypoints" size={16} /></button>
-          <button type="button" className={`wb-detail-tool${side === "git" ? " active" : ""}`} aria-pressed={side === "git"} aria-label={t("desktop.workbench.sidePanelGit")} title={t("desktop.workbench.sidePanelGit")} onClick={() => setSide((current) => current === "git" ? null : "git")}><ThemeIcon name="git-branch" size={16} /></button>
-        </div>
-      </div>
-    </div>
+  const detailHeader = (
+    <WorkbenchDetailHeader
+      foldersCollapsed={foldersCollapsed}
+      onToggleFoldersCollapsed={() => setFoldersCollapsed((current) => {
+        const next = !current;
+        localStorage.setItem(FOLDERS_COLLAPSED_KEY, String(next));
+        return next;
+      })}
+      selectedProject={selectedProject}
+      projectLabel={selectedProject ? aliases[selectedProject] || basename(selectedProject) : ""}
+      side={side}
+      branchStatusLabel={branchStatusLabel}
+      branchStatusPane={branchStatusPane}
+      branchStatusNested={branchStatusNested}
+      onOpenBranchMenu={openBranchMenu}
+      onToggleSide={(view) => setSide((current) => current === view ? null : view)}
+    />
   );
 
   return createPortal(<><section className="panel workbench-panel react-workbench-panel" hidden={!active}>
-    <div className="workbench-layout" style={{ "--sidebar-folders-width": `${foldersCollapsed ? 0 : foldersWidth}px`, "--wb-list-width": `${listWidth}px`, "--wb-side-panel-width": `${sideWidth}px` } as React.CSSProperties}>
-      <aside className={`sidebar-folders-pane wb-folders-pane${foldersCollapsed ? " is-collapsed" : ""}`}>
-        <div className="sidebar-project-filter-wrap">
-          <SegmentedControl aria-label={t("desktop.workbench.sidebarView")} value={sidebarView} options={["projects", "gtd"] as const satisfies readonly WorkbenchSidebarView[]} onChange={selectSidebarView} getLabel={(view) => t(view === "projects" ? "desktop.workbench.projectsView" : "desktop.workbench.gtdView")} className="sidebar-project-filter-segmented wb-sidebar-view-segmented" />
-          <div className="sidebar-project-search-wrap"><input type="search" className="sidebar-project-search" aria-label={t(sidebarView === "projects" ? "desktop.workbench.filterProjects" : "desktop.workbench.filterGtdSessions")} placeholder={t(sidebarView === "projects" ? "desktop.workbench.filterProjects" : "desktop.workbench.filterGtdSessions")} value={projectQuery} autoComplete="off" spellCheck={false} onChange={(event) => setProjectQuery(event.target.value)} /></div>
-          {sidebarView === "projects" ? <SegmentedControl
-              aria-label={t("desktop.notes.projectFilter")}
-              value={projectFilter}
-              options={["all", "pinned"] as const satisfies readonly ProjectFilter[]}
-              onChange={setProjectFilter}
-              getLabel={(filter) => t(`desktop.common.${filter}`)}
-            /> : null}
-        </div>
-        <div className="wb-folders">
-          {sidebarView === "projects" ? <>
-            <button type="button" className={`wb-folder-row${!selectedProject ? " active" : ""}`} onClick={() => selectProject(null)}><span className="wb-folder-row-label">{t("desktop.workbench.allSessions")}</span></button>
-            <div className="wb-folder-section">
-              <div className="wb-folder-section-head">
-                <div className="wb-folder-section-label">{t("desktop.notes.projectFilter")}</div>
-                <button type="button" className="wb-icon-btn wb-add-project-btn" aria-label={t("desktop.workbench.addProject")} title={t("desktop.workbench.addProject")} onClick={() => void addProject()}><ThemeIcon name="plus" size={14} /></button>
-              </div>
-              {projects.length ? projects.map((project) => {
-              const assignedCount = new Set(project.folderAssignments.map((assignment) => folderAssignmentKey(assignment.provider, assignment.agentSessionId))).size;
-              const unclassifiedCount = Math.max(0, project.sessionCount - assignedCount) + project.pendingCount;
-              const projectExpanded = expandedProjectIds.has(project.id);
-              return <Fragment key={project.id}>
-                <button type="button" className={`wb-folder-row${selectedProject === project.path || selectedProject === project.id ? " active" : ""}${project.pinned ? " is-pinned" : ""}${project.active ? " has-wb-activity" : ""}${project.pathMissing ? " is-path-missing" : ""}`} title={project.pathMissing ? t("desktop.workbench.pathMissingHint") : project.path} aria-expanded={projectExpanded} onContextMenu={(event) => projectMenu(event, project)} onClick={() => selectProject(project.path)}><span className={`wb-session-folder-chevron has-children${projectExpanded ? " is-expanded" : ""}`} onClick={(event) => { event.preventDefault(); event.stopPropagation(); setExpandedProjectIds((current) => { const next = new Set(current); if (next.has(project.id)) next.delete(project.id); else next.add(project.id); return next; }); }}><ThemeIcon name="chevron-right" size={12} aria-hidden="true" /></span>{project.pinned ? <ThemeIcon name="pin" className="project-pin-icon" size={12} aria-hidden="true" /> : null}{project.active ? <span className="wb-folder-activity-dot" aria-hidden="true" /> : null}<span className="wb-folder-row-text"><span className="wb-folder-row-label">{project.label}</span><span className="wb-folder-row-desc">{project.pathMissing ? t("desktop.workbench.pathMissingLabel", project.portableKey) : project.path}</span></span><span className="wb-folder-row-count">{project.sessionCount + project.pendingCount}</span></button>
-                {projectExpanded ? <>
-                <button
-                  type="button"
-                  className={`wb-folder-row wb-session-folder-root${selectedProject === project.path && selectedFolderId === UNCLASSIFIED_FOLDER_ID ? " active" : ""}${dragTargetKey === `${project.id}:${UNCLASSIFIED_FOLDER_ID}` ? " is-drop-target" : ""}`}
-                  onDragOver={(event) => handleFolderDragOver(event, project, null)}
-                  onDragLeave={(event) => handleFolderDragLeave(event, project, null)}
-                  onDrop={(event) => handleFolderDrop(event, project, null)}
-                  onClick={() => selectProjectFolder(project, UNCLASSIFIED_FOLDER_ID)}
-                ><ThemeIcon name="folder-open" size={14} aria-hidden="true" /><span className="wb-folder-row-label">{t("desktop.workbench.unclassifiedSessions")}</span><span className="wb-folder-row-count">{unclassifiedCount}</span></button>
-                {renderProjectFolderRows(project, null)}
-                </> : null}
-              </Fragment>;
-              }) : <p className="muted wb-folders-empty">{t("desktop.workbench.noProjects")}</p>}
-            </div>
-          </> : <div className="wb-folder-section wb-gtd-folder-section"><div className="wb-folder-section-label">{t("desktop.workbench.gtdView")}</div>{GTD_ACTIVE_STATUSES.map((gtdStatus) => <button type="button" className={`wb-folder-row wb-gtd-folder-row${selectedGtdStatus === gtdStatus ? " active" : ""}`} key={gtdStatus} onClick={() => {
-                if (gtdStatus !== selectedGtdStatus) {
-                  setSelectedSessionKeys((current) => current.size ? new Set() : current);
-                  setSelectionAnchorKey((current) => current ? "" : current);
-                }
-                setSelectedGtdStatus(gtdStatus);
-              }}><span className={`wb-gtd-status-dot is-${gtdStatus}`} aria-hidden="true" /><span className="wb-folder-row-label">{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</span><span className="wb-folder-row-count">{gtdStatusCounts.get(gtdStatus) || 0}</span></button>)}<div className="wb-gtd-completed-group"><button type="button" className="wb-folder-row wb-gtd-folder-row wb-gtd-completed-toggle" aria-expanded={completedGtdExpanded} onClick={() => setCompletedGtdExpanded((value) => !value)}><ThemeIcon name="chevron-right" className={completedGtdExpanded ? "is-expanded" : ""} size={14} aria-hidden="true" /><span className="wb-folder-row-label">{t("desktop.workbench.gtdCompleted")}</span><span className="wb-folder-row-count">{gtdStatusCounts.get("done") || 0}</span></button>{completedGtdExpanded ? <button type="button" className={`wb-folder-row wb-gtd-folder-row wb-gtd-completed-child${selectedGtdStatus === "done" ? " active" : ""}`} onClick={() => {
-                  if (selectedGtdStatus !== "done") {
-                    setSelectedSessionKeys((current) => current.size ? new Set() : current);
-                    setSelectionAnchorKey((current) => current ? "" : current);
-                  }
-                  setSelectedGtdStatus("done");
-                }}><span className="wb-gtd-status-dot is-done" aria-hidden="true" /><span className="wb-folder-row-label">{t("desktop.workbench.gtdStatus.done")}</span><span className="wb-folder-row-count">{gtdStatusCounts.get("done") || 0}</span></button> : null}</div></div>}
-        </div>
-      </aside>
+    <div className="workbench-layout" style={{ "--sidebar-folders-width": `${foldersCollapsed ? 0 : foldersWidth}px`, "--wb-list-width": `${listWidth}px`, "--wb-side-panel-width": `${sideWidth}px` } as CSSProperties}>
+      <WorkbenchSidebar
+        collapsed={foldersCollapsed}
+        sidebarView={sidebarView}
+        projectFilter={projectFilter}
+        projectQuery={projectQuery}
+        selectedProject={selectedProject}
+        selectedFolderId={selectedFolderId}
+        selectedGtdStatus={selectedGtdStatus}
+        completedGtdExpanded={completedGtdExpanded}
+        expandedProjectIds={expandedProjectIds}
+        expandedFolderIds={expandedFolderIds}
+        dragTargetKey={dragTargetKey}
+        unclassifiedFolderId={UNCLASSIFIED_FOLDER_ID}
+        projects={projects}
+        gtdStatusCounts={gtdStatusCounts}
+        folderAssignmentKey={folderAssignmentKey}
+        onSelectSidebarView={selectSidebarView}
+        onProjectQueryChange={setProjectQuery}
+        onProjectFilterChange={setProjectFilter}
+        onSelectAllSessions={() => selectProject(null)}
+        onAddProject={() => void addProject()}
+        onSelectProject={(path) => selectProject(path)}
+        onToggleProjectExpanded={(projectId) => setExpandedProjectIds((current) => {
+          const next = new Set(current);
+          if (next.has(projectId)) next.delete(projectId);
+          else next.add(projectId);
+          return next;
+        })}
+        onProjectMenu={projectMenu}
+        onSelectFolder={selectProjectFolder}
+        onFolderMenu={folderMenu}
+        onFolderDragOver={handleFolderDragOver}
+        onFolderDragLeave={handleFolderDragLeave}
+        onFolderDrop={handleFolderDrop}
+        onToggleFolderExpanded={(folderId) => setExpandedFolderIds((current) => {
+          const next = new Set(current);
+          if (next.has(folderId)) next.delete(folderId);
+          else next.add(folderId);
+          return next;
+        })}
+        onSelectGtdStatus={(gtdStatus) => {
+          if (gtdStatus !== selectedGtdStatus) {
+            setSelectedSessionKeys((current) => current.size ? new Set() : current);
+            setSelectionAnchorKey((current) => current ? "" : current);
+          }
+          setSelectedGtdStatus(gtdStatus);
+        }}
+        onToggleCompletedGtd={() => setCompletedGtdExpanded((value) => !value)}
+      />
       <ResizeHandle label={t("desktop.workbench.resizeProjects")} onDelta={(delta) => setWidth("folders", delta)} />
       <aside className="wb-list-pane">
         <div ref={sessionSearchToolbarRef} className={`sidebar-project-filter-wrap wb-session-filter-wrap${sessionSearchOpen ? " is-search-open" : ""}`}>
@@ -8085,7 +5327,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       </aside>
       <ResizeHandle label={t("desktop.workbench.resizeSessions")} onDelta={(delta) => setWidth("list", delta)} />
       <main className="wb-detail">
-        {active && headerSlot ? createPortal(<>{collapseToggle}{detailHead}</>, headerSlot) : null}
+        {active && headerSlot ? createPortal(detailHeader, headerSlot) : null}
         <div className="wb-detail-body">
           <div className="wb-terminal-shell">{paneTabGroups}<div className="wb-terminal-stack">{terminals.filter((pane) => pane.projectPath === selectedProject && pane.key === activePane).map((pane) => {
             const sessionIdentity = sessionIdentityFromKey(pane.sessionKey);
@@ -8104,10 +5346,8 @@ export function WorkbenchPanel(): ReactPortal | null {
                       sessionId={sessionId}
                       iconProvider={provider}
                       active={active}
-                      isRunning={activeTranscriptRunning}
                       fontSize={settings?.workbench?.transcriptFontSize ?? 14}
                       focusUserMessage={transcriptFocus}
-                      pendingUserMessage={pendingTranscriptUser?.paneKey === pane.key ? pendingTranscriptUser : null}
                       isPending={!sessionId}
                       onRefresh={triggerSessionSync}
                     />
@@ -8304,152 +5544,70 @@ export function WorkbenchPanel(): ReactPortal | null {
               onDestroyed={() => closeBrowser(pane.key)}
             />;
           })}{terminalCreating && !currentTerminals.some((pane) => pane.projectPath === selectedProject && !pane.ptyId) && !currentAcpChat ? <div className="wb-terminal-loading wb-terminal-loading-stack" role="status" aria-live="polite"><ThemeIcon name="loader" className="spin" size={18} aria-hidden="true" /><span>{t("desktop.common.loading")}</span></div> : null}{!terminalCreating && !currentTerminals.length && !currentEditors.length && !currentDiffs.length && !currentAcpChats.length && !currentBrowsers.length ? <p className="muted wb-terminal-hint">{selectedProject ? t("desktop.workbench.selectSessionHint") : t("desktop.workbench.selectProjectHint")}</p> : null}</div></div>
-          {side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane wb-explorer-side-pane"><WorkbenchFileExplorer ref={fileExplorerRef} rootPath={selectedProject || ""} activePath={currentFilePath} onOpenFile={(path) => void openFile(path)} onOpenPreview={(path) => void openFile(path, undefined, selectedProject, "preview")} onShowGitHistory={(path) => void loadGitFileHistory(path)} onFindInFolder={findInExplorerFolder} onError={(message) => setStatus({ text: message, kind: "error" })} /><div className={`wb-explorer-scripts${scriptsSectionCollapsed ? " is-collapsed" : ""}`}><div className="wb-explorer-scripts-head"><button type="button" className="wb-explorer-scripts-toggle" aria-expanded={!scriptsSectionCollapsed} onClick={() => setScriptsSectionCollapsed((current) => { const next = !current; localStorage.setItem("wb-scripts-collapsed", String(next)); return next; })}><span className={`wb-file-tree-chevron${scriptsSectionCollapsed ? "" : " is-expanded"}`}><ThemeIcon name="chevron-right" size={12} /></span><span className="wb-side-pane-title">{t("desktop.workbench.sidePanelScripts")}</span></button>{selectedProject ? <button type="button" className="wb-git-action-btn" disabled={scriptsLoading} onClick={() => void loadScripts(selectedProject)} aria-label={t("desktop.workbench.scriptsRefresh")} title={t("desktop.workbench.scriptsRefresh")}><ThemeIcon name="refresh" size={14} className={scriptsLoading ? "spin" : undefined} /></button> : null}</div>{!scriptsSectionCollapsed ? <ScriptsTree packages={scriptPackages} loading={scriptsLoading} error={scriptsError || null} truncated={scriptsTruncated} hasProject={Boolean(selectedProject)} compact emptyHint={t("desktop.workbench.scriptsEmpty")} noRootHint={t("desktop.workbench.sidePanelNoRoot")} onRun={runScript} /> : null}</div></div> : side === "scripts" ? <div className="wb-side-pane"><ScriptsTree packages={scriptPackages} loading={scriptsLoading} error={scriptsError || null} truncated={scriptsTruncated} hasProject={Boolean(selectedProject)} emptyHint={t("desktop.workbench.scriptsEmpty")} noRootHint={t("desktop.workbench.sidePanelNoRoot")} onRefresh={selectedProject ? () => void loadScripts(selectedProject) : undefined} onRun={runScript} /></div> : side === "search" ? <div className="wb-side-pane">
-            <div className="wb-side-pane-head"><span className="wb-side-pane-title">{t("desktop.workbench.sidePanelSearch")}</span></div>
-            <div className="wb-search-pane">
-              <div className="wb-search-form" role="search">
-                <input
-                  ref={searchInputRef}
-                  type="search"
-                  role={searchProjectMode ? "combobox" : undefined}
-                  className="wb-search-input"
-                  value={searchProjectMode ? searchProjectQuery : searchQuery}
-                  placeholder={t(searchProjectMode ? "desktop.workbench.quickAccessProjectPlaceholder" : "desktop.workbench.searchPlaceholder")}
-                  aria-label={t(searchProjectMode ? "desktop.workbench.quickAccessSelectProject" : "desktop.workbench.sidePanelSearch")}
-                  aria-expanded={searchProjectMode ? true : undefined}
-                  aria-controls={searchProjectMode ? "wb-search-project-results" : undefined}
-                  aria-activedescendant={searchProjectMode && searchProjectActive ? searchProjectOptionId(searchProjectActive.id) : undefined}
-                  aria-autocomplete={searchProjectMode ? "list" : undefined}
-                  autoComplete="off"
-                  spellCheck={false}
-                  onChange={(event) => searchProjectMode
-                    ? setSearchProjectQuery(event.target.value)
-                    : setSearchQuery(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (searchProjectMode) {
-                      if (event.key === "Escape") {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        leaveSearchProjectMode();
-                      } else if (event.key === "ArrowDown") {
-                        event.preventDefault();
-                        moveSearchProjectSelection(1);
-                      } else if (event.key === "ArrowUp") {
-                        event.preventDefault();
-                        moveSearchProjectSelection(-1);
-                      } else if (event.key === "Home") {
-                        event.preventDefault();
-                        setSearchProjectSelectionId(searchProjectResults[0]?.id || "");
-                      } else if (event.key === "End") {
-                        event.preventDefault();
-                        setSearchProjectSelectionId(searchProjectResults[searchProjectResults.length - 1]?.id || "");
-                      } else if (event.key === "Enter" && !event.nativeEvent.isComposing) {
-                        event.preventDefault();
-                        activateSearchProject();
-                      }
-                      return;
-                    }
-                    if (event.key === "ArrowLeft"
-                      && event.currentTarget.selectionStart === 0
-                      && event.currentTarget.selectionEnd === 0) {
-                      event.preventDefault();
-                      enterSearchProjectMode();
-                    } else if (event.key === "Enter" && !event.nativeEvent.isComposing) {
-                      event.preventDefault();
-                      window.clearTimeout(searchTimerRef.current);
-                      void runProjectSearch(searchQuery);
-                    }
-                  }}
-                />
-                {!searchProjectMode ? <>
-                  <button
-                    type="button"
-                    className="wb-search-scope"
-                    aria-label={t("desktop.workbench.quickAccessSelectProject")}
-                    title={searchProjectLabel}
-                    onClick={enterSearchProjectMode}
-                  ><ThemeIcon name="chevron-left" size={13} aria-hidden="true" /><span>{searchProjectLabel}</span></button>
-                  <div className="wb-search-options" role="group" aria-label={t("desktop.workbench.searchOptions")}>
-                    <button type="button" className={`wb-search-option${searchMatchCase ? " active" : ""}`} aria-pressed={searchMatchCase} title={t("desktop.workbench.searchMatchCase")} onClick={() => setSearchMatchCase((v) => !v)}>Aa</button>
-                    <button type="button" className={`wb-search-option${searchWholeWord ? " active" : ""}`} aria-pressed={searchWholeWord} title={t("desktop.workbench.searchWholeWord")} onClick={() => setSearchWholeWord((v) => !v)}>Ab</button>
-                    <button type="button" className={`wb-search-option${searchUseRegex ? " active" : ""}`} aria-pressed={searchUseRegex} title={t("desktop.workbench.searchUseRegex")} onClick={() => setSearchUseRegex((v) => !v)}>.*</button>
-                    <span className="wb-search-options-spacer" aria-hidden="true" />
-                    <button type="button" className={`wb-search-option wb-search-option-icon${searchDetailsOpen ? " active" : ""}`} aria-pressed={searchDetailsOpen} aria-label={t("desktop.workbench.searchToggleDetails")} title={t("desktop.workbench.searchToggleDetails")} onClick={() => { const next = !searchDetailsOpen; setSearchDetailsOpen(next); localStorage.setItem("wb-search-details-open", String(next)); }}><ThemeIcon name="ellipsis" size={14} aria-hidden="true" /></button>
-                    <button type="button" className={`wb-search-option wb-search-option-icon${searchReplaceOpen ? " active" : ""}`} aria-pressed={searchReplaceOpen} aria-label={t("desktop.workbench.searchToggleReplace")} title={t("desktop.workbench.searchToggleReplace")} onClick={() => { const next = !searchReplaceOpen; setSearchReplaceOpen(next); localStorage.setItem("wb-search-replace-open", String(next)); if (next) window.requestAnimationFrame(() => searchReplaceInputRef.current?.focus()); }}><ThemeIcon name="replace" size={14} aria-hidden="true" /></button>
-                  </div>
-                  {searchReplaceOpen || searchDetailsOpen ? <div className="wb-search-extras">
-                    {searchReplaceOpen ? <input
-                      ref={searchReplaceInputRef}
-                      type="search"
-                      className="wb-search-input"
-                      value={searchReplaceText}
-                      placeholder={t("desktop.workbench.searchReplacePlaceholder")}
-                      aria-label={t("desktop.workbench.searchReplacePlaceholder")}
-                      autoComplete="off"
-                      spellCheck={false}
-                      onChange={(event) => setSearchReplaceText(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" && !event.nativeEvent.isComposing) {
-                          event.preventDefault();
-                          if (searchReplaceVisible && searchGroups.length) {
-                            void performSearchReplace(searchGroups.map((group) => group.path));
-                          }
-                        }
-                      }}
-                    /> : null}
-                    {searchDetailsOpen ? <>
-                      <label className="wb-search-glob-row"><span className="wb-search-glob-label">{t("desktop.workbench.searchFilesToInclude")}</span><input
-                        ref={searchIncludeInputRef}
-                        type="search"
-                        className="wb-search-input wb-search-glob-input"
-                        value={searchFilesInclude}
-                        placeholder={t("desktop.workbench.searchFilesToIncludePlaceholder")}
-                        aria-label={t("desktop.workbench.searchFilesToInclude")}
-                        autoComplete="off"
-                        spellCheck={false}
-                        onChange={(event) => setSearchFilesInclude(event.target.value)}
-                        onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); window.clearTimeout(searchTimerRef.current); void runProjectSearch(searchQuery); } }}
-                      /></label>
-                      <label className="wb-search-glob-row"><span className="wb-search-glob-label">{t("desktop.workbench.searchFilesToExclude")}</span><input
-                        ref={searchExcludeInputRef}
-                        type="search"
-                        className="wb-search-input wb-search-glob-input"
-                        value={searchFilesExclude}
-                        placeholder={t("desktop.workbench.searchFilesToExcludePlaceholder")}
-                        aria-label={t("desktop.workbench.searchFilesToExclude")}
-                        autoComplete="off"
-                        spellCheck={false}
-                        onChange={(event) => setSearchFilesExclude(event.target.value)}
-                        onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); window.clearTimeout(searchTimerRef.current); void runProjectSearch(searchQuery); } }}
-                      /></label>
-                    </> : null}
-                  </div> : null}
-                </> : null}
-              </div>
-              {searchProjectMode ? <div className="wb-search-project-results" id="wb-search-project-results" role="listbox">
-                {searchProjectResults.length ? searchProjectResults.map((project, index) => {
-                  const disabled = Boolean(project.disabledReason);
-                  const selected = index === searchProjectActiveIndex;
-                  return <button
-                    ref={(node) => { if (node) searchProjectOptionRefs.current.set(project.id, node); else searchProjectOptionRefs.current.delete(project.id); }}
-                    type="button"
-                    role="option"
-                    id={searchProjectOptionId(project.id)}
-                    aria-selected={selected}
-                    aria-disabled={disabled}
-                    className={`wb-search-project-row${selected ? " is-selected" : ""}${disabled ? " is-disabled" : ""}`}
-                    key={project.id}
-                    onMouseMove={() => setSearchProjectSelectionId(project.id)}
-                    onClick={() => activateSearchProject(project)}
-                  >
-                    <ThemeIcon name="folder" size={15} aria-hidden="true" />
-                    <span className="wb-search-project-copy"><span className="wb-search-project-label">{project.label}</span><span className="wb-search-project-detail">{project.disabledReason || project.detail}</span></span>
-                    {project.pinned ? <ThemeIcon name="pin" size={12} aria-hidden="true" /> : null}
-                  </button>;
-                }) : <p className="muted wb-search-status">{t("desktop.workbench.quickAccessNoProjects")}</p>}
-              </div> : !selectedProject ? <p className="muted wb-file-tree-empty">{t("desktop.workbench.sidePanelNoRoot")}</p> : searchLoading ? <p className="muted wb-search-status" role="status">{t("desktop.workbench.searchSearching")}</p> : searchError ? <p className="muted wb-search-status is-error" role="alert">{searchError}</p> : !searchQuery.trim() ? <p className="muted wb-search-status">{t("desktop.workbench.searchHint")}</p> : !searchMatchCount ? <p className="muted wb-search-status">{t("desktop.workbench.searchNoResults")}</p> : <><div className="wb-search-meta-row" aria-live="polite"><p className="wb-search-meta">{t("desktop.workbench.searchResultSummary", String(searchMatchCount), String(searchFileCount))}{searchTruncated ? ` · ${t("desktop.workbench.searchTruncated")}` : ""}</p>{searchReplaceOpen ? <button type="button" className="wb-search-replace-all" disabled={!searchReplaceVisible} title={searchTruncated ? t("desktop.workbench.searchReplaceLimited") : t("desktop.workbench.searchReplaceAll")} onClick={() => void performSearchReplace(searchGroups.map((group) => group.path))}><ThemeIcon name="replace-all" size={13} aria-hidden="true" />{t("desktop.workbench.searchReplaceAll")}</button> : null}</div><div className="wb-search-results" role="tree">{searchGroups.map((group) => { const expanded = searchExpanded.has(group.path); const toggle = () => setSearchExpanded((current) => { const next = new Set(current); if (next.has(group.path)) next.delete(group.path); else next.add(group.path); return next; }); return <div className="wb-search-file-group" key={group.path} role="treeitem" aria-expanded={expanded}><div className="wb-search-file-row"><button type="button" className="wb-search-file-main" onClick={toggle}><span className={`wb-file-tree-chevron${expanded ? " is-expanded" : ""}`}><ThemeIcon name="chevron-right" size={12} /></span><ThemeIcon name="file-code" size={14} className="wb-file-tree-icon" /><span className="wb-search-file-label" title={group.path}>{group.relativePath}</span><span className="wb-search-file-count">{group.matches.length}</span></button>{searchReplaceOpen ? <button type="button" className="wb-search-action-btn" disabled={searchReplacing || searchLoading} title={t("desktop.workbench.searchReplaceInFile")} aria-label={t("desktop.workbench.searchReplaceInFile")} onClick={(event) => { event.stopPropagation(); void performSearchReplace([group.path]); }}><ThemeIcon name="replace-all" size={13} aria-hidden="true" /></button> : null}</div>{expanded ? <div className="wb-search-match-list" role="group">{group.matches.map((match, index) => { const key = `${match.path}:${match.line}:${match.column}:${index}`; return <div className={`wb-search-match-row${searchSelectedKey === key ? " is-selected" : ""}`} key={key}><button type="button" className="wb-search-match-main" onClick={() => { setSearchSelectedKey(key); void openFile(match.path, { path: match.path, line: match.line, column: match.column, endColumn: match.endColumn }); }}><span className="wb-search-match-line">{match.line}</span><span className="wb-search-match-preview">{match.preview}</span></button>{searchReplaceOpen ? <button type="button" className="wb-search-action-btn" disabled={searchReplacing || searchLoading} title={t("desktop.workbench.searchReplaceMatch")} aria-label={t("desktop.workbench.searchReplaceMatch")} onClick={(event) => { event.stopPropagation(); void performSearchReplace([match.path], new Map([[match.path, index]])); }}><ThemeIcon name="replace" size={12} aria-hidden="true" /></button> : null}</div>; })}</div> : null}</div>; })}</div></>}
-            </div>
-          </div> : side === "linkgraph" ? <LinkGraphSidePane result={linkGraphResult} progress={linkGraphProgress} busy={linkGraphBusy} error={linkGraphError} outputLanguage={linkGraphLanguage} onOutputLanguageChange={changeLinkGraphLanguage} onRefresh={linkGraphResult ? refreshLinkGraph : undefined} onCancel={() => { void desktopApi().linkGraphCancel().catch(() => undefined); setLinkGraphBusy(false); }} onOpen={(target) => {
+          {side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane wb-explorer-side-pane"><WorkbenchFileExplorer ref={fileExplorerRef} rootPath={selectedProject || ""} activePath={currentFilePath} onOpenFile={(path) => void openFile(path)} onOpenPreview={(path) => void openFile(path, undefined, selectedProject, "preview")} onShowGitHistory={(path) => void loadGitFileHistory(path)} onFindInFolder={findInExplorerFolder} onError={(message) => setStatus({ text: message, kind: "error" })} /><WorkbenchScriptsPane compact hasProject={Boolean(selectedProject)} selectedProject={selectedProject} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} collapsed={scriptsSectionCollapsed} onToggleCollapsed={toggleScriptsSectionCollapsed} onRefresh={selectedProject ? () => void loadScripts(selectedProject) : undefined} onRun={runScript} /></div> : side === "scripts" ? <WorkbenchScriptsPane hasProject={Boolean(selectedProject)} selectedProject={selectedProject} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} onRefresh={selectedProject ? () => void loadScripts(selectedProject) : undefined} onRun={runScript} /> : side === "search" ? <WorkbenchSearchSidePane
+            selectedProject={selectedProject}
+            searchQuery={searchQuery}
+            onSearchQueryChange={setSearchQuery}
+            searchProjectMode={searchProjectMode}
+            searchProjectQuery={searchProjectQuery}
+            onSearchProjectQueryChange={setSearchProjectQuery}
+            searchProjectResults={searchProjectResults}
+            searchProjectActive={searchProjectActive}
+            searchProjectActiveIndex={searchProjectActiveIndex}
+            searchProjectLabel={searchProjectLabel}
+            searchProjectOptionId={searchProjectOptionId}
+            searchProjectOptionRefs={searchProjectOptionRefs}
+            onEnterSearchProjectMode={enterSearchProjectMode}
+            onLeaveSearchProjectMode={leaveSearchProjectMode}
+            onMoveSearchProjectSelection={moveSearchProjectSelection}
+            onActivateSearchProject={activateSearchProject}
+            onSearchProjectSelectionId={setSearchProjectSelectionId}
+            searchMatchCase={searchMatchCase}
+            searchWholeWord={searchWholeWord}
+            searchUseRegex={searchUseRegex}
+            onToggleMatchCase={() => setSearchMatchCase((v) => !v)}
+            onToggleWholeWord={() => setSearchWholeWord((v) => !v)}
+            onToggleUseRegex={() => setSearchUseRegex((v) => !v)}
+            searchDetailsOpen={searchDetailsOpen}
+            searchReplaceOpen={searchReplaceOpen}
+            onToggleDetails={toggleSearchDetails}
+            onToggleReplace={toggleSearchReplace}
+            searchReplaceText={searchReplaceText}
+            onSearchReplaceTextChange={setSearchReplaceText}
+            searchFilesInclude={searchFilesInclude}
+            onSearchFilesIncludeChange={setSearchFilesInclude}
+            searchFilesExclude={searchFilesExclude}
+            onSearchFilesExcludeChange={setSearchFilesExclude}
+            searchInputRef={searchInputRef}
+            searchReplaceInputRef={searchReplaceInputRef}
+            searchIncludeInputRef={searchIncludeInputRef}
+            searchExcludeInputRef={searchExcludeInputRef}
+            searchLoading={searchLoading}
+            searchError={searchError}
+            searchTruncated={searchTruncated}
+            searchGroups={searchGroups}
+            searchFileCount={searchFileCount}
+            searchMatchCount={searchMatchCount}
+            searchExpanded={searchExpanded}
+            onToggleGroup={(path) => setSearchExpanded((current) => {
+              const next = new Set(current);
+              if (next.has(path)) next.delete(path);
+              else next.add(path);
+              return next;
+            })}
+            searchSelectedKey={searchSelectedKey}
+            searchReplaceVisible={searchReplaceVisible}
+            searchReplacing={searchReplacing}
+            onRunSearch={() => {
+              window.clearTimeout(searchTimerRef.current);
+              void runProjectSearch(searchQuery);
+            }}
+            onReplace={(files, onlyByPath) => void performSearchReplace(files, onlyByPath)}
+            onOpenMatch={(match, key) => {
+              setSearchSelectedKey(key);
+              void openFile(match.path, { path: match.path, line: match.line, column: match.column, endColumn: match.endColumn });
+            }}
+          /> : side === "linkgraph" ? <LinkGraphSidePane result={linkGraphResult} progress={linkGraphProgress} busy={linkGraphBusy} error={linkGraphError} outputLanguage={linkGraphLanguage} onOutputLanguageChange={changeLinkGraphLanguage} onRefresh={linkGraphResult ? refreshLinkGraph : undefined} onCancel={cancelLinkGraph} onOpen={(target) => {
               const root = selectedProject || "";
               const raw = target.path.replaceAll("\\", "/");
               const isAbs = raw.startsWith("/") || /^[A-Za-z]:\//.test(raw);
@@ -8738,8 +5896,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       canCommit={canCommit}
       syncing={gitSyncing}
       onSelectRepo={(root) => {
-        gitRootManuallySelectedRef.current = true;
-        setGitRoot(root);
+        selectGitRoot(root);
         setGitLog(null);
         setGitShow(null);
         setGitLogError("");
