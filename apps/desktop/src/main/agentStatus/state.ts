@@ -109,6 +109,9 @@ export class AgentStatusState {
     };
     record.telemetry = telemetry;
     if (telemetry.sessionKey) record.sessionKey = telemetry.sessionKey;
+    // Identity comes from the sensor's process-tree probe; never let an
+    // unresolved frame erase a name we already have.
+    if (telemetry.agent && telemetry.agent !== "unknown") record.agent = telemetry.agent;
     // Hooks stay authoritative for their pane; telemetry only refreshes the
     // sensor-side evidence.
     if (record.authority !== "native") record.authority = "screen";
@@ -144,7 +147,7 @@ export class AgentStatusState {
       sessionKey: report.sessionKey,
       sessionRef: report.sessionRef
     };
-    record.agent = report.agent;
+    if (report.agent !== "unknown") record.agent = report.agent;
     record.authority = "native";
     // Screen evidence from before the hook existed must not resurface later.
     record.hysteresis = createHysteresis();

@@ -9,8 +9,20 @@
 /** Bumped whenever the daemon wire protocol changes shape. */
 export const AGENT_STATUS_API_VERSION = 1;
 
-/** Agents we can identify from the process table. */
-export type AgentKind = "claude" | "codex" | "pi" | "opencode" | "unknown";
+/**
+ * Agents the app can manage a session for (see `buildResumeCommand`), plus
+ * `unknown` for a pane whose process we could not name.
+ */
+export type AgentKind =
+  | "claude"
+  | "codex"
+  | "pi"
+  | "opencode"
+  | "grok"
+  | "cursor"
+  | "agy"
+  | "prime"
+  | "unknown";
 
 /**
  * What a pane is doing right now.

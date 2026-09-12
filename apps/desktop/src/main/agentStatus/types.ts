@@ -49,6 +49,10 @@ export type PaneTelemetry = {
   toolRunning?: boolean;
   /** Foreground process names, for diagnostics and identity. */
   foregroundProcesses?: string[];
+  /** Agent identified from the process tree (stage 3). */
+  agent?: AgentKind;
+  /** Executable path of the identified agent process. */
+  agentProcess?: string;
   /** Sensor-side timestamp of the most recent PTY output. */
   lastOutputAt?: number;
   /** When the sensor produced this frame. */

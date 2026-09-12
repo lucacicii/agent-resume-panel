@@ -9,6 +9,7 @@
  */
 
 import type { AgentStatusBridge } from "./bridge";
+import { findAgentProcess, kindForSessionKey } from "./identity";
 import { PaneMirror } from "./mirror";
 import {
   PROCESS_TABLE_SUPPORTED,
@@ -18,7 +19,7 @@ import {
   type ProcessEntry
 } from "./processTable";
 import { createScanState, drainReports, scanChunk, type ScanState } from "./scan";
-import type { PaneTelemetry } from "./types";
+import type { AgentKind, PaneTelemetry } from "./types";
 
 /** Sensor heartbeat. One tick covers every attached pane. */
 export const SENSOR_TICK_MS = 1_000;
@@ -37,6 +38,9 @@ type PaneSensor = {
   scan: ScanState;
   cwd?: string;
   sessionKey?: string;
+  /** Named agent, resolved from the process tree or the session. */
+  agent: AgentKind;
+  agentProcess?: string;
   lastOutputAt: number;
   lastContentSeq: number;
   toolRunning: boolean;
@@ -78,6 +82,8 @@ export class AgentStatusSensor {
       scan: createScanState(),
       cwd: input.cwd ?? existing?.cwd,
       sessionKey: input.sessionKey ?? existing?.sessionKey,
+      agent: existing?.agent ?? kindForSessionKey(input.sessionKey) ?? "unknown",
+      agentProcess: existing?.agentProcess,
       lastOutputAt: Date.now(),
       lastContentSeq: 0,
       toolRunning: false,
@@ -92,7 +98,11 @@ export class AgentStatusSensor {
   bindSession(paneId: number, input: { sessionKey?: string; cwd?: string }): void {
     const pane = this.panes.get(paneId);
     if (!pane) return;
-    if (input.sessionKey) pane.sessionKey = input.sessionKey;
+    if (input.sessionKey) {
+      pane.sessionKey = input.sessionKey;
+      // The session is a declared hint; the process tree still wins once it answers.
+      if (pane.agent === "unknown") pane.agent = kindForSessionKey(input.sessionKey) ?? "unknown";
+    }
     if (input.cwd) pane.cwd = input.cwd;
     pane.dirty = true;
   }
@@ -133,8 +143,7 @@ export class AgentStatusSensor {
       this.deps.bridge.publishNativeReport({
         paneId,
         source: "agent-resume:status-sequence",
-        // Identity lands in a later stage; the sequence itself carries no agent.
-        agent: "unknown",
+        agent: pane.agent,
         state: report.state,
         seq: pane.reportSeq,
         sessionKey: pane.sessionKey
@@ -193,6 +202,7 @@ export class AgentStatusSensor {
     const telemetry: PaneTelemetry = {
       paneId: pane.paneId,
       at: now,
+      agent: pane.agent,
       screenText: pane.mirror.snapshotText(),
       oscTitle: pane.scan.oscTitle,
       oscProgress: pane.scan.oscProgress,
@@ -201,6 +211,7 @@ export class AgentStatusSensor {
       foregroundProcesses: pane.foregroundProcesses,
       lastOutputAt: pane.lastOutputAt
     };
+    if (pane.agentProcess) telemetry.agentProcess = pane.agentProcess;
     const ptyPid = this.deps.getPtyPid(pane.paneId);
     if (ptyPid != null) telemetry.ptyPid = ptyPid;
     if (pane.cwd) telemetry.cwd = pane.cwd;
@@ -225,7 +236,20 @@ export class AgentStatusSensor {
       for (const pane of this.panes.values()) {
         const ptyPid = this.deps.getPtyPid(pane.paneId);
         if (ptyPid == null) continue;
-        const activity = detectToolActivity(entries, ptyPid, this.ignored);
+        // Identity first: the agent is never counted as a foreground tool.
+        const agent = findAgentProcess(entries, ptyPid);
+        const kind = agent?.kind ?? kindForSessionKey(pane.sessionKey) ?? "unknown";
+        const activity = detectToolActivity({
+          entries,
+          ptyPid,
+          ignoreExecutables: this.ignored,
+          agentPid: agent?.entry.pid ?? null
+        });
+        if (kind !== pane.agent || agent?.entry.command !== pane.agentProcess) {
+          pane.agent = kind;
+          pane.agentProcess = agent?.entry.command;
+          pane.dirty = true;
+        }
         pane.foregroundProcesses = activity.processes.slice(0, 32);
         if (activity.active !== pane.toolRunning) {
           pane.toolRunning = activity.active;

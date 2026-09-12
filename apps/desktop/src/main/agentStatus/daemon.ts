@@ -219,7 +219,17 @@ function asPaneId(value: unknown): number | null {
   return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
 }
 
-const AGENT_KINDS: readonly AgentKind[] = ["claude", "codex", "pi", "opencode", "unknown"];
+const AGENT_KINDS: readonly AgentKind[] = [
+  "claude",
+  "codex",
+  "pi",
+  "opencode",
+  "grok",
+  "cursor",
+  "agy",
+  "prime",
+  "unknown"
+];
 const AGENT_STATES: readonly AgentState[] = ["idle", "working", "blocked", "unknown"];
 
 function asAgentKind(value: unknown): AgentKind | null {
@@ -252,6 +262,9 @@ function asTelemetry(params: unknown): PaneTelemetry | null {
   if (typeof record.oscProgress === "string") telemetry.oscProgress = record.oscProgress;
   if (typeof record.cursorHidden === "boolean") telemetry.cursorHidden = record.cursorHidden;
   if (typeof record.toolRunning === "boolean") telemetry.toolRunning = record.toolRunning;
+  const agent = asAgentKind(record.agent);
+  if (agent) telemetry.agent = agent;
+  if (typeof record.agentProcess === "string") telemetry.agentProcess = record.agentProcess.slice(0, 512);
   if (Array.isArray(record.foregroundProcesses)) {
     telemetry.foregroundProcesses = record.foregroundProcesses
       .filter((item): item is string => typeof item === "string")

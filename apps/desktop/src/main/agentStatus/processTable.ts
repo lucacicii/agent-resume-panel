@@ -1,10 +1,10 @@
 /**
  * Process-table probe.
  *
- * An agent that is executing a tool command has a descendant process that is
- * neither the agent itself nor infrastructure we injected. That is a
- * deterministic, zero-cost signal: it settles "the agent is running a command"
- * without any screen scraping or LLM call.
+ * Two questions are answered here:
+ *   - is a command executing in a pane's foreground (so the agent cannot be
+ *     waiting on a human)? — job control, not guesswork; and
+ *   - which processes exist at all, so `identity.ts` can name the agent.
  *
  * Empirically measured on this machine (see scripts/process-probe-baseline.mjs):
  *
@@ -24,21 +24,33 @@ import { promisify } from "node:util";
 export type ProcessEntry = {
   pid: number;
   ppid: number;
+  /** Process group id. */
+  pgid: number;
+  /**
+   * Foreground process group of the entry's controlling terminal, or 0 when it
+   * has none. Every process on one terminal reports the same value, so the pty's
+   * shell row tells us what is running in the foreground.
+   */
+  tpgid: number;
+  /** Controlling terminal, e.g. `ttys004`; `??` when there is none. */
+  tty: string;
   /** Executable path. May contain spaces (e.g. `/Applications/Agent Resume.app/…`). */
   command: string;
+  /** Full argv, when the second pass provided it. */
+  argv?: string[];
 };
 
 export type ProcessActivity = {
-  /** True when a non-infrastructure process is running beneath the agent. */
+  /** True when a non-infrastructure command is running in the foreground. */
   active: boolean;
   /** Executable paths of the processes that made it active, for diagnostics. */
   processes: string[];
 };
 
 /**
- * Parse `ps -Ao pid=,ppid=,comm=`.
+ * Parse `ps -Ao pid=,ppid=,pgid=,tpgid=,tty=,comm=`.
  *
- * `comm` is the last field, so everything after `ppid` — including paths with
+ * `comm` is the last field, so everything after `tty` — including paths with
  * spaces — belongs to it. Anchoring greedily on `(.+)$` is what makes
  * `/Applications/Agent Resume.app/…` parse as one executable.
  */
@@ -47,15 +59,45 @@ export function parseProcessTable(output: string): ProcessEntry[] {
   for (const rawLine of output.split("\n")) {
     const line = rawLine.trim();
     if (!line) continue;
-    const match = line.match(/^(\d+)\s+(\d+)\s+(.+)$/);
+    const match = line.match(/^(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(.+)$/);
     if (!match) continue;
     const pid = Number(match[1]);
     const ppid = Number(match[2]);
-    const command = match[3].trim();
+    const pgid = Number(match[3]);
+    const tpgid = Number(match[4]);
+    const command = match[6].trim();
     if (!Number.isFinite(pid) || !Number.isFinite(ppid) || !command) continue;
-    entries.push({ pid, ppid, command });
+    entries.push({
+      pid,
+      ppid,
+      pgid: Number.isFinite(pgid) ? pgid : 0,
+      tpgid: Number.isFinite(tpgid) ? tpgid : 0,
+      tty: match[5],
+      command
+    });
   }
   return entries;
+}
+
+/**
+ * Parse `ps -Ao pid=,args=` into pid → argv.
+ *
+ * Tokens are split on whitespace, so an executable path containing spaces is
+ * over-split. That only affects argv[0]; identity falls back to `comm`, which
+ * is parsed unambiguously above.
+ */
+export function parseArgvTable(output: string): Map<number, string[]> {
+  const byPid = new Map<number, string[]>();
+  for (const rawLine of output.split("\n")) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    const match = line.match(/^(\d+)\s+(.+)$/);
+    if (!match) continue;
+    const pid = Number(match[1]);
+    if (!Number.isFinite(pid)) continue;
+    byPid.set(pid, match[2].trim().split(/\s+/));
+  }
+  return byPid;
 }
 
 /** Index children by parent for repeated traversal. */
@@ -85,36 +127,51 @@ export function collectDescendants(index: ReadonlyMap<number, number[]>, root: n
 }
 
 /**
- * Decide whether the agent under `ptyPid` is executing a command.
+ * Processes in the pty's foreground process group.
  *
- * The agent is the direct child of the PTY shell; anything deeper is a tool
- * process. Infrastructure we injected ourselves (the MCP bridge runs as our
- * own executable) is excluded, otherwise every idle pane reports busy.
+ * This is the deterministic version of "is something running under the agent":
+ * the kernel tracks job control, so we never have to infer it.
  */
-export function detectToolActivity(
+export function foregroundProcesses(
   entries: readonly ProcessEntry[],
-  ptyPid: number,
-  ignoreExecutables: ReadonlySet<string>
-): ProcessActivity {
-  const byPid = new Map(entries.map((entry) => [entry.pid, entry]));
-  const index = buildChildIndex(entries);
-  const directChildren = new Set(index.get(ptyPid) ?? []);
-
-  const processes: string[] = [];
-  for (const pid of collectDescendants(index, ptyPid)) {
-    // The agent itself sits directly under the PTY shell.
-    if (directChildren.has(pid)) continue;
-    const entry = byPid.get(pid);
-    if (!entry) continue;
-    if (ignoreExecutables.has(entry.command)) continue;
-    processes.push(entry.command);
-  }
-
-  return { active: processes.length > 0, processes };
+  ptyPid: number
+): { pgid: number; processes: ProcessEntry[] } {
+  const owner = entries.find((entry) => entry.pid === ptyPid);
+  const pgid = owner?.tpgid ?? 0;
+  if (!pgid) return { pgid: 0, processes: [] };
+  return { pgid, processes: entries.filter((entry) => entry.pgid === pgid) };
 }
 
-/** `comm` is the executable path and is the last field, so spaces are safe. */
-const PS_ARGS = ["-Ao", "pid=,ppid=,comm="];
+/**
+ * Decide whether a command is executing in the pane's foreground.
+ *
+ * The shell, the agent itself, and infrastructure we injected (the MCP bridge
+ * runs as our own executable) are not commands: anything else in the foreground
+ * group is. A probe that cannot see a terminal reports "nothing running", which
+ * is the safe direction — the derivation falls back to output activity and the
+ * screen instead of suppressing a real "blocked".
+ */
+export function detectToolActivity(input: {
+  entries: readonly ProcessEntry[];
+  ptyPid: number;
+  ignoreExecutables: ReadonlySet<string>;
+  /** The agent owning the pane; it is not a tool. */
+  agentPid?: number | null;
+}): ProcessActivity {
+  const { processes } = foregroundProcesses(input.entries, input.ptyPid);
+  const tools = processes.filter((entry) => {
+    if (entry.pid === input.ptyPid) return false;
+    if (entry.pid === input.agentPid) return false;
+    if (input.ignoreExecutables.has(entry.command)) return false;
+    return true;
+  });
+  return { active: tools.length > 0, processes: tools.map((entry) => entry.command) };
+}
+
+/** `comm` and the executable path are the last field in both formats. */
+const PS_TABLE_ARGS = ["-Ao", "pid=,ppid=,pgid=,tpgid=,tty=,comm="];
+const PS_ARGV_ARGS = ["-Ao", "pid=,args="];
+const MAX_PS_BYTES = 8 * 1024 * 1024;
 const execFileAsync = promisify(execFile);
 
 /**
@@ -123,10 +180,22 @@ const execFileAsync = promisify(execFile);
  */
 export const PROCESS_TABLE_SUPPORTED = process.platform === "darwin" || process.platform === "linux";
 
-/** Read + parse the process table. */
+/**
+ * Read the process table.
+ *
+ * Two `ps` invocations, not one: `comm` can contain spaces and `args` cannot be
+ * separated from it unambiguously, so each format keeps its own last column.
+ */
 export async function readProcessEntries(): Promise<ProcessEntry[]> {
-  const { stdout } = await execFileAsync("ps", PS_ARGS, { maxBuffer: 8 * 1024 * 1024 });
-  return parseProcessTable(stdout);
+  const [table, argvTable] = await Promise.all([
+    execFileAsync("ps", PS_TABLE_ARGS, { maxBuffer: MAX_PS_BYTES }),
+    execFileAsync("ps", PS_ARGV_ARGS, { maxBuffer: MAX_PS_BYTES })
+  ]);
+  const argvByPid = parseArgvTable(argvTable.stdout);
+  return parseProcessTable(table.stdout).map((entry) => {
+    const argv = argvByPid.get(entry.pid);
+    return argv ? { ...entry, argv } : entry;
+  });
 }
 
 /**

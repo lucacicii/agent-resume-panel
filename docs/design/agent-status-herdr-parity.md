@@ -1,6 +1,6 @@
 # Agent Status — herdr-parity plan (Desktop)
 
-Status: in progress (stages 0–2 landed; the UI now reads status from the daemon)
+Status: in progress (stages 0–3 landed; the UI reads status from the daemon, panes are named)
 Owner surface: `apps/desktop` only. The extension keeps ACP-native status only.
 Reference implementation studied: [herdr](https://github.com/herdrdev/herdr) — `src/detect/*`,
 `src/pane/agent_detection.rs`, `src/integration/*`.
@@ -94,8 +94,8 @@ the app, by tests, and by the `agent-resume-status` CLI that hooks call.
 | `src/main/agentStatus/bridge.ts` | reconnect-safe link to the daemon | 2 ✅ |
 | `src/main/agentStatus/ipc.ts` | renderer snapshot surface | 2 ✅ |
 | `src/shared/agentStatusTypes.ts` | cross-process status vocabulary | 2 ✅ |
-| `src/main/agentStatus/identity.ts` | process → agent, wrapper unwrapping | 3 |
-| `src/main/agentStatus/sensors/processTable.ts` | `ps` table: identity + foreground group | 3 |
+| `src/main/agentStatus/identity.ts` | process → agent, interpreter unwrapping, session hint | 3 ✅ |
+| `src/main/agentStatus/processTable.ts` | `ps` table: job control + argv for identity | 3 ✅ |
 | `src/main/agentStatus/engine/*.ts` | manifest, region, evaluate, arbitrate | 4 |
 | `src/main/agentStatus/engine/manifests/*.json` | per-agent rules | 5 |
 | `src/main/agentStatus/integrations/*.ts` | claude / codex / pi / opencode hooks | 6 |
@@ -111,7 +111,7 @@ the app, by tests, and by the `agent-resume-status` CLI that hooks call.
 | 0 | Contracts + fixture corpus + capture script | types frozen, ≥5 real screen samples | 1 |
 | 1 | Daemon skeleton: single instance, endpoint, launchd, handshake, socket, `state.json`; app-side ensure; packaged-app check | daemon survives app quit, restarts clean, `test:agent-status` green | 4–6 ✅ |
 | 2 | Sensor: `@xterm/headless` mirror + scan in main, telemetry to daemon, renderer subscribes; delete `probe.ts` / `statusJudge.ts` / `prompt.ts` / renderer `store.ts` | status correct with the Workbench tab unmounted | 3–5 ✅ |
-| 3 | Identity + foreground process group + daemon-side global discovery of external agents | every pane reports its agent | 3–4 |
+| 3 | Identity + foreground process group (`tpgid`); global discovery deferred to stage 7 | every pane reports its agent | 3–4 ✅ |
 | 4 | Rule engine (region / priority / all-any-not / `visible_*` / `skipStateUpdate`), single authority, `status.explain` | verdicts explainable rule-by-rule | 4–6 |
 | 5 | Manifests for claude / codex / pi / opencode + offline mining + local override dir | fixture suite green, no online LLM in the runtime path | 5–8 |
 | 6 | Hook integrations + `agent-resume-status` CLI + settings toggle | uninstall restores user config byte-for-byte | 5–8 |
@@ -154,6 +154,31 @@ Total: 32–48 dev-days.
   `633;P;Cwd`, and nothing reads that). The surviving exact signal is the agent status sequence.
 - **Dev builds now run the daemon too** — stopped on quit, opted out with
   `AGENT_RESUME_AGENT_STATUS_DAEMON=0` — so development sees real status instead of nothing.
+
+## Stage 3 notes (landed)
+
+- **Identity is derived, not declared.** `identity.ts` names a pane's agent from the process tree,
+  with `cli:<provider>` from the session key as a fallback hint. The executable map covers every
+  agent the app can resume (`claude`, `codex`, `pi`, `opencode`, `grok`, `cursor-agent`, `agy`,
+  `prime-agent`), which is also why `AgentKind` was widened from four values to those eight.
+- **Interpreter unwrapping is required in practice, not in theory.** `claude`, `codex`, `opencode`
+  install as native binaries, but `pi` installs as a `#!/usr/bin/env node` script: `ps comm` reports
+  `node`, and only argv carries the name. Verified on this machine. `ps -Ao pid=,args=` is therefore
+  read as a second pass and joined by pid — two `ps` calls, because `comm` may contain spaces and
+  cannot be delimited from `args` in one pass.
+- **Foreground job control replaced the descendant heuristic.** `ps` `tpgid` gives the terminal's
+  foreground process group, so "a command is running" is now the kernel's answer instead of "some
+  descendant is not the agent". The shell, the identified agent, and our injected MCP bridge are
+  excluded; anything else in the group is a tool. The failure mode is the safe one: when a probe
+  cannot see a terminal, nothing is running and the derivation falls back to output and screen.
+  `apps/desktop/scripts/process-foreground-baseline.mjs` proves it on a real pty.
+- **`identity.ts` sits between the two pure layers** (`processTable.ts` mechanics, `derive.ts`
+  policy); the sensor orchestrates, so neither layer knows about the other's vocabulary.
+- **Global discovery of external agents was deferred to stage 7** (deviation from the first draft).
+  The primitives it needs — identity plus a process table — land here, but its consumers
+  (notifications and the tray while the app is closed) do not exist yet, and a daemon that records
+  panes nobody reads is exactly the kind of unused machinery this repo avoids. Stage 7 is then a
+  thin addition: scan, exclude owned pids, register the rest.
 
 ## Deviations from the first draft (and why)
 

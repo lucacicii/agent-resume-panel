@@ -184,6 +184,27 @@ async function main() {
   assert.equal(snapshot.byPaneId["1"].source, "fallback");
   console.log("ok 8 - telemetry: stale silence reports idle instead of inventing a state");
 
+  // ------------------------------------------------------------------- identity
+  await client.request("telemetry.publish", {
+    paneId: 1,
+    agent: "claude",
+    agentProcess: "/Users/someone/.local/bin/claude",
+    lastOutputAt: now,
+    at: now
+  });
+  snapshot = await client.request("status.snapshot");
+  assert.equal(snapshot.byPaneId["1"].agent, "claude");
+  const unidentified = await client.request("telemetry.publish", {
+    paneId: 1,
+    agent: "unknown",
+    lastOutputAt: now,
+    at: now
+  });
+  assert.equal(unidentified, null);
+  snapshot = await client.request("status.snapshot");
+  assert.equal(snapshot.byPaneId["1"].agent, "claude", "an unresolved frame must not erase a known agent");
+  console.log("ok 9 - identity: the sensor names the agent and unknown never erases it");
+
   // --------------------------------------------------------- native report order
   const applied = await client.request("pane.report_state", {
     paneId: 1,
@@ -220,7 +241,7 @@ async function main() {
   assert.deepEqual(subagent, { applied: false });
   snapshot = await client.request("status.snapshot");
   assert.equal(snapshot.byPaneId["1"].state, "blocked", "sub-agent hooks must not own the pane");
-  console.log("ok 9 - native reports: applied, stale dropped, sub-agent dropped");
+  console.log("ok 10 - native reports: applied, stale dropped, sub-agent dropped");
 
   // ------------------------------------------------------------- explain readout
   const explain = await client.request("status.explain", { paneId: 1 });
@@ -228,7 +249,7 @@ async function main() {
   assert.equal(explain.agent, "claude");
   assert.match(explain.reason, /agent-resume:claude/);
   assert.equal(await client.request("status.explain", { paneId: 999 }), null);
-  console.log("ok 10 - explain: authority, source, and reason for a pane");
+  console.log("ok 11 - explain: authority, source, and reason for a pane");
 
   // ----------------------------------------------------------------- subscription
   const received = [];
@@ -242,7 +263,7 @@ async function main() {
   assert.equal(received[0].event, "status.changed");
   assert.equal(received[0].data.byPaneId["2"].state, "working");
   unsubscribe();
-  console.log("ok 11 - subscription: status.changed pushed only on real change");
+  console.log("ok 12 - subscription: status.changed pushed only on real change");
 
   // ------------------------------------------------------------- protocol errors
   await assert.rejects(
@@ -254,7 +275,7 @@ async function main() {
     (error) => error.code === "bad_request"
   );
   assert.ok(await client.request("status.snapshot"), "the daemon must survive bad input");
-  console.log("ok 12 - protocol: unknown method and malformed payload degrade to errors, daemon stays up");
+  console.log("ok 13 - protocol: unknown method and malformed payload degrade to errors, daemon stays up");
 
   // --------------------------------------------------------------- persistence
   await client.request("pane.forget", { paneId: 2 });
@@ -268,7 +289,7 @@ async function main() {
   assert.equal(persisted.panes.length, 1, "forgotten panes must not be persisted");
   assert.equal(persisted.panes[0].native.state, "blocked");
   assert.equal(JSON.stringify(persisted).includes("screenText"), false, "screen text must never be persisted");
-  console.log("ok 13 - shutdown: socket unlinked, endpoint removed, durable state kept without screen text");
+  console.log("ok 14 - shutdown: socket unlinked, endpoint removed, durable state kept without screen text");
 
   const restarted = startDaemon();
   await waitFor(() => readLiveEndpoint(paths), "the restarted daemon");
@@ -285,7 +306,7 @@ async function main() {
   assert.equal(restored.byPaneId["1"].state, "blocked");
   assert.equal(restored.byPaneId["1"].authority, "native");
   assert.equal(restored.byPaneId["2"], undefined, "forgotten panes must stay forgotten");
-  console.log("ok 14 - restart: native reports are restored from state.json");
+  console.log("ok 15 - restart: native reports are restored from state.json");
 
   // ---------------------------------------------------------- replace + shutdown
   const replacement = startDaemon(["--replace"]);
@@ -307,7 +328,7 @@ async function main() {
   assert.equal(await daemonExited(replacement.child), 0);
   assert.equal(await readEndpointFile(paths), null);
   assert.equal(fs.existsSync(paths.socket), false);
-  console.log("ok 15 - replace and shutdown request: clean handover, no stale socket");
+  console.log("ok 16 - replace and shutdown request: clean handover, no stale socket");
 
   // -------------------------------------------------- app-side ensure / stop
   const ensured = await ensureAgentStatusDaemon({
@@ -334,7 +355,7 @@ async function main() {
   await stopAgentStatusDaemon(panelHome);
   assert.equal(await readLiveEndpoint(paths), null, "stopAgentStatusDaemon must remove the endpoint");
   assert.equal(fs.existsSync(paths.socket), false, "stopAgentStatusDaemon must release the socket");
-  console.log("ok 16 - app lifecycle: ensure reuses a compatible daemon, stop releases the socket");
+  console.log("ok 17 - app lifecycle: ensure reuses a compatible daemon, stop releases the socket");
 }
 
 let failure = null;

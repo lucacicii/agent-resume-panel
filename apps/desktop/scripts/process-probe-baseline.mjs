@@ -5,6 +5,10 @@
  *   pi 空闲 = 7 个后代，claude 空闲 = 3 个后代。
  * 其中包含 Agent Resume 自身的 MCP bridge 与启动期的 npm update 检查。
  *
+ * 本实验的结论最终被 stage 3 取代：不再推断后代，而是直接问内核「这个终端的前台
+ * 进程组是哪个」（见 `agentStatus/processTable.ts` 与
+ * `process-foreground-baseline.mjs`）。保留此脚本仅用于观察进程树如何演化。
+ *
  * 本实验对 pi / claude 空闲态做时序采样，观察进程树如何演化，
  * 以区分：
  *   - 瞬态：启动期 update 检查（会自行消失）
