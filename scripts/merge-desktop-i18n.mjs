@@ -83,6 +83,12 @@ const obsoleteDesktopKeys = new Set([
   "desktop.report.insightsFilterStatus",
   "desktop.sessions.statusLabel",
   "desktop.sessions.statusUpdated",
+  // Sessions reference sheet retired: Archive is the session browser now.
+  "desktop.sessions.sheetTitle",
+  "desktop.sessions.refreshList",
+  "desktop.sessions.previewHint",
+  "desktop.sessions.meta",
+  "desktop.sessions.lastSynced",
   // Flow DAG: removed desktop tab, inspector copy, and Ask tool category
   "desktop.tabs.flow",
   "desktop.agent.toolCategory.flow",

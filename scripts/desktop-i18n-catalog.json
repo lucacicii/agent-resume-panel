@@ -773,11 +773,6 @@
       "desktop.menu.sessionDots": "Session Dots"
     },
     "sessions": {
-      "desktop.sessions.sheetTitle": "Sessions (reference)",
-      "desktop.sessions.refreshList": "Refresh list",
-      "desktop.sessions.previewHint": "Click a session on the left to preview. Supports Summarize / Auto Rename (like the VS Code extension).",
-      "desktop.sessions.meta": "{0} sessions · sync every {1} when visible{2} · click to preview",
-      "desktop.sessions.lastSynced": " · last sync {0}",
       "desktop.sessions.summarizing": "Summarizing…",
       "desktop.sessions.renaming": "Renaming…",
       "desktop.sessions.summaryGenerated": "Summary generated and saved to catalog",
@@ -1751,11 +1746,6 @@
       "desktop.menu.sessionDots": "会话指示"
     },
     "sessions": {
-      "desktop.sessions.sheetTitle": "Sessions（参考）",
-      "desktop.sessions.refreshList": "刷新列表",
-      "desktop.sessions.previewHint": "点击左侧 session 查看对话预览。支持 Summarize / Auto Rename（与 VS Code 扩展类似）。",
-      "desktop.sessions.meta": "{0} sessions · 可见时每 {1} 同步{2} · 点击预览",
-      "desktop.sessions.lastSynced": " · 最近同步 {0}",
       "desktop.sessions.summarizing": "正在 Summarize…",
       "desktop.sessions.renaming": "正在 Auto Rename…",
       "desktop.sessions.summaryGenerated": "Summary 已生成并写入 catalog",

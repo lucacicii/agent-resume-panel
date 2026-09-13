@@ -6,7 +6,6 @@ import { StartupMask } from "./components/StartupMask";
 import { Notifications } from "./components/Notifications";
 import { SelectionSendHost } from "./selection/SelectionSendHost";
 import { useI18n } from "./i18n";
-import { SessionsSheet } from "./features/SessionsSheet";
 import { SettingsPanel } from "./features/settings/SettingsPanel";
 import { ReportPanel } from "./features/report/ReportPanel";
 import { NotesPanel } from "./features/notes/NotesPanel";
@@ -185,7 +184,6 @@ function MainRendererRuntime(): React.JSX.Element {
         <WorkbenchPanel />
       </DiffWorkerPool>
       <NotesPanel />
-      <SessionsSheet />
       <SelectionSendHost />
       <Notifications />
     </>

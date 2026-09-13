@@ -377,6 +377,23 @@ export function ReportPanel(): ReactPortal | null {
     } catch (error) { notifyPreviewStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }); }
     finally { setPreviewAssist(null); }
   };
+  const resumePreview = async () => {
+    if (!preview) return;
+    const { provider, id } = preview.session;
+    try {
+      const result = await desktopApi().workbenchOpenSession({ provider, id });
+      if (result.external) {
+        // External terminal/editor is opening; keep the preview open and report.
+        notifyPreviewStatus({ text: t("desktop.agent.resumeStarted", provider, id), kind: "ok" });
+        return;
+      }
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-open-session", { detail: preview.session }));
+      notifyPreviewStatus({ text: t("desktop.agent.resumeStarted", provider, id), kind: "ok" });
+    } catch (error) {
+      notifyPreviewStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    }
+  };
   const run = async (type: ReportPeriodType) => {
     const key = focus.key;
     const periodKey = digestProgressKey(type, key);
@@ -503,7 +520,7 @@ export function ReportPanel(): ReactPortal | null {
   const focusedPeriodKey = digestProgressKey(focus.type, focus.key);
   const focusedRunning = runningPeriods.has(focusedPeriodKey);
   const focusedProgress = progressByPeriod.get(focusedPeriodKey);
-  const detail = preview ? <SessionDetail preview={preview} locale={locale} t={t} assist={previewAssist} onSummarize={() => void summarizePreview()} onAutoRename={() => void renamePreview()} /> : <DigestDetail entry={selectedEntry} focus={focus} hasSessions={sessions.length > 0} loading={sessionsLoading} stale={stale.has(`${levelFor(focus.type)}:${focus.key}`)} running={focusedRunning} locale={locale} t={t} links={reportLinks} onRun={() => void run(focus.type)} onGtd={() => window.dispatchEvent(new CustomEvent("agent-resume:gtd-open", { detail: { level: levelFor(focus.type), reportId: selectedEntry?.id } }))} />;
+  const detail = preview ? <SessionDetail preview={preview} locale={locale} t={t} assist={previewAssist} onSummarize={() => void summarizePreview()} onAutoRename={() => void renamePreview()} onResume={() => void resumePreview()} /> : <DigestDetail entry={selectedEntry} focus={focus} hasSessions={sessions.length > 0} loading={sessionsLoading} stale={stale.has(`${levelFor(focus.type)}:${focus.key}`)} running={focusedRunning} locale={locale} t={t} links={reportLinks} onRun={() => void run(focus.type)} onGtd={() => window.dispatchEvent(new CustomEvent("agent-resume:gtd-open", { detail: { level: levelFor(focus.type), reportId: selectedEntry?.id } }))} />;
   const detailProgress = !preview && focusedRunning ? <DigestProgressCard focus={focus} progress={focusedProgress} t={t} /> : null;
   const hasMonthDigest = index.has(`monthly:${monthKey}`);
   // The toolbar lives in the app header while the Report view is active.
@@ -570,6 +587,6 @@ function DigestDetail({ entry, focus, hasSessions, loading, stale, running, loca
   return <>{stale ? <div className="digest-stale-banner"><p className="muted">{t("desktop.report.staleDefault")}</p></div> : null}<article className="digest-card"><header className="digest-card-head"><div className="digest-card-title-row"><h3><span className={`badge ${entry.level}`}>{entry.level}</span>{entry.title || entry.id}</h3><div className="digest-card-actions"><button type="button" className="tool-btn" onClick={onRun}>{t("desktop.report.regenerateBtn")}</button><button type="button" className="tool-btn" onClick={onGtd}>{t("desktop.report.gtdBtn")}</button></div></div><div className="meta-line">{formatTime(entry.createdAtMs, locale)}{entry.embeddingJson ? " · embedding ✓" : ""}</div></header><div className="digest-body markdown-body" onClick={(event) => onDigestRefClick(event, entry, links)} dangerouslySetInnerHTML={{ __html: renderDigestMarkdown(entry.content, links) }} /></article></>;
 }
 
-function SessionDetail({ preview, locale, t, assist, onSummarize, onAutoRename }: { preview: Preview; locale: string; t: Translate; assist: "summary" | "rename" | null; onSummarize: () => void; onAutoRename: () => void }) {
-  return <div className="session-preview"><div className="session-preview-head"><h3 className="session-preview-title">{preview.preview.title || preview.session.title || preview.session.id}</h3><div className="session-preview-actions"><button type="button" className="tool-btn" onClick={onSummarize} disabled={assist !== null}>{assist === "summary" ? t("desktop.sessions.summarizing") : "Summarize"}</button><button type="button" className="tool-btn" onClick={onAutoRename} disabled={assist !== null}>{assist === "rename" ? t("desktop.sessions.renaming") : "Auto Rename"}</button></div></div><div className="muted session-preview-meta"><span className="s-provider-tag" data-provider={preview.session.provider}>{preview.session.provider}</span>{" · "}{preview.session.id}{" · "}{preview.session.projectPath}</div><div className="session-summary-box"><div className="session-summary-label">Summary</div><div className="session-summary-body">{preview.summary || <span className="muted">No summary yet</span>}</div></div>{preview.preview.warning ? <p className="status error">{preview.preview.warning}</p> : null}{preview.preview.messages.length ? preview.preview.messages.map((message, index) => (<article key={index} className={`preview-msg ${message.role}`}><div className="role">{message.role}{message.timestamp ? ` · ${formatTime(Number(message.timestamp), locale)}` : ""}</div><div>{message.text}</div></article>)) : <p className="muted">{t("desktop.sessions.noMessages")}</p>}{preview.preview.truncated ? <p className="muted">{t("desktop.sessions.truncated")}</p> : null}</div>;
+function SessionDetail({ preview, locale, t, assist, onSummarize, onAutoRename, onResume }: { preview: Preview; locale: string; t: Translate; assist: "summary" | "rename" | null; onSummarize: () => void; onAutoRename: () => void; onResume: () => void }) {
+  return <div className="session-preview"><div className="session-preview-head"><h3 className="session-preview-title">{preview.preview.title || preview.session.title || preview.session.id}</h3><div className="session-preview-actions"><button type="button" className="tool-btn" onClick={onSummarize} disabled={assist !== null}>{assist === "summary" ? t("desktop.sessions.summarizing") : "Summarize"}</button><button type="button" className="tool-btn" onClick={onAutoRename} disabled={assist !== null}>{assist === "rename" ? t("desktop.sessions.renaming") : "Auto Rename"}</button><button type="button" className="tool-btn" onClick={onResume}>{t("desktop.agent.resumeSession")}</button></div></div><div className="muted session-preview-meta"><span className="s-provider-tag" data-provider={preview.session.provider}>{preview.session.provider}</span>{" · "}{preview.session.id}{" · "}{preview.session.projectPath}</div><div className="session-summary-box"><div className="session-summary-label">Summary</div><div className="session-summary-body">{preview.summary || <span className="muted">No summary yet</span>}</div></div>{preview.preview.warning ? <p className="status error">{preview.preview.warning}</p> : null}{preview.preview.messages.length ? preview.preview.messages.map((message, index) => (<article key={index} className={`preview-msg ${message.role}`}><div className="role">{message.role}{message.timestamp ? ` · ${formatTime(Number(message.timestamp), locale)}` : ""}</div><div>{message.text}</div></article>)) : <p className="muted">{t("desktop.sessions.noMessages")}</p>}{preview.preview.truncated ? <p className="muted">{t("desktop.sessions.truncated")}</p> : null}</div>;
 }

@@ -53,8 +53,9 @@ export function AppChrome(): React.JSX.Element {
       setActiveTab(next as PrimaryTab);
       window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: next }));
     };
+    // Native "Sessions" entry: the Archive tab is the session browser now.
     const stopSessions = typeof window.agentResume.onOpenSessions === "function"
-      ? window.agentResume.onOpenSessions(() => window.dispatchEvent(new Event("agent-resume:sessions-open")))
+      ? window.agentResume.onOpenSessions(() => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "report" })))
       : () => undefined;
     window.addEventListener("agent-resume:tab-change", onTabChange);
     window.addEventListener("agent-resume:tab-request", onTabRequest);

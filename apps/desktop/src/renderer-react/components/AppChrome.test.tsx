@@ -93,16 +93,15 @@ describe("AppChrome", () => {
     window.removeEventListener("agent-resume:tab-change", listener);
   });
 
-  it("opens the sessions reference when requested from the native menu", async () => {
+  it("opens the Archive tab when requested from the native menu", async () => {
     const { getOpenSessionsHandler } = renderChrome();
-    await screen.findByRole("button", { name: "Archive" });
-    const listener = vi.fn();
-    window.addEventListener("agent-resume:sessions-open", listener);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "notes" })));
+    expect(screen.getByRole("button", { name: "Notes" }).classList.contains("active")).toBe(true);
+
     const handler = getOpenSessionsHandler();
     expect(handler).toBeDefined();
     await act(async () => handler?.());
-    expect(listener).toHaveBeenCalled();
-    window.removeEventListener("agent-resume:sessions-open", listener);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Archive" }).classList.contains("active")).toBe(true));
   });
 
   it("renders one dot per active session and shows a tooltip with the full title on hover", async () => {
