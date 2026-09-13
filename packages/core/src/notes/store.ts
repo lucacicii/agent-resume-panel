@@ -19,12 +19,14 @@ import {
   listSessionNotes,
   loadProjectNoteFlags,
   loadSessionNoteFlags,
+  listWorkItemSessionDetails,
   listWorkItemSessionLinks,
   listWorkItemSessionProjects,
   listWorkItems,
   upsertNoteRecord,
   type NoteRecord,
   type WorkItemRecord,
+  type WorkItemSessionDetail,
   type WorkItemSessionLink
 } from "./catalogNotes";
 import {
@@ -142,6 +144,11 @@ export class NotesStore {
   /** `note_id` → project paths derived from the work item's linked sessions. */
   async listWorkItemSessionProjects(): Promise<Record<string, string[]>> {
     return listWorkItemSessionProjects(this.dbPath);
+  }
+
+  /** Linked sessions of one work item, with each session's project path. */
+  async listWorkItemSessionDetails(noteId: string): Promise<WorkItemSessionDetail[]> {
+    return listWorkItemSessionDetails(this.dbPath, noteId);
   }
 
   hasSessionNote(session: Pick<AgentSession, "provider" | "id">): boolean {

@@ -8704,7 +8704,9 @@ describe("WorkbenchPanel", () => {
         "desktop.workbench.workItemNext": "Next:",
         "desktop.workbench.workItemSessions": "{0} sessions",
         "desktop.workbench.sessionTarget": "New sessions start in: {0}",
-        "desktop.workbench.sharedWorkspace": "shared workspace"
+        "desktop.workbench.sharedWorkspace": "shared workspace",
+        "desktop.workbench.removeProject": "Remove from this work item",
+        "desktop.workbench.removeProjectConfirm": "Remove {0}?"
       } }),
       onLocaleChanged: () => () => undefined,
       onWorkbenchCmdT: () => () => undefined,
@@ -8719,6 +8721,7 @@ describe("WorkbenchPanel", () => {
         { noteId: "wi-multi", title: "Multi", gtdStatus: "next", work: { sessions: [], projects: ["/work/app", "/work/api"], primaryProject: "/work/app" } },
         { noteId: "wi-single", title: "Single", gtdStatus: "next", work: { sessions: [], projects: ["/work/app"], primaryProject: "/work/app" } }
       ],
+      notesRemoveWorkItemProject: vi.fn(async () => ({ ok: true })),
       terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
       terminalDestroy: async () => ({ ok: true }),
       terminalResize: async () => ({ ok: true })
@@ -8738,6 +8741,17 @@ describe("WorkbenchPanel", () => {
       } }));
     });
     await waitFor(() => expect(document.querySelector(".wb-work-item-target")?.textContent).toBe("New sessions start in: shared workspace"));
+
+    // A referenced project can be removed from the work item.
+    const confirmStub = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const apiChip = [...document.querySelectorAll(".wb-work-item-project")]
+      .find((node) => node.textContent?.includes("api")) as HTMLElement;
+    fireEvent.click(within(apiChip).getByRole("button", { name: "Remove from this work item" }));
+    await waitFor(() => expect(window.agentResume.notesRemoveWorkItemProject).toHaveBeenCalledWith({
+      noteId: "wi-multi",
+      projectPath: "/work/api"
+    }));
+    confirmStub.mockRestore();
 
     // Exactly one repository → unambiguous cwd.
     await act(async () => {

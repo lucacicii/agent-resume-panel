@@ -193,6 +193,7 @@ import {
   notesList,
   notesCreateWorkItem,
   notesAddWorkItemProject,
+  notesRemoveWorkItemProject,
   notesEnsureWorkItemWorkspace,
   notesLinkSessionToWorkItem,
   notesListWorkItemSessionLinks,
@@ -2839,6 +2840,15 @@ function registerIpc(): void {
 
   ipcMain.handle("notes:list", async () => notesList());
   ipcMain.handle("notes:listWorkItems", async () => notesListWorkItems());
+  ipcMain.handle("notes:removeWorkItemProject", async (_event, args: { noteId?: unknown; projectPath?: unknown }) => {
+    if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
+      throw new Error("A work item note id is required.");
+    }
+    if (typeof args?.projectPath !== "string" || !args.projectPath.trim()) {
+      throw new Error("A project path is required.");
+    }
+    return notesRemoveWorkItemProject({ noteId: args.noteId, projectPath: args.projectPath });
+  });
   ipcMain.handle("notes:ensureWorkItemWorkspace", async (_event, args: { noteId?: unknown }) => {
     if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
       throw new Error("A work item note id is required.");

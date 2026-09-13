@@ -3451,6 +3451,21 @@ export function WorkbenchPanel(): ReactPortal | null {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const removeProject = useCallback(async (projectPath: string) => {
+    const scope = workItemScopeRef.current;
+    if (!scope || typeof desktopApi().notesRemoveWorkItemProject !== "function") return;
+    if (!window.confirm(t("desktop.workbench.removeProjectConfirm", basename(projectPath)))) return;
+    try {
+      await desktopApi().notesRemoveWorkItemProject({ noteId: scope.noteId, projectPath });
+      if (sessionTargetRef.current && projectPathKey(sessionTargetRef.current) === projectPathKey(projectPath)) {
+        setSessionTarget(null);
+      }
+      window.dispatchEvent(new Event("agent-resume:notes-mutated"));
+    } catch (error) {
+      setStatus({ text: statusError(error), kind: "error" });
+    }
+  }, [t]);
+
   const availableProjects = useMemo(
     () => catalogProjects
       .map((project) => {
@@ -5639,15 +5654,25 @@ export function WorkbenchPanel(): ReactPortal | null {
                   ? projectPathKey(path) === projectPathKey(sessionTarget)
                   : scopeProjects.length === 1;
                 return (
-                  <button
-                    key={path}
-                    type="button"
-                    className={`wb-work-item-project-chip${active ? " is-active" : ""}`}
-                    title={path}
-                    onClick={() => { setSessionTarget(path); selectProject(path, { keepSessionKey: true }); }}
-                  >
-                    {path.split(/[\\/]/).filter(Boolean).at(-1) || path}
-                  </button>
+                  <span key={path} className={`wb-work-item-project${active ? " is-active" : ""}`}>
+                    <button
+                      type="button"
+                      className="wb-work-item-project-chip"
+                      title={path}
+                      onClick={() => { setSessionTarget(path); selectProject(path, { keepSessionKey: true }); }}
+                    >
+                      {path.split(/[\\/]/).filter(Boolean).at(-1) || path}
+                    </button>
+                    <button
+                      type="button"
+                      className="wb-work-item-project-remove"
+                      title={t("desktop.workbench.removeProject")}
+                      aria-label={t("desktop.workbench.removeProject")}
+                      onClick={() => void removeProject(path)}
+                    >
+                      <ThemeIcon name="close" size={10} aria-hidden="true" />
+                    </button>
+                  </span>
                 );
               })}
               <select

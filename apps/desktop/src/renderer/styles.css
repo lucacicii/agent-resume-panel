@@ -15822,14 +15822,23 @@ html[data-window-mode="standalone-note"] #react-im {
 .wb-work-item-target { margin: 0; font-size: 10px; color: var(--color-label-tertiary); display: flex; align-items: center; gap: 2px; }
 .wb-work-item-target-reset { appearance: none; border: 0; background: transparent; color: inherit; cursor: pointer; padding: 0 2px; display: inline-flex; }
 .wb-work-item-target-reset:hover { color: var(--color-accent); }
-.wb-work-item-project-chip {
-  appearance: none; border: 1px solid transparent; cursor: pointer;
-  font-size: 10px; padding: 0 6px; border-radius: 999px; max-width: 140px;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  background: var(--color-fill-secondary); color: var(--color-label-secondary);
+.wb-work-item-project {
+  display: inline-flex; align-items: center; gap: 2px; padding: 0 4px 0 6px;
+  border: 1px solid transparent; border-radius: 999px; max-width: 170px;
+  background: var(--color-fill-secondary); color: var(--color-label-secondary); font-size: 10px;
 }
-.wb-work-item-project-chip:hover { border-color: var(--color-accent); color: var(--color-label-primary); }
-.wb-work-item-project-chip.is-active { border-color: var(--color-accent); color: var(--color-accent); }
+.wb-work-item-project.is-active { border-color: var(--color-accent); color: var(--color-accent); }
+.wb-work-item-project-chip {
+  appearance: none; border: 0; background: transparent; color: inherit; cursor: pointer; font: inherit;
+  padding: 0; max-width: 132px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.wb-work-item-project-remove {
+  appearance: none; border: 0; background: transparent; color: inherit; cursor: pointer;
+  padding: 0 1px; display: inline-flex; opacity: 0; transition: opacity 0.12s;
+}
+.wb-work-item-project:hover .wb-work-item-project-remove,
+.wb-work-item-project:focus-within .wb-work-item-project-remove { opacity: 0.65; }
+.wb-work-item-project-remove:hover { opacity: 1; color: var(--color-destructive); }
 /* IM as a work-item channel: embedded inside the work-item workspace. */
 .wb-room-pane { flex: 1 1 auto; display: flex; min-width: 0; min-height: 0; }
 .wb-room-pane .react-im-panel { flex: 1 1 auto; min-width: 0; }

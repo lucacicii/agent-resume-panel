@@ -125,6 +125,30 @@ test("work-item session links are indexed for reverse lookup and project derivat
   }
 });
 
+test("lists a work item's linked sessions with their project paths", async () => {
+  const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-work-details-"));
+  const catalogDb = path.join(panelHome, "catalog.db");
+  const store = new NotesStore(catalogDb, panelHome);
+  await store.initialize();
+
+  try {
+    await runSqlite(
+      catalogDb,
+      `INSERT INTO sessions (provider, agent_session_id, title, project_path, updated_at_ms, hidden)
+       VALUES ('codex', 's1', 'A', '/work/app', 1, 0), ('claude', 's2', 'B', '/work/api', 1, 0);`
+    );
+    const item = await store.createWorkItem({ title: "Cross-repo", sessions: ["codex:s1", "claude:s2"] });
+
+    const details = await store.listWorkItemSessionDetails(item.noteId);
+    assert.deepEqual(
+      details.map((detail) => `${detail.provider}:${detail.sessionId}->${detail.projectPath}`).sort(),
+      ["claude:s2->/work/api", "codex:s1->/work/app"]
+    );
+  } finally {
+    await fs.rm(panelHome, { recursive: true, force: true });
+  }
+});
+
 test("backfills the session index from existing note_work rows", async () => {
   const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-work-backfill-"));
   const catalogDb = path.join(panelHome, "catalog.db");

@@ -1309,6 +1309,7 @@ export interface DesktopApi {
   /** Allocate/refresh a work item's neutral workspace; returns its directory. */
   notesEnsureWorkItemWorkspace(args: { noteId: string }): Promise<{ dir: string }>;
   notesAddWorkItemProject(args: { noteId: string; projectPath: string }): Promise<{ noteId: string }>;
+  notesRemoveWorkItemProject(args: { noteId: string; projectPath: string }): Promise<{ noteId: string }>;
   notesListRoot(): Promise<
     Array<{
       noteId: string;
@@ -1932,6 +1933,7 @@ const api: DesktopApi = {
   notesListWorkItemSessionLinks: () => ipcRenderer.invoke("notes:listWorkItemSessionLinks"),
   notesEnsureWorkItemWorkspace: (args) => ipcRenderer.invoke("notes:ensureWorkItemWorkspace", args),
   notesAddWorkItemProject: (args) => ipcRenderer.invoke("notes:addWorkItemProject", args),
+  notesRemoveWorkItemProject: (args) => ipcRenderer.invoke("notes:removeWorkItemProject", args),
   notesListRoot: () => ipcRenderer.invoke("notes:listRoot"),
   notesListLinks: () => ipcRenderer.invoke("notes:listLinks"),
   notesListLinkedChildIds: () => ipcRenderer.invoke("notes:listLinkedChildIds"),

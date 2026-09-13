@@ -231,6 +231,31 @@ export interface WorkItemSessionLink {
   sessionId: string;
 }
 
+/** One linked session of a work item, with the project its cwd belongs to. */
+export interface WorkItemSessionDetail {
+  provider: string;
+  sessionId: string;
+  projectPath?: string;
+}
+
+export async function listWorkItemSessionDetails(
+  dbPath: string,
+  noteId: string
+): Promise<WorkItemSessionDetail[]> {
+  const rows = await runSqliteJson<{ provider: string; agent_session_id: string; project_path: string | null }>(
+    dbPath,
+    `SELECT s.provider, s.agent_session_id, se.project_path
+     FROM work_item_sessions s
+     LEFT JOIN sessions se ON se.provider = s.provider AND se.agent_session_id = s.agent_session_id
+     WHERE s.work_item_note_id = '${escapeSqlLiteral(noteId)}';`
+  );
+  return rows.map((row) => ({
+    provider: row.provider,
+    sessionId: row.agent_session_id,
+    projectPath: row.project_path?.trim() || undefined
+  }));
+}
+
 export async function listWorkItemSessionLinks(dbPath: string): Promise<WorkItemSessionLink[]> {
   const rows = await runSqliteJson<{ note_id: string; title: string | null; provider: string; agent_session_id: string }>(
     dbPath,

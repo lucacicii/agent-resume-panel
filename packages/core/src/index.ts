@@ -582,6 +582,7 @@ export {
   listLibraryNotes,
   listProjectNotes,
   listWorkItems,
+  listWorkItemSessionDetails,
   listWorkItemSessionLinks,
   listWorkItemSessionProjects,
   upsertNoteRecord,
@@ -593,6 +594,7 @@ export {
   setCatalogMeta,
   listLegacySessionNotes,
   listLegacyProjectNotes,
+  type WorkItemSessionDetail,
   type WorkItemSessionLink
 } from "./notes/catalogNotes";
 export { NotesStore, type ImportNotesResult } from "./notes/store";

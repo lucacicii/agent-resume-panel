@@ -204,6 +204,41 @@ export async function notesAddWorkItemProject(args: {
 }
 
 /**
+ * Drop a referenced project from a work item. Sessions whose cwd is that
+ * project leave the work item with it (the sessions themselves are untouched),
+ * otherwise the derived project list would immediately bring the project back.
+ */
+export async function notesRemoveWorkItemProject(args: {
+  noteId: string;
+  projectPath: string;
+}): Promise<NoteRecord> {
+  const store = await getDesktopNotesStore();
+  const content = await store.readNoteContent(args.noteId);
+  const doc = parseNoteDocument(content);
+  if (!doc.frontmatter.work) {
+    throw new Error("Note is not a work item.");
+  }
+
+  const details = await store.listWorkItemSessionDetails(args.noteId);
+  const droppedSessions = new Set(
+    details
+      .filter((detail) => detail.projectPath === args.projectPath)
+      .map((detail) => `${detail.provider}:${detail.sessionId}`)
+  );
+
+  const projects = (doc.frontmatter.projects ?? []).filter((projectPath) => projectPath !== args.projectPath);
+  const sessions = (doc.frontmatter.sessions ?? []).filter((key) => !droppedSessions.has(key));
+  const frontmatter = { ...doc.frontmatter, projects, sessions };
+  if (frontmatter.primaryProject === args.projectPath) {
+    frontmatter.primaryProject = projects[0];
+  }
+
+  const updated = await store.writeNoteContent(args.noteId, buildNoteDocument(frontmatter, doc.body));
+  await refreshWorkItemWorkspace(args.noteId);
+  return updated;
+}
+
+/**
  * On quit: turn sessions that were waiting for the user into GTD inbox work
  * items, so "the agent needs me" outlives the process without persisting the
  * transient runtime state itself. Best-effort — quitting must never fail.
