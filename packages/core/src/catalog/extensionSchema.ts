@@ -96,6 +96,25 @@ CREATE TABLE IF NOT EXISTS note_gtd (
   updated_at_ms INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_note_gtd_status ON note_gtd(status);
+CREATE TABLE IF NOT EXISTS note_work (
+  note_id TEXT PRIMARY KEY,
+  next_action TEXT,
+  decision TEXT,
+  sessions_json TEXT,
+  projects_json TEXT,
+  primary_project TEXT,
+  updated_at_ms INTEGER NOT NULL
+);
+ALTER TABLE note_work ADD COLUMN projects_json TEXT;
+ALTER TABLE note_work ADD COLUMN primary_project TEXT;
+CREATE TABLE IF NOT EXISTS work_item_sessions (
+  work_item_note_id TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  agent_session_id TEXT NOT NULL,
+  created_at_ms INTEGER NOT NULL,
+  PRIMARY KEY (work_item_note_id, provider, agent_session_id)
+);
+CREATE INDEX IF NOT EXISTS idx_work_item_sessions_session ON work_item_sessions(provider, agent_session_id);
 CREATE TABLE IF NOT EXISTS note_links (
   child_note_id TEXT PRIMARY KEY,
   parent_note_id TEXT NOT NULL,
@@ -172,6 +191,25 @@ CREATE TABLE IF NOT EXISTS note_gtd (
   updated_at_ms INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_note_gtd_status ON note_gtd(status);
+CREATE TABLE IF NOT EXISTS note_work (
+  note_id TEXT PRIMARY KEY,
+  next_action TEXT,
+  decision TEXT,
+  sessions_json TEXT,
+  projects_json TEXT,
+  primary_project TEXT,
+  updated_at_ms INTEGER NOT NULL
+);
+ALTER TABLE note_work ADD COLUMN projects_json TEXT;
+ALTER TABLE note_work ADD COLUMN primary_project TEXT;
+CREATE TABLE IF NOT EXISTS work_item_sessions (
+  work_item_note_id TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  agent_session_id TEXT NOT NULL,
+  created_at_ms INTEGER NOT NULL,
+  PRIMARY KEY (work_item_note_id, provider, agent_session_id)
+);
+CREATE INDEX IF NOT EXISTS idx_work_item_sessions_session ON work_item_sessions(provider, agent_session_id);
 CREATE TABLE IF NOT EXISTS note_links (
   child_note_id TEXT PRIMARY KEY,
   parent_note_id TEXT NOT NULL,

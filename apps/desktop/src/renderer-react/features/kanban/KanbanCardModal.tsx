@@ -17,7 +17,9 @@ import type { AgentSession } from "@agent-resume/core";
 /** Max time to wait for the delete IPC before bailing out of the deleting state. */
 const DELETE_TIMEOUT_MS = 45_000;
 
-type Note = Awaited<ReturnType<ReturnType<typeof desktopApi>["notesList"]>>[number];
+type Note = Awaited<ReturnType<ReturnType<typeof desktopApi>["notesList"]>>[number] & {
+  work?: { next?: string; decision?: string; sessions?: string[]; projects?: string[]; primaryProject?: string };
+};
 type Session = AgentSession;
 
 interface SessionPreview {
@@ -31,12 +33,16 @@ interface KanbanCardModalProps {
   note: Note | null;
   session: Session | null;
   sessionDot?: ActiveSessionDot | null;
+  /** Session keys (`provider:id`) the work item is implemented through. */
+  workSessions?: string[] | null;
+  /** Focus a live session in the Workbench, when one is open. */
+  onFocusSession?: (sessionKey: string) => void;
   onClose: () => void;
   /** Called after the note is moved between library and projects so the board stays in sync. */
   onNoteMoved?: (note: Note) => void;
 }
 
-export function KanbanCardModal({ note, session, sessionDot, onClose, onNoteMoved }: KanbanCardModalProps): ReactNode | null {
+export function KanbanCardModal({ note, session, sessionDot, workSessions, onFocusSession, onClose, onNoteMoved }: KanbanCardModalProps): ReactNode | null {
   const { ready, t } = useI18n();
   const setStatus = (s: { text: string; kind?: "error" | "ok" | "warning" }) => {
     if (s.text) notifyDesktop({ text: s.text, kind: (s.kind ?? "info") as "error" | "ok" | "info" });
@@ -174,6 +180,34 @@ export function KanbanCardModal({ note, session, sessionDot, onClose, onNoteMove
     }
   };
 
+  const openDiscussionRoom = useCallback(async () => {
+    if (!note || note.scope !== "project") return;
+    const name = note.title || note.filename.replace(/\.md$/i, "") || note.noteId;
+    try {
+      // The work-item note drives the room's name, project and background knowledge.
+      const room = await desktopApi().imCreateWorkItemRoom({ noteId: note.noteId });
+      if (!room) return;
+      // IM is a channel of the work item: open it inside the work-item workspace.
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-work-item", {
+        detail: {
+          noteId: note.noteId,
+          title: name,
+          status: note.gtdStatus ?? "inbox",
+          next: note.work?.next,
+          decision: note.work?.decision,
+          sessions: workSessions ?? [],
+          projects: note.work?.projects,
+          primaryProject: note.work?.primaryProject
+        }
+      }));
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-open-room", { detail: { projectId: room.project.projectId } }));
+      onClose();
+    } catch (error) {
+      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    }
+  }, [note, onClose]);
+
   const openInNotes = useCallback(() => {
     if (!note) return;
     window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "notes" }));
@@ -308,6 +342,12 @@ export function KanbanCardModal({ note, session, sessionDot, onClose, onNoteMove
       <button type="button" className="tool-btn" onClick={openInNotes}>
         {t("desktop.agent.openInNotes")}
       </button>
+      {note.scope === "project" ? (
+        <button type="button" className="tool-btn" onClick={() => void openDiscussionRoom()}>
+          <ThemeIcon name="message-square" size={14} aria-hidden="true" />
+          {t("desktop.kanban.openRoom")}
+        </button>
+      ) : null}
       <button
         type="button"
         className="tool-btn is-danger"
@@ -344,8 +384,7 @@ export function KanbanCardModal({ note, session, sessionDot, onClose, onNoteMove
               {t(`desktop.kanban.scope.${note.scope}`)}
               {note.projectPath ? ` · ${note.projectPath}` : ""}
               {` · ${note.filename}`}
-            </div>
-            <SegmentedControl<"preview" | "edit">
+            </div>            <SegmentedControl<"preview" | "edit">
               value={noteView}
               options={["preview", "edit"]}
               onChange={setNoteView}
@@ -369,6 +408,43 @@ export function KanbanCardModal({ note, session, sessionDot, onClose, onNoteMove
               {projectOptions.map((project) => <option value={project.value} key={project.value}>{project.label}</option>)}
             </select>
           </div>
+          {workSessions && workSessions.length > 0 && (
+            <div className="kanban-work-sessions" aria-label={t("desktop.kanban.workSessions")}>
+              {workSessions.map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  className="kanban-work-session-chip"
+                  onClick={() => onFocusSession?.(key)}
+                  title={t("desktop.kanban.focusSession")}
+                >
+                  <ThemeIcon name="terminal" size={12} aria-hidden="true" />
+                  <span>{key}</span>
+                </button>
+              ))}
+              <button
+                type="button"
+                className="kanban-work-sessions-open"
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
+                  window.dispatchEvent(new CustomEvent("agent-resume:workbench-work-item", {
+                    detail: {
+                      noteId: note.noteId,
+                      title,
+                      status: note.gtdStatus ?? "inbox",
+                      next: note.work?.next,
+                      decision: note.work?.decision,
+                      sessions: workSessions,
+                      projects: note.work?.projects,
+                      primaryProject: note.work?.primaryProject
+                    }
+                  }));
+                }}
+              >
+                {t("desktop.kanban.openWorkItemInWorkbench")}
+              </button>
+            </div>
+          )}
           {noteLoading ? (
             <p className="muted">{t("desktop.common.loadingPreview")}</p>
           ) : noteView === "edit" ? (

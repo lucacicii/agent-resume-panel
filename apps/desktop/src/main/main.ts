@@ -191,6 +191,13 @@ import {
   notesGetSubtree,
   notesImport,
   notesList,
+  notesCreateWorkItem,
+  notesAddWorkItemProject,
+  notesEnsureWorkItemWorkspace,
+  notesLinkSessionToWorkItem,
+  notesListWorkItemSessionLinks,
+  notesListWorkItems,
+  promoteAwaitingSessionsToInbox,
   notesListChildCounts,
   notesListLinkedChildIds,
   notesListLinks,
@@ -214,6 +221,7 @@ import {
   stopAgentStatusDaemon
 } from "./agentStatus/lifecycle";
 import { createAgentStatusBridge, type AgentStatusBridge } from "./agentStatus/bridge";
+import type { StatusTransition } from "./agentStatus/types";
 import { registerAgentStatusIpc } from "./agentStatus/ipc";
 import { AgentStatusSensor } from "./agentStatus/sensor";
 import { setAgentStatusSensor } from "./agentStatus/runtime";
@@ -360,7 +368,53 @@ function ensureAgentStatusRuntime(): void {
     resourcesPath: process.resourcesPath,
     appPath: app.getAppPath()
   });
+  bridge.onTransition((transition) => {
+    void promoteBlockedTransition(transition);
+  });
   bridge.connect();
+}
+
+/**
+ * Sessions already promoted to the board this process, so a flapping pane does
+ * not create a work item per transition. The catalog is also checked, so a
+ * restart never duplicates an item for the same session.
+ */
+const promotedBlockedSessions = new Set<string>();
+
+function blockedDecisionText(transition: StatusTransition): string {
+  const source = transition.source === "native" ? "reported by the agent" : `detected (${transition.source})`;
+  const rule = transition.reason ? `: ${transition.reason}` : "";
+  return `Agent is blocked and waiting on you — ${transition.agent} ${source}${rule}.`;
+}
+
+/** F-1/F-2: a pane turning blocked becomes a GTD inbox work item, with the reason captured at transition time. */
+async function promoteBlockedTransition(transition: StatusTransition): Promise<void> {
+  if (transition.to !== "blocked") return;
+  const sessionKey = transition.sessionKey?.trim();
+  if (!sessionKey || promotedBlockedSessions.has(sessionKey)) return;
+  const separator = sessionKey.indexOf(":");
+  if (separator <= 0 || separator === sessionKey.length - 1) return;
+  const provider = sessionKey.slice(0, separator);
+  const sessionId = sessionKey.slice(separator + 1);
+  promotedBlockedSessions.add(sessionKey);
+  try {
+    const paths = await loadPanelDbPaths();
+    const page = await querySessionsPage(paths.catalogDb, { keys: [{ provider, id: sessionId }], limit: 1 });
+    const session = page.sessions[0];
+    const projectPath = session?.projectPath?.trim();
+    if (!projectPath) return;
+    const known = await notesListWorkItems();
+    if (known.some((item) => (item.work.sessions ?? []).includes(sessionKey))) return;
+    await notesCreateWorkItem({
+      title: session.title || sessionId,
+      decision: blockedDecisionText(transition),
+      sessions: [sessionKey],
+      projects: [projectPath],
+      primaryProject: projectPath
+    });
+  } catch {
+    // Best-effort: a failed promotion must never disturb status tracking.
+  }
 }
 
 /** Follow a panel-home change: the daemon and its socket live under that path. */
@@ -536,6 +590,9 @@ let registeredRecentStandaloneNoteShortcut = "";
 let appQuitInFlight: Promise<void> | null = null;
 let allowAppQuit = false;
 let quitCleanupDone = false;
+let awaitingPromotionDone = false;
+/** Cap the quit-time work-item promotion so a slow disk can never block quitting. */
+const AWAITING_PROMOTION_TIMEOUT_MS = 5_000;
 let sessionSyncTimer: NodeJS.Timeout | null = null;
 let sessionSyncInFlight: Promise<AgentSessionSyncResult> | null = null;
 let workbenchActive = false;
@@ -2781,6 +2838,50 @@ function registerIpc(): void {
   );
 
   ipcMain.handle("notes:list", async () => notesList());
+  ipcMain.handle("notes:listWorkItems", async () => notesListWorkItems());
+  ipcMain.handle("notes:ensureWorkItemWorkspace", async (_event, args: { noteId?: unknown }) => {
+    if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
+      throw new Error("A work item note id is required.");
+    }
+    return notesEnsureWorkItemWorkspace(args.noteId);
+  });
+  ipcMain.handle("notes:listWorkItemSessionLinks", async () => notesListWorkItemSessionLinks());
+  ipcMain.handle("notes:addWorkItemProject", async (_event, args: { noteId?: unknown; projectPath?: unknown }) => {
+    if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
+      throw new Error("A work item note id is required.");
+    }
+    if (typeof args?.projectPath !== "string" || !args.projectPath.trim()) {
+      throw new Error("A project path is required.");
+    }
+    return notesAddWorkItemProject({ noteId: args.noteId, projectPath: args.projectPath });
+  });
+  ipcMain.handle("notes:linkSessionToWorkItem", async (_event, args: { noteId?: unknown; sessionKey?: unknown; projectPath?: unknown }) => {
+    if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
+      throw new Error("A work item note id is required.");
+    }
+    if (typeof args?.sessionKey !== "string" || !args.sessionKey.trim()) {
+      throw new Error("A session key is required.");
+    }
+    return notesLinkSessionToWorkItem({
+      noteId: args.noteId,
+      sessionKey: args.sessionKey,
+      projectPath: typeof args.projectPath === "string" ? args.projectPath : undefined
+    });
+  });
+  ipcMain.handle("notes:createWorkItem", async (_event, args: { title?: unknown; next?: unknown; decision?: unknown; sessions?: unknown; projects?: unknown; primaryProject?: unknown }) => {
+    const stringList = (value: unknown): string[] | undefined =>
+      Array.isArray(value)
+        ? value.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+        : undefined;
+    return notesCreateWorkItem({
+      title: typeof args?.title === "string" ? args.title : undefined,
+      next: typeof args?.next === "string" ? args.next : undefined,
+      decision: typeof args?.decision === "string" ? args.decision : undefined,
+      sessions: stringList(args?.sessions),
+      projects: stringList(args?.projects),
+      primaryProject: typeof args?.primaryProject === "string" ? args.primaryProject : undefined
+    });
+  });
   ipcMain.handle("notes:listRoot", async () => notesListRootNotes());
   ipcMain.handle("notes:listLinks", async () => notesListLinks());
   ipcMain.handle("notes:listLinkedChildIds", async () => notesListLinkedChildIds());
@@ -3319,6 +3420,25 @@ app.on("before-quit", (event) => {
       void recordAppError({ source: "standalone-note", message: "Application quit coordination failed.", error });
     });
     return;
+  }
+  // Promote sessions that are waiting on the user into GTD inbox work items, so
+  // "the agent needs me" survives the process without caching runtime state.
+  if (!allowAppQuit && !awaitingPromotionDone) {
+    const awaiting = workbenchActiveSessions
+      .filter((dot) => dot.status === "awaiting_user" && dot.sessionKey && dot.projectPath)
+      .map((dot) => ({ sessionKey: dot.sessionKey, title: dot.title, projectPath: dot.projectPath }));
+    if (awaiting.length > 0) {
+      event.preventDefault();
+      void Promise.race([
+        promoteAwaitingSessionsToInbox(awaiting),
+        new Promise<void>((resolve) => setTimeout(resolve, AWAITING_PROMOTION_TIMEOUT_MS))
+      ]).catch(() => undefined).finally(() => {
+        awaitingPromotionDone = true;
+        allowAppQuit = true;
+        app.quit();
+      });
+      return;
+    }
   }
   allowAppQuit = true;
   performQuitCleanup();

@@ -10,7 +10,7 @@
 
 import { connectAgentStatusClient, type AgentStatusClient } from "./client";
 import { agentStatusPaths } from "./paths";
-import type { NativeReport, PaneTelemetry, StatusSnapshot } from "./types";
+import type { NativeReport, PaneTelemetry, StatusSnapshot, StatusTransition } from "./types";
 
 const RECONNECT_MIN_MS = 500;
 const RECONNECT_MAX_MS = 10_000;
@@ -27,6 +27,8 @@ export type AgentStatusBridge = {
   forgetPane: (paneId: number) => void;
   getSnapshot: () => StatusSnapshot | null;
   subscribe: (listener: (snapshot: StatusSnapshot) => void) => () => void;
+  /** Fires once per settled pane state change (oldest age-bounded in the daemon). */
+  onTransition: (listener: (transition: StatusTransition) => void) => () => void;
   readonly connected: boolean;
   dispose: () => void;
 };
@@ -39,6 +41,7 @@ export function createAgentStatusBridge(input: {
 }): AgentStatusBridge {
   const log = input.log ?? (() => undefined);
   const listeners = new Set<(snapshot: StatusSnapshot) => void>();
+  const transitionListeners = new Set<(transition: StatusTransition) => void>();
   const pendingReports: NativeReport[] = [];
   let client: AgentStatusClient | null = null;
   let connecting = false;
@@ -81,6 +84,9 @@ export function createAgentStatusBridge(input: {
         retryDelay = RECONNECT_MIN_MS;
         next.subscribe((event) => {
           if (event.event === "status.changed") notify(event.data);
+          else if (event.event === "status.transition") {
+            for (const listener of transitionListeners) listener(event.data);
+          }
           else if (event.event === "daemon.shutting_down") log("daemon is shutting down; will reconnect");
         });
         next.onClose(() => {
@@ -155,6 +161,12 @@ export function createAgentStatusBridge(input: {
         listeners.delete(listener);
       };
     },
+    onTransition(listener) {
+      transitionListeners.add(listener);
+      return () => {
+        transitionListeners.delete(listener);
+      };
+    },
     get connected() {
       return client !== null;
     },
@@ -165,6 +177,7 @@ export function createAgentStatusBridge(input: {
       client?.close();
       client = null;
       listeners.clear();
+      transitionListeners.clear();
       pendingReports.length = 0;
     }
   };

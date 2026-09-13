@@ -14,7 +14,8 @@ function renderChrome(options?: {
     getI18nBundle: async () => ({
       locale: "en",
       messages: {
-        "desktop.tabs.report": "Report",
+        "desktop.tabs.today": "Today",
+        "desktop.tabs.report": "Archive",
         "desktop.tabs.workbench": "Workbench",
         "desktop.tabs.notes": "Notes",
         "desktop.tabs.kanban": "Kanban",
@@ -58,33 +59,33 @@ describe("AppChrome", () => {
 
   it("keeps primary tab active when switching among primary tabs", async () => {
     renderChrome();
-    const report = await screen.findByRole("button", { name: "Report" });
-    expect(report.classList.contains("active")).toBe(true);
+    const today = await screen.findByRole("button", { name: "Today" });
+    expect(today.classList.contains("active")).toBe(true);
 
     await act(async () => {
-      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "notes" }));
     });
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "IM" }).classList.contains("active")).toBe(true)
+      expect(screen.getByRole("button", { name: "Notes" }).classList.contains("active")).toBe(true)
     );
   });
 
-  it("places Kanban immediately after Notes in primary navigation", async () => {
+  it("lists the primary tabs in order", async () => {
     renderChrome();
-    await screen.findByRole("button", { name: "Kanban" });
+    await screen.findByRole("button", { name: "Notes" });
     const labels = [...document.querySelectorAll(".app-nav-rail .rail-btn")].map((item) =>
       item.getAttribute("aria-label")
     );
-    expect(labels).toEqual(["Report", "Workbench", "Notes", "Kanban", "IM"]);
+    expect(labels).toEqual(["Today", "Archive", "Workbench", "Notes"]);
     const icons = [...document.querySelectorAll(".app-nav-rail .rail-btn [data-theme-icon]")].map((item) =>
       item.getAttribute("data-theme-icon")
     );
-    expect(icons).toEqual(["layout-dashboard", "terminal", "file-text", "square-kanban", "message-square"]);
+    expect(icons).toEqual(["zap", "layout-dashboard", "terminal", "file-text"]);
   });
 
   it("requests the primary tab when a rail button is clicked", async () => {
     renderChrome();
-    await screen.findByRole("button", { name: "Report" });
+    await screen.findByRole("button", { name: "Archive" });
     const listener = vi.fn();
     window.addEventListener("agent-resume:tab-change", listener);
     fireEvent.click(screen.getByRole("button", { name: "Notes" }));
@@ -94,7 +95,7 @@ describe("AppChrome", () => {
 
   it("opens the sessions reference when requested from the native menu", async () => {
     const { getOpenSessionsHandler } = renderChrome();
-    await screen.findByRole("button", { name: "Report" });
+    await screen.findByRole("button", { name: "Archive" });
     const listener = vi.fn();
     window.addEventListener("agent-resume:sessions-open", listener);
     const handler = getOpenSessionsHandler();
@@ -106,7 +107,7 @@ describe("AppChrome", () => {
 
   it("renders one dot per active session and shows a tooltip with the full title on hover", async () => {
     renderChrome();
-    await screen.findByRole("button", { name: "Report" });
+    await screen.findByRole("button", { name: "Archive" });
     await act(async () => {
       window.dispatchEvent(new CustomEvent("agent-resume:active-sessions", { detail: [
         { paneKey: "terminal:1", projectPath: "/proj/a", title: "A very long session title here", sessionKey: "cli:s1", status: "open" },
@@ -125,7 +126,7 @@ describe("AppChrome", () => {
 
   it("applies status classes and tooltip suffixes for runtime states", async () => {
     renderChrome();
-    await screen.findByRole("button", { name: "Report" });
+    await screen.findByRole("button", { name: "Archive" });
     await act(async () => {
       window.dispatchEvent(new CustomEvent("agent-resume:active-sessions", { detail: [
         {
@@ -162,7 +163,7 @@ describe("AppChrome", () => {
 
   it("renders no dots when no sessions are open", async () => {
     renderChrome();
-    await screen.findByRole("button", { name: "Report" });
+    await screen.findByRole("button", { name: "Archive" });
     await act(async () => {
       window.dispatchEvent(new CustomEvent("agent-resume:active-sessions", { detail: [] }));
     });
@@ -171,7 +172,7 @@ describe("AppChrome", () => {
 
   it("requests workbench and focuses the session when a dot is clicked", async () => {
     renderChrome();
-    await screen.findByRole("button", { name: "Report" });
+    await screen.findByRole("button", { name: "Archive" });
     const tabReq = vi.fn();
     const focusReq = vi.fn();
     window.addEventListener("agent-resume:tab-request", tabReq);
@@ -196,7 +197,7 @@ describe("AppChrome", () => {
     const { standaloneNoteOpen, pushNoteDots } = renderChrome({
       standaloneNoteList: [{ noteId: "n1", title: "Scratch pad" }]
     });
-    await screen.findByRole("button", { name: "Report" });
+    await screen.findByRole("button", { name: "Archive" });
     await waitFor(() => expect(document.querySelectorAll(".rail-note-dot-btn").length).toBe(1));
 
     await act(async () => {
@@ -237,7 +238,7 @@ describe("AppChrome", () => {
 
   it("updates floating note dots when the open-notes list changes", async () => {
     const { pushNoteDots } = renderChrome();
-    await screen.findByRole("button", { name: "Report" });
+    await screen.findByRole("button", { name: "Archive" });
     expect(document.querySelectorAll(".rail-note-dot-btn").length).toBe(0);
 
     await act(async () => {

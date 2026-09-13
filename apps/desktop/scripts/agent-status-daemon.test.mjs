@@ -187,6 +187,23 @@ async function main() {
   assert.equal(snapshot.byPaneId["1"].source, "fallback");
   console.log("ok 8 - telemetry: stale silence reports idle instead of inventing a state");
 
+  // ----------------------------------------------------------------- transitions
+  const transitions = await client.request("status.transitions", {});
+  assert.ok(Array.isArray(transitions));
+  assert.ok(
+    transitions.some((t) => t.paneId === 1 && t.from === "working" && t.to === "idle"),
+    "a settled working→idle change must be recorded"
+  );
+  assert.ok(
+    transitions.every((t, i) => i === 0 || t.seq > transitions[i - 1].seq),
+    "transition seq must be monotonic"
+  );
+  assert.ok(
+    transitions.filter((t) => t.seq <= 0).length === 0,
+    "every transition carries a positive seq"
+  );
+  console.log("ok 8b - transitions: settled changes are recorded and sequenced");
+
   // ------------------------------------------------------------------- identity
   await client.request("telemetry.publish", {
     paneId: 1,
@@ -339,6 +356,24 @@ async function main() {
   assert.equal(received[0].data.byPaneId["2"].state, "working");
   unsubscribe();
   console.log("ok 13 - subscription: status.changed pushed only on real change");
+
+  const transitionEvents = [];
+  const unsubscribeTransitions = client.subscribe((event) => {
+    if (event.event === "status.transition") transitionEvents.push(event.data);
+  });
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  await client.request("telemetry.publish", {
+    paneId: 2,
+    lastOutputAt: Date.now() - RUNNING_WINDOW_MS - 1_000,
+    toolRunning: false,
+    at: Date.now()
+  });
+  await waitFor(() => transitionEvents.length > 0, "a status.transition push");
+  assert.equal(transitionEvents[0].from, "working");
+  assert.equal(transitionEvents[0].to, "idle");
+  assert.equal(transitionEvents[0].paneId, 2);
+  unsubscribeTransitions();
+  console.log("ok 13b - subscription: status.transition carries the from→to change");
 
   // ------------------------------------------------------------- protocol errors
   await assert.rejects(

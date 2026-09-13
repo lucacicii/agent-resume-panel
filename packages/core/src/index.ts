@@ -573,7 +573,7 @@ export {
   type NoteOwnerJson,
   LIBRARY_REL_DIR
 } from "./notes/paths";
-export type { NoteRecord } from "./notes/catalogNotes";
+export type { NoteRecord, WorkItemRecord } from "./notes/catalogNotes";
 export {
   listAllNotes,
   getNoteById,
@@ -581,6 +581,9 @@ export {
   listSessionNotes,
   listLibraryNotes,
   listProjectNotes,
+  listWorkItems,
+  listWorkItemSessionLinks,
+  listWorkItemSessionProjects,
   upsertNoteRecord,
   deleteNoteRecord,
   deleteNotesByRelPaths,
@@ -589,7 +592,8 @@ export {
   getCatalogMeta,
   setCatalogMeta,
   listLegacySessionNotes,
-  listLegacyProjectNotes
+  listLegacyProjectNotes,
+  type WorkItemSessionLink
 } from "./notes/catalogNotes";
 export { NotesStore, type ImportNotesResult } from "./notes/store";
 export type { NoteLink, NoteSubtree, NoteTreeNode } from "./notes/links";
@@ -633,9 +637,19 @@ export {
   buildNoteDocument,
   extractTitle,
   contentPreview,
+  workFieldsFromFrontmatter,
   type NoteFrontmatter,
+  type NoteWorkFields,
   type ParsedNoteDocument
 } from "./notes/frontmatter";
+export {
+  loadNoteWorkMap,
+  setNoteWork,
+  clearNoteWork,
+  syncNoteWorkFromFrontmatter,
+  ensureWorkItemSessionIndex,
+  splitSessionKey
+} from "./notes/work";
 export {
   localDateString,
   formatNoteFilename,

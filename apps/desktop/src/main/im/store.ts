@@ -169,6 +169,7 @@ interface ProjectRow {
   project_id: string;
   name: string;
   local_path: string | null;
+  work_item_note_id?: string | null;
   created_at_ms: number;
   updated_at_ms: number;
 }
@@ -242,6 +243,7 @@ interface KnowledgeRow {
   mime_type: string | null;
   file_name: string | null;
   size_bytes: number | null;
+  source_note_id?: string | null;
   created_at_ms: number;
 }
 
@@ -385,6 +387,7 @@ function mapKnowledge(row: KnowledgeRow): ImKnowledgeItem {
     mimeType: row.mime_type,
     fileName: row.file_name,
     sizeBytes: row.size_bytes,
+    sourceNoteId: row.source_note_id ?? null,
     createdAtMs: row.created_at_ms
   };
 }
@@ -438,6 +441,7 @@ function mapProject(row: ProjectRow, roles?: ImProjectRoleSummary[]): ImProject 
     projectId: row.project_id,
     name: row.name,
     localPath: row.local_path,
+    workItemNoteId: row.work_item_note_id ?? null,
     createdAtMs: row.created_at_ms,
     updatedAtMs: row.updated_at_ms,
     roles: roles ?? []
@@ -1028,6 +1032,60 @@ export class ImStore {
     await this.seedBuiltinMembers(projectId);
     const project = await this.getProject(projectId);
     if (!project) throw new Error("Failed to load newly created project.");
+    return project;
+  }
+
+  /** The room scoped to a work item, if one exists. */
+  async getRoomByWorkItemNote(noteId: string): Promise<ImProject | undefined> {
+    const rows = await runSqliteJson<ProjectRow>(
+      this.dbPath,
+      `SELECT * FROM im_projects WHERE work_item_note_id = ${sqlString(noteId)} LIMIT 1;`
+    );
+    return rows[0] ? mapProject(rows[0]) : undefined;
+  }
+
+  /**
+   * Open (or create) the room scoped to a work item. Idempotent: a second call
+   * for the same note returns the existing room instead of duplicating it.
+   */
+  async openWorkItemRoom(
+    noteId: string,
+    name: string,
+    panelHome: string,
+    localPath?: string | null
+  ): Promise<ImProject> {
+    const existing = await this.getRoomByWorkItemNote(noteId);
+    if (existing) {
+      // The work-item note is the source of truth for the room's cwd. If the
+      // path is missing on this machine, keep the previous one instead of failing.
+      if (localPath?.trim()) {
+        const next = path.resolve(expandHome(localPath.trim()));
+        if (existing.localPath !== next) {
+          try {
+            return await this.setLocalPath(existing.projectId, next);
+          } catch {
+            return existing;
+          }
+        }
+      }
+      return existing;
+    }
+    const now = nowMs();
+    const projectId = randomUUID();
+    let initialPath = localPath?.trim() ? path.resolve(expandHome(localPath.trim())) : null;
+    if (!initialPath) {
+      initialPath = path.join(path.resolve(expandHome(panelHome)), ".desktop", "scratch", "im", projectId);
+      await fs.mkdir(initialPath, { recursive: true }).catch(() => undefined);
+    }
+    await ensureArpDir(initialPath);
+    await runSqlite(
+      this.dbPath,
+      `INSERT INTO im_projects (project_id, name, local_path, work_item_note_id, created_at_ms, updated_at_ms)
+       VALUES (${sqlString(projectId)}, ${sqlString(name.trim() || "Work item")}, ${sqlNullOrString(initialPath)}, ${sqlString(noteId)}, ${now}, ${now});`
+    );
+    await this.seedBuiltinMembers(projectId);
+    const project = await this.getProject(projectId);
+    if (!project) throw new Error("Failed to load newly created work item room.");
     return project;
   }
 
@@ -2291,13 +2349,14 @@ export class ImStore {
     fileName?: string | null;
     sizeBytes?: number | null;
     itemId?: string;
+    sourceNoteId?: string | null;
   }): Promise<ImKnowledgeItem> {
     const now = nowMs();
     const itemId = input.itemId ?? randomUUID();
     await runSqlite(
       this.dbPath,
       `INSERT INTO im_knowledge (
-        item_id, project_id, kind, title, body, url, storage_path, mime_type, file_name, size_bytes, created_at_ms
+        item_id, project_id, kind, title, body, url, storage_path, mime_type, file_name, size_bytes, source_note_id, created_at_ms
       ) VALUES (
         ${sqlString(itemId)},
         ${sqlString(input.projectId)},
@@ -2309,6 +2368,7 @@ export class ImStore {
         ${sqlNullOrString(input.mimeType ?? null)},
         ${sqlNullOrString(input.fileName ?? null)},
         ${input.sizeBytes == null ? "NULL" : String(input.sizeBytes)},
+        ${sqlNullOrString(input.sourceNoteId ?? null)},
         ${now}
       );`
     );
@@ -2316,6 +2376,32 @@ export class ImStore {
     const created = items.find((item) => item.itemId === itemId);
     if (!created) throw new Error("Failed to load knowledge item.");
     return created;
+  }
+
+  /**
+   * Mirror a work-item note into the room's background knowledge. One row per
+   * note, so re-opening the room refreshes the content instead of duplicating.
+   */
+  async upsertWorkItemKnowledge(
+    projectId: string,
+    noteId: string,
+    title: string,
+    body: string
+  ): Promise<ImKnowledgeItem | null> {
+    await this.requireProject(projectId);
+    await runSqlite(
+      this.dbPath,
+      `DELETE FROM im_knowledge WHERE project_id = ${sqlString(projectId)} AND source_note_id = ${sqlString(noteId)};`
+    );
+    const clipped = clipBody(body.trim(), KNOWLEDGE_TEXT_MAX);
+    if (!clipped.body && !title.trim()) return null;
+    return this.insertKnowledge({
+      projectId,
+      kind: "text",
+      title: title.trim() || "Work item",
+      body: clipped.body,
+      sourceNoteId: noteId
+    });
   }
 
   async getRoom(projectId: string): Promise<ImRoom> {

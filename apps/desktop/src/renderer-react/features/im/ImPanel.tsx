@@ -100,10 +100,12 @@ function estimateTranscriptItemSize(item: TranscriptItem): number {
 }
 
 
-export function ImPanel(): ReactPortal | null {
+export function ImPanel({ embedded = false, onCloseRoom }: { embedded?: boolean; onCloseRoom?: () => void } = {}): ReactPortal | JSX.Element | null {
   const host = document.getElementById("react-im");
   const { t } = useI18n();
   const [active, setActive] = useState(false);
+  // Embedded (work-item channel) mode is always "on"; the tab gate is skipped.
+  useEffect(() => { if (embedded) setActive(true); }, [embedded]);
   const [projects, setProjects] = useState<ImProject[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>(() => {
     try { return localStorage.getItem(SELECTED_PROJECT_KEY) || ""; } catch { return ""; }
@@ -276,6 +278,19 @@ export function ImPanel(): ReactPortal | null {
     window.addEventListener("agent-resume:tab-change", onTab);
     return () => window.removeEventListener("agent-resume:tab-change", onTab);
   }, [loadProjects]);
+
+  // Open a room requested by another surface (e.g. a work item on the board).
+  useEffect(() => {
+    const onOpenRoom = (event: Event) => {
+      const detail = (event as CustomEvent<{ projectId?: string }>).detail;
+      if (!detail?.projectId) return;
+      setActive(true);
+      selectProject(detail.projectId);
+      void loadProjects();
+    };
+    window.addEventListener("agent-resume:im-open-room", onOpenRoom);
+    return () => window.removeEventListener("agent-resume:im-open-room", onOpenRoom);
+  }, [loadProjects, selectProject]);
 
   useEffect(() => {
     if (!active || !selectedProjectId) {
@@ -1230,7 +1245,7 @@ export function ImPanel(): ReactPortal | null {
     }
   }, [setError, t]);
 
-  if (!host) return null;
+  if (!host && !embedded) return null;
   const headerSlot = document.getElementById("app-header-slot");
   const toolbar = (
     <div className="im-toolbar">
@@ -1256,9 +1271,9 @@ export function ImPanel(): ReactPortal | null {
     </div>
   );
 
-  return createPortal(
-    <section className="react-im-panel panel" hidden={!active} aria-label={t("desktop.im.title")}>
-      {active && headerSlot ? createPortal(toolbar, headerSlot) : null}
+  const panel = (
+    <section className={`react-im-panel panel${embedded ? " is-embedded" : ""}`} hidden={embedded ? false : !active} aria-label={t("desktop.im.title")}>
+      {!embedded && active && headerSlot ? createPortal(toolbar, headerSlot) : null}
       <div className="im-split">
         <aside
           className={`sidebar-folders-pane im-folders-pane${sidebarCollapsed ? " is-collapsed" : ""}`}
@@ -1379,31 +1394,44 @@ export function ImPanel(): ReactPortal | null {
         <div className="im-main">
           {room ? (
             <>
-              <div className="im-room-head">
+              <div className={`im-room-head${embedded ? " is-embedded" : ""}`}>
                 <div className="im-room-head-info">
                   <ImChatAvatar
                     roles={members.map((m) => ({ templateId: m.templateId, name: memberLabel(m) }))}
                     size={34}
                     onClick={() => setMembersDrawerOpen(true)}
                   />
-                  <div className="im-room-head-titles">
-                    <h2>{room.project.name}</h2>
-                    <p className="im-room-path">
-                      <span>{room.project.localPath || t("desktop.im.tempFolder")}</span>
-                      <button
-                        type="button"
-                        className="im-room-path-btn"
-                        onClick={() => void associateFolder()}
-                        title={t("desktop.im.associateFolder")}
-                        aria-label={t("desktop.im.associateFolder")}
-                      >
-                        <ThemeIcon name="folder" size={13} aria-hidden="true" />
-                      </button>
-                    </p>
-                  </div>
+                  {!embedded && (
+                    <div className="im-room-head-titles">
+                      <h2>{room.project.name}</h2>
+                      <p className="im-room-path">
+                        <span>{room.project.localPath || t("desktop.im.tempFolder")}</span>
+                        <button
+                          type="button"
+                          className="im-room-path-btn"
+                          onClick={() => void associateFolder()}
+                          title={t("desktop.im.associateFolder")}
+                          aria-label={t("desktop.im.associateFolder")}
+                        >
+                          <ThemeIcon name="folder" size={13} aria-hidden="true" />
+                        </button>
+                      </p>
+                    </div>
+                  )}
                 </div>
                 <div className="im-room-head-actions">
                   {projectTools.toolbar}
+                  {embedded && onCloseRoom ? (
+                    <button
+                      type="button"
+                      className="im-room-close"
+                      onClick={onCloseRoom}
+                      aria-label={t("desktop.workbench.closeRoom")}
+                      title={t("desktop.workbench.closeRoom")}
+                    >
+                      <ThemeIcon name="close" size={14} aria-hidden="true" />
+                    </button>
+                  ) : null}
                 </div>
               </div>
               <div className="im-transcript-wrap">
@@ -2053,7 +2081,7 @@ export function ImPanel(): ReactPortal | null {
           document.body
         );
       })()}
-    </section>,
-    host
+    </section>
   );
+  return embedded || !host ? panel : createPortal(panel, host);
 }

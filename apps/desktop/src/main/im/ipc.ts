@@ -3,9 +3,13 @@ import { constants } from "node:fs";
 import * as fs from "node:fs/promises";
 import {
   effectivePanelHome,
+  extractTitle,
   loadSettings,
+  parseNoteDocument,
   preparePanelDatabasesFromSettings
 } from "@agent-resume/core";
+import { notesRead } from "../notesService";
+import { renderAddressTable } from "../workItemWorkspace";
 import { safeHandle } from "../ipcUtils";
 import { disposeAcpController, inspectAcpChat, listLiveAcpChatIds } from "../acp/acpHost";
 import { deleteAcpRecord } from "../acp/store";
@@ -98,6 +102,53 @@ export function registerImIpc(deps: {
     const panelHome = effectivePanelHome(settings);
     const im = await getStore();
     return im.createProject(name, panelHome, localPath);
+  });
+
+  safeHandle("im:createWorkItemRoom", async (_event, args: { noteId?: unknown; preferredCwd?: unknown }) => {
+    if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
+      throw new Error("A work item note id is required.");
+    }
+    const settings = await loadSettings();
+    const panelHome = effectivePanelHome(settings);
+    const im = await getStore();
+
+    // The work-item note (markdown + front-matter) is the single source of truth
+    // for the room's name, projects and background knowledge.
+    const { record, content } = await notesRead(args.noteId);
+    const doc = parseNoteDocument(content);
+    const projects = (doc.frontmatter.projects ?? []).map((entry) => entry.trim()).filter(Boolean);
+    const primaryProject = doc.frontmatter.primaryProject?.trim() || projects[0];
+    const name = record.title || extractTitle(doc.body) || record.filename.replace(/\.md$/i, "");
+    // The renderer's explicit session target wins over the note's primary project.
+    const preferredCwd = typeof args?.preferredCwd === "string" && args.preferredCwd.trim()
+      ? args.preferredCwd.trim()
+      : undefined;
+    const project = await im.openWorkItemRoom(args.noteId, name, panelHome, preferredCwd ?? primaryProject ?? null);
+
+    const situation = [
+      renderAddressTable({
+        noteId: args.noteId,
+        title: name,
+        status: record.gtdStatus ?? "inbox",
+        next: doc.frontmatter.next,
+        decision: doc.frontmatter.decision,
+        noteRelPath: record.relMdPath,
+        projects: await Promise.all(projects.map(async (projectPath) => ({
+          path: projectPath,
+          label: projectPath.replaceAll("\\", "/").split("/").filter(Boolean).at(-1) || projectPath,
+          exists: await fs.stat(projectPath).then(() => true).catch(() => false)
+        })))
+      }),
+      "",
+      "---",
+      "",
+      doc.body.trim()
+    ].join("\n");
+    await im.upsertWorkItemKnowledge(project.projectId, args.noteId, name, situation);
+
+    const room = await im.getRoom(project.projectId);
+    emitIm?.({ type: "room", room });
+    return room;
   });
 
   safeHandle("im:renameProject", async (_event, args: { projectId?: unknown; name?: unknown }) => {

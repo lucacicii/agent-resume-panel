@@ -44,6 +44,47 @@ describe("ImStore", () => {
     expect(room.members.every((member) => member.agent === "claude")).toBe(true);
   });
 
+  it("mirrors the work-item note into the room's background knowledge", async () => {
+    const { store, panelHome } = await createStoreWithHome();
+    const room = await store.openWorkItemRoom("note-1", "Realtime status", panelHome, panelHome);
+
+    const first = await store.upsertWorkItemKnowledge(room.projectId, "note-1", "Realtime status", "body v1");
+    expect(first?.sourceNoteId).toBe("note-1");
+    expect(first?.body).toBe("body v1");
+
+    const refreshed = await store.upsertWorkItemKnowledge(room.projectId, "note-1", "Realtime status", "body v2");
+    expect(refreshed?.body).toBe("body v2");
+    const items = await store.listKnowledge(room.projectId);
+    expect(items.filter((item) => item.sourceNoteId === "note-1")).toHaveLength(1);
+  });
+
+  it("follows the work-item note for the room cwd", async () => {
+    const { store, panelHome } = await createStoreWithHome();
+    const other = path.join(panelHome, ".desktop");
+    const first = await store.openWorkItemRoom("note-2", "X", panelHome, panelHome);
+    expect(first.localPath).toBe(panelHome);
+
+    const moved = await store.openWorkItemRoom("note-2", "X", panelHome, other);
+    expect(moved.projectId).toBe(first.projectId);
+    expect(moved.localPath).toBe(other);
+  });
+
+  it("scopes a room to a work item and is idempotent", async () => {
+    const { store, panelHome } = await createStoreWithHome();
+    const first = await store.openWorkItemRoom("note-1", "Realtime status", panelHome, panelHome);
+    expect(first.workItemNoteId).toBe("note-1");
+    expect(first.name).toBe("Realtime status");
+
+    const again = await store.openWorkItemRoom("note-1", "Realtime status", panelHome, "/work/app");
+    expect(again.projectId).toBe(first.projectId);
+
+    const found = await store.getRoomByWorkItemNote("note-1");
+    expect(found?.projectId).toBe(first.projectId);
+
+    const projects = await store.listProjects();
+    expect(projects.filter((project) => project.workItemNoteId === "note-1")).toHaveLength(1);
+  });
+
   it("backfills missing builtin roles without duplicating Developer", async () => {
     const store = await createStore();
     const templates = await store.listTemplates();

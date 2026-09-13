@@ -7,15 +7,14 @@ import { Tooltip } from "./Tooltip";
 import { BellNotificationButton } from "./BellNotificationButton";
 import { SessionDotsCluster } from "./SessionDotsCluster";
 
-type PrimaryTab = "report" | "workbench" | "notes" | "kanban" | "im";
+type PrimaryTab = "today" | "report" | "workbench" | "notes";
 type FloatingNoteDot = { noteId: string; title: string };
 
 const tabs: Array<{ id: PrimaryTab; icon: ThemeIconName; key: string; fallback: string }> = [
+  { id: "today", icon: "zap", key: "desktop.tabs.today", fallback: "Today" },
   { id: "report", icon: "layout-dashboard", key: "desktop.tabs.report", fallback: "Report" },
   { id: "workbench", icon: "terminal", key: "desktop.tabs.workbench", fallback: "Workbench" },
-  { id: "notes", icon: "file-text", key: "desktop.tabs.notes", fallback: "Notes" },
-  { id: "kanban", icon: "square-kanban", key: "desktop.tabs.kanban", fallback: "Kanban" },
-  { id: "im", icon: "message-square", key: "desktop.tabs.im", fallback: "IM" }
+  { id: "notes", icon: "file-text", key: "desktop.tabs.notes", fallback: "Notes" }
 ];
 
 function eventDetail<T>(event: Event): T | undefined {
@@ -24,7 +23,7 @@ function eventDetail<T>(event: Event): T | undefined {
 
 export function AppChrome(): React.JSX.Element {
   const { ready, t } = useI18n();
-  const [activeTab, setActiveTab] = useState<PrimaryTab>("report");
+  const [activeTab, setActiveTab] = useState<PrimaryTab>("today");
   const [sessionDots, setSessionDots] = useState<ActiveSessionDot[]>([]);
   const [noteDots, setNoteDots] = useState<FloatingNoteDot[]>([]);
   const headerRef = useRef<HTMLElement | null>(null);

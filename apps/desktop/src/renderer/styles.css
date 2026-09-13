@@ -2673,11 +2673,11 @@ main {
   flex-direction: column;
 }
 
+#react-today,
 #react-report,
 #react-agent,
 #react-workbench,
 #react-notes,
-#react-kanban,
 #react-im,
 #react-settings {
   display: contents;
@@ -3392,6 +3392,27 @@ legend {
   background: var(--panel);
   border-radius: 4px;
 }
+
+/* Work-item group header in the report session list. */
+.cal-session-group-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 4px 8px;
+  margin: 4px 0 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--panel) 92%, var(--bg));
+  border-bottom: 1px solid var(--border);
+}
+.cal-session-group-count { font-size: 10px; font-weight: 400; }
+.cal-session-search-row { padding: 6px 8px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--panel) 96%, var(--bg)); }
+.cal-session-search { width: 100%; }
 
 .cal-session-group-title.week {
   position: sticky;
@@ -15112,11 +15133,11 @@ html[data-window-mode="settings"] #react-settings .settings-layout {
   margin-top: 0;
 }
 
+html[data-window-mode="settings"] #react-today,
 html[data-window-mode="settings"] #react-report,
 html[data-window-mode="settings"] #react-agent,
 html[data-window-mode="settings"] #react-workbench,
 html[data-window-mode="settings"] #react-notes,
-html[data-window-mode="settings"] #react-kanban,
 html[data-window-mode="settings"] #react-im {
   display: none;
 }
@@ -15142,11 +15163,11 @@ html[data-window-mode="standalone-note"] main {
 }
 
 html[data-window-mode="standalone-note"] #react-settings,
+html[data-window-mode="standalone-note"] #react-today,
 html[data-window-mode="standalone-note"] #react-report,
 html[data-window-mode="standalone-note"] #react-agent,
 html[data-window-mode="standalone-note"] #react-workbench,
 html[data-window-mode="standalone-note"] #react-notes,
-html[data-window-mode="standalone-note"] #react-kanban,
 html[data-window-mode="standalone-note"] #react-im {
   display: none;
 }
@@ -15594,21 +15615,48 @@ html[data-window-mode="standalone-note"] #react-im {
 .theme-mode-control button.is-selected { background: var(--color-control-bg); color: var(--color-label-primary); box-shadow: var(--shadow-segment-thumb); }
 .theme-mode-control button:disabled { cursor: not-allowed; opacity: .45; }
 
-/* Desktop Kanban */
-#react-kanban .react-kanban-panel[hidden] {
+/* Desktop Today (push surface) */
+#react-today .react-today-panel[hidden] {
   display: none !important;
 }
-
-#react-kanban .react-kanban-panel.panel:not([hidden]) {
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) 24px;
+#react-today .react-today-panel.panel:not([hidden]) {
+  display: flex;
+  flex-direction: column;
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
-  height: 100%;
-  overflow: hidden;
-  background: var(--color-window-bg);
 }
+.today-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 10px 12px 32px; }
+.today-section { margin-bottom: 12px; }
+.today-section-head { display: flex; align-items: baseline; gap: 6px; padding: 4px 2px; text-transform: uppercase; letter-spacing: 0.04em; font-size: 11px; font-weight: 600; color: var(--color-label-secondary); }
+.today-section-count { font-size: 10px; font-weight: 400; color: var(--color-label-tertiary); }
+.today-row {
+  display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; margin-bottom: 6px;
+  border: 1px solid var(--color-separator-opaque); border-radius: var(--radius-md);
+  background: var(--color-elevated-bg); cursor: pointer;
+}
+.today-row:hover { border-color: var(--color-accent); }
+.today-row:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: 2px; }
+.today-row.needs-me { border-color: var(--color-warning); }
+.today-row-live { flex: 0 0 auto; display: flex; align-items: center; padding-top: 3px; }
+.today-row-main { flex: 1 1 auto; min-width: 0; }
+.today-row-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.today-row-title { font-size: 13px; font-weight: 600; color: var(--color-label-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.today-row-projects { display: flex; gap: 4px; flex: 0 0 auto; }
+.today-row-project { font-size: 10px; padding: 0 6px; border-radius: 999px; background: var(--color-fill-secondary); color: var(--color-label-secondary); }
+.today-row-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 3px; font-size: 11px; color: var(--color-label-secondary); }
+.today-row-decision { display: inline-flex; align-items: center; gap: 4px; color: var(--color-warning); }
+.today-row-muted { color: var(--color-label-tertiary); }
+.today-row-live-label { flex: 0 0 auto; padding-top: 3px; font-size: 10px; color: var(--color-warning); }
+.today-row-actions { flex: 0 0 auto; display: flex; gap: 2px; opacity: 0; transition: opacity 0.12s; }
+.today-row:hover .today-row-actions, .today-row:focus-within .today-row-actions { opacity: 1; }
+.today-action { appearance: none; border: 0; background: transparent; color: var(--color-label-tertiary); cursor: pointer; padding: 4px; border-radius: var(--radius-sm); display: inline-flex; }
+.today-action:hover { color: var(--color-accent); background: var(--color-fill-tertiary); }
+.today-empty { padding: 32px 8px; text-align: center; font-size: 12px; color: var(--color-label-tertiary); }
+.today-more { appearance: none; width: 100%; border: 1px dashed var(--color-separator-opaque); background: transparent; color: var(--color-label-secondary); border-radius: var(--radius-md); padding: 6px 10px; font-size: 11px; cursor: pointer; }
+.today-more:hover { border-color: var(--color-accent); color: var(--color-label-primary); }
+
+/* Desktop Kanban detail modal (the board itself was retired in favor of Today) */
 .kanban-toolbar {
   display: flex;
   align-items: center;
@@ -15712,6 +15760,89 @@ html[data-window-mode="standalone-note"] #react-im {
 .kanban-card.is-session .kanban-card-tag { color: var(--color-accent); }
 .kanban-card-time { color: var(--color-label-tertiary); }
 .kanban-card-sub { margin: 5px 0 0; font-size: 10px; color: var(--color-label-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kanban-card-projects { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.kanban-card-project-chip {
+  font-size: 10px; padding: 0 6px; border-radius: 999px; max-width: 140px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  background: var(--color-fill-secondary); color: var(--color-label-secondary);
+}
+.kanban-card-title-row { display: flex; align-items: flex-start; gap: 6px; }
+.kanban-card-title-row .kanban-card-title { flex: 1 1 auto; min-width: 0; }
+.kanban-card-title-row .kanban-card-live { margin-top: 1px; flex: 0 0 auto; }
+.kanban-card-next { margin: 5px 0 0; font-size: 11px; line-height: 1.35; color: var(--color-label-secondary); display: flex; gap: 5px; }
+.kanban-card-field-label { flex: 0 0 auto; color: var(--color-label-tertiary); }
+.kanban-card-decision { margin: 5px 0 0; font-size: 11px; line-height: 1.35; color: var(--color-warning); display: flex; align-items: flex-start; gap: 5px; }
+.kanban-card-decision svg { flex: 0 0 auto; margin-top: 1px; }
+.kanban-card-tag.is-decision { color: var(--color-warning); background: color-mix(in srgb, var(--color-warning) 14%, transparent); }
+.kanban-card.needs-me { border-color: var(--color-warning); }
+.kanban-card.is-work .kanban-card-title { font-weight: 600; }
+.kanban-work-sessions { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 0 8px; }
+.kanban-work-session-chip {
+  appearance: none; border: 1px solid var(--color-separator-opaque); background: var(--color-fill-secondary);
+  color: var(--color-label-secondary); border-radius: 999px; padding: 2px 8px; font-size: 11px;
+  display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+}
+.kanban-work-session-chip:hover { border-color: var(--color-accent); color: var(--color-label-primary); }
+.kanban-work-sessions-open {
+  appearance: none; border: 1px dashed var(--color-separator-opaque); background: transparent;
+  color: var(--color-accent); border-radius: 999px; padding: 2px 8px; font-size: 11px; cursor: pointer;
+}
+.kanban-work-sessions-open:hover { border-color: var(--color-accent); background: var(--color-fill-tertiary); }
+.wb-work-item {
+  display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; margin: 8px 8px 4px;
+  border: 1px solid var(--color-separator-opaque); border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-accent) 7%, transparent);
+}
+.wb-work-item-head { display: flex; align-items: center; gap: 6px; }
+.wb-work-item-title {
+  flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-weight: 600; font-size: 12px; color: var(--color-label-primary);
+}
+.wb-work-item-status {
+  flex: 0 0 auto; font-size: 10px; padding: 1px 7px; border-radius: 999px;
+  background: var(--color-fill-secondary); color: var(--color-label-secondary);
+}
+.wb-work-item-status.is-done { color: var(--color-success); }
+.wb-work-item-status.is-waiting { color: var(--color-warning); }
+.wb-work-item-status.is-next { color: var(--color-accent); }
+.wb-work-item-line { margin: 0; font-size: 11px; line-height: 1.4; color: var(--color-label-secondary); display: flex; gap: 5px; }
+.wb-work-item-label { color: var(--color-label-tertiary); flex: 0 0 auto; }
+.wb-work-item-line.is-decision { color: var(--color-warning); align-items: flex-start; }
+.wb-work-item-line.is-decision svg { flex: 0 0 auto; margin-top: 1px; }
+.wb-work-item-count { margin: 0; font-size: 10px; color: var(--color-label-tertiary); }
+.wb-work-item-filters { display: flex; gap: 6px; padding: 2px 6px 6px; }
+.wb-work-item-filter { flex: 1 1 auto; min-width: 0; }
+.wb-work-item-projects { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.wb-work-item-add-project {
+  appearance: none; border: 1px dashed var(--color-separator-opaque); background: transparent;
+  color: var(--color-label-secondary); border-radius: 999px; padding: 0 6px; font-size: 10px;
+  max-width: 170px; cursor: pointer;
+}
+.wb-work-item-add-project:hover { border-color: var(--color-accent); color: var(--color-label-primary); }
+.wb-work-item-target { margin: 0; font-size: 10px; color: var(--color-label-tertiary); display: flex; align-items: center; gap: 2px; }
+.wb-work-item-target-reset { appearance: none; border: 0; background: transparent; color: inherit; cursor: pointer; padding: 0 2px; display: inline-flex; }
+.wb-work-item-target-reset:hover { color: var(--color-accent); }
+.wb-work-item-project-chip {
+  appearance: none; border: 1px solid transparent; cursor: pointer;
+  font-size: 10px; padding: 0 6px; border-radius: 999px; max-width: 140px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  background: var(--color-fill-secondary); color: var(--color-label-secondary);
+}
+.wb-work-item-project-chip:hover { border-color: var(--color-accent); color: var(--color-label-primary); }
+.wb-work-item-project-chip.is-active { border-color: var(--color-accent); color: var(--color-accent); }
+/* IM as a work-item channel: embedded inside the work-item workspace. */
+.wb-room-pane { flex: 1 1 auto; display: flex; min-width: 0; min-height: 0; }
+.wb-room-pane .react-im-panel { flex: 1 1 auto; min-width: 0; }
+.im-room-head.is-embedded { padding: 5px 10px; }
+.im-room-close {
+  appearance: none; border: 0; background: transparent; color: var(--color-label-secondary);
+  cursor: pointer; padding: 4px; border-radius: var(--radius-sm); display: inline-flex;
+}
+.im-room-close:hover { color: var(--color-label-primary); background: var(--color-fill-tertiary); }
+.react-im-panel.is-embedded .im-folders-pane { display: none; }
+.wb-work-item-section { padding-top: 4px; }
+.wb-work-item-row .wb-folder-row-label { font-weight: 600; }
+.wb-work-item-row .wb-gtd-status-dot { flex: 0 0 auto; }
 .kanban-status { display: flex; align-items: center; padding: 0 10px; font-size: 11px; color: var(--color-label-secondary); border-top: 1px solid var(--color-separator); }
 .kanban-split { display: flex; flex: 1 1 auto; min-width: 0; min-height: 0; overflow: hidden; }
 .kanban-split .kanban-board { flex: 1 1 auto; min-width: 0; }
@@ -16451,11 +16582,11 @@ html[data-window-mode="browser"] #react-chrome {
 .settings-unsaved-text{ font-size:12px; }
 .settings-unsaved-actions{ display:flex; gap:8px; flex-wrap:wrap; }
 
-/* Desktop IM */
-#react-im .react-im-panel[hidden] {
+/* Desktop IM (host-agnostic: also used embedded as a work-item channel) */
+.react-im-panel[hidden] {
   display: none !important;
 }
-#react-im .react-im-panel.panel:not([hidden]) {
+.react-im-panel.panel:not([hidden]) {
   display: flex;
   flex: 1 1 auto;
   min-width: 0;

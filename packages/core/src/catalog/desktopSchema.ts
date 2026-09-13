@@ -64,6 +64,16 @@ ALTER TABLE im_messages ADD COLUMN origin TEXT;
 CREATE INDEX IF NOT EXISTS idx_im_messages_acp_message ON im_messages(acp_message_id);
 `;
 
+/** Rooms can be scoped to a work item (a project note marked `work: true`). */
+export const IM_WORK_ITEM_MIGRATION_SQL = `
+ALTER TABLE im_projects ADD COLUMN work_item_note_id TEXT;
+`;
+
+/** Knowledge mirrored from a work-item note, so re-opening the room refreshes it. */
+export const IM_KNOWLEDGE_SOURCE_MIGRATION_SQL = `
+ALTER TABLE im_knowledge ADD COLUMN source_note_id TEXT;
+`;
+
 export const DESKTOP_ONLY_SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS gtd_ai_audit (
   id TEXT PRIMARY KEY,

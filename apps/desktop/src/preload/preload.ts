@@ -514,6 +514,7 @@ export interface DesktopApi {
   onAcpStream(callback: (event: Record<string, unknown>) => void): () => void;
   imListProjects(): Promise<ImProject[]>;
   imCreateProject(args: { name?: string; localPath?: string }): Promise<ImProject>;
+  imCreateWorkItemRoom(args: { noteId: string; preferredCwd?: string }): Promise<ImRoom>;
   imRenameProject(args: { projectId: string; name: string }): Promise<ImProject>;
   imAutoRenameProject(args: { projectId: string }): Promise<ImProject>;
   imDeleteProject(args: { projectId: string }): Promise<{ ok: boolean }>;
@@ -1261,6 +1262,53 @@ export interface DesktopApi {
       fsMtimeMs?: number;
     }>
   >;
+  notesListWorkItems(): Promise<
+    Array<{
+      noteId: string;
+      scope: string;
+      projectPath?: string;
+      filename: string;
+      relDir: string;
+      relMdPath: string;
+      title?: string;
+      contentPreview?: string;
+      gtdStatus?: GtdStatus;
+      createdAtMs: number;
+      updatedAtMs: number;
+      fsMtimeMs?: number;
+      work: {
+        next?: string;
+        decision?: string;
+        sessions?: string[];
+        projects?: string[];
+        primaryProject?: string;
+      };
+    }>
+  >;
+  notesCreateWorkItem(args: {
+    title?: string;
+    next?: string;
+    decision?: string;
+    sessions?: string[];
+    projects?: string[];
+    primaryProject?: string;
+  }): Promise<{
+    noteId: string;
+    scope: string;
+    projectPath?: string;
+    filename: string;
+    relMdPath: string;
+    title?: string;
+    createdAtMs: number;
+    updatedAtMs: number;
+    gtdStatus?: GtdStatus;
+    work?: { next?: string; decision?: string; sessions?: string[]; projects?: string[]; primaryProject?: string };
+  }>;
+  notesLinkSessionToWorkItem(args: { noteId: string; sessionKey: string; projectPath?: string }): Promise<{ noteId: string }>;
+  notesListWorkItemSessionLinks(): Promise<Array<{ noteId: string; title?: string; provider: string; sessionId: string }>>;
+  /** Allocate/refresh a work item's neutral workspace; returns its directory. */
+  notesEnsureWorkItemWorkspace(args: { noteId: string }): Promise<{ dir: string }>;
+  notesAddWorkItemProject(args: { noteId: string; projectPath: string }): Promise<{ noteId: string }>;
   notesListRoot(): Promise<
     Array<{
       noteId: string;
@@ -1651,6 +1699,7 @@ const api: DesktopApi = {
   },
   imListProjects: () => ipcRenderer.invoke("im:listProjects"),
   imCreateProject: (args) => ipcRenderer.invoke("im:createProject", args),
+  imCreateWorkItemRoom: (args) => ipcRenderer.invoke("im:createWorkItemRoom", args),
   imRenameProject: (args) => ipcRenderer.invoke("im:renameProject", args),
   imAutoRenameProject: (args) => ipcRenderer.invoke("im:autoRenameProject", args),
   imDeleteProject: (args) => ipcRenderer.invoke("im:deleteProject", args),
@@ -1877,6 +1926,12 @@ const api: DesktopApi = {
   logsClear: () => ipcRenderer.invoke("logs:clear"),
   logsOpenDir: () => ipcRenderer.invoke("logs:openDir"),
   notesList: () => ipcRenderer.invoke("notes:list"),
+  notesListWorkItems: () => ipcRenderer.invoke("notes:listWorkItems"),
+  notesCreateWorkItem: (args) => ipcRenderer.invoke("notes:createWorkItem", args),
+  notesLinkSessionToWorkItem: (args) => ipcRenderer.invoke("notes:linkSessionToWorkItem", args),
+  notesListWorkItemSessionLinks: () => ipcRenderer.invoke("notes:listWorkItemSessionLinks"),
+  notesEnsureWorkItemWorkspace: (args) => ipcRenderer.invoke("notes:ensureWorkItemWorkspace", args),
+  notesAddWorkItemProject: (args) => ipcRenderer.invoke("notes:addWorkItemProject", args),
   notesListRoot: () => ipcRenderer.invoke("notes:listRoot"),
   notesListLinks: () => ipcRenderer.invoke("notes:listLinks"),
   notesListLinkedChildIds: () => ipcRenderer.invoke("notes:listLinkedChildIds"),

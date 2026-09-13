@@ -15,6 +15,7 @@ import {
   type NoteRecord
 } from "./catalogNotes";
 import { contentPreview, extractTitle, parseNoteDocument } from "./frontmatter";
+import { syncNoteWorkFromFrontmatter } from "./work";
 import { formatNoteFilename, localDateString } from "./naming";
 import { fileMtimeMs, newNoteId, pathExists, writeNewNoteFile } from "./fs";
 import {
@@ -170,6 +171,7 @@ export async function reconcileNotesIndex(dbPath: string, panelHome: string): Pr
       fsMtimeMs: entry.mtimeMs
     };
     await upsertNoteRecord(dbPath, record);
+    await syncNoteWorkFromFrontmatter(dbPath, noteId, doc.frontmatter);
   }
 
   for (const note of existing) {

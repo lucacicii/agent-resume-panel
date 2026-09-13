@@ -5,6 +5,38 @@ export interface NoteFrontmatter {
   provider?: string;
   sessionId?: string;
   createdAt?: string;
+  /** Work-item marker. Only notes with this flag appear on the work-item board. */
+  work?: boolean;
+  /** Concrete next action for the work item. */
+  next?: string;
+  /** Decision the user still owes for this work item. */
+  decision?: string;
+  /** Catalog session keys (`provider:id`) this work item is implemented through. */
+  sessions?: string[];
+  /** Project paths this work item references (0..n). Projects are referenced, never owned. */
+  projects?: string[];
+  /** Project a new session defaults to; only a convenience, not ownership. */
+  primaryProject?: string;
+}
+
+export interface NoteWorkFields {
+  next?: string;
+  decision?: string;
+  sessions?: string[];
+  projects?: string[];
+  primaryProject?: string;
+}
+
+/** Work-item fields from parsed front-matter, or `null` when the note is not a work item. */
+export function workFieldsFromFrontmatter(fm: NoteFrontmatter): NoteWorkFields | null {
+  if (!fm.work) return null;
+  const out: NoteWorkFields = {};
+  if (fm.next) out.next = fm.next;
+  if (fm.decision) out.decision = fm.decision;
+  if (fm.sessions && fm.sessions.length > 0) out.sessions = fm.sessions;
+  if (fm.projects && fm.projects.length > 0) out.projects = fm.projects;
+  if (fm.primaryProject) out.primaryProject = fm.primaryProject;
+  return out;
 }
 
 export interface ParsedNoteDocument {
@@ -46,6 +78,24 @@ export function buildNoteDocument(frontmatter: NoteFrontmatter, body: string): s
   }
   if (frontmatter.createdAt) {
     lines.push(`createdAt: ${frontmatter.createdAt}`);
+  }
+  if (frontmatter.work) {
+    lines.push("work: true");
+  }
+  if (frontmatter.next) {
+    lines.push(`next: ${jsonish(frontmatter.next)}`);
+  }
+  if (frontmatter.decision) {
+    lines.push(`decision: ${jsonish(frontmatter.decision)}`);
+  }
+  if (frontmatter.sessions && frontmatter.sessions.length > 0) {
+    lines.push(`sessions: ${frontmatter.sessions.join(", ")}`);
+  }
+  if (frontmatter.projects && frontmatter.projects.length > 0) {
+    lines.push(`projects: ${frontmatter.projects.join(", ")}`);
+  }
+  if (frontmatter.primaryProject) {
+    lines.push(`primaryProject: ${jsonish(frontmatter.primaryProject)}`);
   }
   lines.push("---", "");
   const normalizedBody = body.replace(/^\uFEFF/, "");
@@ -115,6 +165,24 @@ function parseSimpleYaml(text: string): NoteFrontmatter {
       case "createdAt":
         fm.createdAt = value;
         break;
+      case "work":
+        fm.work = value === "true" || value === "1" || value === "yes";
+        break;
+      case "next":
+        fm.next = value;
+        break;
+      case "decision":
+        fm.decision = value;
+        break;
+      case "sessions":
+        fm.sessions = value.split(",").map((entry) => entry.trim()).filter(Boolean);
+        break;
+      case "projects":
+        fm.projects = value.split(",").map((entry) => unquote(entry.trim())).filter(Boolean);
+        break;
+      case "primaryProject":
+        fm.primaryProject = unquote(value);
+        break;
       default:
         break;
     }
@@ -127,4 +195,14 @@ function jsonish(value: string): string {
     return value;
   }
   return JSON.stringify(value);
+}
+
+function unquote(value: string): string {
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    return value.slice(1, -1);
+  }
+  return value;
 }

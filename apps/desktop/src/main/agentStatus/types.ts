@@ -12,7 +12,9 @@
 import type {
   AgentKind,
   AgentState,
+  DetectionSource,
   HelloResult,
+  PaneAuthority,
   StatusSnapshot
 } from "../../shared/agentStatusTypes";
 
@@ -76,6 +78,27 @@ export type NativeReport = {
   subagent?: boolean;
 };
 
+/**
+ * One settled state change for a pane, captured the moment it happened.
+ *
+ * Snapshots describe "now"; this is the durable-to-the-process record of
+ * "what changed and why" that callers use to react once (promote a blocked
+ * session, capture a stop reason) instead of polling for a state.
+ */
+export type StatusTransition = {
+  paneId: number;
+  sessionKey?: string;
+  agent: AgentKind;
+  from: AgentState;
+  to: AgentState;
+  authority: PaneAuthority;
+  source: DetectionSource;
+  /** Rule that produced the screen verdict, when one did. */
+  reason?: string;
+  at: number;
+  seq: number;
+};
+
 export type HelloParams = {
   apiVersion: number;
   role: "app" | "cli" | "test";
@@ -88,6 +111,8 @@ export type AgentStatusRequest =
   | { id: string; method: "pane.report_state"; params: NativeReport }
   | { id: string; method: "pane.forget"; params: { paneId: number } }
   | { id: string; method: "status.snapshot"; params?: Record<string, never> }
+  /** Transitions newer than `sinceSeq`, oldest first. */
+  | { id: string; method: "status.transitions"; params?: { sinceSeq?: number } }
   | { id: string; method: "status.explain"; params: { paneId: number } }
   /** Diagnostics: the screen text and verdict behind a pane, for capture tooling. */
   | { id: string; method: "pane.screen"; params: { paneId: number } }
@@ -104,4 +129,5 @@ export type AgentStatusResponse =
 
 export type AgentStatusEvent =
   | { event: "status.changed"; data: StatusSnapshot }
+  | { event: "status.transition"; data: StatusTransition }
   | { event: "daemon.shutting_down"; data: { reason: string; at: number } };

@@ -4,8 +4,21 @@ import { ThemeIcon } from "../../../components/ThemeIcon";
 import { SegmentedControl } from "../../../components/SegmentedControl";
 import { useI18n } from "../../../i18n";
 
-export type WorkbenchSidebarView = "projects" | "gtd";
+export type WorkbenchSidebarView = "workitems" | "projects" | "gtd";
 export type WorkbenchProjectFilter = "all" | "pinned";
+
+/** One work item as the sidebar navigates it. */
+export type WorkbenchSidebarWorkItem = {
+  noteId: string;
+  title: string;
+  status: GtdStatus;
+  next?: string;
+  decision?: string;
+  sessions: string[];
+  /** Projects this work item references (0..n). */
+  projects?: string[];
+  primaryProject?: string;
+};
 
 export type WorkbenchSidebarProject = {
   id: string;
@@ -22,6 +35,7 @@ export type WorkbenchSidebarProject = {
 };
 
 const GTD_ACTIVE_STATUSES = ["inbox", "next", "waiting", "someday", "reference"] as const satisfies readonly GtdStatus[];
+const GTD_FILTER_STATUSES = [...GTD_ACTIVE_STATUSES, "done"] as const satisfies readonly GtdStatus[];
 
 function ProjectFolderRows<T extends WorkbenchSidebarProject>({
   project,
@@ -113,7 +127,13 @@ function ProjectFolderRows<T extends WorkbenchSidebarProject>({
 
 export function WorkbenchSidebar<T extends WorkbenchSidebarProject>({
   collapsed,
-  sidebarView,
+  workItemsActive,
+  resourceView,
+  workItems,
+  selectedWorkItemId,
+  workItemProjects,
+  workItemProjectFilter,
+  workItemStatusFilter,
   projectFilter,
   projectQuery,
   selectedProject,
@@ -127,7 +147,6 @@ export function WorkbenchSidebar<T extends WorkbenchSidebarProject>({
   projects,
   gtdStatusCounts,
   folderAssignmentKey,
-  onSelectSidebarView,
   onProjectQueryChange,
   onProjectFilterChange,
   onSelectAllSessions,
@@ -141,11 +160,26 @@ export function WorkbenchSidebar<T extends WorkbenchSidebarProject>({
   onFolderDragLeave,
   onFolderDrop,
   onToggleFolderExpanded,
+  onSelectWorkItem,
+  onSelectWorkItemsView,
+  onSelectResourceView,
+  onSelectResourceViewMode,
+  onWorkItemProjectFilterChange,
+  onWorkItemStatusFilterChange,
   onSelectGtdStatus,
   onToggleCompletedGtd
 }: {
   collapsed: boolean;
-  sidebarView: WorkbenchSidebarView;
+  /** True when the sidebar is in its primary (work items) mode. */
+  workItemsActive: boolean;
+  /** Which repository sub-view the resource mode is showing. */
+  resourceView: "projects" | "gtd";
+  workItems: WorkbenchSidebarWorkItem[];
+  selectedWorkItemId: string | null;
+  /** Distinct projects referenced by the work items, for the dimension filter. */
+  workItemProjects: Array<{ path: string; label: string }>;
+  workItemProjectFilter: string;
+  workItemStatusFilter: "all" | GtdStatus;
   projectFilter: WorkbenchProjectFilter;
   projectQuery: string;
   selectedProject: string | null;
@@ -159,7 +193,6 @@ export function WorkbenchSidebar<T extends WorkbenchSidebarProject>({
   projects: T[];
   gtdStatusCounts: Map<GtdStatus, number>;
   folderAssignmentKey: (provider: string, agentSessionId: string) => string;
-  onSelectSidebarView: (view: WorkbenchSidebarView) => void;
   onProjectQueryChange: (value: string) => void;
   onProjectFilterChange: (filter: WorkbenchProjectFilter) => void;
   onSelectAllSessions: () => void;
@@ -173,15 +206,27 @@ export function WorkbenchSidebar<T extends WorkbenchSidebarProject>({
   onFolderDragLeave: (event: React.DragEvent, project: T, folderId: string | null) => void;
   onFolderDrop: (event: React.DragEvent, project: T, folderId: string | null) => void;
   onToggleFolderExpanded: (folderId: string) => void;
+  onSelectWorkItem: (item: WorkbenchSidebarWorkItem) => void;
+  onSelectWorkItemsView: () => void;
+  onSelectResourceView: () => void;
+  onSelectResourceViewMode: (view: "projects" | "gtd") => void;
+  onWorkItemProjectFilterChange: (path: string) => void;
+  onWorkItemStatusFilterChange: (status: "all" | GtdStatus) => void;
   onSelectGtdStatus: (status: GtdStatus) => void;
   onToggleCompletedGtd: () => void;
 }): React.JSX.Element {
   const { t } = useI18n();
+  const searchLabelKey = workItemsActive
+    ? "desktop.workbench.filterWorkItems"
+    : resourceView === "projects"
+      ? "desktop.workbench.filterProjects"
+      : "desktop.workbench.filterGtdSessions";
   return <aside className={`sidebar-folders-pane wb-folders-pane${collapsed ? " is-collapsed" : ""}`}>
     <div className="sidebar-project-filter-wrap">
-      <SegmentedControl aria-label={t("desktop.workbench.sidebarView")} value={sidebarView} options={["projects", "gtd"] as const satisfies readonly WorkbenchSidebarView[]} onChange={onSelectSidebarView} getLabel={(view) => t(view === "projects" ? "desktop.workbench.projectsView" : "desktop.workbench.gtdView")} className="sidebar-project-filter-segmented wb-sidebar-view-segmented" />
-      <div className="sidebar-project-search-wrap"><input type="search" className="sidebar-project-search" aria-label={t(sidebarView === "projects" ? "desktop.workbench.filterProjects" : "desktop.workbench.filterGtdSessions")} placeholder={t(sidebarView === "projects" ? "desktop.workbench.filterProjects" : "desktop.workbench.filterGtdSessions")} value={projectQuery} autoComplete="off" spellCheck={false} onChange={(event) => onProjectQueryChange(event.target.value)} /></div>
-      {sidebarView === "projects" ? <SegmentedControl
+      <SegmentedControl aria-label={t("desktop.workbench.sidebarView")} value={workItemsActive ? "workitems" : "resource"} options={["workitems", "resource"] as const} onChange={(value) => value === "workitems" ? onSelectWorkItemsView() : onSelectResourceView()} getLabel={(view) => t(view === "workitems" ? "desktop.workbench.workItemsView" : "desktop.workbench.resourceView")} className="sidebar-project-filter-segmented wb-sidebar-view-segmented" />
+      {!workItemsActive ? <SegmentedControl aria-label={t("desktop.workbench.resourceView")} value={resourceView} options={["projects", "gtd"] as const} onChange={onSelectResourceViewMode} getLabel={(view) => t(view === "projects" ? "desktop.workbench.projectsView" : "desktop.workbench.gtdView")} className="sidebar-project-filter-segmented wb-resource-view-segmented" /> : null}
+      <div className="sidebar-project-search-wrap"><input type="search" className="sidebar-project-search" aria-label={t(searchLabelKey)} placeholder={t(searchLabelKey)} value={projectQuery} autoComplete="off" spellCheck={false} onChange={(event) => onProjectQueryChange(event.target.value)} /></div>
+      {!workItemsActive && resourceView === "projects" ? <SegmentedControl
         aria-label={t("desktop.notes.projectFilter")}
         value={projectFilter}
         options={["all", "pinned"] as const satisfies readonly WorkbenchProjectFilter[]}
@@ -190,7 +235,20 @@ export function WorkbenchSidebar<T extends WorkbenchSidebarProject>({
       /> : null}
     </div>
     <div className="wb-folders">
-      {sidebarView === "projects" ? <>
+      {workItemsActive ? <div className="wb-folder-section wb-work-item-section">
+        <div className="wb-folder-section-label">{t("desktop.workbench.workItemsView")}</div>
+        <div className="wb-work-item-filters">
+          <select className="quiet-select wb-work-item-filter" aria-label={t("desktop.notes.projectLabel")} value={workItemProjectFilter} onChange={(event) => onWorkItemProjectFilterChange(event.target.value)}>
+            <option value="">{t("desktop.common.all")}</option>
+            {workItemProjects.map((project) => <option key={project.path} value={project.path}>{project.label}</option>)}
+          </select>
+          <select className="quiet-select wb-work-item-filter" aria-label={t("desktop.workbench.sessionFilter")} value={workItemStatusFilter} onChange={(event) => onWorkItemStatusFilterChange(event.target.value as "all" | GtdStatus)}>
+            <option value="all">{t("desktop.common.all")}</option>
+            {GTD_FILTER_STATUSES.map((status) => <option key={status} value={status}>{t(`desktop.workbench.gtdStatus.${status}`)}</option>)}
+          </select>
+        </div>
+        {workItems.length ? workItems.map((item) => <button key={item.noteId} type="button" className={`wb-folder-row wb-work-item-row${selectedWorkItemId === item.noteId ? " active" : ""}`} onClick={() => onSelectWorkItem(item)} title={item.title}><span className={`wb-gtd-status-dot is-${item.status}`} aria-hidden="true" /><span className="wb-folder-row-text"><span className="wb-folder-row-label">{item.title}</span>{(item.projects?.length ?? 0) > 0 ? <span className="wb-folder-row-desc">{item.projects!.map((projectPath) => projectPath.split(/[\\/]/).filter(Boolean).at(-1) || projectPath).join(" · ")}</span> : null}</span><span className="wb-folder-row-count">{item.sessions.length}</span></button>) : <p className="muted wb-folders-empty">{t("desktop.workbench.noWorkItems")}</p>}
+      </div> : resourceView === "projects" ? <>
         <button type="button" className={`wb-folder-row${!selectedProject ? " active" : ""}`} onClick={onSelectAllSessions}><span className="wb-folder-row-label">{t("desktop.workbench.allSessions")}</span></button>
         <div className="wb-folder-section">
           <div className="wb-folder-section-head">

@@ -20,6 +20,9 @@ const i18nMessages = {
   "desktop.report.digestMonthly": "Monthly",
   "desktop.report.digestDetailTitle": "{0} · {1}",
   "desktop.report.sessionsTitle": "Sessions",
+  "desktop.report.noWorkItemGroup": "No work item",
+  "desktop.archive.search": "Search sessions",
+  "desktop.archive.searchPlaceholder": "Search all sessions…",
   "desktop.report.sessionCountMeta": "{0} sessions",
   "desktop.report.rangeDay": "Day {0}",
   "desktop.report.rangeWeek": "Week {0}",
@@ -319,5 +322,45 @@ describe("ReportPanel", () => {
     await act(async () => resolveSessions!([]));
     await waitFor(() => expect(document.querySelector(".cal-detail-loading")).toBeNull());
     expect(document.querySelector(".report-detail-head strong")?.textContent).toContain(otherDay);
+  });
+
+  it("groups the report session list by work item", async () => {
+    window.agentResume = mockAgentResume({
+      notesListWorkItemSessionLinks: (async () => [{
+        noteId: "wi-1",
+        title: "Realtime status",
+        provider: session.provider,
+        sessionId: session.id
+      }]) as typeof window.agentResume.notesListWorkItemSessionLinks
+    });
+    const host = document.createElement("div");
+    host.id = "react-report";
+    document.body.append(host);
+    render(<I18nProvider><ReportPanel /></I18nProvider>);
+    await screen.findByText("Daily digest");
+
+    const groupHead = await screen.findByText("Realtime status");
+    expect(groupHead.closest(".cal-session-group-head")).not.toBeNull();
+    // The session itself is grouped under that header, not in the unassigned group.
+    expect(screen.queryByText("No work item")).toBeNull();
+    expect(await screen.findByText(session.title)).toBeTruthy();
+  });
+
+  it("searches across the whole catalog when a query is entered", async () => {
+    const other: AgentSession = { provider: "claude", id: "other-1", title: "Cross-range hit", projectPath: "/work/other", updatedAt: Date.now() };
+    const querySessionsPage = vi.fn(async () => ({ sessions: [other], total: 1 }));
+    window.agentResume = mockAgentResume({
+      querySessionsPage: querySessionsPage as unknown as typeof window.agentResume.querySessionsPage,
+      notesListWorkItemSessionLinks: (async () => []) as typeof window.agentResume.notesListWorkItemSessionLinks
+    });
+    const host = document.createElement("div");
+    host.id = "react-report";
+    document.body.append(host);
+    render(<I18nProvider><ReportPanel /></I18nProvider>);
+    await screen.findByText("Daily digest");
+
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search sessions" }), { target: { value: "cross" } });
+    await waitFor(() => expect(querySessionsPage).toHaveBeenCalledWith(expect.objectContaining({ search: "cross" })));
+    expect(await screen.findByText("Cross-range hit")).toBeTruthy();
   });
 });

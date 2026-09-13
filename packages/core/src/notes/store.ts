@@ -19,16 +19,23 @@ import {
   listSessionNotes,
   loadProjectNoteFlags,
   loadSessionNoteFlags,
+  listWorkItemSessionLinks,
+  listWorkItemSessionProjects,
+  listWorkItems,
   upsertNoteRecord,
-  type NoteRecord
+  type NoteRecord,
+  type WorkItemRecord,
+  type WorkItemSessionLink
 } from "./catalogNotes";
 import {
   buildNoteDocument,
   contentPreview,
   extractTitle,
   parseNoteDocument,
-  type NoteFrontmatter
+  type NoteFrontmatter,
+  type NoteWorkFields
 } from "./frontmatter";
+import { syncNoteWorkFromFrontmatter, ensureWorkItemSessionIndex } from "./work";
 import {
   nextNoteFilename,
   normalizeNoteFilename,
@@ -107,6 +114,8 @@ export class NotesStore {
     await this.ensureSchema(this.dbPath);
     await fs.mkdir(notesRoot(this.panelHome), { recursive: true });
     await this.reload();
+    // One-time mirror of existing work-item session links into the index table.
+    await ensureWorkItemSessionIndex(this.dbPath);
   }
 
   async reload(): Promise<void> {
@@ -118,6 +127,21 @@ export class NotesStore {
 
   getAllNotes(): NoteRecord[] {
     return this.cachedNotes;
+  }
+
+  /** Project notes marked `work: true`, with their work fields and GTD status. */
+  async listWorkItems(): Promise<WorkItemRecord[]> {
+    return listWorkItems(this.dbPath);
+  }
+
+  /** Indexed work-item ↔ session links (session → work item reverse lookup). */
+  async listWorkItemSessionLinks(): Promise<WorkItemSessionLink[]> {
+    return listWorkItemSessionLinks(this.dbPath);
+  }
+
+  /** `note_id` → project paths derived from the work item's linked sessions. */
+  async listWorkItemSessionProjects(): Promise<Record<string, string[]>> {
+    return listWorkItemSessionProjects(this.dbPath);
   }
 
   hasSessionNote(session: Pick<AgentSession, "provider" | "id">): boolean {
@@ -232,6 +256,65 @@ export class NotesStore {
       projectPath: normalizeProjectPath(projectPath)
     };
     return this.createNote(owner, body);
+  }
+
+  /**
+   * Create a work item. Work items are library-scoped: they reference projects
+   * instead of belonging to one, so a single work item can span repositories.
+   */
+  async createWorkItem(
+    input: {
+      title?: string;
+      next?: string;
+      decision?: string;
+      sessions?: string[];
+      projects?: string[];
+      primaryProject?: string;
+    } = {}
+  ): Promise<NoteRecord> {
+    const owner: NoteOwner = { scope: "library" };
+    const ownerDir = await ensureOwnerDir(this.panelHome, owner);
+    const existing = await listMarkdownFilenames(ownerDir);
+    const filename = nextNoteFilename(existing);
+    const noteId = newNoteId();
+    const createdAtMs = Date.now();
+    const fm: NoteFrontmatter = {
+      id: noteId,
+      scope: "library",
+      createdAt: new Date(createdAtMs).toISOString(),
+      work: true
+    };
+    const work: NoteWorkFields = {};
+    if (input.next) { fm.next = input.next; work.next = input.next; }
+    if (input.decision) { fm.decision = input.decision; work.decision = input.decision; }
+    const sessions = (input.sessions ?? []).map((entry) => entry.trim()).filter(Boolean);
+    if (sessions.length > 0) { fm.sessions = sessions; work.sessions = sessions; }
+    const projects = (input.projects ?? []).map((entry) => normalizeProjectPath(entry.trim())).filter(Boolean);
+    if (projects.length > 0) { fm.projects = projects; work.projects = projects; }
+    const primary = input.primaryProject ? normalizeProjectPath(input.primaryProject.trim()) : projects[0];
+    if (primary) { fm.primaryProject = primary; work.primaryProject = primary; }
+    const body = input.title ? `# ${input.title}\n` : "";
+    const relDir = ownerRelDir(owner);
+    const absPath = path.join(ownerDir, filename);
+    await fs.writeFile(absPath, buildNoteDocument(fm, body), "utf8");
+    const mtime = await fileMtimeMs(absPath);
+    const record: NoteRecord = {
+      noteId,
+      scope: "library",
+      filename,
+      relDir,
+      relMdPath: path.join("notes", relDir, filename),
+      title: extractTitle(body),
+      contentPreview: contentPreview(body),
+      createdAtMs,
+      updatedAtMs: mtime,
+      fsMtimeMs: mtime,
+      work
+    };
+    await upsertNoteRecord(this.dbPath, record);
+    await syncNoteWorkFromFrontmatter(this.dbPath, noteId, fm);
+    await this.refreshFlagsFromCacheInsert(record);
+    return record;
   }
 
   async createLibraryNote(body = ""): Promise<NoteRecord> {
@@ -480,7 +563,7 @@ export class NotesStore {
       body = parseNoteDocument(rewriteAssetReferences(raw, record.filename, newFilename)).body;
     }
 
-    const fm = frontmatterForOwner(doc.frontmatter.id || record.noteId, newOwner, doc.frontmatter.createdAt);
+    const fm = frontmatterForOwner(doc.frontmatter, newOwner, record.noteId);
     await fs.writeFile(newMd, buildNoteDocument(fm, body), "utf8");
 
     const oldAssets = path.join(oldOwnerDir, noteAssetsDirName(record.filename));
@@ -522,6 +605,7 @@ export class NotesStore {
       fsMtimeMs: mtime
     };
     await upsertNoteRecord(this.dbPath, updated);
+    await syncNoteWorkFromFrontmatter(this.dbPath, updated.noteId, fm);
     this.cachedNotes = this.cachedNotes.map((n) => (n.noteId === updated.noteId ? updated : n));
     await this.rebuildFlagsFromCache();
     return updated;
@@ -607,6 +691,7 @@ export class NotesStore {
       fsMtimeMs: mtime
     };
     await upsertNoteRecord(this.dbPath, updated);
+    await syncNoteWorkFromFrontmatter(this.dbPath, record.noteId, doc.frontmatter);
     this.cachedNotes = this.cachedNotes.map((n) => (n.noteId === updated.noteId ? updated : n));
   }
 
@@ -674,14 +759,14 @@ function ownersEqual(a: NoteOwner, b: NoteOwner): boolean {
 }
 
 function frontmatterForOwner(
-  noteId: string,
+  source: NoteFrontmatter,
   owner: NoteOwner,
-  createdAt?: string
+  fallbackId: string
 ): NoteFrontmatter {
   const fm: NoteFrontmatter = {
-    id: noteId,
+    id: source.id || fallbackId,
     scope: owner.scope,
-    createdAt
+    createdAt: source.createdAt
   };
   if (owner.scope === "project") {
     fm.projectPath = owner.projectPath;
@@ -691,6 +776,25 @@ function frontmatterForOwner(
     if (owner.projectPath) {
       fm.projectPath = owner.projectPath;
     }
+  }
+  // Work-item fields survive moves; they are not derivable from the owner.
+  if (source.work) {
+    fm.work = true;
+  }
+  if (source.next) {
+    fm.next = source.next;
+  }
+  if (source.decision) {
+    fm.decision = source.decision;
+  }
+  if (source.sessions && source.sessions.length > 0) {
+    fm.sessions = source.sessions;
+  }
+  if (source.projects && source.projects.length > 0) {
+    fm.projects = source.projects;
+  }
+  if (source.primaryProject) {
+    fm.primaryProject = source.primaryProject;
   }
   return fm;
 }

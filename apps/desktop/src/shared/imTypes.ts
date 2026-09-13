@@ -105,6 +105,8 @@ export interface ImProject {
   projectId: string;
   name: string;
   localPath: string | null;
+  /** When set, this room is scoped to a work item (a project note marked `work: true`). */
+  workItemNoteId?: string | null;
   createdAtMs: number;
   updatedAtMs: number;
   roles?: ImProjectRoleSummary[];
@@ -244,6 +246,8 @@ export interface ImKnowledgeItem {
   mimeType: string | null;
   fileName: string | null;
   sizeBytes: number | null;
+  /** Set when this item mirrors a note (its content is refreshed on room open). */
+  sourceNoteId?: string | null;
   createdAtMs: number;
 }
 

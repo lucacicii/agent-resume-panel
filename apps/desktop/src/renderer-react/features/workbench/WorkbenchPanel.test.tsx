@@ -275,6 +275,9 @@ vi.stubGlobal("ResizeObserver", class {
 });
 
 beforeEach(() => {
+  // Most Workbench tests exercise the project/folder browser; the work-item
+  // view has its own dedicated test below.
+  localStorage.setItem("workbench-sidebar-view-v2", "projects");
   // AppChrome hosts per-tab toolbars in the app header; mirror that DOM here.
   const headerSlot = document.createElement("div");
   headerSlot.id = "app-header-slot";
@@ -318,7 +321,7 @@ afterEach(() => {
   xtermMocks.fitDimensions = { cols: 80, rows: 24 };
   document.getElementById("react-workbench")?.remove();
   document.getElementById("app-header-slot")?.remove();
-  localStorage.removeItem("workbench-sidebar-view");
+  localStorage.removeItem("workbench-sidebar-view-v2");
   localStorage.removeItem("workbench-selected-project");
   localStorage.removeItem("workbench-quick-access-project");
   Reflect.deleteProperty(window, "agentResume");
@@ -336,6 +339,11 @@ const ARROW_TEST_MESSAGES: Record<string, string> = {
   "desktop.workbench.sidebarView": "Workbench sidebar view",
   "desktop.workbench.projectsView": "Project view",
   "desktop.workbench.gtdView": "GTD view",
+  "desktop.workbench.workItemsView": "Work items",
+  "desktop.workbench.workItemNoProject": "No project yet",
+  "desktop.workbench.resourceView": "Repository",
+  "desktop.workbench.filterWorkItems": "Filter work items",
+  "desktop.workbench.noWorkItems": "No work items yet",
   "desktop.workbench.filterGtdSessions": "Filter GTD sessions",
   "desktop.workbench.filterProjects": "Filter projects",
   "desktop.workbench.allSessions": "All sessions",
@@ -8510,5 +8518,310 @@ describe("WorkbenchPanel", () => {
       paneKey
     }));
     await waitFor(() => expect(terminalInput).toHaveBeenCalledWith({ id: 21, data: "follow up\r" }));
+  });
+
+  it("organizes the Workbench by work items", async () => {
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.common.search": "Search", "desktop.common.refresh": "Refresh", "desktop.common.all": "All",
+        "desktop.workbench.allSessions": "All sessions",
+        "desktop.workbench.sidebarView": "Workbench sidebar view",
+        "desktop.workbench.workItemsView": "Work items",
+        "desktop.workbench.resourceView": "Repository",
+        "desktop.workbench.projectsView": "Projects",
+        "desktop.workbench.gtdView": "GTD",
+        "desktop.workbench.filterWorkItems": "Filter work items",
+        "desktop.workbench.noWorkItems": "No work items yet",
+        "desktop.workbench.gtdStatus.next": "Next",
+        "desktop.workbench.workItemView": "Work item",
+        "desktop.workbench.workItemOpenNote": "Open note",
+        "desktop.workbench.workItemClear": "Exit work item",
+        "desktop.workbench.workItemNext": "Next:",
+        "desktop.workbench.workItemSessions": "{0} sessions"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      listProjects: async () => [{
+        projectId: "proj-a", portableKey: "/work/app", alias: "App", hidden: false, pinned: false,
+        lastSeenAtMs: null, updatedAtMs: 0, localPath: "/work/app", pathMissing: false, sessionCount: 5
+      }],
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      notesAddWorkItemProject: vi.fn(async () => ({ ok: true })),
+      notesListWorkItems: async () => [{
+        noteId: "wi-1", scope: "project", projectPath: "/work/app",
+        filename: "realtime-status.md", relDir: "projects/app", relMdPath: "notes/projects/app/realtime-status.md",
+        title: "Realtime status", createdAtMs: 1, updatedAtMs: 1, gtdStatus: "next",
+        work: { next: "Wire the rollup", decision: "Show connecting state?", sessions: ["codex:s1"] }
+      }],
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    localStorage.setItem("workbench-sidebar-view-v2", "workitems");
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+
+    // The sidebar defaults to the work-item view and lists the work item.
+    const row = await screen.findByRole("button", { name: /Realtime status/ });    expect(document.querySelector(".wb-folders-pane")).not.toBeNull();
+    expect(document.querySelector(".wb-work-item")).toBeNull();
+
+    // Selecting the work item opens its shared workspace (goal/next/decision + its sessions).
+    fireEvent.click(row);
+    await waitFor(() => expect(document.querySelector(".wb-work-item")).not.toBeNull());
+    expect(screen.getAllByText("Realtime status").length).toBeGreaterThanOrEqual(1);
+    // A project-less work item must not inherit a stale project as its cwd, and
+    // the follow-up workbench reload must not auto-pick one either.
+    expect(document.querySelector(".wb-work-item-add-project")).not.toBeNull();
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" }));
+    });
+    await waitFor(() => expect(document.querySelector(".wb-detail-project-label-text")).not.toBeNull());
+    const label = document.querySelector(".wb-detail-project-label-text")?.textContent ?? "";
+    expect(label).not.toBe("App");
+    expect(label).not.toContain("/work/app");
+
+    // There IS an entry point to reference a project from a project-less work item.
+    const addProject = document.querySelector(".wb-work-item-add-project") as HTMLSelectElement;
+    fireEvent.change(addProject, { target: { value: "/work/app" } });
+    await waitFor(() => expect(window.agentResume.notesAddWorkItemProject).toHaveBeenCalledWith({
+      noteId: "wi-1",
+      projectPath: "/work/app"
+    }));
+    expect(screen.getByText(/Wire the rollup/)).toBeTruthy();
+    expect(screen.getByText(/Show connecting state\?/)).toBeTruthy();
+    expect(screen.getByText("1 sessions")).toBeTruthy();
+
+    // The board can drive the same view.
+    fireEvent.click(screen.getByRole("button", { name: "Exit work item" }));
+    await waitFor(() => expect(document.querySelector(".wb-work-item")).toBeNull());
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-work-item", { detail: {
+        noteId: "wi-1",
+        title: "Realtime status",
+        status: "next",
+        next: "Wire the rollup",
+        decision: "Show connecting state?",
+        sessions: ["codex:s1"]
+      } }));
+    });
+    await waitFor(() => expect(document.querySelector(".wb-work-item")).not.toBeNull());
+
+    // Repository browsing is secondary: behind the 「Repository」 control.
+    fireEvent.click(screen.getByRole("tab", { name: "Repository" }));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Projects" })).toBeTruthy());
+    expect(document.querySelector(".wb-work-item-section")).toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: "Work items" }));
+    await waitFor(() => expect(document.querySelector(".wb-work-item-section")).not.toBeNull());
+  });
+
+  it("shows a work item's sessions across projects", async () => {
+    const querySessionsPage = vi.fn(async () => ({ sessions: [
+      { provider: "codex", id: "s1", title: "Frontend fix", projectPath: "/work/app", updatedAt: 2 },
+      { provider: "claude", id: "s2", title: "Backend fix", projectPath: "/work/api", updatedAt: 1 }
+    ], total: 2 }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.common.search": "Search", "desktop.common.refresh": "Refresh", "desktop.common.all": "All",
+        "desktop.workbench.allSessions": "All sessions",
+        "desktop.workbench.sidebarView": "Workbench sidebar view",
+        "desktop.workbench.workItemsView": "Work items",
+        "desktop.workbench.resourceView": "Repository",
+        "desktop.workbench.projectsView": "Projects",
+        "desktop.workbench.gtdView": "GTD",
+        "desktop.workbench.filterWorkItems": "Filter work items",
+        "desktop.workbench.noWorkItems": "No work items yet",
+        "desktop.workbench.workItemView": "Work item",
+        "desktop.workbench.workItemOpenNote": "Open note",
+        "desktop.workbench.workItemClear": "Exit work item",
+        "desktop.workbench.workItemNext": "Next:",
+        "desktop.workbench.workItemSessions": "{0} sessions"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      querySessionsPage,
+      notesListWorkItems: async () => [{
+        noteId: "wi-1", title: "Cross-repo feature", gtdStatus: "next",
+        work: { sessions: ["codex:s1", "claude:s2"], projects: ["/work/app", "/work/api"], primaryProject: "/work/app" }
+      }],
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    localStorage.setItem("workbench-sidebar-view-v2", "workitems");
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-work-item", { detail: {
+        noteId: "wi-1", title: "Cross-repo feature", status: "next",
+        sessions: ["codex:s1", "claude:s2"], projects: ["/work/app", "/work/api"], primaryProject: "/work/app"
+      } }));
+    });
+
+    expect(await screen.findByText("Frontend fix")).toBeTruthy();
+    expect(screen.getByText("Backend fix")).toBeTruthy();
+    expect(querySessionsPage).toHaveBeenCalledWith(expect.objectContaining({
+      keys: [{ provider: "codex", id: "s1" }, { provider: "claude", id: "s2" }]
+    }));
+  });
+
+  it("defaults new sessions to the shared workspace when a work item spans several projects", async () => {
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.common.search": "Search", "desktop.common.refresh": "Refresh", "desktop.common.all": "All",
+        "desktop.workbench.allSessions": "All sessions",
+        "desktop.workbench.sidebarView": "Workbench sidebar view",
+        "desktop.workbench.workItemsView": "Work items",
+        "desktop.workbench.resourceView": "Repository",
+        "desktop.workbench.projectsView": "Projects",
+        "desktop.workbench.gtdView": "GTD",
+        "desktop.workbench.filterWorkItems": "Filter work items",
+        "desktop.workbench.workItemView": "Work item",
+        "desktop.workbench.workItemOpenNote": "Open note",
+        "desktop.workbench.workItemClear": "Exit work item",
+        "desktop.workbench.workItemNext": "Next:",
+        "desktop.workbench.workItemSessions": "{0} sessions",
+        "desktop.workbench.sessionTarget": "New sessions start in: {0}",
+        "desktop.workbench.sharedWorkspace": "shared workspace"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      notesListWorkItems: async () => [
+        { noteId: "wi-multi", title: "Multi", gtdStatus: "next", work: { sessions: [], projects: ["/work/app", "/work/api"], primaryProject: "/work/app" } },
+        { noteId: "wi-single", title: "Single", gtdStatus: "next", work: { sessions: [], projects: ["/work/app"], primaryProject: "/work/app" } }
+      ],
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    localStorage.setItem("workbench-sidebar-view-v2", "workitems");
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+
+    // Several repositories → no single correct cwd → the neutral workspace.
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-work-item", { detail: {
+        noteId: "wi-multi", title: "Multi", status: "next", sessions: [], projects: ["/work/app", "/work/api"], primaryProject: "/work/app"
+      } }));
+    });
+    await waitFor(() => expect(document.querySelector(".wb-work-item-target")?.textContent).toBe("New sessions start in: shared workspace"));
+
+    // Exactly one repository → unambiguous cwd.
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-work-item", { detail: {
+        noteId: "wi-single", title: "Single", status: "next", sessions: [], projects: ["/work/app"], primaryProject: "/work/app"
+      } }));
+    });
+    await waitFor(() => expect(document.querySelector(".wb-work-item-target")?.textContent).toBe("New sessions start in: app"));
+  });
+
+  it("keeps a single slim room header when embedded and closes from the work-item header", async () => {
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.common.search": "Search", "desktop.common.refresh": "Refresh", "desktop.common.all": "All",
+        "desktop.workbench.allSessions": "All sessions",
+        "desktop.workbench.sidebarView": "Workbench sidebar view",
+        "desktop.workbench.workItemsView": "Work items",
+        "desktop.workbench.resourceView": "Repository",
+        "desktop.workbench.projectsView": "Projects",
+        "desktop.workbench.gtdView": "GTD",
+        "desktop.workbench.filterWorkItems": "Filter work items",
+        "desktop.workbench.workItemView": "Work item",
+        "desktop.workbench.workItemOpenNote": "Open note",
+        "desktop.workbench.workItemClear": "Exit work item",
+        "desktop.workbench.workItemNext": "Next:",
+        "desktop.workbench.workItemSessions": "{0} sessions",
+        "desktop.workbench.room": "Room",
+        "desktop.workbench.closeRoom": "Close room",
+        "desktop.workbench.openRoom": "Open room"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      notesListWorkItems: async () => [{
+        noteId: "wi-1", title: "Cross-repo feature", gtdStatus: "next",
+        work: { sessions: [], projects: ["/work/app"], primaryProject: "/work/app" }
+      }],
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true }),
+      imCreateWorkItemRoom: async () => ({
+        project: { projectId: "room-1", name: "Cross-repo feature", localPath: "/work/app" },
+        members: [], messages: [], jobs: [], knowledge: []
+      }),
+      imGetRoom: async () => ({
+        project: { projectId: "room-1", name: "Cross-repo feature", localPath: "/work/app" },
+        members: [], messages: [], jobs: [], knowledge: []
+      }),
+      imListProjects: async () => [{
+        projectId: "room-1", name: "Cross-repo feature", localPath: "/work/app", createdAtMs: 0, updatedAtMs: 0
+      }],
+      imListTemplates: async () => [],
+      imListSelectionActions: async () => [],
+      onImEvent: () => () => undefined
+    } as unknown as typeof window.agentResume;
+
+    localStorage.setItem("workbench-sidebar-view-v2", "workitems");
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-work-item", { detail: {
+        noteId: "wi-1", title: "Cross-repo feature", status: "next", sessions: [], projects: ["/work/app"], primaryProject: "/work/app"
+      } }));
+    });
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-open-room", { detail: { projectId: "room-1" } }));
+    });
+
+    await waitFor(() => expect(document.querySelector(".im-room-head.is-embedded")).not.toBeNull());
+    // The duplicated title/path block is dropped when embedded.
+    expect(document.querySelector(".im-room-head .im-room-head-titles")).toBeNull();
+
+    const head = document.querySelector(".wb-work-item-head") as HTMLElement;
+    fireEvent.click(within(head).getByRole("button", { name: "Close room" }));
+    await waitFor(() => expect(document.querySelector(".wb-room-pane")).toBeNull());
   });
 });

@@ -38,11 +38,14 @@ import {
   type HelloResult,
   type NativeReport,
   type PaneTelemetry,
-  type StatusSnapshot
+  type StatusSnapshot,
+  type StatusTransition
 } from "./types";
 
 const LOG_PREFIX = "[agent-status]";
 const ENDPOINT_HEARTBEAT_MS = 30_000;
+/** Ring buffer of recent transitions; enough for a late subscriber to catch up. */
+const TRANSITION_BUFFER = 200;
 
 export type AgentStatusDaemonHandle = {
   readonly endpoint: AgentStatusEndpoint;
@@ -120,6 +123,8 @@ export async function startAgentStatusDaemon(
 
   const notifier = createBlockedNotifier({ enabled: options.notify === true, log });
   const previousStates = new Map<number, AgentState>();
+  const recentTransitions: StatusTransition[] = [];
+  let transitionSeq = 0;
 
   /**
    * Publish a new snapshot, and reach the user when a pane starts blocking while
@@ -128,8 +133,23 @@ export async function startAgentStatusDaemon(
   const broadcastSnapshot = (): void => {
     const snapshot = state.snapshot();
     const startedBlocking: { paneId: number; agent: string }[] = [];
+    const fresh: StatusTransition[] = [];
     for (const pane of Object.values(snapshot.byPaneId)) {
       const was = previousStates.get(pane.paneId);
+      if (was !== undefined && was !== pane.state) {
+        fresh.push({
+          paneId: pane.paneId,
+          sessionKey: pane.sessionKey,
+          agent: pane.agent,
+          from: was,
+          to: pane.state,
+          authority: pane.authority,
+          source: pane.source,
+          reason: pane.matchedRule?.id,
+          at: Date.now(),
+          seq: ++transitionSeq
+        });
+      }
       if (pane.state === "blocked" && was !== "blocked") {
         startedBlocking.push({ paneId: pane.paneId, agent: pane.agent });
       }
@@ -138,6 +158,13 @@ export async function startAgentStatusDaemon(
     for (const pane of Object.values(snapshot.byPaneId)) previousStates.set(pane.paneId, pane.state);
     if (startedBlocking.length && server.subscriberCount === 0) notifier.notify(startedBlocking);
     server.broadcast({ event: "status.changed", data: snapshot });
+    for (const transition of fresh) {
+      recentTransitions.push(transition);
+      server.broadcast({ event: "status.transition", data: transition });
+    }
+    if (recentTransitions.length > TRANSITION_BUFFER) {
+      recentTransitions.splice(0, recentTransitions.length - TRANSITION_BUFFER);
+    }
   };
 
   const server: AgentStatusServer = await startAgentStatusServer({
@@ -145,7 +172,7 @@ export async function startAgentStatusDaemon(
     log: (message) => log(message),
     onError: (error, where) => log(`socket ${where} error: ${describe(error)}`),
     handle: (method, params, context) =>
-      handleRequest(method, params, context, { state, endpoint, server: () => server, broadcastSnapshot, log, stop: (reason) => stop(reason) })
+      handleRequest(method, params, context, { state, endpoint, server: () => server, broadcastSnapshot, recentTransitions: () => recentTransitions, log, stop: (reason) => stop(reason) })
   });
 
   await writeEndpointFile(paths, endpoint);
@@ -194,6 +221,7 @@ type DaemonInternals = {
   endpoint: AgentStatusEndpoint;
   server: () => AgentStatusServer;
   broadcastSnapshot: () => void;
+  recentTransitions: () => StatusTransition[];
   stop: (reason: string) => Promise<void>;
   log: (message: string) => void;
 };
@@ -239,6 +267,11 @@ async function handleRequest(
     case "status.snapshot": {
       const snapshot: StatusSnapshot = internals.state.snapshot();
       return snapshot;
+    }
+    case "status.transitions": {
+      const raw = (params as { sinceSeq?: unknown })?.sinceSeq;
+      const sinceSeq = typeof raw === "number" && Number.isFinite(raw) ? Math.floor(raw) : 0;
+      return internals.recentTransitions().filter((transition) => transition.seq > sinceSeq);
     }
     case "status.explain": {
       const paneId = asPaneId((params as { paneId?: unknown })?.paneId);

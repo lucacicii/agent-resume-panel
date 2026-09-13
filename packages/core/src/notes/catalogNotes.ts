@@ -3,6 +3,8 @@ import { sessionGtdKey } from "../gtd/store";
 import { isGtdStatus, type GtdStatus } from "../gtd/types";
 import { normalizeProjectPath } from "../pathUtils";
 import { escapeSqlLiteral, runSqlite, runSqliteJson } from "../sqlite";
+import { parseStringListJson } from "./work";
+import type { NoteWorkFields } from "./frontmatter";
 import type { NoteScope } from "./paths";
 
 export interface NoteRecord {
@@ -20,6 +22,13 @@ export interface NoteRecord {
   updatedAtMs: number;
   fsMtimeMs?: number;
   gtdStatus?: GtdStatus;
+  /** Present only on work items (front-matter `work: true`). */
+  work?: NoteWorkFields;
+}
+
+/** A project note marked `work: true` — the board's unit of management. */
+export interface WorkItemRecord extends NoteRecord {
+  work: NoteWorkFields;
 }
 
 interface NoteRow {
@@ -37,6 +46,11 @@ interface NoteRow {
   updated_at_ms: number;
   fs_mtime_ms: number | null;
   gtd_status: string | null;
+  next_action?: string | null;
+  decision?: string | null;
+  sessions_json?: string | null;
+  projects_json?: string | null;
+  primary_project?: string | null;
 }
 
 function mapRow(row: NoteRow): NoteRecord {
@@ -189,6 +203,8 @@ export async function deleteNoteRecord(dbPath: string, noteId: string): Promise<
   await runSqlite(
     dbPath,
     `DELETE FROM note_gtd WHERE note_id = '${escapeSqlLiteral(noteId)}';
+     DELETE FROM note_work WHERE note_id = '${escapeSqlLiteral(noteId)}';
+     DELETE FROM work_item_sessions WHERE work_item_note_id = '${escapeSqlLiteral(noteId)}';
      DELETE FROM notes WHERE note_id = '${escapeSqlLiteral(noteId)}';`
   );
 }
@@ -201,8 +217,71 @@ export async function deleteNotesByRelPaths(dbPath: string, relPaths: string[]):
   await runSqlite(
     dbPath,
     `DELETE FROM note_gtd WHERE note_id IN (SELECT note_id FROM notes WHERE rel_md_path IN (${list}));
+     DELETE FROM note_work WHERE note_id IN (SELECT note_id FROM notes WHERE rel_md_path IN (${list}));
+     DELETE FROM work_item_sessions WHERE work_item_note_id IN (SELECT note_id FROM notes WHERE rel_md_path IN (${list}));
      DELETE FROM notes WHERE rel_md_path IN (${list});`
   );
+}
+
+/** Every work-item ↔ session link, with the work item's display title. */
+export interface WorkItemSessionLink {
+  noteId: string;
+  title?: string;
+  provider: string;
+  sessionId: string;
+}
+
+export async function listWorkItemSessionLinks(dbPath: string): Promise<WorkItemSessionLink[]> {
+  const rows = await runSqliteJson<{ note_id: string; title: string | null; provider: string; agent_session_id: string }>(
+    dbPath,
+    `SELECT s.work_item_note_id AS note_id, n.title, s.provider, s.agent_session_id
+     FROM work_item_sessions s
+     LEFT JOIN notes n ON n.note_id = s.work_item_note_id;`
+  );
+  return rows.map((row) => ({
+    noteId: row.note_id,
+    title: row.title?.trim() || undefined,
+    provider: row.provider,
+    sessionId: row.agent_session_id
+  }));
+}
+
+/** `note_id` → distinct project paths of the work item's linked sessions. */
+export async function listWorkItemSessionProjects(dbPath: string): Promise<Record<string, string[]>> {
+  const rows = await runSqliteJson<{ note_id: string; project_path: string }>(
+    dbPath,
+    `SELECT DISTINCT s.work_item_note_id AS note_id, se.project_path AS project_path
+     FROM work_item_sessions s
+     JOIN sessions se ON se.provider = s.provider AND se.agent_session_id = s.agent_session_id
+     WHERE se.project_path IS NOT NULL AND TRIM(se.project_path) != '';`
+  );
+  const output: Record<string, string[]> = {};
+  for (const row of rows) {
+    (output[row.note_id] ??= []).push(row.project_path);
+  }
+  return output;
+}
+
+export async function listWorkItems(dbPath: string): Promise<WorkItemRecord[]> {
+  const rows = await runSqliteJson<NoteRow>(
+    dbPath,
+    `SELECT n.*, g.status AS gtd_status, w.next_action, w.decision, w.sessions_json, w.projects_json, w.primary_project
+     FROM notes n
+     JOIN note_work w ON w.note_id = n.note_id
+     LEFT JOIN note_gtd g ON g.note_id = n.note_id
+     ORDER BY n.updated_at_ms DESC;`
+  );
+  return rows.map((row) => {
+    const work: NoteWorkFields = {};
+    if (row.next_action) work.next = row.next_action;
+    if (row.decision) work.decision = row.decision;
+    const sessions = parseStringListJson(row.sessions_json ?? null);
+    if (sessions) work.sessions = sessions;
+    const projects = parseStringListJson(row.projects_json ?? null);
+    if (projects) work.projects = projects;
+    if (row.primary_project) work.primaryProject = row.primary_project;
+    return { ...mapRow(row), work };
+  });
 }
 
 export async function loadSessionNoteFlags(dbPath: string): Promise<Set<string>> {

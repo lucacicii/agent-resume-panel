@@ -14,8 +14,7 @@ import { StandaloneNoteWindow } from "./features/notes/StandaloneNoteWindow";
 import { BrowserStandaloneWindow } from "./features/browser/BrowserStandaloneWindow";
 import { WorkbenchPanel } from "./features/workbench/WorkbenchPanel";
 import { DiffWorkerPool } from "./features/workbench/diffWorkerPool";
-import { KanbanPanel } from "./features/kanban/KanbanPanel";
-import { ImPanel } from "./features/im/ImPanel";
+import { TodayPanel } from "./features/today/TodayPanel";
 import { GtdSheet } from "./features/report/GtdSheet";
 import { settingsChangedToCustomEvents } from "./settingsBroadcast";
 import { updateConfig } from "./components/notificationStore";
@@ -174,19 +173,18 @@ function MainRendererRuntime(): React.JSX.Element {
   const { ready } = useI18n();
   useEffect(() => {
     if (!ready) return;
-    window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "report" }));
+    window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "today" }));
   }, [ready]);
   return (
     <>
       <AppChrome />
+      <TodayPanel />
       <ReportPanel />
       <GtdSheet />
       <DiffWorkerPool>
         <WorkbenchPanel />
       </DiffWorkerPool>
       <NotesPanel />
-      <KanbanPanel />
-      <ImPanel />
       <SessionsSheet />
       <SelectionSendHost />
       <Notifications />

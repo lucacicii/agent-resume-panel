@@ -9,6 +9,7 @@ export function WorkbenchDetailHeader({
   onToggleFoldersCollapsed,
   selectedProject,
   projectLabel,
+  emptyLabel,
   side,
   branchStatusLabel,
   branchStatusPane,
@@ -20,6 +21,8 @@ export function WorkbenchDetailHeader({
   onToggleFoldersCollapsed: () => void;
   selectedProject: string | null;
   projectLabel: string;
+  /** What to show when no project is selected (e.g. a project-less work item). */
+  emptyLabel?: string;
   side: WorkbenchSideView;
   branchStatusLabel: string | null;
   branchStatusPane: TerminalPane | null;
@@ -37,7 +40,7 @@ export function WorkbenchDetailHeader({
     ><ThemeIcon name="panel-right" size={17} /></button>
     <div className="wb-detail-head">
       <span className="wb-detail-project-label">
-        <span className="wb-detail-project-label-text">{selectedProject ? projectLabel : t("desktop.workbench.allSessions")}</span>
+        <span className="wb-detail-project-label-text">{selectedProject ? projectLabel : (emptyLabel ?? t("desktop.workbench.allSessions"))}</span>
         {selectedProject ? <span className="wb-detail-project-path">{selectedProject}</span> : null}
       </span>
       <div className="wb-detail-head-actions">
