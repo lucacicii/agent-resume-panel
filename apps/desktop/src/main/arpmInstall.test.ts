@@ -3,7 +3,13 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildArpmShim, installArpmShim, isManagedArpmShim } from "./arpmInstall";
+import {
+  ARPM_RC_BEGIN,
+  buildArpmShim,
+  installArpmShell,
+  installArpmShim,
+  isManagedArpmShim
+} from "./arpmInstall";
 
 describe("arpm shim install", () => {
   it("writes a managed wrapper and skips a foreign binary", async () => {
@@ -54,5 +60,29 @@ describe("arpm shim install", () => {
       panelHome: "/old/home"
     });
     expect(isManagedArpmShim(script)).toBe(true);
+  });
+
+  it("installs a shell function that cds on arpm go", async () => {
+    const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-arpm-home-"));
+    const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-arpm-panel-"));
+    try {
+      await fs.writeFile(path.join(homeDir, ".zshrc"), "# existing\n", "utf8");
+      const installed = installArpmShell({ panelHome, homeDir });
+      const hook = readFileSync(installed.hookPath, "utf8");
+      expect(hook).toContain("builtin cd");
+      expect(hook).toContain('command arpm go "$2" --print-cwd');
+      expect(hook).toContain("[ -z \"${2:-}\" ]");
+      const zshrc = readFileSync(path.join(homeDir, ".zshrc"), "utf8");
+      expect(zshrc).toContain("# existing");
+      expect(zshrc).toContain(ARPM_RC_BEGIN);
+      expect(zshrc).toContain(installed.hookPath);
+      const bashrc = readFileSync(path.join(homeDir, ".bashrc"), "utf8");
+      expect(bashrc).toContain(ARPM_RC_BEGIN);
+      const again = installArpmShell({ panelHome, homeDir });
+      expect(again.rcPaths).toEqual([]);
+    } finally {
+      await fs.rm(homeDir, { recursive: true, force: true });
+      await fs.rm(panelHome, { recursive: true, force: true });
+    }
   });
 });

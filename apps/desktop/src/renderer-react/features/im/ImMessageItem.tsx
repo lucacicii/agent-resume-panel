@@ -1,4 +1,4 @@
-import { memo, useMemo, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
+import { memo, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
 import { ThemeIcon } from "../../components/ThemeIcon";
 import { renderMarkdown } from "../../components/Markdown";
 import { imageSrcFromElement } from "../../components/markdownImage";
@@ -869,17 +869,46 @@ function uniqueToolPaths(toolCalls: ImToolCall[]): string[] {
 function ImToolChip({ tool, t }: { tool: ImToolCall; t: Translate }) {
   const label = toolCallLabel(tool, t);
   const path = tool.locations?.map((item) => item.path).find((item) => item?.trim());
+  const display = path ? `${label} · ${path}` : label;
   const busy = tool.status === "pending" || tool.status === "in_progress";
+  const labelRef = useRef<HTMLSpanElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [expandable, setExpandable] = useState(false);
+
+  useLayoutEffect(() => {
+    if (expanded) return;
+    const el = labelRef.current;
+    if (!el) return;
+    const measure = () => {
+      setExpandable(el.scrollHeight > el.clientHeight + 1);
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [display, expanded]);
+
+  const canToggle = expandable || expanded;
+
   return (
-    <span className={`im-tool-chip is-${tool.status}`} title={path ? `${label} · ${path}` : label}>
+    <button
+      type="button"
+      className={`im-tool-chip is-${tool.status}${canToggle ? " is-expandable" : ""}${expanded ? " is-expanded" : ""}`}
+      title={display}
+      aria-expanded={canToggle ? expanded : undefined}
+      onClick={() => {
+        if (!canToggle) return;
+        setExpanded((value) => !value);
+      }}
+    >
       <ThemeIcon
         name={busy ? "loader" : tool.status === "failed" ? "close" : "check"}
         size={12}
         className={busy ? "spin" : undefined}
         aria-hidden="true"
       />
-      <span className="im-tool-chip-label">{label}</span>
-      {path ? <span className="im-tool-chip-path">{path}</span> : null}
-    </span>
+      <span ref={labelRef} className="im-tool-chip-label">{display}</span>
+    </button>
   );
 }

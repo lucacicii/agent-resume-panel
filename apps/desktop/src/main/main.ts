@@ -108,7 +108,7 @@ import {
 } from "@agent-resume/core";
 import { safeHandle } from "./ipcUtils";
 import { registerLinkGraphIpc } from "./linkgraph/linkGraphIpc";
-import { installArpmShim, resolveArpmCliPath } from "./arpmInstall";
+import { installArpmShell, installArpmShim, resolveArpmCliPath } from "./arpmInstall";
 import {
   createExternalMcpLaunchConfig,
   listMcpClients,
@@ -3295,6 +3295,10 @@ app.whenReady().then(async () => {
             source: "arpm-install",
             message: `Skipped arpm install: ${installed.skipped}`
           });
+        }
+        const shell = installArpmShell({ panelHome: resolvePanelHome(settings.panelHome) });
+        if (shell.rcPaths.length) {
+          console.log(`[agent-resume] Wired arpm shell cd hook in ${shell.rcPaths.join(", ")}`);
         }
       } catch (error) {
         void recordAppError({

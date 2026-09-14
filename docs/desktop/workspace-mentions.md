@@ -67,17 +67,13 @@ Same packs, from any terminal (iTerm, Ghostty, Workbench shell). Command name is
 |---------|--------|
 | `arpm list` | Print configured packs |
 | `arpm prompt <id>` | Print the prompt block only |
-| `arpm go <id>` | Print the prompt block and a `cd '…'` line |
+| `arpm go <id>` | Print the prompt block and **cd into the work folder** (needs the shell hook) |
 | `arpm go <id> --print-cwd` | Print only the work folder |
 | `arpm go <id> --launch` | Start the CLI agent in the work folder (default provider `codex`) |
 | `arpm go <id> --launch --provider claude` | Launch that CLI agent |
 | `arpm go <id> --launch --yolo` | Launch with the provider’s YOLO flags when supported |
 
-Jump and stay in the work folder:
-
-```bash
-cd "$(arpm go anfeng --print-cwd)"
-```
+Desktop also installs a shell function (via `~/.zshrc` / `~/.bashrc`) so `arpm go anfeng` cds **in the current terminal**. Open a new terminal after the first launch. Without the hook, `arpm` can only print a `cd` line — a subprocess cannot change your shell’s directory.
 
 Panel home override (same as other Agent Resume CLIs):
 
@@ -169,17 +165,13 @@ Reference (read only):
 |------|------|
 | `arpm list` | 列出已配置的包 |
 | `arpm prompt <id>` | 只打印 prompt 块 |
-| `arpm go <id>` | 打印 prompt 块和一条 `cd '…'` |
+| `arpm go <id>` | 打印 prompt 块并 **cd 进工作目录**（需要 shell hook） |
 | `arpm go <id> --print-cwd` | 只打印工作目录 |
 | `arpm go <id> --launch` | 在工作目录启动 CLI agent（默认 `codex`） |
 | `arpm go <id> --launch --provider claude` | 启动指定 CLI agent |
 | `arpm go <id> --launch --yolo` | 在支持的情况下带上 YOLO 参数 |
 
-跳进工作目录：
-
-```bash
-cd "$(arpm go anfeng --print-cwd)"
-```
+Desktop 还会通过 `~/.zshrc` / `~/.bashrc` 装一个 shell 函数，让 `arpm go anfeng` **在当前终端里 cd**。第一次启动后请新开终端。没有 hook 时，`arpm` 只能打印一条 `cd`——子进程改不了你当前 shell 的目录。
 
 覆盖 panel home（与其它 Agent Resume CLI 相同）：
 

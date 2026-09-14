@@ -16942,6 +16942,7 @@ html[data-window-mode="browser"] #react-chrome {
   align-self: flex-start;
   word-break: break-word;
   overflow-wrap: anywhere;
+  overflow-x: hidden;
 }
 .im-message.is-human {
   align-self: flex-end;
@@ -17526,19 +17527,41 @@ html[data-window-mode="browser"] #react-chrome {
   flex-wrap: wrap;
   gap: 6px;
   margin: 0 0 8px;
+  max-width: 100%;
+  min-width: 0;
 }
 .im-tool-chip {
+  --im-tool-line-height: 1.35;
+  --im-tool-pad-y: 3px;
+  --im-tool-pad-x: 8px;
+  --im-tool-radius: calc(
+    (1em * var(--im-tool-line-height) + 2 * var(--im-tool-pad-y)) / 2
+  );
+  box-sizing: border-box;
   display: inline-flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 5px;
   max-width: 100%;
-  padding: 3px 8px;
+  min-width: 0;
+  margin: 0;
+  padding: var(--im-tool-pad-y) var(--im-tool-pad-x);
   border: 1px solid var(--color-separator);
-  border-radius: 999px;
+  border-radius: var(--im-tool-radius);
   background: var(--color-fill-tertiary, color-mix(in srgb, var(--color-label-primary) 4%, transparent));
   color: var(--color-label-secondary);
+  font: inherit;
   font-size: 11px;
-  line-height: 1.3;
+  font-weight: 400;
+  line-height: var(--im-tool-line-height);
+  text-align: left;
+  cursor: default;
+  appearance: none;
+  -webkit-appearance: none;
+  overflow: hidden;
+}
+.im-tool-chip > svg {
+  flex: 0 0 auto;
+  margin-top: calc((1em * var(--im-tool-line-height) - 12px) / 2);
 }
 .im-tool-chip.is-pending,
 .im-tool-chip.is-in_progress {
@@ -17549,14 +17572,26 @@ html[data-window-mode="browser"] #react-chrome {
   border-color: color-mix(in srgb, var(--color-danger, #f87171) 35%, transparent);
 }
 .im-tool-chip-label {
+  min-width: 0;
+  flex: 1 1 auto;
   font-weight: 600;
-  white-space: nowrap;
-}
-.im-tool-chip-path {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  opacity: 0.78;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+.im-tool-chip.is-expandable {
+  cursor: pointer;
+}
+.im-tool-chip.is-expandable:hover {
+  background: var(--color-fill-secondary, color-mix(in srgb, var(--color-label-primary) 8%, transparent));
+}
+.im-tool-chip.is-expanded .im-tool-chip-label {
+  display: block;
+  -webkit-line-clamp: unset;
+  overflow: hidden;
 }
 .im-thinking-spinner {
   display: inline-block;

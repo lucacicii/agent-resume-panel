@@ -97,6 +97,95 @@ export function installArpmShim(input: {
   return { path: target, written: true };
 }
 
+export const ARPM_RC_BEGIN = "# >>> agent-resume arpm >>>";
+export const ARPM_RC_END = "# <<< agent-resume arpm <<<";
+
+export function arpmHookPath(panelHome: string): string {
+  return path.join(panelHome, ".desktop", "arpm.sh");
+}
+
+export function buildArpmShellHook(): string {
+  return `# ${MANAGED_MARKER} - Desktop rewrites this on launch.
+# Source from ~/.zshrc or ~/.bashrc so "arpm go <id>" cds in the current shell.
+arpm() {
+  if [ "$1" = "go" ]; then
+    _arpm_print_cwd=0
+    _arpm_launch=0
+    for _arpm_arg in "$@"; do
+      if [ "$_arpm_arg" = "--print-cwd" ]; then _arpm_print_cwd=1; fi
+      if [ "$_arpm_arg" = "--launch" ]; then _arpm_launch=1; fi
+    done
+    if [ "$_arpm_print_cwd" -eq 1 ] || [ "$_arpm_launch" -eq 1 ]; then
+      command arpm "$@"
+      return $?
+    fi
+    if [ -z "\${2:-}" ]; then
+      command arpm "$@"
+      return $?
+    fi
+    command arpm prompt "$2" || return $?
+    _arpm_cwd="$(command arpm go "$2" --print-cwd)" || return $?
+    builtin cd "$_arpm_cwd"
+    return $?
+  fi
+  command arpm "$@"
+}
+`;
+}
+
+export function buildArpmRcSnippet(hookPath: string): string {
+  return `${ARPM_RC_BEGIN}\n[ -f ${shellQuote(hookPath)} ] && . ${shellQuote(hookPath)}\n${ARPM_RC_END}\n`;
+}
+
+export function upsertArpmRcBlock(rcPath: string, snippet: string): { path: string; written: boolean } {
+  let text = "";
+  try {
+    text = readFileSync(rcPath, "utf8");
+  } catch {
+    text = "";
+  }
+  const block = snippet.trim();
+  if (text.includes(ARPM_RC_BEGIN) && text.includes(ARPM_RC_END)) {
+    const next = text.replace(
+      /# >>> agent-resume arpm >>>[\s\S]*?# <<< agent-resume arpm <<</,
+      block
+    );
+    if (next === text) return { path: rcPath, written: false };
+    writeFileSync(rcPath, next.endsWith("\n") ? next : `${next}\n`, { mode: 0o644 });
+    return { path: rcPath, written: true };
+  }
+  const prefix = text && !text.endsWith("\n") ? "\n" : "";
+  writeFileSync(rcPath, `${text}${prefix}\n${block}\n`, { mode: 0o644 });
+  return { path: rcPath, written: true };
+}
+
+export function installArpmShell(input: {
+  panelHome: string;
+  homeDir?: string;
+}): { hookPath: string; rcPaths: string[] } {
+  const hookPath = arpmHookPath(input.panelHome);
+  mkdirSync(path.dirname(hookPath), { recursive: true, mode: 0o755 });
+  const hook = buildArpmShellHook();
+  let previous: string | null = null;
+  try {
+    previous = readFileSync(hookPath, "utf8");
+  } catch {
+    previous = null;
+  }
+  if (previous !== hook) {
+    writeFileSync(hookPath, hook, { mode: 0o644 });
+  }
+  const home = input.homeDir || homedir();
+  const snippet = buildArpmRcSnippet(hookPath);
+  const rcPaths = [path.join(home, ".zshrc"), path.join(home, ".bashrc")];
+  const written: string[] = [];
+  for (const rcPath of rcPaths) {
+    const result = upsertArpmRcBlock(rcPath, snippet);
+    if (result.written) written.push(result.path);
+  }
+  return { hookPath, rcPaths: written };
+}
+
 function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
