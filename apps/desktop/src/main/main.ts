@@ -551,7 +551,6 @@ function applyAppIcon(): void {
 let mainWindow: BrowserWindow | null = null;
 let mainWindowReadyToShow = false;
 let mainWindowRendererReady = false;
-let settingsWindow: BrowserWindow | null = null;
 let sessionDotsTray: Tray | null = null;
 let pendingTrayFocus: { paneKey: string; projectPath?: string } | null = null;
 let browserSettingsCache: import("@agent-resume/core").DesktopBrowserSettings | null = null;
@@ -624,7 +623,6 @@ function normalizeSettingsPane(value: unknown): SettingsPaneId {
 function broadcastToRenderers(channel: string, ...args: unknown[]): void {
   const windows = [
     mainWindow,
-    settingsWindow,
     ...[...standaloneNoteWindows.values()].map((state) => state.window)
   ];
   for (const win of windows) {
@@ -632,13 +630,6 @@ function broadcastToRenderers(channel: string, ...args: unknown[]): void {
       win.webContents.send(channel, ...args);
     }
   }
-}
-
-function closeSettingsWindowIfOpen(): void {
-  if (settingsWindow && !settingsWindow.isDestroyed()) {
-    settingsWindow.close();
-  }
-  settingsWindow = null;
 }
 
 function syncSessionDotsTray(): void {
@@ -1398,18 +1389,6 @@ function registerWorkbenchShortcuts(win: BrowserWindow): void {
   });
 }
 
-/** Settings window: ⌘W / Ctrl+W closes the preferences window only. */
-function registerSettingsShortcuts(win: BrowserWindow): void {
-  win.webContents.on("before-input-event", (event, input) => {
-    if (isWorkbenchCmdWInput(input)) {
-      event.preventDefault();
-      if (!win.isDestroyed()) {
-        win.close();
-      }
-    }
-  });
-}
-
 const DEFAULT_WINDOW_SIZE = {
   width: 1120,
   height: 780
@@ -1472,71 +1451,16 @@ function createWindow(): void {
     workbenchActive = false;
     floatingNoteFocused = false;
     modalOpen = false;
-    // Invariant: settings never outlives main
-    closeSettingsWindowIfOpen();
     mainWindowReadyToShow = false;
     mainWindowRendererReady = false;
     mainWindow = null;
   });
 }
 
-function createSettingsWindow(options: { pane: SettingsPaneId }): void {
-  const icon = loadAppIcon();
-  const win = new BrowserWindow({
-    ...DEFAULT_WINDOW_SIZE,
-    minWidth: 640,
-    minHeight: 480,
-    title: "Settings",
-    show: false,
-    ...(icon ? { icon } : {}),
-    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
-    trafficLightPosition: process.platform === "darwin" ? { x: 14, y: 14 } : undefined,
-    webPreferences: {
-      preload: path.join(__dirname, "..", "preload", "preload.js"),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: false
-    }
-  });
-
-  if (process.platform !== "darwin") {
-    win.setMenuBarVisibility(false);
-  }
-
-  settingsWindow = win;
-  registerSettingsShortcuts(win);
-  void win.loadFile(path.join(__dirname, "..", "renderer", "index.html"), {
-    query: { mode: "settings", pane: options.pane }
-  });
-  win.once("ready-to-show", () => {
-    if (!win.isDestroyed()) {
-      win.show();
-      win.focus();
-    }
-  });
-  win.on("closed", () => {
-    if (settingsWindow === win) {
-      settingsWindow = null;
-    }
-  });
-}
-
-function openSettingsWindow(options?: { pane?: unknown }): void {
+function openSettingsInMainWindow(options?: { pane?: unknown }): void {
   const pane = normalizeSettingsPane(options?.pane);
-  if (!mainWindow || mainWindow.isDestroyed()) {
-    createWindow();
-  }
-  if (settingsWindow && !settingsWindow.isDestroyed()) {
-    if (settingsWindow.isMinimized()) {
-      settingsWindow.restore();
-    }
-    settingsWindow.show();
-    settingsWindow.focus();
-    // K14: do not restore/focus mainWindow
-    settingsWindow.webContents.send("settings:navigate", { pane });
-    return;
-  }
-  createSettingsWindow({ pane });
+  const win = revealMainWindow();
+  win?.webContents.send("settings:navigate", { pane });
 }
 
 /** Application menu: Settings… with ⌘,/Ctrl+, (macOS app menu / File on other platforms). */
@@ -1550,7 +1474,7 @@ async function installApplicationMenu(): Promise<void> {
   const settingsItem: Electron.MenuItemConstructorOptions = {
     label: settingsLabel,
     accelerator: "CommandOrControl+,",
-    click: () => openSettingsWindow({ pane: "general" })
+    click: () => openSettingsInMainWindow({ pane: "general" })
   };
 
   const sessionsItem: Electron.MenuItemConstructorOptions = {
@@ -1563,7 +1487,7 @@ async function installApplicationMenu(): Promise<void> {
 
   const checkForUpdatesItem: Electron.MenuItemConstructorOptions = {
     label: checkForUpdatesLabel,
-    click: () => openSettingsWindow({ pane: "about" })
+    click: () => openSettingsInMainWindow({ pane: "about" })
   };
 
   const template: Electron.MenuItemConstructorOptions[] = [
@@ -1693,6 +1617,20 @@ function registerIpc(): void {
   ipcMain.handle("settings:get", async () => {
     return loadSettings();
   });
+
+  ipcMain.handle(
+    "dialog:pickDirectory",
+    async (_event, args?: { title?: string }) => {
+      const result = await dialog.showOpenDialog({
+        properties: ["openDirectory", "createDirectory"],
+        title: args?.title?.trim() || "Select folder"
+      });
+      if (result.canceled || !result.filePaths[0]) {
+        return { ok: false as const, canceled: true as const };
+      }
+      return { ok: true as const, path: result.filePaths[0] };
+    }
+  );
 
   safeHandle(
     "providers:testConnection",
@@ -1975,12 +1913,7 @@ function registerIpc(): void {
   );
 
   safeHandle("settings:openWindow", async (_event, options?: { pane?: unknown }) => {
-    openSettingsWindow(options);
-  });
-
-  safeHandle("settings:closeWindow", async () => {
-    closeSettingsWindowIfOpen();
-    return { ok: true as const };
+    openSettingsInMainWindow(options);
   });
 
   ipcMain.handle("sessions:sync", async () => syncAndNotify());
@@ -3406,8 +3339,6 @@ app.whenReady().then(async () => {
   })();
   app.on("activate", () => {
     if (!mainWindow || mainWindow.isDestroyed()) {
-      // Invariant fallback: settings must not outlive main
-      closeSettingsWindowIfOpen();
       createWindow();
       syncSessionDotsTray();
       startDesktopNotesIndexer();

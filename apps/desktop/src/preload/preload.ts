@@ -110,6 +110,7 @@ export interface DesktopApi {
     settings: PanelSettings,
     options?: { triggerSync?: boolean; section?: string }
   ): Promise<{ file: string; settings: PanelSettings; schedulerEnabled?: boolean; sync?: AgentSessionSyncResult }>;
+  pickDirectory(args?: { title?: string }): Promise<{ ok: true; path: string } | { ok: false; canceled: true }>;
   /** Probe a provider's model (text/embedding) using current Providers form values (Save not required). */
   providersTestConnection(args: {
     kind: ProviderTestKind;
@@ -119,7 +120,6 @@ export interface DesktopApi {
   /** Fetch the model list of a provider using current Providers form values. */
   providersFetchModels(args: { baseUrl: string; apiKey?: string }): Promise<ProviderFetchModelsResult>;
   openSettingsWindow(options?: { pane?: string }): Promise<void>;
-  closeSettingsWindow(): Promise<{ ok: boolean }>;
   onOpenSessions(callback: () => void): () => void;
   /** Open an existing note in a standalone floating window (same surface as ⌘/Ctrl+D). */
   standaloneNoteOpen(args: {
@@ -1547,10 +1547,10 @@ const api: DesktopApi = {
   removeMcpClient: (args) => ipcRenderer.invoke("mcp:remove", args),
   registerAllMcpClients: (args) => ipcRenderer.invoke("mcp:registerAll", args),
   saveSettings: (settings, options) => ipcRenderer.invoke("settings:save", settings, options),
+  pickDirectory: (args) => ipcRenderer.invoke("dialog:pickDirectory", args),
   providersTestConnection: (args) => ipcRenderer.invoke("providers:testConnection", args),
   providersFetchModels: (args) => ipcRenderer.invoke("providers:fetchModels", args),
   openSettingsWindow: (options) => ipcRenderer.invoke("settings:openWindow", options),
-  closeSettingsWindow: () => ipcRenderer.invoke("settings:closeWindow"),
   standaloneNoteOpen: (args) => ipcRenderer.invoke("standalone-note:open", args),
   standaloneNoteList: () => ipcRenderer.invoke("standalone-note:list"),
   onStandaloneNotesChanged: (callback) => {

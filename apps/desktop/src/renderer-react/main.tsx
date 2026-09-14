@@ -46,10 +46,9 @@ function syncNotificationConfig(settings: PanelSettings): void {
   });
 }
 
-export function getDesktopWindowMode(): "main" | "settings" | "standalone-note" | "browser" {
+export function getDesktopWindowMode(): "main" | "standalone-note" | "browser" {
   try {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("mode") === "settings") return "settings";
     if (params.get("mode") === "standalone-note") return "standalone-note";
     if (params.get("mode") === "browser") return "browser";
     return "main";
@@ -71,14 +70,6 @@ export function getBrowserId(): string {
     return new URLSearchParams(window.location.search).get("browserId") || "";
   } catch {
     return "";
-  }
-}
-
-export function getInitialSettingsPane(): string {
-  try {
-    return new URLSearchParams(window.location.search).get("pane") || "general";
-  } catch {
-    return "general";
   }
 }
 
@@ -184,19 +175,10 @@ function MainRendererRuntime(): React.JSX.Element {
         <WorkbenchPanel />
       </DiffWorkerPool>
       <NotesPanel />
+      <SettingsPanel variant="embedded" />
       <SelectionSendHost />
       <Notifications />
     </>
-  );
-}
-
-function SettingsDesktopRuntime(): React.JSX.Element {
-  const initialPane = getInitialSettingsPane();
-  return (
-    <I18nProvider>
-      <SettingsRuntimeBootstrap />
-      <SettingsPanel variant="window" initialPane={initialPane} />
-    </I18nProvider>
   );
 }
 
@@ -224,12 +206,9 @@ function BrowserDesktopRuntime(): React.JSX.Element {
   );
 }
 
-// Mode flag before first paint — drives settings-window CSS
 const windowMode = getDesktopWindowMode();
 document.documentElement.dataset.windowMode = windowMode;
-if (windowMode === "settings") {
-  document.title = "Settings";
-} else if (windowMode === "standalone-note") {
+if (windowMode === "standalone-note") {
   document.title = "Standalone Note";
 } else if (windowMode === "browser") {
   document.title = "Browser";
@@ -247,13 +226,11 @@ if (host) {
   } else {
     createRoot(host).render(
       <StrictMode>
-        {windowMode === "settings"
-          ? <SettingsDesktopRuntime />
-          : windowMode === "standalone-note"
-            ? <StandaloneNoteDesktopRuntime />
-            : windowMode === "browser"
-              ? <BrowserDesktopRuntime />
-              : <MainDesktopRuntime />}
+        {windowMode === "standalone-note"
+          ? <StandaloneNoteDesktopRuntime />
+          : windowMode === "browser"
+            ? <BrowserDesktopRuntime />
+            : <MainDesktopRuntime />}
       </StrictMode>
     );
   }

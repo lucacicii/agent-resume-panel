@@ -44,7 +44,7 @@ function isEditablePane(value: Pane): value is EditablePane {
 }
 
 export type SettingsPanelProps = {
-  /** Production path is always "window" (auxiliary BrowserWindow). */
+  /** Production path is the in-window overlay ("embedded"). */
   variant?: "window" | "embedded";
   initialPane?: string;
 };
@@ -71,13 +71,12 @@ function asPane(value: unknown): Pane {
 }
 
 export function SettingsPanel({
-  variant = "window",
+  variant = "embedded",
   initialPane
 }: SettingsPanelProps): React.ReactPortal | null {
   const { t } = useI18n();
   const host = document.getElementById("react-settings");
-  const isWindow = variant === "window";
-  const [open, setOpen] = useState(isWindow);
+  const [open, setOpen] = useState(variant === "window");
   const [pane, setPane] = useState<Pane>(() => asPane(initialPane));
   const [settings, setSettings] = useState<PanelSettings | null>(null);
   const [general, setGeneral] = useState<GeneralDraft | null>(null);
@@ -125,51 +124,38 @@ export function SettingsPanel({
   paneRef.current = pane;
   const isDirtyForPaneRef = useRef(isDirtyForPane);
   isDirtyForPaneRef.current = isDirtyForPane;
+  const openRef = useRef(open);
+  openRef.current = open;
+
+  const applyOpen = useCallback((nextPane: unknown) => {
+    const next = asPane(nextPane);
+    if (openRef.current && isDirtyForPaneRef.current(paneRef.current) && next !== paneRef.current) {
+      setPendingPane(next);
+      return;
+    }
+    setPane(next);
+    setOpen(true);
+    if (!openRef.current) {
+      void load().catch((error: unknown) =>
+        setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" })
+      );
+    }
+  }, [load]);
 
   useEffect(() => {
-    if (isWindow) {
-      void load().catch((error: unknown) =>
-        setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" })
-      );
-      const stopNavigate =
-        typeof desktopApi().onSettingsNavigate === "function"
-          ? desktopApi().onSettingsNavigate((payload) => {
-              const next = asPane(payload?.pane);
-              if (isDirtyForPaneRef.current(paneRef.current)) {
-                setPendingPane(next);
-                return;
-              }
-              setPane(next);
-            })
-          : () => undefined;
-      return () => {
-        stopNavigate();
-      };
-    }
-
     const onOpen = (event: Event) => {
-      setPane(asPane(event instanceof CustomEvent ? event.detail : "general"));
-      setOpen(true);
-      void load().catch((error: unknown) =>
-        setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" })
-      );
-    };
-    const onTabChange = (event: Event) => {
-      if ((event as CustomEvent<string>).detail !== "settings") {
-        if (isDirtyForPaneRef.current(paneRef.current)) {
-          setPendingClose(true);
-          return;
-        }
-        setOpen(false);
-      }
+      applyOpen(event instanceof CustomEvent ? event.detail : "general");
     };
     window.addEventListener("agent-resume:settings-open", onOpen);
-    window.addEventListener("agent-resume:tab-change", onTabChange);
+    const stopNavigate =
+      typeof desktopApi().onSettingsNavigate === "function"
+        ? desktopApi().onSettingsNavigate((payload) => applyOpen(payload?.pane))
+        : () => undefined;
     return () => {
       window.removeEventListener("agent-resume:settings-open", onOpen);
-      window.removeEventListener("agent-resume:tab-change", onTabChange);
+      stopNavigate();
     };
-  }, [isWindow, load]);
+  }, [applyOpen]);
 
   const save = useCallback(async (next: PanelSettings, section: EditablePane) => {
     setSavingSection(section);
@@ -180,14 +166,6 @@ export function SettingsPanel({
         section
       });
       hydrate(result.settings);
-      // Window mode: main window receives settings via IPC broadcast only (K17)
-      if (!isWindow) {
-        window.dispatchEvent(
-          new CustomEvent("agent-resume:settings-saved", {
-            detail: { settings: result.settings, section, sync: result.sync }
-          })
-        );
-      }
       setStatus({
         text: t(
           "desktop.settings.saved",
@@ -207,7 +185,7 @@ export function SettingsPanel({
     } finally {
       setSavingSection(null);
     }
-  }, [hydrate, isWindow, t]);
+  }, [hydrate, t]);
 
   const currentDraft = useCallback((section: EditablePane): GeneralDraft | ProvidersDraft | SessionsDraft | WorkbenchDraft | NotesDraft | ReportDraft | StorageDraft | null => {
     if (section === "general") return general;
@@ -295,15 +273,9 @@ export function SettingsPanel({
   }, [pane, isDirty]);
 
   const doClose = useCallback(() => {
-    if (isWindow) {
-      if (typeof desktopApi().closeSettingsWindow === "function") {
-        void desktopApi().closeSettingsWindow();
-      }
-      return;
-    }
     setOpen(false);
     window.dispatchEvent(new Event("agent-resume:settings-closed"));
-  }, [isWindow]);
+  }, []);
 
   const requestClose = useCallback(() => {
     if (hasAnyDirty()) {
@@ -312,6 +284,17 @@ export function SettingsPanel({
     }
     doClose();
   }, [hasAnyDirty, doClose]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      requestClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open, requestClose]);
 
   if (!host || !open || !settings || !general || !providers || !sessions || !workbench || !notes || !report || !storage) return null;
   const current = panes.find((item) => item.id === pane) || panes[0];
@@ -348,7 +331,9 @@ export function SettingsPanel({
     : pane === "backup" ? <BackupPane t={t} /> : <AboutPane t={t} />;
 
   return createPortal(
-    <section className="panel active react-settings-panel">
+    <div className="settings-overlay" role="dialog" aria-modal="true" aria-label={t("desktop.settings.title")}>
+      <button type="button" className="settings-overlay-backdrop" aria-label={t("desktop.settings.done")} onClick={close} />
+      <section className="panel active react-settings-panel">
       <div className="toolbar">
         <h2 className="quiet-title">{t("desktop.settings.title")}</h2>
         <button type="button" className="ghost-btn" onClick={close}>{t("desktop.settings.done")}</button>
@@ -434,7 +419,8 @@ export function SettingsPanel({
           ) : null}
         </div>
       </div>
-    </section>,
+    </section>
+    </div>,
     host
   );
 }

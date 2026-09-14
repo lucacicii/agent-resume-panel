@@ -5362,7 +5362,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     { id: "view.workbench", label: t("desktop.workbench.quickAccessShowWorkbench"), keywords: "navigate tab", run: () => navigateTo("workbench") },
     { id: "view.notes", label: t("desktop.workbench.quickAccessShowNotes"), keywords: "navigate tab", run: () => navigateTo("notes") },
     { id: "app.sessions", label: t("desktop.workbench.quickAccessOpenSessions"), keywords: "history reference", run: () => { closeQuickAccess(); window.dispatchEvent(new Event("agent-resume:sessions-open")); } },
-    { id: "app.settings", label: t("desktop.workbench.quickAccessOpenSettings"), keywords: "preferences configuration", shortcut: shortcut(","), run: () => { closeQuickAccess(); void desktopApi().openSettingsWindow({ pane: "general" }); } }
+    { id: "app.settings", label: t("desktop.workbench.quickAccessOpenSettings"), keywords: "preferences configuration", shortcut: shortcut(","), run: () => { closeQuickAccess(); window.dispatchEvent(new CustomEvent("agent-resume:settings-open", { detail: "general" })); } }
   ];
 
   const newSessionAnchorRect = newSessionButtonRef.current?.getBoundingClientRect();

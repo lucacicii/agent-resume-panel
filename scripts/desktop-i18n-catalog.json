@@ -252,7 +252,8 @@
       "desktop.top.sessionsRef": "Sessions",
       "desktop.top.sessionsRefTitle": "Sessions reference",
       "desktop.top.settings": "Settings",
-      "desktop.top.settingsTitle": "Settings"
+      "desktop.top.settingsTitle": "Settings",
+      "desktop.chrome.account": "Account"
     },
     "report": {
       "desktop.report.prevMonth": "Previous month",
@@ -1252,7 +1253,8 @@
       "desktop.top.sessionsRef": "Sessions",
       "desktop.top.sessionsRefTitle": "Sessions 参考",
       "desktop.top.settings": "Settings",
-      "desktop.top.settingsTitle": "Settings"
+      "desktop.top.settingsTitle": "Settings",
+      "desktop.chrome.account": "账户"
     },
     "report": {
       "desktop.report.prevMonth": "上月",
@@ -2364,7 +2366,9 @@
       "desktop.common.collapse": "折りたたむ"
     },
     "tabs": {},
-    "top": {},
+    "top": {
+      "desktop.chrome.account": "アカウント"
+    },
     "report": {
       "desktop.report.insightsTitle": "期間インサイト",
       "desktop.report.insightsSessions": "セッション概要",

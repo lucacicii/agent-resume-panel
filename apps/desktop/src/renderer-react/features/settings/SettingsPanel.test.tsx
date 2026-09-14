@@ -282,7 +282,6 @@ function renderWindowSettings(initialPane = "general", overrides?: Record<string
   const host = document.createElement("div");
   host.id = "react-settings";
   document.body.append(host);
-  const closeSettingsWindow = vi.fn(async () => ({ ok: true }));
   const saveSettings = vi.fn(async (settings: unknown, options?: { section?: string }) => ({
     file: "/tmp/settings.json",
     settings,
@@ -336,7 +335,6 @@ function renderWindowSettings(initialPane = "general", overrides?: Record<string
     saveSettings,
     providersTestConnection,
     providersFetchModels,
-    closeSettingsWindow,
     onSettingsNavigate: (callback: (payload: { pane: string }) => void) => {
       navigateHandlers.push(callback);
       return () => undefined;
@@ -353,10 +351,14 @@ function renderWindowSettings(initialPane = "general", overrides?: Record<string
   } as unknown as typeof window.agentResume;
   render(
     <I18nProvider>
-      <SettingsPanel variant="window" initialPane={initialPane} />
+      <SettingsPanel variant="embedded" initialPane={initialPane} />
     </I18nProvider>
   );
-  return { host, closeSettingsWindow, saveSettings, providersTestConnection, providersFetchModels, navigateHandlers };
+  const open = (pane = initialPane) => {
+    window.dispatchEvent(new CustomEvent("agent-resume:settings-open", { detail: pane }));
+  };
+  open(initialPane);
+  return { host, saveSettings, providersTestConnection, providersFetchModels, navigateHandlers, open };
 }
 
 describe("SettingsPanel (window)", () => {
@@ -365,9 +367,11 @@ describe("SettingsPanel (window)", () => {
     document.getElementById("react-settings")?.remove();
   });
 
-  it("opens on mount and ignores primary tab changes", async () => {
-    const { host } = renderWindowSettings();
+  it("opens as an overlay and ignores primary tab changes", async () => {
+    const { host, open } = renderWindowSettings();
+    await act(async () => open());
     await waitFor(() => expect(host.querySelector(".react-settings-panel")).not.toBeNull());
+    expect(host.querySelector(".settings-overlay")).not.toBeNull();
 
     await act(async () => {
       window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "notes" }));
@@ -375,17 +379,19 @@ describe("SettingsPanel (window)", () => {
     expect(host.querySelector(".react-settings-panel")).not.toBeNull();
   });
 
-  it("Done closes the settings window via IPC", async () => {
-    const { host, closeSettingsWindow } = renderWindowSettings();
+  it("Done closes the in-window overlay", async () => {
+    const { host, open } = renderWindowSettings();
+    await act(async () => open());
     await waitFor(() => expect(host.querySelector(".react-settings-panel")).not.toBeNull());
     const done = host.querySelector("button.ghost-btn");
     expect(done).not.toBeNull();
     fireEvent.click(done!);
-    expect(closeSettingsWindow).toHaveBeenCalled();
+    await waitFor(() => expect(host.querySelector(".react-settings-panel")).toBeNull());
   });
 
   it("navigates pane via onSettingsNavigate", async () => {
-    const { host, navigateHandlers } = renderWindowSettings("general");
+    const { host, navigateHandlers, open } = renderWindowSettings("general");
+    await act(async () => open());
     await waitFor(() => expect(host.querySelector(".react-settings-panel")).not.toBeNull());
     await act(async () => {
       navigateHandlers[0]?.({ pane: "providers" });

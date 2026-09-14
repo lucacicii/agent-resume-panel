@@ -1,4 +1,5 @@
 import { ThemeIcon, type ThemeIconName } from "./ThemeIcon";
+import { createPortal } from "react-dom";
 import { useEffect, useRef, useState } from "react";
 import { desktopApi } from "../bridge";
 import { useI18n } from "../i18n";
@@ -26,7 +27,10 @@ export function AppChrome(): React.JSX.Element {
   const [activeTab, setActiveTab] = useState<PrimaryTab>("today");
   const [sessionDots, setSessionDots] = useState<ActiveSessionDot[]>([]);
   const [noteDots, setNoteDots] = useState<FloatingNoteDot[]>([]);
+  const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
   const headerRef = useRef<HTMLElement | null>(null);
+  const avatarBtnRef = useRef<HTMLButtonElement | null>(null);
+  const avatarMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     // Size the nav rail to the area below the app header (header height can
@@ -94,6 +98,37 @@ export function AppChrome(): React.JSX.Element {
     };
   }, []);
 
+  useEffect(() => {
+    if (!avatarMenuOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (avatarBtnRef.current?.contains(target) || avatarMenuRef.current?.contains(target)) return;
+      setAvatarMenuOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setAvatarMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [avatarMenuOpen]);
+
+  useEffect(() => {
+    if (!avatarMenuOpen) return;
+    const btn = avatarBtnRef.current;
+    const menu = avatarMenuRef.current;
+    if (!btn || !menu) return;
+    const rect = btn.getBoundingClientRect();
+    const gap = 8;
+    const left = Math.min(rect.right + gap, window.innerWidth - menu.offsetWidth - 8);
+    const top = Math.max(8, Math.min(rect.bottom - menu.offsetHeight, window.innerHeight - menu.offsetHeight - 8));
+    menu.style.left = `${Math.max(8, left)}px`;
+    menu.style.top = `${top}px`;
+  }, [avatarMenuOpen]);
+
   const selectTab = (next: PrimaryTab) => {
     setActiveTab(next);
     window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: next }));
@@ -112,7 +147,14 @@ export function AppChrome(): React.JSX.Element {
     void api.standaloneNoteOpen({ noteId: dot.noteId }).catch(() => undefined);
   };
 
+  const openSettings = (pane = "general") => {
+    setAvatarMenuOpen(false);
+    window.dispatchEvent(new CustomEvent("agent-resume:settings-open", { detail: pane }));
+  };
+
   const text = (key: string, fallback: string) => (ready ? t(key) : fallback);
+  const avatarLabel = text("desktop.chrome.account", "Account");
+  const settingsLabel = text("desktop.top.settings", "Settings");
 
   return (
     <>
@@ -130,40 +172,75 @@ export function AppChrome(): React.JSX.Element {
             <ThemeIcon name={tab.icon} aria-hidden="true" />
           </button>
         ))}
-        {(noteDots.length > 0 || sessionDots.length > 0) && (
-          <div className="rail-bottom-dots">
-            {noteDots.length > 0 && (
-              <div
-                className="rail-notes-dots"
-                role="group"
-                aria-label={text("desktop.notes.floatingDots", "Floating notes")}
+        <div className="rail-bottom">
+          {(noteDots.length > 0 || sessionDots.length > 0) && (
+            <div className="rail-bottom-dots">
+              {noteDots.length > 0 && (
+                <div
+                  className="rail-notes-dots"
+                  role="group"
+                  aria-label={text("desktop.notes.floatingDots", "Floating notes")}
+                >
+                  <span className="rail-dots-heading" aria-hidden="true" title={text("desktop.notes.floatingDots", "Floating notes")}>
+                    <ThemeIcon name="file-text" size={12} />
+                  </span>
+                  {noteDots.map((dot) => (
+                    <Tooltip key={dot.noteId} label={dot.title}>
+                      <button
+                        type="button"
+                        className="rail-note-dot-btn"
+                        aria-label={dot.title}
+                        onClick={() => focusNoteFromRail(dot)}
+                      >
+                        <span className="rail-note-dot" aria-hidden="true" />
+                      </button>
+                    </Tooltip>
+                  ))}
+                </div>
+              )}
+              {sessionDots.length > 0 && (
+                <SessionDotsCluster
+                  dots={sessionDots}
+                  text={text}
+                  onFocus={focusSessionFromRail}
+                />
+              )}
+            </div>
+          )}
+          <div className="rail-account">
+            <Tooltip label={avatarLabel}>
+              <button
+                ref={avatarBtnRef}
+                type="button"
+                className={`rail-avatar-btn${avatarMenuOpen ? " is-open" : ""}`}
+                aria-label={avatarLabel}
+                aria-haspopup="menu"
+                aria-expanded={avatarMenuOpen}
+                onClick={() => setAvatarMenuOpen((open) => !open)}
               >
-                <span className="rail-dots-heading" aria-hidden="true" title={text("desktop.notes.floatingDots", "Floating notes")}>
-                  <ThemeIcon name="file-text" size={12} />
+                <span className="rail-avatar" aria-hidden="true">
+                  <ThemeIcon name="user" size={16} />
                 </span>
-                {noteDots.map((dot) => (
-                  <Tooltip key={dot.noteId} label={dot.title}>
+              </button>
+            </Tooltip>
+            {avatarMenuOpen
+              ? createPortal(
+                  <div ref={avatarMenuRef} className="rail-account-menu" role="menu" aria-label={avatarLabel}>
                     <button
                       type="button"
-                      className="rail-note-dot-btn"
-                      aria-label={dot.title}
-                      onClick={() => focusNoteFromRail(dot)}
+                      role="menuitem"
+                      className="rail-account-menu-item"
+                      onClick={() => openSettings("general")}
                     >
-                      <span className="rail-note-dot" aria-hidden="true" />
+                      <ThemeIcon name="settings" size={14} aria-hidden="true" />
+                      {settingsLabel}
                     </button>
-                  </Tooltip>
-                ))}
-              </div>
-            )}
-            {sessionDots.length > 0 && (
-              <SessionDotsCluster
-                dots={sessionDots}
-                text={text}
-                onFocus={focusSessionFromRail}
-              />
-            )}
+                  </div>,
+                  document.body
+                )
+              : null}
           </div>
-        )}
+        </div>
       </nav>
       <header ref={headerRef} className="top mac-top">
         <div id="app-header-slot" />

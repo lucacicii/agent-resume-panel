@@ -21,6 +21,8 @@ function renderChrome(options?: {
         "desktop.tabs.kanban": "Kanban",
         "desktop.tabs.im": "IM",
         "desktop.notes.floatingDots": "Floating notes",
+        "desktop.chrome.account": "Account",
+        "desktop.top.settings": "Settings",
         "desktop.workbench.sessionDots": "Active sessions",
         "desktop.workbench.sessionDot.awaiting": "Waiting for you",
         "desktop.workbench.sessionDot.running": "Running",
@@ -250,5 +252,48 @@ describe("AppChrome", () => {
     expect(dots).toHaveLength(2);
     expect(dots.map((dot) => dot.getAttribute("aria-label"))).toEqual(["Alpha note", "Beta note"]);
   });
+
+  it("pins a user avatar below the rail dots",
+    async () => {
+      renderChrome({
+        standaloneNoteList: [{ noteId: "n1", title: "Scratch pad" }]
+      });
+      await screen.findByRole("button", { name: "Archive" });
+      await waitFor(() => expect(document.querySelectorAll(".rail-note-dot-btn").length).toBe(1));
+
+      const bottom = document.querySelector(".rail-bottom");
+      const dots = document.querySelector(".rail-bottom-dots");
+      const avatar = screen.getByRole("button", { name: "Account" });
+      expect(bottom).not.toBeNull();
+      expect(dots).not.toBeNull();
+      expect(avatar).not.toBeNull();
+      expect(
+        Boolean(dots!.compareDocumentPosition(avatar) & Node.DOCUMENT_POSITION_FOLLOWING)
+      ).toBe(true);
+    });
+
+  it("opens Settings from the avatar menu without changing the primary tab",
+    async () => {
+      renderChrome();
+      const today = await screen.findByRole("button", { name: "Today" });
+      expect(today.classList.contains("active")).toBe(true);
+
+      const settingsOpen = vi.fn();
+      const tabChange = vi.fn();
+      window.addEventListener("agent-resume:settings-open", settingsOpen);
+      window.addEventListener("agent-resume:tab-change", tabChange);
+
+      fireEvent.click(screen.getByRole("button", { name: "Account" }));
+      const settingsItem = await screen.findByRole("menuitem", { name: "Settings" });
+      fireEvent.click(settingsItem);
+
+      expect(settingsOpen).toHaveBeenCalledWith(expect.objectContaining({ detail: "general" }));
+      expect(tabChange).not.toHaveBeenCalled();
+      expect(today.classList.contains("active")).toBe(true);
+      expect(screen.queryByRole("menuitem", { name: "Settings" })).toBeNull();
+
+      window.removeEventListener("agent-resume:settings-open", settingsOpen);
+      window.removeEventListener("agent-resume:tab-change", tabChange);
+    });
 
 });
