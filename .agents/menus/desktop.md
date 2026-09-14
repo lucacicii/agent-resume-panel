@@ -15,6 +15,7 @@
 | renderer | `apps/desktop/src/renderer/{index.html,app.js,styles.css}` | Framework-free app: Memory, Ask, Workbench, Notes, Sessions, and Settings. |
 | IM rooms | `apps/desktop/src/main/im/*`, `renderer-react/features/im/` | User-created project rooms; quote + @ dispatch through existing ACP host (Pi / Claude / Codex). Data in `desktop.db` `im_*` tables. |
 | renderer vendor bundle | `apps/desktop/src/renderer/vendor-entry/`, `apps/desktop/scripts/build-renderer-vendor.mjs` | CodeMirror, Marked, DOMPurify, Highlight.js, and xterm vendor build. |
+| workspace mentions, `arpm`, composerMentions | `packages/core/src/settings/{mentions,mentionPrompt,arpmCli}.ts`, Settings Workbench pane, Workbench new-session picker | Global work/reference packs in `settings.desktop.json`. User docs: `docs/desktop/workspace-mentions.md`. |
 
 ## Desktop i18n
 

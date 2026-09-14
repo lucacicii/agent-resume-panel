@@ -1,0 +1,205 @@
+# Workspace mentions
+
+[← Back to README](README.md)
+
+Languages: [English](#english) | [简体中文](#简体中文)
+
+---
+
+## English
+
+### What it is
+
+A **workspace mention** is a global pack: one **work folder** (where the agent writes) plus optional **reference folders** (read-only paths injected into the first prompt).
+
+It is **not** a per-repo `.arp` file. Packs live in Desktop settings:
+
+```text
+~/.agent-resume-panel/settings.desktop.json
+→ workbench.composerMentions
+```
+
+Use them when you often start from an unrelated directory but the real work is in another repo (and you still want sibling repos named in the prompt).
+
+Example pack `anfeng`:
+
+| Role | Path |
+|------|------|
+| Work (cwd, write here) | `/Users/you/work/C` |
+| Reference (read only) | `/Users/you/work/A` |
+| Reference (read only) | `/Users/you/work/B` |
+
+### Configure
+
+1. Open **⚙ Settings → Workbench**.
+2. Under **Workspace mentions**, click **Add mention**.
+3. Set **Id** (`anfeng` — letters, digits, `_`, `-`; no `@` in the stored id).
+4. Set **Work folder** (Browse or paste an absolute / `~/…` path).
+5. Optionally **Add reference** folders.
+6. Save settings.
+
+Ids are unique case-insensitively. Empty ids, empty work folders, and duplicate ids are dropped on save.
+
+### New session
+
+In **Workbench**, click **New session**:
+
+- If the **current project is already the pack’s work folder**, Desktop injects the reference paths automatically. You do not pick the pack again.
+- Otherwise the picker lists **Workspace**: **Current project** (default) or each pack id. Choosing `anfeng` opens the session in **C** and sends this block as the first prompt:
+
+```text
+[Workspace anfeng]
+Work cwd (write here only): /Users/you/work/C
+Reference (read only):
+- /Users/you/work/A
+- /Users/you/work/B
+```
+
+If Settings already has a default agent, picking a workspace launches immediately. If default agent is **Ask every time**, pick the workspace first, then the CLI / ACP target.
+
+The sidebar project follows the work folder so Explorer / Git match the session cwd.
+
+### `arpm` CLI
+
+Same packs, from any terminal (iTerm, Ghostty, Workbench shell). Command name is **`arpm`** (not `arp`, which is the system ARP table tool).
+
+| Command | Effect |
+|---------|--------|
+| `arpm list` | Print configured packs |
+| `arpm prompt <id>` | Print the prompt block only |
+| `arpm go <id>` | Print the prompt block and a `cd '…'` line |
+| `arpm go <id> --print-cwd` | Print only the work folder |
+| `arpm go <id> --launch` | Start the CLI agent in the work folder (default provider `codex`) |
+| `arpm go <id> --launch --provider claude` | Launch that CLI agent |
+| `arpm go <id> --launch --yolo` | Launch with the provider’s YOLO flags when supported |
+
+Jump and stay in the work folder:
+
+```bash
+cd "$(arpm go anfeng --print-cwd)"
+```
+
+Panel home override (same as other Agent Resume CLIs):
+
+```bash
+AGENT_RESUME_PANEL_HOME=/path/to/home arpm list
+```
+
+Install the binary from the workspace package (development):
+
+```bash
+pnpm --filter @agent-resume/core exec arpm list
+```
+
+Or link `@agent-resume/core` so `arpm` is on `PATH`.
+
+### Limits (v1)
+
+- **Prompt only.** Reference folders are listed for the model. Desktop does not pass `--add-dir` / extra sandbox roots, so some CLIs still cannot read A/B until you allow those paths in the agent.
+- **No composer `@anfeng`.** Type the pack in **New session** or `arpm`, not in the Workbench composer. IM `@` remains role mentions.
+- **One agent.** There is no explore-then-implement router.
+- **Desktop + `arpm` only.** The VS Code extension does not read these packs.
+
+### Related
+
+- [Workbench](workbench.md) · [Settings & data](settings-and-data.md)
+
+---
+
+## 简体中文
+
+### 是什么
+
+**工作区 Mention** 是一份全局包：一个 **工作目录**（agent 在这里写代码）加上可选的 **参考目录**（只读路径，写入首条 prompt）。
+
+它 **不是** 某个仓库的 `.arp`。配置在 Desktop 设置里：
+
+```text
+~/.agent-resume-panel/settings.desktop.json
+→ workbench.composerMentions
+```
+
+适合：人经常待在无关目录，真正干活在另一个仓库，同时还希望 prompt 里写清兄弟仓库的绝对路径。
+
+例如包 `anfeng`：
+
+| 角色 | 路径 |
+|------|------|
+| 工作（cwd，只在这里写） | `/Users/you/work/C` |
+| 参考（只读） | `/Users/you/work/A` |
+| 参考（只读） | `/Users/you/work/B` |
+
+### 配置
+
+1. 打开 **⚙ 设置 → Workbench**。
+2. 在 **工作区 Mention** 点 **添加 Mention**。
+3. 填 **Id**（`anfeng`，字母数字 `_` `-`；存盘时不要带 `@`）。
+4. 填 **工作目录**（浏览或粘贴绝对路径 / `~/…`）。
+5. 需要时 **添加参考目录**。
+6. 保存设置。
+
+Id 大小写不敏感、不可重复。空 Id、空工作目录、重复 Id 会在保存时丢掉。
+
+### 新建会话
+
+在 **Workbench** 点 **新建 Session**：
+
+- **当前项目已经是该包的工作目录** 时，自动注入参考路径，不必再选包。
+- 否则选择器会列出 **工作区**：**当前项目**（默认）或各个 pack id。选 `anfeng` 会在 **C** 开会话，并把下面这块作为首条 prompt：
+
+```text
+[Workspace anfeng]
+Work cwd (write here only): /Users/you/work/C
+Reference (read only):
+- /Users/you/work/A
+- /Users/you/work/B
+```
+
+若设置里已有默认 Agent，选完工作区会立刻启动。若默认 Agent 是 **每次询问**，先选工作区，再选 CLI / ACP。
+
+侧边栏项目会切到工作目录，Explorer / Git 与会话 cwd 一致。
+
+### `arpm` 命令行
+
+同一份配置，任意终端都能用（iTerm、Ghostty、Workbench shell）。命令名是 **`arpm`**（不要用 `arp`，那是系统 ARP 表工具）。
+
+| 命令 | 作用 |
+|------|------|
+| `arpm list` | 列出已配置的包 |
+| `arpm prompt <id>` | 只打印 prompt 块 |
+| `arpm go <id>` | 打印 prompt 块和一条 `cd '…'` |
+| `arpm go <id> --print-cwd` | 只打印工作目录 |
+| `arpm go <id> --launch` | 在工作目录启动 CLI agent（默认 `codex`） |
+| `arpm go <id> --launch --provider claude` | 启动指定 CLI agent |
+| `arpm go <id> --launch --yolo` | 在支持的情况下带上 YOLO 参数 |
+
+跳进工作目录：
+
+```bash
+cd "$(arpm go anfeng --print-cwd)"
+```
+
+覆盖 panel home（与其它 Agent Resume CLI 相同）：
+
+```bash
+AGENT_RESUME_PANEL_HOME=/path/to/home arpm list
+```
+
+开发环境：
+
+```bash
+pnpm --filter @agent-resume/core exec arpm list
+```
+
+也可把 `@agent-resume/core` 链到 `PATH`，直接用 `arpm`。
+
+### 限制（v1）
+
+- **只注入 prompt。** 参考目录只写给模型。Desktop 不会给 CLI 加 `--add-dir` 等额外沙箱根，部分 agent 仍可能读不到 A/B，需要你在 agent 里放行这些路径。
+- **没有 composer `@anfeng`。** 在 **新建会话** 或 `arpm` 里选包，不要在 Workbench 输入框打 `@`。IM 的 `@` 仍是角色。
+- **单 agent。** 没有「先探索再实现」的路由。
+- **仅 Desktop + `arpm`。** VS Code 扩展不读这些包。
+
+### 相关文档
+
+- [Workbench](workbench.md) · [设置与数据](settings-and-data.md)

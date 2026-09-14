@@ -181,6 +181,25 @@ export interface WorkbenchComposerSlashPhrase {
   description?: string;
 }
 
+export type WorkbenchComposerMentionRole = "work" | "reference";
+
+export interface WorkbenchComposerMentionRoot {
+  /** Absolute or `~/…` path. Normalized to an absolute path on save. */
+  path: string;
+  role: WorkbenchComposerMentionRole;
+}
+
+/**
+ * Global workspace pack (Settings → Workbench).
+ * `id` is the CLI / New session trigger (`anfeng` → `arpm go anfeng`).
+ * `cwd` is the work root; extra `roots` are injected into the agent prompt.
+ */
+export interface WorkbenchComposerMention {
+  id: string;
+  cwd: string;
+  roots: WorkbenchComposerMentionRoot[];
+}
+
 /** Project row context-menu actions (Workbench). */
 export type WorkbenchProjectContextMenuAction =
   | "pin"
@@ -320,6 +339,8 @@ export interface WorkbenchSettings {
   projectContextMenu?: WorkbenchProjectContextMenuAction[];
   /** User-defined `/trigger` expansions for the terminal composer. Default empty. */
   composerSlashPhrases?: WorkbenchComposerSlashPhrase[];
+  /** Global workspace packs for New session / `arpm`. Default empty. */
+  composerMentions?: WorkbenchComposerMention[];
 }
 
 export type GhosttyLaunchMode = "pasteCommand" | "copyCommand" | "executeCommand";
@@ -551,6 +572,7 @@ export const DEFAULT_SETTINGS: PanelSettings = {
     gitCommitCustomInstructions: DEFAULT_CONVENTIONAL_COMMIT_INSTRUCTIONS,
     projectContextMenu: [...DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU],
     composerSlashPhrases: [],
+    composerMentions: [],
     transcriptFontSize: 14,
     editor: {
       editable: true,

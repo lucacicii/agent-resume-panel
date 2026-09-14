@@ -1,6 +1,6 @@
 import { ThemeIcon } from "../../components/ThemeIcon";
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
-import type { PanelSettings } from "@agent-resume/core";
+import type { PanelSettings, WorkbenchComposerMention } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { Status, type StatusKind } from "../../components/Status";
@@ -40,6 +40,14 @@ export function WorkbenchPane({ draft, setDraft, t }: { draft: WorkbenchDraft; s
     setDraft(next);
   };
   const slashPhrases = draft.composerSlashPhrases ?? [];
+  const mentions = draft.composerMentions ?? [];
+  const mentionAt = (index: number, patch: Partial<WorkbenchComposerMention>): WorkbenchComposerMention[] =>
+    mentions.map((item, mentionIndex) => mentionIndex === index ? { ...item, ...patch } : item);
+  const pickMentionPath = async (title: string): Promise<string | null> => {
+    if (typeof desktopApi().pickDirectory !== "function") return null;
+    const result = await desktopApi().pickDirectory({ title });
+    return result.ok ? result.path : null;
+  };
   return <>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.newSessionGroup")}</h3><div className="settings-group-body">
       <SelectRow
@@ -149,6 +157,108 @@ export function WorkbenchPane({ draft, setDraft, t }: { draft: WorkbenchDraft; s
           className="tool-btn"
           onClick={() => update("composerSlashPhrases", [...slashPhrases, { trigger: "", phrase: "" }])}
         >{t("desktop.settings.composerSlashAdd")}</button>
+      </div>
+    </div></section>
+    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.composerMentionsGroup")}</h3><div className="settings-group-body">
+      <p className="settings-footnote">{t("desktop.settings.composerMentionsDesc")}</p>
+      {mentions.length === 0 ? <p className="settings-footnote">{t("desktop.settings.composerMentionsEmpty")}</p> : null}
+      {mentions.map((item, index) => {
+        const references = item.roots.filter((root) => root.role === "reference");
+        return (
+          <div className="settings-slash-phrase" key={`mention-${index}`}>
+            <label className="settings-field">
+              <span className="settings-field-label">{t("desktop.settings.composerMentionsId")}</span>
+              <input
+                value={item.id}
+                spellCheck={false}
+                autoCapitalize="off"
+                autoCorrect="off"
+                placeholder={t("desktop.settings.composerMentionsIdPlaceholder")}
+                onChange={(event) => update("composerMentions", mentionAt(index, { id: event.target.value }))}
+              />
+            </label>
+            <label className="settings-field">
+              <span className="settings-field-label">{t("desktop.settings.composerMentionsCwd")}</span>
+              <span className="settings-action-row">
+                <input
+                  value={item.cwd}
+                  spellCheck={false}
+                  placeholder={t("desktop.settings.composerMentionsCwdPlaceholder")}
+                  onChange={(event) => {
+                    const cwd = event.target.value;
+                    const nextRoots = [{ path: cwd, role: "work" as const }, ...item.roots.filter((root) => root.role === "reference")];
+                    update("composerMentions", mentionAt(index, { cwd, roots: nextRoots }));
+                  }}
+                />
+                <button
+                  type="button"
+                  className="tool-btn"
+                  onClick={() => {
+                    void pickMentionPath(t("desktop.settings.composerMentionsCwd")).then((picked) => {
+                      if (!picked) return;
+                      const nextRoots = [{ path: picked, role: "work" as const }, ...item.roots.filter((root) => root.role === "reference")];
+                      update("composerMentions", mentionAt(index, { cwd: picked, roots: nextRoots }));
+                    });
+                  }}
+                >{t("desktop.settings.composerMentionsBrowse")}</button>
+              </span>
+            </label>
+            <span className="settings-field-label">{t("desktop.settings.composerMentionsReferences")}</span>
+            {references.map((root, rootIndex) => (
+              <span className="settings-action-row" key={`mention-${index}-ref-${rootIndex}`}>
+                <input
+                  value={root.path}
+                  spellCheck={false}
+                  placeholder={t("desktop.settings.composerMentionsReferencePlaceholder")}
+                  onChange={(event) => {
+                    const nextRefs = references.map((entry, entryIndex) => entryIndex === rootIndex ? { ...entry, path: event.target.value } : entry);
+                    update("composerMentions", mentionAt(index, { roots: [{ path: item.cwd, role: "work" }, ...nextRefs] }));
+                  }}
+                />
+                <button
+                  type="button"
+                  className="tool-btn"
+                  onClick={() => {
+                    void pickMentionPath(t("desktop.settings.composerMentionsReferences")).then((picked) => {
+                      if (!picked) return;
+                      const nextRefs = references.map((entry, entryIndex) => entryIndex === rootIndex ? { ...entry, path: picked } : entry);
+                      update("composerMentions", mentionAt(index, { roots: [{ path: item.cwd, role: "work" }, ...nextRefs] }));
+                    });
+                  }}
+                >{t("desktop.settings.composerMentionsBrowse")}</button>
+                <button
+                  type="button"
+                  className="tool-btn"
+                  onClick={() => {
+                    const nextRefs = references.filter((_, entryIndex) => entryIndex !== rootIndex);
+                    update("composerMentions", mentionAt(index, { roots: [{ path: item.cwd, role: "work" }, ...nextRefs] }));
+                  }}
+                >{t("desktop.settings.composerMentionsRemoveReference")}</button>
+              </span>
+            ))}
+            <div className="settings-action-row">
+              <button
+                type="button"
+                className="tool-btn"
+                onClick={() => update("composerMentions", mentionAt(index, {
+                  roots: [...item.roots, { path: "", role: "reference" }]
+                }))}
+              >{t("desktop.settings.composerMentionsAddReference")}</button>
+              <button
+                type="button"
+                className="tool-btn"
+                onClick={() => update("composerMentions", mentions.filter((_, mentionIndex) => mentionIndex !== index))}
+              >{t("desktop.settings.composerMentionsRemove")}</button>
+            </div>
+          </div>
+        );
+      })}
+      <div className="settings-action-row">
+        <button
+          type="button"
+          className="tool-btn"
+          onClick={() => update("composerMentions", [...mentions, { id: "", cwd: "", roots: [{ path: "", role: "work" }] }])}
+        >{t("desktop.settings.composerMentionsAdd")}</button>
       </div>
     </div></section>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.embeddedEditorGroup")}</h3><div className="settings-group-body">

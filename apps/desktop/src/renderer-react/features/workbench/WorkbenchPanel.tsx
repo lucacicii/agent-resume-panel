@@ -24,7 +24,10 @@ import {
 } from "@agent-resume/core";
 import {
   DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU,
-  WORKBENCH_NEW_SESSION_TARGET_OPTIONS
+  WORKBENCH_NEW_SESSION_TARGET_OPTIONS,
+  buildComposerMentionPrompt,
+  matchComposerMentionForCwd,
+  resolveComposerMention
 } from "../settings/model";
 import { desktopApi } from "../../bridge";
 import { CodeEditor, type CodeEditorHandle, type CodeEditorSearchResult } from "../../components/CodeEditor";
@@ -264,6 +267,8 @@ type WorkbenchNewSessionTarget =
 type WorkbenchNewSessionPicker = {
   projectPath?: string;
   projectId?: string;
+  mentionId?: string;
+  agentTarget?: WorkbenchNewSessionTarget;
 };
 type WorkbenchRenameDialog = {
   projectPath: string;
@@ -2784,14 +2789,19 @@ export function WorkbenchPanel(): ReactPortal | null {
     target: WorkbenchNewSessionTarget,
     targetProject?: string,
     projectId?: string,
-    initialPrompt?: string
+    initialPrompt?: string,
+    mentionId?: string
   ) => {
     if (terminalCreating) return;
     setTerminalCreating(true);
     try {
-      const resolvedCwd = await resolveNewSessionCwd(targetProject);
+      const mentions = settings?.workbench?.composerMentions ?? [];
+      const explicitMention = resolveComposerMention(mentions, mentionId || "");
+      const resolvedCwd = explicitMention
+        ? { cwd: explicitMention.cwd, isWorkspace: false }
+        : await resolveNewSessionCwd(targetProject);
       let cwd = resolvedCwd.cwd;
-      if (projectId && typeof desktopApi().resolveProjectCwd === "function") {
+      if (!explicitMention && projectId && typeof desktopApi().resolveProjectCwd === "function") {
         const resolved = await desktopApi().resolveProjectCwd({ projectId });
         if (resolved.source === "missing" || !resolved.cwd) {
           setStatus({ text: t("desktop.workbench.pathMissingHint"), kind: "error" });
@@ -2799,15 +2809,19 @@ export function WorkbenchPanel(): ReactPortal | null {
         }
         cwd = resolved.cwd;
       }
+      const mention = explicitMention || matchComposerMentionForCwd(mentions, cwd);
+      if (mention) cwd = mention.cwd;
       if (!selectedProject && !resolvedCwd.isWorkspace) selectProject(cwd);
-      else if (targetProject && selectedProject && projectPathKey(selectedProject) !== projectPathKey(cwd)) selectProject(cwd);
+      else if ((targetProject || mention) && selectedProject && projectPathKey(selectedProject) !== projectPathKey(cwd)) selectProject(cwd);
       // When the projects sidebar focuses a subfolder of the launch project,
       // associate the new session with that folder automatically.
       const focusedFolder = selectedProject && selectedFolderId && selectedFolderId !== UNCLASSIFIED_FOLDER_ID && selectedProjectMeta
         && projectPathKey(cwd) === projectPathKey(selectedProject)
         ? { projectId: selectedProjectMeta.id, folderId: selectedFolderId }
         : null;
-      const prompt = initialPrompt?.trim() || "";
+      const prompt = [mention ? buildComposerMentionPrompt(mention) : "", initialPrompt?.trim() || ""]
+        .filter(Boolean)
+        .join("\n\n");
       if (target.channel === "acp") {
         const record = await desktopApi().acpCreateSession({ projectPath: cwd, provider: target.provider });
         addAcpChat(record, prompt ? { initialPrompt: prompt } : undefined);
@@ -2858,17 +2872,22 @@ export function WorkbenchPanel(): ReactPortal | null {
       }
     } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
     finally { setTerminalCreating(false); }
-  }, [addAcpChat, addPendingSession, addTerminal, loadSessions, reloadWorkbench, selectedFolderId, selectedProject, selectedProjectMeta, t, terminalCreating]);
+  }, [addAcpChat, addPendingSession, addTerminal, loadSessions, reloadWorkbench, selectedFolderId, selectedProject, selectedProjectMeta, settings?.workbench?.composerMentions, t, terminalCreating]);
 
   const requestNewSession = useCallback(async (targetProject?: string, projectId?: string) => {
     if (terminalCreating) return;
     const target = resolveNewSessionTarget();
+    const mentions = settings?.workbench?.composerMentions ?? [];
     if (!target) {
       setNewSessionPicker({ projectPath: targetProject, projectId });
       return;
     }
+    if (mentions.length) {
+      setNewSessionPicker({ projectPath: targetProject, projectId, agentTarget: target });
+      return;
+    }
     await launchNewSession(target, targetProject, projectId);
-  }, [launchNewSession, resolveNewSessionTarget, terminalCreating]);
+  }, [launchNewSession, resolveNewSessionTarget, settings?.workbench?.composerMentions, terminalCreating]);
 
   const newSession = useCallback(() => requestNewSession(), [requestNewSession]);
   const newSessionForProject = useCallback(
@@ -2881,8 +2900,19 @@ export function WorkbenchPanel(): ReactPortal | null {
     const picker = newSessionPicker;
     if (!target || !picker) return;
     setNewSessionPicker(null);
-    await launchNewSession(target, picker.projectPath, picker.projectId);
+    await launchNewSession(target, picker.projectPath, picker.projectId, undefined, picker.mentionId);
   }, [launchNewSession, newSessionPicker, parseNewSessionTarget]);
+
+  const chooseNewSessionMention = useCallback(async (mentionId?: string) => {
+    const picker = newSessionPicker;
+    if (!picker) return;
+    if (picker.agentTarget) {
+      setNewSessionPicker(null);
+      await launchNewSession(picker.agentTarget, picker.projectPath, picker.projectId, undefined, mentionId);
+      return;
+    }
+    setNewSessionPicker({ ...picker, mentionId });
+  }, [launchNewSession, newSessionPicker]);
 
   const queueTerminalPrompt = useCallback((paneKey: string, text: string) => {
     const prompt = text.trim();
@@ -6184,11 +6214,21 @@ export function WorkbenchPanel(): ReactPortal | null {
       </>}
     </div> : null}
     {newSessionPicker ? <div ref={newSessionPickerRef} className="wb-context-menu wb-new-session-picker" role="menu" aria-label={t("desktop.settings.defaultAgent")} style={newSessionPickerStyle} onKeyDown={handleNewSessionPickerKeyDown}>
-      <span className="wb-context-menu-label">{t("desktop.settings.newSessionGroupCli")}</span>
-      {WORKBENCH_NEW_SESSION_TARGET_OPTIONS.filter((option) => option.group === "cli").map((option) => <button type="button" role="menuitem" key={option.value} onClick={() => void chooseNewSessionTarget(option.value)}>{t(`desktop.settings.newSessionTarget.${option.value.replace(":", "_")}`)}</button>)}
-      <div className="context-menu-separator" role="separator" />
-      <span className="wb-context-menu-label">{t("desktop.settings.newSessionGroupAcp")}</span>
-      {WORKBENCH_NEW_SESSION_TARGET_OPTIONS.filter((option) => option.group === "acp").map((option) => <button type="button" role="menuitem" key={option.value} onClick={() => void chooseNewSessionTarget(option.value)}>{t(`desktop.settings.newSessionTarget.${option.value.replace(":", "_")}`)}</button>)}
+      {(settings?.workbench?.composerMentions?.length ?? 0) > 0 ? <>
+        <span className="wb-context-menu-label">{t("desktop.settings.composerMentionsWorkspace")}</span>
+        <button type="button" role="menuitem" aria-pressed={!newSessionPicker.mentionId} onClick={() => void chooseNewSessionMention(undefined)}>{t("desktop.settings.composerMentionsCurrentProject")}</button>
+        {(settings?.workbench?.composerMentions ?? []).map((mention) => (
+          <button type="button" role="menuitem" key={mention.id} aria-pressed={newSessionPicker.mentionId === mention.id} onClick={() => void chooseNewSessionMention(mention.id)}>{mention.id}</button>
+        ))}
+        {newSessionPicker.agentTarget ? null : <div className="context-menu-separator" role="separator" />}
+      </> : null}
+      {newSessionPicker.agentTarget ? null : <>
+        <span className="wb-context-menu-label">{t("desktop.settings.newSessionGroupCli")}</span>
+        {WORKBENCH_NEW_SESSION_TARGET_OPTIONS.filter((option) => option.group === "cli").map((option) => <button type="button" role="menuitem" key={option.value} onClick={() => void chooseNewSessionTarget(option.value)}>{t(`desktop.settings.newSessionTarget.${option.value.replace(":", "_")}`)}</button>)}
+        <div className="context-menu-separator" role="separator" />
+        <span className="wb-context-menu-label">{t("desktop.settings.newSessionGroupAcp")}</span>
+        {WORKBENCH_NEW_SESSION_TARGET_OPTIONS.filter((option) => option.group === "acp").map((option) => <button type="button" role="menuitem" key={option.value} onClick={() => void chooseNewSessionTarget(option.value)}>{t(`desktop.settings.newSessionTarget.${option.value.replace(":", "_")}`)}</button>)}
+      </>}
     </div> : null}
     {contextMenu ? <div className={`wb-context-menu${contextMenu.kind === "session" || contextMenu.kind === "session-tab" ? " wb-session-context-menu" : ""}`} role="menu" style={{ left: contextMenuLeft, top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - contextMenuHeight)) }} onContextMenu={(event) => event.preventDefault()}>
       {contextMenu.kind === "project" ? (() => {

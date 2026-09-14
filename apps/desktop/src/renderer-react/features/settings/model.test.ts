@@ -274,6 +274,47 @@ describe("settings model", () => {
     expect(emptied.workbench?.composerSlashPhrases).toEqual([]);
   });
 
+  it("round-trips composer mentions and drops invalid ids", () => {
+    const draft = workbenchDraftFromSettings(settings);
+    expect(draft.composerMentions).toEqual([]);
+
+    const patched = workbenchPatch(settings, {
+      ...draft,
+      composerMentions: [
+        {
+          id: "@Anfeng",
+          cwd: "/work/c",
+          roots: [
+            { path: "/work/a", role: "reference" },
+            { path: "/work/c", role: "work" }
+          ]
+        },
+        { id: "anfeng", cwd: "/other", roots: [] },
+        { id: "bad id", cwd: "/tmp", roots: [] },
+        { id: "empty", cwd: "", roots: [] }
+      ]
+    });
+    expect(patched.workbench?.composerMentions).toEqual([
+      {
+        id: "Anfeng",
+        cwd: "/work/c",
+        roots: [
+          { path: "/work/c", role: "work" },
+          { path: "/work/a", role: "reference" }
+        ]
+      }
+    ]);
+
+    const loaded = workbenchDraftFromSettings({
+      ...settings,
+      workbench: patched.workbench
+    });
+    expect(loaded.composerMentions).toEqual(patched.workbench?.composerMentions);
+
+    const emptied = workbenchPatch(settings, { ...draft, composerMentions: [] });
+    expect(emptied.workbench?.composerMentions).toEqual([]);
+  });
+
   it("defaults and clamps workbench transcript markdown font size", () => {
     expect(workbenchDraftFromSettings(settings).transcriptFontSize).toBe(14);
 

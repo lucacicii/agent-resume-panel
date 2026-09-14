@@ -15,7 +15,7 @@ Languages: [English](#english) | [简体中文](#简体中文)
 ### Core flows
 
 1. Open the **Workbench** tab.  
-2. Use **Quick Access** to choose a project when you need to switch context; browse the complete session list and create a new session if needed (default agent: **Settings → Workbench → New Session**).  
+2. Use **Quick Access** to choose a project when you need to switch context; browse the complete session list and create a new session if needed (default agent: **Settings → Workbench → New Session**). If [workspace mentions](workspace-mentions.md) are configured, the picker can open a pack’s work folder and inject reference paths into the first prompt. `arpm go <id>` does the same from any terminal.  
 3. Resume CLI sessions in the **embedded terminal** (multi-tab) or **external** terminal.  
 4. If the default target is an **ACP · …** agent, **New session** opens a **visual chat pane** in the same tab strip (Agent Client Protocol; Claude Code, Codex, Grok Build, OpenCode, Pi).  
 5. Use the detail header for project path and **branch** controls; watch the **status bar** for live **cwd** and **git branch** (including nested repos when detected).  
@@ -69,7 +69,7 @@ Choose an **ACP · …** default agent in **Settings → Workbench → New Sessi
 
 ### Related
 
-- [Sessions](sessions.md) · [Report](report.md) · [Settings & data](settings-and-data.md)  
+- [Sessions](sessions.md) · [Report](report.md) · [Settings & data](settings-and-data.md) · [Workspace mentions](workspace-mentions.md)  
 - Extension resume targets (Ghostty, IDE panels): [Extension Resume](../panel/resume-and-targets.md)
 
 ---
@@ -83,7 +83,7 @@ Choose an **ACP · …** default agent in **Settings → Workbench → New Sessi
 ### 核心流程
 
 1. 打开 **Workbench** 页签。  
-2. 使用 **Quick Access** 快速切换项目；浏览完整会话列表，需要时新建会话（默认 Agent：**Settings → Workbench → New Session**）。  
+2. 使用 **Quick Access** 快速切换项目；浏览完整会话列表，需要时新建会话（默认 Agent：**Settings → Workbench → New Session**）。若配置了 [工作区 Mention](workspace-mentions.md)，选择器可打开该包的工作目录并把参考路径写入首条 prompt。任意终端也可用 `arpm go <id>`。  
 3. CLI 会话用 **内嵌终端**（多标签）或 **外部终端** 恢复。  
 4. 若默认目标为 **ACP · …** Agent，**新建会话**会在同一标签栏打开 **可视化聊天**（Agent Client Protocol；支持 Claude Code、Codex、Grok Build、OpenCode、Pi）。  
 5. 在详情头查看项目路径与 **分支** 控件；在 **状态栏** 查看实时 **cwd** 与 **git 分支**（可识别嵌套仓库）。  
@@ -137,5 +137,5 @@ Choose an **ACP · …** default agent in **Settings → Workbench → New Sessi
 
 ### 相关文档
 
-- [Sessions](sessions.md) · [Report](report.md) · [设置与数据](settings-and-data.md)  
+- [Sessions](sessions.md) · [Report](report.md) · [设置与数据](settings-and-data.md) · [工作区 Mention](workspace-mentions.md)  
 - 扩展恢复目标（Ghostty、IDE 面板）：[扩展恢复](../panel/resume-and-targets.md)

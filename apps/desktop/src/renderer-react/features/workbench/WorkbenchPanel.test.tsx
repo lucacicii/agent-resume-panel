@@ -4090,6 +4090,55 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(acpCreateSession).toHaveBeenCalledWith({ projectPath: "/work/app", provider: "prime" }));
   });
 
+  it("launches a new session in a workspace mention cwd", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const workbenchNewSession = vi.fn(async () => ({ mode: "external-system", cwd: "/work/c" }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.newSessionTitle": "New session {0}", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.terminalTabs": "Terminal tabs",
+        "desktop.settings.defaultAgent": "Default agent", "desktop.settings.newSessionGroupCli": "CLI (terminal)", "desktop.settings.newSessionGroupAcp": "ACP (visual chat)", "desktop.settings.newSessionTarget.cli_codex": "Codex", "desktop.settings.newSessionTarget.cli_claude": "Claude", "desktop.settings.newSessionTarget.cli_grok": "Grok", "desktop.settings.newSessionTarget.cli_agy": "Antigravity", "desktop.settings.newSessionTarget.cli_opencode": "OpenCode", "desktop.settings.newSessionTarget.cli_pi": "Pi", "desktop.settings.newSessionTarget.cli_cursor": "Cursor CLI", "desktop.settings.newSessionTarget.cli_prime": "Prime Agent", "desktop.settings.newSessionTarget.acp_claude": "ACP · Claude Code", "desktop.settings.newSessionTarget.acp_codex": "ACP · Codex", "desktop.settings.newSessionTarget.acp_grok": "ACP · Grok Build", "desktop.settings.newSessionTarget.acp_opencode": "ACP · OpenCode", "desktop.settings.newSessionTarget.acp_pi": "ACP · Pi", "desktop.settings.newSessionTarget.acp_prime": "ACP · Prime Agent",
+        "desktop.settings.composerMentionsWorkspace": "Workspace", "desktop.settings.composerMentionsCurrentProject": "Current project"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: {
+        defaultNewSessionProvider: "codex",
+        defaultNewSessionTarget: "",
+        composerMentions: [{
+          id: "anfeng",
+          cwd: "/work/c",
+          roots: [
+            { path: "/work/c", role: "work" },
+            { path: "/work/a", role: "reference" }
+          ]
+        }]
+      } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      workbenchNewSession,
+      onAcpStream: () => () => undefined,
+      terminalSpawn: async () => ({ id: 1 }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByTitle("/work/app"));
+    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    const menu = await screen.findByRole("menu", { name: "Default agent" });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "anfeng" }));
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Claude" }));
+    await waitFor(() => expect(workbenchNewSession).toHaveBeenCalledWith({ cwd: "/work/c", provider: "claude", executionMode: "standard" }));
+  });
+
   it("does not leave loading visible for external-system new sessions", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";

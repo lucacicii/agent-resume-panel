@@ -40,6 +40,7 @@ Requirements: macOS 12+, Apple Silicon or Intel. Version history: [Changelog](..
 | [Report](report.md) | Calendar, daily/weekly/monthly digests, GTD bar, analyze → apply |
 | [Agent](agent.md) | Natural-language Q&A over local work history, citations, tools, and threads |
 | [Workbench](workbench.md) | Embedded terminal (themes), ACP visual chat, multi-tab resume, project search, scripts, Git select-commit, explorer |
+| [Workspace mentions](workspace-mentions.md) | Global work/reference packs for New session and the `arpm` CLI |
 | [Sessions](sessions.md) | Reference list and read-only preview |
 | [Notes](notes.md) | Markdown editor shared with the extension |
 | [IM](im.md) | User-created project rooms; quote messages and @ Pi / Claude / Codex roles |
@@ -120,6 +121,7 @@ macOS 导向的 **Session OS + Memory** 桌面应用：日历回顾 AI 工作记
 | [Report](report.md) | 日历、日/周/月报、GTD 条、分析并应用 |
 | [Agent](agent.md) | 基于本机工作历史的自然语言问答、引用、工具与线程 |
 | [Workbench](workbench.md) | 内嵌终端（配色）、ACP 可视化聊天、多标签恢复、项目搜索、脚本、Git 选择提交、资源管理器 |
+| [工作区 Mention](workspace-mentions.md) | 全局工作/参考目录包，供新建会话和 `arpm` 使用 |
 | [Sessions](sessions.md) | 参考列表与只读预览 |
 | [Notes](notes.md) | 与扩展共用的 Markdown 笔记 |
 | [IM](im.md) | 用户自建项目房间；引用消息并 @ Pi / Claude / Codex 角色 |
