@@ -84,11 +84,9 @@ import {
   needsDailyDigestRefresh,
   needsWeeklyDigestRefresh,
   needsMonthlyDigestRefresh,
-  applyReportGtdSync,
   clearSessionGtdStatus,
   isGtdStatus,
   loadSessionGtdMap,
-  previewReportGtdSync,
   runMonthlyDigest,
   runWeeklyDigest,
   saveSettings,
@@ -2646,46 +2644,6 @@ function registerIpc(): void {
   ipcMain.handle("skills:read", async (_event, args: { location: string }) => {
     return readSkillContent(args.location);
   });
-
-  ipcMain.handle(
-    "workflow:previewReportGtdSync",
-    async (_event, args?: { ensureDigests?: boolean; reportIds?: string[] }) => {
-      return previewReportGtdSync({
-        ensureDigests: args?.ensureDigests,
-        reportIds: args?.reportIds,
-        systemLocale: app.getLocale()
-      });
-    }
-  );
-
-  ipcMain.handle(
-    "workflow:applyReportGtdSync",
-    async (
-      _event,
-      args: {
-        items: Array<{
-          provider: string;
-          sessionId: string;
-          gtd: string;
-          reason: string;
-          tasks: string[];
-          sourceReportIds: string[];
-          title?: string;
-          projectPath?: string;
-          previousGtd?: string | null;
-          todolistMarkdown?: string;
-        }>;
-      }
-    ) => {
-      return applyReportGtdSync({
-        items: (args?.items || []).map((it) => ({
-          ...it,
-          previousGtd: (it.previousGtd as "inbox" | "next" | "waiting" | "someday" | "reference" | null) ?? null,
-          todolistMarkdown: it.todolistMarkdown
-        }))
-      });
-    }
-  );
 
   ipcMain.handle("usage:summary", async (_event, args?: { days?: number }) => {
     const paths = await loadPanelDbPaths();

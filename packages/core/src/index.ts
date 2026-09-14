@@ -544,11 +544,7 @@ export type { AgentNoteAuditEvent, AgentNoteAuditStatus } from "./agent/noteAudi
 
 export type {
   ActiveGtdStatus,
-  GtdStatus,
-  GtdEvidence,
-  GtdEvidenceQuote,
-  GtdProposal,
-  GtdApplyItem
+  GtdStatus
 } from "./gtd/types";
 export { GTD_ACTIVE_STATUSES, GTD_STATUSES, isActiveGtdStatus, isGtdStatus } from "./gtd/types";
 export {
@@ -558,7 +554,6 @@ export {
   loadSessionGtdMap,
   sessionGtdKey
 } from "./gtd/store";
-export { writeSessionTodolistMd } from "./notes/todolist";
 export {
   sessionTodolistAbsPath,
   sessionTodolistRelMdPath,
@@ -704,21 +699,6 @@ export {
   pathExists,
   fileMtimeMs
 } from "./notes/fs";
-export {
-  runReportGtdSync,
-  previewReportGtdSync,
-  applyReportGtdSync
-} from "./workflow/runReportGtdSync";
-export type {
-  RunReportGtdSyncOptions,
-  RunReportGtdSyncResult,
-  PreviewReportGtdSyncResult,
-  ApplyReportGtdSyncOptions,
-  ApplyReportGtdSyncResult,
-  GtdPreviewItem
-} from "./workflow/runReportGtdSync";
-export { analyzeReportForGtd } from "./workflow/analyzeGtd";
-export { renderSessionTodolistMarkdown } from "./notes/todolist";
 export {
   backfillReportDigests,
   previewBackfillReportDigests,

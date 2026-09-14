@@ -22,7 +22,6 @@ import type {
   AgentSessionSyncResult,
   AgentToolDescriptor,
   SkillDescriptor,
-  GtdEvidence,
   GtdStatus,
   WorkbenchSessionFolder,
   WorkbenchSessionFolderAssignment
@@ -1108,54 +1107,6 @@ export interface DesktopApi {
   /** Read full content of a SKILL.md. */
   readSkill(args: { location: string }): Promise<string>;
   onNotesIndexProgress(callback: (event: NoteIndexProgressEvent) => void): () => void;
-  previewReportGtdSync(args?: {
-    ensureDigests?: boolean;
-    reportIds?: string[];
-  }): Promise<{
-    previewId: string;
-    proposals: Array<{
-      provider: string;
-      sessionId: string;
-      title: string;
-      projectPath: string;
-      previousGtd: string | null;
-      proposedGtd: string;
-      reason: string;
-      tasks: string[];
-      sourceReportIds: string[];
-      evidence?: GtdEvidence;
-      todolistPreview: string;
-    }>;
-    skipped: string[];
-    warnings: string[];
-    ensureDigest?: { ran: boolean; jobKey?: string };
-  }>;
-  applyReportGtdSync(args: {
-    items: Array<{
-      provider: string;
-      sessionId: string;
-      gtd: string;
-      reason: string;
-      tasks: string[];
-      sourceReportIds: string[];
-      title?: string;
-      projectPath?: string;
-      previousGtd?: string | null;
-      todolistMarkdown?: string;
-    }>;
-  }): Promise<{
-    applied: Array<{
-      provider: string;
-      sessionId: string;
-      previousStatus: string | null;
-      newStatus: string;
-      reason: string;
-      todolistPath?: string;
-      title?: string;
-    }>;
-    failed: Array<{ key: string; error: string }>;
-    jobKey: string;
-  }>;
   previewBackfillDigests(args?: {
     maxDays?: number;
     skipExisting?: boolean;
@@ -1940,8 +1891,6 @@ const api: DesktopApi = {
       ipcRenderer.removeListener("notes:indexProgress", handler);
     };
   },
-  previewReportGtdSync: (args) => ipcRenderer.invoke("workflow:previewReportGtdSync", args),
-  applyReportGtdSync: (args) => ipcRenderer.invoke("workflow:applyReportGtdSync", args),
   previewBackfillDigests: (args) => ipcRenderer.invoke("workflow:previewBackfillDigests", args),
   backfillDigests: (args) => ipcRenderer.invoke("workflow:backfillDigests", args),
   usageSummary: (args) => ipcRenderer.invoke("usage:summary", args),

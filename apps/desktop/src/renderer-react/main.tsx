@@ -14,7 +14,6 @@ import { BrowserStandaloneWindow } from "./features/browser/BrowserStandaloneWin
 import { WorkbenchPanel } from "./features/workbench/WorkbenchPanel";
 import { DiffWorkerPool } from "./features/workbench/diffWorkerPool";
 import { TodayPanel } from "./features/today/TodayPanel";
-import { GtdSheet } from "./features/report/GtdSheet";
 import { settingsChangedToCustomEvents } from "./settingsBroadcast";
 import { updateConfig } from "./components/notificationStore";
 import type { PanelSettings } from "@agent-resume/core";
@@ -170,7 +169,6 @@ function MainRendererRuntime(): React.JSX.Element {
       <AppChrome />
       <TodayPanel />
       <ReportPanel />
-      <GtdSheet />
       <DiffWorkerPool>
         <WorkbenchPanel />
       </DiffWorkerPool>
