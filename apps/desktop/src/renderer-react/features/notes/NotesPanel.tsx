@@ -29,7 +29,7 @@ type NoteSubtree = {
   edges: Array<{ parentNoteId: string; childNoteId: string }>;
 };
 type Owner = { scope: "library" | "project" | "session"; projectPath?: string; provider?: string; sessionId?: string };
-type Folder = { kind: "all" } | { kind: "library" } | { kind: "project"; projectPath: string } | { kind: "session"; provider: string; sessionId: string };
+type Folder = { kind: "all" } | { kind: "library" } | { kind: "work" } | { kind: "project"; projectPath: string } | { kind: "session"; provider: string; sessionId: string };
 type ProjectFilter = "all" | "pinned" | "active";
 type ListFilter = "all" | "pinned";
 type NotesSidebarView = "notes" | "gtd";
@@ -65,6 +65,14 @@ function basename(value = ""): string {
 
 function titleFor(note: Note): string {
   return note.title || note.filename.replace(/\.md$/i, "") || note.noteId;
+}
+
+/**
+ * Notes that can hold a link tree: project notes group notes per repository,
+ * work items group notes per unit of work.
+ */
+function isLinkable(note: Note): boolean {
+  return note.scope === "project" || Boolean(note.work);
 }
 
 function sessionKey(session: Pick<AgentSession, "provider" | "id">): string {
@@ -104,6 +112,7 @@ function sameFolder(left: Folder, right: Folder): boolean {
 function folderLabel(folder: Folder, aliases: Record<string, string>, t: (key: string, ...args: Array<string | number>) => string): string {
   if (folder.kind === "all") return t("desktop.common.all");
   if (folder.kind === "library") return t("desktop.notes.librarySection");
+  if (folder.kind === "work") return t("desktop.notes.workItemsSection");
   if (folder.kind === "project") return aliases[folder.projectPath] || basename(folder.projectPath);
   return folder.sessionId;
 }
@@ -533,7 +542,7 @@ export function NotesPanel(): ReactPortal | null {
       setFindQuery("");
 
       const asTreeRoot = options?.asTreeRoot !== false && !options?.treeRootId;
-      if (result.record.scope === "project") {
+      if (isLinkable(result.record)) {
         let rootId = options?.treeRootId;
         if (!rootId && asTreeRoot) {
           if (typeof desktopApi().notesResolveLinkRoot === "function") {
@@ -868,10 +877,11 @@ export function NotesPanel(): ReactPortal | null {
   }, [notes, sessions]);
 
   const visibleNotes = useMemo(() => notes.filter((note) => {
-    // List shows only root/main notes: hide project notes that have a parent link.
-    if (note.scope === "project" && linkedChildIds.has(note.noteId)) return false;
+    // The list shows only main notes: linked children live under their parent's tree.
+    if (linkedChildIds.has(note.noteId)) return false;
     const inFolder = folder.kind === "all"
-      || (folder.kind === "library" && note.scope === "library")
+      || (folder.kind === "work" && Boolean(note.work))
+      || (folder.kind === "library" && note.scope === "library" && !note.work)
       || (folder.kind === "project" && note.scope === "project" && note.projectPath === folder.projectPath)
       || (folder.kind === "session" && note.scope === "session" && note.provider === folder.provider && note.agentSessionId === folder.sessionId);
     const matchesQuery = `${titleFor(note)} ${note.filename} ${note.contentPreview || ""}`.toLocaleLowerCase().includes(listQuery.trim().toLocaleLowerCase());
@@ -883,7 +893,7 @@ export function NotesPanel(): ReactPortal | null {
     const childId = parentPicker.child.noteId;
     const query = parentPicker.query.trim().toLocaleLowerCase();
     return notes
-      .filter((note) => note.scope === "project" && note.noteId !== childId)
+      .filter((note) => isLinkable(note) && note.noteId !== childId)
       .filter((note) => {
         if (!query) return true;
         const hay = `${titleFor(note)} ${note.filename} ${note.projectPath || ""}`.toLocaleLowerCase();
@@ -1049,7 +1059,7 @@ export function NotesPanel(): ReactPortal | null {
         await load();
         const moved = await desktopApi().notesRead({ noteId: target.note.noteId });
         setSelected(moved.record); setContent(moved.content); setTitle(titleFor(moved.record));
-        selectFolder(owner.scope === "library" ? { kind: "library" } : owner.scope === "project" && owner.projectPath
+        selectFolder(moved.record.work ? { kind: "work" } : owner.scope === "library" ? { kind: "library" } : owner.scope === "project" && owner.projectPath
           ? { kind: "project", projectPath: owner.projectPath }
           : { kind: "session", provider: owner.provider || "", sessionId: owner.sessionId || "" });
       }
@@ -1094,7 +1104,13 @@ export function NotesPanel(): ReactPortal | null {
     try {
       const filename = title.trim().endsWith(".md") ? title.trim() : `${title.trim()}.md`;
       const result = await desktopApi().notesRename({ noteId: selected.noteId, filename });
-      applyNoteRenameLocal(selected.noteId, title.trim(), result.filename);
+      // Re-read so the editor buffer matches disk: a stale save would otherwise
+      // write the pre-rename front-matter back and undo the new name.
+      const next = await desktopApi().notesRead({ noteId: selected.noteId });
+      applyNoteRenameLocal(selected.noteId, titleFor(next.record), next.record.filename || result.filename);
+      setSelected(next.record);
+      setContent(next.content);
+      setTitle(titleFor(next.record));
       setEditingTitle(false);
     } catch (error) { setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }); }
   };
@@ -1154,7 +1170,7 @@ export function NotesPanel(): ReactPortal | null {
   };
 
   const createLinkedChild = async (parent: Note) => {
-    if (parent.scope !== "project") {
+    if (!isLinkable(parent)) {
       setStatus({ text: t("desktop.notes.linkProjectOnly"), kind: "error" });
       return;
     }
@@ -1254,7 +1270,8 @@ export function NotesPanel(): ReactPortal | null {
           {sidebarView === "notes" ? <>
           <div className="notes-folders">
             <button type="button" className={`notes-folder-row${folder.kind === "all" ? " active" : ""}`} onClick={() => selectFolder({ kind: "all" })}><span className="notes-folder-row-label">{t("desktop.common.all")}</span><span className="notes-folder-row-count">{notes.length}</span></button>
-            <button type="button" className={`notes-folder-row${folder.kind === "library" ? " active" : ""}`} onClick={() => selectFolder({ kind: "library" })}><span className="notes-folder-row-label">{t("desktop.notes.librarySection")}</span><span className="notes-folder-row-count">{notes.filter((note) => note.scope === "library").length}</span></button>
+            <button type="button" className={`notes-folder-row${folder.kind === "library" ? " active" : ""}`} onClick={() => selectFolder({ kind: "library" })}><span className="notes-folder-row-label">{t("desktop.notes.librarySection")}</span><span className="notes-folder-row-count">{notes.filter((note) => note.scope === "library" && !note.work).length}</span></button>
+            <button type="button" className={`notes-folder-row${folder.kind === "work" ? " active" : ""}`} onClick={() => selectFolder({ kind: "work" })}><span className="notes-folder-row-label">{t("desktop.notes.workItemsSection")}</span><span className="notes-folder-row-count">{notes.filter((note) => note.work).length}</span></button>
             <section className="notes-folder-section"><div className="notes-folder-section-label">{t("desktop.notes.projectLabel")}</div>{projects.length ? projects.map((project) => <button type="button" key={project.id} title={project.pathMissing ? t("desktop.workbench.pathMissingHint") : project.path} className={`notes-folder-row${folder.kind === "project" && folder.projectPath === project.path ? " active" : ""}${project.pinned ? " is-pinned" : ""}${project.active ? " has-wb-activity" : ""}${project.pathMissing ? " is-path-missing" : ""}`} onClick={() => selectFolder({ kind: "project", projectPath: project.path })} onContextMenu={(event) => { event.preventDefault(); setContextMenu({ kind: "project", projectPath: project.path, projectId: project.id, x: event.clientX, y: event.clientY }); }}>
               {project.pinned ? <ThemeIcon name="pin" className="project-pin-icon" size={12} /> : null}{project.active ? <span className="wb-folder-activity-dot" /> : null}<span className="notes-folder-row-text"><span className="notes-folder-row-label">{project.label}</span><span className="notes-folder-row-desc">{project.pathMissing ? t("desktop.workbench.pathMissingLabel", project.portableKey) : project.path}</span></span><span className="notes-folder-row-count">{project.count}</span>
             </button>) : <p className="muted notes-folders-empty">{t("desktop.notes.noMatchingProjects")}</p>}</section>
@@ -1296,7 +1313,7 @@ export function NotesPanel(): ReactPortal | null {
             </div> : null}
           </div>
           <div className="notes-list-meta-row"><p className="notes-list-meta">{listQuery ? t("desktop.notes.listMetaSearch", folderLabel(folder, aliases, t), listQuery, visibleNotes.length) : listFilter === "pinned" ? t("desktop.notes.listMetaFilter", folderLabel(folder, aliases, t), t("desktop.common.pinned"), visibleNotes.length) : t("desktop.notes.listMeta", folderLabel(folder, aliases, t), visibleNotes.length)}</p><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.newNote")} title={t("desktop.common.newNote")} onClick={() => beginTarget("create")}><ThemeIcon name="file-plus" size={12} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.importMarkdown")} title={t("desktop.common.importMarkdown")} onClick={() => beginTarget("import")}><ThemeIcon name="upload" size={12} /></button><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.refresh")} title={t("desktop.common.refresh")} onClick={() => void load()}><ThemeIcon name="refresh" size={12} /></button></div>
-          <div className="notes-list">{visibleNotes.length ? visibleNotes.map((note) => <button type="button" key={note.noteId} className={`notes-list-item${treeRootId === note.noteId || (!treeRootId && selected?.noteId === note.noteId) ? " active" : ""}${pinnedNotes.has(note.noteId) ? " is-pinned" : ""}`} draggable onDragStart={(event) => onNoteListDragStart(event, note.noteId)} onDragEnd={(event) => onNoteListDragEnd(event, note.noteId)} onClick={() => void open(note, { asTreeRoot: true })} onContextMenu={(event) => { event.preventDefault(); void openNoteContextMenu(note.noteId, event.clientX, event.clientY); }} title={t("desktop.notes.dragOutToFloat")}><span className="notes-list-item-top"><span className="notes-list-item-title-wrap">{pinnedNotes.has(note.noteId) ? <ThemeIcon name="pin" className="project-pin-icon" size={12} /> : null}{note.gtdStatus ? <span className={`wb-gtd-status-dot is-${note.gtdStatus}`} title={t(`desktop.workbench.gtdStatus.${note.gtdStatus}`)} aria-label={t(`desktop.workbench.gtdStatus.${note.gtdStatus}`)} /> : null}<span className="notes-list-item-title">{titleFor(note)}</span>{childCounts[note.noteId] ? <span className="notes-list-item-child-count" title={t("desktop.notes.linkedChildrenCount", childCounts[note.noteId])}>{childCounts[note.noteId]}</span> : null}</span><span className="notes-list-item-date">{new Date(note.updatedAtMs).toLocaleDateString()}</span></span><span className="notes-list-item-preview">{note.contentPreview || note.relDir}</span></button>) : <p className="muted notes-list-empty">{listQuery ? t("desktop.notes.noMatchingNotes") : listFilter === "pinned" ? t("desktop.notes.noFilterNotes") : t("desktop.notes.noNotesInFolder")}</p>}</div>
+          <div className="notes-list">{visibleNotes.length ? visibleNotes.map((note) => <button type="button" key={note.noteId} className={`notes-list-item${treeRootId === note.noteId || (!treeRootId && selected?.noteId === note.noteId) ? " active" : ""}${pinnedNotes.has(note.noteId) ? " is-pinned" : ""}`} draggable onDragStart={(event) => onNoteListDragStart(event, note.noteId)} onDragEnd={(event) => onNoteListDragEnd(event, note.noteId)} onClick={() => void open(note, { asTreeRoot: true })} onContextMenu={(event) => { event.preventDefault(); void openNoteContextMenu(note.noteId, event.clientX, event.clientY); }} title={t("desktop.notes.dragOutToFloat")}><span className="notes-list-item-top"><span className="notes-list-item-title-wrap">{pinnedNotes.has(note.noteId) ? <ThemeIcon name="pin" className="project-pin-icon" size={12} /> : null}{note.work ? <ThemeIcon name="square-kanban" className="notes-work-item-icon" size={12} aria-label={t("desktop.notes.workItemBadge")} /> : null}{note.gtdStatus ? <span className={`wb-gtd-status-dot is-${note.gtdStatus}`} title={t(`desktop.workbench.gtdStatus.${note.gtdStatus}`)} aria-label={t(`desktop.workbench.gtdStatus.${note.gtdStatus}`)} /> : null}<span className="notes-list-item-title">{titleFor(note)}</span>{childCounts[note.noteId] ? <span className="notes-list-item-child-count" title={t("desktop.notes.linkedChildrenCount", childCounts[note.noteId])}>{childCounts[note.noteId]}</span> : null}</span><span className="notes-list-item-date">{new Date(note.updatedAtMs).toLocaleDateString()}</span></span><span className="notes-list-item-preview">{note.contentPreview || note.relDir}</span></button>) : <p className="muted notes-list-empty">{listQuery ? t("desktop.notes.noMatchingNotes") : listFilter === "pinned" ? t("desktop.notes.noFilterNotes") : t("desktop.notes.noNotesInFolder")}</p>}</div>
           </> : <>
             <div className="notes-list-toolbar-wrap notes-gtd-list-toolbar"><label className="notes-gtd-search-wrap"><ThemeIcon name="search" size={15} aria-hidden="true" /><input type="search" className="notes-search" aria-label={t("desktop.notes.searchGtdNotes")} placeholder={t("desktop.notes.searchGtdNotes")} value={gtdQuery} onChange={(event) => setGtdQuery(event.target.value)} autoComplete="off" spellCheck={false} /></label></div>
             <div className="notes-list-meta-row"><p className="notes-list-meta">{t("desktop.notes.gtdNotesListMeta", visibleGtdNotes.length)}</p><button type="button" className="notes-icon-btn" aria-label={t("desktop.common.refresh")} title={t("desktop.common.refresh")} onClick={() => void load()}><ThemeIcon name="refresh" size={12} /></button></div>
@@ -1306,7 +1323,7 @@ export function NotesPanel(): ReactPortal | null {
         <PaneResizer label={t("desktop.workbench.resizeSessions")} onDelta={(delta) => setWidth("list", delta)} />
         <main className="notes-detail">
           {selected ? <div className="notes-editor-shell">
-            {selected.scope === "project" && subtree ? (
+            {isLinkable(selected) && subtree ? (
               <>
                 <div
                   className="notes-link-tree-panel"

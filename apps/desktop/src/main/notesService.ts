@@ -39,11 +39,15 @@ export async function getDesktopNotesStore(): Promise<NotesStore> {
   const panelHome = effectivePanelHome(settings);
   const paths = await loadPanelDbPaths(settings);
   const dbPath = paths.catalogDb;
+  const suffix = desktopT(settings, "desktop.notes.workItemTitleSuffix");
   const key = `${dbPath}::${panelHome}`;
   if (!notesStore || notesStoreKey !== key) {
-    notesStore = new NotesStore(dbPath, panelHome);
+    notesStore = new NotesStore(dbPath, panelHome, undefined, suffix);
     await notesStore.initialize();
     notesStoreKey = key;
+  } else {
+    // The suffix follows the UI language; keep it current without rebuilding the store.
+    notesStore.setWorkItemTitleSuffix(suffix);
   }
   return notesStore;
 }

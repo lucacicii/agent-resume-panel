@@ -6,7 +6,8 @@ import {
   extractTitle,
   loadSettings,
   parseNoteDocument,
-  preparePanelDatabasesFromSettings
+  preparePanelDatabasesFromSettings,
+  workItemPromptBody
 } from "@agent-resume/core";
 import { notesRead } from "../notesService";
 import { renderAddressTable } from "../workItemWorkspace";
@@ -142,7 +143,7 @@ export function registerImIpc(deps: {
       "",
       "---",
       "",
-      doc.body.trim()
+      workItemPromptBody(doc.body)
     ].join("\n");
     await im.upsertWorkItemKnowledge(project.projectId, args.noteId, name, situation);
 

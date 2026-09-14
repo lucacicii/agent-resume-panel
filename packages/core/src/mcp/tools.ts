@@ -277,7 +277,7 @@ export const noteCreateSchema = {
   scope: z.enum(["library", "project", "session"]).optional().describe("Where to create the note; optional when parentNoteId is provided."),
   title: z.string().min(1).max(200).describe("Note title — used as the first heading."),
   body: z.string().max(200_000).optional().describe("Markdown body content excluding the title heading."),
-  parentNoteId: z.string().min(1).optional().describe("Create as a linked child of this Project Note; owner is inferred from the parent."),
+  parentNoteId: z.string().min(1).optional().describe("Create as a linked child of this Project Note or work item; owner is inferred from the parent."),
   projectPath: z.string().optional().describe("Required for project scope; ignored only when parentNoteId supplies the owner."),
   provider: providerSchema.optional().describe("Required for session scope."),
   sessionId: z.string().optional().describe("Required for session scope.")
@@ -308,8 +308,8 @@ export const noteTreeReadSchema = {
 };
 
 export const noteSetParentSchema = {
-  noteId: z.string().min(1).describe("Project Note whose parent should change."),
-  parentNoteId: z.string().min(1).nullable().describe("New parent Project Note ID, or null to make the note a root.")
+  noteId: z.string().min(1).describe("Note whose parent should change."),
+  parentNoteId: z.string().min(1).nullable().describe("New parent note ID (a Project Note or work item), or null to make the note a root.")
 };
 
 export const noteSetGtdSchema = {
@@ -327,7 +327,7 @@ export const noteMoveSchema = {
 
 export const noteRenameSchema = {
   noteId: z.string().min(1).describe("The noteId to rename."),
-  filename: z.string().min(1).max(200).describe("New Markdown filename. Asset directories and relative references are updated automatically.")
+  filename: z.string().min(1).max(200).describe("New name. For work items this renames the work item (its file stays as allocated); otherwise it renames the Markdown file, updating asset directories and relative references.")
 };
 
 // --- Handlers ---
@@ -415,7 +415,9 @@ export async function handleNoteCreate(
   const body = args.body ? `${heading}\n\n${args.body}` : heading;
   let record: NoteRecord;
   if (args.parentNoteId) {
-    if (args.scope && args.scope !== "project") throw new Error("parentNoteId can only be used with project scope.");
+    if (args.scope && args.scope !== "project" && args.scope !== "library") {
+      throw new Error("parentNoteId can only be used with a project or library parent note.");
+    }
     if (args.projectPath || args.provider || args.sessionId) throw new Error("Do not provide owner fields when parentNoteId is set.");
     record = await store.createLinkedChildNote(args.parentNoteId, body);
   } else {

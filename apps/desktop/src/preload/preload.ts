@@ -1260,6 +1260,14 @@ export interface DesktopApi {
       createdAtMs: number;
       updatedAtMs: number;
       fsMtimeMs?: number;
+      /** Present only on work items (`work: true`). */
+      work?: {
+        next?: string;
+        decision?: string;
+        sessions?: string[];
+        projects?: string[];
+        primaryProject?: string;
+      };
     }>
   >;
   notesListWorkItems(): Promise<
@@ -1326,6 +1334,14 @@ export interface DesktopApi {
       createdAtMs: number;
       updatedAtMs: number;
       fsMtimeMs?: number;
+      /** Present only on work items (`work: true`). */
+      work?: {
+        next?: string;
+        decision?: string;
+        sessions?: string[];
+        projects?: string[];
+        primaryProject?: string;
+      };
     }>
   >;
   notesListLinks(): Promise<Array<{ parentNoteId: string; childNoteId: string; createdAtMs: number }>>;
@@ -1385,6 +1401,14 @@ export interface DesktopApi {
       createdAtMs: number;
       updatedAtMs: number;
       fsMtimeMs?: number;
+      /** Present only on work items (`work: true`). */
+      work?: {
+        next?: string;
+        decision?: string;
+        sessions?: string[];
+        projects?: string[];
+        primaryProject?: string;
+      };
     };
     content: string;
   }>;

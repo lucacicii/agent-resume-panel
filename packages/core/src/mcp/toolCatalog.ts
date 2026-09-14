@@ -40,10 +40,10 @@ export const AGENT_TOOL_CATALOG: readonly AgentToolDescriptor[] = [
   { name: "note_write", description: "Replace a note's Markdown body", category: "notes" },
   { name: "note_append", description: "Append Markdown to a note body", category: "notes" },
   { name: "note_delete", description: "Permanently delete a note", category: "notes" },
-  { name: "note_tree_read", description: "Read the linked Project Note tree", category: "notes" },
+  { name: "note_tree_read", description: "Read the linked note tree (Project Notes and work items)", category: "notes" },
   { name: "note_set_parent", description: "Set or clear a note parent link", category: "notes" },
   { name: "note_move", description: "Move a note to a different owner scope", category: "notes" },
-  { name: "note_rename", description: "Rename a note file", category: "notes" },
+  { name: "note_rename", description: "Rename a note (or a work item)", category: "notes" },
   { name: "note_set_gtd", description: "Set or clear a note's GTD status", category: "notes" },
 
   // reports

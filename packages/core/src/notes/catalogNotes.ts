@@ -26,7 +26,7 @@ export interface NoteRecord {
   work?: NoteWorkFields;
 }
 
-/** A project note marked `work: true` — the board's unit of management. */
+/** A work item: any note whose front-matter is marked `work: true`. */
 export interface WorkItemRecord extends NoteRecord {
   work: NoteWorkFields;
 }
@@ -51,6 +51,36 @@ interface NoteRow {
   sessions_json?: string | null;
   projects_json?: string | null;
   primary_project?: string | null;
+  work_note_id?: string | null;
+}
+
+/** Work fields of a row that was joined against the `note_work` side table. */
+function workFieldsFromRow(row: NoteRow): NoteWorkFields | undefined {
+  if (!row.work_note_id) {
+    return undefined;
+  }
+  const work: NoteWorkFields = {};
+  if (row.next_action) work.next = row.next_action;
+  if (row.decision) work.decision = row.decision;
+  const sessions = parseStringListJson(row.sessions_json ?? null);
+  if (sessions) work.sessions = sessions;
+  const projects = parseStringListJson(row.projects_json ?? null);
+  if (projects) work.projects = projects;
+  if (row.primary_project) work.primaryProject = row.primary_project;
+  return work;
+}
+
+/**
+ * Every note read carries its work-item fields, so callers never have to ask
+ * again whether a note is a work item.
+ */
+const NOTE_COLUMNS = `n.*, g.status AS gtd_status,
+            w.note_id AS work_note_id, w.next_action, w.decision, w.sessions_json, w.projects_json, w.primary_project`;
+const NOTE_JOINS = `LEFT JOIN note_gtd g ON g.note_id = n.note_id
+     LEFT JOIN note_work w ON w.note_id = n.note_id`;
+
+function mapRowWithWork(row: NoteRow): NoteRecord {
+  return { ...mapRow(row), work: workFieldsFromRow(row) };
 }
 
 function mapRow(row: NoteRow): NoteRecord {
@@ -85,27 +115,28 @@ export async function listAllNotes(dbPath: string, limit?: number): Promise<Note
     : ` LIMIT ${Math.max(1, Math.min(Math.floor(Number(limit)) || 1, 50_000))}`;
   const rows = await runSqliteJson<NoteRow>(
     dbPath,
-    `SELECT n.*, g.status AS gtd_status
-     FROM notes n LEFT JOIN note_gtd g ON g.note_id = n.note_id
+    `SELECT ${NOTE_COLUMNS}
+     FROM notes n
+     ${NOTE_JOINS}
      ORDER BY n.updated_at_ms DESC${limitClause};`
   );
-  return rows.map(mapRow);
+  return rows.map(mapRowWithWork);
 }
 
 export async function getNoteById(dbPath: string, noteId: string): Promise<NoteRecord | undefined> {
   const rows = await runSqliteJson<NoteRow>(
     dbPath,
-    `SELECT n.*, g.status AS gtd_status FROM notes n LEFT JOIN note_gtd g ON g.note_id = n.note_id WHERE n.note_id = '${escapeSqlLiteral(noteId)}' LIMIT 1;`
+    `SELECT ${NOTE_COLUMNS} FROM notes n ${NOTE_JOINS} WHERE n.note_id = '${escapeSqlLiteral(noteId)}' LIMIT 1;`
   );
-  return rows[0] ? mapRow(rows[0]) : undefined;
+  return rows[0] ? mapRowWithWork(rows[0]) : undefined;
 }
 
 export async function getNoteByRelPath(dbPath: string, relMdPath: string): Promise<NoteRecord | undefined> {
   const rows = await runSqliteJson<NoteRow>(
     dbPath,
-    `SELECT n.*, g.status AS gtd_status FROM notes n LEFT JOIN note_gtd g ON g.note_id = n.note_id WHERE n.rel_md_path = '${escapeSqlLiteral(relMdPath)}' LIMIT 1;`
+    `SELECT ${NOTE_COLUMNS} FROM notes n ${NOTE_JOINS} WHERE n.rel_md_path = '${escapeSqlLiteral(relMdPath)}' LIMIT 1;`
   );
-  return rows[0] ? mapRow(rows[0]) : undefined;
+  return rows[0] ? mapRowWithWork(rows[0]) : undefined;
 }
 
 export async function listSessionNotes(
@@ -115,35 +146,35 @@ export async function listSessionNotes(
 ): Promise<NoteRecord[]> {
   const rows = await runSqliteJson<NoteRow>(
     dbPath,
-    `SELECT n.*, g.status AS gtd_status FROM notes n LEFT JOIN note_gtd g ON g.note_id = n.note_id
+    `SELECT ${NOTE_COLUMNS} FROM notes n ${NOTE_JOINS}
      WHERE n.scope = 'session'
        AND provider = '${escapeSqlLiteral(provider)}'
        AND agent_session_id = '${escapeSqlLiteral(sessionId)}'
      ORDER BY updated_at_ms DESC;`
   );
-  return rows.map(mapRow);
+  return rows.map(mapRowWithWork);
 }
 
 export async function listLibraryNotes(dbPath: string): Promise<NoteRecord[]> {
   const rows = await runSqliteJson<NoteRow>(
     dbPath,
-    `SELECT n.*, g.status AS gtd_status FROM notes n LEFT JOIN note_gtd g ON g.note_id = n.note_id
+    `SELECT ${NOTE_COLUMNS} FROM notes n ${NOTE_JOINS}
      WHERE n.scope = 'library'
      ORDER BY updated_at_ms DESC;`
   );
-  return rows.map(mapRow);
+  return rows.map(mapRowWithWork);
 }
 
 export async function listProjectNotes(dbPath: string, projectPath: string): Promise<NoteRecord[]> {
   const normalized = normalizeProjectPath(projectPath);
   const rows = await runSqliteJson<NoteRow>(
     dbPath,
-    `SELECT n.*, g.status AS gtd_status FROM notes n LEFT JOIN note_gtd g ON g.note_id = n.note_id
+    `SELECT ${NOTE_COLUMNS} FROM notes n ${NOTE_JOINS}
      WHERE n.scope = 'project'
        AND project_path = '${escapeSqlLiteral(normalized)}'
      ORDER BY updated_at_ms DESC;`
   );
-  return rows.map(mapRow);
+  return rows.map(mapRowWithWork);
 }
 
 export async function upsertNoteRecord(dbPath: string, record: NoteRecord): Promise<void> {
@@ -290,23 +321,13 @@ export async function listWorkItemSessionProjects(dbPath: string): Promise<Recor
 export async function listWorkItems(dbPath: string): Promise<WorkItemRecord[]> {
   const rows = await runSqliteJson<NoteRow>(
     dbPath,
-    `SELECT n.*, g.status AS gtd_status, w.next_action, w.decision, w.sessions_json, w.projects_json, w.primary_project
+    `SELECT ${NOTE_COLUMNS}
      FROM notes n
      JOIN note_work w ON w.note_id = n.note_id
      LEFT JOIN note_gtd g ON g.note_id = n.note_id
      ORDER BY n.updated_at_ms DESC;`
   );
-  return rows.map((row) => {
-    const work: NoteWorkFields = {};
-    if (row.next_action) work.next = row.next_action;
-    if (row.decision) work.decision = row.decision;
-    const sessions = parseStringListJson(row.sessions_json ?? null);
-    if (sessions) work.sessions = sessions;
-    const projects = parseStringListJson(row.projects_json ?? null);
-    if (projects) work.projects = projects;
-    if (row.primary_project) work.primaryProject = row.primary_project;
-    return { ...mapRow(row), work };
-  });
+  return rows.map((row) => ({ ...mapRow(row), work: workFieldsFromRow(row) ?? {} }));
 }
 
 export async function loadSessionNoteFlags(dbPath: string): Promise<Set<string>> {

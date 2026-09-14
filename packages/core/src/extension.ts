@@ -94,9 +94,19 @@ export {
   parseNoteDocument,
   buildNoteDocument,
   extractTitle,
+  noteTitle,
   contentPreview
 } from "./notes/frontmatter";
 export type { NoteFrontmatter, ParsedNoteDocument } from "./notes/frontmatter";
+export {
+  WORK_ITEM_KNOWLEDGE_BEGIN,
+  WORK_ITEM_KNOWLEDGE_END,
+  DEFAULT_WORK_ITEM_TITLE_SUFFIX,
+  UNTITLED_WORK_ITEM_NAME,
+  isWorkItemFrontmatter,
+  workItemPromptBody,
+  normalizeWorkItemDocument
+} from "./notes/workItemNote";
 export {
   localDateString,
   formatNoteFilename,

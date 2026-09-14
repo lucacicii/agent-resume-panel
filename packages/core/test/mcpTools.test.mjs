@@ -536,8 +536,8 @@ test("note_delete removes the note", async () => {
   }
 });
 
-test("note MCP creates and reads linked Project Note trees", async () => {
-  const { ctx } = await setupTestContext();
+test("note MCP creates and reads linked note trees", async () => {
+  const { ctx, store } = await setupTestContext();
   const server = createNoteMcpServer(ctx);
   const client = await connectClient(server);
 
@@ -569,17 +569,34 @@ test("note MCP creates and reads linked Project Note trees", async () => {
     assert.equal(tree.currentNoteId, child.noteId);
     assert.equal(tree.tree.children[0].noteId, child.noteId);
     assert.equal(tree.nodeCount, 2);
+
+    // Work items hold linked children too; those children land in the library bucket.
+    const item = await store.createWorkItem({ title: "Work item tree" });
+    const itemChildResult = await client.callTool({
+      name: "note_create",
+      arguments: { parentNoteId: item.noteId, title: "Background", body: "Background body" }
+    });
+    const itemChild = parseToolJson(itemChildResult).note;
+    assert.equal(itemChild.owner.scope, "library");
+    assert.equal(itemChild.link.parentNoteId, item.noteId);
+
+    const itemTree = parseToolJson(await client.callTool({
+      name: "note_tree_read",
+      arguments: { noteId: itemChild.noteId }
+    }));
+    assert.equal(itemTree.rootNoteId, item.noteId);
+    assert.equal(itemTree.nodeCount, 2);
   } finally {
     await client.close();
     await server.close();
   }
 });
 
-test("note MCP reparenting enforces Project Note tree invariants", async () => {
+test("note MCP reparenting enforces link tree invariants", async () => {
   const { ctx, store } = await setupTestContext();
   const a = await store.createProjectNote("/tmp/mcp-links", "# A");
   const b = await store.createProjectNote("/tmp/mcp-links", "# B");
-  const library = await store.createLibraryNote("# Library");
+  const session = await store.createSessionNote({ provider: "codex", id: "mcp-links" }, "# Session");
   const server = createNoteMcpServer(ctx);
   const client = await connectClient(server);
 
@@ -599,10 +616,10 @@ test("note MCP reparenting enforces Project Note tree invariants", async () => {
 
     const invalid = await client.callTool({
       name: "note_set_parent",
-      arguments: { noteId: library.noteId, parentNoteId: a.noteId }
+      arguments: { noteId: session.noteId, parentNoteId: a.noteId }
     });
     assert.equal(invalid.isError, true);
-    assert.match(invalid.content[0].text, /project note/i);
+    assert.match(invalid.content[0].text, /session note/i);
 
     const detached = await client.callTool({
       name: "note_set_parent",

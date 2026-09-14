@@ -105,7 +105,7 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
     { name: MCP_SERVER_NAME, version: MCP_SERVER_VERSION },
     {
       instructions:
-        "Use Agent Resume tools when a user asks to record, save, organize, review, plan, follow up, or update local project/session state, even if they do not name MCP. Search for the target first; never guess a session when multiple matches exist. For Notes, preserve noteId and managed frontmatter, use note_tree_read for linked Project Notes, and do not overwrite, delete, move, rename, or change a user note unless the user explicitly asks. For cross-stack field/API/call-chain discovery (前端字段到后端 Controller/VO), call link_graph_trace once with workspaceRoot + symbol (+ filePath/line); the server runs an internal LLM agent that searches and only uses tools for verification."
+        "Use Agent Resume tools when a user asks to record, save, organize, review, plan, follow up, or update local project/session state, even if they do not name MCP. Search for the target first; never guess a session when multiple matches exist. For Notes, preserve noteId and managed frontmatter, use note_tree_read for linked notes (Project Notes and work items), and do not overwrite, delete, move, rename, or change a user note unless the user explicitly asks. For cross-stack field/API/call-chain discovery (前端字段到后端 Controller/VO), call link_graph_trace once with workspaceRoot + symbol (+ filePath/line); the server runs an internal LLM agent that searches and only uses tools for verification."
     }
   );
 
@@ -137,7 +137,7 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
     "note_create",
     {
       description:
-        "Create a new note. Choose an owner scope and title, or provide parentNoteId to create a linked Project Note child with the owner inferred from its parent.",
+        "Create a new note. Choose an owner scope and title, or provide parentNoteId to create a linked child (project note or work item) with the owner inferred from its parent.",
       inputSchema: noteCreateSchema
     },
     async (args: {
@@ -204,7 +204,7 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
   server.registerTool(
     "note_tree_read",
     {
-      description: "Read the linked Project Note tree containing a note. The root is resolved automatically and output is bounded by maxNodes.",
+      description: "Read the linked note tree containing a note (Project Notes and work items). The root is resolved automatically and output is bounded by maxNodes.",
       inputSchema: noteTreeReadSchema
     },
     async (args: { noteId: string; maxNodes?: number }) => runNoteTool(() => handleNoteTreeRead(args, ctx))
@@ -213,7 +213,7 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
   server.registerTool(
     "note_set_parent",
     {
-      description: "Set or clear a Project Note parent link. Cycles and non-Project Notes are rejected.",
+      description: "Set or clear a note parent link. Cycles are rejected; only a project note or a work item can be a parent, and session notes cannot participate.",
       inputSchema: noteSetParentSchema
     },
     async (args: { noteId: string; parentNoteId: string | null }) => runNoteTool(() => handleNoteSetParent(args, ctx))
@@ -231,7 +231,7 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
   server.registerTool(
     "note_rename",
     {
-      description: "Rename a note file while preserving and rewriting its asset directory and relative asset references.",
+      description: "Rename a note. For work items this renames the work item itself; otherwise it renames the file while preserving and rewriting its asset directory and relative asset references.",
       inputSchema: noteRenameSchema
     },
     async (args: { noteId: string; filename: string }) => runNoteTool(() => handleNoteRename(args, ctx))

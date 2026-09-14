@@ -638,6 +638,7 @@ export {
   parseNoteDocument,
   buildNoteDocument,
   extractTitle,
+  noteTitle,
   contentPreview,
   workFieldsFromFrontmatter,
   type NoteFrontmatter,
@@ -645,11 +646,25 @@ export {
   type ParsedNoteDocument
 } from "./notes/frontmatter";
 export {
+  WORK_ITEM_KNOWLEDGE_BEGIN,
+  WORK_ITEM_KNOWLEDGE_END,
+  DEFAULT_WORK_ITEM_TITLE_SUFFIX,
+  UNTITLED_WORK_ITEM_NAME,
+  isWorkItemFrontmatter,
+  workItemName,
+  workItemPromptBody,
+  ensureWorkItemKnowledgeRegion,
+  newWorkItemBody,
+  normalizeWorkItemDocument,
+  type NormalizedWorkItemDocument
+} from "./notes/workItemNote";
+export {
   loadNoteWorkMap,
   setNoteWork,
   clearNoteWork,
   syncNoteWorkFromFrontmatter,
   ensureWorkItemSessionIndex,
+  isWorkNote,
   splitSessionKey
 } from "./notes/work";
 export {

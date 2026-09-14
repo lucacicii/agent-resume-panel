@@ -53,6 +53,7 @@ const messages = {
   "desktop.notes.listMetaFilter": "{0} {1} {2} notes",
   "desktop.notes.listMetaSearch": "{0} {1} {2} notes",
   "desktop.notes.librarySection": "Library",
+  "desktop.notes.workItemsSection": "Work items",
   "desktop.notes.projectLabel": "Project",
   "desktop.notes.sessionsSection": "Sessions",
   "desktop.notes.targetLibrary": "Library",
@@ -236,6 +237,69 @@ describe("NotesPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "New note" }));
     fireEvent.click(document.querySelector(".notes-target-item") as HTMLButtonElement);
     await waitFor(() => expect(notesCreate).toHaveBeenCalledWith({ scope: "library" }));
+  });
+
+  it("shows the related-notes tree for work items but not for plain library notes", async () => {
+    const host = document.createElement("div"); host.id = "react-notes"; document.body.append(host);
+    installBridge();
+    const workItemNote = {
+      ...libraryNote,
+      noteId: "note-9",
+      filename: "2026-01-01-1.md",
+      title: "Ship release",
+      work: { projects: ["/work/panel"] }
+    };
+    vi.spyOn(window.agentResume, "notesList").mockImplementation(async () => [libraryNote, workItemNote]);
+    vi.spyOn(window.agentResume, "notesRead").mockImplementation(async ({ noteId }) => ({
+      record: noteId === "note-9" ? workItemNote : libraryNote,
+      content: "# Renderer\nInitial initial"
+    }));
+
+    render(<I18nProvider><NotesPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "notes" })));
+
+    fireEvent.click(await screen.findByRole("button", { name: /Ship release/ }));
+    expect(await screen.findByLabelText("Related notes")).not.toBeNull();
+
+    // Work items have their own folder and no longer show up under Library.
+    fireEvent.click(screen.getByRole("button", { name: /^Library/ }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: /Ship release/ })).toBeNull());
+    expect(screen.getByRole("button", { name: /Renderer plan/ })).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /^Work items/ }));
+    expect(await screen.findByRole("button", { name: /Ship release/ })).not.toBeNull();
+    await waitFor(() => expect(screen.queryByRole("button", { name: /Renderer plan/ })).toBeNull());
+
+    fireEvent.click(screen.getByRole("button", { name: /^All/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Renderer plan/ }));
+    await waitFor(() => expect(screen.queryByLabelText("Related notes")).toBeNull());
+  });
+
+  it("re-reads the note after a rename so a stale buffer cannot undo the name", async () => {
+    const host = document.createElement("div"); host.id = "react-notes"; document.body.append(host);
+    installBridge();
+    let reads = 0;
+    vi.spyOn(window.agentResume, "notesRename").mockImplementation(async () => ({ noteId: "note-1", filename: "renamed.md" }));
+    vi.spyOn(window.agentResume, "notesRead").mockImplementation(async () => {
+      reads += 1;
+      return reads === 1
+        ? { record: libraryNote, content: "# Renderer\nInitial initial" }
+        : { record: { ...libraryNote, title: "Renamed note" }, content: "# Renamed note\n" };
+    });
+
+    render(<I18nProvider><NotesPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "notes" })));
+    fireEvent.click(await screen.findByRole("button", { name: /Renderer plan/ }));
+    const editor = await screen.findByPlaceholderText("Edit Markdown") as HTMLTextAreaElement;
+    await waitFor(() => expect(editor.value).toContain("# Renderer"));
+
+    await waitFor(() => expect(document.querySelector(".notes-detail-title")).not.toBeNull());
+    fireEvent.doubleClick(document.querySelector(".notes-detail-title") as HTMLElement);
+    const input = document.querySelector(".notes-detail-title-input") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "Renamed note" } });
+    fireEvent.submit(input.closest("form") as HTMLFormElement);
+
+    await waitFor(() => expect(window.agentResume.notesRename).toHaveBeenCalled());
+    await waitFor(() => expect(editor.value).toContain("# Renamed note"));
   });
 
   it("closes the target picker after creating a note even when opening it fails", async () => {

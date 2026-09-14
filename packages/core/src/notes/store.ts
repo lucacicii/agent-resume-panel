@@ -12,6 +12,7 @@ import { resolvePanelHome } from "../panelHome";
 import { normalizeProjectPath } from "../pathUtils";
 import {
   deleteNoteRecord,
+  getCatalogMeta,
   getNoteById,
   listAllNotes,
   listLibraryNotes,
@@ -23,6 +24,7 @@ import {
   listWorkItemSessionLinks,
   listWorkItemSessionProjects,
   listWorkItems,
+  setCatalogMeta,
   upsertNoteRecord,
   type NoteRecord,
   type WorkItemRecord,
@@ -32,17 +34,25 @@ import {
 import {
   buildNoteDocument,
   contentPreview,
-  extractTitle,
+  noteTitle,
   parseNoteDocument,
   type NoteFrontmatter,
   type NoteWorkFields
 } from "./frontmatter";
-import { syncNoteWorkFromFrontmatter, ensureWorkItemSessionIndex } from "./work";
+import {
+  DEFAULT_WORK_ITEM_TITLE_SUFFIX,
+  isWorkItemFrontmatter,
+  normalizeWorkItemDocument,
+  newWorkItemBody,
+  UNTITLED_WORK_ITEM_NAME
+} from "./workItemNote";
+import { syncNoteWorkFromFrontmatter, ensureWorkItemSessionIndex, isWorkNote } from "./work";
 import {
   nextNoteFilename,
   normalizeNoteFilename,
   noteAssetsDirName,
   noteStem,
+  parseNoteFilename,
   rewriteAssetReferences,
   uniqueNoteFilename
 } from "./naming";
@@ -95,13 +105,16 @@ export class NotesStore {
   private projectFlags = new Set<string>();
   private cachedNotes: NoteRecord[] = [];
   private panelHome: string;
+  private workItemTitleSuffix: string;
 
   constructor(
     private readonly dbPath: string,
     panelHome?: string,
-    private readonly ensureSchema: (dbPath: string) => Promise<void> = ensureExtensionCatalogSchema
+    private readonly ensureSchema: (dbPath: string) => Promise<void> = ensureExtensionCatalogSchema,
+    workItemTitleSuffix: string = DEFAULT_WORK_ITEM_TITLE_SUFFIX
   ) {
     this.panelHome = resolvePanelHome(panelHome);
+    this.workItemTitleSuffix = workItemTitleSuffix;
   }
 
   getPanelHome(): string {
@@ -112,12 +125,23 @@ export class NotesStore {
     this.panelHome = resolvePanelHome(panelHome);
   }
 
+  /** Localized reminder suffix written into a work item's markdown heading. */
+  setWorkItemTitleSuffix(suffix: string): void {
+    if (suffix.trim()) {
+      this.workItemTitleSuffix = suffix;
+    }
+  }
+
   async initialize(): Promise<void> {
     await this.ensureSchema(this.dbPath);
     await fs.mkdir(notesRoot(this.panelHome), { recursive: true });
     await this.reload();
     // One-time mirror of existing work-item session links into the index table.
     await ensureWorkItemSessionIndex(this.dbPath);
+    // One-time rewrite of existing work items onto the title/heading convention.
+    await this.migrateWorkItemNotes();
+    // One-time recovery of names the old file-rename flow left only in the file name.
+    await this.migrateWorkItemNames();
   }
 
   async reload(): Promise<void> {
@@ -129,6 +153,68 @@ export class NotesStore {
 
   getAllNotes(): NoteRecord[] {
     return this.cachedNotes;
+  }
+
+  /**
+   * One-time rewrite of existing work items onto the title/heading convention:
+   * the name moves into front-matter `title`, the heading gains the reminder
+   * suffix, and the knowledge region is added without dropping any content.
+   */
+  private async migrateWorkItemNotes(): Promise<void> {
+    const key = "work_item_notes_migrated_v1";
+    if ((await getCatalogMeta(this.dbPath, key)) === "1") {
+      return;
+    }
+    const items = await listWorkItems(this.dbPath);
+    for (const item of items) {
+      try {
+        const absPath = absFromRelMdPath(this.panelHome, item.relMdPath);
+        const raw = await fs.readFile(absPath, "utf8");
+        const doc = parseNoteDocument(raw);
+        if (!isWorkItemFrontmatter(doc.frontmatter)) {
+          continue;
+        }
+        const normalized = normalizeWorkItemDocument(
+          doc.frontmatter,
+          doc.body,
+          this.workItemTitleSuffix
+        );
+        const next = buildNoteDocument(normalized.frontmatter, normalized.body);
+        if (next !== raw) {
+          await fs.writeFile(absPath, next, "utf8");
+        }
+        await this.refreshNoteFromDisk(item);
+      } catch {
+        // A single unreadable file must not block startup; reconcile catches up later.
+      }
+    }
+    await setCatalogMeta(this.dbPath, key, "1");
+  }
+
+  /**
+   * Notes that predate the name field were "renamed" by renaming their file. Recover
+   * those names once, but never invent one from an allocated date-sequence file name.
+   */
+  private async migrateWorkItemNames(): Promise<void> {
+    const key = "work_item_notes_names_migrated_v1";
+    if ((await getCatalogMeta(this.dbPath, key)) === "1") {
+      return;
+    }
+    const items = await listWorkItems(this.dbPath);
+    for (const item of items) {
+      try {
+        if (item.title?.trim() && item.title.trim() !== UNTITLED_WORK_ITEM_NAME) {
+          continue;
+        }
+        if (parseNoteFilename(item.filename)) {
+          continue;
+        }
+        await this.renameNote(item.noteId, noteStem(item.filename));
+      } catch {
+        // A single unreadable file must not block startup.
+      }
+    }
+    await setCatalogMeta(this.dbPath, key, "1");
   }
 
   /** Project notes marked `work: true`, with their work fields and GTD status. */
@@ -218,11 +304,30 @@ export class NotesStore {
   async writeNoteContent(noteId: string, content: string): Promise<NoteRecord & { content?: string }> {
     const record = await getNoteById(this.dbPath, noteId);
     if (!record) throw new Error("Note not found.");
-    await fs.writeFile(this.absolutePath(record), content, "utf8");
+    const next = this.normalizeWorkItemContent(content);
+    await fs.writeFile(this.absolutePath(record), next, "utf8");
     await this.refreshNoteFromDisk(record);
     const updated = await getNoteById(this.dbPath, noteId);
     if (!updated) throw new Error("Note not found after write.");
-    return { ...updated, content };
+    return { ...updated, content: next };
+  }
+
+  /**
+   * Work items keep their name in front-matter and put `<name><suffix>` in the
+   * heading, so the reminder survives agent writes. Editing the heading renames
+   * the work item; a body that lost its heading gets one back.
+   */
+  private normalizeWorkItemContent(content: string): string {
+    const doc = parseNoteDocument(content);
+    if (!isWorkItemFrontmatter(doc.frontmatter)) {
+      return content;
+    }
+    const normalized = normalizeWorkItemDocument(
+      doc.frontmatter,
+      doc.body,
+      this.workItemTitleSuffix
+    );
+    return buildNoteDocument(normalized.frontmatter, normalized.body);
   }
 
   /** Write already-validated note content with an atomic rename and no materialization. */
@@ -232,7 +337,7 @@ export class NotesStore {
     const target = this.absolutePath(record);
     const temporary = `${target}.${process.pid}.${Date.now()}.tmp`;
     try {
-      await fs.writeFile(temporary, content, "utf8");
+      await fs.writeFile(temporary, this.normalizeWorkItemContent(content), "utf8");
       await fs.rename(temporary, target);
     } catch (error) {
       await fs.rm(temporary, { force: true }).catch(() => {});
@@ -291,6 +396,9 @@ export class NotesStore {
       createdAt: new Date(createdAtMs).toISOString(),
       work: true
     };
+    const name = input.title?.trim() || UNTITLED_WORK_ITEM_NAME;
+    fm.title = name;
+    fm.titleSuffix = this.workItemTitleSuffix;
     const work: NoteWorkFields = {};
     if (input.next) { fm.next = input.next; work.next = input.next; }
     if (input.decision) { fm.decision = input.decision; work.decision = input.decision; }
@@ -300,7 +408,7 @@ export class NotesStore {
     if (projects.length > 0) { fm.projects = projects; work.projects = projects; }
     const primary = input.primaryProject ? normalizeProjectPath(input.primaryProject.trim()) : projects[0];
     if (primary) { fm.primaryProject = primary; work.primaryProject = primary; }
-    const body = input.title ? `# ${input.title}\n` : "";
+    const body = newWorkItemBody(name, this.workItemTitleSuffix);
     const relDir = ownerRelDir(owner);
     const absPath = path.join(ownerDir, filename);
     await fs.writeFile(absPath, buildNoteDocument(fm, body), "utf8");
@@ -311,7 +419,7 @@ export class NotesStore {
       filename,
       relDir,
       relMdPath: path.join("notes", relDir, filename),
-      title: extractTitle(body),
+      title: noteTitle(fm, body),
       contentPreview: contentPreview(body),
       createdAtMs,
       updatedAtMs: mtime,
@@ -357,7 +465,7 @@ export class NotesStore {
       filename,
       relDir: ownerRelDir(owner),
       relMdPath: path.join("notes", ownerRelDir(owner), filename),
-      title: extractTitle(body),
+      title: noteTitle(undefined, body),
       contentPreview: contentPreview(body),
       createdAtMs,
       updatedAtMs: mtime,
@@ -432,7 +540,7 @@ export class NotesStore {
           filename,
           relDir: ownerRelDir(owner),
           relMdPath: path.join("notes", ownerRelDir(owner), filename),
-          title: extractTitle(body),
+          title: noteTitle(fm, body),
           contentPreview: contentPreview(body),
           createdAtMs,
           updatedAtMs: mtime,
@@ -489,16 +597,11 @@ export class NotesStore {
   }
 
   /**
-   * Root notes for list UI: library/session always roots; project notes without a parent.
+   * Root notes for list UI: library/session always roots; linked notes are not.
    */
   async listRootNotes(): Promise<NoteRecord[]> {
     const childIds = await listLinkedChildNoteIds(this.dbPath);
-    return this.cachedNotes.filter((note) => {
-      if (note.scope !== "project") {
-        return true;
-      }
-      return !childIds.has(note.noteId);
-    });
+    return this.cachedNotes.filter((note) => !childIds.has(note.noteId));
   }
 
   async setNoteParent(childNoteId: string, parentNoteId: string | null): Promise<void> {
@@ -514,10 +617,17 @@ export class NotesStore {
     if (!parent) {
       throw new Error("Parent note not found.");
     }
-    if (parent.scope !== "project" || !parent.projectPath) {
-      throw new Error("Linked children can only be created under a project note.");
+    // Work items live in the library bucket, so that is where their children go:
+    // the notes vector index only covers notes, not the work-item workspace.
+    const parentIsWorkItem = await isWorkNote(this.dbPath, parentNoteId);
+    if (!parentIsWorkItem && (parent.scope !== "project" || !parent.projectPath)) {
+      throw new Error(
+        "Linked children can only be created under a project note or a work item."
+      );
     }
-    const child = await this.createProjectNote(parent.projectPath, body);
+    const child = parentIsWorkItem
+      ? await this.createLibraryNote(body)
+      : await this.createProjectNote(parent.projectPath as string, body);
     try {
       await setParentLink(this.dbPath, child.noteId, parentNoteId);
     } catch (error) {
@@ -571,6 +681,12 @@ export class NotesStore {
     }
 
     const fm = frontmatterForOwner(doc.frontmatter, newOwner, record.noteId);
+    if (fm.work) {
+      // Keep the title/heading convention intact across a move.
+      const normalized = normalizeWorkItemDocument(fm, body, this.workItemTitleSuffix);
+      Object.assign(fm, normalized.frontmatter);
+      body = normalized.body;
+    }
     await fs.writeFile(newMd, buildNoteDocument(fm, body), "utf8");
 
     const oldAssets = path.join(oldOwnerDir, noteAssetsDirName(record.filename));
@@ -604,7 +720,7 @@ export class NotesStore {
       filename: newFilename,
       relDir: ownerRelDir(newOwner),
       relMdPath: path.join("notes", ownerRelDir(newOwner), newFilename),
-      title: extractTitle(body),
+      title: noteTitle(fm, body),
       contentPreview: contentPreview(body),
       gtdStatus: record.gtdStatus,
       createdAtMs: record.createdAtMs,
@@ -623,6 +739,31 @@ export class NotesStore {
     if (!record) {
       throw new Error("Note not found.");
     }
+    const absPath = this.absolutePath(record);
+    const raw = await fs.readFile(absPath, "utf8");
+    const doc = parseNoteDocument(raw);
+    if (isWorkItemFrontmatter(doc.frontmatter)) {
+      // A work item is identified by its name, not by its file: renaming must not
+      // collide with other files, so the allocated file name stays put.
+      const normalized = normalizeWorkItemDocument(
+        doc.frontmatter,
+        doc.body,
+        this.workItemTitleSuffix,
+        { name: noteStem(normalizeNoteFilename(desiredName) || desiredName) }
+      );
+      await fs.writeFile(absPath, buildNoteDocument(normalized.frontmatter, normalized.body), "utf8");
+      const mtime = await fileMtimeMs(absPath);
+      const updated: NoteRecord = {
+        ...record,
+        title: normalized.frontmatter.title,
+        updatedAtMs: mtime,
+        fsMtimeMs: mtime
+      };
+      await upsertNoteRecord(this.dbPath, updated);
+      this.cachedNotes = this.cachedNotes.map((n) => (n.noteId === updated.noteId ? updated : n));
+      return updated;
+    }
+
     const newFilename = normalizeNoteFilename(desiredName);
     if (!newFilename) {
       throw new Error("Invalid note name.");
@@ -637,19 +778,19 @@ export class NotesStore {
       throw new Error(`A note named "${newFilename}" already exists.`);
     }
 
-    const { absPath } = await renameNoteFiles(ownerDir, record.filename, newFilename, (raw) =>
-      rewriteAssetReferences(raw, record.filename, newFilename)
+    const { absPath: renamedPath } = await renameNoteFiles(ownerDir, record.filename, newFilename, (content) =>
+      rewriteAssetReferences(content, record.filename, newFilename)
     );
 
-    const raw = await fs.readFile(absPath, "utf8");
-    const doc = parseNoteDocument(raw);
-    const mtime = await fileMtimeMs(absPath);
+    const renamedRaw = await fs.readFile(renamedPath, "utf8");
+    const renamedDoc = parseNoteDocument(renamedRaw);
+    const mtime = await fileMtimeMs(renamedPath);
     const updated: NoteRecord = {
       ...record,
       filename: newFilename,
       relMdPath: path.join("notes", record.relDir, newFilename),
-      title: extractTitle(doc.body),
-      contentPreview: contentPreview(doc.body),
+      title: noteTitle(renamedDoc.frontmatter, renamedDoc.body),
+      contentPreview: contentPreview(renamedDoc.body),
       updatedAtMs: mtime,
       fsMtimeMs: mtime
     };
@@ -692,7 +833,7 @@ export class NotesStore {
     const mtime = await fileMtimeMs(abs);
     const updated: NoteRecord = {
       ...record,
-      title: extractTitle(doc.body),
+      title: noteTitle(doc.frontmatter, doc.body),
       contentPreview: contentPreview(doc.body),
       updatedAtMs: mtime,
       fsMtimeMs: mtime
@@ -787,6 +928,12 @@ function frontmatterForOwner(
   // Work-item fields survive moves; they are not derivable from the owner.
   if (source.work) {
     fm.work = true;
+  }
+  if (source.title) {
+    fm.title = source.title;
+  }
+  if (source.titleSuffix) {
+    fm.titleSuffix = source.titleSuffix;
   }
   if (source.next) {
     fm.next = source.next;

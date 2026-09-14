@@ -7,6 +7,13 @@ export interface NoteFrontmatter {
   createdAt?: string;
   /** Work-item marker. Only notes with this flag appear on the work-item board. */
   work?: boolean;
+  /**
+   * Work-item name. Authoritative for the work item; the markdown heading carries
+   * this name plus a reminder suffix, so displays read the name from here.
+   */
+  title?: string;
+  /** Reminder suffix appended to the work-item heading; frozen per file. */
+  titleSuffix?: string;
   /** Concrete next action for the work item. */
   next?: string;
   /** Decision the user still owes for this work item. */
@@ -82,6 +89,12 @@ export function buildNoteDocument(frontmatter: NoteFrontmatter, body: string): s
   if (frontmatter.work) {
     lines.push("work: true");
   }
+  if (frontmatter.title) {
+    lines.push(`title: ${jsonish(frontmatter.title)}`);
+  }
+  if (frontmatter.titleSuffix) {
+    lines.push(`titleSuffix: ${jsonish(frontmatter.titleSuffix)}`);
+  }
   if (frontmatter.next) {
     lines.push(`next: ${jsonish(frontmatter.next)}`);
   }
@@ -115,6 +128,18 @@ export function extractTitle(body: string): string | undefined {
     return trimmed.slice(0, 120);
   }
   return undefined;
+}
+
+/**
+ * Catalog title for a note. A work item's name lives in front-matter because its
+ * markdown heading carries a reminder suffix on top of the name.
+ */
+export function noteTitle(
+  frontmatter: NoteFrontmatter | undefined,
+  body: string
+): string | undefined {
+  const declared = frontmatter?.title?.trim();
+  return declared || extractTitle(body);
 }
 
 export function contentPreview(body: string, maxLen = 240): string {
@@ -167,6 +192,12 @@ function parseSimpleYaml(text: string): NoteFrontmatter {
         break;
       case "work":
         fm.work = value === "true" || value === "1" || value === "yes";
+        break;
+      case "title":
+        fm.title = unquote(value);
+        break;
+      case "titleSuffix":
+        fm.titleSuffix = unquote(value);
         break;
       case "next":
         fm.next = value;

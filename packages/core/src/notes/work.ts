@@ -140,6 +140,15 @@ async function replaceWorkItemSessions(
 
 const SESSION_INDEX_KEY = "work_item_sessions_index_v1";
 
+/** True when the note is a work item (`work: true` in front-matter). */
+export async function isWorkNote(dbPath: string, noteId: string): Promise<boolean> {
+  const rows = await runSqliteJson<{ note_id: string }>(
+    dbPath,
+    `SELECT note_id FROM note_work WHERE note_id = '${escapeSqlLiteral(noteId)}' LIMIT 1;`
+  ).catch(() => []);
+  return rows.length > 0;
+}
+
 /**
  * One-time backfill of the link table from `note_work.sessions_json`. Existing
  * rows were written before the link table existed, and reconcile skips files
