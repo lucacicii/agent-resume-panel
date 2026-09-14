@@ -8935,4 +8935,73 @@ describe("WorkbenchPanel", () => {
     fireEvent.click(within(head).getByRole("button", { name: "Close room" }));
     await waitFor(() => expect(document.querySelector(".wb-room-pane")).toBeNull());
   });
+
+  it("sorts work items by live session rank desc then updatedAtMs desc", async () => {
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.common.search": "Search", "desktop.common.refresh": "Refresh", "desktop.common.all": "All",
+        "desktop.workbench.allSessions": "All sessions",
+        "desktop.workbench.sidebarView": "Workbench sidebar view",
+        "desktop.workbench.workItemsView": "Work items",
+        "desktop.workbench.resourceView": "Repository",
+        "desktop.workbench.projectsView": "Projects",
+        "desktop.workbench.gtdView": "GTD",
+        "desktop.workbench.filterWorkItems": "Filter work items",
+        "desktop.workbench.noWorkItems": "No work items yet"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      agentStatusGetSnapshot: async () => ({
+        byPaneId: {},
+        bySessionKey: {
+          "codex:s-live": { state: "blocked", source: "native", authority: "native", agent: "codex" }
+        },
+        seq: 1
+      }),
+      onAgentStatusChanged: () => () => undefined,
+      workbenchOpenSession: async () => ({
+        cwd: "/work/app",
+        command: "pi",
+        projectPath: "/work/app"
+      }),
+      notesListWorkItems: async () => [
+        { noteId: "wi-old", title: "Old item", gtdStatus: "next", updatedAtMs: 100, work: { sessions: [] } },
+        { noteId: "wi-awaiting", title: "Awaiting item", gtdStatus: "next", updatedAtMs: 50, work: { sessions: ["codex:s-live"] } },
+        { noteId: "wi-new", title: "New item", gtdStatus: "next", updatedAtMs: 200, work: { sessions: [] } }
+      ],
+      terminalSpawn: async () => ({ id: 1 }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    localStorage.setItem("workbench-sidebar-view-v2", "workitems");
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+
+    await screen.findByText("New item");
+    let labels = Array.from(document.querySelectorAll(".wb-work-item-row .wb-folder-row-label")).map((el) => el.textContent);
+    expect(labels).toEqual(["New item", "Old item", "Awaiting item"]);
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-open-session", {
+        detail: { provider: "codex", id: "s-live", projectPath: "/work/app" }
+      }));
+    });
+
+    await waitFor(() => {
+      labels = Array.from(document.querySelectorAll(".wb-work-item-row .wb-folder-row-label")).map((el) => el.textContent);
+      expect(labels).toEqual(["Awaiting item", "New item", "Old item"]);
+    });
+  });
 });

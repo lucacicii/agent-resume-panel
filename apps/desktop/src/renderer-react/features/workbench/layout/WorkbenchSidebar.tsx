@@ -18,6 +18,7 @@ export type WorkbenchSidebarWorkItem = {
   /** Projects this work item references (0..n). */
   projects?: string[];
   primaryProject?: string;
+  updatedAtMs?: number;
 };
 
 export type WorkbenchSidebarProject = {

@@ -49,6 +49,7 @@ import { BrowserPaneView } from "../browser/BrowserPaneView";
 import type { BrowserSessionState } from "../../../shared/browserTypes";
 import type { WorkbenchFocusSessionRequest, WorkbenchSendSelectionRequest } from "../../../shared/workbenchSelection";
 import { collectActiveSessionDots } from "./activeSessionDots";
+import { rank } from "./sessionStatus/workItemRollup";
 import { useAcpStatus, useAgentStatus, type AcpStatusEvent, type SessionDotRuntime } from "./sessionStatus";
 import { COMPOSER_TIP_LIMIT, type ComposerSendTip } from "./TerminalComposer";
 import { TerminalComposerStack } from "./TerminalComposerStack";
@@ -1002,6 +1003,11 @@ export function WorkbenchPanel(): ReactPortal | null {
     () => collectActiveSessionDots(terminals, acpChats, sessionTitles, sessionRuntimeByPaneKey),
     [acpChats, sessionRuntimeByPaneKey, sessionTitles, terminals]
   );
+  const dotByKey = useMemo(() => {
+    const map = new Map<string, ActiveSessionDot>();
+    for (const dot of activeSessionDots) if (dot.sessionKey) map.set(dot.sessionKey, dot);
+    return map;
+  }, [activeSessionDots]);
 
   // ACP carries its own structured lifecycle; feed it to the ACP status hook.
   useEffect(() => {
@@ -3348,7 +3354,8 @@ export function WorkbenchPanel(): ReactPortal | null {
         decision: item.work?.decision,
         sessions: item.work?.sessions ?? [],
         projects: item.work?.projects,
-        primaryProject: item.work?.primaryProject
+        primaryProject: item.work?.primaryProject,
+        updatedAtMs: item.updatedAtMs
       })));
     } catch {
       /* the sidebar list is best-effort; the board remains the source of truth */
@@ -3380,13 +3387,18 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   const visibleWorkItems = useMemo(() => {
     const q = projectQuery.trim().toLowerCase();
-    return workItems.filter((item) => {
+    const filtered = workItems.filter((item) => {
       if (workItemProjectFilter && !(item.projects ?? []).includes(workItemProjectFilter)) return false;
       if (workItemStatusFilter !== "all" && item.status !== workItemStatusFilter) return false;
       if (q && !`${item.title} ${(item.projects ?? []).join(" ")}`.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [projectQuery, workItemProjectFilter, workItemStatusFilter, workItems]);
+    return [...filtered].sort((a, b) => {
+      const rankA = rank({ work: { sessions: a.sessions }, updatedAtMs: a.updatedAtMs || 0 }, dotByKey);
+      const rankB = rank({ work: { sessions: b.sessions }, updatedAtMs: b.updatedAtMs || 0 }, dotByKey);
+      return rankB - rankA;
+    });
+  }, [dotByKey, projectQuery, workItemProjectFilter, workItemStatusFilter, workItems]);
 
   const workItemProjects = useMemo(() => {
     const paths = new Set<string>();
