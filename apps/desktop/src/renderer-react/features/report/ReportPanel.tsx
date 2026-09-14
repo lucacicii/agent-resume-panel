@@ -1,7 +1,6 @@
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactPortal } from "react";
-import type { AgentSession, DigestProgressEvent, PeriodInsights, ReportEntry, ReportLinkRow } from "@agent-resume/core";
-import { PeriodInsightsDashboard } from "./PeriodInsightsDashboard";
+import type { AgentSession, DigestProgressEvent, ReportEntry, ReportLinkRow } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { notifyDesktop } from "../../components/Notifications";
 import { renderMarkdown as markdown } from "../../components/Markdown";
@@ -184,9 +183,6 @@ export function ReportPanel(): ReactPortal | null {
   };
   const [reportLinks, setReportLinks] = useState<ReportLinkRow[]>([]);
   const [sessionListOpen, setSessionListOpen] = useState(false);
-  const [insights, setInsights] = useState<PeriodInsights | null>(null);
-  const [insightsLoading, setInsightsLoading] = useState(false);
-  const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const sessionRequestId = useRef(0);
   const monthRequestId = useRef(0);
 
@@ -238,28 +234,19 @@ export function ReportPanel(): ReactPortal | null {
     if (!range) return;
     const requestId = ++sessionRequestId.current;
     setSessionsLoading(true);
-    setInsightsLoading(true);
     try {
-      const [nextSessions, nextInsights] = await Promise.all([
-        desktopApi().listSessionsInRange({ ...range, limit: 500 }),
-        desktopApi().getPeriodInsights
-          ? desktopApi().getPeriodInsights({ fromMs: range.fromMs, toMs: range.toMs })
-          : Promise.resolve(null)
-      ]);
+      const nextSessions = await desktopApi().listSessionsInRange({ ...range, limit: 500 });
       if (requestId === sessionRequestId.current) {
         setSessions(nextSessions);
-        setInsights(nextInsights);
       }
     } catch (error) {
       if (requestId === sessionRequestId.current) {
         setSessions([]);
-        setInsights(null);
         notifyStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
       }
     } finally {
       if (requestId === sessionRequestId.current) {
         setSessionsLoading(false);
-        setInsightsLoading(false);
       }
     }
   }, [focus]);
@@ -327,11 +314,9 @@ export function ReportPanel(): ReactPortal | null {
   }, [selectedEntryId]);
 
   const selectFocus = (next: Focus) => {
-    setSelectedProject(null);
     // Drop the previous day's content immediately so the loading state is
     // visible while the slow range query runs (instead of stale numbers).
     setSessions([]);
-    setInsights(null);
     setPreview(null);
     setPreviewAssist(null);
     notifyPreviewStatus({ text: "" });
@@ -446,14 +431,6 @@ export function ReportPanel(): ReactPortal | null {
     }
   };
 
-  const filteredSessions = useMemo(() => {
-    let result = sessions;
-    if (selectedProject) {
-      result = result.filter((s) => s.projectPath === selectedProject);
-    }
-    return result;
-  }, [sessions, selectedProject]);
-
   // Archive is search-first: a query switches the list from "this period" to
   // a cross-catalog search, still grouped by work item.
   const [archiveQuery, setArchiveQuery] = useState("");
@@ -474,7 +451,7 @@ export function ReportPanel(): ReactPortal | null {
     return () => { alive = false; window.clearTimeout(timer); };
   }, [archiveQuery]);
 
-  const sessionsForList = archiveQuery.trim() ? (archiveResults ?? []) : filteredSessions;
+  const sessionsForList = archiveQuery.trim() ? (archiveResults ?? []) : sessions;
 
   // Report groups its sessions by work item, so a period reads as "what
   // progressed on each thing" rather than a flat session log.
@@ -548,8 +525,8 @@ export function ReportPanel(): ReactPortal | null {
           <div className="cal-month-actions"><button type="button" className={`tool-btn cal-month-btn${hasMonthDigest ? " has-digest" : ""}${focus.type === "month" ? " selected" : ""}${stale.has(`monthly:${monthKey}`) ? " has-digest-stale" : ""}${runningPeriods.has(digestProgressKey("month", monthKey)) ? " generating" : ""}`} disabled={isFuture("month", monthKey)} onClick={() => selectFocus({ type: "month", key: monthKey })}>{t("desktop.report.monthBtn")} · {monthKey}{stale.has(`monthly:${monthKey}`) ? <span className="cal-period-stale" aria-hidden="true">↻</span> : null}</button></div>
           <CalendarLegend t={t} />
         </div></aside>
-        <aside className={`report-session-pane${sessionListOpen ? "" : " collapsed"}`}><div className="cal-session-panel"><div className="cal-session-panel-head" role="button" tabIndex={0} aria-expanded={sessionListOpen} onClick={() => setSessionListOpen((open) => !open)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSessionListOpen((open) => !open); } }}><strong>{t("desktop.report.sessionsTitle")} · {rangeLabel(focus.type, focus.key, t)}</strong><span className="cal-session-head-meta"><span className="muted">{sessionsLoading ? t("desktop.common.loading") : t("desktop.report.sessionCountMeta", sessionsForList.length)}</span><span className={`cal-session-toggle${sessionListOpen ? " open" : ""}`} aria-hidden="true">▸</span></span></div><div className="cal-session-search-row"><input type="search" className="cal-session-search" aria-label={t("desktop.archive.search")} placeholder={t("desktop.archive.searchPlaceholder")} value={archiveQuery} autoComplete="off" spellCheck={false} onChange={(event) => setArchiveQuery(event.target.value)} /></div>{(selectedProject) && (<div className="cal-session-filter-strip">{selectedProject && (<span className="cal-session-filter-pill">{t("desktop.report.insightsFilterProject", selectedProject.split(/[\\/]/).filter(Boolean).at(-1) || selectedProject)}<button type="button" onClick={() => setSelectedProject(null)} aria-label="Clear project filter">×</button></span>)}<button type="button" className="cal-session-clear-all" onClick={() => { setSelectedProject(null); }}>{t("desktop.report.insightsFilterClear")}</button></div>)}<div className="cal-session-list" aria-busy={sessionsLoading}>{sessionsLoading ? <p className="muted cal-session-empty">{t("desktop.common.loading")}</p> : sessionsForList.length ? sessionGroups.flatMap((group) => [<div key={`g:${group.key}`} className="cal-session-group-head"><span className="cal-session-group-label">{group.label}</span><span className="cal-session-group-count">{group.sessions.length}</span></div>, ...group.sessions.map((session) => <button type="button" key={`${session.provider}:${session.id}`} className={`cal-session-row${preview?.session.provider === session.provider && preview.session.id === session.id ? " active" : ""}`} aria-current={preview?.session.provider === session.provider && preview.session.id === session.id ? "true" : undefined} onClick={() => void openPreview(session)}><div className="s-title">{session.title || session.id}</div><div className="s-meta"><span className="s-provider-tag" data-provider={session.provider}>{session.provider}</span>{" · "}{session.projectPath?.split(/[\\/]/).filter(Boolean).at(-1) || ""}{" · "}{formatTime(session.updatedAt, locale)}</div></button>)] ) : <p className="muted cal-session-empty">{t("desktop.report.noSessionsInRange")}</p>}</div></div></aside></div>
-        <main className="report-detail-pane"><div className="report-detail-head"><strong>{preview ? preview.preview.title || preview.session.title || preview.session.id : t("desktop.report.digestDetailTitle", digestLabel(focus.type, t), focus.key)}</strong>{preview ? <button type="button" className="tool-btn ghost-btn report-detail-back" onClick={() => { setPreview(null); setPreviewAssist(null); notifyPreviewStatus({ text: "" }); }}>{t("desktop.report.backToReport")}</button> : null}</div>{detailProgress}{!preview && (<PeriodInsightsDashboard insights={insights} loading={insightsLoading} selectedProject={selectedProject} onSelectProject={setSelectedProject} onOpenSession={(provider, id) => { const session = sessions.find((s) => s.provider === provider && s.id === id); if (session) void openPreview(session); else void openPreview({ provider: provider as any, id, title: id, projectPath: "", updatedAt: Date.now() }); }} onSelectDay={(dayKey) => selectFocus({ type: "day", key: dayKey })} t={t} />)}<div className="cal-detail">{detail}</div></main>
+        <aside className={`report-session-pane${sessionListOpen ? "" : " collapsed"}`}><div className="cal-session-panel"><div className="cal-session-panel-head" role="button" tabIndex={0} aria-expanded={sessionListOpen} onClick={() => setSessionListOpen((open) => !open)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSessionListOpen((open) => !open); } }}><strong>{t("desktop.report.sessionsTitle")} · {rangeLabel(focus.type, focus.key, t)}</strong><span className="cal-session-head-meta"><span className="muted">{sessionsLoading ? t("desktop.common.loading") : t("desktop.report.sessionCountMeta", sessionsForList.length)}</span><span className={`cal-session-toggle${sessionListOpen ? " open" : ""}`} aria-hidden="true">▸</span></span></div><div className="cal-session-search-row"><input type="search" className="cal-session-search" aria-label={t("desktop.archive.search")} placeholder={t("desktop.archive.searchPlaceholder")} value={archiveQuery} autoComplete="off" spellCheck={false} onChange={(event) => setArchiveQuery(event.target.value)} /></div><div className="cal-session-list" aria-busy={sessionsLoading}>{sessionsLoading ? <p className="muted cal-session-empty">{t("desktop.common.loading")}</p> : sessionsForList.length ? sessionGroups.flatMap((group) => [<div key={`g:${group.key}`} className="cal-session-group-head"><span className="cal-session-group-label">{group.label}</span><span className="cal-session-group-count">{group.sessions.length}</span></div>, ...group.sessions.map((session) => <button type="button" key={`${session.provider}:${session.id}`} className={`cal-session-row${preview?.session.provider === session.provider && preview.session.id === session.id ? " active" : ""}`} aria-current={preview?.session.provider === session.provider && preview.session.id === session.id ? "true" : undefined} onClick={() => void openPreview(session)}><div className="s-title">{session.title || session.id}</div><div className="s-meta"><span className="s-provider-tag" data-provider={session.provider}>{session.provider}</span>{" · "}{session.projectPath?.split(/[\\/]/).filter(Boolean).at(-1) || ""}{" · "}{formatTime(session.updatedAt, locale)}</div></button>)] ) : <p className="muted cal-session-empty">{t("desktop.report.noSessionsInRange")}</p>}</div></div></aside></div>
+        <main className="report-detail-pane"><div className="report-detail-head"><strong>{preview ? preview.preview.title || preview.session.title || preview.session.id : t("desktop.report.digestDetailTitle", digestLabel(focus.type, t), focus.key)}</strong>{preview ? <button type="button" className="tool-btn ghost-btn report-detail-back" onClick={() => { setPreview(null); setPreviewAssist(null); notifyPreviewStatus({ text: "" }); }}>{t("desktop.report.backToReport")}</button> : null}</div>{detailProgress}<div className="cal-detail">{detail}</div></main>
       </div>
     </section>,
     host

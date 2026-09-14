@@ -23,12 +23,10 @@ import {
   estimateDigestRun,
   expandHome,
   getReportEntryById,
-  getPeriodInsights,
   getSessionById,
   getUsageSummary,
   appendComposerSend,
   listComposerSends,
-  listSessionsMissingComposerImport,
   importComposerSendsForSession,
   hideSessionAction,
   hideProjectAction,
@@ -2412,60 +2410,6 @@ function registerIpc(): void {
         String(args?.provider || ""),
         String(args?.agentSessionId || "")
       );
-    }
-  );
-
-  ipcMain.handle(
-    "report:getPeriodInsights",
-    async (_event, args?: { fromMs?: number; toMs?: number }) => {
-      try {
-        const settings = await loadSettings();
-        const paths = await loadPanelDbPaths(settings);
-        const fromMs = Number(args?.fromMs);
-        const toMs = Number(args?.toMs);
-        if (!Number.isFinite(fromMs) || !Number.isFinite(toMs)) {
-          return null;
-        }
-
-        // Real-time sync: only parse transcripts for sessions that have no
-        // `import:` rows yet (the historical backfill already covers the rest).
-        // This keeps calendar-click insights cheap — a single indexed SELECT
-        // decides whether any transcript parse is needed at all.
-        try {
-          const recentSessions = await listSessionsInRange(paths.catalogDb, fromMs, toMs, 10);
-          const missing = await listSessionsMissingComposerImport(paths.desktopDb, recentSessions);
-          if (missing.length) {
-            const homes = resolvePreviewHomes(settings);
-            const byKey = new Map(
-              recentSessions.map((s) => [`${s.provider}:${s.id}`, s])
-            );
-            await Promise.all(
-              missing.map(({ provider, id }) => {
-                const session = byKey.get(`${provider}:${id}`);
-                return session
-                  ? importComposerSendsForSession(paths.desktopDb, session, homes).catch(() => undefined)
-                  : Promise.resolve();
-              })
-            );
-          }
-        } catch {
-          // best-effort sync
-        }
-
-        return await getPeriodInsights({
-          catalogDb: paths.catalogDb,
-          desktopDb: paths.desktopDb,
-          fromMs,
-          toMs
-        });
-      } catch (error) {
-        void recordAppError({
-          source: "report",
-          message: "report:getPeriodInsights failed.",
-          error
-        });
-        return null;
-      }
     }
   );
 

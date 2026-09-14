@@ -454,22 +454,6 @@ export type { RunMonthlyDigestOptions, RunMonthlyDigestResult } from "./report/m
 export { searchReportsByEmbedding } from "./report/search";
 export type { SearchReportsOptions, ReportSearchHit } from "./report/search";
 export { cosineSimilarity, parseEmbeddingJson } from "./report/cosine";
-export { getPeriodInsights } from "./report/insights";
-export type {
-  PeriodInsights,
-  PeriodDailyTrendItem,
-  PeriodLlmUsageTrendPoint,
-  PeriodComposerSendInsights,
-  PeriodComposerIntentDistribution,
-  PeriodComposerSmoothness,
-  PeriodFrictionSession,
-  PeriodComposerLengthTiers,
-  PeriodComposerTopPhrase,
-  PeriodHourlyIntensity,
-  PeriodSessionStats,
-  PeriodLlmUsage,
-  GetPeriodInsightsOptions
-} from "./report/insights";
 
 export type { PreviewHomes, PreviewMessage, SessionPreviewResult } from "./transcript/types";
 export {

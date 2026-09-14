@@ -12,7 +12,6 @@ import type {
   ReportEntry,
   ReportLinkRow,
   ReportSearchHit,
-  PeriodInsights,
   NoteIndexProgressEvent,
   PanelSettings,
   DailyDigestRefreshCheck,
@@ -1081,7 +1080,6 @@ export interface DesktopApi {
     fromMs?: number;
     toMs?: number;
   }): Promise<ReportEntry[]>;
-  getPeriodInsights(args: { fromMs: number; toMs: number }): Promise<PeriodInsights | null>;
   getReportEntry(reportId: string): Promise<ReportEntry | null>;
   getReportLinks(reportId: string): Promise<ReportLinkRow[]>;
   listDailyDigests(limit?: number): Promise<ReportEntry[]>;
@@ -1853,7 +1851,6 @@ const api: DesktopApi = {
     return () => ipcRenderer.removeListener("workbench:cmdShiftF", handler);
   },
   listReports: (opts) => ipcRenderer.invoke("report:list", opts),
-  getPeriodInsights: (args) => ipcRenderer.invoke("report:getPeriodInsights", args),
   getReportEntry: (reportId) => ipcRenderer.invoke("report:getEntry", reportId),
   getReportLinks: (reportId) => ipcRenderer.invoke("report:getLinks", reportId),
   listDailyDigests: (limit) => ipcRenderer.invoke("report:listDaily", limit),
