@@ -85,13 +85,15 @@ Panel home override (same as other Agent Resume CLIs):
 AGENT_RESUME_PANEL_HOME=/path/to/home arpm list
 ```
 
-Install the binary from the workspace package (development):
+Desktop installs `~/.local/bin/arpm` on launch (a small shim that runs the bundled CLI under Electron’s Node). `~/.local/bin` must be on your shell `PATH`. After the first launch, open a **new** terminal and run `arpm list`.
+
+If a file named `arpm` already exists there and was not written by Agent Resume, Desktop leaves it alone.
+
+Without Desktop, from this repo:
 
 ```bash
 pnpm --filter @agent-resume/core exec arpm list
 ```
-
-Or link `@agent-resume/core` so `arpm` is on `PATH`.
 
 ### Limits (v1)
 
@@ -185,13 +187,15 @@ cd "$(arpm go anfeng --print-cwd)"
 AGENT_RESUME_PANEL_HOME=/path/to/home arpm list
 ```
 
-开发环境：
+Desktop 启动时会把 `~/.local/bin/arpm` 装上（一小段 shim，用 Electron 自带的 Node 跑内置 CLI）。shell 的 `PATH` 里需要有 `~/.local/bin`。第一次启动后，**新开**一个终端再运行 `arpm list`。
+
+若该路径已有不是 Agent Resume 写的 `arpm`，Desktop 不会覆盖。
+
+不启动 Desktop 时，在本仓库：
 
 ```bash
 pnpm --filter @agent-resume/core exec arpm list
 ```
-
-也可把 `@agent-resume/core` 链到 `PATH`，直接用 `arpm`。
 
 ### 限制（v1）
 

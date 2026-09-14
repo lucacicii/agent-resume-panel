@@ -108,6 +108,7 @@ import {
 } from "@agent-resume/core";
 import { safeHandle } from "./ipcUtils";
 import { registerLinkGraphIpc } from "./linkgraph/linkGraphIpc";
+import { installArpmShim, resolveArpmCliPath } from "./arpmInstall";
 import {
   createExternalMcpLaunchConfig,
   listMcpClients,
@@ -3276,6 +3277,32 @@ app.whenReady().then(async () => {
       startSessionTranscriptIndexAuto();
       startSessionEmbeddingIndexAuto();
       await refreshMemorySchedulerFromSettings();
+
+      try {
+        const installed = installArpmShim({
+          execPath: process.execPath,
+          cliPath: resolveArpmCliPath({
+            isPackaged: app.isPackaged,
+            resourcesPath: process.resourcesPath,
+            appPath: app.getAppPath()
+          }),
+          panelHome: resolvePanelHome(settings.panelHome)
+        });
+        if (installed.written) {
+          console.log(`[agent-resume] Installed arpm at ${installed.path}`);
+        } else if (installed.skipped) {
+          void recordAppError({
+            source: "arpm-install",
+            message: `Skipped arpm install: ${installed.skipped}`
+          });
+        }
+      } catch (error) {
+        void recordAppError({
+          source: "arpm-install",
+          message: "Failed to install arpm on PATH.",
+          error
+        });
+      }
 
       // Rewrite any client configs still pointing at the old GUI Electron MCP entry in background.
       try {
