@@ -455,15 +455,18 @@ export function ReportPanel(): ReactPortal | null {
 
   // Report groups its sessions by work item, so a period reads as "what
   // progressed on each thing" rather than a flat session log.
-  const [workItemBySession, setWorkItemBySession] = useState<Record<string, string>>({});
+  const [workItemBySession, setWorkItemBySession] = useState<Record<string, { noteId: string; title: string }>>({});
   useEffect(() => {
     const loadWorkItemIndex = async () => {
       if (typeof desktopApi().notesListWorkItemSessionLinks !== "function") return;
       try {
         const links = await desktopApi().notesListWorkItemSessionLinks();
-        const map: Record<string, string> = {};
+        const map: Record<string, { noteId: string; title: string }> = {};
         for (const link of links) {
-          map[`${link.provider}:${link.sessionId}`] = link.title || link.noteId;
+          map[`${link.provider}:${link.sessionId}`] = {
+            noteId: link.noteId,
+            title: link.title || link.noteId
+          };
         }
         setWorkItemBySession(map);
       } catch {
@@ -478,11 +481,11 @@ export function ReportPanel(): ReactPortal | null {
   const sessionGroups = useMemo(() => {
     const groups = new Map<string, { key: string; label: string; sessions: typeof sessionsForList }>();
     for (const session of sessionsForList) {
-      const label = workItemBySession[`${session.provider}:${session.id}`];
-      const groupKey = label ? `work:${label}` : "__unassigned__";
+      const info = workItemBySession[`${session.provider}:${session.id}`];
+      const groupKey = info ? `work:${info.noteId}` : "__unassigned__";
       let group = groups.get(groupKey);
       if (!group) {
-        group = { key: groupKey, label: label ?? t("desktop.report.noWorkItemGroup"), sessions: [] };
+        group = { key: groupKey, label: info?.title ?? t("desktop.report.noWorkItemGroup"), sessions: [] };
         groups.set(groupKey, group);
       }
       group.sessions.push(session);

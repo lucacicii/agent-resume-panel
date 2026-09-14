@@ -341,6 +341,28 @@ describe("ReportPanel", () => {
     expect(await screen.findByText(session.title)).toBeTruthy();
   });
 
+  it("keeps same-titled work items as separate session groups", async () => {
+    const other: AgentSession = { provider: "claude", id: "s-2", title: "Other session", projectPath: "/work/panel", updatedAt: now.getTime() };
+    window.agentResume = mockAgentResume({
+      listSessionsInRange: async () => [session, other],
+      notesListWorkItemSessionLinks: (async () => [
+        { noteId: "wi-1", title: "Realtime status", provider: session.provider, sessionId: session.id },
+        { noteId: "wi-2", title: "Realtime status", provider: other.provider, sessionId: other.id }
+      ]) as typeof window.agentResume.notesListWorkItemSessionLinks
+    });
+    const host = document.createElement("div");
+    host.id = "react-report";
+    document.body.append(host);
+    render(<I18nProvider><ReportPanel /></I18nProvider>);
+    await screen.findByText("Daily digest");
+
+    const groupHeads = await screen.findAllByText("Realtime status");
+    expect(groupHeads).toHaveLength(2);
+    expect(groupHeads.every((head) => head.closest(".cal-session-group-head"))).toBe(true);
+    expect(await screen.findByText(session.title)).toBeTruthy();
+    expect(await screen.findByText(other.title)).toBeTruthy();
+  });
+
   it("searches across the whole catalog when a query is entered", async () => {
     const other: AgentSession = { provider: "claude", id: "other-1", title: "Cross-range hit", projectPath: "/work/other", updatedAt: Date.now() };
     const querySessionsPage = vi.fn(async () => ({ sessions: [other], total: 1 }));
