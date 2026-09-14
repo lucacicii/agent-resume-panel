@@ -7,20 +7,11 @@ import { sessionDotStatusClass, sessionDotStatusLabel } from "../../components/S
 import { useI18n } from "../../i18n";
 import { KanbanCardModal } from "../kanban/KanbanCardModal";
 import { type ActiveSessionDot } from "../workbench/activeSessionDots";
-import type { SessionDotStatus } from "../workbench/sessionStatus";
+import { needsYou, rank, rollupDot } from "../workbench/sessionStatus/workItemRollup";
 
 type WorkItem = Awaited<ReturnType<ReturnType<typeof desktopApi>["notesListWorkItems"]>>[number];
 
 type Section = "needs_you" | "blocked" | "next" | "inbox";
-
-/** Urgency order for a work item's rolled-up live status. */
-const LIVE_RANK: Record<SessionDotStatus, number> = {
-  awaiting_user: 4,
-  error: 3,
-  connecting: 2,
-  running: 1,
-  open: 0
-};
 
 /** How many rows Today shows before collapsing the rest behind "more". */
 const VISIBLE_LIMIT = 14;
@@ -31,15 +22,6 @@ function titleOf(item: WorkItem): string {
 
 function basename(value: string): string {
   return value.replaceAll("\\", "/").split("/").filter(Boolean).at(-1) || value;
-}
-
-function rollupDot(item: WorkItem, byKey: ReadonlyMap<string, ActiveSessionDot>): ActiveSessionDot | undefined {
-  let best: ActiveSessionDot | undefined;
-  for (const key of item.work.sessions ?? []) {
-    const dot = byKey.get(key);
-    if (dot && (!best || LIVE_RANK[dot.status] > LIVE_RANK[best.status])) best = dot;
-  }
-  return best;
 }
 
 function sectionOf(item: WorkItem): Section {
@@ -122,14 +104,10 @@ export function TodayPanel(): ReactPortal | null {
     const sections: Record<Section, WorkItem[]> = { needs_you: [], blocked: [], next: [], inbox: [] };
     for (const item of items) {
       const dot = rollupDot(item, dotByKey);
-      if (dot?.status === "awaiting_user") sections.needs_you.push(item);
+      if (needsYou(dot)) sections.needs_you.push(item);
       else sections[sectionOf(item)].push(item);
     }
-    const rank = (item: WorkItem) => {
-      const dot = rollupDot(item, dotByKey);
-      return (dot ? LIVE_RANK[dot.status] : 0) * 1e15 + item.updatedAtMs;
-    };
-    for (const list of Object.values(sections)) list.sort((a, b) => rank(b) - rank(a));
+    for (const list of Object.values(sections)) list.sort((a, b) => rank(b, dotByKey) - rank(a, dotByKey));
     return sections;
   }, [dotByKey, items]);
 
@@ -203,7 +181,7 @@ export function TodayPanel(): ReactPortal | null {
     return (
       <article
         key={item.noteId}
-        className={`today-row${dot?.status === "awaiting_user" ? " needs-me" : ""}`}
+        className={`today-row${needsYou(dot) ? " needs-me" : ""}`}
         onClick={() => openWorkItem(item)}
         onKeyDown={(event) => { if (event.key === "Enter") openWorkItem(item); }}
         role="button"
@@ -279,8 +257,8 @@ export function TodayPanel(): ReactPortal | null {
               const rows = visible.filter((item) => {
                 if (!visibleIds.has(item.noteId)) return false;
                 const dot = rollupDot(item, dotByKey);
-                if (id === "needs_you") return dot?.status === "awaiting_user";
-                if (dot?.status === "awaiting_user") return false;
+                if (id === "needs_you") return needsYou(dot);
+                if (needsYou(dot)) return false;
                 return sectionOf(item) === id;
               });
               if (rows.length === 0) return null;
