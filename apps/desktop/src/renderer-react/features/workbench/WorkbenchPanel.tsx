@@ -6213,7 +6213,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         </div>
       </>}
     </div> : null}
-    {newSessionPicker ? <div ref={newSessionPickerRef} className="wb-context-menu wb-new-session-picker" role="menu" aria-label={t("desktop.settings.defaultAgent")} style={newSessionPickerStyle} onKeyDown={handleNewSessionPickerKeyDown}>
+    {newSessionPicker ? <div ref={newSessionPickerRef} className="wb-context-menu wb-new-session-picker" role="menu" aria-label={t("desktop.settings.defaultAgent")} style={newSessionPickerStyle} onMouseDown={(event) => event.stopPropagation()} onKeyDown={handleNewSessionPickerKeyDown}>
       {(settings?.workbench?.composerMentions?.length ?? 0) > 0 ? <>
         <span className="wb-context-menu-label">{t("desktop.settings.composerMentionsWorkspace")}</span>
         <button type="button" role="menuitem" aria-pressed={!newSessionPicker.mentionId} onClick={() => void chooseNewSessionMention(undefined)}>{t("desktop.settings.composerMentionsCurrentProject")}</button>

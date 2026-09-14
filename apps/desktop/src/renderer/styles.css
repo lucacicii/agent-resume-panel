@@ -12182,6 +12182,11 @@ textarea.wb-editor-host {
   background: var(--color-fill-secondary);
 }
 
+.wb-context-menu button[aria-pressed="true"] {
+  background: var(--color-fill-secondary);
+  font-weight: var(--font-weight-semibold);
+}
+
 .wb-context-menu-label {
   padding: 4px 10px 2px;
   color: var(--color-label-secondary);
