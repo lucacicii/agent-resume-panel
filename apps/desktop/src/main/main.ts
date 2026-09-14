@@ -1939,6 +1939,7 @@ function registerIpc(): void {
     projectId?: string;
     gtdStatus?: string;
     keys?: Array<{ provider: string; id: string }>;
+    unassignedOnly?: boolean;
   }) => {
     const settings = await loadSettings();
     const paths = await loadPanelDbPaths(settings);
@@ -1953,7 +1954,8 @@ function registerIpc(): void {
       search: args?.search?.trim() || undefined,
       projectPath: args?.projectPath?.trim() || undefined,
       projectId: args?.projectId?.trim() || undefined,
-      gtdStatus: args?.gtdStatus?.trim() || undefined
+      gtdStatus: args?.gtdStatus?.trim() || undefined,
+      unassignedOnly: args?.unassignedOnly === true || undefined
     };
     return querySessionsPage(paths.catalogDb, request);
   });

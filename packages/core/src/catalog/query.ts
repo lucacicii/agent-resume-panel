@@ -183,6 +183,7 @@ export interface SessionQueryRequest {
   projectId?: string;
   gtdStatus?: string;
   keys?: Array<{ provider: string; id: string }>;
+  unassignedOnly?: boolean;
 }
 
 export interface SessionQueryPage {
@@ -231,6 +232,9 @@ export async function querySessionsPage(
   }
   if (request.gtdStatus?.trim()) {
     add(`EXISTS (SELECT 1 FROM session_gtd g WHERE g.provider = s.provider AND g.agent_session_id = s.agent_session_id AND g.status = '${escapeSqlLiteral(request.gtdStatus.trim())}')`);
+  }
+  if (request.unassignedOnly) {
+    add(`NOT EXISTS (SELECT 1 FROM work_item_sessions w WHERE w.provider = s.provider AND w.agent_session_id = s.agent_session_id)`);
   }
   if (request.keys) {
     if (request.keys.length > 5000) throw new Error("Too many session keys.");

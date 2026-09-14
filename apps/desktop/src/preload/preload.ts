@@ -195,6 +195,7 @@ export interface DesktopApi {
     projectId?: string;
     gtdStatus?: GtdStatus;
     keys?: Array<{ provider: string; id: string }>;
+    unassignedOnly?: boolean;
   }): Promise<{
     sessions: AgentSession[];
     total: number;
