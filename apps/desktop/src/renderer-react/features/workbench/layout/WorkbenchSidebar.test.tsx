@@ -1,22 +1,38 @@
 import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { I18nProvider } from "../../../i18n";
 import type { ActiveSessionDot } from "../activeSessionDots";
 import { WorkbenchSidebar, type WorkbenchSidebarWorkItem } from "./WorkbenchSidebar";
 
+afterEach(() => {
+  cleanup();
+});
+
 beforeEach(() => {
   window.agentResume = {
-    getI18nBundle: async () => ({ locale: "en", messages: {} }),
+    getI18nBundle: async () => ({
+      locale: "en",
+      messages: {
+        "desktop.workbench.needsMe": "Needs me {0}"
+      }
+    }),
     onLocaleChanged: () => () => undefined
   } as unknown as typeof window.agentResume;
 });
 
 function renderSidebar({
   workItems,
-  dotByKey
+  dotByKey,
+  needsYouCount,
+  workItemNeedsYouFilter,
+  onWorkItemNeedsYouFilterChange
 }: {
   workItems: WorkbenchSidebarWorkItem[];
   dotByKey?: Map<string, ActiveSessionDot>;
+  needsYouCount?: number;
+  workItemNeedsYouFilter?: boolean;
+  onWorkItemNeedsYouFilterChange?: (active: boolean) => void;
 }) {
   return render(
     <I18nProvider>
@@ -30,6 +46,9 @@ function renderSidebar({
         workItemProjectFilter=""
         workItemStatusFilter="all"
         dotByKey={dotByKey}
+        needsYouCount={needsYouCount}
+        workItemNeedsYouFilter={workItemNeedsYouFilter}
+        onWorkItemNeedsYouFilterChange={onWorkItemNeedsYouFilterChange}
         projectFilter="all"
         projectQuery=""
         selectedProject={null}
@@ -153,5 +172,69 @@ describe("WorkbenchSidebar work items live dot (P3)", () => {
 
     expect(row.querySelector(".wb-gtd-status-dot")).not.toBeNull();
     expect(row.querySelector(".session-dot")).toBeNull();
+  });
+});
+
+describe("WorkbenchSidebar needs-you filter chip (P4)", () => {
+  it("does not render the chip in DOM when n=0", () => {
+    const workItems: WorkbenchSidebarWorkItem[] = [
+      { noteId: "wi-1", title: "Task 1", status: "next", sessions: ["codex:s-1"] }
+    ];
+    // No awaiting_user sessions -> n=0
+    renderSidebar({
+      workItems,
+      dotByKey: new Map([
+        ["codex:s-1", { paneKey: "p-1", projectPath: "/app", title: "Task 1", sessionKey: "codex:s-1", status: "running" }]
+      ])
+    });
+
+    expect(screen.queryByRole("button", { name: /Needs me/i })).toBeNull();
+    expect(document.querySelector(".wb-work-item-needs-chip")).toBeNull();
+  });
+
+  it("renders the chip in DOM when n>0 and responds to clicks", async () => {
+    const workItems: WorkbenchSidebarWorkItem[] = [
+      { noteId: "wi-1", title: "Task 1", status: "next", sessions: ["codex:s-1"] },
+      { noteId: "wi-2", title: "Task 2", status: "next", sessions: ["codex:s-2"] }
+    ];
+    const dotByKey = new Map<string, ActiveSessionDot>([
+      ["codex:s-1", { paneKey: "p-1", projectPath: "/app", title: "Task 1", sessionKey: "codex:s-1", status: "awaiting_user" }],
+      ["codex:s-2", { paneKey: "p-2", projectPath: "/app", title: "Task 2", sessionKey: "codex:s-2", status: "awaiting_user" }]
+    ]);
+    const onToggle = vi.fn();
+
+    renderSidebar({
+      workItems,
+      dotByKey,
+      workItemNeedsYouFilter: false,
+      onWorkItemNeedsYouFilterChange: onToggle
+    });
+
+    const chip = await screen.findByRole("button", { name: /Needs me 2/i });
+    expect(chip).not.toBeNull();
+    expect(chip.classList.contains("is-active")).toBe(false);
+    expect(chip.getAttribute("aria-pressed")).toBe("false");
+
+    fireEvent.click(chip);
+    expect(onToggle).toHaveBeenCalledWith(true);
+  });
+
+  it("renders active chip state when filter is active", async () => {
+    const workItems: WorkbenchSidebarWorkItem[] = [
+      { noteId: "wi-1", title: "Task 1", status: "next", sessions: ["codex:s-1"] }
+    ];
+    const dotByKey = new Map<string, ActiveSessionDot>([
+      ["codex:s-1", { paneKey: "p-1", projectPath: "/app", title: "Task 1", sessionKey: "codex:s-1", status: "awaiting_user" }]
+    ]);
+
+    renderSidebar({
+      workItems,
+      dotByKey,
+      workItemNeedsYouFilter: true
+    });
+
+    const chip = await screen.findByRole("button", { name: /Needs me 1/i });
+    expect(chip.classList.contains("is-active")).toBe(true);
+    expect(chip.getAttribute("aria-pressed")).toBe("true");
   });
 });

@@ -5,7 +5,7 @@ import { SegmentedControl } from "../../../components/SegmentedControl";
 import { sessionDotStatusClass } from "../../../components/SessionDotsCluster";
 import { useI18n } from "../../../i18n";
 import type { ActiveSessionDot } from "../activeSessionDots";
-import { rollupDot } from "../sessionStatus/workItemRollup";
+import { needsYou, rollupDot } from "../sessionStatus/workItemRollup";
 
 export type WorkbenchSidebarView = "workitems" | "projects" | "gtd";
 export type WorkbenchProjectFilter = "all" | "pinned";
@@ -138,6 +138,9 @@ export function WorkbenchSidebar<T extends WorkbenchSidebarProject>({
   workItemProjects,
   workItemProjectFilter,
   workItemStatusFilter,
+  needsYouCount,
+  workItemNeedsYouFilter,
+  onWorkItemNeedsYouFilterChange,
   dotByKey,
   projectFilter,
   projectQuery,
@@ -185,6 +188,9 @@ export function WorkbenchSidebar<T extends WorkbenchSidebarProject>({
   workItemProjects: Array<{ path: string; label: string }>;
   workItemProjectFilter: string;
   workItemStatusFilter: "all" | GtdStatus;
+  needsYouCount?: number;
+  workItemNeedsYouFilter?: boolean;
+  onWorkItemNeedsYouFilterChange?: (active: boolean) => void;
   dotByKey?: Map<string, ActiveSessionDot>;
   projectFilter: WorkbenchProjectFilter;
   projectQuery: string;
@@ -252,6 +258,23 @@ export function WorkbenchSidebar<T extends WorkbenchSidebarProject>({
             <option value="all">{t("desktop.common.all")}</option>
             {GTD_FILTER_STATUSES.map((status) => <option key={status} value={status}>{t(`desktop.workbench.gtdStatus.${status}`)}</option>)}
           </select>
+          {(() => {
+            const effectiveNeedsYouCount = typeof needsYouCount === "number"
+              ? needsYouCount
+              : (dotByKey ? workItems.filter((item) => needsYou(rollupDot({ work: { sessions: item.sessions } }, dotByKey))).length : 0);
+            if (effectiveNeedsYouCount <= 0) return null;
+            return (
+              <button
+                type="button"
+                className={`wb-work-item-needs-chip${workItemNeedsYouFilter ? " is-active" : ""}`}
+                aria-pressed={Boolean(workItemNeedsYouFilter)}
+                onClick={() => onWorkItemNeedsYouFilterChange?.(!workItemNeedsYouFilter)}
+              >
+                <span className="session-dot is-awaiting" aria-hidden="true" />
+                <span>{t("desktop.workbench.needsMe", effectiveNeedsYouCount)}</span>
+              </button>
+            );
+          })()}
         </div>
         {workItems.length ? workItems.map((item) => {
           const dot = dotByKey ? rollupDot({ work: { sessions: item.sessions } }, dotByKey) : undefined;

@@ -49,7 +49,7 @@ import { BrowserPaneView } from "../browser/BrowserPaneView";
 import type { BrowserSessionState } from "../../../shared/browserTypes";
 import type { WorkbenchFocusSessionRequest, WorkbenchSendSelectionRequest } from "../../../shared/workbenchSelection";
 import { collectActiveSessionDots } from "./activeSessionDots";
-import { rank } from "./sessionStatus/workItemRollup";
+import { needsYou, rank, rollupDot } from "./sessionStatus/workItemRollup";
 import { useAcpStatus, useAgentStatus, type AcpStatusEvent, type SessionDotRuntime } from "./sessionStatus";
 import { COMPOSER_TIP_LIMIT, type ComposerSendTip } from "./TerminalComposer";
 import { TerminalComposerStack } from "./TerminalComposerStack";
@@ -703,6 +703,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [workItems, setWorkItems] = useState<WorkbenchSidebarWorkItem[]>([]);
   const [workItemProjectFilter, setWorkItemProjectFilter] = useState("");
   const [workItemStatusFilter, setWorkItemStatusFilter] = useState<"all" | GtdStatus>("all");
+  const [workItemNeedsYouFilter, setWorkItemNeedsYouFilter] = useState(false);
   const [sessionSearchOpen, setSessionSearchOpen] = useState(false);
   const [selectedSessionKeys, setSelectedSessionKeys] = useState<Set<string>>(() => new Set());
   const [selectionAnchorKey, setSelectionAnchorKey] = useState("");
@@ -3385,9 +3386,23 @@ export function WorkbenchPanel(): ReactPortal | null {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const needsYouCount = useMemo(() => {
+    if (!dotByKey || dotByKey.size === 0) return 0;
+    let count = 0;
+    for (const item of workItems) {
+      const dot = rollupDot({ work: { sessions: item.sessions } }, dotByKey);
+      if (needsYou(dot)) count++;
+    }
+    return count;
+  }, [dotByKey, workItems]);
+
   const visibleWorkItems = useMemo(() => {
     const q = projectQuery.trim().toLowerCase();
     const filtered = workItems.filter((item) => {
+      if (workItemNeedsYouFilter && needsYouCount > 0) {
+        const dot = rollupDot({ work: { sessions: item.sessions } }, dotByKey);
+        if (!needsYou(dot)) return false;
+      }
       if (workItemProjectFilter && !(item.projects ?? []).includes(workItemProjectFilter)) return false;
       if (workItemStatusFilter !== "all" && item.status !== workItemStatusFilter) return false;
       if (q && !`${item.title} ${(item.projects ?? []).join(" ")}`.toLowerCase().includes(q)) return false;
@@ -3398,7 +3413,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       const rankB = rank({ work: { sessions: b.sessions }, updatedAtMs: b.updatedAtMs || 0 }, dotByKey);
       return rankB - rankA;
     });
-  }, [dotByKey, projectQuery, workItemProjectFilter, workItemStatusFilter, workItems]);
+  }, [dotByKey, needsYouCount, projectQuery, workItemNeedsYouFilter, workItemProjectFilter, workItemStatusFilter, workItems]);
 
   const workItemProjects = useMemo(() => {
     const paths = new Set<string>();
@@ -5582,6 +5597,9 @@ export function WorkbenchPanel(): ReactPortal | null {
         workItemProjects={workItemProjects}
         workItemProjectFilter={workItemProjectFilter}
         workItemStatusFilter={workItemStatusFilter}
+        needsYouCount={needsYouCount}
+        workItemNeedsYouFilter={workItemNeedsYouFilter}
+        onWorkItemNeedsYouFilterChange={setWorkItemNeedsYouFilter}
         dotByKey={dotByKey}
         folderAssignmentKey={folderAssignmentKey}
         onSelectWorkItemsView={() => selectSidebarView("workitems")}

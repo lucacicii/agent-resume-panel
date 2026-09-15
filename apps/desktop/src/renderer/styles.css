@@ -15895,8 +15895,35 @@ html[data-window-mode="standalone-note"] #react-im {
 .wb-work-item-line.is-decision { color: var(--color-warning); align-items: flex-start; }
 .wb-work-item-line.is-decision svg { flex: 0 0 auto; margin-top: 1px; }
 .wb-work-item-count { margin: 0; font-size: 10px; color: var(--color-label-tertiary); }
-.wb-work-item-filters { display: flex; gap: 6px; padding: 2px 6px 6px; }
+.wb-work-item-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 2px 6px 6px; }
 .wb-work-item-filter { flex: 1 1 auto; min-width: 0; }
+.wb-work-item-needs-chip {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--muted);
+  border-radius: 9999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex: 0 0 auto;
+  line-height: 18px;
+  transition: all 0.15s ease;
+}
+.wb-work-item-needs-chip:hover {
+  background: color-mix(in srgb, var(--panel) 80%, var(--text) 20%);
+  color: var(--text);
+}
+.wb-work-item-needs-chip.is-active {
+  background: color-mix(in srgb, var(--color-accent, #3b82f6) 18%, transparent);
+  border-color: var(--color-accent, #3b82f6);
+  color: var(--color-accent, #3b82f6);
+}
 .wb-work-item-projects { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .wb-work-item-add-project {
   appearance: none; border: 1px dashed var(--color-separator-opaque); background: transparent;
