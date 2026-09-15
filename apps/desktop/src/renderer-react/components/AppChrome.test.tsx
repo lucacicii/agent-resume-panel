@@ -14,11 +14,9 @@ function renderChrome(options?: {
     getI18nBundle: async () => ({
       locale: "en",
       messages: {
-        "desktop.tabs.today": "Today",
         "desktop.tabs.report": "Archive",
         "desktop.tabs.workbench": "Workbench",
         "desktop.tabs.notes": "Notes",
-        "desktop.tabs.im": "IM",
         "desktop.notes.floatingDots": "Floating notes",
         "desktop.chrome.account": "Account",
         "desktop.top.settings": "Settings",
@@ -77,11 +75,11 @@ describe("AppChrome", () => {
     const labels = [...document.querySelectorAll(".app-nav-rail .rail-btn")].map((item) =>
       item.getAttribute("aria-label")
     );
-    expect(labels).toEqual(["Today", "Archive", "Workbench", "Notes"]);
+    expect(labels).toEqual(["Archive", "Workbench", "Notes"]);
     const icons = [...document.querySelectorAll(".app-nav-rail .rail-btn [data-theme-icon]")].map((item) =>
       item.getAttribute("data-theme-icon")
     );
-    expect(icons).toEqual(["zap", "layout-dashboard", "terminal", "file-text"]);
+    expect(icons).toEqual(["layout-dashboard", "terminal", "file-text"]);
   });
 
   it("requests the primary tab when a rail button is clicked", async () => {
