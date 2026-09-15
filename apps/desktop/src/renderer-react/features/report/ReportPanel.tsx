@@ -1,23 +1,20 @@
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactPortal } from "react";
-import type { AgentSession, DigestProgressEvent, ReportEntry, ReportLinkRow } from "@agent-resume/core";
+import type { AgentSession, DigestProgressEvent, ReportEntry, ReportLinkRow, WorkItemRecord, WorkItemSessionLink } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { notifyDesktop } from "../../components/Notifications";
 import { renderMarkdown as markdown } from "../../components/Markdown";
 import { useI18n } from "../../i18n";
-import { calendarCells, dayKeyFromDate, dayKeyFromMs, digestIndex, isoWeekLabelFromDate, paddedMonthRange, parseWeekRange, periodKeyFromEntry, rangeForPeriod, type ReportPeriodType, viewMonthKey } from "./model";
+import { dayKeyFromDate, dayKeyFromMs, digestIndex, isoWeekLabelFromDate, parseWeekRange, periodKeyFromEntry, rangeForPeriod, type ReportPeriodType } from "./model";
 
 type Focus = { type: ReportPeriodType; key: string };
 type SessionPreview = { title: string; messages: Array<{ role: string; text: string; timestamp?: string }>; truncated?: boolean; warning?: string };
 type Preview = { session: AgentSession; preview: SessionPreview; summary: string };
 
-const MONTH_KEYS = ["desktop.calendar.month1", "desktop.calendar.month2", "desktop.calendar.month3", "desktop.calendar.month4", "desktop.calendar.month5", "desktop.calendar.month6", "desktop.calendar.month7", "desktop.calendar.month8", "desktop.calendar.month9", "desktop.calendar.month10", "desktop.calendar.month11", "desktop.calendar.month12"];
-
 function levelFor(type: ReportPeriodType): "daily" | "weekly" | "monthly" { return type === "day" ? "daily" : type === "week" ? "weekly" : "monthly"; }
 type Translate = (key: string, ...args: Array<string | number>) => string;
 
 function digestLabel(type: ReportPeriodType, t: Translate): string { return t(type === "day" ? "desktop.report.digestDaily" : type === "week" ? "desktop.report.digestWeekly" : "desktop.report.digestMonthly"); }
-function rangeLabel(type: ReportPeriodType, key: string, t: Translate): string { return t(type === "day" ? "desktop.report.rangeDay" : type === "week" ? "desktop.report.rangeWeek" : "desktop.report.rangeMonth", key); }
 function scopeLabel(type: ReportPeriodType, t: Translate): string { return t(type === "day" ? "desktop.report.scopeDay" : type === "week" ? "desktop.report.scopeWeek" : "desktop.report.scopeMonth"); }
 function digestProgressKey(type: ReportPeriodType | "daily" | "weekly" | "monthly", key: string): string { return `${type === "day" || type === "daily" ? "daily" : type === "week" || type === "weekly" ? "weekly" : "monthly"}:${key}`; }
 function progressKeyFromEvent(event: DigestProgressEvent): string {
@@ -50,8 +47,7 @@ function periodFromReportRef(ref: string): { type: "day" | "week" | "month"; key
  * Renders a digest body and rewrites its source references into clickable `.digest-ref`
  * anchors: session bullets in the daily `Session 索引` section (resolved against the
  * report's ordered `report_links`) and report-period references (`Daily · 2026-08-08`,
- * `daily:…`, …) found anywhere. Follows the `renderAssistantMarkdown` pattern in the
- * Agent panel so the anchors bypass the shared sanitizer.
+ * `daily:…`, …) found anywhere.
  */
 function renderDigestMarkdown(content: string, links: ReportLinkRow[]): string {
   if (typeof document === "undefined") return markdown(content);
@@ -59,9 +55,6 @@ function renderDigestMarkdown(content: string, links: ReportLinkRow[]): string {
   template.innerHTML = markdown(content);
   const root = template.content;
 
-  // Session references: zip `[provider] title` list items against report_links grouped by
-  // provider (report_links preserve the order the digest was built from, so per-provider
-  // position stays aligned even when the LLM abbreviated a title).
   if (links.length) {
     const byProvider = new Map<string, ReportLinkRow[]>();
     for (const link of links) {
@@ -92,7 +85,6 @@ function renderDigestMarkdown(content: string, links: ReportLinkRow[]): string {
     }
   }
 
-  // Report references: rewrite period reference text into links.
   const walker = document.createTreeWalker(root, 4);
   const textNodes: Text[] = [];
   let current = walker.nextNode();
@@ -158,183 +150,347 @@ function onDigestRefClick(event: React.MouseEvent<HTMLDivElement>, entry: Report
   }));
 }
 
+function WorkItemDetail({
+  item,
+  sessions,
+  locale,
+  t
+}: {
+  item: WorkItemRecord;
+  sessions: AgentSession[];
+  locale: string;
+  t: Translate;
+}) {
+  const projectList = item.work?.projects?.length
+    ? item.work.projects
+    : item.work?.primaryProject
+      ? [item.work.primaryProject]
+      : [];
+
+  return (
+    <div className="report-work-item-detail">
+      <div className="report-work-item-card">
+        <div className="report-work-item-card-label">{t("desktop.archive.workItemsTitle")}</div>
+        <h2 className="report-work-item-heading">
+          <span className={`wb-gtd-status-dot is-${item.gtdStatus ?? "inbox"}`} aria-hidden="true" />
+          <span>{item.title || item.noteId}</span>
+        </h2>
+        {item.work?.nextAction ? (
+          <div className="report-work-item-field">
+            <span className="field-label">{t("desktop.archive.nextAction", item.work.nextAction)}</span>
+          </div>
+        ) : null}
+        {item.work?.decision ? (
+          <div className="report-work-item-field">
+            <span className="field-label">{t("desktop.archive.decision", item.work.decision)}</span>
+          </div>
+        ) : null}
+        {projectList.length > 0 ? (
+          <div className="report-work-item-field">
+            <span className="field-label">{t("desktop.archive.projects")}: </span>
+            <span className="field-value">
+              {projectList.map((p) => p.split(/[\\/]/).filter(Boolean).at(-1) || p).join(" · ")}
+            </span>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="report-work-item-history">
+        <h3>{t("desktop.report.sessionsTitle")} ({sessions.length})</h3>
+        {sessions.length === 0 ? (
+          <p className="muted">{t("desktop.archive.historyEmpty")}</p>
+        ) : (
+          <div className="report-work-item-sessions-summary">
+            {sessions.map((s) => (
+              <div key={`${s.provider}:${s.id}`} className="report-work-item-session-item">
+                <span className="s-provider-tag" data-provider={s.provider}>{s.provider}</span>
+                <span className="report-session-title">{s.title || s.id}</span>
+                <span className="muted report-session-time">{formatTime(s.updatedAt, locale)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DigestDetail({ entry, focus, hasSessions, loading, stale, running, locale, t, links, onRun }: { entry?: ReportEntry | null; focus: Focus; hasSessions: boolean; loading: boolean; stale: boolean; running: boolean; locale: string; t: Translate; links: ReportLinkRow[]; onRun: () => void }) {
+  if (running) {
+    return <div className="detail-generating"><p className="empty-hint">{t("desktop.report.generatingStrong")} {" "}<strong>{digestLabel(focus.type, t)}</strong><span className="detail-generating-key">{focus.key}</span></p><p className="muted detail-generating-hint">{t("desktop.report.generatingHint")}</p></div>;
+  }
+  if (loading && !entry) {
+    return <div className="cal-detail-loading" role="status"><span className="cal-detail-spinner" aria-hidden="true" /><span>{t("desktop.common.loading")}…</span></div>;
+  }
+  if (isFuture(focus.type, focus.key)) return <p className="empty-hint muted">{t("desktop.report.futureDateHint", digestLabel(focus.type, t))}</p>;
+  if (!entry) return <div className={`digest-panel digest-panel-empty${hasSessions ? "" : " digest-panel-quiet"}`}><header className="digest-panel-head"><h3><span className={`badge ${levelFor(focus.type)}`}>{levelFor(focus.type)}</span>{digestLabel(focus.type, t)} · {focus.key}</h3></header><p className="empty-hint muted">{hasSessions ? t("desktop.report.emptyHasSessions", scopeLabel(focus.type, t), digestLabel(focus.type, t)) : t("desktop.report.emptyNoSessions", scopeLabel(focus.type, t), digestLabel(focus.type, t))}</p>{hasSessions ? <button type="button" className="tool-btn" onClick={onRun}>{t("desktop.report.generateBtn", digestLabel(focus.type, t))}</button> : null}</div>;
+  return <>{stale ? <div className="digest-stale-banner"><p className="muted">{t("desktop.report.staleDefault")}</p></div> : null}<article className="digest-card"><header className="digest-card-head"><div className="digest-card-title-row"><h3><span className={`badge ${entry.level}`}>{entry.level}</span>{entry.title || entry.id}</h3><div className="digest-card-actions"><button type="button" className="tool-btn" onClick={onRun}>{t("desktop.report.regenerateBtn")}</button></div></div><div className="meta-line">{formatTime(entry.createdAtMs, locale)}{entry.embeddingJson ? " · embedding ✓" : ""}</div></header><div className="digest-body markdown-body" onClick={(event) => onDigestRefClick(event, entry, links)} dangerouslySetInnerHTML={{ __html: renderDigestMarkdown(entry.content, links) }} /></article></>;
+}
+
+function SessionDetail({ preview, locale, t, assist, onSummarize, onAutoRename, onResume }: { preview: Preview; locale: string; t: Translate; assist: "summary" | "rename" | null; onSummarize: () => void; onAutoRename: () => void; onResume: () => void }) {
+  return <div className="session-preview"><div className="session-preview-head"><h3 className="session-preview-title">{preview.preview.title || preview.session.title || preview.session.id}</h3><div className="session-preview-actions"><button type="button" className="tool-btn" onClick={onSummarize} disabled={assist !== null}>{assist === "summary" ? t("desktop.sessions.summarizing") : "Summarize"}</button><button type="button" className="tool-btn" onClick={onAutoRename} disabled={assist !== null}>{assist === "rename" ? t("desktop.sessions.renaming") : "Auto Rename"}</button><button type="button" className="tool-btn" onClick={onResume}>{t("desktop.agent.resumeSession")}</button></div></div><div className="muted session-preview-meta"><span className="s-provider-tag" data-provider={preview.session.provider}>{preview.session.provider}</span>{" · "}{preview.session.id}{" · "}{preview.session.projectPath}</div><div className="session-summary-box"><div className="session-summary-label">Summary</div><div className="session-summary-body">{preview.summary || <span className="muted">No summary yet</span>}</div></div>{preview.preview.warning ? <p className="status error">{preview.preview.warning}</p> : null}{preview.preview.messages.length ? preview.preview.messages.map((message, index) => (<article key={index} className={`preview-msg ${message.role}`}><div className="role">{message.role}{message.timestamp ? ` · ${formatTime(Number(message.timestamp), locale)}` : ""}</div><div>{message.text}</div></article>)) : <p className="muted">{t("desktop.sessions.noMessages")}</p>}{preview.preview.truncated ? <p className="muted">{t("desktop.sessions.truncated")}</p> : null}</div>;
+}
+
 export function ReportPanel(): ReactPortal | null {
   const host = document.getElementById("react-report");
   const { locale, t } = useI18n();
-  const today = useMemo(() => new Date(), []);
   const [active, setActive] = useState(true);
-  const [view, setView] = useState({ year: today.getFullYear(), month: today.getMonth() });
-  const [focus, setFocus] = useState<Focus>({ type: "day", key: dayKeyFromDate(today) });
-  const [entries, setEntries] = useState<ReportEntry[]>([]);
-  const [monthSessions, setMonthSessions] = useState<AgentSession[]>([]);
+
+  // Work items (Archive primary axis)
+  const [workItems, setWorkItems] = useState<WorkItemRecord[]>([]);
+  const [workItemsLoading, setWorkItemsLoading] = useState(false);
+  const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
+  const [sessionLinks, setSessionLinks] = useState<WorkItemSessionLink[]>([]);
+  const [workItemBySession, setWorkItemBySession] = useState<Record<string, { noteId: string; title: string }>>({});
+  const [workItemSessions, setWorkItemSessions] = useState<AgentSession[]>([]);
+
+  // Fallback period sessions / calendar focus
+  const [focus, setFocus] = useState<Focus>({ type: "day", key: dayKeyFromDate(new Date()) });
   const [sessions, setSessions] = useState<AgentSession[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [sessionListOpen, setSessionListOpen] = useState(true);
+
+  // Search state
+  const [archiveQuery, setArchiveQuery] = useState("");
+  const [archiveResults, setArchiveResults] = useState<AgentSession[] | null>(null);
+
+  // Preview & focused report state
   const [preview, setPreview] = useState<Preview | null>(null);
   const [previewAssist, setPreviewAssist] = useState<"summary" | "rename" | null>(null);
+  const [focusedReport, setFocusedReport] = useState<ReportEntry | null>(null);
+  const [reportLinks, setReportLinks] = useState<ReportLinkRow[]>([]);
+  const [runningPeriods, setRunningPeriods] = useState<Set<string>>(new Set());
+  const [progressByPeriod, setProgressByPeriod] = useState<Map<string, DigestProgressEvent>>(new Map());
+  const [stale, setStale] = useState<Set<string>>(new Set());
+
   const notifyPreviewStatus = (s: { text: string; kind?: "error" | "ok" | "warning" }) => {
     if (s.text) notifyDesktop({ text: s.text, kind: (s.kind ?? "info") as "error" | "ok" | "info" });
   };
-  const [stale, setStale] = useState<Set<string>>(new Set());
-  const [monthLoading, setMonthLoading] = useState(false);
-  const [sessionsLoading, setSessionsLoading] = useState(false);
-  const [runningPeriods, setRunningPeriods] = useState<Set<string>>(new Set());
-  const [progressByPeriod, setProgressByPeriod] = useState<Map<string, DigestProgressEvent>>(new Map());
   const notifyStatus = (s: { text: string; kind?: "error" | "ok" | "warning" }) => {
     if (s.text) notifyDesktop({ text: s.text, kind: (s.kind ?? "info") as "error" | "ok" | "info" });
   };
-  const [reportLinks, setReportLinks] = useState<ReportLinkRow[]>([]);
-  const [sessionListOpen, setSessionListOpen] = useState(false);
-  const sessionRequestId = useRef(0);
-  const monthRequestId = useRef(0);
 
-  const monthKey = viewMonthKey(view.year, view.month);
-  const index = useMemo(() => digestIndex(entries), [entries]);
-  const selectedEntryId = index.get(`${levelFor(focus.type)}:${focus.key}`)?.id;
-  const sessionDays = useMemo(() => new Set(monthSessions.map((item) => dayKeyFromMs(item.updatedAt))), [monthSessions]);
-
-  const loadMonth = useCallback(async () => {
-    const requestId = ++monthRequestId.current;
-    setMonthLoading(true);
+  const loadWorkItems = useCallback(async () => {
+    if (typeof desktopApi().notesListWorkItems !== "function") return;
+    setWorkItemsLoading(true);
     try {
-      const padded = paddedMonthRange(view.year, view.month);
-      const exact = rangeForPeriod("month", viewMonthKey(view.year, view.month));
-      const [nextEntries, nextSessions] = await Promise.all([
-        desktopApi().listReports({ ...padded, limit: 300 }),
-        exact ? desktopApi().listSessionsInRange({ ...exact, limit: 2000 }) : Promise.resolve([])
+      const [items, links] = await Promise.all([
+        desktopApi().notesListWorkItems(),
+        typeof desktopApi().notesListWorkItemSessionLinks === "function"
+          ? desktopApi().notesListWorkItemSessionLinks()
+          : Promise.resolve([])
       ]);
-      if (requestId !== monthRequestId.current) return;
-      setEntries(nextEntries);
-      setMonthSessions(nextSessions);
-      if (typeof desktopApi().needsDailyDigestRefresh === "function") {
-        const canonicalEntries = [...digestIndex(nextEntries).values()];
-        const checks = await Promise.all(canonicalEntries.map(async (entry) => {
-          const key = periodKeyFromEntry(entry);
-          if (!key) return null;
-          const check = entry.level === "daily"
-            ? await desktopApi().needsDailyDigestRefresh(key)
-            : entry.level === "weekly"
-              ? await desktopApi().needsWeeklyDigestRefresh(key)
-              : await desktopApi().needsMonthlyDigestRefresh(key);
-          return { key: `${entry.level}:${key}`, check };
-        }));
-        if (requestId !== monthRequestId.current) return;
-        setStale(new Set(checks.filter((item) => item?.check.needed).map((item) => item!.key)));
-      } else {
-        setStale(new Set());
+      setWorkItems(items);
+      setSessionLinks(links);
+
+      const map: Record<string, { noteId: string; title: string }> = {};
+      for (const link of links) {
+        map[`${link.provider}:${link.sessionId}`] = {
+          noteId: link.noteId,
+          title: link.title || link.noteId
+        };
       }
-      notifyStatus({ text: "" });
-    } catch (error) {
-      if (requestId === monthRequestId.current) notifyStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+      setWorkItemBySession(map);
+
+      setSelectedNoteId((prev) => {
+        if (prev && items.some((it) => it.noteId === prev)) return prev;
+        return items[0]?.noteId ?? null;
+      });
+    } catch {
+      // Best-effort
     } finally {
-      if (requestId === monthRequestId.current) setMonthLoading(false);
+      setWorkItemsLoading(false);
     }
-  }, [view.month, view.year]);
+  }, []);
+
+  const selectedWorkItem = useMemo(
+    () => workItems.find((item) => item.noteId === selectedNoteId) ?? null,
+    [workItems, selectedNoteId]
+  );
+
+  const workItemSessionKeys = useMemo(() => {
+    if (!selectedWorkItem) return [];
+    const keys = new Set<string>();
+    for (const key of selectedWorkItem.work?.sessions ?? []) {
+      if (key?.trim()) keys.add(key.trim());
+    }
+    for (const link of sessionLinks) {
+      if (link.noteId === selectedWorkItem.noteId && link.provider && link.sessionId) {
+        keys.add(`${link.provider}:${link.sessionId}`);
+      }
+    }
+    return Array.from(keys);
+  }, [selectedWorkItem, sessionLinks]);
+
+  useEffect(() => {
+    if (!workItemSessionKeys.length) {
+      setWorkItemSessions([]);
+      return;
+    }
+    const keys = workItemSessionKeys
+      .map((key) => {
+        const idx = key.indexOf(":");
+        return idx > 0 ? { provider: key.slice(0, idx), id: key.slice(idx + 1) } : null;
+      })
+      .filter(Boolean) as Array<{ provider: string; id: string }>;
+
+    let cancelled = false;
+    setSessionsLoading(true);
+    void desktopApi()
+      .querySessionsPage({ keys, limit: 200 })
+      .then((page) => {
+        if (!cancelled) setWorkItemSessions(page.sessions);
+      })
+      .catch(() => {
+        if (!cancelled) setWorkItemSessions([]);
+      })
+      .finally(() => {
+        if (!cancelled) setSessionsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [workItemSessionKeys]);
 
   const loadSessions = useCallback(async () => {
     const range = rangeForPeriod(focus.type, focus.key);
     if (!range) return;
-    const requestId = ++sessionRequestId.current;
     setSessionsLoading(true);
     try {
       const nextSessions = await desktopApi().listSessionsInRange({ ...range, limit: 500 });
-      if (requestId === sessionRequestId.current) {
-        setSessions(nextSessions);
-      }
+      setSessions(nextSessions);
     } catch (error) {
-      if (requestId === sessionRequestId.current) {
-        setSessions([]);
-        notifyStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
-      }
+      setSessions([]);
+      notifyStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
     } finally {
-      if (requestId === sessionRequestId.current) {
-        setSessionsLoading(false);
-      }
+      setSessionsLoading(false);
     }
   }, [focus]);
 
-  useEffect(() => { void loadMonth(); }, [loadMonth]);
-  useEffect(() => { setPreview(null); setPreviewAssist(null); notifyPreviewStatus({ text: "" }); void loadSessions(); }, [loadSessions]);
+  useEffect(() => {
+    void loadWorkItems();
+  }, [loadWorkItems]);
+
+  useEffect(() => {
+    const reload = () => {
+      void loadWorkItems();
+    };
+    window.addEventListener("agent-resume:notes-mutated", reload);
+    return () => window.removeEventListener("agent-resume:notes-mutated", reload);
+  }, [loadWorkItems]);
+
   useEffect(() => {
     const onTab = (event: Event) => {
       const isReport = (event as CustomEvent<string>).detail === "report";
       setActive(isReport);
       if (isReport) {
+        void loadWorkItems();
         void loadSessions();
       }
     };
     window.addEventListener("agent-resume:tab-change", onTab);
     return () => window.removeEventListener("agent-resume:tab-change", onTab);
-  }, [loadSessions]);
+  }, [loadWorkItems, loadSessions]);
+
   useEffect(() => {
-    const reload = () => {
-      void loadSessions();
+    const onArchiveFocus = (event: Event) => {
+      const noteId = (event as CustomEvent<{ noteId: string }>).detail?.noteId;
+      if (noteId) {
+        setSelectedNoteId(noteId);
+        setPreview(null);
+        setFocusedReport(null);
+      }
     };
-    window.addEventListener("agent-resume:sessions-mutated", reload);
-    const unsubsSync =
-      typeof desktopApi().onSessionsSynced === "function"
-        ? desktopApi().onSessionsSynced(() => {
-            void loadSessions();
-          })
-        : undefined;
-    return () => {
-      window.removeEventListener("agent-resume:sessions-mutated", reload);
-      unsubsSync?.();
-    };
-  }, [loadSessions]);
+    window.addEventListener("agent-resume:archive-focus", onArchiveFocus);
+    return () => window.removeEventListener("agent-resume:archive-focus", onArchiveFocus);
+  }, []);
+
   useEffect(() => {
-    const onFocus = (event: Event) => {
+    const onFocus = async (event: Event) => {
       const next = (event as CustomEvent<Focus | undefined>).detail;
       if (!next?.key) return;
-      if (next.type === "day" || next.type === "month") {
-        const [year, month] = next.key.split("-").map(Number);
-        if (Number.isFinite(year) && Number.isFinite(month)) setView({ year, month: month - 1 });
-      } else {
-        const range = parseWeekRange(next.key);
-        if (range) { const date = new Date(range.fromMs); setView({ year: date.getFullYear(), month: date.getMonth() }); }
+      setFocus(next);
+      try {
+        const range = rangeForPeriod(next.type, next.key);
+        if (range) {
+          const list = await desktopApi().listReports({ ...range, limit: 10 });
+          const entry = list.find((e) => periodKeyFromEntry(e) === next.key) || list[0] || null;
+          setFocusedReport(entry);
+          setPreview(null);
+        }
+      } catch {
+        /* best-effort */
       }
-      selectFocus(next);
     };
     window.addEventListener("agent-resume:report-focus", onFocus);
     return () => window.removeEventListener("agent-resume:report-focus", onFocus);
   }, []);
+
+  useEffect(() => {
+    if (!focusedReport?.id?.startsWith("daily:")) {
+      setReportLinks([]);
+      return;
+    }
+    let cancelled = false;
+    void desktopApi()
+      .getReportLinks(focusedReport.id)
+      .then((links) => {
+        if (!cancelled) setReportLinks(links);
+      })
+      .catch(() => {
+        if (!cancelled) setReportLinks([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [focusedReport?.id]);
+
   useEffect(() => desktopApi().onDigestProgress((event) => {
     const key = progressKeyFromEvent(event);
     if (!key) return;
     setProgressByPeriod((current) => new Map(current).set(key, event));
   }), []);
+
   useEffect(() => {
-    if (!selectedEntryId?.startsWith("daily:")) {
-      setReportLinks([]);
+    const query = archiveQuery.trim();
+    if (!query) {
+      setArchiveResults(null);
       return;
     }
     let cancelled = false;
-    void desktopApi().getReportLinks(selectedEntryId)
-      .then((links) => { if (!cancelled) setReportLinks(links); })
-      .catch(() => { if (!cancelled) setReportLinks([]); });
-    return () => { cancelled = true; };
-  }, [selectedEntryId]);
+    setSessionsLoading(true);
+    const timer = setTimeout(() => {
+      void desktopApi()
+        .querySessionsPage({ search: query, limit: 200 })
+        .then((page) => {
+          if (!cancelled) setArchiveResults(page.sessions);
+        })
+        .catch((error) => {
+          if (!cancelled) {
+            setArchiveResults([]);
+            notifyStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setSessionsLoading(false);
+        });
+    }, 120);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [archiveQuery]);
 
-  const selectFocus = (next: Focus) => {
-    // Drop the previous day's content immediately so the loading state is
-    // visible while the slow range query runs (instead of stale numbers).
-    setSessions([]);
-    setPreview(null);
-    setPreviewAssist(null);
-    notifyPreviewStatus({ text: "" });
-    setFocus(next);
-  };
-  const navigate = (delta: number) => {
-    const next = new Date(view.year, view.month + delta, 1);
-    const month = { year: next.getFullYear(), month: next.getMonth() };
-    setView(month);
-    selectFocus({ type: "month", key: viewMonthKey(month.year, month.month) });
-  };
   const openPreview = async (session: AgentSession) => {
     try {
       const result = await desktopApi().previewSession({ provider: session.provider, id: session.id });
       setPreview({ session: result.session, preview: result.preview, summary: result.session.sessionSummary || "" });
       notifyPreviewStatus({ text: "" });
-    } catch (error) { notifyStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }); }
+    } catch (error) {
+      notifyStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    }
   };
+
   const summarizePreview = async () => {
     if (!preview) return;
     setPreviewAssist("summary");
@@ -343,32 +499,39 @@ export function ReportPanel(): ReactPortal | null {
       setPreview((current) => current ? { ...current, session: result.session, summary: result.summary } : current);
       notifyPreviewStatus({ text: t("desktop.sessions.summaryGenerated"), kind: "ok" });
       window.dispatchEvent(new Event("agent-resume:sessions-mutated"));
-    } catch (error) { notifyPreviewStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }); }
-    finally { setPreviewAssist(null); }
+    } catch (error) {
+      notifyPreviewStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    } finally {
+      setPreviewAssist(null);
+    }
   };
+
   const renamePreview = async () => {
     if (!preview) return;
     setPreviewAssist("rename");
     try {
       const result = await desktopApi().autoRenameSession({ provider: preview.session.provider, id: preview.session.id });
-      const updateTitle = (session: AgentSession) => session.provider === preview.session.provider && session.id === preview.session.id ? { ...session, title: result.title } : session;
+      const updateTitle = (s: AgentSession) => s.provider === preview.session.provider && s.id === preview.session.id ? { ...s, title: result.title } : s;
       setSessions((current) => current.map(updateTitle));
-      setMonthSessions((current) => current.map(updateTitle));
+      setWorkItemSessions((current) => current.map(updateTitle));
       setPreview((current) => current ? { ...current, session: { ...current.session, title: result.title }, preview: { ...current.preview, title: result.title } } : current);
       let text = t("desktop.sessions.renamed", result.title);
       if (!result.nativeRenamed && result.nativeError) text += t("desktop.sessions.renamedNativeError", result.nativeError);
       notifyPreviewStatus({ text, kind: result.nativeRenamed || !result.nativeError ? "ok" : "error" });
       window.dispatchEvent(new CustomEvent("agent-resume:sessions-mutated", { detail: { kind: "session-title" } }));
-    } catch (error) { notifyPreviewStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }); }
-    finally { setPreviewAssist(null); }
+    } catch (error) {
+      notifyPreviewStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    } finally {
+      setPreviewAssist(null);
+    }
   };
+
   const resumePreview = async () => {
     if (!preview) return;
     const { provider, id } = preview.session;
     try {
       const result = await desktopApi().workbenchOpenSession({ provider, id });
       if (result.external) {
-        // External terminal/editor is opening; keep the preview open and report.
         notifyPreviewStatus({ text: t("desktop.agent.resumeStarted", provider, id), kind: "ok" });
         return;
       }
@@ -379,6 +542,7 @@ export function ReportPanel(): ReactPortal | null {
       notifyPreviewStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
     }
   };
+
   const run = async (type: ReportPeriodType) => {
     const key = focus.key;
     const periodKey = digestProgressKey(type, key);
@@ -423,60 +587,25 @@ export function ReportPanel(): ReactPortal | null {
       else if (type === "week") await desktopApi().runWeeklyDigest({ weekKey: key, ...approval });
       else await desktopApi().runMonthlyDigest({ monthKey: key, ...approval });
       notifyStatus({ text: t("desktop.report.digestOk", digestLabel(type, t), key, t("desktop.report.created"), 0, 0, ""), kind: "ok" });
-      await loadMonth();
-    } catch (error) { notifyStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }); }
-    finally {
+      const range = rangeForPeriod(type, key);
+      if (range) {
+        const list = await desktopApi().listReports({ ...range, limit: 10 });
+        const entry = list.find((e) => periodKeyFromEntry(e) === key) || list[0] || null;
+        setFocusedReport(entry);
+      }
+    } catch (error) {
+      notifyStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    } finally {
       setRunningPeriods((current) => { const next = new Set(current); next.delete(periodKey); return next; });
       setProgressByPeriod((current) => { const next = new Map(current); next.delete(periodKey); return next; });
     }
   };
 
-  // Archive is search-first: a query switches the list from "this period" to
-  // a cross-catalog search, still grouped by work item.
-  const [archiveQuery, setArchiveQuery] = useState("");
-  const [archiveResults, setArchiveResults] = useState<AgentSession[] | null>(null);
-  useEffect(() => {
-    const query = archiveQuery.trim();
-    if (!query) {
-      setArchiveResults(null);
-      return;
-    }
-    if (typeof desktopApi().querySessionsPage !== "function") return;
-    let alive = true;
-    const timer = window.setTimeout(() => {
-      void desktopApi().querySessionsPage({ search: query, limit: 200 })
-        .then((page) => { if (alive) setArchiveResults(page.sessions); })
-        .catch(() => { if (alive) setArchiveResults([]); });
-    }, 180);
-    return () => { alive = false; window.clearTimeout(timer); };
-  }, [archiveQuery]);
-
-  const sessionsForList = archiveQuery.trim() ? (archiveResults ?? []) : sessions;
-
-  // Report groups its sessions by work item, so a period reads as "what
-  // progressed on each thing" rather than a flat session log.
-  const [workItemBySession, setWorkItemBySession] = useState<Record<string, { noteId: string; title: string }>>({});
-  useEffect(() => {
-    const loadWorkItemIndex = async () => {
-      if (typeof desktopApi().notesListWorkItemSessionLinks !== "function") return;
-      try {
-        const links = await desktopApi().notesListWorkItemSessionLinks();
-        const map: Record<string, { noteId: string; title: string }> = {};
-        for (const link of links) {
-          map[`${link.provider}:${link.sessionId}`] = {
-            noteId: link.noteId,
-            title: link.title || link.noteId
-          };
-        }
-        setWorkItemBySession(map);
-      } catch {
-        /* grouping is best-effort */
-      }
-    };
-    void loadWorkItemIndex();
-    window.addEventListener("agent-resume:notes-mutated", loadWorkItemIndex);
-    return () => window.removeEventListener("agent-resume:notes-mutated", loadWorkItemIndex);
-  }, []);
+  const sessionsForList = useMemo(() => {
+    if (archiveResults) return archiveResults;
+    if (selectedWorkItem) return workItemSessions;
+    return sessions;
+  }, [archiveResults, selectedWorkItem, workItemSessions, sessions]);
 
   const sessionGroups = useMemo(() => {
     const groups = new Map<string, { key: string; label: string; sessions: typeof sessionsForList }>();
@@ -493,80 +622,268 @@ export function ReportPanel(): ReactPortal | null {
     return [...groups.values()];
   }, [sessionsForList, t, workItemBySession]);
 
-  if (!host) return null;
-  const selectedEntry = index.get(`${levelFor(focus.type)}:${focus.key}`);
-  const cells = calendarCells(view.year, view.month);
-  const weeks = Array.from({ length: 6 }, (_, row) => cells.slice(row * 7, row * 7 + 7));
+  const refreshAll = useCallback(async () => {
+    await Promise.all([loadWorkItems(), loadSessions()]);
+  }, [loadWorkItems, loadSessions]);
+
   const focusedPeriodKey = digestProgressKey(focus.type, focus.key);
   const focusedRunning = runningPeriods.has(focusedPeriodKey);
   const focusedProgress = progressByPeriod.get(focusedPeriodKey);
-  const detail = preview ? <SessionDetail preview={preview} locale={locale} t={t} assist={previewAssist} onSummarize={() => void summarizePreview()} onAutoRename={() => void renamePreview()} onResume={() => void resumePreview()} /> : <DigestDetail entry={selectedEntry} focus={focus} hasSessions={sessions.length > 0} loading={sessionsLoading} stale={stale.has(`${levelFor(focus.type)}:${focus.key}`)} running={focusedRunning} locale={locale} t={t} links={reportLinks} onRun={() => void run(focus.type)} />;
-  const detailProgress = !preview && focusedRunning ? <DigestProgressCard focus={focus} progress={focusedProgress} t={t} /> : null;
-  const hasMonthDigest = index.has(`monthly:${monthKey}`);
-  // The toolbar lives in the app header while the Report view is active.
+
+  const detailProgress = focusedRunning && focusedProgress ? (
+    <div className="detail-progress gen-progress is-loading" role="status" aria-live="polite">
+      <div className="gen-progress-line">{focusedProgress.message || t("desktop.report.generatingHint")}</div>
+    </div>
+  ) : null;
+
+  const detail = preview ? (
+    <SessionDetail
+      preview={preview}
+      locale={locale}
+      t={t}
+      assist={previewAssist}
+      onSummarize={() => void summarizePreview()}
+      onRename={() => void renamePreview()}
+      onResume={() => void resumePreview()}
+    />
+  ) : focusedReport ? (
+    <DigestDetail
+      entry={focusedReport}
+      focus={focus}
+      hasSessions={sessions.length > 0}
+      loading={sessionsLoading}
+      stale={stale.has(`${levelFor(focus.type)}:${focus.key}`)}
+      running={focusedRunning}
+      locale={locale}
+      t={t}
+      links={reportLinks}
+      onRun={() => void run(focus.type)}
+    />
+  ) : selectedWorkItem ? (
+    <WorkItemDetail
+      item={selectedWorkItem}
+      sessions={workItemSessions}
+      locale={locale}
+      t={t}
+    />
+  ) : (
+    <div className="cal-detail-empty">
+      <p className="muted">{t("desktop.archive.noWorkItemSelected")}</p>
+    </div>
+  );
+
   const headerSlot = document.getElementById("app-header-slot");
   const toolbar = (
     <div className="toolbar report-toolbar">
-      <div className="cal-nav-left">
-        <button type="button" className="tool-btn" onClick={() => navigate(-1)} title={t("desktop.report.prevMonth")}>‹</button>
-        <select className="quiet-select tool-select cal-year-select" value={view.year} onChange={(event) => { const year = Number(event.target.value); setView({ ...view, year }); selectFocus({ type: "month", key: viewMonthKey(year, view.month) }); }}>{Array.from({ length: 18 }, (_, index) => today.getFullYear() + 2 - index).map((year) => <option key={year} value={year}>{t("desktop.common.yearSuffix", year)}</option>)}</select>
-        <select className="quiet-select tool-select cal-month-select" value={view.month} onChange={(event) => { const month = Number(event.target.value); setView({ ...view, month }); selectFocus({ type: "month", key: viewMonthKey(view.year, month) }); }}>{MONTH_KEYS.map((key, month) => <option key={key} value={month}>{t(key)}</option>)}</select>
-        <button type="button" className="tool-btn" onClick={() => navigate(1)} title={t("desktop.report.nextMonth")}>›</button>
-        <button type="button" className="tool-btn" onClick={() => { const now = new Date(); setView({ year: now.getFullYear(), month: now.getMonth() }); selectFocus({ type: "day", key: dayKeyFromDate(now) }); }}>{t("desktop.common.today")}</button>
-        </div>
-        <div className="cal-nav-right"><button type="button" className="tool-btn ghost-btn" disabled={monthLoading} onClick={() => void loadMonth()}>{monthLoading ? t("desktop.common.loading") : t("desktop.common.refresh")}</button></div>
+      <div className="cal-nav-left" />
+      <div className="cal-nav-right">
+        {active && (
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={() => void refreshAll()}
+            title={t("desktop.common.refresh")}
+          >
+            ↻
+          </button>
+        )}
+      </div>
     </div>
   );
+
+  if (!host) return null;
 
   return createPortal(
     <section className="panel active react-report-panel" hidden={!active}>
       {active && headerSlot ? createPortal(toolbar, headerSlot) : null}
       <div className="report-layout">
-        <div className="report-left-col"><aside className="report-cal-pane"><div className="cal-main">
-          <div className="cal-weekdays"><span>{t("desktop.report.weekdayMon")}</span><span>{t("desktop.report.weekdayTue")}</span><span>{t("desktop.report.weekdayWed")}</span><span>{t("desktop.report.weekdayThu")}</span><span>{t("desktop.report.weekdayFri")}</span><span>{t("desktop.report.weekdaySat")}</span><span>{t("desktop.report.weekdaySun")}</span><span className="cal-week-col-head">{t("desktop.report.weekCol")}</span></div>
-          <div className="cal-grid">{weeks.map((week) => <CalendarWeek key={week[0]?.key} cells={week} focus={focus} index={index} sessionDays={sessionDays} stale={stale} runningPeriods={runningPeriods} t={t} onDay={(key) => selectFocus({ type: "day", key })} onWeek={(key) => selectFocus({ type: "week", key })} />)}</div>
-          <div className="cal-month-actions"><button type="button" className={`tool-btn cal-month-btn${hasMonthDigest ? " has-digest" : ""}${focus.type === "month" ? " selected" : ""}${stale.has(`monthly:${monthKey}`) ? " has-digest-stale" : ""}${runningPeriods.has(digestProgressKey("month", monthKey)) ? " generating" : ""}`} disabled={isFuture("month", monthKey)} onClick={() => selectFocus({ type: "month", key: monthKey })}>{t("desktop.report.monthBtn")} · {monthKey}{stale.has(`monthly:${monthKey}`) ? <span className="cal-period-stale" aria-hidden="true">↻</span> : null}</button></div>
-          <CalendarLegend t={t} />
-        </div></aside>
-        <aside className={`report-session-pane${sessionListOpen ? "" : " collapsed"}`}><div className="cal-session-panel"><div className="cal-session-panel-head" role="button" tabIndex={0} aria-expanded={sessionListOpen} onClick={() => setSessionListOpen((open) => !open)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSessionListOpen((open) => !open); } }}><strong>{t("desktop.report.sessionsTitle")} · {rangeLabel(focus.type, focus.key, t)}</strong><span className="cal-session-head-meta"><span className="muted">{sessionsLoading ? t("desktop.common.loading") : t("desktop.report.sessionCountMeta", sessionsForList.length)}</span><span className={`cal-session-toggle${sessionListOpen ? " open" : ""}`} aria-hidden="true">▸</span></span></div><div className="cal-session-search-row"><input type="search" className="cal-session-search" aria-label={t("desktop.archive.search")} placeholder={t("desktop.archive.searchPlaceholder")} value={archiveQuery} autoComplete="off" spellCheck={false} onChange={(event) => setArchiveQuery(event.target.value)} /></div><div className="cal-session-list" aria-busy={sessionsLoading}>{sessionsLoading ? <p className="muted cal-session-empty">{t("desktop.common.loading")}</p> : sessionsForList.length ? sessionGroups.flatMap((group) => [<div key={`g:${group.key}`} className="cal-session-group-head"><span className="cal-session-group-label">{group.label}</span><span className="cal-session-group-count">{group.sessions.length}</span></div>, ...group.sessions.map((session) => <button type="button" key={`${session.provider}:${session.id}`} className={`cal-session-row${preview?.session.provider === session.provider && preview.session.id === session.id ? " active" : ""}`} aria-current={preview?.session.provider === session.provider && preview.session.id === session.id ? "true" : undefined} onClick={() => void openPreview(session)}><div className="s-title">{session.title || session.id}</div><div className="s-meta"><span className="s-provider-tag" data-provider={session.provider}>{session.provider}</span>{" · "}{session.projectPath?.split(/[\\/]/).filter(Boolean).at(-1) || ""}{" · "}{formatTime(session.updatedAt, locale)}</div></button>)] ) : <p className="muted cal-session-empty">{t("desktop.report.noSessionsInRange")}</p>}</div></div></aside></div>
-        <main className="report-detail-pane"><div className="report-detail-head"><strong>{preview ? preview.preview.title || preview.session.title || preview.session.id : t("desktop.report.digestDetailTitle", digestLabel(focus.type, t), focus.key)}</strong>{preview ? <button type="button" className="tool-btn ghost-btn report-detail-back" onClick={() => { setPreview(null); setPreviewAssist(null); notifyPreviewStatus({ text: "" }); }}>{t("desktop.report.backToReport")}</button> : null}</div>{detailProgress}<div className="cal-detail">{detail}</div></main>
+        <div className="report-left-col">
+          <div className="cal-session-panel report-work-items-panel">
+            <div className="cal-session-panel-head">
+              <strong>{t("desktop.archive.workItemsTitle")}</strong>
+              <span className="cal-session-head-meta">
+                <span className="muted">
+                  {workItemsLoading ? t("desktop.common.loading") : t("desktop.report.sessionCountMeta", workItems.length)}
+                </span>
+              </span>
+            </div>
+            <div className="cal-session-list" aria-busy={workItemsLoading}>
+              {workItemsLoading ? (
+                <p className="muted cal-session-empty">{t("desktop.common.loading")}</p>
+              ) : workItems.length ? (
+                workItems.map((item) => {
+                  const isSelected = item.noteId === selectedNoteId;
+                  return (
+                    <button
+                      type="button"
+                      key={item.noteId}
+                      className={`cal-session-row report-work-item-row${isSelected ? " active" : ""}`}
+                      aria-current={isSelected ? "true" : undefined}
+                      onClick={() => {
+                        setSelectedNoteId(item.noteId);
+                        setPreview(null);
+                        setFocusedReport(null);
+                      }}
+                    >
+                      <div className="s-title">
+                        <span className={`wb-gtd-status-dot is-${item.gtdStatus ?? "inbox"}`} aria-hidden="true" />
+                        <span className="report-work-item-title-text">{item.title || item.noteId}</span>
+                      </div>
+                      <div className="s-meta">
+                        {item.work?.primaryProject
+                          ? item.work.primaryProject.split(/[\\/]/).filter(Boolean).at(-1)
+                          : item.work?.projects?.[0]?.split(/[\\/]/).filter(Boolean).at(-1) || ""}
+                        {item.work?.sessions?.length ? ` · ${item.work.sessions.length} sessions` : ""}
+                      </div>
+                    </button>
+                  );
+                })
+              ) : (
+                <p className="muted cal-session-empty">{t("desktop.archive.workItemsEmpty")}</p>
+              )}
+            </div>
+          </div>
+          <aside className={`report-session-pane${sessionListOpen ? "" : " collapsed"}`}>
+            <div className="cal-session-panel">
+              <div
+                className="cal-session-panel-head"
+                role="button"
+                tabIndex={0}
+                aria-expanded={sessionListOpen}
+                onClick={() => setSessionListOpen((open) => !open)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setSessionListOpen((open) => !open);
+                  }
+                }}
+              >
+                <strong>
+                  {t("desktop.report.sessionsTitle")} · {selectedWorkItem ? (selectedWorkItem.title || selectedWorkItem.noteId) : t("desktop.archive.sessionsAllTime")}
+                </strong>
+                <span className="cal-session-head-meta">
+                  <span className="muted">
+                    {sessionsLoading ? t("desktop.common.loading") : t("desktop.report.sessionCountMeta", sessionsForList.length)}
+                  </span>
+                  <span className={`cal-session-toggle${sessionListOpen ? " open" : ""}`} aria-hidden="true">
+                    ▸
+                  </span>
+                </span>
+              </div>
+              <div className="cal-session-search-row">
+                <input
+                  type="search"
+                  className="cal-session-search"
+                  aria-label={t("desktop.archive.search")}
+                  placeholder={t("desktop.archive.searchPlaceholder")}
+                  value={archiveQuery}
+                  autoComplete="off"
+                  spellCheck={false}
+                  onChange={(event) => setArchiveQuery(event.target.value)}
+                />
+              </div>
+              <div className="cal-session-list" aria-busy={sessionsLoading}>
+                {sessionsLoading ? (
+                  <p className="muted cal-session-empty">{t("desktop.common.loading")}</p>
+                ) : sessionsForList.length ? (
+                  archiveQuery.trim() ? (
+                    sessionGroups.flatMap((group) => [
+                      <div key={`g:${group.key}`} className="cal-session-group-head">
+                        <span className="cal-session-group-label">{group.label}</span>
+                        <span className="cal-session-group-count">{group.sessions.length}</span>
+                      </div>,
+                      ...group.sessions.map((session) => (
+                        <button
+                          type="button"
+                          key={`${session.provider}:${session.id}`}
+                          className={`cal-session-row${preview?.session.provider === session.provider && preview.session.id === session.id ? " active" : ""}`}
+                          aria-current={preview?.session.provider === session.provider && preview.session.id === session.id ? "true" : undefined}
+                          onClick={() => void openPreview(session)}
+                        >
+                          <div className="s-title">{session.title || session.id}</div>
+                          <div className="s-meta">
+                            <span className="s-provider-tag" data-provider={session.provider}>
+                              {session.provider}
+                            </span>
+                            {" · "}
+                            {session.projectPath?.split(/[\\/]/).filter(Boolean).at(-1) || ""}
+                            {" · "}
+                            {formatTime(session.updatedAt, locale)}
+                          </div>
+                        </button>
+                      ))
+                    ])
+                  ) : (
+                    sessionsForList.map((session) => (
+                      <button
+                        type="button"
+                        key={`${session.provider}:${session.id}`}
+                        className={`cal-session-row${preview?.session.provider === session.provider && preview.session.id === session.id ? " active" : ""}`}
+                        aria-current={preview?.session.provider === session.provider && preview.session.id === session.id ? "true" : undefined}
+                        onClick={() => void openPreview(session)}
+                      >
+                        <div className="s-title">{session.title || session.id}</div>
+                        <div className="s-meta">
+                          <span className="s-provider-tag" data-provider={session.provider}>
+                            {session.provider}
+                          </span>
+                          {" · "}
+                          {session.projectPath?.split(/[\\/]/).filter(Boolean).at(-1) || ""}
+                          {" · "}
+                          {formatTime(session.updatedAt, locale)}
+                        </div>
+                      </button>
+                    ))
+                  )
+                ) : (
+                  <p className="muted cal-session-empty">{t("desktop.report.noSessionsInRange")}</p>
+                )}
+              </div>
+            </div>
+          </aside>
+        </div>
+        <main className="report-detail-pane">
+          <div className="report-detail-head">
+            {preview ? (
+              <>
+                <strong>{preview.preview.title || preview.session.title || preview.session.id}</strong>
+                <button
+                  type="button"
+                  className="tool-btn ghost-btn report-detail-back"
+                  onClick={() => {
+                    setPreview(null);
+                    setPreviewAssist(null);
+                    notifyPreviewStatus({ text: "" });
+                  }}
+                >
+                  {t("desktop.report.backToReport")}
+                </button>
+              </>
+            ) : focusedReport ? (
+              <>
+                <strong>{focusedReport.title || focusedReport.id}</strong>
+                <button
+                  type="button"
+                  className="tool-btn ghost-btn report-detail-back"
+                  onClick={() => setFocusedReport(null)}
+                >
+                  {t("desktop.report.backToReport")}
+                </button>
+              </>
+            ) : selectedWorkItem ? (
+              <>
+                <strong>{selectedWorkItem.title || selectedWorkItem.noteId}</strong>
+                <span className={`wb-gtd-status-dot is-${selectedWorkItem.gtdStatus ?? "inbox"}`} aria-hidden="true" />
+              </>
+            ) : (
+              <strong>{t("desktop.archive.workItemsTitle")}</strong>
+            )}
+          </div>
+          {detailProgress}
+          <div className="cal-detail">{detail}</div>
+        </main>
       </div>
     </section>,
     host
   );
-}
-
-function CalendarLegend({ t }: { t: Translate }) {
-  return <p className="muted cal-legend"><span className="cal-legend-group"><span>{t("desktop.report.legendDates")}</span><span className="dot daily" /><span>{t("desktop.report.legendDailyOk")}</span><span className="dot daily-stale" /><span>{t("desktop.report.legendDailyStale")}</span><span className="dot daily-missing" /><span>{t("desktop.report.legendDailyMissing")}</span><span className="dot no-session" /><span>{t("desktop.report.legendNoSession")}</span></span><span className="cal-legend-group"><span className="dot weekly" /><span>{t("desktop.report.legendWeekly")}</span><span className="dot monthly" /><span>{t("desktop.report.legendMonthly")}</span></span></p>;
-}
-
-function CalendarWeek({ cells, focus, index, sessionDays, stale, runningPeriods, t, onDay, onWeek }: { cells: ReturnType<typeof calendarCells>; focus: Focus; index: Map<string, ReportEntry>; sessionDays: Set<string>; stale: Set<string>; runningPeriods: ReadonlySet<string>; t: Translate; onDay: (key: string) => void; onWeek: (key: string) => void }) {
-  const week = cells[0]?.week || "";
-  const hasWeek = index.has(`weekly:${week}`);
-  const staleWeek = stale.has(`weekly:${week}`);
-  const weekGenerating = runningPeriods.has(digestProgressKey("week", week));
-  return <>{cells.map((cell) => { const digest = index.get(`daily:${cell.key}`); const generating = runningPeriods.has(digestProgressKey("day", cell.key)); const mark = digest ? stale.has(`daily:${cell.key}`) ? "daily-stale" : "daily" : !cell.outside && sessionDays.has(cell.key) ? "daily-missing" : "no-session"; return <button type="button" key={cell.key} className={`cal-cell${cell.outside ? " outside" : ""}${focus.type === "day" && focus.key === cell.key ? " selected" : ""}${generating ? " generating" : ""}`} aria-busy={generating || undefined} onClick={() => onDay(cell.key)}><span className="day-num">{cell.day}</span><span className="marks">{generating ? null : <span className={`mark ${mark}`} aria-hidden="true">{digest ? mark === "daily-stale" ? "↻" : "D" : mark === "daily-missing" ? "+" : "-"}</span>}</span>{generating ? <span className="cal-cell-loading" aria-hidden="true" /> : null}</button>; })}<button type="button" className={`cal-week-btn${hasWeek ? " has-digest" : ""}${staleWeek ? " has-digest-stale" : ""}${focus.type === "week" && focus.key === week ? " selected" : ""}${weekGenerating ? " generating" : ""}`} aria-busy={weekGenerating || undefined} onClick={() => onWeek(week)}><span className="cal-week-label">{week.slice(-3)}</span>{staleWeek ? <span className="marks"><span className="mark daily-stale" aria-hidden="true">↻</span></span> : null}</button></>;
-}
-
-function DigestProgressCard({ focus, progress, t }: { focus: Focus; progress?: DigestProgressEvent; t: Translate }) {
-  const progressText = progress?.message || t("desktop.report.generatingLabel", digestLabel(focus.type, t), focus.key);
-  const sessionText = progress?.session ? `${progress.index || 0}/${progress.total || 0} · ${progress.session.provider} · ${progress.session.title || progress.session.id}` : "";
-  const progressWidth = progress?.index && progress.total ? `${Math.min(100, Math.round((progress.index / progress.total) * 100))}%` : "35%";
-  return <div className="detail-progress gen-progress is-loading" role="status" aria-live="polite"><div className="gen-progress-line">{progressText}</div>{sessionText ? <div className="gen-progress-session-row"><span className="gen-progress-pulse" aria-hidden="true" /><span className="gen-progress-session">{sessionText}</span></div> : null}<div className="gen-progress-bar-wrap"><div className="gen-progress-bar" style={{ width: progressWidth }} /></div></div>;
-}
-
-function DigestDetail({ entry, focus, hasSessions, loading, stale, running, locale, t, links, onRun }: { entry?: ReportEntry; focus: Focus; hasSessions: boolean; loading: boolean; stale: boolean; running: boolean; locale: string; t: Translate; links: ReportLinkRow[]; onRun: () => void }) {
-  if (running) {
-    return <div className="detail-generating"><p className="empty-hint">{t("desktop.report.generatingStrong")} {" "}<strong>{digestLabel(focus.type, t)}</strong><span className="detail-generating-key">{focus.key}</span></p><p className="muted detail-generating-hint">{t("desktop.report.generatingHint")}</p></div>;
-  }
-  if (loading && !entry) {
-    return <div className="cal-detail-loading" role="status"><span className="cal-detail-spinner" aria-hidden="true" /><span>{t("desktop.common.loading")}…</span></div>;
-  }
-  if (isFuture(focus.type, focus.key)) return <p className="empty-hint muted">{t("desktop.report.futureDateHint", digestLabel(focus.type, t))}</p>;
-  if (!entry) return <div className={`digest-panel digest-panel-empty${hasSessions ? "" : " digest-panel-quiet"}`}><header className="digest-panel-head"><h3><span className={`badge ${levelFor(focus.type)}`}>{levelFor(focus.type)}</span>{digestLabel(focus.type, t)} · {focus.key}</h3></header><p className="empty-hint muted">{hasSessions ? t("desktop.report.emptyHasSessions", scopeLabel(focus.type, t), digestLabel(focus.type, t)) : t("desktop.report.emptyNoSessions", scopeLabel(focus.type, t), digestLabel(focus.type, t))}</p>{hasSessions ? <button type="button" className="tool-btn" onClick={onRun}>{t("desktop.report.generateBtn", digestLabel(focus.type, t))}</button> : null}</div>;
-  return <>{stale ? <div className="digest-stale-banner"><p className="muted">{t("desktop.report.staleDefault")}</p></div> : null}<article className="digest-card"><header className="digest-card-head"><div className="digest-card-title-row"><h3><span className={`badge ${entry.level}`}>{entry.level}</span>{entry.title || entry.id}</h3><div className="digest-card-actions"><button type="button" className="tool-btn" onClick={onRun}>{t("desktop.report.regenerateBtn")}</button></div></div><div className="meta-line">{formatTime(entry.createdAtMs, locale)}{entry.embeddingJson ? " · embedding ✓" : ""}</div></header><div className="digest-body markdown-body" onClick={(event) => onDigestRefClick(event, entry, links)} dangerouslySetInnerHTML={{ __html: renderDigestMarkdown(entry.content, links) }} /></article></>;
-}
-
-function SessionDetail({ preview, locale, t, assist, onSummarize, onAutoRename, onResume }: { preview: Preview; locale: string; t: Translate; assist: "summary" | "rename" | null; onSummarize: () => void; onAutoRename: () => void; onResume: () => void }) {
-  return <div className="session-preview"><div className="session-preview-head"><h3 className="session-preview-title">{preview.preview.title || preview.session.title || preview.session.id}</h3><div className="session-preview-actions"><button type="button" className="tool-btn" onClick={onSummarize} disabled={assist !== null}>{assist === "summary" ? t("desktop.sessions.summarizing") : "Summarize"}</button><button type="button" className="tool-btn" onClick={onAutoRename} disabled={assist !== null}>{assist === "rename" ? t("desktop.sessions.renaming") : "Auto Rename"}</button><button type="button" className="tool-btn" onClick={onResume}>{t("desktop.agent.resumeSession")}</button></div></div><div className="muted session-preview-meta"><span className="s-provider-tag" data-provider={preview.session.provider}>{preview.session.provider}</span>{" · "}{preview.session.id}{" · "}{preview.session.projectPath}</div><div className="session-summary-box"><div className="session-summary-label">Summary</div><div className="session-summary-body">{preview.summary || <span className="muted">No summary yet</span>}</div></div>{preview.preview.warning ? <p className="status error">{preview.preview.warning}</p> : null}{preview.preview.messages.length ? preview.preview.messages.map((message, index) => (<article key={index} className={`preview-msg ${message.role}`}><div className="role">{message.role}{message.timestamp ? ` · ${formatTime(Number(message.timestamp), locale)}` : ""}</div><div>{message.text}</div></article>)) : <p className="muted">{t("desktop.sessions.noMessages")}</p>}{preview.preview.truncated ? <p className="muted">{t("desktop.sessions.truncated")}</p> : null}</div>;
 }
