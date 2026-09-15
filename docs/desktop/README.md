@@ -38,13 +38,13 @@ Requirements: macOS 12+, Apple Silicon or Intel. Version history: [Changelog](..
 | Module | What it covers |
 |--------|----------------|
 | [Report](report.md) | Archive tab: work items, sessions, timeline, and daily/weekly/monthly digests |
-| [Agent](agent.md) | Natural-language Q&A over local work history, citations, tools, and threads |
+| [Agent memory](agent.md) | MCP `memory_retrieve` over local digests, notes, and sessions (no in-app Agent tab) |
 | [Workbench](workbench.md) | Embedded terminal (themes), ACP visual chat, multi-tab resume, project search, scripts, Git select-commit, explorer |
 | [Workspace mentions](workspace-mentions.md) | Global work/reference packs for New session and the `arpm` CLI |
 | [Sessions](sessions.md) | Reference list and read-only preview |
 | [Notes](notes.md) | Markdown editor shared with the extension |
-| [IM](im.md) | User-created project rooms; quote messages and @ Pi / Claude / Codex roles |
-| [MCP](mcp.md) | Register trusted local agents to use Notes, Reports, Sessions, and GTD tools |
+| [IM](im.md) | User-created project rooms, opened from Workbench; quote messages and @ Pi / Claude / Codex roles |
+| [MCP](mcp.md) | Register trusted local agents to use Notes, Reports, memory retrieval, Sessions, and GTD tools |
 | [Settings & data](settings-and-data.md) | Settings panes, backup/merge, logs, data directory, usage, updates |
 
 ### Navigation (at a glance)
@@ -117,13 +117,13 @@ macOS 导向的 **Session OS + Memory** 桌面应用：**Workbench** 恢复会�
 | 模块 | 内容 |
 |------|------|
 | [Report](report.md) | 归档页签：工作项、会话、时间线，以及日/周/月回顾报告 |
-| [Agent](agent.md) | 基于本机工作历史的自然语言问答、引用、工具与线程 |
+| [Agent memory](agent.md) | 通过 MCP `memory_retrieve` 检索本机报告 / 笔记 / 会话（应用内已无 Agent 页签） |
 | [Workbench](workbench.md) | 内嵌终端（配色）、ACP 可视化聊天、多标签恢复、项目搜索、脚本、Git 选择提交、资源管理器 |
 | [工作区 Mention](workspace-mentions.md) | 全局工作/参考目录包，供新建会话和 `arpm` 使用 |
 | [Sessions](sessions.md) | 参考列表与只读预览 |
 | [Notes](notes.md) | 与扩展共用的 Markdown 笔记 |
-| [IM](im.md) | 用户自建项目房间；引用消息并 @ Pi / Claude / Codex 角色 |
-| [MCP](mcp.md) | 为受信任的本机 Agent 注册 Notes、Reports、Sessions 与 GTD 工具 |
+| [IM](im.md) | 用户自建项目房间，从 Workbench 打开；引用消息并 @ Pi / Claude / Codex 角色 |
+| [MCP](mcp.md) | 为受信任的本机 Agent 注册 Notes、Reports、记忆检索、Sessions 与 GTD 工具 |
 | [设置与数据](settings-and-data.md) | 各设置页、备份/合并、日志、数据目录、用量、更新 |
 
 ### 导航一览

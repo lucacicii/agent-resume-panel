@@ -8,12 +8,12 @@ Languages: [English](#english) | [简体中文](#简体中文)
 
 Agent Resume Desktop provides one local **Agent Resume MCP** service. It uses stdio, starts only when an MCP client invokes it, and reads the same local data directory as Desktop: `~/.agent-resume-panel` by default. Registration configures a **headless Node** entry (`ELECTRON_RUN_AS_NODE` + the bundled core MCP CLI) so clients do not spawn a second Electron Dock icon.
 
-This is one service with **27 tools**, not 27 independent services:
+This is one service with **28 tools**, not 28 independent services:
 
 | Area | Tools | Access |
 |---|---:|---|
 | Notes and note GTD | 12 | Read and write |
-| Reports | 3 | Read-only |
+| Reports and memory retrieval | 4 | Read-only |
 | Sessions | 7 | Read, GTD update, move, and resume-command generation |
 | Projects | 4 | Read, merge, tidy, and reconcile |
 | Link graph | 1 | Read-only code lineage (`link_graph_trace`) |
@@ -81,10 +81,11 @@ Returns JSON with `primaryChain`, `timeline`, `summary`, `openEnds`, `facts`, an
 
 GTD status values are `inbox`, `next`, `waiting`, `someday`, `reference`, and `done`.
 
-#### Reports
+#### Reports and memory retrieval
 
 | Tool | Purpose |
 |---|---|
+| `memory_retrieve` | Retrieve relevant context across all local memory (digests, notes, sessions) with `[D#]` / `[N#]` / `[S#]` citations — see [Agent memory](agent.md) |
 | `report_list` | List daily, weekly, or monthly memory digests |
 | `report_read` | Read a digest by report ID |
 | `report_search` | Search report content, including semantic search when configured |
@@ -126,12 +127,12 @@ An external MCP invocation cannot open Desktop's Workbench. Therefore, `session_
 
 Agent Resume Desktop 提供一个本机 **Agent Resume MCP** 服务。它使用 stdio，仅在 MCP 客户端调用时启动，并读取与 Desktop 相同的本机数据目录，默认是 `~/.agent-resume-panel`。注册时写入 **无界面 Node** 启动方式（`ELECTRON_RUN_AS_NODE` + 内置 core MCP CLI），避免每个客户端再拉起一个 Electron Dock 图标。
 
-这是一个服务，包含 **27 个工具**，不是 27 个相互独立的服务：
+这是一个服务，包含 **28 个工具**，不是 28 个相互独立的服务：
 
 | 范围 | 工具数 | 权限 |
 |---|---:|---|
 | Notes 与笔记 GTD | 12 | 读写 |
-| Reports | 3 | 只读 |
+| Reports 与记忆检索 | 4 | 只读 |
 | Sessions | 7 | 读取、更新 GTD、移动、生成恢复命令 |
 | Projects | 4 | 读取、合并、整理、协调 |
 | 链路图 | 1 | 只读代码血缘（`link_graph_trace`） |
@@ -199,10 +200,11 @@ Desktop 可自动检测并注册以下客户端：
 
 GTD 状态为 `inbox`、`next`、`waiting`、`someday`、`reference`、`done`。
 
-#### Reports
+#### Reports 与记忆检索
 
 | 工具 | 用途 |
 |---|---|
+| `memory_retrieve` | 一次检索全部本机记忆（报告、笔记、会话），返回 `[D#]` / `[N#]` / `[S#]` 引用 —— 见 [Agent memory](agent.md) |
 | `report_list` | 列出日、周、月工作记忆报告 |
 | `report_read` | 按 report ID 读取完整报告 |
 | `report_search` | 搜索报告内容；配置后也可进行语义搜索 |

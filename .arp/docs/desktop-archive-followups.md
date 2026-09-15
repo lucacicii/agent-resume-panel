@@ -1,10 +1,10 @@
 # 归档重构 · 待排期工单（既有缺陷，不阻塞 B1-B6）
 
-角色：Architect · 状态：**T1 / T2 / T4 已关闭；T3、T5、T6 已立单未排期**
+角色：Architect · 状态：**T1 / T2 / T3 / T4 已关闭；T5、T6 已立单未排期**
 来源：[`desktop-archive-architect-rulings.md`](desktop-archive-architect-rulings.md) §1.3c 与 §2.2 的两处**非阻塞观察**，以及 A9 收尾时发现的文档漂移（T3）。
 性质：**均为既有缺陷，不是本次归档重构引入的**。判定为不在 D/P/A/C 任何任务范围内，**不阻塞 B1-B6 任何批次**，不写入契约 §6。
 
-> 归档重构期间只做一件事：**不要制造新的同类副本**。重构期间各单的修法一律暂缓，避免与 P1/P7/P8 抢同一批文件。T1 / T2 / T4 已在 B6 之后按 Owner 判定关闭。
+> 归档重构期间只做一件事：**不要制造新的同类副本**。重构期间各单的修法一律暂缓，避免与 P1/P7/P8 抢同一批文件。T1 / T2 / T3 / T4 已在 B6 之后按 Owner 判定关闭。
 
 ---
 
@@ -50,32 +50,24 @@
 
 ---
 
-## T3 · 用户文档与菜单地图仍有本次重构留下的漂移
+## T3 · 用户文档与菜单地图仍有本次重构留下的漂移 —— **已关闭**
 
 **类型**：文档漂移（重命名 / 删除功能后未同步）
 
-**证据**
-- `docs/desktop/agent.md` 通篇以 “**Agent** tab” 为入口，但 `AppChrome.tsx` 的 rail 只有 `report` / `workbench` / `notes` 三个 tab，仓库内也**没有** `features/agent/`；`desktop.agent.*` 现在只服务于待办/报告/IM/工具设置等通用文案。
-- `docs/desktop/im.md` 与 `docs/desktop/README.md` 把 IM 描述为独立入口；实际 `ImPanel` 已内嵌在 Workbench 面板中（`WorkbenchPanel.tsx:5862`），通过 `agent-resume:im-open-room` 打开房间。
-- `.agents/menus/report-gtd.md` 仍按 `packages/core/src/memory/*` 与 `agent/*` 描述能力，但 `packages/core/src/memory/` 已不存在（digest 代码在 `packages/core/src/report/`），且 “Memory and Ask UI” 一行指向已删除的日历 / GtdSheet。
-- `.agents/menus-index.md` 与 `report-gtd.md` 仍写载 desktop renderer 为 `apps/desktop/src/renderer/{index.html,app.js,styles.css}` 的 “plain JavaScript” 应用；实际为 `renderer-react/` 下的 React 运行时（`.agents/menus/desktop.md` 已在本轮修正）。
+**原证据**：`docs/desktop/agent.md` 通篇以 “Agent tab” 为入口（实际该 tab 已在 `93208c8d` 删除，能力转为 MCP 工具）；`im.md`/README 把 IM 写成独立入口；`.agents/menus/report-gtd.md` 指向已不存在的 `packages/core/src/memory/*` 与 `renderer/app.js`；`menus-index` 写 renderer 为 plain JavaScript。
 
-**目标**
-1. 每个桌面模块文档只描述**当前存在**的入口与路径。
-2. 菜单地图指向的代码路径全部可解析（无 `app.js`、无 `memory/`）。
-3. 删除的功能（Agent tab、日历视图、GtdSheet、Kanban board）不再有“现有功能”叙述；如仍要保留历史说明，必须显式标注为已移除。
+**处置（已执行）**
+- `docs/desktop/agent.md` 重写为 **Agent memory (MCP)**：说明应用内 Agent 页签已退役、能力现由 MCP `memory_retrieve` 提供，附三类引用（`[D#]`/`[N#]`/`[S#]`）到应用内位置的对照，并列出相关只读工具与「已移除功能的去向」。中英双语。
+- `docs/desktop/mcp.md` 修正工具总数与分区：**27 → 28**，`Reports 3 → Reports and memory retrieval 4`（`memory_retrieve` 此前未列入），中英两侧同改，并补 `memory_retrieve` 行。
+- `docs/desktop/im.md` 补上真实入口：**不是导航页签**，从 Workbench 打开并以嵌入方式渲染（中英同改）。
+- `docs/desktop/README.md` 模块表：Agent 行改为 MCP 记忆检索、IM 行注明从 Workbench 打开、MCP 行补 “memory retrieval”（中英同改）。
+- `.agents/menus/report-gtd.md` 重写为 **Memory, GTD, And Retrieval**：`memory/*` → `report/*`，删除 Ask meta-agent UI 叙述，改为 `agent/retrieve.ts` + `mcp/memoryTools.ts`，并补 digest 进度、note GTD、归档 UI 落点。
+- 顺带修正同类的失效路径：`.agents/menus/{desktop,sessions,vscode-integration}.md` 与 `.agents/menus-index.md` 中不存在的 `renderer/vendor-entry/`、`build-renderer-vendor.mjs`、`renderer/app.js`、`package-vscode.json`、`scripts/merge-extension-manifest.mjs`。
 
-**非目标**
-- 不改代码。
-- 不改 `docs/desktop/report.md`（已在 A9 重写）。
-
-**前置 / 触发**：无。建议紧随 B6 之后单开一单，避免与 P8 抢文件（P8 已把 `features/kanban/` 改名为 `features/noteDetail/`，若 `agent.md`/`im.md` 提到旧名会再次漂移）。
-
-**验收**
-- `grep -rn "Agent tab\|app\.js\|core/src/memory" docs/desktop .agents/menus .agents/menus-index.md` 无残留（或有显式“已移除”标注）。
-- 文档中每个 rail / tab 名都能在 `AppChrome.tsx` 的 `tabs` 数组里找到对应项。
-
-**Owner**：Developer · **阻塞性**：无
+**关闭验收（已实测）**
+- 脚本抽取全部文档里出现的 `packages/… / apps/… / scripts/…` 路径并 `os.path.exists` 校验：**77 条路径，0 条缺失**。
+- `grep -rn "app\.js\|core/src/memory\|features/agent\b\|AgentPanel" docs/desktop .agents/menus .agents/menus-index.md AGENTS.md` → 仅剩 3 处**刻意**声明「没有 Agent 页签」的句子。
+- 文档中的 rail 名与 `AppChrome.tsx` 的 `tabs` 数组一致（`report` / `workbench` / `notes`）。
 
 ---
 
