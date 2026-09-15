@@ -1789,6 +1789,7 @@
   "desktop.workbench.newSubfolder": "サブフォルダーを作成",
   "desktop.workbench.newTerminal": "New Terminal",
   "desktop.workbench.newTerminalWithProject": "New Terminal · {0}",
+  "desktop.workbench.newWorkItem": "新しい作業項目",
   "desktop.workbench.noFilterSessions": "アクティブなセッションはありません",
   "desktop.workbench.noGitBranches": "ブランチが見つかりません",
   "desktop.workbench.noMatchingSessions": "No matching sessions",

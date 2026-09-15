@@ -13280,7 +13280,8 @@ textarea.wb-floating-note-editor {
   flex: 1;
 }
 
-.wb-add-project-btn {
+.wb-add-project-btn,
+.wb-add-work-item-btn {
   margin-right: 4px;
 }
 

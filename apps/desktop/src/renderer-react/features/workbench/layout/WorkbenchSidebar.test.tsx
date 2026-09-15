@@ -14,7 +14,8 @@ beforeEach(() => {
     getI18nBundle: async () => ({
       locale: "en",
       messages: {
-        "desktop.workbench.needsMe": "Needs me {0}"
+        "desktop.workbench.needsMe": "Needs me {0}",
+        "desktop.workbench.newWorkItem": "New work item"
       }
     }),
     onLocaleChanged: () => () => undefined
@@ -26,13 +27,15 @@ function renderSidebar({
   dotByKey,
   needsYouCount,
   workItemNeedsYouFilter,
-  onWorkItemNeedsYouFilterChange
+  onWorkItemNeedsYouFilterChange,
+  onAddWorkItem
 }: {
   workItems: WorkbenchSidebarWorkItem[];
   dotByKey?: Map<string, ActiveSessionDot>;
   needsYouCount?: number;
   workItemNeedsYouFilter?: boolean;
   onWorkItemNeedsYouFilterChange?: (active: boolean) => void;
+  onAddWorkItem?: () => void;
 }) {
   return render(
     <I18nProvider>
@@ -66,6 +69,7 @@ function renderSidebar({
         onProjectFilterChange={vi.fn()}
         onSelectAllSessions={vi.fn()}
         onAddProject={vi.fn()}
+        onAddWorkItem={onAddWorkItem}
         onSelectProject={vi.fn()}
         onToggleProjectExpanded={vi.fn()}
         onProjectMenu={vi.fn()}
@@ -236,5 +240,22 @@ describe("WorkbenchSidebar needs-you filter chip (P4)", () => {
     const chip = await screen.findByRole("button", { name: /Needs me 1/i });
     expect(chip.classList.contains("is-active")).toBe(true);
     expect(chip.getAttribute("aria-pressed")).toBe("true");
+  });
+});
+
+describe("WorkbenchSidebar create work item (P5)", () => {
+  it("renders new work item button and fires onAddWorkItem when clicked", async () => {
+    const onAddWorkItem = vi.fn();
+    renderSidebar({
+      workItems: [],
+      onAddWorkItem
+    });
+
+    const addBtn = await screen.findByRole("button", { name: /New work item/i });
+    expect(addBtn).not.toBeNull();
+    expect(addBtn.classList.contains("wb-add-work-item-btn")).toBe(true);
+
+    fireEvent.click(addBtn);
+    expect(onAddWorkItem).toHaveBeenCalledTimes(1);
   });
 });

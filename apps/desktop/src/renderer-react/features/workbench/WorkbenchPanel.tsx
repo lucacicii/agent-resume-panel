@@ -3386,6 +3386,26 @@ export function WorkbenchPanel(): ReactPortal | null {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const addWorkItem = useCallback(async () => {
+    if (typeof desktopApi().notesCreateWorkItem !== "function") return;
+    try {
+      const created = await desktopApi().notesCreateWorkItem({});
+      await loadWorkItems();
+      window.dispatchEvent(new Event("agent-resume:notes-mutated"));
+      selectWorkItem({
+        noteId: created.noteId,
+        title: created.title || created.noteId,
+        status: created.gtdStatus ?? "inbox",
+        sessions: created.work?.sessions ?? [],
+        projects: created.work?.projects,
+        primaryProject: created.work?.primaryProject,
+        updatedAtMs: created.updatedAtMs
+      });
+    } catch {
+      /* best-effort */
+    }
+  }, [loadWorkItems, selectWorkItem]);
+
   const needsYouCount = useMemo(() => {
     if (!dotByKey || dotByKey.size === 0) return 0;
     let count = 0;
@@ -5609,6 +5629,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         onProjectFilterChange={setProjectFilter}
         onSelectAllSessions={() => selectProject(null)}
         onAddProject={() => void addProject()}
+        onAddWorkItem={() => void addWorkItem()}
         onSelectProject={(path) => selectProject(path)}
         onToggleProjectExpanded={(projectId) => setExpandedProjectIds((current) => {
           const next = new Set(current);

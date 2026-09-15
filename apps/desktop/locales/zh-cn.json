@@ -1789,6 +1789,7 @@
   "desktop.workbench.newSubfolder": "新建子目录",
   "desktop.workbench.newTerminal": "新建 Terminal",
   "desktop.workbench.newTerminalWithProject": "新建 Terminal · {0}",
+  "desktop.workbench.newWorkItem": "新建工作项",
   "desktop.workbench.noFilterSessions": "暂无活动 session",
   "desktop.workbench.noGitBranches": "未找到分支",
   "desktop.workbench.noMatchingSessions": "没有匹配的 session",

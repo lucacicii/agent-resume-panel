@@ -159,6 +159,7 @@ export function WorkbenchSidebar<T extends WorkbenchSidebarProject>({
   onProjectFilterChange,
   onSelectAllSessions,
   onAddProject,
+  onAddWorkItem,
   onSelectProject,
   onToggleProjectExpanded,
   onProjectMenu,
@@ -209,6 +210,7 @@ export function WorkbenchSidebar<T extends WorkbenchSidebarProject>({
   onProjectFilterChange: (filter: WorkbenchProjectFilter) => void;
   onSelectAllSessions: () => void;
   onAddProject: () => void;
+  onAddWorkItem?: () => void;
   onSelectProject: (path: string) => void;
   onToggleProjectExpanded: (projectId: string) => void;
   onProjectMenu: (event: React.MouseEvent, project: T) => void;
@@ -248,7 +250,18 @@ export function WorkbenchSidebar<T extends WorkbenchSidebarProject>({
     </div>
     <div className="wb-folders">
       {workItemsActive ? <div className="wb-folder-section wb-work-item-section">
-        <div className="wb-folder-section-label">{t("desktop.workbench.workItemsView")}</div>
+        <div className="wb-folder-section-head">
+          <div className="wb-folder-section-label">{t("desktop.workbench.workItemsView")}</div>
+          <button
+            type="button"
+            className="wb-icon-btn wb-add-work-item-btn"
+            aria-label={t("desktop.workbench.newWorkItem")}
+            title={t("desktop.workbench.newWorkItem")}
+            onClick={onAddWorkItem}
+          >
+            <ThemeIcon name="plus" size={14} />
+          </button>
+        </div>
         <div className="wb-work-item-filters">
           <select className="quiet-select wb-work-item-filter" aria-label={t("desktop.notes.projectLabel")} value={workItemProjectFilter} onChange={(event) => onWorkItemProjectFilterChange(event.target.value)}>
             <option value="">{t("desktop.common.all")}</option>
