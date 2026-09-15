@@ -180,17 +180,21 @@ const GTD_ALL_STATUSES = ["inbox", "next", "waiting", "someday", "reference", "d
 
 function WorkItemTimeline({
   sessions,
+  reports = [],
   dotByKey,
   locale,
   t,
   onSelectSession,
+  onSelectReport,
   emptyText
 }: {
   sessions: AgentSession[];
+  reports?: ReportEntry[];
   dotByKey?: Map<string, ActiveSessionDot>;
   locale: string;
   t: Translate;
   onSelectSession?: (session: AgentSession) => void;
+  onSelectReport?: (report: ReportEntry) => void;
   emptyText: string;
 }) {
   const sortedSessions = useMemo(() => {
@@ -217,70 +221,111 @@ function WorkItemTimeline({
     return groups;
   }, [sortedSessions, locale]);
 
-  return (
-    <div className="report-work-item-history">
-      <div className="report-work-item-history-head">
-        <h3>{t("desktop.report.sessionsTitle")} ({sessions.length})</h3>
-      </div>
-      {dayGroups.length === 0 ? (
+  if (sessions.length === 0 && reports.length === 0) {
+    return (
+      <div className="report-work-item-history">
         <div className="report-work-item-history-empty cal-session-empty">
           <p className="muted">{emptyText}</p>
         </div>
-      ) : (
-        <div className="report-timeline">
-          {dayGroups.map((group) => (
-            <div key={group.dayKey} className="report-timeline-group">
-              <div className="report-timeline-group-head">
-                <span className="report-timeline-date">{group.dayLabel}</span>
-                <span className="report-timeline-count muted">{group.sessions.length}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="report-work-item-history">
+      {sessions.length > 0 ? (
+        <div className="report-timeline-section report-timeline-sessions">
+          <div className="report-work-item-history-head">
+            <h3>{t("desktop.report.sessionsTitle")} ({sessions.length})</h3>
+          </div>
+          <div className="report-timeline">
+            {dayGroups.map((group) => (
+              <div key={group.dayKey} className="report-timeline-group">
+                <div className="report-timeline-group-head">
+                  <span className="report-timeline-date">{group.dayLabel}</span>
+                  <span className="report-timeline-count muted">{group.sessions.length}</span>
+                </div>
+                <div className="report-timeline-list">
+                  {group.sessions.map((s) => {
+                    const sessionKey = `${s.provider}:${s.id}`;
+                    const dot = dotByKey?.get(sessionKey);
+                    const showDot = dot && dot.status !== "open";
+                    const isClosedLastExitWaiting = !showDot && Boolean(s.lastExitWaiting);
+                    const projectLabel = s.projectPath?.split(/[\\/]/).filter(Boolean).at(-1) || "";
+                    return (
+                      <button
+                        type="button"
+                        key={sessionKey}
+                        className="report-timeline-item"
+                        onClick={() => onSelectSession?.(s)}
+                      >
+                        <div className="report-timeline-item-main">
+                          <span className="s-provider-tag" data-provider={s.provider}>
+                            {s.provider}
+                          </span>
+                          <span className="report-timeline-title">{s.title || s.id}</span>
+                          {showDot && (
+                            <span
+                              className={`session-dot${sessionDotStatusClass(dot.status)}`}
+                              aria-hidden="true"
+                              title={dot.status}
+                            />
+                          )}
+                          {isClosedLastExitWaiting && (
+                            <span
+                              className="session-dot is-awaiting is-last-exit-waiting"
+                              aria-hidden="true"
+                              title={t("desktop.archive.lastExitWaiting")}
+                            />
+                          )}
+                        </div>
+                        <div className="report-timeline-item-meta muted">
+                          {projectLabel ? <span className="report-timeline-project">{projectLabel}</span> : null}
+                          {projectLabel ? " · " : null}
+                          <span className="report-timeline-time">{formatTime(s.updatedAt, locale)}</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-              <div className="report-timeline-list">
-                {group.sessions.map((s) => {
-                  const sessionKey = `${s.provider}:${s.id}`;
-                  const dot = dotByKey?.get(sessionKey);
-                  const showDot = dot && dot.status !== "open";
-                  const isClosedLastExitWaiting = !showDot && Boolean(s.lastExitWaiting);
-                  const projectLabel = s.projectPath?.split(/[\\/]/).filter(Boolean).at(-1) || "";
-                  return (
-                    <button
-                      type="button"
-                      key={sessionKey}
-                      className="report-timeline-item"
-                      onClick={() => onSelectSession?.(s)}
-                    >
-                      <div className="report-timeline-item-main">
-                        <span className="s-provider-tag" data-provider={s.provider}>
-                          {s.provider}
-                        </span>
-                        <span className="report-timeline-title">{s.title || s.id}</span>
-                        {showDot && (
-                          <span
-                            className={`session-dot${sessionDotStatusClass(dot.status)}`}
-                            aria-hidden="true"
-                            title={dot.status}
-                          />
-                        )}
-                        {isClosedLastExitWaiting && (
-                          <span
-                            className="session-dot is-awaiting is-last-exit-waiting"
-                            aria-hidden="true"
-                            title={t("desktop.archive.lastExitWaiting")}
-                          />
-                        )}
-                      </div>
-                      <div className="report-timeline-item-meta muted">
-                        {projectLabel ? <span className="report-timeline-project">{projectLabel}</span> : null}
-                        {projectLabel ? " · " : null}
-                        <span className="report-timeline-time">{formatTime(s.updatedAt, locale)}</span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      )}
+      ) : null}
+
+      {reports.length > 0 ? (
+        <div className="report-timeline-section report-timeline-reports">
+          <div className="report-work-item-history-head">
+            <h3>{t("desktop.archive.reportsTitle", reports.length)}</h3>
+          </div>
+          <div className="report-timeline-pointers">
+            {reports.map((entry) => {
+              const titleText = entry.title || entry.id;
+              return (
+                <button
+                  type="button"
+                  key={entry.id}
+                  className="report-timeline-item report-pointer-item"
+                  onClick={() => onSelectReport?.(entry)}
+                >
+                  <div className="report-timeline-item-main">
+                    <span className={`badge ${entry.level}`}>{entry.level}</span>
+                    <span className="report-timeline-title">
+                      {t("desktop.archive.reportMentioned", titleText)}
+                    </span>
+                  </div>
+                  <div className="report-timeline-item-meta muted">
+                    <span className="report-timeline-time">
+                      {formatTime(entry.createdAtMs, locale)}
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -331,21 +376,25 @@ function UnassignedDetail({
 function WorkItemDetail({
   item,
   sessions,
+  reports = [],
   knownProjects = [],
   dotByKey,
   locale,
   t,
   onStatusChange,
-  onSelectSession
+  onSelectSession,
+  onSelectReport
 }: {
   item: WorkItemRecord;
   sessions: AgentSession[];
+  reports?: ReportEntry[];
   knownProjects?: Array<{ projectId: string; portableKey: string; localPath: string | null; pathMissing: boolean }>;
   dotByKey?: Map<string, ActiveSessionDot>;
   locale: string;
   t: Translate;
   onStatusChange?: (newStatus: GtdStatus) => void;
   onSelectSession?: (session: AgentSession) => void;
+  onSelectReport?: (report: ReportEntry) => void;
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const capsuleRef = useRef<HTMLDivElement>(null);
@@ -513,10 +562,12 @@ function WorkItemDetail({
 
       <WorkItemTimeline
         sessions={sessions}
+        reports={reports}
         dotByKey={dotByKey}
         locale={locale}
         t={t}
         onSelectSession={onSelectSession}
+        onSelectReport={onSelectReport}
         emptyText={t("desktop.archive.historyEmpty")}
       />
     </div>
@@ -630,7 +681,7 @@ export function ReportPanel(): ReactPortal | null {
           ? desktopApi().notesListWorkItemSessionLinks()
           : Promise.resolve([])
       ]);
-      setWorkItems(items);
+      setWorkItems(items as WorkItemRecord[]);
       setSessionLinks(links);
 
       const map: Record<string, { noteId: string; title: string }> = {};
@@ -846,7 +897,7 @@ export function ReportPanel(): ReactPortal | null {
   }, []);
 
   useEffect(() => {
-    if (!focusedReport?.id?.startsWith("daily:")) {
+    if (!focusedReport?.id) {
       setReportLinks([]);
       return;
     }
@@ -854,7 +905,7 @@ export function ReportPanel(): ReactPortal | null {
     void desktopApi()
       .getReportLinks(focusedReport.id)
       .then((links) => {
-        if (!cancelled) setReportLinks(links);
+        if (!cancelled) setReportLinks(links ?? []);
       })
       .catch(() => {
         if (!cancelled) setReportLinks([]);
@@ -1067,6 +1118,53 @@ export function ReportPanel(): ReactPortal | null {
     setWorkItems((prev) => prev.map((wi) => (wi.noteId === noteId ? { ...wi, gtdStatus: newStatus } : wi)));
   }, []);
 
+  const [selectedWorkItemReports, setSelectedWorkItemReports] = useState<ReportEntry[]>([]);
+
+  const selectedWorkItemSessionKeys = useMemo(() => {
+    if (!selectedWorkItem) return [];
+    const keys = new Set<string>();
+    for (const key of selectedWorkItem.work?.sessions ?? []) {
+      if (key?.trim()) keys.add(key.trim());
+    }
+    for (const link of sessionLinks) {
+      if (link.noteId === selectedWorkItem.noteId) {
+        keys.add(`${link.provider}:${link.sessionId}`);
+      }
+    }
+    for (const s of workItemSessions) {
+      keys.add(`${s.provider}:${s.id}`);
+    }
+    return Array.from(keys);
+  }, [selectedWorkItem, sessionLinks, workItemSessions]);
+
+  useEffect(() => {
+    if (!selectedWorkItem || selectedWorkItemSessionKeys.length === 0) {
+      setSelectedWorkItemReports([]);
+      return;
+    }
+    if (typeof desktopApi().listReportsForSessions !== "function") {
+      setSelectedWorkItemReports([]);
+      return;
+    }
+    let cancelled = false;
+    desktopApi()
+      .listReportsForSessions(selectedWorkItemSessionKeys)
+      .then((entries) => {
+        if (!cancelled) setSelectedWorkItemReports(entries ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setSelectedWorkItemReports([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedWorkItem?.noteId, selectedWorkItemSessionKeys.join(",")]);
+
+  const openReport = useCallback((report: ReportEntry) => {
+    setFocusedReport(report);
+    setPreview(null);
+  }, []);
+
   const detail = preview ? (
     <SessionDetail
       preview={preview}
@@ -1074,7 +1172,7 @@ export function ReportPanel(): ReactPortal | null {
       t={t}
       assist={previewAssist}
       onSummarize={() => void summarizePreview()}
-      onRename={() => void renamePreview()}
+      onAutoRename={() => void renamePreview()}
       onResume={() => void resumePreview()}
     />
   ) : focusedReport ? (
@@ -1094,12 +1192,14 @@ export function ReportPanel(): ReactPortal | null {
     <WorkItemDetail
       item={selectedWorkItem}
       sessions={workItemSessions}
+      reports={selectedWorkItemReports}
       knownProjects={knownProjects}
       dotByKey={dotByKey}
       locale={locale}
       t={t}
       onStatusChange={(newStatus) => onWorkItemStatusChange(selectedWorkItem.noteId, newStatus)}
       onSelectSession={(s) => void openPreview(s)}
+      onSelectReport={openReport}
     />
   ) : selectedNoteId === "__unassigned__" ? (
     <UnassignedDetail

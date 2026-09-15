@@ -372,6 +372,7 @@ export { REPORT_SCHEMA_SQL } from "./report/schema";
 export {
   listReportEntries,
   listReportEntriesInRange,
+  listReportEntriesForSessions,
   insertReportEntry,
   upsertReportJob,
   getReportJobStatus,

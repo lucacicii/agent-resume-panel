@@ -185,6 +185,8 @@
   "desktop.archive.nextAction": "Next action: {0}",
   "desktop.archive.noWorkItemSelected": "Select a work item on the left",
   "desktop.archive.projects": "Projects",
+  "desktop.archive.reportMentioned": "Mentioned in {0}",
+  "desktop.archive.reportsTitle": "Reports ({0})",
   "desktop.archive.search": "Search sessions",
   "desktop.archive.searchPlaceholder": "Search all sessions…",
   "desktop.archive.sessionsAllTime": "All time",

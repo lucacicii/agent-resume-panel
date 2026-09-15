@@ -2,6 +2,7 @@ import * as fs from "node:fs/promises";
 import { sanitizeLikeFragment } from "../catalog/search";
 import { ensureDesktopDbSchema } from "../catalog/db";
 import { escapeSqlLiteral, runSqlite, runSqliteJson, runSqliteReadOnlyJson, runSqliteTransaction } from "../sqlite";
+import { splitSessionKey } from "../notes/work";
 import { ReportEntry, ReportLevel } from "./schema";
 
 interface ReportEntryRow {
@@ -337,3 +338,61 @@ export async function getReportEntryById(
   const row = rows[0];
   return row ? rowToEntry(row) : undefined;
 }
+
+export async function listReportEntriesForSessions(
+  dbPath: string,
+  sessions: Array<{ provider: string; sessionId: string } | string>,
+  options?: { limit?: number }
+): Promise<ReportEntry[]> {
+  try {
+    const normalized = sessions
+      .map((s) => (typeof s === "string" ? splitSessionKey(s) : s))
+      .filter((s): s is { provider: string; sessionId: string } => Boolean(s && s.provider && s.sessionId));
+
+    if (normalized.length === 0) return [];
+
+    const limit = Math.max(1, Math.min(options?.limit ?? 50, 500));
+    const unique = Array.from(
+      new Map(normalized.map((s) => [`${s.provider}:${s.sessionId}`, s])).values()
+    );
+
+    const CHUNK_SIZE = 100;
+    const entriesById = new Map<string, ReportEntry>();
+
+    for (let i = 0; i < unique.length; i += CHUNK_SIZE) {
+      const chunk = unique.slice(i, i + CHUNK_SIZE);
+      const orClauses = chunk
+        .map(
+          (s) =>
+            `(l.provider = '${escapeSqlLiteral(s.provider)}' AND l.agent_session_id = '${escapeSqlLiteral(s.sessionId)}')`
+        )
+        .join(" OR ");
+
+      const rows = await runSqliteJson<ReportEntryRow>(
+        dbPath,
+        `SELECT DISTINCT r.id, r.level, r.period_start_ms, r.period_end_ms, r.title, r.content, r.embedding_json, r.created_at_ms
+         FROM report_entries r
+         JOIN report_links l ON l.report_id = r.id
+         WHERE ${orClauses}
+         ORDER BY r.period_start_ms DESC, r.created_at_ms DESC
+         LIMIT ${limit};`
+      );
+
+      for (const row of rows) {
+        if (!entriesById.has(row.id)) {
+          entriesById.set(row.id, rowToEntry(row));
+        }
+      }
+    }
+
+    const result = Array.from(entriesById.values());
+    result.sort((a, b) => b.periodStartMs - a.periodStartMs || b.createdAtMs - a.createdAtMs);
+    return result.slice(0, limit);
+  } catch (error) {
+    if (isMissingReportSchemaError(error)) {
+      return [];
+    }
+    throw error;
+  }
+}
+

@@ -185,6 +185,8 @@
   "desktop.archive.nextAction": "次のアクション：{0}",
   "desktop.archive.noWorkItemSelected": "左側でワークアイテムを選択してください",
   "desktop.archive.projects": "プロジェクト",
+  "desktop.archive.reportMentioned": "{0} で言及",
+  "desktop.archive.reportsTitle": "関連レポート ({0})",
   "desktop.archive.search": "Search sessions",
   "desktop.archive.searchPlaceholder": "Search all sessions…",
   "desktop.archive.sessionsAllTime": "すべての期間",

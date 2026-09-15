@@ -3226,6 +3226,22 @@ main {
   gap: 16px;
 }
 
+.report-timeline-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.report-timeline-section + .report-timeline-section {
+  margin-top: 16px;
+}
+
+.report-timeline-pointers {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .report-timeline-group {
   display: flex;
   flex-direction: column;

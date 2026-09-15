@@ -34,6 +34,7 @@ import {
   listProjects,
   listReportEntries,
   listReportEntriesInRange,
+  listReportEntriesForSessions,
   listReportLinks,
   listScheduleRuns,
   countSessions,
@@ -2445,6 +2446,26 @@ function registerIpc(): void {
       return [];
     }
   });
+
+  ipcMain.handle(
+    "report:listForSessions",
+    async (_event, sessionKeys?: string[]) => {
+      if (!Array.isArray(sessionKeys) || sessionKeys.length === 0) {
+        return [];
+      }
+      try {
+        const paths = await loadPanelDbPaths();
+        return await listReportEntriesForSessions(paths.desktopDb, sessionKeys);
+      } catch (error) {
+        void recordAppError({
+          source: "report",
+          message: "report:listForSessions failed.",
+          error
+        });
+        return [];
+      }
+    }
+  );
 
   ipcMain.handle("report:listDaily", async (_event, limit?: number) => {
     const paths = await loadPanelDbPaths();

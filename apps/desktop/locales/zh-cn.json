@@ -185,6 +185,8 @@
   "desktop.archive.nextAction": "下一步：{0}",
   "desktop.archive.noWorkItemSelected": "请在左侧选择一个工作项",
   "desktop.archive.projects": "关联项目",
+  "desktop.archive.reportMentioned": "在 {0} 中被提到",
+  "desktop.archive.reportsTitle": "关联报告 ({0})",
   "desktop.archive.search": "搜索会话",
   "desktop.archive.searchPlaceholder": "搜索全部会话…",
   "desktop.archive.sessionsAllTime": "全部时间",

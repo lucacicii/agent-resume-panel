@@ -38,6 +38,8 @@ const i18nMessages = {
   "desktop.archive.nextAction": "Next action: {0}",
   "desktop.archive.decision": "Decision: {0}",
   "desktop.archive.projects": "Projects",
+  "desktop.archive.reportsTitle": "Reports ({0})",
+  "desktop.archive.reportMentioned": "Mentioned in {0}",
   "desktop.archive.search": "Search sessions",
   "desktop.archive.searchPlaceholder": "Search all sessions…",
   "desktop.archive.needsMe": "Needs me {0}",
@@ -116,6 +118,8 @@ function mockAgentResume(overrides: Partial<typeof window.agentResume> = {}): ty
     listReports: async () => [report],
     listSessionsInRange: async () => [session],
     getReportLinks: async () => [],
+    getReportEntry: async () => null,
+    listReportsForSessions: async () => [],
     previewSession: async () => ({ session, preview: { title: session.title, messages: [] } }),
     summarizeSession: async () => ({ summary: "Migrated the Report panel.", language: "en", session: { ...session, sessionSummary: "Migrated the Report panel." } }),
     autoRenameSession: async () => ({ title: "Migrate Report panel", previousTitle: session.title, session: { ...session, title: "Migrate Report panel" }, nativeRenamed: true }),
@@ -1085,5 +1089,115 @@ describe("ReportPanel", () => {
       expect(groupLabels).toContain("Feature X");
       expect(groupLabels).toContain("No work item");
     });
+  });
+
+  it("A7: renders T2 report pointers when reports exist, omitting full excerpt", async () => {
+    const host = document.createElement("div");
+    host.id = "react-report";
+    document.body.append(host);
+
+    const weeklyReport = {
+      id: "weekly:2026-W37",
+      level: "weekly" as const,
+      periodStartMs: 1789000000000,
+      periodEndMs: 1789600000000,
+      title: "Weekly · 2026-W37",
+      content: "This is the full text of Weekly 2026-W37 that should NOT be rendered in pointer excerpt.",
+      createdAtMs: 1789605000000
+    };
+
+    let listCalledWith: string[] = [];
+
+    window.agentResume = mockAgentResume({
+      notesListWorkItems: async () => [defaultWorkItem],
+      notesListWorkItemSessionLinks: async () => [
+        {
+          noteId: defaultWorkItem.noteId,
+          title: defaultWorkItem.title,
+          provider: "codex",
+          sessionId: "s-1"
+        }
+      ],
+      listReportsForSessions: async (keys) => {
+        listCalledWith = keys;
+        return [weeklyReport];
+      },
+      getReportEntry: async (id) => (id === weeklyReport.id ? weeklyReport : null)
+    });
+
+    render(
+      <I18nProvider>
+        <ReportPanel />
+      </I18nProvider>
+    );
+
+    // Verify reverse lookup was invoked with the session key
+    await waitFor(() => {
+      expect(listCalledWith).toContain("codex:s-1");
+    });
+
+    // Grouping header is rendered
+    await waitFor(() => {
+      expect(screen.getByText("Reports (1)")).toBeTruthy();
+    });
+
+    // Pointer is rendered with mention text
+    expect(screen.getByText("Mentioned in Weekly · 2026-W37")).toBeTruthy();
+    expect(document.querySelector(".badge.weekly")).toBeTruthy();
+
+    // Contract: DO NOT render full report text as excerpt (T3 forbidden)
+    expect(screen.queryByText("This is the full text of Weekly 2026-W37 that should NOT be rendered in pointer excerpt.")).toBeNull();
+
+    // Clicking the pointer opens the full report (T2 click into full report)
+    const pointerBtn = screen.getByText("Mentioned in Weekly · 2026-W37").closest("button");
+    expect(pointerBtn).toBeTruthy();
+    fireEvent.click(pointerBtn!);
+
+    // Now full report is shown with content and back button
+    await waitFor(() => {
+      expect(screen.getByText("This is the full text of Weekly 2026-W37 that should NOT be rendered in pointer excerpt.")).toBeTruthy();
+      expect(document.querySelector(".report-detail-back")).toBeTruthy();
+    });
+
+    // Clicking back returns to work item detail
+    fireEvent.click(document.querySelector(".report-detail-back")!);
+    await waitFor(() => {
+      expect(screen.getByText("Reports (1)")).toBeTruthy();
+      expect(screen.getByText("Mentioned in Weekly · 2026-W37")).toBeTruthy();
+    });
+  });
+
+  it("A7: does not render reports grouping header when work item has no reports", async () => {
+    const host = document.createElement("div");
+    host.id = "react-report";
+    document.body.append(host);
+
+    window.agentResume = mockAgentResume({
+      notesListWorkItems: async () => [defaultWorkItem],
+      notesListWorkItemSessionLinks: async () => [
+        {
+          noteId: defaultWorkItem.noteId,
+          title: defaultWorkItem.title,
+          provider: "codex",
+          sessionId: "s-1"
+        }
+      ],
+      listReportsForSessions: async () => []
+    });
+
+    render(
+      <I18nProvider>
+        <ReportPanel />
+      </I18nProvider>
+    );
+
+    // Sessions timeline is rendered
+    await waitFor(() => {
+      expect(screen.getByText("Sessions (1)")).toBeTruthy();
+    });
+
+    // Contract: "无报告时不渲染该分组标题"
+    expect(screen.queryByText(/^Reports/)).toBeNull();
+    expect(document.querySelector(".report-timeline-reports")).toBeNull();
   });
 });
