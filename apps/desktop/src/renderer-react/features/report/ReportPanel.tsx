@@ -559,12 +559,12 @@ function WorkItemDetail({
             <button
               type="button"
               className="tool-btn report-work-item-btn-im"
-              title={t("desktop.kanban.openRoom")}
-              aria-label={t("desktop.kanban.openRoom")}
+              title={t("desktop.noteDetail.openRoom")}
+              aria-label={t("desktop.noteDetail.openRoom")}
               onClick={() => void handleOpenImRoom()}
             >
               <ThemeIcon name="message-square" size={14} aria-hidden="true" />
-              <span>{t("desktop.kanban.openRoom")}</span>
+              <span>{t("desktop.noteDetail.openRoom")}</span>
             </button>
           </div>
         </div>

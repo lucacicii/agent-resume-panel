@@ -98,10 +98,37 @@
 - 不改代码。
 - 不改 `docs/desktop/report.md`（已在 A9 重写）。
 
-**前置 / 触发**：无。建议紧随 B6 之后单开一单，避免与 P8 抢文件（P8 改 `features/kanban/` 时 `agent.md`/`im.md` 若提到旧名会再次漂移）。
+**前置 / 触发**：无。建议紧随 B6 之后单开一单，避免与 P8 抢文件（P8 已把 `features/kanban/` 改名为 `features/noteDetail/`，若 `agent.md`/`im.md` 提到旧名会再次漂移）。
 
 **验收**
 - `grep -rn "Agent tab\|app\.js\|core/src/memory" docs/desktop .agents/menus .agents/menus-index.md` 无残留（或有显式“已移除”标注）。
 - 文档中每个 rail / tab 名都能在 `AppChrome.tsx` 的 `tabs` 数组里找到对应项。
 
 **Owner**：Developer · **阻塞性**：无
+
+---
+
+## T4 · `NoteDetailSheet`（原 `KanbanCardModal`）已无任何引用者
+
+**类型**：既有缺陷／契约前提与代码事实不符（P8 期间发现，本单不改变 P8 的处置）
+
+**证据**
+- P8 已按契约把 `features/kanban/KanbanCardModal.tsx` 改名为 `features/noteDetail/NoteDetailSheet.tsx`（目录与组件同步改名，`desktop.kanban.*` → `desktop.noteDetail.*`），并清除全部 `.kanban-*` 死样式。
+- **改名前后全仓库均无 importer**：`grep -rn "KanbanCardModal\|NoteDetailSheet\|noteSessionResume" apps/desktop/src --include=*.ts --include=*.tsx` 仅命中模块自身；`KanbanCardModal` 只出现在 `dist/`、`.pack-staging/` 等已 gitignore 的**旧构建产物**里，而那些产物同时含已删除的 `features/today/TodayPanel.tsx`，可证为陈旧构建。
+- 契约与排期认为它是“工作项详情弹层”“删了会丢详情交互”。实测已不成立：工作项详情现由 `WorkbenchPanel` 的 `wb-work-item-*` 作用域头部提供，笔记编辑在 `NotesPanel`，会话预览在 `ReportPanel`。
+- 排期 §2.1 P7 的「`kanban/` 整个目录没有任何消费者」是准确的；其后半句“它是工作项详情弹层”已失效。
+
+**目标**（二选一，需产品拍板）
+1. **删除** `features/noteDetail/`（组件 + `noteSessionResume.ts`）与 `desktop.noteDetail.*` 三语 11 个键。
+2. **接线**：从工作台工作项列表或归档详情调用它，此时必须同时补测试与载荷类型收敛（见 T1）。
+
+**非目标**
+- 本单不改 P8 已完成的改名结果。
+
+**前置 / 触发**：无。若拍板为 (1)，应顺便处理 `agent-sidebar-pane` / `.agent-sidebar-*` / `#btnAgentNewChat` 这类 Agent tab 退役后的残留（同属无引用样式）。
+
+**验收**
+- 若 (1)：`grep -rn "noteDetail\|NoteDetailSheet" apps/desktop/src` 无残留；`i18n:check` 绿且三语键集一致。
+- 若 (2)：组件有可复现入口，且新增测试覆盖“入口 → 打开”路径。
+
+**Owner**：Developer（需先拍板）· **阻塞性**：无

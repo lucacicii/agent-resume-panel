@@ -1,6 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../../i18n";
 import type { ActiveSessionDot } from "../activeSessionDots";
 import { WorkbenchSidebar, type WorkbenchSidebarWorkItem } from "./WorkbenchSidebar";

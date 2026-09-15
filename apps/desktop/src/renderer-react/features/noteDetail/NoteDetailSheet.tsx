@@ -29,7 +29,7 @@ interface SessionPreview {
   warning?: string;
 }
 
-interface KanbanCardModalProps {
+interface NoteDetailSheetProps {
   note: Note | null;
   session: Session | null;
   sessionDot?: ActiveSessionDot | null;
@@ -42,7 +42,7 @@ interface KanbanCardModalProps {
   onNoteMoved?: (note: Note) => void;
 }
 
-export function KanbanCardModal({ note, session, sessionDot, workSessions, onFocusSession, onClose, onNoteMoved }: KanbanCardModalProps): ReactNode | null {
+export function NoteDetailSheet({ note, session, sessionDot, workSessions, onFocusSession, onClose, onNoteMoved }: NoteDetailSheetProps): ReactNode | null {
   const { ready, t } = useI18n();
   const setStatus = (s: { text: string; kind?: "error" | "ok" | "warning" }) => {
     if (s.text) notifyDesktop({ text: s.text, kind: (s.kind ?? "info") as "error" | "ok" | "info" });
@@ -172,7 +172,7 @@ export function KanbanCardModal({ note, session, sessionDot, workSessions, onFoc
       const moved = await desktopApi().notesRead({ noteId: note.noteId });
       onNoteMoved?.(moved.record);
       window.dispatchEvent(new Event("agent-resume:notes-mutated"));
-      setStatus({ text: t("desktop.kanban.moved"), kind: "ok" });
+      setStatus({ text: t("desktop.noteDetail.moved"), kind: "ok" });
     } catch (error) {
       setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
     } finally {
@@ -220,7 +220,7 @@ export function KanbanCardModal({ note, session, sessionDot, workSessions, onFoc
     try {
       const result = await desktopApi().notesResumeSession({ provider: note.provider, sessionId: note.agentSessionId });
       if (result.ok === false) {
-        setStatus({ text: result.error || t("desktop.kanban.resumeFailed"), kind: "error" });
+        setStatus({ text: result.error || t("desktop.noteDetail.resumeFailed"), kind: "error" });
         return;
       }
       // Close only for the in-workbench xterm resume (mirrors session branch); external opens don't switch tabs.
@@ -331,7 +331,7 @@ export function KanbanCardModal({ note, session, sessionDot, workSessions, onFoc
       {isNoteSessionResumable(note) ? (
         <button type="button" className="tool-btn" onClick={() => void resumeNoteSession(note)}>
           <ThemeIcon name="play" size={14} aria-hidden="true" />
-          {t("desktop.kanban.resumeSession")}
+          {t("desktop.noteDetail.resumeSession")}
         </button>
       ) : null}
       {dirty ? (
@@ -345,7 +345,7 @@ export function KanbanCardModal({ note, session, sessionDot, workSessions, onFoc
       {note.scope === "project" ? (
         <button type="button" className="tool-btn" onClick={() => void openDiscussionRoom()}>
           <ThemeIcon name="message-square" size={14} aria-hidden="true" />
-          {t("desktop.kanban.openRoom")}
+          {t("desktop.noteDetail.openRoom")}
         </button>
       ) : null}
       <button
@@ -376,19 +376,19 @@ export function KanbanCardModal({ note, session, sessionDot, workSessions, onFoc
 
   return (
     <>
-    <Sheet open title={title} onClose={onClose} modal wide bodyClassName="kanban-detail-body" actions={actions}>
+    <Sheet open title={title} onClose={onClose} modal wide bodyClassName="note-detail-body" actions={actions}>
       {note ? (
         <>
-          <div className="kanban-note-meta">
+          <div className="note-detail-meta">
             <div className="muted session-preview-meta">
-              {t(`desktop.kanban.scope.${note.scope}`)}
+              {t(`desktop.noteDetail.scope.${note.scope}`)}
               {note.projectPath ? ` · ${note.projectPath}` : ""}
               {` · ${note.filename}`}
             </div>            <SegmentedControl<"preview" | "edit">
               value={noteView}
               options={["preview", "edit"]}
               onChange={setNoteView}
-              aria-label={t("desktop.kanban.noteView")}
+              aria-label={t("desktop.noteDetail.noteView")}
               getLabel={(value) => (
                 <span title={t(value === "edit" ? "desktop.common.edit" : "desktop.common.preview")}>
                   <ThemeIcon name={value === "edit" ? "pencil" : "eye"} size={16} aria-hidden="true" />
@@ -397,7 +397,7 @@ export function KanbanCardModal({ note, session, sessionDot, workSessions, onFoc
               className="notes-segmented"
             />
             <select
-              className="kanban-note-project"
+              className="note-detail-project"
               aria-label={t("desktop.notes.projectLabel")}
               title={t("desktop.notes.projectLabel")}
               value={projectSelectValue}
@@ -409,14 +409,14 @@ export function KanbanCardModal({ note, session, sessionDot, workSessions, onFoc
             </select>
           </div>
           {workSessions && workSessions.length > 0 && (
-            <div className="kanban-work-sessions" aria-label={t("desktop.kanban.workSessions")}>
+            <div className="note-detail-work-sessions" aria-label={t("desktop.noteDetail.workSessions")}>
               {workSessions.map((key) => (
                 <button
                   key={key}
                   type="button"
-                  className="kanban-work-session-chip"
+                  className="note-detail-work-session-chip"
                   onClick={() => onFocusSession?.(key)}
-                  title={t("desktop.kanban.focusSession")}
+                  title={t("desktop.noteDetail.focusSession")}
                 >
                   <ThemeIcon name="terminal" size={12} aria-hidden="true" />
                   <span>{key}</span>
@@ -424,7 +424,7 @@ export function KanbanCardModal({ note, session, sessionDot, workSessions, onFoc
               ))}
               <button
                 type="button"
-                className="kanban-work-sessions-open"
+                className="note-detail-work-sessions-open"
                 onClick={() => {
                   window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
                   window.dispatchEvent(new CustomEvent("agent-resume:workbench-work-item", {
@@ -441,7 +441,7 @@ export function KanbanCardModal({ note, session, sessionDot, workSessions, onFoc
                   }));
                 }}
               >
-                {t("desktop.kanban.openWorkItemInWorkbench")}
+                {t("desktop.noteDetail.openWorkItemInWorkbench")}
               </button>
             </div>
           )}
@@ -449,7 +449,7 @@ export function KanbanCardModal({ note, session, sessionDot, workSessions, onFoc
             <p className="muted">{t("desktop.common.loadingPreview")}</p>
           ) : noteView === "edit" ? (
             <CodeEditor
-              className="notes-editor-host kanban-note-editor"
+              className="notes-editor-host note-detail-editor"
               value={noteContent}
               language="markdown"
               selectionProjectPath={note?.projectPath}
@@ -464,11 +464,11 @@ export function KanbanCardModal({ note, session, sessionDot, workSessions, onFoc
               }}
             />
           ) : (
-            <div className="kanban-note-preview markdown-body" onClick={(event) => { const src = imageSrcFromElement(event.target); if (src) setImagePreview(src); }} dangerouslySetInnerHTML={{ __html: renderMarkdown(noteContent, note && panelHome ? { baseDir: posixDirname(posixJoin(panelHome, note.relMdPath)), rootDir: posixJoin(panelHome, "notes"), imageLabels: { openInBrowser: t("desktop.markdown.openInBrowser"), unavailable: t("desktop.markdown.imageUnavailable"), remoteImage: t("desktop.markdown.remoteImage") } } : undefined) }} />
+            <div className="note-detail-preview markdown-body" onClick={(event) => { const src = imageSrcFromElement(event.target); if (src) setImagePreview(src); }} dangerouslySetInnerHTML={{ __html: renderMarkdown(noteContent, note && panelHome ? { baseDir: posixDirname(posixJoin(panelHome, note.relMdPath)), rootDir: posixJoin(panelHome, "notes"), imageLabels: { openInBrowser: t("desktop.markdown.openInBrowser"), unavailable: t("desktop.markdown.imageUnavailable"), remoteImage: t("desktop.markdown.remoteImage") } } : undefined) }} />
           )}
         </>
       ) : (
-        <div className="kanban-session-detail">
+        <div className="note-detail-session-detail">
           {previewLoading && <p className="muted">{t("desktop.common.loadingPreview")}</p>}
           {!previewLoading && preview && (
             <>
@@ -479,7 +479,7 @@ export function KanbanCardModal({ note, session, sessionDot, workSessions, onFoc
                 {session!.provider}{" · "}{session!.id}{" · "}{session!.projectPath}
               </div>
               {sessionDot && (
-                <div className="kanban-session-live">
+                <div className="note-detail-session-live">
                   <span className={`session-dot${sessionDotStatusClass(sessionDot.status)}`} aria-hidden="true" />
                   <span>{sessionDotStatusLabel(sessionDot, (key, fallback) => (ready ? t(key) : fallback))}</span>
                 </div>

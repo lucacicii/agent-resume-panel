@@ -48,7 +48,7 @@ import {
 import { BrowserPaneView } from "../browser/BrowserPaneView";
 import type { BrowserSessionState } from "../../../shared/browserTypes";
 import type { WorkbenchFocusSessionRequest, WorkbenchSendSelectionRequest } from "../../../shared/workbenchSelection";
-import { collectActiveSessionDots } from "./activeSessionDots";
+import { collectActiveSessionDots, type ActiveSessionDot } from "./activeSessionDots";
 import { needsYou, rank, rollupDot } from "./sessionStatus/workItemRollup";
 import { useAcpStatus, useAgentStatus, type AcpStatusEvent, type SessionDotRuntime } from "./sessionStatus";
 import { COMPOSER_TIP_LIMIT, type ComposerSendTip } from "./TerminalComposer";

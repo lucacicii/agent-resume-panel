@@ -1,9 +1,10 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AgentSession, DigestProgressEvent, ReportEntry, WorkItemRecord } from "@agent-resume/core";
+import type { AgentSession, DigestProgressEvent, GtdStatus, ReportEntry, WorkItemRecord } from "@agent-resume/core";
 import { I18nProvider } from "../../i18n";
 import { ReportPanel } from "./ReportPanel";
 import { isoWeekLabelFromDate } from "./model";
+import { type ActiveSessionDot } from "../workbench/activeSessionDots";
 
 const now = new Date();
 const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
@@ -12,7 +13,16 @@ const month = day.slice(0, 7);
 const report: ReportEntry = { id: `daily:${day}`, level: "daily", periodStartMs: now.getTime(), periodEndMs: now.getTime(), title: "Daily digest", content: "# Progress\nReact report", embeddingJson: "[0.1]", createdAtMs: now.getTime() };
 const session: AgentSession = { provider: "codex", id: "s-1", title: "Renderer migration", projectPath: "/work/panel", updatedAt: now.getTime() };
 
+const baseWorkItem = {
+  scope: "project" as const,
+  filename: "work-item.md",
+  relDir: "work",
+  relMdPath: "work/work-item.md",
+  createdAtMs: 0
+};
+
 const defaultWorkItem: WorkItemRecord = {
+  ...baseWorkItem,
   noteId: "wi-1",
   title: "Renderer migration",
   gtdStatus: "next",
@@ -21,7 +31,7 @@ const defaultWorkItem: WorkItemRecord = {
     sessions: ["codex:s-1"],
     projects: ["/work/panel"],
     primaryProject: "/work/panel",
-    nextAction: "Move it to React",
+    next: "Move it to React",
     decision: "Decided on React"
   }
 };
@@ -97,7 +107,7 @@ const i18nMessages = {
   "desktop.sessions.renamed": "Renamed to {0}",
   "desktop.sessions.noMessages": "No messages",
   "desktop.workbench.workItemOpenNote": "Open note",
-  "desktop.kanban.openRoom": "Discussion room",
+  "desktop.noteDetail.openRoom": "Discussion room",
   "desktop.workbench.workItemNoProject": "No project yet",
   "desktop.workbench.pathMissingHint": "Local folder not found on this machine"
 };
@@ -187,6 +197,7 @@ describe("ReportPanel", () => {
     document.body.append(host);
 
     const secondWorkItem: WorkItemRecord = {
+      ...baseWorkItem,
       noteId: "wi-2",
       title: "Second Feature",
       gtdStatus: "inbox",
@@ -194,7 +205,7 @@ describe("ReportPanel", () => {
       work: {
         sessions: ["codex:s-2"],
         projects: ["/work/docs"],
-        nextAction: "Write documentation"
+        next: "Write documentation"
       }
     };
 
@@ -339,7 +350,7 @@ describe("ReportPanel", () => {
 
     // Emit generation event
     await act(async () => {
-      emitProgress?.({ phase: "reading_sessions", level: "daily", dayKey: day, message: "Processing sessions" });
+      emitProgress?.({ phase: "session_start", level: "daily", periodLabel: day, dayKey: day, message: "Processing sessions" });
     });
     // While generating, progress message is handled
   });
@@ -392,23 +403,25 @@ describe("ReportPanel", () => {
     document.body.append(host);
 
     const item1: WorkItemRecord = {
+      ...baseWorkItem,
       noteId: "wi-dup-1",
       title: "Duplicate Work Item",
       gtdStatus: "next",
       updatedAtMs: now.getTime() - 1000,
       work: {
         sessions: ["codex:s-1"],
-        nextAction: "Action for item 1"
+        next: "Action for item 1"
       }
     };
     const item2: WorkItemRecord = {
+      ...baseWorkItem,
       noteId: "wi-dup-2",
       title: "Duplicate Work Item",
       gtdStatus: "next",
       updatedAtMs: now.getTime() - 2000,
       work: {
         sessions: ["codex:s-2"],
-        nextAction: "Action for item 2"
+        next: "Action for item 2"
       }
     };
 
@@ -434,6 +447,7 @@ describe("ReportPanel", () => {
     document.body.append(host);
 
     const doneItem: WorkItemRecord = {
+      ...baseWorkItem,
       noteId: "wi-done",
       title: "Completed Task",
       gtdStatus: "done",
@@ -441,6 +455,7 @@ describe("ReportPanel", () => {
       work: { sessions: ["codex:s-done"] }
     };
     const somedayItem: WorkItemRecord = {
+      ...baseWorkItem,
       noteId: "wi-someday",
       title: "Someday Task",
       gtdStatus: "someday",
@@ -448,6 +463,7 @@ describe("ReportPanel", () => {
       work: { sessions: ["codex:s-someday"] }
     };
     const inboxItem: WorkItemRecord = {
+      ...baseWorkItem,
       noteId: "wi-inbox",
       title: "Inbox Task",
       gtdStatus: "inbox",
@@ -490,6 +506,7 @@ describe("ReportPanel", () => {
     document.body.append(host);
 
     const projectAItem: WorkItemRecord = {
+      ...baseWorkItem,
       noteId: "wi-proj-a",
       title: "Project Alpha Work",
       gtdStatus: "next",
@@ -497,6 +514,7 @@ describe("ReportPanel", () => {
       work: { projects: ["/repos/alpha"], primaryProject: "/repos/alpha" }
     };
     const projectBItem: WorkItemRecord = {
+      ...baseWorkItem,
       noteId: "wi-proj-b",
       title: "Project Beta Work",
       gtdStatus: "next",
@@ -530,6 +548,7 @@ describe("ReportPanel", () => {
     document.body.append(host);
 
     const itemA: WorkItemRecord = {
+      ...baseWorkItem,
       noteId: "wi-a",
       title: "Item A Waiting",
       gtdStatus: "next",
@@ -537,6 +556,7 @@ describe("ReportPanel", () => {
       work: { sessions: ["codex:s-wait"] }
     };
     const itemB: WorkItemRecord = {
+      ...baseWorkItem,
       noteId: "wi-b",
       title: "Item B Recent Idle",
       gtdStatus: "next",
@@ -544,6 +564,7 @@ describe("ReportPanel", () => {
       work: { sessions: ["codex:s-idle"] }
     };
     const itemC: WorkItemRecord = {
+      ...baseWorkItem,
       noteId: "wi-c",
       title: "Item C Older Idle",
       gtdStatus: "next",
@@ -554,7 +575,15 @@ describe("ReportPanel", () => {
     window.agentResume = mockAgentResume({
       notesListWorkItems: async () => [itemC, itemB, itemA],
       getWorkbenchActiveSessions: async () => [
-        { sessionKey: "codex:s-wait", provider: "codex", sessionId: "s-wait", status: "awaiting_user" }
+        {
+          sessionKey: "codex:s-wait",
+          paneKey: "pane-wait",
+          projectPath: "/work/panel",
+          title: "Waiting session",
+          provider: "codex",
+          sessionId: "s-wait",
+          status: "awaiting_user"
+        }
       ]
     });
 
@@ -574,6 +603,7 @@ describe("ReportPanel", () => {
     document.body.append(host);
 
     const detailedItem: WorkItemRecord = {
+      ...baseWorkItem,
       noteId: "wi-detail",
       title: "Refactor Architecture",
       gtdStatus: "next",
@@ -622,6 +652,7 @@ describe("ReportPanel", () => {
     document.body.append(host);
 
     const item: WorkItemRecord = {
+      ...baseWorkItem,
       noteId: "wi-capsule",
       title: "Capsule Test Item",
       gtdStatus: "inbox",
@@ -676,6 +707,7 @@ describe("ReportPanel", () => {
     document.body.append(host);
 
     const item: WorkItemRecord = {
+      ...baseWorkItem,
       noteId: "wi-nav",
       title: "Nav Test Item",
       gtdStatus: "next",
@@ -760,6 +792,7 @@ describe("ReportPanel", () => {
     const day2 = new Date(2026, 8, 14, 16, 0, 0).getTime();
 
     const item: WorkItemRecord = {
+      ...baseWorkItem,
       noteId: "wi-timeline",
       title: "Timeline Work Item",
       gtdStatus: "next",
@@ -881,6 +914,7 @@ describe("ReportPanel", () => {
     document.body.append(host);
 
     const emptyItem: WorkItemRecord = {
+      ...baseWorkItem,
       noteId: "wi-empty",
       title: "Empty Work Item",
       gtdStatus: "inbox",
@@ -935,15 +969,17 @@ describe("ReportPanel", () => {
     document.body.append(host);
 
     const item1: WorkItemRecord = {
+      ...baseWorkItem,
       noteId: "item-1",
       title: "Real Item",
       gtdStatus: "inbox",
+      updatedAtMs: now.getTime(),
       work: { sessions: ["codex:s-1"] }
     };
 
     window.agentResume = mockAgentResume({
       notesListWorkItems: async () => [item1],
-      querySessionsPage: async () => ({ sessions: [], total: 0, hasMore: false })
+      querySessionsPage: async () => ({ sessions: [], total: 0 })
     });
 
     render(
@@ -1050,8 +1086,10 @@ describe("ReportPanel", () => {
     window.agentResume = mockAgentResume({
       notesListWorkItems: async () => [
         {
+          ...baseWorkItem,
           noteId: "item-linked",
           title: "Feature X",
+          updatedAtMs: now.getTime(),
           work: { sessions: ["codex:s-linked"] }
         }
       ],
@@ -1098,13 +1136,14 @@ describe("ReportPanel", () => {
     host.id = "react-report";
     document.body.append(host);
 
-    const weeklyReport = {
+    const weeklyReport: ReportEntry = {
       id: "weekly:2026-W37",
-      level: "weekly" as const,
+      level: "weekly",
       periodStartMs: 1789000000000,
       periodEndMs: 1789600000000,
       title: "Weekly · 2026-W37",
       content: "This is the full text of Weekly 2026-W37 that should NOT be rendered in pointer excerpt.",
+      embeddingJson: null,
       createdAtMs: 1789605000000
     };
 
@@ -1240,9 +1279,11 @@ describe("ReportPanel", () => {
     });
 
     const workItemWith500: WorkItemRecord = {
+      ...baseWorkItem,
       noteId: "wi-500",
       title: "Big Work Item 500",
       gtdStatus: "next",
+      updatedAtMs: now.getTime(),
       work: {
         sessions: all500Sessions.map((s) => `${s.provider}:${s.id}`),
         primaryProject: "/repo"
@@ -1337,11 +1378,11 @@ describe("ReportPanel", () => {
             provider: "codex",
             id: "s-1",
             title: "Single Session",
+            projectPath: "/work/panel",
             updatedAt: Date.now()
           }
         ],
-        total: 1,
-        nextCursor: undefined
+        total: 1
       })
     });
 
