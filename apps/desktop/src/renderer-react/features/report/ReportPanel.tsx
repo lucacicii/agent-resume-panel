@@ -5,7 +5,7 @@ import { ThemeIcon } from "../../components/ThemeIcon";
 import { sessionDotStatusClass } from "../../components/SessionDotsCluster";
 import type { ActiveSessionDot } from "../workbench/activeSessionDots";
 import { rank, rollupDot } from "../workbench/sessionStatus/workItemRollup";
-import type { WorkbenchSidebarWorkItem } from "../workbench/layout/WorkbenchSidebar";
+import { workItemFromRecord, type WorkbenchWorkItem } from "../workbench/workItem";
 import { desktopApi } from "../../bridge";
 import { notifyDesktop } from "../../components/Notifications";
 import { renderMarkdown as markdown } from "../../components/Markdown";
@@ -479,17 +479,7 @@ function WorkItemDetail({
       if (typeof api.imCreateWorkItemRoom !== "function") return;
       const room = await api.imCreateWorkItemRoom({ noteId: item.noteId });
       if (!room) return;
-      const payload: WorkbenchSidebarWorkItem = {
-        noteId: item.noteId,
-        title: item.title || item.noteId,
-        status: (item.gtdStatus as GtdStatus) ?? "inbox",
-        next: item.work?.next ?? (item.work as any)?.nextAction,
-        decision: item.work?.decision,
-        sessions: item.work?.sessions ?? [],
-        projects: item.work?.projects,
-        primaryProject: item.work?.primaryProject,
-        updatedAtMs: item.updatedAtMs
-      };
+      const payload: WorkbenchWorkItem = workItemFromRecord(item);
       window.dispatchEvent(new CustomEvent("agent-resume:workbench-work-item", { detail: payload }));
       window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
       window.dispatchEvent(new CustomEvent("agent-resume:workbench-open-room", { detail: { projectId: room.project.projectId } }));

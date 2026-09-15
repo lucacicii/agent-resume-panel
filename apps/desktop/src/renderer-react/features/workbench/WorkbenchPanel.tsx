@@ -120,7 +120,8 @@ import {
   BranchGraphNavigation
 } from "./git/GitGraphView";
 import { WorkbenchDetailHeader } from "./layout/WorkbenchDetailHeader";
-import { WorkbenchSidebar, type WorkbenchSidebarWorkItem } from "./layout/WorkbenchSidebar";
+import { WorkbenchSidebar } from "./layout/WorkbenchSidebar";
+import { workItemFromRecord, type WorkbenchWorkItem } from "./workItem";
 import { ImPanel } from "../im/ImPanel";
 
 type DesktopApi = ReturnType<typeof desktopApi>;
@@ -681,16 +682,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [projectQuery, setProjectQuery] = useState("");
   const [sessionQuery, setSessionQuery] = useState("");
   /** Work-item workspace scope (set by the board); renders a dedicated view. */
-  const [workItemScope, setWorkItemScope] = useState<{
-    noteId: string;
-    title: string;
-    status: string;
-    next?: string;
-    decision?: string;
-    sessions: string[];
-    projects?: string[];
-    primaryProject?: string;
-  } | null>(null);
+  const [workItemScope, setWorkItemScope] = useState<WorkbenchWorkItem | null>(null);
   /** Room id of the work item's IM channel, when open inside the workspace. */
   const [roomProjectId, setRoomProjectId] = useState<string | null>(null);
   /**
@@ -700,7 +692,7 @@ export function WorkbenchPanel(): ReactPortal | null {
    */
   const [sessionTarget, setSessionTarget] = useState<string | null>(null);
   const sessionTargetRef = useRef<string | null>(null);
-  const [workItems, setWorkItems] = useState<WorkbenchSidebarWorkItem[]>([]);
+  const [workItems, setWorkItems] = useState<WorkbenchWorkItem[]>([]);
   const [workItemProjectFilter, setWorkItemProjectFilter] = useState("");
   const [workItemStatusFilter, setWorkItemStatusFilter] = useState<"all" | GtdStatus>("all");
   const [workItemNeedsYouFilter, setWorkItemNeedsYouFilter] = useState(false);
@@ -3347,36 +3339,17 @@ export function WorkbenchPanel(): ReactPortal | null {
     if (typeof desktopApi().notesListWorkItems !== "function") return;
     try {
       const items = await desktopApi().notesListWorkItems();
-      setWorkItems(items.map((item) => ({
-        noteId: item.noteId,
-        title: item.title || item.filename.replace(/\.md$/i, "") || item.noteId,
-        status: item.gtdStatus ?? "inbox",
-        next: item.work?.next,
-        decision: item.work?.decision,
-        sessions: item.work?.sessions ?? [],
-        projects: item.work?.projects,
-        primaryProject: item.work?.primaryProject,
-        updatedAtMs: item.updatedAtMs
-      })));
+      setWorkItems(items.map(workItemFromRecord));
     } catch {
       /* the sidebar list is best-effort; the board remains the source of truth */
     }
   }, []);
 
-  const selectWorkItem = useCallback((item: WorkbenchSidebarWorkItem) => {
+  const selectWorkItem = useCallback((item: WorkbenchWorkItem) => {
     // Set synchronously: reloadWorkbench() runs on the follow-up tab event and
     // would otherwise auto-pick a project before this render commits.
     workItemScopeRef.current = { noteId: item.noteId };
-    setWorkItemScope({
-      noteId: item.noteId,
-      title: item.title,
-      status: item.status,
-      next: item.next,
-      decision: item.decision,
-      sessions: item.sessions,
-      projects: item.projects,
-      primaryProject: item.primaryProject
-    });
+    setWorkItemScope(item);
     const target = item.primaryProject ?? item.projects?.[0];
     // The work item owns its project context: selecting a project-less one must
     // clear a stale selection rather than inherit it.
@@ -3392,15 +3365,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       const created = await desktopApi().notesCreateWorkItem({});
       await loadWorkItems();
       window.dispatchEvent(new Event("agent-resume:notes-mutated"));
-      selectWorkItem({
-        noteId: created.noteId,
-        title: created.title || created.noteId,
-        status: created.gtdStatus ?? "inbox",
-        sessions: created.work?.sessions ?? [],
-        projects: created.work?.projects,
-        primaryProject: created.work?.primaryProject,
-        updatedAtMs: created.updatedAtMs
-      });
+      selectWorkItem(workItemFromRecord(created));
     } catch {
       /* best-effort */
     }
@@ -3454,28 +3419,10 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   useEffect(() => {
     const onWorkItem = (event: Event) => {
-      const detail = (event as CustomEvent<{
-        noteId?: string;
-        title?: string;
-        status?: string;
-        next?: string;
-        decision?: string;
-        sessions?: string[];
-        projects?: string[];
-        primaryProject?: string;
-      }>).detail;
+      const detail = (event as CustomEvent<WorkbenchWorkItem>).detail;
       if (!detail?.noteId) return;
       workItemScopeRef.current = { noteId: detail.noteId };
-      setWorkItemScope({
-        noteId: detail.noteId,
-        title: detail.title || "",
-        status: detail.status || "inbox",
-        next: detail.next,
-        decision: detail.decision,
-        sessions: Array.isArray(detail.sessions) ? detail.sessions : [],
-        projects: Array.isArray(detail.projects) ? detail.projects : undefined,
-        primaryProject: detail.primaryProject
-      });
+      setWorkItemScope(detail);
       const target = detail.primaryProject ?? detail.projects?.[0];
       // The work item owns its project context: opening one must not inherit a
       // stale selection, so a project-less work item clears it.

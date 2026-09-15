@@ -2,7 +2,8 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../../i18n";
 import type { ActiveSessionDot } from "../activeSessionDots";
-import { WorkbenchSidebar, type WorkbenchSidebarWorkItem } from "./WorkbenchSidebar";
+import { WorkbenchSidebar } from "./WorkbenchSidebar";
+import type { WorkbenchWorkItem } from "../workItem";
 
 afterEach(() => {
   cleanup();
@@ -29,7 +30,7 @@ function renderSidebar({
   onWorkItemNeedsYouFilterChange,
   onAddWorkItem
 }: {
-  workItems: WorkbenchSidebarWorkItem[];
+  workItems: WorkbenchWorkItem[];
   dotByKey?: Map<string, ActiveSessionDot>;
   needsYouCount?: number;
   workItemNeedsYouFilter?: boolean;
@@ -93,7 +94,7 @@ function renderSidebar({
 
 describe("WorkbenchSidebar work items live dot (P3)", () => {
   it("renders awaiting_user live dot on work item row", () => {
-    const workItems: WorkbenchSidebarWorkItem[] = [
+    const workItems: WorkbenchWorkItem[] = [
       { noteId: "wi-awaiting", title: "Awaiting task", status: "next", sessions: ["codex:s-await"] }
     ];
     const dotByKey = new Map<string, ActiveSessionDot>([
@@ -109,7 +110,7 @@ describe("WorkbenchSidebar work items live dot (P3)", () => {
   });
 
   it("renders error live dot on work item row", () => {
-    const workItems: WorkbenchSidebarWorkItem[] = [
+    const workItems: WorkbenchWorkItem[] = [
       { noteId: "wi-error", title: "Error task", status: "next", sessions: ["codex:s-err"] }
     ];
     const dotByKey = new Map<string, ActiveSessionDot>([
@@ -125,7 +126,7 @@ describe("WorkbenchSidebar work items live dot (P3)", () => {
   });
 
   it("renders running/connecting live dot on work item row", () => {
-    const workItems: WorkbenchSidebarWorkItem[] = [
+    const workItems: WorkbenchWorkItem[] = [
       { noteId: "wi-run", title: "Running task", status: "next", sessions: ["codex:s-run"] },
       { noteId: "wi-conn", title: "Connecting task", status: "next", sessions: ["codex:s-conn"] }
     ];
@@ -143,7 +144,7 @@ describe("WorkbenchSidebar work items live dot (P3)", () => {
   });
 
   it("does not render a second dot on inactive work item row", () => {
-    const workItems: WorkbenchSidebarWorkItem[] = [
+    const workItems: WorkbenchWorkItem[] = [
       { noteId: "wi-idle", title: "Idle task", status: "next", sessions: ["codex:s-idle"] },
       { noteId: "wi-no-sessions", title: "Empty task", status: "next", sessions: [] }
     ];
@@ -163,7 +164,7 @@ describe("WorkbenchSidebar work items live dot (P3)", () => {
   });
 
   it("does not render a second dot when session status is open", () => {
-    const workItems: WorkbenchSidebarWorkItem[] = [
+    const workItems: WorkbenchWorkItem[] = [
       { noteId: "wi-open", title: "Open task", status: "next", sessions: ["codex:s-open"] }
     ];
     const dotByKey = new Map<string, ActiveSessionDot>([
@@ -180,7 +181,7 @@ describe("WorkbenchSidebar work items live dot (P3)", () => {
 
 describe("WorkbenchSidebar needs-you filter chip (P4)", () => {
   it("does not render the chip in DOM when n=0", () => {
-    const workItems: WorkbenchSidebarWorkItem[] = [
+    const workItems: WorkbenchWorkItem[] = [
       { noteId: "wi-1", title: "Task 1", status: "next", sessions: ["codex:s-1"] }
     ];
     // No awaiting_user sessions -> n=0
@@ -196,7 +197,7 @@ describe("WorkbenchSidebar needs-you filter chip (P4)", () => {
   });
 
   it("renders the chip in DOM when n>0 and responds to clicks", async () => {
-    const workItems: WorkbenchSidebarWorkItem[] = [
+    const workItems: WorkbenchWorkItem[] = [
       { noteId: "wi-1", title: "Task 1", status: "next", sessions: ["codex:s-1"] },
       { noteId: "wi-2", title: "Task 2", status: "next", sessions: ["codex:s-2"] }
     ];
@@ -223,7 +224,7 @@ describe("WorkbenchSidebar needs-you filter chip (P4)", () => {
   });
 
   it("renders active chip state when filter is active", async () => {
-    const workItems: WorkbenchSidebarWorkItem[] = [
+    const workItems: WorkbenchWorkItem[] = [
       { noteId: "wi-1", title: "Task 1", status: "next", sessions: ["codex:s-1"] }
     ];
     const dotByKey = new Map<string, ActiveSessionDot>([

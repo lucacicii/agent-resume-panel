@@ -1,42 +1,32 @@
 # 归档重构 · 待排期工单（既有缺陷，不阻塞 B1-B6）
 
-角色：Architect · 状态：**T1–T3 已立单未排期；T4 已关闭；T5 新立单**
+角色：Architect · 状态：**T1 / T4 已关闭；T2、T3、T5、T6 已立单未排期**
 来源：[`desktop-archive-architect-rulings.md`](desktop-archive-architect-rulings.md) §1.3c 与 §2.2 的两处**非阻塞观察**，以及 A9 收尾时发现的文档漂移（T3）。
 性质：**均为既有缺陷，不是本次归档重构引入的**。判定为不在 D/P/A/C 任何任务范围内，**不阻塞 B1-B6 任何批次**，不写入契约 §6。
 
-> 归档重构期间只做一件事：**不要制造新的同类副本**。两单的修法在重构期间一律暂缓，避免与 P1/P7/P8 抢同一批文件。
+> 归档重构期间只做一件事：**不要制造新的同类副本**。重构期间各单的修法一律暂缓，避免与 P1/P7/P8 抢同一批文件。T1 / T4 已在 B6 之后按 Owner 判定关闭。
 
 ---
 
-## T1 · 工作项载荷的权威类型住在布局组件文件里
+## T1 · 工作项载荷的权威类型住在布局组件文件里 —— **已关闭**
 
 **类型**：分层缺陷（数据契约与布局实现同居）
 
-**证据（逐行）**
-- 权威类型声明在 **布局组件文件**：`apps/desktop/src/renderer-react/features/workbench/layout/WorkbenchSidebar.tsx:11-21`（`WorkbenchSidebarWorkItem`，8 字段）。该文件是 React 组件模块（`:1-5` import react / ThemeIcon / SegmentedControl / useI18n）。
-- 同一形状另有 3 份无编译约束的副本：`TodayPanel.tsx:146-157`（生产方字面量，**已随 P7 一同删除**）、`KanbanCardModal.tsx:20-22`（内联 `work?:` 子形状）、`WorkbenchPanel.tsx:3412-3420`（消费方**全可选**内联类型）。
-- 漂移是**静默**的：消费方用 `detail.title || ""`、`detail.status || "inbox"`、`Array.isArray(detail.sessions)`（`WorkbenchPanel.tsx:3422-3431`）兜底，生产方改字段名 → 消费方 `undefined` → 概要头内容整块消失，tsc 全绿、无测试变红。
+**原证据**：权威类型声明在布局组件文件 `layout/WorkbenchSidebar.tsx`，另有 3 份无编译约束的副本（`TodayPanel.tsx` 生产方、`KanbanCardModal.tsx` 内联子形状、`WorkbenchPanel.tsx` 消费方全可选内联类型）；消费方用 `detail.title || ""`、`Array.isArray(detail.sessions)` 兜底，漂移被静默吸收。
 
-**目标**
-1. 权威类型移入中立模型模块（与 `features/workbench/activeSessionDots.ts` 同级是自然候选），消除「从 layout 组件文件取数据契约」。
-2. 事件载荷形状与侧栏列表项形状的关系被**显式声明**（同一类型，或一层明确的映射），不再靠字面量对齐。
-3. 所有生产方 / 消费方改为 import 该类型。
+**处置（已执行）**
+- 新增中立模型模块 `apps/desktop/src/renderer-react/features/workbench/workItem.ts`：
+  - `WorkbenchWorkItem` 为**唯一**权威形状（含 `noteId/title/status/next/decision/sessions/projects/primaryProject/updatedAtMs`）。
+  - `WorkItemSource` 为 `workItemFromRecord()` 的输入形状（结构化声明，因为 preload 返回的是自己手写的结构副本，不是 core 的 `WorkItemRecord`）。
+  - `workItemFromRecord()` 收敛此前**四处各自手写**的映射（`WorkbenchPanel.loadWorkItems`、`WorkbenchPanel.addWorkItem`、`ReportPanel` IM 入口生产方、消费方兜底），并顺带删掉 `ReportPanel` 里 `(item.work as any)?.nextAction` 这个已失效的兜底。
+- `WorkbenchSidebar.tsx` 不再声明该类型，props 改用中立类型；`WorkbenchSidebar.test.tsx` 同步改 import。
+- `WorkbenchPanel` 的 `workItemScope` state 与事件消费者改为直接用 `WorkbenchWorkItem`，删掉字段级重建与运行时兜底。
+- 新增 `workItem.test.ts` 覆盖标题兜底链、状态默认值、work 字段映射与 `noteId`/`updatedAtMs` 透传。
 
-**非目标**
-- 不改载荷字段名与语义（8 字段与 `WorkbenchPanel.tsx:3422-3431` 的既有期望保持一致）。
-- 不为 `agent-resume:*` 事件建立登记表（超出本单）。
-- 不引入运行时校验——那属于 `apps/desktop/src/shared/workbenchSelection.ts` 的职责范围（跨进程校验），渲染层内部事件不需要。
-
-**前置 / 触发**
-- 与 **P8** 同批或之后。归 P8 的理由：P7 之后 `KanbanCardModal` 才是唯一生产方，P8 本来就要改它的归属与命名（排期 §2.1 P7 已定「P7 只切 import、P8 才改名归位」）。
-- 若 P8 已按裁定 §1.3b 把形状收敛到单一权威类型，**本单可并入 P8 关闭**；此时剩余工作量仅为「把类型从 layout 文件移到模型模块」。
-
-**验收**
-- `grep -rn "primaryProject" apps/desktop/src/renderer-react` → 载荷形状只剩**一处**声明。
-- `WorkbenchSidebar.tsx` 不再声明该类型；无其它文件从 `layout/WorkbenchSidebar` 取该类型。
-- `tsc` 全绿 + `pnpm --filter @agent-resume/desktop run test:renderer` 绿。
-
-**Owner**：Developer · **阻塞性**：无
+**关闭验收（已实测）**
+- `grep -rn "primaryProject" apps/desktop/src/renderer-react` → 除 `workItem.ts`（声明）与 `WorkbenchSidebar.tsx`（无）外，其余全是**读取**，无第二处形状声明。
+- 人为把 `workItem.ts` 的字段改名 → `typecheck:renderer` 立即在 `WorkbenchPanel.tsx`（消费方 ×2）与 `workItem.ts`（生产方）报错，**漂移已在编译期可捕获**。
+- `typecheck:desktop` / `compile` / `i18n:check` 绿；`test:renderer` 新增 4 个用例通过。
 
 ---
 
@@ -157,3 +147,36 @@
 - 全程不得出现“样式还在用但被删掉”的情况：对 `is-*`/`has-*` 批次需附人工核对清单。
 
 **Owner**：Developer · **阻塞性**：无
+
+---
+
+## T6 · renderer 测试套件存在间歇性失败（重负载 jsdom 用例）
+
+**类型**：测试基础设施（既有的不稳定，非本次重构引入）
+
+**证据（本机实测，同一工作树重复跑 `pnpm --filter @agent-resume/desktop run test:renderer`）**
+- **未改动的基线**（`git stash` 后）：3 次中 1 次失败，失败用例为 `WorkbenchPanel > disables Replace All when results were truncated`。
+- 带 T1 改动：6 次中 3 次失败，且**每次失败的用例都不同** —— `FloatingSessionNote > opens find with Cmd+F and Escape closes find…`、`WorkbenchPanel > searches inside an Explorer folder via Find in Folder`、`WorkbenchPanel > dismisses the branch popover on outside click and Escape`。
+- 单独跑这些文件时全部通过（如 `FloatingSessionNote.test.tsx` 单独跑 17/17 通过）。
+→ 结论：**与改动无关**，属于并行执行下的计时 / `act()` 抖动，集中在最重的几个 jsdom 套件。
+
+**影响**：验收命令「`test:renderer` 绿」不是可重复的判据；一次绿不能证明没有回归，一次红也不能证明有回归。
+
+**目标**：让全量 renderer 测试可重复，至少到「连续 5 次同一结果」。
+
+**建议方向（择一或组合）**
+1. 对失败用例做 fake timers 收敛，去掉对真实 `setTimeout`/`requestAnimationFrame` 的依赖。
+2. 复查未包 `act()` 的状态更新（跑测时控制台已有大量 `not wrapped in act(...)` 警告，集中在 `WorkbenchPanel`）。
+3. 若仍抖动，考虑对这些重套件降低并行度（单独 project / `--poolOptions` 限制），而不是继续放松断言。
+
+**非目标**
+- 不改产品代码来迁就测试。
+- 不用重试（retry）掩盖抖动。
+
+**前置 / 触发**：无。
+
+**验收**
+- 连续 5 次 `pnpm --filter @agent-resume/desktop run test:renderer` 结果一致且全绿，附 5 次输出摘要。
+- 控制台 `act(...)` 警告数量显著下降或清零（附前后对比）。
+
+**Owner**：Developer · **阻塞性**：无（但影响所有后续验收的可信度）

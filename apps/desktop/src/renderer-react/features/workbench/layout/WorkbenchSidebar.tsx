@@ -6,23 +6,10 @@ import { sessionDotStatusClass } from "../../../components/SessionDotsCluster";
 import { useI18n } from "../../../i18n";
 import type { ActiveSessionDot } from "../activeSessionDots";
 import { needsYou, rollupDot } from "../sessionStatus/workItemRollup";
+import type { WorkbenchWorkItem } from "../workItem";
 
 export type WorkbenchSidebarView = "workitems" | "projects" | "gtd";
 export type WorkbenchProjectFilter = "all" | "pinned";
-
-/** One work item as the sidebar navigates it. */
-export type WorkbenchSidebarWorkItem = {
-  noteId: string;
-  title: string;
-  status: GtdStatus;
-  next?: string;
-  decision?: string;
-  sessions: string[];
-  /** Projects this work item references (0..n). */
-  projects?: string[];
-  primaryProject?: string;
-  updatedAtMs?: number;
-};
 
 export type WorkbenchSidebarProject = {
   id: string;
@@ -183,7 +170,7 @@ export function WorkbenchSidebar<T extends WorkbenchSidebarProject>({
   workItemsActive: boolean;
   /** Which repository sub-view the resource mode is showing. */
   resourceView: "projects" | "gtd";
-  workItems: WorkbenchSidebarWorkItem[];
+  workItems: WorkbenchWorkItem[];
   selectedWorkItemId: string | null;
   /** Distinct projects referenced by the work items, for the dimension filter. */
   workItemProjects: Array<{ path: string; label: string }>;
@@ -220,7 +207,7 @@ export function WorkbenchSidebar<T extends WorkbenchSidebarProject>({
   onFolderDragLeave: (event: React.DragEvent, project: T, folderId: string | null) => void;
   onFolderDrop: (event: React.DragEvent, project: T, folderId: string | null) => void;
   onToggleFolderExpanded: (folderId: string) => void;
-  onSelectWorkItem: (item: WorkbenchSidebarWorkItem) => void;
+  onSelectWorkItem: (item: WorkbenchWorkItem) => void;
   onSelectWorkItemsView: () => void;
   onSelectResourceView: () => void;
   onSelectResourceViewMode: (view: "projects" | "gtd") => void;
