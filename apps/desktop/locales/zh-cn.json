@@ -181,6 +181,7 @@
   "desktop.archive.decision": "决策：{0}",
   "desktop.archive.historyEmpty": "这个工作项还没有会话或报告。在工作台选中它并新建会话，或先给它写一条「下一步」。",
   "desktop.archive.lastExitWaiting": "上次退出时该会话在等待你的输入",
+  "desktop.archive.loadEarlier": "加载更早",
   "desktop.archive.needsMe": "需要我 {0}",
   "desktop.archive.nextAction": "下一步：{0}",
   "desktop.archive.noWorkItemSelected": "请在左侧选择一个工作项",

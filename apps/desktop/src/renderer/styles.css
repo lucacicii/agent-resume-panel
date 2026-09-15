@@ -3320,6 +3320,37 @@ main {
   color: var(--muted-fg);
 }
 
+.report-timeline-more {
+  display: flex;
+  justify-content: center;
+  padding: 10px 0 4px;
+}
+
+.report-timeline-load-earlier {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 16px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--fg);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.report-timeline-load-earlier:hover:not(:disabled) {
+  background: var(--hover-bg, var(--panel-hover));
+  border-color: var(--border-hover, var(--border));
+}
+
+.report-timeline-load-earlier:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .report-detail-pane>.detail-progress.gen-progress {
   flex: 0 0 auto;
   margin: 8px 12px 0;

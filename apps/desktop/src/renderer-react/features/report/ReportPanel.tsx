@@ -186,7 +186,11 @@ function WorkItemTimeline({
   t,
   onSelectSession,
   onSelectReport,
-  emptyText
+  emptyText,
+  hasEarlier,
+  loadingEarlier,
+  onLoadEarlier,
+  totalSessions
 }: {
   sessions: AgentSession[];
   reports?: ReportEntry[];
@@ -196,6 +200,10 @@ function WorkItemTimeline({
   onSelectSession?: (session: AgentSession) => void;
   onSelectReport?: (report: ReportEntry) => void;
   emptyText: string;
+  hasEarlier?: boolean;
+  loadingEarlier?: boolean;
+  onLoadEarlier?: () => void;
+  totalSessions?: number | null;
 }) {
   const sortedSessions = useMemo(() => {
     return [...sessions].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
@@ -236,7 +244,13 @@ function WorkItemTimeline({
       {sessions.length > 0 ? (
         <div className="report-timeline-section report-timeline-sessions">
           <div className="report-work-item-history-head">
-            <h3>{t("desktop.report.sessionsTitle")} ({sessions.length})</h3>
+            <h3>
+              {t("desktop.report.sessionsTitle")} (
+              {totalSessions != null && totalSessions > sessions.length
+                ? `${sessions.length} / ${totalSessions}`
+                : sessions.length}
+              )
+            </h3>
           </div>
           <div className="report-timeline">
             {dayGroups.map((group) => (
@@ -291,6 +305,19 @@ function WorkItemTimeline({
               </div>
             ))}
           </div>
+          {hasEarlier ? (
+            <div className="report-timeline-more">
+              <button
+                type="button"
+                className="tool-btn report-timeline-load-earlier"
+                onClick={onLoadEarlier}
+                disabled={loadingEarlier}
+                aria-label={t("desktop.archive.loadEarlier")}
+              >
+                {loadingEarlier ? t("desktop.common.loading") : t("desktop.archive.loadEarlier")}
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -335,13 +362,21 @@ function UnassignedDetail({
   dotByKey,
   locale,
   t,
-  onSelectSession
+  onSelectSession,
+  hasEarlier,
+  loadingEarlier,
+  onLoadEarlier,
+  totalSessions
 }: {
   sessions: AgentSession[];
   dotByKey?: Map<string, ActiveSessionDot>;
   locale: string;
   t: Translate;
   onSelectSession?: (session: AgentSession) => void;
+  hasEarlier?: boolean;
+  loadingEarlier?: boolean;
+  onLoadEarlier?: () => void;
+  totalSessions?: number | null;
 }) {
   return (
     <div className="report-work-item-detail">
@@ -368,6 +403,10 @@ function UnassignedDetail({
         t={t}
         onSelectSession={onSelectSession}
         emptyText={t("desktop.archive.unassignedEmpty")}
+        hasEarlier={hasEarlier}
+        loadingEarlier={loadingEarlier}
+        onLoadEarlier={onLoadEarlier}
+        totalSessions={totalSessions}
       />
     </div>
   );
@@ -383,7 +422,11 @@ function WorkItemDetail({
   t,
   onStatusChange,
   onSelectSession,
-  onSelectReport
+  onSelectReport,
+  hasEarlier,
+  loadingEarlier,
+  onLoadEarlier,
+  totalSessions
 }: {
   item: WorkItemRecord;
   sessions: AgentSession[];
@@ -395,6 +438,10 @@ function WorkItemDetail({
   onStatusChange?: (newStatus: GtdStatus) => void;
   onSelectSession?: (session: AgentSession) => void;
   onSelectReport?: (report: ReportEntry) => void;
+  hasEarlier?: boolean;
+  loadingEarlier?: boolean;
+  onLoadEarlier?: () => void;
+  totalSessions?: number | null;
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const capsuleRef = useRef<HTMLDivElement>(null);
@@ -569,6 +616,10 @@ function WorkItemDetail({
         onSelectSession={onSelectSession}
         onSelectReport={onSelectReport}
         emptyText={t("desktop.archive.historyEmpty")}
+        hasEarlier={hasEarlier}
+        loadingEarlier={loadingEarlier}
+        onLoadEarlier={onLoadEarlier}
+        totalSessions={totalSessions}
       />
     </div>
   );
@@ -602,6 +653,9 @@ export function ReportPanel(): ReactPortal | null {
   const [sessionLinks, setSessionLinks] = useState<WorkItemSessionLink[]>([]);
   const [workItemBySession, setWorkItemBySession] = useState<Record<string, { noteId: string; title: string }>>({});
   const [workItemSessions, setWorkItemSessions] = useState<AgentSession[]>([]);
+  const [sessionsNextCursor, setSessionsNextCursor] = useState<{ updatedAt: number; provider: string; id: string } | null>(null);
+  const [sessionsTotal, setSessionsTotal] = useState<number | null>(null);
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
 
   // Fallback period sessions / calendar focus
   const [focus, setFocus] = useState<Focus>({ type: "day", key: dayKeyFromDate(new Date()) });
@@ -773,13 +827,23 @@ export function ReportPanel(): ReactPortal | null {
     if (selectedNoteId === "__unassigned__") {
       let cancelled = false;
       setSessionsLoading(true);
+      setSessionsNextCursor(null);
+      setSessionsTotal(null);
       void desktopApi()
         .querySessionsPage({ unassignedOnly: true, projectPath: projectFilter || undefined, limit: 200 })
         .then((page) => {
-          if (!cancelled) setWorkItemSessions(page.sessions);
+          if (!cancelled) {
+            setWorkItemSessions(page.sessions);
+            setSessionsNextCursor(page.nextCursor ?? null);
+            setSessionsTotal(page.total);
+          }
         })
         .catch(() => {
-          if (!cancelled) setWorkItemSessions([]);
+          if (!cancelled) {
+            setWorkItemSessions([]);
+            setSessionsNextCursor(null);
+            setSessionsTotal(null);
+          }
         })
         .finally(() => {
           if (!cancelled) setSessionsLoading(false);
@@ -790,6 +854,8 @@ export function ReportPanel(): ReactPortal | null {
     }
     if (!workItemSessionKeys.length) {
       setWorkItemSessions([]);
+      setSessionsNextCursor(null);
+      setSessionsTotal(null);
       return;
     }
     const keys = workItemSessionKeys
@@ -801,13 +867,23 @@ export function ReportPanel(): ReactPortal | null {
 
     let cancelled = false;
     setSessionsLoading(true);
+    setSessionsNextCursor(null);
+    setSessionsTotal(null);
     void desktopApi()
       .querySessionsPage({ keys, limit: 200 })
       .then((page) => {
-        if (!cancelled) setWorkItemSessions(page.sessions);
+        if (!cancelled) {
+          setWorkItemSessions(page.sessions);
+          setSessionsNextCursor(page.nextCursor ?? null);
+          setSessionsTotal(page.total);
+        }
       })
       .catch(() => {
-        if (!cancelled) setWorkItemSessions([]);
+        if (!cancelled) {
+          setWorkItemSessions([]);
+          setSessionsNextCursor(null);
+          setSessionsTotal(null);
+        }
       })
       .finally(() => {
         if (!cancelled) setSessionsLoading(false);
@@ -816,6 +892,45 @@ export function ReportPanel(): ReactPortal | null {
       cancelled = true;
     };
   }, [selectedNoteId, projectFilter, workItemSessionKeys]);
+
+  const hasEarlier = Boolean(sessionsNextCursor);
+
+  const loadEarlier = useCallback(async () => {
+    if (!sessionsNextCursor || loadingEarlier) return;
+    setLoadingEarlier(true);
+    try {
+      if (selectedNoteId === "__unassigned__") {
+        const page = await desktopApi().querySessionsPage({
+          unassignedOnly: true,
+          projectPath: projectFilter || undefined,
+          limit: 200,
+          cursor: sessionsNextCursor
+        });
+        setWorkItemSessions((prev) => [...prev, ...page.sessions]);
+        setSessionsNextCursor(page.nextCursor ?? null);
+        setSessionsTotal(page.total);
+      } else if (selectedWorkItem && workItemSessionKeys.length > 0) {
+        const keys = workItemSessionKeys
+          .map((key) => {
+            const idx = key.indexOf(":");
+            return idx > 0 ? { provider: key.slice(0, idx), id: key.slice(idx + 1) } : null;
+          })
+          .filter(Boolean) as Array<{ provider: string; id: string }>;
+        const page = await desktopApi().querySessionsPage({
+          keys,
+          limit: 200,
+          cursor: sessionsNextCursor
+        });
+        setWorkItemSessions((prev) => [...prev, ...page.sessions]);
+        setSessionsNextCursor(page.nextCursor ?? null);
+        setSessionsTotal(page.total);
+      }
+    } catch (error) {
+      notifyStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    } finally {
+      setLoadingEarlier(false);
+    }
+  }, [sessionsNextCursor, loadingEarlier, selectedNoteId, projectFilter, selectedWorkItem, workItemSessionKeys]);
 
   const loadSessions = useCallback(async () => {
     const range = rangeForPeriod(focus.type, focus.key);
@@ -1200,6 +1315,10 @@ export function ReportPanel(): ReactPortal | null {
       onStatusChange={(newStatus) => onWorkItemStatusChange(selectedWorkItem.noteId, newStatus)}
       onSelectSession={(s) => void openPreview(s)}
       onSelectReport={openReport}
+      hasEarlier={hasEarlier}
+      loadingEarlier={loadingEarlier}
+      onLoadEarlier={() => void loadEarlier()}
+      totalSessions={sessionsTotal}
     />
   ) : selectedNoteId === "__unassigned__" ? (
     <UnassignedDetail
@@ -1208,6 +1327,10 @@ export function ReportPanel(): ReactPortal | null {
       locale={locale}
       t={t}
       onSelectSession={(s) => void openPreview(s)}
+      hasEarlier={hasEarlier}
+      loadingEarlier={loadingEarlier}
+      onLoadEarlier={() => void loadEarlier()}
+      totalSessions={sessionsTotal}
     />
   ) : (
     <div className="cal-detail-empty">
@@ -1370,7 +1493,11 @@ export function ReportPanel(): ReactPortal | null {
                 </strong>
                 <span className="cal-session-head-meta">
                   <span className="muted">
-                    {sessionsLoading ? t("desktop.common.loading") : t("desktop.report.sessionCountMeta", sessionsForList.length)}
+                    {sessionsLoading ? t("desktop.common.loading") : (
+                      sessionsTotal != null && sessionsTotal > sessionsForList.length && !archiveQuery.trim()
+                        ? `${sessionsForList.length} / ${sessionsTotal}`
+                        : t("desktop.report.sessionCountMeta", sessionsForList.length)
+                    )}
                   </span>
                   <span className={`cal-session-toggle${sessionListOpen ? " open" : ""}`} aria-hidden="true">
                     ▸
@@ -1445,6 +1572,19 @@ export function ReportPanel(): ReactPortal | null {
                 ) : (
                   <p className="muted cal-session-empty">{t("desktop.report.noSessionsInRange")}</p>
                 )}
+                {hasEarlier && !archiveQuery.trim() ? (
+                  <div className="report-timeline-more">
+                    <button
+                      type="button"
+                      className="tool-btn report-timeline-load-earlier"
+                      onClick={() => void loadEarlier()}
+                      disabled={loadingEarlier}
+                      aria-label={t("desktop.archive.loadEarlier")}
+                    >
+                      {loadingEarlier ? t("desktop.common.loading") : t("desktop.archive.loadEarlier")}
+                    </button>
+                  </div>
+                ) : null}
               </div>
             </div>
           </aside>

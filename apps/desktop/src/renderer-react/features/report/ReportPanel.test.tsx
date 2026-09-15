@@ -40,6 +40,7 @@ const i18nMessages = {
   "desktop.archive.projects": "Projects",
   "desktop.archive.reportsTitle": "Reports ({0})",
   "desktop.archive.reportMentioned": "Mentioned in {0}",
+  "desktop.archive.loadEarlier": "Load earlier",
   "desktop.archive.search": "Search sessions",
   "desktop.archive.searchPlaceholder": "Search all sessions…",
   "desktop.archive.needsMe": "Needs me {0}",
@@ -1199,5 +1200,160 @@ describe("ReportPanel", () => {
     // Contract: "无报告时不渲染该分组标题"
     expect(screen.queryByText(/^Reports/)).toBeNull();
     expect(document.querySelector(".report-timeline-reports")).toBeNull();
+  });
+
+  it("A8: supports pagination with default 200 items, explicit 'load earlier', and loads subsequent pages for 500 sessions", async () => {
+    const host = document.createElement("div");
+    host.id = "react-report";
+    document.body.append(host);
+
+    // Create 500 session stubs
+    const all500Sessions: AgentSession[] = Array.from({ length: 500 }, (_, i) => ({
+      provider: "codex",
+      id: `s-${i + 1}`,
+      title: `Session ${i + 1}`,
+      projectPath: "/repo",
+      updatedAt: 500000 - i * 1000
+    }));
+
+    const queryCalls: any[] = [];
+    const querySessionsPageMock = vi.fn(async (args: any) => {
+      queryCalls.push(args);
+      const cursor = args?.cursor;
+      let startIndex = 0;
+      if (cursor) {
+        // Find index after cursor id
+        const idx = all500Sessions.findIndex((s) => s.id === cursor.id);
+        startIndex = idx >= 0 ? idx + 1 : 0;
+      }
+      const pageSessions = all500Sessions.slice(startIndex, startIndex + 200);
+      const last = pageSessions.at(-1);
+      const hasMore = startIndex + 200 < all500Sessions.length;
+      return {
+        sessions: pageSessions,
+        total: all500Sessions.length,
+        nextCursor: hasMore && last ? { updatedAt: last.updatedAt || 0, provider: last.provider, id: last.id } : undefined
+      };
+    });
+
+    const workItemWith500: WorkItemRecord = {
+      noteId: "wi-500",
+      title: "Big Work Item 500",
+      gtdStatus: "next",
+      work: {
+        sessions: all500Sessions.map((s) => `${s.provider}:${s.id}`),
+        primaryProject: "/repo"
+      }
+    };
+
+    window.agentResume = mockAgentResume({
+      notesListWorkItems: async () => [workItemWith500],
+      notesListWorkItemSessionLinks: async () =>
+        all500Sessions.map((s) => ({
+          noteId: workItemWith500.noteId,
+          title: workItemWith500.title,
+          provider: s.provider,
+          sessionId: s.id
+        })),
+      querySessionsPage: querySessionsPageMock
+    });
+
+    render(
+      <I18nProvider>
+        <ReportPanel />
+      </I18nProvider>
+    );
+
+    // Initial load returns first page (200 items)
+    await waitFor(() => {
+      expect(screen.getByText("Sessions (200 / 500)")).toBeTruthy();
+    });
+
+    // "Load earlier" button must be present in DOM (A8: "不得静默截断", "能看到还有更多")
+    const loadEarlierBtn = screen.getAllByRole("button", { name: "Load earlier" })[0];
+    expect(loadEarlierBtn).toBeTruthy();
+
+    // Verify first session and 200th session are rendered
+    expect(screen.getAllByText("Session 1").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Session 200").length).toBeGreaterThan(0);
+    // 201th session is not yet loaded
+    expect(screen.queryByText("Session 201")).toBeNull();
+
+    // Click "Load earlier" to load next page (sessions 201-400)
+    fireEvent.click(loadEarlierBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText("Sessions (400 / 500)")).toBeTruthy();
+    });
+
+    expect(screen.getAllByText("Session 201").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Session 400").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Session 401")).toBeNull();
+
+    // Verify cursor passed in querySessionsPage call
+    expect(queryCalls.length).toBeGreaterThanOrEqual(2);
+    expect(queryCalls[1]?.cursor).toEqual({
+      updatedAt: 500000 - 199 * 1000,
+      provider: "codex",
+      id: "s-200"
+    });
+
+    // Click "Load earlier" again to load the final page (sessions 401-500)
+    const loadEarlierBtn2 = screen.getAllByRole("button", { name: "Load earlier" })[0];
+    fireEvent.click(loadEarlierBtn2);
+
+    await waitFor(() => {
+      expect(screen.getByText("Sessions (500)")).toBeTruthy();
+    });
+
+    expect(screen.getAllByText("Session 401").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Session 500").length).toBeGreaterThan(0);
+
+    // Now all 500 sessions are loaded, "Load earlier" button must disappear from DOM
+    expect(screen.queryByRole("button", { name: "Load earlier" })).toBeNull();
+  });
+
+  it("A8: does not render 'Load earlier' button when total sessions <= 200", async () => {
+    const host = document.createElement("div");
+    host.id = "react-report";
+    document.body.append(host);
+
+    window.agentResume = mockAgentResume({
+      notesListWorkItems: async () => [defaultWorkItem],
+      notesListWorkItemSessionLinks: async () => [
+        {
+          noteId: defaultWorkItem.noteId,
+          title: defaultWorkItem.title,
+          provider: "codex",
+          sessionId: "s-1"
+        }
+      ],
+      querySessionsPage: async () => ({
+        sessions: [
+          {
+            provider: "codex",
+            id: "s-1",
+            title: "Single Session",
+            updatedAt: Date.now()
+          }
+        ],
+        total: 1,
+        nextCursor: undefined
+      })
+    });
+
+    render(
+      <I18nProvider>
+        <ReportPanel />
+      </I18nProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Sessions (1)")).toBeTruthy();
+    });
+
+    // When there are no earlier sessions, button is omitted from DOM
+    expect(screen.queryByRole("button", { name: "Load earlier" })).toBeNull();
+    expect(document.querySelector(".report-timeline-load-earlier")).toBeNull();
   });
 });
