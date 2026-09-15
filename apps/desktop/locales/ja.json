@@ -188,6 +188,7 @@
   "desktop.archive.search": "Search sessions",
   "desktop.archive.searchPlaceholder": "Search all sessions…",
   "desktop.archive.sessionsAllTime": "すべての期間",
+  "desktop.archive.workItemsCount": "{0} 件",
   "desktop.archive.workItemsEmpty": "ワークアイテムはまだありません。ワークベンチ →「ワークアイテム」で新規作成してください。",
   "desktop.archive.workItemsTitle": "ワークアイテム",
   "desktop.artifact.bgChecker": "市松模様",

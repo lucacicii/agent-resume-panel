@@ -188,6 +188,7 @@
   "desktop.archive.search": "搜索会话",
   "desktop.archive.searchPlaceholder": "搜索全部会话…",
   "desktop.archive.sessionsAllTime": "全部时间",
+  "desktop.archive.workItemsCount": "{0} 项",
   "desktop.archive.workItemsEmpty": "还没有工作项。在工作台 →「工作项」视图新建一个。",
   "desktop.archive.workItemsTitle": "工作项",
   "desktop.artifact.bgChecker": "透明棋盘格",

@@ -28,6 +28,7 @@ const defaultWorkItem: WorkItemRecord = {
 
 const i18nMessages = {
   "desktop.archive.workItemsTitle": "Work items",
+  "desktop.archive.workItemsCount": "{0} items",
   "desktop.archive.workItemsEmpty": "No work items yet",
   "desktop.archive.sessionsAllTime": "All time",
   "desktop.archive.noWorkItemSelected": "Select a work item on the left",
@@ -39,6 +40,14 @@ const i18nMessages = {
   "desktop.archive.searchPlaceholder": "Search all sessions…",
   "desktop.archive.needsMe": "Needs me {0}",
   "desktop.archive.lastExitWaiting": "This session was waiting on you when the app last closed",
+  "desktop.notes.projectLabel": "Project",
+  "desktop.workbench.sessionFilter": "Session filter",
+  "desktop.workbench.gtdStatus.inbox": "Inbox",
+  "desktop.workbench.gtdStatus.next": "Next",
+  "desktop.workbench.gtdStatus.waiting": "Waiting",
+  "desktop.workbench.gtdStatus.someday": "Someday",
+  "desktop.workbench.gtdStatus.reference": "Reference",
+  "desktop.workbench.gtdStatus.done": "Done",
   "desktop.gtd.inbox": "Inbox",
   "desktop.gtd.next": "Next",
   "desktop.gtd.waiting": "Waiting",
@@ -66,6 +75,7 @@ const i18nMessages = {
   "desktop.report.emptyNoSessions": "Empty",
   "desktop.report.created": "created",
   "desktop.report.digestOk": "{0} {1} OK",
+  "desktop.common.all": "All",
   "desktop.common.loading": "Loading",
   "desktop.common.refresh": "Refresh",
   "desktop.common.today": "Today",
@@ -104,6 +114,7 @@ function mockAgentResume(overrides: Partial<typeof window.agentResume> = {}): ty
     runWeeklyDigest: async () => ({}),
     runMonthlyDigest: async () => ({}),
     workbenchOpenSession: async () => ({ external: false }),
+    getWorkbenchActiveSessions: async () => [],
     onDigestProgress: () => () => undefined,
     ...overrides
   } as unknown as typeof window.agentResume;
@@ -331,10 +342,10 @@ describe("ReportPanel", () => {
     host.id = "react-report";
     document.body.append(host);
     render(<I18nProvider><ReportPanel /></I18nProvider>);
-    await waitFor(() => expect(document.querySelector(".report-work-items-panel")).toBeTruthy());
+    await screen.findAllByText("Work items");
 
     // Enter search to trigger group view
-    fireEvent.change(screen.getByRole("searchbox", { name: "Search sessions" }), { target: { value: "session" } });
+    fireEvent.change(await screen.findByRole("searchbox", { name: "Search sessions" }), { target: { value: "session" } });
 
     const groupHeads = await screen.findAllByText("Realtime status");
     expect(groupHeads).toHaveLength(2);
@@ -357,5 +368,187 @@ describe("ReportPanel", () => {
     fireEvent.change(screen.getByRole("searchbox", { name: "Search sessions" }), { target: { value: "cross" } });
     await waitFor(() => expect(querySessionsPage).toHaveBeenCalledWith(expect.objectContaining({ search: "cross" })));
     expect((await screen.findAllByText("Cross-range hit")).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("does not merge same-titled work items in the left list (A2)", async () => {
+    const host = document.createElement("div");
+    host.id = "react-report";
+    document.body.append(host);
+
+    const item1: WorkItemRecord = {
+      noteId: "wi-dup-1",
+      title: "Duplicate Work Item",
+      gtdStatus: "next",
+      updatedAtMs: now.getTime() - 1000,
+      work: {
+        sessions: ["codex:s-1"],
+        nextAction: "Action for item 1"
+      }
+    };
+    const item2: WorkItemRecord = {
+      noteId: "wi-dup-2",
+      title: "Duplicate Work Item",
+      gtdStatus: "next",
+      updatedAtMs: now.getTime() - 2000,
+      work: {
+        sessions: ["codex:s-2"],
+        nextAction: "Action for item 2"
+      }
+    };
+
+    window.agentResume = mockAgentResume({
+      notesListWorkItems: async () => [item1, item2]
+    });
+
+    render(<I18nProvider><ReportPanel /></I18nProvider>);
+    await screen.findAllByText("Work items");
+
+    const buttons = document.querySelectorAll(".report-work-item-row");
+    expect(buttons).toHaveLength(2);
+    expect(buttons[0].textContent).toContain("Duplicate Work Item");
+    expect(buttons[1].textContent).toContain("Duplicate Work Item");
+
+    fireEvent.click(buttons[1]);
+    expect(await screen.findByText(/Action for item 2/)).toBeTruthy();
+  });
+
+  it("includes done and someday work items, filters by GTD status exempting session GTD (A2, D2)", async () => {
+    const host = document.createElement("div");
+    host.id = "react-report";
+    document.body.append(host);
+
+    const doneItem: WorkItemRecord = {
+      noteId: "wi-done",
+      title: "Completed Task",
+      gtdStatus: "done",
+      updatedAtMs: now.getTime() - 500,
+      work: { sessions: ["codex:s-done"] }
+    };
+    const somedayItem: WorkItemRecord = {
+      noteId: "wi-someday",
+      title: "Someday Task",
+      gtdStatus: "someday",
+      updatedAtMs: now.getTime() - 600,
+      work: { sessions: ["codex:s-someday"] }
+    };
+    const inboxItem: WorkItemRecord = {
+      noteId: "wi-inbox",
+      title: "Inbox Task",
+      gtdStatus: "inbox",
+      updatedAtMs: now.getTime() - 700,
+      work: { sessions: ["codex:s-inbox"] }
+    };
+
+    window.agentResume = mockAgentResume({
+      notesListWorkItems: async () => [defaultWorkItem, doneItem, somedayItem, inboxItem]
+    });
+
+    render(<I18nProvider><ReportPanel /></I18nProvider>);
+    await screen.findAllByText("Work items");
+
+    // Default list shows all items including done and someday
+    const initialRows = document.querySelectorAll(".report-work-item-row");
+    expect(initialRows).toHaveLength(4);
+    expect(screen.getByText("Completed Task")).toBeTruthy();
+    expect(screen.getByText("Someday Task")).toBeTruthy();
+    expect(screen.getByText("Inbox Task")).toBeTruthy();
+
+    // Filter by GTD status "done"
+    const statusSelect = screen.getByRole("combobox", { name: "Session filter" });
+    fireEvent.change(statusSelect, { target: { value: "done" } });
+
+    const doneRows = document.querySelectorAll(".report-work-item-row");
+    expect(doneRows).toHaveLength(1);
+    expect(doneRows[0].textContent).toContain("Completed Task");
+
+    // Filter by GTD status "someday"
+    fireEvent.change(statusSelect, { target: { value: "someday" } });
+    const somedayRows = document.querySelectorAll(".report-work-item-row");
+    expect(somedayRows).toHaveLength(1);
+    expect(somedayRows[0].textContent).toContain("Someday Task");
+  });
+
+  it("filters work items by project (A2)", async () => {
+    const host = document.createElement("div");
+    host.id = "react-report";
+    document.body.append(host);
+
+    const projectAItem: WorkItemRecord = {
+      noteId: "wi-proj-a",
+      title: "Project Alpha Work",
+      gtdStatus: "next",
+      updatedAtMs: now.getTime() - 100,
+      work: { projects: ["/repos/alpha"], primaryProject: "/repos/alpha" }
+    };
+    const projectBItem: WorkItemRecord = {
+      noteId: "wi-proj-b",
+      title: "Project Beta Work",
+      gtdStatus: "next",
+      updatedAtMs: now.getTime() - 200,
+      work: { projects: ["/repos/beta"], primaryProject: "/repos/beta" }
+    };
+
+    window.agentResume = mockAgentResume({
+      notesListWorkItems: async () => [projectAItem, projectBItem]
+    });
+
+    render(<I18nProvider><ReportPanel /></I18nProvider>);
+    await screen.findAllByText("Work items");
+
+    const initialRows = document.querySelectorAll(".report-work-item-row");
+    expect(initialRows).toHaveLength(2);
+    expect(initialRows[0].textContent).toContain("Project Alpha Work");
+    expect(initialRows[1].textContent).toContain("Project Beta Work");
+
+    const projectSelect = screen.getByRole("combobox", { name: "Project" });
+    fireEvent.change(projectSelect, { target: { value: "/repos/alpha" } });
+
+    const filteredRows = document.querySelectorAll(".report-work-item-row");
+    expect(filteredRows).toHaveLength(1);
+    expect(filteredRows[0].textContent).toContain("Project Alpha Work");
+  });
+
+  it("sorts work items by P2 live urgency then recency (A2)", async () => {
+    const host = document.createElement("div");
+    host.id = "react-report";
+    document.body.append(host);
+
+    const itemA: WorkItemRecord = {
+      noteId: "wi-a",
+      title: "Item A Waiting",
+      gtdStatus: "next",
+      updatedAtMs: 1000,
+      work: { sessions: ["codex:s-wait"] }
+    };
+    const itemB: WorkItemRecord = {
+      noteId: "wi-b",
+      title: "Item B Recent Idle",
+      gtdStatus: "next",
+      updatedAtMs: 9000,
+      work: { sessions: ["codex:s-idle"] }
+    };
+    const itemC: WorkItemRecord = {
+      noteId: "wi-c",
+      title: "Item C Older Idle",
+      gtdStatus: "next",
+      updatedAtMs: 2000,
+      work: { sessions: [] }
+    };
+
+    window.agentResume = mockAgentResume({
+      notesListWorkItems: async () => [itemC, itemB, itemA],
+      getWorkbenchActiveSessions: async () => [
+        { sessionKey: "codex:s-wait", provider: "codex", sessionId: "s-wait", status: "awaiting_user" }
+      ]
+    });
+
+    render(<I18nProvider><ReportPanel /></I18nProvider>);
+    await screen.findAllByText("Work items");
+
+    const rows = document.querySelectorAll(".report-work-item-row");
+    expect(rows).toHaveLength(3);
+    expect(rows[0].textContent).toContain("Item A Waiting");
+    expect(rows[1].textContent).toContain("Item B Recent Idle");
+    expect(rows[2].textContent).toContain("Item C Older Idle");
   });
 });

@@ -6,6 +6,7 @@
   "desktop.archive.noWorkItemSelected": "Select a work item on the left",
   "desktop.archive.projects": "Projects",
   "desktop.archive.sessionsAllTime": "All time",
+  "desktop.archive.workItemsCount": "{0} items",
   "desktop.archive.workItemsEmpty": "No work items yet. Create one in Workbench → Work items.",
   "desktop.archive.workItemsTitle": "Work items",
   "desktop.workbench.needsMe": "Needs me {0}",

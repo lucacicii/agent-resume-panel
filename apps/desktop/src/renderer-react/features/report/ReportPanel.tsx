@@ -1,6 +1,9 @@
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactPortal } from "react";
-import type { AgentSession, DigestProgressEvent, ReportEntry, ReportLinkRow, WorkItemRecord, WorkItemSessionLink } from "@agent-resume/core";
+import type { AgentSession, DigestProgressEvent, GtdStatus, ReportEntry, ReportLinkRow, WorkItemRecord, WorkItemSessionLink } from "@agent-resume/core";
+import { sessionDotStatusClass } from "../../components/SessionDotsCluster";
+import type { ActiveSessionDot } from "../workbench/activeSessionDots";
+import { rank, rollupDot } from "../workbench/sessionStatus/workItemRollup";
 import { desktopApi } from "../../bridge";
 import { notifyDesktop } from "../../components/Notifications";
 import { renderMarkdown as markdown } from "../../components/Markdown";
@@ -30,6 +33,8 @@ function isFuture(type: ReportPeriodType, key: string): boolean {
   return key > isoWeekLabelFromDate(new Date());
 }
 function formatTime(value: number, locale: string): string { return new Date(value).toLocaleString(locale); }
+
+const GTD_FILTER_STATUSES = ["inbox", "next", "waiting", "someday", "reference", "done"] as const satisfies readonly GtdStatus[];
 
 /** Matches a report period reference inside a digest body: `Daily · 2026-08-08`, `daily:2026-08-08`, `Weekly · 2026-W32`, `monthly:2026-08`, … */
 const REPORT_REF_PATTERN = /(?:(?:Daily ·\s*|daily:)(\d{4}-\d{2}-\d{2}))|(?:(?:Weekly ·\s*|weekly:)(\d{4}-W\d{2}))|(?:(?:Monthly ·\s*|monthly:)(\d{4}-\d{2}))/g;
@@ -254,6 +259,11 @@ export function ReportPanel(): ReactPortal | null {
   const [archiveQuery, setArchiveQuery] = useState("");
   const [archiveResults, setArchiveResults] = useState<AgentSession[] | null>(null);
 
+  // Filter state
+  const [projectFilter, setProjectFilter] = useState<string>("");
+  const [statusFilter, setStatusFilter] = useState<"all" | GtdStatus>("all");
+  const [dots, setDots] = useState<ActiveSessionDot[]>([]);
+
   // Preview & focused report state
   const [preview, setPreview] = useState<Preview | null>(null);
   const [previewAssist, setPreviewAssist] = useState<"summary" | "rename" | null>(null);
@@ -269,6 +279,33 @@ export function ReportPanel(): ReactPortal | null {
   const notifyStatus = (s: { text: string; kind?: "error" | "ok" | "warning" }) => {
     if (s.text) notifyDesktop({ text: s.text, kind: (s.kind ?? "info") as "error" | "ok" | "info" });
   };
+
+  useEffect(() => {
+    if (typeof desktopApi().getWorkbenchActiveSessions === "function") {
+      void desktopApi()
+        .getWorkbenchActiveSessions()
+        .then((activeDots) => {
+          if (Array.isArray(activeDots)) setDots(activeDots);
+        })
+        .catch(() => {
+          /* best-effort */
+        });
+    }
+    const onActiveSessions = (event: Event) => {
+      const detail = (event as CustomEvent<ActiveSessionDot[]>).detail;
+      if (Array.isArray(detail)) setDots(detail);
+    };
+    window.addEventListener("agent-resume:active-sessions", onActiveSessions);
+    return () => window.removeEventListener("agent-resume:active-sessions", onActiveSessions);
+  }, []);
+
+  const dotByKey = useMemo(() => {
+    const map = new Map<string, ActiveSessionDot>();
+    for (const dot of dots) {
+      if (dot.sessionKey) map.set(dot.sessionKey, dot);
+    }
+    return map;
+  }, [dots]);
 
   const loadWorkItems = useCallback(async () => {
     if (typeof desktopApi().notesListWorkItems !== "function") return;
@@ -308,19 +345,64 @@ export function ReportPanel(): ReactPortal | null {
     [workItems, selectedNoteId]
   );
 
+  const workItemSessionKeysMap = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const item of workItems) {
+      const keys = new Set<string>();
+      for (const key of item.work?.sessions ?? []) {
+        if (key?.trim()) keys.add(key.trim());
+      }
+      for (const link of sessionLinks) {
+        if (link.noteId === item.noteId && link.provider && link.sessionId) {
+          keys.add(`${link.provider}:${link.sessionId}`);
+        }
+      }
+      map.set(item.noteId, Array.from(keys));
+    }
+    return map;
+  }, [workItems, sessionLinks]);
+
+  const workItemProjects = useMemo(() => {
+    const paths = new Set<string>();
+    for (const item of workItems) {
+      if (item.work?.primaryProject) paths.add(item.work.primaryProject);
+      for (const path of item.work?.projects ?? []) paths.add(path);
+    }
+    return [...paths].sort().map((path) => ({
+      path,
+      label: path.split(/[\\/]/).filter(Boolean).at(-1) || path
+    }));
+  }, [workItems]);
+
+  const visibleWorkItems = useMemo(() => {
+    const filtered = workItems.filter((item) => {
+      if (projectFilter) {
+        const itemProjects = [
+          item.work?.primaryProject,
+          ...(item.work?.projects ?? [])
+        ].filter(Boolean);
+        if (!itemProjects.includes(projectFilter)) return false;
+      }
+      if (statusFilter !== "all") {
+        const itemStatus = item.gtdStatus ?? "inbox";
+        if (itemStatus !== statusFilter) return false;
+      }
+      return true;
+    });
+
+    return [...filtered].sort((a, b) => {
+      const aSessions = workItemSessionKeysMap.get(a.noteId) ?? a.work?.sessions;
+      const bSessions = workItemSessionKeysMap.get(b.noteId) ?? b.work?.sessions;
+      const rankA = rank({ work: { sessions: aSessions }, updatedAtMs: a.updatedAtMs || 0 }, dotByKey);
+      const rankB = rank({ work: { sessions: bSessions }, updatedAtMs: b.updatedAtMs || 0 }, dotByKey);
+      return rankB - rankA;
+    });
+  }, [workItems, projectFilter, statusFilter, workItemSessionKeysMap, dotByKey]);
+
   const workItemSessionKeys = useMemo(() => {
     if (!selectedWorkItem) return [];
-    const keys = new Set<string>();
-    for (const key of selectedWorkItem.work?.sessions ?? []) {
-      if (key?.trim()) keys.add(key.trim());
-    }
-    for (const link of sessionLinks) {
-      if (link.noteId === selectedWorkItem.noteId && link.provider && link.sessionId) {
-        keys.add(`${link.provider}:${link.sessionId}`);
-      }
-    }
-    return Array.from(keys);
-  }, [selectedWorkItem, sessionLinks]);
+    return workItemSessionKeysMap.get(selectedWorkItem.noteId) ?? [];
+  }, [selectedWorkItem, workItemSessionKeysMap]);
 
   useEffect(() => {
     if (!workItemSessionKeys.length) {
@@ -386,6 +468,11 @@ export function ReportPanel(): ReactPortal | null {
       if (isReport) {
         void loadWorkItems();
         void loadSessions();
+        if (typeof desktopApi().getWorkbenchActiveSessions === "function") {
+          void desktopApi().getWorkbenchActiveSessions().then((d) => {
+            if (Array.isArray(d)) setDots(d);
+          }).catch(() => undefined);
+        }
       }
     };
     window.addEventListener("agent-resume:tab-change", onTab);
@@ -623,7 +710,15 @@ export function ReportPanel(): ReactPortal | null {
   }, [sessionsForList, t, workItemBySession]);
 
   const refreshAll = useCallback(async () => {
-    await Promise.all([loadWorkItems(), loadSessions()]);
+    await Promise.all([
+      loadWorkItems(),
+      loadSessions(),
+      typeof desktopApi().getWorkbenchActiveSessions === "function"
+        ? desktopApi().getWorkbenchActiveSessions().then((d) => {
+            if (Array.isArray(d)) setDots(d);
+          }).catch(() => undefined)
+        : Promise.resolve()
+    ]);
   }, [loadWorkItems, loadSessions]);
 
   const focusedPeriodKey = digestProgressKey(focus.type, focus.key);
@@ -703,16 +798,49 @@ export function ReportPanel(): ReactPortal | null {
               <strong>{t("desktop.archive.workItemsTitle")}</strong>
               <span className="cal-session-head-meta">
                 <span className="muted">
-                  {workItemsLoading ? t("desktop.common.loading") : t("desktop.report.sessionCountMeta", workItems.length)}
+                  {workItemsLoading ? t("desktop.common.loading") : t("desktop.archive.workItemsCount", visibleWorkItems.length)}
                 </span>
               </span>
+            </div>
+            <div className="wb-work-item-filters">
+              <select
+                className="quiet-select wb-work-item-filter"
+                aria-label={t("desktop.notes.projectLabel")}
+                value={projectFilter}
+                onChange={(event) => setProjectFilter(event.target.value)}
+              >
+                <option value="">{t("desktop.common.all")}</option>
+                {workItemProjects.map((project) => (
+                  <option key={project.path} value={project.path}>
+                    {project.label}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="quiet-select wb-work-item-filter"
+                aria-label={t("desktop.workbench.sessionFilter")}
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value as "all" | GtdStatus)}
+              >
+                <option value="all">{t("desktop.common.all")}</option>
+                {GTD_FILTER_STATUSES.map((status) => (
+                  <option key={status} value={status}>
+                    {t(`desktop.workbench.gtdStatus.${status}`)}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="cal-session-list" aria-busy={workItemsLoading}>
               {workItemsLoading ? (
                 <p className="muted cal-session-empty">{t("desktop.common.loading")}</p>
-              ) : workItems.length ? (
-                workItems.map((item) => {
+              ) : visibleWorkItems.length ? (
+                visibleWorkItems.map((item) => {
                   const isSelected = item.noteId === selectedNoteId;
+                  const dot = rollupDot(
+                    { work: { sessions: workItemSessionKeysMap.get(item.noteId) ?? item.work?.sessions } },
+                    dotByKey
+                  );
+                  const showDot = dot && dot.status !== "open";
                   return (
                     <button
                       type="button"
@@ -728,6 +856,13 @@ export function ReportPanel(): ReactPortal | null {
                       <div className="s-title">
                         <span className={`wb-gtd-status-dot is-${item.gtdStatus ?? "inbox"}`} aria-hidden="true" />
                         <span className="report-work-item-title-text">{item.title || item.noteId}</span>
+                        {showDot && (
+                          <span
+                            className={`session-dot${sessionDotStatusClass(dot.status)}`}
+                            aria-hidden="true"
+                            title={dot.status}
+                          />
+                        )}
                       </div>
                       <div className="s-meta">
                         {item.work?.primaryProject

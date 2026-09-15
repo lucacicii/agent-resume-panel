@@ -3018,6 +3018,11 @@ main {
   width: 100%;
 }
 
+.report-work-item-row .session-dot {
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
 .report-work-item-title-text {
   margin-left: 6px;
 }
