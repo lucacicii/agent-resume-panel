@@ -36,5 +36,5 @@ Do not edit extension `apps/extension/locales/` for desktop UI copy.
 - Keep `contextIsolation: true` and `nodeIntegration: false`.
 - Any new capability follows main handler, preload method, and renderer call as one contract change.
 - Desktop UI visual work must follow [`.agents/extended/ui-design-system.md`](../extended/ui-design-system.md) (macOS HIG tokens, components, migration phases).
-- Use `pnpm run build:desktop` for compilation and asset verification; use `pnpm run dev:desktop` for interactive checks.
+- Use `pnpm run build:desktop` for compilation and asset verification; use `pnpm run dev:desktop` for interactive checks. `build:desktop` runs both desktop type checks, but it is a distribution step — during development run `pnpm run typecheck:desktop` (root) instead, since neither root `compile` nor `test:renderer` type-checks desktop code.
 - Desktop releases are independent: bump `apps/desktop/package.json`, then `pnpm run release:desktop:mac`.

@@ -40,11 +40,13 @@ Load these references only when relevant:
 Run checks for the product you changed:
 
 - **Shared / extension TypeScript** — `pnpm run compile` after source changes.
+- **Desktop TypeScript (main, preload, renderer)** — `pnpm run typecheck:desktop` after any desktop source change. `pnpm run compile` does **not** cover desktop, and `pnpm run test:renderer` does not type-check; `pnpm run build:desktop` does, but only runs before distribution.
+- **Desktop renderer tests** — `pnpm --filter @agent-resume/desktop run test:renderer`; root `test:desktop` does not run them.
 - **Extension strings** — `pnpm run i18n:check` after `apps/extension/locales/*.json` or `t()` / webview string changes.
 - **Desktop strings** — update `scripts/desktop-i18n-catalog.json`, run `pnpm run merge:desktop-i18n`, then `pnpm run i18n:check`.
 - **Translation coverage** — `pnpm run i18n:check:translations` after locale work in either product.
 - **Extension menus** — `pnpm run test:menus` after menu contribution generators change.
 - **Extension contributions** — `pnpm run install:local` (all detected editors) or `pnpm run install:local-vscode` (VS Code only), then **Developer: Reload Window**.
-- **Desktop build** — `pnpm run build:desktop` or `pnpm run pack:desktop` before distribution.
+- **Desktop build** — `pnpm run build:desktop` or `pnpm run pack:desktop` before distribution. `build:desktop` already runs the desktop type checks.
 
 Use `/qa` and `/review` for their respective quality workflows when available.

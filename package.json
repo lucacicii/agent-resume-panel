@@ -21,6 +21,7 @@
     "build:all": "pnpm --filter agent-resume-panel run build:all",
     "publish:openvsx": "pnpm --filter agent-resume-panel run publish:openvsx",
     "build:desktop": "pnpm --filter @agent-resume/desktop run build",
+    "typecheck:desktop": "pnpm --filter @agent-resume/desktop run typecheck",
     "dev:desktop": "node apps/desktop/scripts/dev.mjs --fresh",
     "pack:desktop": "pnpm run build:core && pnpm --filter @agent-resume/desktop run pack:mac",
     "release:desktop:mac": "node scripts/release-desktop-mac.mjs",
