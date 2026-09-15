@@ -1,10 +1,10 @@
 # 归档重构 · 待排期工单（既有缺陷，不阻塞 B1-B6）
 
-角色：Architect · 状态：**T1–T5 已关闭；T6 已立单未排期**
+角色：Architect · 状态：**T1–T5 已关闭；T6 已缓解（7/7 稳定），残留 act 警告待独立处理**
 来源：[`desktop-archive-architect-rulings.md`](desktop-archive-architect-rulings.md) §1.3c 与 §2.2 的两处**非阻塞观察**，以及 A9 收尾时发现的文档漂移（T3）。
 性质：**均为既有缺陷，不是本次归档重构引入的**。判定为不在 D/P/A/C 任何任务范围内，**不阻塞 B1-B6 任何批次**，不写入契约 §6。
 
-> 归档重构期间只做一件事：**不要制造新的同类副本**。重构期间各单的修法一律暂缓，避免与 P1/P7/P8 抢同一批文件。T1–T5 已在 B6 之后按 Owner 判定关闭。
+> 归档重构期间只做一件事：**不要制造新的同类副本**。重构期间各单的修法一律暂缓，避免与 P1/P7/P8 抢同一批文件。T1–T5 已在 B6 之后按 Owner 判定关闭；T6 已缓解，残留项见文末。
 
 ---
 
@@ -119,33 +119,34 @@
 
 ---
 
-## T6 · renderer 测试套件存在间歇性失败（重负载 jsdom 用例）
+## T6 · renderer 测试套件存在间歇性失败（重负载 jsdom 用例） —— **已缓解（7/7 稳定）**
 
-**类型**：测试基础设施（既有的不稳定，非本次重构引入）
+**类型**：测试基础设施（既有的不稳定，非归档重构引入）
 
-**证据（本机实测，同一工作树重复跑 `pnpm --filter @agent-resume/desktop run test:renderer`）**
-- **未改动的基线**（`git stash` 后）：3 次中 1 次失败，失败用例为 `WorkbenchPanel > disables Replace All when results were truncated`。
-- 带 T1 改动：6 次中 3 次失败，且**每次失败的用例都不同** —— `FloatingSessionNote > opens find with Cmd+F and Escape closes find…`、`WorkbenchPanel > searches inside an Explorer folder via Find in Folder`、`WorkbenchPanel > dismisses the branch popover on outside click and Escape`。
-- 单独跑这些文件时全部通过（如 `FloatingSessionNote.test.tsx` 单独跑 17/17 通过）。
-→ 结论：**与改动无关**，属于并行执行下的计时 / `act()` 抖动，集中在最重的几个 jsdom 套件。
+**根因（实测，非猜测）**
+- vitest 默认按 CPU 数并行（本机 10 逻辑核 / 4 性能核）。本套件里有若干**重负载文件**：`WorkbenchPanel.test.tsx`（139 用例、全量工作台 DOM）、`ReportPanel.test.tsx`（500 行时间线的分页用例）、以及跑真实 git / 文件系统的 `workbenchGit.test.ts`（约 18s）。
+- 争用下有**两类**失败，都不是逻辑错误：
+  1. `Error: Test timed out in 5000ms`（默认 `testTimeout`）；
+  2. `Unable to find an element…` / `expected spy to have been called` —— 这是 `findBy*` / `waitFor` 的 **1s 等待窗口**被拖垮，与 `testTimeout` 无关。
+- 失败用例每次都不同（`FloatingSessionNote`、`WorkbenchPanel > searches inside an Explorer folder`、`WorkbenchPanel > dismisses the branch popover`、`WorkbenchPanel > disables Replace All`），且**单独跑全过** —— 典型的争用抖动。
 
-**影响**：验收命令「`test:renderer` 绿」不是可重复的判据；一次绿不能证明没有回归，一次红也不能证明有回归。
+**处置（已执行，未使用 retry）**
+1. `apps/desktop/vitest.config.ts`：`maxWorkers: 4`（对齐性能核数，消除重文件互相饿死）+ `testTimeout: 20000`（给真实 git/fs 用例留余量；真正的挂死仍会在 20s 失败）。附带注释说明原因。
+2. 顺手削掉**自己写的那条 A8 用例**的无谓开销：它原本对 500 行 DOM 反复做 `getAllByText` 全量文本扫描，改为一次性取 `.report-timeline-title` 文本数组后断言包含关系。
 
-**目标**：让全量 renderer 测试可重复，至少到「连续 5 次同一结果」。
+**验证（实测）**
+| 配置 | 结果 |
+|---|---|
+| 改动前基线 | 3 次中 1 次失败 |
+| 仅 `--maxWorkers=4` | 3 次中 1 次失败（仍不够） |
+| `maxWorkers: 4` + `testTimeout: 20000` | **7 次连续全绿**（1085 用例），单次 25–27s，比改动前的 27–31s **更快** |
 
-**建议方向（择一或组合）**
-1. 对失败用例做 fake timers 收敛，去掉对真实 `setTimeout`/`requestAnimationFrame` 的依赖。
-2. 复查未包 `act()` 的状态更新（跑测时控制台已有大量 `not wrapped in act(...)` 警告，集中在 `WorkbenchPanel`）。
-3. 若仍抖动，考虑对这些重套件降低并行度（单独 project / `--poolOptions` 限制），而不是继续放松断言。
+**残留（本单未做，属独立工作）**
+- 控制台仍有大量 `An update to X inside a test was not wrapped in act(...)` 警告，集中在 `WorkbenchPanel.test.tsx`。这是抖动倾向的**根**，收敛 fake timers 与补齐 `act()` 是根治手段。当前用「限并发 + 放宽超时」压住了症状，但**警告仍在**。
+- 因此本单标记为**已缓解**而非已关闭：判据「控制台 act 警告清零」尚未达成。
 
-**非目标**
-- 不改产品代码来迁就测试。
-- 不用重试（retry）掩盖抖动。
+**验收（剩余部分）**
+- 消除 `WorkbenchPanel.test.tsx` 的 `act(...)` 警告（附前后数量对比）。
+- 收敛后重测并发上限：若 `maxWorkers` 可调回默认而仍稳定，则一并放宽。
 
-**前置 / 触发**：无。
-
-**验收**
-- 连续 5 次 `pnpm --filter @agent-resume/desktop run test:renderer` 结果一致且全绿，附 5 次输出摘要。
-- 控制台 `act(...)` 警告数量显著下降或清零（附前后对比）。
-
-**Owner**：Developer · **阻塞性**：无（但影响所有后续验收的可信度）
+**Owner**：Developer · **阻塞性**：无（现状 7/7 稳定，验收命令可信）

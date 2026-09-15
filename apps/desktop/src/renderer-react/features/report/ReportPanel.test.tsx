@@ -1317,11 +1317,12 @@ describe("ReportPanel", () => {
     const loadEarlierBtn = screen.getAllByRole("button", { name: "Load earlier" })[0];
     expect(loadEarlierBtn).toBeTruthy();
 
-    // Verify first session and 200th session are rendered
-    expect(screen.getAllByText("Session 1").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Session 200").length).toBeGreaterThan(0);
-    // 201th session is not yet loaded
-    expect(screen.queryByText("Session 201")).toBeNull();
+    // Verify the page boundary without an O(rows) text scan per assertion.
+    const rowTitles = () =>
+      [...document.querySelectorAll(".report-timeline-title")].map((el) => el.textContent);
+    expect(rowTitles()).toContain("Session 1");
+    expect(rowTitles()).toContain("Session 200");
+    expect(rowTitles()).not.toContain("Session 201");
 
     // Click "Load earlier" to load next page (sessions 201-400)
     fireEvent.click(loadEarlierBtn);
@@ -1330,9 +1331,9 @@ describe("ReportPanel", () => {
       expect(screen.getByText("Sessions (400 / 500)")).toBeTruthy();
     });
 
-    expect(screen.getAllByText("Session 201").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Session 400").length).toBeGreaterThan(0);
-    expect(screen.queryByText("Session 401")).toBeNull();
+    expect(rowTitles()).toContain("Session 201");
+    expect(rowTitles()).toContain("Session 400");
+    expect(rowTitles()).not.toContain("Session 401");
 
     // Verify cursor passed in querySessionsPage call
     expect(queryCalls.length).toBeGreaterThanOrEqual(2);
@@ -1350,8 +1351,8 @@ describe("ReportPanel", () => {
       expect(screen.getByText("Sessions (500)")).toBeTruthy();
     });
 
-    expect(screen.getAllByText("Session 401").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Session 500").length).toBeGreaterThan(0);
+    expect(rowTitles()).toContain("Session 401");
+    expect(rowTitles()).toContain("Session 500");
 
     // Now all 500 sessions are loaded, "Load earlier" button must disappear from DOM
     expect(screen.queryByRole("button", { name: "Load earlier" })).toBeNull();
