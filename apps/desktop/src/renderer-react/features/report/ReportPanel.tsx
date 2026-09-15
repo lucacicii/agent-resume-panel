@@ -36,6 +36,25 @@ function isFuture(type: ReportPeriodType, key: string): boolean {
 }
 function formatTime(value: number, locale: string): string { return new Date(value).toLocaleString(locale); }
 
+function formatDayKey(value: number): string {
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return "unknown";
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function formatDayLabel(value: number, locale: string): string {
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleDateString(locale, {
+    year: "numeric",
+    month: "short",
+    day: "numeric"
+  });
+}
+
 const GTD_FILTER_STATUSES = ["inbox", "next", "waiting", "someday", "reference", "done"] as const satisfies readonly GtdStatus[];
 
 /** Matches a report period reference inside a digest body: `Daily · 2026-08-08`, `daily:2026-08-08`, `Weekly · 2026-W32`, `monthly:2026-08`, … */
@@ -163,19 +182,47 @@ function WorkItemDetail({
   item,
   sessions,
   knownProjects = [],
+  dotByKey,
   locale,
   t,
-  onStatusChange
+  onStatusChange,
+  onSelectSession
 }: {
   item: WorkItemRecord;
   sessions: AgentSession[];
   knownProjects?: Array<{ projectId: string; portableKey: string; localPath: string | null; pathMissing: boolean }>;
+  dotByKey?: Map<string, ActiveSessionDot>;
   locale: string;
   t: Translate;
   onStatusChange?: (newStatus: GtdStatus) => void;
+  onSelectSession?: (session: AgentSession) => void;
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const capsuleRef = useRef<HTMLDivElement>(null);
+
+  const sortedSessions = useMemo(() => {
+    return [...sessions].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  }, [sessions]);
+
+  const dayGroups = useMemo(() => {
+    const groups: Array<{ dayKey: string; dayLabel: string; sessions: AgentSession[] }> = [];
+    const map = new Map<string, { dayKey: string; dayLabel: string; sessions: AgentSession[] }>();
+    for (const s of sortedSessions) {
+      const dayKey = formatDayKey(s.updatedAt || 0);
+      let group = map.get(dayKey);
+      if (!group) {
+        group = {
+          dayKey,
+          dayLabel: formatDayLabel(s.updatedAt || 0, locale),
+          sessions: []
+        };
+        map.set(dayKey, group);
+        groups.push(group);
+      }
+      group.sessions.push(s);
+    }
+    return groups;
+  }, [sortedSessions, locale]);
 
   useEffect(() => {
     if (!pickerOpen) return;
@@ -339,16 +386,64 @@ function WorkItemDetail({
       </div>
 
       <div className="report-work-item-history">
-        <h3>{t("desktop.report.sessionsTitle")} ({sessions.length})</h3>
-        {sessions.length === 0 ? (
-          <p className="muted">{t("desktop.archive.historyEmpty")}</p>
+        <div className="report-work-item-history-head">
+          <h3>{t("desktop.report.sessionsTitle")} ({sessions.length})</h3>
+        </div>
+        {dayGroups.length === 0 ? (
+          <div className="report-work-item-history-empty cal-session-empty">
+            <p className="muted">{t("desktop.archive.historyEmpty")}</p>
+          </div>
         ) : (
-          <div className="report-work-item-sessions-summary">
-            {sessions.map((s) => (
-              <div key={`${s.provider}:${s.id}`} className="report-work-item-session-item">
-                <span className="s-provider-tag" data-provider={s.provider}>{s.provider}</span>
-                <span className="report-session-title">{s.title || s.id}</span>
-                <span className="muted report-session-time">{formatTime(s.updatedAt, locale)}</span>
+          <div className="report-timeline">
+            {dayGroups.map((group) => (
+              <div key={group.dayKey} className="report-timeline-group">
+                <div className="report-timeline-group-head">
+                  <span className="report-timeline-date">{group.dayLabel}</span>
+                  <span className="report-timeline-count muted">{group.sessions.length}</span>
+                </div>
+                <div className="report-timeline-list">
+                  {group.sessions.map((s) => {
+                    const sessionKey = `${s.provider}:${s.id}`;
+                    const dot = dotByKey?.get(sessionKey);
+                    const showDot = dot && dot.status !== "open";
+                    const isClosedLastExitWaiting = !showDot && Boolean(s.lastExitWaiting);
+                    const projectLabel = s.projectPath?.split(/[\\/]/).filter(Boolean).at(-1) || "";
+                    return (
+                      <button
+                        type="button"
+                        key={sessionKey}
+                        className="report-timeline-item"
+                        onClick={() => onSelectSession?.(s)}
+                      >
+                        <div className="report-timeline-item-main">
+                          <span className="s-provider-tag" data-provider={s.provider}>
+                            {s.provider}
+                          </span>
+                          <span className="report-timeline-title">{s.title || s.id}</span>
+                          {showDot && (
+                            <span
+                              className={`session-dot${sessionDotStatusClass(dot.status)}`}
+                              aria-hidden="true"
+                              title={dot.status}
+                            />
+                          )}
+                          {isClosedLastExitWaiting && (
+                            <span
+                              className="session-dot is-awaiting is-last-exit-waiting"
+                              aria-hidden="true"
+                              title={t("desktop.archive.lastExitWaiting")}
+                            />
+                          )}
+                        </div>
+                        <div className="report-timeline-item-meta muted">
+                          {projectLabel ? <span className="report-timeline-project">{projectLabel}</span> : null}
+                          {projectLabel ? " · " : null}
+                          <span className="report-timeline-time">{formatTime(s.updatedAt, locale)}</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             ))}
           </div>
@@ -911,9 +1006,11 @@ export function ReportPanel(): ReactPortal | null {
       item={selectedWorkItem}
       sessions={workItemSessions}
       knownProjects={knownProjects}
+      dotByKey={dotByKey}
       locale={locale}
       t={t}
       onStatusChange={(newStatus) => onWorkItemStatusChange(selectedWorkItem.noteId, newStatus)}
+      onSelectSession={(s) => void openPreview(s)}
     />
   ) : (
     <div className="cal-detail-empty">

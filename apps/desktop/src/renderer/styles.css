@@ -3184,7 +3184,13 @@ main {
 .report-work-item-history {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
+}
+
+.report-work-item-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .report-work-item-history h3 {
@@ -3194,33 +3200,95 @@ main {
   color: var(--fg);
 }
 
-.report-work-item-sessions-summary {
+.report-work-item-history-empty {
+  padding: 24px 16px;
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+}
+
+.report-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.report-timeline-group {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-.report-work-item-session-item {
+.report-timeline-group-head {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
+  justify-content: space-between;
+  padding: 4px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted-fg);
+  border-bottom: 1px solid var(--border);
+}
+
+.report-timeline-date {
+  font-weight: 600;
+}
+
+.report-timeline-count {
+  font-size: 11px;
+}
+
+.report-timeline-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.report-timeline-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
   border-radius: 6px;
   border: 1px solid var(--border);
   background: var(--panel);
   font-size: 12px;
+  color: var(--fg);
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+  box-sizing: border-box;
+  transition: background 0.12s ease, border-color 0.12s ease;
 }
 
-.report-work-item-session-item .report-session-title {
+.report-timeline-item:hover {
+  background: var(--hover-bg, rgba(255, 255, 255, 0.04));
+  border-color: var(--border-hover, var(--border));
+}
+
+.report-timeline-item-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
   flex: 1 1 auto;
+}
+
+.report-timeline-title {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-weight: 500;
 }
 
-.report-work-item-session-item .report-session-time {
+.report-timeline-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   font-size: 11px;
   flex-shrink: 0;
+  color: var(--muted-fg);
 }
 
 .report-detail-pane>.detail-progress.gen-progress {

@@ -218,8 +218,8 @@ describe("ReportPanel", () => {
     await waitFor(() => expect(document.querySelector(".report-work-items-panel")).toBeTruthy());
 
     // Click session row in middle list
-    const sessionRow = await screen.findByRole("button", { name: /codex/ });
-    fireEvent.click(sessionRow);
+    const sessionRows = await screen.findAllByRole("button", { name: /codex/ });
+    fireEvent.click(sessionRows[0]);
 
     // Detail pane shows session preview
     const resumeBtn = await screen.findByRole("button", { name: "Resume" });
@@ -740,5 +740,184 @@ describe("ReportPanel", () => {
       window.removeEventListener("agent-resume:workbench-work-item", recordEvent);
       window.removeEventListener("agent-resume:workbench-open-room", recordEvent);
     }
+  });
+
+  it("renders T1 timeline aggregated by day with provider, project, time, live status dots, and preview navigation (A6)", async () => {
+    const host = document.createElement("div");
+    host.id = "react-report";
+    document.body.append(host);
+
+    const day1 = new Date(2026, 8, 15, 14, 30, 0).getTime();
+    const day1Earlier = new Date(2026, 8, 15, 9, 15, 0).getTime();
+    const day2 = new Date(2026, 8, 14, 16, 0, 0).getTime();
+
+    const item: WorkItemRecord = {
+      noteId: "wi-timeline",
+      title: "Timeline Work Item",
+      gtdStatus: "next",
+      updatedAtMs: day1,
+      work: {
+        sessions: ["codex:s-1", "claude:s-2", "codex:s-3"]
+      }
+    };
+
+    const s1: AgentSession = {
+      provider: "codex",
+      id: "s-1",
+      title: "Codex Session 1",
+      projectPath: "/work/project-a",
+      updatedAt: day1
+    };
+    const s2: AgentSession = {
+      provider: "claude",
+      id: "s-2",
+      title: "Claude Session 2",
+      projectPath: "/work/project-b",
+      updatedAt: day1Earlier
+    };
+    const s3: AgentSession = {
+      provider: "codex",
+      id: "s-3",
+      title: "Codex Session 3",
+      projectPath: "/work/project-a",
+      updatedAt: day2,
+      lastExitWaiting: true
+    };
+
+    const previewSessionMock = vi.fn(async ({ provider, id }: { provider: string; id: string }) => ({
+      session: { ...s1, id, provider: provider as any },
+      preview: { title: `Preview of ${id}`, messages: [] }
+    }));
+
+    // Provide active dots: s1 is awaiting_user
+    const dots: ActiveSessionDot[] = [
+      {
+        sessionKey: "codex:s-1",
+        paneKey: "p-1",
+        projectPath: "/work/project-a",
+        title: "Codex Session 1",
+        status: "awaiting_user"
+      }
+    ];
+
+    window.agentResume = mockAgentResume({
+      notesListWorkItems: async () => [item],
+      querySessionsPage: async () => ({
+        sessions: [s1, s2, s3],
+        total: 3,
+        hasMore: false
+      }),
+      previewSession: previewSessionMock,
+      getWorkbenchActiveSessions: async () => dots
+    });
+
+    render(
+      <I18nProvider>
+        <ReportPanel />
+      </I18nProvider>
+    );
+
+    // Wait for the timeline to load and active dots to apply
+    await waitFor(() => {
+      expect(document.querySelector(".report-timeline")).toBeTruthy();
+      expect(document.querySelector(".report-timeline-group .session-dot.is-awaiting")).toBeTruthy();
+    });
+
+    // Verify 2 day groups exist
+    const groups = document.querySelectorAll(".report-timeline-group");
+    expect(groups.length).toBe(2);
+
+    // Group 1 has 2 sessions, Group 2 has 1 session
+    const group1Counts = groups[0].querySelector(".report-timeline-count");
+    expect(group1Counts?.textContent).toBe("2");
+    const group2Counts = groups[1].querySelector(".report-timeline-count");
+    expect(group2Counts?.textContent).toBe("1");
+
+    // Provider tags
+    expect(screen.getAllByText("codex").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText("claude").length).toBeGreaterThanOrEqual(1);
+
+    // Project names
+    expect(screen.getAllByText("project-a").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("project-b").length).toBeGreaterThanOrEqual(1);
+
+    // Live status dot on s1 (active awaiting_user)
+    const activeDot = groups[0].querySelector(".session-dot.is-awaiting");
+    expect(activeDot).toBeTruthy();
+    expect(activeDot?.classList.contains("is-last-exit-waiting")).toBe(false);
+
+    // Closed waiting status dot on s3 (lastExitWaiting)
+    const lastExitDot = groups[1].querySelector(".session-dot.is-last-exit-waiting");
+    expect(lastExitDot).toBeTruthy();
+
+    // Click on timeline item s1 to open preview
+    const timelineItems = document.querySelectorAll<HTMLButtonElement>(".report-timeline-item");
+    expect(timelineItems.length).toBe(3);
+    fireEvent.click(timelineItems[0]);
+
+    await waitFor(() => {
+      expect(previewSessionMock).toHaveBeenCalledWith({ provider: "codex", id: "s-1" });
+      expect(screen.getByRole("button", { name: "Back" })).toBeTruthy();
+    });
+
+    // Click Back to return to work item detail
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    await waitFor(() => {
+      expect(document.querySelector(".report-timeline")).toBeTruthy();
+    });
+  });
+
+  it("displays empty state for work item with no sessions without white screen or blank page (A6)", async () => {
+    const host = document.createElement("div");
+    host.id = "react-report";
+    document.body.append(host);
+
+    const emptyItem: WorkItemRecord = {
+      noteId: "wi-empty",
+      title: "Empty Work Item",
+      gtdStatus: "inbox",
+      updatedAtMs: Date.now(),
+      work: {
+        sessions: [],
+        next: "Write unit test",
+        decision: "Proceed with empty state"
+      }
+    };
+
+    window.agentResume = mockAgentResume({
+      notesListWorkItems: async () => [emptyItem],
+      querySessionsPage: async () => ({
+        sessions: [],
+        total: 0,
+        hasMore: false
+      })
+    });
+
+    render(
+      <I18nProvider>
+        <ReportPanel />
+      </I18nProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Empty Work Item").length).toBeGreaterThanOrEqual(1);
+    });
+
+    // Verify detail pane is rendered, not blank
+    const detailPane = document.querySelector(".report-work-item-detail");
+    expect(detailPane).toBeTruthy();
+
+    // Verify header and fields are intact
+    expect(screen.getByText("Next action: Write unit test")).toBeTruthy();
+    expect(screen.getByText("Decision: Proceed with empty state")).toBeTruthy();
+
+    // Verify empty state container and message exist
+    const emptyState = document.querySelector(".report-work-item-history-empty");
+    expect(emptyState).toBeTruthy();
+    expect(emptyState?.textContent).toContain("No history yet");
+
+    // Negative assertion: timeline does not exist, and detail is not empty/missing
+    expect(document.querySelector(".report-timeline")).toBeNull();
+    expect(document.querySelector(".cal-detail-empty")).toBeNull();
   });
 });
