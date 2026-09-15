@@ -162,7 +162,7 @@ function MainRendererRuntime(): React.JSX.Element {
   const { ready } = useI18n();
   useEffect(() => {
     if (!ready) return;
-    window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "today" }));
+    window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" }));
   }, [ready]);
   return (
     <>

@@ -24,7 +24,7 @@ function eventDetail<T>(event: Event): T | undefined {
 
 export function AppChrome(): React.JSX.Element {
   const { ready, t } = useI18n();
-  const [activeTab, setActiveTab] = useState<PrimaryTab>("today");
+  const [activeTab, setActiveTab] = useState<PrimaryTab>("workbench");
   const [sessionDots, setSessionDots] = useState<ActiveSessionDot[]>([]);
   const [noteDots, setNoteDots] = useState<FloatingNoteDot[]>([]);
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);

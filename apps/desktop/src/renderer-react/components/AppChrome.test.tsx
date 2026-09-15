@@ -61,8 +61,8 @@ describe("AppChrome", () => {
 
   it("keeps primary tab active when switching among primary tabs", async () => {
     renderChrome();
-    const today = await screen.findByRole("button", { name: "Today" });
-    expect(today.classList.contains("active")).toBe(true);
+    const wb = await screen.findByRole("button", { name: "Workbench" });
+    expect(wb.classList.contains("active")).toBe(true);
 
     await act(async () => {
       window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "notes" }));
@@ -275,8 +275,8 @@ describe("AppChrome", () => {
   it("opens Settings from the avatar menu without changing the primary tab",
     async () => {
       renderChrome();
-      const today = await screen.findByRole("button", { name: "Today" });
-      expect(today.classList.contains("active")).toBe(true);
+      const wb = await screen.findByRole("button", { name: "Workbench" });
+      expect(wb.classList.contains("active")).toBe(true);
 
       const settingsOpen = vi.fn();
       const tabChange = vi.fn();
@@ -289,7 +289,7 @@ describe("AppChrome", () => {
 
       expect(settingsOpen).toHaveBeenCalledWith(expect.objectContaining({ detail: "general" }));
       expect(tabChange).not.toHaveBeenCalled();
-      expect(today.classList.contains("active")).toBe(true);
+      expect(wb.classList.contains("active")).toBe(true);
       expect(screen.queryByRole("menuitem", { name: "Settings" })).toBeNull();
 
       window.removeEventListener("agent-resume:settings-open", settingsOpen);
