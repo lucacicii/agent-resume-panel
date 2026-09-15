@@ -107,7 +107,7 @@ const i18nMessages = {
   "desktop.sessions.renamed": "Renamed to {0}",
   "desktop.sessions.noMessages": "No messages",
   "desktop.workbench.workItemOpenNote": "Open note",
-  "desktop.noteDetail.openRoom": "Discussion room",
+  "desktop.archive.openRoom": "Discussion room",
   "desktop.workbench.workItemNoProject": "No project yet",
   "desktop.workbench.pathMissingHint": "Local folder not found on this machine"
 };

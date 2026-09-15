@@ -1,6 +1,6 @@
 # 归档重构 · 待排期工单（既有缺陷，不阻塞 B1-B6）
 
-角色：Architect · 状态：**已立单，未排期**
+角色：Architect · 状态：**T1–T3 已立单未排期；T4 已关闭；T5 新立单**
 来源：[`desktop-archive-architect-rulings.md`](desktop-archive-architect-rulings.md) §1.3c 与 §2.2 的两处**非阻塞观察**，以及 A9 收尾时发现的文档漂移（T3）。
 性质：**均为既有缺陷，不是本次归档重构引入的**。判定为不在 D/P/A/C 任何任务范围内，**不阻塞 B1-B6 任何批次**，不写入契约 §6。
 
@@ -108,27 +108,52 @@
 
 ---
 
-## T4 · `NoteDetailSheet`（原 `KanbanCardModal`）已无任何引用者
+## T4 · `NoteDetailSheet`（原 `KanbanCardModal`）已无任何引用者 —— **已关闭（判定：删除）**
 
-**类型**：既有缺陷／契约前提与代码事实不符（P8 期间发现，本单不改变 P8 的处置）
+**类型**：既有缺陷／契约前提与代码事实不符（P8 期间发现）
 
 **证据**
-- P8 已按契约把 `features/kanban/KanbanCardModal.tsx` 改名为 `features/noteDetail/NoteDetailSheet.tsx`（目录与组件同步改名，`desktop.kanban.*` → `desktop.noteDetail.*`），并清除全部 `.kanban-*` 死样式。
-- **改名前后全仓库均无 importer**：`grep -rn "KanbanCardModal\|NoteDetailSheet\|noteSessionResume" apps/desktop/src --include=*.ts --include=*.tsx` 仅命中模块自身；`KanbanCardModal` 只出现在 `dist/`、`.pack-staging/` 等已 gitignore 的**旧构建产物**里，而那些产物同时含已删除的 `features/today/TodayPanel.tsx`，可证为陈旧构建。
-- 契约与排期认为它是“工作项详情弹层”“删了会丢详情交互”。实测已不成立：工作项详情现由 `WorkbenchPanel` 的 `wb-work-item-*` 作用域头部提供，笔记编辑在 `NotesPanel`，会话预览在 `ReportPanel`。
-- 排期 §2.1 P7 的「`kanban/` 整个目录没有任何消费者」是准确的；其后半句“它是工作项详情弹层”已失效。
+- P8 按契约把 `features/kanban/KanbanCardModal.tsx` 改名为 `features/noteDetail/NoteDetailSheet.tsx`，但**改名前后全仓库均无 importer**；`KanbanCardModal` 只出现在已 gitignore 的**旧构建产物**里，而那些产物同时含已删除的 `features/today/TodayPanel.tsx`，可证为陈旧构建。
+- 契约与排期认为它是“工作项详情弹层”“删了会丢详情交互”；实测不成立：工作项详情由 `WorkbenchPanel` 的 `wb-work-item-*` 作用域头部提供，笔记编辑在 `NotesPanel`，会话预览在 `ReportPanel`。
 
-**目标**（二选一，需产品拍板）
-1. **删除** `features/noteDetail/`（组件 + `noteSessionResume.ts`）与 `desktop.noteDetail.*` 三语 11 个键。
-2. **接线**：从工作台工作项列表或归档详情调用它，此时必须同时补测试与载荷类型收敛（见 T1）。
+**处置（已执行，Owner 判定「没有引用就删掉」）**
+- 删除 `apps/desktop/src/renderer-react/features/noteDetail/`（`NoteDetailSheet.tsx` + `noteSessionResume.ts`；后者的唯一消费者是该模块，随之一并删除）。
+- 删除随之成为死代码的 `.note-detail-*` 样式（含 `.sheet-body.note-detail-body` 三条子选择器与三处选择器列表中的成员）。
+- 删除 10 个 `desktop.noteDetail.*` 键；唯一仍有引用的 `openRoom` 归位为 `desktop.archive.openRoom`（归档详情面的 IM 入口），三语同值。
+- 顺带删除 T4 备注中指出的 Agent tab 退役残留：`.agent-sidebar-list`、`.sidebar-folders-pane.is-collapsed .agent-sidebar-list`、`.agent-sidebar-pane.is-collapsed #btnAgentNewChat`。
+
+**关闭验收**：`grep -rn "noteDetail\|NoteDetailSheet\|agent-sidebar" apps/desktop/src` → 0 命中；`i18n:check` 绿且三语键集一致；`compile` / `typecheck:renderer` / `test:renderer` 全绿。
+
+---
+
+## T5 · 渲染层 CSS 存在约 322 个无引用选择器（含 D1/D2/P7 删除后的遗留）
+
+**类型**：死样式（跨多个已退役功能）
+
+**证据（脚本统计：抽取 `styles.css` 全部类名，与 `apps/desktop/src/**/*.{ts,tsx,html}` 全文比对）**
+| 家族 | 数量 | 来源 |
+|---|---|---|
+| `insights-*` | 61 | 已退役的 Period Insights（D2） |
+| `wb-*` | 51 | 工作台历史样式（需逐个确认是否经模板字符串拼接） |
+| `gtd-*` | 19 | 已退役的 GtdSheet（D1） |
+| `cal-*` | 18 | 已退役的归档日历视图（A1） |
+| `ask-*` / `agent-*` / `chat-*` | 40 | 已退役的 Ask/Agent tab |
+| 其余（`friction-*`/`tool-*`/`intent-*`/`hourly-*`/…） | ~133 | 混合 |
+
+**⚠ 关键陷阱（不要在没做这一步之前批量删）**
+- `is-*` / `has-*` 一类状态类名常由模板字符串拼接（`className={\`x is-${status}\`}`），**静态 grep 会误报为无引用**。统计里有 32 个 `is-*` 属此类风险。
+- 因此删除必须**按选择器逐个确认**（至少对 `is-*`/`has-*` 全量人工核对），不能按家族批量删。
+
+**目标**：把 `styles.css` 中真正无引用的规则清零；对动态拼接的类名，改为在源码里显式列出或在样式旁注明来源。
 
 **非目标**
-- 本单不改 P8 已完成的改名结果。
+- 不改任何仍在使用的规则的视觉结果。
+- 不与 T4 的删除混提（T4 已单独完成）。
 
-**前置 / 触发**：无。若拍板为 (1)，应顺便处理 `agent-sidebar-pane` / `.agent-sidebar-*` / `#btnAgentNewChat` 这类 Agent tab 退役后的残留（同属无引用样式）。
+**前置 / 触发**：无。建议单开一单，按家族分批提交，每批附上该批前后 `styles.css` 行数与本判据脚本输出。
 
 **验收**
-- 若 (1)：`grep -rn "noteDetail\|NoteDetailSheet" apps/desktop/src` 无残留；`i18n:check` 绿且三语键集一致。
-- 若 (2)：组件有可复现入口，且新增测试覆盖“入口 → 打开”路径。
+- 每批提交后 `compile` + `typecheck:renderer` + `test:renderer` 绿。
+- 全程不得出现“样式还在用但被删掉”的情况：对 `is-*`/`has-*` 批次需附人工核对清单。
 
-**Owner**：Developer（需先拍板）· **阻塞性**：无
+**Owner**：Developer · **阻塞性**：无

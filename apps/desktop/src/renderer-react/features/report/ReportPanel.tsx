@@ -559,12 +559,12 @@ function WorkItemDetail({
             <button
               type="button"
               className="tool-btn report-work-item-btn-im"
-              title={t("desktop.noteDetail.openRoom")}
-              aria-label={t("desktop.noteDetail.openRoom")}
+              title={t("desktop.archive.openRoom")}
+              aria-label={t("desktop.archive.openRoom")}
               onClick={() => void handleOpenImRoom()}
             >
               <ThemeIcon name="message-square" size={14} aria-hidden="true" />
-              <span>{t("desktop.noteDetail.openRoom")}</span>
+              <span>{t("desktop.archive.openRoom")}</span>
             </button>
           </div>
         </div>
