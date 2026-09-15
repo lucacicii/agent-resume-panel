@@ -47,6 +47,7 @@ const i18nMessages = {
   "desktop.archive.lastExitWaiting": "This session was waiting on you when the app last closed",
   "desktop.notes.projectLabel": "Project",
   "desktop.workbench.sessionFilter": "Session filter",
+  "desktop.workbench.workItemSessions": "{0} sessions",
   "desktop.workbench.setGtdStatus": "Set GTD status",
   "desktop.workbench.gtdStatus.inbox": "Inbox",
   "desktop.workbench.gtdStatus.next": "Next",

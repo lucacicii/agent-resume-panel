@@ -18,7 +18,7 @@ Use this index for feature requests without a concrete path or searchable identi
 | ACP chat, agent connection, permissions, ACP files, images, handoff | `.agents/menus/acp-chat.md` | VS Code extension |
 | GTD, status, tasks, todolist, daily/weekly/monthly digest, memory, Ask, semantic search, usage | `.agents/menus/report-gtd.md` | Core and desktop |
 | notes, Markdown, attachments, note import, note search, index | `.agents/menus/notes.md` | Extension, core, and desktop |
-| desktop app, Memory calendar, Ask, Workbench, embedded terminal, desktop settings, IM rooms, workspace mentions, arpm | `.agents/menus/desktop.md` | Electron desktop |
+| desktop app, Archive work items, Workbench, embedded terminal, desktop settings, IM rooms, workspace mentions, arpm | `.agents/menus/desktop.md` | Electron desktop |
 | settings, local storage, LLM configuration, embeddings, panel home, catalog database, usage, session sync | `.agents/menus/infrastructure.md` | Shared infrastructure |
 | sidebar, tree views, context menus, commands, package contributions, extension i18n | `.agents/menus/vscode-integration.md` | VS Code extension only |
 | desktop i18n, locale catalog, merge pipeline | `.agents/extended/product-independence.md` § i18n | Desktop only (`desktop.*` keys) |
@@ -33,7 +33,7 @@ Use this index for feature requests without a concrete path or searchable identi
 | Shared public API | `packages/core/src/index.ts` | Add reusable domain logic behind this package boundary. |
 | Desktop IPC owner | `apps/desktop/src/main/main.ts` | Renderer access must be explicitly exposed through preload. |
 | Desktop IPC contract | `apps/desktop/src/preload/preload.ts` | Keep main/preload/renderer API changes synchronized. |
-| Desktop renderer | `apps/desktop/src/renderer/{index.html,app.js,styles.css}` | Plain JavaScript and CSS, with CSP enabled. |
+| Desktop renderer | `apps/desktop/src/renderer-react/` (entry: `main.tsx`) | React runtime; panels portal into host divs declared in `renderer/index.html`. |
 | Extension package metadata | `apps/extension/package.json`, `package-vscode.json` | Generated menu blocks must be regenerated, not hand-edited. |
 | Desktop release notes | `apps/desktop/CHANGELOG.md` | Independent from extension VSIX publishing. |
 

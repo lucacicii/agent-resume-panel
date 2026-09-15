@@ -2,7 +2,7 @@
 
 Languages: [English](#english) | [简体中文](#简体中文)
 
-macOS-oriented **Session OS + Memory** desktop app: calendar digests, **Agent** Q&A over reports, **Workbench** with embedded terminal, plus **Notes** and **GTD** workflows.
+macOS-oriented **Session OS + Memory** desktop app: **Workbench** with embedded terminal, work-item **Archive**, **Agent** Q&A over history, plus **Notes** and **GTD** workflows.
 
 Pairs with the **Agent Resume Panel VS Code extension** — same agent sessions, same `~/.agent-resume-panel` data directory, no duplicate setup.
 
@@ -37,7 +37,7 @@ Requirements: macOS 12+, Apple Silicon or Intel. Version history: [Changelog](..
 
 | Module | What it covers |
 |--------|----------------|
-| [Report](report.md) | Calendar, daily/weekly/monthly digests, GTD bar, analyze → apply |
+| [Report](report.md) | Archive tab: work items, sessions, timeline, and daily/weekly/monthly digests |
 | [Agent](agent.md) | Natural-language Q&A over local work history, citations, tools, and threads |
 | [Workbench](workbench.md) | Embedded terminal (themes), ACP visual chat, multi-tab resume, project search, scripts, Git select-commit, explorer |
 | [Workspace mentions](workspace-mentions.md) | Global work/reference packs for New session and the `arpm` CLI |
@@ -51,12 +51,10 @@ Requirements: macOS 12+, Apple Silicon or Intel. Version history: [Changelog](..
 
 | Entry | Role |
 |-------|------|
-| **Report** (default) | Calendar · digests · GTD bar · day detail |
-| **Agent** | Q&A over digests / work history |
-| **Workbench** | Session list + ACP visual chat + embedded or external terminal |
+| **Workbench** (default) | Session list + ACP visual chat + embedded or external terminal + IM rooms |
+| **Report** (Archive) | Work items · sessions · timeline · digests |
 | **Notes** | Markdown notes |
-| **IM** | User-created project rooms; quote + @ roles |
-| **Sessions** (toolbar) | Reference list + preview |
+| **Sessions** (toolbar) | Opens the Archive tab |
 | **⚙ Settings** | General, models, sessions, workbench, report, data, MCP, usage, about |
 
 ### VS Code extension vs Desktop
@@ -88,7 +86,7 @@ Requirements: macOS 12+, Apple Silicon or Intel. Version history: [Changelog](..
 
 ## 简体中文
 
-macOS 导向的 **Session OS + Memory** 桌面应用：日历回顾 AI 工作记忆，**Agent** 对报告问答，**Workbench** 恢复会话并嵌入终端，配合 **Notes** 与 **GTD**。
+macOS 导向的 **Session OS + Memory** 桌面应用：**Workbench** 恢复会话并嵌入终端，**归档** 按工作项组织历史，**Agent** 对历史问答，配合 **Notes** 与 **GTD**。
 
 与 **Agent Resume Panel VS Code 扩展** 搭配使用 — 同一批 Agent 会话、共用 **`~/.agent-resume-panel`**，无需重复配置。
 
@@ -118,7 +116,7 @@ macOS 导向的 **Session OS + Memory** 桌面应用：日历回顾 AI 工作记
 
 | 模块 | 内容 |
 |------|------|
-| [Report](report.md) | 日历、日/周/月报、GTD 条、分析并应用 |
+| [Report](report.md) | 归档页签：工作项、会话、时间线，以及日/周/月回顾报告 |
 | [Agent](agent.md) | 基于本机工作历史的自然语言问答、引用、工具与线程 |
 | [Workbench](workbench.md) | 内嵌终端（配色）、ACP 可视化聊天、多标签恢复、项目搜索、脚本、Git 选择提交、资源管理器 |
 | [工作区 Mention](workspace-mentions.md) | 全局工作/参考目录包，供新建会话和 `arpm` 使用 |
@@ -132,12 +130,10 @@ macOS 导向的 **Session OS + Memory** 桌面应用：日历回顾 AI 工作记
 
 | 入口 | 作用 |
 |------|------|
-| **Report**（默认） | 日历 · 回顾 · GTD 条 · 日详情 |
-| **Agent** | 对报告 / 工作历史问答 |
-| **Workbench** | 会话列表 + ACP 可视化聊天 + 嵌入式 / 外部终端 |
+| **Workbench**（默认） | 会话列表 + ACP 可视化聊天 + 嵌入式 / 外部终端 + IM 房间 |
+| **Report**（归档） | 工作项 · 会话 · 时间线 · 回顾报告 |
 | **Notes** | Markdown 笔记 |
-| **IM** | 用户自建项目房间；引用消息并 @ 角色 |
-| **Sessions**（工具栏） | 参考列表 + 预览 |
+| **Sessions**（工具栏） | 打开归档页签 |
 | **⚙ Settings** | 通用、模型、会话、工作台、Report、数据、MCP、用量、关于 |
 
 ### VS Code 扩展 vs Desktop

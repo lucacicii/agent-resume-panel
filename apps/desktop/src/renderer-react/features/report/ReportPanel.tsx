@@ -1441,7 +1441,9 @@ export function ReportPanel(): ReactPortal | null {
                             {item.work?.primaryProject
                               ? item.work.primaryProject.split(/[\\/]/).filter(Boolean).at(-1)
                               : item.work?.projects?.[0]?.split(/[\\/]/).filter(Boolean).at(-1) || ""}
-                            {item.work?.sessions?.length ? ` · ${item.work.sessions.length} sessions` : ""}
+                            {item.work?.sessions?.length
+                              ? ` · ${t("desktop.workbench.workItemSessions", item.work.sessions.length)}`
+                              : ""}
                           </div>
                         </button>
                       );

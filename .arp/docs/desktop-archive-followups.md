@@ -1,8 +1,8 @@
 # 归档重构 · 待排期工单（既有缺陷，不阻塞 B1-B6）
 
 角色：Architect · 状态：**已立单，未排期**
-来源：[`desktop-archive-architect-rulings.md`](desktop-archive-architect-rulings.md) §1.3c 与 §2.2 的两处**非阻塞观察**
-性质：**两单均为既有缺陷，不是本次归档重构引入的**。判定为不在 D/P/A/C 任何任务范围内，**不阻塞 B1-B6 任何批次**，不写入契约 §6。
+来源：[`desktop-archive-architect-rulings.md`](desktop-archive-architect-rulings.md) §1.3c 与 §2.2 的两处**非阻塞观察**，以及 A9 收尾时发现的文档漂移（T3）。
+性质：**均为既有缺陷，不是本次归档重构引入的**。判定为不在 D/P/A/C 任何任务范围内，**不阻塞 B1-B6 任何批次**，不写入契约 §6。
 
 > 归档重构期间只做一件事：**不要制造新的同类副本**。两单的修法在重构期间一律暂缓，避免与 P1/P7/P8 抢同一批文件。
 
@@ -14,7 +14,7 @@
 
 **证据（逐行）**
 - 权威类型声明在 **布局组件文件**：`apps/desktop/src/renderer-react/features/workbench/layout/WorkbenchSidebar.tsx:11-21`（`WorkbenchSidebarWorkItem`，8 字段）。该文件是 React 组件模块（`:1-5` import react / ThemeIcon / SegmentedControl / useI18n）。
-- 同一形状另有 3 份无编译约束的副本：`TodayPanel.tsx:146-157`（生产方字面量）、`KanbanCardModal.tsx:20-22`（内联 `work?:` 子形状）、`WorkbenchPanel.tsx:3412-3420`（消费方**全可选**内联类型）。
+- 同一形状另有 3 份无编译约束的副本：`TodayPanel.tsx:146-157`（生产方字面量，**已随 P7 一同删除**）、`KanbanCardModal.tsx:20-22`（内联 `work?:` 子形状）、`WorkbenchPanel.tsx:3412-3420`（消费方**全可选**内联类型）。
 - 漂移是**静默**的：消费方用 `detail.title || ""`、`detail.status || "inbox"`、`Array.isArray(detail.sessions)`（`WorkbenchPanel.tsx:3422-3431`）兜底，生产方改字段名 → 消费方 `undefined` → 概要头内容整块消失，tsc 全绿、无测试变红。
 
 **目标**
@@ -74,5 +74,34 @@
 - 两份声明之间的漂移在**编译期或测试**可捕获：新增一个状态到任一侧，`pnpm run compile` 或 renderer 测试必须变红（提交里附上一次人为制造的失败证据）。
 - `pnpm run compile` + `pnpm --filter @agent-resume/desktop run test:renderer` + `pnpm run test:desktop` 全绿。
 - 注意：根 `test:desktop` **不含** renderer 测试（排期 §0），验收命令必须显式带上 `test:renderer`。
+
+**Owner**：Developer · **阻塞性**：无
+
+---
+
+## T3 · 用户文档与菜单地图仍有本次重构留下的漂移
+
+**类型**：文档漂移（重命名 / 删除功能后未同步）
+
+**证据**
+- `docs/desktop/agent.md` 通篇以 “**Agent** tab” 为入口，但 `AppChrome.tsx` 的 rail 只有 `report` / `workbench` / `notes` 三个 tab，仓库内也**没有** `features/agent/`；`desktop.agent.*` 现在只服务于待办/报告/IM/工具设置等通用文案。
+- `docs/desktop/im.md` 与 `docs/desktop/README.md` 把 IM 描述为独立入口；实际 `ImPanel` 已内嵌在 Workbench 面板中（`WorkbenchPanel.tsx:5862`），通过 `agent-resume:im-open-room` 打开房间。
+- `.agents/menus/report-gtd.md` 仍按 `packages/core/src/memory/*` 与 `agent/*` 描述能力，但 `packages/core/src/memory/` 已不存在（digest 代码在 `packages/core/src/report/`），且 “Memory and Ask UI” 一行指向已删除的日历 / GtdSheet。
+- `.agents/menus-index.md` 与 `report-gtd.md` 仍写载 desktop renderer 为 `apps/desktop/src/renderer/{index.html,app.js,styles.css}` 的 “plain JavaScript” 应用；实际为 `renderer-react/` 下的 React 运行时（`.agents/menus/desktop.md` 已在本轮修正）。
+
+**目标**
+1. 每个桌面模块文档只描述**当前存在**的入口与路径。
+2. 菜单地图指向的代码路径全部可解析（无 `app.js`、无 `memory/`）。
+3. 删除的功能（Agent tab、日历视图、GtdSheet、Kanban board）不再有“现有功能”叙述；如仍要保留历史说明，必须显式标注为已移除。
+
+**非目标**
+- 不改代码。
+- 不改 `docs/desktop/report.md`（已在 A9 重写）。
+
+**前置 / 触发**：无。建议紧随 B6 之后单开一单，避免与 P8 抢文件（P8 改 `features/kanban/` 时 `agent.md`/`im.md` 若提到旧名会再次漂移）。
+
+**验收**
+- `grep -rn "Agent tab\|app\.js\|core/src/memory" docs/desktop .agents/menus .agents/menus-index.md` 无残留（或有显式“已移除”标注）。
+- 文档中每个 rail / tab 名都能在 `AppChrome.tsx` 的 `tabs` 数组里找到对应项。
 
 **Owner**：Developer · **阻塞性**：无
