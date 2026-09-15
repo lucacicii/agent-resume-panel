@@ -1,4 +1,11 @@
-/** Open Workbench session dots shared across the main window and floating notes. */
+/**
+ * Open Workbench session dots shared across the main window and floating notes.
+ *
+ * This module is the **single source** of the session dot vocabulary and payload
+ * shape: the renderer derives `SessionDotStatus` and `ActiveSessionDot` from it,
+ * so a status added here must be handled by every `Record<SessionDotStatus, ...>`
+ * map on both sides of the process boundary.
+ */
 
 export const WORKBENCH_SESSION_DOT_STATUSES = [
   "awaiting_user",

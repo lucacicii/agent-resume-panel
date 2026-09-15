@@ -6,15 +6,11 @@
  * detection of its own — see `sessionStatus/`.
  */
 
-import type { SessionDotRuntime, SessionDotStatus } from "./sessionStatus";
+import type { SessionDotRuntime } from "./sessionStatus";
+import type { WorkbenchActiveSessionDot } from "../../../shared/workbenchSelection";
 
-export type ActiveSessionDot = {
-  paneKey: string;
-  projectPath: string;
-  title: string;
-  sessionKey: string;
-  status: SessionDotStatus;
-};
+/** Same shape the main process parses, derived so the two cannot drift. */
+export type ActiveSessionDot = WorkbenchActiveSessionDot;
 
 type DotTerminal = {
   key: string;

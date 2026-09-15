@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { ActiveSessionDot } from "../activeSessionDots";
+import { WORKBENCH_SESSION_DOT_STATUSES } from "../../../../shared/workbenchSelection";
 import { SESSION_DOT_STATUSES, type SessionDotStatus } from "./types";
 import { LIVE_RANK, needsYou, rank, rollupDot } from "./workItemRollup";
 
@@ -109,5 +110,15 @@ describe("workItemRollup", () => {
     expect(filesDefining(/\bexport function rank\b/)).toEqual([
       "renderer-react/features/workbench/sessionStatus/workItemRollup.ts"
     ]);
+  });
+
+  it("declares the session dot vocabulary only in the shared module", () => {
+    expect(filesDefining(/\bexport const WORKBENCH_SESSION_DOT_STATUSES\b/)).toEqual([
+      "shared/workbenchSelection.ts"
+    ]);
+    // Same object, not a copy: a renderer-only status is impossible, and adding
+    // one to the shared list breaks every Record<SessionDotStatus, …> map on
+    // both sides of the process boundary at compile time.
+    expect(SESSION_DOT_STATUSES).toBe(WORKBENCH_SESSION_DOT_STATUSES);
   });
 });

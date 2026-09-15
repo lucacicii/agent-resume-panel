@@ -1,10 +1,10 @@
 # 归档重构 · 待排期工单（既有缺陷，不阻塞 B1-B6）
 
-角色：Architect · 状态：**T1 / T4 已关闭；T2、T3、T5、T6 已立单未排期**
+角色：Architect · 状态：**T1 / T2 / T4 已关闭；T3、T5、T6 已立单未排期**
 来源：[`desktop-archive-architect-rulings.md`](desktop-archive-architect-rulings.md) §1.3c 与 §2.2 的两处**非阻塞观察**，以及 A9 收尾时发现的文档漂移（T3）。
 性质：**均为既有缺陷，不是本次归档重构引入的**。判定为不在 D/P/A/C 任何任务范围内，**不阻塞 B1-B6 任何批次**，不写入契约 §6。
 
-> 归档重构期间只做一件事：**不要制造新的同类副本**。重构期间各单的修法一律暂缓，避免与 P1/P7/P8 抢同一批文件。T1 / T4 已在 B6 之后按 Owner 判定关闭。
+> 归档重构期间只做一件事：**不要制造新的同类副本**。重构期间各单的修法一律暂缓，避免与 P1/P7/P8 抢同一批文件。T1 / T2 / T4 已在 B6 之后按 Owner 判定关闭。
 
 ---
 
@@ -30,42 +30,23 @@
 
 ---
 
-## T2 · 会话状态词汇有两份独立声明，彼此无编译期约束
+## T2 · 会话状态词汇有两份独立声明，彼此无编译期约束 —— **已关闭**
 
 **类型**：静默失效风险（跨进程词汇漂移）
 
-**证据（逐行）**
-- 两份结构完全相同的词汇表，各自独立声明：
-  | 位置 | 内容 |
-  |---|---|
-  | `features/workbench/sessionStatus/types.ts:10-15` | `SESSION_DOT_STATUSES` / `SessionDotStatus`（渲染层） |
-  | `apps/desktop/src/shared/workbenchSelection.ts:3-9` | `WORKBENCH_SESSION_DOT_STATUSES` / `WorkbenchSessionDotStatus`（主进程 / preload） |
-- 点载荷同样是两份：`features/workbench/activeSessionDots.ts:11-17` `ActiveSessionDot` vs `shared/workbenchSelection.ts:13-19` `WorkbenchActiveSessionDot`。
-- **单项校验，方向是渲染层 → 主进程**：`WorkbenchPanel.tsx:1019` 派发 `agent-resume:active-sessions`（渲染层词汇）→ `main.ts:1553` 用 `parseWorkbenchActiveSessionDots` 解析（共享词汇）。
-- **漂移后的静默路径已实测**：`shared/workbenchSelection.ts:100-102` 对不在共享元组里的状态**强制回退为 `"open"`**，不抛错、不告警。于是渲染层若新增一个状态（例如更细的等待层级），主进程侧：
-  - `sessionDotsTray.ts:12-27` 的两张 `Record<WorkbenchSessionDotStatus, ...>` 颜色表拿不到该状态 → 托盘点静默显示为 idle 色；
-  - `sessionWaitingNotifications.ts:1` 与 `main.ts:3400` 依赖解析后的点做判定 → 判定静默失效。
-- 反向不成立：往共享元组加状态会让主进程侧的 `Record` 编译报错（守卫存在），但**往渲染层元组加状态不会**——`LIVE_RANK: Record<SessionDotStatus, number>` 只守住渲染层这一侧。
+**原证据**：`sessionStatus/types.ts` 与 `shared/workbenchSelection.ts` 各声明一份完全相同的五值词汇表；点载荷同样两份（`ActiveSessionDot` vs `WorkbenchActiveSessionDot`）。单项校验且方向是渲染层 → 主进程，而 `parseWorkbenchActiveSessionDots` 对未知状态**静默回退为 `"open"`**，于是渲染层新增状态会让主进程的颜色表与等待通知判定静默失效。
 
-**目标**
-建立**双向**编译期约束，二选一（实现者取改动面更小者，并在提交信息里说明选择）：
-- (a) 单一来源：渲染层 `SessionDotStatus` 从 `shared/workbenchSelection.ts` 派生（或将共享元组移至渲染层可 import 的中立位置），删除重复声明。
-- (b) 显式穷尽映射：保留两份声明，但增加 `Record<rendererStatus, sharedStatus>` 的穷尽性映射 + 一条测试，任一方向新增状态即编译或测试失败。
+**处置（已执行，取裁定给出的方案 (a)：单一来源）**
+- `shared/workbenchSelection.ts` 成为**唯一**声明点（该文件是无 import 的叶子模块，且 `SelectionSendMenu.tsx` 早已在渲染层 value-import 它，不引入新的打包面）。
+- `sessionStatus/types.ts` 的 `SESSION_DOT_STATUSES` / `SessionDotStatus` 改为从共享模块**派生**，删除重复元组。
+- `activeSessionDots.ts` 的 `ActiveSessionDot` 改为共享 `WorkbenchActiveSessionDot` 的别名，删除重复载荷形状。
+- `workItemRollup.test.ts` 追加守卫：断言 `WORKBENCH_SESSION_DOT_STATUSES` 只在 `shared/workbenchSelection.ts` 出现一次，且 `SESSION_DOT_STATUSES` 与它**同引用**（`toBe`，不是值相等）——「渲染层私自新增状态」从此不可能。
 
-**非目标**
-- 不改任何状态的语义、不新增状态、不改托盘点颜色与直径。
-- 不动 `LIVE_RANK` 的数值（见裁定 §2.4）。
-- 不碰 `features/im/` 的 `job.status`（`imTypes.ts:16`、`callChainModel.ts`、`imUtils.tsx:209` 是**另一套** job 状态词汇，同名不同义，不在本单范围）。
-
-**前置 / 触发**
-- 无前置。建议排在归档重构全部落地之后（B6 之后），因为本单跨渲染层 / preload / 主进程三处，与 D/P/A/C 无耦合，但会与任何同时改这几处的任务抢文件。
-
-**验收**
-- 两份声明之间的漂移在**编译期或测试**可捕获：新增一个状态到任一侧，`pnpm run compile` 或 renderer 测试必须变红（提交里附上一次人为制造的失败证据）。
-- `pnpm run compile` + `pnpm --filter @agent-resume/desktop run test:renderer` + `pnpm run test:desktop` 全绿。
-- 注意：根 `test:desktop` **不含** renderer 测试（排期 §0），验收命令必须显式带上 `test:renderer`。
-
-**Owner**：Developer · **阻塞性**：无
+**关闭验收（已实测）**
+- 往共享元组插入一个 `probe_status` → **两侧都编译失败**：
+  - 渲染层 `workItemRollup.ts:20`（`LIVE_RANK` 的 `Record<SessionDotStatus, number>` 缺失该键）
+  - 主进程 `sessionDotsTray.ts:11` 与 `:19`（两张颜色表缺失该键）
+- `typecheck:desktop` / `compile` / `i18n:check` / `test:renderer` / `test:core` / `test:desktop` 全绿。
 
 ---
 
