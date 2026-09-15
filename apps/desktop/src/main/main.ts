@@ -198,7 +198,6 @@ import {
   notesLinkSessionToWorkItem,
   notesListWorkItemSessionLinks,
   notesListWorkItems,
-  promoteAwaitingSessionsToInbox,
   notesListChildCounts,
   notesListLinkedChildIds,
   notesListLinks,
@@ -370,7 +369,6 @@ function ensureAgentStatusRuntime(): void {
     appPath: app.getAppPath()
   });
   bridge.onTransition((transition) => {
-    void promoteBlockedTransition(transition);
     const sessionKey = transition.sessionKey?.trim();
     if (sessionKey) {
       const colon = sessionKey.indexOf(":");
@@ -389,49 +387,6 @@ function ensureAgentStatusRuntime(): void {
     }
   });
   bridge.connect();
-}
-
-/**
- * Sessions already promoted to the board this process, so a flapping pane does
- * not create a work item per transition. The catalog is also checked, so a
- * restart never duplicates an item for the same session.
- */
-const promotedBlockedSessions = new Set<string>();
-
-function blockedDecisionText(transition: StatusTransition): string {
-  const source = transition.source === "native" ? "reported by the agent" : `detected (${transition.source})`;
-  const rule = transition.reason ? `: ${transition.reason}` : "";
-  return `Agent is blocked and waiting on you — ${transition.agent} ${source}${rule}.`;
-}
-
-/** F-1/F-2: a pane turning blocked becomes a GTD inbox work item, with the reason captured at transition time. */
-async function promoteBlockedTransition(transition: StatusTransition): Promise<void> {
-  if (transition.to !== "blocked") return;
-  const sessionKey = transition.sessionKey?.trim();
-  if (!sessionKey || promotedBlockedSessions.has(sessionKey)) return;
-  const separator = sessionKey.indexOf(":");
-  if (separator <= 0 || separator === sessionKey.length - 1) return;
-  const provider = sessionKey.slice(0, separator);
-  const sessionId = sessionKey.slice(separator + 1);
-  promotedBlockedSessions.add(sessionKey);
-  try {
-    const paths = await loadPanelDbPaths();
-    const page = await querySessionsPage(paths.catalogDb, { keys: [{ provider, id: sessionId }], limit: 1 });
-    const session = page.sessions[0];
-    const projectPath = session?.projectPath?.trim();
-    if (!projectPath) return;
-    const known = await notesListWorkItems();
-    if (known.some((item) => (item.work.sessions ?? []).includes(sessionKey))) return;
-    await notesCreateWorkItem({
-      title: session.title || sessionId,
-      decision: blockedDecisionText(transition),
-      sessions: [sessionKey],
-      projects: [projectPath],
-      primaryProject: projectPath
-    });
-  } catch {
-    // Best-effort: a failed promotion must never disturb status tracking.
-  }
 }
 
 /** Follow a panel-home change: the daemon and its socket live under that path. */
@@ -606,9 +561,6 @@ let registeredRecentStandaloneNoteShortcut = "";
 let appQuitInFlight: Promise<void> | null = null;
 let allowAppQuit = false;
 let quitCleanupDone = false;
-let awaitingPromotionDone = false;
-/** Cap the quit-time work-item promotion so a slow disk can never block quitting. */
-const AWAITING_PROMOTION_TIMEOUT_MS = 5_000;
 let sessionSyncTimer: NodeJS.Timeout | null = null;
 let sessionSyncInFlight: Promise<AgentSessionSyncResult> | null = null;
 let workbenchActive = false;
@@ -3325,9 +3277,7 @@ app.on("before-quit", (event) => {
     });
     return;
   }
-  // Promote sessions that are waiting on the user into GTD inbox work items, so
-  // "the agent needs me" survives the process without caching runtime state.
-  if (!allowAppQuit && !awaitingPromotionDone) {
+  if (!allowAppQuit) {
     const awaitingKeys = workbenchActiveSessions
       .filter((dot) => dot.status === "awaiting_user" && dot.sessionKey)
       .map((dot) => dot.sessionKey);
@@ -3335,21 +3285,6 @@ app.on("before-quit", (event) => {
       void loadPanelDbPaths()
         .then((paths) => recordLastExitWaitingSessions(paths.catalogDb, awaitingKeys))
         .catch(() => undefined);
-    }
-    const awaiting = workbenchActiveSessions
-      .filter((dot) => dot.status === "awaiting_user" && dot.sessionKey && dot.projectPath)
-      .map((dot) => ({ sessionKey: dot.sessionKey, title: dot.title, projectPath: dot.projectPath }));
-    if (awaiting.length > 0) {
-      event.preventDefault();
-      void Promise.race([
-        promoteAwaitingSessionsToInbox(awaiting),
-        new Promise<void>((resolve) => setTimeout(resolve, AWAITING_PROMOTION_TIMEOUT_MS))
-      ]).catch(() => undefined).finally(() => {
-        awaitingPromotionDone = true;
-        allowAppQuit = true;
-        app.quit();
-      });
-      return;
     }
   }
   allowAppQuit = true;

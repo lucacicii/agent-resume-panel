@@ -242,43 +242,6 @@ export async function notesRemoveWorkItemProject(args: {
   return updated;
 }
 
-/**
- * On quit: turn sessions that were waiting for the user into GTD inbox work
- * items, so "the agent needs me" outlives the process without persisting the
- * transient runtime state itself. Best-effort — quitting must never fail.
- */
-export async function promoteAwaitingSessionsToInbox(
-  sessions: Array<{ sessionKey: string; title: string; projectPath: string }>
-): Promise<number> {
-  const store = await getDesktopNotesStore();
-  await store.reload();
-  const known = new Set<string>();
-  for (const item of await store.listWorkItems()) {
-    for (const key of item.work.sessions ?? []) known.add(key);
-  }
-  let promoted = 0;
-  for (const session of sessions) {
-    const key = session.sessionKey?.trim();
-    const projectPath = session.projectPath?.trim();
-    if (!key || !projectPath || known.has(key)) continue;
-    try {
-      const record = await store.createWorkItem({
-        title: session.title?.trim() || key,
-        decision: `Agent was waiting for your input when the app closed (${key}).`,
-        sessions: [key],
-        projects: [projectPath],
-        primaryProject: projectPath
-      });
-      await store.setNoteGtdStatus(record.noteId, "inbox");
-      known.add(key);
-      promoted += 1;
-    } catch {
-      /* one un-writable note must not block the quit */
-    }
-  }
-  return promoted;
-}
-
 export async function notesSetGtdStatus(noteId: string, status: GtdStatus | null): Promise<NoteRecord> {
   const store = await getDesktopNotesStore();
   return status === null
