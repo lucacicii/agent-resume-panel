@@ -2,7 +2,10 @@ import { Fragment, type ReactNode } from "react";
 import type { GtdStatus, WorkbenchSessionFolder, WorkbenchSessionFolderAssignment } from "@agent-resume/core";
 import { ThemeIcon } from "../../../components/ThemeIcon";
 import { SegmentedControl } from "../../../components/SegmentedControl";
+import { sessionDotStatusClass } from "../../../components/SessionDotsCluster";
 import { useI18n } from "../../../i18n";
+import type { ActiveSessionDot } from "../activeSessionDots";
+import { rollupDot } from "../sessionStatus/workItemRollup";
 
 export type WorkbenchSidebarView = "workitems" | "projects" | "gtd";
 export type WorkbenchProjectFilter = "all" | "pinned";
@@ -135,6 +138,7 @@ export function WorkbenchSidebar<T extends WorkbenchSidebarProject>({
   workItemProjects,
   workItemProjectFilter,
   workItemStatusFilter,
+  dotByKey,
   projectFilter,
   projectQuery,
   selectedProject,
@@ -181,6 +185,7 @@ export function WorkbenchSidebar<T extends WorkbenchSidebarProject>({
   workItemProjects: Array<{ path: string; label: string }>;
   workItemProjectFilter: string;
   workItemStatusFilter: "all" | GtdStatus;
+  dotByKey?: Map<string, ActiveSessionDot>;
   projectFilter: WorkbenchProjectFilter;
   projectQuery: string;
   selectedProject: string | null;
@@ -248,7 +253,10 @@ export function WorkbenchSidebar<T extends WorkbenchSidebarProject>({
             {GTD_FILTER_STATUSES.map((status) => <option key={status} value={status}>{t(`desktop.workbench.gtdStatus.${status}`)}</option>)}
           </select>
         </div>
-        {workItems.length ? workItems.map((item) => <button key={item.noteId} type="button" className={`wb-folder-row wb-work-item-row${selectedWorkItemId === item.noteId ? " active" : ""}`} onClick={() => onSelectWorkItem(item)} title={item.title}><span className={`wb-gtd-status-dot is-${item.status}`} aria-hidden="true" /><span className="wb-folder-row-text"><span className="wb-folder-row-label">{item.title}</span>{(item.projects?.length ?? 0) > 0 ? <span className="wb-folder-row-desc">{item.projects!.map((projectPath) => projectPath.split(/[\\/]/).filter(Boolean).at(-1) || projectPath).join(" · ")}</span> : null}</span><span className="wb-folder-row-count">{item.sessions.length}</span></button>) : <p className="muted wb-folders-empty">{t("desktop.workbench.noWorkItems")}</p>}
+        {workItems.length ? workItems.map((item) => {
+          const dot = dotByKey ? rollupDot({ work: { sessions: item.sessions } }, dotByKey) : undefined;
+          return <button key={item.noteId} type="button" className={`wb-folder-row wb-work-item-row${selectedWorkItemId === item.noteId ? " active" : ""}`} onClick={() => onSelectWorkItem(item)} title={item.title}><span className={`wb-gtd-status-dot is-${item.status}`} aria-hidden="true" />{dot && dot.status !== "open" ? <span className={`session-dot${sessionDotStatusClass(dot.status)}`} aria-hidden="true" /> : null}<span className="wb-folder-row-text"><span className="wb-folder-row-label">{item.title}</span>{(item.projects?.length ?? 0) > 0 ? <span className="wb-folder-row-desc">{item.projects!.map((projectPath) => projectPath.split(/[\\/]/).filter(Boolean).at(-1) || projectPath).join(" · ")}</span> : null}</span><span className="wb-folder-row-count">{item.sessions.length}</span></button>;
+        }) : <p className="muted wb-folders-empty">{t("desktop.workbench.noWorkItems")}</p>}
       </div> : resourceView === "projects" ? <>
         <button type="button" className={`wb-folder-row${!selectedProject ? " active" : ""}`} onClick={onSelectAllSessions}><span className="wb-folder-row-label">{t("desktop.workbench.allSessions")}</span></button>
         <div className="wb-folder-section">

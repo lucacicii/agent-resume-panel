@@ -15937,6 +15937,7 @@ html[data-window-mode="standalone-note"] #react-im {
 .wb-work-item-section { padding-top: 4px; }
 .wb-work-item-row .wb-folder-row-label { font-weight: 600; }
 .wb-work-item-row .wb-gtd-status-dot { flex: 0 0 auto; }
+.wb-work-item-row .session-dot { flex: 0 0 auto; }
 .kanban-status { display: flex; align-items: center; padding: 0 10px; font-size: 11px; color: var(--color-label-secondary); border-top: 1px solid var(--color-separator); }
 .kanban-split { display: flex; flex: 1 1 auto; min-width: 0; min-height: 0; overflow: hidden; }
 .kanban-split .kanban-board { flex: 1 1 auto; min-width: 0; }

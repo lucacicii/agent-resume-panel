@@ -5582,6 +5582,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         workItemProjects={workItemProjects}
         workItemProjectFilter={workItemProjectFilter}
         workItemStatusFilter={workItemStatusFilter}
+        dotByKey={dotByKey}
         folderAssignmentKey={folderAssignmentKey}
         onSelectWorkItemsView={() => selectSidebarView("workitems")}
         onSelectResourceView={() => selectSidebarView(lastResourceView)}
