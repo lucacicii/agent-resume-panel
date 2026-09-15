@@ -29,7 +29,6 @@
   "desktop.settings.grokHome": "settings.fieldGrokHomeLabel",
   "desktop.settings.opencodeHome": "settings.fieldOpencodeHomeLabel",
   "desktop.settings.piHome": "settings.fieldPiHomeLabel",
-  "desktop.settings.paneReport": "desktop.tabs.report",
   "desktop.settings.paneGeneral": "settings.sectionGeneralTitle",
   "desktop.settings.paneSessions": "settings.sectionCatalogTitle",
   "desktop.settings.paneStorage": "settings.sectionDataPathsTitle",

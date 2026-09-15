@@ -378,7 +378,7 @@ export interface AgentSessionSyncSettings extends AgentSessionSyncFilters {
 }
 
 export interface ReportSettings {
-  /** Scheduled jobs in Desktop; default false. */
+  /** Scheduled jobs in Desktop; ignored by the scheduler (always on). */
   enabled?: boolean;
   /** Prefer session_summary; if missing, load native transcript excerpt. Default true. */
   includeTranscripts?: boolean;
@@ -525,7 +525,7 @@ export const DEFAULT_SETTINGS: PanelSettings = {
     model: "text-embedding-3-small"
   },
   report: {
-    enabled: false,
+    enabled: true,
     includeTranscripts: true,
     maxDigestLlmCalls: 100,
     snippetMaxChars: 2500,

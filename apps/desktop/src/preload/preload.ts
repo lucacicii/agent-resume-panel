@@ -7,17 +7,9 @@ import type {
   AgentNoteAuditEvent,
   AgentChatResult,
   AgentStreamEvent,
-  DigestProgressEvent,
-  DigestGenerationEstimate,
   ReportEntry,
-  ReportLinkRow,
-  ReportSearchHit,
   NoteIndexProgressEvent,
   PanelSettings,
-  DailyDigestRefreshCheck,
-  RunDailyDigestResult,
-  RunMonthlyDigestResult,
-  RunWeeklyDigestResult,
   AgentSessionSyncResult,
   AgentToolDescriptor,
   SkillDescriptor,
@@ -107,7 +99,7 @@ export interface DesktopApi {
   saveSettings(
     settings: PanelSettings,
     options?: { triggerSync?: boolean; section?: string }
-  ): Promise<{ file: string; settings: PanelSettings; schedulerEnabled?: boolean; sync?: AgentSessionSyncResult }>;
+  ): Promise<{ file: string; settings: PanelSettings; sync?: AgentSessionSyncResult }>;
   pickDirectory(args?: { title?: string }): Promise<{ ok: true; path: string } | { ok: false; canceled: true }>;
   /** Probe a provider's model (text/embedding) using current Providers form values (Save not required). */
   providersTestConnection(args: {
@@ -208,11 +200,6 @@ export interface DesktopApi {
     id: string;
     status: GtdStatus | null;
   }): Promise<{ ok: boolean }>;
-  listSessionsInRange(args: {
-    fromMs: number;
-    toMs: number;
-    limit?: number;
-  }): Promise<AgentSession[]>;
   previewSession(args: {
     provider: string;
     id: string;
@@ -1076,31 +1063,7 @@ export interface DesktopApi {
   onWorkbenchCmdShiftP(callback: () => void): () => void;
   /** Find in Files (⌘⇧F / Ctrl+Shift+F). */
   onWorkbenchCmdShiftF(callback: () => void): () => void;
-  listReports(opts?: {
-    level?: string;
-    limit?: number;
-    fromMs?: number;
-    toMs?: number;
-  }): Promise<ReportEntry[]>;
   getReportEntry(reportId: string): Promise<ReportEntry | null>;
-  getReportLinks(reportId: string): Promise<ReportLinkRow[]>;
-  listReportsForSessions(sessionKeys: string[]): Promise<ReportEntry[]>;
-  listDailyDigests(limit?: number): Promise<ReportEntry[]>;
-  previewDigestRun(args: { level: "daily" | "weekly" | "monthly"; periodKey?: string }): Promise<DigestGenerationEstimate>;
-  runDailyDigest(
-    dateOrOpts?: string | { date?: string; forceResummarize?: boolean; allowOverBudget?: boolean }
-  ): Promise<RunDailyDigestResult>;
-  needsDailyDigestRefresh(date?: string): Promise<DailyDigestRefreshCheck>;
-  needsWeeklyDigestRefresh(weekKey?: string): Promise<DailyDigestRefreshCheck>;
-  needsMonthlyDigestRefresh(monthKey?: string): Promise<DailyDigestRefreshCheck>;
-  runWeeklyDigest(args?: string | { weekKey?: string; allowOverBudget?: boolean }): Promise<RunWeeklyDigestResult>;
-  runMonthlyDigest(args?: string | { monthKey?: string; allowOverBudget?: boolean }): Promise<RunMonthlyDigestResult>;
-  onDigestProgress(callback: (event: DigestProgressEvent) => void): () => void;
-  searchReports(args: {
-    query: string;
-    level?: string;
-    limit?: number;
-  }): Promise<ReportSearchHit[]>;
   /** Static catalog of chat tools and discovered skills/mcp tools. */
   listAgentTools(args?: { projectPath?: string }): Promise<AgentToolDescriptor[]>;
   /** Discover available skills for workspace / user. */
@@ -1108,28 +1071,6 @@ export interface DesktopApi {
   /** Read full content of a SKILL.md. */
   readSkill(args: { location: string }): Promise<string>;
   onNotesIndexProgress(callback: (event: NoteIndexProgressEvent) => void): () => void;
-  previewBackfillDigests(args?: {
-    maxDays?: number;
-    skipExisting?: boolean;
-    minSessionsPerDay?: number;
-  }): Promise<{
-    days: string[];
-    weeks: string[];
-    months: string[];
-    sessionRowsScanned: number;
-    estimatedLlmCalls: number;
-  }>;
-  backfillDigests(args?: {
-    maxDays?: number;
-    skipExisting?: boolean;
-    skipEmbedding?: boolean;
-    minSessionsPerDay?: number;
-  }): Promise<{
-    daily: { planned: string[]; ok: string[]; skipped: string[]; failed: Array<{ key: string; error: string }> };
-    weekly: { planned: string[]; ok: string[]; skipped: string[]; failed: Array<{ key: string; error: string }> };
-    monthly: { planned: string[]; ok: string[]; skipped: string[]; failed: Array<{ key: string; error: string }> };
-    sessionRowsScanned: number;
-  }>;
   usageSummary(args?: { days?: number }): Promise<{
     days: number;
     totalTokens: number;
@@ -1578,7 +1519,6 @@ const api: DesktopApi = {
   clearSessionLastExitWaiting: (args) => ipcRenderer.invoke("sessions:clearLastExitWaiting", args),
   listSessionGtdStatuses: () => ipcRenderer.invoke("gtd:listSessionStatuses"),
   setSessionGtdStatus: (args) => ipcRenderer.invoke("gtd:setSessionStatus", args),
-  listSessionsInRange: (args) => ipcRenderer.invoke("sessions:listInRange", args),
   previewSession: (args) => ipcRenderer.invoke("sessions:preview", args),
   summarizeSession: (args) => ipcRenderer.invoke("sessions:summarize", args),
   autoRenameSession: (args) => ipcRenderer.invoke("sessions:autoRename", args),
@@ -1854,33 +1794,7 @@ const api: DesktopApi = {
     ipcRenderer.on("workbench:cmdShiftF", handler);
     return () => ipcRenderer.removeListener("workbench:cmdShiftF", handler);
   },
-  listReports: (opts) => ipcRenderer.invoke("report:list", opts),
   getReportEntry: (reportId) => ipcRenderer.invoke("report:getEntry", reportId),
-  getReportLinks: (reportId) => ipcRenderer.invoke("report:getLinks", reportId),
-  listReportsForSessions: (sessionKeys) => ipcRenderer.invoke("report:listForSessions", sessionKeys),
-  listDailyDigests: (limit) => ipcRenderer.invoke("report:listDaily", limit),
-  previewDigestRun: (args) => ipcRenderer.invoke("report:previewRun", args),
-  runDailyDigest: (dateOrOpts) => {
-    if (typeof dateOrOpts === "string" || dateOrOpts === undefined) {
-      return ipcRenderer.invoke("report:runDaily", { date: dateOrOpts });
-    }
-    return ipcRenderer.invoke("report:runDaily", dateOrOpts);
-  },
-  needsDailyDigestRefresh: (date) => ipcRenderer.invoke("report:needsDailyRefresh", date),
-  needsWeeklyDigestRefresh: (weekKey) => ipcRenderer.invoke("report:needsWeeklyRefresh", weekKey),
-  needsMonthlyDigestRefresh: (monthKey) => ipcRenderer.invoke("report:needsMonthlyRefresh", monthKey),
-  runWeeklyDigest: (args) => ipcRenderer.invoke("report:runWeekly", args),
-  runMonthlyDigest: (args) => ipcRenderer.invoke("report:runMonthly", args),
-  onDigestProgress: (callback) => {
-    const handler = (_event: Electron.IpcRendererEvent, progress: DigestProgressEvent) => {
-      callback(progress);
-    };
-    ipcRenderer.on("report:digestProgress", handler);
-    return () => {
-      ipcRenderer.removeListener("report:digestProgress", handler);
-    };
-  },
-  searchReports: (args) => ipcRenderer.invoke("report:search", args),
   listAgentTools: (args) => ipcRenderer.invoke("agent:listTools", args),
   listSkills: (args) => ipcRenderer.invoke("skills:list", args),
   readSkill: (args) => ipcRenderer.invoke("skills:read", args),
@@ -1893,8 +1807,6 @@ const api: DesktopApi = {
       ipcRenderer.removeListener("notes:indexProgress", handler);
     };
   },
-  previewBackfillDigests: (args) => ipcRenderer.invoke("workflow:previewBackfillDigests", args),
-  backfillDigests: (args) => ipcRenderer.invoke("workflow:backfillDigests", args),
   usageSummary: (args) => ipcRenderer.invoke("usage:summary", args),
   usageListEvents: (args) => ipcRenderer.invoke("usage:listEvents", args),
   usageListScheduleRuns: (args) => ipcRenderer.invoke("usage:listScheduleRuns", args),

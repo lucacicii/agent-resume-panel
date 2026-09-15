@@ -7,7 +7,7 @@ import { listProviderModels } from "./providerPool";
 import { desktopApi } from "../../bridge";
 import { Status, type StatusKind } from "../../components/Status";
 import { useI18n } from "../../i18n";
-import { AboutPane, BackupPane, LogsPane, NotesPane, ReportPane, StoragePane, UsagePane, WorkbenchPane, type UsageDetailTab } from "./AdditionalPanes";
+import { AboutPane, BackupPane, LogsPane, NotesPane, StoragePane, UsagePane, WorkbenchPane, type UsageDetailTab } from "./AdditionalPanes";
 import { ImSettingsPane } from "./ImSettingsPane";
 import { AgentStatusPane } from "./AgentStatusPane";
 import { McpPane } from "./McpPane";
@@ -17,8 +17,6 @@ import {
   generalPatch,
   providersDraftFromSettings,
   providersPatch,
-  reportDraftFromSettings,
-  reportPatch,
   notesDraftFromSettings,
   notesPatch,
   sessionsDraftFromSettings,
@@ -30,13 +28,12 @@ import {
   type GeneralDraft,
   type ProvidersDraft,
   type NotesDraft,
-  type ReportDraft,
   type SessionsDraft,
   type StorageDraft,
   type WorkbenchDraft
 } from "./model";
 
-type Pane = "general" | "providers" | "sessions" | "workbench" | "im" | "notes" | "report" | "storage" | "mcp" | "agentStatus" | "usage" | "logs" | "backup" | "about";
+type Pane = "general" | "providers" | "sessions" | "workbench" | "im" | "notes" | "storage" | "mcp" | "agentStatus" | "usage" | "logs" | "backup" | "about";
 type EditablePane = Exclude<Pane, "mcp" | "usage" | "logs" | "backup" | "about" | "im">;
 
 function isEditablePane(value: Pane): value is EditablePane {
@@ -56,7 +53,6 @@ const panes: Array<{ id: Pane; key: string; desc: string }> = [
   { id: "workbench", key: "desktop.settings.paneWorkbench", desc: "desktop.settings.paneWorkbenchDesc" },
   { id: "im", key: "desktop.settings.paneIm", desc: "desktop.settings.paneImDesc" },
   { id: "notes", key: "desktop.settings.paneNotes", desc: "desktop.settings.paneNotesDesc" },
-  { id: "report", key: "desktop.settings.paneReport", desc: "desktop.settings.paneReportDesc" },
   { id: "storage", key: "desktop.settings.paneStorage", desc: "desktop.settings.paneStorageDesc" },
   { id: "mcp", key: "desktop.settings.paneMcp", desc: "desktop.settings.paneMcpDesc" },
   { id: "agentStatus", key: "desktop.settings.paneAgentStatus", desc: "desktop.settings.paneAgentStatusDesc" },
@@ -83,7 +79,6 @@ export function SettingsPanel({
   const [providers, setProviders] = useState<ProvidersDraft | null>(null);
   const [sessions, setSessions] = useState<SessionsDraft | null>(null);
   const [workbench, setWorkbench] = useState<WorkbenchDraft | null>(null);
-  const [report, setReport] = useState<ReportDraft | null>(null);
   const [storage, setStorage] = useState<StorageDraft | null>(null);
   const [notes, setNotes] = useState<NotesDraft | null>(null);
   const [status, setStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
@@ -101,7 +96,6 @@ export function SettingsPanel({
     setProviders(providersDraftFromSettings(next));
     setSessions(sessionsDraftFromSettings(next));
     setWorkbench(workbenchDraftFromSettings(next));
-    setReport(reportDraftFromSettings(next));
     setStorage(storageDraftFromSettings(next));
     setNotes(notesDraftFromSettings(next));
   }, []);
@@ -116,10 +110,9 @@ export function SettingsPanel({
     if (value === "sessions") return JSON.stringify(sessions) !== JSON.stringify(sessionsDraftFromSettings(base));
     if (value === "workbench") return JSON.stringify(workbench) !== JSON.stringify(workbenchDraftFromSettings(base));
     if (value === "notes") return JSON.stringify(notes) !== JSON.stringify(notesDraftFromSettings(base));
-    if (value === "report") return JSON.stringify(report) !== JSON.stringify(reportDraftFromSettings(base));
     if (value === "storage") return JSON.stringify(storage) !== JSON.stringify(storageDraftFromSettings(base));
     return false;
-  }, [general, providers, sessions, workbench, notes, report, storage]);
+  }, [general, providers, sessions, workbench, notes, storage]);
 
   paneRef.current = pane;
   const isDirtyForPaneRef = useRef(isDirtyForPane);
@@ -167,10 +160,7 @@ export function SettingsPanel({
       });
       hydrate(result.settings);
       setStatus({
-        text: t(
-          "desktop.settings.saved",
-          result.schedulerEnabled ? t("desktop.settings.schedulerOn") : t("desktop.settings.schedulerOff")
-        ),
+        text: t("desktop.settings.saved", ""),
         kind: "ok"
       });
     } catch (error) {
@@ -187,15 +177,14 @@ export function SettingsPanel({
     }
   }, [hydrate, t]);
 
-  const currentDraft = useCallback((section: EditablePane): GeneralDraft | ProvidersDraft | SessionsDraft | WorkbenchDraft | NotesDraft | ReportDraft | StorageDraft | null => {
+  const currentDraft = useCallback((section: EditablePane): GeneralDraft | ProvidersDraft | SessionsDraft | WorkbenchDraft | NotesDraft | StorageDraft | null => {
     if (section === "general") return general;
     if (section === "providers") return providers;
     if (section === "sessions") return sessions;
     if (section === "workbench") return workbench;
     if (section === "notes") return notes;
-    if (section === "report") return report;
     return storage;
-  }, [general, providers, sessions, workbench, notes, report, storage]);
+  }, [general, providers, sessions, workbench, notes, storage]);
 
   const savedDraftFor = useCallback((section: EditablePane) => {
     const base = lastSavedSettings.current;
@@ -205,7 +194,6 @@ export function SettingsPanel({
     if (section === "sessions") return sessionsDraftFromSettings(base);
     if (section === "workbench") return workbenchDraftFromSettings(base);
     if (section === "notes") return notesDraftFromSettings(base);
-    if (section === "report") return reportDraftFromSettings(base);
     return storageDraftFromSettings(base);
   }, []);
 
@@ -217,7 +205,7 @@ export function SettingsPanel({
   }, [currentDraft, savedDraftFor]);
 
   const hasAnyDirty = useCallback((): boolean => {
-    const sections: EditablePane[] = ["general", "providers", "sessions", "workbench", "notes", "report", "storage"];
+    const sections: EditablePane[] = ["general", "providers", "sessions", "workbench", "notes", "storage"];
     return sections.some((s) => isDirty(s));
   }, [isDirty]);
 
@@ -240,7 +228,6 @@ export function SettingsPanel({
       : section === "sessions" ? sessionsPatch(settings, draft as SessionsDraft)
       : section === "workbench" ? workbenchPatch(settings, draft as WorkbenchDraft)
       : section === "notes" ? notesPatch(settings, draft as NotesDraft)
-      : section === "report" ? reportPatch(settings, draft as ReportDraft)
       : storagePatch(settings, draft as StorageDraft);
     await save({ ...settings, ...patch }, section);
   }, [settings, currentDraft, save, t]);
@@ -257,7 +244,6 @@ export function SettingsPanel({
     else if (section === "sessions") setSessions(sessionsDraftFromSettings(base));
     else if (section === "workbench") setWorkbench(workbenchDraftFromSettings(base));
     else if (section === "notes") setNotes(notesDraftFromSettings(base));
-    else if (section === "report") setReport(reportDraftFromSettings(base));
     else setStorage(storageDraftFromSettings(base));
     setStatus({ text: "" });
   }, []);
@@ -296,7 +282,7 @@ export function SettingsPanel({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [open, requestClose]);
 
-  if (!host || !open || !settings || !general || !providers || !sessions || !workbench || !notes || !report || !storage) return null;
+  if (!host || !open || !settings || !general || !providers || !sessions || !workbench || !notes || !storage) return null;
   const current = panes.find((item) => item.id === pane) || panes[0];
   const close = requestClose;
   const editable = isEditablePane(pane);
@@ -308,21 +294,6 @@ export function SettingsPanel({
     : pane === "workbench" ? <WorkbenchPane draft={workbench} setDraft={(value) => setWorkbench(value)} t={t} />
     : pane === "im" ? <ImSettingsPane t={t} />
     : pane === "notes" ? <NotesPane draft={notes} setDraft={setNotes} t={t} />
-    : pane === "report" ? (
-      <ReportPane
-        draft={report}
-        setDraft={(value) => setReport(value)}
-        t={t}
-        onOpenScheduleLog={() => {
-          if (isEditablePane(pane) && isDirty(pane)) {
-            setPendingPane("usage" as Pane);
-            return;
-          }
-          setUsageDetailTab("schedule");
-          setPane("usage");
-        }}
-      />
-    )
     : pane === "storage" ? <StoragePane draft={storage} setDraft={(value) => setStorage(value)} t={t} />
     : pane === "mcp" ? <McpPane t={t} />
     : pane === "agentStatus" ? <AgentStatusPane t={t} />

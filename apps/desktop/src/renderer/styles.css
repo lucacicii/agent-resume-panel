@@ -2585,17 +2585,12 @@ main {
   flex-direction: column;
 }
 
-#react-report,
 #react-agent,
 #react-workbench,
 #react-notes,
 #react-im,
 #react-settings {
   display: contents;
-}
-
-#react-report .react-report-panel[hidden] {
-  display: none !important;
 }
 
 #react-notes .react-notes-panel[hidden] {
@@ -2617,14 +2612,6 @@ main {
   overflow: auto;
 }
 
-/* Memory: viewport-locked, no full-page scroll */
-#tab-report.panel.active,
-#react-report .react-report-panel.panel.active {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
 .toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -2638,475 +2625,7 @@ main {
   box-sizing: border-box;
 }
 
-/* Memory calendar toolbar: two groups that wrap cleanly */
-.report-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px 12px;
-  width: 100%;
-  max-width: 100%;
-  min-width: 0;
-  flex: 0 0 auto;
-  margin-bottom: 10px;
-}
-
-.report-layout {
-  display: flex;
-  flex: 1 1 auto;
-  min-height: 0;
-  min-width: 0;
-  border-top: 1px solid var(--border);
-  overflow: hidden;
-  align-items: stretch;
-}
-
-.report-left-col {
-  width: min(340px, 30vw);
-  max-width: 360px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  min-width: 0;
-  border-right: 1px solid var(--border);
-  background: color-mix(in srgb, var(--bg) 96%, var(--panel));
-  overflow: hidden;
-}
-
-.report-cal-pane {
-  --cal-cell-border: var(--border);
-  --cal-mark-daily-fg: #93c5fd;
-  --cal-mark-daily-bg: color-mix(in srgb, #3b82f6 35%, transparent);
-  --cal-mark-stale-fg: #fdba74;
-  --cal-mark-stale-bg: color-mix(in srgb, #f97316 32%, transparent);
-  --cal-mark-stale-border: color-mix(in srgb, #f97316 50%, transparent);
-  --cal-mark-missing-fg: #fbbf24;
-  --cal-mark-missing-bg: color-mix(in srgb, #f59e0b 28%, transparent);
-  --cal-mark-missing-border: color-mix(in srgb, #f59e0b 55%, transparent);
-  --cal-mark-none-fg: var(--muted);
-  --cal-mark-none-bg: color-mix(in srgb, var(--muted) 18%, transparent);
-  --cal-mark-none-border: color-mix(in srgb, var(--muted) 35%, transparent);
-  --cal-week-digest-fg: #c084fc;
-  --cal-week-digest-bg: color-mix(in srgb, #a855f7 12%, var(--bg));
-  --cal-week-digest-border: color-mix(in srgb, #a855f7 50%, var(--border));
-  --cal-week-stale-bg: color-mix(in srgb, #f97316 10%, #a855f7 8%);
-  --cal-week-stale-border: color-mix(in srgb, #f97316 55%, #a855f7 30%);
-  --cal-month-digest-fg: #2dd4bf;
-  --cal-month-digest-border: color-mix(in srgb, #14b8a6 50%, var(--border));
-  --cal-month-stale-bg: color-mix(in srgb, #f97316 10%, var(--bg));
-  --cal-month-stale-border: color-mix(in srgb, #f97316 55%, #14b8a6 30%);
-  --cal-dot-daily: #3b82f6;
-  --cal-dot-stale: #f97316;
-  --cal-dot-missing: #f59e0b;
-  --cal-dot-weekly: #a855f7;
-  --cal-dot-monthly: #14b8a6;
-
-  flex: 0 0 auto;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  padding: 6px;
-  overflow: auto;
-  overscroll-behavior: contain;
-}
-
-.report-session-pane {
-  flex: 1 1 auto;
-  min-height: 0;
-  min-width: 0;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  border-top: 1px solid var(--border);
-  background: color-mix(in srgb, var(--bg) 94%, var(--panel));
-  overflow: hidden;
-}
-
-.report-session-pane.collapsed {
-  flex: 0 0 auto;
-}
-
-.report-session-pane.collapsed .cal-session-list {
-  display: none;
-}
-
-.report-detail-pane {
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  min-width: 0;
-  overflow: auto;
-  background: var(--bg);
-}
-
-.report-detail-head {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
-  font-size: 12px;
-}
-
-.report-detail-head strong {
-  font-size: 12px;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.report-detail-back {
-  flex-shrink: 0;
-  font-size: 11px;
-  padding: 4px 8px;
-}
-
-.report-work-items-panel {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.report-work-item-row,
-.report-unassigned-row {
-  width: 100%;
-}
-
-.report-work-item-row .session-dot {
-  margin-left: auto;
-  flex: 0 0 auto;
-}
-
-.report-work-item-title-text {
-  margin-left: 6px;
-}
-
-.report-work-item-detail {
-  padding: 16px 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.report-work-item-card {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 12px 14px;
-  background: var(--panel);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.report-work-item-card-label {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.report-work-item-heading {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.report-work-item-card-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.report-work-item-title-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.report-work-item-capsule-wrap {
-  position: relative;
-  display: inline-flex;
-}
-
-.report-work-item-capsule {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--bg-hover);
-  color: var(--fg);
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  line-height: 1.2;
-}
-
-.report-work-item-capsule:hover {
-  background: var(--bg-active);
-}
-
-.report-gtd-picker {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  margin-top: 4px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 6px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
-  z-index: 20;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  min-width: 220px;
-}
-
-.report-gtd-picker .wb-gtd-context-tag {
-  width: auto;
-  min-height: 24px;
-  padding: 2px 8px;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--gtd-status-color) 16%, transparent);
-  color: color-mix(in srgb, var(--gtd-status-color) 78%, var(--color-label-primary));
-  font-size: 11px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.report-gtd-picker .wb-gtd-context-tag:hover {
-  background: color-mix(in srgb, var(--gtd-status-color) 25%, transparent);
-}
-
-.report-gtd-picker .wb-gtd-context-tag[aria-checked="true"] {
-  border-color: color-mix(in srgb, var(--gtd-status-color) 72%, var(--color-separator-opaque));
-  font-weight: 600;
-}
-
-.report-work-item-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.report-work-item-projects-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.report-work-item-projects {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.report-project-chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: 4px;
-  background: var(--bg-hover);
-  border: 1px solid var(--border);
-  font-size: 12px;
-  color: var(--fg);
-}
-
-.report-project-chip.is-missing {
-  color: var(--color-warning, #eab308);
-  border-style: dashed;
-  border-color: color-mix(in srgb, var(--color-warning, #eab308) 50%, transparent);
-  background: color-mix(in srgb, var(--color-warning, #eab308) 12%, transparent);
-}
-
-.report-work-item-field {
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.report-work-item-history {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.report-work-item-history-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.report-work-item-history h3 {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--fg);
-}
-
-.report-work-item-history-empty {
-  padding: 24px 16px;
-  text-align: center;
-  border: 1px dashed var(--border);
-  border-radius: 6px;
-}
-
-.report-unassigned-row {
-  margin-top: 4px;
-  border-top: 1px dashed var(--border-subtle, var(--border));
-}
-
-.report-timeline {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.report-timeline-section {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.report-timeline-section + .report-timeline-section {
-  margin-top: 16px;
-}
-
-.report-timeline-pointers {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.report-timeline-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.report-timeline-group-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 4px 2px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--muted-fg);
-  border-bottom: 1px solid var(--border);
-}
-
-.report-timeline-date {
-  font-weight: 600;
-}
-
-.report-timeline-count {
-  font-size: 11px;
-}
-
-.report-timeline-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.report-timeline-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 8px 10px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--panel);
-  font-size: 12px;
-  color: var(--fg);
-  text-align: left;
-  cursor: pointer;
-  width: 100%;
-  box-sizing: border-box;
-  transition: background 0.12s ease, border-color 0.12s ease;
-}
-
-.report-timeline-item:hover {
-  background: var(--hover-bg, rgba(255, 255, 255, 0.04));
-  border-color: var(--border-hover, var(--border));
-}
-
-.report-timeline-item-main {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
-.report-timeline-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: 500;
-}
-
-.report-timeline-item-meta {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  flex-shrink: 0;
-  color: var(--muted-fg);
-}
-
-.report-timeline-more {
-  display: flex;
-  justify-content: center;
-  padding: 10px 0 4px;
-}
-
-.report-timeline-load-earlier {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 6px 16px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--panel);
-  color: var(--fg);
-  font-size: 12px;
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-
-.report-timeline-load-earlier:hover:not(:disabled) {
-  background: var(--hover-bg, var(--panel-hover));
-  border-color: var(--border-hover, var(--border));
-}
-
-.report-timeline-load-earlier:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.report-detail-pane>.detail-progress.gen-progress {
+.gen-progress {
   flex: 0 0 auto;
   margin: 8px 12px 0;
 }
@@ -3390,49 +2909,6 @@ legend {
 }
 
 
-#tab-report .toolbar,
-#react-report .toolbar {
-  overflow: visible;
-}
-
-@media (max-width: 1099px) {
-  .report-left-col {
-    width: min(300px, 32vw);
-    max-width: 320px;
-  }
-}
-
-@media (max-width: 899px) {
-  .report-layout {
-    flex-direction: column;
-    overflow: visible;
-  }
-
-  .report-left-col {
-    width: 100%;
-    max-width: none;
-    border-right: none;
-  }
-
-  .report-cal-pane {
-    max-height: 42vh;
-  }
-
-  .report-session-pane {
-    max-height: 32vh;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .report-detail-pane {
-    min-height: 280px;
-    flex: 1 1 auto;
-  }
-
-  .cal-nav-right {
-    margin-left: 0;
-    width: 100%;
-  }
-}
 
 .cal-main {
   border: 1px solid var(--border);
@@ -3447,19 +2923,9 @@ legend {
   flex-direction: column;
 }
 
-.report-cal-pane .cal-main {
-  padding: 8px;
-}
-
 .cal-main .cal-weekdays,
 .cal-main .cal-grid,
 .cal-main .cal-month-actions,
-
-.report-cal-pane .cal-grid,
-
-.report-cal-pane .cal-weekdays,
-
-
 
 
 .cal-session-panel {
@@ -3659,63 +3125,6 @@ legend {
 
 
 @media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) .report-cal-pane {
-    --cal-cell-border: #c7c7cc;
-    --cal-mark-daily-fg: #1d4ed8;
-    --cal-mark-daily-bg: color-mix(in srgb, #3b82f6 22%, transparent);
-    --cal-mark-stale-fg: #c2410c;
-    --cal-mark-stale-bg: color-mix(in srgb, #f97316 24%, transparent);
-    --cal-mark-stale-border: color-mix(in srgb, #f97316 58%, transparent);
-    --cal-mark-missing-fg: #b45309;
-    --cal-mark-missing-bg: color-mix(in srgb, #f59e0b 22%, transparent);
-    --cal-mark-missing-border: color-mix(in srgb, #f59e0b 62%, transparent);
-    --cal-mark-none-fg: rgba(0, 0, 0, 0.5);
-    --cal-mark-none-bg: color-mix(in srgb, rgba(0, 0, 0, 0.5) 14%, transparent);
-    --cal-mark-none-border: color-mix(in srgb, rgba(0, 0, 0, 0.5) 38%, transparent);
-    --cal-week-digest-fg: #7e22ce;
-    --cal-week-digest-bg: color-mix(in srgb, #a855f7 16%, var(--bg));
-    --cal-week-digest-border: color-mix(in srgb, #a855f7 58%, var(--border));
-    --cal-week-stale-bg: color-mix(in srgb, #f97316 14%, #a855f7 10%);
-    --cal-week-stale-border: color-mix(in srgb, #f97316 62%, #a855f7 34%);
-    --cal-month-digest-fg: #0f766e;
-    --cal-month-digest-border: color-mix(in srgb, #14b8a6 58%, var(--border));
-    --cal-month-stale-bg: color-mix(in srgb, #f97316 14%, var(--bg));
-    --cal-month-stale-border: color-mix(in srgb, #f97316 62%, #14b8a6 34%);
-    --cal-dot-daily: #2563eb;
-    --cal-dot-stale: #ea580c;
-    --cal-dot-missing: #d97706;
-    --cal-dot-weekly: #9333ea;
-    --cal-dot-monthly: #0d9488;
-  }
-}
-
-[data-theme="light"] .report-cal-pane {
-  --cal-cell-border: #c7c7cc;
-  --cal-mark-daily-fg: #1d4ed8;
-  --cal-mark-daily-bg: color-mix(in srgb, #3b82f6 22%, transparent);
-  --cal-mark-stale-fg: #c2410c;
-  --cal-mark-stale-bg: color-mix(in srgb, #f97316 24%, transparent);
-  --cal-mark-stale-border: color-mix(in srgb, #f97316 58%, transparent);
-  --cal-mark-missing-fg: #b45309;
-  --cal-mark-missing-bg: color-mix(in srgb, #f59e0b 22%, transparent);
-  --cal-mark-missing-border: color-mix(in srgb, #f59e0b 62%, transparent);
-  --cal-mark-none-fg: rgba(0, 0, 0, 0.5);
-  --cal-mark-none-bg: color-mix(in srgb, rgba(0, 0, 0, 0.5) 14%, transparent);
-  --cal-mark-none-border: color-mix(in srgb, rgba(0, 0, 0, 0.5) 38%, transparent);
-  --cal-week-digest-fg: #7e22ce;
-  --cal-week-digest-bg: color-mix(in srgb, #a855f7 16%, var(--bg));
-  --cal-week-digest-border: color-mix(in srgb, #a855f7 58%, var(--border));
-  --cal-week-stale-bg: color-mix(in srgb, #f97316 14%, #a855f7 10%);
-  --cal-week-stale-border: color-mix(in srgb, #f97316 62%, #a855f7 34%);
-  --cal-month-digest-fg: #0f766e;
-  --cal-month-digest-border: color-mix(in srgb, #14b8a6 58%, var(--border));
-  --cal-month-stale-bg: color-mix(in srgb, #f97316 14%, var(--bg));
-  --cal-month-stale-border: color-mix(in srgb, #f97316 62%, #14b8a6 34%);
-  --cal-dot-daily: #2563eb;
-  --cal-dot-stale: #ea580c;
-  --cal-dot-missing: #d97706;
-  --cal-dot-weekly: #9333ea;
-  --cal-dot-monthly: #0d9488;
 }
 
 .cal-detail {
@@ -3729,10 +3138,6 @@ legend {
   flex: 0 0 auto;
   max-height: none;
   overflow: visible;
-}
-
-.report-detail-pane .cal-detail .session-preview-head {
-  margin-bottom: 8px;
 }
 
 .cal-detail h3 {
@@ -3810,11 +3215,6 @@ legend {
   margin: 0;
   font-size: 12px;
 }
-
-/* Bottom status rarely used (progress lives in right column) */
-#tab-report>#reportStatus:empty,
-
-#tab-report>#reportStatus:not(:empty),
 
 /* When not in flex sheet layout, keep a sensible cap */
 
@@ -12816,7 +12216,6 @@ html[data-window-mode="standalone-note"] main {
 }
 
 html[data-window-mode="standalone-note"] #react-settings,
-html[data-window-mode="standalone-note"] #react-report,
 html[data-window-mode="standalone-note"] #react-agent,
 html[data-window-mode="standalone-note"] #react-workbench,
 html[data-window-mode="standalone-note"] #react-notes,

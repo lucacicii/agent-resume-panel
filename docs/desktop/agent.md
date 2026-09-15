@@ -27,7 +27,7 @@ The three citation kinds map onto:
 
 | Marker | Source | Where it lives in the app |
 |---|---|---|
-| `[D#]` | Memory digests (daily / weekly / monthly) | [Report / Archive](report.md) timeline and report pointers |
+| `[D#]` | Memory digests (daily / weekly / monthly) | MCP `report_read` / `report_search` (no in-app Archive tab) |
 | `[N#]` | Project notes and work items | [Notes](notes.md) |
 | `[S#]` | Historical agent sessions | [Sessions](sessions.md) and [Workbench](workbench.md) |
 
@@ -61,7 +61,7 @@ Client-side permissions decide whether a write tool is even offered — see [Ext
 
 ### Related
 
-- [External Agent MCP](mcp.md) · [Report / Archive](report.md) · [Sessions](sessions.md) · [Notes](notes.md) · [Settings & data](settings-and-data.md)
+- [External Agent MCP](mcp.md) · [Reports](report.md) · [Sessions](sessions.md) · [Notes](notes.md) · [Settings & data](settings-and-data.md)
 
 ---
 
@@ -86,7 +86,7 @@ Desktop 曾有一个应用内的 **Agent** 页签，用自然语言对本机工�
 
 | 标记 | 来源 | 应用内位置 |
 |---|---|---|
-| `[D#]` | 回顾报告（日 / 周 / 月） | [Report / 归档](report.md) 的时间线与报告指针 |
+| `[D#]` | 回顾报告（日 / 周 / 月） | MCP `report_read` / `report_search`（应用内已无归档页） |
 | `[N#]` | 项目笔记与工作项 | [Notes](notes.md) |
 | `[S#]` | 历史 agent 会话 | [Sessions](sessions.md) 与 [Workbench](workbench.md) |
 
@@ -120,4 +120,4 @@ Desktop 曾有一个应用内的 **Agent** 页签，用自然语言对本机工�
 
 ### 相关文档
 
-- [External Agent MCP](mcp.md) · [Report / 归档](report.md) · [Sessions](sessions.md) · [Notes](notes.md) · [设置与数据](settings-and-data.md)
+- [External Agent MCP](mcp.md) · [Reports](report.md) · [Sessions](sessions.md) · [Notes](notes.md) · [设置与数据](settings-and-data.md)

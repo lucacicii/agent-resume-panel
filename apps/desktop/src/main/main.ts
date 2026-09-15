@@ -9,10 +9,8 @@ import {
   discoverSkills,
   readSkillContent,
   skillToToolDescriptor,
-  clearReportJobsByStatus,
   autoRenameSessionAction,
   suggestSessionRenameAction,
-  backfillReportDigests,
   buildNewSessionCommand,
   buildResumeCommand,
   supportsNewSessionYoloMode,
@@ -20,7 +18,6 @@ import {
   updateNativeSessionCwd,
   effectivePanelHome,
   desktopDbPath,
-  estimateDigestRun,
   expandHome,
   getReportEntryById,
   getSessionById,
@@ -32,14 +29,9 @@ import {
   hideProjectAction,
   listLlmUsageEvents,
   listProjects,
-  listReportEntries,
-  listReportEntriesInRange,
-  listReportEntriesForSessions,
-  listReportLinks,
   listScheduleRuns,
   countSessions,
   querySessionsPage,
-  listSessionsInRange,
   unhideAllSessionsInCatalog,
   unhideSessionInCatalog,
   unhideAllProjectsInCatalog,
@@ -73,25 +65,17 @@ import {
   openProjectInEditor,
   openCommandInSystemTerminal,
   openSessionInSystemTerminal,
-  previewBackfillReportDigests,
   renameSessionAction,
   resolveProjectEditor,
   resolvePanelHome,
   resolvePreviewHomes,
   resolveScratchBaseDir,
-  runDailyDigest,
-  needsDailyDigestRefresh,
-  needsWeeklyDigestRefresh,
-  needsMonthlyDigestRefresh,
   clearSessionGtdStatus,
   clearSessionLastExitWaiting,
   isGtdStatus,
   loadSessionGtdMap,
   recordLastExitWaitingSessions,
-  runMonthlyDigest,
-  runWeeklyDigest,
   saveSettings,
-  searchReportsByEmbedding,
   sessionSyncOptionsFromSettings,
   syncAgentSessions,
   setSessionGtdStatus,
@@ -99,7 +83,6 @@ import {
   summarizeSessionAction,
   type AgentProvider,
   type AgentNoteAuditStatus,
-  type DigestProgressEvent,
   type GtdStatus,
   type NoteRecord,
   type PanelSettings,
@@ -576,7 +559,6 @@ const SETTINGS_PANES = [
   "sessions",
   "workbench",
   "notes",
-  "report",
   "storage",
   "usage",
   "about"
@@ -1829,7 +1811,7 @@ function registerIpc(): void {
         throw error;
       }
       invalidateNotesStore();
-      const schedulerEnabled = await refreshMemorySchedulerFromSettings();
+      await refreshMemorySchedulerFromSettings();
       const saved = await loadSettings();
       browserSettingsCache = saved.desktop?.browser || null;
       try {
@@ -1853,10 +1835,6 @@ function registerIpc(): void {
           error
         });
       }
-      if ((previous.report?.maxDigestLlmCalls ?? 100) !== (saved.report?.maxDigestLlmCalls ?? 100)) {
-        const paths = await loadPanelDbPaths(saved);
-        await clearReportJobsByStatus(paths.desktopDb, "deferred_budget");
-      }
       const bundle = buildI18nBundle(saved);
       const sync = shouldSyncSessionsAfterSettingsSave(previous, saved, options)
         ? await syncAndNotify()
@@ -1877,7 +1855,7 @@ function registerIpc(): void {
         broadcastToRenderers("i18n:localeChanged", bundle);
         void installApplicationMenu();
       }
-      return { file, settings: saved, schedulerEnabled, sync };
+      return { file, settings: saved, sync };
     }
   );
 
@@ -1958,23 +1936,6 @@ function registerIpc(): void {
         throw new Error("Invalid GTD status");
       }
       return { ok: true as const };
-    }
-  );
-
-  ipcMain.handle(
-    "sessions:listInRange",
-    async (
-      _event,
-      args?: { fromMs?: number; toMs?: number; limit?: number }
-    ) => {
-      const paths = await loadPanelDbPaths();
-      const fromMs = Number(args?.fromMs);
-      const toMs = Number(args?.toMs);
-      // NaN is not null — must use isFinite or SQLite gets "updated_at_ms >= NaN"
-      if (!Number.isFinite(fromMs) || !Number.isFinite(toMs)) {
-        return [];
-      }
-      return listSessionsInRange(paths.catalogDb, fromMs, toMs, args?.limit ?? 2000);
     }
   );
 
@@ -2396,29 +2357,6 @@ function registerIpc(): void {
     }
   );
 
-  ipcMain.handle(
-    "report:list",
-    async (
-      _event,
-      opts?: { level?: string; limit?: number; fromMs?: number; toMs?: number }
-    ) => {
-      const paths = await loadPanelDbPaths();
-      const level = opts?.level && opts.level !== "all" ? opts.level : undefined;
-      if (opts?.fromMs != null && opts?.toMs != null) {
-        return listReportEntriesInRange(paths.desktopDb, {
-          level,
-          startMs: opts.fromMs,
-          endMs: opts.toMs,
-          limit: opts?.limit ?? 200
-        });
-      }
-      return listReportEntries(paths.desktopDb, {
-        level,
-        limit: opts?.limit ?? 50
-      });
-    }
-  );
-
   ipcMain.handle("report:getEntry", async (_event, reportId?: string) => {
     const id = typeof reportId === "string" ? reportId.trim() : "";
     if (!id) {
@@ -2432,134 +2370,6 @@ function registerIpc(): void {
       return null;
     }
   });
-
-  ipcMain.handle("report:getLinks", async (_event, reportId?: string) => {
-    const id = typeof reportId === "string" ? reportId.trim() : "";
-    if (!id) {
-      return [];
-    }
-    try {
-      const paths = await loadPanelDbPaths();
-      return await listReportLinks(paths.desktopDb, id);
-    } catch (error) {
-      void recordAppError({ source: "report", message: "report:getLinks failed.", error });
-      return [];
-    }
-  });
-
-  ipcMain.handle(
-    "report:listForSessions",
-    async (_event, sessionKeys?: string[]) => {
-      if (!Array.isArray(sessionKeys) || sessionKeys.length === 0) {
-        return [];
-      }
-      try {
-        const paths = await loadPanelDbPaths();
-        return await listReportEntriesForSessions(paths.desktopDb, sessionKeys);
-      } catch (error) {
-        void recordAppError({
-          source: "report",
-          message: "report:listForSessions failed.",
-          error
-        });
-        return [];
-      }
-    }
-  );
-
-  ipcMain.handle("report:listDaily", async (_event, limit?: number) => {
-    const paths = await loadPanelDbPaths();
-    return listReportEntries(paths.desktopDb, { level: "daily", limit: limit ?? 30 });
-  });
-
-  ipcMain.handle(
-    "report:runDaily",
-    async (
-      event,
-      args?: string | { date?: string; forceResummarize?: boolean; allowOverBudget?: boolean }
-    ) => {
-      const opts =
-        typeof args === "string" || args === undefined
-          ? { date: args }
-          : args || {};
-      const sendProgress = (progress: DigestProgressEvent) => {
-        event.sender.send("report:digestProgress", progress);
-      };
-      return runDailyDigest({
-        date: opts.date,
-        forceResummarize: opts.forceResummarize,
-        allowOverBudget: opts.allowOverBudget === true,
-        trigger: "manual",
-        onProgress: sendProgress,
-        systemLocale: app.getLocale()
-      });
-    }
-  );
-
-  ipcMain.handle("report:previewRun", async (_event, args: unknown) => {
-    if (!args || typeof args !== "object") {
-      throw new Error("Invalid digest preview request.");
-    }
-    const input = args as { level?: unknown; periodKey?: unknown };
-    if (input.level !== "daily" && input.level !== "weekly" && input.level !== "monthly") {
-      throw new Error("Invalid digest level.");
-    }
-    return estimateDigestRun({
-      level: input.level,
-      periodKey: typeof input.periodKey === "string" ? input.periodKey : undefined
-    });
-  });
-
-  ipcMain.handle("report:needsDailyRefresh", async (_event, date?: string) => {
-    return needsDailyDigestRefresh({ date, systemLocale: app.getLocale() });
-  });
-
-  ipcMain.handle("report:needsWeeklyRefresh", async (_event, weekKey?: string) => {
-    return needsWeeklyDigestRefresh({ weekKey, systemLocale: app.getLocale() });
-  });
-
-  ipcMain.handle("report:needsMonthlyRefresh", async (_event, monthKey?: string) => {
-    return needsMonthlyDigestRefresh({ monthKey, systemLocale: app.getLocale() });
-  });
-
-  ipcMain.handle("report:runWeekly", async (event, args?: string | { weekKey?: string; allowOverBudget?: boolean }) => {
-    const opts = typeof args === "string" || args === undefined ? { weekKey: args } : args;
-    const sendProgress = (progress: DigestProgressEvent) => {
-      event.sender.send("report:digestProgress", progress);
-    };
-    return runWeeklyDigest({
-      weekKey: opts.weekKey,
-      allowOverBudget: opts.allowOverBudget === true,
-      trigger: "manual",
-      onProgress: sendProgress,
-      systemLocale: app.getLocale()
-    });
-  });
-
-  ipcMain.handle("report:runMonthly", async (event, args?: string | { monthKey?: string; allowOverBudget?: boolean }) => {
-    const opts = typeof args === "string" || args === undefined ? { monthKey: args } : args;
-    const sendProgress = (progress: DigestProgressEvent) => {
-      event.sender.send("report:digestProgress", progress);
-    };
-    return runMonthlyDigest({
-      monthKey: opts.monthKey,
-      allowOverBudget: opts.allowOverBudget === true,
-      trigger: "manual",
-      onProgress: sendProgress,
-      systemLocale: app.getLocale()
-    });
-  });
-
-  ipcMain.handle(
-    "report:search",
-    async (_event, args: { query: string; level?: string; limit?: number }) => {
-      return searchReportsByEmbedding({
-        query: args.query,
-        level: args.level && args.level !== "all" ? args.level : undefined,
-        limit: args.limit ?? 20
-      });
-    }
-  );
 
   ipcMain.handle("agent:listTools", async (_event, args?: { projectPath?: string }) => {
     const coreTools = [...AGENT_TOOL_CATALOG];
@@ -2641,41 +2451,6 @@ function registerIpc(): void {
   );
   ipcMain.handle("logs:clear", async () => clearAppErrors());
   ipcMain.handle("logs:openDir", async () => openAppErrorLogDir());
-
-  ipcMain.handle(
-    "workflow:previewBackfillDigests",
-    async (
-      _event,
-      args?: { maxDays?: number; skipExisting?: boolean; minSessionsPerDay?: number }
-    ) => {
-      return previewBackfillReportDigests({
-        maxDays: args?.maxDays,
-        skipExisting: args?.skipExisting,
-        minSessionsPerDay: args?.minSessionsPerDay
-      });
-    }
-  );
-
-  ipcMain.handle(
-    "workflow:backfillDigests",
-    async (
-      _event,
-      args?: {
-        maxDays?: number;
-        skipExisting?: boolean;
-        skipEmbedding?: boolean;
-        minSessionsPerDay?: number;
-      }
-    ) => {
-      return backfillReportDigests({
-        maxDays: args?.maxDays,
-        skipExisting: args?.skipExisting,
-        skipEmbedding: args?.skipEmbedding,
-        minSessionsPerDay: args?.minSessionsPerDay,
-        allowOverBudget: true
-      });
-    }
-  );
 
   ipcMain.handle("notes:list", async () => notesList());
   ipcMain.handle("notes:listWorkItems", async () => notesListWorkItems());

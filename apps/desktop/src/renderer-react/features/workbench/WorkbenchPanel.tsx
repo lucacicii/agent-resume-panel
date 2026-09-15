@@ -4105,7 +4105,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       try { await desktopApi().workbenchOpenCodexApp({ provider: session.provider, id: session.id }); }
       catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
     }
-    if (action === "preview") window.dispatchEvent(new CustomEvent("agent-resume:sessions-preview", { detail: session }));
+    if (action === "preview") window.dispatchEvent(new CustomEvent("agent-resume:workbench-open-session", { detail: session }));
     if (action === "autoRename") {
       cancelSessionAutoRename(sessionKey(session));
       await performAutoRenameSession(session.provider, session.id);
@@ -5769,7 +5769,7 @@ export function WorkbenchPanel(): ReactPortal | null {
             const isWaitingOnExit = !isOpen && Boolean(session.lastExitWaiting);
             const tooltipParts = [
               otherMachine ? t("desktop.workbench.otherMachineSessionHint", session.projectPath) : undefined,
-              isWaitingOnExit ? t("desktop.archive.lastExitWaiting") : undefined
+              isWaitingOnExit ? t("desktop.workbench.lastExitWaiting") : undefined
             ].filter(Boolean);
             const sessionTooltip = tooltipParts.length ? tooltipParts.join(" · ") : undefined;
             return <button

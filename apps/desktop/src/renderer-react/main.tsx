@@ -7,7 +7,6 @@ import { Notifications } from "./components/Notifications";
 import { SelectionSendHost } from "./selection/SelectionSendHost";
 import { useI18n } from "./i18n";
 import { SettingsPanel } from "./features/settings/SettingsPanel";
-import { ReportPanel } from "./features/report/ReportPanel";
 import { NotesPanel } from "./features/notes/NotesPanel";
 import { StandaloneNoteWindow } from "./features/notes/StandaloneNoteWindow";
 import { BrowserStandaloneWindow } from "./features/browser/BrowserStandaloneWindow";
@@ -166,7 +165,6 @@ function MainRendererRuntime(): React.JSX.Element {
   return (
     <>
       <AppChrome />
-      <ReportPanel />
       <DiffWorkerPool>
         <WorkbenchPanel />
       </DiffWorkerPool>

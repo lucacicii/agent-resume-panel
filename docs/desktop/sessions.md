@@ -10,11 +10,11 @@ Languages: [English](#english) | [简体中文](#简体中文)
 
 ### What it is
 
-Desktop **Sessions** is a **reference** surface: browse the shared catalog of agent sessions and open a **read-only preview**. Day-to-day resume and multi-tab work belong in [Workbench](workbench.md); calendar-linked session lists also appear inside [Report](report.md).
+Desktop **Sessions** is a **reference** surface: browse the shared catalog of agent sessions and open a **read-only preview**. Day-to-day resume and multi-tab work belong in [Workbench](workbench.md).
 
 ### Main workflows
 
-1. Open **Sessions** from the top toolbar (history / sessions icon).  
+1. Open **Sessions** from the application menu, which focuses [Workbench](workbench.md).  
 2. Browse the list (synced from the same providers as the VS Code extension).  
 3. Open a **read-only preview** of a transcript when available.  
 4. Use sync / refresh when the list is behind CLI activity.  
@@ -30,13 +30,13 @@ Full extension session docs: [Extension Sessions](../panel/sessions.md).
 
 ### Tips
 
-1. Use Sessions to **look up** history without leaving Desktop’s memory/report mindset.  
+1. Use Sessions to **look up** history without leaving Desktop.  
 2. Use Workbench when you need a live terminal.  
 3. Configure agent home paths under **Settings → Sessions** if defaults do not match your machine.
 
 ### Related
 
-- [Workbench](workbench.md) · [Report](report.md) · [Settings & data](settings-and-data.md)
+- [Workbench](workbench.md) · [Reports](report.md) · [Settings & data](settings-and-data.md)
 
 ---
 
@@ -44,11 +44,11 @@ Full extension session docs: [Extension Sessions](../panel/sessions.md).
 
 ### 是什么
 
-Desktop 的 **Sessions** 是 **参考** 视图：浏览共用的 Agent 会话目录，并打开 **只读预览**。日常恢复与多标签工作请用 [Workbench](workbench.md)；与日历关联的会话列表也出现在 [Report](report.md) 中。
+Desktop 的 **Sessions** 是 **参考** 视图：浏览共用的 Agent 会话目录，并打开 **只读预览**。日常恢复与多标签工作请用 [Workbench](workbench.md)。
 
 ### 主要流程
 
-1. 从顶部工具栏打开 **Sessions**（历史 / 会话图标）。  
+1. 从应用菜单打开 **Sessions**，会聚焦到 [Workbench](workbench.md)。  
 2. 浏览列表（与 VS Code 扩展同步同一批 Provider）。  
 3. 在可用时打开对话的 **只读预览**。  
 4. 在 CLI 活动之后用同步 / 刷新更新列表。  
@@ -70,4 +70,4 @@ Desktop 的 **Sessions** 是 **参考** 视图：浏览共用的 Agent 会话目
 
 ### 相关文档
 
-- [Workbench](workbench.md) · [Report](report.md) · [设置与数据](settings-and-data.md)
+- [Workbench](workbench.md) · [Reports](report.md) · [设置与数据](settings-and-data.md)

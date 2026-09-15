@@ -11,7 +11,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSPr
 import type { AgentCitation, AgentToolDescriptor } from "@agent-resume/core";
 import { type AskToolPrefs } from "../../components/ToolSettingsPopover";
 import { Sheet } from "../../components/Sheet";
-import { CitationSheet, extractCitationsFromMessage, isNote, isSession, periodFromCitation } from "./CitationSheet";
+import { CitationSheet, extractCitationsFromMessage, isNote, isSession } from "./CitationSheet";
 import { desktopApi } from "../../bridge";
 import { SelectionActionItems } from "../../selection/SelectionActionItems";
 import {
@@ -1202,29 +1202,14 @@ export function ImPanel({ embedded = false, onCloseRoom }: { embedded?: boolean;
       return;
     }
     if (isSession(citation)) {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
       const session = citation.session;
       if (session?.provider && session.id) {
-        window.dispatchEvent(
-          new CustomEvent("agent-resume:sessions-preview", {
-            detail: {
-              provider: session.provider,
-              id: session.id,
-              title: citation.title || session.id,
-              projectPath: session.projectPath || "",
-              updatedAt: citation.periodStartMs || Date.now()
-            }
-          })
-        );
-      } else {
-        window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
+        window.dispatchEvent(new CustomEvent("agent-resume:workbench-open-session", { detail: session }));
       }
       return;
     }
-    const period = periodFromCitation(citation);
-    if (period) {
-      window.dispatchEvent(new CustomEvent("agent-resume:report-focus", { detail: period }));
-    }
-    window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "report" }));
+    // Digest citations stay in the citation sheet; there is no in-app Archive tab.
   }, []);
 
   const handleResumeCitationSession = useCallback(async (citation: AgentCitation) => {

@@ -19,7 +19,6 @@ Use the **⚙** button in the top bar. Settings panes:
 | **Sessions** | Agent home paths, session list / sync related options |
 | **Workbench** | Default agent, ⌘T behavior, **workspace mentions**, **terminal theme** and related defaults |
 | **IM** | Role templates (agent, prompt, read/write/execute tools) used by IM rooms |
-| **Report** | Digest / memory related preferences |
 | **Data** | Panel home path, open data folder, **backup export / merge import** |
 | **Logs** | Application error / warning log (redacted), clear, reveal in Finder |
 | **Usage** | Local LLM usage summary |
@@ -126,7 +125,6 @@ CLI transcripts remain in native agent homes. Change panel home only if you unde
 | **模型** | OpenAI 兼容 LLM / embeddings 端点与模型 |
 | **Sessions** | 各 Agent 目录、会话列表 / 同步相关 |
 | **Workbench** | 默认 Agent、⌘T 行为、**工作区 Mention**、**终端主题** 与相关默认 |
-| **Report** | 回顾 / Memory 相关偏好 |
 | **数据** | Panel home 路径、打开数据目录、**备份导出 / 合并导入** |
 | **日志** | 应用错误 / 警告日志（脱敏）、清空、在访达中显示 |
 | **用量** | 本机 LLM 用量汇总 |

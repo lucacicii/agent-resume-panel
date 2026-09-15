@@ -19,7 +19,7 @@
 | --- | --- | --- |
 | session synchronization | `packages/core/src/sessionSync.ts`, `packages/core/src/session/` | Shared provider-to-catalog synchronization and reusable session actions. |
 | catalog and transcripts | `packages/core/src/catalog/`, `packages/core/src/transcript/` | Shared schema, queries, native transcript previews, and provider homes. |
-| desktop session flows | `apps/desktop/src/main/main.ts`, `apps/desktop/src/renderer-react/features/report/ReportPanel.tsx` | Sync, list, preview, rename, hide, and resume are IPC-mediated; the Archive tab is the session browser. |
+| desktop session flows | `apps/desktop/src/main/main.ts`, `apps/desktop/src/renderer-react/features/workbench/WorkbenchPanel.tsx` | Sync, list, preview, rename, hide, and resume are IPC-mediated; Workbench is the session browser. |
 
 ## Constraints
 

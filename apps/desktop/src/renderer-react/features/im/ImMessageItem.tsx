@@ -598,8 +598,6 @@ export const ImMessageItem = memo(function ImMessageItem({
                 window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "notes" }));
               } else if (prefix === "S") {
                 window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
-              } else if (prefix === "D") {
-                window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "report" }));
               }
             }}
             onNoteClick={(noteId) => {

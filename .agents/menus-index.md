@@ -3,7 +3,7 @@
 Agent Resume Panel is a local-first session manager shipped as **two independent apps** in one monorepo:
 
 - **VS Code extension** (`apps/extension/`) — sidebar sessions, ACP Chat, extension settings, VSIX release.
-- **Electron desktop** (`apps/desktop/`) — Memory, Ask, Workbench, embedded terminal, DMG release.
+- **Electron desktop** (`apps/desktop/`) — Workbench, Notes, background digests via MCP, embedded terminal, DMG release.
 - **Shared core** (`packages/core/`) — optional domain library; not a user-facing product.
 
 They share `~/.agent-resume-panel` data but have separate code, locales, versions, and UI stacks. See [`.agents/extended/product-independence.md`](extended/product-independence.md).
@@ -18,7 +18,7 @@ Use this index for feature requests without a concrete path or searchable identi
 | ACP chat, agent connection, permissions, ACP files, images, handoff | `.agents/menus/acp-chat.md` | VS Code extension |
 | GTD, status, tasks, todolist, daily/weekly/monthly digest, memory digests, retrieval for external agents, semantic search, usage | `.agents/menus/report-gtd.md` | Core and desktop |
 | notes, Markdown, attachments, note import, note search, index | `.agents/menus/notes.md` | Extension, core, and desktop |
-| desktop app, Archive work items, Workbench, embedded terminal, desktop settings, IM rooms, workspace mentions, arpm | `.agents/menus/desktop.md` | Electron desktop |
+| desktop app, Workbench, embedded terminal, desktop settings, IM rooms, workspace mentions, arpm | `.agents/menus/desktop.md` | Electron desktop |
 | settings, local storage, LLM configuration, embeddings, panel home, catalog database, usage, session sync | `.agents/menus/infrastructure.md` | Shared infrastructure |
 | sidebar, tree views, context menus, commands, package contributions, extension i18n | `.agents/menus/vscode-integration.md` | VS Code extension only |
 | desktop i18n, locale catalog, merge pipeline | `.agents/extended/product-independence.md` § i18n | Desktop only (`desktop.*` keys) |

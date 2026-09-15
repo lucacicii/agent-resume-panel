@@ -14,7 +14,6 @@ function renderChrome(options?: {
     getI18nBundle: async () => ({
       locale: "en",
       messages: {
-        "desktop.tabs.report": "Archive",
         "desktop.tabs.workbench": "Workbench",
         "desktop.tabs.notes": "Notes",
         "desktop.notes.floatingDots": "Floating notes",
@@ -75,16 +74,16 @@ describe("AppChrome", () => {
     const labels = [...document.querySelectorAll(".app-nav-rail .rail-btn")].map((item) =>
       item.getAttribute("aria-label")
     );
-    expect(labels).toEqual(["Archive", "Workbench", "Notes"]);
+    expect(labels).toEqual(["Workbench", "Notes"]);
     const icons = [...document.querySelectorAll(".app-nav-rail .rail-btn [data-theme-icon]")].map((item) =>
       item.getAttribute("data-theme-icon")
     );
-    expect(icons).toEqual(["layout-dashboard", "terminal", "file-text"]);
+    expect(icons).toEqual(["terminal", "file-text"]);
   });
 
   it("requests the primary tab when a rail button is clicked", async () => {
     renderChrome();
-    await screen.findByRole("button", { name: "Archive" });
+    await screen.findByRole("button", { name: "Workbench" });
     const listener = vi.fn();
     window.addEventListener("agent-resume:tab-change", listener);
     fireEvent.click(screen.getByRole("button", { name: "Notes" }));
@@ -92,7 +91,7 @@ describe("AppChrome", () => {
     window.removeEventListener("agent-resume:tab-change", listener);
   });
 
-  it("opens the Archive tab when requested from the native menu", async () => {
+  it("opens the Workbench tab when requested from the native menu", async () => {
     const { getOpenSessionsHandler } = renderChrome();
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "notes" })));
     expect(screen.getByRole("button", { name: "Notes" }).classList.contains("active")).toBe(true);
@@ -100,12 +99,12 @@ describe("AppChrome", () => {
     const handler = getOpenSessionsHandler();
     expect(handler).toBeDefined();
     await act(async () => handler?.());
-    await waitFor(() => expect(screen.getByRole("button", { name: "Archive" }).classList.contains("active")).toBe(true));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Workbench" }).classList.contains("active")).toBe(true));
   });
 
   it("renders one dot per active session and shows a tooltip with the full title on hover", async () => {
     renderChrome();
-    await screen.findByRole("button", { name: "Archive" });
+    await screen.findByRole("button", { name: "Workbench" });
     await act(async () => {
       window.dispatchEvent(new CustomEvent("agent-resume:active-sessions", { detail: [
         { paneKey: "terminal:1", projectPath: "/proj/a", title: "A very long session title here", sessionKey: "cli:s1", status: "open" },
@@ -124,7 +123,7 @@ describe("AppChrome", () => {
 
   it("applies status classes and tooltip suffixes for runtime states", async () => {
     renderChrome();
-    await screen.findByRole("button", { name: "Archive" });
+    await screen.findByRole("button", { name: "Workbench" });
     await act(async () => {
       window.dispatchEvent(new CustomEvent("agent-resume:active-sessions", { detail: [
         {
@@ -161,7 +160,7 @@ describe("AppChrome", () => {
 
   it("renders no dots when no sessions are open", async () => {
     renderChrome();
-    await screen.findByRole("button", { name: "Archive" });
+    await screen.findByRole("button", { name: "Workbench" });
     await act(async () => {
       window.dispatchEvent(new CustomEvent("agent-resume:active-sessions", { detail: [] }));
     });
@@ -170,7 +169,7 @@ describe("AppChrome", () => {
 
   it("requests workbench and focuses the session when a dot is clicked", async () => {
     renderChrome();
-    await screen.findByRole("button", { name: "Archive" });
+    await screen.findByRole("button", { name: "Workbench" });
     const tabReq = vi.fn();
     const focusReq = vi.fn();
     window.addEventListener("agent-resume:tab-request", tabReq);
@@ -195,7 +194,7 @@ describe("AppChrome", () => {
     const { standaloneNoteOpen, pushNoteDots } = renderChrome({
       standaloneNoteList: [{ noteId: "n1", title: "Scratch pad" }]
     });
-    await screen.findByRole("button", { name: "Archive" });
+    await screen.findByRole("button", { name: "Workbench" });
     await waitFor(() => expect(document.querySelectorAll(".rail-note-dot-btn").length).toBe(1));
 
     await act(async () => {
@@ -236,7 +235,7 @@ describe("AppChrome", () => {
 
   it("updates floating note dots when the open-notes list changes", async () => {
     const { pushNoteDots } = renderChrome();
-    await screen.findByRole("button", { name: "Archive" });
+    await screen.findByRole("button", { name: "Workbench" });
     expect(document.querySelectorAll(".rail-note-dot-btn").length).toBe(0);
 
     await act(async () => {
@@ -255,7 +254,7 @@ describe("AppChrome", () => {
       renderChrome({
         standaloneNoteList: [{ noteId: "n1", title: "Scratch pad" }]
       });
-      await screen.findByRole("button", { name: "Archive" });
+      await screen.findByRole("button", { name: "Workbench" });
       await waitFor(() => expect(document.querySelectorAll(".rail-note-dot-btn").length).toBe(1));
 
       const bottom = document.querySelector(".rail-bottom");

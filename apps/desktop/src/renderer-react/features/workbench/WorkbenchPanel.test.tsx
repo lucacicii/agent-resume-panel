@@ -1271,7 +1271,7 @@ describe("WorkbenchPanel", () => {
     document.body.append(host);
     const workbenchNewSession = vi.fn(async () => ({ mode: "external-system", cwd: "/work/app" }));
     const onPreview = vi.fn();
-    window.addEventListener("agent-resume:sessions-preview", onPreview);
+    window.addEventListener("agent-resume:workbench-open-session", onPreview);
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages: {
         "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.close": "Close", "desktop.common.cancel": "Cancel", "desktop.common.confirm": "Confirm", "desktop.common.rename": "Rename", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New Session", "desktop.workbench.newSessionTitle": "New session {0}", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.pinProject": "Pin project", "desktop.workbench.unpinProject": "Unpin project", "desktop.workbench.openInApp": "Open in {0}", "desktop.workbench.mountNote": "Mount note", "desktop.workbench.renameProject": "Rename project", "desktop.workbench.openInChatGpt": "Open in ChatGPT", "desktop.workbench.preview": "Preview", "desktop.workbench.removeFromPanel": "Remove from panel"
@@ -1303,7 +1303,7 @@ describe("WorkbenchPanel", () => {
     await screen.findByRole("menuitem", { name: "Preview" });
     fireEvent.click(screen.getByRole("menuitem", { name: "Preview" }));
     expect(onPreview).toHaveBeenCalledTimes(1);
-    window.removeEventListener("agent-resume:sessions-preview", onPreview);
+    window.removeEventListener("agent-resume:workbench-open-session", onPreview);
   });
 
   it("auto renames a session from its context menu", async () => {
@@ -2611,7 +2611,6 @@ describe("WorkbenchPanel", () => {
     fireEvent.click(document.querySelector<HTMLButtonElement>(".wb-terminal-tab-label")!);
     await waitFor(() => expect(xtermMocks.instances).toHaveLength(3));
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "notes" })));
-    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "report" })));
     expect(terminalDestroy).not.toHaveBeenCalled();
 
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
@@ -9017,7 +9016,7 @@ describe("WorkbenchPanel", () => {
         "desktop.workbench.gtdView": "GTD",
         "desktop.workbench.filterWorkItems": "Filter work items",
         "desktop.workbench.noWorkItems": "No work items yet",
-        "desktop.archive.lastExitWaiting": "This session was waiting on you when the app last closed"
+        "desktop.workbench.lastExitWaiting": "This session was waiting on you when the app last closed"
       } }),
       onLocaleChanged: () => () => undefined,
       onWorkbenchCmdT: () => () => undefined,

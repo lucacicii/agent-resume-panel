@@ -45,15 +45,11 @@ export function startMemoryScheduler(): void {
   });
 }
 
+const DEFAULT_SCHEDULE_HOURS = { dailyHour: 22, weeklyHour: 9, monthlyHour: 9 } as const;
+
 export async function refreshMemorySchedulerFromSettings(): Promise<boolean> {
-  const settings = await loadSettings();
-  const enabled = settings.report?.enabled === true;
-  if (enabled) {
-    startMemoryScheduler();
-  } else {
-    stopMemoryScheduler();
-  }
-  return enabled;
+  startMemoryScheduler();
+  return true;
 }
 
 export type ScheduleLevel = "daily" | "weekly" | "monthly";
@@ -132,16 +128,9 @@ async function tick(): Promise<void> {
   }
 
   const settings = await loadSettings();
-  if (settings.report?.enabled !== true) {
-    return;
-  }
 
   const now = new Date();
-  const due = computeDueScheduleJobs(now, {
-    dailyHour: settings.report?.scheduleDailyHour ?? 22,
-    weeklyHour: settings.report?.scheduleWeeklyHour ?? 9,
-    monthlyHour: settings.report?.scheduleMonthlyHour ?? 9
-  });
+  const due = computeDueScheduleJobs(now, DEFAULT_SCHEDULE_HOURS);
   if (due.length === 0) {
     return;
   }

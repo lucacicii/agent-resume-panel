@@ -27,6 +27,8 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 #### Removed
 
+- **Archive tab**: the in-app Report / Archive surface is gone. Daily / weekly / monthly digests still generate in the background (fixed schedule) and are read through MCP (`memory_retrieve`, `report_search`, `report_read`, `report_list`)
+- **Report settings pane**: schedule hours, LLM budget, enable switch, and historical backfill are gone. The scheduler always uses code defaults; pick a digest model under Settings → Providers
 - **Online LLM status adjudication**: the model call that guessed whether a screen was blocked is gone, along with its settings row and per-pane budget. Authoring rules is an offline job now (`pnpm --filter @agent-resume/desktop run agent-status:mine`)
 - **`terminal:activity` tail streaming** and the renderer-side screen sampling that needed it
 
@@ -634,6 +636,8 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 #### 移除
 
+- **归档页签**: 应用内 Report / 归档界面已移除。日 / 周 / 月回顾仍由后台按固定时刻生成，并通过 MCP 阅读（`memory_retrieve`、`report_search`、`report_read`、`report_list`）
+- **报告设置页**: 调度时刻、LLM 预算、开关与历史回填已移除。调度器始终使用代码默认值；在设置 → 提供商中指定 digest 模型
 - **在线 LLM 状态裁决**: 用于猜测屏幕是否阻塞的模型调用已移除,连同其设置项与每面板调用预算。规则编写现在是离线工作(`pnpm --filter @agent-resume/desktop run agent-status:mine`)
 - **`terminal:activity` 尾部流** 以及依赖它的渲染层屏幕采样
 

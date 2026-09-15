@@ -8,11 +8,10 @@ import { Tooltip } from "./Tooltip";
 import { BellNotificationButton } from "./BellNotificationButton";
 import { SessionDotsCluster } from "./SessionDotsCluster";
 
-type PrimaryTab = "report" | "workbench" | "notes";
+type PrimaryTab = "workbench" | "notes";
 type FloatingNoteDot = { noteId: string; title: string };
 
 const tabs: Array<{ id: PrimaryTab; icon: ThemeIconName; key: string; fallback: string }> = [
-  { id: "report", icon: "layout-dashboard", key: "desktop.tabs.report", fallback: "Report" },
   { id: "workbench", icon: "terminal", key: "desktop.tabs.workbench", fallback: "Workbench" },
   { id: "notes", icon: "file-text", key: "desktop.tabs.notes", fallback: "Notes" }
 ];
@@ -56,9 +55,9 @@ export function AppChrome(): React.JSX.Element {
       setActiveTab(next as PrimaryTab);
       window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: next }));
     };
-    // Native "Sessions" entry: the Archive tab is the session browser now.
+    // Native "Sessions" entry: session browsing lives in Workbench now.
     const stopSessions = typeof window.agentResume.onOpenSessions === "function"
-      ? window.agentResume.onOpenSessions(() => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "report" })))
+      ? window.agentResume.onOpenSessions(() => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })))
       : () => undefined;
     window.addEventListener("agent-resume:tab-change", onTabChange);
     window.addEventListener("agent-resume:tab-request", onTabRequest);

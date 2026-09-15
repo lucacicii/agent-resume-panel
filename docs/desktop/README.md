@@ -2,7 +2,7 @@
 
 Languages: [English](#english) | [简体中文](#简体中文)
 
-macOS-oriented **Session OS + Memory** desktop app: **Workbench** with embedded terminal, work-item **Archive**, **Agent** Q&A over history, plus **Notes** and **GTD** workflows.
+macOS-oriented **Session OS + Memory** desktop app: **Workbench** with embedded terminal, background daily/weekly/monthly digests via MCP, plus **Notes** and **GTD** workflows.
 
 Pairs with the **Agent Resume Panel VS Code extension** — same agent sessions, same `~/.agent-resume-panel` data directory, no duplicate setup.
 
@@ -37,7 +37,7 @@ Requirements: macOS 12+, Apple Silicon or Intel. Version history: [Changelog](..
 
 | Module | What it covers |
 |--------|----------------|
-| [Report](report.md) | Archive tab: work items, sessions, timeline, and daily/weekly/monthly digests |
+| [Report](report.md) | Background daily/weekly/monthly digests; read them through MCP |
 | [Agent memory](agent.md) | MCP `memory_retrieve` over local digests, notes, and sessions (no in-app Agent tab) |
 | [Workbench](workbench.md) | Embedded terminal (themes), ACP visual chat, multi-tab resume, project search, scripts, Git select-commit, explorer |
 | [Workspace mentions](workspace-mentions.md) | Global work/reference packs for New session and the `arpm` CLI |
@@ -52,18 +52,17 @@ Requirements: macOS 12+, Apple Silicon or Intel. Version history: [Changelog](..
 | Entry | Role |
 |-------|------|
 | **Workbench** (default) | Session list + ACP visual chat + embedded or external terminal + IM rooms |
-| **Report** (Archive) | Work items · sessions · timeline · digests |
 | **Notes** | Markdown notes |
-| **Sessions** (toolbar) | Opens the Archive tab |
-| **⚙ Settings** | General, models, sessions, workbench, report, data, MCP, usage, about |
+| **Sessions** (app menu) | Focuses Workbench |
+| **⚙ Settings** | General, models, sessions, workbench, data, MCP, usage, about |
 
 ### VS Code extension vs Desktop
 
 | | **Agent Resume Desktop** | **VS Code extension** |
 |---|---|---|
 | **What it is** | Standalone macOS app — **Session OS + Memory** | Sidebar panel inside VS Code / Cursor / VSCodium |
-| **Best for** | Calendar digests, **Agent** Q&A, embedded **Workbench** | Resume while coding; **ACP Chat**; GTD / Notes in the IDE |
-| **Desktop-only** | Daily / weekly / monthly digests; semantic recall over reports; xterm Workbench + git tools | — |
+| **Best for** | Embedded **Workbench**, scheduled digests, MCP memory retrieval | Resume while coding; **ACP Chat**; GTD / Notes in the IDE |
+| **Desktop-only** | Daily / weekly / monthly digests (background + MCP); xterm Workbench + git tools | — |
 | **Extension-only** | — | ACP Chat; Claude / Codex IDE panel resume; Ghostty targets |
 
 **Shared:** `catalog.db`, GTD tags, Notes, LLM settings (`settings.json`). Desktop extras live under `panelHome/.desktop/`.
@@ -86,7 +85,7 @@ Requirements: macOS 12+, Apple Silicon or Intel. Version history: [Changelog](..
 
 ## 简体中文
 
-macOS 导向的 **Session OS + Memory** 桌面应用：**Workbench** 恢复会话并嵌入终端，**归档** 按工作项组织历史，**Agent** 对历史问答，配合 **Notes** 与 **GTD**。
+macOS 导向的 **Session OS + Memory** 桌面应用：**Workbench** 恢复会话并嵌入终端，日/周/月回顾由后台生成并通过 MCP 读取，配合 **Notes** 与 **GTD**。
 
 与 **Agent Resume Panel VS Code 扩展** 搭配使用 — 同一批 Agent 会话、共用 **`~/.agent-resume-panel`**，无需重复配置。
 
@@ -116,7 +115,7 @@ macOS 导向的 **Session OS + Memory** 桌面应用：**Workbench** 恢复会�
 
 | 模块 | 内容 |
 |------|------|
-| [Report](report.md) | 归档页签：工作项、会话、时间线，以及日/周/月回顾报告 |
+| [Report](report.md) | 后台日/周/月回顾报告；通过 MCP 阅读 |
 | [Agent memory](agent.md) | 通过 MCP `memory_retrieve` 检索本机报告 / 笔记 / 会话（应用内已无 Agent 页签） |
 | [Workbench](workbench.md) | 内嵌终端（配色）、ACP 可视化聊天、多标签恢复、项目搜索、脚本、Git 选择提交、资源管理器 |
 | [工作区 Mention](workspace-mentions.md) | 全局工作/参考目录包，供新建会话和 `arpm` 使用 |
@@ -131,18 +130,17 @@ macOS 导向的 **Session OS + Memory** 桌面应用：**Workbench** 恢复会�
 | 入口 | 作用 |
 |------|------|
 | **Workbench**（默认） | 会话列表 + ACP 可视化聊天 + 嵌入式 / 外部终端 + IM 房间 |
-| **Report**（归档） | 工作项 · 会话 · 时间线 · 回顾报告 |
 | **Notes** | Markdown 笔记 |
-| **Sessions**（工具栏） | 打开归档页签 |
-| **⚙ Settings** | 通用、模型、会话、工作台、Report、数据、MCP、用量、关于 |
+| **Sessions**（应用菜单） | 聚焦工作台 |
+| **⚙ Settings** | 通用、模型、会话、工作台、数据、MCP、用量、关于 |
 
 ### VS Code 扩展 vs Desktop
 
 | | **Agent Resume Desktop** | **VS Code 扩展** |
 |---|---|---|
 | **定位** | 独立 macOS 应用 — **Session OS + Memory** | VS Code / Cursor / VSCodium 侧边栏面板 |
-| **适合场景** | 日历日报、对报告 **Agent** 问答、内嵌 **Workbench** | 写代码时恢复会话；编辑器旁 **ACP Chat**；IDE 内 GTD / 笔记 |
-| **仅 Desktop** | 日 / 周 / 月 Digest；基于报告的语义回忆；xterm Workbench + Git 工具 | — |
+| **适合场景** | 内嵌 **Workbench**、定时 digest、MCP 记忆检索 | 写代码时恢复会话；编辑器旁 **ACP Chat**；IDE 内 GTD / 笔记 |
+| **仅 Desktop** | 日 / 周 / 月 Digest（后台 + MCP）；xterm Workbench + Git 工具 | — |
 | **仅扩展** | — | ACP Chat；Claude / Codex 插件面板恢复；Ghostty |
 
 **共用：** `catalog.db`、GTD、Notes、LLM 设置（`settings.json`）。Desktop 私有数据在 `panelHome/.desktop/`。

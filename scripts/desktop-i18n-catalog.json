@@ -1,17 +1,11 @@
 {
-  "desktop.archive.decision": "Decision: {0}",
-  "desktop.archive.historyEmpty": "This work item has no sessions or reports yet. Open it in Workbench to start a session, or write a next action first.",
-  "desktop.archive.needsMe": "Needs me {0}",
-  "desktop.archive.nextAction": "Next action: {0}",
-  "desktop.archive.noWorkItemSelected": "Select a work item on the left",
-  "desktop.archive.projects": "Projects",
-  "desktop.archive.sessionsAllTime": "All time",
-  "desktop.archive.workItemsCount": "{0} items",
-  "desktop.archive.workItemsEmpty": "No work items yet. Create one in Workbench → Work items.",
-  "desktop.archive.workItemsTitle": "Work items",
-  "desktop.workbench.needsMe": "Needs me {0}",
-  "desktop.workbench.newWorkItem": "New work item",
-  "en": {},
-  "ja": {},
-  "zh-cn": {}
+  "en": {
+    "desktop.workbench.lastExitWaiting": "This session was waiting on you when the app last closed"
+  },
+  "ja": {
+    "desktop.workbench.lastExitWaiting": "前回終了時にこのセッションは入力待ちでした"
+  },
+  "zh-cn": {
+    "desktop.workbench.lastExitWaiting": "上次退出时该会话在等待你的输入"
+  }
 }

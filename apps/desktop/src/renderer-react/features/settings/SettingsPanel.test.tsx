@@ -73,8 +73,6 @@ const messages = {
   "desktop.im.agent.codex": "Codex",
   "desktop.settings.paneNotes": "Notes",
   "desktop.settings.paneNotesDesc": "Notes desc",
-  "desktop.settings.paneReport": "Report",
-  "desktop.settings.paneReportDesc": "Report desc",
   "desktop.settings.paneStorage": "Storage",
   "desktop.settings.paneStorageDesc": "Storage desc",
   "desktop.settings.paneUsage": "Usage",
@@ -172,8 +170,6 @@ const messages = {
   "desktop.settings.testConnectionTesting": "Testing…",
   "desktop.settings.saving": "Saving…",
   "desktop.settings.saved": "Saved {0}",
-  "desktop.settings.schedulerOn": "scheduler on",
-  "desktop.settings.schedulerOff": "scheduler off",
   "desktop.settings.embeddingModelChangeConfirm": "Embedding change confirm",
   "desktop.settings.embeddingModelChangeCancelled": "Cancelled",
   "desktop.settings.newSessionGroup": "New Session",
@@ -301,7 +297,6 @@ function renderWindowSettings(initialPane = "general", overrides?: Record<string
   const saveSettings = vi.fn(async (settings: unknown, options?: { section?: string }) => ({
     file: "/tmp/settings.json",
     settings,
-    schedulerEnabled: false,
     options
   }));
   const providersTestConnection = vi.fn(async (args: { kind: string; provider: unknown; modelId: string }) => ({

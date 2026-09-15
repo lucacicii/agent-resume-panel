@@ -10,8 +10,6 @@ import {
   notesDraftFromSettings,
   notesPatch,
   formatShortcutForDisplay,
-  reportDraftFromSettings,
-  reportPatch,
   sessionsDraftFromSettings,
   sessionsPatch,
   storageDraftFromSettings,
@@ -447,18 +445,7 @@ describe("settings model", () => {
     expect(patch.workbench?.terminalEngine).toBe("ghostty-web");
   });
 
-  it("preserves report invariants and only stores non-default agent homes", () => {
-    const report = reportPatch(settings, { ...reportDraftFromSettings(settings), dailyHour: 30 });
-    expect(report.report?.scheduleDailyHour).toBe(23);
-    expect(report.report?.includeTranscripts).toBe(true);
-    expect(report.report?.maxDigestLlmCalls).toBe(100);
-
-    const preservedLimit = reportPatch(
-      { ...settings, report: { maxDigestLlmCalls: 300 } },
-      reportDraftFromSettings({ ...settings, report: { maxDigestLlmCalls: 300 } })
-    );
-    expect(preservedLimit.report?.maxDigestLlmCalls).toBe(300);
-
+  it("only stores non-default agent homes", () => {
     const storage = storagePatch({ ...settings, agentHomes: { codexHome: "~/old-codex" } }, { ...storageDraftFromSettings(settings), panelHome: "~/panel", codexHome: "~/custom-codex" });
     expect(storage.panelHome).toBe("~/panel");
     expect(storage.agentHomes).toEqual({ codexHome: "~/custom-codex" });

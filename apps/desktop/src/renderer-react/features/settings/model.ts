@@ -289,14 +289,6 @@ export const WORKBENCH_NEW_SESSION_TARGET_OPTIONS: Array<{ value: string; group:
   { value: "acp:prime", group: "acp" }
 ];
 
-export interface ReportDraft {
-  enabled: boolean;
-  maxDigestLlmCalls: number;
-  dailyHour: number;
-  weeklyHour: number;
-  monthlyHour: number;
-}
-
 export interface StorageDraft {
   panelHome: string;
   codexHome: string;
@@ -698,32 +690,6 @@ export function workbenchPatch(settings: PanelSettings, draft: WorkbenchDraft): 
       ...settings.acp,
       autoApprovePermissions: draft.acpAutoApprovePermissions === "allowAll" ? "allowAll" : "ask",
       experimentalGrokVendorUi: draft.acpExperimentalGrokVendorUi === true
-    }
-  };
-}
-
-export function reportDraftFromSettings(settings: PanelSettings): ReportDraft {
-  const report = settings.report;
-  return {
-    enabled: report?.enabled === true,
-    maxDigestLlmCalls: numberInRange(report?.maxDigestLlmCalls, 100, 10, 1000),
-    dailyHour: numberInRange(report?.scheduleDailyHour, 22, 0, 23),
-    weeklyHour: numberInRange(report?.scheduleWeeklyHour, 9, 0, 23),
-    monthlyHour: numberInRange(report?.scheduleMonthlyHour, 9, 0, 23)
-  };
-}
-
-export function reportPatch(settings: PanelSettings, draft: ReportDraft): Partial<PanelSettings> {
-  return {
-    report: {
-      ...settings.report,
-      enabled: draft.enabled,
-      includeTranscripts: true,
-      maxDigestLlmCalls: numberInRange(draft.maxDigestLlmCalls, settings.report?.maxDigestLlmCalls ?? 100, 10, 1000),
-      snippetMaxChars: 2500,
-      scheduleDailyHour: numberInRange(draft.dailyHour, 22, 0, 23),
-      scheduleWeeklyHour: numberInRange(draft.weeklyHour, 9, 0, 23),
-      scheduleMonthlyHour: numberInRange(draft.monthlyHour, 9, 0, 23)
     }
   };
 }
