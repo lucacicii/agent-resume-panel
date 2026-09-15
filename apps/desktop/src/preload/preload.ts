@@ -201,6 +201,7 @@ export interface DesktopApi {
     total: number;
     nextCursor?: { updatedAt: number; provider: string; id: string };
   }>;
+  clearSessionLastExitWaiting(args: { provider: string; id: string }): Promise<{ ok: boolean }>;
   listSessionGtdStatuses(): Promise<Record<string, GtdStatus>>;
   setSessionGtdStatus(args: {
     provider: string;
@@ -1573,6 +1574,7 @@ const api: DesktopApi = {
     return () => ipcRenderer.removeListener("sessions:syncFailed", handler);
   },
   querySessionsPage: (args) => ipcRenderer.invoke("sessions:queryPage", args),
+  clearSessionLastExitWaiting: (args) => ipcRenderer.invoke("sessions:clearLastExitWaiting", args),
   listSessionGtdStatuses: () => ipcRenderer.invoke("gtd:listSessionStatuses"),
   setSessionGtdStatus: (args) => ipcRenderer.invoke("gtd:setSessionStatus", args),
   listSessionsInRange: (args) => ipcRenderer.invoke("sessions:listInRange", args),

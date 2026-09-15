@@ -5779,6 +5779,12 @@ export function WorkbenchPanel(): ReactPortal | null {
             const isSelected = selectedSessionKeys.has(key);
             const otherMachine = isOtherMachineSession(session, selectedProjectMeta?.path || selectedProject);
             const gtdStatus = effectiveGtdStatus(gtdStatuses, session);
+            const isWaitingOnExit = !isOpen && Boolean(session.lastExitWaiting);
+            const tooltipParts = [
+              otherMachine ? t("desktop.workbench.otherMachineSessionHint", session.projectPath) : undefined,
+              isWaitingOnExit ? t("desktop.archive.lastExitWaiting") : undefined
+            ].filter(Boolean);
+            const sessionTooltip = tooltipParts.length ? tooltipParts.join(" · ") : undefined;
             return <button
               type="button"
               draggable={selectedSessionKeys.size <= 1}
@@ -5802,7 +5808,7 @@ export function WorkbenchPanel(): ReactPortal | null {
               onDragEnd={clearWorkbenchDrag}
               onContextMenu={(event) => sessionMenu(event, session)}
               onClick={(event) => handleCatalogSessionClick(event, session)}
-              title={otherMachine ? t("desktop.workbench.otherMachineSessionHint", session.projectPath) : undefined}
+              title={sessionTooltip}
             ><span className="wb-list-item-top"><span className="wb-session-title-wrap">{isOpen ? <span className="wb-session-activity-dot" aria-hidden="true" /> : null}<span className="wb-list-item-title" ref={(el) => syncTruncationTitle(el)}>{session.title || session.id}</span>{session.source === "im" ? <span className="wb-im-session-badge" aria-label={t("desktop.workbench.imSessionBadge")} title={t("desktop.workbench.imSessionBadgeHint")}>{t("desktop.workbench.imSessionBadge")}</span> : null}{otherMachine ? <span className="wb-other-machine-badge" aria-label={t("desktop.workbench.otherMachineBadge")}>{t("desktop.workbench.otherMachineBadge")}</span> : null}</span></span><span className="wb-list-item-preview" ref={(el) => syncTruncationTitle(el)}><span className="wb-list-item-date">{formatDateTime(session.updatedAt)}</span><span className="s-provider-tag" data-provider={session.acpProvider || session.provider}>{session.acpProvider ? `acp/${session.acpProvider}` : session.provider}</span><span className={`wb-gtd-status-badge is-${gtdStatus}`} aria-label={t("desktop.workbench.gtdStatusLabel", t(`desktop.workbench.gtdStatus.${gtdStatus}`))}>{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</span>{" · "}{aliases[session.projectPath] || basename(session.projectPath)}</span></button>;
           }}
         /> : <div className="wb-list"><p className="muted wb-list-empty">{sessionQuery ? t("desktop.workbench.noMatchingSessions") : t("desktop.workbench.noSessionsInProject")}</p></div>}

@@ -83,8 +83,10 @@ import {
   needsWeeklyDigestRefresh,
   needsMonthlyDigestRefresh,
   clearSessionGtdStatus,
+  clearSessionLastExitWaiting,
   isGtdStatus,
   loadSessionGtdMap,
+  recordLastExitWaitingSessions,
   runMonthlyDigest,
   runWeeklyDigest,
   saveSettings,
@@ -92,6 +94,7 @@ import {
   sessionSyncOptionsFromSettings,
   syncAgentSessions,
   setSessionGtdStatus,
+  setSessionLastExitWaiting,
   summarizeSessionAction,
   type AgentProvider,
   type AgentNoteAuditStatus,
@@ -368,6 +371,22 @@ function ensureAgentStatusRuntime(): void {
   });
   bridge.onTransition((transition) => {
     void promoteBlockedTransition(transition);
+    const sessionKey = transition.sessionKey?.trim();
+    if (sessionKey) {
+      const colon = sessionKey.indexOf(":");
+      if (colon > 0 && colon < sessionKey.length - 1) {
+        const provider = sessionKey.slice(0, colon);
+        const id = sessionKey.slice(colon + 1);
+        void loadPanelDbPaths().then((paths) => {
+          if (transition.to === "blocked") {
+            return setSessionLastExitWaiting(paths.catalogDb, provider, id, true);
+          }
+          if (transition.from === "blocked") {
+            return setSessionLastExitWaiting(paths.catalogDb, provider, id, false);
+          }
+        }).catch(() => undefined);
+      }
+    }
   });
   bridge.connect();
 }
@@ -1960,6 +1979,12 @@ function registerIpc(): void {
     return querySessionsPage(paths.catalogDb, request);
   });
 
+  ipcMain.handle("sessions:clearLastExitWaiting", async (_event, args: { provider: string; id: string }) => {
+    const paths = await loadPanelDbPaths();
+    await clearSessionLastExitWaiting(paths.catalogDb, args.provider, args.id);
+    return { ok: true };
+  });
+
   ipcMain.handle("gtd:listSessionStatuses", async () => {
     const paths = await loadPanelDbPaths();
     return loadSessionGtdMap(paths.catalogDb);
@@ -2233,6 +2258,9 @@ function registerIpc(): void {
   safeHandle(
     "workbench:openSession",
     async (_event, args: { provider: AgentProvider; id: string }) => {
+      void loadPanelDbPaths()
+        .then((paths) => clearSessionLastExitWaiting(paths.catalogDb, args.provider, args.id))
+        .catch(() => undefined);
       return resumeCatalogSession(args.provider, args.id);
     }
   );
@@ -3300,6 +3328,14 @@ app.on("before-quit", (event) => {
   // Promote sessions that are waiting on the user into GTD inbox work items, so
   // "the agent needs me" survives the process without caching runtime state.
   if (!allowAppQuit && !awaitingPromotionDone) {
+    const awaitingKeys = workbenchActiveSessions
+      .filter((dot) => dot.status === "awaiting_user" && dot.sessionKey)
+      .map((dot) => dot.sessionKey);
+    if (awaitingKeys.length > 0) {
+      void loadPanelDbPaths()
+        .then((paths) => recordLastExitWaitingSessions(paths.catalogDb, awaitingKeys))
+        .catch(() => undefined);
+    }
     const awaiting = workbenchActiveSessions
       .filter((dot) => dot.status === "awaiting_user" && dot.sessionKey && dot.projectPath)
       .map((dot) => ({ sessionKey: dot.sessionKey, title: dot.title, projectPath: dot.projectPath }));

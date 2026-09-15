@@ -12,7 +12,8 @@ export async function listSessions(dbPath: string, limit?: number): Promise<Agen
     dbPath,
     `SELECT provider, agent_session_id, title, project_path, updated_at_ms, archived,
       message_count, model, branch, source, acp_provider, user_title, hidden, last_synced_at_ms,
-      session_summary, session_summary_language, session_summary_at_ms, project_id, native_project_path
+      session_summary, session_summary_language, session_summary_at_ms, project_id, native_project_path,
+      last_exit_waiting
      FROM sessions
      WHERE hidden = 0
      ORDER BY updated_at_ms DESC${limitClause};`
@@ -62,7 +63,8 @@ export async function listSessionsInRange(
     dbPath,
     `SELECT provider, agent_session_id, title, project_path, updated_at_ms, archived,
       message_count, model, branch, source, acp_provider, user_title, hidden, last_synced_at_ms,
-      session_summary, session_summary_language, session_summary_at_ms, project_id, native_project_path
+      session_summary, session_summary_language, session_summary_at_ms, project_id, native_project_path,
+      last_exit_waiting
      FROM sessions
      WHERE hidden = 0
        AND updated_at_ms >= ${from}
@@ -107,7 +109,8 @@ export async function listSessionsInRangePage(
     dbPath,
     `SELECT provider, agent_session_id, title, project_path, updated_at_ms, archived,
       message_count, model, branch, source, acp_provider, user_title, hidden, last_synced_at_ms,
-      session_summary, session_summary_language, session_summary_at_ms, project_id, native_project_path
+      session_summary, session_summary_language, session_summary_at_ms, project_id, native_project_path,
+      last_exit_waiting
      FROM sessions
      WHERE hidden = 0
        AND updated_at_ms >= ${from}
@@ -258,7 +261,8 @@ export async function querySessionsPage(
   const rows = await runSqliteJson<CatalogSessionRow>(dbPath, `
     SELECT s.provider, s.agent_session_id, s.title, s.project_path, s.updated_at_ms, s.archived,
       s.message_count, s.model, s.branch, s.source, s.acp_provider, s.user_title, s.hidden, s.last_synced_at_ms,
-      s.session_summary, s.session_summary_language, s.session_summary_at_ms, s.project_id, s.native_project_path
+      s.session_summary, s.session_summary_language, s.session_summary_at_ms, s.project_id, s.native_project_path,
+      s.last_exit_waiting
     ${base}
     ORDER BY s.updated_at_ms DESC, s.provider ASC, s.agent_session_id ASC
     LIMIT ${limit};`);

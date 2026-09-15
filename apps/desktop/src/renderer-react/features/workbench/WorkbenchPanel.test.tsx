@@ -9004,4 +9004,73 @@ describe("WorkbenchPanel", () => {
       expect(labels).toEqual(["Awaiting item", "New item", "Old item"]);
     });
   });
+
+  it("shows persistent waiting tooltip for closed sessions and avoids double signal when open", async () => {
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.common.search": "Search", "desktop.common.refresh": "Refresh", "desktop.common.all": "All",
+        "desktop.workbench.allSessions": "All sessions",
+        "desktop.workbench.sidebarView": "Workbench sidebar view",
+        "desktop.workbench.workItemsView": "Work items",
+        "desktop.workbench.resourceView": "Repository",
+        "desktop.workbench.projectsView": "Projects",
+        "desktop.workbench.gtdView": "GTD",
+        "desktop.workbench.filterWorkItems": "Filter work items",
+        "desktop.workbench.noWorkItems": "No work items yet",
+        "desktop.archive.lastExitWaiting": "This session was waiting on you when the app last closed"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listProjects: async () => [{ id: "p1", path: "/work/app", sessionCount: 2, hidden: false }],
+      listSessions: async () => [
+        { provider: "codex", id: "s-waiting", title: "Waiting session", projectPath: "/work/app", updatedAt: 100, lastExitWaiting: true },
+        { provider: "codex", id: "s-normal", title: "Normal session", projectPath: "/work/app", updatedAt: 90 }
+      ],
+      agentStatusGetSnapshot: async () => ({ byPaneId: {}, bySessionKey: {}, seq: 1 }),
+      onAgentStatusChanged: () => () => undefined,
+      workbenchOpenSession: async () => ({
+        cwd: "/work/app",
+        command: "pi",
+        projectPath: "/work/app"
+      }),
+      terminalSpawn: async () => ({ id: 2 }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    localStorage.setItem("workbench-sidebar-view-v2", "resource");
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+
+    // When closed, Waiting session shows lastExitWaiting in tooltip; normal session does not.
+    const waitingTitle = await screen.findByText("Waiting session", { selector: ".wb-list-item-title" });
+    const waitingButton = waitingTitle.closest("button") as HTMLButtonElement;
+    expect(waitingButton.title).toBe("This session was waiting on you when the app last closed");
+
+    const normalTitle = await screen.findByText("Normal session", { selector: ".wb-list-item-title" });
+    const normalButton = normalTitle.closest("button") as HTMLButtonElement;
+    expect(normalButton.title).toBeFalsy();
+
+    // When opened in a live pane, live dot takes over and persistent marker is suppressed (no dual signal).
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-open-session", {
+        detail: { provider: "codex", id: "s-waiting", projectPath: "/work/app" }
+      }));
+    });
+
+    await waitFor(() => {
+      const currentWaitingButton = document.querySelectorAll<HTMLButtonElement>(".wb-list-item")[0];
+      expect(currentWaitingButton.title).not.toContain("This session was waiting on you when the app last closed");
+    });
+  });
 });

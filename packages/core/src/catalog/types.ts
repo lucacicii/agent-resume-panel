@@ -39,6 +39,7 @@ export interface AgentSession {
   sessionSummary?: string;
   /** Catalog session_summary_at_ms when known. */
   sessionSummaryAtMs?: number;
+  lastExitWaiting?: boolean;
 }
 
 export interface CatalogSessionRow {
@@ -61,6 +62,7 @@ export interface CatalogSessionRow {
   session_summary_at_ms?: number | null;
   project_id?: string | null;
   native_project_path?: string | null;
+  last_exit_waiting?: number | null;
 }
 
 export function toAgentSession(row: CatalogSessionRow): AgentSession {
@@ -117,6 +119,9 @@ export function toAgentSession(row: CatalogSessionRow): AgentSession {
   const projectId = row.project_id?.trim();
   if (projectId) {
     session.projectId = projectId;
+  }
+  if (row.last_exit_waiting) {
+    session.lastExitWaiting = true;
   }
 
   return session;
