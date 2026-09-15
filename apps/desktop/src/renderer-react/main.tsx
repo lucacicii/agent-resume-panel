@@ -13,7 +13,6 @@ import { StandaloneNoteWindow } from "./features/notes/StandaloneNoteWindow";
 import { BrowserStandaloneWindow } from "./features/browser/BrowserStandaloneWindow";
 import { WorkbenchPanel } from "./features/workbench/WorkbenchPanel";
 import { DiffWorkerPool } from "./features/workbench/diffWorkerPool";
-import { TodayPanel } from "./features/today/TodayPanel";
 import { settingsChangedToCustomEvents } from "./settingsBroadcast";
 import { updateConfig } from "./components/notificationStore";
 import type { PanelSettings } from "@agent-resume/core";
@@ -167,7 +166,6 @@ function MainRendererRuntime(): React.JSX.Element {
   return (
     <>
       <AppChrome />
-      <TodayPanel />
       <ReportPanel />
       <DiffWorkerPool>
         <WorkbenchPanel />

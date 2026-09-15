@@ -18,7 +18,6 @@ function renderChrome(options?: {
         "desktop.tabs.report": "Archive",
         "desktop.tabs.workbench": "Workbench",
         "desktop.tabs.notes": "Notes",
-        "desktop.tabs.kanban": "Kanban",
         "desktop.tabs.im": "IM",
         "desktop.notes.floatingDots": "Floating notes",
         "desktop.chrome.account": "Account",

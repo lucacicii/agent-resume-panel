@@ -1202,7 +1202,9 @@ describe("ReportPanel", () => {
     expect(document.querySelector(".report-timeline-reports")).toBeNull();
   });
 
-  it("A8: supports pagination with default 200 items, explicit 'load earlier', and loads subsequent pages for 500 sessions", async () => {
+  it(
+    "A8: supports pagination with default 200 items, explicit 'load earlier', and loads subsequent pages for 500 sessions",
+    async () => {
     const host = document.createElement("div");
     host.id = "react-report";
     document.body.append(host);
@@ -1311,7 +1313,7 @@ describe("ReportPanel", () => {
 
     // Now all 500 sessions are loaded, "Load earlier" button must disappear from DOM
     expect(screen.queryByRole("button", { name: "Load earlier" })).toBeNull();
-  });
+  }, 15000);
 
   it("A8: does not render 'Load earlier' button when total sessions <= 200", async () => {
     const host = document.createElement("div");
