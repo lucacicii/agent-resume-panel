@@ -33,6 +33,8 @@ const i18nMessages = {
   "desktop.archive.sessionsAllTime": "All time",
   "desktop.archive.noWorkItemSelected": "Select a work item on the left",
   "desktop.archive.historyEmpty": "No history yet",
+  "desktop.archive.unassignedHint": "Sessions with no linked work item",
+  "desktop.archive.unassignedEmpty": "All sessions are linked to work items.",
   "desktop.archive.nextAction": "Next action: {0}",
   "desktop.archive.decision": "Decision: {0}",
   "desktop.archive.projects": "Projects",
@@ -919,5 +921,169 @@ describe("ReportPanel", () => {
     // Negative assertion: timeline does not exist, and detail is not empty/missing
     expect(document.querySelector(".report-timeline")).toBeNull();
     expect(document.querySelector(".cal-detail-empty")).toBeNull();
+  });
+
+  it("renders unassigned virtual entry in left list, exempt from GTD filter and count (A4, D5)", async () => {
+    const host = document.createElement("div");
+    host.id = "react-report";
+    document.body.append(host);
+
+    const item1: WorkItemRecord = {
+      noteId: "item-1",
+      title: "Real Item",
+      gtdStatus: "inbox",
+      work: { sessions: ["codex:s-1"] }
+    };
+
+    window.agentResume = mockAgentResume({
+      notesListWorkItems: async () => [item1],
+      querySessionsPage: async () => ({ sessions: [], total: 0, hasMore: false })
+    });
+
+    render(
+      <I18nProvider>
+        <ReportPanel />
+      </I18nProvider>
+    );
+
+    await waitFor(() => {
+      expect(document.querySelector(".report-work-item-row")).toBeTruthy();
+    });
+
+    // Work item count shows only 1 item (virtual unassigned row is exempt from count)
+    const countSpan = document.querySelector(".cal-session-head-meta .muted");
+    expect(countSpan?.textContent).toBe("1 items");
+
+    // Virtual entry exists in the left column
+    const unassignedBtn = document.querySelector(".report-unassigned-row");
+    expect(unassignedBtn).toBeTruthy();
+    expect(unassignedBtn?.textContent).toContain("No work item");
+
+    // Filter by "done" GTD status
+    const statusSelect = screen.getByLabelText("Session filter") as HTMLSelectElement;
+    fireEvent.change(statusSelect, { target: { value: "done" } });
+
+    // Real work item is filtered out
+    expect(document.querySelector(".report-work-item-row")).toBeNull();
+    // But virtual unassigned row is exempt from GTD filtering and remains visible!
+    expect(document.querySelector(".report-unassigned-row")).toBeTruthy();
+  });
+
+  it("loads and displays unassigned sessions via querySessionsPage with unassignedOnly when virtual entry is clicked (A4)", async () => {
+    const host = document.createElement("div");
+    host.id = "react-report";
+    document.body.append(host);
+
+    const unassignedSession: AgentSession = {
+      provider: "codex",
+      id: "unassigned-1",
+      title: "Orphan Session",
+      projectPath: "/work/project-orphan",
+      updatedAt: 1718000000000
+    };
+
+    const querySessionsMock = vi.fn(async (req?: any) => {
+      if (req?.unassignedOnly) {
+        return { sessions: [unassignedSession], total: 1, hasMore: false };
+      }
+      return { sessions: [], total: 0, hasMore: false };
+    });
+
+    window.agentResume = mockAgentResume({
+      notesListWorkItems: async () => [],
+      querySessionsPage: querySessionsMock
+    });
+
+    render(
+      <I18nProvider>
+        <ReportPanel />
+      </I18nProvider>
+    );
+
+    await waitFor(() => {
+      expect(document.querySelector(".report-unassigned-row")).toBeTruthy();
+    });
+
+    // Click virtual unassigned entry
+    const unassignedBtn = document.querySelector(".report-unassigned-row")!;
+    fireEvent.click(unassignedBtn);
+
+    await waitFor(() => {
+      expect(querySessionsMock).toHaveBeenCalledWith(
+        expect.objectContaining({ unassignedOnly: true })
+      );
+    });
+
+    // Unassigned session is rendered in both middle list and detail timeline
+    await waitFor(() => {
+      expect(screen.getAllByText("Orphan Session").length).toBeGreaterThanOrEqual(2);
+      expect(document.querySelector(".report-work-item-heading")?.textContent).toContain("No work item");
+    });
+  });
+
+  it("retains whole-catalog search grouping both linked work items and unassigned sessions (A4)", async () => {
+    const host = document.createElement("div");
+    host.id = "react-report";
+    document.body.append(host);
+
+    const linkedSession: AgentSession = {
+      provider: "codex",
+      id: "s-linked",
+      title: "Linked Session",
+      projectPath: "/work/project-a",
+      updatedAt: 1718000000000
+    };
+    const orphanSession: AgentSession = {
+      provider: "claude",
+      id: "s-orphan",
+      title: "Orphan Session In Search",
+      projectPath: "/work/project-b",
+      updatedAt: 1718000000000
+    };
+
+    window.agentResume = mockAgentResume({
+      notesListWorkItems: async () => [
+        {
+          noteId: "item-linked",
+          title: "Feature X",
+          work: { sessions: ["codex:s-linked"] }
+        }
+      ],
+      notesListWorkItemSessionLinks: async () => [
+        {
+          noteId: "item-linked",
+          title: "Feature X",
+          provider: "codex",
+          sessionId: "s-linked"
+        }
+      ],
+      querySessionsPage: async (req?: any) => {
+        if (req?.search) {
+          return { sessions: [linkedSession, orphanSession], total: 2, hasMore: false };
+        }
+        return { sessions: [], total: 0, hasMore: false };
+      }
+    });
+
+    render(
+      <I18nProvider>
+        <ReportPanel />
+      </I18nProvider>
+    );
+
+    await waitFor(() => {
+      expect(document.querySelector(".report-work-item-row")).toBeTruthy();
+    });
+
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search sessions" }), { target: { value: "search" } });
+
+    // Verify search groups: one for "Feature X" and one for "No work item"
+    await waitFor(() => {
+      expect(screen.getByText("Linked Session")).toBeTruthy();
+      expect(screen.getByText("Orphan Session In Search")).toBeTruthy();
+      const groupLabels = [...document.querySelectorAll(".cal-session-group-label")].map((el) => el.textContent);
+      expect(groupLabels).toContain("Feature X");
+      expect(groupLabels).toContain("No work item");
+    });
   });
 });

@@ -188,6 +188,8 @@
   "desktop.archive.search": "Search sessions",
   "desktop.archive.searchPlaceholder": "Search all sessions…",
   "desktop.archive.sessionsAllTime": "All time",
+  "desktop.archive.unassignedEmpty": "All sessions are linked to work items.",
+  "desktop.archive.unassignedHint": "Sessions with no linked work item",
   "desktop.archive.workItemsCount": "{0} items",
   "desktop.archive.workItemsEmpty": "No work items yet. Create one in Workbench → Work items.",
   "desktop.archive.workItemsTitle": "Work items",

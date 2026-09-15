@@ -188,6 +188,8 @@
   "desktop.archive.search": "Search sessions",
   "desktop.archive.searchPlaceholder": "Search all sessions…",
   "desktop.archive.sessionsAllTime": "すべての期間",
+  "desktop.archive.unassignedEmpty": "すべてのセッションがワークアイテムに関連付けられています。",
+  "desktop.archive.unassignedHint": "ワークアイテムに関連付けられていないセッション",
   "desktop.archive.workItemsCount": "{0} 件",
   "desktop.archive.workItemsEmpty": "ワークアイテムはまだありません。ワークベンチ →「ワークアイテム」で新規作成してください。",
   "desktop.archive.workItemsTitle": "ワークアイテム",

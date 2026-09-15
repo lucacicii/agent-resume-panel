@@ -1284,6 +1284,13 @@ html[data-window-mode="main"] #react-settings:not(:empty) {
 .wb-gtd-status-badge.is-done,
 .wb-gtd-status-dot.is-done,
 .wb-gtd-context-tag.is-done { --gtd-status-color: var(--color-success); }
+.wb-gtd-status-badge.is-unassigned,
+.wb-gtd-status-dot.is-unassigned,
+.wb-gtd-context-tag.is-unassigned {
+  --gtd-status-color: var(--muted-fg, #94a3b8);
+  border: 1px dashed var(--muted-fg, #94a3b8);
+  background: transparent;
+}
 
 .session-row .s-title {
   font-weight: 600;
@@ -3014,7 +3021,8 @@ main {
   overflow: hidden;
 }
 
-.report-work-item-row {
+.report-work-item-row,
+.report-unassigned-row {
   width: 100%;
 }
 
@@ -3205,6 +3213,11 @@ main {
   text-align: center;
   border: 1px dashed var(--border);
   border-radius: 6px;
+}
+
+.report-unassigned-row {
+  margin-top: 4px;
+  border-top: 1px dashed var(--border-subtle, var(--border));
 }
 
 .report-timeline {
