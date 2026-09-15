@@ -1,9 +1,11 @@
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactPortal } from "react";
 import type { AgentSession, DigestProgressEvent, GtdStatus, ReportEntry, ReportLinkRow, WorkItemRecord, WorkItemSessionLink } from "@agent-resume/core";
+import { ThemeIcon } from "../../components/ThemeIcon";
 import { sessionDotStatusClass } from "../../components/SessionDotsCluster";
 import type { ActiveSessionDot } from "../workbench/activeSessionDots";
 import { rank, rollupDot } from "../workbench/sessionStatus/workItemRollup";
+import type { WorkbenchSidebarWorkItem } from "../workbench/layout/WorkbenchSidebar";
 import { desktopApi } from "../../bridge";
 import { notifyDesktop } from "../../components/Notifications";
 import { renderMarkdown as markdown } from "../../components/Markdown";
@@ -155,47 +157,183 @@ function onDigestRefClick(event: React.MouseEvent<HTMLDivElement>, entry: Report
   }));
 }
 
+const GTD_ALL_STATUSES = ["inbox", "next", "waiting", "someday", "reference", "done"] as const satisfies readonly GtdStatus[];
+
 function WorkItemDetail({
   item,
   sessions,
+  knownProjects = [],
   locale,
-  t
+  t,
+  onStatusChange
 }: {
   item: WorkItemRecord;
   sessions: AgentSession[];
+  knownProjects?: Array<{ projectId: string; portableKey: string; localPath: string | null; pathMissing: boolean }>;
   locale: string;
   t: Translate;
+  onStatusChange?: (newStatus: GtdStatus) => void;
 }) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const capsuleRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (capsuleRef.current && !capsuleRef.current.contains(e.target as Node)) {
+        setPickerOpen(false);
+      }
+    };
+    window.addEventListener("mousedown", handleClickOutside);
+    return () => window.removeEventListener("mousedown", handleClickOutside);
+  }, [pickerOpen]);
+
+  const handleSelectStatus = async (newStatus: GtdStatus) => {
+    setPickerOpen(false);
+    try {
+      await desktopApi().notesSetGtdStatus({ noteId: item.noteId, status: newStatus });
+      onStatusChange?.(newStatus);
+      window.dispatchEvent(new Event("agent-resume:notes-mutated"));
+    } catch (error) {
+      console.error("Failed to update GTD status:", error);
+    }
+  };
+
+  const handleOpenNote = () => {
+    window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "notes" }));
+    window.dispatchEvent(new CustomEvent("agent-resume:open-note", { detail: item.noteId }));
+  };
+
+  const handleOpenImRoom = async () => {
+    try {
+      const api = desktopApi();
+      if (typeof api.imCreateWorkItemRoom !== "function") return;
+      const room = await api.imCreateWorkItemRoom({ noteId: item.noteId });
+      if (!room) return;
+      const payload: WorkbenchSidebarWorkItem = {
+        noteId: item.noteId,
+        title: item.title || item.noteId,
+        status: (item.gtdStatus as GtdStatus) ?? "inbox",
+        next: item.work?.next ?? (item.work as any)?.nextAction,
+        decision: item.work?.decision,
+        sessions: item.work?.sessions ?? [],
+        projects: item.work?.projects,
+        primaryProject: item.work?.primaryProject,
+        updatedAtMs: item.updatedAtMs
+      };
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-work-item", { detail: payload }));
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-open-room", { detail: { projectId: room.project.projectId } }));
+    } catch (error) {
+      console.error("Failed to open IM room:", error);
+    }
+  };
+
   const projectList = item.work?.projects?.length
     ? item.work.projects
     : item.work?.primaryProject
       ? [item.work.primaryProject]
       : [];
 
+  const nextText = item.work?.next ?? (item.work as any)?.nextAction;
+
   return (
     <div className="report-work-item-detail">
       <div className="report-work-item-card">
         <div className="report-work-item-card-label">{t("desktop.archive.workItemsTitle")}</div>
-        <h2 className="report-work-item-heading">
-          <span className={`wb-gtd-status-dot is-${item.gtdStatus ?? "inbox"}`} aria-hidden="true" />
-          <span>{item.title || item.noteId}</span>
-        </h2>
-        {item.work?.nextAction ? (
+        <div className="report-work-item-card-header">
+          <div className="report-work-item-title-row">
+            <h2 className="report-work-item-heading">
+              <span>{item.title || item.noteId}</span>
+            </h2>
+            <div className="report-work-item-capsule-wrap" ref={capsuleRef}>
+              <button
+                type="button"
+                className={`report-work-item-capsule is-${item.gtdStatus ?? "inbox"}`}
+                onClick={() => setPickerOpen((prev) => !prev)}
+                aria-expanded={pickerOpen}
+                aria-label={t("desktop.workbench.setGtdStatus")}
+              >
+                <span className={`wb-gtd-status-dot is-${item.gtdStatus ?? "inbox"}`} aria-hidden="true" />
+                <span>{t(`desktop.workbench.gtdStatus.${item.gtdStatus ?? "inbox"}`)}</span>
+                <ThemeIcon name="chevron-down" size={12} aria-hidden="true" />
+              </button>
+              {pickerOpen && (
+                <div className="report-gtd-picker" role="menu" aria-label={t("desktop.workbench.setGtdStatus")}>
+                  {GTD_ALL_STATUSES.map((status) => (
+                    <button
+                      key={status}
+                      type="button"
+                      role="menuitemradio"
+                      className={`wb-gtd-context-tag is-${status}`}
+                      aria-checked={(item.gtdStatus ?? "inbox") === status}
+                      onClick={() => void handleSelectStatus(status)}
+                    >
+                      {t(`desktop.workbench.gtdStatus.${status}`)}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="report-work-item-actions">
+            <button
+              type="button"
+              className="tool-btn report-work-item-btn-note"
+              title={t("desktop.workbench.workItemOpenNote")}
+              aria-label={t("desktop.workbench.workItemOpenNote")}
+              onClick={handleOpenNote}
+            >
+              <ThemeIcon name="file-text" size={14} aria-hidden="true" />
+              <span>{t("desktop.workbench.workItemOpenNote")}</span>
+            </button>
+            <button
+              type="button"
+              className="tool-btn report-work-item-btn-im"
+              title={t("desktop.kanban.openRoom")}
+              aria-label={t("desktop.kanban.openRoom")}
+              onClick={() => void handleOpenImRoom()}
+            >
+              <ThemeIcon name="message-square" size={14} aria-hidden="true" />
+              <span>{t("desktop.kanban.openRoom")}</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="report-work-item-field report-work-item-projects-row">
+          <span className="field-label">{t("desktop.archive.projects")}: </span>
+          <div className="report-work-item-projects">
+            {projectList.length === 0 ? (
+              <span className="report-project-chip is-missing">
+                {t("desktop.workbench.workItemNoProject")}
+              </span>
+            ) : (
+              projectList.map((p) => {
+                const baseName = p.split(/[\\/]/).filter(Boolean).at(-1) || p;
+                const matched = knownProjects.find((kp) => kp.localPath === p || kp.portableKey === p);
+                const isMissing = Boolean(matched?.pathMissing);
+                return (
+                  <span
+                    key={p}
+                    className={`report-project-chip${isMissing ? " is-missing" : ""}`}
+                    title={isMissing ? t("desktop.workbench.pathMissingHint") : p}
+                  >
+                    {baseName}
+                  </span>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        {nextText ? (
           <div className="report-work-item-field">
-            <span className="field-label">{t("desktop.archive.nextAction", item.work.nextAction)}</span>
+            <span className="field-label">{t("desktop.archive.nextAction", nextText)}</span>
           </div>
         ) : null}
         {item.work?.decision ? (
           <div className="report-work-item-field">
             <span className="field-label">{t("desktop.archive.decision", item.work.decision)}</span>
-          </div>
-        ) : null}
-        {projectList.length > 0 ? (
-          <div className="report-work-item-field">
-            <span className="field-label">{t("desktop.archive.projects")}: </span>
-            <span className="field-value">
-              {projectList.map((p) => p.split(/[\\/]/).filter(Boolean).at(-1) || p).join(" · ")}
-            </span>
           </div>
         ) : null}
       </div>
@@ -265,6 +403,7 @@ export function ReportPanel(): ReactPortal | null {
   const [dots, setDots] = useState<ActiveSessionDot[]>([]);
 
   // Preview & focused report state
+  const [knownProjects, setKnownProjects] = useState<Array<{ projectId: string; portableKey: string; localPath: string | null; pathMissing: boolean }>>([]);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [previewAssist, setPreviewAssist] = useState<"summary" | "rename" | null>(null);
   const [focusedReport, setFocusedReport] = useState<ReportEntry | null>(null);
@@ -297,6 +436,15 @@ export function ReportPanel(): ReactPortal | null {
     };
     window.addEventListener("agent-resume:active-sessions", onActiveSessions);
     return () => window.removeEventListener("agent-resume:active-sessions", onActiveSessions);
+  }, []);
+
+  useEffect(() => {
+    const api = desktopApi();
+    if (typeof api.listProjects === "function") {
+      void api.listProjects({ includeHidden: true }).then((list) => {
+        if (Array.isArray(list)) setKnownProjects(list);
+      }).catch(() => undefined);
+    }
   }, []);
 
   const dotByKey = useMemo(() => {
@@ -731,6 +879,10 @@ export function ReportPanel(): ReactPortal | null {
     </div>
   ) : null;
 
+  const onWorkItemStatusChange = useCallback((noteId: string, newStatus: GtdStatus) => {
+    setWorkItems((prev) => prev.map((wi) => (wi.noteId === noteId ? { ...wi, gtdStatus: newStatus } : wi)));
+  }, []);
+
   const detail = preview ? (
     <SessionDetail
       preview={preview}
@@ -758,8 +910,10 @@ export function ReportPanel(): ReactPortal | null {
     <WorkItemDetail
       item={selectedWorkItem}
       sessions={workItemSessions}
+      knownProjects={knownProjects}
       locale={locale}
       t={t}
+      onStatusChange={(newStatus) => onWorkItemStatusChange(selectedWorkItem.noteId, newStatus)}
     />
   ) : (
     <div className="cal-detail-empty">

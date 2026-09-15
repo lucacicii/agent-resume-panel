@@ -42,6 +42,7 @@ const i18nMessages = {
   "desktop.archive.lastExitWaiting": "This session was waiting on you when the app last closed",
   "desktop.notes.projectLabel": "Project",
   "desktop.workbench.sessionFilter": "Session filter",
+  "desktop.workbench.setGtdStatus": "Set GTD status",
   "desktop.workbench.gtdStatus.inbox": "Inbox",
   "desktop.workbench.gtdStatus.next": "Next",
   "desktop.workbench.gtdStatus.waiting": "Waiting",
@@ -88,13 +89,20 @@ const i18nMessages = {
   "desktop.sessions.autoRename": "Auto rename",
   "desktop.sessions.renaming": "Renaming…",
   "desktop.sessions.renamed": "Renamed to {0}",
-  "desktop.sessions.noMessages": "No messages"
+  "desktop.sessions.noMessages": "No messages",
+  "desktop.workbench.workItemOpenNote": "Open note",
+  "desktop.kanban.openRoom": "Discussion room",
+  "desktop.workbench.workItemNoProject": "No project yet",
+  "desktop.workbench.pathMissingHint": "Local folder not found on this machine"
 };
 
 function mockAgentResume(overrides: Partial<typeof window.agentResume> = {}): typeof window.agentResume {
   return {
     getI18nBundle: async () => ({ locale: "en", messages: i18nMessages }),
     onLocaleChanged: () => () => undefined,
+    listProjects: async () => [],
+    notesSetGtdStatus: async ({ noteId, status }: { noteId: string; status: any }) => ({ noteId, gtdStatus: status } as any),
+    imCreateWorkItemRoom: async ({ noteId }: { noteId: string }) => ({ project: { projectId: `room-${noteId}` } } as any),
     notesListWorkItems: async () => [defaultWorkItem],
     notesListWorkItemSessionLinks: async () => [{
       noteId: defaultWorkItem.noteId,
@@ -550,5 +558,187 @@ describe("ReportPanel", () => {
     expect(rows[0].textContent).toContain("Item A Waiting");
     expect(rows[1].textContent).toContain("Item B Recent Idle");
     expect(rows[2].textContent).toContain("Item C Older Idle");
+  });
+
+  it("renders work item summary header with title, GTD capsule, project chips, next action, decision (A5)", async () => {
+    const host = document.createElement("div");
+    host.id = "react-report";
+    document.body.append(host);
+
+    const detailedItem: WorkItemRecord = {
+      noteId: "wi-detail",
+      title: "Refactor Architecture",
+      gtdStatus: "next",
+      updatedAtMs: now.getTime(),
+      work: {
+        sessions: [],
+        projects: ["/repos/app", "/repos/missing-pkg"],
+        primaryProject: "/repos/app",
+        next: "Extract pure domain functions",
+        decision: "Proceed with B4 batch"
+      }
+    };
+
+    window.agentResume = mockAgentResume({
+      notesListWorkItems: async () => [detailedItem],
+      listProjects: async () => [
+        { projectId: "p-app", portableKey: "/repos/app", localPath: "/repos/app", pathMissing: false } as any,
+        { projectId: "p-missing", portableKey: "/repos/missing-pkg", localPath: "/repos/missing-pkg", pathMissing: true } as any
+      ]
+    });
+
+    render(<I18nProvider><ReportPanel /></I18nProvider>);
+    await screen.findAllByText("Work items");
+
+    const card = document.querySelector(".report-work-item-card");
+    expect(card).toBeTruthy();
+    expect(card!.querySelector(".report-work-item-heading")?.textContent).toBe("Refactor Architecture");
+    expect(card!.querySelector(".report-work-item-capsule")?.textContent).toContain("Next");
+    expect(card!.textContent).toContain("Next action: Extract pure domain functions");
+    expect(card!.textContent).toContain("Decision: Proceed with B4 batch");
+
+    const appChip = card!.querySelector(".report-project-chip:not(.is-missing)");
+    expect(appChip?.textContent).toBe("app");
+
+    const missingChip = card!.querySelector(".report-project-chip.is-missing");
+    expect(missingChip?.textContent).toBe("missing-pkg");
+    expect(missingChip?.getAttribute("title")).toBe("Local folder not found on this machine");
+
+    expect(screen.getByRole("button", { name: "Open note" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Discussion room" })).toBeTruthy();
+  });
+
+  it("allows switching GTD status through six-state capsule menu and persists via notesSetGtdStatus (A5)", async () => {
+    const host = document.createElement("div");
+    host.id = "react-report";
+    document.body.append(host);
+
+    const item: WorkItemRecord = {
+      noteId: "wi-capsule",
+      title: "Capsule Test Item",
+      gtdStatus: "inbox",
+      updatedAtMs: now.getTime(),
+      work: { sessions: [] }
+    };
+
+    let currentStatus: GtdStatus = "inbox";
+    const notesSetGtdStatus = vi.fn(async ({ noteId, status }: { noteId: string; status: any }) => {
+      currentStatus = status;
+      return {
+        noteId,
+        gtdStatus: status
+      } as any;
+    });
+
+    window.agentResume = mockAgentResume({
+      notesListWorkItems: async () => [{ ...item, gtdStatus: currentStatus }],
+      notesSetGtdStatus
+    });
+
+    render(<I18nProvider><ReportPanel /></I18nProvider>);
+    await screen.findAllByText("Work items");
+
+    // Click the capsule to open the picker
+    const capsuleBtn = screen.getByRole("button", { name: "Set GTD status" });
+    expect(capsuleBtn.textContent).toContain("Inbox");
+    fireEvent.click(capsuleBtn);
+
+    // The picker should show all 6 states
+    const statusOptions = screen.getAllByRole("menuitemradio");
+    expect(statusOptions).toHaveLength(6);
+    expect(statusOptions.map((opt) => opt.textContent)).toEqual(["Inbox", "Next", "Waiting", "Someday", "Reference", "Done"]);
+
+    // Click "Waiting"
+    fireEvent.click(statusOptions[2]);
+
+    await waitFor(() => {
+      expect(notesSetGtdStatus).toHaveBeenCalledWith({ noteId: "wi-capsule", status: "waiting" });
+    });
+
+    // Capsule button now reflects updated status
+    await waitFor(() => {
+      const updatedBtn = screen.getByRole("button", { name: "Set GTD status" });
+      expect(updatedBtn.textContent).toContain("Waiting");
+    });
+  });
+
+  it("handles open note and IM entry events from summary header (A5, D4)", async () => {
+    const host = document.createElement("div");
+    host.id = "react-report";
+    document.body.append(host);
+
+    const item: WorkItemRecord = {
+      noteId: "wi-nav",
+      title: "Nav Test Item",
+      gtdStatus: "next",
+      updatedAtMs: now.getTime(),
+      work: {
+        sessions: ["codex:s-1"],
+        projects: ["/repos/app"],
+        primaryProject: "/repos/app",
+        next: "Next step"
+      }
+    };
+
+    const imCreateWorkItemRoom = vi.fn(async ({ noteId }: { noteId: string }) => ({
+      project: { projectId: `room-${noteId}` }
+    } as any));
+
+    window.agentResume = mockAgentResume({
+      notesListWorkItems: async () => [item],
+      imCreateWorkItemRoom
+    });
+
+    const eventsDispatched: Array<{ type: string; detail: any }> = [];
+    const recordEvent = (e: Event) => {
+      eventsDispatched.push({ type: e.type, detail: (e as CustomEvent).detail });
+    };
+
+    window.addEventListener("agent-resume:tab-request", recordEvent);
+    window.addEventListener("agent-resume:open-note", recordEvent);
+    window.addEventListener("agent-resume:workbench-work-item", recordEvent);
+    window.addEventListener("agent-resume:workbench-open-room", recordEvent);
+
+    try {
+      render(<I18nProvider><ReportPanel /></I18nProvider>);
+      await screen.findAllByText("Work items");
+
+      // 1. Open note
+      const openNoteBtn = screen.getByRole("button", { name: "Open note" });
+      fireEvent.click(openNoteBtn);
+
+      expect(eventsDispatched).toContainEqual({ type: "agent-resume:tab-request", detail: "notes" });
+      expect(eventsDispatched).toContainEqual({ type: "agent-resume:open-note", detail: "wi-nav" });
+
+      eventsDispatched.length = 0;
+
+      // 2. IM room
+      const openImBtn = screen.getByRole("button", { name: "Discussion room" });
+      fireEvent.click(openImBtn);
+
+      await waitFor(() => {
+        expect(imCreateWorkItemRoom).toHaveBeenCalledWith({ noteId: "wi-nav" });
+      });
+
+      expect(eventsDispatched).toContainEqual({
+        type: "agent-resume:workbench-work-item",
+        detail: expect.objectContaining({
+          noteId: "wi-nav",
+          title: "Nav Test Item",
+          status: "next",
+          next: "Next step",
+          sessions: ["codex:s-1"],
+          projects: ["/repos/app"],
+          primaryProject: "/repos/app"
+        })
+      });
+      expect(eventsDispatched).toContainEqual({ type: "agent-resume:tab-request", detail: "workbench" });
+      expect(eventsDispatched).toContainEqual({ type: "agent-resume:workbench-open-room", detail: { projectId: "room-wi-nav" } });
+    } finally {
+      window.removeEventListener("agent-resume:tab-request", recordEvent);
+      window.removeEventListener("agent-resume:open-note", recordEvent);
+      window.removeEventListener("agent-resume:workbench-work-item", recordEvent);
+      window.removeEventListener("agent-resume:workbench-open-room", recordEvent);
+    }
   });
 });
