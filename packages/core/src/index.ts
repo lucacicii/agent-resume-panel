@@ -580,6 +580,7 @@ export {
   listWorkItemSessionDetails,
   listWorkItemSessionLinks,
   listWorkItemSessionProjects,
+  findWorkItemNoteIdForSession,
   upsertNoteRecord,
   deleteNoteRecord,
   deleteNotesByRelPaths,
@@ -749,7 +750,13 @@ export type {
   ArpGitCommitMessageConfig,
   CommitMessageSettingsSource
 } from "./arp";
-export { buildResumeCommand, buildNewSessionCommand, supportsNewSessionYoloMode } from "./terminal/commands";
+export {
+  buildResumeCommand,
+  buildNewSessionCommand,
+  sessionContextFlags,
+  supportsNewSessionYoloMode,
+  supportsSessionContext
+} from "./terminal/commands";
 export type { NewSessionExecutionMode } from "./terminal/commands";
 export {
   openProjectInEditor,

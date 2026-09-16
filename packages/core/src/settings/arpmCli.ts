@@ -1,21 +1,32 @@
 import { spawn } from "node:child_process";
-import { loadSettings } from "./store";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import { loadSettings, effectivePanelHome } from "./store";
 import {
   buildMentionPrompt,
   normalizeWorkbenchComposerMentions,
   resolveMention
 } from "./mentions";
 import type { WorkbenchComposerMention } from "./types";
-import { buildNewSessionCommand, type NewSessionExecutionMode } from "../terminal/commands";
+import {
+  buildNewSessionCommand,
+  supportsSessionContext,
+  type NewSessionExecutionMode
+} from "../terminal/commands";
+import { desktopDataDir } from "../panelHome";
 import type { AgentProvider } from "../catalog/types";
 
 const USAGE = `Usage:
   arpm list
   arpm prompt <id>
   arpm go <id> [--print-cwd] [--launch] [--provider <cli-provider>] [--yolo]
+  arpm run [--provider <cli-provider>] [--note <work-item-id>] [--yolo]
 
 Workspace packs live in ~/.agent-resume-panel/settings.desktop.json
-under workbench.composerMentions.`;
+under workbench.composerMentions.
+
+"arpm run" starts an agent in the current directory. With --note it also hands
+the work item's context (address table, background knowledge) to the session.`;
 
 function mentionList(mentions: WorkbenchComposerMention[]): string {
   if (!mentions.length) return "No workspace mentions configured.";
@@ -96,6 +107,82 @@ function parseGoFlags(args: string[]): {
   return { id, printCwd, launch, provider, yolo };
 }
 
+function parseRunFlags(args: string[]): {
+  provider?: AgentProvider;
+  noteId?: string;
+  yolo: boolean;
+} {
+  let provider: AgentProvider | undefined;
+  let noteId: string | undefined;
+  let yolo = false;
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === "--yolo") {
+      yolo = true;
+      continue;
+    }
+    if (arg === "--provider" || arg === "--note") {
+      const next = args[i + 1]?.trim();
+      if (!next) throw new Error(`\`${arg}\` requires a value.`);
+      if (arg === "--provider") {
+        if (!CLI_PROVIDERS.has(next)) {
+          throw new Error("`--provider` requires a CLI agent (codex, claude, grok, agy, opencode, pi, prime, cursor).");
+        }
+        provider = next as AgentProvider;
+      } else {
+        noteId = next;
+      }
+      i += 1;
+      continue;
+    }
+    throw new Error(`Unknown option: ${arg}`);
+  }
+  return { provider, noteId, yolo };
+}
+
+/** The context block a work item hands to its sessions. */
+export function workItemContextPath(panelHome: string, noteId: string): string {
+  return path.join(desktopDataDir(panelHome), "workspaces", noteId, "AGENTS.md");
+}
+
+/**
+ * What `arpm run` executes. The session keeps the current directory — the panel
+ * opens the terminal in the work item's repository or in its neutral workspace —
+ * and the work item's context arrives through the agent's own
+ * append-system-prompt channel either way.
+ */
+export async function planArpmRun(input: {
+  args: string[];
+  cwd: string;
+  panelHome: string;
+  settings: Awaited<ReturnType<typeof loadSettings>>;
+}): Promise<{ command: string; warning?: string }> {
+  const flags = parseRunFlags(input.args);
+  const configured = String(input.settings.workbench?.defaultNewSessionProvider || "").trim();
+  const provider = flags.provider ?? ((configured || "codex") as AgentProvider);
+  if (!CLI_PROVIDERS.has(provider)) {
+    throw new Error(`\`${provider}\` is not a CLI agent. Pass --provider <cli-provider>.`);
+  }
+
+  let contextFile: string | undefined;
+  let warning: string | undefined;
+  if (flags.noteId) {
+    contextFile = workItemContextPath(input.panelHome, flags.noteId);
+    if (!(await fs.stat(contextFile).then(() => true).catch(() => false))) {
+      throw new Error(
+        `No agent context for work item ${flags.noteId} yet. Start a session for it from Agent Resume first.`
+      );
+    }
+    if (!supportsSessionContext(provider)) {
+      warning = `${provider} has no session instruction flag; the work item context is not injected.`;
+      contextFile = undefined;
+    }
+  }
+
+  const mode: NewSessionExecutionMode = flags.yolo ? "yolo" : "standard";
+  return { command: buildNewSessionCommand(provider, input.cwd, mode, contextFile), warning };
+}
+
 function spawnDetached(command: string, cwd: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, {
@@ -148,6 +235,18 @@ export async function runArpmCli(argv: string[]): Promise<number> {
         return 0;
       }
       console.log(`cd ${shellSingleQuote(mention.cwd)}`);
+      return 0;
+    }
+    if (command === "run") {
+      const settings = await loadSettings(process.env.AGENT_RESUME_PANEL_HOME || undefined);
+      const plan = await planArpmRun({
+        args: rest,
+        cwd: process.cwd(),
+        panelHome: effectivePanelHome(settings, process.env.AGENT_RESUME_PANEL_HOME || undefined),
+        settings
+      });
+      if (plan.warning) console.error(plan.warning);
+      await spawnDetached(plan.command, process.cwd());
       return 0;
     }
     throw new Error(USAGE);

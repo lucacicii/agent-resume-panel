@@ -54,10 +54,11 @@ export async function openCommandInSystemTerminal(
 export async function openSessionInSystemTerminal(
   session: AgentSession,
   settings: SystemTerminalSettings = {},
-  clipboard?: { writeText: (text: string) => Promise<void> }
+  clipboard?: { writeText: (text: string) => Promise<void> },
+  contextFile?: string
 ): Promise<{ copied?: boolean; message?: string }> {
   const cwd = expandHome(session.projectPath);
-  const resumeCommand = buildResumeCommand(session);
+  const resumeCommand = buildResumeCommand(session, contextFile);
   const result = await openCommandInSystemTerminal(
     cwd,
     resumeCommand,

@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { DEFAULT_SETTINGS, saveSettings } from "../dist/index.js";
-import { runArpmCli } from "../dist/settings/arpmCli.js";
+import { planArpmRun, runArpmCli } from "../dist/settings/arpmCli.js";
 
 async function withPanelHome(run) {
   const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-arpm-"));
@@ -78,3 +78,82 @@ test("arpm list / prompt / go print the configured workspace pack", async () => 
     assert.match(missing.stderr, /Unknown mention/);
   });
 });
+
+test("planArpmRun plans commands with optional work-item context injection", async () => {
+  await withPanelHome(async (panelHome) => {
+    const settings = structuredClone(DEFAULT_SETTINGS);
+
+    // Standard run with default provider (codex).
+    const standard = await planArpmRun({
+      args: [],
+      cwd: "/repo/my-app",
+      panelHome,
+      settings
+    });
+    assert.equal(standard.command, "codex --cd '/repo/my-app'");
+    assert.equal(standard.warning, undefined);
+
+    // Explicit provider (claude).
+    const claudeRun = await planArpmRun({
+      args: ["--provider", "claude"],
+      cwd: "/repo/my-app",
+      panelHome,
+      settings
+    });
+    assert.equal(claudeRun.command, "claude");
+
+    // Missing work-item context file fails fast.
+    await assert.rejects(
+      () =>
+        planArpmRun({
+          args: ["--note", "wi-missing"],
+          cwd: "/repo/my-app",
+          panelHome,
+          settings
+        }),
+      /No agent context for work item wi-missing yet/
+    );
+
+    // Seed workspace context file.
+    const wsDir = path.join(panelHome, ".desktop", "workspaces", "wi-1");
+    await fs.mkdir(wsDir, { recursive: true });
+    const agentsFile = path.join(wsDir, "AGENTS.md");
+    await fs.writeFile(agentsFile, "# Work item context", "utf8");
+
+    // Claude with work-item context file injected.
+    const claudeWithNote = await planArpmRun({
+      args: ["--provider", "claude", "--note", "wi-1"],
+      cwd: "/repo/my-app",
+      panelHome,
+      settings
+    });
+    assert.equal(
+      claudeWithNote.command,
+      `claude --append-system-prompt "$(cat '${agentsFile}')"`
+    );
+    assert.equal(claudeWithNote.warning, undefined);
+
+    // Codex with work-item context file injected.
+    const codexWithNote = await planArpmRun({
+      args: ["--provider", "codex", "--note", "wi-1"],
+      cwd: "/repo/my-app",
+      panelHome,
+      settings
+    });
+    assert.equal(
+      codexWithNote.command,
+      `codex --cd '/repo/my-app' -c "developer_instructions=$(cat '${agentsFile}')"`
+    );
+
+    // Unsupported provider (agy) warns and drops the context flag.
+    const agyWithNote = await planArpmRun({
+      args: ["--provider", "agy", "--note", "wi-1"],
+      cwd: "/repo/my-app",
+      panelHome,
+      settings
+    });
+    assert.equal(agyWithNote.command, "agy");
+    assert.match(agyWithNote.warning || "", /agy has no session instruction flag/);
+  });
+});
+

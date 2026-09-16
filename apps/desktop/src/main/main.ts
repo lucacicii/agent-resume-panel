@@ -184,6 +184,8 @@ import {
   notesListWorkItems,
   notesOpenWorkItemWorkspace,
   notesWorkItemWorkspace,
+  notesWorkItemNoteIdForSession,
+  notesWorkItemSessionContext,
   notesListChildCounts,
   notesListLinkedChildIds,
   notesListLinks,
@@ -1142,6 +1144,44 @@ async function syncAndNotify(): Promise<AgentSessionSyncResult> {
   return result;
 }
 
+/**
+ * A work item's context block for a session that keeps `cwd` as its working
+ * directory. Best-effort: a missing block must never block the session.
+ */
+async function workItemContextFile(
+  noteId: string | undefined,
+  cwd: string
+): Promise<string | undefined> {
+  const id = noteId?.trim();
+  if (!id || !cwd.trim()) return undefined;
+  try {
+    const { file } = await notesWorkItemSessionContext({ noteId: id, cwd });
+    return file;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The context block a resumed session carries: a session linked to a work item
+ * is told which work item it serves, so single-repository sessions are not the
+ * odd one out. Best-effort.
+ */
+async function workItemContextFileForSession(session: {
+  provider: string;
+  id: string;
+}, cwd: string): Promise<string | undefined> {
+  try {
+    const noteId = await notesWorkItemNoteIdForSession({
+      provider: session.provider,
+      sessionId: session.id
+    });
+    return await workItemContextFile(noteId, cwd);
+  } catch {
+    return undefined;
+  }
+}
+
 async function resumeCatalogSession(
   provider: AgentProvider,
   id: string
@@ -1215,7 +1255,8 @@ async function resumeCatalogSession(
     return { mode, external: true, command: "", cwd, session };
   }
 
-  const command = buildResumeCommand(session);
+  const contextFile = await workItemContextFileForSession(session, cwd);
+  const command = buildResumeCommand(session, contextFile);
 
   if (mode === "external-system") {
     await openSessionInSystemTerminal(
@@ -1223,7 +1264,8 @@ async function resumeCatalogSession(
       systemTerminalSettings(settings),
       {
         writeText: (text) => Promise.resolve(clipboard.writeText(text))
-      }
+      },
+      contextFile
     );
     return { mode, external: true, command, cwd, session };
   }
@@ -2210,6 +2252,7 @@ function registerIpc(): void {
         executionMode: "standard" | "note-yolo";
         useSystemTerminalOnly?: boolean;
         noteId?: string;
+        workItemNoteId?: string;
         initialPrompt?: string;
       }
     ) => {
@@ -2229,7 +2272,12 @@ function registerIpc(): void {
 
       const yoloSupported = requestedYolo && supportsNewSessionYoloMode(args.provider);
       const executionMode: NewSessionExecutionMode = yoloSupported ? "yolo" : "standard";
-      const command = buildNewSessionCommand(args.provider, cwd, executionMode);
+      const command = buildNewSessionCommand(
+        args.provider,
+        cwd,
+        executionMode,
+        await workItemContextFile(args.workItemNoteId, cwd)
+      );
       const unsupportedYolo = requestedYolo && !yoloSupported;
       const warning = unsupportedYolo
         ? `YOLO mode is not supported for provider: ${args.provider}. Starting in standard mode.`

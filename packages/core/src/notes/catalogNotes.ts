@@ -287,6 +287,22 @@ export async function listWorkItemSessionDetails(
   }));
 }
 
+/** The work item a session belongs to, when it is linked to one. */
+export async function findWorkItemNoteIdForSession(
+  dbPath: string,
+  provider: string,
+  sessionId: string
+): Promise<string | undefined> {
+  const rows = await runSqliteJson<{ work_item_note_id: string }>(
+    dbPath,
+    `SELECT work_item_note_id FROM work_item_sessions
+     WHERE provider = '${escapeSqlLiteral(provider)}'
+       AND agent_session_id = '${escapeSqlLiteral(sessionId)}'
+     LIMIT 1;`
+  );
+  return rows[0]?.work_item_note_id?.trim() || undefined;
+}
+
 export async function listWorkItemSessionLinks(dbPath: string): Promise<WorkItemSessionLink[]> {
   const rows = await runSqliteJson<{ note_id: string; title: string | null; provider: string; agent_session_id: string }>(
     dbPath,

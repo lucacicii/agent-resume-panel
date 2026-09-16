@@ -24,6 +24,7 @@ import {
   listWorkItemSessionLinks,
   listWorkItemSessionProjects,
   listWorkItems,
+  findWorkItemNoteIdForSession,
   setCatalogMeta,
   upsertNoteRecord,
   type NoteRecord,
@@ -225,6 +226,11 @@ export class NotesStore {
   /** Indexed work-item ↔ session links (session → work item reverse lookup). */
   async listWorkItemSessionLinks(): Promise<WorkItemSessionLink[]> {
     return listWorkItemSessionLinks(this.dbPath);
+  }
+
+  /** The work item a session belongs to, when it is linked to one. */
+  async findWorkItemNoteIdForSession(provider: string, sessionId: string): Promise<string | undefined> {
+    return findWorkItemNoteIdForSession(this.dbPath, provider, sessionId);
   }
 
   /** `note_id` → project paths derived from the work item's linked sessions. */

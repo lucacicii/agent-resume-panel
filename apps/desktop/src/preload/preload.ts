@@ -331,6 +331,7 @@ export interface DesktopApi {
     executionMode: "standard" | "note-yolo";
     useSystemTerminalOnly?: boolean;
     noteId?: string;
+    workItemNoteId?: string;
     initialPrompt?: string;
   }): Promise<{
     mode: string;

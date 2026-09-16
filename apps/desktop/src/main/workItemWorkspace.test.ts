@@ -8,6 +8,7 @@ import {
   isPanelInternalPath,
   mergeWorkItemProjects,
   renderAddressTable,
+  sessionContextFile,
   workItemKnowledgeText,
   workItemWorkspaceDir,
   type WorkItemAddress
@@ -189,5 +190,14 @@ describe("workItemWorkspace", () => {
       declared: [path.join(panelHome, "app")],
       sessionProjects: [workspace, path.join(panelHome, "app"), path.join(panelHome, "api")]
     })).toEqual([path.join(panelHome, "app"), path.join(panelHome, "api")]);
+  });
+
+  it("identifies when a session needs an extra context file injected", () => {
+    const ws = "/Users/lucas/.agent-resume-panel/.desktop/workspaces/wi-1";
+    // Running in the workspace: agent already has AGENTS.md in cwd.
+    expect(sessionContextFile(ws, ws)).toBeUndefined();
+    expect(sessionContextFile(ws, `${ws}/`)).toBeUndefined();
+    // Running in a repository: inject the workspace's AGENTS.md.
+    expect(sessionContextFile(ws, "/work/app")).toBe(path.join(ws, "AGENTS.md"));
   });
 });

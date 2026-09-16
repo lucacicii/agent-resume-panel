@@ -2700,7 +2700,8 @@ export function WorkbenchPanel(): ReactPortal | null {
         const result = await desktopApi().workbenchNewSession({
           cwd,
           provider: target.provider as AgentProvider,
-          executionMode: "standard"
+          executionMode: "standard",
+          ...(workItemScopeRef.current?.noteId ? { workItemNoteId: workItemScopeRef.current.noteId } : {})
         });
         if (result.unsupportedYolo || result.warning) {
           notifyDesktop({

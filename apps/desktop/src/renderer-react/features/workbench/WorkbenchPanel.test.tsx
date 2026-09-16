@@ -1093,7 +1093,12 @@ describe("WorkbenchPanel", () => {
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
     await activateWorkItemDirectory("/work/app");
     fireEvent.click(await waitFor(() => document.querySelector(".wb-pane-tab-group-label") as HTMLButtonElement));
-    await waitFor(() => expect(workbenchNewSession).toHaveBeenCalledWith({ cwd: "/work/app", provider: "codex", executionMode: "standard" }));
+    await waitFor(() => expect(workbenchNewSession).toHaveBeenCalledWith({
+      cwd: "/work/app",
+      provider: "codex",
+      executionMode: "standard",
+      workItemNoteId: "wi-test"
+    }));
 
     fireEvent.contextMenu(screen.getByRole("button", { name: /Fix renderer/ }));
     await screen.findByRole("menuitem", { name: "Preview" });
@@ -3540,7 +3545,12 @@ describe("WorkbenchPanel", () => {
     const menu = await screen.findByRole("menu", { name: "Default agent" });
     expect(newSessionButton.getAttribute("aria-expanded")).toBe("true");
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Claude" }));
-    await waitFor(() => expect(workbenchNewSession).toHaveBeenCalledWith({ cwd: "/work/app", provider: "claude", executionMode: "standard" }));
+    await waitFor(() => expect(workbenchNewSession).toHaveBeenCalledWith({
+      cwd: "/work/app",
+      provider: "claude",
+      executionMode: "standard",
+      workItemNoteId: "wi-test"
+    }));
     expect(screen.queryByRole("menu", { name: "Default agent" })).toBeNull();
 
     fireEvent.click(newSessionButton);
@@ -3602,7 +3612,12 @@ describe("WorkbenchPanel", () => {
     fireEvent.click(within(menu).getByRole("menuitem", { name: "anfeng" }));
     await waitFor(() => expect(within(menu).getByRole("menuitem", { name: "anfeng" }).getAttribute("aria-pressed")).toBe("true"));
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Claude" }));
-    await waitFor(() => expect(workbenchNewSession).toHaveBeenCalledWith({ cwd: "/work/c", provider: "claude", executionMode: "standard" }));
+    await waitFor(() => expect(workbenchNewSession).toHaveBeenCalledWith({
+      cwd: "/work/c",
+      provider: "claude",
+      executionMode: "standard",
+      workItemNoteId: "wi-test"
+    }));
   });
 
   it("launches immediately when a workspace mention is chosen with a default agent", async () => {
@@ -3648,7 +3663,12 @@ describe("WorkbenchPanel", () => {
     const menu = await screen.findByRole("menu", { name: "Default agent" });
     fireEvent.mouseDown(within(menu).getByRole("menuitem", { name: "anfeng" }));
     fireEvent.click(within(menu).getByRole("menuitem", { name: "anfeng" }));
-    await waitFor(() => expect(workbenchNewSession).toHaveBeenCalledWith({ cwd: "/work/c", provider: "codex", executionMode: "standard" }));
+    await waitFor(() => expect(workbenchNewSession).toHaveBeenCalledWith({
+      cwd: "/work/c",
+      provider: "codex",
+      executionMode: "standard",
+      workItemNoteId: "wi-test"
+    }));
   });
 
   it("does not leave loading visible for external-system new sessions", async () => {
@@ -7874,7 +7894,8 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(workbenchNewSession).toHaveBeenCalledWith({
       cwd: "/work/app",
       provider: "pi",
-      executionMode: "standard"
+      executionMode: "standard",
+      workItemNoteId: "wi-test"
     }));
     await waitFor(() => expect(document.querySelectorAll('[data-pane-group="session"] .wb-terminal-tab')).toHaveLength(1));
     const paneKey = setWorkbenchActiveSessions.mock.calls.at(-1)?.[0]?.[0]?.paneKey as string;
@@ -8195,6 +8216,66 @@ describe("WorkbenchPanel", () => {
       noteId: "wi-multi",
       sessionKey: "chat:acp-1",
       projectPath: WORKSPACE_CWD
+    }));
+  });
+
+  it("passes workItemNoteId to workbenchNewSession when launching a CLI session inside a work item", async () => {
+    const workbenchNewSession = vi.fn(async () => ({ mode: "external-system", cwd: "/work/app" }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.common.search": "Search", "desktop.common.refresh": "Refresh", "desktop.common.all": "All",
+        "desktop.workbench.allSessions": "All sessions",
+        "desktop.workbench.sidebarView": "Workbench sidebar view",
+        "desktop.workbench.workItemsView": "Work items",
+        "desktop.workbench.resourceView": "Repository",
+        "desktop.workbench.projectsView": "Projects",
+        "desktop.workbench.gtdView": "GTD",
+        "desktop.workbench.filterWorkItems": "Filter work items",
+        "desktop.workbench.workItemView": "Work item",
+        "desktop.workbench.workItemNext": "Next:",
+        "desktop.workbench.workItemSessions": "{0} sessions",
+        "desktop.workbench.sessionTarget": "New sessions start in: {0}",
+        "desktop.workbench.sharedWorkspace": "shared workspace",
+        "desktop.workbench.newSession": "New session"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionTarget: "cli:codex" } }),
+      listSessions: async () => [],
+      notesListWorkItems: async () => [
+        { noteId: "wi-single", title: "Single", gtdStatus: "next", work: { sessions: [], projects: ["/work/app"], primaryProject: "/work/app" } }
+      ],
+      workbenchNewSession,
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+
+    // Single repository → CLI session stays in /work/app but passes workItemNoteId.
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-work-item", { detail: {
+        noteId: "wi-single", title: "Single", status: "next", sessions: [], projects: ["/work/app"], primaryProject: "/work/app"
+      } }));
+    });
+    await waitFor(() => expect(document.querySelector(".wb-work-item-target")?.textContent).toBe("New sessions start in: app"));
+
+    fireEvent.click(screen.getByRole("button", { name: /New session/i }));
+    await waitFor(() => expect(workbenchNewSession).toHaveBeenCalledWith({
+      cwd: "/work/app",
+      provider: "codex",
+      executionMode: "standard",
+      workItemNoteId: "wi-single"
     }));
   });
 

@@ -27,6 +27,7 @@ import {
   ensureWorkItemWorkspace,
   isPanelInternalPath,
   mergeWorkItemProjects,
+  sessionContextFile,
   workItemKnowledgeText,
   workItemWorkspaceDir,
   type WorkItemAddress
@@ -142,6 +143,28 @@ export async function notesEnsureWorkItemWorkspace(noteId: string): Promise<{ di
     knowledge: workItemKnowledgeText(doc.body)
   });
   return { dir };
+}
+
+/**
+ * The work item's context block for a session that runs in `cwd`: the block is
+ * refreshed on demand, and returned only when the session runs outside the
+ * workspace (there the agents read the file from their working directory).
+ */
+export async function notesWorkItemSessionContext(args: {
+  noteId: string;
+  cwd: string;
+}): Promise<{ file?: string }> {
+  const { dir } = await notesEnsureWorkItemWorkspace(args.noteId);
+  return { file: sessionContextFile(dir, args.cwd) };
+}
+
+/** The work item a session belongs to, when it is linked to one. */
+export async function notesWorkItemNoteIdForSession(args: {
+  provider: string;
+  sessionId: string;
+}): Promise<string | undefined> {
+  const store = await getDesktopNotesStore();
+  return store.findWorkItemNoteIdForSession(args.provider, args.sessionId);
 }
 
 /** Best-effort refresh: the workspace must never block the primary write. */

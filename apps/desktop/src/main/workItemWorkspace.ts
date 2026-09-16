@@ -77,6 +77,16 @@ export function mergeWorkItemProjects(input: {
   return [...merged];
 }
 
+/**
+ * The block file a session started outside the workspace is injected with.
+ * Sessions already running in the workspace read the file from their working
+ * directory, so they get no extra flag.
+ */
+export function sessionContextFile(workspaceDir: string, sessionCwd: string): string | undefined {
+  if (path.resolve(workspaceDir) === path.resolve(sessionCwd)) return undefined;
+  return path.join(workspaceDir, "AGENTS.md");
+}
+
 /** The address table itself, shared by the workspace files and the IM preamble. */
 export function renderAddressTable(address: WorkItemAddress, workspaceDir?: string): string {
   const lines = [
