@@ -5462,15 +5462,6 @@ export function WorkbenchPanel(): ReactPortal | null {
               >
                 <ThemeIcon name="message-square" size={14} />
               </button>
-              <button
-                type="button"
-                className="wb-icon-btn"
-                onClick={() => { setWorkItemScope(null); setRoomProjectId(null); setSessionTarget(null); }}
-                aria-label={t("desktop.workbench.workItemClear")}
-                title={t("desktop.workbench.workItemClear")}
-              >
-                <ThemeIcon name="close" size={14} />
-              </button>
             </div>
             {workItemScope.next && (
               <p className="wb-work-item-line">

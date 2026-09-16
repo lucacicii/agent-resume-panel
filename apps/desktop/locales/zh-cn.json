@@ -1471,7 +1471,6 @@
   "desktop.workbench.tuiSlash.tokens": "显示 token 用量",
   "desktop.workbench.tuiSlash.undo": "撤销上次改动",
   "desktop.workbench.unpinProject": "取消置顶",
-  "desktop.workbench.workItemClear": "退出工作项",
   "desktop.workbench.workItemNext": "下一步：",
   "desktop.workbench.workItemNoProject": "未指定项目",
   "desktop.workbench.workItemOpenNote": "打开笔记",

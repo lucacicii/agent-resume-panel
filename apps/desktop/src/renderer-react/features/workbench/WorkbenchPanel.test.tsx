@@ -7821,8 +7821,10 @@ describe("WorkbenchPanel", () => {
     expect(screen.getByText(/Show connecting state\?/)).toBeTruthy();
     expect(screen.getByText("1 sessions")).toBeTruthy();
 
-    // The board can drive the same view.
-    fireEvent.click(screen.getByRole("button", { name: "Exit work item" }));
+    // The board can clear the scope, then re-open the same work item.
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-work-item-clear"));
+    });
     await waitFor(() => expect(document.querySelector(".wb-work-item")).toBeNull());
     await act(async () => {
       window.dispatchEvent(new CustomEvent("agent-resume:workbench-work-item", { detail: {
