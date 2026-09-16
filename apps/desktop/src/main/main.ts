@@ -60,6 +60,18 @@ import {
   assignWorkbenchSessionToFolder,
   removeWorkbenchSessionFromFolder,
   mergeWorkbenchSessionFolders,
+  listTaskWorkbenches,
+  listAllTaskWorkbenches,
+  createTaskWorkbench,
+  ensureTaskWorkbench,
+  renameTaskWorkbench,
+  setTaskWorkbenchProject,
+  setTaskWorkbenchLayout,
+  reorderTaskWorkbenches,
+  deleteTaskWorkbench,
+  listTaskWorkbenchSessionLinks,
+  assignSessionToTaskWorkbench,
+  removeSessionFromTaskWorkbench,
 
   openChatGptAppSession,
   openProjectInEditor,
@@ -2404,6 +2416,133 @@ function registerIpc(): void {
         String(args?.provider || ""),
         String(args?.agentSessionId || "")
       );
+    }
+  );
+
+  // Task workbenches: a GTD task owns 0..n desktop workbenches.
+  safeHandle(
+    "taskWorkbenches:list",
+    async (_event, args: { taskNoteId: string }) => {
+      const paths = await loadPanelDbPaths();
+      return listTaskWorkbenches(paths.desktopDb, String(args?.taskNoteId || ""));
+    }
+  );
+
+  safeHandle("taskWorkbenches:listAll", async () => {
+    const paths = await loadPanelDbPaths();
+    return listAllTaskWorkbenches(paths.desktopDb);
+  });
+
+  safeHandle(
+    "taskWorkbenches:ensure",
+    async (_event, args: { taskNoteId: string; name?: string; projectPath?: string | null }) => {
+      const paths = await loadPanelDbPaths();
+      return ensureTaskWorkbench(paths.desktopDb, String(args?.taskNoteId || ""), {
+        name: args?.name,
+        projectPath: args?.projectPath ?? null
+      });
+    }
+  );
+
+  safeHandle(
+    "taskWorkbenches:create",
+    async (_event, args: { taskNoteId: string; name?: string; projectPath?: string | null }) => {
+      const paths = await loadPanelDbPaths();
+      return createTaskWorkbench(paths.desktopDb, {
+        taskNoteId: String(args?.taskNoteId || ""),
+        name: args?.name,
+        projectPath: args?.projectPath ?? null
+      });
+    }
+  );
+
+  safeHandle(
+    "taskWorkbenches:rename",
+    async (_event, args: { workbenchId: string; name: string }) => {
+      const paths = await loadPanelDbPaths();
+      return renameTaskWorkbench(paths.desktopDb, String(args?.workbenchId || ""), String(args?.name || ""));
+    }
+  );
+
+  safeHandle(
+    "taskWorkbenches:setProject",
+    async (_event, args: { workbenchId: string; projectPath: string | null }) => {
+      const paths = await loadPanelDbPaths();
+      return setTaskWorkbenchProject(
+        paths.desktopDb,
+        String(args?.workbenchId || ""),
+        args?.projectPath == null ? null : String(args.projectPath)
+      );
+    }
+  );
+
+  safeHandle(
+    "taskWorkbenches:setLayout",
+    async (_event, args: { workbenchId: string; layoutJson: string | null }) => {
+      const paths = await loadPanelDbPaths();
+      await setTaskWorkbenchLayout(
+        paths.desktopDb,
+        String(args?.workbenchId || ""),
+        args?.layoutJson == null ? null : String(args.layoutJson)
+      );
+      return { ok: true as const };
+    }
+  );
+
+  safeHandle(
+    "taskWorkbenches:reorder",
+    async (_event, args: { taskNoteId: string; orderedIds: string[] }) => {
+      const paths = await loadPanelDbPaths();
+      await reorderTaskWorkbenches(
+        paths.desktopDb,
+        String(args?.taskNoteId || ""),
+        Array.isArray(args?.orderedIds) ? args.orderedIds.map(String) : []
+      );
+      return { ok: true as const };
+    }
+  );
+
+  safeHandle(
+    "taskWorkbenches:delete",
+    async (_event, args: { workbenchId: string }) => {
+      const paths = await loadPanelDbPaths();
+      await deleteTaskWorkbench(paths.desktopDb, String(args?.workbenchId || ""));
+      return { ok: true as const };
+    }
+  );
+
+  safeHandle(
+    "taskWorkbenches:listSessionLinks",
+    async (_event, args: { workbenchId: string }) => {
+      const paths = await loadPanelDbPaths();
+      return listTaskWorkbenchSessionLinks(paths.desktopDb, String(args?.workbenchId || ""));
+    }
+  );
+
+  safeHandle(
+    "taskWorkbenches:assignSession",
+    async (_event, args: { workbenchId: string; provider: string; agentSessionId: string }) => {
+      const paths = await loadPanelDbPaths();
+      return assignSessionToTaskWorkbench(
+        paths.desktopDb,
+        String(args?.workbenchId || ""),
+        String(args?.provider || ""),
+        String(args?.agentSessionId || "")
+      );
+    }
+  );
+
+  safeHandle(
+    "taskWorkbenches:removeSession",
+    async (_event, args: { workbenchId: string; provider: string; agentSessionId: string }) => {
+      const paths = await loadPanelDbPaths();
+      await removeSessionFromTaskWorkbench(
+        paths.desktopDb,
+        String(args?.workbenchId || ""),
+        String(args?.provider || ""),
+        String(args?.agentSessionId || "")
+      );
+      return { ok: true as const };
     }
   );
 

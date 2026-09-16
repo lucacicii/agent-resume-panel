@@ -50,6 +50,7 @@ import type { BrowserSessionState } from "../../../shared/browserTypes";
 import type { WorkbenchFocusSessionRequest, WorkbenchSendSelectionRequest } from "../../../shared/workbenchSelection";
 import { collectActiveSessionDots, type ActiveSessionDot } from "./activeSessionDots";
 import { needsYou, rank, rollupDot } from "./sessionStatus/workItemRollup";
+import { sessionDotStatusClass } from "./sessionStatus/dotStatus";
 import { useAcpStatus, useAgentStatus, type AcpStatusEvent, type SessionDotRuntime } from "./sessionStatus";
 import { COMPOSER_TIP_LIMIT, type ComposerSendTip } from "./TerminalComposer";
 import { TerminalComposerStack } from "./TerminalComposerStack";
@@ -122,7 +123,19 @@ import {
 import { WorkbenchDetailHeader } from "./layout/WorkbenchDetailHeader";
 import { WorkbenchSidebar } from "./layout/WorkbenchSidebar";
 import { workItemFromRecord, type WorkbenchWorkItem } from "./workItem";
+import {
+  createTaskWorkbench,
+  deleteTaskWorkbench,
+  ensureTaskWorkbenches,
+  readActiveWorkbenchId,
+  renameTaskWorkbench,
+  setTaskWorkbenchLayout,
+  workbenchDisplayName,
+  writeActiveWorkbenchId,
+  type Workbench
+} from "./workbenchModel";
 import { ImPanel } from "../im/ImPanel";
+import { NotePaneView } from "./notes/NotePaneView";
 
 type DesktopApi = ReturnType<typeof desktopApi>;
 type FileInspection = Awaited<ReturnType<DesktopApi["workbenchInspectFile"]>>;
@@ -137,8 +150,20 @@ type EditorPane = Extract<FileInspection, { kind: "text" }> & {
   dirty: boolean;
   saving?: boolean;
   diskState?: "changed" | "deleted" | "external";
+  /** Workbench this pane was opened under (undefined = project-scoped, no task). */
+  workbenchId?: string;
   /** In-memory display mode for the active tab; resets when the tab closes. */
   view?: "edit" | "preview";
+};
+
+/** A note editing tab. Notes are cross-project; `projectPath` is only the scope the tab was opened under. */
+type NotePane = {
+  key: string;
+  noteId: string;
+  projectPath: string | null;
+  title: string;
+  dirty?: boolean;
+  workbenchId?: string;
 };
 
 function reconcileEditorInspection(editor: EditorPane, inspected: FileInspection): EditorPane {
@@ -166,6 +191,7 @@ function reconcileEditorInspection(editor: EditorPane, inspected: FileInspection
 
 type DiffPane = WorkbenchDiffPane & {
   projectPath: string;
+  workbenchId?: string;
 };
 
 type PendingWorkbenchSession = {
@@ -191,6 +217,7 @@ type AcpChatPane = {
   title: string;
   provider: string;
   projectPath: string;
+  workbenchId?: string;
   initialPrompt?: string;
 };
 type BrowserPane = {
@@ -199,6 +226,7 @@ type BrowserPane = {
   group: "browser";
   browserId: string;
   projectPath: string;
+  workbenchId?: string;
   boundRecordId?: string;
   startUrl?: string;
   surfaceKind: "workbench" | "window";
@@ -392,6 +420,31 @@ function effectiveGtdStatus(
 
 function paneProjectKey(projectPath: string | null): string {
   return projectPath || ALL_PROJECTS_PANE_KEY;
+}
+
+/**
+ * The visibility scope of a pane: its workbench when it was opened under one,
+ * else its project. Workbench scoping is what keeps two workbenches of the same
+ * task (even on the same repo) from sharing a pane stack.
+ */
+function paneScopeKey(pane: { projectPath?: string | null; workbenchId?: string }): string {
+  return pane.workbenchId ? `wb:${pane.workbenchId}` : paneProjectKey(pane.projectPath ?? null);
+}
+
+function workbenchScope(workbenchId: string | null | undefined): string | null {
+  return workbenchId ? `wb:${workbenchId}` : null;
+}
+
+/** Record a bound session as owned by the active workbench (best-effort). */
+function recordSessionInWorkbench(workbenchId: string | null | undefined, sessionKey: string): void {
+  if (!workbenchId || typeof desktopApi().assignSessionToTaskWorkbench !== "function") return;
+  const separator = sessionKey.indexOf(":");
+  if (separator <= 0) return;
+  void desktopApi().assignSessionToTaskWorkbench({
+    workbenchId,
+    provider: sessionKey.slice(0, separator),
+    agentSessionId: sessionKey.slice(separator + 1)
+  }).catch(() => undefined);
 }
 
 function basename(value = ""): string {
@@ -673,6 +726,13 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [sessionQuery, setSessionQuery] = useState("");
   /** Work-item workspace scope (set by the board); renders a dedicated view. */
   const [workItemScope, setWorkItemScope] = useState<WorkbenchWorkItem | null>(null);
+  /** Persisted workbenches of the scoped task (GTD task → n workbenches). */
+  const [workbenches, setWorkbenches] = useState<Workbench[]>([]);
+  const [activeWorkbenchId, setActiveWorkbenchId] = useState<string | null>(null);
+  /** workbenchId → bound session keys (`provider:id`), for tab status dots. */
+  const [workbenchSessionKeys, setWorkbenchSessionKeys] = useState<Record<string, string[]>>({});
+  const [renamingWorkbenchId, setRenamingWorkbenchId] = useState<string | null>(null);
+  const [workbenchRenameDraft, setWorkbenchRenameDraft] = useState("");
   /** Room id of the work item's IM channel, when open inside the workspace. */
   const [roomProjectId, setRoomProjectId] = useState<string | null>(null);
   /**
@@ -708,6 +768,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [diffs, setDiffs] = useState<DiffPane[]>([]);
   const [acpChats, setAcpChats] = useState<AcpChatPane[]>([]);
   const [browsers, setBrowsers] = useState<BrowserPane[]>([]);
+  const [notePanes, setNotePanes] = useState<NotePane[]>([]);
   const [activePanes, setActivePanes] = useState<Record<string, string>>({});
   const [side, setSide] = useState<SideView>(null);
   const [editorContextMenu, setEditorContextMenu] = useState<{ x: number; y: number; hasSelection: boolean; selectedText: string } | null>(null);
@@ -759,6 +820,12 @@ export function WorkbenchPanel(): ReactPortal | null {
   const pendingSessionsRef = useRef<PendingWorkbenchSession[]>([]);
   /** Latest work-item workspace scope, for values read during session binding. */
   const workItemScopeRef = useRef<{ noteId: string } | null>(null);
+  const workbenchesRef = useRef<Workbench[]>([]);
+  const activeWorkbenchIdRef = useRef<string | null>(null);
+  /** A workbench explicitly requested by a deep-link (GTD chip), honored over the stored one. */
+  const pendingWorkbenchIdRef = useRef<string | null>(null);
+  /** Workbenches of the currently loaded task, so leaving it can reclaim their panes. */
+  const loadedTaskWorkbenchesRef = useRef<{ taskNoteId: string; workbenchIds: string[] }>({ taskNoteId: "", workbenchIds: [] });
   const draggedSessionRef = useRef<AgentSession | null>(null);
   const folderExpandTimerRef = useRef(0);
   const gitRefreshTimers = useRef(new Map<string, number>());
@@ -767,6 +834,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const refreshTerminalGitRef = useRef<(key: string) => Promise<void>>(async () => {});
   const editorsRef = useRef<EditorPane[]>([]);
   const diffsRef = useRef<DiffPane[]>([]);
+  const notePanesRef = useRef<NotePane[]>([]);
   const fileExplorerRef = useRef<WorkbenchFileExplorerHandle | null>(null);
   const selectedProjectRef = useRef<string | null>(selectedProject);
   const catalogProjectsRef = useRef<CatalogProject[]>(catalogProjects);
@@ -774,6 +842,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const activePanesRef = useRef<Record<string, string>>(activePanes);
   const sessionsRef = useRef<AgentSession[]>(sessions);
   const acpChatsRef = useRef<AcpChatPane[]>(acpChats);
+  const browsersRef = useRef<BrowserPane[]>(browsers);
   const autoRenameTimersRef = useRef(new Map<string, number>());
   const deferredAutoRenameKeysRef = useRef(new Set<string>());
   const watchedRootRef = useRef("");
@@ -866,6 +935,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   useEffect(() => { terminalsRef.current = terminals; }, [terminals]);
   useEffect(() => { editorsRef.current = editors; }, [editors]);
   useEffect(() => { diffsRef.current = diffs; }, [diffs]);
+  useEffect(() => { notePanesRef.current = notePanes; }, [notePanes]);
   useEffect(() => { selectedProjectRef.current = selectedProject; }, [selectedProject]);
 
   const refreshOpenGitDiffs = useCallback(async (changedPaths: ReadonlySet<string> | null) => {
@@ -937,6 +1007,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   useEffect(() => { activePanesRef.current = activePanes; }, [activePanes]);
   useEffect(() => { sessionsRef.current = sessions; }, [sessions]);
   useEffect(() => { acpChatsRef.current = acpChats; }, [acpChats]);
+  useEffect(() => { browsersRef.current = browsers; }, [browsers]);
   useEffect(() => () => {
     for (const timer of autoRenameTimersRef.current.values()) window.clearTimeout(timer);
     autoRenameTimersRef.current.clear();
@@ -1220,7 +1291,7 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   const isSessionPaneActive = useCallback((key: string) => {
     if (!activeRef.current) return false;
-    const activePaneKey = activePanesRef.current[paneProjectKey(selectedProjectRef.current || "")] || "";
+    const activePaneKey = activePanesRef.current[workbenchScope(activeWorkbenchIdRef.current) ?? paneProjectKey(selectedProjectRef.current || null)] || "";
     if (!activePaneKey) return false;
     return Boolean(
       terminalsRef.current.some((pane) => pane.key === activePaneKey && pane.sessionKey === key)
@@ -1258,7 +1329,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   }, []);
 
   useEffect(() => {
-    const activePaneKey = active ? activePanes[paneProjectKey(selectedProject || "")] || "" : "";
+    const activePaneKey = active ? activePanes[workbenchScope(activeWorkbenchIdRef.current) ?? paneProjectKey(selectedProject || null)] || "" : "";
     const activeKeys = new Set<string>();
     if (activePaneKey) {
       for (const pane of terminals) {
@@ -1395,11 +1466,12 @@ export function WorkbenchPanel(): ReactPortal | null {
           window.dispatchEvent(new Event("agent-resume:notes-mutated"));
         }).catch(() => undefined);
       }
+      recordSessionInWorkbench(activeWorkbenchIdRef.current, sessionKeyValue);
     }
     setPendingSessions((current) => current.filter((pending) => !assignments.has(pending.terminalKey)));
     // The active pending terminal just bound to a catalog session: move the
     // list highlight from the (now removed) pending row to the bound row.
-    const activePaneKey = activePanesRef.current[paneProjectKey(selectedProjectRef.current || "")] || "";
+    const activePaneKey = activePanesRef.current[workbenchScope(activeWorkbenchIdRef.current) ?? paneProjectKey(selectedProjectRef.current || null)] || "";
     const boundSessionKey = assignments.get(activePaneKey);
     if (boundSessionKey) setActiveSessionKey(boundSessionKey);
   }, [loadSessions, pendingSessions, reloadWorkbench, sessions, terminals]);
@@ -1789,20 +1861,23 @@ export function WorkbenchPanel(): ReactPortal | null {
     });
     setSelectionAnchorKey((current) => current && !visibleKeys.has(current) ? "" : current);
   }, [visibleSessionRows]);
-  const currentTerminals = terminals.filter((pane) => pane.projectPath === selectedProject);
+  const activeScopeKey = workbenchScope(activeWorkbenchId) ?? paneProjectKey(selectedProject);
+  const currentTerminals = terminals.filter((pane) => paneScopeKey(pane) === activeScopeKey);
   const currentSessionTerminals = currentTerminals.filter((pane) => pane.group === "session");
   const currentShellTerminals = currentTerminals.filter((pane) => pane.group === "terminal");
-  const currentEditors = editors.filter((pane) => pane.projectPath === selectedProject);
-  const currentDiffs = diffs.filter((pane) => pane.projectPath === selectedProject);
-  const currentAcpChats = acpChats.filter((pane) => pane.projectPath === selectedProject);
-  const currentBrowsers = browsers.filter((pane) => pane.projectPath === selectedProject);
-  const activePane = activePanes[paneProjectKey(selectedProject)] || "";
+  const currentEditors = editors.filter((pane) => paneScopeKey(pane) === activeScopeKey);
+  const currentDiffs = diffs.filter((pane) => paneScopeKey(pane) === activeScopeKey);
+  const currentAcpChats = acpChats.filter((pane) => paneScopeKey(pane) === activeScopeKey);
+  const currentBrowsers = browsers.filter((pane) => paneScopeKey(pane) === activeScopeKey);
+  const currentNotePanes = notePanes.filter((pane) => paneScopeKey(pane) === activeScopeKey);
+  const activePane = activePanes[activeScopeKey] || "";
   const activeTerminal = currentTerminals.find((pane) => pane.key === activePane);
   const currentEditor = currentEditors.find((pane) => pane.key === activePane);
   const currentDiff = currentDiffs.find((pane) => pane.key === activePane);
   const currentFilePath = workbenchActiveFilePath(selectedProject, currentEditor?.path, currentDiff);
   const currentAcpChat = currentAcpChats.find((pane) => pane.key === activePane);
   const currentBrowser = currentBrowsers.find((pane) => pane.key === activePane);
+  const currentNotePane = currentNotePanes.find((pane) => pane.key === activePane);
   const activeTranscriptRunning = useMemo(() => {
     const paneKey = currentAcpChat?.key ?? activeTerminal?.key;
     if (!paneKey) return false;
@@ -1840,7 +1915,8 @@ export function WorkbenchPanel(): ReactPortal | null {
         ...currentDiffs.map((pane) => pane.key)
       ]
     },
-    { group: "browser", keys: currentBrowsers.map((pane) => pane.key) }
+    { group: "browser", keys: currentBrowsers.map((pane) => pane.key) },
+    { group: "note", keys: currentNotePanes.map((pane) => pane.key) }
   ];
   /** Prefer the active terminal's git info; fall back to any project terminal or status tracking. */
   const branchStatusTerminal = activeTerminal
@@ -1933,7 +2009,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const setActivePane = useCallback((paneKey: string, projectPath = selectedProject) => {
     if (paneKey !== activePane && activePane.startsWith("editor:")) closeEditorFind();
     if (paneKey !== activePane) focusPaneAfterPtyRef.current = "";
-    const projectKey = paneProjectKey(projectPath);
+    const projectKey = workbenchScope(activeWorkbenchIdRef.current) ?? paneProjectKey(projectPath);
     if (paneKey) {
       const previous = paneHistoryRef.current[projectKey] || [];
       paneHistoryRef.current[projectKey] = [paneKey, ...previous.filter((key) => key !== paneKey)].slice(0, 32);
@@ -2029,7 +2105,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         }
         const targetGroup = workbenchPaneGroups[candidateIndex];
         if (targetGroup.keys.length) {
-          const history = paneHistoryRef.current[paneProjectKey(selectedProject)] || [];
+          const history = paneHistoryRef.current[workbenchScope(activeWorkbenchIdRef.current) ?? paneProjectKey(selectedProjectRef.current || null)] || [];
           nextPaneKey = history.find((key) => targetGroup.keys.includes(key)) || targetGroup.keys[0];
         }
       }
@@ -2108,11 +2184,11 @@ export function WorkbenchPanel(): ReactPortal | null {
     command?: string,
     projectPath = selectedProject || cwd,
     openedSessionKey?: string,
-    group: Exclude<WorkbenchPaneGroup, "code" | "browser"> = openedSessionKey ? "session" : "terminal",
+    group: Exclude<WorkbenchPaneGroup, "code" | "browser" | "note"> = openedSessionKey ? "session" : "terminal",
     launch?: { initialPrompt?: string }
   ): string => {
     const key = `terminal:${Date.now()}:${Math.random().toString(36).slice(2, 7)}`;
-    const pane = { key, title, group, cwd, command, projectPath, sessionKey: openedSessionKey, ...launch };
+    const pane = { key, title, group, cwd, command, projectPath, sessionKey: openedSessionKey, workbenchId: activeWorkbenchIdRef.current ?? undefined, ...launch };
     terminalsRef.current = [...terminalsRef.current, pane];
     setTerminals((current) => [...current, pane]);
     setActivePane(key, projectPath);
@@ -2319,7 +2395,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   }, []);
 
   const nextPaneAfterClose = useCallback((
-    projectPath: string,
+    scopeKey: string,
     closedKey: string,
     options?: {
       remainingTerminals?: TerminalPane[];
@@ -2329,20 +2405,19 @@ export function WorkbenchPanel(): ReactPortal | null {
       remainingBrowsers?: BrowserPane[];
     }
   ) => {
-    const projectKey = paneProjectKey(projectPath);
-    const history = (paneHistoryRef.current[projectKey] || []).filter((item) => item !== closedKey);
-    paneHistoryRef.current[projectKey] = history;
+    const history = (paneHistoryRef.current[scopeKey] || []).filter((item) => item !== closedKey);
+    paneHistoryRef.current[scopeKey] = history;
     const remainingTerminals =
       options?.remainingTerminals ??
-      terminals.filter((item) => item.projectPath === projectPath && item.key !== closedKey);
+      terminals.filter((item) => paneScopeKey(item) === scopeKey && item.key !== closedKey);
     const remainingAcp =
-      options?.remainingAcp ?? acpChats.filter((item) => item.projectPath === projectPath && item.key !== closedKey);
+      options?.remainingAcp ?? acpChats.filter((item) => paneScopeKey(item) === scopeKey && item.key !== closedKey);
     const projectEditors = options?.remainingEditors
-      ?? editors.filter((item) => item.projectPath === projectPath && item.key !== closedKey);
+      ?? editors.filter((item) => paneScopeKey(item) === scopeKey && item.key !== closedKey);
     const projectDiffs = options?.remainingDiffs
-      ?? diffs.filter((item) => item.projectPath === projectPath && item.key !== closedKey);
+      ?? diffs.filter((item) => paneScopeKey(item) === scopeKey && item.key !== closedKey);
     const remainingBrowsers = options?.remainingBrowsers
-      ?? browsers.filter((item) => item.projectPath === projectPath && item.key !== closedKey);
+      ?? browsers.filter((item) => paneScopeKey(item) === scopeKey && item.key !== closedKey);
     const closedGroup: WorkbenchPaneGroup | null =
       terminals.find((item) => item.key === closedKey)?.group
       ?? (acpChats.some((item) => item.key === closedKey) ? "session" : null)
@@ -2372,10 +2447,10 @@ export function WorkbenchPanel(): ReactPortal | null {
       remainingBrowsers[remainingBrowsers.length - 1]?.key ||
       "";
     if (nextPane) {
-      paneHistoryRef.current[projectKey] = [nextPane, ...history.filter((item) => item !== nextPane)].slice(0, 32);
+      paneHistoryRef.current[scopeKey] = [nextPane, ...history.filter((item) => item !== nextPane)].slice(0, 32);
     }
-    const wasActive = activePanesRef.current[paneProjectKey(selectedProjectRef.current || "")] === closedKey;
-    setActivePanes((current) => (current[projectKey] === closedKey ? { ...current, [projectKey]: nextPane } : current));
+    const wasActive = activePanesRef.current[scopeKey] === closedKey;
+    setActivePanes((current) => (current[scopeKey] === closedKey ? { ...current, [scopeKey]: nextPane } : current));
     // Closing the active pane switches which session row should be highlighted.
     if (wasActive) setActiveSessionKey(workbenchPaneSessionKey(nextPane));
   }, [acpChats, browsers, diffs, editors, terminals, workbenchPaneSessionKey]);
@@ -2405,8 +2480,8 @@ export function WorkbenchPanel(): ReactPortal | null {
     setPendingSessions((current) => current.filter((pending) => pending.terminalKey !== key));
     if (pane) {
       deferSessionPaneAutoRename(pane);
-      nextPaneAfterClose(pane.projectPath, key, {
-        remainingTerminals: remaining.filter((item) => item.projectPath === pane.projectPath)
+      nextPaneAfterClose(paneScopeKey(pane), key, {
+        remainingTerminals: remaining.filter((item) => paneScopeKey(item) === paneScopeKey(pane))
       });
     }
   }, [deferSessionPaneAutoRename, nextPaneAfterClose]);
@@ -2417,8 +2492,8 @@ export function WorkbenchPanel(): ReactPortal | null {
     if (pane) {
       deferSessionPaneAutoRename(pane);
       void desktopApi().acpDisconnect({ chatId: pane.recordId });
-      nextPaneAfterClose(pane.projectPath, key, {
-        remainingAcp: acpChats.filter((item) => item.projectPath === pane.projectPath && item.key !== key)
+      nextPaneAfterClose(paneScopeKey(pane), key, {
+        remainingAcp: acpChats.filter((item) => paneScopeKey(item) === paneScopeKey(pane) && item.key !== key)
       });
     }
   }, [acpChats, deferSessionPaneAutoRename, nextPaneAfterClose]);
@@ -2430,7 +2505,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     if (activePane === key) closeEditorFind();
     const remainingEditors = editors.filter((item) => item.key !== key);
     setEditors(remainingEditors);
-    nextPaneAfterClose(pane.projectPath, key, { remainingEditors });
+    nextPaneAfterClose(paneScopeKey(pane), key, { remainingEditors });
   }, [activePane, closeEditorFind, editors, nextPaneAfterClose, t]);
 
   const closeDiff = useCallback((key: string) => {
@@ -2438,7 +2513,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     if (!pane) return;
     const remainingDiffs = diffs.filter((item) => item.key !== key);
     setDiffs(remainingDiffs);
-    nextPaneAfterClose(pane.projectPath, key, { remainingDiffs });
+    nextPaneAfterClose(paneScopeKey(pane), key, { remainingDiffs });
   }, [diffs, nextPaneAfterClose]);
 
   const addAcpChat = useCallback((record: {
@@ -2463,6 +2538,7 @@ export function WorkbenchPanel(): ReactPortal | null {
           title: record.title || t("desktop.workbench.acpChat"),
           provider: record.provider,
           projectPath,
+          workbenchId: activeWorkbenchIdRef.current ?? undefined,
           ...(initialPrompt ? { initialPrompt } : {})
         }
       ];
@@ -2481,6 +2557,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     void desktopApi().notesLinkSessionToWorkItem({ noteId, sessionKey, projectPath })
       .then(() => { window.dispatchEvent(new Event("agent-resume:notes-mutated")); })
       .catch(() => undefined);
+    recordSessionInWorkbench(activeWorkbenchIdRef.current, sessionKey);
   }, []);
 
   const closeBrowser = useCallback((key: string) => {
@@ -2488,8 +2565,8 @@ export function WorkbenchPanel(): ReactPortal | null {
     if (!pane) return;
     setBrowsers((current) => current.filter((item) => item.key !== key));
     void desktopApi().browserDestroy({ browserId: pane.browserId }).catch(() => undefined);
-    nextPaneAfterClose(pane.projectPath, key, {
-      remainingBrowsers: browsers.filter((item) => item.projectPath === pane.projectPath && item.key !== key)
+    nextPaneAfterClose(paneScopeKey(pane), key, {
+      remainingBrowsers: browsers.filter((item) => paneScopeKey(item) === paneScopeKey(pane) && item.key !== key)
     });
   }, [browsers, nextPaneAfterClose]);
 
@@ -2516,6 +2593,7 @@ export function WorkbenchPanel(): ReactPortal | null {
             group: "browser",
             browserId: session.id,
             projectPath,
+            workbenchId: activeWorkbenchIdRef.current ?? undefined,
             startUrl,
             surfaceKind: session.surface.kind
           }
@@ -2549,6 +2627,7 @@ export function WorkbenchPanel(): ReactPortal | null {
               group: "browser" as const,
               browserId: session.id,
               projectPath: session.projectPath,
+              workbenchId: activeWorkbenchIdRef.current ?? undefined,
               surfaceKind: session.surface.kind
             }
           ];
@@ -2577,6 +2656,46 @@ export function WorkbenchPanel(): ReactPortal | null {
     return off;
   }, [t]);
 
+  const updateNotePaneTitle = useCallback((noteId: string, title: string) => {
+    setNotePanes((current) => current.map((pane) => pane.noteId === noteId ? { ...pane, title } : pane));
+  }, []);
+
+  const setNotePaneDirty = useCallback((noteId: string, dirty: boolean) => {
+    setNotePanes((current) => current.map((pane) => pane.noteId === noteId ? { ...pane, dirty } : pane));
+  }, []);
+
+  /** Open (or focus) a note as an editing tab in the pane tab groups. */
+  const openNotePane = useCallback((noteId: string, title?: string) => {
+    if (!noteId) return;
+    const workbenchId = activeWorkbenchIdRef.current ?? undefined;
+    const key = workbenchId ? `note:${workbenchId}:${noteId}` : `note:${noteId}`;
+    setNotePanes((current) => current.some((pane) => pane.key === key)
+      ? current
+      : [...current, { key, noteId, projectPath: selectedProjectRef.current, title: title || "", workbenchId }]);
+    setActivePane(key);
+    if (!title) {
+      void desktopApi().notesRead({ noteId }).then((result) => {
+        updateNotePaneTitle(noteId, result.record.title || result.record.filename.replace(/\.md$/i, "") || noteId);
+      }).catch(() => undefined);
+    }
+  }, [setActivePane, updateNotePaneTitle]);
+
+  const closeNotePane = useCallback((key: string) => {
+    const remaining = notePanesRef.current.filter((item) => item.key !== key);
+    notePanesRef.current = remaining;
+    setNotePanes(remaining);
+    setActivePanes((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const [projectKey, activeKey] of Object.entries(current)) {
+        if (activeKey !== key) continue;
+        next[projectKey] = remaining[remaining.length - 1]?.key || "";
+        changed = true;
+      }
+      return changed ? next : current;
+    });
+  }, []);
+
   const closeActivePane = useCallback(() => {
     if (!activePane) return;
     if (activePane.startsWith("terminal:")) {
@@ -2587,10 +2706,12 @@ export function WorkbenchPanel(): ReactPortal | null {
       closeEditor(activePane);
     } else if (activePane.startsWith("browser:")) {
       closeBrowser(activePane);
+    } else if (activePane.startsWith("note:")) {
+      closeNotePane(activePane);
     } else {
       closeDiff(activePane);
     }
-  }, [activePane, closeAcpChat, closeBrowser, closeDiff, closeEditor, closeTerminal]);
+  }, [activePane, closeAcpChat, closeBrowser, closeDiff, closeEditor, closeNotePane, closeTerminal]);
 
   const openBlankTerminal = useCallback(async (targetProject?: string) => {
     if (terminalCreating) return;
@@ -3228,10 +3349,11 @@ export function WorkbenchPanel(): ReactPortal | null {
       await loadWorkItems();
       window.dispatchEvent(new Event("agent-resume:notes-mutated"));
       selectWorkItem(workItemFromRecord(created));
+      openNotePane(created.noteId, workItemFromRecord(created).title);
     } catch {
       /* best-effort */
     }
-  }, [loadWorkItems, selectWorkItem]);
+  }, [loadWorkItems, openNotePane, selectWorkItem]);
 
   const needsYouCount = useMemo(() => {
     if (!dotByKey || dotByKey.size === 0) return 0;
@@ -3279,10 +3401,191 @@ export function WorkbenchPanel(): ReactPortal | null {
     return () => window.removeEventListener("agent-resume:notes-mutated", onNotesMutated);
   }, [loadWorkItems]);
 
+  // Workbenches of the scoped task: load (ensuring ≥1) and restore the last one.
+  useEffect(() => {
+    workbenchesRef.current = workbenches;
+  }, [workbenches]);
+
+  useEffect(() => {
+    activeWorkbenchIdRef.current = activeWorkbenchId;
+  }, [activeWorkbenchId]);
+
+  useEffect(() => {
+    const taskNoteId = workItemScope?.noteId;
+    // Leaving a task discards its workbenches' panes: unreachable afterwards.
+    const previous = loadedTaskWorkbenchesRef.current;
+    if (previous.taskNoteId && previous.taskNoteId !== taskNoteId) {
+      for (const workbenchId of previous.workbenchIds) discardWorkbenchPanes(workbenchId);
+      loadedTaskWorkbenchesRef.current = { taskNoteId: "", workbenchIds: [] };
+    }
+    if (!active || !taskNoteId) {
+      setWorkbenches([]);
+      workbenchesRef.current = [];
+      setActiveWorkbenchId(null);
+      return;
+    }
+    let cancelled = false;
+    void ensureTaskWorkbenches(taskNoteId).then((list) => {
+      if (cancelled) return;
+      setWorkbenches(list);
+      workbenchesRef.current = list;
+      loadedTaskWorkbenchesRef.current = { taskNoteId, workbenchIds: list.map((item) => item.workbenchId) };
+      const stored = readActiveWorkbenchId(taskNoteId);
+      const requested = pendingWorkbenchIdRef.current;
+      pendingWorkbenchIdRef.current = null;
+      const next = list.find((item) => item.workbenchId === requested)?.workbenchId
+        ?? list.find((item) => item.workbenchId === stored)?.workbenchId
+        ?? list[0]?.workbenchId
+        ?? null;
+      setActiveWorkbenchId(next);
+      if (next) writeActiveWorkbenchId(taskNoteId, next);
+      const api = desktopApi();
+      if (typeof api.listTaskWorkbenchSessionLinks === "function") {
+        void Promise.all(list.map(async (workbench) => {
+          const links = await api.listTaskWorkbenchSessionLinks({ workbenchId: workbench.workbenchId }).catch(() => []);
+          return [workbench.workbenchId, links.map((link) => `${link.provider}:${link.agentSessionId}`)] as const;
+        })).then((entries) => {
+          if (!cancelled) setWorkbenchSessionKeys(Object.fromEntries(entries));
+        }).catch(() => undefined);
+      }
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [active, workItemScope?.noteId]);
+
+  // The active workbench owns the project context (null = task neutral workspace).
+  useEffect(() => {
+    if (!activeWorkbenchId) return;
+    const workbench = workbenches.find((item) => item.workbenchId === activeWorkbenchId);
+    if (!workbench?.projectPath) return;
+    if (selectedProjectRef.current === workbench.projectPath) return;
+    selectProject(workbench.projectPath, { keepSessionKey: true });
+  }, [activeWorkbenchId, workbenches, selectProject]);
+
+  const activateWorkbench = useCallback((workbench: Workbench) => {
+    setActiveWorkbenchId(workbench.workbenchId);
+    activeWorkbenchIdRef.current = workbench.workbenchId;
+    const taskNoteId = workItemScopeRef.current?.noteId;
+    if (taskNoteId) writeActiveWorkbenchId(taskNoteId, workbench.workbenchId);
+    if (workbench.projectPath) selectProject(workbench.projectPath, { keepSessionKey: true });
+  }, [selectProject]);
+
+  const addWorkbench = useCallback(async () => {
+    const taskNoteId = workItemScopeRef.current?.noteId;
+    if (!taskNoteId) return;
+    try {
+      const created = await createTaskWorkbench(taskNoteId, { projectPath: selectedProjectRef.current });
+      if (!created) return;
+      const list = await ensureTaskWorkbenches(taskNoteId);
+      setWorkbenches(list);
+      workbenchesRef.current = list;
+      activateWorkbench(created);
+      window.dispatchEvent(new Event("agent-resume:notes-mutated"));
+    } catch (error) {
+      setStatus({ text: statusError(error), kind: "error" });
+    }
+  }, [activateWorkbench]);
+
+  const commitWorkbenchRename = useCallback(async () => {
+    const workbenchId = renamingWorkbenchId;
+    const name = workbenchRenameDraft.trim();
+    setRenamingWorkbenchId(null);
+    if (!workbenchId || !name) return;
+    try {
+      const updated = await renameTaskWorkbench(workbenchId, name);
+      if (!updated) return;
+      setWorkbenches((current) => current.map((item) => item.workbenchId === workbenchId ? updated : item));
+      window.dispatchEvent(new Event("agent-resume:notes-mutated"));
+    } catch (error) {
+      setStatus({ text: statusError(error), kind: "error" });
+    }
+  }, [renamingWorkbenchId, workbenchRenameDraft]);
+
+  /** Close and destroy every pane owned by a deleted workbench (PTYs, browsers, editors). */
+  const discardWorkbenchPanes = useCallback((workbenchId: string) => {
+    for (const pane of terminalsRef.current.filter((item) => item.workbenchId === workbenchId)) closeTerminal(pane.key);
+    for (const pane of acpChatsRef.current.filter((item) => item.workbenchId === workbenchId)) closeAcpChat(pane.key);
+    for (const pane of browsersRef.current.filter((item) => item.workbenchId === workbenchId)) void closeBrowser(pane.key);
+    for (const pane of editorsRef.current.filter((item) => item.workbenchId === workbenchId)) closeEditor(pane.key);
+    for (const pane of diffsRef.current.filter((item) => item.workbenchId === workbenchId)) closeDiff(pane.key);
+    for (const pane of notePanesRef.current.filter((item) => item.workbenchId === workbenchId)) closeNotePane(pane.key);
+  }, [closeAcpChat, closeBrowser, closeDiff, closeEditor, closeNotePane, closeTerminal]);
+
+  const removeWorkbench = useCallback(async (workbench: Workbench) => {
+    const taskNoteId = workItemScopeRef.current?.noteId;
+    if (!taskNoteId) return;
+    if (workbenchesRef.current.length <= 1) return;
+    if (!window.confirm(t("desktop.workbench.deleteWorkbenchConfirm", workbenchDisplayName(workbench)))) return;
+    try {
+      await deleteTaskWorkbench(workbench.workbenchId);
+      discardWorkbenchPanes(workbench.workbenchId);
+      const list = await ensureTaskWorkbenches(taskNoteId);
+      setWorkbenches(list);
+      workbenchesRef.current = list;
+      if (workbench.workbenchId === activeWorkbenchIdRef.current) {
+        const next = list[0];
+        if (next) activateWorkbench(next);
+      }
+      window.dispatchEvent(new Event("agent-resume:notes-mutated"));
+    } catch (error) {
+      setStatus({ text: statusError(error), kind: "error" });
+    }
+  }, [activateWorkbench, discardWorkbenchPanes, t]);
+
+  // Persist a workbench's open note panes so its workspace is restored later.
+  useEffect(() => {
+    const workbenchId = activeWorkbenchIdRef.current;
+    if (!workbenchId || typeof desktopApi().setTaskWorkbenchLayout !== "function") return;
+    const openNoteIds = notePanesRef.current
+      .filter((pane) => pane.workbenchId === workbenchId)
+      .map((pane) => pane.noteId);
+    void setTaskWorkbenchLayout(workbenchId, JSON.stringify({ openNoteIds })).catch(() => undefined);
+  }, [notePanes]);
+
+  // Restore a workbench's persisted note panes when it becomes active.
+  useEffect(() => {
+    const workbenchId = activeWorkbenchId;
+    if (!workbenchId) return;
+    const workbench = workbenchesRef.current.find((item) => item.workbenchId === workbenchId);
+    if (!workbench?.layoutJson) return;
+    let openNoteIds: string[] = [];
+    try {
+      const parsed = JSON.parse(workbench.layoutJson) as { openNoteIds?: unknown };
+      if (Array.isArray(parsed?.openNoteIds)) {
+        openNoteIds = parsed.openNoteIds.filter((id): id is string => typeof id === "string");
+      }
+    } catch {
+      return;
+    }
+    if (!openNoteIds.length) return;
+    const scope = `wb:${workbenchId}`;
+    const existing = new Set(notePanesRef.current.map((pane) => pane.key));
+    const additions = openNoteIds
+      .filter((noteId) => !existing.has(`note:${workbenchId}:${noteId}`))
+      .map((noteId) => ({
+        key: `note:${workbenchId}:${noteId}`,
+        noteId,
+        projectPath: workbench.projectPath,
+        title: "",
+        workbenchId
+      }));
+    if (additions.length) setNotePanes((current) => {
+      const keys = new Set(current.map((pane) => pane.key));
+      const fresh = additions.filter((pane) => !keys.has(pane.key));
+      return fresh.length ? [...current, ...fresh] : current;
+    });
+    if (!activePanesRef.current[scope] && (additions[0] || existing.size)) {
+      const firstKey = additions[0]?.key
+        ?? notePanesRef.current.find((pane) => pane.workbenchId === workbenchId)?.key;
+      if (firstKey) setActivePane(firstKey, workbench.projectPath ?? selectedProject);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeWorkbenchId]);
+
   useEffect(() => {
     const onWorkItem = (event: Event) => {
       const detail = (event as CustomEvent<WorkbenchWorkItem>).detail;
       if (!detail?.noteId) return;
+      pendingWorkbenchIdRef.current = (detail as { workbenchId?: string }).workbenchId ?? null;
       workItemScopeRef.current = { noteId: detail.noteId };
       setWorkItemScope(detail);
       const target = detail.primaryProject ?? detail.projects?.[0];
@@ -3557,11 +3860,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     setFloatingNoteTarget({ ...target });
   }, []);
 
-  const openNoteInNotesTab = (noteId: string) => {
-    window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "notes" }));
-    window.dispatchEvent(new CustomEvent("agent-resume:open-note", { detail: noteId }));
-  };
-
   const openMountedNote = async (owner: { scope: "project" | "session"; projectPath: string; provider?: string; sessionId?: string }) => {
     try {
       // Project mount: jump to first root note when any exist; only create when empty.
@@ -3574,14 +3872,25 @@ export function WorkbenchPanel(): ReactPortal | null {
             || (right.createdAtMs || 0) - (left.createdAtMs || 0)
           );
         if (projectRoots[0]) {
-          openNoteInNotesTab(projectRoots[0].noteId);
+          openNotePane(projectRoots[0].noteId);
           return;
         }
       }
       const result = await desktopApi().notesCreate(owner);
-      openNoteInNotesTab(result.noteId);
+      openNotePane(result.noteId);
     } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
   };
+
+  // Notes open as editing tabs in the pane tab groups (IM citations, work items, etc.).
+  useEffect(() => {
+    const onOpenNote = (event: Event) => {
+      const noteId = (event as CustomEvent<string>).detail;
+      if (!noteId) return;
+      openNotePane(noteId);
+    };
+    window.addEventListener("agent-resume:open-note", onOpenNote);
+    return () => window.removeEventListener("agent-resume:open-note", onOpenNote);
+  }, [openNotePane]);
 
   const openCreateFolderDialog = (project: WorkbenchProject, parentId: string | null = null) => {
     setFolderDialog({
@@ -4232,7 +4541,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       if (inspected.kind === "missing") throw new Error(t("desktop.workbench.fileDeletedOnDisk"));
       if (inspected.kind === "external") { await desktopApi().workbenchOpenPath({ rootPath: targetProject, filePath: path }); return; }
       setEditors((current) => {
-        const next = [...current, { ...inspected, key, path, projectPath: targetProject, content: inspected.content, dirty: false, view }];
+        const next = [...current, { ...inspected, key, path, projectPath: targetProject, content: inspected.content, dirty: false, view, workbenchId: activeWorkbenchIdRef.current ?? undefined }];
         editorsRef.current = next;
         return next;
       });
@@ -4510,6 +4819,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       setDiffs((current) => [...current, {
         key,
         projectPath,
+        workbenchId: activeWorkbenchIdRef.current ?? undefined,
         repoRoot: change.repoRoot,
         repoPath: change.repoPath,
         path: change.path,
@@ -4566,6 +4876,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       setDiffs((current) => [...current, {
         key,
         projectPath,
+        workbenchId: activeWorkbenchIdRef.current ?? undefined,
         repoRoot,
         repoPath: relative,
         path: relative,
@@ -4790,6 +5101,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       setDiffs((current) => current.some((item) => item.key === key) ? current : [...current, {
         key,
         projectPath: selectedProject,
+        workbenchId: activeWorkbenchIdRef.current ?? undefined,
         repoRoot,
         repoPath: path,
         path,
@@ -5393,6 +5705,12 @@ export function WorkbenchPanel(): ReactPortal | null {
         {currentDiffs.map((pane) => <div className={`wb-terminal-tab is-diff${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="file-diff" size={13} aria-hidden="true" />{basename(pane.path)}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeDiff")} onClick={() => closeDiff(pane.key)}><ThemeIcon name="close" size={13} /></button></div>)}
       </div>
     </div> : null}
+    <div className="wb-terminal-tabs is-note-group" data-pane-group="note">
+      <button type="button" className="wb-pane-tab-group-label" aria-label={t("desktop.common.newNote")} title={t("desktop.common.newNote")} onClick={() => void addWorkItem()}><ThemeIcon name="file-plus" size={13} aria-hidden="true" /></button>
+      <div className="wb-terminal-tabs-list" role="tablist" aria-label={t("desktop.notes.allNotes")}>
+        {currentNotePanes.map((pane) => <div className={`wb-terminal-tab is-note${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="file-text" size={13} aria-hidden="true" />{pane.dirty ? "* " : ""}{pane.title || t("desktop.notes.allNotes")}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.common.close")} onClick={() => closeNotePane(pane.key)}><ThemeIcon name="close" size={13} /></button></div>)}
+      </div>
+    </div>
     <div className="wb-terminal-tabs is-browser-group" data-pane-group="browser">
       <button type="button" className="wb-pane-tab-group-label" aria-label={t("desktop.browser.newBrowser")} title={t("desktop.browser.newBrowser")} onClick={() => void openBrowser()}><ThemeIcon name="globe" size={13} aria-hidden="true" /></button>
       <div className="wb-terminal-tabs-list" role="tablist" aria-label={t("desktop.workbench.tabGroupBrowser")}>
@@ -5431,6 +5749,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         localStorage.setItem(FOLDERS_COLLAPSED_KEY, String(next));
         return next;
       })}
+      onBackToGtd={() => window.dispatchEvent(new CustomEvent("agent-resume:view-gtd"))}
       selectedProject={sideRoot}
       projectLabel={sideRoot ? aliases[sideRoot] || basename(sideRoot) : ""}
       emptyLabel={workItemScope ? t("desktop.workbench.workItemNoProject") : undefined}
@@ -5491,10 +5810,7 @@ export function WorkbenchPanel(): ReactPortal | null {
               <button
                 type="button"
                 className="wb-icon-btn"
-                onClick={() => {
-                  window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "notes" }));
-                  window.dispatchEvent(new CustomEvent("agent-resume:open-note", { detail: workItemScope.noteId }));
-                }}
+                onClick={() => openNotePane(workItemScope.noteId, workItemScope.title)}
                 aria-label={t("desktop.workbench.workItemOpenNote")}
                 title={t("desktop.workbench.workItemOpenNote")}
               >
@@ -5654,13 +5970,78 @@ export function WorkbenchPanel(): ReactPortal | null {
       <ResizeHandle label={t("desktop.workbench.resizeSessions")} onDelta={(delta) => setWidth("list", delta)} />
       <main className="wb-detail">
         {active && headerSlot ? createPortal(detailHeader, headerSlot) : null}
+        {workItemScope && workbenches.length > 0 ? (
+          <div className="wb-workbench-bar" role="tablist" aria-label={t("desktop.workbench.workbenchTabs")}>
+            {workbenches.map((workbench) => {
+              const wbDot = rollupDot({ work: { sessions: workbenchSessionKeys[workbench.workbenchId] ?? [] } }, dotByKey);
+              return (
+              <div
+                key={workbench.workbenchId}
+                className={`wb-workbench-tab${workbench.workbenchId === activeWorkbenchId ? " active" : ""}`}
+              >
+                {renamingWorkbenchId === workbench.workbenchId ? (
+                  <input
+                    className="wb-workbench-tab-input"
+                    value={workbenchRenameDraft}
+                    autoFocus
+                    aria-label={t("desktop.common.rename")}
+                    onChange={(event) => setWorkbenchRenameDraft(event.target.value)}
+                    onBlur={() => void commitWorkbenchRename()}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") { event.preventDefault(); void commitWorkbenchRename(); }
+                      if (event.key === "Escape") { event.preventDefault(); setRenamingWorkbenchId(null); }
+                    }}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={workbench.workbenchId === activeWorkbenchId}
+                    className="wb-workbench-tab-label"
+                    title={workbench.projectPath || workbenchDisplayName(workbench)}
+                    onClick={() => activateWorkbench(workbench)}
+                    onDoubleClick={() => {
+                      setRenamingWorkbenchId(workbench.workbenchId);
+                      setWorkbenchRenameDraft(workbenchDisplayName(workbench));
+                    }}
+                  >
+                    <ThemeIcon name="square-kanban" size={13} aria-hidden="true" />
+                    {wbDot && wbDot.status !== "open" ? <span className={`session-dot${sessionDotStatusClass(wbDot.status)}`} aria-hidden="true" /> : null}
+                    {workbenchDisplayName(workbench)}
+                  </button>
+                )}
+                {workbenches.length > 1 ? (
+                  <button
+                    type="button"
+                    className="wb-workbench-tab-close"
+                    aria-label={t("desktop.workbench.deleteWorkbench")}
+                    title={t("desktop.workbench.deleteWorkbench")}
+                    onClick={() => void removeWorkbench(workbench)}
+                  >
+                    <ThemeIcon name="close" size={12} />
+                  </button>
+                ) : null}
+              </div>
+              );
+            })}
+            <button
+              type="button"
+              className="wb-workbench-add"
+              aria-label={t("desktop.workbench.newWorkbench")}
+              title={t("desktop.workbench.newWorkbench")}
+              onClick={() => void addWorkbench()}
+            >
+              <ThemeIcon name="plus" size={14} aria-hidden="true" />
+            </button>
+          </div>
+        ) : null}
         <div className="wb-detail-body">
           {roomProjectId ? (
             <div className="wb-room-pane">
               <ImPanel embedded onCloseRoom={() => setRoomProjectId(null)} />
             </div>
           ) : null}
-          <div className="wb-terminal-shell" style={roomProjectId ? { display: "none" } : undefined}>{paneTabGroups}<div className="wb-terminal-stack">{terminals.filter((pane) => pane.projectPath === selectedProject && pane.key === activePane).map((pane) => {
+          <div className="wb-terminal-shell" style={roomProjectId ? { display: "none" } : undefined}>{paneTabGroups}<div className="wb-terminal-stack">{terminals.filter((pane) => paneScopeKey(pane) === activeScopeKey && pane.key === activePane).map((pane) => {
             const sessionIdentity = sessionIdentityFromKey(pane.sessionKey);
             const pending = pendingSessions.find((item) => item.terminalKey === pane.key);
             const isSession = pane.group === "session";
@@ -5835,8 +6216,8 @@ export function WorkbenchPanel(): ReactPortal | null {
             <button type="button" className="wb-editor-find-btn app-inline-search-btn" aria-label={t("desktop.common.findPrev")} onClick={() => runEditorFind("backward")}><ThemeIcon name="arrow-up" size={14} /></button>
             <button type="button" className="wb-editor-find-btn app-inline-search-btn" aria-label={t("desktop.common.findNext")} onClick={() => runEditorFind("forward")}><ThemeIcon name="arrow-down" size={14} /></button>
             <button type="button" className="wb-editor-find-btn app-inline-search-btn" aria-label={t("desktop.common.closeFind")} onClick={closeEditorFind}><ThemeIcon name="close" size={14} /></button>
-          </div> : null}{currentEditor ? <div className="wb-editor-pane" onContextMenu={(event) => { event.preventDefault(); const selectedText = editorRef.current?.getSelectedText().trim() || ""; setEditorContextMenu({ x: event.clientX, y: event.clientY, hasSelection: Boolean(selectedText), selectedText }); }}>{editorDiskAlert}{currentEditor.view === "preview" ? <div className="wb-editor-preview markdown-body" onClick={(event) => { const src = imageSrcFromElement(event.target); if (src) setImagePreview(src); }} dangerouslySetInnerHTML={{ __html: renderMarkdown(currentEditor.content, { baseDir: posixDirname(currentEditor.path), rootDir: currentEditor.projectPath, imageLabels: { openInBrowser: t("desktop.markdown.openInBrowser"), unavailable: t("desktop.markdown.imageUnavailable"), remoteImage: t("desktop.markdown.remoteImage") } }) }} /> : <CodeEditor ref={editorRef} className="wb-editor-host" value={currentEditor.content} onChange={(value) => updateEditorContent(currentEditor.key, value)} onBlur={() => { if (currentEditor.dirty) void saveEditor(currentEditor.key); }} ariaLabel={currentEditor.path} filePath={currentEditor.path} selectionProjectPath={currentEditor.projectPath} readOnly={editorSettings?.editable === false} fontSize={editorSettings?.fontSize ?? 13} wordWrap={editorSettings?.wordWrap ?? false} tabSize={editorSettings?.tabSize ?? 4} appearance={editorAppearance} />}<div className="wb-editor-status"><span className="wb-editor-status-path">{currentEditor.path}</span><span className="wb-editor-status-state">{currentEditor.saving ? t("desktop.workbench.fileSaving") : currentEditor.diskState === "changed" ? t("desktop.workbench.fileConflict") : currentEditor.diskState === "deleted" ? t("desktop.workbench.fileDeletedOnDisk") : currentEditor.diskState === "external" ? t("desktop.workbench.fileUnavailableOnDisk") : currentEditor.dirty ? t("desktop.workbench.fileModified") : t("desktop.workbench.fileSaved")}</span><button type="button" className="wb-git-action-btn" disabled={!currentEditor.dirty || currentEditor.saving || Boolean(currentEditor.diskState) || editorSettings?.editable === false} onClick={() => void saveEditor(currentEditor.key)} aria-label={t("desktop.common.save")}><ThemeIcon name="save" size={15} /></button></div></div> : null}{currentDiff ? <div className="wb-git-diff-pane"><div className="wb-diff-head"><strong className="wb-diff-title">{currentDiff.path}</strong><button type="button" className="wb-git-action-btn wb-diff-open" aria-label={t("desktop.workbench.fileOpen")} title={t("desktop.workbench.fileOpen")} onClick={() => void openFile(gitChangeFilePath(currentDiff))}><ThemeIcon name="file" size={14} /></button></div><div className="wb-diff-labels"><span className="wb-diff-label">{currentDiff.oldLabel}</span><span className="wb-diff-label">{currentDiff.newLabel}</span></div><WorkbenchDiffView diff={currentDiff} appearance={editorAppearance} onDiscardHunk={(target) => void discardGitHunk(currentDiff, target)} onDiscardLine={(target) => void discardGitLine(currentDiff, target)} onStageHunk={(target) => void stageGitHunk(currentDiff, target)} onUnstageHunk={(target) => void unstageGitHunk(currentDiff, target)} onStageLine={(target) => void stageGitLine(currentDiff, target)} onUnstageLine={(target) => void unstageGitLine(currentDiff, target)} /></div> : null}{acpChats.map((pane) => {
-            const visible = pane.projectPath === selectedProject && activePane === pane.key;
+          </div> : null}{currentEditor ? <div className="wb-editor-pane" onContextMenu={(event) => { event.preventDefault(); const selectedText = editorRef.current?.getSelectedText().trim() || ""; setEditorContextMenu({ x: event.clientX, y: event.clientY, hasSelection: Boolean(selectedText), selectedText }); }}>{editorDiskAlert}{currentEditor.view === "preview" ? <div className="wb-editor-preview markdown-body" onClick={(event) => { const src = imageSrcFromElement(event.target); if (src) setImagePreview(src); }} dangerouslySetInnerHTML={{ __html: renderMarkdown(currentEditor.content, { baseDir: posixDirname(currentEditor.path), rootDir: currentEditor.projectPath, imageLabels: { openInBrowser: t("desktop.markdown.openInBrowser"), unavailable: t("desktop.markdown.imageUnavailable"), remoteImage: t("desktop.markdown.remoteImage") } }) }} /> : <CodeEditor ref={editorRef} className="wb-editor-host" value={currentEditor.content} onChange={(value) => updateEditorContent(currentEditor.key, value)} onBlur={() => { if (currentEditor.dirty) void saveEditor(currentEditor.key); }} ariaLabel={currentEditor.path} filePath={currentEditor.path} selectionProjectPath={currentEditor.projectPath} readOnly={editorSettings?.editable === false} fontSize={editorSettings?.fontSize ?? 13} wordWrap={editorSettings?.wordWrap ?? false} tabSize={editorSettings?.tabSize ?? 4} appearance={editorAppearance} />}<div className="wb-editor-status"><span className="wb-editor-status-path">{currentEditor.path}</span><span className="wb-editor-status-state">{currentEditor.saving ? t("desktop.workbench.fileSaving") : currentEditor.diskState === "changed" ? t("desktop.workbench.fileConflict") : currentEditor.diskState === "deleted" ? t("desktop.workbench.fileDeletedOnDisk") : currentEditor.diskState === "external" ? t("desktop.workbench.fileUnavailableOnDisk") : currentEditor.dirty ? t("desktop.workbench.fileModified") : t("desktop.workbench.fileSaved")}</span><button type="button" className="wb-git-action-btn" disabled={!currentEditor.dirty || currentEditor.saving || Boolean(currentEditor.diskState) || editorSettings?.editable === false} onClick={() => void saveEditor(currentEditor.key)} aria-label={t("desktop.common.save")}><ThemeIcon name="save" size={15} /></button></div></div> : null}{currentDiff ? <div className="wb-git-diff-pane"><div className="wb-diff-head"><strong className="wb-diff-title">{currentDiff.path}</strong><button type="button" className="wb-git-action-btn wb-diff-open" aria-label={t("desktop.workbench.fileOpen")} title={t("desktop.workbench.fileOpen")} onClick={() => void openFile(gitChangeFilePath(currentDiff))}><ThemeIcon name="file" size={14} /></button></div><div className="wb-diff-labels"><span className="wb-diff-label">{currentDiff.oldLabel}</span><span className="wb-diff-label">{currentDiff.newLabel}</span></div><WorkbenchDiffView diff={currentDiff} appearance={editorAppearance} onDiscardHunk={(target) => void discardGitHunk(currentDiff, target)} onDiscardLine={(target) => void discardGitLine(currentDiff, target)} onStageHunk={(target) => void stageGitHunk(currentDiff, target)} onUnstageHunk={(target) => void unstageGitHunk(currentDiff, target)} onStageLine={(target) => void stageGitLine(currentDiff, target)} onUnstageLine={(target) => void unstageGitLine(currentDiff, target)} /></div> : null}{currentNotePane ? <NotePaneView key={currentNotePane.key} noteId={currentNotePane.noteId} active={active} onOpenNote={(noteId) => openNotePane(noteId)} onTitleChange={updateNotePaneTitle} onDirtyChange={setNotePaneDirty} onClose={() => closeNotePane(currentNotePane.key)} /> : null}{acpChats.map((pane) => {
+            const visible = paneScopeKey(pane) === activeScopeKey && activePane === pane.key;
             return <AcpChatView
               key={pane.key}
               recordId={pane.recordId}
@@ -5857,7 +6238,7 @@ export function WorkbenchPanel(): ReactPortal | null {
               }}
             />;
           })}{browsers.map((pane) => {
-            const visible = pane.projectPath === selectedProject && activePane === pane.key;
+            const visible = paneScopeKey(pane) === activeScopeKey && activePane === pane.key;
             return <BrowserPaneView
               key={pane.key}
               browserId={pane.browserId}
@@ -5874,7 +6255,7 @@ export function WorkbenchPanel(): ReactPortal | null {
               }}
               onDestroyed={() => closeBrowser(pane.key)}
             />;
-          })}{terminalCreating && !currentTerminals.some((pane) => pane.projectPath === selectedProject && !pane.ptyId) && !currentAcpChat ? <div className="wb-terminal-loading wb-terminal-loading-stack" role="status" aria-live="polite"><ThemeIcon name="loader" className="spin" size={18} aria-hidden="true" /><span>{t("desktop.common.loading")}</span></div> : null}{!terminalCreating && !currentTerminals.length && !currentEditors.length && !currentDiffs.length && !currentAcpChats.length && !currentBrowsers.length ? <p className="muted wb-terminal-hint">{selectedProject ? t("desktop.workbench.selectSessionHint") : t("desktop.workbench.selectProjectHint")}</p> : null}</div></div>
+          })}{terminalCreating && !currentTerminals.some((pane) => !pane.ptyId) && !currentAcpChat ? <div className="wb-terminal-loading wb-terminal-loading-stack" role="status" aria-live="polite"><ThemeIcon name="loader" className="spin" size={18} aria-hidden="true" /><span>{t("desktop.common.loading")}</span></div> : null}{!terminalCreating && !currentTerminals.length && !currentEditors.length && !currentDiffs.length && !currentAcpChats.length && !currentBrowsers.length && !currentNotePanes.length ? <p className="muted wb-terminal-hint">{selectedProject ? t("desktop.workbench.selectSessionHint") : t("desktop.workbench.selectProjectHint")}</p> : null}</div></div>
           {side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane wb-explorer-side-pane"><WorkbenchFileExplorer ref={fileExplorerRef} rootPath={sideRoot || ""} activePath={currentFilePath} onOpenFile={(path) => void openFile(path)} onOpenPreview={(path) => void openFile(path, undefined, sideRoot || undefined, "preview")} onShowGitHistory={(path) => void loadGitFileHistory(path)} onFindInFolder={findInExplorerFolder} onError={(message) => setStatus({ text: message, kind: "error" })} /><WorkbenchScriptsPane compact hasProject={Boolean(sideRoot)} selectedProject={sideRoot} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} collapsed={scriptsSectionCollapsed} onToggleCollapsed={toggleScriptsSectionCollapsed} onRefresh={sideRoot ? () => void loadScripts(sideRoot) : undefined} onRun={runScript} /></div> : side === "scripts" ? <WorkbenchScriptsPane hasProject={Boolean(sideRoot)} selectedProject={sideRoot} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} onRefresh={sideRoot ? () => void loadScripts(sideRoot) : undefined} onRun={runScript} /> : side === "search" ? <WorkbenchSearchSidePane
             selectedProject={sideRoot}
             searchQuery={searchQuery}

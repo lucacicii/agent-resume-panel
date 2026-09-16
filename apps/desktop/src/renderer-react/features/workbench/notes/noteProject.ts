@@ -1,4 +1,4 @@
-import type { DesktopApi } from "../../../preload/preload";
+import type { DesktopApi } from "../../../../preload/preload";
 
 export type Project = Awaited<ReturnType<DesktopApi["listProjects"]>>[number];
 

@@ -26,14 +26,15 @@ import type { TerminalEngineType } from "./types";
 type DesktopApi = ReturnType<typeof desktopApi>;
 type TerminalGitInfo = Awaited<ReturnType<DesktopApi["terminalGitInfo"]>>;
 
-export type WorkbenchPaneGroup = "session" | "terminal" | "code" | "browser";
+export type WorkbenchPaneGroup = "session" | "terminal" | "code" | "browser" | "note";
 
 export type TerminalPane = {
   key: string;
   title: string;
-  group: Exclude<WorkbenchPaneGroup, "code" | "browser">;
+  group: Exclude<WorkbenchPaneGroup, "code" | "browser" | "note">;
   sessionKey?: string;
   projectPath: string;
+  workbenchId?: string;
   cwd: string;
   command?: string;
   initialPrompt?: string;

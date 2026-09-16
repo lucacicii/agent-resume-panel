@@ -7,6 +7,7 @@ export type WorkbenchSideView = "files" | "git" | "search" | "scripts" | "linkgr
 export function WorkbenchDetailHeader({
   foldersCollapsed,
   onToggleFoldersCollapsed,
+  onBackToGtd,
   selectedProject,
   projectLabel,
   emptyLabel,
@@ -19,6 +20,8 @@ export function WorkbenchDetailHeader({
 }: {
   foldersCollapsed: boolean;
   onToggleFoldersCollapsed: () => void;
+  /** Return to the GTD board (the app's root view). */
+  onBackToGtd?: () => void;
   selectedProject: string | null;
   projectLabel: string;
   /** What to show when no project is selected (e.g. a project-less work item). */
@@ -32,6 +35,15 @@ export function WorkbenchDetailHeader({
 }): React.JSX.Element {
   const { t } = useI18n();
   return <>
+    {onBackToGtd ? (
+      <button
+        type="button"
+        className="wb-back-to-gtd"
+        aria-label={t("desktop.gtd.backToGtd")}
+        title={t("desktop.gtd.backToGtd")}
+        onClick={onBackToGtd}
+      ><ThemeIcon name="arrow-left" size={17} /></button>
+    ) : null}
     <button
       type="button"
       className={`sidebar-collapse-toggle${foldersCollapsed ? " is-active" : ""}`}

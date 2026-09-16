@@ -300,7 +300,3 @@ export function SelectionSendMenu({
     </>
   );
 }
-
-/** Back-compat alias for existing note surfaces. */
-export { SelectionSendMenu as NoteSelectionContextMenu };
-export type { SelectionSendMenuState as NoteSelectionMenuState };

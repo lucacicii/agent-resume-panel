@@ -1,7 +1,7 @@
 import { forwardRef, useImperativeHandle } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { I18nProvider } from "../../i18n";
+import { I18nProvider } from "../../../i18n";
 import { StandaloneNoteWindow } from "./StandaloneNoteWindow";
 
 const editorHandle = {
@@ -13,7 +13,7 @@ const editorHandle = {
   getSelectedText: vi.fn(() => "")
 };
 
-vi.mock("../../components/CodeEditor", () => ({
+vi.mock("../../../components/CodeEditor", () => ({
   CodeEditor: forwardRef(({ value, onChange, ariaLabel }: { value: string; onChange: (value: string) => void; ariaLabel: string }, ref) => {
     useImperativeHandle(ref, () => editorHandle);
     return <textarea aria-label={ariaLabel} value={value} onChange={(event) => onChange(event.target.value)} />;

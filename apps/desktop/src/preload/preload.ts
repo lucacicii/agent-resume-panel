@@ -15,7 +15,9 @@ import type {
   SkillDescriptor,
   GtdStatus,
   WorkbenchSessionFolder,
-  WorkbenchSessionFolderAssignment
+  WorkbenchSessionFolderAssignment,
+  TaskWorkbench,
+  TaskWorkbenchSessionLink
 } from "@agent-resume/core";
 import type { McpClientInfo } from "../main/mcpRegistration";
 import type {
@@ -350,6 +352,19 @@ export interface DesktopApi {
     folders: WorkbenchSessionFolder[];
     assignments: WorkbenchSessionFolderAssignment[];
   }>>;
+  /** Task workbenches (GTD task → N workbenches). Desktop-private. */
+  listTaskWorkbenches(args: { taskNoteId: string }): Promise<TaskWorkbench[]>;
+  listAllTaskWorkbenches(): Promise<TaskWorkbench[]>;
+  ensureTaskWorkbench(args: { taskNoteId: string; name?: string; projectPath?: string | null }): Promise<TaskWorkbench>;
+  createTaskWorkbench(args: { taskNoteId: string; name?: string; projectPath?: string | null }): Promise<TaskWorkbench>;
+  renameTaskWorkbench(args: { workbenchId: string; name: string }): Promise<TaskWorkbench>;
+  setTaskWorkbenchProject(args: { workbenchId: string; projectPath: string | null }): Promise<TaskWorkbench>;
+  setTaskWorkbenchLayout(args: { workbenchId: string; layoutJson: string | null }): Promise<{ ok: boolean }>;
+  reorderTaskWorkbenches(args: { taskNoteId: string; orderedIds: string[] }): Promise<{ ok: boolean }>;
+  deleteTaskWorkbench(args: { workbenchId: string }): Promise<{ ok: boolean }>;
+  listTaskWorkbenchSessionLinks(args: { workbenchId: string }): Promise<TaskWorkbenchSessionLink[]>;
+  assignSessionToTaskWorkbench(args: { workbenchId: string; provider: string; agentSessionId: string }): Promise<TaskWorkbenchSessionLink>;
+  removeSessionFromTaskWorkbench(args: { workbenchId: string; provider: string; agentSessionId: string }): Promise<{ ok: boolean }>;
   createWorkbenchSessionFolder(args: {
     projectId: string;
     parentId?: string | null;
@@ -1599,6 +1614,18 @@ const api: DesktopApi = {
   deleteWorkbenchSessionFolder: (args) => ipcRenderer.invoke("workbench:deleteSessionFolder", args),
   assignWorkbenchSessionToFolder: (args) => ipcRenderer.invoke("workbench:assignSessionToFolder", args),
   removeWorkbenchSessionFromFolder: (args) => ipcRenderer.invoke("workbench:removeSessionFromFolder", args),
+  listTaskWorkbenches: (args) => ipcRenderer.invoke("taskWorkbenches:list", args),
+  listAllTaskWorkbenches: () => ipcRenderer.invoke("taskWorkbenches:listAll"),
+  ensureTaskWorkbench: (args) => ipcRenderer.invoke("taskWorkbenches:ensure", args),
+  createTaskWorkbench: (args) => ipcRenderer.invoke("taskWorkbenches:create", args),
+  renameTaskWorkbench: (args) => ipcRenderer.invoke("taskWorkbenches:rename", args),
+  setTaskWorkbenchProject: (args) => ipcRenderer.invoke("taskWorkbenches:setProject", args),
+  setTaskWorkbenchLayout: (args) => ipcRenderer.invoke("taskWorkbenches:setLayout", args),
+  reorderTaskWorkbenches: (args) => ipcRenderer.invoke("taskWorkbenches:reorder", args),
+  deleteTaskWorkbench: (args) => ipcRenderer.invoke("taskWorkbenches:delete", args),
+  listTaskWorkbenchSessionLinks: (args) => ipcRenderer.invoke("taskWorkbenches:listSessionLinks", args),
+  assignSessionToTaskWorkbench: (args) => ipcRenderer.invoke("taskWorkbenches:assignSession", args),
+  removeSessionFromTaskWorkbench: (args) => ipcRenderer.invoke("taskWorkbenches:removeSession", args),
   acpListSessions: (args) => ipcRenderer.invoke("acp:listSessions", args),
   acpCreateSession: (args) => ipcRenderer.invoke("acp:createSession", args),
   acpGetSession: (args) => ipcRenderer.invoke("acp:getSession", args),

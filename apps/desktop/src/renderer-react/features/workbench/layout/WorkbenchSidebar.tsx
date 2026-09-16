@@ -1,6 +1,6 @@
 import type { GtdStatus } from "@agent-resume/core";
 import { ThemeIcon } from "../../../components/ThemeIcon";
-import { sessionDotStatusClass } from "../../../components/SessionDotsCluster";
+import { sessionDotStatusClass } from "../sessionStatus/dotStatus";
 import { useI18n } from "../../../i18n";
 import type { ActiveSessionDot } from "../activeSessionDots";
 import { needsYou, rollupDot } from "../sessionStatus/workItemRollup";

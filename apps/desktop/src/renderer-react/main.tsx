@@ -1,4 +1,4 @@
-import React, { StrictMode, useEffect } from "react";
+import React, { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { I18nProvider } from "./i18n";
 import { AppChrome } from "./components/AppChrome";
@@ -7,10 +7,10 @@ import { Notifications } from "./components/Notifications";
 import { SelectionSendHost } from "./selection/SelectionSendHost";
 import { useI18n } from "./i18n";
 import { SettingsPanel } from "./features/settings/SettingsPanel";
-import { NotesPanel } from "./features/notes/NotesPanel";
-import { StandaloneNoteWindow } from "./features/notes/StandaloneNoteWindow";
+import { StandaloneNoteWindow } from "./features/workbench/notes/StandaloneNoteWindow";
 import { BrowserStandaloneWindow } from "./features/browser/BrowserStandaloneWindow";
 import { WorkbenchPanel } from "./features/workbench/WorkbenchPanel";
+import { GtdView } from "./features/gtd/GtdView";
 import { DiffWorkerPool } from "./features/workbench/diffWorkerPool";
 import { settingsChangedToCustomEvents } from "./settingsBroadcast";
 import { updateConfig } from "./components/notificationStore";
@@ -158,17 +158,50 @@ function MainDesktopRuntime(): React.JSX.Element {
 
 function MainRendererRuntime(): React.JSX.Element {
   const { ready } = useI18n();
+  const [view, setView] = useState<"gtd" | "workbench">("gtd");
+
+  useEffect(() => {
+    const onGtd = () => setView("gtd");
+    const onOpenTask = (event: Event) => {
+      const detail = (event as CustomEvent<Record<string, unknown>>).detail;
+      setView("workbench");
+      if (detail && typeof detail.noteId === "string") {
+        window.dispatchEvent(new CustomEvent("agent-resume:workbench-work-item", { detail }));
+      }
+    };
+    const onTabRequest = (event: Event) => {
+      const next = (event as CustomEvent<string>).detail;
+      if (next === "workbench") setView("workbench");
+      else if (next === "gtd") setView("gtd");
+    };
+    window.addEventListener("agent-resume:view-gtd", onGtd);
+    window.addEventListener("agent-resume:view-open-task", onOpenTask);
+    window.addEventListener("agent-resume:tab-request", onTabRequest);
+    const stopSessions = typeof window.agentResume.onOpenSessions === "function"
+      ? window.agentResume.onOpenSessions(() => setView("gtd"))
+      : () => undefined;
+    return () => {
+      window.removeEventListener("agent-resume:view-gtd", onGtd);
+      window.removeEventListener("agent-resume:view-open-task", onOpenTask);
+      window.removeEventListener("agent-resume:tab-request", onTabRequest);
+      stopSessions();
+    };
+  }, []);
+
+  // `tab-change` still tells the always-mounted Workbench whether it is the
+  // visible surface (it drives its own `active` state and reloads on show).
   useEffect(() => {
     if (!ready) return;
-    window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" }));
-  }, [ready]);
+    window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: view }));
+  }, [ready, view]);
+
   return (
     <>
       <AppChrome />
       <DiffWorkerPool>
         <WorkbenchPanel />
       </DiffWorkerPool>
-      <NotesPanel />
+      <GtdView active={view === "gtd"} />
       <SettingsPanel variant="embedded" />
       <SelectionSendHost />
       <Notifications />

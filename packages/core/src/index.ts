@@ -256,6 +256,25 @@ export type {
   WorkbenchSessionFolderAssignment
 } from "./catalog/workbenchFolders";
 export {
+  listTaskWorkbenches,
+  listAllTaskWorkbenches,
+  getTaskWorkbench,
+  createTaskWorkbench,
+  ensureTaskWorkbench,
+  renameTaskWorkbench,
+  setTaskWorkbenchProject,
+  setTaskWorkbenchLayout,
+  reorderTaskWorkbenches,
+  deleteTaskWorkbench,
+  listTaskWorkbenchSessionLinks,
+  assignSessionToTaskWorkbench,
+  removeSessionFromTaskWorkbench
+} from "./catalog/taskWorkbenches";
+export type {
+  TaskWorkbench,
+  TaskWorkbenchSessionLink
+} from "./catalog/taskWorkbenches";
+export {
   loadAllAgentSessions,
   syncAgentSessions,
   sessionSyncOptionsFromSettings

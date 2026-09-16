@@ -1194,10 +1194,10 @@ export function ImPanel({ embedded = false, onCloseRoom }: { embedded?: boolean;
   const handleOpenCitation = useCallback((citation: AgentCitation) => {
     if (isNote(citation)) {
       if (citation.noteId) {
-        window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "notes" }));
+        window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
         window.dispatchEvent(new CustomEvent("agent-resume:open-note", { detail: citation.noteId }));
       } else {
-        window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "notes" }));
+        window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
       }
       return;
     }

@@ -8555,6 +8555,20 @@ describe("WorkbenchPanel", () => {
       gtdStatus: "inbox",
       work: { sessions: [] }
     }));
+    const notesRead = vi.fn(async ({ noteId }: { noteId: string }) => ({
+      record: {
+        noteId,
+        scope: "library",
+        filename: "new-created-item.md",
+        relDir: "",
+        relMdPath: "new-created-item.md",
+        title: "New created item",
+        createdAtMs: 1,
+        updatedAtMs: 1,
+        work: { sessions: [] }
+      },
+      content: ""
+    }));
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages: {
         "desktop.common.search": "Search", "desktop.common.refresh": "Refresh", "desktop.common.all": "All",
@@ -8581,6 +8595,7 @@ describe("WorkbenchPanel", () => {
       onAgentStatusChanged: () => () => undefined,
       notesListWorkItems: async () => [],
       notesCreateWorkItem,
+      notesRead,
       terminalSpawn: async () => ({ id: 1 }),
       terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
       terminalDestroy: async () => ({ ok: true }),
@@ -8600,5 +8615,374 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => {
       expect(notesCreateWorkItem).toHaveBeenCalled();
     });
+  });
+
+  it("opens a work item's note as an editing pane tab", async () => {
+    const notesRead = vi.fn(async ({ noteId }: { noteId: string }) => ({
+      record: {
+        noteId,
+        scope: "project",
+        projectPath: "/work/app",
+        filename: "realtime-status.md",
+        relDir: "projects/app",
+        relMdPath: "notes/projects/app/realtime-status.md",
+        title: "Realtime status",
+        createdAtMs: 1,
+        updatedAtMs: 1,
+        work: { next: "Wire the rollup", sessions: [] }
+      },
+      content: "# Realtime status\n\nWire the rollup."
+    }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.common.search": "Search", "desktop.common.refresh": "Refresh", "desktop.common.all": "All",
+        "desktop.workbench.allSessions": "All sessions",
+        "desktop.workbench.sidebarView": "Workbench sidebar view",
+        "desktop.workbench.workItemsView": "Work items",
+        "desktop.workbench.resourceView": "Repository",
+        "desktop.workbench.projectsView": "Projects",
+        "desktop.workbench.gtdView": "GTD",
+        "desktop.workbench.filterWorkItems": "Filter work items",
+        "desktop.workbench.noWorkItems": "No work items yet",
+        "desktop.workbench.workItemView": "Work item",
+        "desktop.workbench.workItemOpenNote": "Open note",
+        "desktop.workbench.workItemClear": "Exit work item",
+        "desktop.workbench.workItemNext": "Next:",
+        "desktop.workbench.workItemSessions": "{0} sessions",
+        "desktop.notes.allNotes": "All notes",
+        "desktop.notes.editorPlaceholder": "Edit Markdown…"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      listProjects: async () => [],
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      notesRead,
+      notesListWorkItems: async () => [{
+        noteId: "wi-1", scope: "project", projectPath: "/work/app",
+        filename: "realtime-status.md", relDir: "projects/app", relMdPath: "notes/projects/app/realtime-status.md",
+        title: "Realtime status", createdAtMs: 1, updatedAtMs: 1, gtdStatus: "next",
+        work: { next: "Wire the rollup", sessions: [] }
+      }],
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    localStorage.setItem("workbench-sidebar-view-v2", "workitems");
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-work-item", { detail: {
+        noteId: "wi-1", title: "Realtime status", status: "next", sessions: []
+      } }));
+    });
+
+    const openNote = await screen.findByRole("button", { name: "Open note" });
+    fireEvent.click(openNote);
+
+    await waitFor(() => expect(document.querySelector(".wb-note-pane")).not.toBeNull());
+    expect(notesRead).toHaveBeenCalledWith({ noteId: "wi-1" });
+    expect(await screen.findByRole("tab", { name: /Realtime status/ })).toBeTruthy();
+    // The pane edits the note body via the shared editor surface.
+    expect(screen.getByPlaceholderText("Edit Markdown…")).toBeTruthy();
+  });
+
+  it("loads a task's workbenches as a tab strip and switches the active one", async () => {
+    const wb = (overrides: Record<string, unknown>) => ({
+      taskNoteId: "wi-1", layoutJson: null, createdAtMs: 1, updatedAtMs: 1, ...overrides
+    });
+    const listTaskWorkbenches = vi.fn(async () => [
+      wb({ workbenchId: "wb-1", name: "Backend", projectPath: "/work/api", position: 0 }),
+      wb({ workbenchId: "wb-2", name: "Frontend", projectPath: "/work/web", position: 1 })
+    ]);
+    const ensureTaskWorkbench = vi.fn(async () =>
+      wb({ workbenchId: "wb-1", name: "Backend", projectPath: "/work/api", position: 0 })
+    );
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.common.search": "Search", "desktop.common.refresh": "Refresh", "desktop.common.all": "All",
+        "desktop.common.rename": "Rename",
+        "desktop.workbench.workItemsView": "Work items",
+        "desktop.workbench.filterWorkItems": "Filter work items",
+        "desktop.workbench.noWorkItems": "No work items yet",
+        "desktop.workbench.workItemView": "Work item",
+        "desktop.workbench.workItemOpenNote": "Open note",
+        "desktop.workbench.workItemClear": "Exit work item",
+        "desktop.workbench.workItemNext": "Next:",
+        "desktop.workbench.workItemSessions": "{0} sessions",
+        "desktop.workbench.workbenchTabs": "Workbenches",
+        "desktop.workbench.newWorkbench": "New workbench",
+        "desktop.workbench.deleteWorkbench": "Delete workbench",
+        "desktop.workbench.deleteWorkbenchConfirm": "Delete workbench \"{0}\"?"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      listProjects: async () => [],
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      notesListWorkItems: async () => [{
+        noteId: "wi-1", scope: "project", projectPath: "/work/api",
+        filename: "realtime-status.md", relDir: "projects/app", relMdPath: "notes/projects/app/realtime-status.md",
+        title: "Realtime status", createdAtMs: 1, updatedAtMs: 1, gtdStatus: "next",
+        work: { sessions: [], projects: ["/work/api", "/work/web"], primaryProject: "/work/api" }
+      }],
+      listTaskWorkbenches,
+      ensureTaskWorkbench,
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    localStorage.setItem("workbench-sidebar-view-v2", "workitems");
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-work-item", { detail: {
+        noteId: "wi-1", title: "Realtime status", status: "next", sessions: [],
+        projects: ["/work/api", "/work/web"], primaryProject: "/work/api"
+      } }));
+    });
+
+    await waitFor(() => expect(document.querySelectorAll(".wb-workbench-tab").length).toBe(2));
+    const labels = [...document.querySelectorAll<HTMLButtonElement>(".wb-workbench-tab-label")];
+    expect(labels.map((label) => label.textContent)).toEqual(["Backend", "Frontend"]);
+    expect(ensureTaskWorkbench).toHaveBeenCalledWith({ taskNoteId: "wi-1" });
+
+    fireEvent.click(labels[1]);
+    await waitFor(() => expect(document.querySelector(".wb-workbench-tab.active")?.textContent).toContain("Frontend"));
+  });
+
+  it("scopes note panes to the active workbench, even on the same project", async () => {
+    const wb = (overrides: Record<string, unknown>) => ({
+      taskNoteId: "wi-iso", layoutJson: null, projectPath: "/work/app", createdAtMs: 1, updatedAtMs: 1, ...overrides
+    });
+    const notesRead = vi.fn(async ({ noteId }: { noteId: string }) => ({
+      record: {
+        noteId, scope: "project", projectPath: "/work/app", filename: "realtime.md",
+        relDir: "", relMdPath: "realtime.md", title: "Realtime status",
+        createdAtMs: 1, updatedAtMs: 1, work: { sessions: [] }
+      },
+      content: "# Realtime status"
+    }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.common.search": "Search", "desktop.common.refresh": "Refresh", "desktop.common.all": "All",
+        "desktop.workbench.workItemsView": "Work items",
+        "desktop.workbench.filterWorkItems": "Filter work items",
+        "desktop.workbench.noWorkItems": "No work items yet",
+        "desktop.workbench.workItemView": "Work item",
+        "desktop.workbench.workItemOpenNote": "Open note",
+        "desktop.workbench.workItemClear": "Exit work item",
+        "desktop.workbench.workItemNext": "Next:",
+        "desktop.workbench.workItemSessions": "{0} sessions",
+        "desktop.notes.allNotes": "All notes",
+        "desktop.notes.editorPlaceholder": "Edit Markdown…"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      listProjects: async () => [],
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      notesRead,
+      notesListWorkItems: async () => [{
+        noteId: "wi-iso", scope: "project", projectPath: "/work/app",
+        filename: "realtime.md", relDir: "", relMdPath: "realtime.md",
+        title: "Realtime status", createdAtMs: 1, updatedAtMs: 1, gtdStatus: "next",
+        work: { sessions: [], projects: ["/work/app"], primaryProject: "/work/app" }
+      }],
+      // Both workbenches bind the SAME project: only workbench scoping can isolate their panes.
+      listTaskWorkbenches: async () => [
+        wb({ workbenchId: "wb-1", name: "Alpha", position: 0 }),
+        wb({ workbenchId: "wb-2", name: "Beta", position: 1 })
+      ],
+      ensureTaskWorkbench: async () => wb({ workbenchId: "wb-1", name: "Alpha", position: 0 }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    localStorage.setItem("workbench-sidebar-view-v2", "workitems");
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-work-item", { detail: {
+        noteId: "wi-iso", title: "Realtime status", status: "next", sessions: [],
+        projects: ["/work/app"], primaryProject: "/work/app"
+      } }));
+    });
+
+    await waitFor(() => expect(document.querySelectorAll(".wb-workbench-tab").length).toBe(2));
+    fireEvent.click(await screen.findByRole("button", { name: "Open note" }));
+    await waitFor(() => expect(document.querySelector(".wb-note-pane")).not.toBeNull());
+
+    // Switch to the sibling workbench on the same project: the note pane is gone.
+    const labels = [...document.querySelectorAll<HTMLButtonElement>(".wb-workbench-tab-label")];
+    fireEvent.click(labels[1]);
+    await waitFor(() => expect(document.querySelector(".wb-note-pane")).toBeNull());
+    expect(document.querySelectorAll(".wb-terminal-tab.is-note").length).toBe(0);
+
+    // Back to the first workbench restores its pane stack.
+    fireEvent.click(labels[0]);
+    await waitFor(() => expect(document.querySelector(".wb-note-pane")).not.toBeNull());
+  });
+
+  it("honors a deep-linked workbench over the stored one", async () => {
+    const wb = (overrides: Record<string, unknown>) => ({
+      taskNoteId: "wi-dl", layoutJson: null, projectPath: "/work/api", createdAtMs: 1, updatedAtMs: 1, ...overrides
+    });
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.common.search": "Search", "desktop.common.refresh": "Refresh", "desktop.common.all": "All",
+        "desktop.workbench.workItemsView": "Work items",
+        "desktop.workbench.filterWorkItems": "Filter work items",
+        "desktop.workbench.noWorkItems": "No work items yet",
+        "desktop.workbench.workItemView": "Work item",
+        "desktop.workbench.workItemOpenNote": "Open note",
+        "desktop.workbench.workItemClear": "Exit work item",
+        "desktop.workbench.workItemNext": "Next:",
+        "desktop.workbench.workItemSessions": "{0} sessions"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      listProjects: async () => [],
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      notesListWorkItems: async () => [{
+        noteId: "wi-dl", scope: "project", projectPath: "/work/api",
+        filename: "dl.md", relDir: "", relMdPath: "dl.md", title: "Deep link",
+        createdAtMs: 1, updatedAtMs: 1, gtdStatus: "next",
+        work: { sessions: [], projects: ["/work/api"], primaryProject: "/work/api" }
+      }],
+      listTaskWorkbenches: async () => [
+        wb({ workbenchId: "wb-a", name: "Alpha", position: 0 }),
+        wb({ workbenchId: "wb-b", name: "Beta", position: 1 })
+      ],
+      ensureTaskWorkbench: async () => wb({ workbenchId: "wb-a", name: "Alpha", position: 0 }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    // Stored preference says Alpha; the deep-link asks for Beta.
+    localStorage.setItem("workbench-active-v1:wi-dl", "wb-a");
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-work-item", { detail: {
+        noteId: "wi-dl", title: "Deep link", status: "next", sessions: [],
+        projects: ["/work/api"], primaryProject: "/work/api", workbenchId: "wb-b"
+      } }));
+    });
+
+    await waitFor(() => expect(document.querySelectorAll(".wb-workbench-tab").length).toBe(2));
+    await waitFor(() => expect(document.querySelector(".wb-workbench-tab.active")?.textContent).toContain("Beta"));
+    localStorage.removeItem("workbench-active-v1:wi-dl");
+  });
+
+  it("restores a workbench's persisted note panes when it becomes active", async () => {
+    const notesRead = vi.fn(async ({ noteId }: { noteId: string }) => ({
+      record: {
+        noteId, scope: "project", projectPath: "/work/app", filename: `${noteId}.md`,
+        relDir: "", relMdPath: `${noteId}.md`, title: `Note ${noteId}`,
+        createdAtMs: 1, updatedAtMs: 1, work: { sessions: [] }
+      },
+      content: "# restored"
+    }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.common.search": "Search", "desktop.common.refresh": "Refresh", "desktop.common.all": "All",
+        "desktop.workbench.workItemsView": "Work items",
+        "desktop.workbench.filterWorkItems": "Filter work items",
+        "desktop.workbench.noWorkItems": "No work items yet",
+        "desktop.workbench.workItemView": "Work item",
+        "desktop.workbench.workItemOpenNote": "Open note",
+        "desktop.workbench.workItemClear": "Exit work item",
+        "desktop.workbench.workItemNext": "Next:",
+        "desktop.workbench.workItemSessions": "{0} sessions",
+        "desktop.notes.allNotes": "All notes",
+        "desktop.notes.editorPlaceholder": "Edit Markdown…"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      listProjects: async () => [],
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      notesRead,
+      notesListWorkItems: async () => [{
+        noteId: "wi-lay", scope: "project", projectPath: "/work/app",
+        filename: "lay.md", relDir: "", relMdPath: "lay.md", title: "Layout task",
+        createdAtMs: 1, updatedAtMs: 1, gtdStatus: "next",
+        work: { sessions: [], projects: ["/work/app"], primaryProject: "/work/app" }
+      }],
+      listTaskWorkbenches: async () => [{
+        workbenchId: "wb-lay", taskNoteId: "wi-lay", name: "Layout", projectPath: "/work/app",
+        position: 0, layoutJson: JSON.stringify({ openNoteIds: ["n-restored"] }), createdAtMs: 1, updatedAtMs: 1
+      }],
+      ensureTaskWorkbench: async () => ({
+        workbenchId: "wb-lay", taskNoteId: "wi-lay", name: "Layout", projectPath: "/work/app",
+        position: 0, layoutJson: JSON.stringify({ openNoteIds: ["n-restored"] }), createdAtMs: 1, updatedAtMs: 1
+      }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    localStorage.setItem("workbench-active-v1:wi-lay", "wb-lay");
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-work-item", { detail: {
+        noteId: "wi-lay", title: "Layout task", status: "next", sessions: [],
+        projects: ["/work/app"], primaryProject: "/work/app"
+      } }));
+    });
+
+    await waitFor(() => expect(document.querySelectorAll(".wb-terminal-tab.is-note").length).toBe(1));
+    expect(notesRead).toHaveBeenCalledWith({ noteId: "n-restored" });
+    expect(document.querySelector(".wb-note-pane")).not.toBeNull();
+    localStorage.removeItem("workbench-active-v1:wi-lay");
   });
 });

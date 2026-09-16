@@ -191,6 +191,29 @@ CREATE TABLE IF NOT EXISTS session_transcript_index (
   PRIMARY KEY (provider, agent_session_id)
 );
 
+CREATE TABLE IF NOT EXISTS task_workbenches (
+  workbench_id TEXT PRIMARY KEY,
+  task_note_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  project_path TEXT,
+  position INTEGER NOT NULL,
+  layout_json TEXT,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_task_workbenches_task
+  ON task_workbenches(task_note_id, position);
+
+CREATE TABLE IF NOT EXISTS task_workbench_sessions (
+  workbench_id TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  agent_session_id TEXT NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  PRIMARY KEY (workbench_id, provider, agent_session_id)
+);
+CREATE INDEX IF NOT EXISTS idx_task_workbench_sessions_session
+  ON task_workbench_sessions(provider, agent_session_id);
+
 CREATE TABLE IF NOT EXISTS workbench_session_folders (
   folder_id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,

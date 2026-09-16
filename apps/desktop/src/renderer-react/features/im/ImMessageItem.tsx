@@ -595,13 +595,13 @@ export const ImMessageItem = memo(function ImMessageItem({
               }
               const prefix = marker.charAt(0);
               if (prefix === "N") {
-                window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "notes" }));
+                window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
               } else if (prefix === "S") {
                 window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
               }
             }}
             onNoteClick={(noteId) => {
-              window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "notes" }));
+              window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
               window.dispatchEvent(new CustomEvent("agent-resume:open-note", { detail: noteId }));
             }}
           />

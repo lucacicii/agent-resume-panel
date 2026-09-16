@@ -1,81 +1,24 @@
-import { ThemeIcon, type ThemeIconName } from "./ThemeIcon";
+import { ThemeIcon } from "./ThemeIcon";
 import { createPortal } from "react-dom";
 import { useEffect, useRef, useState } from "react";
 import { desktopApi } from "../bridge";
 import { useI18n } from "../i18n";
-import { type ActiveSessionDot } from "../features/workbench/activeSessionDots";
 import { Tooltip } from "./Tooltip";
 import { BellNotificationButton } from "./BellNotificationButton";
-import { SessionDotsCluster } from "./SessionDotsCluster";
 
-type PrimaryTab = "workbench" | "notes";
 type FloatingNoteDot = { noteId: string; title: string };
 
-const tabs: Array<{ id: PrimaryTab; icon: ThemeIconName; key: string; fallback: string }> = [
-  { id: "workbench", icon: "terminal", key: "desktop.tabs.workbench", fallback: "Workbench" },
-  { id: "notes", icon: "file-text", key: "desktop.tabs.notes", fallback: "Notes" }
-];
-
-function eventDetail<T>(event: Event): T | undefined {
-  return (event as CustomEvent<T>).detail;
-}
-
+/**
+ * The app is GTD-first: there is no primary-tab rail anymore. The header keeps
+ * the global chrome — the per-view toolbar slot, floating-note dots, the
+ * notification bell, and the account/settings menu.
+ */
 export function AppChrome(): React.JSX.Element {
   const { ready, t } = useI18n();
-  const [activeTab, setActiveTab] = useState<PrimaryTab>("workbench");
-  const [sessionDots, setSessionDots] = useState<ActiveSessionDot[]>([]);
   const [noteDots, setNoteDots] = useState<FloatingNoteDot[]>([]);
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
-  const headerRef = useRef<HTMLElement | null>(null);
   const avatarBtnRef = useRef<HTMLButtonElement | null>(null);
   const avatarMenuRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    // Size the nav rail to the area below the app header (header height can
-    // change once its contents are planned, so measure it live).
-    const header = headerRef.current;
-    if (!header || typeof ResizeObserver === "undefined") return;
-    const update = () => {
-      document.documentElement.style.setProperty("--app-header-height", `${header.offsetHeight}px`);
-    };
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(header);
-    return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => {
-    const onTabChange = (event: Event) => {
-      const next = eventDetail<string>(event);
-      if (next && tabs.some((tab) => tab.id === next)) setActiveTab(next as PrimaryTab);
-    };
-    const onTabRequest = (event: Event) => {
-      const next = eventDetail<string>(event);
-      if (!next || !tabs.some((tab) => tab.id === next)) return;
-      setActiveTab(next as PrimaryTab);
-      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: next }));
-    };
-    // Native "Sessions" entry: session browsing lives in Workbench now.
-    const stopSessions = typeof window.agentResume.onOpenSessions === "function"
-      ? window.agentResume.onOpenSessions(() => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })))
-      : () => undefined;
-    window.addEventListener("agent-resume:tab-change", onTabChange);
-    window.addEventListener("agent-resume:tab-request", onTabRequest);
-    return () => {
-      window.removeEventListener("agent-resume:tab-change", onTabChange);
-      window.removeEventListener("agent-resume:tab-request", onTabRequest);
-      stopSessions();
-    };
-  }, []);
-
-  useEffect(() => {
-    const onActiveSessions = (event: Event) => {
-      const detail = eventDetail<ActiveSessionDot[]>(event);
-      if (Array.isArray(detail)) setSessionDots(detail);
-    };
-    window.addEventListener("agent-resume:active-sessions", onActiveSessions);
-    return () => window.removeEventListener("agent-resume:active-sessions", onActiveSessions);
-  }, []);
 
   useEffect(() => {
     const api = desktopApi();
@@ -127,19 +70,7 @@ export function AppChrome(): React.JSX.Element {
     menu.style.top = `${top}px`;
   }, [avatarMenuOpen]);
 
-  const selectTab = (next: PrimaryTab) => {
-    setActiveTab(next);
-    window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: next }));
-  };
-
-  const focusSessionFromRail = (dot: ActiveSessionDot) => {
-    window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
-    window.dispatchEvent(new CustomEvent("agent-resume:workbench-focus-session", {
-      detail: { paneKey: dot.paneKey, projectPath: dot.projectPath }
-    }));
-  };
-
-  const focusNoteFromRail = (dot: FloatingNoteDot) => {
+  const focusNote = (dot: FloatingNoteDot) => {
     const api = desktopApi();
     if (typeof api.standaloneNoteOpen !== "function") return;
     void api.standaloneNoteOpen({ noteId: dot.noteId }).catch(() => undefined);
@@ -155,95 +86,58 @@ export function AppChrome(): React.JSX.Element {
   const settingsLabel = text("desktop.top.settings", "Settings");
 
   return (
-    <>
-      <nav className="app-nav-rail" aria-label="Primary navigation">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            className={`rail-btn${activeTab === tab.id ? " active" : ""}`}
-            data-tab={tab.id}
-            title={text(tab.key, tab.fallback)}
-            aria-label={text(tab.key, tab.fallback)}
-            onClick={() => selectTab(tab.id)}
-          >
-            <ThemeIcon name={tab.icon} aria-hidden="true" />
-          </button>
-        ))}
-        <div className="rail-bottom">
-          {(noteDots.length > 0 || sessionDots.length > 0) && (
-            <div className="rail-bottom-dots">
-              {noteDots.length > 0 && (
-                <div
-                  className="rail-notes-dots"
-                  role="group"
-                  aria-label={text("desktop.notes.floatingDots", "Floating notes")}
-                >
-                  <span className="rail-dots-heading" aria-hidden="true" title={text("desktop.notes.floatingDots", "Floating notes")}>
-                    <ThemeIcon name="file-text" size={12} />
-                  </span>
-                  {noteDots.map((dot) => (
-                    <Tooltip key={dot.noteId} label={dot.title}>
-                      <button
-                        type="button"
-                        className="rail-note-dot-btn"
-                        aria-label={dot.title}
-                        onClick={() => focusNoteFromRail(dot)}
-                      >
-                        <span className="rail-note-dot" aria-hidden="true" />
-                      </button>
-                    </Tooltip>
-                  ))}
-                </div>
-              )}
-              {sessionDots.length > 0 && (
-                <SessionDotsCluster
-                  dots={sessionDots}
-                  text={text}
-                  onFocus={focusSessionFromRail}
-                />
-              )}
-            </div>
-          )}
-          <div className="rail-account">
-            <Tooltip label={avatarLabel}>
+    <header className="top mac-top">
+      <div id="app-header-slot" />
+      {noteDots.length > 0 ? (
+        <div className="app-note-dots" role="group" aria-label={text("desktop.notes.floatingDots", "Floating notes")}>
+          {noteDots.map((dot) => (
+            <Tooltip key={dot.noteId} label={dot.title}>
               <button
-                ref={avatarBtnRef}
                 type="button"
-                className={`rail-avatar-btn${avatarMenuOpen ? " is-open" : ""}`}
-                aria-label={avatarLabel}
-                aria-haspopup="menu"
-                aria-expanded={avatarMenuOpen}
-                onClick={() => setAvatarMenuOpen((open) => !open)}
+                className="app-note-dot-btn"
+                aria-label={dot.title}
+                onClick={() => focusNote(dot)}
               >
-                <span className="rail-avatar" aria-hidden="true">
-                  <ThemeIcon name="user" size={16} />
-                </span>
+                <span className="app-note-dot" aria-hidden="true" />
               </button>
             </Tooltip>
-            {avatarMenuOpen
-              ? createPortal(
-                  <div ref={avatarMenuRef} className="rail-account-menu" role="menu" aria-label={avatarLabel}>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="rail-account-menu-item"
-                      onClick={() => openSettings("general")}
-                    >
-                      <ThemeIcon name="settings" size={14} aria-hidden="true" />
-                      {settingsLabel}
-                    </button>
-                  </div>,
-                  document.body
-                )
-              : null}
-          </div>
+          ))}
         </div>
-      </nav>
-      <header ref={headerRef} className="top mac-top">
-        <div id="app-header-slot" />
-        <BellNotificationButton />
-      </header>
-    </>
+      ) : null}
+      <BellNotificationButton />
+      <div className="app-account">
+        <Tooltip label={avatarLabel}>
+          <button
+            ref={avatarBtnRef}
+            type="button"
+            className={`app-account-btn${avatarMenuOpen ? " is-open" : ""}`}
+            aria-label={avatarLabel}
+            aria-haspopup="menu"
+            aria-expanded={avatarMenuOpen}
+            onClick={() => setAvatarMenuOpen((open) => !open)}
+          >
+            <span className="app-account-avatar" aria-hidden="true">
+              <ThemeIcon name="user" size={16} />
+            </span>
+          </button>
+        </Tooltip>
+        {avatarMenuOpen
+          ? createPortal(
+              <div ref={avatarMenuRef} className="rail-account-menu" role="menu" aria-label={avatarLabel}>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="rail-account-menu-item"
+                  onClick={() => openSettings("general")}
+                >
+                  <ThemeIcon name="settings" size={14} aria-hidden="true" />
+                  {settingsLabel}
+                </button>
+              </div>,
+              document.body
+            )
+          : null}
+      </div>
+    </header>
   );
 }

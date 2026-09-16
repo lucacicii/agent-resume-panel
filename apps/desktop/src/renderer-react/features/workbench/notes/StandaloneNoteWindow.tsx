@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CodeEditor, type CodeEditorHandle, type CodeEditorSearchResult } from "../../components/CodeEditor";
-import { ThemeIcon } from "../../components/ThemeIcon";
-import { desktopApi } from "../../bridge";
-import { GTD_STATUSES, type GtdStatus } from "../../gtd";
-import { useI18n } from "../../i18n";
+import { CodeEditor, type CodeEditorHandle, type CodeEditorSearchResult } from "../../../components/CodeEditor";
+import { ThemeIcon } from "../../../components/ThemeIcon";
+import { desktopApi } from "../../../bridge";
+import { GTD_STATUSES, type GtdStatus } from "../../../gtd";
+import { useI18n } from "../../../i18n";
 import { basename, projectMatchesNote, projectPathFor, type Project } from "./noteProject";
-import { STANDALONE_NOTE_INITIAL_CONTENT } from "../../../shared/standaloneNote";
-import { SelectionSendMenu, type SelectionSendMenuState } from "../../selection/SelectionSendMenu";
+import { STANDALONE_NOTE_INITIAL_CONTENT } from "../../../../shared/standaloneNote";
+import { SelectionSendMenu, type SelectionSendMenuState } from "../../../selection/SelectionSendMenu";
 
 type Note = Awaited<ReturnType<ReturnType<typeof desktopApi>["notesList"]>>[number];
 
