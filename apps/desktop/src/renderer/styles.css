@@ -16688,3 +16688,66 @@ html[data-window-mode="browser"] #react-chrome {
   color: var(--text);
   background: var(--color-fill-tertiary);
 }
+
+/* GTD new-task dialog */
+.gtd-new-task-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: min(420px, calc(100vw - 32px));
+}
+
+.gtd-new-task-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--font-size-caption, 12px);
+  color: var(--color-label-secondary, var(--muted));
+}
+
+.gtd-new-task-field .wb-rename-input {
+  width: 100%;
+}
+
+.gtd-new-task-error {
+  margin: 0;
+  color: var(--color-danger, #d33);
+  font-size: var(--font-size-caption, 12px);
+}
+
+.gtd-new-task-project {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.gtd-new-task-project-path {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 2px 4px 2px 10px;
+  border-radius: 999px;
+  background: var(--color-fill-tertiary);
+  color: var(--text);
+  font-size: var(--font-size-caption, 12px);
+}
+
+.gtd-new-task-project-clear {
+  appearance: none;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.gtd-new-task-project-clear:hover {
+  color: var(--text);
+  background: var(--color-fill-secondary);
+}

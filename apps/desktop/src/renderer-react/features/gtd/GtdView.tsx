@@ -25,7 +25,9 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
   const [dragNoteId, setDragNoteId] = useState<string | null>(null);
   const [dropColumn, setDropColumn] = useState<GtdStatus | null>(null);
   const [creating, setCreating] = useState(false);
+  const [newTask, setNewTask] = useState<{ title: string; projectPath: string; busy: boolean; error: string } | null>(null);
   const [workbenchesByTask, setWorkbenchesByTask] = useState<Record<string, Workbench[]>>({});
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: GtdCard } | null>(null);
 
   const text = useCallback(
     (key: string, ...args: Array<string | number>) => (ready ? t(key, ...args) : key),
@@ -94,20 +96,50 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
     }));
   }, []);
 
+  const openNewTask = useCallback(() => {
+    setNewTask({ title: "", projectPath: "", busy: false, error: "" });
+  }, []);
+
+  const pickProject = useCallback(async () => {
+    if (!newTask || newTask.busy) return;
+    if (typeof desktopApi().pickDirectory !== "function") return;
+    try {
+      // Pick a folder for THIS task only — do not register it as a project.
+      const result = await desktopApi().pickDirectory({ title: text("desktop.gtd.taskProject") });
+      if (!result.ok) return;
+      setNewTask((current) => current ? { ...current, projectPath: result.path, error: "" } : current);
+    } catch (error) {
+      setNewTask((current) => current ? { ...current, error: error instanceof Error ? error.message : String(error) } : current);
+    }
+  }, [newTask, text]);
+
   const createTask = useCallback(async () => {
-    if (typeof desktopApi().notesCreateWorkItem !== "function" || creating) return;
+    if (!newTask || newTask.busy) return;
+    const title = newTask.title.trim();
+    if (!title) {
+      setNewTask((current) => current ? { ...current, error: text("desktop.gtd.taskTitleRequired") } : current);
+      return;
+    }
+    if (typeof desktopApi().notesCreateWorkItem !== "function") return;
+    setNewTask((current) => current ? { ...current, busy: true, error: "" } : current);
     setCreating(true);
     try {
-      const created = await desktopApi().notesCreateWorkItem({});
+      const created = await desktopApi().notesCreateWorkItem({
+        title,
+        ...(newTask.projectPath
+          ? { projects: [newTask.projectPath], primaryProject: newTask.projectPath }
+          : {})
+      });
       await load();
       window.dispatchEvent(new Event("agent-resume:notes-mutated"));
+      setNewTask(null);
       openTask({ ...workItemFromRecord(created), projects: created.work?.projects ?? [] });
-    } catch {
-      /* best-effort */
+    } catch (error) {
+      setNewTask((current) => current ? { ...current, busy: false, error: error instanceof Error ? error.message : String(error) } : current);
     } finally {
       setCreating(false);
     }
-  }, [creating, load, openTask]);
+  }, [newTask, load, openTask, text]);
 
   const setStatus = useCallback(async (noteId: string, status: GtdStatus) => {
     try {
@@ -118,6 +150,36 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
       void load();
     }
   }, [load]);
+
+  /** Delete a task that has never been linked to a session. */
+  const deleteTask = useCallback(async (item: GtdCard) => {
+    setContextMenu(null);
+    if (item.sessions.length > 0) return;
+    if (typeof desktopApi().notesDelete !== "function") return;
+    if (!window.confirm(text("desktop.workbench.deleteWorkItemConfirm", item.title))) return;
+    try {
+      await desktopApi().notesDelete({ noteId: item.noteId });
+      setItems((current) => current.filter((entry) => entry.noteId !== item.noteId));
+      window.dispatchEvent(new Event("agent-resume:notes-mutated"));
+      void load();
+    } catch {
+      /* best-effort; the board reloads on the next mutation */
+    }
+  }, [text, load]);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const dismiss = (event: MouseEvent) => {
+      if (!(event.target instanceof Element) || !event.target.closest(".wb-context-menu")) setContextMenu(null);
+    };
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") setContextMenu(null); };
+    window.addEventListener("mousedown", dismiss);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", dismiss);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [contextMenu]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -194,7 +256,7 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
           aria-label={text("desktop.gtd.newTask")}
           title={text("desktop.gtd.newTask")}
           disabled={creating}
-          onClick={() => void createTask()}
+          onClick={openNewTask}
         >
           <ThemeIcon name={creating ? "loader" : "plus"} className={creating ? "spin" : undefined} size={15} aria-hidden="true" />
         </button>
@@ -244,6 +306,11 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
                     key={item.noteId}
                     draggable
                     className={`gtd-card${waiting ? " is-needs-you" : ""}`}
+                    onContextMenu={(event) => {
+                      if (item.sessions.length > 0) return;
+                      event.preventDefault();
+                      setContextMenu({ x: event.clientX, y: event.clientY, item });
+                    }}
                     onDragStart={(event) => {
                       setDragNoteId(item.noteId);
                       event.dataTransfer.setData("text/plain", item.noteId);
@@ -313,5 +380,69 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
         ))}
       </div>
     </section>
+    {newTask ? (
+      <div className="wb-note-created-overlay">
+        <div className="wb-note-created-backdrop" onClick={() => { if (!newTask.busy) setNewTask(null); }} />
+        <form
+          className="wb-note-created-panel gtd-new-task-panel"
+          role="dialog"
+          aria-modal="true"
+          aria-label={text("desktop.gtd.newTask")}
+          onSubmit={(event) => { event.preventDefault(); void createTask(); }}
+        >
+          <p className="wb-note-created-title">{text("desktop.gtd.newTask")}</p>
+          <label className="gtd-new-task-field">
+            <span>{text("desktop.gtd.taskTitle")}</span>
+            <input
+              className="wb-rename-input"
+              autoFocus
+              value={newTask.title}
+              aria-label={text("desktop.gtd.taskTitle")}
+              onChange={(event) => setNewTask((current) => current ? { ...current, title: event.target.value, error: "" } : current)}
+            />
+          </label>
+          <div className="gtd-new-task-field">
+            <span>{text("desktop.gtd.taskProject")}</span>
+            <div className="gtd-new-task-project">
+              <button type="button" className="wb-note-created-btn" onClick={() => void pickProject()}>{text("desktop.gtd.chooseProject")}</button>
+              {newTask.projectPath ? (
+                <span className="gtd-new-task-project-path" title={newTask.projectPath}>
+                  {newTask.projectPath.split(/[\\/]/).filter(Boolean).at(-1) || newTask.projectPath}
+                  <button
+                    type="button"
+                    className="gtd-new-task-project-clear"
+                    aria-label={text("desktop.common.close")}
+                    onClick={() => setNewTask((current) => current ? { ...current, projectPath: "" } : current)}
+                  ><ThemeIcon name="close" size={12} /></button>
+                </span>
+              ) : null}
+            </div>
+          </div>
+          {newTask.error ? <p className="gtd-new-task-error" role="alert">{newTask.error}</p> : null}
+          <div className="wb-note-created-actions">
+            <button type="button" className="wb-note-created-btn" disabled={newTask.busy} onClick={() => setNewTask(null)}>{text("desktop.common.cancel")}</button>
+            <button type="submit" className="wb-note-created-btn primary" disabled={newTask.busy}>{text("desktop.gtd.createTask")}</button>
+          </div>
+        </form>
+      </div>
+    ) : null}
+    {contextMenu ? (
+      <div
+        className="wb-context-menu"
+        role="menu"
+        style={{
+          left: Math.max(8, Math.min(contextMenu.x, window.innerWidth - 220)),
+          top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - 120))
+        }}
+        onContextMenu={(event) => event.preventDefault()}
+      >
+        <button
+          type="button"
+          role="menuitem"
+          className="context-menu-item-danger"
+          onClick={() => void deleteTask(contextMenu.item)}
+        >{text("desktop.workbench.deleteWorkItem")}</button>
+      </div>
+    ) : null}
   </>, host);
 }

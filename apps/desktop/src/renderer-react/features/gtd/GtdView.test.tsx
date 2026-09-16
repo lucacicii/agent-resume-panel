@@ -18,7 +18,15 @@ function renderGtd(overrides?: Partial<typeof window.agentResume>) {
         "desktop.gtd.filter": "Filter tasks",
         "desktop.gtd.newTask": "New task",
         "desktop.gtd.emptyColumn": "Nothing here",
+        "desktop.gtd.createTask": "Create",
+        "desktop.gtd.taskTitle": "Title",
+        "desktop.gtd.taskProject": "Project",
+        "desktop.gtd.chooseProject": "Choose folder…",
+        "desktop.gtd.taskTitleRequired": "Title is required",
+        "desktop.common.cancel": "Cancel",
+        "desktop.common.close": "Close",
         "desktop.gtd.backToGtd": "Back to GTD",
+        "desktop.workbench.deleteWorkItem": "Delete task",
         "desktop.workbench.gtdStatus.inbox": "Inbox",
         "desktop.workbench.gtdStatus.next": "Next",
         "desktop.workbench.gtdStatus.waiting": "Waiting",
@@ -93,11 +101,31 @@ describe("GtdView", () => {
     await waitFor(() => expect(window.agentResume.notesSetGtdStatus).toHaveBeenCalledWith({ noteId: "t-1", status: "waiting" }));
   });
 
-  it("creates a task from the toolbar", async () => {
+  it("creates a task from the toolbar dialog", async () => {
     renderGtd();
-    const newBtn = await screen.findByRole("button", { name: "New task" });
-    fireEvent.click(newBtn);
-    await waitFor(() => expect(window.agentResume.notesCreateWorkItem).toHaveBeenCalled());
+    fireEvent.click(await screen.findByRole("button", { name: "New task" }));
+    const titleInput = await screen.findByRole("textbox", { name: "Title" });
+    fireEvent.change(titleInput, { target: { value: "Ship the redesign" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    await waitFor(() => expect(window.agentResume.notesCreateWorkItem).toHaveBeenCalledWith(expect.objectContaining({
+      title: "Ship the redesign"
+    })));
+  });
+
+  it("picks a folder via the dialog and binds it to the new task without registering a project", async () => {
+    const pickDirectory = vi.fn(async () => ({ ok: true as const, path: "/work/app" }));
+    const host = renderGtd({ pickDirectory } as unknown as Partial<typeof window.agentResume>);
+    fireEvent.click(await screen.findByRole("button", { name: "New task" }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "Title" }), { target: { value: "With project" } });
+    fireEvent.click(screen.getByRole("button", { name: "Choose folder…" }));
+    await waitFor(() => expect(pickDirectory).toHaveBeenCalledWith({ title: "Project" }));
+    await waitFor(() => expect(host.querySelector(".gtd-new-task-project-path")?.textContent).toContain("app"));
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    await waitFor(() => expect(window.agentResume.notesCreateWorkItem).toHaveBeenCalledWith(expect.objectContaining({
+      title: "With project",
+      projects: ["/work/app"],
+      primaryProject: "/work/app"
+    })));
   });
 
   it("filters cards by query", async () => {
@@ -133,5 +161,27 @@ describe("GtdView", () => {
     fireEvent.keyDown(nextCard, { key: "ArrowRight" });
     const somedayCard = await screen.findByRole("button", { name: /Someday idea/ });
     expect(document.activeElement).toBe(somedayCard);
+  });
+
+  it("deletes a session-less task from its context menu", async () => {
+    const notesDelete = vi.fn(async () => ({ ok: true, deletedNoteIds: ["t-2"] }));
+    renderGtd({ notesDelete } as unknown as Partial<typeof window.agentResume>);
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    const card = await screen.findByRole("button", { name: /Someday idea/ });
+    fireEvent.contextMenu(card);
+    const del = await screen.findByRole("menuitem", { name: "Delete task" });
+    fireEvent.click(del);
+
+    await waitFor(() => expect(notesDelete).toHaveBeenCalledWith({ noteId: "t-2" }));
+    expect(confirmSpy).toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
+
+  it("does not offer delete for a task that has sessions", async () => {
+    renderGtd();
+    const card = await screen.findByRole("button", { name: /Realtime status/ });
+    fireEvent.contextMenu(card);
+    expect(screen.queryByRole("menuitem", { name: "Delete task" })).toBeNull();
   });
 });

@@ -49,7 +49,7 @@ import { BrowserPaneView } from "../browser/BrowserPaneView";
 import type { BrowserSessionState } from "../../../shared/browserTypes";
 import type { WorkbenchFocusSessionRequest, WorkbenchSendSelectionRequest } from "../../../shared/workbenchSelection";
 import { collectActiveSessionDots, type ActiveSessionDot } from "./activeSessionDots";
-import { needsYou, rank, rollupDot } from "./sessionStatus/workItemRollup";
+import { rollupDot } from "./sessionStatus/workItemRollup";
 import { sessionDotStatusClass } from "./sessionStatus/dotStatus";
 import { useAcpStatus, useAgentStatus, type AcpStatusEvent, type SessionDotRuntime } from "./sessionStatus";
 import { COMPOSER_TIP_LIMIT, type ComposerSendTip } from "./TerminalComposer";
@@ -121,7 +121,6 @@ import {
   BranchGraphNavigation
 } from "./git/GitGraphView";
 import { WorkbenchDetailHeader } from "./layout/WorkbenchDetailHeader";
-import { WorkbenchSidebar } from "./layout/WorkbenchSidebar";
 import { workItemFromRecord, type WorkbenchWorkItem } from "./workItem";
 import {
   createTaskWorkbench,
@@ -276,6 +275,9 @@ type WorkbenchContextMenu = {
   /** Work items: the note id, plus the neutral workspace once it exists. */
   noteId?: string;
   workspaceDir?: string;
+  /** Work item title + whether it has ever been linked to a session. */
+  workItemTitle?: string;
+  workItemHasSessions?: boolean;
   session?: AgentSession;
   floatingNoteTarget?: FloatingSessionNoteTarget;
   hasFloatingNote?: boolean;
@@ -401,8 +403,6 @@ type BranchMenuPosition = {
 const PROJECT_KEY = "workbench-selected-project";
 const QUICK_ACCESS_PROJECT_KEY = "workbench-quick-access-project";
 const PINNED_PROJECTS_KEY = "pinned-projects";
-const FOLDERS_COLLAPSED_KEY = "wb-folders-collapsed";
-const FOLDERS_WIDTH_KEY = "sidebar-folders-width";
 const LIST_WIDTH_KEY = "wb-list-pane-width";
 const SIDE_WIDTH_KEY = "wb-side-panel-width";
 const SESSION_VIEW_MODE_KEY = "wb-session-view-mode";
@@ -643,10 +643,6 @@ function storageString(key: string): string {
   try { return localStorage.getItem(key) || ""; } catch { return ""; }
 }
 
-function storageBoolean(key: string): boolean {
-  return storageString(key) === "true";
-}
-
 function loadPinnedProjects(): Set<string> {
   try {
     const value = JSON.parse(localStorage.getItem(PINNED_PROJECTS_KEY) || "[]");
@@ -722,7 +718,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(() => new Set());
   const [expandedProjectIds, setExpandedProjectIds] = useState<Set<string>>(() => new Set());
   const [pinnedProjects, setPinnedProjects] = useState<Set<string>>(loadPinnedProjects);
-  const [projectQuery, setProjectQuery] = useState("");
   const [sessionQuery, setSessionQuery] = useState("");
   /** Work-item workspace scope (set by the board); renders a dedicated view. */
   const [workItemScope, setWorkItemScope] = useState<WorkbenchWorkItem | null>(null);
@@ -743,15 +738,10 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [sessionTarget, setSessionTarget] = useState<string | null>(null);
   const sessionTargetRef = useRef<string | null>(null);
   const [workItems, setWorkItems] = useState<WorkbenchWorkItem[]>([]);
-  const [workItemProjectFilter, setWorkItemProjectFilter] = useState("");
-  const [workItemStatusFilter, setWorkItemStatusFilter] = useState<"all" | GtdStatus>("all");
-  const [workItemNeedsYouFilter, setWorkItemNeedsYouFilter] = useState(false);
   const [sessionSearchOpen, setSessionSearchOpen] = useState(false);
   const [selectedSessionKeys, setSelectedSessionKeys] = useState<Set<string>>(() => new Set());
   const [selectionAnchorKey, setSelectionAnchorKey] = useState("");
   const [activeSessionKey, setActiveSessionKey] = useState("");
-  const [foldersCollapsed, setFoldersCollapsed] = useState(() => storageBoolean(FOLDERS_COLLAPSED_KEY));
-  const [foldersWidth, setFoldersWidth] = useState(() => storedWidth(FOLDERS_WIDTH_KEY, 260, 140, 560));
   const [listWidth, setListWidth] = useState(() => storedWidth(LIST_WIDTH_KEY, 324, 240, 720));
   const [sideWidth, setSideWidth] = useState(() => storedWidth(SIDE_WIDTH_KEY, 320, 240, 840));
   const [sessionViewMode, setSessionViewMode] = useState<"hybrid" | "terminal">(() => {
@@ -3328,68 +3318,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
   }, []);
 
-  const selectWorkItem = useCallback((item: WorkbenchWorkItem) => {
-    // Set synchronously: reloadWorkbench() runs on the follow-up tab event and
-    // would otherwise auto-pick a project before this render commits.
-    workItemScopeRef.current = { noteId: item.noteId };
-    setWorkItemScope(item);
-    const target = item.primaryProject ?? item.projects?.[0];
-    // The work item owns its project context: selecting a project-less one must
-    // clear a stale selection rather than inherit it.
-    selectProject(target ?? null, { keepSessionKey: true });
-    setSessionTarget(null);
-    setRoomProjectId(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const addWorkItem = useCallback(async () => {
-    if (typeof desktopApi().notesCreateWorkItem !== "function") return;
-    try {
-      const created = await desktopApi().notesCreateWorkItem({});
-      await loadWorkItems();
-      window.dispatchEvent(new Event("agent-resume:notes-mutated"));
-      selectWorkItem(workItemFromRecord(created));
-      openNotePane(created.noteId, workItemFromRecord(created).title);
-    } catch {
-      /* best-effort */
-    }
-  }, [loadWorkItems, openNotePane, selectWorkItem]);
-
-  const needsYouCount = useMemo(() => {
-    if (!dotByKey || dotByKey.size === 0) return 0;
-    let count = 0;
-    for (const item of workItems) {
-      const dot = rollupDot({ work: { sessions: item.sessions } }, dotByKey);
-      if (needsYou(dot)) count++;
-    }
-    return count;
-  }, [dotByKey, workItems]);
-
-  const visibleWorkItems = useMemo(() => {
-    const q = projectQuery.trim().toLowerCase();
-    const filtered = workItems.filter((item) => {
-      if (workItemNeedsYouFilter && needsYouCount > 0) {
-        const dot = rollupDot({ work: { sessions: item.sessions } }, dotByKey);
-        if (!needsYou(dot)) return false;
-      }
-      if (workItemProjectFilter && !(item.projects ?? []).includes(workItemProjectFilter)) return false;
-      if (workItemStatusFilter !== "all" && item.status !== workItemStatusFilter) return false;
-      if (q && !`${item.title} ${(item.projects ?? []).join(" ")}`.toLowerCase().includes(q)) return false;
-      return true;
-    });
-    return [...filtered].sort((a, b) => {
-      const rankA = rank({ work: { sessions: a.sessions }, updatedAtMs: a.updatedAtMs || 0 }, dotByKey);
-      const rankB = rank({ work: { sessions: b.sessions }, updatedAtMs: b.updatedAtMs || 0 }, dotByKey);
-      return rankB - rankA;
-    });
-  }, [dotByKey, needsYouCount, projectQuery, workItemNeedsYouFilter, workItemProjectFilter, workItemStatusFilter, workItems]);
-
-  const workItemProjects = useMemo(() => {
-    const paths = new Set<string>();
-    for (const item of workItems) for (const path of item.projects ?? []) paths.add(path);
-    return [...paths].sort().map((path) => ({ path, label: aliases[path] || basename(path) }));
-  }, [aliases, workItems]);
-
   useEffect(() => {
     if (!active) return;
     void loadWorkItems();
@@ -3753,9 +3681,16 @@ export function WorkbenchPanel(): ReactPortal | null {
     });
   };
 
-  const workItemMenu = (event: React.MouseEvent, item: Pick<WorkbenchWorkItem, "noteId">) => {
+  const workItemMenu = (event: React.MouseEvent, item: Pick<WorkbenchWorkItem, "noteId" | "title" | "sessions">) => {
     event.preventDefault();
-    const menu: WorkbenchContextMenu = { kind: "work-item", noteId: item.noteId, x: event.clientX, y: event.clientY };
+    const menu: WorkbenchContextMenu = {
+      kind: "work-item",
+      noteId: item.noteId,
+      workItemTitle: item.title,
+      workItemHasSessions: (item.sessions?.length ?? 0) > 0,
+      x: event.clientX,
+      y: event.clientY
+    };
     setContextMenu(menu);
     // The workspace is allocated on demand, so ask whether it exists before
     // offering to open it.
@@ -4100,6 +4035,24 @@ export function WorkbenchPanel(): ReactPortal | null {
       if (action === "openWorkspace" && typeof desktopApi().notesOpenWorkItemWorkspace === "function") {
         try {
           await desktopApi().notesOpenWorkItemWorkspace({ noteId: menu.noteId });
+        } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
+      }
+      if (action === "deleteWorkItem") {
+        // Only a task that has never been linked to a session may be deleted.
+        if (menu.workItemHasSessions) return;
+        if (typeof desktopApi().notesDelete !== "function") return;
+        const label = menu.workItemTitle || menu.noteId;
+        if (!window.confirm(t("desktop.workbench.deleteWorkItemConfirm", label))) return;
+        try {
+          await desktopApi().notesDelete({ noteId: menu.noteId });
+          if (workItemScopeRef.current?.noteId === menu.noteId) {
+            workItemScopeRef.current = null;
+            setWorkItemScope(null);
+            setSessionTarget(null);
+            setRoomProjectId(null);
+          }
+          await loadWorkItems();
+          window.dispatchEvent(new Event("agent-resume:notes-mutated"));
         } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
       }
       return;
@@ -5417,12 +5370,11 @@ export function WorkbenchPanel(): ReactPortal | null {
   }, [scheduleSessionPaneAutoRename, t]);
 
   const changes = git ? [{ title: t("desktop.workbench.sidePanelStaged"), staged: true, entries: git.staged }, { title: t("desktop.workbench.sidePanelChanges"), staged: false, entries: git.unstaged }] : [];
-  const setWidth = (kind: "folders" | "list" | "side", delta: number) => {
-    const current = kind === "folders" ? foldersWidth : kind === "list" ? listWidth : sideWidth;
-    const limits = kind === "folders" ? [140, 560] : kind === "list" ? [240, 720] : [240, 840];
+  const setWidth = (kind: "list" | "side", delta: number) => {
+    const current = kind === "list" ? listWidth : sideWidth;
+    const limits = kind === "list" ? [240, 720] : [240, 840];
     const next = Math.max(limits[0], Math.min(limits[1], current + delta));
-    if (kind === "folders") { setFoldersWidth(next); localStorage.setItem(FOLDERS_WIDTH_KEY, String(next)); }
-    else if (kind === "list") { setListWidth(next); localStorage.setItem(LIST_WIDTH_KEY, String(next)); }
+    if (kind === "list") { setListWidth(next); localStorage.setItem(LIST_WIDTH_KEY, String(next)); }
     else { setSideWidth(next); localStorage.setItem(SIDE_WIDTH_KEY, String(next)); }
   };
 
@@ -5706,7 +5658,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       </div>
     </div> : null}
     <div className="wb-terminal-tabs is-note-group" data-pane-group="note">
-      <button type="button" className="wb-pane-tab-group-label" aria-label={t("desktop.common.newNote")} title={t("desktop.common.newNote")} onClick={() => void addWorkItem()}><ThemeIcon name="file-plus" size={13} aria-hidden="true" /></button>
+      <div className="wb-pane-tab-group-label" aria-label={t("desktop.notes.allNotes")} title={t("desktop.notes.allNotes")}><ThemeIcon name="file-text" size={13} aria-hidden="true" /></div>
       <div className="wb-terminal-tabs-list" role="tablist" aria-label={t("desktop.notes.allNotes")}>
         {currentNotePanes.map((pane) => <div className={`wb-terminal-tab is-note${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="file-text" size={13} aria-hidden="true" />{pane.dirty ? "* " : ""}{pane.title || t("desktop.notes.allNotes")}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.common.close")} onClick={() => closeNotePane(pane.key)}><ThemeIcon name="close" size={13} /></button></div>)}
       </div>
@@ -5743,12 +5695,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   const headerSlot = document.getElementById("app-header-slot");
   const detailHeader = (
     <WorkbenchDetailHeader
-      foldersCollapsed={foldersCollapsed}
-      onToggleFoldersCollapsed={() => setFoldersCollapsed((current) => {
-        const next = !current;
-        localStorage.setItem(FOLDERS_COLLAPSED_KEY, String(next));
-        return next;
-      })}
       onBackToGtd={() => window.dispatchEvent(new CustomEvent("agent-resume:view-gtd"))}
       selectedProject={sideRoot}
       projectLabel={sideRoot ? aliases[sideRoot] || basename(sideRoot) : ""}
@@ -5763,27 +5709,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   );
 
   return createPortal(<><section className="panel workbench-panel react-workbench-panel" hidden={!active}>
-    <div className="workbench-layout" style={{ "--sidebar-folders-width": `${foldersCollapsed ? 0 : foldersWidth}px`, "--wb-list-width": `${listWidth}px`, "--wb-side-panel-width": `${sideWidth}px` } as CSSProperties}>
-      <WorkbenchSidebar
-        collapsed={foldersCollapsed}
-        projectQuery={projectQuery}
-        workItems={visibleWorkItems}
-        selectedWorkItemId={workItemScope?.noteId ?? null}
-        workItemProjects={workItemProjects}
-        workItemProjectFilter={workItemProjectFilter}
-        workItemStatusFilter={workItemStatusFilter}
-        needsYouCount={needsYouCount}
-        workItemNeedsYouFilter={workItemNeedsYouFilter}
-        onWorkItemNeedsYouFilterChange={setWorkItemNeedsYouFilter}
-        dotByKey={dotByKey}
-        onProjectQueryChange={setProjectQuery}
-        onAddWorkItem={() => void addWorkItem()}
-        onSelectWorkItem={selectWorkItem}
-        onWorkItemContextMenu={workItemMenu}
-        onWorkItemProjectFilterChange={setWorkItemProjectFilter}
-        onWorkItemStatusFilterChange={setWorkItemStatusFilter}
-      />
-      <ResizeHandle label={t("desktop.workbench.resizeProjects")} onDelta={(delta) => setWidth("folders", delta)} />
+    <div className="workbench-layout" style={{ "--wb-list-width": `${listWidth}px`, "--wb-side-panel-width": `${sideWidth}px` } as CSSProperties}>
       <aside className="wb-list-pane">
         <div ref={sessionSearchToolbarRef} className={`sidebar-project-filter-wrap wb-session-filter-wrap${sessionSearchOpen ? " is-search-open" : ""}`}>
           <button ref={sessionSearchButtonRef} type="button" className={`wb-icon-btn wb-session-search-btn${sessionQuery && !sessionSearchOpen ? " has-query" : ""}`} aria-label={t("desktop.common.search")} title={t("desktop.common.search")} aria-expanded={sessionSearchOpen} aria-controls="wb-session-search" onClick={openSessionSearch}><ThemeIcon name="search" size={15} /></button>
@@ -6467,7 +6393,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         {WORKBENCH_NEW_SESSION_TARGET_OPTIONS.filter((option) => option.group === "acp").map((option) => <button type="button" role="menuitem" key={option.value} onClick={() => void chooseNewSessionTarget(option.value)}>{t(`desktop.settings.newSessionTarget.${option.value.replace(":", "_")}`)}</button>)}
       </>}
     </div> : null}
-    {contextMenu && !(contextMenu.kind === "work-item" && !contextMenu.workspaceDir) ? <div className={`wb-context-menu${contextMenu.kind === "session" || contextMenu.kind === "session-tab" ? " wb-session-context-menu" : ""}`} role="menu" style={{ left: contextMenuLeft, top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - contextMenuHeight)) }} onContextMenu={(event) => event.preventDefault()}>
+    {contextMenu && !(contextMenu.kind === "work-item" && !contextMenu.workspaceDir && contextMenu.workItemHasSessions) ? <div className={`wb-context-menu${contextMenu.kind === "session" || contextMenu.kind === "session-tab" ? " wb-session-context-menu" : ""}`} role="menu" style={{ left: contextMenuLeft, top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - contextMenuHeight)) }} onContextMenu={(event) => event.preventDefault()}>
       {contextMenu.kind === "project" ? (() => {
         const enabled = enabledProjectMenuActions(settings);
         const isPinned = (contextMenu.projectId && catalogProjects.some((item) => item.projectId === contextMenu.projectId && item.pinned))
@@ -6534,7 +6460,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         <button type="button" role="menuitem" onClick={() => void runContextAction("renameFolder")}>{t("desktop.common.rename")}</button>
         <div className="context-menu-separator" role="separator" />
         <button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => void runContextAction("deleteFolder")}>{t("desktop.workbench.deleteFolder")}</button>
-      </> : contextMenu.kind === "session-tab" ? <button type="button" role="menuitem" onClick={() => void runContextAction("floatingNote")}>{t(contextMenu.hasFloatingNote ? "desktop.workbench.openFloatingNote" : "desktop.workbench.addFloatingNote")}</button> : contextMenu.kind === "editor-tab" ? <button type="button" role="menuitem" onClick={() => void runContextAction("toggleEditorPreview")}>{t(contextMenu.editorPreview ? "desktop.common.edit" : "desktop.workbench.preview")}</button> : contextMenu.kind === "work-item" ? <button type="button" role="menuitem" onClick={() => void runContextAction("openWorkspace")}>{t("desktop.workbench.openWorkItemWorkspace")}</button> : selectedSessionKeys.size > 1 && contextMenu.session && selectedSessionKeys.has(sessionKey(contextMenu.session)) ? <>
+      </> : contextMenu.kind === "session-tab" ? <button type="button" role="menuitem" onClick={() => void runContextAction("floatingNote")}>{t(contextMenu.hasFloatingNote ? "desktop.workbench.openFloatingNote" : "desktop.workbench.addFloatingNote")}</button> : contextMenu.kind === "editor-tab" ? <button type="button" role="menuitem" onClick={() => void runContextAction("toggleEditorPreview")}>{t(contextMenu.editorPreview ? "desktop.common.edit" : "desktop.workbench.preview")}</button> : contextMenu.kind === "work-item" ? <>{contextMenu.workspaceDir ? <button type="button" role="menuitem" onClick={() => void runContextAction("openWorkspace")}>{t("desktop.workbench.openWorkItemWorkspace")}</button> : null}{!contextMenu.workItemHasSessions ? <>{contextMenu.workspaceDir ? <div className="context-menu-separator" role="separator" /> : null}<button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => void runContextAction("deleteWorkItem")}>{t("desktop.workbench.deleteWorkItem")}</button></> : null}</> : selectedSessionKeys.size > 1 && contextMenu.session && selectedSessionKeys.has(sessionKey(contextMenu.session)) ? <>
         <button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => void runContextAction("remove")}>{t("desktop.workbench.removeFromPanelCount", selectedSessionKeys.size)}</button>
       </> : <>
         {contextMenu.session?.provider === "codex" ? <button type="button" role="menuitem" onClick={() => void runContextAction("codex")}>{t("desktop.workbench.openInChatGpt")}</button> : null}

@@ -5,8 +5,6 @@ import type { TerminalPane } from "../terminal/TerminalView";
 export type WorkbenchSideView = "files" | "git" | "search" | "scripts" | "linkgraph" | null;
 
 export function WorkbenchDetailHeader({
-  foldersCollapsed,
-  onToggleFoldersCollapsed,
   onBackToGtd,
   selectedProject,
   projectLabel,
@@ -18,8 +16,6 @@ export function WorkbenchDetailHeader({
   onOpenBranchMenu,
   onToggleSide
 }: {
-  foldersCollapsed: boolean;
-  onToggleFoldersCollapsed: () => void;
   /** Return to the GTD board (the app's root view). */
   onBackToGtd?: () => void;
   selectedProject: string | null;
@@ -44,12 +40,6 @@ export function WorkbenchDetailHeader({
         onClick={onBackToGtd}
       ><ThemeIcon name="arrow-left" size={17} /></button>
     ) : null}
-    <button
-      type="button"
-      className={`sidebar-collapse-toggle${foldersCollapsed ? " is-active" : ""}`}
-      aria-label={t("desktop.workbench.resizeProjects")}
-      onClick={onToggleFoldersCollapsed}
-    ><ThemeIcon name="panel-right" size={17} /></button>
     <div className="wb-detail-head">
       <span className="wb-detail-project-label">
         <span className="wb-detail-project-label-text">{selectedProject ? projectLabel : (emptyLabel ?? t("desktop.workbench.allSessions"))}</span>
