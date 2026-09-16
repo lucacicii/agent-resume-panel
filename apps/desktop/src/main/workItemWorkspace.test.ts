@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { ensureExtensionCatalogSchema } from "@agent-resume/core";
 import {
   ensureWorkItemWorkspace,
+  isPanelInternalPath,
+  mergeWorkItemProjects,
   renderAddressTable,
   workItemWorkspaceDir,
   type WorkItemAddress
@@ -125,5 +127,26 @@ describe("workItemWorkspace", () => {
     expect(table).toContain("Repositories referenced by this work item:");
     expect(table).toContain("- app → /work/app");
     expect(table).not.toContain("This directory is the work item's neutral workspace");
+  });
+
+  it("treats the panel's own data directory as internal, not as a work item project", async () => {
+    const { panelHome } = await setup();
+    expect(isPanelInternalPath(panelHome, workItemWorkspaceDir(panelHome, "wi-1"))).toBe(true);
+    expect(isPanelInternalPath(panelHome, path.join(panelHome, ".desktop", "scratch", "session-1"))).toBe(true);
+    expect(isPanelInternalPath(panelHome, path.join(panelHome, ".desktop"))).toBe(true);
+    // A real repository — including one next to, or named like, the internal tree.
+    expect(isPanelInternalPath(panelHome, path.join(panelHome, "app"))).toBe(false);
+    expect(isPanelInternalPath(panelHome, path.join(panelHome, ".desktop-2", "app"))).toBe(false);
+    expect(isPanelInternalPath(panelHome, "/work/app")).toBe(false);
+  });
+
+  it("merges declared projects with session cwds but drops the panel's own workspace", async () => {
+    const { panelHome } = await setup();
+    const workspace = workItemWorkspaceDir(panelHome, "wi-1");
+    expect(mergeWorkItemProjects({
+      panelHome,
+      declared: [path.join(panelHome, "app")],
+      sessionProjects: [workspace, path.join(panelHome, "app"), path.join(panelHome, "api")]
+    })).toEqual([path.join(panelHome, "app"), path.join(panelHome, "api")]);
   });
 });

@@ -25,6 +25,8 @@ import { desktopT } from "./i18nService";
 import { loadPanelDbPaths } from "./panelDatabases";
 import {
   ensureWorkItemWorkspace,
+  isPanelInternalPath,
+  mergeWorkItemProjects,
   workItemWorkspaceDir,
   type WorkItemAddress
 } from "./workItemWorkspace";
@@ -103,9 +105,12 @@ export async function notesEnsureWorkItemWorkspace(noteId: string): Promise<{ di
   const doc = parseNoteDocument(content);
 
   const declared = (doc.frontmatter.projects ?? []).map((entry) => entry.trim()).filter(Boolean);
-  const derived = new Set(declared);
   const fromSessions = await store.listWorkItemSessionProjects();
-  for (const projectPath of fromSessions[noteId] ?? []) derived.add(projectPath);
+  const projects = mergeWorkItemProjects({
+    panelHome,
+    declared,
+    sessionProjects: fromSessions[noteId] ?? []
+  });
 
   const address: WorkItemAddress = {
     noteId,
@@ -114,7 +119,7 @@ export async function notesEnsureWorkItemWorkspace(noteId: string): Promise<{ di
     next: doc.frontmatter.next,
     decision: doc.frontmatter.decision,
     noteRelPath: record.relMdPath,
-    projects: await Promise.all([...derived].map(async (projectPath) => ({
+    projects: await Promise.all(projects.map(async (projectPath) => ({
       path: projectPath,
       label: projectLabel(projectPath),
       exists: await fs.stat(projectPath).then(() => true).catch(() => false)
@@ -128,6 +133,11 @@ export async function notesEnsureWorkItemWorkspace(noteId: string): Promise<{ di
 /** Best-effort refresh: the workspace must never block the primary write. */
 async function refreshWorkItemWorkspace(noteId: string): Promise<void> {
   try {
+    // The workspace is allocated on demand when a session is launched into it, so
+    // before that there is nothing to refresh — and no empty directory to leave behind.
+    const panelHome = effectivePanelHome(await loadSettings());
+    const dir = workItemWorkspaceDir(panelHome, noteId);
+    if (!(await fs.stat(dir).then(() => true).catch(() => false))) return;
     await notesEnsureWorkItemWorkspace(noteId);
   } catch {
     /* degrade to "no address table" rather than failing the caller */
@@ -169,11 +179,17 @@ export async function notesLinkSessionToWorkItem(args: {
   const sessions = new Set(doc.frontmatter.sessions ?? []);
   sessions.add(args.sessionKey);
   const frontmatter = { ...doc.frontmatter, sessions: [...sessions] };
-  if (args.projectPath) {
+  // A session running in the panel's own workspace directory does not make that
+  // directory a repository of the work item; only the session link is recorded.
+  const referenceable = args.projectPath
+    && !isPanelInternalPath(effectivePanelHome(await loadSettings()), args.projectPath)
+    ? args.projectPath
+    : undefined;
+  if (referenceable) {
     const projects = new Set(doc.frontmatter.projects ?? []);
-    projects.add(args.projectPath);
+    projects.add(referenceable);
     frontmatter.projects = [...projects];
-    if (!frontmatter.primaryProject) frontmatter.primaryProject = args.projectPath;
+    if (!frontmatter.primaryProject) frontmatter.primaryProject = referenceable;
   }
   const updated = await store.writeNoteContent(args.noteId, buildNoteDocument(frontmatter, doc.body));
   await refreshWorkItemWorkspace(args.noteId);

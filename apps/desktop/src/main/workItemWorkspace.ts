@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { getCatalogMeta, setCatalogMeta } from "@agent-resume/core";
+import { desktopDataDir, getCatalogMeta, setCatalogMeta } from "@agent-resume/core";
 
 /**
  * Work-item workspace + address table.
@@ -42,7 +42,38 @@ export type WorkItemAddress = {
 
 /** Deterministic workspace directory: same note id → same path, forever. */
 export function workItemWorkspaceDir(panelHome: string, noteId: string): string {
-  return path.join(panelHome, ".desktop", "workspaces", noteId);
+  return path.join(desktopDataDir(panelHome), "workspaces", noteId);
+}
+
+/**
+ * True for directories the panel owns itself (`<panelHome>/.desktop`: work-item
+ * workspaces, scratch sessions, stores). They are implementation details of the
+ * app, never repositories a work item references, so they must not leak into a
+ * work item's project list or its address table.
+ */
+export function isPanelInternalPath(panelHome: string, candidate: string): boolean {
+  const root = path.resolve(desktopDataDir(panelHome));
+  const target = path.resolve(candidate);
+  const relative = path.relative(root, target);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+/**
+ * The projects a work item references: the ones declared on its note plus the
+ * working directories of its linked sessions. A session that ran in the panel's
+ * own workspace directory does not make that directory a repository, so those
+ * cwds are dropped; the declared list is the user's explicit choice and is kept.
+ */
+export function mergeWorkItemProjects(input: {
+  panelHome: string;
+  declared: readonly string[];
+  sessionProjects: readonly string[];
+}): string[] {
+  const merged = new Set(input.declared);
+  for (const projectPath of input.sessionProjects) {
+    if (!isPanelInternalPath(input.panelHome, projectPath)) merged.add(projectPath);
+  }
+  return [...merged];
 }
 
 /** The address table itself, shared by the workspace files and the IM preamble. */

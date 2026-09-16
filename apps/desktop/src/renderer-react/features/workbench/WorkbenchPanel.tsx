@@ -2467,6 +2467,19 @@ export function WorkbenchPanel(): ReactPortal | null {
     setActivePane(key, projectPath);
   }, [setActivePane, t]);
 
+  /**
+   * Record a session started while a work item is open as one of its sessions.
+   * The session's own cwd is always safe to pass: the main process drops the
+   * panel's internal workspace directory instead of treating it as a repository.
+   */
+  const linkSessionToOpenWorkItem = useCallback((sessionKey: string, projectPath: string) => {
+    const noteId = workItemScopeRef.current?.noteId;
+    if (!noteId || typeof desktopApi().notesLinkSessionToWorkItem !== "function") return;
+    void desktopApi().notesLinkSessionToWorkItem({ noteId, sessionKey, projectPath })
+      .then(() => { window.dispatchEvent(new Event("agent-resume:notes-mutated")); })
+      .catch(() => undefined);
+  }, []);
+
   const closeBrowser = useCallback((key: string) => {
     const pane = browsers.find((item) => item.key === key);
     if (!pane) return;
@@ -2678,6 +2691,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       if (target.channel === "acp") {
         const record = await desktopApi().acpCreateSession({ projectPath: cwd, provider: target.provider });
         addAcpChat(record, prompt ? { initialPrompt: prompt } : undefined);
+        linkSessionToOpenWorkItem(acpListSessionKey(record.id), cwd);
         await reloadWorkbench();
       } else {
         const result = await desktopApi().workbenchNewSession({
@@ -2715,7 +2729,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       }
     } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
     finally { setTerminalCreating(false); }
-  }, [addAcpChat, addPendingSession, addTerminal, loadSessions, reloadWorkbench, settings?.workbench?.composerMentions, t, terminalCreating]);
+  }, [addAcpChat, addPendingSession, addTerminal, linkSessionToOpenWorkItem, loadSessions, reloadWorkbench, settings?.workbench?.composerMentions, t, terminalCreating]);
 
   const requestNewSession = useCallback(async (targetProject?: string, projectId?: string) => {
     if (terminalCreating) return;

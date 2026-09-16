@@ -670,6 +670,9 @@ async function activateWorkItemDirectory(path = "/work/app", extra: {
   });
 }
 
+/** The neutral workspace a multi-repo work item launches its sessions from. */
+const WORKSPACE_CWD = "/Users/lucas/.agent-resume-panel/.desktop/workspaces/wi-multi";
+
 describe("WorkbenchPanel", () => {
   it("collects case-insensitive matches across both Git diff sides", () => {
     expect(collectDiffSearchMatches("const Value = 1;\nvalue++;", "const Value = 2;\nreturn value;", " VALUE ")).toEqual([
@@ -8127,6 +8130,72 @@ describe("WorkbenchPanel", () => {
       } }));
     });
     await waitFor(() => expect(document.querySelector(".wb-work-item-target")?.textContent).toBe("New sessions start in: app"));
+  });
+
+  it("links an ACP session started inside a work item to that work item", async () => {
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.common.search": "Search", "desktop.common.refresh": "Refresh", "desktop.common.all": "All",
+        "desktop.workbench.allSessions": "All sessions",
+        "desktop.workbench.sidebarView": "Workbench sidebar view",
+        "desktop.workbench.workItemsView": "Work items",
+        "desktop.workbench.resourceView": "Repository",
+        "desktop.workbench.projectsView": "Projects",
+        "desktop.workbench.gtdView": "GTD",
+        "desktop.workbench.filterWorkItems": "Filter work items",
+        "desktop.workbench.workItemView": "Work item",
+        "desktop.workbench.workItemNext": "Next:",
+        "desktop.workbench.workItemSessions": "{0} sessions",
+        "desktop.workbench.sessionTarget": "New sessions start in: {0}",
+        "desktop.workbench.sharedWorkspace": "shared workspace",
+        "desktop.workbench.newSession": "New session"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionTarget: "acp:codex" } }),
+      listSessions: async () => [],
+      notesListWorkItems: async () => [
+        { noteId: "wi-multi", title: "Multi", gtdStatus: "next", work: { sessions: [], projects: ["/work/app", "/work/api"], primaryProject: "/work/app" } }
+      ],
+      acpCreateSession: async ({ projectPath, provider }: { projectPath: string; provider: string }) => ({
+        id: "acp-1", title: "ACP session", projectPath, provider, createdAt: 1, updatedAt: 1, messageCount: 0
+      }),
+      onAcpStream: () => () => undefined,
+      acpConnect: async () => ({ record: { id: "acp-1", title: "ACP session", projectPath: WORKSPACE_CWD, provider: "codex", createdAt: 1, updatedAt: 1, messageCount: 0 }, init: {} }),
+      acpDisconnect: async () => ({ ok: true }),
+      notesEnsureWorkItemWorkspace: async () => ({ dir: WORKSPACE_CWD }),
+      notesLinkSessionToWorkItem: vi.fn(async () => ({ noteId: "wi-multi" })),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    localStorage.setItem("workbench-sidebar-view-v2", "workitems");
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+
+    // Several repositories → an ACP session starts in the neutral workspace.
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-work-item", { detail: {
+        noteId: "wi-multi", title: "Multi", status: "next", sessions: [], projects: ["/work/app", "/work/api"], primaryProject: "/work/app"
+      } }));
+    });
+    await waitFor(() => expect(document.querySelector(".wb-work-item-target")?.textContent).toBe("New sessions start in: shared workspace"));
+
+    fireEvent.click(screen.getByRole("button", { name: /New session/i }));
+    await waitFor(() => expect(window.agentResume.notesLinkSessionToWorkItem).toHaveBeenCalledWith({
+      noteId: "wi-multi",
+      sessionKey: "chat:acp-1",
+      projectPath: WORKSPACE_CWD
+    }));
   });
 
   it("keeps a single slim room header when embedded and closes from the work-item header", async () => {
