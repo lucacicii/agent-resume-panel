@@ -1218,66 +1218,6 @@ describe("WorkbenchPanel", () => {
     }
   });
 
-  it("appends the assigned project and folder path when auto-renaming a session", async () => {
-    const host = document.createElement("div");
-    host.id = "react-workbench";
-    document.body.append(host);
-    const autoRenameSession = vi.fn(async () => ({
-      title: "Auto renamed session",
-      previousTitle: "Fix renderer",
-      session: { provider: "codex", id: "session-1", title: "Auto renamed session", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 },
-      nativeRenamed: false
-    }));
-    const renameSession = vi.fn(async () => ({
-      session: { provider: "codex", id: "session-1", title: "Auto renamed session · app / Campaign / Phase 1", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 },
-      nativeRenamed: true,
-      nativeError: null
-    }));
-    const listSessions = vi.fn(async () => [
-      { provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 }
-    ]);
-    window.agentResume = {
-      getI18nBundle: async () => ({ locale: "en", messages: {
-        ...FOLDER_DRAG_TEST_MESSAGES,
-        "desktop.workbench.autoRename": "Auto rename",
-        "desktop.workbench.autoRenaming": "Auto renaming…",
-        "desktop.sessions.renamed": "Renamed to {0}",
-        "desktop.sessions.renamedNativeError": "Native rename failed: {0}"
-      } }),
-      onLocaleChanged: () => () => undefined,
-      onWorkbenchCmdT: () => () => undefined,
-      onWorkbenchCmdW: () => () => undefined,
-      onTerminalData: () => () => undefined,
-      onTerminalExit: () => () => undefined,
-      onTerminalRespawned: () => () => undefined,
-      listProjectAliases: async () => ({}),
-      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
-      listSessions,
-      listProjects: async () => [{ projectId: "project-1", portableKey: "/work/app", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/app", pathMissing: false, sessionCount: 1 }],
-      listWorkbenchSessionFolders: async () => ({
-        folders: [
-          { folderId: "campaign", projectId: "project-1", parentId: null, name: "Campaign", createdAtMs: 1, updatedAtMs: 1 },
-          { folderId: "phase-1", projectId: "project-1", parentId: "campaign", name: "Phase 1", createdAtMs: 2, updatedAtMs: 2 }
-        ],
-        assignments: [
-          { projectId: "project-1", provider: "codex", agentSessionId: "session-1", folderId: "phase-1", updatedAtMs: 1 }
-        ]
-      }),
-      autoRenameSession,
-      renameSession,
-      workbenchOpenSession: async () => ({ mode: "external-system", cwd: "/work/app", external: true })
-    } as unknown as typeof window.agentResume;
-
-    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
-    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    const session = await screen.findByRole("button", { name: /Fix renderer/ });
-    fireEvent.contextMenu(session);
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Auto rename" }));
-    await waitFor(() => expect(autoRenameSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1", persist: false }));
-    await waitFor(() => expect(renameSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1", title: "Auto renamed session · app / Campaign / Phase 1" }));
-    await waitFor(() => expect(listSessions.mock.calls.length).toBeGreaterThanOrEqual(2));
-  });
-
   it("appends the project name when the session is not assigned to a folder", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
@@ -1330,126 +1270,6 @@ describe("WorkbenchPanel", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: "Auto rename" }));
     await waitFor(() => expect(autoRenameSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1", persist: false }));
     await waitFor(() => expect(renameSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1", title: "Auto renamed session · app" }));
-  });
-
-  it("does not append the folder path twice when the suggestion already ends with it", async () => {
-    const host = document.createElement("div");
-    host.id = "react-workbench";
-    document.body.append(host);
-    const autoRenameSession = vi.fn(async () => ({
-      title: "Auto renamed session · app / Campaign / Phase 1",
-      previousTitle: "Fix renderer · app / Campaign / Phase 1",
-      session: { provider: "codex", id: "session-1", title: "Auto renamed session · app / Campaign / Phase 1", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 },
-      nativeRenamed: false
-    }));
-    const renameSession = vi.fn(async () => ({
-      session: { provider: "codex", id: "session-1", title: "Auto renamed session · app / Campaign / Phase 1", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 },
-      nativeRenamed: true,
-      nativeError: null
-    }));
-    window.agentResume = {
-      getI18nBundle: async () => ({ locale: "en", messages: {
-        ...FOLDER_DRAG_TEST_MESSAGES,
-        "desktop.workbench.autoRename": "Auto rename",
-        "desktop.workbench.autoRenaming": "Auto renaming…",
-        "desktop.sessions.renamed": "Renamed to {0}"
-      } }),
-      onLocaleChanged: () => () => undefined,
-      onWorkbenchCmdT: () => () => undefined,
-      onWorkbenchCmdW: () => () => undefined,
-      onTerminalData: () => () => undefined,
-      onTerminalExit: () => () => undefined,
-      onTerminalRespawned: () => () => undefined,
-      listProjectAliases: async () => ({}),
-      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
-      listSessions: async () => [
-        { provider: "codex", id: "session-1", title: "Fix renderer · app / Campaign / Phase 1", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 }
-      ],
-      listProjects: async () => [{ projectId: "project-1", portableKey: "/work/app", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/app", pathMissing: false, sessionCount: 1 }],
-      listWorkbenchSessionFolders: async () => ({
-        folders: [
-          { folderId: "campaign", projectId: "project-1", parentId: null, name: "Campaign", createdAtMs: 1, updatedAtMs: 1 },
-          { folderId: "phase-1", projectId: "project-1", parentId: "campaign", name: "Phase 1", createdAtMs: 2, updatedAtMs: 2 }
-        ],
-        assignments: [
-          { projectId: "project-1", provider: "codex", agentSessionId: "session-1", folderId: "phase-1", updatedAtMs: 1 }
-        ]
-      }),
-      autoRenameSession,
-      renameSession,
-      workbenchOpenSession: async () => ({ mode: "external-system", cwd: "/work/app", external: true })
-    } as unknown as typeof window.agentResume;
-
-    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
-    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    const session = await screen.findByRole("button", { name: /Fix renderer/ });
-    fireEvent.contextMenu(session);
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Auto rename" }));
-    await waitFor(() => expect(autoRenameSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1", persist: false }));
-    await waitFor(() => expect(renameSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1", title: "Auto renamed session · app / Campaign / Phase 1" }));
-    expect(renameSession.mock.calls).toHaveLength(1);
-  });
-
-  it("caps the folder suffix so the composed title stays within the native 180-char limit", async () => {
-    const host = document.createElement("div");
-    host.id = "react-workbench";
-    document.body.append(host);
-    const longFolderName = "X".repeat(170);
-    const autoRenameSession = vi.fn(async () => ({
-      title: "Auto renamed session",
-      previousTitle: "Fix renderer",
-      session: { provider: "codex", id: "session-1", title: "Auto renamed session", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 },
-      nativeRenamed: false
-    }));
-    const renameSession = vi.fn(async (args: { provider: string; id: string; title: string }) => ({
-      session: { provider: "codex", id: "session-1", title: args.title, projectPath: "/work/app", projectId: "project-1", updatedAt: 1 },
-      nativeRenamed: true,
-      nativeError: null
-    }));
-    window.agentResume = {
-      getI18nBundle: async () => ({ locale: "en", messages: {
-        ...FOLDER_DRAG_TEST_MESSAGES,
-        "desktop.workbench.autoRename": "Auto rename",
-        "desktop.workbench.autoRenaming": "Auto renaming…",
-        "desktop.sessions.renamed": "Renamed to {0}"
-      } }),
-      onLocaleChanged: () => () => undefined,
-      onWorkbenchCmdT: () => () => undefined,
-      onWorkbenchCmdW: () => () => undefined,
-      onTerminalData: () => () => undefined,
-      onTerminalExit: () => () => undefined,
-      onTerminalRespawned: () => () => undefined,
-      listProjectAliases: async () => ({}),
-      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
-      listSessions: async () => [
-        { provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 }
-      ],
-      listProjects: async () => [{ projectId: "project-1", portableKey: "/work/app", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/app", pathMissing: false, sessionCount: 1 }],
-      listWorkbenchSessionFolders: async () => ({
-        folders: [
-          { folderId: "long", projectId: "project-1", parentId: null, name: longFolderName, createdAtMs: 1, updatedAtMs: 1 }
-        ],
-        assignments: [
-          { projectId: "project-1", provider: "codex", agentSessionId: "session-1", folderId: "long", updatedAtMs: 1 }
-        ]
-      }),
-      autoRenameSession,
-      renameSession,
-      workbenchOpenSession: async () => ({ mode: "external-system", cwd: "/work/app", external: true })
-    } as unknown as typeof window.agentResume;
-
-    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
-    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    const session = await screen.findByRole("button", { name: /Fix renderer/ });
-    fireEvent.contextMenu(session);
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Auto rename" }));
-    await waitFor(() => expect(renameSession).toHaveBeenCalled());
-    const args = renameSession.mock.calls[0][0];
-    expect(args.provider).toBe("codex");
-    expect(args.id).toBe("session-1");
-    expect(args.title).toHaveLength(180);
-    expect(args.title.startsWith("Auto renamed session · app / ")).toBe(true);
-    expect(args.title.endsWith("X".repeat(151))).toBe(true);
   });
 
   it("cancels delayed auto rename when the session is reactivated", async () => {
@@ -1995,13 +1815,13 @@ describe("WorkbenchPanel", () => {
 
 
 
-  it("matches develop session search focus and Escape behavior", async () => {
+  it("keeps the session search always visible and filters the list", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
     document.body.append(host);
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages: {
-        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}"
+        "desktop.common.search": "Search", "desktop.workbench.allSessions": "All sessions"
       } }),
       onLocaleChanged: () => () => undefined,
       onWorkbenchCmdT: () => () => undefined,
@@ -2017,15 +1837,13 @@ describe("WorkbenchPanel", () => {
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
     await screen.findByRole("button", { name: /Fix renderer/ });
-    const searchButton = screen.getByRole("button", { name: "Search" });
-    fireEvent.click(searchButton);
-    const searchInput = screen.getByRole("searchbox", { name: "Search" });
-    await waitFor(() => expect(document.activeElement).toBe(searchInput));
-    fireEvent.change(searchInput, { target: { value: "renderer" } });
-    fireEvent.keyDown(searchInput, { key: "Escape" });
-    expect(searchInput).toHaveProperty("value", "");
-    fireEvent.keyDown(searchInput, { key: "Escape" });
-    await waitFor(() => expect(searchButton.getAttribute("aria-expanded")).toBe("false"));
+
+    const searchInput = screen.getByRole("searchbox", { name: "desktop.workbench.searchSessions" }) as HTMLInputElement;
+    expect(searchInput.value).toBe("");
+    fireEvent.change(searchInput, { target: { value: "zzz" } });
+    await waitFor(() => expect(screen.queryByRole("button", { name: /Fix renderer/ })).toBeNull());
+    fireEvent.change(searchInput, { target: { value: "Fix" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: /Fix renderer/ })).toBeTruthy());
   });
 
   it("keeps embedded terminals alive across navigation, project, and terminal switches", async () => {
@@ -8081,6 +7899,71 @@ describe("WorkbenchPanel", () => {
     }));
   });
 
+  it("filters sessions by Task/All", async () => {
+    const allSessions = [
+      { provider: "codex", id: "s1", title: "Task session", projectPath: "/work/app", updatedAt: 2 },
+      { provider: "claude", id: "s2", title: "Other session", projectPath: "/work/api", updatedAt: 1 }
+    ];
+    const querySessionsPage = vi.fn(async (args?: { keys?: Array<{ provider: string; id: string }> }) => {
+      if (args?.keys?.length) {
+        const sessions = allSessions.filter((s) => args.keys!.some((k) => k.provider === s.provider && k.id === s.id));
+        return { sessions, total: sessions.length };
+      }
+      return { sessions: allSessions, total: allSessions.length };
+    });
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.common.search": "Search", "desktop.common.refresh": "Refresh", "desktop.common.all": "All",
+        "desktop.workbench.workItemView": "Work item",
+        "desktop.workbench.workItemOpenNote": "Open note",
+        "desktop.workbench.workItemClear": "Exit work item",
+        "desktop.workbench.workItemNext": "Next:",
+        "desktop.workbench.workItemSessions": "{0} sessions",
+        "desktop.workbench.filterTask": "Task",
+        "desktop.workbench.filterAll": "All",
+        "desktop.workbench.sessionFilter": "Filter sessions"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      querySessionsPage,
+      notesListWorkItems: async () => [{
+        noteId: "wi-1", title: "Cross-repo feature", gtdStatus: "next",
+        work: { sessions: ["codex:s1"], projects: ["/work/app"], primaryProject: "/work/app" }
+      }],
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-work-item", { detail: {
+        noteId: "wi-1", title: "Cross-repo feature", status: "next",
+        sessions: ["codex:s1"], projects: ["/work/app"], primaryProject: "/work/app"
+      } }));
+    });
+
+    // Task filter (default): only the task's session.
+    expect(await screen.findByText("Task session")).toBeTruthy();
+    await waitFor(() => expect(screen.queryByText("Other session")).toBeNull());
+
+    // All: every session.
+    const filterTabs = document.querySelectorAll<HTMLButtonElement>(".wb-note-list-toolbar .wb-note-filter .wb-left-tab");
+    fireEvent.click(filterTabs[1]);
+    await waitFor(() => expect(screen.getByText("Other session")).toBeTruthy());
+  });
+
   it("defaults new sessions to the shared workspace when a work item spans several projects", async () => {
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages: {
@@ -8492,39 +8375,41 @@ describe("WorkbenchPanel", () => {
     });
   });
 
-  it("opens a work item's note as an editing pane tab", async () => {
+  it("lists a task's notes and opens one in the right pane", async () => {
     const notesRead = vi.fn(async ({ noteId }: { noteId: string }) => ({
       record: {
-        noteId,
-        scope: "project",
-        projectPath: "/work/app",
-        filename: "realtime-status.md",
-        relDir: "projects/app",
-        relMdPath: "notes/projects/app/realtime-status.md",
-        title: "Realtime status",
-        createdAtMs: 1,
-        updatedAtMs: 1,
-        work: { next: "Wire the rollup", sessions: [] }
+        noteId, scope: "project", projectPath: "/work/app", filename: "realtime-status.md",
+        relDir: "", relMdPath: "realtime-status.md", title: "Realtime status",
+        createdAtMs: 1, updatedAtMs: 1, work: { sessions: [] }
       },
-      content: "# Realtime status\n\nWire the rollup."
+      content: "# Realtime status"
+    }));
+    const notesList = vi.fn(async () => [
+      { noteId: "wi-1", scope: "project", projectPath: "/work/app", filename: "realtime-status.md", relDir: "", relMdPath: "realtime-status.md", title: "Realtime status", createdAtMs: 1, updatedAtMs: 10, work: { sessions: [] } },
+      { noteId: "loose-1", scope: "library", filename: "scratch.md", relDir: "", relMdPath: "scratch.md", title: "Scratch pad", createdAtMs: 1, updatedAtMs: 5 }
+    ]);
+    const notesResolveLinkRoot = vi.fn(async ({ noteId }: { noteId: string }) => ({ rootNoteId: noteId }));
+    const notesGetSubtree = vi.fn(async ({ rootNoteId }: { rootNoteId: string }) => ({
+      rootNoteId,
+      root: { noteId: rootNoteId, title: "Realtime status", filename: "realtime-status.md", children: [] },
+      nodesById: { [rootNoteId]: { noteId: rootNoteId, title: "Realtime status", filename: "realtime-status.md", children: [] } },
+      edges: []
     }));
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages: {
         "desktop.common.search": "Search", "desktop.common.refresh": "Refresh", "desktop.common.all": "All",
-        "desktop.workbench.allSessions": "All sessions",
-        "desktop.workbench.sidebarView": "Workbench sidebar view",
-        "desktop.workbench.workItemsView": "Work items",
-        "desktop.workbench.resourceView": "Repository",
-        "desktop.workbench.projectsView": "Projects",
-        "desktop.workbench.gtdView": "GTD",
-        "desktop.workbench.filterWorkItems": "Filter work items",
-        "desktop.workbench.noWorkItems": "No work items yet",
         "desktop.workbench.workItemView": "Work item",
         "desktop.workbench.workItemOpenNote": "Open note",
         "desktop.workbench.workItemClear": "Exit work item",
         "desktop.workbench.workItemNext": "Next:",
         "desktop.workbench.workItemSessions": "{0} sessions",
-        "desktop.notes.allNotes": "All notes",
+        "desktop.workbench.noteFilter": "Filter notes",
+        "desktop.workbench.noteFilterTask": "Task",
+        "desktop.workbench.noteFilterAll": "All",
+        "desktop.workbench.noteTab": "Note",
+        "desktop.workbench.sessionTab": "Sessions",
+        "desktop.workbench.newNote": "New note",
+        "desktop.workbench.noNotes": "No notes",
         "desktop.notes.editorPlaceholder": "Edit Markdown…"
       } }),
       onLocaleChanged: () => () => undefined,
@@ -8537,7 +8422,7 @@ describe("WorkbenchPanel", () => {
       listProjects: async () => [],
       getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
       listSessions: async () => [],
-      notesRead,
+      notesRead, notesList, notesResolveLinkRoot, notesGetSubtree,
       notesListWorkItems: async () => [{
         noteId: "wi-1", scope: "project", projectPath: "/work/app",
         filename: "realtime-status.md", relDir: "projects/app", relMdPath: "notes/projects/app/realtime-status.md",
@@ -8549,27 +8434,34 @@ describe("WorkbenchPanel", () => {
       terminalResize: async () => ({ ok: true })
     } as unknown as typeof window.agentResume;
 
-    localStorage.setItem("workbench-sidebar-view-v2", "workitems");
     const host = document.createElement("div");
     host.id = "react-workbench";
     document.body.append(host);
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-
     await act(async () => {
       window.dispatchEvent(new CustomEvent("agent-resume:workbench-work-item", { detail: {
         noteId: "wi-1", title: "Realtime status", status: "next", sessions: []
       } }));
     });
 
-    const openNote = await screen.findByRole("button", { name: "Open note" });
-    fireEvent.click(openNote);
+    fireEvent.click(await screen.findByRole("button", { name: "Open note" }));
+    expect(document.querySelectorAll(".wb-left-tab")[0]?.classList.contains("active")).toBe(true);
 
+    // Task filter: only the task's note tree is listed.
+    const row = await screen.findByRole("button", { name: "Realtime status" });
+    expect(screen.queryByRole("button", { name: "Scratch pad" })).toBeNull();
+
+    // Clicking a note opens it in the right detail pane for editing.
+    fireEvent.click(row);
     await waitFor(() => expect(document.querySelector(".wb-note-pane")).not.toBeNull());
     expect(notesRead).toHaveBeenCalledWith({ noteId: "wi-1" });
-    expect(await screen.findByRole("tab", { name: /Realtime status/ })).toBeTruthy();
-    // The pane edits the note body via the shared editor surface.
     expect(screen.getByPlaceholderText("Edit Markdown…")).toBeTruthy();
+
+    // "All" reveals non-task notes.
+    const filterTabs = document.querySelectorAll<HTMLButtonElement>(".wb-note-filter .wb-left-tab");
+    fireEvent.click(filterTabs[1]);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Scratch pad" })).toBeTruthy());
   });
 
   it("loads a task's workbenches as a tab strip and switches the active one", async () => {
@@ -8683,6 +8575,7 @@ describe("WorkbenchPanel", () => {
       getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
       listSessions: async () => [],
       notesRead,
+      notesCreateLinkedChild: vi.fn(async () => ({ noteId: "child-1", filename: "child.md" })),
       notesListWorkItems: async () => [{
         noteId: "wi-iso", scope: "project", projectPath: "/work/app",
         filename: "realtime.md", relDir: "", relMdPath: "realtime.md",
@@ -8714,7 +8607,8 @@ describe("WorkbenchPanel", () => {
     });
 
     await waitFor(() => expect(document.querySelectorAll(".wb-workbench-tab").length).toBe(2));
-    fireEvent.click(await screen.findByRole("button", { name: "Open note" }));
+    // Add an extra (child) note → opens as a pane scoped to workbench wb-1.
+    fireEvent.click(await screen.findByRole("button", { name: "desktop.notes.newLinkedChild" }));
     await waitFor(() => expect(document.querySelector(".wb-note-pane")).not.toBeNull());
 
     // Switch to the sibling workbench on the same project: the note pane is gone.
@@ -8918,5 +8812,137 @@ describe("WorkbenchPanel", () => {
     fireEvent.click(del);
     await waitFor(() => expect(notesDelete).toHaveBeenCalledWith({ noteId: "wi-del" }));
     confirmSpy.mockRestore();
+  });
+
+  it("opens the task's note pane when the board requests it", async () => {
+    const wb = { workbenchId: "wb-open", taskNoteId: "wi-open", name: "WB", projectPath: "/work/app", position: 0, layoutJson: null, createdAtMs: 1, updatedAtMs: 1 };
+    const notesRead = vi.fn(async ({ noteId }: { noteId: string }) => ({
+      record: {
+        noteId, scope: "project", projectPath: "/work/app", filename: `${noteId}.md`,
+        relDir: "", relMdPath: `${noteId}.md`, title: `Note ${noteId}`,
+        createdAtMs: 1, updatedAtMs: 1, work: { sessions: [] }
+      },
+      content: "# note"
+    }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.common.search": "Search", "desktop.common.refresh": "Refresh", "desktop.common.all": "All",
+        "desktop.workbench.workItemView": "Work item",
+        "desktop.workbench.workItemOpenNote": "Open note",
+        "desktop.workbench.workItemClear": "Exit work item",
+        "desktop.workbench.workItemNext": "Next:",
+        "desktop.workbench.workItemSessions": "{0} sessions",
+        "desktop.workbench.leftPaneTabs": "Task panels",
+        "desktop.workbench.noteTab": "Note",
+        "desktop.workbench.sessionTab": "Sessions",
+        "desktop.notes.allNotes": "All notes",
+        "desktop.notes.editorPlaceholder": "Edit Markdown…"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      listProjects: async () => [],
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      notesRead,
+      notesListWorkItems: async () => [{
+        noteId: "wi-open", scope: "project", projectPath: "/work/app",
+        filename: "open.md", relDir: "", relMdPath: "open.md", title: "Open me",
+        createdAtMs: 1, updatedAtMs: 1, gtdStatus: "next",
+        work: { sessions: [], projects: ["/work/app"], primaryProject: "/work/app" }
+      }],
+      listTaskWorkbenches: async () => [wb],
+      ensureTaskWorkbench: async () => wb,
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-work-item", { detail: {
+        noteId: "wi-open", title: "Open me", status: "next", sessions: [],
+        projects: ["/work/app"], primaryProject: "/work/app", openNote: true
+      } }));
+    });
+
+    await waitFor(() => expect(document.querySelector(".wb-note-pane")).not.toBeNull());
+    expect(notesRead).toHaveBeenCalledWith({ noteId: "wi-open" });
+    // The board's “open note” switches the left panel to its Note tab.
+    expect(document.querySelector(".wb-left-tab.active")?.textContent).toBe("Note");
+  });
+
+  it("adds an extra note (linked child) from the note tab group", async () => {
+    const wb = { workbenchId: "wb-child", taskNoteId: "wi-child", name: "WB", projectPath: "/work/app", position: 0, layoutJson: null, createdAtMs: 1, updatedAtMs: 1 };
+    const notesCreateLinkedChild = vi.fn(async () => ({ noteId: "child-1", filename: "child.md" }));
+    const notesRead = vi.fn(async ({ noteId }: { noteId: string }) => ({
+      record: {
+        noteId, scope: "project", projectPath: "/work/app", filename: `${noteId}.md`,
+        relDir: "", relMdPath: `${noteId}.md`, title: `Note ${noteId}`,
+        createdAtMs: 1, updatedAtMs: 1, work: { sessions: [] }
+      },
+      content: ""
+    }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.common.search": "Search", "desktop.common.refresh": "Refresh", "desktop.common.all": "All",
+        "desktop.workbench.workItemView": "Work item",
+        "desktop.workbench.workItemOpenNote": "Open note",
+        "desktop.workbench.workItemClear": "Exit work item",
+        "desktop.workbench.workItemNext": "Next:",
+        "desktop.workbench.workItemSessions": "{0} sessions",
+        "desktop.notes.allNotes": "All notes",
+        "desktop.notes.newLinkedChild": "New linked child note",
+        "desktop.notes.editorPlaceholder": "Edit Markdown…"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      listProjects: async () => [],
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      notesRead,
+      notesCreateLinkedChild,
+      notesListWorkItems: async () => [{
+        noteId: "wi-child", scope: "project", projectPath: "/work/app",
+        filename: "child-task.md", relDir: "", relMdPath: "child-task.md", title: "Child task",
+        createdAtMs: 1, updatedAtMs: 1, gtdStatus: "next",
+        work: { sessions: [], projects: ["/work/app"], primaryProject: "/work/app" }
+      }],
+      listTaskWorkbenches: async () => [wb],
+      ensureTaskWorkbench: async () => wb,
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-work-item", { detail: {
+        noteId: "wi-child", title: "Child task", status: "next", sessions: [],
+        projects: ["/work/app"], primaryProject: "/work/app"
+      } }));
+    });
+    await waitFor(() => expect(document.querySelectorAll(".wb-workbench-tab").length).toBe(1));
+
+    fireEvent.click(await screen.findByRole("button", { name: "New linked child note" }));
+    await waitFor(() => expect(notesCreateLinkedChild).toHaveBeenCalledWith({ parentNoteId: "wi-child" }));
+    await waitFor(() => expect(notesRead).toHaveBeenCalledWith({ noteId: "child-1" }));
   });
 });

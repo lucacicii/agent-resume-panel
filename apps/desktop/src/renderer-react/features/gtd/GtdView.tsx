@@ -91,6 +91,8 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
         sessions: item.sessions,
         projects: item.projects,
         primaryProject: item.primaryProject,
+        // Opening a task shows its note: the note is the task's content.
+        openNote: true,
         ...(workbenchId ? { workbenchId } : {})
       }
     }));
@@ -307,7 +309,6 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
                     draggable
                     className={`gtd-card${waiting ? " is-needs-you" : ""}`}
                     onContextMenu={(event) => {
-                      if (item.sessions.length > 0) return;
                       event.preventDefault();
                       setContextMenu({ x: event.clientX, y: event.clientY, item });
                     }}
@@ -439,9 +440,19 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
         <button
           type="button"
           role="menuitem"
-          className="context-menu-item-danger"
-          onClick={() => void deleteTask(contextMenu.item)}
-        >{text("desktop.workbench.deleteWorkItem")}</button>
+          onClick={() => { const item = contextMenu.item; setContextMenu(null); openTask(item); }}
+        >{text("desktop.workbench.workItemOpenNote")}</button>
+        {contextMenu.item.sessions.length === 0 ? (
+          <>
+            <div className="context-menu-separator" role="separator" />
+            <button
+              type="button"
+              role="menuitem"
+              className="context-menu-item-danger"
+              onClick={() => void deleteTask(contextMenu.item)}
+            >{text("desktop.workbench.deleteWorkItem")}</button>
+          </>
+        ) : null}
       </div>
     ) : null}
   </>, host);

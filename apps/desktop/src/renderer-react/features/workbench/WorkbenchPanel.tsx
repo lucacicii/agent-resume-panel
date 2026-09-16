@@ -18,9 +18,7 @@ import {
   type AgentSession,
   type GtdStatus,
   type PanelSettings,
-  type WorkbenchProjectContextMenuAction,
-  type WorkbenchSessionFolder,
-  type WorkbenchSessionFolderAssignment
+  type WorkbenchProjectContextMenuAction
 } from "@agent-resume/core";
 import {
   DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU,
@@ -201,9 +199,6 @@ type PendingWorkbenchSession = {
   title: string;
   createdAt: number;
   knownSessionKeys: string[];
-  /** When set, auto-assign the bound catalog session to this project folder. */
-  folderProjectId?: string;
-  folderId?: string;
   /** When set, append the bound session to this work item on bind. */
   workItemNoteId?: string;
 };
@@ -255,8 +250,6 @@ type WorkbenchProject = {
   sessions: AgentSession[];
   /** Catalog aggregate; unlike `sessions`, this is not limited to loaded pages. */
   sessionCount: number;
-  folders: WorkbenchSessionFolder[];
-  folderAssignments: WorkbenchSessionFolderAssignment[];
   pendingCount: number;
   label: string;
   active: boolean;
@@ -264,14 +257,11 @@ type WorkbenchProject = {
   updatedAt: number;
 };
 type WorkbenchContextMenu = {
-  kind: "project" | "folder" | "session" | "session-tab" | "editor-tab" | "work-item";
+  kind: "project" | "session" | "session-tab" | "editor-tab" | "work-item";
   x: number;
   y: number;
   projectPath?: string;
   projectId?: string;
-  folderId?: string;
-  parentId?: string | null;
-  folderName?: string;
   /** Work items: the note id, plus the neutral workspace once it exists. */
   noteId?: string;
   workspaceDir?: string;
@@ -307,24 +297,6 @@ type WorkbenchRenameDialog = {
   projectPath: string;
   projectId?: string;
   title: string;
-  status: string;
-};
-type WorkbenchFolderDialog = {
-  mode: "create" | "rename";
-  projectId: string;
-  parentId?: string | null;
-  folderId?: string;
-  title: string;
-  status: string;
-  busy: boolean;
-};
-type WorkbenchFolderPickerDialog = {
-  projectId: string;
-  projectPath: string;
-  session: AgentSession;
-  folders: WorkbenchSessionFolder[];
-  query: string;
-  busy: boolean;
   status: string;
 };
 type ProjectPickDialog =
@@ -409,7 +381,6 @@ const SESSION_VIEW_MODE_KEY = "wb-session-view-mode";
 const TUI_SPLIT_HEIGHT_KEY = "wb-tui-split-height";
 const DEFAULT_SIDE_WIDTH = 320;
 const ALL_PROJECTS_PANE_KEY = "__all_projects__";
-const UNCLASSIFIED_FOLDER_ID = "__workbench_unclassified__";
 
 function effectiveGtdStatus(
   statuses: Record<string, GtdStatus>,
@@ -468,96 +439,28 @@ function catalogSessionKeysInRows(rows: readonly WorkbenchSessionRow[]): string[
   return keys;
 }
 
-function folderAssignmentKey(provider: string, agentSessionId: string): string {
-  return `${provider}:${agentSessionId}`;
-}
-
-function workbenchFolderPath(folder: WorkbenchSessionFolder, folders: WorkbenchSessionFolder[]): string {
-  const byId = new Map(folders.map((item) => [item.folderId, item]));
-  const parts: string[] = [];
-  const seen = new Set<string>();
-  let current: WorkbenchSessionFolder | undefined = folder;
-  while (current && !seen.has(current.folderId)) {
-    seen.add(current.folderId);
-    parts.unshift(current.name);
-    current = current.parentId ? byId.get(current.parentId) : undefined;
-  }
-  return parts.join(" / ");
-}
-
-/** Separator between the LLM-suggested session title and its project / folder suffix. */
+/** Separator between the LLM-suggested session title and its project suffix. */
 const SESSION_TITLE_SUFFIX_LEAD = " · ";
-const SESSION_TITLE_PATH_JOIN = " / ";
 
-/** Resolve the folder path (root / subfolder) a session is assigned to, or null when unclassified. */
-function sessionFolderPath(
-  folderData: Record<string, {
-    folders: WorkbenchSessionFolder[];
-    assignments: WorkbenchSessionFolderAssignment[];
-  }>,
-  provider: string,
-  id: string
-): string | null {
-  const key = folderAssignmentKey(provider, id);
-  for (const entry of Object.values(folderData)) {
-    const assignment = entry.assignments.find(
-      (item) => folderAssignmentKey(item.provider, item.agentSessionId) === key
-    );
-    if (!assignment) continue;
-    const folder = entry.folders.find((item) => item.folderId === assignment.folderId);
-    return folder ? workbenchFolderPath(folder, entry.folders) : null;
-  }
-  return null;
+/** Drop a previously appended " · project" suffix before recomposing. */
+function stripSessionTitleSuffix(title: string, projectName: string): string {
+  const suffix = `${SESSION_TITLE_SUFFIX_LEAD}${projectName}`;
+  return title.endsWith(suffix) ? title.slice(0, title.length - suffix.length).trim() : title;
 }
 
-/** Drop a previously appended " · project / folder / subfolder" suffix before recomposing. */
-function stripSessionTitleSuffix(title: string, projectName: string, folderPath: string | null): string {
-  const full = folderPath
-    ? `${SESSION_TITLE_SUFFIX_LEAD}${projectName}${SESSION_TITLE_PATH_JOIN}${folderPath}`
-    : `${SESSION_TITLE_SUFFIX_LEAD}${projectName}`;
-  if (title.endsWith(full)) return title.slice(0, title.length - full.length).trim();
-  const folderOnly = folderPath ? `${SESSION_TITLE_SUFFIX_LEAD}${folderPath}` : null;
-  if (folderOnly && title.endsWith(folderOnly)) return title.slice(0, title.length - folderOnly.length).trim();
-  const projectOnly = `${SESSION_TITLE_SUFFIX_LEAD}${projectName}`;
-  if (title.endsWith(projectOnly)) return title.slice(0, title.length - projectOnly.length).trim();
-  return title;
-}
-
-/**
- * Compose "title · project / folder / subfolder" (or "title · project" when unclassified).
- * Dedupes when the suggestion already carries the suffix and caps the total at the 180-char
- * native store limit, keeping the most specific (leaf) folder levels when the path does not fit.
- */
-function composeSessionTitle(base: string, projectName: string, folderPath: string | null): string {
+/** Compose "title · project", capped at the 180-char native store limit. */
+function composeSessionTitle(base: string, projectName: string): string {
   const MAX_TITLE_LENGTH = 180;
-  const suffix = folderPath
-    ? `${SESSION_TITLE_SUFFIX_LEAD}${projectName}${SESSION_TITLE_PATH_JOIN}${folderPath}`
-    : `${SESSION_TITLE_SUFFIX_LEAD}${projectName}`;
+  const suffix = `${SESSION_TITLE_SUFFIX_LEAD}${projectName}`;
   if (base.endsWith(suffix)) return base;
-  let core = stripSessionTitleSuffix(base, projectName, folderPath);
+  let core = stripSessionTitleSuffix(base, projectName);
   if (core.length + suffix.length <= MAX_TITLE_LENGTH) return `${core}${suffix}`;
   if (core.length >= MAX_TITLE_LENGTH - SESSION_TITLE_SUFFIX_LEAD.length) {
     core = core.slice(0, MAX_TITLE_LENGTH - SESSION_TITLE_SUFFIX_LEAD.length);
   }
   const budget = MAX_TITLE_LENGTH - core.length - SESSION_TITLE_SUFFIX_LEAD.length;
-  // Project name keeps priority over folder depth (both sit behind the title).
   const project = projectName.slice(0, Math.min(projectName.length, budget));
-  const pathBudget = folderPath ? budget - project.length - SESSION_TITLE_PATH_JOIN.length : 0;
-  let path = "";
-  if (folderPath && pathBudget > 0) {
-    const parts = folderPath.split(SESSION_TITLE_PATH_JOIN);
-    const kept: string[] = [];
-    let used = 0;
-    for (let i = parts.length - 1; i >= 0; i--) {
-      const cost = (kept.length ? SESSION_TITLE_PATH_JOIN.length : 0) + parts[i].length;
-      if (used + cost > pathBudget) break;
-      kept.unshift(parts[i]);
-      used += cost;
-    }
-    path = kept.length ? kept.join(SESSION_TITLE_PATH_JOIN) : parts[parts.length - 1].slice(0, Math.max(pathBudget, 1));
-  }
-  const body = project ? `${project}${path ? `${SESSION_TITLE_PATH_JOIN}${path}` : ""}` : path;
-  return `${core}${SESSION_TITLE_SUFFIX_LEAD}${body}`;
+  return project ? `${core}${SESSION_TITLE_SUFFIX_LEAD}${project}` : core;
 }
 
 function sessionBelongsToProject(session: AgentSession | null, project: WorkbenchProject): boolean {
@@ -707,20 +610,25 @@ export function WorkbenchPanel(): ReactPortal | null {
   const sessionQuerySequenceRef = useRef(0);
   const projectMetadataLoadedRef = useRef(false);
   const [catalogProjects, setCatalogProjects] = useState<CatalogProject[]>([]);
-  const [workbenchFolderData, setWorkbenchFolderData] = useState<Record<string, {
-    folders: WorkbenchSessionFolder[];
-    assignments: WorkbenchSessionFolderAssignment[];
-  }>>({});
   const [aliases, setAliases] = useState<Record<string, string>>({});
   const [gtdStatuses, setGtdStatuses] = useState<Record<string, GtdStatus>>({});
   const [selectedProject, setSelectedProject] = useState<string | null>(storageString(PROJECT_KEY) || null);
-  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
-  const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(() => new Set());
   const [expandedProjectIds, setExpandedProjectIds] = useState<Set<string>>(() => new Set());
   const [pinnedProjects, setPinnedProjects] = useState<Set<string>>(loadPinnedProjects);
   const [sessionQuery, setSessionQuery] = useState("");
   /** Work-item workspace scope (set by the board); renders a dedicated view. */
   const [workItemScope, setWorkItemScope] = useState<WorkbenchWorkItem | null>(null);
+  /** Left panel tab: the task's notes, or its session list. */
+  const [leftTab, setLeftTab] = useState<"note" | "session">("session");
+  /** Left-panel note list: all notes, optionally filtered to the task's note tree. */
+  const [noteItems, setNoteItems] = useState<Array<{ noteId: string; title: string; updatedAtMs: number }>>([]);
+  const [noteFilter, setNoteFilter] = useState<"task" | "all">("task");
+  const [noteQuery, setNoteQuery] = useState("");
+  /** Left-panel session list: the task's sessions, or all sessions. */
+  const [sessionFilter, setSessionFilter] = useState<"task" | "all">("task");
+  const [taskNoteIds, setTaskNoteIds] = useState<Set<string>>(() => new Set());
+  /** Pending request to open a task's note once its workbench is active. */
+  const [taskNoteRequest, setTaskNoteRequest] = useState<{ noteId: string; title?: string; nonce: number } | null>(null);
   /** Persisted workbenches of the scoped task (GTD task → n workbenches). */
   const [workbenches, setWorkbenches] = useState<Workbench[]>([]);
   const [activeWorkbenchId, setActiveWorkbenchId] = useState<string | null>(null);
@@ -738,7 +646,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [sessionTarget, setSessionTarget] = useState<string | null>(null);
   const sessionTargetRef = useRef<string | null>(null);
   const [workItems, setWorkItems] = useState<WorkbenchWorkItem[]>([]);
-  const [sessionSearchOpen, setSessionSearchOpen] = useState(false);
   const [selectedSessionKeys, setSelectedSessionKeys] = useState<Set<string>>(() => new Set());
   const [selectionAnchorKey, setSelectionAnchorKey] = useState("");
   const [activeSessionKey, setActiveSessionKey] = useState("");
@@ -800,11 +707,8 @@ export function WorkbenchPanel(): ReactPortal | null {
   const gitLogDialogInputRef = useRef<HTMLInputElement | null>(null);
   const [newSessionPicker, setNewSessionPicker] = useState<WorkbenchNewSessionPicker | null>(null);
   const [renameDialog, setRenameDialog] = useState<WorkbenchRenameDialog | null>(null);
-  const [folderDialog, setFolderDialog] = useState<WorkbenchFolderDialog | null>(null);
-  const [folderPickerDialog, setFolderPickerDialog] = useState<WorkbenchFolderPickerDialog | null>(null);
   const [projectPickDialog, setProjectPickDialog] = useState<ProjectPickDialog | null>(null);
   const [draggedSessionKey, setDraggedSessionKey] = useState<string | null>(null);
-  const [dragTargetKey, setDragTargetKey] = useState<string | null>(null);
   const terminalRefs = useRef(new Map<number, Terminal>());
   const terminalMouseTrackingRef = useRef(new Map<number, boolean>());
   const pendingSessionsRef = useRef<PendingWorkbenchSession[]>([]);
@@ -817,7 +721,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   /** Workbenches of the currently loaded task, so leaving it can reclaim their panes. */
   const loadedTaskWorkbenchesRef = useRef<{ taskNoteId: string; workbenchIds: string[] }>({ taskNoteId: "", workbenchIds: [] });
   const draggedSessionRef = useRef<AgentSession | null>(null);
-  const folderExpandTimerRef = useRef(0);
   const gitRefreshTimers = useRef(new Map<string, number>());
   const gitLogRequestRef = useRef(0);
   const terminalsRef = useRef<TerminalPane[]>([]);
@@ -851,9 +754,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   const openDiffForPathRef = useRef<(projectPath: string, filePath: string) => Promise<void>>(async () => undefined);
   const settingsRef = useRef<PanelSettings | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
-  const sessionSearchInputRef = useRef<HTMLInputElement>(null);
-  const sessionSearchButtonRef = useRef<HTMLButtonElement>(null);
-  const sessionSearchToolbarRef = useRef<HTMLDivElement>(null);
   const newSessionButtonRef = useRef<HTMLButtonElement>(null);
   const newSessionPickerRef = useRef<HTMLDivElement>(null);
 
@@ -1002,7 +902,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     for (const timer of autoRenameTimersRef.current.values()) window.clearTimeout(timer);
     autoRenameTimersRef.current.clear();
   }, []);
-  useEffect(() => () => window.clearTimeout(folderExpandTimerRef.current), []);
 
   useEffect(() => {
     if (!pendingExplorerReveal || side !== "files") return;
@@ -1147,21 +1046,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     const listProjects = typeof desktopApi().listProjects === "function"
       ? desktopApi().listProjects()
       : Promise.resolve([] as CatalogProject[]);
-    const listFolderData = (projects: CatalogProject[]) => {
-      if (typeof desktopApi().listAllWorkbenchSessionFolders === "function") {
-        return desktopApi().listAllWorkbenchSessionFolders();
-      }
-      if (typeof desktopApi().listWorkbenchSessionFolders !== "function") {
-        return Promise.resolve({} as Record<string, {
-          folders: WorkbenchSessionFolder[];
-          assignments: WorkbenchSessionFolderAssignment[];
-        }>);
-      }
-      return Promise.all(projects.map(async (project) => {
-        const result = await desktopApi().listWorkbenchSessionFolders({ projectId: project.projectId });
-        return [project.projectId, result] as const;
-      })).then((entries) => Object.fromEntries(entries));
-    };
     const [nextAliases, nextSettings, nextProjects, nextGtdStatuses] = await Promise.all([
       desktopApi().listProjectAliases(),
       desktopApi().getSettings(),
@@ -1170,12 +1054,10 @@ export function WorkbenchPanel(): ReactPortal | null {
         ? desktopApi().listSessionGtdStatuses()
         : Promise.resolve({} as Record<string, GtdStatus>)
     ]);
-    const nextFolderData = await listFolderData(nextProjects || []);
     setAliases(nextAliases);
     setSettings(nextSettings);
     catalogProjectsRef.current = nextProjects || [];
     setCatalogProjects(nextProjects || []);
-    setWorkbenchFolderData(nextFolderData);
     setGtdStatuses(nextGtdStatuses || {});
   }, []);
 
@@ -1244,13 +1126,12 @@ export function WorkbenchPanel(): ReactPortal | null {
     if (activeRef.current) setStatus({ text: t("desktop.workbench.autoRenaming"), kind: "ok" });
     try {
       const projectName = session.projectPath ? basename(session.projectPath) : "";
-      const folderPath = sessionFolderPath(workbenchFolderData, provider, id);
       let result: { title: string; nativeRenamed: boolean; nativeError?: string };
       if (projectName) {
-        // Sessions get " · project / folder / subfolder" (unclassified: " · project") appended
-        // to the LLM-suggested title so the project / folder context survives outside the tree.
+        // Sessions get " · project" appended to the LLM-suggested title so the
+        // project context survives outside the workbench.
         const suggested = await desktopApi().autoRenameSession({ provider, id, persist: false });
-        const title = composeSessionTitle(suggested.title, projectName, folderPath);
+        const title = composeSessionTitle(suggested.title, projectName);
         const renamed = await desktopApi().renameSession({ provider, id, title });
         result = { title, nativeRenamed: renamed.nativeRenamed, nativeError: renamed.nativeError };
       } else {
@@ -1269,7 +1150,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       if (/Session not found/.test(message)) return;
       if (activeRef.current) setStatus({ text: message, kind: "error" });
     }
-  }, [loadSessions, setStatus, t, workbenchFolderData]);
+  }, [loadSessions, setStatus, t]);
 
   const cancelSessionAutoRename = useCallback((key: string) => {
     const timer = autoRenameTimersRef.current.get(key);
@@ -1435,17 +1316,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       const colon = sessionKeyValue.indexOf(":");
       const catalogProvider = colon > 0 ? sessionKeyValue.slice(0, colon) : pending.provider;
       const sessionId = colon > 0 ? sessionKeyValue.slice(colon + 1) : sessionKeyValue;
-      if (pending.folderProjectId && pending.folderId && typeof desktopApi().assignWorkbenchSessionToFolder === "function") {
-        void desktopApi().assignWorkbenchSessionToFolder({
-          projectId: pending.folderProjectId,
-          provider: catalogProvider,
-          agentSessionId: sessionId,
-          folderId: pending.folderId
-        }).then(() => reloadWorkbench())
-          .catch((error) => {
-            if (activeRef.current) setStatus({ text: statusError(error), kind: "error" });
-          });
-      }
       // Sessions started inside a work-item workspace belong to that work item.
       if (pending.workItemNoteId && typeof desktopApi().notesLinkSessionToWorkItem === "function") {
         void desktopApi().notesLinkSessionToWorkItem({
@@ -1638,19 +1508,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [renameDialog?.projectPath, renameDialog?.projectId]);
 
-  useEffect(() => {
-    if (!folderDialog) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !folderDialog.busy) setFolderDialog(null);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    window.requestAnimationFrame(() => {
-      renameInputRef.current?.focus();
-      renameInputRef.current?.select();
-    });
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [folderDialog?.mode, folderDialog?.folderId, folderDialog?.busy]);
-
   const allProjects = useMemo((): WorkbenchProject[] => {
     if (catalogProjects.length) {
       const sessionsByProjectId = new Map<string, AgentSession[]>();
@@ -1679,7 +1536,6 @@ export function WorkbenchPanel(): ReactPortal | null {
         ];
         const projectPath = project.localPath || project.portableKey;
         const pendingCount = pendingCountByPath.get(projectPathKey(projectPath)) || 0;
-        const folderData = workbenchFolderData[project.projectId] || { folders: [], assignments: [] };
         // Hide empty catalog rows unless the user explicitly opened the project.
         if ((project.sessionCount || 0) === 0 && group.length === 0 && pendingCount === 0 && !project.keptVisible) return [];
         const path = projectPath;
@@ -1690,8 +1546,6 @@ export function WorkbenchPanel(): ReactPortal | null {
           pathMissing: project.pathMissing,
           sessions: group,
           sessionCount: project.sessionCount || 0,
-          folders: folderData.folders,
-          folderAssignments: folderData.assignments,
           pendingCount,
           label: project.alias || aliases[path] || aliases[project.projectId] || basename(path),
           active: pendingCount > 0 || group.some((session) => openSessionKeys.has(sessionKey(session))),
@@ -1715,8 +1569,6 @@ export function WorkbenchPanel(): ReactPortal | null {
         pathMissing: false,
         sessions: [],
         sessionCount: 0,
-        folders: [],
-        folderAssignments: [],
         pendingCount: pending.length,
         label: aliases[path] || basename(path),
         active: true,
@@ -1763,7 +1615,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       || a.label.localeCompare(b.label)
       || a.path.localeCompare(b.path)
       || a.id.localeCompare(b.id));
-  }, [aliases, catalogProjects, openSessionKeys, pendingSessions, pinnedProjects, sessions, workbenchFolderData]);
+  }, [aliases, catalogProjects, openSessionKeys, pendingSessions, pinnedProjects, sessions]);
 
   const selectedProjectMeta = useMemo(
     () => allProjects.find((project) => project.path === selectedProject || project.id === selectedProject) || null,
@@ -1817,13 +1669,15 @@ export function WorkbenchPanel(): ReactPortal | null {
   }, [workItemScope, workItemSessionKeyString]);
 
   const visibleSessions = useMemo(() => {
-    // A work item scopes the list across projects: show exactly its sessions,
-    // loaded from the catalog by key rather than from the selected project.
-    const source = workItemScope && workItemSessions ? workItemSessions : selectedSessions;
+    // "Task" shows exactly the task's sessions (across projects, from the catalog by key);
+    // "All" shows every session.
+    const source = sessionFilter === "task" && workItemScope && workItemSessions
+      ? workItemSessions
+      : selectedSessions;
     return source.filter((session) =>
       `${session.title} ${session.id} ${session.provider}`.toLowerCase().includes(sessionQuery.trim().toLowerCase())
     ).sort((a, b) => b.updatedAt - a.updatedAt);
-  }, [selectedSessions, sessionQuery, workItemScope, workItemSessions]);
+  }, [selectedSessions, sessionQuery, sessionFilter, workItemScope, workItemSessions]);
   const selectedPendingSessions = useMemo(() => {
     if (!workItemScope) return pendingSessions;
     return pendingSessions.filter((pending) => pending.workItemNoteId === workItemScope.noteId);
@@ -1835,6 +1689,15 @@ export function WorkbenchPanel(): ReactPortal | null {
     ...visiblePendingSessions.map((pending) => ({ kind: "pending" as const, pending })),
     ...visibleSessions.map((session) => ({ kind: "session" as const, session }))
   ], [visiblePendingSessions, visibleSessions]);
+  /** Left-panel note list: the task's note tree when filtered, else every note. */
+  const visibleNotes = useMemo(() => {
+    const q = noteQuery.trim().toLowerCase();
+    return noteItems.filter((note) => {
+      if (q && !note.title.toLowerCase().includes(q)) return false;
+      if (noteFilter === "task" && workItemScope) return taskNoteIds.has(note.noteId);
+      return true;
+    });
+  }, [noteItems, noteQuery, noteFilter, workItemScope, taskNoteIds]);
   const activeSessionRowIndex = useMemo(() => visibleSessionRows.findIndex((row) =>
     row.kind === "pending" ? row.pending.key === activeSessionKey : sessionKey(row.session) === activeSessionKey
   ), [activeSessionKey, visibleSessionRows]);
@@ -1868,6 +1731,8 @@ export function WorkbenchPanel(): ReactPortal | null {
   const currentAcpChat = currentAcpChats.find((pane) => pane.key === activePane);
   const currentBrowser = currentBrowsers.find((pane) => pane.key === activePane);
   const currentNotePane = currentNotePanes.find((pane) => pane.key === activePane);
+  /** The noteId whose pane is currently active (for row highlighting). */
+  const activeNotePaneId = currentNotePane?.noteId ?? null;
   const activeTranscriptRunning = useMemo(() => {
     const paneKey = currentAcpChat?.key ?? activeTerminal?.key;
     if (!paneKey) return false;
@@ -2111,7 +1976,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       if (current === project) return current;
       return project;
     });
-    setSelectedFolderId(null);
     try {
       if (project) {
         localStorage.setItem(PROJECT_KEY, project);
@@ -2189,8 +2053,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     terminalKey: string,
     provider: AgentProvider,
     projectPath: string,
-    title: string,
-    folder?: { projectId?: string; folderId?: string | null }
+    title: string
   ) => {
     const pending: PendingWorkbenchSession = {
       key: `pending:${terminalKey}`,
@@ -2200,8 +2063,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       title,
       createdAt: Date.now(),
       knownSessionKeys: sessions.map(sessionKey),
-      folderProjectId: folder?.projectId,
-      folderId: folder?.folderId || undefined,
       workItemNoteId: workItemScopeRef.current?.noteId
     };
     pendingSessionsRef.current = [...pendingSessionsRef.current, pending];
@@ -2686,6 +2547,38 @@ export function WorkbenchPanel(): ReactPortal | null {
     });
   }, []);
 
+  /** Add an extra note under the current task (a linked child note) and open it. */
+  const addChildNote = useCallback(async () => {
+    const parentNoteId = workItemScopeRef.current?.noteId;
+    if (!parentNoteId) return;
+    if (typeof desktopApi().notesCreateLinkedChild !== "function") return;
+    try {
+      const created = await desktopApi().notesCreateLinkedChild({ parentNoteId });
+      window.dispatchEvent(new Event("agent-resume:notes-mutated"));
+      openNotePane(created.noteId);
+    } catch (error) {
+      setStatus({ text: statusError(error), kind: "error" });
+    }
+  }, [openNotePane]);
+
+  /** “New note” in the left panel: a child of the task, else a standalone library note. */
+  const addNote = useCallback(async () => {
+    const api = desktopApi();
+    const parentNoteId = workItemScopeRef.current?.noteId;
+    try {
+      const created = parentNoteId && typeof api.notesCreateLinkedChild === "function"
+        ? await api.notesCreateLinkedChild({ parentNoteId })
+        : typeof api.notesCreate === "function"
+          ? await api.notesCreate({ scope: "library" })
+          : null;
+      if (!created) return;
+      window.dispatchEvent(new Event("agent-resume:notes-mutated"));
+      openNotePane(created.noteId);
+    } catch (error) {
+      setStatus({ text: statusError(error), kind: "error" });
+    }
+  }, [openNotePane]);
+
   const closeActivePane = useCallback(() => {
     if (!activePane) return;
     if (activePane.startsWith("terminal:")) {
@@ -2959,19 +2852,6 @@ export function WorkbenchPanel(): ReactPortal | null {
         : (current + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length;
     buttons[next]?.focus();
   }, []);
-
-  const openSessionSearch = () => {
-    setSessionSearchOpen(true);
-    window.requestAnimationFrame(() => {
-      sessionSearchInputRef.current?.focus();
-      if (sessionSearchInputRef.current?.value) sessionSearchInputRef.current.select();
-    });
-  };
-
-  const closeSessionSearch = () => {
-    setSessionSearchOpen(false);
-    window.requestAnimationFrame(() => sessionSearchButtonRef.current?.focus());
-  };
 
   useEffect(() => desktopApi().onWorkbenchCmdT(() => {
     if (!active) return;
@@ -3318,16 +3198,66 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
   }, []);
 
+  /** All notes, for the left-panel note list. */
+  const loadNotes = useCallback(async () => {
+    if (typeof desktopApi().notesList !== "function") return;
+    try {
+      const notes = await desktopApi().notesList();
+      setNoteItems(notes
+        .map((note) => ({
+          noteId: note.noteId,
+          title: note.title || note.filename.replace(/\.md$/i, "") || note.noteId,
+          updatedAtMs: note.updatedAtMs
+        }))
+        .sort((a, b) => b.updatedAtMs - a.updatedAtMs));
+    } catch {
+      /* best-effort */
+    }
+  }, []);
+
+  /** Note ids of the scoped task's note tree (the task note + its linked children). */
+  const loadTaskNoteIds = useCallback(async () => {
+    const taskNoteId = workItemScopeRef.current?.noteId;
+    const api = desktopApi();
+    if (!taskNoteId || typeof api.notesGetSubtree !== "function") {
+      setTaskNoteIds(new Set());
+      return;
+    }
+    try {
+      let rootId = taskNoteId;
+      if (typeof api.notesResolveLinkRoot === "function") {
+        rootId = (await api.notesResolveLinkRoot({ noteId: taskNoteId })).rootNoteId;
+      }
+      const subtree = await api.notesGetSubtree({ rootNoteId: rootId });
+      setTaskNoteIds(new Set<string>([subtree.rootNoteId, ...Object.keys(subtree.nodesById ?? {})]));
+    } catch {
+      setTaskNoteIds(new Set([taskNoteId]));
+    }
+  }, []);
+
   useEffect(() => {
     if (!active) return;
     void loadWorkItems();
   }, [active, loadWorkItems]);
 
+  // The note list loads when the Note tab is shown and the scoped task changes.
   useEffect(() => {
-    const onNotesMutated = () => { void loadWorkItems(); };
+    if (!active || leftTab !== "note") return;
+    void loadNotes();
+    void loadTaskNoteIds();
+  }, [active, leftTab, loadNotes, loadTaskNoteIds, workItemScope?.noteId]);
+
+  // A task filters by default; without one, the list shows every note.
+  useEffect(() => {
+    setNoteFilter(workItemScope ? "task" : "all");
+    setSessionFilter(workItemScope ? "task" : "all");
+  }, [workItemScope?.noteId]);
+
+  useEffect(() => {
+    const onNotesMutated = () => { void loadWorkItems(); void loadNotes(); void loadTaskNoteIds(); };
     window.addEventListener("agent-resume:notes-mutated", onNotesMutated);
     return () => window.removeEventListener("agent-resume:notes-mutated", onNotesMutated);
-  }, [loadWorkItems]);
+  }, [loadWorkItems, loadNotes, loadTaskNoteIds]);
 
   // Workbenches of the scoped task: load (ensuring ≥1) and restore the last one.
   useEffect(() => {
@@ -3509,11 +3439,23 @@ export function WorkbenchPanel(): ReactPortal | null {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeWorkbenchId]);
 
+  // Open the task's note once its workbench is active (request comes from the board).
+  useEffect(() => {
+    if (!taskNoteRequest || !activeWorkbenchId) return;
+    setLeftTab("note");
+    openNotePane(taskNoteRequest.noteId, taskNoteRequest.title);
+    setTaskNoteRequest(null);
+  }, [taskNoteRequest, activeWorkbenchId, openNotePane]);
+
   useEffect(() => {
     const onWorkItem = (event: Event) => {
       const detail = (event as CustomEvent<WorkbenchWorkItem>).detail;
       if (!detail?.noteId) return;
       pendingWorkbenchIdRef.current = (detail as { workbenchId?: string }).workbenchId ?? null;
+      if ((detail as { openNote?: boolean }).openNote) {
+        // Opening a task shows its note: defer until the workbench is active.
+        setTaskNoteRequest({ noteId: detail.noteId, title: detail.title, nonce: Date.now() });
+      }
       workItemScopeRef.current = { noteId: detail.noteId };
       setWorkItemScope(detail);
       const target = detail.primaryProject ?? detail.projects?.[0];
@@ -3525,6 +3467,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     };
     const onWorkItemClear = () => {
       setWorkItemScope(null);
+      setLeftTab("session");
       setRoomProjectId(null);
       setSessionTarget(null);
       selectProject(null, { keepSessionKey: true, keepSide: true });
@@ -3665,20 +3608,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       if (!info.editor || (!info.available && info.selected === "auto")) return;
       setContextMenu((current) => current === menu ? { ...current, editorLabel: info.editor!.label } : current);
     }).catch(() => undefined);
-  };
-
-  const folderMenu = (event: React.MouseEvent, project: WorkbenchProject, folder: WorkbenchSessionFolder) => {
-    event.preventDefault();
-    setContextMenu({
-      kind: "folder",
-      projectPath: project.path,
-      projectId: project.id,
-      folderId: folder.folderId,
-      parentId: folder.parentId,
-      folderName: folder.name,
-      x: event.clientX,
-      y: event.clientY
-    });
   };
 
   const workItemMenu = (event: React.MouseEvent, item: Pick<WorkbenchWorkItem, "noteId" | "title" | "sessions">) => {
@@ -3827,49 +3756,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     return () => window.removeEventListener("agent-resume:open-note", onOpenNote);
   }, [openNotePane]);
 
-  const openCreateFolderDialog = (project: WorkbenchProject, parentId: string | null = null) => {
-    setFolderDialog({
-      mode: "create",
-      projectId: project.id,
-      parentId,
-      title: "",
-      status: "",
-      busy: false
-    });
-  };
-
-  const openRenameFolderDialog = (project: WorkbenchProject, folder: WorkbenchSessionFolder) => {
-    setFolderDialog({
-      mode: "rename",
-      projectId: project.id,
-      folderId: folder.folderId,
-      parentId: folder.parentId,
-      title: folder.name,
-      status: "",
-      busy: false
-    });
-  };
-
-  const openMoveSessionDialog = (session: AgentSession) => {
-    const project = allProjects.find((item) =>
-      (session.projectId && item.id === session.projectId)
-      || item.path === session.projectPath
-    );
-    if (!project || !project.id || project.id === project.path) {
-      setStatus({ text: t("desktop.workbench.folderProjectUnavailable"), kind: "error" });
-      return;
-    }
-    setFolderPickerDialog({
-      projectId: project.id,
-      projectPath: project.path,
-      session,
-      folders: project.folders,
-      query: "",
-      busy: false,
-      status: ""
-    });
-  };
-
   const sessionProjectIdentity = (session: AgentSession) => {
     const project = allProjects.find((item) =>
       (session.projectId && item.id === session.projectId)
@@ -3960,58 +3846,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
   };
 
-  const applyFolderDialog = async () => {
-    if (!folderDialog) return;
-    const name = folderDialog.title.trim();
-    if (!name) {
-      setFolderDialog((current) => current ? { ...current, status: t("desktop.workbench.folderNameEmpty") } : current);
-      return;
-    }
-    setFolderDialog((current) => current ? { ...current, busy: true, status: "" } : current);
-    try {
-      if (folderDialog.mode === "create") {
-        await desktopApi().createWorkbenchSessionFolder({
-          projectId: folderDialog.projectId,
-          parentId: folderDialog.parentId,
-          name
-        });
-        if (folderDialog.parentId) {
-          setExpandedFolderIds((current) => new Set(current).add(folderDialog.parentId!));
-        }
-      } else if (folderDialog.folderId) {
-        await desktopApi().renameWorkbenchSessionFolder({ folderId: folderDialog.folderId, name });
-      }
-      setFolderDialog(null);
-      await reloadWorkbench();
-    } catch (error) {
-      setFolderDialog((current) => current ? { ...current, busy: false, status: statusError(error) } : current);
-    }
-  };
-
-  const assignFolderFromPicker = async (folderId: string | null) => {
-    if (!folderPickerDialog) return;
-    setFolderPickerDialog((current) => current ? { ...current, busy: true, status: "" } : current);
-    try {
-      if (folderId) {
-        await desktopApi().assignWorkbenchSessionToFolder({
-          projectId: folderPickerDialog.projectId,
-          provider: folderPickerDialog.session.provider,
-          agentSessionId: folderPickerDialog.session.id,
-          folderId
-        });
-      } else {
-        await desktopApi().removeWorkbenchSessionFromFolder({
-          provider: folderPickerDialog.session.provider,
-          agentSessionId: folderPickerDialog.session.id
-        });
-      }
-      setFolderPickerDialog(null);
-      await reloadWorkbench();
-    } catch (error) {
-      setFolderPickerDialog((current) => current ? { ...current, busy: false, status: statusError(error) } : current);
-    }
-  };
-
   const applyRename = async () => {
     if (!renameDialog) return;
     const title = renameDialog.title.trim();
@@ -4060,10 +3894,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     if (menu.kind === "project" && menu.projectPath) {
       if (action === "pin" || action === "unpin") await togglePinnedProject(menu.projectPath, menu.projectId);
       if (action === "new") await newSessionForProject(menu.projectPath, menu.projectId);
-      if (action === "newFolder" && menu.projectId) {
-        const project = allProjects.find((item) => item.id === menu.projectId);
-        if (project && project.id !== project.path) openCreateFolderDialog(project);
-      }
       if (action === "editor") {
         try {
           let projectPath = menu.projectPath;
@@ -4175,26 +4005,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       }
       return;
     }
-    if (menu.kind === "folder") {
-      const project = allProjects.find((item) => item.id === menu.projectId);
-      const folder = project?.folders.find((item) => item.folderId === menu.folderId);
-      if (!project || !folder || !menu.folderId) return;
-      if (action === "newFolder") openCreateFolderDialog(project, folder.folderId);
-      if (action === "renameFolder") openRenameFolderDialog(project, folder);
-      if (action === "deleteFolder") {
-        if (!window.confirm(t("desktop.workbench.deleteFolderConfirm", folder.name))) return;
-        try {
-          await desktopApi().deleteWorkbenchSessionFolder({ folderId: folder.folderId });
-          if (selectedFolderId === folder.folderId) {
-            setSelectedFolderId(folder.parentId || UNCLASSIFIED_FOLDER_ID);
-          }
-          await reloadWorkbench();
-        } catch (error) {
-          setStatus({ text: statusError(error), kind: "error" });
-        }
-      }
-      return;
-    }
     if (menu.kind === "session-tab") {
       if (action === "floatingNote" && menu.floatingNoteTarget) openFloatingNote(menu.floatingNoteTarget);
       return;
@@ -4209,24 +4019,8 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
     const session = menu.session;
     if (!session) return;
-    if (action === "moveFolder") {
-      openMoveSessionDialog(session);
-      return;
-    }
     if (action === "moveProject") {
       openMoveSessionToProjectDialog(session);
-      return;
-    }
-    if (action === "removeFolder") {
-      try {
-        await desktopApi().removeWorkbenchSessionFromFolder({
-          provider: session.provider,
-          agentSessionId: session.id
-        });
-        await reloadWorkbench();
-      } catch (error) {
-        setStatus({ text: statusError(error), kind: "error" });
-      }
       return;
     }
     if (action.startsWith("gtd:")) {
@@ -5388,8 +5182,6 @@ export function WorkbenchPanel(): ReactPortal | null {
         return 64;
       case "session":
         return 462;
-      case "folder":
-        return 160;
       default:
         return 320;
     }
@@ -5563,77 +5355,9 @@ export function WorkbenchPanel(): ReactPortal | null {
       }
     : { left: 8, top: 48 };
 
-  const startFolderExpand = (folderId: string, hasChildren: boolean, expanded: boolean) => {
-    window.clearTimeout(folderExpandTimerRef.current);
-    if (!hasChildren || expanded) return;
-    folderExpandTimerRef.current = window.setTimeout(() => {
-      setExpandedFolderIds((current) => {
-        if (current.has(folderId)) return current;
-        const next = new Set(current);
-        next.add(folderId);
-        return next;
-      });
-    }, 600);
-  };
-
   const clearWorkbenchDrag = () => {
-    window.clearTimeout(folderExpandTimerRef.current);
     draggedSessionRef.current = null;
     setDraggedSessionKey(null);
-    setDragTargetKey(null);
-  };
-
-  const assignDraggedSessionToFolder = async (project: WorkbenchProject, folderId: string | null) => {
-    const session = draggedSessionRef.current;
-    if (!session) return;
-    if (!sessionBelongsToProject(session, project)) return;
-    clearWorkbenchDrag();
-    try {
-      if (folderId) {
-        await desktopApi().assignWorkbenchSessionToFolder({
-          projectId: project.id,
-          provider: session.provider,
-          agentSessionId: session.id,
-          folderId
-        });
-      } else {
-        await desktopApi().removeWorkbenchSessionFromFolder({
-          provider: session.provider,
-          agentSessionId: session.id
-        });
-      }
-      await reloadWorkbench();
-    } catch (error) {
-      setStatus({ text: statusError(error), kind: "error" });
-    }
-  };
-
-  const handleFolderDragOver = (
-    event: React.DragEvent,
-    project: WorkbenchProject,
-    folderId: string | null,
-    hasChildren = false,
-    expanded = false
-  ) => {
-    const session = draggedSessionRef.current;
-    if (!session) return;
-    if (!sessionBelongsToProject(session, project)) return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "move";
-    setDragTargetKey(`${project.id}:${folderId || UNCLASSIFIED_FOLDER_ID}`);
-    if (folderId && hasChildren && !expanded) startFolderExpand(folderId, true, false);
-  };
-
-  const handleFolderDragLeave = (event: React.DragEvent, project: WorkbenchProject, folderId: string | null) => {
-    if (event.currentTarget.contains(event.relatedTarget as Node)) return;
-    window.clearTimeout(folderExpandTimerRef.current);
-    setDragTargetKey((current) => current === `${project.id}:${folderId || UNCLASSIFIED_FOLDER_ID}` ? null : current);
-  };
-
-  const handleFolderDrop = (event: React.DragEvent, project: WorkbenchProject, folderId: string | null) => {
-    event.preventDefault();
-    event.stopPropagation();
-    void assignDraggedSessionToFolder(project, folderId);
   };
 
   const paneTabGroups = <div className="wb-pane-tab-groups">
@@ -5658,7 +5382,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       </div>
     </div> : null}
     <div className="wb-terminal-tabs is-note-group" data-pane-group="note">
-      <div className="wb-pane-tab-group-label" aria-label={t("desktop.notes.allNotes")} title={t("desktop.notes.allNotes")}><ThemeIcon name="file-text" size={13} aria-hidden="true" /></div>
+      <button type="button" className="wb-pane-tab-group-label" aria-label={t("desktop.notes.newLinkedChild")} title={t("desktop.notes.newLinkedChild")} onClick={() => void addChildNote()}><ThemeIcon name="file-plus" size={13} aria-hidden="true" /></button>
       <div className="wb-terminal-tabs-list" role="tablist" aria-label={t("desktop.notes.allNotes")}>
         {currentNotePanes.map((pane) => <div className={`wb-terminal-tab is-note${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="file-text" size={13} aria-hidden="true" />{pane.dirty ? "* " : ""}{pane.title || t("desktop.notes.allNotes")}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.common.close")} onClick={() => closeNotePane(pane.key)}><ThemeIcon name="close" size={13} /></button></div>)}
       </div>
@@ -5711,20 +5435,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   return createPortal(<><section className="panel workbench-panel react-workbench-panel" hidden={!active}>
     <div className="workbench-layout" style={{ "--wb-list-width": `${listWidth}px`, "--wb-side-panel-width": `${sideWidth}px` } as CSSProperties}>
       <aside className="wb-list-pane">
-        <div ref={sessionSearchToolbarRef} className={`sidebar-project-filter-wrap wb-session-filter-wrap${sessionSearchOpen ? " is-search-open" : ""}`}>
-          <button ref={sessionSearchButtonRef} type="button" className={`wb-icon-btn wb-session-search-btn${sessionQuery && !sessionSearchOpen ? " has-query" : ""}`} aria-label={t("desktop.common.search")} title={t("desktop.common.search")} aria-expanded={sessionSearchOpen} aria-controls="wb-session-search" onClick={openSessionSearch}><ThemeIcon name="search" size={15} /></button>
-          <input ref={sessionSearchInputRef} id="wb-session-search" type="search" className="wb-search wb-session-search-input" aria-label={t("desktop.common.search")} placeholder={t("desktop.common.search")} value={sessionQuery} hidden={!sessionSearchOpen} autoComplete="off" spellCheck={false} onChange={(event) => { setSessionQuery(event.target.value); setSelectedSessionKeys((current) => current.size ? new Set() : current); setSelectionAnchorKey((current) => current ? "" : current); }} onKeyDown={(event) => {
-            if (event.key !== "Escape") return;
-            event.preventDefault();
-            event.stopPropagation();
-            if (sessionQuery.trim()) { setSessionQuery(""); return; }
-            closeSessionSearch();
-          }} onBlur={() => {
-            window.setTimeout(() => {
-              if (!sessionSearchToolbarRef.current?.contains(document.activeElement)) setSessionSearchOpen(false);
-            }, 0);
-          }} />
-        </div>
         {workItemScope && (
           <section className="wb-work-item" aria-label={t("desktop.workbench.workItemView")} onContextMenu={(event) => workItemMenu(event, workItemScope)}>
             <div className="wb-work-item-head">
@@ -5736,7 +5446,7 @@ export function WorkbenchPanel(): ReactPortal | null {
               <button
                 type="button"
                 className="wb-icon-btn"
-                onClick={() => openNotePane(workItemScope.noteId, workItemScope.title)}
+                onClick={() => setLeftTab("note")}
                 aria-label={t("desktop.workbench.workItemOpenNote")}
                 title={t("desktop.workbench.workItemOpenNote")}
               >
@@ -5834,6 +5544,44 @@ export function WorkbenchPanel(): ReactPortal | null {
             </p>
           </section>
         )}
+        <div className="wb-left-tabs" role="tablist" aria-label={t("desktop.workbench.leftPaneTabs")}>
+          <button type="button" role="tab" className={`wb-left-tab${leftTab === "note" ? " active" : ""}`} aria-selected={leftTab === "note"} onClick={() => setLeftTab("note")}>{t("desktop.workbench.noteTab")}</button>
+          <button type="button" role="tab" className={`wb-left-tab${leftTab === "session" ? " active" : ""}`} aria-selected={leftTab === "session"} onClick={() => setLeftTab("session")}>{t("desktop.workbench.sessionTab")}</button>
+        </div>
+        {leftTab === "note" ? (
+          <>
+            <div className="wb-note-list-toolbar">
+              <div className="wb-note-filter" role="tablist" aria-label={t("desktop.workbench.noteFilter")}>
+                <button type="button" role="tab" className={`wb-left-tab${noteFilter === "task" ? " active" : ""}`} aria-selected={noteFilter === "task"} disabled={!workItemScope} onClick={() => setNoteFilter("task")}>{t("desktop.workbench.filterTask")}</button>
+                <button type="button" role="tab" className={`wb-left-tab${noteFilter === "all" ? " active" : ""}`} aria-selected={noteFilter === "all"} onClick={() => setNoteFilter("all")}>{t("desktop.workbench.filterAll")}</button>
+              </div>
+              <input className="wb-search wb-note-search" type="search" aria-label={t("desktop.common.search")} placeholder={t("desktop.common.search")} value={noteQuery} autoComplete="off" spellCheck={false} onChange={(event) => setNoteQuery(event.target.value)} />
+              <button type="button" className="wb-icon-btn wb-note-add" aria-label={t("desktop.workbench.newNote")} title={t("desktop.workbench.newNote")} onClick={() => void addNote()}><ThemeIcon name="file-plus" size={15} /></button>
+            </div>
+            <div className="wb-note-list">
+              {visibleNotes.length ? visibleNotes.map((note) => (
+                <button
+                  key={note.noteId}
+                  type="button"
+                  className={`wb-note-list-item${activeNotePaneId === note.noteId ? " active" : ""}${workItemScope?.noteId === note.noteId ? " is-task" : ""}`}
+                  title={note.title}
+                  onClick={() => openNotePane(note.noteId, note.title)}
+                >
+                  <ThemeIcon name="file-text" size={13} aria-hidden="true" />
+                  <span className="wb-note-list-item-title">{note.title}</span>
+                </button>
+              )) : <p className="muted wb-list-empty">{t("desktop.workbench.noNotes")}</p>}
+            </div>
+          </>
+        ) : (
+        <>
+        <div className="wb-note-list-toolbar">
+          <div className="wb-note-filter" role="tablist" aria-label={t("desktop.workbench.sessionFilter")}>
+            <button type="button" role="tab" className={`wb-left-tab${sessionFilter === "task" ? " active" : ""}`} aria-selected={sessionFilter === "task"} disabled={!workItemScope} onClick={() => setSessionFilter("task")}>{t("desktop.workbench.filterTask")}</button>
+            <button type="button" role="tab" className={`wb-left-tab${sessionFilter === "all" ? " active" : ""}`} aria-selected={sessionFilter === "all"} onClick={() => setSessionFilter("all")}>{t("desktop.workbench.filterAll")}</button>
+          </div>
+          <input className="wb-search wb-note-search" type="search" aria-label={t("desktop.workbench.searchSessions")} placeholder={t("desktop.common.search")} value={sessionQuery} autoComplete="off" spellCheck={false} onChange={(event) => { setSessionQuery(event.target.value); setSelectedSessionKeys((current) => current.size ? new Set() : current); setSelectionAnchorKey((current) => current ? "" : current); }} />
+        </div>
         <div className="wb-list-meta-row"><p className="wb-list-meta">{selectedSessionKeys.size > 1 ? t("desktop.workbench.selectedCount", selectedSessionKeys.size) : sessionQuery ? t("desktop.workbench.listMetaSearch", selectedSessionScope, sessionQuery, visibleSessions.length + visiblePendingSessions.length) : `${visibleSessions.length + visiblePendingSessions.length} / ${sessionsTotal + selectedPendingSessions.length}`}</p>{selectedSessionKeys.size > 1 ? <button type="button" className="wb-list-remove-btn" onClick={() => {
           const targets = visibleSessions.filter((item) => selectedSessionKeys.has(sessionKey(item)));
           if (!targets.length) return;
@@ -5892,6 +5640,8 @@ export function WorkbenchPanel(): ReactPortal | null {
             ><span className="wb-list-item-top"><span className="wb-session-title-wrap">{isOpen ? <span className="wb-session-activity-dot" aria-hidden="true" /> : null}<span className="wb-list-item-title" ref={(el) => syncTruncationTitle(el)}>{session.title || session.id}</span>{session.source === "im" ? <span className="wb-im-session-badge" aria-label={t("desktop.workbench.imSessionBadge")} title={t("desktop.workbench.imSessionBadgeHint")}>{t("desktop.workbench.imSessionBadge")}</span> : null}{otherMachine ? <span className="wb-other-machine-badge" aria-label={t("desktop.workbench.otherMachineBadge")}>{t("desktop.workbench.otherMachineBadge")}</span> : null}</span></span><span className="wb-list-item-preview" ref={(el) => syncTruncationTitle(el)}><span className="wb-list-item-date">{formatDateTime(session.updatedAt)}</span><span className="s-provider-tag" data-provider={session.acpProvider || session.provider}>{session.acpProvider ? `acp/${session.acpProvider}` : session.provider}</span><span className={`wb-gtd-status-badge is-${gtdStatus}`} aria-label={t("desktop.workbench.gtdStatusLabel", t(`desktop.workbench.gtdStatus.${gtdStatus}`))}>{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</span>{" · "}{aliases[session.projectPath] || basename(session.projectPath)}</span></button>;
           }}
         /> : <div className="wb-list"><p className="muted wb-list-empty">{sessionQuery ? t("desktop.workbench.noMatchingSessions") : t("desktop.workbench.noSessionsInProject")}</p></div>}
+        </>
+        )}
       </aside>
       <ResizeHandle label={t("desktop.workbench.resizeSessions")} onDelta={(delta) => setWidth("list", delta)} />
       <main className="wb-detail">
@@ -6409,9 +6159,6 @@ export function WorkbenchPanel(): ReactPortal | null {
         if (enabled.has("newSession")) {
           group2.push(<button type="button" role="menuitem" key="new" onClick={() => void runContextAction("new")}>{t("desktop.workbench.newSession")}</button>);
         }
-        if (contextMenu.projectId) {
-          group2.push(<button type="button" role="menuitem" key="newFolder" onClick={() => void runContextAction("newFolder")}>{t("desktop.workbench.newFolder")}</button>);
-        }
         if (enabled.has("editor") && contextMenu.editorLabel) {
           group2.push(<button type="button" role="menuitem" key="editor" onClick={() => void runContextAction("editor")}>{t("desktop.workbench.openInApp", contextMenu.editorLabel)}</button>);
         }
@@ -6455,12 +6202,7 @@ export function WorkbenchPanel(): ReactPortal | null {
             {group}
           </Fragment>
         ));
-      })() : contextMenu.kind === "folder" ? <>
-        <button type="button" role="menuitem" onClick={() => void runContextAction("newFolder")}>{t("desktop.workbench.newSubfolder")}</button>
-        <button type="button" role="menuitem" onClick={() => void runContextAction("renameFolder")}>{t("desktop.common.rename")}</button>
-        <div className="context-menu-separator" role="separator" />
-        <button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => void runContextAction("deleteFolder")}>{t("desktop.workbench.deleteFolder")}</button>
-      </> : contextMenu.kind === "session-tab" ? <button type="button" role="menuitem" onClick={() => void runContextAction("floatingNote")}>{t(contextMenu.hasFloatingNote ? "desktop.workbench.openFloatingNote" : "desktop.workbench.addFloatingNote")}</button> : contextMenu.kind === "editor-tab" ? <button type="button" role="menuitem" onClick={() => void runContextAction("toggleEditorPreview")}>{t(contextMenu.editorPreview ? "desktop.common.edit" : "desktop.workbench.preview")}</button> : contextMenu.kind === "work-item" ? <>{contextMenu.workspaceDir ? <button type="button" role="menuitem" onClick={() => void runContextAction("openWorkspace")}>{t("desktop.workbench.openWorkItemWorkspace")}</button> : null}{!contextMenu.workItemHasSessions ? <>{contextMenu.workspaceDir ? <div className="context-menu-separator" role="separator" /> : null}<button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => void runContextAction("deleteWorkItem")}>{t("desktop.workbench.deleteWorkItem")}</button></> : null}</> : selectedSessionKeys.size > 1 && contextMenu.session && selectedSessionKeys.has(sessionKey(contextMenu.session)) ? <>
+      })() : contextMenu.kind === "session-tab" ? <button type="button" role="menuitem" onClick={() => void runContextAction("floatingNote")}>{t(contextMenu.hasFloatingNote ? "desktop.workbench.openFloatingNote" : "desktop.workbench.addFloatingNote")}</button> : contextMenu.kind === "editor-tab" ? <button type="button" role="menuitem" onClick={() => void runContextAction("toggleEditorPreview")}>{t(contextMenu.editorPreview ? "desktop.common.edit" : "desktop.workbench.preview")}</button> : contextMenu.kind === "work-item" ? <>{contextMenu.workspaceDir ? <button type="button" role="menuitem" onClick={() => void runContextAction("openWorkspace")}>{t("desktop.workbench.openWorkItemWorkspace")}</button> : null}{!contextMenu.workItemHasSessions ? <>{contextMenu.workspaceDir ? <div className="context-menu-separator" role="separator" /> : null}<button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => void runContextAction("deleteWorkItem")}>{t("desktop.workbench.deleteWorkItem")}</button></> : null}</> : selectedSessionKeys.size > 1 && contextMenu.session && selectedSessionKeys.has(sessionKey(contextMenu.session)) ? <>
         <button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => void runContextAction("remove")}>{t("desktop.workbench.removeFromPanelCount", selectedSessionKeys.size)}</button>
       </> : <>
         {contextMenu.session?.provider === "codex" ? <button type="button" role="menuitem" onClick={() => void runContextAction("codex")}>{t("desktop.workbench.openInChatGpt")}</button> : null}
@@ -6468,9 +6210,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         <button type="button" role="menuitem" onClick={() => void runContextAction("floatingNote")}>{t(contextMenu.hasFloatingNote ? "desktop.workbench.openFloatingNote" : "desktop.workbench.addFloatingNote")}</button>
         <button type="button" role="menuitem" onClick={() => void runContextAction("note")}>{t("desktop.workbench.mountNote")}</button>
         <button type="button" role="menuitem" onClick={() => void runContextAction("autoRename")}>{t("desktop.workbench.autoRename")}</button>
-        <button type="button" role="menuitem" onClick={() => void runContextAction("moveFolder")}>{t("desktop.workbench.moveToFolder")}</button>
         <button type="button" role="menuitem" onClick={() => void runContextAction("moveProject")}>{t("desktop.workbench.moveToProject")}</button>
-        <button type="button" role="menuitem" onClick={() => void runContextAction("removeFolder")}>{t("desktop.workbench.removeFromFolder")}</button>
         <div className="context-menu-separator" role="separator" />
         <span className="wb-context-menu-label">{t("desktop.workbench.setGtdStatus")}</span>
         <div className="wb-gtd-context-tags" role="group" aria-label={t("desktop.workbench.setGtdStatus")}>
@@ -6482,8 +6222,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       </>}
     </div> : null}
     {renameDialog ? <div className="wb-note-created-overlay"><div className="wb-note-created-backdrop" onClick={() => setRenameDialog(null)} /><form className="wb-note-created-panel" role="dialog" aria-modal="true" aria-label={t("desktop.workbench.renameProject")} onSubmit={(event) => { event.preventDefault(); void applyRename(); }}><div className="wb-rename-head"><p className="wb-note-created-title">{t("desktop.workbench.renameProject")}</p></div>{renameDialog.status ? <p className="wb-rename-status muted">{renameDialog.status}</p> : null}<input ref={renameInputRef} type="text" className="wb-rename-input" value={renameDialog.title} autoComplete="off" spellCheck={false} aria-label={t("desktop.workbench.renameProjectDisplay")} onChange={(event) => setRenameDialog((current) => current ? { ...current, title: event.target.value, status: "" } : current)} /><div className="wb-note-created-actions"><button type="button" className="wb-note-created-btn" onClick={() => setRenameDialog(null)}>{t("desktop.common.cancel")}</button><button type="submit" className="wb-note-created-btn primary">{t("desktop.common.confirm")}</button></div></form></div> : null}
-    {folderDialog ? <div className="wb-note-created-overlay"><div className="wb-note-created-backdrop" onClick={() => !folderDialog.busy && setFolderDialog(null)} /><form className="wb-note-created-panel" role="dialog" aria-modal="true" aria-label={t(folderDialog.mode === "create" ? "desktop.workbench.newFolder" : "desktop.workbench.renameFolder")} onSubmit={(event) => { event.preventDefault(); void applyFolderDialog(); }}><p className="wb-note-created-title">{t(folderDialog.mode === "create" ? "desktop.workbench.newFolder" : "desktop.workbench.renameFolder")}</p>{folderDialog.status ? <p className="wb-rename-status muted">{folderDialog.status}</p> : null}<input ref={renameInputRef} type="text" className="wb-rename-input" value={folderDialog.title} disabled={folderDialog.busy} autoComplete="off" spellCheck={false} aria-label={t("desktop.workbench.folderName")} placeholder={t("desktop.workbench.folderName")} onChange={(event) => setFolderDialog((current) => current ? { ...current, title: event.target.value, status: "" } : current)} /><div className="wb-note-created-actions"><button type="button" className="wb-note-created-btn" disabled={folderDialog.busy} onClick={() => setFolderDialog(null)}>{t("desktop.common.cancel")}</button><button type="submit" className="wb-note-created-btn primary" disabled={folderDialog.busy}>{t("desktop.common.confirm")}</button></div></form></div> : null}
-    {folderPickerDialog ? <div className="wb-note-created-overlay"><div className="wb-note-created-backdrop" onClick={() => !folderPickerDialog.busy && setFolderPickerDialog(null)} /><div className="wb-note-created-panel wb-project-pick-panel" role="dialog" aria-modal="true" aria-label={t("desktop.workbench.moveToFolder")}><p className="wb-note-created-title">{t("desktop.workbench.moveSessionTitle", folderPickerDialog.session.title || folderPickerDialog.session.id)}</p><p className="muted wb-rename-status">{t("desktop.workbench.moveSessionHint")}</p><input type="search" className="wb-rename-input" value={folderPickerDialog.query} placeholder={t("desktop.common.search")} autoComplete="off" spellCheck={false} disabled={folderPickerDialog.busy} onChange={(event) => setFolderPickerDialog((current) => current ? { ...current, query: event.target.value } : current)} />{folderPickerDialog.status ? <p className="wb-rename-status muted">{folderPickerDialog.status}</p> : null}<div className="wb-project-pick-list" role="listbox"><button type="button" className="wb-project-pick-item" disabled={folderPickerDialog.busy} onClick={() => void assignFolderFromPicker(null)}><span className="wb-project-pick-label">{t("desktop.workbench.unclassifiedSessions")}</span><span className="wb-project-pick-path">{folderPickerDialog.projectPath}</span></button>{folderPickerDialog.folders.filter((folder) => workbenchFolderPath(folder, folderPickerDialog.folders).toLowerCase().includes(folderPickerDialog.query.trim().toLowerCase())).map((folder) => <button type="button" className="wb-project-pick-item" key={folder.folderId} disabled={folderPickerDialog.busy} onClick={() => void assignFolderFromPicker(folder.folderId)}><span className="wb-project-pick-label">{workbenchFolderPath(folder, folderPickerDialog.folders)}</span><span className="wb-project-pick-path">{folder.name}</span></button>)}</div><div className="wb-note-created-actions"><button type="button" className="wb-note-created-btn" disabled={folderPickerDialog.busy} onClick={() => setFolderPickerDialog(null)}>{t("desktop.common.cancel")}</button></div></div></div> : null}
     {projectPickDialog ? <div className="wb-note-created-overlay"><div className="wb-note-created-backdrop" onClick={() => !projectPickDialog.busy && setProjectPickDialog(null)} /><div className="wb-note-created-panel wb-project-pick-panel" role="dialog" aria-modal="true" aria-label={t(projectPickDialog.kind === "merge" ? "desktop.workbench.mergeIntoProject" : projectPickDialog.kind === "moveSession" ? "desktop.workbench.moveToProject" : "desktop.workbench.splitProjectPath")}><p className="wb-note-created-title">{projectPickDialog.kind === "merge" ? t("desktop.workbench.mergeDialogTitle", projectPickDialog.sourceLabel) : projectPickDialog.kind === "moveSession" ? t("desktop.workbench.moveToProjectTitle", projectPickDialog.session.title || projectPickDialog.session.id) : t("desktop.workbench.splitDialogTitle", projectPickDialog.sourceLabel)}</p><p className="muted wb-rename-status">{projectPickDialog.kind === "merge" ? t("desktop.workbench.mergeDialogHint") : projectPickDialog.kind === "moveSession" ? t("desktop.workbench.moveToProjectHint") : t("desktop.workbench.splitDialogHint")}</p><input type="search" className="wb-rename-input" value={projectPickDialog.query} placeholder={t("desktop.common.search")} autoComplete="off" spellCheck={false} disabled={projectPickDialog.busy} onChange={(event) => setProjectPickDialog((current) => current ? { ...current, query: event.target.value } : current)} />{projectPickDialog.status ? <p className="wb-rename-status muted">{projectPickDialog.status}</p> : null}<div className="wb-project-pick-list" role="listbox">{(projectPickDialog.kind === "split"
       ? projectPickDialog.options.filter((item) => `${item.absolutePath} ${item.portableKey}`.toLowerCase().includes(projectPickDialog.query.trim().toLowerCase()))
       : projectPickDialog.options.filter((item) => `${item.label} ${item.path}`.toLowerCase().includes(projectPickDialog.query.trim().toLowerCase()))

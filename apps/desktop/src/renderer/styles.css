@@ -10549,62 +10549,6 @@ body.is-pane-resizing-row * {
   pointer-events: none;
 }
 
-.wb-session-filter-wrap {
-  flex-shrink: 0;
-  display: flex;
-  flex-flow: row wrap;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px 6px;
-  min-width: 0;
-}
-
-.wb-session-filter-wrap {
-  border-bottom: none;
-}
-
-.wb-session-filter-wrap .sidebar-collapse-toggle,
-.wb-session-filter-wrap .wb-session-search-btn {
-  flex: 0 0 auto;
-}
-
-.wb-session-search-input {
-  display: none;
-  flex: 0 1 132px;
-  min-width: 0;
-  width: auto;
-  height: 28px;
-  padding: 4px 8px;
-  font-size: 12px;
-  border-radius: var(--radius-md);
-  transition:
-    flex-basis var(--duration-normal) var(--ease-out),
-    flex-grow var(--duration-normal) var(--ease-out);
-}
-
-.wb-session-search-input:focus {
-  flex-grow: 1;
-}
-
-.wb-session-filter-wrap.is-search-closing .wb-session-search-input {
-  flex-basis: 28px;
-  flex-grow: 0;
-  pointer-events: none;
-}
-
-.wb-session-filter-wrap.is-search-open .wb-session-search-btn {
-  display: none;
-}
-
-.wb-session-filter-wrap.is-search-open .wb-session-search-input {
-  display: block;
-}
-
-.wb-session-search-btn.has-query {
-  color: var(--color-accent, var(--accent));
-  background: var(--color-fill-primary, color-mix(in srgb, var(--accent) 12%, transparent));
-}
-
 .notes-search,
 .wb-search {
   width: 100%;
@@ -16750,4 +16694,142 @@ html[data-window-mode="browser"] #react-chrome {
 .gtd-new-task-project-clear:hover {
   color: var(--text);
   background: var(--color-fill-secondary);
+}
+
+/* GTD layout: optional “散记” (loose notes) panel + board */
+
+/* Board is a shrinking pane next to the notes panel: fill the rest and scroll. */
+.gtd-board { flex: 1 1 0; min-width: 0; }
+
+/* Task left panel: Note / Sessions tabs */
+.wb-left-tabs {
+  display: flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  height: 30px;
+  padding: 0 6px;
+  border-bottom: 1px solid var(--color-separator);
+  background: var(--color-window-bg);
+}
+
+.wb-left-tab {
+  appearance: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  padding: 0 12px;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: var(--font-size-caption, 12px);
+  cursor: pointer;
+}
+
+.wb-left-tab:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.wb-left-tab.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.wb-left-tab:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Left panel: note list (Task/All filter + search) */
+.wb-note-list-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--color-separator);
+}
+
+.wb-note-filter {
+  display: inline-flex;
+  align-items: stretch;
+  flex: 0 0 auto;
+  height: 22px;
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.wb-note-filter .wb-left-tab {
+  height: 100%;
+  padding: 0 10px;
+  border-bottom: none;
+}
+
+.wb-note-filter .wb-left-tab.active {
+  background: var(--color-fill-tertiary);
+}
+
+.wb-note-search {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.wb-note-add {
+  flex: 0 0 auto;
+}
+
+.wb-note-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+}
+
+.wb-note-list-item {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--font-size-caption, 12px);
+  text-align: left;
+  cursor: pointer;
+}
+
+.wb-note-list-item:hover {
+  background: var(--color-fill-tertiary);
+}
+
+.wb-note-list-item.active {
+  background: var(--color-fill-secondary);
+  font-weight: var(--font-weight-semibold, 600);
+}
+
+.wb-note-list-item.is-task svg {
+  color: var(--accent);
+}
+
+.wb-note-list-item-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Session list rows follow the note-list styling (note list is the template). */
+.wb-list-item {
+  border-radius: var(--radius-md);
+}
+
+.wb-list-item.active {
+  background: var(--color-fill-secondary);
+  font-weight: var(--font-weight-semibold, 600);
 }

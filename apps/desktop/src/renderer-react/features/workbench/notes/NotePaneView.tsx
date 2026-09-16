@@ -209,6 +209,7 @@ export function NotePaneView({ noteId, active, onOpenNote, onTitleChange, onDirt
   const previewSelectedRangeRef = useRef<Range | null>(null);
   const findRef = useRef<HTMLInputElement>(null);
   const saveTimer = useRef<number | null>(null);
+  const treeRootIdRef = useRef<string | null>(null);
   const contentRef = useRef(content);
   const recordRef = useRef<Note | null>(record);
   const dirtyRef = useRef(dirty);
@@ -219,6 +220,7 @@ export function NotePaneView({ noteId, active, onOpenNote, onTitleChange, onDirt
   dirtyRef.current = dirty;
   viewRef.current = view;
   findQueryRef.current = findQuery;
+  treeRootIdRef.current = treeRootId;
 
   const setStatus = useCallback((text: string, kind: "error" | "ok" | "info" = "info") => {
     if (text) notifyDesktop({ text, kind });
@@ -354,10 +356,12 @@ export function NotePaneView({ noteId, active, onOpenNote, onTitleChange, onDirt
     const onNotesMutated = () => {
       if (!recordRef.current) return;
       void refreshLinkMeta();
+      // A child created elsewhere (e.g. the pane tab group “+”) must appear here.
+      if (treeRootIdRef.current) void loadSubtree(treeRootIdRef.current);
     };
     window.addEventListener("agent-resume:notes-mutated", onNotesMutated);
     return () => window.removeEventListener("agent-resume:notes-mutated", onNotesMutated);
-  }, [refreshLinkMeta]);
+  }, [refreshLinkMeta, loadSubtree]);
 
   // Flush any pending buffer when the pane unmounts (tab closed / project switched).
   useEffect(() => () => {

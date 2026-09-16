@@ -26,7 +26,11 @@ function renderGtd(overrides?: Partial<typeof window.agentResume>) {
         "desktop.common.cancel": "Cancel",
         "desktop.common.close": "Close",
         "desktop.gtd.backToGtd": "Back to GTD",
+        "desktop.gtd.notesPanel": "Notes",
+        "desktop.gtd.newLooseNote": "New note",
+        "desktop.gtd.noLooseNotes": "No notes",
         "desktop.workbench.deleteWorkItem": "Delete task",
+        "desktop.workbench.workItemOpenNote": "Open note",
         "desktop.workbench.gtdStatus.inbox": "Inbox",
         "desktop.workbench.gtdStatus.next": "Next",
         "desktop.workbench.gtdStatus.waiting": "Waiting",
@@ -85,7 +89,19 @@ describe("GtdView", () => {
     window.addEventListener("agent-resume:view-open-task", listener);
     fireEvent.click(await screen.findByRole("button", { name: /Realtime status/ }));
     expect(listener).toHaveBeenCalledWith(expect.objectContaining({
-      detail: expect.objectContaining({ noteId: "t-1", title: "Realtime status" })
+      detail: expect.objectContaining({ noteId: "t-1", title: "Realtime status", openNote: true })
+    }));
+    window.removeEventListener("agent-resume:view-open-task", listener);
+  });
+
+  it("offers Open note in the card context menu", async () => {
+    renderGtd();
+    const listener = vi.fn();
+    window.addEventListener("agent-resume:view-open-task", listener);
+    fireEvent.contextMenu(await screen.findByRole("button", { name: /Realtime status/ }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Open note" }));
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({
+      detail: expect.objectContaining({ noteId: "t-1", openNote: true })
     }));
     window.removeEventListener("agent-resume:view-open-task", listener);
   });
