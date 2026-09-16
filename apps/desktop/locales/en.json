@@ -1707,6 +1707,7 @@
   "desktop.workbench.openInChatGpt": "Open in ChatGPT",
   "desktop.workbench.openInEditor": "Open in editor",
   "desktop.workbench.openRoom": "Open room",
+  "desktop.workbench.openWorkItemWorkspace": "Open workspace folder",
   "desktop.workbench.otherMachineBadge": "Other machine",
   "desktop.workbench.otherMachineSessionHint": "Indexed path from another machine: {0}. Resume may fail if agent data is not on this Mac.",
   "desktop.workbench.pathCopied": "Copied path: {0}",

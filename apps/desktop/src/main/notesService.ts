@@ -27,6 +27,7 @@ import {
   ensureWorkItemWorkspace,
   isPanelInternalPath,
   mergeWorkItemProjects,
+  workItemKnowledgeText,
   workItemWorkspaceDir,
   type WorkItemAddress
 } from "./workItemWorkspace";
@@ -62,6 +63,8 @@ export async function notesList(): Promise<DesktopNoteRecord[]> {
 
 /** Project notes marked `work: true` — the board's unit of management. */
 export async function notesListWorkItems(): Promise<WorkItemRecord[]> {
+  const settings = await loadSettings();
+  const panelHome = effectivePanelHome(settings);
   const store = await getDesktopNotesStore();
   await store.reload();
   const items = await store.listWorkItems();
@@ -69,11 +72,15 @@ export async function notesListWorkItems(): Promise<WorkItemRecord[]> {
 
   // `projects` is referenced, not owned: the union of declared projects and the
   // projects of linked sessions, derived in SQL from the session index table.
+  // Sessions that ran in the neutral workspace are filtered out; that directory
+  // is the panel's own, not a repository the work item references.
   const sessionProjects = await store.listWorkItemSessionProjects();
   return items.map((item) => {
-    const projects = new Set(item.work.projects ?? []);
-    for (const projectPath of sessionProjects[item.noteId] ?? []) projects.add(projectPath);
-    const list = [...projects];
+    const list = mergeWorkItemProjects({
+      panelHome,
+      declared: item.work.projects ?? [],
+      sessionProjects: sessionProjects[item.noteId] ?? []
+    });
     return {
       ...item,
       work: { ...item.work, projects: list, primaryProject: item.work.primaryProject ?? list[0] }
@@ -126,7 +133,14 @@ export async function notesEnsureWorkItemWorkspace(noteId: string): Promise<{ di
     })))
   };
 
-  const { dir } = await ensureWorkItemWorkspace({ panelHome, catalogDb: paths.catalogDb, address });
+  const { dir } = await ensureWorkItemWorkspace({
+    panelHome,
+    catalogDb: paths.catalogDb,
+    address,
+    // The note's background knowledge rides along, so an agent starting in the
+    // workspace has the work item's context without opening the note.
+    knowledge: workItemKnowledgeText(doc.body)
+  });
   return { dir };
 }
 
@@ -280,7 +294,13 @@ export async function notesWrite(
   content: string
 ): Promise<NoteRecord & { content?: string }> {
   const store = await getDesktopNotesStore();
-  return store.writeNoteContent(noteId, content);
+  const updated = await store.writeNoteContent(noteId, content);
+  // Editing a work item (including its background knowledge) keeps the
+  // workspace's address table in step; other notes have no workspace.
+  if (parseNoteDocument(updated.content ?? content).frontmatter.work) {
+    await refreshWorkItemWorkspace(noteId);
+  }
+  return updated;
 }
 
 export async function notesCreate(args: {
@@ -327,7 +347,10 @@ export async function notesDelete(noteId: string): Promise<{ ok: boolean; delete
 
 export async function notesRename(noteId: string, filename: string): Promise<NoteRecord> {
   const store = await getDesktopNotesStore();
-  return store.renameNote(noteId, filename);
+  const renamed = await store.renameNote(noteId, filename);
+  // The address table points at the note; a rename moves the target.
+  await refreshWorkItemWorkspace(noteId);
+  return renamed;
 }
 
 export async function notesImport(owner: NoteOwner): Promise<ImportNotesResult> {
@@ -381,6 +404,23 @@ export async function notesOpenFolder(): Promise<{ ok: boolean }> {
   const root = notesRoot(store.getPanelHome());
   await shell.openPath(root);
   return { ok: true };
+}
+
+/**
+ * The work item's neutral workspace: where it is and whether it exists yet.
+ * Never creates it — the directory is allocated when a session launches there.
+ */
+export async function notesWorkItemWorkspace(noteId: string): Promise<{ dir: string; exists: boolean }> {
+  const settings = await loadSettings();
+  const dir = workItemWorkspaceDir(effectivePanelHome(settings), noteId);
+  return { dir, exists: await fs.stat(dir).then(() => true).catch(() => false) };
+}
+
+/** Open the work item's workspace in the system file manager; no-op before it exists. */
+export async function notesOpenWorkItemWorkspace(noteId: string): Promise<{ ok: boolean }> {
+  const { dir, exists } = await notesWorkItemWorkspace(noteId);
+  if (exists) await shell.openPath(dir);
+  return { ok: exists };
 }
 
 export async function settingsOpenPanelHome(): Promise<{ ok: boolean }> {

@@ -8,6 +8,7 @@ import {
   isPanelInternalPath,
   mergeWorkItemProjects,
   renderAddressTable,
+  workItemKnowledgeText,
   workItemWorkspaceDir,
   type WorkItemAddress
 } from "./workItemWorkspace";
@@ -114,6 +115,46 @@ describe("workItemWorkspace", () => {
     // The opt-out is per file: AGENTS.md is left alone, CLAUDE.md is still managed.
     expect(await fs.readFile(path.join(dir, "AGENTS.md"), "utf8")).toBe("<!-- agent-resume:disable -->\n# Mine\n");
     expect(await fs.readFile(path.join(dir, "CLAUDE.md"), "utf8")).toContain("# Work item: Cross-repo feature");
+  });
+
+  it("carries the note's background knowledge into the managed block", async () => {
+    const { panelHome, catalogDb, address } = await setup();
+    const dir = workItemWorkspaceDir(panelHome, "wi-1");
+
+    await ensureWorkItemWorkspace({ panelHome, catalogDb, address, knowledge: "The API lives in api/.\nRun pnpm test first." });
+    const agents = await fs.readFile(path.join(dir, "AGENTS.md"), "utf8");
+    expect(agents).toContain("## Background knowledge (from the note)");
+    expect(agents).toContain("The API lives in api/.\nRun pnpm test first.");
+    expect(agents).toContain("Full note: notes/library/wi.md");
+    expect(await fs.readFile(path.join(dir, "CLAUDE.md"), "utf8")).toBe(agents);
+
+    // Editing the knowledge counts as a change, so the block is regenerated.
+    const next = await ensureWorkItemWorkspace({ panelHome, catalogDb, address, knowledge: "Rewritten." });
+    expect(next.updated).toBe(true);
+    const edited = await fs.readFile(path.join(dir, "AGENTS.md"), "utf8");
+    expect(edited).toContain("Rewritten.");
+    expect(edited).not.toContain("The API lives in api/.");
+
+    // Same knowledge again → nothing to write.
+    expect((await ensureWorkItemWorkspace({ panelHome, catalogDb, address, knowledge: "Rewritten." })).updated).toBe(false);
+  });
+
+  it("omits the knowledge section entirely when the note has none", async () => {
+    const { panelHome, catalogDb, address } = await setup();
+    const dir = workItemWorkspaceDir(panelHome, "wi-1");
+
+    await ensureWorkItemWorkspace({ panelHome, catalogDb, address, knowledge: "   " });
+    expect(await fs.readFile(path.join(dir, "AGENTS.md"), "utf8")).not.toContain("Background knowledge");
+  });
+
+  it("drops the note's own heading from the knowledge it injects", () => {
+    // Marked region: heading out, payload in.
+    expect(workItemKnowledgeText(
+      "# Multi-repo-背景知识(会被AI索引)\n\n<!-- agent-resume:begin work-item-knowledge -->\n\nShip the thing.\n\n<!-- agent-resume:end work-item-knowledge -->\n"
+    )).toBe("Ship the thing.");
+    // Unmarked note: the whole body is the knowledge, minus the heading.
+    expect(workItemKnowledgeText("# Hand written\n\nNotes here.\n")).toBe("Notes here.");
+    expect(workItemKnowledgeText("# Only a heading\n")).toBe("");
   });
 
   it("renders a compact table for prompt injection", () => {

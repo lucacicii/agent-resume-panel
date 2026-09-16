@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { desktopDataDir, getCatalogMeta, setCatalogMeta } from "@agent-resume/core";
+import { desktopDataDir, getCatalogMeta, setCatalogMeta, workItemPromptBody } from "@agent-resume/core";
 
 /**
  * Work-item workspace + address table.
@@ -9,8 +9,9 @@ import { desktopDataDir, getCatalogMeta, setCatalogMeta } from "@agent-resume/co
  * A work item that references several repositories cannot use any single repo
  * as its cwd, so sessions may run in a neutral, deterministically allocated
  * workspace directory. The address table — where each referenced repository
- * actually lives — is written into `AGENTS.md` / `CLAUDE.md` there so agents
- * read it automatically (Workbench sessions get no injected prompt).
+ * actually lives — and the note's background knowledge are written into
+ * `AGENTS.md` / `CLAUDE.md` there so agents read them automatically (Workbench
+ * sessions get no injected prompt).
  *
  * The workspace path is derived from the note id: allocated once, stable
  * forever, nothing persisted.
@@ -155,6 +156,15 @@ async function upsertManagedBlock(filePath: string, block: string, catalogDb: st
 }
 
 /**
+ * The note's background knowledge as prose: what an agent should know about the
+ * work item, without the note's own `# <name><suffix>` heading — the managed
+ * block already carries the title.
+ */
+export function workItemKnowledgeText(body: string): string {
+  return workItemPromptBody(body).replace(/^\s*#\s+[^\n]*(?:\n+|$)/, "").trim();
+}
+
+/**
  * Allocate the workspace and refresh the address table.
  * Write failures must never block a session — callers treat this as best-effort.
  */
@@ -162,10 +172,18 @@ export async function ensureWorkItemWorkspace(input: {
   panelHome: string;
   catalogDb: string;
   address: WorkItemAddress;
+  /** Note knowledge region; omitted when the note has none. */
+  knowledge?: string;
 }): Promise<{ dir: string; updated: boolean }> {
   const dir = workItemWorkspaceDir(input.panelHome, input.address.noteId);
   await fs.mkdir(dir, { recursive: true });
-  const block = [BEGIN, renderAddressTable(input.address, dir), END].join("\n");
+  const knowledge = input.knowledge?.trim();
+  const block = [
+    BEGIN,
+    renderAddressTable(input.address, dir),
+    knowledge ? ["", "## Background knowledge (from the note)", "", knowledge].join("\n") : "",
+    END
+  ].filter((part) => part !== "").join("\n");
   let updated = false;
   for (const fileName of ["AGENTS.md", "CLAUDE.md"]) {
     updated = (await upsertManagedBlock(path.join(dir, fileName), block, input.catalogDb)) || updated;

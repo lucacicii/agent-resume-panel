@@ -23,6 +23,7 @@ export function WorkbenchSidebar({
   onProjectQueryChange,
   onAddWorkItem,
   onSelectWorkItem,
+  onWorkItemContextMenu,
   onWorkItemProjectFilterChange,
   onWorkItemStatusFilterChange
 }: {
@@ -41,6 +42,7 @@ export function WorkbenchSidebar({
   onProjectQueryChange: (value: string) => void;
   onAddWorkItem?: () => void;
   onSelectWorkItem: (item: WorkbenchWorkItem) => void;
+  onWorkItemContextMenu?: (event: React.MouseEvent, item: WorkbenchWorkItem) => void;
   onWorkItemProjectFilterChange: (path: string) => void;
   onWorkItemStatusFilterChange: (status: "all" | GtdStatus) => void;
 }): React.JSX.Element {
@@ -91,7 +93,7 @@ export function WorkbenchSidebar({
         </div>
         {workItems.length ? workItems.map((item) => {
           const dot = dotByKey ? rollupDot({ work: { sessions: item.sessions } }, dotByKey) : undefined;
-          return <button key={item.noteId} type="button" className={`wb-folder-row wb-work-item-row${selectedWorkItemId === item.noteId ? " active" : ""}`} onClick={() => onSelectWorkItem(item)} title={item.title}><span className={`wb-gtd-status-dot is-${item.status}`} aria-hidden="true" />{dot && dot.status !== "open" ? <span className={`session-dot${sessionDotStatusClass(dot.status)}`} aria-hidden="true" /> : null}<span className="wb-folder-row-text"><span className="wb-folder-row-label">{item.title}</span>{(item.projects?.length ?? 0) > 0 ? <span className="wb-folder-row-desc">{item.projects!.map((projectPath) => projectPath.split(/[\\/]/).filter(Boolean).at(-1) || projectPath).join(" · ")}</span> : null}</span><span className="wb-folder-row-count">{item.sessions.length}</span></button>;
+          return <button key={item.noteId} type="button" className={`wb-folder-row wb-work-item-row${selectedWorkItemId === item.noteId ? " active" : ""}`} onClick={() => onSelectWorkItem(item)} onContextMenu={(event) => onWorkItemContextMenu?.(event, item)} title={item.title}><span className={`wb-gtd-status-dot is-${item.status}`} aria-hidden="true" />{dot && dot.status !== "open" ? <span className={`session-dot${sessionDotStatusClass(dot.status)}`} aria-hidden="true" /> : null}<span className="wb-folder-row-text"><span className="wb-folder-row-label">{item.title}</span>{(item.projects?.length ?? 0) > 0 ? <span className="wb-folder-row-desc">{item.projects!.map((projectPath) => projectPath.split(/[\\/]/).filter(Boolean).at(-1) || projectPath).join(" · ")}</span> : null}</span><span className="wb-folder-row-count">{item.sessions.length}</span></button>;
         }) : <p className="muted wb-folders-empty">{t("desktop.workbench.noWorkItems")}</p>}
       </div>
     </div>

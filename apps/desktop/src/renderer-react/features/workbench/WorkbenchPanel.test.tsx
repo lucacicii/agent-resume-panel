@@ -8198,6 +8198,60 @@ describe("WorkbenchPanel", () => {
     }));
   });
 
+  it("offers to open the work item's workspace folder once it exists", async () => {
+    const notesWorkItemWorkspace = vi.fn(async () => ({ dir: WORKSPACE_CWD, exists: true }));
+    const notesOpenWorkItemWorkspace = vi.fn(async () => ({ ok: true }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.common.search": "Search", "desktop.common.refresh": "Refresh", "desktop.common.all": "All",
+        "desktop.workbench.allSessions": "All sessions",
+        "desktop.workbench.sidebarView": "Workbench sidebar view",
+        "desktop.workbench.workItemsView": "Work items",
+        "desktop.workbench.filterWorkItems": "Filter work items",
+        "desktop.workbench.newWorkItem": "New work item",
+        "desktop.workbench.noWorkItems": "No work items yet",
+        "desktop.workbench.sessionFilter": "Status",
+        "desktop.workbench.workItemSessions": "{0} sessions",
+        "desktop.workbench.openWorkItemWorkspace": "Open workspace folder",
+        "desktop.notes.projectLabel": "Project"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      notesListWorkItems: async () => [
+        { noteId: "wi-multi", title: "Multi", gtdStatus: "next", work: { sessions: [], projects: ["/work/app", "/work/api"], primaryProject: "/work/app" } }
+      ],
+      notesWorkItemWorkspace,
+      notesOpenWorkItemWorkspace,
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+
+    fireEvent.contextMenu(await screen.findByTitle("Multi"));
+    await waitFor(() => expect(notesWorkItemWorkspace).toHaveBeenCalledWith({ noteId: "wi-multi" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Open workspace folder" }));
+    await waitFor(() => expect(notesOpenWorkItemWorkspace).toHaveBeenCalledWith({ noteId: "wi-multi" }));
+
+    // No workspace on disk yet → nothing to open, so the row has no menu.
+    notesWorkItemWorkspace.mockResolvedValue({ dir: WORKSPACE_CWD, exists: false });
+    fireEvent.contextMenu(screen.getByTitle("Multi"));
+    await waitFor(() => expect(notesWorkItemWorkspace).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
   it("keeps a single slim room header when embedded and closes from the work-item header", async () => {
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages: {

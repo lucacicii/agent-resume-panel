@@ -16,7 +16,7 @@ Languages: [English](#english) | [简体中文](#简体中文)
 
 1. Open the **Workbench** tab. The sidebar lists **work items** (not repositories).  
 2. Select a work item to see only its sessions. With no work item selected, the middle pane lists all sessions.  
-3. Attach a local folder with **Add project** (macOS folder picker). Click a folder chip to make it the active root for Explorer / Git / Search / Scripts. A work item can reference several folders; with none or several, new sessions start in the work item’s shared workspace.  
+3. Attach a local folder with **Add project** (macOS folder picker). Click a folder chip to make it the active root for Explorer / Git / Search / Scripts. A work item can reference several folders; with none or several, new sessions start in the work item’s shared workspace, whose `AGENTS.md` / `CLAUDE.md` carry the address table (where each folder lives) and the note’s background knowledge. Right-click the work item to open that folder once a session has created it.  
 4. Resume CLI sessions in the **embedded terminal** (multi-tab) or **external** terminal. If [workspace mentions](workspace-mentions.md) are configured, the new-session picker can open a pack’s work folder and inject reference paths into the first prompt. `arpm go <id>` does the same from any terminal.  
 5. If the default target is an **ACP · …** agent, **New session** opens a **visual chat pane** in the same tab strip (Agent Client Protocol; Claude Code, Codex, Grok Build, OpenCode, Pi).  
 6. Use the detail header for the active folder path and **branch** controls; watch the **status bar** for live **cwd** and **git branch** (including nested repos when detected).  
@@ -85,7 +85,7 @@ Choose an **ACP · …** default agent in **Settings → Workbench → New Sessi
 
 1. 打开 **Workbench** 页签。侧栏列的是 **工作项**（不再按仓库浏览）。  
 2. 选中工作项只看它的 session；未选工作项时中间栏列出全部 session。  
-3. 用 **新增项目**（macOS 文件夹选择器）挂本地目录。点目录 chip 把它设为 Explorer / Git / Search / Scripts 的活动根。一个工作项可挂多个目录；零个或多个时，新 session 走工作项的共享 workspace。  
+3. 用 **新增项目**（macOS 文件夹选择器）挂本地目录。点目录 chip 把它设为 Explorer / Git / Search / Scripts 的活动根。一个工作项可挂多个目录；零个或多个时，新 session 走工作项的共享 workspace，其 `AGENTS.md` / `CLAUDE.md` 内含地址表（各目录在哪）与笔记的背景知识。右键工作项可在目录生成后打开它。  
 4. CLI 会话用 **内嵌终端**（多标签）或 **外部终端** 恢复。若配置了 [工作区 Mention](workspace-mentions.md)，新建会话选择器可打开该包的工作目录并把参考路径写入首条 prompt。任意终端也可用 `arpm go <id>`。  
 5. 若默认目标为 **ACP · …** Agent，**新建会话**会在同一标签栏打开 **可视化聊天**（Agent Client Protocol；支持 Claude Code、Codex、Grok Build、OpenCode、Pi）。  
 6. 在详情头查看活动目录路径与 **分支** 控件；在 **状态栏** 查看实时 **cwd** 与 **git 分支**（可识别嵌套 git 根）。  

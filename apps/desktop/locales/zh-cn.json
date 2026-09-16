@@ -1707,6 +1707,7 @@
   "desktop.workbench.openInChatGpt": "在 ChatGPT 中打开",
   "desktop.workbench.openInEditor": "在编辑器中打开",
   "desktop.workbench.openRoom": "打开房间",
+  "desktop.workbench.openWorkItemWorkspace": "打开虚拟目录",
   "desktop.workbench.otherMachineBadge": "其他机器",
   "desktop.workbench.otherMachineSessionHint": "来自其他机器的索引路径：{0}。若本机没有 Agent 数据，可能无法 resume。",
   "desktop.workbench.pathCopied": "已复制路径：{0}",

@@ -1209,6 +1209,10 @@ export interface DesktopApi {
   notesListWorkItemSessionLinks(): Promise<Array<{ noteId: string; title?: string; provider: string; sessionId: string }>>;
   /** Allocate/refresh a work item's neutral workspace; returns its directory. */
   notesEnsureWorkItemWorkspace(args: { noteId: string }): Promise<{ dir: string }>;
+  /** The neutral workspace directory and whether it exists; never creates it. */
+  notesWorkItemWorkspace(args: { noteId: string }): Promise<{ dir: string; exists: boolean }>;
+  /** Open the neutral workspace in the system file manager. */
+  notesOpenWorkItemWorkspace(args: { noteId: string }): Promise<{ ok: boolean }>;
   notesAddWorkItemProject(args: { noteId: string; projectPath: string }): Promise<{ noteId: string }>;
   notesRemoveWorkItemProject(args: { noteId: string; projectPath: string }): Promise<{ noteId: string }>;
   notesListRoot(): Promise<
@@ -1819,6 +1823,8 @@ const api: DesktopApi = {
   notesLinkSessionToWorkItem: (args) => ipcRenderer.invoke("notes:linkSessionToWorkItem", args),
   notesListWorkItemSessionLinks: () => ipcRenderer.invoke("notes:listWorkItemSessionLinks"),
   notesEnsureWorkItemWorkspace: (args) => ipcRenderer.invoke("notes:ensureWorkItemWorkspace", args),
+  notesWorkItemWorkspace: (args) => ipcRenderer.invoke("notes:workItemWorkspace", args),
+  notesOpenWorkItemWorkspace: (args) => ipcRenderer.invoke("notes:openWorkItemWorkspace", args),
   notesAddWorkItemProject: (args) => ipcRenderer.invoke("notes:addWorkItemProject", args),
   notesRemoveWorkItemProject: (args) => ipcRenderer.invoke("notes:removeWorkItemProject", args),
   notesListRoot: () => ipcRenderer.invoke("notes:listRoot"),

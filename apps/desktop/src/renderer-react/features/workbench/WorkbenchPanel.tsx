@@ -237,7 +237,7 @@ type WorkbenchProject = {
   updatedAt: number;
 };
 type WorkbenchContextMenu = {
-  kind: "project" | "folder" | "session" | "session-tab" | "editor-tab";
+  kind: "project" | "folder" | "session" | "session-tab" | "editor-tab" | "work-item";
   x: number;
   y: number;
   projectPath?: string;
@@ -245,6 +245,9 @@ type WorkbenchContextMenu = {
   folderId?: string;
   parentId?: string | null;
   folderName?: string;
+  /** Work items: the note id, plus the neutral workspace once it exists. */
+  noteId?: string;
+  workspaceDir?: string;
   session?: AgentSession;
   floatingNoteTarget?: FloatingSessionNoteTarget;
   hasFloatingNote?: boolean;
@@ -3446,6 +3449,19 @@ export function WorkbenchPanel(): ReactPortal | null {
     });
   };
 
+  const workItemMenu = (event: React.MouseEvent, item: Pick<WorkbenchWorkItem, "noteId">) => {
+    event.preventDefault();
+    const menu: WorkbenchContextMenu = { kind: "work-item", noteId: item.noteId, x: event.clientX, y: event.clientY };
+    setContextMenu(menu);
+    // The workspace is allocated on demand, so ask whether it exists before
+    // offering to open it.
+    if (typeof desktopApi().notesWorkItemWorkspace !== "function") return;
+    void desktopApi().notesWorkItemWorkspace({ noteId: item.noteId }).then(({ dir, exists }) => {
+      if (!exists) return;
+      setContextMenu((current) => current === menu ? { ...current, workspaceDir: dir } : current);
+    }).catch(() => undefined);
+  };
+
   const refreshFloatingNoteAvailability = useCallback((target: FloatingSessionNoteTarget, menu: WorkbenchContextMenu) => {
     const api = desktopApi();
     if (typeof api.notesList !== "function") return;
@@ -3770,6 +3786,14 @@ export function WorkbenchPanel(): ReactPortal | null {
     const menu = contextMenu;
     setContextMenu(null);
     if (!menu) return;
+    if (menu.kind === "work-item" && menu.noteId) {
+      if (action === "openWorkspace" && typeof desktopApi().notesOpenWorkItemWorkspace === "function") {
+        try {
+          await desktopApi().notesOpenWorkItemWorkspace({ noteId: menu.noteId });
+        } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
+      }
+      return;
+    }
     if (menu.kind === "project" && menu.projectPath) {
       if (action === "pin" || action === "unpin") await togglePinnedProject(menu.projectPath, menu.projectId);
       if (action === "new") await newSessionForProject(menu.projectPath, menu.projectId);
@@ -5090,13 +5114,21 @@ export function WorkbenchPanel(): ReactPortal | null {
   };
 
   const contextMenuWidth = contextMenu?.kind === "session" || contextMenu?.kind === "session-tab" ? 210 : 240;
-  const contextMenuHeight = contextMenu?.kind === "session-tab" || contextMenu?.kind === "editor-tab"
-    ? 64
-    : contextMenu?.kind === "session"
-        ? 462
-        : contextMenu?.kind === "folder"
-          ? 160
-          : 320;
+  const contextMenuHeight = (() => {
+    if (!contextMenu) return 320;
+    switch (contextMenu.kind) {
+      case "session-tab":
+      case "editor-tab":
+      case "work-item":
+        return 64;
+      case "session":
+        return 462;
+      case "folder":
+        return 160;
+      default:
+        return 320;
+    }
+  })();
   const contextMenuLeft = contextMenu
     ? Math.max(8, Math.min(contextMenu.x, window.innerWidth - contextMenuWidth - 8))
     : 8;
@@ -5427,6 +5459,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         onProjectQueryChange={setProjectQuery}
         onAddWorkItem={() => void addWorkItem()}
         onSelectWorkItem={selectWorkItem}
+        onWorkItemContextMenu={workItemMenu}
         onWorkItemProjectFilterChange={setWorkItemProjectFilter}
         onWorkItemStatusFilterChange={setWorkItemStatusFilter}
       />
@@ -5447,7 +5480,7 @@ export function WorkbenchPanel(): ReactPortal | null {
           }} />
         </div>
         {workItemScope && (
-          <section className="wb-work-item" aria-label={t("desktop.workbench.workItemView")}>
+          <section className="wb-work-item" aria-label={t("desktop.workbench.workItemView")} onContextMenu={(event) => workItemMenu(event, workItemScope)}>
             <div className="wb-work-item-head">
               <ThemeIcon name="square-kanban" size={14} aria-hidden="true" />
               <span className="wb-work-item-title">{workItemScope.title || workItemScope.noteId}</span>
@@ -6052,7 +6085,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         {WORKBENCH_NEW_SESSION_TARGET_OPTIONS.filter((option) => option.group === "acp").map((option) => <button type="button" role="menuitem" key={option.value} onClick={() => void chooseNewSessionTarget(option.value)}>{t(`desktop.settings.newSessionTarget.${option.value.replace(":", "_")}`)}</button>)}
       </>}
     </div> : null}
-    {contextMenu ? <div className={`wb-context-menu${contextMenu.kind === "session" || contextMenu.kind === "session-tab" ? " wb-session-context-menu" : ""}`} role="menu" style={{ left: contextMenuLeft, top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - contextMenuHeight)) }} onContextMenu={(event) => event.preventDefault()}>
+    {contextMenu && !(contextMenu.kind === "work-item" && !contextMenu.workspaceDir) ? <div className={`wb-context-menu${contextMenu.kind === "session" || contextMenu.kind === "session-tab" ? " wb-session-context-menu" : ""}`} role="menu" style={{ left: contextMenuLeft, top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - contextMenuHeight)) }} onContextMenu={(event) => event.preventDefault()}>
       {contextMenu.kind === "project" ? (() => {
         const enabled = enabledProjectMenuActions(settings);
         const isPinned = (contextMenu.projectId && catalogProjects.some((item) => item.projectId === contextMenu.projectId && item.pinned))
@@ -6119,7 +6152,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         <button type="button" role="menuitem" onClick={() => void runContextAction("renameFolder")}>{t("desktop.common.rename")}</button>
         <div className="context-menu-separator" role="separator" />
         <button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => void runContextAction("deleteFolder")}>{t("desktop.workbench.deleteFolder")}</button>
-      </> : contextMenu.kind === "session-tab" ? <button type="button" role="menuitem" onClick={() => void runContextAction("floatingNote")}>{t(contextMenu.hasFloatingNote ? "desktop.workbench.openFloatingNote" : "desktop.workbench.addFloatingNote")}</button> : contextMenu.kind === "editor-tab" ? <button type="button" role="menuitem" onClick={() => void runContextAction("toggleEditorPreview")}>{t(contextMenu.editorPreview ? "desktop.common.edit" : "desktop.workbench.preview")}</button> : selectedSessionKeys.size > 1 && contextMenu.session && selectedSessionKeys.has(sessionKey(contextMenu.session)) ? <>
+      </> : contextMenu.kind === "session-tab" ? <button type="button" role="menuitem" onClick={() => void runContextAction("floatingNote")}>{t(contextMenu.hasFloatingNote ? "desktop.workbench.openFloatingNote" : "desktop.workbench.addFloatingNote")}</button> : contextMenu.kind === "editor-tab" ? <button type="button" role="menuitem" onClick={() => void runContextAction("toggleEditorPreview")}>{t(contextMenu.editorPreview ? "desktop.common.edit" : "desktop.workbench.preview")}</button> : contextMenu.kind === "work-item" ? <button type="button" role="menuitem" onClick={() => void runContextAction("openWorkspace")}>{t("desktop.workbench.openWorkItemWorkspace")}</button> : selectedSessionKeys.size > 1 && contextMenu.session && selectedSessionKeys.has(sessionKey(contextMenu.session)) ? <>
         <button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => void runContextAction("remove")}>{t("desktop.workbench.removeFromPanelCount", selectedSessionKeys.size)}</button>
       </> : <>
         {contextMenu.session?.provider === "codex" ? <button type="button" role="menuitem" onClick={() => void runContextAction("codex")}>{t("desktop.workbench.openInChatGpt")}</button> : null}

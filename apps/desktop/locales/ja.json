@@ -1707,6 +1707,7 @@
   "desktop.workbench.openInChatGpt": "Open in ChatGPT",
   "desktop.workbench.openInEditor": "Open in editor",
   "desktop.workbench.openRoom": "Open room",
+  "desktop.workbench.openWorkItemWorkspace": "ワークスペースフォルダを開く",
   "desktop.workbench.otherMachineBadge": "他マシン",
   "desktop.workbench.otherMachineSessionHint": "他マシンのインデックスパス: {0}。この Mac に Agent データが無いと resume できない場合があります。",
   "desktop.workbench.pathCopied": "パスをコピーしました: {0}",

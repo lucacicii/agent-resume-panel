@@ -182,6 +182,8 @@ import {
   notesLinkSessionToWorkItem,
   notesListWorkItemSessionLinks,
   notesListWorkItems,
+  notesOpenWorkItemWorkspace,
+  notesWorkItemWorkspace,
   notesListChildCounts,
   notesListLinkedChildIds,
   notesListLinks,
@@ -2470,6 +2472,18 @@ function registerIpc(): void {
     return notesEnsureWorkItemWorkspace(args.noteId);
   });
   ipcMain.handle("notes:listWorkItemSessionLinks", async () => notesListWorkItemSessionLinks());
+  ipcMain.handle("notes:workItemWorkspace", async (_event, args: { noteId?: unknown }) => {
+    if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
+      throw new Error("A work item note id is required.");
+    }
+    return notesWorkItemWorkspace(args.noteId);
+  });
+  ipcMain.handle("notes:openWorkItemWorkspace", async (_event, args: { noteId?: unknown }) => {
+    if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
+      throw new Error("A work item note id is required.");
+    }
+    return notesOpenWorkItemWorkspace(args.noteId);
+  });
   ipcMain.handle("notes:addWorkItemProject", async (_event, args: { noteId?: unknown; projectPath?: unknown }) => {
     if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
       throw new Error("A work item note id is required.");
