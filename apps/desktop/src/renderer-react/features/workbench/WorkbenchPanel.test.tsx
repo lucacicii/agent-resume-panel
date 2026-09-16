@@ -275,9 +275,7 @@ vi.stubGlobal("ResizeObserver", class {
 });
 
 beforeEach(() => {
-  // Most Workbench tests exercise the project/folder browser; the work-item
-  // view has its own dedicated test below.
-  localStorage.setItem("workbench-sidebar-view-v2", "projects");
+  localStorage.setItem("workbench-sidebar-view-v2", "workitems");
   // AppChrome hosts per-tab toolbars in the app header; mirror that DOM here.
   const headerSlot = document.createElement("div");
   headerSlot.id = "app-header-slot";
@@ -650,6 +648,28 @@ function createPathDataTransfer(init?: { types?: string[]; path?: string; mime?:
   };
 }
 
+async function activateWorkItemDirectory(path = "/work/app", extra: {
+  noteId?: string;
+  title?: string;
+  sessions?: string[];
+  projects?: string[];
+} = {}): Promise<void> {
+  await act(async () => {
+    window.dispatchEvent(new CustomEvent("agent-resume:workbench-work-item", {
+      detail: {
+        noteId: extra.noteId ?? "wi-test",
+        title: extra.title ?? "Test work item",
+        status: "next",
+        // Omit sessions unless the test wants a scoped list: an empty array
+        // hides every catalog session from the middle pane.
+        ...(extra.sessions ? { sessions: extra.sessions } : {}),
+        projects: extra.projects ?? [path],
+        primaryProject: path
+      }
+    }));
+  });
+}
+
 describe("WorkbenchPanel", () => {
   it("collects case-insensitive matches across both Git diff sides", () => {
     expect(collectDiffSearchMatches("const Value = 1;\nvalue++;", "const Value = 2;\nreturn value;", " VALUE ")).toEqual([
@@ -781,7 +801,7 @@ describe("WorkbenchPanel", () => {
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    fireEvent.click(await screen.findByTitle("/work/app"));
+    await activateWorkItemDirectory("/work/app");
     fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
 
     const firstGitFile = await screen.findByTitle("src/one.ts");
@@ -795,6 +815,7 @@ describe("WorkbenchPanel", () => {
     expect(screen.getByTitle("src/one.ts").closest(".wb-git-tree-file")?.classList.contains("is-selected")).toBe(false);
     expect(screen.getByTitle("src/two.ts").closest(".wb-git-tree-file")?.classList.contains("is-selected")).toBe(true);
 
+    await activateWorkItemDirectory("/work/app");
     fireEvent.click(screen.getByRole("button", { name: "Explorer" }));
     const explorerTree = await waitFor(() => {
       const tree = document.querySelector<HTMLElement>(".wb-explorer-file-tree");
@@ -838,8 +859,6 @@ describe("WorkbenchPanel", () => {
     expect(providerTag?.classList.contains("s-provider-tag")).toBe(true);
     expect(providerTag?.getAttribute("data-provider")).toBe("codex");
     expect(providerTag?.textContent).toBe("codex");
-    fireEvent.click(document.querySelector<HTMLButtonElement>('button[title="/work/app"]')!);
-    expect(screen.queryByRole("button", { name: /Write tests/ })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /Fix renderer/ }));
     await waitFor(() => expect(workbenchOpenSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1" }));
   });
@@ -925,234 +944,11 @@ describe("WorkbenchPanel", () => {
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    fireEvent.click(screen.getByTitle("/work/docs"));
+    await activateWorkItemDirectory("/work/docs");
     const moved = await screen.findByRole("button", { name: /Moved work/ });
     fireEvent.click(moved);
     await waitFor(() => expect(workbenchOpenSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1" }));
-    // Sidebar activates the assigned project, not the native cwd.
-    expect(screen.getByTitle("/work/docs").classList.contains("active")).toBe(true);
-    expect(screen.getByTitle("/work/app").classList.contains("active")).toBe(false);
-  });
-
-  it("renders nested Workbench folders and filters sessions by the selected folder", async () => {
-    const host = document.createElement("div");
-    host.id = "react-workbench";
-    document.body.append(host);
-    const listWorkbenchSessionFolders = vi.fn(async () => ({
-      folders: [
-        { folderId: "campaign", projectId: "project-1", parentId: null, name: "Campaign", createdAtMs: 1, updatedAtMs: 1 },
-        { folderId: "phase-1", projectId: "project-1", parentId: "campaign", name: "Phase 1", createdAtMs: 2, updatedAtMs: 2 }
-      ],
-      assignments: [
-        { projectId: "project-1", provider: "codex", agentSessionId: "session-1", folderId: "campaign", updatedAtMs: 1 }
-      ]
-    }));
-    window.agentResume = {
-      getI18nBundle: async () => ({ locale: "en", messages: {
-        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.close": "Close", "desktop.common.cancel": "Cancel", "desktop.common.confirm": "Confirm", "desktop.common.rename": "Rename", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.unclassifiedSessions": "Unclassified", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.moveToFolder": "Move to folder…", "desktop.workbench.removeFromFolder": "Move to Unclassified", "desktop.workbench.moveSessionTitle": "Move session {0}", "desktop.workbench.moveSessionHint": "Choose a folder", "desktop.workbench.folderProjectUnavailable": "Project unavailable", "desktop.workbench.newFolder": "New folder", "desktop.workbench.newSubfolder": "New subfolder", "desktop.workbench.renameFolder": "Rename folder", "desktop.workbench.deleteFolder": "Delete folder", "desktop.workbench.folderName": "Folder name", "desktop.workbench.folderNameEmpty": "Folder name cannot be empty", "desktop.workbench.deleteFolderConfirm": "Delete folder {0}?"
-      } }),
-      onLocaleChanged: () => () => undefined,
-      onWorkbenchCmdT: () => () => undefined,
-      onWorkbenchCmdW: () => () => undefined,
-      onTerminalData: () => () => undefined,
-      onTerminalExit: () => () => undefined,
-      onTerminalRespawned: () => () => undefined,
-      listProjectAliases: async () => ({}),
-      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
-      listSessions: async () => [
-        { provider: "codex" as const, id: "session-1", title: "Campaign work", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 },
-        { provider: "codex" as const, id: "session-2", title: "Unsorted work", projectPath: "/work/app", projectId: "project-1", updatedAt: 2 }
-      ],
-      querySessionsPage: querySessionsPageFromList(async () => [
-        { provider: "codex" as const, id: "session-1", title: "Campaign work", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 },
-        { provider: "codex" as const, id: "session-2", title: "Unsorted work", projectPath: "/work/app", projectId: "project-1", updatedAt: 2 }
-      ]),
-      listProjects: async () => [{ projectId: "project-1", portableKey: "/work/app", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/app", pathMissing: false, sessionCount: 2 }],
-      listWorkbenchSessionFolders,
-      workbenchOpenSession: async () => ({ mode: "external-system", cwd: "/work/app", external: true })
-    } as unknown as typeof window.agentResume;
-
-    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
-    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    await screen.findByTitle("/work/app");
-    expect(screen.queryByText("Unclassified")).toBeNull();
-    expect(screen.queryByTitle("Campaign")).toBeNull();
-    expandWorkbenchProject("/work/app");
-    expect(screen.queryByText("Phase 1")).toBeNull();
-    const campaignButton = screen.getByTitle("Campaign");
-    fireEvent.click(campaignButton);
-    await waitFor(() => expect(screen.getByRole("button", { name: /Campaign work/ })).toBeTruthy());
-    expect(screen.queryByRole("button", { name: /Unsorted work/ })).toBeNull();
-    fireEvent.click(campaignButton.querySelector(".wb-session-folder-chevron")!);
-    expect(screen.getByText("Phase 1")).toBeTruthy();
-    expect(listWorkbenchSessionFolders).toHaveBeenCalledWith({ projectId: "project-1" });
-  });
-
-  it("drags a session onto a same-project folder and persists the assignment", async () => {
-    const host = document.createElement("div");
-    host.id = "react-workbench";
-    document.body.append(host);
-    const assignWorkbenchSessionToFolder = vi.fn(async () => ({
-      projectId: "project-1",
-      provider: "codex",
-      agentSessionId: "session-2",
-      folderId: "campaign",
-      updatedAtMs: 1
-    }));
-    const listWorkbenchSessionFolders = vi.fn(async () => ({
-      folders: [
-        { folderId: "campaign", projectId: "project-1", parentId: null, name: "Campaign", createdAtMs: 1, updatedAtMs: 1 }
-      ],
-      assignments: []
-    }));
-    window.agentResume = {
-      getI18nBundle: async () => ({ locale: "en", messages: FOLDER_DRAG_TEST_MESSAGES }),
-      onLocaleChanged: () => () => undefined,
-      onWorkbenchCmdT: () => () => undefined,
-      onWorkbenchCmdW: () => () => undefined,
-      onTerminalData: () => () => undefined,
-      onTerminalExit: () => () => undefined,
-      onTerminalRespawned: () => () => undefined,
-      listProjectAliases: async () => ({}),
-      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
-      listSessions: async () => [
-        { provider: "codex" as const, id: "session-1", title: "Campaign work", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 },
-        { provider: "codex" as const, id: "session-2", title: "Unsorted work", projectPath: "/work/app", projectId: "project-1", updatedAt: 2 }
-      ],
-      querySessionsPage: querySessionsPageFromList(async () => [
-        { provider: "codex" as const, id: "session-1", title: "Campaign work", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 },
-        { provider: "codex" as const, id: "session-2", title: "Unsorted work", projectPath: "/work/app", projectId: "project-1", updatedAt: 2 }
-      ]),
-      listProjects: async () => [{ projectId: "project-1", portableKey: "/work/app", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/app", pathMissing: false, sessionCount: 2 }],
-      listWorkbenchSessionFolders,
-      assignWorkbenchSessionToFolder,
-      workbenchOpenSession: async () => ({ mode: "external-system", cwd: "/work/app", external: true })
-    } as unknown as typeof window.agentResume;
-
-    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
-    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    const session = await screen.findByRole("button", { name: /Unsorted work/ });
-    expect(session.hasAttribute("draggable")).toBe(true);
-    expandWorkbenchProject("/work/app");
-    const dataTransfer = { setData: vi.fn(), effectAllowed: "" };
-    fireEvent.dragStart(session, { dataTransfer });
-    fireEvent.drop(screen.getByTitle("Campaign"), { dataTransfer });
-    await waitFor(() => expect(assignWorkbenchSessionToFolder).toHaveBeenCalledWith({
-      projectId: "project-1",
-      provider: "codex",
-      agentSessionId: "session-2",
-      folderId: "campaign"
-    }));
-  });
-
-  it("removes a folder assignment when a session is dropped on Unclassified", async () => {
-    const host = document.createElement("div");
-    host.id = "react-workbench";
-    document.body.append(host);
-    const removeWorkbenchSessionFromFolder = vi.fn(async () => ({ ok: true }));
-    const listWorkbenchSessionFolders = vi.fn(async () => ({
-      folders: [
-        { folderId: "campaign", projectId: "project-1", parentId: null, name: "Campaign", createdAtMs: 1, updatedAtMs: 1 }
-      ],
-      assignments: [
-        { projectId: "project-1", provider: "codex", agentSessionId: "session-1", folderId: "campaign", updatedAtMs: 1 }
-      ]
-    }));
-    window.agentResume = {
-      getI18nBundle: async () => ({ locale: "en", messages: FOLDER_DRAG_TEST_MESSAGES }),
-      onLocaleChanged: () => () => undefined,
-      onWorkbenchCmdT: () => () => undefined,
-      onWorkbenchCmdW: () => () => undefined,
-      onTerminalData: () => () => undefined,
-      onTerminalExit: () => () => undefined,
-      onTerminalRespawned: () => () => undefined,
-      listProjectAliases: async () => ({}),
-      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
-      listSessions: async () => [
-        { provider: "codex" as const, id: "session-1", title: "Campaign work", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 },
-        { provider: "codex" as const, id: "session-2", title: "Unsorted work", projectPath: "/work/app", projectId: "project-1", updatedAt: 2 }
-      ],
-      querySessionsPage: querySessionsPageFromList(async () => [
-        { provider: "codex" as const, id: "session-1", title: "Campaign work", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 },
-        { provider: "codex" as const, id: "session-2", title: "Unsorted work", projectPath: "/work/app", projectId: "project-1", updatedAt: 2 }
-      ]),
-      listProjects: async () => [{ projectId: "project-1", portableKey: "/work/app", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/app", pathMissing: false, sessionCount: 2 }],
-      listWorkbenchSessionFolders,
-      removeWorkbenchSessionFromFolder,
-      workbenchOpenSession: async () => ({ mode: "external-system", cwd: "/work/app", external: true })
-    } as unknown as typeof window.agentResume;
-
-    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
-    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    const session = await screen.findByRole("button", { name: /Campaign work/ });
-    expandWorkbenchProject("/work/app");
-    const unclassified = await waitFor(() => {
-      const row = document.querySelector<HTMLElement>(".wb-session-folder-root");
-      if (!row) throw new Error("unclassified row not rendered");
-      return row;
-    });
-    const dataTransfer = { setData: vi.fn(), effectAllowed: "" };
-    fireEvent.dragStart(session, { dataTransfer });
-    fireEvent.drop(unclassified, { dataTransfer });
-    await waitFor(() => expect(removeWorkbenchSessionFromFolder).toHaveBeenCalledWith({
-      provider: "codex",
-      agentSessionId: "session-1"
-    }));
-  });
-
-  it("does not assign a session dropped into another project's folder", async () => {
-    const host = document.createElement("div");
-    host.id = "react-workbench";
-    document.body.append(host);
-    const assignWorkbenchSessionToFolder = vi.fn(async () => ({ ok: true }));
-    const listWorkbenchSessionFolders = vi.fn(async ({ projectId }: { projectId: string }) => {
-      if (projectId === "project-1") {
-        return {
-          folders: [{ folderId: "campaign", projectId: "project-1", parentId: null, name: "Campaign", createdAtMs: 1, updatedAtMs: 1 }],
-          assignments: []
-        };
-      }
-      return {
-        folders: [{ folderId: "docs", projectId: "project-2", parentId: null, name: "Docs", createdAtMs: 1, updatedAtMs: 1 }],
-        assignments: []
-      };
-    });
-    window.agentResume = {
-      getI18nBundle: async () => ({ locale: "en", messages: FOLDER_DRAG_TEST_MESSAGES }),
-      onLocaleChanged: () => () => undefined,
-      onWorkbenchCmdT: () => () => undefined,
-      onWorkbenchCmdW: () => () => undefined,
-      onTerminalData: () => () => undefined,
-      onTerminalExit: () => () => undefined,
-      onTerminalRespawned: () => () => undefined,
-      listProjectAliases: async () => ({}),
-      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
-      listSessions: async () => [
-        { provider: "codex" as const, id: "session-1", title: "App work", projectPath: "/work/app", projectId: "project-1", updatedAt: 2 },
-        { provider: "codex" as const, id: "session-2", title: "Docs work", projectPath: "/work/docs", projectId: "project-2", updatedAt: 1 }
-      ],
-      querySessionsPage: querySessionsPageFromList(async () => [
-        { provider: "codex" as const, id: "session-1", title: "App work", projectPath: "/work/app", projectId: "project-1", updatedAt: 2 },
-        { provider: "codex" as const, id: "session-2", title: "Docs work", projectPath: "/work/docs", projectId: "project-2", updatedAt: 1 }
-      ]),
-      listProjects: async () => [
-        { projectId: "project-1", portableKey: "/work/app", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/app", pathMissing: false, sessionCount: 1 },
-        { projectId: "project-2", portableKey: "/work/docs", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/docs", pathMissing: false, sessionCount: 1 }
-      ],
-      listWorkbenchSessionFolders,
-      assignWorkbenchSessionToFolder,
-      workbenchOpenSession: async () => ({ mode: "external-system", cwd: "/work/app", external: true })
-    } as unknown as typeof window.agentResume;
-
-    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
-    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    const session = await screen.findByRole("button", { name: /App work/ });
-    expandWorkbenchProject("/work/docs");
-    const docsFolder = await screen.findByTitle("Docs");
-    const dataTransfer = { setData: vi.fn(), effectAllowed: "" };
-    fireEvent.dragStart(session, { dataTransfer });
-    fireEvent.drop(docsFolder, { dataTransfer });
-    expect(assignWorkbenchSessionToFolder).not.toHaveBeenCalled();
+    expect(document.querySelector(".wb-detail-project-path")?.textContent).toBe("/work/docs");
   });
 
   it("moves a session to another project from the context menu", async () => {
@@ -1220,7 +1016,7 @@ describe("WorkbenchPanel", () => {
       id: "session-1",
       targetProjectPath: "/work/docs"
     }));
-    fireEvent.click(screen.getByTitle("/work/docs"));
+    await activateWorkItemDirectory("/work/docs");
     expect(await screen.findByRole("button", { name: /App work/ })).toBeTruthy();
   });
 
@@ -1292,11 +1088,8 @@ describe("WorkbenchPanel", () => {
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    const project = await screen.findByTitle("/work/app");
-    fireEvent.contextMenu(project);
-    // Default project context menu includes newSession (pin is optional / settings-driven).
-    await screen.findByRole("menuitem", { name: "New Session" });
-    fireEvent.click(screen.getByRole("menuitem", { name: "New Session" }));
+    await activateWorkItemDirectory("/work/app");
+    fireEvent.click(await waitFor(() => document.querySelector(".wb-pane-tab-group-label") as HTMLButtonElement));
     await waitFor(() => expect(workbenchNewSession).toHaveBeenCalledWith({ cwd: "/work/app", provider: "codex", executionMode: "standard" }));
 
     fireEvent.contextMenu(screen.getByRole("button", { name: /Fix renderer/ }));
@@ -2118,8 +1911,8 @@ describe("WorkbenchPanel", () => {
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    fireEvent.click(await screen.findByTitle("/work/app"));
-    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    await activateWorkItemDirectory("/work/app");
+    fireEvent.click(document.querySelector(".wb-pane-tab-group-label") as HTMLButtonElement);
     await waitFor(() => expect(terminalSpawn).toHaveBeenCalledTimes(1));
     const composerInput = document.querySelector<HTMLTextAreaElement>(".workbench-layout .wb-terminal-composer-input");
     if (!composerInput) throw new Error("composer input missing");
@@ -2187,348 +1980,12 @@ describe("WorkbenchPanel", () => {
     }
   });
 
-  it("mount note opens the first project root note without creating when roots exist", async () => {
-    const host = document.createElement("div");
-    host.id = "react-workbench";
-    document.body.append(host);
-    const notesCreate = vi.fn(async () => ({ noteId: "new-note", filename: "new.md" }));
-    const notesListRoot = vi.fn(async () => [
-      {
-        noteId: "root-old",
-        scope: "project",
-        projectPath: "/work/app",
-        filename: "old.md",
-        relDir: "projects/app",
-        relMdPath: "notes/projects/app/old.md",
-        title: "Older root",
-        createdAtMs: 1,
-        updatedAtMs: 10
-      },
-      {
-        noteId: "root-new",
-        scope: "project",
-        projectPath: "/work/app",
-        filename: "new.md",
-        relDir: "projects/app",
-        relMdPath: "notes/projects/app/new.md",
-        title: "Newer root",
-        createdAtMs: 2,
-        updatedAtMs: 99
-      },
-      {
-        noteId: "other-project",
-        scope: "project",
-        projectPath: "/work/other",
-        filename: "other.md",
-        relDir: "projects/other",
-        relMdPath: "notes/projects/other/other.md",
-        title: "Other",
-        createdAtMs: 3,
-        updatedAtMs: 1000
-      }
-    ]);
-    const openNote = vi.fn();
-    const tabRequest = vi.fn();
-    window.addEventListener("agent-resume:open-note", openNote);
-    window.addEventListener("agent-resume:tab-request", tabRequest);
-    window.agentResume = {
-      getI18nBundle: async () => ({ locale: "en", messages: {
-        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.close": "Close", "desktop.common.cancel": "Cancel", "desktop.common.confirm": "Confirm", "desktop.common.rename": "Rename", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New Session", "desktop.workbench.newSessionTitle": "New session {0}", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.mountNote": "Mount note"
-      } }),
-      onLocaleChanged: () => () => undefined,
-      onWorkbenchCmdT: () => () => undefined,
-      onWorkbenchCmdW: () => () => undefined,
-      onTerminalData: () => () => undefined,
-      onTerminalExit: () => () => undefined,
-      onTerminalRespawned: () => () => undefined,
-      listProjectAliases: async () => ({}),
-      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex", projectContextMenu: ["note"] } }),
-      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
-      workbenchGetProjectEditor: async () => ({ selected: "vscode", available: true, editor: { id: "vscode", label: "VS Code" } }),
-      notesListRoot,
-      notesCreate
-    } as unknown as typeof window.agentResume;
 
-    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
-    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    const project = await screen.findByTitle("/work/app");
-    fireEvent.contextMenu(project);
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Mount note" }));
-    await waitFor(() => expect(notesListRoot).toHaveBeenCalled());
-    expect(notesCreate).not.toHaveBeenCalled();
-    expect(openNote).toHaveBeenCalled();
-    expect((openNote.mock.calls.at(-1)?.[0] as CustomEvent<string>).detail).toBe("root-new");
-    expect(tabRequest).toHaveBeenCalled();
-    window.removeEventListener("agent-resume:open-note", openNote);
-    window.removeEventListener("agent-resume:tab-request", tabRequest);
-  });
 
-  it("mount note creates a note when the project has no root notes", async () => {
-    const host = document.createElement("div");
-    host.id = "react-workbench";
-    document.body.append(host);
-    const notesCreate = vi.fn(async () => ({ noteId: "created-note", filename: "created.md" }));
-    const notesListRoot = vi.fn(async () => []);
-    const openNote = vi.fn();
-    window.addEventListener("agent-resume:open-note", openNote);
-    window.agentResume = {
-      getI18nBundle: async () => ({ locale: "en", messages: {
-        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.close": "Close", "desktop.common.cancel": "Cancel", "desktop.common.confirm": "Confirm", "desktop.common.rename": "Rename", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New Session", "desktop.workbench.newSessionTitle": "New session {0}", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.mountNote": "Mount note"
-      } }),
-      onLocaleChanged: () => () => undefined,
-      onWorkbenchCmdT: () => () => undefined,
-      onWorkbenchCmdW: () => () => undefined,
-      onTerminalData: () => () => undefined,
-      onTerminalExit: () => () => undefined,
-      onTerminalRespawned: () => () => undefined,
-      listProjectAliases: async () => ({}),
-      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex", projectContextMenu: ["note"] } }),
-      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
-      workbenchGetProjectEditor: async () => ({ selected: "vscode", available: true, editor: { id: "vscode", label: "VS Code" } }),
-      notesListRoot,
-      notesCreate
-    } as unknown as typeof window.agentResume;
 
-    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
-    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    const project = await screen.findByTitle("/work/app");
-    fireEvent.contextMenu(project);
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Mount note" }));
-    await waitFor(() => expect(notesCreate).toHaveBeenCalledWith({ scope: "project", projectPath: "/work/app" }));
-    expect((openNote.mock.calls.at(-1)?.[0] as CustomEvent<string>).detail).toBe("created-note");
-    window.removeEventListener("agent-resume:open-note", openNote);
-  });
 
-  it("hides catalog projects with zero sessions", async () => {
-    const host = document.createElement("div");
-    host.id = "react-workbench";
-    document.body.append(host);
-    window.agentResume = {
-      getI18nBundle: async () => ({ locale: "en", messages: {
-        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}"
-      } }),
-      onLocaleChanged: () => () => undefined,
-      onWorkbenchCmdT: () => () => undefined,
-      onWorkbenchCmdW: () => () => undefined,
-      onTerminalData: () => () => undefined,
-      onTerminalExit: () => () => undefined,
-      onTerminalRespawned: () => () => undefined,
-      listProjectAliases: async () => ({}),
-      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
-      listSessions: async () => [
-        { provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", projectId: "proj-app", updatedAt: 1 }
-      ],
-      listProjects: async () => [
-        {
-          projectId: "proj-app",
-          portableKey: "~/work/app",
-          alias: "app",
-          hidden: false,
-          pinned: false,
-          lastSeenAtMs: 1,
-          updatedAtMs: 1,
-          localPath: "/work/app",
-          pathMissing: false,
-          sessionCount: 1
-        },
-        {
-          projectId: "proj-empty",
-          portableKey: "~/work/empty",
-          alias: "empty",
-          hidden: false,
-          pinned: true,
-          lastSeenAtMs: 2,
-          updatedAtMs: 2,
-          localPath: "/work/empty",
-          pathMissing: false,
-          sessionCount: 0
-        }
-      ]
-    } as unknown as typeof window.agentResume;
 
-    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
-    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    await screen.findByTitle("/work/app");
-    expect(document.querySelector('button[title="/work/empty"]')).toBeNull();
-    expect(screen.queryByText("empty")).toBeNull();
-  });
 
-  it("adds and selects a kept-visible project from the empty projects sidebar", async () => {
-    const host = document.createElement("div");
-    host.id = "react-workbench";
-    document.body.append(host);
-    const project = {
-      projectId: "proj-opened",
-      portableKey: "~/work/opened",
-      alias: "opened",
-      hidden: false,
-      pinned: false,
-      keptVisible: true,
-      lastSeenAtMs: 1,
-      updatedAtMs: 1,
-      localPath: "/work/opened",
-      pathMissing: false,
-      sessionCount: 0
-    };
-    const addProject = vi.fn(async () => ({ ok: true as const, project }));
-    const listProjects = vi.fn()
-      .mockResolvedValueOnce([])
-      .mockResolvedValue([project]);
-    window.agentResume = {
-      getI18nBundle: async () => ({ locale: "en", messages: {
-        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.addProject": "Add project", "desktop.workbench.addProjectTitle": "Select project folder", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}"
-      } }),
-      onLocaleChanged: () => () => undefined,
-      onWorkbenchCmdT: () => () => undefined,
-      onWorkbenchCmdW: () => () => undefined,
-      onTerminalData: () => () => undefined,
-      onTerminalExit: () => () => undefined,
-      onTerminalRespawned: () => () => undefined,
-      listProjectAliases: async () => ({}),
-      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
-      listSessions: async () => [],
-      listProjects,
-      addProject
-    } as unknown as typeof window.agentResume;
-
-    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
-    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    const addButton = await screen.findByRole("button", { name: "Add project" });
-    expect(screen.getByText("No projects")).toBeTruthy();
-    fireEvent.click(addButton);
-    await waitFor(() => expect(addProject).toHaveBeenCalledWith({ title: "Select project folder" }));
-    const opened = await screen.findByTitle("/work/opened");
-    expect(opened.classList.contains("active")).toBe(true);
-    expect(listProjects).toHaveBeenCalledTimes(2);
-  });
-
-  it("leaves the projects sidebar unchanged when adding is canceled", async () => {
-    const host = document.createElement("div");
-    host.id = "react-workbench";
-    document.body.append(host);
-    const addProject = vi.fn(async () => ({ ok: false as const, canceled: true as const }));
-    window.agentResume = {
-      getI18nBundle: async () => ({ locale: "en", messages: {
-        "desktop.notes.filterProjects": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.addProject": "Add project", "desktop.workbench.addProjectTitle": "Select project folder", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}"
-      } }),
-      onLocaleChanged: () => () => undefined,
-      onWorkbenchCmdT: () => () => undefined,
-      onWorkbenchCmdW: () => () => undefined,
-      onTerminalData: () => () => undefined,
-      onTerminalExit: () => () => undefined,
-      onTerminalRespawned: () => () => undefined,
-      listProjectAliases: async () => ({}),
-      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
-      listSessions: async () => [],
-      listProjects: async () => [],
-      addProject
-    } as unknown as typeof window.agentResume;
-
-    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
-    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    fireEvent.click(await screen.findByRole("button", { name: "Add project" }));
-    await waitFor(() => expect(addProject).toHaveBeenCalledTimes(1));
-    expect(screen.getByText("No projects")).toBeTruthy();
-  });
-
-  it("shows an error when adding a project fails", async () => {
-    const host = document.createElement("div");
-    host.id = "react-workbench";
-    document.body.append(host);
-    window.agentResume = {
-      getI18nBundle: async () => ({ locale: "en", messages: {
-        "desktop.notes.filterProjects": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.addProject": "Add project", "desktop.workbench.addProjectTitle": "Select project folder", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}"
-      } }),
-      onLocaleChanged: () => () => undefined,
-      onWorkbenchCmdT: () => () => undefined,
-      onWorkbenchCmdW: () => () => undefined,
-      onTerminalData: () => () => undefined,
-      onTerminalExit: () => () => undefined,
-      onTerminalRespawned: () => () => undefined,
-      listProjectAliases: async () => ({}),
-      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
-      listSessions: async () => [],
-      querySessionsPage: querySessionsPageFromList(async () => []),
-      listProjects: async () => [],
-      addProject: async () => { throw new Error("Selected folder is not accessible."); }
-    } as unknown as typeof window.agentResume;
-
-    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
-    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    fireEvent.click(await screen.findByRole("button", { name: "Add project" }));
-    await waitFor(() => expect(notificationMocks.notifyDesktop).toHaveBeenCalledWith({ text: "Selected folder is not accessible.", kind: "error" }));
-  });
-
-  it("lists sessions for a path-missing project by projectId", async () => {
-    const host = document.createElement("div");
-    host.id = "react-workbench";
-    document.body.append(host);
-    const querySessionsPage = vi.fn(querySessionsPageFromList(async () => [
-      {
-        provider: "pi",
-        id: "session-old",
-        title: "Old loop work",
-        projectPath: "/Users/me/Documents/GitHub/thunder-agent-loop",
-        projectId: "proj-missing",
-        updatedAt: 1
-      }
-    ]));
-    window.agentResume = {
-      getI18nBundle: async () => ({ locale: "en", messages: {
-        "desktop.notes.filterProjects": "Filter projects",
-        "desktop.notes.projectFilter": "Project filter",
-        "desktop.common.search": "Search",
-        "desktop.common.all": "All",
-        "desktop.common.active": "Active",
-        "desktop.common.pinned": "Pinned",
-        "desktop.common.refresh": "Refresh",
-        "desktop.workbench.allSessions": "All sessions",
-        "desktop.workbench.noSessionsInProject": "No sessions",
-        "desktop.workbench.noProjects": "No projects",
-        "desktop.workbench.sidePanelExplorer": "Explorer",
-        "desktop.workbench.sidePanelGit": "Git",
-        "desktop.workbench.newTerminal": "New terminal",
-        "desktop.workbench.newSession": "New session",
-        "desktop.workbench.selectSessionHint": "Select a session",
-        "desktop.workbench.selectProjectHint": "Select a project",
-        "desktop.workbench.externalTerminalHint": "Opened externally",
-        "desktop.workbench.terminalLabel": "Terminal {0}",
-        "desktop.workbench.pathMissingHint": "Local folder not found on this machine",
-        "desktop.workbench.pathMissingLabel": "Not on this machine · {0}"
-      } }),
-      onLocaleChanged: () => () => undefined,
-      onWorkbenchCmdT: () => () => undefined,
-      onWorkbenchCmdW: () => () => undefined,
-      onTerminalData: () => () => undefined,
-      onTerminalExit: () => () => undefined,
-      onTerminalRespawned: () => () => undefined,
-      listProjectAliases: async () => ({}),
-      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "pi" } }),
-      querySessionsPage,
-      listProjects: async () => [
-        {
-          projectId: "proj-missing",
-          portableKey: "~/Documents/GitHub/thunder-agent-loop",
-          alias: "",
-          hidden: false,
-          pinned: true,
-          lastSeenAtMs: 1,
-          updatedAtMs: 1,
-          localPath: null,
-          pathMissing: true,
-          sessionCount: 1
-        }
-      ],
-      listWorkbenchSessionFolders: async () => ({ folders: [], assignments: [] })
-    } as unknown as typeof window.agentResume;
-
-    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
-    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    fireEvent.click(await screen.findByTitle("Local folder not found on this machine"));
-    expect(await screen.findByRole("button", { name: /Old loop work/ })).toBeTruthy();
-    await waitFor(() => expect(querySessionsPage).toHaveBeenCalledWith(expect.objectContaining({ projectId: "proj-missing" })));
-    expect(querySessionsPage.mock.calls.some((call) => call[0]?.projectPath === "~/Documents/GitHub/thunder-agent-loop")).toBe(false);
-  });
 
   it("matches develop session search focus and Escape behavior", async () => {
     const host = document.createElement("div");
@@ -2614,8 +2071,8 @@ describe("WorkbenchPanel", () => {
     expect(terminalDestroy).not.toHaveBeenCalled();
 
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    fireEvent.click(document.querySelector<HTMLButtonElement>('button[title="/work/docs"]')!);
-    fireEvent.click(document.querySelector<HTMLButtonElement>('button[title="/work/app"]')!);
+    await activateWorkItemDirectory("/work/docs");
+    await activateWorkItemDirectory("/work/app");
     expect(terminalSpawn).toHaveBeenCalledTimes(2);
     expect(terminalDestroy).not.toHaveBeenCalled();
     expect(document.querySelector(".wb-terminal-tab-close")).toBeTruthy();
@@ -2660,12 +2117,12 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(terminalSpawn).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(xtermMocks.instances).toHaveLength(1));
 
-    fireEvent.click(document.querySelector<HTMLButtonElement>('button[title="/work/docs"]')!);
+    await activateWorkItemDirectory("/work/docs");
     await waitFor(() => expect(terminalDetach).toHaveBeenCalledWith({ id: 11 }));
     expect(terminalDestroy).not.toHaveBeenCalled();
     expect(xtermMocks.instances).toHaveLength(1);
 
-    fireEvent.click(document.querySelector<HTMLButtonElement>('button[title="/work/app"]')!);
+    await activateWorkItemDirectory("/work/app");
     await waitFor(() => expect(terminalAttach).toHaveBeenCalledWith({ id: 11 }));
     expect(terminalSpawn).toHaveBeenCalledTimes(1);
     expect(terminalDestroy).not.toHaveBeenCalled();
@@ -3283,6 +2740,7 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(xtermMocks.instances).toHaveLength(1));
     await waitFor(() => expect(document.querySelector(".wb-terminal-loading")).toBeNull());
 
+    await activateWorkItemDirectory("/work/app");
     fireEvent.click(screen.getByRole("button", { name: "Explorer" }));
     const fileRow = await waitFor(() => {
       const row = document.querySelector<HTMLElement>('[data-wb-entry-path="/work/app/app.ts"]');
@@ -3343,6 +2801,7 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(document.querySelector(".wb-terminal-loading")).toBeNull());
     await waitFor(() => expect(document.querySelector(".wb-session-split-transcript")).not.toBeNull());
 
+    await activateWorkItemDirectory("/work/app");
     fireEvent.click(screen.getAllByRole("button", { name: "Explorer" })[0]!);
     await waitFor(() => expect(document.querySelector(".wb-explorer-side-pane")).not.toBeNull());
     const directoryRow = await waitFor(() => {
@@ -3420,7 +2879,7 @@ describe("WorkbenchPanel", () => {
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    fireEvent.click(await screen.findByTitle("/work/app"));
+    await activateWorkItemDirectory("/work/app");
     fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
     await waitFor(() => expect(document.querySelector(".wb-terminal-loading")).toBeNull());
     await waitFor(() => expect(document.querySelector(".wb-session-split-transcript")).not.toBeNull());
@@ -3489,6 +2948,7 @@ describe("WorkbenchPanel", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
     await waitFor(() => expect(document.querySelector(".wb-terminal-host")).not.toBeNull());
 
+    await activateWorkItemDirectory("/work/app");
     fireEvent.click(screen.getByRole("button", { name: "Explorer" }));
     const fileRow = await waitFor(() => {
       const row = document.querySelector<HTMLElement>('[data-wb-entry-path="/work/app/app.ts"]');
@@ -3554,6 +3014,7 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(document.querySelector(".wb-terminal-loading")).toBeNull());
     await waitFor(() => expect(document.querySelector(".wb-session-split-transcript")).not.toBeNull());
 
+    await activateWorkItemDirectory("/work/app");
     fireEvent.click(screen.getAllByRole("button", { name: "Explorer" })[0]!);
     await waitFor(() => expect(document.querySelector(".wb-explorer-side-pane")).not.toBeNull());
     const fileRow = await waitFor(() => {
@@ -3614,14 +3075,15 @@ describe("WorkbenchPanel", () => {
 
     await act(async () => resolveOpen({ mode: "xterm", command: "codex resume session-1", cwd: "/work/app" }));
     await waitFor(() => expect(terminalSpawn).toHaveBeenCalledTimes(1));
-    fireEvent.click(document.querySelector<HTMLButtonElement>('button[title="/work/docs"]')!);
-    fireEvent.click(screen.getByRole("button", { name: /All sessions/ }));
+    await activateWorkItemDirectory("/work/docs");
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-work-item-clear"));
+    });
     fireEvent.click(sessionButton());
 
     expect(workbenchOpenSession).toHaveBeenCalledTimes(1);
     expect(terminalSpawn).toHaveBeenCalledTimes(1);
     expect(document.querySelector(".wb-terminal-tab-label")?.textContent).toBe("Fix renderer");
-    expect(document.querySelector<HTMLButtonElement>('button[title="/work/app"]')?.className).toContain("active");
   });
 
   it("refreshes an open CLI session tab label when the session title changes", async () => {
@@ -3994,8 +3456,8 @@ describe("WorkbenchPanel", () => {
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    fireEvent.click(await screen.findByTitle("/work/app"));
-    const newSessionButton = screen.getByRole("button", { name: "New session" }) as HTMLButtonElement;
+    await activateWorkItemDirectory("/work/app");
+    const newSessionButton = screen.getByRole("button", { name: /New session/i }) as HTMLButtonElement;
     const newTerminalButton = screen.getByRole("button", { name: "New terminal" }) as HTMLButtonElement;
     expect(document.querySelector('[data-pane-group="session"] > .wb-pane-tab-group-label')).toBe(newSessionButton);
     expect(document.querySelector('[data-pane-group="terminal"] > .wb-pane-tab-group-label')).toBe(newTerminalButton);
@@ -4068,8 +3530,8 @@ describe("WorkbenchPanel", () => {
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    fireEvent.click(await screen.findByTitle("/work/app"));
-    const newSessionButton = screen.getByRole("button", { name: "New session" });
+    await activateWorkItemDirectory("/work/app");
+    const newSessionButton = screen.getByRole("button", { name: /New session/i });
 
     fireEvent.click(newSessionButton);
     const menu = await screen.findByRole("menu", { name: "Default agent" });
@@ -4130,8 +3592,8 @@ describe("WorkbenchPanel", () => {
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    fireEvent.click(await screen.findByTitle("/work/app"));
-    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    await activateWorkItemDirectory("/work/app");
+    fireEvent.click(document.querySelector(".wb-pane-tab-group-label") as HTMLButtonElement);
     const menu = await screen.findByRole("menu", { name: "Default agent" });
     fireEvent.mouseDown(within(menu).getByRole("menuitem", { name: "anfeng" }));
     fireEvent.click(within(menu).getByRole("menuitem", { name: "anfeng" }));
@@ -4178,8 +3640,8 @@ describe("WorkbenchPanel", () => {
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    fireEvent.click(await screen.findByTitle("/work/app"));
-    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    await activateWorkItemDirectory("/work/app");
+    fireEvent.click(document.querySelector(".wb-pane-tab-group-label") as HTMLButtonElement);
     const menu = await screen.findByRole("menu", { name: "Default agent" });
     fireEvent.mouseDown(within(menu).getByRole("menuitem", { name: "anfeng" }));
     fireEvent.click(within(menu).getByRole("menuitem", { name: "anfeng" }));
@@ -4213,11 +3675,11 @@ describe("WorkbenchPanel", () => {
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    fireEvent.click(await screen.findByTitle("/work/app"));
-    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    await activateWorkItemDirectory("/work/app");
+    fireEvent.click(document.querySelector(".wb-pane-tab-group-label") as HTMLButtonElement);
     await waitFor(() => expect(workbenchNewSession).toHaveBeenCalled());
     await waitFor(() => expect(document.querySelector(".wb-terminal-loading")).toBeNull());
-    expect(screen.getByRole("button", { name: "New session" }).hasAttribute("disabled")).toBe(false);
+    expect(screen.getByRole("button", { name: /New session/i }).hasAttribute("disabled")).toBe(false);
   });
 
   it("notifies the user and opens session when YOLO mode is unsupported for provider", async () => {
@@ -4258,14 +3720,14 @@ describe("WorkbenchPanel", () => {
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    fireEvent.click(await screen.findByTitle("/work/app"));
-    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    await activateWorkItemDirectory("/work/app");
+    fireEvent.click(document.querySelector(".wb-pane-tab-group-label") as HTMLButtonElement);
     await waitFor(() => expect(workbenchNewSession).toHaveBeenCalled());
     await waitFor(() => expect(notificationMocks.notifyDesktop).toHaveBeenCalledWith({
       text: "YOLO mode is not supported for provider: pi. Starting in standard mode.",
       kind: "info"
     }));
-    expect(screen.getByRole("button", { name: "New session" }).hasAttribute("disabled")).toBe(false);
+    expect((document.querySelector(".wb-pane-tab-group-label") as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("shows a pending new session until catalog sync supplies its session id", async () => {
@@ -4299,8 +3761,8 @@ describe("WorkbenchPanel", () => {
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    fireEvent.click(await screen.findByTitle("/work/app"));
-    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    await activateWorkItemDirectory("/work/app");
+    fireEvent.click(document.querySelector(".wb-pane-tab-group-label") as HTMLButtonElement);
 
     const pending = await waitFor(() => {
       const row = [...document.querySelectorAll<HTMLButtonElement>(".wb-list-item")]
@@ -4311,7 +3773,6 @@ describe("WorkbenchPanel", () => {
     expect(pending.hasAttribute("draggable")).toBe(false);
     expect([...document.querySelectorAll<HTMLButtonElement>(".wb-list-item")]
       .find((item) => item.textContent?.includes("Existing session"))?.hasAttribute("draggable")).toBe(true);
-    expect(document.querySelector(".wb-folder-row.has-wb-activity .wb-folder-activity-dot")).not.toBeNull();
     expect(document.querySelectorAll(".wb-session-activity-dot")).toHaveLength(1);
     expect(document.querySelector(".wb-session-split-transcript")).not.toBeNull();
     expect(document.querySelector(".wb-terminal-pane-split")).not.toBeNull();
@@ -4378,8 +3839,8 @@ describe("WorkbenchPanel", () => {
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    fireEvent.click(await screen.findByTitle("/work/app"));
-    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    await activateWorkItemDirectory("/work/app");
+    fireEvent.click(document.querySelector(".wb-pane-tab-group-label") as HTMLButtonElement);
 
     const pending = await waitFor(() => {
       const row = [...document.querySelectorAll<HTMLButtonElement>(".wb-list-item")]
@@ -4438,8 +3899,8 @@ describe("WorkbenchPanel", () => {
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    fireEvent.click(await screen.findByTitle("/work/app"));
-    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    await activateWorkItemDirectory("/work/app");
+    fireEvent.click(document.querySelector(".wb-pane-tab-group-label") as HTMLButtonElement);
 
     await waitFor(() => {
       expect(document.querySelector(".wb-session-split-transcript")).not.toBeNull();
@@ -4447,194 +3908,8 @@ describe("WorkbenchPanel", () => {
     expect(localStorage.getItem("wb-session-view-mode")).toBe("hybrid");
   });
 
-  it("auto-assigns a new CLI session to the focused subfolder once the catalog binds it", async () => {
-    const host = document.createElement("div");
-    host.id = "react-workbench";
-    document.body.append(host);
-    let onSessionsSynced: ((result: { syncedAt: number }) => void) | undefined;
-    let catalogSessions = [
-      { provider: "codex" as const, id: "existing", title: "Existing session", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 }
-    ];
-    const assignWorkbenchSessionToFolder = vi.fn(async () => ({
-      projectId: "project-1",
-      provider: "codex",
-      agentSessionId: "new-id",
-      folderId: "campaign",
-      updatedAtMs: 1
-    }));
-    window.agentResume = {
-      getI18nBundle: async () => ({ locale: "en", messages: FOLDER_FOCUS_TEST_MESSAGES }),
-      onLocaleChanged: () => () => undefined,
-      onWorkbenchCmdT: () => () => undefined,
-      onWorkbenchCmdW: () => () => undefined,
-      onSessionsSynced: (callback: (result: { syncedAt: number }) => void) => { onSessionsSynced = callback; return () => undefined; },
-      onTerminalData: () => () => undefined,
-      onTerminalExit: () => () => undefined,
-      onTerminalRespawned: () => () => undefined,
-      listProjectAliases: async () => ({}),
-      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
-      listSessions: async () => catalogSessions,
-      querySessionsPage: querySessionsPageFromList(async () => catalogSessions),
-      listProjects: async () => [
-        { projectId: "project-1", portableKey: "/work/app", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/app", pathMissing: false, sessionCount: 1 }
-      ],
-      listWorkbenchSessionFolders: async () => ({
-        folders: [{ folderId: "campaign", projectId: "project-1", parentId: null, name: "Campaign", createdAtMs: 1, updatedAtMs: 1 }],
-        assignments: []
-      }),
-      assignWorkbenchSessionToFolder,
-      workbenchNewSession: async () => ({ mode: "xterm", command: "codex", cwd: "/work/app" }),
-      workbenchOpenSession: async () => ({ mode: "external-system", cwd: "/work/app", external: true }),
-      terminalSpawn: async () => ({ id: 1 }),
-      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
-      terminalDestroy: async () => ({ ok: true }),
-      terminalResize: async () => ({ ok: true })
-    } as unknown as typeof window.agentResume;
 
-    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
-    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    fireEvent.click(await screen.findByTitle("/work/app"));
-    expandWorkbenchProject("/work/app");
-    fireEvent.click(await screen.findByTitle("Campaign"));
-    fireEvent.click(screen.getByRole("button", { name: "New session" }));
 
-    catalogSessions = [
-      ...catalogSessions,
-      { provider: "codex" as const, id: "new-id", title: "Catalog session", projectPath: "/work/app", projectId: "project-1", updatedAt: Date.now() }
-    ];
-    await act(async () => onSessionsSynced?.({ syncedAt: Date.now() }));
-
-    await waitFor(() => expect(assignWorkbenchSessionToFolder).toHaveBeenCalledWith({
-      projectId: "project-1",
-      provider: "codex",
-      agentSessionId: "new-id",
-      folderId: "campaign"
-    }));
-  });
-
-  it("auto-assigns a new ACP session to the focused subfolder", async () => {
-    const host = document.createElement("div");
-    host.id = "react-workbench";
-    document.body.append(host);
-    const acpCreateSession = vi.fn(async ({ projectPath, provider }: { projectPath: string; provider: string }) => ({
-      id: "acp-new",
-      title: "ACP session",
-      projectPath,
-      provider,
-      createdAt: 1,
-      updatedAt: 1,
-      messageCount: 0
-    }));
-    const assignWorkbenchSessionToFolder = vi.fn(async () => ({
-      projectId: "project-1",
-      provider: "chat",
-      agentSessionId: "acp-new",
-      folderId: "campaign",
-      updatedAtMs: 1
-    }));
-    window.agentResume = {
-      getI18nBundle: async () => ({ locale: "en", messages: FOLDER_FOCUS_TEST_MESSAGES }),
-      onLocaleChanged: () => () => undefined,
-      onWorkbenchCmdT: () => () => undefined,
-      onWorkbenchCmdW: () => () => undefined,
-      onTerminalData: () => () => undefined,
-      onTerminalExit: () => () => undefined,
-      onTerminalRespawned: () => () => undefined,
-      listProjectAliases: async () => ({}),
-      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex", defaultNewSessionTarget: "" } }),
-      listSessions: async () => [
-        { provider: "codex" as const, id: "session-1", title: "Fix renderer", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 }
-      ],
-      querySessionsPage: querySessionsPageFromList(async () => [
-        { provider: "codex" as const, id: "session-1", title: "Fix renderer", projectPath: "/work/app", projectId: "project-1", updatedAt: 1 }
-      ]),
-      listProjects: async () => [
-        { projectId: "project-1", portableKey: "/work/app", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/app", pathMissing: false, sessionCount: 1 }
-      ],
-      listWorkbenchSessionFolders: async () => ({
-        folders: [{ folderId: "campaign", projectId: "project-1", parentId: null, name: "Campaign", createdAtMs: 1, updatedAtMs: 1 }],
-        assignments: []
-      }),
-      assignWorkbenchSessionToFolder,
-      acpCreateSession,
-      onAcpStream: () => () => undefined,
-      acpConnect: async () => ({ record: { id: "acp-new", title: "ACP session", projectPath: "/work/app", provider: "codex", createdAt: 1, updatedAt: 1, messageCount: 0 }, init: {} }),
-      acpDisconnect: async () => ({ ok: true }),
-      workbenchOpenSession: async () => ({ mode: "external-system", cwd: "/work/app", external: true }),
-      terminalSpawn: async () => ({ id: 1 }),
-      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
-      terminalDestroy: async () => ({ ok: true }),
-      terminalResize: async () => ({ ok: true })
-    } as unknown as typeof window.agentResume;
-
-    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
-    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    fireEvent.click(await screen.findByTitle("/work/app"));
-    expandWorkbenchProject("/work/app");
-    fireEvent.click(await screen.findByTitle("Campaign"));
-    fireEvent.click(screen.getByRole("button", { name: "New session" }));
-    const menu = await screen.findByRole("menu", { name: "Default agent" });
-    fireEvent.click(within(menu).getByRole("menuitem", { name: "ACP · Codex" }));
-
-    await waitFor(() => expect(assignWorkbenchSessionToFolder).toHaveBeenCalledWith({
-      projectId: "project-1",
-      provider: "chat",
-      agentSessionId: "acp-new",
-      folderId: "campaign"
-    }));
-  });
-
-  it("does not auto-assign a new session to a focused folder when launching into another project", async () => {
-    const host = document.createElement("div");
-    host.id = "react-workbench";
-    document.body.append(host);
-    const workbenchNewSession = vi.fn(async () => ({ mode: "external-system", cwd: "/work/docs" }));
-    const assignWorkbenchSessionToFolder = vi.fn(async () => ({ ok: true }));
-    window.agentResume = {
-      getI18nBundle: async () => ({ locale: "en", messages: FOLDER_FOCUS_TEST_MESSAGES }),
-      onLocaleChanged: () => () => undefined,
-      onWorkbenchCmdT: () => () => undefined,
-      onWorkbenchCmdW: () => () => undefined,
-      onTerminalData: () => () => undefined,
-      onTerminalExit: () => () => undefined,
-      onTerminalRespawned: () => () => undefined,
-      listProjectAliases: async () => ({}),
-      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
-      listSessions: async () => [
-        { provider: "codex" as const, id: "session-1", title: "App work", projectPath: "/work/app", projectId: "project-1", updatedAt: 2 },
-        { provider: "codex" as const, id: "session-2", title: "Docs work", projectPath: "/work/docs", projectId: "project-2", updatedAt: 1 }
-      ],
-      querySessionsPage: querySessionsPageFromList(async () => [
-        { provider: "codex" as const, id: "session-1", title: "App work", projectPath: "/work/app", projectId: "project-1", updatedAt: 2 },
-        { provider: "codex" as const, id: "session-2", title: "Docs work", projectPath: "/work/docs", projectId: "project-2", updatedAt: 1 }
-      ]),
-      listProjects: async () => [
-        { projectId: "project-1", portableKey: "/work/app", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/app", pathMissing: false, sessionCount: 1 },
-        { projectId: "project-2", portableKey: "/work/docs", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/docs", pathMissing: false, sessionCount: 1 }
-      ],
-      listWorkbenchSessionFolders: async ({ projectId }: { projectId: string }) => projectId === "project-1"
-        ? {
-            folders: [{ folderId: "campaign", projectId: "project-1", parentId: null, name: "Campaign", createdAtMs: 1, updatedAtMs: 1 }],
-            assignments: []
-          }
-        : { folders: [], assignments: [] },
-      assignWorkbenchSessionToFolder,
-      workbenchNewSession,
-      workbenchGetProjectEditor: async () => ({ selected: "vscode", available: true, editor: { id: "vscode", label: "VS Code" } }),
-      workbenchOpenSession: async () => ({ mode: "external-system", cwd: "/work/docs", external: true })
-    } as unknown as typeof window.agentResume;
-
-    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
-    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    fireEvent.click(await screen.findByTitle("/work/app"));
-    expandWorkbenchProject("/work/app");
-    fireEvent.click(await screen.findByTitle("Campaign"));
-    fireEvent.contextMenu(await screen.findByTitle("/work/docs"));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "New session" }));
-
-    await waitFor(() => expect(workbenchNewSession).toHaveBeenCalledWith({ cwd: "/work/docs", provider: "codex", executionMode: "standard" }));
-    expect(assignWorkbenchSessionToFolder).not.toHaveBeenCalled();
-  });
 
   it("reports state-changing Git actions and keeps refreshes silent", async () => {
     const host = document.createElement("div");
@@ -4718,7 +3993,7 @@ describe("WorkbenchPanel", () => {
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    fireEvent.click(await screen.findByTitle("/work/app"));
+    await activateWorkItemDirectory("/work/app");
     // Auto status/fetch runs while Workbench is active even before opening the Git side panel.
     await waitFor(() => expect(terminalGitStatus.mock.calls.length).toBeGreaterThanOrEqual(1));
     await waitFor(() => expect(terminalGitFetch).toHaveBeenCalledWith({ repoRoot: "/work/app" }));
@@ -4970,7 +4245,7 @@ describe("WorkbenchPanel", () => {
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    fireEvent.click(await screen.findByTitle("/work/monorepo"));
+    await activateWorkItemDirectory("/work/monorepo");
     fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
 
     expect(await screen.findByTitle("/work/monorepo/packages/app")).toBeTruthy();
@@ -5075,7 +4350,7 @@ describe("WorkbenchPanel", () => {
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    fireEvent.click(await screen.findByTitle("/work/monorepo"));
+    await activateWorkItemDirectory("/work/monorepo");
     fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
 
     const repoSelect = await screen.findByRole("combobox", { name: "Git repository" });
@@ -5166,7 +4441,7 @@ describe("WorkbenchPanel", () => {
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    fireEvent.click(await screen.findByTitle("/work/monorepo"));
+    await activateWorkItemDirectory("/work/monorepo");
     fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
     return screen.findByRole("combobox", { name: "Git repository" }) as Promise<HTMLSelectElement>;
   }
@@ -5321,7 +4596,7 @@ describe("WorkbenchPanel", () => {
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    fireEvent.click(await screen.findByTitle("/work/monorepo"));
+    await activateWorkItemDirectory("/work/monorepo");
     fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
 
     const coreHeaders = await screen.findAllByRole("checkbox", { name: "packages/core" });
@@ -5389,7 +4664,7 @@ describe("WorkbenchPanel", () => {
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    fireEvent.click(await screen.findByTitle("/work/app"));
+    await activateWorkItemDirectory("/work/app");
     await waitFor(() => expect(terminalGitStatus.mock.calls.length).toBeGreaterThanOrEqual(1));
 
     fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
@@ -5444,7 +4719,7 @@ describe("WorkbenchPanel", () => {
     try {
       render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
       await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-      fireEvent.click(await screen.findByTitle("/work/app"));
+      await activateWorkItemDirectory("/work/app");
       await waitFor(() => expect(terminalGitStatus.mock.calls.length).toBeGreaterThanOrEqual(1));
       await waitFor(() => expect(terminalGitFetch.mock.calls.length).toBeGreaterThanOrEqual(1));
       const afterActivate = terminalGitStatus.mock.calls.length;
@@ -5503,15 +4778,6 @@ describe("WorkbenchPanel", () => {
     fireEvent.click(await screen.findByRole("menuitemradio", { name: "Done" }));
     await waitFor(() => expect(setSessionGtdStatus).toHaveBeenCalledWith({ provider: "codex", id: "next-session", status: "done" }));
     expect(nextSession.querySelector(".wb-gtd-status-badge")?.textContent).toBe("Done");
-
-    fireEvent.click(screen.getByRole("tab", { name: "GTD view" }));
-    const completed = screen.getByRole("button", { name: /^Completed/ });
-    expect(completed.getAttribute("aria-expanded")).toBe("false");
-    expect(screen.queryByRole("button", { name: /^Done/ })).toBeNull();
-    fireEvent.click(completed);
-    fireEvent.click(screen.getByRole("button", { name: /^Done/ }));
-    expect(screen.getByRole("button", { name: /Ship GTD view/ })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /Triage feedback/ })).toBeNull();
   });
 
   it("dismisses the branch popover on outside click and Escape", async () => {
@@ -5645,7 +4911,7 @@ describe("WorkbenchPanel", () => {
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    fireEvent.click(await screen.findByTitle("/work/app"));
+    await activateWorkItemDirectory("/work/app");
     fireEvent.click(screen.getByRole("button", { name: "Search", pressed: false }));
     const searchInput = await screen.findByRole("searchbox", { name: "Search" });
     fireEvent.change(searchInput, { target: { value: "findme" } });
@@ -5676,6 +4942,7 @@ describe("WorkbenchPanel", () => {
       filePath: "/work/app/src/main.ts"
     }));
     await waitFor(() => expect(document.querySelectorAll('[data-pane-group="code"] .wb-terminal-tab.is-editor')).toHaveLength(1));
+    await activateWorkItemDirectory("/work/app");
     fireEvent.click(screen.getByRole("button", { name: "Explorer", pressed: false }));
     await waitFor(() => expect(document.querySelector(
       '[data-wb-entry-path="/work/app/src/main.ts"]'
@@ -5783,7 +5050,7 @@ describe("WorkbenchPanel", () => {
     localStorage.setItem("wb-search-replace-open", "false");
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    fireEvent.click(await screen.findByTitle("/work/app"));
+    await activateWorkItemDirectory("/work/app");
     fireEvent.click(screen.getByRole("button", { name: "Search", pressed: false }));
     fireEvent.change(await screen.findByRole("searchbox", { name: "Search" }), { target: { value: "findme" } });
   }
@@ -5929,7 +5196,7 @@ describe("WorkbenchPanel", () => {
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    fireEvent.click(await screen.findByTitle("/work/app"));
+    await activateWorkItemDirectory("/work/app");
     fireEvent.click(screen.getByRole("button", { name: "Explorer", pressed: false }));
     const folderRow = (await screen.findByText("src")).closest("[role=treeitem]")!;
     fireEvent.contextMenu(folderRow, { clientX: 30, clientY: 40 });
@@ -5973,7 +5240,7 @@ describe("WorkbenchPanel", () => {
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    fireEvent.click(await screen.findByTitle("/work/app"));
+    await activateWorkItemDirectory("/work/app");
     fireEvent.click(screen.getByRole("button", { name: "Search", pressed: false }));
     fireEvent.change(await screen.findByRole("searchbox", { name: "Search" }), { target: { value: "findme" } });
     await waitFor(() => expect(workbenchSearchText).toHaveBeenCalled());
@@ -6064,7 +5331,7 @@ describe("WorkbenchPanel", () => {
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    fireEvent.click(await screen.findByTitle("/work/app"));
+    await activateWorkItemDirectory("/work/app");
     fireEvent.click(screen.getByRole("button", { name: "Explorer", pressed: false }));
     const fileRow = (await screen.findByText("app.ts")).closest("[role=treeitem]")!;
     fireEvent.contextMenu(fileRow, { clientX: 20, clientY: 30 });
@@ -6183,7 +5450,7 @@ describe("WorkbenchPanel", () => {
     try {
       render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
       await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-      fireEvent.click(await screen.findByTitle("/work/app"));
+      await activateWorkItemDirectory("/work/app");
       fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
       fireEvent.click(await screen.findByRole("button", { name: "Git log" }));
       await waitFor(() => expect(terminalGitLog).toHaveBeenCalledWith({ repoRoot: "/work/app", limit: 150 }));
@@ -6264,7 +5531,7 @@ describe("WorkbenchPanel", () => {
     try {
       render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
       await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-      fireEvent.click(await screen.findByTitle("/work/app"));
+      await activateWorkItemDirectory("/work/app");
       fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
       fireEvent.click(await screen.findByRole("button", { name: "Git log" }));
       await waitFor(() => expect(terminalGitLog).toHaveBeenCalledWith({ repoRoot: "/work/app", limit: 150 }));
@@ -6347,7 +5614,7 @@ describe("WorkbenchPanel", () => {
     try {
       render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
       await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-      fireEvent.click(await screen.findByTitle("/work/app"));
+      await activateWorkItemDirectory("/work/app");
       fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
       fireEvent.click(await screen.findByRole("button", { name: "Git log" }));
       await waitFor(() => expect(terminalGitLog).toHaveBeenCalledWith({ repoRoot: "/work/app", limit: 150 }));
@@ -6434,7 +5701,7 @@ describe("WorkbenchPanel", () => {
     try {
       render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
       await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-      fireEvent.click(await screen.findByTitle("/work/app"));
+      await activateWorkItemDirectory("/work/app");
       fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
       fireEvent.click(await screen.findByRole("button", { name: "Git log" }));
       await waitFor(() => expect(terminalGitLog).toHaveBeenCalledWith({ repoRoot: "/work/app", limit: 150 }));
@@ -6521,7 +5788,7 @@ describe("WorkbenchPanel", () => {
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    fireEvent.click(await screen.findByTitle("/work/app/apps/desktop"));
+    await activateWorkItemDirectory("/work/app/apps/desktop");
     fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
 
     const gitRow = await screen.findByTitle("apps/desktop/src/app.ts");
@@ -6613,7 +5880,7 @@ describe("WorkbenchPanel", () => {
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    fireEvent.click(await screen.findByTitle("/work/app"));
+    await activateWorkItemDirectory("/work/app");
     fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
 
     fireEvent.click(await screen.findByTitle("src/app.ts"));
@@ -6675,7 +5942,7 @@ describe("WorkbenchPanel", () => {
     try {
       render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
       await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-      fireEvent.click(await screen.findByTitle("/work/app"));
+      await activateWorkItemDirectory("/work/app");
       fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
       const discard = await screen.findByRole("button", { name: "Discard changes src/app.ts" });
       fireEvent.click(discard);
@@ -6732,7 +5999,7 @@ describe("WorkbenchPanel", () => {
     try {
       render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
       await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-      fireEvent.click(await screen.findByTitle("/work/app"));
+      await activateWorkItemDirectory("/work/app");
       fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
       fireEvent.click((await screen.findAllByRole("button", { name: "Discard changes src" }))[0]!);
       expect(terminalGitDiscardChange).not.toHaveBeenCalled();
@@ -6795,7 +6062,7 @@ describe("WorkbenchPanel", () => {
     try {
       render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
       await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-      fireEvent.click(await screen.findByTitle("/work/app"));
+      await activateWorkItemDirectory("/work/app");
       fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
       fireEvent.click(await screen.findByRole("button", { name: "Discard changes src" }));
 
@@ -6933,24 +6200,24 @@ describe("WorkbenchPanel", () => {
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    await waitFor(() => expect(screen.getByTitle("/work/app")).toBeTruthy());
+    await activateWorkItemDirectory("/work/app");
     await act(async () => openCommands());
 
-    let input = await screen.findByRole("combobox") as HTMLInputElement;
+    let input = await waitFor(() => document.querySelector(".quick-access-input") as HTMLInputElement);
     fireEvent.change(input, { target: { value: ">switch" } });
     expect(await screen.findByRole("option", { name: "Workbench: Switch Project…" })).toBeTruthy();
     fireEvent.keyDown(input, { key: "Enter" });
 
-    input = screen.getByRole("combobox") as HTMLInputElement;
+    input = document.querySelector(".quick-access-input") as HTMLInputElement;
     expect(input.placeholder).toBe("Search projects");
     expect(screen.getByRole("option", { name: /app.*\/work\/app/i }).getAttribute("aria-selected")).toBe("true");
 
     fireEvent.keyDown(input, { key: "Escape" });
-    input = screen.getByRole("combobox") as HTMLInputElement;
+    input = document.querySelector(".quick-access-input") as HTMLInputElement;
     expect(input.value).toBe(">switch");
 
     fireEvent.keyDown(input, { key: "Enter" });
-    input = screen.getByRole("combobox");
+    input = document.querySelector(".quick-access-input") as HTMLInputElement;
     fireEvent.keyDown(input, { key: "ArrowDown" });
     fireEvent.keyDown(input, { key: "Enter" });
 
@@ -7184,6 +6451,7 @@ describe("WorkbenchPanel", () => {
     act(() => onWorkbenchCmdArrow?.("right"));
     await waitFor(() => expect(tabByLabel("Session B")?.classList.contains("active")).toBe(true));
 
+    await activateWorkItemDirectory("/work/app");
     fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
     fireEvent.click(await screen.findByTitle("src/a.ts"));
     await waitFor(() => expect(document.querySelector(".wb-terminal-tab.is-diff.active")?.textContent).toContain("a.ts"));
@@ -7539,7 +6807,7 @@ describe("WorkbenchPanel", () => {
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    fireEvent.click(await screen.findByTitle("/work/app"));
+    await activateWorkItemDirectory("/work/app");
     await waitFor(() => expect(terminalGitStatus.mock.calls.length).toBeGreaterThanOrEqual(1));
     // The watch root must be registered so the event below matches the project.
     await waitFor(() => expect(onFileSystemChanged).toBeDefined());
@@ -7625,7 +6893,7 @@ describe("WorkbenchPanel", () => {
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    fireEvent.click(await screen.findByTitle("/work/app"));
+    await activateWorkItemDirectory("/work/app");
     fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
     const directoryToggle = await waitFor(() => {
       const button = document.querySelector<HTMLButtonElement>('.wb-file-tree-label[title="src"]')?.closest("button");
@@ -7721,7 +6989,7 @@ describe("WorkbenchPanel", () => {
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    fireEvent.click(await screen.findByTitle("/work/app"));
+    await activateWorkItemDirectory("/work/app");
     fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
     const directoryToggle = await waitFor(() => {
       const button = document.querySelector<HTMLButtonElement>('.wb-file-tree-label[title="src"]')?.closest("button");
@@ -7833,7 +7101,7 @@ describe("WorkbenchPanel", () => {
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    fireEvent.click(await screen.findByTitle("/work/app"));
+    await activateWorkItemDirectory("/work/app");
     fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
     await waitFor(() => expect(screen.getByRole("checkbox", { name: "a.ts" })).toBeTruthy());
 
@@ -7934,12 +7202,12 @@ describe("WorkbenchPanel", () => {
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    fireEvent.click(await screen.findByTitle("/work/app"));
+    await activateWorkItemDirectory("/work/app");
     fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
     await waitFor(() => expect(terminalGitStatus.mock.calls.length).toBeGreaterThanOrEqual(1));
 
     // Switch to the other project while the /work/app status query is still in flight.
-    fireEvent.click(await screen.findByTitle("/work/docs"));
+    await activateWorkItemDirectory("/work/docs");
     fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
     // The stale /work/app result must be discarded entirely.
     await act(async () => { pending.get("/work/app")?.forEach((resolveGate) => resolveGate()); });
@@ -7967,7 +7235,7 @@ describe("WorkbenchPanel", () => {
     const { openQuickFiles } = setupWorkbenchEditorTest("/work/app/README.md", "# Guide\n\nSome **bold** text\n");
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
     await act(async () => openQuickFiles());
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "README" } });
+    fireEvent.change(document.querySelector(".quick-access-input") as HTMLInputElement, { target: { value: "README" } });
     const option = await waitFor(() => {
       const el = [...document.querySelectorAll('[role="option"]')].find((node) =>
         (node as HTMLElement).textContent?.includes("README.md")
@@ -8015,7 +7283,7 @@ describe("WorkbenchPanel", () => {
     const { openQuickFiles } = setupWorkbenchEditorTest("/work/app/src/app.ts", "export const app = true;\n");
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
     await act(async () => openQuickFiles());
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "app.ts" } });
+    fireEvent.change(document.querySelector(".quick-access-input") as HTMLInputElement, { target: { value: "app.ts" } });
     fireEvent.click(await screen.findByRole("option", { name: "app.ts" }));
 
     const editorTab = await waitFor(() => {
@@ -8100,6 +7368,7 @@ describe("WorkbenchPanel", () => {
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await activateWorkItemDirectory("/work/app");
     fireEvent.click(screen.getByRole("button", { name: "Explorer" }));
 
     const markdownLabel = await waitFor(() => {
@@ -8124,7 +7393,7 @@ describe("WorkbenchPanel", () => {
     );
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
     await act(async () => openQuickFiles());
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "guide" } });
+    fireEvent.change(document.querySelector(".quick-access-input") as HTMLInputElement, { target: { value: "guide" } });
     const option = await waitFor(() => {
       const el = [...document.querySelectorAll('[role="option"]')].find((node) =>
         (node as HTMLElement).textContent?.includes("guide.md")
@@ -8430,8 +7699,8 @@ describe("WorkbenchPanel", () => {
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    fireEvent.click(await screen.findByTitle("/work/app"));
-    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    await activateWorkItemDirectory("/work/app");
+    fireEvent.click(document.querySelector(".wb-pane-tab-group-label") as HTMLButtonElement);
     const pending = await waitFor(() => listItem("New session app"));
     fireEvent.click(listItem("Existing session"), { metaKey: true });
     fireEvent.click(pending, { metaKey: true });
@@ -8589,7 +7858,7 @@ describe("WorkbenchPanel", () => {
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    fireEvent.click(await screen.findByTitle("/work/app"));
+    await activateWorkItemDirectory("/work/app");
     await waitFor(() => expect(sendSelection).toBeTypeOf("function"));
     await waitFor(() => expect(setWorkbenchActiveSessions).toHaveBeenCalled());
 
@@ -8633,7 +7902,9 @@ describe("WorkbenchPanel", () => {
         "desktop.workbench.workItemOpenNote": "Open note",
         "desktop.workbench.workItemClear": "Exit work item",
         "desktop.workbench.workItemNext": "Next:",
-        "desktop.workbench.workItemSessions": "{0} sessions"
+        "desktop.workbench.workItemSessions": "{0} sessions",
+        "desktop.workbench.addProject": "Add project",
+        "desktop.workbench.addProjectTitle": "Select project folder"
       } }),
       onLocaleChanged: () => () => undefined,
       onWorkbenchCmdT: () => () => undefined,
@@ -8648,6 +7919,10 @@ describe("WorkbenchPanel", () => {
       }],
       getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
       listSessions: async () => [],
+      addProject: vi.fn(async () => ({ ok: true as const, project: {
+        projectId: "proj-a", portableKey: "/work/app", alias: "App", hidden: false, pinned: false,
+        lastSeenAtMs: null, updatedAtMs: 0, localPath: "/work/app", pathMissing: false, sessionCount: 5
+      } })),
       notesAddWorkItemProject: vi.fn(async () => ({ ok: true })),
       notesListWorkItems: async () => [{
         noteId: "wi-1", scope: "project", projectPath: "/work/app",
@@ -8687,9 +7962,10 @@ describe("WorkbenchPanel", () => {
     expect(label).not.toBe("App");
     expect(label).not.toContain("/work/app");
 
-    // There IS an entry point to reference a project from a project-less work item.
-    const addProject = document.querySelector(".wb-work-item-add-project") as HTMLSelectElement;
-    fireEvent.change(addProject, { target: { value: "/work/app" } });
+    // Finder is the entry point to attach a local directory to a project-less work item.
+    const addProject = document.querySelector(".wb-work-item-add-project") as HTMLButtonElement;
+    fireEvent.click(addProject);
+    await waitFor(() => expect(window.agentResume.addProject).toHaveBeenCalledWith({ title: "Select project folder" }));
     await waitFor(() => expect(window.agentResume.notesAddWorkItemProject).toHaveBeenCalledWith({
       noteId: "wi-1",
       projectPath: "/work/app"
@@ -8712,13 +7988,8 @@ describe("WorkbenchPanel", () => {
       } }));
     });
     await waitFor(() => expect(document.querySelector(".wb-work-item")).not.toBeNull());
-
-    // Repository browsing is secondary: behind the 「Repository」 control.
-    fireEvent.click(screen.getByRole("tab", { name: "Repository" }));
-    await waitFor(() => expect(screen.getByRole("tab", { name: "Projects" })).toBeTruthy());
-    expect(document.querySelector(".wb-work-item-section")).toBeNull();
-    fireEvent.click(screen.getByRole("tab", { name: "Work items" }));
-    await waitFor(() => expect(document.querySelector(".wb-work-item-section")).not.toBeNull());
+    expect(screen.queryByRole("tab", { name: "Repository" })).toBeNull();
+    expect(document.querySelector(".wb-work-item-section")).not.toBeNull();
   });
 
   it("shows a work item's sessions across projects", async () => {

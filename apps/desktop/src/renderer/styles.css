@@ -12714,8 +12714,8 @@ html[data-window-mode="standalone-note"] #react-im {
 .wb-work-item-projects { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .wb-work-item-add-project {
   appearance: none; border: 1px dashed var(--color-separator-opaque); background: transparent;
-  color: var(--color-label-secondary); border-radius: 999px; padding: 0 6px; font-size: 10px;
-  max-width: 170px; cursor: pointer;
+  color: var(--color-label-secondary); border-radius: 999px; padding: 0 8px; font-size: 10px;
+  line-height: 20px; max-width: 170px; cursor: pointer;
 }
 .wb-work-item-add-project:hover { border-color: var(--color-accent); color: var(--color-label-primary); }
 .wb-work-item-target { margin: 0; font-size: 10px; color: var(--color-label-tertiary); display: flex; align-items: center; gap: 2px; }

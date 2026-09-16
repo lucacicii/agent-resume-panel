@@ -41,8 +41,6 @@ function renderSidebar({
     <I18nProvider>
       <WorkbenchSidebar
         collapsed={false}
-        workItemsActive={true}
-        resourceView="projects"
         workItems={workItems}
         selectedWorkItemId={null}
         workItemProjects={[]}
@@ -52,41 +50,12 @@ function renderSidebar({
         needsYouCount={needsYouCount}
         workItemNeedsYouFilter={workItemNeedsYouFilter}
         onWorkItemNeedsYouFilterChange={onWorkItemNeedsYouFilterChange}
-        projectFilter="all"
         projectQuery=""
-        selectedProject={null}
-        selectedFolderId={null}
-        selectedGtdStatus="inbox"
-        completedGtdExpanded={false}
-        expandedProjectIds={new Set()}
-        expandedFolderIds={new Set()}
-        dragTargetKey={null}
-        unclassifiedFolderId="__unclassified__"
-        projects={[]}
-        gtdStatusCounts={new Map()}
-        folderAssignmentKey={(p, s) => `${p}:${s}`}
         onProjectQueryChange={vi.fn()}
-        onProjectFilterChange={vi.fn()}
-        onSelectAllSessions={vi.fn()}
-        onAddProject={vi.fn()}
         onAddWorkItem={onAddWorkItem}
-        onSelectProject={vi.fn()}
-        onToggleProjectExpanded={vi.fn()}
-        onProjectMenu={vi.fn()}
-        onSelectFolder={vi.fn()}
-        onFolderMenu={vi.fn()}
-        onFolderDragOver={vi.fn()}
-        onFolderDragLeave={vi.fn()}
-        onFolderDrop={vi.fn()}
-        onToggleFolderExpanded={vi.fn()}
         onSelectWorkItem={vi.fn()}
-        onSelectWorkItemsView={vi.fn()}
-        onSelectResourceView={vi.fn()}
-        onSelectResourceViewMode={vi.fn()}
         onWorkItemProjectFilterChange={vi.fn()}
         onWorkItemStatusFilterChange={vi.fn()}
-        onSelectGtdStatus={vi.fn()}
-        onToggleCompletedGtd={vi.fn()}
       />
     </I18nProvider>
   );
@@ -148,17 +117,13 @@ describe("WorkbenchSidebar work items live dot (P3)", () => {
       { noteId: "wi-idle", title: "Idle task", status: "next", sessions: ["codex:s-idle"] },
       { noteId: "wi-no-sessions", title: "Empty task", status: "next", sessions: [] }
     ];
-    // dotByKey has no entry for s-idle
     renderSidebar({ workItems, dotByKey: new Map() });
 
     const idleRow = screen.getByRole("button", { name: /Idle task/i });
     const emptyRow = screen.getByRole("button", { name: /Empty task/i });
 
-    // GTD dot is present
     expect(idleRow.querySelector(".wb-gtd-status-dot")).not.toBeNull();
     expect(emptyRow.querySelector(".wb-gtd-status-dot")).not.toBeNull();
-
-    // No second dot (session-dot)
     expect(idleRow.querySelector(".session-dot")).toBeNull();
     expect(emptyRow.querySelector(".session-dot")).toBeNull();
   });
@@ -184,7 +149,6 @@ describe("WorkbenchSidebar needs-you filter chip (P4)", () => {
     const workItems: WorkbenchWorkItem[] = [
       { noteId: "wi-1", title: "Task 1", status: "next", sessions: ["codex:s-1"] }
     ];
-    // No awaiting_user sessions -> n=0
     renderSidebar({
       workItems,
       dotByKey: new Map([

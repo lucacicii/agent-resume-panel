@@ -205,8 +205,6 @@ type BrowserPane = {
 };
 type SideView = "files" | "git" | "search" | "scripts" | "linkgraph" | null;
 type SearchReveal = { path: string; line: number; column: number; endColumn: number };
-type ProjectFilter = "all" | "pinned";
-type WorkbenchSidebarView = "workitems" | "projects" | "gtd";
 const GTD_STATUSES = ["inbox", "next", "waiting", "someday", "reference", "done"] as const satisfies readonly GtdStatus[];
 const WORKBENCH_SESSION_ROW_HEIGHT = 64;
 type CatalogProject = {
@@ -371,7 +369,6 @@ type BranchMenuPosition = {
 
 const PROJECT_KEY = "workbench-selected-project";
 const QUICK_ACCESS_PROJECT_KEY = "workbench-quick-access-project";
-const SIDEBAR_VIEW_KEY = "workbench-sidebar-view-v2";
 const PINNED_PROJECTS_KEY = "pinned-projects";
 const FOLDERS_COLLAPSED_KEY = "wb-folders-collapsed";
 const FOLDERS_WIDTH_KEY = "sidebar-folders-width";
@@ -668,17 +665,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(() => new Set());
   const [expandedProjectIds, setExpandedProjectIds] = useState<Set<string>>(() => new Set());
-  const [sidebarView, setSidebarView] = useState<WorkbenchSidebarView>(() => {
-    const stored = storageString(SIDEBAR_VIEW_KEY);
-    if (stored === "gtd" || stored === "projects" || stored === "workitems") return stored;
-    return "workitems";
-  });
-  /** Last repository sub-view, so the secondary control can return to it. */
-  const [lastResourceView, setLastResourceView] = useState<"projects" | "gtd">("projects");
-  const [selectedGtdStatus, setSelectedGtdStatus] = useState<GtdStatus>("inbox");
-  const [completedGtdExpanded, setCompletedGtdExpanded] = useState(false);
   const [pinnedProjects, setPinnedProjects] = useState<Set<string>>(loadPinnedProjects);
-  const [projectFilter, setProjectFilter] = useState<ProjectFilter>("all");
   const [projectQuery, setProjectQuery] = useState("");
   const [sessionQuery, setSessionQuery] = useState("");
   /** Work-item workspace scope (set by the board); renders a dedicated view. */
@@ -808,6 +795,19 @@ export function WorkbenchPanel(): ReactPortal | null {
   const newSessionButtonRef = useRef<HTMLButtonElement>(null);
   const newSessionPickerRef = useRef<HTMLDivElement>(null);
 
+  const liveWorkItemEarly = workItemScope
+    ? workItems.find((item) => item.noteId === workItemScope.noteId)
+    : undefined;
+  const sideRootProjects = liveWorkItemEarly?.projects ?? workItemScope?.projects ?? [];
+  const sideRoot = workItemScope
+    ? (sessionTarget
+      || liveWorkItemEarly?.primaryProject
+      || workItemScope.primaryProject
+      || sideRootProjects[0]
+      || null)
+    : null;
+  const sideRootRef = useRef<string | null>(sideRoot);
+  sideRootRef.current = sideRoot;
 
   const {
     git,
@@ -835,8 +835,8 @@ export function WorkbenchPanel(): ReactPortal | null {
     notifyGitFailure
   } = useWorkbenchGit({
     active,
-    selectedProject,
-    selectedProjectRef,
+    selectedProject: sideRoot,
+    selectedProjectRef: sideRootRef,
     side,
     nestedScanMaxDepth: settings?.workbench?.gitNestedScanMaxDepth,
     nestedScanIgnoreDirs: settings?.workbench?.gitNestedScanIgnoreDirs,
@@ -1076,31 +1076,8 @@ export function WorkbenchPanel(): ReactPortal | null {
       cursor,
       search: sessionQuery.trim() || undefined
     };
-    if (sidebarView === "gtd") request.gtdStatus = selectedGtdStatus;
-    else {
-      const selected = selectedProjectRef.current;
-      if (selected) {
-        const catalog = catalogProjectsRef.current.find((item) =>
-          item.localPath === selected
-          || item.projectId === selected
-          || item.portableKey === selected
-        );
-        // Count uses project_id. A missing local folder falls back to portableKey
-        // as the selection key, which is not an exact project_path match.
-        // Without a catalog row the sidebar is derived from the loaded session
-        // list, so do not filter the query down to the current selection.
-        if (catalog?.projectId) request.projectId = catalog.projectId;
-        else if (catalog && (selected.includes("/") || selected.includes("\\"))) request.projectPath = selected;
-      }
-    }
-    if (sidebarView === "projects" && selectedFolderId && selectedFolderId !== UNCLASSIFIED_FOLDER_ID) {
-      const keys = Object.values(workbenchFolderData).flatMap((data) => data.assignments
-        .filter((assignment) => assignment.folderId === selectedFolderId)
-        .map((assignment) => ({ provider: assignment.provider, id: assignment.agentSessionId })));
-      if (keys.length) request.keys = keys;
-    }
     return request;
-  }, [catalogProjects, selectedFolderId, selectedGtdStatus, selectedProject, sessionQuery, sidebarView, workbenchFolderData]);
+  }, [sessionQuery]);
 
   const loadProjectMetadata = useCallback(async () => {
     const listProjects = typeof desktopApi().listProjects === "function"
@@ -1136,33 +1113,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     setCatalogProjects(nextProjects || []);
     setWorkbenchFolderData(nextFolderData);
     setGtdStatuses(nextGtdStatuses || {});
-    const withSessions = (nextProjects || []).filter((item) => (item.sessionCount || 0) > 0);
-    const current = selectedProjectRef.current;
-    let next = current;
-    if (workItemScopeRef.current) {
-      // The open work item owns the project context. Never auto-pick a project
-      // here, or a project-less work item would inherit an unrelated cwd.
-      next = current;
-    } else if (current) {
-      const match = (nextProjects || []).find((item) => item.localPath === current || item.projectId === current || item.portableKey === current);
-      if (match) next = match.localPath || match.portableKey || current;
-      else if (pendingSessionsRef.current.some((pending) => projectPathKey(pending.projectPath) === projectPathKey(current))) next = current;
-      else if (
-        terminalsRef.current.some((pane) => pane.projectPath === current)
-        || acpChatsRef.current.some((pane) => pane.projectPath === current)
-        || editorsRef.current.some((pane) => pane.projectPath === current)
-        || diffsRef.current.some((pane) => pane.projectPath === current)
-      ) next = current;
-      else {
-        const firstProject = withSessions.find((item) => item.localPath || item.portableKey);
-        next = firstProject?.localPath || firstProject?.portableKey || current || null;
-      }
-    } else {
-      const firstProject = withSessions.find((item) => item.localPath || item.portableKey);
-      next = firstProject?.localPath || firstProject?.portableKey || current || null;
-    }
-    selectedProjectRef.current = next;
-    setSelectedProject(next);
   }, []);
 
   const loadSessions = useCallback(async () => {
@@ -1201,7 +1151,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
     const timer = window.setTimeout(() => { void loadSessions(); }, 250);
     return () => window.clearTimeout(timer);
-  }, [active, loadSessions, reloadWorkbench, selectedFolderId, selectedGtdStatus, selectedProject, sessionQuery, sidebarView, workbenchFolderData]);
+  }, [active, loadSessions, reloadWorkbench, sessionQuery]);
 
   const loadMoreSessions = useCallback(async () => {
     if (!sessionsCursor || sessionsLoadingMore) return;
@@ -1750,70 +1700,15 @@ export function WorkbenchPanel(): ReactPortal | null {
       || a.id.localeCompare(b.id));
   }, [aliases, catalogProjects, openSessionKeys, pendingSessions, pinnedProjects, sessions, workbenchFolderData]);
 
-  const projects = useMemo(() => {
-    const query = projectQuery.trim().toLowerCase();
-    return allProjects.filter((project) =>
-      (!query || `${project.label} ${project.path} ${project.portableKey}`.toLowerCase().includes(query))
-      && (projectFilter === "all" || project.pinned)
-    );
-  }, [allProjects, projectFilter, projectQuery]);
-
   const selectedProjectMeta = useMemo(
     () => allProjects.find((project) => project.path === selectedProject || project.id === selectedProject) || null,
     [allProjects, selectedProject]
   );
-  const selectedFolder = useMemo(
-    () => selectedProjectMeta?.folders.find((folder) => folder.folderId === selectedFolderId) || null,
-    [selectedFolderId, selectedProjectMeta]
-  );
 
-  const selectedSessions = useMemo(() => {
-    if (sidebarView === "gtd") {
-      const query = projectQuery.trim().toLowerCase();
-      return sessions.filter((session) => {
-        const matchesQuery = !query || `${session.title} ${session.projectPath} ${session.provider}`.toLowerCase().includes(query);
-        return matchesQuery && effectiveGtdStatus(gtdStatuses, session) === selectedGtdStatus;
-      });
-    }
-    if (!selectedProject) return sessions;
-    let projectSessions: AgentSession[];
-    if (selectedProjectMeta) {
-      projectSessions = sessions.filter((session) =>
-        (session.projectId && session.projectId === selectedProjectMeta.id)
-        || session.projectPath === selectedProjectMeta.path
-        || session.projectPath === selectedProject
-      );
-    } else {
-      projectSessions = sessions.filter((session) => session.projectPath === selectedProject);
-    }
-    if (!selectedFolderId || !selectedProjectMeta) return projectSessions;
-    const assignments = new Map(
-      selectedProjectMeta.folderAssignments.map((assignment) => [
-        folderAssignmentKey(assignment.provider, assignment.agentSessionId),
-        assignment.folderId
-      ])
-    );
-    return projectSessions.filter((session) => selectedFolderId === UNCLASSIFIED_FOLDER_ID
-      ? !assignments.has(sessionKey(session))
-      : assignments.get(sessionKey(session)) === selectedFolderId);
-  }, [gtdStatuses, projectQuery, selectedFolderId, selectedGtdStatus, selectedProject, selectedProjectMeta, sessions, sidebarView]);
-  const gtdStatusCounts = useMemo(() => {
-    const query = projectQuery.trim().toLowerCase();
-    const counts = new Map<GtdStatus, number>(GTD_STATUSES.map((status) => [status, 0] as const));
-    for (const session of sessions) {
-      const matchesQuery = !query || `${session.title} ${session.projectPath} ${session.provider}`.toLowerCase().includes(query);
-      if (matchesQuery) {
-        const status = effectiveGtdStatus(gtdStatuses, session);
-        counts.set(status, (counts.get(status) || 0) + 1);
-      }
-    }
-    return counts;
-  }, [gtdStatuses, projectQuery, sessions]);
-  const selectedSessionScope = sidebarView === "gtd"
-    ? t(`desktop.workbench.gtdStatus.${selectedGtdStatus}`)
-    : selectedFolderId === UNCLASSIFIED_FOLDER_ID
-      ? t("desktop.workbench.unclassifiedSessions")
-        : selectedFolder?.name || (selectedProject ? basename(selectedProject) : t("desktop.workbench.allSessions"));
+  const selectedSessions = sessions;
+  const selectedSessionScope = workItemScope
+    ? (workItemScope.title || t("desktop.workbench.workItemView"))
+    : t("desktop.workbench.allSessions");
   /**
    * A work item's sessions come from the catalog by key, not from the selected
    * project's page — that is what lets one work item span several repositories.
@@ -1846,7 +1741,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         }).filter((entry): entry is { provider: string; id: string } => entry !== null)
       : [];
     if (!parsed.length || typeof desktopApi().querySessionsPage !== "function") {
-      setWorkItemSessions([]);
+      setWorkItemSessions(null);
       return;
     }
     let alive = true;
@@ -1859,17 +1754,15 @@ export function WorkbenchPanel(): ReactPortal | null {
   const visibleSessions = useMemo(() => {
     // A work item scopes the list across projects: show exactly its sessions,
     // loaded from the catalog by key rather than from the selected project.
-    const source = workItemScope ? (workItemSessions ?? []) : selectedSessions;
+    const source = workItemScope && workItemSessions ? workItemSessions : selectedSessions;
     return source.filter((session) =>
       `${session.title} ${session.id} ${session.provider}`.toLowerCase().includes(sessionQuery.trim().toLowerCase())
     ).sort((a, b) => b.updatedAt - a.updatedAt);
   }, [selectedSessions, sessionQuery, workItemScope, workItemSessions]);
-  const selectedPendingSessions = useMemo(() => pendingSessions.filter((pending) => {
-    if (sidebarView === "gtd") return false;
-    if (!selectedProject) return true;
-    const selectedPath = selectedProjectMeta?.path || selectedProject;
-    return projectPathKey(pending.projectPath) === projectPathKey(selectedPath);
-  }), [pendingSessions, selectedProject, selectedProjectMeta, sidebarView]);
+  const selectedPendingSessions = useMemo(() => {
+    if (!workItemScope) return pendingSessions;
+    return pendingSessions.filter((pending) => pending.workItemNoteId === workItemScope.noteId);
+  }, [pendingSessions, workItemScope]);
   const visiblePendingSessions = useMemo(() => selectedPendingSessions.filter((pending) =>
     `${pending.title} ${pending.provider}`.toLowerCase().includes(sessionQuery.trim().toLowerCase())
   ).sort((a, b) => b.createdAt - a.createdAt), [selectedPendingSessions, sessionQuery]);
@@ -2171,43 +2064,11 @@ export function WorkbenchPanel(): ReactPortal | null {
     gitLogRequestRef.current += 1;
   };
 
-  const addProject = useCallback(async () => {
-    try {
-      if (typeof desktopApi().addProject !== "function") return;
-      const result = await desktopApi().addProject({ title: t("desktop.workbench.addProjectTitle") });
-      if (!result.ok) return; // canceled — silent no-op
-      selectProject(result.project.localPath || result.project.portableKey);
-      await reloadWorkbench();
-    } catch (error) {
-      setStatus({ text: statusError(error), kind: "error" });
-    }
-  }, [reloadWorkbench, selectProject, setStatus, t]);
-
-  const selectProjectFolder = useCallback((project: WorkbenchProject, folderId: string | null) => {
-    const folderChanged = selectedFolderId !== folderId;
-    selectProject(project.path, { keepSessionKey: true });
-    setSelectedFolderId(folderId);
-    if (folderChanged) {
-      setSelectedSessionKeys((current) => current.size ? new Set() : current);
-      setSelectionAnchorKey((current) => current ? "" : current);
-    }
-  }, [selectProject, selectedFolderId]);
-
   const focusPendingSession = useCallback((pending: PendingWorkbenchSession) => {
     selectProject(pending.projectPath, { keepSessionKey: true });
     setActivePane(pending.terminalKey, pending.projectPath);
     setActiveSessionKey(pending.key);
   }, [setActivePane]);
-
-  const selectSidebarView = (view: WorkbenchSidebarView) => {
-    if (view !== sidebarView) {
-      setSelectedSessionKeys((current) => current.size ? new Set() : current);
-      setSelectionAnchorKey((current) => current ? "" : current);
-    }
-    if (view !== "workitems") setLastResourceView(view);
-    setSidebarView(view);
-    try { localStorage.setItem(SIDEBAR_VIEW_KEY, view); } catch { /* persistence is optional */ }
-  };
 
   const togglePinnedProject = async (path: string, projectId?: string) => {
     const currentlyPinned = pinnedProjects.has(path)
@@ -2810,30 +2671,13 @@ export function WorkbenchPanel(): ReactPortal | null {
       }
       const mention = explicitMention || matchComposerMentionForCwd(mentions, cwd);
       if (mention) cwd = mention.cwd;
-      if (!selectedProject && !resolvedCwd.isWorkspace) selectProject(cwd);
-      else if ((targetProject || mention) && selectedProject && projectPathKey(selectedProject) !== projectPathKey(cwd)) selectProject(cwd);
-      // When the projects sidebar focuses a subfolder of the launch project,
-      // associate the new session with that folder automatically.
-      const focusedFolder = selectedProject && selectedFolderId && selectedFolderId !== UNCLASSIFIED_FOLDER_ID && selectedProjectMeta
-        && projectPathKey(cwd) === projectPathKey(selectedProject)
-        ? { projectId: selectedProjectMeta.id, folderId: selectedFolderId }
-        : null;
+      if (workItemScopeRef.current && !resolvedCwd.isWorkspace) selectProject(cwd, { keepSessionKey: true });
       const prompt = [mention ? buildComposerMentionPrompt(mention) : "", initialPrompt?.trim() || ""]
         .filter(Boolean)
         .join("\n\n");
       if (target.channel === "acp") {
         const record = await desktopApi().acpCreateSession({ projectPath: cwd, provider: target.provider });
         addAcpChat(record, prompt ? { initialPrompt: prompt } : undefined);
-        if (focusedFolder && typeof desktopApi().assignWorkbenchSessionToFolder === "function") {
-          try {
-            await desktopApi().assignWorkbenchSessionToFolder({
-              projectId: focusedFolder.projectId,
-              provider: "chat",
-              agentSessionId: record.id,
-              folderId: focusedFolder.folderId
-            });
-          } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
-        }
         await reloadWorkbench();
       } else {
         const result = await desktopApi().workbenchNewSession({
@@ -2863,7 +2707,7 @@ export function WorkbenchPanel(): ReactPortal | null {
           const launchCwd = result.cwd || cwd;
           const title = t("desktop.workbench.newSessionTitle", basename(launchCwd));
           const terminalKey = addTerminal(title, launchCwd, result.command, launchCwd, undefined, "session", prompt ? { initialPrompt: prompt } : undefined);
-          addPendingSession(terminalKey, target.provider, launchCwd, title, focusedFolder || undefined);
+          addPendingSession(terminalKey, target.provider, launchCwd, title);
           setSessionViewMode("hybrid");
           localStorage.setItem(SESSION_VIEW_MODE_KEY, "hybrid");
         }
@@ -2871,7 +2715,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       }
     } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
     finally { setTerminalCreating(false); }
-  }, [addAcpChat, addPendingSession, addTerminal, loadSessions, reloadWorkbench, selectedFolderId, selectedProject, selectedProjectMeta, settings?.workbench?.composerMentions, t, terminalCreating]);
+  }, [addAcpChat, addPendingSession, addTerminal, loadSessions, reloadWorkbench, settings?.workbench?.composerMentions, t, terminalCreating]);
 
   const requestNewSession = useCallback(async (targetProject?: string, projectId?: string) => {
     if (terminalCreating) return;
@@ -3429,10 +3273,13 @@ export function WorkbenchPanel(): ReactPortal | null {
       selectProject(target ?? null, { keepSessionKey: true });
       setSessionTarget(null);
       setRoomProjectId(null);
-      setSidebarView("workitems");
-      try { localStorage.setItem(SIDEBAR_VIEW_KEY, "workitems"); } catch { /* ignore */ }
     };
-    const onWorkItemClear = () => { setWorkItemScope(null); setRoomProjectId(null); setSessionTarget(null); };
+    const onWorkItemClear = () => {
+      setWorkItemScope(null);
+      setRoomProjectId(null);
+      setSessionTarget(null);
+      selectProject(null, { keepSessionKey: true, keepSide: true });
+    };
     window.addEventListener("agent-resume:workbench-work-item", onWorkItem);
     window.addEventListener("agent-resume:workbench-work-item-clear", onWorkItemClear);
     return () => {
@@ -3448,8 +3295,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       const detail = (event as CustomEvent<{ projectId?: string }>).detail;
       if (!detail?.projectId) return;
       setRoomProjectId(detail.projectId);
-      setSidebarView("workitems");
-      try { localStorage.setItem(SIDEBAR_VIEW_KEY, "workitems"); } catch { /* ignore */ }
     };
     window.addEventListener("agent-resume:workbench-open-room", onOpenRoom);
     return () => window.removeEventListener("agent-resume:workbench-open-room", onOpenRoom);
@@ -3475,6 +3320,21 @@ export function WorkbenchPanel(): ReactPortal | null {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const pickWorkItemProject = useCallback(async () => {
+    const scope = workItemScopeRef.current;
+    if (!scope) return;
+    try {
+      if (typeof desktopApi().addProject !== "function") return;
+      const result = await desktopApi().addProject({ title: t("desktop.workbench.addProjectTitle") });
+      if (!result.ok) return;
+      const projectPath = result.project.localPath || result.project.portableKey;
+      if (!projectPath) return;
+      await addProjectToWorkItem(projectPath);
+    } catch (error) {
+      setStatus({ text: statusError(error), kind: "error" });
+    }
+  }, [addProjectToWorkItem, t]);
+
   const removeProject = useCallback(async (projectPath: string) => {
     const scope = workItemScopeRef.current;
     if (!scope || typeof desktopApi().notesRemoveWorkItemProject !== "function") return;
@@ -3484,21 +3344,15 @@ export function WorkbenchPanel(): ReactPortal | null {
       if (sessionTargetRef.current && projectPathKey(sessionTargetRef.current) === projectPathKey(projectPath)) {
         setSessionTarget(null);
       }
+      if (selectedProjectRef.current && projectPathKey(selectedProjectRef.current) === projectPathKey(projectPath)) {
+        const remaining = scopeProjectsRef.current.filter((path) => projectPathKey(path) !== projectPathKey(projectPath));
+        selectProject(remaining[0] ?? null, { keepSessionKey: true });
+      }
       window.dispatchEvent(new Event("agent-resume:notes-mutated"));
     } catch (error) {
       setStatus({ text: statusError(error), kind: "error" });
     }
   }, [t]);
-
-  const availableProjects = useMemo(
-    () => catalogProjects
-      .map((project) => {
-        const path = project.localPath || project.portableKey;
-        return { path, label: aliases[path] || basename(path) };
-      })
-      .filter((project) => project.path && !scopeProjects.includes(project.path)),
-    [aliases, catalogProjects, scopeProjects]
-  );
 
   const openRoom = useCallback(async () => {
     const scope = workItemScopeRef.current;
@@ -3960,7 +3814,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
       }
       if (action === "merge" && menu.projectId && typeof desktopApi().mergeProjects === "function") {
-        const options = projects
+        const options = allProjects
           .filter((project) => project.id !== menu.projectId)
           .map((project) => ({ id: project.id, label: project.label, path: project.path }));
         if (!options.length) {
@@ -4207,10 +4061,10 @@ export function WorkbenchPanel(): ReactPortal | null {
     toggleScriptsSectionCollapsed
   } = useWorkbenchScripts({
     active,
-    selectedProject,
+    selectedProject: sideRoot,
     side,
     runScript: (script, _pkg) => {
-      const projectPath = selectedProject || script.run.cwd;
+      const projectPath = sideRoot || script.run.cwd;
       addTerminal(script.name, script.run.cwd, script.run.command, projectPath);
     }
   });
@@ -4386,7 +4240,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     leaveQuickAccessProjectMode,
     invalidateQuickAccessCache
   } = useWorkbenchQuickAccess({
-    selectedProject,
+    selectedProject: sideRoot,
     quickAccessProjectKey: QUICK_ACCESS_PROJECT_KEY,
     onDismissOverlays: () => {
       setContextMenu(null);
@@ -4568,7 +4422,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     toggleSearchReplace,
     resetSearchProjectMode
   } = useWorkbenchSearch({
-    selectedProject,
+    selectedProject: sideRoot,
     side,
     getDirtyEditorPaths: (projectPath) => editorsRef.current
       .filter((editor) => editor.projectPath === projectPath && editor.dirty)
@@ -5333,6 +5187,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   };
   const activateSearchProject = (project = searchProjectActive) => {
     if (!project || project.disabledReason) return;
+    if (workItemScopeRef.current) setSessionTarget(project.path);
     selectProject(project.path, { keepSide: true });
     leaveSearchProjectMode();
   };
@@ -5529,8 +5384,8 @@ export function WorkbenchPanel(): ReactPortal | null {
         localStorage.setItem(FOLDERS_COLLAPSED_KEY, String(next));
         return next;
       })}
-      selectedProject={selectedProject}
-      projectLabel={selectedProject ? aliases[selectedProject] || basename(selectedProject) : ""}
+      selectedProject={sideRoot}
+      projectLabel={sideRoot ? aliases[sideRoot] || basename(sideRoot) : ""}
       emptyLabel={workItemScope ? t("desktop.workbench.workItemNoProject") : undefined}
       side={side}
       branchStatusLabel={branchStatusLabel}
@@ -5545,20 +5400,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     <div className="workbench-layout" style={{ "--sidebar-folders-width": `${foldersCollapsed ? 0 : foldersWidth}px`, "--wb-list-width": `${listWidth}px`, "--wb-side-panel-width": `${sideWidth}px` } as CSSProperties}>
       <WorkbenchSidebar
         collapsed={foldersCollapsed}
-        workItemsActive={sidebarView === "workitems"}
-        resourceView={sidebarView === "workitems" ? lastResourceView : sidebarView}
-        projectFilter={projectFilter}
         projectQuery={projectQuery}
-        selectedProject={selectedProject}
-        selectedFolderId={selectedFolderId}
-        selectedGtdStatus={selectedGtdStatus}
-        completedGtdExpanded={completedGtdExpanded}
-        expandedProjectIds={expandedProjectIds}
-        expandedFolderIds={expandedFolderIds}
-        dragTargetKey={dragTargetKey}
-        unclassifiedFolderId={UNCLASSIFIED_FOLDER_ID}
-        projects={projects}
-        gtdStatusCounts={gtdStatusCounts}
         workItems={visibleWorkItems}
         selectedWorkItemId={workItemScope?.noteId ?? null}
         workItemProjects={workItemProjects}
@@ -5568,45 +5410,11 @@ export function WorkbenchPanel(): ReactPortal | null {
         workItemNeedsYouFilter={workItemNeedsYouFilter}
         onWorkItemNeedsYouFilterChange={setWorkItemNeedsYouFilter}
         dotByKey={dotByKey}
-        folderAssignmentKey={folderAssignmentKey}
-        onSelectWorkItemsView={() => selectSidebarView("workitems")}
-        onSelectResourceView={() => selectSidebarView(lastResourceView)}
-        onSelectResourceViewMode={(view) => selectSidebarView(view)}
         onProjectQueryChange={setProjectQuery}
-        onProjectFilterChange={setProjectFilter}
-        onSelectAllSessions={() => selectProject(null)}
-        onAddProject={() => void addProject()}
         onAddWorkItem={() => void addWorkItem()}
-        onSelectProject={(path) => selectProject(path)}
-        onToggleProjectExpanded={(projectId) => setExpandedProjectIds((current) => {
-          const next = new Set(current);
-          if (next.has(projectId)) next.delete(projectId);
-          else next.add(projectId);
-          return next;
-        })}
-        onProjectMenu={projectMenu}
-        onSelectFolder={selectProjectFolder}
-        onFolderMenu={folderMenu}
-        onFolderDragOver={handleFolderDragOver}
-        onFolderDragLeave={handleFolderDragLeave}
-        onFolderDrop={handleFolderDrop}
-        onToggleFolderExpanded={(folderId) => setExpandedFolderIds((current) => {
-          const next = new Set(current);
-          if (next.has(folderId)) next.delete(folderId);
-          else next.add(folderId);
-          return next;
-        })}
         onSelectWorkItem={selectWorkItem}
         onWorkItemProjectFilterChange={setWorkItemProjectFilter}
         onWorkItemStatusFilterChange={setWorkItemStatusFilter}
-        onSelectGtdStatus={(gtdStatus) => {
-          if (gtdStatus !== selectedGtdStatus) {
-            setSelectedSessionKeys((current) => current.size ? new Set() : current);
-            setSelectionAnchorKey((current) => current ? "" : current);
-          }
-          setSelectedGtdStatus(gtdStatus);
-        }}
-        onToggleCompletedGtd={() => setCompletedGtdExpanded((value) => !value)}
       />
       <ResizeHandle label={t("desktop.workbench.resizeProjects")} onDelta={(delta) => setWidth("folders", delta)} />
       <aside className="wb-list-pane">
@@ -5676,7 +5484,7 @@ export function WorkbenchPanel(): ReactPortal | null {
                 {workItemScope.decision}
               </p>
             )}
-            <p className="wb-work-item-count">{t("desktop.workbench.workItemSessions", workItemScope.sessions.length)}</p>
+            <p className="wb-work-item-count">{t("desktop.workbench.workItemSessions", workItemScope.sessions?.length ?? 0)}</p>
             <div className="wb-work-item-projects">
               {scopeProjects.map((path) => {
                 const active = sessionTarget
@@ -5704,22 +5512,17 @@ export function WorkbenchPanel(): ReactPortal | null {
                   </span>
                 );
               })}
-              <select
+              <button
+                type="button"
                 className="wb-work-item-add-project"
                 aria-label={t("desktop.workbench.addProject")}
-                title={t("desktop.workbench.addProject")}
-                value=""
-                onChange={(event) => { if (event.target.value) void addProjectToWorkItem(event.target.value); }}
+                title={t("desktop.workbench.addProjectTitle")}
+                onClick={() => void pickWorkItemProject()}
               >
-                <option value="">
-                  {scopeProjects.length === 0
-                    ? t("desktop.workbench.workItemNoProject")
-                    : `+ ${t("desktop.workbench.addProject")}`}
-                </option>
-                {availableProjects.map((project) => (
-                  <option key={project.path} value={project.path}>{project.label}</option>
-                ))}
-              </select>
+                {scopeProjects.length === 0
+                  ? t("desktop.workbench.workItemNoProject")
+                  : `+ ${t("desktop.workbench.addProject")}`}
+              </button>
             </div>
             <p className="wb-work-item-target">
               {t("desktop.workbench.sessionTarget", sessionTarget
@@ -6024,8 +5827,8 @@ export function WorkbenchPanel(): ReactPortal | null {
               onDestroyed={() => closeBrowser(pane.key)}
             />;
           })}{terminalCreating && !currentTerminals.some((pane) => pane.projectPath === selectedProject && !pane.ptyId) && !currentAcpChat ? <div className="wb-terminal-loading wb-terminal-loading-stack" role="status" aria-live="polite"><ThemeIcon name="loader" className="spin" size={18} aria-hidden="true" /><span>{t("desktop.common.loading")}</span></div> : null}{!terminalCreating && !currentTerminals.length && !currentEditors.length && !currentDiffs.length && !currentAcpChats.length && !currentBrowsers.length ? <p className="muted wb-terminal-hint">{selectedProject ? t("desktop.workbench.selectSessionHint") : t("desktop.workbench.selectProjectHint")}</p> : null}</div></div>
-          {side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane wb-explorer-side-pane"><WorkbenchFileExplorer ref={fileExplorerRef} rootPath={selectedProject || ""} activePath={currentFilePath} onOpenFile={(path) => void openFile(path)} onOpenPreview={(path) => void openFile(path, undefined, selectedProject, "preview")} onShowGitHistory={(path) => void loadGitFileHistory(path)} onFindInFolder={findInExplorerFolder} onError={(message) => setStatus({ text: message, kind: "error" })} /><WorkbenchScriptsPane compact hasProject={Boolean(selectedProject)} selectedProject={selectedProject} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} collapsed={scriptsSectionCollapsed} onToggleCollapsed={toggleScriptsSectionCollapsed} onRefresh={selectedProject ? () => void loadScripts(selectedProject) : undefined} onRun={runScript} /></div> : side === "scripts" ? <WorkbenchScriptsPane hasProject={Boolean(selectedProject)} selectedProject={selectedProject} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} onRefresh={selectedProject ? () => void loadScripts(selectedProject) : undefined} onRun={runScript} /> : side === "search" ? <WorkbenchSearchSidePane
-            selectedProject={selectedProject}
+          {side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane wb-explorer-side-pane"><WorkbenchFileExplorer ref={fileExplorerRef} rootPath={sideRoot || ""} activePath={currentFilePath} onOpenFile={(path) => void openFile(path)} onOpenPreview={(path) => void openFile(path, undefined, sideRoot || undefined, "preview")} onShowGitHistory={(path) => void loadGitFileHistory(path)} onFindInFolder={findInExplorerFolder} onError={(message) => setStatus({ text: message, kind: "error" })} /><WorkbenchScriptsPane compact hasProject={Boolean(sideRoot)} selectedProject={sideRoot} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} collapsed={scriptsSectionCollapsed} onToggleCollapsed={toggleScriptsSectionCollapsed} onRefresh={sideRoot ? () => void loadScripts(sideRoot) : undefined} onRun={runScript} /></div> : side === "scripts" ? <WorkbenchScriptsPane hasProject={Boolean(sideRoot)} selectedProject={sideRoot} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} onRefresh={sideRoot ? () => void loadScripts(sideRoot) : undefined} onRun={runScript} /> : side === "search" ? <WorkbenchSearchSidePane
+            selectedProject={sideRoot}
             searchQuery={searchQuery}
             onSearchQueryChange={setSearchQuery}
             searchProjectMode={searchProjectMode}
@@ -6143,7 +5946,7 @@ export function WorkbenchPanel(): ReactPortal | null {
             </div> : <div className="wb-git-panel">{git?.isRepo || git?.nestedRepos?.length ? <>
               {changes.map((section) => section.entries.length ? <section className="wb-git-section" key={section.title}><h4 className="wb-git-section-title">{section.title}</h4>{section.entries.map((change, index) => <button type="button" className="wb-git-file" key={`${change.repoRoot}:${change.repoPath}:${index}`} onClick={() => void openDiff(change, section.staged)}><span className={`wb-git-file-status is-${change.status.toLowerCase().slice(0, 3)}`}>{change.status}</span><span className="wb-git-file-path">{change.path}</span></button>)}</section> : null)}
               {!changes.some((section) => section.entries.length) ? <p className="muted wb-git-empty">{t("desktop.workbench.sidePanelNoChanges")}</p> : null}
-            </> : <p className="muted wb-git-empty">{selectedProject ? t("desktop.workbench.sidePanelGitUnavailable") : t("desktop.workbench.sidePanelNoRoot")}</p>}</div>}
+            </> : <p className="muted wb-git-empty">{sideRoot ? t("desktop.workbench.sidePanelGitUnavailable") : t("desktop.workbench.sidePanelNoRoot")}</p>}</div>}
           </div>}</aside></> : null}
         </div>
       </main>
@@ -6423,7 +6226,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         stagedTitle: t("desktop.workbench.sidePanelStaged"),
         changesTitle: t("desktop.workbench.sidePanelChanges"),
         noChanges: t("desktop.workbench.sidePanelNoChanges"),
-        unavailable: selectedProject ? t("desktop.workbench.sidePanelGitUnavailable") : t("desktop.workbench.sidePanelNoRoot"),
+        unavailable: sideRoot ? t("desktop.workbench.sidePanelGitUnavailable") : t("desktop.workbench.sidePanelNoRoot"),
         messageLabel: t("desktop.workbench.gitCommitDialogTitle"),
         resizeInput: t("desktop.workbench.resizeCommitInput"),
         autoGenerate: t("desktop.workbench.gitCommitAutoGenerate"),

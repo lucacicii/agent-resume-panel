@@ -10,18 +10,19 @@ Languages: [English](#english) | [简体中文](#简体中文)
 
 ### What it is
 
-**Workbench** is Desktop’s **session OS** surface: pick or create sessions, resume in an **embedded xterm** or the **system default terminal**, and use **Git / explorer** tools in a side panel. It is the primary place to *continue working*, while [Sessions](sessions.md) is a lighter reference list.
+**Workbench** is Desktop’s **session OS** surface: pick a **work item**, open its **sessions**, resume in an **embedded xterm** or the **system default terminal**, and use **Git / explorer** tools against that work item’s local folders. It is the primary place to *continue working*, while [Sessions](sessions.md) is a lighter reference list.
 
 ### Core flows
 
-1. Open the **Workbench** tab.  
-2. Use **Quick Access** to choose a project when you need to switch context; browse the complete session list and create a new session if needed (default agent: **Settings → Workbench → New Session**). If [workspace mentions](workspace-mentions.md) are configured, the picker can open a pack’s work folder and inject reference paths into the first prompt. `arpm go <id>` does the same from any terminal.  
-3. Resume CLI sessions in the **embedded terminal** (multi-tab) or **external** terminal.  
-4. If the default target is an **ACP · …** agent, **New session** opens a **visual chat pane** in the same tab strip (Agent Client Protocol; Claude Code, Codex, Grok Build, OpenCode, Pi).  
-5. Use the detail header for project path and **branch** controls; watch the **status bar** for live **cwd** and **git branch** (including nested repos when detected).  
-6. Open **Search** or **Scripts** from the detail toolbar, or expand scripts under **Explorer**; click the status bar branch to switch branches when Git IPC is available.  
-7. In **Git**, select specific changed files before commit when you do not want to commit everything; open a changed file to inspect an inline diff and search within it. **Auto generate** uses `<repo>/.arp/config.json` `workbench.git.commitMessage` when present, otherwise **Settings → Workbench** commit-message style.
-8. In **Explorer**, right-click a file to inspect its Git history across local and remote-tracking branches, including commits before renames. Right-click a folder to discard Git changes under that directory, or use context menus on changed files to open them or copy absolute / relative paths. Open editors watch the workspace and report external changes, conflicts, and deleted files.
+1. Open the **Workbench** tab. The sidebar lists **work items** (not repositories).  
+2. Select a work item to see only its sessions. With no work item selected, the middle pane lists all sessions.  
+3. Attach a local folder with **Add project** (macOS folder picker). Click a folder chip to make it the active root for Explorer / Git / Search / Scripts. A work item can reference several folders; with none or several, new sessions start in the work item’s shared workspace.  
+4. Resume CLI sessions in the **embedded terminal** (multi-tab) or **external** terminal. If [workspace mentions](workspace-mentions.md) are configured, the new-session picker can open a pack’s work folder and inject reference paths into the first prompt. `arpm go <id>` does the same from any terminal.  
+5. If the default target is an **ACP · …** agent, **New session** opens a **visual chat pane** in the same tab strip (Agent Client Protocol; Claude Code, Codex, Grok Build, OpenCode, Pi).  
+6. Use the detail header for the active folder path and **branch** controls; watch the **status bar** for live **cwd** and **git branch** (including nested repos when detected).  
+7. Open **Search** or **Scripts** from the detail toolbar, or expand scripts under **Explorer**; click the status bar branch to switch branches when Git IPC is available.  
+8. In **Git**, select specific changed files before commit when you do not want to commit everything; open a changed file to inspect an inline diff and search within it. **Auto generate** uses `<repo>/.arp/config.json` `workbench.git.commitMessage` when present, otherwise **Settings → Workbench** commit-message style.
+9. In **Explorer**, right-click a file to inspect its Git history across local and remote-tracking branches, including commits before renames. Right-click a folder to discard Git changes under that directory, or use context menus on changed files to open them or copy absolute / relative paths. Open editors watch the workspace and report external changes, conflicts, and deleted files.
 
 ### Side panel
 
@@ -78,18 +79,19 @@ Choose an **ACP · …** default agent in **Settings → Workbench → New Sessi
 
 ### 是什么
 
-**Workbench** 是 Desktop 的 **Session OS** 工作台：选择或新建会话，在 **内嵌 xterm** 或 **系统默认终端** 中恢复，并使用侧边栏 **Git / 资源管理器**。这里是 *继续干活* 的主战场；[Sessions](sessions.md) 更偏参考列表。
+**Workbench** 是 Desktop 的 **Session OS** 工作台：选一个 **工作项**，打开它的 **session**，在 **内嵌 xterm** 或 **系统默认终端** 中恢复，并用 **Git / 资源管理器** 操作该工作项的本地目录。这里是 *继续干活* 的主战场；[Sessions](sessions.md) 更偏参考列表。
 
 ### 核心流程
 
-1. 打开 **Workbench** 页签。  
-2. 使用 **Quick Access** 快速切换项目；浏览完整会话列表，需要时新建会话（默认 Agent：**Settings → Workbench → New Session**）。若配置了 [工作区 Mention](workspace-mentions.md)，选择器可打开该包的工作目录并把参考路径写入首条 prompt。任意终端也可用 `arpm go <id>`。  
-3. CLI 会话用 **内嵌终端**（多标签）或 **外部终端** 恢复。  
-4. 若默认目标为 **ACP · …** Agent，**新建会话**会在同一标签栏打开 **可视化聊天**（Agent Client Protocol；支持 Claude Code、Codex、Grok Build、OpenCode、Pi）。  
-5. 在详情头查看项目路径与 **分支** 控件；在 **状态栏** 查看实时 **cwd** 与 **git 分支**（可识别嵌套仓库）。  
-6. 从详情工具栏打开 **Search** 或 **Scripts**，也可在 **Explorer** 下展开脚本区；Git IPC 可用时可点击状态栏分支切换分支。  
-7. 在 **Git** 中可先勾选变更文件再提交，不必一次提交全部改动；打开变更文件可查看内联 diff 并在其中查找。**自动生成**优先使用仓库 `<repo>/.arp/config.json` 的 `workbench.git.commitMessage`，没有该文件时回退到 **设置 → Workbench** 的提交信息格式。
-8. 在 **Explorer** 中右键文件可查看本地分支与远程跟踪分支中的 Git 提交历史（包含文件重名前的记录）；右键目录可一键回退该目录下的 Git 改动；在 Git 变更项右键菜单中可直接打开文件或复制绝对/相对路径。打开的编辑器会监听工作区，并提示外部修改、冲突和文件删除。
+1. 打开 **Workbench** 页签。侧栏列的是 **工作项**（不再按仓库浏览）。  
+2. 选中工作项只看它的 session；未选工作项时中间栏列出全部 session。  
+3. 用 **新增项目**（macOS 文件夹选择器）挂本地目录。点目录 chip 把它设为 Explorer / Git / Search / Scripts 的活动根。一个工作项可挂多个目录；零个或多个时，新 session 走工作项的共享 workspace。  
+4. CLI 会话用 **内嵌终端**（多标签）或 **外部终端** 恢复。若配置了 [工作区 Mention](workspace-mentions.md)，新建会话选择器可打开该包的工作目录并把参考路径写入首条 prompt。任意终端也可用 `arpm go <id>`。  
+5. 若默认目标为 **ACP · …** Agent，**新建会话**会在同一标签栏打开 **可视化聊天**（Agent Client Protocol；支持 Claude Code、Codex、Grok Build、OpenCode、Pi）。  
+6. 在详情头查看活动目录路径与 **分支** 控件；在 **状态栏** 查看实时 **cwd** 与 **git 分支**（可识别嵌套 git 根）。  
+7. 从详情工具栏打开 **Search** 或 **Scripts**，也可在 **Explorer** 下展开脚本区；Git IPC 可用时可点击状态栏分支切换分支。  
+8. 在 **Git** 中可先勾选变更文件再提交，不必一次提交全部改动；打开变更文件可查看内联 diff 并在其中查找。**自动生成**优先使用仓库 `<repo>/.arp/config.json` 的 `workbench.git.commitMessage`，没有该文件时回退到 **设置 → Workbench** 的提交信息格式。
+9. 在 **Explorer** 中右键文件可查看本地分支与远程跟踪分支中的 Git 提交历史（包含文件重名前的记录）；右键目录可一键回退该目录下的 Git 改动；在 Git 变更项右键菜单中可直接打开文件或复制绝对/相对路径。打开的编辑器会监听工作区，并提示外部修改、冲突和文件删除。
 
 ### 侧边栏
 
