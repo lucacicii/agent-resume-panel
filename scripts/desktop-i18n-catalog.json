@@ -10,7 +10,16 @@
     "desktop.gtd.createTemplate": "Create template",
     "desktop.gtd.editTemplate": "Edit template",
     "desktop.gtd.deleteTemplate": "Delete template",
-    "desktop.gtd.deleteTemplateConfirm": "Delete template \"{0}\"?"
+    "desktop.gtd.deleteTemplateConfirm": "Delete template \"{0}\"?",
+    "desktop.workbench.quickAccessCategoryNavigation": "Navigation",
+    "desktop.workbench.quickAccessCategoryWorkspace": "Workspace",
+    "desktop.workbench.quickAccessCategorySessions": "Sessions & Terminals",
+    "desktop.workbench.quickAccessCategoryPanels": "Panels",
+    "desktop.workbench.quickAccessCategoryFiles": "Files",
+    "desktop.workbench.quickAccessCategoryApplication": "Application",
+    "desktop.workbench.quickAccessShowGtd": "View: Show GTD Board",
+    "desktop.workbench.quickAccessExitWorkItem": "Workbench: Exit Work Item",
+    "desktop.workbench.quickAccessShowLinkGraph": "Workbench: Show Link Graph"
   },
   "ja": {
     "desktop.workbench.lastExitWaiting": "前回終了時にこのセッションは入力待ちでした",
@@ -23,7 +32,16 @@
     "desktop.gtd.createTemplate": "テンプレートを作成",
     "desktop.gtd.editTemplate": "テンプレートを編集",
     "desktop.gtd.deleteTemplate": "テンプレートを削除",
-    "desktop.gtd.deleteTemplateConfirm": "テンプレート「{0}」を削除しますか？"
+    "desktop.gtd.deleteTemplateConfirm": "テンプレート「{0}」を削除しますか？",
+    "desktop.workbench.quickAccessCategoryNavigation": "ナビゲーション",
+    "desktop.workbench.quickAccessCategoryWorkspace": "ワークスペース",
+    "desktop.workbench.quickAccessCategorySessions": "セッションとターミナル",
+    "desktop.workbench.quickAccessCategoryPanels": "パネル",
+    "desktop.workbench.quickAccessCategoryFiles": "ファイル",
+    "desktop.workbench.quickAccessCategoryApplication": "アプリケーション",
+    "desktop.workbench.quickAccessShowGtd": "表示: GTDボード",
+    "desktop.workbench.quickAccessExitWorkItem": "Workbench: ワークアイテムを終了",
+    "desktop.workbench.quickAccessShowLinkGraph": "Workbench: Link Graph を表示"
   },
   "zh-cn": {
     "desktop.workbench.lastExitWaiting": "上次退出时该会话在等待你的输入",
@@ -36,6 +54,15 @@
     "desktop.gtd.createTemplate": "创建模板",
     "desktop.gtd.editTemplate": "编辑模板",
     "desktop.gtd.deleteTemplate": "删除模板",
-    "desktop.gtd.deleteTemplateConfirm": "删除模板「{0}」？"
+    "desktop.gtd.deleteTemplateConfirm": "删除模板「{0}」？",
+    "desktop.workbench.quickAccessCategoryNavigation": "导航",
+    "desktop.workbench.quickAccessCategoryWorkspace": "工作区",
+    "desktop.workbench.quickAccessCategorySessions": "会话与终端",
+    "desktop.workbench.quickAccessCategoryPanels": "侧栏面板",
+    "desktop.workbench.quickAccessCategoryFiles": "文件",
+    "desktop.workbench.quickAccessCategoryApplication": "应用",
+    "desktop.workbench.quickAccessShowGtd": "视图：显示 GTD 看板",
+    "desktop.workbench.quickAccessExitWorkItem": "Workbench：退出工作项",
+    "desktop.workbench.quickAccessShowLinkGraph": "Workbench：显示 Link Graph"
   }
 }

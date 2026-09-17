@@ -92,8 +92,6 @@ import { WorkbenchScriptsPane } from "./scripts/WorkbenchScriptsPane";
 import { resolveTerminalTheme, resolveTerminalThemeId } from "./terminalThemes";
 import { appearanceStateFromSettings } from "../../themes";
 import { storedWidth } from "../../storage";
-import type { WorkbenchArrowDirection } from "../../../shared/workbenchShortcuts";
-import { startModalOpenReporter } from "./shortcutModalReporter";
 import {
   type GitStatusResult,
   type TerminalGitBranches,
@@ -1792,25 +1790,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       return next;
     });
   }, []);
-  const workbenchPaneGroups: Array<{ group: WorkbenchPaneGroup; keys: string[] }> = [
-    {
-      group: "session",
-      keys: [
-        ...currentSessionTerminals.map((pane) => pane.key),
-        ...currentAcpChats.map((pane) => pane.key)
-      ]
-    },
-    { group: "terminal", keys: currentShellTerminals.map((pane) => pane.key) },
-    {
-      group: "code",
-      keys: [
-        ...currentEditors.map((pane) => pane.key),
-        ...currentDiffs.map((pane) => pane.key)
-      ]
-    },
-    { group: "browser", keys: currentBrowsers.map((pane) => pane.key) },
-    { group: "note", keys: currentNotePanes.map((pane) => pane.key) }
-  ];
   /** Prefer the active terminal's git info; fall back to any project terminal or status tracking. */
   const branchStatusTerminal = activeTerminal
     || currentTerminals.find((pane) => Boolean(pane.branch) || pane.gitMode === "nested")
@@ -1972,40 +1951,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   const setComposerDraft = useCallback((paneKey: string, value: string) => {
     setComposerDrafts((current) => current[paneKey] === value ? current : { ...current, [paneKey]: value });
   }, []);
-
-  const navigateWorkbenchPanes = useCallback((direction: WorkbenchArrowDirection) => {
-    const currentGroupIndex = workbenchPaneGroups.findIndex((group) => group.keys.includes(activePane));
-    const nonEmptyGroups = workbenchPaneGroups.filter((group) => group.keys.length > 0);
-    let nextPaneKey = "";
-
-    if (direction === "left" || direction === "right") {
-      const currentGroup = currentGroupIndex >= 0 ? workbenchPaneGroups[currentGroupIndex] : null;
-      if (!currentGroup || !currentGroup.keys.length) return;
-      const currentIndex = currentGroup.keys.indexOf(activePane);
-      const offset = direction === "left" ? -1 : 1;
-      const nextIndex = (currentIndex + offset + currentGroup.keys.length) % currentGroup.keys.length;
-      nextPaneKey = currentGroup.keys[nextIndex];
-    } else if (nonEmptyGroups.length) {
-      if (currentGroupIndex < 0) {
-        nextPaneKey = direction === "down"
-          ? nonEmptyGroups[0].keys[0]
-          : nonEmptyGroups[nonEmptyGroups.length - 1].keys[0];
-      } else {
-        const offset = direction === "down" ? 1 : -1;
-        let candidateIndex = (currentGroupIndex + offset + workbenchPaneGroups.length) % workbenchPaneGroups.length;
-        while (candidateIndex !== currentGroupIndex && !workbenchPaneGroups[candidateIndex].keys.length) {
-          candidateIndex = (candidateIndex + offset + workbenchPaneGroups.length) % workbenchPaneGroups.length;
-        }
-        const targetGroup = workbenchPaneGroups[candidateIndex];
-        if (targetGroup.keys.length) {
-          const history = paneHistoryRef.current[workbenchScope(activeWorkbenchIdRef.current) ?? paneProjectKey(selectedProjectRef.current || null)] || [];
-          nextPaneKey = history.find((key) => targetGroup.keys.includes(key)) || targetGroup.keys[0];
-        }
-      }
-    }
-
-    if (nextPaneKey) navigateToWorkbenchPane(nextPaneKey);
-  }, [activePane, navigateToWorkbenchPane, selectedProject, workbenchPaneGroups]);
 
   const selectProject = (project: string | null, options?: { keepSessionKey?: boolean; keepSide?: boolean }) => {
     const projectChanged = selectedProjectRef.current !== project;
@@ -2903,23 +2848,9 @@ export function WorkbenchPanel(): ReactPortal | null {
     return () => window.agentResume.setWorkbenchActive(false);
   }, [active, activePane]);
 
-  // Track modal state (⌘P palette and all aria-modal dialogs) so main can suppress
-  // the ⌘+Arrow pane navigation while a modal is on screen.
-  useEffect(() => startModalOpenReporter(), []);
-
   useEffect(() => desktopApi().onWorkbenchCmdW(() => {
     if (active) closeActivePane();
   }), [active, closeActivePane]);
-
-  useEffect(() => {
-    const unsubscribe =
-      typeof desktopApi().onWorkbenchCmdArrow === "function"
-        ? desktopApi().onWorkbenchCmdArrow((direction) => {
-            if (active) navigateWorkbenchPanes(direction);
-          })
-        : () => undefined;
-    return unsubscribe;
-  }, [active, navigateWorkbenchPanes]);
 
   /** ⌘⇧F / Ctrl+Shift+F — open Find in Files (Search side panel). */
   useEffect(() => {
@@ -4336,7 +4267,8 @@ export function WorkbenchPanel(): ReactPortal | null {
   };
 
   const openLinkGraphFromEditor = useCallback(() => {
-    if (!selectedProject || !currentEditor) return;
+    const projectRoot = currentEditor ? (projectForPath(currentEditor.path) || selectedProject) : selectedProject;
+    if (!projectRoot || !currentEditor) return;
     const selection = editorRef.current?.getSelectionRange();
     const text = selection?.text.trim() || editorRef.current?.getSelectedText().trim() || "";
     if (!text) {
@@ -4344,14 +4276,14 @@ export function WorkbenchPanel(): ReactPortal | null {
       return;
     }
     void runLinkGraph({
-      projectPath: selectedProject,
+      projectPath: projectRoot,
       filePath: currentEditor.path,
       selection: text,
       startLine: selection?.startLine || 1,
       endLine: selection?.endLine || selection?.startLine || 1,
       outputLanguage: linkGraphLanguage
     });
-  }, [currentEditor, linkGraphLanguage, runLinkGraph, selectedProject, t]);
+  }, [currentEditor, linkGraphLanguage, projectForPath, runLinkGraph, selectedProject, t]);
 
   const {
     quickAccessOpen,
@@ -4926,8 +4858,8 @@ export function WorkbenchPanel(): ReactPortal | null {
   };
 
   const loadGitFileHistory = async (filePath: string) => {
-    if (!selectedProject) return;
-    const projectRoot = selectedProject;
+    const projectRoot = projectForPath(filePath) || selectedProject;
+    if (!projectRoot) return;
     const requestId = gitLogRequestRef.current + 1;
     gitLogRequestRef.current = requestId;
     setSide("git");
@@ -5278,23 +5210,50 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
     return paths;
   })();
-  const quickAccessProjects = useMemo<QuickAccessProject[]>(() => allProjects.map((project) => ({
-    id: project.id,
-    path: project.path,
-    label: project.label,
-    detail: project.pathMissing
-      ? t("desktop.workbench.pathMissingLabel", project.portableKey)
-      : project.path,
-    pinned: project.pinned,
-    disabledReason: project.pathMissing ? t("desktop.workbench.pathMissingHint") : undefined
-  })), [allProjects, t]);
+  /**
+   * The projects a work item is associated with — its shared workspace — enriched
+   * from the catalog so labels, pinned state and path-missing hints still apply.
+   * The project pickers stay inside the work item's own projects.
+   */
+  const workspaceProjectOptions = useMemo<QuickAccessProject[]>(() => {
+    if (!workItemScope) return [];
+    const knownByPath = new Map(allProjects.map((project) => [projectPathKey(project.path), project]));
+    return sideRootProjects.map((path) => {
+      const known = knownByPath.get(projectPathKey(path));
+      const missing = known?.pathMissing === true;
+      return {
+        id: known?.id || path,
+        path,
+        label: aliases[path] || known?.label || basename(path),
+        detail: missing ? t("desktop.workbench.pathMissingLabel", known?.portableKey || path) : path,
+        pinned: known?.pinned,
+        disabledReason: missing ? t("desktop.workbench.pathMissingHint") : undefined
+      };
+    });
+  }, [aliases, allProjects, sideRootProjects, t, workItemScope]);
+
+  const quickAccessProjects = useMemo<QuickAccessProject[]>(() => {
+    if (workItemScope) return workspaceProjectOptions;
+    return allProjects.map((project) => ({
+      id: project.id,
+      path: project.path,
+      label: project.label,
+      detail: project.pathMissing
+        ? t("desktop.workbench.pathMissingLabel", project.portableKey)
+        : project.path,
+      pinned: project.pinned,
+      disabledReason: project.pathMissing ? t("desktop.workbench.pathMissingHint") : undefined
+    }));
+  }, [allProjects, t, workItemScope, workspaceProjectOptions]);
   const searchProjectResults = useMemo(
     () => rankQuickAccessProjects(quickAccessProjects, searchProjectQuery),
     [quickAccessProjects, searchProjectQuery]
   );
   const searchProjectResultIds = searchProjectResults.map((project) => project.id);
   const searchProjectResultSignature = searchProjectResultIds.join("\0");
-  const searchProjectCurrentPath = selectedProjectMeta?.path || selectedProject || "";
+  const searchProjectCurrentPath = workItemScope
+    ? (sideRoots.length === 1 ? sideRoots[0] : "")
+    : (selectedProjectMeta?.path || selectedProject || "");
   const searchProjectCurrentId = !searchProjectQuery.trim()
     ? searchProjectResults.find((project) => projectPathKey(project.path) === projectPathKey(searchProjectCurrentPath))?.id || ""
     : "";
@@ -5349,9 +5308,15 @@ export function WorkbenchPanel(): ReactPortal | null {
     selectProject(project.path, { keepSide: true });
     leaveSearchProjectMode();
   };
-  const searchProjectLabel = selectedProjectMeta
-    ? `${selectedProjectMeta.label} — ${selectedProjectMeta.path}`
-    : t("desktop.workbench.quickAccessSelectProject");
+  const searchProjectLabel = workItemScope
+    ? (sideRoots.length === 1
+      ? (aliases[sideRoots[0]] || basename(sideRoots[0]))
+      : sideRoots.length > 1
+        ? t("desktop.workbench.sharedWorkspace")
+        : t("desktop.workbench.quickAccessSelectProject"))
+    : selectedProjectMeta
+      ? `${selectedProjectMeta.label} — ${selectedProjectMeta.path}`
+      : t("desktop.workbench.quickAccessSelectProject");
   const noProjectReason = sideRoots.length ? undefined : t("desktop.workbench.quickAccessNoProjectCommand");
   const macShortcuts = typeof navigator !== "undefined" && /mac/i.test(navigator.platform);
   const shortcut = (key: string) => macShortcuts ? `⌘${key}` : `Ctrl+${key}`;
@@ -5362,14 +5327,118 @@ export function WorkbenchPanel(): ReactPortal | null {
     if (view) setSide(view);
     if (view === "search") resetSearchProjectMode();
   };
-  const navigateTo = (tab: "report" | "agent" | "workbench" | "notes") => {
+  const navigateToWorkbench = () => {
     closeQuickAccess();
-    window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: tab }));
+    window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
+  };
+  const navigateToGtd = () => {
+    closeQuickAccess();
+    window.dispatchEvent(new CustomEvent("agent-resume:view-gtd"));
   };
   const quickAccessCommands: QuickAccessCommand[] = [
+    // 1. Navigation / 导航
+    {
+      id: "view.workbench",
+      label: t("desktop.workbench.quickAccessShowWorkbench"),
+      category: t("desktop.workbench.quickAccessCategoryNavigation"),
+      keywords: "view workbench switch surface",
+      run: navigateToWorkbench
+    },
+    {
+      id: "view.gtd",
+      label: t("desktop.workbench.quickAccessShowGtd"),
+      category: t("desktop.workbench.quickAccessCategoryNavigation"),
+      keywords: "view gtd board tasks kanban",
+      run: navigateToGtd
+    },
+    // 2. Workspace & Context / 工作区与上下文
+    {
+      id: "workbench.switchProject",
+      label: t("desktop.workbench.quickAccessSwitchProject"),
+      category: t("desktop.workbench.quickAccessCategoryWorkspace"),
+      keywords: "project workspace switch select",
+      run: () => enterQuickAccessProjectMode(true)
+    },
+    {
+      id: "workbench.exitWorkItem",
+      label: t("desktop.workbench.quickAccessExitWorkItem"),
+      category: t("desktop.workbench.quickAccessCategoryWorkspace"),
+      keywords: "exit close clear work item task workspace",
+      disabledReason: workItemScope ? undefined : t("desktop.workbench.workItemNoProject"),
+      run: () => {
+        closeQuickAccess();
+        window.dispatchEvent(new CustomEvent("agent-resume:workbench-work-item-clear"));
+      }
+    },
+    // 3. Sessions & Terminals / 会话与终端
+    {
+      id: "workbench.newSession",
+      label: t("desktop.workbench.quickAccessNewSession"),
+      category: t("desktop.workbench.quickAccessCategorySessions"),
+      keywords: "agent new session ai chat prompt",
+      disabledReason: noProjectReason,
+      run: () => {
+        openWorkbenchView();
+        void newSession();
+      }
+    },
+    {
+      id: "workbench.newTerminal",
+      label: t("desktop.workbench.quickAccessNewTerminal"),
+      category: t("desktop.workbench.quickAccessCategorySessions"),
+      keywords: "shell bash terminal new",
+      disabledReason: noProjectReason,
+      run: () => {
+        openWorkbenchView();
+        void openBlankTerminal(sessionTarget || sideRoots[0]);
+      }
+    },
+    // 4. Side Panels / 侧栏面板
+    {
+      id: "workbench.explorer",
+      label: t("desktop.workbench.quickAccessShowExplorer"),
+      category: t("desktop.workbench.quickAccessCategoryPanels"),
+      keywords: "files sidebar file tree explorer",
+      disabledReason: noProjectReason,
+      run: () => openWorkbenchView("files")
+    },
+    {
+      id: "workbench.git",
+      label: t("desktop.workbench.quickAccessShowGit"),
+      category: t("desktop.workbench.quickAccessCategoryPanels"),
+      keywords: "changes source control git diff commit",
+      disabledReason: noProjectReason,
+      run: () => openWorkbenchView("git")
+    },
+    {
+      id: "workbench.search",
+      label: t("desktop.workbench.quickAccessShowSearch"),
+      category: t("desktop.workbench.quickAccessCategoryPanels"),
+      keywords: "find content sidebar text search grep",
+      disabledReason: noProjectReason,
+      run: () => openWorkbenchView("search")
+    },
+    {
+      id: "workbench.scripts",
+      label: t("desktop.workbench.quickAccessShowScripts"),
+      category: t("desktop.workbench.quickAccessCategoryPanels"),
+      keywords: "run package npm pnpm scripts build dev",
+      disabledReason: noProjectReason,
+      run: () => openWorkbenchView("scripts")
+    },
+    {
+      id: "workbench.linkgraph",
+      label: t("desktop.workbench.quickAccessShowLinkGraph"),
+      category: t("desktop.workbench.quickAccessCategoryPanels"),
+      keywords: "link graph call chain dependency relation",
+      disabledReason: noProjectReason,
+      run: () => openWorkbenchView("linkgraph")
+    },
+    // 5. Files / 文件
     {
       id: "file.goToFile",
       label: t("desktop.workbench.quickAccessGoToFile"),
+      category: t("desktop.workbench.quickAccessCategoryFiles"),
       keywords: "quick open file path",
       shortcut: shortcut("P"),
       disabledReason: noProjectReason,
@@ -5380,26 +5449,50 @@ export function WorkbenchPanel(): ReactPortal | null {
       }
     },
     {
-      id: "workbench.switchProject",
-      label: t("desktop.workbench.quickAccessSwitchProject"),
-      keywords: "project workspace switch select",
-      run: () => enterQuickAccessProjectMode(true)
+      id: "file.findInFiles",
+      label: t("desktop.workbench.quickAccessFindInFiles"),
+      category: t("desktop.workbench.quickAccessCategoryFiles"),
+      keywords: "search project content find text",
+      shortcut: macShortcuts ? "⌘⇧F" : "Ctrl+Shift+F",
+      disabledReason: noProjectReason,
+      run: () => openWorkbenchView("search")
     },
-    { id: "file.findInFiles", label: t("desktop.workbench.quickAccessFindInFiles"), keywords: "search project content", shortcut: macShortcuts ? "⌘⇧F" : "Ctrl+Shift+F", disabledReason: noProjectReason, run: () => openWorkbenchView("search") },
-    { id: "file.save", label: t("desktop.workbench.quickAccessSaveCurrentFile"), keywords: "write editor", shortcut: shortcut("S"), disabledReason: currentEditor ? undefined : t("desktop.workbench.quickAccessNoActiveEditor"), run: () => { closeQuickAccess(); if (currentEditor) void saveEditor(currentEditor.key); } },
-    { id: "file.closePane", label: t("desktop.workbench.quickAccessCloseActivePane"), keywords: "close tab terminal editor", shortcut: shortcut("W"), disabledReason: active && activePane ? undefined : t("desktop.workbench.quickAccessNoActivePane"), run: () => { closeQuickAccess(); closeActivePane(); } },
-    { id: "workbench.newSession", label: t("desktop.workbench.quickAccessNewSession"), keywords: "agent", disabledReason: noProjectReason, run: () => { openWorkbenchView(); if (quickAccessRoot) void newSessionForProject(quickAccessRoot); } },
-    { id: "workbench.newTerminal", label: t("desktop.workbench.quickAccessNewTerminal"), keywords: "shell", disabledReason: noProjectReason, run: () => { openWorkbenchView(); if (quickAccessRoot) void openBlankTerminal(quickAccessRoot); } },
-    { id: "workbench.explorer", label: t("desktop.workbench.quickAccessShowExplorer"), keywords: "files sidebar", disabledReason: noProjectReason, run: () => openWorkbenchView("files") },
-    { id: "workbench.scripts", label: t("desktop.workbench.quickAccessShowScripts"), keywords: "run package", disabledReason: noProjectReason, run: () => openWorkbenchView("scripts") },
-    { id: "workbench.search", label: t("desktop.workbench.quickAccessShowSearch"), keywords: "find content sidebar", disabledReason: noProjectReason, run: () => openWorkbenchView("search") },
-    { id: "workbench.git", label: t("desktop.workbench.quickAccessShowGit"), keywords: "changes source control", disabledReason: noProjectReason, run: () => openWorkbenchView("git") },
-    { id: "view.report", label: t("desktop.workbench.quickAccessShowReport"), keywords: "navigate tab", run: () => navigateTo("report") },
-    { id: "view.agent", label: t("desktop.workbench.quickAccessShowAgent"), keywords: "navigate tab", run: () => navigateTo("agent") },
-    { id: "view.workbench", label: t("desktop.workbench.quickAccessShowWorkbench"), keywords: "navigate tab", run: () => navigateTo("workbench") },
-    { id: "view.notes", label: t("desktop.workbench.quickAccessShowNotes"), keywords: "navigate tab", run: () => navigateTo("notes") },
-    { id: "app.sessions", label: t("desktop.workbench.quickAccessOpenSessions"), keywords: "history reference", run: () => { closeQuickAccess(); window.dispatchEvent(new Event("agent-resume:sessions-open")); } },
-    { id: "app.settings", label: t("desktop.workbench.quickAccessOpenSettings"), keywords: "preferences configuration", shortcut: shortcut(","), run: () => { closeQuickAccess(); window.dispatchEvent(new CustomEvent("agent-resume:settings-open", { detail: "general" })); } }
+    {
+      id: "file.save",
+      label: t("desktop.workbench.quickAccessSaveCurrentFile"),
+      category: t("desktop.workbench.quickAccessCategoryFiles"),
+      keywords: "write editor save file",
+      shortcut: shortcut("S"),
+      disabledReason: currentEditor ? undefined : t("desktop.workbench.quickAccessNoActiveEditor"),
+      run: () => {
+        closeQuickAccess();
+        if (currentEditor) void saveEditor(currentEditor.key);
+      }
+    },
+    {
+      id: "file.closePane",
+      label: t("desktop.workbench.quickAccessCloseActivePane"),
+      category: t("desktop.workbench.quickAccessCategoryFiles"),
+      keywords: "close tab terminal editor pane",
+      shortcut: shortcut("W"),
+      disabledReason: active && activePane ? undefined : t("desktop.workbench.quickAccessNoActivePane"),
+      run: () => {
+        closeQuickAccess();
+        closeActivePane();
+      }
+    },
+    // 6. Application / 应用
+    {
+      id: "app.settings",
+      label: t("desktop.workbench.quickAccessOpenSettings"),
+      category: t("desktop.workbench.quickAccessCategoryApplication"),
+      keywords: "preferences configuration settings app",
+      shortcut: shortcut(","),
+      run: () => {
+        closeQuickAccess();
+        window.dispatchEvent(new CustomEvent("agent-resume:settings-open", { detail: "general" }));
+      }
+    }
   ];
 
   const newSessionAnchorRect = newSessionButtonRef.current?.getBoundingClientRect();
@@ -6429,6 +6522,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       onOpenFile={openQuickAccessFile}
       onOpenDirectory={openQuickAccessDirectory}
       onSelectProject={(project) => {
+        if (workItemScopeRef.current) setSessionTarget(project.path);
         selectProject(project.path);
         if (quickAccessProjectContextRef.current.closeOnSelect) {
           window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));

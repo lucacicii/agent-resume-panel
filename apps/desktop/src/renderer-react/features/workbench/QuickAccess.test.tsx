@@ -431,4 +431,42 @@ describe("QuickAccess", () => {
     fireEvent.keyDown(screen.getByRole("combobox"), { key: "Enter" });
     expect(selectProject).toHaveBeenLastCalledWith(expect.objectContaining({ id: "two" }));
   });
+
+  it("renders category headers for commands when query is empty, and hides them when filtering", () => {
+    const commands = [
+      { id: "nav.1", label: "Show Workbench", category: "Navigation", run: () => undefined },
+      { id: "nav.2", label: "Show GTD", category: "Navigation", run: () => undefined },
+      { id: "ws.1", label: "Switch Project", category: "Workspace", run: () => undefined }
+    ];
+    const props = {
+      open: true,
+      mode: "commands" as const,
+      query: "",
+      files: [],
+      projects: [],
+      commands,
+      recentPaths: [],
+      loading: false,
+      truncated: false,
+      error: "",
+      projectLabel: "Project",
+      currentProjectPath: "",
+      labels,
+      onModeChange: () => undefined,
+      onQueryChange: () => undefined,
+      onClose: () => undefined,
+      onOpenFile: () => undefined,
+      onSelectProject: () => undefined
+    };
+    const { rerender } = render(<QuickAccess {...props} />);
+    const headers = document.querySelectorAll(".quick-access-section-header");
+    expect(headers).toHaveLength(2);
+    expect(headers[0].textContent).toBe("Navigation");
+    expect(headers[1].textContent).toBe("Workspace");
+
+    // When a query is typed, category headers are omitted.
+    rerender(<QuickAccess {...props} query="GTD" />);
+    expect(document.querySelectorAll(".quick-access-section-header")).toHaveLength(0);
+    expect(screen.getByRole("option", { name: "Show GTD" })).toBeTruthy();
+  });
 });

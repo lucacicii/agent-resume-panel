@@ -246,6 +246,11 @@ const obsoleteDesktopKeys = new Set([
   "desktop.workbench.tagCount",
   "desktop.workbench.tagSessionsMeta",
   "desktop.workbench.tagsView",
+  // Retired command palette dead view/session navigation keys
+  "desktop.workbench.quickAccessShowReport",
+  "desktop.workbench.quickAccessShowAgent",
+  "desktop.workbench.quickAccessShowNotes",
+  "desktop.workbench.quickAccessOpenSessions",
 ]);
 
 function normalizePlaceholders(value) {
@@ -352,10 +357,16 @@ for (const file of readdirSync(desktopLocalesDir).filter((name) => name.endsWith
     locale[key] = value;
   }
   const overlayCount = applyDesktopSettingsOverlay(localeCode, locale);
+  for (const key of obsoleteDesktopKeys) {
+    delete locale[key];
+  }
   if (localeCode !== "en") {
     const englishLocale = JSON.parse(readFileSync(join(desktopLocalesDir, "en.json"), "utf8"));
     for (const [key, value] of Object.entries(englishLocale)) {
       if (!(key in locale)) locale[key] = value;
+    }
+    for (const key of Object.keys(locale)) {
+      if (!(key in englishLocale)) delete locale[key];
     }
   }
   writeLocale(localePath, locale);

@@ -156,12 +156,6 @@ export function FloatingSessionNote({
   dirtyRef.current = dirty;
   findQueryRef.current = findQuery;
 
-  const reportFocused = useCallback((focused: boolean) => {
-    if (typeof window.agentResume.setFloatingNoteFocused === "function") {
-      window.agentResume.setFloatingNoteFocused(focused);
-    }
-  }, []);
-
   const clearSaveTimer = useCallback(() => {
     if (saveTimerRef.current !== null) {
       window.clearTimeout(saveTimerRef.current);
@@ -436,13 +430,6 @@ export function FloatingSessionNote({
     clearSaveTimer();
   }, [clearSaveTimer]);
 
-  // Report the initial focus state (the editor auto-focuses after load via
-  // onFocus) and clear it on unmount so main re-enables ⌘+Arrow pane navigation.
-  useEffect(() => {
-    reportFocused(noteRef.current?.contains(document.activeElement) === true);
-    return () => reportFocused(false);
-  }, [reportFocused]);
-
   const updateGtdStatus = async (status: GtdStatus | null) => {
     const currentNoteId = noteIdRef.current;
     if (!currentNoteId || loading || creating || deleting) return;
@@ -544,11 +531,6 @@ export function FloatingSessionNote({
     style={position ? { left: `${position.left}px`, top: `${position.top}px`, right: "auto" } : undefined}
     role="dialog"
     aria-label={t("desktop.workbench.floatingNote")}
-    onFocus={() => reportFocused(true)}
-    onBlur={(event) => {
-      const next = event.relatedTarget instanceof Node ? event.relatedTarget : null;
-      if (!(next && noteRef.current?.contains(next))) reportFocused(false);
-    }}
   >
     <header className="wb-floating-note-head" onPointerDown={onHeaderPointerDown}>
       <div className="wb-floating-note-heading">

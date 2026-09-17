@@ -1,5 +1,5 @@
 import { ThemeIcon } from "../../components/ThemeIcon";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   compareQuickAccessPathMatches,
   fuzzyMatchPath,
@@ -25,6 +25,7 @@ export interface QuickAccessCommand {
   detail?: string;
   keywords?: string;
   shortcut?: string;
+  category?: string;
   disabledReason?: string;
   run: () => void | Promise<void>;
 }
@@ -402,26 +403,36 @@ export function QuickAccess({
             <span className="quick-access-option-copy"><span className="quick-access-option-label">{project.label}</span><span className="quick-access-option-detail">{project.disabledReason || project.detail}</span></span>
             {project.pinned ? <ThemeIcon name="pin" size={13} aria-hidden="true" /> : null}
           </button>;
-        }) : <p className="quick-access-state">{labels.noProjects}</p> : commandResults.length ? commandResults.map((command, index) => {
-          const id = optionId("command", command.id);
-          const disabled = Boolean(command.disabledReason);
-          return <button
-            ref={(node) => { if (node) optionRefs.current.set(id, node); else optionRefs.current.delete(id); }}
-            type="button"
-            role="option"
-            id={id}
-            aria-selected={index === activeIndex}
-            aria-disabled={disabled}
-            className={`quick-access-option${index === activeIndex ? " is-selected" : ""}${disabled ? " is-disabled" : ""}`}
-            key={command.id}
-            onMouseMove={() => setSelectedOptionKey(id)}
-            onClick={() => { if (!disabled) void command.run(); }}
-          >
-            <ThemeIcon name="command" size={16} aria-hidden="true" />
-            <span className="quick-access-option-copy"><span className="quick-access-option-label">{command.label}</span>{command.disabledReason || command.detail ? <span className="quick-access-option-detail">{command.disabledReason || command.detail}</span> : null}</span>
-            {command.shortcut ? <kbd>{command.shortcut}</kbd> : null}
-          </button>;
-        }) : <p className="quick-access-state">{labels.noCommands}</p>}
+        }) : <p className="quick-access-state">{labels.noProjects}</p> : commandResults.length ? (() => {
+          let lastCategory: string | undefined = undefined;
+          const showCategories = !normalizeQuickAccessQuery(query);
+          return commandResults.map((command, index) => {
+            const id = optionId("command", command.id);
+            const disabled = Boolean(command.disabledReason);
+            const categoryHeader = showCategories && command.category && command.category !== lastCategory
+              ? <div key={`cat-${command.category}`} className="quick-access-section-header" role="presentation">{command.category}</div>
+              : null;
+            if (showCategories && command.category) lastCategory = command.category;
+            return <Fragment key={command.id}>
+              {categoryHeader}
+              <button
+                ref={(node) => { if (node) optionRefs.current.set(id, node); else optionRefs.current.delete(id); }}
+                type="button"
+                role="option"
+                id={id}
+                aria-selected={index === activeIndex}
+                aria-disabled={disabled}
+                className={`quick-access-option${index === activeIndex ? " is-selected" : ""}${disabled ? " is-disabled" : ""}`}
+                onMouseMove={() => setSelectedOptionKey(id)}
+                onClick={() => { if (!disabled) void command.run(); }}
+              >
+                <ThemeIcon name="command" size={16} aria-hidden="true" />
+                <span className="quick-access-option-copy"><span className="quick-access-option-label">{command.label}</span>{command.disabledReason || command.detail ? <span className="quick-access-option-detail">{command.disabledReason || command.detail}</span> : null}</span>
+                {command.shortcut ? <kbd>{command.shortcut}</kbd> : null}
+              </button>
+            </Fragment>;
+          });
+        })() : <p className="quick-access-state">{labels.noCommands}</p>}
       </div>
       {mode === "files" && truncated ? <div className="quick-access-limit">{labels.truncated}</div> : null}
     </section>

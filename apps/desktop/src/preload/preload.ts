@@ -40,7 +40,6 @@ import type {
   LinkGraphAnalyzeResult,
   LinkGraphProgressEvent
 } from "../shared/linkGraphTypes";
-import type { WorkbenchArrowDirection } from "../shared/workbenchShortcuts";
 import type {
   WorkbenchActiveSessionDot,
   WorkbenchFocusSessionRequest,
@@ -1075,13 +1074,8 @@ export interface DesktopApi {
   onTerminalExit(callback: (payload: { id: number }) => void): () => void;
   onTerminalRespawned(callback: (payload: { id: number }) => void): () => void;
   setWorkbenchActive(active: boolean): void;
-  /** Notify main when the floating note has DOM focus so workbench shortcuts (⌘+Arrow) are suppressed. */
-  setFloatingNoteFocused(focused: boolean): void;
-  /** Notify main when any modal dialog (aria-modal) is open so workbench shortcuts (⌘+Arrow) are suppressed. */
-  setModalOpen(open: boolean): void;
   onWorkbenchCmdT(callback: () => void): () => void;
   onWorkbenchCmdW(callback: () => void): () => void;
-  onWorkbenchCmdArrow(callback: (direction: WorkbenchArrowDirection) => void): () => void;
   /** Quick Open (⌘P / Ctrl+P). */
   onWorkbenchCmdP(callback: () => void): () => void;
   /** Command Palette (⌘⇧P / Ctrl+Shift+P). */
@@ -1815,8 +1809,6 @@ const api: DesktopApi = {
     return () => ipcRenderer.removeListener("terminal:respawned", handler);
   },
   setWorkbenchActive: (active) => ipcRenderer.send("workbench:setActive", active),
-  setFloatingNoteFocused: (focused) => ipcRenderer.send("workbench:setFloatingNoteFocused", focused),
-  setModalOpen: (open) => ipcRenderer.send("workbench:setModalOpen", open),
   onWorkbenchCmdT: (callback) => {
     const handler = () => callback();
     ipcRenderer.on("workbench:cmdT", handler);
@@ -1826,11 +1818,6 @@ const api: DesktopApi = {
     const handler = () => callback();
     ipcRenderer.on("workbench:cmdW", handler);
     return () => ipcRenderer.removeListener("workbench:cmdW", handler);
-  },
-  onWorkbenchCmdArrow: (callback) => {
-    const handler = (_event: Electron.IpcRendererEvent, direction: WorkbenchArrowDirection) => callback(direction);
-    ipcRenderer.on("workbench:cmdArrow", handler);
-    return () => ipcRenderer.removeListener("workbench:cmdArrow", handler);
   },
   onWorkbenchCmdP: (callback) => {
     const handler = () => callback();

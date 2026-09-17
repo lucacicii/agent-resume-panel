@@ -12011,6 +12011,16 @@ html[data-window-mode="standalone-note"] #react-im {
   padding: 4px;
 }
 
+.quick-access-section-header {
+  padding: 8px 8px 4px;
+  font-size: var(--font-size-caption, 11px);
+  font-weight: var(--font-weight-semibold, 600);
+  color: var(--color-label-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  user-select: none;
+}
+
 .quick-access-option {
   appearance: none;
   display: grid;

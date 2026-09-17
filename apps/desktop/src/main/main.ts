@@ -156,8 +156,7 @@ import {
   DEFAULT_RECENT_STANDALONE_NOTE_SHORTCUT,
   DEFAULT_STANDALONE_NOTE_SHORTCUT,
   isQuickAccessShortcut,
-  normalizeGlobalShortcut,
-  workbenchArrowDirectionFromInput
+  normalizeGlobalShortcut
 } from "./desktopShortcuts";
 import { STANDALONE_NOTE_INITIAL_CONTENT } from "../shared/standaloneNote";
 import {
@@ -572,8 +571,6 @@ let quitCleanupDone = false;
 let sessionSyncTimer: NodeJS.Timeout | null = null;
 let sessionSyncInFlight: Promise<AgentSessionSyncResult> | null = null;
 let workbenchActive = false;
-let floatingNoteFocused = false;
-let modalOpen = false;
 let workbenchActiveSessions: ReturnType<typeof parseWorkbenchActiveSessionDots> = [];
 const SESSION_SYNC_INTERVAL_MS = 60_000;
 
@@ -1391,17 +1388,6 @@ function registerWorkbenchShortcuts(win: BrowserWindow): void {
       return;
     }
 
-    if (workbenchActive && !modalOpen && !floatingNoteFocused) {
-      const direction = workbenchArrowDirectionFromInput(input);
-      if (direction) {
-        event.preventDefault();
-        if (!win.isDestroyed()) {
-          win.webContents.send("workbench:cmdArrow", direction);
-        }
-        return;
-      }
-    }
-
     if (workbenchActive && isWorkbenchCmdWInput(input)) {
       event.preventDefault();
       if (!win.isDestroyed()) {
@@ -1471,8 +1457,6 @@ function createWindow(): void {
     stopSessionSyncTimer();
     void flushImStreamingMessages();
     workbenchActive = false;
-    floatingNoteFocused = false;
-    modalOpen = false;
     mainWindowReadyToShow = false;
     mainWindowRendererReady = false;
     mainWindow = null;
@@ -1617,18 +1601,6 @@ function registerIpc(): void {
       }
     })();
     return { ...getWorkbenchWatcherRuntimeMetrics(), pty, acp: getAcpRuntimeMetrics() };
-  });
-
-  ipcMain.on("workbench:setFloatingNoteFocused", (event, focused: unknown) => {
-    if (event.sender === mainWindow?.webContents) {
-      floatingNoteFocused = focused === true;
-    }
-  });
-
-  ipcMain.on("workbench:setModalOpen", (event, open: unknown) => {
-    if (event.sender === mainWindow?.webContents) {
-      modalOpen = open === true;
-    }
   });
 
   ipcMain.handle("panel:getHome", async () => {

@@ -5079,7 +5079,6 @@ describe("WorkbenchPanel", () => {
       onWorkbenchCmdT: () => () => undefined,
       onWorkbenchCmdW: () => () => undefined,
       onWorkbenchCmdShiftF: () => () => undefined,
-      onWorkbenchCmdArrow: () => () => undefined,
       onWorkbenchFileSystemChanged: () => () => undefined,
       onTerminalData: () => () => undefined,
       onTerminalExit: () => () => undefined,
@@ -6143,15 +6142,11 @@ describe("WorkbenchPanel", () => {
     const notesCreate = vi.fn(async () => ({ noteId: "floating-note", filename: "floating.md" }));
     const notesWrite = vi.fn(async ({ noteId, content }: { noteId: string; content: string }) => ({ noteId, filename: "floating.md", updatedAtMs: 3, content }));
     const notesDelete = vi.fn(async () => ({ ok: true }));
-    const setFloatingNoteFocused = vi.fn();
-    const setModalOpen = vi.fn();
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages: {
         "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.common.loading": "Loading…", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.closeTerminal": "Close terminal", "desktop.workbench.addFloatingNote": "Add floating note", "desktop.workbench.openFloatingNote": "Open floating note", "desktop.workbench.floatingNote": "Floating note", "desktop.workbench.floatingNoteClose": "Close floating note", "desktop.workbench.floatingNoteEditor": "Floating note editor", "desktop.workbench.floatingNoteCreating": "Creating floating note…", "desktop.workbench.floatingNoteLoading": "Loading floating note…", "desktop.workbench.floatingNoteSaving": "Saving…", "desktop.workbench.floatingNoteSaved": "Saved", "desktop.workbench.floatingNoteUnsaved": "Unsaved changes", "desktop.workbench.floatingNoteSaveFailed": "Save failed: {0}", "desktop.workbench.floatingNoteLoadError": "Could not open floating note: {0}", "desktop.workbench.floatingNoteLoadFailed": "Could not open floating note."
       } }),
       onLocaleChanged: () => () => undefined,
-      setFloatingNoteFocused,
-      setModalOpen,
       onWorkbenchCmdT: () => () => undefined,
       onWorkbenchCmdW: () => () => undefined,
       onTerminalData: () => () => undefined,
@@ -6189,16 +6184,9 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(notesWrite).toHaveBeenCalledWith({ noteId: "floating-note", content: "# app · Fix renderer\n\n" }));
     expect(notesList).toHaveBeenCalled();
     expect(screen.getByRole("dialog", { name: "Floating note" })).toBeTruthy();
-    // The editor has not gained focus yet, so main keeps ⌘+Arrow pane navigation enabled.
-    await waitFor(() => expect(setFloatingNoteFocused.mock.calls.at(-1)).toEqual([false]));
-
-    // Focusing the note suppresses ⌘+Arrow; closing the note re-enables it.
-    (await screen.findByPlaceholderText("Floating note editor")).focus();
-    await waitFor(() => expect(setFloatingNoteFocused.mock.calls.at(-1)).toEqual([true]));
 
     fireEvent.click(screen.getByRole("button", { name: "Close floating note" }));
     await waitFor(() => expect(notesDelete).toHaveBeenCalledWith({ noteId: "floating-note" }));
-    await waitFor(() => expect(setFloatingNoteFocused.mock.calls.at(-1)).toEqual([false]));
   });
 
   it("opens the newest linked note from the session list without creating another note", async () => {
@@ -6284,103 +6272,6 @@ describe("WorkbenchPanel", () => {
     }));
   });
 
-  it("switches between session, terminal, and code groups with Cmd+Arrow", async () => {
-    const host = document.createElement("div");
-    host.id = "react-workbench";
-    document.body.append(host);
-    let onWorkbenchCmdArrow: ((direction: "left" | "right" | "up" | "down") => void) | undefined;
-    let spawnSeq = 0;
-    const terminalGitDiffSides = vi.fn(async () => ({
-      oldLabel: "HEAD",
-      newLabel: "Working Tree",
-      oldText: "old",
-      newText: "new",
-      hunks: []
-    }));
-    window.agentResume = {
-      getI18nBundle: async () => ({ locale: "en", messages: ARROW_TEST_MESSAGES }),
-      onLocaleChanged: () => () => undefined,
-      onWorkbenchCmdT: () => () => undefined,
-      onWorkbenchCmdW: () => () => undefined,
-      onWorkbenchCmdArrow: (callback: (direction: "left" | "right" | "up" | "down") => void) => {
-        onWorkbenchCmdArrow = callback;
-        return () => undefined;
-      },
-      onTerminalData: () => () => undefined,
-      onTerminalExit: () => () => undefined,
-      onTerminalRespawned: () => () => undefined,
-      listProjectAliases: async () => ({}),
-      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
-      listSessions: async () => [
-        { provider: "codex", id: "session-a", title: "Session A", projectPath: "/work/app", updatedAt: 3 },
-        { provider: "codex", id: "session-b", title: "Session B", projectPath: "/work/app", updatedAt: 2 }
-      ],
-      workbenchOpenSession: async ({ id }: { id: string }) => ({
-        mode: "xterm",
-        command: `codex resume ${id}`,
-        cwd: "/work/app"
-      }),
-      terminalSpawn: async () => ({ id: ++spawnSeq }),
-      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
-      terminalGitStatus: async () => ({
-        isRepo: true,
-        root: "/work/app",
-        staged: [],
-        unstaged: [{
-          path: "src/a.ts",
-          repoPath: "src/a.ts",
-          repoRoot: "/work/app",
-          status: "M",
-          staged: false,
-          unstaged: true
-        }],
-        nestedRepos: [],
-        tracking: []
-      }),
-      terminalGitFetch: async () => ({ ok: true }),
-      terminalGitDiffSides,
-      terminalDestroy: async () => ({ ok: true }),
-      terminalResize: async () => ({ ok: true })
-    } as unknown as typeof window.agentResume;
-
-    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
-    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-
-    const tabByLabel = (title: string) => [...document.querySelectorAll(".wb-terminal-tab")].find((tab) =>
-      tab.querySelector(".wb-terminal-tab-label")?.textContent === title
-    );
-    fireEvent.click(await screen.findByRole("button", { name: /Session A/ }));
-    await waitFor(() => expect(tabByLabel("Session A")).toBeTruthy());
-    fireEvent.click(await screen.findByRole("button", { name: /Session B/ }));
-    await waitFor(() => expect(tabByLabel("Session B")?.classList.contains("active")).toBe(true));
-
-    act(() => onWorkbenchCmdArrow?.("left"));
-    await waitFor(() => expect(tabByLabel("Session A")?.classList.contains("active")).toBe(true));
-    act(() => onWorkbenchCmdArrow?.("right"));
-    await waitFor(() => expect(tabByLabel("Session B")?.classList.contains("active")).toBe(true));
-
-    await activateWorkItemDirectory("/work/app");
-    fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
-    fireEvent.click(await screen.findByTitle("src/a.ts"));
-    await waitFor(() => expect(document.querySelector(".wb-terminal-tab.is-diff.active")?.textContent).toContain("a.ts"));
-
-    act(() => onWorkbenchCmdArrow?.("up"));
-    await waitFor(() => expect(tabByLabel("Session B")?.classList.contains("active")).toBe(true));
-    act(() => onWorkbenchCmdArrow?.("down"));
-    await waitFor(() => expect(document.querySelector(".wb-terminal-tab.is-diff.active")?.textContent).toContain("a.ts"));
-
-    fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
-    await waitFor(() => expect(document.querySelector(".wb-terminal-tab.is-terminal.active")?.textContent).toContain("Terminal 1"));
-    act(() => onWorkbenchCmdArrow?.("down"));
-    await waitFor(() => expect(document.querySelector(".wb-terminal-tab.is-diff.active")?.textContent).toContain("a.ts"));
-    act(() => onWorkbenchCmdArrow?.("up"));
-    await waitFor(() => expect(document.querySelector(".wb-terminal-tab.is-terminal.active")?.textContent).toContain("Terminal 1"));
-    act(() => onWorkbenchCmdArrow?.("up"));
-    await waitFor(() => expect(tabByLabel("Session B")?.classList.contains("active")).toBe(true));
-    act(() => onWorkbenchCmdArrow?.("up"));
-    await waitFor(() => expect(document.querySelector(".wb-terminal-tab.is-diff.active")?.textContent).toContain("a.ts"));
-  });
-
   /** True when real DOM focus is on an enabled composer textarea (box-primary). */
   const activeComposer = () => {
     const el = document.activeElement;
@@ -6391,81 +6282,6 @@ describe("WorkbenchPanel", () => {
   const waitForComposerFocus = async () => {
     await waitFor(() => expect(activeComposer()).toBe(true));
   };
-
-  it("focuses the session TUI after arrow navigation, including delayed PTY spawn", async () => {
-    const host = document.createElement("div");
-    host.id = "react-workbench";
-    document.body.append(host);
-    let onWorkbenchCmdArrow: ((direction: "left" | "right" | "up" | "down") => void) | undefined;
-    let spawnSeq = 0;
-    const spawnResolvers = new Map<string, (result: { id: number }) => void>();
-    const terminalSpawn = vi.fn(({ command }: { command: string }) => new Promise<{ id: number }>((resolve) => {
-      spawnResolvers.set(command, resolve);
-    }));
-    window.agentResume = {
-      getI18nBundle: async () => ({ locale: "en", messages: ARROW_TEST_MESSAGES }),
-      onLocaleChanged: () => () => undefined,
-      onWorkbenchCmdT: () => () => undefined,
-      onWorkbenchCmdW: () => () => undefined,
-      onWorkbenchCmdArrow: (callback: (direction: "left" | "right" | "up" | "down") => void) => {
-        onWorkbenchCmdArrow = callback;
-        return () => undefined;
-      },
-      onTerminalData: () => () => undefined,
-      onTerminalExit: () => () => undefined,
-      onTerminalRespawned: () => () => undefined,
-      listProjectAliases: async () => ({}),
-      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
-      listSessions: async () => [
-        { provider: "codex", id: "session-a", title: "Session A", projectPath: "/work/app", updatedAt: 3 },
-        { provider: "codex", id: "session-b", title: "Session B", projectPath: "/work/app", updatedAt: 2 }
-      ],
-      workbenchOpenSession: async ({ id }: { id: string }) => ({
-        mode: "xterm",
-        command: `codex resume ${id}`,
-        cwd: "/work/app"
-      }),
-      terminalSpawn,
-      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
-      terminalGitStatus: async () => ({
-        isRepo: false,
-        root: null,
-        staged: [],
-        unstaged: [],
-        nestedRepos: [],
-        tracking: []
-      }),
-      terminalGitFetch: async () => ({ ok: true }),
-      terminalDestroy: async () => ({ ok: true }),
-      terminalResize: async () => ({ ok: true })
-    } as unknown as typeof window.agentResume;
-
-    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
-    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-
-    const tabByLabel = (title: string) => [...document.querySelectorAll(".wb-terminal-tab")].find((tab) =>
-      tab.querySelector(".wb-terminal-tab-label")?.textContent === title
-    );
-    fireEvent.click(await screen.findByRole("button", { name: /Session A/ }));
-    await waitFor(() => expect(xtermMocks.instances).toHaveLength(1));
-    await act(async () => spawnResolvers.get("codex resume session-a")!({ id: ++spawnSeq }));
-    await waitFor(() => expect(xtermMocks.instances[0]?.focusCalls).toBe(0));
-
-    fireEvent.click(await screen.findByRole("button", { name: /Session B/ }));
-    await waitFor(() => expect(xtermMocks.instances).toHaveLength(2));
-    expect(tabByLabel("Session B")?.classList.contains("active")).toBe(true);
-
-    act(() => onWorkbenchCmdArrow?.("left"));
-    await waitFor(() => expect(tabByLabel("Session A")?.classList.contains("active")).toBe(true));
-    await waitForComposerFocus();
-
-    act(() => onWorkbenchCmdArrow?.("right"));
-    await waitFor(() => expect(tabByLabel("Session B")?.classList.contains("active")).toBe(true));
-    expect(xtermMocks.instances[1]?.focusCalls).toBe(0);
-
-    await act(async () => spawnResolvers.get("codex resume session-b")!({ id: ++spawnSeq }));
-    await waitForComposerFocus();
-  });
 
   it("focuses the TUI after agent resume, including delayed PTY spawn", async () => {
     const host = document.createElement("div");
@@ -6481,7 +6297,6 @@ describe("WorkbenchPanel", () => {
       onLocaleChanged: () => () => undefined,
       onWorkbenchCmdT: () => () => undefined,
       onWorkbenchCmdW: () => () => undefined,
-      onWorkbenchCmdArrow: () => () => undefined,
       onTerminalData: () => () => undefined,
       onTerminalExit: () => () => undefined,
       onTerminalRespawned: () => () => undefined,
@@ -6542,7 +6357,6 @@ describe("WorkbenchPanel", () => {
       onLocaleChanged: () => () => undefined,
       onWorkbenchCmdT: () => () => undefined,
       onWorkbenchCmdW: () => () => undefined,
-      onWorkbenchCmdArrow: () => () => undefined,
       onTerminalData: () => () => undefined,
       onTerminalExit: () => () => undefined,
       onTerminalRespawned: () => () => undefined,
@@ -6598,7 +6412,6 @@ describe("WorkbenchPanel", () => {
       onLocaleChanged: () => () => undefined,
       onWorkbenchCmdT: () => () => undefined,
       onWorkbenchCmdW: () => () => undefined,
-      onWorkbenchCmdArrow: () => () => undefined,
       onTerminalData: () => () => undefined,
       onTerminalExit: () => () => undefined,
       onTerminalRespawned: () => () => undefined,
