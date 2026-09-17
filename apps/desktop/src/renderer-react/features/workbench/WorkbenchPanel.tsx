@@ -3655,6 +3655,18 @@ export function WorkbenchPanel(): ReactPortal | null {
     });
   };
 
+  /** Clear the scoped task's own GTD mark so it follows its notes and sessions again. */
+  const clearTaskPin = useCallback(async () => {
+    const noteId = workItemScopeRef.current?.noteId;
+    if (!noteId || typeof desktopApi().notesSetGtdStatus !== "function") return;
+    try {
+      await desktopApi().notesSetGtdStatus({ noteId, status: null });
+      window.dispatchEvent(new Event("agent-resume:notes-mutated"));
+    } catch (error) {
+      setStatus({ text: statusError(error), kind: "error" });
+    }
+  }, []);
+
   const selectCatalogSessionRange = useCallback((anchorKey: string, targetKey: string) => {
     const catalogKeys = catalogSessionKeysInRows(visibleSessionRows);
     const anchorIndex = catalogKeys.indexOf(anchorKey);
@@ -3856,6 +3868,13 @@ export function WorkbenchPanel(): ReactPortal | null {
     setContextMenu(null);
     if (!menu) return;
     if (menu.kind === "work-item" && menu.noteId) {
+      if (action === "followChildren") {
+        try {
+          await desktopApi().notesSetGtdStatus({ noteId: menu.noteId, status: null });
+          window.dispatchEvent(new Event("agent-resume:notes-mutated"));
+        } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
+        return;
+      }
       if (action === "openWorkspace" && typeof desktopApi().notesOpenWorkItemWorkspace === "function") {
         try {
           await desktopApi().notesOpenWorkItemWorkspace({ noteId: menu.noteId });
@@ -5648,7 +5667,12 @@ export function WorkbenchPanel(): ReactPortal | null {
                 </span>
               ) : null}
               {taskRollup?.override ? (
-                <span className="wb-work-item-pin" title={t("desktop.gtd.pinnedHint")}>{t("desktop.gtd.pinned")}</span>
+                <button
+                  type="button"
+                  className="wb-work-item-pin"
+                  title={t("desktop.gtd.pinnedHint")}
+                  onClick={() => void clearTaskPin()}
+                >{t("desktop.gtd.pinned")}<ThemeIcon name="close" size={11} aria-hidden="true" /></button>
               ) : null}
               <button
                 type="button"
@@ -6410,7 +6434,7 @@ export function WorkbenchPanel(): ReactPortal | null {
           {GTD_STATUSES.map((gtdStatus) => <button type="button" role="menuitemradio" className={`wb-gtd-context-tag is-${gtdStatus}`} aria-checked={noteItems.find((item) => item.noteId === contextMenu.noteId)?.gtdStatus === gtdStatus} key={gtdStatus} onClick={() => void runContextAction(`gtd:${gtdStatus}`)}>{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</button>)}
         </div>
         {noteItems.find((item) => item.noteId === contextMenu.noteId)?.gtdStatus ? <button type="button" role="menuitem" onClick={() => void runContextAction("gtd:clear")}>{t("desktop.workbench.clearGtdStatus")}</button> : null}
-      </> : contextMenu.kind === "work-item" ? <>{contextMenu.workspaceDir ? <button type="button" role="menuitem" onClick={() => void runContextAction("openWorkspace")}>{t("desktop.workbench.openWorkItemWorkspace")}</button> : null}{!contextMenu.workItemHasSessions ? <>{contextMenu.workspaceDir ? <div className="context-menu-separator" role="separator" /> : null}<button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => void runContextAction("deleteWorkItem")}>{t("desktop.workbench.deleteWorkItem")}</button></> : null}</> : selectedSessionKeys.size > 1 && contextMenu.session && selectedSessionKeys.has(sessionKey(contextMenu.session)) ? <>
+      </> : contextMenu.kind === "work-item" ? <>{contextMenu.workspaceDir ? <button type="button" role="menuitem" onClick={() => void runContextAction("openWorkspace")}>{t("desktop.workbench.openWorkItemWorkspace")}</button> : null}{contextMenu.noteId && contextMenu.noteId === workItemScope?.noteId && taskRollup?.override ? <button type="button" role="menuitem" onClick={() => void runContextAction("followChildren")}>{t("desktop.gtd.followChildren")}</button> : null}{!contextMenu.workItemHasSessions ? <>{contextMenu.workspaceDir ? <div className="context-menu-separator" role="separator" /> : null}<button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => void runContextAction("deleteWorkItem")}>{t("desktop.workbench.deleteWorkItem")}</button></> : null}</> : selectedSessionKeys.size > 1 && contextMenu.session && selectedSessionKeys.has(sessionKey(contextMenu.session)) ? <>
         <button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => void runContextAction("remove")}>{t("desktop.workbench.removeFromPanelCount", selectedSessionKeys.size)}</button>
       </> : <>
         {contextMenu.session?.provider === "codex" ? <button type="button" role="menuitem" onClick={() => void runContextAction("codex")}>{t("desktop.workbench.openInChatGpt")}</button> : null}
