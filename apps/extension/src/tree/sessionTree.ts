@@ -15,7 +15,7 @@ import { DEFAULT_SECTION_ORDER, SectionKind } from "./sectionOrder";
 
 type RootNode = RecentRootNode | FavoritesRootNode | ProjectsRootNode | WarningNode | EmptyNode;
 export type TreeNode = RootNode | ProjectNode | SessionNode | ShowMoreRecentNode;
-export type SectionRootNode = RecentRootNode | FavoritesRootNode | ProjectsRootNode;
+type SectionRootNode = RecentRootNode | FavoritesRootNode | ProjectsRootNode;
 
 const recentInitialLimit = 10;
 const recentLimitStep = 10;
@@ -54,7 +54,7 @@ interface ProjectNode {
   favorited?: boolean;
 }
 
-export interface SessionNode {
+interface SessionNode {
   kind: "session";
   session: AgentSession;
   showProjectName?: boolean;
@@ -410,7 +410,7 @@ function buildSessionTooltip(
   return lines.join("\n");
 }
 
-export function formatTitleWithMessageCount(session: AgentSession): string {
+function formatTitleWithMessageCount(session: AgentSession): string {
   const title = session.title;
   if (
     session.provider === "grok" &&
@@ -426,7 +426,7 @@ function buildProjectChildren(projectSessions: AgentSession[], sortMode: Project
   return sortSessionsForProject(projectSessions, sortMode).map((session) => ({ kind: "session" as const, session }));
 }
 
-export interface ProjectGroup {
+interface ProjectGroup {
   projectPath: string;
   sessions: AgentSession[];
   favorited?: boolean;
@@ -459,7 +459,7 @@ function isFavoriteAmong(
 }
 
 /** Group by logical project (projectId / portable_key), not raw absolute path only. */
-export function groupSessionsByProject(sessions: AgentSession[]): Map<string, AgentSession[]> {
+function groupSessionsByProject(sessions: AgentSession[]): Map<string, AgentSession[]> {
   const byGroup = new Map<string, AgentSession[]>();
   for (const session of sessions) {
     const key = projectGroupKey(session);
@@ -468,11 +468,6 @@ export function groupSessionsByProject(sessions: AgentSession[]): Map<string, Ag
     byGroup.set(key, bucket);
   }
   return byGroup;
-}
-
-/** @deprecated use groupSessionsByProject */
-function groupSessionsByPath(sessions: AgentSession[]): Map<string, AgentSession[]> {
-  return groupSessionsByProject(sessions);
 }
 
 function buildFavoriteProjectNodes(favoritePaths: string[], sessions: AgentSession[]): ProjectNode[] {
@@ -584,7 +579,7 @@ function sessionIconPath(provider: AgentSession["provider"], cursorIconPath?: vs
   return new vscode.ThemeIcon(providerIcon(provider));
 }
 
-export interface SearchSessionItem {
+interface SearchSessionItem {
   provider: AgentSession["provider"];
   id: string;
   title: string;
@@ -619,7 +614,7 @@ export function enrichSessionsWithTreeSummaries(
   });
 }
 
-export function getSessionSummaryText(session: AgentSession): string | undefined {
+function getSessionSummaryText(session: AgentSession): string | undefined {
   const summary = session.sessionSummary?.trim();
   return summary || undefined;
 }
@@ -646,7 +641,7 @@ export function buildSessionSubtitle(session: AgentSession): string {
   return compactPath(session.projectPath);
 }
 
-export function serializeSessionForSearch(
+function serializeSessionForSearch(
   session: AgentSession,
   projectDisplayName?: string
 ): SearchSessionItem {

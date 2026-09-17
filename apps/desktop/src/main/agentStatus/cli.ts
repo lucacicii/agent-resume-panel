@@ -45,7 +45,7 @@ const STATE_ALIASES: Record<string, AgentState> = {
 
 let sequence = 0;
 
-export function panelHomeFromEnv(env: NodeJS.ProcessEnv = process.env): string {
+function panelHomeFromEnv(env: NodeJS.ProcessEnv = process.env): string {
   return resolvePanelHome(env.AGENT_RESUME_PANEL_HOME);
 }
 
@@ -53,12 +53,12 @@ export function panelHomeFromEnv(env: NodeJS.ProcessEnv = process.env): string {
  * Monotonic per process: the daemon drops a report whose sequence is not newer
  * than the one it already has for that pane.
  */
-export function nextSequence(now = Date.now()): number {
+function nextSequence(now = Date.now()): number {
   sequence = (sequence + 1) % 1_000;
   return now * 1_000 + sequence;
 }
 
-export function parseReportArgs(argv: readonly string[]): NativeReport | null {
+function parseReportArgs(argv: readonly string[]): NativeReport | null {
   const flags = new Map<string, string>();
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index] ?? "";
@@ -103,7 +103,7 @@ export function parseReportArgs(argv: readonly string[]): NativeReport | null {
 }
 
 /** @returns a process exit code; every failure is silent by design. */
-export async function reportState(
+async function reportState(
   report: NativeReport,
   env: NodeJS.ProcessEnv = process.env
 ): Promise<number> {
@@ -126,7 +126,7 @@ export async function reportState(
 
 const USAGE = `agent-resume-status report --pane <id> --state <idle|working|blocked> [--agent <kind>] [--source <name>] [--session-ref <provider:id>] [--subagent true]`;
 
-export async function runCli(
+async function runCli(
   argv: readonly string[] = process.argv.slice(2),
   env: NodeJS.ProcessEnv = process.env
 ): Promise<number> {

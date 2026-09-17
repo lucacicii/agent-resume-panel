@@ -1,13 +1,11 @@
 import { AgentProvider, AgentSession } from "../history";
-import { AcpAgentProvider, AcpSessionRecord } from "../acp/types";
+import { AcpSessionRecord } from "../acp/types";
 import { PreviewMessage } from "../history/preview/types";
 
 export type HandoffTargetProvider = Extract<
   AgentProvider,
   "codex" | "claude" | "agy" | "grok" | "opencode" | "pi" | "prime"
 >;
-
-export type HandoffAcpTargetProvider = AcpAgentProvider;
 
 export type HandoffDeliveryChannel = "acp" | "cli" | "clipboard";
 

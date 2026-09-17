@@ -12,7 +12,7 @@ import type {
   BrowserTabId
 } from "./types";
 
-export type RegisterBrowserIpcDeps = {
+type RegisterBrowserIpcDeps = {
   getMainWindow: () => BrowserWindow | null;
   getPreloadPath: () => string;
   getIcon?: () => Electron.NativeImage | undefined;

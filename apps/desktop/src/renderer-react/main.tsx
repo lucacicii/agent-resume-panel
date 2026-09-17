@@ -43,7 +43,7 @@ function syncNotificationConfig(settings: PanelSettings): void {
   });
 }
 
-export function getDesktopWindowMode(): "main" | "standalone-note" | "browser" {
+function getDesktopWindowMode(): "main" | "standalone-note" | "browser" {
   try {
     const params = new URLSearchParams(window.location.search);
     if (params.get("mode") === "standalone-note") return "standalone-note";
@@ -54,17 +54,9 @@ export function getDesktopWindowMode(): "main" | "standalone-note" | "browser" {
   }
 }
 
-export function getStandaloneNoteId(): string {
+function getStandaloneNoteId(): string {
   try {
     return new URLSearchParams(window.location.search).get("noteId") || "";
-  } catch {
-    return "";
-  }
-}
-
-export function getBrowserId(): string {
-  try {
-    return new URLSearchParams(window.location.search).get("browserId") || "";
   } catch {
     return "";
   }

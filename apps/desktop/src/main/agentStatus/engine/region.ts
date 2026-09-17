@@ -21,8 +21,6 @@ export const REGIONS = [
   "osc_progress"
 ] as const;
 
-export type RegionName = (typeof REGIONS)[number];
-
 const REGION_NAMES = new Set<string>(REGIONS);
 
 /** `bottom_non_empty_lines(12)` is valid; `bottom_non_empty_lines` is not. */
@@ -34,7 +32,7 @@ export function isRegionName(value: string): boolean {
     : true;
 }
 
-export type RegionResolution = {
+type RegionResolution = {
   name: string;
   text: string;
 };

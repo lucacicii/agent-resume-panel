@@ -16,7 +16,7 @@ import {
  * Clients the app registers without asking. Cursor / Pi / Grok Build stay manual
  * (Desktop does not guess their MCP config locations).
  */
-export const AUTO_MCP_CLIENTS: McpClientId[] = [
+const AUTO_MCP_CLIENTS: McpClientId[] = [
   "claude",
   "codex",
   "gemini",
@@ -24,7 +24,7 @@ export const AUTO_MCP_CLIENTS: McpClientId[] = [
   "opencode"
 ];
 
-export interface ExternalMcpSyncResult {
+interface ExternalMcpSyncResult {
   registered: string[];
   removed: string[];
   failed: Array<{ target: string; error: string }>;

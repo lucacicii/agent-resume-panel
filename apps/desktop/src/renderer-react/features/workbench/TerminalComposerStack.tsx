@@ -9,7 +9,7 @@ import {
   type TuiSlashCommand
 } from "./tuiSlashCommands";
 
-export type TerminalComposerStackItem = {
+type TerminalComposerStackItem = {
   pane: TerminalComposerPane;
   ptyId: number | null;
   activePane: boolean;

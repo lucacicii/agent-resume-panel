@@ -12,7 +12,7 @@ import {
   type MarkdownImageOptions
 } from "./markdownImage";
 
-export interface StreamdownRendererProps {
+interface StreamdownRendererProps {
   content: string;
   isAnimating?: boolean;
   className?: string;

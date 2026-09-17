@@ -75,7 +75,7 @@ const NATIVE_PROVIDERS = new Set<Exclude<NativeConversationProvider, "cursor-ide
 
 export type BackupStorageTarget = "local-file" | "icloud-drive";
 
-export type BackupProgressPhase = "preparing" | "snapshotting" | "collecting" | "archiving" | "validating" | "merging" | "finalizing" | "complete";
+type BackupProgressPhase = "preparing" | "snapshotting" | "collecting" | "archiving" | "validating" | "merging" | "finalizing" | "complete";
 
 export interface BackupProgressEvent {
   operation: "export" | "import";
@@ -83,7 +83,7 @@ export interface BackupProgressEvent {
   percent: number;
 }
 
-export interface BackupCreateOptions {
+interface BackupCreateOptions {
   target: BackupStorageTarget;
   includeCredentials: boolean;
   includeNativeConversations?: boolean;
@@ -91,7 +91,7 @@ export interface BackupCreateOptions {
   onProgress?: (event: BackupProgressEvent) => void;
 }
 
-export interface BackupImportOptions {
+interface BackupImportOptions {
   includeCredentials: boolean;
   password?: string;
   restoreNativeConversations?: boolean;
@@ -119,7 +119,7 @@ export interface BackupStoredItem {
   providers: NativeConversationProviderSummary[];
 }
 
-export interface BackupStorageProvider {
+interface BackupStorageProvider {
   target: BackupStorageTarget;
   status(): Promise<BackupStorageTargetStatus>;
   publish(options: { fileName: string; write: (partialPath: string) => Promise<void> }): Promise<string>;

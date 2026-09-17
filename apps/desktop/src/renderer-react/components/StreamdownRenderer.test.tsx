@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import React from "react";
 import { render, within, cleanup, fireEvent } from "@testing-library/react";
 import { StreamdownRenderer } from "./StreamdownRenderer";
 import { buildMarkdownSegments } from "./markdownSegments";

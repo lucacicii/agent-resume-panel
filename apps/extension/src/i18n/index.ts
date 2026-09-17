@@ -12,10 +12,8 @@ import {
   UI_LANGUAGE_AUTO,
   UI_LANGUAGE_SETTING,
   OUTPUT_LANGUAGE_AUTO,
-  OUTPUT_LANGUAGE_OPTIONS,
   UiLocale,
-  isUiLocale,
-  normalizeOutputLanguagePreference
+  isUiLocale
 } from "@agent-resume/core/extension";
 import { readAgentResumeSetting } from "../llm/config";
 
@@ -28,7 +26,7 @@ function ensureCatalogsLoaded(): void {
   loadCatalogs();
 }
 
-export function resolveUiLocaleForExtension(): UiLocale {
+function resolveUiLocaleForExtension(): UiLocale {
   ensureCatalogsLoaded();
   const pref = normalizeUiLanguagePreference(readAgentResumeSetting(UI_LANGUAGE_SETTING, UI_LANGUAGE_AUTO));
   return coreResolveUiLocale(pref, vscode.env.language);
@@ -37,10 +35,6 @@ export function resolveUiLocaleForExtension(): UiLocale {
 export function t(key: string, ...args: (string | number)[]): string {
   ensureCatalogsLoaded();
   return translateKey(resolveUiLocaleForExtension(), key, args);
-}
-
-export function getUiLocaleDisplayName(locale: UiLocale): string {
-  return NATIVE_LOCALE_LABELS[locale];
 }
 
 export function getUiLanguageOptionLabel(preference: string): string {

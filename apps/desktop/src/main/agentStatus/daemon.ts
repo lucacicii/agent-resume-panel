@@ -47,13 +47,13 @@ const ENDPOINT_HEARTBEAT_MS = 30_000;
 /** Ring buffer of recent transitions; enough for a late subscriber to catch up. */
 const TRANSITION_BUFFER = 200;
 
-export type AgentStatusDaemonHandle = {
+type AgentStatusDaemonHandle = {
   readonly endpoint: AgentStatusEndpoint;
   readonly state: AgentStatusState;
   stop: (reason: string) => Promise<void>;
 };
 
-export type StartDaemonOptions = {
+type StartDaemonOptions = {
   panelHome: string;
   appVersion?: string;
   /** Overrides the bundled manifest directory; used by tests. */
@@ -73,7 +73,7 @@ export type StartDaemonOptions = {
  * @returns the running handle, or null when a compatible daemon already owns
  *          the socket (single instance by construction).
  */
-export async function startAgentStatusDaemon(
+async function startAgentStatusDaemon(
   options: StartDaemonOptions
 ): Promise<AgentStatusDaemonHandle | null> {
   const log = options.log ?? ((message: string) => console.log(`${LOG_PREFIX} ${message}`));
@@ -424,7 +424,7 @@ function describe(error: unknown): string {
 
 // ------------------------------------------------------------------------------ entry
 
-export type DaemonArgs = {
+type DaemonArgs = {
   panelHome: string;
   appVersion: string;
   replace: boolean;
@@ -432,7 +432,7 @@ export type DaemonArgs = {
   discovery: boolean;
 };
 
-export function parseDaemonArgs(
+function parseDaemonArgs(
   argv: readonly string[],
   env: NodeJS.ProcessEnv = process.env
 ): DaemonArgs {
@@ -473,7 +473,7 @@ export function parseDaemonArgs(
  *
  * @returns the process exit code.
  */
-export async function runAgentStatusDaemon(
+async function runAgentStatusDaemon(
   argv: readonly string[] = process.argv.slice(2),
   env: NodeJS.ProcessEnv = process.env
 ): Promise<number> {

@@ -14,11 +14,11 @@ export interface AcpCatalogRecordInput {
   source?: string;
 }
 
-export function acpThreadRelPath(sessionId: string): string {
+function acpThreadRelPath(sessionId: string): string {
   return path.join("acp", "threads", `${sessionId}.jsonl`);
 }
 
-export function acpSessionsIndexRelPath(): string {
+function acpSessionsIndexRelPath(): string {
   return path.join("acp", "sessions.jsonl");
 }
 

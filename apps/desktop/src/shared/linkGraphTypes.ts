@@ -8,7 +8,7 @@ export type LinkGraphStopReason =
   | "invalid_seed"
   | "bridge_failed";
 
-export type LinkGraphPhase = "searching" | "analyzing" | "done" | "error";
+type LinkGraphPhase = "searching" | "analyzing" | "done" | "error";
 
 /** Agent exploration phases shown in the side-panel timeline. */
 export type LinkGraphAgentPhase =
@@ -20,7 +20,7 @@ export type LinkGraphAgentPhase =
 
 export type LinkGraphTimelineStatus = "running" | "done" | "failed" | "skipped";
 
-export interface LinkGraphTimelineEvidence {
+interface LinkGraphTimelineEvidence {
   file: string;
   line: number;
   preview?: string;
@@ -58,7 +58,7 @@ export type LinkGraphEdgeKind =
   | "reexports"
   | "bridge";
 
-export type LinkGraphBridgeKind =
+type LinkGraphBridgeKind =
   | "shared_module"
   | "openapi"
   | "http_route"
@@ -100,7 +100,7 @@ export interface LinkGraphHit {
   confidence?: LinkGraphConfidence;
 }
 
-export interface LinkGraphPageRef {
+interface LinkGraphPageRef {
   line: number;
   column: number;
   endColumn: number;
@@ -128,7 +128,7 @@ export interface LinkGraphChainStep {
   pageRefs?: LinkGraphPageRef[];
 }
 
-export interface LinkGraphHop {
+interface LinkGraphHop {
   id: string;
   role: LinkGraphHopRole;
   title: string;

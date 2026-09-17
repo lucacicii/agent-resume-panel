@@ -33,9 +33,9 @@ import {
 import { agentStatusPaths } from "./paths";
 
 /** Renderer channel carrying `StatusSnapshot` pushes. */
-export const AGENT_STATUS_CHANGED_CHANNEL = "agentStatus:changed";
+const AGENT_STATUS_CHANGED_CHANNEL = "agentStatus:changed";
 
-export type AgentStatusIpcContext = {
+type AgentStatusIpcContext = {
   getWindow: () => BrowserWindow | null;
   bridge: AgentStatusBridge;
   /** Resolved lazily: the panel home is a setting and can change at runtime. */

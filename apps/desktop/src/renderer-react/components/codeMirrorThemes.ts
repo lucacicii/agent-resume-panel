@@ -4,7 +4,7 @@ import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView } from "@codemirror/view";
 
 export type CodeMirrorAppearance = "follow-app" | "light" | "dark";
-export type CodeMirrorThemeId = "classic-light" | "classic-dark";
+type CodeMirrorThemeId = "classic-light" | "classic-dark";
 
 const lightEditorTheme = EditorView.theme({
   "&": {

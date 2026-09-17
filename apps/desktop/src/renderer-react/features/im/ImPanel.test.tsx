@@ -516,7 +516,6 @@ describe("ImPanel", () => {
     )) as HTMLTextAreaElement;
 
     fireEvent.change(composer, { target: { value: "#" } });
-    const list = await screen.findByRole("listbox", { name: "Insert file or folder" });
     expect(await screen.findByRole("option", { name: "src/" })).toBeTruthy();
     expect(screen.getByRole("option", { name: "package.json" })).toBeTruthy();
 

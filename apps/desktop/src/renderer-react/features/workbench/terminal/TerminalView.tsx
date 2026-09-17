@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import React, { memo, useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { Terminal } from "@xterm/xterm";
 import { CanvasAddon } from "@xterm/addon-canvas";
 import { ClipboardAddon } from "@xterm/addon-clipboard";
@@ -153,7 +153,7 @@ export function trackTuiRedraw(chunk: string, terminal: Terminal): void {
  * screen renders at the top. Pull the viewport up by the trailing blank rows
  * so the transcript tail stays at the bottom of the screen.
  */
-export function reanchorTuiViewport(terminal: Terminal): void {
+function reanchorTuiViewport(terminal: Terminal): void {
   try {
     const buffer = terminal.buffer.active;
     if (buffer.type !== "normal") return;

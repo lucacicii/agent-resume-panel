@@ -2,13 +2,13 @@ import type { AgentToolCategory, AgentToolDescriptor } from "@agent-resume/core"
 import { ThemeIcon } from "./ThemeIcon";
 import type { ReactNode } from "react";
 
-export type AskToolMode = "auto" | "custom" | "off";
+type AskToolMode = "auto" | "custom" | "off";
 export interface AskToolPrefs {
   mode: AskToolMode;
   enabledTools: string[];
 }
 
-export const TOOL_CATEGORY_ORDER: AgentToolCategory[] = [
+const TOOL_CATEGORY_ORDER: AgentToolCategory[] = [
   "notes",
   "task",
   "workbench",

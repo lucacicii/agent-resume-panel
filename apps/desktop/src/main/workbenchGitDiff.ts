@@ -15,7 +15,7 @@ export interface GitDiffHunkTarget {
   newLines: number;
 }
 
-export type GitDiffLineSide = "additions" | "deletions";
+type GitDiffLineSide = "additions" | "deletions";
 
 export interface GitDiffLineTarget {
   side: GitDiffLineSide;
@@ -45,7 +45,7 @@ function hunkKey(oldStart: number, oldLines: number, newStart: number, newLines:
 }
 
 /** Parse the file hunks from a text Git patch without interpreting file contents. */
-export function parseGitDiffHunks(patch: string): ParsedGitDiffHunk[] {
+function parseGitDiffHunks(patch: string): ParsedGitDiffHunk[] {
   const lines = patch.split("\n");
   const starts: number[] = [];
   for (let index = 0; index < lines.length; index += 1) {

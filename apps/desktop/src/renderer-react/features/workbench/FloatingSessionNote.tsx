@@ -13,7 +13,7 @@ export interface FloatingSessionNoteTarget {
   sessionTitle: string;
 }
 
-export type FloatingNoteTarget =
+type FloatingNoteTarget =
   | FloatingSessionNoteTarget
   | { kind: "library"; initialGtdStatus: GtdStatus };
 
@@ -25,7 +25,7 @@ export function sessionNoteMatchesTarget(note: Note, target: FloatingSessionNote
     && note.agentSessionId === target.sessionId;
 }
 
-export function sessionNoteTitle(target: Pick<FloatingSessionNoteTarget, "projectName" | "projectPath" | "sessionTitle" | "sessionId">): string {
+function sessionNoteTitle(target: Pick<FloatingSessionNoteTarget, "projectName" | "projectPath" | "sessionTitle" | "sessionId">): string {
   const project = target.projectName?.trim()
     || target.projectPath.replaceAll("\\", "/").split("/").filter(Boolean).at(-1)
     || target.projectPath.trim();

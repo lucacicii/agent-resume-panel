@@ -36,7 +36,7 @@ export const DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU: WorkbenchProjectContextMenu
 
 const PROJECT_MENU_SET = new Set<string>(ALL_WORKBENCH_PROJECT_CONTEXT_MENU);
 
-export function normalizeProjectContextMenu(
+function normalizeProjectContextMenu(
   value: WorkbenchProjectContextMenuAction[] | undefined | null
 ): WorkbenchProjectContextMenuAction[] {
   if (!Array.isArray(value)) {
@@ -58,7 +58,7 @@ const COMPOSER_SLASH_DESCRIPTION_MAX = 200;
 const COMPOSER_SLASH_PHRASES_MAX = 100;
 
 /** Keep in sync with packages/core normalizeWorkbenchComposerSlashPhrases. */
-export function normalizeComposerSlashPhrases(
+function normalizeComposerSlashPhrases(
   value: WorkbenchComposerSlashPhrase[] | undefined | null
 ): WorkbenchComposerSlashPhrase[] {
   if (!Array.isArray(value)) return [];
@@ -89,7 +89,7 @@ const COMPOSER_MENTIONS_MAX = 50;
 const COMPOSER_MENTION_ROOTS_MAX = 20;
 
 /** Keep in sync with packages/core normalizeWorkbenchComposerMentions (draft-side, no path.resolve). */
-export function normalizeComposerMentions(
+function normalizeComposerMentions(
   value: WorkbenchComposerMention[] | undefined | null
 ): WorkbenchComposerMention[] {
   if (!Array.isArray(value)) return [];
@@ -166,9 +166,9 @@ export function buildComposerMentionPrompt(mention: WorkbenchComposerMention): s
   return lines.join("\n");
 }
 
-export type UiLanguageValue = "auto" | "en" | "zh-cn" | "ja";
+type UiLanguageValue = "auto" | "en" | "zh-cn" | "ja";
 
-export interface NotificationsDraft {
+interface NotificationsDraft {
   autoClearMinutes: number;
 }
 
@@ -230,7 +230,7 @@ export interface SessionsDraft {
 }
 
 /** Composite target: `cli:codex` | `acp:claude` | … */
-export type WorkbenchNewSessionTargetDraft = string;
+type WorkbenchNewSessionTargetDraft = string;
 
 export interface WorkbenchDraft {
   scratchDir: string;
@@ -326,7 +326,7 @@ export function normalizeOutputLanguage(value: string | undefined): UiLanguageVa
   return "auto";
 }
 
-export function notificationsDraftFromSettings(settings: PanelSettings): NotificationsDraft {
+function notificationsDraftFromSettings(settings: PanelSettings): NotificationsDraft {
   const minutes = settings.notifications?.autoClearMinutes;
   return {
     autoClearMinutes: typeof minutes === "number" ? minutes : 60
@@ -453,7 +453,7 @@ export function sessionsDraftFromSettings(settings: PanelSettings): SessionsDraf
   };
 }
 
-export function notificationsPatch(_settings: PanelSettings, draft: NotificationsDraft): PanelSettings["notifications"] {
+function notificationsPatch(_settings: PanelSettings, draft: NotificationsDraft): PanelSettings["notifications"] {
   return {
     autoClearMinutes: clampDraftInt(draft.autoClearMinutes, 60, 0, 10080)
   };
@@ -491,7 +491,7 @@ export function providersPatch(settings: PanelSettings, draft: ProvidersDraft): 
 }
 
 /** Effective identity used for vector search (matches embedding_key inputs, without apiKey). */
-export function embeddingSearchIdentityFromSettings(settings: PanelSettings): {
+function embeddingSearchIdentityFromSettings(settings: PanelSettings): {
   baseUrl: string;
   model: string;
 } {
@@ -502,7 +502,7 @@ export function embeddingSearchIdentityFromSettings(settings: PanelSettings): {
   };
 }
 
-export function embeddingSearchIdentityFromDraft(
+function embeddingSearchIdentityFromDraft(
   settings: PanelSettings,
   draft: ProvidersDraft
 ): { baseUrl: string; model: string } {

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type CSSProperties, type JSX } from "react";
+import { useMemo, useRef, useState, type JSX } from "react";
 import dagre from "@dagrejs/dagre";
 import { line, curveBasis } from "d3-shape";
 import { isBuiltinTemplateId, isProjectRoleTemplateId, type ImRoleTemplate } from "../../../shared/imTypes";

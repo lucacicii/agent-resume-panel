@@ -92,21 +92,3 @@ export function toAgentSession(
   return session;
 }
 
-export function fromAgentSession(session: AgentSession, syncTimeMs: number): CatalogSessionRow {
-  return {
-    provider: session.provider,
-    agent_session_id: session.id,
-    title: session.title,
-    project_path: session.projectPath,
-    updated_at_ms: session.updatedAt,
-    archived: session.archived ? 1 : 0,
-    message_count: session.messageCount ?? null,
-    model: session.model ?? null,
-    branch: session.branch ?? null,
-    source: session.source ?? null,
-    acp_provider: session.acpProvider ?? null,
-    user_title: null,
-    hidden: 0,
-    last_synced_at_ms: syncTimeMs
-  };
-}

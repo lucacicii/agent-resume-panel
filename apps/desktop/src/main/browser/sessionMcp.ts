@@ -3,7 +3,7 @@ import type { McpServer } from "@agentclientprotocol/sdk" with { "resolution-mod
 import { BROWSER_MCP_SERVER_NAME, ensureBrowserMcpServer, type BrowserMcpServerHandle } from "./mcpServer";
 import type { BrowserController } from "./controller";
 
-export type SessionMcpBuildArgs = {
+type SessionMcpBuildArgs = {
   projectPath: string;
   recordId: string;
   settings: PanelSettings;

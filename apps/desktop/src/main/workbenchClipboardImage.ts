@@ -4,9 +4,9 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 
-export const MAX_CLIPBOARD_IMAGE_BYTES = 20 * 1024 * 1024;
+const MAX_CLIPBOARD_IMAGE_BYTES = 20 * 1024 * 1024;
 
-export type WorkbenchClipboardImage = {
+type WorkbenchClipboardImage = {
   path: string;
   previewUrl: string;
 };

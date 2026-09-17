@@ -1,14 +1,14 @@
 import type { AgentSessionSyncResult, PanelSettings } from "@agent-resume/core";
 import { appearanceStateFromSettings, type DesktopAppearanceState } from "./themes";
 
-export type SettingsChangedPayload = {
+type SettingsChangedPayload = {
   settings: PanelSettings;
   section?: string;
   sync?: AgentSessionSyncResult;
 };
 
 /** One complete state keeps every renderer subsystem synchronized during a live switch. */
-export type BridgedCustomEvent =
+type BridgedCustomEvent =
   | { name: "agent-resume:settings-saved"; detail: SettingsChangedPayload }
   | { name: "agent-resume:appearance-change"; detail: DesktopAppearanceState };
 

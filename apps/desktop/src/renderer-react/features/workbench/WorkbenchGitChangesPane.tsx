@@ -1,7 +1,7 @@
 import { ThemeIcon } from "../../components/ThemeIcon";
 import { useI18n } from "../../i18n";
 
-export type WorkbenchGitChange = {
+type WorkbenchGitChange = {
   path: string;
   repoPath: string;
   repoRoot: string;

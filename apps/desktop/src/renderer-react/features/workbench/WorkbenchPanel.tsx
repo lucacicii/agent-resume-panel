@@ -85,16 +85,14 @@ import {
   rankQuickAccessProjects,
   type QuickAccessCommand,
   type QuickAccessFile,
-  type QuickAccessMode,
   type QuickAccessProject
 } from "./QuickAccess";
 import { useWorkbenchScripts } from "./scripts/useWorkbenchScripts";
 import { WorkbenchScriptsPane } from "./scripts/WorkbenchScriptsPane";
-import { resolveTerminalTheme, resolveTerminalThemeId } from "./terminalThemes";
+import { resolveTerminalThemeId } from "./terminalThemes";
 import { appearanceStateFromSettings } from "../../themes";
 import { storedWidth } from "../../storage";
 import {
-  type GitStatusResult,
   type TerminalGitBranches,
   type GitChange,
   type GitLog,
@@ -381,7 +379,6 @@ const LIST_WIDTH_KEY = "wb-list-pane-width";
 const SIDE_WIDTH_KEY = "wb-side-panel-width";
 const SESSION_VIEW_MODE_KEY = "wb-session-view-mode";
 const TUI_SPLIT_HEIGHT_KEY = "wb-tui-split-height";
-const DEFAULT_SIDE_WIDTH = 320;
 const ALL_PROJECTS_PANE_KEY = "__all_projects__";
 
 function effectiveGtdStatus(
@@ -463,16 +460,6 @@ function composeSessionTitle(base: string, projectName: string): string {
   const budget = MAX_TITLE_LENGTH - core.length - SESSION_TITLE_SUFFIX_LEAD.length;
   const project = projectName.slice(0, Math.min(projectName.length, budget));
   return project ? `${core}${SESSION_TITLE_SUFFIX_LEAD}${project}` : core;
-}
-
-function sessionBelongsToProject(session: AgentSession | null, project: WorkbenchProject): boolean {
-  return Boolean(
-    session
-    && (
-      (session.projectId && project.id === session.projectId)
-      || (session.projectPath && project.path === session.projectPath)
-    )
-  );
 }
 
 function sessionNoteTarget(session: AgentSession, projectName?: string): FloatingSessionNoteTarget {
@@ -616,7 +603,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [gtdStatuses, setGtdStatuses] = useState<Record<string, GtdStatus>>({});
   const [taskRollup, setTaskRollup] = useState<TaskGtdRollup | null>(null);
   const [selectedProject, setSelectedProject] = useState<string | null>(storageString(PROJECT_KEY) || null);
-  const [expandedProjectIds, setExpandedProjectIds] = useState<Set<string>>(() => new Set());
   const [pinnedProjects, setPinnedProjects] = useState<Set<string>>(loadPinnedProjects);
   const [sessionQuery, setSessionQuery] = useState("");
   /** Work-item workspace scope (set by the board); renders a dedicated view. */
@@ -1085,7 +1071,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     loadComposerTipsFromDb();
   }, [composerHistoryKeys, loadComposerTipsFromDb]);
 
-
   const sessionQueryRequest = useCallback((cursor?: { updatedAt: number; provider: string; id: string }) => {
     const request: NonNullable<Parameters<DesktopApi["querySessionsPage"]>[0]> = {
       limit: 100,
@@ -1366,9 +1351,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     for (const pending of pendingSessions) {
       const sessionKeyValue = assignments.get(pending.terminalKey);
       if (!sessionKeyValue) continue;
-      const colon = sessionKeyValue.indexOf(":");
-      const catalogProvider = colon > 0 ? sessionKeyValue.slice(0, colon) : pending.provider;
-      const sessionId = colon > 0 ? sessionKeyValue.slice(colon + 1) : sessionKeyValue;
       // Sessions started inside a work-item workspace belong to that work item.
       if (pending.workItemNoteId && typeof desktopApi().notesLinkSessionToWorkItem === "function") {
         void desktopApi().notesLinkSessionToWorkItem({
@@ -1789,7 +1771,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   const currentDiff = currentDiffs.find((pane) => pane.key === activePane);
   const currentFilePath = workbenchActiveFilePath(selectedProject, currentEditor?.path, currentDiff);
   const currentAcpChat = currentAcpChats.find((pane) => pane.key === activePane);
-  const currentBrowser = currentBrowsers.find((pane) => pane.key === activePane);
   const currentNotePane = currentNotePanes.find((pane) => pane.key === activePane);
   /** The noteId whose pane is currently active (for row highlighting). */
   const activeNotePaneId = currentNotePane?.noteId ?? null;
@@ -1966,12 +1947,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     });
   }, []);
 
-  const navigateToWorkbenchPane = useCallback((paneKey: string) => {
-    if (!paneKey) return;
-    setActivePane(paneKey, selectedProject);
-    focusWorkbenchPane(paneKey);
-  }, [focusWorkbenchPane, selectedProject, setActivePane]);
-
   const setComposerDraft = useCallback((paneKey: string, value: string) => {
     setComposerDrafts((current) => current[paneKey] === value ? current : { ...current, [paneKey]: value });
   }, []);
@@ -2118,12 +2093,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
     setActivePane(paneKey, pane.projectPath);
   }, [setActivePane]);
-
-  const openComposerTip = useCallback((paneKey: string, tip: ComposerSendTip) => {
-    activateComposerPane(paneKey);
-    setSessionViewMode("hybrid");
-    setTranscriptFocus({ text: tip.text, sentAtMs: tip.createdAtMs, nonce: Date.now() });
-  }, [activateComposerPane]);
 
   const sendComposerToTerminal = useCallback((paneKey: string) => {
     const pane = terminalsRef.current.find((item) => item.key === paneKey);
@@ -3586,22 +3555,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     return () => window.removeEventListener("agent-resume:workbench-open-diff", onOpenDiff);
   }, []);
 
-  const projectMenu = (event: React.MouseEvent, project: WorkbenchProject) => {
-    event.preventDefault();
-    const menu: WorkbenchContextMenu = {
-      kind: "project",
-      projectPath: project.path,
-      projectId: project.id,
-      x: event.clientX,
-      y: event.clientY
-    };
-    setContextMenu(menu);
-    void desktopApi().workbenchGetProjectEditor().then((info) => {
-      if (!info.editor || (!info.available && info.selected === "auto")) return;
-      setContextMenu((current) => current === menu ? { ...current, editorLabel: info.editor!.label } : current);
-    }).catch(() => undefined);
-  };
-
   const workItemMenu = (event: React.MouseEvent, item: Pick<WorkbenchWorkItem, "noteId" | "title" | "sessions">) => {
     event.preventDefault();
     const menu: WorkbenchContextMenu = {
@@ -4367,7 +4320,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     quickAccessSearchTruncated,
     quickAccessProjectContextRef,
     loadQuickAccessFiles,
-    openQuickAccess,
     closeQuickAccess,
     enterQuickAccessProjectMode,
     leaveQuickAccessProjectMode,

@@ -239,7 +239,7 @@ export function sanitizeMarkdownProseTags(markdown: string): string {
 const MARKDOWN_CACHE_MAX = 500;
 const markdownCache = new Map<string, string>();
 
-export type RenderMarkdownOptions = MarkdownImageOptions & {
+type RenderMarkdownOptions = MarkdownImageOptions & {
   imageLabels?: Partial<MarkdownImageLabels>;
 };
 

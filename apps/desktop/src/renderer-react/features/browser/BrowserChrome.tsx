@@ -3,7 +3,7 @@ import { ThemeIcon } from "../../components/ThemeIcon";
 import { useI18n } from "../../i18n";
 import type { BrowserSessionState, BrowserTabStateDto } from "../../../shared/browserTypes";
 
-export type BrowserChromeProps = {
+type BrowserChromeProps = {
   session: BrowserSessionState | null;
   compact?: boolean;
   /** Standalone window chrome includes traffic-light padding. */

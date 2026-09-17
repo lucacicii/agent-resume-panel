@@ -3,8 +3,7 @@ import { COMPOSER_SEND_TEXT_MAX } from "./composerSends";
 const MIN_TIP_TEXT_LENGTH = 2;
 
 /** Same-session user rows closer than this (with no human-speed outlier) are one TUI/stdout burst. */
-export const COMPOSER_IMPORT_BURST_GAP_MS = 5 * 60 * 1000;
-const MIN_BURST_LENGTH = 3;
+const COMPOSER_IMPORT_BURST_GAP_MS = 5 * 60 * 1000;
 
 const WRAPPER_NOISE =
   /^(?:<(?:tool_result|tool_use|tool-use|command-name|command-message|command-args|local-command-stdout|local-command-stderr|local-command-caveat|total_tokens|task-notification|suggestion|function_call|function-call)\b|\[Request interrupted\b|\[Use arrows to review\b)/i;

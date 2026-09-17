@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { moveSessionToProjectInCatalog } from "../catalog/projects";
-import { listTaskWorkbenches, listTaskWorkbenchSessionLinks } from "../catalog/taskWorkbenches";
+import { listTaskWorkbenches } from "../catalog/taskWorkbenches";
 import { GTD_STATUSES, type GtdStatus } from "../gtd/types";
 import { buildNoteDocument, parseNoteDocument } from "../notes/frontmatter";
 import { isWorkItemFrontmatter } from "../notes/workItemNote";
@@ -19,8 +19,8 @@ import type { NoteToolContext } from "./tools";
  */
 export interface TaskToolContext extends NoteToolContext {}
 
-export const TASK_LIST_DEFAULT_LIMIT = 100;
-export const TASK_LIST_MAX_LIMIT = 200;
+const TASK_LIST_DEFAULT_LIMIT = 100;
+const TASK_LIST_MAX_LIMIT = 200;
 
 const gtdStatusValues = GTD_STATUSES as unknown as [GtdStatus, ...GtdStatus[]];
 

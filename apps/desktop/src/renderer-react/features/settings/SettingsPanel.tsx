@@ -40,7 +40,7 @@ function isEditablePane(value: Pane): value is EditablePane {
   return value !== "mcp" && value !== "usage" && value !== "logs" && value !== "backup" && value !== "about" && value !== "im";
 }
 
-export type SettingsPanelProps = {
+type SettingsPanelProps = {
   /** Production path is the in-window overlay ("embedded"). */
   variant?: "window" | "embedded";
   initialPane?: string;

@@ -4,7 +4,7 @@ export type SectionKind = "recentRoot" | "favoritesRoot" | "projectsRoot";
 
 const STORAGE_KEY = "agentResume.sectionOrder";
 
-export const ALL_SECTIONS: SectionKind[] = ["recentRoot", "favoritesRoot", "projectsRoot"];
+const ALL_SECTIONS: SectionKind[] = ["recentRoot", "favoritesRoot", "projectsRoot"];
 
 export const DEFAULT_SECTION_ORDER: SectionKind[] = [...ALL_SECTIONS];
 

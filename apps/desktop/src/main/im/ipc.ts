@@ -623,10 +623,3 @@ export async function flushImStreamingMessages(): Promise<void> {
   await conductor.flushStreamingMessages();
 }
 
-export function resetImRuntimeForTests(): void {
-  store = null;
-  conductor = null;
-  storeKey = "";
-  acpHost = null;
-  emitIm = null;
-}

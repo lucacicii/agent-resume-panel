@@ -28,7 +28,7 @@ export interface UpsertSessionEmbeddingResult {
   error?: string;
 }
 
-export interface SessionEmbeddingRow {
+interface SessionEmbeddingRow {
   provider: string;
   agent_session_id: string;
   title: string | null;

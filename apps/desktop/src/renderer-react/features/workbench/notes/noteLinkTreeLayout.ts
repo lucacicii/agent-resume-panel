@@ -33,7 +33,7 @@ export type LaidOutEdge = {
   path: string;
 };
 
-export type NoteTreeLayout = {
+type NoteTreeLayout = {
   width: number;
   height: number;
   nodes: LaidOutNode[];
@@ -42,7 +42,7 @@ export type NoteTreeLayout = {
   nodeCount: number;
 };
 
-export type LayoutOptions = {
+type LayoutOptions = {
   /** Horizontal separation between sibling columns (px). */
   nodeGap?: number;
   /** Vertical gap between tree levels (px). */

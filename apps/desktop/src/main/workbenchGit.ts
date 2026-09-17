@@ -5,7 +5,6 @@ import {
   ensureExtensionCatalogSchema,
   expandHome,
   gitCommitLlmConfigFromSettings,
-  llmConfigFromSettings,
   loadArpConfig,
   loadSettings,
   preparePanelDatabasesFromSettings,
@@ -31,7 +30,7 @@ const DEFAULT_GIT_LOG_LIMIT = 50;
 const MAX_GIT_LOG_LIMIT = 200;
 const GIT_HASH_PATTERN = /^[0-9a-f]{7,40}$/i;
 
-export interface GitCommitRefs {
+interface GitCommitRefs {
   heads: string[];
   remotes: string[];
   tags: string[];
@@ -39,7 +38,7 @@ export interface GitCommitRefs {
   primaryLabel: string | null;
 }
 
-export interface GitLogEntry {
+interface GitLogEntry {
   hash: string;
   shortHash: string;
   author: string;
@@ -52,14 +51,14 @@ export interface GitLogEntry {
   pathAtCommit: string;
 }
 
-export interface GitShowFileEntry {
+interface GitShowFileEntry {
   status: string;
   path: string;
   /** Old path for rename/copy (R/C) entries, when the diff reports one. */
   oldPath?: string;
 }
 
-export interface GitShowResult {
+interface GitShowResult {
   hash: string;
   shortHash: string;
   author: string;
@@ -69,7 +68,7 @@ export interface GitShowResult {
   files: GitShowFileEntry[];
 }
 
-export interface GitCommitFileDiffSidesResult {
+interface GitCommitFileDiffSidesResult {
   oldLabel: string;
   newLabel: string;
   oldText: string;
@@ -77,7 +76,7 @@ export interface GitCommitFileDiffSidesResult {
   hunks: GitDiffHunk[];
 }
 
-export interface GitFileLogResult {
+interface GitFileLogResult {
   repoRoot: string;
   repoPath: string;
   commits: GitLogEntry[];

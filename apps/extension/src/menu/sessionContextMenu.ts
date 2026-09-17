@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { t } from "../i18n";
 
-export type SessionMenuAction =
+type SessionMenuAction =
   | "copyResumeCommand"
   | "openProject"
   | "openInGhostty"
@@ -13,7 +13,7 @@ export type SessionMenuAction =
   | "openSessionNote"
   | "deleteSessionNote";
 
-export const ALL_SESSION_MENU_ACTIONS: SessionMenuAction[] = [
+const ALL_SESSION_MENU_ACTIONS: SessionMenuAction[] = [
   "copyResumeCommand",
   "openProject",
   "openInGhostty",
@@ -26,7 +26,7 @@ export const ALL_SESSION_MENU_ACTIONS: SessionMenuAction[] = [
   "deleteSessionNote"
 ];
 
-export const DEFAULT_MAIN_SESSION_ACTIONS: SessionMenuAction[] = [
+const DEFAULT_MAIN_SESSION_ACTIONS: SessionMenuAction[] = [
   "copyResumeCommand",
   "openProject",
   "previewSession",
@@ -36,7 +36,7 @@ export const DEFAULT_MAIN_SESSION_ACTIONS: SessionMenuAction[] = [
 const CONFIG_KEY = "sessionMenu.mainActions";
 const ORDER_CONFIG_KEY = "sessionMenu.itemOrder";
 
-export function getSessionMenuActionLabels(): Record<SessionMenuAction, string> {
+function getSessionMenuActionLabels(): Record<SessionMenuAction, string> {
   return {
     copyResumeCommand: t("menu.session.copyResumeCommand"),
     openProject: t("menu.session.openProject"),
@@ -50,19 +50,6 @@ export function getSessionMenuActionLabels(): Record<SessionMenuAction, string> 
     deleteSessionNote: t("menu.session.deleteNote")
   };
 }
-
-const COMMAND_BY_ACTION: Record<SessionMenuAction, string> = {
-  copyResumeCommand: "agentResume.copyResumeCommand",
-  openProject: "agentResume.openProject",
-  openInGhostty: "agentResume.openInGhostty",
-  previewSession: "agentResume.previewSession",
-  renameSession: "agentResume.renameSession",
-  removeSessionFromPanel: "agentResume.removeSessionFromPanel",
-  autoRenameSession: "agentResume.autoRenameSession",
-  setGtdStatus: "agentResume.setSessionGtdStatus",
-  openSessionNote: "agentResume.openSessionNote",
-  deleteSessionNote: "agentResume.deleteSessionNote"
-};
 
 export interface SessionMenuEditorState {
   order: SessionMenuAction[];
@@ -176,7 +163,7 @@ export function mainSessionActionsFromEditorState(order: string[], checkedIds: s
   return output;
 }
 
-export function normalizeMainSessionActions(actions: string[]): SessionMenuAction[] {
+function normalizeMainSessionActions(actions: string[]): SessionMenuAction[] {
   const seen = new Set<SessionMenuAction>();
   const output: SessionMenuAction[] = [];
 
@@ -189,10 +176,6 @@ export function normalizeMainSessionActions(actions: string[]): SessionMenuActio
   }
 
   return output;
-}
-
-export function commandForSessionMenuAction(action: SessionMenuAction): string {
-  return COMMAND_BY_ACTION[action];
 }
 
 function isSessionMenuAction(value: string): value is SessionMenuAction {

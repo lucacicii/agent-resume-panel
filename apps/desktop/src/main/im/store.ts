@@ -614,7 +614,7 @@ function formatKnowledgeBlock(items: ImKnowledgeSnapshot[]): string {
   return lines.join("\n\n");
 }
 
-export async function ensureArpDir(localPath: string): Promise<string> {
+async function ensureArpDir(localPath: string): Promise<string> {
   const resolved = path.resolve(expandHome(localPath));
   const arpDir = path.join(resolved, ".arp");
   await fs.mkdir(arpDir, { recursive: true }).catch(() => undefined);

@@ -2,7 +2,7 @@ import { ThemeIcon } from "../../../components/ThemeIcon";
 import { useI18n } from "../../../i18n";
 import type { TerminalPane } from "../terminal/TerminalView";
 
-export type WorkbenchSideView = "files" | "git" | "search" | "scripts" | "linkgraph" | null;
+type WorkbenchSideView = "files" | "git" | "search" | "scripts" | "linkgraph" | null;
 
 export function WorkbenchDetailHeader({
   onBackToGtd,

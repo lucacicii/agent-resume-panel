@@ -28,12 +28,12 @@ export interface NoteToolContext {
   sessionContext?: McpSessionContext;
 }
 
-export const NOTE_SEARCH_DEFAULT_LIMIT = 50;
-export const NOTE_SEARCH_MAX_LIMIT = 200;
-export const NOTE_LIST_DEFAULT_LIMIT = 100;
-export const NOTE_LIST_MAX_LIMIT = 200;
-export const NOTE_TREE_DEFAULT_MAX_NODES = 100;
-export const NOTE_TREE_MAX_NODES = 200;
+const NOTE_SEARCH_DEFAULT_LIMIT = 50;
+const NOTE_SEARCH_MAX_LIMIT = 200;
+const NOTE_LIST_DEFAULT_LIMIT = 100;
+const NOTE_LIST_MAX_LIMIT = 200;
+const NOTE_TREE_DEFAULT_MAX_NODES = 100;
+const NOTE_TREE_MAX_NODES = 200;
 
 const providerSchema = z.enum([
   "codex",
@@ -53,7 +53,7 @@ export type NoteMcpResult = {
   isError?: boolean;
 };
 
-export function clampNoteSearchLimit(limit?: number): number {
+function clampNoteSearchLimit(limit?: number): number {
   const raw = Number(limit);
   if (!Number.isFinite(raw) || raw < 1) {
     return NOTE_SEARCH_DEFAULT_LIMIT;
@@ -61,7 +61,7 @@ export function clampNoteSearchLimit(limit?: number): number {
   return Math.min(Math.floor(raw), NOTE_SEARCH_MAX_LIMIT);
 }
 
-export function noteResponse(message: string, data: Record<string, unknown> = {}): NoteMcpResult {
+function noteResponse(message: string, data: Record<string, unknown> = {}): NoteMcpResult {
   // Keep the human-readable prefix for existing clients while making the JSON
   // payload a stable, machine-readable envelope. Data is flattened for
   // backwards compatibility with the old note_list response shape.
@@ -139,7 +139,7 @@ function rootFor(noteId: string, index: NoteRelationshipIndex): string {
   return current;
 }
 
-export function summarizeNote(
+function summarizeNote(
   record: NoteRecord,
   index?: NoteRelationshipIndex
 ): Record<string, unknown> {

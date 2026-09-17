@@ -6,11 +6,11 @@ import { expandHome } from "@agent-resume/core";
 
 const execFileAsync = promisify(execFile);
 
-export const DEFAULT_NESTED_SCAN_MAX_DEPTH = 6;
-export const DEFAULT_NESTED_SCAN_MAX_REPOS = 32;
-export const HARD_NESTED_SCAN_MAX_DEPTH = 10;
+const DEFAULT_NESTED_SCAN_MAX_DEPTH = 6;
+const DEFAULT_NESTED_SCAN_MAX_REPOS = 32;
+const HARD_NESTED_SCAN_MAX_DEPTH = 10;
 
-export const DEFAULT_NESTED_SCAN_IGNORE_DIRS = [
+const DEFAULT_NESTED_SCAN_IGNORE_DIRS = [
   "node_modules",
   ".git",
   "dist",
@@ -35,13 +35,13 @@ export interface NestedGitRepoInfo {
   displayPath: string;
 }
 
-export interface NestedGitRepoWithBranch extends NestedGitRepoInfo {
+interface NestedGitRepoWithBranch extends NestedGitRepoInfo {
   branch: string | null;
 }
 
-export type TerminalGitMode = "none" | "direct" | "nested";
+type TerminalGitMode = "none" | "direct" | "nested";
 
-export interface TerminalGitInfoResult {
+interface TerminalGitInfoResult {
   mode: TerminalGitMode;
   isRepo: boolean;
   branch: string | null;
@@ -49,13 +49,13 @@ export interface TerminalGitInfoResult {
   nestedRepos: NestedGitRepoWithBranch[];
 }
 
-export interface GitRemoteBranch {
+interface GitRemoteBranch {
   remote: string;
   name: string;
   fullName: string;
 }
 
-export interface TerminalGitBranchesRepoResult {
+interface TerminalGitBranchesRepoResult {
   root: string;
   displayPath: string;
   current: string | null;
@@ -64,7 +64,7 @@ export interface TerminalGitBranchesRepoResult {
   remoteBranches: GitRemoteBranch[];
 }
 
-export interface TerminalGitBranchesResult {
+interface TerminalGitBranchesResult {
   mode: TerminalGitMode;
   current?: string | null;
   branches?: string[];

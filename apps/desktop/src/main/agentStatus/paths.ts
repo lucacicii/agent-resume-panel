@@ -36,7 +36,7 @@ export type AgentStatusPaths = {
  */
 export const AGENT_STATUS_SOCKET_MAX_BYTES = 100;
 
-export function agentStatusSocketPath(panelHome: string): string {
+function agentStatusSocketPath(panelHome: string): string {
   const uid = typeof process.getuid === "function" ? process.getuid() : 0;
   // Per-panel-home suffix so two profiles never share one socket.
   const profile = createHash("sha1").update(panelHome).digest("hex").slice(0, 8);

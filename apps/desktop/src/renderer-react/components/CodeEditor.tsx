@@ -20,7 +20,7 @@ import { bracketMatching } from "@codemirror/language";
 import { codeMirrorThemeExtensions, type CodeMirrorAppearance } from "./codeMirrorThemes";
 import { registerCodeMirrorSelection } from "../selection/codeMirrorSelection";
 
-export interface CodeEditorProps {
+interface CodeEditorProps {
   value: string;
   onChange: (value: string) => void;
   onBlur?: () => void;
@@ -42,7 +42,7 @@ export interface CodeEditorProps {
   selectionProjectPath?: string;
 }
 
-export interface CodeEditorFindOptions {
+interface CodeEditorFindOptions {
   /** When false, highlight the match without stealing keyboard focus. Default true. */
   focus?: boolean;
 }
@@ -53,7 +53,7 @@ export interface CodeEditorSearchResult {
   total: number;
 }
 
-export interface CodeEditorRevealRange {
+interface CodeEditorRevealRange {
   /** 1-based line number */
   line: number;
   /** 1-based start column */
@@ -63,7 +63,7 @@ export interface CodeEditorRevealRange {
   focus?: boolean;
 }
 
-export interface CodeEditorSelectionRange {
+interface CodeEditorSelectionRange {
   /** 1-based start line */
   startLine: number;
   /** 1-based end line */

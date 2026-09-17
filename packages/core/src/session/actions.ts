@@ -8,7 +8,6 @@ import { AgentProvider, AgentSession } from "../catalog/types";
 import { preparePanelDatabasesFromSettings } from "../dbPaths";
 import { DEFAULT_CATALOG_OUTPUT_LANGUAGE } from "../i18n/outputLanguage";
 import {
-  llmConfigFromSettings,
   sessionRenameLlmConfigFromSettings,
   sessionSummaryLlmConfigFromSettings
 } from "../llm/fromSettings";

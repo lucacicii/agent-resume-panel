@@ -13,7 +13,7 @@
  * on the screen rules and process identity that already cover it.
  */
 
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
@@ -57,10 +57,10 @@ export function homeDir(ctx: AgentIntegrationContext): string {
 }
 
 /** One lifecycle event and the state it proves. */
-export type HookSpec = { event: string; state: "idle" | "working" | "blocked"; matcher?: string };
+type HookSpec = { event: string; state: "idle" | "working" | "blocked"; matcher?: string };
 
 /** Claude Code: hooks live in `~/.claude/settings.json`. */
-export const CLAUDE_HOOKS: readonly HookSpec[] = [
+const CLAUDE_HOOKS: readonly HookSpec[] = [
   { event: "SessionStart", state: "idle", matcher: "*" },
   { event: "UserPromptSubmit", state: "working" },
   { event: "PreToolUse", state: "working" },
@@ -69,7 +69,7 @@ export const CLAUDE_HOOKS: readonly HookSpec[] = [
 ];
 
 /** Codex: hooks live in `~/.codex/hooks.json`, enabled from `config.toml`. */
-export const CODEX_HOOKS: readonly HookSpec[] = [
+const CODEX_HOOKS: readonly HookSpec[] = [
   { event: "SessionStart", state: "idle" },
   { event: "UserPromptSubmit", state: "working" },
   { event: "PreToolUse", state: "working" },
@@ -83,7 +83,7 @@ export function claudeSettingsPath(ctx: AgentIntegrationContext): string {
   return path.join(homeDir(ctx), ".claude", "settings.json");
 }
 
-export function codexDir(ctx: AgentIntegrationContext): string {
+function codexDir(ctx: AgentIntegrationContext): string {
   return path.join(homeDir(ctx), ".codex");
 }
 

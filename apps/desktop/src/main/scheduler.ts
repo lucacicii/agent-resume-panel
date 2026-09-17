@@ -33,7 +33,7 @@ export function stopMemoryScheduler(): void {
   }
 }
 
-export function startMemoryScheduler(): void {
+function startMemoryScheduler(): void {
   stopMemoryScheduler();
   timer = setInterval(() => {
     void tick().catch((err) => {
@@ -52,9 +52,9 @@ export async function refreshMemorySchedulerFromSettings(): Promise<boolean> {
   return true;
 }
 
-export type ScheduleLevel = "daily" | "weekly" | "monthly";
+type ScheduleLevel = "daily" | "weekly" | "monthly";
 
-export interface DueScheduleJob {
+interface DueScheduleJob {
   level: ScheduleLevel;
   periodKey: string;
   /** Stable label passed to digest runners (day / week / month key). */
@@ -66,7 +66,7 @@ export interface DueScheduleJob {
  * Catch-up: once the local scheduled hour has passed, keep jobs due until status is ok
  * (caller enforces status + retry throttle). Also retries yesterday's daily if still not ok.
  */
-export function computeDueScheduleJobs(
+function computeDueScheduleJobs(
   now: Date,
   hours: { dailyHour: number; weeklyHour: number; monthlyHour: number }
 ): DueScheduleJob[] {
@@ -270,8 +270,3 @@ function formatLocalDay(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-/** Test helper: clear in-process retry throttle. */
-export function resetSchedulerRetryStateForTests(): void {
-  lastAttemptAt.clear();
-  running = false;
-}

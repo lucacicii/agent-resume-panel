@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { resetI18nCache, t } from "./index";
 import { applyUiLocaleContext } from "./uiLocaleContext";
 
-export interface LocalizedUiRefreshTargets {
+interface LocalizedUiRefreshTargets {
   sessionTree?: { refresh: () => void };
   acpTree?: { refresh: () => void };
   gtdTree?: { refresh: () => void };

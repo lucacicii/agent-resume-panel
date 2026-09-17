@@ -445,41 +445,6 @@ const FOLDER_DRAG_TEST_MESSAGES: Record<string, string> = {
   "desktop.workbench.deleteFolderConfirm": "Delete folder {0}?"
 };
 
-const FOLDER_FOCUS_TEST_MESSAGES: Record<string, string> = {
-  ...FOLDER_DRAG_TEST_MESSAGES,
-  "desktop.common.revealInFinder": "Reveal in Finder",
-  "desktop.workbench.newSessionTitle": "New session {0}",
-  "desktop.workbench.terminalTabs": "Terminal tabs",
-  "desktop.workbench.closeTerminal": "Close terminal",
-  "desktop.workbench.mountNote": "Mount note",
-  "desktop.workbench.removeProjectFromPanel": "Remove from panel",
-  "desktop.workbench.acpChat": "ACP chat",
-  "desktop.settings.defaultAgent": "Default agent",
-  "desktop.settings.newSessionGroupCli": "CLI (terminal)",
-  "desktop.settings.newSessionGroupAcp": "ACP (visual chat)",
-  "desktop.settings.newSessionTarget.cli_codex": "Codex",
-  "desktop.settings.newSessionTarget.cli_claude": "Claude",
-  "desktop.settings.newSessionTarget.cli_grok": "Grok",
-  "desktop.settings.newSessionTarget.cli_agy": "Antigravity",
-  "desktop.settings.newSessionTarget.cli_opencode": "OpenCode",
-  "desktop.settings.newSessionTarget.cli_pi": "Pi",
-  "desktop.settings.newSessionTarget.cli_cursor": "Cursor CLI",
-  "desktop.settings.newSessionTarget.cli_prime": "Prime Agent",
-  "desktop.settings.newSessionTarget.acp_claude": "ACP · Claude Code",
-  "desktop.settings.newSessionTarget.acp_codex": "ACP · Codex",
-  "desktop.settings.newSessionTarget.acp_grok": "ACP · Grok Build",
-  "desktop.settings.newSessionTarget.acp_opencode": "ACP · OpenCode",
-  "desktop.settings.newSessionTarget.acp_pi": "ACP · Pi",
-  "desktop.settings.newSessionTarget.acp_prime": "ACP · Prime Agent"
-};
-
-function expandWorkbenchProject(title: string) {
-  const project = screen.getByTitle(title);
-  const chevron = project.querySelector(".wb-session-folder-chevron");
-  if (!chevron) throw new Error(`project chevron missing for ${title}`);
-  fireEvent.click(chevron);
-}
-
 function querySessionsPageFromList(
   listSessions: () => Promise<Array<{
     provider: string;
@@ -1808,13 +1773,6 @@ describe("WorkbenchPanel", () => {
       vi.useRealTimers();
     }
   });
-
-
-
-
-
-
-
 
   it("keeps the session search always visible and filters the list", async () => {
     const host = document.createElement("div");
@@ -3816,9 +3774,6 @@ describe("WorkbenchPanel", () => {
     });
     expect(localStorage.getItem("wb-session-view-mode")).toBe("hybrid");
   });
-
-
-
 
   it("reports state-changing Git actions and keeps refreshes silent", async () => {
     const host = document.createElement("div");

@@ -70,8 +70,8 @@ function base64ToBytes(data: string): Uint8Array | null {
   }
 }
 
-export type ClipboardTextWriter = (text: string) => void | Promise<void>;
-export type ClipboardTextReader = () => string | Promise<string>;
+type ClipboardTextWriter = (text: string) => void | Promise<void>;
+type ClipboardTextReader = () => string | Promise<string>;
 
 /**
  * OSC 52 provider: write to the system clipboard; never expose silent reads

@@ -47,10 +47,10 @@ export interface SessionToolContext {
 }
 
 export const SESSION_SEARCH_DEFAULT_LIMIT = 20;
-export const SESSION_READ_DEFAULT_MAX_SUMMARY = 8000;
-export const SESSION_READ_MAX_SUMMARY = 16_000;
-export const SESSION_TRANSCRIPT_DEFAULT_MAX = 2500;
-export const SESSION_TRANSCRIPT_MAX = 8000;
+const SESSION_READ_DEFAULT_MAX_SUMMARY = 8000;
+const SESSION_READ_MAX_SUMMARY = 16_000;
+const SESSION_TRANSCRIPT_DEFAULT_MAX = 2500;
+const SESSION_TRANSCRIPT_MAX = 8000;
 
 const providerEnum = z.enum(["codex", "claude", "agy", "grok", "opencode", "pi", "prime", "chat"]);
 

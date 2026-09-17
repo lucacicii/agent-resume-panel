@@ -19,11 +19,6 @@ import {
   type BrowserSnapshot
 } from "./snapshot";
 
-export type BrowserToolCaller = {
-  kind: "acp" | "mcp-client";
-  recordId: string;
-};
-
 export type BrowserToolContext = {
   controller: BrowserController;
   projectPath: string;
@@ -169,7 +164,7 @@ export const BROWSER_TOOL_NAMES = [
   "browser_clear_cookies"
 ] as const;
 
-export type BrowserToolName = (typeof BROWSER_TOOL_NAMES)[number];
+type BrowserToolName = (typeof BROWSER_TOOL_NAMES)[number];
 
 export const BROWSER_TOOL_INSTRUCTIONS = [
   "Use agent-resume-browser tools to drive the in-app BrowserPane (Workbench or pop-out window).",
@@ -501,7 +496,7 @@ export async function invokeBrowserTool(
   }
 }
 
-export type BrowserToolDescriptor = {
+type BrowserToolDescriptor = {
   name: BrowserToolName;
   description: string;
   inputSchema: {

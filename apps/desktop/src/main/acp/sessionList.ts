@@ -1,5 +1,4 @@
 import type { AgentSession } from "@agent-resume/core";
-import { loadAcpRecords } from "./store";
 import type { AcpSessionRecord } from "./types";
 
 export function acpRecordToAgentSession(record: AcpSessionRecord): AgentSession {
@@ -14,12 +13,6 @@ export function acpRecordToAgentSession(record: AcpSessionRecord): AgentSession 
     acpProvider: record.provider,
     model: record.provider
   };
-}
-
-export async function loadAcpAgentSessions(panelHome: string, maxItems?: number): Promise<AgentSession[]> {
-  const records = await loadAcpRecords(panelHome);
-  const selected = maxItems == null ? records : records.slice(0, Math.max(0, maxItems));
-  return selected.map(acpRecordToAgentSession);
 }
 
 /**

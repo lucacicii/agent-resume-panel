@@ -22,9 +22,9 @@ import { createScanState, drainReports, scanChunk, type ScanState } from "./scan
 import type { AgentKind, PaneTelemetry } from "./types";
 
 /** Sensor heartbeat. One tick covers every attached pane. */
-export const SENSOR_TICK_MS = 1_000;
+const SENSOR_TICK_MS = 1_000;
 /** Minimum gap between process-table reads. */
-export const PROCESS_PROBE_INTERVAL_MS = 1_000;
+const PROCESS_PROBE_INTERVAL_MS = 1_000;
 /**
  * Keep publishing while output is this fresh so the daemon's activity clock and
  * running window stay meaningful. Idle panes stop publishing and let the daemon
@@ -50,7 +50,7 @@ type PaneSensor = {
   dirty: boolean;
 };
 
-export type AgentStatusSensorDeps = {
+type AgentStatusSensorDeps = {
   bridge: AgentStatusBridge;
   /** OS pid backing a PTY. */
   getPtyPid: (paneId: number) => number | null;

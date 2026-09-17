@@ -10,19 +10,19 @@ import {
 } from "../shared/quickAccessPathMatch";
 import { detectRipgrep, WORKBENCH_SKIP_DIR_NAMES } from "./workbenchSearch";
 
-export interface WorkbenchIndexedFile {
+interface WorkbenchIndexedFile {
   path: string;
   relativePath: string;
   kind: "file" | "directory";
 }
 
-export interface WorkbenchFileIndexResult {
+interface WorkbenchFileIndexResult {
   files: WorkbenchIndexedFile[];
   truncated: boolean;
   engine: "rg" | "node";
 }
 
-export interface WorkbenchFileIndexOptions {
+interface WorkbenchFileIndexOptions {
   /** Project roots to index; entries from every root are merged into one set. */
   rootPaths: string[];
   maxFiles?: number;
@@ -30,7 +30,7 @@ export interface WorkbenchFileIndexOptions {
   signal?: AbortSignal;
 }
 
-export interface WorkbenchPathSearchOptions {
+interface WorkbenchPathSearchOptions {
   rootPaths: string[];
   query: string;
   maxResults?: number;

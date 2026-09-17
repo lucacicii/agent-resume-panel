@@ -7,8 +7,8 @@ export interface MemoryToolContext {
   dbPath?: string;
 }
 
-export const MEMORY_RETRIEVE_DEFAULT_LIMIT = 6;
-export const MEMORY_RETRIEVE_MAX_LIMIT = 20;
+const MEMORY_RETRIEVE_DEFAULT_LIMIT = 6;
+const MEMORY_RETRIEVE_MAX_LIMIT = 20;
 
 export const memoryRetrieveSchema = {
   query: z

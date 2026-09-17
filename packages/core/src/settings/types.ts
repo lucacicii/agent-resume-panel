@@ -166,7 +166,7 @@ export const WORKBENCH_TERMINAL_RENDERERS: readonly WorkbenchTerminalRenderer[] 
 ] as const;
 export type WorkbenchProjectEditor = "auto" | "vscode" | "vscodium" | "cursor" | "windsurf";
 
-export type WorkbenchCmdTAction = "newSession" | "newTerminal";
+type WorkbenchCmdTAction = "newSession" | "newTerminal";
 export type WorkbenchEditorTabSize = 2 | 4 | 8;
 export type WorkbenchEditorAutoSaveDelayMs = 300 | 600 | 1000 | 2000;
 export type { CommitMessageStyle } from "../git/prompts";
@@ -451,7 +451,7 @@ export interface NotificationsSettings {
   maxHistory?: number;
 }
 
-export interface DesktopImSettings {
+interface DesktopImSettings {
   smartRoutingEnabled?: boolean;
 }
 

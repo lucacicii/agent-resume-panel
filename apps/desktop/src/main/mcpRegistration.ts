@@ -6,15 +6,13 @@ import * as path from "node:path";
 import { spawn } from "node:child_process";
 
 export const EXTERNAL_MCP_SERVICE_ID = "agent-resume";
-export const EXTERNAL_MCP_SERVICE_NAME = "Agent Resume";
 /** In-app browser tools (requires Desktop running). */
 export const EXTERNAL_BROWSER_MCP_SERVICE_ID = "agent-resume-browser";
-export const EXTERNAL_BROWSER_MCP_SERVICE_NAME = "Agent Resume Browser";
 
 export type McpClientId = "codex" | "claude" | "gemini" | "antigravity" | "opencode" | "cursor" | "pi" | "grok";
-export type McpClientMode = "automatic" | "manual";
+type McpClientMode = "automatic" | "manual";
 
-export interface McpLaunchConfig {
+interface McpLaunchConfig {
   command: string;
   args: string[];
   env: Record<string, string>;
@@ -513,7 +511,7 @@ async function removeBrowserJsonClient(definition: McpClientDefinition): Promise
   await writeJsonAtomically(definition.configPath, { ...config, [rootKey]: servers });
 }
 
-export function buildBrowserCliRegistrationArgs(
+function buildBrowserCliRegistrationArgs(
   id: Extract<McpClientId, "codex" | "claude">,
   launch: McpLaunchConfig
 ): string[] {
@@ -789,7 +787,7 @@ async function migrateTomlFile(configPath: string, launch: McpLaunchConfig): Pro
   return true;
 }
 
-export interface McpMigrationResult {
+interface McpMigrationResult {
   migrated: string[];
   failed: Array<{ target: string; error: string }>;
 }

@@ -1,4 +1,4 @@
-export type TranscriptUserHit = {
+type TranscriptUserHit = {
   id: string;
   text: string;
   timestamp?: string;

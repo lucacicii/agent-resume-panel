@@ -3,11 +3,10 @@ import type { AgentCitation, ReportEntry } from "@agent-resume/core";
 import { ThemeIcon } from "../../components/ThemeIcon";
 import { Sheet } from "../../components/Sheet";
 import { renderMarkdown } from "../../components/Markdown";
-import { desktopApi } from "../../bridge";
 import type { ImMessage, ImRoom } from "../../../shared/imTypes";
 import type { Translate } from "./imUtils";
 
-export interface CitationSheetProps {
+interface CitationSheetProps {
   open: boolean;
   citations: AgentCitation[];
   initialMarker?: string | null;
@@ -25,20 +24,20 @@ export function isSession(citation: AgentCitation): boolean {
   return citation.source === "session" || citation.level === "session" || Boolean(citation.session);
 }
 
-export function citationMarker(citation: AgentCitation): string {
+function citationMarker(citation: AgentCitation): string {
   const prefix = isNote(citation) ? "N" : isSession(citation) ? "S" : "D";
   return `${prefix}${citation.index}`;
 }
 
-export function citationKey(citation: AgentCitation, index: number): string {
+function citationKey(citation: AgentCitation, index: number): string {
   return [citation.source || citation.level, citation.index, citation.reportId || citation.noteId || citation.session?.id || citation.title, index].join(":");
 }
 
-export function citationTitle(citation: AgentCitation, t: Translate): string {
+function citationTitle(citation: AgentCitation, t: Translate): string {
   return citation.title || citation.noteId || citation.reportId || citation.session?.id || t("desktop.im.citationRef", "Citation");
 }
 
-export function citationLabel(citation: AgentCitation, t: Translate): string {
+function citationLabel(citation: AgentCitation, t: Translate): string {
   const source = isNote(citation)
     ? t("desktop.im.citationNotes", "Note")
     : isSession(citation)

@@ -10,7 +10,7 @@ import type {
  * Diffs larger than this are parsed in a dedicated worker so the renderer
  * main thread never blocks on the full-file line diff (`createTwoFilesPatch`).
  */
-export const PARSE_WORKER_THRESHOLD = 100 * 1024;
+const PARSE_WORKER_THRESHOLD = 100 * 1024;
 
 type ParsedFileDiff = ReturnType<typeof parseDiffFromFile>;
 

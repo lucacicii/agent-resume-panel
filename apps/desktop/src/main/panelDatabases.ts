@@ -1,5 +1,4 @@
 import {
-  ensureExtensionCatalogSchema,
   preparePanelDatabases,
   type PanelDbPaths,
   type PanelSettings
@@ -11,8 +10,3 @@ export async function loadPanelDbPaths(settings?: PanelSettings): Promise<PanelD
   return preparePanelDatabases(resolved);
 }
 
-export async function ensureSharedCatalog(settings?: PanelSettings): Promise<PanelDbPaths> {
-  const paths = await loadPanelDbPaths(settings);
-  await ensureExtensionCatalogSchema(paths.catalogDb);
-  return paths;
-}

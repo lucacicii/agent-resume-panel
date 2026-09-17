@@ -6,7 +6,7 @@ export type MarkdownImageOptions = {
   rootDir?: string;
 };
 
-export type MarkdownImageResolution =
+type MarkdownImageResolution =
   | { kind: "local"; url: string; absPath: string }
   | { kind: "data"; url: string }
   | { kind: "remote"; href: string; host: string }
@@ -116,7 +116,7 @@ export function imageSrcFromElement(target: EventTarget | null): string {
 
 const STREAMDOWN_SENTINEL_HOST = "agent-resume.local";
 
-export function toStreamdownSafeSrc(resolved: MarkdownImageResolution): string | undefined {
+function toStreamdownSafeSrc(resolved: MarkdownImageResolution): string | undefined {
   if (resolved.kind === "data") return resolved.url;
   if (resolved.kind === "remote") return resolved.href;
   if (resolved.kind === "local") {

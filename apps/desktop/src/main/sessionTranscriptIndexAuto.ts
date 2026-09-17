@@ -1,4 +1,3 @@
-import { app } from "electron";
 import {
   effectivePanelHome,
   loadSettings,

@@ -116,7 +116,7 @@ export interface AgentThread {
   updatedAtMs: number;
 }
 
-export async function ensureDefaultThread(dbPath: string): Promise<string> {
+async function ensureDefaultThread(dbPath: string): Promise<string> {
   await ensureDesktopDbSchema(dbPath);
   const threads = await runSqliteJson<{ id: string }>(
     dbPath,

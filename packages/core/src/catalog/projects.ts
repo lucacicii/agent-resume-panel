@@ -1233,7 +1233,7 @@ export async function splitProjectPathInCatalog(
   return { projectId, movedSessions, created };
 }
 
-export interface TidyProjectCandidate {
+interface TidyProjectCandidate {
   projectId: string;
   portableKey: string;
   alias: string;

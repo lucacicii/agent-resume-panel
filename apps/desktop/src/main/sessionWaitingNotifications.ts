@@ -1,7 +1,7 @@
 import type { WorkbenchActiveSessionDot } from "../shared/workbenchSelection";
 
 /** Stable identity for notification deduplication across renderer updates. */
-export function waitingNotificationKey(dot: WorkbenchActiveSessionDot): string {
+function waitingNotificationKey(dot: WorkbenchActiveSessionDot): string {
   return dot.sessionKey || dot.paneKey;
 }
 

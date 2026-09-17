@@ -1,7 +1,7 @@
 import { PreviewMessage } from "../history/preview/types";
 import { HandoffBrief, HandoffSessionContext } from "./types";
 
-export interface ComposeHandoffMessageOptions {
+interface ComposeHandoffMessageOptions {
   brief: HandoffBrief;
   context: HandoffSessionContext;
   attachRecentVerbatim: number;

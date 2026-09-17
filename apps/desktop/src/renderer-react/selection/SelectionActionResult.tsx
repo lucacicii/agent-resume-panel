@@ -6,7 +6,7 @@ import { renderMarkdown } from "../components/Markdown";
 import { useI18n } from "../i18n";
 import type { ImSelectionAction } from "../../shared/imTypes";
 
-export type SelectionActionResultState = {
+type SelectionActionResultState = {
   x: number;
   y: number;
   title: string;

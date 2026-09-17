@@ -112,7 +112,7 @@ export function buildGitChangeTree(changes: GitChange[]): GitTreeNode[] {
 }
 
 /** One pass over the tree caching each directory's flattened changes/repo paths for cheap re-renders. */
-export function computeGitNodeMetadata(node: GitTreeNode): void {
+function computeGitNodeMetadata(node: GitTreeNode): void {
   if (!node.isDirectory) {
     const change = node.change;
     node.changes = change ? [change] : [];
@@ -264,7 +264,7 @@ export function gitRepositoryCount(git: GitStatusResult): number {
   return roots.size;
 }
 
-export function dirtyGitRoots(result: GitStatusResult): string[] {
+function dirtyGitRoots(result: GitStatusResult): string[] {
   const roots = new Set<string>();
   for (const change of [...result.staged, ...result.unstaged]) {
     if (change.repoRoot) roots.add(change.repoRoot);

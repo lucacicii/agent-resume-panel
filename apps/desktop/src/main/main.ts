@@ -18,7 +18,6 @@ import {
   type NewSessionExecutionMode,
   updateNativeSessionCwd,
   effectivePanelHome,
-  desktopDbPath,
   expandHome,
   listTaskGtdRollups,
   resolveTaskGtdRollup,
@@ -97,7 +96,6 @@ import {
   setSessionLastExitWaiting,
   summarizeSessionAction,
   type AgentProvider,
-  type AgentNoteAuditStatus,
   type GtdStatus,
   type NoteRecord,
   type PanelSettings,
@@ -231,7 +229,6 @@ import {
   stopAgentStatusDaemon
 } from "./agentStatus/lifecycle";
 import { createAgentStatusBridge, type AgentStatusBridge } from "./agentStatus/bridge";
-import type { StatusTransition } from "./agentStatus/types";
 import { registerAgentStatusIpc } from "./agentStatus/ipc";
 import { AgentStatusSensor } from "./agentStatus/sensor";
 import { setAgentStatusSensor } from "./agentStatus/runtime";
@@ -1804,7 +1801,6 @@ function registerIpc(): void {
         void installApplicationMenu();
         return result;
       } catch (error) {
-        const saved = await loadSettings();
         await refreshMemorySchedulerFromSettings();
         startNotesIndexer((progress) => broadcastToRenderers("notes:indexProgress", progress));
         startSessionSummaryAuto();

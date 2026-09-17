@@ -5,7 +5,7 @@ import { CatalogSessionRow } from "../types";
 import { parseTranscriptRefs } from "./types";
 import { readTranscriptFiles } from "./read";
 
-export interface CatalogExportResult {
+interface CatalogExportResult {
   outputDir: string;
   sessionCount: number;
   transcriptFileCount: number;
@@ -13,12 +13,12 @@ export interface CatalogExportResult {
   warnings: string[];
 }
 
-export interface CatalogExportSessionKey {
+interface CatalogExportSessionKey {
   provider: string;
   id: string;
 }
 
-export interface CatalogExportOptions {
+interface CatalogExportOptions {
   dbPath: string;
   outputDir: string;
   includeHidden?: boolean;

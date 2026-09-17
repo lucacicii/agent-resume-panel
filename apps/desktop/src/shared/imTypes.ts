@@ -3,13 +3,13 @@ import type { AgentCitation } from "@agent-resume/core";
 export const IM_AGENTS = ["pi", "claude", "codex"] as const;
 export type ImAgent = (typeof IM_AGENTS)[number];
 
-export const IM_PERMISSIONS = ["read", "write"] as const;
+const IM_PERMISSIONS = ["read", "write"] as const;
 export type ImPermission = (typeof IM_PERMISSIONS)[number];
 
-export const IM_MESSAGE_KINDS = ["human", "role.say", "job.card", "system"] as const;
+const IM_MESSAGE_KINDS = ["human", "role.say", "job.card", "system"] as const;
 export type ImMessageKind = (typeof IM_MESSAGE_KINDS)[number];
 
-export const IM_JOB_STATUSES = [
+const IM_JOB_STATUSES = [
   "queued",
   "connecting",
   "running",
@@ -48,7 +48,7 @@ export function isProjectRoleTemplateId(value: string): boolean {
   return value.startsWith("project_role_");
 }
 
-export type ImRoleSource = "builtin" | "custom" | "project";
+type ImRoleSource = "builtin" | "custom" | "project";
 
 export const DEFAULT_BUILTIN_CALLABLE_TEMPLATE_IDS: Record<ImBuiltinTemplateId, readonly string[]> = {
   role_product_manager: ["role_architect", "role_project_manager", "role_ui_designer", "role_memory"],
@@ -66,7 +66,7 @@ export interface ImRoleTools {
   execute: boolean;
 }
 
-export const DEFAULT_IM_ROLE_TOOLS: ImRoleTools = {
+const DEFAULT_IM_ROLE_TOOLS: ImRoleTools = {
   fsRead: true,
   fsWrite: true,
   execute: true
@@ -90,7 +90,7 @@ export interface ImAgentModelOption {
 }
 
 export const IM_SUGGESTED_THOUGHT_LEVELS = ["low", "medium", "high"] as const;
-export type ImThoughtLevel = (typeof IM_SUGGESTED_THOUGHT_LEVELS)[number];
+type ImThoughtLevel = (typeof IM_SUGGESTED_THOUGHT_LEVELS)[number];
 
 export function isSuggestedThoughtLevel(value: string): value is ImThoughtLevel {
   return (IM_SUGGESTED_THOUGHT_LEVELS as readonly string[]).includes(value);
@@ -180,12 +180,12 @@ export interface ImDelegationProposal {
   resolvedAtMs?: number;
 }
 
-export const IM_MESSAGE_ORIGINS = ["im", "acp"] as const;
+const IM_MESSAGE_ORIGINS = ["im", "acp"] as const;
 export type ImMessageOrigin = (typeof IM_MESSAGE_ORIGINS)[number];
 
-export type ImToolCallStatus = "pending" | "in_progress" | "completed" | "failed";
+type ImToolCallStatus = "pending" | "in_progress" | "completed" | "failed";
 
-export interface ImToolCallLocation {
+interface ImToolCallLocation {
   path: string;
   line?: number;
 }
@@ -228,12 +228,8 @@ export interface ImMessage {
   createdAtMs: number;
 }
 
-export const IM_KNOWLEDGE_KINDS = ["text", "link", "image"] as const;
+const IM_KNOWLEDGE_KINDS = ["text", "link", "image"] as const;
 export type ImKnowledgeKind = (typeof IM_KNOWLEDGE_KINDS)[number];
-
-export function isImKnowledgeKind(value: string): value is ImKnowledgeKind {
-  return (IM_KNOWLEDGE_KINDS as readonly string[]).includes(value);
-}
 
 export interface ImKnowledgeItem {
   itemId: string;
@@ -326,7 +322,7 @@ export type ImEvent =
   | { type: "member"; projectId: string; member: ImMember }
   | { type: "agentModels"; agent: ImAgent; models: ImAgentModelOption[] };
 
-export const IM_SELECTION_ACTION_KINDS = ["context", "independent"] as const;
+const IM_SELECTION_ACTION_KINDS = ["context", "independent"] as const;
 export type ImSelectionActionKind = (typeof IM_SELECTION_ACTION_KINDS)[number];
 
 export function isImSelectionActionKind(value: string): value is ImSelectionActionKind {
@@ -334,7 +330,7 @@ export function isImSelectionActionKind(value: string): value is ImSelectionActi
 }
 
 export const IM_BUILTIN_SELECTION_ACTION_IDS = ["quote", "translate", "explain"] as const;
-export type ImBuiltinSelectionActionId = (typeof IM_BUILTIN_SELECTION_ACTION_IDS)[number];
+type ImBuiltinSelectionActionId = (typeof IM_BUILTIN_SELECTION_ACTION_IDS)[number];
 
 export function isBuiltinSelectionActionId(value: string): value is ImBuiltinSelectionActionId {
   return (IM_BUILTIN_SELECTION_ACTION_IDS as readonly string[]).includes(value);

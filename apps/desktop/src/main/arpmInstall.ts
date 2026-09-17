@@ -5,11 +5,11 @@ import * as path from "node:path";
 
 const MANAGED_MARKER = "installed by Agent Resume; managed file";
 
-export function defaultArpmBinDir(): string {
+function defaultArpmBinDir(): string {
   return path.join(homedir(), ".local", "bin");
 }
 
-export function arpmShimPath(binDir = defaultArpmBinDir()): string {
+function arpmShimPath(binDir = defaultArpmBinDir()): string {
   return path.join(binDir, "arpm");
 }
 
@@ -98,13 +98,13 @@ export function installArpmShim(input: {
 }
 
 export const ARPM_RC_BEGIN = "# >>> agent-resume arpm >>>";
-export const ARPM_RC_END = "# <<< agent-resume arpm <<<";
+const ARPM_RC_END = "# <<< agent-resume arpm <<<";
 
-export function arpmHookPath(panelHome: string): string {
+function arpmHookPath(panelHome: string): string {
   return path.join(panelHome, ".desktop", "arpm.sh");
 }
 
-export function buildArpmShellHook(): string {
+function buildArpmShellHook(): string {
   return `# ${MANAGED_MARKER} - Desktop rewrites this on launch.
 # Source from ~/.zshrc or ~/.bashrc so "arpm go <id>" cds in the current shell.
 arpm() {
@@ -133,11 +133,11 @@ arpm() {
 `;
 }
 
-export function buildArpmRcSnippet(hookPath: string): string {
+function buildArpmRcSnippet(hookPath: string): string {
   return `${ARPM_RC_BEGIN}\n[ -f ${shellQuote(hookPath)} ] && . ${shellQuote(hookPath)}\n${ARPM_RC_END}\n`;
 }
 
-export function upsertArpmRcBlock(rcPath: string, snippet: string): { path: string; written: boolean } {
+function upsertArpmRcBlock(rcPath: string, snippet: string): { path: string; written: boolean } {
   let text = "";
   try {
     text = readFileSync(rcPath, "utf8");

@@ -1,4 +1,4 @@
-export const LLM_OUTPUT_LANGUAGES = [
+const LLM_OUTPUT_LANGUAGES = [
   "English",
   "Chinese",
   "Japanese",
@@ -13,7 +13,7 @@ export const LLM_OUTPUT_LANGUAGES = [
 
 export type LlmOutputLanguage = (typeof LLM_OUTPUT_LANGUAGES)[number];
 
-export const DEFAULT_LLM_OUTPUT_LANGUAGE: LlmOutputLanguage = "English";
+const DEFAULT_LLM_OUTPUT_LANGUAGE: LlmOutputLanguage = "English";
 
 const LANGUAGE_PROMPT_DIRECTIVES: Record<LlmOutputLanguage, string> = {
   English: "Write your entire response in English only.",

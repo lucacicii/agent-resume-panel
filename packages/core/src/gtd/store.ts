@@ -1,4 +1,4 @@
-import { escapeSqlLiteral, runSqlite, runSqliteJson, runSqliteTransaction } from "../sqlite";
+import { escapeSqlLiteral, runSqlite, runSqliteJson } from "../sqlite";
 import { GtdStatus, isGtdStatus } from "./types";
 
 interface SessionGtdRow {

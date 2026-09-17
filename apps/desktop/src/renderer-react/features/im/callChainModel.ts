@@ -1,4 +1,4 @@
-import type { ImDelegationProposal, ImJob, ImMember, ImMessage } from "../../../shared/imTypes";
+import type { ImJob, ImMember, ImMessage } from "../../../shared/imTypes";
 import { cleanSnippet } from "./imUtils";
 
 export type CallTriggerType =
@@ -55,7 +55,7 @@ export interface CallChainGroup {
   filesChangedCount: number;
 }
 
-export interface CallChainSummary {
+interface CallChainSummary {
   chains: CallChainGroup[];
   totalChains: number;
   totalNodes: number;
@@ -82,7 +82,6 @@ export function buildCallChains(
   const memberById = new Map(members.map((m) => [m.memberId, m]));
   const memberByTemplate = new Map(members.map((m) => [m.templateId, m]));
   const jobById = new Map(jobs.map((j) => [j.jobId, j]));
-  const messageById = new Map(messages.map((m) => [m.messageId, m]));
 
   function resolveMember(memberIdOrTemplate?: string | null, labelFallback?: string): ImMember | undefined {
     if (!memberIdOrTemplate) {

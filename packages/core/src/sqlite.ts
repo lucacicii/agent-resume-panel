@@ -97,10 +97,6 @@ function withInProcessDb<T>(
   return task;
 }
 
-export function closeAllSqliteDatabases(): void {
-  dbQueues.clear();
-}
-
 function toPlainRows<T>(rows: unknown[]): T[] {
   return rows.map((row) => Object.assign({}, row) as T);
 }

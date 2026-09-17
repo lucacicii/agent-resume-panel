@@ -12,7 +12,7 @@ const HANDOFF_TARGET_LABEL_KEYS: Record<HandoffTargetProvider, string> = {
   prime: "menu.handoff.targetPrime"
 };
 
-export interface HandoffTargetMeta {
+interface HandoffTargetMeta {
   provider: HandoffTargetProvider;
   supportsAcp: boolean;
   supportsCli: boolean;
@@ -22,7 +22,7 @@ export function getHandoffTargetLabel(provider: HandoffTargetProvider): string {
   return t(HANDOFF_TARGET_LABEL_KEYS[provider]);
 }
 
-export const HANDOFF_TARGET_META: Record<HandoffTargetProvider, HandoffTargetMeta> = {
+const HANDOFF_TARGET_META: Record<HandoffTargetProvider, HandoffTargetMeta> = {
   codex: { provider: "codex", supportsAcp: true, supportsCli: true },
   claude: { provider: "claude", supportsAcp: true, supportsCli: true },
   agy: { provider: "agy", supportsAcp: false, supportsCli: true },

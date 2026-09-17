@@ -1,6 +1,6 @@
 import { ThemeIcon } from "../../components/ThemeIcon";
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
-import type { PanelSettings, WorkbenchComposerMention } from "@agent-resume/core";
+import type { WorkbenchComposerMention } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { Status, type StatusKind } from "../../components/Status";
@@ -538,7 +538,6 @@ export function BackupPane({ t }: { t: Translate }) {
 export function StoragePane({ draft, setDraft, t }: { draft: StorageDraft; setDraft: (value: StorageDraft) => void; t: Translate }) {
   const [advanced, setAdvanced] = useState(false);
   const update = <K extends keyof StorageDraft>(key: K, value: StorageDraft[K]) => { const next = { ...draft, [key]: value }; setDraft(next); };
-  const home = draft.panelHome.trim() || "~/.agent-resume-panel";
   const paths: Array<[keyof StorageDraft, string, string]> = [["codexHome", "desktop.settings.codexHome", "~/.codex"], ["claudeHome", "desktop.settings.claudeHome", "~/.claude"], ["antigravityHome", "desktop.settings.antigravityHome", "~/.gemini"], ["grokHome", "desktop.settings.grokHome", "~/.grok"], ["opencodeHome", "desktop.settings.opencodeHome", "~/.local/share/opencode"], ["piHome", "desktop.settings.piHome", "~/.pi/agent"], ["primeHome", "desktop.settings.primeHome", "~/.prime/agent"], ["cursorHome", "Cursor CLI home", "~/.cursor"], ["cursorIdeUserDataHome", "Cursor IDE user data home", "Platform default"]];
   return <>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.appData")}</h3><div className="settings-group-body"><p className="settings-footnote">{t("desktop.settings.appDataFootnote")}</p><label className="settings-field"><span className="settings-field-label">{t("desktop.settings.panelHome")}</span><input placeholder="~/.agent-resume-panel" value={draft.panelHome} onChange={(event) => update("panelHome", event.target.value)} /></label><p className="settings-footnote">{t("desktop.settings.panelHomeFootnote")}</p><div className="settings-path-row"><button type="button" className="tool-btn" onClick={() => void desktopApi().settingsOpenPanelHome()}>{t("desktop.common.revealInFinder")}</button></div></div></section>

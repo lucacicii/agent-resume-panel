@@ -3,7 +3,7 @@ import { isNavigationAllowed } from "../policy";
 import type { BrowserPolicy, BrowserTabId, BrowserTabState } from "../types";
 import { normalizeUrlInput } from "../types";
 
-export type TabViewHooks = {
+type TabViewHooks = {
   onTabState: (tabId: BrowserTabId, patch: Partial<BrowserTabState>) => void;
   onConsole?: (tabId: BrowserTabId, level: string, message: string) => void;
   getPolicy: () => BrowserPolicy;
@@ -30,7 +30,7 @@ function titleFromUrl(url: string): string {
   }
 }
 
-export function createPartitionSession(partition: string): Session {
+function createPartitionSession(partition: string): Session {
   return electronSession.fromPartition(partition);
 }
 

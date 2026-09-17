@@ -2,11 +2,6 @@ import { clipboard, contextBridge, ipcRenderer } from "electron";
 import type { UpdateCheckResult } from "../main/updateCheck";
 import type {
   AgentSession,
-  AgentChatMessage,
-  AgentThread,
-  AgentNoteAuditEvent,
-  AgentChatResult,
-  AgentStreamEvent,
   ReportEntry,
   NoteIndexProgressEvent,
   PanelSettings,

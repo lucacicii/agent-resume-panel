@@ -13,7 +13,7 @@ import {
   type LayoutTreeNode
 } from "./noteLinkTreeLayout";
 
-export type NoteLinkTreeProps = {
+type NoteLinkTreeProps = {
   root: LayoutTreeNode;
   selectedNoteId?: string;
   aliases?: Record<string, string>;

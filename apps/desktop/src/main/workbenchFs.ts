@@ -86,7 +86,7 @@ export interface DirectoryEntry {
   isDirectory: boolean;
 }
 
-export interface GitFileChange {
+interface GitFileChange {
   path: string;
   repoPath: string;
   repoRoot: string;
@@ -108,7 +108,7 @@ export interface GitStatusResult {
   tracking?: GitRepoTracking[];
 }
 
-export interface GitDiffSidesResult {
+interface GitDiffSidesResult {
   oldLabel: string;
   newLabel: string;
   oldText: string;
@@ -338,7 +338,6 @@ async function readWorkingFile(absPath: string, maxBytes = DEFAULT_MAX_BYTES): P
 }
 
 async function listDirectoryEntries(rootPath: string, dirPath: string): Promise<DirectoryEntry[]> {
-  const root = resolvePathWithinRoot(rootPath, rootPath);
   const dir = resolvePathWithinRoot(dirPath, rootPath);
   const stat = await fs.promises.stat(dir);
   if (!stat.isDirectory()) {

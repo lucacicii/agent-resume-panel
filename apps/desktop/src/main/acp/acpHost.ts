@@ -2,7 +2,7 @@ import * as crypto from "node:crypto";
 import type { BrowserWindow } from "electron";
 import { shell } from "electron";
 import type { PanelSettings } from "@agent-resume/core";
-import { effectivePanelHome, extractPreviewContent } from "@agent-resume/core";
+import { effectivePanelHome } from "@agent-resume/core";
 import type { RequestPermissionRequest, RequestPermissionResponse } from "@agentclientprotocol/sdk" with {
   "resolution-mode": "import"
 };
@@ -1566,13 +1566,6 @@ function extractChunkContent(content: unknown): { text: string; thinking: string
     }
   }
   return { text, thinking };
-}
-
-function extractTextFromContent(content: unknown): string {
-  if (!content || typeof content !== "object") return "";
-  const block = content as { type?: string; text?: string };
-  if (block.type === "text" && typeof block.text === "string") return block.text;
-  return "";
 }
 
 function migrateLegacyToolMessages(messages: AcpChatMessage[]): AcpChatMessage[] {

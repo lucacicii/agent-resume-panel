@@ -1,13 +1,13 @@
 import { type CSSProperties, type JSX, useMemo } from "react";
 import { roleColor, roleInitial } from "./imUtils";
 
-export interface ImChatAvatarRole {
+interface ImChatAvatarRole {
   templateId: string;
   name?: string;
   label?: string;
 }
 
-export interface ImChatAvatarProps {
+interface ImChatAvatarProps {
   roles?: ImChatAvatarRole[];
   size?: number;
   className?: string;

@@ -7,7 +7,6 @@ import { ThemeIcon } from "../../components/ThemeIcon";
 import { useI18n } from "../../i18n";
 import {
   buildSessionTranscriptModel,
-  filterSessionTranscript,
   sameTranscriptPreview,
   type SessionTranscriptModel,
   type TranscriptMessage,

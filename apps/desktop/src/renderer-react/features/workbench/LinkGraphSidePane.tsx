@@ -10,7 +10,7 @@ import type {
   LinkGraphTimelineItem
 } from "../../../shared/linkGraphTypes";
 
-export type LinkGraphOpenTarget = {
+type LinkGraphOpenTarget = {
   path: string;
   line: number;
   column?: number;

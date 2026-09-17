@@ -29,10 +29,6 @@ type NoteSubtree = {
 
 const LINK_TREE_HEIGHT_KEY = "notes-link-tree-height";
 
-function basename(value = ""): string {
-  return value.replaceAll("\\", "/").split("/").filter(Boolean).at(-1) || value;
-}
-
 function titleFor(note: Note): string {
   return note.title || note.filename.replace(/\.md$/i, "") || note.noteId;
 }
@@ -167,7 +163,7 @@ function selectedPreviewRange(root: HTMLElement | null): Range | null {
   return selection.getRangeAt(0).cloneRange();
 }
 
-export type NotePaneViewProps = {
+type NotePaneViewProps = {
   noteId: string;
   active: boolean;
   onOpenNote: (noteId: string) => void;
@@ -388,26 +384,6 @@ export function NotePaneView({ noteId, active, onOpenNote, onTitleChange, onDirt
       void persist();
     }, 600);
   }, [noteId, onDirtyChange, persist]);
-
-  const reloadFromDisk = useCallback(async () => {
-    const note = recordRef.current;
-    if (!note) return;
-    try {
-      const result = await desktopApi().notesRead({ noteId: note.noteId });
-      setRecord(result.record);
-      setContent(result.content);
-      contentRef.current = result.content;
-      dirtyRef.current = false;
-      setDirty(false);
-      onDirtyChange?.(note.noteId, false);
-      const nextTitle = titleFor(result.record);
-      setTitle(nextTitle);
-      onTitleChange(result.record.noteId, nextTitle);
-      setError("");
-    } catch (readError) {
-      setError(readError instanceof Error ? readError.message : String(readError));
-    }
-  }, [onDirtyChange, onTitleChange]);
 
   const runFind = useCallback((
     direction: "forward" | "backward",

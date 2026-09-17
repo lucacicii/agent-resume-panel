@@ -1,6 +1,6 @@
 import type { DesktopTheme, PanelSettings } from "@agent-resume/core";
 
-export type ThemeAppearance = "light" | "dark";
+type ThemeAppearance = "light" | "dark";
 
 const CLASSIC_TERMINAL: Readonly<Record<string, string>> = {
   background: "#1e1e1e",

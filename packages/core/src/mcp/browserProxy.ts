@@ -2,9 +2,7 @@ import { readFile } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import { browserMcpEndpointPath, resolvePanelHome } from "../panelHome";
 
-export const BROWSER_MCP_SERVICE_ID = "agent-resume-browser";
-
-export type BrowserMcpEndpoint = {
+type BrowserMcpEndpoint = {
   url: string;
   token: string;
   port: number;

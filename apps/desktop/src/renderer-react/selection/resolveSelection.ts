@@ -1,7 +1,7 @@
 import { selectedTextFromCodeMirror } from "./codeMirrorSelection";
 import { selectedTextFromTerminal } from "./terminalSelection";
 
-export type ResolvedSelection = {
+type ResolvedSelection = {
   text: string;
   projectPath?: string;
 };

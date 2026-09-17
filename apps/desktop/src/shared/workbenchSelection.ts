@@ -26,7 +26,7 @@ export type WorkbenchActiveSessionDot = {
 };
 
 /** Same allowlist as Workbench "New session" picker (`cli:*` / `acp:*`). */
-export const WORKBENCH_SEND_SELECTION_TARGETS = [
+const WORKBENCH_SEND_SELECTION_TARGETS = [
   "cli:codex",
   "cli:claude",
   "cli:grok",
@@ -75,7 +75,7 @@ const MAX_SELECTION_TEXT_CHARS = 200_000;
 const MAX_ACTIVE_SESSIONS = 200;
 const MAX_LABEL_CHARS = 2_000;
 
-export function isWorkbenchSendSelectionTarget(value: unknown): value is WorkbenchSendSelectionTarget {
+function isWorkbenchSendSelectionTarget(value: unknown): value is WorkbenchSendSelectionTarget {
   return typeof value === "string" && SEND_SELECTION_TARGET_SET.has(value);
 }
 

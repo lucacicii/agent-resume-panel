@@ -1,5 +1,5 @@
 /** Labels for fixed digest section titles (zh by default). */
-export interface DigestLabels {
+interface DigestLabels {
   emptyPlaceholder: string;
   none: string;
   daily: {
@@ -212,7 +212,6 @@ function monthlyOutputTemplate(monthLabel: string, rangeHint: string, labels: Di
 }
 
 export function buildDailySystemPrompt(outputLanguage: string): string {
-  const labels = digestLanguageLabels(outputLanguage);
   return [
     SHARED_RULES,
     "Task: produce a DAILY digest from session summaries for one calendar day.",

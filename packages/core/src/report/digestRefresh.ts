@@ -18,7 +18,7 @@ import { listReportEntriesInRange } from "./store";
 export type PeriodDigestRefreshCheck = DailyDigestRefreshCheck;
 
 /** Weekly/monthly freshness follows the exact daily sources used by aggregation. */
-export async function needsPeriodDigestRefresh(
+async function needsPeriodDigestRefresh(
   period: PeriodRange,
   options: { panelHome?: string; level: "weekly" | "monthly"; systemLocale?: string }
 ): Promise<PeriodDigestRefreshCheck> {

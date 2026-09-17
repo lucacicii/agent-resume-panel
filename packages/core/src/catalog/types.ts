@@ -11,7 +11,7 @@ export type AgentProvider =
   | "chat";
 
 /** Underlying ACP agent when provider is "chat". */
-export type CatalogAcpProvider = "codex" | "claude" | "grok" | "opencode" | "pi" | "prime";
+type CatalogAcpProvider = "codex" | "claude" | "grok" | "opencode" | "pi" | "prime";
 
 export interface AgentSession {
   provider: AgentProvider;

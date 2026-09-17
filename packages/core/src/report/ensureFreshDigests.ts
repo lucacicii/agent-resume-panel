@@ -1,9 +1,7 @@
 import { loadSettings } from "../settings/store";
 import { evaluateDailyDigestRefresh } from "./daily";
-import { needsWeeklyDigestRefresh } from "./digestRefresh";
 import { runDailyDigest } from "./daily";
-import { runWeeklyDigest } from "./weekly";
-import { listDayLabelsInRange, listWeekLabelsInRange } from "./period";
+import { listDayLabelsInRange } from "./period";
 import {
   createReportProgressText,
   freshDailiesRefreshKey,
@@ -27,7 +25,7 @@ function digestNeedsRefresh(check: {
   return check.needed && check.reason !== "no_sessions";
 }
 
-export interface EnsureFreshDigestsOptions {
+interface EnsureFreshDigestsOptions {
   catalogDb: string;
   desktopDb: string;
   startMs: number;
@@ -161,102 +159,3 @@ export async function ensureFreshDailiesForPeriod(
   return stats;
 }
 
-/**
- * Refresh stale weekly digests overlapping [startMs, endMs) before monthly aggregation.
- * Each weekly run will refresh its own stale dailies first.
- */
-export async function ensureFreshWeekliesForPeriod(
-  options: EnsureFreshDigestsOptions
-): Promise<EnsureLevelStats> {
-  const settings = await loadSettings(options.panelHome);
-  const pt = createReportProgressText(settings, options.systemLocale);
-
-  const stats = emptyStats();
-  const weeks = listWeekLabelsInRange(options.startMs, options.endMs);
-  const candidates: string[] = [];
-
-  for (const week of weeks) {
-    if (options.forceRefresh) {
-      candidates.push(week);
-      continue;
-    }
-    const check = await needsWeeklyDigestRefresh({
-      panelHome: options.panelHome,
-      weekKey: week,
-      systemLocale: options.systemLocale
-    });
-    if (digestNeedsRefresh(check)) {
-      candidates.push(week);
-    } else {
-      stats.skipped.push(week);
-    }
-  }
-
-  stats.planned = [...candidates];
-  const total = candidates.length;
-  const parentLabel = options.progressPeriodLabel || "";
-
-  if (!total) {
-    options.onProgress?.({
-      phase: "ensure_summaries",
-      level: "monthly",
-      periodLabel: parentLabel,
-      message: pt("desktop.report.freshWeekliesUpToDateMonth"),
-      index: 0,
-      total: 0
-    });
-    return stats;
-  }
-
-  options.onProgress?.({
-    phase: "ensure_summaries",
-    level: "monthly",
-    periodLabel: parentLabel,
-    message: pt("desktop.report.freshWeekliesRefreshMonth", total),
-    index: 0,
-    total
-  });
-
-  let i = 0;
-  for (const week of candidates) {
-    i += 1;
-    options.onProgress?.({
-      phase: "ensure_summaries",
-      level: "monthly",
-      periodLabel: parentLabel,
-      message: pt("desktop.report.freshWeekliesUpdateProgress", i, total, week),
-      index: i,
-      total
-    });
-    try {
-      await runWeeklyDigest({
-        panelHome: options.panelHome,
-        weekKey: week,
-        skipEmbedding: options.skipEmbedding,
-        forceResummarize: options.forceResummarize,
-        forceEnsureLower: options.forceRefresh,
-        systemLocale: options.systemLocale,
-        allowOverBudget: options.allowOverBudget,
-        trigger: options.trigger,
-        onProgress: (ev) => {
-          options.onProgress?.({
-            ...ev,
-            level: "monthly",
-            periodLabel: parentLabel,
-            message: ev.message
-              ? pt("desktop.report.nestedWeeklyDetail", week, ev.message)
-              : pt("desktop.report.nestedWeeklyLabel", week)
-          });
-        }
-      });
-      stats.ok.push(week);
-    } catch (error) {
-      stats.failed.push({
-        key: week,
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
-  }
-
-  return stats;
-}

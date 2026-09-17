@@ -46,7 +46,7 @@ function forEachWatch(visitor: (state: WatchState) => void): void {
   }
 }
 
-export type WorkbenchWatcherRuntimeMetrics = {
+type WorkbenchWatcherRuntimeMetrics = {
   watcherCount: number;
   pollingCount: number;
   activeCount: number;

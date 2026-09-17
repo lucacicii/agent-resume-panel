@@ -37,7 +37,7 @@ const ICONS = {
 } as const satisfies Record<string, LucideIcon>;
 
 export type ThemeIconName = keyof typeof ICONS;
-export type ThemeIconProps = LucideProps & { name: ThemeIconName };
+type ThemeIconProps = LucideProps & { name: ThemeIconName };
 
 /**
  * The one icon entry point for Desktop. Visual themes style this stable semantic

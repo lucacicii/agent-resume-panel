@@ -1,4 +1,4 @@
-export interface ToolFunctionSpec {
+interface ToolFunctionSpec {
   name: string;
   description?: string;
   parameters: object;

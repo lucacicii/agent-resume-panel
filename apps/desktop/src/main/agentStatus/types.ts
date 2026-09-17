@@ -13,7 +13,6 @@ import type {
   AgentKind,
   AgentState,
   DetectionSource,
-  HelloResult,
   PaneAuthority,
   StatusSnapshot
 } from "../../shared/agentStatusTypes";
@@ -98,30 +97,6 @@ export type StatusTransition = {
   at: number;
   seq: number;
 };
-
-export type HelloParams = {
-  apiVersion: number;
-  role: "app" | "cli" | "test";
-  appVersion?: string;
-};
-
-export type AgentStatusRequest =
-  | { id: string; method: "hello"; params: HelloParams }
-  | { id: string; method: "telemetry.publish"; params: PaneTelemetry }
-  | { id: string; method: "pane.report_state"; params: NativeReport }
-  | { id: string; method: "pane.forget"; params: { paneId: number } }
-  | { id: string; method: "status.snapshot"; params?: Record<string, never> }
-  /** Transitions newer than `sinceSeq`, oldest first. */
-  | { id: string; method: "status.transitions"; params?: { sinceSeq?: number } }
-  | { id: string; method: "status.explain"; params: { paneId: number } }
-  /** Diagnostics: the screen text and verdict behind a pane, for capture tooling. */
-  | { id: string; method: "pane.screen"; params: { paneId: number } }
-  /** Which detection manifests the daemon loaded, for the settings pane. */
-  | { id: string; method: "status.manifests"; params?: Record<string, never> }
-  | { id: string; method: "status.subscribe"; params?: Record<string, never> }
-  | { id: string; method: "daemon.shutdown"; params: { reason: string } };
-
-export type AgentStatusRequestMethod = AgentStatusRequest["method"];
 
 export type AgentStatusResponse =
   | { id: string; ok: true; result: unknown }

@@ -51,7 +51,7 @@ export function createHysteresis(): StatusHysteresis {
 }
 
 /** Milliseconds since the pane last produced output. */
-export function silentForMs(telemetry: PaneTelemetry | undefined, now: number): number {
+function silentForMs(telemetry: PaneTelemetry | undefined, now: number): number {
   const lastOutputAt = telemetry?.lastOutputAt ?? telemetry?.at ?? 0;
   return Math.max(0, now - lastOutputAt);
 }

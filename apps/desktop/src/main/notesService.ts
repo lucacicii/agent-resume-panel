@@ -38,9 +38,9 @@ import {
 let notesStore: NotesStore | null = null;
 let notesStoreKey = "";
 
-export type DesktopNoteRecord = NoteRecord;
+type DesktopNoteRecord = NoteRecord;
 
-export async function getDesktopNotesStore(): Promise<NotesStore> {
+async function getDesktopNotesStore(): Promise<NotesStore> {
   const settings = await loadSettings();
   const panelHome = effectivePanelHome(settings);
   const paths = await loadPanelDbPaths(settings);

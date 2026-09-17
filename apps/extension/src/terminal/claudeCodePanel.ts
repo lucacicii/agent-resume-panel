@@ -10,11 +10,11 @@ const CLAUDE_CODE_PANEL_COMMANDS = [
   "claude-vscode.editor.open"
 ] as const;
 
-export type ClaudeResumeMode = "terminal" | "panel";
+type ClaudeResumeMode = "terminal" | "panel";
 
-export type ClaudePanelResumeResult = "opened" | "needsFolderOpen" | "unsupported";
+type ClaudePanelResumeResult = "opened" | "needsFolderOpen" | "unsupported";
 
-export function getClaudeResumeMode(): ClaudeResumeMode {
+function getClaudeResumeMode(): ClaudeResumeMode {
   return vscode.workspace
     .getConfiguration("agentResume")
     .get<ClaudeResumeMode>("claudeResumeMode", "panel");
@@ -24,7 +24,7 @@ export function shouldResumeClaudeInPanel(): boolean {
   return getClaudeResumeMode() === "panel";
 }
 
-export function getClaudeCodeExtension(): vscode.Extension<unknown> | undefined {
+function getClaudeCodeExtension(): vscode.Extension<unknown> | undefined {
   for (const extensionId of CLAUDE_CODE_EXTENSION_IDS) {
     const extension = vscode.extensions.getExtension(extensionId);
     if (extension) {
@@ -35,10 +35,6 @@ export function getClaudeCodeExtension(): vscode.Extension<unknown> | undefined 
   return vscode.extensions.all.find((extension) => extension.id.toLowerCase().endsWith(".claude-code"));
 }
 
-export function isClaudeCodeExtensionInstalled(): boolean {
-  return Boolean(getClaudeCodeExtension());
-}
-
 export function isSessionWorkspaceOpen(projectPath: string): boolean {
   const target = normalizePath(projectPath);
   return (
@@ -46,7 +42,7 @@ export function isSessionWorkspaceOpen(projectPath: string): boolean {
   );
 }
 
-export async function openClaudeCodePanelResume(session: AgentSession): Promise<ClaudePanelResumeResult> {
+async function openClaudeCodePanelResume(session: AgentSession): Promise<ClaudePanelResumeResult> {
   if (session.provider !== "claude") {
     return "unsupported";
   }

@@ -39,7 +39,7 @@ import {
   upsertPanelLlmFields
 } from "./panelSettingsFile";
 
-export interface SettingsSnapshot {
+interface SettingsSnapshot {
   sections: SettingSection[];
   values: Record<string, unknown>;
   llmApiKeyConfigured: boolean;
@@ -232,7 +232,7 @@ export async function applySettingsPatch(
   }
 }
 
-export async function setLlmApiKey(context: vscode.ExtensionContext, apiKey: string): Promise<void> {
+async function setLlmApiKey(context: vscode.ExtensionContext, apiKey: string): Promise<void> {
   const trimmed = apiKey.trim();
   if (!trimmed) {
     throw new Error(t("error.settingsApiKeyEmpty"));
@@ -242,15 +242,6 @@ export async function setLlmApiKey(context: vscode.ExtensionContext, apiKey: str
     await upsertPanelLlmFields({ apiKey: trimmed });
   } catch {
     // Secret still stored; panel file sync is best-effort.
-  }
-}
-
-export async function clearLlmApiKey(context: vscode.ExtensionContext): Promise<void> {
-  await context.secrets.delete(LLM_API_KEY_SECRET);
-  try {
-    await upsertPanelLlmFields({ clearApiKey: true });
-  } catch {
-    // ignore
   }
 }
 

@@ -7,13 +7,13 @@
  * answers: Record<questionText, chosenLabel> (multi-select labels joined with ", ")
  */
 
-export type AskUserQuestionOption = {
+type AskUserQuestionOption = {
   label: string;
   description?: string;
   preview?: string;
 };
 
-export type AskUserQuestionItem = {
+type AskUserQuestionItem = {
   question: string;
   options: AskUserQuestionOption[];
   multiSelect?: boolean;
@@ -28,7 +28,7 @@ export type AskUserQuestionResponse =
   | { outcome: "accepted"; answers: Record<string, string>; annotations: Record<string, unknown> }
   | { outcome: "cancelled" };
 
-export type AskUserQuestionPromptHandler = (
+type AskUserQuestionPromptHandler = (
   params: AskUserQuestionRequest
 ) => Promise<AskUserQuestionResponse>;
 

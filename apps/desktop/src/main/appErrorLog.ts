@@ -11,7 +11,7 @@ import {
 
 export type AppErrorLogLevel = "error" | "warn";
 
-export type AppErrorLogEntry = {
+type AppErrorLogEntry = {
   id: string;
   createdAtMs: number;
   level: AppErrorLogLevel;
@@ -22,9 +22,9 @@ export type AppErrorLogEntry = {
 
 export const APP_ERROR_LOG_FILE_NAME = "app-errors.jsonl";
 export const APP_ERROR_LOG_MAX_ENTRIES = 500;
-export const APP_ERROR_LOG_MAX_BYTES = 1_048_576;
-export const APP_ERROR_LOG_MESSAGE_MAX = 2_000;
-export const APP_ERROR_LOG_DETAIL_MAX = 4_000;
+const APP_ERROR_LOG_MAX_BYTES = 1_048_576;
+const APP_ERROR_LOG_MESSAGE_MAX = 2_000;
+const APP_ERROR_LOG_DETAIL_MAX = 4_000;
 
 const WRITE_QUEUE: Array<() => Promise<void>> = [];
 let writeRunning = false;
@@ -66,7 +66,7 @@ export function formatUnknownError(error: unknown): { message: string; detail?: 
   }
 }
 
-export function sanitizeLogField(value: string, max: number): string {
+function sanitizeLogField(value: string, max: number): string {
   return truncateText(redactSecrets(value.replace(/\r\n/g, "\n").trim()), max);
 }
 

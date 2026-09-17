@@ -141,7 +141,7 @@ function parseRunFlags(args: string[]): {
 }
 
 /** The context block a work item hands to its sessions. */
-export function workItemContextPath(panelHome: string, noteId: string): string {
+function workItemContextPath(panelHome: string, noteId: string): string {
   return path.join(desktopDataDir(panelHome), "workspaces", noteId, "AGENTS.md");
 }
 

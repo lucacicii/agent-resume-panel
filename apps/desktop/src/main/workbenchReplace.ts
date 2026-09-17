@@ -17,7 +17,7 @@ import { buildSearchRegex, scanLineMatches } from "./workbenchSearch";
  * by the built-in editor, so encodings, BOMs and line endings are preserved.
  */
 
-export type WorkbenchReplaceSkipReason =
+type WorkbenchReplaceSkipReason =
   | "invalid"
   | "missing"
   | "binary"
@@ -26,7 +26,7 @@ export type WorkbenchReplaceSkipReason =
   | "stale"
   | "limit";
 
-export interface WorkbenchReplaceRequest {
+interface WorkbenchReplaceRequest {
   rootPath: string;
   query: string;
   replaceWith: string;
@@ -43,7 +43,7 @@ export interface WorkbenchReplaceRequest {
   only?: Array<{ path: string; ordinal: number }>;
 }
 
-export interface WorkbenchReplaceResult {
+interface WorkbenchReplaceResult {
   replaced: Array<{ path: string; count: number }>;
   skipped: Array<{ path: string; reason: WorkbenchReplaceSkipReason }>;
   totalReplaced: number;

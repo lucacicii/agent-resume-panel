@@ -25,7 +25,7 @@ import {
   type BrowserTabState
 } from "./types";
 
-export type BrowserControllerDeps = {
+type BrowserControllerDeps = {
   getMainWindow: () => BrowserWindow | null;
   getPreloadPath: () => string;
   getIcon?: () => Electron.NativeImage | undefined;

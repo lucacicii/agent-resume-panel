@@ -19,12 +19,10 @@
 import type { AcpSessionModes, SessionMeta } from "../agentConnection";
 import type { AcpConfigOption, AcpModelsState } from "../types";
 
-export const GROK_VENDOR_ADAPTER_ID = "grok-session-meta-v1";
-
 /** Synthetic config option ids — host routes these to vendor set methods. */
 export const GROK_REASONING_EFFORT_CONFIG_ID = "__grok_reasoning_effort";
 export const GROK_MODEL_CONFIG_ID = "__grok_model";
-export const GROK_VENDOR_CONFIG_PREFIX = "__grok_";
+const GROK_VENDOR_CONFIG_PREFIX = "__grok_";
 
 /** Session modes confirmed via current_mode_update on Grok ACP. */
 export const GROK_SESSION_MODES: ReadonlyArray<{ id: string; name: string }> = [

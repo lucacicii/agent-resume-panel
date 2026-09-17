@@ -22,9 +22,9 @@ import type { AgentKind } from "../types";
 import { compileManifest, type CompiledManifest } from "./manifest";
 
 /** Base rules that apply to every agent (an unidentified pane included). */
-export const GENERIC_MANIFEST_ID = "generic";
+const GENERIC_MANIFEST_ID = "generic";
 
-export type ManifestSource = "bundled" | "override";
+type ManifestSource = "bundled" | "override";
 
 export type ManifestSummary = {
   id: string;
@@ -104,8 +104,6 @@ export function createManifestRegistry(input: {
       }
     }
   }
-
-  const base = () => loaded.get(GENERIC_MANIFEST_ID)?.manifest ?? null;
 
   if (loaded.size === 0) {
     const looked = sources.filter((entry) => entry.dir).map((entry) => entry.dir);

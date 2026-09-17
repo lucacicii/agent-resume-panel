@@ -3,7 +3,6 @@ import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { GtdStatus, TaskGtdRollup } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
-import { GTD_STATUSES } from "../../gtd";
 import { useI18n } from "../../i18n";
 import { workItemFromRecord, type WorkbenchWorkItem } from "../workbench/workItem";
 import { listAllTaskWorkbenches, workbenchDisplayName, type Workbench } from "../workbench/workbenchModel";

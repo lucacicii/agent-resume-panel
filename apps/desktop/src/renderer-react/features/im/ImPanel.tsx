@@ -1,13 +1,12 @@
 import { ThemeIcon } from "../../components/ThemeIcon";
 import { VariableVirtualList, type VariableVirtualListHandle } from "../../components/VariableVirtualList";
-import { renderMarkdown } from "../../components/Markdown";
 import { ImMessageItem } from "./ImMessageItem";
 import { ImComposer } from "./ImComposer";
 import { ImChatAvatar } from "./ImChatAvatar";
 import { useImProjectTools } from "./ImProjectTools";
 import { computeTranscriptGraph } from "./imTranscriptGraphModel";
 import { createPortal } from "react-dom";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type JSX, type MouseEvent as ReactMouseEvent, type ReactPortal, type UIEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type JSX, type MouseEvent as ReactMouseEvent, type ReactPortal, type UIEvent } from "react";
 import type { AgentCitation, AgentToolDescriptor } from "@agent-resume/core";
 import { type AskToolPrefs } from "../../components/ToolSettingsPopover";
 import { Sheet } from "../../components/Sheet";
@@ -24,7 +23,6 @@ import { storedWidth } from "../../storage";
 import {
   IM_AGENTS,
   IM_SUGGESTED_THOUGHT_LEVELS,
-  isBuiltinTemplateId,
   isProjectRoleTemplateId,
   isSuggestedThoughtLevel,
   type ImAgent,
@@ -44,10 +42,7 @@ import {
   agentTag,
   basename,
   builtinRoleLabel,
-  formatDay,
-  formatTime,
   isActiveJobStatus,
-  isResumableJob,
   isScratchPath,
   roleColor,
   roleInitial,
@@ -98,7 +93,6 @@ function estimateTranscriptItemSize(item: TranscriptItem): number {
   const wrapped = Math.ceil(body.length / 72);
   return Math.min(720, 88 + Math.max(lines, wrapped) * 18);
 }
-
 
 export function ImPanel({ embedded = false, onCloseRoom }: { embedded?: boolean; onCloseRoom?: () => void } = {}): ReactPortal | JSX.Element | null {
   const host = document.getElementById("react-im");
@@ -428,12 +422,6 @@ export function ImPanel({ embedded = false, onCloseRoom }: { embedded?: boolean;
     setHasNewBelow(false);
   }, [transcriptItems.length]);
 
-  const scrollToTop = useCallback(() => {
-    if (!transcriptItems.length) return;
-    setPinnedToBottom(false);
-    transcriptVirtualizerRef.current?.scrollToIndex(0, { align: "start", behavior: "smooth" });
-  }, [transcriptItems.length]);
-
   const jumpToMessage = useCallback((messageId: string) => {
     setCustomExpandedMessages((prev) => ({ ...prev, [messageId]: true }));
     const index = messageIndexById.get(messageId);
@@ -497,14 +485,6 @@ export function ImPanel({ embedded = false, onCloseRoom }: { embedded?: boolean;
 
   const onTranscriptVisibleRange = useCallback((_startIndex: number, _endIndex: number) => {
     // Range track for virtual list
-  }, []);
-
-  const insertIntoComposer = useCallback((text: string) => {
-    setDraft((current) => {
-      const base = current.trim();
-      return base ? `${base}\n${text}` : text;
-    });
-    textareaRef.current?.focus();
   }, []);
 
   const activeJob = useMemo(() => {

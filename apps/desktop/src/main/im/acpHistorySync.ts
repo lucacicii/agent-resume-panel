@@ -1,13 +1,13 @@
 import type { AcpChatMessage, AcpToolCallInfo } from "../acp/types";
 import type { ImMessage, ImToolCall } from "./types";
 
-export interface AcpHistorySyncMember {
+interface AcpHistorySyncMember {
   memberId: string;
   name: string;
   projectId: string;
 }
 
-export type AcpHistorySyncPlan =
+type AcpHistorySyncPlan =
   | {
       type: "insert";
       acpMessageId: string;
@@ -45,7 +45,7 @@ export function toImToolCalls(toolCalls: AcpToolCallInfo[] | undefined): ImToolC
   return mapped.length ? mapped : undefined;
 }
 
-export function isImportableAcpAssistant(message: AcpChatMessage): boolean {
+function isImportableAcpAssistant(message: AcpChatMessage): boolean {
   if (message.role !== "assistant") return false;
   return Boolean(message.text?.trim() || message.thinking?.trim() || message.toolCalls?.length);
 }
@@ -58,7 +58,7 @@ export function isTruncatedPrefix(imBody: string, acpText: string): boolean {
   return right.startsWith(left);
 }
 
-export function isSameAssistantTurn(imBody: string, acpText: string): boolean {
+function isSameAssistantTurn(imBody: string, acpText: string): boolean {
   const left = imBody.trim();
   const right = acpText.trim();
   return Boolean(left) && left === right;

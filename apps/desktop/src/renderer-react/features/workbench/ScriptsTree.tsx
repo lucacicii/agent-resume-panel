@@ -22,7 +22,7 @@ export type ScriptPackageView = {
   scripts: ScriptEntryView[];
 };
 
-export type ScriptsTreeProps = {
+type ScriptsTreeProps = {
   packages: ScriptPackageView[];
   loading?: boolean;
   error?: string | null;

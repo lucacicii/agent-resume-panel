@@ -197,7 +197,7 @@ function buildResumeInstruction(original: string, draft?: ImMessage): string {
   ].join("\n");
 }
 
-export function collectFiles(toolCalls: AcpToolCallInfo[] | undefined, current: string[]): string[] {
+function collectFiles(toolCalls: AcpToolCallInfo[] | undefined, current: string[]): string[] {
   if (!toolCalls?.length) return current;
   const next = new Set(current);
   for (const call of toolCalls) {

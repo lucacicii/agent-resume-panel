@@ -12,7 +12,7 @@ export interface WorkbenchSearchMatch {
   preview: string;
 }
 
-export interface WorkbenchSearchOptions {
+interface WorkbenchSearchOptions {
   /** Project roots to search; results from every root are merged into one set. */
   rootPaths: string[];
   query: string;
@@ -30,7 +30,7 @@ export interface WorkbenchSearchOptions {
   signal?: AbortSignal;
 }
 
-export interface WorkbenchSearchResult {
+interface WorkbenchSearchResult {
   matches: WorkbenchSearchMatch[];
   truncated: boolean;
   filesSearched: number;
@@ -190,7 +190,7 @@ function globToRegexSource(pattern: string): string | null {
  * `dir` regex additionally matches the directory that a trailing slash-star-star
  * glob covers, so excluding `dist` also excludes every file under it.
  */
-export function compileGlobPattern(rawPattern: string): CompiledGlob | null {
+function compileGlobPattern(rawPattern: string): CompiledGlob | null {
   const pattern = String(rawPattern || "").trim();
   if (!pattern) return null;
   const anchored = pattern.includes("/");

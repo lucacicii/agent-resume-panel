@@ -26,7 +26,7 @@ export interface ImFilePickerHandle {
   handleKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>): boolean;
 }
 
-export interface ImFilePickerProps {
+interface ImFilePickerProps {
   projectPath: string;
   /** Current `#` token query, e.g. `src/comp`. */
   query: string;

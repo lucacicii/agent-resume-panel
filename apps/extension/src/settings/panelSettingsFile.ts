@@ -6,7 +6,7 @@ import { sanitizeAgentHomes } from "@agent-resume/core/extension";
 import { expandHome } from "../history/pathUtils";
 
 /** Mirrors packages/core PanelSettings LLM fields used by Desktop. */
-export interface PanelSettingsFile {
+interface PanelSettingsFile {
   panelHome?: string;
   llm: {
     baseUrl: string;
@@ -48,12 +48,12 @@ export interface PanelSettingsFile {
 
 const DEFAULT_PANEL_HOME = "~/.agent-resume-panel";
 
-export function resolveExtensionPanelHome(): string {
+function resolveExtensionPanelHome(): string {
   const configured = vscode.workspace.getConfiguration("agentResume").get<string>("panelHome", DEFAULT_PANEL_HOME);
   return expandHome(configured?.trim() || DEFAULT_PANEL_HOME);
 }
 
-export function panelSettingsFilePath(panelHome?: string): string {
+function panelSettingsFilePath(panelHome?: string): string {
   return path.join(panelHome ?? resolveExtensionPanelHome(), "settings.json");
 }
 
@@ -144,7 +144,7 @@ export async function loadPanelSettingsFile(panelHome?: string): Promise<PanelSe
   }
 }
 
-export async function savePanelSettingsFile(
+async function savePanelSettingsFile(
   settings: PanelSettingsFile,
   panelHome?: string
 ): Promise<string> {
@@ -161,7 +161,7 @@ export async function savePanelSettingsFile(
 }
 
 /** True when VS Code has an explicit user/workspace value for this key. */
-export function hasExplicitVsCodeSetting(key: string): boolean {
+function hasExplicitVsCodeSetting(key: string): boolean {
   const config = vscode.workspace.getConfiguration("agentResume");
   const inspected = config.inspect(key);
   if (!inspected) {

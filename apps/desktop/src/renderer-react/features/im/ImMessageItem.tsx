@@ -24,7 +24,7 @@ import {
   type Translate
 } from "./imUtils";
 
-export interface ImMessageItemProps {
+interface ImMessageItemProps {
   message: ImMessage;
   prevMessage?: ImMessage;
   allMembers: ImMember[];

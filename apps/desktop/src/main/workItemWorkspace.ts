@@ -23,7 +23,7 @@ const END = "<!-- agent-resume:end work-item-address -->";
 const DISABLE = "<!-- agent-resume:disable -->";
 const HASH_KEY_PREFIX = "work_item_workspace_hash:";
 
-export type WorkItemAddressProject = {
+type WorkItemAddressProject = {
   path: string;
   label: string;
   /** False when the path does not exist on this machine (e.g. synced from another Mac). */

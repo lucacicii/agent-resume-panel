@@ -10,7 +10,7 @@ function hostFromUrl(url: string): string | null {
 }
 
 /** Simple glob: exact host, `*.example.com`, or `*example.com` suffix. */
-export function hostMatches(pattern: string, host: string): boolean {
+function hostMatches(pattern: string, host: string): boolean {
   const p = pattern.trim().toLowerCase();
   const h = host.trim().toLowerCase();
   if (!p || !h) return false;

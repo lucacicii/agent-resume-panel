@@ -21,6 +21,3 @@ export function enqueueDesktopBackgroundWork(task: () => Promise<void>): Promise
   return next;
 }
 
-export function resetDesktopBackgroundQueueForTests(): void {
-  queue = Promise.resolve();
-}

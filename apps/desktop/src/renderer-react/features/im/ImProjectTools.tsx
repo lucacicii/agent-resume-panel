@@ -15,14 +15,14 @@ function statusError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export interface UseImProjectToolsOptions {
+interface UseImProjectToolsOptions {
   rootPath: string | null;
   room?: ImRoom | null;
   allMembers?: ImMember[];
   onJumpToMessage?: (messageId: string) => void;
 }
 
-export type ImActiveSidePane = "explorer" | "call_chain" | null;
+type ImActiveSidePane = "explorer" | "call_chain" | null;
 
 export function useImProjectTools(optionsOrRoot: UseImProjectToolsOptions | string | null): {
   toolbar: ReactNode;

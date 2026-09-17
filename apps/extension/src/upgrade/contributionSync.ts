@@ -8,7 +8,7 @@ export function isUnregisteredConfigurationError(error: unknown): boolean {
   return message.includes("not a registered configuration");
 }
 
-export async function isAgentResumeSettingRegistered(key: string): Promise<boolean> {
+async function isAgentResumeSettingRegistered(key: string): Promise<boolean> {
   const config = vscode.workspace.getConfiguration("agentResume");
   const current = config.get(key);
   try {

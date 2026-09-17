@@ -28,7 +28,7 @@ type DotAcpChat = {
 };
 
 /** ACP panes are keyed `acp:${recordId}` in the status store. */
-export function acpPaneKey(recordId: string): string {
+function acpPaneKey(recordId: string): string {
   return `acp:${recordId}`;
 }
 

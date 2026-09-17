@@ -35,7 +35,7 @@ interface PtySession {
   mcpEnv: Record<string, string>;
 }
 
-export type PtyRuntimeMetrics = {
+type PtyRuntimeMetrics = {
   count: number;
   attachedCount: number;
   replayBytes: number;
@@ -46,7 +46,7 @@ export type PtyRuntimeMetrics = {
 /** Tail of PTY output kept while xterm is unmounted. Always drain onData. */
 export const PTY_REPLAY_LIMIT = 256 * 1024;
 /** Soft cap on concurrent PTY sessions. Spawn still succeeds. */
-export const PTY_SOFT_LIMIT = 12;
+const PTY_SOFT_LIMIT = 12;
 const FORWARD_FLUSH_MS = 16;
 const FORWARD_FLUSH_BYTES = 64 * 1024;
 
@@ -544,7 +544,7 @@ function destroyPtyById(id: number): void {
  * panel can report the same fact). Pi has no hook catalogue to register into, so
  * the extension emits the status sequence on the terminal stream instead.
  */
-export function ensurePiAgentResumeBridge(): void {
+function ensurePiAgentResumeBridge(): void {
   try {
     const piAgentDir = path.join(os.homedir(), ".pi", "agent");
     if (!fs.existsSync(piAgentDir)) return;

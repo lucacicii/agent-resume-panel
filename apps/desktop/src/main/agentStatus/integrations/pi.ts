@@ -14,9 +14,9 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-export const PI_EXTENSION_FILE = "agent-resume-bridge.ts";
+const PI_EXTENSION_FILE = "agent-resume-bridge.ts";
 
-export const PI_EXTENSION_CONTENT = `// Agent Resume companion bridge — reports agent status on the terminal stream.
+const PI_EXTENSION_CONTENT = `// Agent Resume companion bridge — reports agent status on the terminal stream.
 // Managed file: reinstalling overwrites it. Add your own extensions beside it.
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 

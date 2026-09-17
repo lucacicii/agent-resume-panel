@@ -1,14 +1,7 @@
 import type { LaidOutEdge, LaidOutNode } from "./noteLinkTreeLayout";
 
 export const DRAG_THRESHOLD_PX = 4;
-export const DROP_HIT_RADIUS_PX = 28;
-
-export type DropKind = "node" | "detach" | "none";
-
-export type DropTarget =
-  | { kind: "node"; noteId: string; valid: boolean }
-  | { kind: "detach"; valid: boolean }
-  | { kind: "none"; valid: false };
+const DROP_HIT_RADIUS_PX = 28;
 
 /** Child ids keyed by parent from layout edges. */
 export function childrenByParent(edges: LaidOutEdge[]): Map<string, string[]> {

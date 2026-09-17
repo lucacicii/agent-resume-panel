@@ -4,7 +4,7 @@ import { escapeSqlLiteral, runSqliteJson } from "../../history/sqlite";
 import { isNodeError } from "../../history/jsonl";
 import { TranscriptRefs } from "./types";
 
-export interface TranscriptExportFile {
+interface TranscriptExportFile {
   sourcePath: string;
   fileName: string;
   content: string;
