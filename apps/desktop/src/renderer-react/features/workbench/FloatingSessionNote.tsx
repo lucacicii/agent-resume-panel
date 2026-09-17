@@ -15,7 +15,6 @@ export interface FloatingSessionNoteTarget {
 
 export type FloatingNoteTarget =
   | FloatingSessionNoteTarget
-  | { kind: "project"; projectPath: string; projectName?: string; initialGtdStatus: GtdStatus }
   | { kind: "library"; initialGtdStatus: GtdStatus };
 
 type Note = Awaited<ReturnType<ReturnType<typeof desktopApi>["notesList"]>>[number];
@@ -64,9 +63,6 @@ function isSessionTarget(target: FloatingNoteTarget): target is FloatingSessionN
 
 function floatingNoteOwnerLabel(target: FloatingNoteTarget, t: (key: string) => string): string {
   if (isSessionTarget(target)) {
-    return target.projectName?.trim() || basename(target.projectPath) || target.projectPath;
-  }
-  if (target.kind === "project") {
     return target.projectName?.trim() || basename(target.projectPath) || target.projectPath;
   }
   return t("desktop.notes.librarySection");
@@ -301,7 +297,6 @@ export function FloatingSessionNote({
         const initial = initialFloatingNoteContent();
         const created = await desktopApi().notesCreate({
           scope: target.kind,
-          projectPath: target.kind === "project" ? target.projectPath : undefined,
           body: initial
         });
         if (loadSequenceRef.current !== sequence) {
@@ -659,7 +654,7 @@ export function FloatingSessionNote({
           onChange={updateContent}
           ariaLabel={t("desktop.workbench.floatingNoteEditor")}
           language="markdown"
-          selectionProjectPath={isSessionTarget(target) || target.kind === "project" ? target.projectPath : undefined}
+          selectionProjectPath={isSessionTarget(target) ? target.projectPath : undefined}
           fontSize={13}
           wordWrap
         />

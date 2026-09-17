@@ -14,6 +14,7 @@ import {
   buildNewSessionCommand,
   buildResumeCommand,
   supportsNewSessionYoloMode,
+  MCP_SESSION_ENV,
   type NewSessionExecutionMode,
   updateNativeSessionCwd,
   effectivePanelHome,
@@ -105,12 +106,14 @@ import { safeHandle } from "./ipcUtils";
 import { registerLinkGraphIpc } from "./linkgraph/linkGraphIpc";
 import { installArpmShell, installArpmShim, resolveArpmCliPath } from "./arpmInstall";
 import {
+  createExternalBrowserMcpLaunchConfig,
   createExternalMcpLaunchConfig,
   listMcpClients,
   manualMcpConfig,
   migrateLegacyAgentResumeRegistrations,
   registerMcpClient,
   removeMcpClient,
+  resolveExternalBrowserMcpCliPath,
   resolveExternalMcpCliPath,
   type McpClientId
 } from "./mcpRegistration";
@@ -147,11 +150,10 @@ import { registerWorkbenchScriptsIpc } from "./workbenchScripts";
 import {
   disposeBrowserController,
   disposeBrowserMcpServer,
-  ensureBrowserMcpReadyForExternal,
   listBrowserToolDescriptors,
-  registerBrowserIpc,
-  syncBrowserExternalMcpRegistration
+  registerBrowserIpc
 } from "./browser";
+import { syncExternalMcpRegistration } from "./externalMcp";
 import {
   DEFAULT_RECENT_STANDALONE_NOTE_SHORTCUT,
   DEFAULT_STANDALONE_NOTE_SHORTCUT,
@@ -201,7 +203,6 @@ import {
   notesListLinkedChildIds,
   notesListLinks,
   notesListRootNotes,
-  notesMove,
   notesOpenFolder,
   notesPasteImage,
   notesRead,
@@ -1657,7 +1658,24 @@ function registerIpc(): void {
     return listMcpClients();
   });
 
-  safeHandle("mcp:manualConfig", async () => manualMcpConfig(await externalMcpLaunch()));
+  safeHandle("mcp:manualConfig", async () => {
+    const settings = await loadSettings();
+    const browser = settings.desktop?.browser;
+    const coreLaunch = await externalMcpLaunch();
+    const browserLaunch =
+      Boolean(browser?.enabled) && browser?.exposeExternalMcp !== false
+        ? createExternalBrowserMcpLaunchConfig({
+            executablePath: process.execPath,
+            cliPath: resolveExternalBrowserMcpCliPath({
+              isPackaged: app.isPackaged,
+              resourcesPath: process.resourcesPath,
+              appPath: app.getAppPath()
+            }),
+            panelHome: effectivePanelHome(settings)
+          })
+        : undefined;
+    return manualMcpConfig(coreLaunch, browserLaunch);
+  });
 
   safeHandle(
     "mcp:register",
@@ -1849,23 +1867,22 @@ function registerIpc(): void {
       const saved = await loadSettings();
       browserSettingsCache = saved.desktop?.browser || null;
       try {
-        await ensureBrowserMcpReadyForExternal(saved);
-        const browserMcp = await syncBrowserExternalMcpRegistration(saved);
-        if (browserMcp.registered.length) {
+        const mcp = await syncExternalMcpRegistration(saved);
+        if (mcp.registered.length) {
           console.log(
-            `[agent-resume] Browser MCP registered for: ${browserMcp.registered.join(", ")}`
+            `[agent-resume] External MCP registered for: ${mcp.registered.join(", ")}`
           );
         }
-        for (const failure of browserMcp.failed) {
+        for (const failure of mcp.failed) {
           void recordAppError({
-            source: "browser-mcp",
-            message: `Browser MCP sync failed (${failure.target}): ${failure.error}`
+            source: "external-mcp",
+            message: `External MCP sync failed (${failure.target}): ${failure.error}`
           });
         }
       } catch (error) {
         void recordAppError({
-          source: "browser-mcp",
-          message: "Browser MCP external sync failed after settings save.",
+          source: "external-mcp",
+          message: "External MCP sync failed after settings save.",
           error
         });
       }
@@ -2296,7 +2313,13 @@ function registerIpc(): void {
           warning
         };
       }
-      return { mode, command, cwd, unsupportedYolo, warning };
+      // MCP session identity so note operations default to this work item /
+      // session (see packages/core/src/mcp/sessionContext.ts).
+      const env: Record<string, string> = { [MCP_SESSION_ENV.provider]: args.provider };
+      if (args.workItemNoteId?.trim()) {
+        env[MCP_SESSION_ENV.workItemNoteId] = args.workItemNoteId.trim();
+      }
+      return { mode, command, cwd, unsupportedYolo, warning, env };
     }
   );
 
@@ -2539,7 +2562,10 @@ function registerIpc(): void {
   });
 
   ipcMain.handle("agent:listTools", async (_event, args?: { projectPath?: string }) => {
-    const coreTools = [...AGENT_TOOL_CATALOG];
+    const coreTools: AgentToolDescriptor[] = AGENT_TOOL_CATALOG.map((tool) => ({
+      ...tool,
+      kind: "core_mcp" as const
+    }));
     try {
       const skills = await discoverSkills({ projectPath: args?.projectPath });
       const skillTools = skills.map(skillToToolDescriptor);
@@ -2853,7 +2879,7 @@ function registerIpc(): void {
     async (
       _event,
       args: {
-        scope: "library" | "project" | "session";
+        scope: "library" | "session";
         projectPath?: string;
         provider?: string;
         sessionId?: string;
@@ -2861,14 +2887,6 @@ function registerIpc(): void {
       }
     ) => {
       const result = await notesCreate(args);
-      scheduleNotesIndex();
-      return result;
-    }
-  );
-  ipcMain.handle(
-    "notes:move",
-    async (_event, args: { noteId: string; owner: import("@agent-resume/core").NoteOwner }) => {
-      const result = await notesMove(args.noteId, args.owner);
       scheduleNotesIndex();
       return result;
     }
@@ -3227,26 +3245,25 @@ app.whenReady().then(async () => {
         });
       }
 
-      // Publish browser MCP endpoint + register TUI/CLI stdio proxy when enabled.
+      // Publish browser MCP endpoint + register both MCP services for TUI/CLI clients.
       try {
         browserSettingsCache = settings.desktop?.browser || null;
-        await ensureBrowserMcpReadyForExternal(settings);
-        const browserMcp = await syncBrowserExternalMcpRegistration(settings);
-        if (browserMcp.registered.length) {
+        const mcp = await syncExternalMcpRegistration(settings);
+        if (mcp.registered.length) {
           console.log(
-            `[agent-resume] Browser MCP registered for: ${browserMcp.registered.join(", ")}`
+            `[agent-resume] External MCP registered for: ${mcp.registered.join(", ")}`
           );
         }
-        for (const failure of browserMcp.failed) {
+        for (const failure of mcp.failed) {
           void recordAppError({
-            source: "browser-mcp",
-            message: `Browser MCP sync failed (${failure.target}): ${failure.error}`
+            source: "external-mcp",
+            message: `External MCP sync failed (${failure.target}): ${failure.error}`
           });
         }
       } catch (error) {
         void recordAppError({
-          source: "browser-mcp",
-          message: "Browser MCP external startup failed.",
+          source: "external-mcp",
+          message: "External MCP startup sync failed.",
           error
         });
       }

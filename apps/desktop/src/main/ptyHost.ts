@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as pty from "node-pty";
-import { expandHome } from "@agent-resume/core";
+import { expandHome, MCP_SESSION_ENV, MCP_SESSION_ENV_KEYS } from "@agent-resume/core";
 import {
   checkoutGitBranch,
   listGitBranchesWithNested,
@@ -31,6 +31,8 @@ interface PtySession {
   flushTimer: NodeJS.Timeout | null;
   outputBytes: number;
   forwardedBytes: number;
+  /** MCP session identity env for the agent process (see core sessionContext). */
+  mcpEnv: Record<string, string>;
 }
 
 export type PtyRuntimeMetrics = {
@@ -78,7 +80,8 @@ function createPtySession(
   cols: number,
   rows: number,
   shell: string,
-  attached: boolean
+  attached: boolean,
+  mcpEnv: Record<string, string> = {}
 ): PtySession {
   return {
     pty: ptyInstance,
@@ -95,8 +98,31 @@ function createPtySession(
     pendingForwardBytes: 0,
     flushTimer: null,
     outputBytes: 0,
-    forwardedBytes: 0
+    forwardedBytes: 0,
+    mcpEnv
   };
+}
+
+/**
+ * Allowlisted MCP session identity env for the agent process. The renderer
+ * passes the work item / provider it knows about; a known session key supplies
+ * provider + session id for resumes. Everything else is ignored.
+ */
+function mcpSessionEnv(args: { env?: Record<string, string>; sessionKey?: string }): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const key of MCP_SESSION_ENV_KEYS) {
+    const value = args.env?.[key];
+    if (typeof value === "string" && value.trim()) out[key] = value.trim();
+  }
+  const key = args.sessionKey?.trim();
+  if (key) {
+    const separator = key.indexOf(":");
+    if (separator > 0 && separator < key.length - 1) {
+      if (!out[MCP_SESSION_ENV.provider]) out[MCP_SESSION_ENV.provider] = key.slice(0, separator);
+      if (!out[MCP_SESSION_ENV.sessionId]) out[MCP_SESSION_ENV.sessionId] = key.slice(separator + 1);
+    }
+  }
+  return out;
 }
 
 function clearForwardQueue(session: PtySession): void {
@@ -442,15 +468,16 @@ function attachPtyHandlers(
     const session = ptySessions.get(id);
     if (!session) return;
 
-    const { respawnOnExit, lastSpawnCwd, lastCols, lastRows, shell, startedAt, attached } = session;
+    const { respawnOnExit, lastSpawnCwd, lastCols, lastRows, shell, startedAt, attached, mcpEnv } = session;
     ptySessions.delete(id);
     const livedMs = Date.now() - startedAt;
     if (respawnOnExit && lastSpawnCwd && livedMs >= 400) {
       try {
         const newPty = spawnPty(shell, lastSpawnCwd, lastCols, lastRows, undefined, {
-          AGENT_RESUME_PANE_ID: String(id)
+          AGENT_RESUME_PANE_ID: String(id),
+          ...mcpEnv
         });
-        const next = createPtySession(newPty, lastSpawnCwd, lastCols, lastRows, shell, attached);
+        const next = createPtySession(newPty, lastSpawnCwd, lastCols, lastRows, shell, attached, mcpEnv);
         ptySessions.set(id, next);
         // A fresh shell is a fresh screen: reset the mirror, keep the session.
         getAgentStatusSensor()?.attach(id, { cols: lastCols, rows: lastRows, cwd: lastSpawnCwd });
@@ -534,7 +561,7 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
     "terminal:spawn",
     async (
       _event,
-      args: { cwd: string; command?: string; cols?: number; rows?: number; sessionKey?: string }
+      args: { cwd: string; command?: string; cols?: number; rows?: number; sessionKey?: string; env?: Record<string, string> }
     ) => {
       const shell = resolveShell();
       const cols = Math.max(2, Math.floor(args.cols || 80));
@@ -542,17 +569,18 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
       const cwd = resolveCwd(args.cwd);
       const id = ++nextTerminalId;
       const win = getWindow();
+      const mcpEnv = mcpSessionEnv(args);
 
       let ptyInstance: pty.IPty;
       try {
-        ptyInstance = spawnPty(shell, cwd, cols, rows, args.command, { AGENT_RESUME_PANE_ID: String(id) });
+        ptyInstance = spawnPty(shell, cwd, cols, rows, args.command, { AGENT_RESUME_PANE_ID: String(id), ...mcpEnv });
       } catch (error) {
         const detail = error instanceof Error ? error.message : String(error);
         throw new Error(`无法启动终端 (shell=${shell}, cwd=${cwd}): ${detail}`);
       }
 
       // Start detached so boot output lands in the replay buffer until xterm attaches.
-      ptySessions.set(id, createPtySession(ptyInstance, cwd, cols, rows, shell, false));
+      ptySessions.set(id, createPtySession(ptyInstance, cwd, cols, rows, shell, false, mcpEnv));
       // Register with the status sensor before any output can arrive.
       getAgentStatusSensor()?.attach(id, { cols, rows, cwd, sessionKey: args.sessionKey });
       attachPtyHandlers(ptyInstance, id, win);

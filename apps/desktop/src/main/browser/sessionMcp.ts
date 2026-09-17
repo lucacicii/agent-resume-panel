@@ -1,4 +1,4 @@
-import { effectivePanelHome, type PanelSettings } from "@agent-resume/core";
+import { effectivePanelHome, MCP_SESSION_ENV, type PanelSettings } from "@agent-resume/core";
 import type { McpServer } from "@agentclientprotocol/sdk" with { "resolution-mode": "import" };
 import { BROWSER_MCP_SERVER_NAME, ensureBrowserMcpServer, type BrowserMcpServerHandle } from "./mcpServer";
 import type { BrowserController } from "./controller";
@@ -27,14 +27,24 @@ export async function buildSessionMcpServers(args: SessionMcpBuildArgs): Promise
       appPath: app.getAppPath()
     });
     const panelHome = effectivePanelHome(args.settings);
+    const env: Array<{ name: string; value: string }> = [
+      { name: "ELECTRON_RUN_AS_NODE", value: "1" },
+      { name: "AGENT_RESUME_PANEL_HOME", value: panelHome }
+    ];
+    // ACP chat sessions appear in the catalog as provider "chat" with the ACP
+    // record id as the session id, so note tools can resolve the work item this
+    // session is linked to (or fall back to the session itself).
+    if (args.recordId && args.recordId !== "unknown") {
+      env.push(
+        { name: MCP_SESSION_ENV.provider, value: "chat" },
+        { name: MCP_SESSION_ENV.sessionId, value: args.recordId }
+      );
+    }
     servers.push({
       name: "agent-resume",
       command: process.execPath,
       args: [cliPath],
-      env: [
-        { name: "ELECTRON_RUN_AS_NODE", value: "1" },
-        { name: "AGENT_RESUME_PANEL_HOME", value: panelHome }
-      ]
+      env
     });
   } catch (error) {
     console.warn(

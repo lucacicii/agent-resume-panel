@@ -11,6 +11,11 @@ const extensionLocalesDir = join(root, "apps", "extension", "locales");
 const desktopLocalesDir = join(root, "apps", "desktop", "locales");
 const settingsOverlayLocales = new Set(["ja"]);
 const obsoleteDesktopKeys = new Set([
+  "desktop.agent.toolCategory.projects",
+  "desktop.notes.projectLabel",
+  "desktop.notes.targetLibrary",
+  "desktop.settings.projectMenu.note",
+  "desktop.settings.projectMenu.noteDesc",
   "desktop.settings.visualTheme",
   "desktop.settings.visualThemeDesc",
   "desktop.settings.visualThemeClassic",

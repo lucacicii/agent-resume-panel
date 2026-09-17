@@ -18,7 +18,7 @@ There is no Agent tab and no in-app chat thread. To ask questions about past wor
 
 | | |
 |---|---|
-| **Purpose** | Retrieve relevant context across **all** local memory in one call: memory digests, project notes, and historical agent sessions |
+| **Purpose** | Retrieve relevant context across **all** local memory in one call: memory digests, notes, and historical agent sessions |
 | **Returns** | Bounded excerpts with citation markers — `[D#]` digests, `[N#]` notes, `[S#]` sessions |
 | **Filters** | Optional project path to prioritize one project, and a result limit per category |
 | **Access** | Read-only |
@@ -43,6 +43,7 @@ For narrower questions, ask for one source at a time:
 | `session_search` | Keyword search over sessions; **plus** summary-vector search when embeddings are configured |
 | `session_list` · `session_read` · `session_read_transcript` | Recent sessions, one session's metadata and cached summary, or a short transcript excerpt |
 | `note_search` · `note_read` · `note_tree_read` | Notes and work item trees |
+| `task_list` · `task_read` · `workbench_list` | Tasks (work items), their multi-root project references, and workbenches |
 
 ### Retrieval quality
 
@@ -102,6 +103,7 @@ Desktop 曾有一个应用内的 **Agent** 页签，用自然语言对本机工�
 | `session_search` | 会话关键词搜索；配置了 embedding 后**另加**摘要向量检索 |
 | `session_list` · `session_read` · `session_read_transcript` | 最近会话、单个会话的元数据与缓存摘要、或短转写节选 |
 | `note_search` · `note_read` · `note_tree_read` | 笔记与工作项树 |
+| `task_list` · `task_read` · `workbench_list` | 任务（工作项）、其多根项目引用与工作台 |
 
 ### 检索质量
 

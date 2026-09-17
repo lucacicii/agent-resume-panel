@@ -96,19 +96,6 @@ const record: TestNote = {
   updatedAtMs: 2
 };
 
-const demoProject = {
-  projectId: "project-1",
-  portableKey: "~/work/demo",
-  alias: "Demo",
-  hidden: false,
-  pinned: false,
-  lastSeenAtMs: 1,
-  updatedAtMs: 1,
-  localPath: "/Users/master/work/demo",
-  pathMissing: false,
-  sessionCount: 0
-};
-
 function installBridge(overrides: Partial<typeof window.agentResume> = {}) {
   let closeCallback: (() => void) | undefined;
   let currentRecord: TestNote = record;
@@ -125,16 +112,6 @@ function installBridge(overrides: Partial<typeof window.agentResume> = {}) {
   const notesDelete = vi.fn(async () => ({ ok: true, deletedNoteIds: [record.noteId] }));
   const notesSetGtdStatus = vi.fn(async ({ noteId, status }: { noteId: string; status: string | null }) => ({ ...record, noteId, gtdStatus: status || undefined }));
   const notesRead = vi.fn(async ({ noteId }: { noteId: string }) => ({ record: currentRecord, content: "# Standalone note\n" }));
-  const notesMove = vi.fn(async ({ noteId, owner }: { noteId: string; owner: { scope: TestNote["scope"]; projectPath?: string } }) => {
-    currentRecord = {
-      ...currentRecord,
-      noteId,
-      scope: owner.scope,
-      projectPath: owner.scope === "project" ? owner.projectPath : undefined
-    };
-    return currentRecord;
-  });
-  const listProjects = vi.fn(async () => [demoProject]);
   const standaloneNoteSetAlwaysOnTop = vi.fn(async ({ pinned }: { pinned: boolean }) => ({ pinned }));
   const standaloneNoteClose = vi.fn(async () => ({ ok: true }));
   const standaloneNoteCloseReady = vi.fn(async ({ ok }: { ok: boolean }) => ({ ok }));
@@ -146,8 +123,6 @@ function installBridge(overrides: Partial<typeof window.agentResume> = {}) {
     notesWrite,
     notesDelete,
     notesSetGtdStatus,
-    notesMove,
-    listProjects,
     standaloneNoteGetState: async () => ({ noteId: "note-1", pinned: false }),
     standaloneNoteSetAlwaysOnTop,
     standaloneNoteClose,
@@ -161,7 +136,7 @@ function installBridge(overrides: Partial<typeof window.agentResume> = {}) {
     },
     ...overrides
   } as unknown as typeof window.agentResume;
-  return { closeRequested, getCloseCallback: () => closeCallback, notesWrite, notesDelete, notesSetGtdStatus, notesRead, notesMove, listProjects, standaloneNoteSetAlwaysOnTop, standaloneNoteClose, standaloneNoteCloseReady, workbenchSendSelection };
+  return { closeRequested, getCloseCallback: () => closeCallback, notesWrite, notesDelete, notesSetGtdStatus, notesRead, standaloneNoteSetAlwaysOnTop, standaloneNoteClose, standaloneNoteCloseReady, workbenchSendSelection };
 }
 
 afterEach(() => {
@@ -185,7 +160,6 @@ describe("StandaloneNoteWindow", () => {
     const editor = await screen.findByRole("textbox", { name: "Standalone note editor" });
     expect((editor as HTMLTextAreaElement).value).toBe("# Standalone note\n");
     const meta = document.querySelector(".standalone-note-window-meta");
-    expect(meta?.querySelector(".standalone-note-window-project")).toBeTruthy();
     expect(meta?.querySelector(".standalone-note-window-status")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Keep note above all apps" }));
     await waitFor(() => expect(standaloneNoteSetAlwaysOnTop).toHaveBeenCalledWith({ pinned: true }));
@@ -227,55 +201,6 @@ describe("StandaloneNoteWindow", () => {
     fireEvent.change(input, { target: { value: "note" } });
     expect(editorHandle.setSearchQuery).toHaveBeenCalledWith("note");
     expect(screen.getByText("1 / 2")).toBeTruthy();
-  });
-
-  it("moves the Library note to the selected project", async () => {
-    const { notesMove } = installBridge();
-    render(<I18nProvider><StandaloneNoteWindow noteId="note-1" /></I18nProvider>);
-
-    const editor = await screen.findByRole("textbox", { name: "Standalone note editor" });
-    const project = screen.getByRole("combobox", { name: "Project" });
-    expect((project as HTMLSelectElement).value).toBe("");
-    expect(screen.getByRole("option", { name: "Standalone" })).toBeTruthy();
-    expect(screen.getByRole("option", { name: "Demo" })).toBeTruthy();
-
-    fireEvent.change(project, { target: { value: "/Users/master/work/demo" } });
-    await waitFor(() => expect(notesMove).toHaveBeenCalledWith({
-      noteId: "note-1",
-      owner: { scope: "project", projectPath: "/Users/master/work/demo" }
-    }));
-    await waitFor(() => expect((project as HTMLSelectElement).value).toBe("/Users/master/work/demo"));
-    expect(editor).toBeTruthy();
-  });
-
-  it("moves a project note back to Library", async () => {
-    const projectRecord: TestNote = {
-      ...record,
-      scope: "project",
-      projectPath: "/Users/master/work/demo"
-    };
-    let currentRecord: TestNote = projectRecord;
-    const notesRead = vi.fn(async () => ({ record: currentRecord, content: "# Standalone note\n" }));
-    const notesMove = vi.fn(async ({ noteId, owner }: { noteId: string; owner: { scope: TestNote["scope"]; projectPath?: string } }) => {
-      currentRecord = {
-        ...currentRecord,
-        noteId,
-        scope: owner.scope,
-        projectPath: owner.scope === "project" ? owner.projectPath : undefined
-      };
-      return currentRecord;
-    });
-    installBridge({ notesRead, notesMove });
-    render(<I18nProvider><StandaloneNoteWindow noteId="note-1" /></I18nProvider>);
-
-    const project = await screen.findByRole("combobox", { name: "Project" });
-    expect((project as HTMLSelectElement).value).toBe("/Users/master/work/demo");
-    fireEvent.change(project, { target: { value: "" } });
-    await waitFor(() => expect(notesMove).toHaveBeenCalledWith({
-      noteId: "note-1",
-      owner: { scope: "library" }
-    }));
-    await waitFor(() => expect((project as HTMLSelectElement).value).toBe(""));
   });
 
   it("sets the note GTD status through catalog metadata", async () => {

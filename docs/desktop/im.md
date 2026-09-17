@@ -20,7 +20,7 @@ Languages: [English](#english) | [简体中文](#简体中文)
 - Mentioning a role without an associated folder is blocked. Messages without `@` stay in the room and do not dispatch.
 - Jobs reuse Desktop’s ACP host. Permission prompts appear in the room. Finished ACP sessions still show up in Workbench.
 
-Notes reuse is deferred: IM does not write project notes yet.
+Notes reuse is deferred: IM does not write notes yet (project notes are an extension-only capability).
 
 ---
 
@@ -38,4 +38,4 @@ Notes reuse is deferred: IM does not write project notes yet.
 - 未关联目录时不能派工；不 @ 只落房间消息。
 - 派工走现有 ACP host，权限在房间内确认。完成后的 ACP session 仍会出现在 Workbench。
 
-笔记复用放到后续：当前不会自动写项目笔记。
+笔记复用放到后续：当前不会自动写笔记（项目笔记属于扩展专属能力）。

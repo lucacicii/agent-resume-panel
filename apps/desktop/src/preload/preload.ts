@@ -351,6 +351,8 @@ export interface DesktopApi {
     copied?: boolean;
     unsupportedYolo?: boolean;
     warning?: string;
+    /** MCP session identity env for embedded terminals (agent-resume service). */
+    env?: Record<string, string>;
   }>;
   listWorkbenchSessionFolders(args: { projectId: string }): Promise<{
     folders: WorkbenchSessionFolder[];
@@ -612,6 +614,8 @@ export interface DesktopApi {
     rows?: number;
     /** Session the pane belongs to, when the renderer already knows it. */
     sessionKey?: string;
+    /** Extra env for the agent process (allowlisted `AGENT_RESUME_*` keys only). */
+    env?: Record<string, string>;
   }): Promise<{ id: number; count?: number; softLimit?: number; warnSoftLimit?: boolean }>;
   terminalAttach(args: { id: number }): Promise<{ ok: boolean; replay: string }>;
   terminalDetach(args: { id: number }): Promise<{ ok: boolean }>;
@@ -1353,25 +1357,16 @@ export interface DesktopApi {
     initialPrompt?: string;
   }): Promise<{ ok: boolean; error?: string; command?: string; cwd?: string; mode?: string; external?: boolean }>;
   notesCreate(args: {
-    scope: "library" | "project" | "session";
+    scope: "library" | "session";
     projectPath?: string;
     provider?: string;
     sessionId?: string;
     body?: string;
   }): Promise<{ noteId: string; filename: string }>;
-  notesMove(args: {
-    noteId: string;
-    owner: {
-      scope: "library" | "project" | "session";
-      projectPath?: string;
-      provider?: string;
-      sessionId?: string;
-    };
-  }): Promise<{ noteId: string; filename: string; scope: string }>;
   notesDelete(args: { noteId: string }): Promise<{ ok: boolean; deletedNoteIds: string[] }>;
   notesRename(args: { noteId: string; filename: string }): Promise<{ noteId: string; filename: string }>;
   notesImport(owner: {
-    scope: "library" | "project" | "session";
+    scope: "library" | "session";
     projectPath?: string;
     provider?: string;
     sessionId?: string;
@@ -1881,7 +1876,6 @@ const api: DesktopApi = {
   notesWrite: (args) => ipcRenderer.invoke("notes:write", args),
   notesResumeSession: (args) => ipcRenderer.invoke("notes:resumeSession", args),
   notesCreate: (args) => ipcRenderer.invoke("notes:create", args),
-  notesMove: (args) => ipcRenderer.invoke("notes:move", args),
   notesDelete: (args) => ipcRenderer.invoke("notes:delete", args),
   notesRename: (args) => ipcRenderer.invoke("notes:rename", args),
   notesRenameWorkItem: (args) => ipcRenderer.invoke("notes:renameWorkItem", args),

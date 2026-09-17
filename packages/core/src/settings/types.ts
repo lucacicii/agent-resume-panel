@@ -205,7 +205,6 @@ export type WorkbenchProjectContextMenuAction =
   | "pin"
   | "newSession"
   | "editor"
-  | "note"
   | "rename"
   | "setLocalPath"
   | "copyPath"
@@ -217,7 +216,6 @@ export type WorkbenchProjectContextMenuAction =
 /** Default project context menu items (shown when setting is unset). */
 export const DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU: WorkbenchProjectContextMenuAction[] = [
   "newSession",
-  "note",
   "reveal",
   "remove"
 ];
@@ -226,7 +224,6 @@ export const ALL_WORKBENCH_PROJECT_CONTEXT_MENU: WorkbenchProjectContextMenuActi
   "pin",
   "newSession",
   "editor",
-  "note",
   "rename",
   "setLocalPath",
   "copyPath",

@@ -38,6 +38,8 @@ export type TerminalPane = {
   cwd: string;
   command?: string;
   initialPrompt?: string;
+  /** MCP session identity env passed to the PTY (agent-resume service). */
+  env?: Record<string, string>;
   ptyId?: number;
   branch?: string | null;
   repoRoot?: string | null;
@@ -633,7 +635,8 @@ export const TerminalView = memo(function TerminalView({ pane, active, themeId, 
             command: pane.command,
             cols: terminal.cols,
             rows: terminal.rows,
-            sessionKey: pane.sessionKey
+            sessionKey: pane.sessionKey,
+            env: pane.env
           }).then(async (spawned) => {
             const { id } = spawned;
             if (spawned.warnSoftLimit) {

@@ -10,7 +10,7 @@ Languages: [English](#english) | [简体中文](#简体中文)
 
 ### What it is
 
-**Notes** is a Markdown note surface for session- and project-scoped notes. Files and attachments live under the shared panel home and are the **same files** the VS Code extension uses.
+**Notes** is a Markdown note surface for session- and library-scoped notes. Project notes are an extension-only capability and do not appear in Desktop. Files and attachments live under the shared panel home and are the **same files** the VS Code extension uses.
 
 Desktop adds a fuller list / editor / preview experience plus optional indexing for search.
 
@@ -38,7 +38,7 @@ See also [Extension Notes](../panel/notes.md).
 
 ### Tips
 
-1. Prefer project notes for durable docs; session notes for run-specific context.  
+1. Prefer task (work item) notes for durable docs; session notes for run-specific context.  
 2. Back up panel home when migrating machines — [Settings & data](settings-and-data.md).  
 3. Markdown preview is sanitized; treat notes as content, not trusted HTML.
 
@@ -52,7 +52,7 @@ See also [Extension Notes](../panel/notes.md).
 
 ### 是什么
 
-**Notes** 用于会话级 / 项目级 Markdown 笔记。文件与附件位于共用 panel home，与 VS Code 扩展 **同一批文件**。
+**Notes** 用于会话级 / library 级 Markdown 笔记。项目笔记属于扩展专属能力，不会出现在 Desktop。文件与附件位于共用 panel home，与 VS Code 扩展 **同一批文件**。
 
 Desktop 提供更完整的列表 / 编辑 / 预览，以及可选的索引搜索。
 
@@ -80,7 +80,7 @@ Desktop 提供更完整的列表 / 编辑 / 预览，以及可选的索引搜索
 
 ### 提示
 
-1. 长期文档放项目笔记；单次运行上下文放会话笔记。  
+1. 长期文档放任务（工作项）笔记；单次运行上下文放会话笔记。  
 2. 换机备份 panel home — [设置与数据](settings-and-data.md)。  
 3. 预览会做安全处理；笔记按普通内容对待，不要当可信 HTML。
 

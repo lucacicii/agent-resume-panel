@@ -443,29 +443,31 @@ export async function removeMcpClient(id: McpClientId): Promise<void> {
   await removeJsonClient(definition);
 }
 
-export function manualMcpConfig(launch: McpLaunchConfig): string {
-  return JSON.stringify({
-    mcpServers: {
-      [EXTERNAL_MCP_SERVICE_ID]: {
-        command: launch.command,
-        args: launch.args,
-        env: launch.env
-      }
+/**
+ * Manual JSON snippet for the clients Desktop does not auto-configure
+ * (Cursor / Pi / Grok Build). Emits both services in one block. The browser
+ * entry carries a client label for ownership — replace `<client-name>` with the
+ * client id you are pasting into (e.g. `pi`, `cursor`).
+ */
+export function manualMcpConfig(coreLaunch: McpLaunchConfig, browserLaunch?: McpLaunchConfig): string {
+  const servers: Record<string, unknown> = {
+    [EXTERNAL_MCP_SERVICE_ID]: {
+      command: coreLaunch.command,
+      args: coreLaunch.args,
+      env: coreLaunch.env
     }
-  }, null, 2);
-}
-
-/** Manual JSON snippet for agent-resume-browser (Desktop must be running). */
-export function manualBrowserMcpConfig(launch: McpLaunchConfig): string {
-  return JSON.stringify({
-    mcpServers: {
-      [EXTERNAL_BROWSER_MCP_SERVICE_ID]: {
-        command: launch.command,
-        args: launch.args,
-        env: launch.env
+  };
+  if (browserLaunch) {
+    servers[EXTERNAL_BROWSER_MCP_SERVICE_ID] = {
+      command: browserLaunch.command,
+      args: browserLaunch.args,
+      env: {
+        ...browserLaunch.env,
+        AGENT_RESUME_BROWSER_CLIENT: "<client-name>"
       }
-    }
-  }, null, 2);
+    };
+  }
+  return JSON.stringify({ mcpServers: servers }, null, 2);
 }
 
 function withClientName(launch: McpLaunchConfig, clientId: string): McpLaunchConfig {

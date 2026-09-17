@@ -4,8 +4,10 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  EXTERNAL_BROWSER_MCP_SERVICE_ID,
   EXTERNAL_MCP_SERVICE_ID,
   buildCliRegistrationArgs,
+  createExternalBrowserMcpLaunchConfig,
   createExternalMcpLaunchConfig,
   isLegacyAgentResumeLaunch,
   manualMcpConfig,
@@ -39,6 +41,21 @@ describe("desktop external MCP registration", () => {
       args: launch.args,
       env: launch.env
     });
+
+    const browserLaunch = createExternalBrowserMcpLaunchConfig({
+      executablePath: launch.command,
+      cliPath: "/Users/test/packages/core/dist/mcp/browserCli.js",
+      panelHome: "/Users/test/.agent-resume-panel"
+    });
+    const combined = JSON.parse(manualMcpConfig(launch, browserLaunch)).mcpServers;
+    expect(combined[EXTERNAL_MCP_SERVICE_ID]).toEqual({
+      command: launch.command,
+      args: launch.args,
+      env: launch.env
+    });
+    expect(combined[EXTERNAL_BROWSER_MCP_SERVICE_ID].env.AGENT_RESUME_BROWSER_CLIENT).toBe(
+      "<client-name>"
+    );
   });
 
   it("orders Claude environment flags after the MCP server name", () => {

@@ -15,12 +15,12 @@ export const memoryRetrieveSchema = {
     .string()
     .min(1)
     .describe(
-      "Natural-language query to retrieve context across all local memory: memory digests (daily/weekly/monthly reports), project notes, and historical agent sessions with citation tags [D#], [N#], [S#]."
+      "Natural-language query to retrieve context across all local memory: memory digests (daily/weekly/monthly reports), notes, and historical agent sessions with citation tags [D#], [N#], [S#]. Project notes are extension-only and are not returned."
     ),
-  projectPath: z
+  rootPath: z
     .string()
     .optional()
-    .describe("Optional working directory path to prioritize notes and sessions from a specific project."),
+    .describe("Optional working directory path to prioritize notes and sessions from a specific root."),
   limit: z
     .number()
     .int()
@@ -34,14 +34,16 @@ export const memoryRetrieveSchema = {
 
 export async function handleMemoryRetrieve(
   ctx: MemoryToolContext,
-  args: { query: string; projectPath?: string; limit?: number }
+  args: { query: string; rootPath?: string; limit?: number }
 ) {
   const result: RetrieveAgentContextResult = await retrieveAgentContext({
     query: args.query,
     panelHome: ctx.panelHome,
-    projectPath: args.projectPath,
+    projectPath: args.rootPath,
     limit: args.limit
   });
+  // Project notes are an extension-only capability; MCP never surfaces them.
+  const notes = result.notes.filter((note) => note.scope !== "project");
 
   return {
     content: [
@@ -57,7 +59,7 @@ export async function handleMemoryRetrieve(
               contentPreview: d.entry.content.slice(0, 1500),
               score: d.score
             })),
-            notes: result.notes.map((n, i) => ({
+            notes: notes.map((n, i) => ({
               citation: `[N${i + 1}]`,
               noteId: n.noteId,
               title: n.title || n.relMdPath,
@@ -72,7 +74,7 @@ export async function handleMemoryRetrieve(
               provider: s.provider,
               sessionId: s.sessionId,
               title: s.title || s.sessionId,
-              projectPath: s.projectPath,
+              rootPath: s.projectPath,
               summary: s.summaryPreview,
               score: s.score
             })),

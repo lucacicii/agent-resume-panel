@@ -895,6 +895,15 @@ export {
 } from "./mcp/memoryTools";
 export type { MemoryToolContext } from "./mcp/memoryTools";
 export type { NoteToolContext, NoteMcpResult, NoteRelationshipIndex } from "./mcp/tools";
+export { resolveDefaultNoteTarget } from "./mcp/tools";
+export type { ResolvedNoteTarget } from "./mcp/tools";
+export {
+  MCP_SESSION_ENV,
+  MCP_SESSION_ENV_KEYS,
+  isEmptyMcpSessionContext,
+  mcpSessionContextFromEnv
+} from "./mcp/sessionContext";
+export type { McpSessionContext } from "./mcp/sessionContext";
 export type { AgentMcpContext } from "./mcp/server";
 export {
   AGENT_TOOL_CATALOG,
@@ -936,18 +945,27 @@ export {
 } from "./mcp/sessionTools";
 export type { SessionToolContext } from "./mcp/sessionTools";
 export {
-  projectListSchema,
-  projectMergeSchema,
-  projectTidySchema,
-  projectReconcileSchema,
-  sessionMoveSchema,
-  handleProjectList,
-  handleProjectMerge,
-  handleProjectTidy,
-  handleProjectReconcile,
-  handleSessionMove
-} from "./mcp/projectTools";
-export type { ProjectToolContext } from "./mcp/projectTools";
+  taskListSchema,
+  taskReadSchema,
+  taskCreateSchema,
+  taskWriteSchema,
+  taskLinkSessionSchema,
+  taskUnlinkSessionSchema,
+  handleTaskList,
+  handleTaskRead,
+  handleTaskCreate,
+  handleTaskWrite,
+  handleTaskLinkSession,
+  handleTaskUnlinkSession
+} from "./mcp/taskTools";
+export type { TaskToolContext } from "./mcp/taskTools";
+export {
+  workbenchListSchema,
+  workbenchReadSchema,
+  handleWorkbenchList,
+  handleWorkbenchRead
+} from "./mcp/workbenchTools";
+export type { WorkbenchToolContext } from "./mcp/workbenchTools";
 export { NoteMcpClient, convertMcpToolsToOpenAiFormat } from "./mcp/client";
 export type { McpToolInfo, McpToolCallResult } from "./mcp/client";
 export { runToolLoop } from "./agent/toolLoop";

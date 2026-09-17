@@ -345,7 +345,7 @@ export async function notesWrite(
 }
 
 export async function notesCreate(args: {
-  scope: "library" | "project" | "session";
+  scope: "library" | "session";
   projectPath?: string;
   provider?: string;
   sessionId?: string;
@@ -355,12 +355,6 @@ export async function notesCreate(args: {
   if (args.scope === "library") {
     return store.createLibraryNote(args.body || "");
   }
-  if (args.scope === "project") {
-    if (!args.projectPath?.trim()) {
-      throw new Error("projectPath is required.");
-    }
-    return store.createProjectNote(args.projectPath, args.body || "");
-  }
   if (!args.provider?.trim() || !args.sessionId?.trim()) {
     throw new Error("provider and sessionId are required.");
   }
@@ -369,11 +363,6 @@ export async function notesCreate(args: {
     id: args.sessionId,
     projectPath: args.projectPath || ""
   }, args.body || "");
-}
-
-export async function notesMove(noteId: string, owner: NoteOwner): Promise<NoteRecord> {
-  const store = await getDesktopNotesStore();
-  return store.moveNote(noteId, owner);
 }
 
 export async function notesDelete(noteId: string): Promise<{ ok: boolean; deletedNoteIds: string[] }> {
@@ -496,7 +485,8 @@ export async function notesCopyPath(noteId: string): Promise<{ path: string }> {
 export async function notesListRootNotes(): Promise<DesktopNoteRecord[]> {
   const store = await getDesktopNotesStore();
   await store.reload();
-  return store.listRootNotes();
+  // Project notes are an extension-only capability; Desktop never surfaces them.
+  return (await store.listRootNotes()).filter((note) => note.scope !== "project");
 }
 
 export async function notesListLinks(): Promise<NoteLink[]> {

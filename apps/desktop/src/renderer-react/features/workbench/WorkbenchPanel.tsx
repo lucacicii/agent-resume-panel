@@ -2022,7 +2022,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     projectPath = selectedProject || cwd,
     openedSessionKey?: string,
     group: Exclude<WorkbenchPaneGroup, "code" | "browser" | "note"> = openedSessionKey ? "session" : "terminal",
-    launch?: { initialPrompt?: string }
+    launch?: { initialPrompt?: string; env?: Record<string, string> }
   ): string => {
     const key = `terminal:${Date.now()}:${Math.random().toString(36).slice(2, 7)}`;
     const pane = { key, title, group, cwd, command, projectPath, sessionKey: openedSessionKey, workbenchId: activeWorkbenchIdRef.current ?? undefined, ...launch };
@@ -2711,7 +2711,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         if (result.mode === "xterm" && result.command) {
           const launchCwd = result.cwd || cwd;
           const title = t("desktop.workbench.newSessionTitle", basename(launchCwd));
-          const terminalKey = addTerminal(title, launchCwd, result.command, launchCwd, undefined, "session", prompt ? { initialPrompt: prompt } : undefined);
+          const terminalKey = addTerminal(title, launchCwd, result.command, launchCwd, undefined, "session", { initialPrompt: prompt, env: result.env });
           addPendingSession(terminalKey, target.provider, launchCwd, title);
           setSessionViewMode("hybrid");
           localStorage.setItem(SESSION_VIEW_MODE_KEY, "hybrid");
@@ -3691,22 +3691,8 @@ export function WorkbenchPanel(): ReactPortal | null {
     setFloatingNoteTarget({ ...target });
   }, []);
 
-  const openMountedNote = async (owner: { scope: "project" | "session"; projectPath: string; provider?: string; sessionId?: string }) => {
+  const openMountedNote = async (owner: { scope: "session"; projectPath: string; provider: string; sessionId: string }) => {
     try {
-      // Project mount: jump to first root note when any exist; only create when empty.
-      if (owner.scope === "project" && typeof desktopApi().notesListRoot === "function") {
-        const roots = await desktopApi().notesListRoot();
-        const projectRoots = roots
-          .filter((note) => note.scope === "project" && note.projectPath === owner.projectPath)
-          .sort((left, right) =>
-            (right.updatedAtMs || 0) - (left.updatedAtMs || 0)
-            || (right.createdAtMs || 0) - (left.createdAtMs || 0)
-          );
-        if (projectRoots[0]) {
-          openNotePane(projectRoots[0].noteId);
-          return;
-        }
-      }
       const result = await desktopApi().notesCreate(owner);
       openNotePane(result.noteId);
     } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
@@ -3877,7 +3863,6 @@ export function WorkbenchPanel(): ReactPortal | null {
           await desktopApi().workbenchOpenProjectInEditor({ projectPath });
         } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
       }
-      if (action === "note") await openMountedNote({ scope: "project", projectPath: menu.projectPath });
       if (action === "rename") setRenameDialog({
         projectPath: menu.projectPath,
         projectId: menu.projectId,
@@ -6300,9 +6285,6 @@ export function WorkbenchPanel(): ReactPortal | null {
         }
         if (enabled.has("editor") && contextMenu.editorLabel) {
           group2.push(<button type="button" role="menuitem" key="editor" onClick={() => void runContextAction("editor")}>{t("desktop.workbench.openInApp", contextMenu.editorLabel)}</button>);
-        }
-        if (enabled.has("note")) {
-          group2.push(<button type="button" role="menuitem" key="note" onClick={() => void runContextAction("note")}>{t("desktop.workbench.mountNote")}</button>);
         }
         if (group2.length) groups.push(group2);
         const group3: ReactNode[] = [];

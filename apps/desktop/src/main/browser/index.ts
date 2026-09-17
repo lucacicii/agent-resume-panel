@@ -33,6 +33,5 @@ export {
   listBrowserToolDescriptors
 } from "./tools";
 export {
-  ensureBrowserMcpReadyForExternal,
-  syncBrowserExternalMcpRegistration
+  ensureBrowserMcpReadyForExternal
 } from "./externalMcp";

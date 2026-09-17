@@ -3,7 +3,7 @@ import type { GtdStatus } from "@agent-resume/core";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
-import { FloatingSessionNote, initialFloatingNoteContent, initialSessionNoteContent, localDateString } from "./FloatingSessionNote";
+import { FloatingSessionNote, initialFloatingNoteContent, initialSessionNoteContent } from "./FloatingSessionNote";
 
 const editorHandle = {
   focus: vi.fn(),
@@ -272,34 +272,6 @@ describe("FloatingSessionNote", () => {
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(notesDelete).not.toHaveBeenCalled();
-  });
-
-  it("discards an untouched project floating note when closed", async () => {
-    const notesCreate = vi.fn(async () => ({ noteId: "created-note", filename: "created.md" }));
-    const notesSetGtdStatus = vi.fn(async ({ noteId, status }: { noteId: string; status: GtdStatus }) => ({ ...note(noteId, 2), gtdStatus: status }));
-    const notesDelete = vi.fn(async ({ noteId }: { noteId: string }) => ({ ok: true, deletedNoteIds: [noteId] }));
-    installBridge({ notesCreate, notesSetGtdStatus, notesDelete });
-    const onClose = vi.fn();
-    render(<I18nProvider><FloatingSessionNote target={{ kind: "project", projectPath: "/work/app", projectName: "app", initialGtdStatus: "next" }} onClose={onClose} /></I18nProvider>);
-
-    const editor = await screen.findByRole("textbox", { name: "Floating note editor" });
-    expect((editor as HTMLTextAreaElement).value).toBe(initialFloatingNoteContent());
-    fireEvent.click(screen.getByRole("button", { name: "Close floating note" }));
-
-    await waitFor(() => expect(notesDelete).toHaveBeenCalledWith({ noteId: "created-note" }));
-    expect(onClose).toHaveBeenCalledTimes(1);
-  });
-
-  it("creates a project note with the target GTD status", async () => {
-    const notesCreate = vi.fn(async () => ({ noteId: "created-note", filename: "created.md" }));
-    const notesSetGtdStatus = vi.fn(async ({ noteId, status }: { noteId: string; status: GtdStatus }) => ({ ...note(noteId, 2), gtdStatus: status }));
-    installBridge({ notesCreate, notesSetGtdStatus });
-    const initial = `# ${localDateString()}\n\n`;
-    render(<I18nProvider><FloatingSessionNote target={{ kind: "project", projectPath: "/work/app", projectName: "app", initialGtdStatus: "next" }} onClose={vi.fn()} /></I18nProvider>);
-
-    await waitFor(() => expect(notesCreate).toHaveBeenCalledWith({ scope: "project", projectPath: "/work/app", body: initial }));
-    await waitFor(() => expect(notesSetGtdStatus).toHaveBeenCalledWith({ noteId: "created-note", status: "next" }));
-    await screen.findByRole("textbox", { name: "Floating note editor" });
   });
 
   it("creates a library note with the target GTD status", async () => {

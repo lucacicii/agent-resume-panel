@@ -39,7 +39,7 @@ function titleFor(note: Note): string {
 
 /** Notes that can hold a link tree: project notes group notes per repository, work items group notes per unit of work. */
 function isLinkable(note: Note): boolean {
-  return note.scope === "project" || Boolean(note.work);
+  return Boolean(note.work);
 }
 
 function storedLinkTreeHeight(): number {

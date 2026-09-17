@@ -101,10 +101,10 @@ export const reportSearchSchema = {
     .enum(["daily", "weekly", "monthly"])
     .optional()
     .describe("Optional filter by digest level."),
-  projectPath: z
+  rootPath: z
     .string()
     .optional()
-    .describe("Substring match on the project working directory path; only digests linking a session from this project are returned."),
+    .describe("Substring match on the root working directory path; only digests linking a session from this root are returned."),
   limit: z
     .number()
     .int()
@@ -149,7 +149,7 @@ export const reportListSchema = {
 };
 
 export async function handleReportSearch(
-  args: { query: string; level?: ReportLevel; limit?: number; projectPath?: string },
+  args: { query: string; level?: ReportLevel; limit?: number; rootPath?: string },
   ctx: ReportToolContext
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
   const query = args.query?.trim();
@@ -162,7 +162,7 @@ export async function handleReportSearch(
     query,
     level: args.level,
     limit,
-    projectPath: args.projectPath
+    projectPath: args.rootPath
   });
   if (!hits.length) {
     return {
@@ -212,7 +212,7 @@ export async function handleReportRead(
     linkedSessions: links.map((link) => ({
       provider: link.provider,
       sessionId: link.agentSessionId,
-      projectPath: link.projectPath
+      rootPath: link.projectPath
     }))
   };
   return {

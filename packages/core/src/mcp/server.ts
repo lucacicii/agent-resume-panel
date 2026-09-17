@@ -58,18 +58,27 @@ import {
   sessionSetGtdSchema
 } from "./sessionTools";
 import {
-  handleProjectList,
-  handleProjectMerge,
-  handleProjectReconcile,
-  handleProjectTidy,
-  handleSessionMove,
-  projectListSchema,
-  projectMergeSchema,
-  projectReconcileSchema,
-  projectTidySchema,
-  sessionMoveSchema
-} from "./projectTools";
+  handleTaskCreate,
+  handleTaskLinkSession,
+  handleTaskList,
+  handleTaskRead,
+  handleTaskUnlinkSession,
+  handleTaskWrite,
+  taskCreateSchema,
+  taskLinkSessionSchema,
+  taskListSchema,
+  taskReadSchema,
+  taskUnlinkSessionSchema,
+  taskWriteSchema
+} from "./taskTools";
+import {
+  handleWorkbenchList,
+  handleWorkbenchRead,
+  workbenchListSchema,
+  workbenchReadSchema
+} from "./workbenchTools";
 import { handleLinkGraphTrace, linkGraphTraceSchema } from "./linkGraphTools";
+import { mcpSessionContextFromEnv } from "./sessionContext";
 
 export const MCP_SERVER_NAME = "agent-resume-notes";
 export const MCP_SERVER_VERSION = "0.6.0";
@@ -105,7 +114,7 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
     { name: MCP_SERVER_NAME, version: MCP_SERVER_VERSION },
     {
       instructions:
-        "Use Agent Resume tools when a user asks to record, save, organize, review, plan, follow up, or update local project/session state, even if they do not name MCP. Search for the target first; never guess a session when multiple matches exist. For Notes, preserve noteId and managed frontmatter, use note_tree_read for linked notes (Project Notes and work items), and do not overwrite, delete, move, rename, or change a user note unless the user explicitly asks. For cross-stack field/API/call-chain discovery (前端字段到后端 Controller/VO), call link_graph_trace once with workspaceRoot + symbol (+ filePath/line); the server runs an internal LLM agent that searches and only uses tools for verification."
+        "Use Agent Resume tools when a user asks to record, save, organize, review, plan, follow up, or update local project/session state, even if they do not name MCP. Search for the target first; never guess a session when multiple matches exist. For Notes, preserve noteId and managed frontmatter, use note_tree_read for task (work item) knowledge trees, and do not overwrite, delete, move, rename, or change a user note unless the user explicitly asks. Project notes belong to the VS Code extension and are not exposed here. For cross-stack field/API/call-chain discovery (前端字段到后端 Controller/VO), call link_graph_trace once with workspaceRoot + symbol (+ filePath/line); the server runs an internal LLM agent that searches and only uses tools for verification."
     }
   );
 
@@ -116,7 +125,7 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
         "List indexed notes with owner filters, root/parent filters, relationship summaries, and pagination. Use this instead of note_search when the user asks to enumerate notes.",
       inputSchema: noteListSchema
     },
-    async (args: { scope?: string; projectPath?: string; provider?: string; sessionId?: string; gtdStatus?: string; rootOnly?: boolean; parentNoteId?: string; limit?: number; cursor?: number }) => {
+    async (args: { scope?: string; rootPath?: string; provider?: string; sessionId?: string; gtdStatus?: string; rootOnly?: boolean; parentNoteId?: string; limit?: number; cursor?: number }) => {
       return runNoteTool(() => handleNoteList(args, ctx));
     }
   );
@@ -128,7 +137,7 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
         "Search notes by keyword across metadata, indexed content, paths, and session identity. Supports owner filters and returns relationship-aware summaries.",
       inputSchema: noteSearchSchema
     },
-    async (args: { query: string; scope?: string; projectPath?: string; provider?: string; sessionId?: string; gtdStatus?: string; limit?: number }) => {
+    async (args: { query: string; scope?: string; rootPath?: string; provider?: string; sessionId?: string; gtdStatus?: string; limit?: number }) => {
       return runNoteTool(() => handleNoteSearch(args, ctx));
     }
   );
@@ -137,15 +146,14 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
     "note_create",
     {
       description:
-        "Create a new note. Choose an owner scope and title, or provide parentNoteId to create a linked child (project note or work item) with the owner inferred from its parent.",
+        "Create a new note. Pass parentNoteId to put it under a task, or scope to choose an owner explicitly; when neither is given the owner is resolved from the current session — its bound task (work item) first, then the session itself, then no owner. Project notes are extension-only.",
       inputSchema: noteCreateSchema
     },
     async (args: {
-      scope?: "library" | "project" | "session";
+      scope?: "library" | "session";
       title: string;
       body?: string;
       parentNoteId?: string;
-      projectPath?: string;
       provider?: string;
       sessionId?: string;
     }) => {
@@ -204,7 +212,7 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
   server.registerTool(
     "note_tree_read",
     {
-      description: "Read the linked note tree containing a note (Project Notes and work items). The root is resolved automatically and output is bounded by maxNodes.",
+      description: "Read the linked note tree containing a note (a task / work item knowledge tree). The root is resolved automatically and output is bounded by maxNodes.",
       inputSchema: noteTreeReadSchema
     },
     async (args: { noteId: string; maxNodes?: number }) => runNoteTool(() => handleNoteTreeRead(args, ctx))
@@ -213,7 +221,7 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
   server.registerTool(
     "note_set_parent",
     {
-      description: "Set or clear a note parent link. Cycles are rejected; only a project note or a work item can be a parent, and session notes cannot participate.",
+      description: "Set or clear a note parent link. Cycles are rejected; only a task (work item) can be a parent, and session notes cannot participate.",
       inputSchema: noteSetParentSchema
     },
     async (args: { noteId: string; parentNoteId: string | null }) => runNoteTool(() => handleNoteSetParent(args, ctx))
@@ -222,10 +230,10 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
   server.registerTool(
     "note_move",
     {
-      description: "Move a note to a different owner scope. Moving out of project scope detaches the note and its direct children from the association tree.",
+      description: "Move a note to a different owner scope (library or session). Moving detaches the note and its direct children from any task association tree.",
       inputSchema: noteMoveSchema
     },
-    async (args: { noteId: string; scope: "library" | "project" | "session"; projectPath?: string; provider?: string; sessionId?: string }) => runNoteTool(() => handleNoteMove(args, ctx))
+    async (args: { noteId: string; scope: "library" | "session"; provider?: string; sessionId?: string }) => runNoteTool(() => handleNoteMove(args, ctx))
   );
 
   server.registerTool(
@@ -255,7 +263,7 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
         "Retrieve relevant context across all local memory: memory digests (daily/weekly/monthly reports), project notes, and historical agent sessions in one shot with citation markers [D#], [N#], [S#].",
       inputSchema: memoryRetrieveSchema
     },
-    async (args: { query: string; projectPath?: string; limit?: number }) => {
+    async (args: { query: string; rootPath?: string; limit?: number }) => {
       return handleMemoryRetrieve(reportCtx, args);
     }
   );
@@ -313,13 +321,13 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
     "session_search",
     {
       description:
-        "Search CLI agent sessions in the local catalog. Matches titles, project paths, and session summaries (keyword). When embeddings are configured, also runs semantic search over summaries and transcript chunks. Use for finding past coding sessions by topic, dialogue detail, project, provider, time, or GTD.",
+        "Search CLI agent sessions in the local catalog. Matches titles, root paths, and session summaries (keyword). When embeddings are configured, also runs semantic search over summaries and transcript chunks. Use for finding past coding sessions by topic, dialogue detail, root, provider, time, or GTD.",
       inputSchema: sessionSearchSchema
     },
     async (args: {
       query: string;
       provider?: string;
-      projectPath?: string;
+      rootPath?: string;
       gtdStatus?: string;
       fromMs?: number;
       toMs?: number;
@@ -336,12 +344,12 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
     "session_list",
     {
       description:
-        "List recent catalog sessions with optional filters (provider, project path, GTD, time range). Prefer session_search when the user gives a topic query. Read-only.",
+        "List recent catalog sessions with optional filters (provider, root path, GTD, time range). Prefer session_search when the user gives a topic query. Read-only.",
       inputSchema: sessionListSchema
     },
     async (args: {
       provider?: string;
-      projectPath?: string;
+      rootPath?: string;
       gtdStatus?: string;
       fromMs?: number;
       toMs?: number;
@@ -414,80 +422,124 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
     }
   );
 
-  const projectCtx = { catalogDb, desktopDb: ctx.dbPath };
+  const taskCtx = { notesStore: ctx.notesStore, dbPath: ctx.dbPath, catalogDb };
 
   server.registerTool(
-    "project_list",
+    "task_list",
     {
       description:
-        "List catalog projects with alias, local path, and session counts. Use to review the projects directory before tidying or merging. Read-only.",
-      inputSchema: projectListSchema
+        "List tasks (work items) with GTD status, next action, owed decision, referenced project roots (multi-root), and linked-session counts. Prefer this over note_list when the user asks about tasks, work items, or project follow-ups.",
+      inputSchema: taskListSchema
     },
-    async (args: { includeHidden?: boolean; limit?: number }) => {
-      if (!projectCtx.catalogDb) {
-        throw new Error("catalogDb is not configured for project tools.");
-      }
-      return handleProjectList(args, projectCtx);
+    async (args: { gtdStatus?: import("../gtd/types").GtdStatus; rootPath?: string; limit?: number }) => {
+      return handleTaskList(args, taskCtx);
     }
   );
 
   server.registerTool(
-    "project_merge",
+    "task_read",
     {
       description:
-        "Merge a source project into a target project, reassigning its sessions and (by default) the desktop workbench folder tree. Use to consolidate duplicate projects. Removes the source project row.",
-      inputSchema: projectMergeSchema
+        "Read one task: front-matter work fields (next action, decision, multi-root project references), linked sessions with their project paths, and its workbenches. Read-only.",
+      inputSchema: taskReadSchema
     },
-    async (args: { sourceProjectId: string; targetProjectId: string; mergeWorkbenchFolders?: boolean }) => {
-      if (!projectCtx.catalogDb) {
-        throw new Error("catalogDb is not configured for project tools.");
-      }
-      return handleProjectMerge(args, projectCtx);
+    async (args: { noteId: string; maxContentLength?: number }) => {
+      return handleTaskRead(args, taskCtx);
     }
   );
 
   server.registerTool(
-    "project_tidy",
+    "task_create",
     {
       description:
-        "Hide stale/empty projects (not pinned, no visible sessions, local path missing). Dry run by default — pass apply:true to hide. Hidden projects stay recoverable.",
-      inputSchema: projectTidySchema
+        "Create a task (work item). Tasks are library-scoped and reference 0..n repository roots instead of belonging to one. Use when the user asks to record, plan, or open a new piece of work.",
+      inputSchema: taskCreateSchema
     },
-    async (args: { apply?: boolean }) => {
-      if (!projectCtx.catalogDb) {
-        throw new Error("catalogDb is not configured for project tools.");
-      }
-      return handleProjectTidy(args, projectCtx);
+    async (args: {
+      title: string;
+      next?: string;
+      decision?: string;
+      roots?: string[];
+      primaryRoot?: string;
+      sessions?: string[];
+      gtdStatus?: import("../gtd/types").GtdStatus;
+    }) => {
+      return handleTaskCreate(args, taskCtx);
     }
   );
 
   server.registerTool(
-    "project_reconcile",
+    "task_write",
     {
       description:
-        "Reconcile projects from catalog sessions: merge same-path variants by portable key and re-link sessions to their project. Idempotent and non-destructive.",
-      inputSchema: projectReconcileSchema
+        "Update a task's next action, owed decision, multi-root references, primary root, or GTD status. Only the fields you pass are changed.",
+      inputSchema: taskWriteSchema
     },
-    async () => {
-      if (!projectCtx.catalogDb) {
-        throw new Error("catalogDb is not configured for project tools.");
-      }
-      return handleProjectReconcile({}, projectCtx);
+    async (args: {
+      noteId: string;
+      next?: string | null;
+      decision?: string | null;
+      roots?: string[];
+      primaryRoot?: string | null;
+      gtdStatus?: import("../gtd/types").GtdStatus | null;
+    }) => {
+      return handleTaskWrite(args, taskCtx);
     }
   );
 
   server.registerTool(
-    "session_move",
+    "task_link_session",
     {
       description:
-        "Move a catalog session to a different project directory. Updates only catalog metadata (project_path/project_id and session-scoped note paths); on-disk session/note files are never moved.",
-      inputSchema: sessionMoveSchema
+        "Link a catalog session to a task (work item). When rootPath is given, also reference that root and, by default, rebind the session's catalog project path — this replaces the removed session_move tool.",
+      inputSchema: taskLinkSessionSchema
     },
-    async (args: { provider: string; sessionId: string; targetProjectPath: string }) => {
-      if (!projectCtx.catalogDb) {
-        throw new Error("catalogDb is not configured for project tools.");
-      }
-      return handleSessionMove(args, projectCtx);
+    async (args: {
+      noteId: string;
+      provider: string;
+      sessionId: string;
+      rootPath?: string;
+      rebindRoot?: boolean;
+    }) => {
+      return handleTaskLinkSession(args, taskCtx);
+    }
+  );
+
+  server.registerTool(
+    "task_unlink_session",
+    {
+      description:
+        "Unlink a catalog session from a task. The session itself and its catalog metadata are left untouched.",
+      inputSchema: taskUnlinkSessionSchema
+    },
+    async (args: { noteId: string; provider: string; sessionId: string }) => {
+      return handleTaskUnlinkSession(args, taskCtx);
+    }
+  );
+
+  const workbenchCtx = { desktopDb: ctx.dbPath };
+
+  server.registerTool(
+    "workbench_list",
+    {
+      description:
+        "List a task's workbenches with their project binding and linked-session counts. Workbenches are desktop-only units of work; read-only and unavailable when Desktop's tables are absent.",
+      inputSchema: workbenchListSchema
+    },
+    async (args: { taskNoteId: string }) => {
+      return handleWorkbenchList(args, workbenchCtx);
+    }
+  );
+
+  server.registerTool(
+    "workbench_read",
+    {
+      description:
+        "Read one workbench: its task, bound project root (null = the task's neutral workspace), pane layout, and linked sessions. Read-only.",
+      inputSchema: workbenchReadSchema
+    },
+    async (args: { workbenchId: string }) => {
+      return handleWorkbenchRead(args, workbenchCtx);
     }
   );
 
@@ -533,7 +585,13 @@ export async function createNoteToolContext(panelHomeOverride?: string): Promise
   const paths = await preparePanelDatabasesFromSettings(panelHomeOverride);
   const notesStore = new NotesStore(paths.catalogDb, panelHome);
   await notesStore.initialize();
-  return { notesStore, dbPath: paths.desktopDb, panelHome, catalogDb: paths.catalogDb };
+  return {
+    notesStore,
+    dbPath: paths.desktopDb,
+    panelHome,
+    catalogDb: paths.catalogDb,
+    sessionContext: mcpSessionContextFromEnv()
+  };
 }
 
 export async function runStdioServer(panelHomeOverride?: string): Promise<void> {

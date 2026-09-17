@@ -4,7 +4,6 @@ import { ThemeIcon } from "../../../components/ThemeIcon";
 import { desktopApi } from "../../../bridge";
 import { GTD_STATUSES, type GtdStatus } from "../../../gtd";
 import { useI18n } from "../../../i18n";
-import { basename, projectMatchesNote, projectPathFor, type Project } from "./noteProject";
 import { STANDALONE_NOTE_INITIAL_CONTENT } from "../../../../shared/standaloneNote";
 import { SelectionSendMenu, type SelectionSendMenuState } from "../../../selection/SelectionSendMenu";
 
@@ -17,14 +16,12 @@ function errorMessage(error: unknown): string {
 export function StandaloneNoteWindow({ noteId }: { noteId: string }): React.JSX.Element {
   const { t } = useI18n();
   const [record, setRecord] = useState<Note | null>(null);
-  const [projects, setProjects] = useState<Project[]>([]);
   const [content, setContent] = useState("");
   const [pinned, setPinned] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [moving, setMoving] = useState(false);
   const [error, setError] = useState("");
   const [selectionMenu, setSelectionMenu] = useState<SelectionSendMenuState | null>(null);
   const [findOpen, setFindOpen] = useState(false);
@@ -117,18 +114,13 @@ export function StandaloneNoteWindow({ noteId }: { noteId: string }): React.JSX.
   useEffect(() => {
     let active = true;
     setLoading(true);
-    const projectRequest = typeof desktopApi().listProjects === "function"
-      ? desktopApi().listProjects().catch(() => [])
-      : Promise.resolve([] as Project[]);
     void Promise.all([
       desktopApi().notesRead({ noteId }),
-      desktopApi().standaloneNoteGetState(),
-      projectRequest
-    ]).then(([result, state, nextProjects]) => {
+      desktopApi().standaloneNoteGetState()
+    ]).then(([result, state]) => {
       if (!active) return;
       if (state.noteId !== noteId) throw new Error("Standalone note identity mismatch.");
       setRecord(result.record);
-      setProjects(nextProjects || []);
       setContent(result.content);
       contentRef.current = result.content;
       setPinned(state.pinned);
@@ -310,38 +302,6 @@ export function StandaloneNoteWindow({ noteId }: { noteId: string }): React.JSX.
     }
   };
 
-  const currentProjectPath = record?.scope === "project" ? record.projectPath : undefined;
-  const matchedProject = currentProjectPath
-    ? projects.find((project) => projectMatchesNote(project, currentProjectPath))
-    : undefined;
-  const projectSelectValue = matchedProject ? projectPathFor(matchedProject) : currentProjectPath || "";
-  const projectOptions = projects.map((project) => {
-    const value = projectPathFor(project);
-    return { value, label: project.alias || basename(value) };
-  });
-  if (!matchedProject && currentProjectPath) {
-    projectOptions.unshift({ value: currentProjectPath, label: basename(currentProjectPath) });
-  }
-
-  const updateProject = async (projectPath: string) => {
-    if (!record || deleting || projectPath === projectSelectValue) return;
-    try {
-      setMoving(true);
-      if (!(await flushSave())) return;
-      await desktopApi().notesMove({
-        noteId: record.noteId,
-        owner: projectPath ? { scope: "project", projectPath } : { scope: "library" }
-      });
-      const moved = await desktopApi().notesRead({ noteId: record.noteId });
-      setRecord(moved.record);
-      setError("");
-    } catch (moveError) {
-      setError(errorMessage(moveError));
-    } finally {
-      setMoving(false);
-    }
-  };
-
   return (
     <section className="standalone-note-window" aria-label={t("desktop.standaloneNote.editor")}>
       <header className="standalone-note-window-head">
@@ -401,17 +361,6 @@ export function StandaloneNoteWindow({ noteId }: { noteId: string }): React.JSX.
       ) : record ? (
         <>
           <div className="standalone-note-window-meta">
-            <select
-              className="standalone-note-window-project"
-              aria-label={t("desktop.notes.projectLabel")}
-              title={t("desktop.notes.projectLabel")}
-              value={projectSelectValue}
-              disabled={!record || loading || deleting || moving}
-              onChange={(event) => void updateProject(event.target.value)}
-            >
-              <option value="">{t("desktop.notes.targetLibrary")}</option>
-              {projectOptions.map((project) => <option value={project.value} key={project.value}>{project.label}</option>)}
-            </select>
             <select
               className="standalone-note-window-status"
               aria-label={t("desktop.notes.gtdStatusLabel")}
