@@ -21,7 +21,14 @@
     "desktop.workbench.quickAccessExitWorkItem": "Workbench: Exit Work Item",
     "desktop.workbench.quickAccessShowLinkGraph": "Workbench: Show Link Graph",
     "desktop.agent.toolCategory.task": "Tasks",
-    "desktop.agent.toolCategory.workbench": "Workbenches"
+    "desktop.agent.toolCategory.workbench": "Workbenches",
+    "desktop.gtd.rollupProgress": "{0}/{1} done",
+    "desktop.gtd.rollupHint": "Aggregate of this task's notes and sessions",
+    "desktop.gtd.pinned": "Pinned",
+    "desktop.gtd.pinnedHint": "Pinned status; clear it to follow this task's notes and sessions",
+    "desktop.gtd.followChildren": "Follow children",
+    "desktop.gtd.unmarked": "Unmarked",
+    "desktop.gtd.unmarkedHint": "No GTD status set"
   },
   "ja": {
     "desktop.workbench.lastExitWaiting": "前回終了時にこのセッションは入力待ちでした",
@@ -45,7 +52,14 @@
     "desktop.workbench.quickAccessExitWorkItem": "Workbench: ワークアイテムを終了",
     "desktop.workbench.quickAccessShowLinkGraph": "Workbench: Link Graph を表示",
     "desktop.agent.toolCategory.task": "タスク",
-    "desktop.agent.toolCategory.workbench": "ワークベンチ"
+    "desktop.agent.toolCategory.workbench": "ワークベンチ",
+    "desktop.gtd.rollupProgress": "{0}/{1} 完了",
+    "desktop.gtd.rollupHint": "このタスクのノートとセッションの集約状態",
+    "desktop.gtd.pinned": "固定中",
+    "desktop.gtd.pinnedHint": "固定されたステータス。解除するとタスク配下に追従します",
+    "desktop.gtd.followChildren": "子項目に追従",
+    "desktop.gtd.unmarked": "未設定",
+    "desktop.gtd.unmarkedHint": "GTD ステータスが未設定です"
   },
   "zh-cn": {
     "desktop.workbench.lastExitWaiting": "上次退出时该会话在等待你的输入",
@@ -69,6 +83,13 @@
     "desktop.workbench.quickAccessExitWorkItem": "Workbench：退出工作项",
     "desktop.workbench.quickAccessShowLinkGraph": "Workbench：显示 Link Graph",
     "desktop.agent.toolCategory.task": "任务",
-    "desktop.agent.toolCategory.workbench": "工作台"
+    "desktop.agent.toolCategory.workbench": "工作台",
+    "desktop.gtd.rollupProgress": "{0}/{1} 已完成",
+    "desktop.gtd.rollupHint": "该任务下笔记与会话的汇总状态",
+    "desktop.gtd.pinned": "已固定",
+    "desktop.gtd.pinnedHint": "已固定状态；清除后跟随该任务下的笔记与会话",
+    "desktop.gtd.followChildren": "跟随子项",
+    "desktop.gtd.unmarked": "未标记",
+    "desktop.gtd.unmarkedHint": "尚未设置 GTD 状态"
   }
 }

@@ -109,6 +109,14 @@ export {
   setNoteGtdStatus,
   clearNoteGtdStatus
 } from "./notes/gtd";
+export {
+  TASK_GTD_LADDER,
+  emptyTaskGtdCounts,
+  rollupTaskGtdStatuses,
+  resolveTaskGtdRollup,
+  listTaskGtdRollups
+} from "./notes/gtdRollup";
+export type { TaskGtdCounts, TaskGtdRollup } from "./notes/gtdRollup";
 export type { UiLocale, UiLanguagePreference } from "./i18n/locales";
 export {
   UI_LANGUAGE_SETTING,

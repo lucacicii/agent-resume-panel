@@ -20,6 +20,8 @@ import {
   effectivePanelHome,
   desktopDbPath,
   expandHome,
+  listTaskGtdRollups,
+  resolveTaskGtdRollup,
   getReportEntryById,
   getSessionById,
   getUsageSummary,
@@ -1970,6 +1972,18 @@ function registerIpc(): void {
   ipcMain.handle("gtd:listSessionStatuses", async () => {
     const paths = await loadPanelDbPaths();
     return loadSessionGtdMap(paths.catalogDb);
+  });
+
+  ipcMain.handle("gtd:listTaskRollups", async () => {
+    const paths = await loadPanelDbPaths();
+    return listTaskGtdRollups(paths.catalogDb);
+  });
+
+  ipcMain.handle("gtd:taskRollup", async (_event, args: { noteId: string }) => {
+    const noteId = String(args?.noteId || "").trim();
+    if (!noteId) throw new Error("Task note id is required");
+    const paths = await loadPanelDbPaths();
+    return resolveTaskGtdRollup(paths.catalogDb, noteId);
   });
 
   ipcMain.handle(

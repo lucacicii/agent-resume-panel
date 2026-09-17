@@ -10,6 +10,7 @@ import {
   workbenchActiveFilePath
 } from "./WorkbenchPanel";
 import { WB_PATH_DND_MIME } from "./workbenchDnd";
+import type { GtdStatus } from "@agent-resume/core";
 
 const notificationMocks = vi.hoisted(() => ({ notifyDesktop: vi.fn() }));
 type MockBuffer = {
@@ -4686,6 +4687,65 @@ describe("WorkbenchPanel", () => {
     fireEvent.click(await screen.findByRole("menuitemradio", { name: "Done" }));
     await waitFor(() => expect(setSessionGtdStatus).toHaveBeenCalledWith({ provider: "codex", id: "next-session", status: "done" }));
     expect(nextSession.querySelector(".wb-gtd-status-badge")?.textContent).toBe("Done");
+  });
+
+  it("updates note GTD from the note context menu", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    let noteStatus: GtdStatus | undefined = "next";
+    const notesSetGtdStatus = vi.fn(async ({ status }: { noteId: string; status: GtdStatus | null }) => {
+      noteStatus = status ?? undefined;
+      return { noteId: "note-1" };
+    });
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.common.search": "Search", "desktop.common.refresh": "Refresh", "desktop.common.all": "All",
+        "desktop.workbench.noteTab": "Note", "desktop.workbench.sessionTab": "Sessions",
+        "desktop.workbench.noteFilter": "Filter notes", "desktop.workbench.noNotes": "No notes",
+        "desktop.workbench.newNote": "New note", "desktop.workbench.workItemOpenNote": "Open note",
+        "desktop.workbench.setGtdStatus": "Set GTD status", "desktop.workbench.clearGtdStatus": "Clear GTD status",
+        "desktop.workbench.gtdStatusLabel": "GTD status: {0}", "desktop.workbench.gtdStatusSaveFailed": "Save failed: {0}",
+        "desktop.workbench.gtdStatus.inbox": "Inbox", "desktop.workbench.gtdStatus.next": "Next",
+        "desktop.workbench.gtdStatus.waiting": "Waiting", "desktop.workbench.gtdStatus.someday": "Someday",
+        "desktop.workbench.gtdStatus.reference": "Reference", "desktop.workbench.gtdStatus.done": "Done",
+        "desktop.gtd.unmarked": "Unmarked", "desktop.gtd.unmarkedHint": "No GTD status set"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      listProjects: async () => [],
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      notesList: async () => [{
+        noteId: "note-1", scope: "library", filename: "design-doc.md", relDir: "library",
+        relMdPath: "notes/library/design-doc.md", title: "Design doc", createdAtMs: 1, updatedAtMs: 1, gtdStatus: noteStatus
+      }],
+      notesSetGtdStatus,
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByRole("tab", { name: "Note" }));
+
+    const row = await screen.findByRole("button", { name: "Design doc" });
+    expect(row.querySelector(".wb-gtd-status-badge")?.textContent).toBe("Next");
+
+    fireEvent.contextMenu(row);
+    const waitingTag = await screen.findByRole("menuitemradio", { name: "Waiting" });
+    expect(waitingTag.classList.contains("wb-gtd-context-tag")).toBe(true);
+    fireEvent.click(waitingTag);
+    await waitFor(() => expect(notesSetGtdStatus).toHaveBeenCalledWith({ noteId: "note-1", status: "waiting" }));
+    await waitFor(() => expect(
+      screen.getByRole("button", { name: "Design doc" }).querySelector(".wb-gtd-status-badge")?.textContent
+    ).toBe("Waiting"));
   });
 
   it("dismisses the branch popover on outside click and Escape", async () => {

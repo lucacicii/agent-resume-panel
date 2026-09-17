@@ -4,6 +4,7 @@ import { listTaskWorkbenches, listTaskWorkbenchSessionLinks } from "../catalog/t
 import { GTD_STATUSES, type GtdStatus } from "../gtd/types";
 import { buildNoteDocument, parseNoteDocument } from "../notes/frontmatter";
 import { isWorkItemFrontmatter } from "../notes/workItemNote";
+import { listTaskGtdRollups, resolveTaskGtdRollup, type TaskGtdRollup } from "../notes/gtdRollup";
 import { normalizeProjectPath } from "../pathUtils";
 import type { NoteToolContext } from "./tools";
 
@@ -153,6 +154,9 @@ export async function handleTaskList(
   const limit = clampTaskListLimit(args.limit);
   const items = await ctx.notesStore.listWorkItems();
   const derived = await ctx.notesStore.listWorkItemSessionProjects();
+  const rollups = ctx.catalogDb?.trim()
+    ? await listTaskGtdRollups(ctx.catalogDb).catch(() => ({} as Record<string, TaskGtdRollup>))
+    : ({} as Record<string, TaskGtdRollup>);
   const wanted = args.rootPath?.trim() ? normalizeProjectPath(args.rootPath) : undefined;
 
   const filtered = items.filter((item) => {
@@ -167,10 +171,15 @@ export async function handleTaskList(
   const slice = filtered.slice(0, limit);
   const payload = slice.map((item) => {
     const roots = mergeRoots(item.work.projects, derived[item.noteId]);
+    const rollup = rollups[item.noteId];
     return {
       noteId: item.noteId,
       title: item.title,
       gtdStatus: item.gtdStatus,
+      rollupStatus: rollup?.status ?? item.gtdStatus ?? "inbox",
+      pinnedStatus: rollup?.override,
+      gtdCounts: rollup?.counts,
+      gtdTotal: rollup?.total,
       next: item.work.next,
       decision: item.work.decision,
       roots,
@@ -194,6 +203,9 @@ export async function handleTaskRead(
   const sessions = await ctx.notesStore.listWorkItemSessionDetails(note.noteId);
   const workbenches = await listTaskWorkbenches(ctx.dbPath, note.noteId).catch(() => []);
   const derived = await ctx.notesStore.listWorkItemSessionProjects();
+  const rollup = ctx.catalogDb?.trim()
+    ? await resolveTaskGtdRollup(ctx.catalogDb, note.noteId).catch(() => undefined)
+    : undefined;
   const roots = mergeRoots(doc.frontmatter.projects, derived[note.noteId]);
   const limit = Math.max(200, Math.floor(Number(args.maxContentLength) || DEFAULT_TASK_CONTENT_LIMIT));
   const content = doc.body;
@@ -202,6 +214,10 @@ export async function handleTaskRead(
     noteId: note.noteId,
     title: note.title,
     gtdStatus: note.gtdStatus,
+    rollupStatus: rollup?.status ?? note.gtdStatus ?? "inbox",
+    pinnedStatus: rollup?.override,
+    gtdCounts: rollup?.counts,
+    gtdTotal: rollup?.total,
     work: {
       next: doc.frontmatter.next,
       decision: doc.frontmatter.decision,

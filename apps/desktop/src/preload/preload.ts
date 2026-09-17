@@ -14,6 +14,7 @@ import type {
   AgentToolDescriptor,
   SkillDescriptor,
   GtdStatus,
+  TaskGtdRollup,
   WorkbenchSessionFolder,
   WorkbenchSessionFolderAssignment,
   TaskWorkbench,
@@ -205,6 +206,8 @@ export interface DesktopApi {
   }>;
   clearSessionLastExitWaiting(args: { provider: string; id: string }): Promise<{ ok: boolean }>;
   listSessionGtdStatuses(): Promise<Record<string, GtdStatus>>;
+  listTaskGtdRollups(): Promise<Record<string, TaskGtdRollup>>;
+  taskGtdRollup(args: { noteId: string }): Promise<TaskGtdRollup>;
   setSessionGtdStatus(args: {
     provider: string;
     id: string;
@@ -1548,6 +1551,8 @@ const api: DesktopApi = {
   querySessionsPage: (args) => ipcRenderer.invoke("sessions:queryPage", args),
   clearSessionLastExitWaiting: (args) => ipcRenderer.invoke("sessions:clearLastExitWaiting", args),
   listSessionGtdStatuses: () => ipcRenderer.invoke("gtd:listSessionStatuses"),
+  listTaskGtdRollups: () => ipcRenderer.invoke("gtd:listTaskRollups"),
+  taskGtdRollup: (args) => ipcRenderer.invoke("gtd:taskRollup", args),
   setSessionGtdStatus: (args) => ipcRenderer.invoke("gtd:setSessionStatus", args),
   previewSession: (args) => ipcRenderer.invoke("sessions:preview", args),
   summarizeSession: (args) => ipcRenderer.invoke("sessions:summarize", args),

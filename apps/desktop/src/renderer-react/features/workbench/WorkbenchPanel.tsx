@@ -18,6 +18,7 @@ import {
   type AgentSession,
   type GtdStatus,
   type PanelSettings,
+  type TaskGtdRollup,
   type WorkbenchProjectContextMenuAction
 } from "@agent-resume/core";
 import {
@@ -257,13 +258,14 @@ type WorkbenchProject = {
   updatedAt: number;
 };
 type WorkbenchContextMenu = {
-  kind: "project" | "session" | "session-tab" | "editor-tab" | "work-item";
+  kind: "project" | "session" | "session-tab" | "editor-tab" | "work-item" | "note";
   x: number;
   y: number;
   projectPath?: string;
   projectId?: string;
-  /** Work items: the note id, plus the neutral workspace once it exists. */
+  /** Work items / notes: the note id (and title for labels). */
   noteId?: string;
+  noteTitle?: string;
   workspaceDir?: string;
   /** Work item title + whether it has ever been linked to a session. */
   workItemTitle?: string;
@@ -612,6 +614,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [catalogProjects, setCatalogProjects] = useState<CatalogProject[]>([]);
   const [aliases, setAliases] = useState<Record<string, string>>({});
   const [gtdStatuses, setGtdStatuses] = useState<Record<string, GtdStatus>>({});
+  const [taskRollup, setTaskRollup] = useState<TaskGtdRollup | null>(null);
   const [selectedProject, setSelectedProject] = useState<string | null>(storageString(PROJECT_KEY) || null);
   const [expandedProjectIds, setExpandedProjectIds] = useState<Set<string>>(() => new Set());
   const [pinnedProjects, setPinnedProjects] = useState<Set<string>>(loadPinnedProjects);
@@ -621,7 +624,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   /** Left panel tab: the task's notes, or its session list. */
   const [leftTab, setLeftTab] = useState<"note" | "session">("session");
   /** Left-panel note list: all notes, optionally filtered to the task's note tree. */
-  const [noteItems, setNoteItems] = useState<Array<{ noteId: string; title: string; updatedAtMs: number }>>([]);
+  const [noteItems, setNoteItems] = useState<Array<{ noteId: string; title: string; updatedAtMs: number; gtdStatus?: GtdStatus }>>([]);
   const [noteFilter, setNoteFilter] = useState<"task" | "all">("task");
   const [noteQuery, setNoteQuery] = useState("");
   /** Left-panel session list: the task's sessions, or all sessions. */
@@ -948,6 +951,27 @@ export function WorkbenchPanel(): ReactPortal | null {
   useEffect(() => { sessionTargetRef.current = sessionTarget; }, [sessionTarget]);
   useEffect(() => { workItemScopeRef.current = workItemScope ? { noteId: workItemScope.noteId } : null; }, [workItemScope]);
   useEffect(() => { settingsRef.current = settings; }, [settings]);
+
+  // Task GTD rollup for the scoped work item (children + linked sessions).
+  useEffect(() => {
+    const noteId = workItemScope?.noteId;
+    if (!noteId || typeof desktopApi().taskGtdRollup !== "function") {
+      setTaskRollup(null);
+      return;
+    }
+    let active = true;
+    const refresh = () => {
+      void desktopApi().taskGtdRollup({ noteId })
+        .then((rollup) => { if (active) setTaskRollup(rollup); })
+        .catch(() => { if (active) setTaskRollup(null); });
+    };
+    refresh();
+    window.addEventListener("agent-resume:notes-mutated", refresh);
+    return () => {
+      active = false;
+      window.removeEventListener("agent-resume:notes-mutated", refresh);
+    };
+  }, [workItemScope?.noteId]);
 
   const openSessionKeys = useMemo(() => {
     const keys = new Set(terminals.flatMap((pane) => (pane.sessionKey ? [pane.sessionKey] : [])));
@@ -3176,7 +3200,8 @@ export function WorkbenchPanel(): ReactPortal | null {
         .map((note) => ({
           noteId: note.noteId,
           title: note.title || note.filename.replace(/\.md$/i, "") || note.noteId,
-          updatedAtMs: note.updatedAtMs
+          updatedAtMs: note.updatedAtMs,
+          gtdStatus: note.gtdStatus
         }))
         .sort((a, b) => b.updatedAtMs - a.updatedAtMs));
     } catch {
@@ -3618,6 +3643,18 @@ export function WorkbenchPanel(): ReactPortal | null {
     refreshFloatingNoteAvailability(sessionNoteTarget(session, aliases[session.projectPath] || basename(session.projectPath)), menu);
   };
 
+  const noteMenu = (event: React.MouseEvent, note: { noteId: string; title: string }) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setContextMenu({
+      kind: "note",
+      noteId: note.noteId,
+      noteTitle: note.title,
+      x: event.clientX,
+      y: event.clientY
+    });
+  };
+
   const selectCatalogSessionRange = useCallback((anchorKey: string, targetKey: string) => {
     const catalogKeys = catalogSessionKeysInRows(visibleSessionRows);
     const anchorIndex = catalogKeys.indexOf(anchorKey);
@@ -3968,6 +4005,33 @@ export function WorkbenchPanel(): ReactPortal | null {
         setEditors((current) => current.map((item) => item.key === menu.editorKey
           ? { ...item, view: item.view === "preview" ? "edit" : "preview" }
           : item));
+      }
+      return;
+    }
+    if (menu.kind === "note" && menu.noteId) {
+      const noteId = menu.noteId;
+      if (action === "openNote") {
+        openNotePane(noteId, menu.noteTitle);
+        return;
+      }
+      if (action.startsWith("gtd:")) {
+        const status = action === "gtd:clear"
+          ? null
+          : GTD_STATUSES.includes(action.slice(4) as GtdStatus)
+            ? action.slice(4) as GtdStatus
+            : null;
+        if (action !== "gtd:clear" && !status) return;
+        try {
+          await desktopApi().notesSetGtdStatus({ noteId, status });
+          setNoteItems((current) => current.map((item) => item.noteId === noteId ? { ...item, gtdStatus: status ?? undefined } : item));
+          window.dispatchEvent(new Event("agent-resume:notes-mutated"));
+          setStatus({ text: "" });
+        } catch (error) {
+          const message = t("desktop.workbench.gtdStatusSaveFailed", statusError(error));
+          setStatus({ text: message, kind: "error" });
+          notifyDesktop({ text: message, kind: "error" });
+        }
+        return;
       }
       return;
     }
@@ -5143,6 +5207,8 @@ export function WorkbenchPanel(): ReactPortal | null {
         return 64;
       case "session":
         return 462;
+      case "note":
+        return 220;
       default:
         return 320;
     }
@@ -5573,9 +5639,17 @@ export function WorkbenchPanel(): ReactPortal | null {
             <div className="wb-work-item-head">
               <ThemeIcon name="square-kanban" size={14} aria-hidden="true" />
               <span className="wb-work-item-title">{workItemScope.title || workItemScope.noteId}</span>
-              <span className={`wb-work-item-status is-${workItemScope.status}`}>
-                {t(`desktop.workbench.gtdStatus.${workItemScope.status}`)}
+              <span className={`wb-work-item-status is-${taskRollup?.status ?? workItemScope.status}`}>
+                {t(`desktop.workbench.gtdStatus.${taskRollup?.status ?? workItemScope.status}`)}
               </span>
+              {taskRollup?.total ? (
+                <span className="wb-work-item-rollup" title={t("desktop.gtd.rollupHint")}>
+                  {t("desktop.gtd.rollupProgress", taskRollup.counts.done, taskRollup.total)}
+                </span>
+              ) : null}
+              {taskRollup?.override ? (
+                <span className="wb-work-item-pin" title={t("desktop.gtd.pinnedHint")}>{t("desktop.gtd.pinned")}</span>
+              ) : null}
               <button
                 type="button"
                 className="wb-icon-btn"
@@ -5689,10 +5763,15 @@ export function WorkbenchPanel(): ReactPortal | null {
                   type="button"
                   className={`wb-note-list-item${activeNotePaneId === note.noteId ? " active" : ""}${workItemScope?.noteId === note.noteId ? " is-task" : ""}`}
                   title={note.title}
+                  aria-label={note.title}
+                  onContextMenu={(event) => noteMenu(event, note)}
                   onClick={() => openNotePane(note.noteId, note.title)}
                 >
                   <ThemeIcon name="file-text" size={13} aria-hidden="true" />
                   <span className="wb-note-list-item-title">{note.title}</span>
+                  {note.gtdStatus
+                    ? <span className={`wb-gtd-status-badge is-${note.gtdStatus}`} aria-label={t("desktop.workbench.gtdStatusLabel", t(`desktop.workbench.gtdStatus.${note.gtdStatus}`))}>{t(`desktop.workbench.gtdStatus.${note.gtdStatus}`)}</span>
+                    : <span className="wb-gtd-status-badge is-unmarked" title={t("desktop.gtd.unmarkedHint")}>{t("desktop.gtd.unmarked")}</span>}
                 </button>
               )) : <p className="muted wb-list-empty">{t("desktop.workbench.noNotes")}</p>}
             </div>
@@ -5730,7 +5809,7 @@ export function WorkbenchPanel(): ReactPortal | null {
             const isOpen = openSessionKeys.has(key);
             const isSelected = selectedSessionKeys.has(key);
             const otherMachine = isOtherMachineSession(session, selectedProjectMeta?.path || selectedProject);
-            const gtdStatus = effectiveGtdStatus(gtdStatuses, session);
+            const gtdStatus = gtdStatuses[key];
             const isWaitingOnExit = !isOpen && Boolean(session.lastExitWaiting);
             const tooltipParts = [
               otherMachine ? t("desktop.workbench.otherMachineSessionHint", session.projectPath) : undefined,
@@ -5761,7 +5840,7 @@ export function WorkbenchPanel(): ReactPortal | null {
               onContextMenu={(event) => sessionMenu(event, session)}
               onClick={(event) => handleCatalogSessionClick(event, session)}
               title={sessionTooltip}
-            ><span className="wb-list-item-top"><span className="wb-session-title-wrap">{isOpen ? <span className="wb-session-activity-dot" aria-hidden="true" /> : null}<span className="wb-list-item-title" ref={(el) => syncTruncationTitle(el)}>{session.title || session.id}</span>{session.source === "im" ? <span className="wb-im-session-badge" aria-label={t("desktop.workbench.imSessionBadge")} title={t("desktop.workbench.imSessionBadgeHint")}>{t("desktop.workbench.imSessionBadge")}</span> : null}{otherMachine ? <span className="wb-other-machine-badge" aria-label={t("desktop.workbench.otherMachineBadge")}>{t("desktop.workbench.otherMachineBadge")}</span> : null}</span></span><span className="wb-list-item-preview" ref={(el) => syncTruncationTitle(el)}><span className="wb-list-item-date">{formatDateTime(session.updatedAt)}</span><span className="s-provider-tag" data-provider={session.acpProvider || session.provider}>{session.acpProvider ? `acp/${session.acpProvider}` : session.provider}</span><span className={`wb-gtd-status-badge is-${gtdStatus}`} aria-label={t("desktop.workbench.gtdStatusLabel", t(`desktop.workbench.gtdStatus.${gtdStatus}`))}>{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</span>{" · "}{aliases[session.projectPath] || basename(session.projectPath)}</span></button>;
+            ><span className="wb-list-item-top"><span className="wb-session-title-wrap">{isOpen ? <span className="wb-session-activity-dot" aria-hidden="true" /> : null}<span className="wb-list-item-title" ref={(el) => syncTruncationTitle(el)}>{session.title || session.id}</span>{session.source === "im" ? <span className="wb-im-session-badge" aria-label={t("desktop.workbench.imSessionBadge")} title={t("desktop.workbench.imSessionBadgeHint")}>{t("desktop.workbench.imSessionBadge")}</span> : null}{otherMachine ? <span className="wb-other-machine-badge" aria-label={t("desktop.workbench.otherMachineBadge")}>{t("desktop.workbench.otherMachineBadge")}</span> : null}</span></span><span className="wb-list-item-preview" ref={(el) => syncTruncationTitle(el)}><span className="wb-list-item-date">{formatDateTime(session.updatedAt)}</span><span className="s-provider-tag" data-provider={session.acpProvider || session.provider}>{session.acpProvider ? `acp/${session.acpProvider}` : session.provider}</span>{gtdStatus ? <span className={`wb-gtd-status-badge is-${gtdStatus}`} aria-label={t("desktop.workbench.gtdStatusLabel", t(`desktop.workbench.gtdStatus.${gtdStatus}`))}>{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</span> : <span className="wb-gtd-status-badge is-unmarked" title={t("desktop.gtd.unmarkedHint")}>{t("desktop.gtd.unmarked")}</span>}{" · "}{aliases[session.projectPath] || basename(session.projectPath)}</span></button>;
           }}
         /> : <div className="wb-list"><p className="muted wb-list-empty">{sessionQuery ? t("desktop.workbench.noMatchingSessions") : t("desktop.workbench.noSessionsInProject")}</p></div>}
         </>
@@ -6323,7 +6402,15 @@ export function WorkbenchPanel(): ReactPortal | null {
             {group}
           </Fragment>
         ));
-      })() : contextMenu.kind === "session-tab" ? <button type="button" role="menuitem" onClick={() => void runContextAction("floatingNote")}>{t(contextMenu.hasFloatingNote ? "desktop.workbench.openFloatingNote" : "desktop.workbench.addFloatingNote")}</button> : contextMenu.kind === "editor-tab" ? <button type="button" role="menuitem" onClick={() => void runContextAction("toggleEditorPreview")}>{t(contextMenu.editorPreview ? "desktop.common.edit" : "desktop.workbench.preview")}</button> : contextMenu.kind === "work-item" ? <>{contextMenu.workspaceDir ? <button type="button" role="menuitem" onClick={() => void runContextAction("openWorkspace")}>{t("desktop.workbench.openWorkItemWorkspace")}</button> : null}{!contextMenu.workItemHasSessions ? <>{contextMenu.workspaceDir ? <div className="context-menu-separator" role="separator" /> : null}<button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => void runContextAction("deleteWorkItem")}>{t("desktop.workbench.deleteWorkItem")}</button></> : null}</> : selectedSessionKeys.size > 1 && contextMenu.session && selectedSessionKeys.has(sessionKey(contextMenu.session)) ? <>
+      })() : contextMenu.kind === "session-tab" ? <button type="button" role="menuitem" onClick={() => void runContextAction("floatingNote")}>{t(contextMenu.hasFloatingNote ? "desktop.workbench.openFloatingNote" : "desktop.workbench.addFloatingNote")}</button> : contextMenu.kind === "editor-tab" ? <button type="button" role="menuitem" onClick={() => void runContextAction("toggleEditorPreview")}>{t(contextMenu.editorPreview ? "desktop.common.edit" : "desktop.workbench.preview")}</button> : contextMenu.kind === "note" ? <>
+        <button type="button" role="menuitem" onClick={() => void runContextAction("openNote")}>{t("desktop.workbench.workItemOpenNote")}</button>
+        <div className="context-menu-separator" role="separator" />
+        <span className="wb-context-menu-label">{t("desktop.workbench.setGtdStatus")}</span>
+        <div className="wb-gtd-context-tags" role="group" aria-label={t("desktop.workbench.setGtdStatus")}>
+          {GTD_STATUSES.map((gtdStatus) => <button type="button" role="menuitemradio" className={`wb-gtd-context-tag is-${gtdStatus}`} aria-checked={noteItems.find((item) => item.noteId === contextMenu.noteId)?.gtdStatus === gtdStatus} key={gtdStatus} onClick={() => void runContextAction(`gtd:${gtdStatus}`)}>{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</button>)}
+        </div>
+        {noteItems.find((item) => item.noteId === contextMenu.noteId)?.gtdStatus ? <button type="button" role="menuitem" onClick={() => void runContextAction("gtd:clear")}>{t("desktop.workbench.clearGtdStatus")}</button> : null}
+      </> : contextMenu.kind === "work-item" ? <>{contextMenu.workspaceDir ? <button type="button" role="menuitem" onClick={() => void runContextAction("openWorkspace")}>{t("desktop.workbench.openWorkItemWorkspace")}</button> : null}{!contextMenu.workItemHasSessions ? <>{contextMenu.workspaceDir ? <div className="context-menu-separator" role="separator" /> : null}<button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => void runContextAction("deleteWorkItem")}>{t("desktop.workbench.deleteWorkItem")}</button></> : null}</> : selectedSessionKeys.size > 1 && contextMenu.session && selectedSessionKeys.has(sessionKey(contextMenu.session)) ? <>
         <button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => void runContextAction("remove")}>{t("desktop.workbench.removeFromPanelCount", selectedSessionKeys.size)}</button>
       </> : <>
         {contextMenu.session?.provider === "codex" ? <button type="button" role="menuitem" onClick={() => void runContextAction("codex")}>{t("desktop.workbench.openInChatGpt")}</button> : null}

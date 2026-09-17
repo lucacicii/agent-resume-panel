@@ -1,7 +1,7 @@
 import { ThemeIcon } from "../../components/ThemeIcon";
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import type { GtdStatus } from "@agent-resume/core";
+import type { GtdStatus, TaskGtdRollup } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { GTD_STATUSES } from "../../gtd";
 import { useI18n } from "../../i18n";
@@ -21,6 +21,7 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
   const host = document.getElementById("react-gtd");
   const { ready, t } = useI18n();
   const [items, setItems] = useState<GtdCard[]>([]);
+  const [rollups, setRollups] = useState<Record<string, TaskGtdRollup>>({});
   const [dotByKey, setDotByKey] = useState<Map<string, ActiveSessionDot>>(new Map());
   const [query, setQuery] = useState("");
   const [dragNoteId, setDragNoteId] = useState<string | null>(null);
@@ -41,15 +42,27 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
   const load = useCallback(async () => {
     if (typeof desktopApi().notesListWorkItems !== "function") return;
     try {
-      const records = await desktopApi().notesListWorkItems();
+      const [records, nextRollups] = await Promise.all([
+        desktopApi().notesListWorkItems(),
+        typeof desktopApi().listTaskGtdRollups === "function"
+          ? desktopApi().listTaskGtdRollups().catch(() => ({} as Record<string, TaskGtdRollup>))
+          : Promise.resolve({} as Record<string, TaskGtdRollup>)
+      ]);
       setItems(records.map((record) => {
         const item = workItemFromRecord(record);
         return { ...item, projects: item.projects ?? [] };
       }));
+      setRollups(nextRollups || {});
     } catch {
       /* the board is best-effort; the work-item list stays the source of truth */
     }
   }, []);
+
+  /** Column status: the rollup unless the task is pinned by its own mark. */
+  const statusOf = useCallback(
+    (item: GtdCard): GtdStatus => rollups[item.noteId]?.status ?? item.status ?? "inbox",
+    [rollups]
+  );
 
   const loadWorkbenches = useCallback(async () => {
     const list = await listAllTaskWorkbenches();
@@ -153,6 +166,18 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
       await desktopApi().notesSetGtdStatus({ noteId, status });
       setItems((current) => current.map((item) => item.noteId === noteId ? { ...item, status } : item));
       window.dispatchEvent(new Event("agent-resume:notes-mutated"));
+      void load();
+    } catch {
+      void load();
+    }
+  }, [load]);
+
+  /** Clear the pin so the task follows its children/sessions again. */
+  const clearPin = useCallback(async (noteId: string) => {
+    try {
+      await desktopApi().notesSetGtdStatus({ noteId, status: null });
+      window.dispatchEvent(new Event("agent-resume:notes-mutated"));
+      await load();
     } catch {
       void load();
     }
@@ -249,13 +274,13 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
   const columns = useMemo(() => GTD_COLUMNS.map((status) => ({
     status,
     items: filtered
-      .filter((item) => (item.status || "inbox") === status)
+      .filter((item) => statusOf(item) === status)
       .sort((a, b) => {
         const rankA = rollupDot({ work: { sessions: a.sessions } }, dotByKey)?.status === "awaiting_user" ? 1 : 0;
         const rankB = rollupDot({ work: { sessions: b.sessions } }, dotByKey)?.status === "awaiting_user" ? 1 : 0;
         return rankB - rankA || (b.updatedAtMs || 0) - (a.updatedAtMs || 0);
       })
-  })), [filtered, dotByKey]);
+  })), [filtered, dotByKey, statusOf]);
 
   /** Arrow-key navigation across the board: within a column, and to the nearest card in the next column. */
   const onBoardKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -434,6 +459,14 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
                           <ThemeIcon name="square-kanban" size={12} aria-hidden="true" />
                           {taskWorkbenches.length || item.projects.length}
                         </span>
+                        {rollups[item.noteId]?.total ? (
+                          <span className="gtd-card-meta-item gtd-card-rollup" title={text("desktop.gtd.rollupHint")}>
+                            {text("desktop.gtd.rollupProgress", rollups[item.noteId].counts.done, rollups[item.noteId].total)}
+                          </span>
+                        ) : null}
+                        {rollups[item.noteId]?.override ? (
+                          <span className="gtd-card-pin" title={text("desktop.gtd.pinnedHint")}>{text("desktop.gtd.pinned")}</span>
+                        ) : null}
                       </span>
                     </button>
                     )}
@@ -543,6 +576,13 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
           role="menuitem"
           onClick={() => { const item = contextMenu.item; setContextMenu(null); openTask(item, undefined, { openNote: true }); }}
         >{text("desktop.workbench.workItemOpenNote")}</button>
+        {rollups[contextMenu.item.noteId]?.override ? (
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => { const item = contextMenu.item; setContextMenu(null); void clearPin(item.noteId); }}
+          >{text("desktop.gtd.followChildren")}</button>
+        ) : null}
         {contextMenu.item.sessions.length === 0 ? (
           <>
             <div className="context-menu-separator" role="separator" />

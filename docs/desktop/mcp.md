@@ -136,6 +136,8 @@ A task is a note with front-matter `work: true`. Tasks are library-scoped and **
 
 `task_link_session` replaces the removed `session_move`: the session's catalog `project_path` is rewritten through the task, and on-disk files are never moved.
 
+**Task GTD is an aggregate.** A task's effective status is computed from the entities under it — its note subtree and its linked sessions. Only explicitly marked entities count; unmarked ones are neutral. The ladder is `next` → `waiting` → `inbox` → `someday` → `reference`, and `done` only wins when **every** contribution is `done`. The work item's own mark acts as a pin unless it is the implicit `inbox`. `task_list` / `task_read` report `rollupStatus` (effective), `pinnedStatus` (pin, if any), `gtdCounts`, and `gtdTotal`; the Desktop board and task page show the same status plus a `done/total` progress.
+
 #### Workbenches
 
 A workbench is a desktop-only unit of work under a task: it binds to one repository root (or the task's neutral workspace when the binding is null) and owns its own pane layout and session set. External MCP callers cannot open Desktop's Workbench UI, so these tools are read-only.
@@ -288,6 +290,8 @@ GTD 状态为 `inbox`、`next`、`waiting`、`someday`、`reference`、`done`。
 | `task_unlink_session` | 解除会话与任务的关联（会话本身不受影响） |
 
 `task_link_session` 取代了已删除的 `session_move`：会话的 catalog `project_path` 通过任务改写，绝不移动磁盘文件。
+
+**任务 GTD 是汇总状态。** 任务的有效状态由其下的实体聚合得出 —— 笔记子树 + 关联会话。只有**显式标记**的实体会计入，未标记的视为中性。阶梯为 `next` → `waiting` → `inbox` → `someday` → `reference`；`done` 只有在**全部**贡献项都是 `done` 时才成立。工作项自身的标记作为「固定」（pin），但隐式 `inbox` 不算固定。`task_list` / `task_read` 会返回 `rollupStatus`（有效状态）、`pinnedStatus`（固定状态，若有）、`gtdCounts`、`gtdTotal`；Desktop 看板与任务页显示同样的状态和 `已完成/总数` 进度。
 
 #### Workbenches（工作台）
 

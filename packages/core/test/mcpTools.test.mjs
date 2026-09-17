@@ -17,7 +17,8 @@ import {
   localDayRange,
   mcpSessionContextFromEnv,
   NotesStore,
-  runSqlite
+  runSqlite,
+  setSessionGtdStatus
 } from "../dist/index.js";
 
 async function setupTestContext() {
@@ -1182,6 +1183,41 @@ test("note_list defaults to the bound task subtree", async () => {
     assert.ok(ids.includes(task.noteId));
     assert.ok(ids.includes(child.noteId));
     assert.ok(!ids.includes(other.noteId));
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+test("task_list and task_read expose the GTD rollup of linked sessions", async () => {
+  const { ctx, catalogDb } = await setupTestContext();
+  await seedSession(catalogDb, { id: "gtd-r1", title: "Rollup session", projectPath: "/tmp/rollup" });
+  const server = createNoteMcpServer(ctx);
+  const client = await connectClient(server);
+
+  try {
+    const created = parseToolJson(await client.callTool({
+      name: "task_create",
+      arguments: { title: "Rollup task" }
+    }));
+    await client.callTool({
+      name: "task_link_session",
+      arguments: { noteId: created.noteId, provider: "codex", sessionId: "gtd-r1" }
+    });
+    await setSessionGtdStatus(catalogDb, "codex", "gtd-r1", "next");
+
+    const list = parseToolJson(await client.callTool({ name: "task_list", arguments: {} }));
+    const task = list.find((entry) => entry.noteId === created.noteId);
+    assert.equal(task.rollupStatus, "next");
+    assert.equal(task.gtdTotal, 1);
+    assert.equal(task.pinnedStatus, undefined);
+
+    const read = parseToolJson(await client.callTool({
+      name: "task_read",
+      arguments: { noteId: created.noteId }
+    }));
+    assert.equal(read.rollupStatus, "next");
+    assert.equal(read.gtdTotal, 1);
   } finally {
     await client.close();
     await server.close();
