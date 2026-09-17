@@ -3458,6 +3458,9 @@ export function WorkbenchPanel(): ReactPortal | null {
       }
       workItemScopeRef.current = { noteId: detail.noteId };
       setWorkItemScope(detail);
+      // Entering a task lands on its session list; the explicit open-note
+      // request above overrides this once its workbench is active.
+      setLeftTab("session");
       const target = detail.primaryProject ?? detail.projects?.[0];
       // The work item owns its project context: opening one must not inherit a
       // stale selection, so a project-less work item clears it.

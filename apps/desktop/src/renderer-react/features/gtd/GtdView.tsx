@@ -80,7 +80,7 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
     return () => window.removeEventListener("agent-resume:active-sessions", onActiveSessions);
   }, []);
 
-  const openTask = useCallback((item: GtdCard, workbenchId?: string) => {
+  const openTask = useCallback((item: GtdCard, workbenchId?: string, options?: { openNote?: boolean }) => {
     window.dispatchEvent(new CustomEvent("agent-resume:view-open-task", {
       detail: {
         noteId: item.noteId,
@@ -91,8 +91,9 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
         sessions: item.sessions,
         projects: item.projects,
         primaryProject: item.primaryProject,
-        // Opening a task shows its note: the note is the task's content.
-        openNote: true,
+        // Entering a task lands on its sessions; only the explicit "open note"
+        // action asks for the note.
+        ...(options?.openNote ? { openNote: true } : {}),
         ...(workbenchId ? { workbenchId } : {})
       }
     }));
@@ -440,7 +441,7 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
         <button
           type="button"
           role="menuitem"
-          onClick={() => { const item = contextMenu.item; setContextMenu(null); openTask(item); }}
+          onClick={() => { const item = contextMenu.item; setContextMenu(null); openTask(item, undefined, { openNote: true }); }}
         >{text("desktop.workbench.workItemOpenNote")}</button>
         {contextMenu.item.sessions.length === 0 ? (
           <>

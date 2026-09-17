@@ -8447,6 +8447,9 @@ describe("WorkbenchPanel", () => {
       } }));
     });
 
+    // Entering a task lands on the Sessions tab (its session list).
+    await waitFor(() => expect(document.querySelectorAll(".wb-left-tab")[1]?.classList.contains("active")).toBe(true));
+
     fireEvent.click(await screen.findByRole("button", { name: "Open note" }));
     expect(document.querySelectorAll(".wb-left-tab")[0]?.classList.contains("active")).toBe(true);
 
@@ -8464,6 +8467,14 @@ describe("WorkbenchPanel", () => {
     const filterTabs = document.querySelectorAll<HTMLButtonElement>(".wb-note-filter .wb-left-tab");
     fireEvent.click(filterTabs[1]);
     await waitFor(() => expect(screen.getByRole("button", { name: "Scratch pad" })).toBeTruthy());
+
+    // Re-entering the task resets the left panel to the Sessions tab.
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-work-item", { detail: {
+        noteId: "wi-1", title: "Realtime status", status: "next", sessions: []
+      } }));
+    });
+    await waitFor(() => expect(document.querySelectorAll(".wb-left-tab")[1]?.classList.contains("active")).toBe(true));
   });
 
   it("loads a task's workbenches as a tab strip and switches the active one", async () => {

@@ -82,14 +82,15 @@ test("editing the heading renames the work item and re-applies the suffix", asyn
   });
 });
 
-test("renaming a work item keeps its name and reminder suffix in step", async () => {
+test("renaming a work item keeps its name, reminder suffix and file in step", async () => {
   await withStore(async (store) => {
     const item = await store.createWorkItem({ title: "Ship release" });
-    const originalFilename = (await store.getNote(item.noteId)).filename;
+    assert.equal((await store.getNote(item.noteId)).filename, "Ship release.md");
     const renamed = await store.renameNote(item.noteId, "Release train");
     assert.equal(renamed.title, "Release train");
-    // The work item is renamed, not its file: no collisions, no stale index.
-    assert.equal(renamed.filename, originalFilename);
+    // The file follows the name, so surfaced paths carry the real name.
+    assert.equal(renamed.filename, "Release train.md");
+    assert.equal(renamed.relMdPath, "notes/library/Release train.md");
     const raw = await readWorkItemFile(store, item.noteId);
     assert.match(raw, /title: "?Release train"?/);
     assert.ok(raw.includes(`# Release train${DEFAULT_WORK_ITEM_TITLE_SUFFIX}`));
@@ -100,12 +101,43 @@ test("renaming a work item keeps its name and reminder suffix in step", async ()
       `Release train${DEFAULT_WORK_ITEM_TITLE_SUFFIX}.md`
     );
     assert.equal(again.title, "Release train");
-    assert.equal(again.filename, originalFilename);
+    assert.equal(again.filename, "Release train.md");
     assert.ok(
       (await readWorkItemFile(store, item.noteId)).includes(
         `# Release train${DEFAULT_WORK_ITEM_TITLE_SUFFIX}`
       )
     );
+  });
+});
+
+test("an untitled work item's file follows the name once it is named", async () => {
+  await withStore(async (store) => {
+    const item = await store.createWorkItem({});
+    assert.equal((await store.getNote(item.noteId)).filename, "未命名工作项.md");
+
+    const renamed = await store.renameNote(item.noteId, "agent 重构");
+    assert.equal(renamed.title, "agent 重构");
+    assert.equal(renamed.filename, "agent 重构.md");
+    assert.equal(renamed.relMdPath, "notes/library/agent 重构.md");
+    const raw = await readWorkItemFile(store, item.noteId);
+    assert.match(raw, /title: "?agent 重构"?/);
+    assert.ok(raw.includes(`# agent 重构${DEFAULT_WORK_ITEM_TITLE_SUFFIX}`));
+  });
+});
+
+test("editing the heading moves the work item's file to the new name", async () => {
+  await withStore(async (store) => {
+    const item = await store.createWorkItem({ title: "Ship release" });
+    const raw = await readWorkItemFile(store, item.noteId);
+
+    const edited = raw.replace(
+      `# Ship release${DEFAULT_WORK_ITEM_TITLE_SUFFIX}`,
+      "# Ship release v2"
+    );
+    const updated = await store.writeNoteContent(item.noteId, edited);
+    assert.equal(updated.title, "Ship release v2");
+    assert.equal(updated.filename, "Ship release v2.md");
+    assert.equal((await store.getNote(item.noteId)).filename, "Ship release v2.md");
   });
 });
 
@@ -115,10 +147,13 @@ test("a work item can take a name another work item already uses as a file name"
     const first = await store.createWorkItem({ title: "First" });
     await store.renameNote(first.noteId, "安丰");
     assert.equal((await store.getNote(first.noteId)).title, "安丰");
+    assert.equal((await store.getNote(first.noteId)).filename, "安丰.md");
 
     const second = await store.createWorkItem({ title: "Second" });
     const renamed = await store.renameNote(second.noteId, "安丰");
     assert.equal(renamed.title, "安丰");
+    // Collision: the second file gets a suffix instead of failing.
+    assert.equal(renamed.filename, "安丰-2.md");
     assert.notEqual(renamed.filename, (await store.getNote(first.noteId)).filename);
   });
 });
@@ -245,6 +280,46 @@ test("existing work items are migrated once onto the convention", async () => {
     const third = new NotesStore(dbPath, panelHome);
     await third.initialize();
     assert.equal(await fs.readFile(absPath, "utf8"), before);
+  } finally {
+    await fs.rm(panelHome, { recursive: true, force: true });
+  }
+});
+
+test("work item files left behind by the old flow are renamed to their name once", async () => {
+  const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-work-files-"));
+  const dbPath = path.join(panelHome, "catalog.db");
+  try {
+    await ensureExtensionCatalogSchema(dbPath);
+    const store = new NotesStore(dbPath, panelHome);
+    await store.initialize();
+    // Reproduces the incident: file allocated as 未命名工作项.md, then the
+    // name moved to agent 重构 while the file stayed put.
+    const item = await store.createWorkItem({});
+    const record = await store.getNote(item.noteId);
+    const oldPath = store.absolutePath(record);
+    await fs.writeFile(
+      oldPath,
+      `---\nid: ${item.noteId}\nscope: library\nwork: true\ntitle: agent 重构\ntitleSuffix: "${DEFAULT_WORK_ITEM_TITLE_SUFFIX}"\n---\n\n# agent 重构${DEFAULT_WORK_ITEM_TITLE_SUFFIX}\n\n${WORK_ITEM_KNOWLEDGE_BEGIN}\n\n${WORK_ITEM_KNOWLEDGE_END}\n`,
+      "utf8"
+    );
+    await runSqlite(dbPath, `UPDATE notes SET title = 'agent 重构' WHERE note_id = '${item.noteId}';`);
+    await runSqlite(dbPath, "DELETE FROM catalog_meta WHERE key = 'work_item_files_follow_title_v1';");
+
+    const reopened = new NotesStore(dbPath, panelHome);
+    await reopened.initialize();
+
+    const updated = await reopened.getNote(item.noteId);
+    assert.equal(updated.title, "agent 重构");
+    assert.equal(updated.filename, "agent 重构.md");
+    assert.equal(updated.relMdPath, "notes/library/agent 重构.md");
+    const migrated = await fs.readFile(path.join(panelHome, "notes", "library", "agent 重构.md"), "utf8");
+    assert.ok(migrated.includes(`# agent 重构${DEFAULT_WORK_ITEM_TITLE_SUFFIX}`));
+    await assert.rejects(fs.access(oldPath));
+
+    // Second initialize must not rename again.
+    const third = new NotesStore(dbPath, panelHome);
+    await third.initialize();
+    assert.equal((await third.getNote(item.noteId)).filename, "agent 重构.md");
   } finally {
     await fs.rm(panelHome, { recursive: true, force: true });
   }

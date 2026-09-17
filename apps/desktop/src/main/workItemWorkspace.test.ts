@@ -29,7 +29,7 @@ async function setup(): Promise<{ panelHome: string; catalogDb: string; address:
     status: "next",
     next: "Wire it",
     decision: "Show connecting?",
-    noteRelPath: "notes/library/wi.md",
+    noteAbsPath: path.join(panelHome, "notes", "library", "wi.md"),
     projects: [
       { path: projectPath, label: "app", exists: true },
       { path: path.join(panelHome, "missing"), label: "api", exists: false }
@@ -56,7 +56,7 @@ describe("workItemWorkspace", () => {
     expect(agents).toContain("# Work item: Cross-repo feature");
     expect(agents).toContain(`- app → ${address.projects[0].path}`);
     expect(agents).toContain("(path not found on this machine)");
-    expect(agents).toContain("Full note: notes/library/wi.md");
+    expect(agents).toContain(`Full note: ${address.noteAbsPath} (or the note_read MCP tool, noteId wi-1)`);
     expect(await fs.readFile(path.join(dir, "CLAUDE.md"), "utf8")).toBe(agents);
   });
 
@@ -126,7 +126,7 @@ describe("workItemWorkspace", () => {
     const agents = await fs.readFile(path.join(dir, "AGENTS.md"), "utf8");
     expect(agents).toContain("## Background knowledge (from the note)");
     expect(agents).toContain("The API lives in api/.\nRun pnpm test first.");
-    expect(agents).toContain("Full note: notes/library/wi.md");
+    expect(agents).toContain(`Full note: ${address.noteAbsPath}`);
     expect(await fs.readFile(path.join(dir, "CLAUDE.md"), "utf8")).toBe(agents);
 
     // Editing the knowledge counts as a change, so the block is regenerated.
@@ -163,11 +163,12 @@ describe("workItemWorkspace", () => {
       noteId: "wi-1",
       title: "T",
       status: "next",
-      noteRelPath: "notes/library/wi.md",
+      noteAbsPath: "/panel/notes/library/wi.md",
       projects: [{ path: "/work/app", label: "app", exists: true }]
     });
     expect(table).toContain("Repositories referenced by this work item:");
     expect(table).toContain("- app → /work/app");
+    expect(table).toContain("Full note: /panel/notes/library/wi.md (or the note_read MCP tool, noteId wi-1)");
     expect(table).not.toContain("This directory is the work item's neutral workspace");
   });
 

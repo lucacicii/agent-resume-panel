@@ -143,6 +143,8 @@ export class NotesStore {
     await this.migrateWorkItemNotes();
     // One-time recovery of names the old file-rename flow left only in the file name.
     await this.migrateWorkItemNames();
+    // One-time rename of work-item files onto the file-follows-name rule.
+    await this.migrateWorkItemFilesToTitles();
   }
 
   async reload(): Promise<void> {
@@ -213,6 +215,26 @@ export class NotesStore {
         await this.renameNote(item.noteId, noteStem(item.filename));
       } catch {
         // A single unreadable file must not block startup.
+      }
+    }
+    await setCatalogMeta(this.dbPath, key, "1");
+  }
+
+  /**
+   * One-time rename of work-item files allocated before the file-follows-name
+   * rule (e.g. a file still called 未命名工作项.md under a real name). The
+   * address table surfaces the file path to agents, so it must carry the name.
+   */
+  private async migrateWorkItemFilesToTitles(): Promise<void> {
+    const key = "work_item_files_follow_title_v1";
+    if ((await getCatalogMeta(this.dbPath, key)) === "1") {
+      return;
+    }
+    for (const item of await listWorkItems(this.dbPath)) {
+      try {
+        await this.renameWorkItemFileToTitle(item, item.title);
+      } catch {
+        // A single unreadable file must not block startup; reconcile catches up later.
       }
     }
     await setCatalogMeta(this.dbPath, key, "1");
@@ -311,11 +333,12 @@ export class NotesStore {
     const record = await getNoteById(this.dbPath, noteId);
     if (!record) throw new Error("Note not found.");
     const next = this.normalizeWorkItemContent(content);
-    await fs.writeFile(this.absolutePath(record), next, "utf8");
-    await this.refreshNoteFromDisk(record);
+    const synced = await this.syncWorkItemFileToContent(record, next);
+    await fs.writeFile(this.absolutePath(synced.record), synced.content, "utf8");
+    await this.refreshNoteFromDisk(synced.record);
     const updated = await getNoteById(this.dbPath, noteId);
     if (!updated) throw new Error("Note not found after write.");
-    return { ...updated, content: next };
+    return { ...updated, content: synced.content };
   }
 
   /**
@@ -336,20 +359,70 @@ export class NotesStore {
     return buildNoteDocument(normalized.frontmatter, normalized.body);
   }
 
+  /**
+   * Rename a work item's file to follow its front-matter name. Collisions with
+   * another note's file get a numeric suffix, so renaming never fails. The DB
+   * record is kept in step; content writes are left to the caller.
+   */
+  private async renameWorkItemFileToTitle(record: NoteRecord, title: string | undefined): Promise<NoteRecord> {
+    const desired = normalizeNoteFilename(title?.trim() || "");
+    if (!desired || desired === record.filename) {
+      return record;
+    }
+    const ownerDir = path.join(this.panelHome, "notes", record.relDir);
+    const existing = await listMarkdownFilenames(ownerDir);
+    const newFilename = uniqueNoteFilename(desired, existing);
+    if (newFilename === record.filename) {
+      return record;
+    }
+    await renameNoteFiles(ownerDir, record.filename, newFilename, (content) =>
+      rewriteAssetReferences(content, record.filename, newFilename)
+    );
+    const updated: NoteRecord = {
+      ...record,
+      filename: newFilename,
+      relMdPath: path.join("notes", record.relDir, newFilename)
+    };
+    await upsertNoteRecord(this.dbPath, updated);
+    this.cachedNotes = this.cachedNotes.map((note) => (note.noteId === updated.noteId ? updated : note));
+    return updated;
+  }
+
+  /**
+   * Keep a work item's file in step with the name in the content about to be
+   * written, and adjust the content's asset references when the file moved.
+   */
+  private async syncWorkItemFileToContent(
+    record: NoteRecord,
+    content: string
+  ): Promise<{ record: NoteRecord; content: string }> {
+    const doc = parseNoteDocument(content);
+    if (!isWorkItemFrontmatter(doc.frontmatter)) {
+      return { record, content };
+    }
+    const renamed = await this.renameWorkItemFileToTitle(record, doc.frontmatter.title);
+    if (renamed.filename === record.filename) {
+      return { record: renamed, content };
+    }
+    return { record: renamed, content: rewriteAssetReferences(content, record.filename, renamed.filename) };
+  }
+
   /** Write already-validated note content with an atomic rename and no materialization. */
   async writeValidatedNoteContent(noteId: string, content: string): Promise<NoteRecord> {
     const record = await getNoteById(this.dbPath, noteId);
     if (!record) throw new Error("Note not found.");
-    const target = this.absolutePath(record);
+    const next = this.normalizeWorkItemContent(content);
+    const synced = await this.syncWorkItemFileToContent(record, next);
+    const target = this.absolutePath(synced.record);
     const temporary = `${target}.${process.pid}.${Date.now()}.tmp`;
     try {
-      await fs.writeFile(temporary, this.normalizeWorkItemContent(content), "utf8");
+      await fs.writeFile(temporary, synced.content, "utf8");
       await fs.rename(temporary, target);
     } catch (error) {
       await fs.rm(temporary, { force: true }).catch(() => {});
       throw error;
     }
-    await this.refreshNoteFromDisk(record);
+    await this.refreshNoteFromDisk(synced.record);
     const updated = await getNoteById(this.dbPath, noteId);
     if (!updated) throw new Error("Note disappeared after write.");
     return updated;
@@ -393,7 +466,10 @@ export class NotesStore {
     const owner: NoteOwner = { scope: "library" };
     const ownerDir = await ensureOwnerDir(this.panelHome, owner);
     const existing = await listMarkdownFilenames(ownerDir);
-    const filename = nextNoteFilename(existing);
+    const name = input.title?.trim() || UNTITLED_WORK_ITEM_NAME;
+    // The file carries the work item's name from the start — the address table
+    // surfaces the path to agents, so a placeholder allocation would leak.
+    const filename = uniqueNoteFilename(name, existing);
     const noteId = newNoteId();
     const createdAtMs = Date.now();
     const fm: NoteFrontmatter = {
@@ -402,7 +478,6 @@ export class NotesStore {
       createdAt: new Date(createdAtMs).toISOString(),
       work: true
     };
-    const name = input.title?.trim() || UNTITLED_WORK_ITEM_NAME;
     fm.title = name;
     fm.titleSuffix = this.workItemTitleSuffix;
     const work: NoteWorkFields = {};
@@ -749,18 +824,22 @@ export class NotesStore {
     const raw = await fs.readFile(absPath, "utf8");
     const doc = parseNoteDocument(raw);
     if (isWorkItemFrontmatter(doc.frontmatter)) {
-      // A work item is identified by its name, not by its file: renaming must not
-      // collide with other files, so the allocated file name stays put.
+      // A work item is identified by its front-matter name, and its file follows
+      // that name (collision-suffixed), so paths surfaced to agents always carry
+      // the real name.
       const normalized = normalizeWorkItemDocument(
         doc.frontmatter,
         doc.body,
         this.workItemTitleSuffix,
         { name: noteStem(normalizeNoteFilename(desiredName) || desiredName) }
       );
-      await fs.writeFile(absPath, buildNoteDocument(normalized.frontmatter, normalized.body), "utf8");
-      const mtime = await fileMtimeMs(absPath);
+      const next = buildNoteDocument(normalized.frontmatter, normalized.body);
+      const synced = await this.syncWorkItemFileToContent(record, next);
+      const targetPath = this.absolutePath(synced.record);
+      await fs.writeFile(targetPath, synced.content, "utf8");
+      const mtime = await fileMtimeMs(targetPath);
       const updated: NoteRecord = {
-        ...record,
+        ...synced.record,
         title: normalized.frontmatter.title,
         updatedAtMs: mtime,
         fsMtimeMs: mtime

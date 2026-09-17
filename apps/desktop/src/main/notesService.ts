@@ -2,6 +2,7 @@ import { clipboard, dialog, nativeImage, shell } from "electron";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
+  absFromRelMdPath,
   buildNoteDocument,
   effectivePanelHome,
   expandHome,
@@ -126,7 +127,7 @@ export async function notesEnsureWorkItemWorkspace(noteId: string): Promise<{ di
     status: record.gtdStatus ?? "inbox",
     next: doc.frontmatter.next,
     decision: doc.frontmatter.decision,
-    noteRelPath: record.relMdPath,
+    noteAbsPath: absFromRelMdPath(panelHome, record.relMdPath),
     projects: await Promise.all(projects.map(async (projectPath) => ({
       path: projectPath,
       label: projectLabel(projectPath),

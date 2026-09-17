@@ -2,6 +2,7 @@ import { dialog, type BrowserWindow } from "electron";
 import { constants } from "node:fs";
 import * as fs from "node:fs/promises";
 import {
+  absFromRelMdPath,
   effectivePanelHome,
   extractTitle,
   loadSettings,
@@ -133,7 +134,7 @@ export function registerImIpc(deps: {
         status: record.gtdStatus ?? "inbox",
         next: doc.frontmatter.next,
         decision: doc.frontmatter.decision,
-        noteRelPath: record.relMdPath,
+        noteAbsPath: absFromRelMdPath(panelHome, record.relMdPath),
         projects: await Promise.all(projects.map(async (projectPath) => ({
           path: projectPath,
           label: projectPath.replaceAll("\\", "/").split("/").filter(Boolean).at(-1) || projectPath,

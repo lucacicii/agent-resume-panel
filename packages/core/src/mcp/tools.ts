@@ -327,7 +327,7 @@ export const noteMoveSchema = {
 
 export const noteRenameSchema = {
   noteId: z.string().min(1).describe("The noteId to rename."),
-  filename: z.string().min(1).max(200).describe("New name. For work items this renames the work item (its file stays as allocated); otherwise it renames the Markdown file, updating asset directories and relative references.")
+  filename: z.string().min(1).max(200).describe("New name. For work items the name lives in front-matter and the file follows it (collision-suffixed); otherwise it renames the Markdown file, updating asset directories and relative references.")
 };
 
 // --- Handlers ---

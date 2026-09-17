@@ -89,8 +89,11 @@ describe("GtdView", () => {
     window.addEventListener("agent-resume:view-open-task", listener);
     fireEvent.click(await screen.findByRole("button", { name: /Realtime status/ }));
     expect(listener).toHaveBeenCalledWith(expect.objectContaining({
-      detail: expect.objectContaining({ noteId: "t-1", title: "Realtime status", openNote: true })
+      detail: expect.objectContaining({ noteId: "t-1", title: "Realtime status" })
     }));
+    // Entering a task lands on its sessions, not its note.
+    const detail = (listener.mock.calls.at(-1)?.[0] as CustomEvent<{ openNote?: boolean }>).detail;
+    expect(detail.openNote).toBeUndefined();
     window.removeEventListener("agent-resume:view-open-task", listener);
   });
 

@@ -36,8 +36,8 @@ export type WorkItemAddress = {
   status?: string;
   next?: string;
   decision?: string;
-  /** Note path relative to the panel home, for pointing the agent at the full note. */
-  noteRelPath: string;
+  /** Absolute path of the note file, so agents running in any cwd can read it. */
+  noteAbsPath: string;
   projects: WorkItemAddressProject[];
 };
 
@@ -108,7 +108,7 @@ export function renderAddressTable(address: WorkItemAddress, workspaceDir?: stri
     "",
     "cd into the repository you need before running project commands.",
     "Shared artifacts and notes go under .arp/.",
-    `Full note: ${address.noteRelPath}`
+    `Full note: ${address.noteAbsPath} (or the note_read MCP tool, noteId ${address.noteId})`
   );
   return lines.join("\n");
 }
