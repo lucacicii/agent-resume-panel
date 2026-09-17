@@ -40,7 +40,7 @@ async function claimSession(catalogDb, noteId, provider, sessionId) {
   );
 }
 
-test("unassignedOnly returns only sessions with no work-item claim", async () => {
+test("unassignedOnly returns only sessions with no task claim", async () => {
   const { panelHome, catalogDb } = await setupCatalog();
   try {
     await insertSession(catalogDb, { id: "free-1", title: "Free", updatedAtMs: 30 });

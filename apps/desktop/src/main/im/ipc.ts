@@ -8,10 +8,10 @@ import {
   loadSettings,
   parseNoteDocument,
   preparePanelDatabasesFromSettings,
-  workItemPromptBody
+  taskPromptBody
 } from "@agent-resume/core";
 import { notesRead } from "../notesService";
-import { renderAddressTable } from "../workItemWorkspace";
+import { renderAddressTable } from "../taskWorkspace";
 import { safeHandle } from "../ipcUtils";
 import { disposeAcpController, inspectAcpChat, listLiveAcpChatIds } from "../acp/acpHost";
 import { deleteAcpRecord } from "../acp/store";
@@ -106,15 +106,15 @@ export function registerImIpc(deps: {
     return im.createProject(name, panelHome, localPath);
   });
 
-  safeHandle("im:createWorkItemRoom", async (_event, args: { noteId?: unknown; preferredCwd?: unknown }) => {
+  safeHandle("im:createTaskRoom", async (_event, args: { noteId?: unknown; preferredCwd?: unknown }) => {
     if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
-      throw new Error("A work item note id is required.");
+      throw new Error("A task note id is required.");
     }
     const settings = await loadSettings();
     const panelHome = effectivePanelHome(settings);
     const im = await getStore();
 
-    // The work-item note (markdown + front-matter) is the single source of truth
+    // The task note (markdown + front-matter) is the single source of truth
     // for the room's name, projects and background knowledge.
     const { record, content } = await notesRead(args.noteId);
     const doc = parseNoteDocument(content);
@@ -125,7 +125,7 @@ export function registerImIpc(deps: {
     const preferredCwd = typeof args?.preferredCwd === "string" && args.preferredCwd.trim()
       ? args.preferredCwd.trim()
       : undefined;
-    const project = await im.openWorkItemRoom(args.noteId, name, panelHome, preferredCwd ?? primaryProject ?? null);
+    const project = await im.openTaskRoom(args.noteId, name, panelHome, preferredCwd ?? primaryProject ?? null);
 
     const situation = [
       renderAddressTable({
@@ -144,9 +144,9 @@ export function registerImIpc(deps: {
       "",
       "---",
       "",
-      workItemPromptBody(doc.body)
+      taskPromptBody(doc.body)
     ].join("\n");
-    await im.upsertWorkItemKnowledge(project.projectId, args.noteId, name, situation);
+    await im.upsertTaskKnowledge(project.projectId, args.noteId, name, situation);
 
     const room = await im.getRoom(project.projectId);
     emitIm?.({ type: "room", room });

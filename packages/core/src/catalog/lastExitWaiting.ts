@@ -2,7 +2,7 @@ import { escapeSqlLiteral, runSqlite, runSqliteTransaction } from "../sqlite";
 
 /**
  * Persists the "waiting on you when app closed" marker on session records.
- * This is the durable alternative to auto-filing work items on quit/transition (C1).
+ * This is the durable alternative to auto-filing tasks on quit/transition (C1).
  */
 export async function setSessionLastExitWaiting(
   dbPath: string,

@@ -105,8 +105,8 @@ export interface ImProject {
   projectId: string;
   name: string;
   localPath: string | null;
-  /** When set, this room is scoped to a work item (a project note marked `work: true`). */
-  workItemNoteId?: string | null;
+  /** When set, this room is scoped to a task (a project note marked `work: true`). */
+  taskNoteId?: string | null;
   createdAtMs: number;
   updatedAtMs: number;
   roles?: ImProjectRoleSummary[];

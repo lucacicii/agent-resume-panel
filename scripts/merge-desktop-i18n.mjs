@@ -35,6 +35,8 @@ const obsoleteDesktopKeys = new Set([
   "desktop.settings.dosStyleGreen",
   "desktop.workbench.terminalScrollPosition",
   "desktop.workbench.sidePanelBack",
+  // Quick Access project picker: the workbench switches tasks, not projects.
+  "desktop.workbench.quickAccessSwitchProject",
   "desktop.workbench.renameSession",
   "desktop.workbench.renameSessionTitle",
   "desktop.workbench.generatingTitle",

@@ -183,7 +183,7 @@ function assertMcpManagedNote(record: NoteRecord): void {
 }
 
 export type ResolvedNoteTarget =
-  | { kind: "work_item"; noteId: string; via: "context" | "session" }
+  | { kind: "task"; noteId: string; via: "context" | "session" }
   | { kind: "session"; provider: string; sessionId: string; via: "context" }
   | { kind: "unbound"; via: "none" };
 
@@ -194,16 +194,16 @@ export type ResolvedNoteTarget =
  */
 export async function resolveDefaultNoteTarget(ctx: NoteToolContext): Promise<ResolvedNoteTarget> {
   const session = ctx.sessionContext;
-  const explicitWorkItem = session?.workItemNoteId?.trim();
-  if (explicitWorkItem) {
-    const note = await ctx.notesStore.getNote(explicitWorkItem);
-    if (note?.work) return { kind: "work_item", noteId: note.noteId, via: "context" };
+  const explicitTask = session?.taskNoteId?.trim();
+  if (explicitTask) {
+    const note = await ctx.notesStore.getNote(explicitTask);
+    if (note?.work) return { kind: "task", noteId: note.noteId, via: "context" };
   }
   const provider = session?.provider?.trim();
   const sessionId = session?.sessionId?.trim();
   if (provider && sessionId) {
-    const linked = await ctx.notesStore.findWorkItemNoteIdForSession(provider, sessionId);
-    if (linked) return { kind: "work_item", noteId: linked, via: "session" };
+    const linked = await ctx.notesStore.findTaskNoteIdForSession(provider, sessionId);
+    if (linked) return { kind: "task", noteId: linked, via: "session" };
     return { kind: "session", provider, sessionId, via: "context" };
   }
   return { kind: "unbound", via: "none" };
@@ -215,14 +215,14 @@ interface DefaultNoteFilter {
   sessionId?: string;
 }
 
-/** Default convergence for list/search: the session's work item tree, else its session notes. */
+/** Default convergence for list/search: the session's task tree, else its session notes. */
 async function defaultNoteFilter(
   ctx: NoteToolContext,
   args: { scope?: string; rootPath?: string; parentNoteId?: string }
 ): Promise<DefaultNoteFilter | null> {
   if (args.scope || args.rootPath || args.parentNoteId) return null;
   const target = await resolveDefaultNoteTarget(ctx);
-  if (target.kind === "work_item") {
+  if (target.kind === "task") {
     const ids = await ctx.notesStore.collectNoteDescendantIds(target.noteId);
     ids.add(target.noteId);
     return { noteIds: ids };
@@ -347,7 +347,7 @@ export const noteCreateSchema = {
   scope: z.enum(["library", "session"]).optional().describe("Where to create the note; optional when parentNoteId is provided. Project notes are extension-only and cannot be created here."),
   title: z.string().min(1).max(200).describe("Note title — used as the first heading."),
   body: z.string().max(200_000).optional().describe("Markdown body content excluding the title heading."),
-  parentNoteId: z.string().min(1).optional().describe("Create as a linked child of a task (work item); the child is library-scoped."),
+  parentNoteId: z.string().min(1).optional().describe("Create as a linked child of a task (task); the child is library-scoped."),
   provider: providerSchema.optional().describe("Required for session scope."),
   sessionId: z.string().optional().describe("Required for session scope.")
 };
@@ -378,7 +378,7 @@ export const noteTreeReadSchema = {
 
 export const noteSetParentSchema = {
   noteId: z.string().min(1).describe("Note whose parent should change."),
-  parentNoteId: z.string().min(1).nullable().describe("New parent note ID (a task / work item), or null to make the note a root.")
+  parentNoteId: z.string().min(1).nullable().describe("New parent note ID (a task / task), or null to make the note a root.")
 };
 
 export const noteSetGtdSchema = {
@@ -395,7 +395,7 @@ export const noteMoveSchema = {
 
 export const noteRenameSchema = {
   noteId: z.string().min(1).describe("The noteId to rename."),
-  filename: z.string().min(1).max(200).describe("New name. For work items the name lives in front-matter and the file follows it (collision-suffixed); otherwise it renames the Markdown file, updating asset directories and relative references.")
+  filename: z.string().min(1).max(200).describe("New name. For tasks the name lives in front-matter and the file follows it (collision-suffixed); otherwise it renames the Markdown file, updating asset directories and relative references.")
 };
 
 // --- Handlers ---
@@ -492,7 +492,7 @@ export async function handleNoteCreate(
     if (args.provider || args.sessionId) throw new Error("Do not provide owner fields when parentNoteId is set.");
     const parent = await store.getNote(args.parentNoteId);
     if (!parent) throw new Error(`Parent note not found: ${args.parentNoteId}.`);
-    if (!parent.work) throw new Error("Linked children can only be created under a task (work item).");
+    if (!parent.work) throw new Error("Linked children can only be created under a task (task).");
     record = await store.createLinkedChildNote(args.parentNoteId, body);
     resolvedVia = "explicit";
   } else if (args.scope) {
@@ -503,10 +503,10 @@ export async function handleNoteCreate(
     if (args.provider || args.sessionId) {
       throw new Error("scope is required when provider or sessionId is provided.");
     }
-    // No explicit owner: work item bound to this session, else the session,
+    // No explicit owner: task bound to this session, else the session,
     // else no owner at all (see resolveDefaultNoteTarget).
     const target = await resolveDefaultNoteTarget(ctx);
-    if (target.kind === "work_item") {
+    if (target.kind === "task") {
       record = await store.createLinkedChildNote(target.noteId, body);
     } else if (target.kind === "session") {
       record = await store.createNote(

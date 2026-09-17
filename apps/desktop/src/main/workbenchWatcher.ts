@@ -202,7 +202,7 @@ export function registerWorkbenchWatcherIpc(getMainWindow: () => BrowserWindow |
       stopSender(event.sender.id);
       const requested = args?.rootPaths;
       if (!requested || !requested.length) return { rootPaths: [] as string[] };
-      // A project referenced by a synced work item may not exist here; skip those
+      // A project referenced by a synced task may not exist here; skip those
       // rather than failing the whole watch set.
       const rootPaths: string[] = [];
       const seen = new Set<string>();

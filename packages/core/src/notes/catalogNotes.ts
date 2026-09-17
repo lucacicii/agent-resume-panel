@@ -22,12 +22,12 @@ export interface NoteRecord {
   updatedAtMs: number;
   fsMtimeMs?: number;
   gtdStatus?: GtdStatus;
-  /** Present only on work items (front-matter `work: true`). */
+  /** Present only on tasks (front-matter `work: true`). */
   work?: NoteWorkFields;
 }
 
-/** A work item: any note whose front-matter is marked `work: true`. */
-export interface WorkItemRecord extends NoteRecord {
+/** A task: any note whose front-matter is marked `work: true`. */
+export interface TaskRecord extends NoteRecord {
   work: NoteWorkFields;
 }
 
@@ -71,8 +71,8 @@ function workFieldsFromRow(row: NoteRow): NoteWorkFields | undefined {
 }
 
 /**
- * Every note read carries its work-item fields, so callers never have to ask
- * again whether a note is a work item.
+ * Every note read carries its task fields, so callers never have to ask
+ * again whether a note is a task.
  */
 const NOTE_COLUMNS = `n.*, g.status AS gtd_status,
             w.note_id AS work_note_id, w.next_action, w.decision, w.sessions_json, w.projects_json, w.primary_project`;
@@ -254,25 +254,25 @@ export async function deleteNotesByRelPaths(dbPath: string, relPaths: string[]):
   );
 }
 
-/** Every work-item ↔ session link, with the work item's display title. */
-export interface WorkItemSessionLink {
+/** Every task ↔ session link, with the task's display title. */
+export interface TaskSessionLink {
   noteId: string;
   title?: string;
   provider: string;
   sessionId: string;
 }
 
-/** One linked session of a work item, with the project its cwd belongs to. */
-export interface WorkItemSessionDetail {
+/** One linked session of a task, with the project its cwd belongs to. */
+export interface TaskSessionDetail {
   provider: string;
   sessionId: string;
   projectPath?: string;
 }
 
-export async function listWorkItemSessionDetails(
+export async function listTaskSessionDetails(
   dbPath: string,
   noteId: string
-): Promise<WorkItemSessionDetail[]> {
+): Promise<TaskSessionDetail[]> {
   const rows = await runSqliteJson<{ provider: string; agent_session_id: string; project_path: string | null }>(
     dbPath,
     `SELECT s.provider, s.agent_session_id, se.project_path
@@ -287,8 +287,8 @@ export async function listWorkItemSessionDetails(
   }));
 }
 
-/** The work item a session belongs to, when it is linked to one. */
-export async function findWorkItemNoteIdForSession(
+/** The task a session belongs to, when it is linked to one. */
+export async function findTaskNoteIdForSession(
   dbPath: string,
   provider: string,
   sessionId: string
@@ -303,7 +303,7 @@ export async function findWorkItemNoteIdForSession(
   return rows[0]?.work_item_note_id?.trim() || undefined;
 }
 
-export async function listWorkItemSessionLinks(dbPath: string): Promise<WorkItemSessionLink[]> {
+export async function listTaskSessionLinks(dbPath: string): Promise<TaskSessionLink[]> {
   const rows = await runSqliteJson<{ note_id: string; title: string | null; provider: string; agent_session_id: string }>(
     dbPath,
     `SELECT s.work_item_note_id AS note_id, n.title, s.provider, s.agent_session_id
@@ -318,8 +318,8 @@ export async function listWorkItemSessionLinks(dbPath: string): Promise<WorkItem
   }));
 }
 
-/** `note_id` → distinct project paths of the work item's linked sessions. */
-export async function listWorkItemSessionProjects(dbPath: string): Promise<Record<string, string[]>> {
+/** `note_id` → distinct project paths of the task's linked sessions. */
+export async function listTaskSessionProjects(dbPath: string): Promise<Record<string, string[]>> {
   const rows = await runSqliteJson<{ note_id: string; project_path: string }>(
     dbPath,
     `SELECT DISTINCT s.work_item_note_id AS note_id, se.project_path AS project_path
@@ -334,7 +334,7 @@ export async function listWorkItemSessionProjects(dbPath: string): Promise<Recor
   return output;
 }
 
-export async function listWorkItems(dbPath: string): Promise<WorkItemRecord[]> {
+export async function listTasks(dbPath: string): Promise<TaskRecord[]> {
   const rows = await runSqliteJson<NoteRow>(
     dbPath,
     `SELECT ${NOTE_COLUMNS}

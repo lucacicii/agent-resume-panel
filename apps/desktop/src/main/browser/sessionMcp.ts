@@ -32,7 +32,7 @@ export async function buildSessionMcpServers(args: SessionMcpBuildArgs): Promise
       { name: "AGENT_RESUME_PANEL_HOME", value: panelHome }
     ];
     // ACP chat sessions appear in the catalog as provider "chat" with the ACP
-    // record id as the session id, so note tools can resolve the work item this
+    // record id as the session id, so note tools can resolve the task this
     // session is linked to (or fall back to the session itself).
     if (args.recordId && args.recordId !== "unknown") {
       env.push(

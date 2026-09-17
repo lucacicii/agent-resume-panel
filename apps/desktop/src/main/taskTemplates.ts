@@ -12,13 +12,13 @@ import { loadPanelDbPaths } from "./panelDatabases";
  * Reusable task templates for the GTD board.
  *
  * A template is a starting point — a title and the projects it references —
- * that is dragged onto a column to create a pre-filled work item. Desktop
+ * that is dragged onto a column to create a pre-filled task. Desktop
  * private, so it lives in `desktop.db` rather than the shared catalog.
  */
 export type TaskTemplate = {
   templateId: string;
   title: string;
-  /** Projects the created work item should reference, in priority order. */
+  /** Projects the created task should reference, in priority order. */
   projectPaths: string[];
   createdAtMs: number;
   updatedAtMs: number;

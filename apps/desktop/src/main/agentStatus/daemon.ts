@@ -424,7 +424,11 @@ function describe(error: unknown): string {
 
 // ------------------------------------------------------------------------------ entry
 
-type DaemonArgs = {
+/**
+ * Parsed daemon CLI arguments. Exported with {@link parseDaemonArgs} because the
+ * lifecycle script test asserts flag, env, and default precedence.
+ */
+export type DaemonArgs = {
   panelHome: string;
   appVersion: string;
   replace: boolean;
@@ -432,7 +436,7 @@ type DaemonArgs = {
   discovery: boolean;
 };
 
-function parseDaemonArgs(
+export function parseDaemonArgs(
   argv: readonly string[],
   env: NodeJS.ProcessEnv = process.env
 ): DaemonArgs {

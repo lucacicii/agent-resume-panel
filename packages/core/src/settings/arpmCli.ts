@@ -20,13 +20,13 @@ const USAGE = `Usage:
   arpm list
   arpm prompt <id>
   arpm go <id> [--print-cwd] [--launch] [--provider <cli-provider>] [--yolo]
-  arpm run [--provider <cli-provider>] [--note <work-item-id>] [--yolo]
+  arpm run [--provider <cli-provider>] [--note <task-id>] [--yolo]
 
 Workspace packs live in ~/.agent-resume-panel/settings.desktop.json
 under workbench.composerMentions.
 
 "arpm run" starts an agent in the current directory. With --note it also hands
-the work item's context (address table, background knowledge) to the session.`;
+the task's context (address table, background knowledge) to the session.`;
 
 function mentionList(mentions: WorkbenchComposerMention[]): string {
   if (!mentions.length) return "No workspace mentions configured.";
@@ -140,15 +140,15 @@ function parseRunFlags(args: string[]): {
   return { provider, noteId, yolo };
 }
 
-/** The context block a work item hands to its sessions. */
-function workItemContextPath(panelHome: string, noteId: string): string {
+/** The context block a task hands to its sessions. */
+function taskContextPath(panelHome: string, noteId: string): string {
   return path.join(desktopDataDir(panelHome), "workspaces", noteId, "AGENTS.md");
 }
 
 /**
  * What `arpm run` executes. The session keeps the current directory — the panel
- * opens the terminal in the work item's repository or in its neutral workspace —
- * and the work item's context arrives through the agent's own
+ * opens the terminal in the task's repository or in its neutral workspace —
+ * and the task's context arrives through the agent's own
  * append-system-prompt channel either way.
  */
 export async function planArpmRun(input: {
@@ -167,14 +167,14 @@ export async function planArpmRun(input: {
   let contextFile: string | undefined;
   let warning: string | undefined;
   if (flags.noteId) {
-    contextFile = workItemContextPath(input.panelHome, flags.noteId);
+    contextFile = taskContextPath(input.panelHome, flags.noteId);
     if (!(await fs.stat(contextFile).then(() => true).catch(() => false))) {
       throw new Error(
-        `No agent context for work item ${flags.noteId} yet. Start a session for it from Agent Resume first.`
+        `No agent context for task ${flags.noteId} yet. Start a session for it from Agent Resume first.`
       );
     }
     if (!supportsSessionContext(provider)) {
-      warning = `${provider} has no session instruction flag; the work item context is not injected.`;
+      warning = `${provider} has no session instruction flag; the task context is not injected.`;
       contextFile = undefined;
     }
   }

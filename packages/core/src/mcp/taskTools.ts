@@ -3,13 +3,13 @@ import { moveSessionToProjectInCatalog } from "../catalog/projects";
 import { listTaskWorkbenches } from "../catalog/taskWorkbenches";
 import { GTD_STATUSES, type GtdStatus } from "../gtd/types";
 import { buildNoteDocument, parseNoteDocument } from "../notes/frontmatter";
-import { isWorkItemFrontmatter } from "../notes/workItemNote";
+import { isTaskFrontmatter } from "../notes/taskNote";
 import { listTaskGtdRollups, resolveTaskGtdRollup, type TaskGtdRollup } from "../notes/gtdRollup";
 import { normalizeProjectPath } from "../pathUtils";
 import type { NoteToolContext } from "./tools";
 
 /**
- * Task (work item) tools.
+ * Task (task) tools.
  *
  * A task is a note with front-matter `work: true`. It references 0..n roots
  * (multi-root repositories) through `roots`, keeps a concrete next action and an
@@ -141,7 +141,7 @@ async function readTaskDocument(ctx: TaskToolContext, noteId: string) {
   if (!note) throw new Error(`Task not found: ${noteId}.`);
   const content = await ctx.notesStore.readNoteContent(noteId);
   const doc = parseNoteDocument(content);
-  if (!isWorkItemFrontmatter(doc.frontmatter)) {
+  if (!isTaskFrontmatter(doc.frontmatter)) {
     throw new Error(`Note ${noteId} is not a task (missing front-matter work: true).`);
   }
   return { note, doc };
@@ -152,8 +152,8 @@ export async function handleTaskList(
   ctx: TaskToolContext
 ): Promise<TaskToolResult> {
   const limit = clampTaskListLimit(args.limit);
-  const items = await ctx.notesStore.listWorkItems();
-  const derived = await ctx.notesStore.listWorkItemSessionProjects();
+  const items = await ctx.notesStore.listTasks();
+  const derived = await ctx.notesStore.listTaskSessionProjects();
   const rollups = ctx.catalogDb?.trim()
     ? await listTaskGtdRollups(ctx.catalogDb).catch(() => ({} as Record<string, TaskGtdRollup>))
     : ({} as Record<string, TaskGtdRollup>);
@@ -200,9 +200,9 @@ export async function handleTaskRead(
   ctx: TaskToolContext
 ): Promise<TaskToolResult> {
   const { note, doc } = await readTaskDocument(ctx, args.noteId);
-  const sessions = await ctx.notesStore.listWorkItemSessionDetails(note.noteId);
+  const sessions = await ctx.notesStore.listTaskSessionDetails(note.noteId);
   const workbenches = await listTaskWorkbenches(ctx.dbPath, note.noteId).catch(() => []);
-  const derived = await ctx.notesStore.listWorkItemSessionProjects();
+  const derived = await ctx.notesStore.listTaskSessionProjects();
   const rollup = ctx.catalogDb?.trim()
     ? await resolveTaskGtdRollup(ctx.catalogDb, note.noteId).catch(() => undefined)
     : undefined;
@@ -256,7 +256,7 @@ export async function handleTaskCreate(
 ): Promise<TaskToolResult> {
   const title = args.title?.trim();
   if (!title) throw new Error("title is required.");
-  const record = await ctx.notesStore.createWorkItem({
+  const record = await ctx.notesStore.createTask({
     title,
     next: args.next?.trim() || undefined,
     decision: args.decision?.trim() || undefined,

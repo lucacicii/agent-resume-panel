@@ -105,7 +105,7 @@ function createPtySession(
 
 /**
  * Allowlisted MCP session identity env for the agent process. The renderer
- * passes the work item / provider it knows about; a known session key supplies
+ * passes the task / provider it knows about; a known session key supplies
  * provider + session id for resumes. Everything else is ignored.
  */
 function mcpSessionEnv(args: { env?: Record<string, string>; sessionKey?: string }): Record<string, string> {

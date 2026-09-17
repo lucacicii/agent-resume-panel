@@ -339,7 +339,7 @@ export interface DesktopApi {
     executionMode: "standard" | "note-yolo";
     useSystemTerminalOnly?: boolean;
     noteId?: string;
-    workItemNoteId?: string;
+    taskNoteId?: string;
     initialPrompt?: string;
   }): Promise<{
     mode: string;
@@ -525,7 +525,7 @@ export interface DesktopApi {
   onAcpStream(callback: (event: Record<string, unknown>) => void): () => void;
   imListProjects(): Promise<ImProject[]>;
   imCreateProject(args: { name?: string; localPath?: string }): Promise<ImProject>;
-  imCreateWorkItemRoom(args: { noteId: string; preferredCwd?: string }): Promise<ImRoom>;
+  imCreateTaskRoom(args: { noteId: string; preferredCwd?: string }): Promise<ImRoom>;
   imRenameProject(args: { projectId: string; name: string }): Promise<ImProject>;
   imAutoRenameProject(args: { projectId: string }): Promise<ImProject>;
   imDeleteProject(args: { projectId: string }): Promise<{ ok: boolean }>;
@@ -1174,7 +1174,7 @@ export interface DesktopApi {
       createdAtMs: number;
       updatedAtMs: number;
       fsMtimeMs?: number;
-      /** Present only on work items (`work: true`). */
+      /** Present only on tasks (`work: true`). */
       work?: {
         next?: string;
         decision?: string;
@@ -1184,7 +1184,7 @@ export interface DesktopApi {
       };
     }>
   >;
-  notesListWorkItems(): Promise<
+  notesListTasks(): Promise<
     Array<{
       noteId: string;
       scope: string;
@@ -1207,7 +1207,7 @@ export interface DesktopApi {
       };
     }>
   >;
-  notesCreateWorkItem(args: {
+  notesCreateTask(args: {
     title?: string;
     next?: string;
     decision?: string;
@@ -1228,8 +1228,8 @@ export interface DesktopApi {
     gtdStatus?: GtdStatus;
     work?: { next?: string; decision?: string; sessions?: string[]; projects?: string[]; primaryProject?: string };
   }>;
-  /** Rename a work item's name (front-matter title + heading). */
-  notesRenameWorkItem(args: { noteId: string; title: string }): Promise<{
+  /** Rename a task's name (front-matter title + heading). */
+  notesRenameTask(args: { noteId: string; title: string }): Promise<{
     noteId: string;
     title?: string;
     updatedAtMs: number;
@@ -1238,16 +1238,16 @@ export interface DesktopApi {
   taskTemplatesCreate(args: { title: string; projectPaths?: string[] }): Promise<TaskTemplate>;
   taskTemplatesUpdate(args: { templateId: string; title: string; projectPaths?: string[] }): Promise<TaskTemplate>;
   taskTemplatesDelete(args: { templateId: string }): Promise<{ ok: boolean }>;
-  notesLinkSessionToWorkItem(args: { noteId: string; sessionKey: string; projectPath?: string }): Promise<{ noteId: string }>;
-  notesListWorkItemSessionLinks(): Promise<Array<{ noteId: string; title?: string; provider: string; sessionId: string }>>;
-  /** Allocate/refresh a work item's neutral workspace; returns its directory. */
-  notesEnsureWorkItemWorkspace(args: { noteId: string }): Promise<{ dir: string }>;
+  notesLinkSessionToTask(args: { noteId: string; sessionKey: string; projectPath?: string }): Promise<{ noteId: string }>;
+  notesListTaskSessionLinks(): Promise<Array<{ noteId: string; title?: string; provider: string; sessionId: string }>>;
+  /** Allocate/refresh a task's neutral workspace; returns its directory. */
+  notesEnsureTaskWorkspace(args: { noteId: string }): Promise<{ dir: string }>;
   /** The neutral workspace directory and whether it exists; never creates it. */
-  notesWorkItemWorkspace(args: { noteId: string }): Promise<{ dir: string; exists: boolean }>;
+  notesTaskWorkspace(args: { noteId: string }): Promise<{ dir: string; exists: boolean }>;
   /** Open the neutral workspace in the system file manager. */
-  notesOpenWorkItemWorkspace(args: { noteId: string }): Promise<{ ok: boolean }>;
-  notesAddWorkItemProject(args: { noteId: string; projectPath: string }): Promise<{ noteId: string }>;
-  notesRemoveWorkItemProject(args: { noteId: string; projectPath: string }): Promise<{ noteId: string }>;
+  notesOpenTaskWorkspace(args: { noteId: string }): Promise<{ ok: boolean }>;
+  notesAddTaskProject(args: { noteId: string; projectPath: string }): Promise<{ noteId: string }>;
+  notesRemoveTaskProject(args: { noteId: string; projectPath: string }): Promise<{ noteId: string }>;
   notesListRoot(): Promise<
     Array<{
       noteId: string;
@@ -1264,7 +1264,7 @@ export interface DesktopApi {
       createdAtMs: number;
       updatedAtMs: number;
       fsMtimeMs?: number;
-      /** Present only on work items (`work: true`). */
+      /** Present only on tasks (`work: true`). */
       work?: {
         next?: string;
         decision?: string;
@@ -1331,7 +1331,7 @@ export interface DesktopApi {
       createdAtMs: number;
       updatedAtMs: number;
       fsMtimeMs?: number;
-      /** Present only on work items (`work: true`). */
+      /** Present only on tasks (`work: true`). */
       work?: {
         next?: string;
         decision?: string;
@@ -1659,7 +1659,7 @@ const api: DesktopApi = {
   },
   imListProjects: () => ipcRenderer.invoke("im:listProjects"),
   imCreateProject: (args) => ipcRenderer.invoke("im:createProject", args),
-  imCreateWorkItemRoom: (args) => ipcRenderer.invoke("im:createWorkItemRoom", args),
+  imCreateTaskRoom: (args) => ipcRenderer.invoke("im:createTaskRoom", args),
   imRenameProject: (args) => ipcRenderer.invoke("im:renameProject", args),
   imAutoRenameProject: (args) => ipcRenderer.invoke("im:autoRenameProject", args),
   imDeleteProject: (args) => ipcRenderer.invoke("im:deleteProject", args),
@@ -1849,19 +1849,19 @@ const api: DesktopApi = {
   logsClear: () => ipcRenderer.invoke("logs:clear"),
   logsOpenDir: () => ipcRenderer.invoke("logs:openDir"),
   notesList: () => ipcRenderer.invoke("notes:list"),
-  notesListWorkItems: () => ipcRenderer.invoke("notes:listWorkItems"),
+  notesListTasks: () => ipcRenderer.invoke("notes:listTasks"),
   taskTemplatesList: () => ipcRenderer.invoke("taskTemplates:list"),
   taskTemplatesCreate: (args) => ipcRenderer.invoke("taskTemplates:create", args),
   taskTemplatesUpdate: (args) => ipcRenderer.invoke("taskTemplates:update", args),
   taskTemplatesDelete: (args) => ipcRenderer.invoke("taskTemplates:delete", args),
-  notesCreateWorkItem: (args) => ipcRenderer.invoke("notes:createWorkItem", args),
-  notesLinkSessionToWorkItem: (args) => ipcRenderer.invoke("notes:linkSessionToWorkItem", args),
-  notesListWorkItemSessionLinks: () => ipcRenderer.invoke("notes:listWorkItemSessionLinks"),
-  notesEnsureWorkItemWorkspace: (args) => ipcRenderer.invoke("notes:ensureWorkItemWorkspace", args),
-  notesWorkItemWorkspace: (args) => ipcRenderer.invoke("notes:workItemWorkspace", args),
-  notesOpenWorkItemWorkspace: (args) => ipcRenderer.invoke("notes:openWorkItemWorkspace", args),
-  notesAddWorkItemProject: (args) => ipcRenderer.invoke("notes:addWorkItemProject", args),
-  notesRemoveWorkItemProject: (args) => ipcRenderer.invoke("notes:removeWorkItemProject", args),
+  notesCreateTask: (args) => ipcRenderer.invoke("notes:createTask", args),
+  notesLinkSessionToTask: (args) => ipcRenderer.invoke("notes:linkSessionToTask", args),
+  notesListTaskSessionLinks: () => ipcRenderer.invoke("notes:listTaskSessionLinks"),
+  notesEnsureTaskWorkspace: (args) => ipcRenderer.invoke("notes:ensureTaskWorkspace", args),
+  notesTaskWorkspace: (args) => ipcRenderer.invoke("notes:taskWorkspace", args),
+  notesOpenTaskWorkspace: (args) => ipcRenderer.invoke("notes:openTaskWorkspace", args),
+  notesAddTaskProject: (args) => ipcRenderer.invoke("notes:addTaskProject", args),
+  notesRemoveTaskProject: (args) => ipcRenderer.invoke("notes:removeTaskProject", args),
   notesListRoot: () => ipcRenderer.invoke("notes:listRoot"),
   notesListLinks: () => ipcRenderer.invoke("notes:listLinks"),
   notesListLinkedChildIds: () => ipcRenderer.invoke("notes:listLinkedChildIds"),
@@ -1878,7 +1878,7 @@ const api: DesktopApi = {
   notesCreate: (args) => ipcRenderer.invoke("notes:create", args),
   notesDelete: (args) => ipcRenderer.invoke("notes:delete", args),
   notesRename: (args) => ipcRenderer.invoke("notes:rename", args),
-  notesRenameWorkItem: (args) => ipcRenderer.invoke("notes:renameWorkItem", args),
+  notesRenameTask: (args) => ipcRenderer.invoke("notes:renameTask", args),
   notesImport: (owner) => ipcRenderer.invoke("notes:import", owner),
   notesClipboardHasImage: () => !clipboard.readImage().isEmpty(),
   clipboardWriteText: (text) => {

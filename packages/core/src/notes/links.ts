@@ -149,9 +149,9 @@ export async function wouldCreateCycle(
 }
 
 /**
- * Link-tree participation: project notes group notes per repository, work items
+ * Link-tree participation: project notes group notes per repository, tasks
  * group notes per unit of work. Anything else (library/session notes) stays out,
- * and a work item's children are ordinary notes.
+ * and a task's children are ordinary notes.
  */
 async function assertLinkableParent(dbPath: string, record: NoteRecord): Promise<void> {
   if (record.scope === "project") {
@@ -161,7 +161,7 @@ async function assertLinkableParent(dbPath: string, record: NoteRecord): Promise
     return;
   }
   throw new Error(
-    "Only a project note or a work item can be a parent of a linked note."
+    "Only a project note or a task can be a parent of a linked note."
   );
 }
 

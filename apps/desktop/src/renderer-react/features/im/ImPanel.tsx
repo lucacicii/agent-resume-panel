@@ -98,7 +98,7 @@ export function ImPanel({ embedded = false, onCloseRoom }: { embedded?: boolean;
   const host = document.getElementById("react-im");
   const { t } = useI18n();
   const [active, setActive] = useState(false);
-  // Embedded (work-item channel) mode is always "on"; the tab gate is skipped.
+  // Embedded (task channel) mode is always "on"; the tab gate is skipped.
   useEffect(() => { if (embedded) setActive(true); }, [embedded]);
   const [projects, setProjects] = useState<ImProject[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>(() => {
@@ -273,7 +273,7 @@ export function ImPanel({ embedded = false, onCloseRoom }: { embedded?: boolean;
     return () => window.removeEventListener("agent-resume:tab-change", onTab);
   }, [loadProjects]);
 
-  // Open a room requested by another surface (e.g. a work item on the board).
+  // Open a room requested by another surface (e.g. a task on the board).
   useEffect(() => {
     const onOpenRoom = (event: Event) => {
       const detail = (event as CustomEvent<{ projectId?: string }>).detail;

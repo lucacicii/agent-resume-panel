@@ -5,7 +5,7 @@ interface DigestLabels {
   daily: {
     h1Prefix: string;
     overview: string;
-    workItems: string;
+    tasks: string;
     decisions: string;
     blockers: string;
     nextSteps: string;
@@ -51,7 +51,7 @@ export function digestLanguageLabels(outputLanguage: string): DigestLabels {
       daily: {
         h1Prefix: "Daily",
         overview: "Overview",
-        workItems: "Work items",
+        tasks: "Tasks",
         decisions: "Decisions & outcomes",
         blockers: "Blockers & risks",
         nextSteps: "Next steps",
@@ -86,7 +86,7 @@ export function digestLanguageLabels(outputLanguage: string): DigestLabels {
     daily: {
       h1Prefix: "Daily",
       overview: "概览",
-      workItems: "工作项",
+      tasks: "任务",
       decisions: "决策与结论",
       blockers: "阻塞与风险",
       nextSteps: "下一步",
@@ -118,7 +118,7 @@ export function digestLanguageLabels(outputLanguage: string): DigestLabels {
 const SHARED_RULES = [
   "You are a personal work-memory analyst for a software engineer who uses multiple AI coding agents.",
   "Ground every claim in the provided inputs only. Do not invent work, projects, or outcomes.",
-  "Treat a session or work item as completed only when the inputs explicitly indicate delivery, completion, verification, or closure. Completed work must not be reintroduced as unfinished or as a next step.",
+  "Treat a session or task as completed only when the inputs explicitly indicate delivery, completion, verification, or closure. Completed work must not be reintroduced as unfinished or as a next step.",
   "List unfinished work only when the inputs explicitly support it. List a next step only when the inputs state a concrete follow-up action; otherwise write the empty placeholder rather than inferring one.",
   "Do not turn prior GTD labels, generic aspirations, or missing context into a next action.",
   "Output MUST follow OUTPUT_TEMPLATE exactly: keep every section heading verbatim; do not rename, reorder, or omit headings.",
@@ -137,7 +137,7 @@ function dailyOutputTemplate(dateLabel: string, labels: DigestLabels): string {
     `## ${L.overview}`,
     "{1-3 sentences}",
     "",
-    `## ${L.workItems}`,
+    `## ${L.tasks}`,
     "### {project or theme}",
     "- {bullet}",
     "",

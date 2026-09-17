@@ -29,8 +29,8 @@ function renderGtd(overrides?: Partial<typeof window.agentResume>) {
         "desktop.gtd.notesPanel": "Notes",
         "desktop.gtd.newLooseNote": "New note",
         "desktop.gtd.noLooseNotes": "No notes",
-        "desktop.workbench.deleteWorkItem": "Delete task",
-        "desktop.workbench.workItemOpenNote": "Open note",
+        "desktop.workbench.deleteTask": "Delete task",
+        "desktop.workbench.taskOpenNote": "Open note",
         "desktop.workbench.gtdStatus.inbox": "Inbox",
         "desktop.workbench.gtdStatus.next": "Next",
         "desktop.workbench.gtdStatus.waiting": "Waiting",
@@ -51,7 +51,7 @@ function renderGtd(overrides?: Partial<typeof window.agentResume>) {
       }
     }),
     onLocaleChanged: () => () => undefined,
-    notesListWorkItems: async () => [
+    notesListTasks: async () => [
       {
         noteId: "t-1", scope: "project", projectPath: "/work/app",
         filename: "realtime.md", relDir: "", relMdPath: "realtime.md",
@@ -66,11 +66,11 @@ function renderGtd(overrides?: Partial<typeof window.agentResume>) {
       }
     ],
     notesSetGtdStatus: vi.fn(async () => ({ ok: true })),
-    notesCreateWorkItem: vi.fn(async () => ({
+    notesCreateTask: vi.fn(async () => ({
       noteId: "t-3", scope: "library", filename: "new.md", relDir: "", relMdPath: "new.md",
       title: "New task", createdAtMs: 3, updatedAtMs: 3, gtdStatus: "inbox", work: { sessions: [] }
     })),
-    notesRenameWorkItem: vi.fn(async ({ noteId, title }: { noteId: string; title: string }) => ({ noteId, title, updatedAtMs: 9 })),
+    notesRenameTask: vi.fn(async ({ noteId, title }: { noteId: string; title: string }) => ({ noteId, title, updatedAtMs: 9 })),
     taskTemplatesList: async () => [],
     taskTemplatesCreate: vi.fn(async ({ title, projectPaths }: { title: string; projectPaths?: string[] }) => ({ templateId: "tpl-new", title, projectPaths: projectPaths ?? [], createdAtMs: 1, updatedAtMs: 1 })),
     taskTemplatesUpdate: vi.fn(async ({ templateId, title, projectPaths }: { templateId: string; title: string; projectPaths?: string[] }) => ({ templateId, title, projectPaths: projectPaths ?? [], createdAtMs: 1, updatedAtMs: 1 })),
@@ -142,7 +142,7 @@ describe("GtdView", () => {
     const titleInput = await screen.findByRole("textbox", { name: "Title" });
     fireEvent.change(titleInput, { target: { value: "Ship the redesign" } });
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
-    await waitFor(() => expect(window.agentResume.notesCreateWorkItem).toHaveBeenCalledWith(expect.objectContaining({
+    await waitFor(() => expect(window.agentResume.notesCreateTask).toHaveBeenCalledWith(expect.objectContaining({
       title: "Ship the redesign"
     })));
   });
@@ -156,7 +156,7 @@ describe("GtdView", () => {
     await waitFor(() => expect(pickDirectory).toHaveBeenCalledWith({ title: "Project" }));
     await waitFor(() => expect(host.querySelector(".gtd-new-task-project-path")?.textContent).toContain("app"));
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
-    await waitFor(() => expect(window.agentResume.notesCreateWorkItem).toHaveBeenCalledWith(expect.objectContaining({
+    await waitFor(() => expect(window.agentResume.notesCreateTask).toHaveBeenCalledWith(expect.objectContaining({
       title: "With project",
       projects: ["/work/app"],
       primaryProject: "/work/app"
@@ -222,7 +222,7 @@ describe("GtdView", () => {
 
   it("creates a pre-filled task by dropping a template onto a column", async () => {
     let created = false;
-    const notesCreateWorkItem = vi.fn(async () => {
+    const notesCreateTask = vi.fn(async () => {
       created = true;
       return {
         noteId: "t-9", scope: "library", filename: "tpl.md", relDir: "", relMdPath: "tpl.md",
@@ -230,7 +230,7 @@ describe("GtdView", () => {
         work: { projects: ["/work/app"], primaryProject: "/work/app", sessions: [] }
       };
     });
-    const notesListWorkItems = async (): Promise<Array<Record<string, unknown>>> => {
+    const notesListTasks = async (): Promise<Array<Record<string, unknown>>> => {
       const base: Array<Record<string, unknown>> = [
         {
           noteId: "t-1", scope: "project", projectPath: "/work/app",
@@ -249,8 +249,8 @@ describe("GtdView", () => {
       return base;
     };
     const host = renderGtd({
-      notesCreateWorkItem,
-      notesListWorkItems,
+      notesCreateTask,
+      notesListTasks,
       taskTemplatesList: async () => [
         { templateId: "tpl-1", title: "Write release notes", projectPaths: ["/work/app", "/work/web"], createdAtMs: 1, updatedAtMs: 1 }
       ]
@@ -263,7 +263,7 @@ describe("GtdView", () => {
     fireEvent.dragOver(nextColumn, { dataTransfer });
     fireEvent.drop(nextColumn, { dataTransfer });
 
-    await waitFor(() => expect(notesCreateWorkItem).toHaveBeenCalledWith({
+    await waitFor(() => expect(notesCreateTask).toHaveBeenCalledWith({
       title: "Write release notes",
       projects: ["/work/app", "/work/web"],
       primaryProject: "/work/app",
@@ -275,8 +275,8 @@ describe("GtdView", () => {
   });
 
   it("renames a task from its context menu", async () => {
-    const notesRenameWorkItem = vi.fn(async () => ({ noteId: "t-1", title: "Renamed", updatedAtMs: 9 }));
-    renderGtd({ notesRenameWorkItem } as unknown as Partial<typeof window.agentResume>);
+    const notesRenameTask = vi.fn(async () => ({ noteId: "t-1", title: "Renamed", updatedAtMs: 9 }));
+    renderGtd({ notesRenameTask } as unknown as Partial<typeof window.agentResume>);
 
     const card = await screen.findByRole("button", { name: /Realtime status/ });
     fireEvent.contextMenu(card);
@@ -286,7 +286,7 @@ describe("GtdView", () => {
     fireEvent.change(input, { target: { value: "Renamed" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
-    await waitFor(() => expect(notesRenameWorkItem).toHaveBeenCalledWith({ noteId: "t-1", title: "Renamed" }));
+    await waitFor(() => expect(notesRenameTask).toHaveBeenCalledWith({ noteId: "t-1", title: "Renamed" }));
   });
 
   it("adds a template from the library panel", async () => {

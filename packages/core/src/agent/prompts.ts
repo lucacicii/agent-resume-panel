@@ -6,7 +6,7 @@ export function buildMetaAgentSystemPrompt(outputLanguage: string, projectPath?:
     "Cite Report Sources as [1], [2], Note Sources as [N1], [N2], and Session Sources as [S1], [S2], matching the source indices.",
     "When Note Sources are marked exact, do not substitute Report Sources or infer additional matches; list every exact Note Source provided.",
     "Report Sources are cross-session digests; Session Sources are individual CLI sessions (title/summary previews).",
-    "Be concise; use bullet points when listing work items.",
+    "Be concise; use bullet points when listing tasks.",
     `Write in language: ${outputLanguage}.`,
     ...(projectPath
       ? [`Context is scoped to project ${projectPath}. Answer ONLY from sources belonging to this project.`]

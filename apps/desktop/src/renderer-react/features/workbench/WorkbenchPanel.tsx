@@ -48,7 +48,7 @@ import { BrowserPaneView } from "../browser/BrowserPaneView";
 import type { BrowserSessionState } from "../../../shared/browserTypes";
 import type { WorkbenchFocusSessionRequest, WorkbenchSendSelectionRequest } from "../../../shared/workbenchSelection";
 import { collectActiveSessionDots, type ActiveSessionDot } from "./activeSessionDots";
-import { rollupDot } from "./sessionStatus/workItemRollup";
+import { rollupDot } from "./sessionStatus/taskRollup";
 import { sessionDotStatusClass } from "./sessionStatus/dotStatus";
 import { useAcpStatus, useAgentStatus, type AcpStatusEvent, type SessionDotRuntime } from "./sessionStatus";
 import { COMPOSER_TIP_LIMIT, type ComposerSendTip } from "./TerminalComposer";
@@ -77,15 +77,14 @@ import {
 import { LinkGraphSidePane } from "./LinkGraphSidePane";
 import { useWorkbenchLinkGraph } from "./linkgraph/useWorkbenchLinkGraph";
 import { useWorkbenchSearch } from "./search/useWorkbenchSearch";
+import { rankSearchRootOptions, type SearchRootOption } from "./search/rootPicker";
 import { WorkbenchSearchSidePane } from "./search/WorkbenchSearchSidePane";
 import { useWorkbenchQuickAccess } from "./quick-access/useWorkbenchQuickAccess";
 import { SessionTranscriptPane } from "./SessionTranscriptPane";
 import {
   QuickAccess,
-  rankQuickAccessProjects,
   type QuickAccessCommand,
-  type QuickAccessFile,
-  type QuickAccessProject
+  type QuickAccessFile
 } from "./QuickAccess";
 import { useWorkbenchScripts } from "./scripts/useWorkbenchScripts";
 import { WorkbenchScriptsPane } from "./scripts/WorkbenchScriptsPane";
@@ -116,7 +115,7 @@ import {
   BranchGraphNavigation
 } from "./git/GitGraphView";
 import { WorkbenchDetailHeader } from "./layout/WorkbenchDetailHeader";
-import { workItemFromRecord, type WorkbenchWorkItem } from "./workItem";
+import { taskFromRecord, type WorkbenchTask } from "./task";
 import {
   createTaskWorkbench,
   deleteTaskWorkbench,
@@ -196,8 +195,8 @@ type PendingWorkbenchSession = {
   title: string;
   createdAt: number;
   knownSessionKeys: string[];
-  /** When set, append the bound session to this work item on bind. */
-  workItemNoteId?: string;
+  /** When set, append the bound session to this task on bind. */
+  taskNoteId?: string;
 };
 type WorkbenchSessionRow =
   | { kind: "pending"; pending: PendingWorkbenchSession }
@@ -225,7 +224,7 @@ type BrowserPane = {
 type SideView = "files" | "git" | "search" | "scripts" | "linkgraph" | null;
 type SearchReveal = { path: string; line: number; column: number; endColumn: number };
 const GTD_STATUSES = ["inbox", "next", "waiting", "someday", "reference", "done"] as const satisfies readonly GtdStatus[];
-/** Shared empty list so a project-less work item keeps a stable array identity. */
+/** Shared empty list so a project-less task keeps a stable array identity. */
 const EMPTY_PROJECT_PATHS: string[] = [];
 const WORKBENCH_SESSION_ROW_HEIGHT = 64;
 type CatalogProject = {
@@ -256,18 +255,18 @@ type WorkbenchProject = {
   updatedAt: number;
 };
 type WorkbenchContextMenu = {
-  kind: "project" | "session" | "session-tab" | "editor-tab" | "work-item" | "note";
+  kind: "project" | "session" | "session-tab" | "editor-tab" | "task" | "note";
   x: number;
   y: number;
   projectPath?: string;
   projectId?: string;
-  /** Work items / notes: the note id (and title for labels). */
+  /** Tasks / notes: the note id (and title for labels). */
   noteId?: string;
   noteTitle?: string;
   workspaceDir?: string;
-  /** Work item title + whether it has ever been linked to a session. */
-  workItemTitle?: string;
-  workItemHasSessions?: boolean;
+  /** Task title + whether it has ever been linked to a session. */
+  taskTitle?: string;
+  taskHasSessions?: boolean;
   session?: AgentSession;
   floatingNoteTarget?: FloatingSessionNoteTarget;
   hasFloatingNote?: boolean;
@@ -605,8 +604,8 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [selectedProject, setSelectedProject] = useState<string | null>(storageString(PROJECT_KEY) || null);
   const [pinnedProjects, setPinnedProjects] = useState<Set<string>>(loadPinnedProjects);
   const [sessionQuery, setSessionQuery] = useState("");
-  /** Work-item workspace scope (set by the board); renders a dedicated view. */
-  const [workItemScope, setWorkItemScope] = useState<WorkbenchWorkItem | null>(null);
+  /** Task workspace scope (set by the board); renders a dedicated view. */
+  const [taskScope, setTaskScope] = useState<WorkbenchTask | null>(null);
   /** Left panel tab: the task's notes, or its session list. */
   const [leftTab, setLeftTab] = useState<"note" | "session">("session");
   /** Left-panel note list: all notes, optionally filtered to the task's note tree. */
@@ -625,16 +624,16 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [workbenchSessionKeys, setWorkbenchSessionKeys] = useState<Record<string, string[]>>({});
   const [renamingWorkbenchId, setRenamingWorkbenchId] = useState<string | null>(null);
   const [workbenchRenameDraft, setWorkbenchRenameDraft] = useState("");
-  /** Room id of the work item's IM channel, when open inside the workspace. */
+  /** Room id of the task's IM channel, when open inside the workspace. */
   const [roomProjectId, setRoomProjectId] = useState<string | null>(null);
   /**
    * Where the NEXT session starts. Decoupled from the panel context
-   * (`selectedProject`): null means "let the work item decide" — one project →
-   * that project, several or none → the work item's neutral workspace.
+   * (`selectedProject`): null means "let the task decide" — one project →
+   * that project, several or none → the task's neutral workspace.
    */
   const [sessionTarget, setSessionTarget] = useState<string | null>(null);
   const sessionTargetRef = useRef<string | null>(null);
-  const [workItems, setWorkItems] = useState<WorkbenchWorkItem[]>([]);
+  const [tasks, setTasks] = useState<WorkbenchTask[]>([]);
   const [selectedSessionKeys, setSelectedSessionKeys] = useState<Set<string>>(() => new Set());
   const [selectionAnchorKey, setSelectionAnchorKey] = useState("");
   const [activeSessionKey, setActiveSessionKey] = useState("");
@@ -701,8 +700,8 @@ export function WorkbenchPanel(): ReactPortal | null {
   const terminalRefs = useRef(new Map<number, Terminal>());
   const terminalMouseTrackingRef = useRef(new Map<number, boolean>());
   const pendingSessionsRef = useRef<PendingWorkbenchSession[]>([]);
-  /** Latest work-item workspace scope, for values read during session binding. */
-  const workItemScopeRef = useRef<{ noteId: string } | null>(null);
+  /** Latest task workspace scope, for values read during session binding. */
+  const taskScopeRef = useRef<{ noteId: string } | null>(null);
   const workbenchesRef = useRef<Workbench[]>([]);
   const activeWorkbenchIdRef = useRef<string | null>(null);
   /** A workbench explicitly requested by a deep-link (GTD chip), honored over the stored one. */
@@ -744,26 +743,26 @@ export function WorkbenchPanel(): ReactPortal | null {
   const newSessionButtonRef = useRef<HTMLButtonElement>(null);
   const newSessionPickerRef = useRef<HTMLDivElement>(null);
 
-  const liveWorkItemEarly = workItemScope
-    ? workItems.find((item) => item.noteId === workItemScope.noteId)
+  const liveTaskEarly = taskScope
+    ? tasks.find((item) => item.noteId === taskScope.noteId)
     : undefined;
-  const sideRootProjects = liveWorkItemEarly?.projects ?? workItemScope?.projects ?? EMPTY_PROJECT_PATHS;
-  const sideRoot = workItemScope
+  const sideRootProjects = liveTaskEarly?.projects ?? taskScope?.projects ?? EMPTY_PROJECT_PATHS;
+  const sideRoot = taskScope
     ? (sessionTarget
-      || liveWorkItemEarly?.primaryProject
-      || workItemScope.primaryProject
+      || liveTaskEarly?.primaryProject
+      || taskScope.primaryProject
       || sideRootProjects[0]
       || null)
     : null;
   /**
    * Roots the explorer and git panels span. A focused project (a chip click)
-   * narrows to that one; a shared work-item workspace shows every referenced
+   * narrows to that one; a shared task workspace shows every referenced
    * project; a plain project selection stays itself.
    */
   const sideRoots = useMemo(() => {
     const candidates = sessionTarget
       ? [sessionTarget]
-      : workItemScope
+      : taskScope
         ? sideRootProjects
         : (selectedProject ? [selectedProject] : []);
     const seen = new Set<string>();
@@ -775,7 +774,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       roots.push(candidate);
     }
     return roots;
-  }, [sessionTarget, selectedProject, sideRootProjects, workItemScope]);
+  }, [sessionTarget, selectedProject, sideRootProjects, taskScope]);
   /** Stable identity of the root set, for effects that must reset when it changes. */
   const sideRootsKey = sideRoots.map(projectPathKey).join("\0");
   const sideRootsRef = useRef<string[]>(sideRoots);
@@ -935,12 +934,12 @@ export function WorkbenchPanel(): ReactPortal | null {
   }, [pendingExplorerReveal, selectedProject, side]);
   useEffect(() => { pendingSessionsRef.current = pendingSessions; }, [pendingSessions]);
   useEffect(() => { sessionTargetRef.current = sessionTarget; }, [sessionTarget]);
-  useEffect(() => { workItemScopeRef.current = workItemScope ? { noteId: workItemScope.noteId } : null; }, [workItemScope]);
+  useEffect(() => { taskScopeRef.current = taskScope ? { noteId: taskScope.noteId } : null; }, [taskScope]);
   useEffect(() => { settingsRef.current = settings; }, [settings]);
 
-  // Task GTD rollup for the scoped work item (children + linked sessions).
+  // Task GTD rollup for the scoped task (children + linked sessions).
   useEffect(() => {
-    const noteId = workItemScope?.noteId;
+    const noteId = taskScope?.noteId;
     if (!noteId || typeof desktopApi().taskGtdRollup !== "function") {
       setTaskRollup(null);
       return;
@@ -957,7 +956,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       active = false;
       window.removeEventListener("agent-resume:notes-mutated", refresh);
     };
-  }, [workItemScope?.noteId]);
+  }, [taskScope?.noteId]);
 
   const openSessionKeys = useMemo(() => {
     const keys = new Set(terminals.flatMap((pane) => (pane.sessionKey ? [pane.sessionKey] : [])));
@@ -1351,10 +1350,10 @@ export function WorkbenchPanel(): ReactPortal | null {
     for (const pending of pendingSessions) {
       const sessionKeyValue = assignments.get(pending.terminalKey);
       if (!sessionKeyValue) continue;
-      // Sessions started inside a work-item workspace belong to that work item.
-      if (pending.workItemNoteId && typeof desktopApi().notesLinkSessionToWorkItem === "function") {
-        void desktopApi().notesLinkSessionToWorkItem({
-          noteId: pending.workItemNoteId,
+      // Sessions started inside a task workspace belong to that task.
+      if (pending.taskNoteId && typeof desktopApi().notesLinkSessionToTask === "function") {
+        void desktopApi().notesLinkSessionToTask({
+          noteId: pending.taskNoteId,
           sessionKey: sessionKeyValue,
           projectPath: pending.projectPath
         }).then(() => {
@@ -1658,41 +1657,41 @@ export function WorkbenchPanel(): ReactPortal | null {
   );
 
   const selectedSessions = sessions;
-  const selectedSessionScope = workItemScope
-    ? (workItemScope.title || t("desktop.workbench.workItemView"))
+  const selectedSessionScope = taskScope
+    ? (taskScope.title || t("desktop.workbench.taskView"))
     : t("desktop.workbench.allSessions");
   /**
-   * A work item's sessions come from the catalog by key, not from the selected
-   * project's page — that is what lets one work item span several repositories.
+   * A task's sessions come from the catalog by key, not from the selected
+   * project's page — that is what lets one task span several repositories.
    */
-  const liveWorkItem = useMemo(
-    () => (workItemScope ? workItems.find((item) => item.noteId === workItemScope.noteId) : undefined),
-    [workItemScope, workItems]
+  const liveTask = useMemo(
+    () => (taskScope ? tasks.find((item) => item.noteId === taskScope.noteId) : undefined),
+    [taskScope, tasks]
   );
-  /** Projects come from the live work item, so a manual add shows up immediately. */
+  /** Projects come from the live task, so a manual add shows up immediately. */
   const scopeProjects = useMemo(
-    () => liveWorkItem?.projects ?? workItemScope?.projects ?? [],
-    [liveWorkItem, workItemScope]
+    () => liveTask?.projects ?? taskScope?.projects ?? [],
+    [liveTask, taskScope]
   );
   const scopeProjectsRef = useRef<string[]>(scopeProjects);
   useEffect(() => { scopeProjectsRef.current = scopeProjects; }, [scopeProjects]);
-  const workItemSessionKeys = useMemo(
-    () => liveWorkItem?.sessions ?? workItemScope?.sessions ?? [],
-    [liveWorkItem, workItemScope]
+  const taskSessionKeys = useMemo(
+    () => liveTask?.sessions ?? taskScope?.sessions ?? [],
+    [liveTask, taskScope]
   );
   /**
-   * Whether the task's session set is authoritative. A work item that exists in
+   * Whether the task's session set is authoritative. A task that exists in
    * the catalog, or a scope that explicitly carries `sessions` (including `[]`),
    * declares its sessions — an empty list then means "none". A scope that omits
    * `sessions` is unspecified and falls back to the selected project's list.
    */
-  const workItemSessionsKnown = liveWorkItem !== undefined || workItemScope?.sessions !== undefined;
-  const [workItemSessions, setWorkItemSessions] = useState<AgentSession[] | null>(null);
-  const workItemSessionKeyString = workItemSessionKeys.join("|");
+  const taskSessionsKnown = liveTask !== undefined || taskScope?.sessions !== undefined;
+  const [taskSessions, setTaskSessions] = useState<AgentSession[] | null>(null);
+  const taskSessionKeyString = taskSessionKeys.join("|");
   useEffect(() => {
-    if (!workItemScope) { setWorkItemSessions(null); return; }
-    const parsed = workItemSessionKeyString
-      ? workItemSessionKeyString.split("|").map((key) => {
+    if (!taskScope) { setTaskSessions(null); return; }
+    const parsed = taskSessionKeyString
+      ? taskSessionKeyString.split("|").map((key) => {
           const separator = key.indexOf(":");
           return separator > 0 && separator < key.length - 1
             ? { provider: key.slice(0, separator), id: key.slice(separator + 1) }
@@ -1700,30 +1699,30 @@ export function WorkbenchPanel(): ReactPortal | null {
         }).filter((entry): entry is { provider: string; id: string } => entry !== null)
       : [];
     if (!parsed.length || typeof desktopApi().querySessionsPage !== "function") {
-      setWorkItemSessions(null);
+      setTaskSessions(null);
       return;
     }
     let alive = true;
     void desktopApi().querySessionsPage({ keys: parsed, limit: 500 })
-      .then((page) => { if (alive) setWorkItemSessions(page.sessions); })
-      .catch(() => { if (alive) setWorkItemSessions([]); });
+      .then((page) => { if (alive) setTaskSessions(page.sessions); })
+      .catch(() => { if (alive) setTaskSessions([]); });
     return () => { alive = false; };
-  }, [workItemScope, workItemSessionKeyString]);
+  }, [taskScope, taskSessionKeyString]);
 
   const visibleSessions = useMemo(() => {
     // "Task" shows exactly the task's sessions (across projects, from the catalog by key);
     // "All" shows every session. When the task's session set is unspecified, fall
     // back to the selected project's list rather than showing nothing.
-    const scoped = sessionFilter === "task" && workItemScope && workItemSessionsKnown;
-    const source = scoped ? (workItemSessions ?? []) : selectedSessions;
+    const scoped = sessionFilter === "task" && taskScope && taskSessionsKnown;
+    const source = scoped ? (taskSessions ?? []) : selectedSessions;
     return source.filter((session) =>
       `${session.title} ${session.id} ${session.provider}`.toLowerCase().includes(sessionQuery.trim().toLowerCase())
     ).sort((a, b) => b.updatedAt - a.updatedAt);
-  }, [selectedSessions, sessionQuery, sessionFilter, workItemScope, workItemSessionsKnown, workItemSessions]);
+  }, [selectedSessions, sessionQuery, sessionFilter, taskScope, taskSessionsKnown, taskSessions]);
   const selectedPendingSessions = useMemo(() => {
-    if (!workItemScope) return pendingSessions;
-    return pendingSessions.filter((pending) => pending.workItemNoteId === workItemScope.noteId);
-  }, [pendingSessions, workItemScope]);
+    if (!taskScope) return pendingSessions;
+    return pendingSessions.filter((pending) => pending.taskNoteId === taskScope.noteId);
+  }, [pendingSessions, taskScope]);
   const visiblePendingSessions = useMemo(() => selectedPendingSessions.filter((pending) =>
     `${pending.title} ${pending.provider}`.toLowerCase().includes(sessionQuery.trim().toLowerCase())
   ).sort((a, b) => b.createdAt - a.createdAt), [selectedPendingSessions, sessionQuery]);
@@ -1736,10 +1735,10 @@ export function WorkbenchPanel(): ReactPortal | null {
     const q = noteQuery.trim().toLowerCase();
     return noteItems.filter((note) => {
       if (q && !note.title.toLowerCase().includes(q)) return false;
-      if (noteFilter === "task" && workItemScope) return taskNoteIds.has(note.noteId);
+      if (noteFilter === "task" && taskScope) return taskNoteIds.has(note.noteId);
       return true;
     });
-  }, [noteItems, noteQuery, noteFilter, workItemScope, taskNoteIds]);
+  }, [noteItems, noteQuery, noteFilter, taskScope, taskNoteIds]);
   const activeSessionRowIndex = useMemo(() => visibleSessionRows.findIndex((row) =>
     row.kind === "pending" ? row.pending.key === activeSessionKey : sessionKey(row.session) === activeSessionKey
   ), [activeSessionKey, visibleSessionRows]);
@@ -2045,7 +2044,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       title,
       createdAt: Date.now(),
       knownSessionKeys: sessions.map(sessionKey),
-      workItemNoteId: workItemScopeRef.current?.noteId
+      taskNoteId: taskScopeRef.current?.noteId
     };
     pendingSessionsRef.current = [...pendingSessionsRef.current, pending];
     setPendingSessions((current) => [...current, pending]);
@@ -2374,14 +2373,14 @@ export function WorkbenchPanel(): ReactPortal | null {
   }, [setActivePane, t]);
 
   /**
-   * Record a session started while a work item is open as one of its sessions.
+   * Record a session started while a task is open as one of its sessions.
    * The session's own cwd is always safe to pass: the main process drops the
    * panel's internal workspace directory instead of treating it as a repository.
    */
-  const linkSessionToOpenWorkItem = useCallback((sessionKey: string, projectPath: string) => {
-    const noteId = workItemScopeRef.current?.noteId;
-    if (!noteId || typeof desktopApi().notesLinkSessionToWorkItem !== "function") return;
-    void desktopApi().notesLinkSessionToWorkItem({ noteId, sessionKey, projectPath })
+  const linkSessionToOpenTask = useCallback((sessionKey: string, projectPath: string) => {
+    const noteId = taskScopeRef.current?.noteId;
+    if (!noteId || typeof desktopApi().notesLinkSessionToTask !== "function") return;
+    void desktopApi().notesLinkSessionToTask({ noteId, sessionKey, projectPath })
       .then(() => { window.dispatchEvent(new Event("agent-resume:notes-mutated")); })
       .catch(() => undefined);
     recordSessionInWorkbench(activeWorkbenchIdRef.current, sessionKey);
@@ -2525,7 +2524,7 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   /** Add an extra note under the current task (a linked child note) and open it. */
   const addChildNote = useCallback(async () => {
-    const parentNoteId = workItemScopeRef.current?.noteId;
+    const parentNoteId = taskScopeRef.current?.noteId;
     if (!parentNoteId) return;
     if (typeof desktopApi().notesCreateLinkedChild !== "function") return;
     try {
@@ -2540,7 +2539,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   /** “New note” in the left panel: a child of the task, else a standalone library note. */
   const addNote = useCallback(async () => {
     const api = desktopApi();
-    const parentNoteId = workItemScopeRef.current?.noteId;
+    const parentNoteId = taskScopeRef.current?.noteId;
     try {
       const created = parentNoteId && typeof api.notesCreateLinkedChild === "function"
         ? await api.notesCreateLinkedChild({ parentNoteId })
@@ -2613,24 +2612,24 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   /**
    * New-session cwd: an explicit target, the selected project, or — when a work
-   * item is open with no project chosen — the work item's own neutral workspace
+   * item is open with no project chosen — the task's own neutral workspace
    * (deterministic, not a throwaway scratch dir).
    */
   const resolveNewSessionCwd = useCallback(async (targetProject?: string): Promise<{ cwd: string; isWorkspace: boolean }> => {
     if (targetProject) return { cwd: targetProject, isWorkspace: false };
-    const scope = workItemScopeRef.current;
+    const scope = taskScopeRef.current;
     if (scope) {
       // An explicit chip choice always wins.
       const explicit = sessionTargetRef.current;
       if (explicit) return { cwd: explicit, isWorkspace: false };
       const projects = scopeProjectsRef.current;
-      // Exactly one repository → the work item has an unambiguous cwd.
+      // Exactly one repository → the task has an unambiguous cwd.
       if (projects.length === 1) return { cwd: projects[0], isWorkspace: false };
       // Several (or none) → the neutral workspace; the address table tells the
       // agent where each repository lives.
-      if (typeof desktopApi().notesEnsureWorkItemWorkspace === "function") {
+      if (typeof desktopApi().notesEnsureTaskWorkspace === "function") {
         try {
-          const { dir } = await desktopApi().notesEnsureWorkItemWorkspace({ noteId: scope.noteId });
+          const { dir } = await desktopApi().notesEnsureTaskWorkspace({ noteId: scope.noteId });
           if (dir) return { cwd: dir, isWorkspace: true };
         } catch {
           /* fall through */
@@ -2667,21 +2666,21 @@ export function WorkbenchPanel(): ReactPortal | null {
       }
       const mention = explicitMention || matchComposerMentionForCwd(mentions, cwd);
       if (mention) cwd = mention.cwd;
-      if (workItemScopeRef.current && !resolvedCwd.isWorkspace) selectProject(cwd, { keepSessionKey: true });
+      if (taskScopeRef.current && !resolvedCwd.isWorkspace) selectProject(cwd, { keepSessionKey: true });
       const prompt = [mention ? buildComposerMentionPrompt(mention) : "", initialPrompt?.trim() || ""]
         .filter(Boolean)
         .join("\n\n");
       if (target.channel === "acp") {
         const record = await desktopApi().acpCreateSession({ projectPath: cwd, provider: target.provider });
         addAcpChat(record, prompt ? { initialPrompt: prompt } : undefined);
-        linkSessionToOpenWorkItem(acpListSessionKey(record.id), cwd);
+        linkSessionToOpenTask(acpListSessionKey(record.id), cwd);
         await reloadWorkbench();
       } else {
         const result = await desktopApi().workbenchNewSession({
           cwd,
           provider: target.provider as AgentProvider,
           executionMode: "standard",
-          ...(workItemScopeRef.current?.noteId ? { workItemNoteId: workItemScopeRef.current.noteId } : {})
+          ...(taskScopeRef.current?.noteId ? { taskNoteId: taskScopeRef.current.noteId } : {})
         });
         if (result.unsupportedYolo || result.warning) {
           notifyDesktop({
@@ -2713,7 +2712,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       }
     } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
     finally { setTerminalCreating(false); }
-  }, [addAcpChat, addPendingSession, addTerminal, linkSessionToOpenWorkItem, loadSessions, reloadWorkbench, settings?.workbench?.composerMentions, t, terminalCreating]);
+  }, [addAcpChat, addPendingSession, addTerminal, linkSessionToOpenTask, loadSessions, reloadWorkbench, settings?.workbench?.composerMentions, t, terminalCreating]);
 
   const requestNewSession = useCallback(async (targetProject?: string, projectId?: string) => {
     if (terminalCreating) return;
@@ -3150,11 +3149,11 @@ export function WorkbenchPanel(): ReactPortal | null {
     focusWorkbenchPane(paneKey);
   }, [focusWorkbenchPane, selectProject, setActivePane]);
 
-  const loadWorkItems = useCallback(async () => {
-    if (typeof desktopApi().notesListWorkItems !== "function") return;
+  const loadTasks = useCallback(async () => {
+    if (typeof desktopApi().notesListTasks !== "function") return;
     try {
-      const items = await desktopApi().notesListWorkItems();
-      setWorkItems(items.map(workItemFromRecord));
+      const items = await desktopApi().notesListTasks();
+      setTasks(items.map(taskFromRecord));
     } catch {
       /* the sidebar list is best-effort; the board remains the source of truth */
     }
@@ -3180,7 +3179,7 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   /** Note ids of the scoped task's note tree (the task note + its linked children). */
   const loadTaskNoteIds = useCallback(async () => {
-    const taskNoteId = workItemScopeRef.current?.noteId;
+    const taskNoteId = taskScopeRef.current?.noteId;
     const api = desktopApi();
     if (!taskNoteId || typeof api.notesGetSubtree !== "function") {
       setTaskNoteIds(new Set());
@@ -3200,27 +3199,27 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   useEffect(() => {
     if (!active) return;
-    void loadWorkItems();
-  }, [active, loadWorkItems]);
+    void loadTasks();
+  }, [active, loadTasks]);
 
   // The note list loads when the Note tab is shown and the scoped task changes.
   useEffect(() => {
     if (!active || leftTab !== "note") return;
     void loadNotes();
     void loadTaskNoteIds();
-  }, [active, leftTab, loadNotes, loadTaskNoteIds, workItemScope?.noteId]);
+  }, [active, leftTab, loadNotes, loadTaskNoteIds, taskScope?.noteId]);
 
   // A task filters by default; without one, the list shows every note.
   useEffect(() => {
-    setNoteFilter(workItemScope ? "task" : "all");
-    setSessionFilter(workItemScope ? "task" : "all");
-  }, [workItemScope?.noteId]);
+    setNoteFilter(taskScope ? "task" : "all");
+    setSessionFilter(taskScope ? "task" : "all");
+  }, [taskScope?.noteId]);
 
   useEffect(() => {
-    const onNotesMutated = () => { void loadWorkItems(); void loadNotes(); void loadTaskNoteIds(); };
+    const onNotesMutated = () => { void loadTasks(); void loadNotes(); void loadTaskNoteIds(); };
     window.addEventListener("agent-resume:notes-mutated", onNotesMutated);
     return () => window.removeEventListener("agent-resume:notes-mutated", onNotesMutated);
-  }, [loadWorkItems, loadNotes, loadTaskNoteIds]);
+  }, [loadTasks, loadNotes, loadTaskNoteIds]);
 
   // Workbenches of the scoped task: load (ensuring ≥1) and restore the last one.
   useEffect(() => {
@@ -3232,7 +3231,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   }, [activeWorkbenchId]);
 
   useEffect(() => {
-    const taskNoteId = workItemScope?.noteId;
+    const taskNoteId = taskScope?.noteId;
     // Leaving a task keeps its panes alive but hidden: they re-attach when the
     // task is opened again, the same way project-scoped panes survive switches.
     if (!active || !taskNoteId) {
@@ -3266,7 +3265,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       }
     }).catch(() => undefined);
     return () => { cancelled = true; };
-  }, [active, workItemScope?.noteId]);
+  }, [active, taskScope?.noteId]);
 
   // The active workbench owns the project context (null = task neutral workspace).
   useEffect(() => {
@@ -3280,13 +3279,13 @@ export function WorkbenchPanel(): ReactPortal | null {
   const activateWorkbench = useCallback((workbench: Workbench) => {
     setActiveWorkbenchId(workbench.workbenchId);
     activeWorkbenchIdRef.current = workbench.workbenchId;
-    const taskNoteId = workItemScopeRef.current?.noteId;
+    const taskNoteId = taskScopeRef.current?.noteId;
     if (taskNoteId) writeActiveWorkbenchId(taskNoteId, workbench.workbenchId);
     if (workbench.projectPath) selectProject(workbench.projectPath, { keepSessionKey: true });
   }, [selectProject]);
 
   const addWorkbench = useCallback(async () => {
-    const taskNoteId = workItemScopeRef.current?.noteId;
+    const taskNoteId = taskScopeRef.current?.noteId;
     if (!taskNoteId) return;
     try {
       const created = await createTaskWorkbench(taskNoteId, { projectPath: selectedProjectRef.current });
@@ -3327,7 +3326,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   }, [closeAcpChat, closeBrowser, closeDiff, closeEditor, closeNotePane, closeTerminal]);
 
   const removeWorkbench = useCallback(async (workbench: Workbench) => {
-    const taskNoteId = workItemScopeRef.current?.noteId;
+    const taskNoteId = taskScopeRef.current?.noteId;
     if (!taskNoteId) return;
     if (workbenchesRef.current.length <= 1) return;
     if (!window.confirm(t("desktop.workbench.deleteWorkbenchConfirm", workbenchDisplayName(workbench)))) return;
@@ -3406,42 +3405,42 @@ export function WorkbenchPanel(): ReactPortal | null {
   }, [taskNoteRequest, activeWorkbenchId, openNotePane]);
 
   useEffect(() => {
-    const onWorkItem = (event: Event) => {
-      const detail = (event as CustomEvent<WorkbenchWorkItem>).detail;
+    const onTask = (event: Event) => {
+      const detail = (event as CustomEvent<WorkbenchTask>).detail;
       if (!detail?.noteId) return;
       pendingWorkbenchIdRef.current = (detail as { workbenchId?: string }).workbenchId ?? null;
       if ((detail as { openNote?: boolean }).openNote) {
         // Opening a task shows its note: defer until the workbench is active.
         setTaskNoteRequest({ noteId: detail.noteId, title: detail.title, nonce: Date.now() });
       }
-      workItemScopeRef.current = { noteId: detail.noteId };
-      setWorkItemScope(detail);
+      taskScopeRef.current = { noteId: detail.noteId };
+      setTaskScope(detail);
       // Entering a task lands on its session list; the explicit open-note
       // request above overrides this once its workbench is active.
       setLeftTab("session");
       const target = detail.primaryProject ?? detail.projects?.[0];
-      // The work item owns its project context: opening one must not inherit a
-      // stale selection, so a project-less work item clears it.
+      // The task owns its project context: opening one must not inherit a
+      // stale selection, so a project-less task clears it.
       selectProject(target ?? null, { keepSessionKey: true });
       setSessionTarget(null);
       setRoomProjectId(null);
     };
-    const onWorkItemClear = () => {
-      setWorkItemScope(null);
+    const onTaskClear = () => {
+      setTaskScope(null);
       setLeftTab("session");
       setRoomProjectId(null);
       setSessionTarget(null);
       selectProject(null, { keepSessionKey: true, keepSide: true });
     };
-    window.addEventListener("agent-resume:workbench-work-item", onWorkItem);
-    window.addEventListener("agent-resume:workbench-work-item-clear", onWorkItemClear);
+    window.addEventListener("agent-resume:workbench-task", onTask);
+    window.addEventListener("agent-resume:workbench-task-clear", onTaskClear);
     return () => {
-      window.removeEventListener("agent-resume:workbench-work-item", onWorkItem);
-      window.removeEventListener("agent-resume:workbench-work-item-clear", onWorkItemClear);
+      window.removeEventListener("agent-resume:workbench-task", onTask);
+      window.removeEventListener("agent-resume:workbench-task-clear", onTaskClear);
     };
   }, []);
 
-  // The IM room is a channel of the work item: it opens inside this workspace,
+  // The IM room is a channel of the task: it opens inside this workspace,
   // not as a separate top-level tab.
   useEffect(() => {
     const onOpenRoom = (event: Event) => {
@@ -3459,11 +3458,11 @@ export function WorkbenchPanel(): ReactPortal | null {
     window.dispatchEvent(new CustomEvent("agent-resume:im-open-room", { detail: { projectId: roomProjectId } }));
   }, [roomProjectId]);
 
-  const addProjectToWorkItem = useCallback(async (projectPath: string) => {
-    const scope = workItemScopeRef.current;
-    if (!scope || typeof desktopApi().notesAddWorkItemProject !== "function") return;
+  const addProjectToTask = useCallback(async (projectPath: string) => {
+    const scope = taskScopeRef.current;
+    if (!scope || typeof desktopApi().notesAddTaskProject !== "function") return;
     try {
-      await desktopApi().notesAddWorkItemProject({ noteId: scope.noteId, projectPath });
+      await desktopApi().notesAddTaskProject({ noteId: scope.noteId, projectPath });
       setSessionTarget(projectPath);
       selectProject(projectPath, { keepSessionKey: true });
       window.dispatchEvent(new Event("agent-resume:notes-mutated"));
@@ -3473,8 +3472,8 @@ export function WorkbenchPanel(): ReactPortal | null {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const pickWorkItemProject = useCallback(async () => {
-    const scope = workItemScopeRef.current;
+  const pickTaskProject = useCallback(async () => {
+    const scope = taskScopeRef.current;
     if (!scope) return;
     try {
       if (typeof desktopApi().addProject !== "function") return;
@@ -3482,18 +3481,18 @@ export function WorkbenchPanel(): ReactPortal | null {
       if (!result.ok) return;
       const projectPath = result.project.localPath || result.project.portableKey;
       if (!projectPath) return;
-      await addProjectToWorkItem(projectPath);
+      await addProjectToTask(projectPath);
     } catch (error) {
       setStatus({ text: statusError(error), kind: "error" });
     }
-  }, [addProjectToWorkItem, t]);
+  }, [addProjectToTask, t]);
 
   const removeProject = useCallback(async (projectPath: string) => {
-    const scope = workItemScopeRef.current;
-    if (!scope || typeof desktopApi().notesRemoveWorkItemProject !== "function") return;
+    const scope = taskScopeRef.current;
+    if (!scope || typeof desktopApi().notesRemoveTaskProject !== "function") return;
     if (!window.confirm(t("desktop.workbench.removeProjectConfirm", basename(projectPath)))) return;
     try {
-      await desktopApi().notesRemoveWorkItemProject({ noteId: scope.noteId, projectPath });
+      await desktopApi().notesRemoveTaskProject({ noteId: scope.noteId, projectPath });
       if (sessionTargetRef.current && projectPathKey(sessionTargetRef.current) === projectPathKey(projectPath)) {
         setSessionTarget(null);
       }
@@ -3508,11 +3507,11 @@ export function WorkbenchPanel(): ReactPortal | null {
   }, [t]);
 
   const openRoom = useCallback(async () => {
-    const scope = workItemScopeRef.current;
+    const scope = taskScopeRef.current;
     if (!scope) return;
     try {
-      // The work-item note drives the room's name, project and background knowledge.
-      const room = await desktopApi().imCreateWorkItemRoom({
+      // The task note drives the room's name, project and background knowledge.
+      const room = await desktopApi().imCreateTaskRoom({
         noteId: scope.noteId,
         preferredCwd: sessionTargetRef.current ?? undefined
       });
@@ -3555,21 +3554,21 @@ export function WorkbenchPanel(): ReactPortal | null {
     return () => window.removeEventListener("agent-resume:workbench-open-diff", onOpenDiff);
   }, []);
 
-  const workItemMenu = (event: React.MouseEvent, item: Pick<WorkbenchWorkItem, "noteId" | "title" | "sessions">) => {
+  const taskMenu = (event: React.MouseEvent, item: Pick<WorkbenchTask, "noteId" | "title" | "sessions">) => {
     event.preventDefault();
     const menu: WorkbenchContextMenu = {
-      kind: "work-item",
+      kind: "task",
       noteId: item.noteId,
-      workItemTitle: item.title,
-      workItemHasSessions: (item.sessions?.length ?? 0) > 0,
+      taskTitle: item.title,
+      taskHasSessions: (item.sessions?.length ?? 0) > 0,
       x: event.clientX,
       y: event.clientY
     };
     setContextMenu(menu);
     // The workspace is allocated on demand, so ask whether it exists before
     // offering to open it.
-    if (typeof desktopApi().notesWorkItemWorkspace !== "function") return;
-    void desktopApi().notesWorkItemWorkspace({ noteId: item.noteId }).then(({ dir, exists }) => {
+    if (typeof desktopApi().notesTaskWorkspace !== "function") return;
+    void desktopApi().notesTaskWorkspace({ noteId: item.noteId }).then(({ dir, exists }) => {
       if (!exists) return;
       setContextMenu((current) => current === menu ? { ...current, workspaceDir: dir } : current);
     }).catch(() => undefined);
@@ -3610,7 +3609,7 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   /** Clear the scoped task's own GTD mark so it follows its notes and sessions again. */
   const clearTaskPin = useCallback(async () => {
-    const noteId = workItemScopeRef.current?.noteId;
+    const noteId = taskScopeRef.current?.noteId;
     if (!noteId || typeof desktopApi().notesSetGtdStatus !== "function") return;
     try {
       await desktopApi().notesSetGtdStatus({ noteId, status: null });
@@ -3700,7 +3699,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
   };
 
-  // Notes open as editing tabs in the pane tab groups (IM citations, work items, etc.).
+  // Notes open as editing tabs in the pane tab groups (IM citations, tasks, etc.).
   useEffect(() => {
     const onOpenNote = (event: Event) => {
       const noteId = (event as CustomEvent<string>).detail;
@@ -3820,7 +3819,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     const menu = contextMenu;
     setContextMenu(null);
     if (!menu) return;
-    if (menu.kind === "work-item" && menu.noteId) {
+    if (menu.kind === "task" && menu.noteId) {
       if (action === "followChildren") {
         try {
           await desktopApi().notesSetGtdStatus({ noteId: menu.noteId, status: null });
@@ -3828,28 +3827,28 @@ export function WorkbenchPanel(): ReactPortal | null {
         } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
         return;
       }
-      if (action === "openWorkspace" && typeof desktopApi().notesOpenWorkItemWorkspace === "function") {
+      if (action === "openWorkspace" && typeof desktopApi().notesOpenTaskWorkspace === "function") {
         try {
-          await desktopApi().notesOpenWorkItemWorkspace({ noteId: menu.noteId });
+          await desktopApi().notesOpenTaskWorkspace({ noteId: menu.noteId });
         } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
       }
-      if (action === "deleteWorkItem") {
+      if (action === "deleteTask") {
         // Only a task that has never been linked to a session may be deleted.
-        if (menu.workItemHasSessions) return;
+        if (menu.taskHasSessions) return;
         if (typeof desktopApi().notesDelete !== "function") return;
-        const label = menu.workItemTitle || menu.noteId;
-        if (!window.confirm(t("desktop.workbench.deleteWorkItemConfirm", label))) return;
+        const label = menu.taskTitle || menu.noteId;
+        if (!window.confirm(t("desktop.workbench.deleteTaskConfirm", label))) return;
         try {
           await desktopApi().notesDelete({ noteId: menu.noteId });
-          if (workItemScopeRef.current?.noteId === menu.noteId) {
+          if (taskScopeRef.current?.noteId === menu.noteId) {
             // The task's workbenches are gone for good: close their panes.
             for (const workbench of workbenchesRef.current) discardWorkbenchPanes(workbench.workbenchId);
-            workItemScopeRef.current = null;
-            setWorkItemScope(null);
+            taskScopeRef.current = null;
+            setTaskScope(null);
             setSessionTarget(null);
             setRoomProjectId(null);
           }
-          await loadWorkItems();
+          await loadTasks();
           window.dispatchEvent(new Event("agent-resume:notes-mutated"));
         } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
       }
@@ -4318,11 +4317,8 @@ export function WorkbenchPanel(): ReactPortal | null {
     quickAccessRoot,
     quickAccessVisibleFiles,
     quickAccessSearchTruncated,
-    quickAccessProjectContextRef,
     loadQuickAccessFiles,
     closeQuickAccess,
-    enterQuickAccessProjectMode,
-    leaveQuickAccessProjectMode,
     invalidateQuickAccessCache
   } = useWorkbenchQuickAccess({
     projects: sideRoots,
@@ -4334,12 +4330,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       setProjectPickDialog(null);
     }
   });
-  const quickAccessProjectLabel = sideRoots.length > 1
-    ? t("desktop.workbench.sharedWorkspace")
-    : quickAccessRoot
-      ? `${aliases[quickAccessRoot] || basename(quickAccessRoot)} — ${quickAccessRoot}`
-      : "";
-
   const openQuickAccessFile = useCallback(async (file: QuickAccessFile) => {
     const rootPath = projectForPath(file.path) || quickAccessRoot;
     if (!rootPath) return;
@@ -5174,7 +5164,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     switch (contextMenu.kind) {
       case "session-tab":
       case "editor-tab":
-      case "work-item":
+      case "task":
         return 64;
       case "session":
         return 462;
@@ -5233,12 +5223,12 @@ export function WorkbenchPanel(): ReactPortal | null {
     return paths;
   })();
   /**
-   * The projects a work item is associated with — its shared workspace — enriched
-   * from the catalog so labels, pinned state and path-missing hints still apply.
-   * The project pickers stay inside the work item's own projects.
+   * The local folders a task references — its shared workspace — enriched from
+   * the catalog so labels, pinned state and path-missing hints still apply. The
+   * Search root picker stays inside the task's own folders.
    */
-  const workspaceProjectOptions = useMemo<QuickAccessProject[]>(() => {
-    if (!workItemScope) return [];
+  const workspaceRootOptions = useMemo<SearchRootOption[]>(() => {
+    if (!taskScope) return [];
     const knownByPath = new Map(allProjects.map((project) => [projectPathKey(project.path), project]));
     return sideRootProjects.map((path) => {
       const known = knownByPath.get(projectPathKey(path));
@@ -5252,10 +5242,10 @@ export function WorkbenchPanel(): ReactPortal | null {
         disabledReason: missing ? t("desktop.workbench.pathMissingHint") : undefined
       };
     });
-  }, [aliases, allProjects, sideRootProjects, t, workItemScope]);
+  }, [aliases, allProjects, sideRootProjects, t, taskScope]);
 
-  const quickAccessProjects = useMemo<QuickAccessProject[]>(() => {
-    if (workItemScope) return workspaceProjectOptions;
+  const searchRootOptions = useMemo<SearchRootOption[]>(() => {
+    if (taskScope) return workspaceRootOptions;
     return allProjects.map((project) => ({
       id: project.id,
       path: project.path,
@@ -5266,14 +5256,14 @@ export function WorkbenchPanel(): ReactPortal | null {
       pinned: project.pinned,
       disabledReason: project.pathMissing ? t("desktop.workbench.pathMissingHint") : undefined
     }));
-  }, [allProjects, t, workItemScope, workspaceProjectOptions]);
+  }, [allProjects, t, taskScope, workspaceRootOptions]);
   const searchProjectResults = useMemo(
-    () => rankQuickAccessProjects(quickAccessProjects, searchProjectQuery),
-    [quickAccessProjects, searchProjectQuery]
+    () => rankSearchRootOptions(searchRootOptions, searchProjectQuery),
+    [searchRootOptions, searchProjectQuery]
   );
   const searchProjectResultIds = searchProjectResults.map((project) => project.id);
   const searchProjectResultSignature = searchProjectResultIds.join("\0");
-  const searchProjectCurrentPath = workItemScope
+  const searchProjectCurrentPath = taskScope
     ? (sideRoots.length === 1 ? sideRoots[0] : "")
     : (selectedProjectMeta?.path || selectedProject || "");
   const searchProjectCurrentId = !searchProjectQuery.trim()
@@ -5326,11 +5316,11 @@ export function WorkbenchPanel(): ReactPortal | null {
   };
   const activateSearchProject = (project = searchProjectActive) => {
     if (!project || project.disabledReason) return;
-    if (workItemScopeRef.current) setSessionTarget(project.path);
+    if (taskScopeRef.current) setSessionTarget(project.path);
     selectProject(project.path, { keepSide: true });
     leaveSearchProjectMode();
   };
-  const searchProjectLabel = workItemScope
+  const searchProjectLabel = taskScope
     ? (sideRoots.length === 1
       ? (aliases[sideRoots[0]] || basename(sideRoots[0]))
       : sideRoots.length > 1
@@ -5357,6 +5347,13 @@ export function WorkbenchPanel(): ReactPortal | null {
     closeQuickAccess();
     window.dispatchEvent(new CustomEvent("agent-resume:view-gtd"));
   };
+  /** Switching tasks is the palette's context switch: workbench roots follow the task. */
+  const openQuickAccessTask = (task: WorkbenchTask) => {
+    closeQuickAccess();
+    window.dispatchEvent(new CustomEvent("agent-resume:view-open-task", {
+      detail: { ...task, projects: task.projects ?? [] }
+    }));
+  };
   const quickAccessCommands: QuickAccessCommand[] = [
     // 1. Navigation / 导航
     {
@@ -5375,24 +5372,28 @@ export function WorkbenchPanel(): ReactPortal | null {
     },
     // 2. Workspace & Context / 工作区与上下文
     {
-      id: "workbench.switchProject",
-      label: t("desktop.workbench.quickAccessSwitchProject"),
+      id: "workbench.exitTask",
+      label: t("desktop.workbench.quickAccessExitTask"),
       category: t("desktop.workbench.quickAccessCategoryWorkspace"),
-      keywords: "project workspace switch select",
-      run: () => enterQuickAccessProjectMode(true)
-    },
-    {
-      id: "workbench.exitWorkItem",
-      label: t("desktop.workbench.quickAccessExitWorkItem"),
-      category: t("desktop.workbench.quickAccessCategoryWorkspace"),
-      keywords: "exit close clear work item task workspace",
-      disabledReason: workItemScope ? undefined : t("desktop.workbench.workItemNoProject"),
+      keywords: "exit close clear task task workspace",
+      disabledReason: taskScope ? undefined : t("desktop.workbench.taskNoProject"),
       run: () => {
         closeQuickAccess();
-        window.dispatchEvent(new CustomEvent("agent-resume:workbench-work-item-clear"));
+        window.dispatchEvent(new CustomEvent("agent-resume:workbench-task-clear"));
       }
     },
-    // 3. Sessions & Terminals / 会话与终端
+    // 3. Tasks / 任务
+    ...tasks.map((item): QuickAccessCommand => ({
+      id: `task.open.${item.noteId}`,
+      label: item.title,
+      detail: item.next
+        ? `${t("desktop.workbench.taskNext")} ${item.next}`
+        : t("desktop.workbench.taskSessions", item.sessions.length),
+      category: t("desktop.workbench.quickAccessCategoryTasks"),
+      keywords: `task switch open context ${item.title} ${item.next || ""}`,
+      run: () => openQuickAccessTask(item)
+    })),
+    // 4. Sessions & Terminals / 会话与终端
     {
       id: "workbench.newSession",
       label: t("desktop.workbench.quickAccessNewSession"),
@@ -5415,7 +5416,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         void openBlankTerminal(sessionTarget || sideRoots[0]);
       }
     },
-    // 4. Side Panels / 侧栏面板
+    // 5. Side Panels / 侧栏面板
     {
       id: "workbench.explorer",
       label: t("desktop.workbench.quickAccessShowExplorer"),
@@ -5456,7 +5457,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       disabledReason: noProjectReason,
       run: () => openWorkbenchView("linkgraph")
     },
-    // 5. Files / 文件
+    // 6. Files / 文件
     {
       id: "file.goToFile",
       label: t("desktop.workbench.quickAccessGoToFile"),
@@ -5503,7 +5504,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         closeActivePane();
       }
     },
-    // 6. Application / 应用
+    // 7. Application / 应用
     {
       id: "app.settings",
       label: t("desktop.workbench.quickAccessOpenSettings"),
@@ -5592,7 +5593,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       onBackToGtd={() => window.dispatchEvent(new CustomEvent("agent-resume:view-gtd"))}
       selectedProject={sideRoot}
       projectLabel={sideRoot ? aliases[sideRoot] || basename(sideRoot) : ""}
-      emptyLabel={workItemScope ? t("desktop.workbench.workItemNoProject") : undefined}
+      emptyLabel={taskScope ? t("desktop.workbench.taskNoProject") : undefined}
       side={side}
       branchStatusLabel={branchStatusLabel}
       branchStatusPane={branchStatusPane}
@@ -5605,23 +5606,23 @@ export function WorkbenchPanel(): ReactPortal | null {
   return createPortal(<><section className="panel workbench-panel react-workbench-panel" hidden={!active}>
     <div className="workbench-layout" style={{ "--wb-list-width": `${listWidth}px`, "--wb-side-panel-width": `${sideWidth}px` } as CSSProperties}>
       <aside className="wb-list-pane">
-        {workItemScope && (
-          <section className="wb-work-item" aria-label={t("desktop.workbench.workItemView")} onContextMenu={(event) => workItemMenu(event, workItemScope)}>
-            <div className="wb-work-item-head">
+        {taskScope && (
+          <section className="wb-task" aria-label={t("desktop.workbench.taskView")} onContextMenu={(event) => taskMenu(event, taskScope)}>
+            <div className="wb-task-head">
               <ThemeIcon name="square-kanban" size={14} aria-hidden="true" />
-              <span className="wb-work-item-title">{workItemScope.title || workItemScope.noteId}</span>
-              <span className={`wb-work-item-status is-${taskRollup?.status ?? workItemScope.status}`}>
-                {t(`desktop.workbench.gtdStatus.${taskRollup?.status ?? workItemScope.status}`)}
+              <span className="wb-task-title">{taskScope.title || taskScope.noteId}</span>
+              <span className={`wb-task-status is-${taskRollup?.status ?? taskScope.status}`}>
+                {t(`desktop.workbench.gtdStatus.${taskRollup?.status ?? taskScope.status}`)}
               </span>
               {taskRollup?.total ? (
-                <span className="wb-work-item-rollup" title={t("desktop.gtd.rollupHint")}>
+                <span className="wb-task-rollup" title={t("desktop.gtd.rollupHint")}>
                   {t("desktop.gtd.rollupProgress", taskRollup.counts.done, taskRollup.total)}
                 </span>
               ) : null}
               {taskRollup?.override ? (
                 <button
                   type="button"
-                  className="wb-work-item-pin"
+                  className="wb-task-pin"
                   title={t("desktop.gtd.pinnedHint")}
                   onClick={() => void clearTaskPin()}
                 >{t("desktop.gtd.pinned")}<ThemeIcon name="close" size={11} aria-hidden="true" /></button>
@@ -5630,8 +5631,8 @@ export function WorkbenchPanel(): ReactPortal | null {
                 type="button"
                 className="wb-icon-btn"
                 onClick={() => setLeftTab("note")}
-                aria-label={t("desktop.workbench.workItemOpenNote")}
-                title={t("desktop.workbench.workItemOpenNote")}
+                aria-label={t("desktop.workbench.taskOpenNote")}
+                title={t("desktop.workbench.taskOpenNote")}
               >
                 <ThemeIcon name="file-text" size={14} />
               </button>
@@ -5646,29 +5647,29 @@ export function WorkbenchPanel(): ReactPortal | null {
                 <ThemeIcon name="message-square" size={14} />
               </button>
             </div>
-            {workItemScope.next && (
-              <p className="wb-work-item-line">
-                <span className="wb-work-item-label">{t("desktop.workbench.workItemNext")}</span>
-                {workItemScope.next}
+            {taskScope.next && (
+              <p className="wb-task-line">
+                <span className="wb-task-label">{t("desktop.workbench.taskNext")}</span>
+                {taskScope.next}
               </p>
             )}
-            {workItemScope.decision && (
-              <p className="wb-work-item-line is-decision">
+            {taskScope.decision && (
+              <p className="wb-task-line is-decision">
                 <ThemeIcon name="message-square-warning" size={12} aria-hidden="true" />
-                {workItemScope.decision}
+                {taskScope.decision}
               </p>
             )}
-            <p className="wb-work-item-count">{t("desktop.workbench.workItemSessions", workItemScope.sessions?.length ?? 0)}</p>
-            <div className="wb-work-item-projects">
+            <p className="wb-task-count">{t("desktop.workbench.taskSessions", taskScope.sessions?.length ?? 0)}</p>
+            <div className="wb-task-projects">
               {scopeProjects.map((path) => {
                 const active = sessionTarget
                   ? projectPathKey(path) === projectPathKey(sessionTarget)
                   : scopeProjects.length === 1;
                 return (
-                  <span key={path} className={`wb-work-item-project${active ? " is-active" : ""}`}>
+                  <span key={path} className={`wb-task-project${active ? " is-active" : ""}`}>
                     <button
                       type="button"
-                      className="wb-work-item-project-chip"
+                      className="wb-task-project-chip"
                       title={path}
                       onClick={() => { setSessionTarget(path); selectProject(path, { keepSessionKey: true }); }}
                     >
@@ -5676,7 +5677,7 @@ export function WorkbenchPanel(): ReactPortal | null {
                     </button>
                     <button
                       type="button"
-                      className="wb-work-item-project-remove"
+                      className="wb-task-project-remove"
                       title={t("desktop.workbench.removeProject")}
                       aria-label={t("desktop.workbench.removeProject")}
                       onClick={() => void removeProject(path)}
@@ -5688,17 +5689,17 @@ export function WorkbenchPanel(): ReactPortal | null {
               })}
               <button
                 type="button"
-                className="wb-work-item-add-project"
+                className="wb-task-add-project"
                 aria-label={t("desktop.workbench.addProject")}
                 title={t("desktop.workbench.addProjectTitle")}
-                onClick={() => void pickWorkItemProject()}
+                onClick={() => void pickTaskProject()}
               >
                 {scopeProjects.length === 0
-                  ? t("desktop.workbench.workItemNoProject")
+                  ? t("desktop.workbench.taskNoProject")
                   : `+ ${t("desktop.workbench.addProject")}`}
               </button>
             </div>
-            <p className="wb-work-item-target">
+            <p className="wb-task-target">
               {t("desktop.workbench.sessionTarget", sessionTarget
                 ? basename(sessionTarget)
                 : scopeProjects.length === 1
@@ -5707,7 +5708,7 @@ export function WorkbenchPanel(): ReactPortal | null {
               {sessionTarget ? (
                 <button
                   type="button"
-                  className="wb-work-item-target-reset"
+                  className="wb-task-target-reset"
                   onClick={() => setSessionTarget(null)}
                   title={t("desktop.workbench.sessionTargetReset")}
                   aria-label={t("desktop.workbench.sessionTargetReset")}
@@ -5726,7 +5727,7 @@ export function WorkbenchPanel(): ReactPortal | null {
           <>
             <div className="wb-note-list-toolbar">
               <div className="wb-note-filter" role="tablist" aria-label={t("desktop.workbench.noteFilter")}>
-                <button type="button" role="tab" className={`wb-left-tab${noteFilter === "task" ? " active" : ""}`} aria-selected={noteFilter === "task"} disabled={!workItemScope} onClick={() => setNoteFilter("task")}>{t("desktop.workbench.filterTask")}</button>
+                <button type="button" role="tab" className={`wb-left-tab${noteFilter === "task" ? " active" : ""}`} aria-selected={noteFilter === "task"} disabled={!taskScope} onClick={() => setNoteFilter("task")}>{t("desktop.workbench.filterTask")}</button>
                 <button type="button" role="tab" className={`wb-left-tab${noteFilter === "all" ? " active" : ""}`} aria-selected={noteFilter === "all"} onClick={() => setNoteFilter("all")}>{t("desktop.workbench.filterAll")}</button>
               </div>
               <input className="wb-search wb-note-search" type="search" aria-label={t("desktop.common.search")} placeholder={t("desktop.common.search")} value={noteQuery} autoComplete="off" spellCheck={false} onChange={(event) => setNoteQuery(event.target.value)} />
@@ -5737,7 +5738,7 @@ export function WorkbenchPanel(): ReactPortal | null {
                 <button
                   key={note.noteId}
                   type="button"
-                  className={`wb-note-list-item${activeNotePaneId === note.noteId ? " active" : ""}${workItemScope?.noteId === note.noteId ? " is-task" : ""}`}
+                  className={`wb-note-list-item${activeNotePaneId === note.noteId ? " active" : ""}${taskScope?.noteId === note.noteId ? " is-task" : ""}`}
                   title={note.title}
                   aria-label={note.title}
                   onContextMenu={(event) => noteMenu(event, note)}
@@ -5756,7 +5757,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         <>
         <div className="wb-note-list-toolbar">
           <div className="wb-note-filter" role="tablist" aria-label={t("desktop.workbench.sessionFilter")}>
-            <button type="button" role="tab" className={`wb-left-tab${sessionFilter === "task" ? " active" : ""}`} aria-selected={sessionFilter === "task"} disabled={!workItemScope} onClick={() => setSessionFilter("task")}>{t("desktop.workbench.filterTask")}</button>
+            <button type="button" role="tab" className={`wb-left-tab${sessionFilter === "task" ? " active" : ""}`} aria-selected={sessionFilter === "task"} disabled={!taskScope} onClick={() => setSessionFilter("task")}>{t("desktop.workbench.filterTask")}</button>
             <button type="button" role="tab" className={`wb-left-tab${sessionFilter === "all" ? " active" : ""}`} aria-selected={sessionFilter === "all"} onClick={() => setSessionFilter("all")}>{t("desktop.workbench.filterAll")}</button>
           </div>
           <input className="wb-search wb-note-search" type="search" aria-label={t("desktop.workbench.searchSessions")} placeholder={t("desktop.common.search")} value={sessionQuery} autoComplete="off" spellCheck={false} onChange={(event) => { setSessionQuery(event.target.value); setSelectedSessionKeys((current) => current.size ? new Set() : current); setSelectionAnchorKey((current) => current ? "" : current); }} />
@@ -5825,7 +5826,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       <ResizeHandle label={t("desktop.workbench.resizeSessions")} onDelta={(delta) => setWidth("list", delta)} />
       <main className="wb-detail">
         {active && headerSlot ? createPortal(detailHeader, headerSlot) : null}
-        {workItemScope && workbenches.length > 0 ? (
+        {taskScope && workbenches.length > 0 ? (
           <div className="wb-workbench-bar" role="tablist" aria-label={t("desktop.workbench.workbenchTabs")}>
             {workbenches.map((workbench) => {
               const wbDot = rollupDot({ work: { sessions: workbenchSessionKeys[workbench.workbenchId] ?? [] } }, dotByKey);
@@ -6322,7 +6323,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         {WORKBENCH_NEW_SESSION_TARGET_OPTIONS.filter((option) => option.group === "acp").map((option) => <button type="button" role="menuitem" key={option.value} onClick={() => void chooseNewSessionTarget(option.value)}>{t(`desktop.settings.newSessionTarget.${option.value.replace(":", "_")}`)}</button>)}
       </>}
     </div> : null}
-    {contextMenu && !(contextMenu.kind === "work-item" && !contextMenu.workspaceDir && contextMenu.workItemHasSessions) ? <div className={`wb-context-menu${contextMenu.kind === "session" || contextMenu.kind === "session-tab" ? " wb-session-context-menu" : ""}`} role="menu" style={{ left: contextMenuLeft, top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - contextMenuHeight)) }} onContextMenu={(event) => event.preventDefault()}>
+    {contextMenu && !(contextMenu.kind === "task" && !contextMenu.workspaceDir && contextMenu.taskHasSessions) ? <div className={`wb-context-menu${contextMenu.kind === "session" || contextMenu.kind === "session-tab" ? " wb-session-context-menu" : ""}`} role="menu" style={{ left: contextMenuLeft, top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - contextMenuHeight)) }} onContextMenu={(event) => event.preventDefault()}>
       {contextMenu.kind === "project" ? (() => {
         const enabled = enabledProjectMenuActions(settings);
         const isPinned = (contextMenu.projectId && catalogProjects.some((item) => item.projectId === contextMenu.projectId && item.pinned))
@@ -6379,14 +6380,14 @@ export function WorkbenchPanel(): ReactPortal | null {
           </Fragment>
         ));
       })() : contextMenu.kind === "session-tab" ? <button type="button" role="menuitem" onClick={() => void runContextAction("floatingNote")}>{t(contextMenu.hasFloatingNote ? "desktop.workbench.openFloatingNote" : "desktop.workbench.addFloatingNote")}</button> : contextMenu.kind === "editor-tab" ? <button type="button" role="menuitem" onClick={() => void runContextAction("toggleEditorPreview")}>{t(contextMenu.editorPreview ? "desktop.common.edit" : "desktop.workbench.preview")}</button> : contextMenu.kind === "note" ? <>
-        <button type="button" role="menuitem" onClick={() => void runContextAction("openNote")}>{t("desktop.workbench.workItemOpenNote")}</button>
+        <button type="button" role="menuitem" onClick={() => void runContextAction("openNote")}>{t("desktop.workbench.taskOpenNote")}</button>
         <div className="context-menu-separator" role="separator" />
         <span className="wb-context-menu-label">{t("desktop.workbench.setGtdStatus")}</span>
         <div className="wb-gtd-context-tags" role="group" aria-label={t("desktop.workbench.setGtdStatus")}>
           {GTD_STATUSES.map((gtdStatus) => <button type="button" role="menuitemradio" className={`wb-gtd-context-tag is-${gtdStatus}`} aria-checked={noteItems.find((item) => item.noteId === contextMenu.noteId)?.gtdStatus === gtdStatus} key={gtdStatus} onClick={() => void runContextAction(`gtd:${gtdStatus}`)}>{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</button>)}
         </div>
         {noteItems.find((item) => item.noteId === contextMenu.noteId)?.gtdStatus ? <button type="button" role="menuitem" onClick={() => void runContextAction("gtd:clear")}>{t("desktop.workbench.clearGtdStatus")}</button> : null}
-      </> : contextMenu.kind === "work-item" ? <>{contextMenu.workspaceDir ? <button type="button" role="menuitem" onClick={() => void runContextAction("openWorkspace")}>{t("desktop.workbench.openWorkItemWorkspace")}</button> : null}{contextMenu.noteId && contextMenu.noteId === workItemScope?.noteId && taskRollup?.override ? <button type="button" role="menuitem" onClick={() => void runContextAction("followChildren")}>{t("desktop.gtd.followChildren")}</button> : null}{!contextMenu.workItemHasSessions ? <>{contextMenu.workspaceDir ? <div className="context-menu-separator" role="separator" /> : null}<button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => void runContextAction("deleteWorkItem")}>{t("desktop.workbench.deleteWorkItem")}</button></> : null}</> : selectedSessionKeys.size > 1 && contextMenu.session && selectedSessionKeys.has(sessionKey(contextMenu.session)) ? <>
+      </> : contextMenu.kind === "task" ? <>{contextMenu.workspaceDir ? <button type="button" role="menuitem" onClick={() => void runContextAction("openWorkspace")}>{t("desktop.workbench.openTaskWorkspace")}</button> : null}{contextMenu.noteId && contextMenu.noteId === taskScope?.noteId && taskRollup?.override ? <button type="button" role="menuitem" onClick={() => void runContextAction("followChildren")}>{t("desktop.gtd.followChildren")}</button> : null}{!contextMenu.taskHasSessions ? <>{contextMenu.workspaceDir ? <div className="context-menu-separator" role="separator" /> : null}<button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => void runContextAction("deleteTask")}>{t("desktop.workbench.deleteTask")}</button></> : null}</> : selectedSessionKeys.size > 1 && contextMenu.session && selectedSessionKeys.has(sessionKey(contextMenu.session)) ? <>
         <button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => void runContextAction("remove")}>{t("desktop.workbench.removeFromPanelCount", selectedSessionKeys.size)}</button>
       </> : <>
         {contextMenu.session?.provider === "codex" ? <button type="button" role="menuitem" onClick={() => void runContextAction("codex")}>{t("desktop.workbench.openInChatGpt")}</button> : null}
@@ -6535,45 +6536,30 @@ export function WorkbenchPanel(): ReactPortal | null {
       mode={quickAccessMode}
       query={quickAccessQuery}
       files={quickAccessVisibleFiles}
-      projects={quickAccessProjects}
       commands={quickAccessCommands}
       recentPaths={quickAccessRecentPaths}
       loading={quickAccessLoading}
       truncated={quickAccessTruncated || quickAccessSearchTruncated}
       error={quickAccessError}
-      projectLabel={quickAccessProjectLabel}
-      currentProjectPath={quickAccessRoot}
+      hasProject={Boolean(quickAccessRoot)}
       labels={{
         filePlaceholder: t("desktop.workbench.quickAccessFilePlaceholder"),
-        projectPlaceholder: t("desktop.workbench.quickAccessProjectPlaceholder"),
         commandPlaceholder: t("desktop.workbench.quickAccessCommandPlaceholder"),
         loading: t("desktop.workbench.quickAccessLoading"),
         noFiles: t("desktop.workbench.quickAccessNoFiles"),
-        noProjects: t("desktop.workbench.quickAccessNoProjects"),
         noCommands: t("desktop.workbench.quickAccessNoCommands"),
         noProject: t("desktop.workbench.quickAccessNoProject"),
         truncated: t("desktop.workbench.quickAccessTruncated"),
         close: t("desktop.workbench.quickAccessClose"),
-        dialog: t("desktop.workbench.quickAccessDialog"),
-        selectProject: t("desktop.workbench.quickAccessSelectProject")
+        dialog: t("desktop.workbench.quickAccessDialog")
       }}
       onModeChange={(mode) => {
         setQuickAccessMode(mode);
       }}
       onQueryChange={setQuickAccessQuery}
-      onEnterProjectMode={() => enterQuickAccessProjectMode(false)}
-      onLeaveProjectMode={leaveQuickAccessProjectMode}
       onClose={closeQuickAccess}
       onOpenFile={openQuickAccessFile}
       onOpenDirectory={openQuickAccessDirectory}
-      onSelectProject={(project) => {
-        if (workItemScopeRef.current) setSessionTarget(project.path);
-        selectProject(project.path);
-        if (quickAccessProjectContextRef.current.closeOnSelect) {
-          window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
-          closeQuickAccess();
-        }
-      }}
     />
   </>, host);
 }

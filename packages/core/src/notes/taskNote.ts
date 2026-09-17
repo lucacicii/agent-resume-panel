@@ -1,9 +1,9 @@
 import type { NoteFrontmatter } from "./frontmatter";
 
 /**
- * Work-item note conventions.
+ * Task note conventions.
  *
- * A work item is a note with `work: true`. Two things are special about it:
+ * A task is a note with `work: true`. Two things are special about it:
  *
  * 1. Its markdown heading is its name; the name itself lives in front-matter
  *    `title`, so every display site reads the plain name.
@@ -12,12 +12,29 @@ import type { NoteFrontmatter } from "./frontmatter";
  *    and pre-existing files never lose content silently.
  */
 
-/** Region of a work-item note that is injected into agent prompts. */
-export const WORK_ITEM_KNOWLEDGE_BEGIN = "<!-- agent-resume:begin work-item-knowledge -->";
-export const WORK_ITEM_KNOWLEDGE_END = "<!-- agent-resume:end work-item-knowledge -->";
+/** Region of a task note that is injected into agent prompts. */
+export const TASK_KNOWLEDGE_BEGIN = "<!-- agent-resume:begin task-knowledge -->";
+export const TASK_KNOWLEDGE_END = "<!-- agent-resume:end task-knowledge -->";
 
-/** Name used when a work item was created without one. */
-export const UNTITLED_WORK_ITEM_NAME = "未命名工作项";
+/**
+ * Markers written before the Workbench task rename. They are still read so an
+ * existing note keeps injecting only its marked region, and are replaced with
+ * the current markers the next time the note is written.
+ */
+const LEGACY_KNOWLEDGE_BEGIN = "<!-- agent-resume:begin work-item-knowledge -->";
+const LEGACY_KNOWLEDGE_END = "<!-- agent-resume:end work-item-knowledge -->";
+
+/** Name used when a task was created without one. */
+export const UNTITLED_TASK_NAME = "未命名任务";
+
+/** Name an untitled task carried before the rename; still treated as untitled. */
+export const LEGACY_UNTITLED_TASK_NAME = "未命名工作项";
+
+/** Whether a title is a placeholder rather than a name the user chose. */
+export function isUntitledTaskName(name: string | undefined): boolean {
+  const value = name?.trim();
+  return !value || value === UNTITLED_TASK_NAME || value === LEGACY_UNTITLED_TASK_NAME;
+}
 
 const H1_RE = /^\s*#\s+(.+?)\s*$/;
 
@@ -36,15 +53,15 @@ function headingText(body: string): string | undefined {
   return match ? match[1].trim() : undefined;
 }
 
-export function isWorkItemFrontmatter(frontmatter: NoteFrontmatter): boolean {
+export function isTaskFrontmatter(frontmatter: NoteFrontmatter): boolean {
   return frontmatter.work === true;
 }
 
 /**
- * Work-item name. Front-matter is authoritative; the heading is only a fallback
+ * Task name. Front-matter is authoritative; the heading is only a fallback
  * for notes that predate front-matter titles.
  */
-export function workItemName(frontmatter: NoteFrontmatter): string | undefined {
+export function taskName(frontmatter: NoteFrontmatter): string | undefined {
   const declared = frontmatter.title?.trim();
   return declared || undefined;
 }
@@ -53,41 +70,56 @@ export function workItemName(frontmatter: NoteFrontmatter): string | undefined {
  * Body handed to the model. The heading is kept — its suffix is the reminder —
  * and only the marked region is included when the note declares one.
  */
-export function workItemPromptBody(body: string): string {
-  const start = body.indexOf(WORK_ITEM_KNOWLEDGE_BEGIN);
-  const end = body.indexOf(WORK_ITEM_KNOWLEDGE_END);
+export function taskPromptBody(body: string): string {
+  const region = knowledgeRegion(body) ?? knowledgeRegion(body, LEGACY_KNOWLEDGE_BEGIN, LEGACY_KNOWLEDGE_END);
   const heading = headingLine(body)?.trim();
-  if (start < 0 || end <= start) {
+  if (!region) {
     return body.trim();
   }
-  const region = body.slice(start + WORK_ITEM_KNOWLEDGE_BEGIN.length, end).trim();
   return [heading, region].filter(Boolean).join("\n\n");
 }
 
+/** Marked knowledge region, or `undefined` when the note has none. */
+function knowledgeRegion(
+  body: string,
+  begin: string = TASK_KNOWLEDGE_BEGIN,
+  end: string = TASK_KNOWLEDGE_END
+): string | undefined {
+  const start = body.indexOf(begin);
+  const stop = body.indexOf(end);
+  if (start < 0 || stop <= start) return undefined;
+  return body.slice(start + begin.length, stop).trim();
+}
+
 /** Wrap a body's payload in the knowledge region. Idempotent. */
-export function ensureWorkItemKnowledgeRegion(body: string): string {
-  if (body.includes(WORK_ITEM_KNOWLEDGE_BEGIN) && body.includes(WORK_ITEM_KNOWLEDGE_END)) {
+export function ensureTaskKnowledgeRegion(body: string): string {
+  if (hasKnowledgeRegion(body)) {
     return body;
   }
   const heading = headingLine(body);
   const rest = (heading ? body.replace(heading, "") : body).trim();
-  return [heading?.trim(), WORK_ITEM_KNOWLEDGE_BEGIN, rest, WORK_ITEM_KNOWLEDGE_END]
+  return [heading?.trim(), TASK_KNOWLEDGE_BEGIN, rest, TASK_KNOWLEDGE_END]
     .filter((part) => part !== undefined && part !== "")
     .join("\n\n");
 }
 
-/** Placeholder region body of a freshly created work item. */
-export function newWorkItemBody(name: string): string {
-  return ensureWorkItemKnowledgeRegion(`# ${name}\n`);
+function hasKnowledgeRegion(body: string): boolean {
+  return (body.includes(TASK_KNOWLEDGE_BEGIN) && body.includes(TASK_KNOWLEDGE_END))
+    || (body.includes(LEGACY_KNOWLEDGE_BEGIN) && body.includes(LEGACY_KNOWLEDGE_END));
 }
 
-export interface NormalizedWorkItemDocument {
+/** Placeholder region body of a freshly created task. */
+export function newTaskBody(name: string): string {
+  return ensureTaskKnowledgeRegion(`# ${name}\n`);
+}
+
+export interface NormalizedTaskDocument {
   frontmatter: NoteFrontmatter;
   body: string;
 }
 
 /**
- * Keep a work-item document on the convention:
+ * Keep a task document on the convention:
  * - front-matter `title` holds the name,
  * - the heading is the name,
  * - the knowledge region exists.
@@ -96,11 +128,11 @@ export interface NormalizedWorkItemDocument {
  * reminder suffix; it is read once to strip that suffix from old files, and
  * never written back.
  */
-export function normalizeWorkItemDocument(
+export function normalizeTaskDocument(
   frontmatter: NoteFrontmatter,
   body: string,
   options: { name?: string } = {}
-): NormalizedWorkItemDocument {
+): NormalizedTaskDocument {
   const legacySuffix = frontmatter.titleSuffix?.trim() || "";
   const withoutLegacySuffix = (value: string): string => {
     const candidate = value.trim();
@@ -127,7 +159,7 @@ export function normalizeWorkItemDocument(
     }
   }
   if (!name) {
-    name = UNTITLED_WORK_ITEM_NAME;
+    name = UNTITLED_TASK_NAME;
   }
 
   const heading = `# ${name}`;
@@ -140,6 +172,6 @@ export function normalizeWorkItemDocument(
   delete next.titleSuffix;
   return {
     frontmatter: next,
-    body: ensureWorkItemKnowledgeRegion(withHeading)
+    body: ensureTaskKnowledgeRegion(withHeading)
   };
 }

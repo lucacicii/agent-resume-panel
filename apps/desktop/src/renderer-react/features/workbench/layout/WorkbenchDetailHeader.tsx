@@ -20,7 +20,7 @@ export function WorkbenchDetailHeader({
   onBackToGtd?: () => void;
   selectedProject: string | null;
   projectLabel: string;
-  /** What to show when no project is selected (e.g. a project-less work item). */
+  /** What to show when no project is selected (e.g. a project-less task). */
   emptyLabel?: string;
   side: WorkbenchSideView;
   branchStatusLabel: string | null;

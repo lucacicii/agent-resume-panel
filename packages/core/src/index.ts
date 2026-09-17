@@ -595,7 +595,7 @@ export {
   type NoteOwnerJson,
   LIBRARY_REL_DIR
 } from "./notes/paths";
-export type { NoteRecord, WorkItemRecord } from "./notes/catalogNotes";
+export type { NoteRecord, TaskRecord } from "./notes/catalogNotes";
 export {
   listAllNotes,
   getNoteById,
@@ -603,11 +603,11 @@ export {
   listSessionNotes,
   listLibraryNotes,
   listProjectNotes,
-  listWorkItems,
-  listWorkItemSessionDetails,
-  listWorkItemSessionLinks,
-  listWorkItemSessionProjects,
-  findWorkItemNoteIdForSession,
+  listTasks,
+  listTaskSessionDetails,
+  listTaskSessionLinks,
+  listTaskSessionProjects,
+  findTaskNoteIdForSession,
   upsertNoteRecord,
   deleteNoteRecord,
   deleteNotesByRelPaths,
@@ -617,8 +617,8 @@ export {
   setCatalogMeta,
   listLegacySessionNotes,
   listLegacyProjectNotes,
-  type WorkItemSessionDetail,
-  type WorkItemSessionLink
+  type TaskSessionDetail,
+  type TaskSessionLink
 } from "./notes/catalogNotes";
 export { NotesStore, type ImportNotesResult } from "./notes/store";
 export type { NoteLink, NoteSubtree, NoteTreeNode } from "./notes/links";
@@ -669,23 +669,23 @@ export {
   type ParsedNoteDocument
 } from "./notes/frontmatter";
 export {
-  WORK_ITEM_KNOWLEDGE_BEGIN,
-  WORK_ITEM_KNOWLEDGE_END,
-  UNTITLED_WORK_ITEM_NAME,
-  isWorkItemFrontmatter,
-  workItemName,
-  workItemPromptBody,
-  ensureWorkItemKnowledgeRegion,
-  newWorkItemBody,
-  normalizeWorkItemDocument,
-  type NormalizedWorkItemDocument
-} from "./notes/workItemNote";
+  TASK_KNOWLEDGE_BEGIN,
+  TASK_KNOWLEDGE_END,
+  UNTITLED_TASK_NAME,
+  isTaskFrontmatter,
+  taskName,
+  taskPromptBody,
+  ensureTaskKnowledgeRegion,
+  newTaskBody,
+  normalizeTaskDocument,
+  type NormalizedTaskDocument
+} from "./notes/taskNote";
 export {
   loadNoteWorkMap,
   setNoteWork,
   clearNoteWork,
   syncNoteWorkFromFrontmatter,
-  ensureWorkItemSessionIndex,
+  ensureTaskSessionIndex,
   isWorkNote,
   splitSessionKey
 } from "./notes/work";

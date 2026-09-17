@@ -558,7 +558,7 @@ test("note MCP creates and reads linked note trees under a task", async () => {
   const client = await connectClient(server);
 
   try {
-    const root = await store.createWorkItem({ title: "Root task" });
+    const root = await store.createTask({ title: "Root task" });
     const childResult = await client.callTool({
       name: "note_create",
       arguments: { parentNoteId: root.noteId, title: "Child", body: "Child body" }
@@ -590,8 +590,8 @@ test("note MCP creates and reads linked note trees under a task", async () => {
 
 test("note MCP reparenting enforces link tree invariants", async () => {
   const { ctx, store } = await setupTestContext();
-  const a = await store.createWorkItem({ title: "A" });
-  const b = await store.createWorkItem({ title: "B" });
+  const a = await store.createTask({ title: "A" });
+  const b = await store.createTask({ title: "B" });
   const session = await store.createSessionNote({ provider: "codex", id: "mcp-links" }, "# Session");
   const server = createNoteMcpServer(ctx);
   const client = await connectClient(server);
@@ -630,7 +630,7 @@ test("note MCP reparenting enforces link tree invariants", async () => {
 
 test("note MCP preserves frontmatter through write/append and detaches on cross-scope move", async () => {
   const { ctx, store } = await setupTestContext();
-  const root = await store.createWorkItem({ title: "Move root" });
+  const root = await store.createTask({ title: "Move root" });
   const child = await store.createLinkedChildNote(root.noteId, "# Child\n\nold");
   const original = await store.readNoteContent(child.noteId);
   const idLine = original.match(/^id: .*$/m)?.[0];
@@ -850,7 +850,7 @@ test("link_graph_trace is hidden when enableLinkGraphTrace is false", async () =
   }
 });
 
-test("task_create exposes a work item with multi-root references and GTD", async () => {
+test("task_create exposes a task with multi-root references and GTD", async () => {
   const { ctx } = await setupTestContext();
   const server = createNoteMcpServer(ctx);
   const client = await connectClient(server);
@@ -985,7 +985,7 @@ test("task_link_session rebinds the session root and task_unlink_session removes
   }
 });
 
-test("task tools reject notes that are not work items", async () => {
+test("task tools reject notes that are not tasks", async () => {
   const { ctx } = await setupTestContext();
   const note = await ctx.notesStore.createLibraryNote("# Plain note");
   const server = createNoteMcpServer(ctx);
@@ -1063,17 +1063,17 @@ test("mcpSessionContextFromEnv reads the injected identity and ignores blanks", 
       AGENT_RESUME_SESSION_ID: "rec-1",
       AGENT_RESUME_WORK_ITEM_ID: "note-1"
     }),
-    { provider: "chat", sessionId: "rec-1", workItemNoteId: "note-1" }
+    { provider: "chat", sessionId: "rec-1", taskNoteId: "note-1" }
   );
   assert.deepEqual(
     mcpSessionContextFromEnv({ AGENT_RESUME_PROVIDER: "  ", AGENT_RESUME_SESSION_ID: "" }),
-    { provider: undefined, sessionId: undefined, workItemNoteId: undefined }
+    { provider: undefined, sessionId: undefined, taskNoteId: undefined }
   );
 });
 
 test("note_create defaults to the task bound to the current session", async () => {
   const { ctx } = await setupTestContext();
-  const task = await ctx.notesStore.createWorkItem({ title: "Bound task", sessions: ["codex:ctx-1"] });
+  const task = await ctx.notesStore.createTask({ title: "Bound task", sessions: ["codex:ctx-1"] });
   const scopedCtx = { ...ctx, sessionContext: { provider: "codex", sessionId: "ctx-1" } };
   const server = createNoteMcpServer(scopedCtx);
   const client = await connectClient(server);
@@ -1094,8 +1094,8 @@ test("note_create defaults to the task bound to the current session", async () =
 
 test("note_create honors an explicit AGENT_RESUME_WORK_ITEM_ID", async () => {
   const { ctx } = await setupTestContext();
-  const task = await ctx.notesStore.createWorkItem({ title: "Context task" });
-  const scopedCtx = { ...ctx, sessionContext: { workItemNoteId: task.noteId } };
+  const task = await ctx.notesStore.createTask({ title: "Context task" });
+  const scopedCtx = { ...ctx, sessionContext: { taskNoteId: task.noteId } };
   const server = createNoteMcpServer(scopedCtx);
   const client = await connectClient(server);
 
@@ -1134,7 +1134,7 @@ test("note_create falls back to the session when no task is bound", async () => 
 
 test("note_create is unbound without session identity and explicit scope wins", async () => {
   const { ctx } = await setupTestContext();
-  const task = await ctx.notesStore.createWorkItem({ title: "Wins", sessions: ["codex:ctx-3"] });
+  const task = await ctx.notesStore.createTask({ title: "Wins", sessions: ["codex:ctx-3"] });
   const scopedCtx = { ...ctx, sessionContext: { provider: "codex", sessionId: "ctx-3" } };
   const server = createNoteMcpServer(scopedCtx);
   const client = await connectClient(server);
@@ -1170,7 +1170,7 @@ test("note_create is unbound without session identity and explicit scope wins", 
 
 test("note_list defaults to the bound task subtree", async () => {
   const { ctx } = await setupTestContext();
-  const task = await ctx.notesStore.createWorkItem({ title: "Tree", sessions: ["codex:ctx-4"] });
+  const task = await ctx.notesStore.createTask({ title: "Tree", sessions: ["codex:ctx-4"] });
   const child = await ctx.notesStore.createLinkedChildNote(task.noteId, "# Child");
   const other = await ctx.notesStore.createLibraryNote("# Other");
   const scopedCtx = { ...ctx, sessionContext: { provider: "codex", sessionId: "ctx-4" } };

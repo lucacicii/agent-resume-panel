@@ -79,7 +79,7 @@ test("arpm list / prompt / go print the configured workspace pack", async () => 
   });
 });
 
-test("planArpmRun plans commands with optional work-item context injection", async () => {
+test("planArpmRun plans commands with optional task context injection", async () => {
   await withPanelHome(async (panelHome) => {
     const settings = structuredClone(DEFAULT_SETTINGS);
 
@@ -102,7 +102,7 @@ test("planArpmRun plans commands with optional work-item context injection", asy
     });
     assert.equal(claudeRun.command, "claude");
 
-    // Missing work-item context file fails fast.
+    // Missing task context file fails fast.
     await assert.rejects(
       () =>
         planArpmRun({
@@ -111,16 +111,16 @@ test("planArpmRun plans commands with optional work-item context injection", asy
           panelHome,
           settings
         }),
-      /No agent context for work item wi-missing yet/
+      /No agent context for task wi-missing yet/
     );
 
     // Seed workspace context file.
     const wsDir = path.join(panelHome, ".desktop", "workspaces", "wi-1");
     await fs.mkdir(wsDir, { recursive: true });
     const agentsFile = path.join(wsDir, "AGENTS.md");
-    await fs.writeFile(agentsFile, "# Work item context", "utf8");
+    await fs.writeFile(agentsFile, "# Task context", "utf8");
 
-    // Claude with work-item context file injected.
+    // Claude with task context file injected.
     const claudeWithNote = await planArpmRun({
       args: ["--provider", "claude", "--note", "wi-1"],
       cwd: "/repo/my-app",
@@ -133,7 +133,7 @@ test("planArpmRun plans commands with optional work-item context injection", asy
     );
     assert.equal(claudeWithNote.warning, undefined);
 
-    // Codex with work-item context file injected.
+    // Codex with task context file injected.
     const codexWithNote = await planArpmRun({
       args: ["--provider", "codex", "--note", "wi-1"],
       cwd: "/repo/my-app",

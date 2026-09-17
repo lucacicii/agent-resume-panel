@@ -44,7 +44,7 @@ async function setup() {
 
 test("resolveTaskGtdRollup aggregates subtree notes and linked sessions", async () => {
   const { catalogDb, store } = await setup();
-  const task = await store.createWorkItem({ title: "Rollup task", sessions: ["codex:s1"] });
+  const task = await store.createTask({ title: "Rollup task", sessions: ["codex:s1"] });
   const child = await store.createLinkedChildNote(task.noteId, "# Child");
 
   await setNoteGtdStatus(catalogDb, child.noteId, "waiting");
@@ -60,9 +60,9 @@ test("resolveTaskGtdRollup aggregates subtree notes and linked sessions", async 
 
 test("unmarked children and sessions are neutral, and inbox is not a pin", async () => {
   const { catalogDb, store } = await setup();
-  const task = await store.createWorkItem({ title: "Neutral task", sessions: ["codex:s2"] });
+  const task = await store.createTask({ title: "Neutral task", sessions: ["codex:s2"] });
   await store.createLinkedChildNote(task.noteId, "# Unmarked child");
-  // The work item's own default inbox must not pin it to inbox.
+  // The task's own default inbox must not pin it to inbox.
   await setNoteGtdStatus(catalogDb, task.noteId, "inbox");
 
   const rollup = await resolveTaskGtdRollup(catalogDb, task.noteId);
@@ -71,9 +71,9 @@ test("unmarked children and sessions are neutral, and inbox is not a pin", async
   assert.equal(rollup.status, "inbox");
 });
 
-test("a non-inbox work item mark pins the task over the rollup", async () => {
+test("a non-inbox task mark pins the task over the rollup", async () => {
   const { catalogDb, store } = await setup();
-  const task = await store.createWorkItem({ title: "Pinned task", sessions: ["codex:s3"] });
+  const task = await store.createTask({ title: "Pinned task", sessions: ["codex:s3"] });
   await setSessionGtdStatus(catalogDb, "codex", "s3", "next");
   await setNoteGtdStatus(catalogDb, task.noteId, "someday");
 
@@ -85,7 +85,7 @@ test("a non-inbox work item mark pins the task over the rollup", async () => {
 
 test("listTaskGtdRollups matches the single-task rollup", async () => {
   const { catalogDb, store } = await setup();
-  const task = await store.createWorkItem({ title: "Bulk task", sessions: ["codex:s4"] });
+  const task = await store.createTask({ title: "Bulk task", sessions: ["codex:s4"] });
   await setSessionGtdStatus(catalogDb, "codex", "s4", "next");
 
   const bulk = await listTaskGtdRollups(catalogDb);

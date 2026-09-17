@@ -28,7 +28,7 @@ The three citation kinds map onto:
 | Marker | Source | Where it lives in the app |
 |---|---|---|
 | `[D#]` | Memory digests (daily / weekly / monthly) | MCP `report_read` / `report_search` (no in-app Archive tab) |
-| `[N#]` | Project notes and work items | [Notes](notes.md) |
+| `[N#]` | Project notes and tasks | [Notes](notes.md) |
 | `[S#]` | Historical agent sessions | [Sessions](sessions.md) and [Workbench](workbench.md) |
 
 ### Related read-only tools
@@ -42,8 +42,8 @@ For narrower questions, ask for one source at a time:
 | `report_list` | List digests by level and period |
 | `session_search` | Keyword search over sessions; **plus** summary-vector search when embeddings are configured |
 | `session_list` · `session_read` · `session_read_transcript` | Recent sessions, one session's metadata and cached summary, or a short transcript excerpt |
-| `note_search` · `note_read` · `note_tree_read` | Notes and work item trees |
-| `task_list` · `task_read` · `workbench_list` | Tasks (work items), their multi-root project references, and workbenches |
+| `note_search` · `note_read` · `note_tree_read` | Notes and task trees |
+| `task_list` · `task_read` · `workbench_list` | Tasks, their multi-root project references, and workbenches |
 
 ### Retrieval quality
 
@@ -88,7 +88,7 @@ Desktop 曾有一个应用内的 **Agent** 页签，用自然语言对本机工�
 | 标记 | 来源 | 应用内位置 |
 |---|---|---|
 | `[D#]` | 回顾报告（日 / 周 / 月） | MCP `report_read` / `report_search`（应用内已无归档页） |
-| `[N#]` | 项目笔记与工作项 | [Notes](notes.md) |
+| `[N#]` | 项目笔记与任务 | [Notes](notes.md) |
 | `[S#]` | 历史 agent 会话 | [Sessions](sessions.md) 与 [Workbench](workbench.md) |
 
 ### 相关的只读工具
@@ -102,8 +102,8 @@ Desktop 曾有一个应用内的 **Agent** 页签，用自然语言对本机工�
 | `report_list` | 按层级与周期列出报告 |
 | `session_search` | 会话关键词搜索；配置了 embedding 后**另加**摘要向量检索 |
 | `session_list` · `session_read` · `session_read_transcript` | 最近会话、单个会话的元数据与缓存摘要、或短转写节选 |
-| `note_search` · `note_read` · `note_tree_read` | 笔记与工作项树 |
-| `task_list` · `task_read` · `workbench_list` | 任务（工作项）、其多根项目引用与工作台 |
+| `note_search` · `note_read` · `note_tree_read` | 笔记与任务树 |
+| `task_list` · `task_read` · `workbench_list` | 任务、其多根项目引用与工作台 |
 
 ### 检索质量
 

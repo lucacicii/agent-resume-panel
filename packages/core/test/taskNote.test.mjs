@@ -5,12 +5,12 @@ import path from "node:path";
 import test from "node:test";
 import {
   NotesStore,
-  WORK_ITEM_KNOWLEDGE_BEGIN,
-  WORK_ITEM_KNOWLEDGE_END,
+  TASK_KNOWLEDGE_BEGIN,
+  TASK_KNOWLEDGE_END,
   ensureExtensionCatalogSchema,
   listAllNotes,
   runSqlite,
-  workItemPromptBody
+  taskPromptBody
 } from "../dist/index.js";
 
 /** Heading reminder suffix from before headings carried only the name. */
@@ -29,24 +29,24 @@ async function withStore(run) {
   }
 }
 
-async function readWorkItemFile(store, noteId) {
+async function readTaskFile(store, noteId) {
   const record = await store.getNote(noteId);
   return fs.readFile(store.absolutePath(record), "utf8");
 }
 
-test("new work items carry a front-matter name, a plain heading and a knowledge region", async () => {
+test("new tasks carry a front-matter name, a plain heading and a knowledge region", async () => {
   await withStore(async (store, _home, dbPath) => {
-    const item = await store.createWorkItem({ title: "Ship release" });
+    const item = await store.createTask({ title: "Ship release" });
     assert.equal(item.title, "Ship release");
 
-    const raw = await readWorkItemFile(store, item.noteId);
+    const raw = await readTaskFile(store, item.noteId);
     assert.match(raw, /title: "?Ship release"?/);
     assert.ok(raw.includes("# Ship release\n"));
     assert.ok(!raw.includes("titleSuffix"));
-    assert.ok(raw.includes(WORK_ITEM_KNOWLEDGE_BEGIN));
-    assert.ok(raw.includes(WORK_ITEM_KNOWLEDGE_END));
+    assert.ok(raw.includes(TASK_KNOWLEDGE_BEGIN));
+    assert.ok(raw.includes(TASK_KNOWLEDGE_END));
 
-    // Only work items expose the work fields to the notes list.
+    // Only tasks expose the work fields to the notes list.
     const notes = await listAllNotes(dbPath);
     assert.ok(notes.find((note) => note.noteId === item.noteId)?.work);
     const plain = await store.createLibraryNote("# Plain\n");
@@ -55,16 +55,16 @@ test("new work items carry a front-matter name, a plain heading and a knowledge 
   });
 });
 
-test("editing the heading renames the work item", async () => {
+test("editing the heading renames the task", async () => {
   await withStore(async (store) => {
-    const item = await store.createWorkItem({ title: "Ship release" });
-    const raw = await readWorkItemFile(store, item.noteId);
+    const item = await store.createTask({ title: "Ship release" });
+    const raw = await readTaskFile(store, item.noteId);
 
     const edited = raw.replace("# Ship release", "# Ship release v2");
     const updated = await store.writeNoteContent(item.noteId, edited);
     assert.equal(updated.title, "Ship release v2");
     assert.equal(updated.filename, "Ship release v2.md");
-    const after = await readWorkItemFile(store, item.noteId);
+    const after = await readTaskFile(store, item.noteId);
     assert.match(after, /title: "?Ship release v2"?/);
     assert.ok(after.includes("# Ship release v2\n"));
 
@@ -76,23 +76,23 @@ test("editing the heading renames the work item", async () => {
       `---\nid: ${item.noteId}\nscope: library\nwork: true\ntitle: Ship release v2\ntitleSuffix: "${LEGACY_TITLE_SUFFIX}"\n---\n\n${bodyOnly}`
     );
     assert.equal(recovered.title, "Ship release v2");
-    const recoveredRaw = await readWorkItemFile(store, item.noteId);
+    const recoveredRaw = await readTaskFile(store, item.noteId);
     assert.ok(recoveredRaw.includes("# Ship release v2\n"));
     assert.ok(!recoveredRaw.includes("titleSuffix"));
     assert.ok(!recoveredRaw.includes("背景知识"));
   });
 });
 
-test("renaming a work item keeps its name and file in step", async () => {
+test("renaming a task keeps its name and file in step", async () => {
   await withStore(async (store) => {
-    const item = await store.createWorkItem({ title: "Ship release" });
+    const item = await store.createTask({ title: "Ship release" });
     assert.equal((await store.getNote(item.noteId)).filename, "Ship release.md");
     const renamed = await store.renameNote(item.noteId, "Release train");
     assert.equal(renamed.title, "Release train");
     // The file follows the name, so surfaced paths carry the real name.
     assert.equal(renamed.filename, "Release train.md");
     assert.equal(renamed.relMdPath, "notes/library/Release train.md");
-    const raw = await readWorkItemFile(store, item.noteId);
+    const raw = await readTaskFile(store, item.noteId);
     assert.match(raw, /title: "?Release train"?/);
     assert.ok(raw.includes("# Release train\n"));
 
@@ -100,29 +100,29 @@ test("renaming a work item keeps its name and file in step", async () => {
     const again = await store.renameNote(item.noteId, "Release train.md");
     assert.equal(again.title, "Release train");
     assert.equal(again.filename, "Release train.md");
-    assert.ok((await readWorkItemFile(store, item.noteId)).includes("# Release train\n"));
+    assert.ok((await readTaskFile(store, item.noteId)).includes("# Release train\n"));
   });
 });
 
-test("an untitled work item's file follows the name once it is named", async () => {
+test("an untitled task's file follows the name once it is named", async () => {
   await withStore(async (store) => {
-    const item = await store.createWorkItem({});
-    assert.equal((await store.getNote(item.noteId)).filename, "未命名工作项.md");
+    const item = await store.createTask({});
+    assert.equal((await store.getNote(item.noteId)).filename, "未命名任务.md");
 
     const renamed = await store.renameNote(item.noteId, "agent 重构");
     assert.equal(renamed.title, "agent 重构");
     assert.equal(renamed.filename, "agent 重构.md");
     assert.equal(renamed.relMdPath, "notes/library/agent 重构.md");
-    const raw = await readWorkItemFile(store, item.noteId);
+    const raw = await readTaskFile(store, item.noteId);
     assert.match(raw, /title: "?agent 重构"?/);
     assert.ok(raw.includes("# agent 重构\n"));
   });
 });
 
-test("editing the heading moves the work item's file to the new name", async () => {
+test("editing the heading moves the task's file to the new name", async () => {
   await withStore(async (store) => {
-    const item = await store.createWorkItem({ title: "Ship release" });
-    const raw = await readWorkItemFile(store, item.noteId);
+    const item = await store.createTask({ title: "Ship release" });
+    const raw = await readTaskFile(store, item.noteId);
 
     const edited = raw.replace("# Ship release", "# Ship release v2");
     const updated = await store.writeNoteContent(item.noteId, edited);
@@ -132,15 +132,15 @@ test("editing the heading moves the work item's file to the new name", async () 
   });
 });
 
-test("a work item can take a name another work item already uses as a file name", async () => {
+test("a task can take a name another task already uses as a file name", async () => {
   await withStore(async (store) => {
-    // Reproduces the old flow: the first work item's FILE ended up named 安丰.md.
-    const first = await store.createWorkItem({ title: "First" });
+    // Reproduces the old flow: the first task's FILE ended up named 安丰.md.
+    const first = await store.createTask({ title: "First" });
     await store.renameNote(first.noteId, "安丰");
     assert.equal((await store.getNote(first.noteId)).title, "安丰");
     assert.equal((await store.getNote(first.noteId)).filename, "安丰.md");
 
-    const second = await store.createWorkItem({ title: "Second" });
+    const second = await store.createTask({ title: "Second" });
     const renamed = await store.renameNote(second.noteId, "安丰");
     assert.equal(renamed.title, "安丰");
     // Collision: the second file gets a suffix instead of failing.
@@ -156,7 +156,7 @@ test("names stored only in the file name are recovered once", async () => {
     await ensureExtensionCatalogSchema(dbPath);
     const store = new NotesStore(dbPath, panelHome);
     await store.initialize();
-    const item = await store.createWorkItem({});
+    const item = await store.createTask({});
     const record = await store.getNote(item.noteId);
     const absPath = store.absolutePath(record);
     // The old build renamed the file and left the body empty.
@@ -175,11 +175,11 @@ test("names stored only in the file name are recovered once", async () => {
       (await fs.readFile(renamed, "utf8")).includes("# 安丰\n")
     );
 
-    // A genuinely untitled work item keeps its default name.
-    const untitled = await reopened.createWorkItem({});
+    // A genuinely untitled task keeps its default name.
+    const untitled = await reopened.createTask({});
     const afterRestart = new NotesStore(dbPath, panelHome);
     await afterRestart.initialize();
-    assert.equal((await afterRestart.getNote(untitled.noteId)).title, "未命名工作项");
+    assert.equal((await afterRestart.getNote(untitled.noteId)).title, "未命名任务");
   } finally {
     await fs.rm(panelHome, { recursive: true, force: true });
   }
@@ -187,45 +187,45 @@ test("names stored only in the file name are recovered once", async () => {
 
 test("prompt body is limited to the knowledge region", async () => {
   await withStore(async (store) => {
-    const item = await store.createWorkItem({ title: "Scoped" });
-    const raw = await readWorkItemFile(store, item.noteId);
+    const item = await store.createTask({ title: "Scoped" });
+    const raw = await readTaskFile(store, item.noteId);
     const withRegion = raw.replace(
-      `${WORK_ITEM_KNOWLEDGE_BEGIN}\n\n${WORK_ITEM_KNOWLEDGE_END}`,
-      `${WORK_ITEM_KNOWLEDGE_BEGIN}\n\nKeep me\n\n${WORK_ITEM_KNOWLEDGE_END}\n\nDrop me\n`
+      `${TASK_KNOWLEDGE_BEGIN}\n\n${TASK_KNOWLEDGE_END}`,
+      `${TASK_KNOWLEDGE_BEGIN}\n\nKeep me\n\n${TASK_KNOWLEDGE_END}\n\nDrop me\n`
     );
     await store.writeNoteContent(item.noteId, withRegion);
 
-    const prompt = workItemPromptBody(await store.readNoteContent(item.noteId));
+    const prompt = taskPromptBody(await store.readNoteContent(item.noteId));
     assert.ok(prompt.includes("Keep me"));
     assert.ok(!prompt.includes("Drop me"));
     assert.ok(prompt.includes("# Scoped"));
 
     // Without markers the whole body is used, so hand-written notes keep working.
-    assert.equal(workItemPromptBody("# Plain\n\nEverything\n"), "# Plain\n\nEverything");
+    assert.equal(taskPromptBody("# Plain\n\nEverything\n"), "# Plain\n\nEverything");
   });
 });
 
-test("moving a work item keeps its name", async () => {
+test("moving a task keeps its name", async () => {
   await withStore(async (store) => {
-    const item = await store.createWorkItem({ title: "Movable" });
+    const item = await store.createTask({ title: "Movable" });
     const moved = await store.moveNote(item.noteId, { scope: "project", projectPath: "/tmp/moved" });
     assert.equal(moved.scope, "project");
     assert.equal(moved.title, "Movable");
 
-    const raw = await readWorkItemFile(store, item.noteId);
+    const raw = await readTaskFile(store, item.noteId);
     assert.match(raw, /title: "?Movable"?/);
     assert.ok(raw.includes("# Movable\n"));
     assert.ok(!raw.includes("titleSuffix"));
   });
 });
 
-test("reading a note reports whether it is a work item", async () => {
+test("reading a note reports whether it is a task", async () => {
   await withStore(async (store) => {
-    const item = await store.createWorkItem({ title: "Readable" });
+    const item = await store.createTask({ title: "Readable" });
     const plain = await store.createLibraryNote("# Plain\n");
 
     const readItem = await store.getNote(item.noteId);
-    assert.ok(readItem.work, "a work item must report its work fields when read by id");
+    assert.ok(readItem.work, "a task must report its work fields when read by id");
     assert.deepEqual(readItem.work.projects, undefined);
     assert.equal((await store.getNote(plain.noteId)).work, undefined);
 
@@ -236,14 +236,14 @@ test("reading a note reports whether it is a work item", async () => {
   });
 });
 
-test("existing work items are migrated once onto the convention", async () => {
+test("existing tasks are migrated once onto the convention", async () => {
   const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-work-migrate-"));
   const dbPath = path.join(panelHome, "catalog.db");
   try {
     await ensureExtensionCatalogSchema(dbPath);
     const store = new NotesStore(dbPath, panelHome);
     await store.initialize();
-    const item = await store.createWorkItem({ title: "Legacy item" });
+    const item = await store.createTask({ title: "Legacy item" });
 
     // Simulate a pre-migration file: plain heading, no front-matter title, no region.
     const record = await store.getNote(item.noteId);
@@ -261,7 +261,7 @@ test("existing work items are migrated once onto the convention", async () => {
     const migrated = await fs.readFile(absPath, "utf8");
     assert.match(migrated, /title: "?Legacy item"?/);
     assert.ok(migrated.includes("# Legacy item\n"));
-    assert.ok(migrated.includes(WORK_ITEM_KNOWLEDGE_BEGIN));
+    assert.ok(migrated.includes(TASK_KNOWLEDGE_BEGIN));
     assert.ok(migrated.includes("Old notes"));
     const updated = await reopened.getNote(item.noteId);
     assert.equal(updated.title, "Legacy item");
@@ -276,21 +276,21 @@ test("existing work items are migrated once onto the convention", async () => {
   }
 });
 
-test("work item files left behind by the old flow are renamed to their name once", async () => {
+test("task files left behind by the old flow are renamed to their name once", async () => {
   const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-work-files-"));
   const dbPath = path.join(panelHome, "catalog.db");
   try {
     await ensureExtensionCatalogSchema(dbPath);
     const store = new NotesStore(dbPath, panelHome);
     await store.initialize();
-    // Reproduces the incident: file allocated as 未命名工作项.md, then the
+    // Reproduces the incident: file allocated as 未命名任务.md, then the
     // name moved to agent 重构 while the file stayed put.
-    const item = await store.createWorkItem({});
+    const item = await store.createTask({});
     const record = await store.getNote(item.noteId);
     const oldPath = store.absolutePath(record);
     await fs.writeFile(
       oldPath,
-      `---\nid: ${item.noteId}\nscope: library\nwork: true\ntitle: agent 重构\ntitleSuffix: "${LEGACY_TITLE_SUFFIX}"\n---\n\n# agent 重构${LEGACY_TITLE_SUFFIX}\n\n${WORK_ITEM_KNOWLEDGE_BEGIN}\n\n${WORK_ITEM_KNOWLEDGE_END}\n`,
+      `---\nid: ${item.noteId}\nscope: library\nwork: true\ntitle: agent 重构\ntitleSuffix: "${LEGACY_TITLE_SUFFIX}"\n---\n\n# agent 重构${LEGACY_TITLE_SUFFIX}\n\n${TASK_KNOWLEDGE_BEGIN}\n\n${TASK_KNOWLEDGE_END}\n`,
       "utf8"
     );
     await runSqlite(dbPath, `UPDATE notes SET title = 'agent 重构' WHERE note_id = '${item.noteId}';`);
@@ -324,13 +324,13 @@ test("legacy heading suffixes are dropped once", async () => {
     await ensureExtensionCatalogSchema(dbPath);
     const store = new NotesStore(dbPath, panelHome);
     await store.initialize();
-    const item = await store.createWorkItem({ title: "Ship release" });
+    const item = await store.createTask({ title: "Ship release" });
     const record = await store.getNote(item.noteId);
     const absPath = store.absolutePath(record);
     // Old-style file: heading with the reminder suffix and a titleSuffix field.
     await fs.writeFile(
       absPath,
-      `---\nid: ${item.noteId}\nscope: library\nwork: true\ntitle: Ship release\ntitleSuffix: "${LEGACY_TITLE_SUFFIX}"\n---\n\n# Ship release${LEGACY_TITLE_SUFFIX}\n\n${WORK_ITEM_KNOWLEDGE_BEGIN}\n\n${WORK_ITEM_KNOWLEDGE_END}\n`,
+      `---\nid: ${item.noteId}\nscope: library\nwork: true\ntitle: Ship release\ntitleSuffix: "${LEGACY_TITLE_SUFFIX}"\n---\n\n# Ship release${LEGACY_TITLE_SUFFIX}\n\n${TASK_KNOWLEDGE_BEGIN}\n\n${TASK_KNOWLEDGE_END}\n`,
       "utf8"
     );
     await runSqlite(dbPath, "DELETE FROM catalog_meta WHERE key = 'work_item_notes_suffix_dropped_v1';");

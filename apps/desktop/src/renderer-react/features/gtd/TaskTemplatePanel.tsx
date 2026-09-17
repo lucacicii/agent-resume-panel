@@ -29,7 +29,7 @@ function projectLabel(projectPath: string): string {
 /**
  * The GTD template library at the far left of the board.
  *
- * Templates are dragged onto a column to create a pre-filled work item, so the
+ * Templates are dragged onto a column to create a pre-filled task, so the
  * panel owns create/edit/delete plus the drag payload, while `GtdView` owns the
  * drop target and task creation.
  */

@@ -441,7 +441,7 @@ function mapProject(row: ProjectRow, roles?: ImProjectRoleSummary[]): ImProject 
     projectId: row.project_id,
     name: row.name,
     localPath: row.local_path,
-    workItemNoteId: row.work_item_note_id ?? null,
+    taskNoteId: row.work_item_note_id ?? null,
     createdAtMs: row.created_at_ms,
     updatedAtMs: row.updated_at_ms,
     roles: roles ?? []
@@ -1035,8 +1035,8 @@ export class ImStore {
     return project;
   }
 
-  /** The room scoped to a work item, if one exists. */
-  async getRoomByWorkItemNote(noteId: string): Promise<ImProject | undefined> {
+  /** The room scoped to a task, if one exists. */
+  async getRoomByTaskNote(noteId: string): Promise<ImProject | undefined> {
     const rows = await runSqliteJson<ProjectRow>(
       this.dbPath,
       `SELECT * FROM im_projects WHERE work_item_note_id = ${sqlString(noteId)} LIMIT 1;`
@@ -1045,18 +1045,18 @@ export class ImStore {
   }
 
   /**
-   * Open (or create) the room scoped to a work item. Idempotent: a second call
+   * Open (or create) the room scoped to a task. Idempotent: a second call
    * for the same note returns the existing room instead of duplicating it.
    */
-  async openWorkItemRoom(
+  async openTaskRoom(
     noteId: string,
     name: string,
     panelHome: string,
     localPath?: string | null
   ): Promise<ImProject> {
-    const existing = await this.getRoomByWorkItemNote(noteId);
+    const existing = await this.getRoomByTaskNote(noteId);
     if (existing) {
-      // The work-item note is the source of truth for the room's cwd. If the
+      // The task note is the source of truth for the room's cwd. If the
       // path is missing on this machine, keep the previous one instead of failing.
       if (localPath?.trim()) {
         const next = path.resolve(expandHome(localPath.trim()));
@@ -1081,11 +1081,11 @@ export class ImStore {
     await runSqlite(
       this.dbPath,
       `INSERT INTO im_projects (project_id, name, local_path, work_item_note_id, created_at_ms, updated_at_ms)
-       VALUES (${sqlString(projectId)}, ${sqlString(name.trim() || "Work item")}, ${sqlNullOrString(initialPath)}, ${sqlString(noteId)}, ${now}, ${now});`
+       VALUES (${sqlString(projectId)}, ${sqlString(name.trim() || "Task")}, ${sqlNullOrString(initialPath)}, ${sqlString(noteId)}, ${now}, ${now});`
     );
     await this.seedBuiltinMembers(projectId);
     const project = await this.getProject(projectId);
-    if (!project) throw new Error("Failed to load newly created work item room.");
+    if (!project) throw new Error("Failed to load newly created task room.");
     return project;
   }
 
@@ -2379,10 +2379,10 @@ export class ImStore {
   }
 
   /**
-   * Mirror a work-item note into the room's background knowledge. One row per
+   * Mirror a task note into the room's background knowledge. One row per
    * note, so re-opening the room refreshes the content instead of duplicating.
    */
-  async upsertWorkItemKnowledge(
+  async upsertTaskKnowledge(
     projectId: string,
     noteId: string,
     title: string,
@@ -2398,7 +2398,7 @@ export class ImStore {
     return this.insertKnowledge({
       projectId,
       kind: "text",
-      title: title.trim() || "Work item",
+      title: title.trim() || "Task",
       body: clipped.body,
       sourceNoteId: noteId
     });

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { workItemFromRecord, type WorkItemSource } from "./workItem";
+import { taskFromRecord, type TaskSource } from "./task";
 
-function source(overrides: Partial<WorkItemSource> = {}): WorkItemSource {
+function source(overrides: Partial<TaskSource> = {}): TaskSource {
   return {
     noteId: "wi-1",
     filename: "refactor-panel.md",
@@ -10,22 +10,22 @@ function source(overrides: Partial<WorkItemSource> = {}): WorkItemSource {
   };
 }
 
-describe("workItemFromRecord", () => {
+describe("taskFromRecord", () => {
   it("falls back from title to filename stem to noteId", () => {
-    expect(workItemFromRecord(source({ title: "Panel refactor" })).title).toBe("Panel refactor");
-    expect(workItemFromRecord(source({ title: undefined })).title).toBe("refactor-panel");
-    expect(workItemFromRecord(source({ title: "", filename: ".md" })).title).toBe("wi-1");
+    expect(taskFromRecord(source({ title: "Panel refactor" })).title).toBe("Panel refactor");
+    expect(taskFromRecord(source({ title: undefined })).title).toBe("refactor-panel");
+    expect(taskFromRecord(source({ title: "", filename: ".md" })).title).toBe("wi-1");
   });
 
   it("defaults a missing GTD status to inbox and keeps an explicit one", () => {
-    expect(workItemFromRecord(source()).status).toBe("inbox");
-    expect(workItemFromRecord(source({ gtdStatus: "waiting" })).status).toBe("waiting");
+    expect(taskFromRecord(source()).status).toBe("inbox");
+    expect(taskFromRecord(source({ gtdStatus: "waiting" })).status).toBe("waiting");
   });
 
   it("surfaces the work fields and defaults sessions to an empty array", () => {
-    expect(workItemFromRecord(source()).sessions).toEqual([]);
+    expect(taskFromRecord(source()).sessions).toEqual([]);
 
-    const item = workItemFromRecord(
+    const item = taskFromRecord(
       source({
         work: {
           next: "Split the panel",
@@ -45,7 +45,7 @@ describe("workItemFromRecord", () => {
   });
 
   it("keeps noteId and updatedAtMs so list sorting and scope refs stay stable", () => {
-    const item = workItemFromRecord(source({ noteId: "wi-9", updatedAtMs: 42 }));
+    const item = taskFromRecord(source({ noteId: "wi-9", updatedAtMs: 42 }));
     expect(item.noteId).toBe("wi-9");
     expect(item.updatedAtMs).toBe(42);
   });

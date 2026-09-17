@@ -33,7 +33,7 @@ function titleFor(note: Note): string {
   return note.title || note.filename.replace(/\.md$/i, "") || note.noteId;
 }
 
-/** Notes that can hold a link tree: project notes group notes per repository, work items group notes per unit of work. */
+/** Notes that can hold a link tree: project notes group notes per repository, tasks group notes per unit of work. */
 function isLinkable(note: Note): boolean {
   return Boolean(note.work);
 }

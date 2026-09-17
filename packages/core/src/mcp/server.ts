@@ -114,7 +114,7 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
     { name: MCP_SERVER_NAME, version: MCP_SERVER_VERSION },
     {
       instructions:
-        "Use Agent Resume tools when a user asks to record, save, organize, review, plan, follow up, or update local project/session state, even if they do not name MCP. Search for the target first; never guess a session when multiple matches exist. For Notes, preserve noteId and managed frontmatter, use note_tree_read for task (work item) knowledge trees, and do not overwrite, delete, move, rename, or change a user note unless the user explicitly asks. Project notes belong to the VS Code extension and are not exposed here. For cross-stack field/API/call-chain discovery (前端字段到后端 Controller/VO), call link_graph_trace once with workspaceRoot + symbol (+ filePath/line); the server runs an internal LLM agent that searches and only uses tools for verification."
+        "Use Agent Resume tools when a user asks to record, save, organize, review, plan, follow up, or update local project/session state, even if they do not name MCP. Search for the target first; never guess a session when multiple matches exist. For Notes, preserve noteId and managed frontmatter, use note_tree_read for task (task) knowledge trees, and do not overwrite, delete, move, rename, or change a user note unless the user explicitly asks. Project notes belong to the VS Code extension and are not exposed here. For cross-stack field/API/call-chain discovery (前端字段到后端 Controller/VO), call link_graph_trace once with workspaceRoot + symbol (+ filePath/line); the server runs an internal LLM agent that searches and only uses tools for verification."
     }
   );
 
@@ -146,7 +146,7 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
     "note_create",
     {
       description:
-        "Create a new note. Pass parentNoteId to put it under a task, or scope to choose an owner explicitly; when neither is given the owner is resolved from the current session — its bound task (work item) first, then the session itself, then no owner. Project notes are extension-only.",
+        "Create a new note. Pass parentNoteId to put it under a task, or scope to choose an owner explicitly; when neither is given the owner is resolved from the current session — its bound task (task) first, then the session itself, then no owner. Project notes are extension-only.",
       inputSchema: noteCreateSchema
     },
     async (args: {
@@ -212,7 +212,7 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
   server.registerTool(
     "note_tree_read",
     {
-      description: "Read the linked note tree containing a note (a task / work item knowledge tree). The root is resolved automatically and output is bounded by maxNodes.",
+      description: "Read the linked note tree containing a note (a task / task knowledge tree). The root is resolved automatically and output is bounded by maxNodes.",
       inputSchema: noteTreeReadSchema
     },
     async (args: { noteId: string; maxNodes?: number }) => runNoteTool(() => handleNoteTreeRead(args, ctx))
@@ -221,7 +221,7 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
   server.registerTool(
     "note_set_parent",
     {
-      description: "Set or clear a note parent link. Cycles are rejected; only a task (work item) can be a parent, and session notes cannot participate.",
+      description: "Set or clear a note parent link. Cycles are rejected; only a task (task) can be a parent, and session notes cannot participate.",
       inputSchema: noteSetParentSchema
     },
     async (args: { noteId: string; parentNoteId: string | null }) => runNoteTool(() => handleNoteSetParent(args, ctx))
@@ -239,7 +239,7 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
   server.registerTool(
     "note_rename",
     {
-      description: "Rename a note. For work items this renames the work item itself; otherwise it renames the file while preserving and rewriting its asset directory and relative asset references.",
+      description: "Rename a note. For tasks this renames the task itself; otherwise it renames the file while preserving and rewriting its asset directory and relative asset references.",
       inputSchema: noteRenameSchema
     },
     async (args: { noteId: string; filename: string }) => runNoteTool(() => handleNoteRename(args, ctx))
@@ -428,7 +428,7 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
     "task_list",
     {
       description:
-        "List tasks (work items) with GTD status, next action, owed decision, referenced project roots (multi-root), and linked-session counts. Prefer this over note_list when the user asks about tasks, work items, or project follow-ups.",
+        "List tasks (tasks) with GTD status, next action, owed decision, referenced project roots (multi-root), and linked-session counts. Prefer this over note_list when the user asks about tasks, tasks, or project follow-ups.",
       inputSchema: taskListSchema
     },
     async (args: { gtdStatus?: import("../gtd/types").GtdStatus; rootPath?: string; limit?: number }) => {
@@ -452,7 +452,7 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
     "task_create",
     {
       description:
-        "Create a task (work item). Tasks are library-scoped and reference 0..n repository roots instead of belonging to one. Use when the user asks to record, plan, or open a new piece of work.",
+        "Create a task (task). Tasks are library-scoped and reference 0..n repository roots instead of belonging to one. Use when the user asks to record, plan, or open a new piece of work.",
       inputSchema: taskCreateSchema
     },
     async (args: {
@@ -491,7 +491,7 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
     "task_link_session",
     {
       description:
-        "Link a catalog session to a task (work item). When rootPath is given, also reference that root and, by default, rebind the session's catalog project path — this replaces the removed session_move tool.",
+        "Link a catalog session to a task (task). When rootPath is given, also reference that root and, by default, rebind the session's catalog project path — this replaces the removed session_move tool.",
       inputSchema: taskLinkSessionSchema
     },
     async (args: {

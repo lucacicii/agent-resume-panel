@@ -1,7 +1,7 @@
 import type { RefObject } from "react";
 import { ThemeIcon } from "../../../components/ThemeIcon";
 import { useI18n } from "../../../i18n";
-import type { QuickAccessProject } from "../QuickAccess";
+import type { SearchRootOption } from "./rootPicker";
 import { type WorkbenchSearchMatch, groupSearchMatches } from "../WorkbenchSearchPane";
 
 export function WorkbenchSearchSidePane({
@@ -63,8 +63,8 @@ export function WorkbenchSearchSidePane({
   searchProjectMode: boolean;
   searchProjectQuery: string;
   onSearchProjectQueryChange: (value: string) => void;
-  searchProjectResults: QuickAccessProject[];
-  searchProjectActive: QuickAccessProject | undefined;
+  searchProjectResults: SearchRootOption[];
+  searchProjectActive: SearchRootOption | undefined;
   searchProjectActiveIndex: number;
   searchProjectLabel: string;
   searchProjectOptionId: (projectId: string) => string;
@@ -72,7 +72,7 @@ export function WorkbenchSearchSidePane({
   onEnterSearchProjectMode: () => void;
   onLeaveSearchProjectMode: () => void;
   onMoveSearchProjectSelection: (offset: -1 | 1) => void;
-  onActivateSearchProject: (project?: QuickAccessProject) => void;
+  onActivateSearchProject: (project?: SearchRootOption) => void;
   onSearchProjectSelectionId: (id: string) => void;
   searchMatchCase: boolean;
   searchWholeWord: boolean;

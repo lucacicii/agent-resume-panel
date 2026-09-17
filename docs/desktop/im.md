@@ -8,7 +8,7 @@ Languages: [English](#english) | [简体中文](#简体中文)
 
 ## English
 
-**IM** is a Desktop-only room for a project you create. It is not a projection of the Workbench/catalog project list, and it is **not a rail tab**: open a room from **Workbench** (the work item header's discussion-room button or the session list), and it renders embedded inside the Workbench pane.
+**IM** is a Desktop-only room for a project you create. It is not a projection of the Workbench/catalog project list, and it is **not a rail tab**: open a room from **Workbench** (the task header's discussion-room button or the session list), and it renders embedded inside the Workbench pane.
 
 - Create a project, then optionally associate a local folder.
 - Configure roles in **Settings → IM** (agent, prompt, read/write/execute tools). Builtin templates cannot be deleted.
@@ -26,7 +26,7 @@ Notes reuse is deferred: IM does not write notes yet (project notes are an exten
 
 ## 简体中文
 
-**IM** 是 Desktop 独占的项目房间，由用户自己创建，不会从 catalog / Workbench 项目列表自动长出，也**不是一个独立导航页签**：从 **Workbench** 打开房间（工作项头部的「讨论房间」按钮或会话列表），它以嵌入方式渲染在工作台面板内。
+**IM** 是 Desktop 独占的项目房间，由用户自己创建，不会从 catalog / Workbench 项目列表自动长出，也**不是一个独立导航页签**：从 **Workbench** 打开房间（任务头部的「讨论房间」按钮或会话列表），它以嵌入方式渲染在工作台面板内。
 
 - 先新建项目，再按需关联本地目录。
 - 在 **设置 → IM** 配置角色（Agent、提示词、读/写/执行工具）。内置模板不可删除。

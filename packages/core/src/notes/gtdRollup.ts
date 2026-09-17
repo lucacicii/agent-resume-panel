@@ -1,11 +1,11 @@
 import { GTD_STATUSES, type GtdStatus } from "../gtd/types";
 import { loadSessionGtdMap, sessionGtdKey } from "../gtd/store";
 import { listAllNoteLinks } from "./links";
-import { listWorkItems, listWorkItemSessionLinks } from "./catalogNotes";
+import { listTasks, listTaskSessionLinks } from "./catalogNotes";
 import { getNoteGtdStatus, loadNoteGtdMap } from "./gtd";
 
 /**
- * Task (work item) GTD rollup.
+ * Task (task) GTD rollup.
  *
  * A task's GTD status is the aggregate of the entities under it: its note
  * subtree (children, grandchildren, …) and the sessions linked to it. The work
@@ -37,9 +37,9 @@ export interface TaskGtdCounts {
 export interface TaskGtdRollup {
   /** Status the board/task page should show (override when pinned, else rollup). */
   status: GtdStatus;
-  /** Explicit pin from the work item note, when present and not `inbox`. */
+  /** Explicit pin from the task note, when present and not `inbox`. */
   override?: GtdStatus;
-  /** Counts per status over the contributing entities (not the work item). */
+  /** Counts per status over the contributing entities (not the task). */
   counts: TaskGtdCounts;
   /** Number of contributing (explicitly marked) entities. */
   total: number;
@@ -87,12 +87,12 @@ function toRollup(statuses: readonly GtdStatus[], override: GtdStatus | undefine
   };
 }
 
-/** Override is the work item's own mark, except the implicit `inbox` default. */
+/** Override is the task's own mark, except the implicit `inbox` default. */
 function overrideFrom(own: GtdStatus | undefined): GtdStatus | undefined {
   return own && own !== "inbox" ? own : undefined;
 }
 
-/** Note ids under a work item (its full subtree, excluding the work item itself). */
+/** Note ids under a task (its full subtree, excluding the task itself). */
 function subtreeNoteIds(
   rootNoteId: string,
   childrenByParent: Map<string, string[]>
@@ -120,7 +120,7 @@ export async function resolveTaskGtdRollup(
     loadNoteGtdMap(catalogDb),
     loadSessionGtdMap(catalogDb),
     listAllNoteLinks(catalogDb).catch(() => []),
-    listWorkItemSessionLinks(catalogDb).catch(() => []),
+    listTaskSessionLinks(catalogDb).catch(() => []),
     getNoteGtdStatus(catalogDb, noteId)
   ]);
 
@@ -149,12 +149,12 @@ export async function resolveTaskGtdRollup(
 export async function listTaskGtdRollups(
   catalogDb: string
 ): Promise<Record<string, TaskGtdRollup>> {
-  const [noteGtd, sessionGtd, workItems, links, sessionLinks] = await Promise.all([
+  const [noteGtd, sessionGtd, tasks, links, sessionLinks] = await Promise.all([
     loadNoteGtdMap(catalogDb),
     loadSessionGtdMap(catalogDb),
-    listWorkItems(catalogDb),
+    listTasks(catalogDb),
     listAllNoteLinks(catalogDb).catch(() => []),
-    listWorkItemSessionLinks(catalogDb).catch(() => [])
+    listTaskSessionLinks(catalogDb).catch(() => [])
   ]);
 
   const childrenByParent = new Map<string, string[]>();
@@ -173,7 +173,7 @@ export async function listTaskGtdRollups(
   }
 
   const output: Record<string, TaskGtdRollup> = {};
-  for (const item of workItems) {
+  for (const item of tasks) {
     const statuses: GtdStatus[] = [...(sessionStatusesByNote.get(item.noteId) ?? [])];
     for (const childId of subtreeNoteIds(item.noteId, childrenByParent)) {
       const status = noteGtd[childId];

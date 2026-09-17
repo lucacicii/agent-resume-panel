@@ -47,12 +47,9 @@ export function useWorkbenchQuickAccess(options: {
   quickAccessRoot: string;
   quickAccessRoots: string[];
   quickAccessVisibleFiles: QuickAccessFile[];
-  quickAccessProjectContextRef: { current: { mode: Exclude<QuickAccessMode, "projects">; query: string; closeOnSelect: boolean } };
   loadQuickAccessFiles: () => Promise<void>;
   openQuickAccess: (mode: QuickAccessMode) => void;
   closeQuickAccess: () => void;
-  enterQuickAccessProjectMode: (closeOnSelect?: boolean) => void;
-  leaveQuickAccessProjectMode: () => void;
   invalidateQuickAccessCache: (rootPath: string) => void;
 } {
   const { projects, projectForPath, quickAccessProjectKey, onDismissOverlays } = options;
@@ -69,11 +66,6 @@ export function useWorkbenchQuickAccess(options: {
   const quickAccessCacheRef = useRef(new Map<string, { roots: string[]; files: QuickAccessFile[]; truncated: boolean }>());
   const quickAccessRequestRef = useRef(0);
   const quickAccessSearchRequestRef = useRef(0);
-  const quickAccessProjectContextRef = useRef<{
-    mode: Exclude<QuickAccessMode, "projects">;
-    query: string;
-    closeOnSelect: boolean;
-  }>({ mode: "files", query: "", closeOnSelect: false });
   const onDismissOverlaysRef = useRef(onDismissOverlays);
   onDismissOverlaysRef.current = onDismissOverlays;
 
@@ -133,7 +125,6 @@ export function useWorkbenchQuickAccess(options: {
   const openQuickAccess = useCallback((mode: QuickAccessMode) => {
     if (!quickAccessOpen && document.querySelector('[aria-modal="true"]')) return;
     onDismissOverlaysRef.current();
-    quickAccessProjectContextRef.current = { mode: "files", query: "", closeOnSelect: false };
     setQuickAccessMode(mode);
     setQuickAccessQuery("");
     setQuickAccessSearchFiles([]);
@@ -192,22 +183,6 @@ export function useWorkbenchQuickAccess(options: {
     if (typeof api.workbenchSearchPathsCancel === "function") void api.workbenchSearchPathsCancel().catch(() => undefined);
   }, []);
 
-  const enterQuickAccessProjectMode = useCallback((closeOnSelect = false) => {
-    quickAccessProjectContextRef.current = {
-      mode: quickAccessMode === "commands" ? "commands" : "files",
-      query: quickAccessQuery,
-      closeOnSelect
-    };
-    setQuickAccessMode("projects");
-    setQuickAccessQuery("");
-  }, [quickAccessMode, quickAccessQuery]);
-
-  const leaveQuickAccessProjectMode = useCallback(() => {
-    const context = quickAccessProjectContextRef.current;
-    setQuickAccessMode(context.mode);
-    setQuickAccessQuery(context.query);
-  }, []);
-
   useEffect(() => {
     const api = desktopApi();
     const offCmdP = typeof api.onWorkbenchCmdP === "function"
@@ -259,12 +234,9 @@ export function useWorkbenchQuickAccess(options: {
     quickAccessRoot,
     quickAccessRoots,
     quickAccessVisibleFiles,
-    quickAccessProjectContextRef,
     loadQuickAccessFiles,
     openQuickAccess,
     closeQuickAccess,
-    enterQuickAccessProjectMode,
-    leaveQuickAccessProjectMode,
     invalidateQuickAccessCache
   };
 }

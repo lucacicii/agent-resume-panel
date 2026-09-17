@@ -2,10 +2,10 @@ import { escapeSqlLiteral, runSqlite, runSqliteJson } from "../sqlite";
 import { workFieldsFromFrontmatter, type NoteFrontmatter, type NoteWorkFields } from "./frontmatter";
 
 /**
- * Work-item side table for notes.
+ * Task side table for notes.
  *
  * A row exists if and only if the note's front-matter carries `work: true`.
- * The markdown file stays the source of truth; this table only makes work items
+ * The markdown file stays the source of truth; this table only makes tasks
  * queryable (the board) without re-reading every file.
  */
 interface NoteWorkRow {
@@ -96,7 +96,7 @@ export async function setNoteWork(
        primary_project = excluded.primary_project,
        updated_at_ms = excluded.updated_at_ms;`
   );
-  await replaceWorkItemSessions(dbPath, noteId, fields.sessions ?? []);
+  await replaceTaskSessions(dbPath, noteId, fields.sessions ?? []);
 }
 
 /** `provider:id` → parts, or null when the key is malformed. */
@@ -107,13 +107,13 @@ export function splitSessionKey(key: string): { provider: string; sessionId: str
 }
 
 /**
- * Mirror a work item's `sessions` list into the link table.
+ * Mirror a task's `sessions` list into the link table.
  *
  * The markdown stays the source of truth; this table exists so reverse lookups
- * (session → work item) and project derivation are indexed queries. A session
- * belongs to at most one work item, so other claims are dropped first.
+ * (session → task) and project derivation are indexed queries. A session
+ * belongs to at most one task, so other claims are dropped first.
  */
-async function replaceWorkItemSessions(
+async function replaceTaskSessions(
   dbPath: string,
   noteId: string,
   sessions: readonly string[]
@@ -140,7 +140,7 @@ async function replaceWorkItemSessions(
 
 const SESSION_INDEX_KEY = "work_item_sessions_index_v1";
 
-/** True when the note is a work item (`work: true` in front-matter). */
+/** True when the note is a task (`work: true` in front-matter). */
 export async function isWorkNote(dbPath: string, noteId: string): Promise<boolean> {
   const rows = await runSqliteJson<{ note_id: string }>(
     dbPath,
@@ -154,7 +154,7 @@ export async function isWorkNote(dbPath: string, noteId: string): Promise<boolea
  * rows were written before the link table existed, and reconcile skips files
  * whose mtime did not change, so they would otherwise stay unindexed.
  */
-export async function ensureWorkItemSessionIndex(dbPath: string): Promise<void> {
+export async function ensureTaskSessionIndex(dbPath: string): Promise<void> {
   const flag = await runSqliteJson<{ value: string }>(
     dbPath,
     `SELECT value FROM catalog_meta WHERE key = '${escapeSqlLiteral(SESSION_INDEX_KEY)}' LIMIT 1;`
@@ -165,7 +165,7 @@ export async function ensureWorkItemSessionIndex(dbPath: string): Promise<void> 
     "SELECT note_id, sessions_json FROM note_work;"
   ).catch(() => []);
   for (const row of rows) {
-    await replaceWorkItemSessions(dbPath, row.note_id, parseStringListJson(row.sessions_json) ?? []);
+    await replaceTaskSessions(dbPath, row.note_id, parseStringListJson(row.sessions_json) ?? []);
   }
   await runSqlite(
     dbPath,

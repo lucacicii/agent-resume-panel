@@ -188,17 +188,17 @@ import {
   notesGetSubtree,
   notesImport,
   notesList,
-  notesCreateWorkItem,
-  notesAddWorkItemProject,
-  notesRemoveWorkItemProject,
-  notesEnsureWorkItemWorkspace,
-  notesLinkSessionToWorkItem,
-  notesListWorkItemSessionLinks,
-  notesListWorkItems,
-  notesOpenWorkItemWorkspace,
-  notesWorkItemWorkspace,
-  notesWorkItemNoteIdForSession,
-  notesWorkItemSessionContext,
+  notesCreateTask,
+  notesAddTaskProject,
+  notesRemoveTaskProject,
+  notesEnsureTaskWorkspace,
+  notesLinkSessionToTask,
+  notesListTaskSessionLinks,
+  notesListTasks,
+  notesOpenTaskWorkspace,
+  notesTaskWorkspace,
+  notesTaskNoteIdForSession,
+  notesTaskSessionContext,
   notesListChildCounts,
   notesListLinkedChildIds,
   notesListLinks,
@@ -207,7 +207,7 @@ import {
   notesPasteImage,
   notesRead,
   notesRename,
-  notesRenameWorkItem,
+  notesRenameTask,
   notesResolveLinkRoot,
   notesReveal,
   notesSetGtdStatus,
@@ -1169,17 +1169,17 @@ async function syncAndNotify(): Promise<AgentSessionSyncResult> {
 }
 
 /**
- * A work item's context block for a session that keeps `cwd` as its working
+ * A task's context block for a session that keeps `cwd` as its working
  * directory. Best-effort: a missing block must never block the session.
  */
-async function workItemContextFile(
+async function taskContextFile(
   noteId: string | undefined,
   cwd: string
 ): Promise<string | undefined> {
   const id = noteId?.trim();
   if (!id || !cwd.trim()) return undefined;
   try {
-    const { file } = await notesWorkItemSessionContext({ noteId: id, cwd });
+    const { file } = await notesTaskSessionContext({ noteId: id, cwd });
     return file;
   } catch {
     return undefined;
@@ -1187,20 +1187,20 @@ async function workItemContextFile(
 }
 
 /**
- * The context block a resumed session carries: a session linked to a work item
- * is told which work item it serves, so single-repository sessions are not the
+ * The context block a resumed session carries: a session linked to a task
+ * is told which task it serves, so single-repository sessions are not the
  * odd one out. Best-effort.
  */
-async function workItemContextFileForSession(session: {
+async function taskContextFileForSession(session: {
   provider: string;
   id: string;
 }, cwd: string): Promise<string | undefined> {
   try {
-    const noteId = await notesWorkItemNoteIdForSession({
+    const noteId = await notesTaskNoteIdForSession({
       provider: session.provider,
       sessionId: session.id
     });
-    return await workItemContextFile(noteId, cwd);
+    return await taskContextFile(noteId, cwd);
   } catch {
     return undefined;
   }
@@ -1279,7 +1279,7 @@ async function resumeCatalogSession(
     return { mode, external: true, command: "", cwd, session };
   }
 
-  const contextFile = await workItemContextFileForSession(session, cwd);
+  const contextFile = await taskContextFileForSession(session, cwd);
   const command = buildResumeCommand(session, contextFile);
 
   if (mode === "external-system") {
@@ -2269,7 +2269,7 @@ function registerIpc(): void {
         executionMode: "standard" | "note-yolo";
         useSystemTerminalOnly?: boolean;
         noteId?: string;
-        workItemNoteId?: string;
+        taskNoteId?: string;
         initialPrompt?: string;
       }
     ) => {
@@ -2293,7 +2293,7 @@ function registerIpc(): void {
         args.provider,
         cwd,
         executionMode,
-        await workItemContextFile(args.workItemNoteId, cwd)
+        await taskContextFile(args.taskNoteId, cwd)
       );
       const unsupportedYolo = requestedYolo && !yoloSupported;
       const warning = unsupportedYolo
@@ -2323,11 +2323,11 @@ function registerIpc(): void {
           warning
         };
       }
-      // MCP session identity so note operations default to this work item /
+      // MCP session identity so note operations default to this task /
       // session (see packages/core/src/mcp/sessionContext.ts).
       const env: Record<string, string> = { [MCP_SESSION_ENV.provider]: args.provider };
-      if (args.workItemNoteId?.trim()) {
-        env[MCP_SESSION_ENV.workItemNoteId] = args.workItemNoteId.trim();
+      if (args.taskNoteId?.trim()) {
+        env[MCP_SESSION_ENV.taskNoteId] = args.taskNoteId.trim();
       }
       return { mode, command, cwd, unsupportedYolo, warning, env };
     }
@@ -2656,7 +2656,7 @@ function registerIpc(): void {
   ipcMain.handle("logs:openDir", async () => openAppErrorLogDir());
 
   ipcMain.handle("notes:list", async () => notesList());
-  ipcMain.handle("notes:listWorkItems", async () => notesListWorkItems());
+  ipcMain.handle("notes:listTasks", async () => notesListTasks());
   ipcMain.handle("taskTemplates:list", async () => listTaskTemplates());
   ipcMain.handle("taskTemplates:create", async (_event, args: { title?: unknown; projectPaths?: unknown }) => {
     if (typeof args?.title !== "string" || !args.title.trim()) {
@@ -2686,58 +2686,58 @@ function registerIpc(): void {
     }
     return deleteTaskTemplate(args.templateId);
   });
-  ipcMain.handle("notes:removeWorkItemProject", async (_event, args: { noteId?: unknown; projectPath?: unknown }) => {
+  ipcMain.handle("notes:removeTaskProject", async (_event, args: { noteId?: unknown; projectPath?: unknown }) => {
     if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
-      throw new Error("A work item note id is required.");
+      throw new Error("A task note id is required.");
     }
     if (typeof args?.projectPath !== "string" || !args.projectPath.trim()) {
       throw new Error("A project path is required.");
     }
-    return notesRemoveWorkItemProject({ noteId: args.noteId, projectPath: args.projectPath });
+    return notesRemoveTaskProject({ noteId: args.noteId, projectPath: args.projectPath });
   });
-  ipcMain.handle("notes:ensureWorkItemWorkspace", async (_event, args: { noteId?: unknown }) => {
+  ipcMain.handle("notes:ensureTaskWorkspace", async (_event, args: { noteId?: unknown }) => {
     if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
-      throw new Error("A work item note id is required.");
+      throw new Error("A task note id is required.");
     }
-    return notesEnsureWorkItemWorkspace(args.noteId);
+    return notesEnsureTaskWorkspace(args.noteId);
   });
-  ipcMain.handle("notes:listWorkItemSessionLinks", async () => notesListWorkItemSessionLinks());
-  ipcMain.handle("notes:workItemWorkspace", async (_event, args: { noteId?: unknown }) => {
+  ipcMain.handle("notes:listTaskSessionLinks", async () => notesListTaskSessionLinks());
+  ipcMain.handle("notes:taskWorkspace", async (_event, args: { noteId?: unknown }) => {
     if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
-      throw new Error("A work item note id is required.");
+      throw new Error("A task note id is required.");
     }
-    return notesWorkItemWorkspace(args.noteId);
+    return notesTaskWorkspace(args.noteId);
   });
-  ipcMain.handle("notes:openWorkItemWorkspace", async (_event, args: { noteId?: unknown }) => {
+  ipcMain.handle("notes:openTaskWorkspace", async (_event, args: { noteId?: unknown }) => {
     if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
-      throw new Error("A work item note id is required.");
+      throw new Error("A task note id is required.");
     }
-    return notesOpenWorkItemWorkspace(args.noteId);
+    return notesOpenTaskWorkspace(args.noteId);
   });
-  ipcMain.handle("notes:addWorkItemProject", async (_event, args: { noteId?: unknown; projectPath?: unknown }) => {
+  ipcMain.handle("notes:addTaskProject", async (_event, args: { noteId?: unknown; projectPath?: unknown }) => {
     if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
-      throw new Error("A work item note id is required.");
+      throw new Error("A task note id is required.");
     }
     if (typeof args?.projectPath !== "string" || !args.projectPath.trim()) {
       throw new Error("A project path is required.");
     }
-    return notesAddWorkItemProject({ noteId: args.noteId, projectPath: args.projectPath });
+    return notesAddTaskProject({ noteId: args.noteId, projectPath: args.projectPath });
   });
-  ipcMain.handle("notes:linkSessionToWorkItem", async (_event, args: { noteId?: unknown; sessionKey?: unknown; projectPath?: unknown }) => {
+  ipcMain.handle("notes:linkSessionToTask", async (_event, args: { noteId?: unknown; sessionKey?: unknown; projectPath?: unknown }) => {
     if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
-      throw new Error("A work item note id is required.");
+      throw new Error("A task note id is required.");
     }
     if (typeof args?.sessionKey !== "string" || !args.sessionKey.trim()) {
       throw new Error("A session key is required.");
     }
-    return notesLinkSessionToWorkItem({
+    return notesLinkSessionToTask({
       noteId: args.noteId,
       sessionKey: args.sessionKey,
       projectPath: typeof args.projectPath === "string" ? args.projectPath : undefined
     });
   });
-  ipcMain.handle("notes:createWorkItem", async (_event, args: { title?: unknown; next?: unknown; decision?: unknown; sessions?: unknown; projects?: unknown; primaryProject?: unknown; status?: unknown }) => {
-    return notesCreateWorkItem({
+  ipcMain.handle("notes:createTask", async (_event, args: { title?: unknown; next?: unknown; decision?: unknown; sessions?: unknown; projects?: unknown; primaryProject?: unknown; status?: unknown }) => {
+    return notesCreateTask({
       title: typeof args?.title === "string" ? args.title : undefined,
       next: typeof args?.next === "string" ? args.next : undefined,
       decision: typeof args?.decision === "string" ? args.decision : undefined,
@@ -2911,14 +2911,14 @@ function registerIpc(): void {
     scheduleNotesIndex();
     return result;
   });
-  ipcMain.handle("notes:renameWorkItem", async (_event, args: { noteId?: unknown; title?: unknown }) => {
+  ipcMain.handle("notes:renameTask", async (_event, args: { noteId?: unknown; title?: unknown }) => {
     if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
-      throw new Error("A work item note id is required.");
+      throw new Error("A task note id is required.");
     }
     if (typeof args?.title !== "string" || !args.title.trim()) {
       throw new Error("A task name is required.");
     }
-    const result = await notesRenameWorkItem(args.noteId, args.title);
+    const result = await notesRenameTask(args.noteId, args.title);
     scheduleNotesIndex();
     return result;
   });

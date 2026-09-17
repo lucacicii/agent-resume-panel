@@ -6,9 +6,9 @@ import { AgentProvider, AgentSession } from "../catalog/types";
  * user expects the agent to keep working — the new project after a move.
  * Sessions are resumed in projectPath (effective), not the native path.
  *
- * `contextFile` (optional) is a work item's context block: it is appended to the
+ * `contextFile` (optional) is a task's context block: it is appended to the
  * session's system prompt so a session that keeps a repository as its cwd still
- * knows which work item it serves.
+ * knows which task it serves.
  */
 export function buildResumeCommand(session: AgentSession, contextFile?: string): string {
   return withSessionContext(resumeCommandFor(session), session.provider, contextFile);
@@ -127,11 +127,11 @@ function newSessionCommandFor(
 
 /**
  * Flags that hand one session the contents of `file` as extra system prompt
- * text, so the work item's context travels with a session that runs in a
+ * text, so the task's context travels with a session that runs in a
  * repository (no cwd change, nothing written into the repository).
  *
  * Only verified flags are listed. Providers without one return an empty string:
- * their sessions get the context through the working directory (the work item's
+ * their sessions get the context through the working directory (the task's
  * neutral workspace) or not at all.
  */
 export function sessionContextFlags(provider: AgentProvider, file: string): string {

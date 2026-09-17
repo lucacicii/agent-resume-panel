@@ -122,7 +122,7 @@ macOS 导向的 **Session OS + Memory** 桌面应用：**Workbench** 恢复会�
 | [Sessions](sessions.md) | 参考列表与只读预览 |
 | [Notes](notes.md) | 与扩展共用的 Markdown 笔记 |
 | [IM](im.md) | 用户自建项目房间，从 Workbench 打开；引用消息并 @ Pi / Claude / Codex 角色 |
-| [MCP](mcp.md) | 为受信任的本机 Agent 注册 Notes、Tasks（工作项）、Reports、记忆检索、Sessions 与 GTD 工具 |
+| [MCP](mcp.md) | 为受信任的本机 Agent 注册 Notes、任务、Reports、记忆检索、Sessions 与 GTD 工具 |
 | [设置与数据](settings-and-data.md) | 各设置页、备份/合并、日志、数据目录、用量、更新 |
 
 ### 导航一览

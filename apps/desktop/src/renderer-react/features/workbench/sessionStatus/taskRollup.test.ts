@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import type { ActiveSessionDot } from "../activeSessionDots";
 import { WORKBENCH_SESSION_DOT_STATUSES } from "../../../../shared/workbenchSelection";
 import { SESSION_DOT_STATUSES, type SessionDotStatus } from "./types";
-import { LIVE_RANK, needsYou, rank, rollupDot } from "./workItemRollup";
+import { LIVE_RANK, needsYou, rank, rollupDot } from "./taskRollup";
 
 function dot(
   sessionKey: string,
@@ -46,8 +46,8 @@ function filesDefining(pattern: RegExp): string[] {
     .sort();
 }
 
-describe("workItemRollup", () => {
-  it("picks the highest LIVE_RANK among a work item's sessions", () => {
+describe("taskRollup", () => {
+  it("picks the highest LIVE_RANK among a task's sessions", () => {
     const dots = byKey(
       dot("s-open", "open"),
       dot("s-running", "running"),
@@ -102,13 +102,13 @@ describe("workItemRollup", () => {
 
   it("defines rollupDot, LIVE_RANK, and rank in exactly one source file each", () => {
     expect(filesDefining(/\bexport const LIVE_RANK\b/)).toEqual([
-      "renderer-react/features/workbench/sessionStatus/workItemRollup.ts"
+      "renderer-react/features/workbench/sessionStatus/taskRollup.ts"
     ]);
     expect(filesDefining(/\bexport function rollupDot\b/)).toEqual([
-      "renderer-react/features/workbench/sessionStatus/workItemRollup.ts"
+      "renderer-react/features/workbench/sessionStatus/taskRollup.ts"
     ]);
     expect(filesDefining(/\bexport function rank\b/)).toEqual([
-      "renderer-react/features/workbench/sessionStatus/workItemRollup.ts"
+      "renderer-react/features/workbench/sessionStatus/taskRollup.ts"
     ]);
   });
 

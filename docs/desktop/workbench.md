@@ -10,13 +10,13 @@ Languages: [English](#english) | [简体中文](#简体中文)
 
 ### What it is
 
-**Workbench** is Desktop’s **session OS** surface: pick a **work item**, open its **sessions**, resume in an **embedded xterm** or the **system default terminal**, and use **Git / explorer** tools against that work item’s local folders. It is the primary place to *continue working*, while [Sessions](sessions.md) is a lighter reference list.
+**Workbench** is Desktop’s **session OS** surface: pick a **task**, open its **sessions**, resume in an **embedded xterm** or the **system default terminal**, and use **Git / explorer** tools against that task’s local folders. It is the primary place to *continue working*, while [Sessions](sessions.md) is a lighter reference list.
 
 ### Core flows
 
-1. Open the **Workbench** tab. The sidebar lists **work items** (not repositories).  
-2. Select a work item to see only its sessions. With no work item selected, the middle pane lists all sessions.  
-3. Attach a local folder with **Add project** (macOS folder picker). Click a folder chip to make it the active root for Explorer / Git / Search / Scripts. A work item can reference several folders; with none or several, new sessions start in the work item’s shared workspace, whose `AGENTS.md` / `CLAUDE.md` carry the address table (where each folder lives) and the note’s background knowledge. Right-click the work item to open that folder once a session has created it. With a single folder, the session starts directly in that repository and the same address table and knowledge are appended to the agent’s system prompt (Codex, Claude, Pi, Prime) — nothing is written into the repository.  
+1. Open the **Workbench** tab. The sidebar lists **tasks** (not repositories).  
+2. Select a task to see only its sessions. With no task selected, the middle pane lists all sessions.  
+3. Attach a local folder with **Add folder** (macOS folder picker). Click a folder chip to make it the active root for Explorer / Git / Search / Scripts. A task can reference several folders; with none or several, new sessions start in the task’s shared workspace, whose `AGENTS.md` / `CLAUDE.md` carry the address table (where each folder lives) and the note’s background knowledge. Right-click the task to open that folder once a session has created it. With a single folder, the session starts directly in that repository and the same address table and knowledge are appended to the agent’s system prompt (Codex, Claude, Pi, Prime) — nothing is written into the repository.  
 4. Resume CLI sessions in the **embedded terminal** (multi-tab) or **external** terminal. If [workspace mentions](workspace-mentions.md) are configured, the new-session picker can open a pack’s work folder and inject reference paths into the first prompt. `arpm go <id>` does the same from any terminal.  
 5. If the default target is an **ACP · …** agent, **New session** opens a **visual chat pane** in the same tab strip (Agent Client Protocol; Claude Code, Codex, Grok Build, OpenCode, Pi).  
 6. Use the detail header for the active folder path and **branch** controls; watch the **status bar** for live **cwd** and **git branch** (including nested repos when detected).  
@@ -53,6 +53,8 @@ Choose an **ACP · …** default agent in **Settings → Workbench → New Sessi
 
 ### Keyboard & defaults
 
+- **⌘P / Ctrl+P** opens **Quick Access** for files in the task's folders.  
+- **⌘⇧P / Ctrl+Shift+P** opens the **command palette**: switch Workbench/GTD, open or exit a task, start sessions and terminals, and open side panels. Type `>` to filter commands while the palette is open.  
 - **⌘⇧F / Ctrl+Shift+F** opens **Find in Files** (the Search side panel).  
 - **⌘T** can be configured for **new session** or **new terminal** under Workbench settings.  
 - **⌘← / ⌘→** switch to the previous / next tab within the current group.  
@@ -79,13 +81,13 @@ Choose an **ACP · …** default agent in **Settings → Workbench → New Sessi
 
 ### 是什么
 
-**Workbench** 是 Desktop 的 **Session OS** 工作台：选一个 **工作项**，打开它的 **session**，在 **内嵌 xterm** 或 **系统默认终端** 中恢复，并用 **Git / 资源管理器** 操作该工作项的本地目录。这里是 *继续干活* 的主战场；[Sessions](sessions.md) 更偏参考列表。
+**Workbench** 是 Desktop 的 **Session OS** 工作台：选一个 **任务**，打开它的 **session**，在 **内嵌 xterm** 或 **系统默认终端** 中恢复，并用 **Git / 资源管理器** 操作该任务的本地目录。这里是 *继续干活* 的主战场；[Sessions](sessions.md) 更偏参考列表。
 
 ### 核心流程
 
-1. 打开 **Workbench** 页签。侧栏列的是 **工作项**（不再按仓库浏览）。  
-2. 选中工作项只看它的 session；未选工作项时中间栏列出全部 session。  
-3. 用 **新增项目**（macOS 文件夹选择器）挂本地目录。点目录 chip 把它设为 Explorer / Git / Search / Scripts 的活动根。一个工作项可挂多个目录；零个或多个时，新 session 走工作项的共享 workspace，其 `AGENTS.md` / `CLAUDE.md` 内含地址表（各目录在哪）与笔记的背景知识。右键工作项可在目录生成后打开它。只有单个目录时，会话直接在该仓库中启动，并通过系统提示参数注入相同的地址表与背景知识（Codex、Claude、Pi、Prime），不污染用户仓库。  
+1. 打开 **Workbench** 页签。侧栏列的是 **任务**（不再按仓库浏览）。  
+2. 选中任务只看它的 session；未选任务时中间栏列出全部 session。  
+3. 用 **新增目录**（macOS 文件夹选择器）挂本地目录。点目录 chip 把它设为 Explorer / Git / Search / Scripts 的活动根。一个任务可挂多个目录；零个或多个时，新 session 走任务的共享 workspace，其 `AGENTS.md` / `CLAUDE.md` 内含地址表（各目录在哪）与笔记的背景知识。右键任务可在目录生成后打开它。只有单个目录时，会话直接在该仓库中启动，并通过系统提示参数注入相同的地址表与背景知识（Codex、Claude、Pi、Prime），不污染用户仓库。  
 4. CLI 会话用 **内嵌终端**（多标签）或 **外部终端** 恢复。若配置了 [工作区 Mention](workspace-mentions.md)，新建会话选择器可打开该包的工作目录并把参考路径写入首条 prompt。任意终端也可用 `arpm go <id>`。  
 5. 若默认目标为 **ACP · …** Agent，**新建会话**会在同一标签栏打开 **可视化聊天**（Agent Client Protocol；支持 Claude Code、Codex、Grok Build、OpenCode、Pi）。  
 6. 在详情头查看活动目录路径与 **分支** 控件；在 **状态栏** 查看实时 **cwd** 与 **git 分支**（可识别嵌套 git 根）。  
@@ -122,6 +124,8 @@ Choose an **ACP · …** default agent in **Settings → Workbench → New Sessi
 
 ### 快捷键与默认值
 
+- **⌘P / Ctrl+P** 打开 **Quick Access**，在任务关联的目录中搜索文件。  
+- **⌘⇧P / Ctrl+Shift+P** 打开**命令面板**：切换 Workbench / GTD、打开或退出任务、新建会话与终端、打开侧栏面板。面板内输入 `>` 可过滤命令。  
 - **⌘⇧F / Ctrl+Shift+F** 打开**全局查找**（Search 侧边栏）。  
 - **⌘T** 可在 Workbench 设置中配置为 **新建会话** 或 **新建终端**。  
 - **⌘← / ⌘→** 在当前组内切换到前一个 / 后一个标签。  

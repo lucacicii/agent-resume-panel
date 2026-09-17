@@ -38,7 +38,7 @@ See also [Extension Notes](../panel/notes.md).
 
 ### Tips
 
-1. Prefer task (work item) notes for durable docs; session notes for run-specific context.  
+1. Prefer task notes for durable docs; session notes for run-specific context.  
 2. Back up panel home when migrating machines — [Settings & data](settings-and-data.md).  
 3. Markdown preview is sanitized; treat notes as content, not trusted HTML.
 
@@ -80,7 +80,7 @@ Desktop 提供更完整的列表 / 编辑 / 预览，以及可选的索引搜索
 
 ### 提示
 
-1. 长期文档放任务（工作项）笔记；单次运行上下文放会话笔记。  
+1. 长期文档放任务笔记；单次运行上下文放会话笔记。  
 2. 换机备份 panel home — [设置与数据](settings-and-data.md)。  
 3. 预览会做安全处理；笔记按普通内容对待，不要当可信 HTML。
 

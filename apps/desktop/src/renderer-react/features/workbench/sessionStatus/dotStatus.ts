@@ -1,6 +1,6 @@
 /**
  * Presentation helpers for session status dots. These lived on the deleted
- * `SessionDotsCluster` component; work-item rows and workbench status chips
+ * `SessionDotsCluster` component; task rows and workbench status chips
  * still render the same dot vocabulary, so the mapping lives here now.
  */
 

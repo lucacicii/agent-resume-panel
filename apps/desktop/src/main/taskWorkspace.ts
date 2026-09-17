@@ -1,12 +1,12 @@
 import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { desktopDataDir, getCatalogMeta, setCatalogMeta, workItemPromptBody } from "@agent-resume/core";
+import { desktopDataDir, getCatalogMeta, setCatalogMeta, taskPromptBody } from "@agent-resume/core";
 
 /**
- * Work-item workspace + address table.
+ * Task workspace + address table.
  *
- * A work item that references several repositories cannot use any single repo
+ * A task that references several repositories cannot use any single repo
  * as its cwd, so sessions may run in a neutral, deterministically allocated
  * workspace directory. The address table — where each referenced repository
  * actually lives — and the note's background knowledge are written into
@@ -17,20 +17,26 @@ import { desktopDataDir, getCatalogMeta, setCatalogMeta, workItemPromptBody } fr
  * forever, nothing persisted.
  */
 
-const BEGIN = "<!-- agent-resume:begin work-item-address -->";
-const END = "<!-- agent-resume:end work-item-address -->";
+const BEGIN = "<!-- agent-resume:begin task-address -->";
+const END = "<!-- agent-resume:end task-address -->";
+/**
+ * Markers written before the Workbench task rename. Still located so an existing
+ * workspace file migrates in place instead of growing a second managed block.
+ */
+const LEGACY_BEGIN = "<!-- agent-resume:begin work-item-address -->";
+const LEGACY_END = "<!-- agent-resume:end work-item-address -->";
 /** A user leaves this in the file to take ownership; we then stop managing it. */
 const DISABLE = "<!-- agent-resume:disable -->";
 const HASH_KEY_PREFIX = "work_item_workspace_hash:";
 
-type WorkItemAddressProject = {
+type TaskAddressProject = {
   path: string;
   label: string;
   /** False when the path does not exist on this machine (e.g. synced from another Mac). */
   exists: boolean;
 };
 
-export type WorkItemAddress = {
+export type TaskAddress = {
   noteId: string;
   title: string;
   status?: string;
@@ -38,19 +44,19 @@ export type WorkItemAddress = {
   decision?: string;
   /** Absolute path of the note file, so agents running in any cwd can read it. */
   noteAbsPath: string;
-  projects: WorkItemAddressProject[];
+  projects: TaskAddressProject[];
 };
 
 /** Deterministic workspace directory: same note id → same path, forever. */
-export function workItemWorkspaceDir(panelHome: string, noteId: string): string {
+export function taskWorkspaceDir(panelHome: string, noteId: string): string {
   return path.join(desktopDataDir(panelHome), "workspaces", noteId);
 }
 
 /**
- * True for directories the panel owns itself (`<panelHome>/.desktop`: work-item
+ * True for directories the panel owns itself (`<panelHome>/.desktop`: task
  * workspaces, scratch sessions, stores). They are implementation details of the
- * app, never repositories a work item references, so they must not leak into a
- * work item's project list or its address table.
+ * app, never repositories a task references, so they must not leak into a
+ * task's project list or its address table.
  */
 export function isPanelInternalPath(panelHome: string, candidate: string): boolean {
   const root = path.resolve(desktopDataDir(panelHome));
@@ -60,12 +66,12 @@ export function isPanelInternalPath(panelHome: string, candidate: string): boole
 }
 
 /**
- * The projects a work item references: the ones declared on its note plus the
+ * The projects a task references: the ones declared on its note plus the
  * working directories of its linked sessions. A session that ran in the panel's
  * own workspace directory does not make that directory a repository, so those
  * cwds are dropped; the declared list is the user's explicit choice and is kept.
  */
-export function mergeWorkItemProjects(input: {
+export function mergeTaskProjects(input: {
   panelHome: string;
   declared: readonly string[];
   sessionProjects: readonly string[];
@@ -88,23 +94,23 @@ export function sessionContextFile(workspaceDir: string, sessionCwd: string): st
 }
 
 /** The address table itself, shared by the workspace files and the IM preamble. */
-export function renderAddressTable(address: WorkItemAddress, workspaceDir?: string): string {
+export function renderAddressTable(address: TaskAddress, workspaceDir?: string): string {
   const lines = [
-    `# Work item: ${address.title || address.noteId}`,
+    `# Task: ${address.title || address.noteId}`,
     `Status: ${address.status || "inbox"} · Next: ${address.next || "-"} · Decision: ${address.decision || "-"}`,
     ""
   ];
   if (workspaceDir) {
     lines.push(
-      "This directory is the work item's neutral workspace (it is not a git repository).",
+      "This directory is the task's neutral workspace (it is not a git repository).",
       ""
     );
   }
   lines.push(
-    "Repositories referenced by this work item:",
+    "Repositories referenced by this task:",
     ...(address.projects.length
       ? address.projects.map((project) => `- ${project.label} → ${project.path}${project.exists ? "" : "  (path not found on this machine)"}`)
-      : ["- (none yet) — add a project from the work item header, or link a session to one"]),
+      : ["- (none yet) — add a project from the task header, or link a session to one"]),
     "",
     "cd into the repository you need before running project commands.",
     "Shared artifacts and notes go under .arp/.",
@@ -118,7 +124,19 @@ function hashText(value: string): string {
 }
 
 function stripMarkers(block: string): string {
-  return block.replace(BEGIN, "").replace(END, "").trim();
+  return [BEGIN, END, LEGACY_BEGIN, LEGACY_END]
+    .reduce((value, marker) => value.replace(marker, ""), block)
+    .trim();
+}
+
+/** The managed block in an existing file, under either marker generation. */
+function findManagedBlock(existing: string): { start: number; end: number; endMarker: string } | null {
+  for (const [beginMarker, endMarker] of [[BEGIN, END], [LEGACY_BEGIN, LEGACY_END]] as const) {
+    const start = existing.indexOf(beginMarker);
+    const end = existing.indexOf(endMarker);
+    if (start >= 0 && end > start) return { start, end, endMarker };
+  }
+  return null;
 }
 
 /**
@@ -144,12 +162,13 @@ async function upsertManagedBlock(filePath: string, block: string, catalogDb: st
   const nextHash = hashText(block);
 
   let next: string;
-  if (start >= 0 && end > start) {
-    const currentBlock = existing.slice(start, end + END.length);
+  const located = findManagedBlock(existing);
+  if (located) {
+    const currentBlock = existing.slice(located.start, located.end + located.endMarker.length);
     if (currentBlock === block) return false;
     const editedByUser = Boolean(writtenHash) && hashText(currentBlock) !== writtenHash;
-    const before = existing.slice(0, start);
-    const after = existing.slice(end + END.length).replace(/^\n+/, "\n");
+    const before = existing.slice(0, located.start);
+    const after = existing.slice(located.end + located.endMarker.length).replace(/^\n+/, "\n");
     const preserved = editedByUser
       ? `\n\n<!-- preserved from your edit of the managed block -->\n${stripMarkers(currentBlock)}\n`
       : "";
@@ -167,25 +186,25 @@ async function upsertManagedBlock(filePath: string, block: string, catalogDb: st
 
 /**
  * The note's background knowledge as prose: what an agent should know about the
- * work item, without the note's own `# <name><suffix>` heading — the managed
+ * task, without the note's own `# <name><suffix>` heading — the managed
  * block already carries the title.
  */
-export function workItemKnowledgeText(body: string): string {
-  return workItemPromptBody(body).replace(/^\s*#\s+[^\n]*(?:\n+|$)/, "").trim();
+export function taskKnowledgeText(body: string): string {
+  return taskPromptBody(body).replace(/^\s*#\s+[^\n]*(?:\n+|$)/, "").trim();
 }
 
 /**
  * Allocate the workspace and refresh the address table.
  * Write failures must never block a session — callers treat this as best-effort.
  */
-export async function ensureWorkItemWorkspace(input: {
+export async function ensureTaskWorkspace(input: {
   panelHome: string;
   catalogDb: string;
-  address: WorkItemAddress;
+  address: TaskAddress;
   /** Note knowledge region; omitted when the note has none. */
   knowledge?: string;
 }): Promise<{ dir: string; updated: boolean }> {
-  const dir = workItemWorkspaceDir(input.panelHome, input.address.noteId);
+  const dir = taskWorkspaceDir(input.panelHome, input.address.noteId);
   await fs.mkdir(dir, { recursive: true });
   const knowledge = input.knowledge?.trim();
   const block = [

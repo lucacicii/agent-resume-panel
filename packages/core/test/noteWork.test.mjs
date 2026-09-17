@@ -5,15 +5,15 @@ import path from "node:path";
 import test from "node:test";
 import {
   buildNoteDocument,
-  ensureWorkItemSessionIndex,
-  listWorkItems,
+  ensureTaskSessionIndex,
+  listTasks,
   NotesStore,
   parseNoteDocument,
   runSqlite,
   workFieldsFromFrontmatter
 } from "../dist/index.js";
 
-test("work-item front-matter round-trips through parse and build", () => {
+test("task front-matter round-trips through parse and build", () => {
   const raw = buildNoteDocument(
     {
       id: "n1",
@@ -43,7 +43,7 @@ test("work-item front-matter round-trips through parse and build", () => {
   assert.equal(workFieldsFromFrontmatter({ scope: "project" }), null);
 });
 
-test("work items are indexed from front-matter and survive a move", async () => {
+test("tasks are indexed from front-matter and survive a move", async () => {
   const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-note-work-"));
   const catalogDb = path.join(panelHome, "catalog.db");
   const store = new NotesStore(catalogDb, panelHome);
@@ -52,15 +52,15 @@ test("work items are indexed from front-matter and survive a move", async () => 
   try {
     const record = await store.createProjectNote(path.join(panelHome, "app"));
 
-    // A plain project note is not a work item.
-    assert.equal((await listWorkItems(catalogDb)).length, 0);
+    // A plain project note is not a task.
+    assert.equal((await listTasks(catalogDb)).length, 0);
 
     await store.writeNoteContent(
       record.noteId,
       `---\nscope: project\nwork: true\nnext: Ship it\ndecision: Pick a color\nsessions: codex:s1, claude:s2\nprojects: /work/app, /work/api\nprimaryProject: /work/app\n---\n# Realtime status\n`
     );
 
-    const items = await listWorkItems(catalogDb);
+    const items = await listTasks(catalogDb);
     assert.equal(items.length, 1);
     assert.equal(items[0].noteId, record.noteId);
     assert.equal(items[0].work.next, "Ship it");
@@ -73,7 +73,7 @@ test("work items are indexed from front-matter and survive a move", async () => 
     const moved = await store.moveNote(record.noteId, { scope: "project", projectPath: path.join(panelHome, "other") });
     const content = await store.readNoteContent(moved.noteId);
     assert.match(content, /work: true/);
-    const afterMove = await listWorkItems(catalogDb);
+    const afterMove = await listTasks(catalogDb);
     assert.equal(afterMove.length, 1);
     assert.equal(afterMove[0].work.next, "Ship it");
 
@@ -82,13 +82,13 @@ test("work items are indexed from front-matter and survive a move", async () => 
       record.noteId,
       `---\nscope: project\n---\n# Realtime status\n`
     );
-    assert.equal((await listWorkItems(catalogDb)).length, 0);
+    assert.equal((await listTasks(catalogDb)).length, 0);
   } finally {
     await fs.rm(panelHome, { recursive: true, force: true });
   }
 });
 
-test("work-item session links are indexed for reverse lookup and project derivation", async () => {
+test("task session links are indexed for reverse lookup and project derivation", async () => {
   const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-work-links-"));
   const catalogDb = path.join(panelHome, "catalog.db");
   const store = new NotesStore(catalogDb, panelHome);
@@ -101,31 +101,31 @@ test("work-item session links are indexed for reverse lookup and project derivat
        VALUES ('codex', 's1', 'A', '/work/app', 1, 0), ('claude', 's2', 'B', '/work/api', 1, 0);`
     );
 
-    const item = await store.createWorkItem({ title: "Cross-repo", sessions: ["codex:s1", "claude:s2"] });
-    const links = await store.listWorkItemSessionLinks();
+    const item = await store.createTask({ title: "Cross-repo", sessions: ["codex:s1", "claude:s2"] });
+    const links = await store.listTaskSessionLinks();
     assert.deepEqual(links.map((link) => `${link.provider}:${link.sessionId}`).sort(), ["claude:s2", "codex:s1"]);
     assert.equal(links[0].title, "Cross-repo");
 
-    const projects = await store.listWorkItemSessionProjects();
+    const projects = await store.listTaskSessionProjects();
     assert.deepEqual((projects[item.noteId] ?? []).sort(), ["/work/api", "/work/app"]);
 
-    // A session belongs to at most one work item: re-claiming moves it.
-    const other = await store.createWorkItem({ title: "Other", sessions: ["codex:s1"] });
-    const after = await store.listWorkItemSessionLinks();
+    // A session belongs to at most one task: re-claiming moves it.
+    const other = await store.createTask({ title: "Other", sessions: ["codex:s1"] });
+    const after = await store.listTaskSessionLinks();
     const claimed = after.filter((link) => link.provider === "codex" && link.sessionId === "s1");
     assert.equal(claimed.length, 1);
     assert.equal(claimed[0].noteId, other.noteId);
 
-    // Deleting the work item clears its links.
+    // Deleting the task clears its links.
     await store.deleteNote(other.noteId);
-    const cleaned = await store.listWorkItemSessionLinks();
+    const cleaned = await store.listTaskSessionLinks();
     assert.equal(cleaned.filter((link) => link.noteId === other.noteId).length, 0);
   } finally {
     await fs.rm(panelHome, { recursive: true, force: true });
   }
 });
 
-test("lists a work item's linked sessions with their project paths", async () => {
+test("lists a task's linked sessions with their project paths", async () => {
   const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-work-details-"));
   const catalogDb = path.join(panelHome, "catalog.db");
   const store = new NotesStore(catalogDb, panelHome);
@@ -137,9 +137,9 @@ test("lists a work item's linked sessions with their project paths", async () =>
       `INSERT INTO sessions (provider, agent_session_id, title, project_path, updated_at_ms, hidden)
        VALUES ('codex', 's1', 'A', '/work/app', 1, 0), ('claude', 's2', 'B', '/work/api', 1, 0);`
     );
-    const item = await store.createWorkItem({ title: "Cross-repo", sessions: ["codex:s1", "claude:s2"] });
+    const item = await store.createTask({ title: "Cross-repo", sessions: ["codex:s1", "claude:s2"] });
 
-    const details = await store.listWorkItemSessionDetails(item.noteId);
+    const details = await store.listTaskSessionDetails(item.noteId);
     assert.deepEqual(
       details.map((detail) => `${detail.provider}:${detail.sessionId}->${detail.projectPath}`).sort(),
       ["claude:s2->/work/api", "codex:s1->/work/app"]
@@ -156,29 +156,29 @@ test("backfills the session index from existing note_work rows", async () => {
   await store.initialize();
 
   try {
-    const item = await store.createWorkItem({ title: "Legacy", sessions: ["codex:old"] });
+    const item = await store.createTask({ title: "Legacy", sessions: ["codex:old"] });
     // Simulate a row written before the index table existed.
     await runSqlite(
       catalogDb,
       `DELETE FROM work_item_sessions; DELETE FROM catalog_meta WHERE key = 'work_item_sessions_index_v1';`
     );
-    await ensureWorkItemSessionIndex(catalogDb);
+    await ensureTaskSessionIndex(catalogDb);
 
-    const links = await store.listWorkItemSessionLinks();
+    const links = await store.listTaskSessionLinks();
     assert.ok(links.some((link) => link.noteId === item.noteId && link.provider === "codex" && link.sessionId === "old"));
   } finally {
     await fs.rm(panelHome, { recursive: true, force: true });
   }
 });
 
-test("createWorkItem writes a queryable work item that references projects", async () => {
+test("createTask writes a queryable task that references projects", async () => {
   const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-create-work-"));
   const catalogDb = path.join(panelHome, "catalog.db");
   const store = new NotesStore(catalogDb, panelHome);
   await store.initialize();
 
   try {
-    const item = await store.createWorkItem({
+    const item = await store.createTask({
       title: "Ship realtime status",
       decision: "Show connecting state?",
       sessions: ["codex:s1"],
@@ -191,7 +191,7 @@ test("createWorkItem writes a queryable work item that references projects", asy
     assert.deepEqual(item.work.projects, [path.join(panelHome, "app"), path.join(panelHome, "api")]);
     assert.equal(item.work.primaryProject, path.join(panelHome, "app"));
 
-    const listed = await listWorkItems(catalogDb);
+    const listed = await listTasks(catalogDb);
     assert.equal(listed.length, 1);
     assert.equal(listed[0].noteId, item.noteId);
     assert.equal(listed[0].title, "Ship realtime status");

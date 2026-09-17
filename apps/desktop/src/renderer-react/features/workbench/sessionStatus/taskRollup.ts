@@ -1,5 +1,5 @@
 /**
- * Work-item live-status rollup — the layer above session dots.
+ * Task live-status rollup — the layer above session dots.
  *
  * Pure functions only: no React, no hooks. Consumers import this file by path;
  * it is not re-exported from `sessionStatus/index.ts`.
@@ -16,7 +16,7 @@
 import type { ActiveSessionDot } from "../activeSessionDots";
 import type { SessionDotStatus } from "./types";
 
-/** Urgency order for a work item's rolled-up live status. */
+/** Urgency order for a task's rolled-up live status. */
 export const LIVE_RANK: Record<SessionDotStatus, number> = {
   awaiting_user: 4,
   error: 3,
@@ -31,7 +31,7 @@ type RollupItem = {
 
 type RankItem = RollupItem & { updatedAtMs: number };
 
-/** Highest-urgency live dot among a work item's bound sessions. */
+/** Highest-urgency live dot among a task's bound sessions. */
 export function rollupDot(
   item: RollupItem,
   byKey: ReadonlyMap<string, ActiveSessionDot>
@@ -53,7 +53,7 @@ export function rank(item: RankItem, byKey: ReadonlyMap<string, ActiveSessionDot
   return (dot ? LIVE_RANK[dot.status] : 0) * 1e15 + item.updatedAtMs;
 }
 
-/** `needs_you` — the work item has a live session waiting on the user. */
+/** `needs_you` — the task has a live session waiting on the user. */
 export function needsYou(dot: ActiveSessionDot | undefined): boolean {
   return dot?.status === "awaiting_user";
 }

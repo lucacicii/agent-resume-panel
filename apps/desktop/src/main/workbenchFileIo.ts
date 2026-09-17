@@ -3,7 +3,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { expandHome } from "@agent-resume/core";
 
-const MAX_WORKBENCH_EDIT_BYTES = 2 * 1024 * 1024;
+/** Largest file the workbench opens for editing; bigger files stay external. */
+export const MAX_WORKBENCH_EDIT_BYTES = 2 * 1024 * 1024;
 
 export type WorkbenchTextEncoding = "utf8" | "utf8-bom" | "utf16le" | "utf16be";
 

@@ -20,17 +20,17 @@ import {
   listSessionNotes,
   loadProjectNoteFlags,
   loadSessionNoteFlags,
-  listWorkItemSessionDetails,
-  listWorkItemSessionLinks,
-  listWorkItemSessionProjects,
-  listWorkItems,
-  findWorkItemNoteIdForSession,
+  listTaskSessionDetails,
+  listTaskSessionLinks,
+  listTaskSessionProjects,
+  listTasks,
+  findTaskNoteIdForSession,
   setCatalogMeta,
   upsertNoteRecord,
   type NoteRecord,
-  type WorkItemRecord,
-  type WorkItemSessionDetail,
-  type WorkItemSessionLink
+  type TaskRecord,
+  type TaskSessionDetail,
+  type TaskSessionLink
 } from "./catalogNotes";
 import {
   buildNoteDocument,
@@ -41,12 +41,13 @@ import {
   type NoteWorkFields
 } from "./frontmatter";
 import {
-  isWorkItemFrontmatter,
-  normalizeWorkItemDocument,
-  newWorkItemBody,
-  UNTITLED_WORK_ITEM_NAME
-} from "./workItemNote";
-import { syncNoteWorkFromFrontmatter, ensureWorkItemSessionIndex, isWorkNote } from "./work";
+  isTaskFrontmatter,
+  normalizeTaskDocument,
+  newTaskBody,
+  isUntitledTaskName,
+  UNTITLED_TASK_NAME
+} from "./taskNote";
+import { syncNoteWorkFromFrontmatter, ensureTaskSessionIndex, isWorkNote } from "./work";
 import {
   nextNoteFilename,
   normalizeNoteFilename,
@@ -126,16 +127,16 @@ export class NotesStore {
     await this.ensureSchema(this.dbPath);
     await fs.mkdir(notesRoot(this.panelHome), { recursive: true });
     await this.reload();
-    // One-time mirror of existing work-item session links into the index table.
-    await ensureWorkItemSessionIndex(this.dbPath);
-    // One-time rewrite of existing work items onto the title/heading convention.
-    await this.migrateWorkItemNotes();
+    // One-time mirror of existing task session links into the index table.
+    await ensureTaskSessionIndex(this.dbPath);
+    // One-time rewrite of existing tasks onto the title/heading convention.
+    await this.migrateTaskNotes();
     // One-time recovery of names the old file-rename flow left only in the file name.
-    await this.migrateWorkItemNames();
+    await this.migrateTaskNames();
     // One-time cleanup of the legacy heading reminder suffix.
-    await this.migrateWorkItemNotesDropSuffix();
-    // One-time rename of work-item files onto the file-follows-name rule.
-    await this.migrateWorkItemFilesToTitles();
+    await this.migrateTaskNotesDropSuffix();
+    // One-time rename of task files onto the file-follows-name rule.
+    await this.migrateTaskFilesToTitles();
   }
 
   async reload(): Promise<void> {
@@ -150,25 +151,25 @@ export class NotesStore {
   }
 
   /**
-   * One-time rewrite of existing work items onto the title/heading convention:
+   * One-time rewrite of existing tasks onto the title/heading convention:
    * the name moves into front-matter `title`, the heading gains the reminder
    * suffix, and the knowledge region is added without dropping any content.
    */
-  private async migrateWorkItemNotes(): Promise<void> {
+  private async migrateTaskNotes(): Promise<void> {
     const key = "work_item_notes_migrated_v1";
     if ((await getCatalogMeta(this.dbPath, key)) === "1") {
       return;
     }
-    const items = await listWorkItems(this.dbPath);
+    const items = await listTasks(this.dbPath);
     for (const item of items) {
       try {
         const absPath = absFromRelMdPath(this.panelHome, item.relMdPath);
         const raw = await fs.readFile(absPath, "utf8");
         const doc = parseNoteDocument(raw);
-        if (!isWorkItemFrontmatter(doc.frontmatter)) {
+        if (!isTaskFrontmatter(doc.frontmatter)) {
           continue;
         }
-        const normalized = normalizeWorkItemDocument(
+        const normalized = normalizeTaskDocument(
           doc.frontmatter,
           doc.body
         );
@@ -188,15 +189,15 @@ export class NotesStore {
    * Notes that predate the name field were "renamed" by renaming their file. Recover
    * those names once, but never invent one from an allocated date-sequence file name.
    */
-  private async migrateWorkItemNames(): Promise<void> {
+  private async migrateTaskNames(): Promise<void> {
     const key = "work_item_notes_names_migrated_v1";
     if ((await getCatalogMeta(this.dbPath, key)) === "1") {
       return;
     }
-    const items = await listWorkItems(this.dbPath);
+    const items = await listTasks(this.dbPath);
     for (const item of items) {
       try {
-        if (item.title?.trim() && item.title.trim() !== UNTITLED_WORK_ITEM_NAME) {
+        if (!isUntitledTaskName(item.title)) {
           continue;
         }
         if (parseNoteFilename(item.filename)) {
@@ -214,20 +215,20 @@ export class NotesStore {
    * One-time cleanup of the legacy heading reminder suffix: headings become the
    * plain name and the `titleSuffix` front-matter field is dropped.
    */
-  private async migrateWorkItemNotesDropSuffix(): Promise<void> {
+  private async migrateTaskNotesDropSuffix(): Promise<void> {
     const key = "work_item_notes_suffix_dropped_v1";
     if ((await getCatalogMeta(this.dbPath, key)) === "1") {
       return;
     }
-    for (const item of await listWorkItems(this.dbPath)) {
+    for (const item of await listTasks(this.dbPath)) {
       try {
         const absPath = absFromRelMdPath(this.panelHome, item.relMdPath);
         const raw = await fs.readFile(absPath, "utf8");
         const doc = parseNoteDocument(raw);
-        if (!isWorkItemFrontmatter(doc.frontmatter)) {
+        if (!isTaskFrontmatter(doc.frontmatter)) {
           continue;
         }
-        const normalized = normalizeWorkItemDocument(doc.frontmatter, doc.body);
+        const normalized = normalizeTaskDocument(doc.frontmatter, doc.body);
         const next = buildNoteDocument(normalized.frontmatter, normalized.body);
         if (next !== raw) {
           await fs.writeFile(absPath, next, "utf8");
@@ -241,18 +242,18 @@ export class NotesStore {
   }
 
   /**
-   * One-time rename of work-item files allocated before the file-follows-name
-   * rule (e.g. a file still called 未命名工作项.md under a real name). The
+   * One-time rename of task files allocated before the file-follows-name
+   * rule (e.g. a file still called 未命名任务.md under a real name). The
    * address table surfaces the file path to agents, so it must carry the name.
    */
-  private async migrateWorkItemFilesToTitles(): Promise<void> {
+  private async migrateTaskFilesToTitles(): Promise<void> {
     const key = "work_item_files_follow_title_v1";
     if ((await getCatalogMeta(this.dbPath, key)) === "1") {
       return;
     }
-    for (const item of await listWorkItems(this.dbPath)) {
+    for (const item of await listTasks(this.dbPath)) {
       try {
-        await this.renameWorkItemFileToTitle(item, item.title);
+        await this.renameTaskFileToTitle(item, item.title);
       } catch {
         // A single unreadable file must not block startup; reconcile catches up later.
       }
@@ -261,28 +262,28 @@ export class NotesStore {
   }
 
   /** Project notes marked `work: true`, with their work fields and GTD status. */
-  async listWorkItems(): Promise<WorkItemRecord[]> {
-    return listWorkItems(this.dbPath);
+  async listTasks(): Promise<TaskRecord[]> {
+    return listTasks(this.dbPath);
   }
 
-  /** Indexed work-item ↔ session links (session → work item reverse lookup). */
-  async listWorkItemSessionLinks(): Promise<WorkItemSessionLink[]> {
-    return listWorkItemSessionLinks(this.dbPath);
+  /** Indexed task ↔ session links (session → task reverse lookup). */
+  async listTaskSessionLinks(): Promise<TaskSessionLink[]> {
+    return listTaskSessionLinks(this.dbPath);
   }
 
-  /** The work item a session belongs to, when it is linked to one. */
-  async findWorkItemNoteIdForSession(provider: string, sessionId: string): Promise<string | undefined> {
-    return findWorkItemNoteIdForSession(this.dbPath, provider, sessionId);
+  /** The task a session belongs to, when it is linked to one. */
+  async findTaskNoteIdForSession(provider: string, sessionId: string): Promise<string | undefined> {
+    return findTaskNoteIdForSession(this.dbPath, provider, sessionId);
   }
 
-  /** `note_id` → project paths derived from the work item's linked sessions. */
-  async listWorkItemSessionProjects(): Promise<Record<string, string[]>> {
-    return listWorkItemSessionProjects(this.dbPath);
+  /** `note_id` → project paths derived from the task's linked sessions. */
+  async listTaskSessionProjects(): Promise<Record<string, string[]>> {
+    return listTaskSessionProjects(this.dbPath);
   }
 
-  /** Linked sessions of one work item, with each session's project path. */
-  async listWorkItemSessionDetails(noteId: string): Promise<WorkItemSessionDetail[]> {
-    return listWorkItemSessionDetails(this.dbPath, noteId);
+  /** Linked sessions of one task, with each session's project path. */
+  async listTaskSessionDetails(noteId: string): Promise<TaskSessionDetail[]> {
+    return listTaskSessionDetails(this.dbPath, noteId);
   }
 
   hasSessionNote(session: Pick<AgentSession, "provider" | "id">): boolean {
@@ -352,8 +353,8 @@ export class NotesStore {
   async writeNoteContent(noteId: string, content: string): Promise<NoteRecord & { content?: string }> {
     const record = await getNoteById(this.dbPath, noteId);
     if (!record) throw new Error("Note not found.");
-    const next = this.normalizeWorkItemContent(content);
-    const synced = await this.syncWorkItemFileToContent(record, next);
+    const next = this.normalizeTaskContent(content);
+    const synced = await this.syncTaskFileToContent(record, next);
     await fs.writeFile(this.absolutePath(synced.record), synced.content, "utf8");
     await this.refreshNoteFromDisk(synced.record);
     const updated = await getNoteById(this.dbPath, noteId);
@@ -362,16 +363,16 @@ export class NotesStore {
   }
 
   /**
-   * Work items keep their name in front-matter and put `<name><suffix>` in the
+   * Tasks keep their name in front-matter and put `<name><suffix>` in the
    * heading, so the reminder survives agent writes. Editing the heading renames
-   * the work item; a body that lost its heading gets one back.
+   * the task; a body that lost its heading gets one back.
    */
-  private normalizeWorkItemContent(content: string): string {
+  private normalizeTaskContent(content: string): string {
     const doc = parseNoteDocument(content);
-    if (!isWorkItemFrontmatter(doc.frontmatter)) {
+    if (!isTaskFrontmatter(doc.frontmatter)) {
       return content;
     }
-    const normalized = normalizeWorkItemDocument(
+    const normalized = normalizeTaskDocument(
       doc.frontmatter,
       doc.body
     );
@@ -379,11 +380,11 @@ export class NotesStore {
   }
 
   /**
-   * Rename a work item's file to follow its front-matter name. Collisions with
+   * Rename a task's file to follow its front-matter name. Collisions with
    * another note's file get a numeric suffix, so renaming never fails. The DB
    * record is kept in step; content writes are left to the caller.
    */
-  private async renameWorkItemFileToTitle(record: NoteRecord, title: string | undefined): Promise<NoteRecord> {
+  private async renameTaskFileToTitle(record: NoteRecord, title: string | undefined): Promise<NoteRecord> {
     const desired = normalizeNoteFilename(title?.trim() || "");
     if (!desired || desired === record.filename) {
       return record;
@@ -408,18 +409,18 @@ export class NotesStore {
   }
 
   /**
-   * Keep a work item's file in step with the name in the content about to be
+   * Keep a task's file in step with the name in the content about to be
    * written, and adjust the content's asset references when the file moved.
    */
-  private async syncWorkItemFileToContent(
+  private async syncTaskFileToContent(
     record: NoteRecord,
     content: string
   ): Promise<{ record: NoteRecord; content: string }> {
     const doc = parseNoteDocument(content);
-    if (!isWorkItemFrontmatter(doc.frontmatter)) {
+    if (!isTaskFrontmatter(doc.frontmatter)) {
       return { record, content };
     }
-    const renamed = await this.renameWorkItemFileToTitle(record, doc.frontmatter.title);
+    const renamed = await this.renameTaskFileToTitle(record, doc.frontmatter.title);
     if (renamed.filename === record.filename) {
       return { record: renamed, content };
     }
@@ -430,8 +431,8 @@ export class NotesStore {
   async writeValidatedNoteContent(noteId: string, content: string): Promise<NoteRecord> {
     const record = await getNoteById(this.dbPath, noteId);
     if (!record) throw new Error("Note not found.");
-    const next = this.normalizeWorkItemContent(content);
-    const synced = await this.syncWorkItemFileToContent(record, next);
+    const next = this.normalizeTaskContent(content);
+    const synced = await this.syncTaskFileToContent(record, next);
     const target = this.absolutePath(synced.record);
     const temporary = `${target}.${process.pid}.${Date.now()}.tmp`;
     try {
@@ -469,10 +470,10 @@ export class NotesStore {
   }
 
   /**
-   * Create a work item. Work items are library-scoped: they reference projects
-   * instead of belonging to one, so a single work item can span repositories.
+   * Create a task. Tasks are library-scoped: they reference projects
+   * instead of belonging to one, so a single task can span repositories.
    */
-  async createWorkItem(
+  async createTask(
     input: {
       title?: string;
       next?: string;
@@ -485,8 +486,8 @@ export class NotesStore {
     const owner: NoteOwner = { scope: "library" };
     const ownerDir = await ensureOwnerDir(this.panelHome, owner);
     const existing = await listMarkdownFilenames(ownerDir);
-    const name = input.title?.trim() || UNTITLED_WORK_ITEM_NAME;
-    // The file carries the work item's name from the start — the address table
+    const name = input.title?.trim() || UNTITLED_TASK_NAME;
+    // The file carries the task's name from the start — the address table
     // surfaces the path to agents, so a placeholder allocation would leak.
     const filename = uniqueNoteFilename(name, existing);
     const noteId = newNoteId();
@@ -507,7 +508,7 @@ export class NotesStore {
     if (projects.length > 0) { fm.projects = projects; work.projects = projects; }
     const primary = input.primaryProject ? normalizeProjectPath(input.primaryProject.trim()) : projects[0];
     if (primary) { fm.primaryProject = primary; work.primaryProject = primary; }
-    const body = newWorkItemBody(name);
+    const body = newTaskBody(name);
     const relDir = ownerRelDir(owner);
     const absPath = path.join(ownerDir, filename);
     await fs.writeFile(absPath, buildNoteDocument(fm, body), "utf8");
@@ -716,15 +717,15 @@ export class NotesStore {
     if (!parent) {
       throw new Error("Parent note not found.");
     }
-    // Work items live in the library bucket, so that is where their children go:
-    // the notes vector index only covers notes, not the work-item workspace.
-    const parentIsWorkItem = await isWorkNote(this.dbPath, parentNoteId);
-    if (!parentIsWorkItem && (parent.scope !== "project" || !parent.projectPath)) {
+    // Tasks live in the library bucket, so that is where their children go:
+    // the notes vector index only covers notes, not the task workspace.
+    const parentIsTask = await isWorkNote(this.dbPath, parentNoteId);
+    if (!parentIsTask && (parent.scope !== "project" || !parent.projectPath)) {
       throw new Error(
-        "Linked children can only be created under a project note or a work item."
+        "Linked children can only be created under a project note or a task."
       );
     }
-    const child = parentIsWorkItem
+    const child = parentIsTask
       ? await this.createLibraryNote(body)
       : await this.createProjectNote(parent.projectPath as string, body);
     try {
@@ -782,7 +783,7 @@ export class NotesStore {
     const fm = frontmatterForOwner(doc.frontmatter, newOwner, record.noteId);
     if (fm.work) {
       // Keep the title/heading convention intact across a move.
-      const normalized = normalizeWorkItemDocument(fm, body);
+      const normalized = normalizeTaskDocument(fm, body);
       Object.assign(fm, normalized.frontmatter);
       body = normalized.body;
     }
@@ -841,17 +842,17 @@ export class NotesStore {
     const absPath = this.absolutePath(record);
     const raw = await fs.readFile(absPath, "utf8");
     const doc = parseNoteDocument(raw);
-    if (isWorkItemFrontmatter(doc.frontmatter)) {
-      // A work item is identified by its front-matter name, and its file follows
+    if (isTaskFrontmatter(doc.frontmatter)) {
+      // A task is identified by its front-matter name, and its file follows
       // that name (collision-suffixed), so paths surfaced to agents always carry
       // the real name.
-      const normalized = normalizeWorkItemDocument(
+      const normalized = normalizeTaskDocument(
         doc.frontmatter,
         doc.body,
         { name: noteStem(normalizeNoteFilename(desiredName) || desiredName) }
       );
       const next = buildNoteDocument(normalized.frontmatter, normalized.body);
-      const synced = await this.syncWorkItemFileToContent(record, next);
+      const synced = await this.syncTaskFileToContent(record, next);
       const targetPath = this.absolutePath(synced.record);
       await fs.writeFile(targetPath, synced.content, "utf8");
       const mtime = await fileMtimeMs(targetPath);
@@ -1027,7 +1028,7 @@ function frontmatterForOwner(
       fm.projectPath = owner.projectPath;
     }
   }
-  // Work-item fields survive moves; they are not derivable from the owner.
+  // Task fields survive moves; they are not derivable from the owner.
   if (source.work) {
     fm.work = true;
   }

@@ -18,7 +18,7 @@ The data service exposes **31 tools**, not 31 independent services:
 | Area | Tools | Access |
 |---|---:|---|
 | Notes and note GTD | 12 | Read and write |
-| Tasks (work items) | 6 | Read and write |
+| Tasks | 6 | Read and write |
 | Workbenches | 2 | Read-only |
 | Reports and memory retrieval | 4 | Read-only |
 | Sessions | 6 | Read, GTD update, and resume-command generation |
@@ -79,7 +79,7 @@ Returns JSON with `primaryChain`, `timeline`, `summary`, `openEnds`, `facts`, an
 | `note_write` | Replace a note's full Markdown content |
 | `note_append` | Append Markdown without changing existing content |
 | `note_delete` | Permanently delete one note |
-| `note_tree_read` | Read the linked task (work item) knowledge tree containing a note |
+| `note_tree_read` | Read the linked task knowledge tree containing a note |
 | `note_set_parent` | Set or clear a task parent link |
 | `note_move` | Move a note to a different owner scope (library or session) |
 | `note_rename` | Rename a note file while preserving its asset directory and references |
@@ -91,7 +91,7 @@ Returns JSON with `primaryChain`, `timeline`, `summary`, `openEnds`, `facts`, an
 
 Desktop injects the current session identity into the MCP server. When a note tool is called with no explicit owner, the target is resolved in this order:
 
-1. The **task (work item)** bound to the session — when the session was launched for a work item, or is linked to one in the shared catalog. `note_create` adds a library child under it; `note_list` / `note_search` default to that task's subtree.
+1. The **task** bound to the session — when the session was launched for a task, or is linked to one in the shared catalog. `note_create` adds a library child under it; `note_list` / `note_search` default to that task's subtree.
 2. The **session** itself, when there is no bound task.
 3. **No owner** — a plain library note, when the MCP server has no session identity (for example a CLI you started outside Desktop).
 
@@ -121,7 +121,7 @@ GTD status values are `inbox`, `next`, `waiting`, `someday`, `reference`, and `d
 
 An external MCP invocation cannot open Desktop's Workbench. Therefore, `session_resume` returns the command and root path for the user or agent to run in a terminal.
 
-#### Tasks (work items)
+#### Tasks
 
 A task is a note with front-matter `work: true`. Tasks are library-scoped and **reference** 0..n repository roots (multi-root) instead of belonging to one, so a single task can span repositories.
 
@@ -129,14 +129,14 @@ A task is a note with front-matter `work: true`. Tasks are library-scoped and **
 |---|---|
 | `task_list` | List tasks with GTD status, next action, owed decision, repository roots, and linked-session counts |
 | `task_read` | Read one task: work fields, linked sessions with their root paths, and its workbenches |
-| `task_create` | Create a task (a library-scoped work item) |
+| `task_create` | Create a library-scoped task |
 | `task_write` | Update next action, owed decision, repository roots, primary root, or GTD status |
 | `task_link_session` | Link a session to a task; when `rootPath` is given it also references that root and, by default, rebinds the session's catalog project path |
 | `task_unlink_session` | Unlink a session from a task (the session itself is untouched) |
 
 `task_link_session` replaces the removed `session_move`: the session's catalog `project_path` is rewritten through the task, and on-disk files are never moved.
 
-**Task GTD is an aggregate.** A task's effective status is computed from the entities under it — its note subtree and its linked sessions. Only explicitly marked entities count; unmarked ones are neutral. The ladder is `next` → `waiting` → `inbox` → `someday` → `reference`, and `done` only wins when **every** contribution is `done`. The work item's own mark acts as a pin unless it is the implicit `inbox`. `task_list` / `task_read` report `rollupStatus` (effective), `pinnedStatus` (pin, if any), `gtdCounts`, and `gtdTotal`; the Desktop board and task page show the same status plus a `done/total` progress.
+**Task GTD is an aggregate.** A task's effective status is computed from the entities under it — its note subtree and its linked sessions. Only explicitly marked entities count; unmarked ones are neutral. The ladder is `next` → `waiting` → `inbox` → `someday` → `reference`, and `done` only wins when **every** contribution is `done`. The task's own mark acts as a pin unless it is the implicit `inbox`. `task_list` / `task_read` report `rollupStatus` (effective), `pinnedStatus` (pin, if any), `gtdCounts`, and `gtdTotal`; the Desktop board and task page show the same status plus a `done/total` progress.
 
 #### Workbenches
 
@@ -173,7 +173,7 @@ Agent Resume Desktop 暴露 **两个本机 MCP 服务**，均使用 stdio。两�
 | 范围 | 工具数 | 权限 |
 |---|---:|---|
 | Notes 与笔记 GTD | 12 | 读写 |
-| Tasks（工作项） | 6 | 读写 |
+| 任务 | 6 | 读写 |
 | Workbenches | 2 | 只读 |
 | Reports 与记忆检索 | 4 | 只读 |
 | Sessions | 6 | 读取、更新 GTD、生成恢复命令 |
@@ -234,7 +234,7 @@ Desktop 可自动检测并注册以下客户端：
 | `note_write` | 覆盖一篇笔记的完整 Markdown 内容 |
 | `note_append` | 在不修改原有内容的前提下追加 Markdown |
 | `note_delete` | 永久删除一篇笔记 |
-| `note_tree_read` | 读取包含该笔记的任务（工作项）知识树 |
+| `note_tree_read` | 读取包含该笔记的任务知识树 |
 | `note_set_parent` | 设置或清除任务父链接 |
 | `note_move` | 将笔记移动到不同所有者范围（library 或 session） |
 | `note_rename` | 重命名笔记文件，同时保留其资产目录和引用 |
@@ -246,7 +246,7 @@ Desktop 可自动检测并注册以下客户端：
 
 Desktop 会把当前会话身份注入 MCP 服务。当笔记工具未显式指定所有者时，按以下顺序解析：
 
-1. 会话绑定的 **任务（工作项）** —— 会话为该工作项启动，或在共享 catalog 中已关联到它。`note_create` 会在其下创建 library 子笔记；`note_list` / `note_search` 默认收敛到该任务的子树。
+1. 会话绑定的 **任务** —— 会话为该任务启动，或在共享 catalog 中已关联到它。`note_create` 会在其下创建 library 子笔记；`note_list` / `note_search` 默认收敛到该任务的子树。
 2. 没有绑定任务时，退回 **会话** 本身。
 3. MCP 服务没有任何会话身份时（例如你在 Desktop 之外自行启动的 CLI），**不绑定任何实体**，就是一篇普通 library 笔记。
 
@@ -276,22 +276,22 @@ GTD 状态为 `inbox`、`next`、`waiting`、`someday`、`reference`、`done`。
 
 外部 MCP 调用不能打开 Desktop 的 Workbench，因此 `session_resume` 会返回用户或 Agent 可在终端执行的命令和根路径。
 
-#### Tasks（工作项）
+#### 任务
 
 任务是 front-matter 标记 `work: true` 的笔记。任务属于 library 域，**引用**（而非拥有）0..n 个仓库根（多根），因此一个任务可以横跨多个仓库。
 
 | 工具 | 用途 |
 |---|---|
 | `task_list` | 列出任务：GTD 状态、下一步行动、待决策项、仓库根、关联会话数 |
-| `task_read` | 读取单个任务：工作项字段、关联会话及其根路径、所属工作台 |
-| `task_create` | 创建任务（library 域工作项） |
+| `task_read` | 读取单个任务：任务字段、关联会话及其根路径、所属工作台 |
+| `task_create` | 创建 library 域任务 |
 | `task_write` | 更新下一步行动、待决策项、仓库根、主根或 GTD 状态 |
 | `task_link_session` | 把会话关联到任务；传 `rootPath` 时同时引用该项目根，并默认重绑会话的 catalog 项目路径 |
 | `task_unlink_session` | 解除会话与任务的关联（会话本身不受影响） |
 
 `task_link_session` 取代了已删除的 `session_move`：会话的 catalog `project_path` 通过任务改写，绝不移动磁盘文件。
 
-**任务 GTD 是汇总状态。** 任务的有效状态由其下的实体聚合得出 —— 笔记子树 + 关联会话。只有**显式标记**的实体会计入，未标记的视为中性。阶梯为 `next` → `waiting` → `inbox` → `someday` → `reference`；`done` 只有在**全部**贡献项都是 `done` 时才成立。工作项自身的标记作为「固定」（pin），但隐式 `inbox` 不算固定。`task_list` / `task_read` 会返回 `rollupStatus`（有效状态）、`pinnedStatus`（固定状态，若有）、`gtdCounts`、`gtdTotal`；Desktop 看板与任务页显示同样的状态和 `已完成/总数` 进度。
+**任务 GTD 是汇总状态。** 任务的有效状态由其下的实体聚合得出 —— 笔记子树 + 关联会话。只有**显式标记**的实体会计入，未标记的视为中性。阶梯为 `next` → `waiting` → `inbox` → `someday` → `reference`；`done` 只有在**全部**贡献项都是 `done` 时才成立。任务自身的标记作为「固定」（pin），但隐式 `inbox` 不算固定。`task_list` / `task_read` 会返回 `rollupStatus`（有效状态）、`pinnedStatus`（固定状态，若有）、`gtdCounts`、`gtdTotal`；Desktop 看板与任务页显示同样的状态和 `已完成/总数` 进度。
 
 #### Workbenches（工作台）
 

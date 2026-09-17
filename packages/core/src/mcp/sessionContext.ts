@@ -2,14 +2,14 @@
  * MCP session context.
  *
  * The core data MCP is a stdio server, so it cannot see which Desktop session
- * (or work item) invoked it. Desktop injects the identity as environment
+ * (or task) invoked it. Desktop injects the identity as environment
  * variables when it launches the agent:
  *
  * - `AGENT_RESUME_WORK_ITEM_ID` — set when the session was started for a work
- *   item, so note operations default to that work item's knowledge tree.
+ *   item, so note operations default to that task's knowledge tree.
  * - `AGENT_RESUME_PROVIDER` / `AGENT_RESUME_SESSION_ID` — the catalog session
  *   key, set on resume (and on ACP sessions), so note operations can resolve the
- *   work item the session is linked to, or fall back to the session itself.
+ *   task the session is linked to, or fall back to the session itself.
  *
  * Any of them may be absent (a CLI the user started on their own): notes then
  * default to no owner at all.
@@ -17,11 +17,11 @@
 export interface McpSessionContext {
   provider?: string;
   sessionId?: string;
-  workItemNoteId?: string;
+  taskNoteId?: string;
 }
 
 export const MCP_SESSION_ENV = {
-  workItemNoteId: "AGENT_RESUME_WORK_ITEM_ID",
+  taskNoteId: "AGENT_RESUME_WORK_ITEM_ID",
   provider: "AGENT_RESUME_PROVIDER",
   sessionId: "AGENT_RESUME_SESSION_ID"
 } as const;
@@ -38,11 +38,11 @@ export function mcpSessionContextFromEnv(env: NodeJS.ProcessEnv = process.env): 
   return {
     provider: readEnv(env, MCP_SESSION_ENV.provider),
     sessionId: readEnv(env, MCP_SESSION_ENV.sessionId),
-    workItemNoteId: readEnv(env, MCP_SESSION_ENV.workItemNoteId)
+    taskNoteId: readEnv(env, MCP_SESSION_ENV.taskNoteId)
   };
 }
 
 /** True when the context carries no usable identity. */
 export function isEmptyMcpSessionContext(context: McpSessionContext | undefined): boolean {
-  return !context?.workItemNoteId && !(context?.provider && context?.sessionId);
+  return !context?.taskNoteId && !(context?.provider && context?.sessionId);
 }

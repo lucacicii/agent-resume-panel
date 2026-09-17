@@ -32,7 +32,7 @@ test("listReportEntriesForSessions: reverse lookup from sessions to reports", as
         periodStartMs: 1789000000000,
         periodEndMs: 1789600000000,
         title: "Weekly · 2026-W37",
-        content: "Weekly summary content mentioning various work items.",
+        content: "Weekly summary content mentioning various tasks.",
         embeddingJson: null,
         createdAtMs: 1789605000000
       },

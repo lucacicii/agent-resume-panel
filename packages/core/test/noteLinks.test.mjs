@@ -92,9 +92,9 @@ test("deleteNote removes incident links without cascading children", async () =>
   });
 });
 
-test("work items hold linked children; session notes stay out of links", async () => {
+test("tasks hold linked children; session notes stay out of links", async () => {
   await withStore(async (store) => {
-    const item = await store.createWorkItem({ title: "Ship release" });
+    const item = await store.createTask({ title: "Ship release" });
     const child = await store.createLinkedChildNote(item.noteId, "# Background\n");
     assert.equal(child.scope, "library");
     const parent = await store.getNoteParent(child.noteId);

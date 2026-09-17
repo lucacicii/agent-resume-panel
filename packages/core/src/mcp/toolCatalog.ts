@@ -41,10 +41,10 @@ export const AGENT_TOOL_CATALOG: readonly AgentToolDescriptor[] = [
   { name: "note_write", description: "Replace a note's Markdown body", category: "notes" },
   { name: "note_append", description: "Append Markdown to a note body", category: "notes" },
   { name: "note_delete", description: "Permanently delete a note", category: "notes" },
-  { name: "note_tree_read", description: "Read the linked task (work item) knowledge tree", category: "notes" },
+  { name: "note_tree_read", description: "Read the linked task (task) knowledge tree", category: "notes" },
   { name: "note_set_parent", description: "Set or clear a note parent link", category: "notes" },
   { name: "note_move", description: "Move a note to a different owner scope", category: "notes" },
-  { name: "note_rename", description: "Rename a note (or a work item)", category: "notes" },
+  { name: "note_rename", description: "Rename a note (or a task)", category: "notes" },
   { name: "note_set_gtd", description: "Set or clear a note's GTD status", category: "notes" },
 
   // reports
@@ -61,10 +61,10 @@ export const AGENT_TOOL_CATALOG: readonly AgentToolDescriptor[] = [
   { name: "session_set_gtd", description: "Set GTD status for a catalog session", category: "sessions" },
   { name: "session_resume", description: "Resume a catalog session via Desktop", category: "sessions" },
 
-  // tasks (work items)
-  { name: "task_list", description: "List tasks (work items) with GTD, next action, and project roots", category: "task" },
+  // tasks (tasks)
+  { name: "task_list", description: "List tasks (tasks) with GTD, next action, and project roots", category: "task" },
   { name: "task_read", description: "Read a task with its fields, workbenches, linked sessions, and project roots", category: "task" },
-  { name: "task_create", description: "Create a task (work item)", category: "task" },
+  { name: "task_create", description: "Create a task (task)", category: "task" },
   { name: "task_write", description: "Update a task's next action, decision, and project roots", category: "task" },
   { name: "task_link_session", description: "Link a session to a task and optionally rebind its project root", category: "task" },
   { name: "task_unlink_session", description: "Unlink a session from a task", category: "task" },

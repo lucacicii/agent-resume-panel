@@ -524,7 +524,7 @@ textarea:focus-visible,
   outline-offset: -2px;
 }
 
-/* Session status dots (shared by work-item rows and workbench status). */
+/* Session status dots (shared by task rows and workbench status). */
 .session-dot {
   width: 8px;
   height: 8px;
@@ -2816,7 +2816,7 @@ legend {
 
 /* Outer week block in month view — sticky title sticks while scrolling this week */
 
-/* Work-item group header in the report session list. */
+/* Task group header in the report session list. */
 .cal-session-group-head {
   position: sticky;
   top: 0;
@@ -10255,7 +10255,7 @@ textarea.wb-floating-note-editor {
 }
 
 .wb-add-project-btn,
-.wb-add-work-item-btn {
+.wb-add-task-btn {
   margin-right: 4px;
 }
 
@@ -11967,43 +11967,15 @@ html[data-window-mode="standalone-note"] #react-im {
   text-align: center;
 }
 
-.quick-access-scope,
 .quick-access-limit {
   flex: 0 0 auto;
   overflow: hidden;
   padding: 5px 12px;
+  border-top: 1px solid var(--color-separator);
   color: var(--color-label-secondary);
   font-size: var(--font-size-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.quick-access-scope {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  gap: var(--space-1);
-  border: 0;
-  border-bottom: 1px solid var(--color-separator);
-  border-radius: 0;
-  background: transparent;
-  text-align: left;
-  cursor: default;
-}
-
-.quick-access-scope:hover {
-  background: var(--color-fill-tertiary);
-  color: var(--color-label-primary);
-}
-
-.quick-access-scope span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.quick-access-limit {
-  border-top: 1px solid var(--color-separator);
 }
 
 .quick-access-results {
@@ -12189,42 +12161,42 @@ html[data-window-mode="standalone-note"] #react-im {
 .theme-mode-control button.is-selected { background: var(--color-control-bg); color: var(--color-label-primary); box-shadow: var(--shadow-segment-thumb); }
 .theme-mode-control button:disabled { cursor: not-allowed; opacity: .45; }
 
-.wb-work-item {
+.wb-task {
   display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; margin: 8px 8px 4px;
   border: 1px solid var(--color-separator-opaque); border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--color-accent) 7%, transparent);
 }
-.wb-work-item-head { display: flex; align-items: center; gap: 6px; }
-.wb-work-item-title {
+.wb-task-head { display: flex; align-items: center; gap: 6px; }
+.wb-task-title {
   flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-weight: 600; font-size: 12px; color: var(--color-label-primary);
 }
-.wb-work-item-status {
+.wb-task-status {
   flex: 0 0 auto; font-size: 10px; padding: 1px 7px; border-radius: 999px;
   background: var(--color-fill-secondary); color: var(--color-label-secondary);
 }
-.wb-work-item-status.is-done { color: var(--color-success); }
-.wb-work-item-status.is-waiting { color: var(--color-warning); }
-.wb-work-item-status.is-next { color: var(--color-accent); }
-.wb-work-item-rollup {
+.wb-task-status.is-done { color: var(--color-success); }
+.wb-task-status.is-waiting { color: var(--color-warning); }
+.wb-task-status.is-next { color: var(--color-accent); }
+.wb-task-rollup {
   flex: 0 0 auto; font-size: 10px; color: var(--color-label-tertiary);
   padding: 1px 6px; border: 1px solid var(--color-separator); border-radius: 999px;
 }
-.wb-work-item-pin {
+.wb-task-pin {
   appearance: none; border: none; cursor: pointer; font-family: inherit;
   display: inline-flex; align-items: center; gap: 3px;
   flex: 0 0 auto; font-size: 10px; font-weight: 600; color: var(--color-warning);
   padding: 1px 6px; border-radius: 999px;
   background: color-mix(in srgb, var(--color-warning) 16%, transparent);
 }
-.wb-work-item-line { margin: 0; font-size: 11px; line-height: 1.4; color: var(--color-label-secondary); display: flex; gap: 5px; }
-.wb-work-item-label { color: var(--color-label-tertiary); flex: 0 0 auto; }
-.wb-work-item-line.is-decision { color: var(--color-warning); align-items: flex-start; }
-.wb-work-item-line.is-decision svg { flex: 0 0 auto; margin-top: 1px; }
-.wb-work-item-count { margin: 0; font-size: 10px; color: var(--color-label-tertiary); }
-.wb-work-item-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 2px 6px 6px; }
-.wb-work-item-filter { flex: 1 1 auto; min-width: 0; }
-.wb-work-item-needs-chip {
+.wb-task-line { margin: 0; font-size: 11px; line-height: 1.4; color: var(--color-label-secondary); display: flex; gap: 5px; }
+.wb-task-label { color: var(--color-label-tertiary); flex: 0 0 auto; }
+.wb-task-line.is-decision { color: var(--color-warning); align-items: flex-start; }
+.wb-task-line.is-decision svg { flex: 0 0 auto; margin-top: 1px; }
+.wb-task-count { margin: 0; font-size: 10px; color: var(--color-label-tertiary); }
+.wb-task-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 2px 6px 6px; }
+.wb-task-filter { flex: 1 1 auto; min-width: 0; }
+.wb-task-needs-chip {
   appearance: none;
   border: 1px solid var(--border);
   background: var(--panel);
@@ -12242,43 +12214,43 @@ html[data-window-mode="standalone-note"] #react-im {
   line-height: 18px;
   transition: all 0.15s ease;
 }
-.wb-work-item-needs-chip:hover {
+.wb-task-needs-chip:hover {
   background: color-mix(in srgb, var(--panel) 80%, var(--text) 20%);
   color: var(--text);
 }
-.wb-work-item-needs-chip.is-active {
+.wb-task-needs-chip.is-active {
   background: color-mix(in srgb, var(--color-accent, #3b82f6) 18%, transparent);
   border-color: var(--color-accent, #3b82f6);
   color: var(--color-accent, #3b82f6);
 }
-.wb-work-item-projects { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
-.wb-work-item-add-project {
+.wb-task-projects { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.wb-task-add-project {
   appearance: none; border: 1px dashed var(--color-separator-opaque); background: transparent;
   color: var(--color-label-secondary); border-radius: 999px; padding: 0 8px; font-size: 10px;
   line-height: 20px; max-width: 170px; cursor: pointer;
 }
-.wb-work-item-add-project:hover { border-color: var(--color-accent); color: var(--color-label-primary); }
-.wb-work-item-target { margin: 0; font-size: 10px; color: var(--color-label-tertiary); display: flex; align-items: center; gap: 2px; }
-.wb-work-item-target-reset { appearance: none; border: 0; background: transparent; color: inherit; cursor: pointer; padding: 0 2px; display: inline-flex; }
-.wb-work-item-target-reset:hover { color: var(--color-accent); }
-.wb-work-item-project {
+.wb-task-add-project:hover { border-color: var(--color-accent); color: var(--color-label-primary); }
+.wb-task-target { margin: 0; font-size: 10px; color: var(--color-label-tertiary); display: flex; align-items: center; gap: 2px; }
+.wb-task-target-reset { appearance: none; border: 0; background: transparent; color: inherit; cursor: pointer; padding: 0 2px; display: inline-flex; }
+.wb-task-target-reset:hover { color: var(--color-accent); }
+.wb-task-project {
   display: inline-flex; align-items: center; gap: 2px; padding: 0 4px 0 6px;
   border: 1px solid transparent; border-radius: 999px; max-width: 170px;
   background: var(--color-fill-secondary); color: var(--color-label-secondary); font-size: 10px;
 }
-.wb-work-item-project.is-active { border-color: var(--color-accent); color: var(--color-accent); }
-.wb-work-item-project-chip {
+.wb-task-project.is-active { border-color: var(--color-accent); color: var(--color-accent); }
+.wb-task-project-chip {
   appearance: none; border: 0; background: transparent; color: inherit; cursor: pointer; font: inherit;
   padding: 0; max-width: 132px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.wb-work-item-project-remove {
+.wb-task-project-remove {
   appearance: none; border: 0; background: transparent; color: inherit; cursor: pointer;
   padding: 0 1px; display: inline-flex; opacity: 0; transition: opacity 0.12s;
 }
-.wb-work-item-project:hover .wb-work-item-project-remove,
-.wb-work-item-project:focus-within .wb-work-item-project-remove { opacity: 0.65; }
-.wb-work-item-project-remove:hover { opacity: 1; color: var(--color-destructive); }
-/* IM as a work-item channel: embedded inside the work-item workspace. */
+.wb-task-project:hover .wb-task-project-remove,
+.wb-task-project:focus-within .wb-task-project-remove { opacity: 0.65; }
+.wb-task-project-remove:hover { opacity: 1; color: var(--color-destructive); }
+/* IM as a task channel: embedded inside the task workspace. */
 .wb-room-pane { flex: 1 1 auto; display: flex; min-width: 0; min-height: 0; }
 .wb-room-pane .react-im-panel { flex: 1 1 auto; min-width: 0; }
 .im-room-head.is-embedded { padding: 5px 10px; }
@@ -12288,10 +12260,10 @@ html[data-window-mode="standalone-note"] #react-im {
 }
 .im-room-close:hover { color: var(--color-label-primary); background: var(--color-fill-tertiary); }
 .react-im-panel.is-embedded .im-folders-pane { display: none; }
-.wb-work-item-section { padding-top: 4px; }
-.wb-work-item-row .wb-folder-row-label { font-weight: 600; }
-.wb-work-item-row .wb-gtd-status-dot { flex: 0 0 auto; }
-.wb-work-item-row .session-dot { flex: 0 0 auto; }
+.wb-task-section { padding-top: 4px; }
+.wb-task-row .wb-folder-row-label { font-weight: 600; }
+.wb-task-row .wb-gtd-status-dot { flex: 0 0 auto; }
+.wb-task-row .session-dot { flex: 0 0 auto; }
 .wb-list-item.is-drag-source {
   opacity: 0.55;
 }
@@ -12810,7 +12782,7 @@ html[data-window-mode="browser"] #react-chrome {
 .settings-unsaved-text{ font-size:12px; }
 .settings-unsaved-actions{ display:flex; gap:8px; flex-wrap:wrap; }
 
-/* Desktop IM (host-agnostic: also used embedded as a work-item channel) */
+/* Desktop IM (host-agnostic: also used embedded as a task channel) */
 .react-im-panel[hidden] {
   display: none !important;
 }

@@ -158,7 +158,7 @@ function MainRendererRuntime(): React.JSX.Element {
       const detail = (event as CustomEvent<Record<string, unknown>>).detail;
       setView("workbench");
       if (detail && typeof detail.noteId === "string") {
-        window.dispatchEvent(new CustomEvent("agent-resume:workbench-work-item", { detail }));
+        window.dispatchEvent(new CustomEvent("agent-resume:workbench-task", { detail }));
       }
     };
     const onTabRequest = (event: Event) => {

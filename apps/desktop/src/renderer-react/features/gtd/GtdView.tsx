@@ -4,17 +4,17 @@ import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent a
 import type { GtdStatus, TaskGtdRollup } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { useI18n } from "../../i18n";
-import { workItemFromRecord, type WorkbenchWorkItem } from "../workbench/workItem";
+import { taskFromRecord, type WorkbenchTask } from "../workbench/task";
 import { listAllTaskWorkbenches, workbenchDisplayName, type Workbench } from "../workbench/workbenchModel";
 import type { ActiveSessionDot } from "../workbench/activeSessionDots";
-import { rollupDot, needsYou } from "../workbench/sessionStatus/workItemRollup";
+import { rollupDot, needsYou } from "../workbench/sessionStatus/taskRollup";
 import { sessionDotStatusClass } from "../workbench/sessionStatus/dotStatus";
 import { TaskTemplatePanel, type TaskTemplate } from "./TaskTemplatePanel";
 
 /** Board column order — `done` last so active work reads first. */
 const GTD_COLUMNS: GtdStatus[] = ["inbox", "next", "waiting", "someday", "reference", "done"];
 
-type GtdCard = WorkbenchWorkItem & { projects: string[] };
+type GtdCard = WorkbenchTask & { projects: string[] };
 
 export function GtdView({ active }: { active: boolean }): React.ReactPortal | null {
   const host = document.getElementById("react-gtd");
@@ -39,21 +39,21 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
   );
 
   const load = useCallback(async () => {
-    if (typeof desktopApi().notesListWorkItems !== "function") return;
+    if (typeof desktopApi().notesListTasks !== "function") return;
     try {
       const [records, nextRollups] = await Promise.all([
-        desktopApi().notesListWorkItems(),
+        desktopApi().notesListTasks(),
         typeof desktopApi().listTaskGtdRollups === "function"
           ? desktopApi().listTaskGtdRollups().catch(() => ({} as Record<string, TaskGtdRollup>))
           : Promise.resolve({} as Record<string, TaskGtdRollup>)
       ]);
       setItems(records.map((record) => {
-        const item = workItemFromRecord(record);
+        const item = taskFromRecord(record);
         return { ...item, projects: item.projects ?? [] };
       }));
       setRollups(nextRollups || {});
     } catch {
-      /* the board is best-effort; the work-item list stays the source of truth */
+      /* the board is best-effort; the task list stays the source of truth */
     }
   }, []);
 
@@ -139,11 +139,11 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
       setNewTask((current) => current ? { ...current, error: text("desktop.gtd.taskTitleRequired") } : current);
       return;
     }
-    if (typeof desktopApi().notesCreateWorkItem !== "function") return;
+    if (typeof desktopApi().notesCreateTask !== "function") return;
     setNewTask((current) => current ? { ...current, busy: true, error: "" } : current);
     setCreating(true);
     try {
-      const created = await desktopApi().notesCreateWorkItem({
+      const created = await desktopApi().notesCreateTask({
         title,
         ...(newTask.projectPath
           ? { projects: [newTask.projectPath], primaryProject: newTask.projectPath }
@@ -152,7 +152,7 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
       await load();
       window.dispatchEvent(new Event("agent-resume:notes-mutated"));
       setNewTask(null);
-      openTask({ ...workItemFromRecord(created), projects: created.work?.projects ?? [] });
+      openTask({ ...taskFromRecord(created), projects: created.work?.projects ?? [] });
     } catch (error) {
       setNewTask((current) => current ? { ...current, busy: false, error: error instanceof Error ? error.message : String(error) } : current);
     } finally {
@@ -184,9 +184,9 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
 
   /** Drop a template onto a column: create the task pre-filled, then rename inline. */
   const createFromTemplate = useCallback(async (template: TaskTemplate, status: GtdStatus) => {
-    if (typeof desktopApi().notesCreateWorkItem !== "function") return;
+    if (typeof desktopApi().notesCreateTask !== "function") return;
     try {
-      const created = await desktopApi().notesCreateWorkItem({
+      const created = await desktopApi().notesCreateTask({
         title: template.title,
         ...(template.projectPaths.length > 0
           ? { projects: template.projectPaths, primaryProject: template.projectPaths[0] }
@@ -217,14 +217,14 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
       setRenaming(null);
       return;
     }
-    if (typeof desktopApi().notesRenameWorkItem !== "function") {
+    if (typeof desktopApi().notesRenameTask !== "function") {
       renameCommitSkipRef.current = true;
       setRenaming(null);
       return;
     }
     setRenaming((entry) => entry ? { ...entry, busy: true } : entry);
     try {
-      await desktopApi().notesRenameWorkItem({ noteId: current.noteId, title });
+      await desktopApi().notesRenameTask({ noteId: current.noteId, title });
       setItems((list) => list.map((entry) => entry.noteId === current.noteId ? { ...entry, title } : entry));
       renameCommitSkipRef.current = true;
       setRenaming(null);
@@ -239,7 +239,7 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
     setContextMenu(null);
     if (item.sessions.length > 0) return;
     if (typeof desktopApi().notesDelete !== "function") return;
-    if (!window.confirm(text("desktop.workbench.deleteWorkItemConfirm", item.title))) return;
+    if (!window.confirm(text("desktop.workbench.deleteTaskConfirm", item.title))) return;
     try {
       await desktopApi().notesDelete({ noteId: item.noteId });
       setItems((current) => current.filter((entry) => entry.noteId !== item.noteId));
@@ -574,7 +574,7 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
           type="button"
           role="menuitem"
           onClick={() => { const item = contextMenu.item; setContextMenu(null); openTask(item, undefined, { openNote: true }); }}
-        >{text("desktop.workbench.workItemOpenNote")}</button>
+        >{text("desktop.workbench.taskOpenNote")}</button>
         {rollups[contextMenu.item.noteId]?.override ? (
           <button
             type="button"
@@ -590,7 +590,7 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
               role="menuitem"
               className="context-menu-item-danger"
               onClick={() => void deleteTask(contextMenu.item)}
-            >{text("desktop.workbench.deleteWorkItem")}</button>
+            >{text("desktop.workbench.deleteTask")}</button>
           </>
         ) : null}
       </div>

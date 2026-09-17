@@ -5,10 +5,10 @@ export interface NoteFrontmatter {
   provider?: string;
   sessionId?: string;
   createdAt?: string;
-  /** Work-item marker. Only notes with this flag appear on the work-item board. */
+  /** Task marker. Only notes with this flag appear on the task board. */
   work?: boolean;
   /**
-   * Work-item name. Authoritative for the work item; the markdown heading
+   * Task name. Authoritative for the task; the markdown heading
    * carries this name, so displays read the name from here.
    */
   title?: string;
@@ -17,13 +17,13 @@ export interface NoteFrontmatter {
    * Parsed so old files can be cleaned up once, never written back.
    */
   titleSuffix?: string;
-  /** Concrete next action for the work item. */
+  /** Concrete next action for the task. */
   next?: string;
-  /** Decision the user still owes for this work item. */
+  /** Decision the user still owes for this task. */
   decision?: string;
-  /** Catalog session keys (`provider:id`) this work item is implemented through. */
+  /** Catalog session keys (`provider:id`) this task is implemented through. */
   sessions?: string[];
-  /** Project paths this work item references (0..n). Projects are referenced, never owned. */
+  /** Project paths this task references (0..n). Projects are referenced, never owned. */
   projects?: string[];
   /** Project a new session defaults to; only a convenience, not ownership. */
   primaryProject?: string;
@@ -37,7 +37,7 @@ export interface NoteWorkFields {
   primaryProject?: string;
 }
 
-/** Work-item fields from parsed front-matter, or `null` when the note is not a work item. */
+/** Task fields from parsed front-matter, or `null` when the note is not a task. */
 export function workFieldsFromFrontmatter(fm: NoteFrontmatter): NoteWorkFields | null {
   if (!fm.work) return null;
   const out: NoteWorkFields = {};
@@ -131,7 +131,7 @@ export function extractTitle(body: string): string | undefined {
 }
 
 /**
- * Catalog title for a note. A work item's name lives in front-matter because its
+ * Catalog title for a note. A task's name lives in front-matter because its
  * markdown heading carries a reminder suffix on top of the name.
  */
 export function noteTitle(

@@ -99,13 +99,13 @@ export {
 } from "./notes/frontmatter";
 export type { NoteFrontmatter, ParsedNoteDocument } from "./notes/frontmatter";
 export {
-  WORK_ITEM_KNOWLEDGE_BEGIN,
-  WORK_ITEM_KNOWLEDGE_END,
-  UNTITLED_WORK_ITEM_NAME,
-  isWorkItemFrontmatter,
-  workItemPromptBody,
-  normalizeWorkItemDocument
-} from "./notes/workItemNote";
+  TASK_KNOWLEDGE_BEGIN,
+  TASK_KNOWLEDGE_END,
+  UNTITLED_TASK_NAME,
+  isTaskFrontmatter,
+  taskPromptBody,
+  normalizeTaskDocument
+} from "./notes/taskNote";
 export {
   localDateString,
   formatNoteFilename,
