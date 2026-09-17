@@ -151,7 +151,7 @@ describe("workItemWorkspace", () => {
   it("drops the note's own heading from the knowledge it injects", () => {
     // Marked region: heading out, payload in.
     expect(workItemKnowledgeText(
-      "# Multi-repo-背景知识(会被AI索引)\n\n<!-- agent-resume:begin work-item-knowledge -->\n\nShip the thing.\n\n<!-- agent-resume:end work-item-knowledge -->\n"
+      "# Multi-repo\n\n<!-- agent-resume:begin work-item-knowledge -->\n\nShip the thing.\n\n<!-- agent-resume:end work-item-knowledge -->\n"
     )).toBe("Ship the thing.");
     // Unmarked note: the whole body is the knowledge, minus the heading.
     expect(workItemKnowledgeText("# Hand written\n\nNotes here.\n")).toBe("Notes here.");

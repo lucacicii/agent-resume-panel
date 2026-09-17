@@ -4,7 +4,6 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
-  DEFAULT_WORK_ITEM_TITLE_SUFFIX,
   NotesStore,
   WORK_ITEM_KNOWLEDGE_BEGIN,
   WORK_ITEM_KNOWLEDGE_END,
@@ -13,6 +12,9 @@ import {
   runSqlite,
   workItemPromptBody
 } from "../dist/index.js";
+
+/** Heading reminder suffix from before headings carried only the name. */
+const LEGACY_TITLE_SUFFIX = "-背景知识(会被AI索引)";
 
 async function withStore(run) {
   const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-work-note-"));
@@ -32,14 +34,15 @@ async function readWorkItemFile(store, noteId) {
   return fs.readFile(store.absolutePath(record), "utf8");
 }
 
-test("new work items carry a front-matter name, a reminder heading and a knowledge region", async () => {
+test("new work items carry a front-matter name, a plain heading and a knowledge region", async () => {
   await withStore(async (store, _home, dbPath) => {
     const item = await store.createWorkItem({ title: "Ship release" });
     assert.equal(item.title, "Ship release");
 
     const raw = await readWorkItemFile(store, item.noteId);
     assert.match(raw, /title: "?Ship release"?/);
-    assert.match(raw, new RegExp(`# Ship release${escapeRegExp(DEFAULT_WORK_ITEM_TITLE_SUFFIX)}`));
+    assert.ok(raw.includes("# Ship release\n"));
+    assert.ok(!raw.includes("titleSuffix"));
     assert.ok(raw.includes(WORK_ITEM_KNOWLEDGE_BEGIN));
     assert.ok(raw.includes(WORK_ITEM_KNOWLEDGE_END));
 
@@ -52,37 +55,35 @@ test("new work items carry a front-matter name, a reminder heading and a knowled
   });
 });
 
-test("editing the heading renames the work item and re-applies the suffix", async () => {
+test("editing the heading renames the work item", async () => {
   await withStore(async (store) => {
     const item = await store.createWorkItem({ title: "Ship release" });
     const raw = await readWorkItemFile(store, item.noteId);
 
-    const edited = raw.replace(
-      `# Ship release${DEFAULT_WORK_ITEM_TITLE_SUFFIX}`,
-      "# Ship release v2"
-    );
+    const edited = raw.replace("# Ship release", "# Ship release v2");
     const updated = await store.writeNoteContent(item.noteId, edited);
     assert.equal(updated.title, "Ship release v2");
+    assert.equal(updated.filename, "Ship release v2.md");
     const after = await readWorkItemFile(store, item.noteId);
     assert.match(after, /title: "?Ship release v2"?/);
-    assert.ok(after.includes(`# Ship release v2${DEFAULT_WORK_ITEM_TITLE_SUFFIX}`));
+    assert.ok(after.includes("# Ship release v2\n"));
 
-    // A body that lost its heading gets it back; agents cannot drop the reminder.
+    // A body that lost its heading gets it back. A legacy file still carrying
+    // titleSuffix has it stripped and dropped on the same write.
     const bodyOnly = raw.slice(raw.indexOf("\n---\n") + 5).replace(/^# .*\n/, "");
     const recovered = await store.writeNoteContent(
       item.noteId,
-      `---\nid: ${item.noteId}\nscope: library\nwork: true\ntitle: Ship release v2\ntitleSuffix: "${DEFAULT_WORK_ITEM_TITLE_SUFFIX}"\n---\n\n${bodyOnly}`
+      `---\nid: ${item.noteId}\nscope: library\nwork: true\ntitle: Ship release v2\ntitleSuffix: "${LEGACY_TITLE_SUFFIX}"\n---\n\n${bodyOnly}`
     );
     assert.equal(recovered.title, "Ship release v2");
-    assert.ok(
-      (await readWorkItemFile(store, item.noteId)).includes(
-        `# Ship release v2${DEFAULT_WORK_ITEM_TITLE_SUFFIX}`
-      )
-    );
+    const recoveredRaw = await readWorkItemFile(store, item.noteId);
+    assert.ok(recoveredRaw.includes("# Ship release v2\n"));
+    assert.ok(!recoveredRaw.includes("titleSuffix"));
+    assert.ok(!recoveredRaw.includes("背景知识"));
   });
 });
 
-test("renaming a work item keeps its name, reminder suffix and file in step", async () => {
+test("renaming a work item keeps its name and file in step", async () => {
   await withStore(async (store) => {
     const item = await store.createWorkItem({ title: "Ship release" });
     assert.equal((await store.getNote(item.noteId)).filename, "Ship release.md");
@@ -93,20 +94,13 @@ test("renaming a work item keeps its name, reminder suffix and file in step", as
     assert.equal(renamed.relMdPath, "notes/library/Release train.md");
     const raw = await readWorkItemFile(store, item.noteId);
     assert.match(raw, /title: "?Release train"?/);
-    assert.ok(raw.includes(`# Release train${DEFAULT_WORK_ITEM_TITLE_SUFFIX}`));
+    assert.ok(raw.includes("# Release train\n"));
 
-    // A name that already carries the suffix is not doubled.
-    const again = await store.renameNote(
-      item.noteId,
-      `Release train${DEFAULT_WORK_ITEM_TITLE_SUFFIX}.md`
-    );
+    // A name ending in .md is treated as a file name: the stem is the name.
+    const again = await store.renameNote(item.noteId, "Release train.md");
     assert.equal(again.title, "Release train");
     assert.equal(again.filename, "Release train.md");
-    assert.ok(
-      (await readWorkItemFile(store, item.noteId)).includes(
-        `# Release train${DEFAULT_WORK_ITEM_TITLE_SUFFIX}`
-      )
-    );
+    assert.ok((await readWorkItemFile(store, item.noteId)).includes("# Release train\n"));
   });
 });
 
@@ -121,7 +115,7 @@ test("an untitled work item's file follows the name once it is named", async () 
     assert.equal(renamed.relMdPath, "notes/library/agent 重构.md");
     const raw = await readWorkItemFile(store, item.noteId);
     assert.match(raw, /title: "?agent 重构"?/);
-    assert.ok(raw.includes(`# agent 重构${DEFAULT_WORK_ITEM_TITLE_SUFFIX}`));
+    assert.ok(raw.includes("# agent 重构\n"));
   });
 });
 
@@ -130,10 +124,7 @@ test("editing the heading moves the work item's file to the new name", async () 
     const item = await store.createWorkItem({ title: "Ship release" });
     const raw = await readWorkItemFile(store, item.noteId);
 
-    const edited = raw.replace(
-      `# Ship release${DEFAULT_WORK_ITEM_TITLE_SUFFIX}`,
-      "# Ship release v2"
-    );
+    const edited = raw.replace("# Ship release", "# Ship release v2");
     const updated = await store.writeNoteContent(item.noteId, edited);
     assert.equal(updated.title, "Ship release v2");
     assert.equal(updated.filename, "Ship release v2.md");
@@ -181,7 +172,7 @@ test("names stored only in the file name are recovered once", async () => {
     assert.equal(recovered.title, "安丰");
     assert.equal(recovered.filename, "安丰.md");
     assert.ok(
-      (await fs.readFile(renamed, "utf8")).includes(`# 安丰${DEFAULT_WORK_ITEM_TITLE_SUFFIX}`)
+      (await fs.readFile(renamed, "utf8")).includes("# 安丰\n")
     );
 
     // A genuinely untitled work item keeps its default name.
@@ -214,7 +205,7 @@ test("prompt body is limited to the knowledge region", async () => {
   });
 });
 
-test("moving a work item keeps its name and reminder suffix", async () => {
+test("moving a work item keeps its name", async () => {
   await withStore(async (store) => {
     const item = await store.createWorkItem({ title: "Movable" });
     const moved = await store.moveNote(item.noteId, { scope: "project", projectPath: "/tmp/moved" });
@@ -223,8 +214,8 @@ test("moving a work item keeps its name and reminder suffix", async () => {
 
     const raw = await readWorkItemFile(store, item.noteId);
     assert.match(raw, /title: "?Movable"?/);
-    assert.ok(raw.includes(`# Movable${DEFAULT_WORK_ITEM_TITLE_SUFFIX}`));
-    assert.ok(!raw.includes(`${DEFAULT_WORK_ITEM_TITLE_SUFFIX}${DEFAULT_WORK_ITEM_TITLE_SUFFIX}`));
+    assert.ok(raw.includes("# Movable\n"));
+    assert.ok(!raw.includes("titleSuffix"));
   });
 });
 
@@ -269,7 +260,7 @@ test("existing work items are migrated once onto the convention", async () => {
 
     const migrated = await fs.readFile(absPath, "utf8");
     assert.match(migrated, /title: "?Legacy item"?/);
-    assert.ok(migrated.includes(`# Legacy item${DEFAULT_WORK_ITEM_TITLE_SUFFIX}`));
+    assert.ok(migrated.includes("# Legacy item\n"));
     assert.ok(migrated.includes(WORK_ITEM_KNOWLEDGE_BEGIN));
     assert.ok(migrated.includes("Old notes"));
     const updated = await reopened.getNote(item.noteId);
@@ -299,11 +290,11 @@ test("work item files left behind by the old flow are renamed to their name once
     const oldPath = store.absolutePath(record);
     await fs.writeFile(
       oldPath,
-      `---\nid: ${item.noteId}\nscope: library\nwork: true\ntitle: agent 重构\ntitleSuffix: "${DEFAULT_WORK_ITEM_TITLE_SUFFIX}"\n---\n\n# agent 重构${DEFAULT_WORK_ITEM_TITLE_SUFFIX}\n\n${WORK_ITEM_KNOWLEDGE_BEGIN}\n\n${WORK_ITEM_KNOWLEDGE_END}\n`,
+      `---\nid: ${item.noteId}\nscope: library\nwork: true\ntitle: agent 重构\ntitleSuffix: "${LEGACY_TITLE_SUFFIX}"\n---\n\n# agent 重构${LEGACY_TITLE_SUFFIX}\n\n${WORK_ITEM_KNOWLEDGE_BEGIN}\n\n${WORK_ITEM_KNOWLEDGE_END}\n`,
       "utf8"
     );
     await runSqlite(dbPath, `UPDATE notes SET title = 'agent 重构' WHERE note_id = '${item.noteId}';`);
-    await runSqlite(dbPath, "DELETE FROM catalog_meta WHERE key = 'work_item_files_follow_title_v1';");
+    await runSqlite(dbPath, "DELETE FROM catalog_meta WHERE key IN ('work_item_files_follow_title_v1', 'work_item_notes_suffix_dropped_v1');");
 
     const reopened = new NotesStore(dbPath, panelHome);
     await reopened.initialize();
@@ -313,7 +304,8 @@ test("work item files left behind by the old flow are renamed to their name once
     assert.equal(updated.filename, "agent 重构.md");
     assert.equal(updated.relMdPath, "notes/library/agent 重构.md");
     const migrated = await fs.readFile(path.join(panelHome, "notes", "library", "agent 重构.md"), "utf8");
-    assert.ok(migrated.includes(`# agent 重构${DEFAULT_WORK_ITEM_TITLE_SUFFIX}`));
+    assert.ok(migrated.includes("# agent 重构\n"));
+    assert.ok(!migrated.includes("titleSuffix"));
     await assert.rejects(fs.access(oldPath));
 
     // Second initialize must not rename again.
@@ -325,6 +317,38 @@ test("work item files left behind by the old flow are renamed to their name once
   }
 });
 
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
+test("legacy heading suffixes are dropped once", async () => {
+  const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-work-suffix-"));
+  const dbPath = path.join(panelHome, "catalog.db");
+  try {
+    await ensureExtensionCatalogSchema(dbPath);
+    const store = new NotesStore(dbPath, panelHome);
+    await store.initialize();
+    const item = await store.createWorkItem({ title: "Ship release" });
+    const record = await store.getNote(item.noteId);
+    const absPath = store.absolutePath(record);
+    // Old-style file: heading with the reminder suffix and a titleSuffix field.
+    await fs.writeFile(
+      absPath,
+      `---\nid: ${item.noteId}\nscope: library\nwork: true\ntitle: Ship release\ntitleSuffix: "${LEGACY_TITLE_SUFFIX}"\n---\n\n# Ship release${LEGACY_TITLE_SUFFIX}\n\n${WORK_ITEM_KNOWLEDGE_BEGIN}\n\n${WORK_ITEM_KNOWLEDGE_END}\n`,
+      "utf8"
+    );
+    await runSqlite(dbPath, "DELETE FROM catalog_meta WHERE key = 'work_item_notes_suffix_dropped_v1';");
+
+    const reopened = new NotesStore(dbPath, panelHome);
+    await reopened.initialize();
+
+    const migrated = await fs.readFile(absPath, "utf8");
+    assert.ok(migrated.includes("# Ship release\n"));
+    assert.ok(!migrated.includes("背景知识"));
+    assert.ok(!migrated.includes("titleSuffix"));
+    assert.equal((await reopened.getNote(item.noteId)).title, "Ship release");
+
+    // Second initialize must not rewrite the file again.
+    const third = new NotesStore(dbPath, panelHome);
+    await third.initialize();
+    assert.equal(await fs.readFile(absPath, "utf8"), migrated);
+  } finally {
+    await fs.rm(panelHome, { recursive: true, force: true });
+  }
+});

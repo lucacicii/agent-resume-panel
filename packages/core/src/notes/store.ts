@@ -41,7 +41,6 @@ import {
   type NoteWorkFields
 } from "./frontmatter";
 import {
-  DEFAULT_WORK_ITEM_TITLE_SUFFIX,
   isWorkItemFrontmatter,
   normalizeWorkItemDocument,
   newWorkItemBody,
@@ -106,16 +105,13 @@ export class NotesStore {
   private projectFlags = new Set<string>();
   private cachedNotes: NoteRecord[] = [];
   private panelHome: string;
-  private workItemTitleSuffix: string;
 
   constructor(
     private readonly dbPath: string,
     panelHome?: string,
-    private readonly ensureSchema: (dbPath: string) => Promise<void> = ensureExtensionCatalogSchema,
-    workItemTitleSuffix: string = DEFAULT_WORK_ITEM_TITLE_SUFFIX
+    private readonly ensureSchema: (dbPath: string) => Promise<void> = ensureExtensionCatalogSchema
   ) {
     this.panelHome = resolvePanelHome(panelHome);
-    this.workItemTitleSuffix = workItemTitleSuffix;
   }
 
   getPanelHome(): string {
@@ -124,13 +120,6 @@ export class NotesStore {
 
   setPanelHome(panelHome: string): void {
     this.panelHome = resolvePanelHome(panelHome);
-  }
-
-  /** Localized reminder suffix written into a work item's markdown heading. */
-  setWorkItemTitleSuffix(suffix: string): void {
-    if (suffix.trim()) {
-      this.workItemTitleSuffix = suffix;
-    }
   }
 
   async initialize(): Promise<void> {
@@ -143,6 +132,8 @@ export class NotesStore {
     await this.migrateWorkItemNotes();
     // One-time recovery of names the old file-rename flow left only in the file name.
     await this.migrateWorkItemNames();
+    // One-time cleanup of the legacy heading reminder suffix.
+    await this.migrateWorkItemNotesDropSuffix();
     // One-time rename of work-item files onto the file-follows-name rule.
     await this.migrateWorkItemFilesToTitles();
   }
@@ -179,8 +170,7 @@ export class NotesStore {
         }
         const normalized = normalizeWorkItemDocument(
           doc.frontmatter,
-          doc.body,
-          this.workItemTitleSuffix
+          doc.body
         );
         const next = buildNoteDocument(normalized.frontmatter, normalized.body);
         if (next !== raw) {
@@ -215,6 +205,36 @@ export class NotesStore {
         await this.renameNote(item.noteId, noteStem(item.filename));
       } catch {
         // A single unreadable file must not block startup.
+      }
+    }
+    await setCatalogMeta(this.dbPath, key, "1");
+  }
+
+  /**
+   * One-time cleanup of the legacy heading reminder suffix: headings become the
+   * plain name and the `titleSuffix` front-matter field is dropped.
+   */
+  private async migrateWorkItemNotesDropSuffix(): Promise<void> {
+    const key = "work_item_notes_suffix_dropped_v1";
+    if ((await getCatalogMeta(this.dbPath, key)) === "1") {
+      return;
+    }
+    for (const item of await listWorkItems(this.dbPath)) {
+      try {
+        const absPath = absFromRelMdPath(this.panelHome, item.relMdPath);
+        const raw = await fs.readFile(absPath, "utf8");
+        const doc = parseNoteDocument(raw);
+        if (!isWorkItemFrontmatter(doc.frontmatter)) {
+          continue;
+        }
+        const normalized = normalizeWorkItemDocument(doc.frontmatter, doc.body);
+        const next = buildNoteDocument(normalized.frontmatter, normalized.body);
+        if (next !== raw) {
+          await fs.writeFile(absPath, next, "utf8");
+        }
+        await this.refreshNoteFromDisk(item);
+      } catch {
+        // A single unreadable file must not block startup; reconcile catches up later.
       }
     }
     await setCatalogMeta(this.dbPath, key, "1");
@@ -353,8 +373,7 @@ export class NotesStore {
     }
     const normalized = normalizeWorkItemDocument(
       doc.frontmatter,
-      doc.body,
-      this.workItemTitleSuffix
+      doc.body
     );
     return buildNoteDocument(normalized.frontmatter, normalized.body);
   }
@@ -479,7 +498,6 @@ export class NotesStore {
       work: true
     };
     fm.title = name;
-    fm.titleSuffix = this.workItemTitleSuffix;
     const work: NoteWorkFields = {};
     if (input.next) { fm.next = input.next; work.next = input.next; }
     if (input.decision) { fm.decision = input.decision; work.decision = input.decision; }
@@ -489,7 +507,7 @@ export class NotesStore {
     if (projects.length > 0) { fm.projects = projects; work.projects = projects; }
     const primary = input.primaryProject ? normalizeProjectPath(input.primaryProject.trim()) : projects[0];
     if (primary) { fm.primaryProject = primary; work.primaryProject = primary; }
-    const body = newWorkItemBody(name, this.workItemTitleSuffix);
+    const body = newWorkItemBody(name);
     const relDir = ownerRelDir(owner);
     const absPath = path.join(ownerDir, filename);
     await fs.writeFile(absPath, buildNoteDocument(fm, body), "utf8");
@@ -764,7 +782,7 @@ export class NotesStore {
     const fm = frontmatterForOwner(doc.frontmatter, newOwner, record.noteId);
     if (fm.work) {
       // Keep the title/heading convention intact across a move.
-      const normalized = normalizeWorkItemDocument(fm, body, this.workItemTitleSuffix);
+      const normalized = normalizeWorkItemDocument(fm, body);
       Object.assign(fm, normalized.frontmatter);
       body = normalized.body;
     }
@@ -830,7 +848,6 @@ export class NotesStore {
       const normalized = normalizeWorkItemDocument(
         doc.frontmatter,
         doc.body,
-        this.workItemTitleSuffix,
         { name: noteStem(normalizeNoteFilename(desiredName) || desiredName) }
       );
       const next = buildNoteDocument(normalized.frontmatter, normalized.body);
@@ -1016,9 +1033,6 @@ function frontmatterForOwner(
   }
   if (source.title) {
     fm.title = source.title;
-  }
-  if (source.titleSuffix) {
-    fm.titleSuffix = source.titleSuffix;
   }
   if (source.next) {
     fm.next = source.next;

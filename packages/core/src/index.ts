@@ -663,7 +663,6 @@ export {
 export {
   WORK_ITEM_KNOWLEDGE_BEGIN,
   WORK_ITEM_KNOWLEDGE_END,
-  DEFAULT_WORK_ITEM_TITLE_SUFFIX,
   UNTITLED_WORK_ITEM_NAME,
   isWorkItemFrontmatter,
   workItemName,

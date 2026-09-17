@@ -5,9 +5,8 @@ import type { NoteFrontmatter } from "./frontmatter";
  *
  * A work item is a note with `work: true`. Two things are special about it:
  *
- * 1. Its markdown heading is `<name><suffix>`, where the suffix reminds the
- *    reader that this note is consumed by agents. The name itself lives in
- *    front-matter `title`, so every display site reads the plain name.
+ * 1. Its markdown heading is its name; the name itself lives in front-matter
+ *    `title`, so every display site reads the plain name.
  * 2. Only the content between the knowledge markers is injected into prompts.
  *    Notes without markers keep the old behaviour (whole body) so hand-written
  *    and pre-existing files never lose content silently.
@@ -16,9 +15,6 @@ import type { NoteFrontmatter } from "./frontmatter";
 /** Region of a work-item note that is injected into agent prompts. */
 export const WORK_ITEM_KNOWLEDGE_BEGIN = "<!-- agent-resume:begin work-item-knowledge -->";
 export const WORK_ITEM_KNOWLEDGE_END = "<!-- agent-resume:end work-item-knowledge -->";
-
-/** Used when a caller (e.g. the MCP server) has no UI locale to localize with. */
-export const DEFAULT_WORK_ITEM_TITLE_SUFFIX = "-背景知识(会被AI索引)";
 
 /** Name used when a work item was created without one. */
 export const UNTITLED_WORK_ITEM_NAME = "未命名工作项";
@@ -81,8 +77,8 @@ export function ensureWorkItemKnowledgeRegion(body: string): string {
 }
 
 /** Placeholder region body of a freshly created work item. */
-export function newWorkItemBody(name: string, suffix: string): string {
-  return ensureWorkItemKnowledgeRegion(`# ${name}${suffix}\n`);
+export function newWorkItemBody(name: string): string {
+  return ensureWorkItemKnowledgeRegion(`# ${name}\n`);
 }
 
 export interface NormalizedWorkItemDocument {
@@ -93,52 +89,38 @@ export interface NormalizedWorkItemDocument {
 /**
  * Keep a work-item document on the convention:
  * - front-matter `title` holds the name,
- * - the heading is `<name><suffix>`,
+ * - the heading is the name,
  * - the knowledge region exists.
  *
- * The suffix is inherited from the file's previous heading rather than matched
- * against a translation table, so a localized suffix (or a hand-edited one)
- * survives renaming, and switching UI language never rewrites existing files.
+ * `titleSuffix` is a legacy field from when headings carried a localized
+ * reminder suffix; it is read once to strip that suffix from old files, and
+ * never written back.
  */
 export function normalizeWorkItemDocument(
   frontmatter: NoteFrontmatter,
   body: string,
-  defaultSuffix: string,
   options: { name?: string } = {}
 ): NormalizedWorkItemDocument {
-  const previousName = frontmatter.title?.trim() || undefined;
-  const declaredSuffix = frontmatter.titleSuffix?.trim() || undefined;
-  const previousHeading = headingText(body);
-  // A file declares its suffix once. Only pre-convention files (no declared
-  // suffix) need the heading to be interpreted as `<name><suffix>`.
-  let suffix = declaredSuffix || defaultSuffix;
-  if (!declaredSuffix && previousName && previousHeading && previousHeading.startsWith(previousName)) {
-    const inherited = previousHeading.slice(previousName.length).trim();
-    if (inherited) {
-      suffix = inherited;
-    }
-  }
-
-  const withoutSuffix = (value: string): string => {
-    let candidate = value.trim();
-    if (suffix && candidate.endsWith(suffix)) {
-      candidate = candidate.slice(0, candidate.length - suffix.length).trim();
+  const legacySuffix = frontmatter.titleSuffix?.trim() || "";
+  const withoutLegacySuffix = (value: string): string => {
+    const candidate = value.trim();
+    if (legacySuffix && candidate.endsWith(legacySuffix)) {
+      return candidate.slice(0, candidate.length - legacySuffix.length).trim();
     }
     return candidate;
   };
 
-  let name = previousName || "";
+  let name = withoutLegacySuffix(frontmatter.title?.trim() || "");
   if (options.name !== undefined) {
-    // An explicit rename wins over the heading; the suffix is stripped so it is
-    // never applied twice.
-    const requested = withoutSuffix(options.name);
+    // An explicit rename wins over the heading.
+    const requested = withoutLegacySuffix(options.name);
     if (requested) {
       name = requested;
     }
   } else {
     const edited = headingText(body);
     if (edited) {
-      const candidate = withoutSuffix(edited);
+      const candidate = withoutLegacySuffix(edited);
       if (candidate) {
         name = candidate;
       }
@@ -148,14 +130,16 @@ export function normalizeWorkItemDocument(
     name = UNTITLED_WORK_ITEM_NAME;
   }
 
-  const heading = `# ${name}${suffix}`;
+  const heading = `# ${name}`;
   const currentHeading = headingLine(body);
   const withHeading = currentHeading
     ? body.replace(currentHeading, heading)
     : `${heading}\n\n${body.replace(/^\n+/, "")}`;
 
+  const next: NoteFrontmatter = { ...frontmatter, title: name };
+  delete next.titleSuffix;
   return {
-    frontmatter: { ...frontmatter, title: name, titleSuffix: suffix },
+    frontmatter: next,
     body: ensureWorkItemKnowledgeRegion(withHeading)
   };
 }

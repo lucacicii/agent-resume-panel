@@ -367,7 +367,6 @@
   "desktop.notes.sendToAgent": "发送到 agent",
   "desktop.notes.sendToSession": "发送到 session",
   "desktop.notes.targetLibrary": "独立笔记",
-  "desktop.notes.workItemTitleSuffix": "-背景知识(会被AI索引)",
   "desktop.notifications.bell": "通知",
   "desktop.notifications.clearAll": "清除全部",
   "desktop.notifications.empty": "暂无通知",

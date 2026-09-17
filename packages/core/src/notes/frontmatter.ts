@@ -8,11 +8,14 @@ export interface NoteFrontmatter {
   /** Work-item marker. Only notes with this flag appear on the work-item board. */
   work?: boolean;
   /**
-   * Work-item name. Authoritative for the work item; the markdown heading carries
-   * this name plus a reminder suffix, so displays read the name from here.
+   * Work-item name. Authoritative for the work item; the markdown heading
+   * carries this name, so displays read the name from here.
    */
   title?: string;
-  /** Reminder suffix appended to the work-item heading; frozen per file. */
+  /**
+   * Legacy: heading reminder suffix from before headings carried only the name.
+   * Parsed so old files can be cleaned up once, never written back.
+   */
   titleSuffix?: string;
   /** Concrete next action for the work item. */
   next?: string;
@@ -91,9 +94,6 @@ export function buildNoteDocument(frontmatter: NoteFrontmatter, body: string): s
   }
   if (frontmatter.title) {
     lines.push(`title: ${jsonish(frontmatter.title)}`);
-  }
-  if (frontmatter.titleSuffix) {
-    lines.push(`titleSuffix: ${jsonish(frontmatter.titleSuffix)}`);
   }
   if (frontmatter.next) {
     lines.push(`next: ${jsonish(frontmatter.next)}`);
