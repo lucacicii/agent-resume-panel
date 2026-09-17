@@ -213,7 +213,7 @@ describe("workbenchSearchText include / exclude globs", () => {
 
   it("searches everything except skip dirs by default", async () => {
     const root = fixture();
-    const result = await searchWorkbenchText({ rootPath: root, query: "needle", timeBudgetMs: 5000 });
+    const result = await searchWorkbenchText({ rootPaths: [root], query: "needle", timeBudgetMs: 5000 });
     expect(relativeMatches(result.matches)).toEqual([
       "a.ts",
       "b.md",
@@ -225,7 +225,7 @@ describe("workbenchSearchText include / exclude globs", () => {
   it("restricts results to files matching the include globs", async () => {
     const root = fixture();
     const ts = await searchWorkbenchText({
-      rootPath: root,
+      rootPaths: [root],
       query: "needle",
       filesToInclude: "*.ts",
       timeBudgetMs: 5000
@@ -233,7 +233,7 @@ describe("workbenchSearchText include / exclude globs", () => {
     expect(relativeMatches(ts.matches)).toEqual(["a.ts", "c.test.ts", "src/deep/d.ts"]);
 
     const src = await searchWorkbenchText({
-      rootPath: root,
+      rootPaths: [root],
       query: "needle",
       filesToInclude: "src/**",
       timeBudgetMs: 5000
@@ -244,7 +244,7 @@ describe("workbenchSearchText include / exclude globs", () => {
   it("lets include globs reach build output dirs that are skipped by default", async () => {
     const root = fixture();
     const result = await searchWorkbenchText({
-      rootPath: root,
+      rootPaths: [root],
       query: "needle",
       filesToInclude: "dist/**",
       timeBudgetMs: 5000
@@ -257,7 +257,7 @@ describe("workbenchSearchText include / exclude globs", () => {
   it("supports comma and newline separated exclude globs", async () => {
     const root = fixture();
     const result = await searchWorkbenchText({
-      rootPath: root,
+      rootPaths: [root],
       query: "needle",
       filesToExclude: "**/*.test.ts,\n**/out.js",
       timeBudgetMs: 5000
@@ -268,7 +268,7 @@ describe("workbenchSearchText include / exclude globs", () => {
   it("excludes whole directories named in the exclude glob", async () => {
     const root = fixture();
     const byDirName = await searchWorkbenchText({
-      rootPath: root,
+      rootPaths: [root],
       query: "needle",
       filesToExclude: "src",
       timeBudgetMs: 5000
@@ -276,12 +276,23 @@ describe("workbenchSearchText include / exclude globs", () => {
     expect(relativeMatches(byDirName.matches)).toEqual(["a.ts", "b.md", "c.test.ts"]);
 
     const byGlob = await searchWorkbenchText({
-      rootPath: root,
+      rootPaths: [root],
       query: "needle",
       filesToInclude: "**/*.js, **/*.ts",
       filesToExclude: "dist/**",
       timeBudgetMs: 5000
     });
     expect(relativeMatches(byGlob.matches)).toEqual(["a.ts", "c.test.ts", "src/deep/d.ts"]);
+  });
+
+  it("merges matches from several project roots under one budget", async () => {
+    const first = fixture();
+    const second = fixture();
+    const result = await searchWorkbenchText({ rootPaths: [first, second], query: "needle", timeBudgetMs: 5000 });
+    const paths = new Set(result.matches.map((match) => match.path));
+    expect(paths.has(path.join(first, "a.ts"))).toBe(true);
+    expect(paths.has(path.join(second, "a.ts"))).toBe(true);
+    expect(paths.has(path.join(second, "src/deep/d.ts"))).toBe(true);
+    expect(result.filesSearched).toBeGreaterThanOrEqual(2);
   });
 });

@@ -847,13 +847,13 @@ export interface DesktopApi {
   }): Promise<{
     entries: Array<{ name: string; path: string; isDirectory: boolean }>;
   }>;
-  workbenchListFiles(args: { rootPath: string }): Promise<{
+  workbenchListFiles(args: { rootPaths: string[] }): Promise<{
     files: Array<{ path: string; relativePath: string; kind: "file" | "directory" }>;
     truncated: boolean;
     engine: "rg" | "node";
   }>;
   workbenchListFilesCancel(): Promise<{ ok: boolean }>;
-  workbenchSearchPaths(args: { rootPath: string; query: string }): Promise<{
+  workbenchSearchPaths(args: { rootPaths: string[]; query: string }): Promise<{
     files: Array<{ path: string; relativePath: string; kind: "file" | "directory" }>;
     truncated: boolean;
     engine: "rg" | "node";
@@ -940,7 +940,7 @@ export interface DesktopApi {
     targetPath: string;
   }): Promise<{ ok: boolean }>;
   workbenchSearchText(args: {
-    rootPath: string;
+    rootPaths: string[];
     query: string;
     matchCase?: boolean;
     wholeWord?: boolean;

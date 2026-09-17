@@ -137,7 +137,7 @@ export const ImFilePicker = forwardRef<ImFilePickerHandle, ImFilePickerProps>(fu
     const timer = window.setTimeout(() => {
       const api = desktopApi();
       const request = ++sequence;
-      void api.workbenchSearchPaths({ rootPath: projectPath, query })
+      void api.workbenchSearchPaths({ rootPaths: [projectPath], query })
         .then((result) => {
           if (request !== sequence) return;
           setSearchFiles(result.files);

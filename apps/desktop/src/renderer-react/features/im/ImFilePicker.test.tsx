@@ -185,7 +185,7 @@ describe("ImFilePicker", () => {
     const onSelect = vi.fn();
     renderPicker({ query: "src", onSelect });
     const listbox = await screen.findByRole("listbox", { name: "Insert file or folder" });
-    await waitFor(() => expect(workbenchSearchPaths).toHaveBeenCalledWith({ rootPath: "/work/app", query: "src" }));
+    await waitFor(() => expect(workbenchSearchPaths).toHaveBeenCalledWith({ rootPaths: ["/work/app"], query: "src" }));
     await waitFor(() => {
       expect(listbox.textContent).toContain("Search results");
     });

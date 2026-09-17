@@ -771,14 +771,22 @@ export async function unstageGitLine(
   );
 }
 
+/** Validate the project roots shared by the multi-root search/index handlers. */
+function requireRootPaths(raw: unknown): string[] {
+  if (!Array.isArray(raw)) throw new Error("无效的项目路径");
+  const roots = raw
+    .filter((entry): entry is string => typeof entry === "string")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  if (!roots.length) throw new Error("无效的项目路径");
+  return [...new Set(roots)];
+}
+
 export function registerWorkbenchFsIpc(): void {
   safeHandle(
     "workbench:listFiles",
-    async (_event, args: { rootPath: string }) => {
-      if (!args || typeof args.rootPath !== "string" || !args.rootPath.trim()) {
-        throw new Error("无效的项目路径");
-      }
-      return listWorkbenchFiles({ rootPath: args.rootPath });
+    async (_event, args: { rootPaths: string[] }) => {
+      return listWorkbenchFiles({ rootPaths: requireRootPaths(args?.rootPaths) });
     }
   );
 
@@ -789,12 +797,9 @@ export function registerWorkbenchFsIpc(): void {
 
   safeHandle(
     "workbench:searchPaths",
-    async (_event, args: { rootPath: string; query: string }) => {
-      if (!args || typeof args.rootPath !== "string" || !args.rootPath.trim()) {
-        throw new Error("无效的项目路径");
-      }
-      if (typeof args.query !== "string") throw new Error("无效的路径查询");
-      return searchWorkbenchPaths({ rootPath: args.rootPath, query: args.query });
+    async (_event, args: { rootPaths: string[]; query: string }) => {
+      if (typeof args?.query !== "string") throw new Error("无效的路径查询");
+      return searchWorkbenchPaths({ rootPaths: requireRootPaths(args?.rootPaths), query: args.query });
     }
   );
 
@@ -945,7 +950,7 @@ export function registerWorkbenchFsIpc(): void {
     async (
       _event,
       args: {
-        rootPath: string;
+        rootPaths: string[];
         query: string;
         matchCase?: boolean;
         wholeWord?: boolean;
@@ -959,11 +964,8 @@ export function registerWorkbenchFsIpc(): void {
       if (typeof args?.query !== "string") {
         throw new Error("无效的搜索参数");
       }
-      if (typeof args?.rootPath !== "string" || !args.rootPath.trim()) {
-        throw new Error("无效的项目路径");
-      }
       return searchWorkbenchText({
-        rootPath: args.rootPath,
+        rootPaths: requireRootPaths(args?.rootPaths),
         query: args.query,
         matchCase: Boolean(args.matchCase),
         wholeWord: Boolean(args.wholeWord),

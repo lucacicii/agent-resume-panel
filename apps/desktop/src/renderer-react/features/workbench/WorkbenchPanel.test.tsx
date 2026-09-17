@@ -4759,7 +4759,7 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(workbenchSearchText).toHaveBeenCalled());
     expect(workbenchSearchText).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        rootPath: "/work/app",
+        rootPaths: ["/work/app"],
         query: "findme"
       })
     );
@@ -4834,7 +4834,7 @@ describe("WorkbenchPanel", () => {
 
     expect((screen.getByRole("searchbox", { name: "Search" }) as HTMLInputElement).value).toBe("findme");
     await waitFor(() => expect(workbenchSearchText).toHaveBeenLastCalledWith(
-      expect.objectContaining({ rootPath: "/work/other", query: "findme" })
+      expect.objectContaining({ rootPaths: ["/work/other"], query: "findme" })
     ));
     expect(screen.getByText("Search")).toBeTruthy();
   });
@@ -4901,7 +4901,7 @@ describe("WorkbenchPanel", () => {
     openSearchWithResults(host);
     await screen.findByText("const findme = 1;");
     expect(workbenchSearchText).toHaveBeenLastCalledWith(
-      expect.objectContaining({ rootPath: "/work/app", query: "findme" })
+      expect.objectContaining({ rootPaths: ["/work/app"], query: "findme" })
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Toggle search details" }));
@@ -5051,7 +5051,7 @@ describe("WorkbenchPanel", () => {
     // Typing a query searches with the folder scope.
     fireEvent.change(searchInput, { target: { value: "findme" } });
     await waitFor(() => expect(workbenchSearchText).toHaveBeenLastCalledWith(
-      expect.objectContaining({ rootPath: "/work/app", query: "findme", filesToInclude: "src/**" })
+      expect.objectContaining({ rootPaths: ["/work/app"], query: "findme", filesToInclude: "src/**" })
     ));
   });
 
@@ -5982,7 +5982,7 @@ describe("WorkbenchPanel", () => {
         target: { value: "sysFinanceCenter/internetPaymentManage/prePaybankPayFail" }
       });
       await waitFor(() => expect(workbenchSearchPaths).toHaveBeenCalledWith({
-        rootPath: "/work/app",
+        rootPaths: ["/work/app"],
         query: "sysFinanceCenter/internetPaymentManage/prePaybankPayFail"
       }));
       fireEvent.click(await screen.findByText("index.vue"));
@@ -8183,6 +8183,121 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(document.querySelector(".wb-git-panel")).not.toBeNull());
     expect(await screen.findByText("src/app.ts")).toBeTruthy();
     expect(screen.getByText("src/api.ts")).toBeTruthy();
+  });
+
+  it("spans every shared-workspace project for Cmd+P, search, and scripts", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const workbenchListFiles = vi.fn(async () => ({
+      files: [
+        { path: "/work/app/src/app.ts", relativePath: "src/app.ts", kind: "file" as const },
+        { path: "/work/api/src/api.ts", relativePath: "src/api.ts", kind: "file" as const }
+      ],
+      truncated: false,
+      engine: "rg" as const
+    }));
+    const workbenchSearchText = vi.fn(async () => ({
+      matches: [
+        { path: "/work/app/src/app.ts", relativePath: "src/app.ts", line: 1, column: 1, endColumn: 7, preview: "findme app" },
+        { path: "/work/api/src/api.ts", relativePath: "src/api.ts", line: 1, column: 1, endColumn: 7, preview: "findme api" }
+      ],
+      truncated: false,
+      filesSearched: 2,
+      engine: "rg" as const
+    }));
+    const workbenchListScripts = vi.fn(async ({ rootPath }: { rootPath: string }) => ({
+      packages: [{
+        id: rootPath,
+        kind: "npm" as const,
+        packageRoot: rootPath,
+        relativeRoot: "",
+        label: rootPath.split("/").pop() || rootPath,
+        manifestPath: `${rootPath}/package.json`,
+        scripts: [{ id: `${rootPath}-dev`, name: rootPath === "/work/api" ? "api-dev" : "app-dev", run: { cwd: rootPath, command: "npm run dev" } }]
+      }],
+      truncated: false,
+      scannedDirs: 1
+    }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: { ...ARROW_TEST_MESSAGES, ...searchI18nMessages,
+        "desktop.workbench.sessionTarget": "New sessions start in: {0}",
+        "desktop.workbench.sharedWorkspace": "shared workspace",
+        "desktop.workbench.sidePanelScripts": "Scripts",
+        "desktop.workbench.scriptsEmpty": "No scripts",
+        "desktop.workbench.scriptsRefresh": "Refresh scripts",
+        "desktop.workbench.scriptsTruncated": "Scripts limited",
+        "desktop.workbench.scriptsKind.npm": "npm",
+        "desktop.workbench.quickAccessDialog": "Quick Access",
+        "desktop.workbench.quickAccessFilePlaceholder": "Search files by path",
+        "desktop.workbench.quickAccessProjectPlaceholder": "Search projects by name or path",
+        "desktop.workbench.quickAccessSelectProject": "Select project",
+        "desktop.workbench.quickAccessNoProjects": "No matching projects",
+        "desktop.workbench.quickAccessNoFiles": "No files",
+        "desktop.workbench.quickAccessNoProject": "No project",
+        "desktop.workbench.quickAccessNoCommands": "No commands",
+        "desktop.workbench.quickAccessClose": "Close",
+        "desktop.workbench.quickAccessLoading": "Loading",
+        "desktop.workbench.quickAccessTruncated": "Limited"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      notesListWorkItems: async () => [],
+      workbenchListFiles,
+      workbenchSearchText,
+      workbenchListScripts,
+      workbenchSetFileWatch: async () => ({ rootPaths: ["/work/app", "/work/api"] }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalGitStatus: async () => ({ isRepo: false, root: null, staged: [], unstaged: [], nestedRepos: [], tracking: [] }),
+      terminalGitFetch: async () => ({ ok: true }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-work-item", { detail: {
+        noteId: "wi-multi", title: "Multi", status: "next", sessions: [], projects: ["/work/app", "/work/api"], primaryProject: "/work/app"
+      } }));
+    });
+    await waitFor(() => expect(document.querySelector(".wb-work-item-target")?.textContent).toBe("New sessions start in: shared workspace"));
+
+    // Cmd+P lists files from every project root.
+    fireEvent.keyDown(window, { key: "p", metaKey: true });
+    const dialog = await screen.findByRole("dialog", { name: "Quick Access" });
+    await waitFor(() => expect(workbenchListFiles).toHaveBeenCalledWith({ rootPaths: ["/work/app", "/work/api"] }));
+    expect(await within(dialog).findByText("app.ts")).toBeTruthy();
+    expect(within(dialog).getByText("api.ts")).toBeTruthy();
+    fireEvent.click(document.querySelector(".quick-access-backdrop")!);
+
+    // Global search hits both projects and opens with the owning root.
+    fireEvent.click(screen.getAllByRole("button", { name: "Search", pressed: false })[0]!);
+    const searchInput = await screen.findByRole("searchbox", { name: "Search" });
+    fireEvent.change(searchInput, { target: { value: "findme" } });
+    await waitFor(() => expect(workbenchSearchText).toHaveBeenLastCalledWith(
+      expect.objectContaining({ rootPaths: ["/work/app", "/work/api"], query: "findme" })
+    ));
+    expect(await screen.findByText("findme app")).toBeTruthy();
+    expect(screen.getByText("findme api")).toBeTruthy();
+
+    // Scripts list packages from both projects.
+    fireEvent.click(screen.getAllByRole("button", { name: "Scripts", pressed: false })[0]!);
+    await waitFor(() => expect(workbenchListScripts).toHaveBeenCalledWith({ rootPath: "/work/app" }));
+    expect(workbenchListScripts).toHaveBeenCalledWith({ rootPath: "/work/api" });
+    await waitFor(() => expect(document.querySelectorAll(".wb-scripts-group-row")).toHaveLength(2));
+    const groupRows = [...document.querySelectorAll<HTMLElement>(".wb-scripts-group-row")];
+    fireEvent.click(groupRows[0]!);
+    fireEvent.click(groupRows[1]!);
+    expect(await screen.findByText("app-dev")).toBeTruthy();
+    expect(screen.getByText("api-dev")).toBeTruthy();
   });
 
   it("links an ACP session started inside a work item to that work item", async () => {

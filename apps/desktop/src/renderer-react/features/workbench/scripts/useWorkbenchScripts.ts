@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { desktopApi } from "../../../bridge";
 import { type ScriptEntryView, type ScriptPackageView } from "../ScriptsTree";
 
@@ -7,9 +7,14 @@ function statusError(error: unknown): string {
   return message.replace(/^Error invoking remote method '[^']+': Error:\s*/, "");
 }
 
+/** Last segment of a project root, for disambiguating multi-root script groups. */
+function rootBasename(value = ""): string {
+  return value.replaceAll("\\", "/").split("/").filter(Boolean).at(-1) || value;
+}
+
 export function useWorkbenchScripts(options: {
   active: boolean;
-  selectedProject: string | null;
+  projects: string[];
   side: string | null;
   runScript: (script: ScriptEntryView, pkg: ScriptPackageView) => void;
 }): {
@@ -18,11 +23,11 @@ export function useWorkbenchScripts(options: {
   scriptsError: string;
   scriptsTruncated: boolean;
   scriptsSectionCollapsed: boolean;
-  loadScripts: (rootPath: string) => Promise<void>;
+  loadScripts: () => Promise<void>;
   runScript: (script: ScriptEntryView, pkg: ScriptPackageView) => void;
   toggleScriptsSectionCollapsed: () => void;
 } {
-  const { active, selectedProject, side, runScript } = options;
+  const { active, projects, side, runScript } = options;
   const [scriptPackages, setScriptPackages] = useState<ScriptPackageView[]>([]);
   const [scriptsLoading, setScriptsLoading] = useState(false);
   const [scriptsError, setScriptsError] = useState("");
@@ -30,14 +35,45 @@ export function useWorkbenchScripts(options: {
   const [scriptsSectionCollapsed, setScriptsSectionCollapsed] = useState(() => {
     try { return localStorage.getItem("wb-scripts-collapsed") === "true"; } catch { return false; }
   });
+  const projectsRef = useRef(projects);
+  projectsRef.current = projects;
+  /** Stable identity of the project root set, used to reset/reload per workspace. */
+  const projectsKey = projects.map((project) => project.replaceAll("\\", "/").replace(/\/+$/, "")).join("\0");
 
-  const loadScripts = useCallback(async (rootPath: string) => {
+  const loadScripts = useCallback(async () => {
+    const roots = projectsRef.current;
+    if (!roots.length) {
+      setScriptPackages([]);
+      setScriptsError("");
+      setScriptsTruncated(false);
+      return;
+    }
     setScriptsLoading(true);
     setScriptsError("");
     try {
-      const result = await desktopApi().workbenchListScripts({ rootPath });
-      setScriptPackages(result.packages);
-      setScriptsTruncated(Boolean(result.truncated));
+      const results = await Promise.all(roots.map((root) => desktopApi().workbenchListScripts({ rootPath: root })));
+      const multiRoot = roots.length > 1;
+      const packages: ScriptPackageView[] = [];
+      let truncated = false;
+      roots.forEach((root, index) => {
+        const result = results[index];
+        if (!result) return;
+        truncated = truncated || Boolean(result.truncated);
+        if (!multiRoot) {
+          packages.push(...result.packages);
+          return;
+        }
+        const prefix = rootBasename(root);
+        for (const pkg of result.packages) {
+          packages.push({
+            ...pkg,
+            relativeRoot: pkg.relativeRoot ? `${prefix}/${pkg.relativeRoot}` : prefix,
+            label: pkg.label === prefix ? pkg.label : `${prefix} · ${pkg.label}`
+          });
+        }
+      });
+      setScriptPackages(packages);
+      setScriptsTruncated(truncated);
     } catch (error) {
       setScriptPackages([]);
       setScriptsTruncated(false);
@@ -48,16 +84,16 @@ export function useWorkbenchScripts(options: {
   }, []);
 
   useEffect(() => {
-    if (!active || !selectedProject) {
+    if (!active || !projectsKey) {
       setScriptPackages([]);
       setScriptsError("");
       setScriptsTruncated(false);
       return;
     }
     if (side === "files" || side === "scripts") {
-      void loadScripts(selectedProject);
+      void loadScripts();
     }
-  }, [active, loadScripts, selectedProject, side]);
+  }, [active, loadScripts, projectsKey, side]);
 
   const toggleScriptsSectionCollapsed = useCallback(() => {
     setScriptsSectionCollapsed((current) => {

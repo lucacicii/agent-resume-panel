@@ -23,14 +23,15 @@ export interface WorkbenchFileIndexResult {
 }
 
 export interface WorkbenchFileIndexOptions {
-  rootPath: string;
+  /** Project roots to index; entries from every root are merged into one set. */
+  rootPaths: string[];
   maxFiles?: number;
   timeBudgetMs?: number;
   signal?: AbortSignal;
 }
 
 export interface WorkbenchPathSearchOptions {
-  rootPath: string;
+  rootPaths: string[];
   query: string;
   maxResults?: number;
   timeBudgetMs?: number;
@@ -492,6 +493,35 @@ export function resetWorkbenchFileIndexForTests(): void {
   cancelActiveWorkbenchPathSearch();
 }
 
+/** List one root; the caller owns the abort controller and shared budgets. */
+async function listWorkbenchRoot(
+  root: string,
+  maxFiles: number,
+  timeBudgetMs: number,
+  signal: AbortSignal
+): Promise<WorkbenchFileIndexResult> {
+  const started = Date.now();
+  if (await detectRipgrep()) {
+    try {
+      const fileResult = await listWithRipgrep(root, maxFiles, timeBudgetMs, signal);
+      const remainingTimeMs = Math.max(100, timeBudgetMs - (Date.now() - started));
+      const directoryResult = await listDirectoriesWithNode(root, maxFiles, remainingTimeMs, signal);
+      const byPath = new Map<string, WorkbenchIndexedFile>();
+      for (const entry of [...directoryResult.entries, ...fileResult.files]) byPath.set(entry.path, entry);
+      const files = [...byPath.values()]
+        .sort((a, b) => a.relativePath.localeCompare(b.relativePath, undefined, { sensitivity: "base" }));
+      return {
+        files,
+        truncated: fileResult.truncated || directoryResult.truncated,
+        engine: "rg"
+      };
+    } catch (error) {
+      if ((error as Error)?.name === "AbortError") throw error;
+    }
+  }
+  return await listWithNode(root, maxFiles, timeBudgetMs, signal);
+}
+
 export async function listWorkbenchFiles(options: WorkbenchFileIndexOptions): Promise<WorkbenchFileIndexResult> {
   cancelActiveWorkbenchFileList();
   const controller = new AbortController();
@@ -502,29 +532,34 @@ export async function listWorkbenchFiles(options: WorkbenchFileIndexOptions): Pr
 
   try {
     throwIfAborted(controller.signal);
-    const root = resolveRoot(options.rootPath);
+    const roots = [...new Set((options.rootPaths ?? []).map((rootPath) => resolveRoot(rootPath)))];
+    if (!roots.length) return { files: [], truncated: false, engine: "node" };
     const maxFiles = clampInt(options.maxFiles, DEFAULT_MAX_FILES, 1, DEFAULT_MAX_FILES);
     const timeBudgetMs = clampInt(options.timeBudgetMs, DEFAULT_TIME_BUDGET_MS, 100, 10_000);
     const started = Date.now();
-    if (await detectRipgrep()) {
-      try {
-        const fileResult = await listWithRipgrep(root, maxFiles, timeBudgetMs, controller.signal);
-        const remainingTimeMs = Math.max(100, timeBudgetMs - (Date.now() - started));
-        const directoryResult = await listDirectoriesWithNode(root, maxFiles, remainingTimeMs, controller.signal);
-        const byPath = new Map<string, WorkbenchIndexedFile>();
-        for (const entry of [...directoryResult.entries, ...fileResult.files]) byPath.set(entry.path, entry);
-        const files = [...byPath.values()]
-          .sort((a, b) => a.relativePath.localeCompare(b.relativePath, undefined, { sensitivity: "base" }));
-        return {
-          files,
-          truncated: fileResult.truncated || directoryResult.truncated,
-          engine: "rg"
-        };
-      } catch (error) {
-        if ((error as Error)?.name === "AbortError") throw error;
+    const byPath = new Map<string, WorkbenchIndexedFile>();
+    let truncated = false;
+    let engine: "rg" | "node" = "node";
+
+    for (const root of roots) {
+      throwIfAborted(controller.signal);
+      const remainingTimeMs = timeBudgetMs - (Date.now() - started);
+      if (remainingTimeMs <= 0) {
+        truncated = true;
+        break;
+      }
+      const result = await listWorkbenchRoot(root, maxFiles, remainingTimeMs, controller.signal);
+      if (result.engine === "rg") engine = "rg";
+      for (const entry of result.files) byPath.set(entry.path, entry);
+      if (result.truncated) {
+        truncated = true;
+        break;
       }
     }
-    return await listWithNode(root, maxFiles, timeBudgetMs, controller.signal);
+
+    const files = [...byPath.values()]
+      .sort((a, b) => a.relativePath.localeCompare(b.relativePath, undefined, { sensitivity: "base" }));
+    return { files, truncated, engine };
   } finally {
     options.signal?.removeEventListener("abort", onExternalAbort);
     if (activeAbort === controller) activeAbort = null;
@@ -541,38 +576,46 @@ export async function searchWorkbenchPaths(options: WorkbenchPathSearchOptions):
 
   try {
     throwIfAborted(controller.signal);
-    const root = resolveRoot(options.rootPath);
+    const roots = [...new Set((options.rootPaths ?? []).map((rootPath) => resolveRoot(rootPath)))];
     const query = normalizeQuickAccessQuery(options.query);
     const maxResults = clampInt(options.maxResults, DEFAULT_MAX_SEARCH_RESULTS, 1, 2_000);
     const timeBudgetMs = clampInt(options.timeBudgetMs, DEFAULT_SEARCH_TIME_BUDGET_MS, 100, 10_000);
     const collector = new WorkbenchPathSearchCollector(query, maxResults);
-    if (!query) return collector.result("node", false);
+    if (!query || !roots.length) return collector.result("node", false);
     const started = Date.now();
+    const hasRipgrep = await detectRipgrep();
+    let truncated = false;
+    let usedRipgrep = false;
 
-    if (await detectRipgrep()) {
-      try {
-        let truncated = await searchFilesWithRipgrep(
-          root,
-          timeBudgetMs,
-          controller.signal,
-          collector
-        );
-        const remainingTimeMs = Math.max(100, timeBudgetMs - (Date.now() - started));
-        truncated = await searchDirectoriesWithNode(
-          root,
-          remainingTimeMs,
-          controller.signal,
-          collector
-        ) || truncated;
-        return collector.result("rg", truncated);
-      } catch (error) {
-        if ((error as Error)?.name === "AbortError") throw error;
-        collector.clear();
+    for (const root of roots) {
+      throwIfAborted(controller.signal);
+      const remainingTimeMs = timeBudgetMs - (Date.now() - started);
+      if (remainingTimeMs <= 0) {
+        truncated = true;
+        break;
+      }
+      let handled = false;
+      if (hasRipgrep) {
+        try {
+          const rootStarted = Date.now();
+          let rootTruncated = await searchFilesWithRipgrep(root, remainingTimeMs, controller.signal, collector);
+          const remainingAfterFilesMs = Math.max(100, remainingTimeMs - (Date.now() - rootStarted));
+          rootTruncated = await searchDirectoriesWithNode(root, remainingAfterFilesMs, controller.signal, collector) || rootTruncated;
+          truncated = truncated || rootTruncated;
+          usedRipgrep = true;
+          handled = true;
+        } catch (error) {
+          if ((error as Error)?.name === "AbortError") throw error;
+          // Fall back to the node walk for this root; keep other roots' results.
+        }
+      }
+      if (!handled) {
+        const rootTruncated = await searchPathsWithNode(root, Math.max(100, remainingTimeMs), controller.signal, collector);
+        truncated = truncated || rootTruncated;
       }
     }
 
-    const truncated = await searchPathsWithNode(root, timeBudgetMs, controller.signal, collector);
-    return collector.result("node", truncated);
+    return collector.result(usedRipgrep ? "rg" : "node", truncated);
   } finally {
     options.signal?.removeEventListener("abort", onExternalAbort);
     if (activeSearchAbort === controller) activeSearchAbort = null;

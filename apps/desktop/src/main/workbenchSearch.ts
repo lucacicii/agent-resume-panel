@@ -13,7 +13,8 @@ export interface WorkbenchSearchMatch {
 }
 
 export interface WorkbenchSearchOptions {
-  rootPath: string;
+  /** Project roots to search; results from every root are merged into one set. */
+  rootPaths: string[];
   query: string;
   matchCase?: boolean;
   wholeWord?: boolean;
@@ -760,6 +761,86 @@ async function searchWithRipgrep(
  * Search text under a project root. Prefer ripgrep when available; fall back to a
  * capped, yielding Node walk. Cancels any previous in-flight search in this process.
  */
+/**
+ * Search one project root, preferring ripgrep and falling back to the capped Node
+ * walk. The caller owns the abort controller so several roots can share one budget.
+ */
+async function searchWorkbenchRoot(
+  root: string,
+  params: {
+    query: string;
+    matchCase: boolean;
+    wholeWord: boolean;
+    useRegex: boolean;
+    includeRaw: string[];
+    excludeRaw: string[];
+    skipDirNames: Set<string>;
+    maxResults: number;
+    maxFileSizeBytes: number;
+    maxFilesScanned: number;
+    timeBudgetMs: number;
+    hasRipgrep: boolean;
+  },
+  signal: AbortSignal
+): Promise<{ result: WorkbenchSearchResult; engine: "rg" | "node" }> {
+  if (params.hasRipgrep) {
+    try {
+      const result = await searchWithRipgrep(root, {
+        query: params.query,
+        matchCase: params.matchCase,
+        wholeWord: params.wholeWord,
+        useRegex: params.useRegex,
+        includeGlobs: params.includeRaw,
+        excludeGlobs: params.excludeRaw,
+        skipDirNames: params.skipDirNames,
+        maxResults: params.maxResults,
+        maxFileSizeBytes: params.maxFileSizeBytes,
+        timeBudgetMs: params.timeBudgetMs,
+        signal
+      });
+      return { result, engine: "rg" };
+    } catch (error) {
+      if ((error as Error)?.name === "AbortError") throw error;
+      // Fall through to node walk on rg failure (e.g. not really available)
+    }
+  }
+
+  const includeGlobs: CompiledGlob[] = [];
+  const excludeGlobs: CompiledGlob[] = [];
+  for (const pattern of params.includeRaw) {
+    const compiled = compileGlobPattern(pattern);
+    if (compiled) includeGlobs.push(compiled);
+  }
+  for (const pattern of params.excludeRaw) {
+    const compiled = compileGlobPattern(pattern);
+    if (compiled) excludeGlobs.push(compiled);
+  }
+
+  return {
+    engine: "node",
+    result: await searchWithNodeWalk(root, {
+      query: params.query,
+      matchCase: params.matchCase,
+      wholeWord: params.wholeWord,
+      useRegex: params.useRegex,
+      includeGlobs,
+      excludeGlobs,
+      skipDirNames: params.skipDirNames,
+      maxResults: params.maxResults,
+      maxFileSizeBytes: params.maxFileSizeBytes,
+      maxFilesScanned: params.maxFilesScanned,
+      timeBudgetMs: params.timeBudgetMs,
+      signal
+    })
+  };
+}
+
+/**
+ * Search text under one or more project roots. Results are merged, sharing the
+ * result cap and time budget across roots. Prefer ripgrep per root when available;
+ * fall back to a capped, yielding Node walk. Cancels any previous in-flight search
+ * in this process.
+ */
 export async function searchWorkbenchText(rawOptions: WorkbenchSearchOptions): Promise<WorkbenchSearchResult> {
   const query = typeof rawOptions.query === "string" ? rawOptions.query : "";
   if (!query) {
@@ -779,7 +860,10 @@ export async function searchWorkbenchText(rawOptions: WorkbenchSearchOptions): P
 
   try {
     throwIfAborted(controller.signal);
-    const root = resolveCwd(rawOptions.rootPath);
+    const roots = [...new Set((rawOptions.rootPaths ?? []).map((rootPath) => resolveCwd(rootPath)))];
+    if (!roots.length) {
+      return { matches: [], truncated: false, filesSearched: 0, engine: "node" };
+    }
     const matchCase = Boolean(rawOptions.matchCase);
     const wholeWord = Boolean(rawOptions.wholeWord);
     const useRegex = Boolean(rawOptions.useRegex);
@@ -791,16 +875,6 @@ export async function searchWorkbenchText(rawOptions: WorkbenchSearchOptions): P
     const skipDirNames = includeRaw.length
       ? WORKBENCH_HARD_SKIP_DIR_NAMES
       : WORKBENCH_SKIP_DIR_NAMES;
-    const includeGlobs: CompiledGlob[] = [];
-    const excludeGlobs: CompiledGlob[] = [];
-    for (const pattern of includeRaw) {
-      const compiled = compileGlobPattern(pattern);
-      if (compiled) includeGlobs.push(compiled);
-    }
-    for (const pattern of excludeRaw) {
-      const compiled = compileGlobPattern(pattern);
-      if (compiled) excludeGlobs.push(compiled);
-    }
     const maxResults = clampInt(rawOptions.maxResults, DEFAULT_MAX_RESULTS, 1, 10_000);
     const maxFileSizeBytes = clampInt(
       rawOptions.maxFileSizeBytes,
@@ -815,42 +889,46 @@ export async function searchWorkbenchText(rawOptions: WorkbenchSearchOptions): P
       100_000
     );
     const timeBudgetMs = clampInt(rawOptions.timeBudgetMs, DEFAULT_TIME_BUDGET_MS, 500, 60_000);
+    const started = Date.now();
+    const hasRipgrep = await detectRipgrep();
 
-    if (await detectRipgrep()) {
-      try {
-        return await searchWithRipgrep(root, {
-          query,
-          matchCase,
-          wholeWord,
-          useRegex,
-          includeGlobs: includeRaw,
-          excludeGlobs: excludeRaw,
-          skipDirNames,
-          maxResults,
-          maxFileSizeBytes,
-          timeBudgetMs,
-          signal: controller.signal
-        });
-      } catch (error) {
-        if ((error as Error)?.name === "AbortError") throw error;
-        // Fall through to node walk on rg failure (e.g. not really available)
+    const matches: WorkbenchSearchMatch[] = [];
+    let truncated = false;
+    let filesSearched = 0;
+    let engine: "rg" | "node" = "node";
+
+    for (const root of roots) {
+      throwIfAborted(controller.signal);
+      const remainingTimeMs = timeBudgetMs - (Date.now() - started);
+      const remainingResults = maxResults - matches.length;
+      if (remainingTimeMs <= 0 || remainingResults <= 0) {
+        truncated = true;
+        break;
+      }
+      const { result, engine: usedEngine } = await searchWorkbenchRoot(root, {
+        query,
+        matchCase,
+        wholeWord,
+        useRegex,
+        includeRaw,
+        excludeRaw,
+        skipDirNames,
+        maxResults: remainingResults,
+        maxFileSizeBytes,
+        maxFilesScanned: Math.max(100, maxFilesScanned - filesSearched),
+        timeBudgetMs: remainingTimeMs,
+        hasRipgrep
+      }, controller.signal);
+      if (usedEngine === "rg") engine = "rg";
+      matches.push(...result.matches);
+      filesSearched += result.filesSearched;
+      if (result.truncated || matches.length >= maxResults) {
+        truncated = true;
+        break;
       }
     }
 
-    return await searchWithNodeWalk(root, {
-      query,
-      matchCase,
-      wholeWord,
-      useRegex,
-      includeGlobs,
-      excludeGlobs,
-      skipDirNames,
-      maxResults,
-      maxFileSizeBytes,
-      maxFilesScanned,
-      timeBudgetMs,
-      signal: controller.signal
-    });
+    return { matches, truncated, filesSearched, engine };
   } finally {
     external?.removeEventListener("abort", onExternalAbort);
     if (activeAbort === controller) activeAbort = null;

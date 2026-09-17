@@ -4199,10 +4199,10 @@ export function WorkbenchPanel(): ReactPortal | null {
     toggleScriptsSectionCollapsed
   } = useWorkbenchScripts({
     active,
-    selectedProject: sideRoot,
+    projects: sideRoots,
     side,
     runScript: (script, _pkg) => {
-      const projectPath = sideRoot || script.run.cwd;
+      const projectPath = projectForPath(script.run.cwd) || sideRoot || script.run.cwd;
       addTerminal(script.name, script.run.cwd, script.run.command, projectPath);
     }
   });
@@ -4378,7 +4378,8 @@ export function WorkbenchPanel(): ReactPortal | null {
     leaveQuickAccessProjectMode,
     invalidateQuickAccessCache
   } = useWorkbenchQuickAccess({
-    selectedProject: sideRoot,
+    projects: sideRoots,
+    projectForPath,
     quickAccessProjectKey: QUICK_ACCESS_PROJECT_KEY,
     onDismissOverlays: () => {
       setContextMenu(null);
@@ -4386,28 +4387,30 @@ export function WorkbenchPanel(): ReactPortal | null {
       setProjectPickDialog(null);
     }
   });
-  const quickAccessProjectLabel = quickAccessRoot
-    ? `${aliases[quickAccessRoot] || basename(quickAccessRoot)} — ${quickAccessRoot}`
-    : "";
+  const quickAccessProjectLabel = sideRoots.length > 1
+    ? t("desktop.workbench.sharedWorkspace")
+    : quickAccessRoot
+      ? `${aliases[quickAccessRoot] || basename(quickAccessRoot)} — ${quickAccessRoot}`
+      : "";
 
   const openQuickAccessFile = useCallback(async (file: QuickAccessFile) => {
-    const rootPath = quickAccessRoot;
+    const rootPath = projectForPath(file.path) || quickAccessRoot;
     if (!rootPath) return;
     closeQuickAccess();
     selectProject(rootPath);
     window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
     await openFile(file.path, undefined, rootPath);
-  }, [closeQuickAccess, quickAccessRoot, syncEditorFromDisk]);
+  }, [closeQuickAccess, projectForPath, quickAccessRoot, syncEditorFromDisk]);
 
   const openQuickAccessDirectory = useCallback((directory: QuickAccessFile) => {
-    const rootPath = quickAccessRoot;
+    const rootPath = projectForPath(directory.path) || quickAccessRoot;
     if (!rootPath) return;
     closeQuickAccess();
     selectProject(rootPath);
     window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
     setPendingExplorerReveal({ rootPath, path: directory.path });
     setSide("files");
-  }, [closeQuickAccess, quickAccessRoot]);
+  }, [closeQuickAccess, projectForPath, quickAccessRoot]);
 
   const reloadEditorFromDisk = useCallback(async (key: string) => {
     const editor = editorsRef.current.find((item) => item.key === key);
@@ -4562,7 +4565,8 @@ export function WorkbenchPanel(): ReactPortal | null {
     toggleSearchReplace,
     resetSearchProjectMode
   } = useWorkbenchSearch({
-    selectedProject: sideRoot,
+    projects: sideRoots,
+    projectForPath,
     side,
     getDirtyEditorPaths: (projectPath) => editorsRef.current
       .filter((editor) => editor.projectPath === projectPath && editor.dirty)
@@ -5265,9 +5269,20 @@ export function WorkbenchPanel(): ReactPortal | null {
     </div>
   </div> : null;
 
-  const quickAccessRecentPaths = (paneHistoryRef.current[paneProjectKey(quickAccessRoot)] || [])
-    .filter((key) => key.startsWith("editor:"))
-    .map((key) => key.slice("editor:".length));
+  const quickAccessRecentPaths = (() => {
+    const seen = new Set<string>();
+    const paths: string[] = [];
+    for (const root of sideRoots) {
+      for (const key of paneHistoryRef.current[paneProjectKey(root)] || []) {
+        if (!key.startsWith("editor:")) continue;
+        const path = key.slice("editor:".length);
+        if (seen.has(path)) continue;
+        seen.add(path);
+        paths.push(path);
+      }
+    }
+    return paths;
+  })();
   const quickAccessProjects = useMemo<QuickAccessProject[]>(() => allProjects.map((project) => ({
     id: project.id,
     path: project.path,
@@ -5342,7 +5357,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const searchProjectLabel = selectedProjectMeta
     ? `${selectedProjectMeta.label} — ${selectedProjectMeta.path}`
     : t("desktop.workbench.quickAccessSelectProject");
-  const noProjectReason = quickAccessRoot ? undefined : t("desktop.workbench.quickAccessNoProjectCommand");
+  const noProjectReason = sideRoots.length ? undefined : t("desktop.workbench.quickAccessNoProjectCommand");
   const macShortcuts = typeof navigator !== "undefined" && /mac/i.test(navigator.platform);
   const shortcut = (key: string) => macShortcuts ? `⌘${key}` : `Ctrl+${key}`;
   const openWorkbenchView = (view?: SideView) => {
@@ -5366,7 +5381,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       run: () => {
         setQuickAccessMode("files");
         setQuickAccessQuery("");
-        if (quickAccessRoot) void loadQuickAccessFiles(quickAccessRoot);
+        if (sideRoots.length) void loadQuickAccessFiles();
       }
     },
     {
@@ -5968,8 +5983,8 @@ export function WorkbenchPanel(): ReactPortal | null {
               onDestroyed={() => closeBrowser(pane.key)}
             />;
           })}{terminalCreating && !currentTerminals.some((pane) => !pane.ptyId) && !currentAcpChat ? <div className="wb-terminal-loading wb-terminal-loading-stack" role="status" aria-live="polite"><ThemeIcon name="loader" className="spin" size={18} aria-hidden="true" /><span>{t("desktop.common.loading")}</span></div> : null}{!terminalCreating && !currentTerminals.length && !currentEditors.length && !currentDiffs.length && !currentAcpChats.length && !currentBrowsers.length && !currentNotePanes.length ? <p className="muted wb-terminal-hint">{selectedProject ? t("desktop.workbench.selectSessionHint") : t("desktop.workbench.selectProjectHint")}</p> : null}</div></div>
-          {side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane wb-explorer-side-pane"><WorkbenchFileExplorer ref={fileExplorerRef} roots={sideRoots} activePath={currentFilePath} onOpenFile={(path) => void openFile(path, undefined, projectForPath(path) || undefined)} onOpenPreview={(path) => void openFile(path, undefined, projectForPath(path) || undefined, "preview")} onShowGitHistory={(path) => void loadGitFileHistory(path)} onFindInFolder={findInExplorerFolder} onError={(message) => setStatus({ text: message, kind: "error" })} /><WorkbenchScriptsPane compact hasProject={Boolean(sideRoot)} selectedProject={sideRoot} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} collapsed={scriptsSectionCollapsed} onToggleCollapsed={toggleScriptsSectionCollapsed} onRefresh={sideRoot ? () => void loadScripts(sideRoot) : undefined} onRun={runScript} /></div> : side === "scripts" ? <WorkbenchScriptsPane hasProject={Boolean(sideRoot)} selectedProject={sideRoot} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} onRefresh={sideRoot ? () => void loadScripts(sideRoot) : undefined} onRun={runScript} /> : side === "search" ? <WorkbenchSearchSidePane
-            selectedProject={sideRoot}
+          {side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane wb-explorer-side-pane"><WorkbenchFileExplorer ref={fileExplorerRef} roots={sideRoots} activePath={currentFilePath} onOpenFile={(path) => void openFile(path, undefined, projectForPath(path) || undefined)} onOpenPreview={(path) => void openFile(path, undefined, projectForPath(path) || undefined, "preview")} onShowGitHistory={(path) => void loadGitFileHistory(path)} onFindInFolder={findInExplorerFolder} onError={(message) => setStatus({ text: message, kind: "error" })} /><WorkbenchScriptsPane compact hasProject={sideRoots.length > 0} selectedProject={sideRoot} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} collapsed={scriptsSectionCollapsed} onToggleCollapsed={toggleScriptsSectionCollapsed} onRefresh={sideRoots.length ? () => void loadScripts() : undefined} onRun={runScript} /></div> : side === "scripts" ? <WorkbenchScriptsPane hasProject={sideRoots.length > 0} selectedProject={sideRoot} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} onRefresh={sideRoots.length ? () => void loadScripts() : undefined} onRun={runScript} /> : side === "search" ? <WorkbenchSearchSidePane
+            selectedProject={sideRoots[0] ?? null}
             searchQuery={searchQuery}
             onSearchQueryChange={setSearchQuery}
             searchProjectMode={searchProjectMode}
@@ -6029,7 +6044,7 @@ export function WorkbenchPanel(): ReactPortal | null {
             onReplace={(files, onlyByPath) => void performSearchReplace(files, onlyByPath)}
             onOpenMatch={(match, key) => {
               setSearchSelectedKey(key);
-              void openFile(match.path, { path: match.path, line: match.line, column: match.column, endColumn: match.endColumn });
+              void openFile(match.path, { path: match.path, line: match.line, column: match.column, endColumn: match.endColumn }, projectForPath(match.path) || undefined);
             }}
           /> : side === "linkgraph" ? <LinkGraphSidePane result={linkGraphResult} progress={linkGraphProgress} busy={linkGraphBusy} error={linkGraphError} outputLanguage={linkGraphLanguage} onOutputLanguageChange={changeLinkGraphLanguage} onRefresh={linkGraphResult ? refreshLinkGraph : undefined} onCancel={cancelLinkGraph} onOpen={(target) => {
               const root = selectedProject || "";
