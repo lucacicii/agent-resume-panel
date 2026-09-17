@@ -1645,6 +1645,13 @@ export function WorkbenchPanel(): ReactPortal | null {
     () => liveWorkItem?.sessions ?? workItemScope?.sessions ?? [],
     [liveWorkItem, workItemScope]
   );
+  /**
+   * Whether the task's session set is authoritative. A work item that exists in
+   * the catalog, or a scope that explicitly carries `sessions` (including `[]`),
+   * declares its sessions — an empty list then means "none". A scope that omits
+   * `sessions` is unspecified and falls back to the selected project's list.
+   */
+  const workItemSessionsKnown = liveWorkItem !== undefined || workItemScope?.sessions !== undefined;
   const [workItemSessions, setWorkItemSessions] = useState<AgentSession[] | null>(null);
   const workItemSessionKeyString = workItemSessionKeys.join("|");
   useEffect(() => {
@@ -1670,14 +1677,14 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   const visibleSessions = useMemo(() => {
     // "Task" shows exactly the task's sessions (across projects, from the catalog by key);
-    // "All" shows every session.
-    const source = sessionFilter === "task" && workItemScope && workItemSessions
-      ? workItemSessions
-      : selectedSessions;
+    // "All" shows every session. When the task's session set is unspecified, fall
+    // back to the selected project's list rather than showing nothing.
+    const scoped = sessionFilter === "task" && workItemScope && workItemSessionsKnown;
+    const source = scoped ? (workItemSessions ?? []) : selectedSessions;
     return source.filter((session) =>
       `${session.title} ${session.id} ${session.provider}`.toLowerCase().includes(sessionQuery.trim().toLowerCase())
     ).sort((a, b) => b.updatedAt - a.updatedAt);
-  }, [selectedSessions, sessionQuery, sessionFilter, workItemScope, workItemSessions]);
+  }, [selectedSessions, sessionQuery, sessionFilter, workItemScope, workItemSessionsKnown, workItemSessions]);
   const selectedPendingSessions = useMemo(() => {
     if (!workItemScope) return pendingSessions;
     return pendingSessions.filter((pending) => pending.workItemNoteId === workItemScope.noteId);

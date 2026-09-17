@@ -7966,6 +7966,73 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(screen.getByText("Other session")).toBeTruthy());
   });
 
+  it("shows no sessions for a task that has none instead of falling back to all", async () => {
+    const allSessions = [
+      { provider: "codex", id: "s1", title: "Task session", projectPath: "/work/app", updatedAt: 2 },
+      { provider: "claude", id: "s2", title: "Other session", projectPath: "/work/api", updatedAt: 1 }
+    ];
+    const querySessionsPage = vi.fn(async (args?: { keys?: Array<{ provider: string; id: string }> }) => {
+      if (args?.keys?.length) {
+        const sessions = allSessions.filter((s) => args.keys!.some((k) => k.provider === s.provider && k.id === s.id));
+        return { sessions, total: sessions.length };
+      }
+      return { sessions: allSessions, total: allSessions.length };
+    });
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.common.search": "Search", "desktop.common.refresh": "Refresh", "desktop.common.all": "All",
+        "desktop.workbench.workItemView": "Work item",
+        "desktop.workbench.workItemOpenNote": "Open note",
+        "desktop.workbench.workItemClear": "Exit work item",
+        "desktop.workbench.workItemNext": "Next:",
+        "desktop.workbench.workItemSessions": "{0} sessions",
+        "desktop.workbench.filterTask": "Task",
+        "desktop.workbench.filterAll": "All",
+        "desktop.workbench.sessionFilter": "Filter sessions"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      querySessionsPage,
+      notesListWorkItems: async () => [{
+        noteId: "wi-empty", title: "Fresh task", gtdStatus: "next",
+        work: { sessions: [], projects: ["/work/app"], primaryProject: "/work/app" }
+      }],
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-work-item", { detail: {
+        noteId: "wi-empty", title: "Fresh task", status: "next",
+        sessions: [], projects: ["/work/app"], primaryProject: "/work/app"
+      } }));
+    });
+
+    // Task filter (default): a session-less task shows nothing, not every session.
+    await waitFor(() => expect(querySessionsPage).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByText("Task session")).toBeNull());
+    expect(screen.queryByText("Other session")).toBeNull();
+
+    // All: every session is available again.
+    const filterTabs = document.querySelectorAll<HTMLButtonElement>(".wb-note-list-toolbar .wb-note-filter .wb-left-tab");
+    fireEvent.click(filterTabs[1]);
+    await waitFor(() => expect(screen.getByText("Task session")).toBeTruthy());
+    expect(screen.getByText("Other session")).toBeTruthy();
+  });
+
   it("defaults new sessions to the shared workspace when a work item spans several projects", async () => {
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages: {
