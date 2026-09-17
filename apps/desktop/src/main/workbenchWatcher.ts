@@ -37,7 +37,14 @@ type WatchState = {
   stopped: boolean;
 };
 
-const watches = new Map<number, WatchState>();
+/** One watch set per renderer sender, keyed by resolved root path. */
+const watches = new Map<number, Map<string, WatchState>>();
+
+function forEachWatch(visitor: (state: WatchState) => void): void {
+  for (const senderWatches of watches.values()) {
+    for (const state of senderWatches.values()) visitor(state);
+  }
+}
 
 export type WorkbenchWatcherRuntimeMetrics = {
   watcherCount: number;
@@ -125,7 +132,7 @@ function fallBackToPolling(state: WatchState, error: unknown): void {
 }
 
 export function setWorkbenchWatcherActive(active: boolean): void {
-  for (const state of watches.values()) {
+  forEachWatch((state) => {
     const wasActive = state.active;
     state.active = active;
     if (!active) {
@@ -135,22 +142,24 @@ export function setWorkbenchWatcherActive(active: boolean): void {
       state.batchTimer = null;
       state.pendingPaths.clear();
       state.fullRescan = false;
-      continue;
+      return;
     }
     state.pollIndex = 0;
     if (!state.recursiveWatcher) installPolling(state);
     if (!wasActive) queueChange(state, null);
-  }
+  });
 }
 
 export function getWorkbenchWatcherRuntimeMetrics(): WorkbenchWatcherRuntimeMetrics {
+  let watcherCount = 0;
   let pollingCount = 0;
   let activeCount = 0;
-  for (const state of watches.values()) {
+  forEachWatch((state) => {
+    watcherCount += 1;
     if (state.pollTimer) pollingCount += 1;
     if (state.active) activeCount += 1;
-  }
-  return { watcherCount: watches.size, pollingCount, activeCount };
+  });
+  return { watcherCount, pollingCount, activeCount };
 }
 
 function installWatchers(state: WatchState): void {
@@ -175,10 +184,10 @@ function stopWatch(state: WatchState): void {
 }
 
 function stopSender(senderId: number): void {
-  const state = watches.get(senderId);
-  if (!state) return;
+  const senderWatches = watches.get(senderId);
+  if (!senderWatches) return;
   watches.delete(senderId);
-  stopWatch(state);
+  for (const state of senderWatches.values()) stopWatch(state);
 }
 
 export function disposeWorkbenchWatchers(): void {
@@ -188,28 +197,46 @@ export function disposeWorkbenchWatchers(): void {
 export function registerWorkbenchWatcherIpc(getMainWindow: () => BrowserWindow | null): void {
   safeHandle(
     "workbench:setFileWatch",
-    async (event, args: { rootPath: string | null }) => {
+    async (event, args: { rootPaths: string[] | null }) => {
       if (event.sender !== getMainWindow()?.webContents) throw new Error("无效的窗口来源");
       stopSender(event.sender.id);
-      if (args?.rootPath == null) return { rootPath: null };
-      const rootPath = resolveWatchRoot(args.rootPath);
-      const state: WatchState = {
-        sender: event.sender,
-        rootPath,
-        recursiveWatcher: null,
-        batchTimer: null,
-        pollTimer: null,
-        pollIndex: 0,
-        active: true,
-        pendingPaths: new Set(),
-        fullRescan: false,
-        sequence: 0,
-        stopped: false
-      };
-      watches.set(event.sender.id, state);
+      const requested = args?.rootPaths;
+      if (!requested || !requested.length) return { rootPaths: [] as string[] };
+      // A project referenced by a synced work item may not exist here; skip those
+      // rather than failing the whole watch set.
+      const rootPaths: string[] = [];
+      const seen = new Set<string>();
+      for (const raw of requested) {
+        try {
+          const rootPath = resolveWatchRoot(raw);
+          if (seen.has(rootPath)) continue;
+          seen.add(rootPath);
+          rootPaths.push(rootPath);
+        } catch {
+          // Skip unwatchable roots.
+        }
+      }
+      const senderWatches = new Map<string, WatchState>();
+      watches.set(event.sender.id, senderWatches);
       event.sender.once("destroyed", () => stopSender(event.sender.id));
-      installWatchers(state);
-      return { rootPath };
+      for (const rootPath of rootPaths) {
+        const state: WatchState = {
+          sender: event.sender,
+          rootPath,
+          recursiveWatcher: null,
+          batchTimer: null,
+          pollTimer: null,
+          pollIndex: 0,
+          active: true,
+          pendingPaths: new Set(),
+          fullRescan: false,
+          sequence: 0,
+          stopped: false
+        };
+        senderWatches.set(rootPath, state);
+        installWatchers(state);
+      }
+      return { rootPaths };
     }
   );
 }

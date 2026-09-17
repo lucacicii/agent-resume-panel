@@ -5031,7 +5031,7 @@ describe("WorkbenchPanel", () => {
           : [{ name: "main.ts", path: "/work/app/src/main.ts", isDirectory: false }]
       }),
       workbenchClipboardHasFiles: async () => ({ hasFiles: false }),
-      workbenchSetFileWatch: async () => ({ rootPath: "/work/app" }),
+      workbenchSetFileWatch: async () => ({ rootPaths: ["/work/app"] }),
       terminalGitStatus: async () => ({ isRepo: false, root: null, staged: [], unstaged: [], nestedRepos: [], tracking: [] })
     } as unknown as typeof window.agentResume;
 
@@ -6630,7 +6630,7 @@ describe("WorkbenchPanel", () => {
       listProjectAliases: async () => ({}),
       getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
       listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
-      workbenchSetFileWatch: async () => ({ rootPath: "/work/app" }),
+      workbenchSetFileWatch: async () => ({ rootPaths: ["/work/app"] }),
       onWorkbenchFileSystemChanged: (callback: (event: {
         type: "change" | "error";
         rootPath: string;
@@ -8106,6 +8106,83 @@ describe("WorkbenchPanel", () => {
       } }));
     });
     await waitFor(() => expect(document.querySelector(".wb-work-item-target")?.textContent).toBe("New sessions start in: app"));
+  });
+
+  it("shows every shared-workspace project in the Explorer and Git panels", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const workbenchListDirectory = vi.fn(async ({ dirPath }: { dirPath: string }) => ({
+      entries: dirPath === "/work/app"
+        ? [{ name: "app.ts", path: "/work/app/app.ts", isDirectory: false }]
+        : dirPath === "/work/api"
+          ? [{ name: "api.ts", path: "/work/api/api.ts", isDirectory: false }]
+          : []
+    }));
+    const terminalGitStatus = vi.fn(async ({ cwd }: { cwd: string }) => cwd === "/work/api"
+      ? { isRepo: true, root: "/work/api", staged: [], unstaged: [{ path: "src/api.ts", repoPath: "src/api.ts", repoRoot: "/work/api", status: "M", staged: false, unstaged: true }], nestedRepos: [], tracking: [] }
+      : { isRepo: true, root: "/work/app", staged: [], unstaged: [{ path: "src/app.ts", repoPath: "src/app.ts", repoRoot: "/work/app", status: "M", staged: false, unstaged: true }], nestedRepos: [], tracking: [] });
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: { ...ARROW_TEST_MESSAGES,
+        "desktop.workbench.sessionTarget": "New sessions start in: {0}",
+        "desktop.workbench.sharedWorkspace": "shared workspace",
+        "desktop.workbench.gitRepoSelect": "Repository",
+        "desktop.workbench.switchBranch": "Switch branch",
+        "desktop.workbench.gitCommit": "Commit",
+        "desktop.workbench.gitCommitAndPush": "Commit & Push",
+        "desktop.workbench.gitCommitDialogTitle": "Commit changes",
+        "desktop.workbench.gitCommitAutoGenerate": "Auto generate",
+        "desktop.workbench.gitSync": "Sync",
+        "desktop.workbench.resizeCommitInput": "Resize commit input",
+        "desktop.workbench.gitCommitSuggestedLlm": "AI message",
+        "desktop.workbench.gitCommitSuggestedUnconfigured": "Rule message",
+        "desktop.workbench.gitCommitSuggestedFallback": "Fallback message",
+        "desktop.workbench.fileOpen": "Open file",
+        "desktop.workbench.fileOpenDefault": "Open in default app",
+        "desktop.common.copyPath": "Copy path",
+        "desktop.workbench.gitDiscard": "Discard"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      notesListWorkItems: async () => [],
+      workbenchListDirectory,
+      workbenchSetFileWatch: async () => ({ rootPaths: ["/work/app", "/work/api"] }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalGitStatus,
+      terminalGitFetch: async () => ({ ok: true }),
+      terminalGitBranches: async () => ({ mode: "direct", current: "main", branches: ["main"], localBranches: ["main"], remoteBranches: [], repoRoot: "/work/app" }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-work-item", { detail: {
+        noteId: "wi-multi", title: "Multi", status: "next", sessions: [], projects: ["/work/app", "/work/api"], primaryProject: "/work/app"
+      } }));
+    });
+    await waitFor(() => expect(document.querySelector(".wb-work-item-target")?.textContent).toBe("New sessions start in: shared workspace"));
+
+    // Explorer spans both project roots.
+    fireEvent.click(screen.getAllByRole("button", { name: "Explorer" })[0]!);
+    expect(await screen.findByText("app.ts")).toBeTruthy();
+    expect(screen.getByText("api.ts")).toBeTruthy();
+    expect(workbenchListDirectory).toHaveBeenCalledWith({ rootPath: "/work/app", dirPath: "/work/app" });
+    expect(workbenchListDirectory).toHaveBeenCalledWith({ rootPath: "/work/api", dirPath: "/work/api" });
+
+    // Git lists changes from both repositories.
+    fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
+    await waitFor(() => expect(document.querySelector(".wb-git-panel")).not.toBeNull());
+    expect(await screen.findByText("src/app.ts")).toBeTruthy();
+    expect(screen.getByText("src/api.ts")).toBeTruthy();
   });
 
   it("links an ACP session started inside a work item to that work item", async () => {

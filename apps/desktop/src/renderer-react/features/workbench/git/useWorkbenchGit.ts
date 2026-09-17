@@ -13,16 +13,22 @@ import {
   defaultGitRoot,
   gitDirectoryKeys,
   gitOperationError,
+  mergeGitStatuses,
   normalizeGitStageTargets,
   reconcileExpandedGitDirectories,
   stageGitChangesOptimistically,
   trackingForRoot
 } from "./workbenchGitModel";
 
+/** Identity of a set of project roots; a change resets the git view. */
+function projectRootsKey(projects: string[]): string {
+  return projects.map((project) => project.replaceAll("\\", "/").replace(/\/+$/, "")).join("\0");
+}
+
 export function useWorkbenchGit(options: {
   active: boolean;
-  selectedProject: string | null;
-  selectedProjectRef: { current: string | null };
+  selectedProjects: string[];
+  selectedProjectsRef: { current: string[] };
   side: string | null;
   nestedScanMaxDepth?: number;
   nestedScanIgnoreDirs?: string[];
@@ -56,8 +62,8 @@ export function useWorkbenchGit(options: {
 } {
   const {
     active,
-    selectedProject,
-    selectedProjectRef,
+    selectedProjects,
+    selectedProjectsRef,
     side,
     nestedScanMaxDepth,
     nestedScanIgnoreDirs,
@@ -86,6 +92,8 @@ export function useWorkbenchGit(options: {
   const gitRef = useRef<GitStatusResult | null>(null);
   const onGitMutatedRef = useRef(onGitMutated);
   onGitMutatedRef.current = onGitMutated;
+  /** Stable identity of the project root set, used to reset/poll per workspace. */
+  const projectsKey = projectRootsKey(selectedProjects);
 
   useEffect(() => { gitRef.current = git; }, [git]);
 
@@ -112,8 +120,9 @@ export function useWorkbenchGit(options: {
   }, []);
 
   const refreshGit = useCallback(async (withNotification = false) => {
-    if (!selectedProject) return;
-    const project = selectedProject;
+    const projects = selectedProjects;
+    if (!projects.length) return;
+    const projectsIdentity = projectRootsKey(projects);
     if (gitStatusInFlightRef.current) {
       if (withNotification) {
         while (gitStatusInFlightRef.current) {
@@ -127,14 +136,15 @@ export function useWorkbenchGit(options: {
     gitStatusInFlightRef.current = true;
     if (withNotification) setGitRefreshing(true);
     try {
-      const result = await desktopApi().terminalGitStatus({
+      const results = await Promise.all(projects.map((project) => desktopApi().terminalGitStatus({
         cwd: project,
         nestedScan: {
           maxDepth: nestedScanMaxDepth,
           ignoreDirs: nestedScanIgnoreDirs
         }
-      });
-      if (selectedProjectRef.current !== project) return;
+      })));
+      if (projectRootsKey(selectedProjectsRef.current) !== projectsIdentity) return;
+      const result = mergeGitStatuses(projects, results);
       setGit(result);
       const roots = collectGitRoots(result);
       gitRootsRef.current = roots;
@@ -175,21 +185,27 @@ export function useWorkbenchGit(options: {
     nestedScanMaxDepth,
     notifyGitFailure,
     notifyStatus,
-    selectedProject,
-    selectedProjectRef,
+    selectedProjects,
+    selectedProjectsRef,
     side
   ]);
 
   useEffect(() => { refreshGitRef.current = refreshGit; }, [refreshGit]);
 
   const autoFetchGit = useCallback(async (force = false) => {
-    if (!selectedProject || gitFetchInFlightRef.current) return;
+    if (!selectedProjects.length || gitFetchInFlightRef.current) return;
     const now = Date.now();
     if (!force && now - gitLastFetchAtRef.current < GIT_AUTO_FETCH_MS) return;
     gitFetchInFlightRef.current = true;
     try {
       if (force || !gitRootsRef.current.length) {
         await refreshGit(false);
+        // A concurrent poll may hold the status lock; wait it out so the repo
+        // roots are known before fetching instead of skipping the sweep.
+        while (gitStatusInFlightRef.current) {
+          await new Promise((resolve) => window.setTimeout(resolve, 20));
+        }
+        if (!gitRootsRef.current.length) await refreshGit(false);
       }
       const roots = gitRootsRef.current.slice(0, GIT_AUTO_FETCH_MAX_ROOTS);
       for (const root of roots) {
@@ -204,7 +220,7 @@ export function useWorkbenchGit(options: {
     } finally {
       gitFetchInFlightRef.current = false;
     }
-  }, [refreshGit, selectedProject]);
+  }, [refreshGit, selectedProjects]);
 
   useEffect(() => {
     gitRootsRef.current = [];
@@ -215,28 +231,28 @@ export function useWorkbenchGit(options: {
     setGitRoot("");
     gitRootManuallySelectedRef.current = false;
     setGitExpandedDirs(new Set());
-  }, [selectedProject]);
+  }, [projectsKey]);
 
   useEffect(() => {
-    if (!active || !selectedProject) return;
+    if (!active || !projectsKey) return;
     void refreshGit(false);
     const poll = window.setInterval(() => {
       if (document.visibilityState === "visible") void refreshGit(false);
     }, GIT_STATUS_POLL_MS);
     return () => window.clearInterval(poll);
-  }, [active, refreshGit, selectedProject]);
+  }, [active, projectsKey, refreshGit]);
 
   useEffect(() => {
-    if (!active || !selectedProject) return;
+    if (!active || !projectsKey) return;
     void autoFetchGit(true);
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") void autoFetchGit(false);
     }, GIT_AUTO_FETCH_MS);
     return () => window.clearInterval(timer);
-  }, [active, autoFetchGit, selectedProject]);
+  }, [active, autoFetchGit, projectsKey]);
 
   useEffect(() => {
-    if (!active || !selectedProject) return;
+    if (!active || !projectsKey) return;
     const onFocus = () => {
       void refreshGit(false);
       void autoFetchGit(false);
@@ -250,7 +266,7 @@ export function useWorkbenchGit(options: {
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [active, autoFetchGit, refreshGit, selectedProject]);
+  }, [active, autoFetchGit, projectsKey, refreshGit]);
 
   const toggleGitDirectory = useCallback((path: string) => {
     setGitExpandedDirs((current) => {

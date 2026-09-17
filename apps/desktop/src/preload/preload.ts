@@ -870,7 +870,7 @@ export interface DesktopApi {
     }>;
     failures: Array<{ sourcePath: string; message: string }>;
   }>;
-  workbenchSetFileWatch(args: { rootPath: string | null }): Promise<{ rootPath: string | null }>;
+  workbenchSetFileWatch(args: { rootPaths: string[] | null }): Promise<{ rootPaths: string[] }>;
   onWorkbenchFileSystemChanged(callback: (event: WorkbenchFileSystemChangedEvent) => void): () => void;
   workbenchListScripts(args: {
     rootPath: string;

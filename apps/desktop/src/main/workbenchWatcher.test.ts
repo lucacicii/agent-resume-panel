@@ -58,10 +58,10 @@ function installWatchMock(implementation: (callback: WatchCallback) => FakeWatch
   return fsMocks.watch;
 }
 
-function getSetFileWatchHandler(): (event: { sender: ReturnType<typeof createSender> }, args: { rootPath: string | null }) => Promise<{ rootPath: string | null }> {
+function getSetFileWatchHandler(): (event: { sender: ReturnType<typeof createSender> }, args: { rootPaths: string[] | null }) => Promise<{ rootPaths: string[] }> {
   const handler = ipcMocks.handlers.get("workbench:setFileWatch");
   if (!handler) throw new Error("Missing workbench:setFileWatch handler");
-  return handler as (event: { sender: ReturnType<typeof createSender> }, args: { rootPath: string | null }) => Promise<{ rootPath: string | null }> ;
+  return handler as (event: { sender: ReturnType<typeof createSender> }, args: { rootPaths: string[] | null }) => Promise<{ rootPaths: string[] }> ;
 }
 
 describe("workbench watcher fallback", () => {
@@ -87,7 +87,7 @@ describe("workbench watcher fallback", () => {
     const sender = createSender();
     registerWorkbenchWatcherIpc(() => ({ webContents: sender } as never));
 
-    await getSetFileWatchHandler()({ sender }, { rootPath: root });
+    await getSetFileWatchHandler()({ sender }, { rootPaths: [root] });
     callback?.("change", "src/index.ts");
     await vi.advanceTimersByTimeAsync(120);
 
@@ -102,6 +102,48 @@ describe("workbench watcher fallback", () => {
     expect(watchSpy).toHaveBeenCalledTimes(1);
   });
 
+  it("watches several roots for one sender and reports each in turn", async () => {
+    vi.useFakeTimers();
+    const first = await makeRoot();
+    const second = await makeRoot();
+    const callbacks = new Map<string, WatchCallback>();
+    const watchers: FakeWatcher[] = [];
+    fsMocks.watch.mockImplementation((filename: fs.PathLike, options: fs.WatchOptions | string, listener?: WatchCallback) => {
+      const callback = typeof options === "function" ? options as WatchCallback : listener;
+      if (!callback) throw new Error("Expected a watcher callback");
+      callbacks.set(String(filename), callback);
+      const watcher: FakeWatcher = { close: vi.fn(), on: vi.fn(() => watcher), emitError: () => undefined };
+      watchers.push(watcher);
+      return watcher as unknown as fs.FSWatcher;
+    });
+    const sender = createSender();
+    registerWorkbenchWatcherIpc(() => ({ webContents: sender } as never));
+
+    await getSetFileWatchHandler()({ sender }, { rootPaths: [first, second] });
+    expect(getWorkbenchWatcherRuntimeMetrics()).toEqual({ watcherCount: 2, pollingCount: 0, activeCount: 2 });
+
+    callbacks.get(first)?.("change", "src/a.ts");
+    await vi.advanceTimersByTimeAsync(120);
+    expect(sender.send).toHaveBeenCalledWith("workbench:fileSystemChanged", expect.objectContaining({
+      type: "change", rootPath: first, paths: [path.join(first, "src/a.ts")]
+    }));
+
+    sender.send.mockClear();
+    callbacks.get(second)?.("change", "src/b.ts");
+    await vi.advanceTimersByTimeAsync(120);
+    expect(sender.send).toHaveBeenCalledWith("workbench:fileSystemChanged", expect.objectContaining({
+      type: "change", rootPath: second, paths: [path.join(second, "src/b.ts")]
+    }));
+
+    // Replacing the watch set closes the previous watchers.
+    const third = await makeRoot();
+    await getSetFileWatchHandler()({ sender }, { rootPaths: [third] });
+    expect(watchers[0]?.close).toHaveBeenCalledTimes(1);
+    expect(watchers[1]?.close).toHaveBeenCalledTimes(1);
+    expect(watchers[2]?.close).not.toHaveBeenCalled();
+    expect(getWorkbenchWatcherRuntimeMetrics()).toEqual({ watcherCount: 1, pollingCount: 0, activeCount: 1 });
+  });
+
   it("uses one polling timer after recursive watch creation fails without emitting EMFILE", async () => {
     vi.useFakeTimers();
     const root = await makeRoot();
@@ -110,7 +152,7 @@ describe("workbench watcher fallback", () => {
     const sender = createSender();
     registerWorkbenchWatcherIpc(() => ({ webContents: sender } as never));
 
-    await getSetFileWatchHandler()({ sender }, { rootPath: root });
+    await getSetFileWatchHandler()({ sender }, { rootPaths: [root] });
     expect(watchSpy).toHaveBeenCalledTimes(1);
 
     await vi.advanceTimersByTimeAsync(120);
@@ -145,7 +187,7 @@ describe("workbench watcher fallback", () => {
     const sender = createSender();
     registerWorkbenchWatcherIpc(() => ({ webContents: sender } as never));
 
-    await getSetFileWatchHandler()({ sender }, { rootPath: root });
+    await getSetFileWatchHandler()({ sender }, { rootPaths: [root] });
     expect(watchSpy).toHaveBeenCalledWith(root, expect.objectContaining({ recursive: true, persistent: false }), expect.any(Function));
     expect(callback).toBeDefined();
 
@@ -158,7 +200,7 @@ describe("workbench watcher fallback", () => {
     await vi.advanceTimersByTimeAsync(2_000 + 120);
     expect(watchSpy).toHaveBeenCalledTimes(1);
 
-    await getSetFileWatchHandler()({ sender }, { rootPath: null });
+    await getSetFileWatchHandler()({ sender }, { rootPaths: null });
     sender.send.mockClear();
     await vi.advanceTimersByTimeAsync(4_000);
     expect(sender.send).not.toHaveBeenCalled();
@@ -172,7 +214,7 @@ describe("workbench watcher fallback", () => {
     const sender = createSender();
     registerWorkbenchWatcherIpc(() => ({ webContents: sender } as never));
 
-    await getSetFileWatchHandler()({ sender }, { rootPath: root });
+    await getSetFileWatchHandler()({ sender }, { rootPaths: [root] });
     await vi.advanceTimersByTimeAsync(120);
     sender.send.mockClear();
     expect(getWorkbenchWatcherRuntimeMetrics()).toEqual({ watcherCount: 1, pollingCount: 1, activeCount: 1 });

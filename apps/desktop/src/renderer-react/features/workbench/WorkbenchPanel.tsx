@@ -228,6 +228,8 @@ type BrowserPane = {
 type SideView = "files" | "git" | "search" | "scripts" | "linkgraph" | null;
 type SearchReveal = { path: string; line: number; column: number; endColumn: number };
 const GTD_STATUSES = ["inbox", "next", "waiting", "someday", "reference", "done"] as const satisfies readonly GtdStatus[];
+/** Shared empty list so a project-less work item keeps a stable array identity. */
+const EMPTY_PROJECT_PATHS: string[] = [];
 const WORKBENCH_SESSION_ROW_HEIGHT = 64;
 type CatalogProject = {
   projectId: string;
@@ -738,7 +740,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const browsersRef = useRef<BrowserPane[]>(browsers);
   const autoRenameTimersRef = useRef(new Map<string, number>());
   const deferredAutoRenameKeysRef = useRef(new Set<string>());
-  const watchedRootRef = useRef("");
+  const watchedRootsRef = useRef<string[]>([]);
   const editorReconcilesRef = useRef(new Map<string, { promise: Promise<void>; queued: boolean }>());
   /** Per-project MRU of activated pane keys (newest first). Used after ⌘W / tab close. */
   const paneHistoryRef = useRef<Record<string, string[]>>({});
@@ -760,7 +762,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const liveWorkItemEarly = workItemScope
     ? workItems.find((item) => item.noteId === workItemScope.noteId)
     : undefined;
-  const sideRootProjects = liveWorkItemEarly?.projects ?? workItemScope?.projects ?? [];
+  const sideRootProjects = liveWorkItemEarly?.projects ?? workItemScope?.projects ?? EMPTY_PROJECT_PATHS;
   const sideRoot = workItemScope
     ? (sessionTarget
       || liveWorkItemEarly?.primaryProject
@@ -768,8 +770,39 @@ export function WorkbenchPanel(): ReactPortal | null {
       || sideRootProjects[0]
       || null)
     : null;
-  const sideRootRef = useRef<string | null>(sideRoot);
-  sideRootRef.current = sideRoot;
+  /**
+   * Roots the explorer and git panels span. A focused project (a chip click)
+   * narrows to that one; a shared work-item workspace shows every referenced
+   * project; a plain project selection stays itself.
+   */
+  const sideRoots = useMemo(() => {
+    const candidates = sessionTarget
+      ? [sessionTarget]
+      : workItemScope
+        ? sideRootProjects
+        : (selectedProject ? [selectedProject] : []);
+    const seen = new Set<string>();
+    const roots: string[] = [];
+    for (const candidate of candidates) {
+      const key = projectPathKey(candidate);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      roots.push(candidate);
+    }
+    return roots;
+  }, [sessionTarget, selectedProject, sideRootProjects, workItemScope]);
+  /** Stable identity of the root set, for effects that must reset when it changes. */
+  const sideRootsKey = sideRoots.map(projectPathKey).join("\0");
+  const sideRootsRef = useRef<string[]>(sideRoots);
+  sideRootsRef.current = sideRoots;
+  /** The root an absolute path belongs to (longest match), or "" when outside every root. */
+  const projectForPath = useCallback((targetPath: string): string => {
+    let best = "";
+    for (const root of sideRootsRef.current) {
+      if (root.length > best.length && isWorkbenchPathWithin(targetPath, root)) best = root;
+    }
+    return best;
+  }, []);
 
   const {
     git,
@@ -797,8 +830,8 @@ export function WorkbenchPanel(): ReactPortal | null {
     notifyGitFailure
   } = useWorkbenchGit({
     active,
-    selectedProject: sideRoot,
-    selectedProjectRef: sideRootRef,
+    selectedProjects: sideRoots,
+    selectedProjectsRef: sideRootsRef,
     side,
     nestedScanMaxDepth: settings?.workbench?.gitNestedScanMaxDepth,
     nestedScanIgnoreDirs: settings?.workbench?.gitNestedScanIgnoreDirs,
@@ -870,7 +903,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     if (typeof api.onWorkbenchFileSystemChanged !== "function") return;
     const unsubscribe = api.onWorkbenchFileSystemChanged((event) => {
       if (event.type !== "change") return;
-      if (!activeRef.current || projectPathKey(event.rootPath) !== projectPathKey(watchedRootRef.current)) return;
+      if (!activeRef.current || !watchedRootsRef.current.some((root) => projectPathKey(root) === projectPathKey(event.rootPath))) return;
       const pending = gitDiffRefreshPendingRef.current;
       if (event.fullRescan || !event.paths.length) {
         pending.fullRescan = true;
@@ -4432,25 +4465,27 @@ export function WorkbenchPanel(): ReactPortal | null {
   useEffect(() => {
     const api = desktopApi();
     if (typeof api.workbenchSetFileWatch !== "function") return;
-    if (!active || !selectedProject) {
-      watchedRootRef.current = "";
-      void api.workbenchSetFileWatch({ rootPath: null }).catch(() => undefined);
+    const roots = sideRootsRef.current;
+    if (!active || !roots.length) {
+      watchedRootsRef.current = [];
+      void api.workbenchSetFileWatch({ rootPaths: null }).catch(() => undefined);
       return;
     }
-    watchedRootRef.current = "";
-    void api.workbenchSetFileWatch({ rootPath: selectedProject })
+    watchedRootsRef.current = [];
+    const requestedKey = roots.map(projectPathKey).join("\0");
+    void api.workbenchSetFileWatch({ rootPaths: roots })
       .then((result) => {
-        if (projectPathKey(selectedProjectRef.current || "") !== projectPathKey(selectedProject)) return;
-        watchedRootRef.current = result.rootPath || "";
+        if (sideRootsRef.current.map(projectPathKey).join("\0") !== requestedKey) return;
+        watchedRootsRef.current = result.rootPaths || [];
         void fileExplorerRef.current?.refresh();
-        return reconcileProjectEditors(selectedProject);
+        return Promise.all(result.rootPaths.map((root) => reconcileProjectEditors(root)));
       })
       .catch((error) => setStatus({ text: statusError(error), kind: "error" }));
     return () => {
-      watchedRootRef.current = "";
-      void api.workbenchSetFileWatch({ rootPath: null }).catch(() => undefined);
+      watchedRootsRef.current = [];
+      void api.workbenchSetFileWatch({ rootPaths: null }).catch(() => undefined);
     };
-  }, [active, reconcileProjectEditors, selectedProject]);
+  }, [active, reconcileProjectEditors, sideRootsKey]);
 
   useEffect(() => {
     const api = desktopApi();
@@ -4458,14 +4493,14 @@ export function WorkbenchPanel(): ReactPortal | null {
     const unsubscribe = api.onWorkbenchFileSystemChanged((event) => {
       invalidateQuickAccessCache(event.rootPath);
       if (event.type === "error") {
-        if (projectPathKey(event.rootPath) === projectPathKey(watchedRootRef.current)) {
+        if (watchedRootsRef.current.some((root) => projectPathKey(root) === projectPathKey(event.rootPath))) {
           setStatus({ text: event.message, kind: "error" });
         }
         return;
       }
-      if (!activeRef.current || projectPathKey(event.rootPath) !== projectPathKey(watchedRootRef.current)) return;
+      if (!activeRef.current || !watchedRootsRef.current.some((root) => projectPathKey(root) === projectPathKey(event.rootPath))) return;
       void fileExplorerRef.current?.refresh();
-      void reconcileProjectEditors(selectedProjectRef.current!);
+      void reconcileProjectEditors(event.rootPath);
     });
     return unsubscribe;
   }, [invalidateQuickAccessCache, reconcileProjectEditors]);
@@ -5933,7 +5968,7 @@ export function WorkbenchPanel(): ReactPortal | null {
               onDestroyed={() => closeBrowser(pane.key)}
             />;
           })}{terminalCreating && !currentTerminals.some((pane) => !pane.ptyId) && !currentAcpChat ? <div className="wb-terminal-loading wb-terminal-loading-stack" role="status" aria-live="polite"><ThemeIcon name="loader" className="spin" size={18} aria-hidden="true" /><span>{t("desktop.common.loading")}</span></div> : null}{!terminalCreating && !currentTerminals.length && !currentEditors.length && !currentDiffs.length && !currentAcpChats.length && !currentBrowsers.length && !currentNotePanes.length ? <p className="muted wb-terminal-hint">{selectedProject ? t("desktop.workbench.selectSessionHint") : t("desktop.workbench.selectProjectHint")}</p> : null}</div></div>
-          {side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane wb-explorer-side-pane"><WorkbenchFileExplorer ref={fileExplorerRef} rootPath={sideRoot || ""} activePath={currentFilePath} onOpenFile={(path) => void openFile(path)} onOpenPreview={(path) => void openFile(path, undefined, sideRoot || undefined, "preview")} onShowGitHistory={(path) => void loadGitFileHistory(path)} onFindInFolder={findInExplorerFolder} onError={(message) => setStatus({ text: message, kind: "error" })} /><WorkbenchScriptsPane compact hasProject={Boolean(sideRoot)} selectedProject={sideRoot} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} collapsed={scriptsSectionCollapsed} onToggleCollapsed={toggleScriptsSectionCollapsed} onRefresh={sideRoot ? () => void loadScripts(sideRoot) : undefined} onRun={runScript} /></div> : side === "scripts" ? <WorkbenchScriptsPane hasProject={Boolean(sideRoot)} selectedProject={sideRoot} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} onRefresh={sideRoot ? () => void loadScripts(sideRoot) : undefined} onRun={runScript} /> : side === "search" ? <WorkbenchSearchSidePane
+          {side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane wb-explorer-side-pane"><WorkbenchFileExplorer ref={fileExplorerRef} roots={sideRoots} activePath={currentFilePath} onOpenFile={(path) => void openFile(path, undefined, projectForPath(path) || undefined)} onOpenPreview={(path) => void openFile(path, undefined, projectForPath(path) || undefined, "preview")} onShowGitHistory={(path) => void loadGitFileHistory(path)} onFindInFolder={findInExplorerFolder} onError={(message) => setStatus({ text: message, kind: "error" })} /><WorkbenchScriptsPane compact hasProject={Boolean(sideRoot)} selectedProject={sideRoot} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} collapsed={scriptsSectionCollapsed} onToggleCollapsed={toggleScriptsSectionCollapsed} onRefresh={sideRoot ? () => void loadScripts(sideRoot) : undefined} onRun={runScript} /></div> : side === "scripts" ? <WorkbenchScriptsPane hasProject={Boolean(sideRoot)} selectedProject={sideRoot} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} onRefresh={sideRoot ? () => void loadScripts(sideRoot) : undefined} onRun={runScript} /> : side === "search" ? <WorkbenchSearchSidePane
             selectedProject={sideRoot}
             searchQuery={searchQuery}
             onSearchQueryChange={setSearchQuery}
@@ -6293,12 +6328,17 @@ export function WorkbenchPanel(): ReactPortal | null {
       onToggleDir={toggleGitDirectory}
       onToggleStage={(targets, targetStaged) => void toggleGitStage(targets, targetStaged)}
       onOpenDiff={(change, staged) => void openDiff(change, staged)}
-      onOpenFile={(change) => void openFile(gitChangeFilePath(change))}
+      onOpenFile={(change) => {
+        const filePath = gitChangeFilePath(change);
+        void openFile(filePath, undefined, projectForPath(filePath) || undefined);
+      }}
       onOpenExternal={(change) => {
-        if (!selectedProject) return;
+        const filePath = gitChangeFilePath(change);
+        const targetRoot = projectForPath(filePath);
+        if (!targetRoot) return;
         void desktopApi().workbenchOpenPath({
-          rootPath: selectedProject,
-          filePath: gitChangeFilePath(change)
+          rootPath: targetRoot,
+          filePath
         }).catch((error) => {
           setStatus({ text: t("desktop.workbench.fileOpenExternalFailed", statusError(error)), kind: "error" });
         });

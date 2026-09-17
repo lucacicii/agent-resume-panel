@@ -136,7 +136,7 @@ export function useImProjectTools(optionsOrRoot: UseImProjectToolsOptions | stri
       <aside className="wb-side-panel im-project-tools-panel" style={{ width: sideWidth }}>
         <div className="wb-side-pane wb-explorer-side-pane">
           <WorkbenchFileExplorer
-            rootPath={rootPath || ""}
+            roots={rootPath ? [rootPath] : []}
             onOpenFile={(path) => void openPath(path)}
             onOpenPreview={(path) => void openPath(path)}
             onError={(message) => notifyDesktop({ text: message, kind: "error" })}

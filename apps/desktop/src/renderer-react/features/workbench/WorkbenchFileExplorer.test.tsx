@@ -55,7 +55,7 @@ describe("WorkbenchFileExplorer", () => {
       parentRenderCount += 1;
       return <WorkbenchFileExplorer
         ref={explorerRef}
-        rootPath="/work/app"
+        roots={["/work/app"]}
         onOpenFile={() => undefined}
         onError={() => undefined}
       />;
@@ -94,7 +94,7 @@ describe("WorkbenchFileExplorer", () => {
     const explorerRef = createRef<WorkbenchFileExplorerHandle>();
     render(<WorkbenchFileExplorer
       ref={explorerRef}
-      rootPath="/work/app"
+      roots={["/work/app"]}
       onOpenFile={() => undefined}
       onError={() => undefined}
     />);
@@ -130,7 +130,7 @@ describe("WorkbenchFileExplorer", () => {
     const { rerender } = render(<>
       <button type="button">Editor focus</button>
       <WorkbenchFileExplorer
-        rootPath="/work/app"
+        roots={["/work/app"]}
         activePath="/work/app/src/nested/one.ts"
         onOpenFile={() => undefined}
         onError={() => undefined}
@@ -151,7 +151,7 @@ describe("WorkbenchFileExplorer", () => {
     rerender(<>
       <button type="button">Editor focus</button>
       <WorkbenchFileExplorer
-        rootPath="/work/app"
+        roots={["/work/app"]}
         activePath="/work/app/src/nested/two.ts"
         onOpenFile={() => undefined}
         onError={() => undefined}
@@ -176,7 +176,7 @@ describe("WorkbenchFileExplorer", () => {
     const explorerRef = createRef<WorkbenchFileExplorerHandle>();
     render(<WorkbenchFileExplorer
       ref={explorerRef}
-      rootPath="/work/app"
+      roots={["/work/app"]}
       onOpenFile={() => undefined}
       onError={() => undefined}
     />);
@@ -199,7 +199,7 @@ describe("WorkbenchFileExplorer", () => {
     apiMocks.workbenchCopyPath.mockResolvedValue({ ok: true });
 
     render(<WorkbenchFileExplorer
-      rootPath="/work/app"
+      roots={["/work/app"]}
       onOpenFile={() => undefined}
       onError={() => undefined}
     />);
@@ -221,7 +221,7 @@ describe("WorkbenchFileExplorer", () => {
     apiMocks.workbenchPastePaths.mockResolvedValue({ copied: [], failures: [] });
 
     render(<WorkbenchFileExplorer
-      rootPath="/work/app"
+      roots={["/work/app"]}
       onOpenFile={() => undefined}
       onError={() => undefined}
     />);
@@ -242,7 +242,7 @@ describe("WorkbenchFileExplorer", () => {
     apiMocks.workbenchClipboardHasFiles.mockResolvedValue({ hasFiles: true });
 
     render(<WorkbenchFileExplorer
-      rootPath="/work/app"
+      roots={["/work/app"]}
       onOpenFile={() => undefined}
       onError={() => undefined}
     />);
@@ -268,7 +268,7 @@ describe("WorkbenchFileExplorer", () => {
     const onShowGitHistory = vi.fn();
 
     render(<WorkbenchFileExplorer
-      rootPath="/work/app"
+      roots={["/work/app"]}
       onOpenFile={() => undefined}
       onShowGitHistory={onShowGitHistory}
       onError={() => undefined}
@@ -298,7 +298,7 @@ describe("WorkbenchFileExplorer", () => {
     const onOpenPreview = vi.fn();
 
     render(<WorkbenchFileExplorer
-      rootPath="/work/app"
+      roots={["/work/app"]}
       onOpenFile={() => undefined}
       onOpenPreview={onOpenPreview}
       onError={() => undefined}
@@ -334,7 +334,7 @@ describe("WorkbenchFileExplorer", () => {
     apiMocks.workbenchClipboardHasFiles.mockResolvedValue({ hasFiles: false });
 
     render(<WorkbenchFileExplorer
-      rootPath="/work/app"
+      roots={["/work/app"]}
       onOpenFile={() => undefined}
       onError={() => undefined}
     />);
@@ -361,7 +361,7 @@ describe("WorkbenchFileExplorer", () => {
     const onFindInFolder = vi.fn();
 
     render(<WorkbenchFileExplorer
-      rootPath="/work/app"
+      roots={["/work/app"]}
       onOpenFile={() => undefined}
       onFindInFolder={onFindInFolder}
       onError={() => undefined}
@@ -388,7 +388,7 @@ describe("WorkbenchFileExplorer", () => {
     apiMocks.workbenchClipboardHasFiles.mockResolvedValue({ hasFiles: false });
 
     render(<WorkbenchFileExplorer
-      rootPath="/work/app"
+      roots={["/work/app"]}
       onOpenFile={() => undefined}
       onError={() => undefined}
     />);
@@ -396,5 +396,60 @@ describe("WorkbenchFileExplorer", () => {
     const directoryRow = (await screen.findByText("src")).closest("[role=treeitem]")!;
     fireEvent.contextMenu(directoryRow, { clientX: 20, clientY: 30 });
     expect(screen.queryByRole("menuitem", { name: "desktop.workbench.findInFolder" })).toBeNull();
+  });
+
+  it("renders every shared-workspace root and lists each under its own root", async () => {
+    apiMocks.workbenchListDirectory.mockImplementation(async ({ dirPath }: { dirPath: string }) => ({
+      entries: dirPath === "/work/app"
+        ? [{ name: "app.ts", path: "/work/app/app.ts", isDirectory: false }]
+        : dirPath === "/work/api"
+          ? [{ name: "api.ts", path: "/work/api/api.ts", isDirectory: false }]
+          : []
+    }));
+
+    render(<WorkbenchFileExplorer
+      roots={["/work/app", "/work/api"]}
+      onOpenFile={() => undefined}
+      onError={() => undefined}
+    />);
+
+    const appRoot = (await screen.findByText("app")).closest("[role=treeitem]")!;
+    const apiRoot = screen.getByText("api").closest("[role=treeitem]")!;
+    expect(appRoot.getAttribute("aria-expanded")).toBe("true");
+    expect(apiRoot.getAttribute("aria-expanded")).toBe("true");
+    expect((await screen.findByText("app.ts")).closest("[role=treeitem]")?.getAttribute("data-wb-entry-path")).toBe("/work/app/app.ts");
+    expect(screen.getByText("api.ts").closest("[role=treeitem]")?.getAttribute("data-wb-entry-path")).toBe("/work/api/api.ts");
+    expect(apiMocks.workbenchListDirectory).toHaveBeenCalledWith({ rootPath: "/work/app", dirPath: "/work/app" });
+    expect(apiMocks.workbenchListDirectory).toHaveBeenCalledWith({ rootPath: "/work/api", dirPath: "/work/api" });
+
+    // Collapsing one root hides only its subtree.
+    fireEvent.click(screen.getByText("app"));
+    await waitFor(() => expect(screen.queryByText("app.ts")).toBeNull());
+    expect(screen.getByText("api.ts")).toBeTruthy();
+  });
+
+  it("scopes file operations to the root that owns the path", async () => {
+    apiMocks.workbenchListDirectory.mockImplementation(async ({ dirPath }: { dirPath: string }) => ({
+      entries: dirPath === "/work/app"
+        ? [{ name: "app.ts", path: "/work/app/app.ts", isDirectory: false }]
+        : dirPath === "/work/api"
+          ? [{ name: "api.ts", path: "/work/api/api.ts", isDirectory: false }]
+          : []
+    }));
+    apiMocks.workbenchClipboardHasFiles.mockResolvedValue({ hasFiles: false });
+
+    render(<WorkbenchFileExplorer
+      roots={["/work/app", "/work/api"]}
+      onOpenFile={() => undefined}
+      onError={() => undefined}
+    />);
+
+    const fileRow = (await screen.findByText("api.ts")).closest("[role=treeitem]")!;
+    fireEvent.contextMenu(fileRow, { clientX: 5, clientY: 5 });
+    fireEvent.click(screen.getByRole("menuitem", { name: "desktop.workbench.explorerRevealInFinder" }));
+    await waitFor(() => expect(apiMocks.workbenchRevealPath).toHaveBeenCalledWith({
+      rootPath: "/work/api",
+      targetPath: "/work/api/api.ts"
+    }));
   });
 });
