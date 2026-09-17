@@ -74,6 +74,11 @@ export const IM_KNOWLEDGE_SOURCE_MIGRATION_SQL = `
 ALTER TABLE im_knowledge ADD COLUMN source_note_id TEXT;
 `;
 
+/** Task templates store a JSON list of referenced projects, not a single path. */
+export const TASK_TEMPLATE_PROJECT_PATHS_MIGRATION_SQL = `
+ALTER TABLE task_templates ADD COLUMN project_paths_json TEXT;
+`;
+
 export const DESKTOP_ONLY_SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS gtd_ai_audit (
   id TEXT PRIMARY KEY,
@@ -87,6 +92,15 @@ CREATE TABLE IF NOT EXISTS gtd_ai_audit (
 );
 CREATE INDEX IF NOT EXISTS idx_gtd_ai_audit_session ON gtd_ai_audit(provider, agent_session_id);
 CREATE INDEX IF NOT EXISTS idx_gtd_ai_audit_created ON gtd_ai_audit(created_at_ms DESC);
+
+CREATE TABLE IF NOT EXISTS task_templates (
+  template_id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  project_paths_json TEXT,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_task_templates_updated ON task_templates(updated_at_ms DESC);
 
 CREATE TABLE IF NOT EXISTS note_chunks (
   chunk_id TEXT PRIMARY KEY,

@@ -1,6 +1,6 @@
 import { ThemeIcon } from "../../components/ThemeIcon";
 import { createPortal } from "react-dom";
-import { useCallback, useEffect, useMemo, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { GtdStatus } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { GTD_STATUSES } from "../../gtd";
@@ -10,6 +10,7 @@ import { listAllTaskWorkbenches, workbenchDisplayName, type Workbench } from "..
 import type { ActiveSessionDot } from "../workbench/activeSessionDots";
 import { rollupDot, needsYou } from "../workbench/sessionStatus/workItemRollup";
 import { sessionDotStatusClass } from "../workbench/sessionStatus/dotStatus";
+import { TaskTemplatePanel, type TaskTemplate } from "./TaskTemplatePanel";
 
 /** Board column order — `done` last so active work reads first. */
 const GTD_COLUMNS: GtdStatus[] = ["inbox", "next", "waiting", "someday", "reference", "done"];
@@ -23,7 +24,10 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
   const [dotByKey, setDotByKey] = useState<Map<string, ActiveSessionDot>>(new Map());
   const [query, setQuery] = useState("");
   const [dragNoteId, setDragNoteId] = useState<string | null>(null);
+  const [dragTemplate, setDragTemplate] = useState<TaskTemplate | null>(null);
   const [dropColumn, setDropColumn] = useState<GtdStatus | null>(null);
+  const [renaming, setRenaming] = useState<{ noteId: string; value: string; busy: boolean } | null>(null);
+  const renameCommitSkipRef = useRef(false);
   const [creating, setCreating] = useState(false);
   const [newTask, setNewTask] = useState<{ title: string; projectPath: string; busy: boolean; error: string } | null>(null);
   const [workbenchesByTask, setWorkbenchesByTask] = useState<Record<string, Workbench[]>>({});
@@ -154,6 +158,58 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
     }
   }, [load]);
 
+  /** Drop a template onto a column: create the task pre-filled, then rename inline. */
+  const createFromTemplate = useCallback(async (template: TaskTemplate, status: GtdStatus) => {
+    if (typeof desktopApi().notesCreateWorkItem !== "function") return;
+    try {
+      const created = await desktopApi().notesCreateWorkItem({
+        title: template.title,
+        ...(template.projectPaths.length > 0
+          ? { projects: template.projectPaths, primaryProject: template.projectPaths[0] }
+          : {}),
+        status
+      });
+      await load();
+      window.dispatchEvent(new Event("agent-resume:notes-mutated"));
+      renameCommitSkipRef.current = false;
+      setRenaming({ noteId: created.noteId, value: created.title || template.title, busy: false });
+    } catch {
+      /* best-effort; the board reloads on the next mutation */
+    }
+  }, [load]);
+
+  const startRename = useCallback((item: GtdCard) => {
+    renameCommitSkipRef.current = false;
+    setRenaming({ noteId: item.noteId, value: item.title, busy: false });
+  }, []);
+
+  const commitRename = useCallback(async () => {
+    const current = renaming;
+    if (!current || current.busy) return;
+    const title = current.value.trim();
+    const item = items.find((entry) => entry.noteId === current.noteId);
+    if (!title || !item || title === item.title) {
+      renameCommitSkipRef.current = true;
+      setRenaming(null);
+      return;
+    }
+    if (typeof desktopApi().notesRenameWorkItem !== "function") {
+      renameCommitSkipRef.current = true;
+      setRenaming(null);
+      return;
+    }
+    setRenaming((entry) => entry ? { ...entry, busy: true } : entry);
+    try {
+      await desktopApi().notesRenameWorkItem({ noteId: current.noteId, title });
+      setItems((list) => list.map((entry) => entry.noteId === current.noteId ? { ...entry, title } : entry));
+      renameCommitSkipRef.current = true;
+      setRenaming(null);
+      window.dispatchEvent(new Event("agent-resume:notes-mutated"));
+    } catch {
+      setRenaming((entry) => entry ? { ...entry, busy: false } : entry);
+    }
+  }, [renaming, items]);
+
   /** Delete a task that has never been linked to a session. */
   const deleteTask = useCallback(async (item: GtdCard) => {
     setContextMenu(null);
@@ -270,6 +326,7 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
   return createPortal(<>
     {active && headerSlot ? createPortal(toolbar, headerSlot) : null}
     <section className="panel workbench-panel react-gtd-panel" hidden={!active} aria-label={text("desktop.gtd.title")}>
+      <TaskTemplatePanel active={active} onDragTemplateChange={setDragTemplate} />
       <div className="gtd-board" onKeyDown={onBoardKeyDown}>
         {columns.map(({ status, items: columnItems }) => (
           <div
@@ -277,9 +334,9 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
             className={`gtd-column${dropColumn === status ? " is-drop-target" : ""}`}
             data-gtd-column={status}
             onDragOver={(event) => {
-              if (!dragNoteId) return;
+              if (!dragNoteId && !dragTemplate) return;
               event.preventDefault();
-              event.dataTransfer.dropEffect = "move";
+              event.dataTransfer.dropEffect = dragTemplate ? "copy" : "move";
               setDropColumn(status);
             }}
             onDragLeave={(event) => {
@@ -288,10 +345,16 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
             }}
             onDrop={(event) => {
               event.preventDefault();
+              const template = dragTemplate;
               const noteId = dragNoteId || event.dataTransfer.getData("text/plain");
               setDragNoteId(null);
+              setDragTemplate(null);
               setDropColumn(null);
-              if (noteId) void setStatus(noteId, status);
+              if (template) {
+                void createFromTemplate(template, status);
+              } else if (noteId) {
+                void setStatus(noteId, status);
+              }
             }}
           >
             <div className="gtd-column-head">
@@ -320,6 +383,37 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
                     }}
                     onDragEnd={() => { setDragNoteId(null); setDropColumn(null); }}
                   >
+                    {renaming?.noteId === item.noteId ? (
+                      <div className="gtd-card-main gtd-card-main-renaming">
+                        <input
+                          className="gtd-card-rename"
+                          autoFocus
+                          value={renaming.value}
+                          aria-label={text("desktop.gtd.taskTitle")}
+                          disabled={renaming.busy}
+                          onFocus={(event) => event.currentTarget.select()}
+                          onClick={(event) => event.stopPropagation()}
+                          onChange={(event) => setRenaming((current) => current ? { ...current, value: event.target.value } : current)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              void commitRename();
+                            } else if (event.key === "Escape") {
+                              event.preventDefault();
+                              renameCommitSkipRef.current = true;
+                              setRenaming(null);
+                            }
+                          }}
+                          onBlur={() => {
+                            if (renameCommitSkipRef.current) {
+                              renameCommitSkipRef.current = false;
+                              return;
+                            }
+                            void commitRename();
+                          }}
+                        />
+                      </div>
+                    ) : (
                     <button
                       type="button"
                       data-gtd-card="true"
@@ -342,6 +436,7 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
                         </span>
                       </span>
                     </button>
+                    )}
                     {taskWorkbenches.length > 0 ? (
                       <div className="gtd-card-projects">
                         {taskWorkbenches.slice(0, 3).map((workbench) => (
@@ -438,6 +533,11 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
         }}
         onContextMenu={(event) => event.preventDefault()}
       >
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => { const item = contextMenu.item; setContextMenu(null); startRename(item); }}
+        >{text("desktop.common.rename")}</button>
         <button
           type="button"
           role="menuitem"

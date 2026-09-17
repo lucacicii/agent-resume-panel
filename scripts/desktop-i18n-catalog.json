@@ -1,14 +1,41 @@
 {
   "en": {
     "desktop.workbench.lastExitWaiting": "This session was waiting on you when the app last closed",
-    "desktop.workbench.openWorkItemWorkspace": "Open workspace folder"
+    "desktop.workbench.openWorkItemWorkspace": "Open workspace folder",
+    "desktop.gtd.templates": "Templates",
+    "desktop.gtd.newTemplate": "New template",
+    "desktop.gtd.templateTitle": "Template name",
+    "desktop.gtd.templateProject": "Project",
+    "desktop.gtd.emptyTemplates": "No templates",
+    "desktop.gtd.createTemplate": "Create template",
+    "desktop.gtd.editTemplate": "Edit template",
+    "desktop.gtd.deleteTemplate": "Delete template",
+    "desktop.gtd.deleteTemplateConfirm": "Delete template \"{0}\"?"
   },
   "ja": {
     "desktop.workbench.lastExitWaiting": "前回終了時にこのセッションは入力待ちでした",
-    "desktop.workbench.openWorkItemWorkspace": "ワークスペースフォルダを開く"
+    "desktop.workbench.openWorkItemWorkspace": "ワークスペースフォルダを開く",
+    "desktop.gtd.templates": "テンプレート",
+    "desktop.gtd.newTemplate": "新しいテンプレート",
+    "desktop.gtd.templateTitle": "テンプレート名",
+    "desktop.gtd.templateProject": "プロジェクト",
+    "desktop.gtd.emptyTemplates": "テンプレートなし",
+    "desktop.gtd.createTemplate": "テンプレートを作成",
+    "desktop.gtd.editTemplate": "テンプレートを編集",
+    "desktop.gtd.deleteTemplate": "テンプレートを削除",
+    "desktop.gtd.deleteTemplateConfirm": "テンプレート「{0}」を削除しますか？"
   },
   "zh-cn": {
     "desktop.workbench.lastExitWaiting": "上次退出时该会话在等待你的输入",
-    "desktop.workbench.openWorkItemWorkspace": "打开虚拟目录"
+    "desktop.workbench.openWorkItemWorkspace": "打开虚拟目录",
+    "desktop.gtd.templates": "模板",
+    "desktop.gtd.newTemplate": "新建模板",
+    "desktop.gtd.templateTitle": "模板名称",
+    "desktop.gtd.templateProject": "项目",
+    "desktop.gtd.emptyTemplates": "暂无模板",
+    "desktop.gtd.createTemplate": "创建模板",
+    "desktop.gtd.editTemplate": "编辑模板",
+    "desktop.gtd.deleteTemplate": "删除模板",
+    "desktop.gtd.deleteTemplateConfirm": "删除模板「{0}」？"
   }
 }

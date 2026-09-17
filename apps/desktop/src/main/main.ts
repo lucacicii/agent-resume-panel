@@ -207,6 +207,7 @@ import {
   notesPasteImage,
   notesRead,
   notesRename,
+  notesRenameWorkItem,
   notesResolveLinkRoot,
   notesReveal,
   notesSetGtdStatus,
@@ -214,6 +215,13 @@ import {
   notesWrite,
   settingsOpenPanelHome
 } from "./notesService";
+import { showDirectoryPicker } from "./directoryPicker";
+import {
+  createTaskTemplate,
+  deleteTaskTemplate,
+  listTaskTemplates,
+  updateTaskTemplate
+} from "./taskTemplates";
 import { refreshMemorySchedulerFromSettings, stopMemoryScheduler } from "./scheduler";
 import {
   ensureAgentStatusDaemon,
@@ -585,6 +593,13 @@ function normalizeSettingsPane(value: unknown): SettingsPaneId {
   return typeof value === "string" && (SETTINGS_PANES as readonly string[]).includes(value)
     ? (value as SettingsPaneId)
     : "general";
+}
+
+/** Keep only non-empty strings from an IPC list payload. */
+function stringList(value: unknown): string[] | undefined {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+    : undefined;
 }
 
 function broadcastToRenderers(channel: string, ...args: unknown[]): void {
@@ -1627,16 +1642,7 @@ function registerIpc(): void {
 
   ipcMain.handle(
     "dialog:pickDirectory",
-    async (_event, args?: { title?: string }) => {
-      const result = await dialog.showOpenDialog({
-        properties: ["openDirectory", "createDirectory"],
-        title: args?.title?.trim() || "Select folder"
-      });
-      if (result.canceled || !result.filePaths[0]) {
-        return { ok: false as const, canceled: true as const };
-      }
-      return { ok: true as const, path: result.filePaths[0] };
-    }
+    async (_event, args?: { title?: string }) => showDirectoryPicker({ title: args?.title })
   );
 
   safeHandle(
@@ -2643,6 +2649,35 @@ function registerIpc(): void {
 
   ipcMain.handle("notes:list", async () => notesList());
   ipcMain.handle("notes:listWorkItems", async () => notesListWorkItems());
+  ipcMain.handle("taskTemplates:list", async () => listTaskTemplates());
+  ipcMain.handle("taskTemplates:create", async (_event, args: { title?: unknown; projectPaths?: unknown }) => {
+    if (typeof args?.title !== "string" || !args.title.trim()) {
+      throw new Error("A template name is required.");
+    }
+    return createTaskTemplate({
+      title: args.title,
+      projectPaths: stringList(args?.projectPaths)
+    });
+  });
+  ipcMain.handle("taskTemplates:update", async (_event, args: { templateId?: unknown; title?: unknown; projectPaths?: unknown }) => {
+    if (typeof args?.templateId !== "string" || !args.templateId.trim()) {
+      throw new Error("A task template id is required.");
+    }
+    if (typeof args?.title !== "string" || !args.title.trim()) {
+      throw new Error("A template name is required.");
+    }
+    return updateTaskTemplate({
+      templateId: args.templateId,
+      title: args.title,
+      projectPaths: stringList(args?.projectPaths)
+    });
+  });
+  ipcMain.handle("taskTemplates:delete", async (_event, args: { templateId?: unknown }) => {
+    if (typeof args?.templateId !== "string" || !args.templateId.trim()) {
+      throw new Error("A task template id is required.");
+    }
+    return deleteTaskTemplate(args.templateId);
+  });
   ipcMain.handle("notes:removeWorkItemProject", async (_event, args: { noteId?: unknown; projectPath?: unknown }) => {
     if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
       throw new Error("A work item note id is required.");
@@ -2693,18 +2728,15 @@ function registerIpc(): void {
       projectPath: typeof args.projectPath === "string" ? args.projectPath : undefined
     });
   });
-  ipcMain.handle("notes:createWorkItem", async (_event, args: { title?: unknown; next?: unknown; decision?: unknown; sessions?: unknown; projects?: unknown; primaryProject?: unknown }) => {
-    const stringList = (value: unknown): string[] | undefined =>
-      Array.isArray(value)
-        ? value.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
-        : undefined;
+  ipcMain.handle("notes:createWorkItem", async (_event, args: { title?: unknown; next?: unknown; decision?: unknown; sessions?: unknown; projects?: unknown; primaryProject?: unknown; status?: unknown }) => {
     return notesCreateWorkItem({
       title: typeof args?.title === "string" ? args.title : undefined,
       next: typeof args?.next === "string" ? args.next : undefined,
       decision: typeof args?.decision === "string" ? args.decision : undefined,
       sessions: stringList(args?.sessions),
       projects: stringList(args?.projects),
-      primaryProject: typeof args?.primaryProject === "string" ? args.primaryProject : undefined
+      primaryProject: typeof args?.primaryProject === "string" ? args.primaryProject : undefined,
+      status: typeof args?.status === "string" && isGtdStatus(args.status) ? args.status : undefined
     });
   });
   ipcMain.handle("notes:listRoot", async () => notesListRootNotes());
@@ -2879,6 +2911,17 @@ function registerIpc(): void {
     scheduleNotesIndex();
     return result;
   });
+  ipcMain.handle("notes:renameWorkItem", async (_event, args: { noteId?: unknown; title?: unknown }) => {
+    if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
+      throw new Error("A work item note id is required.");
+    }
+    if (typeof args?.title !== "string" || !args.title.trim()) {
+      throw new Error("A task name is required.");
+    }
+    const result = await notesRenameWorkItem(args.noteId, args.title);
+    scheduleNotesIndex();
+    return result;
+  });
   ipcMain.handle("notes:import", async (_event, owner: import("@agent-resume/core").NoteOwner) => {
     const result = await notesImport(owner);
     scheduleNotesIndex();
@@ -2914,14 +2957,11 @@ function registerIpc(): void {
   ipcMain.handle(
     "projects:addProject",
     async (_event, args: { title?: string }) => {
-      const result = await dialog.showOpenDialog({
-        properties: ["openDirectory", "createDirectory"],
-        title: args.title || "Select project folder"
-      });
-      if (result.canceled || !result.filePaths[0]) {
+      const result = await showDirectoryPicker({ title: args.title || "Select project folder" });
+      if (!result.ok) {
         return { ok: false as const, canceled: true as const };
       }
-      const absolutePath = result.filePaths[0];
+      const absolutePath = result.path;
       const stat = await fs.stat(absolutePath).catch(() => null);
       if (!stat?.isDirectory()) {
         throw new Error("Selected folder is not a valid directory.");
@@ -2963,14 +3003,11 @@ function registerIpc(): void {
   ipcMain.handle(
     "projects:pickLocalPath",
     async (_event, args: { projectId: string; title?: string }) => {
-      const result = await dialog.showOpenDialog({
-        properties: ["openDirectory", "createDirectory"],
-        title: args.title || "Select local project folder"
-      });
-      if (result.canceled || !result.filePaths[0]) {
+      const result = await showDirectoryPicker({ title: args.title || "Select local project folder" });
+      if (!result.ok) {
         return { ok: false as const, canceled: true as const };
       }
-      const absolutePath = result.filePaths[0];
+      const absolutePath = result.path;
       const paths = await loadPanelDbPaths();
       await setProjectLocalPath(paths.catalogDb, args.projectId, absolutePath);
       const resolved = await resolveProjectCwd(paths.catalogDb, args.projectId);

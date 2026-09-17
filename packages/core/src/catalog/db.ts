@@ -17,7 +17,8 @@ import {
   IM_WORK_ITEM_MIGRATION_SQL,
   IM_KNOWLEDGE_SOURCE_MIGRATION_SQL,
   IM_TOOLS_MIGRATION_SQL,
-  SYNC_STATE_DESKTOP_MIGRATION_SQL
+  SYNC_STATE_DESKTOP_MIGRATION_SQL,
+  TASK_TEMPLATE_PROJECT_PATHS_MIGRATION_SQL
 } from "./desktopSchema";
 import { EXTENSION_MIGRATION_SQL, EXTENSION_SCHEMA_SQL } from "./extensionSchema";
 import { ensureProjectsCatalogSchema } from "./projects";
@@ -129,6 +130,7 @@ export async function ensureDesktopDbSchema(desktopDb: string): Promise<void> {
     await runIdempotentStatements(target, IM_MESSAGE_ACP_SYNC_MIGRATION_SQL);
     await runIdempotentStatements(target, IM_WORK_ITEM_MIGRATION_SQL);
     await runIdempotentStatements(target, IM_KNOWLEDGE_SOURCE_MIGRATION_SQL);
+    await runIdempotentStatements(target, TASK_TEMPLATE_PROJECT_PATHS_MIGRATION_SQL);
     verifiedDesktopDbPaths.add(target);
   })().finally(() => {
     desktopDbInFlight.delete(target);

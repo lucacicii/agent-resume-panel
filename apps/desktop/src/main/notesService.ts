@@ -11,6 +11,7 @@ import {
   noteAssetsDirName,
   NotesStore,
   notesRoot,
+  normalizeWorkItemDocument,
   parseNoteDocument,
   type AgentProvider,
   type GtdStatus,
@@ -186,12 +187,32 @@ export async function notesCreateWorkItem(args: {
   sessions?: string[];
   projects?: string[];
   primaryProject?: string;
+  status?: GtdStatus;
 }): Promise<NoteRecord> {
   const store = await getDesktopNotesStore();
   const record = await store.createWorkItem(args);
-  await store.setNoteGtdStatus(record.noteId, "inbox");
+  await store.setNoteGtdStatus(record.noteId, args.status ?? "inbox");
   await refreshWorkItemWorkspace(record.noteId);
   return record;
+}
+
+/**
+ * Rename a work item. The name is the note's front-matter `title` (and heading),
+ * so it is rewritten as a document rather than a filename change.
+ */
+export async function notesRenameWorkItem(noteId: string, title: string): Promise<NoteRecord> {
+  const name = title.trim();
+  if (!name) throw new Error("A task name is required.");
+  const store = await getDesktopNotesStore();
+  const content = await store.readNoteContent(noteId);
+  const doc = parseNoteDocument(content);
+  if (!doc.frontmatter.work) {
+    throw new Error("Note is not a work item.");
+  }
+  const normalized = normalizeWorkItemDocument(doc.frontmatter, doc.body, { name });
+  const updated = await store.writeNoteContent(noteId, buildNoteDocument(normalized.frontmatter, normalized.body));
+  await refreshWorkItemWorkspace(noteId);
+  return updated;
 }
 
 /**

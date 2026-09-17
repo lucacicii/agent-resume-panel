@@ -16267,7 +16267,7 @@ html[data-window-mode="browser"] #react-chrome {
 .react-gtd-panel:not([hidden]) {
   display: flex;
   flex: 1 1 auto;
-  flex-direction: column;
+  flex-direction: row;
   overflow: hidden;
   min-height: 0;
 }
@@ -16281,6 +16281,158 @@ html[data-window-mode="browser"] #react-chrome {
   padding: 12px 16px 16px;
   overflow-x: auto;
   overflow-y: hidden;
+}
+
+/* ===== GTD task templates (far-left library) ===== */
+.gtd-template-panel {
+  flex: 0 0 220px;
+  width: 220px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--color-separator);
+}
+
+.gtd-template-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 12px 12px 8px;
+}
+
+.gtd-template-head-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: var(--font-size-caption, 11px);
+  font-weight: var(--font-weight-semibold, 600);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.gtd-template-add {
+  appearance: none;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.gtd-template-add:hover {
+  background: var(--color-fill-secondary);
+  color: var(--text);
+}
+
+.gtd-template-add:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+
+.gtd-template-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 10px 12px;
+}
+
+.gtd-template-empty {
+  margin: 12px 0;
+  color: var(--muted);
+  font-size: var(--font-size-caption, 12px);
+  text-align: center;
+}
+
+.gtd-template-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  cursor: grab;
+  transition: border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
+}
+
+.gtd-template-item:hover {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--color-separator));
+}
+
+.gtd-template-item:active {
+  cursor: grabbing;
+}
+
+.gtd-template-item:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.gtd-template-grip {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--color-label-tertiary, var(--muted));
+}
+
+.gtd-template-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.gtd-template-title {
+  overflow: hidden;
+  color: var(--text);
+  font-size: var(--font-size-body, 13px);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gtd-template-project {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  color: var(--color-label-tertiary, var(--muted));
+  font-size: var(--font-size-caption, 11px);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gtd-card-main-renaming {
+  cursor: text;
+}
+
+.gtd-card-rename {
+  width: 100%;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid var(--color-focus-ring);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--font-size-body, 13px);
+}
+
+.gtd-card-rename:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
 }
 
 .gtd-column {

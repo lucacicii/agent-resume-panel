@@ -75,6 +75,15 @@ import type {
   BrowserSessionState
 } from "../shared/browserTypes";
 
+/** Reusable GTD task template stored in `desktop.db`. */
+export type TaskTemplate = {
+  templateId: string;
+  title: string;
+  projectPaths: string[];
+  createdAtMs: number;
+  updatedAtMs: number;
+};
+
 export interface DesktopApi {
   getPanelHome(): Promise<string>;
   getSettings(): Promise<PanelSettings>;
@@ -1209,6 +1218,8 @@ export interface DesktopApi {
     sessions?: string[];
     projects?: string[];
     primaryProject?: string;
+    /** Initial GTD column; defaults to `inbox` when omitted. */
+    status?: GtdStatus;
   }): Promise<{
     noteId: string;
     scope: string;
@@ -1221,6 +1232,16 @@ export interface DesktopApi {
     gtdStatus?: GtdStatus;
     work?: { next?: string; decision?: string; sessions?: string[]; projects?: string[]; primaryProject?: string };
   }>;
+  /** Rename a work item's name (front-matter title + heading). */
+  notesRenameWorkItem(args: { noteId: string; title: string }): Promise<{
+    noteId: string;
+    title?: string;
+    updatedAtMs: number;
+  }>;
+  taskTemplatesList(): Promise<Array<TaskTemplate>>;
+  taskTemplatesCreate(args: { title: string; projectPaths?: string[] }): Promise<TaskTemplate>;
+  taskTemplatesUpdate(args: { templateId: string; title: string; projectPaths?: string[] }): Promise<TaskTemplate>;
+  taskTemplatesDelete(args: { templateId: string }): Promise<{ ok: boolean }>;
   notesLinkSessionToWorkItem(args: { noteId: string; sessionKey: string; projectPath?: string }): Promise<{ noteId: string }>;
   notesListWorkItemSessionLinks(): Promise<Array<{ noteId: string; title?: string; provider: string; sessionId: string }>>;
   /** Allocate/refresh a work item's neutral workspace; returns its directory. */
@@ -1847,6 +1868,10 @@ const api: DesktopApi = {
   logsOpenDir: () => ipcRenderer.invoke("logs:openDir"),
   notesList: () => ipcRenderer.invoke("notes:list"),
   notesListWorkItems: () => ipcRenderer.invoke("notes:listWorkItems"),
+  taskTemplatesList: () => ipcRenderer.invoke("taskTemplates:list"),
+  taskTemplatesCreate: (args) => ipcRenderer.invoke("taskTemplates:create", args),
+  taskTemplatesUpdate: (args) => ipcRenderer.invoke("taskTemplates:update", args),
+  taskTemplatesDelete: (args) => ipcRenderer.invoke("taskTemplates:delete", args),
   notesCreateWorkItem: (args) => ipcRenderer.invoke("notes:createWorkItem", args),
   notesLinkSessionToWorkItem: (args) => ipcRenderer.invoke("notes:linkSessionToWorkItem", args),
   notesListWorkItemSessionLinks: () => ipcRenderer.invoke("notes:listWorkItemSessionLinks"),
@@ -1872,6 +1897,7 @@ const api: DesktopApi = {
   notesMove: (args) => ipcRenderer.invoke("notes:move", args),
   notesDelete: (args) => ipcRenderer.invoke("notes:delete", args),
   notesRename: (args) => ipcRenderer.invoke("notes:rename", args),
+  notesRenameWorkItem: (args) => ipcRenderer.invoke("notes:renameWorkItem", args),
   notesImport: (owner) => ipcRenderer.invoke("notes:import", owner),
   notesClipboardHasImage: () => !clipboard.readImage().isEmpty(),
   clipboardWriteText: (text) => {
