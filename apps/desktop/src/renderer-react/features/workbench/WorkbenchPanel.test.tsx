@@ -1955,6 +1955,73 @@ describe("WorkbenchPanel", () => {
     expect(xtermMocks.instances).toHaveLength(2);
   });
 
+  it("keeps a task's session terminal alive while another task is open", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const workbenchesByTask: Record<string, {
+      workbenchId: string;
+      taskNoteId: string;
+      name: string;
+      projectPath: string | null;
+      position: number;
+      layoutJson: string | null;
+      createdAtMs: number;
+      updatedAtMs: number;
+    }[]> = {
+      "task-a": [{ workbenchId: "wb-a", taskNoteId: "task-a", name: "", projectPath: "/work/app", position: 0, layoutJson: null, createdAtMs: 1, updatedAtMs: 1 }],
+      "task-b": [{ workbenchId: "wb-b", taskNoteId: "task-b", name: "", projectPath: "/work/docs", position: 0, layoutJson: null, createdAtMs: 1, updatedAtMs: 1 }]
+    };
+    const terminalSpawn = vi.fn(async () => ({ id: 31 }));
+    const terminalAttach = vi.fn(async () => ({ ok: true, replay: "task-switch-replay" }));
+    const terminalDetach = vi.fn(async () => ({ ok: true }));
+    const terminalDestroy = vi.fn(async () => ({ ok: true }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.closeTerminal": "Close terminal"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      ensureTaskWorkbench: async () => ({}),
+      listTaskWorkbenches: async ({ taskNoteId }: { taskNoteId: string }) => workbenchesByTask[taskNoteId] ?? [],
+      listSessions: async () => [
+        { provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 },
+        { provider: "codex", id: "session-3", title: "Write docs", projectPath: "/work/docs", updatedAt: 3 }
+      ],
+      workbenchOpenSession: async ({ id }: { id: string }) => ({ mode: "xterm", command: `codex resume ${id}`, cwd: id === "session-3" ? "/work/docs" : "/work/app" }),
+      terminalSpawn,
+      terminalAttach,
+      terminalDetach,
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy,
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await activateWorkItemDirectory("/work/app", { noteId: "task-a" });
+    await waitFor(() => expect(document.querySelector(".wb-workbench-tab.active")).toBeTruthy());
+    fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
+    await waitFor(() => expect(terminalSpawn).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(xtermMocks.instances).toHaveLength(1));
+
+    await activateWorkItemDirectory("/work/docs", { noteId: "task-b" });
+    await waitFor(() => expect(terminalDetach).toHaveBeenCalledWith({ id: 31 }));
+    expect(terminalDestroy).not.toHaveBeenCalled();
+
+    await activateWorkItemDirectory("/work/app", { noteId: "task-a" });
+    await waitFor(() => expect(terminalAttach).toHaveBeenCalledWith({ id: 31 }));
+    expect(terminalSpawn).toHaveBeenCalledTimes(1);
+    expect(terminalDestroy).not.toHaveBeenCalled();
+    expect(document.querySelector(".wb-terminal-tab-close")).toBeTruthy();
+  });
+
   it("destroys the PTY only when the terminal tab is closed", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
@@ -4783,7 +4850,7 @@ describe("WorkbenchPanel", () => {
       filePath: "/work/app/src/main.ts"
     }));
     await waitFor(() => expect(document.querySelectorAll('[data-pane-group="code"] .wb-terminal-tab.is-editor')).toHaveLength(1));
-    await activateWorkItemDirectory("/work/app");
+    await activateWorkItemDirectory("/work/app", { projects: ["/work/app", "/work/other"] });
     fireEvent.click(screen.getByRole("button", { name: "Explorer", pressed: false }));
     await waitFor(() => expect(document.querySelector(
       '[data-wb-entry-path="/work/app/src/main.ts"]'
@@ -6041,7 +6108,7 @@ describe("WorkbenchPanel", () => {
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-    await activateWorkItemDirectory("/work/app");
+    await activateWorkItemDirectory("/work/app", { projects: ["/work/app", "/work/other"] });
     await act(async () => openCommands());
 
     let input = await waitFor(() => document.querySelector(".quick-access-input") as HTMLInputElement);
@@ -8248,7 +8315,11 @@ describe("WorkbenchPanel", () => {
       onTerminalRespawned: () => () => undefined,
       listProjectAliases: async () => ({}),
       getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
-      listSessions: async () => [],
+      listSessions: async () => [
+        { provider: "codex", id: "s1", title: "App", projectPath: "/work/app", updatedAt: 3 },
+        { provider: "claude", id: "s2", title: "Api", projectPath: "/work/api", updatedAt: 2 },
+        { provider: "codex", id: "s3", title: "Other", projectPath: "/work/other", updatedAt: 1 }
+      ],
       notesListWorkItems: async () => [],
       workbenchListFiles,
       workbenchSearchText,
@@ -8276,6 +8347,16 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(workbenchListFiles).toHaveBeenCalledWith({ rootPaths: ["/work/app", "/work/api"] }));
     expect(await within(dialog).findByText("app.ts")).toBeTruthy();
     expect(within(dialog).getByText("api.ts")).toBeTruthy();
+
+    // The scope picker only offers the work item's associated local projects.
+    const qaInput = dialog.querySelector<HTMLInputElement>(".quick-access-input")!;
+    qaInput.setSelectionRange(0, 0);
+    fireEvent.keyDown(qaInput, { key: "ArrowLeft" });
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(2));
+    const pickerText = screen.getAllByRole("option").map((node) => node.textContent || "").join("\n");
+    expect(pickerText).toContain("/work/app");
+    expect(pickerText).toContain("/work/api");
+    expect(pickerText).not.toContain("/work/other");
     fireEvent.click(document.querySelector(".quick-access-backdrop")!);
 
     // Global search hits both projects and opens with the owning root.

@@ -720,8 +720,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   const activeWorkbenchIdRef = useRef<string | null>(null);
   /** A workbench explicitly requested by a deep-link (GTD chip), honored over the stored one. */
   const pendingWorkbenchIdRef = useRef<string | null>(null);
-  /** Workbenches of the currently loaded task, so leaving it can reclaim their panes. */
-  const loadedTaskWorkbenchesRef = useRef<{ taskNoteId: string; workbenchIds: string[] }>({ taskNoteId: "", workbenchIds: [] });
   const draggedSessionRef = useRef<AgentSession | null>(null);
   const gitRefreshTimers = useRef(new Map<string, number>());
   const gitLogRequestRef = useRef(0);
@@ -3310,12 +3308,8 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   useEffect(() => {
     const taskNoteId = workItemScope?.noteId;
-    // Leaving a task discards its workbenches' panes: unreachable afterwards.
-    const previous = loadedTaskWorkbenchesRef.current;
-    if (previous.taskNoteId && previous.taskNoteId !== taskNoteId) {
-      for (const workbenchId of previous.workbenchIds) discardWorkbenchPanes(workbenchId);
-      loadedTaskWorkbenchesRef.current = { taskNoteId: "", workbenchIds: [] };
-    }
+    // Leaving a task keeps its panes alive but hidden: they re-attach when the
+    // task is opened again, the same way project-scoped panes survive switches.
     if (!active || !taskNoteId) {
       setWorkbenches([]);
       workbenchesRef.current = [];
@@ -3327,7 +3321,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       if (cancelled) return;
       setWorkbenches(list);
       workbenchesRef.current = list;
-      loadedTaskWorkbenchesRef.current = { taskNoteId, workbenchIds: list.map((item) => item.workbenchId) };
       const stored = readActiveWorkbenchId(taskNoteId);
       const requested = pendingWorkbenchIdRef.current;
       pendingWorkbenchIdRef.current = null;
@@ -3923,6 +3916,8 @@ export function WorkbenchPanel(): ReactPortal | null {
         try {
           await desktopApi().notesDelete({ noteId: menu.noteId });
           if (workItemScopeRef.current?.noteId === menu.noteId) {
+            // The task's workbenches are gone for good: close their panes.
+            for (const workbench of workbenchesRef.current) discardWorkbenchPanes(workbench.workbenchId);
             workItemScopeRef.current = null;
             setWorkItemScope(null);
             setSessionTarget(null);
