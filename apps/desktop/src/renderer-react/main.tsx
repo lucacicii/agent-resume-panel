@@ -12,7 +12,6 @@ import { BrowserStandaloneWindow } from "./features/browser/BrowserStandaloneWin
 import { WorkbenchPanel } from "./features/workbench/WorkbenchPanel";
 import { taskFromRecord } from "./features/workbench/task";
 import { GtdView } from "./features/gtd/GtdView";
-import { DiffWorkerPool } from "./features/workbench/diffWorkerPool";
 import { settingsChangedToCustomEvents } from "./settingsBroadcast";
 import { updateConfig } from "./components/notificationStore";
 import type { PanelSettings } from "@agent-resume/core";
@@ -262,9 +261,7 @@ function TaskRendererRuntime(): React.JSX.Element {
 
   return (
     <>
-      <DiffWorkerPool>
-        <WorkbenchPanel />
-      </DiffWorkerPool>
+      <WorkbenchPanel />
       <SelectionSendHost />
       <Notifications />
     </>

@@ -104,7 +104,9 @@ vi.mock("@pierre/diffs/react", () => ({
   CodeView: forwardRef((_: { options?: Record<string, unknown> }, ref) => {
     useImperativeHandle(ref, () => ({ scrollTo: vi.fn() }));
     return <div data-testid="workbench-code-view" />;
-  })
+  }),
+  // The diff pane mounts the pool provider; the mock only has to pass through.
+  WorkerPoolContextProvider: ({ children }: { children?: React.ReactNode }) => <>{children}</>
 }));
 
 vi.mock("@xterm/xterm", () => ({ Terminal: class {
