@@ -10,6 +10,16 @@ const copyScript = path.join(root, "scripts", "copy-renderer.cjs");
 const reactBuildScript = path.join(root, "scripts", "build-renderer-react.mjs");
 
 let debounceTimer = null;
+/**
+ * A build takes ~600ms and blocks this process, so events that arrive meanwhile
+ * queue up behind it. Coalescing turns a burst (a branch switch touches every
+ * file) into one build instead of one build per event, which is what made
+ * packaging look like a loop while the watchers were running.
+ */
+const REACT_BUILD_DEBOUNCE_MS = 250;
+let reactBuildTimer = null;
+let reactBuildRunning = false;
+let reactBuildPending = false;
 
 function runCopy() {
   console.log("[watch-renderer] syncing renderer → dist/renderer");
@@ -20,16 +30,35 @@ function runCopy() {
   }
 }
 
-function runReactBuild() {
-  console.log("[watch-renderer] building React renderer runtime");
+function buildReactOnce() {
+  if (reactBuildRunning) {
+    reactBuildPending = true;
+    return;
+  }
+  reactBuildRunning = true;
   try {
+    console.log("[watch-renderer] building React renderer runtime");
     execFileSync(process.execPath, [reactBuildScript], { cwd: root, stdio: "inherit" });
   } catch (error) {
     console.error("[watch-renderer] React renderer build failed (keeping watch alive):", error.message);
     if (error && typeof error === "object" && "stderr" in error && Buffer.isBuffer(error.stderr)) {
       console.error(error.stderr.toString());
     }
+  } finally {
+    reactBuildRunning = false;
   }
+  if (reactBuildPending) {
+    reactBuildPending = false;
+    scheduleReactBuild();
+  }
+}
+
+function scheduleReactBuild() {
+  if (reactBuildTimer) clearTimeout(reactBuildTimer);
+  reactBuildTimer = setTimeout(() => {
+    reactBuildTimer = null;
+    buildReactOnce();
+  }, REACT_BUILD_DEBOUNCE_MS);
 }
 
 function scheduleCopy() {
@@ -56,7 +85,7 @@ fs.watch(rendererSrc, { recursive: true }, () => {
 });
 
 fs.watch(reactRendererSrc, { recursive: true }, () => {
-  runReactBuild();
+  scheduleReactBuild();
 });
 
 console.log(`[watch-renderer] watching ${rendererSrc} and ${reactRendererSrc}`);

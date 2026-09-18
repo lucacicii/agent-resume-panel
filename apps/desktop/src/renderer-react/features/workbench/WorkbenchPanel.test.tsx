@@ -9265,9 +9265,9 @@ describe("WorkbenchPanel", () => {
 
       // The window has no app header, so the workbench carries its own chrome.
       const strip = await waitFor(() => {
-        const found = document.querySelector(".wb-window-header");
+        const found = document.querySelector<HTMLElement>(".wb-window-header");
         expect(found).toBeTruthy();
-        return found;
+        return found as HTMLElement;
       });
       expect(strip.querySelector(".wb-detail-tools")).toBeTruthy();
       // There is no board to go back to.
