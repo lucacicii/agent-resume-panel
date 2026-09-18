@@ -5737,9 +5737,12 @@ export function WorkbenchPanel(): ReactPortal | null {
   if (!host) return null;
 
   const headerSlot = document.getElementById("app-header-slot");
+  // A workbench window has no app header to portal into, so it renders the same
+  // header itself, where the window's own chrome strip is.
+  const inlineHeader = document.documentElement.dataset.windowMode === "task";
   const detailHeader = (
     <WorkbenchDetailHeader
-      onBackToGtd={() => window.dispatchEvent(new CustomEvent("agent-resume:view-gtd"))}
+      onBackToGtd={inlineHeader ? undefined : () => window.dispatchEvent(new CustomEvent("agent-resume:view-gtd"))}
       selectedProject={sideRoot}
       projectLabel={sideRoot ? aliases[sideRoot] || basename(sideRoot) : ""}
       emptyLabel={taskScope ? t("desktop.workbench.taskNoProject") : undefined}
@@ -5753,6 +5756,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   );
 
   return createPortal(<><section className="panel workbench-panel react-workbench-panel" hidden={!active}>
+    {inlineHeader && active ? <div className="wb-window-header">{detailHeader}</div> : null}
     <div className="workbench-layout" style={{ "--wb-list-width": `${listWidth}px`, "--wb-side-panel-width": `${sideWidth}px` } as CSSProperties}>
       <aside className="wb-list-pane">
         {taskScope && (
@@ -5974,7 +5978,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       </aside>
       <ResizeHandle label={t("desktop.workbench.resizeSessions")} onDelta={(delta) => setWidth("list", delta)} />
       <main className="wb-detail">
-        {active && headerSlot ? createPortal(detailHeader, headerSlot) : null}
+        {active && headerSlot && !inlineHeader ? createPortal(detailHeader, headerSlot) : null}
         {taskScope && workbenches.length > 0 ? (
           <div className="wb-workbench-bar" role="tablist" aria-label={t("desktop.workbench.workbenchTabs")}>
             {workbenches.map((workbench) => {

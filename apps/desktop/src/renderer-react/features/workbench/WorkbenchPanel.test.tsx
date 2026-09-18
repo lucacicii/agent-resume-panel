@@ -9233,4 +9233,49 @@ describe("WorkbenchPanel", () => {
       document.documentElement.dataset.windowMode = "main";
     }
   });
+
+  it("renders the detail header inside a workbench window", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.workbench.allSessions": "All sessions",
+        "desktop.workbench.sidePanelExplorer": "Explorer",
+        "desktop.workbench.sidePanelGit": "Git",
+        "desktop.workbench.newSession": "New session"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      notesListTasks: async () => [],
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] })
+    } as unknown as typeof window.agentResume;
+
+    document.documentElement.dataset.windowMode = "task";
+    try {
+      render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+      await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+
+      // The window has no app header, so the workbench carries its own chrome.
+      const strip = await waitFor(() => {
+        const found = document.querySelector(".wb-window-header");
+        expect(found).toBeTruthy();
+        return found;
+      });
+      expect(strip.querySelector(".wb-detail-tools")).toBeTruthy();
+      // There is no board to go back to.
+      expect(strip.querySelector(".wb-back-to-gtd")).toBeNull();
+      // And it is not also portaled into an app header slot.
+      expect(document.querySelector(".mac-top .wb-detail-head")).toBeNull();
+    } finally {
+      document.documentElement.dataset.windowMode = "main";
+    }
+  });
 });

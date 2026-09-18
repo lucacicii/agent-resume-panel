@@ -627,21 +627,34 @@ html[data-window-mode="task"] body > main {
   padding: 0;
 }
 
-html[data-window-mode="task"] .workbench-layout {
-  padding-top: 30px;
-}
-
-html[data-window-mode="task"] body > main::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 30px;
+/* The workbench's own chrome strip: it clears the traffic lights on the left and
+   drags the window, and the detail header (project, branch, side panels) renders
+   into it instead of the board window's app header. */
+html[data-window-mode="task"] .wb-window-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 6px 12px 6px 78px;
+  border-bottom: 1px solid var(--color-separator);
+  background: var(--color-window-bg);
   -webkit-app-region: drag;
 }
 
-html[data-window-mode="task"] #react-chrome {
+html[data-window-mode="task"] .wb-window-header button {
+  -webkit-app-region: no-drag;
+}
+
+html[data-window-mode="task"] .wb-window-header .wb-detail-head {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+}
+
+html[data-window-mode="task"] #react-chrome:empty {
   display: none;
 }
 
