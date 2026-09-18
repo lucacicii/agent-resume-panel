@@ -150,6 +150,7 @@ import { registerWorkbenchScriptsIpc } from "./workbenchScripts";
 import {
   closeAllTaskWindows,
   focusTaskWindow,
+  focusedOrRecentTaskWindow,
   isTaskWindowSender,
   listTaskWindows,
   openTaskWindow,
@@ -547,10 +548,27 @@ let browserSettingsCache: import("@agent-resume/core").DesktopBrowserSettings | 
 let notifiedWaitingSessions = new Set<string>();
 
 function flushPendingTrayFocus(): void {
-  if (!pendingTrayFocus || !mainWindow || mainWindow.isDestroyed() || !mainWindowRendererReady) return;
-  const payload = pendingTrayFocus;
+  revealSessionOwner();
+}
+
+/**
+ * Bring the window that owns a session to the front and hand it the focus
+ * request. The board window hosts no workbench, so a session can only be
+ * focused in the workbench window that reported it.
+ */
+function revealSessionOwner(): void {
+  const pending = pendingTrayFocus;
+  if (!pending) return;
+  const owner = windowForPaneKey(pending.paneKey) ?? focusedOrRecentTaskWindow();
+  if (!owner || owner.isDestroyed()) {
+    revealMainWindow();
+    return;
+  }
   pendingTrayFocus = null;
-  mainWindow.webContents.send("workbench:focusSession", payload);
+  if (owner.isMinimized()) owner.restore();
+  owner.show();
+  owner.focus();
+  owner.webContents.send("workbench:focusSession", pending);
 }
 
 function showMainWindowIfReady(): void {
@@ -588,7 +606,13 @@ let sessionSyncInFlight: Promise<AgentSessionSyncResult> | null = null;
  * own ⌘W / file-watch semantics.
  */
 const workbenchActiveSenders = new Set<number>();
-let workbenchActiveSessions: ReturnType<typeof parseWorkbenchActiveSessionDots> = [];
+/**
+ * Session dots per reporting window. Each workbench window publishes the panes
+ * it is showing, so the tray and the notifications describe the whole app
+ * instead of one window.
+ */
+const workbenchActiveSessionsBySender = new Map<number, WorkbenchActiveSessionDot[]>();
+let workbenchActiveSessions: WorkbenchActiveSessionDot[] = [];
 const SESSION_SYNC_INTERVAL_MS = 60_000;
 
 const SETTINGS_PANES = [
@@ -645,6 +669,28 @@ function pruneWorkbenchActiveSenders(): void {
   for (const id of [...workbenchActiveSenders]) {
     if (!alive.has(id)) workbenchActiveSenders.delete(id);
   }
+  for (const id of [...workbenchActiveSessionsBySender.keys()]) {
+    if (!alive.has(id)) workbenchActiveSessionsBySender.delete(id);
+  }
+}
+
+/** Every window's dots, merged by session key (else pane key). */
+function mergedWorkbenchActiveSessions(): WorkbenchActiveSessionDot[] {
+  const byKey = new Map<string, WorkbenchActiveSessionDot>();
+  for (const dots of workbenchActiveSessionsBySender.values()) {
+    for (const dot of dots) byKey.set(dot.sessionKey || dot.paneKey, dot);
+  }
+  return [...byKey.values()];
+}
+
+/** The window that reported a pane, so session events reach the right place. */
+function windowForPaneKey(paneKey: string): BrowserWindow | null {
+  for (const [senderId, dots] of workbenchActiveSessionsBySender) {
+    if (!dots.some((dot) => dot.paneKey === paneKey)) continue;
+    const win = BrowserWindow.getAllWindows().find((candidate) => candidate.webContents.id === senderId);
+    if (win && !win.isDestroyed()) return win;
+  }
+  return null;
 }
 
 function syncSessionDotsTray(): void {
@@ -682,9 +728,7 @@ function syncSessionDotsTray(): void {
         paneKey: target.paneKey,
         projectPath: target.projectPath || undefined
       };
-      const window = revealMainWindow();
-      if (!window || window.isDestroyed()) return;
-      if (mainWindowRendererReady) flushPendingTrayFocus();
+      revealSessionOwner();
     });
   } else {
     sessionDotsTray.setImage(image);
@@ -724,9 +768,7 @@ async function showSessionWaitingNotifications(sessions: readonly WorkbenchActiv
           paneKey: session.paneKey,
           projectPath: projectPath || undefined
         };
-        const window = revealMainWindow();
-        if (!window || window.isDestroyed()) return;
-        if (mainWindowRendererReady) flushPendingTrayFocus();
+        revealSessionOwner();
       });
       notification.show();
     } catch (error) {
@@ -1471,7 +1513,6 @@ function createWindow(): void {
     mainWindowReadyToShow = true;
     showMainWindowIfReady();
   });
-  registerWorkbenchShortcuts(mainWindow);
   mainWindow.loadFile(path.join(__dirname, "..", "renderer", "index.html"));
   mainWindow.webContents.once("did-finish-load", () => resumeSessionSync());
   mainWindow.on("show", () => {
@@ -1580,7 +1621,8 @@ async function installApplicationMenu(): Promise<void> {
 
 /**
  * Dependencies for workbench windows. Preload and renderer paths mirror the main
- * window's so every window loads the same bridge and bundle.
+ * keep the workbench window's ⌘T / ⌘⇧F / ⌘P / ⌘W: those act on the workbench
+ * that window hosts.
  */
 function taskWindowDeps(): TaskWindowDeps {
   const icon = loadAppIcon();
@@ -1588,6 +1630,7 @@ function taskWindowDeps(): TaskWindowDeps {
     preloadPath: path.join(__dirname, "..", "preload", "preload.js"),
     rendererIndex: path.join(__dirname, "..", "renderer", "index.html"),
     ...(icon ? { icon } : {}),
+    onCreated: (win) => registerWorkbenchShortcuts(win),
     onChange: (windows) => {
       pruneWorkbenchActiveSenders();
       broadcastToRenderers("task-window:changed", windows);
@@ -1610,8 +1653,10 @@ function registerIpc(): void {
   });
 
   ipcMain.on("workbench:activeSessions", (event, payload: unknown) => {
-    if (event.sender !== mainWindow?.webContents) return;
-    workbenchActiveSessions = parseWorkbenchActiveSessionDots(payload);
+    const dots = parseWorkbenchActiveSessionDots(payload);
+    if (dots.length) workbenchActiveSessionsBySender.set(event.sender.id, dots);
+    else workbenchActiveSessionsBySender.delete(event.sender.id);
+    workbenchActiveSessions = mergedWorkbenchActiveSessions();
     const newlyWaiting = collectNewConfirmedWaitingSessions(workbenchActiveSessions, notifiedWaitingSessions);
     syncSessionDotsTray();
     broadcastToRenderers("workbench:activeSessions", workbenchActiveSessions);
@@ -2952,11 +2997,14 @@ function registerIpc(): void {
               mode: result.mode,
               initialPrompt: args.initialPrompt?.trim() || undefined
             };
-            // Resuming a session must land in exactly one window. Until the
-            // pane registry can route it to the owning workbench, keep it on the
-            // window that owns the resume entry points.
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.webContents.send("workbench:resumeFromAgent", payload);
+            // Resuming a session opens a pane, so it belongs in a workbench
+            // window: the board window has none.
+            const target = focusedOrRecentTaskWindow();
+            if (target && !target.isDestroyed()) {
+              if (target.isMinimized()) target.restore();
+              target.show();
+              target.focus();
+              target.webContents.send("workbench:resumeFromAgent", payload);
             }
           }
           return {

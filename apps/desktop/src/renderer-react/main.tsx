@@ -160,52 +160,18 @@ function MainDesktopRuntime(): React.JSX.Element {
   );
 }
 
+/**
+ * The board window.
+ *
+ * It is deliberately the cheap surface: the board plus the settings overlay,
+ * and no workbench. Workbenches own the panes and the ptys, so they live in
+ * their own windows and the board opens and focuses those instead.
+ */
 function MainRendererRuntime(): React.JSX.Element {
-  const { ready } = useI18n();
-  const [view, setView] = useState<"gtd" | "workbench">("gtd");
-
-  useEffect(() => {
-    const onGtd = () => setView("gtd");
-    const onOpenTask = (event: Event) => {
-      const detail = (event as CustomEvent<Record<string, unknown>>).detail;
-      setView("workbench");
-      if (detail && typeof detail.noteId === "string") {
-        window.dispatchEvent(new CustomEvent("agent-resume:workbench-task", { detail }));
-      }
-    };
-    const onTabRequest = (event: Event) => {
-      const next = (event as CustomEvent<string>).detail;
-      if (next === "workbench") setView("workbench");
-      else if (next === "gtd") setView("gtd");
-    };
-    window.addEventListener("agent-resume:view-gtd", onGtd);
-    window.addEventListener("agent-resume:view-open-task", onOpenTask);
-    window.addEventListener("agent-resume:tab-request", onTabRequest);
-    const stopSessions = typeof window.agentResume.onOpenSessions === "function"
-      ? window.agentResume.onOpenSessions(() => setView("gtd"))
-      : () => undefined;
-    return () => {
-      window.removeEventListener("agent-resume:view-gtd", onGtd);
-      window.removeEventListener("agent-resume:view-open-task", onOpenTask);
-      window.removeEventListener("agent-resume:tab-request", onTabRequest);
-      stopSessions();
-    };
-  }, []);
-
-  // `tab-change` still tells the always-mounted Workbench whether it is the
-  // visible surface (it drives its own `active` state and reloads on show).
-  useEffect(() => {
-    if (!ready) return;
-    window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: view }));
-  }, [ready, view]);
-
   return (
     <>
       <AppChrome />
-      <DiffWorkerPool>
-        <WorkbenchPanel />
-      </DiffWorkerPool>
-      <GtdView active={view === "gtd"} />
+      <GtdView active />
       <SettingsPanel variant="embedded" />
       <SelectionSendHost />
       <Notifications />

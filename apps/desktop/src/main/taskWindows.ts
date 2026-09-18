@@ -34,6 +34,8 @@ export type TaskWindowDeps = {
   preloadPath: string;
   rendererIndex: string;
   icon?: NativeImage;
+  /** Called once per window so the host can install its keyboard shortcuts. */
+  onCreated: (win: BrowserWindow) => void;
   /** Called whenever the open-window set changes (create, close, rename). */
   onChange: (windows: TaskWindowSummary[]) => void;
 };
@@ -53,6 +55,8 @@ export type OpenTaskWindowResult =
 
 const taskWindows = new Map<string, TaskWindowState>();
 const boundsByWorkbenchId = new Map<string, Electron.Rectangle>();
+/** Most recently focused window, so session events have an obvious target. */
+let recentWorkbenchId: string | null = null;
 
 export function summarizeTaskWindows(): TaskWindowSummary[] {
   const out: TaskWindowSummary[] = [];
@@ -105,6 +109,21 @@ export function focusTaskWindow(workbenchId: string): boolean {
   return true;
 }
 
+/**
+ * The window a session-scoped event should land in: the focused workbench
+ * window, else the most recently focused one.
+ */
+export function focusedOrRecentTaskWindow(): BrowserWindow | null {
+  const focused = BrowserWindow.getFocusedWindow();
+  if (focused && isTaskWindowSender(focused.webContents)) return focused;
+  if (recentWorkbenchId) {
+    const recent = getTaskWindow(recentWorkbenchId);
+    if (recent) return recent;
+  }
+  const open = listTaskWindows();
+  return open.length ? open[open.length - 1]!.window : null;
+}
+
 export function openTaskWindow(deps: TaskWindowDeps, args: OpenTaskWindowArgs): OpenTaskWindowResult {
   const existing = getTaskWindow(args.workbenchId);
   if (existing) {
@@ -135,6 +154,7 @@ export function openTaskWindow(deps: TaskWindowDeps, args: OpenTaskWindowArgs): 
     }
   });
   if (process.platform !== "darwin") win.setMenuBarVisibility(false);
+  deps.onCreated(win);
 
   const state: TaskWindowState = {
     workbenchId: args.workbenchId,
@@ -149,9 +169,11 @@ export function openTaskWindow(deps: TaskWindowDeps, args: OpenTaskWindowArgs): 
   };
   win.on("resize", rememberBounds);
   win.on("move", rememberBounds);
+  win.on("focus", () => { recentWorkbenchId = args.workbenchId; });
   win.on("closed", () => {
     rememberBounds();
     if (taskWindows.get(args.workbenchId) === state) taskWindows.delete(args.workbenchId);
+    if (recentWorkbenchId === args.workbenchId) recentWorkbenchId = null;
     deps.onChange(summarizeTaskWindows());
   });
 

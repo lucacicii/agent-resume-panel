@@ -101,55 +101,40 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
     return () => window.removeEventListener("agent-resume:active-sessions", onActiveSessions);
   }, []);
 
-  const openTask = useCallback((item: GtdCard, workbenchId?: string, options?: { openNote?: boolean }) => {
-    window.dispatchEvent(new CustomEvent("agent-resume:view-open-task", {
-      detail: {
+  /**
+   * Open a task's workbench in its own window, focusing it when it is open.
+   *
+   * A workbench owns the panes and their ptys, so exactly one of them exists:
+   * the board opens and focuses windows instead of mounting a second copy.
+   */
+  const openTask = useCallback(async (item: GtdCard, workbenchId?: string): Promise<void> => {
+    try {
+      const workbenches = workbenchId ? [] : await ensureTaskWorkbenches(item.noteId);
+      const target = workbenchId ?? workbenches[0]?.workbenchId;
+      if (!target) throw new Error(text("desktop.gtd.windowNoWorkbench"));
+      const opened = await desktopApi().taskWindowOpen({
         noteId: item.noteId,
-        title: item.title,
-        status: item.status,
-        next: item.next,
-        decision: item.decision,
-        sessions: item.sessions,
-        projects: item.projects,
-        primaryProject: item.primaryProject,
-        // Entering a task lands on its sessions; only the explicit "open note"
-        // action asks for the note.
-        ...(options?.openNote ? { openNote: true } : {}),
-        ...(workbenchId ? { workbenchId } : {})
-      }
-    }));
+        workbenchId: target,
+        title: item.title
+      });
+      if (!opened.ok) notifyDesktop({ text: text("desktop.gtd.windowLimit", opened.limit), kind: "info" });
+    } catch (error) {
+      notifyDesktop({ text: errorMessage(error), kind: "error" });
+    }
+  }, [text]);
+
+  /** The task note is a note: it opens in its own floating window. */
+  const openTaskNote = useCallback(async (item: GtdCard): Promise<void> => {
+    try {
+      await desktopApi().standaloneNoteOpen({ noteId: item.noteId });
+    } catch (error) {
+      notifyDesktop({ text: errorMessage(error), kind: "error" });
+    }
   }, []);
 
   const openNewTask = useCallback(() => {
     setNewTask({ title: "", projectPath: "", busy: false, error: "" });
   }, []);
-
-  /**
-   * Open a task in its own window.
-   *
-   * The workbench is the heavy surface, so it gets a window of its own; the
-   * board window stays on the board instead of mounting a second copy.
-   */
-  const openTaskInWindow = useCallback(async (item: GtdCard) => {
-    try {
-      const workbenches = await ensureTaskWorkbenches(item.noteId);
-      const workbenchId = workbenches[0]?.workbenchId;
-      if (!workbenchId) throw new Error(text("desktop.gtd.windowNoWorkbench"));
-      const opened = await desktopApi().taskWindowOpen({
-        noteId: item.noteId,
-        workbenchId,
-        title: item.title
-      });
-      if (!opened.ok) {
-        notifyDesktop({ text: text("desktop.gtd.windowLimit", opened.limit), kind: "info" });
-        return;
-      }
-      // The window owns this task now; do not keep it scoped here.
-      window.dispatchEvent(new Event("agent-resume:workbench-task-clear"));
-    } catch (error) {
-      notifyDesktop({ text: errorMessage(error), kind: "error" });
-    }
-  }, [text]);
 
   const pickProject = useCallback(async () => {
     if (!newTask || newTask.busy) return;
@@ -184,7 +169,7 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
       await load();
       window.dispatchEvent(new Event("agent-resume:notes-mutated"));
       setNewTask(null);
-      openTask({ ...taskFromRecord(created), projects: created.work?.projects ?? [] });
+      void openTask({ ...taskFromRecord(created), projects: created.work?.projects ?? [] });
     } catch (error) {
       setNewTask((current) => current ? { ...current, busy: false, error: error instanceof Error ? error.message : String(error) } : current);
     } finally {
@@ -476,7 +461,7 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
                       data-gtd-note-id={item.noteId}
                       className="gtd-card-main"
                       title={item.title}
-                      onClick={() => openTask(item)}
+                      onClick={() => void openTask(item)}
                     >
                       <span className="gtd-card-title">{item.title}</span>
                       {item.next ? <span className="gtd-card-next">{item.next}</span> : null}
@@ -509,7 +494,7 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
                             type="button"
                             className="gtd-card-project"
                             title={workbench.projectPath || workbenchDisplayName(workbench)}
-                            onClick={() => openTask(item, workbench.workbenchId)}
+                            onClick={() => void openTask(item, workbench.workbenchId)}
                           >
                             {workbenchDisplayName(workbench)}
                           </button>
@@ -524,7 +509,7 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
                             type="button"
                             className="gtd-card-project"
                             title={projectPath}
-                            onClick={() => openTask(item)}
+                            onClick={() => void openTask(item)}
                           >
                             {projectPath.split(/[\\/]/).filter(Boolean).at(-1) || projectPath}
                           </button>
@@ -605,12 +590,12 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
         <button
           type="button"
           role="menuitem"
-          onClick={() => { const item = contextMenu.item; setContextMenu(null); openTask(item, undefined, { openNote: true }); }}
+          onClick={() => { const item = contextMenu.item; setContextMenu(null); void openTaskNote(item); }}
         >{text("desktop.workbench.taskOpenNote")}</button>
         <button
           type="button"
           role="menuitem"
-          onClick={() => { const item = contextMenu.item; setContextMenu(null); void openTaskInWindow(item); }}
+          onClick={() => { const item = contextMenu.item; setContextMenu(null); void openTask(item); }}
         >{text("desktop.gtd.openInWindow")}</button>
         {rollups[contextMenu.item.noteId]?.override ? (
           <button

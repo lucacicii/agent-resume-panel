@@ -2591,8 +2591,8 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
   }, [openNotePane]);
 
-  const closeActivePane = useCallback(() => {
-    if (!activePane) return;
+  const closeActivePane = useCallback((): boolean => {
+    if (!activePane) return false;
     if (activePane.startsWith("terminal:")) {
       closeTerminal(activePane);
     } else if (activePane.startsWith("acp:")) {
@@ -2606,6 +2606,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     } else {
       closeDiff(activePane);
     }
+    return true;
   }, [activePane, closeAcpChat, closeBrowser, closeDiff, closeEditor, closeNotePane, closeTerminal]);
 
   const openBlankTerminal = useCallback(async (targetProject?: string) => {
@@ -2878,7 +2879,10 @@ export function WorkbenchPanel(): ReactPortal | null {
   }, [active, activePane]);
 
   useEffect(() => desktopApi().onWorkbenchCmdW(() => {
-    if (active) closeActivePane();
+    if (!active) return;
+    if (closeActivePane()) return;
+    // A workbench window with no pane left to close is the window itself.
+    if (document.documentElement.dataset.windowMode === "task") void desktopApi().taskWindowClose();
   }), [active, closeActivePane]);
 
   /** ⌘⇧F / Ctrl+Shift+F — open Find in Files (Search side panel). */

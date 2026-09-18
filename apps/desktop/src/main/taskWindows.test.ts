@@ -113,10 +113,16 @@ import {
   taskWindowStateForSender
 } from "./taskWindows";
 
-function deps(): { preloadPath: string; rendererIndex: string; onChange: ReturnType<typeof vi.fn> } {
+function deps(): {
+  preloadPath: string;
+  rendererIndex: string;
+  onCreated: ReturnType<typeof vi.fn>;
+  onChange: ReturnType<typeof vi.fn>;
+} {
   return {
     preloadPath: "/tmp/preload.js",
     rendererIndex: "/tmp/renderer/index.html",
+    onCreated: vi.fn(),
     onChange: vi.fn()
   };
 }
@@ -136,12 +142,13 @@ describe("task workbench windows", () => {
   });
 
   it("loads the renderer in task mode for the requested workbench", () => {
-    const onChange = deps();
-    const result = openTaskWindow(onChange, { noteId: "note-1", workbenchId: "wb-1" });
+    const depsMock = deps();
+    const result = openTaskWindow(depsMock, { noteId: "note-1", workbenchId: "wb-1" });
 
     expect(result).toEqual({ ok: true, created: true });
     expect(windowAt(0).loadQuery).toEqual({ mode: "task", noteId: "note-1", workbenchId: "wb-1" });
-    expect(onChange.onChange).toHaveBeenCalledWith([
+    expect(depsMock.onCreated).toHaveBeenCalledTimes(1);
+    expect(depsMock.onChange).toHaveBeenCalledWith([
       { workbenchId: "wb-1", noteId: "note-1", title: "Workbench" }
     ]);
   });
