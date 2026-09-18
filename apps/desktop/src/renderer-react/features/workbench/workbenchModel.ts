@@ -88,6 +88,31 @@ export async function reorderTaskWorkbenches(taskNoteId: string, orderedIds: str
  */
 const ACTIVE_WORKBENCH_PREFIX = "workbench-active-v1:";
 
+/**
+ * The sessions a task owns, plus the ones this workbench has open.
+ *
+ * A session started inside a workbench belongs to it immediately, but the task
+ * note only learns about it on the next link/sync — and a workbench running in a
+ * task's neutral workspace has no project page to match the session against. The
+ * pane already knows the key, so the list can show it without waiting.
+ */
+export function mergeTaskSessionKeys(
+  taskKeys: readonly string[],
+  panes: ReadonlyArray<{ sessionKey?: string; workbenchId?: string }>,
+  workbenchId: string | null
+): string[] {
+  const merged = [...taskKeys];
+  const seen = new Set(merged);
+  for (const pane of panes) {
+    const key = pane.sessionKey;
+    if (!key || seen.has(key)) continue;
+    if ((pane.workbenchId ?? null) !== workbenchId) continue;
+    seen.add(key);
+    merged.push(key);
+  }
+  return merged;
+}
+
 export function readActiveWorkbenchId(taskNoteId: string): string | null {
   try {
     return localStorage.getItem(`${ACTIVE_WORKBENCH_PREFIX}${taskNoteId}`);

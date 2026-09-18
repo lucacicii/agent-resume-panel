@@ -117,7 +117,9 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
         workbenchId: target,
         title: item.title
       });
-      if (!opened.ok) notifyDesktop({ text: text("desktop.gtd.windowLimit", opened.limit), kind: "info" });
+      if (!opened.ok) {
+        notifyDesktop({ text: text("desktop.gtd.windowLimit", opened.limit), kind: "error", durationMs: 6000 });
+      }
     } catch (error) {
       notifyDesktop({ text: errorMessage(error), kind: "error" });
     }

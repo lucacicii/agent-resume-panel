@@ -121,6 +121,7 @@ import {
   createTaskWorkbench,
   deleteTaskWorkbench,
   ensureTaskWorkbenches,
+  mergeTaskSessionKeys,
   readActiveWorkbenchId,
   renameTaskWorkbench,
   setTaskWorkbenchLayout,
@@ -1733,8 +1734,8 @@ export function WorkbenchPanel(): ReactPortal | null {
   const scopeProjectsRef = useRef<string[]>(scopeProjects);
   useEffect(() => { scopeProjectsRef.current = scopeProjects; }, [scopeProjects]);
   const taskSessionKeys = useMemo(
-    () => liveTask?.sessions ?? taskScope?.sessions ?? [],
-    [liveTask, taskScope]
+    () => mergeTaskSessionKeys(liveTask?.sessions ?? taskScope?.sessions ?? [], terminals, activeWorkbenchId ?? null),
+    [liveTask, taskScope, terminals, activeWorkbenchId]
   );
   /**
    * Whether the task's session set is authoritative. A task that exists in
