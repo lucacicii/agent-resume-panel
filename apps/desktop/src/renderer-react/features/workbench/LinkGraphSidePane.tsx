@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ThemeIcon } from "../../components/ThemeIcon";
+import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { useI18n } from "../../i18n";
 import type {
   LinkGraphAnalyzeResult,
@@ -144,7 +144,7 @@ export function LinkGraphSidePane({
               aria-label={t("desktop.common.cancel")}
               title={t("desktop.common.cancel")}
             >
-              <ThemeIcon name="close" size={14} />
+              <ThemeIcon name="close" size={ICON_SIZE.default} />
             </button>
           ) : (
             <button
@@ -155,7 +155,7 @@ export function LinkGraphSidePane({
               aria-label={t("desktop.common.refresh")}
               title={t("desktop.common.refresh")}
             >
-              <ThemeIcon name="refresh" size={14} />
+              <ThemeIcon name="refresh" size={ICON_SIZE.default} />
             </button>
           )}
         </div>
@@ -178,7 +178,7 @@ export function LinkGraphSidePane({
           </select>
         </label>
         <p className={`wb-linkgraph-status${error ? " is-error" : ""}${busy ? " is-busy" : ""}`}>
-          {busy ? <ThemeIcon name="loader" className="spin" size={14} aria-hidden="true" /> : null}
+          {busy ? <ThemeIcon name="loader" className="spin" size={ICON_SIZE.dense} aria-hidden="true" /> : null}
           <span>{statusLabel}</span>
         </p>
 
@@ -190,7 +190,7 @@ export function LinkGraphSidePane({
               aria-expanded={timelineOpen}
               onClick={() => setTimelineOpen((v) => !v)}
             >
-              <ThemeIcon name="chevron-right" className={timelineOpen ? "is-expanded" : ""} size={12} />
+              <ThemeIcon name="chevron-right" className={timelineOpen ? "is-expanded" : ""} size={ICON_SIZE.inline} />
               <span className="wb-linkgraph-section-title">
                 {t("desktop.workbench.linkGraphTimeline")} · {timeline.length}
               </span>
@@ -204,7 +204,7 @@ export function LinkGraphSidePane({
                   >
                     <span className="wb-linkgraph-timeline-status" aria-hidden="true">
                       {item.status === "running" ? (
-                        <ThemeIcon name="loader" className="spin" size={12} />
+                        <ThemeIcon name="loader" className="spin" size={ICON_SIZE.inline} />
                       ) : item.status === "done" ? (
                         "✓"
                       ) : item.status === "failed" ? (
@@ -285,7 +285,7 @@ export function LinkGraphSidePane({
                 aria-expanded={chainOpen}
                 onClick={() => setChainOpen((v) => !v)}
               >
-                <ThemeIcon name="chevron-right" className={chainOpen ? "is-expanded" : ""} size={12} />
+                <ThemeIcon name="chevron-right" className={chainOpen ? "is-expanded" : ""} size={ICON_SIZE.inline} />
                 <span className="wb-linkgraph-group-title">{t("desktop.workbench.linkGraphPrimaryChain")}</span>
                 <span className="wb-linkgraph-group-meta muted">
                   {t("desktop.workbench.linkGraphStepCount", mainSteps.length)}
@@ -366,7 +366,7 @@ export function LinkGraphSidePane({
               aria-expanded={openEndsOpen}
               onClick={() => setOpenEndsOpen((v) => !v)}
             >
-              <ThemeIcon name="chevron-right" className={openEndsOpen ? "is-expanded" : ""} size={12} />
+              <ThemeIcon name="chevron-right" className={openEndsOpen ? "is-expanded" : ""} size={ICON_SIZE.inline} />
               <span className="wb-linkgraph-section-title">
                 {t("desktop.workbench.linkGraphOpenEnds")} · {openEnds.length}
               </span>

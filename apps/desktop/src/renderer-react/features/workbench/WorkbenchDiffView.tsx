@@ -1,7 +1,7 @@
 import { parseDiffFromFile, type CodeViewLineSelection, type SelectedLineRange } from "@pierre/diffs";
 import { CodeView, type CodeViewHandle, type CodeViewItem } from "@pierre/diffs/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ThemeIcon } from "../../components/ThemeIcon";
+import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { desktopApi } from "../../bridge";
 import { useI18n } from "../../i18n";
 import { useFileDiffParse } from "./useFileDiffParse";
@@ -355,7 +355,7 @@ export function WorkbenchDiffView({
         if (canUnstageLine) onUnstageLine?.(target);
         else onStageLine?.(target);
       }}
-    ><ThemeIcon name={canUnstageLine ? "arrow-down-to-line" : "arrow-up-to-line"} size={12} /></button> : null}
+    ><ThemeIcon name={canUnstageLine ? "arrow-down-to-line" : "arrow-up-to-line"} size={ICON_SIZE.inline} /></button> : null}
     {canDiscardLine ? <button
       ref={lineDiscardButtonRef}
       type="button"
@@ -372,7 +372,7 @@ export function WorkbenchDiffView({
         setLineActionButtonsHidden(true);
         onDiscardLine({ side: hovered.side, lineNumber: hovered.lineNumber });
       }}
-    ><ThemeIcon name="undo" size={12} /></button> : null}
+    ><ThemeIcon name="undo" size={ICON_SIZE.inline} /></button> : null}
   </span>) : undefined;
 
   return <div className="wb-diff-view" onCopy={() => {
@@ -385,13 +385,13 @@ export function WorkbenchDiffView({
         <button type="button" className={`wb-diff-mode-btn${viewMode === "unified" ? " active" : ""}`} aria-pressed={viewMode === "unified"} onClick={() => setViewMode("unified")}>{t("desktop.workbench.diffUnified")}</button>
       </div>
       {selectedHunk ? <span className="wb-diff-selection-status">{t("desktop.workbench.diffHunkSelected")}</span> : null}
-      {canStageHunk && selectedHunk ? <button type="button" className="wb-git-action-btn wb-diff-stage-btn" onClick={stageHunk} aria-label={t("desktop.workbench.gitStageHunk")} title={t("desktop.workbench.gitStageHunk")}><ThemeIcon name="arrow-up-to-line" size={14} />{t("desktop.workbench.gitStageHunk")}</button> : null}
-      {canUnstageHunk && selectedHunk ? <button type="button" className="wb-git-action-btn wb-diff-stage-btn" onClick={unstageHunk} aria-label={t("desktop.workbench.gitUnstageHunk")} title={t("desktop.workbench.gitUnstageHunk")}><ThemeIcon name="arrow-down-to-line" size={14} />{t("desktop.workbench.gitUnstageHunk")}</button> : null}
-      {canDiscardHunk && selectedHunk ? <button type="button" className="wb-git-action-btn wb-diff-discard-btn" onClick={discardHunk} aria-label={t("desktop.workbench.gitDiscardHunk")} title={t("desktop.workbench.gitDiscardHunk")}><ThemeIcon name="trash" size={14} />{t("desktop.workbench.gitDiscardHunk")}</button> : null}
-      <button type="button" className="wb-diff-find-open-btn" aria-label={t("desktop.common.search")} title={t("desktop.common.search")} onClick={() => openFind(false)}><ThemeIcon name="search" size={14} /></button>
+      {canStageHunk && selectedHunk ? <button type="button" className="wb-git-action-btn wb-diff-stage-btn" onClick={stageHunk} aria-label={t("desktop.workbench.gitStageHunk")} title={t("desktop.workbench.gitStageHunk")}><ThemeIcon name="arrow-up-to-line" size={ICON_SIZE.default} />{t("desktop.workbench.gitStageHunk")}</button> : null}
+      {canUnstageHunk && selectedHunk ? <button type="button" className="wb-git-action-btn wb-diff-stage-btn" onClick={unstageHunk} aria-label={t("desktop.workbench.gitUnstageHunk")} title={t("desktop.workbench.gitUnstageHunk")}><ThemeIcon name="arrow-down-to-line" size={ICON_SIZE.default} />{t("desktop.workbench.gitUnstageHunk")}</button> : null}
+      {canDiscardHunk && selectedHunk ? <button type="button" className="wb-git-action-btn wb-diff-discard-btn" onClick={discardHunk} aria-label={t("desktop.workbench.gitDiscardHunk")} title={t("desktop.workbench.gitDiscardHunk")}><ThemeIcon name="trash" size={ICON_SIZE.default} />{t("desktop.workbench.gitDiscardHunk")}</button> : null}
+      <button type="button" className="wb-diff-find-open-btn" aria-label={t("desktop.common.search")} title={t("desktop.common.search")} onClick={() => openFind(false)}><ThemeIcon name="search" size={ICON_SIZE.default} /></button>
     </div>
     {findOpen ? <div className="wb-diff-find-bar app-inline-search" role="search">
-      <ThemeIcon name="search" size={14} aria-hidden="true" />
+      <ThemeIcon name="search" size={ICON_SIZE.default} aria-hidden="true" />
       <input
         ref={findInputRef}
         className="wb-diff-find-input app-inline-search-input"
@@ -412,9 +412,9 @@ export function WorkbenchDiffView({
       <span className={`wb-diff-find-count app-inline-search-meta${findQuery.trim() && !matches.length ? " is-empty" : ""}`} aria-live="polite">
         {findQuery.trim() ? t("desktop.common.findCount", matches.length ? findIndex + 1 : 0, matches.length) : ""}
       </span>
-      <button type="button" className="wb-diff-find-btn app-inline-search-btn" aria-label={t("desktop.common.findPrev")} onClick={() => runFind("backward")}><ThemeIcon name="arrow-up" size={14} /></button>
-      <button type="button" className="wb-diff-find-btn app-inline-search-btn" aria-label={t("desktop.common.findNext")} onClick={() => runFind("forward")}><ThemeIcon name="arrow-down" size={14} /></button>
-      <button type="button" className="wb-diff-find-btn app-inline-search-btn" aria-label={t("desktop.common.closeFind")} onClick={closeFind}><ThemeIcon name="close" size={14} /></button>
+      <button type="button" className="wb-diff-find-btn app-inline-search-btn" aria-label={t("desktop.common.findPrev")} onClick={() => runFind("backward")}><ThemeIcon name="arrow-up" size={ICON_SIZE.dense} /></button>
+      <button type="button" className="wb-diff-find-btn app-inline-search-btn" aria-label={t("desktop.common.findNext")} onClick={() => runFind("forward")}><ThemeIcon name="arrow-down" size={ICON_SIZE.dense} /></button>
+      <button type="button" className="wb-diff-find-btn app-inline-search-btn" aria-label={t("desktop.common.closeFind")} onClick={closeFind}><ThemeIcon name="close" size={ICON_SIZE.dense} /></button>
     </div> : null}
     <div className="wb-diff-code-view">
       {pending ? <div className="wb-diff-loading" role="status"><span className="wb-diff-loading-spinner" aria-hidden="true" /></div> : <CodeView

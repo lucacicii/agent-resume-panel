@@ -71,19 +71,17 @@ export async function getAcpRecord(panelHome: string, id: string): Promise<AcpSe
 export async function createAcpRecord(
   panelHome: string,
   projectPath: string,
-  provider: AcpAgentProvider,
-  options?: { source?: string; title?: string }
+  provider: AcpAgentProvider
 ): Promise<AcpSessionRecord> {
   const now = Date.now();
   const record: AcpSessionRecord = {
     id: crypto.randomUUID(),
-    title: options?.title || "New ACP Chat",
+    title: "New ACP Chat",
     projectPath,
     provider,
     createdAt: now,
     updatedAt: now,
-    messageCount: 0,
-    ...(options?.source ? { source: options.source } : {})
+    messageCount: 0
   };
   await insertAcpSessionRecord(panelHome, record);
   await mirrorAcpRecordToCatalog(panelHome, record);

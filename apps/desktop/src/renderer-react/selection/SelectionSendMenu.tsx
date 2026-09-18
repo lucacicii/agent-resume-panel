@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ThemeIcon } from "../components/ThemeIcon";
+import { ICON_SIZE, ThemeIcon } from "../components/ThemeIcon";
 import { desktopApi } from "../bridge";
 import { notifyDesktop } from "../components/Notifications";
 import { useI18n } from "../i18n";
 import { SelectionActionItems } from "./SelectionActionItems";
 import { SelectionActionResult, useSelectionActionResult } from "./SelectionActionResult";
 import { WORKBENCH_NEW_SESSION_TARGET_OPTIONS } from "../features/settings/model";
+import { useActiveSessions } from "../features/workbench/useActiveSessions";
 import type {
   WorkbenchActiveSessionDot,
   WorkbenchSendSelectionRequest,
@@ -32,29 +33,6 @@ function submenuStyle(anchor: HTMLElement | null, x: number, y: number): { left:
     ? Math.max(8, Math.min(rect.top, window.innerHeight - height - 8))
     : Math.max(8, Math.min(y, window.innerHeight - height - 8));
   return { left, top };
-}
-
-function useActiveSessions(): WorkbenchActiveSessionDot[] {
-  const [sessions, setSessions] = useState<WorkbenchActiveSessionDot[]>([]);
-  useEffect(() => {
-    const api = desktopApi();
-    let cancelled = false;
-    if (typeof api.getWorkbenchActiveSessions === "function") {
-      void api.getWorkbenchActiveSessions().then((next) => {
-        if (!cancelled && Array.isArray(next)) setSessions(next);
-      }).catch(() => undefined);
-    }
-    const stop = typeof api.onWorkbenchActiveSessions === "function"
-      ? api.onWorkbenchActiveSessions((next) => {
-          if (Array.isArray(next)) setSessions(next);
-        })
-      : undefined;
-    return () => {
-      cancelled = true;
-      stop?.();
-    };
-  }, []);
-  return sessions;
 }
 
 export function SelectionSendItems({
@@ -141,7 +119,7 @@ export function SelectionSendItems({
         }}
       >
         <span>{t("desktop.notes.sendToAgent")}</span>
-        <ThemeIcon name="chevron-right" className="context-menu-chevron" size={14} aria-hidden="true" />
+        <ThemeIcon name="chevron-right" className="context-menu-chevron" size={ICON_SIZE.dense} aria-hidden="true" />
       </button>
       <button
         ref={sessionItemRef}
@@ -161,7 +139,7 @@ export function SelectionSendItems({
         }}
       >
         <span>{t("desktop.notes.sendToSession")}</span>
-        <ThemeIcon name="chevron-right" className="context-menu-chevron" size={14} aria-hidden="true" />
+        <ThemeIcon name="chevron-right" className="context-menu-chevron" size={ICON_SIZE.dense} aria-hidden="true" />
       </button>
       {agentFlyout ? (
         <div
@@ -236,6 +214,7 @@ export function SelectionSendMenu({
   const [menuOpen, setMenuOpen] = useState(true);
   const {
     selectionResult,
+    selectionResultClosing,
     runSelectionAction,
     copySelectionResult,
     clearSelectionResult
@@ -293,6 +272,7 @@ export function SelectionSendMenu({
       {selectionResult ? (
         <SelectionActionResult
           result={selectionResult}
+          closing={selectionResultClosing}
           onClose={closeAll}
           onCopy={copySelectionResult}
         />

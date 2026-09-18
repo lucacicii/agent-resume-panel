@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   composeTrayItems,
+  composeWorkbenchRows,
   hitTestTrayDot,
   hitTestTrayDotFromScreen,
   NOTE_COLOR_DARK,
@@ -12,27 +13,14 @@ import {
   trayIconSize,
   trayTooltip,
   TRAY_MAX_DOTS,
-  visibleTrayDots
+  type TrayWorkbench
 } from "./sessionDotsTray";
 
-const dots = [
-  { paneKey: "a", projectPath: "/p", title: "Alpha", status: "open" as const },
-  { paneKey: "b", projectPath: "/p", title: "Needs you", status: "awaiting_user" as const },
-  { paneKey: "c", projectPath: "/p", title: "Busy", status: "running" as const }
+const workbenches: TrayWorkbench[] = [
+  { workbenchId: "wb-a", noteId: "t-a", title: "Alpha", status: "open" },
+  { workbenchId: "wb-b", noteId: "t-b", title: "Needs you", status: "awaiting_user" },
+  { workbenchId: "wb-c", noteId: "t-c", title: "Busy", status: "running" }
 ];
-
-describe("visibleTrayDots", () => {
-  it("caps at TRAY_MAX_DOTS", () => {
-    const many = Array.from({ length: 12 }, (_, i) => ({
-      paneKey: `t:${i}`,
-      projectPath: "/p",
-      title: `S${i}`,
-      status: "open" as const
-    }));
-    expect(visibleTrayDots(many)).toHaveLength(TRAY_MAX_DOTS);
-    expect(visibleTrayDots(many)[0]?.paneKey).toBe("t:0");
-  });
-});
 
 describe("hitTestTrayDot", () => {
   it("picks the nearest dot center, including the gap between dots", () => {
@@ -68,29 +56,76 @@ describe("hitTestTrayDot", () => {
 });
 
 describe("composeTrayItems", () => {
-  it("puts notes first, then sessions, and caps the list", () => {
+  it("puts notes first, then workbenches, and caps the list", () => {
     const items = composeTrayItems(
       [{ noteId: "n1", title: "Scratch" }, { noteId: "n2", title: "Inbox" }],
-      dots
+      workbenches
     );
-    expect(items.map((item) => item.kind)).toEqual(["note", "note", "session", "session", "session"]);
+    expect(items.map((item) => item.kind)).toEqual(["note", "note", "workbench", "workbench", "workbench"]);
     expect(items[0]).toMatchObject({ kind: "note", noteId: "n1" });
+    expect(items[2]).toMatchObject({ kind: "workbench", workbenchId: "wb-a" });
     const overflow = composeTrayItems(
       Array.from({ length: 4 }, (_, i) => ({ noteId: `n${i}`, title: `N${i}` })),
-      Array.from({ length: 8 }, (_, i) => ({ paneKey: `t:${i}`, projectPath: "/p", title: `S${i}`, status: "open" as const }))
+      Array.from({ length: 8 }, (_, i) => ({
+        workbenchId: `wb-${i}`,
+        noteId: `t-${i}`,
+        title: `W${i}`,
+        status: "open" as const
+      }))
     );
     expect(overflow).toHaveLength(TRAY_MAX_DOTS);
     expect(overflow.filter((item) => item.kind === "note")).toHaveLength(4);
   });
 });
 
+describe("composeWorkbenchRows", () => {
+  const dots = [
+    { paneKey: "terminal:1", projectPath: "/p/api", title: "api agent", status: "awaiting_user" as const, workbenchId: "wb-1" },
+    { paneKey: "terminal:2", projectPath: "/p/web", title: "web agent", status: "running" as const, workbenchId: "wb-2" }
+  ];
+
+  it("gives a gray dot to an open workbench with no session", () => {
+    expect(composeWorkbenchRows([], [{ workbenchId: "wb-9", noteId: "t-9", title: "Empty task" }], new Map()))
+      .toEqual([{ workbenchId: "wb-9", noteId: "t-9", title: "Empty task", status: "open" }]);
+  });
+
+  it("rolls sessions up per workbench and lists open windows first", () => {
+    const rows = composeWorkbenchRows(
+      dots,
+      [{ workbenchId: "wb-1", noteId: "t-1", title: "Api task" }],
+      new Map([["wb-2", { noteId: "t-2", label: "Web" }]])
+    );
+    expect(rows).toEqual([
+      { workbenchId: "wb-1", noteId: "t-1", title: "Api task", status: "awaiting_user" },
+      { workbenchId: "wb-2", noteId: "t-2", title: "Web", status: "running" }
+    ]);
+  });
+
+  it("prefers a renamed workbench over the window title", () => {
+    const rows = composeWorkbenchRows(
+      [],
+      [{ workbenchId: "wb-1", noteId: "t-1", title: "Task title" }],
+      new Map([["wb-1", { noteId: "t-1", label: "Backend" }]])
+    );
+    expect(rows[0]?.title).toBe("Backend");
+  });
+
+  it("keeps unowned panes as their own rows", () => {
+    expect(composeWorkbenchRows(
+      [{ paneKey: "pane:7", projectPath: "/p/external", title: "", status: "running", workbenchId: "" }],
+      [],
+      new Map()
+    )).toEqual([{ workbenchId: "", noteId: "", title: "external", status: "running" }]);
+  });
+});
+
 describe("trayTooltip", () => {
-  it("lists titles with status and overflow", () => {
-    const many = [
-      ...dots,
+  it("lists workbench titles with status and overflow", () => {
+    const many: TrayWorkbench[] = [
+      ...workbenches,
       ...Array.from({ length: 8 }, (_, i) => ({
-        paneKey: `x:${i}`,
-        projectPath: "/p",
+        workbenchId: `x-${i}`,
+        noteId: `t-x-${i}`,
         title: `Extra ${i}`,
         status: "open" as const
       }))
@@ -107,14 +142,14 @@ describe("trayTooltip", () => {
     expect(trayTooltip([])).toBe("No open sessions");
   });
 
-  it("lists floating note titles without a session suffix", () => {
+  it("lists floating note titles without a workbench suffix", () => {
     expect(trayTooltip(composeTrayItems([{ noteId: "n1", title: "Scratch pad" }], []))).toBe("Scratch pad");
   });
 });
 
 describe("renderSessionDotsTrayPng", () => {
   it("writes a PNG whose size matches the visible layout at 2x", () => {
-    const png = renderSessionDotsTrayPng(composeTrayItems([], dots), { scale: 2, dark: true });
+    const png = renderSessionDotsTrayPng(composeTrayItems([], workbenches), { scale: 2, dark: true });
     expect(png.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))).toBe(true);
     const width = png.readUInt32BE(16);
     const height = png.readUInt32BE(20);
@@ -138,4 +173,3 @@ describe("tray color scheme", () => {
     expect(NOTE_COLOR_DARK).toEqual([255, 214, 10]);
   });
 });
-

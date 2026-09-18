@@ -1,7 +1,7 @@
 # macOS Desktop Design System
 
-> **Scope:** Electron desktop renderer only (`apps/desktop/src/renderer/`).  
-> **Authority:** This document is the single source of truth for visual design. All desktop UI work must conform to it.  
+> **Scope:** Electron desktop renderer only (`apps/desktop/src/renderer-react/` components + `apps/desktop/src/renderer/styles.css`).  
+> **Authority:** This document is the single source of truth for visual design. All desktop UI work must conform to it. Where it disagrees with a generic design skill (for example the `macos-design` skill's SF Symbols section), **this document wins** — the app standardizes on lucide, not SF Symbols.  
 > **Reference:** [Apple macOS Human Interface Guidelines](https://developer.apple.com/design/human-interface-guidelines/designing-for-macos)
 
 Agent execution rules live in [`ui-policy.md`](ui-policy.md). This file defines **what** the UI should look like and **how** to migrate [`styles.css`](../../apps/desktop/src/renderer/styles.css).
@@ -252,8 +252,19 @@ Allowed on: `.ops-menu`, `.sidebar-project-filter-thumb`, `.sheet-panel` (option
 | Segmented thumb slide | 220ms | `--ease-out` |
 | Sheet enter | 220ms | ease-out (translate X, no bounce) |
 | Progress bar width | 220ms | ease-out |
+| Popover / menu enter | 150ms | `--ease-out` |
+| Overlay backdrop fade | 220ms | `--ease-out` |
+| Centered dialog enter | 220ms | `--ease-out` (fade + scale, **no translation** — alert semantics) |
+| Window open / close | — | **none** — macOS document windows appear and disappear without a transition |
+| Overlay exit | 220ms (popovers and menus 150ms) | `--ease-out` (reverse of the entrance) |
 
 Always provide `@media (prefers-reduced-motion: reduce)` overrides (disable transforms/transitions). Reference: existing `.sidebar-project-filter-thumb` pattern.
+
+Overlay layers never appear or disappear instantly. On the way in, a backdrop fades with `backdrop-in` while its panel enters with `modal-in`, both at `--duration-normal`, so the layer reads as one motion. On the way out the pair reverses through `.is-closing`. Anchored popovers, menus, and context menus use `mac-popover-enter` / `popover-out` at `--duration-fast`. Reuse those shared keyframes — do not add per-component entrance or exit keyframes. Surface mapping and the `.is-closing` wiring: §4.21.
+
+**Window chrome is exempt.** Electron windows are not part of this layer hierarchy and macOS gives document windows no open or close animation, so `BrowserWindow` opacity/geometry is never animated. Native-feeling window appearance comes from `show: false` + `ready-to-show` (the window first appears fully painted) plus restored per-window bounds — not from a transition. See §5.1.
+
+**Alert semantics vs. sheet semantics.** Centered dialogs fade + scale with no displacement, matching `NSAlert`. Displacement — `translateX` for the right drawer, and a sheet would use `translateY` — signals that a surface is *attached* to an edge or an anchor. Do not mix the two: a centered dialog that slides reads as a sheet that lost its edge.
 
 ### 2.7 Z-Index Scale
 
@@ -379,7 +390,7 @@ No border in default state. `.ask-toolbar .ghost-btn.active` uses accent border 
 
 #### Icon button (`.icon-btn`, `.notes-icon-btn`, `.btn-icon-toggle`)
 
-- Size: 28×28px hit target; SVG: 16×16px, `display: block`, `fill: none`, `stroke: currentColor`, `stroke-width: 2`, round caps and joins.
+- Size: 28×28px hit target; SVG: `ICON_SIZE.default` (16×16), `display: block`, `fill: none`, `stroke: currentColor`, `stroke-width: 2`, round caps and joins. See §4.22 for the icon contract.
 - Default: border none; transparent background; primary label color; `display: grid` with `place-items: center`; `--radius-md` hover target.
 - Hover: a subtle `color-mix(in srgb, var(--text) 5%, transparent)` fill. Do not add a persistent track, outer border, or separator solely to contain icon buttons.
 - Destructive variant (`.notes-toolbar-delete`): hover uses `--color-destructive` at 14% fill.
@@ -416,8 +427,8 @@ Reference markup and CSS:
   display: grid; place-items: center; cursor: pointer;
 }
 .notes-segmented button svg {
-  display: block; width: 16px; height: 16px; fill: none;
-  stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+  display: block; fill: none;
+  stroke: currentColor; stroke-linecap: round; stroke-linejoin: round;
 }
 .notes-segmented button:hover { background: color-mix(in srgb, var(--text) 5%, transparent); }
 .notes-segmented button.active { color: var(--accent); }
@@ -460,10 +471,10 @@ Migrate `.notes-target-tabs` to use the thumb pattern if it does not already. Do
 | Property | Value |
 | --- | --- |
 | Width | `min(440px, 100%)` (wide variant: existing `.sheet-wide` rules) |
-| Backdrop | `rgba(0, 0, 0, 0.28)` |
+| Backdrop | `rgba(0, 0, 0, 0.28)`, fades in with `backdrop-in` |
 | Panel bg | `--color-control-bg` |
 | Left edge | `1px solid var(--color-separator)` |
-| Animation | translateX from off-screen, 220ms ease-out |
+| Animation | `sheet-in`, translateX 220ms `--ease-out` (no bounce) |
 | Head | Title 15px semibold; close/actions right-aligned |
 
 Used for: Sessions (`#sheetSessions`), GTD (`#sheetGtd`). Settings uses a full-panel swap (`#tab-settings`), not a sheet. **Do not** replace with centered dialogs.
@@ -628,6 +639,99 @@ Remove: `box-shadow` on bubbles, radial-gradient on `.chat-log`.
 - Markdown overlay: full-area over sheet body, z-index 60; backdrop click dismisses.
 - Prefer sheet context over new window.
 
+### 4.21 Dialog & Overlay Motion
+
+**Rule:** no dialog, sheet, popover, or menu appears or disappears without a transition. Classify the surface by how it is anchored, then reuse the matching shared keyframe pair.
+
+#### Entrance
+
+| Surface shape | Keyframe | Duration | Classes |
+| --- | --- | --- | --- |
+| Centered dialog panel | `modal-in` | `--duration-normal` | `.sheet-modal-panel`, `.artifact-modal-dialog`, `.wb-note-created-panel`, `.wb-git-log-dialog` |
+| Right sheet panel | `sheet-in` | `--duration-normal` | `.sheet-panel` |
+| Backdrop / full-area overlay | `backdrop-in` | `--duration-normal` | `.sheet-backdrop`, `.wb-note-created-backdrop`, `.artifact-modal-backdrop`, `.notes-image-preview`, `.settings-overlay`, `[data-streamdown="table-fullscreen"]` |
+| Anchored popover, menu, context menu | `mac-popover-enter` | `--duration-fast` | `.rail-account-menu`, `.wb-context-menu`, `.notes-context-menu`, `.chat-context-menu`, `.notification-popover`, `.chat-tools-popover`, `.wb-git-branch-popover`, `.selection-action-result` |
+| Command palette | `mac-spotlight-fade` + `mac-spotlight-enter` | `--duration-fast` | `.quick-access-overlay`, `.quick-access-panel` |
+
+Popovers scale out of the corner nearest their anchor, so the anchor must set `transform-origin`: `.notification-popover` is `top right` (opens below the bell, right-aligned to it) and `.rail-account-menu` is `bottom left` (opens right of the avatar and grows upward). A menu whose anchor flips at runtime — cursor-anchored context menus, `.wb-git-branch-popover` (right-anchored in the workbench, left-anchored in the Git graph) — still scales from its center and is a known gap. Do not guess a corner for a flipping anchor; give it a `data-anchor` attribute from the positioning code, or leave the origin centred.
+
+#### Exit
+
+Overlays render as `{state ? <Overlay/> : null}`, so clearing the state unmounts them on the same frame and an exit animation could never run. `useOverlayState` / `useOverlayPresence` (`renderer-react/components/useOverlayMotion.ts`) keep the overlay mounted for `OVERLAY_EXIT_MS` (240ms) and report `closing`, which the caller applies as `.is-closing`.
+
+| Surface shape | Keyframe | Duration | Applied to |
+| --- | --- | --- | --- |
+| Centered dialog panel | `modal-out` | `--duration-normal` | `.wb-note-created-panel`, `.artifact-modal-dialog`, `.sheet-modal-panel`, `.wb-git-log-dialog` |
+| Right sheet drawer | `sheet-out` | `--duration-normal` | `.sheet-panel` |
+| Backdrop / full-area overlay | `backdrop-out` | `--duration-normal` | `.wb-note-created-backdrop`, `.sheet-backdrop`, `.artifact-modal-backdrop`, `.notes-image-preview`, `.settings-overlay`, `.quick-access-overlay` |
+| Anchored popover, menu, context menu | `popover-out` | `--duration-fast` | `.rail-account-menu`, `.wb-context-menu`, `.notes-context-menu`, `.chat-context-menu`, `.notification-popover`, `.chat-tools-popover`, `.wb-git-branch-popover`, `.selection-action-result` |
+| Command palette | `backdrop-out` on the layer, `modal-out` on the panel | `--duration-normal` / `--duration-fast` | `.quick-access-overlay`, `.quick-access-panel` |
+
+**Wiring a new overlay:**
+
+```tsx
+// Boolean-driven (an `open` prop or a plain flag).
+const presence = useOverlayPresence(open);
+if (!presence.mounted) return null;
+return <div className={`my-overlay${presence.closing ? " is-closing" : ""}`}>…</div>;
+
+// Nullable-data-driven: drop-in replacement for useState.
+const [dialog, setDialog, dialogClosing] = useOverlayState<DialogState>();
+return dialog
+  ? <div className={`my-overlay${dialogClosing ? " is-closing" : ""}`}>…{dialog.title}…</div>
+  : null;
+```
+
+- `useOverlayState` keeps the last value during the exit, so the JSX keeps rendering what it rendered before. Keep the state nullable and let the hook clear it — clearing it from a plain `useState` unmounts the overlay before the exit runs.
+- `useOverlayPresence` derives the flipping render itself, so a parent must gate its portal on `presence.mounted` rather than on the raw `open` flag. Gating on `open` unmounts the child before its own exit can run, and the exit hook's first render after the flip must not be skipped — a mount/unmount/remount inside one commit shows a flash, not a transition.
+- Do **not** use `useOverlayState` for data that is reset for a loading state while the overlay stays open; that reset would be deferred and stale content would linger. Use a dedicated `useOverlayPresence` flag instead.
+- A caller that toggles a surface from its own trigger must ignore the closing window (for example `.wb-new-session-picker`) so a second click reopens instead of being swallowed.
+- **Do not position panels with `transform`.** The shared keyframes own `transform`, so a centering `translate(-50%, -50%)` would be overwritten. Center with `inset: 0; margin: auto; width: fit-content; height: fit-content` instead.
+- Backdrop and panel must both animate at the same duration. A dialog that fades its backdrop but pops its panel — or the reverse — is a defect.
+- Every `.is-closing` rule sets `pointer-events: none` so a dismissing overlay cannot swallow clicks.
+- Reduced motion is inherited from §2.6 (`--duration-fast` / `--duration-normal` become `0ms`). Do not hard-code durations; a literal such as `0.2s` bypasses the reduced-motion override.
+- Known gap: `[data-streamdown="table-fullscreen"]` is created and removed by the `streamdown` library, which owns that node's lifecycle, so it has entrance motion only. Matching exit motion requires a library-side hook.
+
+**Shared dialog shell:** `.wb-note-created-overlay` / `.wb-note-created-backdrop` / `.wb-note-created-panel` is the reusable centered-dialog shell (rename project, rename note, merge/split project, move session to task, GTD new task, GTD new/edit template). New confirm and prompt dialogs reuse it instead of introducing another overlay class.
+
+### 4.22 Iconography
+
+**Single entry point:** `apps/desktop/src/renderer-react/components/ThemeIcon.tsx`
+
+Every icon in the desktop renderer goes through `<ThemeIcon name="…" />`. Business views never import an icon library and never hand-roll an icon SVG.
+
+| Rule | Value |
+| --- | --- |
+| Library | `lucide-react`, imported **only** by `ThemeIcon.tsx` |
+| Grid | 24×24 viewBox |
+| Stroke | `stroke-width: 2`, round caps and joins (the component's defaults) |
+| Color | `currentColor`; the only sanctioned exception is the file-type accent table in `WorkbenchFileExplorer.tsx` |
+| Accessibility | Decorative by default (`aria-hidden="true"` from `ThemeIcon`); icon-only buttons still need a localized `aria-label` + `title` (§6) |
+
+**Semantic names only.** Names are kebab-case ids resolved through the `ICONS` registry, so an unknown name is a compile-time error. Add a new icon to the registry instead of importing it at the call site.
+
+**Size ladder** — `ICON_SIZE` in `ThemeIcon.tsx` is the only place a pixel value is written:
+
+| Token | px | Use |
+| --- | --- | --- |
+| `ICON_SIZE.inline` | 12 | In-text hints, badges, metadata, graph nodes, tiny glyphs |
+| `ICON_SIZE.dense` | 13 | Trees, list rows, tabs, dense toolbars |
+| `ICON_SIZE.default` | 16 | Toolbar buttons, icon buttons (28×28 hit target), top bar, secondary panes |
+| `ICON_SIZE.prominent` | 20 | Empty states, heroes, settings headers |
+
+Omit `size` to get `default`. Do not pass raw numbers — `size` is typed to the four tokens and `themeIconContract.test.ts` rejects literals.
+
+**Sizing lives in the component, not the stylesheet.** `styles.css` must not declare `width`, `height`, or `stroke-width` on an icon `svg` selector, and must not reference lucide directly. CSS keeps layout and transform only (for example `.wb-file-tree-chevron.is-expanded svg { transform: rotate(90deg) }`).
+
+**Not icons — do not convert to `ThemeIcon`:**
+
+- Data visualisation and diagrams: `.wb-git-log-graph-row-canvas`, `.notes-link-dendrogram-svg`, `.artifact-svg-canvas`, `.wb-terminal-tui-drop-shape`
+- User or generated SVG content: artifact preview, markdown code blocks
+- Library-owned chrome: `[data-streamdown="table-wrapper"] button svg`
+- Brand marks: `ProviderIcon`, whose raster logos sit on the same `ICON_SIZE` ladder
+
+**Enforcement:** `src/renderer-react/components/themeIconContract.test.ts` statically asserts the library boundary, the absence of per-call `strokeWidth`, token-only sizing, and the CSS rule above. Run `pnpm --filter @agent-resume/desktop run test:renderer` after touching icons.
+
 ---
 
 ## 5. Layout & Window
@@ -642,6 +746,27 @@ Defined in [`main.ts`](../../apps/desktop/src/main/main.ts) — **do not change*
 | Minimum size | 860 × 600 |
 | Title bar (darwin) | `hiddenInset` |
 | Traffic lights | `{ x: 14, y: 14 }` |
+
+#### Window Transitions
+
+**Windows do not get open or close animations.** macOS gives document and utility windows no appearance transition — they appear already painted and disappear instantly — so `BrowserWindow` opacity and geometry are never animated. This is a deliberate constraint, not an omission:
+
+| Window | Query `mode` | Appearance | Rationale |
+| --- | --- | --- | --- |
+| Board | `main` | `show: false` → `ready-to-show` **and** renderer `main:rendererReady` → `show()`, then `StartupMask` cross-fades its contents | The mask tracks real work (initial session sync), so its fade reports progress instead of decorating the window |
+| Workbench | `task` | `show: false` → `ready-to-show` → `show()` | First frame is fully painted, so there is nothing to hide with a fade |
+| Standalone note | `standalone-note` | same | same |
+| Browser | `browser` | same | same |
+
+Native-feeling window appearance comes from three things that are already implemented — preserve them rather than adding motion:
+
+1. **Paint before reveal.** Every window is created with `show: false` and shown on `ready-to-show`, so the user never sees an unpainted or white window.
+2. **Restored bounds.** Workbench, browser, and standalone-note windows remember and restore their frame (`boundsByWorkbenchId`, `boundsByBrowserId`, `positionStandaloneNoteWindow`), so a window reappears where the user left it.
+3. **Correct focus.** The new window takes focus on show.
+
+**Do not animate window opacity.** `win.setOpacity()` would fade the whole `NSWindow` including the traffic lights and shadow, which reads as a Spotlight-style utility panel — wrong for a document window. In particular do not "fix" a browser-window flicker with CSS: the page is a native `WebContentsView` attached via `win.contentView.addChildView(view)` with bounds in *window* coordinates (`browser/controller.ts`), so a CSS fade on the renderer would fade only the chrome and leave the page fully opaque, and a CSS `transform` on the window root would misalign the view. A browser session can also be hosted in a `task` window (`surface: "workbench"`), so the same applies there.
+
+**Every window must set `backgroundColor: windowBackgroundColor()`.** Electron's default is `#FFF`, and a window composites its own background during the frames between its webContents being torn down and the native window being destroyed — an unset background shows a white flash on close. [`windowAppearance.ts`](../../apps/desktop/src/main/windowAppearance.ts) is the single source of truth (it mirrors `--color-window-bg` and is re-applied on system appearance change), so a new `new BrowserWindow(...)` call site passes it rather than a literal.
 
 ### 5.2 Information Architecture
 
@@ -809,7 +934,8 @@ Run after **each** migration phase:
 | Dark appearance | System dark mode |
 | Chrome | Drag title bar; click tabs; traffic lights visible |
 | Keyboard | Tab through new/changed controls; focus ring visible |
-| Reduced motion | Enable macOS Reduce motion; segmented thumb and sheet animations disabled |
+| Reduced motion | Enable macOS Reduce motion; segmented thumb, sheet, and dialog animations disabled |
+| Overlay motion | Every dialog, backdrop, sheet, and popover enters and exits per §4.21; no surface pops in or snaps out |
 
 ---
 
@@ -820,6 +946,7 @@ Quick reference for refactor scope (non-exhaustive; see `styles.css` for full li
 | Panel | Key selectors |
 | --- | --- |
 | Global | `.top`, `.mac-top`, `.tab`, `.panel`, `.toolbar`, `.sheet*`, `.muted`, `.status` |
+| Overlays | `.sheet-*`, `.wb-note-created-*`, `.artifact-modal-*`, `.settings-overlay`, `.quick-access-*`, `.notes-image-preview`, `.wb-git-log-dialog`, `[data-streamdown="table-fullscreen"]`, `useOverlayMotion.ts` |
 | Memory | `.memory-*`, `.cal-*`, `.digest-*`, `.gen-progress*` |
 | Ask | `.ask-*`, `.chat-*`, `.sidebar-folders-*` |
 | Notes | `.notes-*`, `.sidebar-project-*`, `.pane-resizer` |

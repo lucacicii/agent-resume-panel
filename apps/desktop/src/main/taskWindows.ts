@@ -1,4 +1,5 @@
 import { BrowserWindow, screen, type NativeImage } from "electron";
+import { windowBackgroundColor } from "./windowAppearance";
 
 /**
  * Task workbench windows.
@@ -158,6 +159,9 @@ export function openTaskWindow(deps: TaskWindowDeps, args: OpenTaskWindowArgs): 
     ...MIN_SIZE,
     title,
     show: false,
+    // Electron's default background is white, and a window composites it while its
+    // webContents is torn down — leaving it unset flashes white on close.
+    backgroundColor: windowBackgroundColor(),
     ...(deps.icon ? { icon: deps.icon } : {}),
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     trafficLightPosition: process.platform === "darwin" ? { x: 14, y: 14 } : undefined,

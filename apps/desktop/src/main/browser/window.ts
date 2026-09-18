@@ -1,5 +1,6 @@
 import { BrowserWindow, type BrowserWindowConstructorOptions } from "electron";
 import * as path from "node:path";
+import { windowBackgroundColor } from "../windowAppearance";
 import type { BrowserSessionId } from "./types";
 
 type BrowserWindowEntry = {
@@ -55,6 +56,9 @@ export function getOrCreateBrowserWindow(args: {
     minHeight: 480,
     title: args.title || "Browser",
     show: false,
+    // Electron's default background is white, and a window composites it while its
+    // webContents is torn down — leaving it unset flashes white on close.
+    backgroundColor: windowBackgroundColor(),
     ...(args.icon ? { icon: args.icon } : {}),
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     trafficLightPosition: process.platform === "darwin" ? { x: 14, y: 14 } : undefined,

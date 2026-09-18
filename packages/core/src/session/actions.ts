@@ -1,7 +1,6 @@
 import { deleteAcpSessionRecord } from "../acp/store";
 import { deleteAcpSessionFromCatalog } from "../catalog/acpCatalog";
 import { hideSessionsInCatalog, setSessionSummaryInCatalog, setUserTitleInCatalog } from "../catalog/mutations";
-import { hideProjectInCatalog } from "../catalog/projects";
 import { getSessionById } from "../catalog/query";
 import { ensureExtensionCatalogSchema } from "../catalog/db";
 import { AgentProvider, AgentSession } from "../catalog/types";
@@ -274,18 +273,4 @@ export async function hideSessionAction(opts: SessionActionOptions): Promise<voi
     throw new Error(`Session not found: ${opts.provider} ${opts.id}`);
   }
   await hideSessionsInCatalog(dbPath, [session]);
-}
-
-export async function hideProjectAction(opts: {
-  projectId?: string;
-  projectPath?: string;
-}): Promise<{ projectId: string; hiddenSessions: number }> {
-  const settings = await loadSettings();
-  const dbPath = catalogDbFromSettings(settings);
-  await ensureExtensionCatalogSchema(dbPath);
-  const key = opts.projectId?.trim() || opts.projectPath?.trim();
-  if (!key) {
-    throw new Error("projectId or projectPath is required.");
-  }
-  return hideProjectInCatalog(dbPath, key);
 }

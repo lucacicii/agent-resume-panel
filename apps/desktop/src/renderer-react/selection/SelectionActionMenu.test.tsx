@@ -1,13 +1,13 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ImSelectionAction } from "../../shared/imTypes";
+import type { SelectionAction } from "../../shared/selectionActions";
 import { SelectionActionResult } from "./SelectionActionResult";
 import { SelectionSendMenu } from "./SelectionSendMenu";
 
 const apiMocks = vi.hoisted(() => ({
   clipboardWriteText: vi.fn(),
-  imListSelectionActions: vi.fn(),
-  imRunSelectionAction: vi.fn(),
+  selectionListActions: vi.fn(),
+  selectionRunAction: vi.fn(),
   workbenchSendSelection: vi.fn()
 }));
 
@@ -25,9 +25,9 @@ vi.mock("../i18n", () => ({
         "desktop.common.close": "Close",
         "desktop.common.copy": "Copy",
         "desktop.common.copied": "Copied",
-        "desktop.im.actionRunning": "Working…",
-        "desktop.im.explain": "Explain",
-        "desktop.im.translate": "Translate",
+        "desktop.selection.actionRunning": "Working…",
+        "desktop.selection.explain": "Explain",
+        "desktop.selection.translate": "Translate",
         "desktop.notes.sendToAgent": "Send to Agent",
         "desktop.notes.sendToSession": "Send to Session"
       }[key] ?? key;
@@ -35,9 +35,8 @@ vi.mock("../i18n", () => ({
   })
 }));
 
-function action(input: Partial<ImSelectionAction> & Pick<ImSelectionAction, "actionId" | "name">): ImSelectionAction {
+function action(input: Partial<SelectionAction> & Pick<SelectionAction, "actionId" | "name">): SelectionAction {
   return {
-    kind: "independent",
     prompt: "Use {selection}",
     sortOrder: 0,
     enabled: true,
@@ -47,8 +46,7 @@ function action(input: Partial<ImSelectionAction> & Pick<ImSelectionAction, "act
   };
 }
 
-const actions: ImSelectionAction[] = [
-  action({ actionId: "quote", name: "Quote", kind: "context", prompt: "" }),
+const actions: SelectionAction[] = [
   action({ actionId: "translate", name: "Translate" }),
   action({ actionId: "explain", name: "Explain" }),
   action({ actionId: "custom", name: "Custom Action" }),
@@ -56,7 +54,7 @@ const actions: ImSelectionAction[] = [
 ];
 
 beforeEach(() => {
-  apiMocks.imListSelectionActions.mockResolvedValue(actions);
+  apiMocks.selectionListActions.mockResolvedValue(actions);
 });
 
 afterEach(() => {
@@ -64,14 +62,14 @@ afterEach(() => {
   window.innerWidth = 1024;
   window.innerHeight = 768;
   apiMocks.clipboardWriteText.mockClear();
-  apiMocks.imListSelectionActions.mockClear();
-  apiMocks.imRunSelectionAction.mockReset();
+  apiMocks.selectionListActions.mockClear();
+  apiMocks.selectionRunAction.mockReset();
   apiMocks.workbenchSendSelection.mockClear();
   notifyDesktop.mockClear();
 });
 
 describe("SelectionSendMenu", () => {
-  it("shows Copy, enabled independent actions, then send targets", async () => {
+  it("shows Copy, enabled actions, then send targets", async () => {
     const onClose = vi.fn();
     render(
       <SelectionSendMenu
@@ -83,7 +81,6 @@ describe("SelectionSendMenu", () => {
     await screen.findByRole("menuitem", { name: "Translate" });
     const labels = screen.getAllByRole("menuitem").map((item) => item.textContent);
     expect(labels).toEqual(["Copy", "Translate", "Explain", "Custom Action", "Send to Agent", "Send to Session"]);
-    expect(screen.queryByRole("menuitem", { name: "Quote" })).toBeNull();
     expect(screen.queryByRole("menuitem", { name: "Disabled Action" })).toBeNull();
   });
 
@@ -104,7 +101,7 @@ describe("SelectionSendMenu", () => {
 
   it("runs Translate, closes the menu, and shows loading then the result", async () => {
     let resolveRun!: (value: { text: string }) => void;
-    apiMocks.imRunSelectionAction.mockImplementation(
+    apiMocks.selectionRunAction.mockImplementation(
       () => new Promise((resolve) => {
         resolveRun = resolve;
       })
@@ -118,7 +115,7 @@ describe("SelectionSendMenu", () => {
     );
 
     fireEvent.click(await screen.findByRole("menuitem", { name: "Translate" }));
-    expect(apiMocks.imRunSelectionAction).toHaveBeenCalledWith({
+    expect(apiMocks.selectionRunAction).toHaveBeenCalledWith({
       actionId: "translate",
       text: "selected text"
     });
@@ -137,7 +134,7 @@ describe("SelectionSendMenu", () => {
   });
 
   it("reports action failures through notifications", async () => {
-    apiMocks.imRunSelectionAction.mockRejectedValue(new Error("Model unavailable"));
+    apiMocks.selectionRunAction.mockRejectedValue(new Error("Model unavailable"));
     const onClose = vi.fn();
     render(
       <SelectionSendMenu
@@ -151,7 +148,8 @@ describe("SelectionSendMenu", () => {
       text: "Model unavailable",
       kind: "error"
     }));
-    expect(screen.queryByRole("dialog")).toBeNull();
+    // The result popover stays mounted while its exit animation runs.
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
   it("keeps the result popover inside the viewport", () => {

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { desktopApi } from "../../bridge";
 import { useI18n } from "../../i18n";
+import { useOverlayPresence } from "../../components/useOverlayMotion";
 import { QuickAccess, type QuickAccessCommand } from "../workbench/QuickAccess";
 import { taskFromRecord } from "../workbench/task";
 import { ensureTaskWorkbenches } from "../workbench/workbenchModel";
@@ -90,7 +91,11 @@ export function BoardQuickAccess(): React.ReactPortal | null {
     return () => { cancelled = true; };
   }, [open, loadCommands]);
 
-  if (!host || !open) return null;
+  // `QuickAccess` runs its own exit animation; the portal has to stay mounted for
+  // it. Gating the portal on `open` alone would unmount the palette instantly.
+  const presence = useOverlayPresence(open);
+
+  if (!host || !presence.mounted) return null;
 
   return createPortal(
     <QuickAccess

@@ -52,14 +52,11 @@ export type DesktopTheme = "system" | "light" | "dark";
 
 export type DesktopBrowserPartitionMode = "per-project" | "shared";
 export type DesktopBrowserDefaultSurface = "workbench" | "window" | "last-used";
-export type DesktopBrowserSnapshotMode = "a11y" | "dom-lite" | "screenshot";
 
 export type DesktopBrowserPolicy = {
   allowHosts: string[];
   blockHosts: string[];
-  allowDownloads: boolean;
   allowPopups: boolean;
-  snapshotMode: DesktopBrowserSnapshotMode;
   maxTabs: number;
 };
 
@@ -75,15 +72,7 @@ export type DesktopBrowserSettings = {
    * requires Desktop running. Default true so Workbench TUI sessions can use the pane.
    */
   exposeExternalMcp: boolean;
-  /** status/snapshot/screenshot/wait auto-allow. */
-  autoAllowReadTools: boolean;
   defaultSurface: DesktopBrowserDefaultSurface;
-  restoreWindowBounds: boolean;
-  chromeCookieImport: {
-    enabled: boolean;
-    maxHostsPerImport: number;
-    allowSessionCookies: boolean;
-  };
 };
 
 export const DEFAULT_DESKTOP_BROWSER_SETTINGS: DesktopBrowserSettings = {
@@ -91,33 +80,18 @@ export const DEFAULT_DESKTOP_BROWSER_SETTINGS: DesktopBrowserSettings = {
   partitionMode: "per-project",
   injectIntoAcpSessions: true,
   exposeExternalMcp: true,
-  autoAllowReadTools: true,
   defaultSurface: "workbench",
-  restoreWindowBounds: true,
-  chromeCookieImport: {
-    enabled: false,
-    maxHostsPerImport: 5,
-    allowSessionCookies: true
-  },
   defaultPolicy: {
     allowHosts: [],
     blockHosts: ["*.paypal.com", "*.alipay.com", "*.stripe.com"],
-    allowDownloads: false,
     allowPopups: false,
-    snapshotMode: "a11y",
     maxTabs: 6
   }
 };
 
 export interface DesktopSettings {
-  windowWidth?: number;
-  windowHeight?: number;
   /** UI appearance; default follows OS. */
   theme?: DesktopTheme;
-  /** @deprecated Replaced by alwaysAllowAgentNonDestructiveOperations. */
-  alwaysAllowAgentWriteOperations?: boolean;
-  /** Allow classified write, launch, exec, and outbound-network actions without per-call confirmation. */
-  alwaysAllowAgentNonDestructiveOperations?: boolean;
   /** In-app agent browser (Workbench + standalone window). */
   browser?: DesktopBrowserSettings;
 }
@@ -199,39 +173,6 @@ export interface WorkbenchComposerMention {
   cwd: string;
   roots: WorkbenchComposerMentionRoot[];
 }
-
-/** Project row context-menu actions (Workbench). */
-export type WorkbenchProjectContextMenuAction =
-  | "pin"
-  | "newSession"
-  | "editor"
-  | "rename"
-  | "setLocalPath"
-  | "copyPath"
-  | "reveal"
-  | "merge"
-  | "split"
-  | "remove";
-
-/** Default project context menu items (shown when setting is unset). */
-export const DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU: WorkbenchProjectContextMenuAction[] = [
-  "newSession",
-  "reveal",
-  "remove"
-];
-
-export const ALL_WORKBENCH_PROJECT_CONTEXT_MENU: WorkbenchProjectContextMenuAction[] = [
-  "pin",
-  "newSession",
-  "editor",
-  "rename",
-  "setLocalPath",
-  "copyPath",
-  "reveal",
-  "merge",
-  "split",
-  "remove"
-];
 
 export interface WorkbenchEditorSettings {
   /** Whether project text files can be edited in the embedded editor. Default true. */
@@ -319,8 +260,6 @@ export interface WorkbenchSettings {
   gitNestedScanMaxDepth?: number;
   /** Directory names to skip while scanning for nested Git repos. Empty uses built-in defaults. */
   gitNestedScanIgnoreDirs?: string[];
-  /** Max nested Git repos to collect per scan. Default 32. */
-  gitNestedScanMaxRepos?: number;
   /** AI-generated Git commit message format. Default Conventional Commits. */
   gitCommitMessageStyle?: CommitMessageStyle;
   /** Format rules used when gitCommitMessageStyle is custom. */
@@ -329,11 +268,6 @@ export interface WorkbenchSettings {
   transcriptFontSize?: number;
   /** Embedded Workbench file editor preferences. */
   editor?: WorkbenchEditorSettings;
-  /**
-   * Enabled project context-menu actions.
-   * When unset, defaults to newSession, note, reveal, remove.
-   */
-  projectContextMenu?: WorkbenchProjectContextMenuAction[];
   /** User-defined `/trigger` expansions for the terminal composer. Default empty. */
   composerSlashPhrases?: WorkbenchComposerSlashPhrase[];
   /** Global workspace packs for New session / `arpm`. Default empty. */
@@ -372,25 +306,6 @@ export interface AgentSessionSyncFilters {
 export interface AgentSessionSyncSettings extends AgentSessionSyncFilters {
   maxItems?: number;
   stalePolicy?: SessionSyncStalePolicy;
-}
-
-export interface ReportSettings {
-  /** Scheduled jobs in Desktop; ignored by the scheduler (always on). */
-  enabled?: boolean;
-  /** Prefer session_summary; if missing, load native transcript excerpt. Default true. */
-  includeTranscripts?: boolean;
-  /** @deprecated Report generation now covers every session. */
-  maxSessionsPerDigest?: number;
-  /** Maximum estimated LLM calls before manual approval is required. Default 100. */
-  maxDigestLlmCalls?: number;
-  /** Max chars of transcript excerpt per session. Default 2500. */
-  snippetMaxChars?: number;
-  /** Local hour 0–23 for automatic daily job. Default 22. */
-  scheduleDailyHour?: number;
-  /** Local hour for weekly job (previous ISO week) on Monday. Default 9. */
-  scheduleWeeklyHour?: number;
-  /** Local hour on day 1 for previous-month job. Default 9. */
-  scheduleMonthlyHour?: number;
 }
 
 /**
@@ -451,10 +366,6 @@ export interface NotificationsSettings {
   maxHistory?: number;
 }
 
-interface DesktopImSettings {
-  smartRoutingEnabled?: boolean;
-}
-
 export interface PanelSettings {
   /** Optional override; default ~/.agent-resume-panel. */
   panelHome?: string;
@@ -482,10 +393,8 @@ export interface PanelSettings {
     sessionSummary?: Pick<LlmUseOptions, "disableThinking">;
     report?: Pick<LlmUseOptions, "disableThinking">;
     gtd?: Pick<LlmUseOptions, "disableThinking">;
-    imRouting?: Pick<LlmUseOptions, "disableThinking">;
     translate?: Pick<LlmUseOptions, "disableThinking">;
   };
-  report?: ReportSettings;
   /** Auto session_summary generation (Desktop main process). */
   sessionSummaryAuto?: SessionSummaryAutoSettings;
   /** Auto session_embeddings for sessions that already have summaries. */
@@ -499,13 +408,8 @@ export interface PanelSettings {
   workbench?: WorkbenchSettings;
   /** ACP Chat launch + permission preferences (Desktop Workbench visual chat). */
   acp?: AcpSettings;
-  ghosttyExecutable?: string;
-  ghosttyLaunchMode?: GhosttyLaunchMode;
-  ghosttyAutoPasteDelayMs?: number;
   /** Desktop notification history and auto-clear preferences. */
   notifications?: NotificationsSettings;
-  /** Desktop IM room preferences. */
-  im?: DesktopImSettings;
 }
 
 export const DEFAULT_SETTINGS: PanelSettings = {
@@ -520,15 +424,6 @@ export const DEFAULT_SETTINGS: PanelSettings = {
   },
   embedding: {
     model: "text-embedding-3-small"
-  },
-  report: {
-    enabled: true,
-    includeTranscripts: true,
-    maxDigestLlmCalls: 100,
-    snippetMaxChars: 2500,
-    scheduleDailyHour: 22,
-    scheduleWeeklyHour: 9,
-    scheduleMonthlyHour: 9
   },
   sessionSummaryAuto: {
     enabled: true,
@@ -567,7 +462,6 @@ export const DEFAULT_SETTINGS: PanelSettings = {
     terminalRenderer: "webgl",
     gitCommitMessageStyle: "conventional",
     gitCommitCustomInstructions: DEFAULT_CONVENTIONAL_COMMIT_INSTRUCTIONS,
-    projectContextMenu: [...DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU],
     composerSlashPhrases: [],
     composerMentions: [],
     transcriptFontSize: 14,
@@ -581,16 +475,11 @@ export const DEFAULT_SETTINGS: PanelSettings = {
   },
   desktop: {
     theme: "system",
-    alwaysAllowAgentWriteOperations: false,
-    alwaysAllowAgentNonDestructiveOperations: false,
-    browser: { ...DEFAULT_DESKTOP_BROWSER_SETTINGS, defaultPolicy: { ...DEFAULT_DESKTOP_BROWSER_SETTINGS.defaultPolicy, allowHosts: [], blockHosts: [...DEFAULT_DESKTOP_BROWSER_SETTINGS.defaultPolicy.blockHosts] }, chromeCookieImport: { ...DEFAULT_DESKTOP_BROWSER_SETTINGS.chromeCookieImport } }
+    browser: { ...DEFAULT_DESKTOP_BROWSER_SETTINGS, defaultPolicy: { ...DEFAULT_DESKTOP_BROWSER_SETTINGS.defaultPolicy, allowHosts: [], blockHosts: [...DEFAULT_DESKTOP_BROWSER_SETTINGS.defaultPolicy.blockHosts] } }
   },
   notes: {
     newStandaloneNoteShortcut: "CommandOrControl+D",
     recentStandaloneNoteShortcut: "CommandOrControl+Shift+D"
-  },
-  im: {
-    smartRoutingEnabled: true
   },
   notifications: {
     autoClearMinutes: 60,

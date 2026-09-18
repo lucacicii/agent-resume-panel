@@ -6,7 +6,8 @@ const waiting = {
   projectPath: "/tmp/project",
   title: "Needs input",
   sessionKey: "codex:session-1",
-  status: "awaiting_user" as const
+  status: "awaiting_user" as const,
+  workbenchId: "wb-1"
 };
 
 describe("collectNewConfirmedWaitingSessions", () => {

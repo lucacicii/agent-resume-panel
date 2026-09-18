@@ -7,7 +7,7 @@ vi.mock("@agent-resume/core", async () => {
   const actual = await vi.importActual<typeof import("@agent-resume/core")>("@agent-resume/core");
   return {
     ...actual,
-    loadSettings: vi.fn(async () => ({ panelHome: "/tmp/im-runner-home" })),
+    loadSettings: vi.fn(async () => ({ panelHome: "/tmp/selection-runner-home" })),
     effectivePanelHome: (settings: { panelHome?: string }) => settings.panelHome ?? "/tmp",
     chatLlmConfigFromSettings: vi.fn(() => ({ baseUrl: "https://example.test/v1", model: "chat-test", apiKey: "k" })),
     chatCompletionDetailed: vi.fn(async () => ({
@@ -20,18 +20,18 @@ vi.mock("@agent-resume/core", async () => {
 });
 
 import { desktopDbPath, ensureDesktopDbSchema } from "@agent-resume/core";
-import { ImStore } from "./store";
-import { runIndependentSelectionAction } from "./selectionRunner";
+import { SelectionStore } from "./store";
+import { runSelectionAction } from "./runner";
 
 const homes: string[] = [];
 
-async function createStore(): Promise<ImStore> {
-  const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-im-runner-"));
+async function createStore(): Promise<SelectionStore> {
+  const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-selection-runner-"));
   homes.push(panelHome);
   const dbPath = desktopDbPath(panelHome);
   await fs.mkdir(path.dirname(dbPath), { recursive: true });
   await ensureDesktopDbSchema(dbPath);
-  const store = new ImStore(dbPath);
+  const store = new SelectionStore(dbPath);
   await store.initialize();
   return store;
 }
@@ -41,10 +41,10 @@ afterEach(async () => {
   await Promise.all(homes.splice(0).map((home) => fs.rm(home, { recursive: true, force: true })));
 });
 
-describe("runIndependentSelectionAction", () => {
+describe("runSelectionAction", () => {
   it("fills the {selection} template and returns chat model text", async () => {
     const store = await createStore();
-    const result = await runIndependentSelectionAction(store, "translate", "hello world");
+    const result = await runSelectionAction(store, "translate", "hello world");
     expect(result.text).toBe("translated answer");
     const { chatCompletionDetailed } = await import("@agent-resume/core");
     const call = vi.mocked(chatCompletionDetailed).mock.calls.at(-1);
@@ -52,26 +52,24 @@ describe("runIndependentSelectionAction", () => {
     expect(prompt).toContain("hello world");
   });
 
-  it("rejects context-kind actions and missing chat LLM config", async () => {
+  it("requires a configured chat LLM", async () => {
     const store = await createStore();
-    await expect(runIndependentSelectionAction(store, "quote", "text")).rejects.toThrow(/independent/i);
     const { chatLlmConfigFromSettings } = await import("@agent-resume/core");
     vi.mocked(chatLlmConfigFromSettings).mockReturnValueOnce(undefined);
-    await expect(runIndependentSelectionAction(store, "translate", "text")).rejects.toThrow(/not configured|configured/i);
+    await expect(runSelectionAction(store, "translate", "text")).rejects.toThrow(/not configured|configured/i);
   });
 
   it("uses action-specific provider and model when configured", async () => {
     const store = await createStore();
     const action = await store.createSelectionAction({
       name: "Custom Explain",
-      kind: "independent",
       prompt: "Explain: {selection}",
       providerId: "custom-p1",
       modelId: "custom-model"
     });
     const { loadSettings, chatCompletionDetailed } = await import("@agent-resume/core");
     vi.mocked(loadSettings).mockResolvedValueOnce({
-      panelHome: "/tmp/im-runner-home",
+      panelHome: "/tmp/selection-runner-home",
       providers: [
         {
           id: "custom-p1",
@@ -83,7 +81,7 @@ describe("runIndependentSelectionAction", () => {
       ]
     } as any);
 
-    const result = await runIndependentSelectionAction(store, action.actionId, "custom code");
+    const result = await runSelectionAction(store, action.actionId, "custom code");
     expect(result.text).toBe("translated answer");
     const call = vi.mocked(chatCompletionDetailed).mock.calls.at(-1);
     expect(call?.[0]).toEqual(expect.objectContaining({

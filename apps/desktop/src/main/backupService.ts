@@ -218,16 +218,13 @@ const DESKTOP_UPDATED_TABLES: Record<string, { keys: string[]; timestamp: string
   note_vector_index: { keys: ["note_id"], timestamp: "indexed_at_ms" },
   session_embeddings: { keys: ["provider", "agent_session_id"], timestamp: "updated_at_ms" },
   session_transcript_chunks: { keys: ["chunk_id"], timestamp: "updated_at_ms" },
-  session_transcript_index: { keys: ["provider", "agent_session_id"], timestamp: "updated_at_ms" },
-  agent_threads: { keys: ["id"], timestamp: "updated_at_ms" }
+  session_transcript_index: { keys: ["provider", "agent_session_id"], timestamp: "updated_at_ms" }
 };
 const DESKTOP_APPEND_TABLES: Record<string, string[]> = {
   report_entries: ["id"],
   gtd_ai_audit: ["id"],
   llm_usage_events: ["id"],
   schedule_run_logs: ["id"],
-  agent_messages: ["id"],
-  agent_note_audit: ["id"],
   workbench_composer_sends: ["id"]
 };
 
@@ -790,7 +787,6 @@ async function mergeDatabase(target: string, source: string, updated: Record<str
     statements.push(`INSERT OR IGNORE INTO ${quoteIdentifier(table)} (${list}) SELECT ${list} FROM incoming.${quoteIdentifier(table)}`);
   }
   if (sourceTableNames.has("report_links")) statements.push(`INSERT INTO report_links (report_id, provider, agent_session_id, project_path) SELECT incoming.report_id, incoming.provider, incoming.agent_session_id, incoming.project_path FROM incoming.report_links AS incoming WHERE NOT EXISTS (SELECT 1 FROM report_links AS target WHERE target.report_id IS incoming.report_id AND target.provider IS incoming.provider AND target.agent_session_id IS incoming.agent_session_id AND target.project_path IS incoming.project_path)`);
-  if (sourceTableNames.has("agent_messages")) statements.push(`WITH ordered AS (SELECT id, ROW_NUMBER() OVER (PARTITION BY COALESCE(thread_id, '') ORDER BY created_at_ms, id) AS position FROM agent_messages) UPDATE agent_messages SET sort_order = (SELECT position FROM ordered WHERE ordered.id = agent_messages.id)`);
   await runSqlite(target, `ATTACH DATABASE ${sql(source)} AS incoming;\nBEGIN IMMEDIATE;\n${statements.map((item) => `${item};`).join("\n")}\nCOMMIT;\nDETACH DATABASE incoming;`);
 }
 

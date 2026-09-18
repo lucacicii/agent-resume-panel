@@ -1,13 +1,12 @@
-import { ThemeIcon } from "../../components/ThemeIcon";
+import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { WorkbenchComposerMention } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { Status, type StatusKind } from "../../components/Status";
-import type { WorkbenchProjectContextMenuAction } from "@agent-resume/core";
 import { WORKBENCH_TERMINAL_THEME_IDS } from "../workbench/terminalThemes";
 import type { NotesDraft, StorageDraft, WorkbenchDraft } from "./model";
-import { ALL_WORKBENCH_PROJECT_CONTEXT_MENU, formatShortcutForDisplay, WORKBENCH_NEW_SESSION_TARGET_OPTIONS } from "./model";
+import { formatShortcutForDisplay, WORKBENCH_NEW_SESSION_TARGET_OPTIONS } from "./model";
 
 type Translate = (key: string, ...args: Array<string | number>) => string;
 type BackupProgress = { operation: "export" | "import"; phase: "preparing" | "snapshotting" | "collecting" | "archiving" | "validating" | "merging" | "finalizing" | "complete"; percent: number };
@@ -34,10 +33,16 @@ function SelectRow({ title, description, value, onChange, children }: { title: s
   return <label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{title}</span>{description ? <span className="settings-row-desc">{description}</span> : null}</span><select className="settings-row-control" value={value} onChange={(event) => onChange(event.target.value)}>{children}</select></label>;
 }
 
-export function WorkbenchPane({ draft, setDraft, t }: { draft: WorkbenchDraft; setDraft: (value: WorkbenchDraft) => void; t: Translate }) {
-  const update = <K extends keyof WorkbenchDraft>(key: K, value: WorkbenchDraft[K]) => {
+export function WorkbenchPane({ draft, setDraft, commit, t }: { draft: WorkbenchDraft; setDraft: (value: WorkbenchDraft) => void; commit: (value: WorkbenchDraft) => void; t: Translate }) {
+  /**
+   * Immediate controls (toggles, selects, list add/remove of concrete values) commit
+   * right away. Text inputs and placeholder-row "add" buttons pass `{ commit: false }`;
+   * inputs commit on blur, placeholder rows commit once their fields are filled.
+   */
+  const update = <K extends keyof WorkbenchDraft>(key: K, value: WorkbenchDraft[K], options?: { commit?: boolean }) => {
     const next = { ...draft, [key]: value };
     setDraft(next);
+    if (options?.commit !== false) commit(next);
   };
   const slashPhrases = draft.composerSlashPhrases ?? [];
   const mentions = draft.composerMentions ?? [];
@@ -60,6 +65,7 @@ export function WorkbenchPane({ draft, setDraft, t }: { draft: WorkbenchDraft; s
             next.defaultProvider = value.slice(4) as WorkbenchDraft["defaultProvider"];
           }
           setDraft(next);
+          commit(next);
         }}
       >
         <option value="">{t("desktop.settings.newSessionTarget.askEveryTime")}</option>
@@ -95,68 +101,71 @@ export function WorkbenchPane({ draft, setDraft, t }: { draft: WorkbenchDraft; s
         checked={draft.acpExperimentalGrokVendorUi}
         onChange={(value) => update("acpExperimentalGrokVendorUi", value)}
       />
-      <label className="settings-field"><span className="settings-field-label">{t("desktop.settings.scratchDir")}</span><input value={draft.scratchDir} placeholder="~/.agent-resume-panel/.desktop/scratch" onChange={(event) => update("scratchDir", event.target.value)} /></label>
+      <label className="settings-field"><span className="settings-field-label">{t("desktop.settings.scratchDir")}</span><input value={draft.scratchDir} placeholder="~/.agent-resume-panel/.desktop/scratch" onChange={(event) => update("scratchDir", event.target.value, { commit: false })} onBlur={() => commit(draft)} /></label>
     </div></section>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.composerSlashGroup")}</h3><div className="settings-group-body">
       <p className="settings-footnote">{t("desktop.settings.composerSlashDesc")}</p>
       {slashPhrases.length === 0 ? <p className="settings-footnote">{t("desktop.settings.composerSlashEmpty")}</p> : null}
       {slashPhrases.map((item, index) => (
-        <div className="settings-slash-phrase" key={`slash-${index}`}>
-          <label className="settings-field">
-            <span className="settings-field-label">{t("desktop.settings.composerSlashTrigger")}</span>
+        <div className="settings-item" key={`slash-${index}`}>
+          <div className="settings-item-row">
+            <span className="settings-item-prefix" aria-hidden="true">/</span>
             <input
+              className="settings-item-name"
               value={item.trigger}
               spellCheck={false}
               autoCapitalize="off"
               autoCorrect="off"
+              aria-label={t("desktop.settings.composerSlashTrigger")}
               placeholder={t("desktop.settings.composerSlashTriggerPlaceholder")}
               onChange={(event) => {
                 const next = slashPhrases.map((phrase, phraseIndex) => phraseIndex === index ? { ...phrase, trigger: event.target.value } : phrase);
-                update("composerSlashPhrases", next);
+                update("composerSlashPhrases", next, { commit: false });
               }}
+              onBlur={() => commit(draft)}
             />
-          </label>
-          <label className="settings-field">
-            <span className="settings-field-label">{t("desktop.settings.composerSlashPhrase")}</span>
-            <textarea
-              rows={3}
-              maxLength={4000}
-              spellCheck={false}
-              value={item.phrase}
-              placeholder={t("desktop.settings.composerSlashPhrasePlaceholder")}
-              onChange={(event) => {
-                const next = slashPhrases.map((phrase, phraseIndex) => phraseIndex === index ? { ...phrase, phrase: event.target.value } : phrase);
-                update("composerSlashPhrases", next);
-              }}
-            />
-          </label>
-          <label className="settings-field">
-            <span className="settings-field-label">{t("desktop.settings.composerSlashDescription")}</span>
             <input
+              className="settings-item-note"
               value={item.description ?? ""}
               spellCheck={false}
+              aria-label={t("desktop.settings.composerSlashDescription")}
               placeholder={t("desktop.settings.composerSlashDescriptionPlaceholder")}
               onChange={(event) => {
                 const next = slashPhrases.map((phrase, phraseIndex) => phraseIndex === index ? { ...phrase, description: event.target.value } : phrase);
-                update("composerSlashPhrases", next);
+                update("composerSlashPhrases", next, { commit: false });
               }}
+              onBlur={() => commit(draft)}
             />
-          </label>
-          <div className="settings-action-row">
             <button
               type="button"
-              className="tool-btn"
+              className="tool-btn settings-item-icon"
+              aria-label={t("desktop.settings.composerSlashRemove")}
+              title={t("desktop.settings.composerSlashRemove")}
               onClick={() => update("composerSlashPhrases", slashPhrases.filter((_, phraseIndex) => phraseIndex !== index))}
-            >{t("desktop.settings.composerSlashRemove")}</button>
+            ><ThemeIcon name="trash" size={ICON_SIZE.dense} aria-hidden="true" /></button>
           </div>
+          <textarea
+            className="settings-item-body"
+            rows={2}
+            maxLength={4000}
+            spellCheck={false}
+            value={item.phrase}
+            aria-label={t("desktop.settings.composerSlashPhrase")}
+            placeholder={t("desktop.settings.composerSlashPhrasePlaceholder")}
+            onChange={(event) => {
+              const next = slashPhrases.map((phrase, phraseIndex) => phraseIndex === index ? { ...phrase, phrase: event.target.value } : phrase);
+              update("composerSlashPhrases", next, { commit: false });
+            }}
+            onBlur={() => commit(draft)}
+          />
         </div>
       ))}
       <div className="settings-action-row">
         <button
           type="button"
           className="tool-btn"
-          onClick={() => update("composerSlashPhrases", [...slashPhrases, { trigger: "", phrase: "" }])}
-        >{t("desktop.settings.composerSlashAdd")}</button>
+          onClick={() => update("composerSlashPhrases", [...slashPhrases, { trigger: "", phrase: "" }], { commit: false })}
+        ><ThemeIcon name="plus" size={ICON_SIZE.dense} aria-hidden="true" />{t("desktop.settings.composerSlashAdd")}</button>
       </div>
     </div></section>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.composerMentionsGroup")}</h3><div className="settings-group-body">
@@ -165,59 +174,73 @@ export function WorkbenchPane({ draft, setDraft, t }: { draft: WorkbenchDraft; s
       {mentions.map((item, index) => {
         const references = item.roots.filter((root) => root.role === "reference");
         return (
-          <div className="settings-slash-phrase" key={`mention-${index}`}>
-            <label className="settings-field">
-              <span className="settings-field-label">{t("desktop.settings.composerMentionsId")}</span>
+          <div className="settings-item" key={`mention-${index}`}>
+            <div className="settings-item-row">
               <input
+                className="settings-item-name"
                 value={item.id}
                 spellCheck={false}
                 autoCapitalize="off"
                 autoCorrect="off"
+                aria-label={t("desktop.settings.composerMentionsId")}
                 placeholder={t("desktop.settings.composerMentionsIdPlaceholder")}
-                onChange={(event) => update("composerMentions", mentionAt(index, { id: event.target.value }))}
+                onChange={(event) => update("composerMentions", mentionAt(index, { id: event.target.value }), { commit: false })}
+                onBlur={() => commit(draft)}
               />
-            </label>
-            <label className="settings-field">
-              <span className="settings-field-label">{t("desktop.settings.composerMentionsCwd")}</span>
-              <span className="settings-action-row">
-                <input
-                  value={item.cwd}
-                  spellCheck={false}
-                  placeholder={t("desktop.settings.composerMentionsCwdPlaceholder")}
-                  onChange={(event) => {
-                    const cwd = event.target.value;
-                    const nextRoots = [{ path: cwd, role: "work" as const }, ...item.roots.filter((root) => root.role === "reference")];
-                    update("composerMentions", mentionAt(index, { cwd, roots: nextRoots }));
-                  }}
-                />
-                <button
-                  type="button"
-                  className="tool-btn"
-                  onClick={() => {
-                    void pickMentionPath(t("desktop.settings.composerMentionsCwd")).then((picked) => {
-                      if (!picked) return;
-                      const nextRoots = [{ path: picked, role: "work" as const }, ...item.roots.filter((root) => root.role === "reference")];
-                      update("composerMentions", mentionAt(index, { cwd: picked, roots: nextRoots }));
-                    });
-                  }}
-                >{t("desktop.settings.composerMentionsBrowse")}</button>
-              </span>
-            </label>
-            <span className="settings-field-label">{t("desktop.settings.composerMentionsReferences")}</span>
+              <input
+                className="settings-item-path"
+                value={item.cwd}
+                spellCheck={false}
+                aria-label={t("desktop.settings.composerMentionsCwd")}
+                placeholder={t("desktop.settings.composerMentionsCwdPlaceholder")}
+                onChange={(event) => {
+                  const cwd = event.target.value;
+                  const nextRoots = [{ path: cwd, role: "work" as const }, ...item.roots.filter((root) => root.role === "reference")];
+                  update("composerMentions", mentionAt(index, { cwd, roots: nextRoots }), { commit: false });
+                }}
+                onBlur={() => commit(draft)}
+              />
+              <button
+                type="button"
+                className="tool-btn settings-item-icon"
+                aria-label={t("desktop.settings.composerMentionsBrowse")}
+                title={t("desktop.settings.composerMentionsBrowse")}
+                onClick={() => {
+                  void pickMentionPath(t("desktop.settings.composerMentionsCwd")).then((picked) => {
+                    if (!picked) return;
+                    const nextRoots = [{ path: picked, role: "work" as const }, ...item.roots.filter((root) => root.role === "reference")];
+                    update("composerMentions", mentionAt(index, { cwd: picked, roots: nextRoots }));
+                  });
+                }}
+              ><ThemeIcon name="folder-open" size={ICON_SIZE.dense} aria-hidden="true" /></button>
+              <button
+                type="button"
+                className="tool-btn settings-item-icon"
+                aria-label={t("desktop.settings.composerMentionsRemove")}
+                title={t("desktop.settings.composerMentionsRemove")}
+                onClick={() => update("composerMentions", mentions.filter((_, mentionIndex) => mentionIndex !== index))}
+              ><ThemeIcon name="trash" size={ICON_SIZE.dense} aria-hidden="true" /></button>
+            </div>
             {references.map((root, rootIndex) => (
-              <span className="settings-action-row" key={`mention-${index}-ref-${rootIndex}`}>
+              <div className="settings-item-row settings-item-subrow" key={`mention-${index}-ref-${rootIndex}`}>
+                <ThemeIcon name="folder" className="settings-item-subrow-icon" size={ICON_SIZE.dense} aria-hidden="true" />
                 <input
+                  className="settings-item-path"
                   value={root.path}
                   spellCheck={false}
+                  aria-label={t("desktop.settings.composerMentionsReferences")}
                   placeholder={t("desktop.settings.composerMentionsReferencePlaceholder")}
                   onChange={(event) => {
                     const nextRefs = references.map((entry, entryIndex) => entryIndex === rootIndex ? { ...entry, path: event.target.value } : entry);
-                    update("composerMentions", mentionAt(index, { roots: [{ path: item.cwd, role: "work" }, ...nextRefs] }));
+                    update("composerMentions", mentionAt(index, { roots: [{ path: item.cwd, role: "work" }, ...nextRefs] }), { commit: false });
                   }}
+                  onBlur={() => commit(draft)}
                 />
                 <button
                   type="button"
-                  className="tool-btn"
+                  className="tool-btn settings-item-icon"
+                  aria-label={t("desktop.settings.composerMentionsBrowse")}
+                  title={t("desktop.settings.composerMentionsBrowse")}
                   onClick={() => {
                     void pickMentionPath(t("desktop.settings.composerMentionsReferences")).then((picked) => {
                       if (!picked) return;
@@ -225,16 +248,18 @@ export function WorkbenchPane({ draft, setDraft, t }: { draft: WorkbenchDraft; s
                       update("composerMentions", mentionAt(index, { roots: [{ path: item.cwd, role: "work" }, ...nextRefs] }));
                     });
                   }}
-                >{t("desktop.settings.composerMentionsBrowse")}</button>
+                ><ThemeIcon name="folder-open" size={ICON_SIZE.dense} aria-hidden="true" /></button>
                 <button
                   type="button"
-                  className="tool-btn"
+                  className="tool-btn settings-item-icon"
+                  aria-label={t("desktop.settings.composerMentionsRemoveReference")}
+                  title={t("desktop.settings.composerMentionsRemoveReference")}
                   onClick={() => {
                     const nextRefs = references.filter((_, entryIndex) => entryIndex !== rootIndex);
                     update("composerMentions", mentionAt(index, { roots: [{ path: item.cwd, role: "work" }, ...nextRefs] }));
                   }}
-                >{t("desktop.settings.composerMentionsRemoveReference")}</button>
-              </span>
+                ><ThemeIcon name="close" size={ICON_SIZE.dense} aria-hidden="true" /></button>
+              </div>
             ))}
             <div className="settings-action-row">
               <button
@@ -242,13 +267,8 @@ export function WorkbenchPane({ draft, setDraft, t }: { draft: WorkbenchDraft; s
                 className="tool-btn"
                 onClick={() => update("composerMentions", mentionAt(index, {
                   roots: [...item.roots, { path: "", role: "reference" }]
-                }))}
-              >{t("desktop.settings.composerMentionsAddReference")}</button>
-              <button
-                type="button"
-                className="tool-btn"
-                onClick={() => update("composerMentions", mentions.filter((_, mentionIndex) => mentionIndex !== index))}
-              >{t("desktop.settings.composerMentionsRemove")}</button>
+                }), { commit: false })}
+              ><ThemeIcon name="plus" size={ICON_SIZE.dense} aria-hidden="true" />{t("desktop.settings.composerMentionsAddReference")}</button>
             </div>
           </div>
         );
@@ -257,19 +277,19 @@ export function WorkbenchPane({ draft, setDraft, t }: { draft: WorkbenchDraft; s
         <button
           type="button"
           className="tool-btn"
-          onClick={() => update("composerMentions", [...mentions, { id: "", cwd: "", roots: [{ path: "", role: "work" }] }])}
-        >{t("desktop.settings.composerMentionsAdd")}</button>
+          onClick={() => update("composerMentions", [...mentions, { id: "", cwd: "", roots: [{ path: "", role: "work" }] }], { commit: false })}
+        ><ThemeIcon name="plus" size={ICON_SIZE.dense} aria-hidden="true" />{t("desktop.settings.composerMentionsAdd")}</button>
       </div>
     </div></section>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.embeddedEditorGroup")}</h3><div className="settings-group-body">
       <ToggleRow title={t("desktop.settings.editorEditable")} description={t("desktop.settings.editorEditableDesc")} checked={draft.editorEditable} onChange={(value) => update("editorEditable", value)} />
-      <label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{t("desktop.settings.editorFontSize")}</span><span className="settings-row-desc">{t("desktop.settings.editorFontSizeDesc")}</span></span><label className="settings-number-control"><input className="settings-number-input" type="number" min="11" max="24" value={draft.editorFontSize} onChange={(event) => update("editorFontSize", Number(event.target.value))} /><span aria-hidden="true">px</span></label></label>
+      <label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{t("desktop.settings.editorFontSize")}</span><span className="settings-row-desc">{t("desktop.settings.editorFontSizeDesc")}</span></span><label className="settings-number-control"><input className="settings-number-input" type="number" min="11" max="24" value={draft.editorFontSize} onChange={(event) => update("editorFontSize", Number(event.target.value), { commit: false })} onBlur={() => commit(draft)} /><span aria-hidden="true">px</span></label></label>
       <ToggleRow title={t("desktop.settings.editorWordWrap")} description={t("desktop.settings.editorWordWrapDesc")} checked={draft.editorWordWrap} onChange={(value) => update("editorWordWrap", value)} />
       <SelectRow title={t("desktop.settings.editorTabSize")} description={t("desktop.settings.editorTabSizeDesc")} value={draft.editorTabSize} onChange={(value) => update("editorTabSize", Number(value) as WorkbenchDraft["editorTabSize"])}><option value="2">{t("desktop.settings.editorTabSize2")}</option><option value="4">{t("desktop.settings.editorTabSize4")}</option><option value="8">{t("desktop.settings.editorTabSize8")}</option></SelectRow>
       <SelectRow title={t("desktop.settings.editorAutoSaveDelay")} description={t("desktop.settings.editorAutoSaveDelayDesc")} value={draft.editorAutoSaveDelayMs} onChange={(value) => update("editorAutoSaveDelayMs", Number(value) as WorkbenchDraft["editorAutoSaveDelayMs"])}><option value="300">{t("desktop.settings.editorAutoSaveDelay300")}</option><option value="600">{t("desktop.settings.editorAutoSaveDelay600")}</option><option value="1000">{t("desktop.settings.editorAutoSaveDelay1000")}</option><option value="2000">{t("desktop.settings.editorAutoSaveDelay2000")}</option></SelectRow>
     </div></section>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.transcriptGroup")}</h3><div className="settings-group-body">
-      <label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{t("desktop.settings.transcriptFontSize")}</span><span className="settings-row-desc">{t("desktop.settings.transcriptFontSizeDesc")}</span></span><label className="settings-number-control"><input className="settings-number-input" type="number" min="11" max="24" value={draft.transcriptFontSize} onChange={(event) => update("transcriptFontSize", Number(event.target.value))} /><span aria-hidden="true">px</span></label></label>
+      <label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{t("desktop.settings.transcriptFontSize")}</span><span className="settings-row-desc">{t("desktop.settings.transcriptFontSizeDesc")}</span></span><label className="settings-number-control"><input className="settings-number-input" type="number" min="11" max="24" value={draft.transcriptFontSize} onChange={(event) => update("transcriptFontSize", Number(event.target.value), { commit: false })} onBlur={() => commit(draft)} /><span aria-hidden="true">px</span></label></label>
     </div></section>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.editorTerminal")}</h3><div className="settings-group-body">
       <SelectRow title={t("desktop.settings.projectEditor")} description={t("desktop.settings.projectEditorDesc")} value={draft.projectEditor} onChange={(value) => update("projectEditor", value as WorkbenchDraft["projectEditor"])}><option value="auto">{t("desktop.settings.editorAuto")}</option><option value="vscode">VS Code</option><option value="vscodium">VSCodium</option><option value="cursor">Cursor</option><option value="windsurf">Windsurf</option></SelectRow>
@@ -321,31 +341,11 @@ export function WorkbenchPane({ draft, setDraft, t }: { draft: WorkbenchDraft; s
     </div></section>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.gitCommitMessageGroup")}</h3><div className="settings-group-body">
       <SelectRow title={t("desktop.settings.gitCommitMessageStyle")} description={t("desktop.settings.gitCommitMessageStyleDesc")} value={draft.gitCommitMessageStyle} onChange={(value) => update("gitCommitMessageStyle", value as WorkbenchDraft["gitCommitMessageStyle"])}><option value="conventional">{t("desktop.settings.gitCommitMessageStyleConventional")}</option><option value="gitmoji">{t("desktop.settings.gitCommitMessageStyleGitmoji")}</option><option value="custom">{t("desktop.settings.gitCommitMessageStyleCustom")}</option></SelectRow>
-      {draft.gitCommitMessageStyle === "custom" ? <label className="settings-field"><span className="settings-field-label">{t("desktop.settings.gitCommitCustomInstructions")}</span><span className="settings-field-desc muted">{t("desktop.settings.gitCommitCustomInstructionsDesc")}</span><textarea rows={6} maxLength={4000} spellCheck={false} value={draft.gitCommitCustomInstructions} onChange={(event) => update("gitCommitCustomInstructions", event.target.value)} /></label> : null}
+      {draft.gitCommitMessageStyle === "custom" ? <label className="settings-field"><span className="settings-field-label">{t("desktop.settings.gitCommitCustomInstructions")}</span><span className="settings-field-desc muted">{t("desktop.settings.gitCommitCustomInstructionsDesc")}</span><textarea rows={6} maxLength={4000} spellCheck={false} value={draft.gitCommitCustomInstructions} onChange={(event) => update("gitCommitCustomInstructions", event.target.value, { commit: false })} onBlur={() => commit(draft)} /></label> : null}
     </div></section>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.gitNestedScanGroup")}</h3><div className="settings-group-body">
       <SelectRow title={t("desktop.settings.gitNestedScanMaxDepth")} description={t("desktop.settings.gitNestedScanMaxDepthDesc")} value={draft.gitNestedScanMaxDepth} onChange={(value) => update("gitNestedScanMaxDepth", Number(value))}>{Array.from({ length: 10 }, (_, index) => <option key={index + 1} value={index + 1}>{index + 1}</option>)}</SelectRow>
-      <label className="settings-field"><span className="settings-field-label">{t("desktop.settings.gitNestedScanIgnoreDirs")}</span><span className="settings-field-desc muted">{t("desktop.settings.gitNestedScanIgnoreDirsDesc")}</span><textarea rows={5} spellCheck={false} placeholder={"node_modules\ndist"} value={draft.gitNestedScanIgnoreDirs} onChange={(event) => update("gitNestedScanIgnoreDirs", event.target.value)} /></label>
-    </div></section>
-    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.projectContextMenuGroup")}</h3><div className="settings-group-body">
-      <p className="settings-footnote">{t("desktop.settings.projectContextMenuDesc")}</p>
-      {ALL_WORKBENCH_PROJECT_CONTEXT_MENU.map((action) => {
-        const checked = draft.projectContextMenu.includes(action);
-        return <ToggleRow
-          key={action}
-          title={t(`desktop.settings.projectMenu.${action}`)}
-          description={t(`desktop.settings.projectMenu.${action}Desc`)}
-          checked={checked}
-          onChange={(value) => {
-            const next = value
-              ? [...draft.projectContextMenu.filter((item) => item !== action), action]
-              : draft.projectContextMenu.filter((item) => item !== action);
-            // Preserve stable display order from ALL_ list
-            const ordered = ALL_WORKBENCH_PROJECT_CONTEXT_MENU.filter((item) => next.includes(item));
-            update("projectContextMenu", ordered as WorkbenchProjectContextMenuAction[]);
-          }}
-        />;
-      })}
+      <label className="settings-field"><span className="settings-field-label">{t("desktop.settings.gitNestedScanIgnoreDirs")}</span><span className="settings-field-desc muted">{t("desktop.settings.gitNestedScanIgnoreDirsDesc")}</span><textarea rows={5} spellCheck={false} placeholder={"node_modules\ndist"} value={draft.gitNestedScanIgnoreDirs} onChange={(event) => update("gitNestedScanIgnoreDirs", event.target.value, { commit: false })} onBlur={() => commit(draft)} /></label>
     </div></section>
   </>;
 }
@@ -509,15 +509,15 @@ export function BackupPane({ t }: { t: Translate }) {
           <label className="settings-field"><span className="settings-field-label">{t("desktop.backup.passwordConfirm")}</span><input type="password" autoComplete="new-password" value={backupPasswordConfirm} disabled={backupBusy} onChange={(event) => setBackupPasswordConfirm(event.target.value)} /></label>
         </> : null}
         {target === "local-file" ? <div className="settings-action-row">
-          <button type="button" className="tool-btn" disabled={backupBusy} onClick={() => void exportData()}><ThemeIcon name="download" size={16} aria-hidden="true" />{t("desktop.backup.export")}</button>
-          <button type="button" className="tool-btn" disabled={backupBusy} onClick={() => void selectLocalImport()}><ThemeIcon name="upload" size={16} aria-hidden="true" />{t("desktop.backup.import")}</button>
+          <button type="button" className="tool-btn" disabled={backupBusy} onClick={() => void exportData()}><ThemeIcon name="download" size={ICON_SIZE.default} aria-hidden="true" />{t("desktop.backup.export")}</button>
+          <button type="button" className="tool-btn" disabled={backupBusy} onClick={() => void selectLocalImport()}><ThemeIcon name="upload" size={ICON_SIZE.default} aria-hidden="true" />{t("desktop.backup.import")}</button>
         </div> : <>
-          <div className="settings-action-row"><button type="button" className="tool-btn" disabled={backupBusy || !icloud?.available} onClick={() => void exportData()}><ThemeIcon name="cloud" size={16} aria-hidden="true" />{t("desktop.backup.icloudBackup")}</button></div>
+          <div className="settings-action-row"><button type="button" className="tool-btn" disabled={backupBusy || !icloud?.available} onClick={() => void exportData()}><ThemeIcon name="cloud" size={ICON_SIZE.default} aria-hidden="true" />{t("desktop.backup.icloudBackup")}</button></div>
           <div className="settings-backup-list" aria-label={t("desktop.backup.icloudRecent")}>
             <div className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{t("desktop.backup.icloudRecent")}</span><span className="settings-row-desc">{icloudItems.length ? t("desktop.backup.icloudRetention") : t("desktop.backup.icloudEmpty")}</span></span></div>
             {visibleIcloudItems.map((item) => <button type="button" className={`settings-backup-item${item.backupId === selectedIcloudId ? " active" : ""}`} aria-pressed={item.backupId === selectedIcloudId} disabled={backupBusy} key={item.backupId} onClick={() => setSelectedIcloudId(item.backupId)}><span>{new Date(item.createdAtMs).toLocaleString()}</span><small>{item.sourceMachineId.slice(0, 8)} · {item.nativeConversationFileCount} {t("desktop.backup.nativeFiles")}</small></button>)}
           </div>
-          <div className="settings-action-row"><button type="button" className="tool-btn" disabled={backupBusy || !icloud?.available || !selectedIcloud} onClick={() => void selectIcloudImport()}><ThemeIcon name="upload" size={16} aria-hidden="true" />{t("desktop.backup.icloudRestore")}</button></div>
+          <div className="settings-action-row"><button type="button" className="tool-btn" disabled={backupBusy || !icloud?.available || !selectedIcloud} onClick={() => void selectIcloudImport()}><ThemeIcon name="upload" size={ICON_SIZE.default} aria-hidden="true" />{t("desktop.backup.icloudRestore")}</button></div>
         </>}
         {backupBusy && backupProgress ? <div className="settings-backup-progress" role="status" aria-live="polite"><div className="settings-backup-progress-head"><span>{t(`desktop.backup.progress.${backupProgress.phase}`)}</span><span>{backupProgress.percent}%</span></div><div className="settings-backup-progress-track" role="progressbar" aria-label={t("desktop.backup.progress.label")} aria-valuemin={0} aria-valuemax={100} aria-valuenow={backupProgress.percent}><div className="settings-backup-progress-bar" style={{ width: `${backupProgress.percent}%` }} /></div></div> : null}
         {pendingImport ? <div className="settings-backup-preview">
@@ -535,13 +535,14 @@ export function BackupPane({ t }: { t: Translate }) {
   );
 }
 
-export function StoragePane({ draft, setDraft, t }: { draft: StorageDraft; setDraft: (value: StorageDraft) => void; t: Translate }) {
+export function StoragePane({ draft, setDraft, commit, t }: { draft: StorageDraft; setDraft: (value: StorageDraft) => void; commit: (value: StorageDraft) => void; t: Translate }) {
   const [advanced, setAdvanced] = useState(false);
-  const update = <K extends keyof StorageDraft>(key: K, value: StorageDraft[K]) => { const next = { ...draft, [key]: value }; setDraft(next); };
+  /** Path inputs commit on blur. */
+  const update = <K extends keyof StorageDraft>(key: K, value: StorageDraft[K], options?: { commit?: boolean }) => { const next = { ...draft, [key]: value }; setDraft(next); if (options?.commit !== false) commit(next); };
   const paths: Array<[keyof StorageDraft, string, string]> = [["codexHome", "desktop.settings.codexHome", "~/.codex"], ["claudeHome", "desktop.settings.claudeHome", "~/.claude"], ["antigravityHome", "desktop.settings.antigravityHome", "~/.gemini"], ["grokHome", "desktop.settings.grokHome", "~/.grok"], ["opencodeHome", "desktop.settings.opencodeHome", "~/.local/share/opencode"], ["piHome", "desktop.settings.piHome", "~/.pi/agent"], ["primeHome", "desktop.settings.primeHome", "~/.prime/agent"], ["cursorHome", "Cursor CLI home", "~/.cursor"], ["cursorIdeUserDataHome", "Cursor IDE user data home", "Platform default"]];
   return <>
-    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.appData")}</h3><div className="settings-group-body"><p className="settings-footnote">{t("desktop.settings.appDataFootnote")}</p><label className="settings-field"><span className="settings-field-label">{t("desktop.settings.panelHome")}</span><input placeholder="~/.agent-resume-panel" value={draft.panelHome} onChange={(event) => update("panelHome", event.target.value)} /></label><p className="settings-footnote">{t("desktop.settings.panelHomeFootnote")}</p><div className="settings-path-row"><button type="button" className="tool-btn" onClick={() => void desktopApi().settingsOpenPanelHome()}>{t("desktop.common.revealInFinder")}</button></div></div></section>
-    <section className={`settings-group settings-disclosure${advanced ? "" : " collapsed"}`}><button type="button" className="settings-disclosure-head" aria-expanded={advanced} onClick={() => setAdvanced((value) => !value)}><span className="settings-disclosure-chevron" aria-hidden="true" /><span className="settings-disclosure-title">{t("desktop.settings.agentHomesAdvanced")}</span></button>{advanced ? <div className="settings-disclosure-body">{paths.map(([key, label, placeholder]) => <label className="settings-field" key={key}><span className="settings-field-label">{label.startsWith("desktop.") ? t(label) : label}</span><input placeholder={placeholder} value={draft[key]} onChange={(event) => update(key, event.target.value)} /></label>)}</div> : null}</section>
+    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.appData")}</h3><div className="settings-group-body"><p className="settings-footnote">{t("desktop.settings.appDataFootnote")}</p><label className="settings-field"><span className="settings-field-label">{t("desktop.settings.panelHome")}</span><input placeholder="~/.agent-resume-panel" value={draft.panelHome} onChange={(event) => update("panelHome", event.target.value, { commit: false })} onBlur={() => commit(draft)} /></label><p className="settings-footnote">{t("desktop.settings.panelHomeFootnote")}</p><div className="settings-path-row"><button type="button" className="tool-btn" onClick={() => void desktopApi().settingsOpenPanelHome()}>{t("desktop.common.revealInFinder")}</button></div></div></section>
+    <section className={`settings-group settings-disclosure${advanced ? "" : " collapsed"}`}><button type="button" className="settings-disclosure-head" aria-expanded={advanced} onClick={() => setAdvanced((value) => !value)}><span className="settings-disclosure-chevron" aria-hidden="true" /><span className="settings-disclosure-title">{t("desktop.settings.agentHomesAdvanced")}</span></button>{advanced ? <div className="settings-disclosure-body">{paths.map(([key, label, placeholder]) => <label className="settings-field" key={key}><span className="settings-field-label">{label.startsWith("desktop.") ? t(label) : label}</span><input placeholder={placeholder} value={draft[key]} onChange={(event) => update(key, event.target.value, { commit: false })} onBlur={() => commit(draft)} /></label>)}</div> : null}</section>
   </>;
 }
 
@@ -563,10 +564,11 @@ function captureShortcutFromKeyDown(event: KeyboardEvent<HTMLInputElement>): str
   return [...modifiers, key].join("+");
 }
 
-export function NotesPane({ draft, setDraft, t }: { draft: NotesDraft; setDraft: (value: NotesDraft) => void; t: Translate }) {
+export function NotesPane({ draft, setDraft, commit, t }: { draft: NotesDraft; setDraft: (value: NotesDraft) => void; commit: (value: NotesDraft) => void; t: Translate }) {
   const updateField = <K extends keyof NotesDraft>(key: K, value: NotesDraft[K]) => {
     const next = { ...draft, [key]: value };
     setDraft(next);
+    commit(next);
   };
   return (
     <>
@@ -948,6 +950,6 @@ export function AboutPane({ t }: { t: Translate }) {
   const available = Boolean(update?.ok && update.updateAvailable && update.latestVersion && update.latestVersion !== update.currentVersion);
   const updateUrl = update?.ok ? update.downloadUrl || update.releaseUrl || "" : "";
   const open = (url: string) => void desktopApi().openExternalUrl(url);
-  const resource = (title: string, description: string, icon: ReactNode, url: string, primary = false) => <button type="button" className={`settings-about-row${primary ? " settings-about-row-primary" : ""}`} onClick={() => open(url)}><span className="settings-about-row-icon" aria-hidden="true">{icon}</span><span className="settings-about-row-text"><span className="settings-about-row-title">{title}</span><span className="settings-about-row-desc">{description}</span></span><ThemeIcon name="external-link" className="settings-about-row-external" size={14} aria-hidden="true" /></button>;
-  return <div className="settings-pane-body settings-about-body"><header className="settings-about-hero"><div className="settings-about-app-icon" aria-hidden="true"><img className="settings-about-app-icon-img" src="../resources/icon.png" alt="" width="72" height="72" decoding="async" /></div><h3 className="settings-about-app-name">Agent Resume</h3><p className="settings-about-version">{t("desktop.settings.aboutVersionLabel")} {version || "-"}</p><p className="settings-about-tagline">{t("desktop.settings.aboutTagline")}</p></header>{checking || update ? <div className={`settings-about-update${available ? " is-available" : ""}`}><p className="settings-about-update-text">{checking ? t("desktop.settings.updateChecking") : !update?.ok ? t("desktop.settings.updateCheckFailed") : available ? t("desktop.settings.updateAvailable", update.latestVersion || "") : t("desktop.settings.updateUpToDate")}</p><div className="settings-about-update-actions">{available && updateUrl ? <button type="button" className="btn primary" onClick={() => open(updateUrl)}>{t("desktop.settings.updateDownload")}</button> : null}<button type="button" className="btn ghost" onClick={() => void check(true)}>{t("desktop.settings.updateRecheck")}</button></div></div> : null}<section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.aboutResources")}</h3><div className="settings-group-body settings-group-body-rows settings-about-rows">{resource(t("desktop.settings.linkDocumentation"), t("desktop.settings.linkDocumentationDesc"), <ThemeIcon name="file-text" size={18} />, "https://github.com/lucacicii/agent-resume-panel/blob/develop/docs/desktop/README.md")}{resource(t("desktop.settings.linkExtensionDoc"), t("desktop.settings.linkExtensionDocDesc"), <ThemeIcon name="external-link" size={18} />, "https://github.com/lucacicii/agent-resume-panel/blob/develop/docs/panel/README.md")}</div></section><section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.aboutFeedback")}</h3><div className="settings-group-body settings-group-body-rows settings-about-rows">{resource(t("desktop.settings.linkReportIssue"), t("desktop.settings.linkReportIssueDesc"), <ThemeIcon name="message-square-warning" size={18} />, "https://github.com/lucacicii/agent-resume-panel/issues", true)}</div></section><aside className="settings-about-privacy"><ThemeIcon name="shield-check" className="settings-about-privacy-icon" size={16} aria-hidden="true" /><p>{t("desktop.settings.footerHint")}</p></aside></div>;
+  const resource = (title: string, description: string, icon: ReactNode, url: string, primary = false) => <button type="button" className={`settings-about-row${primary ? " settings-about-row-primary" : ""}`} onClick={() => open(url)}><span className="settings-about-row-icon" aria-hidden="true">{icon}</span><span className="settings-about-row-text"><span className="settings-about-row-title">{title}</span><span className="settings-about-row-desc">{description}</span></span><ThemeIcon name="external-link" className="settings-about-row-external" size={ICON_SIZE.dense} aria-hidden="true" /></button>;
+  return <div className="settings-pane-body settings-about-body"><header className="settings-about-hero"><div className="settings-about-app-icon" aria-hidden="true"><img className="settings-about-app-icon-img" src="../resources/icon.png" alt="" width="72" height="72" decoding="async" /></div><h3 className="settings-about-app-name">Agent Resume</h3><p className="settings-about-version">{t("desktop.settings.aboutVersionLabel")} {version || "-"}</p><p className="settings-about-tagline">{t("desktop.settings.aboutTagline")}</p></header>{checking || update ? <div className={`settings-about-update${available ? " is-available" : ""}`}><p className="settings-about-update-text">{checking ? t("desktop.settings.updateChecking") : !update?.ok ? t("desktop.settings.updateCheckFailed") : available ? t("desktop.settings.updateAvailable", update.latestVersion || "") : t("desktop.settings.updateUpToDate")}</p><div className="settings-about-update-actions">{available && updateUrl ? <button type="button" className="btn primary" onClick={() => open(updateUrl)}>{t("desktop.settings.updateDownload")}</button> : null}<button type="button" className="btn ghost" onClick={() => void check(true)}>{t("desktop.settings.updateRecheck")}</button></div></div> : null}<section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.aboutResources")}</h3><div className="settings-group-body settings-group-body-rows settings-about-rows">{resource(t("desktop.settings.linkDocumentation"), t("desktop.settings.linkDocumentationDesc"), <ThemeIcon name="file-text" size={ICON_SIZE.prominent} />, "https://github.com/lucacicii/agent-resume-panel/blob/develop/docs/desktop/README.md")}{resource(t("desktop.settings.linkExtensionDoc"), t("desktop.settings.linkExtensionDocDesc"), <ThemeIcon name="external-link" size={ICON_SIZE.prominent} />, "https://github.com/lucacicii/agent-resume-panel/blob/develop/docs/panel/README.md")}</div></section><section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.aboutFeedback")}</h3><div className="settings-group-body settings-group-body-rows settings-about-rows">{resource(t("desktop.settings.linkReportIssue"), t("desktop.settings.linkReportIssueDesc"), <ThemeIcon name="message-square-warning" size={ICON_SIZE.prominent} />, "https://github.com/lucacicii/agent-resume-panel/issues", true)}</div></section><aside className="settings-about-privacy"><ThemeIcon name="shield-check" className="settings-about-privacy-icon" size={ICON_SIZE.default} aria-hidden="true" /><p>{t("desktop.settings.footerHint")}</p></aside></div>;
 }

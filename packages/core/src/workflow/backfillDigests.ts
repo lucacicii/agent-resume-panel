@@ -152,7 +152,6 @@ export async function backfillReportDigests(
         panelHome,
         date: day,
         skipEmbedding,
-        includeTranscripts: false,
         allowOverBudget: options.allowOverBudget,
         trigger: "backfill"
       });

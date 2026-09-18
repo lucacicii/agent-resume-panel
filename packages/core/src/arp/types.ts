@@ -13,14 +13,6 @@ export type ArpSharedConfig = {
   readonly _slot?: never;
 };
 
-/**
- * IM-only project settings.
- * Slot only: do not read `workbench.*` from IM, or `im.*` from Workbench.
- */
-export type ArpImConfig = {
-  readonly _slot?: never;
-};
-
 export type ArpGitCommitMessageConfig = {
   style?: CommitMessageStyle;
   /** Language for commit message output (e.g. "en", "English", "zh-cn"). */
@@ -47,5 +39,4 @@ export type ArpConfig = {
   version: number;
   shared?: ArpSharedConfig;
   workbench?: ArpWorkbenchConfig;
-  im?: ArpImConfig;
 };

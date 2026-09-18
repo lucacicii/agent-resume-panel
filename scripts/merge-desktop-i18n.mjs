@@ -12,6 +12,19 @@ const desktopLocalesDir = join(root, "apps", "desktop", "locales");
 const settingsOverlayLocales = new Set(["ja"]);
 const obsoleteDesktopKeys = new Set([
   "desktop.agent.toolCategory.projects",
+  // Agent chat backend (core agent/{agentChat,agentStore,toolLoop,prompts,noteAudit}) removed;
+  // these keys had no remaining renderer/main consumer.
+  "desktop.agent.fetchingTools",
+  "desktop.agent.newThread",
+  "desktop.agent.persistFailed",
+  "desktop.agent.requestingLlm",
+  "desktop.agent.requestingLlmRound",
+  "desktop.agent.toolsMaxIterations",
+  "desktop.agent.toolsNoResponse",
+  "desktop.agent.toolsOffTitle",
+  "desktop.agent.toolsOn",
+  "desktop.agent.toolsReady",
+  "desktop.agent.toolsToggle",
   "desktop.notes.projectLabel",
   "desktop.notes.targetLibrary",
   "desktop.settings.projectMenu.note",
@@ -37,6 +50,13 @@ const obsoleteDesktopKeys = new Set([
   "desktop.workbench.sidePanelBack",
   // Quick Access project picker: the workbench switches tasks, not projects.
   "desktop.workbench.quickAccessSwitchProject",
+  // Session "move to project" replaced by "move to task".
+  "desktop.workbench.moveToProject",
+  "desktop.workbench.moveToProjectTitle",
+  "desktop.workbench.moveToProjectHint",
+  "desktop.workbench.moveToProjectRunning",
+  "desktop.workbench.moveToProjectDone",
+  "desktop.workbench.moveToProjectNoTargets",
   "desktop.workbench.renameSession",
   "desktop.workbench.renameSessionTitle",
   "desktop.workbench.generatingTitle",
@@ -258,7 +278,87 @@ const obsoleteDesktopKeys = new Set([
   "desktop.workbench.quickAccessShowAgent",
   "desktop.workbench.quickAccessShowNotes",
   "desktop.workbench.quickAccessOpenSessions",
+  // IM module removed: task rooms, role templates, delegation, knowledge, and the
+  // room/discussion-room Workbench chrome are gone. Selection actions moved to
+  // Settings → Selection and are dropped by prefix below.
+  "desktop.workbench.openRoom",
+  "desktop.workbench.closeRoom",
+  "desktop.workbench.imSessionBadge",
+  "desktop.workbench.imSessionBadgeHint",
+  "desktop.settings.paneIm",
+  "desktop.settings.paneImDesc",
+  "desktop.settings.selectionActionKind",
+  "desktop.settings.selectionActionKindContext",
+  "desktop.settings.selectionActionKindIndependent",
+  // Settings panes auto-save now; the manual Save/Discard buttons and the
+  // unsaved-changes confirmation banner were removed.
+  "desktop.settings.save",
+  "desktop.settings.discard",
+  "desktop.settings.cancel",
+  "desktop.settings.saveAndContinue",
+  "desktop.settings.discardAndContinue",
+  "desktop.settings.unsavedHint",
+  "desktop.settings.unsavedConfirm",
+  // Project context menu removed: projects are no longer a browsable list and
+  // nothing opens a project menu (the workbench groups sessions under tasks).
+  "desktop.settings.projectContextMenuGroup",
+  "desktop.settings.projectContextMenuDesc",
+  "desktop.settings.projectContextMenuEmpty",
+  "desktop.settings.projectMenu.pin",
+  "desktop.settings.projectMenu.pinDesc",
+  "desktop.settings.projectMenu.newSession",
+  "desktop.settings.projectMenu.newSessionDesc",
+  "desktop.settings.projectMenu.editor",
+  "desktop.settings.projectMenu.editorDesc",
+  "desktop.settings.projectMenu.rename",
+  "desktop.settings.projectMenu.renameDesc",
+  "desktop.settings.projectMenu.setLocalPath",
+  "desktop.settings.projectMenu.setLocalPathDesc",
+  "desktop.settings.projectMenu.copyPath",
+  "desktop.settings.projectMenu.copyPathDesc",
+  "desktop.settings.projectMenu.reveal",
+  "desktop.settings.projectMenu.revealDesc",
+  "desktop.settings.projectMenu.merge",
+  "desktop.settings.projectMenu.mergeDesc",
+  "desktop.settings.projectMenu.split",
+  "desktop.settings.projectMenu.splitDesc",
+  "desktop.settings.projectMenu.remove",
+  "desktop.settings.projectMenu.removeDesc",
+  "desktop.workbench.pinProject",
+  "desktop.workbench.unpinProject",
+  "desktop.workbench.openInApp",
+  "desktop.workbench.renameProject",
+  "desktop.workbench.renameProjectDisplay",
+  "desktop.workbench.nameEmpty",
+  "desktop.workbench.setLocalFolder",
+  "desktop.workbench.setLocalFolderTitle",
+  "desktop.workbench.localPathSet",
+  "desktop.workbench.copyLocalPath",
+  "desktop.workbench.pathCopied",
+  "desktop.workbench.mergeIntoProject",
+  "desktop.workbench.mergeNoTargets",
+  "desktop.workbench.mergeDialogTitle",
+  "desktop.workbench.mergeDialogHint",
+  "desktop.workbench.mergeRunning",
+  "desktop.workbench.mergeDone",
+  "desktop.workbench.splitProjectPath",
+  "desktop.workbench.splitNeedVariants",
+  "desktop.workbench.splitDialogTitle",
+  "desktop.workbench.splitDialogHint",
+  "desktop.workbench.splitRunning",
+  "desktop.workbench.splitDone",
+  "desktop.workbench.removeProjectFromPanel",
 ]);
+
+/** Keys retired with the IM module (rooms, roles, delegation) or renamed out of `desktop.im.`. */
+function isObsoleteDesktopKey(key) {
+  if (obsoleteDesktopKeys.has(key)) return true;
+  if (key.startsWith("desktop.im.")) return true;
+  // `desktop.settings.imAction*` / `imDelegation*` / `imRoutingModelUse*` etc.,
+  // but never the unrelated `desktop.settings.image*` keys.
+  if (/^desktop\.settings\.im(?!age)/.test(key)) return true;
+  return false;
+}
 
 function normalizePlaceholders(value) {
   const names = [];
@@ -356,16 +456,16 @@ for (const file of readdirSync(desktopLocalesDir).filter((name) => name.endsWith
   // Keep every generated locale structurally complete when a localized catalog
   // lags behind English; untranslated entries intentionally fall back to en.
   const source = localeCode === "en" ? enKeys : { ...enKeys, ...localizedSource };
-  for (const key of obsoleteDesktopKeys) {
-    delete locale[key];
+  for (const key of Object.keys(locale)) {
+    if (isObsoleteDesktopKey(key)) delete locale[key];
   }
   for (const [key, value] of Object.entries(source)) {
     if (!key.startsWith("desktop.")) continue;
     locale[key] = value;
   }
   const overlayCount = applyDesktopSettingsOverlay(localeCode, locale);
-  for (const key of obsoleteDesktopKeys) {
-    delete locale[key];
+  for (const key of Object.keys(locale)) {
+    if (isObsoleteDesktopKey(key)) delete locale[key];
   }
   if (localeCode !== "en") {
     const englishLocale = JSON.parse(readFileSync(join(desktopLocalesDir, "en.json"), "utf8"));

@@ -6,6 +6,7 @@ import {
   subscribe,
   type NotificationEntry
 } from "./notificationStore";
+import { useOverlayPresence } from "./useOverlayMotion";
 import { NotificationHistoryPopover } from "./NotificationHistoryPopover";
 
 export function BellNotificationButton(): React.JSX.Element {
@@ -43,6 +44,7 @@ export function BellNotificationButton(): React.JSX.Element {
 
   const bellLabel = ready ? t("desktop.notifications.bell") : "Notifications";
   const hasNotifications = history.length > 0;
+  const popover = useOverlayPresence(open);
 
   return (
     <>
@@ -58,9 +60,10 @@ export function BellNotificationButton(): React.JSX.Element {
         <ThemeIcon name="bell" aria-hidden="true" />
         {unread > 0 && <span className="bell-badge" aria-hidden="true">{unread > 99 ? "99+" : unread}</span>}
       </button>
-      {open && bellRef.current && (
+      {popover.mounted && bellRef.current && (
         <NotificationHistoryPopover
           anchor={bellRef.current}
+          closing={popover.closing}
           onClose={() => setOpen(false)}
         />
       )}

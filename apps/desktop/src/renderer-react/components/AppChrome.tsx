@@ -1,9 +1,10 @@
-import { ThemeIcon } from "./ThemeIcon";
+import { ICON_SIZE, ThemeIcon } from "./ThemeIcon";
 import { createPortal } from "react-dom";
 import { useEffect, useRef, useState } from "react";
 import { desktopApi } from "../bridge";
 import { useI18n } from "../i18n";
 import { Tooltip } from "./Tooltip";
+import { useOverlayPresence } from "./useOverlayMotion";
 import { BellNotificationButton } from "./BellNotificationButton";
 
 type FloatingNoteDot = { noteId: string; title: string };
@@ -70,6 +71,8 @@ export function AppChrome(): React.JSX.Element {
     menu.style.top = `${top}px`;
   }, [avatarMenuOpen]);
 
+  const avatarMenu = useOverlayPresence(avatarMenuOpen);
+
   const focusNote = (dot: FloatingNoteDot) => {
     const api = desktopApi();
     if (typeof api.standaloneNoteOpen !== "function") return;
@@ -117,20 +120,20 @@ export function AppChrome(): React.JSX.Element {
             onClick={() => setAvatarMenuOpen((open) => !open)}
           >
             <span className="app-account-avatar" aria-hidden="true">
-              <ThemeIcon name="user" size={16} />
+              <ThemeIcon name="user" size={ICON_SIZE.default} />
             </span>
           </button>
         </Tooltip>
-        {avatarMenuOpen
+        {avatarMenu.mounted
           ? createPortal(
-              <div ref={avatarMenuRef} className="rail-account-menu" role="menu" aria-label={avatarLabel}>
+              <div ref={avatarMenuRef} className={`rail-account-menu${avatarMenu.closing ? " is-closing" : ""}`} role="menu" aria-label={avatarLabel}>
                 <button
                   type="button"
                   role="menuitem"
                   className="rail-account-menu-item"
                   onClick={() => openSettings("general")}
                 >
-                  <ThemeIcon name="settings" size={14} aria-hidden="true" />
+                  <ThemeIcon name="settings" size={ICON_SIZE.dense} aria-hidden="true" />
                   {settingsLabel}
                 </button>
               </div>,

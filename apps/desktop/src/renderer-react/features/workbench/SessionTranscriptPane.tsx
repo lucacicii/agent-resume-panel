@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { desktopApi } from "../../bridge";
 import { StreamdownRenderer } from "../../components/StreamdownRenderer";
+import { useOverlayState } from "../../components/useOverlayMotion";
 import { ProviderIcon } from "../../components/ProviderIcon";
 
-import { ThemeIcon } from "../../components/ThemeIcon";
+import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { useI18n } from "../../i18n";
 import {
   buildSessionTranscriptModel,
@@ -73,8 +74,8 @@ const TranscriptMessageRow = React.memo(function TranscriptMessageRow({
     >
       <div className="role">
         {message.role === "assistant"
-          ? <ProviderIcon provider={roleIconProvider} size={13} className="wb-transcript-role-icon" />
-          : <ThemeIcon name="user" size={13} className="wb-transcript-role-icon" aria-hidden="true" />}
+          ? <ProviderIcon provider={roleIconProvider} size={ICON_SIZE.dense} className="wb-transcript-role-icon" />
+          : <ThemeIcon name="user" size={ICON_SIZE.dense} className="wb-transcript-role-icon" aria-hidden="true" />}
         {roleLabelText}
         {stamp ? ` · ${stamp}` : ""}
       </div>
@@ -86,7 +87,7 @@ const TranscriptMessageRow = React.memo(function TranscriptMessageRow({
             aria-expanded={thinkingExpanded}
             onClick={() => onToggleThinking(messageId)}
           >
-            <ThemeIcon name="chevron-right" className={thinkingExpanded ? "is-expanded" : ""} size={12} />
+            <ThemeIcon name="chevron-right" className={thinkingExpanded ? "is-expanded" : ""} size={ICON_SIZE.inline} />
             <span>{thinkingLabel}</span>
           </button>
           {thinkingExpanded ? (
@@ -128,7 +129,7 @@ const TranscriptMessageRow = React.memo(function TranscriptMessageRow({
             title={translated ? restoreLabel : translateLabel}
             aria-label={translated ? restoreLabel : translateLabel}
           >
-            <ThemeIcon name="globe" size={11} aria-hidden="true" />
+            <ThemeIcon name="globe" size={ICON_SIZE.inline} aria-hidden="true" />
             <span>
               {translated
                 ? restoreLabel
@@ -144,7 +145,7 @@ const TranscriptMessageRow = React.memo(function TranscriptMessageRow({
             title={copyLabel}
             aria-label={copyLabel}
           >
-            <ThemeIcon name="copy" size={11} aria-hidden="true" />
+            <ThemeIcon name="copy" size={ICON_SIZE.inline} aria-hidden="true" />
             <span>{copyLabel}</span>
           </button>
         </div>
@@ -229,7 +230,7 @@ export const SessionTranscriptPane = React.memo(function SessionTranscriptPane({
   const [expandedThinking, setExpandedThinking] = useState<Record<string, boolean>>({});
   const [translations, setTranslations] = useState<Record<string, string>>({});
   const [translatingIds, setTranslatingIds] = useState<Set<string>>(new Set());
-  const [imagePreview, setImagePreview] = useState("");
+  const [imagePreview, setImagePreview, imagePreviewClosing] = useOverlayState<string>();
   const bodyRef = useRef<HTMLDivElement>(null);
   const userScrolledUpRef = useRef(false);
   const previewRef = useRef<TranscriptPreview | null>(null);
@@ -566,7 +567,7 @@ export const SessionTranscriptPane = React.memo(function SessionTranscriptPane({
       return next;
     });
     try {
-      const result = await desktopApi().imRunSelectionAction({ actionId: "translate", text });
+      const result = await desktopApi().selectionRunAction({ actionId: "translate", text });
       setTranslations((current) => ({ ...current, [messageId]: result.text }));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -595,7 +596,7 @@ export const SessionTranscriptPane = React.memo(function SessionTranscriptPane({
             aria-label={t("desktop.common.refresh")}
             title={t("desktop.common.refresh")}
           >
-            <ThemeIcon name="refresh" size={14} className={loading ? "spin" : undefined} />
+            <ThemeIcon name="refresh" size={ICON_SIZE.default} className={loading ? "spin" : undefined} />
           </button>
         </div>
         <p className="muted wb-transcript-status">
@@ -622,7 +623,7 @@ export const SessionTranscriptPane = React.memo(function SessionTranscriptPane({
           aria-label={t("desktop.common.refresh")}
           title={t("desktop.common.refresh")}
         >
-          <ThemeIcon name="refresh" size={14} className={loading ? "spin" : undefined} />
+          <ThemeIcon name="refresh" size={ICON_SIZE.default} className={loading ? "spin" : undefined} />
         </button>
         <button
           type="button"
@@ -632,10 +633,10 @@ export const SessionTranscriptPane = React.memo(function SessionTranscriptPane({
           title={renderMarkdownView ? t("desktop.workbench.transcriptShowOriginal") : t("desktop.workbench.transcriptShowMarkdown")}
           onClick={() => setRenderMarkdownView((current) => !current)}
         >
-          <ThemeIcon name={renderMarkdownView ? "file-text" : "eye"} size={14} />
+          <ThemeIcon name={renderMarkdownView ? "file-text" : "eye"} size={ICON_SIZE.default} />
         </button>
         <div className="wb-transcript-head-search">
-          <ThemeIcon name="search" size={12} className="wb-transcript-head-search-icon" aria-hidden="true" />
+          <ThemeIcon name="search" size={ICON_SIZE.inline} className="wb-transcript-head-search-icon" aria-hidden="true" />
           <input
             ref={searchInputRef}
             type="search"
@@ -662,7 +663,7 @@ export const SessionTranscriptPane = React.memo(function SessionTranscriptPane({
                 title={t("desktop.common.findPrev", "Previous match (Shift+Enter)")}
                 aria-label={t("desktop.common.findPrev", "Previous match")}
               >
-                <ThemeIcon name="arrow-up" size={11} />
+                <ThemeIcon name="arrow-up" size={ICON_SIZE.inline} />
               </button>
               <button
                 type="button"
@@ -671,7 +672,7 @@ export const SessionTranscriptPane = React.memo(function SessionTranscriptPane({
                 title={t("desktop.common.findNext", "Next match (Enter)")}
                 aria-label={t("desktop.common.findNext", "Next match")}
               >
-                <ThemeIcon name="arrow-down" size={11} />
+                <ThemeIcon name="arrow-down" size={ICON_SIZE.inline} />
               </button>
             </div>
           ) : null}
@@ -741,7 +742,7 @@ export const SessionTranscriptPane = React.memo(function SessionTranscriptPane({
               aria-expanded={outlineOpen}
               onClick={() => setOutlineOpen((current) => !current)}
             >
-              <ThemeIcon name="chevron-right" className={outlineOpen ? "is-expanded" : ""} size={12} />
+              <ThemeIcon name="chevron-right" className={outlineOpen ? "is-expanded" : ""} size={ICON_SIZE.inline} />
               <span>{t("desktop.workbench.transcriptOutline")} · {model.outline.length}</span>
             </button>
             {outlineOpen ? (
@@ -774,12 +775,12 @@ export const SessionTranscriptPane = React.memo(function SessionTranscriptPane({
               aria-label={t("desktop.workbench.transcriptScrollToBottom", "Scroll to bottom")}
               title={t("desktop.workbench.transcriptScrollToBottom", "Scroll to bottom")}
             >
-              <ThemeIcon name="chevron-down" size={14} />
+              <ThemeIcon name="chevron-down" size={ICON_SIZE.dense} />
             </button>
           ) : null}
         </div>
       ) : null}
-      {imagePreview ? <div className="notes-image-preview" role="dialog" aria-modal="true" onClick={() => setImagePreview("")}><img src={imagePreview} alt="" /><button type="button" className="notes-image-preview-close" aria-label={t("desktop.common.close")} onClick={() => setImagePreview("")}><ThemeIcon name="close" size={16} /></button></div> : null}
+      {imagePreview ? <div className={`notes-image-preview${imagePreviewClosing ? " is-closing" : ""}`} role="dialog" aria-modal="true" onClick={() => setImagePreview(null)}><img src={imagePreview} alt="" /><button type="button" className="notes-image-preview-close" aria-label={t("desktop.common.close")} onClick={() => setImagePreview(null)}><ThemeIcon name="close" size={ICON_SIZE.default} /></button></div> : null}
     </div>
   );
 });

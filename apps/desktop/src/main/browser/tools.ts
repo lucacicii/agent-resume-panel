@@ -200,7 +200,6 @@ export async function invokeBrowserTool(
               allowHosts: session.policy.allowHosts,
               blockHosts: session.policy.blockHosts,
               maxTabs: session.policy.maxTabs,
-              allowDownloads: session.policy.allowDownloads,
               allowPopups: session.policy.allowPopups
             }
           });

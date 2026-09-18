@@ -34,6 +34,8 @@ const COMPOSER_MESSAGES: Record<string, string> = {
   "desktop.workbench.tuiSlash.share": "Share this session",
   "desktop.workbench.tuiSlash.permissions": "Permission settings",
   "desktop.workbench.terminalComposerDirectorySuggestions": "Directory suggestions",
+  "desktop.workbench.terminalComposerProjectSuggestions": "Project paths",
+  "desktop.workbench.terminalComposerProjectNoMatch": "No matching projects",
   "desktop.workbench.terminalComposerDirectoryLoading": "Loading directories…",
   "desktop.workbench.terminalComposerDirectoryEmpty": "No folders in this project",
   "desktop.workbench.terminalComposerDirectoryNoMatch": "No matching folders",
@@ -55,12 +57,31 @@ const COMPOSER_MESSAGES: Record<string, string> = {
   "desktop.workbench.sessionDot.idle": "Idle"
 };
 
-const workbenchListDirectoryMock = vi.fn(async () => ({
-  entries: [
-    { name: "src", path: "/work/app/src", isDirectory: true },
-    { name: ".git", path: "/work/app/.git", isDirectory: true },
-    { name: "README.md", path: "/work/app/README.md", isDirectory: false }
-  ]
+const workbenchListDirectoryMock = vi.fn(async ({ dirPath }: { rootPath?: string; dirPath: string }) => ({
+  entries:
+    dirPath === "/work/app"
+      ? [
+          { name: "src", path: "/work/app/src", isDirectory: true },
+          { name: ".git", path: "/work/app/.git", isDirectory: true },
+          { name: "README.md", path: "/work/app/README.md", isDirectory: false }
+        ]
+      : dirPath === "/work/app/src"
+        ? [
+            { name: "components", path: "/work/app/src/components", isDirectory: true },
+            { name: "main.ts", path: "/work/app/src/main.ts", isDirectory: false }
+          ]
+        : dirPath === "/work/app/src/components"
+          ? [
+              { name: "Button.tsx", path: "/work/app/src/components/Button.tsx", isDirectory: false }
+            ]
+          : dirPath === "/work/api"
+            ? [
+                { name: "src", path: "/work/api/src", isDirectory: true },
+                { name: "api.ts", path: "/work/api/api.ts", isDirectory: false }
+              ]
+            : dirPath === "/work/api/src"
+              ? [{ name: "routes", path: "/work/api/src/routes", isDirectory: true }]
+              : []
 }));
 
 type RegisterMap = Map<string, () => void>;
@@ -83,6 +104,7 @@ async function renderComposer(options: {
   onOpenTip?: (tip: { id: string; text: string; createdAtMs: number }) => void;
   onClose?: () => void;
   slashPhrases?: Array<{ trigger: string; phrase: string; description?: string }>;
+  workspaceProjects?: Array<{ label: string; path: string }>;
 } = {}): Promise<{
   map: RegisterMap;
   container: HTMLElement;
@@ -139,6 +161,7 @@ async function renderComposer(options: {
         registerFocus={registerSpy}
         slashPhrases={options.slashPhrases}
         tuiSlashCommands={options.tuiSlashCommands}
+        workspaceProjects={options.workspaceProjects}
       />
     );
   }
@@ -242,6 +265,109 @@ describe("TerminalComposer", () => {
     expect(await within(listbox).findByText("#src")).toBeTruthy();
     fireEvent.keyDown(textbox(), { key: "Tab" });
     expect(onChange).toHaveBeenCalledWith("please inspect #src");
+  });
+
+  it("lists the shared workspace's projects and inserts the project path on Tab", async () => {
+    const { onChange } = await renderComposer({
+      cwd: "/work/ws",
+      workspaceProjects: [
+        { label: "app", path: "/work/app" },
+        { label: "api", path: "/work/api" }
+      ]
+    });
+    focusInput();
+    fireEvent.change(textbox(), { target: { value: "please inspect #" } });
+    const listbox = await screen.findByRole("listbox", { name: "Project paths" });
+    expect(within(listbox).getByText("app")).toBeTruthy();
+    expect(within(listbox).getByText("/work/app")).toBeTruthy();
+    expect(within(listbox).getByText("api")).toBeTruthy();
+    // The shared workspace has no repo folders of its own to list.
+    expect(workbenchListDirectoryMock).not.toHaveBeenCalled();
+    fireEvent.change(textbox(), { target: { value: "please inspect #app" } });
+    fireEvent.keyDown(textbox(), { key: "Tab" });
+    expect(onChange).toHaveBeenCalledWith("please inspect /work/app");
+  });
+
+  it("filters shared-workspace projects by label and path", async () => {
+    await renderComposer({
+      cwd: "/work/ws",
+      workspaceProjects: [
+        { label: "app", path: "/work/app" },
+        { label: "api", path: "/work/api" }
+      ]
+    });
+    focusInput();
+    fireEvent.change(textbox(), { target: { value: "#api" } });
+    const listbox = await screen.findByRole("listbox", { name: "Project paths" });
+    expect(within(listbox).getByText("api")).toBeTruthy();
+    expect(within(listbox).queryByText("app")).toBeNull();
+  });
+
+  it("shows a project-specific empty state when no shared-workspace project matches", async () => {
+    await renderComposer({ cwd: "/work/ws", workspaceProjects: [{ label: "app", path: "/work/app" }] });
+    focusInput();
+    fireEvent.change(textbox(), { target: { value: "#zzz" } });
+    const listbox = await screen.findByRole("listbox", { name: "Project paths" });
+    expect(within(listbox).getByText("No matching projects")).toBeTruthy();
+  });
+
+  it("falls back to the directory listing when the workspace has no projects", async () => {
+    await renderComposer({ projectPath: "/work/app", workspaceProjects: [] });
+    focusInput();
+    fireEvent.change(textbox(), { target: { value: "#s" } });
+    const listbox = await screen.findByRole("listbox", { name: "Directory suggestions" });
+    expect(workbenchListDirectoryMock).toHaveBeenCalledWith({ rootPath: "/work/app", dirPath: "/work/app" });
+    expect(await within(listbox).findByText("#src")).toBeTruthy();
+  });
+
+  it("walks into nested directories with ArrowRight and inserts the full path on Tab", async () => {
+    await renderComposer({ projectPath: "/work/app" });
+    focusInput();
+    fireEvent.change(textbox(), { target: { value: "#s" } });
+    await screen.findByRole("listbox", { name: "Directory suggestions" });
+    fireEvent.keyDown(textbox(), { key: "ArrowRight" });
+    await waitFor(() => expect(textbox().value).toBe("#src/"));
+    expect(textbox().selectionStart).toBe(5);
+    const listbox = await screen.findByRole("listbox", { name: "Directory suggestions" });
+    expect(await within(listbox).findByText("#src/components")).toBeTruthy();
+    expect(workbenchListDirectoryMock).toHaveBeenCalledWith({ rootPath: "/work/app", dirPath: "/work/app/src" });
+    fireEvent.keyDown(textbox(), { key: "Tab" });
+    await waitFor(() => expect(textbox().value).toBe("#src/components"));
+    expect(screen.queryByRole("listbox", { name: "Directory suggestions" })).toBeNull();
+  });
+
+  it("steps back to the parent level with ArrowLeft", async () => {
+    await renderComposer({ projectPath: "/work/app" });
+    focusInput();
+    fireEvent.change(textbox(), { target: { value: "#s" } });
+    await screen.findByRole("listbox", { name: "Directory suggestions" });
+    fireEvent.keyDown(textbox(), { key: "ArrowRight" });
+    await waitFor(() => expect(textbox().value).toBe("#src/"));
+    // The next level must be visible before ArrowLeft can walk back up.
+    await screen.findByText("#src/components");
+    fireEvent.keyDown(textbox(), { key: "ArrowLeft" });
+    await waitFor(() => expect(textbox().value).toBe("#"));
+  });
+
+  it("walks from a shared-workspace project into its directories and inserts the absolute path", async () => {
+    await renderComposer({
+      cwd: "/work/ws",
+      workspaceProjects: [
+        { label: "app", path: "/work/app" },
+        { label: "api", path: "/work/api" }
+      ]
+    });
+    focusInput();
+    fireEvent.change(textbox(), { target: { value: "#ap" } });
+    const projectList = await screen.findByRole("listbox", { name: "Project paths" });
+    expect(within(projectList).getByText("api")).toBeTruthy();
+    fireEvent.keyDown(textbox(), { key: "ArrowRight" });
+    await waitFor(() => expect(textbox().value).toBe("#api/"));
+    const listbox = await screen.findByRole("listbox", { name: "Directory suggestions" });
+    expect(await within(listbox).findByText("#api/src")).toBeTruthy();
+    expect(workbenchListDirectoryMock).toHaveBeenCalledWith({ rootPath: "/work/api", dirPath: "/work/api" });
+    fireEvent.keyDown(textbox(), { key: "Tab" });
+    await waitFor(() => expect(textbox().value).toBe("/work/api/src"));
   });
 
   it("sends directly on Enter without accepting directory suggestions", async () => {

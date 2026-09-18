@@ -1,7 +1,8 @@
-import { ThemeIcon } from "../../components/ThemeIcon";
+import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useState } from "react";
 import { desktopApi } from "../../bridge";
+import { useOverlayState } from "../../components/useOverlayMotion";
 import { useI18n } from "../../i18n";
 
 /** One reusable GTD task template as the renderer sees it. */
@@ -42,8 +43,8 @@ export function TaskTemplatePanel({
 }): React.JSX.Element | null {
   const { ready, t } = useI18n();
   const [templates, setTemplates] = useState<TaskTemplate[]>([]);
-  const [draft, setDraft] = useState<TemplateDraft | null>(null);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; template: TaskTemplate } | null>(null);
+  const [draft, setDraft, draftClosing] = useOverlayState<TemplateDraft>();
+  const [contextMenu, setContextMenu, contextMenuClosing] = useOverlayState<{ x: number; y: number; template: TaskTemplate }>();
 
   const text = useCallback(
     (key: string, ...args: Array<string | number>) => (ready ? t(key, ...args) : key),
@@ -164,7 +165,7 @@ export function TaskTemplatePanel({
       <aside className="gtd-template-panel" aria-label={text("desktop.gtd.templates")}>
         <div className="gtd-template-head">
           <span className="gtd-template-head-title">
-            <ThemeIcon name="layout-dashboard" size={14} aria-hidden="true" />
+            <ThemeIcon name="layout-dashboard" size={ICON_SIZE.dense} aria-hidden="true" />
             {text("desktop.gtd.templates")}
           </span>
           <button
@@ -174,7 +175,7 @@ export function TaskTemplatePanel({
             title={text("desktop.gtd.newTemplate")}
             onClick={openNewTemplate}
           >
-            <ThemeIcon name="plus" size={14} aria-hidden="true" />
+            <ThemeIcon name="plus" size={ICON_SIZE.dense} aria-hidden="true" />
           </button>
         </div>
         <div className="gtd-template-list">
@@ -197,12 +198,12 @@ export function TaskTemplatePanel({
                 setContextMenu({ x: event.clientX, y: event.clientY, template });
               }}
             >
-              <ThemeIcon name="grip-vertical" className="gtd-template-grip" size={13} aria-hidden="true" />
+              <ThemeIcon name="grip-vertical" className="gtd-template-grip" size={ICON_SIZE.dense} aria-hidden="true" />
               <span className="gtd-template-body">
                 <span className="gtd-template-title">{template.title}</span>
                 {template.projectPaths.length > 0 ? (
                   <span className="gtd-template-project" title={template.projectPaths.join("\n")}>
-                    <ThemeIcon name="folder" size={11} aria-hidden="true" />
+                    <ThemeIcon name="folder" size={ICON_SIZE.inline} aria-hidden="true" />
                     {projectLabel(template.projectPaths[0])}
                     {template.projectPaths.length > 1 ? ` +${template.projectPaths.length - 1}` : ""}
                   </span>
@@ -213,7 +214,7 @@ export function TaskTemplatePanel({
         </div>
       </aside>
       {draft && host ? createPortal(
-        <div className="wb-note-created-overlay">
+        <div className={`wb-note-created-overlay${draftClosing ? " is-closing" : ""}`}>
           <div className="wb-note-created-backdrop" onClick={() => { if (!draft.busy) setDraft(null); }} />
           <form
             className="wb-note-created-panel gtd-new-task-panel"
@@ -249,7 +250,7 @@ export function TaskTemplatePanel({
                       className="gtd-new-task-project-clear"
                       aria-label={text("desktop.common.close")}
                       onClick={() => removeProject(projectPath)}
-                    ><ThemeIcon name="close" size={12} /></button>
+                    ><ThemeIcon name="close" size={ICON_SIZE.inline} /></button>
                   </span>
                 ))}
               </div>
@@ -269,7 +270,7 @@ export function TaskTemplatePanel({
       ) : null}
       {contextMenu && host ? createPortal(
         <div
-          className="wb-context-menu"
+          className={`wb-context-menu${contextMenuClosing ? " is-closing" : ""}`}
           role="menu"
           style={{
             left: Math.max(8, Math.min(contextMenu.x, window.innerWidth - 220)),

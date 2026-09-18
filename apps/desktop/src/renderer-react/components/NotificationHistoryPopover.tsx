@@ -17,7 +17,7 @@ function formatTime(ms: number): string {
   return `${days}d`;
 }
 
-export function NotificationHistoryPopover({ anchor, onClose }: { anchor: HTMLElement; onClose: () => void }): React.JSX.Element {
+export function NotificationHistoryPopover({ anchor, onClose, closing = false }: { anchor: HTMLElement; onClose: () => void; closing?: boolean }): React.JSX.Element {
   const { ready, t } = useI18n();
   const [page, setPage] = useState(0);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -68,7 +68,7 @@ export function NotificationHistoryPopover({ anchor, onClose }: { anchor: HTMLEl
   const translate = (key: string) => (ready ? t(key) : key);
 
   return createPortal(
-    <div ref={popoverRef} className="notification-popover" role="dialog" aria-label={translate("desktop.notifications.title")}>
+    <div ref={popoverRef} className={`notification-popover${closing ? " is-closing" : ""}`} role="dialog" aria-label={translate("desktop.notifications.title")}>
       <div className="notification-popover-header">
         <span className="notification-popover-title">{translate("desktop.notifications.title")}</span>
         {total > 0 && (

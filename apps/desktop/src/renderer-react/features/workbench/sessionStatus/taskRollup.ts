@@ -15,15 +15,15 @@
 
 import type { ActiveSessionDot } from "../activeSessionDots";
 import type { SessionDotStatus } from "./types";
+import { WORKBENCH_SESSION_DOT_URGENCY } from "../../../../shared/workbenchSelection";
 
-/** Urgency order for a task's rolled-up live status. */
-export const LIVE_RANK: Record<SessionDotStatus, number> = {
-  awaiting_user: 4,
-  error: 3,
-  connecting: 2,
-  running: 1,
-  open: 0
-};
+/**
+ * Urgency order for a task's rolled-up live status.
+ *
+ * Re-exported from the shared vocabulary so main (tray) and the renderer (GTD)
+ * rank panes identically; `taskRollup` just owns the task-level packing.
+ */
+export const LIVE_RANK: Record<SessionDotStatus, number> = WORKBENCH_SESSION_DOT_URGENCY;
 
 type RollupItem = {
   work: { sessions?: readonly string[] };

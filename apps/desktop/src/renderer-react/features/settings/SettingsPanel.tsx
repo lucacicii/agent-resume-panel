@@ -1,4 +1,4 @@
-import { ThemeIcon } from "../../components/ThemeIcon";
+import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { appearanceStateFromSettings } from "../../themes";
@@ -6,9 +6,10 @@ import type { AiProvider, ModelKind, ModelSelection, PanelSettings, ProviderMode
 import { listProviderModels } from "./providerPool";
 import { desktopApi } from "../../bridge";
 import { Status, type StatusKind } from "../../components/Status";
+import { useOverlayPresence } from "../../components/useOverlayMotion";
 import { useI18n } from "../../i18n";
 import { AboutPane, BackupPane, LogsPane, NotesPane, StoragePane, UsagePane, WorkbenchPane, type UsageDetailTab } from "./AdditionalPanes";
-import { ImSettingsPane } from "./ImSettingsPane";
+import { SelectionSettingsPane } from "./SelectionSettingsPane";
 import { AgentStatusPane } from "./AgentStatusPane";
 import { McpPane } from "./McpPane";
 import {
@@ -33,11 +34,27 @@ import {
   type WorkbenchDraft
 } from "./model";
 
-type Pane = "general" | "providers" | "sessions" | "workbench" | "im" | "notes" | "storage" | "mcp" | "agentStatus" | "usage" | "logs" | "backup" | "about";
-type EditablePane = Exclude<Pane, "mcp" | "usage" | "logs" | "backup" | "about" | "im">;
+type Pane = "general" | "providers" | "sessions" | "workbench" | "selection" | "notes" | "storage" | "mcp" | "agentStatus" | "usage" | "logs" | "backup" | "about";
+type EditablePane = Exclude<Pane, "mcp" | "usage" | "logs" | "backup" | "about" | "selection" | "agentStatus">;
 
-function isEditablePane(value: Pane): value is EditablePane {
-  return value !== "mcp" && value !== "usage" && value !== "logs" && value !== "backup" && value !== "about" && value !== "im";
+type EditableDraft = GeneralDraft | ProvidersDraft | SessionsDraft | WorkbenchDraft | NotesDraft | StorageDraft;
+
+function savedDraftFor(section: EditablePane, base: PanelSettings): EditableDraft {
+  return section === "general" ? generalDraftFromSettings(base)
+    : section === "providers" ? providersDraftFromSettings(base)
+    : section === "sessions" ? sessionsDraftFromSettings(base)
+    : section === "workbench" ? workbenchDraftFromSettings(base)
+    : section === "notes" ? notesDraftFromSettings(base)
+    : storageDraftFromSettings(base);
+}
+
+function sectionPatch(section: EditablePane, base: PanelSettings, draft: EditableDraft): Partial<PanelSettings> {
+  return section === "general" ? generalPatch(base, draft as GeneralDraft)
+    : section === "providers" ? providersPatch(base, draft as ProvidersDraft)
+    : section === "sessions" ? sessionsPatch(base, draft as SessionsDraft)
+    : section === "workbench" ? workbenchPatch(base, draft as WorkbenchDraft)
+    : section === "notes" ? notesPatch(base, draft as NotesDraft)
+    : storagePatch(base, draft as StorageDraft);
 }
 
 type SettingsPanelProps = {
@@ -51,7 +68,7 @@ const panes: Array<{ id: Pane; key: string; desc: string }> = [
   { id: "providers", key: "desktop.settings.paneProviders", desc: "desktop.settings.paneProvidersDesc" },
   { id: "sessions", key: "desktop.settings.paneSessions", desc: "desktop.settings.paneSessionsDesc" },
   { id: "workbench", key: "desktop.settings.paneWorkbench", desc: "desktop.settings.paneWorkbenchDesc" },
-  { id: "im", key: "desktop.settings.paneIm", desc: "desktop.settings.paneImDesc" },
+  { id: "selection", key: "desktop.settings.paneSelection", desc: "desktop.settings.paneSelectionDesc" },
   { id: "notes", key: "desktop.settings.paneNotes", desc: "desktop.settings.paneNotesDesc" },
   { id: "storage", key: "desktop.settings.paneStorage", desc: "desktop.settings.paneStorageDesc" },
   { id: "mcp", key: "desktop.settings.paneMcp", desc: "desktop.settings.paneMcpDesc" },
@@ -83,50 +100,48 @@ export function SettingsPanel({
   const [notes, setNotes] = useState<NotesDraft | null>(null);
   const [status, setStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
   const [usageDetailTab, setUsageDetailTab] = useState<UsageDetailTab | undefined>(undefined);
-  const [savingSection, setSavingSection] = useState<EditablePane | null>(null);
-  const [pendingPane, setPendingPane] = useState<Pane | null>(null);
-  const [pendingClose, setPendingClose] = useState(false);
   const lastSavedSettings = useRef<PanelSettings | null>(null);
-  const paneRef = useRef(pane);
+  const settingsRef = useRef<PanelSettings | null>(null);
+  const saveChain = useRef(Promise.resolve());
+  /** Draft snapshot already persisted server-side, used to skip no-op commits. */
+  const syncedDraftRef = useRef<Record<EditablePane, string> | null>(null);
 
-  const hydrate = useCallback((next: PanelSettings) => {
+  /** Reset every pane draft from `next`, keeping edits made after `committed` was queued. */
+  const applySaved = useCallback((next: PanelSettings, committed?: { section: EditablePane; draft: EditableDraft }) => {
     lastSavedSettings.current = next;
+    settingsRef.current = next;
     setSettings(next);
-    setGeneral(generalDraftFromSettings(next));
-    setProviders(providersDraftFromSettings(next));
-    setSessions(sessionsDraftFromSettings(next));
-    setWorkbench(workbenchDraftFromSettings(next));
-    setStorage(storageDraftFromSettings(next));
-    setNotes(notesDraftFromSettings(next));
+    const syncedDraft = (section: EditablePane): EditableDraft =>
+      committed?.section === section ? committed.draft : savedDraftFor(section, next);
+    syncedDraftRef.current = {
+      general: JSON.stringify(syncedDraft("general")),
+      providers: JSON.stringify(syncedDraft("providers")),
+      sessions: JSON.stringify(syncedDraft("sessions")),
+      workbench: JSON.stringify(syncedDraft("workbench")),
+      notes: JSON.stringify(syncedDraft("notes")),
+      storage: JSON.stringify(syncedDraft("storage"))
+    };
+    const keepIfEdited = <D,>(section: EditablePane, prev: D | null, freshDraft: D): D =>
+      committed?.section === section && prev !== null && JSON.stringify(prev) !== JSON.stringify(committed.draft)
+        ? prev
+        : freshDraft;
+    setGeneral((prev) => keepIfEdited("general", prev, generalDraftFromSettings(next)));
+    setProviders((prev) => keepIfEdited("providers", prev, providersDraftFromSettings(next)));
+    setSessions((prev) => keepIfEdited("sessions", prev, sessionsDraftFromSettings(next)));
+    setWorkbench((prev) => keepIfEdited("workbench", prev, workbenchDraftFromSettings(next)));
+    setNotes((prev) => keepIfEdited("notes", prev, notesDraftFromSettings(next)));
+    setStorage((prev) => keepIfEdited("storage", prev, storageDraftFromSettings(next)));
   }, []);
+
+  const hydrate = useCallback((next: PanelSettings) => applySaved(next), [applySaved]);
 
   const load = useCallback(async () => hydrate(await desktopApi().getSettings()), [hydrate]);
 
-  const isDirtyForPane = useCallback((value: Pane): boolean => {
-    if (!isEditablePane(value) || !lastSavedSettings.current) return false;
-    const base = lastSavedSettings.current;
-    if (value === "general") return JSON.stringify(general) !== JSON.stringify(generalDraftFromSettings(base));
-    if (value === "providers") return JSON.stringify(providers) !== JSON.stringify(providersDraftFromSettings(base));
-    if (value === "sessions") return JSON.stringify(sessions) !== JSON.stringify(sessionsDraftFromSettings(base));
-    if (value === "workbench") return JSON.stringify(workbench) !== JSON.stringify(workbenchDraftFromSettings(base));
-    if (value === "notes") return JSON.stringify(notes) !== JSON.stringify(notesDraftFromSettings(base));
-    if (value === "storage") return JSON.stringify(storage) !== JSON.stringify(storageDraftFromSettings(base));
-    return false;
-  }, [general, providers, sessions, workbench, notes, storage]);
-
-  paneRef.current = pane;
-  const isDirtyForPaneRef = useRef(isDirtyForPane);
-  isDirtyForPaneRef.current = isDirtyForPane;
   const openRef = useRef(open);
   openRef.current = open;
 
   const applyOpen = useCallback((nextPane: unknown) => {
-    const next = asPane(nextPane);
-    if (openRef.current && isDirtyForPaneRef.current(paneRef.current) && next !== paneRef.current) {
-      setPendingPane(next);
-      return;
-    }
-    setPane(next);
+    setPane(asPane(nextPane));
     setOpen(true);
     if (!openRef.current) {
       void load().catch((error: unknown) =>
@@ -150,113 +165,59 @@ export function SettingsPanel({
     };
   }, [applyOpen]);
 
-  const save = useCallback(async (next: PanelSettings, section: EditablePane) => {
-    setSavingSection(section);
+  /**
+   * Auto-save one pane draft. Commits run sequentially so rapid edits never
+   * overwrite each other with a stale snapshot; no-op edits are skipped.
+   */
+  const performCommit = useCallback(async (section: EditablePane, nextDraft: EditableDraft) => {
+    const base = settingsRef.current;
+    if (!base) return;
+    if (JSON.stringify(nextDraft) === syncedDraftRef.current?.[section]) return;
+    const patch = sectionPatch(section, base, nextDraft);
+    if (JSON.stringify({ ...base, ...patch }) === JSON.stringify(base)) return;
+    if (section === "providers" && embeddingSearchIdentityChanged(base, nextDraft as ProvidersDraft)) {
+      if (!window.confirm(t("desktop.settings.embeddingModelChangeConfirm"))) {
+        setProviders(providersDraftFromSettings(base));
+        setStatus({ text: t("desktop.settings.embeddingModelChangeCancelled"), kind: "error" });
+        return;
+      }
+    }
     setStatus({ text: t("desktop.settings.saving") });
     try {
-      const result = await desktopApi().saveSettings(next, {
+      const result = await desktopApi().saveSettings({ ...base, ...patch }, {
         triggerSync: section === "sessions" || section === "storage",
         section
       });
-      hydrate(result.settings);
-      setStatus({
-        text: t("desktop.settings.saved", ""),
-        kind: "ok"
-      });
+      applySaved(result.settings, { section, draft: nextDraft });
+      setStatus({ text: t("desktop.settings.saved", ""), kind: "ok" });
     } catch (error) {
       const last = lastSavedSettings.current;
       if (last) {
-        hydrate(last);
-        window.dispatchEvent(new CustomEvent("agent-resume:appearance-change", {
-          detail: appearanceStateFromSettings(last)
-        }));
+        if (section === "general") {
+          setGeneral(generalDraftFromSettings(last));
+          window.dispatchEvent(new CustomEvent("agent-resume:appearance-change", {
+            detail: appearanceStateFromSettings(last)
+          }));
+        } else if (section === "providers") setProviders(providersDraftFromSettings(last));
+        else if (section === "sessions") setSessions(sessionsDraftFromSettings(last));
+        else if (section === "workbench") setWorkbench(workbenchDraftFromSettings(last));
+        else if (section === "notes") setNotes(notesDraftFromSettings(last));
+        else setStorage(storageDraftFromSettings(last));
       }
       setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
-    } finally {
-      setSavingSection(null);
     }
-  }, [hydrate, t]);
+  }, [applySaved, t]);
 
-  const currentDraft = useCallback((section: EditablePane): GeneralDraft | ProvidersDraft | SessionsDraft | WorkbenchDraft | NotesDraft | StorageDraft | null => {
-    if (section === "general") return general;
-    if (section === "providers") return providers;
-    if (section === "sessions") return sessions;
-    if (section === "workbench") return workbench;
-    if (section === "notes") return notes;
-    return storage;
-  }, [general, providers, sessions, workbench, notes, storage]);
+  const commit = useCallback((section: EditablePane, nextDraft: EditableDraft) => {
+    saveChain.current = saveChain.current.then(() => performCommit(section, nextDraft));
+  }, [performCommit]);
 
-  const savedDraftFor = useCallback((section: EditablePane) => {
-    const base = lastSavedSettings.current;
-    if (!base) return null;
-    if (section === "general") return generalDraftFromSettings(base);
-    if (section === "providers") return providersDraftFromSettings(base);
-    if (section === "sessions") return sessionsDraftFromSettings(base);
-    if (section === "workbench") return workbenchDraftFromSettings(base);
-    if (section === "notes") return notesDraftFromSettings(base);
-    return storageDraftFromSettings(base);
-  }, []);
-
-  const isDirty = useCallback((section: EditablePane): boolean => {
-    const cur = currentDraft(section);
-    const saved = savedDraftFor(section);
-    if (!cur || !saved) return false;
-    return JSON.stringify(cur) !== JSON.stringify(saved);
-  }, [currentDraft, savedDraftFor]);
-
-  const hasAnyDirty = useCallback((): boolean => {
-    const sections: EditablePane[] = ["general", "providers", "sessions", "workbench", "notes", "storage"];
-    return sections.some((s) => isDirty(s));
-  }, [isDirty]);
-
-  const handleSave = useCallback(async (section: EditablePane) => {
-    if (!settings) return;
-    const draft = currentDraft(section);
-    if (!draft) return;
-    if (section === "providers") {
-      const providersDraft = draft as ProvidersDraft;
-      if (embeddingSearchIdentityChanged(settings, providersDraft)) {
-        if (!window.confirm(t("desktop.settings.embeddingModelChangeConfirm"))) {
-          setProviders(providersDraftFromSettings(settings));
-          setStatus({ text: t("desktop.settings.embeddingModelChangeCancelled"), kind: "error" });
-          return;
-        }
-      }
-    }
-    const patch = section === "general" ? generalPatch(settings, draft as GeneralDraft)
-      : section === "providers" ? providersPatch(settings, draft as ProvidersDraft)
-      : section === "sessions" ? sessionsPatch(settings, draft as SessionsDraft)
-      : section === "workbench" ? workbenchPatch(settings, draft as WorkbenchDraft)
-      : section === "notes" ? notesPatch(settings, draft as NotesDraft)
-      : storagePatch(settings, draft as StorageDraft);
-    await save({ ...settings, ...patch }, section);
-  }, [settings, currentDraft, save, t]);
-
-  const handleDiscard = useCallback((section: EditablePane) => {
-    const base = lastSavedSettings.current;
-    if (!base) return;
-    if (section === "general") {
-      setGeneral(generalDraftFromSettings(base));
-      window.dispatchEvent(new CustomEvent("agent-resume:appearance-change", {
-        detail: appearanceStateFromSettings(base)
-      }));
-    } else if (section === "providers") setProviders(providersDraftFromSettings(base));
-    else if (section === "sessions") setSessions(sessionsDraftFromSettings(base));
-    else if (section === "workbench") setWorkbench(workbenchDraftFromSettings(base));
-    else if (section === "notes") setNotes(notesDraftFromSettings(base));
-    else setStorage(storageDraftFromSettings(base));
-    setStatus({ text: "" });
-  }, []);
 
   const requestPaneChange = useCallback((next: Pane) => {
     if (next === pane) return;
-    if (isEditablePane(pane) && isDirty(pane)) {
-      setPendingPane(next);
-      return;
-    }
     if (next !== "usage") setUsageDetailTab(undefined);
     setPane(next);
-  }, [pane, isDirty]);
+  }, [pane]);
 
   const doClose = useCallback(() => {
     setOpen(false);
@@ -264,12 +225,10 @@ export function SettingsPanel({
   }, []);
 
   const requestClose = useCallback(() => {
-    if (hasAnyDirty()) {
-      setPendingClose(true);
-      return;
-    }
+    // Blur the focused control first so an input commits before the panel closes.
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     doClose();
-  }, [hasAnyDirty, doClose]);
+  }, [doClose]);
 
   useEffect(() => {
     if (!open) return;
@@ -282,19 +241,17 @@ export function SettingsPanel({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [open, requestClose]);
 
-  if (!host || !open || !settings || !general || !providers || !sessions || !workbench || !notes || !storage) return null;
+  const presence = useOverlayPresence(open);
+
+  if (!host || !presence.mounted || !settings || !general || !providers || !sessions || !workbench || !notes || !storage) return null;
   const current = panes.find((item) => item.id === pane) || panes[0];
-  const close = requestClose;
-  const editable = isEditablePane(pane);
-  const dirty = editable ? isDirty(pane) : false;
-  const saving = editable ? savingSection === pane : false;
-  const body = pane === "general" ? <GeneralPane draft={general} setDraft={(value) => setGeneral(value)} t={t} />
-    : pane === "providers" ? <ProvidersPane draft={providers} setDraft={(value) => setProviders(value)} t={t} />
-    : pane === "sessions" ? <SessionsPane draft={sessions} setDraft={(value) => setSessions(value)} t={t} />
-    : pane === "workbench" ? <WorkbenchPane draft={workbench} setDraft={(value) => setWorkbench(value)} t={t} />
-    : pane === "im" ? <ImSettingsPane t={t} />
-    : pane === "notes" ? <NotesPane draft={notes} setDraft={setNotes} t={t} />
-    : pane === "storage" ? <StoragePane draft={storage} setDraft={(value) => setStorage(value)} t={t} />
+  const body = pane === "general" ? <GeneralPane draft={general} setDraft={setGeneral} commit={(value) => commit("general", value)} t={t} />
+    : pane === "providers" ? <ProvidersPane draft={providers} setDraft={setProviders} commit={(value) => commit("providers", value)} t={t} />
+    : pane === "sessions" ? <SessionsPane draft={sessions} setDraft={setSessions} commit={(value) => commit("sessions", value)} t={t} />
+    : pane === "workbench" ? <WorkbenchPane draft={workbench} setDraft={setWorkbench} commit={(value) => commit("workbench", value)} t={t} />
+    : pane === "selection" ? <SelectionSettingsPane t={t} />
+    : pane === "notes" ? <NotesPane draft={notes} setDraft={setNotes} commit={(value) => commit("notes", value)} t={t} />
+    : pane === "storage" ? <StoragePane draft={storage} setDraft={setStorage} commit={(value) => commit("storage", value)} t={t} />
     : pane === "mcp" ? <McpPane t={t} />
     : pane === "agentStatus" ? <AgentStatusPane t={t} />
     : pane === "usage" ? <UsagePane t={t} initialDetailTab={usageDetailTab} />
@@ -302,12 +259,12 @@ export function SettingsPanel({
     : pane === "backup" ? <BackupPane t={t} /> : <AboutPane t={t} />;
 
   return createPortal(
-    <div className="settings-overlay" role="dialog" aria-modal="true" aria-label={t("desktop.settings.title")}>
-      <button type="button" className="settings-overlay-backdrop" aria-label={t("desktop.settings.done")} onClick={close} />
+    <div className={`settings-overlay${presence.closing ? " is-closing" : ""}`} role="dialog" aria-modal="true" aria-label={t("desktop.settings.title")}>
+      <button type="button" className="settings-overlay-backdrop" aria-label={t("desktop.settings.done")} onClick={requestClose} />
       <section className="panel active react-settings-panel">
       <div className="toolbar">
         <h2 className="quiet-title">{t("desktop.settings.title")}</h2>
-        <button type="button" className="ghost-btn" onClick={close}>{t("desktop.settings.done")}</button>
+        <button type="button" className="ghost-btn" onClick={requestClose}>{t("desktop.settings.done")}</button>
       </div>
       <div className="settings-layout">
         <aside className="settings-nav" aria-label={t("desktop.settings.navLabel")}>
@@ -334,53 +291,11 @@ export function SettingsPanel({
               </div>
             ) : null}
           </header>
-          {pendingPane || pendingClose ? (
-            <div className="settings-unsaved-banner" role="alert">
-              <span className="settings-unsaved-text">{t("desktop.settings.unsavedConfirm")}</span>
-              <span className="settings-unsaved-actions">
-                <button type="button" className="btn primary" disabled={Boolean(savingSection)} onClick={async () => {
-                  const targetPane = pendingPane;
-                  const doPendingClose = pendingClose;
-                  if (editable && dirty) {
-                    await handleSave(pane as EditablePane);
-                    if (isDirty(pane as EditablePane)) return;
-                  }
-                  setPendingPane(null);
-                  setPendingClose(false);
-                  if (doPendingClose) {
-                    doClose();
-                  } else if (targetPane) {
-                    if (targetPane !== "usage") setUsageDetailTab(undefined);
-                    setPane(targetPane);
-                  }
-                }}>{t("desktop.settings.saveAndContinue")}</button>
-                <button type="button" className="ghost-btn" onClick={() => {
-                  const targetPane = pendingPane;
-                  const doPendingClose = pendingClose;
-                  if (editable) handleDiscard(pane as EditablePane);
-                  setPendingPane(null);
-                  setPendingClose(false);
-                  if (doPendingClose) {
-                    doClose();
-                  } else if (targetPane) {
-                    if (targetPane !== "usage") setUsageDetailTab(undefined);
-                    setPane(targetPane);
-                  }
-                }}>{t("desktop.settings.discardAndContinue")}</button>
-                <button type="button" className="ghost-btn" onClick={() => { setPendingPane(null); setPendingClose(false); }}>{t("desktop.settings.cancel")}</button>
-              </span>
-            </div>
-          ) : null}
-          <div className="form settings-form">
+                    <div className="form settings-form">
             <div
               className={`settings-pane${pane === "usage" || pane === "logs" ? " settings-pane-usage" : pane === "about" ? " settings-pane-about" : ""}`}
             >
-              {pane === "usage" || pane === "logs" || pane === "about" || pane === "mcp" || pane === "backup" || pane === "agentStatus" ? body : <div className="settings-pane-body">{pane === "im" ? body : <>{body}
-                <div className="settings-pane-actions">
-                  <button type="button" className="btn primary" data-testid={`settings-save-${pane}`} disabled={!dirty || saving} onClick={() => void handleSave(pane as EditablePane)}>{saving ? t("desktop.settings.saving") : t("desktop.settings.save")}</button>
-                  <button type="button" className="ghost-btn" data-testid={`settings-discard-${pane}`} disabled={!dirty || saving} onClick={() => handleDiscard(pane as EditablePane)}>{t("desktop.settings.discard")}</button>
-                  {dirty ? <span className="settings-unsaved-hint">{t("desktop.settings.unsavedHint")}</span> : null}
-                </div></>}</div>}
+              {pane === "usage" || pane === "logs" || pane === "about" || pane === "mcp" || pane === "backup" || pane === "agentStatus" ? body : <div className="settings-pane-body">{body}</div>}
             </div>
           </div>
           {pane === "about" ? (
@@ -396,28 +311,27 @@ export function SettingsPanel({
   );
 }
 
-function GeneralPane({ draft, setDraft, t }: { draft: GeneralDraft; setDraft: (value: GeneralDraft) => void; t: (key: string, ...args: Array<string | number>) => string }) {
+function GeneralPane({ draft, setDraft, commit, t }: { draft: GeneralDraft; setDraft: (value: GeneralDraft) => void; commit: (value: GeneralDraft) => void; t: (key: string, ...args: Array<string | number>) => string }) {
   const preview = (next: GeneralDraft) => window.dispatchEvent(new CustomEvent("agent-resume:appearance-change", {
     detail: appearanceStateFromSettings({ desktop: { theme: next.desktopTheme } })
   }));
   const update = <K extends keyof GeneralDraft>(key: K, value: GeneralDraft[K]) => {
     const next = { ...draft, [key]: value };
-    setDraft(next); preview(next);
+    setDraft(next); preview(next); commit(next);
   };
   return <>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.appearance")}</h3><div className="settings-group-body">
       <div className="settings-theme-field"><span className="settings-field-label">{t("desktop.settings.theme")}</span><span className="settings-field-desc muted">{t("desktop.settings.themeDesc")}</span><div className="theme-mode-control" role="radiogroup" aria-label={t("desktop.settings.theme")}>{(["system", "light", "dark"] as const).map((mode) => <button type="button" role="radio" aria-checked={draft.desktopTheme === mode} className={draft.desktopTheme === mode ? "is-selected" : ""} key={mode} onClick={() => update("desktopTheme", mode)}>{t(mode === "system" ? "desktop.settings.themeSystem" : mode === "light" ? "desktop.settings.themeLight" : "desktop.settings.themeDark")}</button>)}</div></div>
       <label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">UI Language</span><span className="settings-row-desc">{t("desktop.settings.fieldUiLanguageDescription")}</span></span><select className="settings-row-control" value={draft.uiLanguage} onChange={(event) => update("uiLanguage", event.target.value as GeneralDraft["uiLanguage"])}><option value="auto">{t("desktop.settings.fieldUiLanguageOptionAuto")}</option><option value="en">English</option><option value="zh-cn">简体中文</option><option value="ja">日本語</option></select></label>
     </div></section>
-    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.agentActions")}</h3><div className="settings-group-body"><label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{t("desktop.settings.alwaysAllowAgentWrites")}</span><span className="settings-row-desc">{t("desktop.settings.alwaysAllowAgentWritesDesc")}</span></span><span className="settings-toggle"><input type="checkbox" role="switch" checked={draft.alwaysAllowAgentNonDestructiveOperations} onChange={(event) => update("alwaysAllowAgentNonDestructiveOperations", event.target.checked)} /><span className="settings-toggle-track" aria-hidden="true" /></span></label></div></section>
-    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.notificationsGroup")}</h3><p className="settings-group-desc muted">{t("desktop.settings.notificationsGroupDesc")}</p><div className="settings-group-body"><label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{t("desktop.settings.notificationsAutoClear")}</span><span className="settings-row-desc">{t("desktop.settings.notificationsAutoClearDesc")}</span></span><select className="settings-row-control" value={draft.notifications.autoClearMinutes} onChange={(event) => update("notifications", { ...draft.notifications, autoClearMinutes: Number(event.target.value) })}><option value="15">{t("desktop.settings.autoClearMinutes.15")}</option><option value="30">{t("desktop.settings.autoClearMinutes.30")}</option><option value="60">{t("desktop.settings.autoClearMinutes.60")}</option><option value="240">{t("desktop.settings.autoClearMinutes.240")}</option><option value="1440">{t("desktop.settings.autoClearMinutes.1440")}</option><option value="0">{t("desktop.settings.autoClearMinutes.0")}</option></select></label></div></section>
+    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.notificationsGroup")}</h3><div className="settings-group-body"><label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{t("desktop.settings.notificationsAutoClear")}</span><span className="settings-row-desc">{t("desktop.settings.notificationsAutoClearDesc")}</span></span><select className="settings-row-control" value={draft.notifications.autoClearMinutes} onChange={(event) => update("notifications", { ...draft.notifications, autoClearMinutes: Number(event.target.value) })}><option value="15">{t("desktop.settings.autoClearMinutes.15")}</option><option value="30">{t("desktop.settings.autoClearMinutes.30")}</option><option value="60">{t("desktop.settings.autoClearMinutes.60")}</option><option value="240">{t("desktop.settings.autoClearMinutes.240")}</option><option value="1440">{t("desktop.settings.autoClearMinutes.1440")}</option><option value="0">{t("desktop.settings.autoClearMinutes.0")}</option></select></label></div></section>
   </>;
 }
 
 
 type ModelTestKind = "text" | "embedding";
 
-function ProvidersPane({ draft, setDraft, t }: { draft: ProvidersDraft; setDraft: (value: ProvidersDraft) => void; t: (key: string, ...args: Array<string | number>) => string }) {
+function ProvidersPane({ draft, setDraft, commit, t }: { draft: ProvidersDraft; setDraft: (value: ProvidersDraft) => void; commit: (value: ProvidersDraft) => void; t: (key: string, ...args: Array<string | number>) => string }) {
   const [selectedProviderId, setSelectedProviderId] = useState(draft.providers[0]?.id ?? "");
   const [testKind, setTestKind] = useState<ModelTestKind>("text");
   const [testing, setTesting] = useState<ModelTestKind | null>(null);
@@ -428,15 +342,20 @@ function ProvidersPane({ draft, setDraft, t }: { draft: ProvidersDraft; setDraft
   const [newModelId, setNewModelId] = useState("");
   const [newModelKind, setNewModelKind] = useState<ModelKind>("text");
 
-  const update = <K extends keyof ProvidersDraft>(key: K, value: ProvidersDraft[K]) => setDraft({ ...draft, [key]: value });
+  /** Immediate controls commit right away; text inputs pass `{ commit: false }` and commit on blur. */
+  const update = <K extends keyof ProvidersDraft>(key: K, value: ProvidersDraft[K], options?: { commit?: boolean }) => {
+    const next = { ...draft, [key]: value };
+    setDraft(next);
+    if (options?.commit !== false) commit(next);
+  };
 
   const poolAsSettings = draft.providers;
   const poolFor = (kind: ModelKind) => listProviderModels(poolAsSettings, kind);
 
   const selectedProvider = draft.providers.find((entry) => entry.id === selectedProviderId) ?? draft.providers[0] ?? null;
 
-  const patchProvider = (providerId: string, patch: (provider: AiProvider) => AiProvider) => {
-    update("providers", draft.providers.map((entry) => entry.id === providerId ? patch({ ...entry, models: [...entry.models] }) : entry));
+  const patchProvider = (providerId: string, patch: (provider: AiProvider) => AiProvider, options?: { commit?: boolean }) => {
+    update("providers", draft.providers.map((entry) => entry.id === providerId ? patch({ ...entry, models: [...entry.models] }) : entry), options);
   };
 
   const addProvider = () => {
@@ -450,7 +369,7 @@ function ProvidersPane({ draft, setDraft, t }: { draft: ProvidersDraft; setDraft
     if (!window.confirm(t("desktop.settings.providerRemoveConfirm"))) return;
     const providers = draft.providers.filter((entry) => entry.id !== providerId);
     const clearIfSelected = (selection: ModelSelection) => selection.providerId === providerId ? {} : selection;
-    setDraft({
+    const next = {
       ...draft,
       providers,
       toolSelection: clearIfSelected(draft.toolSelection),
@@ -462,9 +381,10 @@ function ProvidersPane({ draft, setDraft, t }: { draft: ProvidersDraft; setDraft
       sessionSummarySelection: clearIfSelected(draft.sessionSummarySelection),
       reportSelection: clearIfSelected(draft.reportSelection),
       gtdSelection: clearIfSelected(draft.gtdSelection),
-      imRoutingSelection: clearIfSelected(draft.imRoutingSelection),
       translateSelection: clearIfSelected(draft.translateSelection)
-    });
+    };
+    setDraft(next);
+    commit(next);
     if (selectedProviderId === providerId) {
       setSelectedProviderId(providers[0]?.id ?? "");
     }
@@ -543,7 +463,6 @@ function ProvidersPane({ draft, setDraft, t }: { draft: ProvidersDraft; setDraft
         "sessionSummarySelection",
         "reportSelection",
         "gtdSelection",
-        "imRoutingSelection",
         "translateSelection"
       ] as const;
       for (const key of textKeys) {
@@ -561,6 +480,7 @@ function ProvidersPane({ draft, setDraft, t }: { draft: ProvidersDraft; setDraft
       }
     }
     setDraft(nextDraft);
+    commit(nextDraft);
     setNewModelId("");
   };
 
@@ -688,7 +608,7 @@ function ProvidersPane({ draft, setDraft, t }: { draft: ProvidersDraft; setDraft
                 title={t("desktop.settings.providerRemove")}
                 onClick={() => removeProvider(provider.id)}
               >
-                <ThemeIcon name="trash" size={14} aria-hidden="true" />
+                <ThemeIcon name="trash" size={ICON_SIZE.dense} aria-hidden="true" />
               </button>
             </div>
           ))
@@ -705,8 +625,9 @@ function ProvidersPane({ draft, setDraft, t }: { draft: ProvidersDraft; setDraft
                     value={selectedProvider.name}
                     onChange={(event) => {
                       const name = event.target.value;
-                      patchProvider(selectedProvider.id, (provider) => ({ ...provider, name }));
+                      patchProvider(selectedProvider.id, (provider) => ({ ...provider, name }), { commit: false });
                     }}
+                    onBlur={() => commit(draft)}
                   />
                 </label>
                 <label className="settings-field">
@@ -717,8 +638,9 @@ function ProvidersPane({ draft, setDraft, t }: { draft: ProvidersDraft; setDraft
                     value={selectedProvider.baseUrl}
                     onChange={(event) => {
                       const baseUrl = event.target.value;
-                      patchProvider(selectedProvider.id, (provider) => ({ ...provider, baseUrl }));
+                      patchProvider(selectedProvider.id, (provider) => ({ ...provider, baseUrl }), { commit: false });
                     }}
+                    onBlur={() => commit(draft)}
                   />
                 </label>
                 <label className="settings-field">
@@ -732,8 +654,9 @@ function ProvidersPane({ draft, setDraft, t }: { draft: ProvidersDraft; setDraft
                       value={selectedProvider.apiKey ?? ""}
                       onChange={(event) => {
                         const apiKey = event.target.value;
-                        patchProvider(selectedProvider.id, (provider) => ({ ...provider, apiKey }));
+                        patchProvider(selectedProvider.id, (provider) => ({ ...provider, apiKey }), { commit: false });
                       }}
+                      onBlur={() => commit(draft)}
                     />
                     <button
                       type="button"
@@ -747,7 +670,7 @@ function ProvidersPane({ draft, setDraft, t }: { draft: ProvidersDraft; setDraft
                         setRevealedApiKey((current) => !current);
                       }}
                     >
-                      {revealedApiKey ? <ThemeIcon name="eye-off" size={15} aria-hidden="true" /> : <ThemeIcon name="eye" size={15} aria-hidden="true" />}
+                      {revealedApiKey ? <ThemeIcon name="eye-off" size={ICON_SIZE.default} aria-hidden="true" /> : <ThemeIcon name="eye" size={ICON_SIZE.default} aria-hidden="true" />}
                     </button>
                   </span>
                 </label>
@@ -818,7 +741,7 @@ function ProvidersPane({ draft, setDraft, t }: { draft: ProvidersDraft; setDraft
                           title={t("desktop.settings.modelRemove")}
                           onClick={() => removeModel(model.id)}
                         >
-                          <ThemeIcon name="trash" size={14} aria-hidden="true" />
+                          <ThemeIcon name="trash" size={ICON_SIZE.dense} aria-hidden="true" />
                         </button>
                       </div>
                     ))}
@@ -966,15 +889,6 @@ function ProvidersPane({ draft, setDraft, t }: { draft: ProvidersDraft; setDraft
           "settings-model-select-gtd"
         )}
         {selectionRow(
-          "desktop.settings.imRoutingModelUse",
-          "desktop.settings.imRoutingModelUseDesc",
-          "text",
-          draft.imRoutingSelection,
-          (value) => update("imRoutingSelection", value),
-          t("desktop.settings.modelPlaceholder"),
-          "settings-model-select-im-routing"
-        )}
-        {selectionRow(
           "desktop.settings.translateModelUse",
           "desktop.settings.translateModelUseDesc",
           "text",
@@ -1006,14 +920,15 @@ function ProvidersPane({ draft, setDraft, t }: { draft: ProvidersDraft; setDraft
   </>;
 }
 
-function SessionsPane({ draft, setDraft, t }: { draft: SessionsDraft; setDraft: (value: SessionsDraft) => void; t: (key: string, ...args: Array<string | number>) => string }) {
-  const update = <K extends keyof SessionsDraft>(key: K, value: SessionsDraft[K]) => { const next = { ...draft, [key]: value }; setDraft(next); };
+function SessionsPane({ draft, setDraft, commit, t }: { draft: SessionsDraft; setDraft: (value: SessionsDraft) => void; commit: (value: SessionsDraft) => void; t: (key: string, ...args: Array<string | number>) => string }) {
+  /** Number inputs commit on blur; every other control commits immediately. */
+  const update = <K extends keyof SessionsDraft>(key: K, value: SessionsDraft[K], options?: { commit?: boolean }) => { const next = { ...draft, [key]: value }; setDraft(next); if (options?.commit !== false) commit(next); };
   const toggles = [["showArchivedCodex", "desktop.settings.showArchivedCodex"], ["showSubagentCodex", "desktop.settings.showSubagentCodex"], ["showArchivedOpenCode", "desktop.settings.showArchivedOpenCode"], ["showSubagentGrok", "desktop.settings.showSubagentGrok"]] as const;
   return <>
     <section className="settings-group">
       <h3 className="settings-group-title">{t("desktop.settings.sync")}</h3>
       <div className="settings-group-body">
-        <label className="settings-field"><span className="settings-field-label">{t("desktop.settings.syncMax")}</span><input type="number" min="1" max="50000" value={draft.maxItems} onChange={(event) => update("maxItems", Number(event.target.value))} /></label>
+        <label className="settings-field"><span className="settings-field-label">{t("desktop.settings.syncMax")}</span><input type="number" min="1" max="50000" value={draft.maxItems} onChange={(event) => update("maxItems", Number(event.target.value), { commit: false })} onBlur={() => commit(draft)} /></label>
         <label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{t("desktop.settings.stalePolicy")}</span><span className="settings-row-desc">{t("desktop.settings.stalePolicyDesc")}</span></span><select className="settings-row-control" value={draft.stalePolicy} onChange={(event) => update("stalePolicy", event.target.value === "purge" ? "purge" : "off")}><option value="off">{t("desktop.settings.staleOff")}</option><option value="purge">{t("desktop.settings.stalePurge")}</option></select></label>
         {toggles.map(([key, label]) => <label className="settings-row" key={key}><span className="settings-row-label"><span className="settings-row-title">{t(label)}</span></span><span className="settings-toggle"><input type="checkbox" role="switch" checked={draft[key]} onChange={(event) => update(key, event.target.checked)} /><span className="settings-toggle-track" aria-hidden="true" /></span></label>)}
       </div>
@@ -1034,22 +949,22 @@ function SessionsPane({ draft, setDraft, t }: { draft: SessionsDraft; setDraft: 
         <label className="settings-field">
           <span className="settings-field-label">{t("desktop.settings.summaryStaleDelay")}</span>
           <span className="settings-field-hint">{t("desktop.settings.summaryStaleDelayHint")}</span>
-          <input type="number" min="0" max="1440" disabled={!draft.summaryAutoEnabled} value={draft.summaryStaleDelayMinutes} onChange={(event) => update("summaryStaleDelayMinutes", Number(event.target.value))} />
+          <input type="number" min="0" max="1440" disabled={!draft.summaryAutoEnabled} value={draft.summaryStaleDelayMinutes} onChange={(event) => update("summaryStaleDelayMinutes", Number(event.target.value), { commit: false })} onBlur={() => commit(draft)} />
         </label>
         <label className="settings-field">
           <span className="settings-field-label">{t("desktop.settings.summaryMissingDelay")}</span>
           <span className="settings-field-hint">{t("desktop.settings.summaryMissingDelayHint")}</span>
-          <input type="number" min="0" max="1440" disabled={!draft.summaryAutoEnabled} value={draft.summaryMissingDelayMinutes} onChange={(event) => update("summaryMissingDelayMinutes", Number(event.target.value))} />
+          <input type="number" min="0" max="1440" disabled={!draft.summaryAutoEnabled} value={draft.summaryMissingDelayMinutes} onChange={(event) => update("summaryMissingDelayMinutes", Number(event.target.value), { commit: false })} onBlur={() => commit(draft)} />
         </label>
         <label className="settings-field">
           <span className="settings-field-label">{t("desktop.settings.summaryAutoMaxPerTick")}</span>
           <span className="settings-field-hint">{t("desktop.settings.summaryAutoMaxPerTickHint")}</span>
-          <input type="number" min="1" max="50" disabled={!draft.summaryAutoEnabled} value={draft.summaryAutoMaxPerTick} onChange={(event) => update("summaryAutoMaxPerTick", Number(event.target.value))} />
+          <input type="number" min="1" max="50" disabled={!draft.summaryAutoEnabled} value={draft.summaryAutoMaxPerTick} onChange={(event) => update("summaryAutoMaxPerTick", Number(event.target.value), { commit: false })} onBlur={() => commit(draft)} />
         </label>
         <label className="settings-field">
           <span className="settings-field-label">{t("desktop.settings.summaryAutoConcurrency")}</span>
           <span className="settings-field-hint">{t("desktop.settings.summaryAutoConcurrencyHint")}</span>
-          <input type="number" min="1" max="3" disabled={!draft.summaryAutoEnabled} value={draft.summaryAutoConcurrency} onChange={(event) => update("summaryAutoConcurrency", Number(event.target.value))} />
+          <input type="number" min="1" max="3" disabled={!draft.summaryAutoEnabled} value={draft.summaryAutoConcurrency} onChange={(event) => update("summaryAutoConcurrency", Number(event.target.value), { commit: false })} onBlur={() => commit(draft)} />
         </label>
       </div>
     </section>
@@ -1069,17 +984,17 @@ function SessionsPane({ draft, setDraft, t }: { draft: SessionsDraft; setDraft: 
         <label className="settings-field">
           <span className="settings-field-label">{t("desktop.settings.embeddingQuietDelay")}</span>
           <span className="settings-field-hint">{t("desktop.settings.embeddingQuietDelayHint")}</span>
-          <input type="number" min="0" max="1440" disabled={!draft.embeddingIndexEnabled} value={draft.embeddingQuietDelayMinutes} onChange={(event) => update("embeddingQuietDelayMinutes", Number(event.target.value))} />
+          <input type="number" min="0" max="1440" disabled={!draft.embeddingIndexEnabled} value={draft.embeddingQuietDelayMinutes} onChange={(event) => update("embeddingQuietDelayMinutes", Number(event.target.value), { commit: false })} onBlur={() => commit(draft)} />
         </label>
         <label className="settings-field">
           <span className="settings-field-label">{t("desktop.settings.embeddingIndexMaxPerTick")}</span>
           <span className="settings-field-hint">{t("desktop.settings.embeddingIndexMaxPerTickHint")}</span>
-          <input type="number" min="1" max="50" disabled={!draft.embeddingIndexEnabled} value={draft.embeddingIndexMaxPerTick} onChange={(event) => update("embeddingIndexMaxPerTick", Number(event.target.value))} />
+          <input type="number" min="1" max="50" disabled={!draft.embeddingIndexEnabled} value={draft.embeddingIndexMaxPerTick} onChange={(event) => update("embeddingIndexMaxPerTick", Number(event.target.value), { commit: false })} onBlur={() => commit(draft)} />
         </label>
         <label className="settings-field">
           <span className="settings-field-label">{t("desktop.settings.embeddingIndexConcurrency")}</span>
           <span className="settings-field-hint">{t("desktop.settings.embeddingIndexConcurrencyHint")}</span>
-          <input type="number" min="1" max="4" disabled={!draft.embeddingIndexEnabled} value={draft.embeddingIndexConcurrency} onChange={(event) => update("embeddingIndexConcurrency", Number(event.target.value))} />
+          <input type="number" min="1" max="4" disabled={!draft.embeddingIndexEnabled} value={draft.embeddingIndexConcurrency} onChange={(event) => update("embeddingIndexConcurrency", Number(event.target.value), { commit: false })} onBlur={() => commit(draft)} />
         </label>
       </div>
     </section>
@@ -1099,17 +1014,17 @@ function SessionsPane({ draft, setDraft, t }: { draft: SessionsDraft; setDraft: 
         <label className="settings-field">
           <span className="settings-field-label">{t("desktop.settings.transcriptQuietDelay")}</span>
           <span className="settings-field-hint">{t("desktop.settings.transcriptQuietDelayHint")}</span>
-          <input type="number" min="0" max="1440" disabled={!draft.transcriptIndexEnabled} value={draft.transcriptQuietDelayMinutes} onChange={(event) => update("transcriptQuietDelayMinutes", Number(event.target.value))} />
+          <input type="number" min="0" max="1440" disabled={!draft.transcriptIndexEnabled} value={draft.transcriptQuietDelayMinutes} onChange={(event) => update("transcriptQuietDelayMinutes", Number(event.target.value), { commit: false })} onBlur={() => commit(draft)} />
         </label>
         <label className="settings-field">
           <span className="settings-field-label">{t("desktop.settings.transcriptIndexMaxPerTick")}</span>
           <span className="settings-field-hint">{t("desktop.settings.transcriptIndexMaxPerTickHint")}</span>
-          <input type="number" min="1" max="20" disabled={!draft.transcriptIndexEnabled} value={draft.transcriptIndexMaxPerTick} onChange={(event) => update("transcriptIndexMaxPerTick", Number(event.target.value))} />
+          <input type="number" min="1" max="20" disabled={!draft.transcriptIndexEnabled} value={draft.transcriptIndexMaxPerTick} onChange={(event) => update("transcriptIndexMaxPerTick", Number(event.target.value), { commit: false })} onBlur={() => commit(draft)} />
         </label>
         <label className="settings-field">
           <span className="settings-field-label">{t("desktop.settings.transcriptIndexConcurrency")}</span>
           <span className="settings-field-hint">{t("desktop.settings.transcriptIndexConcurrencyHint")}</span>
-          <input type="number" min="1" max="3" disabled={!draft.transcriptIndexEnabled} value={draft.transcriptIndexConcurrency} onChange={(event) => update("transcriptIndexConcurrency", Number(event.target.value))} />
+          <input type="number" min="1" max="3" disabled={!draft.transcriptIndexEnabled} value={draft.transcriptIndexConcurrency} onChange={(event) => update("transcriptIndexConcurrency", Number(event.target.value), { commit: false })} onBlur={() => commit(draft)} />
         </label>
       </div>
     </section>

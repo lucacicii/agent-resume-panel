@@ -1,4 +1,4 @@
-import { ThemeIcon } from "../../../components/ThemeIcon";
+import { ICON_SIZE, ThemeIcon } from "../../../components/ThemeIcon";
 import { ResizeHandle } from "../../../components/ResizeHandle";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GtdStatus } from "@agent-resume/core";
@@ -9,6 +9,7 @@ import { imageSrcFromElement, posixDirname, posixJoin } from "../../../component
 import { GTD_STATUSES } from "../../../gtd";
 import { useI18n } from "../../../i18n";
 import { notifyDesktop } from "../../../components/Notifications";
+import { useOverlayState } from "../../../components/useOverlayMotion";
 import { SelectionSendMenu, type SelectionSendMenuState } from "../../../selection/SelectionSendMenu";
 import { NoteLinkTree } from "./NoteLinkTree";
 
@@ -194,9 +195,9 @@ export function NotePaneView({ noteId, active, onOpenNote, onTitleChange, onDirt
   const [findOpen, setFindOpen] = useState(false);
   const [findQuery, setFindQuery] = useState("");
   const [findResult, setFindResult] = useState<CodeEditorSearchResult | null>(null);
-  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
-  const [renameDialog, setRenameDialog] = useState<RenameDialogState | null>(null);
-  const [imagePreview, setImagePreview] = useState("");
+  const [contextMenu, setContextMenu, contextMenuClosing] = useOverlayState<ContextMenuState>();
+  const [renameDialog, setRenameDialog, renameDialogClosing] = useOverlayState<RenameDialogState>();
+  const [imagePreview, setImagePreview, imagePreviewClosing] = useOverlayState<string>();
   const [selectionMenu, setSelectionMenu] = useState<SelectionSendMenuState | null>(null);
 
   const editorRef = useRef<CodeEditorHandle>(null);
@@ -658,7 +659,7 @@ export function NotePaneView({ noteId, active, onOpenNote, onTitleChange, onDirt
 
   if (loading) {
     return <div className="notes-empty-state" role="status" aria-live="polite">
-      <ThemeIcon name="loader" size={16} className="spin" aria-hidden="true" />
+      <ThemeIcon name="loader" size={ICON_SIZE.default} className="spin" aria-hidden="true" />
       <p className="muted notes-hint">{t("desktop.common.loading")}</p>
     </div>;
   }
@@ -684,7 +685,7 @@ export function NotePaneView({ noteId, active, onOpenNote, onTitleChange, onDirt
                 title={t("desktop.notes.newLinkedChild")}
                 onClick={() => void createLinkedChild(selected)}
               >
-                <ThemeIcon name="file-plus" size={14} />
+                <ThemeIcon name="file-plus" size={ICON_SIZE.default} />
               </button>
             </div>
             <NoteLinkTree
@@ -713,7 +714,7 @@ export function NotePaneView({ noteId, active, onOpenNote, onTitleChange, onDirt
             label={t("desktop.notes.resizeLinkTree")}
             onDelta={(delta) => {
               setLinkTreeHeight((previous) => {
-                const next = Math.max(120, Math.min(520, previous - delta));
+                const next = Math.max(120, Math.min(520, previous + delta));
                 try { localStorage.setItem(LINK_TREE_HEIGHT_KEY, String(next)); } catch { /* persistence is optional */ }
                 return next;
               });
@@ -725,23 +726,23 @@ export function NotePaneView({ noteId, active, onOpenNote, onTitleChange, onDirt
         {editingTitle
           ? <form onSubmit={(event) => { event.preventDefault(); void rename(); }}>
             <input className="notes-detail-title-input" value={title} onChange={(event) => setTitle(event.target.value)} autoFocus />
-            <button type="submit" className="notes-icon-btn" aria-label={t("desktop.common.confirm")}><ThemeIcon name="save" size={15} /></button>
+            <button type="submit" className="notes-icon-btn" aria-label={t("desktop.common.confirm")}><ThemeIcon name="save" size={ICON_SIZE.default} /></button>
           </form>
           : <h1 className="notes-detail-title" onDoubleClick={() => setEditingTitle(true)} title={t("desktop.notes.dblClickEdit")}>{title}</h1>}
         <div className="notes-segmented" role="tablist">
-          <button type="button" role="tab" className={view === "edit" ? "active" : ""} aria-label={t("desktop.common.edit")} onClick={() => setView("edit")}><ThemeIcon name="pencil" size={16} /></button>
-          <button type="button" role="tab" className={view === "view" ? "active" : ""} aria-label={t("desktop.common.view")} onClick={() => { void flushSave(); setView("view"); }}><ThemeIcon name="eye" size={16} /></button>
-          <button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.findInNote")} onClick={openFind}><ThemeIcon name="search" size={15} /></button>
-          <button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.openAsFloating")} title={t("desktop.notes.openAsFloating")} onClick={() => void openStandalone(selected.noteId)}><ThemeIcon name="external-link" size={15} /></button>
-          <button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.copyPath")} onClick={() => void desktopApi().notesCopyPath({ noteId: selected.noteId })}><ThemeIcon name="clipboard" size={15} /></button>
-          <button type="button" className="notes-icon-btn" aria-label={t("desktop.common.revealInFinder")} onClick={() => void desktopApi().notesReveal({ noteId: selected.noteId })}><ThemeIcon name="folder-open" size={15} /></button>
-          <button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.deleteNote")} onClick={() => void remove(selected)}><ThemeIcon name="trash" size={15} /></button>
+          <button type="button" role="tab" className={view === "edit" ? "active" : ""} aria-label={t("desktop.common.edit")} onClick={() => setView("edit")}><ThemeIcon name="pencil" size={ICON_SIZE.default} /></button>
+          <button type="button" role="tab" className={view === "view" ? "active" : ""} aria-label={t("desktop.common.view")} onClick={() => { void flushSave(); setView("view"); }}><ThemeIcon name="eye" size={ICON_SIZE.default} /></button>
+          <button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.findInNote")} onClick={openFind}><ThemeIcon name="search" size={ICON_SIZE.default} /></button>
+          <button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.openAsFloating")} title={t("desktop.notes.openAsFloating")} onClick={() => void openStandalone(selected.noteId)}><ThemeIcon name="external-link" size={ICON_SIZE.default} /></button>
+          <button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.copyPath")} onClick={() => void desktopApi().notesCopyPath({ noteId: selected.noteId })}><ThemeIcon name="clipboard" size={ICON_SIZE.default} /></button>
+          <button type="button" className="notes-icon-btn" aria-label={t("desktop.common.revealInFinder")} onClick={() => void desktopApi().notesReveal({ noteId: selected.noteId })}><ThemeIcon name="folder-open" size={ICON_SIZE.default} /></button>
+          <button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.deleteNote")} onClick={() => void remove(selected)}><ThemeIcon name="trash" size={ICON_SIZE.default} /></button>
         </div>
       </div>
       <div className="notes-editor-body">
         {findOpen ? (
           <div className="notes-find-bar app-inline-search" role="search">
-            <ThemeIcon name="search" size={14} aria-hidden="true" />
+            <ThemeIcon name="search" size={ICON_SIZE.default} aria-hidden="true" />
             <input
               ref={findRef}
               className="notes-find-input app-inline-search-input"
@@ -779,9 +780,9 @@ export function NotePaneView({ noteId, active, onOpenNote, onTitleChange, onDirt
             <span className={`notes-find-count app-inline-search-meta${findResult?.total === 0 ? " is-empty" : ""}`} aria-live="polite">
               {findQuery.trim() && findResult ? t("desktop.common.findCount", findResult.current, findResult.total) : ""}
             </span>
-            <button type="button" className="notes-find-btn app-inline-search-btn" aria-label={t("desktop.common.findPrev")} onClick={() => runFind("backward")}><ThemeIcon name="arrow-up" size={14} /></button>
-            <button type="button" className="notes-find-btn app-inline-search-btn" aria-label={t("desktop.common.findNext")} onClick={() => runFind("forward")}><ThemeIcon name="arrow-down" size={14} /></button>
-            <button type="button" className="notes-find-btn app-inline-search-btn" aria-label={t("desktop.common.closeFind")} onClick={closeFind}><ThemeIcon name="close" size={14} /></button>
+            <button type="button" className="notes-find-btn app-inline-search-btn" aria-label={t("desktop.common.findPrev")} onClick={() => runFind("backward")}><ThemeIcon name="arrow-up" size={ICON_SIZE.dense} /></button>
+            <button type="button" className="notes-find-btn app-inline-search-btn" aria-label={t("desktop.common.findNext")} onClick={() => runFind("forward")}><ThemeIcon name="arrow-down" size={ICON_SIZE.dense} /></button>
+            <button type="button" className="notes-find-btn app-inline-search-btn" aria-label={t("desktop.common.closeFind")} onClick={closeFind}><ThemeIcon name="close" size={ICON_SIZE.dense} /></button>
           </div>
         ) : null}
         <div
@@ -828,7 +829,7 @@ export function NotePaneView({ noteId, active, onOpenNote, onTitleChange, onDirt
       {selectionMenu ? <SelectionSendMenu menu={selectionMenu} onClose={() => setSelectionMenu(null)} /> : null}
       {contextMenu ? (
         <div
-          className="notes-context-menu"
+          className={`notes-context-menu${contextMenuClosing ? " is-closing" : ""}`}
           role="menu"
           style={{
             left: Math.max(8, Math.min(contextMenu.x, window.innerWidth - 220)),
@@ -870,7 +871,7 @@ export function NotePaneView({ noteId, active, onOpenNote, onTitleChange, onDirt
         </div>
       ) : null}
       {renameDialog ? (
-        <div className="wb-note-created-overlay">
+        <div className={`wb-note-created-overlay${renameDialogClosing ? " is-closing" : ""}`}>
           <div className="wb-note-created-backdrop" onClick={() => setRenameDialog(null)} />
           <form className="wb-note-created-panel" role="dialog" aria-modal="true" onSubmit={(event) => { event.preventDefault(); void applyRenameDialog(); }}>
             <p className="wb-note-created-title">{t("desktop.common.rename")}</p>
@@ -883,9 +884,9 @@ export function NotePaneView({ noteId, active, onOpenNote, onTitleChange, onDirt
         </div>
       ) : null}
       {imagePreview ? (
-        <div className="notes-image-preview" role="dialog" aria-modal="true" onClick={() => setImagePreview("")}>
+        <div className={`notes-image-preview${imagePreviewClosing ? " is-closing" : ""}`} role="dialog" aria-modal="true" onClick={() => setImagePreview(null)}>
           <img src={imagePreview} alt="" />
-          <button type="button" className="notes-image-preview-close" aria-label={t("desktop.common.close")} onClick={() => setImagePreview("")}><ThemeIcon name="close" size={16} /></button>
+          <button type="button" className="notes-image-preview-close" aria-label={t("desktop.common.close")} onClick={() => setImagePreview(null)}><ThemeIcon name="close" size={ICON_SIZE.default} /></button>
         </div>
       ) : null}
     </div>

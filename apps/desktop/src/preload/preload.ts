@@ -43,19 +43,7 @@ import type {
   WorkbenchSendSelectionRequest,
   WorkbenchSendSelectionResult
 } from "../shared/workbenchSelection";
-import type {
-  ImAgent,
-  ImEvent,
-  ImJob,
-  ImKnowledgeItem,
-  ImMember,
-  ImMessage,
-  ImProject,
-  ImRoleTemplate,
-  ImRoom,
-  ImSelectionAction,
-  ImSelectionActionKind
-} from "../shared/imTypes";
+import type { SelectionAction } from "../shared/selectionActions";
 
 export type {
   BrowserIpcEvent,
@@ -275,21 +263,6 @@ export interface DesktopApi {
   }>;
   hideSession(args: { provider: string; id: string }): Promise<{ ok: boolean }>;
   hideSessions(args: { sessions: Array<{ provider: string; id: string }> }): Promise<{ ok: boolean }>;
-  moveSessionToProject(args: {
-    provider: string;
-    id: string;
-    targetProjectPath: string;
-  }): Promise<{
-    provider: string;
-    sessionId: string;
-    moved: boolean;
-    fromProjectId: string | null;
-    toProjectId: string;
-    oldPath: string;
-    newPath: string;
-    /** True when the provider's native cwd was also rewritten (physical move). */
-    nativeUpdated: boolean;
-  }>;
   createScratchDir(): Promise<string>;
   workbenchGetProjectEditor(): Promise<{
     selected: "auto" | "vscode" | "vscodium" | "cursor" | "windsurf";
@@ -298,13 +271,6 @@ export interface DesktopApi {
       id: "vscode" | "vscodium" | "cursor" | "windsurf";
       label: string;
     } | null;
-  }>;
-  workbenchOpenProjectInEditor(args: { projectPath: string }): Promise<{
-    ok: boolean;
-    editor: {
-      id: "vscode" | "vscodium" | "cursor" | "windsurf";
-      label: string;
-    };
   }>;
   workbenchOpenSession(args: {
     provider: string;
@@ -545,88 +511,24 @@ export interface DesktopApi {
   acpOpenPath(args: { path: string }): Promise<{ ok: boolean }>;
   acpDisconnect(args: { chatId: string }): Promise<{ ok: boolean }>;
   onAcpStream(callback: (event: Record<string, unknown>) => void): () => void;
-  imListProjects(): Promise<ImProject[]>;
-  imCreateProject(args: { name?: string; localPath?: string }): Promise<ImProject>;
-  imCreateTaskRoom(args: { noteId: string; preferredCwd?: string }): Promise<ImRoom>;
-  imRenameProject(args: { projectId: string; name: string }): Promise<ImProject>;
-  imAutoRenameProject(args: { projectId: string }): Promise<ImProject>;
-  imDeleteProject(args: { projectId: string }): Promise<{ ok: boolean }>;
-  imPickLocalPath(args?: { title?: string }): Promise<{ ok: true; path: string } | { ok: false; canceled: true }>;
-  imSetLocalPath(args: { projectId: string; localPath: string | null }): Promise<ImProject>;
-  imListTemplates(): Promise<ImRoleTemplate[]>;
-  imSetTemplateAgent(args: { templateId: string; agent: ImAgent }): Promise<ImRoleTemplate>;
-  imCreateTemplate(args: {
+  selectionListActions(): Promise<SelectionAction[]>;
+  selectionCreateAction(args: {
     name: string;
-    persona: string;
-    agent: ImAgent;
-    model?: string;
-    thoughtLevel?: string;
-    tools?: { fsRead: boolean; fsWrite: boolean; execute: boolean };
-    callableTemplateIds?: string[];
-    incomingCallerIds?: string[];
-    autoDispatch?: boolean;
-  }): Promise<ImRoleTemplate>;
-  imUpdateTemplate(args: {
-    templateId: string;
-    name?: string;
-    persona?: string;
-    agent?: ImAgent;
-    model?: string | null;
-    thoughtLevel?: string | null;
-    tools?: { fsRead: boolean; fsWrite: boolean; execute: boolean };
-    callableTemplateIds?: string[];
-    incomingCallerIds?: string[];
-    autoDispatch?: boolean;
-  }): Promise<ImRoleTemplate>;
-  imDeleteTemplate(args: { templateId: string }): Promise<{ ok: boolean }>;
-  imGetRoom(args: { projectId: string }): Promise<ImRoom>;
-  imSetMemberAgent(args: { memberId: string; agent: ImAgent }): Promise<ImMember>;
-  imSetMemberModel(args: { memberId: string; model: string | null }): Promise<ImMember>;
-  imSetMemberThoughtLevel(args: { memberId: string; thoughtLevel: string | null }): Promise<ImMember>;
-  imResetMemberOverrides(args: { memberId: string }): Promise<ImMember>;
-  imListAgentModels(args: { agent: ImAgent; refresh?: boolean }): Promise<Array<{ id: string; label: string; provider?: string }>>;
-  imCreateRole(args: {
-    projectId: string;
-    name: string;
-    persona: string;
-    agent: ImAgent;
-    model?: string;
-    thoughtLevel?: string;
-  }): Promise<{ template: ImRoleTemplate; member: ImMember }>;
-  imAddMember(args: { projectId: string; templateId: string }): Promise<ImMember>;
-  imRemoveMember(args: { memberId: string }): Promise<{ ok: boolean }>;
-  imPostMessage(args: {
-    projectId: string;
-    body: string;
-    quoteIds: string[];
-    mentionRoleIds: string[];
-    images?: Array<{ fileName: string; mimeType: string; data: string }>;
-    followUpToMessageId?: string;
-  }): Promise<{ message: ImMessage; job: ImJob | null }>;
-  imCancelJob(args: { jobId: string }): Promise<ImJob>;
-  imResumeJob(args: { jobId: string }): Promise<{ job: ImJob }>;
-  imDispatchProposal(args: { projectId: string; messageId: string; proposalId: string }): Promise<{ message: ImMessage; job: ImJob }>;
-  imDismissProposal(args: { projectId: string; messageId: string; proposalId: string }): Promise<ImMessage>;
-  imListKnowledge(args: { projectId: string }): Promise<ImKnowledgeItem[]>;
-  imAddKnowledgeText(args: { projectId: string; title: string; body: string }): Promise<ImKnowledgeItem>;
-  imAddKnowledgeLink(args: { projectId: string; url: string; title?: string; note?: string }): Promise<ImKnowledgeItem>;
-  imAddKnowledgeImage(args: { projectId: string }): Promise<{ ok: true; item: ImKnowledgeItem } | { ok: false; canceled: true }>;
-  imRemoveKnowledge(args: { itemId: string }): Promise<{ ok: boolean }>;
-  imListSelectionActions(): Promise<ImSelectionAction[]>;
-  imCreateSelectionAction(args: { name: string; kind: ImSelectionActionKind; prompt?: string; providerId?: string; modelId?: string }): Promise<ImSelectionAction>;
-  imUpdateSelectionAction(args: {
+    prompt?: string;
+    providerId?: string;
+    modelId?: string;
+  }): Promise<SelectionAction>;
+  selectionUpdateAction(args: {
     actionId: string;
     name?: string;
-    kind?: ImSelectionActionKind;
     prompt?: string;
     providerId?: string | null;
     modelId?: string | null;
     enabled?: boolean;
-  }): Promise<ImSelectionAction>;
-  imDeleteSelectionAction(args: { actionId: string }): Promise<{ ok: boolean }>;
-  imReorderSelectionActions(args: { actionIds: string[] }): Promise<ImSelectionAction[]>;
-  imRunSelectionAction(args: { actionId: string; text: string }): Promise<{ text: string }>;
-  onImEvent(callback: (event: ImEvent) => void): () => void;
+  }): Promise<SelectionAction>;
+  selectionDeleteAction(args: { actionId: string }): Promise<{ ok: boolean }>;
+  selectionReorderActions(args: { actionIds: string[] }): Promise<SelectionAction[]>;
+  selectionRunAction(args: { actionId: string; text: string }): Promise<{ text: string }>;
   terminalSpawn(args: {
     cwd: string;
     command?: string;
@@ -1417,7 +1319,6 @@ export interface DesktopApi {
   notesReveal(args: { noteId: string }): Promise<{ ok: boolean }>;
   notesCopyPath(args: { noteId: string }): Promise<{ path: string }>;
   listProjectAliases(): Promise<Record<string, string>>;
-  setProjectAlias(args: { projectPath: string; alias: string }): Promise<{ ok: boolean }>;
   listProjects(opts?: { includeHidden?: boolean }): Promise<
     Array<{
       projectId: string;
@@ -1449,35 +1350,12 @@ export interface DesktopApi {
     } }
     | { ok: false; canceled: true }
   >;
-  hideProject(args: { projectId?: string; projectPath?: string }): Promise<{
-    projectId: string;
-    hiddenSessions: number;
-  }>;
-  setProjectLocalPath(args: { projectId: string; absolutePath: string }): Promise<{ ok: boolean }>;
-  pickProjectLocalPath(args: { projectId: string; title?: string }): Promise<
-    | { ok: true; absolutePath: string; resolved: { cwd: string; source: string; projectId: string; portableKey: string } }
-    | { ok: false; canceled: true }
-  >;
-  setProjectPinned(args: { projectId: string; pinned: boolean }): Promise<{ ok: boolean }>;
-  revealProjectInFinder(args: { projectId?: string; projectPath?: string }): Promise<{ ok: boolean; path: string }>;
-  copyProjectLocalPath(args: { projectId?: string; projectPath?: string }): Promise<{ ok: boolean; path: string }>;
   resolveProjectCwd(args: { projectId?: string; projectPath?: string }): Promise<{
     cwd: string;
     source: "local" | "portable" | "rehome" | "missing";
     projectId: string;
     portableKey: string;
   }>;
-  listProjectPathVariants(args: { projectId: string }): Promise<
-    Array<{ absolutePath: string; portableKey: string; sessionCount: number }>
-  >;
-  mergeProjects(args: {
-    sourceProjectId: string;
-    targetProjectId: string;
-  }): Promise<{ targetProjectId: string; mergedSessions: number }>;
-  splitProjectPath(args: {
-    sourceProjectId: string;
-    absolutePath: string;
-  }): Promise<{ projectId: string; movedSessions: number; created: boolean }>;
   getI18nBundle(): Promise<{ locale: string; messages: Record<string, string> }>;
   getAppVersion(): Promise<string>;
   checkForUpdate(options?: { force?: boolean }): Promise<UpdateCheckResult>;
@@ -1613,10 +1491,8 @@ const api: DesktopApi = {
   renameSession: (args) => ipcRenderer.invoke("sessions:rename", args),
   hideSession: (args) => ipcRenderer.invoke("sessions:hide", args),
   hideSessions: (args) => ipcRenderer.invoke("sessions:hideMany", args),
-  moveSessionToProject: (args) => ipcRenderer.invoke("sessions:moveToProject", args),
   createScratchDir: () => ipcRenderer.invoke("workbench:createScratchDir"),
   workbenchGetProjectEditor: () => ipcRenderer.invoke("workbench:getProjectEditor"),
-  workbenchOpenProjectInEditor: (args) => ipcRenderer.invoke("workbench:openProjectInEditor", args),
   workbenchOpenSession: (args) => ipcRenderer.invoke("workbench:openSession", args),
   setWorkbenchActiveSessions: (sessions) => {
     ipcRenderer.send("workbench:activeSessions", sessions);
@@ -1714,49 +1590,12 @@ const api: DesktopApi = {
     ipcRenderer.on("acp:stream", handler);
     return () => ipcRenderer.removeListener("acp:stream", handler);
   },
-  imListProjects: () => ipcRenderer.invoke("im:listProjects"),
-  imCreateProject: (args) => ipcRenderer.invoke("im:createProject", args),
-  imCreateTaskRoom: (args) => ipcRenderer.invoke("im:createTaskRoom", args),
-  imRenameProject: (args) => ipcRenderer.invoke("im:renameProject", args),
-  imAutoRenameProject: (args) => ipcRenderer.invoke("im:autoRenameProject", args),
-  imDeleteProject: (args) => ipcRenderer.invoke("im:deleteProject", args),
-  imPickLocalPath: (args) => ipcRenderer.invoke("im:pickLocalPath", args),
-  imSetLocalPath: (args) => ipcRenderer.invoke("im:setLocalPath", args),
-  imListTemplates: () => ipcRenderer.invoke("im:listTemplates"),
-  imSetTemplateAgent: (args) => ipcRenderer.invoke("im:setTemplateAgent", args),
-  imCreateTemplate: (args) => ipcRenderer.invoke("im:createTemplate", args),
-  imUpdateTemplate: (args) => ipcRenderer.invoke("im:updateTemplate", args),
-  imDeleteTemplate: (args) => ipcRenderer.invoke("im:deleteTemplate", args),
-  imGetRoom: (args) => ipcRenderer.invoke("im:getRoom", args),
-  imSetMemberAgent: (args) => ipcRenderer.invoke("im:setMemberAgent", args),
-  imSetMemberModel: (args) => ipcRenderer.invoke("im:setMemberModel", args),
-  imSetMemberThoughtLevel: (args) => ipcRenderer.invoke("im:setMemberThoughtLevel", args),
-  imResetMemberOverrides: (args) => ipcRenderer.invoke("im:resetMemberOverrides", args),
-  imListAgentModels: (args) => ipcRenderer.invoke("im:listAgentModels", args),
-  imCreateRole: (args) => ipcRenderer.invoke("im:createRole", args),
-  imAddMember: (args) => ipcRenderer.invoke("im:addMember", args),
-  imRemoveMember: (args) => ipcRenderer.invoke("im:removeMember", args),
-  imPostMessage: (args) => ipcRenderer.invoke("im:postMessage", args),
-  imCancelJob: (args) => ipcRenderer.invoke("im:cancelJob", args),
-  imResumeJob: (args) => ipcRenderer.invoke("im:resumeJob", args),
-  imDispatchProposal: (args) => ipcRenderer.invoke("im:dispatchProposal", args),
-  imDismissProposal: (args) => ipcRenderer.invoke("im:dismissProposal", args),
-  imListKnowledge: (args) => ipcRenderer.invoke("im:listKnowledge", args),
-  imAddKnowledgeText: (args) => ipcRenderer.invoke("im:addKnowledgeText", args),
-  imAddKnowledgeLink: (args) => ipcRenderer.invoke("im:addKnowledgeLink", args),
-  imAddKnowledgeImage: (args) => ipcRenderer.invoke("im:addKnowledgeImage", args),
-  imRemoveKnowledge: (args) => ipcRenderer.invoke("im:removeKnowledge", args),
-  imListSelectionActions: () => ipcRenderer.invoke("im:listSelectionActions"),
-  imCreateSelectionAction: (args) => ipcRenderer.invoke("im:createSelectionAction", args),
-  imUpdateSelectionAction: (args) => ipcRenderer.invoke("im:updateSelectionAction", args),
-  imDeleteSelectionAction: (args) => ipcRenderer.invoke("im:deleteSelectionAction", args),
-  imReorderSelectionActions: (args) => ipcRenderer.invoke("im:reorderSelectionActions", args),
-  imRunSelectionAction: (args) => ipcRenderer.invoke("im:runSelectionAction", args),
-  onImEvent: (callback) => {
-    const handler = (_event: Electron.IpcRendererEvent, payload: ImEvent) => callback(payload);
-    ipcRenderer.on("im:event", handler);
-    return () => ipcRenderer.removeListener("im:event", handler);
-  },
+  selectionListActions: () => ipcRenderer.invoke("selection:listActions"),
+  selectionCreateAction: (args) => ipcRenderer.invoke("selection:createAction", args),
+  selectionUpdateAction: (args) => ipcRenderer.invoke("selection:updateAction", args),
+  selectionDeleteAction: (args) => ipcRenderer.invoke("selection:deleteAction", args),
+  selectionReorderActions: (args) => ipcRenderer.invoke("selection:reorderActions", args),
+  selectionRunAction: (args) => ipcRenderer.invoke("selection:runAction", args),
   terminalSpawn: (args) => ipcRenderer.invoke("terminal:spawn", args),
   terminalAttach: (args) => ipcRenderer.invoke("terminal:attach", args),
   terminalDetach: (args) => ipcRenderer.invoke("terminal:detach", args),
@@ -1949,19 +1788,9 @@ const api: DesktopApi = {
   notesReveal: (args) => ipcRenderer.invoke("notes:reveal", args),
   notesCopyPath: (args) => ipcRenderer.invoke("notes:copyPath", args),
   listProjectAliases: () => ipcRenderer.invoke("projects:listAliases"),
-  setProjectAlias: (args) => ipcRenderer.invoke("projects:setAlias", args),
   listProjects: (opts) => ipcRenderer.invoke("projects:list", opts),
   addProject: (args) => ipcRenderer.invoke("projects:addProject", args),
-  hideProject: (args) => ipcRenderer.invoke("projects:hide", args),
-  setProjectLocalPath: (args) => ipcRenderer.invoke("projects:setLocalPath", args),
-  pickProjectLocalPath: (args) => ipcRenderer.invoke("projects:pickLocalPath", args),
-  setProjectPinned: (args) => ipcRenderer.invoke("projects:setPinned", args),
-  revealProjectInFinder: (args) => ipcRenderer.invoke("projects:revealInFinder", args),
-  copyProjectLocalPath: (args) => ipcRenderer.invoke("projects:copyLocalPath", args),
   resolveProjectCwd: (args) => ipcRenderer.invoke("projects:resolveCwd", args),
-  listProjectPathVariants: (args) => ipcRenderer.invoke("projects:listPathVariants", args),
-  mergeProjects: (args) => ipcRenderer.invoke("projects:merge", args),
-  splitProjectPath: (args) => ipcRenderer.invoke("projects:splitPath", args),
   getI18nBundle: () => ipcRenderer.invoke("i18n:getBundle"),
   getAppVersion: async () => {
     const result = (await ipcRenderer.invoke("app:getVersion")) as { version?: string };

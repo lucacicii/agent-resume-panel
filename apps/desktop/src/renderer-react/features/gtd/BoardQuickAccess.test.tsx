@@ -63,6 +63,17 @@ describe("BoardQuickAccess", () => {
     expect(await screen.findByRole("dialog", { name: "Quick Access" })).toBeTruthy();
   });
 
+  it("keeps the palette mounted for its exit animation", async () => {
+    renderBoard();
+    fireEvent.keyDown(window, { key: "p", metaKey: true });
+    const dialog = await screen.findByRole("dialog", { name: "Quick Access" });
+    fireEvent.keyDown(dialog.querySelector("input")!, { key: "Escape" });
+
+    // The board portal must outlive `open` so the shared exit animation can run.
+    expect(document.querySelector(".quick-access-overlay.is-closing")).not.toBeNull();
+    await waitFor(() => expect(document.querySelector(".quick-access-overlay")).toBeNull());
+  });
+
   it("opens the window of the task it runs", async () => {
     renderBoard();
     fireEvent.keyDown(window, { key: "p", metaKey: true });

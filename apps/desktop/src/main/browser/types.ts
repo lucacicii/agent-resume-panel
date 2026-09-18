@@ -21,9 +21,7 @@ export type BrowserTabState = {
 export type BrowserPolicy = {
   allowHosts: string[];
   blockHosts: string[];
-  allowDownloads: boolean;
   allowPopups: boolean;
-  snapshotMode: "a11y" | "dom-lite" | "screenshot";
   maxTabs: number;
 };
 
@@ -78,9 +76,7 @@ export type BrowserCreateArgs = {
 export const DEFAULT_BROWSER_POLICY: BrowserPolicy = {
   allowHosts: [],
   blockHosts: ["*.paypal.com", "*.alipay.com", "*.stripe.com"],
-  allowDownloads: false,
   allowPopups: false,
-  snapshotMode: "a11y",
   maxTabs: 6
 };
 

@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect } from "react";
 import { desktopApi } from "../bridge";
+import { useOverlayState } from "../components/useOverlayMotion";
 import { notifyDesktop } from "../components/Notifications";
-import { ThemeIcon } from "../components/ThemeIcon";
+import { ICON_SIZE, ThemeIcon } from "../components/ThemeIcon";
 import { renderMarkdown } from "../components/Markdown";
 import { useI18n } from "../i18n";
-import type { ImSelectionAction } from "../../shared/imTypes";
+import type { SelectionAction } from "../../shared/selectionActions";
 
 type SelectionActionResultState = {
   x: number;
@@ -15,7 +16,7 @@ type SelectionActionResultState = {
 };
 
 export type SelectionActionRunInput = {
-  action: ImSelectionAction;
+  action: SelectionAction;
   text: string;
   x: number;
   y: number;
@@ -23,9 +24,9 @@ export type SelectionActionRunInput = {
 
 type Translate = (key: string, ...args: Array<string | number>) => string;
 
-export function selectionActionLabel(action: ImSelectionAction, t: Translate): string {
-  if (action.actionId === "translate") return t("desktop.im.translate");
-  if (action.actionId === "explain") return t("desktop.im.explain");
+export function selectionActionLabel(action: SelectionAction, t: Translate): string {
+  if (action.actionId === "translate") return t("desktop.selection.translate");
+  if (action.actionId === "explain") return t("desktop.selection.explain");
   return action.name;
 }
 
@@ -40,18 +41,19 @@ export function copySelectionText(text: string, successText: string): void {
 
 export function useSelectionActionResult(): {
   selectionResult: SelectionActionResultState | null;
+  selectionResultClosing: boolean;
   runSelectionAction: (input: SelectionActionRunInput) => Promise<void>;
   copySelectionResult: (text: string) => void;
   clearSelectionResult: () => void;
 } {
   const { t } = useI18n();
-  const [selectionResult, setSelectionResult] = useState<SelectionActionResultState | null>(null);
+  const [selectionResult, setSelectionResult, selectionResultClosing] = useOverlayState<SelectionActionResultState>();
 
   const runSelectionAction = useCallback(async ({ action, text, x, y }: SelectionActionRunInput) => {
     const title = selectionActionLabel(action, t);
     setSelectionResult({ x, y, title, text: "", loading: true });
     try {
-      const result = await desktopApi().imRunSelectionAction({ actionId: action.actionId, text });
+      const result = await desktopApi().selectionRunAction({ actionId: action.actionId, text });
       setSelectionResult((current) =>
         current?.loading && current.title === title
           ? { x, y, title, text: result.text, loading: false }
@@ -69,7 +71,7 @@ export function useSelectionActionResult(): {
 
   const clearSelectionResult = useCallback(() => setSelectionResult(null), []);
 
-  return { selectionResult, runSelectionAction, copySelectionResult, clearSelectionResult };
+  return { selectionResult, selectionResultClosing, runSelectionAction, copySelectionResult, clearSelectionResult };
 }
 
 function resultPosition(x: number, y: number): { left: number; top: number } {
@@ -82,10 +84,12 @@ function resultPosition(x: number, y: number): { left: number; top: number } {
 
 export function SelectionActionResult({
   result,
+  closing = false,
   onClose,
   onCopy
 }: {
   result: SelectionActionResultState;
+  closing?: boolean;
   onClose: () => void;
   onCopy: (text: string) => void;
 }): React.JSX.Element {
@@ -104,7 +108,7 @@ export function SelectionActionResult({
 
   return (
     <div
-      className="selection-action-result"
+      className={`selection-action-result${closing ? " is-closing" : ""}`}
       role="dialog"
       aria-label={result.title}
       style={resultPosition(result.x, result.y)}
@@ -125,12 +129,12 @@ export function SelectionActionResult({
             title={t("desktop.common.close")}
             onClick={onClose}
           >
-            <ThemeIcon name="close" size={12} />
+            <ThemeIcon name="close" size={ICON_SIZE.inline} />
           </button>
         </span>
       </header>
       {result.loading ? (
-        <p className="im-empty" role="status">{t("desktop.im.actionRunning")}</p>
+        <p className="selection-action-running" role="status">{t("desktop.selection.actionRunning")}</p>
       ) : (
         <div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(result.text) }} />
       )}

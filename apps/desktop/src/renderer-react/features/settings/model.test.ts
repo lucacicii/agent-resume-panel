@@ -62,13 +62,11 @@ describe("settings model", () => {
     expect(draft.sessionSummarySelection).toEqual({ providerId: "p1", modelId: "tool" });
     expect(draft.reportSelection).toEqual({ providerId: "p1", modelId: "tool" });
     expect(draft.gtdSelection).toEqual({ providerId: "p1", modelId: "tool" });
-    expect(draft.imRoutingSelection).toEqual({ providerId: "p1", modelId: "tool" });
     expect(draft.translateSelection).toEqual({ providerId: "p1", modelId: "tool" });
     expect(draft.toolOutputLanguage).toBe("auto");
     expect(draft.toolMaxContextChars).toBe(120_000);
     expect(draft.chatDisableThinking).toBe(false);
     expect(generalDraftFromSettings(settings).desktopTheme).toBe("system");
-    expect(generalDraftFromSettings(settings).alwaysAllowAgentNonDestructiveOperations).toBe(false);
   });
 
   it("persists specialized model selections when set", () => {
@@ -79,7 +77,6 @@ describe("settings model", () => {
       sessionSummarySelection: { providerId: "p1", modelId: "tool" },
       reportSelection: { providerId: "p1", modelId: "tool" },
       gtdSelection: { providerId: "p1", modelId: "tool" },
-      imRoutingSelection: { providerId: "p1", modelId: "tool" },
       translateSelection: { providerId: "p1", modelId: "tool" }
     });
     expect(patch.modelSelections?.gitCommit).toEqual({ providerId: "p1", modelId: "tool" });
@@ -87,7 +84,6 @@ describe("settings model", () => {
     expect(patch.modelSelections?.sessionSummary).toEqual({ providerId: "p1", modelId: "tool" });
     expect(patch.modelSelections?.report).toEqual({ providerId: "p1", modelId: "tool" });
     expect(patch.modelSelections?.gtd).toEqual({ providerId: "p1", modelId: "tool" });
-    expect(patch.modelSelections?.imRouting).toEqual({ providerId: "p1", modelId: "tool" });
     expect(patch.modelSelections?.translate).toEqual({ providerId: "p1", modelId: "tool" });
   });
 
@@ -117,20 +113,6 @@ describe("settings model", () => {
     expect(patch.providers).toHaveLength(1);
     // Embedding model was removed, so the selection is dropped.
     expect(patch.modelSelections?.embedding).toBeUndefined();
-  });
-
-  it("keeps non-delete Agent approval enabled by default and persists an explicit opt-in", () => {
-    const draft = generalDraftFromSettings(settings);
-    const patch = generalPatch(settings, { ...draft, alwaysAllowAgentNonDestructiveOperations: true });
-    expect(patch.desktop?.alwaysAllowAgentNonDestructiveOperations).toBe(true);
-    expect(patch.desktop?.alwaysAllowAgentWriteOperations).toBe(false);
-  });
-
-  it("maps the legacy Agent approval setting to the non-delete policy", () => {
-    expect(generalDraftFromSettings({
-      ...settings,
-      desktop: { ...settings.desktop, alwaysAllowAgentWriteOperations: true }
-    }).alwaysAllowAgentNonDestructiveOperations).toBe(true);
   });
 
   it("detects embedding identity changes for model or provider base URL", () => {

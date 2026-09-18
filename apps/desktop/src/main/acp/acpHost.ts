@@ -85,36 +85,6 @@ const questionWaiters = new Map<
   { resolve: (value: AskUserQuestionResponse) => void; chatId: string }
 >();
 
-/** IM roles sidebar live model list (Plan B): dedup + timeout + snapshot push. */
-const IM_MODEL_PROBE_TIMEOUT_MS = 30_000;
-const pendingProbeByProvider = new Map<string, Promise<Array<{ id: string; label: string }>>>();
-const imAgentModelSnapshotByProvider = new Map<string, string>();
-/** Throwaway probe session ids: excluded from live snapshot to prevent flicker. */
-const throwawayProbeIds = new Set<string>();
-
-function toImAgentForModels(provider: string): "pi" | "claude" | "codex" | null {
-  return provider === "pi" || provider === "claude" || provider === "codex" ? provider : null;
-}
-
-function pushImAgentModels(provider: string): void {
-  if (!acpHostDeps) return;
-  const agent = toImAgentForModels(provider);
-  if (!agent) return;
-  const live = getLiveAcpAgentModels(provider);
-  // Keep old list on failure/empty: never push an empty list to clear the sidebar.
-  if (!live.length) return;
-  const key = JSON.stringify(live);
-  if (imAgentModelSnapshotByProvider.get(provider) === key) return;
-  imAgentModelSnapshotByProvider.set(provider, key);
-  const win = acpHostDeps.getMainWindow();
-  if (!win || win.isDestroyed()) return;
-  win.webContents.send("im:event", {
-    type: "agentModels",
-    agent,
-    models: live.map((m) => ({ id: m.id, label: m.label || m.id, provider: "ACP" })),
-  });
-}
-
 class AcpChatController {
   private connection?: AcpAgentConnection;
   private messages: AcpChatMessage[] = [];
@@ -215,16 +185,6 @@ class AcpChatController {
         fileUpload: Boolean(this.connection)
       }
     });
-    // IM roles sidebar Plan B: live ACP model changes push to renderer.
-    // Throwaway probe controllers are excluded: probe result is returned via
-    // im:listAgentModels, never via push (prevents transient flicker).
-    if (!throwawayProbeIds.has(this.record.id)) {
-      try {
-        pushImAgentModels(this.record.provider);
-      } catch {
-        // never break ACP init on IM push
-      }
-    }
   }
 
   private status(status: string, isRunning: boolean, isConnecting: boolean): void {
@@ -970,7 +930,6 @@ class AcpChatController {
   }
 }
 
-let imStreamHandler: ((event: AcpStreamEvent) => Promise<void>) | null | undefined;
 const pendingStreamEvents = new Map<string, { event: AcpStreamEvent; timer: ReturnType<typeof setTimeout> }>();
 
 /**
@@ -1005,21 +964,6 @@ function sendStreamEvent(event: AcpStreamEvent): void {
     if (win.isDestroyed()) continue;
     try { win.webContents.send("acp:stream", event); } catch { /* renderer may be closing */ }
   }
-}
-
-function emitToWindow(_getMainWindow: GetMainWindow, event: AcpStreamEvent): void {
-  emitStreamEvent(event);
-  if (imStreamHandler === undefined) {
-    imStreamHandler = null;
-    void import("../im/ipc").then((mod) => {
-      imStreamHandler = mod.handleImAcpStream;
-      return mod.handleImAcpStream(event);
-    }).catch(() => {
-      imStreamHandler = null;
-    });
-    return;
-  }
-  if (imStreamHandler) void imStreamHandler(event);
 }
 
 function findControllerChatIdByAcpSessionId(sessionId: string | undefined): string | null {
@@ -1061,25 +1005,13 @@ export async function connectAcpChat(chatId: string, force = false): Promise<{ r
     controllers.delete(chatId);
   }
   controller = new AcpChatController(record, panelHome, settings, (event) =>
-    emitToWindow(getMainWindow, event)
+    emitStreamEvent(event)
   );
   controllers.set(chatId, controller);
   lastActiveChatId = chatId;
   await controller.bootstrap();
   const nextSessionId = controller.getRecord().acpSessionId;
   return { rebuilt: !previousSessionId || nextSessionId !== previousSessionId };
-}
-
-export function inspectAcpChat(chatId: string): { live: boolean; running: boolean } {
-  const controller = controllers.get(chatId);
-  if (!controller) return { live: false, running: false };
-  return { live: controller.isLive(), running: controller.isBusy() };
-}
-
-export function listLiveAcpChatIds(): string[] {
-  return [...controllers.entries()]
-    .filter(([, controller]) => controller.isLive() || controller.isBusy())
-    .map(([chatId]) => chatId);
 }
 
 export async function promptAcpChat(
@@ -1145,7 +1077,7 @@ export function registerAcpIpc(deps: {
 
     const requestId = crypto.randomUUID();
     const title = params.toolCall.title ?? "Agent permission";
-    emitToWindow(getMainWindow, {
+    emitStreamEvent({
       type: "permissionRequest",
       chatId,
       requestId,
@@ -1160,7 +1092,7 @@ export function registerAcpIpc(deps: {
     return await new Promise<RequestPermissionResponse>((resolve) => {
       const finish = (value: RequestPermissionResponse) => {
         permissionWaiters.delete(requestId);
-        emitToWindow(getMainWindow, { type: "permissionResolved", chatId, requestId });
+        emitStreamEvent({ type: "permissionResolved", chatId, requestId });
         resolve(value);
       };
       const timer = setTimeout(() => {
@@ -1183,7 +1115,7 @@ export function registerAcpIpc(deps: {
     }
 
     const requestId = crypto.randomUUID();
-    emitToWindow(getMainWindow, {
+    emitStreamEvent({
       type: "userQuestion",
       chatId,
       requestId,
@@ -1193,7 +1125,7 @@ export function registerAcpIpc(deps: {
     return await new Promise<AskUserQuestionResponse>((resolve) => {
       const finish = (value: AskUserQuestionResponse) => {
         questionWaiters.delete(requestId);
-        emitToWindow(getMainWindow, { type: "userQuestionResolved", chatId, requestId });
+        emitStreamEvent({ type: "userQuestionResolved", chatId, requestId });
         resolve(value);
       };
       const timer = setTimeout(() => {
@@ -1213,7 +1145,7 @@ export function registerAcpIpc(deps: {
   setPlanWriteListener(({ path: planPath, content }) => {
     const chatId = resolveChatIdForSession(undefined);
     if (!chatId) return;
-    emitToWindow(getMainWindow, {
+    emitStreamEvent({
       type: "planFile",
       chatId,
       path: planPath,
@@ -1415,114 +1347,6 @@ export function disposeAcpController(chatId: string): void {
   }
 }
 
-function collectControllerAgentModels(
-  controller: AcpChatController,
-  result: Array<{ id: string; label: string }>,
-  seen: Set<string>
-): void {
-  const configOptions = controller.getConfigOptions();
-  for (const opt of configOptions) {
-    if (opt.type === "select" && (opt.category === "model" || opt.id === "model" || opt.id === "model_id")) {
-      for (const item of opt.options) {
-        if ("value" in item && item.value && !seen.has(item.value)) {
-          seen.add(item.value);
-          result.push({ id: item.value, label: item.name || item.value });
-        } else if ("options" in item && Array.isArray(item.options)) {
-          for (const sub of item.options) {
-            if (sub.value && !seen.has(sub.value)) {
-              seen.add(sub.value);
-              result.push({ id: sub.value, label: `${sub.name || sub.value} (${item.name || item.group})` });
-            }
-          }
-        }
-      }
-    }
-  }
-  const legacyModels = controller.getModels();
-  if (legacyModels?.availableModels) {
-    for (const m of legacyModels.availableModels) {
-      if (m.modelId && !seen.has(m.modelId)) {
-        seen.add(m.modelId);
-        result.push({ id: m.modelId, label: m.name || m.modelId });
-      }
-    }
-  }
-}
-
-export function getLiveAcpAgentModels(provider: string): Array<{ id: string; label: string }> {
-  const result: Array<{ id: string; label: string }> = [];
-  const seen = new Set<string>();
-  for (const [id, controller] of controllers) {
-    if (throwawayProbeIds.has(id)) continue;
-    if (controller.getRecord().provider !== provider) continue;
-    collectControllerAgentModels(controller, result, seen);
-  }
-  return result;
-}
-
-/**
- * IM roles sidebar Plan B: always boots a throwaway ACP session for the
- * latest model list (never reuses in-memory live controllers), with
- * per-provider dedup and a 30s timeout. Always disposes the controller
- * and deletes the throwaway record. Never throws empty to clear sidebar:
- * on failure/empty keeps the previous list (returns live or [] and lets
- * the caller fall back).
- */
-export async function probeAcpAgentModels(provider: AcpAgentProvider): Promise<Array<{ id: string; label: string }>> {
-  const pending = pendingProbeByProvider.get(provider);
-  if (pending) return pending;
-  const task = (async (): Promise<Array<{ id: string; label: string }>> => {
-    if (!acpHostDeps) return getLiveAcpAgentModels(provider);
-    const { loadSettings } = acpHostDeps;
-    const settings = await loadSettings();
-    const panelHome = effectivePanelHome(settings);
-    const record = await createAcpRecord(panelHome, panelHome, provider, { source: "im" });
-    throwawayProbeIds.add(record.id);
-    try {
-      const controller = new AcpChatController(record, panelHome, settings, () => undefined);
-      controllers.set(record.id, controller);
-      try {
-        await withTimeout(controller.bootstrap(), IM_MODEL_PROBE_TIMEOUT_MS, `Timed out fetching ${provider} models.`);
-        const result: Array<{ id: string; label: string }> = [];
-        collectControllerAgentModels(controller, result, new Set());
-        if (!result.length) return getLiveAcpAgentModels(provider);
-        const key = JSON.stringify(result);
-        imAgentModelSnapshotByProvider.set(provider, key);
-        return result;
-      } finally {
-        controller.dispose();
-        controllers.delete(record.id);
-      }
-    } finally {
-      throwawayProbeIds.delete(record.id);
-      await deleteAcpRecord(panelHome, record.id).catch(() => undefined);
-    }
-  })();
-  pendingProbeByProvider.set(provider, task);
-  try {
-    return await task;
-  } catch (error) {
-    // Failure fallback: keep old list, never clear the sidebar from here.
-    try {
-      return getLiveAcpAgentModels(provider);
-    } catch {
-      throw error;
-    }
-  } finally {
-    if (pendingProbeByProvider.get(provider) === task) pendingProbeByProvider.delete(provider);
-  }
-}
-
-function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(message)), ms);
-  });
-  return Promise.race([promise, timeout]).finally(() => {
-    if (timer) clearTimeout(timer);
-  }) as Promise<T>;
-}
-
 export function getAcpRuntimeMetrics(): { count: number; liveCount: number } {
   let liveCount = 0;
   for (const controller of controllers.values()) {
@@ -1538,9 +1362,6 @@ export function disposeAllAcpControllers(): void {
   controllers.clear();
   permissionWaiters.clear();
   questionWaiters.clear();
-  pendingProbeByProvider.clear();
-  throwawayProbeIds.clear();
-  imAgentModelSnapshotByProvider.clear();
   setPermissionPromptHandler(null);
   setAskUserQuestionHandler(null);
   setPlanWriteListener(null);

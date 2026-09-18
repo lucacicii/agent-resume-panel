@@ -1,5 +1,6 @@
-import { ThemeIcon } from "../../components/ThemeIcon";
+import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useOverlayPresence } from "../../components/useOverlayMotion";
 import {
   compareQuickAccessPathMatches,
   fuzzyMatchPath,
@@ -197,7 +198,9 @@ export function QuickAccess({
     optionRefs.current.get(activeId)?.scrollIntoView?.({ block: "nearest" });
   }, [activeId]);
 
-  if (!open) return null;
+  const presence = useOverlayPresence(open);
+
+  if (!presence.mounted) return null;
   const displayValue = mode === "commands" ? `>${query}` : query;
   const mac = typeof navigator !== "undefined" && /mac/i.test(navigator.platform);
 
@@ -224,11 +227,11 @@ export function QuickAccess({
     selectResult((activeIndex + offset + resultCount) % resultCount);
   };
 
-  return <div className="quick-access-overlay">
+  return <div className={`quick-access-overlay${presence.closing ? " is-closing" : ""}`}>
     <button type="button" className="quick-access-backdrop" aria-label={labels.close} onClick={onClose} />
     <section className="quick-access-panel" role="dialog" aria-modal="true" aria-label={labels.dialog}>
       <div className="quick-access-input-row">
-        {mode === "files" ? <ThemeIcon name="search" size={17} aria-hidden="true" /> : <ThemeIcon name="command" size={17} aria-hidden="true" />}
+        {mode === "files" ? <ThemeIcon name="search" size={ICON_SIZE.default} aria-hidden="true" /> : <ThemeIcon name="command" size={ICON_SIZE.default} aria-hidden="true" />}
         <input
           ref={inputRef}
           className="quick-access-input"
@@ -278,7 +281,7 @@ export function QuickAccess({
       </div>
       <div className="quick-access-results" id="quick-access-results" role="listbox">
         {mode === "files" ? <>
-          {!hasProject ? <p className="quick-access-state">{labels.noProject}</p> : loading && !files.length ? <p className="quick-access-state"><ThemeIcon name="loader" className="spin" size={15} />{labels.loading}</p> : error ? <p className="quick-access-state is-error" role="alert">{error}</p> : fileResults.length ? fileResults.map((file, index) => {
+          {!hasProject ? <p className="quick-access-state">{labels.noProject}</p> : loading && !files.length ? <p className="quick-access-state"><ThemeIcon name="loader" className="spin" size={ICON_SIZE.default} />{labels.loading}</p> : error ? <p className="quick-access-state is-error" role="alert">{error}</p> : fileResults.length ? fileResults.map((file, index) => {
             const id = optionId("file", file.path);
             const name = basename(file.relativePath);
             const directory = dirname(file.relativePath);
@@ -294,7 +297,7 @@ export function QuickAccess({
               onMouseMove={() => setSelectedOptionKey(id)}
               onClick={() => file.kind === "directory" ? void onOpenDirectory?.(file) : void onOpenFile(file)}
             >
-              {file.kind === "directory" ? <ThemeIcon name="folder" size={16} aria-hidden="true" /> : <ThemeIcon name="file-code" size={16} aria-hidden="true" />}
+              {file.kind === "directory" ? <ThemeIcon name="folder" size={ICON_SIZE.default} aria-hidden="true" /> : <ThemeIcon name="file-code" size={ICON_SIZE.default} aria-hidden="true" />}
               <span className="quick-access-option-copy"><span className="quick-access-option-label">{highlightPath(name, file.indices.filter((match) => match >= nameOffset).map((match) => match - nameOffset))}</span>{directory ? <span className="quick-access-option-detail">{highlightPath(directory, file.indices.filter((match) => match < nameOffset))}</span> : null}</span>
             </button>;
           }) : <p className="quick-access-state">{labels.noFiles}</p>}
@@ -321,7 +324,7 @@ export function QuickAccess({
                 onMouseMove={() => setSelectedOptionKey(id)}
                 onClick={() => { if (!disabled) void command.run(); }}
               >
-                <ThemeIcon name="command" size={16} aria-hidden="true" />
+                <ThemeIcon name="command" size={ICON_SIZE.default} aria-hidden="true" />
                 <span className="quick-access-option-copy"><span className="quick-access-option-label">{command.label}</span>{command.disabledReason || command.detail ? <span className="quick-access-option-detail">{command.disabledReason || command.detail}</span> : null}</span>
                 {command.shortcut ? <kbd>{command.shortcut}</kbd> : null}
               </button>

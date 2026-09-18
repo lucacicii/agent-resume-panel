@@ -1,4 +1,4 @@
-import { ThemeIcon } from "../../components/ThemeIcon";
+import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { useI18n } from "../../i18n";
 
 type WorkbenchGitChange = {
@@ -49,7 +49,7 @@ export function WorkbenchGitChangesPane({
               onClick={onRefresh}
               aria-label={t("desktop.common.refresh")}
             >
-              <ThemeIcon name="refresh" size={15} className={loading ? "spin" : undefined} />
+              <ThemeIcon name="refresh" size={ICON_SIZE.default} className={loading ? "spin" : undefined} />
             </button>
           </div>
         ) : null}

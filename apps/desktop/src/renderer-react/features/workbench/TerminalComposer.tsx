@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ThemeIcon } from "../../components/ThemeIcon";
+import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
+import { useOverlayState } from "../../components/useOverlayMotion";
 import { desktopApi } from "../../bridge";
 import { useI18n } from "../../i18n";
 import type { SessionDotStatus } from "./sessionStatus";
@@ -28,6 +29,24 @@ export type TerminalComposerPane = {
   group: "session" | "terminal";
   projectPath?: string;
 };
+
+/**
+ * A repository the task references. A session running in the task's shared
+ * workspace has no repository subdirectories of its own, so the `#` menu
+ * offers these projects instead of a filesystem listing.
+ */
+export type ComposerWorkspaceProject = {
+  label: string;
+  path: string;
+};
+
+/** Stable empty list so a composer outside a shared workspace keeps one prop identity. */
+export const EMPTY_COMPOSER_WORKSPACE_PROJECTS: ComposerWorkspaceProject[] = [];
+
+/** One `#` suggestion: a subdirectory of the cwd, or a shared-workspace project. */
+type ComposerPathSuggestion =
+  | { kind: "directory"; name: string }
+  | { kind: "project"; label: string; path: string };
 
 export type ComposerSendTip = {
   id: string;
@@ -73,11 +92,33 @@ function tokenStartAtCursor(value: string, cursor: number): number {
   return Math.max(before.lastIndexOf(" "), before.lastIndexOf("\n"), before.lastIndexOf("\t")) + 1;
 }
 
-function hashTokenAtCursor(value: string, cursor: number): { start: number; query: string } | null {
+/** Join a slash-relative path onto an absolute directory, keeping the platform separator. */
+function joinDirPath(base: string, relative: string): string {
+  const separator = base.includes("\\") && !base.includes("/") ? "\\" : "/";
+  const trimmed = base.replace(/[\\/]+$/, "");
+  const tail = relative.split(/[\\/]+/).filter(Boolean).join(separator);
+  return tail ? `${trimmed}${separator}${tail}` : trimmed;
+}
+
+/**
+ * `#` mention at the cursor. The token may contain `/` to walk into nested
+ * directories: `#src/comp` → dirPath `src`, query `comp`; `#src/` → dirPath `src`.
+ */
+function hashTokenAtCursor(
+  value: string,
+  cursor: number
+): { start: number; dirPath: string; query: string } | null {
   const start = tokenStartAtCursor(value, cursor);
   const token = value.slice(start, cursor);
   if (!token.startsWith("#") || token.slice(1).includes("#")) return null;
-  return { start, query: token.slice(1) };
+  const body = token.slice(1);
+  const lastSlash = body.lastIndexOf("/");
+  const rawDir = lastSlash >= 0 ? body.slice(0, lastSlash) : "";
+  return {
+    start,
+    dirPath: rawDir.replace(/^(?:\/+)|(?:\/+)$/g, "").replace(/\/{2,}/g, "/"),
+    query: lastSlash >= 0 ? body.slice(lastSlash + 1) : body
+  };
 }
 
 /**
@@ -161,6 +202,8 @@ export function TerminalComposer(props: {
   registerFocus: (key: string, focus: (options?: { caret?: "end" }) => void) => () => void;
   slashPhrases?: WorkbenchComposerSlashPhrase[];
   tuiSlashCommands?: TuiSlashCommand[];
+  /** Non-empty only when the pane runs in the task's shared workspace. */
+  workspaceProjects?: ComposerWorkspaceProject[];
 }): React.JSX.Element {
   const {
     pane,
@@ -173,7 +216,8 @@ export function TerminalComposer(props: {
     onActivate,
     registerFocus,
     slashPhrases = [],
-    tuiSlashCommands = []
+    tuiSlashCommands = [],
+    workspaceProjects = EMPTY_COMPOSER_WORKSPACE_PROJECTS
   } = props;
   const { t } = useI18n();
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -197,28 +241,67 @@ export function TerminalComposer(props: {
   const slashItemRefs = useRef<Array<HTMLLIElement | null>>([]);
   const directoryRoot = pane.projectPath || pane.cwd;
   const hashToken = useMemo(() => hashTokenAtCursor(value, cursor), [cursor, value]);
+  /** Already-walked part of the `#` token (`#src/comp` → `src`). */
+  const directoryQueryPath = hashToken?.dirPath ?? "";
+  /**
+   * Inside the shared workspace a `#` token starts with a project label
+   * (`#api/src`), so that project's own path is the listing root for the level.
+   */
+  const directoryProject = useMemo(() => {
+    if (!directoryQueryPath) return undefined;
+    const first = directoryQueryPath.split("/")[0];
+    return workspaceProjects.find((project) => project.label === first);
+  }, [directoryQueryPath, workspaceProjects]);
+  const directoryListRoot = directoryProject ? directoryProject.path : directoryRoot;
+  /** Absolute directory the current `#` level lists. */
+  const currentDirectory = useMemo(() => {
+    if (!hashToken) return null;
+    if (!directoryQueryPath) return directoryRoot;
+    const rest = directoryProject
+      ? directoryQueryPath.split("/").slice(1).join("/")
+      : directoryQueryPath;
+    return rest ? joinDirPath(directoryListRoot, rest) : directoryListRoot;
+  }, [directoryListRoot, directoryProject, directoryQueryPath, directoryRoot, hashToken]);
+  /** At the shared-workspace root the suggestions are projects, not folders. */
+  const sharedWorkspaceRoot = directoryQueryPath === "" && workspaceProjects.length > 0;
   const slashToken = useMemo(() => slashTokenAtCursor(value, cursor), [cursor, value]);
   const slashQuery = slashToken?.query ?? null;
   const slashMatches = useMemo(
     () => (slashToken === null ? [] : mergeComposerSlashItems(tuiSlashCommands, slashPhrases, slashToken.query)),
     [slashPhrases, slashToken, tuiSlashCommands]
   );
-  const directorySuggestions = useMemo(() => {
-    if (!hashToken || !directories) return [];
+  const directorySuggestions = useMemo<ComposerPathSuggestion[]>(() => {
+    if (!hashToken) return [];
     const query = hashToken.query.toLowerCase();
+    // Shared workspace root: its own directory holds no repo folders, so the
+    // task's referenced projects are the useful `#` targets.
+    if (sharedWorkspaceRoot) {
+      return workspaceProjects
+        .filter((project) =>
+          project.label.toLowerCase().includes(query) || project.path.toLowerCase().includes(query)
+        )
+        .sort((a, b) => {
+          const ap = a.label.toLowerCase().startsWith(query);
+          const bp = b.label.toLowerCase().startsWith(query);
+          return ap !== bp ? (ap ? -1 : 1) : a.label.localeCompare(b.label, undefined, { sensitivity: "base" });
+        })
+        .map((project) => ({ kind: "project", label: project.label, path: project.path }));
+    }
+    if (!directories) return [];
     return directories
       .filter((name) => name.toLowerCase().includes(query))
       .sort((a, b) => {
         const ap = a.toLowerCase().startsWith(query);
         const bp = b.toLowerCase().startsWith(query);
         return ap !== bp ? (ap ? -1 : 1) : a.localeCompare(b, undefined, { sensitivity: "base" });
-      });
-  }, [directories, hashToken]);
+      })
+      .map((name) => ({ kind: "directory", name }));
+  }, [directories, hashToken, sharedWorkspaceRoot, workspaceProjects]);
   const [activeDirectory, setActiveDirectory] = useState(0);
   const [dragOver, setDragOver] = useState(false);
   const dragDepth = useRef(0);
   const [pendingImages, setPendingImages] = useState<PastedComposerImage[]>([]);
-  const [imagePreview, setImagePreview] = useState("");
+  const [imagePreview, setImagePreview, imagePreviewClosing] = useOverlayState<string>();
 
   const sendDisabled = ptyId === null || !value.trim();
 
@@ -275,10 +358,20 @@ export function TerminalComposer(props: {
   }, [activeSlash, slashMatches, slashOpen]);
 
   useEffect(() => {
-    if (!directoryOpen || directories !== null || directoriesError) return;
+    setActiveDirectory(0);
+    // The shared workspace root lists projects, not the workspace's own folders.
+    if (sharedWorkspaceRoot) {
+      setDirectories(null);
+      setDirectoriesError("");
+      setDirectoriesLoading(false);
+      return;
+    }
+    if (!directoryOpen || !currentDirectory) return;
     let cancelled = false;
+    setDirectories(null);
+    setDirectoriesError("");
     setDirectoriesLoading(true);
-    void desktopApi().workbenchListDirectory({ rootPath: directoryRoot, dirPath: directoryRoot })
+    void desktopApi().workbenchListDirectory({ rootPath: directoryListRoot, dirPath: currentDirectory })
       .then(({ entries }) => {
         if (cancelled) return;
         setDirectories(entries.filter((entry) => entry.isDirectory).map((entry) => entry.name));
@@ -290,7 +383,7 @@ export function TerminalComposer(props: {
         if (!cancelled) setDirectoriesLoading(false);
       });
     return () => { cancelled = true; };
-  }, [directories, directoriesError, directoryOpen, directoryRoot]);
+  }, [currentDirectory, directoryListRoot, directoryOpen, sharedWorkspaceRoot]);
 
   useEffect(() => {
     if (!activePane) setFocused(false);
@@ -379,7 +472,7 @@ export function TerminalComposer(props: {
       setActiveDirectory(0);
       setActiveSlash(0);
       setPendingImages([]);
-      setImagePreview("");
+      setImagePreview(null);
       return;
     }
     setHistory((current) => {
@@ -398,7 +491,7 @@ export function TerminalComposer(props: {
     applyValue("");
     draftRef.current = "";
     setPendingImages([]);
-    setImagePreview("");
+    setImagePreview(null);
   }, [applyValue, onRunSlashCommand, onSendToTerminal, pane.cwd, ptyId, tuiSlashCommands, value]);
 
   const acceptSuggestion = useCallback((command: string) => {
@@ -434,7 +527,7 @@ export function TerminalComposer(props: {
         setSlashDismissed(true);
         setActiveSlash(0);
         setPendingImages([]);
-        setImagePreview("");
+        setImagePreview(null);
         return;
       }
       applyValue(`/${item.command.name}`);
@@ -446,18 +539,75 @@ export function TerminalComposer(props: {
     acceptSlashPhrase(item);
   }, [acceptSlashPhrase, applyValue, onRunSlashCommand]);
 
-  const acceptDirectory = useCallback((name: string) => {
+  const acceptDirectory = useCallback((suggestion: ComposerPathSuggestion) => {
     if (!hashToken) return;
-    const inserted = `#${name}`;
+    // Inside a shared-workspace project the final value is the absolute path,
+    // matching what the root-level project entry inserts.
+    const inserted = suggestion.kind === "project"
+      ? suggestion.path
+      : directoryProject
+        ? joinDirPath(currentDirectory ?? directoryProject.path, suggestion.name)
+        : `#${directoryQueryPath ? `${directoryQueryPath}/${suggestion.name}` : suggestion.name}`;
     const next = `${value.slice(0, hashToken.start)}${inserted}${value.slice(cursor)}`;
     const nextCursor = hashToken.start + inserted.length;
     applyValue(next);
-    setCursor(nextCursor);
     setDirectoriesDismissed(true);
     setActiveDirectory(0);
-    requestAnimationFrame(() => inputRef.current?.setSelectionRange(nextCursor, nextCursor));
-    inputRef.current?.focus();
-  }, [applyValue, cursor, hashToken, value]);
+    // Move the caret after React commits the new value; focus/select read the
+    // DOM selection, so sync the state only once the caret is in place.
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (el) {
+        el.focus();
+        el.setSelectionRange(nextCursor, nextCursor);
+      }
+      setCursor(nextCursor);
+    });
+  }, [applyValue, currentDirectory, cursor, directoryProject, directoryQueryPath, hashToken, value]);
+
+  /**
+   * Right arrow: walk into the highlighted directory (or shared-workspace
+   * project) and keep the menu open on the next level.
+   */
+  const enterDirectory = useCallback((suggestion: ComposerPathSuggestion) => {
+    if (!hashToken) return;
+    const inserted = suggestion.kind === "project"
+      ? `#${suggestion.label}/`
+      : `#${directoryQueryPath ? `${directoryQueryPath}/${suggestion.name}` : suggestion.name}/`;
+    const next = `${value.slice(0, hashToken.start)}${inserted}${value.slice(cursor)}`;
+    const nextCursor = hashToken.start + inserted.length;
+    applyValue(next);
+    setActiveDirectory(0);
+    setDirectoriesDismissed(false);
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (el) {
+        el.focus();
+        el.setSelectionRange(nextCursor, nextCursor);
+      }
+      setCursor(nextCursor);
+    });
+  }, [applyValue, cursor, directoryQueryPath, hashToken, value]);
+
+  /** Left arrow: step back up one directory level. */
+  const leaveDirectory = useCallback(() => {
+    if (!hashToken || !directoryQueryPath) return;
+    const parent = directoryQueryPath.split("/").filter(Boolean).slice(0, -1).join("/");
+    const inserted = parent ? `#${parent}/` : "#";
+    const next = `${value.slice(0, hashToken.start)}${inserted}${value.slice(cursor)}`;
+    const nextCursor = hashToken.start + inserted.length;
+    applyValue(next);
+    setActiveDirectory(0);
+    setDirectoriesDismissed(false);
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (el) {
+        el.focus();
+        el.setSelectionRange(nextCursor, nextCursor);
+      }
+      setCursor(nextCursor);
+    });
+  }, [applyValue, cursor, directoryQueryPath, hashToken, value]);
 
   const onInputChange = useCallback((event: React.ChangeEvent<HTMLTextAreaElement>) => {
     const next = event.target.value;
@@ -483,6 +633,11 @@ export function TerminalComposer(props: {
         setDirectoriesDismissed(true);
         return;
       }
+      if (event.key === "ArrowLeft" && directoryQueryPath) {
+        event.preventDefault();
+        leaveDirectory();
+        return;
+      }
       if (directorySuggestions.length) {
         if (event.key === "ArrowDown") {
           event.preventDefault();
@@ -492,6 +647,12 @@ export function TerminalComposer(props: {
         if (event.key === "ArrowUp") {
           event.preventDefault();
           setActiveDirectory((current) => (current - 1 + directorySuggestions.length) % directorySuggestions.length);
+          return;
+        }
+        if (event.key === "ArrowRight") {
+          event.preventDefault();
+          const pick = directorySuggestions[activeDirectory];
+          if (pick) enterDirectory(pick);
           return;
         }
         if (isTab) {
@@ -608,7 +769,7 @@ export function TerminalComposer(props: {
       }
       return;
     }
-  }, [acceptDirectory, acceptSlashItem, acceptSuggestion, activeDirectory, activeSlash, applyValue, directoryOpen, directorySuggestions, history, historyIndex, sendToTerminal, slashMatches, slashOpen, suggestions, suggestionsOpen, activeSuggestion, value]);
+  }, [acceptDirectory, acceptSlashItem, acceptSuggestion, activeDirectory, activeSlash, applyValue, directoryOpen, directoryQueryPath, directorySuggestions, enterDirectory, history, historyIndex, leaveDirectory, sendToTerminal, slashMatches, slashOpen, suggestions, suggestionsOpen, activeSuggestion, value]);
 
   const insertAtCursor = useCallback((text: string) => {
     const el = inputRef.current;
@@ -634,7 +795,7 @@ export function TerminalComposer(props: {
       applyValue(`${value.slice(0, index)}${value.slice(index + quoted.length)}`);
     }
     setPendingImages((current) => current.filter((item) => item.id !== id));
-    setImagePreview((current) => (current === target.previewUrl ? "" : current));
+    setImagePreview((current) => (current === target.previewUrl ? null : current));
   }, [applyValue, pendingImages, value]);
 
   const onPaste = useCallback((event: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -720,7 +881,7 @@ export function TerminalComposer(props: {
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => removePendingImage(image.id)}
               >
-                <ThemeIcon name="close" size={11} />
+                <ThemeIcon name="close" size={ICON_SIZE.inline} />
               </button>
             </div>
           ))}
@@ -764,7 +925,7 @@ export function TerminalComposer(props: {
           onMouseDown={(event) => event.preventDefault()}
           onClick={sendToTerminal}
         >
-          <ThemeIcon name="send" size={16} />
+          <ThemeIcon name="send" size={ICON_SIZE.default} />
         </button>
       </div>
       {directoryOpen ? (
@@ -772,9 +933,9 @@ export function TerminalComposer(props: {
           id={`${listId}-directories`}
           className="wb-terminal-composer-suggestions"
           role="listbox"
-          aria-label={t("desktop.workbench.terminalComposerDirectorySuggestions")}
+          aria-label={sharedWorkspaceRoot ? t("desktop.workbench.terminalComposerProjectSuggestions") : t("desktop.workbench.terminalComposerDirectorySuggestions")}
         >
-          {directoriesLoading ? (
+          {!sharedWorkspaceRoot && directoriesLoading ? (
             <li className="wb-terminal-composer-suggestion" role="option" aria-disabled="true">
               <span className="wb-terminal-composer-suggestion-text">{t("desktop.workbench.terminalComposerDirectoryLoading")}</span>
             </li>
@@ -782,25 +943,32 @@ export function TerminalComposer(props: {
             <li className="wb-terminal-composer-suggestion" role="option" aria-disabled="true">
               <span className="wb-terminal-composer-suggestion-text">{t("desktop.workbench.terminalComposerDirectoryError", directoriesError)}</span>
             </li>
-          ) : directorySuggestions.length ? directorySuggestions.map((name, index) => (
+          ) : directorySuggestions.length ? directorySuggestions.map((suggestion, index) => (
             <li
               ref={(element) => {
                 directoryItemRefs.current[index] = element;
               }}
-              key={name}
+              key={suggestion.kind === "project" ? suggestion.path : suggestion.name}
               id={`${listId}-directory-${index}`}
               role="option"
               aria-selected={index === activeDirectory}
               className={`wb-terminal-composer-suggestion${index === activeDirectory ? " is-active" : ""}`}
               onMouseDown={(event) => event.preventDefault()}
-              onClick={() => acceptDirectory(name)}
+              onClick={() => acceptDirectory(suggestion)}
             >
-              <span className="wb-terminal-composer-suggestion-text">#{name}</span>
-              <span className="wb-terminal-composer-suggestion-kbd" aria-hidden="true">Tab</span>
+              <span className="wb-terminal-composer-suggestion-text">
+                {suggestion.kind === "project"
+                  ? suggestion.label
+                  : `#${directoryQueryPath ? `${directoryQueryPath}/` : ""}${suggestion.name}`}
+              </span>
+              {suggestion.kind === "project" ? (
+                <span className="wb-terminal-composer-suggestion-desc">{suggestion.path}</span>
+              ) : null}
+              <span className="wb-terminal-composer-suggestion-kbd" aria-hidden="true">Tab · →</span>
             </li>
           )) : (
             <li className="wb-terminal-composer-suggestion" role="option" aria-disabled="true">
-              <span className="wb-terminal-composer-suggestion-text">{directories && directories.length ? t("desktop.workbench.terminalComposerDirectoryNoMatch") : t("desktop.workbench.terminalComposerDirectoryEmpty")}</span>
+              <span className="wb-terminal-composer-suggestion-text">{sharedWorkspaceRoot ? t("desktop.workbench.terminalComposerProjectNoMatch") : directories && directories.length ? t("desktop.workbench.terminalComposerDirectoryNoMatch") : t("desktop.workbench.terminalComposerDirectoryEmpty")}</span>
             </li>
           )}
         </ul>
@@ -866,20 +1034,20 @@ export function TerminalComposer(props: {
       ) : null}
       {imagePreview ? createPortal(
         <div
-          className="notes-image-preview"
+          className={`notes-image-preview${imagePreviewClosing ? " is-closing" : ""}`}
           role="dialog"
           aria-modal="true"
           aria-label={t("desktop.workbench.terminalComposerImagePreview")}
-          onClick={() => setImagePreview("")}
+          onClick={() => setImagePreview(null)}
         >
           <img src={imagePreview} alt="" />
           <button
             type="button"
             className="notes-image-preview-close"
             aria-label={t("desktop.common.close")}
-            onClick={() => setImagePreview("")}
+            onClick={() => setImagePreview(null)}
           >
-            <ThemeIcon name="close" size={16} />
+            <ThemeIcon name="close" size={ICON_SIZE.default} />
           </button>
         </div>,
         document.body

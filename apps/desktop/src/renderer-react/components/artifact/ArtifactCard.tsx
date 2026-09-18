@@ -1,6 +1,7 @@
 import { memo, useCallback, useMemo, useState } from "react";
 import hljs from "highlight.js";
-import { ThemeIcon } from "../ThemeIcon";
+import { ICON_SIZE, ThemeIcon } from "../ThemeIcon";
+import { useOverlayPresence } from "../useOverlayMotion";
 import { useI18n } from "../../i18n";
 import { ArtifactHtmlSandbox } from "./ArtifactHtmlSandbox";
 import { ArtifactSvgViewer } from "./ArtifactSvgViewer";
@@ -103,6 +104,8 @@ export const ArtifactCard = memo(function ArtifactCard({
     URL.revokeObjectURL(url);
   }, [code, normalizedLang, title]);
 
+  const fullscreen = useOverlayPresence(isFullscreen);
+
   const renderContent = (fullscreenMode = false) => {
     if (activeTab === "preview") {
       if (normalizedLang === "svg") {
@@ -146,7 +149,7 @@ export const ArtifactCard = memo(function ArtifactCard({
               className={`artifact-tab-btn ${activeTab === "preview" ? "is-active" : ""}`}
               onClick={() => setActiveTab("preview")}
             >
-              <ThemeIcon name="eye" size={13} aria-hidden="true" />
+              <ThemeIcon name="eye" size={ICON_SIZE.dense} aria-hidden="true" />
               <span>{t("desktop.artifact.preview")}</span>
             </button>
             <button
@@ -156,7 +159,7 @@ export const ArtifactCard = memo(function ArtifactCard({
               className={`artifact-tab-btn ${activeTab === "code" ? "is-active" : ""}`}
               onClick={() => setActiveTab("code")}
             >
-              <ThemeIcon name="file-code" size={13} aria-hidden="true" />
+              <ThemeIcon name="file-code" size={ICON_SIZE.dense} aria-hidden="true" />
               <span>{t("desktop.artifact.code")}</span>
             </button>
           </div>
@@ -170,7 +173,7 @@ export const ArtifactCard = memo(function ArtifactCard({
                 title={t("desktop.artifact.reload")}
                 aria-label={t("desktop.artifact.reload")}
               >
-                <ThemeIcon name="refresh" size={13} aria-hidden="true" />
+                <ThemeIcon name="refresh" size={ICON_SIZE.dense} aria-hidden="true" />
               </button>
             )}
             <button
@@ -180,7 +183,7 @@ export const ArtifactCard = memo(function ArtifactCard({
               title={copied ? t("desktop.artifact.copied") : t("desktop.artifact.copy")}
               aria-label={t("desktop.artifact.copy")}
             >
-              <ThemeIcon name={copied ? "check" : "copy"} size={13} aria-hidden="true" />
+              <ThemeIcon name={copied ? "check" : "copy"} size={ICON_SIZE.dense} aria-hidden="true" />
             </button>
             <button
               type="button"
@@ -189,7 +192,7 @@ export const ArtifactCard = memo(function ArtifactCard({
               title={t("desktop.artifact.save")}
               aria-label={t("desktop.artifact.save")}
             >
-              <ThemeIcon name="download" size={13} aria-hidden="true" />
+              <ThemeIcon name="download" size={ICON_SIZE.dense} aria-hidden="true" />
             </button>
             <button
               type="button"
@@ -198,7 +201,7 @@ export const ArtifactCard = memo(function ArtifactCard({
               title={t("desktop.artifact.fullscreen")}
               aria-label={t("desktop.artifact.fullscreen")}
             >
-              <ThemeIcon name="external-link" size={13} aria-hidden="true" />
+              <ThemeIcon name="external-link" size={ICON_SIZE.dense} aria-hidden="true" />
             </button>
           </div>
         </div>
@@ -208,9 +211,9 @@ export const ArtifactCard = memo(function ArtifactCard({
         </div>
       </div>
 
-      {isFullscreen && (
+      {fullscreen.mounted && (
         <div
-          className="artifact-modal-backdrop"
+          className={`artifact-modal-backdrop${fullscreen.closing ? " is-closing" : ""}`}
           role="dialog"
           aria-modal="true"
           onClick={() => setIsFullscreen(false)}
@@ -232,7 +235,7 @@ export const ArtifactCard = memo(function ArtifactCard({
                   className={`artifact-tab-btn ${activeTab === "preview" ? "is-active" : ""}`}
                   onClick={() => setActiveTab("preview")}
                 >
-                  <ThemeIcon name="eye" size={13} aria-hidden="true" />
+                  <ThemeIcon name="eye" size={ICON_SIZE.dense} aria-hidden="true" />
                   <span>{t("desktop.artifact.preview")}</span>
                 </button>
                 <button
@@ -242,7 +245,7 @@ export const ArtifactCard = memo(function ArtifactCard({
                   className={`artifact-tab-btn ${activeTab === "code" ? "is-active" : ""}`}
                   onClick={() => setActiveTab("code")}
                 >
-                  <ThemeIcon name="file-code" size={13} aria-hidden="true" />
+                  <ThemeIcon name="file-code" size={ICON_SIZE.dense} aria-hidden="true" />
                   <span>{t("desktop.artifact.code")}</span>
                 </button>
               </div>
@@ -255,7 +258,7 @@ export const ArtifactCard = memo(function ArtifactCard({
                     onClick={() => setReloadKey((k) => k + 1)}
                     title={t("desktop.artifact.reload")}
                   >
-                    <ThemeIcon name="refresh" size={14} aria-hidden="true" />
+                    <ThemeIcon name="refresh" size={ICON_SIZE.dense} aria-hidden="true" />
                   </button>
                 )}
                 <button
@@ -264,7 +267,7 @@ export const ArtifactCard = memo(function ArtifactCard({
                   onClick={handleCopy}
                   title={copied ? t("desktop.artifact.copied") : t("desktop.artifact.copy")}
                 >
-                  <ThemeIcon name={copied ? "check" : "copy"} size={14} aria-hidden="true" />
+                  <ThemeIcon name={copied ? "check" : "copy"} size={ICON_SIZE.dense} aria-hidden="true" />
                 </button>
                 <button
                   type="button"
@@ -272,7 +275,7 @@ export const ArtifactCard = memo(function ArtifactCard({
                   onClick={handleDownload}
                   title={t("desktop.artifact.save")}
                 >
-                  <ThemeIcon name="download" size={14} aria-hidden="true" />
+                  <ThemeIcon name="download" size={ICON_SIZE.dense} aria-hidden="true" />
                 </button>
                 <button
                   type="button"
@@ -281,7 +284,7 @@ export const ArtifactCard = memo(function ArtifactCard({
                   title={t("desktop.artifact.exitFullscreen")}
                   aria-label={t("desktop.artifact.exitFullscreen")}
                 >
-                  <ThemeIcon name="close" size={14} aria-hidden="true" />
+                  <ThemeIcon name="close" size={ICON_SIZE.dense} aria-hidden="true" />
                 </button>
               </div>
             </div>

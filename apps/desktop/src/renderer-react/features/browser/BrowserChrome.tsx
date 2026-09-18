@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ThemeIcon } from "../../components/ThemeIcon";
+import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { useI18n } from "../../i18n";
 import type { BrowserSessionState, BrowserTabStateDto } from "../../../shared/browserTypes";
 
@@ -77,7 +77,7 @@ export function BrowserChrome({
               aria-selected={item.tabId === session?.activeTabId}
             >
               <button type="button" className="browser-chrome-tab-label" onClick={() => onActivateTab(item.tabId)}>
-                {item.loading ? <ThemeIcon name="loader" className="spin" size={12} aria-hidden="true" /> : <ThemeIcon name="globe" size={12} aria-hidden="true" />}
+                {item.loading ? <ThemeIcon name="loader" className="spin" size={ICON_SIZE.inline} aria-hidden="true" /> : <ThemeIcon name="globe" size={ICON_SIZE.inline} aria-hidden="true" />}
                 <span>{item.title || item.url || t("desktop.browser.newTab")}</span>
               </button>
               <button
@@ -86,12 +86,12 @@ export function BrowserChrome({
                 aria-label={t("desktop.browser.closeTab")}
                 onClick={() => onCloseTab(item.tabId)}
               >
-                <ThemeIcon name="close" size={12} />
+                <ThemeIcon name="close" size={ICON_SIZE.inline} />
               </button>
             </div>
           ))}
           <button type="button" className="browser-chrome-new-tab" aria-label={t("desktop.browser.newTab")} onClick={onNewTab}>
-            <ThemeIcon name="file-plus" size={13} />
+            <ThemeIcon name="file-plus" size={ICON_SIZE.dense} />
           </button>
         </div>
       ) : null}
@@ -99,10 +99,10 @@ export function BrowserChrome({
       <div className="browser-chrome-toolbar">
         <div className="browser-chrome-nav">
           <button type="button" className="browser-chrome-btn" disabled={!canGoBack} aria-label={t("desktop.browser.back")} onClick={onBack}>
-            <ThemeIcon name="arrow-left" size={14} />
+            <ThemeIcon name="arrow-left" size={ICON_SIZE.dense} />
           </button>
           <button type="button" className="browser-chrome-btn" disabled={!canGoForward} aria-label={t("desktop.browser.forward")} onClick={onForward}>
-            <ThemeIcon name="arrow-right" size={14} />
+            <ThemeIcon name="arrow-right" size={ICON_SIZE.dense} />
           </button>
           <button
             type="button"
@@ -110,11 +110,11 @@ export function BrowserChrome({
             aria-label={loading ? t("desktop.browser.stop") : t("desktop.browser.reload")}
             onClick={() => (loading ? onStop() : onReload())}
           >
-            <ThemeIcon name={loading ? "close" : "refresh"} size={14} className={loading ? undefined : undefined} />
+            <ThemeIcon name={loading ? "close" : "refresh"} size={ICON_SIZE.dense} className={loading ? undefined : undefined} />
           </button>
         </div>
         <form className="browser-chrome-url-form" onSubmit={submit}>
-          <ThemeIcon name="globe" size={13} aria-hidden="true" />
+          <ThemeIcon name="globe" size={ICON_SIZE.dense} aria-hidden="true" />
           <input
             className="browser-chrome-url"
             value={urlDraft}
@@ -128,17 +128,17 @@ export function BrowserChrome({
         <div className="browser-chrome-actions">
           {onClearCookies ? (
             <button type="button" className="browser-chrome-btn" aria-label={t("desktop.browser.clearCookies")} title={t("desktop.browser.clearCookies")} onClick={onClearCookies}>
-              <ThemeIcon name="shield-check" size={14} />
+              <ThemeIcon name="shield-check" size={ICON_SIZE.dense} />
             </button>
           ) : null}
           {surfaceKind === "workbench" && onPopOut ? (
             <button type="button" className="browser-chrome-btn" aria-label={t("desktop.browser.popOut")} title={t("desktop.browser.popOut")} onClick={onPopOut}>
-              <ThemeIcon name="external-link" size={14} />
+              <ThemeIcon name="external-link" size={ICON_SIZE.dense} />
             </button>
           ) : null}
           {surfaceKind === "window" && onDock ? (
             <button type="button" className="browser-chrome-btn" aria-label={t("desktop.browser.dock")} title={t("desktop.browser.dock")} onClick={onDock}>
-              <ThemeIcon name="panel-right" size={14} />
+              <ThemeIcon name="panel-right" size={ICON_SIZE.dense} />
             </button>
           ) : null}
         </div>

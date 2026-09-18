@@ -1,5 +1,5 @@
 import type { AgentToolCategory, AgentToolDescriptor } from "@agent-resume/core";
-import { ThemeIcon } from "./ThemeIcon";
+import { ICON_SIZE, ThemeIcon } from "./ThemeIcon";
 import type { ReactNode } from "react";
 
 type AskToolMode = "auto" | "custom" | "off";
@@ -61,7 +61,7 @@ export function ToolSettingsPopover({
       <div className="chat-tools-popover-head">
         <span className="chat-tools-popover-title">{t("desktop.agent.toolsDialogTitle")}</span>
         <button type="button" className="icon-btn chat-tools-popover-close" aria-label={t("desktop.common.close")} onClick={onClose}>
-          <ThemeIcon name="close" size={14} />
+          <ThemeIcon name="close" size={ICON_SIZE.default} />
         </button>
       </div>
       <div className="chat-tools-modes" role="tablist" aria-label={t("desktop.agent.toolsModeTitle")}>

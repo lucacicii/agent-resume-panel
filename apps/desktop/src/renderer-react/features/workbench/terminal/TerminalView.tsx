@@ -8,7 +8,7 @@ import { SearchAddon, type ISearchOptions } from "@xterm/addon-search";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
-import { ThemeIcon } from "../../../components/ThemeIcon";
+import { ICON_SIZE, ThemeIcon } from "../../../components/ThemeIcon";
 import { useI18n } from "../../../i18n";
 import { desktopApi } from "../../../bridge";
 import type { DesktopAppearanceState } from "../../../themes";
@@ -944,7 +944,7 @@ export const TerminalView = memo(function TerminalView({ pane, active, themeId, 
           disabled={!scrollState.tuiInteractive}
           onClick={() => { sendTuiWheel("up", TUI_WHEEL_JUMP); terminalRef.current?.focus(); }}
         >
-          <ThemeIcon name="arrow-up-to-line" size={15} aria-hidden="true" />
+          <ThemeIcon name="arrow-up-to-line" size={ICON_SIZE.default} aria-hidden="true" />
         </button>
         <button
           type="button"
@@ -972,13 +972,13 @@ export const TerminalView = memo(function TerminalView({ pane, active, themeId, 
           disabled={!scrollState.tuiInteractive}
           onClick={() => { sendTuiWheel("down", TUI_WHEEL_JUMP); terminalRef.current?.focus(); }}
         >
-          <ThemeIcon name="arrow-down-to-line" size={15} aria-hidden="true" />
+          <ThemeIcon name="arrow-down-to-line" size={ICON_SIZE.default} aria-hidden="true" />
         </button>
       </div>
     ) : null}
     {searchOpen ? (
       <div className="wb-terminal-search" role="search">
-        <ThemeIcon name="search" size={14} aria-hidden="true" />
+        <ThemeIcon name="search" size={ICON_SIZE.dense} aria-hidden="true" />
         <input
           ref={searchInputRef}
           className="wb-terminal-search-input"
@@ -1014,7 +1014,7 @@ export const TerminalView = memo(function TerminalView({ pane, active, themeId, 
           aria-label={t("desktop.workbench.terminalSearchPrev")}
           onClick={() => runSearch("prev", searchQuery)}
         >
-          <ThemeIcon name="arrow-up" size={14} />
+          <ThemeIcon name="arrow-up" size={ICON_SIZE.dense} />
         </button>
         <button
           type="button"
@@ -1022,7 +1022,7 @@ export const TerminalView = memo(function TerminalView({ pane, active, themeId, 
           aria-label={t("desktop.workbench.terminalSearchNext")}
           onClick={() => runSearch("next", searchQuery)}
         >
-          <ThemeIcon name="arrow-down" size={14} />
+          <ThemeIcon name="arrow-down" size={ICON_SIZE.dense} />
         </button>
         <button
           type="button"
@@ -1030,13 +1030,13 @@ export const TerminalView = memo(function TerminalView({ pane, active, themeId, 
           aria-label={t("desktop.workbench.terminalSearchClose")}
           onClick={closeSearch}
         >
-          <ThemeIcon name="close" size={14} />
+          <ThemeIcon name="close" size={ICON_SIZE.dense} />
         </button>
       </div>
     ) : null}
     {!ready ? (
       <div className="wb-terminal-loading" role="status" aria-live="polite">
-        <ThemeIcon name="loader" className="spin" size={18} aria-hidden="true" />
+        <ThemeIcon name="loader" className="spin" size={ICON_SIZE.prominent} aria-hidden="true" />
         <span>{t("desktop.common.loading")}</span>
       </div>
     ) : null}

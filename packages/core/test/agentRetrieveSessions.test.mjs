@@ -4,11 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
-  buildMetaAgentSystemPrompt,
-  buildMetaAgentUserPrompt,
   ensureDesktopDbSchema,
   ensureExtensionCatalogSchema,
-  formatSessionSourceBlock,
   retrieveAgentContext,
   runSqlite,
   saveSettings
@@ -91,32 +88,4 @@ test("retrieveAgentContext includes keyword session hits as S citations", async 
   } finally {
     await fs.rm(panelHome, { recursive: true, force: true });
   }
-});
-
-test("buildMetaAgentUserPrompt includes Session Sources block", () => {
-  const sessionBlock = formatSessionSourceBlock({
-    index: 1,
-    title: "Auth",
-    provider: "codex",
-    sessionId: "s1",
-    projectPath: "/tmp/a",
-    content: "OAuth work",
-    score: 0.5
-  });
-  const prompt = buildMetaAgentUserPrompt({
-    query: "what about auth?",
-    sourcesBlock: "(none)",
-    notesBlock: "(none)",
-    sessionsBlock: sessionBlock
-  });
-  assert.ok(prompt.includes("Session Sources:"));
-  assert.ok(prompt.includes("[S1] session · Auth"));
-  assert.ok(prompt.includes("OAuth work"));
-});
-
-test("system prompt allows session sources and S citations", () => {
-  const system = buildMetaAgentSystemPrompt("en");
-  assert.ok(system.includes("Session Sources"));
-  assert.ok(system.includes("[S1]"));
-  assert.ok(!system.includes("Answer ONLY using the Report Sources and Note Sources provided"));
 });

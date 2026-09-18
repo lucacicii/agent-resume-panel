@@ -17,7 +17,8 @@ function dot(
     projectPath: extra.projectPath ?? "/p",
     title: extra.title ?? sessionKey,
     sessionKey,
-    status
+    status,
+    workbenchId: extra.workbenchId ?? ""
   };
 }
 
@@ -120,5 +121,14 @@ describe("taskRollup", () => {
     // one to the shared list breaks every Record<SessionDotStatus, …> map on
     // both sides of the process boundary at compile time.
     expect(SESSION_DOT_STATUSES).toBe(WORKBENCH_SESSION_DOT_STATUSES);
+  });
+
+  it("defines the workbench urgency table and rollup in exactly one shared source", () => {
+    expect(filesDefining(/\bexport const WORKBENCH_SESSION_DOT_URGENCY\b/)).toEqual([
+      "shared/workbenchSelection.ts"
+    ]);
+    expect(filesDefining(/\bexport function rollupSessionDotStatus\b/)).toEqual([
+      "shared/workbenchSelection.ts"
+    ]);
   });
 });

@@ -7,7 +7,6 @@ type ResolvedSelection = {
 };
 
 const OWNED_MENU_SELECTORS = [
-  ".im-message",
   ".wb-editor-pane",
   ".notes-editor-surface",
   ".standalone-note-window-editor-surface"
@@ -20,9 +19,7 @@ const OBJECT_MENU_SELECTORS = [
   ".wb-file-tree",
   ".wb-git-change",
   ".notes-folder-row",
-  ".notes-list-item",
-  ".im-folder-row",
-  ".im-project-row"
+  ".notes-list-item"
 ].join(",");
 
 function closestElement(target: EventTarget | null, selector: string): HTMLElement | null {

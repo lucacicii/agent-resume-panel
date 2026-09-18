@@ -15,7 +15,8 @@ vi.mock("../../i18n", () => ({
   })
 }));
 
-vi.mock("../../components/ThemeIcon", () => ({
+vi.mock("../../components/ThemeIcon", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../components/ThemeIcon")>()),
   ThemeIcon: ({ name }: { name: string }) => <span data-icon={name} />
 }));
 

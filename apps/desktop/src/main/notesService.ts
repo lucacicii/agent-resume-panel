@@ -13,6 +13,7 @@ import {
   notesRoot,
   normalizeTaskDocument,
   parseNoteDocument,
+  splitSessionKey,
   type AgentProvider,
   type GtdStatus,
   type ImportNotesResult,
@@ -230,6 +231,22 @@ export async function notesLinkSessionToTask(args: {
   const doc = parseNoteDocument(content);
   if (!doc.frontmatter.work) {
     throw new Error("Note is not a task.");
+  }
+  // A session belongs to at most one task. Strip the key from the previous
+  // owner's front-matter first so the markdown source of truth matches the
+  // work_item_sessions index that replaceTaskSessions maintains.
+  const parts = splitSessionKey(args.sessionKey.trim());
+  if (parts) {
+    const previousOwner = await store.findTaskNoteIdForSession(parts.provider, parts.sessionId);
+    if (previousOwner && previousOwner !== args.noteId) {
+      const previousDoc = parseNoteDocument(await store.readNoteContent(previousOwner));
+      const remaining = (previousDoc.frontmatter.sessions ?? []).filter((key) => key !== args.sessionKey);
+      await store.writeNoteContent(
+        previousOwner,
+        buildNoteDocument({ ...previousDoc.frontmatter, sessions: remaining }, previousDoc.body)
+      );
+      await refreshTaskWorkspace(previousOwner);
+    }
   }
   const sessions = new Set(doc.frontmatter.sessions ?? []);
   sessions.add(args.sessionKey);

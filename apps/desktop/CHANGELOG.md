@@ -8,6 +8,21 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## English
 
+### [0.2.28]
+
+#### Changed
+
+- **Settings labels**: renamed misleading desktop settings (`Panel home`, `Default new session agent`, `Editor & terminal`, `External terminal launch`, `Sessions`, `Data`, `Stale sessions`, `Max sessions per sync`, `Per-feature models`, `Summary embeddings`, `Transcript embeddings`, `Temporary session folder`) so they describe the desktop app instead of the VS Code extension
+- **Notifications group**: the **General → Notifications** group now uses the same header layout as every other settings group
+- **Workbench settings**: the **Slash phrases** and **Workspace mentions** editors are now compact cards (inline fields + icon actions) with shorter descriptions instead of stacked labeled fields and text buttons
+- **Icons**: every Desktop icon now comes from one semantic set (`ThemeIcon`) on a single 12 / 13 / 16 / 20 px ladder with a uniform 2 px stroke. Toolbar, tree, tab and badge icons are consistent across panels instead of drifting between 10–18 px, and icon sizing moved out of the stylesheet into the component
+
+#### Removed
+
+- **Agent actions setting**: the dead **General → Agent actions** toggle is gone. The live permission control is **Workbench → ACP permissions**
+- **Dead desktop settings**: `desktop.windowWidth/Height`, `alwaysAllowAgent*`, unused `desktop.browser.*` fields (cookie import, download/snapshot policy, window bounds, read-tool auto-allow), `workbench.gitNestedScanMaxRepos`, and the retired `report.*` block (the digest scheduler uses code defaults)
+- **Project context menu**: projects are no longer a browsable list, so the **Settings → Workbench → Project context menu** group and the workbench project right-click menu are gone. This removes the `workbench.projectContextMenu` setting and the project pin / rename / hide / merge / split / reveal / copy-path / set-local-folder / open-in-editor actions together with their IPC routes (`projects:hide`, `projects:setPinned`, `projects:pickLocalPath`, `projects:setLocalPath`, `projects:setAlias`, `projects:revealInFinder`, `projects:copyLocalPath`, `projects:listPathVariants`, `projects:merge`, `projects:splitPath`, `workbench:openProjectInEditor`)
+
 ### [0.2.27]
 
 #### Added
@@ -21,6 +36,7 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 #### Changed
 
+- **Settings auto-save**: the Settings window no longer has Save / Discard buttons or an unsaved-changes prompt. Switches, selects, and radios apply immediately; text and number fields save when they lose focus, and closing the window commits the focused field first
 - **Status detection replaced**: the previous renderer-side fingerprint/resolver/store stack (≈1900 lines) is gone. Detection runs in the main process (screen mirror, terminal escape scanning, foreground job control) and judgements are made by the daemon, so indicators no longer depend on a pane being mounted
 - **Terminal status is now job-control based**: "a command is running" comes from the terminal's foreground process group instead of counting descendant processes
 - **Sessions are attributed by PTY and session key**: main only knows the PTY, so the renderer now binds the session to it (`terminal:bindSession`)
@@ -617,6 +633,21 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## 简体中文
 
+### [0.2.28]
+
+#### 变更
+
+- **设置文案**：重命名语义不清的桌面设置（`Panel home`、`Default new session agent`、`Editor & terminal`、`External terminal launch`、`Sessions`、`Data`、`Stale sessions`、`Max sessions per sync`、`Per-feature models`、`Summary embeddings`、`Transcript embeddings`、`Temporary session folder`），使其描述桌面端而非 VS Code 扩展
+- **通知分组**：**通用 → 通知** 分组改用与其他设置分组一致的标题布局
+- **Workbench 设置**：**斜杠短语** 与 **工作区 Mention** 编辑器改为紧凑卡片（行内字段 + 图标操作），并精简说明文字，替换原来堆叠的字段标签与文字按钮
+- **图标**：桌面端图标统一收敛到一套语义图标（`ThemeIcon`），尺寸固定为 12 / 13 / 16 / 20 px 四档，描边统一为 2 px。工具栏、文件树、标签页与徽标图标在各面板间保持一致，不再在 10–18 px 间漂移；尺寸也从样式表移入组件
+
+#### 移除
+
+- **Agent 操作设置**：无效的 **通用 → Agent 操作** 开关已删除，权限控制以 **Workbench → ACP permissions** 为准
+- **失效的桌面设置**：`desktop.windowWidth/Height`、`alwaysAllowAgent*`、未使用的 `desktop.browser.*`（cookie 导入、下载/快照策略、窗口边界、只读工具自动放行）、`workbench.gitNestedScanMaxRepos`，以及已废弃的 `report.*`（摘要调度使用代码默认值）
+- **项目右键菜单**：项目不再是可浏览的列表，因此移除 **设置 → Workbench → 项目右键菜单** 分组与 Workbench 的项目右键菜单，包括 `workbench.projectContextMenu` 设置以及项目的固定 / 重命名 / 隐藏 / 合并 / 拆分 / 访达显示 / 复制路径 / 设置本地目录 / 在编辑器中打开等操作及其 IPC（`projects:hide`、`projects:setPinned`、`projects:pickLocalPath`、`projects:setLocalPath`、`projects:setAlias`、`projects:revealInFinder`、`projects:copyLocalPath`、`projects:listPathVariants`、`projects:merge`、`projects:splitPath`、`workbench:openProjectInEditor`）
+
 ### [0.2.27]
 
 #### 新增
@@ -630,6 +661,7 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 #### 变更
 
+- **设置自动保存**: 设置窗口不再有「保存 / 丢弃」按钮和未保存确认提示。开关、下拉、单选即时生效；文本与数字输入框失焦即保存；关闭窗口前会先提交当前聚焦的输入框
 - **状态检测整体替换**: 原先渲染进程内的 fingerprint / resolver / store 三层(约 1900 行)已移除。检测改在主进程完成(屏幕镜像、终端转义扫描、前台作业控制),判定集中在守护进程,因此指示灯不再依赖面板是否挂载
 - **终端状态改为作业控制判定**: 「有命令在跑」来自终端的前台进程组,而不再是统计后代进程
 - **会话归属改为 PTY + 会话键**: 主进程只知 PTY,渲染层通过 `terminal:bindSession` 绑定会话

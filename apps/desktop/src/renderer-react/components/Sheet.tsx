@@ -1,5 +1,6 @@
 import { ThemeIcon } from "./ThemeIcon";
 import { useEffect, type ReactNode } from "react";
+import { useOverlayPresence } from "./useOverlayMotion";
 
 interface SheetProps {
   open: boolean;
@@ -24,9 +25,11 @@ export function Sheet({ open, title, children, onClose, wide = false, modal = fa
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [dismissible, onClose, open]);
 
-  if (!open) return null;
+  const presence = useOverlayPresence(open);
+
+  if (!presence.mounted) return null;
   return (
-    <div className={`sheet${modal ? " sheet-modal" : ""}`} role="presentation">
+    <div className={`sheet${modal ? " sheet-modal" : ""}${presence.closing ? " is-closing" : ""}`} role="presentation">
       <button type="button" className="sheet-backdrop" aria-label={`Dismiss ${title}`} onClick={onClose} disabled={!dismissible} />
       <aside className={`sheet-panel${wide ? " sheet-wide" : ""}${modal ? " sheet-modal-panel" : ""}`} role="dialog" aria-modal="true" aria-label={title}>
         <div className="sheet-head">

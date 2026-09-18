@@ -9,15 +9,12 @@ import {
 import { sanitizeAgentHomes } from "../transcript/homes";
 import { migrateLegacyModelSettings, normalizeProviderPool } from "../providers/migrate";
 import {
-  ALL_WORKBENCH_PROJECT_CONTEXT_MENU,
   DEFAULT_DESKTOP_BROWSER_SETTINGS,
   DEFAULT_SETTINGS,
-  DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU,
   PanelSettings,
   WORKBENCH_TERMINAL_THEME_IDS,
   WORKBENCH_TERMINAL_RENDERERS,
   WORKBENCH_TERMINAL_ENGINES,
-  WorkbenchProjectContextMenuAction,
   type DesktopTheme,
   type WorkbenchComposerSlashPhrase,
   type WorkbenchTerminalEngine,
@@ -30,10 +27,9 @@ import {
 } from "../git/prompts";
 import { normalizeWorkbenchComposerMentions } from "./mentions";
 
-type LegacyPanelSettings = Partial<PanelSettings> & { memory?: PanelSettings["report"] };
+type LegacyPanelSettings = Partial<PanelSettings>;
 const WORKBENCH_EDITOR_TAB_SIZES = new Set([2, 4, 8]);
 const WORKBENCH_EDITOR_SAVE_DELAYS = new Set([300, 600, 1000, 2000]);
-const PROJECT_MENU_ACTIONS = new Set<string>(ALL_WORKBENCH_PROJECT_CONTEXT_MENU);
 const TERMINAL_THEME_IDS = new Set<string>(WORKBENCH_TERMINAL_THEME_IDS);
 const TERMINAL_RENDERERS = new Set<string>(WORKBENCH_TERMINAL_RENDERERS);
 const TERMINAL_ENGINES = new Set<string>(WORKBENCH_TERMINAL_ENGINES);
@@ -72,23 +68,6 @@ export function normalizeWorkbenchTerminalEngine(
     return value as WorkbenchTerminalEngine;
   }
   return DEFAULT_SETTINGS.workbench?.terminalEngine ?? "xterm";
-}
-
-export function normalizeWorkbenchProjectContextMenu(
-  value: WorkbenchProjectContextMenuAction[] | undefined | null
-): WorkbenchProjectContextMenuAction[] {
-  if (!Array.isArray(value)) {
-    return [...DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU];
-  }
-  const seen = new Set<WorkbenchProjectContextMenuAction>();
-  const output: WorkbenchProjectContextMenuAction[] = [];
-  for (const entry of value) {
-    if (!PROJECT_MENU_ACTIONS.has(entry) || seen.has(entry)) continue;
-    seen.add(entry);
-    output.push(entry);
-  }
-  // Empty explicit array is allowed (hide all); only fall back when unset/invalid.
-  return output;
 }
 
 const COMPOSER_SLASH_TRIGGER = /^[A-Za-z0-9_-]{1,40}$/;
@@ -153,22 +132,6 @@ function migrateLegacySettings(partial: LegacyPanelSettings): Partial<PanelSetti
     const { autoSessionExecutionNotes: _removed, ...desktop } = partial.desktop as typeof partial.desktop & { autoSessionExecutionNotes?: boolean };
     partial = { ...partial, desktop };
   }
-  if (
-    partial.desktop?.alwaysAllowAgentNonDestructiveOperations === undefined &&
-    partial.desktop?.alwaysAllowAgentWriteOperations !== undefined
-  ) {
-    partial = {
-      ...partial,
-      desktop: {
-        ...partial.desktop,
-        alwaysAllowAgentNonDestructiveOperations: partial.desktop.alwaysAllowAgentWriteOperations
-      }
-    };
-  }
-  if (partial.memory && !partial.report) {
-    const { memory, ...rest } = partial;
-    return { ...rest, report: memory };
-  }
   return partial;
 }
 
@@ -199,10 +162,6 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
     providers: partial.providers,
     modelSelections: partial.modelSelections,
     llmOptions: partial.llmOptions,
-    report: {
-      ...base.report,
-      ...(partial.report || {})
-    },
     // Desktop session auto jobs (summary / embeddings / transcript index).
     // Must be merged or Settings → Sessions saves report success but never persist.
     sessionSummaryAuto: {
@@ -247,11 +206,6 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
               ?? base.desktop?.browser?.defaultPolicy?.blockHosts
               ?? DEFAULT_DESKTOP_BROWSER_SETTINGS.defaultPolicy.blockHosts)
           ]
-        },
-        chromeCookieImport: {
-          ...DEFAULT_DESKTOP_BROWSER_SETTINGS.chromeCookieImport,
-          ...base.desktop?.browser?.chromeCookieImport,
-          ...(partial.desktop?.browser?.chromeCookieImport || {})
         }
       }
     },
@@ -278,9 +232,6 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
       gitCommitCustomInstructions: normalizeCustomCommitInstructions(
         partial.workbench?.gitCommitCustomInstructions
       ),
-      projectContextMenu: normalizeWorkbenchProjectContextMenu(
-        partial.workbench?.projectContextMenu ?? base.workbench?.projectContextMenu
-      ),
       composerSlashPhrases: normalizeWorkbenchComposerSlashPhrases(
         partial.workbench?.composerSlashPhrases ?? base.workbench?.composerSlashPhrases
       ),
@@ -294,13 +245,7 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
     },
     // Desktop ACP (permissions, launch overrides, experimental vendor UI).
     // Must merge or Workbench ACP toggles never persist across save/reload.
-    acp: mergeAcpSettings(base.acp, partial.acp),
-    im: {
-      smartRoutingEnabled: partial.im?.smartRoutingEnabled ?? base.im?.smartRoutingEnabled ?? true
-    },
-    ghosttyExecutable: partial.ghosttyExecutable?.trim() || base.ghosttyExecutable,
-    ghosttyLaunchMode: partial.ghosttyLaunchMode || base.ghosttyLaunchMode,
-    ghosttyAutoPasteDelayMs: partial.ghosttyAutoPasteDelayMs ?? base.ghosttyAutoPasteDelayMs
+    acp: mergeAcpSettings(base.acp, partial.acp)
   });
 }
 

@@ -10,7 +10,7 @@ import {
   type LlmRuntimeConfig,
   type PanelSettings
 } from "@agent-resume/core";
-import type { ImStore } from "./store";
+import type { SelectionStore } from "./store";
 import { fillSelectionPrompt } from "./store";
 
 function resolveActionLlm(
@@ -37,19 +37,16 @@ function resolveActionLlm(
 }
 
 /**
- * Runs an independent selection action (Translate / Explain / custom) against
- * the user's chat LLM (or action-specific model) and records usage.
+ * Runs a selection action (Translate / Explain / custom) against the user's
+ * chat LLM (or action-specific model) and records usage.
  */
-export async function runIndependentSelectionAction(
-  store: ImStore,
+export async function runSelectionAction(
+  store: SelectionStore,
   actionId: string,
   rawText: string
 ): Promise<{ text: string }> {
   const action = await store.getSelectionAction(actionId);
   if (!action) throw new Error("Selection action not found.");
-  if (action.kind !== "independent") {
-    throw new Error("Only independent actions can run against the chat model.");
-  }
   const selection = store.clipSelectionText(rawText);
   if (!selection.trim()) throw new Error("Select some text first.");
   const settings = await loadSettings();
@@ -65,7 +62,7 @@ export async function runIndependentSelectionAction(
     const result = await chatCompletionDetailed(llm, [{ role: "user", content: prompt }], 1024);
     await recordLlmUsage(usageDb, {
       kind: "chat",
-      source: "im_selection",
+      source: "selection",
       jobKey: action.actionId,
       model: result.model,
       usage: result.usage,
@@ -76,7 +73,7 @@ export async function runIndependentSelectionAction(
   } catch (error) {
     await recordLlmUsage(usageDb, {
       kind: "chat",
-      source: "im_selection",
+      source: "selection",
       jobKey: action.actionId,
       model: llm.model,
       ok: false,

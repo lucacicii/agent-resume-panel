@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, fireEvent, within, cleanup } from "@testing-library/react";
+import { render, fireEvent, within, cleanup, waitFor } from "@testing-library/react";
 import { ArtifactCard } from "./ArtifactCard";
 
 describe("ArtifactCard component test suite", () => {
@@ -61,7 +61,7 @@ describe("ArtifactCard component test suite", () => {
     expect(canvas?.classList.contains("is-bg-light")).toBe(true);
   });
 
-  it("opens fullscreen modal when clicking fullscreen button and closes on exit", () => {
+  it("opens fullscreen modal when clicking fullscreen button and closes on exit", async () => {
     const htmlCode = "<div>Fullscreen Test</div>";
     const { container } = render(<ArtifactCard language="html" code={htmlCode} />);
 
@@ -78,8 +78,8 @@ describe("ArtifactCard component test suite", () => {
     const exitBtn = within(modalBackdrop as HTMLElement).getByTitle("desktop.artifact.exitFullscreen");
     fireEvent.click(exitBtn);
 
-    // Modal closed
-    expect(document.querySelector(".artifact-modal-backdrop")).toBeNull();
+    // The modal stays mounted while its exit animation runs.
+    await waitFor(() => expect(document.querySelector(".artifact-modal-backdrop")).toBeNull());
   });
 
   it("copies code to clipboard when copy button clicked", async () => {

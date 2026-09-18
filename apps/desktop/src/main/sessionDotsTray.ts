@@ -1,6 +1,11 @@
+import { basename } from "node:path";
 import { deflateSync } from "node:zlib";
 import { nativeImage, nativeTheme, type NativeImage } from "electron";
-import type { WorkbenchActiveSessionDot, WorkbenchSessionDotStatus } from "../shared/workbenchSelection";
+import {
+  rollupSessionDotStatus,
+  type WorkbenchActiveSessionDot,
+  type WorkbenchSessionDotStatus
+} from "../shared/workbenchSelection";
 
 export const TRAY_MAX_DOTS = 8;
 const TRAY_PAD_X = 7;
@@ -30,38 +35,126 @@ export const NOTE_COLOR_LIGHT: [number, number, number] = [255, 204, 0];
 export const NOTE_COLOR_DARK: [number, number, number] = [255, 214, 10];
 
 type TrayNoteItem = { kind: "note"; noteId: string; title: string };
-type TraySessionItem = {
-  kind: "session";
-  paneKey: string;
-  projectPath: string;
+type TrayWorkbenchItem = {
+  kind: "workbench";
+  workbenchId: string;
+  noteId: string;
   title: string;
   status: WorkbenchSessionDotStatus;
 };
-type TrayItem = TrayNoteItem | TraySessionItem;
-type TrayDot = Pick<WorkbenchActiveSessionDot, "paneKey" | "projectPath" | "title" | "status">;
+type TrayItem = TrayNoteItem | TrayWorkbenchItem;
+
+/** One tray row per workbench that has an open window or a live session. */
+export type TrayWorkbench = {
+  workbenchId: string;
+  noteId: string;
+  title: string;
+  status: WorkbenchSessionDotStatus;
+};
+
+/** An open workbench window, as the tray sees it. */
+export type TrayWorkbenchWindow = { workbenchId: string; noteId: string; title?: string };
+
+/** Stored workbench display data, so a closed-window row still has a name. */
+export type TrayWorkbenchMeta = { noteId: string; label: string };
+
+/** A pane dot, reduced to the fields the tray needs. */
+type TrayDot = Pick<
+  WorkbenchActiveSessionDot,
+  "paneKey" | "projectPath" | "title" | "status" | "workbenchId"
+>;
+
+/**
+ * What a workbench is called in the tray.
+ *
+ * A renamed workbench is the clearest label; otherwise the task window title
+ * (which distinguishes workbenches of the same task), then the stored name.
+ */
+function workbenchTrayTitle(
+  meta: TrayWorkbenchMeta | undefined,
+  windowTitle: string | undefined,
+  workbenchId: string
+): string {
+  const named = meta?.label?.trim();
+  if (named && named !== "Workbench") return named;
+  return windowTitle?.trim() || named || workbenchId;
+}
+
+/**
+ * Build one row per workbench.
+ *
+ * Order matters: every open workbench window first (even a freshly opened one
+ * with no session — it gets a gray dot), then workbenches whose window is gone
+ * but whose sessions still run, then unowned panes as themselves.
+ */
+export function composeWorkbenchRows(
+  dots: ReadonlyArray<TrayDot>,
+  windows: ReadonlyArray<TrayWorkbenchWindow>,
+  metaById: ReadonlyMap<string, TrayWorkbenchMeta>
+): TrayWorkbench[] {
+  const statusesByWorkbench = new Map<string, WorkbenchSessionDotStatus[]>();
+  for (const dot of dots) {
+    if (!dot.workbenchId) continue;
+    const statuses = statusesByWorkbench.get(dot.workbenchId);
+    if (statuses) statuses.push(dot.status);
+    else statusesByWorkbench.set(dot.workbenchId, [dot.status]);
+  }
+
+  const rows: TrayWorkbench[] = [];
+  const seen = new Set<string>();
+  for (const win of windows) {
+    const meta = metaById.get(win.workbenchId);
+    rows.push({
+      workbenchId: win.workbenchId,
+      noteId: win.noteId || meta?.noteId || "",
+      title: workbenchTrayTitle(meta, win.title, win.workbenchId),
+      status: rollupSessionDotStatus(statusesByWorkbench.get(win.workbenchId) ?? [])
+    });
+    seen.add(win.workbenchId);
+  }
+  for (const [workbenchId, statuses] of statusesByWorkbench) {
+    if (seen.has(workbenchId)) continue;
+    const meta = metaById.get(workbenchId);
+    rows.push({
+      workbenchId,
+      noteId: meta?.noteId || "",
+      title: workbenchTrayTitle(meta, undefined, workbenchId),
+      status: rollupSessionDotStatus(statuses)
+    });
+  }
+  // A pane whose workbench never got bound (an external agent, or one whose pty
+  // is gone) still earns a dot: a missed "waiting for you" costs more than an
+  // extra gray one.
+  for (const dot of dots) {
+    if (dot.workbenchId) continue;
+    rows.push({
+      workbenchId: "",
+      noteId: "",
+      title: dot.title.trim() || basename(dot.projectPath) || dot.paneKey,
+      status: dot.status
+    });
+  }
+  return rows;
+}
 
 export function composeTrayItems(
   notes: ReadonlyArray<{ noteId: string; title: string }>,
-  sessions: ReadonlyArray<TrayDot>
+  workbenches: ReadonlyArray<TrayWorkbench>
 ): TrayItem[] {
   const items: TrayItem[] = [];
   for (const note of notes) {
     items.push({ kind: "note", noteId: note.noteId, title: note.title });
   }
-  for (const session of sessions) {
+  for (const workbench of workbenches) {
     items.push({
-      kind: "session",
-      paneKey: session.paneKey,
-      projectPath: session.projectPath,
-      title: session.title,
-      status: session.status
+      kind: "workbench",
+      workbenchId: workbench.workbenchId,
+      noteId: workbench.noteId,
+      title: workbench.title,
+      status: workbench.status
     });
   }
   return items.slice(0, TRAY_MAX_DOTS);
-}
-
-export function visibleTrayDots(dots: readonly TrayDot[]): TrayDot[] {
-  return dots.slice(0, TRAY_MAX_DOTS);
 }
 
 export function trayIconSize(dotCount: number): { width: number; height: number } {
@@ -114,7 +207,7 @@ export function trayTooltip(items: readonly TrayItem[], extra = 0): string {
   if (items.length === 0) return "No open sessions";
   const lines = items.map((item) => {
     if (item.kind === "note") return item.title.trim() || "Note";
-    const title = item.title.trim() || "Session";
+    const title = item.title.trim() || "Workbench";
     return statusSuffix(item.status) ? `${title} · ${statusSuffix(item.status)}` : title;
   });
   if (extra > 0) lines.push(`+${extra} more`);

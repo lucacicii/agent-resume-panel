@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   parseWorkbenchActiveSessionDots,
   parseWorkbenchFocusSessionRequest,
-  parseWorkbenchSendSelectionRequest
+  parseWorkbenchSendSelectionRequest,
+  rollupSessionDotStatus
 } from "./workbenchSelection";
 
 describe("parseWorkbenchSendSelectionRequest", () => {
@@ -88,6 +89,7 @@ describe("parseWorkbenchActiveSessionDots", () => {
         title: "Pi",
         sessionKey: "pi:abc",
         status: "running",
+        workbenchId: "  wb-1  ",
         extra: true
       },
       { title: "missing pane" },
@@ -98,7 +100,8 @@ describe("parseWorkbenchActiveSessionDots", () => {
         projectPath: "/work/app",
         title: "Pi",
         sessionKey: "pi:abc",
-        status: "running"
+        status: "running",
+        workbenchId: "wb-1"
       }
     ]);
   });
@@ -112,8 +115,21 @@ describe("parseWorkbenchActiveSessionDots", () => {
         projectPath: "",
         title: "",
         sessionKey: "",
-        status: "open"
+        status: "open",
+        workbenchId: ""
       }
     ]);
+  });
+});
+
+describe("rollupSessionDotStatus", () => {
+  it("returns the most urgent status", () => {
+    expect(rollupSessionDotStatus(["open", "running", "error", "connecting"])).toBe("error");
+    expect(rollupSessionDotStatus(["open", "running", "awaiting_user"])).toBe("awaiting_user");
+    expect(rollupSessionDotStatus(["open", "open"])).toBe("open");
+  });
+
+  it("defaults to open for no panes", () => {
+    expect(rollupSessionDotStatus([])).toBe("open");
   });
 });

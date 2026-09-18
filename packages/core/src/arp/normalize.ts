@@ -3,7 +3,6 @@ import {
   ARP_CONFIG_VERSION,
   type ArpConfig,
   type ArpGitCommitMessageConfig,
-  type ArpImConfig,
   type ArpSharedConfig,
   type ArpWorkbenchConfig,
   type ArpWorkbenchGitConfig
@@ -64,20 +63,13 @@ function normalizeShared(value: unknown): ArpSharedConfig | undefined {
   return undefined;
 }
 
-function normalizeIm(value: unknown): ArpImConfig | undefined {
-  if (!isRecord(value)) return undefined;
-  return undefined;
-}
-
 /** Drop unknown keys / invalid values. Returns null when `raw` is not an object. */
 export function normalizeArpConfig(raw: unknown): ArpConfig | null {
   if (!isRecord(raw)) return null;
   const config: ArpConfig = { version: parseVersion(raw.version) };
   const shared = normalizeShared(raw.shared);
   const workbench = normalizeWorkbench(raw.workbench);
-  const im = normalizeIm(raw.im);
   if (shared) config.shared = shared;
   if (workbench) config.workbench = workbench;
-  if (im) config.im = im;
   return config;
 }

@@ -16,7 +16,6 @@ import {
   supportsNewSessionYoloMode,
   MCP_SESSION_ENV,
   type NewSessionExecutionMode,
-  updateNativeSessionCwd,
   effectivePanelHome,
   expandHome,
   listTaskGtdRollups,
@@ -28,7 +27,6 @@ import {
   listComposerSends,
   importComposerSendsForSession,
   hideSessionAction,
-  hideProjectAction,
   listLlmUsageEvents,
   listProjects,
   listScheduleRuns,
@@ -40,18 +38,11 @@ import {
   loadProjectAliasesMap,
   loadSessionPreview,
   loadSettings,
-  setProjectAliasInCatalog,
-  setProjectLocalPath,
-  setProjectPinnedInCatalog,
   ensureProjectForPath,
   unhideProjectInCatalog,
   setProjectKeptVisibleInCatalog,
   resolveProjectCwd,
   resolveProjectCwdForPath,
-  listProjectPathVariants,
-  mergeProjectsInCatalog,
-  moveSessionToProjectInCatalog,
-  splitProjectPathInCatalog,
   listWorkbenchSessionFolders,
   listWorkbenchSessionFolderAssignments,
   listAllWorkbenchSessionFolders,
@@ -61,7 +52,6 @@ import {
   deleteWorkbenchSessionFolder,
   assignWorkbenchSessionToFolder,
   removeWorkbenchSessionFromFolder,
-  mergeWorkbenchSessionFolders,
   listTaskWorkbenches,
   listAllTaskWorkbenches,
   createTaskWorkbench,
@@ -99,7 +89,6 @@ import {
   type GtdStatus,
   type NoteRecord,
   type PanelSettings,
-  type WorkbenchProjectEditor,
   type AgentSessionSyncResult
 } from "@agent-resume/core";
 import { safeHandle } from "./ipcUtils";
@@ -128,15 +117,13 @@ import {
   getAcpRuntimeMetrics,
   connectAcpChat,
   cancelAcpChat,
-  inspectAcpChat,
   denyAcpPermission,
   promptAcpChat,
   registerAcpIpc,
   setAcpModel,
-  setAcpThoughtLevel,
-  setAcpRecordProjectPath
+  setAcpThoughtLevel
 } from "./acp/acpHost";
-import { flushImStreamingMessages, registerImIpc } from "./im/ipc";
+import { registerSelectionIpc } from "./selection/ipc";
 import { getAcpRecord, updateAcpRecord } from "./acp/store";
 import { registerWorkbenchFsIpc } from "./workbenchFs";
 import {
@@ -162,6 +149,7 @@ import {
   taskWindowStateForSender,
   type TaskWindowDeps
 } from "./taskWindows";
+import { applyWindowBackgrounds, windowBackgroundColor } from "./windowAppearance";
 import { loadStoredTaskWindows, saveStoredTaskWindows, taskWindowStatePath } from "./taskWindowStore";
 import {
   disposeBrowserController,
@@ -185,14 +173,15 @@ import {
 } from "../shared/workbenchSelection";
 import {
   composeTrayItems,
+  composeWorkbenchRows,
   hitTestTrayDotFromScreen,
   sessionDotsTrayImage,
-  trayTooltip
+  trayTooltip,
+  type TrayWorkbench
 } from "./sessionDotsTray";
 import { collectNewConfirmedWaitingSessions } from "./sessionWaitingNotifications";
 import { checkForDesktopUpdate, getAppVersion } from "./updateCheck";
 import { loadPanelDbPaths } from "./panelDatabases";
-import { findWorkbenchForSession, type SessionOwner } from "./sessionOwnership";
 import { buildI18nBundle, desktopT, initI18nService } from "./i18nService";
 import { shouldSyncSessionsAfterSettingsSave, type SaveSettingsOptions } from "./sessionSettingsSync";
 import {
@@ -299,14 +288,17 @@ let agentStatusSensor: AgentStatusSensor | null = null;
 let ptyPidResolver: ((id: number) => number | null) | null = null;
 /** Panes a window renders; the rest keep running unwatched. */
 let ptyAttachedResolver: (() => number[]) | null = null;
+/** Workbench behind a pty, so a window-less pane still has an owner. */
+let ptyWorkbenchResolver: ((id: number) => string | null) | null = null;
 
 function tryRegisterPtyIpc(): void {
   try {
     // Lazy-load so node-pty native binding issues do not block other IPC handlers.
-    const { registerPtyIpc, getPtyPid, getAttachedPtyIds } = require("./ptyHost") as typeof import("./ptyHost");
+    const { registerPtyIpc, getPtyPid, getAttachedPtyIds, getPtyWorkbenchId } = require("./ptyHost") as typeof import("./ptyHost");
     registerPtyIpc();
     ptyPidResolver = getPtyPid;
     ptyAttachedResolver = getAttachedPtyIds;
+    ptyWorkbenchResolver = getPtyWorkbenchId;
   } catch (error) {
     void recordAppError({
       source: "pty-host",
@@ -442,10 +434,8 @@ function resolveWorkbenchTerminalMode(settings: PanelSettings): "xterm" | "exter
 
 function systemTerminalSettings(settings: PanelSettings) {
   return {
-    externalLaunchMode:
-      settings.workbench?.externalLaunchMode || settings.ghosttyLaunchMode || "executeCommand",
-    externalAutoPasteDelayMs:
-      settings.workbench?.externalAutoPasteDelayMs ?? settings.ghosttyAutoPasteDelayMs
+    externalLaunchMode: settings.workbench?.externalLaunchMode || "executeCommand",
+    externalAutoPasteDelayMs: settings.workbench?.externalAutoPasteDelayMs
   };
 }
 
@@ -555,76 +545,77 @@ let mainWindow: BrowserWindow | null = null;
 let mainWindowReadyToShow = false;
 let mainWindowRendererReady = false;
 let sessionDotsTray: Tray | null = null;
-let pendingTrayFocus: { paneKey: string; projectPath?: string } | null = null;
 let browserSettingsCache: import("@agent-resume/core").DesktopBrowserSettings | null = null;
 let notifiedWaitingSessions = new Set<string>();
+/** Display data per workbench, so a tray dot for a closed window still has a name. */
+let workbenchMetaById = new Map<string, { noteId: string; label: string }>();
 
-function flushPendingTrayFocus(): void {
-  revealSessionOwner();
+function workbenchLabel(name: string, projectPath: string): string {
+  const explicit = name.trim();
+  if (explicit) return explicit;
+  return projectPath.replaceAll("\\", "/").split("/").filter(Boolean).at(-1) || "Workbench";
+}
+
+/** Refresh the workbench name / note cache behind the tray and the focus fallback. */
+async function loadWorkbenchMeta(): Promise<void> {
+  try {
+    const paths = await loadPanelDbPaths();
+    const workbenches = await listAllTaskWorkbenches(paths.desktopDb);
+    const next = new Map<string, { noteId: string; label: string }>();
+    for (const workbench of workbenches) {
+      next.set(workbench.workbenchId, {
+        noteId: workbench.taskNoteId,
+        label: workbenchLabel(workbench.name, workbench.projectPath ?? "")
+      });
+    }
+    workbenchMetaById = next;
+    syncSessionDotsTray();
+  } catch {
+    /* keep the previous names; a later mutation or window change retries */
+  }
 }
 
 /**
- * Bring the window that owns a session to the front and hand it the focus
- * request. The board window hosts no workbench, so a session can only be
- * focused in the workbench window that reported it — and when no workbench window
- * is open, the session's task window is opened instead.
+ * One tray row per workbench: every open window (even an empty one, which gets a
+ * gray dot), plus workbenches whose window is gone but whose sessions still run.
+ *
+ * The rollup is the same function the GTD board uses, so a workbench reads the
+ * same on both surfaces.
  */
-function revealSessionOwner(): void {
-  const pending = pendingTrayFocus;
-  if (!pending) return;
-  const owner = windowForPaneKey(pending.paneKey) ?? focusedOrRecentTaskWindow();
-  if (owner && !owner.isDestroyed()) {
-    pendingTrayFocus = null;
-    if (owner.isMinimized()) owner.restore();
-    owner.show();
-    owner.focus();
-    owner.webContents.send("workbench:focusSession", pending);
-    return;
-  }
-  void openTaskWindowForSession(pending);
+function workbenchStatusRows(): TrayWorkbench[] {
+  return composeWorkbenchRows(workbenchActiveSessions, summarizeTaskWindows(), workbenchMetaById);
 }
 
-/** No workbench window is up: open the task window that owns the session. */
-async function openTaskWindowForSession(pending: { paneKey: string; projectPath?: string }): Promise<void> {
-  const sessionKeyValue = workbenchActiveSessions
-    .find((dot) => dot.paneKey === pending.paneKey)?.sessionKey || "";
-  const owner = await workbenchOwnershipForSession(sessionKeyValue);
-  if (!owner) {
-    pendingTrayFocus = null;
+/**
+ * Focus a workbench's window, or open it when there is none.
+ *
+ * The board hosts no workbench, so this is the only way a tray dot can reach the
+ * panes; a workbench that no longer exists anywhere falls back to the board.
+ */
+async function revealWorkbench(target: { workbenchId: string; noteId: string }): Promise<void> {
+  if (!target.workbenchId) {
     revealMainWindow();
     return;
   }
-  pendingTrayFocus = null;
+  if (focusTaskWindow(target.workbenchId)) return;
+  let noteId = target.noteId || workbenchMetaById.get(target.workbenchId)?.noteId || "";
+  if (!noteId) {
+    await loadWorkbenchMeta();
+    noteId = workbenchMetaById.get(target.workbenchId)?.noteId || "";
+  }
+  if (!noteId) {
+    revealMainWindow();
+    return;
+  }
+  // No title: the renderer resolves the task title once the workspace loads,
+  // and a workbench label would only flash the wrong name first.
   const opened = openTaskWindow(taskWindowDeps(), {
-    noteId: owner.noteId,
-    workbenchId: owner.workbenchId,
-    ...(owner.title ? { title: owner.title } : {})
+    noteId,
+    workbenchId: target.workbenchId
   });
   if (!opened.ok) {
     notifyTaskWindowLimit(opened.limit);
     revealMainWindow();
-  }
-}
-
-/** Task link lookup behind {@link workbenchOwnershipForSession}. */
-async function workbenchOwnershipForSession(
-  sessionKeyValue: string
-): Promise<(SessionOwner & { title?: string }) | null> {
-  if (!sessionKeyValue) return null;
-  try {
-    const paths = await loadPanelDbPaths();
-    const workbenches = await listAllTaskWorkbenches(paths.desktopDb);
-    const entries = await Promise.all(workbenches.map(async (workbench) => [
-      workbench.workbenchId,
-      await listTaskWorkbenchSessionLinks(paths.desktopDb, workbench.workbenchId).catch(() => [])
-    ] as const));
-    const owner = findWorkbenchForSession(workbenches, new Map(entries), sessionKeyValue);
-    if (!owner) return null;
-    const record = await notesRead(owner.noteId).then((read) => read.record).catch(() => null);
-    const workbench = workbenches.find((item) => item.workbenchId === owner.workbenchId);
-    return { ...owner, title: record?.title || workbench?.name || undefined };
-  } catch {
-    return null;
   }
 }
 
@@ -639,7 +630,6 @@ function showMainWindowIfReady(): void {
   if (!mainWindowReadyToShow || !mainWindowRendererReady) return;
   if (!mainWindow || mainWindow.isDestroyed()) return;
   if (!mainWindow.isVisible()) mainWindow.show();
-  flushPendingTrayFocus();
 }
 type StandaloneNoteWindowState = {
   noteId: string;
@@ -761,7 +751,8 @@ function unwatchedPaneDots(): WorkbenchActiveSessionDot[] {
       projectPath: "",
       title: pane.agent,
       sessionKey: pane.sessionKey?.trim() ?? "",
-      status: pane.state === "blocked" ? "awaiting_user" : "running"
+      status: pane.state === "blocked" ? "awaiting_user" : "running",
+      workbenchId: ptyWorkbenchResolver?.(pane.paneId) ?? ""
     });
   }
   return dots;
@@ -811,16 +802,16 @@ function windowForPaneKey(paneKey: string): BrowserWindow | null {
 function syncSessionDotsTray(): void {
   if (process.platform !== "darwin") return;
   const notes = listOpenStandaloneNotes();
-  const sessions = workbenchActiveSessions;
-  const items = composeTrayItems(notes, sessions);
-  const extra = notes.length + sessions.length - items.length;
+  const workbenches = workbenchStatusRows();
+  const items = composeTrayItems(notes, workbenches);
+  const extra = notes.length + workbenches.length - items.length;
   const image = sessionDotsTrayImage(items);
   const tooltip = trayTooltip(items, extra);
   if (!sessionDotsTray) {
     sessionDotsTray = new Tray(image);
     sessionDotsTray.setIgnoreDoubleClickEvents(true);
     sessionDotsTray.on("click", (_event, bounds, position) => {
-      const current = composeTrayItems(listOpenStandaloneNotes(), workbenchActiveSessions);
+      const current = composeTrayItems(listOpenStandaloneNotes(), workbenchStatusRows());
       if (current.length === 0) {
         revealMainWindow();
         return;
@@ -839,11 +830,7 @@ function syncSessionDotsTray(): void {
         });
         return;
       }
-      pendingTrayFocus = {
-        paneKey: target.paneKey,
-        projectPath: target.projectPath || undefined
-      };
-      revealSessionOwner();
+      void revealWorkbench({ workbenchId: target.workbenchId, noteId: target.noteId });
     });
   } else {
     sessionDotsTray.setImage(image);
@@ -879,11 +866,7 @@ async function showSessionWaitingNotifications(sessions: readonly WorkbenchActiv
         body
       });
       notification.on("click", () => {
-        pendingTrayFocus = {
-          paneKey: session.paneKey,
-          projectPath: projectPath || undefined
-        };
-        revealSessionOwner();
+        void revealWorkbench({ workbenchId: session.workbenchId, noteId: "" });
       });
       notification.show();
     } catch (error) {
@@ -993,6 +976,9 @@ function createStandaloneNoteWindow(record: NoteRecord): StandaloneNoteWindowSta
     minHeight: 360,
     title,
     show: false,
+    // Electron's default background is white, and a window composites it while its
+    // webContents is torn down — leaving it unset flashes white on close.
+    backgroundColor: windowBackgroundColor(),
     ...(icon ? { icon } : {}),
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     trafficLightPosition: process.platform === "darwin" ? { x: 14, y: 14 } : undefined,
@@ -1287,7 +1273,6 @@ function performQuitCleanup(): void {
   stopSessionSummaryAuto();
   stopSessionTranscriptIndexAuto();
   stopSessionEmbeddingIndexAuto();
-  void flushImStreamingMessages();
   disposeAllAcpControllers();
   tryDestroyPtyOnQuit();
   // Packaged builds deliberately keep the daemon alive: it holds the status
@@ -1605,7 +1590,7 @@ function createWindow(): void {
     // Keep the main window hidden until Chromium and the renderer have painted the initial loading shell.
     show: false,
     // Match the system fallback surface in case the native window is exposed before the renderer paint.
-    backgroundColor: nativeTheme.shouldUseDarkColors ? "#1e1e1e" : "#f5f5f7",
+    backgroundColor: windowBackgroundColor(),
     ...(icon ? { icon } : {}),
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     trafficLightPosition: process.platform === "darwin" ? { x: 14, y: 14 } : undefined,
@@ -1632,9 +1617,6 @@ function createWindow(): void {
     resumeSessionSync();
   });
   mainWindow.on("restore", resumeSessionSync);
-  mainWindow.on("hide", () => {
-    void flushImStreamingMessages();
-  });
   mainWindow.on("minimize", stopSessionSyncTimer);
   mainWindow.on("close", (event) => {
     if (allowAppQuit) return;
@@ -1647,7 +1629,6 @@ function createWindow(): void {
   });
   mainWindow.on("closed", () => {
     stopSessionSyncTimer();
-    void flushImStreamingMessages();
     // Other windows may still be showing a workbench; only their own senders count.
     pruneWorkbenchActiveSenders();
     mainWindowReadyToShow = false;
@@ -1784,9 +1765,14 @@ function taskWindowDeps(): TaskWindowDeps {
     onCreated: (win) => {
       registerWorkbenchShortcuts(win);
       registerTaskWindowCloseGuard(win);
+      void loadWorkbenchMeta();
     },
     onChange: (windows) => {
       pruneWorkbenchActiveSenders();
+      refreshWorkbenchActiveSessions();
+      // The tray now lists open workbenches too, so a window set change matters
+      // even when no pane reported a dot (a freshly opened, session-less one).
+      syncSessionDotsTray();
       broadcastToRenderers("task-window:changed", windows);
       persistOpenTaskWindows();
     }
@@ -1824,7 +1810,6 @@ function registerIpc(): void {
     if (event.sender !== mainWindow?.webContents) return;
     mainWindowRendererReady = true;
     showMainWindowIfReady();
-    flushPendingTrayFocus();
   });
 
   ipcMain.on("workbench:setActive", (event, active: unknown) => {
@@ -2386,59 +2371,6 @@ function registerIpc(): void {
     }
   );
 
-  ipcMain.handle(
-    "sessions:moveToProject",
-    async (_event, args: { provider: AgentProvider; id: string; targetProjectPath: string }) => {
-      const provider = args.provider;
-      const id = String(args.id || "").trim();
-      const targetProjectPath = String(args.targetProjectPath || "").trim();
-      if (!provider || !id || !targetProjectPath) {
-        throw new Error("provider, id, and targetProjectPath are required.");
-      }
-      const settings = await loadSettings();
-      const paths = await loadPanelDbPaths(settings);
-      // Physical move first: rewrite the provider's native cwd so the next sync
-      // converges native_project_path (and project_path) onto the target.
-      // Best-effort — any failure falls back to the catalog-only move below and
-      // the two-layer value rule keeps the user assignment sticky.
-      let nativeUpdated = false;
-      try {
-        const homes = resolvePreviewHomes(settings);
-        const native = await updateNativeSessionCwd(provider, id, targetProjectPath, homes);
-        nativeUpdated = native.ok;
-      } catch {
-        nativeUpdated = false;
-      }
-      const result = await moveSessionToProjectInCatalog(
-        paths.catalogDb,
-        provider,
-        id,
-        targetProjectPath
-      );
-      if (provider === "chat") {
-        const updatedLive = await setAcpRecordProjectPath(id, result.newPath);
-        if (!updatedLive) {
-          const record = await getAcpRecord(effectivePanelHome(settings), id);
-          if (record && record.projectPath !== result.newPath) {
-            await updateAcpRecord(effectivePanelHome(settings), {
-              ...record,
-              projectPath: result.newPath,
-              updatedAt: Date.now()
-            });
-          }
-        }
-      }
-      if (result.moved && result.fromProjectId && result.fromProjectId !== result.toProjectId) {
-        try {
-          await removeWorkbenchSessionFromFolder(paths.desktopDb, provider, id);
-        } catch {
-          // Desktop workbench tables may be absent — catalog move is already done.
-        }
-      }
-      return { ...result, nativeUpdated };
-    }
-  );
-
   safeHandle(
     "workbench:composerSendAppend",
     async (_event, args: {
@@ -2506,16 +2438,6 @@ function registerIpc(): void {
       editor
     };
   });
-
-  safeHandle(
-    "workbench:openProjectInEditor",
-    async (_event, args: { projectPath: string }) => {
-      const settings = await loadSettings();
-      const selected: WorkbenchProjectEditor = settings.workbench?.projectEditor || "auto";
-      const editor = await openProjectInEditor(args.projectPath, selected, app.getLocale());
-      return { ok: true, editor };
-    }
-  );
 
   safeHandle(
     "workbench:openSession",
@@ -2746,11 +2668,13 @@ function registerIpc(): void {
     "taskWorkbenches:create",
     async (_event, args: { taskNoteId: string; name?: string; projectPath?: string | null }) => {
       const paths = await loadPanelDbPaths();
-      return createTaskWorkbench(paths.desktopDb, {
+      const created = await createTaskWorkbench(paths.desktopDb, {
         taskNoteId: String(args?.taskNoteId || ""),
         name: args?.name,
         projectPath: args?.projectPath ?? null
       });
+      void loadWorkbenchMeta();
+      return created;
     }
   );
 
@@ -2758,7 +2682,9 @@ function registerIpc(): void {
     "taskWorkbenches:rename",
     async (_event, args: { workbenchId: string; name: string }) => {
       const paths = await loadPanelDbPaths();
-      return renameTaskWorkbench(paths.desktopDb, String(args?.workbenchId || ""), String(args?.name || ""));
+      const renamed = await renameTaskWorkbench(paths.desktopDb, String(args?.workbenchId || ""), String(args?.name || ""));
+      void loadWorkbenchMeta();
+      return renamed;
     }
   );
 
@@ -2766,11 +2692,13 @@ function registerIpc(): void {
     "taskWorkbenches:setProject",
     async (_event, args: { workbenchId: string; projectPath: string | null }) => {
       const paths = await loadPanelDbPaths();
-      return setTaskWorkbenchProject(
+      const updated = await setTaskWorkbenchProject(
         paths.desktopDb,
         String(args?.workbenchId || ""),
         args?.projectPath == null ? null : String(args.projectPath)
       );
+      void loadWorkbenchMeta();
+      return updated;
     }
   );
 
@@ -2805,6 +2733,7 @@ function registerIpc(): void {
     async (_event, args: { workbenchId: string }) => {
       const paths = await loadPanelDbPaths();
       await deleteTaskWorkbench(paths.desktopDb, String(args?.workbenchId || ""));
+      void loadWorkbenchMeta();
       return { ok: true as const };
     }
   );
@@ -3282,15 +3211,6 @@ function registerIpc(): void {
     return loadProjectAliasesMap(paths.catalogDb);
   });
 
-  ipcMain.handle(
-    "projects:setAlias",
-    async (_event, args: { projectPath: string; alias: string }) => {
-      const paths = await loadPanelDbPaths();
-      await setProjectAliasInCatalog(paths.catalogDb, args.projectPath, args.alias);
-      return { ok: true };
-    }
-  );
-
   ipcMain.handle("projects:list", async (_event, opts?: { includeHidden?: boolean }) => {
     const paths = await loadPanelDbPaths();
     return listProjects(paths.catalogDb, opts);
@@ -3327,98 +3247,6 @@ function registerIpc(): void {
   );
 
   ipcMain.handle(
-    "projects:hide",
-    async (_event, args: { projectId?: string; projectPath?: string }) => {
-      return hideProjectAction(args);
-    }
-  );
-
-  ipcMain.handle(
-    "projects:setLocalPath",
-    async (_event, args: { projectId: string; absolutePath: string }) => {
-      const paths = await loadPanelDbPaths();
-      await setProjectLocalPath(paths.catalogDb, args.projectId, args.absolutePath);
-      return { ok: true };
-    }
-  );
-
-  ipcMain.handle(
-    "projects:pickLocalPath",
-    async (_event, args: { projectId: string; title?: string }) => {
-      const result = await showDirectoryPicker({ title: args.title || "Select local project folder" });
-      if (!result.ok) {
-        return { ok: false as const, canceled: true as const };
-      }
-      const absolutePath = result.path;
-      const paths = await loadPanelDbPaths();
-      await setProjectLocalPath(paths.catalogDb, args.projectId, absolutePath);
-      const resolved = await resolveProjectCwd(paths.catalogDb, args.projectId);
-      return { ok: true as const, absolutePath, resolved };
-    }
-  );
-
-  ipcMain.handle(
-    "projects:setPinned",
-    async (_event, args: { projectId: string; pinned: boolean }) => {
-      const paths = await loadPanelDbPaths();
-      await setProjectPinnedInCatalog(paths.catalogDb, args.projectId, args.pinned === true);
-      return { ok: true };
-    }
-  );
-
-  async function resolveProjectPathForDesktop(args: {
-    projectId?: string;
-    projectPath?: string;
-  }): Promise<{ cwd: string; source: string }> {
-    const paths = await loadPanelDbPaths();
-    let resolved;
-    if (args.projectId?.trim()) {
-      resolved = await resolveProjectCwd(paths.catalogDb, args.projectId.trim());
-    } else if (args.projectPath?.trim()) {
-      resolved = await resolveProjectCwdForPath(paths.catalogDb, args.projectPath.trim());
-    } else {
-      throw new Error("projectId or projectPath is required.");
-    }
-    if (resolved.source === "missing" || !resolved.cwd?.trim()) {
-      throw new Error(
-        "Local project folder was not found on this machine. Use “Set local folder…” first."
-      );
-    }
-    try {
-      const stat = await fs.stat(resolved.cwd);
-      if (!stat.isDirectory()) {
-        throw new Error("Local project path is not a directory.");
-      }
-    } catch (error) {
-      if (error instanceof Error && error.message.includes("not a directory")) throw error;
-      throw new Error(
-        "Local project folder was not found on this machine. Use “Set local folder…” first."
-      );
-    }
-    const real = await fs.realpath(resolved.cwd).catch(() => path.resolve(resolved.cwd));
-    return { cwd: real, source: resolved.source };
-  }
-
-  ipcMain.handle(
-    "projects:revealInFinder",
-    async (_event, args: { projectId?: string; projectPath?: string }) => {
-      const { cwd } = await resolveProjectPathForDesktop(args);
-      // showItemInFolder selects the item in its parent; works for files and directories.
-      shell.showItemInFolder(cwd);
-      return { ok: true, path: cwd };
-    }
-  );
-
-  ipcMain.handle(
-    "projects:copyLocalPath",
-    async (_event, args: { projectId?: string; projectPath?: string }) => {
-      const { cwd } = await resolveProjectPathForDesktop(args);
-      clipboard.writeText(cwd);
-      return { ok: true, path: cwd };
-    }
-  );
-
-  ipcMain.handle(
     "projects:resolveCwd",
     async (_event, args: { projectId?: string; projectPath?: string }) => {
       const paths = await loadPanelDbPaths();
@@ -3432,31 +3260,6 @@ function registerIpc(): void {
     }
   );
 
-  ipcMain.handle(
-    "projects:listPathVariants",
-    async (_event, args: { projectId: string }) => {
-      const paths = await loadPanelDbPaths();
-      return listProjectPathVariants(paths.catalogDb, args.projectId);
-    }
-  );
-
-  ipcMain.handle(
-    "projects:merge",
-    async (_event, args: { sourceProjectId: string; targetProjectId: string }) => {
-      const paths = await loadPanelDbPaths();
-      const result = await mergeProjectsInCatalog(paths.catalogDb, args.sourceProjectId, args.targetProjectId);
-      await mergeWorkbenchSessionFolders(paths.desktopDb, args.sourceProjectId, args.targetProjectId);
-      return result;
-    }
-  );
-
-  ipcMain.handle(
-    "projects:splitPath",
-    async (_event, args: { sourceProjectId: string; absolutePath: string }) => {
-      const paths = await loadPanelDbPaths();
-      return splitProjectPathInCatalog(paths.catalogDb, args.sourceProjectId, args.absolutePath);
-    }
-  );
 }
 
 // Fail closed: never open a GUI instance when an outdated MCP client still passes
@@ -3479,18 +3282,8 @@ app.whenReady().then(async () => {
     loadSettings,
     getMainWindow: () => mainWindow
   });
-  registerImIpc({
-    broadcast: (event) => broadcastToRenderers("im:event", event),
-    acp: {
-      connect: (chatId) => connectAcpChat(chatId),
-      prompt: (chatId, text, images) => promptAcpChat(chatId, text, images ?? []),
-      cancel: (chatId) => cancelAcpChat(chatId),
-      inspect: (chatId) => inspectAcpChat(chatId),
-      denyPermission: (requestId) => denyAcpPermission(requestId),
-      setModel: (chatId, modelId) => setAcpModel(chatId, modelId),
-      setThoughtLevel: (chatId, thoughtLevel) => setAcpThoughtLevel(chatId, thoughtLevel)
-    }
-  });
+  registerSelectionIpc();
+  registerSelectionIpc();
   registerWorkbenchFsIpc();
   registerWorkbenchWatcherIpc(() => mainWindow, (sender) => isTaskWindowSender(sender));
   registerWorkbenchGitIpc(() => app.getLocale());
@@ -3524,9 +3317,13 @@ app.whenReady().then(async () => {
     });
   }
   createWindow();
+  void loadWorkbenchMeta();
   syncSessionDotsTray();
   void restoreTaskWindows();
-  nativeTheme.on("updated", () => syncSessionDotsTray());
+  nativeTheme.on("updated", () => {
+    syncSessionDotsTray();
+    applyWindowBackgrounds();
+  });
 
   void (async () => {
     try {

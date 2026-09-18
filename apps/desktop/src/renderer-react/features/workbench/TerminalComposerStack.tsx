@@ -2,6 +2,7 @@ import type { SessionDotStatus } from "./sessionStatus";
 import type { WorkbenchComposerSlashPhrase } from "@agent-resume/core";
 import {
   TerminalComposer,
+  type ComposerWorkspaceProject,
   type TerminalComposerPane
 } from "./TerminalComposer";
 import {
@@ -29,8 +30,9 @@ export function TerminalComposerStack(props: {
   onClose?: (paneKey: string) => void;
   registerFocus: (key: string, focus: (options?: { caret?: "end" }) => void) => () => void;
   slashPhrases?: WorkbenchComposerSlashPhrase[];
+  workspaceProjects?: ComposerWorkspaceProject[];
 }): React.JSX.Element | null {
-  const { items, onChange, onSendToTerminal, onRunSlashCommand, onActivate, onClose, registerFocus, slashPhrases = [] } = props;
+  const { items, onChange, onSendToTerminal, onRunSlashCommand, onActivate, onClose, registerFocus, slashPhrases = [], workspaceProjects } = props;
   const item = items.find((entry) => entry.activePane) ?? items[0];
   if (!item) return null;
 
@@ -54,6 +56,7 @@ export function TerminalComposerStack(props: {
           registerFocus={registerFocus}
           slashPhrases={slashPhrases}
           tuiSlashCommands={tuiSlashCommandsForProvider(item.provider)}
+          workspaceProjects={workspaceProjects}
         />
       </div>
     </div>

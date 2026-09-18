@@ -26,12 +26,6 @@ interface PanelSettingsFile {
     model: string;
     apiKey?: string;
   };
-  report?: {
-    enabled?: boolean;
-    includeTranscripts?: boolean;
-    maxSessionsPerDigest?: number;
-    snippetMaxChars?: number;
-  };
   agentHomes?: {
     codexHome?: string;
     claudeHome?: string;
@@ -68,12 +62,6 @@ function defaultFile(): PanelSettingsFile {
     },
     embedding: {
       model: "text-embedding-3-small"
-    },
-    report: {
-      enabled: false,
-      includeTranscripts: true,
-      maxSessionsPerDigest: 40,
-      snippetMaxChars: 2500
     }
   };
 }
@@ -92,27 +80,14 @@ function mergeFile(partial: Partial<PanelSettingsFile> | null | undefined): Pane
         ? { ...(base.chatLlm || {}), ...(partial.chatLlm || {}) }
         : undefined,
     embedding: { ...base.embedding, ...(partial.embedding || {}) },
-    report: { ...base.report, ...(partial.report || {}) },
     agentHomes: { ...base.agentHomes, ...(partial.agentHomes || {}) },
     desktop: { ...base.desktop, ...(partial.desktop || {}) }
   };
 }
 
-type LegacyPanelSettingsFile = Partial<PanelSettingsFile> & {
-  memory?: PanelSettingsFile["report"];
-};
-
-function migrateLegacyPanelFile(partial: LegacyPanelSettingsFile): Partial<PanelSettingsFile> {
-  if (partial.memory && !partial.report) {
-    const { memory, ...rest } = partial;
-    return { ...rest, report: memory };
-  }
-  return partial;
-}
-
 function parseFile(raw: string): PanelSettingsFile {
   try {
-    return mergeFile(migrateLegacyPanelFile(JSON.parse(raw) as LegacyPanelSettingsFile));
+    return mergeFile(JSON.parse(raw) as Partial<PanelSettingsFile>);
   } catch {
     return defaultFile();
   }

@@ -18,6 +18,7 @@ type DotTerminal = {
   group: string;
   sessionKey?: string;
   projectPath: string;
+  workbenchId?: string;
 };
 
 type DotAcpChat = {
@@ -25,6 +26,7 @@ type DotAcpChat = {
   recordId: string;
   title: string;
   projectPath: string;
+  workbenchId?: string;
 };
 
 /** ACP panes are keyed `acp:${recordId}` in the status store. */
@@ -57,7 +59,8 @@ export function collectActiveSessionDots(
       projectPath: pane.projectPath,
       title,
       sessionKey: sessionKey || "",
-      status: runtime?.status ?? "open"
+      status: runtime?.status ?? "open",
+      workbenchId: pane.workbenchId ?? ""
     });
   }
 
@@ -70,7 +73,8 @@ export function collectActiveSessionDots(
       projectPath: pane.projectPath,
       title,
       sessionKey: key,
-      status: runtime?.status ?? "open"
+      status: runtime?.status ?? "open",
+      workbenchId: pane.workbenchId ?? ""
     });
   }
 
