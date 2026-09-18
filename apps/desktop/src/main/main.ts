@@ -189,6 +189,7 @@ import {
 import { collectNewConfirmedWaitingSessions } from "./sessionWaitingNotifications";
 import { checkForDesktopUpdate, getAppVersion } from "./updateCheck";
 import { loadPanelDbPaths } from "./panelDatabases";
+import { findWorkbenchForSession, type SessionOwner } from "./sessionOwnership";
 import { buildI18nBundle, desktopT, initI18nService } from "./i18nService";
 import { shouldSyncSessionsAfterSettingsSave, type SaveSettingsOptions } from "./sessionSettingsSync";
 import {
@@ -554,21 +555,73 @@ function flushPendingTrayFocus(): void {
 /**
  * Bring the window that owns a session to the front and hand it the focus
  * request. The board window hosts no workbench, so a session can only be
- * focused in the workbench window that reported it.
+ * focused in the workbench window that reported it — and when no workbench window
+ * is open, the session's task window is opened instead.
  */
 function revealSessionOwner(): void {
   const pending = pendingTrayFocus;
   if (!pending) return;
   const owner = windowForPaneKey(pending.paneKey) ?? focusedOrRecentTaskWindow();
-  if (!owner || owner.isDestroyed()) {
+  if (owner && !owner.isDestroyed()) {
+    pendingTrayFocus = null;
+    if (owner.isMinimized()) owner.restore();
+    owner.show();
+    owner.focus();
+    owner.webContents.send("workbench:focusSession", pending);
+    return;
+  }
+  void openTaskWindowForSession(pending);
+}
+
+/** No workbench window is up: open the task window that owns the session. */
+async function openTaskWindowForSession(pending: { paneKey: string; projectPath?: string }): Promise<void> {
+  const sessionKeyValue = workbenchActiveSessions
+    .find((dot) => dot.paneKey === pending.paneKey)?.sessionKey || "";
+  const owner = await workbenchOwnershipForSession(sessionKeyValue);
+  if (!owner) {
+    pendingTrayFocus = null;
     revealMainWindow();
     return;
   }
   pendingTrayFocus = null;
-  if (owner.isMinimized()) owner.restore();
-  owner.show();
-  owner.focus();
-  owner.webContents.send("workbench:focusSession", pending);
+  const opened = openTaskWindow(taskWindowDeps(), {
+    noteId: owner.noteId,
+    workbenchId: owner.workbenchId,
+    ...(owner.title ? { title: owner.title } : {})
+  });
+  if (!opened.ok) {
+    notifyTaskWindowLimit(opened.limit);
+    revealMainWindow();
+  }
+}
+
+/** Task link lookup behind {@link workbenchOwnershipForSession}. */
+async function workbenchOwnershipForSession(
+  sessionKeyValue: string
+): Promise<(SessionOwner & { title?: string }) | null> {
+  if (!sessionKeyValue) return null;
+  try {
+    const paths = await loadPanelDbPaths();
+    const workbenches = await listAllTaskWorkbenches(paths.desktopDb);
+    const entries = await Promise.all(workbenches.map(async (workbench) => [
+      workbench.workbenchId,
+      await listTaskWorkbenchSessionLinks(paths.desktopDb, workbench.workbenchId).catch(() => [])
+    ] as const));
+    const owner = findWorkbenchForSession(workbenches, new Map(entries), sessionKeyValue);
+    if (!owner) return null;
+    const record = await notesRead(owner.noteId).then((read) => read.record).catch(() => null);
+    const workbench = workbenches.find((item) => item.workbenchId === owner.workbenchId);
+    return { ...owner, title: record?.title || workbench?.name || undefined };
+  } catch {
+    return null;
+  }
+}
+
+/** Tell the user why a workbench window could not be opened. */
+function notifyTaskWindowLimit(limit: number): void {
+  const window = revealMainWindow();
+  if (!window || window.isDestroyed()) return;
+  window.webContents.send("task-window:limit", { limit });
 }
 
 function showMainWindowIfReady(): void {

@@ -144,6 +144,14 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
     return () => window.removeEventListener("agent-resume:gtd-new-task", onNewTask);
   }, [openNewTask]);
 
+  /** The host refuses a fifth workbench window; say so where the user is looking. */
+  useEffect(() => {
+    const stop = desktopApi().onTaskWindowLimit?.(({ limit }) => {
+      notifyDesktop({ text: text("desktop.gtd.windowLimit", limit), kind: "error", durationMs: 6000 });
+    });
+    return () => stop?.();
+  }, [text]);
+
   const pickProject = useCallback(async () => {
     if (!newTask || newTask.busy) return;
     if (typeof desktopApi().pickDirectory !== "function") return;

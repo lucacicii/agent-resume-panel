@@ -151,6 +151,8 @@ export interface DesktopApi {
   taskWindowGetState(): Promise<{ workbenchId: string; noteId: string; title: string }>;
   taskWindowSetTitle(args: { title: string }): Promise<{ ok: boolean }>;
   taskWindowClose(): Promise<{ ok: boolean }>;
+  /** The host refused to open another workbench window (cap reached). */
+  onTaskWindowLimit(callback: (payload: { limit: number }) => void): () => void;
   /** The host asked this window to close; answer with `taskWindowCloseReady`. */
   onTaskWindowCloseRequested(callback: () => void): () => void;
   taskWindowCloseReady(args: { ok: boolean }): Promise<{ ok: boolean }>;
@@ -1532,6 +1534,11 @@ const api: DesktopApi = {
   taskWindowGetState: () => ipcRenderer.invoke("task-window:getState"),
   taskWindowSetTitle: (args) => ipcRenderer.invoke("task-window:setTitle", args),
   taskWindowClose: () => ipcRenderer.invoke("task-window:close"),
+  onTaskWindowLimit: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: { limit: number }) => callback(payload);
+    ipcRenderer.on("task-window:limit", handler);
+    return () => ipcRenderer.removeListener("task-window:limit", handler);
+  },
   onTaskWindowCloseRequested: (callback) => {
     const handler = () => callback();
     ipcRenderer.on("task-window:requestClose", handler);
