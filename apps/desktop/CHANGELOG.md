@@ -15,6 +15,7 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 - **Settings labels**: renamed misleading desktop settings (`Panel home`, `Default new session agent`, `Editor & terminal`, `External terminal launch`, `Sessions`, `Data`, `Stale sessions`, `Max sessions per sync`, `Per-feature models`, `Summary embeddings`, `Transcript embeddings`, `Temporary session folder`) so they describe the desktop app instead of the VS Code extension
 - **Notifications group**: the **General → Notifications** group now uses the same header layout as every other settings group
 - **Workbench settings**: the **Slash phrases** and **Workspace mentions** editors are now compact cards (inline fields + icon actions) with shorter descriptions instead of stacked labeled fields and text buttons
+- **Icons**: every Desktop icon now comes from one semantic set (`ThemeIcon`) on a single 12 / 13 / 16 / 20 px ladder with a uniform 2 px stroke. Toolbar, tree, tab and badge icons are consistent across panels instead of drifting between 10–18 px, and icon sizing moved out of the stylesheet into the component
 
 #### Removed
 
@@ -639,6 +640,7 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 - **设置文案**：重命名语义不清的桌面设置（`Panel home`、`Default new session agent`、`Editor & terminal`、`External terminal launch`、`Sessions`、`Data`、`Stale sessions`、`Max sessions per sync`、`Per-feature models`、`Summary embeddings`、`Transcript embeddings`、`Temporary session folder`），使其描述桌面端而非 VS Code 扩展
 - **通知分组**：**通用 → 通知** 分组改用与其他设置分组一致的标题布局
 - **Workbench 设置**：**斜杠短语** 与 **工作区 Mention** 编辑器改为紧凑卡片（行内字段 + 图标操作），并精简说明文字，替换原来堆叠的字段标签与文字按钮
+- **图标**：桌面端图标统一收敛到一套语义图标（`ThemeIcon`），尺寸固定为 12 / 13 / 16 / 20 px 四档，描边统一为 2 px。工具栏、文件树、标签页与徽标图标在各面板间保持一致，不再在 10–18 px 间漂移；尺寸也从样式表移入组件
 
 #### 移除
 

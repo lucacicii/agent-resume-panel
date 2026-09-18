@@ -596,7 +596,7 @@ export const SessionTranscriptPane = React.memo(function SessionTranscriptPane({
             aria-label={t("desktop.common.refresh")}
             title={t("desktop.common.refresh")}
           >
-            <ThemeIcon name="refresh" size={ICON_SIZE.dense} className={loading ? "spin" : undefined} />
+            <ThemeIcon name="refresh" size={ICON_SIZE.default} className={loading ? "spin" : undefined} />
           </button>
         </div>
         <p className="muted wb-transcript-status">
@@ -623,7 +623,7 @@ export const SessionTranscriptPane = React.memo(function SessionTranscriptPane({
           aria-label={t("desktop.common.refresh")}
           title={t("desktop.common.refresh")}
         >
-          <ThemeIcon name="refresh" size={ICON_SIZE.dense} className={loading ? "spin" : undefined} />
+          <ThemeIcon name="refresh" size={ICON_SIZE.default} className={loading ? "spin" : undefined} />
         </button>
         <button
           type="button"

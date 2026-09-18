@@ -5632,8 +5632,6 @@ body.is-pane-resizing-v * {
 
 .wb-transcript-body .wb-transcript-role-icon {
   flex: 0 0 auto;
-  width: 13px;
-  height: 13px;
 }
 
 .wb-transcript-pane .wb-git-action-btn.is-active {
@@ -6695,8 +6693,6 @@ body.is-pane-resizing-v * {
 }
 
 .wb-file-tree-icon {
-  width: 14px;
-  height: 14px;
   flex-shrink: 0;
   color: var(--muted);
 }
