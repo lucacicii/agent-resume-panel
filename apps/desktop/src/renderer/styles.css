@@ -1355,9 +1355,6 @@ html[data-window-mode="task"] #react-chrome:empty {
   margin-bottom: 4px;
 }
 
-.gtd-edit-grid select,
-.gtd-edit-grid textarea,
-
 /* Settings: left nav + right content
  *
  * Root cause of "left radius clipped":
@@ -1777,7 +1774,9 @@ html[data-window-mode="task"] #react-chrome:empty {
 .settings-row-control {
   flex: 0 0 auto;
   min-width: 140px;
-  max-width: 220px;
+  max-width: 240px;
+  height: 28px;
+  line-height: normal;
 }
 
 .settings-number-control {
@@ -2714,7 +2713,7 @@ button:disabled,
   box-shadow: none;
 }
 
-/* Base Form Controls (macOS 28px standard inputs & selects) */
+/* Base Form Controls (macOS 28px standard inputs) */
 input[type="text"],
 input[type="search"],
 input[type="password"],
@@ -2722,8 +2721,7 @@ input[type="number"],
 input[type="date"],
 input[type="month"],
 .form-row input,
-.gtd-search,
-select {
+.gtd-search {
   height: 28px;
   padding: 0 8px;
   border: 0.5px solid var(--color-separator-opaque);
@@ -2743,11 +2741,68 @@ input[type="number"]:focus,
 input[type="date"]:focus,
 input[type="month"]:focus,
 .form-row input:focus,
-.gtd-search:focus,
-select:focus {
+.gtd-search:focus {
   outline: none;
   border-color: var(--color-accent);
   box-shadow: 0 0 0 3px var(--color-focus-ring);
+}
+
+/* macOS Native Pop-Up Button (Select) */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 28px;
+  min-height: 28px;
+  line-height: normal;
+  padding: 0 28px 0 10px;
+  border: 0.5px solid var(--color-separator-opaque);
+  border-radius: var(--radius-md);
+  background-color: var(--color-control-bg);
+  color: var(--color-label-primary);
+  font-size: var(--font-size-body);
+  font-family: inherit;
+  box-sizing: border-box;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='12' viewBox='0 0 8 12' fill='none'%3E%3Cpath d='M1.5 4.25L4 1.75L6.5 4.25' stroke='%238E8E93' stroke-width='1.25' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M1.5 7.75L4 10.25L6.5 7.75' stroke='%238E8E93' stroke-width='1.25' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 7px 11px;
+  box-shadow: var(--shadow-subtle);
+  cursor: default;
+  vertical-align: middle;
+  transition: border-color var(--duration-fast) var(--ease-out),
+              box-shadow var(--duration-fast) var(--ease-out),
+              background-color var(--duration-fast) var(--ease-out);
+}
+
+[data-theme="dark"] select,
+:root:not([data-theme="light"]) select {
+  background-color: var(--color-control-bg);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='12' viewBox='0 0 8 12' fill='none'%3E%3Cpath d='M1.5 4.25L4 1.75L6.5 4.25' stroke='%23AEAEB2' stroke-width='1.25' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M1.5 7.75L4 10.25L6.5 7.75' stroke='%23AEAEB2' stroke-width='1.25' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  border-color: var(--color-separator);
+}
+
+select:hover:not(:disabled) {
+  background-color: var(--color-secondary-bg);
+  border-color: var(--color-separator-strong);
+}
+
+select:focus,
+select:focus-visible {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-focus-ring);
+}
+
+select:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+select option {
+  background-color: var(--color-elevated-bg);
+  color: var(--color-label-primary);
+  font-size: var(--font-size-body);
+  padding: 4px 8px;
 }
 
 input::placeholder,
@@ -3762,7 +3817,7 @@ legend {
 .form-row input[type="text"],
 .form-row input[type="date"],
 .form-row input[type="month"],
-select {
+.form-row select {
   border: 1px solid var(--border);
   background: var(--bg);
   color: var(--text);
@@ -12575,11 +12630,106 @@ html[data-window-mode="standalone-note"] #react-workbench {
   --font-family-mono: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, monospace;
 }
 
-.settings-theme-field { display: flex; flex-direction: column; gap: 6px; }
-.theme-mode-control { display: inline-flex; align-self: flex-start; padding: 2px; gap: 2px; background: var(--color-secondary-bg); border: 1px solid var(--color-separator-opaque); border-radius: var(--radius-lg); }
-.theme-mode-control button { border: 0; background: transparent; color: var(--color-label-secondary); border-radius: var(--radius-md); padding: 5px 9px; font: inherit; cursor: pointer; }
-.theme-mode-control button.is-selected { background: var(--color-control-bg); color: var(--color-label-primary); box-shadow: var(--shadow-segment-thumb); }
-.theme-mode-control button:disabled { cursor: not-allowed; opacity: .45; }
+.settings-theme-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  column-gap: 16px;
+  row-gap: 2px;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.settings-theme-field + .settings-row,
+.settings-row + .settings-theme-field {
+  border-top: 0.5px solid var(--color-separator);
+  padding-top: 10px;
+}
+
+.settings-theme-field .settings-field-label {
+  grid-column: 1;
+  grid-row: 1;
+  font-size: var(--font-size-body);
+  color: var(--color-label-primary);
+  font-weight: var(--font-weight-medium);
+}
+
+.settings-theme-field .settings-field-desc {
+  grid-column: 1;
+  grid-row: 2;
+  font-size: var(--font-size-caption);
+  color: var(--color-label-secondary);
+  line-height: var(--line-height-body);
+}
+
+.settings-theme-field .theme-mode-control {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  justify-self: end;
+}
+
+.theme-mode-control {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  height: 26px;
+  padding: 2px;
+  gap: 2px;
+  background: var(--color-fill-secondary);
+  border: 0.5px solid var(--color-separator);
+  border-radius: 7px;
+  box-sizing: border-box;
+}
+
+.theme-mode-control button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--color-label-secondary);
+  border-radius: 5px;
+  height: 22px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: var(--font-weight-medium);
+  line-height: 22px;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+  transition: background var(--duration-fast) var(--ease-out),
+              color var(--duration-fast) var(--ease-out),
+              box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.theme-mode-control button:hover:not(.is-selected) {
+  color: var(--color-label-primary);
+  background: var(--color-fill-tertiary);
+}
+
+.theme-mode-control button.is-selected {
+  background: var(--color-control-bg);
+  color: var(--color-label-primary);
+  font-weight: var(--font-weight-semibold);
+  box-shadow: var(--shadow-segment-thumb);
+}
+
+[data-theme="dark"] .theme-mode-control,
+:root:not([data-theme="light"]) .theme-mode-control {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="dark"] .theme-mode-control button.is-selected,
+:root:not([data-theme="light"]) .theme-mode-control button.is-selected {
+  background: #636366;
+  color: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 0 0 0.5px rgba(255, 255, 255, 0.12);
+}
+
+.theme-mode-control button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
 
 .wb-task {
   display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; margin: 8px 8px 4px;
@@ -13186,44 +13336,6 @@ html[data-window-mode="browser"] #react-chrome {
   margin: 0;
 }
 
-.settings-pane-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  margin-top: 18px;
-  padding-top: 14px;
-  border-top: 0.5px solid var(--color-separator);
-}
-
-.settings-unsaved-hint {
-  font-size: 12px;
-  color: var(--color-label-secondary);
-}
-
-.settings-unsaved-banner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 14px;
-  border: 0.5px solid var(--color-separator);
-  border-radius: var(--radius-lg);
-  background: var(--color-fill-secondary);
-  box-shadow: var(--shadow-subtle);
-  margin-bottom: 14px;
-}
-
-.settings-unsaved-text {
-  font-size: 12px;
-  font-weight: var(--font-weight-medium);
-  color: var(--color-label-primary);
-}
-
-.settings-unsaved-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
 .markdown-body img.md-preview-img {
   max-width: 100%;
   height: auto;

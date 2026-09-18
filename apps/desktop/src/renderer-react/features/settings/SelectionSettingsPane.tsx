@@ -55,29 +55,44 @@ export function SelectionSettingsPane({ t }: { t: Translate }): React.JSX.Elemen
     setActionEnabled(selectedAction.enabled);
   }, [creatingAction, selectedAction]);
 
-  const saveAction = useCallback(async () => {
+  const createAction = useCallback(async () => {
+    if (!creatingAction) return;
     try {
-      if (creatingAction) {
-        const created = await desktopApi().selectionCreateAction({
-          name: actionName,
-          prompt: actionPrompt,
-          providerId: actionProviderId || undefined,
-          modelId: actionModelId || undefined
-        });
-        setCreatingAction(false);
-        await load();
-        setSelectedActionId(created.actionId);
-      } else if (selectedAction) {
-        await desktopApi().selectionUpdateAction({
-          actionId: selectedAction.actionId,
-          name: actionName,
-          prompt: actionPrompt,
-          providerId: actionProviderId || undefined,
-          modelId: actionModelId || undefined,
-          enabled: actionEnabled
-        });
-        await load();
-      }
+      const created = await desktopApi().selectionCreateAction({
+        name: actionName,
+        prompt: actionPrompt,
+        providerId: actionProviderId || undefined,
+        modelId: actionModelId || undefined
+      });
+      setCreatingAction(false);
+      await load();
+      setSelectedActionId(created.actionId);
+      setStatus(t("desktop.settings.selectionActionSaved"));
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+    }
+  }, [actionModelId, actionName, actionPrompt, actionProviderId, creatingAction, load, t]);
+
+  /** Editing an existing action auto-saves: inputs on blur, selects and toggles on change. */
+  const persistAction = useCallback(async (overrides?: Partial<{ name: string; prompt: string; providerId: string; modelId: string; enabled: boolean }>) => {
+    if (creatingAction || !selectedAction) return;
+    const payload = {
+      name: overrides?.name ?? actionName,
+      prompt: overrides?.prompt ?? actionPrompt,
+      providerId: (overrides?.providerId ?? actionProviderId) || undefined,
+      modelId: (overrides?.modelId ?? actionModelId) || undefined,
+      enabled: overrides?.enabled ?? actionEnabled
+    };
+    if (
+      payload.name === selectedAction.name &&
+      payload.prompt === selectedAction.prompt &&
+      (payload.providerId ?? "") === (selectedAction.providerId ?? "") &&
+      (payload.modelId ?? "") === (selectedAction.modelId ?? "") &&
+      payload.enabled === selectedAction.enabled
+    ) return;
+    try {
+      await desktopApi().selectionUpdateAction({ actionId: selectedAction.actionId, ...payload });
+      await load();
       setStatus(t("desktop.settings.selectionActionSaved"));
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
@@ -167,7 +182,11 @@ export function SelectionSettingsPane({ t }: { t: Translate }): React.JSX.Elemen
           <div className="selection-settings-editor">
             <label className="settings-field">
               <span className="settings-field-label">{t("desktop.settings.selectionName")}</span>
-              <input value={actionName} onChange={(event) => setActionName(event.target.value)} />
+              <input
+                value={actionName}
+                onChange={(event) => setActionName(event.target.value)}
+                onBlur={(event) => void persistAction({ name: event.currentTarget.value })}
+              />
             </label>
             <label className="settings-field">
               <span className="settings-field-label">{t("desktop.settings.selectionActionModel")}</span>
@@ -177,14 +196,10 @@ export function SelectionSettingsPane({ t }: { t: Translate }): React.JSX.Elemen
                 value={actionProviderId && actionModelId ? `${actionProviderId}:${actionModelId}` : ""}
                 onChange={(event) => {
                   const val = event.target.value;
-                  if (!val) {
-                    setActionProviderId("");
-                    setActionModelId("");
-                  } else {
-                    const [pId, mId] = val.split(":");
-                    setActionProviderId(pId || "");
-                    setActionModelId(mId || "");
-                  }
+                  const [pId, mId] = val ? val.split(":") : ["", ""];
+                  setActionProviderId(pId || "");
+                  setActionModelId(mId || "");
+                  void persistAction({ providerId: pId || "", modelId: mId || "" });
                 }}
               >
                 <option value="">{t("desktop.settings.selectionActionModelDefault")}</option>
@@ -197,15 +212,22 @@ export function SelectionSettingsPane({ t }: { t: Translate }): React.JSX.Elemen
             </label>
             <label className="settings-field">
               <span className="settings-field-label">{t("desktop.settings.selectionActionPrompt")}</span>
-              <textarea rows={6} value={actionPrompt} onChange={(event) => setActionPrompt(event.target.value)} />
+              <textarea
+                rows={6}
+                value={actionPrompt}
+                onChange={(event) => setActionPrompt(event.target.value)}
+                onBlur={(event) => void persistAction({ prompt: event.currentTarget.value })}
+              />
             </label>
             <p className="settings-footnote">{t("desktop.settings.selectionActionPromptHint")}</p>
             <label className="selection-settings-checkbox-item">
-              <input type="checkbox" checked={actionEnabled} onChange={(event) => setActionEnabled(event.target.checked)} />
+              <input type="checkbox" checked={actionEnabled} onChange={(event) => { setActionEnabled(event.target.checked); void persistAction({ enabled: event.target.checked }); }} />
               <span>{t("desktop.settings.selectionActionEnabled")}</span>
             </label>
             <div className="selection-settings-actions">
-              <button type="button" className="btn primary" onClick={() => void saveAction()}>{t("desktop.settings.save")}</button>
+              {creatingAction ? (
+                <button type="button" className="btn primary" onClick={() => void createAction()}>{t("desktop.settings.selectionCreateAction")}</button>
+              ) : null}
               {selectedAction && !isBuiltinSelectionActionId(selectedAction.actionId) && !creatingAction ? (
                 <button type="button" className="ghost-btn" onClick={() => void removeAction()}>{t("desktop.settings.selectionDeleteAction")}</button>
               ) : null}

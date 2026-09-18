@@ -34,10 +34,16 @@ function SelectRow({ title, description, value, onChange, children }: { title: s
   return <label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{title}</span>{description ? <span className="settings-row-desc">{description}</span> : null}</span><select className="settings-row-control" value={value} onChange={(event) => onChange(event.target.value)}>{children}</select></label>;
 }
 
-export function WorkbenchPane({ draft, setDraft, t }: { draft: WorkbenchDraft; setDraft: (value: WorkbenchDraft) => void; t: Translate }) {
-  const update = <K extends keyof WorkbenchDraft>(key: K, value: WorkbenchDraft[K]) => {
+export function WorkbenchPane({ draft, setDraft, commit, t }: { draft: WorkbenchDraft; setDraft: (value: WorkbenchDraft) => void; commit: (value: WorkbenchDraft) => void; t: Translate }) {
+  /**
+   * Immediate controls (toggles, selects, list add/remove of concrete values) commit
+   * right away. Text inputs and placeholder-row "add" buttons pass `{ commit: false }`;
+   * inputs commit on blur, placeholder rows commit once their fields are filled.
+   */
+  const update = <K extends keyof WorkbenchDraft>(key: K, value: WorkbenchDraft[K], options?: { commit?: boolean }) => {
     const next = { ...draft, [key]: value };
     setDraft(next);
+    if (options?.commit !== false) commit(next);
   };
   const slashPhrases = draft.composerSlashPhrases ?? [];
   const mentions = draft.composerMentions ?? [];
@@ -60,6 +66,7 @@ export function WorkbenchPane({ draft, setDraft, t }: { draft: WorkbenchDraft; s
             next.defaultProvider = value.slice(4) as WorkbenchDraft["defaultProvider"];
           }
           setDraft(next);
+          commit(next);
         }}
       >
         <option value="">{t("desktop.settings.newSessionTarget.askEveryTime")}</option>
@@ -95,7 +102,7 @@ export function WorkbenchPane({ draft, setDraft, t }: { draft: WorkbenchDraft; s
         checked={draft.acpExperimentalGrokVendorUi}
         onChange={(value) => update("acpExperimentalGrokVendorUi", value)}
       />
-      <label className="settings-field"><span className="settings-field-label">{t("desktop.settings.scratchDir")}</span><input value={draft.scratchDir} placeholder="~/.agent-resume-panel/.desktop/scratch" onChange={(event) => update("scratchDir", event.target.value)} /></label>
+      <label className="settings-field"><span className="settings-field-label">{t("desktop.settings.scratchDir")}</span><input value={draft.scratchDir} placeholder="~/.agent-resume-panel/.desktop/scratch" onChange={(event) => update("scratchDir", event.target.value, { commit: false })} onBlur={() => commit(draft)} /></label>
     </div></section>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.composerSlashGroup")}</h3><div className="settings-group-body">
       <p className="settings-footnote">{t("desktop.settings.composerSlashDesc")}</p>
@@ -112,8 +119,9 @@ export function WorkbenchPane({ draft, setDraft, t }: { draft: WorkbenchDraft; s
               placeholder={t("desktop.settings.composerSlashTriggerPlaceholder")}
               onChange={(event) => {
                 const next = slashPhrases.map((phrase, phraseIndex) => phraseIndex === index ? { ...phrase, trigger: event.target.value } : phrase);
-                update("composerSlashPhrases", next);
+                update("composerSlashPhrases", next, { commit: false });
               }}
+              onBlur={() => commit(draft)}
             />
           </label>
           <label className="settings-field">
@@ -126,8 +134,9 @@ export function WorkbenchPane({ draft, setDraft, t }: { draft: WorkbenchDraft; s
               placeholder={t("desktop.settings.composerSlashPhrasePlaceholder")}
               onChange={(event) => {
                 const next = slashPhrases.map((phrase, phraseIndex) => phraseIndex === index ? { ...phrase, phrase: event.target.value } : phrase);
-                update("composerSlashPhrases", next);
+                update("composerSlashPhrases", next, { commit: false });
               }}
+              onBlur={() => commit(draft)}
             />
           </label>
           <label className="settings-field">
@@ -138,8 +147,9 @@ export function WorkbenchPane({ draft, setDraft, t }: { draft: WorkbenchDraft; s
               placeholder={t("desktop.settings.composerSlashDescriptionPlaceholder")}
               onChange={(event) => {
                 const next = slashPhrases.map((phrase, phraseIndex) => phraseIndex === index ? { ...phrase, description: event.target.value } : phrase);
-                update("composerSlashPhrases", next);
+                update("composerSlashPhrases", next, { commit: false });
               }}
+              onBlur={() => commit(draft)}
             />
           </label>
           <div className="settings-action-row">
@@ -155,7 +165,7 @@ export function WorkbenchPane({ draft, setDraft, t }: { draft: WorkbenchDraft; s
         <button
           type="button"
           className="tool-btn"
-          onClick={() => update("composerSlashPhrases", [...slashPhrases, { trigger: "", phrase: "" }])}
+          onClick={() => update("composerSlashPhrases", [...slashPhrases, { trigger: "", phrase: "" }], { commit: false })}
         >{t("desktop.settings.composerSlashAdd")}</button>
       </div>
     </div></section>
@@ -174,7 +184,8 @@ export function WorkbenchPane({ draft, setDraft, t }: { draft: WorkbenchDraft; s
                 autoCapitalize="off"
                 autoCorrect="off"
                 placeholder={t("desktop.settings.composerMentionsIdPlaceholder")}
-                onChange={(event) => update("composerMentions", mentionAt(index, { id: event.target.value }))}
+                onChange={(event) => update("composerMentions", mentionAt(index, { id: event.target.value }), { commit: false })}
+                onBlur={() => commit(draft)}
               />
             </label>
             <label className="settings-field">
@@ -187,8 +198,9 @@ export function WorkbenchPane({ draft, setDraft, t }: { draft: WorkbenchDraft; s
                   onChange={(event) => {
                     const cwd = event.target.value;
                     const nextRoots = [{ path: cwd, role: "work" as const }, ...item.roots.filter((root) => root.role === "reference")];
-                    update("composerMentions", mentionAt(index, { cwd, roots: nextRoots }));
+                    update("composerMentions", mentionAt(index, { cwd, roots: nextRoots }), { commit: false });
                   }}
+                  onBlur={() => commit(draft)}
                 />
                 <button
                   type="button"
@@ -212,8 +224,9 @@ export function WorkbenchPane({ draft, setDraft, t }: { draft: WorkbenchDraft; s
                   placeholder={t("desktop.settings.composerMentionsReferencePlaceholder")}
                   onChange={(event) => {
                     const nextRefs = references.map((entry, entryIndex) => entryIndex === rootIndex ? { ...entry, path: event.target.value } : entry);
-                    update("composerMentions", mentionAt(index, { roots: [{ path: item.cwd, role: "work" }, ...nextRefs] }));
+                    update("composerMentions", mentionAt(index, { roots: [{ path: item.cwd, role: "work" }, ...nextRefs] }), { commit: false });
                   }}
+                  onBlur={() => commit(draft)}
                 />
                 <button
                   type="button"
@@ -242,7 +255,7 @@ export function WorkbenchPane({ draft, setDraft, t }: { draft: WorkbenchDraft; s
                 className="tool-btn"
                 onClick={() => update("composerMentions", mentionAt(index, {
                   roots: [...item.roots, { path: "", role: "reference" }]
-                }))}
+                }), { commit: false })}
               >{t("desktop.settings.composerMentionsAddReference")}</button>
               <button
                 type="button"
@@ -257,19 +270,19 @@ export function WorkbenchPane({ draft, setDraft, t }: { draft: WorkbenchDraft; s
         <button
           type="button"
           className="tool-btn"
-          onClick={() => update("composerMentions", [...mentions, { id: "", cwd: "", roots: [{ path: "", role: "work" }] }])}
+          onClick={() => update("composerMentions", [...mentions, { id: "", cwd: "", roots: [{ path: "", role: "work" }] }], { commit: false })}
         >{t("desktop.settings.composerMentionsAdd")}</button>
       </div>
     </div></section>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.embeddedEditorGroup")}</h3><div className="settings-group-body">
       <ToggleRow title={t("desktop.settings.editorEditable")} description={t("desktop.settings.editorEditableDesc")} checked={draft.editorEditable} onChange={(value) => update("editorEditable", value)} />
-      <label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{t("desktop.settings.editorFontSize")}</span><span className="settings-row-desc">{t("desktop.settings.editorFontSizeDesc")}</span></span><label className="settings-number-control"><input className="settings-number-input" type="number" min="11" max="24" value={draft.editorFontSize} onChange={(event) => update("editorFontSize", Number(event.target.value))} /><span aria-hidden="true">px</span></label></label>
+      <label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{t("desktop.settings.editorFontSize")}</span><span className="settings-row-desc">{t("desktop.settings.editorFontSizeDesc")}</span></span><label className="settings-number-control"><input className="settings-number-input" type="number" min="11" max="24" value={draft.editorFontSize} onChange={(event) => update("editorFontSize", Number(event.target.value), { commit: false })} onBlur={() => commit(draft)} /><span aria-hidden="true">px</span></label></label>
       <ToggleRow title={t("desktop.settings.editorWordWrap")} description={t("desktop.settings.editorWordWrapDesc")} checked={draft.editorWordWrap} onChange={(value) => update("editorWordWrap", value)} />
       <SelectRow title={t("desktop.settings.editorTabSize")} description={t("desktop.settings.editorTabSizeDesc")} value={draft.editorTabSize} onChange={(value) => update("editorTabSize", Number(value) as WorkbenchDraft["editorTabSize"])}><option value="2">{t("desktop.settings.editorTabSize2")}</option><option value="4">{t("desktop.settings.editorTabSize4")}</option><option value="8">{t("desktop.settings.editorTabSize8")}</option></SelectRow>
       <SelectRow title={t("desktop.settings.editorAutoSaveDelay")} description={t("desktop.settings.editorAutoSaveDelayDesc")} value={draft.editorAutoSaveDelayMs} onChange={(value) => update("editorAutoSaveDelayMs", Number(value) as WorkbenchDraft["editorAutoSaveDelayMs"])}><option value="300">{t("desktop.settings.editorAutoSaveDelay300")}</option><option value="600">{t("desktop.settings.editorAutoSaveDelay600")}</option><option value="1000">{t("desktop.settings.editorAutoSaveDelay1000")}</option><option value="2000">{t("desktop.settings.editorAutoSaveDelay2000")}</option></SelectRow>
     </div></section>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.transcriptGroup")}</h3><div className="settings-group-body">
-      <label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{t("desktop.settings.transcriptFontSize")}</span><span className="settings-row-desc">{t("desktop.settings.transcriptFontSizeDesc")}</span></span><label className="settings-number-control"><input className="settings-number-input" type="number" min="11" max="24" value={draft.transcriptFontSize} onChange={(event) => update("transcriptFontSize", Number(event.target.value))} /><span aria-hidden="true">px</span></label></label>
+      <label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{t("desktop.settings.transcriptFontSize")}</span><span className="settings-row-desc">{t("desktop.settings.transcriptFontSizeDesc")}</span></span><label className="settings-number-control"><input className="settings-number-input" type="number" min="11" max="24" value={draft.transcriptFontSize} onChange={(event) => update("transcriptFontSize", Number(event.target.value), { commit: false })} onBlur={() => commit(draft)} /><span aria-hidden="true">px</span></label></label>
     </div></section>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.editorTerminal")}</h3><div className="settings-group-body">
       <SelectRow title={t("desktop.settings.projectEditor")} description={t("desktop.settings.projectEditorDesc")} value={draft.projectEditor} onChange={(value) => update("projectEditor", value as WorkbenchDraft["projectEditor"])}><option value="auto">{t("desktop.settings.editorAuto")}</option><option value="vscode">VS Code</option><option value="vscodium">VSCodium</option><option value="cursor">Cursor</option><option value="windsurf">Windsurf</option></SelectRow>
@@ -321,11 +334,11 @@ export function WorkbenchPane({ draft, setDraft, t }: { draft: WorkbenchDraft; s
     </div></section>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.gitCommitMessageGroup")}</h3><div className="settings-group-body">
       <SelectRow title={t("desktop.settings.gitCommitMessageStyle")} description={t("desktop.settings.gitCommitMessageStyleDesc")} value={draft.gitCommitMessageStyle} onChange={(value) => update("gitCommitMessageStyle", value as WorkbenchDraft["gitCommitMessageStyle"])}><option value="conventional">{t("desktop.settings.gitCommitMessageStyleConventional")}</option><option value="gitmoji">{t("desktop.settings.gitCommitMessageStyleGitmoji")}</option><option value="custom">{t("desktop.settings.gitCommitMessageStyleCustom")}</option></SelectRow>
-      {draft.gitCommitMessageStyle === "custom" ? <label className="settings-field"><span className="settings-field-label">{t("desktop.settings.gitCommitCustomInstructions")}</span><span className="settings-field-desc muted">{t("desktop.settings.gitCommitCustomInstructionsDesc")}</span><textarea rows={6} maxLength={4000} spellCheck={false} value={draft.gitCommitCustomInstructions} onChange={(event) => update("gitCommitCustomInstructions", event.target.value)} /></label> : null}
+      {draft.gitCommitMessageStyle === "custom" ? <label className="settings-field"><span className="settings-field-label">{t("desktop.settings.gitCommitCustomInstructions")}</span><span className="settings-field-desc muted">{t("desktop.settings.gitCommitCustomInstructionsDesc")}</span><textarea rows={6} maxLength={4000} spellCheck={false} value={draft.gitCommitCustomInstructions} onChange={(event) => update("gitCommitCustomInstructions", event.target.value, { commit: false })} onBlur={() => commit(draft)} /></label> : null}
     </div></section>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.gitNestedScanGroup")}</h3><div className="settings-group-body">
       <SelectRow title={t("desktop.settings.gitNestedScanMaxDepth")} description={t("desktop.settings.gitNestedScanMaxDepthDesc")} value={draft.gitNestedScanMaxDepth} onChange={(value) => update("gitNestedScanMaxDepth", Number(value))}>{Array.from({ length: 10 }, (_, index) => <option key={index + 1} value={index + 1}>{index + 1}</option>)}</SelectRow>
-      <label className="settings-field"><span className="settings-field-label">{t("desktop.settings.gitNestedScanIgnoreDirs")}</span><span className="settings-field-desc muted">{t("desktop.settings.gitNestedScanIgnoreDirsDesc")}</span><textarea rows={5} spellCheck={false} placeholder={"node_modules\ndist"} value={draft.gitNestedScanIgnoreDirs} onChange={(event) => update("gitNestedScanIgnoreDirs", event.target.value)} /></label>
+      <label className="settings-field"><span className="settings-field-label">{t("desktop.settings.gitNestedScanIgnoreDirs")}</span><span className="settings-field-desc muted">{t("desktop.settings.gitNestedScanIgnoreDirsDesc")}</span><textarea rows={5} spellCheck={false} placeholder={"node_modules\ndist"} value={draft.gitNestedScanIgnoreDirs} onChange={(event) => update("gitNestedScanIgnoreDirs", event.target.value, { commit: false })} onBlur={() => commit(draft)} /></label>
     </div></section>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.projectContextMenuGroup")}</h3><div className="settings-group-body">
       <p className="settings-footnote">{t("desktop.settings.projectContextMenuDesc")}</p>
@@ -535,13 +548,14 @@ export function BackupPane({ t }: { t: Translate }) {
   );
 }
 
-export function StoragePane({ draft, setDraft, t }: { draft: StorageDraft; setDraft: (value: StorageDraft) => void; t: Translate }) {
+export function StoragePane({ draft, setDraft, commit, t }: { draft: StorageDraft; setDraft: (value: StorageDraft) => void; commit: (value: StorageDraft) => void; t: Translate }) {
   const [advanced, setAdvanced] = useState(false);
-  const update = <K extends keyof StorageDraft>(key: K, value: StorageDraft[K]) => { const next = { ...draft, [key]: value }; setDraft(next); };
+  /** Path inputs commit on blur. */
+  const update = <K extends keyof StorageDraft>(key: K, value: StorageDraft[K], options?: { commit?: boolean }) => { const next = { ...draft, [key]: value }; setDraft(next); if (options?.commit !== false) commit(next); };
   const paths: Array<[keyof StorageDraft, string, string]> = [["codexHome", "desktop.settings.codexHome", "~/.codex"], ["claudeHome", "desktop.settings.claudeHome", "~/.claude"], ["antigravityHome", "desktop.settings.antigravityHome", "~/.gemini"], ["grokHome", "desktop.settings.grokHome", "~/.grok"], ["opencodeHome", "desktop.settings.opencodeHome", "~/.local/share/opencode"], ["piHome", "desktop.settings.piHome", "~/.pi/agent"], ["primeHome", "desktop.settings.primeHome", "~/.prime/agent"], ["cursorHome", "Cursor CLI home", "~/.cursor"], ["cursorIdeUserDataHome", "Cursor IDE user data home", "Platform default"]];
   return <>
-    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.appData")}</h3><div className="settings-group-body"><p className="settings-footnote">{t("desktop.settings.appDataFootnote")}</p><label className="settings-field"><span className="settings-field-label">{t("desktop.settings.panelHome")}</span><input placeholder="~/.agent-resume-panel" value={draft.panelHome} onChange={(event) => update("panelHome", event.target.value)} /></label><p className="settings-footnote">{t("desktop.settings.panelHomeFootnote")}</p><div className="settings-path-row"><button type="button" className="tool-btn" onClick={() => void desktopApi().settingsOpenPanelHome()}>{t("desktop.common.revealInFinder")}</button></div></div></section>
-    <section className={`settings-group settings-disclosure${advanced ? "" : " collapsed"}`}><button type="button" className="settings-disclosure-head" aria-expanded={advanced} onClick={() => setAdvanced((value) => !value)}><span className="settings-disclosure-chevron" aria-hidden="true" /><span className="settings-disclosure-title">{t("desktop.settings.agentHomesAdvanced")}</span></button>{advanced ? <div className="settings-disclosure-body">{paths.map(([key, label, placeholder]) => <label className="settings-field" key={key}><span className="settings-field-label">{label.startsWith("desktop.") ? t(label) : label}</span><input placeholder={placeholder} value={draft[key]} onChange={(event) => update(key, event.target.value)} /></label>)}</div> : null}</section>
+    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.appData")}</h3><div className="settings-group-body"><p className="settings-footnote">{t("desktop.settings.appDataFootnote")}</p><label className="settings-field"><span className="settings-field-label">{t("desktop.settings.panelHome")}</span><input placeholder="~/.agent-resume-panel" value={draft.panelHome} onChange={(event) => update("panelHome", event.target.value, { commit: false })} onBlur={() => commit(draft)} /></label><p className="settings-footnote">{t("desktop.settings.panelHomeFootnote")}</p><div className="settings-path-row"><button type="button" className="tool-btn" onClick={() => void desktopApi().settingsOpenPanelHome()}>{t("desktop.common.revealInFinder")}</button></div></div></section>
+    <section className={`settings-group settings-disclosure${advanced ? "" : " collapsed"}`}><button type="button" className="settings-disclosure-head" aria-expanded={advanced} onClick={() => setAdvanced((value) => !value)}><span className="settings-disclosure-chevron" aria-hidden="true" /><span className="settings-disclosure-title">{t("desktop.settings.agentHomesAdvanced")}</span></button>{advanced ? <div className="settings-disclosure-body">{paths.map(([key, label, placeholder]) => <label className="settings-field" key={key}><span className="settings-field-label">{label.startsWith("desktop.") ? t(label) : label}</span><input placeholder={placeholder} value={draft[key]} onChange={(event) => update(key, event.target.value, { commit: false })} onBlur={() => commit(draft)} /></label>)}</div> : null}</section>
   </>;
 }
 
@@ -563,10 +577,11 @@ function captureShortcutFromKeyDown(event: KeyboardEvent<HTMLInputElement>): str
   return [...modifiers, key].join("+");
 }
 
-export function NotesPane({ draft, setDraft, t }: { draft: NotesDraft; setDraft: (value: NotesDraft) => void; t: Translate }) {
+export function NotesPane({ draft, setDraft, commit, t }: { draft: NotesDraft; setDraft: (value: NotesDraft) => void; commit: (value: NotesDraft) => void; t: Translate }) {
   const updateField = <K extends keyof NotesDraft>(key: K, value: NotesDraft[K]) => {
     const next = { ...draft, [key]: value };
     setDraft(next);
+    commit(next);
   };
   return (
     <>
