@@ -9190,4 +9190,47 @@ describe("WorkbenchPanel", () => {
     expect(terminalAttach).not.toHaveBeenCalledWith({ id: 78 });
     await waitFor(() => expect(document.querySelectorAll(".wb-terminal-tab").length).toBe(1));
   });
+  it("answers a workbench window close request after flushing", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    let closeRequest: (() => void) | undefined;
+    const taskWindowCloseReady = vi.fn(async () => ({ ok: true }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.workbench.allSessions": "All sessions",
+        "desktop.workbench.newSession": "New session",
+        "desktop.workbench.selectSessionHint": "Select a session"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      onTaskWindowCloseRequested: (callback: () => void) => {
+        closeRequest = callback;
+        return () => { closeRequest = undefined; };
+      },
+      taskWindowCloseReady,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      notesListTasks: async () => [],
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] })
+    } as unknown as typeof window.agentResume;
+
+    document.documentElement.dataset.windowMode = "task";
+    try {
+      render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+      await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+      await waitFor(() => expect(closeRequest).toBeTruthy());
+
+      await act(async () => { closeRequest?.(); });
+      // Nothing dirty: the window may close immediately.
+      await waitFor(() => expect(taskWindowCloseReady).toHaveBeenCalledWith({ ok: true }));
+    } finally {
+      document.documentElement.dataset.windowMode = "main";
+    }
+  });
 });

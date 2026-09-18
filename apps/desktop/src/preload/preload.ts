@@ -151,6 +151,9 @@ export interface DesktopApi {
   taskWindowGetState(): Promise<{ workbenchId: string; noteId: string; title: string }>;
   taskWindowSetTitle(args: { title: string }): Promise<{ ok: boolean }>;
   taskWindowClose(): Promise<{ ok: boolean }>;
+  /** The host asked this window to close; answer with `taskWindowCloseReady`. */
+  onTaskWindowCloseRequested(callback: () => void): () => void;
+  taskWindowCloseReady(args: { ok: boolean }): Promise<{ ok: boolean }>;
   browserCreate(args: {
     projectPath: string;
     startUrl?: string;
@@ -1529,6 +1532,12 @@ const api: DesktopApi = {
   taskWindowGetState: () => ipcRenderer.invoke("task-window:getState"),
   taskWindowSetTitle: (args) => ipcRenderer.invoke("task-window:setTitle", args),
   taskWindowClose: () => ipcRenderer.invoke("task-window:close"),
+  onTaskWindowCloseRequested: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on("task-window:requestClose", handler);
+    return () => ipcRenderer.removeListener("task-window:requestClose", handler);
+  },
+  taskWindowCloseReady: (args) => ipcRenderer.invoke("task-window:closeReady", args),
   browserCreate: (args) => ipcRenderer.invoke("browser:create", args),
   browserDestroy: (args) => ipcRenderer.invoke("browser:destroy", args),
   browserList: () => ipcRenderer.invoke("browser:list"),

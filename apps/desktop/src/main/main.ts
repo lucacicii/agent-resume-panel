@@ -1620,9 +1620,48 @@ async function installApplicationMenu(): Promise<void> {
 }
 
 /**
+ * Windows waiting on a renderer answer before they may close.
+ *
+ * A workbench window can hold unsaved editor buffers, so closing asks the
+ * renderer to flush them first — the bargain the floating note windows make.
+ */
+const pendingTaskWindowCloses = new Map<number, { settle: (closed: boolean) => void }>();
+const TASK_WINDOW_CLOSE_TIMEOUT_MS = 15_000;
+
+function registerTaskWindowCloseGuard(win: BrowserWindow): void {
+  const senderId = win.webContents.id;
+  let allowClose = false;
+  win.on("close", (event) => {
+    if (allowClose || allowAppQuit || win.webContents.isDestroyed()) return;
+    event.preventDefault();
+    if (pendingTaskWindowCloses.has(senderId)) return;
+    const timer = setTimeout(() => {
+      pendingTaskWindowCloses.delete(senderId);
+      allowClose = true;
+      if (!win.isDestroyed()) win.close();
+    }, TASK_WINDOW_CLOSE_TIMEOUT_MS);
+    timer.unref?.();
+    pendingTaskWindowCloses.set(senderId, {
+      settle: (closed: boolean) => {
+        clearTimeout(timer);
+        pendingTaskWindowCloses.delete(senderId);
+        if (!closed || win.isDestroyed()) return;
+        allowClose = true;
+        win.close();
+      }
+    });
+    win.webContents.send("task-window:requestClose");
+  });
+  win.on("closed", () => {
+    pendingTaskWindowCloses.get(senderId)?.settle(false);
+  });
+}
+
+/**
  * Dependencies for workbench windows. Preload and renderer paths mirror the main
- * keep the workbench window's ⌘T / ⌘⇧F / ⌘P / ⌘W: those act on the workbench
- * that window hosts.
+ * window's so every window loads the same bridge and bundle, and each workbench
+ * window keeps the workbench window's ⌘T / ⌘⇧F / ⌘P / ⌘W: those act on the
+ * workbench that window hosts.
  */
 function taskWindowDeps(): TaskWindowDeps {
   const icon = loadAppIcon();
@@ -1630,7 +1669,10 @@ function taskWindowDeps(): TaskWindowDeps {
     preloadPath: path.join(__dirname, "..", "preload", "preload.js"),
     rendererIndex: path.join(__dirname, "..", "renderer", "index.html"),
     ...(icon ? { icon } : {}),
-    onCreated: (win) => registerWorkbenchShortcuts(win),
+    onCreated: (win) => {
+      registerWorkbenchShortcuts(win);
+      registerTaskWindowCloseGuard(win);
+    },
     onChange: (windows) => {
       pruneWorkbenchActiveSenders();
       broadcastToRenderers("task-window:changed", windows);
@@ -2971,6 +3013,12 @@ function registerIpc(): void {
     if (!state || state.window.isDestroyed()) return { ok: false as const };
     state.window.close();
     return { ok: true as const };
+  });
+  ipcMain.handle("task-window:closeReady", async (event, args: { ok?: unknown }) => {
+    const pending = pendingTaskWindowCloses.get(event.sender.id);
+    if (!pending) return { ok: false as const };
+    pending.settle(args?.ok === true);
+    return { ok: args?.ok === true } as const;
   });
   ipcMain.handle(
     "notes:resumeSession",

@@ -568,8 +568,25 @@ function formatDateTime(timestamp: number): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+/** Persist a layout value for the workbench this window is showing. */
+function writeWorkbenchValue(key: string, workbenchId: string | null | undefined, value: string): void {
+  try { localStorage.setItem(workbenchScopedKey(key, workbenchId), value); } catch { /* storage is optional */ }
+}
+
 function storageString(key: string): string {
   try { return localStorage.getItem(key) || ""; } catch { return ""; }
+}
+
+/**
+ * UI state that belongs to one workbench rather than to the app.
+ *
+ * Every window shares one localStorage, so two windows showing different
+ * workbenches would otherwise overwrite each other's pane widths and view mode.
+ * The unscoped key stays as the fallback for the first window, before its
+ * workbench resolves.
+ */
+function workbenchScopedKey(key: string, workbenchId: string | null | undefined): string {
+  return workbenchId ? `${key}:${workbenchId}` : key;
 }
 
 function loadPinnedProjects(): Set<string> {
@@ -750,6 +767,8 @@ export function WorkbenchPanel(): ReactPortal | null {
   const terminalsRef = useRef<TerminalPane[]>([]);
   const refreshTerminalGitRef = useRef<(key: string) => Promise<void>>(async () => {});
   const editorsRef = useRef<EditorPane[]>([]);
+  /** Latest editor save, so the window-close flush never captures a stale one. */
+  const saveEditorRef = useRef<(key: string) => Promise<boolean>>(async () => true);
   const diffsRef = useRef<DiffPane[]>([]);
   const notePanesRef = useRef<NotePane[]>([]);
   const fileExplorerRef = useRef<WorkbenchFileExplorerHandle | null>(null);
@@ -1828,7 +1847,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const toggleSessionViewMode = useCallback(() => {
     setSessionViewMode((current) => {
       const next = current === "hybrid" ? "terminal" : "hybrid";
-      localStorage.setItem(SESSION_VIEW_MODE_KEY, next);
+      writeWorkbenchValue(SESSION_VIEW_MODE_KEY, activeWorkbenchIdRef.current, next);
       return next;
     });
   }, []);
@@ -2745,7 +2764,7 @@ export function WorkbenchPanel(): ReactPortal | null {
           const terminalKey = addTerminal(title, launchCwd, result.command, launchCwd, undefined, "session", { initialPrompt: prompt, env: result.env });
           addPendingSession(terminalKey, target.provider, launchCwd, title);
           setSessionViewMode("hybrid");
-          localStorage.setItem(SESSION_VIEW_MODE_KEY, "hybrid");
+          writeWorkbenchValue(SESSION_VIEW_MODE_KEY, activeWorkbenchIdRef.current, "hybrid");
         }
         await loadSessions();
       }
@@ -2885,6 +2904,25 @@ export function WorkbenchPanel(): ReactPortal | null {
     // A workbench window with no pane left to close is the window itself.
     if (document.documentElement.dataset.windowMode === "task") void desktopApi().taskWindowClose();
   }), [active, closeActivePane]);
+
+  /**
+   * Closing a workbench window flushes its unsaved editor buffers first; if one
+   * cannot be saved, the window stays open rather than dropping the edit.
+   */
+  useEffect(() => {
+    if (document.documentElement.dataset.windowMode !== "task") return;
+    const stop = desktopApi().onTaskWindowCloseRequested?.(() => {
+      void (async () => {
+        const dirty = editorsRef.current.filter((pane) => pane.dirty).map((pane) => pane.key);
+        for (const key of dirty) {
+          try { await saveEditorRef.current(key); } catch { /* reported by the editor status */ }
+        }
+        const stillDirty = editorsRef.current.some((pane) => pane.dirty);
+        await desktopApi().taskWindowCloseReady?.({ ok: !stillDirty }).catch(() => undefined);
+      })();
+    });
+    return () => stop?.();
+  }, []);
 
   /** ⌘⇧F / Ctrl+Shift+F — open Find in Files (Search side panel). */
   useEffect(() => {
@@ -3098,7 +3136,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       selectProject(projectPath, { keepSessionKey: true });
       const terminalKey = addTerminal(session.title || session.id, cwd, command, projectPath, key);
       setSessionViewMode("hybrid");
-      localStorage.setItem(SESSION_VIEW_MODE_KEY, "hybrid");
+      writeWorkbenchValue(SESSION_VIEW_MODE_KEY, activeWorkbenchIdRef.current, "hybrid");
       // Box-primary: an agent session pane lands text entry in its composer
       // (deferred until the PTY spawns). Shell panes keep raw xterm focus.
       focusWorkbenchPane(terminalKey);
@@ -3139,7 +3177,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     selectProject(projectPath);
     const paneKey = addTerminal(detail.title || detail.id, detail.cwd, detail.command, projectPath, key, "session", detail.initialPrompt ? { initialPrompt: detail.initialPrompt } : undefined);
     setSessionViewMode("hybrid");
-    localStorage.setItem(SESSION_VIEW_MODE_KEY, "hybrid");
+    writeWorkbenchValue(SESSION_VIEW_MODE_KEY, activeWorkbenchIdRef.current, "hybrid");
     setActiveSessionKey(key);
     focusWorkbenchPane(paneKey);
   }, [addTerminal, focusWorkbenchPane, selectProject, setActivePane]);
@@ -3317,6 +3355,17 @@ export function WorkbenchPanel(): ReactPortal | null {
     if (selectedProjectRef.current === workbench.projectPath) return;
     selectProject(workbench.projectPath, { keepSessionKey: true });
   }, [activeWorkbenchId, workbenches, selectProject]);
+
+  // Pane geometry and the session view mode belong to the workbench, so a
+  // window picks up the values of the workbench it is showing.
+  useEffect(() => {
+    if (!activeWorkbenchId) return;
+    setListWidth(storedWidth(workbenchScopedKey(LIST_WIDTH_KEY, activeWorkbenchId), 324, 240, 720));
+    setSideWidth(storedWidth(workbenchScopedKey(SIDE_WIDTH_KEY, activeWorkbenchId), 320, 240, 840));
+    setTuiSplitHeight(storedWidth(workbenchScopedKey(TUI_SPLIT_HEIGHT_KEY, activeWorkbenchId), 180, 80, 600));
+    const mode = storageString(workbenchScopedKey(SESSION_VIEW_MODE_KEY, activeWorkbenchId));
+    if (mode === "terminal" || mode === "hybrid") setSessionViewMode(mode);
+  }, [activeWorkbenchId]);
 
   const activateWorkbench = useCallback((workbench: Workbench) => {
     setActiveWorkbenchId(workbench.workbenchId);
@@ -4305,6 +4354,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       return false;
     }
   };
+  saveEditorRef.current = saveEditor;
 
   const saveTimers = useRef(new Map<string, number>());
   useEffect(() => () => saveTimers.current.forEach((timer) => window.clearTimeout(timer)), []);
@@ -5252,8 +5302,8 @@ export function WorkbenchPanel(): ReactPortal | null {
     const current = kind === "list" ? listWidth : sideWidth;
     const limits = kind === "list" ? [240, 720] : [240, 840];
     const next = Math.max(limits[0], Math.min(limits[1], current + delta));
-    if (kind === "list") { setListWidth(next); localStorage.setItem(LIST_WIDTH_KEY, String(next)); }
-    else { setSideWidth(next); localStorage.setItem(SIDE_WIDTH_KEY, String(next)); }
+    if (kind === "list") { setListWidth(next); writeWorkbenchValue(LIST_WIDTH_KEY, activeWorkbenchIdRef.current, String(next)); }
+    else { setSideWidth(next); writeWorkbenchValue(SIDE_WIDTH_KEY, activeWorkbenchIdRef.current, String(next)); }
   };
 
   const contextMenuWidth = contextMenu?.kind === "session" || contextMenu?.kind === "session-tab" ? 210 : 240;
@@ -6024,7 +6074,7 @@ export function WorkbenchPanel(): ReactPortal | null {
                     onDelta={(delta) => {
                       setTuiSplitHeight((prev) => {
                         const next = Math.max(80, Math.min(600, prev - delta));
-                        localStorage.setItem(TUI_SPLIT_HEIGHT_KEY, String(next));
+                        writeWorkbenchValue(TUI_SPLIT_HEIGHT_KEY, activeWorkbenchIdRef.current, String(next));
                         return next;
                       });
                     }}
