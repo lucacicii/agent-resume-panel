@@ -1289,9 +1289,8 @@ function shouldScheduleBackgroundAnalysis(): boolean {
 
 async function syncAndNotify(): Promise<AgentSessionSyncResult> {
   const result = await syncSessions();
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send("sessions:synced", result);
-  }
+  // Every window lists sessions, so every window refreshes when the catalog moves.
+  broadcastToRenderers("sessions:synced", result);
   if (shouldScheduleBackgroundAnalysis()) {
     scheduleSessionSummaryAuto(2_000);
     scheduleSessionTranscriptIndexAuto(3_000);
@@ -1440,14 +1439,12 @@ function startSessionSyncTimer(): void {
 }
 
 function notifySessionSyncFailure(error: unknown): void {
-  mainWindow?.webContents.send("sessions:syncFailed", error instanceof Error ? error.message : String(error));
+  broadcastToRenderers("sessions:syncFailed", error instanceof Error ? error.message : String(error));
 }
 
 function startDesktopNotesIndexer(): void {
   startNotesIndexer((progress) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send("notes:indexProgress", progress);
-    }
+    broadcastToRenderers("notes:indexProgress", progress);
   });
 }
 
