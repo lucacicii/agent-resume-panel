@@ -619,10 +619,26 @@ html[data-window-mode="main"] #react-settings:not(:empty) {
 }
 
 /* Workbench window (data-window-mode=task): one workbench fills the window, no
-   board and no app chrome, so the panel itself is the whole surface. */
+   board and no app chrome, so the panel itself is the whole surface. The top
+   strip belongs to the window: it keeps content clear of the macOS traffic
+   lights and drags the window, the way the board window's header does. */
 html[data-window-mode="task"] body > main {
   position: relative;
   padding: 0;
+}
+
+html[data-window-mode="task"] .workbench-layout {
+  padding-top: 30px;
+}
+
+html[data-window-mode="task"] body > main::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 30px;
+  -webkit-app-region: drag;
 }
 
 html[data-window-mode="task"] #react-chrome {
