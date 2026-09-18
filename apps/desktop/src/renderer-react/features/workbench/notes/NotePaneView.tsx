@@ -713,7 +713,7 @@ export function NotePaneView({ noteId, active, onOpenNote, onTitleChange, onDirt
             label={t("desktop.notes.resizeLinkTree")}
             onDelta={(delta) => {
               setLinkTreeHeight((previous) => {
-                const next = Math.max(120, Math.min(520, previous - delta));
+                const next = Math.max(120, Math.min(520, previous + delta));
                 try { localStorage.setItem(LINK_TREE_HEIGHT_KEY, String(next)); } catch { /* persistence is optional */ }
                 return next;
               });
