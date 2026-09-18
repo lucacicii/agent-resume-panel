@@ -194,11 +194,18 @@ export function disposeWorkbenchWatchers(): void {
   for (const senderId of [...watches.keys()]) stopSender(senderId);
 }
 
-export function registerWorkbenchWatcherIpc(getMainWindow: () => BrowserWindow | null): void {
+export function registerWorkbenchWatcherIpc(
+  getMainWindow: () => BrowserWindow | null,
+  isAppWindowSender: (sender: WebContents) => boolean = () => false
+): void {
   safeHandle(
     "workbench:setFileWatch",
     async (event, args: { rootPaths: string[] | null }) => {
-      if (event.sender !== getMainWindow()?.webContents) throw new Error("无效的窗口来源");
+      // Every workbench window watches its own roots; the main window is listed
+      // explicitly so a foreign webContents (browser pane) can never subscribe.
+      if (event.sender !== getMainWindow()?.webContents && !isAppWindowSender(event.sender)) {
+        throw new Error("无效的窗口来源");
+      }
       stopSender(event.sender.id);
       const requested = args?.rootPaths;
       if (!requested || !requested.length) return { rootPaths: [] as string[] };

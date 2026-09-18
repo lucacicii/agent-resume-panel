@@ -148,6 +148,18 @@ import {
 import { registerWorkbenchGitIpc } from "./workbenchGit";
 import { registerWorkbenchScriptsIpc } from "./workbenchScripts";
 import {
+  closeAllTaskWindows,
+  focusTaskWindow,
+  isTaskWindowSender,
+  listTaskWindows,
+  openTaskWindow,
+  openTaskWindowCount,
+  setTaskWindowTitle,
+  summarizeTaskWindows,
+  taskWindowStateForSender,
+  type TaskWindowDeps
+} from "./taskWindows";
+import {
   disposeBrowserController,
   disposeBrowserMcpServer,
   listBrowserToolDescriptors,
@@ -570,7 +582,12 @@ let allowAppQuit = false;
 let quitCleanupDone = false;
 let sessionSyncTimer: NodeJS.Timeout | null = null;
 let sessionSyncInFlight: Promise<AgentSessionSyncResult> | null = null;
-let workbenchActive = false;
+/**
+ * Windows whose workbench surface is currently the visible one. Per window, not
+ * global: several workbench windows can be open at once, and each one owns its
+ * own ⌘W / file-watch semantics.
+ */
+const workbenchActiveSenders = new Set<number>();
 let workbenchActiveSessions: ReturnType<typeof parseWorkbenchActiveSessionDots> = [];
 const SESSION_SYNC_INTERVAL_MS = 60_000;
 
@@ -602,12 +619,31 @@ function stringList(value: unknown): string[] | undefined {
 function broadcastToRenderers(channel: string, ...args: unknown[]): void {
   const windows = [
     mainWindow,
-    ...[...standaloneNoteWindows.values()].map((state) => state.window)
+    ...[...standaloneNoteWindows.values()].map((state) => state.window),
+    ...listTaskWindows().map((state) => state.window)
   ];
   for (const win of windows) {
     if (win && !win.isDestroyed()) {
       win.webContents.send(channel, ...args);
     }
+  }
+}
+
+/** True while `win` is showing its workbench surface. */
+function workbenchIsActive(win: BrowserWindow | null): boolean {
+  if (!win || win.isDestroyed()) return false;
+  return workbenchActiveSenders.has(win.webContents.id);
+}
+
+function anyWorkbenchActive(): boolean {
+  return workbenchActiveSenders.size > 0;
+}
+
+/** Drop senders whose window is gone; call whenever the window set changes. */
+function pruneWorkbenchActiveSenders(): void {
+  const alive = new Set(BrowserWindow.getAllWindows().map((win) => win.webContents.id));
+  for (const id of [...workbenchActiveSenders]) {
+    if (!alive.has(id)) workbenchActiveSenders.delete(id);
   }
 }
 
@@ -1085,6 +1121,7 @@ function performQuitCleanup(): void {
     globalShortcut.unregister(registeredRecentStandaloneNoteShortcut);
     registeredRecentStandaloneNoteShortcut = "";
   }
+  closeAllTaskWindows();
   disposeWorkbenchWatchers();
   disposeBrowserController();
   void disposeBrowserMcpServer();
@@ -1388,7 +1425,7 @@ function registerWorkbenchShortcuts(win: BrowserWindow): void {
       return;
     }
 
-    if (workbenchActive && isWorkbenchCmdWInput(input)) {
+    if (workbenchIsActive(win) && isWorkbenchCmdWInput(input)) {
       event.preventDefault();
       if (!win.isDestroyed()) {
         win.webContents.send("workbench:cmdW");
@@ -1448,7 +1485,9 @@ function createWindow(): void {
   mainWindow.on("minimize", stopSessionSyncTimer);
   mainWindow.on("close", (event) => {
     if (allowAppQuit) return;
-    const keepHidden = process.platform === "darwin" || standaloneNoteWindows.size > 0;
+    const keepHidden = process.platform === "darwin"
+      || standaloneNoteWindows.size > 0
+      || openTaskWindowCount() > 0;
     if (!keepHidden) return;
     event.preventDefault();
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
@@ -1456,7 +1495,8 @@ function createWindow(): void {
   mainWindow.on("closed", () => {
     stopSessionSyncTimer();
     void flushImStreamingMessages();
-    workbenchActive = false;
+    // Other windows may still be showing a workbench; only their own senders count.
+    pruneWorkbenchActiveSenders();
     mainWindowReadyToShow = false;
     mainWindowRendererReady = false;
     mainWindow = null;
@@ -1538,6 +1578,23 @@ async function installApplicationMenu(): Promise<void> {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+/**
+ * Dependencies for workbench windows. Preload and renderer paths mirror the main
+ * window's so every window loads the same bridge and bundle.
+ */
+function taskWindowDeps(): TaskWindowDeps {
+  const icon = loadAppIcon();
+  return {
+    preloadPath: path.join(__dirname, "..", "preload", "preload.js"),
+    rendererIndex: path.join(__dirname, "..", "renderer", "index.html"),
+    ...(icon ? { icon } : {}),
+    onChange: (windows) => {
+      pruneWorkbenchActiveSenders();
+      broadcastToRenderers("task-window:changed", windows);
+    }
+  };
+}
+
 function registerIpc(): void {
   ipcMain.on("main:rendererReady", (event) => {
     if (event.sender !== mainWindow?.webContents) return;
@@ -1547,10 +1604,9 @@ function registerIpc(): void {
   });
 
   ipcMain.on("workbench:setActive", (event, active: unknown) => {
-    if (event.sender === mainWindow?.webContents) {
-      workbenchActive = active === true;
-      setWorkbenchWatcherActive(workbenchActive);
-    }
+    if (active === true) workbenchActiveSenders.add(event.sender.id);
+    else workbenchActiveSenders.delete(event.sender.id);
+    setWorkbenchWatcherActive(anyWorkbenchActive());
   });
 
   ipcMain.on("workbench:activeSessions", (event, payload: unknown) => {
@@ -2831,6 +2887,47 @@ function registerIpc(): void {
     return { ok: true as const };
   });
   ipcMain.handle(
+    "task-window:open",
+    async (_event, args: { noteId?: unknown; workbenchId?: unknown; title?: unknown; x?: unknown; y?: unknown }) => {
+      const noteId = typeof args?.noteId === "string" ? args.noteId.trim() : "";
+      const workbenchId = typeof args?.workbenchId === "string" ? args.workbenchId.trim() : "";
+      if (!noteId || !workbenchId) throw new Error("A task note id and a workbench id are required.");
+      const result = openTaskWindow(taskWindowDeps(), {
+        noteId,
+        workbenchId,
+        ...(typeof args?.title === "string" && args.title.trim() ? { title: args.title.trim() } : {}),
+        ...(typeof args?.x === "number" && Number.isFinite(args.x) ? { x: args.x } : {}),
+        ...(typeof args?.y === "number" && Number.isFinite(args.y) ? { y: args.y } : {})
+      });
+      return result;
+    }
+  );
+  ipcMain.handle("task-window:list", async () => summarizeTaskWindows());
+  ipcMain.handle("task-window:focus", async (_event, args: { workbenchId?: unknown }) => {
+    const workbenchId = typeof args?.workbenchId === "string" ? args.workbenchId.trim() : "";
+    return { ok: workbenchId ? focusTaskWindow(workbenchId) : false };
+  });
+  ipcMain.handle("task-window:getState", async (event) => {
+    const state = taskWindowStateForSender(event.sender);
+    if (!state || state.window.isDestroyed()) throw new Error("Task window not found.");
+    return { workbenchId: state.workbenchId, noteId: state.noteId, title: state.title };
+  });
+  ipcMain.handle("task-window:setTitle", async (event, args: { title?: unknown }) => {
+    const state = taskWindowStateForSender(event.sender);
+    if (!state || state.window.isDestroyed()) return { ok: false as const };
+    if (typeof args?.title === "string") {
+      setTaskWindowTitle(state.workbenchId, args.title);
+      broadcastToRenderers("task-window:changed", summarizeTaskWindows());
+    }
+    return { ok: true as const };
+  });
+  ipcMain.handle("task-window:close", async (event) => {
+    const state = taskWindowStateForSender(event.sender);
+    if (!state || state.window.isDestroyed()) return { ok: false as const };
+    state.window.close();
+    return { ok: true as const };
+  });
+  ipcMain.handle(
     "notes:resumeSession",
     async (_event, args: { provider: AgentProvider; sessionId: string; initialPrompt?: string }) => {
       const resume = async (): Promise<{
@@ -2855,7 +2952,12 @@ function registerIpc(): void {
               mode: result.mode,
               initialPrompt: args.initialPrompt?.trim() || undefined
             };
-            broadcastToRenderers("workbench:resumeFromAgent", payload);
+            // Resuming a session must land in exactly one window. Until the
+            // pane registry can route it to the owning workbench, keep it on the
+            // window that owns the resume entry points.
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send("workbench:resumeFromAgent", payload);
+            }
           }
           return {
             ok: true,
@@ -3150,7 +3252,7 @@ app.whenReady().then(async () => {
     }
   });
   registerWorkbenchFsIpc();
-  registerWorkbenchWatcherIpc(() => mainWindow);
+  registerWorkbenchWatcherIpc(() => mainWindow, (sender) => isTaskWindowSender(sender));
   registerWorkbenchGitIpc(() => app.getLocale());
   registerWorkbenchScriptsIpc();
   registerBrowserIpc({
@@ -3303,7 +3405,7 @@ app.whenReady().then(async () => {
 });
 
 app.on("before-quit", (event) => {
-  if (!allowAppQuit && standaloneNoteWindows.size > 0) {
+  if (!allowAppQuit && (standaloneNoteWindows.size > 0 || openTaskWindowCount() > 0)) {
     event.preventDefault();
     void beginAppQuit().catch((error) => {
       void recordAppError({ source: "standalone-note", message: "Application quit coordination failed.", error });
@@ -3325,10 +3427,10 @@ app.on("before-quit", (event) => {
 });
 
 app.on("window-all-closed", () => {
-  const notesOpen = standaloneNoteWindows.size > 0;
+  const backgroundWindowsOpen = standaloneNoteWindows.size > 0 || openTaskWindowCount() > 0;
   // macOS: app stays in Dock without windows — keep scheduler/notes indexer running so
   // scheduled digests still fire. Hide-on-close also keeps the hidden main window alive.
-  if (process.platform !== "darwin" && !notesOpen) {
+  if (process.platform !== "darwin" && !backgroundWindowsOpen) {
     stopMemoryScheduler();
     stopNotesIndexer();
     stopSessionSummaryAuto();

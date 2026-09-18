@@ -618,6 +618,17 @@ html[data-window-mode="main"] #react-settings:not(:empty) {
   z-index: 40;
 }
 
+/* Workbench window (data-window-mode=task): one workbench fills the window, no
+   board and no app chrome, so the panel itself is the whole surface. */
+html[data-window-mode="task"] body > main {
+  position: relative;
+  padding: 0;
+}
+
+html[data-window-mode="task"] #react-chrome {
+  display: none;
+}
+
 .settings-overlay {
   position: absolute;
   inset: 0;

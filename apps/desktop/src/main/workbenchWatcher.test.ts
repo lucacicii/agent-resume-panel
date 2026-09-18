@@ -233,4 +233,23 @@ describe("workbench watcher fallback", () => {
       rootPath: root
     }));
   });
+
+  it("accepts an authorized workbench window and rejects a foreign sender", async () => {
+    const root = await makeRoot();
+    installWatchMock(() => ({ close: vi.fn(), on: vi.fn(), emitError: () => undefined } as unknown as FakeWatcher));
+    const main = createSender();
+    const taskWindow = createSender();
+    const foreign = createSender();
+    registerWorkbenchWatcherIpc(
+      () => ({ webContents: main } as never),
+      (sender) => sender === (taskWindow as unknown as typeof sender)
+    );
+
+    await expect(getSetFileWatchHandler()({ sender: foreign }, { rootPaths: [root] }))
+      .rejects.toThrow("无效的窗口来源");
+
+    const watched = await getSetFileWatchHandler()({ sender: taskWindow }, { rootPaths: [root] });
+    expect(watched.rootPaths).toEqual([root]);
+    expect(getWorkbenchWatcherRuntimeMetrics()).toEqual({ watcherCount: 1, pollingCount: 0, activeCount: 1 });
+  });
 });

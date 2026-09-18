@@ -133,6 +133,24 @@ export interface DesktopApi {
   standaloneNoteClose(): Promise<{ ok: boolean }>;
   standaloneNoteCloseReady(args: { ok: boolean }): Promise<{ ok: boolean }>;
   onStandaloneNoteCloseRequested(callback: () => void): () => void;
+  /**
+   * Open the window that hosts one task workbench, or focus it when it is
+   * already open. One workbenchId maps to one window (and one workbench copy).
+   */
+  taskWindowOpen(args: {
+    noteId: string;
+    workbenchId: string;
+    title?: string;
+    x?: number;
+    y?: number;
+  }): Promise<{ ok: true; created: boolean } | { ok: false; reason: "limit"; limit: number }>;
+  /** Open workbench windows, for board badges and tray menus. */
+  taskWindowList(): Promise<Array<{ workbenchId: string; noteId: string; title: string }>>;
+  onTaskWindowsChanged(callback: (windows: Array<{ workbenchId: string; noteId: string; title: string }>) => void): () => void;
+  taskWindowFocus(args: { workbenchId: string }): Promise<{ ok: boolean }>;
+  taskWindowGetState(): Promise<{ workbenchId: string; noteId: string; title: string }>;
+  taskWindowSetTitle(args: { title: string }): Promise<{ ok: boolean }>;
+  taskWindowClose(): Promise<{ ok: boolean }>;
   browserCreate(args: {
     projectPath: string;
     startUrl?: string;
@@ -1488,6 +1506,20 @@ const api: DesktopApi = {
     ipcRenderer.on("standalone-note:requestClose", handler);
     return () => ipcRenderer.removeListener("standalone-note:requestClose", handler);
   },
+  taskWindowOpen: (args) => ipcRenderer.invoke("task-window:open", args),
+  taskWindowList: () => ipcRenderer.invoke("task-window:list"),
+  onTaskWindowsChanged: (callback) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      windows: Array<{ workbenchId: string; noteId: string; title: string }>
+    ) => callback(windows);
+    ipcRenderer.on("task-window:changed", handler);
+    return () => ipcRenderer.removeListener("task-window:changed", handler);
+  },
+  taskWindowFocus: (args) => ipcRenderer.invoke("task-window:focus", args),
+  taskWindowGetState: () => ipcRenderer.invoke("task-window:getState"),
+  taskWindowSetTitle: (args) => ipcRenderer.invoke("task-window:setTitle", args),
+  taskWindowClose: () => ipcRenderer.invoke("task-window:close"),
   browserCreate: (args) => ipcRenderer.invoke("browser:create", args),
   browserDestroy: (args) => ipcRenderer.invoke("browser:destroy", args),
   browserList: () => ipcRenderer.invoke("browser:list"),

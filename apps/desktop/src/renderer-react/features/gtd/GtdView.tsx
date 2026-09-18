@@ -3,9 +3,10 @@ import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { GtdStatus, TaskGtdRollup } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
+import { notifyDesktop } from "../../components/Notifications";
 import { useI18n } from "../../i18n";
 import { taskFromRecord, type WorkbenchTask } from "../workbench/task";
-import { listAllTaskWorkbenches, workbenchDisplayName, type Workbench } from "../workbench/workbenchModel";
+import { ensureTaskWorkbenches, listAllTaskWorkbenches, workbenchDisplayName, type Workbench } from "../workbench/workbenchModel";
 import type { ActiveSessionDot } from "../workbench/activeSessionDots";
 import { rollupDot, needsYou } from "../workbench/sessionStatus/taskRollup";
 import { sessionDotStatusClass } from "../workbench/sessionStatus/dotStatus";
@@ -15,6 +16,10 @@ import { TaskTemplatePanel, type TaskTemplate } from "./TaskTemplatePanel";
 const GTD_COLUMNS: GtdStatus[] = ["inbox", "next", "waiting", "someday", "reference", "done"];
 
 type GtdCard = WorkbenchTask & { projects: string[] };
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 export function GtdView({ active }: { active: boolean }): React.ReactPortal | null {
   const host = document.getElementById("react-gtd");
@@ -118,6 +123,33 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
   const openNewTask = useCallback(() => {
     setNewTask({ title: "", projectPath: "", busy: false, error: "" });
   }, []);
+
+  /**
+   * Open a task in its own window.
+   *
+   * The workbench is the heavy surface, so it gets a window of its own; the
+   * board window stays on the board instead of mounting a second copy.
+   */
+  const openTaskInWindow = useCallback(async (item: GtdCard) => {
+    try {
+      const workbenches = await ensureTaskWorkbenches(item.noteId);
+      const workbenchId = workbenches[0]?.workbenchId;
+      if (!workbenchId) throw new Error(text("desktop.gtd.windowNoWorkbench"));
+      const opened = await desktopApi().taskWindowOpen({
+        noteId: item.noteId,
+        workbenchId,
+        title: item.title
+      });
+      if (!opened.ok) {
+        notifyDesktop({ text: text("desktop.gtd.windowLimit", opened.limit), kind: "info" });
+        return;
+      }
+      // The window owns this task now; do not keep it scoped here.
+      window.dispatchEvent(new Event("agent-resume:workbench-task-clear"));
+    } catch (error) {
+      notifyDesktop({ text: errorMessage(error), kind: "error" });
+    }
+  }, [text]);
 
   const pickProject = useCallback(async () => {
     if (!newTask || newTask.busy) return;
@@ -575,6 +607,11 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
           role="menuitem"
           onClick={() => { const item = contextMenu.item; setContextMenu(null); openTask(item, undefined, { openNote: true }); }}
         >{text("desktop.workbench.taskOpenNote")}</button>
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => { const item = contextMenu.item; setContextMenu(null); void openTaskInWindow(item); }}
+        >{text("desktop.gtd.openInWindow")}</button>
         {rollups[contextMenu.item.noteId]?.override ? (
           <button
             type="button"
