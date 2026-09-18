@@ -29,6 +29,24 @@ export type TerminalComposerPane = {
   projectPath?: string;
 };
 
+/**
+ * A repository the task references. A session running in the task's shared
+ * workspace has no repository subdirectories of its own, so the `#` menu
+ * offers these projects instead of a filesystem listing.
+ */
+export type ComposerWorkspaceProject = {
+  label: string;
+  path: string;
+};
+
+/** Stable empty list so a composer outside a shared workspace keeps one prop identity. */
+export const EMPTY_COMPOSER_WORKSPACE_PROJECTS: ComposerWorkspaceProject[] = [];
+
+/** One `#` suggestion: a subdirectory of the cwd, or a shared-workspace project. */
+type ComposerPathSuggestion =
+  | { kind: "directory"; name: string }
+  | { kind: "project"; label: string; path: string };
+
 export type ComposerSendTip = {
   id: string;
   text: string;
@@ -161,6 +179,8 @@ export function TerminalComposer(props: {
   registerFocus: (key: string, focus: (options?: { caret?: "end" }) => void) => () => void;
   slashPhrases?: WorkbenchComposerSlashPhrase[];
   tuiSlashCommands?: TuiSlashCommand[];
+  /** Non-empty only when the pane runs in the task's shared workspace. */
+  workspaceProjects?: ComposerWorkspaceProject[];
 }): React.JSX.Element {
   const {
     pane,
@@ -173,7 +193,8 @@ export function TerminalComposer(props: {
     onActivate,
     registerFocus,
     slashPhrases = [],
-    tuiSlashCommands = []
+    tuiSlashCommands = [],
+    workspaceProjects = EMPTY_COMPOSER_WORKSPACE_PROJECTS
   } = props;
   const { t } = useI18n();
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -203,17 +224,33 @@ export function TerminalComposer(props: {
     () => (slashToken === null ? [] : mergeComposerSlashItems(tuiSlashCommands, slashPhrases, slashToken.query)),
     [slashPhrases, slashToken, tuiSlashCommands]
   );
-  const directorySuggestions = useMemo(() => {
-    if (!hashToken || !directories) return [];
+  const directorySuggestions = useMemo<ComposerPathSuggestion[]>(() => {
+    if (!hashToken) return [];
     const query = hashToken.query.toLowerCase();
+    // Shared workspace: its own directory holds no repo folders, so the task's
+    // referenced projects are the useful `#` targets.
+    if (workspaceProjects.length) {
+      return workspaceProjects
+        .filter((project) =>
+          project.label.toLowerCase().includes(query) || project.path.toLowerCase().includes(query)
+        )
+        .sort((a, b) => {
+          const ap = a.label.toLowerCase().startsWith(query);
+          const bp = b.label.toLowerCase().startsWith(query);
+          return ap !== bp ? (ap ? -1 : 1) : a.label.localeCompare(b.label, undefined, { sensitivity: "base" });
+        })
+        .map((project) => ({ kind: "project", label: project.label, path: project.path }));
+    }
+    if (!directories) return [];
     return directories
       .filter((name) => name.toLowerCase().includes(query))
       .sort((a, b) => {
         const ap = a.toLowerCase().startsWith(query);
         const bp = b.toLowerCase().startsWith(query);
         return ap !== bp ? (ap ? -1 : 1) : a.localeCompare(b, undefined, { sensitivity: "base" });
-      });
-  }, [directories, hashToken]);
+      })
+      .map((name) => ({ kind: "directory", name }));
+  }, [directories, hashToken, workspaceProjects]);
   const [activeDirectory, setActiveDirectory] = useState(0);
   const [dragOver, setDragOver] = useState(false);
   const dragDepth = useRef(0);
@@ -275,6 +312,7 @@ export function TerminalComposer(props: {
   }, [activeSlash, slashMatches, slashOpen]);
 
   useEffect(() => {
+    if (workspaceProjects.length) return;
     if (!directoryOpen || directories !== null || directoriesError) return;
     let cancelled = false;
     setDirectoriesLoading(true);
@@ -290,7 +328,7 @@ export function TerminalComposer(props: {
         if (!cancelled) setDirectoriesLoading(false);
       });
     return () => { cancelled = true; };
-  }, [directories, directoriesError, directoryOpen, directoryRoot]);
+  }, [directories, directoriesError, directoryOpen, directoryRoot, workspaceProjects.length]);
 
   useEffect(() => {
     if (!activePane) setFocused(false);
@@ -446,9 +484,9 @@ export function TerminalComposer(props: {
     acceptSlashPhrase(item);
   }, [acceptSlashPhrase, applyValue, onRunSlashCommand]);
 
-  const acceptDirectory = useCallback((name: string) => {
+  const acceptDirectory = useCallback((suggestion: ComposerPathSuggestion) => {
     if (!hashToken) return;
-    const inserted = `#${name}`;
+    const inserted = suggestion.kind === "project" ? suggestion.path : `#${suggestion.name}`;
     const next = `${value.slice(0, hashToken.start)}${inserted}${value.slice(cursor)}`;
     const nextCursor = hashToken.start + inserted.length;
     applyValue(next);
@@ -772,9 +810,9 @@ export function TerminalComposer(props: {
           id={`${listId}-directories`}
           className="wb-terminal-composer-suggestions"
           role="listbox"
-          aria-label={t("desktop.workbench.terminalComposerDirectorySuggestions")}
+          aria-label={workspaceProjects.length ? t("desktop.workbench.terminalComposerProjectSuggestions") : t("desktop.workbench.terminalComposerDirectorySuggestions")}
         >
-          {directoriesLoading ? (
+          {!workspaceProjects.length && directoriesLoading ? (
             <li className="wb-terminal-composer-suggestion" role="option" aria-disabled="true">
               <span className="wb-terminal-composer-suggestion-text">{t("desktop.workbench.terminalComposerDirectoryLoading")}</span>
             </li>
@@ -782,25 +820,30 @@ export function TerminalComposer(props: {
             <li className="wb-terminal-composer-suggestion" role="option" aria-disabled="true">
               <span className="wb-terminal-composer-suggestion-text">{t("desktop.workbench.terminalComposerDirectoryError", directoriesError)}</span>
             </li>
-          ) : directorySuggestions.length ? directorySuggestions.map((name, index) => (
+          ) : directorySuggestions.length ? directorySuggestions.map((suggestion, index) => (
             <li
               ref={(element) => {
                 directoryItemRefs.current[index] = element;
               }}
-              key={name}
+              key={suggestion.kind === "project" ? suggestion.path : suggestion.name}
               id={`${listId}-directory-${index}`}
               role="option"
               aria-selected={index === activeDirectory}
               className={`wb-terminal-composer-suggestion${index === activeDirectory ? " is-active" : ""}`}
               onMouseDown={(event) => event.preventDefault()}
-              onClick={() => acceptDirectory(name)}
+              onClick={() => acceptDirectory(suggestion)}
             >
-              <span className="wb-terminal-composer-suggestion-text">#{name}</span>
+              <span className="wb-terminal-composer-suggestion-text">
+                {suggestion.kind === "project" ? suggestion.label : `#${suggestion.name}`}
+              </span>
+              {suggestion.kind === "project" ? (
+                <span className="wb-terminal-composer-suggestion-desc">{suggestion.path}</span>
+              ) : null}
               <span className="wb-terminal-composer-suggestion-kbd" aria-hidden="true">Tab</span>
             </li>
           )) : (
             <li className="wb-terminal-composer-suggestion" role="option" aria-disabled="true">
-              <span className="wb-terminal-composer-suggestion-text">{directories && directories.length ? t("desktop.workbench.terminalComposerDirectoryNoMatch") : t("desktop.workbench.terminalComposerDirectoryEmpty")}</span>
+              <span className="wb-terminal-composer-suggestion-text">{workspaceProjects.length ? t("desktop.workbench.terminalComposerProjectNoMatch") : directories && directories.length ? t("desktop.workbench.terminalComposerDirectoryNoMatch") : t("desktop.workbench.terminalComposerDirectoryEmpty")}</span>
             </li>
           )}
         </ul>

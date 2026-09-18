@@ -191,7 +191,6 @@ export interface ProvidersDraft {
   sessionSummarySelection: ModelSelection;
   reportSelection: ModelSelection;
   gtdSelection: ModelSelection;
-  imRoutingSelection: ModelSelection;
   translateSelection: ModelSelection;
   /** Tool-use options (summaries / digests output language, budgets). */
   toolOutputLanguage: UiLanguageValue;
@@ -346,7 +345,6 @@ export function providersDraftFromSettings(settings: PanelSettings): ProvidersDr
   const toolOptions = settings.llmOptions?.tool;
   const chatOptions = settings.llmOptions?.chat;
   const legacyTool = settings.modelSelections?.tool ?? {};
-  const legacyChat = settings.modelSelections?.chat ?? {};
   return {
     providers: settings.providers ?? [],
     toolSelection: legacyTool,
@@ -358,7 +356,6 @@ export function providersDraftFromSettings(settings: PanelSettings): ProvidersDr
     sessionSummarySelection: settings.modelSelections?.sessionSummary ?? legacyTool,
     reportSelection: settings.modelSelections?.report ?? legacyTool,
     gtdSelection: settings.modelSelections?.gtd ?? legacyTool,
-    imRoutingSelection: settings.modelSelections?.imRouting ?? legacyChat,
     translateSelection: settings.modelSelections?.translate ?? legacyTool,
     toolOutputLanguage: normalizeOutputLanguage(toolOptions?.outputLanguage),
     toolMaxContextChars: typeof toolOptions?.maxContextChars === "number" ? toolOptions.maxContextChars : 120_000,
@@ -400,7 +397,6 @@ function normalizeDraftSelections(draft: ProvidersDraft): Partial<Record<ModelUs
     ["sessionSummary", draft.sessionSummarySelection],
     ["report", draft.reportSelection],
     ["gtd", draft.gtdSelection],
-    ["imRouting", draft.imRoutingSelection],
     ["translate", draft.translateSelection]
   ];
   for (const [use, selection] of entries) {

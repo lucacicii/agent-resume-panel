@@ -31,8 +31,6 @@ Register an MCP client (see [External Agent MCP](mcp.md)) and use:
 | `report_read` | Read one full digest by `reportId` |
 | `report_list` | List digests by level and period |
 
-IM citation sheets can still show a digest preview in place. They no longer jump to a Report tab.
-
 ### Related
 
 - [Agent memory](agent.md) · [MCP](mcp.md) · [Workbench](workbench.md) · [Settings & data](settings-and-data.md)
@@ -63,8 +61,6 @@ IM citation sheets can still show a digest preview in place. They no longer jump
 | `report_search` | 对回顾报告做语义搜索 |
 | `report_read` | 按 `reportId` 读取整篇报告 |
 | `report_list` | 按层级与周期列出报告 |
-
-IM 引用面板仍可就地展示报告预览，但不会再跳转到归档页。
 
 ### 相关文档
 

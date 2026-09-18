@@ -82,7 +82,8 @@
                             ▼
 ┌─ 渲染进程(纯消费者)─────────────────────────────────────────────┐
 │  useAgentStatus    快照 → 圆点;useAcpStatus ACP 会话生命周期(本地)   │
-│  activeSessionDots 工作台 / 侧栏 / 托盘共用                          │
+│  activeSessionDots 每 pane 一个点,带 workbenchId;会话标签直接渲染   │
+│  rollupSessionDotStatus 每 workbench 一个状态(GTD 与托盘共用同一实现) │
 │  AgentStatusPane   设置 → 后台状态:守护进程健康、钩子安装、逐 pane 解释 │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -326,8 +327,20 @@ payload 只在包装脚本里被粗略 grep 出 `session_id`(作为 session 归�
 
 ### 10.1 圆点
 
-`useAgentStatus` 订阅快照并把 `AgentState` 投影为圆点;`activeSessionDots` 汇总工作台/侧栏/托盘。
+`useAgentStatus` 订阅快照并把 `AgentState` 投影为圆点;`activeSessionDots` 为**每个 pane**生成一个点,并带上它所属的 `workbenchId`。
 ACP 聊天不是 PTY pane,它的生命周期留在渲染进程(`useAcpStatus` 直接读 ACP 流),与守护进程的状态合并展示。
+
+三层展示,共享同一份点数据:
+
+| 位置 | 粒度 | 行为 |
+| --- | --- | --- |
+| Workbench 会话标签(`.wb-terminal-tab.is-session`) | 每个 pane | 标签内显示自己的状态点;`open` 不显示 |
+| GTD 面板的 workbench chip | 每个 workbench | 汇总点 + `is-needs-you` 强调;点击打开该 workbench 窗口 |
+| macOS 菜单栏托盘 | 每个 workbench（已开窗口，或窗口已关但仍有 session） | 汇总点；刚打开、还没有 session 的 workbench 显示灰点；点击聚焦已开窗口，否则新开 task 窗口 |
+
+汇总只有一份实现:`shared/workbenchSelection.ts` 的 `WORKBENCH_SESSION_DOT_URGENCY` 与 `rollupSessionDotStatus`。main(托盘)与渲染层(GTD)都 import 它,
+输入也都是同一份 `workbenchActiveSessions` —— 真相只有「每 pane 一个状态」,workbench 状态是它的纯派生投影。
+归属不明的 pane(外部 agent、或 pty 已消失)以自身的点保留,避免漏报「等待你」。
 
 ### 10.2 设置 → 后台状态(同时也是检查器)
 

@@ -5,75 +5,6 @@ ALTER TABLE sync_state ADD COLUMN session_count INTEGER;
 ALTER TABLE sync_state ADD COLUMN warning TEXT;
 `;
 
-export const DESKTOP_AGENT_TRACE_MIGRATION_SQL = `
-ALTER TABLE agent_messages ADD COLUMN tool_trace_json TEXT;
-`;
-
-export const IM_TOOLS_MIGRATION_SQL = `
-ALTER TABLE im_role_templates ADD COLUMN tools_json TEXT;
-ALTER TABLE im_members ADD COLUMN tools_json TEXT;
-`;
-
-export const IM_ROLE_MODEL_MIGRATION_SQL = `
-ALTER TABLE im_role_templates ADD COLUMN model TEXT;
-ALTER TABLE im_members ADD COLUMN model TEXT;
-`;
-
-export const IM_ROLE_THOUGHT_LEVEL_MIGRATION_SQL = `
-ALTER TABLE im_role_templates ADD COLUMN thought_level TEXT;
-ALTER TABLE im_members ADD COLUMN thought_level TEXT;
-`;
-
-export const IM_MESSAGE_THINKING_MIGRATION_SQL = `
-ALTER TABLE im_messages ADD COLUMN thinking TEXT;
-`;
-
-export const IM_MESSAGE_IMAGES_MIGRATION_SQL = `
-ALTER TABLE im_messages ADD COLUMN images_json TEXT;
-`;
-
-export const IM_SELECTION_ACTION_MODEL_MIGRATION_SQL = `
-ALTER TABLE im_selection_actions ADD COLUMN provider_id TEXT;
-ALTER TABLE im_selection_actions ADD COLUMN model_id TEXT;
-`;
-
-export const IM_ROLE_DELEGATION_MIGRATION_SQL = `
-ALTER TABLE im_role_templates ADD COLUMN callable_template_ids_json TEXT;
-ALTER TABLE im_role_templates ADD COLUMN auto_dispatch INTEGER;
-ALTER TABLE im_members ADD COLUMN callable_template_ids_json TEXT;
-ALTER TABLE im_members ADD COLUMN auto_dispatch INTEGER;
-ALTER TABLE im_messages ADD COLUMN delegation_proposals_json TEXT;
-`;
-
-export const IM_SMART_ROUTING_MIGRATION_SQL = `
-ALTER TABLE im_messages ADD COLUMN auto_routed INTEGER DEFAULT 0;
-ALTER TABLE im_messages ADD COLUMN routed_role_name TEXT;
-ALTER TABLE im_messages ADD COLUMN routing_tip TEXT;
-ALTER TABLE im_messages ADD COLUMN routing_timed_out INTEGER DEFAULT 0;
-`;
-
-export const IM_THREAD_MIGRATION_SQL = `
-ALTER TABLE im_messages ADD COLUMN thread_id TEXT;
-ALTER TABLE im_jobs ADD COLUMN thread_id TEXT;
-`;
-
-export const IM_MESSAGE_ACP_SYNC_MIGRATION_SQL = `
-ALTER TABLE im_messages ADD COLUMN tool_calls_json TEXT;
-ALTER TABLE im_messages ADD COLUMN acp_message_id TEXT;
-ALTER TABLE im_messages ADD COLUMN origin TEXT;
-CREATE INDEX IF NOT EXISTS idx_im_messages_acp_message ON im_messages(acp_message_id);
-`;
-
-/** Rooms can be scoped to a task (a project note marked `work: true`). */
-export const IM_WORK_ITEM_MIGRATION_SQL = `
-ALTER TABLE im_projects ADD COLUMN work_item_note_id TEXT;
-`;
-
-/** Knowledge mirrored from a task note, so re-opening the room refreshes it. */
-export const IM_KNOWLEDGE_SOURCE_MIGRATION_SQL = `
-ALTER TABLE im_knowledge ADD COLUMN source_note_id TEXT;
-`;
-
 /** Task templates store a JSON list of referenced projects, not a single path. */
 export const TASK_TEMPLATE_PROJECT_PATHS_MIGRATION_SQL = `
 ALTER TABLE task_templates ADD COLUMN project_paths_json TEXT;
@@ -254,162 +185,14 @@ CREATE INDEX IF NOT EXISTS idx_workbench_session_folder_items_project
 CREATE INDEX IF NOT EXISTS idx_workbench_session_folder_items_folder
   ON workbench_session_folder_items(folder_id);
 
-CREATE TABLE IF NOT EXISTS agent_threads (
-  id TEXT PRIMARY KEY,
-  title TEXT NOT NULL,
-  created_at_ms INTEGER NOT NULL,
-  updated_at_ms INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_agent_threads_updated ON agent_threads(updated_at_ms DESC);
-
-CREATE TABLE IF NOT EXISTS agent_messages (
-  id TEXT PRIMARY KEY,
-  role TEXT NOT NULL,
-  content TEXT NOT NULL,
-  citations_json TEXT,
-  tool_trace_json TEXT,
-  fallback INTEGER NOT NULL DEFAULT 0,
-  sort_order INTEGER NOT NULL,
-  created_at_ms INTEGER NOT NULL,
-  thread_id TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_agent_messages_order ON agent_messages(sort_order ASC);
-CREATE INDEX IF NOT EXISTS idx_agent_messages_thread ON agent_messages(thread_id);
-
-CREATE TABLE IF NOT EXISTS agent_note_audit (
-  id TEXT PRIMARY KEY,
-  trace_id TEXT NOT NULL,
-  agent_message_id TEXT,
-  action TEXT NOT NULL,
-  status TEXT NOT NULL,
-  note_id TEXT,
-  rel_md_path TEXT,
-  note_title TEXT,
-  actor TEXT NOT NULL,
-  request_json TEXT,
-  before_json TEXT,
-  after_json TEXT,
-  error TEXT,
-  created_at_ms INTEGER NOT NULL,
-  completed_at_ms INTEGER
-);
-CREATE INDEX IF NOT EXISTS idx_agent_note_audit_created ON agent_note_audit(created_at_ms DESC);
-CREATE INDEX IF NOT EXISTS idx_agent_note_audit_trace ON agent_note_audit(trace_id);
-CREATE INDEX IF NOT EXISTS idx_agent_note_audit_note ON agent_note_audit(note_id, created_at_ms DESC);
-
 CREATE TABLE IF NOT EXISTS catalog_meta (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS im_projects (
-  project_id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  local_path TEXT,
-  created_at_ms INTEGER NOT NULL,
-  updated_at_ms INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_im_projects_updated ON im_projects(updated_at_ms DESC);
-
-CREATE TABLE IF NOT EXISTS im_role_templates (
-  template_id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  persona TEXT NOT NULL DEFAULT '',
-  agent TEXT NOT NULL,
-  model TEXT,
-  thought_level TEXT,
-  permissions TEXT NOT NULL DEFAULT 'write',
-  tools_json TEXT,
-  callable_template_ids_json TEXT,
-  auto_dispatch INTEGER,
-  created_at_ms INTEGER NOT NULL,
-  updated_at_ms INTEGER NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS im_members (
-  member_id TEXT PRIMARY KEY,
-  project_id TEXT NOT NULL,
-  template_id TEXT NOT NULL,
-  name TEXT NOT NULL,
-  persona TEXT NOT NULL DEFAULT '',
-  agent TEXT NOT NULL,
-  model TEXT,
-  thought_level TEXT,
-  permissions TEXT NOT NULL DEFAULT 'write',
-  tools_json TEXT,
-  callable_template_ids_json TEXT,
-  auto_dispatch INTEGER,
-  enabled INTEGER NOT NULL DEFAULT 1,
-  acp_chat_id TEXT,
-  created_at_ms INTEGER NOT NULL,
-  updated_at_ms INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_im_members_project ON im_members(project_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_im_members_project_template
-  ON im_members(project_id, template_id);
-
-CREATE TABLE IF NOT EXISTS im_knowledge (
-  item_id TEXT PRIMARY KEY,
-  project_id TEXT NOT NULL,
-  kind TEXT NOT NULL,
-  title TEXT NOT NULL DEFAULT '',
-  body TEXT NOT NULL DEFAULT '',
-  url TEXT,
-  storage_path TEXT,
-  mime_type TEXT,
-  file_name TEXT,
-  size_bytes INTEGER,
-  created_at_ms INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_im_knowledge_project ON im_knowledge(project_id, created_at_ms);
-
-CREATE TABLE IF NOT EXISTS im_messages (
-  message_id TEXT PRIMARY KEY,
-  project_id TEXT NOT NULL,
-  kind TEXT NOT NULL,
-  author_member_id TEXT,
-  author_label TEXT NOT NULL,
-  body TEXT NOT NULL,
-  thinking TEXT,
-  images_json TEXT,
-  delegation_proposals_json TEXT,
-  auto_routed INTEGER DEFAULT 0,
-  routed_role_name TEXT,
-  routing_tip TEXT,
-  routing_timed_out INTEGER DEFAULT 0,
-  quote_ids_json TEXT NOT NULL DEFAULT '[]',
-  mention_role_ids_json TEXT NOT NULL DEFAULT '[]',
-  job_id TEXT,
-  thread_id TEXT,
-  tool_calls_json TEXT,
-  acp_message_id TEXT,
-  origin TEXT NOT NULL DEFAULT 'im',
-  created_at_ms INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_im_messages_project ON im_messages(project_id, created_at_ms);
-
-CREATE TABLE IF NOT EXISTS im_jobs (
-  job_id TEXT PRIMARY KEY,
-  project_id TEXT NOT NULL,
-  member_id TEXT NOT NULL,
-  message_id TEXT,
-  acp_chat_id TEXT,
-  status TEXT NOT NULL,
-  brief_json TEXT NOT NULL,
-  error TEXT,
-  files_json TEXT NOT NULL DEFAULT '[]',
-  permission_json TEXT,
-  thread_id TEXT,
-  created_at_ms INTEGER NOT NULL,
-  updated_at_ms INTEGER NOT NULL,
-  finished_at_ms INTEGER
-);
-CREATE INDEX IF NOT EXISTS idx_im_jobs_project ON im_jobs(project_id, updated_at_ms DESC);
-
-CREATE TABLE IF NOT EXISTS im_selection_actions (
+CREATE TABLE IF NOT EXISTS selection_actions (
   action_id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
-  kind TEXT NOT NULL,
   prompt TEXT NOT NULL DEFAULT '',
   provider_id TEXT,
   model_id TEXT,
@@ -418,8 +201,8 @@ CREATE TABLE IF NOT EXISTS im_selection_actions (
   created_at_ms INTEGER NOT NULL,
   updated_at_ms INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_im_selection_actions_sort
-  ON im_selection_actions(sort_order, created_at_ms);
+CREATE INDEX IF NOT EXISTS idx_selection_actions_sort
+  ON selection_actions(sort_order, created_at_ms);
 
 CREATE TABLE IF NOT EXISTS workbench_composer_sends (
   id TEXT PRIMARY KEY,

@@ -251,7 +251,7 @@ export const StreamdownRenderer = memo(function StreamdownRenderer({
           return (
             <a
               href={href}
-              className="agent-citation-link im-note-link"
+              className="agent-citation-link"
               data-note-id={noteId}
               onClick={(e) => {
                 e.preventDefault();

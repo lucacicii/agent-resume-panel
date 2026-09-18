@@ -1,14 +1,1 @@
-{
-  "version": 1,
-  "shared": {},
-  "workbench": {
-    "git": {
-      "commitMessage": {
-        "style": "conventional",
-        "language": "en",
-        "extraInstructions": "Use the package or feature directory as scope when it can be inferred reliably (core, desktop, extension, im)."
-      }
-    }
-  },
-  "im": {}
-}
+{"version":1,"shared":{},"workbench":{"git":{"commitMessage":{"style":"conventional","language":"en","extraInstructions":"Use the package or feature directory as scope when it can be inferred reliably (core, desktop, extension)."}}}}

@@ -339,6 +339,26 @@ describe("GtdView", () => {
     expect(screen.getByRole("button", { name: /Someday idea/ }).querySelector(".gtd-card-window")).toBeNull();
   });
 
+  it("shows one live status per workbench chip", async () => {
+    renderGtd({
+      listAllTaskWorkbenches: async () => [
+        { workbenchId: "wb-1", taskNoteId: "t-1", name: "Backend", projectPath: "/work/api", position: 0, layoutJson: null, createdAtMs: 1, updatedAtMs: 1 },
+        { workbenchId: "wb-2", taskNoteId: "t-1", name: "Frontend", projectPath: "/work/web", position: 1, layoutJson: null, createdAtMs: 1, updatedAtMs: 1 }
+      ],
+      getWorkbenchActiveSessions: async () => [
+        { paneKey: "terminal:1", projectPath: "/work/api", title: "agent", sessionKey: "codex:s1", status: "awaiting_user", workbenchId: "wb-1" },
+        { paneKey: "terminal:2", projectPath: "/work/web", title: "agent", sessionKey: "codex:s2", status: "running", workbenchId: "wb-2" }
+      ]
+    } as unknown as Partial<typeof window.agentResume>);
+
+    const backend = await screen.findByRole("button", { name: /Backend/ });
+    await waitFor(() => expect(backend.querySelector(".session-dot.is-awaiting")).toBeTruthy());
+    const frontend = screen.getByRole("button", { name: /Frontend/ });
+    expect(frontend.querySelector(".session-dot.is-running")).toBeTruthy();
+    // The card-level dot is the most urgent workbench.
+    expect(document.querySelector('[data-gtd-note-id="t-1"]')?.querySelector(".session-dot.is-awaiting")).toBeTruthy();
+  });
+
   it("opens the task window when the window badge is clicked", async () => {
     renderGtd({
       taskWindowList: vi.fn(async () => [{ workbenchId: "wb-1", noteId: "t-1", title: "Realtime status" }])

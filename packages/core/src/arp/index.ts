@@ -6,7 +6,6 @@ export {
 export type {
   ArpConfig,
   ArpSharedConfig,
-  ArpImConfig,
   ArpWorkbenchConfig,
   ArpWorkbenchGitConfig,
   ArpGitCommitMessageConfig

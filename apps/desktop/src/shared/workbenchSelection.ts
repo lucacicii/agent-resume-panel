@@ -17,12 +17,46 @@ export const WORKBENCH_SESSION_DOT_STATUSES = [
 
 export type WorkbenchSessionDotStatus = (typeof WORKBENCH_SESSION_DOT_STATUSES)[number];
 
+/**
+ * Urgency order for rolling several pane dots up to one workbench status.
+ * Higher wins, so a workbench reads as urgent as its most urgent pane.
+ */
+export const WORKBENCH_SESSION_DOT_URGENCY: Record<WorkbenchSessionDotStatus, number> = {
+  awaiting_user: 4,
+  error: 3,
+  connecting: 2,
+  running: 1,
+  open: 0
+};
+
+/**
+ * The most urgent status among a workbench's pane dots.
+ *
+ * The single implementation of the rollup: main (tray) and the renderer (GTD)
+ * both call this so the two never disagree about what a workbench is doing.
+ * Empty input is `open` — no pane, nothing to report.
+ */
+export function rollupSessionDotStatus(
+  statuses: Iterable<WorkbenchSessionDotStatus>
+): WorkbenchSessionDotStatus {
+  let best: WorkbenchSessionDotStatus = "open";
+  for (const status of statuses) {
+    if (WORKBENCH_SESSION_DOT_URGENCY[status] > WORKBENCH_SESSION_DOT_URGENCY[best]) best = status;
+  }
+  return best;
+}
+
 export type WorkbenchActiveSessionDot = {
   paneKey: string;
   projectPath: string;
   title: string;
   sessionKey: string;
   status: WorkbenchSessionDotStatus;
+  /**
+   * Workbench that owns the pane. Empty while the binding is unknown (a pane
+   * spawned before `terminal:bindSession`, or a daemon pane with no pty link).
+   */
+  workbenchId: string;
 };
 
 /** Same allowlist as Workbench "New session" picker (`cli:*` / `acp:*`). */
@@ -104,6 +138,7 @@ export function parseWorkbenchActiveSessionDots(value: unknown): WorkbenchActive
     const title = typeof record.title === "string" ? record.title.trim().slice(0, MAX_LABEL_CHARS) : "";
     const projectPath = typeof record.projectPath === "string" ? record.projectPath.trim().slice(0, MAX_LABEL_CHARS) : "";
     const sessionKey = typeof record.sessionKey === "string" ? record.sessionKey.trim().slice(0, MAX_LABEL_CHARS) : "";
+    const workbenchId = typeof record.workbenchId === "string" ? record.workbenchId.trim().slice(0, MAX_LABEL_CHARS) : "";
     const status = typeof record.status === "string" && SESSION_DOT_STATUS_SET.has(record.status)
       ? record.status as WorkbenchSessionDotStatus
       : "open";
@@ -113,7 +148,8 @@ export function parseWorkbenchActiveSessionDots(value: unknown): WorkbenchActive
       projectPath,
       title,
       sessionKey,
-      status
+      status,
+      workbenchId
     };
     dots.push(dot);
   }

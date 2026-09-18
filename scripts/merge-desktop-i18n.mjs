@@ -12,6 +12,19 @@ const desktopLocalesDir = join(root, "apps", "desktop", "locales");
 const settingsOverlayLocales = new Set(["ja"]);
 const obsoleteDesktopKeys = new Set([
   "desktop.agent.toolCategory.projects",
+  // Agent chat backend (core agent/{agentChat,agentStore,toolLoop,prompts,noteAudit}) removed;
+  // these keys had no remaining renderer/main consumer.
+  "desktop.agent.fetchingTools",
+  "desktop.agent.newThread",
+  "desktop.agent.persistFailed",
+  "desktop.agent.requestingLlm",
+  "desktop.agent.requestingLlmRound",
+  "desktop.agent.toolsMaxIterations",
+  "desktop.agent.toolsNoResponse",
+  "desktop.agent.toolsOffTitle",
+  "desktop.agent.toolsOn",
+  "desktop.agent.toolsReady",
+  "desktop.agent.toolsToggle",
   "desktop.notes.projectLabel",
   "desktop.notes.targetLibrary",
   "desktop.settings.projectMenu.note",
@@ -265,7 +278,29 @@ const obsoleteDesktopKeys = new Set([
   "desktop.workbench.quickAccessShowAgent",
   "desktop.workbench.quickAccessShowNotes",
   "desktop.workbench.quickAccessOpenSessions",
+  // IM module removed: task rooms, role templates, delegation, knowledge, and the
+  // room/discussion-room Workbench chrome are gone. Selection actions moved to
+  // Settings → Selection and are dropped by prefix below.
+  "desktop.workbench.openRoom",
+  "desktop.workbench.closeRoom",
+  "desktop.workbench.imSessionBadge",
+  "desktop.workbench.imSessionBadgeHint",
+  "desktop.settings.paneIm",
+  "desktop.settings.paneImDesc",
+  "desktop.settings.selectionActionKind",
+  "desktop.settings.selectionActionKindContext",
+  "desktop.settings.selectionActionKindIndependent",
 ]);
+
+/** Keys retired with the IM module (rooms, roles, delegation) or renamed out of `desktop.im.`. */
+function isObsoleteDesktopKey(key) {
+  if (obsoleteDesktopKeys.has(key)) return true;
+  if (key.startsWith("desktop.im.")) return true;
+  // `desktop.settings.imAction*` / `imDelegation*` / `imRoutingModelUse*` etc.,
+  // but never the unrelated `desktop.settings.image*` keys.
+  if (/^desktop\.settings\.im(?!age)/.test(key)) return true;
+  return false;
+}
 
 function normalizePlaceholders(value) {
   const names = [];
@@ -363,16 +398,16 @@ for (const file of readdirSync(desktopLocalesDir).filter((name) => name.endsWith
   // Keep every generated locale structurally complete when a localized catalog
   // lags behind English; untranslated entries intentionally fall back to en.
   const source = localeCode === "en" ? enKeys : { ...enKeys, ...localizedSource };
-  for (const key of obsoleteDesktopKeys) {
-    delete locale[key];
+  for (const key of Object.keys(locale)) {
+    if (isObsoleteDesktopKey(key)) delete locale[key];
   }
   for (const [key, value] of Object.entries(source)) {
     if (!key.startsWith("desktop.")) continue;
     locale[key] = value;
   }
   const overlayCount = applyDesktopSettingsOverlay(localeCode, locale);
-  for (const key of obsoleteDesktopKeys) {
-    delete locale[key];
+  for (const key of Object.keys(locale)) {
+    if (isObsoleteDesktopKey(key)) delete locale[key];
   }
   if (localeCode !== "en") {
     const englishLocale = JSON.parse(readFileSync(join(desktopLocalesDir, "en.json"), "utf8"));

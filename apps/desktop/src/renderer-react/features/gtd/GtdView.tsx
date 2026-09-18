@@ -8,8 +8,11 @@ import { useI18n } from "../../i18n";
 import { taskFromRecord, type WorkbenchTask } from "../workbench/task";
 import { ensureTaskWorkbenches, listAllTaskWorkbenches, workbenchDisplayName, type Workbench } from "../workbench/workbenchModel";
 import type { ActiveSessionDot } from "../workbench/activeSessionDots";
-import { rollupDot, needsYou } from "../workbench/sessionStatus/taskRollup";
+import { useActiveSessions } from "../workbench/useActiveSessions";
+import { rollupDot } from "../workbench/sessionStatus/taskRollup";
 import { sessionDotStatusClass } from "../workbench/sessionStatus/dotStatus";
+import type { SessionDotStatus } from "../workbench/sessionStatus";
+import { rollupSessionDotStatus } from "../../../shared/workbenchSelection";
 import { TaskTemplatePanel, type TaskTemplate } from "./TaskTemplatePanel";
 
 /** Board column order — `done` last so active work reads first. */
@@ -26,7 +29,6 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
   const { ready, t } = useI18n();
   const [items, setItems] = useState<GtdCard[]>([]);
   const [rollups, setRollups] = useState<Record<string, TaskGtdRollup>>({});
-  const [dotByKey, setDotByKey] = useState<Map<string, ActiveSessionDot>>(new Map());
   const [query, setQuery] = useState("");
   const [dragNoteId, setDragNoteId] = useState<string | null>(null);
   const [dragTemplate, setDragTemplate] = useState<TaskTemplate | null>(null);
@@ -110,17 +112,33 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
     return () => window.removeEventListener("agent-resume:notes-mutated", onMutated);
   }, [load, loadWorkbenches]);
 
-  useEffect(() => {
-    const onActiveSessions = (event: Event) => {
-      const detail = (event as CustomEvent<ActiveSessionDot[]>).detail;
-      if (!Array.isArray(detail)) return;
-      const map = new Map<string, ActiveSessionDot>();
-      for (const dot of detail) map.set(dot.sessionKey || dot.paneKey, dot);
-      setDotByKey(map);
-    };
-    window.addEventListener("agent-resume:active-sessions", onActiveSessions);
-    return () => window.removeEventListener("agent-resume:active-sessions", onActiveSessions);
-  }, []);
+  // Live status comes from main, which merges every workbench window's report
+  // (plus daemon-only panes). Grouping by workbench here is what gives the board
+  // one status per workbench chip.
+  const activeSessions = useActiveSessions();
+  const { dotByKey, statusByWorkbench } = useMemo(() => {
+    const byKey = new Map<string, ActiveSessionDot>();
+    const statuses = new Map<string, SessionDotStatus[]>();
+    for (const dot of activeSessions) {
+      byKey.set(dot.sessionKey || dot.paneKey, dot);
+      if (!dot.workbenchId) continue;
+      const list = statuses.get(dot.workbenchId);
+      if (list) list.push(dot.status);
+      else statuses.set(dot.workbenchId, [dot.status]);
+    }
+    const byWorkbench = new Map<string, SessionDotStatus>();
+    for (const [workbenchId, list] of statuses) byWorkbench.set(workbenchId, rollupSessionDotStatus(list));
+    return { dotByKey: byKey, statusByWorkbench: byWorkbench };
+  }, [activeSessions]);
+
+  /** A task's live status: its workbenches when known, else its linked sessions. */
+  const taskDotStatus = useCallback((item: GtdCard): SessionDotStatus => {
+    const workbenches = workbenchesByTask[item.noteId] ?? [];
+    if (workbenches.length > 0) {
+      return rollupSessionDotStatus(workbenches.map((workbench) => statusByWorkbench.get(workbench.workbenchId) ?? "open"));
+    }
+    return rollupDot({ work: { sessions: item.sessions } }, dotByKey)?.status ?? "open";
+  }, [workbenchesByTask, statusByWorkbench, dotByKey]);
 
   /**
    * Open a task's workbench in its own window, focusing it when it is open.
@@ -329,11 +347,11 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
     items: filtered
       .filter((item) => statusOf(item) === status)
       .sort((a, b) => {
-        const rankA = rollupDot({ work: { sessions: a.sessions } }, dotByKey)?.status === "awaiting_user" ? 1 : 0;
-        const rankB = rollupDot({ work: { sessions: b.sessions } }, dotByKey)?.status === "awaiting_user" ? 1 : 0;
+        const rankA = taskDotStatus(a) === "awaiting_user" ? 1 : 0;
+        const rankB = taskDotStatus(b) === "awaiting_user" ? 1 : 0;
         return rankB - rankA || (b.updatedAtMs || 0) - (a.updatedAtMs || 0);
       })
-  })), [filtered, dotByKey, statusOf]);
+  })), [filtered, taskDotStatus, statusOf]);
 
   /** Arrow-key navigation across the board: within a column, and to the nearest card in the next column. */
   const onBoardKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -442,8 +460,8 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
             </div>
             <div className="gtd-column-body">
               {columnItems.map((item) => {
-                const dot = rollupDot({ work: { sessions: item.sessions } }, dotByKey);
-                const waiting = needsYou(dot);
+                const dotStatus = taskDotStatus(item);
+                const waiting = dotStatus === "awaiting_user";
                 const taskWorkbenches = workbenchesByTask[item.noteId] ?? [];
                 return (
                   <div
@@ -503,7 +521,7 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
                       <span className="gtd-card-title">{item.title}</span>
                       {item.next ? <span className="gtd-card-next">{item.next}</span> : null}
                       <span className="gtd-card-meta">
-                        {dot && dot.status !== "open" ? <span className={`session-dot${sessionDotStatusClass(dot.status)}`} aria-hidden="true" /> : null}
+                        {dotStatus !== "open" ? <span className={`session-dot${sessionDotStatusClass(dotStatus)}`} aria-hidden="true" /> : null}
                         <span className="gtd-card-meta-item">
                           <ThemeIcon name="bot" size={12} aria-hidden="true" />
                           {item.sessions.length}
@@ -530,17 +548,21 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
                     )}
                     {taskWorkbenches.length > 0 ? (
                       <div className="gtd-card-projects">
-                        {taskWorkbenches.slice(0, 3).map((workbench) => (
-                          <button
-                            key={workbench.workbenchId}
-                            type="button"
-                            className="gtd-card-project"
-                            title={workbench.projectPath || workbenchDisplayName(workbench)}
-                            onClick={() => void openTask(item, workbench.workbenchId)}
-                          >
-                            {workbenchDisplayName(workbench)}
-                          </button>
-                        ))}
+                        {taskWorkbenches.slice(0, 3).map((workbench) => {
+                          const workbenchStatus = statusByWorkbench.get(workbench.workbenchId);
+                          return (
+                            <button
+                              key={workbench.workbenchId}
+                              type="button"
+                              className={`gtd-card-project${workbenchStatus === "awaiting_user" ? " is-needs-you" : ""}`}
+                              title={workbench.projectPath || workbenchDisplayName(workbench)}
+                              onClick={() => void openTask(item, workbench.workbenchId)}
+                            >
+                              {workbenchStatus && workbenchStatus !== "open" ? <span className={`session-dot${sessionDotStatusClass(workbenchStatus)}`} aria-hidden="true" /> : null}
+                              {workbenchDisplayName(workbench)}
+                            </button>
+                          );
+                        })}
                         {taskWorkbenches.length > 3 ? <span className="gtd-card-project is-more">+{taskWorkbenches.length - 3}</span> : null}
                       </div>
                     ) : item.projects.length > 0 ? (

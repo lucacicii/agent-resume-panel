@@ -11,7 +11,6 @@
 | digest progress events | `packages/core/src/report/{progress,progressI18n}.ts` | Progress phases used by the background scheduler. |
 | semantic digest search | `packages/core/src/report/{search,embedStore,cosine}.ts`, `packages/core/src/llm/embeddings.ts` | Uses configured OpenAI-compatible embeddings. |
 | local retrieval for external agents | `packages/core/src/agent/retrieve.ts`, `packages/core/src/mcp/memoryTools.ts` | Backs the MCP `memory_retrieve` tool; **there is no in-app Agent/Ask UI** — see `docs/desktop/agent.md`. |
-| MCP agent tool loop | `packages/core/src/agent/{agentChat,toolLoop,agentStore,noteAudit}.ts` | Exported for MCP clients; the desktop renderer has no chat surface. |
 | session GTD persistence | `packages/core/src/gtd/`, catalog session GTD tables | Statuses are stored against catalog sessions. |
 | note/task GTD | `packages/core/src/notes/`, `note_set_gtd` MCP tool | Statuses are stored against notes; tasks are notes. |
 | desktop scheduler and IPC | `apps/desktop/src/main/{main.ts,scheduler.ts}` | Scheduler is always on with code defaults (daily 22:00, weekly/monthly 09:00). There is no Report settings pane. |

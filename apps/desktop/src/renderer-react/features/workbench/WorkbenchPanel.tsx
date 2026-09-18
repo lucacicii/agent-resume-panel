@@ -50,8 +50,8 @@ import type { WorkbenchFocusSessionRequest, WorkbenchSendSelectionRequest } from
 import { collectActiveSessionDots, type ActiveSessionDot } from "./activeSessionDots";
 import { rollupDot } from "./sessionStatus/taskRollup";
 import { sessionDotStatusClass } from "./sessionStatus/dotStatus";
-import { useAcpStatus, useAgentStatus, type AcpStatusEvent, type SessionDotRuntime } from "./sessionStatus";
-import { COMPOSER_TIP_LIMIT, type ComposerSendTip } from "./TerminalComposer";
+import { useAcpStatus, useAgentStatus, type AcpStatusEvent, type SessionDotRuntime, type SessionDotStatus } from "./sessionStatus";
+import { COMPOSER_TIP_LIMIT, EMPTY_COMPOSER_WORKSPACE_PROJECTS, type ComposerSendTip, type ComposerWorkspaceProject } from "./TerminalComposer";
 import { TerminalComposerStack } from "./TerminalComposerStack";
 import { formatTuiSlashInput, type TuiSlashCommand } from "./tuiSlashCommands";
 import {
@@ -129,7 +129,6 @@ import {
   writeActiveWorkbenchId,
   type Workbench
 } from "./workbenchModel";
-import { ImPanel } from "../im/ImPanel";
 import { NotePaneView } from "./notes/NotePaneView";
 
 type DesktopApi = ReturnType<typeof desktopApi>;
@@ -562,6 +561,12 @@ function sessionTabTitle(
   return (key ? sessionTitles.get(key)?.trim() : "") || pane.title;
 }
 
+/** Live status bullet for a session tab; nothing at all for an idle (`open`) pane. */
+function sessionTabDot(status: SessionDotStatus | undefined): ReactNode {
+  if (!status || status === "open") return null;
+  return <span className={`session-dot${sessionDotStatusClass(status)}`} aria-hidden="true" />;
+}
+
 function formatDateTime(timestamp: number): string {
   const pad = (value: number) => String(value).padStart(2, "0");
   const date = new Date(timestamp);
@@ -681,8 +686,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [workbenchSessionKeys, setWorkbenchSessionKeys] = useState<Record<string, string[]>>({});
   const [renamingWorkbenchId, setRenamingWorkbenchId] = useState<string | null>(null);
   const [workbenchRenameDraft, setWorkbenchRenameDraft] = useState("");
-  /** Room id of the task's IM channel, when open inside the workspace. */
-  const [roomProjectId, setRoomProjectId] = useState<string | null>(null);
   /**
    * Where the NEXT session starts. Decoupled from the panel context
    * (`selectedProject`): null means "let the task decide" — one project →
@@ -690,6 +693,11 @@ export function WorkbenchPanel(): ReactPortal | null {
    */
   const [sessionTarget, setSessionTarget] = useState<string | null>(null);
   const sessionTargetRef = useRef<string | null>(null);
+  /**
+   * The task's shared (neutral) workspace directory. Deterministic per note, so
+   * the header can name it before anything is written there.
+   */
+  const [taskWorkspaceDir, setTaskWorkspaceDir] = useState<string | null>(null);
   const [tasks, setTasks] = useState<WorkbenchTask[]>([]);
   const [selectedSessionKeys, setSelectedSessionKeys] = useState<Set<string>>(() => new Set());
   const [selectionAnchorKey, setSelectionAnchorKey] = useState("");
@@ -1070,12 +1078,10 @@ export function WorkbenchPanel(): ReactPortal | null {
     return () => off();
   }, [acpStatus.ingest]);
 
-  // Broadcast the live session-dot set to the nav rail (sibling component)
-  // and to floating note windows via main-process IPC.
-  // StrictMode double-invoke on mount is harmless: AppChrome just sets state
-  // to an identical payload. No loop: nothing listens back to this event here.
+  // One stream: report this window's panes to main, which merges every window
+  // (plus daemon-only panes) and fans the result back out. The board and the
+  // selection menu read it from there, so there is no second in-process event.
   useEffect(() => {
-    window.dispatchEvent(new CustomEvent("agent-resume:active-sessions", { detail: activeSessionDots }));
     desktopApi().setWorkbenchActiveSessions?.(activeSessionDots);
   }, [activeSessionDots]);
 
@@ -1734,6 +1740,19 @@ export function WorkbenchPanel(): ReactPortal | null {
   );
   const scopeProjectsRef = useRef<string[]>(scopeProjects);
   useEffect(() => { scopeProjectsRef.current = scopeProjects; }, [scopeProjects]);
+  // Resolve the shared workspace path for the header; it need not exist yet.
+  useEffect(() => {
+    const noteId = taskScope?.noteId;
+    if (!noteId || typeof desktopApi().notesTaskWorkspace !== "function") {
+      setTaskWorkspaceDir(null);
+      return;
+    }
+    let cancelled = false;
+    void desktopApi().notesTaskWorkspace({ noteId }).then(({ dir }) => {
+      if (!cancelled) setTaskWorkspaceDir(dir || null);
+    }).catch(() => { if (!cancelled) setTaskWorkspaceDir(null); });
+    return () => { cancelled = true; };
+  }, [taskScope?.noteId]);
   const taskSessionKeys = useMemo(
     () => mergeTaskSessionKeys(liveTask?.sessions ?? taskScope?.sessions ?? [], terminals, activeWorkbenchId ?? null),
     [liveTask, taskScope, terminals, activeWorkbenchId]
@@ -3610,12 +3629,10 @@ export function WorkbenchPanel(): ReactPortal | null {
       // stale selection, so a project-less task clears it.
       selectProject(target ?? null, { keepSessionKey: true });
       setSessionTarget(null);
-      setRoomProjectId(null);
     };
     const onTaskClear = () => {
       setTaskScope(null);
       setLeftTab("session");
-      setRoomProjectId(null);
       setSessionTarget(null);
       selectProject(null, { keepSessionKey: true, keepSide: true });
     };
@@ -3626,24 +3643,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       window.removeEventListener("agent-resume:workbench-task-clear", onTaskClear);
     };
   }, []);
-
-  // The IM room is a channel of the task: it opens inside this workspace,
-  // not as a separate top-level tab.
-  useEffect(() => {
-    const onOpenRoom = (event: Event) => {
-      const detail = (event as CustomEvent<{ projectId?: string }>).detail;
-      if (!detail?.projectId) return;
-      setRoomProjectId(detail.projectId);
-    };
-    window.addEventListener("agent-resume:workbench-open-room", onOpenRoom);
-    return () => window.removeEventListener("agent-resume:workbench-open-room", onOpenRoom);
-  }, []);
-
-  // Wait until the embedded panel is mounted before telling it which room to show.
-  useEffect(() => {
-    if (!roomProjectId) return;
-    window.dispatchEvent(new CustomEvent("agent-resume:im-open-room", { detail: { projectId: roomProjectId } }));
-  }, [roomProjectId]);
 
   const addProjectToTask = useCallback(async (projectPath: string) => {
     const scope = taskScopeRef.current;
@@ -3692,21 +3691,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       setStatus({ text: statusError(error), kind: "error" });
     }
   }, [t]);
-
-  const openRoom = useCallback(async () => {
-    const scope = taskScopeRef.current;
-    if (!scope) return;
-    try {
-      // The task note drives the room's name, project and background knowledge.
-      const room = await desktopApi().imCreateTaskRoom({
-        noteId: scope.noteId,
-        preferredCwd: sessionTargetRef.current ?? undefined
-      });
-      if (room) setRoomProjectId(room.project.projectId);
-    } catch (error) {
-      setStatus({ text: statusError(error), kind: "error" });
-    }
-  }, []);
 
   useEffect(() => {
     const onFocusSession = (event: Event) => {
@@ -3982,7 +3966,6 @@ export function WorkbenchPanel(): ReactPortal | null {
             taskScopeRef.current = null;
             setTaskScope(null);
             setSessionTarget(null);
-            setRoomProjectId(null);
           }
           await loadTasks();
           window.dispatchEvent(new Event("agent-resume:notes-mutated"));
@@ -4775,7 +4758,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     } catch {
       // Fall through to editor.
     }
-    notifyDesktop({ text: t("desktop.im.noGitDiffFallback"), kind: "info" });
+    notifyDesktop({ text: t("desktop.workbench.noGitDiffFallback"), kind: "info" });
     await openFile(absPath, undefined, projectPath);
   };
   openDiffForPathRef.current = openDiffForPath;
@@ -5383,6 +5366,17 @@ export function WorkbenchPanel(): ReactPortal | null {
     });
   }, [aliases, allProjects, sideRootProjects, t, taskScope]);
 
+  /**
+   * The `#` menu in a session running in the shared workspace offers the task's
+   * referenced repositories (their folders live outside the workspace cwd).
+   */
+  const composerWorkspaceProjects = useMemo<ComposerWorkspaceProject[]>(
+    () => workspaceRootOptions
+      .filter((option) => !option.disabledReason)
+      .map((option) => ({ label: option.label, path: option.path })),
+    [workspaceRootOptions]
+  );
+
   const searchRootOptions = useMemo<SearchRootOption[]>(() => {
     if (taskScope) return workspaceRootOptions;
     return allProjects.map((project) => ({
@@ -5674,8 +5668,8 @@ export function WorkbenchPanel(): ReactPortal | null {
     <div className="wb-terminal-tabs is-session-group" data-pane-group="session">
       <button ref={newSessionButtonRef} type="button" className={`wb-pane-tab-group-label${terminalCreating ? " is-busy" : ""}`} disabled={terminalCreating} aria-label={t("desktop.workbench.newSession")} title={t("desktop.workbench.newSession")} aria-haspopup="menu" aria-expanded={Boolean(newSessionPicker)} onClick={() => { if (newSessionPicker) setNewSessionPicker(null); else void newSession(); }}>{terminalCreating ? <ThemeIcon name="loader" className="spin" size={13} aria-hidden="true" /> : <ThemeIcon name="bot" size={13} aria-hidden="true" />}</button>
       <div className="wb-terminal-tabs-list" role="tablist" aria-label={t("desktop.workbench.tabGroupSession")}>
-        {currentSessionTerminals.map((pane) => <div className={`wb-terminal-tab is-session${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key} onContextMenu={(event) => sessionTabMenu(event, terminalSessionNoteTarget(pane, aliases[pane.projectPath] || basename(pane.projectPath)), pane.key)}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ProviderIcon provider={sessionIdentityFromKey(pane.sessionKey)?.provider || ""} size={13} aria-hidden="true" />{sessionTabTitle(pane, sessionTitles)}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeTerminal")} onClick={() => closeTerminal(pane.key)}><ThemeIcon name="close" size={13} /></button></div>)}
-        {currentAcpChats.map((pane) => <div className={`wb-terminal-tab is-session is-acp${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key} onContextMenu={(event) => sessionTabMenu(event, acpSessionNoteTarget(pane, aliases[pane.projectPath] || basename(pane.projectPath)), pane.key)}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ProviderIcon provider={pane.provider} size={13} aria-hidden="true" />{sessionTabTitle(pane, sessionTitles)}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeAcpChat")} onClick={() => closeAcpChat(pane.key)}><ThemeIcon name="close" size={13} /></button></div>)}
+        {currentSessionTerminals.map((pane) => <div className={`wb-terminal-tab is-session${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key} onContextMenu={(event) => sessionTabMenu(event, terminalSessionNoteTarget(pane, aliases[pane.projectPath] || basename(pane.projectPath)), pane.key)}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ProviderIcon provider={sessionIdentityFromKey(pane.sessionKey)?.provider || ""} size={13} aria-hidden="true" />{sessionTabDot(sessionRuntimeByPaneKey.get(pane.key)?.status)}{sessionTabTitle(pane, sessionTitles)}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeTerminal")} onClick={() => closeTerminal(pane.key)}><ThemeIcon name="close" size={13} /></button></div>)}
+        {currentAcpChats.map((pane) => <div className={`wb-terminal-tab is-session is-acp${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key} onContextMenu={(event) => sessionTabMenu(event, acpSessionNoteTarget(pane, aliases[pane.projectPath] || basename(pane.projectPath)), pane.key)}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ProviderIcon provider={pane.provider} size={13} aria-hidden="true" />{sessionTabDot(sessionRuntimeByPaneKey.get(pane.key)?.status)}{sessionTabTitle(pane, sessionTitles)}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeAcpChat")} onClick={() => closeAcpChat(pane.key)}><ThemeIcon name="close" size={13} /></button></div>)}
       </div>
     </div>
     <div className="wb-terminal-tabs is-terminal-group" data-pane-group="terminal">
@@ -5730,12 +5724,42 @@ export function WorkbenchPanel(): ReactPortal | null {
   // A workbench window has no app header to portal into, so it renders the same
   // header itself, where the window's own chrome strip is.
   const inlineHeader = document.documentElement.dataset.windowMode === "task";
+  // The header names the task and points at the directory the workbench is in:
+  // an explicitly activated project, the task's only project, else the shared
+  // workspace — the same rule a new session uses for its cwd.
+  const headerDirectory = sessionTarget
+    || (scopeProjects.length === 1 ? scopeProjects[0] : null)
+    || (taskScope ? taskWorkspaceDir : null)
+    || selectedProject
+    || null;
+  const headerTitle = taskScope
+    ? (taskScope.title || taskScope.noteId)
+    : headerDirectory
+      ? (aliases[headerDirectory] || basename(headerDirectory))
+      : t("desktop.workbench.allSessions");
+  const revealHeaderDirectory = () => {
+    const target = headerDirectory;
+    if (!target) return;
+    void (async () => {
+      try {
+        // The shared workspace is allocated on demand, so create it before revealing.
+        let dir = target;
+        if (taskScope && target === taskWorkspaceDir && typeof desktopApi().notesEnsureTaskWorkspace === "function") {
+          const ensured = await desktopApi().notesEnsureTaskWorkspace({ noteId: taskScope.noteId });
+          if (ensured?.dir) dir = ensured.dir;
+        }
+        await desktopApi().workbenchRevealPath({ rootPath: dir, targetPath: dir });
+      } catch (error) {
+        notifyDesktop({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+      }
+    })();
+  };
   const detailHeader = (
     <WorkbenchDetailHeader
       onBackToGtd={inlineHeader ? undefined : () => window.dispatchEvent(new CustomEvent("agent-resume:view-gtd"))}
-      selectedProject={sideRoot}
-      projectLabel={sideRoot ? aliases[sideRoot] || basename(sideRoot) : ""}
-      emptyLabel={taskScope ? t("desktop.workbench.taskNoProject") : undefined}
+      title={headerTitle}
+      directory={headerDirectory}
+      onRevealDirectory={headerDirectory ? revealHeaderDirectory : undefined}
       side={side}
       branchStatusLabel={branchStatusLabel}
       branchStatusPane={branchStatusPane}
@@ -5778,16 +5802,6 @@ export function WorkbenchPanel(): ReactPortal | null {
                 title={t("desktop.workbench.taskOpenNote")}
               >
                 <ThemeIcon name="file-text" size={14} />
-              </button>
-              <button
-                type="button"
-                className="wb-icon-btn"
-                onClick={() => { if (roomProjectId) setRoomProjectId(null); else void openRoom(); }}
-                aria-label={t(roomProjectId ? "desktop.workbench.closeRoom" : "desktop.workbench.openRoom")}
-                title={t(roomProjectId ? "desktop.workbench.closeRoom" : "desktop.workbench.openRoom")}
-                aria-pressed={roomProjectId ? true : false}
-              >
-                <ThemeIcon name="message-square" size={14} />
               </button>
             </div>
             {taskScope.next && (
@@ -5961,7 +5975,7 @@ export function WorkbenchPanel(): ReactPortal | null {
               onContextMenu={(event) => sessionMenu(event, session)}
               onClick={(event) => handleCatalogSessionClick(event, session)}
               title={sessionTooltip}
-            ><span className="wb-list-item-top"><span className="wb-session-title-wrap">{isOpen ? <span className="wb-session-activity-dot" aria-hidden="true" /> : null}<span className="wb-list-item-title" ref={(el) => syncTruncationTitle(el)}>{session.title || session.id}</span>{session.source === "im" ? <span className="wb-im-session-badge" aria-label={t("desktop.workbench.imSessionBadge")} title={t("desktop.workbench.imSessionBadgeHint")}>{t("desktop.workbench.imSessionBadge")}</span> : null}{otherMachine ? <span className="wb-other-machine-badge" aria-label={t("desktop.workbench.otherMachineBadge")}>{t("desktop.workbench.otherMachineBadge")}</span> : null}{sessionFilter === "all" && taskScope && taskBySessionKey.has(key) ? <span className="wb-task-badge" aria-hidden="true" title={t("desktop.workbench.ownedByTask", taskBySessionKey.get(key)?.title ?? "")}>{taskBySessionKey.get(key)?.title}</span> : null}</span></span><span className="wb-list-item-preview" ref={(el) => syncTruncationTitle(el)}><span className="wb-list-item-date">{formatDateTime(session.updatedAt)}</span><span className="s-provider-tag" data-provider={session.acpProvider || session.provider}>{session.acpProvider ? `acp/${session.acpProvider}` : session.provider}</span>{gtdStatus ? <span className={`wb-gtd-status-badge is-${gtdStatus}`} aria-label={t("desktop.workbench.gtdStatusLabel", t(`desktop.workbench.gtdStatus.${gtdStatus}`))}>{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</span> : <span className="wb-gtd-status-badge is-unmarked" title={t("desktop.gtd.unmarkedHint")}>{t("desktop.gtd.unmarked")}</span>}{" · "}{aliases[session.projectPath] || basename(session.projectPath)}</span></button>;
+            ><span className="wb-list-item-top"><span className="wb-session-title-wrap">{isOpen ? <span className="wb-session-activity-dot" aria-hidden="true" /> : null}<span className="wb-list-item-title" ref={(el) => syncTruncationTitle(el)}>{session.title || session.id}</span>{otherMachine ? <span className="wb-other-machine-badge" aria-label={t("desktop.workbench.otherMachineBadge")}>{t("desktop.workbench.otherMachineBadge")}</span> : null}{sessionFilter === "all" && taskScope && taskBySessionKey.has(key) ? <span className="wb-task-badge" aria-hidden="true" title={t("desktop.workbench.ownedByTask", taskBySessionKey.get(key)?.title ?? "")}>{taskBySessionKey.get(key)?.title}</span> : null}</span></span><span className="wb-list-item-preview" ref={(el) => syncTruncationTitle(el)}><span className="wb-list-item-date">{formatDateTime(session.updatedAt)}</span><span className="s-provider-tag" data-provider={session.acpProvider || session.provider}>{session.acpProvider ? `acp/${session.acpProvider}` : session.provider}</span>{gtdStatus ? <span className={`wb-gtd-status-badge is-${gtdStatus}`} aria-label={t("desktop.workbench.gtdStatusLabel", t(`desktop.workbench.gtdStatus.${gtdStatus}`))}>{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</span> : <span className="wb-gtd-status-badge is-unmarked" title={t("desktop.gtd.unmarkedHint")}>{t("desktop.gtd.unmarked")}</span>}{" · "}{aliases[session.projectPath] || basename(session.projectPath)}</span></button>;
           }}
         /> : <div className="wb-list"><p className="muted wb-list-empty">{sessionQuery ? t("desktop.workbench.noMatchingSessions") : t("desktop.workbench.noSessionsInProject")}</p></div>}
         </>
@@ -6036,16 +6050,15 @@ export function WorkbenchPanel(): ReactPortal | null {
           </div>
         ) : null}
         <div className="wb-detail-body">
-          {roomProjectId ? (
-            <div className="wb-room-pane">
-              <ImPanel embedded onCloseRoom={() => setRoomProjectId(null)} />
-            </div>
-          ) : null}
-          <div className="wb-terminal-shell" style={roomProjectId ? { display: "none" } : undefined}>{paneTabGroups}<div className="wb-terminal-stack">{terminals.filter((pane) => paneScopeKey(pane) === activeScopeKey && pane.key === activePane).map((pane) => {
+          <div className="wb-terminal-shell">{paneTabGroups}<div className="wb-terminal-stack">{terminals.filter((pane) => paneScopeKey(pane) === activeScopeKey && pane.key === activePane).map((pane) => {
             const sessionIdentity = sessionIdentityFromKey(pane.sessionKey);
             const pending = pendingSessions.find((item) => item.terminalKey === pane.key);
             const isSession = pane.group === "session";
             const showSplit = isSession && sessionViewMode === "hybrid";
+            // In the shared workspace the `#` menu points at the task's repos.
+            const composerProjects = taskWorkspaceDir && projectPathKey(pane.cwd) === projectPathKey(taskWorkspaceDir)
+              ? composerWorkspaceProjects
+              : EMPTY_COMPOSER_WORKSPACE_PROJECTS;
 
             if (showSplit) {
               const provider = sessionIdentity?.provider || pending?.provider || "codex";
@@ -6141,6 +6154,7 @@ export function WorkbenchPanel(): ReactPortal | null {
                     onClose={closeTerminal}
                     registerFocus={registerComposerFocus}
                     slashPhrases={settings?.workbench?.composerSlashPhrases ?? []}
+                    workspaceProjects={composerProjects}
                   />
                 </div>
               );
@@ -6178,6 +6192,7 @@ export function WorkbenchPanel(): ReactPortal | null {
                     onClose={closeTerminal}
                     registerFocus={registerComposerFocus}
                     slashPhrases={settings?.workbench?.composerSlashPhrases ?? []}
+                    workspaceProjects={composerProjects}
                   />
                 ) : null}
               </div>

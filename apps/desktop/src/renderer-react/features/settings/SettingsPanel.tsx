@@ -8,7 +8,7 @@ import { desktopApi } from "../../bridge";
 import { Status, type StatusKind } from "../../components/Status";
 import { useI18n } from "../../i18n";
 import { AboutPane, BackupPane, LogsPane, NotesPane, StoragePane, UsagePane, WorkbenchPane, type UsageDetailTab } from "./AdditionalPanes";
-import { ImSettingsPane } from "./ImSettingsPane";
+import { SelectionSettingsPane } from "./SelectionSettingsPane";
 import { AgentStatusPane } from "./AgentStatusPane";
 import { McpPane } from "./McpPane";
 import {
@@ -33,11 +33,11 @@ import {
   type WorkbenchDraft
 } from "./model";
 
-type Pane = "general" | "providers" | "sessions" | "workbench" | "im" | "notes" | "storage" | "mcp" | "agentStatus" | "usage" | "logs" | "backup" | "about";
-type EditablePane = Exclude<Pane, "mcp" | "usage" | "logs" | "backup" | "about" | "im">;
+type Pane = "general" | "providers" | "sessions" | "workbench" | "selection" | "notes" | "storage" | "mcp" | "agentStatus" | "usage" | "logs" | "backup" | "about";
+type EditablePane = Exclude<Pane, "mcp" | "usage" | "logs" | "backup" | "about" | "selection">;
 
 function isEditablePane(value: Pane): value is EditablePane {
-  return value !== "mcp" && value !== "usage" && value !== "logs" && value !== "backup" && value !== "about" && value !== "im";
+  return value !== "mcp" && value !== "usage" && value !== "logs" && value !== "backup" && value !== "about" && value !== "selection";
 }
 
 type SettingsPanelProps = {
@@ -51,7 +51,7 @@ const panes: Array<{ id: Pane; key: string; desc: string }> = [
   { id: "providers", key: "desktop.settings.paneProviders", desc: "desktop.settings.paneProvidersDesc" },
   { id: "sessions", key: "desktop.settings.paneSessions", desc: "desktop.settings.paneSessionsDesc" },
   { id: "workbench", key: "desktop.settings.paneWorkbench", desc: "desktop.settings.paneWorkbenchDesc" },
-  { id: "im", key: "desktop.settings.paneIm", desc: "desktop.settings.paneImDesc" },
+  { id: "selection", key: "desktop.settings.paneSelection", desc: "desktop.settings.paneSelectionDesc" },
   { id: "notes", key: "desktop.settings.paneNotes", desc: "desktop.settings.paneNotesDesc" },
   { id: "storage", key: "desktop.settings.paneStorage", desc: "desktop.settings.paneStorageDesc" },
   { id: "mcp", key: "desktop.settings.paneMcp", desc: "desktop.settings.paneMcpDesc" },
@@ -292,7 +292,7 @@ export function SettingsPanel({
     : pane === "providers" ? <ProvidersPane draft={providers} setDraft={(value) => setProviders(value)} t={t} />
     : pane === "sessions" ? <SessionsPane draft={sessions} setDraft={(value) => setSessions(value)} t={t} />
     : pane === "workbench" ? <WorkbenchPane draft={workbench} setDraft={(value) => setWorkbench(value)} t={t} />
-    : pane === "im" ? <ImSettingsPane t={t} />
+    : pane === "selection" ? <SelectionSettingsPane t={t} />
     : pane === "notes" ? <NotesPane draft={notes} setDraft={setNotes} t={t} />
     : pane === "storage" ? <StoragePane draft={storage} setDraft={(value) => setStorage(value)} t={t} />
     : pane === "mcp" ? <McpPane t={t} />
@@ -375,7 +375,7 @@ export function SettingsPanel({
             <div
               className={`settings-pane${pane === "usage" || pane === "logs" ? " settings-pane-usage" : pane === "about" ? " settings-pane-about" : ""}`}
             >
-              {pane === "usage" || pane === "logs" || pane === "about" || pane === "mcp" || pane === "backup" || pane === "agentStatus" ? body : <div className="settings-pane-body">{pane === "im" ? body : <>{body}
+              {pane === "usage" || pane === "logs" || pane === "about" || pane === "mcp" || pane === "backup" || pane === "agentStatus" ? body : <div className="settings-pane-body">{pane === "selection" ? body : <>{body}
                 <div className="settings-pane-actions">
                   <button type="button" className="btn primary" data-testid={`settings-save-${pane}`} disabled={!dirty || saving} onClick={() => void handleSave(pane as EditablePane)}>{saving ? t("desktop.settings.saving") : t("desktop.settings.save")}</button>
                   <button type="button" className="ghost-btn" data-testid={`settings-discard-${pane}`} disabled={!dirty || saving} onClick={() => handleDiscard(pane as EditablePane)}>{t("desktop.settings.discard")}</button>
@@ -462,7 +462,6 @@ function ProvidersPane({ draft, setDraft, t }: { draft: ProvidersDraft; setDraft
       sessionSummarySelection: clearIfSelected(draft.sessionSummarySelection),
       reportSelection: clearIfSelected(draft.reportSelection),
       gtdSelection: clearIfSelected(draft.gtdSelection),
-      imRoutingSelection: clearIfSelected(draft.imRoutingSelection),
       translateSelection: clearIfSelected(draft.translateSelection)
     });
     if (selectedProviderId === providerId) {
@@ -543,7 +542,6 @@ function ProvidersPane({ draft, setDraft, t }: { draft: ProvidersDraft; setDraft
         "sessionSummarySelection",
         "reportSelection",
         "gtdSelection",
-        "imRoutingSelection",
         "translateSelection"
       ] as const;
       for (const key of textKeys) {
@@ -964,15 +962,6 @@ function ProvidersPane({ draft, setDraft, t }: { draft: ProvidersDraft; setDraft
           (value) => update("gtdSelection", value),
           t("desktop.settings.modelPlaceholder"),
           "settings-model-select-gtd"
-        )}
-        {selectionRow(
-          "desktop.settings.imRoutingModelUse",
-          "desktop.settings.imRoutingModelUseDesc",
-          "text",
-          draft.imRoutingSelection,
-          (value) => update("imRoutingSelection", value),
-          t("desktop.settings.modelPlaceholder"),
-          "settings-model-select-im-routing"
         )}
         {selectionRow(
           "desktop.settings.translateModelUse",

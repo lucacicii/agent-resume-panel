@@ -566,7 +566,7 @@ export const SessionTranscriptPane = React.memo(function SessionTranscriptPane({
       return next;
     });
     try {
-      const result = await desktopApi().imRunSelectionAction({ actionId: "translate", text });
+      const result = await desktopApi().selectionRunAction({ actionId: "translate", text });
       setTranslations((current) => ({ ...current, [messageId]: result.text }));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));

@@ -3,20 +3,7 @@ import * as path from "node:path";
 import { runSqlite, runSqliteJson } from "../sqlite";
 import { REPORT_SCHEMA_SQL } from "../report/schema";
 import {
-  DESKTOP_AGENT_TRACE_MIGRATION_SQL,
   DESKTOP_ONLY_SCHEMA_SQL,
-  IM_MESSAGE_IMAGES_MIGRATION_SQL,
-  IM_MESSAGE_THINKING_MIGRATION_SQL,
-  IM_ROLE_MODEL_MIGRATION_SQL,
-  IM_ROLE_DELEGATION_MIGRATION_SQL,
-  IM_SMART_ROUTING_MIGRATION_SQL,
-  IM_ROLE_THOUGHT_LEVEL_MIGRATION_SQL,
-  IM_SELECTION_ACTION_MODEL_MIGRATION_SQL,
-  IM_THREAD_MIGRATION_SQL,
-  IM_MESSAGE_ACP_SYNC_MIGRATION_SQL,
-  IM_WORK_ITEM_MIGRATION_SQL,
-  IM_KNOWLEDGE_SOURCE_MIGRATION_SQL,
-  IM_TOOLS_MIGRATION_SQL,
   SYNC_STATE_DESKTOP_MIGRATION_SQL,
   TASK_TEMPLATE_PROJECT_PATHS_MIGRATION_SQL
 } from "./desktopSchema";
@@ -117,19 +104,6 @@ export async function ensureDesktopDbSchema(desktopDb: string): Promise<void> {
     await ensureWalMode(target);
     await runSqlite(target, REPORT_SCHEMA_SQL);
     await runSqlite(target, DESKTOP_ONLY_SCHEMA_SQL);
-    await runIdempotentStatements(target, DESKTOP_AGENT_TRACE_MIGRATION_SQL);
-    await runIdempotentStatements(target, IM_TOOLS_MIGRATION_SQL);
-    await runIdempotentStatements(target, IM_ROLE_MODEL_MIGRATION_SQL);
-    await runIdempotentStatements(target, IM_ROLE_THOUGHT_LEVEL_MIGRATION_SQL);
-    await runIdempotentStatements(target, IM_ROLE_DELEGATION_MIGRATION_SQL);
-    await runIdempotentStatements(target, IM_SMART_ROUTING_MIGRATION_SQL);
-    await runIdempotentStatements(target, IM_MESSAGE_THINKING_MIGRATION_SQL);
-    await runIdempotentStatements(target, IM_MESSAGE_IMAGES_MIGRATION_SQL);
-    await runIdempotentStatements(target, IM_SELECTION_ACTION_MODEL_MIGRATION_SQL);
-    await runIdempotentStatements(target, IM_THREAD_MIGRATION_SQL);
-    await runIdempotentStatements(target, IM_MESSAGE_ACP_SYNC_MIGRATION_SQL);
-    await runIdempotentStatements(target, IM_WORK_ITEM_MIGRATION_SQL);
-    await runIdempotentStatements(target, IM_KNOWLEDGE_SOURCE_MIGRATION_SQL);
     await runIdempotentStatements(target, TASK_TEMPLATE_PROJECT_PATHS_MIGRATION_SQL);
     verifiedDesktopDbPaths.add(target);
   })().finally(() => {

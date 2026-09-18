@@ -21,7 +21,7 @@ const { SessionTranscriptPane } = await import("./SessionTranscriptPane");
 
 const apiMocks = vi.hoisted(() => ({
   previewSession: vi.fn(),
-  imRunSelectionAction: vi.fn()
+  selectionRunAction: vi.fn()
 }));
 
 vi.mock("../../bridge", () => ({ desktopApi: () => apiMocks }));
@@ -35,7 +35,7 @@ vi.mock("../../i18n", () => ({
 afterEach(() => {
   cleanup();
   apiMocks.previewSession.mockReset();
-  apiMocks.imRunSelectionAction.mockReset();
+  apiMocks.selectionRunAction.mockReset();
   renderCounts.clear();
   try {
     Reflect.deleteProperty(navigator, "clipboard");
@@ -424,7 +424,7 @@ describe("SessionTranscriptPane", () => {
         messages: [{ role: "assistant", text: "Dock it beside the TUI." }]
       }
     });
-    apiMocks.imRunSelectionAction.mockResolvedValue({ text: "translated body" });
+    apiMocks.selectionRunAction.mockResolvedValue({ text: "translated body" });
 
     render(<SessionTranscriptPane provider="codex" sessionId="session-tr" active />);
     expect(await screen.findByText("Dock it beside the TUI.")).toBeTruthy();
@@ -433,7 +433,7 @@ describe("SessionTranscriptPane", () => {
     expect(translateBtn).toBeTruthy();
     fireEvent.click(translateBtn);
 
-    await waitFor(() => expect(apiMocks.imRunSelectionAction).toHaveBeenCalledWith({
+    await waitFor(() => expect(apiMocks.selectionRunAction).toHaveBeenCalledWith({
       actionId: "translate",
       text: "Dock it beside the TUI."
     }));
@@ -445,7 +445,7 @@ describe("SessionTranscriptPane", () => {
     fireEvent.click(restoreBtn);
     await waitFor(() => expect(screen.queryByText("translated body")).toBeNull());
     expect(screen.getByText("Dock it beside the TUI.")).toBeTruthy();
-    expect(apiMocks.imRunSelectionAction).toHaveBeenCalledTimes(1);
+    expect(apiMocks.selectionRunAction).toHaveBeenCalledTimes(1);
   });
 
   it("surfaces a translate failure in the transcript status", async () => {
@@ -456,7 +456,7 @@ describe("SessionTranscriptPane", () => {
         messages: [{ role: "assistant", text: "Dock it beside the TUI." }]
       }
     });
-    apiMocks.imRunSelectionAction.mockRejectedValue(new Error("Conversation LLM is not configured."));
+    apiMocks.selectionRunAction.mockRejectedValue(new Error("Conversation LLM is not configured."));
 
     render(<SessionTranscriptPane provider="codex" sessionId="session-err" active />);
     expect(await screen.findByText("Dock it beside the TUI.")).toBeTruthy();

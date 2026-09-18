@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { desktopApi } from "../bridge";
 import { notifyDesktop } from "../components/Notifications";
 import { useI18n } from "../i18n";
-import type { ImSelectionAction } from "../../shared/imTypes";
+import type { SelectionAction } from "../../shared/selectionActions";
 import { SelectionSendItems } from "./SelectionSendMenu";
 import {
   copySelectionText,
@@ -14,8 +14,6 @@ export function SelectionActionItems({
   text,
   projectPath,
   onSent,
-  className = "notes-selection-menu",
-  actions,
   onActionStart,
   runAction,
   x,
@@ -24,24 +22,21 @@ export function SelectionActionItems({
   text: string;
   projectPath?: string;
   onSent: () => void;
-  className?: string;
-  actions?: ImSelectionAction[];
   onActionStart?: () => void;
   runAction: (input: SelectionActionRunInput) => Promise<void>;
   x: number;
   y: number;
 }): React.JSX.Element {
   const { t } = useI18n();
-  const [loadedActions, setLoadedActions] = useState<ImSelectionAction[]>([]);
+  const [actions, setActions] = useState<SelectionAction[]>([]);
 
   useEffect(() => {
-    if (actions) return;
     const api = desktopApi();
-    if (typeof api.imListSelectionActions !== "function") return;
+    if (typeof api.selectionListActions !== "function") return;
     let cancelled = false;
-    void api.imListSelectionActions()
+    void api.selectionListActions()
       .then((next) => {
-        if (!cancelled) setLoadedActions(next);
+        if (!cancelled) setActions(next);
       })
       .catch((error: unknown) => {
         notifyDesktop({ text: error instanceof Error ? error.message : String(error), kind: "error" });
@@ -49,11 +44,9 @@ export function SelectionActionItems({
     return () => {
       cancelled = true;
     };
-  }, [actions]);
+  }, []);
 
-  const independentActions = (actions ?? loadedActions).filter((action) =>
-    action.enabled && action.kind === "independent"
-  );
+  const enabledActions = actions.filter((action) => action.enabled);
 
   return (
     <>
@@ -67,7 +60,7 @@ export function SelectionActionItems({
       >
         {t("desktop.common.copy")}
       </button>
-      {independentActions.map((action) => (
+      {enabledActions.map((action) => (
         <button
           key={action.actionId}
           type="button"
@@ -81,7 +74,7 @@ export function SelectionActionItems({
         </button>
       ))}
       <div className="context-menu-separator" role="separator" />
-      <SelectionSendItems text={text} projectPath={projectPath} onSent={onSent} className={className} />
+      <SelectionSendItems text={text} projectPath={projectPath} onSent={onSent} />
     </>
   );
 }

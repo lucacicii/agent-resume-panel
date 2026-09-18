@@ -42,8 +42,7 @@ export interface AiProvider {
  * - "sessionSummary": Session summary generation
  * - "report": Daily / weekly / monthly digest generation
  * - "gtd": GTD task analysis from digest
- * - "imRouting": IM message smart intent routing
- * - "translate": inline transcript and IM message translation
+ * - "translate": inline transcript and selection translation
  */
 export type ModelUse =
   | "tool"
@@ -55,7 +54,6 @@ export type ModelUse =
   | "sessionSummary"
   | "report"
   | "gtd"
-  | "imRouting"
   | "translate";
 
 export const MODEL_USES: readonly ModelUse[] = [
@@ -68,7 +66,6 @@ export const MODEL_USES: readonly ModelUse[] = [
   "sessionSummary",
   "report",
   "gtd",
-  "imRouting",
   "translate"
 ];
 

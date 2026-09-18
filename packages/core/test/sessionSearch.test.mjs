@@ -6,7 +6,6 @@ import test from "node:test";
 import {
   ensureDesktopDbSchema,
   ensureExtensionCatalogSchema,
-  extractTouchedSessions,
   mergeSessionSearchHits,
   runSqlite,
   runSqliteJson,
@@ -163,46 +162,6 @@ test("mergeSessionSearchHits prefers both then score then recency", () => {
   assert.equal(merged[0].score, 0.9);
   assert.ok(merged.some((h) => h.sessionId === "s1" && h.match === "semantic"));
   assert.ok(merged.some((h) => h.sessionId === "k1" && h.match === "keyword"));
-});
-
-test("extractTouchedSessions parses session_search JSON results", () => {
-  const text = `Found 2 session(s) matching "auth":
-[
-  {
-    "provider": "codex",
-    "sessionId": "s1",
-    "title": "Auth work",
-    "projectPath": "/tmp/app",
-    "summaryPreview": "OAuth login",
-    "score": 0.42,
-    "match": "both"
-  },
-  {
-    "provider": "claude",
-    "sessionId": "s2",
-    "title": "Other",
-    "projectPath": "/tmp/b"
-  }
-]`;
-  const hits = extractTouchedSessions("session_search", text);
-  assert.equal(hits.length, 2);
-  assert.equal(hits[0].provider, "codex");
-  assert.equal(hits[0].sessionId, "s1");
-  assert.equal(hits[0].contentPreview, "OAuth login");
-  assert.equal(hits[0].operation, "search");
-  assert.equal(hits[1].provider, "claude");
-});
-
-test("extractTouchedSessions uses args for session_read_transcript", () => {
-  const text = "Transcript excerpt for codex:abc (max 2500 chars):\n\nUser: hello\n\nAssistant: hi";
-  const hits = extractTouchedSessions("session_read_transcript", text, {
-    provider: "codex",
-    sessionId: "abc"
-  });
-  assert.equal(hits.length, 1);
-  assert.equal(hits[0].sessionId, "abc");
-  assert.equal(hits[0].operation, "read");
-  assert.ok(hits[0].contentPreview?.includes("hello"));
 });
 
 test("searchSessionsByEmbedding scores injected vectors and joins catalog", async () => {

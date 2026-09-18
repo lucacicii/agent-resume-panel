@@ -834,49 +834,6 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(workbenchOpenSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1" }));
   });
 
-  it("renders IM badge on sessions created via IM", async () => {
-    const host = document.createElement("div");
-    host.id = "react-workbench";
-    document.body.append(host);
-
-    const listSessions = vi.fn(async () => [
-      { provider: "chat" as const, id: "chat-im-1", title: "IM Feature Discussion", projectPath: "/work/app", updatedAt: 200, source: "im", acpProvider: "claude" as const },
-      { provider: "codex" as const, id: "session-1", title: "Normal Codex Session", projectPath: "/work/app", updatedAt: 100 }
-    ]);
-
-    window.agentResume = {
-      getI18nBundle: async () => ({ locale: "en", messages: {
-        "desktop.workbench.allSessions": "All sessions",
-        "desktop.workbench.noSessionsInProject": "No sessions",
-        "desktop.workbench.noProjects": "No projects",
-        "desktop.workbench.imSessionBadge": "IM",
-        "desktop.workbench.imSessionBadgeHint": "Created via IM"
-      } }),
-      onLocaleChanged: () => () => undefined,
-      onWorkbenchCmdT: () => () => undefined,
-      onWorkbenchCmdW: () => () => undefined,
-      onTerminalData: () => () => undefined,
-      onTerminalExit: () => () => undefined,
-      onTerminalRespawned: () => () => undefined,
-      listProjectAliases: async () => ({}),
-      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
-      listSessions,
-      workbenchOpenSession: vi.fn(async () => ({}))
-    } as unknown as typeof window.agentResume;
-
-    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
-    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-
-    const imRow = await screen.findByRole("button", { name: /IM Feature Discussion/ });
-    const imBadge = imRow.querySelector(".wb-im-session-badge");
-    expect(imBadge).not.toBeNull();
-    expect(imBadge?.textContent).toBe("IM");
-    expect(imBadge?.getAttribute("title")).toBe("Created via IM");
-
-    const normalRow = screen.getByRole("button", { name: /Normal Codex Session/ });
-    expect(normalRow.querySelector(".wb-im-session-badge")).toBeNull();
-  });
-
   it("activates the assigned project when resuming a moved session", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
@@ -1362,6 +1319,82 @@ describe("WorkbenchPanel", () => {
     expect(await within(listbox).findByText("#src")).toBeTruthy();
     fireEvent.keyDown(composerInput!, { key: "Tab" });
     expect(composerInput.value).toBe("please inspect #src");
+  });
+
+  it("offers the shared workspace's projects in the composer # menu", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const terminalSpawn = vi.fn(async () => ({ id: 1 }));
+    const workbenchListDirectory = vi.fn(async () => ({ entries: [] }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: { ...ARROW_TEST_MESSAGES,
+        "desktop.workbench.terminalComposerPlaceholder": "Type a command for the agent…",
+        "desktop.workbench.terminalComposerHint": "Click to type a command.",
+        "desktop.workbench.terminalComposerSend": "Send to terminal",
+        "desktop.workbench.terminalComposerSuggestions": "Command suggestions",
+        "desktop.workbench.terminalComposerDirectorySuggestions": "Directory suggestions",
+        "desktop.workbench.terminalComposerProjectSuggestions": "Project paths",
+        "desktop.workbench.terminalComposerProjectNoMatch": "No matching projects",
+        "desktop.workbench.terminalComposerDirectoryLoading": "Loading directories…",
+        "desktop.workbench.terminalComposerDropHint": "Drop to insert path",
+        "desktop.workbench.terminalComposerHintLine": "Enter pastes",
+        "desktop.workbench.sessionTarget": "New sessions start in: {0}",
+        "desktop.workbench.sharedWorkspace": "shared workspace",
+        "desktop.workbench.taskSessions": "{0} sessions"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listProjects: async () => [
+        { projectId: "project-app", portableKey: "/work/app", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/app", pathMissing: false, sessionCount: 0 },
+        { projectId: "project-api", portableKey: "/work/api", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/api", pathMissing: false, sessionCount: 0 }
+      ],
+      notesListTasks: async () => [
+        { noteId: "wi-multi", title: "Multi", gtdStatus: "next", work: { sessions: ["codex:session-1"], projects: ["/work/app", "/work/api"], primaryProject: "/work/app" } }
+      ],
+      notesTaskWorkspace: async () => ({ dir: WORKSPACE_CWD, exists: true }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: WORKSPACE_CWD, updatedAt: 1 }],
+      querySessionsPage: async () => ({
+        sessions: [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: WORKSPACE_CWD, updatedAt: 1 }],
+        total: 1
+      }),
+      workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: WORKSPACE_CWD }),
+      terminalSpawn,
+      terminalDestroy: async () => ({ ok: true }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalResize: async () => ({ ok: true }),
+      workbenchListDirectory
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await activateTaskDirectory("/work/app", { noteId: "wi-multi", projects: ["/work/app", "/work/api"] });
+    await waitFor(() => expect(document.querySelector(".wb-task-target")?.textContent).toBe("New sessions start in: shared workspace"));
+
+    fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
+    await waitFor(() => expect(terminalSpawn).toHaveBeenCalledTimes(1));
+    const composerInput = document.querySelector<HTMLTextAreaElement>(".workbench-layout .wb-terminal-composer-input");
+    if (!composerInput) throw new Error("composer input missing");
+    fireEvent.focus(composerInput);
+    fireEvent.change(composerInput, { target: { value: "#" } });
+
+    const listbox = await screen.findByRole("listbox", { name: "Project paths" });
+    expect(within(listbox).getByText("app")).toBeTruthy();
+    expect(within(listbox).getByText("/work/app")).toBeTruthy();
+    expect(within(listbox).getByText("api")).toBeTruthy();
+    expect(within(listbox).getByText("/work/api")).toBeTruthy();
+    // The neutral workspace holds no project folders; listing it is pointless.
+    expect(workbenchListDirectory).not.toHaveBeenCalled();
+
+    fireEvent.change(composerInput, { target: { value: "#api" } });
+    fireEvent.keyDown(composerInput, { key: "Tab" });
+    expect(composerInput.value).toBe("/work/api");
   });
 
   it("shell terminals render no composer (session-gated)", async () => {
@@ -2071,6 +2104,7 @@ describe("WorkbenchPanel", () => {
     host.id = "react-workbench";
     document.body.append(host);
     const terminalInput = vi.fn(async () => ({ ok: true }));
+    const setWorkbenchActiveSessions = vi.fn();
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages: {
         "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.common.loadingPreview": "Loading preview…", "desktop.sessions.noMessages": "No messages", "desktop.sessions.truncated": "(truncated)", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.sidePanelTranscript": "Transcript", "desktop.workbench.transcriptOutline": "Turns", "desktop.workbench.transcriptSearchPlaceholder": "Search this conversation", "desktop.workbench.transcriptNeedSession": "Open a session", "desktop.workbench.transcriptNoMatches": "No matching turns", "desktop.workbench.transcriptRoleUser": "User", "desktop.workbench.transcriptRoleAssistant": "Assistant", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.closeTerminal": "Close terminal", "desktop.workbench.resizeSidePanel": "Resize side panel"
@@ -2097,6 +2131,7 @@ describe("WorkbenchPanel", () => {
       }),
       terminalSpawn: async () => ({ id: 1 }),
       terminalInput,
+      setWorkbenchActiveSessions,
       terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
       terminalDestroy: async () => ({ ok: true }),
       terminalResize: async () => ({ ok: true })
@@ -2116,12 +2151,6 @@ describe("WorkbenchPanel", () => {
     // class, while any child/character mutation means the markdown re-rendered.
     observer.observe(markdown, { childList: true, subtree: true, characterData: true });
 
-    const dotPayloads: Array<Array<{ status?: string }>> = [];
-    const onActiveSessions = (event: Event) => {
-      dotPayloads.push((event as CustomEvent<Array<{ status?: string }>>).detail || []);
-    };
-    window.addEventListener("agent-resume:active-sessions", onActiveSessions);
-
     const composer = document.querySelector(".wb-terminal-composer-input") as HTMLTextAreaElement | null;
     expect(composer).not.toBeNull();
     for (let index = 0; index < 6; index += 1) {
@@ -2137,7 +2166,8 @@ describe("WorkbenchPanel", () => {
     // Typing straight into the live TUI also feeds the session status store;
     // the transcript markdown above stayed untouched through all of it.
     // (A status flip that lands on the pane is covered by the pane test.)
-    window.removeEventListener("agent-resume:active-sessions", onActiveSessions);
+    const dotPayloads = setWorkbenchActiveSessions.mock.calls.map((call) => call[0] as Array<{ status?: string }>);
+    expect(dotPayloads.length).toBeGreaterThan(0);
     expect(dotPayloads.every((payload) => payload.every((dot) => Boolean(dot.status)))).toBe(true);
 
     const terminalHost = document.querySelector(".wb-terminal-host") as HTMLElement;
@@ -6130,6 +6160,42 @@ describe("WorkbenchPanel", () => {
     window.removeEventListener("agent-resume:view-open-task", onOpenTask);
   });
 
+  it("shows the live status on a session tab", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.refresh": "Refresh", "desktop.common.loading": "Loading…", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.closeTerminal": "Close terminal"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+      workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: "/work/app" }),
+      terminalSpawn: async () => ({ id: 1 }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true }),
+      agentStatusGetSnapshot: async () => ({
+        byPaneId: { "1": { paneId: 1, agent: "codex", state: "blocked", authority: "screen", source: "screen", updatedAt: 1 } },
+        bySessionKey: {},
+        seq: 1
+      }),
+      onAgentStatusChanged: () => () => undefined
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
+    await waitFor(() => expect(document.querySelector(".wb-terminal-tab.is-session.active .session-dot.is-awaiting")).toBeTruthy());
+  });
+
   it("opens a floating note from an active CLI session tab and creates the session note", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
@@ -7459,7 +7525,7 @@ describe("WorkbenchPanel", () => {
     expect(listItem("Review tests").classList.contains("is-selected")).toBe(false);
   });
 
-  it("opens a working-tree diff from an IM reveal event without a full git status scan", async () => {
+  it("opens a working-tree diff from a reveal event without a full git status scan", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
     document.body.append(host);
@@ -8447,31 +8513,22 @@ describe("WorkbenchPanel", () => {
     // No workspace on disk yet → the open action is gone, but a session-less
     // task can still be deleted from the menu.
     notesTaskWorkspace.mockResolvedValue({ dir: WORKSPACE_CWD, exists: false });
+    const callsBefore = notesTaskWorkspace.mock.calls.length;
     fireEvent.contextMenu(document.querySelector(".wb-task") as HTMLElement);
-    await waitFor(() => expect(notesTaskWorkspace).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(notesTaskWorkspace.mock.calls.length).toBeGreaterThan(callsBefore));
     expect(screen.queryByRole("menuitem", { name: "Open workspace folder" })).toBeNull();
     expect(screen.queryByRole("menuitem", { name: "Delete task" })).not.toBeNull();
   });
 
-  it("keeps a single slim room header when embedded and closes from the task header", async () => {
+  it("names the task and points at the shared workspace with a Finder shortcut", async () => {
+    const notesTaskWorkspace = vi.fn(async () => ({ dir: WORKSPACE_CWD, exists: true }));
+    const workbenchRevealPath = vi.fn(async () => ({ ok: true }));
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages: {
         "desktop.common.search": "Search", "desktop.common.refresh": "Refresh", "desktop.common.all": "All",
         "desktop.workbench.allSessions": "All sessions",
-        "desktop.workbench.sidebarView": "Workbench sidebar view",
-        "desktop.workbench.tasksView": "Tasks",
-        "desktop.workbench.resourceView": "Repository",
-        "desktop.workbench.projectsView": "Projects",
-        "desktop.workbench.gtdView": "GTD",
-        "desktop.workbench.filterTasks": "Filter tasks",
-        "desktop.workbench.taskView": "Task",
-        "desktop.workbench.taskOpenNote": "Open note",
-        "desktop.workbench.taskClear": "Exit task",
-        "desktop.workbench.taskNext": "Next:",
         "desktop.workbench.taskSessions": "{0} sessions",
-        "desktop.workbench.room": "Room",
-        "desktop.workbench.closeRoom": "Close room",
-        "desktop.workbench.openRoom": "Open room"
+        "desktop.common.revealInFinder": "Reveal in Finder"
       } }),
       onLocaleChanged: () => () => undefined,
       onWorkbenchCmdT: () => () => undefined,
@@ -8482,52 +8539,35 @@ describe("WorkbenchPanel", () => {
       listProjectAliases: async () => ({}),
       getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
       listSessions: async () => [],
-      notesListTasks: async () => [{
-        noteId: "wi-1", title: "Cross-repo feature", gtdStatus: "next",
-        work: { sessions: [], projects: ["/work/app"], primaryProject: "/work/app" }
-      }],
+      notesListTasks: async () => [
+        { noteId: "wi-multi", title: "Multi repo work", gtdStatus: "next", work: { sessions: [], projects: ["/work/app", "/work/api"], primaryProject: "/work/app" } }
+      ],
+      notesTaskWorkspace,
+      workbenchRevealPath,
       terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
       terminalDestroy: async () => ({ ok: true }),
-      terminalResize: async () => ({ ok: true }),
-      imCreateTaskRoom: async () => ({
-        project: { projectId: "room-1", name: "Cross-repo feature", localPath: "/work/app" },
-        members: [], messages: [], jobs: [], knowledge: []
-      }),
-      imGetRoom: async () => ({
-        project: { projectId: "room-1", name: "Cross-repo feature", localPath: "/work/app" },
-        members: [], messages: [], jobs: [], knowledge: []
-      }),
-      imListProjects: async () => [{
-        projectId: "room-1", name: "Cross-repo feature", localPath: "/work/app", createdAtMs: 0, updatedAtMs: 0
-      }],
-      imListTemplates: async () => [],
-      imListSelectionActions: async () => [],
-      onImEvent: () => () => undefined
+      terminalResize: async () => ({ ok: true })
     } as unknown as typeof window.agentResume;
 
-    localStorage.setItem("workbench-sidebar-view-v2", "workitems");
     const host = document.createElement("div");
     host.id = "react-workbench";
     document.body.append(host);
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
-
     await act(async () => {
       window.dispatchEvent(new CustomEvent("agent-resume:workbench-task", { detail: {
-        noteId: "wi-1", title: "Cross-repo feature", status: "next", sessions: [], projects: ["/work/app"], primaryProject: "/work/app"
+        noteId: "wi-multi", title: "Multi repo work", status: "next", sessions: [],
+        projects: ["/work/app", "/work/api"], primaryProject: "/work/app"
       } }));
     });
-    await act(async () => {
-      window.dispatchEvent(new CustomEvent("agent-resume:workbench-open-room", { detail: { projectId: "room-1" } }));
-    });
 
-    await waitFor(() => expect(document.querySelector(".im-room-head.is-embedded")).not.toBeNull());
-    // The duplicated title/path block is dropped when embedded.
-    expect(document.querySelector(".im-room-head .im-room-head-titles")).toBeNull();
-
-    const head = document.querySelector(".wb-task-head") as HTMLElement;
-    fireEvent.click(within(head).getByRole("button", { name: "Close room" }));
-    await waitFor(() => expect(document.querySelector(".wb-room-pane")).toBeNull());
+    // Several projects, none activated → the shared workspace is the directory.
+    await waitFor(() => expect(document.querySelector(".wb-detail-project-label-text")?.textContent).toBe("Multi repo work"));
+    await waitFor(() => expect(document.querySelector(".wb-detail-project-path")?.textContent).toBe(WORKSPACE_CWD));
+    const reveal = document.querySelector(".wb-detail-project-reveal") as HTMLButtonElement;
+    expect(reveal).not.toBeNull();
+    fireEvent.click(reveal);
+    await waitFor(() => expect(workbenchRevealPath).toHaveBeenCalledWith({ rootPath: WORKSPACE_CWD, targetPath: WORKSPACE_CWD }));
   });
 
   it("shows persistent waiting tooltip for closed sessions and avoids double signal when open", async () => {

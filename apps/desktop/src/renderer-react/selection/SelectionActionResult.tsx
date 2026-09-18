@@ -4,7 +4,7 @@ import { notifyDesktop } from "../components/Notifications";
 import { ThemeIcon } from "../components/ThemeIcon";
 import { renderMarkdown } from "../components/Markdown";
 import { useI18n } from "../i18n";
-import type { ImSelectionAction } from "../../shared/imTypes";
+import type { SelectionAction } from "../../shared/selectionActions";
 
 type SelectionActionResultState = {
   x: number;
@@ -15,7 +15,7 @@ type SelectionActionResultState = {
 };
 
 export type SelectionActionRunInput = {
-  action: ImSelectionAction;
+  action: SelectionAction;
   text: string;
   x: number;
   y: number;
@@ -23,9 +23,9 @@ export type SelectionActionRunInput = {
 
 type Translate = (key: string, ...args: Array<string | number>) => string;
 
-export function selectionActionLabel(action: ImSelectionAction, t: Translate): string {
-  if (action.actionId === "translate") return t("desktop.im.translate");
-  if (action.actionId === "explain") return t("desktop.im.explain");
+export function selectionActionLabel(action: SelectionAction, t: Translate): string {
+  if (action.actionId === "translate") return t("desktop.selection.translate");
+  if (action.actionId === "explain") return t("desktop.selection.explain");
   return action.name;
 }
 
@@ -51,7 +51,7 @@ export function useSelectionActionResult(): {
     const title = selectionActionLabel(action, t);
     setSelectionResult({ x, y, title, text: "", loading: true });
     try {
-      const result = await desktopApi().imRunSelectionAction({ actionId: action.actionId, text });
+      const result = await desktopApi().selectionRunAction({ actionId: action.actionId, text });
       setSelectionResult((current) =>
         current?.loading && current.title === title
           ? { x, y, title, text: result.text, loading: false }
@@ -130,7 +130,7 @@ export function SelectionActionResult({
         </span>
       </header>
       {result.loading ? (
-        <p className="im-empty" role="status">{t("desktop.im.actionRunning")}</p>
+        <p className="selection-action-running" role="status">{t("desktop.selection.actionRunning")}</p>
       ) : (
         <div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(result.text) }} />
       )}

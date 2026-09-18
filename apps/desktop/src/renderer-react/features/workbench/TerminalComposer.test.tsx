@@ -34,6 +34,8 @@ const COMPOSER_MESSAGES: Record<string, string> = {
   "desktop.workbench.tuiSlash.share": "Share this session",
   "desktop.workbench.tuiSlash.permissions": "Permission settings",
   "desktop.workbench.terminalComposerDirectorySuggestions": "Directory suggestions",
+  "desktop.workbench.terminalComposerProjectSuggestions": "Project paths",
+  "desktop.workbench.terminalComposerProjectNoMatch": "No matching projects",
   "desktop.workbench.terminalComposerDirectoryLoading": "Loading directories…",
   "desktop.workbench.terminalComposerDirectoryEmpty": "No folders in this project",
   "desktop.workbench.terminalComposerDirectoryNoMatch": "No matching folders",
@@ -83,6 +85,7 @@ async function renderComposer(options: {
   onOpenTip?: (tip: { id: string; text: string; createdAtMs: number }) => void;
   onClose?: () => void;
   slashPhrases?: Array<{ trigger: string; phrase: string; description?: string }>;
+  workspaceProjects?: Array<{ label: string; path: string }>;
 } = {}): Promise<{
   map: RegisterMap;
   container: HTMLElement;
@@ -139,6 +142,7 @@ async function renderComposer(options: {
         registerFocus={registerSpy}
         slashPhrases={options.slashPhrases}
         tuiSlashCommands={options.tuiSlashCommands}
+        workspaceProjects={options.workspaceProjects}
       />
     );
   }
@@ -242,6 +246,59 @@ describe("TerminalComposer", () => {
     expect(await within(listbox).findByText("#src")).toBeTruthy();
     fireEvent.keyDown(textbox(), { key: "Tab" });
     expect(onChange).toHaveBeenCalledWith("please inspect #src");
+  });
+
+  it("lists the shared workspace's projects and inserts the project path on Tab", async () => {
+    const { onChange } = await renderComposer({
+      cwd: "/work/ws",
+      workspaceProjects: [
+        { label: "app", path: "/work/app" },
+        { label: "api", path: "/work/api" }
+      ]
+    });
+    focusInput();
+    fireEvent.change(textbox(), { target: { value: "please inspect #" } });
+    const listbox = await screen.findByRole("listbox", { name: "Project paths" });
+    expect(within(listbox).getByText("app")).toBeTruthy();
+    expect(within(listbox).getByText("/work/app")).toBeTruthy();
+    expect(within(listbox).getByText("api")).toBeTruthy();
+    // The shared workspace has no repo folders of its own to list.
+    expect(workbenchListDirectoryMock).not.toHaveBeenCalled();
+    fireEvent.change(textbox(), { target: { value: "please inspect #app" } });
+    fireEvent.keyDown(textbox(), { key: "Tab" });
+    expect(onChange).toHaveBeenCalledWith("please inspect /work/app");
+  });
+
+  it("filters shared-workspace projects by label and path", async () => {
+    await renderComposer({
+      cwd: "/work/ws",
+      workspaceProjects: [
+        { label: "app", path: "/work/app" },
+        { label: "api", path: "/work/api" }
+      ]
+    });
+    focusInput();
+    fireEvent.change(textbox(), { target: { value: "#api" } });
+    const listbox = await screen.findByRole("listbox", { name: "Project paths" });
+    expect(within(listbox).getByText("api")).toBeTruthy();
+    expect(within(listbox).queryByText("app")).toBeNull();
+  });
+
+  it("shows a project-specific empty state when no shared-workspace project matches", async () => {
+    await renderComposer({ cwd: "/work/ws", workspaceProjects: [{ label: "app", path: "/work/app" }] });
+    focusInput();
+    fireEvent.change(textbox(), { target: { value: "#zzz" } });
+    const listbox = await screen.findByRole("listbox", { name: "Project paths" });
+    expect(within(listbox).getByText("No matching projects")).toBeTruthy();
+  });
+
+  it("falls back to the directory listing when the workspace has no projects", async () => {
+    await renderComposer({ projectPath: "/work/app", workspaceProjects: [] });
+    focusInput();
+    fireEvent.change(textbox(), { target: { value: "#s" } });
+    const listbox = await screen.findByRole("listbox", { name: "Directory suggestions" });
+    expect(workbenchListDirectoryMock).toHaveBeenCalledWith({ rootPath: "/work/app", dirPath: "/work/app" });
+    expect(await within(listbox).findByText("#src")).toBeTruthy();
   });
 
   it("sends directly on Enter without accepting directory suggestions", async () => {

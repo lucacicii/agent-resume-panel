@@ -26,7 +26,6 @@ test("normalizeArpConfig keeps known workbench git fields and drops unknown keys
     version: 1,
     extraTopLevel: true,
     shared: { language: "zh-CN" },
-    im: { smartRoutingEnabled: false },
     workbench: {
       unused: 1,
       git: {
@@ -179,7 +178,6 @@ test("resolveCommitMessagePromptOptions uses project git fields when present and
     resolveCommitMessagePromptOptions(
       {
         version: 1,
-        im: {},
         workbench: {
           git: {
             commitMessage: {

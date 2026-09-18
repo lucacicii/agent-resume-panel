@@ -126,14 +126,13 @@ import {
   getAcpRuntimeMetrics,
   connectAcpChat,
   cancelAcpChat,
-  inspectAcpChat,
   denyAcpPermission,
   promptAcpChat,
   registerAcpIpc,
   setAcpModel,
   setAcpThoughtLevel
 } from "./acp/acpHost";
-import { flushImStreamingMessages, registerImIpc } from "./im/ipc";
+import { registerSelectionIpc } from "./selection/ipc";
 import { getAcpRecord, updateAcpRecord } from "./acp/store";
 import { registerWorkbenchFsIpc } from "./workbenchFs";
 import {
@@ -182,14 +181,15 @@ import {
 } from "../shared/workbenchSelection";
 import {
   composeTrayItems,
+  composeWorkbenchRows,
   hitTestTrayDotFromScreen,
   sessionDotsTrayImage,
-  trayTooltip
+  trayTooltip,
+  type TrayWorkbench
 } from "./sessionDotsTray";
 import { collectNewConfirmedWaitingSessions } from "./sessionWaitingNotifications";
 import { checkForDesktopUpdate, getAppVersion } from "./updateCheck";
 import { loadPanelDbPaths } from "./panelDatabases";
-import { findWorkbenchForSession, type SessionOwner } from "./sessionOwnership";
 import { buildI18nBundle, desktopT, initI18nService } from "./i18nService";
 import { shouldSyncSessionsAfterSettingsSave, type SaveSettingsOptions } from "./sessionSettingsSync";
 import {
@@ -296,14 +296,17 @@ let agentStatusSensor: AgentStatusSensor | null = null;
 let ptyPidResolver: ((id: number) => number | null) | null = null;
 /** Panes a window renders; the rest keep running unwatched. */
 let ptyAttachedResolver: (() => number[]) | null = null;
+/** Workbench behind a pty, so a window-less pane still has an owner. */
+let ptyWorkbenchResolver: ((id: number) => string | null) | null = null;
 
 function tryRegisterPtyIpc(): void {
   try {
     // Lazy-load so node-pty native binding issues do not block other IPC handlers.
-    const { registerPtyIpc, getPtyPid, getAttachedPtyIds } = require("./ptyHost") as typeof import("./ptyHost");
+    const { registerPtyIpc, getPtyPid, getAttachedPtyIds, getPtyWorkbenchId } = require("./ptyHost") as typeof import("./ptyHost");
     registerPtyIpc();
     ptyPidResolver = getPtyPid;
     ptyAttachedResolver = getAttachedPtyIds;
+    ptyWorkbenchResolver = getPtyWorkbenchId;
   } catch (error) {
     void recordAppError({
       source: "pty-host",
@@ -552,76 +555,77 @@ let mainWindow: BrowserWindow | null = null;
 let mainWindowReadyToShow = false;
 let mainWindowRendererReady = false;
 let sessionDotsTray: Tray | null = null;
-let pendingTrayFocus: { paneKey: string; projectPath?: string } | null = null;
 let browserSettingsCache: import("@agent-resume/core").DesktopBrowserSettings | null = null;
 let notifiedWaitingSessions = new Set<string>();
+/** Display data per workbench, so a tray dot for a closed window still has a name. */
+let workbenchMetaById = new Map<string, { noteId: string; label: string }>();
 
-function flushPendingTrayFocus(): void {
-  revealSessionOwner();
+function workbenchLabel(name: string, projectPath: string): string {
+  const explicit = name.trim();
+  if (explicit) return explicit;
+  return projectPath.replaceAll("\\", "/").split("/").filter(Boolean).at(-1) || "Workbench";
+}
+
+/** Refresh the workbench name / note cache behind the tray and the focus fallback. */
+async function loadWorkbenchMeta(): Promise<void> {
+  try {
+    const paths = await loadPanelDbPaths();
+    const workbenches = await listAllTaskWorkbenches(paths.desktopDb);
+    const next = new Map<string, { noteId: string; label: string }>();
+    for (const workbench of workbenches) {
+      next.set(workbench.workbenchId, {
+        noteId: workbench.taskNoteId,
+        label: workbenchLabel(workbench.name, workbench.projectPath ?? "")
+      });
+    }
+    workbenchMetaById = next;
+    syncSessionDotsTray();
+  } catch {
+    /* keep the previous names; a later mutation or window change retries */
+  }
 }
 
 /**
- * Bring the window that owns a session to the front and hand it the focus
- * request. The board window hosts no workbench, so a session can only be
- * focused in the workbench window that reported it — and when no workbench window
- * is open, the session's task window is opened instead.
+ * One tray row per workbench: every open window (even an empty one, which gets a
+ * gray dot), plus workbenches whose window is gone but whose sessions still run.
+ *
+ * The rollup is the same function the GTD board uses, so a workbench reads the
+ * same on both surfaces.
  */
-function revealSessionOwner(): void {
-  const pending = pendingTrayFocus;
-  if (!pending) return;
-  const owner = windowForPaneKey(pending.paneKey) ?? focusedOrRecentTaskWindow();
-  if (owner && !owner.isDestroyed()) {
-    pendingTrayFocus = null;
-    if (owner.isMinimized()) owner.restore();
-    owner.show();
-    owner.focus();
-    owner.webContents.send("workbench:focusSession", pending);
-    return;
-  }
-  void openTaskWindowForSession(pending);
+function workbenchStatusRows(): TrayWorkbench[] {
+  return composeWorkbenchRows(workbenchActiveSessions, summarizeTaskWindows(), workbenchMetaById);
 }
 
-/** No workbench window is up: open the task window that owns the session. */
-async function openTaskWindowForSession(pending: { paneKey: string; projectPath?: string }): Promise<void> {
-  const sessionKeyValue = workbenchActiveSessions
-    .find((dot) => dot.paneKey === pending.paneKey)?.sessionKey || "";
-  const owner = await workbenchOwnershipForSession(sessionKeyValue);
-  if (!owner) {
-    pendingTrayFocus = null;
+/**
+ * Focus a workbench's window, or open it when there is none.
+ *
+ * The board hosts no workbench, so this is the only way a tray dot can reach the
+ * panes; a workbench that no longer exists anywhere falls back to the board.
+ */
+async function revealWorkbench(target: { workbenchId: string; noteId: string }): Promise<void> {
+  if (!target.workbenchId) {
     revealMainWindow();
     return;
   }
-  pendingTrayFocus = null;
+  if (focusTaskWindow(target.workbenchId)) return;
+  let noteId = target.noteId || workbenchMetaById.get(target.workbenchId)?.noteId || "";
+  if (!noteId) {
+    await loadWorkbenchMeta();
+    noteId = workbenchMetaById.get(target.workbenchId)?.noteId || "";
+  }
+  if (!noteId) {
+    revealMainWindow();
+    return;
+  }
+  // No title: the renderer resolves the task title once the workspace loads,
+  // and a workbench label would only flash the wrong name first.
   const opened = openTaskWindow(taskWindowDeps(), {
-    noteId: owner.noteId,
-    workbenchId: owner.workbenchId,
-    ...(owner.title ? { title: owner.title } : {})
+    noteId,
+    workbenchId: target.workbenchId
   });
   if (!opened.ok) {
     notifyTaskWindowLimit(opened.limit);
     revealMainWindow();
-  }
-}
-
-/** Task link lookup behind {@link workbenchOwnershipForSession}. */
-async function workbenchOwnershipForSession(
-  sessionKeyValue: string
-): Promise<(SessionOwner & { title?: string }) | null> {
-  if (!sessionKeyValue) return null;
-  try {
-    const paths = await loadPanelDbPaths();
-    const workbenches = await listAllTaskWorkbenches(paths.desktopDb);
-    const entries = await Promise.all(workbenches.map(async (workbench) => [
-      workbench.workbenchId,
-      await listTaskWorkbenchSessionLinks(paths.desktopDb, workbench.workbenchId).catch(() => [])
-    ] as const));
-    const owner = findWorkbenchForSession(workbenches, new Map(entries), sessionKeyValue);
-    if (!owner) return null;
-    const record = await notesRead(owner.noteId).then((read) => read.record).catch(() => null);
-    const workbench = workbenches.find((item) => item.workbenchId === owner.workbenchId);
-    return { ...owner, title: record?.title || workbench?.name || undefined };
-  } catch {
-    return null;
   }
 }
 
@@ -636,7 +640,6 @@ function showMainWindowIfReady(): void {
   if (!mainWindowReadyToShow || !mainWindowRendererReady) return;
   if (!mainWindow || mainWindow.isDestroyed()) return;
   if (!mainWindow.isVisible()) mainWindow.show();
-  flushPendingTrayFocus();
 }
 type StandaloneNoteWindowState = {
   noteId: string;
@@ -758,7 +761,8 @@ function unwatchedPaneDots(): WorkbenchActiveSessionDot[] {
       projectPath: "",
       title: pane.agent,
       sessionKey: pane.sessionKey?.trim() ?? "",
-      status: pane.state === "blocked" ? "awaiting_user" : "running"
+      status: pane.state === "blocked" ? "awaiting_user" : "running",
+      workbenchId: ptyWorkbenchResolver?.(pane.paneId) ?? ""
     });
   }
   return dots;
@@ -808,16 +812,16 @@ function windowForPaneKey(paneKey: string): BrowserWindow | null {
 function syncSessionDotsTray(): void {
   if (process.platform !== "darwin") return;
   const notes = listOpenStandaloneNotes();
-  const sessions = workbenchActiveSessions;
-  const items = composeTrayItems(notes, sessions);
-  const extra = notes.length + sessions.length - items.length;
+  const workbenches = workbenchStatusRows();
+  const items = composeTrayItems(notes, workbenches);
+  const extra = notes.length + workbenches.length - items.length;
   const image = sessionDotsTrayImage(items);
   const tooltip = trayTooltip(items, extra);
   if (!sessionDotsTray) {
     sessionDotsTray = new Tray(image);
     sessionDotsTray.setIgnoreDoubleClickEvents(true);
     sessionDotsTray.on("click", (_event, bounds, position) => {
-      const current = composeTrayItems(listOpenStandaloneNotes(), workbenchActiveSessions);
+      const current = composeTrayItems(listOpenStandaloneNotes(), workbenchStatusRows());
       if (current.length === 0) {
         revealMainWindow();
         return;
@@ -836,11 +840,7 @@ function syncSessionDotsTray(): void {
         });
         return;
       }
-      pendingTrayFocus = {
-        paneKey: target.paneKey,
-        projectPath: target.projectPath || undefined
-      };
-      revealSessionOwner();
+      void revealWorkbench({ workbenchId: target.workbenchId, noteId: target.noteId });
     });
   } else {
     sessionDotsTray.setImage(image);
@@ -876,11 +876,7 @@ async function showSessionWaitingNotifications(sessions: readonly WorkbenchActiv
         body
       });
       notification.on("click", () => {
-        pendingTrayFocus = {
-          paneKey: session.paneKey,
-          projectPath: projectPath || undefined
-        };
-        revealSessionOwner();
+        void revealWorkbench({ workbenchId: session.workbenchId, noteId: "" });
       });
       notification.show();
     } catch (error) {
@@ -1284,7 +1280,6 @@ function performQuitCleanup(): void {
   stopSessionSummaryAuto();
   stopSessionTranscriptIndexAuto();
   stopSessionEmbeddingIndexAuto();
-  void flushImStreamingMessages();
   disposeAllAcpControllers();
   tryDestroyPtyOnQuit();
   // Packaged builds deliberately keep the daemon alive: it holds the status
@@ -1629,9 +1624,6 @@ function createWindow(): void {
     resumeSessionSync();
   });
   mainWindow.on("restore", resumeSessionSync);
-  mainWindow.on("hide", () => {
-    void flushImStreamingMessages();
-  });
   mainWindow.on("minimize", stopSessionSyncTimer);
   mainWindow.on("close", (event) => {
     if (allowAppQuit) return;
@@ -1644,7 +1636,6 @@ function createWindow(): void {
   });
   mainWindow.on("closed", () => {
     stopSessionSyncTimer();
-    void flushImStreamingMessages();
     // Other windows may still be showing a workbench; only their own senders count.
     pruneWorkbenchActiveSenders();
     mainWindowReadyToShow = false;
@@ -1781,9 +1772,14 @@ function taskWindowDeps(): TaskWindowDeps {
     onCreated: (win) => {
       registerWorkbenchShortcuts(win);
       registerTaskWindowCloseGuard(win);
+      void loadWorkbenchMeta();
     },
     onChange: (windows) => {
       pruneWorkbenchActiveSenders();
+      refreshWorkbenchActiveSessions();
+      // The tray now lists open workbenches too, so a window set change matters
+      // even when no pane reported a dot (a freshly opened, session-less one).
+      syncSessionDotsTray();
       broadcastToRenderers("task-window:changed", windows);
       persistOpenTaskWindows();
     }
@@ -1821,7 +1817,6 @@ function registerIpc(): void {
     if (event.sender !== mainWindow?.webContents) return;
     mainWindowRendererReady = true;
     showMainWindowIfReady();
-    flushPendingTrayFocus();
   });
 
   ipcMain.on("workbench:setActive", (event, active: unknown) => {
@@ -2690,11 +2685,13 @@ function registerIpc(): void {
     "taskWorkbenches:create",
     async (_event, args: { taskNoteId: string; name?: string; projectPath?: string | null }) => {
       const paths = await loadPanelDbPaths();
-      return createTaskWorkbench(paths.desktopDb, {
+      const created = await createTaskWorkbench(paths.desktopDb, {
         taskNoteId: String(args?.taskNoteId || ""),
         name: args?.name,
         projectPath: args?.projectPath ?? null
       });
+      void loadWorkbenchMeta();
+      return created;
     }
   );
 
@@ -2702,7 +2699,9 @@ function registerIpc(): void {
     "taskWorkbenches:rename",
     async (_event, args: { workbenchId: string; name: string }) => {
       const paths = await loadPanelDbPaths();
-      return renameTaskWorkbench(paths.desktopDb, String(args?.workbenchId || ""), String(args?.name || ""));
+      const renamed = await renameTaskWorkbench(paths.desktopDb, String(args?.workbenchId || ""), String(args?.name || ""));
+      void loadWorkbenchMeta();
+      return renamed;
     }
   );
 
@@ -2710,11 +2709,13 @@ function registerIpc(): void {
     "taskWorkbenches:setProject",
     async (_event, args: { workbenchId: string; projectPath: string | null }) => {
       const paths = await loadPanelDbPaths();
-      return setTaskWorkbenchProject(
+      const updated = await setTaskWorkbenchProject(
         paths.desktopDb,
         String(args?.workbenchId || ""),
         args?.projectPath == null ? null : String(args.projectPath)
       );
+      void loadWorkbenchMeta();
+      return updated;
     }
   );
 
@@ -2749,6 +2750,7 @@ function registerIpc(): void {
     async (_event, args: { workbenchId: string }) => {
       const paths = await loadPanelDbPaths();
       await deleteTaskWorkbench(paths.desktopDb, String(args?.workbenchId || ""));
+      void loadWorkbenchMeta();
       return { ok: true as const };
     }
   );
@@ -3423,18 +3425,8 @@ app.whenReady().then(async () => {
     loadSettings,
     getMainWindow: () => mainWindow
   });
-  registerImIpc({
-    broadcast: (event) => broadcastToRenderers("im:event", event),
-    acp: {
-      connect: (chatId) => connectAcpChat(chatId),
-      prompt: (chatId, text, images) => promptAcpChat(chatId, text, images ?? []),
-      cancel: (chatId) => cancelAcpChat(chatId),
-      inspect: (chatId) => inspectAcpChat(chatId),
-      denyPermission: (requestId) => denyAcpPermission(requestId),
-      setModel: (chatId, modelId) => setAcpModel(chatId, modelId),
-      setThoughtLevel: (chatId, thoughtLevel) => setAcpThoughtLevel(chatId, thoughtLevel)
-    }
-  });
+  registerSelectionIpc();
+  registerSelectionIpc();
   registerWorkbenchFsIpc();
   registerWorkbenchWatcherIpc(() => mainWindow, (sender) => isTaskWindowSender(sender));
   registerWorkbenchGitIpc(() => app.getLocale());
@@ -3468,6 +3460,7 @@ app.whenReady().then(async () => {
     });
   }
   createWindow();
+  void loadWorkbenchMeta();
   syncSessionDotsTray();
   void restoreTaskWindows();
   nativeTheme.on("updated", () => syncSessionDotsTray());

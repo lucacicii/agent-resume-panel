@@ -74,9 +74,6 @@ export function resolveSelectedModel(
   ) {
     return resolveSelectedModel(settings, "tool");
   }
-  if (use === "imRouting") {
-    return resolveSelectedModel(settings, "chat");
-  }
   if (use === "chat") {
     return resolveSelectedModel(settings, "tool") ?? findFirstValidModel(settings, "text");
   }
@@ -111,7 +108,6 @@ export type SpecializedModelUse =
   | "sessionSummary"
   | "report"
   | "gtd"
-  | "imRouting"
   | "translate";
 
 export const SPECIALIZED_MODEL_USES: readonly SpecializedModelUse[] = [
@@ -120,7 +116,6 @@ export const SPECIALIZED_MODEL_USES: readonly SpecializedModelUse[] = [
   "sessionSummary",
   "report",
   "gtd",
-  "imRouting",
   "translate"
 ] as const;
 
@@ -131,7 +126,6 @@ export function isSpecializedModelUse(use: ModelUse): use is SpecializedModelUse
     use === "sessionSummary" ||
     use === "report" ||
     use === "gtd" ||
-    use === "imRouting" ||
     use === "translate"
   );
 }
@@ -228,15 +222,7 @@ export function gtdLlmConfigFromSettings(
   return llmConfigForUse(settings, "gtd", systemLocale);
 }
 
-/** IM message smart intent routing model. Falls back to chat selection when unset. */
-export function imRoutingLlmConfigFromSettings(
-  settings: PanelSettings,
-  systemLocale?: string
-): LlmRuntimeConfig | undefined {
-  return llmConfigForUse(settings, "imRouting", systemLocale);
-}
-
-/** Inline transcript and IM message translation model. Falls back to tool selection when unset. */
+/** Inline transcript and selection translation model. Falls back to tool selection when unset. */
 export function translateLlmConfigFromSettings(
   settings: PanelSettings,
   systemLocale?: string

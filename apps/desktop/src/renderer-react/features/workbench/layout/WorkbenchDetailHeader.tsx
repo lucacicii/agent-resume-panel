@@ -6,9 +6,9 @@ type WorkbenchSideView = "files" | "git" | "search" | "scripts" | "linkgraph" | 
 
 export function WorkbenchDetailHeader({
   onBackToGtd,
-  selectedProject,
-  projectLabel,
-  emptyLabel,
+  title,
+  directory,
+  onRevealDirectory,
   side,
   branchStatusLabel,
   branchStatusPane,
@@ -18,10 +18,12 @@ export function WorkbenchDetailHeader({
 }: {
   /** Return to the GTD board (the app's root view). */
   onBackToGtd?: () => void;
-  selectedProject: string | null;
-  projectLabel: string;
-  /** What to show when no project is selected (e.g. a project-less task). */
-  emptyLabel?: string;
+  /** What the header names: the task, or a bare project selection. */
+  title: string;
+  /** Absolute directory the header points at, or null when there is none. */
+  directory: string | null;
+  /** Reveal `directory` in Finder; omitted when it cannot be shown. */
+  onRevealDirectory?: () => void;
   side: WorkbenchSideView;
   branchStatusLabel: string | null;
   branchStatusPane: TerminalPane | null;
@@ -42,8 +44,17 @@ export function WorkbenchDetailHeader({
     ) : null}
     <div className="wb-detail-head">
       <span className="wb-detail-project-label">
-        <span className="wb-detail-project-label-text">{selectedProject ? projectLabel : (emptyLabel ?? t("desktop.workbench.allSessions"))}</span>
-        {selectedProject ? <span className="wb-detail-project-path">{selectedProject}</span> : null}
+        <span className="wb-detail-project-label-text">{title}</span>
+        {directory ? <span className="wb-detail-project-path">{directory}</span> : null}
+        {directory && onRevealDirectory ? (
+          <button
+            type="button"
+            className="wb-detail-project-reveal"
+            aria-label={t("desktop.common.revealInFinder")}
+            title={t("desktop.common.revealInFinder")}
+            onClick={onRevealDirectory}
+          ><ThemeIcon name="folder-open" size={13} aria-hidden="true" /></button>
+        ) : null}
       </span>
       <div className="wb-detail-head-actions">
         {branchStatusLabel && branchStatusPane ? (

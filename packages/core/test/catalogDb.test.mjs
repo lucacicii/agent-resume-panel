@@ -33,7 +33,7 @@ test("extension schema does not create desktop-only report tables", async () => 
   }
 });
 
-test("desktop schema creates report and agent tables in panelHome/.desktop/desktop.db", async () => {
+test("desktop schema creates report and desktop tables in panelHome/.desktop/desktop.db", async () => {
   const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-catalog-"));
   const catalogDb = path.join(panelHome, "catalog.db");
   const desktopDb = desktopDbPath(panelHome);
@@ -58,114 +58,14 @@ test("desktop schema creates report and agent tables in panelHome/.desktop/deskt
     );
     const desktopNames = desktopTables.map((row) => row.name);
     assert.ok(desktopNames.includes("report_entries"));
-    assert.ok(desktopNames.includes("agent_threads"));
+    assert.ok(!desktopNames.includes("agent_threads"));
     assert.ok(desktopNames.includes("note_vector_index"));
     assert.ok(desktopNames.includes("session_embeddings"));
     assert.ok(desktopNames.includes("session_transcript_chunks"));
     assert.ok(desktopNames.includes("session_transcript_index"));
-    assert.ok(desktopNames.includes("im_projects"));
-    assert.ok(desktopNames.includes("im_role_templates"));
-    assert.ok(desktopNames.includes("im_members"));
-    assert.ok(desktopNames.includes("im_messages"));
-    assert.ok(desktopNames.includes("im_jobs"));
-    assert.ok(desktopNames.includes("im_selection_actions"));
+    assert.ok(desktopNames.includes("selection_actions"));
     assert.ok(desktopNames.includes("workbench_composer_sends"));
     assert.ok(desktopDb.includes(`${path.sep}.desktop${path.sep}desktop.db`));
-
-    const indexes = await runSqliteJson(desktopDb, "PRAGMA index_list(agent_messages);");
-    assert.ok(indexes.some((index) => index.name === "idx_agent_messages_thread"));
-  } finally {
-    await fs.rm(panelHome, { recursive: true, force: true });
-  }
-});
-
-test("desktop schema adds tools_json to existing im_members tables", async () => {
-  const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-catalog-"));
-  const desktopDb = desktopDbPath(panelHome);
-
-  try {
-    await fs.mkdir(path.dirname(desktopDb), { recursive: true });
-    await runSqlite(
-      desktopDb,
-      `CREATE TABLE im_members (
-        member_id TEXT PRIMARY KEY,
-        project_id TEXT NOT NULL,
-        template_id TEXT NOT NULL,
-        name TEXT NOT NULL,
-        persona TEXT NOT NULL DEFAULT '',
-        agent TEXT NOT NULL,
-        permissions TEXT NOT NULL DEFAULT 'write',
-        enabled INTEGER NOT NULL DEFAULT 1,
-        acp_chat_id TEXT,
-        created_at_ms INTEGER NOT NULL,
-        updated_at_ms INTEGER NOT NULL
-      );`
-    );
-
-    await ensureDesktopDbSchema(desktopDb);
-
-    const columns = await runSqliteJson(desktopDb, "PRAGMA table_info(im_members);");
-    const names = columns.map((column) => column.name);
-    assert.ok(names.includes("tools_json"));
-    assert.ok(names.includes("model"));
-    assert.ok(names.includes("thought_level"));
-    assert.ok(names.includes("callable_template_ids_json"));
-    assert.ok(names.includes("auto_dispatch"));
-
-    const messageColumns = await runSqliteJson(desktopDb, "PRAGMA table_info(im_messages);");
-    const messageNames = messageColumns.map((column) => column.name);
-    assert.ok(messageNames.includes("tool_calls_json"));
-    assert.ok(messageNames.includes("acp_message_id"));
-    assert.ok(messageNames.includes("origin"));
-
-    await runSqlite(
-      desktopDb,
-      `INSERT INTO im_members (
-        member_id, project_id, template_id, name, persona, agent, permissions, tools_json, enabled, created_at_ms, updated_at_ms
-      ) VALUES (
-        'member-1', 'project-1', 'role_developer', 'Developer', '', 'claude', 'write', '{}', 1, 1, 1
-      );`
-    );
-  } finally {
-    await fs.rm(panelHome, { recursive: true, force: true });
-  }
-});
-
-test("desktop schema adds ACP sync columns to an existing im_messages table", async () => {
-  const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-catalog-"));
-  const desktopDb = desktopDbPath(panelHome);
-
-  try {
-    await fs.mkdir(path.dirname(desktopDb), { recursive: true });
-    await runSqlite(
-      desktopDb,
-      `CREATE TABLE im_messages (
-        message_id TEXT PRIMARY KEY,
-        project_id TEXT NOT NULL,
-        kind TEXT NOT NULL,
-        author_member_id TEXT,
-        author_label TEXT NOT NULL,
-        body TEXT NOT NULL,
-        quote_ids_json TEXT NOT NULL DEFAULT '[]',
-        mention_role_ids_json TEXT NOT NULL DEFAULT '[]',
-        job_id TEXT,
-        created_at_ms INTEGER NOT NULL
-      );`
-    );
-
-    await ensureDesktopDbSchema(desktopDb);
-
-    const columns = await runSqliteJson(desktopDb, "PRAGMA table_info(im_messages);");
-    const names = columns.map((column) => column.name);
-    assert.ok(names.includes("tool_calls_json"));
-    assert.ok(names.includes("acp_message_id"));
-    assert.ok(names.includes("origin"));
-    await runSqlite(
-      desktopDb,
-      `INSERT INTO im_messages (
-        message_id, project_id, kind, author_label, body, created_at_ms
-      ) VALUES ('msg-1', 'project-1', 'human', 'You', 'hi', 1);`
-    );
   } finally {
     await fs.rm(panelHome, { recursive: true, force: true });
   }

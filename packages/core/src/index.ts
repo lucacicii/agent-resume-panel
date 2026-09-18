@@ -314,7 +314,6 @@ export {
   sessionSummaryLlmConfigFromSettings,
   reportLlmConfigFromSettings,
   gtdLlmConfigFromSettings,
-  imRoutingLlmConfigFromSettings,
   translateLlmConfigFromSettings,
   isSpecializedModelUse,
   SPECIALIZED_MODEL_USES,
@@ -509,51 +508,9 @@ export {
 } from "./transcript/text";
 export type { ExtractedPreviewContent } from "./transcript/text";
 
-export type {
-  AgentCitation,
-  AgentChatOptions,
-  AgentChatResult,
-  AgentExecutionCapability,
-  AgentExecutionKind,
-  AgentExecutionSourceKind,
-  AgentExecutionStep,
-  AgentStreamEvent,
-  AgentStreamPhase,
-  AgentToolImpact,
-  AgentToolTraceStatus,
-  AgentToolTraceStep
-} from "./agent/types";
+export type { AgentCitation } from "./agent/types";
 export { retrieveAgentContext } from "./agent/retrieve";
 export type { RetrieveAgentContextResult, RetrievedDigest } from "./agent/retrieve";
-export {
-  buildMetaAgentSystemPrompt,
-  buildMetaAgentSystemPromptWithTools,
-  buildMetaAgentUserPrompt,
-  formatNoteSourceBlock,
-  formatSessionSourceBlock,
-  formatSourceBlock
-} from "./agent/prompts";
-export { runAgentChat } from "./agent/agentChat";
-export {
-  appendAgentTurn,
-  clearAgentMessages,
-  deleteAgentMessagesFromSortOrder,
-  listAgentMessages,
-  listAgentMessagesForHistory,
-  listOlderAgentMessages,
-  listRecentAgentMessages,
-  listAgentThreads,
-  createAgentThread,
-  renameAgentThread,
-  deleteAgentThread
-} from "./agent/agentStore";
-export type { AgentChatListResult, AgentChatMessage, AgentThread } from "./agent/agentStore";
-export {
-  insertAgentNoteAudit,
-  listAgentNoteAudit,
-  updateAgentNoteAuditStatus
-} from "./agent/noteAudit";
-export type { AgentNoteAuditEvent, AgentNoteAuditStatus } from "./agent/noteAudit";
 
 export type {
   ActiveGtdStatus,
@@ -770,7 +727,6 @@ export {
 export type {
   ArpConfig,
   ArpSharedConfig,
-  ArpImConfig,
   ArpWorkbenchConfig,
   ArpWorkbenchGitConfig,
   ArpGitCommitMessageConfig,
@@ -976,16 +932,6 @@ export {
 export type { WorkbenchToolContext } from "./mcp/workbenchTools";
 export { NoteMcpClient, convertMcpToolsToOpenAiFormat } from "./mcp/client";
 export type { McpToolInfo, McpToolCallResult } from "./mcp/client";
-export { runToolLoop } from "./agent/toolLoop";
-export type {
-  ToolLoopOptions,
-  ToolLoopResult,
-  TouchedNote,
-  TouchedSession,
-  NoteOperation,
-  SessionOperation
-} from "./agent/toolLoop";
-export { extractTouchedSessions } from "./agent/toolLoop";
 export { resolveMcpServerCommand } from "./agent/mcpConfig";
 export type { McpServerCommand } from "./agent/mcpConfig";
 export {

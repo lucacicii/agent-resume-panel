@@ -18,7 +18,7 @@ Use the **⚙** button in the top bar. Settings panes:
 | **Models** | OpenAI-compatible LLM / embeddings endpoints and models |
 | **Sessions** | Agent home paths, session list / sync related options |
 | **Workbench** | Default agent, ⌘T behavior, **workspace mentions**, **terminal theme** and related defaults |
-| **IM** | Role templates (agent, prompt, read/write/execute tools) used by IM rooms |
+| **Selection** | Text selection actions (built-in Translate / Explain and custom actions) |
 | **Data** | Panel home path, open data folder, **backup export / merge import** |
 | **Logs** | Application error / warning log (redacted), clear, reveal in Finder |
 | **Usage** | Local LLM usage summary |
@@ -42,12 +42,11 @@ Commit-message style in **Settings → Workbench** is the user default. A repo c
         "extraInstructions": "Use the package name as scope when it is clear."
       }
     }
-  },
-  "im": {}
+  }
 }
 ```
 
-`workbench`, `im`, and `shared` are separate groups. Missing groups mean unset, not an empty override. Do not put API keys, themes, or panel-home paths in this file.
+`workbench` and `shared` are separate groups. Missing groups mean unset, not an empty override. Do not put API keys, themes, or panel-home paths in this file.
 
 ### Workspace mentions
 
@@ -148,12 +147,11 @@ Desktop 设置 **不是** VS Code 的 `agentResume.*`。可共用的值（如 LL
         "extraInstructions": "范围能确定时使用包名作为 scope。"
       }
     }
-  },
-  "im": {}
+  }
 }
 ```
 
-`workbench`、`im`、`shared` 是独立分组；缺省分组表示未配置，不是空覆盖。不要把 API Key、主题或 panel home 写进该文件。
+`workbench`、`shared` 是独立分组；缺省分组表示未配置，不是空覆盖。不要把 API Key、主题或 panel home 写进该文件。
 
 ### 工作区 Mention
 

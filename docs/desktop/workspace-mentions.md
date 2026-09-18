@@ -95,7 +95,7 @@ pnpm --filter @agent-resume/core exec arpm list
 ### Limits (v1)
 
 - **Prompt only.** Reference folders are listed for the model. Desktop does not pass `--add-dir` / extra sandbox roots, so some CLIs still cannot read A/B until you allow those paths in the agent.
-- **No composer `@anfeng`.** Type the pack in **New session** or `arpm`, not in the Workbench composer. IM `@` remains role mentions.
+- **No composer `@anfeng`.** Type the pack in **New session** or `arpm`, not in the Workbench composer.
 - **One agent.** There is no explore-then-implement router.
 - **Desktop + `arpm` only.** The VS Code extension does not read these packs.
 
@@ -194,7 +194,7 @@ pnpm --filter @agent-resume/core exec arpm list
 ### 限制（v1）
 
 - **只注入 prompt。** 参考目录只写给模型。Desktop 不会给 CLI 加 `--add-dir` 等额外沙箱根，部分 agent 仍可能读不到 A/B，需要你在 agent 里放行这些路径。
-- **没有 composer `@anfeng`。** 在 **新建会话** 或 `arpm` 里选包，不要在 Workbench 输入框打 `@`。IM 的 `@` 仍是角色。
+- **没有 composer `@anfeng`。** 在 **新建会话** 或 `arpm` 里选包，不要在 Workbench 输入框打 `@`。
 - **单 agent。** 没有「先探索再实现」的路由。
 - **仅 Desktop + `arpm`。** VS Code 扩展不读这些包。
 

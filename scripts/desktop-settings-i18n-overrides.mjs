@@ -137,10 +137,6 @@ export const overridesByKey = {
   "desktop.settings.noImageModelsHint": row("画像モデルがありません。対応するプロバイダーを追加してください。"),
   "desktop.settings.testConnectionKind": row("テスト種別"),
   "desktop.settings.disableThinkingChatDesc": row("チャットの推論モデルに thinking:disabled を送信。"),
-  "desktop.settings.imActionPrompt": row("プロンプト"),
-  "desktop.settings.imActionPromptHint": row("{selection} は選択中のテキストに置き換えられます。独立アクションにはプロンプトが必要で、設定したモデル（既定は Ask/チャット モデル）を使用します。"),
-  "desktop.settings.imActionModel": row("モデル"),
-  "desktop.settings.imActionModelDefault": row("既定（Ask / チャットモデルに従う）"),
   "desktop.report.llmRequiredBody2": row("設定 → プロバイダー でプロバイダーを追加しツール LLM を選んで保存してください。保存後に再試行します。"),
   "desktop.report.llmRequiredToast": row("{0} を生成できません：設定 → プロバイダー でツール LLM を設定してください"),
 };

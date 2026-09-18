@@ -21,56 +21,24 @@ const messages = {
   "desktop.settings.paneSessionsDesc": "Sessions desc",
   "desktop.settings.paneWorkbench": "Workbench",
   "desktop.settings.paneWorkbenchDesc": "Workbench desc",
-  "desktop.settings.paneIm": "IM",
-  "desktop.settings.paneImDesc": "IM role templates",
-  "desktop.settings.imTemplates": "Roles",
-  "desktop.settings.imTemplatesHint": "Edit agent, prompt, and tools.",
-  "desktop.settings.imBuiltin": "Builtin",
-  "desktop.settings.imNewTemplate": "New template",
-  "desktop.settings.imName": "Name",
-  "desktop.settings.imAgent": "Agent",
-  "desktop.settings.imModel": "Model",
-  "desktop.settings.imModelDefault": "Default",
-  "desktop.settings.imModelCustom": "Custom",
-  "desktop.settings.imModelPlaceholder": "e.g. claude-3-7-sonnet-20250219",
-  "desktop.settings.imModelHint": "Model hint",
-  "desktop.settings.imThoughtLevel": "Thinking level",
-  "desktop.settings.imThoughtLevelDefault": "Default (Agent default)",
-  "desktop.settings.imThoughtLevelPlaceholder": "e.g. low, medium, high",
-  "desktop.settings.imThoughtLevelHint": "Thought level hint",
-  "desktop.im.thoughtLevel.low": "Low",
-  "desktop.im.thoughtLevel.medium": "Medium",
-  "desktop.im.thoughtLevel.high": "High",
-  "desktop.im.customThoughtLevelOption": "Custom thinking level…",
-  "desktop.im.customModelOption": "Custom model ID…",
-  "desktop.im.defaultModel": "Default (Follow template)",
-  "desktop.settings.imPrompt": "Prompt",
-  "desktop.settings.imTools": "Tools",
-  "desktop.settings.imToolRead": "Read files",
-  "desktop.settings.imToolReadAlways": "Every role can list and read the whole project folder.",
-  "desktop.settings.imToolWrite": "Write files",
-  "desktop.settings.imToolExecute": "Run commands",
-  "desktop.settings.imSaved": "Template saved",
-  "desktop.settings.imDeleteTemplate": "Delete template",
-  "desktop.settings.imActions": "Selection actions",
-  "desktop.settings.imActionsHint": "Shown when you select text.",
-  "desktop.settings.imNewAction": "New action",
-  "desktop.settings.imActionKind": "Type",
-  "desktop.settings.imActionKindContext": "Context",
-  "desktop.settings.imActionKindIndependent": "Independent",
-  "desktop.settings.imActionPrompt": "Prompt",
-  "desktop.settings.imActionPromptHint": "Use {selection}.",
-  "desktop.settings.imActionModel": "Model",
-  "desktop.settings.imActionModelDefault": "Default (Ask / Chat model)",
-  "desktop.settings.imActionEnabled": "Show in menu",
-  "desktop.settings.imActionSaved": "Action saved",
-  "desktop.settings.imActionOrderSaved": "Action order saved",
-  "desktop.settings.imActionMoveUp": "Move {0} up",
-  "desktop.settings.imActionMoveDown": "Move {0} down",
-  "desktop.settings.imDeleteAction": "Delete action",
-  "desktop.im.agent.pi": "Pi",
-  "desktop.im.agent.claude": "Claude Code",
-  "desktop.im.agent.codex": "Codex",
+  "desktop.settings.paneSelection": "Selection",
+  "desktop.settings.paneSelectionDesc": "Selection actions",
+  "desktop.settings.selectionActions": "Selection actions",
+  "desktop.settings.selectionActionsHint": "Shown when you select text.",
+  "desktop.settings.selectionBuiltin": "Builtin",
+  "desktop.settings.selectionNewAction": "New action",
+  "desktop.settings.selectionName": "Name",
+  "desktop.settings.selectionActionPrompt": "Prompt",
+  "desktop.settings.selectionActionPromptHint": "Use {selection}.",
+  "desktop.settings.selectionActionModel": "Model",
+  "desktop.settings.selectionActionModelDefault": "Default (Ask / Chat model)",
+  "desktop.settings.selectionActionEnabled": "Show in menu",
+  "desktop.settings.selectionActionSaved": "Action saved",
+  "desktop.settings.selectionActionOrderSaved": "Action order saved",
+  "desktop.settings.selectionActionMoveUp": "Move {0} up",
+  "desktop.settings.selectionActionMoveDown": "Move {0} down",
+  "desktop.settings.selectionDeleteAction": "Delete action",
+  "desktop.settings.selectionDeleteActionConfirm": "Delete this action?",
   "desktop.settings.paneNotes": "Notes",
   "desktop.settings.paneNotesDesc": "Notes desc",
   "desktop.settings.paneStorage": "Storage",
@@ -103,8 +71,6 @@ const messages = {
   "desktop.settings.reportModelUseDesc": "Report desc",
   "desktop.settings.gtdModelUse": "GTD Task Analysis",
   "desktop.settings.gtdModelUseDesc": "GTD desc",
-  "desktop.settings.imRoutingModelUse": "IM Smart Routing",
-  "desktop.settings.imRoutingModelUseDesc": "IM routing desc",
   "desktop.settings.translateModelUse": "Translation",
   "desktop.settings.translateModelUseDesc": "Translation desc",
   "desktop.settings.modelFollowToolDefault": "Default (Follows Tool LLM)",
@@ -350,14 +316,10 @@ function renderWindowSettings(initialPane = "general", overrides?: Record<string
       navigateHandlers.push(callback);
       return () => undefined;
     },
-    imListTemplates: vi.fn(async () => []),
-    imCreateTemplate: vi.fn(async () => ({ templateId: "custom" })),
-    imUpdateTemplate: vi.fn(async () => ({ templateId: "custom" })),
-    imDeleteTemplate: vi.fn(async () => ({ ok: true })),
-    imListSelectionActions: vi.fn(async () => []),
-    imCreateSelectionAction: vi.fn(async () => ({ actionId: "custom-action" })),
-    imUpdateSelectionAction: vi.fn(async () => ({ actionId: "custom-action" })),
-    imDeleteSelectionAction: vi.fn(async () => ({ ok: true })),
+    selectionListActions: vi.fn(async () => []),
+    selectionCreateAction: vi.fn(async () => ({ actionId: "custom-action" })),
+    selectionUpdateAction: vi.fn(async () => ({ actionId: "custom-action" })),
+    selectionDeleteAction: vi.fn(async () => ({ ok: true })),
     ...overrides
   } as unknown as typeof window.agentResume;
   render(
@@ -438,17 +400,15 @@ describe("SettingsPanel (window)", () => {
     expect(host.textContent).toContain("Session Summaries");
     expect(host.textContent).toContain("Scheduled Digests");
     expect(host.textContent).toContain("GTD Task Analysis");
-    expect(host.textContent).toContain("IM Smart Routing");
     expect(host.textContent).toContain("Translation");
-    // 8 text selectors + 1 embedding selector = 9 selectors (image selector shows empty hint because pool has no image models).
-    expect(host.querySelectorAll('[data-testid^="settings-model-select-"]')).toHaveLength(9);
+    // 7 text selectors + 1 embedding selector = 8 selectors (image selector shows empty hint because pool has no image models).
+    expect(host.querySelectorAll('[data-testid^="settings-model-select-"]')).toHaveLength(8);
     expect(host.querySelector('[data-testid="settings-model-select-chat"]')).not.toBeNull();
     expect(host.querySelector('[data-testid="settings-model-select-git-commit"]')).not.toBeNull();
     expect(host.querySelector('[data-testid="settings-model-select-session-rename"]')).not.toBeNull();
     expect(host.querySelector('[data-testid="settings-model-select-session-summary"]')).not.toBeNull();
     expect(host.querySelector('[data-testid="settings-model-select-report"]')).not.toBeNull();
     expect(host.querySelector('[data-testid="settings-model-select-gtd"]')).not.toBeNull();
-    expect(host.querySelector('[data-testid="settings-model-select-im-routing"]')).not.toBeNull();
     expect(host.querySelector('[data-testid="settings-model-select-translate"]')).not.toBeNull();
     expect(host.querySelector('[data-testid="settings-model-select-embedding"]')).not.toBeNull();
     // No image models in the pool → the image selector shows an empty hint instead.
@@ -612,112 +572,11 @@ describe("SettingsPanel (window)", () => {
     expect(host.querySelector("select.settings-row-control")).toBeNull();
   });
 
-  it("wraps the IM pane in the scrollable settings body and titles the group Roles", async () => {
-    const { host } = renderWindowSettings("im");
-    await waitFor(() => expect(host.querySelector(".settings-pane-body")).not.toBeNull());
-    const paneBody = host.querySelector(".settings-pane-body");
-    expect(paneBody?.querySelector(".settings-group-title")?.textContent).toBe("Roles");
-    expect(paneBody?.className).toContain("settings-pane-body");
-    expect(paneBody?.querySelectorAll(".settings-group").length).toBeGreaterThanOrEqual(2);
-    expect(host.textContent).toContain("Model");
-  });
-
-  it("allows selecting and typing a model for role templates in IM settings", async () => {
-    const imUpdateTemplate = vi.fn(async () => ({ templateId: "role_developer" }));
-    const { host } = renderWindowSettings("im", {
-      imListAgentModels: vi.fn(async () => [
-        { id: "claude-3-7-sonnet-20250219", label: "Claude 3.7 Sonnet", provider: "ACP" },
-        { id: "claude-opus", label: "Claude Opus", provider: "ACP" }
-      ]),
-      imListTemplates: vi.fn(async () => [
-        {
-          templateId: "role_developer",
-          name: "Developer",
-          persona: "You are Developer.",
-          agent: "claude",
-          model: "claude-3-7-sonnet-20250219",
-          permissions: "write",
-          tools: { fsRead: true, fsWrite: true, execute: true },
-          createdAtMs: 1000,
-          updatedAtMs: 1000
-        }
-      ]),
-      imUpdateTemplate
-    });
-
-    await waitFor(() => expect(host.textContent).toContain("Developer"));
-    await waitFor(() => expect(host.querySelector(".im-settings-editor")).not.toBeNull());
-
-    const selects = host.querySelectorAll(".im-settings-editor select");
-    const modelSelect = selects[1] as HTMLSelectElement;
-    expect(modelSelect).not.toBeNull();
-    expect(modelSelect.value).toBe("claude-3-7-sonnet-20250219");
-
-    fireEvent.change(modelSelect, { target: { value: "claude-opus" } });
-    const saveBtn = host.querySelector(".im-add-role-actions button.btn.primary") as HTMLButtonElement;
-    fireEvent.click(saveBtn);
-
-    await waitFor(() => {
-      expect(imUpdateTemplate).toHaveBeenCalledWith(
-        expect.objectContaining({
-          templateId: "role_developer",
-          model: "claude-opus"
-        })
-      );
-    });
-  });
-
-  it("allows selecting a thinking level for role templates in IM settings", async () => {
-    const imUpdateTemplate = vi.fn(async () => ({ templateId: "role_developer" }));
-    const { host } = renderWindowSettings("im", {
-      imListTemplates: vi.fn(async () => [
-        {
-          templateId: "role_developer",
-          name: "Developer",
-          persona: "You are Developer.",
-          agent: "codex",
-          model: "o3-mini",
-          thoughtLevel: "medium",
-          permissions: "write",
-          tools: { fsRead: true, fsWrite: true, execute: true },
-          createdAtMs: 1000,
-          updatedAtMs: 1000
-        }
-      ]),
-      imUpdateTemplate
-    });
-
-    await waitFor(() => expect(host.textContent).toContain("Developer"));
-    await waitFor(() => expect(host.querySelector(".im-settings-editor")).not.toBeNull());
-    let thoughtSelect: HTMLSelectElement | undefined;
-    await waitFor(() => {
-      thoughtSelect = Array.from(host.querySelectorAll(".im-settings-editor select")).find(
-        (el) => (el as HTMLSelectElement).value === "medium"
-      ) as HTMLSelectElement | undefined;
-      expect(thoughtSelect).toBeTruthy();
-    });
-    expect(thoughtSelect!.value).toBe("medium");
-
-    fireEvent.change(thoughtSelect!, { target: { value: "high" } });
-    const saveBtn = host.querySelector(".im-add-role-actions button.btn.primary") as HTMLButtonElement;
-    fireEvent.click(saveBtn);
-
-    await waitFor(() => {
-      expect(imUpdateTemplate).toHaveBeenCalledWith(
-        expect.objectContaining({
-          templateId: "role_developer",
-          thoughtLevel: "high"
-        })
-      );
-    });
-  });
-
-  it("reorders selection actions from the IM settings list", async () => {
+  it("reorders selection actions from the Selection settings list", async () => {
     const actions = [
       {
         actionId: "translate",
         name: "Translate",
-        kind: "independent",
         prompt: "Translate:\n{selection}",
         sortOrder: 0,
         enabled: true,
@@ -727,7 +586,6 @@ describe("SettingsPanel (window)", () => {
       {
         actionId: "explain",
         name: "Explain",
-        kind: "independent",
         prompt: "Explain:\n{selection}",
         sortOrder: 1,
         enabled: true,
@@ -735,20 +593,20 @@ describe("SettingsPanel (window)", () => {
         updatedAtMs: 2
       }
     ];
-    const imReorderSelectionActions = vi.fn(async () => [actions[1], actions[0]]);
-    const { host } = renderWindowSettings("im", {
-      imListSelectionActions: vi.fn(async () => actions),
-      imReorderSelectionActions
+    const selectionReorderActions = vi.fn(async () => [actions[1], actions[0]]);
+    const { host } = renderWindowSettings("selection", {
+      selectionListActions: vi.fn(async () => actions),
+      selectionReorderActions
     });
 
-    await waitFor(() => expect(host.querySelector(".im-settings-action-row")).not.toBeNull());
+    await waitFor(() => expect(host.querySelector(".selection-settings-action-row")).not.toBeNull());
     fireEvent.click(host.querySelector('[title="Move Translate down"]') as HTMLButtonElement);
 
-    await waitFor(() => expect(imReorderSelectionActions).toHaveBeenCalledWith({
+    await waitFor(() => expect(selectionReorderActions).toHaveBeenCalledWith({
       actionIds: ["explain", "translate"]
     }));
     await waitFor(() => {
-      const names = [...host.querySelectorAll(".im-settings-action-row .im-settings-item")]
+      const names = [...host.querySelectorAll(".selection-settings-action-row .selection-settings-item")]
         .map((item) => item.firstChild?.textContent ?? "");
       expect(names).toContain("Explain");
       expect(names.indexOf("Explain")).toBeLessThan(names.indexOf("Translate"));
@@ -761,7 +619,6 @@ describe("SettingsPanel (window)", () => {
       {
         actionId: "translate",
         name: "Translate",
-        kind: "independent",
         prompt: "Translate:\n{selection}",
         sortOrder: 0,
         enabled: true,
@@ -771,7 +628,6 @@ describe("SettingsPanel (window)", () => {
       {
         actionId: "explain",
         name: "Explain",
-        kind: "independent",
         prompt: "Explain:\n{selection}",
         sortOrder: 1,
         enabled: true,
@@ -779,18 +635,18 @@ describe("SettingsPanel (window)", () => {
         updatedAtMs: 2
       }
     ];
-    const { host } = renderWindowSettings("im", {
-      imListSelectionActions: vi.fn(async () => actions),
-      imReorderSelectionActions: vi.fn(async () => {
+    const { host } = renderWindowSettings("selection", {
+      selectionListActions: vi.fn(async () => actions),
+      selectionReorderActions: vi.fn(async () => {
         throw new Error("Reorder failed");
       })
     });
 
-    await waitFor(() => expect(host.querySelector(".im-settings-action-row")).not.toBeNull());
+    await waitFor(() => expect(host.querySelector(".selection-settings-action-row")).not.toBeNull());
     fireEvent.click(host.querySelector('[title="Move Translate down"]') as HTMLButtonElement);
 
     await waitFor(() => expect(host.textContent).toContain("Reorder failed"));
-    const names = [...host.querySelectorAll(".im-settings-action-row .im-settings-item")]
+    const names = [...host.querySelectorAll(".selection-settings-action-row .selection-settings-item")]
       .map((item) => item.firstChild?.textContent ?? "");
     expect(names.indexOf("Translate")).toBeLessThan(names.indexOf("Explain"));
   });

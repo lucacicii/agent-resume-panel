@@ -43,7 +43,6 @@ Requirements: macOS 12+, Apple Silicon or Intel. Version history: [Changelog](..
 | [Workspace mentions](workspace-mentions.md) | Global work/reference packs for New session and the `arpm` CLI |
 | [Sessions](sessions.md) | Reference list and read-only preview |
 | [Notes](notes.md) | Markdown editor shared with the extension |
-| [IM](im.md) | User-created project rooms, opened from Workbench; quote messages and @ Pi / Claude / Codex roles |
 | [MCP](mcp.md) | Register trusted local agents to use Notes, Tasks, Reports, memory retrieval, Sessions, and GTD tools |
 | [Settings & data](settings-and-data.md) | Settings panes, backup/merge, logs, data directory, usage, updates |
 
@@ -51,7 +50,7 @@ Requirements: macOS 12+, Apple Silicon or Intel. Version history: [Changelog](..
 
 | Entry | Role |
 |-------|------|
-| **Workbench** (default) | Session list + ACP visual chat + embedded or external terminal + IM rooms |
+| **Workbench** (default) | Session list + ACP visual chat + embedded or external terminal |
 | **Notes** | Markdown notes |
 | **Sessions** (app menu) | Focuses Workbench |
 | **⚙ Settings** | General, models, sessions, workbench, data, MCP, usage, about |
@@ -121,7 +120,6 @@ macOS 导向的 **Session OS + Memory** 桌面应用：**Workbench** 恢复会�
 | [工作区 Mention](workspace-mentions.md) | 全局工作/参考目录包，供新建会话和 `arpm` 使用 |
 | [Sessions](sessions.md) | 参考列表与只读预览 |
 | [Notes](notes.md) | 与扩展共用的 Markdown 笔记 |
-| [IM](im.md) | 用户自建项目房间，从 Workbench 打开；引用消息并 @ Pi / Claude / Codex 角色 |
 | [MCP](mcp.md) | 为受信任的本机 Agent 注册 Notes、任务、Reports、记忆检索、Sessions 与 GTD 工具 |
 | [设置与数据](settings-and-data.md) | 各设置页、备份/合并、日志、数据目录、用量、更新 |
 
@@ -129,7 +127,7 @@ macOS 导向的 **Session OS + Memory** 桌面应用：**Workbench** 恢复会�
 
 | 入口 | 作用 |
 |------|------|
-| **Workbench**（默认） | 会话列表 + ACP 可视化聊天 + 嵌入式 / 外部终端 + IM 房间 |
+| **Workbench**（默认） | 会话列表 + ACP 可视化聊天 + 嵌入式 / 外部终端 |
 | **Notes** | Markdown 笔记 |
 | **Sessions**（应用菜单） | 聚焦工作台 |
 | **⚙ Settings** | 通用、模型、会话、工作台、数据、MCP、用量、关于 |

@@ -568,6 +568,17 @@ export function getPtyPid(id: number): number | null {
   return typeof pid === "number" && pid > 0 ? pid : null;
 }
 
+/**
+ * Workbench a pane belongs to.
+ *
+ * A pane outlives the window that rendered it, and the daemon snapshot only
+ * knows the pane id — this is how main attributes a window-less pane to the
+ * workbench whose tray dot should stay lit.
+ */
+export function getPtyWorkbenchId(id: number): string | null {
+  return ptySessions.get(Math.floor(id))?.workbenchId ?? null;
+}
+
 export function getPtyRuntimeMetrics(): PtyRuntimeMetrics {
   let attachedCount = 0;
   let replayBytes = 0;
