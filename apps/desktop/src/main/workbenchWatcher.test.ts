@@ -40,9 +40,9 @@ async function makeRoot(): Promise<string> {
   return root;
 }
 
-function createSender() {
+function createSender(id = 1) {
   return {
-    id: 1,
+    id,
     isDestroyed: () => false,
     once: vi.fn(),
     send: vi.fn()
@@ -219,12 +219,12 @@ describe("workbench watcher fallback", () => {
     sender.send.mockClear();
     expect(getWorkbenchWatcherRuntimeMetrics()).toEqual({ watcherCount: 1, pollingCount: 1, activeCount: 1 });
 
-    setWorkbenchWatcherActive(false);
+    setWorkbenchWatcherActive(sender.id, false);
     expect(getWorkbenchWatcherRuntimeMetrics()).toEqual({ watcherCount: 1, pollingCount: 0, activeCount: 0 });
     await vi.advanceTimersByTimeAsync(WORKBENCH_POLL_INTERVALS_MS[0] + 120);
     expect(sender.send).not.toHaveBeenCalled();
 
-    setWorkbenchWatcherActive(true);
+    setWorkbenchWatcherActive(sender.id, true);
     expect(getWorkbenchWatcherRuntimeMetrics()).toEqual({ watcherCount: 1, pollingCount: 1, activeCount: 1 });
     await vi.advanceTimersByTimeAsync(WORKBENCH_POLL_INTERVALS_MS[0] + 120);
     expect(sender.send).toHaveBeenCalledWith("workbench:fileSystemChanged", expect.objectContaining({
@@ -232,6 +232,50 @@ describe("workbench watcher fallback", () => {
       fullRescan: true,
       rootPath: root
     }));
+  });
+
+  it("shares one watch per project root across windows", async () => {
+    vi.useFakeTimers();
+    const root = await makeRoot();
+    let callback: WatchCallback | undefined;
+    const watcher: FakeWatcher = { close: vi.fn(), on: vi.fn(() => watcher), emitError: () => undefined };
+    const watchSpy = installWatchMock((listener) => { callback = listener; return watcher; });
+    const main = createSender(1);
+    const taskWindow = createSender(2);
+    registerWorkbenchWatcherIpc(
+      () => ({ webContents: main } as never),
+      (sender) => sender === (taskWindow as unknown as typeof sender)
+    );
+
+    await getSetFileWatchHandler()({ sender: main }, { rootPaths: [root] });
+    await getSetFileWatchHandler()({ sender: taskWindow }, { rootPaths: [root] });
+
+    // One recursive watcher for both windows, both of which get the event.
+    expect(watchSpy).toHaveBeenCalledTimes(1);
+    callback?.("change", "src/index.ts");
+    await vi.advanceTimersByTimeAsync(120);
+    expect(main.send).toHaveBeenCalledWith("workbench:fileSystemChanged", expect.objectContaining({
+      paths: [path.join(root, "src/index.ts")]
+    }));
+    expect(taskWindow.send).toHaveBeenCalledWith("workbench:fileSystemChanged", expect.objectContaining({
+      paths: [path.join(root, "src/index.ts")]
+    }));
+
+    // Hiding one window stops delivering to it without touching the watch.
+    setWorkbenchWatcherActive(taskWindow.id, false);
+    main.send.mockClear();
+    taskWindow.send.mockClear();
+    callback?.("change", "src/other.ts");
+    await vi.advanceTimersByTimeAsync(120);
+    expect(main.send).toHaveBeenCalledTimes(1);
+    expect(taskWindow.send).not.toHaveBeenCalled();
+
+    // When the last subscriber leaves, the watch goes with it.
+    await getSetFileWatchHandler()({ sender: taskWindow }, { rootPaths: null });
+    expect(watcher.close).not.toHaveBeenCalled();
+    await getSetFileWatchHandler()({ sender: main }, { rootPaths: null });
+    expect(watcher.close).toHaveBeenCalledTimes(1);
+    expect(getWorkbenchWatcherRuntimeMetrics()).toEqual({ watcherCount: 0, pollingCount: 0, activeCount: 0 });
   });
 
   it("accepts an authorized workbench window and rejects a foreign sender", async () => {

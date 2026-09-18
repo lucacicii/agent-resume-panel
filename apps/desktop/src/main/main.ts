@@ -1649,7 +1649,7 @@ function registerIpc(): void {
   ipcMain.on("workbench:setActive", (event, active: unknown) => {
     if (active === true) workbenchActiveSenders.add(event.sender.id);
     else workbenchActiveSenders.delete(event.sender.id);
-    setWorkbenchWatcherActive(anyWorkbenchActive());
+    setWorkbenchWatcherActive(event.sender.id, active === true);
   });
 
   ipcMain.on("workbench:activeSessions", (event, payload: unknown) => {

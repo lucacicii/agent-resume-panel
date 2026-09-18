@@ -14,6 +14,7 @@ import {
 } from "./gitNestedScan";
 import { parseLeftRightCount, type GitRepoTracking } from "./gitTracking";
 import { safeHandle } from "./ipcUtils";
+import { shareGitQuery } from "./gitQueryShare";
 import { parseGitStatusPorcelainV1Z } from "./workbenchGitStatus";
 import {
   findGitDiffHunk,
@@ -1025,7 +1026,9 @@ export function registerWorkbenchFsIpc(): void {
   safeHandle(
     "terminal:gitStatus",
     async (_event, args: { cwd: string; nestedScan?: GitNestedScanOptions }) => {
-      return queryGitStatus(args.cwd, args.nestedScan);
+      // Windows that share a project ask for this at the same moment; answer once.
+      const key = `status\0${args.cwd}\0${args.nestedScan ? JSON.stringify(args.nestedScan) : ""}`;
+      return shareGitQuery(key, () => queryGitStatus(args.cwd, args.nestedScan));
     }
   );
 
