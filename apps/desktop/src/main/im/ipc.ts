@@ -1,4 +1,4 @@
-import { dialog, type BrowserWindow } from "electron";
+import { dialog } from "electron";
 import { constants } from "node:fs";
 import * as fs from "node:fs/promises";
 import {
@@ -16,7 +16,7 @@ import { safeHandle } from "../ipcUtils";
 import { disposeAcpController, inspectAcpChat, listLiveAcpChatIds } from "../acp/acpHost";
 import { deleteAcpRecord } from "../acp/store";
 import { resolveAgentModels } from "./agentModelResolver";
-import { ImConductor, emitImEvent } from "./conductor";
+import { ImConductor } from "./conductor";
 import { runIndependentSelectionAction } from "./selectionRunner";
 import { ImStore } from "./store";
 import {
@@ -86,11 +86,11 @@ async function getConductor(): Promise<ImConductor> {
 }
 
 export function registerImIpc(deps: {
-  getMainWindow: () => BrowserWindow | null;
+  broadcast: (event: ImEvent) => void;
   acp: AcpHostApi;
 }): void {
   acpHost = deps.acp;
-  emitIm = (event: ImEvent) => emitImEvent(deps.getMainWindow, event);
+  emitIm = deps.broadcast;
 
   safeHandle("im:listProjects", async () => {
     const im = await getStore();

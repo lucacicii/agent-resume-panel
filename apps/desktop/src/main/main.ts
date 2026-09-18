@@ -3398,7 +3398,7 @@ app.whenReady().then(async () => {
     getMainWindow: () => mainWindow
   });
   registerImIpc({
-    getMainWindow: () => mainWindow,
+    broadcast: (event) => broadcastToRenderers("im:event", event),
     acp: {
       connect: (chatId) => connectAcpChat(chatId),
       prompt: (chatId, text, images) => promptAcpChat(chatId, text, images ?? []),
