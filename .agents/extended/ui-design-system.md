@@ -254,12 +254,17 @@ Allowed on: `.ops-menu`, `.sidebar-project-filter-thumb`, `.sheet-panel` (option
 | Progress bar width | 220ms | ease-out |
 | Popover / menu enter | 150ms | `--ease-out` |
 | Overlay backdrop fade | 220ms | `--ease-out` |
-| Centered dialog enter | 220ms | `--ease-out` (translate Y + scale, no bounce) |
+| Centered dialog enter | 220ms | `--ease-out` (fade + scale, **no translation** — alert semantics) |
+| Window open / close | — | **none** — macOS document windows appear and disappear without a transition |
 | Overlay exit | 220ms (popovers and menus 150ms) | `--ease-out` (reverse of the entrance) |
 
 Always provide `@media (prefers-reduced-motion: reduce)` overrides (disable transforms/transitions). Reference: existing `.sidebar-project-filter-thumb` pattern.
 
 Overlay layers never appear or disappear instantly. On the way in, a backdrop fades with `backdrop-in` while its panel enters with `modal-in`, both at `--duration-normal`, so the layer reads as one motion. On the way out the pair reverses through `.is-closing`. Anchored popovers, menus, and context menus use `mac-popover-enter` / `popover-out` at `--duration-fast`. Reuse those shared keyframes — do not add per-component entrance or exit keyframes. Surface mapping and the `.is-closing` wiring: §4.21.
+
+**Window chrome is exempt.** Electron windows are not part of this layer hierarchy and macOS gives document windows no open or close animation, so `BrowserWindow` opacity/geometry is never animated. Native-feeling window appearance comes from `show: false` + `ready-to-show` (the window first appears fully painted) plus restored per-window bounds — not from a transition. See §5.1.
+
+**Alert semantics vs. sheet semantics.** Centered dialogs fade + scale with no displacement, matching `NSAlert`. Displacement — `translateX` for the right drawer, and a sheet would use `translateY` — signals that a surface is *attached* to an edge or an anchor. Do not mix the two: a centered dialog that slides reads as a sheet that lost its edge.
 
 ### 2.7 Z-Index Scale
 
@@ -648,6 +653,8 @@ Remove: `box-shadow` on bubbles, radial-gradient on `.chat-log`.
 | Anchored popover, menu, context menu | `mac-popover-enter` | `--duration-fast` | `.rail-account-menu`, `.wb-context-menu`, `.notes-context-menu`, `.chat-context-menu`, `.notification-popover`, `.chat-tools-popover`, `.wb-git-branch-popover`, `.selection-action-result` |
 | Command palette | `mac-spotlight-fade` + `mac-spotlight-enter` | `--duration-fast` | `.quick-access-overlay`, `.quick-access-panel` |
 
+Popovers scale out of the corner nearest their anchor, so the anchor must set `transform-origin`: `.notification-popover` is `top right` (opens below the bell, right-aligned to it) and `.rail-account-menu` is `bottom left` (opens right of the avatar and grows upward). A menu whose anchor flips at runtime — cursor-anchored context menus, `.wb-git-branch-popover` (right-anchored in the workbench, left-anchored in the Git graph) — still scales from its center and is a known gap. Do not guess a corner for a flipping anchor; give it a `data-anchor` attribute from the positioning code, or leave the origin centred.
+
 #### Exit
 
 Overlays render as `{state ? <Overlay/> : null}`, so clearing the state unmounts them on the same frame and an exit animation could never run. `useOverlayState` / `useOverlayPresence` (`renderer-react/components/useOverlayMotion.ts`) keep the overlay mounted for `OVERLAY_EXIT_MS` (240ms) and report `closing`, which the caller applies as `.is-closing`.
@@ -701,6 +708,27 @@ Defined in [`main.ts`](../../apps/desktop/src/main/main.ts) — **do not change*
 | Minimum size | 860 × 600 |
 | Title bar (darwin) | `hiddenInset` |
 | Traffic lights | `{ x: 14, y: 14 }` |
+
+#### Window Transitions
+
+**Windows do not get open or close animations.** macOS gives document and utility windows no appearance transition — they appear already painted and disappear instantly — so `BrowserWindow` opacity and geometry are never animated. This is a deliberate constraint, not an omission:
+
+| Window | Query `mode` | Appearance | Rationale |
+| --- | --- | --- | --- |
+| Board | `main` | `show: false` → `ready-to-show` **and** renderer `main:rendererReady` → `show()`, then `StartupMask` cross-fades its contents | The mask tracks real work (initial session sync), so its fade reports progress instead of decorating the window |
+| Workbench | `task` | `show: false` → `ready-to-show` → `show()` | First frame is fully painted, so there is nothing to hide with a fade |
+| Standalone note | `standalone-note` | same | same |
+| Browser | `browser` | same | same |
+
+Native-feeling window appearance comes from three things that are already implemented — preserve them rather than adding motion:
+
+1. **Paint before reveal.** Every window is created with `show: false` and shown on `ready-to-show`, so the user never sees an unpainted or white window.
+2. **Restored bounds.** Workbench, browser, and standalone-note windows remember and restore their frame (`boundsByWorkbenchId`, `boundsByBrowserId`, `positionStandaloneNoteWindow`), so a window reappears where the user left it.
+3. **Correct focus.** The new window takes focus on show.
+
+**Do not animate window opacity.** `win.setOpacity()` would fade the whole `NSWindow` including the traffic lights and shadow, which reads as a Spotlight-style utility panel — wrong for a document window. In particular do not "fix" a browser-window flicker with CSS: the page is a native `WebContentsView` attached via `win.contentView.addChildView(view)` with bounds in *window* coordinates (`browser/controller.ts`), so a CSS fade on the renderer would fade only the chrome and leave the page fully opaque, and a CSS `transform` on the window root would misalign the view. A browser session can also be hosted in a `task` window (`surface: "workbench"`), so the same applies there.
+
+**Every window must set `backgroundColor: windowBackgroundColor()`.** Electron's default is `#FFF`, and a window composites its own background during the frames between its webContents being torn down and the native window being destroyed — an unset background shows a white flash on close. [`windowAppearance.ts`](../../apps/desktop/src/main/windowAppearance.ts) is the single source of truth (it mirrors `--color-window-bg` and is re-applied on system appearance change), so a new `new BrowserWindow(...)` call site passes it rather than a literal.
 
 ### 5.2 Information Architecture
 

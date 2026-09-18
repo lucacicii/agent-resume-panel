@@ -158,6 +158,7 @@ import {
   taskWindowStateForSender,
   type TaskWindowDeps
 } from "./taskWindows";
+import { applyWindowBackgrounds, windowBackgroundColor } from "./windowAppearance";
 import { loadStoredTaskWindows, saveStoredTaskWindows, taskWindowStatePath } from "./taskWindowStore";
 import {
   disposeBrowserController,
@@ -984,6 +985,9 @@ function createStandaloneNoteWindow(record: NoteRecord): StandaloneNoteWindowSta
     minHeight: 360,
     title,
     show: false,
+    // Electron's default background is white, and a window composites it while its
+    // webContents is torn down — leaving it unset flashes white on close.
+    backgroundColor: windowBackgroundColor(),
     ...(icon ? { icon } : {}),
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     trafficLightPosition: process.platform === "darwin" ? { x: 14, y: 14 } : undefined,
@@ -1595,7 +1599,7 @@ function createWindow(): void {
     // Keep the main window hidden until Chromium and the renderer have painted the initial loading shell.
     show: false,
     // Match the system fallback surface in case the native window is exposed before the renderer paint.
-    backgroundColor: nativeTheme.shouldUseDarkColors ? "#1e1e1e" : "#f5f5f7",
+    backgroundColor: windowBackgroundColor(),
     ...(icon ? { icon } : {}),
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     trafficLightPosition: process.platform === "darwin" ? { x: 14, y: 14 } : undefined,
@@ -3461,7 +3465,10 @@ app.whenReady().then(async () => {
   void loadWorkbenchMeta();
   syncSessionDotsTray();
   void restoreTaskWindows();
-  nativeTheme.on("updated", () => syncSessionDotsTray());
+  nativeTheme.on("updated", () => {
+    syncSessionDotsTray();
+    applyWindowBackgrounds();
+  });
 
   void (async () => {
     try {

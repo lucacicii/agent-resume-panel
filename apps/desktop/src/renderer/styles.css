@@ -660,6 +660,9 @@ textarea:focus-visible,
   padding: 5px;
   display: flex;
   flex-direction: column;
+  /* Opens to the right of the avatar button and grows upward, so it scales out of
+     the corner nearest that anchor. */
+  transform-origin: bottom left;
   gap: 2px;
   border: 0.5px solid var(--color-separator);
   border-radius: var(--radius-xl);
@@ -1024,10 +1027,13 @@ html[data-window-mode="task"] #react-chrome:empty {
   animation: modal-in var(--duration-normal) var(--ease-out);
 }
 
+/* Centered dialogs use alert semantics: fade plus a slight scale, no translation —
+   that is what macOS does for NSAlert/modals. Displacement belongs to sheets and
+   drawers (see `sheet-in`). */
 @keyframes modal-in {
   from {
-    transform: translateY(10px) scale(0.99);
-    opacity: 0.5;
+    transform: scale(0.98);
+    opacity: 0;
   }
 
   to {
@@ -1073,7 +1079,7 @@ html[data-window-mode="task"] #react-chrome:empty {
   }
 
   to {
-    transform: translateY(6px) scale(0.99);
+    transform: scale(0.98);
     opacity: 0;
   }
 }
@@ -10347,6 +10353,8 @@ textarea.wb-floating-note-editor {
 .notification-popover {
   position: fixed;
   z-index: 300;
+  /* Opens below the bell, right-aligned to it, so it scales out of the anchored corner. */
+  transform-origin: top right;
   width: 340px;
   max-height: 480px;
   display: flex;

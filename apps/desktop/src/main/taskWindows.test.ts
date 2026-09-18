@@ -2,8 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 type FakeListener = (...args: unknown[]) => void;
 
+import { WINDOW_BACKGROUND_DARK, WINDOW_BACKGROUND_LIGHT } from "./windowAppearance";
+
 const fake = vi.hoisted(() => {
   const windows: Array<Record<string, unknown>> = [];
+  const nativeTheme = { shouldUseDarkColors: false };
   let nextId = 1;
 
   class FakeBrowserWindow {
@@ -98,15 +101,18 @@ const fake = vi.hoisted(() => {
   return {
     windows,
     FakeBrowserWindow,
+    nativeTheme,
     reset: () => {
       windows.length = 0;
       nextId = 1;
+      nativeTheme.shouldUseDarkColors = false;
     }
   };
 });
 
 vi.mock("electron", () => ({
   BrowserWindow: fake.FakeBrowserWindow,
+  nativeTheme: fake.nativeTheme,
   screen: {
     getDisplayNearestPoint: () => ({ workArea: { x: 0, y: 0, width: 1440, height: 900 } })
   }
@@ -173,6 +179,18 @@ describe("task workbench windows", () => {
     expect(listTaskWindows()).toHaveLength(1);
     expect(windowAt(0).focused).toBe(1);
     expect(again.onChange).not.toHaveBeenCalled();
+  });
+
+  it("gives a workbench window the themed background instead of Electron's white default", () => {
+    openTaskWindow(deps(), { noteId: "note-1", workbenchId: "wb-light" });
+    fake.nativeTheme.shouldUseDarkColors = true;
+    openTaskWindow(deps(), { noteId: "note-2", workbenchId: "wb-dark" });
+
+    // Leaving `backgroundColor` unset makes the window flash white while its
+    // webContents is torn down on close.
+    const [light, dark] = fake.windows as Array<{ options: Record<string, unknown> }>;
+    expect(light!.options.backgroundColor).toBe(WINDOW_BACKGROUND_LIGHT);
+    expect(dark!.options.backgroundColor).toBe(WINDOW_BACKGROUND_DARK);
   });
 
   it("caps how many workbench windows can be open at once", () => {
