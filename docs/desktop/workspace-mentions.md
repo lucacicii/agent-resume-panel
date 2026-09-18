@@ -36,7 +36,7 @@ Example pack `anfeng`:
 3. Set **Id** (`anfeng` — letters, digits, `_`, `-`; no `@` in the stored id).
 4. Set **Work folder** (Browse or paste an absolute / `~/…` path).
 5. Optionally **Add reference** folders.
-6. Save settings.
+6. Settings save automatically — fields commit when they lose focus, so just click elsewhere.
 
 Ids are unique case-insensitively. Empty ids, empty work folders, and duplicate ids are dropped on save.
 
@@ -135,7 +135,7 @@ pnpm --filter @agent-resume/core exec arpm list
 3. 填 **Id**（`anfeng`，字母数字 `_` `-`；存盘时不要带 `@`）。
 4. 填 **工作目录**（浏览或粘贴绝对路径 / `~/…`）。
 5. 需要时 **添加参考目录**。
-6. 保存设置。
+6. 设置会自动保存：输入框失焦即写入，直接点别处即可。
 
 Id 大小写不敏感、不可重复。空 Id、空工作目录、重复 Id 会在保存时丢掉。
 

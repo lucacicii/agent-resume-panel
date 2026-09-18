@@ -21,6 +21,7 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 #### Changed
 
+- **Settings auto-save**: the Settings window no longer has Save / Discard buttons or an unsaved-changes prompt. Switches, selects, and radios apply immediately; text and number fields save when they lose focus, and closing the window commits the focused field first
 - **Status detection replaced**: the previous renderer-side fingerprint/resolver/store stack (≈1900 lines) is gone. Detection runs in the main process (screen mirror, terminal escape scanning, foreground job control) and judgements are made by the daemon, so indicators no longer depend on a pane being mounted
 - **Terminal status is now job-control based**: "a command is running" comes from the terminal's foreground process group instead of counting descendant processes
 - **Sessions are attributed by PTY and session key**: main only knows the PTY, so the renderer now binds the session to it (`terminal:bindSession`)
@@ -630,6 +631,7 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 #### 变更
 
+- **设置自动保存**: 设置窗口不再有「保存 / 丢弃」按钮和未保存确认提示。开关、下拉、单选即时生效；文本与数字输入框失焦即保存；关闭窗口前会先提交当前聚焦的输入框
 - **状态检测整体替换**: 原先渲染进程内的 fingerprint / resolver / store 三层(约 1900 行)已移除。检测改在主进程完成(屏幕镜像、终端转义扫描、前台作业控制),判定集中在守护进程,因此指示灯不再依赖面板是否挂载
 - **终端状态改为作业控制判定**: 「有命令在跑」来自终端的前台进程组,而不再是统计后代进程
 - **会话归属改为 PTY + 会话键**: 主进程只知 PTY,渲染层通过 `terminal:bindSession` 绑定会话

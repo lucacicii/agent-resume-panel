@@ -247,13 +247,7 @@ const messages = {
   "desktop.settings.panelHome": "Panel home",
   "desktop.settings.panelHomeFootnote": "Reveal uses saved path.",
   "desktop.common.revealInFinder": "Reveal",
-  "desktop.settings.save": "Save",
-  "desktop.settings.discard": "Discard",
-  "desktop.settings.cancel": "Cancel",
-  "desktop.settings.saveAndContinue": "Save and continue",
-  "desktop.settings.discardAndContinue": "Discard and continue",
-  "desktop.settings.unsavedConfirm": "Unsaved confirm",
-  "desktop.settings.unsavedHint": "Unsaved changes"
+  "desktop.settings.selectionCreateAction": "Create"
 };
 
 function renderWindowSettings(initialPane = "general", overrides?: Record<string, unknown>) {
@@ -418,18 +412,22 @@ describe("SettingsPanel (window)", () => {
     expect(host.querySelectorAll('[data-testid^="settings-provider-model-kind-"]')).toHaveLength(2);
   });
 
-  it("requires explicit Save to persist provider changes", async () => {
+  it("has no manual Save/Discard controls in the settings panes", async () => {
+    const { host } = renderWindowSettings("providers");
+    await waitFor(() => expect(host.querySelector('[data-testid="settings-provider-name"]')).not.toBeNull());
+    expect(host.querySelector('[data-testid^="settings-save-"]')).toBeNull();
+    expect(host.querySelector('[data-testid^="settings-discard-"]')).toBeNull();
+    expect(host.querySelector(".settings-unsaved-banner")).toBeNull();
+  });
+
+  it("auto-saves provider text inputs on blur, not while typing", async () => {
     const { host, saveSettings } = renderWindowSettings("providers");
     await waitFor(() => expect(host.querySelector('[data-testid="settings-provider-name"]')).not.toBeNull());
     const input = host.querySelector('[data-testid="settings-provider-name"]') as HTMLInputElement;
     fireEvent.change(input, { target: { value: "Renamed" } });
-    await waitFor(() => expect(host.querySelector('[data-testid="settings-save-providers"]') as HTMLButtonElement | null).not.toBeNull());
     expect(saveSettings).not.toHaveBeenCalled();
-    const saveBtn = host.querySelector('[data-testid="settings-save-providers"]') as HTMLButtonElement;
-    expect(saveBtn.disabled).toBe(false);
-    fireEvent.click(saveBtn);
+    fireEvent.blur(input);
     await waitFor(() => {
-      expect(saveSettings).toHaveBeenCalled();
       const last = saveSettings.mock.calls.at(-1);
       expect(last?.[1]).toMatchObject({ section: "providers" });
       const saved = last?.[0] as { providers?: Array<{ name: string }> };
@@ -437,21 +435,17 @@ describe("SettingsPanel (window)", () => {
     });
   });
 
-  it("discards provider changes and disables Save when clean", async () => {
+  it("skips the auto-save when a blurred input did not change", async () => {
     const { host, saveSettings } = renderWindowSettings("providers");
-    await waitFor(() => expect(host.querySelector('[data-testid="settings-save-providers"]')).not.toBeNull());
+    await waitFor(() => expect(host.querySelector('[data-testid="settings-provider-name"]')).not.toBeNull());
     const input = host.querySelector('[data-testid="settings-provider-name"]') as HTMLInputElement;
-    const saveBtn = host.querySelector('[data-testid="settings-save-providers"]') as HTMLButtonElement;
-    expect(saveBtn.disabled).toBe(true);
-    fireEvent.change(input, { target: { value: "Renamed" } });
-    await waitFor(() => expect((host.querySelector('[data-testid="settings-save-providers"]') as HTMLButtonElement).disabled).toBe(false));
-    fireEvent.click(host.querySelector('[data-testid="settings-discard-providers"]')!);
-    expect(input.value).toBe("Example");
-    expect((host.querySelector('[data-testid="settings-save-providers"]') as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.blur(input);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
     expect(saveSettings).not.toHaveBeenCalled();
+    expect(input.value).toBe("Example");
   });
 
-  it("renders and saves the Workbench CLI YOLO switch via Save", async () => {
+  it("auto-saves toggles immediately", async () => {
     const { host, saveSettings } = renderWindowSettings("workbench");
     await waitFor(() => expect(host.textContent).toContain("Launch CLI sessions in YOLO mode"));
 
@@ -463,12 +457,24 @@ describe("SettingsPanel (window)", () => {
     expect(toggle).not.toBeNull();
 
     fireEvent.click(toggle!);
-    expect(saveSettings).not.toHaveBeenCalled();
-    fireEvent.click(host.querySelector('[data-testid="settings-save-workbench"]')!);
     await waitFor(() => {
       const last = saveSettings.mock.calls.at(-1);
       expect(last?.[1]).toMatchObject({ section: "workbench" });
       expect((last?.[0] as { workbench?: { newSessionYolo?: boolean } }).workbench?.newSessionYolo).toBe(true);
+    });
+  });
+
+  it("auto-saves number inputs on blur", async () => {
+    const { host, saveSettings } = renderWindowSettings("sessions");
+    await waitFor(() => expect(host.querySelector('input[type="number"]')).not.toBeNull());
+    const input = [...host.querySelectorAll<HTMLInputElement>('input[type="number"]')][0];
+    fireEvent.change(input, { target: { value: "500" } });
+    expect(saveSettings).not.toHaveBeenCalled();
+    fireEvent.blur(input);
+    await waitFor(() => {
+      const last = saveSettings.mock.calls.at(-1);
+      expect(last?.[1]).toMatchObject({ section: "sessions" });
+      expect((last?.[0] as { sessionSync?: { maxItems?: number } }).sessionSync?.maxItems).toBe(500);
     });
   });
 

@@ -290,6 +290,15 @@ const obsoleteDesktopKeys = new Set([
   "desktop.settings.selectionActionKind",
   "desktop.settings.selectionActionKindContext",
   "desktop.settings.selectionActionKindIndependent",
+  // Settings panes auto-save now; the manual Save/Discard buttons and the
+  // unsaved-changes confirmation banner were removed.
+  "desktop.settings.save",
+  "desktop.settings.discard",
+  "desktop.settings.cancel",
+  "desktop.settings.saveAndContinue",
+  "desktop.settings.discardAndContinue",
+  "desktop.settings.unsavedHint",
+  "desktop.settings.unsavedConfirm",
 ]);
 
 /** Keys retired with the IM module (rooms, roles, delegation) or renamed out of `desktop.im.`. */
