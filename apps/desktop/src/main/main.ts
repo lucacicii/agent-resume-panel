@@ -380,7 +380,7 @@ function ensureAgentStatusRuntime(): void {
     })
   );
   registerAgentStatusIpc({
-    getWindow: () => mainWindow,
+    broadcast: (channel, payload) => broadcastToRenderers(channel, payload),
     bridge,
     getPanelHome: () => agentStatusPanelHome,
     execPath: process.execPath,
