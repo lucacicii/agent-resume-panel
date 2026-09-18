@@ -15,7 +15,7 @@
  * Pure: parses, validates, and compiles. Never touches the filesystem.
  */
 
-import { REGIONS, isRegionName } from "./region";
+import { isRegionName } from "./region";
 import type { AgentState } from "../types";
 
 /** Bumped when the schema gains a field older builds cannot honour. */
@@ -24,7 +24,7 @@ export const MANIFEST_ENGINE_VERSION = 2;
 const AGENT_STATES: readonly AgentState[] = ["idle", "working", "blocked", "unknown"];
 
 /** Raw schema, as authored in JSON. */
-export type ManifestGate = {
+type ManifestGate = {
   all?: ManifestGate[];
   any?: ManifestGate[];
   not?: ManifestGate[];
@@ -33,7 +33,7 @@ export type ManifestGate = {
   lineRegex?: string[];
 };
 
-export type ManifestRule = ManifestGate & {
+type ManifestRule = ManifestGate & {
   id: string;
   state: AgentState;
   priority?: number;
@@ -98,7 +98,7 @@ export type CompiledManifest = {
   rules: CompiledRule[];
 };
 
-export type ManifestCompileResult =
+type ManifestCompileResult =
   | { ok: true; manifest: CompiledManifest; warnings: string[] }
   | { ok: false; error: string };
 
@@ -240,5 +240,3 @@ function stringList(values: string[] | undefined): string[] {
   if (!Array.isArray(values)) return [];
   return values.filter((value): value is string => typeof value === "string" && value.length > 0);
 }
-
-export const MANIFEST_REGIONS = REGIONS;

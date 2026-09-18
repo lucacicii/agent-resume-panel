@@ -11,8 +11,7 @@ import {
   translateKey,
   UI_LANGUAGE_AUTO,
   UiLocale,
-  type PanelSettings,
-  type UiLanguagePreference
+  type PanelSettings
 } from "@agent-resume/core";
 
 export interface I18nBundle {
@@ -44,7 +43,7 @@ export function initI18nService(appRoot: string): void {
   initialized = true;
 }
 
-export function resolveDesktopLocale(settings: PanelSettings | undefined): UiLocale {
+function resolveDesktopLocale(settings: PanelSettings | undefined): UiLocale {
   const pref = normalizeUiLanguagePreference(settings?.uiLanguage ?? UI_LANGUAGE_AUTO);
   return resolveUiLocale(pref, app.getLocale());
 }
@@ -75,6 +74,3 @@ export function desktopT(
   return translateKey(locale, key, args);
 }
 
-export function readUiLanguagePreference(settings: PanelSettings | undefined): UiLanguagePreference {
-  return normalizeUiLanguagePreference(settings?.uiLanguage ?? UI_LANGUAGE_AUTO);
-}

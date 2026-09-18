@@ -27,8 +27,8 @@ import type {
 
 export const ACP_MAX_IMAGES_PER_MESSAGE = 4;
 export const ACP_MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-export const ACP_MAX_FILES_PER_MESSAGE = 10;
-export const ACP_MAX_FILE_BYTES = 20 * 1024 * 1024;
+const ACP_MAX_FILES_PER_MESSAGE = 10;
+const ACP_MAX_FILE_BYTES = 20 * 1024 * 1024;
 export const ACP_ALLOWED_IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 
 export interface IncomingAcpImage {

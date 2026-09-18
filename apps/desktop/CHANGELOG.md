@@ -12,6 +12,7 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 #### Added
 
+- **Workspace mentions**: Settings → Workbench can define global packs (`id` + work folder + read-only references) in `settings.desktop.json`. **New session** can pick a pack (cwd switches to the work folder; the first prompt lists reference paths). If the current project is already that work folder, references are injected automatically. CLI: `arpm list` / `arpm go <id>` / `arpm prompt <id>` (`--launch` starts the default CLI agent). Desktop installs `~/.local/bin/arpm` on launch. Docs: [Workspace mentions](../../docs/desktop/workspace-mentions.md)
 - **Background status daemon**: agent status now comes from a small always-on process instead of the window. It keeps working when the window is closed, restores its snapshot after a restart, and posts a macOS notification when an agent starts waiting for you while no window is attached. Manage it in **Settings → Background status**
 - **Agent hooks**: Claude Code (`~/.claude/settings.json`) and Codex (`~/.codex/hooks.json`) can report their own state — exact instead of inferred — installed per agent from Settings. Pi keeps using its companion extension
 - **Rule-driven screen detection**: state is decided by declarative per-agent rules (bundled manifests under `agentStatus/engine/manifests`) with a local override directory (`<panel home>/.desktop/agent-detection`) — no build needed to adjust a rule
@@ -26,6 +27,8 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 #### Removed
 
+- **Archive tab**: the in-app Report / Archive surface is gone. Daily / weekly / monthly digests still generate in the background (fixed schedule) and are read through MCP (`memory_retrieve`, `report_search`, `report_read`, `report_list`)
+- **Report settings pane**: schedule hours, LLM budget, enable switch, and historical backfill are gone. The scheduler always uses code defaults; pick a digest model under Settings → Providers
 - **Online LLM status adjudication**: the model call that guessed whether a screen was blocked is gone, along with its settings row and per-pane budget. Authoring rules is an offline job now (`pnpm --filter @agent-resume/desktop run agent-status:mine`)
 - **`terminal:activity` tail streaming** and the renderer-side screen sampling that needed it
 
@@ -618,6 +621,7 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 #### 新增
 
+- **工作区 Mention**: 设置 → Workbench 可配置全局包（`id` + 工作目录 + 只读参考目录），写入 `settings.desktop.json`。**新建会话**可选择包（cwd 切到工作目录，首条 prompt 带参考路径）；若当前项目已是该工作目录则自动注入。命令行：`arpm list` / `arpm go <id>` / `arpm prompt <id>`（`--launch` 启动 CLI agent）。Desktop 启动时会安装 `~/.local/bin/arpm`。文档：[工作区 Mention](../../docs/desktop/workspace-mentions.md)
 - **后台状态守护进程**: Agent 状态改由一个常驻小进程判定,不再依赖窗口。窗口关闭后仍继续工作,重启后恢复快照,并在无窗口连接时用 macOS 通知提醒「有 agent 正在等你」。可在 **设置 → 后台状态** 中管理
 - **Agent 钩子**: Claude Code(`~/.claude/settings.json`)与 Codex(`~/.codex/hooks.json`)可由 agent 自己上报状态——精确,而非推断;在设置中按 agent 安装。Pi 继续使用伴随扩展
 - **规则驱动的屏幕判定**: 状态由声明式的按 agent 规则决定(内置规则包位于 `agentStatus/engine/manifests`),并支持本地覆盖目录(`<panel home>/.desktop/agent-detection`)——调整规则无需重新构建
@@ -632,6 +636,8 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 #### 移除
 
+- **归档页签**: 应用内 Report / 归档界面已移除。日 / 周 / 月回顾仍由后台按固定时刻生成，并通过 MCP 阅读（`memory_retrieve`、`report_search`、`report_read`、`report_list`）
+- **报告设置页**: 调度时刻、LLM 预算、开关与历史回填已移除。调度器始终使用代码默认值；在设置 → 提供商中指定 digest 模型
 - **在线 LLM 状态裁决**: 用于猜测屏幕是否阻塞的模型调用已移除,连同其设置项与每面板调用预算。规则编写现在是离线工作(`pnpm --filter @agent-resume/desktop run agent-status:mine`)
 - **`terminal:activity` 尾部流** 以及依赖它的渲染层屏幕采样
 

@@ -13,20 +13,20 @@
  * JSON parsing of the hook payload is needed beyond the session id.
  */
 
-import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 import { agentStatusDir, resolvePanelHome } from "@agent-resume/core";
 
 /** Where the wrapper, its log, and per-agent config live under the panel home. */
-export function agentStateDir(panelHome: string): string {
+function agentStateDir(panelHome: string): string {
   return path.join(resolvePanelHome(panelHome), ".desktop", "agent-state");
 }
 
-export function wrapperPath(panelHome: string, agent: string): string {
+function wrapperPath(panelHome: string, agent: string): string {
   return path.join(agentStateDir(panelHome), `agent-resume-status-${agent}.sh`);
 }
 
-export function reportLogPath(panelHome: string): string {
+function reportLogPath(panelHome: string): string {
   return path.join(agentStateDir(panelHome), "report.log");
 }
 
@@ -39,7 +39,7 @@ export type WrapperConfig = {
   agent: string;
 };
 
-export function buildWrapperScript(config: WrapperConfig): string {
+function buildWrapperScript(config: WrapperConfig): string {
   const log = reportLogPath(config.panelHome);
   return `#!/bin/sh
 # installed by Agent Resume; managed file - reinstall overwrites it.
@@ -91,14 +91,6 @@ export function materializeWrapper(config: WrapperConfig): string {
   writeFileSync(target, buildWrapperScript(config), { mode: 0o700 });
   chmodSync(target, 0o700);
   return target;
-}
-
-export function readWrapper(config: WrapperConfig): string | null {
-  try {
-    return readFileSync(wrapperPath(config.panelHome, config.agent), "utf8");
-  } catch {
-    return null;
-  }
 }
 
 /** True when a command line is one of our wrappers. */

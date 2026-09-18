@@ -162,7 +162,8 @@ const messages = {
   "desktop.agent.toolCategory.notes": "Notes",
   "desktop.agent.toolCategory.reports": "Reports",
   "desktop.agent.toolCategory.sessions": "Sessions",
-  "desktop.agent.toolCategory.projects": "Projects",
+  "desktop.agent.toolCategory.task": "Tasks",
+  "desktop.agent.toolCategory.workbench": "Workbenches",
   "desktop.agent.toolCategory.link_graph": "Link graph",
   "desktop.agent.toolCategory.skills": "Skills",
   "desktop.agent.toolCategory.browser": "Browser",
@@ -515,7 +516,6 @@ describe("ImPanel", () => {
     )) as HTMLTextAreaElement;
 
     fireEvent.change(composer, { target: { value: "#" } });
-    const list = await screen.findByRole("listbox", { name: "Insert file or folder" });
     expect(await screen.findByRole("option", { name: "src/" })).toBeTruthy();
     expect(screen.getByRole("option", { name: "package.json" })).toBeTruthy();
 
@@ -630,10 +630,72 @@ describe("ImPanel", () => {
     });
     expect(await screen.findByText("desktop")).toBeTruthy();
     expect(document.querySelector(".im-message.is-role-say .markdown-body strong")?.textContent).toBe("desktop");
-    expect(screen.queryByText("Read · README.md")).toBeNull();
     expect(document.querySelector(".im-message.is-job-card")).toBeNull();
-    expect(document.querySelector(".im-tool-chip")?.textContent).toContain("Read");
+    expect(document.querySelector(".im-tool-chip")?.textContent).toContain("Read · README.md");
     expect(document.querySelector(".im-message.is-role-say")).toBeTruthy();
+  });
+
+  it("clamps long tool labels and expands on click", async () => {
+    const scrollHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollHeight");
+    const clientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientHeight");
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.classList.contains("im-tool-chip-label") ? 48 : (scrollHeight?.get?.call(this) ?? 0);
+      }
+    });
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.classList.contains("im-tool-chip-label") ? 20 : (clientHeight?.get?.call(this) ?? 0);
+      }
+    });
+
+    try {
+      const api = renderIm();
+      const next = roomFor(project());
+      const longTitle =
+        'wc -l apps/desktop/src/renderer-react/features/report/ReportPanel.tsx; echo "=== structure ==="; grep -n className=report apps/desktop/src/renderer-react/features/report/ReportPanel.tsx | head -60';
+      (api.imGetRoom as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ...next,
+        messages: [{
+          messageId: "answer",
+          projectId: "proj-1",
+          kind: "role.say",
+          authorMemberId: "mem-pm",
+          authorLabel: "Product Manager",
+          body: "I'll ground this in the actual Archive layout.",
+          quoteIds: [],
+          quotes: [],
+          mentionRoleIds: [],
+          jobId: "job-1",
+          createdAtMs: 2,
+          toolCalls: [{
+            toolCallId: "tool-1",
+            title: longTitle,
+            kind: "execute",
+            status: "completed"
+          }]
+        }]
+      });
+      await act(async () => {
+        window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
+      });
+
+      const chip = await screen.findByRole("button", { name: new RegExp(longTitle.slice(0, 20)) });
+      expect(chip.className).toContain("im-tool-chip");
+      await waitFor(() => expect(chip.className).toContain("is-expandable"));
+      fireEvent.click(chip);
+      expect(chip.className).toContain("is-expanded");
+      expect(chip.getAttribute("aria-expanded")).toBe("true");
+      fireEvent.click(chip);
+      expect(chip.className).not.toContain("is-expanded");
+    } finally {
+      if (scrollHeight) Object.defineProperty(HTMLElement.prototype, "scrollHeight", scrollHeight);
+      else delete (HTMLElement.prototype as { scrollHeight?: unknown }).scrollHeight;
+      if (clientHeight) Object.defineProperty(HTMLElement.prototype, "clientHeight", clientHeight);
+      else delete (HTMLElement.prototype as { clientHeight?: unknown }).clientHeight;
+    }
   });
 
   it("opens a selection menu and quotes the highlighted text", async () => {

@@ -8,9 +8,10 @@
 
 export type AgentToolCategory =
   | "notes"
+  | "task"
+  | "workbench"
   | "reports"
   | "sessions"
-  | "projects"
   | "link_graph"
   | "skills"
   | "browser"
@@ -40,10 +41,10 @@ export const AGENT_TOOL_CATALOG: readonly AgentToolDescriptor[] = [
   { name: "note_write", description: "Replace a note's Markdown body", category: "notes" },
   { name: "note_append", description: "Append Markdown to a note body", category: "notes" },
   { name: "note_delete", description: "Permanently delete a note", category: "notes" },
-  { name: "note_tree_read", description: "Read the linked Project Note tree", category: "notes" },
+  { name: "note_tree_read", description: "Read the linked task (task) knowledge tree", category: "notes" },
   { name: "note_set_parent", description: "Set or clear a note parent link", category: "notes" },
   { name: "note_move", description: "Move a note to a different owner scope", category: "notes" },
-  { name: "note_rename", description: "Rename a note file", category: "notes" },
+  { name: "note_rename", description: "Rename a note (or a task)", category: "notes" },
   { name: "note_set_gtd", description: "Set or clear a note's GTD status", category: "notes" },
 
   // reports
@@ -59,13 +60,18 @@ export const AGENT_TOOL_CATALOG: readonly AgentToolDescriptor[] = [
   { name: "session_read_transcript", description: "Load a recent transcript excerpt for a session", category: "sessions" },
   { name: "session_set_gtd", description: "Set GTD status for a catalog session", category: "sessions" },
   { name: "session_resume", description: "Resume a catalog session via Desktop", category: "sessions" },
-  { name: "session_move", description: "Move a session to a different project directory", category: "sessions" },
 
-  // projects
-  { name: "project_list", description: "List catalog projects with session counts", category: "projects" },
-  { name: "project_merge", description: "Merge one project into another", category: "projects" },
-  { name: "project_tidy", description: "Hide stale or empty projects", category: "projects" },
-  { name: "project_reconcile", description: "Reconcile projects from catalog sessions", category: "projects" },
+  // tasks (tasks)
+  { name: "task_list", description: "List tasks (tasks) with GTD, next action, and project roots", category: "task" },
+  { name: "task_read", description: "Read a task with its fields, workbenches, linked sessions, and project roots", category: "task" },
+  { name: "task_create", description: "Create a task (task)", category: "task" },
+  { name: "task_write", description: "Update a task's next action, decision, and project roots", category: "task" },
+  { name: "task_link_session", description: "Link a session to a task and optionally rebind its project root", category: "task" },
+  { name: "task_unlink_session", description: "Unlink a session from a task", category: "task" },
+
+  // workbenches
+  { name: "workbench_list", description: "List a task's workbenches and their project bindings", category: "workbench" },
+  { name: "workbench_read", description: "Read one workbench's binding, layout, and linked sessions", category: "workbench" },
 
   // link_graph
   { name: "link_graph_trace", description: "Trace a symbol across frontend → API → backend", category: "link_graph" },

@@ -1,4 +1,4 @@
-export interface GitPorcelainStatusEntry {
+interface GitPorcelainStatusEntry {
   indexStatus: string;
   worktreeStatus: string;
   path: string;

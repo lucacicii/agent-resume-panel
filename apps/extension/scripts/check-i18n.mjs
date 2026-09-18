@@ -77,6 +77,18 @@ function collectDesktopReferencedKeys(files, catalogKeys) {
     }
   }
 
+  // Dynamically composed keys: `desktop.foo.bar.${expr}` or `desktop.foo.mode${expr}`
+  // marks every catalog key under `desktop.foo.bar.` / `desktop.foo.mode` as used.
+  // Without this, template-literal keys look "unused" and pruning them breaks runtime.
+  for (const match of blob.matchAll(/`(desktop\.[A-Za-z0-9_.]*?)\$\{/g)) {
+    const prefix = match[1];
+    for (const key of catalogKeys) {
+      if (key.startsWith(prefix)) {
+        used.add(key);
+      }
+    }
+  }
+
   return used;
 }
 

@@ -10,14 +10,13 @@ import { getHandoffDeliverer } from "./delivery/registry";
 import { generateHandoffBrief } from "./generator";
 import { resolveDeliveryChannelForSource } from "./targets";
 import {
-  HandoffDeliveryChannel,
   HandoffResult,
   HandoffSource,
   HandoffTargetProvider,
   RunHandoffOptions
 } from "./types";
 
-export interface RunHandoffDeps {
+interface RunHandoffDeps {
   context: vscode.ExtensionContext;
   acpChatManager: AcpChatManager;
 }

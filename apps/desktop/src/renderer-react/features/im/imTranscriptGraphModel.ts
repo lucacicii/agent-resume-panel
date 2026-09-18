@@ -1,6 +1,6 @@
 import type { ImJob, ImMessage } from "../../../shared/imTypes";
 
-export type GraphTriggerKind =
+type GraphTriggerKind =
   | "root_prompt"
   | "auto_routed"
   | "mention"
@@ -30,8 +30,6 @@ export function computeTranscriptGraph(
   const metaMap = new Map<string, MessageGraphMeta>();
   if (!messages.length) return metaMap;
 
-  const jobById = new Map(jobs.map((j) => [j.jobId, j]));
-  const messageById = new Map(messages.map((m) => [m.messageId, m]));
   const roleSayByJobId = new Map<string, ImMessage>();
 
   for (const msg of messages) {

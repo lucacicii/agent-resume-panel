@@ -10,7 +10,7 @@ import { toolCallLabel } from "./toolLabels";
 
 type Translate = (key: string, ...args: Array<string | number>) => string;
 
-export type AcpChatPaneProps = {
+type AcpChatPaneProps = {
   recordId: string;
   provider: string;
   projectPath: string;

@@ -13,7 +13,7 @@ export interface NotificationEntry {
   timestamp: number;
 }
 
-export interface NotificationStoreConfig {
+interface NotificationStoreConfig {
   maxHistory: number;
   autoClearMinutes: number;
 }
@@ -114,6 +114,3 @@ export function updateConfig(next: Partial<NotificationStoreConfig>): void {
   }
 }
 
-export function getConfig(): Readonly<NotificationStoreConfig> {
-  return config;
-}

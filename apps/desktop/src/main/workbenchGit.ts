@@ -5,7 +5,6 @@ import {
   ensureExtensionCatalogSchema,
   expandHome,
   gitCommitLlmConfigFromSettings,
-  llmConfigFromSettings,
   loadArpConfig,
   loadSettings,
   preparePanelDatabasesFromSettings,
@@ -18,6 +17,7 @@ import * as path from "node:path";
 import { isGitRepo, queryGitRoot } from "./gitNestedScan";
 import { buildGitGraphLayout, type GitGraphLayout } from "./gitGraphLayout";
 import { safeHandle } from "./ipcUtils";
+import { shareGitQuery } from "./gitQueryShare";
 import { parseGitStatusPorcelainV1Z, stagedRepoPaths } from "./workbenchGitStatus";
 import { resolveCanonicalWorkbenchPath } from "./workbenchFileIo";
 import { toGitDiffHunkMetadata, type GitDiffHunk } from "./workbenchGitDiff";
@@ -31,7 +31,7 @@ const DEFAULT_GIT_LOG_LIMIT = 50;
 const MAX_GIT_LOG_LIMIT = 200;
 const GIT_HASH_PATTERN = /^[0-9a-f]{7,40}$/i;
 
-export interface GitCommitRefs {
+interface GitCommitRefs {
   heads: string[];
   remotes: string[];
   tags: string[];
@@ -39,7 +39,7 @@ export interface GitCommitRefs {
   primaryLabel: string | null;
 }
 
-export interface GitLogEntry {
+interface GitLogEntry {
   hash: string;
   shortHash: string;
   author: string;
@@ -52,14 +52,14 @@ export interface GitLogEntry {
   pathAtCommit: string;
 }
 
-export interface GitShowFileEntry {
+interface GitShowFileEntry {
   status: string;
   path: string;
   /** Old path for rename/copy (R/C) entries, when the diff reports one. */
   oldPath?: string;
 }
 
-export interface GitShowResult {
+interface GitShowResult {
   hash: string;
   shortHash: string;
   author: string;
@@ -69,7 +69,7 @@ export interface GitShowResult {
   files: GitShowFileEntry[];
 }
 
-export interface GitCommitFileDiffSidesResult {
+interface GitCommitFileDiffSidesResult {
   oldLabel: string;
   newLabel: string;
   oldText: string;
@@ -77,7 +77,7 @@ export interface GitCommitFileDiffSidesResult {
   hunks: GitDiffHunk[];
 }
 
-export interface GitFileLogResult {
+interface GitFileLogResult {
   repoRoot: string;
   repoPath: string;
   commits: GitLogEntry[];
@@ -781,15 +781,19 @@ export function registerWorkbenchGitIpc(getSystemLocale: () => string): void {
 
   safeHandle("terminal:gitFetch", async (_event, args: { repoRoot: string }) => {
     const repoRoot = await resolveRepoRoot(args.repoRoot);
-    try {
-      await execFileAsync("git", ["-C", repoRoot, "fetch", "--prune"], {
-        timeout: 60000,
-        maxBuffer: 1024 * 1024
-      });
-    } catch (error) {
-      throw new Error(formatExecError(error));
-    }
-    return { ok: true };
+    // Every window on this repository runs its own auto-fetch timer; one fetch
+    // per simultaneous sweep is enough.
+    return shareGitQuery(`fetch\0${repoRoot}`, async () => {
+      try {
+        await execFileAsync("git", ["-C", repoRoot, "fetch", "--prune"], {
+          timeout: 60000,
+          maxBuffer: 1024 * 1024
+        });
+      } catch (error) {
+        throw new Error(formatExecError(error));
+      }
+      return { ok: true };
+    });
   });
 
   safeHandle("terminal:gitStage", async (_event, args: { repoRoot: string; paths: string[] }) => {

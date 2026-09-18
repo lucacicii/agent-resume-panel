@@ -98,7 +98,7 @@ export async function removeFile(target: string): Promise<void> {
 }
 
 /** The pid is alive when signal 0 succeeds (or fails with EPERM). */
-export function isProcessAlive(pid: number): boolean {
+function isProcessAlive(pid: number): boolean {
   if (!Number.isInteger(pid) || pid <= 0) return false;
   try {
     process.kill(pid, 0);

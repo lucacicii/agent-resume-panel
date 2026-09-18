@@ -6,15 +6,13 @@ import * as path from "node:path";
 import { spawn } from "node:child_process";
 
 export const EXTERNAL_MCP_SERVICE_ID = "agent-resume";
-export const EXTERNAL_MCP_SERVICE_NAME = "Agent Resume";
 /** In-app browser tools (requires Desktop running). */
 export const EXTERNAL_BROWSER_MCP_SERVICE_ID = "agent-resume-browser";
-export const EXTERNAL_BROWSER_MCP_SERVICE_NAME = "Agent Resume Browser";
 
 export type McpClientId = "codex" | "claude" | "gemini" | "antigravity" | "opencode" | "cursor" | "pi" | "grok";
-export type McpClientMode = "automatic" | "manual";
+type McpClientMode = "automatic" | "manual";
 
-export interface McpLaunchConfig {
+interface McpLaunchConfig {
   command: string;
   args: string[];
   env: Record<string, string>;
@@ -443,29 +441,31 @@ export async function removeMcpClient(id: McpClientId): Promise<void> {
   await removeJsonClient(definition);
 }
 
-export function manualMcpConfig(launch: McpLaunchConfig): string {
-  return JSON.stringify({
-    mcpServers: {
-      [EXTERNAL_MCP_SERVICE_ID]: {
-        command: launch.command,
-        args: launch.args,
-        env: launch.env
-      }
+/**
+ * Manual JSON snippet for the clients Desktop does not auto-configure
+ * (Cursor / Pi / Grok Build). Emits both services in one block. The browser
+ * entry carries a client label for ownership — replace `<client-name>` with the
+ * client id you are pasting into (e.g. `pi`, `cursor`).
+ */
+export function manualMcpConfig(coreLaunch: McpLaunchConfig, browserLaunch?: McpLaunchConfig): string {
+  const servers: Record<string, unknown> = {
+    [EXTERNAL_MCP_SERVICE_ID]: {
+      command: coreLaunch.command,
+      args: coreLaunch.args,
+      env: coreLaunch.env
     }
-  }, null, 2);
-}
-
-/** Manual JSON snippet for agent-resume-browser (Desktop must be running). */
-export function manualBrowserMcpConfig(launch: McpLaunchConfig): string {
-  return JSON.stringify({
-    mcpServers: {
-      [EXTERNAL_BROWSER_MCP_SERVICE_ID]: {
-        command: launch.command,
-        args: launch.args,
-        env: launch.env
+  };
+  if (browserLaunch) {
+    servers[EXTERNAL_BROWSER_MCP_SERVICE_ID] = {
+      command: browserLaunch.command,
+      args: browserLaunch.args,
+      env: {
+        ...browserLaunch.env,
+        AGENT_RESUME_BROWSER_CLIENT: "<client-name>"
       }
-    }
-  }, null, 2);
+    };
+  }
+  return JSON.stringify({ mcpServers: servers }, null, 2);
 }
 
 function withClientName(launch: McpLaunchConfig, clientId: string): McpLaunchConfig {
@@ -511,7 +511,7 @@ async function removeBrowserJsonClient(definition: McpClientDefinition): Promise
   await writeJsonAtomically(definition.configPath, { ...config, [rootKey]: servers });
 }
 
-export function buildBrowserCliRegistrationArgs(
+function buildBrowserCliRegistrationArgs(
   id: Extract<McpClientId, "codex" | "claude">,
   launch: McpLaunchConfig
 ): string[] {
@@ -787,7 +787,7 @@ async function migrateTomlFile(configPath: string, launch: McpLaunchConfig): Pro
   return true;
 }
 
-export interface McpMigrationResult {
+interface McpMigrationResult {
   migrated: string[];
   failed: Array<{ target: string; error: string }>;
 }

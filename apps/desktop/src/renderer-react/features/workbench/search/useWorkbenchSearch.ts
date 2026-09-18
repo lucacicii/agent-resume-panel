@@ -29,8 +29,15 @@ function storageBoolean(key: string): boolean {
   try { return localStorage.getItem(key) === "true"; } catch { return false; }
 }
 
+/** Last segment of a project root, for disambiguating multi-root search results. */
+function workbenchRootBasename(value = ""): string {
+  return value.replaceAll("\\", "/").split("/").filter(Boolean).at(-1) || value;
+}
+
 export function useWorkbenchSearch(options: {
-  selectedProject: string | null;
+  projects: string[];
+  /** The project root that owns an absolute path (longest match), or "". */
+  projectForPath: (targetPath: string) => string;
   side: string | null;
   getDirtyEditorPaths: (projectPath: string) => string[];
   onStatus: (status: { text: string; kind?: "error" | "ok" | "warning" }) => void;
@@ -85,7 +92,8 @@ export function useWorkbenchSearch(options: {
   resetSearchProjectMode: () => void;
 } {
   const {
-    selectedProject,
+    projects,
+    projectForPath,
     side,
     getDirtyEditorPaths,
     onStatus,
@@ -121,7 +129,7 @@ export function useWorkbenchSearch(options: {
 
   const runProjectSearch = useCallback(async (query: string, options?: { matchCase?: boolean; wholeWord?: boolean; useRegex?: boolean }) => {
     const trimmed = query.trim();
-    if (!selectedProject || !trimmed) {
+    if (!projects.length || !trimmed) {
       searchSeqRef.current += 1;
       setSearchMatches([]);
       setSearchTruncated(false);
@@ -142,7 +150,7 @@ export function useWorkbenchSearch(options: {
     setSearchError("");
     try {
       const result = await desktopApi().workbenchSearchText({
-        rootPath: selectedProject,
+        rootPaths: projects,
         query: trimmed,
         matchCase: options?.matchCase ?? searchMatchCase,
         wholeWord: options?.wholeWord ?? searchWholeWord,
@@ -151,10 +159,16 @@ export function useWorkbenchSearch(options: {
         filesToExclude: searchFilesExclude.trim() || undefined
       });
       if (seq !== searchSeqRef.current) return;
-      setSearchMatches(result.matches);
+      const matches = projects.length > 1
+        ? result.matches.map((match) => {
+            const root = projectForPath(match.path);
+            return root ? { ...match, relativePath: `${workbenchRootBasename(root)}/${match.relativePath}` } : match;
+          })
+        : result.matches;
+      setSearchMatches(matches);
       setSearchTruncated(result.truncated);
       const firstFiles = new Set<string>();
-      for (const match of result.matches) {
+      for (const match of matches) {
         if (firstFiles.size >= 20) break;
         firstFiles.add(match.path);
       }
@@ -171,7 +185,7 @@ export function useWorkbenchSearch(options: {
     } finally {
       if (seq === searchSeqRef.current) setSearchLoading(false);
     }
-  }, [searchFilesExclude, searchFilesInclude, searchMatchCase, searchUseRegex, searchWholeWord, selectedProject, t]);
+  }, [searchFilesExclude, searchFilesInclude, searchMatchCase, searchUseRegex, searchWholeWord, projects, projectForPath, t]);
 
   useEffect(() => {
     if (side !== "search") return;
@@ -180,59 +194,94 @@ export function useWorkbenchSearch(options: {
       void runProjectSearch(searchQuery);
     }, 300);
     return () => window.clearTimeout(searchTimerRef.current);
-  }, [runProjectSearch, searchFilesExclude, searchFilesInclude, searchMatchCase, searchQuery, searchUseRegex, searchWholeWord, side, selectedProject]);
+  }, [runProjectSearch, searchFilesExclude, searchFilesInclude, searchMatchCase, searchQuery, searchUseRegex, searchWholeWord, side, projects]);
 
   const performSearchReplace = useCallback(async (
     files: string[],
     onlyByPath?: Map<string, number>
   ) => {
-    const projectPath = selectedProject;
     const trimmedQuery = searchQuery.trim();
-    if (!projectPath || !trimmedQuery || searchReplacing || !files.length) return;
-    const dirtyOpen = new Set(getDirtyEditorPaths(projectPath).map(normalizeWorkbenchPath));
-    const targets = files.filter((file) => !dirtyOpen.has(normalizeWorkbenchPath(file)));
-    const skippedDirtyCount = files.length - targets.length;
-    if (!targets.length) {
+    if (!projects.length || !trimmedQuery || searchReplacing || !files.length) return;
+
+    // Replacement is root-scoped (containment + encoding live per root), so group
+    // the target files by the project root that owns each one.
+    const dirtyByRoot = new Map<string, Set<string>>();
+    const dirtyFor = (root: string): Set<string> => {
+      let dirty = dirtyByRoot.get(root);
+      if (!dirty) {
+        dirty = new Set(getDirtyEditorPaths(root).map(normalizeWorkbenchPath));
+        dirtyByRoot.set(root, dirty);
+      }
+      return dirty;
+    };
+    const groups = new Map<string, { targets: string[]; only: Array<{ path: string; ordinal: number }> }>();
+    let skippedDirtyCount = 0;
+    for (const file of files) {
+      const root = projectForPath(file);
+      if (!root || dirtyFor(root).has(normalizeWorkbenchPath(file))) {
+        skippedDirtyCount += 1;
+        continue;
+      }
+      let group = groups.get(root);
+      if (!group) {
+        group = { targets: [], only: [] };
+        groups.set(root, group);
+      }
+      group.targets.push(file);
+      const ordinal = onlyByPath?.get(file);
+      if (ordinal !== undefined) group.only.push({ path: file, ordinal });
+    }
+    if (!groups.size) {
       onStatus({ text: t("desktop.workbench.searchReplaceBlockedDirty"), kind: "error" });
       return;
     }
+
     setSearchReplacing(true);
     try {
-      const result = await desktopApi().workbenchReplaceText({
-        rootPath: projectPath,
-        query: trimmedQuery,
-        replaceWith: searchReplaceText,
-        matchCase: searchMatchCase,
-        wholeWord: searchWholeWord,
-        useRegex: searchUseRegex,
-        files: targets,
-        only: onlyByPath && onlyByPath.size
-          ? [...onlyByPath].map(([path, ordinal]) => ({ path, ordinal }))
-          : undefined
-      });
-      const replacedFiles = result.replaced.length;
-      const skippedCount = skippedDirtyCount + result.skipped.length;
+      let totalReplaced = 0;
+      let replacedFiles = 0;
+      let skippedByEngine = 0;
+      const reconciledRoots = new Set<string>();
+      for (const [root, group] of groups) {
+        try {
+          const result = await desktopApi().workbenchReplaceText({
+            rootPath: root,
+            query: trimmedQuery,
+            replaceWith: searchReplaceText,
+            matchCase: searchMatchCase,
+            wholeWord: searchWholeWord,
+            useRegex: searchUseRegex,
+            files: group.targets,
+            only: group.only.length ? group.only : undefined
+          });
+          totalReplaced += result.totalReplaced;
+          replacedFiles += result.replaced.length;
+          skippedByEngine += result.skipped.length;
+          if (result.replaced.length) reconciledRoots.add(root);
+        } catch (error) {
+          onStatus({ text: t("desktop.workbench.searchReplaceFailed", statusError(error)), kind: "error" });
+        }
+      }
+      const skippedCount = skippedDirtyCount + skippedByEngine;
       if (replacedFiles > 0) {
-        let text = t("desktop.workbench.searchReplaceDone", String(result.totalReplaced), String(replacedFiles));
+        let text = t("desktop.workbench.searchReplaceDone", String(totalReplaced), String(replacedFiles));
         if (skippedCount > 0) {
           text += ` · ${t("desktop.workbench.searchReplaceSkipped", String(skippedCount))}`;
         }
         onStatus({ text, kind: "ok" });
         window.clearTimeout(searchTimerRef.current);
         void runProjectSearch(searchQuery);
-        onReconcileEditors(projectPath);
+        for (const root of reconciledRoots) onReconcileEditors(root);
       } else if (skippedCount > 0) {
         onStatus({ text: t("desktop.workbench.searchReplaceBlockedDirty"), kind: "error" });
       }
-    } catch (error) {
-      onStatus({ text: t("desktop.workbench.searchReplaceFailed", statusError(error)), kind: "error" });
     } finally {
       setSearchReplacing(false);
     }
-  }, [getDirtyEditorPaths, onReconcileEditors, onStatus, runProjectSearch, searchMatchCase, searchQuery, searchReplacing, searchReplaceText, searchUseRegex, searchWholeWord, selectedProject, t]);
+  }, [getDirtyEditorPaths, onReconcileEditors, onStatus, projectForPath, projects, runProjectSearch, searchMatchCase, searchQuery, searchReplacing, searchReplaceText, searchUseRegex, searchWholeWord, t]);
 
   const findInExplorerFolder = useCallback((folderPath: string) => {
-    const projectRoot = selectedProject;
+    const projectRoot = projectForPath(folderPath);
     if (!projectRoot) return;
     const root = normalizeWorkbenchPath(projectRoot);
     const folder = normalizeWorkbenchPath(folderPath);
@@ -252,7 +301,7 @@ export function useWorkbenchSearch(options: {
       searchInputRef.current?.focus();
       searchInputRef.current?.select();
     });
-  }, [onOpenSearchSide, selectedProject]);
+  }, [onOpenSearchSide, projectForPath]);
 
   useEffect(() => {
     if (side === "search") {
@@ -271,7 +320,7 @@ export function useWorkbenchSearch(options: {
     && !searchReplacing
     && searchMatchCount > 0
     && !searchTruncated
-    && Boolean(selectedProject);
+    && Boolean(projects.length);
 
   const toggleSearchDetails = useCallback(() => {
     setSearchDetailsOpen((current) => {

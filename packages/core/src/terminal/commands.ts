@@ -5,8 +5,16 @@ import { AgentProvider, AgentSession } from "../catalog/types";
  * restore conversations by session id, so the working directory is where the
  * user expects the agent to keep working — the new project after a move.
  * Sessions are resumed in projectPath (effective), not the native path.
+ *
+ * `contextFile` (optional) is a task's context block: it is appended to the
+ * session's system prompt so a session that keeps a repository as its cwd still
+ * knows which task it serves.
  */
-export function buildResumeCommand(session: AgentSession): string {
+export function buildResumeCommand(session: AgentSession, contextFile?: string): string {
+  return withSessionContext(resumeCommandFor(session), session.provider, contextFile);
+}
+
+function resumeCommandFor(session: AgentSession): string {
   const cwd = session.projectPath;
   if (session.provider === "codex") {
     return `codex resume --cd ${shellQuote(cwd)} ${shellQuote(session.id)}`;
@@ -51,6 +59,15 @@ export function supportsNewSessionYoloMode(provider: AgentProvider): boolean {
 }
 
 export function buildNewSessionCommand(
+  provider: AgentProvider,
+  projectPath: string,
+  mode: NewSessionExecutionMode,
+  contextFile?: string
+): string {
+  return withSessionContext(newSessionCommandFor(provider, projectPath, mode), provider, contextFile);
+}
+
+function newSessionCommandFor(
   provider: AgentProvider,
   projectPath: string,
   mode: NewSessionExecutionMode
@@ -106,6 +123,43 @@ export function buildNewSessionCommand(
   }
 
   return "claude";
+}
+
+/**
+ * Flags that hand one session the contents of `file` as extra system prompt
+ * text, so the task's context travels with a session that runs in a
+ * repository (no cwd change, nothing written into the repository).
+ *
+ * Only verified flags are listed. Providers without one return an empty string:
+ * their sessions get the context through the working directory (the task's
+ * neutral workspace) or not at all.
+ */
+export function sessionContextFlags(provider: AgentProvider, file: string): string {
+  if (provider === "codex") {
+    // `-c` values are TOML when they parse, literal text otherwise. The block
+    // starts with an HTML comment, so it always arrives as literal text.
+    return `-c "developer_instructions=$(cat ${shellQuote(file)})"`;
+  }
+  if (provider === "claude" || provider === "pi" || provider === "prime") {
+    return `--append-system-prompt "$(cat ${shellQuote(file)})"`;
+  }
+  return "";
+}
+
+/** Whether `sessionContextFlags` can deliver context for this provider. */
+export function supportsSessionContext(provider: AgentProvider): boolean {
+  return sessionContextFlags(provider, "x") !== "";
+}
+
+function withSessionContext(
+  command: string,
+  provider: AgentProvider,
+  contextFile?: string
+): string {
+  const file = contextFile?.trim();
+  if (!file) return command;
+  const flags = sessionContextFlags(provider, file);
+  return flags ? `${command} ${flags}` : command;
 }
 
 function shellQuote(value: string): string {

@@ -33,7 +33,7 @@ export type RestoreSessionResult = SessionMeta & {
   raw?: Record<string, unknown>;
 };
 
-export type StartSessionResult = SessionMeta & {
+type StartSessionResult = SessionMeta & {
   sessionId: string;
   /** Raw ACP response for experimental vendor adapters. */
   raw?: Record<string, unknown>;
@@ -426,7 +426,7 @@ export function formatAcpError(error: unknown): string {
   return parts.join(": ");
 }
 
-export function parseSessionMeta(response: Record<string, unknown> | null | undefined): SessionMeta {
+function parseSessionMeta(response: Record<string, unknown> | null | undefined): SessionMeta {
   if (!response || typeof response !== "object") {
     return { modes: null, models: null, configOptions: [] };
   }

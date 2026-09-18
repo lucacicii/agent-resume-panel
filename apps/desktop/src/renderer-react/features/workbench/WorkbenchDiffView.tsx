@@ -7,7 +7,7 @@ import { useI18n } from "../../i18n";
 import { useFileDiffParse } from "./useFileDiffParse";
 import type { CodeMirrorAppearance } from "../../components/codeMirrorThemes";
 
-export type WorkbenchDiffSource = "working-tree" | "staged" | "untracked" | "commit";
+type WorkbenchDiffSource = "working-tree" | "staged" | "untracked" | "commit";
 
 export type WorkbenchDiffPane = {
   key: string;

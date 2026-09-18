@@ -34,9 +34,9 @@ export interface SessionSearchHit {
 }
 
 export const SESSION_SEARCH_DEFAULT_LIMIT = 20;
-export const SESSION_SEARCH_MAX_LIMIT = 50;
-export const SESSION_LIST_DEFAULT_LIMIT = 30;
-export const SESSION_LIST_MAX_LIMIT = 100;
+const SESSION_SEARCH_MAX_LIMIT = 50;
+const SESSION_LIST_DEFAULT_LIMIT = 30;
+const SESSION_LIST_MAX_LIMIT = 100;
 export const SESSION_SUMMARY_PREVIEW_CHARS = 400;
 
 export function clampSessionSearchLimit(limit?: number): number {

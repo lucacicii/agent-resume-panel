@@ -31,7 +31,7 @@ describe("workbench file index", () => {
     fs.writeFileSync(path.join(root, ".hidden-file"), "hidden\n");
     fs.writeFileSync(path.join(root, "node_modules", "pkg", "index.js"), "ignored\n");
 
-    const result = await listWorkbenchFiles({ rootPath: root, timeBudgetMs: 5_000 });
+    const result = await listWorkbenchFiles({ rootPaths: [root], timeBudgetMs: 5_000 });
     expect(result.files.map((file) => file.relativePath)).toContain("src/main.ts");
     expect(result.files).toContainEqual(expect.objectContaining({ relativePath: "src", kind: "directory" }));
     expect(result.files).toContainEqual(expect.objectContaining({ relativePath: "empty-folder", kind: "directory" }));
@@ -46,7 +46,7 @@ describe("workbench file index", () => {
     for (let index = 0; index < 8; index += 1) {
       fs.writeFileSync(path.join(root, `file-${index}.txt`), String(index));
     }
-    const result = await listWorkbenchFiles({ rootPath: root, maxFiles: 2, timeBudgetMs: 5_000 });
+    const result = await listWorkbenchFiles({ rootPaths: [root], maxFiles: 2, timeBudgetMs: 5_000 });
     expect(result.files).toHaveLength(2);
     expect(result.truncated).toBe(true);
   });
@@ -58,7 +58,7 @@ describe("workbench file index", () => {
       fs.mkdirSync(directory);
       fs.writeFileSync(path.join(directory, `file-${index}.txt`), String(index));
     }
-    const result = await listWorkbenchFiles({ rootPath: root, maxFiles: 2, timeBudgetMs: 5_000 });
+    const result = await listWorkbenchFiles({ rootPaths: [root], maxFiles: 2, timeBudgetMs: 5_000 });
     expect(result.files.filter((entry) => entry.kind === "file")).toHaveLength(2);
     expect(result.files.filter((entry) => entry.kind === "directory")).toHaveLength(2);
     expect(result.truncated).toBe(true);
@@ -75,7 +75,7 @@ describe("workbench file index", () => {
     }
 
     const result = await searchWorkbenchPaths({
-      rootPath: root,
+      rootPaths: [root],
       query: "sysFinanceCenter/internetPaymentManage/prePaybankPayFail",
       maxResults: 20,
       timeBudgetMs: 5_000
@@ -92,15 +92,15 @@ describe("workbench file index", () => {
 
   it("rejects a missing project root without a raw ENOENT", async () => {
     const missing = path.join(tempRoot(), "does-not-exist");
-    await expect(listWorkbenchFiles({ rootPath: missing })).rejects.toThrow(/工作目录不存在:/);
-    await expect(searchWorkbenchPaths({ rootPath: missing, query: "x" })).rejects.toThrow(/工作目录不存在:/);
+    await expect(listWorkbenchFiles({ rootPaths: [missing] })).rejects.toThrow(/工作目录不存在:/);
+    await expect(searchWorkbenchPaths({ rootPaths: [missing], query: "x" })).rejects.toThrow(/工作目录不存在:/);
   });
 
   it("rejects an already-cancelled request", async () => {
     const root = tempRoot();
     const controller = new AbortController();
     controller.abort();
-    await expect(listWorkbenchFiles({ rootPath: root, signal: controller.signal })).rejects.toMatchObject({ name: "AbortError" });
+    await expect(listWorkbenchFiles({ rootPaths: [root], signal: controller.signal })).rejects.toMatchObject({ name: "AbortError" });
   });
 
   it("does not follow a symlink outside the project", async () => {
@@ -108,7 +108,35 @@ describe("workbench file index", () => {
     const outside = tempRoot();
     fs.writeFileSync(path.join(outside, "secret.txt"), "private\n");
     fs.symlinkSync(outside, path.join(root, "outside-link"), "dir");
-    const result = await listWorkbenchFiles({ rootPath: root, timeBudgetMs: 5_000 });
+    const result = await listWorkbenchFiles({ rootPaths: [root], timeBudgetMs: 5_000 });
     expect(result.files.some((file) => file.relativePath.includes("secret.txt"))).toBe(false);
+  });
+
+  it("merges files and directories from several project roots", async () => {
+    const first = tempRoot();
+    const second = tempRoot();
+    fs.mkdirSync(path.join(first, "src"));
+    fs.writeFileSync(path.join(first, "src", "a.ts"), "a\n");
+    fs.mkdirSync(path.join(second, "lib"));
+    fs.writeFileSync(path.join(second, "lib", "b.ts"), "b\n");
+
+    const result = await listWorkbenchFiles({ rootPaths: [first, second], timeBudgetMs: 5_000 });
+    const relativePaths = result.files.map((file) => file.relativePath);
+    expect(relativePaths).toContain("src/a.ts");
+    expect(relativePaths).toContain("lib/b.ts");
+    expect(relativePaths).toContain("src");
+    expect(relativePaths).toContain("lib");
+    expect(result.files.every((file) => path.isAbsolute(file.path))).toBe(true);
+  });
+
+  it("merges path-search matches from several project roots", async () => {
+    const first = tempRoot();
+    const second = tempRoot();
+    fs.writeFileSync(path.join(first, "needle-one.ts"), "1\n");
+    fs.writeFileSync(path.join(second, "needle-two.ts"), "2\n");
+
+    const result = await searchWorkbenchPaths({ rootPaths: [first, second], query: "needle", timeBudgetMs: 5_000 });
+    const names = result.files.map((file) => file.relativePath).sort();
+    expect(names).toEqual(["needle-one.ts", "needle-two.ts"]);
   });
 });

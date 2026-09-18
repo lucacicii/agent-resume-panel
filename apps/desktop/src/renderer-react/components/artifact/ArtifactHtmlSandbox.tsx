@@ -1,6 +1,6 @@
 import React, { memo, useEffect, useRef, useState } from "react";
 
-export interface ArtifactHtmlSandboxProps {
+interface ArtifactHtmlSandboxProps {
   code: string;
   isStreaming?: boolean;
   reloadKey?: number;

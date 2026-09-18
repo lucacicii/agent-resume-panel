@@ -10,7 +10,7 @@ export function createReportProgressText(
   return createUiText(settings, systemLocale);
 }
 
-export type ReportScope = "week" | "month" | "period";
+type ReportScope = "week" | "month" | "period";
 
 export function resolveReportScope(parentLevel?: string): ReportScope {
   if (parentLevel === "monthly") return "month";

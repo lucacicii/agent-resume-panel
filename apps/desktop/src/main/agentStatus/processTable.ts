@@ -40,7 +40,7 @@ export type ProcessEntry = {
   argv?: string[];
 };
 
-export type ProcessActivity = {
+type ProcessActivity = {
   /** True when a non-infrastructure command is running in the foreground. */
   active: boolean;
   /** Executable paths of the processes that made it active, for diagnostics. */

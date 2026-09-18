@@ -6,7 +6,7 @@ export type ProjectSessionSortMode = "updatedDesc" | "updatedAsc" | "titleAsc" |
 const STORAGE_KEY = "agentResume.projectSessionSort";
 const DEFAULT_MODE: ProjectSessionSortMode = "updatedDesc";
 
-export function loadProjectSessionSortMap(context: vscode.ExtensionContext): Record<string, ProjectSessionSortMode> {
+function loadProjectSessionSortMap(context: vscode.ExtensionContext): Record<string, ProjectSessionSortMode> {
   return context.globalState.get<Record<string, ProjectSessionSortMode>>(STORAGE_KEY, {});
 }
 

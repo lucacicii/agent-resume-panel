@@ -1,14 +1,12 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { basenameOrPath, compactPath } from "../history/pathUtils";
+import { basenameOrPath } from "../history/pathUtils";
 import { t } from "../i18n";
 import { formatProjectLabel } from "../projects/projectAliases";
 import { acpRelativeTime } from "../util/relativeTime";
 import { AcpAgentProvider, AcpSessionRecord } from "./types";
 
-type AcpTreeRoot = "recentRoot" | "projectsRoot";
-
-export type AcpChatTreeNode =
+type AcpChatTreeNode =
   | { kind: "recentRoot" }
   | { kind: "projectsRoot" }
   | { kind: "warning"; message: string }
@@ -216,15 +214,6 @@ function providerIcon(provider: AcpAgentProvider): string {
     default:
       return "comment";
   }
-}
-
-export function acpChatQuickPickLabel(record: AcpSessionRecord): { label: string; description: string; detail: string; record: AcpSessionRecord } {
-  return {
-    label: record.title || t("tree.acp.defaultTitle"),
-    description: `acp/${record.provider}`,
-    detail: compactPath(record.projectPath),
-    record
-  };
 }
 
 function isAcpChatNode(value: unknown): value is { kind: "chat"; record: AcpSessionRecord } {

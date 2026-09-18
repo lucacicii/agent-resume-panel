@@ -2,13 +2,13 @@ import { ThemeIcon } from "../../../components/ThemeIcon";
 import { useI18n } from "../../../i18n";
 import type { TerminalPane } from "../terminal/TerminalView";
 
-export type WorkbenchSideView = "files" | "git" | "search" | "scripts" | "linkgraph" | null;
+type WorkbenchSideView = "files" | "git" | "search" | "scripts" | "linkgraph" | null;
 
 export function WorkbenchDetailHeader({
-  foldersCollapsed,
-  onToggleFoldersCollapsed,
+  onBackToGtd,
   selectedProject,
   projectLabel,
+  emptyLabel,
   side,
   branchStatusLabel,
   branchStatusPane,
@@ -16,10 +16,12 @@ export function WorkbenchDetailHeader({
   onOpenBranchMenu,
   onToggleSide
 }: {
-  foldersCollapsed: boolean;
-  onToggleFoldersCollapsed: () => void;
+  /** Return to the GTD board (the app's root view). */
+  onBackToGtd?: () => void;
   selectedProject: string | null;
   projectLabel: string;
+  /** What to show when no project is selected (e.g. a project-less task). */
+  emptyLabel?: string;
   side: WorkbenchSideView;
   branchStatusLabel: string | null;
   branchStatusPane: TerminalPane | null;
@@ -29,15 +31,18 @@ export function WorkbenchDetailHeader({
 }): React.JSX.Element {
   const { t } = useI18n();
   return <>
-    <button
-      type="button"
-      className={`sidebar-collapse-toggle${foldersCollapsed ? " is-active" : ""}`}
-      aria-label={t("desktop.workbench.resizeProjects")}
-      onClick={onToggleFoldersCollapsed}
-    ><ThemeIcon name="panel-right" size={17} /></button>
+    {onBackToGtd ? (
+      <button
+        type="button"
+        className="wb-back-to-gtd"
+        aria-label={t("desktop.gtd.backToGtd")}
+        title={t("desktop.gtd.backToGtd")}
+        onClick={onBackToGtd}
+      ><ThemeIcon name="arrow-left" size={17} /></button>
+    ) : null}
     <div className="wb-detail-head">
       <span className="wb-detail-project-label">
-        <span className="wb-detail-project-label-text">{selectedProject ? projectLabel : t("desktop.workbench.allSessions")}</span>
+        <span className="wb-detail-project-label-text">{selectedProject ? projectLabel : (emptyLabel ?? t("desktop.workbench.allSessions"))}</span>
         {selectedProject ? <span className="wb-detail-project-path">{selectedProject}</span> : null}
       </span>
       <div className="wb-detail-head-actions">

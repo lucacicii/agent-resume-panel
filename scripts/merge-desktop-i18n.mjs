@@ -11,6 +11,11 @@ const extensionLocalesDir = join(root, "apps", "extension", "locales");
 const desktopLocalesDir = join(root, "apps", "desktop", "locales");
 const settingsOverlayLocales = new Set(["ja"]);
 const obsoleteDesktopKeys = new Set([
+  "desktop.agent.toolCategory.projects",
+  "desktop.notes.projectLabel",
+  "desktop.notes.targetLibrary",
+  "desktop.settings.projectMenu.note",
+  "desktop.settings.projectMenu.noteDesc",
   "desktop.settings.visualTheme",
   "desktop.settings.visualThemeDesc",
   "desktop.settings.visualThemeClassic",
@@ -30,6 +35,8 @@ const obsoleteDesktopKeys = new Set([
   "desktop.settings.dosStyleGreen",
   "desktop.workbench.terminalScrollPosition",
   "desktop.workbench.sidePanelBack",
+  // Quick Access project picker: the workbench switches tasks, not projects.
+  "desktop.workbench.quickAccessSwitchProject",
   "desktop.workbench.renameSession",
   "desktop.workbench.renameSessionTitle",
   "desktop.workbench.generatingTitle",
@@ -75,6 +82,83 @@ const obsoleteDesktopKeys = new Set([
   "desktop.settings.baseUrlOptional",
   "desktop.settings.apiKeyOptional",
   "desktop.settings.testConnectionHint",
+  // Persisted session delivery state removed; live session status now comes from the agent-status daemon.
+  "desktop.report.insightsCompleted",
+  "desktop.report.insightsActive",
+  "desktop.report.insightsBlocked",
+  "desktop.report.insightsBlockedList",
+  "desktop.report.insightsFilterStatus",
+  "desktop.sessions.statusLabel",
+  "desktop.sessions.statusUpdated",
+  // Archive tab removed; digests stay on the scheduler + MCP.
+  "desktop.tabs.report",
+  "desktop.im.openInReport",
+  "desktop.archive.decision",
+  "desktop.archive.historyEmpty",
+  "desktop.archive.lastExitWaiting",
+  "desktop.archive.loadEarlier",
+  "desktop.archive.needsMe",
+  "desktop.archive.nextAction",
+  "desktop.archive.noWorkItemSelected",
+  "desktop.archive.openRoom",
+  "desktop.archive.projects",
+  "desktop.archive.reportMentioned",
+  "desktop.archive.reportsTitle",
+  "desktop.archive.search",
+  "desktop.archive.searchPlaceholder",
+  "desktop.archive.sessionsAllTime",
+  "desktop.archive.unassignedEmpty",
+  "desktop.archive.unassignedHint",
+  "desktop.archive.workItemsCount",
+  "desktop.archive.workItemsEmpty",
+  "desktop.archive.workItemsTitle",
+  // Settings → Report pane removed; scheduler uses code defaults.
+  "desktop.settings.paneReport",
+  "desktop.settings.paneReportDesc",
+  "desktop.settings.enableSchedule",
+  "desktop.settings.enableScheduleDesc",
+  "desktop.settings.scheduledDigests",
+  "desktop.settings.scheduleRuntimeNote",
+  "desktop.settings.scheduleLastRunTitle",
+  "desktop.settings.scheduleLastRunNone",
+  "desktop.settings.scheduleLastRunOk",
+  "desktop.settings.scheduleLastRunRunning",
+  "desktop.settings.scheduleLastRunError",
+  "desktop.settings.scheduleRefreshStatus",
+  "desktop.settings.scheduleViewLog",
+  "desktop.settings.schedulerOn",
+  "desktop.settings.schedulerOff",
+  "desktop.settings.dailyHour",
+  "desktop.settings.weeklyHour",
+  "desktop.settings.monthlyHour",
+  "desktop.settings.maxDigestLlmCalls",
+  "desktop.settings.maxDigestLlmCallsDesc",
+  "desktop.settings.maxSessionsPerDigest",
+  "desktop.settings.maxSessionsPerDigestDesc",
+  "desktop.settings.memoryEnableConfirm",
+  "desktop.settings.backfillTitle",
+  "desktop.settings.backfillCallout",
+  "desktop.settings.backfillMaxDays",
+  "desktop.settings.backfillSkipExisting",
+  "desktop.settings.backfillSkipEmbedding",
+  "desktop.settings.backfillPreview",
+  "desktop.settings.backfillRun",
+  "desktop.backfill.cancelled",
+  "desktop.backfill.confirm",
+  "desktop.backfill.dateRange",
+  "desktop.backfill.noActivity",
+  "desktop.backfill.preview",
+  "desktop.backfill.previewRange",
+  "desktop.backfill.running",
+  "desktop.backfill.scanning",
+  "desktop.backfill.scanningShort",
+  "desktop.backfill.stats",
+  // Sessions reference sheet retired: Archive is the session browser now.
+  "desktop.sessions.sheetTitle",
+  "desktop.sessions.refreshList",
+  "desktop.sessions.previewHint",
+  "desktop.sessions.meta",
+  "desktop.sessions.lastSynced",
   // Flow DAG: removed desktop tab, inspector copy, and Ask tool category
   "desktop.tabs.flow",
   "desktop.agent.toolCategory.flow",
@@ -169,6 +253,11 @@ const obsoleteDesktopKeys = new Set([
   "desktop.workbench.tagCount",
   "desktop.workbench.tagSessionsMeta",
   "desktop.workbench.tagsView",
+  // Retired command palette dead view/session navigation keys
+  "desktop.workbench.quickAccessShowReport",
+  "desktop.workbench.quickAccessShowAgent",
+  "desktop.workbench.quickAccessShowNotes",
+  "desktop.workbench.quickAccessOpenSessions",
 ]);
 
 function normalizePlaceholders(value) {
@@ -275,10 +364,16 @@ for (const file of readdirSync(desktopLocalesDir).filter((name) => name.endsWith
     locale[key] = value;
   }
   const overlayCount = applyDesktopSettingsOverlay(localeCode, locale);
+  for (const key of obsoleteDesktopKeys) {
+    delete locale[key];
+  }
   if (localeCode !== "en") {
     const englishLocale = JSON.parse(readFileSync(join(desktopLocalesDir, "en.json"), "utf8"));
     for (const [key, value] of Object.entries(englishLocale)) {
       if (!(key in locale)) locale[key] = value;
+    }
+    for (const key of Object.keys(locale)) {
+      if (!(key in englishLocale)) delete locale[key];
     }
   }
   writeLocale(localePath, locale);

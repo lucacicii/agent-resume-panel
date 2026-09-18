@@ -6,16 +6,22 @@ Languages: [English](#english) | [简体中文](#简体中文)
 
 ### Overview
 
-Agent Resume Desktop provides one local **Agent Resume MCP** service. It uses stdio, starts only when an MCP client invokes it, and reads the same local data directory as Desktop: `~/.agent-resume-panel` by default. Registration configures a **headless Node** entry (`ELECTRON_RUN_AS_NODE` + the bundled core MCP CLI) so clients do not spawn a second Electron Dock icon.
+Agent Resume Desktop exposes **two local MCP services** over stdio. Both start only when an MCP client invokes them, read the same local data directory as Desktop (`~/.agent-resume-panel` by default), and are launched through a **headless Node** entry (`ELECTRON_RUN_AS_NODE` + the bundled core CLI) so clients do not spawn a second Electron Dock icon.
 
-This is one service with **27 tools**, not 27 independent services:
+| Service | Transport | Entry | Consumers | Tool areas |
+|---|---|---|---|---|
+| `agent-resume` | stdio (`ELECTRON_RUN_AS_NODE`) | `@agent-resume/core` `dist/mcp/cli.js` | External TUI clients, ACP sessions | Notes, tasks, workbenches, reports, sessions, link graph |
+| `agent-resume-browser` | ACP: in-app loopback HTTP MCP with a bearer token; TUI: stdio proxy `dist/mcp/browserCli.js` → endpoint file → loopback server | `apps/desktop/src/main/browser/mcpServer.ts` | External TUI clients, ACP sessions | 15 `browser_*` tools |
+
+The data service exposes **31 tools**, not 31 independent services:
 
 | Area | Tools | Access |
 |---|---:|---|
 | Notes and note GTD | 12 | Read and write |
-| Reports | 3 | Read-only |
-| Sessions | 7 | Read, GTD update, move, and resume-command generation |
-| Projects | 4 | Read, merge, tidy, and reconcile |
+| Tasks | 6 | Read and write |
+| Workbenches | 2 | Read-only |
+| Reports and memory retrieval | 4 | Read-only |
+| Sessions | 6 | Read, GTD update, and resume-command generation |
 | Link graph | 1 | Read-only code lineage (`link_graph_trace`) |
 
 The service does not listen on a network port and does not add an authentication layer. Any client registered on this Mac receives the same access as the local Desktop data store. Register only agents and configurations you trust.
@@ -37,9 +43,9 @@ Desktop detects and can register these clients automatically:
 | Antigravity | Updates its local MCP JSON configuration |
 | OpenCode | Updates its local MCP JSON configuration |
 
-For **Cursor**, **Pi**, and **Grok Build**, use **Copy config** in the MCP settings page and paste the generated JSON into that client's MCP configuration. Desktop does not guess or overwrite their configuration locations.
+For **Cursor**, **Pi**, and **Grok Build**, use **Copy config** in the MCP settings page and paste the generated JSON into that client's MCP configuration. The snippet contains both services; replace `<client-name>` in the `agent-resume-browser` entry with that client's id (for example `cursor` or `pi`). Desktop does not guess or overwrite these clients' configuration locations.
 
-Use **Update** after moving or reinstalling Agent Resume. Use **Remove** to remove only the `agent-resume` MCP entry from an automatically managed client.
+Use **Update** after moving or reinstalling Agent Resume. This Mac's automatic clients are re-synced with both services (`agent-resume` and `agent-resume-browser`) at startup and after any settings save; the browser entry follows **Settings → Browser**. **Remove** drops the `agent-resume` entry from an automatically managed client.
 
 ### Tool reference
 
@@ -66,25 +72,38 @@ Returns JSON with `primaryChain`, `timeline`, `summary`, `openEnds`, `facts`, an
 
 | Tool | Purpose |
 |---|---|
-| `note_list` | Page through every indexed note, optionally by scope |
+| `note_list` | Page through every indexed note, optionally by scope (library or session) |
 | `note_search` | Search note titles, content, filenames, and paths |
-| `note_create` | Create a library, project, or session note |
+| `note_create` | Create a library or session note, or a linked child under a task |
 | `note_read` | Read full Markdown for one note |
 | `note_write` | Replace a note's full Markdown content |
 | `note_append` | Append Markdown without changing existing content |
 | `note_delete` | Permanently delete one note |
-| `note_tree_read` | Read the linked Project Note tree containing a note |
-| `note_set_parent` | Set or clear a Project Note parent link |
-| `note_move` | Move a note to a different owner scope |
+| `note_tree_read` | Read the linked task knowledge tree containing a note |
+| `note_set_parent` | Set or clear a task parent link |
+| `note_move` | Move a note to a different owner scope (library or session) |
 | `note_rename` | Rename a note file while preserving its asset directory and references |
 | `note_set_gtd` | Set or clear a note's catalog GTD status |
 
+`rootPath` / `roots` are plain repository addresses — not an owning entity. Project notes are an **extension-only** capability: this server never creates, lists, or modifies them.
+
+**Default owner (TUI / ACP sessions)**
+
+Desktop injects the current session identity into the MCP server. When a note tool is called with no explicit owner, the target is resolved in this order:
+
+1. The **task** bound to the session — when the session was launched for a task, or is linked to one in the shared catalog. `note_create` adds a library child under it; `note_list` / `note_search` default to that task's subtree.
+2. The **session** itself, when there is no bound task.
+3. **No owner** — a plain library note, when the MCP server has no session identity (for example a CLI you started outside Desktop).
+
+An explicit `scope`, `parentNoteId`, or `rootPath` always wins. `note_create` reports `resolvedVia` (`explicit` | `context` | `session` | `none`) so the caller can tell which rule applied.
+
 GTD status values are `inbox`, `next`, `waiting`, `someday`, `reference`, and `done`.
 
-#### Reports
+#### Reports and memory retrieval
 
 | Tool | Purpose |
 |---|---|
+| `memory_retrieve` | Retrieve relevant context across all local memory (digests, notes, sessions) with `[D#]` / `[N#]` / `[S#]` citations — see [Agent memory](agent.md) |
 | `report_list` | List daily, weekly, or monthly memory digests |
 | `report_read` | Read a digest by report ID |
 | `report_search` | Search report content, including semantic search when configured |
@@ -94,46 +113,70 @@ GTD status values are `inbox`, `next`, `waiting`, `someday`, `reference`, and `d
 | Tool | Purpose |
 |---|---|
 | `session_list` | List recent sessions with optional filters |
-| `session_search` | Find sessions by topic, project, provider, date, or GTD status |
+| `session_search` | Find sessions by topic, root, provider, date, or GTD status |
 | `session_read` | Read catalog metadata and the session summary |
 | `session_read_transcript` | Read a short recent transcript excerpt when a summary is insufficient |
 | `session_set_gtd` | Set a session's GTD status in the shared catalog |
-| `session_move` | Move a session to a different project directory (catalog metadata only; on-disk files are never moved) |
 | `session_resume` | Return the terminal command for resuming a saved session |
 
-An external MCP invocation cannot open Desktop's Workbench. Therefore, `session_resume` returns the command and project path for the user or agent to run in a terminal.
+An external MCP invocation cannot open Desktop's Workbench. Therefore, `session_resume` returns the command and root path for the user or agent to run in a terminal.
 
-#### Projects
+#### Tasks
+
+A task is a note with front-matter `work: true`. Tasks are library-scoped and **reference** 0..n repository roots (multi-root) instead of belonging to one, so a single task can span repositories.
 
 | Tool | Purpose |
 |---|---|
-| `project_list` | List projects with alias, local path, and session counts |
-| `project_merge` | Merge a source project into a target (sessions + workbench folder tree) |
-| `project_tidy` | Hide stale/empty projects (dry run by default; pass `apply: true` to hide) |
-| `project_reconcile` | Re-link projects from sessions by portable key (idempotent) |
+| `task_list` | List tasks with GTD status, next action, owed decision, repository roots, and linked-session counts |
+| `task_read` | Read one task: work fields, linked sessions with their root paths, and its workbenches |
+| `task_create` | Create a library-scoped task |
+| `task_write` | Update next action, owed decision, repository roots, primary root, or GTD status |
+| `task_link_session` | Link a session to a task; when `rootPath` is given it also references that root and, by default, rebinds the session's catalog project path |
+| `task_unlink_session` | Unlink a session from a task (the session itself is untouched) |
+
+`task_link_session` replaces the removed `session_move`: the session's catalog `project_path` is rewritten through the task, and on-disk files are never moved.
+
+**Task GTD is an aggregate.** A task's effective status is computed from the entities under it — its note subtree and its linked sessions. Only explicitly marked entities count; unmarked ones are neutral. The ladder is `next` → `waiting` → `inbox` → `someday` → `reference`, and `done` only wins when **every** contribution is `done`. The task's own mark acts as a pin unless it is the implicit `inbox`. `task_list` / `task_read` report `rollupStatus` (effective), `pinnedStatus` (pin, if any), `gtdCounts`, and `gtdTotal`; the Desktop board and task page show the same status plus a `done/total` progress.
+
+#### Workbenches
+
+A workbench is a desktop-only unit of work under a task: it binds to one repository root (or the task's neutral workspace when the binding is null) and owns its own pane layout and session set. External MCP callers cannot open Desktop's Workbench UI, so these tools are read-only.
+
+| Tool | Purpose |
+|---|---|
+| `workbench_list` | List a task's workbenches with their root binding and session counts |
+| `workbench_read` | Read one workbench: task, bound repository root, pane layout, and linked sessions |
+
+The former `project_list` / `project_merge` / `project_tidy` / `project_reconcile` tools were removed in favor of the task tools.
 
 ### Data and safety
 
 - All data remains on the local machine. Configuring an LLM provider is unrelated to MCP registration.
 - Notes, GTD tags, session GTD statuses, and the catalog are shared with the VS Code extension.
-- `note_delete` is destructive. There is no MCP recycle bin or undo operation. `project_merge` removes the source project row (its sessions move to the target).
-- `project_tidy` only hides projects (recoverable); it never deletes them. `session_move` rewrites only catalog metadata and never moves on-disk session or note files.
+- `note_delete` is destructive. There is no MCP recycle bin or undo operation.
+- `task_link_session` rewrites only catalog metadata (`project_path` / `project_id`) and never moves on-disk session or note files. `task_unlink_session` leaves the session itself untouched.
 - Removing a client registration does not delete Notes, Reports, Sessions, or GTD data.
 
 ## 简体中文
 
 ### 概览
 
-Agent Resume Desktop 提供一个本机 **Agent Resume MCP** 服务。它使用 stdio，仅在 MCP 客户端调用时启动，并读取与 Desktop 相同的本机数据目录，默认是 `~/.agent-resume-panel`。注册时写入 **无界面 Node** 启动方式（`ELECTRON_RUN_AS_NODE` + 内置 core MCP CLI），避免每个客户端再拉起一个 Electron Dock 图标。
+Agent Resume Desktop 暴露 **两个本机 MCP 服务**，均使用 stdio。两者都仅在 MCP 客户端调用时启动，读取与 Desktop 相同的本机数据目录（默认 `~/.agent-resume-panel`），并通过 **无界面 Node** 启动方式（`ELECTRON_RUN_AS_NODE` + 内置 core CLI）运行，避免每个客户端再拉起一个 Electron Dock 图标。
 
-这是一个服务，包含 **27 个工具**，不是 27 个相互独立的服务：
+| 服务 | 传输方式 | 入口 | 消费方 | 工具域 |
+|---|---|---|---|---|
+| `agent-resume` | stdio（`ELECTRON_RUN_AS_NODE`） | `@agent-resume/core` `dist/mcp/cli.js` | 外部 TUI 客户端、ACP 会话 | Notes、Tasks、Workbenches、Reports、Sessions、链路图 |
+| `agent-resume-browser` | ACP：应用内回环 HTTP MCP（Bearer Token）；TUI：stdio 代理 `dist/mcp/browserCli.js` → 端点文件 → 回环服务 | `apps/desktop/src/main/browser/mcpServer.ts` | 外部 TUI 客户端、ACP 会话 | 15 个 `browser_*` 工具 |
+
+数据服务包含 **31 个工具**，不是 31 个相互独立的服务：
 
 | 范围 | 工具数 | 权限 |
 |---|---:|---|
 | Notes 与笔记 GTD | 12 | 读写 |
-| Reports | 3 | 只读 |
-| Sessions | 7 | 读取、更新 GTD、移动、生成恢复命令 |
-| Projects | 4 | 读取、合并、整理、协调 |
+| 任务 | 6 | 读写 |
+| Workbenches | 2 | 只读 |
+| Reports 与记忆检索 | 4 | 只读 |
+| Sessions | 6 | 读取、更新 GTD、生成恢复命令 |
 | 链路图 | 1 | 只读代码血缘（`link_graph_trace`） |
 
 服务不会监听网络端口，也不会额外增加认证层。本机上注册的任意客户端都会获得访问 Desktop 本机数据的权限，因此只应注册你信任的 Agent 与配置。
@@ -155,9 +198,9 @@ Desktop 可自动检测并注册以下客户端：
 | Antigravity | 更新本机 MCP JSON 配置 |
 | OpenCode | 更新本机 MCP JSON 配置 |
 
-**Cursor**、**Pi**、**Grok Build** 请在 MCP 设置页选择 **复制配置**，再把生成的 JSON 粘贴到对应客户端的 MCP 配置中。Desktop 不会猜测或覆盖这些客户端的配置路径。
+**Cursor**、**Pi**、**Grok Build** 请在 MCP 设置页选择 **复制配置**，再把生成的 JSON 粘贴到对应客户端的 MCP 配置中。片段同时包含两个服务；请将 `agent-resume-browser` 条目中的 `<client-name>` 替换为该客户端 id（例如 `cursor`、`pi`）。Desktop 不会猜测或覆盖这些客户端的配置路径。
 
-移动或重新安装 Agent Resume 后，可选择 **更新**。选择 **移除** 只会从自动管理的客户端移除 `agent-resume` MCP 条目。
+移动或重新安装 Agent Resume 后，可选择 **更新**。本机的自动客户端会在启动时和每次保存设置后同时同步两个服务（`agent-resume` 与 `agent-resume-browser`）；浏览器条目跟随 **设置 → 浏览器**。选择 **移除** 会从自动管理的客户端移除 `agent-resume` 条目。
 
 ### 工具说明
 
@@ -184,25 +227,38 @@ Desktop 可自动检测并注册以下客户端：
 
 | 工具 | 用途 |
 |---|---|
-| `note_list` | 分页列出所有已索引笔记，可按范围筛选 |
+| `note_list` | 分页列出所有已索引笔记，可按范围（library 或 session）筛选 |
 | `note_search` | 搜索笔记标题、内容、文件名和路径 |
-| `note_create` | 创建库、项目或会话笔记 |
+| `note_create` | 创建 library 或 session 笔记，或在任务下创建子笔记 |
 | `note_read` | 读取一篇笔记的完整 Markdown |
 | `note_write` | 覆盖一篇笔记的完整 Markdown 内容 |
 | `note_append` | 在不修改原有内容的前提下追加 Markdown |
 | `note_delete` | 永久删除一篇笔记 |
-| `note_tree_read` | 读取包含该笔记的 Project Note 树 |
-| `note_set_parent` | 设置或清除 Project Note 父链接 |
-| `note_move` | 将笔记移动到不同的所有者范围 |
+| `note_tree_read` | 读取包含该笔记的任务知识树 |
+| `note_set_parent` | 设置或清除任务父链接 |
+| `note_move` | 将笔记移动到不同所有者范围（library 或 session） |
 | `note_rename` | 重命名笔记文件，同时保留其资产目录和引用 |
 | `note_set_gtd` | 设置或清除笔记的 catalog GTD 状态 |
 
+`rootPath` / `roots` 只是仓库地址，不是拥有者实体。项目笔记属于 **扩展专属** 能力：本服务不会创建、列出或修改它们。
+
+**默认归属解析（TUI / ACP 会话）**
+
+Desktop 会把当前会话身份注入 MCP 服务。当笔记工具未显式指定所有者时，按以下顺序解析：
+
+1. 会话绑定的 **任务** —— 会话为该任务启动，或在共享 catalog 中已关联到它。`note_create` 会在其下创建 library 子笔记；`note_list` / `note_search` 默认收敛到该任务的子树。
+2. 没有绑定任务时，退回 **会话** 本身。
+3. MCP 服务没有任何会话身份时（例如你在 Desktop 之外自行启动的 CLI），**不绑定任何实体**，就是一篇普通 library 笔记。
+
+显式传入的 `scope`、`parentNoteId` 或 `rootPath` 始终优先。`note_create` 会返回 `resolvedVia`（`explicit` | `context` | `session` | `none`），便于调用方判断命中了哪条规则。
+
 GTD 状态为 `inbox`、`next`、`waiting`、`someday`、`reference`、`done`。
 
-#### Reports
+#### Reports 与记忆检索
 
 | 工具 | 用途 |
 |---|---|
+| `memory_retrieve` | 一次检索全部本机记忆（报告、笔记、会话），返回 `[D#]` / `[N#]` / `[S#]` 引用 —— 见 [Agent memory](agent.md) |
 | `report_list` | 列出日、周、月工作记忆报告 |
 | `report_read` | 按 report ID 读取完整报告 |
 | `report_search` | 搜索报告内容；配置后也可进行语义搜索 |
@@ -216,24 +272,42 @@ GTD 状态为 `inbox`、`next`、`waiting`、`someday`、`reference`、`done`。
 | `session_read` | 读取 catalog 元数据和会话摘要 |
 | `session_read_transcript` | 摘要不足时读取最近一小段转录内容 |
 | `session_set_gtd` | 在共享 catalog 中设置会话 GTD 状态 |
-| `session_move` | 将会话移动到其他项目目录（仅改 catalog 元数据，绝不移动磁盘文件） |
 | `session_resume` | 返回恢复已保存会话所需的终端命令 |
 
-外部 MCP 调用不能打开 Desktop 的 Workbench，因此 `session_resume` 会返回用户或 Agent 可在终端执行的命令和项目路径。
+外部 MCP 调用不能打开 Desktop 的 Workbench，因此 `session_resume` 会返回用户或 Agent 可在终端执行的命令和根路径。
 
-#### Projects
+#### 任务
+
+任务是 front-matter 标记 `work: true` 的笔记。任务属于 library 域，**引用**（而非拥有）0..n 个仓库根（多根），因此一个任务可以横跨多个仓库。
 
 | 工具 | 用途 |
 |---|---|
-| `project_list` | 列出项目（别名、本地路径、会话数） |
-| `project_merge` | 将源项目合并进目标项目（会话 + workbench 文件夹树） |
-| `project_tidy` | 隐藏失效/空项目（默认 dry-run；传 `apply: true` 执行隐藏） |
-| `project_reconcile` | 从 sessions 按 portable key 重新协调项目归属（幂等） |
+| `task_list` | 列出任务：GTD 状态、下一步行动、待决策项、仓库根、关联会话数 |
+| `task_read` | 读取单个任务：任务字段、关联会话及其根路径、所属工作台 |
+| `task_create` | 创建 library 域任务 |
+| `task_write` | 更新下一步行动、待决策项、仓库根、主根或 GTD 状态 |
+| `task_link_session` | 把会话关联到任务；传 `rootPath` 时同时引用该项目根，并默认重绑会话的 catalog 项目路径 |
+| `task_unlink_session` | 解除会话与任务的关联（会话本身不受影响） |
+
+`task_link_session` 取代了已删除的 `session_move`：会话的 catalog `project_path` 通过任务改写，绝不移动磁盘文件。
+
+**任务 GTD 是汇总状态。** 任务的有效状态由其下的实体聚合得出 —— 笔记子树 + 关联会话。只有**显式标记**的实体会计入，未标记的视为中性。阶梯为 `next` → `waiting` → `inbox` → `someday` → `reference`；`done` 只有在**全部**贡献项都是 `done` 时才成立。任务自身的标记作为「固定」（pin），但隐式 `inbox` 不算固定。`task_list` / `task_read` 会返回 `rollupStatus`（有效状态）、`pinnedStatus`（固定状态，若有）、`gtdCounts`、`gtdTotal`；Desktop 看板与任务页显示同样的状态和 `已完成/总数` 进度。
+
+#### Workbenches（工作台）
+
+工作台是任务下 Desktop 专属的工作单元：绑定一个仓库根（绑定为空时使用任务的中立工作区），并拥有自己的面板布局与会话集合。外部 MCP 不能打开 Desktop 的 Workbench UI，因此这些工具均为只读。
+
+| 工具 | 用途 |
+|---|---|
+| `workbench_list` | 列出某任务的工作台及其根绑定与会话数 |
+| `workbench_read` | 读取单个工作台：所属任务、绑定仓库根、面板布局、关联会话 |
+
+原 `project_list` / `project_merge` / `project_tidy` / `project_reconcile` 工具已移除，由任务工具取代。
 
 ### 数据与安全
 
 - 所有数据保留在本机。是否配置 LLM 提供方与 MCP 注册无关。
 - Notes、GTD 标签、会话 GTD 状态和 catalog 与 VS Code 扩展共用。
-- `note_delete` 属于破坏性操作；MCP 不提供回收站或撤销功能。`project_merge` 会删除源项目行（其会话迁入目标）。
-- `project_tidy` 只会隐藏项目（可恢复），绝不删除；`session_move` 仅改写 catalog 元数据，绝不移动磁盘上的会话或笔记文件。
+- `note_delete` 属于破坏性操作；MCP 不提供回收站或撤销功能。
+- `task_link_session` 仅改写 catalog 元数据（`project_path` / `project_id`），绝不移动磁盘上的会话或笔记文件；`task_unlink_session` 不影响会话本身。
 - 移除客户端注册不会删除 Notes、Reports、Sessions 或 GTD 数据。

@@ -6,7 +6,6 @@ import { AppChrome } from "./AppChrome";
 function renderChrome(options?: {
   standaloneNoteList?: Array<{ noteId: string; title: string }>;
 }) {
-  let openSessionsHandler: (() => void) | undefined;
   let notesChangedHandler: ((notes: Array<{ noteId: string; title: string }>) => void) | undefined;
   const standaloneNoteOpen = vi.fn(async () => ({ ok: true as const }));
   const standaloneNoteList = vi.fn(async () => options?.standaloneNoteList ?? []);
@@ -14,24 +13,12 @@ function renderChrome(options?: {
     getI18nBundle: async () => ({
       locale: "en",
       messages: {
-        "desktop.tabs.report": "Report",
-        "desktop.tabs.workbench": "Workbench",
-        "desktop.tabs.notes": "Notes",
-        "desktop.tabs.kanban": "Kanban",
-        "desktop.tabs.im": "IM",
         "desktop.notes.floatingDots": "Floating notes",
-        "desktop.workbench.sessionDots": "Active sessions",
-        "desktop.workbench.sessionDot.awaiting": "Waiting for you",
-        "desktop.workbench.sessionDot.running": "Running",
-        "desktop.workbench.sessionDot.connecting": "Connecting",
-        "desktop.workbench.sessionDot.error": "Error"
+        "desktop.chrome.account": "Account",
+        "desktop.top.settings": "Settings"
       }
     }),
     onLocaleChanged: () => () => undefined,
-    onOpenSessions: (callback: () => void) => {
-      openSessionsHandler = callback;
-      return () => undefined;
-    },
     standaloneNoteList,
     onStandaloneNotesChanged: (callback: (notes: Array<{ noteId: string; title: string }>) => void) => {
       notesChangedHandler = callback;
@@ -46,7 +33,6 @@ function renderChrome(options?: {
     </I18nProvider>
   );
   return {
-    getOpenSessionsHandler: () => openSessionsHandler,
     pushNoteDots: (notes: Array<{ noteId: string; title: string }>) => notesChangedHandler?.(notes),
     standaloneNoteOpen,
     standaloneNoteList
@@ -56,189 +42,34 @@ function renderChrome(options?: {
 describe("AppChrome", () => {
   afterEach(() => cleanup());
 
-  it("keeps primary tab active when switching among primary tabs", async () => {
+  it("renders the header chrome without a primary-tab rail", async () => {
     renderChrome();
-    const report = await screen.findByRole("button", { name: "Report" });
-    expect(report.classList.contains("active")).toBe(true);
-
-    await act(async () => {
-      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "im" }));
-    });
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "IM" }).classList.contains("active")).toBe(true)
-    );
+    expect(await screen.findByRole("button", { name: "Account" })).toBeTruthy();
+    expect(document.querySelector(".app-nav-rail")).toBeNull();
+    expect(document.querySelector(".session-dots-cluster")).toBeNull();
+    expect(document.getElementById("app-header-slot")).not.toBeNull();
   });
 
-  it("places Kanban immediately after Notes in primary navigation", async () => {
-    renderChrome();
-    await screen.findByRole("button", { name: "Kanban" });
-    const labels = [...document.querySelectorAll(".app-nav-rail .rail-btn")].map((item) =>
-      item.getAttribute("aria-label")
-    );
-    expect(labels).toEqual(["Report", "Workbench", "Notes", "Kanban", "IM"]);
-    const icons = [...document.querySelectorAll(".app-nav-rail .rail-btn [data-theme-icon]")].map((item) =>
-      item.getAttribute("data-theme-icon")
-    );
-    expect(icons).toEqual(["layout-dashboard", "terminal", "file-text", "square-kanban", "message-square"]);
-  });
-
-  it("requests the primary tab when a rail button is clicked", async () => {
-    renderChrome();
-    await screen.findByRole("button", { name: "Report" });
-    const listener = vi.fn();
-    window.addEventListener("agent-resume:tab-change", listener);
-    fireEvent.click(screen.getByRole("button", { name: "Notes" }));
-    expect(listener).toHaveBeenCalledWith(expect.objectContaining({ detail: "notes" }));
-    window.removeEventListener("agent-resume:tab-change", listener);
-  });
-
-  it("opens the sessions reference when requested from the native menu", async () => {
-    const { getOpenSessionsHandler } = renderChrome();
-    await screen.findByRole("button", { name: "Report" });
-    const listener = vi.fn();
-    window.addEventListener("agent-resume:sessions-open", listener);
-    const handler = getOpenSessionsHandler();
-    expect(handler).toBeDefined();
-    await act(async () => handler?.());
-    expect(listener).toHaveBeenCalled();
-    window.removeEventListener("agent-resume:sessions-open", listener);
-  });
-
-  it("renders one dot per active session and shows a tooltip with the full title on hover", async () => {
-    renderChrome();
-    await screen.findByRole("button", { name: "Report" });
-    await act(async () => {
-      window.dispatchEvent(new CustomEvent("agent-resume:active-sessions", { detail: [
-        { paneKey: "terminal:1", projectPath: "/proj/a", title: "A very long session title here", sessionKey: "cli:s1", status: "open" },
-        { paneKey: "acp:abc", projectPath: "/proj/a", title: "Short", sessionKey: "chat:abc", status: "open" }
-      ] }));
-    });
-    const dots = [...document.querySelectorAll<HTMLButtonElement>(".session-dot-btn")];
-    expect(dots).toHaveLength(2);
-    expect(dots[0].getAttribute("aria-label")).toBe("A very long session title here");
-    expect(dots[0].hasAttribute("title")).toBe(false);
-    expect(dots[1].getAttribute("aria-label")).toBe("Short");
-
-    fireEvent.mouseOver(dots[0]);
-    expect((await screen.findByRole("tooltip")).textContent).toBe("A very long session title here");
-  });
-
-  it("applies status classes and tooltip suffixes for runtime states", async () => {
-    renderChrome();
-    await screen.findByRole("button", { name: "Report" });
-    await act(async () => {
-      window.dispatchEvent(new CustomEvent("agent-resume:active-sessions", { detail: [
-        {
-          paneKey: "acp:await",
-          projectPath: "/p",
-          title: "Needs you",
-          sessionKey: "chat:await",
-          status: "awaiting_user"
-        },
-        {
-          paneKey: "terminal:run",
-          projectPath: "/p",
-          title: "Busy",
-          sessionKey: "cli:run",
-          status: "running"
-        },
-        {
-          paneKey: "terminal:maybe",
-          projectPath: "/p",
-          title: "Quiet TUI",
-          sessionKey: "cli:maybe",
-          status: "awaiting_user"
-        }
-      ] }));
-    });
-    const dots = [...document.querySelectorAll<HTMLButtonElement>(".session-dot-btn")];
-    expect(dots).toHaveLength(3);
-    expect(dots[0].querySelector(".session-dot")?.classList.contains("is-awaiting")).toBe(true);
-    expect(dots[1].querySelector(".session-dot")?.classList.contains("is-running")).toBe(true);
-    expect(dots[0].getAttribute("aria-label")).toContain("Waiting for you");
-    expect(dots[1].getAttribute("aria-label")).toContain("Running");
-    expect(dots[2].getAttribute("aria-label")).toContain("Waiting for you");
-  });
-
-  it("renders no dots when no sessions are open", async () => {
-    renderChrome();
-    await screen.findByRole("button", { name: "Report" });
-    await act(async () => {
-      window.dispatchEvent(new CustomEvent("agent-resume:active-sessions", { detail: [] }));
-    });
-    expect(document.querySelectorAll(".session-dot-btn").length).toBe(0);
-  });
-
-  it("requests workbench and focuses the session when a dot is clicked", async () => {
-    renderChrome();
-    await screen.findByRole("button", { name: "Report" });
-    const tabReq = vi.fn();
-    const focusReq = vi.fn();
-    window.addEventListener("agent-resume:tab-request", tabReq);
-    window.addEventListener("agent-resume:workbench-focus-session", focusReq);
-    await act(async () => {
-      window.dispatchEvent(new CustomEvent("agent-resume:active-sessions", { detail: [
-        { paneKey: "terminal:9", projectPath: "/proj/x", title: "Alpha", sessionKey: "cli:s9", status: "open" }
-      ] }));
-    });
-    const dot = document.querySelector<HTMLButtonElement>(".session-dot-btn");
-    expect(dot).not.toBeNull();
-    fireEvent.click(dot!);
-    expect(tabReq).toHaveBeenCalledWith(expect.objectContaining({ detail: "workbench" }));
-    expect(focusReq).toHaveBeenCalledWith(expect.objectContaining({
-      detail: { paneKey: "terminal:9", projectPath: "/proj/x" }
-    }));
-    window.removeEventListener("agent-resume:tab-request", tabReq);
-    window.removeEventListener("agent-resume:workbench-focus-session", focusReq);
-  });
-
-  it("renders floating note dots above session dots and focuses a note on click", async () => {
+  it("renders a floating-note dot per open note and opens it in a standalone window", async () => {
     const { standaloneNoteOpen, pushNoteDots } = renderChrome({
       standaloneNoteList: [{ noteId: "n1", title: "Scratch pad" }]
     });
-    await screen.findByRole("button", { name: "Report" });
-    await waitFor(() => expect(document.querySelectorAll(".rail-note-dot-btn").length).toBe(1));
+    expect(await screen.findByRole("button", { name: "Account" })).toBeTruthy();
+    await waitFor(() => expect(document.querySelectorAll(".app-note-dot-btn").length).toBe(1));
 
-    await act(async () => {
-      window.dispatchEvent(new CustomEvent("agent-resume:active-sessions", { detail: [
-        { paneKey: "terminal:1", projectPath: "/p", title: "Session A", sessionKey: "cli:s1", status: "open" }
-      ] }));
-    });
-
-    const bottom = document.querySelector(".rail-bottom-dots");
-    expect(bottom).not.toBeNull();
-    const notesCluster = bottom!.querySelector(".rail-notes-dots");
-    const sessionsCluster = bottom!.querySelector(".session-dots-cluster");
-    expect(notesCluster).not.toBeNull();
-    expect(sessionsCluster).not.toBeNull();
-    expect(notesCluster!.getAttribute("aria-label")).toBe("Floating notes");
-    expect(sessionsCluster!.getAttribute("aria-label")).toBe("Active sessions");
-    expect(notesCluster!.querySelector(".rail-dots-heading")).not.toBeNull();
-    expect(sessionsCluster!.querySelector(".session-dots-heading")).not.toBeNull();
-    expect(
-      Boolean(notesCluster!.compareDocumentPosition(sessionsCluster!) & Node.DOCUMENT_POSITION_FOLLOWING)
-    ).toBe(true);
-
-    const noteDot = document.querySelector<HTMLButtonElement>(".rail-note-dot-btn");
+    const noteDot = document.querySelector<HTMLButtonElement>(".app-note-dot-btn");
     expect(noteDot?.getAttribute("aria-label")).toBe("Scratch pad");
-    const tabReq = vi.fn();
-    window.addEventListener("agent-resume:tab-request", tabReq);
     fireEvent.click(noteDot!);
     await waitFor(() => expect(standaloneNoteOpen).toHaveBeenCalledWith({ noteId: "n1" }));
-    expect(tabReq).not.toHaveBeenCalled();
-    window.removeEventListener("agent-resume:tab-request", tabReq);
 
-    await act(async () => {
-      pushNoteDots([]);
-    });
-    expect(document.querySelectorAll(".rail-note-dot-btn").length).toBe(0);
-    expect(document.querySelector(".session-dots-cluster")).not.toBeNull();
+    await act(async () => { pushNoteDots([]); });
+    expect(document.querySelectorAll(".app-note-dot-btn").length).toBe(0);
   });
 
   it("updates floating note dots when the open-notes list changes", async () => {
     const { pushNoteDots } = renderChrome();
-    await screen.findByRole("button", { name: "Report" });
-    expect(document.querySelectorAll(".rail-note-dot-btn").length).toBe(0);
+    await screen.findByRole("button", { name: "Account" });
+    expect(document.querySelectorAll(".app-note-dot-btn").length).toBe(0);
 
     await act(async () => {
       pushNoteDots([
@@ -246,9 +77,24 @@ describe("AppChrome", () => {
         { noteId: "b", title: "Beta note" }
       ]);
     });
-    const dots = [...document.querySelectorAll<HTMLButtonElement>(".rail-note-dot-btn")];
-    expect(dots).toHaveLength(2);
+    const dots = [...document.querySelectorAll<HTMLButtonElement>(".app-note-dot-btn")];
     expect(dots.map((dot) => dot.getAttribute("aria-label"))).toEqual(["Alpha note", "Beta note"]);
   });
 
+  it("opens Settings from the account menu", async () => {
+    renderChrome();
+    await screen.findByRole("button", { name: "Account" });
+
+    const settingsOpen = vi.fn();
+    window.addEventListener("agent-resume:settings-open", settingsOpen);
+
+    fireEvent.click(screen.getByRole("button", { name: "Account" }));
+    const settingsItem = await screen.findByRole("menuitem", { name: "Settings" });
+    fireEvent.click(settingsItem);
+
+    expect(settingsOpen).toHaveBeenCalledWith(expect.objectContaining({ detail: "general" }));
+    expect(screen.queryByRole("menuitem", { name: "Settings" })).toBeNull();
+
+    window.removeEventListener("agent-resume:settings-open", settingsOpen);
+  });
 });

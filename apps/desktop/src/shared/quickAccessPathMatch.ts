@@ -3,7 +3,7 @@ export interface FuzzyPathMatch {
   indices: number[];
 }
 
-export interface QuickAccessPathCandidate {
+interface QuickAccessPathCandidate {
   path: string;
   relativePath: string;
   kind?: "file" | "directory";

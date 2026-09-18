@@ -8,16 +8,20 @@
  */
 
 import type { AgentState } from "../../../../shared/agentStatusTypes";
+import {
+  WORKBENCH_SESSION_DOT_STATUSES,
+  type WorkbenchSessionDotStatus
+} from "../../../../shared/workbenchSelection";
 
-export const SESSION_DOT_STATUSES = [
-  "awaiting_user",
-  "running",
-  "connecting",
-  "error",
-  "open"
-] as const;
+/**
+ * Single source: the shared vocabulary in `src/shared/workbenchSelection.ts`.
+ * Deriving instead of re-declaring keeps the main process, preload, and renderer
+ * on one list — adding a status there immediately makes the renderer's
+ * `Record<SessionDotStatus, ...>` maps non-exhaustive and fail to compile.
+ */
+export const SESSION_DOT_STATUSES = WORKBENCH_SESSION_DOT_STATUSES;
 
-export type SessionDotStatus = (typeof SESSION_DOT_STATUSES)[number];
+export type SessionDotStatus = WorkbenchSessionDotStatus;
 
 /** Runtime status for one session pane. */
 export type SessionDotRuntime = {

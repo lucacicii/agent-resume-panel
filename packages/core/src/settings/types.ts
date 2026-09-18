@@ -166,7 +166,7 @@ export const WORKBENCH_TERMINAL_RENDERERS: readonly WorkbenchTerminalRenderer[] 
 ] as const;
 export type WorkbenchProjectEditor = "auto" | "vscode" | "vscodium" | "cursor" | "windsurf";
 
-export type WorkbenchCmdTAction = "newSession" | "newTerminal";
+type WorkbenchCmdTAction = "newSession" | "newTerminal";
 export type WorkbenchEditorTabSize = 2 | 4 | 8;
 export type WorkbenchEditorAutoSaveDelayMs = 300 | 600 | 1000 | 2000;
 export type { CommitMessageStyle } from "../git/prompts";
@@ -181,12 +181,30 @@ export interface WorkbenchComposerSlashPhrase {
   description?: string;
 }
 
+export type WorkbenchComposerMentionRole = "work" | "reference";
+
+export interface WorkbenchComposerMentionRoot {
+  /** Absolute or `~/…` path. Normalized to an absolute path on save. */
+  path: string;
+  role: WorkbenchComposerMentionRole;
+}
+
+/**
+ * Global workspace pack (Settings → Workbench).
+ * `id` is the CLI / New session trigger (`anfeng` → `arpm go anfeng`).
+ * `cwd` is the work root; extra `roots` are injected into the agent prompt.
+ */
+export interface WorkbenchComposerMention {
+  id: string;
+  cwd: string;
+  roots: WorkbenchComposerMentionRoot[];
+}
+
 /** Project row context-menu actions (Workbench). */
 export type WorkbenchProjectContextMenuAction =
   | "pin"
   | "newSession"
   | "editor"
-  | "note"
   | "rename"
   | "setLocalPath"
   | "copyPath"
@@ -198,7 +216,6 @@ export type WorkbenchProjectContextMenuAction =
 /** Default project context menu items (shown when setting is unset). */
 export const DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU: WorkbenchProjectContextMenuAction[] = [
   "newSession",
-  "note",
   "reveal",
   "remove"
 ];
@@ -207,7 +224,6 @@ export const ALL_WORKBENCH_PROJECT_CONTEXT_MENU: WorkbenchProjectContextMenuActi
   "pin",
   "newSession",
   "editor",
-  "note",
   "rename",
   "setLocalPath",
   "copyPath",
@@ -320,6 +336,8 @@ export interface WorkbenchSettings {
   projectContextMenu?: WorkbenchProjectContextMenuAction[];
   /** User-defined `/trigger` expansions for the terminal composer. Default empty. */
   composerSlashPhrases?: WorkbenchComposerSlashPhrase[];
+  /** Global workspace packs for New session / `arpm`. Default empty. */
+  composerMentions?: WorkbenchComposerMention[];
 }
 
 export type GhosttyLaunchMode = "pasteCommand" | "copyCommand" | "executeCommand";
@@ -357,7 +375,7 @@ export interface AgentSessionSyncSettings extends AgentSessionSyncFilters {
 }
 
 export interface ReportSettings {
-  /** Scheduled jobs in Desktop; default false. */
+  /** Scheduled jobs in Desktop; ignored by the scheduler (always on). */
   enabled?: boolean;
   /** Prefer session_summary; if missing, load native transcript excerpt. Default true. */
   includeTranscripts?: boolean;
@@ -433,7 +451,7 @@ export interface NotificationsSettings {
   maxHistory?: number;
 }
 
-export interface DesktopImSettings {
+interface DesktopImSettings {
   smartRoutingEnabled?: boolean;
 }
 
@@ -504,7 +522,7 @@ export const DEFAULT_SETTINGS: PanelSettings = {
     model: "text-embedding-3-small"
   },
   report: {
-    enabled: false,
+    enabled: true,
     includeTranscripts: true,
     maxDigestLlmCalls: 100,
     snippetMaxChars: 2500,
@@ -551,6 +569,7 @@ export const DEFAULT_SETTINGS: PanelSettings = {
     gitCommitCustomInstructions: DEFAULT_CONVENTIONAL_COMMIT_INSTRUCTIONS,
     projectContextMenu: [...DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU],
     composerSlashPhrases: [],
+    composerMentions: [],
     transcriptFontSize: 14,
     editor: {
       editable: true,

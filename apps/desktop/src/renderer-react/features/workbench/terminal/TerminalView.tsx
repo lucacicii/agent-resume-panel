@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import React, { memo, useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { Terminal } from "@xterm/xterm";
 import { CanvasAddon } from "@xterm/addon-canvas";
 import { ClipboardAddon } from "@xterm/addon-clipboard";
@@ -26,17 +26,20 @@ import type { TerminalEngineType } from "./types";
 type DesktopApi = ReturnType<typeof desktopApi>;
 type TerminalGitInfo = Awaited<ReturnType<DesktopApi["terminalGitInfo"]>>;
 
-export type WorkbenchPaneGroup = "session" | "terminal" | "code" | "browser";
+export type WorkbenchPaneGroup = "session" | "terminal" | "code" | "browser" | "note";
 
 export type TerminalPane = {
   key: string;
   title: string;
-  group: Exclude<WorkbenchPaneGroup, "code" | "browser">;
+  group: Exclude<WorkbenchPaneGroup, "code" | "browser" | "note">;
   sessionKey?: string;
   projectPath: string;
+  workbenchId?: string;
   cwd: string;
   command?: string;
   initialPrompt?: string;
+  /** MCP session identity env passed to the PTY (agent-resume service). */
+  env?: Record<string, string>;
   ptyId?: number;
   branch?: string | null;
   repoRoot?: string | null;
@@ -150,7 +153,7 @@ export function trackTuiRedraw(chunk: string, terminal: Terminal): void {
  * screen renders at the top. Pull the viewport up by the trailing blank rows
  * so the transcript tail stays at the bottom of the screen.
  */
-export function reanchorTuiViewport(terminal: Terminal): void {
+function reanchorTuiViewport(terminal: Terminal): void {
   try {
     const buffer = terminal.buffer.active;
     if (buffer.type !== "normal") return;
@@ -586,7 +589,7 @@ export const TerminalView = memo(function TerminalView({ pane, active, themeId, 
       onPtyRef.current(pane.key, id, terminal);
       // Status attribution: main only knows the PTY, the renderer knows the
       // session (and may learn it after the pane was spawned).
-      void desktopApi().terminalBindSession?.({ id, sessionKey: pane.sessionKey, cwd: pane.cwd });
+      void desktopApi().terminalBindSession?.({ id, sessionKey: pane.sessionKey, cwd: pane.cwd, workbenchId: pane.workbenchId });
       syncScrollState();
       setReady(true);
       // Re-fit after attach in case layout settled during spawn.
@@ -632,7 +635,9 @@ export const TerminalView = memo(function TerminalView({ pane, active, themeId, 
             command: pane.command,
             cols: terminal.cols,
             rows: terminal.rows,
-            sessionKey: pane.sessionKey
+            sessionKey: pane.sessionKey,
+            workbenchId: pane.workbenchId,
+            env: pane.env
           }).then(async (spawned) => {
             const { id } = spawned;
             if (spawned.warnSoftLimit) {
@@ -698,8 +703,8 @@ export const TerminalView = memo(function TerminalView({ pane, active, themeId, 
   useEffect(() => {
     const id = ptyId.current;
     if (id == null) return;
-    void desktopApi().terminalBindSession?.({ id, sessionKey: pane.sessionKey, cwd: pane.cwd });
-  }, [pane.cwd, pane.sessionKey]);
+    void desktopApi().terminalBindSession?.({ id, sessionKey: pane.sessionKey, cwd: pane.cwd, workbenchId: pane.workbenchId });
+  }, [pane.cwd, pane.sessionKey, pane.workbenchId]);
 
   // Hot-swap accelerated renderer when settings change — keep the same PTY/session.
   useEffect(() => {

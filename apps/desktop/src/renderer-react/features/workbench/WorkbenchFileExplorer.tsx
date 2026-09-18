@@ -1,5 +1,6 @@
 import { ThemeIcon, type ThemeIconName } from "../../components/ThemeIcon";
 import {
+  Fragment,
   forwardRef,
   useCallback,
   useEffect,
@@ -214,7 +215,8 @@ export function directoryEntriesEqual(
 }
 
 export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
-  rootPath: string;
+  /** Every project root the explorer spans; one root restores the single-project tree. */
+  roots: string[];
   activePath?: string;
   onOpenFile: (path: string) => void | Promise<void>;
   /** Opens an `.md` file directly in preview mode. */
@@ -223,14 +225,25 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
   /** Search scope target: the folder itself, or the parent folder for files. */
   onFindInFolder?: (directoryPath: string) => void | Promise<void>;
   onError: (message: string) => void;
-}>(function WorkbenchFileExplorer({ rootPath, activePath = "", onOpenFile, onOpenPreview, onShowGitHistory, onFindInFolder, onError }, ref) {
+}>(function WorkbenchFileExplorer({ roots, activePath = "", onOpenFile, onOpenPreview, onShowGitHistory, onFindInFolder, onError }, ref) {
   const { t } = useI18n();
   const [directories, setDirectories] = useState<Record<string, DirectoryEntry[]>>({});
   const [openDirectories, setOpenDirectories] = useState<Set<string>>(new Set());
   const [selectedPath, setSelectedPath] = useState("");
   const [contextMenu, setContextMenu] = useState<ExplorerContextMenu | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const rootPathRef = useRef(rootPath);
+  const rootsRef = useRef(roots);
+  rootsRef.current = roots;
+  /** Identity of the root set; changes reset the tree even when the array reference is new. */
+  const rootsKey = roots.map(pathKey).join("\0");
+  /** The root an absolute path belongs to (longest match), or "" when outside every root. */
+  const rootForPath = useCallback((targetPath: string): string => {
+    let best = "";
+    for (const root of rootsRef.current) {
+      if (pathKey(root).length > pathKey(best).length && isPathWithin(targetPath, root)) best = root;
+    }
+    return best;
+  }, []);
   const onErrorRef = useRef(onError);
   const openDirectoriesRef = useRef(openDirectories);
   const loadSequenceRef = useRef(new Map<string, number>());
@@ -255,7 +268,7 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
   }, [directories, openDirectories, selectedPath]);
 
   useEffect(() => {
-    if (!activePath || !isPathWithin(activePath, rootPath)) return;
+    if (!activePath || !rootForPath(activePath)) return;
     const target = pathKey(activePath);
     const frame = window.requestAnimationFrame(() => {
       const row = [...document.querySelectorAll<HTMLElement>("[data-wb-entry-path]")]
@@ -263,7 +276,7 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
       row?.scrollIntoView?.({ block: "nearest" });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [activePath, directories, openDirectories, rootPath]);
+  }, [activePath, directories, openDirectories, rootForPath]);
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -290,13 +303,13 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
         dirPath: directoryPath
       });
       if (loadSequenceRef.current.get(directoryPath) !== sequence) return;
-      if (pathKey(rootPathRef.current) !== pathKey(targetRoot)) return;
+      if (!rootsRef.current.some((root) => pathKey(root) === pathKey(targetRoot))) return;
       setDirectories((current) => directoryEntriesEqual(current[directoryPath], result.entries)
         ? current
         : { ...current, [directoryPath]: result.entries });
     } catch (error) {
       if (loadSequenceRef.current.get(directoryPath) !== sequence) return;
-      if (pathKey(rootPathRef.current) !== pathKey(targetRoot)) return;
+      if (!rootsRef.current.some((root) => pathKey(root) === pathKey(targetRoot))) return;
       setDirectories((current) => {
         if (pathKey(directoryPath) === pathKey(targetRoot)) {
           if (current[directoryPath]?.length === 0) return current;
@@ -317,9 +330,9 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
   }, []);
 
   const refresh = useCallback((): Promise<void> => {
-    const targetRoot = rootPathRef.current;
-    if (!targetRoot) return Promise.resolve();
-    const key = pathKey(targetRoot);
+    const currentRoots = rootsRef.current;
+    if (!currentRoots.length) return Promise.resolve();
+    const key = currentRoots.map(pathKey).join("\0");
     const existing = refreshesRef.current.get(key);
     if (existing) {
       existing.queued = true;
@@ -330,12 +343,14 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
     const run = async () => {
       do {
         state.queued = false;
-        const targets = new Set([targetRoot]);
-        for (const directoryPath of openDirectoriesRef.current) {
-          if (isPathWithin(directoryPath, targetRoot)) targets.add(directoryPath);
-        }
-        await Promise.all([...targets].map((directoryPath) => loadDirectory(targetRoot, directoryPath)));
-      } while (state.queued && pathKey(rootPathRef.current) === key);
+        await Promise.all(currentRoots.map((targetRoot) => {
+          const targets = new Set([targetRoot]);
+          for (const directoryPath of openDirectoriesRef.current) {
+            if (isPathWithin(directoryPath, targetRoot)) targets.add(directoryPath);
+          }
+          return Promise.all([...targets].map((directoryPath) => loadDirectory(targetRoot, directoryPath)));
+        }));
+      } while (state.queued && rootsRef.current.map(pathKey).join("\0") === key);
     };
     state.promise = run().finally(() => {
       if (refreshesRef.current.get(key) === state) refreshesRef.current.delete(key);
@@ -345,8 +360,8 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
   }, [loadDirectory]);
 
   const revealPath = useCallback(async (targetPath: string): Promise<void> => {
-    const targetRoot = rootPathRef.current;
-    if (!targetRoot || !isPathWithin(targetPath, targetRoot)) return;
+    const targetRoot = rootForPath(targetPath);
+    if (!targetRoot) return;
     const root = pathKey(targetRoot);
     const target = pathKey(targetPath);
     const relative = target === root ? "" : target.slice(root.length).replace(/^\/+/, "");
@@ -362,7 +377,7 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
     for (const directoryPath of directoriesToOpen) {
       await loadDirectory(targetRoot, directoryPath);
     }
-    if (pathKey(rootPathRef.current) !== root) return;
+    if (!rootsRef.current.some((candidate) => pathKey(candidate) === root)) return;
     const nextOpenDirectories = new Set(openDirectoriesRef.current);
     for (const directoryPath of directoriesToOpen) nextOpenDirectories.add(directoryPath);
     openDirectoriesRef.current = nextOpenDirectories;
@@ -370,25 +385,25 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
     focusSelectedPathRef.current = true;
     setSelectedPath(targetPath);
 
-  }, [loadDirectory]);
+  }, [loadDirectory, rootForPath]);
 
   useImperativeHandle(ref, () => ({ refresh, revealPath }), [refresh, revealPath]);
 
   useEffect(() => {
-    rootPathRef.current = rootPath;
+    const currentRoots = rootsRef.current;
     loadSequenceRef.current.clear();
-    openDirectoriesRef.current = new Set();
+    openDirectoriesRef.current = new Set(currentRoots);
     setDirectories({});
-    setOpenDirectories(new Set());
+    setOpenDirectories(new Set(currentRoots));
     setSelectedPath("");
     setContextMenu(null);
-    if (rootPath) void loadDirectory(rootPath, rootPath);
-  }, [loadDirectory, rootPath]);
+    for (const root of currentRoots) void loadDirectory(root, root);
+  }, [loadDirectory, rootsKey]);
 
   useEffect(() => {
-    if (!activePath || !rootPath || !isPathWithin(activePath, rootPath)) return;
+    const targetRoot = rootForPath(activePath);
+    if (!activePath || !targetRoot) return;
     let cancelled = false;
-    const targetRoot = rootPath;
     const root = pathKey(targetRoot);
     const target = pathKey(activePath);
     const relative = target === root ? "" : target.slice(root.length).replace(/^\/+/, "");
@@ -405,7 +420,7 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
       for (const directoryPath of directoriesToOpen) {
         await loadDirectory(targetRoot, directoryPath);
       }
-      if (cancelled || pathKey(rootPathRef.current) !== root) return;
+      if (cancelled || !rootsRef.current.some((candidate) => pathKey(candidate) === root)) return;
       setOpenDirectories((currentOpenDirectories) => {
         const next = new Set(currentOpenDirectories);
         for (const directoryPath of directoriesToOpen) next.add(directoryPath);
@@ -416,10 +431,10 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
     })();
 
     return () => { cancelled = true; };
-  }, [activePath, loadDirectory, rootPath]);
+  }, [activePath, loadDirectory, rootForPath]);
 
   const refreshManually = async () => {
-    if (refreshingRef.current || !rootPathRef.current) return;
+    if (refreshingRef.current || !rootsRef.current.length) return;
     refreshingRef.current = true;
     setRefreshing(true);
     try { await refresh(); }
@@ -430,7 +445,8 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
   };
 
   const toggleDirectory = async (directoryPath: string) => {
-    if (!rootPath) return;
+    const targetRoot = rootForPath(directoryPath);
+    if (!targetRoot) return;
     if (openDirectoriesRef.current.has(directoryPath)) {
       setOpenDirectories((current) => {
         const next = new Set(current);
@@ -439,16 +455,17 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
       });
       return;
     }
-    await loadDirectory(rootPath, directoryPath);
-    if (pathKey(rootPathRef.current) !== pathKey(rootPath)) return;
+    await loadDirectory(targetRoot, directoryPath);
+    if (!rootsRef.current.some((candidate) => pathKey(candidate) === pathKey(targetRoot))) return;
     setOpenDirectories((current) => new Set(current).add(directoryPath));
   };
 
   const copyTarget = async (target: ExplorerTarget) => {
-    if (!rootPath) return;
+    const targetRoot = rootForPath(target.path);
+    if (!targetRoot) return;
     setContextMenu(null);
     try {
-      await desktopApi().workbenchCopyPath({ rootPath, sourcePath: target.path });
+      await desktopApi().workbenchCopyPath({ rootPath: targetRoot, sourcePath: target.path });
       reportStatus(t("desktop.workbench.explorerCopied", basename(target.path)));
     } catch (error) {
       onError(t("desktop.workbench.explorerCopyFailed", errorMessage(error)));
@@ -466,11 +483,12 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
   };
 
   const pasteTarget = async (target: ExplorerTarget) => {
-    if (!rootPath) return;
+    const targetRoot = rootForPath(target.path);
+    if (!targetRoot) return;
     setContextMenu(null);
     const targetDirectory = target.isDirectory ? target.path : parentPath(target.path);
     try {
-      const result = await desktopApi().workbenchPastePaths({ rootPath, targetDirectory });
+      const result = await desktopApi().workbenchPastePaths({ rootPath: targetRoot, targetDirectory });
       if (result.copied.length) await refresh();
       if (!result.copied.length && !result.failures.length) {
         reportStatus(t("desktop.workbench.explorerClipboardEmpty"), "info");
@@ -491,10 +509,11 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
   };
 
   const revealTarget = async (target: ExplorerTarget) => {
-    if (!rootPath) return;
+    const targetRoot = rootForPath(target.path);
+    if (!targetRoot) return;
     setContextMenu(null);
     try {
-      await desktopApi().workbenchRevealPath({ rootPath, targetPath: target.path });
+      await desktopApi().workbenchRevealPath({ rootPath: targetRoot, targetPath: target.path });
     } catch (error) {
       onError(t("desktop.workbench.sidePanelRevealFailed", errorMessage(error)));
     }
@@ -538,13 +557,14 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
     if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return;
     const key = event.key.toLowerCase();
     if (key !== "c" && key !== "v") return;
+    const fallbackRoot = rootsRef.current[0] || "";
     const row = (event.target as HTMLElement).closest<HTMLElement>("[data-wb-entry-path]");
     const target: ExplorerTarget = row
       ? {
-          path: row.dataset.wbEntryPath || rootPath,
+          path: row.dataset.wbEntryPath || fallbackRoot,
           isDirectory: row.dataset.wbEntryDirectory === "true"
         }
-      : { path: rootPath, isDirectory: true };
+      : { path: fallbackRoot, isDirectory: true };
     if (!target.path) return;
     event.preventDefault();
     event.stopPropagation();
@@ -598,25 +618,35 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
   return <>
     <div className="wb-side-pane-head">
       <span className="wb-side-pane-title">{t("desktop.workbench.sidePanelExplorer")}</span>
-      {rootPath ? <button type="button" className="wb-git-action-btn" disabled={refreshing} onClick={() => void refreshManually()} aria-label={t("desktop.common.refresh")} title={t("desktop.common.refresh")}><ThemeIcon name="refresh" size={14} className={refreshing ? "spin" : undefined} /></button> : null}
+      {roots.length ? <button type="button" className="wb-git-action-btn" disabled={refreshing} onClick={() => void refreshManually()} aria-label={t("desktop.common.refresh")} title={t("desktop.common.refresh")}><ThemeIcon name="refresh" size={14} className={refreshing ? "spin" : undefined} /></button> : null}
     </div>
     <div className="wb-file-tree wb-explorer-file-tree" role="tree" tabIndex={0} onKeyDown={handleTreeKeyDown}>
-      {rootPath ? <>
-        <div
-          className={`wb-file-tree-row${selectedPath === rootPath ? " is-selected" : ""}`}
-          role="treeitem"
-          tabIndex={0}
-          data-wb-entry-path={rootPath}
-          data-wb-entry-directory="true"
-          aria-selected={selectedPath === rootPath}
-          draggable
-          onFocus={() => setSelectedPath(rootPath)}
-          onClick={(event) => event.currentTarget.focus()}
-          onDragStart={(event) => startWorkbenchPathDrag(event, rootPath)}
-          onContextMenu={(event) => openContextMenu(event, { path: rootPath, isDirectory: true })}
-        ><ThemeIcon name="folder-open" size={15} color="#dcb67a" className="wb-file-tree-icon" /><span className="wb-file-tree-label">{basename(rootPath)}</span></div>
-        {renderTree(rootPath, 1)}
-      </> : <p className="muted wb-file-tree-empty">{t("desktop.workbench.sidePanelNoRoot")}</p>}
+      {roots.length ? roots.map((root) => {
+        const expanded = openDirectories.has(root);
+        return <Fragment key={root}>
+          <div
+            className={`wb-file-tree-row${selectedPath === root ? " is-selected" : ""}`}
+            role="treeitem"
+            tabIndex={0}
+            data-wb-entry-path={root}
+            data-wb-entry-directory="true"
+            aria-selected={selectedPath === root}
+            aria-expanded={roots.length > 1 ? expanded : undefined}
+            draggable
+            onFocus={() => setSelectedPath(root)}
+            onClick={(event) => { event.currentTarget.focus(); if (roots.length > 1) void toggleDirectory(root); }}
+            onDragStart={(event) => startWorkbenchPathDrag(event, root)}
+            onContextMenu={(event) => openContextMenu(event, { path: root, isDirectory: true })}
+          >
+            {roots.length > 1
+              ? <button type="button" className={`wb-file-tree-chevron${expanded ? " is-expanded" : ""}`} aria-label={expanded ? "Collapse folder" : "Expand folder"} onClick={(event) => { event.stopPropagation(); void toggleDirectory(root); }}><ThemeIcon name="chevron-right" size={14} /></button>
+              : null}
+            <ThemeIcon name="folder-open" size={15} color="#dcb67a" className="wb-file-tree-icon" />
+            <span className="wb-file-tree-label" title={root}>{basename(root)}</span>
+          </div>
+          {roots.length === 1 || expanded ? renderTree(root, 1) : null}
+        </Fragment>;
+      }) : <p className="muted wb-file-tree-empty">{t("desktop.workbench.sidePanelNoRoot")}</p>}
     </div>
     {contextMenu ? <div
       className="wb-context-menu wb-explorer-context-menu"

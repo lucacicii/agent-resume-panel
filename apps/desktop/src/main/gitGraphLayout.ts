@@ -6,7 +6,7 @@
  * current column; additional visible parents open or join other columns.
  */
 
-export interface GitGraphCommitRefs {
+interface GitGraphCommitRefs {
   heads: string[];
   isHead: boolean;
   primaryLabel: string | null;
@@ -19,7 +19,7 @@ export interface GitGraphCommitInput {
   refs?: GitGraphCommitRefs;
 }
 
-export interface GitGraphCurve {
+interface GitGraphCurve {
   fromCol: number;
   toCol: number;
   side: "left" | "right";

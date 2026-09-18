@@ -12,7 +12,8 @@
 import type {
   AgentKind,
   AgentState,
-  HelloResult,
+  DetectionSource,
+  PaneAuthority,
   StatusSnapshot
 } from "../../shared/agentStatusTypes";
 
@@ -76,27 +77,26 @@ export type NativeReport = {
   subagent?: boolean;
 };
 
-export type HelloParams = {
-  apiVersion: number;
-  role: "app" | "cli" | "test";
-  appVersion?: string;
+/**
+ * One settled state change for a pane, captured the moment it happened.
+ *
+ * Snapshots describe "now"; this is the durable-to-the-process record of
+ * "what changed and why" that callers use to react once (promote a blocked
+ * session, capture a stop reason) instead of polling for a state.
+ */
+export type StatusTransition = {
+  paneId: number;
+  sessionKey?: string;
+  agent: AgentKind;
+  from: AgentState;
+  to: AgentState;
+  authority: PaneAuthority;
+  source: DetectionSource;
+  /** Rule that produced the screen verdict, when one did. */
+  reason?: string;
+  at: number;
+  seq: number;
 };
-
-export type AgentStatusRequest =
-  | { id: string; method: "hello"; params: HelloParams }
-  | { id: string; method: "telemetry.publish"; params: PaneTelemetry }
-  | { id: string; method: "pane.report_state"; params: NativeReport }
-  | { id: string; method: "pane.forget"; params: { paneId: number } }
-  | { id: string; method: "status.snapshot"; params?: Record<string, never> }
-  | { id: string; method: "status.explain"; params: { paneId: number } }
-  /** Diagnostics: the screen text and verdict behind a pane, for capture tooling. */
-  | { id: string; method: "pane.screen"; params: { paneId: number } }
-  /** Which detection manifests the daemon loaded, for the settings pane. */
-  | { id: string; method: "status.manifests"; params?: Record<string, never> }
-  | { id: string; method: "status.subscribe"; params?: Record<string, never> }
-  | { id: string; method: "daemon.shutdown"; params: { reason: string } };
-
-export type AgentStatusRequestMethod = AgentStatusRequest["method"];
 
 export type AgentStatusResponse =
   | { id: string; ok: true; result: unknown }
@@ -104,4 +104,5 @@ export type AgentStatusResponse =
 
 export type AgentStatusEvent =
   | { event: "status.changed"; data: StatusSnapshot }
+  | { event: "status.transition"; data: StatusTransition }
   | { event: "daemon.shutting_down"; data: { reason: string; at: number } };

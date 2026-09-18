@@ -64,6 +64,21 @@ ALTER TABLE im_messages ADD COLUMN origin TEXT;
 CREATE INDEX IF NOT EXISTS idx_im_messages_acp_message ON im_messages(acp_message_id);
 `;
 
+/** Rooms can be scoped to a task (a project note marked `work: true`). */
+export const IM_WORK_ITEM_MIGRATION_SQL = `
+ALTER TABLE im_projects ADD COLUMN work_item_note_id TEXT;
+`;
+
+/** Knowledge mirrored from a task note, so re-opening the room refreshes it. */
+export const IM_KNOWLEDGE_SOURCE_MIGRATION_SQL = `
+ALTER TABLE im_knowledge ADD COLUMN source_note_id TEXT;
+`;
+
+/** Task templates store a JSON list of referenced projects, not a single path. */
+export const TASK_TEMPLATE_PROJECT_PATHS_MIGRATION_SQL = `
+ALTER TABLE task_templates ADD COLUMN project_paths_json TEXT;
+`;
+
 export const DESKTOP_ONLY_SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS gtd_ai_audit (
   id TEXT PRIMARY KEY,
@@ -77,6 +92,15 @@ CREATE TABLE IF NOT EXISTS gtd_ai_audit (
 );
 CREATE INDEX IF NOT EXISTS idx_gtd_ai_audit_session ON gtd_ai_audit(provider, agent_session_id);
 CREATE INDEX IF NOT EXISTS idx_gtd_ai_audit_created ON gtd_ai_audit(created_at_ms DESC);
+
+CREATE TABLE IF NOT EXISTS task_templates (
+  template_id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  project_paths_json TEXT,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_task_templates_updated ON task_templates(updated_at_ms DESC);
 
 CREATE TABLE IF NOT EXISTS note_chunks (
   chunk_id TEXT PRIMARY KEY,
@@ -180,6 +204,29 @@ CREATE TABLE IF NOT EXISTS session_transcript_index (
   updated_at_ms INTEGER NOT NULL,
   PRIMARY KEY (provider, agent_session_id)
 );
+
+CREATE TABLE IF NOT EXISTS task_workbenches (
+  workbench_id TEXT PRIMARY KEY,
+  task_note_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  project_path TEXT,
+  position INTEGER NOT NULL,
+  layout_json TEXT,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_task_workbenches_task
+  ON task_workbenches(task_note_id, position);
+
+CREATE TABLE IF NOT EXISTS task_workbench_sessions (
+  workbench_id TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  agent_session_id TEXT NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  PRIMARY KEY (workbench_id, provider, agent_session_id)
+);
+CREATE INDEX IF NOT EXISTS idx_task_workbench_sessions_session
+  ON task_workbench_sessions(provider, agent_session_id);
 
 CREATE TABLE IF NOT EXISTS workbench_session_folders (
   folder_id TEXT PRIMARY KEY,

@@ -7,7 +7,7 @@ export interface HandoffDeliverer {
   deliver(input: HandoffDeliveryInput, deps: HandoffDelivererDeps): Promise<HandoffDeliveryResult>;
 }
 
-export interface HandoffDelivererDeps {
+interface HandoffDelivererDeps {
   acpChatManager: AcpChatManager;
   panelHome: string;
   extensionContext?: import("vscode").ExtensionContext;

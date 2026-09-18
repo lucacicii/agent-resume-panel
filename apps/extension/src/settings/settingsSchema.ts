@@ -3,7 +3,7 @@ import { OUTPUT_LANGUAGE_AUTO, OUTPUT_LANGUAGE_OPTIONS } from "../i18n/locales";
 import { getOutputLanguageOptionLabel, getUiLanguageOptionLabel } from "../i18n";
 import { UI_LANGUAGE_OPTIONS } from "../i18n/locales";
 
-export type SettingFieldType = "string" | "number" | "boolean" | "enum" | "stringArray";
+type SettingFieldType = "string" | "number" | "boolean" | "enum" | "stringArray";
 
 export interface SettingField {
   key: string;
@@ -17,7 +17,7 @@ export interface SettingField {
   maximum?: number;
 }
 
-export interface SettingGroup {
+interface SettingGroup {
   id: string;
   title: string;
   description?: string;
@@ -32,7 +32,7 @@ export interface SettingSection {
   groups?: SettingGroup[];
 }
 
-export function getSectionFields(section: SettingSection): SettingField[] {
+function getSectionFields(section: SettingSection): SettingField[] {
   if (section.groups?.length) {
     return section.groups.flatMap((group) => group.fields);
   }

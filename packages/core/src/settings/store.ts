@@ -28,6 +28,7 @@ import {
   normalizeCommitMessageStyle,
   normalizeCustomCommitInstructions
 } from "../git/prompts";
+import { normalizeWorkbenchComposerMentions } from "./mentions";
 
 type LegacyPanelSettings = Partial<PanelSettings> & { memory?: PanelSettings["report"] };
 const WORKBENCH_EDITOR_TAB_SIZES = new Set([2, 4, 8]);
@@ -282,6 +283,9 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
       ),
       composerSlashPhrases: normalizeWorkbenchComposerSlashPhrases(
         partial.workbench?.composerSlashPhrases ?? base.workbench?.composerSlashPhrases
+      ),
+      composerMentions: normalizeWorkbenchComposerMentions(
+        partial.workbench?.composerMentions ?? base.workbench?.composerMentions
       ),
       transcriptFontSize: normalizeWorkbenchTranscriptFontSize(
         partial.workbench?.transcriptFontSize ?? base.workbench?.transcriptFontSize

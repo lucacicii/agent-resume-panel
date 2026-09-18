@@ -1,7 +1,7 @@
 import type { JSX } from "react";
 import { ThemeIcon } from "./ThemeIcon";
 
-export type ProviderIconProps = {
+type ProviderIconProps = {
   provider: string;
   size?: number;
   className?: string;

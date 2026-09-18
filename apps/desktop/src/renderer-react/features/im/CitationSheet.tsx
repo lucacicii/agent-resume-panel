@@ -3,11 +3,10 @@ import type { AgentCitation, ReportEntry } from "@agent-resume/core";
 import { ThemeIcon } from "../../components/ThemeIcon";
 import { Sheet } from "../../components/Sheet";
 import { renderMarkdown } from "../../components/Markdown";
-import { desktopApi } from "../../bridge";
 import type { ImMessage, ImRoom } from "../../../shared/imTypes";
 import type { Translate } from "./imUtils";
 
-export interface CitationSheetProps {
+interface CitationSheetProps {
   open: boolean;
   citations: AgentCitation[];
   initialMarker?: string | null;
@@ -25,28 +24,20 @@ export function isSession(citation: AgentCitation): boolean {
   return citation.source === "session" || citation.level === "session" || Boolean(citation.session);
 }
 
-export function citationMarker(citation: AgentCitation): string {
+function citationMarker(citation: AgentCitation): string {
   const prefix = isNote(citation) ? "N" : isSession(citation) ? "S" : "D";
   return `${prefix}${citation.index}`;
 }
 
-export function citationKey(citation: AgentCitation, index: number): string {
+function citationKey(citation: AgentCitation, index: number): string {
   return [citation.source || citation.level, citation.index, citation.reportId || citation.noteId || citation.session?.id || citation.title, index].join(":");
 }
 
-export function citationTitle(citation: AgentCitation, t: Translate): string {
+function citationTitle(citation: AgentCitation, t: Translate): string {
   return citation.title || citation.noteId || citation.reportId || citation.session?.id || t("desktop.im.citationRef", "Citation");
 }
 
-export function periodFromCitation(citation: AgentCitation): { type: "day" | "week" | "month"; key: string } | null {
-  if (!citation.reportId) return null;
-  if (citation.level === "daily" && citation.reportId.startsWith("daily:")) return { type: "day", key: citation.reportId.slice(6) };
-  if (citation.level === "weekly" && citation.reportId.startsWith("weekly:")) return { type: "week", key: citation.reportId.slice(7) };
-  if (citation.level === "monthly" && citation.reportId.startsWith("monthly:")) return { type: "month", key: citation.reportId.slice(8) };
-  return null;
-}
-
-export function citationLabel(citation: AgentCitation, t: Translate): string {
+function citationLabel(citation: AgentCitation, t: Translate): string {
   const source = isNote(citation)
     ? t("desktop.im.citationNotes", "Note")
     : isSession(citation)
@@ -200,7 +191,7 @@ export function CitationSheet({
     ? t("desktop.im.openInNotes", "Open in Notes")
     : isSession(selected.citation)
       ? t("desktop.im.openInSessions", "Preview Session")
-      : t("desktop.im.openInReport", "Focus in Report"));
+      : null);
 
   const details = selected ? [
     [t("desktop.im.citationField.source", "Source"), sourceTitle],
@@ -269,9 +260,11 @@ export function CitationSheet({
                           <p className="muted">{t("desktop.im.citationNoPreview", "No preview content available")}</p>
                         )}
                         <div className="citation-sheet-actions">
-                          <button type="button" className="ghost-btn" onClick={() => onOpenCitation(citation)}>
-                            {openLabel}
-                          </button>
+                          {openLabel ? (
+                            <button type="button" className="ghost-btn" onClick={() => onOpenCitation(citation)}>
+                              {openLabel}
+                            </button>
+                          ) : null}
                           {isSession(citation) && citation.session ? (
                             <button type="button" className="ghost-btn" onClick={() => void onResumeSession(citation)}>
                               {t("desktop.im.resumeSession", "Resume in Workbench")}

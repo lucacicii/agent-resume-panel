@@ -1,6 +1,6 @@
-export const TRANSCRIPT_OUTLINE_TITLE_MAX = 48;
+const TRANSCRIPT_OUTLINE_TITLE_MAX = 48;
 
-export type TranscriptMessageRole = "user" | "assistant";
+type TranscriptMessageRole = "user" | "assistant";
 
 export type TranscriptPreviewMessage = {
   role: string;
@@ -17,7 +17,7 @@ export type TranscriptMessage = {
   timestamp?: string;
 };
 
-export type TranscriptOutlineItem = {
+type TranscriptOutlineItem = {
   id: string;
   messageId: string;
   index: number;
@@ -86,7 +86,7 @@ export function buildSessionTranscriptModel(
   return { messages: nextMessages, outline };
 }
 
-export type TranscriptPreviewSnapshot = {
+type TranscriptPreviewSnapshot = {
   title?: string;
   messages: readonly TranscriptPreviewMessage[];
   truncated?: boolean;

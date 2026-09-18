@@ -1,4 +1,3 @@
-import type { BrowserWindow } from "electron";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
@@ -197,7 +196,7 @@ function buildResumeInstruction(original: string, draft?: ImMessage): string {
   ].join("\n");
 }
 
-export function collectFiles(toolCalls: AcpToolCallInfo[] | undefined, current: string[]): string[] {
+function collectFiles(toolCalls: AcpToolCallInfo[] | undefined, current: string[]): string[] {
   if (!toolCalls?.length) return current;
   const next = new Set(current);
   for (const call of toolCalls) {
@@ -1431,12 +1430,15 @@ export class ImConductor {
   }
 }
 
-const pendingImEvents = new Map<string, { getMainWindow: () => BrowserWindow | null; event: ImEvent; timer: ReturnType<typeof setTimeout> }>();
+/**
+ * Send an IM event to every window.
+ *
+ * Rooms are shown inside workbench windows, so a single target would leave the
+ * other windows' rooms stale. Streamed updates stay coalesced per message.
+ */
+const pendingImEvents = new Map<string, { send: (event: ImEvent) => void; event: ImEvent; timer: ReturnType<typeof setTimeout> }>();
 
-export function emitImEvent(getMainWindow: () => BrowserWindow | null, event: ImEvent): void {
-  const win = getMainWindow();
-  if (!win || win.isDestroyed()) return;
-
+export function emitImEvent(send: (event: ImEvent) => void, event: ImEvent): void {
   // Coalesce cumulative streaming updates per message. This keeps the renderer
   // at roughly one IPC update per frame without delaying discrete state events.
   if (event.type === "messageUpdate" && event.message.streaming) {
@@ -1450,14 +1452,11 @@ export function emitImEvent(getMainWindow: () => BrowserWindow | null, event: Im
       const pending = pendingImEvents.get(key);
       if (!pending) return;
       pendingImEvents.delete(key);
-      const target = pending.getMainWindow();
-      if (target && !target.isDestroyed()) {
-        target.webContents.send("im:event", pending.event);
-      }
+      pending.send(pending.event);
     }, 16);
-    pendingImEvents.set(key, { getMainWindow, event, timer });
+    pendingImEvents.set(key, { send, event, timer });
     return;
   }
 
-  win.webContents.send("im:event", event);
+  send(event);
 }

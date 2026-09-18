@@ -2,13 +2,13 @@ import { app } from "electron";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-export const RELEASE_REPO = "lucacicii/agent-resume-panel";
+const RELEASE_REPO = "lucacicii/agent-resume-panel";
 const GITHUB_API_URL = `https://api.github.com/repos/${RELEASE_REPO}/releases/latest`;
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
-export type UpdateCheckError = "network" | "parse" | "rate_limit";
+type UpdateCheckError = "network" | "parse" | "rate_limit";
 
-export interface UpdateCheckSuccess {
+interface UpdateCheckSuccess {
   ok: true;
   currentVersion: string;
   latestVersion: string;
@@ -18,7 +18,7 @@ export interface UpdateCheckSuccess {
   checkedAt: number;
 }
 
-export interface UpdateCheckFailure {
+interface UpdateCheckFailure {
   ok: false;
   currentVersion: string;
   error: UpdateCheckError;
@@ -41,7 +41,7 @@ interface GithubReleasePayload {
 let cachedResult: UpdateCheckResult | null = null;
 let cachedAt = 0;
 
-export function normalizeSemver(version: string): [number, number, number] | null {
+function normalizeSemver(version: string): [number, number, number] | null {
   const trimmed = version.trim().replace(/^v/i, "");
   const core = trimmed.split("-")[0]?.split("+")[0] ?? "";
   const parts = core.split(".");
@@ -59,7 +59,7 @@ export function normalizeSemver(version: string): [number, number, number] | nul
 }
 
 /** Returns 1 if a > b, -1 if a < b, 0 if equal. */
-export function compareSemver(a: string, b: string): number | null {
+function compareSemver(a: string, b: string): number | null {
   const left = normalizeSemver(a);
   const right = normalizeSemver(b);
   if (!left || !right) {
@@ -72,7 +72,7 @@ export function compareSemver(a: string, b: string): number | null {
   return 0;
 }
 
-export function parseReleaseTag(tagName: string | undefined): string | null {
+function parseReleaseTag(tagName: string | undefined): string | null {
   if (!tagName || typeof tagName !== "string") {
     return null;
   }
@@ -80,7 +80,7 @@ export function parseReleaseTag(tagName: string | undefined): string | null {
   return normalizeSemver(version) ? version : null;
 }
 
-export function pickDmgDownloadUrl(assets: GithubReleaseAsset[] | undefined): string | null {
+function pickDmgDownloadUrl(assets: GithubReleaseAsset[] | undefined): string | null {
   if (!Array.isArray(assets)) {
     return null;
   }
@@ -95,7 +95,7 @@ export function pickDmgDownloadUrl(assets: GithubReleaseAsset[] | undefined): st
   return chosen?.browser_download_url ?? null;
 }
 
-export function parseGithubRelease(payload: unknown): {
+function parseGithubRelease(payload: unknown): {
   latestVersion: string;
   releaseUrl: string;
   downloadUrl: string | null;
@@ -135,7 +135,7 @@ function failureResult(currentVersion: string, error: UpdateCheckError): UpdateC
   };
 }
 
-export function resolveCurrentVersion(): string {
+function resolveCurrentVersion(): string {
   const fromElectron = app.getVersion().trim();
   const parsedElectron = parseReleaseTag(fromElectron);
   if (parsedElectron) {

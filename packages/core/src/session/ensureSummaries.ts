@@ -5,7 +5,6 @@ import { DigestProgressCallback, sessionProgressRef } from "../report/progress";
 import { DEFAULT_CATALOG_OUTPUT_LANGUAGE } from "../i18n/outputLanguage";
 import { createReportProgressText } from "../report/progressI18n";
 import {
-  llmConfigFromSettings,
   sessionSummaryLlmConfigFromSettings
 } from "../llm/fromSettings";
 import { LlmRuntimeConfig } from "../llm/types";

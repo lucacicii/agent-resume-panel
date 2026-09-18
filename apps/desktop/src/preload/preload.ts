@@ -2,30 +2,18 @@ import { clipboard, contextBridge, ipcRenderer } from "electron";
 import type { UpdateCheckResult } from "../main/updateCheck";
 import type {
   AgentSession,
-  AgentChatMessage,
-  AgentThread,
-  AgentNoteAuditEvent,
-  AgentChatResult,
-  AgentStreamEvent,
-  DigestProgressEvent,
-  DigestGenerationEstimate,
   ReportEntry,
-  ReportLinkRow,
-  ReportSearchHit,
-  PeriodInsights,
   NoteIndexProgressEvent,
   PanelSettings,
-  DailyDigestRefreshCheck,
-  RunDailyDigestResult,
-  RunMonthlyDigestResult,
-  RunWeeklyDigestResult,
   AgentSessionSyncResult,
   AgentToolDescriptor,
   SkillDescriptor,
-  GtdEvidence,
   GtdStatus,
+  TaskGtdRollup,
   WorkbenchSessionFolder,
-  WorkbenchSessionFolderAssignment
+  WorkbenchSessionFolderAssignment,
+  TaskWorkbench,
+  TaskWorkbenchSessionLink
 } from "@agent-resume/core";
 import type { McpClientInfo } from "../main/mcpRegistration";
 import type {
@@ -48,7 +36,6 @@ import type {
   LinkGraphAnalyzeResult,
   LinkGraphProgressEvent
 } from "../shared/linkGraphTypes";
-import type { WorkbenchArrowDirection } from "../shared/workbenchShortcuts";
 import type {
   WorkbenchActiveSessionDot,
   WorkbenchFocusSessionRequest,
@@ -83,6 +70,15 @@ import type {
   BrowserSessionState
 } from "../shared/browserTypes";
 
+/** Reusable GTD task template stored in `desktop.db`. */
+export type TaskTemplate = {
+  templateId: string;
+  title: string;
+  projectPaths: string[];
+  createdAtMs: number;
+  updatedAtMs: number;
+};
+
 export interface DesktopApi {
   getPanelHome(): Promise<string>;
   getSettings(): Promise<PanelSettings>;
@@ -109,7 +105,8 @@ export interface DesktopApi {
   saveSettings(
     settings: PanelSettings,
     options?: { triggerSync?: boolean; section?: string }
-  ): Promise<{ file: string; settings: PanelSettings; schedulerEnabled?: boolean; sync?: AgentSessionSyncResult }>;
+  ): Promise<{ file: string; settings: PanelSettings; sync?: AgentSessionSyncResult }>;
+  pickDirectory(args?: { title?: string }): Promise<{ ok: true; path: string } | { ok: false; canceled: true }>;
   /** Probe a provider's model (text/embedding) using current Providers form values (Save not required). */
   providersTestConnection(args: {
     kind: ProviderTestKind;
@@ -119,8 +116,6 @@ export interface DesktopApi {
   /** Fetch the model list of a provider using current Providers form values. */
   providersFetchModels(args: { baseUrl: string; apiKey?: string }): Promise<ProviderFetchModelsResult>;
   openSettingsWindow(options?: { pane?: string }): Promise<void>;
-  closeSettingsWindow(): Promise<{ ok: boolean }>;
-  onOpenSessions(callback: () => void): () => void;
   /** Open an existing note in a standalone floating window (same surface as ⌘/Ctrl+D). */
   standaloneNoteOpen(args: {
     noteId: string;
@@ -137,6 +132,29 @@ export interface DesktopApi {
   standaloneNoteClose(): Promise<{ ok: boolean }>;
   standaloneNoteCloseReady(args: { ok: boolean }): Promise<{ ok: boolean }>;
   onStandaloneNoteCloseRequested(callback: () => void): () => void;
+  /**
+   * Open the window that hosts one task workbench, or focus it when it is
+   * already open. One workbenchId maps to one window (and one workbench copy).
+   */
+  taskWindowOpen(args: {
+    noteId: string;
+    workbenchId: string;
+    title?: string;
+    x?: number;
+    y?: number;
+  }): Promise<{ ok: true; created: boolean } | { ok: false; reason: "limit"; limit: number }>;
+  /** Open workbench windows, for board badges and tray menus. */
+  taskWindowList(): Promise<Array<{ workbenchId: string; noteId: string; title: string }>>;
+  onTaskWindowsChanged(callback: (windows: Array<{ workbenchId: string; noteId: string; title: string }>) => void): () => void;
+  taskWindowFocus(args: { workbenchId: string }): Promise<{ ok: boolean }>;
+  taskWindowGetState(): Promise<{ workbenchId: string; noteId: string; title: string }>;
+  taskWindowSetTitle(args: { title: string }): Promise<{ ok: boolean }>;
+  taskWindowClose(): Promise<{ ok: boolean }>;
+  /** The host refused to open another workbench window (cap reached). */
+  onTaskWindowLimit(callback: (payload: { limit: number }) => void): () => void;
+  /** The host asked this window to close; answer with `taskWindowCloseReady`. */
+  onTaskWindowCloseRequested(callback: () => void): () => void;
+  taskWindowCloseReady(args: { ok: boolean }): Promise<{ ok: boolean }>;
   browserCreate(args: {
     projectPath: string;
     startUrl?: string;
@@ -197,22 +215,21 @@ export interface DesktopApi {
     projectId?: string;
     gtdStatus?: GtdStatus;
     keys?: Array<{ provider: string; id: string }>;
+    unassignedOnly?: boolean;
   }): Promise<{
     sessions: AgentSession[];
     total: number;
     nextCursor?: { updatedAt: number; provider: string; id: string };
   }>;
+  clearSessionLastExitWaiting(args: { provider: string; id: string }): Promise<{ ok: boolean }>;
   listSessionGtdStatuses(): Promise<Record<string, GtdStatus>>;
+  listTaskGtdRollups(): Promise<Record<string, TaskGtdRollup>>;
+  taskGtdRollup(args: { noteId: string }): Promise<TaskGtdRollup>;
   setSessionGtdStatus(args: {
     provider: string;
     id: string;
     status: GtdStatus | null;
   }): Promise<{ ok: boolean }>;
-  listSessionsInRange(args: {
-    fromMs: number;
-    toMs: number;
-    limit?: number;
-  }): Promise<AgentSession[]>;
   previewSession(args: {
     provider: string;
     id: string;
@@ -256,11 +273,6 @@ export interface DesktopApi {
     nativeRenamed: boolean;
     nativeError?: string;
   }>;
-  setSessionStatus(args: {
-    provider: string;
-    id: string;
-    status: "completed" | "active" | "blocked";
-  }): Promise<{ summary: string }>;
   hideSession(args: { provider: string; id: string }): Promise<{ ok: boolean }>;
   hideSessions(args: { sessions: Array<{ provider: string; id: string }> }): Promise<{ ok: boolean }>;
   moveSessionToProject(args: {
@@ -349,6 +361,7 @@ export interface DesktopApi {
     executionMode: "standard" | "note-yolo";
     useSystemTerminalOnly?: boolean;
     noteId?: string;
+    taskNoteId?: string;
     initialPrompt?: string;
   }): Promise<{
     mode: string;
@@ -358,6 +371,8 @@ export interface DesktopApi {
     copied?: boolean;
     unsupportedYolo?: boolean;
     warning?: string;
+    /** MCP session identity env for embedded terminals (agent-resume service). */
+    env?: Record<string, string>;
   }>;
   listWorkbenchSessionFolders(args: { projectId: string }): Promise<{
     folders: WorkbenchSessionFolder[];
@@ -367,6 +382,19 @@ export interface DesktopApi {
     folders: WorkbenchSessionFolder[];
     assignments: WorkbenchSessionFolderAssignment[];
   }>>;
+  /** Task workbenches (GTD task → N workbenches). Desktop-private. */
+  listTaskWorkbenches(args: { taskNoteId: string }): Promise<TaskWorkbench[]>;
+  listAllTaskWorkbenches(): Promise<TaskWorkbench[]>;
+  ensureTaskWorkbench(args: { taskNoteId: string; name?: string; projectPath?: string | null }): Promise<TaskWorkbench>;
+  createTaskWorkbench(args: { taskNoteId: string; name?: string; projectPath?: string | null }): Promise<TaskWorkbench>;
+  renameTaskWorkbench(args: { workbenchId: string; name: string }): Promise<TaskWorkbench>;
+  setTaskWorkbenchProject(args: { workbenchId: string; projectPath: string | null }): Promise<TaskWorkbench>;
+  setTaskWorkbenchLayout(args: { workbenchId: string; layoutJson: string | null }): Promise<{ ok: boolean }>;
+  reorderTaskWorkbenches(args: { taskNoteId: string; orderedIds: string[] }): Promise<{ ok: boolean }>;
+  deleteTaskWorkbench(args: { workbenchId: string }): Promise<{ ok: boolean }>;
+  listTaskWorkbenchSessionLinks(args: { workbenchId: string }): Promise<TaskWorkbenchSessionLink[]>;
+  assignSessionToTaskWorkbench(args: { workbenchId: string; provider: string; agentSessionId: string }): Promise<TaskWorkbenchSessionLink>;
+  removeSessionFromTaskWorkbench(args: { workbenchId: string; provider: string; agentSessionId: string }): Promise<{ ok: boolean }>;
   createWorkbenchSessionFolder(args: {
     projectId: string;
     parentId?: string | null;
@@ -519,6 +547,7 @@ export interface DesktopApi {
   onAcpStream(callback: (event: Record<string, unknown>) => void): () => void;
   imListProjects(): Promise<ImProject[]>;
   imCreateProject(args: { name?: string; localPath?: string }): Promise<ImProject>;
+  imCreateTaskRoom(args: { noteId: string; preferredCwd?: string }): Promise<ImRoom>;
   imRenameProject(args: { projectId: string; name: string }): Promise<ImProject>;
   imAutoRenameProject(args: { projectId: string }): Promise<ImProject>;
   imDeleteProject(args: { projectId: string }): Promise<{ ok: boolean }>;
@@ -605,13 +634,24 @@ export interface DesktopApi {
     rows?: number;
     /** Session the pane belongs to, when the renderer already knows it. */
     sessionKey?: string;
+    /** Workbench the pane belongs to, so a reopened workbench can find it again. */
+    workbenchId?: string;
+    /** Extra env for the agent process (allowlisted `AGENT_RESUME_*` keys only). */
+    env?: Record<string, string>;
   }): Promise<{ id: number; count?: number; softLimit?: number; warnSoftLimit?: boolean }>;
   terminalAttach(args: { id: number }): Promise<{ ok: boolean; replay: string }>;
   terminalDetach(args: { id: number }): Promise<{ ok: boolean }>;
   terminalInput(args: { id: number; data: string }): Promise<{ ok: boolean }>;
   terminalResize(args: { id: number; cols: number; rows: number }): Promise<{ ok: boolean }>;
-  /** Bind the session identity a pane belongs to (status attribution). */
-  terminalBindSession(args: { id: number; sessionKey?: string; cwd?: string }): Promise<{ ok: boolean }>;
+  /** Bind the session and workbench a pane belongs to (status + restore). */
+  terminalBindSession(args: {
+    id: number;
+    sessionKey?: string;
+    cwd?: string;
+    workbenchId?: string;
+  }): Promise<{ ok: boolean }>;
+  /** Panes of one workbench that are still running, for re-attaching after a reopen. */
+  terminalListForWorkbench(args: { workbenchId: string }): Promise<Array<{ id: number; cwd: string; cols: number; rows: number }>>;
   terminalDestroy(args: { id: number }): Promise<{ ok: boolean }>;
   workbenchComposerSendAppend(args: {
     paneKey: string;
@@ -663,6 +703,12 @@ export interface DesktopApi {
     acp: {
       count: number;
       liveCount: number;
+    };
+    /** Open workbench windows, their cap, and how long each took to open. */
+    windows: {
+      count: number;
+      limit: number;
+      timings: Array<{ workbenchId: string; loadMs: number | null; showMs: number | null }>;
     };
   }>;
   terminalGitInfo(args: {
@@ -839,13 +885,13 @@ export interface DesktopApi {
   }): Promise<{
     entries: Array<{ name: string; path: string; isDirectory: boolean }>;
   }>;
-  workbenchListFiles(args: { rootPath: string }): Promise<{
+  workbenchListFiles(args: { rootPaths: string[] }): Promise<{
     files: Array<{ path: string; relativePath: string; kind: "file" | "directory" }>;
     truncated: boolean;
     engine: "rg" | "node";
   }>;
   workbenchListFilesCancel(): Promise<{ ok: boolean }>;
-  workbenchSearchPaths(args: { rootPath: string; query: string }): Promise<{
+  workbenchSearchPaths(args: { rootPaths: string[]; query: string }): Promise<{
     files: Array<{ path: string; relativePath: string; kind: "file" | "directory" }>;
     truncated: boolean;
     engine: "rg" | "node";
@@ -862,7 +908,7 @@ export interface DesktopApi {
     }>;
     failures: Array<{ sourcePath: string; message: string }>;
   }>;
-  workbenchSetFileWatch(args: { rootPath: string | null }): Promise<{ rootPath: string | null }>;
+  workbenchSetFileWatch(args: { rootPaths: string[] | null }): Promise<{ rootPaths: string[] }>;
   onWorkbenchFileSystemChanged(callback: (event: WorkbenchFileSystemChangedEvent) => void): () => void;
   workbenchListScripts(args: {
     rootPath: string;
@@ -932,7 +978,7 @@ export interface DesktopApi {
     targetPath: string;
   }): Promise<{ ok: boolean }>;
   workbenchSearchText(args: {
-    rootPath: string;
+    rootPaths: string[];
     query: string;
     matchCase?: boolean;
     wholeWord?: boolean;
@@ -1067,44 +1113,15 @@ export interface DesktopApi {
   onTerminalExit(callback: (payload: { id: number }) => void): () => void;
   onTerminalRespawned(callback: (payload: { id: number }) => void): () => void;
   setWorkbenchActive(active: boolean): void;
-  /** Notify main when the floating note has DOM focus so workbench shortcuts (⌘+Arrow) are suppressed. */
-  setFloatingNoteFocused(focused: boolean): void;
-  /** Notify main when any modal dialog (aria-modal) is open so workbench shortcuts (⌘+Arrow) are suppressed. */
-  setModalOpen(open: boolean): void;
   onWorkbenchCmdT(callback: () => void): () => void;
   onWorkbenchCmdW(callback: () => void): () => void;
-  onWorkbenchCmdArrow(callback: (direction: WorkbenchArrowDirection) => void): () => void;
   /** Quick Open (⌘P / Ctrl+P). */
   onWorkbenchCmdP(callback: () => void): () => void;
   /** Command Palette (⌘⇧P / Ctrl+Shift+P). */
   onWorkbenchCmdShiftP(callback: () => void): () => void;
   /** Find in Files (⌘⇧F / Ctrl+Shift+F). */
   onWorkbenchCmdShiftF(callback: () => void): () => void;
-  listReports(opts?: {
-    level?: string;
-    limit?: number;
-    fromMs?: number;
-    toMs?: number;
-  }): Promise<ReportEntry[]>;
-  getPeriodInsights(args: { fromMs: number; toMs: number }): Promise<PeriodInsights | null>;
   getReportEntry(reportId: string): Promise<ReportEntry | null>;
-  getReportLinks(reportId: string): Promise<ReportLinkRow[]>;
-  listDailyDigests(limit?: number): Promise<ReportEntry[]>;
-  previewDigestRun(args: { level: "daily" | "weekly" | "monthly"; periodKey?: string }): Promise<DigestGenerationEstimate>;
-  runDailyDigest(
-    dateOrOpts?: string | { date?: string; forceResummarize?: boolean; allowOverBudget?: boolean }
-  ): Promise<RunDailyDigestResult>;
-  needsDailyDigestRefresh(date?: string): Promise<DailyDigestRefreshCheck>;
-  needsWeeklyDigestRefresh(weekKey?: string): Promise<DailyDigestRefreshCheck>;
-  needsMonthlyDigestRefresh(monthKey?: string): Promise<DailyDigestRefreshCheck>;
-  runWeeklyDigest(args?: string | { weekKey?: string; allowOverBudget?: boolean }): Promise<RunWeeklyDigestResult>;
-  runMonthlyDigest(args?: string | { monthKey?: string; allowOverBudget?: boolean }): Promise<RunMonthlyDigestResult>;
-  onDigestProgress(callback: (event: DigestProgressEvent) => void): () => void;
-  searchReports(args: {
-    query: string;
-    level?: string;
-    limit?: number;
-  }): Promise<ReportSearchHit[]>;
   /** Static catalog of chat tools and discovered skills/mcp tools. */
   listAgentTools(args?: { projectPath?: string }): Promise<AgentToolDescriptor[]>;
   /** Discover available skills for workspace / user. */
@@ -1112,76 +1129,6 @@ export interface DesktopApi {
   /** Read full content of a SKILL.md. */
   readSkill(args: { location: string }): Promise<string>;
   onNotesIndexProgress(callback: (event: NoteIndexProgressEvent) => void): () => void;
-  previewReportGtdSync(args?: {
-    ensureDigests?: boolean;
-    reportIds?: string[];
-  }): Promise<{
-    previewId: string;
-    proposals: Array<{
-      provider: string;
-      sessionId: string;
-      title: string;
-      projectPath: string;
-      previousGtd: string | null;
-      proposedGtd: string;
-      reason: string;
-      tasks: string[];
-      sourceReportIds: string[];
-      evidence?: GtdEvidence;
-      todolistPreview: string;
-    }>;
-    skipped: string[];
-    warnings: string[];
-    ensureDigest?: { ran: boolean; jobKey?: string };
-  }>;
-  applyReportGtdSync(args: {
-    items: Array<{
-      provider: string;
-      sessionId: string;
-      gtd: string;
-      reason: string;
-      tasks: string[];
-      sourceReportIds: string[];
-      title?: string;
-      projectPath?: string;
-      previousGtd?: string | null;
-      todolistMarkdown?: string;
-    }>;
-  }): Promise<{
-    applied: Array<{
-      provider: string;
-      sessionId: string;
-      previousStatus: string | null;
-      newStatus: string;
-      reason: string;
-      todolistPath?: string;
-      title?: string;
-    }>;
-    failed: Array<{ key: string; error: string }>;
-    jobKey: string;
-  }>;
-  previewBackfillDigests(args?: {
-    maxDays?: number;
-    skipExisting?: boolean;
-    minSessionsPerDay?: number;
-  }): Promise<{
-    days: string[];
-    weeks: string[];
-    months: string[];
-    sessionRowsScanned: number;
-    estimatedLlmCalls: number;
-  }>;
-  backfillDigests(args?: {
-    maxDays?: number;
-    skipExisting?: boolean;
-    skipEmbedding?: boolean;
-    minSessionsPerDay?: number;
-  }): Promise<{
-    daily: { planned: string[]; ok: string[]; skipped: string[]; failed: Array<{ key: string; error: string }> };
-    weekly: { planned: string[]; ok: string[]; skipped: string[]; failed: Array<{ key: string; error: string }> };
-    monthly: { planned: string[]; ok: string[]; skipped: string[]; failed: Array<{ key: string; error: string }> };
-    sessionRowsScanned: number;
-  }>;
   usageSummary(args?: { days?: number }): Promise<{
     days: number;
     totalTokens: number;
@@ -1264,8 +1211,80 @@ export interface DesktopApi {
       createdAtMs: number;
       updatedAtMs: number;
       fsMtimeMs?: number;
+      /** Present only on tasks (`work: true`). */
+      work?: {
+        next?: string;
+        decision?: string;
+        sessions?: string[];
+        projects?: string[];
+        primaryProject?: string;
+      };
     }>
   >;
+  notesListTasks(): Promise<
+    Array<{
+      noteId: string;
+      scope: string;
+      projectPath?: string;
+      filename: string;
+      relDir: string;
+      relMdPath: string;
+      title?: string;
+      contentPreview?: string;
+      gtdStatus?: GtdStatus;
+      createdAtMs: number;
+      updatedAtMs: number;
+      fsMtimeMs?: number;
+      work: {
+        next?: string;
+        decision?: string;
+        sessions?: string[];
+        projects?: string[];
+        primaryProject?: string;
+      };
+    }>
+  >;
+  notesCreateTask(args: {
+    title?: string;
+    next?: string;
+    decision?: string;
+    sessions?: string[];
+    projects?: string[];
+    primaryProject?: string;
+    /** Initial GTD column; defaults to `inbox` when omitted. */
+    status?: GtdStatus;
+  }): Promise<{
+    noteId: string;
+    scope: string;
+    projectPath?: string;
+    filename: string;
+    relMdPath: string;
+    title?: string;
+    createdAtMs: number;
+    updatedAtMs: number;
+    gtdStatus?: GtdStatus;
+    work?: { next?: string; decision?: string; sessions?: string[]; projects?: string[]; primaryProject?: string };
+  }>;
+  /** Rename a task's name (front-matter title + heading). */
+  notesRenameTask(args: { noteId: string; title: string }): Promise<{
+    noteId: string;
+    title?: string;
+    updatedAtMs: number;
+  }>;
+  taskTemplatesList(): Promise<Array<TaskTemplate>>;
+  taskTemplatesCreate(args: { title: string; projectPaths?: string[] }): Promise<TaskTemplate>;
+  taskTemplatesUpdate(args: { templateId: string; title: string; projectPaths?: string[] }): Promise<TaskTemplate>;
+  taskTemplatesDelete(args: { templateId: string }): Promise<{ ok: boolean }>;
+  notesLinkSessionToTask(args: { noteId: string; sessionKey: string; projectPath?: string }): Promise<{ noteId: string }>;
+  notesListTaskSessionLinks(): Promise<Array<{ noteId: string; title?: string; provider: string; sessionId: string }>>;
+  /** Allocate/refresh a task's neutral workspace; returns its directory. */
+  notesEnsureTaskWorkspace(args: { noteId: string }): Promise<{ dir: string }>;
+  /** The neutral workspace directory and whether it exists; never creates it. */
+  notesTaskWorkspace(args: { noteId: string }): Promise<{ dir: string; exists: boolean }>;
+  /** Open the neutral workspace in the system file manager. */
+  notesOpenTaskWorkspace(args: { noteId: string }): Promise<{ ok: boolean }>;
+  notesAddTaskProject(args: { noteId: string; projectPath: string }): Promise<{ noteId: string }>;
+  notesRemoveTaskProject(args: { noteId: string; projectPath: string }): Promise<{ noteId: string }>;
   notesListRoot(): Promise<
     Array<{
       noteId: string;
@@ -1282,6 +1301,14 @@ export interface DesktopApi {
       createdAtMs: number;
       updatedAtMs: number;
       fsMtimeMs?: number;
+      /** Present only on tasks (`work: true`). */
+      work?: {
+        next?: string;
+        decision?: string;
+        sessions?: string[];
+        projects?: string[];
+        primaryProject?: string;
+      };
     }>
   >;
   notesListLinks(): Promise<Array<{ parentNoteId: string; childNoteId: string; createdAtMs: number }>>;
@@ -1341,6 +1368,14 @@ export interface DesktopApi {
       createdAtMs: number;
       updatedAtMs: number;
       fsMtimeMs?: number;
+      /** Present only on tasks (`work: true`). */
+      work?: {
+        next?: string;
+        decision?: string;
+        sessions?: string[];
+        projects?: string[];
+        primaryProject?: string;
+      };
     };
     content: string;
   }>;
@@ -1357,25 +1392,16 @@ export interface DesktopApi {
     initialPrompt?: string;
   }): Promise<{ ok: boolean; error?: string; command?: string; cwd?: string; mode?: string; external?: boolean }>;
   notesCreate(args: {
-    scope: "library" | "project" | "session";
+    scope: "library" | "session";
     projectPath?: string;
     provider?: string;
     sessionId?: string;
     body?: string;
   }): Promise<{ noteId: string; filename: string }>;
-  notesMove(args: {
-    noteId: string;
-    owner: {
-      scope: "library" | "project" | "session";
-      projectPath?: string;
-      provider?: string;
-      sessionId?: string;
-    };
-  }): Promise<{ noteId: string; filename: string; scope: string }>;
   notesDelete(args: { noteId: string }): Promise<{ ok: boolean; deletedNoteIds: string[] }>;
   notesRename(args: { noteId: string; filename: string }): Promise<{ noteId: string; filename: string }>;
   notesImport(owner: {
-    scope: "library" | "project" | "session";
+    scope: "library" | "session";
     projectPath?: string;
     provider?: string;
     sessionId?: string;
@@ -1479,10 +1505,10 @@ const api: DesktopApi = {
   removeMcpClient: (args) => ipcRenderer.invoke("mcp:remove", args),
   registerAllMcpClients: (args) => ipcRenderer.invoke("mcp:registerAll", args),
   saveSettings: (settings, options) => ipcRenderer.invoke("settings:save", settings, options),
+  pickDirectory: (args) => ipcRenderer.invoke("dialog:pickDirectory", args),
   providersTestConnection: (args) => ipcRenderer.invoke("providers:testConnection", args),
   providersFetchModels: (args) => ipcRenderer.invoke("providers:fetchModels", args),
   openSettingsWindow: (options) => ipcRenderer.invoke("settings:openWindow", options),
-  closeSettingsWindow: () => ipcRenderer.invoke("settings:closeWindow"),
   standaloneNoteOpen: (args) => ipcRenderer.invoke("standalone-note:open", args),
   standaloneNoteList: () => ipcRenderer.invoke("standalone-note:list"),
   onStandaloneNotesChanged: (callback) => {
@@ -1499,6 +1525,31 @@ const api: DesktopApi = {
     ipcRenderer.on("standalone-note:requestClose", handler);
     return () => ipcRenderer.removeListener("standalone-note:requestClose", handler);
   },
+  taskWindowOpen: (args) => ipcRenderer.invoke("task-window:open", args),
+  taskWindowList: () => ipcRenderer.invoke("task-window:list"),
+  onTaskWindowsChanged: (callback) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      windows: Array<{ workbenchId: string; noteId: string; title: string }>
+    ) => callback(windows);
+    ipcRenderer.on("task-window:changed", handler);
+    return () => ipcRenderer.removeListener("task-window:changed", handler);
+  },
+  taskWindowFocus: (args) => ipcRenderer.invoke("task-window:focus", args),
+  taskWindowGetState: () => ipcRenderer.invoke("task-window:getState"),
+  taskWindowSetTitle: (args) => ipcRenderer.invoke("task-window:setTitle", args),
+  taskWindowClose: () => ipcRenderer.invoke("task-window:close"),
+  onTaskWindowLimit: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: { limit: number }) => callback(payload);
+    ipcRenderer.on("task-window:limit", handler);
+    return () => ipcRenderer.removeListener("task-window:limit", handler);
+  },
+  onTaskWindowCloseRequested: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on("task-window:requestClose", handler);
+    return () => ipcRenderer.removeListener("task-window:requestClose", handler);
+  },
+  taskWindowCloseReady: (args) => ipcRenderer.invoke("task-window:closeReady", args),
   browserCreate: (args) => ipcRenderer.invoke("browser:create", args),
   browserDestroy: (args) => ipcRenderer.invoke("browser:destroy", args),
   browserList: () => ipcRenderer.invoke("browser:list"),
@@ -1527,11 +1578,6 @@ const api: DesktopApi = {
     ipcRenderer.on("settings:navigate", handler);
     return () => ipcRenderer.removeListener("settings:navigate", handler);
   },
-  onOpenSessions: (callback) => {
-    const handler = () => callback();
-    ipcRenderer.on("sessions:open", handler);
-    return () => ipcRenderer.removeListener("sessions:open", handler);
-  },
   onSettingsChanged: (callback) => {
     const handler = (
       _event: Electron.IpcRendererEvent,
@@ -1555,15 +1601,16 @@ const api: DesktopApi = {
     return () => ipcRenderer.removeListener("sessions:syncFailed", handler);
   },
   querySessionsPage: (args) => ipcRenderer.invoke("sessions:queryPage", args),
+  clearSessionLastExitWaiting: (args) => ipcRenderer.invoke("sessions:clearLastExitWaiting", args),
   listSessionGtdStatuses: () => ipcRenderer.invoke("gtd:listSessionStatuses"),
+  listTaskGtdRollups: () => ipcRenderer.invoke("gtd:listTaskRollups"),
+  taskGtdRollup: (args) => ipcRenderer.invoke("gtd:taskRollup", args),
   setSessionGtdStatus: (args) => ipcRenderer.invoke("gtd:setSessionStatus", args),
-  listSessionsInRange: (args) => ipcRenderer.invoke("sessions:listInRange", args),
   previewSession: (args) => ipcRenderer.invoke("sessions:preview", args),
   summarizeSession: (args) => ipcRenderer.invoke("sessions:summarize", args),
   autoRenameSession: (args) => ipcRenderer.invoke("sessions:autoRename", args),
   suggestSessionRename: (args) => ipcRenderer.invoke("sessions:suggestRename", args),
   renameSession: (args) => ipcRenderer.invoke("sessions:rename", args),
-  setSessionStatus: (args) => ipcRenderer.invoke("sessions:setStatus", args),
   hideSession: (args) => ipcRenderer.invoke("sessions:hide", args),
   hideSessions: (args) => ipcRenderer.invoke("sessions:hideMany", args),
   moveSessionToProject: (args) => ipcRenderer.invoke("sessions:moveToProject", args),
@@ -1634,6 +1681,18 @@ const api: DesktopApi = {
   deleteWorkbenchSessionFolder: (args) => ipcRenderer.invoke("workbench:deleteSessionFolder", args),
   assignWorkbenchSessionToFolder: (args) => ipcRenderer.invoke("workbench:assignSessionToFolder", args),
   removeWorkbenchSessionFromFolder: (args) => ipcRenderer.invoke("workbench:removeSessionFromFolder", args),
+  listTaskWorkbenches: (args) => ipcRenderer.invoke("taskWorkbenches:list", args),
+  listAllTaskWorkbenches: () => ipcRenderer.invoke("taskWorkbenches:listAll"),
+  ensureTaskWorkbench: (args) => ipcRenderer.invoke("taskWorkbenches:ensure", args),
+  createTaskWorkbench: (args) => ipcRenderer.invoke("taskWorkbenches:create", args),
+  renameTaskWorkbench: (args) => ipcRenderer.invoke("taskWorkbenches:rename", args),
+  setTaskWorkbenchProject: (args) => ipcRenderer.invoke("taskWorkbenches:setProject", args),
+  setTaskWorkbenchLayout: (args) => ipcRenderer.invoke("taskWorkbenches:setLayout", args),
+  reorderTaskWorkbenches: (args) => ipcRenderer.invoke("taskWorkbenches:reorder", args),
+  deleteTaskWorkbench: (args) => ipcRenderer.invoke("taskWorkbenches:delete", args),
+  listTaskWorkbenchSessionLinks: (args) => ipcRenderer.invoke("taskWorkbenches:listSessionLinks", args),
+  assignSessionToTaskWorkbench: (args) => ipcRenderer.invoke("taskWorkbenches:assignSession", args),
+  removeSessionFromTaskWorkbench: (args) => ipcRenderer.invoke("taskWorkbenches:removeSession", args),
   acpListSessions: (args) => ipcRenderer.invoke("acp:listSessions", args),
   acpCreateSession: (args) => ipcRenderer.invoke("acp:createSession", args),
   acpGetSession: (args) => ipcRenderer.invoke("acp:getSession", args),
@@ -1657,6 +1716,7 @@ const api: DesktopApi = {
   },
   imListProjects: () => ipcRenderer.invoke("im:listProjects"),
   imCreateProject: (args) => ipcRenderer.invoke("im:createProject", args),
+  imCreateTaskRoom: (args) => ipcRenderer.invoke("im:createTaskRoom", args),
   imRenameProject: (args) => ipcRenderer.invoke("im:renameProject", args),
   imAutoRenameProject: (args) => ipcRenderer.invoke("im:autoRenameProject", args),
   imDeleteProject: (args) => ipcRenderer.invoke("im:deleteProject", args),
@@ -1703,6 +1763,7 @@ const api: DesktopApi = {
   terminalInput: (args) => ipcRenderer.invoke("terminal:input", args),
   terminalResize: (args) => ipcRenderer.invoke("terminal:resize", args),
   terminalBindSession: (args) => ipcRenderer.invoke("terminal:bindSession", args),
+  terminalListForWorkbench: (args) => ipcRenderer.invoke("terminal:listForWorkbench", args),
   terminalDestroy: (args) => ipcRenderer.invoke("terminal:destroy", args),
   workbenchComposerSendAppend: (args) => ipcRenderer.invoke("workbench:composerSendAppend", args),
   workbenchComposerSendList: (args) => ipcRenderer.invoke("workbench:composerSendList", args),
@@ -1801,8 +1862,6 @@ const api: DesktopApi = {
     return () => ipcRenderer.removeListener("terminal:respawned", handler);
   },
   setWorkbenchActive: (active) => ipcRenderer.send("workbench:setActive", active),
-  setFloatingNoteFocused: (focused) => ipcRenderer.send("workbench:setFloatingNoteFocused", focused),
-  setModalOpen: (open) => ipcRenderer.send("workbench:setModalOpen", open),
   onWorkbenchCmdT: (callback) => {
     const handler = () => callback();
     ipcRenderer.on("workbench:cmdT", handler);
@@ -1812,11 +1871,6 @@ const api: DesktopApi = {
     const handler = () => callback();
     ipcRenderer.on("workbench:cmdW", handler);
     return () => ipcRenderer.removeListener("workbench:cmdW", handler);
-  },
-  onWorkbenchCmdArrow: (callback) => {
-    const handler = (_event: Electron.IpcRendererEvent, direction: WorkbenchArrowDirection) => callback(direction);
-    ipcRenderer.on("workbench:cmdArrow", handler);
-    return () => ipcRenderer.removeListener("workbench:cmdArrow", handler);
   },
   onWorkbenchCmdP: (callback) => {
     const handler = () => callback();
@@ -1833,33 +1887,7 @@ const api: DesktopApi = {
     ipcRenderer.on("workbench:cmdShiftF", handler);
     return () => ipcRenderer.removeListener("workbench:cmdShiftF", handler);
   },
-  listReports: (opts) => ipcRenderer.invoke("report:list", opts),
-  getPeriodInsights: (args) => ipcRenderer.invoke("report:getPeriodInsights", args),
   getReportEntry: (reportId) => ipcRenderer.invoke("report:getEntry", reportId),
-  getReportLinks: (reportId) => ipcRenderer.invoke("report:getLinks", reportId),
-  listDailyDigests: (limit) => ipcRenderer.invoke("report:listDaily", limit),
-  previewDigestRun: (args) => ipcRenderer.invoke("report:previewRun", args),
-  runDailyDigest: (dateOrOpts) => {
-    if (typeof dateOrOpts === "string" || dateOrOpts === undefined) {
-      return ipcRenderer.invoke("report:runDaily", { date: dateOrOpts });
-    }
-    return ipcRenderer.invoke("report:runDaily", dateOrOpts);
-  },
-  needsDailyDigestRefresh: (date) => ipcRenderer.invoke("report:needsDailyRefresh", date),
-  needsWeeklyDigestRefresh: (weekKey) => ipcRenderer.invoke("report:needsWeeklyRefresh", weekKey),
-  needsMonthlyDigestRefresh: (monthKey) => ipcRenderer.invoke("report:needsMonthlyRefresh", monthKey),
-  runWeeklyDigest: (args) => ipcRenderer.invoke("report:runWeekly", args),
-  runMonthlyDigest: (args) => ipcRenderer.invoke("report:runMonthly", args),
-  onDigestProgress: (callback) => {
-    const handler = (_event: Electron.IpcRendererEvent, progress: DigestProgressEvent) => {
-      callback(progress);
-    };
-    ipcRenderer.on("report:digestProgress", handler);
-    return () => {
-      ipcRenderer.removeListener("report:digestProgress", handler);
-    };
-  },
-  searchReports: (args) => ipcRenderer.invoke("report:search", args),
   listAgentTools: (args) => ipcRenderer.invoke("agent:listTools", args),
   listSkills: (args) => ipcRenderer.invoke("skills:list", args),
   readSkill: (args) => ipcRenderer.invoke("skills:read", args),
@@ -1872,10 +1900,6 @@ const api: DesktopApi = {
       ipcRenderer.removeListener("notes:indexProgress", handler);
     };
   },
-  previewReportGtdSync: (args) => ipcRenderer.invoke("workflow:previewReportGtdSync", args),
-  applyReportGtdSync: (args) => ipcRenderer.invoke("workflow:applyReportGtdSync", args),
-  previewBackfillDigests: (args) => ipcRenderer.invoke("workflow:previewBackfillDigests", args),
-  backfillDigests: (args) => ipcRenderer.invoke("workflow:backfillDigests", args),
   usageSummary: (args) => ipcRenderer.invoke("usage:summary", args),
   usageListEvents: (args) => ipcRenderer.invoke("usage:listEvents", args),
   usageListScheduleRuns: (args) => ipcRenderer.invoke("usage:listScheduleRuns", args),
@@ -1883,6 +1907,19 @@ const api: DesktopApi = {
   logsClear: () => ipcRenderer.invoke("logs:clear"),
   logsOpenDir: () => ipcRenderer.invoke("logs:openDir"),
   notesList: () => ipcRenderer.invoke("notes:list"),
+  notesListTasks: () => ipcRenderer.invoke("notes:listTasks"),
+  taskTemplatesList: () => ipcRenderer.invoke("taskTemplates:list"),
+  taskTemplatesCreate: (args) => ipcRenderer.invoke("taskTemplates:create", args),
+  taskTemplatesUpdate: (args) => ipcRenderer.invoke("taskTemplates:update", args),
+  taskTemplatesDelete: (args) => ipcRenderer.invoke("taskTemplates:delete", args),
+  notesCreateTask: (args) => ipcRenderer.invoke("notes:createTask", args),
+  notesLinkSessionToTask: (args) => ipcRenderer.invoke("notes:linkSessionToTask", args),
+  notesListTaskSessionLinks: () => ipcRenderer.invoke("notes:listTaskSessionLinks"),
+  notesEnsureTaskWorkspace: (args) => ipcRenderer.invoke("notes:ensureTaskWorkspace", args),
+  notesTaskWorkspace: (args) => ipcRenderer.invoke("notes:taskWorkspace", args),
+  notesOpenTaskWorkspace: (args) => ipcRenderer.invoke("notes:openTaskWorkspace", args),
+  notesAddTaskProject: (args) => ipcRenderer.invoke("notes:addTaskProject", args),
+  notesRemoveTaskProject: (args) => ipcRenderer.invoke("notes:removeTaskProject", args),
   notesListRoot: () => ipcRenderer.invoke("notes:listRoot"),
   notesListLinks: () => ipcRenderer.invoke("notes:listLinks"),
   notesListLinkedChildIds: () => ipcRenderer.invoke("notes:listLinkedChildIds"),
@@ -1897,9 +1934,9 @@ const api: DesktopApi = {
   notesWrite: (args) => ipcRenderer.invoke("notes:write", args),
   notesResumeSession: (args) => ipcRenderer.invoke("notes:resumeSession", args),
   notesCreate: (args) => ipcRenderer.invoke("notes:create", args),
-  notesMove: (args) => ipcRenderer.invoke("notes:move", args),
   notesDelete: (args) => ipcRenderer.invoke("notes:delete", args),
   notesRename: (args) => ipcRenderer.invoke("notes:rename", args),
+  notesRenameTask: (args) => ipcRenderer.invoke("notes:renameTask", args),
   notesImport: (owner) => ipcRenderer.invoke("notes:import", owner),
   notesClipboardHasImage: () => !clipboard.readImage().isEmpty(),
   clipboardWriteText: (text) => {

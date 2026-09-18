@@ -10,18 +10,21 @@ Languages: [English](#english) | [简体中文](#简体中文)
 
 ### What it is
 
-**Workbench** is Desktop’s **session OS** surface: pick or create sessions, resume in an **embedded xterm** or the **system default terminal**, and use **Git / explorer** tools in a side panel. It is the primary place to *continue working*, while [Sessions](sessions.md) is a lighter reference list.
+**Workbench** is Desktop’s **session OS** surface: pick a **task**, open its **sessions**, resume in an **embedded xterm** or the **system default terminal**, and use **Git / explorer** tools against that task’s local folders. It is the primary place to *continue working*, while [Sessions](sessions.md) is a lighter reference list.
+
+Every task workbench lives in **its own window**. The main window is the **GTD board** (plus settings), and clicking a task card — or a workbench chip on it — opens or focuses that workbench’s window. One workbench is one window: its panes, terminals and Git state belong to it, and reopening a task re-attaches the terminals it had instead of starting new agents.
 
 ### Core flows
 
-1. Open the **Workbench** tab.  
-2. Use **Quick Access** to choose a project when you need to switch context; browse the complete session list and create a new session if needed (default agent: **Settings → Workbench → New Session**).  
-3. Resume CLI sessions in the **embedded terminal** (multi-tab) or **external** terminal.  
-4. If the default target is an **ACP · …** agent, **New session** opens a **visual chat pane** in the same tab strip (Agent Client Protocol; Claude Code, Codex, Grok Build, OpenCode, Pi).  
-5. Use the detail header for project path and **branch** controls; watch the **status bar** for live **cwd** and **git branch** (including nested repos when detected).  
-6. Open **Search** or **Scripts** from the detail toolbar, or expand scripts under **Explorer**; click the status bar branch to switch branches when Git IPC is available.  
-7. In **Git**, select specific changed files before commit when you do not want to commit everything; open a changed file to inspect an inline diff and search within it. **Auto generate** uses `<repo>/.arp/config.json` `workbench.git.commitMessage` when present, otherwise **Settings → Workbench** commit-message style.
-8. In **Explorer**, right-click a file to inspect its Git history across local and remote-tracking branches, including commits before renames. Right-click a folder to discard Git changes under that directory, or use context menus on changed files to open them or copy absolute / relative paths. Open editors watch the workspace and report external changes, conflicts, and deleted files.
+1. Click a task on the **GTD board**. Its workbench window opens on that task’s sessions (a task with several workbenches opens the one you used last).  
+2. Select a task to see only its sessions. With no task selected, the middle pane lists all sessions.  
+3. Attach a local folder with **Add folder** (macOS folder picker). Click a folder chip to make it the active root for Explorer / Git / Search / Scripts. A task can reference several folders; with none or several, new sessions start in the task’s shared workspace, whose `AGENTS.md` / `CLAUDE.md` carry the address table (where each folder lives) and the note’s background knowledge. Right-click the task to open that folder once a session has created it. With a single folder, the session starts directly in that repository and the same address table and knowledge are appended to the agent’s system prompt (Codex, Claude, Pi, Prime) — nothing is written into the repository.  
+4. Resume CLI sessions in the **embedded terminal** (multi-tab) or **external** terminal. If [workspace mentions](workspace-mentions.md) are configured, the new-session picker can open a pack’s work folder and inject reference paths into the first prompt. `arpm go <id>` does the same from any terminal.  
+5. If the default target is an **ACP · …** agent, **New session** opens a **visual chat pane** in the same tab strip (Agent Client Protocol; Claude Code, Codex, Grok Build, OpenCode, Pi).  
+6. Use the detail header for the active folder path and **branch** controls; watch the **status bar** for live **cwd** and **git branch** (including nested repos when detected).  
+7. Open **Search** or **Scripts** from the detail toolbar, or expand scripts under **Explorer**; click the status bar branch to switch branches when Git IPC is available.  
+8. In **Git**, select specific changed files before commit when you do not want to commit everything; open a changed file to inspect an inline diff and search within it. **Auto generate** uses `<repo>/.arp/config.json` `workbench.git.commitMessage` when present, otherwise **Settings → Workbench** commit-message style.
+9. In **Explorer**, right-click a file to inspect its Git history across local and remote-tracking branches, including commits before renames. Right-click a folder to discard Git changes under that directory, or use context menus on changed files to open them or copy absolute / relative paths. Open editors watch the workspace and report external changes, conflicts, and deleted files.
 
 ### Side panel
 
@@ -52,10 +55,13 @@ Choose an **ACP · …** default agent in **Settings → Workbench → New Sessi
 
 ### Keyboard & defaults
 
+- **⌘P / Ctrl+P** and **⌘⇧P / Ctrl+Shift+P** open **Quick Access** / the **command palette** inside a workbench window: files in the task's folders, open or exit a task, start sessions and terminals, open side panels. Type `>` to filter commands.  
+  In the **board window** the same keys open the board palette: start a task, jump into any task's window, or open settings.
 - **⌘⇧F / Ctrl+Shift+F** opens **Find in Files** (the Search side panel).  
 - **⌘T** can be configured for **new session** or **new terminal** under Workbench settings.  
 - **⌘← / ⌘→** switch to the previous / next tab within the current group.  
 - **⌘↑ / ⌘↓** switch between the **session**, **terminal**, and **code** groups, skipping empty groups. When the selected tab is a terminal session, focus moves to its TUI input.
+- **⌘W** closes the active pane in a workbench window; with no pane left it closes that window, after saving its unsaved editor buffers. Closing a workbench window keeps its agents running — the panes come back when you open the task again.  
 - Default agent for new sessions is set in **Settings → Workbench**.
 
 ### Tips
@@ -69,7 +75,7 @@ Choose an **ACP · …** default agent in **Settings → Workbench → New Sessi
 
 ### Related
 
-- [Sessions](sessions.md) · [Report](report.md) · [Settings & data](settings-and-data.md)  
+- [Sessions](sessions.md) · [Report](report.md) · [Settings & data](settings-and-data.md) · [Workspace mentions](workspace-mentions.md)  
 - Extension resume targets (Ghostty, IDE panels): [Extension Resume](../panel/resume-and-targets.md)
 
 ---
@@ -78,18 +84,21 @@ Choose an **ACP · …** default agent in **Settings → Workbench → New Sessi
 
 ### 是什么
 
-**Workbench** 是 Desktop 的 **Session OS** 工作台：选择或新建会话，在 **内嵌 xterm** 或 **系统默认终端** 中恢复，并使用侧边栏 **Git / 资源管理器**。这里是 *继续干活* 的主战场；[Sessions](sessions.md) 更偏参考列表。
+**Workbench** 是 Desktop 的 **Session OS** 工作台：选一个 **任务**，打开它的 **session**，在 **内嵌 xterm** 或 **系统默认终端** 中恢复，并用 **Git / 资源管理器** 操作该任务的本地目录。这里是 *继续干活* 的主战场；[Sessions](sessions.md) 更偏参考列表。
+
+每个任务的 Workbench 都在**自己的窗口**里。主窗口是 **GTD 看板**（加设置），点任务卡片或卡片上的 workbench 芯片就会打开或聚焦该 workbench 的窗口。一个 workbench 一个窗口：它的 pane、终端、Git 状态都属于它；重新打开任务会**接管原来还在跑的终端**，而不是另起一套 agent。
 
 ### 核心流程
 
-1. 打开 **Workbench** 页签。  
-2. 使用 **Quick Access** 快速切换项目；浏览完整会话列表，需要时新建会话（默认 Agent：**Settings → Workbench → New Session**）。  
-3. CLI 会话用 **内嵌终端**（多标签）或 **外部终端** 恢复。  
-4. 若默认目标为 **ACP · …** Agent，**新建会话**会在同一标签栏打开 **可视化聊天**（Agent Client Protocol；支持 Claude Code、Codex、Grok Build、OpenCode、Pi）。  
-5. 在详情头查看项目路径与 **分支** 控件；在 **状态栏** 查看实时 **cwd** 与 **git 分支**（可识别嵌套仓库）。  
-6. 从详情工具栏打开 **Search** 或 **Scripts**，也可在 **Explorer** 下展开脚本区；Git IPC 可用时可点击状态栏分支切换分支。  
-7. 在 **Git** 中可先勾选变更文件再提交，不必一次提交全部改动；打开变更文件可查看内联 diff 并在其中查找。**自动生成**优先使用仓库 `<repo>/.arp/config.json` 的 `workbench.git.commitMessage`，没有该文件时回退到 **设置 → Workbench** 的提交信息格式。
-8. 在 **Explorer** 中右键文件可查看本地分支与远程跟踪分支中的 Git 提交历史（包含文件重名前的记录）；右键目录可一键回退该目录下的 Git 改动；在 Git 变更项右键菜单中可直接打开文件或复制绝对/相对路径。打开的编辑器会监听工作区，并提示外部修改、冲突和文件删除。
+1. 在 **GTD 看板**点一个任务。它的 Workbench 窗口会打开到该任务的 session（一个任务有多个 workbench 时，打开你上次用的那个）。  
+2. 选中任务只看它的 session；未选任务时中间栏列出全部 session。  
+3. 用 **新增目录**（macOS 文件夹选择器）挂本地目录。点目录 chip 把它设为 Explorer / Git / Search / Scripts 的活动根。一个任务可挂多个目录；零个或多个时，新 session 走任务的共享 workspace，其 `AGENTS.md` / `CLAUDE.md` 内含地址表（各目录在哪）与笔记的背景知识。右键任务可在目录生成后打开它。只有单个目录时，会话直接在该仓库中启动，并通过系统提示参数注入相同的地址表与背景知识（Codex、Claude、Pi、Prime），不污染用户仓库。  
+4. CLI 会话用 **内嵌终端**（多标签）或 **外部终端** 恢复。若配置了 [工作区 Mention](workspace-mentions.md)，新建会话选择器可打开该包的工作目录并把参考路径写入首条 prompt。任意终端也可用 `arpm go <id>`。  
+5. 若默认目标为 **ACP · …** Agent，**新建会话**会在同一标签栏打开 **可视化聊天**（Agent Client Protocol；支持 Claude Code、Codex、Grok Build、OpenCode、Pi）。  
+6. 在详情头查看活动目录路径与 **分支** 控件；在 **状态栏** 查看实时 **cwd** 与 **git 分支**（可识别嵌套 git 根）。  
+7. 从详情工具栏打开 **Search** 或 **Scripts**，也可在 **Explorer** 下展开脚本区；Git IPC 可用时可点击状态栏分支切换分支。  
+8. 在 **Git** 中可先勾选变更文件再提交，不必一次提交全部改动；打开变更文件可查看内联 diff 并在其中查找。**自动生成**优先使用仓库 `<repo>/.arp/config.json` 的 `workbench.git.commitMessage`，没有该文件时回退到 **设置 → Workbench** 的提交信息格式。
+9. 在 **Explorer** 中右键文件可查看本地分支与远程跟踪分支中的 Git 提交历史（包含文件重名前的记录）；右键目录可一键回退该目录下的 Git 改动；在 Git 变更项右键菜单中可直接打开文件或复制绝对/相对路径。打开的编辑器会监听工作区，并提示外部修改、冲突和文件删除。
 
 ### 侧边栏
 
@@ -120,10 +129,14 @@ Choose an **ACP · …** default agent in **Settings → Workbench → New Sessi
 
 ### 快捷键与默认值
 
+- **⌘P / Ctrl+P** 打开 **Quick Access**，在任务关联的目录中搜索文件。  
+- **⌘P / Ctrl+P** 与 **⌘⇧P / Ctrl+Shift+P** 在 Workbench 窗口里打开 **Quick Access** / **命令面板**：任务目录下的文件、打开或退出任务、新建会话与终端、打开侧栏面板。输入 `>` 可过滤命令。  
+  在**看板窗口**里这两个键打开看板面板：新建任务、跳到任意任务的窗口、打开设置。
 - **⌘⇧F / Ctrl+Shift+F** 打开**全局查找**（Search 侧边栏）。  
 - **⌘T** 可在 Workbench 设置中配置为 **新建会话** 或 **新建终端**。  
 - **⌘← / ⌘→** 在当前组内切换到前一个 / 后一个标签。  
 - **⌘↑ / ⌘↓** 在 **session / terminal / code** 三组之间切换并跳过空组；跳转到会话终端后会自动聚焦 TUI 输入框。
+- **⌘W** 在 Workbench 窗口里关闭当前 pane；没有 pane 可关时关闭该窗口（关窗前会先保存未保存的编辑器）。关闭 Workbench 窗口不会杀掉 agent：重新打开该任务时 pane 会带回来。
 - 新建会话的默认 Agent 在 **Settings → Workbench**。
 
 ### 提示
@@ -137,5 +150,5 @@ Choose an **ACP · …** default agent in **Settings → Workbench → New Sessi
 
 ### 相关文档
 
-- [Sessions](sessions.md) · [Report](report.md) · [设置与数据](settings-and-data.md)  
+- [Sessions](sessions.md) · [Report](report.md) · [设置与数据](settings-and-data.md) · [工作区 Mention](workspace-mentions.md)  
 - 扩展恢复目标（Ghostty、IDE 面板）：[扩展恢复](../panel/resume-and-targets.md)

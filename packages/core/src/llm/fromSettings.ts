@@ -11,8 +11,6 @@ export interface PoolModelRef {
   kind: ModelKind;
 }
 
-export type PoolModelKind = ModelKind;
-
 /** Enumerate every model of the given kind across the provider pool. */
 export function listProviderModels(settings: PanelSettings, kind: ModelKind): PoolModelRef[] {
   const output: PoolModelRef[] = [];
@@ -31,7 +29,7 @@ export function listProviderModels(settings: PanelSettings, kind: ModelKind): Po
   return output;
 }
 
-export function findProvider(settings: PanelSettings, providerId?: string): AiProvider | undefined {
+function findProvider(settings: PanelSettings, providerId?: string): AiProvider | undefined {
   if (!providerId) return undefined;
   return (settings.providers ?? []).find((provider) => provider.id === providerId);
 }

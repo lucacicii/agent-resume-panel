@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { t } from "../i18n";
 
-export type ProjectMenuAction =
+type ProjectMenuAction =
   | "favorite"
   | "setProjectAlias"
   | "openProject"
@@ -18,7 +18,7 @@ export type ProjectMenuAction =
   | "openProjectNote"
   | "deleteProjectNote";
 
-export const ALL_PROJECT_MENU_ACTIONS: ProjectMenuAction[] = [
+const ALL_PROJECT_MENU_ACTIONS: ProjectMenuAction[] = [
   "favorite",
   "setProjectAlias",
   "openProject",
@@ -36,12 +36,12 @@ export const ALL_PROJECT_MENU_ACTIONS: ProjectMenuAction[] = [
   "deleteProjectNote"
 ];
 
-export const DEFAULT_MAIN_ACTIONS: ProjectMenuAction[] = ["newCodexSession", "newClaudeSession"];
+const DEFAULT_MAIN_ACTIONS: ProjectMenuAction[] = ["newCodexSession", "newClaudeSession"];
 
 const CONFIG_KEY = "projectMenu.mainActions";
 const ORDER_CONFIG_KEY = "projectMenu.itemOrder";
 
-export function getProjectMenuActionLabels(): Record<ProjectMenuAction, string> {
+function getProjectMenuActionLabels(): Record<ProjectMenuAction, string> {
   return {
     favorite: t("menu.project.favorite"),
     setProjectAlias: t("menu.project.setProjectAlias"),

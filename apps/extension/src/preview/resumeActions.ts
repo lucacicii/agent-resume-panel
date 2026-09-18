@@ -6,7 +6,7 @@ import { isCodexIdePanelResumeAvailable, openCodexIdePanelResumeFlow } from "../
 import { openInGhostty } from "../terminal/ghosttyTerminal";
 import { openCodexAppResumeTerminal, openResumeTerminal } from "../terminal/resumeTerminal";
 
-export type ResumeTarget = "vscode" | "ghostty" | "codexApp" | "codexIdePanel" | "claudePanel";
+type ResumeTarget = "vscode" | "ghostty" | "codexApp" | "codexIdePanel" | "claudePanel";
 
 interface ResumeTargetOption extends vscode.QuickPickItem {
   target: ResumeTarget;

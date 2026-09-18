@@ -17,20 +17,23 @@ import { searchNotesByEmbedding } from "../notes/search";
 import type { NoteOwner } from "../notes/paths";
 import { normalizeProjectPath } from "../pathUtils";
 import { isGtdStatus, type GtdStatus } from "../gtd/types";
+import type { McpSessionContext } from "./sessionContext";
 
 export interface NoteToolContext {
   notesStore: NotesStore;
   /** Desktop DB path for report tools; notes and links live in catalogDb. */
   dbPath: string;
   catalogDb?: string;
+  /** Identity injected by Desktop when it launched the agent (see sessionContext.ts). */
+  sessionContext?: McpSessionContext;
 }
 
-export const NOTE_SEARCH_DEFAULT_LIMIT = 50;
-export const NOTE_SEARCH_MAX_LIMIT = 200;
-export const NOTE_LIST_DEFAULT_LIMIT = 100;
-export const NOTE_LIST_MAX_LIMIT = 200;
-export const NOTE_TREE_DEFAULT_MAX_NODES = 100;
-export const NOTE_TREE_MAX_NODES = 200;
+const NOTE_SEARCH_DEFAULT_LIMIT = 50;
+const NOTE_SEARCH_MAX_LIMIT = 200;
+const NOTE_LIST_DEFAULT_LIMIT = 100;
+const NOTE_LIST_MAX_LIMIT = 200;
+const NOTE_TREE_DEFAULT_MAX_NODES = 100;
+const NOTE_TREE_MAX_NODES = 200;
 
 const providerSchema = z.enum([
   "codex",
@@ -50,7 +53,7 @@ export type NoteMcpResult = {
   isError?: boolean;
 };
 
-export function clampNoteSearchLimit(limit?: number): number {
+function clampNoteSearchLimit(limit?: number): number {
   const raw = Number(limit);
   if (!Number.isFinite(raw) || raw < 1) {
     return NOTE_SEARCH_DEFAULT_LIMIT;
@@ -58,7 +61,7 @@ export function clampNoteSearchLimit(limit?: number): number {
   return Math.min(Math.floor(raw), NOTE_SEARCH_MAX_LIMIT);
 }
 
-export function noteResponse(message: string, data: Record<string, unknown> = {}): NoteMcpResult {
+function noteResponse(message: string, data: Record<string, unknown> = {}): NoteMcpResult {
   // Keep the human-readable prefix for existing clients while making the JSON
   // payload a stable, machine-readable envelope. Data is flattened for
   // backwards compatibility with the old note_list response shape.
@@ -94,18 +97,18 @@ export async function runNoteTool(operation: () => Promise<NoteMcpResult>): Prom
   }
 }
 
-function summarizeOwner(record: NoteRecord): NoteOwner {
+function summarizeOwner(record: NoteRecord): Record<string, unknown> {
   if (record.scope === "library") {
     return { scope: "library" };
   }
   if (record.scope === "project") {
-    return { scope: "project", projectPath: record.projectPath || "" };
+    return { scope: "project", rootPath: record.projectPath || "" };
   }
   return {
     scope: "session",
-    provider: (record.provider || "") as AgentProvider,
+    provider: record.provider || "",
     sessionId: record.agentSessionId || "",
-    projectPath: record.projectPath
+    rootPath: record.projectPath
   };
 }
 
@@ -136,7 +139,7 @@ function rootFor(noteId: string, index: NoteRelationshipIndex): string {
   return current;
 }
 
-export function summarizeNote(
+function summarizeNote(
   record: NoteRecord,
   index?: NoteRelationshipIndex
 ): Record<string, unknown> {
@@ -153,7 +156,7 @@ export function summarizeNote(
     contentPreview: record.contentPreview,
     provider: record.provider,
     agentSessionId: record.agentSessionId,
-    projectPath: record.projectPath,
+    rootPath: record.projectPath,
     gtdStatus: record.gtdStatus,
     createdAtMs: record.createdAtMs,
     updatedAtMs: record.updatedAtMs,
@@ -164,6 +167,76 @@ export function summarizeNote(
       isRoot: !parentNoteId
     }
   };
+}
+
+/**
+ * Project notes are managed by the VS Code extension. The MCP server only
+ * exposes task (library) and session notes, so every id-addressed operation
+ * rejects a project-scoped record.
+ */
+function assertMcpManagedNote(record: NoteRecord): void {
+  if (record.scope === "project") {
+    throw new Error(
+      "Project notes are managed by the VS Code extension and are not available through this MCP server."
+    );
+  }
+}
+
+export type ResolvedNoteTarget =
+  | { kind: "task"; noteId: string; via: "context" | "session" }
+  | { kind: "session"; provider: string; sessionId: string; via: "context" }
+  | { kind: "unbound"; via: "none" };
+
+/**
+ * Resolve the note owner for a call that passed no explicit owner: the work
+ * item bound to the current session first, then the session itself, then no
+ * owner at all.
+ */
+export async function resolveDefaultNoteTarget(ctx: NoteToolContext): Promise<ResolvedNoteTarget> {
+  const session = ctx.sessionContext;
+  const explicitTask = session?.taskNoteId?.trim();
+  if (explicitTask) {
+    const note = await ctx.notesStore.getNote(explicitTask);
+    if (note?.work) return { kind: "task", noteId: note.noteId, via: "context" };
+  }
+  const provider = session?.provider?.trim();
+  const sessionId = session?.sessionId?.trim();
+  if (provider && sessionId) {
+    const linked = await ctx.notesStore.findTaskNoteIdForSession(provider, sessionId);
+    if (linked) return { kind: "task", noteId: linked, via: "session" };
+    return { kind: "session", provider, sessionId, via: "context" };
+  }
+  return { kind: "unbound", via: "none" };
+}
+
+interface DefaultNoteFilter {
+  noteIds?: Set<string>;
+  provider?: string;
+  sessionId?: string;
+}
+
+/** Default convergence for list/search: the session's task tree, else its session notes. */
+async function defaultNoteFilter(
+  ctx: NoteToolContext,
+  args: { scope?: string; rootPath?: string; parentNoteId?: string }
+): Promise<DefaultNoteFilter | null> {
+  if (args.scope || args.rootPath || args.parentNoteId) return null;
+  const target = await resolveDefaultNoteTarget(ctx);
+  if (target.kind === "task") {
+    const ids = await ctx.notesStore.collectNoteDescendantIds(target.noteId);
+    ids.add(target.noteId);
+    return { noteIds: ids };
+  }
+  if (target.kind === "session") {
+    return { provider: target.provider, sessionId: target.sessionId };
+  }
+  return null;
+}
+
+function matchesDefaultNoteFilter(note: NoteRecord, filter: DefaultNoteFilter | null): boolean {
+  if (!filter) return true;
+  if (filter.noteIds) return filter.noteIds.has(note.noteId);
+  return note.provider === filter.provider && note.agentSessionId === filter.sessionId;
 }
 
 async function loadRelationshipIndex(ctx: NoteToolContext): Promise<NoteRelationshipIndex> {
@@ -192,10 +265,12 @@ function noteMatchesQuery(note: NoteRecord, queryLower: string): boolean {
 
 function matchesOwnerFilters(
   note: NoteRecord,
-  args: { scope?: string; projectPath?: string; provider?: string; sessionId?: string; gtdStatus?: string }
+  args: { scope?: string; rootPath?: string; provider?: string; sessionId?: string; gtdStatus?: string }
 ): boolean {
+  // Project notes are an extension-only capability; MCP never exposes them.
+  if (note.scope === "project") return false;
   if (args.scope && args.scope !== "all" && note.scope !== args.scope) return false;
-  if (args.projectPath && note.projectPath !== normalizeProjectPath(args.projectPath)) return false;
+  if (args.rootPath && note.projectPath !== normalizeProjectPath(args.rootPath)) return false;
   if (args.provider && note.provider !== args.provider) return false;
   if (args.sessionId && note.agentSessionId !== args.sessionId) return false;
   if (args.gtdStatus && note.gtdStatus !== args.gtdStatus) return false;
@@ -205,13 +280,14 @@ function matchesOwnerFilters(
 function fallbackNoteSearch(
   notes: NoteRecord[],
   query: string,
-  args: { scope?: string; projectPath?: string; provider?: string; sessionId?: string; gtdStatus?: string },
+  args: { scope?: string; rootPath?: string; provider?: string; sessionId?: string; gtdStatus?: string },
   limit: number,
-  index: NoteRelationshipIndex
+  index: NoteRelationshipIndex,
+  filter: DefaultNoteFilter | null
 ): { summary: Record<string, unknown>[]; totalMatches: number } {
   const queryLower = query.toLowerCase();
   const matched = notes.filter(
-    (note) => matchesOwnerFilters(note, args) && noteMatchesQuery(note, queryLower)
+    (note) => matchesOwnerFilters(note, args) && matchesDefaultNoteFilter(note, filter) && noteMatchesQuery(note, queryLower)
   );
   return {
     summary: matched.slice(0, limit).map((note) => summarizeNote(note, index)),
@@ -228,32 +304,26 @@ function parseBodyForWrite(input: string, existing: string): { frontmatter: Note
 }
 
 function ownerFromArgs(args: {
-  scope: "library" | "project" | "session";
-  projectPath?: string;
+  scope: "library" | "session";
   provider?: string;
   sessionId?: string;
 }): NoteOwner {
   if (args.scope === "library") return { scope: "library" };
-  if (args.scope === "project") {
-    if (!args.projectPath?.trim()) throw new Error("projectPath is required for scope 'project'.");
-    return { scope: "project", projectPath: args.projectPath };
-  }
   if (!args.provider?.trim() || !args.sessionId?.trim()) {
     throw new Error("provider and sessionId are required for scope 'session'.");
   }
   return {
     scope: "session",
     provider: args.provider as AgentProvider,
-    sessionId: args.sessionId,
-    projectPath: args.projectPath || ""
+    sessionId: args.sessionId
   };
 }
 
 // --- Schemas ---
 
 const ownerFilters = {
-  scope: z.enum(["library", "project", "session", "all"]).optional().describe("Filter by note scope. Defaults to 'all'."),
-  projectPath: z.string().optional().describe("Filter by normalized project path."),
+  scope: z.enum(["library", "session", "all"]).optional().describe("Filter by note scope. Defaults to 'all'. Project notes are extension-only and are never returned by this MCP server."),
+  rootPath: z.string().optional().describe("Filter by normalized project/session root path."),
   provider: providerSchema.optional().describe("Filter session notes by provider."),
   sessionId: z.string().optional().describe("Filter session notes by agent session ID."),
   gtdStatus: z.enum(["inbox", "next", "waiting", "someday", "reference", "done"]).optional().describe("Filter notes by catalog GTD status.")
@@ -274,11 +344,10 @@ export const noteListSchema = {
 };
 
 export const noteCreateSchema = {
-  scope: z.enum(["library", "project", "session"]).optional().describe("Where to create the note; optional when parentNoteId is provided."),
+  scope: z.enum(["library", "session"]).optional().describe("Where to create the note; optional when parentNoteId is provided. Project notes are extension-only and cannot be created here."),
   title: z.string().min(1).max(200).describe("Note title — used as the first heading."),
   body: z.string().max(200_000).optional().describe("Markdown body content excluding the title heading."),
-  parentNoteId: z.string().min(1).optional().describe("Create as a linked child of this Project Note; owner is inferred from the parent."),
-  projectPath: z.string().optional().describe("Required for project scope; ignored only when parentNoteId supplies the owner."),
+  parentNoteId: z.string().min(1).optional().describe("Create as a linked child of a task (task); the child is library-scoped."),
   provider: providerSchema.optional().describe("Required for session scope."),
   sessionId: z.string().optional().describe("Required for session scope.")
 };
@@ -308,8 +377,8 @@ export const noteTreeReadSchema = {
 };
 
 export const noteSetParentSchema = {
-  noteId: z.string().min(1).describe("Project Note whose parent should change."),
-  parentNoteId: z.string().min(1).nullable().describe("New parent Project Note ID, or null to make the note a root.")
+  noteId: z.string().min(1).describe("Note whose parent should change."),
+  parentNoteId: z.string().min(1).nullable().describe("New parent note ID (a task / task), or null to make the note a root.")
 };
 
 export const noteSetGtdSchema = {
@@ -319,21 +388,20 @@ export const noteSetGtdSchema = {
 
 export const noteMoveSchema = {
   noteId: z.string().min(1).describe("The noteId to move."),
-  scope: z.enum(["library", "project", "session"]).describe("Destination owner scope."),
-  projectPath: z.string().optional().describe("Required for project scope."),
+  scope: z.enum(["library", "session"]).describe("Destination owner scope."),
   provider: providerSchema.optional().describe("Required for session scope."),
   sessionId: z.string().optional().describe("Required for session scope.")
 };
 
 export const noteRenameSchema = {
   noteId: z.string().min(1).describe("The noteId to rename."),
-  filename: z.string().min(1).max(200).describe("New Markdown filename. Asset directories and relative references are updated automatically.")
+  filename: z.string().min(1).max(200).describe("New name. For tasks the name lives in front-matter and the file follows it (collision-suffixed); otherwise it renames the Markdown file, updating asset directories and relative references.")
 };
 
 // --- Handlers ---
 
 export async function handleNoteSearch(
-  args: { query: string; scope?: string; projectPath?: string; provider?: string; sessionId?: string; gtdStatus?: string; limit?: number },
+  args: { query: string; scope?: string; rootPath?: string; provider?: string; sessionId?: string; gtdStatus?: string; limit?: number },
   ctx: NoteToolContext
 ): Promise<NoteMcpResult> {
   const store = ctx.notesStore;
@@ -342,13 +410,14 @@ export async function handleNoteSearch(
   if (!query) throw new Error("query is required.");
   const limit = clampNoteSearchLimit(args.limit);
   const index = await loadRelationshipIndex(ctx);
+  const filter = await defaultNoteFilter(ctx, args);
   const plan = planNoteSearchDeterministically(query);
 
   try {
     let hits = await searchNotesByEmbedding({ panelHome: store.getPanelHome(), query, limit, plan });
     hits = hits.filter((hit) => {
       const note = store.getAllNotes().find((item) => item.noteId === hit.noteId);
-      return note ? matchesOwnerFilters(note, args) : false;
+      return note ? matchesOwnerFilters(note, args) && matchesDefaultNoteFilter(note, filter) : false;
     });
     const totalMatches = hits[0]?.exactMatchTotal ?? hits.length;
     const items = hits.map((hit) => ({
@@ -372,7 +441,7 @@ export async function handleNoteSearch(
       : `No notes found matching "${query}".`;
     return noteResponse(message, { query, total: totalMatches, items });
   } catch {
-    const { summary, totalMatches } = fallbackNoteSearch(store.getAllNotes(), query, args, limit, index);
+    const { summary, totalMatches } = fallbackNoteSearch(store.getAllNotes(), query, args, limit, index, filter);
     const message = summary.length
       ? `Found ${totalMatches} note(s) matching "${query}"${totalMatches > summary.length ? `; showing first ${summary.length}` : ""}.`
       : `No notes found matching "${query}".`;
@@ -381,16 +450,17 @@ export async function handleNoteSearch(
 }
 
 export async function handleNoteList(
-  args: { scope?: string; projectPath?: string; provider?: string; sessionId?: string; gtdStatus?: string; rootOnly?: boolean; parentNoteId?: string; limit?: number; cursor?: number },
+  args: { scope?: string; rootPath?: string; provider?: string; sessionId?: string; gtdStatus?: string; rootOnly?: boolean; parentNoteId?: string; limit?: number; cursor?: number },
   ctx: NoteToolContext
 ): Promise<NoteMcpResult> {
   await ctx.notesStore.reload();
   const index = await loadRelationshipIndex(ctx);
-  const scope = args.scope || "all";
+  const filter = await defaultNoteFilter(ctx, args);
   const limit = Math.min(Math.max(args.limit || NOTE_LIST_DEFAULT_LIMIT, 1), NOTE_LIST_MAX_LIMIT);
   const cursor = Math.max(args.cursor || 0, 0);
   const notes = ctx.notesStore.getAllNotes()
     .filter((note) => matchesOwnerFilters(note, args))
+    .filter((note) => matchesDefaultNoteFilter(note, filter))
     .filter((note) => !args.rootOnly || !index.parentByChild.has(note.noteId))
     .filter((note) => !args.parentNoteId || index.parentByChild.get(note.noteId) === args.parentNoteId)
     .sort((left, right) => right.updatedAtMs - left.updatedAtMs || left.noteId.localeCompare(right.noteId));
@@ -407,24 +477,53 @@ export async function handleNoteList(
 }
 
 export async function handleNoteCreate(
-  args: { scope?: "library" | "project" | "session"; title: string; body?: string; parentNoteId?: string; projectPath?: string; provider?: string; sessionId?: string },
+  args: { scope?: "library" | "session"; title: string; body?: string; parentNoteId?: string; provider?: string; sessionId?: string },
   ctx: NoteToolContext
 ): Promise<NoteMcpResult> {
   const store = ctx.notesStore;
   const heading = `# ${args.title.trim()}`;
   const body = args.body ? `${heading}\n\n${args.body}` : heading;
   let record: NoteRecord;
+  let resolvedVia: string;
   if (args.parentNoteId) {
-    if (args.scope && args.scope !== "project") throw new Error("parentNoteId can only be used with project scope.");
-    if (args.projectPath || args.provider || args.sessionId) throw new Error("Do not provide owner fields when parentNoteId is set.");
+    if (args.scope && args.scope !== "library") {
+      throw new Error("parentNoteId can only be used with a library (task) parent note.");
+    }
+    if (args.provider || args.sessionId) throw new Error("Do not provide owner fields when parentNoteId is set.");
+    const parent = await store.getNote(args.parentNoteId);
+    if (!parent) throw new Error(`Parent note not found: ${args.parentNoteId}.`);
+    if (!parent.work) throw new Error("Linked children can only be created under a task (task).");
     record = await store.createLinkedChildNote(args.parentNoteId, body);
-  } else {
-    if (!args.scope) throw new Error("scope is required unless parentNoteId is provided.");
-    const owner = ownerFromArgs(args as { scope: "library" | "project" | "session"; projectPath?: string; provider?: string; sessionId?: string });
+    resolvedVia = "explicit";
+  } else if (args.scope) {
+    const owner = ownerFromArgs({ scope: args.scope, provider: args.provider, sessionId: args.sessionId });
     record = await store.createNote(owner, body);
+    resolvedVia = "explicit";
+  } else {
+    if (args.provider || args.sessionId) {
+      throw new Error("scope is required when provider or sessionId is provided.");
+    }
+    // No explicit owner: task bound to this session, else the session,
+    // else no owner at all (see resolveDefaultNoteTarget).
+    const target = await resolveDefaultNoteTarget(ctx);
+    if (target.kind === "task") {
+      record = await store.createLinkedChildNote(target.noteId, body);
+    } else if (target.kind === "session") {
+      record = await store.createNote(
+        { scope: "session", provider: target.provider as AgentProvider, sessionId: target.sessionId },
+        body
+      );
+    } else {
+      record = await store.createLibraryNote(body);
+    }
+    resolvedVia = target.via;
   }
   const index = await loadRelationshipIndex(ctx);
-  return noteResponse("Note created successfully.", { note: summarizeNote(record, index), noteId: record.noteId });
+  return noteResponse("Note created successfully.", {
+    note: summarizeNote(record, index),
+    noteId: record.noteId,
+    resolvedVia
+  });
 }
 
 export async function handleNoteRead(
@@ -434,6 +533,7 @@ export async function handleNoteRead(
   const store = ctx.notesStore;
   const record = await store.getNote(args.noteId);
   if (!record) throw new Error(`Note not found: ${args.noteId}`);
+  assertMcpManagedNote(record);
   const content = await store.readNoteContent(args.noteId);
   const doc = parseNoteDocument(content);
   const maxLength = args.maxLength || 5000;
@@ -458,6 +558,7 @@ export async function handleNoteWrite(
   const store = ctx.notesStore;
   const before = await store.getNote(args.noteId);
   if (!before) throw new Error(`Note not found: ${args.noteId}`);
+  assertMcpManagedNote(before);
   const existing = await store.readNoteContent(args.noteId);
   const next = parseBodyForWrite(args.content, existing);
   const record = await store.writeNoteContent(args.noteId, buildNoteDocument(next.frontmatter, next.body));
@@ -472,6 +573,7 @@ export async function handleNoteAppend(
   const store = ctx.notesStore;
   const before = await store.getNote(args.noteId);
   if (!before) throw new Error(`Note not found: ${args.noteId}`);
+  assertMcpManagedNote(before);
   const existing = await store.readNoteContent(args.noteId);
   const doc = parseNoteDocument(existing);
   const body = `${doc.body.trimEnd()}\n\n${args.content.trim()}\n`;
@@ -487,6 +589,7 @@ export async function handleNoteDelete(
   const store = ctx.notesStore;
   const before = await store.getNote(args.noteId);
   if (!before) throw new Error(`Note not found: ${args.noteId}`);
+  assertMcpManagedNote(before);
   let links: NoteLink[] = [];
   try {
     links = await listAllNoteLinks(ctx.catalogDb || ctx.dbPath);
@@ -508,6 +611,7 @@ export async function handleNoteTreeRead(
   await store.reload();
   const current = await store.getNote(args.noteId);
   if (!current) throw new Error(`Note not found: ${args.noteId}`);
+  assertMcpManagedNote(current);
   const rootNoteId = await store.resolveNoteLinkRoot(args.noteId);
   const subtree = await store.getNoteSubtree(rootNoteId);
   const index = await loadRelationshipIndex(ctx);
@@ -547,6 +651,7 @@ export async function handleNoteSetGtd(
   const store = ctx.notesStore;
   const before = await store.getNote(args.noteId);
   if (!before) throw new Error(`Note not found: ${args.noteId}`);
+  assertMcpManagedNote(before);
   if (args.status !== null && !isGtdStatus(args.status)) {
     throw new Error(`Invalid GTD status: ${String(args.status)}`);
   }
@@ -567,6 +672,7 @@ export async function handleNoteSetParent(
   const store = ctx.notesStore;
   const record = await store.getNote(args.noteId);
   if (!record) throw new Error(`Note not found: ${args.noteId}`);
+  assertMcpManagedNote(record);
   await store.setNoteParent(args.noteId, args.parentNoteId);
   const index = await loadRelationshipIndex(ctx);
   const updated = await store.getNote(args.noteId);
@@ -578,20 +684,19 @@ export async function handleNoteSetParent(
 }
 
 export async function handleNoteMove(
-  args: { noteId: string; scope: "library" | "project" | "session"; projectPath?: string; provider?: string; sessionId?: string },
+  args: { noteId: string; scope: "library" | "session"; provider?: string; sessionId?: string },
   ctx: NoteToolContext
 ): Promise<NoteMcpResult> {
   const store = ctx.notesStore;
   const before = await store.getNote(args.noteId);
   if (!before) throw new Error(`Note not found: ${args.noteId}`);
+  assertMcpManagedNote(before);
   const owner = ownerFromArgs(args);
   const record = await store.moveNote(args.noteId, owner);
-  if (args.scope !== "project") {
-    try {
-      await deleteLinksForNote(ctx.catalogDb || ctx.dbPath, args.noteId);
-    } catch {
-      // A legacy context may not have a catalog DB path; move itself succeeded.
-    }
+  try {
+    await deleteLinksForNote(ctx.catalogDb || ctx.dbPath, args.noteId);
+  } catch {
+    // A legacy context may not have a catalog DB path; move itself succeeded.
   }
   await store.reload();
   const updated = await store.getNote(args.noteId);
@@ -599,7 +704,7 @@ export async function handleNoteMove(
   return noteResponse("Note moved successfully.", {
     note: updated ? summarizeNote(updated, index) : summarizeNote(record, index),
     noteId: args.noteId,
-    detachedFromTree: args.scope !== "project"
+    detachedFromTree: true
   });
 }
 
@@ -607,6 +712,9 @@ export async function handleNoteRename(
   args: { noteId: string; filename: string },
   ctx: NoteToolContext
 ): Promise<NoteMcpResult> {
+  const before = await ctx.notesStore.getNote(args.noteId);
+  if (!before) throw new Error(`Note not found: ${args.noteId}`);
+  assertMcpManagedNote(before);
   const record = await ctx.notesStore.renameNote(args.noteId, args.filename);
   const index = await loadRelationshipIndex(ctx);
   return noteResponse("Note renamed successfully.", { note: summarizeNote(record, index), noteId: record.noteId });

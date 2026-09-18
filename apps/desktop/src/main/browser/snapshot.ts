@@ -1,6 +1,6 @@
 import type { WebContents } from "electron";
 
-export type SnapshotNode = {
+type SnapshotNode = {
   ref: string;
   role: string;
   name?: string;

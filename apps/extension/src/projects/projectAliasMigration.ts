@@ -3,7 +3,7 @@ import { ensureCatalogSchema } from "../catalog/db";
 import { upsertProjectAliasesBatch } from "../catalog/projects";
 import { normalizeProjectPath } from "./projectAliases";
 
-export const LEGACY_PROJECT_ALIASES_STORAGE_KEY = "agentResume.projectAliases";
+const LEGACY_PROJECT_ALIASES_STORAGE_KEY = "agentResume.projectAliases";
 const MIGRATION_FLAG = "agentResume.projectAliasesMigratedToCatalog";
 
 export async function migrateProjectAliasesToCatalog(

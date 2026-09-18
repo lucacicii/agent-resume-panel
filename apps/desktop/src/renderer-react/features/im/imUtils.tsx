@@ -1,4 +1,4 @@
-import { type CSSProperties, type JSX } from "react";
+import { type JSX } from "react";
 import type { ImJob, ImMember } from "../../../shared/imTypes";
 
 export type Translate = (key: string, ...args: Array<string | number>) => string;
@@ -16,7 +16,7 @@ export const MAX_IMAGES = 4;
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 export const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 
-export const BUILTIN_ROLE_KEYS: Record<string, "productManager" | "architect" | "projectManager" | "uiDesigner" | "developer" | "tester" | "memory"> = {
+const BUILTIN_ROLE_KEYS: Record<string, "productManager" | "architect" | "projectManager" | "uiDesigner" | "developer" | "tester" | "memory"> = {
   role_product_manager: "productManager",
   product_manager: "productManager",
   productManager: "productManager",
@@ -50,7 +50,7 @@ export const BUILTIN_ROLE_KEYS: Record<string, "productManager" | "architect" | 
   archivist: "memory"
 };
 
-export const BUILTIN_ROLE_COLORS: Record<string, string> = {
+const BUILTIN_ROLE_COLORS: Record<string, string> = {
   role_product_manager: "hsl(265 70% 58%)",
   product_manager: "hsl(265 70% 58%)",
   productManager: "hsl(265 70% 58%)",
@@ -94,7 +94,7 @@ export function storageBoolean(key: string, fallback = false): boolean {
 }
 
 /** A `#` path token under the text cursor, e.g. `{ start: 0, query: "src/comp" }`. */
-export interface ImHashToken {
+interface ImHashToken {
   start: number;
   query: string;
 }
@@ -206,13 +206,13 @@ export function formatTime(millis: number): string {
   return new Date(millis).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 }
 
-export const ACTIVE_JOB_STATUSES = ["queued", "connecting", "running", "awaiting_user"] as const;
+const ACTIVE_JOB_STATUSES = ["queued", "connecting", "running", "awaiting_user"] as const;
 
 export function isActiveJobStatus(status: string): boolean {
   return (ACTIVE_JOB_STATUSES as readonly string[]).includes(status);
 }
 
-export function isInterruptedJobStatus(status: string): boolean {
+function isInterruptedJobStatus(status: string): boolean {
   return status === "cancelled" || status === "failed";
 }
 

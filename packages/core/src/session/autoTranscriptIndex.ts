@@ -3,7 +3,7 @@ import type { AgentSession } from "../catalog/types";
 import { embeddingConfigFromSettings } from "../llm/fromSettings";
 import type { PanelSettings, SessionTranscriptIndexSettings } from "../settings/types";
 import { DEFAULT_SETTINGS } from "../settings/types";
-import { escapeSqlLiteral, runSqliteJson } from "../sqlite";
+import { runSqliteJson } from "../sqlite";
 import { clampInt } from "./autoSummary";
 import {
   indexSessionTranscript,
@@ -189,17 +189,3 @@ export async function runAutoTranscriptIndex(
   return { candidates, results, indexed, skipped, failed };
 }
 
-/** Test helper: delete index meta for a session key without wiping other tables. */
-export async function hasTranscriptIndexRow(
-  desktopDb: string,
-  provider: string,
-  sessionId: string
-): Promise<boolean> {
-  const rows = await runSqliteJson<{ n: number }>(
-    desktopDb,
-    `SELECT COUNT(*) AS n FROM session_transcript_index
-     WHERE provider = '${escapeSqlLiteral(provider)}'
-       AND agent_session_id = '${escapeSqlLiteral(sessionId)}';`
-  );
-  return Number(rows[0]?.n) > 0;
-}

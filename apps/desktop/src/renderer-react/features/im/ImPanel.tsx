@@ -1,17 +1,16 @@
 import { ThemeIcon } from "../../components/ThemeIcon";
 import { VariableVirtualList, type VariableVirtualListHandle } from "../../components/VariableVirtualList";
-import { renderMarkdown } from "../../components/Markdown";
 import { ImMessageItem } from "./ImMessageItem";
 import { ImComposer } from "./ImComposer";
 import { ImChatAvatar } from "./ImChatAvatar";
 import { useImProjectTools } from "./ImProjectTools";
 import { computeTranscriptGraph } from "./imTranscriptGraphModel";
 import { createPortal } from "react-dom";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type JSX, type MouseEvent as ReactMouseEvent, type ReactPortal, type UIEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type JSX, type MouseEvent as ReactMouseEvent, type ReactPortal, type UIEvent } from "react";
 import type { AgentCitation, AgentToolDescriptor } from "@agent-resume/core";
 import { type AskToolPrefs } from "../../components/ToolSettingsPopover";
 import { Sheet } from "../../components/Sheet";
-import { CitationSheet, extractCitationsFromMessage, isNote, isSession, periodFromCitation } from "./CitationSheet";
+import { CitationSheet, extractCitationsFromMessage, isNote, isSession } from "./CitationSheet";
 import { desktopApi } from "../../bridge";
 import { SelectionActionItems } from "../../selection/SelectionActionItems";
 import {
@@ -24,7 +23,6 @@ import { storedWidth } from "../../storage";
 import {
   IM_AGENTS,
   IM_SUGGESTED_THOUGHT_LEVELS,
-  isBuiltinTemplateId,
   isProjectRoleTemplateId,
   isSuggestedThoughtLevel,
   type ImAgent,
@@ -44,10 +42,7 @@ import {
   agentTag,
   basename,
   builtinRoleLabel,
-  formatDay,
-  formatTime,
   isActiveJobStatus,
-  isResumableJob,
   isScratchPath,
   roleColor,
   roleInitial,
@@ -99,11 +94,12 @@ function estimateTranscriptItemSize(item: TranscriptItem): number {
   return Math.min(720, 88 + Math.max(lines, wrapped) * 18);
 }
 
-
-export function ImPanel(): ReactPortal | null {
+export function ImPanel({ embedded = false, onCloseRoom }: { embedded?: boolean; onCloseRoom?: () => void } = {}): ReactPortal | JSX.Element | null {
   const host = document.getElementById("react-im");
   const { t } = useI18n();
   const [active, setActive] = useState(false);
+  // Embedded (task channel) mode is always "on"; the tab gate is skipped.
+  useEffect(() => { if (embedded) setActive(true); }, [embedded]);
   const [projects, setProjects] = useState<ImProject[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>(() => {
     try { return localStorage.getItem(SELECTED_PROJECT_KEY) || ""; } catch { return ""; }
@@ -277,6 +273,19 @@ export function ImPanel(): ReactPortal | null {
     return () => window.removeEventListener("agent-resume:tab-change", onTab);
   }, [loadProjects]);
 
+  // Open a room requested by another surface (e.g. a task on the board).
+  useEffect(() => {
+    const onOpenRoom = (event: Event) => {
+      const detail = (event as CustomEvent<{ projectId?: string }>).detail;
+      if (!detail?.projectId) return;
+      setActive(true);
+      selectProject(detail.projectId);
+      void loadProjects();
+    };
+    window.addEventListener("agent-resume:im-open-room", onOpenRoom);
+    return () => window.removeEventListener("agent-resume:im-open-room", onOpenRoom);
+  }, [loadProjects, selectProject]);
+
   useEffect(() => {
     if (!active || !selectedProjectId) {
       if (!selectedProjectId) setRoom(null);
@@ -413,12 +422,6 @@ export function ImPanel(): ReactPortal | null {
     setHasNewBelow(false);
   }, [transcriptItems.length]);
 
-  const scrollToTop = useCallback(() => {
-    if (!transcriptItems.length) return;
-    setPinnedToBottom(false);
-    transcriptVirtualizerRef.current?.scrollToIndex(0, { align: "start", behavior: "smooth" });
-  }, [transcriptItems.length]);
-
   const jumpToMessage = useCallback((messageId: string) => {
     setCustomExpandedMessages((prev) => ({ ...prev, [messageId]: true }));
     const index = messageIndexById.get(messageId);
@@ -482,14 +485,6 @@ export function ImPanel(): ReactPortal | null {
 
   const onTranscriptVisibleRange = useCallback((_startIndex: number, _endIndex: number) => {
     // Range track for virtual list
-  }, []);
-
-  const insertIntoComposer = useCallback((text: string) => {
-    setDraft((current) => {
-      const base = current.trim();
-      return base ? `${base}\n${text}` : text;
-    });
-    textareaRef.current?.focus();
   }, []);
 
   const activeJob = useMemo(() => {
@@ -1179,37 +1174,22 @@ export function ImPanel(): ReactPortal | null {
   const handleOpenCitation = useCallback((citation: AgentCitation) => {
     if (isNote(citation)) {
       if (citation.noteId) {
-        window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "notes" }));
+        window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
         window.dispatchEvent(new CustomEvent("agent-resume:open-note", { detail: citation.noteId }));
-      } else {
-        window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "notes" }));
-      }
-      return;
-    }
-    if (isSession(citation)) {
-      const session = citation.session;
-      if (session?.provider && session.id) {
-        window.dispatchEvent(
-          new CustomEvent("agent-resume:sessions-preview", {
-            detail: {
-              provider: session.provider,
-              id: session.id,
-              title: citation.title || session.id,
-              projectPath: session.projectPath || "",
-              updatedAt: citation.periodStartMs || Date.now()
-            }
-          })
-        );
       } else {
         window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
       }
       return;
     }
-    const period = periodFromCitation(citation);
-    if (period) {
-      window.dispatchEvent(new CustomEvent("agent-resume:report-focus", { detail: period }));
+    if (isSession(citation)) {
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "workbench" }));
+      const session = citation.session;
+      if (session?.provider && session.id) {
+        window.dispatchEvent(new CustomEvent("agent-resume:workbench-open-session", { detail: session }));
+      }
+      return;
     }
-    window.dispatchEvent(new CustomEvent("agent-resume:tab-request", { detail: "report" }));
+    // Digest citations stay in the citation sheet; there is no in-app Archive tab.
   }, []);
 
   const handleResumeCitationSession = useCallback(async (citation: AgentCitation) => {
@@ -1230,7 +1210,7 @@ export function ImPanel(): ReactPortal | null {
     }
   }, [setError, t]);
 
-  if (!host) return null;
+  if (!host && !embedded) return null;
   const headerSlot = document.getElementById("app-header-slot");
   const toolbar = (
     <div className="im-toolbar">
@@ -1256,9 +1236,9 @@ export function ImPanel(): ReactPortal | null {
     </div>
   );
 
-  return createPortal(
-    <section className="react-im-panel panel" hidden={!active} aria-label={t("desktop.im.title")}>
-      {active && headerSlot ? createPortal(toolbar, headerSlot) : null}
+  const panel = (
+    <section className={`react-im-panel panel${embedded ? " is-embedded" : ""}`} hidden={embedded ? false : !active} aria-label={t("desktop.im.title")}>
+      {!embedded && active && headerSlot ? createPortal(toolbar, headerSlot) : null}
       <div className="im-split">
         <aside
           className={`sidebar-folders-pane im-folders-pane${sidebarCollapsed ? " is-collapsed" : ""}`}
@@ -1379,31 +1359,44 @@ export function ImPanel(): ReactPortal | null {
         <div className="im-main">
           {room ? (
             <>
-              <div className="im-room-head">
+              <div className={`im-room-head${embedded ? " is-embedded" : ""}`}>
                 <div className="im-room-head-info">
                   <ImChatAvatar
                     roles={members.map((m) => ({ templateId: m.templateId, name: memberLabel(m) }))}
                     size={34}
                     onClick={() => setMembersDrawerOpen(true)}
                   />
-                  <div className="im-room-head-titles">
-                    <h2>{room.project.name}</h2>
-                    <p className="im-room-path">
-                      <span>{room.project.localPath || t("desktop.im.tempFolder")}</span>
-                      <button
-                        type="button"
-                        className="im-room-path-btn"
-                        onClick={() => void associateFolder()}
-                        title={t("desktop.im.associateFolder")}
-                        aria-label={t("desktop.im.associateFolder")}
-                      >
-                        <ThemeIcon name="folder" size={13} aria-hidden="true" />
-                      </button>
-                    </p>
-                  </div>
+                  {!embedded && (
+                    <div className="im-room-head-titles">
+                      <h2>{room.project.name}</h2>
+                      <p className="im-room-path">
+                        <span>{room.project.localPath || t("desktop.im.tempFolder")}</span>
+                        <button
+                          type="button"
+                          className="im-room-path-btn"
+                          onClick={() => void associateFolder()}
+                          title={t("desktop.im.associateFolder")}
+                          aria-label={t("desktop.im.associateFolder")}
+                        >
+                          <ThemeIcon name="folder" size={13} aria-hidden="true" />
+                        </button>
+                      </p>
+                    </div>
+                  )}
                 </div>
                 <div className="im-room-head-actions">
                   {projectTools.toolbar}
+                  {embedded && onCloseRoom ? (
+                    <button
+                      type="button"
+                      className="im-room-close"
+                      onClick={onCloseRoom}
+                      aria-label={t("desktop.workbench.closeRoom")}
+                      title={t("desktop.workbench.closeRoom")}
+                    >
+                      <ThemeIcon name="close" size={14} aria-hidden="true" />
+                    </button>
+                  ) : null}
                 </div>
               </div>
               <div className="im-transcript-wrap">
@@ -2053,7 +2046,7 @@ export function ImPanel(): ReactPortal | null {
           document.body
         );
       })()}
-    </section>,
-    host
+    </section>
   );
+  return embedded || !host ? panel : createPortal(panel, host);
 }

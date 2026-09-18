@@ -9,39 +9,31 @@ import {
   discoverSkills,
   readSkillContent,
   skillToToolDescriptor,
-  clearReportJobsByStatus,
   autoRenameSessionAction,
   suggestSessionRenameAction,
-  backfillReportDigests,
   buildNewSessionCommand,
   buildResumeCommand,
   supportsNewSessionYoloMode,
+  MCP_SESSION_ENV,
   type NewSessionExecutionMode,
   updateNativeSessionCwd,
   effectivePanelHome,
-  desktopDbPath,
-  estimateDigestRun,
   expandHome,
+  listTaskGtdRollups,
+  resolveTaskGtdRollup,
   getReportEntryById,
-  getPeriodInsights,
   getSessionById,
   getUsageSummary,
   appendComposerSend,
   listComposerSends,
-  listSessionsMissingComposerImport,
   importComposerSendsForSession,
   hideSessionAction,
   hideProjectAction,
   listLlmUsageEvents,
   listProjects,
-  setSessionDeliveryStatusInCatalog,
-  listReportEntries,
-  listReportEntriesInRange,
-  listReportLinks,
   listScheduleRuns,
   countSessions,
   querySessionsPage,
-  listSessionsInRange,
   unhideAllSessionsInCatalog,
   unhideSessionInCatalog,
   unhideAllProjectsInCatalog,
@@ -70,37 +62,40 @@ import {
   assignWorkbenchSessionToFolder,
   removeWorkbenchSessionFromFolder,
   mergeWorkbenchSessionFolders,
+  listTaskWorkbenches,
+  listAllTaskWorkbenches,
+  createTaskWorkbench,
+  ensureTaskWorkbench,
+  renameTaskWorkbench,
+  setTaskWorkbenchProject,
+  setTaskWorkbenchLayout,
+  reorderTaskWorkbenches,
+  deleteTaskWorkbench,
+  listTaskWorkbenchSessionLinks,
+  assignSessionToTaskWorkbench,
+  removeSessionFromTaskWorkbench,
 
   openChatGptAppSession,
   openProjectInEditor,
   openCommandInSystemTerminal,
   openSessionInSystemTerminal,
-  previewBackfillReportDigests,
   renameSessionAction,
   resolveProjectEditor,
   resolvePanelHome,
   resolvePreviewHomes,
   resolveScratchBaseDir,
-  runDailyDigest,
-  needsDailyDigestRefresh,
-  needsWeeklyDigestRefresh,
-  needsMonthlyDigestRefresh,
-  applyReportGtdSync,
   clearSessionGtdStatus,
+  clearSessionLastExitWaiting,
   isGtdStatus,
   loadSessionGtdMap,
-  previewReportGtdSync,
-  runMonthlyDigest,
-  runWeeklyDigest,
+  recordLastExitWaitingSessions,
   saveSettings,
-  searchReportsByEmbedding,
   sessionSyncOptionsFromSettings,
   syncAgentSessions,
   setSessionGtdStatus,
+  setSessionLastExitWaiting,
   summarizeSessionAction,
   type AgentProvider,
-  type AgentNoteAuditStatus,
-  type DigestProgressEvent,
   type GtdStatus,
   type NoteRecord,
   type PanelSettings,
@@ -109,13 +104,16 @@ import {
 } from "@agent-resume/core";
 import { safeHandle } from "./ipcUtils";
 import { registerLinkGraphIpc } from "./linkgraph/linkGraphIpc";
+import { installArpmShell, installArpmShim, resolveArpmCliPath } from "./arpmInstall";
 import {
+  createExternalBrowserMcpLaunchConfig,
   createExternalMcpLaunchConfig,
   listMcpClients,
   manualMcpConfig,
   migrateLegacyAgentResumeRegistrations,
   registerMcpClient,
   removeMcpClient,
+  resolveExternalBrowserMcpCliPath,
   resolveExternalMcpCliPath,
   type McpClientId
 } from "./mcpRegistration";
@@ -150,19 +148,33 @@ import {
 import { registerWorkbenchGitIpc } from "./workbenchGit";
 import { registerWorkbenchScriptsIpc } from "./workbenchScripts";
 import {
+  closeAllTaskWindows,
+  focusTaskWindow,
+  focusedOrRecentTaskWindow,
+  isTaskWindowSender,
+  listTaskWindows,
+  MAX_TASK_WINDOWS,
+  openTaskWindow,
+  openTaskWindowCount,
+  setTaskWindowTitle,
+  summarizeTaskWindows,
+  taskWindowOpenTimings,
+  taskWindowStateForSender,
+  type TaskWindowDeps
+} from "./taskWindows";
+import { loadStoredTaskWindows, saveStoredTaskWindows, taskWindowStatePath } from "./taskWindowStore";
+import {
   disposeBrowserController,
   disposeBrowserMcpServer,
-  ensureBrowserMcpReadyForExternal,
   listBrowserToolDescriptors,
-  registerBrowserIpc,
-  syncBrowserExternalMcpRegistration
+  registerBrowserIpc
 } from "./browser";
+import { syncExternalMcpRegistration } from "./externalMcp";
 import {
   DEFAULT_RECENT_STANDALONE_NOTE_SHORTCUT,
   DEFAULT_STANDALONE_NOTE_SHORTCUT,
   isQuickAccessShortcut,
-  normalizeGlobalShortcut,
-  workbenchArrowDirectionFromInput
+  normalizeGlobalShortcut
 } from "./desktopShortcuts";
 import { STANDALONE_NOTE_INITIAL_CONTENT } from "../shared/standaloneNote";
 import {
@@ -180,6 +192,7 @@ import {
 import { collectNewConfirmedWaitingSessions } from "./sessionWaitingNotifications";
 import { checkForDesktopUpdate, getAppVersion } from "./updateCheck";
 import { loadPanelDbPaths } from "./panelDatabases";
+import { findWorkbenchForSession, type SessionOwner } from "./sessionOwnership";
 import { buildI18nBundle, desktopT, initI18nService } from "./i18nService";
 import { shouldSyncSessionsAfterSettingsSave, type SaveSettingsOptions } from "./sessionSettingsSync";
 import {
@@ -192,15 +205,26 @@ import {
   notesGetSubtree,
   notesImport,
   notesList,
+  notesCreateTask,
+  notesAddTaskProject,
+  notesRemoveTaskProject,
+  notesEnsureTaskWorkspace,
+  notesLinkSessionToTask,
+  notesListTaskSessionLinks,
+  notesListTasks,
+  notesOpenTaskWorkspace,
+  notesTaskWorkspace,
+  notesTaskNoteIdForSession,
+  notesTaskSessionContext,
   notesListChildCounts,
   notesListLinkedChildIds,
   notesListLinks,
   notesListRootNotes,
-  notesMove,
   notesOpenFolder,
   notesPasteImage,
   notesRead,
   notesRename,
+  notesRenameTask,
   notesResolveLinkRoot,
   notesReveal,
   notesSetGtdStatus,
@@ -208,6 +232,13 @@ import {
   notesWrite,
   settingsOpenPanelHome
 } from "./notesService";
+import { showDirectoryPicker } from "./directoryPicker";
+import {
+  createTaskTemplate,
+  deleteTaskTemplate,
+  listTaskTemplates,
+  updateTaskTemplate
+} from "./taskTemplates";
 import { refreshMemorySchedulerFromSettings, stopMemoryScheduler } from "./scheduler";
 import {
   ensureAgentStatusDaemon,
@@ -251,6 +282,7 @@ import {
   recordAppError,
   type AppErrorLogLevel
 } from "./appErrorLog";
+import type { StatusSnapshot } from "../shared/agentStatusTypes";
 
 installProcessErrorHandlers();
 
@@ -265,13 +297,16 @@ let agentStatusBridge: AgentStatusBridge | null = null;
 let agentStatusSensor: AgentStatusSensor | null = null;
 /** Resolved lazily by `tryRegisterPtyIpc`; absent when node-pty failed to load. */
 let ptyPidResolver: ((id: number) => number | null) | null = null;
+/** Panes a window renders; the rest keep running unwatched. */
+let ptyAttachedResolver: (() => number[]) | null = null;
 
 function tryRegisterPtyIpc(): void {
   try {
     // Lazy-load so node-pty native binding issues do not block other IPC handlers.
-    const { registerPtyIpc, getPtyPid } = require("./ptyHost") as typeof import("./ptyHost");
-    registerPtyIpc(() => mainWindow);
+    const { registerPtyIpc, getPtyPid, getAttachedPtyIds } = require("./ptyHost") as typeof import("./ptyHost");
+    registerPtyIpc();
     ptyPidResolver = getPtyPid;
+    ptyAttachedResolver = getAttachedPtyIds;
   } catch (error) {
     void recordAppError({
       source: "pty-host",
@@ -352,7 +387,7 @@ function ensureAgentStatusRuntime(): void {
     })
   );
   registerAgentStatusIpc({
-    getWindow: () => mainWindow,
+    broadcast: (channel, payload) => broadcastToRenderers(channel, payload),
     bridge,
     getPanelHome: () => agentStatusPanelHome,
     execPath: process.execPath,
@@ -360,6 +395,28 @@ function ensureAgentStatusRuntime(): void {
     isPackaged: app.isPackaged,
     resourcesPath: process.resourcesPath,
     appPath: app.getAppPath()
+  });
+  bridge.subscribe((snapshot) => {
+    latestAgentSnapshot = snapshot;
+    refreshWorkbenchActiveSessions();
+  });
+  bridge.onTransition((transition) => {
+    const sessionKey = transition.sessionKey?.trim();
+    if (sessionKey) {
+      const colon = sessionKey.indexOf(":");
+      if (colon > 0 && colon < sessionKey.length - 1) {
+        const provider = sessionKey.slice(0, colon);
+        const id = sessionKey.slice(colon + 1);
+        void loadPanelDbPaths().then((paths) => {
+          if (transition.to === "blocked") {
+            return setSessionLastExitWaiting(paths.catalogDb, provider, id, true);
+          }
+          if (transition.from === "blocked") {
+            return setSessionLastExitWaiting(paths.catalogDb, provider, id, false);
+          }
+        }).catch(() => undefined);
+      }
+    }
   });
   bridge.connect();
 }
@@ -497,17 +554,85 @@ function applyAppIcon(): void {
 let mainWindow: BrowserWindow | null = null;
 let mainWindowReadyToShow = false;
 let mainWindowRendererReady = false;
-let settingsWindow: BrowserWindow | null = null;
 let sessionDotsTray: Tray | null = null;
 let pendingTrayFocus: { paneKey: string; projectPath?: string } | null = null;
 let browserSettingsCache: import("@agent-resume/core").DesktopBrowserSettings | null = null;
 let notifiedWaitingSessions = new Set<string>();
 
 function flushPendingTrayFocus(): void {
-  if (!pendingTrayFocus || !mainWindow || mainWindow.isDestroyed() || !mainWindowRendererReady) return;
-  const payload = pendingTrayFocus;
+  revealSessionOwner();
+}
+
+/**
+ * Bring the window that owns a session to the front and hand it the focus
+ * request. The board window hosts no workbench, so a session can only be
+ * focused in the workbench window that reported it — and when no workbench window
+ * is open, the session's task window is opened instead.
+ */
+function revealSessionOwner(): void {
+  const pending = pendingTrayFocus;
+  if (!pending) return;
+  const owner = windowForPaneKey(pending.paneKey) ?? focusedOrRecentTaskWindow();
+  if (owner && !owner.isDestroyed()) {
+    pendingTrayFocus = null;
+    if (owner.isMinimized()) owner.restore();
+    owner.show();
+    owner.focus();
+    owner.webContents.send("workbench:focusSession", pending);
+    return;
+  }
+  void openTaskWindowForSession(pending);
+}
+
+/** No workbench window is up: open the task window that owns the session. */
+async function openTaskWindowForSession(pending: { paneKey: string; projectPath?: string }): Promise<void> {
+  const sessionKeyValue = workbenchActiveSessions
+    .find((dot) => dot.paneKey === pending.paneKey)?.sessionKey || "";
+  const owner = await workbenchOwnershipForSession(sessionKeyValue);
+  if (!owner) {
+    pendingTrayFocus = null;
+    revealMainWindow();
+    return;
+  }
   pendingTrayFocus = null;
-  mainWindow.webContents.send("workbench:focusSession", payload);
+  const opened = openTaskWindow(taskWindowDeps(), {
+    noteId: owner.noteId,
+    workbenchId: owner.workbenchId,
+    ...(owner.title ? { title: owner.title } : {})
+  });
+  if (!opened.ok) {
+    notifyTaskWindowLimit(opened.limit);
+    revealMainWindow();
+  }
+}
+
+/** Task link lookup behind {@link workbenchOwnershipForSession}. */
+async function workbenchOwnershipForSession(
+  sessionKeyValue: string
+): Promise<(SessionOwner & { title?: string }) | null> {
+  if (!sessionKeyValue) return null;
+  try {
+    const paths = await loadPanelDbPaths();
+    const workbenches = await listAllTaskWorkbenches(paths.desktopDb);
+    const entries = await Promise.all(workbenches.map(async (workbench) => [
+      workbench.workbenchId,
+      await listTaskWorkbenchSessionLinks(paths.desktopDb, workbench.workbenchId).catch(() => [])
+    ] as const));
+    const owner = findWorkbenchForSession(workbenches, new Map(entries), sessionKeyValue);
+    if (!owner) return null;
+    const record = await notesRead(owner.noteId).then((read) => read.record).catch(() => null);
+    const workbench = workbenches.find((item) => item.workbenchId === owner.workbenchId);
+    return { ...owner, title: record?.title || workbench?.name || undefined };
+  } catch {
+    return null;
+  }
+}
+
+/** Tell the user why a workbench window could not be opened. */
+function notifyTaskWindowLimit(limit: number): void {
+  const window = revealMainWindow();
+  if (!window || window.isDestroyed()) return;
+  window.webContents.send("task-window:limit", { limit });
 }
 
 function showMainWindowIfReady(): void {
@@ -539,10 +664,19 @@ let allowAppQuit = false;
 let quitCleanupDone = false;
 let sessionSyncTimer: NodeJS.Timeout | null = null;
 let sessionSyncInFlight: Promise<AgentSessionSyncResult> | null = null;
-let workbenchActive = false;
-let floatingNoteFocused = false;
-let modalOpen = false;
-let workbenchActiveSessions: ReturnType<typeof parseWorkbenchActiveSessionDots> = [];
+/**
+ * Windows whose workbench surface is currently the visible one. Per window, not
+ * global: several workbench windows can be open at once, and each one owns its
+ * own ⌘W / file-watch semantics.
+ */
+const workbenchActiveSenders = new Set<number>();
+/**
+ * Session dots per reporting window. Each workbench window publishes the panes
+ * it is showing, so the tray and the notifications describe the whole app
+ * instead of one window.
+ */
+const workbenchActiveSessionsBySender = new Map<number, WorkbenchActiveSessionDot[]>();
+let workbenchActiveSessions: WorkbenchActiveSessionDot[] = [];
 const SESSION_SYNC_INTERVAL_MS = 60_000;
 
 const SETTINGS_PANES = [
@@ -551,7 +685,6 @@ const SETTINGS_PANES = [
   "sessions",
   "workbench",
   "notes",
-  "report",
   "storage",
   "usage",
   "about"
@@ -564,11 +697,18 @@ function normalizeSettingsPane(value: unknown): SettingsPaneId {
     : "general";
 }
 
+/** Keep only non-empty strings from an IPC list payload. */
+function stringList(value: unknown): string[] | undefined {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+    : undefined;
+}
+
 function broadcastToRenderers(channel: string, ...args: unknown[]): void {
   const windows = [
     mainWindow,
-    settingsWindow,
-    ...[...standaloneNoteWindows.values()].map((state) => state.window)
+    ...[...standaloneNoteWindows.values()].map((state) => state.window),
+    ...listTaskWindows().map((state) => state.window)
   ];
   for (const win of windows) {
     if (win && !win.isDestroyed()) {
@@ -577,11 +717,95 @@ function broadcastToRenderers(channel: string, ...args: unknown[]): void {
   }
 }
 
-function closeSettingsWindowIfOpen(): void {
-  if (settingsWindow && !settingsWindow.isDestroyed()) {
-    settingsWindow.close();
+/** True while `win` is showing its workbench surface. */
+function workbenchIsActive(win: BrowserWindow | null): boolean {
+  if (!win || win.isDestroyed()) return false;
+  return workbenchActiveSenders.has(win.webContents.id);
+}
+
+function anyWorkbenchActive(): boolean {
+  return workbenchActiveSenders.size > 0;
+}
+
+/** Drop senders whose window is gone; call whenever the window set changes. */
+function pruneWorkbenchActiveSenders(): void {
+  const alive = new Set(BrowserWindow.getAllWindows().map((win) => win.webContents.id));
+  for (const id of [...workbenchActiveSenders]) {
+    if (!alive.has(id)) workbenchActiveSenders.delete(id);
   }
-  settingsWindow = null;
+  for (const id of [...workbenchActiveSessionsBySender.keys()]) {
+    if (!alive.has(id)) workbenchActiveSessionsBySender.delete(id);
+  }
+}
+
+/** Latest daemon snapshot: the only view of panes whose window is gone. */
+let latestAgentSnapshot: StatusSnapshot | null = null;
+let workbenchActiveSessionsSignature = "";
+
+/**
+ * Panes no window is rendering.
+ *
+ * Their agents keep running after the window closes, and the daemon keeps
+ * tracking them, so the tray can still reach them.
+ */
+function unwatchedPaneDots(): WorkbenchActiveSessionDot[] {
+  const snapshot = latestAgentSnapshot;
+  if (!snapshot) return [];
+  const attached = new Set(ptyAttachedResolver?.() ?? []);
+  const dots: WorkbenchActiveSessionDot[] = [];
+  for (const pane of Object.values(snapshot.byPaneId)) {
+    if (attached.has(pane.paneId)) continue;
+    if (pane.state !== "blocked" && pane.state !== "working") continue;
+    dots.push({
+      paneKey: `pane:${pane.paneId}`,
+      projectPath: "",
+      title: pane.agent,
+      sessionKey: pane.sessionKey?.trim() ?? "",
+      status: pane.state === "blocked" ? "awaiting_user" : "running"
+    });
+  }
+  return dots;
+}
+
+/**
+ * Every window's dots, merged by session key (else pane key).
+ *
+ * Window reports come last because a window knows the session title and project
+ * path; the daemon view covers panes whose window is gone.
+ */
+function mergedWorkbenchActiveSessions(): WorkbenchActiveSessionDot[] {
+  const byKey = new Map<string, WorkbenchActiveSessionDot>();
+  for (const dot of unwatchedPaneDots()) byKey.set(dot.sessionKey || dot.paneKey, dot);
+  for (const dots of workbenchActiveSessionsBySender.values()) {
+    for (const dot of dots) byKey.set(dot.sessionKey || dot.paneKey, dot);
+  }
+  return [...byKey.values()];
+}
+
+/** Recompute the app-wide dot list; nothing else happens when it is unchanged. */
+function refreshWorkbenchActiveSessions(): void {
+  const next = mergedWorkbenchActiveSessions();
+  const signature = next
+    .map((dot) => `${dot.paneKey}|${dot.sessionKey}|${dot.status}`)
+    .sort()
+    .join(",");
+  if (signature === workbenchActiveSessionsSignature) return;
+  workbenchActiveSessionsSignature = signature;
+  workbenchActiveSessions = next;
+  const newlyWaiting = collectNewConfirmedWaitingSessions(workbenchActiveSessions, notifiedWaitingSessions);
+  syncSessionDotsTray();
+  broadcastToRenderers("workbench:activeSessions", workbenchActiveSessions);
+  if (newlyWaiting.length > 0) void showSessionWaitingNotifications(newlyWaiting);
+}
+
+/** The window that reported a pane, so session events reach the right place. */
+function windowForPaneKey(paneKey: string): BrowserWindow | null {
+  for (const [senderId, dots] of workbenchActiveSessionsBySender) {
+    if (!dots.some((dot) => dot.paneKey === paneKey)) continue;
+    const win = BrowserWindow.getAllWindows().find((candidate) => candidate.webContents.id === senderId);
+    if (win && !win.isDestroyed()) return win;
+  }
+  return null;
 }
 
 function syncSessionDotsTray(): void {
@@ -619,9 +843,7 @@ function syncSessionDotsTray(): void {
         paneKey: target.paneKey,
         projectPath: target.projectPath || undefined
       };
-      const window = revealMainWindow();
-      if (!window || window.isDestroyed()) return;
-      if (mainWindowRendererReady) flushPendingTrayFocus();
+      revealSessionOwner();
     });
   } else {
     sessionDotsTray.setImage(image);
@@ -661,9 +883,7 @@ async function showSessionWaitingNotifications(sessions: readonly WorkbenchActiv
           paneKey: session.paneKey,
           projectPath: projectPath || undefined
         };
-        const window = revealMainWindow();
-        if (!window || window.isDestroyed()) return;
-        if (mainWindowRendererReady) flushPendingTrayFocus();
+        revealSessionOwner();
       });
       notification.show();
     } catch (error) {
@@ -1058,6 +1278,7 @@ function performQuitCleanup(): void {
     globalShortcut.unregister(registeredRecentStandaloneNoteShortcut);
     registeredRecentStandaloneNoteShortcut = "";
   }
+  closeAllTaskWindows();
   disposeWorkbenchWatchers();
   disposeBrowserController();
   void disposeBrowserMcpServer();
@@ -1130,15 +1351,52 @@ function shouldScheduleBackgroundAnalysis(): boolean {
 
 async function syncAndNotify(): Promise<AgentSessionSyncResult> {
   const result = await syncSessions();
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send("sessions:synced", result);
-  }
+  // Every window lists sessions, so every window refreshes when the catalog moves.
+  broadcastToRenderers("sessions:synced", result);
   if (shouldScheduleBackgroundAnalysis()) {
     scheduleSessionSummaryAuto(2_000);
     scheduleSessionTranscriptIndexAuto(3_000);
     scheduleSessionEmbeddingIndexAuto(4_000);
   }
   return result;
+}
+
+/**
+ * A task's context block for a session that keeps `cwd` as its working
+ * directory. Best-effort: a missing block must never block the session.
+ */
+async function taskContextFile(
+  noteId: string | undefined,
+  cwd: string
+): Promise<string | undefined> {
+  const id = noteId?.trim();
+  if (!id || !cwd.trim()) return undefined;
+  try {
+    const { file } = await notesTaskSessionContext({ noteId: id, cwd });
+    return file;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The context block a resumed session carries: a session linked to a task
+ * is told which task it serves, so single-repository sessions are not the
+ * odd one out. Best-effort.
+ */
+async function taskContextFileForSession(session: {
+  provider: string;
+  id: string;
+}, cwd: string): Promise<string | undefined> {
+  try {
+    const noteId = await notesTaskNoteIdForSession({
+      provider: session.provider,
+      sessionId: session.id
+    });
+    return await taskContextFile(noteId, cwd);
+  } catch {
+    return undefined;
+  }
 }
 
 async function resumeCatalogSession(
@@ -1214,7 +1472,8 @@ async function resumeCatalogSession(
     return { mode, external: true, command: "", cwd, session };
   }
 
-  const command = buildResumeCommand(session);
+  const contextFile = await taskContextFileForSession(session, cwd);
+  const command = buildResumeCommand(session, contextFile);
 
   if (mode === "external-system") {
     await openSessionInSystemTerminal(
@@ -1222,7 +1481,8 @@ async function resumeCatalogSession(
       systemTerminalSettings(settings),
       {
         writeText: (text) => Promise.resolve(clipboard.writeText(text))
-      }
+      },
+      contextFile
     );
     return { mode, external: true, command, cwd, session };
   }
@@ -1241,14 +1501,12 @@ function startSessionSyncTimer(): void {
 }
 
 function notifySessionSyncFailure(error: unknown): void {
-  mainWindow?.webContents.send("sessions:syncFailed", error instanceof Error ? error.message : String(error));
+  broadcastToRenderers("sessions:syncFailed", error instanceof Error ? error.message : String(error));
 }
 
 function startDesktopNotesIndexer(): void {
   startNotesIndexer((progress) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send("notes:indexProgress", progress);
-    }
+    broadcastToRenderers("notes:indexProgress", progress);
   });
 }
 
@@ -1321,33 +1579,10 @@ function registerWorkbenchShortcuts(win: BrowserWindow): void {
       return;
     }
 
-    if (workbenchActive && !modalOpen && !floatingNoteFocused) {
-      const direction = workbenchArrowDirectionFromInput(input);
-      if (direction) {
-        event.preventDefault();
-        if (!win.isDestroyed()) {
-          win.webContents.send("workbench:cmdArrow", direction);
-        }
-        return;
-      }
-    }
-
-    if (workbenchActive && isWorkbenchCmdWInput(input)) {
+    if (workbenchIsActive(win) && isWorkbenchCmdWInput(input)) {
       event.preventDefault();
       if (!win.isDestroyed()) {
         win.webContents.send("workbench:cmdW");
-      }
-    }
-  });
-}
-
-/** Settings window: ⌘W / Ctrl+W closes the preferences window only. */
-function registerSettingsShortcuts(win: BrowserWindow): void {
-  win.webContents.on("before-input-event", (event, input) => {
-    if (isWorkbenchCmdWInput(input)) {
-      event.preventDefault();
-      if (!win.isDestroyed()) {
-        win.close();
       }
     }
   });
@@ -1390,7 +1625,6 @@ function createWindow(): void {
     mainWindowReadyToShow = true;
     showMainWindowIfReady();
   });
-  registerWorkbenchShortcuts(mainWindow);
   mainWindow.loadFile(path.join(__dirname, "..", "renderer", "index.html"));
   mainWindow.webContents.once("did-finish-load", () => resumeSessionSync());
   mainWindow.on("show", () => {
@@ -1404,7 +1638,9 @@ function createWindow(): void {
   mainWindow.on("minimize", stopSessionSyncTimer);
   mainWindow.on("close", (event) => {
     if (allowAppQuit) return;
-    const keepHidden = process.platform === "darwin" || standaloneNoteWindows.size > 0;
+    const keepHidden = process.platform === "darwin"
+      || standaloneNoteWindows.size > 0
+      || openTaskWindowCount() > 0;
     if (!keepHidden) return;
     event.preventDefault();
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
@@ -1412,74 +1648,18 @@ function createWindow(): void {
   mainWindow.on("closed", () => {
     stopSessionSyncTimer();
     void flushImStreamingMessages();
-    workbenchActive = false;
-    floatingNoteFocused = false;
-    modalOpen = false;
-    // Invariant: settings never outlives main
-    closeSettingsWindowIfOpen();
+    // Other windows may still be showing a workbench; only their own senders count.
+    pruneWorkbenchActiveSenders();
     mainWindowReadyToShow = false;
     mainWindowRendererReady = false;
     mainWindow = null;
   });
 }
 
-function createSettingsWindow(options: { pane: SettingsPaneId }): void {
-  const icon = loadAppIcon();
-  const win = new BrowserWindow({
-    ...DEFAULT_WINDOW_SIZE,
-    minWidth: 640,
-    minHeight: 480,
-    title: "Settings",
-    show: false,
-    ...(icon ? { icon } : {}),
-    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
-    trafficLightPosition: process.platform === "darwin" ? { x: 14, y: 14 } : undefined,
-    webPreferences: {
-      preload: path.join(__dirname, "..", "preload", "preload.js"),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: false
-    }
-  });
-
-  if (process.platform !== "darwin") {
-    win.setMenuBarVisibility(false);
-  }
-
-  settingsWindow = win;
-  registerSettingsShortcuts(win);
-  void win.loadFile(path.join(__dirname, "..", "renderer", "index.html"), {
-    query: { mode: "settings", pane: options.pane }
-  });
-  win.once("ready-to-show", () => {
-    if (!win.isDestroyed()) {
-      win.show();
-      win.focus();
-    }
-  });
-  win.on("closed", () => {
-    if (settingsWindow === win) {
-      settingsWindow = null;
-    }
-  });
-}
-
-function openSettingsWindow(options?: { pane?: unknown }): void {
+function openSettingsInMainWindow(options?: { pane?: unknown }): void {
   const pane = normalizeSettingsPane(options?.pane);
-  if (!mainWindow || mainWindow.isDestroyed()) {
-    createWindow();
-  }
-  if (settingsWindow && !settingsWindow.isDestroyed()) {
-    if (settingsWindow.isMinimized()) {
-      settingsWindow.restore();
-    }
-    settingsWindow.show();
-    settingsWindow.focus();
-    // K14: do not restore/focus mainWindow
-    settingsWindow.webContents.send("settings:navigate", { pane });
-    return;
-  }
-  createSettingsWindow({ pane });
+  const win = revealMainWindow();
+  win?.webContents.send("settings:navigate", { pane });
 }
 
 /** Application menu: Settings… with ⌘,/Ctrl+, (macOS app menu / File on other platforms). */
@@ -1493,20 +1673,20 @@ async function installApplicationMenu(): Promise<void> {
   const settingsItem: Electron.MenuItemConstructorOptions = {
     label: settingsLabel,
     accelerator: "CommandOrControl+,",
-    click: () => openSettingsWindow({ pane: "general" })
+    click: () => openSettingsInMainWindow({ pane: "general" })
   };
 
   const sessionsItem: Electron.MenuItemConstructorOptions = {
     label: sessionsLabel,
     click: () => {
+      // Sessions live in their task's window now; the board is where you pick one.
       revealMainWindow();
-      mainWindow?.webContents.send("sessions:open");
     }
   };
 
   const checkForUpdatesItem: Electron.MenuItemConstructorOptions = {
     label: checkForUpdatesLabel,
-    click: () => openSettingsWindow({ pane: "about" })
+    click: () => openSettingsInMainWindow({ pane: "about" })
   };
 
   const template: Electron.MenuItemConstructorOptions[] = [
@@ -1551,6 +1731,94 @@ async function installApplicationMenu(): Promise<void> {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+/**
+ * Windows waiting on a renderer answer before they may close.
+ *
+ * A workbench window can hold unsaved editor buffers, so closing asks the
+ * renderer to flush them first — the bargain the floating note windows make.
+ */
+const pendingTaskWindowCloses = new Map<number, { settle: (closed: boolean) => void }>();
+const TASK_WINDOW_CLOSE_TIMEOUT_MS = 15_000;
+
+function registerTaskWindowCloseGuard(win: BrowserWindow): void {
+  const senderId = win.webContents.id;
+  let allowClose = false;
+  win.on("close", (event) => {
+    if (allowClose || allowAppQuit || win.webContents.isDestroyed()) return;
+    event.preventDefault();
+    if (pendingTaskWindowCloses.has(senderId)) return;
+    const timer = setTimeout(() => {
+      pendingTaskWindowCloses.delete(senderId);
+      allowClose = true;
+      if (!win.isDestroyed()) win.close();
+    }, TASK_WINDOW_CLOSE_TIMEOUT_MS);
+    timer.unref?.();
+    pendingTaskWindowCloses.set(senderId, {
+      settle: (closed: boolean) => {
+        clearTimeout(timer);
+        pendingTaskWindowCloses.delete(senderId);
+        if (!closed || win.isDestroyed()) return;
+        allowClose = true;
+        win.close();
+      }
+    });
+    win.webContents.send("task-window:requestClose");
+  });
+  win.on("closed", () => {
+    pendingTaskWindowCloses.get(senderId)?.settle(false);
+  });
+}
+
+/**
+ * Dependencies for workbench windows. Preload and renderer paths mirror the main
+ * window's so every window loads the same bridge and bundle, and each workbench
+ * window keeps the workbench window's ⌘T / ⌘⇧F / ⌘P / ⌘W: those act on the
+ * workbench that window hosts.
+ */
+function taskWindowDeps(): TaskWindowDeps {
+  const icon = loadAppIcon();
+  return {
+    preloadPath: path.join(__dirname, "..", "preload", "preload.js"),
+    rendererIndex: path.join(__dirname, "..", "renderer", "index.html"),
+    ...(icon ? { icon } : {}),
+    onCreated: (win) => {
+      registerWorkbenchShortcuts(win);
+      registerTaskWindowCloseGuard(win);
+    },
+    onChange: (windows) => {
+      pruneWorkbenchActiveSenders();
+      broadcastToRenderers("task-window:changed", windows);
+      persistOpenTaskWindows();
+    }
+  };
+}
+
+/** Remember the open workbench windows so the next launch can restore them. */
+function persistOpenTaskWindows(): void {
+  const entries = summarizeTaskWindows().map(({ workbenchId, noteId, title }) => ({ workbenchId, noteId, title }));
+  void loadPanelDbPaths()
+    .then((paths) => saveStoredTaskWindows(taskWindowStatePath(paths.desktopDb), entries))
+    .catch(() => undefined);
+}
+
+/** Reopen the workbench windows that were open when the app last ran. */
+async function restoreTaskWindows(): Promise<void> {
+  try {
+    const paths = await loadPanelDbPaths();
+    const stored = await loadStoredTaskWindows(taskWindowStatePath(paths.desktopDb));
+    for (const entry of stored) {
+      if (openTaskWindowCount() >= MAX_TASK_WINDOWS) break;
+      openTaskWindow(taskWindowDeps(), {
+        noteId: entry.noteId,
+        workbenchId: entry.workbenchId,
+        ...(entry.title ? { title: entry.title } : {})
+      });
+    }
+  } catch (error) {
+    void recordAppError({ source: "task-window", message: "Could not restore workbench windows.", error });
+  }
+}
+
 function registerIpc(): void {
   ipcMain.on("main:rendererReady", (event) => {
     if (event.sender !== mainWindow?.webContents) return;
@@ -1560,39 +1828,45 @@ function registerIpc(): void {
   });
 
   ipcMain.on("workbench:setActive", (event, active: unknown) => {
-    if (event.sender === mainWindow?.webContents) {
-      workbenchActive = active === true;
-      setWorkbenchWatcherActive(workbenchActive);
-    }
+    if (active === true) workbenchActiveSenders.add(event.sender.id);
+    else workbenchActiveSenders.delete(event.sender.id);
+    setWorkbenchWatcherActive(event.sender.id, active === true);
   });
 
   ipcMain.on("workbench:activeSessions", (event, payload: unknown) => {
-    if (event.sender !== mainWindow?.webContents) return;
-    workbenchActiveSessions = parseWorkbenchActiveSessionDots(payload);
-    const newlyWaiting = collectNewConfirmedWaitingSessions(workbenchActiveSessions, notifiedWaitingSessions);
-    syncSessionDotsTray();
-    broadcastToRenderers("workbench:activeSessions", workbenchActiveSessions);
-    if (newlyWaiting.length > 0) void showSessionWaitingNotifications(newlyWaiting);
+    const dots = parseWorkbenchActiveSessionDots(payload);
+    if (dots.length) workbenchActiveSessionsBySender.set(event.sender.id, dots);
+    else workbenchActiveSessionsBySender.delete(event.sender.id);
+    refreshWorkbenchActiveSessions();
   });
 
   safeHandle("workbench:getActiveSessions", async () => workbenchActiveSessions);
 
+  /** The window that owns a pane, else the workbench window in front. */
+  function workbenchWindowFor(paneKey?: string): BrowserWindow | null {
+    const owner = paneKey ? windowForPaneKey(paneKey) : null;
+    const target = owner ?? focusedOrRecentTaskWindow();
+    if (!target || target.isDestroyed()) return null;
+    if (target.isMinimized()) target.restore();
+    target.show();
+    target.focus();
+    return target;
+  }
+
   safeHandle("workbench:focusSession", async (_event, payload: unknown) => {
     const request = parseWorkbenchFocusSessionRequest(payload);
-    const target = revealMainWindow();
-    if (!target || target.isDestroyed()) {
-      throw new Error("Workbench window is not available.");
-    }
+    const target = workbenchWindowFor(request.paneKey);
+    if (!target) throw new Error("No workbench window is open.");
     target.webContents.send("workbench:focusSession", request);
     return { ok: true as const };
   });
 
   safeHandle("workbench:sendSelection", async (_event, payload: unknown) => {
     const request = parseWorkbenchSendSelectionRequest(payload);
-    const target = revealMainWindow();
-    if (!target || target.isDestroyed()) {
-      throw new Error("Workbench window is not available.");
-    }
+    // An existing session is focused where it lives; a new agent needs any
+    // workbench window, since only a workbench can host the pane.
+    const target = workbenchWindowFor(request.kind === "existing-session" ? request.paneKey : undefined);
+    if (!target) throw new Error("No workbench window is open.");
     target.webContents.send("workbench:sendSelection", request);
     return { ok: true as const };
   });
@@ -1613,19 +1887,7 @@ function registerIpc(): void {
         };
       }
     })();
-    return { ...getWorkbenchWatcherRuntimeMetrics(), pty, acp: getAcpRuntimeMetrics() };
-  });
-
-  ipcMain.on("workbench:setFloatingNoteFocused", (event, focused: unknown) => {
-    if (event.sender === mainWindow?.webContents) {
-      floatingNoteFocused = focused === true;
-    }
-  });
-
-  ipcMain.on("workbench:setModalOpen", (event, open: unknown) => {
-    if (event.sender === mainWindow?.webContents) {
-      modalOpen = open === true;
-    }
+    return { ...getWorkbenchWatcherRuntimeMetrics(), pty, acp: getAcpRuntimeMetrics(), windows: { count: openTaskWindowCount(), limit: MAX_TASK_WINDOWS, timings: taskWindowOpenTimings() } };
   });
 
   ipcMain.handle("panel:getHome", async () => {
@@ -1636,6 +1898,11 @@ function registerIpc(): void {
   ipcMain.handle("settings:get", async () => {
     return loadSettings();
   });
+
+  ipcMain.handle(
+    "dialog:pickDirectory",
+    async (_event, args?: { title?: string }) => showDirectoryPicker({ title: args?.title })
+  );
 
   safeHandle(
     "providers:testConnection",
@@ -1677,7 +1944,24 @@ function registerIpc(): void {
     return listMcpClients();
   });
 
-  safeHandle("mcp:manualConfig", async () => manualMcpConfig(await externalMcpLaunch()));
+  safeHandle("mcp:manualConfig", async () => {
+    const settings = await loadSettings();
+    const browser = settings.desktop?.browser;
+    const coreLaunch = await externalMcpLaunch();
+    const browserLaunch =
+      Boolean(browser?.enabled) && browser?.exposeExternalMcp !== false
+        ? createExternalBrowserMcpLaunchConfig({
+            executablePath: process.execPath,
+            cliPath: resolveExternalBrowserMcpCliPath({
+              isPackaged: app.isPackaged,
+              resourcesPath: process.resourcesPath,
+              appPath: app.getAppPath()
+            }),
+            panelHome: effectivePanelHome(settings)
+          })
+        : undefined;
+    return manualMcpConfig(coreLaunch, browserLaunch);
+  });
 
   safeHandle(
     "mcp:register",
@@ -1804,7 +2088,6 @@ function registerIpc(): void {
         void installApplicationMenu();
         return result;
       } catch (error) {
-        const saved = await loadSettings();
         await refreshMemorySchedulerFromSettings();
         startNotesIndexer((progress) => broadcastToRenderers("notes:indexProgress", progress));
         startSessionSummaryAuto();
@@ -1865,33 +2148,28 @@ function registerIpc(): void {
         throw error;
       }
       invalidateNotesStore();
-      const schedulerEnabled = await refreshMemorySchedulerFromSettings();
+      await refreshMemorySchedulerFromSettings();
       const saved = await loadSettings();
       browserSettingsCache = saved.desktop?.browser || null;
       try {
-        await ensureBrowserMcpReadyForExternal(saved);
-        const browserMcp = await syncBrowserExternalMcpRegistration(saved);
-        if (browserMcp.registered.length) {
+        const mcp = await syncExternalMcpRegistration(saved);
+        if (mcp.registered.length) {
           console.log(
-            `[agent-resume] Browser MCP registered for: ${browserMcp.registered.join(", ")}`
+            `[agent-resume] External MCP registered for: ${mcp.registered.join(", ")}`
           );
         }
-        for (const failure of browserMcp.failed) {
+        for (const failure of mcp.failed) {
           void recordAppError({
-            source: "browser-mcp",
-            message: `Browser MCP sync failed (${failure.target}): ${failure.error}`
+            source: "external-mcp",
+            message: `External MCP sync failed (${failure.target}): ${failure.error}`
           });
         }
       } catch (error) {
         void recordAppError({
-          source: "browser-mcp",
-          message: "Browser MCP external sync failed after settings save.",
+          source: "external-mcp",
+          message: "External MCP sync failed after settings save.",
           error
         });
-      }
-      if ((previous.report?.maxDigestLlmCalls ?? 100) !== (saved.report?.maxDigestLlmCalls ?? 100)) {
-        const paths = await loadPanelDbPaths(saved);
-        await clearReportJobsByStatus(paths.desktopDb, "deferred_budget");
       }
       const bundle = buildI18nBundle(saved);
       const sync = shouldSyncSessionsAfterSettingsSave(previous, saved, options)
@@ -1913,17 +2191,12 @@ function registerIpc(): void {
         broadcastToRenderers("i18n:localeChanged", bundle);
         void installApplicationMenu();
       }
-      return { file, settings: saved, schedulerEnabled, sync };
+      return { file, settings: saved, sync };
     }
   );
 
   safeHandle("settings:openWindow", async (_event, options?: { pane?: unknown }) => {
-    openSettingsWindow(options);
-  });
-
-  safeHandle("settings:closeWindow", async () => {
-    closeSettingsWindowIfOpen();
-    return { ok: true as const };
+    openSettingsInMainWindow(options);
   });
 
   ipcMain.handle("sessions:sync", async () => syncAndNotify());
@@ -1952,6 +2225,7 @@ function registerIpc(): void {
     projectId?: string;
     gtdStatus?: string;
     keys?: Array<{ provider: string; id: string }>;
+    unassignedOnly?: boolean;
   }) => {
     const settings = await loadSettings();
     const paths = await loadPanelDbPaths(settings);
@@ -1966,14 +2240,33 @@ function registerIpc(): void {
       search: args?.search?.trim() || undefined,
       projectPath: args?.projectPath?.trim() || undefined,
       projectId: args?.projectId?.trim() || undefined,
-      gtdStatus: args?.gtdStatus?.trim() || undefined
+      gtdStatus: args?.gtdStatus?.trim() || undefined,
+      unassignedOnly: args?.unassignedOnly === true || undefined
     };
     return querySessionsPage(paths.catalogDb, request);
+  });
+
+  ipcMain.handle("sessions:clearLastExitWaiting", async (_event, args: { provider: string; id: string }) => {
+    const paths = await loadPanelDbPaths();
+    await clearSessionLastExitWaiting(paths.catalogDb, args.provider, args.id);
+    return { ok: true };
   });
 
   ipcMain.handle("gtd:listSessionStatuses", async () => {
     const paths = await loadPanelDbPaths();
     return loadSessionGtdMap(paths.catalogDb);
+  });
+
+  ipcMain.handle("gtd:listTaskRollups", async () => {
+    const paths = await loadPanelDbPaths();
+    return listTaskGtdRollups(paths.catalogDb);
+  });
+
+  ipcMain.handle("gtd:taskRollup", async (_event, args: { noteId: string }) => {
+    const noteId = String(args?.noteId || "").trim();
+    if (!noteId) throw new Error("Task note id is required");
+    const paths = await loadPanelDbPaths();
+    return resolveTaskGtdRollup(paths.catalogDb, noteId);
   });
 
   ipcMain.handle(
@@ -1991,23 +2284,6 @@ function registerIpc(): void {
         throw new Error("Invalid GTD status");
       }
       return { ok: true as const };
-    }
-  );
-
-  ipcMain.handle(
-    "sessions:listInRange",
-    async (
-      _event,
-      args?: { fromMs?: number; toMs?: number; limit?: number }
-    ) => {
-      const paths = await loadPanelDbPaths();
-      const fromMs = Number(args?.fromMs);
-      const toMs = Number(args?.toMs);
-      // NaN is not null — must use isFinite or SQLite gets "updated_at_ms >= NaN"
-      if (!Number.isFinite(fromMs) || !Number.isFinite(toMs)) {
-        return [];
-      }
-      return listSessionsInRange(paths.catalogDb, fromMs, toMs, args?.limit ?? 2000);
     }
   );
 
@@ -2080,26 +2356,6 @@ function registerIpc(): void {
         id: args.id,
         title: args.title
       });
-    }
-  );
-
-  ipcMain.handle(
-    "sessions:setStatus",
-    async (
-      _event,
-      args: {
-        provider: AgentProvider;
-        id: string;
-        status: "completed" | "active" | "blocked";
-      }
-    ) => {
-      const paths = await loadPanelDbPaths();
-      return setSessionDeliveryStatusInCatalog(
-        paths.catalogDb,
-        args.provider,
-        args.id,
-        args.status
-      );
     }
   );
 
@@ -2264,6 +2520,9 @@ function registerIpc(): void {
   safeHandle(
     "workbench:openSession",
     async (_event, args: { provider: AgentProvider; id: string }) => {
+      void loadPanelDbPaths()
+        .then((paths) => clearSessionLastExitWaiting(paths.catalogDb, args.provider, args.id))
+        .catch(() => undefined);
       return resumeCatalogSession(args.provider, args.id);
     }
   );
@@ -2297,6 +2556,7 @@ function registerIpc(): void {
         executionMode: "standard" | "note-yolo";
         useSystemTerminalOnly?: boolean;
         noteId?: string;
+        taskNoteId?: string;
         initialPrompt?: string;
       }
     ) => {
@@ -2316,7 +2576,12 @@ function registerIpc(): void {
 
       const yoloSupported = requestedYolo && supportsNewSessionYoloMode(args.provider);
       const executionMode: NewSessionExecutionMode = yoloSupported ? "yolo" : "standard";
-      const command = buildNewSessionCommand(args.provider, cwd, executionMode);
+      const command = buildNewSessionCommand(
+        args.provider,
+        cwd,
+        executionMode,
+        await taskContextFile(args.taskNoteId, cwd)
+      );
       const unsupportedYolo = requestedYolo && !yoloSupported;
       const warning = unsupportedYolo
         ? `YOLO mode is not supported for provider: ${args.provider}. Starting in standard mode.`
@@ -2345,7 +2610,13 @@ function registerIpc(): void {
           warning
         };
       }
-      return { mode, command, cwd, unsupportedYolo, warning };
+      // MCP session identity so note operations default to this task /
+      // session (see packages/core/src/mcp/sessionContext.ts).
+      const env: Record<string, string> = { [MCP_SESSION_ENV.provider]: args.provider };
+      if (args.taskNoteId?.trim()) {
+        env[MCP_SESSION_ENV.taskNoteId] = args.taskNoteId.trim();
+      }
+      return { mode, command, cwd, unsupportedYolo, warning, env };
     }
   );
 
@@ -2446,80 +2717,130 @@ function registerIpc(): void {
     }
   );
 
-  ipcMain.handle(
-    "report:getPeriodInsights",
-    async (_event, args?: { fromMs?: number; toMs?: number }) => {
-      try {
-        const settings = await loadSettings();
-        const paths = await loadPanelDbPaths(settings);
-        const fromMs = Number(args?.fromMs);
-        const toMs = Number(args?.toMs);
-        if (!Number.isFinite(fromMs) || !Number.isFinite(toMs)) {
-          return null;
-        }
-
-        // Real-time sync: only parse transcripts for sessions that have no
-        // `import:` rows yet (the historical backfill already covers the rest).
-        // This keeps calendar-click insights cheap — a single indexed SELECT
-        // decides whether any transcript parse is needed at all.
-        try {
-          const recentSessions = await listSessionsInRange(paths.catalogDb, fromMs, toMs, 10);
-          const missing = await listSessionsMissingComposerImport(paths.desktopDb, recentSessions);
-          if (missing.length) {
-            const homes = resolvePreviewHomes(settings);
-            const byKey = new Map(
-              recentSessions.map((s) => [`${s.provider}:${s.id}`, s])
-            );
-            await Promise.all(
-              missing.map(({ provider, id }) => {
-                const session = byKey.get(`${provider}:${id}`);
-                return session
-                  ? importComposerSendsForSession(paths.desktopDb, session, homes).catch(() => undefined)
-                  : Promise.resolve();
-              })
-            );
-          }
-        } catch {
-          // best-effort sync
-        }
-
-        return await getPeriodInsights({
-          catalogDb: paths.catalogDb,
-          desktopDb: paths.desktopDb,
-          fromMs,
-          toMs
-        });
-      } catch (error) {
-        void recordAppError({
-          source: "report",
-          message: "report:getPeriodInsights failed.",
-          error
-        });
-        return null;
-      }
+  // Task workbenches: a GTD task owns 0..n desktop workbenches.
+  safeHandle(
+    "taskWorkbenches:list",
+    async (_event, args: { taskNoteId: string }) => {
+      const paths = await loadPanelDbPaths();
+      return listTaskWorkbenches(paths.desktopDb, String(args?.taskNoteId || ""));
     }
   );
 
-  ipcMain.handle(
-    "report:list",
-    async (
-      _event,
-      opts?: { level?: string; limit?: number; fromMs?: number; toMs?: number }
-    ) => {
+  safeHandle("taskWorkbenches:listAll", async () => {
+    const paths = await loadPanelDbPaths();
+    return listAllTaskWorkbenches(paths.desktopDb);
+  });
+
+  safeHandle(
+    "taskWorkbenches:ensure",
+    async (_event, args: { taskNoteId: string; name?: string; projectPath?: string | null }) => {
       const paths = await loadPanelDbPaths();
-      const level = opts?.level && opts.level !== "all" ? opts.level : undefined;
-      if (opts?.fromMs != null && opts?.toMs != null) {
-        return listReportEntriesInRange(paths.desktopDb, {
-          level,
-          startMs: opts.fromMs,
-          endMs: opts.toMs,
-          limit: opts?.limit ?? 200
-        });
-      }
-      return listReportEntries(paths.desktopDb, {
-        level,
-        limit: opts?.limit ?? 50
+      return ensureTaskWorkbench(paths.desktopDb, String(args?.taskNoteId || ""), {
+        name: args?.name,
+        projectPath: args?.projectPath ?? null
       });
+    }
+  );
+
+  safeHandle(
+    "taskWorkbenches:create",
+    async (_event, args: { taskNoteId: string; name?: string; projectPath?: string | null }) => {
+      const paths = await loadPanelDbPaths();
+      return createTaskWorkbench(paths.desktopDb, {
+        taskNoteId: String(args?.taskNoteId || ""),
+        name: args?.name,
+        projectPath: args?.projectPath ?? null
+      });
+    }
+  );
+
+  safeHandle(
+    "taskWorkbenches:rename",
+    async (_event, args: { workbenchId: string; name: string }) => {
+      const paths = await loadPanelDbPaths();
+      return renameTaskWorkbench(paths.desktopDb, String(args?.workbenchId || ""), String(args?.name || ""));
+    }
+  );
+
+  safeHandle(
+    "taskWorkbenches:setProject",
+    async (_event, args: { workbenchId: string; projectPath: string | null }) => {
+      const paths = await loadPanelDbPaths();
+      return setTaskWorkbenchProject(
+        paths.desktopDb,
+        String(args?.workbenchId || ""),
+        args?.projectPath == null ? null : String(args.projectPath)
+      );
+    }
+  );
+
+  safeHandle(
+    "taskWorkbenches:setLayout",
+    async (_event, args: { workbenchId: string; layoutJson: string | null }) => {
+      const paths = await loadPanelDbPaths();
+      await setTaskWorkbenchLayout(
+        paths.desktopDb,
+        String(args?.workbenchId || ""),
+        args?.layoutJson == null ? null : String(args.layoutJson)
+      );
+      return { ok: true as const };
+    }
+  );
+
+  safeHandle(
+    "taskWorkbenches:reorder",
+    async (_event, args: { taskNoteId: string; orderedIds: string[] }) => {
+      const paths = await loadPanelDbPaths();
+      await reorderTaskWorkbenches(
+        paths.desktopDb,
+        String(args?.taskNoteId || ""),
+        Array.isArray(args?.orderedIds) ? args.orderedIds.map(String) : []
+      );
+      return { ok: true as const };
+    }
+  );
+
+  safeHandle(
+    "taskWorkbenches:delete",
+    async (_event, args: { workbenchId: string }) => {
+      const paths = await loadPanelDbPaths();
+      await deleteTaskWorkbench(paths.desktopDb, String(args?.workbenchId || ""));
+      return { ok: true as const };
+    }
+  );
+
+  safeHandle(
+    "taskWorkbenches:listSessionLinks",
+    async (_event, args: { workbenchId: string }) => {
+      const paths = await loadPanelDbPaths();
+      return listTaskWorkbenchSessionLinks(paths.desktopDb, String(args?.workbenchId || ""));
+    }
+  );
+
+  safeHandle(
+    "taskWorkbenches:assignSession",
+    async (_event, args: { workbenchId: string; provider: string; agentSessionId: string }) => {
+      const paths = await loadPanelDbPaths();
+      return assignSessionToTaskWorkbench(
+        paths.desktopDb,
+        String(args?.workbenchId || ""),
+        String(args?.provider || ""),
+        String(args?.agentSessionId || "")
+      );
+    }
+  );
+
+  safeHandle(
+    "taskWorkbenches:removeSession",
+    async (_event, args: { workbenchId: string; provider: string; agentSessionId: string }) => {
+      const paths = await loadPanelDbPaths();
+      await removeSessionFromTaskWorkbench(
+        paths.desktopDb,
+        String(args?.workbenchId || ""),
+        String(args?.provider || ""),
+        String(args?.agentSessionId || "")
+      );
+      return { ok: true as const };
     }
   );
 
@@ -2537,116 +2858,11 @@ function registerIpc(): void {
     }
   });
 
-  ipcMain.handle("report:getLinks", async (_event, reportId?: string) => {
-    const id = typeof reportId === "string" ? reportId.trim() : "";
-    if (!id) {
-      return [];
-    }
-    try {
-      const paths = await loadPanelDbPaths();
-      return await listReportLinks(paths.desktopDb, id);
-    } catch (error) {
-      void recordAppError({ source: "report", message: "report:getLinks failed.", error });
-      return [];
-    }
-  });
-
-  ipcMain.handle("report:listDaily", async (_event, limit?: number) => {
-    const paths = await loadPanelDbPaths();
-    return listReportEntries(paths.desktopDb, { level: "daily", limit: limit ?? 30 });
-  });
-
-  ipcMain.handle(
-    "report:runDaily",
-    async (
-      event,
-      args?: string | { date?: string; forceResummarize?: boolean; allowOverBudget?: boolean }
-    ) => {
-      const opts =
-        typeof args === "string" || args === undefined
-          ? { date: args }
-          : args || {};
-      const sendProgress = (progress: DigestProgressEvent) => {
-        event.sender.send("report:digestProgress", progress);
-      };
-      return runDailyDigest({
-        date: opts.date,
-        forceResummarize: opts.forceResummarize,
-        allowOverBudget: opts.allowOverBudget === true,
-        trigger: "manual",
-        onProgress: sendProgress,
-        systemLocale: app.getLocale()
-      });
-    }
-  );
-
-  ipcMain.handle("report:previewRun", async (_event, args: unknown) => {
-    if (!args || typeof args !== "object") {
-      throw new Error("Invalid digest preview request.");
-    }
-    const input = args as { level?: unknown; periodKey?: unknown };
-    if (input.level !== "daily" && input.level !== "weekly" && input.level !== "monthly") {
-      throw new Error("Invalid digest level.");
-    }
-    return estimateDigestRun({
-      level: input.level,
-      periodKey: typeof input.periodKey === "string" ? input.periodKey : undefined
-    });
-  });
-
-  ipcMain.handle("report:needsDailyRefresh", async (_event, date?: string) => {
-    return needsDailyDigestRefresh({ date, systemLocale: app.getLocale() });
-  });
-
-  ipcMain.handle("report:needsWeeklyRefresh", async (_event, weekKey?: string) => {
-    return needsWeeklyDigestRefresh({ weekKey, systemLocale: app.getLocale() });
-  });
-
-  ipcMain.handle("report:needsMonthlyRefresh", async (_event, monthKey?: string) => {
-    return needsMonthlyDigestRefresh({ monthKey, systemLocale: app.getLocale() });
-  });
-
-  ipcMain.handle("report:runWeekly", async (event, args?: string | { weekKey?: string; allowOverBudget?: boolean }) => {
-    const opts = typeof args === "string" || args === undefined ? { weekKey: args } : args;
-    const sendProgress = (progress: DigestProgressEvent) => {
-      event.sender.send("report:digestProgress", progress);
-    };
-    return runWeeklyDigest({
-      weekKey: opts.weekKey,
-      allowOverBudget: opts.allowOverBudget === true,
-      trigger: "manual",
-      onProgress: sendProgress,
-      systemLocale: app.getLocale()
-    });
-  });
-
-  ipcMain.handle("report:runMonthly", async (event, args?: string | { monthKey?: string; allowOverBudget?: boolean }) => {
-    const opts = typeof args === "string" || args === undefined ? { monthKey: args } : args;
-    const sendProgress = (progress: DigestProgressEvent) => {
-      event.sender.send("report:digestProgress", progress);
-    };
-    return runMonthlyDigest({
-      monthKey: opts.monthKey,
-      allowOverBudget: opts.allowOverBudget === true,
-      trigger: "manual",
-      onProgress: sendProgress,
-      systemLocale: app.getLocale()
-    });
-  });
-
-  ipcMain.handle(
-    "report:search",
-    async (_event, args: { query: string; level?: string; limit?: number }) => {
-      return searchReportsByEmbedding({
-        query: args.query,
-        level: args.level && args.level !== "all" ? args.level : undefined,
-        limit: args.limit ?? 20
-      });
-    }
-  );
-
   ipcMain.handle("agent:listTools", async (_event, args?: { projectPath?: string }) => {
-    const coreTools = [...AGENT_TOOL_CATALOG];
+    const coreTools: AgentToolDescriptor[] = AGENT_TOOL_CATALOG.map((tool) => ({
+      ...tool,
+      kind: "core_mcp" as const
+    }));
     try {
       const skills = await discoverSkills({ projectPath: args?.projectPath });
       const skillTools = skills.map(skillToToolDescriptor);
@@ -2675,46 +2891,6 @@ function registerIpc(): void {
   ipcMain.handle("skills:read", async (_event, args: { location: string }) => {
     return readSkillContent(args.location);
   });
-
-  ipcMain.handle(
-    "workflow:previewReportGtdSync",
-    async (_event, args?: { ensureDigests?: boolean; reportIds?: string[] }) => {
-      return previewReportGtdSync({
-        ensureDigests: args?.ensureDigests,
-        reportIds: args?.reportIds,
-        systemLocale: app.getLocale()
-      });
-    }
-  );
-
-  ipcMain.handle(
-    "workflow:applyReportGtdSync",
-    async (
-      _event,
-      args: {
-        items: Array<{
-          provider: string;
-          sessionId: string;
-          gtd: string;
-          reason: string;
-          tasks: string[];
-          sourceReportIds: string[];
-          title?: string;
-          projectPath?: string;
-          previousGtd?: string | null;
-          todolistMarkdown?: string;
-        }>;
-      }
-    ) => {
-      return applyReportGtdSync({
-        items: (args?.items || []).map((it) => ({
-          ...it,
-          previousGtd: (it.previousGtd as "inbox" | "next" | "waiting" | "someday" | "reference" | null) ?? null,
-          todolistMarkdown: it.todolistMarkdown
-        }))
-      });
-    }
-  );
 
   ipcMain.handle("usage:summary", async (_event, args?: { days?: number }) => {
     const paths = await loadPanelDbPaths();
@@ -2766,42 +2942,98 @@ function registerIpc(): void {
   ipcMain.handle("logs:clear", async () => clearAppErrors());
   ipcMain.handle("logs:openDir", async () => openAppErrorLogDir());
 
-  ipcMain.handle(
-    "workflow:previewBackfillDigests",
-    async (
-      _event,
-      args?: { maxDays?: number; skipExisting?: boolean; minSessionsPerDay?: number }
-    ) => {
-      return previewBackfillReportDigests({
-        maxDays: args?.maxDays,
-        skipExisting: args?.skipExisting,
-        minSessionsPerDay: args?.minSessionsPerDay
-      });
-    }
-  );
-
-  ipcMain.handle(
-    "workflow:backfillDigests",
-    async (
-      _event,
-      args?: {
-        maxDays?: number;
-        skipExisting?: boolean;
-        skipEmbedding?: boolean;
-        minSessionsPerDay?: number;
-      }
-    ) => {
-      return backfillReportDigests({
-        maxDays: args?.maxDays,
-        skipExisting: args?.skipExisting,
-        skipEmbedding: args?.skipEmbedding,
-        minSessionsPerDay: args?.minSessionsPerDay,
-        allowOverBudget: true
-      });
-    }
-  );
-
   ipcMain.handle("notes:list", async () => notesList());
+  ipcMain.handle("notes:listTasks", async () => notesListTasks());
+  ipcMain.handle("taskTemplates:list", async () => listTaskTemplates());
+  ipcMain.handle("taskTemplates:create", async (_event, args: { title?: unknown; projectPaths?: unknown }) => {
+    if (typeof args?.title !== "string" || !args.title.trim()) {
+      throw new Error("A template name is required.");
+    }
+    return createTaskTemplate({
+      title: args.title,
+      projectPaths: stringList(args?.projectPaths)
+    });
+  });
+  ipcMain.handle("taskTemplates:update", async (_event, args: { templateId?: unknown; title?: unknown; projectPaths?: unknown }) => {
+    if (typeof args?.templateId !== "string" || !args.templateId.trim()) {
+      throw new Error("A task template id is required.");
+    }
+    if (typeof args?.title !== "string" || !args.title.trim()) {
+      throw new Error("A template name is required.");
+    }
+    return updateTaskTemplate({
+      templateId: args.templateId,
+      title: args.title,
+      projectPaths: stringList(args?.projectPaths)
+    });
+  });
+  ipcMain.handle("taskTemplates:delete", async (_event, args: { templateId?: unknown }) => {
+    if (typeof args?.templateId !== "string" || !args.templateId.trim()) {
+      throw new Error("A task template id is required.");
+    }
+    return deleteTaskTemplate(args.templateId);
+  });
+  ipcMain.handle("notes:removeTaskProject", async (_event, args: { noteId?: unknown; projectPath?: unknown }) => {
+    if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
+      throw new Error("A task note id is required.");
+    }
+    if (typeof args?.projectPath !== "string" || !args.projectPath.trim()) {
+      throw new Error("A project path is required.");
+    }
+    return notesRemoveTaskProject({ noteId: args.noteId, projectPath: args.projectPath });
+  });
+  ipcMain.handle("notes:ensureTaskWorkspace", async (_event, args: { noteId?: unknown }) => {
+    if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
+      throw new Error("A task note id is required.");
+    }
+    return notesEnsureTaskWorkspace(args.noteId);
+  });
+  ipcMain.handle("notes:listTaskSessionLinks", async () => notesListTaskSessionLinks());
+  ipcMain.handle("notes:taskWorkspace", async (_event, args: { noteId?: unknown }) => {
+    if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
+      throw new Error("A task note id is required.");
+    }
+    return notesTaskWorkspace(args.noteId);
+  });
+  ipcMain.handle("notes:openTaskWorkspace", async (_event, args: { noteId?: unknown }) => {
+    if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
+      throw new Error("A task note id is required.");
+    }
+    return notesOpenTaskWorkspace(args.noteId);
+  });
+  ipcMain.handle("notes:addTaskProject", async (_event, args: { noteId?: unknown; projectPath?: unknown }) => {
+    if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
+      throw new Error("A task note id is required.");
+    }
+    if (typeof args?.projectPath !== "string" || !args.projectPath.trim()) {
+      throw new Error("A project path is required.");
+    }
+    return notesAddTaskProject({ noteId: args.noteId, projectPath: args.projectPath });
+  });
+  ipcMain.handle("notes:linkSessionToTask", async (_event, args: { noteId?: unknown; sessionKey?: unknown; projectPath?: unknown }) => {
+    if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
+      throw new Error("A task note id is required.");
+    }
+    if (typeof args?.sessionKey !== "string" || !args.sessionKey.trim()) {
+      throw new Error("A session key is required.");
+    }
+    return notesLinkSessionToTask({
+      noteId: args.noteId,
+      sessionKey: args.sessionKey,
+      projectPath: typeof args.projectPath === "string" ? args.projectPath : undefined
+    });
+  });
+  ipcMain.handle("notes:createTask", async (_event, args: { title?: unknown; next?: unknown; decision?: unknown; sessions?: unknown; projects?: unknown; primaryProject?: unknown; status?: unknown }) => {
+    return notesCreateTask({
+      title: typeof args?.title === "string" ? args.title : undefined,
+      next: typeof args?.next === "string" ? args.next : undefined,
+      decision: typeof args?.decision === "string" ? args.decision : undefined,
+      sessions: stringList(args?.sessions),
+      projects: stringList(args?.projects),
+      primaryProject: typeof args?.primaryProject === "string" ? args.primaryProject : undefined,
+      status: typeof args?.status === "string" && isGtdStatus(args.status) ? args.status : undefined
+    });
+  });
   ipcMain.handle("notes:listRoot", async () => notesListRootNotes());
   ipcMain.handle("notes:listLinks", async () => notesListLinks());
   ipcMain.handle("notes:listLinkedChildIds", async () => notesListLinkedChildIds());
@@ -2886,6 +3118,53 @@ function registerIpc(): void {
     return { ok: true as const };
   });
   ipcMain.handle(
+    "task-window:open",
+    async (_event, args: { noteId?: unknown; workbenchId?: unknown; title?: unknown; x?: unknown; y?: unknown }) => {
+      const noteId = typeof args?.noteId === "string" ? args.noteId.trim() : "";
+      const workbenchId = typeof args?.workbenchId === "string" ? args.workbenchId.trim() : "";
+      if (!noteId || !workbenchId) throw new Error("A task note id and a workbench id are required.");
+      const result = openTaskWindow(taskWindowDeps(), {
+        noteId,
+        workbenchId,
+        ...(typeof args?.title === "string" && args.title.trim() ? { title: args.title.trim() } : {}),
+        ...(typeof args?.x === "number" && Number.isFinite(args.x) ? { x: args.x } : {}),
+        ...(typeof args?.y === "number" && Number.isFinite(args.y) ? { y: args.y } : {})
+      });
+      return result;
+    }
+  );
+  ipcMain.handle("task-window:list", async () => summarizeTaskWindows());
+  ipcMain.handle("task-window:focus", async (_event, args: { workbenchId?: unknown }) => {
+    const workbenchId = typeof args?.workbenchId === "string" ? args.workbenchId.trim() : "";
+    return { ok: workbenchId ? focusTaskWindow(workbenchId) : false };
+  });
+  ipcMain.handle("task-window:getState", async (event) => {
+    const state = taskWindowStateForSender(event.sender);
+    if (!state || state.window.isDestroyed()) throw new Error("Task window not found.");
+    return { workbenchId: state.workbenchId, noteId: state.noteId, title: state.title };
+  });
+  ipcMain.handle("task-window:setTitle", async (event, args: { title?: unknown }) => {
+    const state = taskWindowStateForSender(event.sender);
+    if (!state || state.window.isDestroyed()) return { ok: false as const };
+    if (typeof args?.title === "string") {
+      setTaskWindowTitle(state.workbenchId, args.title);
+      broadcastToRenderers("task-window:changed", summarizeTaskWindows());
+    }
+    return { ok: true as const };
+  });
+  ipcMain.handle("task-window:close", async (event) => {
+    const state = taskWindowStateForSender(event.sender);
+    if (!state || state.window.isDestroyed()) return { ok: false as const };
+    state.window.close();
+    return { ok: true as const };
+  });
+  ipcMain.handle("task-window:closeReady", async (event, args: { ok?: unknown }) => {
+    const pending = pendingTaskWindowCloses.get(event.sender.id);
+    if (!pending) return { ok: false as const };
+    pending.settle(args?.ok === true);
+    return { ok: args?.ok === true } as const;
+  });
+  ipcMain.handle(
     "notes:resumeSession",
     async (_event, args: { provider: AgentProvider; sessionId: string; initialPrompt?: string }) => {
       const resume = async (): Promise<{
@@ -2910,7 +3189,15 @@ function registerIpc(): void {
               mode: result.mode,
               initialPrompt: args.initialPrompt?.trim() || undefined
             };
-            broadcastToRenderers("workbench:resumeFromAgent", payload);
+            // Resuming a session opens a pane, so it belongs in a workbench
+            // window: the board window has none.
+            const target = focusedOrRecentTaskWindow();
+            if (target && !target.isDestroyed()) {
+              if (target.isMinimized()) target.restore();
+              target.show();
+              target.focus();
+              target.webContents.send("workbench:resumeFromAgent", payload);
+            }
           }
           return {
             ok: true,
@@ -2944,7 +3231,7 @@ function registerIpc(): void {
     async (
       _event,
       args: {
-        scope: "library" | "project" | "session";
+        scope: "library" | "session";
         projectPath?: string;
         provider?: string;
         sessionId?: string;
@@ -2956,14 +3243,6 @@ function registerIpc(): void {
       return result;
     }
   );
-  ipcMain.handle(
-    "notes:move",
-    async (_event, args: { noteId: string; owner: import("@agent-resume/core").NoteOwner }) => {
-      const result = await notesMove(args.noteId, args.owner);
-      scheduleNotesIndex();
-      return result;
-    }
-  );
   ipcMain.handle("notes:delete", async (_event, args: { noteId: string }) => {
     const result = await notesDelete(args.noteId);
     scheduleNotesIndex();
@@ -2971,6 +3250,17 @@ function registerIpc(): void {
   });
   ipcMain.handle("notes:rename", async (_event, args: { noteId: string; filename: string }) => {
     const result = await notesRename(args.noteId, args.filename);
+    scheduleNotesIndex();
+    return result;
+  });
+  ipcMain.handle("notes:renameTask", async (_event, args: { noteId?: unknown; title?: unknown }) => {
+    if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
+      throw new Error("A task note id is required.");
+    }
+    if (typeof args?.title !== "string" || !args.title.trim()) {
+      throw new Error("A task name is required.");
+    }
+    const result = await notesRenameTask(args.noteId, args.title);
     scheduleNotesIndex();
     return result;
   });
@@ -3009,14 +3299,11 @@ function registerIpc(): void {
   ipcMain.handle(
     "projects:addProject",
     async (_event, args: { title?: string }) => {
-      const result = await dialog.showOpenDialog({
-        properties: ["openDirectory", "createDirectory"],
-        title: args.title || "Select project folder"
-      });
-      if (result.canceled || !result.filePaths[0]) {
+      const result = await showDirectoryPicker({ title: args.title || "Select project folder" });
+      if (!result.ok) {
         return { ok: false as const, canceled: true as const };
       }
-      const absolutePath = result.filePaths[0];
+      const absolutePath = result.path;
       const stat = await fs.stat(absolutePath).catch(() => null);
       if (!stat?.isDirectory()) {
         throw new Error("Selected folder is not a valid directory.");
@@ -3058,14 +3345,11 @@ function registerIpc(): void {
   ipcMain.handle(
     "projects:pickLocalPath",
     async (_event, args: { projectId: string; title?: string }) => {
-      const result = await dialog.showOpenDialog({
-        properties: ["openDirectory", "createDirectory"],
-        title: args.title || "Select local project folder"
-      });
-      if (result.canceled || !result.filePaths[0]) {
+      const result = await showDirectoryPicker({ title: args.title || "Select local project folder" });
+      if (!result.ok) {
         return { ok: false as const, canceled: true as const };
       }
-      const absolutePath = result.filePaths[0];
+      const absolutePath = result.path;
       const paths = await loadPanelDbPaths();
       await setProjectLocalPath(paths.catalogDb, args.projectId, absolutePath);
       const resolved = await resolveProjectCwd(paths.catalogDb, args.projectId);
@@ -3196,7 +3480,7 @@ app.whenReady().then(async () => {
     getMainWindow: () => mainWindow
   });
   registerImIpc({
-    getMainWindow: () => mainWindow,
+    broadcast: (event) => broadcastToRenderers("im:event", event),
     acp: {
       connect: (chatId) => connectAcpChat(chatId),
       prompt: (chatId, text, images) => promptAcpChat(chatId, text, images ?? []),
@@ -3208,7 +3492,7 @@ app.whenReady().then(async () => {
     }
   });
   registerWorkbenchFsIpc();
-  registerWorkbenchWatcherIpc(() => mainWindow);
+  registerWorkbenchWatcherIpc(() => mainWindow, (sender) => isTaskWindowSender(sender));
   registerWorkbenchGitIpc(() => app.getLocale());
   registerWorkbenchScriptsIpc();
   registerBrowserIpc({
@@ -3241,6 +3525,7 @@ app.whenReady().then(async () => {
   }
   createWindow();
   syncSessionDotsTray();
+  void restoreTaskWindows();
   nativeTheme.on("updated", () => syncSessionDotsTray());
 
   void (async () => {
@@ -3253,6 +3538,36 @@ app.whenReady().then(async () => {
       startSessionTranscriptIndexAuto();
       startSessionEmbeddingIndexAuto();
       await refreshMemorySchedulerFromSettings();
+
+      try {
+        const installed = installArpmShim({
+          execPath: process.execPath,
+          cliPath: resolveArpmCliPath({
+            isPackaged: app.isPackaged,
+            resourcesPath: process.resourcesPath,
+            appPath: app.getAppPath()
+          }),
+          panelHome: resolvePanelHome(settings.panelHome)
+        });
+        if (installed.written) {
+          console.log(`[agent-resume] Installed arpm at ${installed.path}`);
+        } else if (installed.skipped) {
+          void recordAppError({
+            source: "arpm-install",
+            message: `Skipped arpm install: ${installed.skipped}`
+          });
+        }
+        const shell = installArpmShell({ panelHome: resolvePanelHome(settings.panelHome) });
+        if (shell.rcPaths.length) {
+          console.log(`[agent-resume] Wired arpm shell cd hook in ${shell.rcPaths.join(", ")}`);
+        }
+      } catch (error) {
+        void recordAppError({
+          source: "arpm-install",
+          message: "Failed to install arpm on PATH.",
+          error
+        });
+      }
 
       // Rewrite any client configs still pointing at the old GUI Electron MCP entry in background.
       try {
@@ -3283,26 +3598,25 @@ app.whenReady().then(async () => {
         });
       }
 
-      // Publish browser MCP endpoint + register TUI/CLI stdio proxy when enabled.
+      // Publish browser MCP endpoint + register both MCP services for TUI/CLI clients.
       try {
         browserSettingsCache = settings.desktop?.browser || null;
-        await ensureBrowserMcpReadyForExternal(settings);
-        const browserMcp = await syncBrowserExternalMcpRegistration(settings);
-        if (browserMcp.registered.length) {
+        const mcp = await syncExternalMcpRegistration(settings);
+        if (mcp.registered.length) {
           console.log(
-            `[agent-resume] Browser MCP registered for: ${browserMcp.registered.join(", ")}`
+            `[agent-resume] External MCP registered for: ${mcp.registered.join(", ")}`
           );
         }
-        for (const failure of browserMcp.failed) {
+        for (const failure of mcp.failed) {
           void recordAppError({
-            source: "browser-mcp",
-            message: `Browser MCP sync failed (${failure.target}): ${failure.error}`
+            source: "external-mcp",
+            message: `External MCP sync failed (${failure.target}): ${failure.error}`
           });
         }
       } catch (error) {
         void recordAppError({
-          source: "browser-mcp",
-          message: "Browser MCP external startup failed.",
+          source: "external-mcp",
+          message: "External MCP startup sync failed.",
           error
         });
       }
@@ -3316,8 +3630,6 @@ app.whenReady().then(async () => {
   })();
   app.on("activate", () => {
     if (!mainWindow || mainWindow.isDestroyed()) {
-      // Invariant fallback: settings must not outlive main
-      closeSettingsWindowIfOpen();
       createWindow();
       syncSessionDotsTray();
       startDesktopNotesIndexer();
@@ -3334,22 +3646,32 @@ app.whenReady().then(async () => {
 });
 
 app.on("before-quit", (event) => {
-  if (!allowAppQuit && standaloneNoteWindows.size > 0) {
+  if (!allowAppQuit && (standaloneNoteWindows.size > 0 || openTaskWindowCount() > 0)) {
     event.preventDefault();
     void beginAppQuit().catch((error) => {
       void recordAppError({ source: "standalone-note", message: "Application quit coordination failed.", error });
     });
     return;
   }
+  if (!allowAppQuit) {
+    const awaitingKeys = workbenchActiveSessions
+      .filter((dot) => dot.status === "awaiting_user" && dot.sessionKey)
+      .map((dot) => dot.sessionKey);
+    if (awaitingKeys.length > 0) {
+      void loadPanelDbPaths()
+        .then((paths) => recordLastExitWaitingSessions(paths.catalogDb, awaitingKeys))
+        .catch(() => undefined);
+    }
+  }
   allowAppQuit = true;
   performQuitCleanup();
 });
 
 app.on("window-all-closed", () => {
-  const notesOpen = standaloneNoteWindows.size > 0;
+  const backgroundWindowsOpen = standaloneNoteWindows.size > 0 || openTaskWindowCount() > 0;
   // macOS: app stays in Dock without windows — keep scheduler/notes indexer running so
   // scheduled digests still fire. Hide-on-close also keeps the hidden main window alive.
-  if (process.platform !== "darwin" && !notesOpen) {
+  if (process.platform !== "darwin" && !backgroundWindowsOpen) {
     stopMemoryScheduler();
     stopNotesIndexer();
     stopSessionSummaryAuto();

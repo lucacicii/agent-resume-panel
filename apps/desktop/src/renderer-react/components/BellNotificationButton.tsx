@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { ThemeIcon } from "./ThemeIcon";
 import { useI18n } from "../i18n";
 import {
-  getConfig,
   getHistory,
   subscribe,
   type NotificationEntry

@@ -12,7 +12,7 @@ import { t } from "../i18n";
 import { CLI_HANDOFF_TARGETS, getHandoffTargetLabel } from "./targets";
 import { pickHandoffTargetForPreview } from "./previewTargetPicker";
 
-export interface HandoffCommandArg {
+interface HandoffCommandArg {
   target?: HandoffTargetProvider;
 }
 

@@ -16,7 +16,7 @@ import { foregroundProcesses, readProcessEntries, type ProcessEntry } from "./pr
 import type { AgentKind, PaneTelemetry } from "./types";
 
 /** How often the process table is rescanned. */
-export const DISCOVERY_INTERVAL_MS = 5_000;
+const DISCOVERY_INTERVAL_MS = 5_000;
 
 /** External pane id for a pid. */
 export function externalPaneId(pid: number): number {
@@ -74,7 +74,7 @@ export function discoverExternalAgents(
   return found;
 }
 
-export type DiscoveryScanner = {
+type DiscoveryScanner = {
   /** Run one scan and apply it to the state. */
   scan: () => Promise<void>;
   dispose: () => void;

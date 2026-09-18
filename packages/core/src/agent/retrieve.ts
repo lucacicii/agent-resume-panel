@@ -18,8 +18,7 @@ import type { PanelSettings } from "../settings/types";
 import { recordLlmUsage } from "../usage/store";
 import { AgentCitation } from "./types";
 import { resolveNoteSearchPlan } from "./noteIntent";
-import { effectivePanelHome, loadSettings } from "../settings/store";
-import { resolvePanelHome } from "../panelHome";
+import { loadSettings } from "../settings/store";
 
 const DEFAULT_LIMIT = 8;
 const CONTENT_CHARS = 2000;
@@ -163,9 +162,6 @@ export async function retrieveAgentContext(options: {
   projectPath?: string;
 }): Promise<RetrieveAgentContextResult> {
   const settings = await loadSettings(options.panelHome);
-  const panelHome = options.panelHome
-    ? resolvePanelHome(options.panelHome)
-    : effectivePanelHome(settings, options.panelHome);
   const paths = await preparePanelDatabasesFromSettings(options.panelHome);
   const catalogDb = paths.catalogDb;
   const desktopDb = paths.desktopDb;

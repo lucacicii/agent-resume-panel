@@ -13,8 +13,8 @@ import {
   type HelloResult
 } from "./types";
 
-export const DEFAULT_REQUEST_TIMEOUT_MS = 5_000;
-export const DEFAULT_CONNECT_TIMEOUT_MS = 3_000;
+const DEFAULT_REQUEST_TIMEOUT_MS = 5_000;
+const DEFAULT_CONNECT_TIMEOUT_MS = 3_000;
 
 export type AgentStatusClient = {
   readonly hello: HelloResult;
@@ -26,7 +26,7 @@ export type AgentStatusClient = {
   readonly closed: boolean;
 };
 
-export class AgentStatusClientError extends Error {
+class AgentStatusClientError extends Error {
   constructor(
     message: string,
     readonly code: string

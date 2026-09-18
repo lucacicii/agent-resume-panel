@@ -1,13 +1,12 @@
 import {
   chatCompletionDetailed,
-  chatLlmConfigFromSettings,
   imRoutingLlmConfigFromSettings,
   recordLlmUsage,
   type PanelSettings
 } from "@agent-resume/core";
 import type { ImMember, IntentRouteResult } from "../../shared/imTypes";
 
-export const INTENT_ROUTING_TIMEOUT_MS = 30_000;
+const INTENT_ROUTING_TIMEOUT_MS = 30_000;
 
 const FAST_UNMATCHED_REGEX = /^(好的|收到|ok|yes|no|hi|hello|你好|谢谢|thanks|thx|嗯|对|是的|明白|了解|再见|bye)[\s!.,，。！~]*$/i;
 

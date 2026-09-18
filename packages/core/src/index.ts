@@ -56,6 +56,9 @@ export type {
   WorkbenchEditorAutoSaveDelayMs,
   WorkbenchProjectContextMenuAction,
   WorkbenchComposerSlashPhrase,
+  WorkbenchComposerMention,
+  WorkbenchComposerMentionRoot,
+  WorkbenchComposerMentionRole,
   WorkbenchNewSessionTarget,
   AcpAgentProvider,
   AcpAutoApprovePermissions,
@@ -106,6 +109,14 @@ export {
   setNoteGtdStatus,
   clearNoteGtdStatus
 } from "./notes/gtd";
+export {
+  TASK_GTD_LADDER,
+  emptyTaskGtdCounts,
+  rollupTaskGtdStatuses,
+  resolveTaskGtdRollup,
+  listTaskGtdRollups
+} from "./notes/gtdRollup";
+export type { TaskGtdCounts, TaskGtdRollup } from "./notes/gtdRollup";
 export type { UiLocale, UiLanguagePreference } from "./i18n/locales";
 export {
   UI_LANGUAGE_SETTING,
@@ -139,6 +150,17 @@ export {
   effectivePanelHome,
   catalogDbFromSettings
 } from "./settings/store";
+export {
+  COMPOSER_MENTION_ID,
+  COMPOSER_MENTIONS_MAX,
+  COMPOSER_MENTION_ROOTS_MAX,
+  normalizeWorkbenchComposerMentions
+} from "./settings/mentions";
+export {
+  resolveMention,
+  matchMentionForCwd,
+  buildMentionPrompt
+} from "./settings/mentionPrompt";
 
 export type { AgentProvider, AgentSession, CatalogSessionRow } from "./catalog/types";
 export { toAgentSession } from "./catalog/types";
@@ -153,6 +175,7 @@ export {
 } from "./catalog/db";
 
 export { listSessions, listSessionsInRange, listSessionsInRangePage, listAllSessionsInRange, getSessionById, countSessions, querySessionsPage } from "./catalog/query";
+export { setSessionLastExitWaiting, recordLastExitWaitingSessions, clearSessionLastExitWaiting } from "./catalog/lastExitWaiting";
 export type { SessionRangeCursor, SessionQueryCursor, SessionQueryRequest, SessionQueryPage } from "./catalog/query";
 export type { SessionCatalogCounts } from "./catalog/query";
 export {
@@ -170,7 +193,6 @@ export type {
 export {
   setUserTitleInCatalog,
   setSessionSummaryInCatalog,
-  setSessionDeliveryStatusInCatalog,
   hideSessionsInCatalog,
   unhideAllSessionsInCatalog,
   unhideSessionInCatalog,
@@ -241,6 +263,25 @@ export type {
   WorkbenchSessionFolder,
   WorkbenchSessionFolderAssignment
 } from "./catalog/workbenchFolders";
+export {
+  listTaskWorkbenches,
+  listAllTaskWorkbenches,
+  getTaskWorkbench,
+  createTaskWorkbench,
+  ensureTaskWorkbench,
+  renameTaskWorkbench,
+  setTaskWorkbenchProject,
+  setTaskWorkbenchLayout,
+  reorderTaskWorkbenches,
+  deleteTaskWorkbench,
+  listTaskWorkbenchSessionLinks,
+  assignSessionToTaskWorkbench,
+  removeSessionFromTaskWorkbench
+} from "./catalog/taskWorkbenches";
+export type {
+  TaskWorkbench,
+  TaskWorkbenchSessionLink
+} from "./catalog/taskWorkbenches";
 export {
   loadAllAgentSessions,
   syncAgentSessions,
@@ -358,6 +399,7 @@ export { REPORT_SCHEMA_SQL } from "./report/schema";
 export {
   listReportEntries,
   listReportEntriesInRange,
+  listReportEntriesForSessions,
   insertReportEntry,
   upsertReportJob,
   getReportJobStatus,
@@ -441,24 +483,6 @@ export type { RunMonthlyDigestOptions, RunMonthlyDigestResult } from "./report/m
 export { searchReportsByEmbedding } from "./report/search";
 export type { SearchReportsOptions, ReportSearchHit } from "./report/search";
 export { cosineSimilarity, parseEmbeddingJson } from "./report/cosine";
-export { getPeriodInsights } from "./report/insights";
-export type {
-  PeriodInsights,
-  PeriodDailyTrendItem,
-  PeriodLlmUsageTrendPoint,
-  PeriodComposerSendInsights,
-  PeriodComposerIntentDistribution,
-  PeriodComposerSmoothness,
-  PeriodFrictionSession,
-  PeriodComposerLengthTiers,
-  PeriodComposerTopPhrase,
-  PeriodHourlyIntensity,
-  PeriodSessionStats,
-  PeriodBlockedSession,
-  PeriodActiveSession,
-  PeriodLlmUsage,
-  GetPeriodInsightsOptions
-} from "./report/insights";
 
 export type { PreviewHomes, PreviewMessage, SessionPreviewResult } from "./transcript/types";
 export {
@@ -533,11 +557,7 @@ export type { AgentNoteAuditEvent, AgentNoteAuditStatus } from "./agent/noteAudi
 
 export type {
   ActiveGtdStatus,
-  GtdStatus,
-  GtdEvidence,
-  GtdEvidenceQuote,
-  GtdProposal,
-  GtdApplyItem
+  GtdStatus
 } from "./gtd/types";
 export { GTD_ACTIVE_STATUSES, GTD_STATUSES, isActiveGtdStatus, isGtdStatus } from "./gtd/types";
 export {
@@ -547,7 +567,6 @@ export {
   loadSessionGtdMap,
   sessionGtdKey
 } from "./gtd/store";
-export { writeSessionTodolistMd } from "./notes/todolist";
 export {
   sessionTodolistAbsPath,
   sessionTodolistRelMdPath,
@@ -576,7 +595,7 @@ export {
   type NoteOwnerJson,
   LIBRARY_REL_DIR
 } from "./notes/paths";
-export type { NoteRecord } from "./notes/catalogNotes";
+export type { NoteRecord, TaskRecord } from "./notes/catalogNotes";
 export {
   listAllNotes,
   getNoteById,
@@ -584,6 +603,11 @@ export {
   listSessionNotes,
   listLibraryNotes,
   listProjectNotes,
+  listTasks,
+  listTaskSessionDetails,
+  listTaskSessionLinks,
+  listTaskSessionProjects,
+  findTaskNoteIdForSession,
   upsertNoteRecord,
   deleteNoteRecord,
   deleteNotesByRelPaths,
@@ -592,7 +616,9 @@ export {
   getCatalogMeta,
   setCatalogMeta,
   listLegacySessionNotes,
-  listLegacyProjectNotes
+  listLegacyProjectNotes,
+  type TaskSessionDetail,
+  type TaskSessionLink
 } from "./notes/catalogNotes";
 export { NotesStore, type ImportNotesResult } from "./notes/store";
 export type { NoteLink, NoteSubtree, NoteTreeNode } from "./notes/links";
@@ -635,10 +661,34 @@ export {
   parseNoteDocument,
   buildNoteDocument,
   extractTitle,
+  noteTitle,
   contentPreview,
+  workFieldsFromFrontmatter,
   type NoteFrontmatter,
+  type NoteWorkFields,
   type ParsedNoteDocument
 } from "./notes/frontmatter";
+export {
+  TASK_KNOWLEDGE_BEGIN,
+  TASK_KNOWLEDGE_END,
+  UNTITLED_TASK_NAME,
+  isTaskFrontmatter,
+  taskName,
+  taskPromptBody,
+  ensureTaskKnowledgeRegion,
+  newTaskBody,
+  normalizeTaskDocument,
+  type NormalizedTaskDocument
+} from "./notes/taskNote";
+export {
+  loadNoteWorkMap,
+  setNoteWork,
+  clearNoteWork,
+  syncNoteWorkFromFrontmatter,
+  ensureTaskSessionIndex,
+  isWorkNote,
+  splitSessionKey
+} from "./notes/work";
 export {
   localDateString,
   formatNoteFilename,
@@ -662,21 +712,6 @@ export {
   pathExists,
   fileMtimeMs
 } from "./notes/fs";
-export {
-  runReportGtdSync,
-  previewReportGtdSync,
-  applyReportGtdSync
-} from "./workflow/runReportGtdSync";
-export type {
-  RunReportGtdSyncOptions,
-  RunReportGtdSyncResult,
-  PreviewReportGtdSyncResult,
-  ApplyReportGtdSyncOptions,
-  ApplyReportGtdSyncResult,
-  GtdPreviewItem
-} from "./workflow/runReportGtdSync";
-export { analyzeReportForGtd } from "./workflow/analyzeGtd";
-export { renderSessionTodolistMarkdown } from "./notes/todolist";
 export {
   backfillReportDigests,
   previewBackfillReportDigests,
@@ -741,7 +776,13 @@ export type {
   ArpGitCommitMessageConfig,
   CommitMessageSettingsSource
 } from "./arp";
-export { buildResumeCommand, buildNewSessionCommand, supportsNewSessionYoloMode } from "./terminal/commands";
+export {
+  buildResumeCommand,
+  buildNewSessionCommand,
+  sessionContextFlags,
+  supportsNewSessionYoloMode,
+  supportsSessionContext
+} from "./terminal/commands";
 export type { NewSessionExecutionMode } from "./terminal/commands";
 export {
   openProjectInEditor,
@@ -862,6 +903,15 @@ export {
 } from "./mcp/memoryTools";
 export type { MemoryToolContext } from "./mcp/memoryTools";
 export type { NoteToolContext, NoteMcpResult, NoteRelationshipIndex } from "./mcp/tools";
+export { resolveDefaultNoteTarget } from "./mcp/tools";
+export type { ResolvedNoteTarget } from "./mcp/tools";
+export {
+  MCP_SESSION_ENV,
+  MCP_SESSION_ENV_KEYS,
+  isEmptyMcpSessionContext,
+  mcpSessionContextFromEnv
+} from "./mcp/sessionContext";
+export type { McpSessionContext } from "./mcp/sessionContext";
 export type { AgentMcpContext } from "./mcp/server";
 export {
   AGENT_TOOL_CATALOG,
@@ -903,18 +953,27 @@ export {
 } from "./mcp/sessionTools";
 export type { SessionToolContext } from "./mcp/sessionTools";
 export {
-  projectListSchema,
-  projectMergeSchema,
-  projectTidySchema,
-  projectReconcileSchema,
-  sessionMoveSchema,
-  handleProjectList,
-  handleProjectMerge,
-  handleProjectTidy,
-  handleProjectReconcile,
-  handleSessionMove
-} from "./mcp/projectTools";
-export type { ProjectToolContext } from "./mcp/projectTools";
+  taskListSchema,
+  taskReadSchema,
+  taskCreateSchema,
+  taskWriteSchema,
+  taskLinkSessionSchema,
+  taskUnlinkSessionSchema,
+  handleTaskList,
+  handleTaskRead,
+  handleTaskCreate,
+  handleTaskWrite,
+  handleTaskLinkSession,
+  handleTaskUnlinkSession
+} from "./mcp/taskTools";
+export type { TaskToolContext } from "./mcp/taskTools";
+export {
+  workbenchListSchema,
+  workbenchReadSchema,
+  handleWorkbenchList,
+  handleWorkbenchRead
+} from "./mcp/workbenchTools";
+export type { WorkbenchToolContext } from "./mcp/workbenchTools";
 export { NoteMcpClient, convertMcpToolsToOpenAiFormat } from "./mcp/client";
 export type { McpToolInfo, McpToolCallResult } from "./mcp/client";
 export { runToolLoop } from "./agent/toolLoop";

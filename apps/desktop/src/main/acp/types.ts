@@ -92,12 +92,12 @@ export type AcpConfigOptionCategory =
   | "collaboration_mode"
   | string;
 
-export interface AcpConfigSelectOption {
+interface AcpConfigSelectOption {
   value: string;
   name: string;
 }
 
-export interface AcpConfigSelectGroup {
+interface AcpConfigSelectGroup {
   group: string;
   name: string;
   options: AcpConfigSelectOption[];
@@ -177,7 +177,7 @@ export type AcpStreamEvent =
       updatedAt: number;
     };
 
-export interface AcpChatInit {
+interface AcpChatInit {
   title: string;
   projectPath: string;
   provider: AcpAgentProvider;

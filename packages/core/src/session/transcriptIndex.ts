@@ -31,7 +31,7 @@ export interface TranscriptChunkInput {
   chunkIndex: number;
 }
 
-export interface TranscriptChunkVectorRow {
+interface TranscriptChunkVectorRow {
   chunk_id: string;
   provider: string;
   agent_session_id: string;

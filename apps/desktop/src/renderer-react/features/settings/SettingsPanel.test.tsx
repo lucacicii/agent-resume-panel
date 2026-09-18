@@ -73,8 +73,6 @@ const messages = {
   "desktop.im.agent.codex": "Codex",
   "desktop.settings.paneNotes": "Notes",
   "desktop.settings.paneNotesDesc": "Notes desc",
-  "desktop.settings.paneReport": "Report",
-  "desktop.settings.paneReportDesc": "Report desc",
   "desktop.settings.paneStorage": "Storage",
   "desktop.settings.paneStorageDesc": "Storage desc",
   "desktop.settings.paneUsage": "Usage",
@@ -172,8 +170,6 @@ const messages = {
   "desktop.settings.testConnectionTesting": "Testing…",
   "desktop.settings.saving": "Saving…",
   "desktop.settings.saved": "Saved {0}",
-  "desktop.settings.schedulerOn": "scheduler on",
-  "desktop.settings.schedulerOff": "scheduler off",
   "desktop.settings.embeddingModelChangeConfirm": "Embedding change confirm",
   "desktop.settings.embeddingModelChangeCancelled": "Cancelled",
   "desktop.settings.newSessionGroup": "New Session",
@@ -202,6 +198,22 @@ const messages = {
   "desktop.settings.composerSlashDescriptionPlaceholder": "Optional menu subtitle",
   "desktop.settings.composerSlashAdd": "Add phrase",
   "desktop.settings.composerSlashRemove": "Remove",
+  "desktop.settings.composerMentionsGroup": "Workspace mentions",
+  "desktop.settings.composerMentionsDesc": "Global packs",
+  "desktop.settings.composerMentionsEmpty": "No workspace mentions yet.",
+  "desktop.settings.composerMentionsId": "Id",
+  "desktop.settings.composerMentionsIdPlaceholder": "anfeng",
+  "desktop.settings.composerMentionsCwd": "Work folder",
+  "desktop.settings.composerMentionsCwdPlaceholder": "/path/to/work",
+  "desktop.settings.composerMentionsBrowse": "Browse",
+  "desktop.settings.composerMentionsReferences": "Reference folders",
+  "desktop.settings.composerMentionsReferencePlaceholder": "/path/to/reference",
+  "desktop.settings.composerMentionsAddReference": "Add reference",
+  "desktop.settings.composerMentionsRemoveReference": "Remove reference",
+  "desktop.settings.composerMentionsAdd": "Add mention",
+  "desktop.settings.composerMentionsRemove": "Remove",
+  "desktop.settings.composerMentionsWorkspace": "Workspace",
+  "desktop.settings.composerMentionsCurrentProject": "Current project",
   "desktop.settings.embeddedEditorGroup": "Embedded editor",
   "desktop.settings.editorEditable": "Editable",
   "desktop.settings.editorEditableDesc": "Editable desc",
@@ -282,11 +294,9 @@ function renderWindowSettings(initialPane = "general", overrides?: Record<string
   const host = document.createElement("div");
   host.id = "react-settings";
   document.body.append(host);
-  const closeSettingsWindow = vi.fn(async () => ({ ok: true }));
   const saveSettings = vi.fn(async (settings: unknown, options?: { section?: string }) => ({
     file: "/tmp/settings.json",
     settings,
-    schedulerEnabled: false,
     options
   }));
   const providersTestConnection = vi.fn(async (args: { kind: string; provider: unknown; modelId: string }) => ({
@@ -336,7 +346,6 @@ function renderWindowSettings(initialPane = "general", overrides?: Record<string
     saveSettings,
     providersTestConnection,
     providersFetchModels,
-    closeSettingsWindow,
     onSettingsNavigate: (callback: (payload: { pane: string }) => void) => {
       navigateHandlers.push(callback);
       return () => undefined;
@@ -353,10 +362,14 @@ function renderWindowSettings(initialPane = "general", overrides?: Record<string
   } as unknown as typeof window.agentResume;
   render(
     <I18nProvider>
-      <SettingsPanel variant="window" initialPane={initialPane} />
+      <SettingsPanel variant="embedded" initialPane={initialPane} />
     </I18nProvider>
   );
-  return { host, closeSettingsWindow, saveSettings, providersTestConnection, providersFetchModels, navigateHandlers };
+  const open = (pane = initialPane) => {
+    window.dispatchEvent(new CustomEvent("agent-resume:settings-open", { detail: pane }));
+  };
+  open(initialPane);
+  return { host, saveSettings, providersTestConnection, providersFetchModels, navigateHandlers, open };
 }
 
 describe("SettingsPanel (window)", () => {
@@ -365,9 +378,11 @@ describe("SettingsPanel (window)", () => {
     document.getElementById("react-settings")?.remove();
   });
 
-  it("opens on mount and ignores primary tab changes", async () => {
-    const { host } = renderWindowSettings();
+  it("opens as an overlay and ignores primary tab changes", async () => {
+    const { host, open } = renderWindowSettings();
+    await act(async () => open());
     await waitFor(() => expect(host.querySelector(".react-settings-panel")).not.toBeNull());
+    expect(host.querySelector(".settings-overlay")).not.toBeNull();
 
     await act(async () => {
       window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "notes" }));
@@ -375,17 +390,19 @@ describe("SettingsPanel (window)", () => {
     expect(host.querySelector(".react-settings-panel")).not.toBeNull();
   });
 
-  it("Done closes the settings window via IPC", async () => {
-    const { host, closeSettingsWindow } = renderWindowSettings();
+  it("Done closes the in-window overlay", async () => {
+    const { host, open } = renderWindowSettings();
+    await act(async () => open());
     await waitFor(() => expect(host.querySelector(".react-settings-panel")).not.toBeNull());
     const done = host.querySelector("button.ghost-btn");
     expect(done).not.toBeNull();
     fireEvent.click(done!);
-    expect(closeSettingsWindow).toHaveBeenCalled();
+    await waitFor(() => expect(host.querySelector(".react-settings-panel")).toBeNull());
   });
 
   it("navigates pane via onSettingsNavigate", async () => {
-    const { host, navigateHandlers } = renderWindowSettings("general");
+    const { host, navigateHandlers, open } = renderWindowSettings("general");
+    await act(async () => open());
     await waitFor(() => expect(host.querySelector(".react-settings-panel")).not.toBeNull());
     await act(async () => {
       navigateHandlers[0]?.({ pane: "providers" });

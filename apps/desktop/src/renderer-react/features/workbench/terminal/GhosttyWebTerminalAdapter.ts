@@ -1,6 +1,6 @@
 import type { DesktopAppearanceState } from "../../../themes";
 import { writeTerminalSelection } from "../terminalClipboard";
-import { resolveTerminalTheme, type WorkbenchTerminalThemeId } from "../terminalThemes";
+import { type WorkbenchTerminalThemeId } from "../terminalThemes";
 import type {
   ITerminalAdapter,
   TerminalAdapterOptions,
@@ -11,7 +11,6 @@ import type {
   TerminalSearchOptions,
   TerminalSearchResult
 } from "./types";
-import { DEFAULT_TERMINAL_FONT_FAMILY } from "./XtermTerminalAdapter";
 
 export class GhosttyWebTerminalAdapter implements ITerminalAdapter {
   readonly engineType: TerminalEngineType = "ghostty-web";
@@ -22,7 +21,6 @@ export class GhosttyWebTerminalAdapter implements ITerminalAdapter {
   private containerElement: HTMLElement | null = null;
   private canvasElement: HTMLCanvasElement | null = null;
   private glContext: WebGL2RenderingContext | null = null;
-  private isFocused = false;
 
   private bufferType: "normal" | "alternate" = "normal";
   private baseY = 0;
@@ -84,11 +82,9 @@ export class GhosttyWebTerminalAdapter implements ITerminalAdapter {
     container.appendChild(wrapper);
 
     wrapper.addEventListener("focus", () => {
-      this.isFocused = true;
     });
 
     wrapper.addEventListener("blur", () => {
-      this.isFocused = false;
     });
 
     wrapper.addEventListener("keydown", (event) => {

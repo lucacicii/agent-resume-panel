@@ -16,7 +16,7 @@ import type { AgentStatusEvent } from "./types";
  * Hard cap per line. Telemetry frames carry a screen snapshot, so this is far
  * above a normal request but still bounds a hostile or buggy writer.
  */
-export const MAX_LINE_BYTES = 1_000_000;
+const MAX_LINE_BYTES = 1_000_000;
 
 export type RequestContext = {
   /** Mark this connection as a push subscriber. */
@@ -34,7 +34,7 @@ export type AgentStatusServer = {
   close: () => Promise<void>;
 };
 
-export type AgentStatusServerHandle = (
+type AgentStatusServerHandle = (
   method: string,
   params: unknown,
   context: RequestContext

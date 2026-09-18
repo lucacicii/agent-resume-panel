@@ -2,7 +2,7 @@ import { BrowserWindow, type BrowserWindowConstructorOptions } from "electron";
 import * as path from "node:path";
 import type { BrowserSessionId } from "./types";
 
-export type BrowserWindowEntry = {
+type BrowserWindowEntry = {
   browserId: BrowserSessionId;
   window: BrowserWindow;
 };

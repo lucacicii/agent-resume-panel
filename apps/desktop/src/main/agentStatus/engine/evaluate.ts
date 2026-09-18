@@ -24,7 +24,7 @@ export type ScreenVerdict = {
   reason: string;
 };
 
-export type RulesEvaluation = {
+type RulesEvaluation = {
   verdict: ScreenVerdict | null;
   evaluated: EvaluatedRule[];
 };

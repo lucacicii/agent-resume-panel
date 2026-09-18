@@ -1,4 +1,4 @@
-import React, { StrictMode, useEffect } from "react";
+import React, { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { I18nProvider } from "./i18n";
 import { AppChrome } from "./components/AppChrome";
@@ -6,17 +6,13 @@ import { StartupMask } from "./components/StartupMask";
 import { Notifications } from "./components/Notifications";
 import { SelectionSendHost } from "./selection/SelectionSendHost";
 import { useI18n } from "./i18n";
-import { SessionsSheet } from "./features/SessionsSheet";
 import { SettingsPanel } from "./features/settings/SettingsPanel";
-import { ReportPanel } from "./features/report/ReportPanel";
-import { NotesPanel } from "./features/notes/NotesPanel";
-import { StandaloneNoteWindow } from "./features/notes/StandaloneNoteWindow";
+import { StandaloneNoteWindow } from "./features/workbench/notes/StandaloneNoteWindow";
 import { BrowserStandaloneWindow } from "./features/browser/BrowserStandaloneWindow";
 import { WorkbenchPanel } from "./features/workbench/WorkbenchPanel";
-import { DiffWorkerPool } from "./features/workbench/diffWorkerPool";
-import { KanbanPanel } from "./features/kanban/KanbanPanel";
-import { ImPanel } from "./features/im/ImPanel";
-import { GtdSheet } from "./features/report/GtdSheet";
+import { taskFromRecord } from "./features/workbench/task";
+import { GtdView } from "./features/gtd/GtdView";
+import { BoardQuickAccess } from "./features/gtd/BoardQuickAccess";
 import { settingsChangedToCustomEvents } from "./settingsBroadcast";
 import { updateConfig } from "./components/notificationStore";
 import type { PanelSettings } from "@agent-resume/core";
@@ -48,39 +44,33 @@ function syncNotificationConfig(settings: PanelSettings): void {
   });
 }
 
-export function getDesktopWindowMode(): "main" | "settings" | "standalone-note" | "browser" {
+function getDesktopWindowMode(): "main" | "standalone-note" | "browser" | "task" {
   try {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("mode") === "settings") return "settings";
-    if (params.get("mode") === "standalone-note") return "standalone-note";
-    if (params.get("mode") === "browser") return "browser";
+    const mode = params.get("mode");
+    if (mode === "standalone-note") return "standalone-note";
+    if (mode === "browser") return "browser";
+    if (mode === "task") return "task";
     return "main";
   } catch {
     return "main";
   }
 }
 
-export function getStandaloneNoteId(): string {
+function getTaskWindowParams(): { noteId: string; workbenchId: string } {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return { noteId: params.get("noteId") || "", workbenchId: params.get("workbenchId") || "" };
+  } catch {
+    return { noteId: "", workbenchId: "" };
+  }
+}
+
+function getStandaloneNoteId(): string {
   try {
     return new URLSearchParams(window.location.search).get("noteId") || "";
   } catch {
     return "";
-  }
-}
-
-export function getBrowserId(): string {
-  try {
-    return new URLSearchParams(window.location.search).get("browserId") || "";
-  } catch {
-    return "";
-  }
-}
-
-export function getInitialSettingsPane(): string {
-  try {
-    return new URLSearchParams(window.location.search).get("pane") || "general";
-  } catch {
-    return "general";
   }
 }
 
@@ -170,37 +160,23 @@ function MainDesktopRuntime(): React.JSX.Element {
   );
 }
 
+/**
+ * The board window.
+ *
+ * It is deliberately the cheap surface: the board plus the settings overlay,
+ * and no workbench. Workbenches own the panes and the ptys, so they live in
+ * their own windows and the board opens and focuses those instead.
+ */
 function MainRendererRuntime(): React.JSX.Element {
-  const { ready } = useI18n();
-  useEffect(() => {
-    if (!ready) return;
-    window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "report" }));
-  }, [ready]);
   return (
     <>
       <AppChrome />
-      <ReportPanel />
-      <GtdSheet />
-      <DiffWorkerPool>
-        <WorkbenchPanel />
-      </DiffWorkerPool>
-      <NotesPanel />
-      <KanbanPanel />
-      <ImPanel />
-      <SessionsSheet />
+      <GtdView active />
+      <BoardQuickAccess />
+      <SettingsPanel variant="embedded" />
       <SelectionSendHost />
       <Notifications />
     </>
-  );
-}
-
-function SettingsDesktopRuntime(): React.JSX.Element {
-  const initialPane = getInitialSettingsPane();
-  return (
-    <I18nProvider>
-      <SettingsRuntimeBootstrap />
-      <SettingsPanel variant="window" initialPane={initialPane} />
-    </I18nProvider>
   );
 }
 
@@ -228,12 +204,84 @@ function BrowserDesktopRuntime(): React.JSX.Element {
   );
 }
 
-// Mode flag before first paint — drives settings-window CSS
+function TaskWindowMissingParams(): React.JSX.Element {
+  const { t } = useI18n();
+  return <div className="renderer-bridge-error" role="alert"><p>{t("desktop.gtd.windowMissing")}</p></div>;
+}
+
+/**
+ * A workbench window.
+ *
+ * The window hosts exactly one workbench and no board or app chrome, so its
+ * cost is the fixed bundle plus the panes of that one workbench. The task is
+ * handed to the workbench through the same `agent-resume:workbench-task` event
+ * the board uses — the window does not reach into workbench state.
+ */
+function TaskRendererRuntime(): React.JSX.Element {
+  const { ready, t } = useI18n();
+  const [title, setTitle] = useState("");
+  const missingParams = !getTaskWindowParams().noteId;
+  const bootstrappedRef = useRef(false);
+
+  useEffect(() => {
+    if (!ready || bootstrappedRef.current) return;
+    const params = getTaskWindowParams();
+    if (!params.noteId) return;
+    bootstrappedRef.current = true;
+    let cancelled = false;
+    void (async () => {
+      let detail: Record<string, unknown> = { noteId: params.noteId };
+      try {
+        const records = typeof window.agentResume.notesListTasks === "function"
+          ? await window.agentResume.notesListTasks()
+          : [];
+        const record = records.find((item) => item.noteId === params.noteId);
+        if (record) {
+          const task = taskFromRecord(record);
+          detail = { ...task, projects: task.projects ?? [] };
+        }
+      } catch {
+        // A minimal payload still scopes the workbench; it resolves the rest itself.
+      }
+      if (cancelled) return;
+      setTitle(typeof detail.title === "string" && detail.title ? detail.title : t("desktop.workbench.taskView"));
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-task", {
+        detail: { ...detail, workbenchId: params.workbenchId }
+      }));
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" }));
+    })();
+    return () => { cancelled = true; };
+  }, [ready, t]);
+
+  useEffect(() => {
+    if (!title) return;
+    document.title = title;
+    void window.agentResume.taskWindowSetTitle?.({ title }).catch(() => undefined);
+  }, [title]);
+
+  if (missingParams) return <TaskWindowMissingParams />;
+
+  return (
+    <>
+      <WorkbenchPanel />
+      <SelectionSendHost />
+      <Notifications />
+    </>
+  );
+}
+
+function TaskDesktopRuntime(): React.JSX.Element {
+  return (
+    <I18nProvider>
+      <MainRuntimeBootstrap />
+      <TaskRendererRuntime />
+    </I18nProvider>
+  );
+}
+
 const windowMode = getDesktopWindowMode();
 document.documentElement.dataset.windowMode = windowMode;
-if (windowMode === "settings") {
-  document.title = "Settings";
-} else if (windowMode === "standalone-note") {
+if (windowMode === "standalone-note") {
   document.title = "Standalone Note";
 } else if (windowMode === "browser") {
   document.title = "Browser";
@@ -251,12 +299,12 @@ if (host) {
   } else {
     createRoot(host).render(
       <StrictMode>
-        {windowMode === "settings"
-          ? <SettingsDesktopRuntime />
-          : windowMode === "standalone-note"
-            ? <StandaloneNoteDesktopRuntime />
-            : windowMode === "browser"
-              ? <BrowserDesktopRuntime />
+        {windowMode === "standalone-note"
+          ? <StandaloneNoteDesktopRuntime />
+          : windowMode === "browser"
+            ? <BrowserDesktopRuntime />
+            : windowMode === "task"
+              ? <TaskDesktopRuntime />
               : <MainDesktopRuntime />}
       </StrictMode>
     );

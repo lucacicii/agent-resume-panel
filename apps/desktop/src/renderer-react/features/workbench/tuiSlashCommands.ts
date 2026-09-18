@@ -13,7 +13,7 @@ export type TuiSlashCommand = {
   needsTerminalFocus: boolean;
 };
 
-export type ParsedTuiSlashCommand = {
+type ParsedTuiSlashCommand = {
   name: string;
   args: string;
   needsTerminalFocus: boolean;

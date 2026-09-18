@@ -92,12 +92,34 @@ test("deleteNote removes incident links without cascading children", async () =>
   });
 });
 
-test("non-project notes cannot be linked", async () => {
+test("tasks hold linked children; session notes stay out of links", async () => {
   await withStore(async (store) => {
-    const lib = await store.createLibraryNote("# L\n");
+    const item = await store.createTask({ title: "Ship release" });
+    const child = await store.createLinkedChildNote(item.noteId, "# Background\n");
+    assert.equal(child.scope, "library");
+    const parent = await store.getNoteParent(child.noteId);
+    assert.equal(parent?.parentNoteId, item.noteId);
+
+    const subtree = await store.getNoteSubtree(item.noteId);
+    assert.equal(subtree.root.noteId, item.noteId);
+    assert.equal(subtree.root.children.length, 1);
+    assert.equal(subtree.root.children[0].noteId, child.noteId);
+
+    // A linked child disappears from the root list until it is detached.
+    const rootIds = new Set((await store.listRootNotes()).map((note) => note.noteId));
+    assert.ok(rootIds.has(item.noteId));
+    assert.ok(!rootIds.has(child.noteId));
+
+    const session = await store.createSessionNote({ provider: "codex", id: "sess-links" }, "# S\n");
     const proj = await store.createProjectNote("/tmp/p", "# P\n");
-    await assert.rejects(() => store.setNoteParent(lib.noteId, proj.noteId), /project note/i);
-    await assert.rejects(() => store.setNoteParent(proj.noteId, lib.noteId), /project note/i);
+    await assert.rejects(
+      () => store.setNoteParent(session.noteId, proj.noteId),
+      /session note/i
+    );
+    await assert.rejects(
+      () => store.setNoteParent(proj.noteId, session.noteId),
+      /project note/i
+    );
   });
 });
 

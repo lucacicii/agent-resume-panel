@@ -5,6 +5,48 @@ export interface NoteFrontmatter {
   provider?: string;
   sessionId?: string;
   createdAt?: string;
+  /** Task marker. Only notes with this flag appear on the task board. */
+  work?: boolean;
+  /**
+   * Task name. Authoritative for the task; the markdown heading
+   * carries this name, so displays read the name from here.
+   */
+  title?: string;
+  /**
+   * Legacy: heading reminder suffix from before headings carried only the name.
+   * Parsed so old files can be cleaned up once, never written back.
+   */
+  titleSuffix?: string;
+  /** Concrete next action for the task. */
+  next?: string;
+  /** Decision the user still owes for this task. */
+  decision?: string;
+  /** Catalog session keys (`provider:id`) this task is implemented through. */
+  sessions?: string[];
+  /** Project paths this task references (0..n). Projects are referenced, never owned. */
+  projects?: string[];
+  /** Project a new session defaults to; only a convenience, not ownership. */
+  primaryProject?: string;
+}
+
+export interface NoteWorkFields {
+  next?: string;
+  decision?: string;
+  sessions?: string[];
+  projects?: string[];
+  primaryProject?: string;
+}
+
+/** Task fields from parsed front-matter, or `null` when the note is not a task. */
+export function workFieldsFromFrontmatter(fm: NoteFrontmatter): NoteWorkFields | null {
+  if (!fm.work) return null;
+  const out: NoteWorkFields = {};
+  if (fm.next) out.next = fm.next;
+  if (fm.decision) out.decision = fm.decision;
+  if (fm.sessions && fm.sessions.length > 0) out.sessions = fm.sessions;
+  if (fm.projects && fm.projects.length > 0) out.projects = fm.projects;
+  if (fm.primaryProject) out.primaryProject = fm.primaryProject;
+  return out;
 }
 
 export interface ParsedNoteDocument {
@@ -47,6 +89,27 @@ export function buildNoteDocument(frontmatter: NoteFrontmatter, body: string): s
   if (frontmatter.createdAt) {
     lines.push(`createdAt: ${frontmatter.createdAt}`);
   }
+  if (frontmatter.work) {
+    lines.push("work: true");
+  }
+  if (frontmatter.title) {
+    lines.push(`title: ${jsonish(frontmatter.title)}`);
+  }
+  if (frontmatter.next) {
+    lines.push(`next: ${jsonish(frontmatter.next)}`);
+  }
+  if (frontmatter.decision) {
+    lines.push(`decision: ${jsonish(frontmatter.decision)}`);
+  }
+  if (frontmatter.sessions && frontmatter.sessions.length > 0) {
+    lines.push(`sessions: ${frontmatter.sessions.join(", ")}`);
+  }
+  if (frontmatter.projects && frontmatter.projects.length > 0) {
+    lines.push(`projects: ${frontmatter.projects.join(", ")}`);
+  }
+  if (frontmatter.primaryProject) {
+    lines.push(`primaryProject: ${jsonish(frontmatter.primaryProject)}`);
+  }
   lines.push("---", "");
   const normalizedBody = body.replace(/^\uFEFF/, "");
   return lines.join("\n") + normalizedBody.replace(/^\n+/, "");
@@ -65,6 +128,18 @@ export function extractTitle(body: string): string | undefined {
     return trimmed.slice(0, 120);
   }
   return undefined;
+}
+
+/**
+ * Catalog title for a note. A task's name lives in front-matter because its
+ * markdown heading carries a reminder suffix on top of the name.
+ */
+export function noteTitle(
+  frontmatter: NoteFrontmatter | undefined,
+  body: string
+): string | undefined {
+  const declared = frontmatter?.title?.trim();
+  return declared || extractTitle(body);
 }
 
 export function contentPreview(body: string, maxLen = 240): string {
@@ -115,6 +190,30 @@ function parseSimpleYaml(text: string): NoteFrontmatter {
       case "createdAt":
         fm.createdAt = value;
         break;
+      case "work":
+        fm.work = value === "true" || value === "1" || value === "yes";
+        break;
+      case "title":
+        fm.title = unquote(value);
+        break;
+      case "titleSuffix":
+        fm.titleSuffix = unquote(value);
+        break;
+      case "next":
+        fm.next = value;
+        break;
+      case "decision":
+        fm.decision = value;
+        break;
+      case "sessions":
+        fm.sessions = value.split(",").map((entry) => entry.trim()).filter(Boolean);
+        break;
+      case "projects":
+        fm.projects = value.split(",").map((entry) => unquote(entry.trim())).filter(Boolean);
+        break;
+      case "primaryProject":
+        fm.primaryProject = unquote(value);
+        break;
       default:
         break;
     }
@@ -127,4 +226,14 @@ function jsonish(value: string): string {
     return value;
   }
   return JSON.stringify(value);
+}
+
+function unquote(value: string): string {
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    return value.slice(1, -1);
+  }
+  return value;
 }

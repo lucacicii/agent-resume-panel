@@ -49,7 +49,7 @@ interface NoteVectorIndexRow {
   embedding_key: string;
 }
 
-export interface NoteChunkInput {
+interface NoteChunkInput {
   heading?: string;
   content: string;
   contentHash: string;

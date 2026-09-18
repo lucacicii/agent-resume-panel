@@ -338,7 +338,7 @@ test("purgeRetiredAlmaCatalog deletes Alma sessions and Alma-only projects", asy
       updated_at_ms INTEGER NOT NULL, archived INTEGER NOT NULL DEFAULT 0, message_count INTEGER, model TEXT, branch TEXT,
       source TEXT, acp_provider TEXT, user_title TEXT, hidden INTEGER NOT NULL DEFAULT 0, last_synced_at_ms INTEGER,
       transcript_kind TEXT, transcript_refs TEXT, session_summary TEXT, session_summary_language TEXT, session_summary_at_ms INTEGER,
-      project_id TEXT, native_project_path TEXT, PRIMARY KEY (provider, agent_session_id)
+      project_id TEXT, native_project_path TEXT, last_exit_waiting INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (provider, agent_session_id)
     );
     CREATE TABLE projects(project_id TEXT PRIMARY KEY, portable_key TEXT NOT NULL UNIQUE, alias TEXT NOT NULL DEFAULT '', hidden INTEGER NOT NULL DEFAULT 0, last_seen_at_ms INTEGER, updated_at_ms INTEGER NOT NULL, pinned INTEGER NOT NULL DEFAULT 0);
     CREATE TABLE project_local_paths(project_id TEXT NOT NULL, machine_id TEXT NOT NULL, absolute_path TEXT NOT NULL, updated_at_ms INTEGER NOT NULL, PRIMARY KEY(project_id, machine_id));
@@ -347,9 +347,9 @@ test("purgeRetiredAlmaCatalog deletes Alma sessions and Alma-only projects", asy
     INSERT INTO projects VALUES('proj-alma-only','~/Library/Application Support/alma/workspaces/temp-x','',0,1,1,0);
     INSERT INTO projects VALUES('proj-mixed','~/wb/mixed','',0,1,1,0);
     INSERT INTO project_local_paths VALUES('proj-alma-only','m1','/tmp/alma-only',1);
-    INSERT INTO sessions VALUES('alma','a1','Alma only','/tmp/alma-only',1,0,NULL,NULL,NULL,NULL,NULL,NULL,0,NULL,NULL,NULL,NULL,NULL,NULL,'proj-alma-only',NULL);
-    INSERT INTO sessions VALUES('alma','a2','Alma mixed','/tmp/mixed',2,0,NULL,NULL,NULL,NULL,NULL,NULL,0,NULL,NULL,NULL,NULL,NULL,NULL,'proj-mixed',NULL);
-    INSERT INTO sessions VALUES('codex','c1','Codex mixed','/tmp/mixed',3,0,NULL,NULL,NULL,NULL,NULL,NULL,0,NULL,NULL,NULL,NULL,NULL,NULL,'proj-mixed',NULL);
+    INSERT INTO sessions VALUES('alma','a1','Alma only','/tmp/alma-only',1,0,NULL,NULL,NULL,NULL,NULL,NULL,0,NULL,NULL,NULL,NULL,NULL,NULL,'proj-alma-only',NULL,0);
+    INSERT INTO sessions VALUES('alma','a2','Alma mixed','/tmp/mixed',2,0,NULL,NULL,NULL,NULL,NULL,NULL,0,NULL,NULL,NULL,NULL,NULL,NULL,'proj-mixed',NULL,0);
+    INSERT INTO sessions VALUES('codex','c1','Codex mixed','/tmp/mixed',3,0,NULL,NULL,NULL,NULL,NULL,NULL,0,NULL,NULL,NULL,NULL,NULL,NULL,'proj-mixed',NULL,0);
     INSERT INTO session_gtd VALUES('alma','a1','doing',1);
     INSERT INTO sync_state VALUES('alma',1);`
   );

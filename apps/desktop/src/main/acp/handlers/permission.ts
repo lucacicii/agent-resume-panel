@@ -2,7 +2,7 @@ import type { RequestPermissionRequest, RequestPermissionResponse } from "@agent
   "resolution-mode": "import"
 };
 
-export type PermissionPromptHandler = (
+type PermissionPromptHandler = (
   params: RequestPermissionRequest
 ) => Promise<RequestPermissionResponse>;
 

@@ -10,8 +10,6 @@ import {
   notesDraftFromSettings,
   notesPatch,
   formatShortcutForDisplay,
-  reportDraftFromSettings,
-  reportPatch,
   sessionsDraftFromSettings,
   sessionsPatch,
   storageDraftFromSettings,
@@ -274,6 +272,47 @@ describe("settings model", () => {
     expect(emptied.workbench?.composerSlashPhrases).toEqual([]);
   });
 
+  it("round-trips composer mentions and drops invalid ids", () => {
+    const draft = workbenchDraftFromSettings(settings);
+    expect(draft.composerMentions).toEqual([]);
+
+    const patched = workbenchPatch(settings, {
+      ...draft,
+      composerMentions: [
+        {
+          id: "@Anfeng",
+          cwd: "/work/c",
+          roots: [
+            { path: "/work/a", role: "reference" },
+            { path: "/work/c", role: "work" }
+          ]
+        },
+        { id: "anfeng", cwd: "/other", roots: [] },
+        { id: "bad id", cwd: "/tmp", roots: [] },
+        { id: "empty", cwd: "", roots: [] }
+      ]
+    });
+    expect(patched.workbench?.composerMentions).toEqual([
+      {
+        id: "Anfeng",
+        cwd: "/work/c",
+        roots: [
+          { path: "/work/c", role: "work" },
+          { path: "/work/a", role: "reference" }
+        ]
+      }
+    ]);
+
+    const loaded = workbenchDraftFromSettings({
+      ...settings,
+      workbench: patched.workbench
+    });
+    expect(loaded.composerMentions).toEqual(patched.workbench?.composerMentions);
+
+    const emptied = workbenchPatch(settings, { ...draft, composerMentions: [] });
+    expect(emptied.workbench?.composerMentions).toEqual([]);
+  });
+
   it("defaults and clamps workbench transcript markdown font size", () => {
     expect(workbenchDraftFromSettings(settings).transcriptFontSize).toBe(14);
 
@@ -406,18 +445,7 @@ describe("settings model", () => {
     expect(patch.workbench?.terminalEngine).toBe("ghostty-web");
   });
 
-  it("preserves report invariants and only stores non-default agent homes", () => {
-    const report = reportPatch(settings, { ...reportDraftFromSettings(settings), dailyHour: 30 });
-    expect(report.report?.scheduleDailyHour).toBe(23);
-    expect(report.report?.includeTranscripts).toBe(true);
-    expect(report.report?.maxDigestLlmCalls).toBe(100);
-
-    const preservedLimit = reportPatch(
-      { ...settings, report: { maxDigestLlmCalls: 300 } },
-      reportDraftFromSettings({ ...settings, report: { maxDigestLlmCalls: 300 } })
-    );
-    expect(preservedLimit.report?.maxDigestLlmCalls).toBe(300);
-
+  it("only stores non-default agent homes", () => {
     const storage = storagePatch({ ...settings, agentHomes: { codexHome: "~/old-codex" } }, { ...storageDraftFromSettings(settings), panelHome: "~/panel", codexHome: "~/custom-codex" });
     expect(storage.panelHome).toBe("~/panel");
     expect(storage.agentHomes).toEqual({ codexHome: "~/custom-codex" });

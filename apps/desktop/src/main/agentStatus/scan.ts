@@ -16,7 +16,7 @@
 import type { AgentState } from "./types";
 
 /** A status the agent reported about itself. */
-export type ReportedAgentState = {
+type ReportedAgentState = {
   state: AgentState;
   detail?: string;
 };

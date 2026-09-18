@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import React from "react";
 import { render, fireEvent, within, cleanup } from "@testing-library/react";
 import { ArtifactCard } from "./ArtifactCard";
 

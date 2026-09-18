@@ -1,11 +1,10 @@
-import React, { memo, useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import DOMPurify from "dompurify";
-import { ThemeIcon } from "../ThemeIcon";
 import { useI18n } from "../../i18n";
 
-export type SvgBackground = "checker" | "dark" | "light";
+type SvgBackground = "checker" | "dark" | "light";
 
-export interface ArtifactSvgViewerProps {
+interface ArtifactSvgViewerProps {
   code: string;
   minHeight?: number;
 }

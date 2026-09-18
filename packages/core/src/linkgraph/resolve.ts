@@ -38,7 +38,7 @@ async function resolveWithExt(base: string): Promise<string | null> {
   return null;
 }
 
-export async function findNearestPackageRoot(fromFile: string, workspaceRoot?: string): Promise<string> {
+async function findNearestPackageRoot(fromFile: string, workspaceRoot?: string): Promise<string> {
   let dir = path.dirname(path.resolve(fromFile));
   const stop = workspaceRoot ? path.resolve(workspaceRoot) : null;
   for (let i = 0; i < 16; i += 1) {

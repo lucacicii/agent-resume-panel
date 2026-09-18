@@ -1,7 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { AgentSession } from "../types";
-import { readJsonLines } from "../jsonl";
 import { escapeSqlLiteral, runSqlite } from "../sqlite";
 
 interface CodexIndexRow {

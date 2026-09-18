@@ -1,12 +1,12 @@
 import { ThemeIcon } from "../../components/ThemeIcon";
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
-import type { PanelSettings } from "@agent-resume/core";
+import type { WorkbenchComposerMention } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { Status, type StatusKind } from "../../components/Status";
 import type { WorkbenchProjectContextMenuAction } from "@agent-resume/core";
 import { WORKBENCH_TERMINAL_THEME_IDS } from "../workbench/terminalThemes";
-import type { NotesDraft, ReportDraft, StorageDraft, WorkbenchDraft } from "./model";
+import type { NotesDraft, StorageDraft, WorkbenchDraft } from "./model";
 import { ALL_WORKBENCH_PROJECT_CONTEXT_MENU, formatShortcutForDisplay, WORKBENCH_NEW_SESSION_TARGET_OPTIONS } from "./model";
 
 type Translate = (key: string, ...args: Array<string | number>) => string;
@@ -40,6 +40,14 @@ export function WorkbenchPane({ draft, setDraft, t }: { draft: WorkbenchDraft; s
     setDraft(next);
   };
   const slashPhrases = draft.composerSlashPhrases ?? [];
+  const mentions = draft.composerMentions ?? [];
+  const mentionAt = (index: number, patch: Partial<WorkbenchComposerMention>): WorkbenchComposerMention[] =>
+    mentions.map((item, mentionIndex) => mentionIndex === index ? { ...item, ...patch } : item);
+  const pickMentionPath = async (title: string): Promise<string | null> => {
+    if (typeof desktopApi().pickDirectory !== "function") return null;
+    const result = await desktopApi().pickDirectory({ title });
+    return result.ok ? result.path : null;
+  };
   return <>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.newSessionGroup")}</h3><div className="settings-group-body">
       <SelectRow
@@ -151,6 +159,108 @@ export function WorkbenchPane({ draft, setDraft, t }: { draft: WorkbenchDraft; s
         >{t("desktop.settings.composerSlashAdd")}</button>
       </div>
     </div></section>
+    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.composerMentionsGroup")}</h3><div className="settings-group-body">
+      <p className="settings-footnote">{t("desktop.settings.composerMentionsDesc")}</p>
+      {mentions.length === 0 ? <p className="settings-footnote">{t("desktop.settings.composerMentionsEmpty")}</p> : null}
+      {mentions.map((item, index) => {
+        const references = item.roots.filter((root) => root.role === "reference");
+        return (
+          <div className="settings-slash-phrase" key={`mention-${index}`}>
+            <label className="settings-field">
+              <span className="settings-field-label">{t("desktop.settings.composerMentionsId")}</span>
+              <input
+                value={item.id}
+                spellCheck={false}
+                autoCapitalize="off"
+                autoCorrect="off"
+                placeholder={t("desktop.settings.composerMentionsIdPlaceholder")}
+                onChange={(event) => update("composerMentions", mentionAt(index, { id: event.target.value }))}
+              />
+            </label>
+            <label className="settings-field">
+              <span className="settings-field-label">{t("desktop.settings.composerMentionsCwd")}</span>
+              <span className="settings-action-row">
+                <input
+                  value={item.cwd}
+                  spellCheck={false}
+                  placeholder={t("desktop.settings.composerMentionsCwdPlaceholder")}
+                  onChange={(event) => {
+                    const cwd = event.target.value;
+                    const nextRoots = [{ path: cwd, role: "work" as const }, ...item.roots.filter((root) => root.role === "reference")];
+                    update("composerMentions", mentionAt(index, { cwd, roots: nextRoots }));
+                  }}
+                />
+                <button
+                  type="button"
+                  className="tool-btn"
+                  onClick={() => {
+                    void pickMentionPath(t("desktop.settings.composerMentionsCwd")).then((picked) => {
+                      if (!picked) return;
+                      const nextRoots = [{ path: picked, role: "work" as const }, ...item.roots.filter((root) => root.role === "reference")];
+                      update("composerMentions", mentionAt(index, { cwd: picked, roots: nextRoots }));
+                    });
+                  }}
+                >{t("desktop.settings.composerMentionsBrowse")}</button>
+              </span>
+            </label>
+            <span className="settings-field-label">{t("desktop.settings.composerMentionsReferences")}</span>
+            {references.map((root, rootIndex) => (
+              <span className="settings-action-row" key={`mention-${index}-ref-${rootIndex}`}>
+                <input
+                  value={root.path}
+                  spellCheck={false}
+                  placeholder={t("desktop.settings.composerMentionsReferencePlaceholder")}
+                  onChange={(event) => {
+                    const nextRefs = references.map((entry, entryIndex) => entryIndex === rootIndex ? { ...entry, path: event.target.value } : entry);
+                    update("composerMentions", mentionAt(index, { roots: [{ path: item.cwd, role: "work" }, ...nextRefs] }));
+                  }}
+                />
+                <button
+                  type="button"
+                  className="tool-btn"
+                  onClick={() => {
+                    void pickMentionPath(t("desktop.settings.composerMentionsReferences")).then((picked) => {
+                      if (!picked) return;
+                      const nextRefs = references.map((entry, entryIndex) => entryIndex === rootIndex ? { ...entry, path: picked } : entry);
+                      update("composerMentions", mentionAt(index, { roots: [{ path: item.cwd, role: "work" }, ...nextRefs] }));
+                    });
+                  }}
+                >{t("desktop.settings.composerMentionsBrowse")}</button>
+                <button
+                  type="button"
+                  className="tool-btn"
+                  onClick={() => {
+                    const nextRefs = references.filter((_, entryIndex) => entryIndex !== rootIndex);
+                    update("composerMentions", mentionAt(index, { roots: [{ path: item.cwd, role: "work" }, ...nextRefs] }));
+                  }}
+                >{t("desktop.settings.composerMentionsRemoveReference")}</button>
+              </span>
+            ))}
+            <div className="settings-action-row">
+              <button
+                type="button"
+                className="tool-btn"
+                onClick={() => update("composerMentions", mentionAt(index, {
+                  roots: [...item.roots, { path: "", role: "reference" }]
+                }))}
+              >{t("desktop.settings.composerMentionsAddReference")}</button>
+              <button
+                type="button"
+                className="tool-btn"
+                onClick={() => update("composerMentions", mentions.filter((_, mentionIndex) => mentionIndex !== index))}
+              >{t("desktop.settings.composerMentionsRemove")}</button>
+            </div>
+          </div>
+        );
+      })}
+      <div className="settings-action-row">
+        <button
+          type="button"
+          className="tool-btn"
+          onClick={() => update("composerMentions", [...mentions, { id: "", cwd: "", roots: [{ path: "", role: "work" }] }])}
+        >{t("desktop.settings.composerMentionsAdd")}</button>
+      </div>
+    </div></section>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.embeddedEditorGroup")}</h3><div className="settings-group-body">
       <ToggleRow title={t("desktop.settings.editorEditable")} description={t("desktop.settings.editorEditableDesc")} checked={draft.editorEditable} onChange={(value) => update("editorEditable", value)} />
       <label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{t("desktop.settings.editorFontSize")}</span><span className="settings-row-desc">{t("desktop.settings.editorFontSizeDesc")}</span></span><label className="settings-number-control"><input className="settings-number-input" type="number" min="11" max="24" value={draft.editorFontSize} onChange={(event) => update("editorFontSize", Number(event.target.value))} /><span aria-hidden="true">px</span></label></label>
@@ -237,167 +347,6 @@ export function WorkbenchPane({ draft, setDraft, t }: { draft: WorkbenchDraft; s
         />;
       })}
     </div></section>
-  </>;
-}
-
-type ScheduleRunRow = Awaited<ReturnType<ReturnType<typeof desktopApi>["usageListScheduleRuns"]>>[number];
-
-function scheduleLevelLabel(level: string, t: Translate): string {
-  if (level === "weekly") return t("desktop.report.digestWeekly");
-  if (level === "monthly") return t("desktop.report.digestMonthly");
-  if (level === "daily") return t("desktop.report.digestDaily");
-  return level;
-}
-
-function formatScheduleRunSummary(run: ScheduleRunRow, t: Translate): { text: string; kind?: StatusKind } {
-  const level = scheduleLevelLabel(run.level, t);
-  const when = formatTime(run.startedAtMs);
-  if (run.status === "running") {
-    return { text: t("desktop.settings.scheduleLastRunRunning", level, run.periodKey, when) };
-  }
-  if (run.status === "ok") {
-    return { text: t("desktop.settings.scheduleLastRunOk", level, run.periodKey, when), kind: "ok" };
-  }
-  const err = (run.error || "").trim() || t("desktop.common.unknownError");
-  return { text: t("desktop.settings.scheduleLastRunError", level, run.periodKey, when, err), kind: "error" };
-}
-
-export function ReportPane({
-  draft,
-  setDraft,
-  t,
-  onOpenScheduleLog
-}: {
-  draft: ReportDraft;
-  setDraft: (value: ReportDraft) => void;
-  t: Translate;
-  onOpenScheduleLog?: () => void;
-}) {
-  const [maxDays, setMaxDays] = useState(400);
-  const [skipExisting, setSkipExisting] = useState(true);
-  const [skipEmbedding, setSkipEmbedding] = useState(true);
-  const [status, setStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
-  const [lastRun, setLastRun] = useState<ScheduleRunRow | null>(null);
-  const [lastRunLoaded, setLastRunLoaded] = useState(false);
-  const [lastRunError, setLastRunError] = useState("");
-
-  const loadLastRun = useCallback(async () => {
-    try {
-      const runs = await desktopApi().usageListScheduleRuns({ days: 90, limit: 1 });
-      setLastRun(runs[0] ?? null);
-      setLastRunError("");
-    } catch (error) {
-      setLastRun(null);
-      setLastRunError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setLastRunLoaded(true);
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadLastRun();
-  }, [loadLastRun, draft.enabled]);
-
-  const update = <K extends keyof ReportDraft>(key: K, value: ReportDraft[K]) => {
-    if (key === "enabled" && value && !draft.enabled && !window.confirm(t("desktop.settings.memoryEnableConfirm"))) return;
-    const next = { ...draft, [key]: value };
-    setDraft(next);
-  };
-  const preview = async () => {
-    setStatus({ text: t("desktop.backfill.scanning") });
-    try {
-      const value = await desktopApi().previewBackfillDigests({ maxDays, skipExisting });
-      setStatus({ text: t("desktop.backfill.preview", value.sessionRowsScanned, value.days.length, value.weeks.length, value.months.length, value.estimatedLlmCalls, value.days.length ? t("desktop.backfill.previewRange", value.days[0], value.days[value.days.length - 1]) : t("desktop.backfill.noActivity")), kind: value.days.length ? "ok" : "error" });
-    } catch (error) { setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }); }
-  };
-  const run = async () => {
-    setStatus({ text: t("desktop.backfill.scanningShort") });
-    try {
-      const value = await desktopApi().previewBackfillDigests({ maxDays, skipExisting });
-      const detail = value.days.length ? t("desktop.backfill.dateRange", value.days[0], value.days[value.days.length - 1]) : "";
-      if (!window.confirm(t("desktop.backfill.confirm", value.sessionRowsScanned, value.days.length, value.weeks.length, value.months.length, value.estimatedLlmCalls, detail))) { setStatus({ text: t("desktop.backfill.cancelled") }); return; }
-      setStatus({ text: t("desktop.backfill.running") });
-      const result = await desktopApi().backfillDigests({ maxDays, skipExisting, skipEmbedding });
-      const failures = result.daily.failed.length + result.weekly.failed.length + result.monthly.failed.length;
-      setStatus({ text: `${t("desktop.backfill.stats", "daily", result.daily.ok.length, result.daily.skipped.length, failures ? `/fail ${failures}` : "", result.daily.planned.length)} · ${t("desktop.backfill.stats", "weekly", result.weekly.ok.length, result.weekly.skipped.length, "", result.weekly.planned.length)}`, kind: failures ? "error" : "ok" });
-    } catch (error) { setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" }); }
-  };
-
-  const lastRunSummary = lastRun ? formatScheduleRunSummary(lastRun, t) : null;
-
-  return <>
-    <section className="settings-group">
-      <h3 className="settings-group-title">{t("desktop.settings.scheduledDigests")}</h3>
-      <div className="settings-group-body">
-        <ToggleRow
-          title={t("desktop.settings.enableSchedule")}
-          description={t("desktop.settings.enableScheduleDesc")}
-          checked={draft.enabled}
-          onChange={(value) => update("enabled", value)}
-        />
-        <p className="settings-footnote">{t("desktop.settings.scheduleRuntimeNote")}</p>
-        <label className="settings-field">
-          <span className="settings-field-label">{t("desktop.settings.maxDigestLlmCalls")}</span>
-          <span className="settings-field-desc">{t("desktop.settings.maxDigestLlmCallsDesc")}</span>
-          <input type="number" min="10" max="1000" value={draft.maxDigestLlmCalls} onChange={(event) => update("maxDigestLlmCalls", Math.max(10, Math.min(1000, Number(event.target.value) || 100)))} />
-        </label>
-        {draft.enabled ? (
-          <div className="settings-schedule-fields">
-            <label className="settings-field">
-              <span className="settings-field-label">{t("desktop.settings.dailyHour")}</span>
-              <input type="number" min="0" max="23" value={draft.dailyHour} onChange={(event) => update("dailyHour", Number(event.target.value))} />
-            </label>
-            <label className="settings-field">
-              <span className="settings-field-label">{t("desktop.settings.weeklyHour")}</span>
-              <input type="number" min="0" max="23" value={draft.weeklyHour} onChange={(event) => update("weeklyHour", Number(event.target.value))} />
-            </label>
-            <label className="settings-field">
-              <span className="settings-field-label">{t("desktop.settings.monthlyHour")}</span>
-              <input type="number" min="0" max="23" value={draft.monthlyHour} onChange={(event) => update("monthlyHour", Number(event.target.value))} />
-            </label>
-          </div>
-        ) : null}
-        <div className="settings-schedule-status" aria-live="polite">
-          <div className="settings-schedule-status-label">{t("desktop.settings.scheduleLastRunTitle")}</div>
-          {!lastRunLoaded ? (
-            <Status>{t("desktop.common.loading")}</Status>
-          ) : lastRunError ? (
-            <Status kind="error">{lastRunError}</Status>
-          ) : lastRunSummary ? (
-            <Status kind={lastRunSummary.kind}>{lastRunSummary.text}</Status>
-          ) : (
-            <Status>{t("desktop.settings.scheduleLastRunNone")}</Status>
-          )}
-          <div className="settings-action-row">
-            <button type="button" className="tool-btn" onClick={() => void loadLastRun()}>
-              {t("desktop.settings.scheduleRefreshStatus")}
-            </button>
-            {onOpenScheduleLog ? (
-              <button type="button" className="tool-btn" onClick={onOpenScheduleLog}>
-                {t("desktop.settings.scheduleViewLog")}
-              </button>
-            ) : null}
-          </div>
-        </div>
-      </div>
-    </section>
-    <section className="settings-group settings-group-action">
-      <h3 className="settings-group-title">{t("desktop.settings.backfillTitle")}</h3>
-      <div className="settings-group-body">
-        <p className="settings-callout">{t("desktop.settings.backfillCallout")}</p>
-        <label className="settings-field">
-          <span className="settings-field-label">{t("desktop.settings.backfillMaxDays")}</span>
-          <input type="number" min="1" max="2000" value={maxDays} onChange={(event) => setMaxDays(Math.max(1, Math.min(2000, Number(event.target.value) || 400)))} />
-        </label>
-        <ToggleRow title={t("desktop.settings.backfillSkipExisting")} checked={skipExisting} onChange={setSkipExisting} />
-        <ToggleRow title={t("desktop.settings.backfillSkipEmbedding")} checked={skipEmbedding} onChange={setSkipEmbedding} />
-        <div className="settings-action-row">
-          <button type="button" className="tool-btn" onClick={() => void preview()}>{t("desktop.settings.backfillPreview")}</button>
-          <button type="button" className="tool-btn" onClick={() => void run()}>{t("desktop.settings.backfillRun")}</button>
-        </div>
-        <Status kind={status.kind}>{status.text}</Status>
-      </div>
-    </section>
   </>;
 }
 
@@ -589,7 +538,6 @@ export function BackupPane({ t }: { t: Translate }) {
 export function StoragePane({ draft, setDraft, t }: { draft: StorageDraft; setDraft: (value: StorageDraft) => void; t: Translate }) {
   const [advanced, setAdvanced] = useState(false);
   const update = <K extends keyof StorageDraft>(key: K, value: StorageDraft[K]) => { const next = { ...draft, [key]: value }; setDraft(next); };
-  const home = draft.panelHome.trim() || "~/.agent-resume-panel";
   const paths: Array<[keyof StorageDraft, string, string]> = [["codexHome", "desktop.settings.codexHome", "~/.codex"], ["claudeHome", "desktop.settings.claudeHome", "~/.claude"], ["antigravityHome", "desktop.settings.antigravityHome", "~/.gemini"], ["grokHome", "desktop.settings.grokHome", "~/.grok"], ["opencodeHome", "desktop.settings.opencodeHome", "~/.local/share/opencode"], ["piHome", "desktop.settings.piHome", "~/.pi/agent"], ["primeHome", "desktop.settings.primeHome", "~/.prime/agent"], ["cursorHome", "Cursor CLI home", "~/.cursor"], ["cursorIdeUserDataHome", "Cursor IDE user data home", "Platform default"]];
   return <>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.appData")}</h3><div className="settings-group-body"><p className="settings-footnote">{t("desktop.settings.appDataFootnote")}</p><label className="settings-field"><span className="settings-field-label">{t("desktop.settings.panelHome")}</span><input placeholder="~/.agent-resume-panel" value={draft.panelHome} onChange={(event) => update("panelHome", event.target.value)} /></label><p className="settings-footnote">{t("desktop.settings.panelHomeFootnote")}</p><div className="settings-path-row"><button type="button" className="tool-btn" onClick={() => void desktopApi().settingsOpenPanelHome()}>{t("desktop.common.revealInFinder")}</button></div></div></section>

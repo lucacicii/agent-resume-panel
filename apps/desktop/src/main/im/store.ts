@@ -110,7 +110,7 @@ const BUILTIN_ROLES: readonly BuiltinRoleSpec[] = [
     templateId: "role_memory",
     name: "Memory Specialist",
     persona:
-      "You are Memory & Knowledge Specialist for this project and across the workspace. You own the project's historical context: project notes, past work digests (daily/weekly/monthly reports), and previous coding sessions.\n\nBUILT-IN TOOLS (use them for ALL memory work):\nThis session has the built-in `agent-resume` MCP server. Always work through its tools instead of listing/reading files yourself; the file system is only a fallback for content the tools cannot reach.\n- Retrieve first: memory_retrieve, note_search, note_list, note_read, note_tree_read, report_search, report_read, report_list, session_search, session_list, session_read, session_read_transcript.\n- Create and maintain: note_create, note_write, note_append, note_set_gtd, note_set_parent, note_move, note_rename.\n- Never guess noteId/sessionId/reportId; find the real ID with a search tool first. Never overwrite or delete an existing note unless the user explicitly asks.\n- If the `agent-resume-browser` MCP is available in this session, you may use it to open web links cited in notes.\n\nCRITICAL CITATION & NAVIGATION RULES:\n1. Whenever you reference, search, create, update, or delete notes, always include citation marker [N1], [N2]... and note title/ID in your reply.\n2. When citing digests, use [D1], [D2]...; when citing sessions, use [S1], [S2]...\n3. When you create or update a note (via note_create/note_write/note_append), ALWAYS output citation tag [N1] right next to the note title and noteId (for example: `[N1] 📝 标题：[Note Title](noteId) · noteId: <uuid>`), so the user can directly click the citation badge or note link in the chat to immediately open and view the note in the Notes panel.\n4. Always make note IDs, session IDs, and report IDs explicit and traceable.",
+      "You are Memory & Knowledge Specialist for this project and across the workspace. You own the project's historical context: project notes, past work digests (daily/weekly/monthly reports), and previous coding sessions.\n\nBUILT-IN TOOLS (use them for ALL memory work):\nThis session has the built-in `agent-resume` MCP server. Always work through its tools instead of listing/reading files yourself; the file system is only a fallback for content the tools cannot reach.\n- Retrieve first: memory_retrieve, note_search, note_list, note_read, note_tree_read, report_search, report_read, report_list, session_search, session_list, session_read, session_read_transcript.\n- Create and maintain: note_create, note_write, note_append, note_set_gtd, note_set_parent, note_move, note_rename.\n- Never guess noteId/sessionId/reportId; find the real ID with a search tool first. Never overwrite or delete an existing note unless the user explicitly asks.\n- If the `agent-resume-browser` MCP is available in this session, you may use it to open web links cited in notes.\n\nCRITICAL CITATION & NAVIGATION RULES:\n1. Whenever you reference, search, create, update, or delete notes, always include citation marker [N1], [N2]... and note title/ID in your reply.\n2. When citing digests, use [D1], [D2]...; when citing sessions, use [S1], [S2]...\n3. When you create or update a note (via note_create/note_write/note_append), ALWAYS output citation tag [N1] right next to the note title and noteId (for example: `[N1] 📝 标题：[Note Title](noteId) · noteId: <uuid>`), so the user can directly click the citation badge or note link in the chat to immediately open and view the note in the Workbench.\n4. Always make note IDs, session IDs, and report IDs explicit and traceable.",
     permissions: "read",
     tools: { fsRead: true, fsWrite: false, execute: false }
   }
@@ -125,7 +125,7 @@ const BUILTIN_ROLES: readonly BuiltinRoleSpec[] = [
  */
 export const SHIPPED_BUILTIN_PERSONAS: Partial<Record<ImBuiltinTemplateId, readonly string[]>> = {
   role_memory: [
-    "You are Memory & Knowledge Specialist for this project and across the workspace. Retrieve, summarize, create, and maintain historical context, past work digests (daily/weekly/monthly reports), project notes, and previous coding sessions.\n\nCRITICAL CITATION & NAVIGATION RULES:\n1. Whenever you reference, search, create, update, or delete notes, always include citation marker [N1], [N2]... and note title/ID in your reply.\n2. When citing digests, use [D1], [D2]...; when citing sessions, use [S1], [S2]...\n3. When you create or update a note (using note_create/note_write/note_append), ALWAYS output citation tag [N1] right next to the note title and noteId (for example: `[N1] 📝 标题：[Note Title](noteId) · noteId: <uuid>`), so the user can directly click the citation badge or note link in the chat to immediately open and view the note in the Notes panel.\n4. Always make note IDs, session IDs, and report IDs explicit and traceable."
+    "You are Memory & Knowledge Specialist for this project and across the workspace. Retrieve, summarize, create, and maintain historical context, past work digests (daily/weekly/monthly reports), project notes, and previous coding sessions.\n\nCRITICAL CITATION & NAVIGATION RULES:\n1. Whenever you reference, search, create, update, or delete notes, always include citation marker [N1], [N2]... and note title/ID in your reply.\n2. When citing digests, use [D1], [D2]...; when citing sessions, use [S1], [S2]...\n3. When you create or update a note (using note_create/note_write/note_append), ALWAYS output citation tag [N1] right next to the note title and noteId (for example: `[N1] 📝 标题：[Note Title](noteId) · noteId: <uuid>`), so the user can directly click the citation badge or note link in the chat to immediately open and view the note in the Workbench.\n4. Always make note IDs, session IDs, and report IDs explicit and traceable."
   ]
 };
 
@@ -169,6 +169,7 @@ interface ProjectRow {
   project_id: string;
   name: string;
   local_path: string | null;
+  work_item_note_id?: string | null;
   created_at_ms: number;
   updated_at_ms: number;
 }
@@ -242,6 +243,7 @@ interface KnowledgeRow {
   mime_type: string | null;
   file_name: string | null;
   size_bytes: number | null;
+  source_note_id?: string | null;
   created_at_ms: number;
 }
 
@@ -385,6 +387,7 @@ function mapKnowledge(row: KnowledgeRow): ImKnowledgeItem {
     mimeType: row.mime_type,
     fileName: row.file_name,
     sizeBytes: row.size_bytes,
+    sourceNoteId: row.source_note_id ?? null,
     createdAtMs: row.created_at_ms
   };
 }
@@ -438,6 +441,7 @@ function mapProject(row: ProjectRow, roles?: ImProjectRoleSummary[]): ImProject 
     projectId: row.project_id,
     name: row.name,
     localPath: row.local_path,
+    taskNoteId: row.work_item_note_id ?? null,
     createdAtMs: row.created_at_ms,
     updatedAtMs: row.updated_at_ms,
     roles: roles ?? []
@@ -610,7 +614,7 @@ function formatKnowledgeBlock(items: ImKnowledgeSnapshot[]): string {
   return lines.join("\n\n");
 }
 
-export async function ensureArpDir(localPath: string): Promise<string> {
+async function ensureArpDir(localPath: string): Promise<string> {
   const resolved = path.resolve(expandHome(localPath));
   const arpDir = path.join(resolved, ".arp");
   await fs.mkdir(arpDir, { recursive: true }).catch(() => undefined);
@@ -1028,6 +1032,60 @@ export class ImStore {
     await this.seedBuiltinMembers(projectId);
     const project = await this.getProject(projectId);
     if (!project) throw new Error("Failed to load newly created project.");
+    return project;
+  }
+
+  /** The room scoped to a task, if one exists. */
+  async getRoomByTaskNote(noteId: string): Promise<ImProject | undefined> {
+    const rows = await runSqliteJson<ProjectRow>(
+      this.dbPath,
+      `SELECT * FROM im_projects WHERE work_item_note_id = ${sqlString(noteId)} LIMIT 1;`
+    );
+    return rows[0] ? mapProject(rows[0]) : undefined;
+  }
+
+  /**
+   * Open (or create) the room scoped to a task. Idempotent: a second call
+   * for the same note returns the existing room instead of duplicating it.
+   */
+  async openTaskRoom(
+    noteId: string,
+    name: string,
+    panelHome: string,
+    localPath?: string | null
+  ): Promise<ImProject> {
+    const existing = await this.getRoomByTaskNote(noteId);
+    if (existing) {
+      // The task note is the source of truth for the room's cwd. If the
+      // path is missing on this machine, keep the previous one instead of failing.
+      if (localPath?.trim()) {
+        const next = path.resolve(expandHome(localPath.trim()));
+        if (existing.localPath !== next) {
+          try {
+            return await this.setLocalPath(existing.projectId, next);
+          } catch {
+            return existing;
+          }
+        }
+      }
+      return existing;
+    }
+    const now = nowMs();
+    const projectId = randomUUID();
+    let initialPath = localPath?.trim() ? path.resolve(expandHome(localPath.trim())) : null;
+    if (!initialPath) {
+      initialPath = path.join(path.resolve(expandHome(panelHome)), ".desktop", "scratch", "im", projectId);
+      await fs.mkdir(initialPath, { recursive: true }).catch(() => undefined);
+    }
+    await ensureArpDir(initialPath);
+    await runSqlite(
+      this.dbPath,
+      `INSERT INTO im_projects (project_id, name, local_path, work_item_note_id, created_at_ms, updated_at_ms)
+       VALUES (${sqlString(projectId)}, ${sqlString(name.trim() || "Task")}, ${sqlNullOrString(initialPath)}, ${sqlString(noteId)}, ${now}, ${now});`
+    );
+    await this.seedBuiltinMembers(projectId);
+    const project = await this.getProject(projectId);
+    if (!project) throw new Error("Failed to load newly created task room.");
     return project;
   }
 
@@ -2291,13 +2349,14 @@ export class ImStore {
     fileName?: string | null;
     sizeBytes?: number | null;
     itemId?: string;
+    sourceNoteId?: string | null;
   }): Promise<ImKnowledgeItem> {
     const now = nowMs();
     const itemId = input.itemId ?? randomUUID();
     await runSqlite(
       this.dbPath,
       `INSERT INTO im_knowledge (
-        item_id, project_id, kind, title, body, url, storage_path, mime_type, file_name, size_bytes, created_at_ms
+        item_id, project_id, kind, title, body, url, storage_path, mime_type, file_name, size_bytes, source_note_id, created_at_ms
       ) VALUES (
         ${sqlString(itemId)},
         ${sqlString(input.projectId)},
@@ -2309,6 +2368,7 @@ export class ImStore {
         ${sqlNullOrString(input.mimeType ?? null)},
         ${sqlNullOrString(input.fileName ?? null)},
         ${input.sizeBytes == null ? "NULL" : String(input.sizeBytes)},
+        ${sqlNullOrString(input.sourceNoteId ?? null)},
         ${now}
       );`
     );
@@ -2316,6 +2376,32 @@ export class ImStore {
     const created = items.find((item) => item.itemId === itemId);
     if (!created) throw new Error("Failed to load knowledge item.");
     return created;
+  }
+
+  /**
+   * Mirror a task note into the room's background knowledge. One row per
+   * note, so re-opening the room refreshes the content instead of duplicating.
+   */
+  async upsertTaskKnowledge(
+    projectId: string,
+    noteId: string,
+    title: string,
+    body: string
+  ): Promise<ImKnowledgeItem | null> {
+    await this.requireProject(projectId);
+    await runSqlite(
+      this.dbPath,
+      `DELETE FROM im_knowledge WHERE project_id = ${sqlString(projectId)} AND source_note_id = ${sqlString(noteId)};`
+    );
+    const clipped = clipBody(body.trim(), KNOWLEDGE_TEXT_MAX);
+    if (!clipped.body && !title.trim()) return null;
+    return this.insertKnowledge({
+      projectId,
+      kind: "text",
+      title: title.trim() || "Task",
+      body: clipped.body,
+      sourceNoteId: noteId
+    });
   }
 
   async getRoom(projectId: string): Promise<ImRoom> {

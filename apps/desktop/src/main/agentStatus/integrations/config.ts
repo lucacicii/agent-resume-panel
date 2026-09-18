@@ -13,20 +13,20 @@
 
 import { readFileSync, renameSync, writeFileSync } from "node:fs";
 
-export type HookCommandEntry = {
+type HookCommandEntry = {
   type: "command";
   command: string;
   timeout: number;
 };
 
-export type HookGroup = {
+type HookGroup = {
   matcher?: string;
   hooks: HookCommandEntry[];
 };
 
-export type JsonObject = Record<string, unknown>;
+type JsonObject = Record<string, unknown>;
 
-export type JsonReadResult =
+type JsonReadResult =
   | { ok: true; value: JsonObject; existed: boolean }
   | { ok: false; error: string };
 

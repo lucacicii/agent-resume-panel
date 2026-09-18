@@ -5,7 +5,7 @@ import { formatSessionForDigest } from "./prompts";
 import { ReportEntry, ReportLevel } from "./schema";
 import { listReportEntriesInRange } from "./store";
 
-export interface BuildSourceContextOptions {
+interface BuildSourceContextOptions {
   dbPath: string;
   startMs: number;
   endMs: number;
@@ -15,13 +15,13 @@ export interface BuildSourceContextOptions {
   progressText?: ReportProgressText;
 }
 
-export interface WeeklySourceLinesResult {
+interface WeeklySourceLinesResult {
   lines: string[];
   sourceCount: number;
   usedDailies: number;
 }
 
-export interface MonthlySourceLinesResult {
+interface MonthlySourceLinesResult {
   lines: string[];
   sourceCount: number;
   usedWeeklies: number;

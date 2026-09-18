@@ -112,7 +112,7 @@ export function buildGitChangeTree(changes: GitChange[]): GitTreeNode[] {
 }
 
 /** One pass over the tree caching each directory's flattened changes/repo paths for cheap re-renders. */
-export function computeGitNodeMetadata(node: GitTreeNode): void {
+function computeGitNodeMetadata(node: GitTreeNode): void {
   if (!node.isDirectory) {
     const change = node.change;
     node.changes = change ? [change] : [];
@@ -264,12 +264,50 @@ export function gitRepositoryCount(git: GitStatusResult): number {
   return roots.size;
 }
 
-export function dirtyGitRoots(result: GitStatusResult): string[] {
+function dirtyGitRoots(result: GitStatusResult): string[] {
   const roots = new Set<string>();
   for (const change of [...result.staged, ...result.unstaged]) {
     if (change.repoRoot) roots.add(change.repoRoot);
   }
   return [...roots];
+}
+
+/**
+ * Merge per-project git status results into the single shape the panel consumes.
+ * One project returns unchanged; several force the multi-repo view (`root: null`
+ * plus a `nestedRepos` entry per repo) so shared-workspace projects each render
+ * as their own group.
+ */
+export function mergeGitStatuses(projects: string[], results: GitStatusResult[]): GitStatusResult {
+  if (results.length === 1) return results[0];
+  const nestedRepos: NonNullable<GitStatusResult["nestedRepos"]> = [];
+  const seenRoots = new Set<string>();
+  const addRepo = (root: string, displayPath: string) => {
+    if (!root || seenRoots.has(root)) return;
+    seenRoots.add(root);
+    nestedRepos.push({ root, displayPath });
+  };
+  const staged: GitChange[] = [];
+  const unstaged: GitChange[] = [];
+  const tracking: NonNullable<GitStatusResult["tracking"]> = [];
+  let isRepo = false;
+  results.forEach((result, index) => {
+    isRepo = isRepo || result.isRepo;
+    if (result.root) addRepo(result.root, basename(projects[index] || result.root));
+    for (const repo of result.nestedRepos || []) addRepo(repo.root, repo.displayPath || basename(repo.root));
+    staged.push(...result.staged);
+    unstaged.push(...result.unstaged);
+    for (const item of result.tracking || []) tracking.push(item);
+  });
+  return {
+    isRepo,
+    root: null,
+    staged,
+    unstaged,
+    nestedRepos,
+    nestedScanDepth: results[0]?.nestedScanDepth,
+    tracking
+  };
 }
 
 export function defaultGitRoot(result: GitStatusResult, availableRoots: string[]): string {

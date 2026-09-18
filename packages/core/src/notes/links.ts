@@ -1,5 +1,6 @@
 import { escapeSqlLiteral, runSqlite, runSqliteJson } from "../sqlite";
 import { getNoteById, type NoteRecord } from "./catalogNotes";
+import { isWorkNote } from "./work";
 
 export interface NoteLink {
   parentNoteId: string;
@@ -147,9 +148,27 @@ export async function wouldCreateCycle(
   return descendants.has(parentNoteId);
 }
 
-function assertProjectNote(record: NoteRecord, label: string): void {
-  if (record.scope !== "project") {
-    throw new Error(`${label} must be a project note to participate in links.`);
+/**
+ * Link-tree participation: project notes group notes per repository, tasks
+ * group notes per unit of work. Anything else (library/session notes) stays out,
+ * and a task's children are ordinary notes.
+ */
+async function assertLinkableParent(dbPath: string, record: NoteRecord): Promise<void> {
+  if (record.scope === "project") {
+    return;
+  }
+  if (await isWorkNote(dbPath, record.noteId)) {
+    return;
+  }
+  throw new Error(
+    "Only a project note or a task can be a parent of a linked note."
+  );
+}
+
+/** Children may be project notes or plain library notes, but never session notes. */
+function assertLinkableChild(record: NoteRecord): void {
+  if (record.scope === "session") {
+    throw new Error("A session note cannot be a parent or child in a note link.");
   }
 }
 
@@ -175,8 +194,8 @@ export async function setParentLink(
   if (!parent) {
     throw new Error("Parent note not found.");
   }
-  assertProjectNote(child, "Child note");
-  assertProjectNote(parent, "Parent note");
+  assertLinkableChild(child);
+  await assertLinkableParent(dbPath, parent);
 
   if (await wouldCreateCycle(dbPath, childNoteId, parentNoteId)) {
     throw new Error("Link would create a cycle.");

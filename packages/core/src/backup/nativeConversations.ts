@@ -61,9 +61,6 @@ const OPEN_CODE_KEEP_DATA = new Set([
   "session_input", "session_message", "message", "part", "todo",
   "migration", "data_migration", "__drizzle_migrations"
 ]);
-const OPEN_CODE_SENSITIVE = new Set([
-  "account", "control_account", "credential", "account_state", "permission", "session_share", "event", "event_sequence"
-]);
 
 type SqlColumn = { name: string; notnull?: number; dflt_value?: string | null; pk?: number };
 type OpenCodeSlice = { sessionIds: string[]; messageIds?: Array<{ id: string; timeCreated: number }> };
@@ -163,7 +160,6 @@ async function columns(db: string, table: string): Promise<SqlColumn[]> {
   return runSqliteReadOnlyJson<SqlColumn>(db, `PRAGMA table_info(${sql(table)});`);
 }
 function hasColumn(rows: SqlColumn[], name: string): boolean { return rows.some((row) => row.name === name); }
-function csv(values: string[]): string { return values.map(sql).join(", "); }
 
 async function compactOpenCodeDatabase(source: string, destination: string, options: { includeArchived: boolean }): Promise<void> {
   await fs.rm(destination, { force: true });

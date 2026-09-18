@@ -3,13 +3,13 @@ import * as path from "node:path";
 import { expandHome } from "@agent-resume/core";
 import { safeHandle } from "./ipcUtils";
 
-export const DEFAULT_SCRIPT_SCAN_MAX_DEPTH = 6;
-export const DEFAULT_SCRIPT_SCAN_MAX_PACKAGES = 48;
-export const HARD_SCRIPT_SCAN_MAX_DEPTH = 10;
-export const HARD_SCRIPT_SCAN_MAX_PACKAGES = 96;
+const DEFAULT_SCRIPT_SCAN_MAX_DEPTH = 6;
+const DEFAULT_SCRIPT_SCAN_MAX_PACKAGES = 48;
+const HARD_SCRIPT_SCAN_MAX_DEPTH = 10;
+const HARD_SCRIPT_SCAN_MAX_PACKAGES = 96;
 const MAX_MANIFEST_BYTES = 512 * 1024;
 
-export const DEFAULT_SCRIPT_SCAN_IGNORE_DIRS = [
+const DEFAULT_SCRIPT_SCAN_IGNORE_DIRS = [
   "node_modules",
   ".git",
   "dist",
@@ -39,7 +39,7 @@ export type ScriptKind =
   | "python"
   | "cargo";
 
-export interface ScriptEntry {
+interface ScriptEntry {
   id: string;
   name: string;
   detail?: string;
@@ -49,7 +49,7 @@ export interface ScriptEntry {
   };
 }
 
-export interface ScriptPackage {
+interface ScriptPackage {
   id: string;
   kind: ScriptKind;
   packageRoot: string;
@@ -60,13 +60,13 @@ export interface ScriptPackage {
   scripts: ScriptEntry[];
 }
 
-export interface ScriptScanOptions {
+interface ScriptScanOptions {
   maxDepth?: number;
   maxPackages?: number;
   ignoreDirs?: string[];
 }
 
-export interface ListScriptsResult {
+interface ListScriptsResult {
   packages: ScriptPackage[];
   truncated: boolean;
   scannedDirs: number;
@@ -106,7 +106,7 @@ function resolvePathWithinRoot(raw: string, rootPath: string): string {
   return target;
 }
 
-export function normalizeScriptScanOptions(options?: ScriptScanOptions): {
+function normalizeScriptScanOptions(options?: ScriptScanOptions): {
   maxDepth: number;
   maxPackages: number;
   ignoreDirs: Set<string>;
@@ -724,7 +724,7 @@ export function listWorkbenchScripts(
   return scanScriptsUnder(rootPath, options);
 }
 
-export async function listWorkbenchScriptsAsync(
+async function listWorkbenchScriptsAsync(
   rootPath: string,
   options?: ScriptScanOptions
 ): Promise<ListScriptsResult> {

@@ -5,7 +5,7 @@ import { t } from "../i18n";
 import { buildSessionTreeItem, SessionTreeItemOptions } from "../tree/sessionTree";
 import { SessionGtdStore } from "./sessionGtdStore";
 
-export type GtdTreeNode =
+type GtdTreeNode =
   | { kind: "status"; status: GtdStatus; count: number }
   | { kind: "session"; session: AgentSession }
   | { kind: "warning"; message: string }

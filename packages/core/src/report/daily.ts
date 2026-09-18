@@ -3,7 +3,6 @@ import { AgentSession } from "../catalog/types";
 import { preparePanelDatabasesFromSettings } from "../dbPaths";
 import { DEFAULT_CATALOG_OUTPUT_LANGUAGE } from "../i18n/outputLanguage";
 import {
-  llmConfigFromSettings,
   reportLlmConfigFromSettings
 } from "../llm/fromSettings";
 import { effectivePanelHome, loadSettings } from "../settings/store";
@@ -98,7 +97,7 @@ export interface DailyDigestRefreshCheck {
   message: string;
 }
 
-export interface DailyDigestRefreshContext {
+interface DailyDigestRefreshContext {
   settings: PanelSettings;
   catalogDb: string;
   desktopDb: string;

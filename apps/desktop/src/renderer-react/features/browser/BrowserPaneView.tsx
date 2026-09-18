@@ -4,7 +4,7 @@ import { useI18n } from "../../i18n";
 import type { BrowserSessionState } from "../../../shared/browserTypes";
 import { BrowserChrome } from "./BrowserChrome";
 
-export type BrowserPaneViewProps = {
+type BrowserPaneViewProps = {
   browserId: string;
   projectPath: string;
   active: boolean;

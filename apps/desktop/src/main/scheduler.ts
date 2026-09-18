@@ -33,7 +33,7 @@ export function stopMemoryScheduler(): void {
   }
 }
 
-export function startMemoryScheduler(): void {
+function startMemoryScheduler(): void {
   stopMemoryScheduler();
   timer = setInterval(() => {
     void tick().catch((err) => {
@@ -45,20 +45,16 @@ export function startMemoryScheduler(): void {
   });
 }
 
+const DEFAULT_SCHEDULE_HOURS = { dailyHour: 22, weeklyHour: 9, monthlyHour: 9 } as const;
+
 export async function refreshMemorySchedulerFromSettings(): Promise<boolean> {
-  const settings = await loadSettings();
-  const enabled = settings.report?.enabled === true;
-  if (enabled) {
-    startMemoryScheduler();
-  } else {
-    stopMemoryScheduler();
-  }
-  return enabled;
+  startMemoryScheduler();
+  return true;
 }
 
-export type ScheduleLevel = "daily" | "weekly" | "monthly";
+type ScheduleLevel = "daily" | "weekly" | "monthly";
 
-export interface DueScheduleJob {
+interface DueScheduleJob {
   level: ScheduleLevel;
   periodKey: string;
   /** Stable label passed to digest runners (day / week / month key). */
@@ -70,7 +66,7 @@ export interface DueScheduleJob {
  * Catch-up: once the local scheduled hour has passed, keep jobs due until status is ok
  * (caller enforces status + retry throttle). Also retries yesterday's daily if still not ok.
  */
-export function computeDueScheduleJobs(
+function computeDueScheduleJobs(
   now: Date,
   hours: { dailyHour: number; weeklyHour: number; monthlyHour: number }
 ): DueScheduleJob[] {
@@ -132,16 +128,9 @@ async function tick(): Promise<void> {
   }
 
   const settings = await loadSettings();
-  if (settings.report?.enabled !== true) {
-    return;
-  }
 
   const now = new Date();
-  const due = computeDueScheduleJobs(now, {
-    dailyHour: settings.report?.scheduleDailyHour ?? 22,
-    weeklyHour: settings.report?.scheduleWeeklyHour ?? 9,
-    monthlyHour: settings.report?.scheduleMonthlyHour ?? 9
-  });
+  const due = computeDueScheduleJobs(now, DEFAULT_SCHEDULE_HOURS);
   if (due.length === 0) {
     return;
   }
@@ -281,8 +270,3 @@ function formatLocalDay(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-/** Test helper: clear in-process retry throttle. */
-export function resetSchedulerRetryStateForTests(): void {
-  lastAttemptAt.clear();
-  running = false;
-}

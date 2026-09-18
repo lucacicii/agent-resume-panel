@@ -6,7 +6,7 @@ import { openSessionResume } from "./resumeTerminal";
 const pendingResumeKey = "agentResume.pendingResume";
 const pendingTtlMs = 5 * 60 * 1000;
 
-export interface PendingResumeOptions {
+interface PendingResumeOptions {
   claudePanel?: boolean;
   codexPanel?: boolean;
 }

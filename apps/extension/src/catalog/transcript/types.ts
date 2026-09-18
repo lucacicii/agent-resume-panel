@@ -1,24 +1,24 @@
-export type TranscriptKind = "jsonl" | "sqlite" | "acp" | "unavailable";
 
-export interface JsonlTranscriptRef {
+
+interface JsonlTranscriptRef {
   kind: "jsonl";
   paths: string[];
 }
 
-export interface SqliteTranscriptRef {
+interface SqliteTranscriptRef {
   kind: "sqlite";
   dbPath: string;
   dialect: "opencode";
   sessionId: string;
 }
 
-export interface AcpTranscriptRef {
+interface AcpTranscriptRef {
   kind: "acp";
   threadPath: string;
   sessionsIndexPath: string;
 }
 
-export interface UnavailableTranscriptRef {
+interface UnavailableTranscriptRef {
   kind: "unavailable";
   reason?: string;
 }
@@ -36,6 +36,3 @@ export function parseTranscriptRefs(raw: string | null | undefined): TranscriptR
   }
 }
 
-export function serializeTranscriptRefs(refs: TranscriptRefs): { kind: TranscriptKind; json: string } {
-  return { kind: refs.kind, json: JSON.stringify(refs) };
-}

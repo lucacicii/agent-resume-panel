@@ -6,7 +6,7 @@ import {
   UI_LANGUAGE_AUTO,
   UI_LANGUAGE_SETTING
 } from "@agent-resume/core/extension";
-import { DEFAULT_LLM_OUTPUT_LANGUAGE, LlmOutputLanguage } from "./languages";
+import { LlmOutputLanguage } from "./languages";
 import { LLM_API_KEY_SECRET } from "../settings/settingsSchema";
 import {
   loadPanelSettingsFile,
@@ -75,7 +75,7 @@ export function isOutputLanguageFollowingUi(): boolean {
  * 3) panelHome settings.json (shared with Desktop)
  * 4) env AGENT_RESUME_LLM_API_KEY
  */
-export async function getLlmApiKey(context: vscode.ExtensionContext): Promise<string | undefined> {
+async function getLlmApiKey(context: vscode.ExtensionContext): Promise<string | undefined> {
   const stored = await context.secrets.get(LLM_API_KEY_SECRET);
   if (stored?.trim()) {
     return stored.trim();

@@ -17,9 +17,8 @@ Use the **⚙** button in the top bar. Settings panes:
 | **General** | Language, appearance (system / light / dark), Agent action approvals |
 | **Models** | OpenAI-compatible LLM / embeddings endpoints and models |
 | **Sessions** | Agent home paths, session list / sync related options |
-| **Workbench** | Default agent, ⌘T behavior, **terminal theme** and related defaults |
+| **Workbench** | Default agent, ⌘T behavior, **workspace mentions**, **terminal theme** and related defaults |
 | **IM** | Role templates (agent, prompt, read/write/execute tools) used by IM rooms |
-| **Report** | Digest / memory related preferences |
 | **Data** | Panel home path, open data folder, **backup export / merge import** |
 | **Logs** | Application error / warning log (redacted), clear, reveal in Finder |
 | **Usage** | Local LLM usage summary |
@@ -49,6 +48,10 @@ Commit-message style in **Settings → Workbench** is the user default. A repo c
 ```
 
 `workbench`, `im`, and `shared` are separate groups. Missing groups mean unset, not an empty override. Do not put API keys, themes, or panel-home paths in this file.
+
+### Workspace mentions
+
+**Settings → Workbench → Workspace mentions** stores global packs in `settings.desktop.json` (`workbench.composerMentions`). They are not per-repo `.arp` files. Full usage (New session, `arpm`, limits): [Workspace mentions](workspace-mentions.md).
 
 ### Agent action approvals
 
@@ -105,7 +108,7 @@ CLI transcripts remain in native agent homes. Change panel home only if you unde
 
 ### Related
 
-- [Report](report.md) · [Agent](agent.md) · [Workbench](workbench.md) · [Notes](notes.md)  
+- [Report](report.md) · [Agent](agent.md) · [Workbench](workbench.md) · [Notes](notes.md) · [Workspace mentions](workspace-mentions.md)  
 - Extension settings: [Extension Settings](../panel/settings-and-data.md)
 
 ---
@@ -121,8 +124,7 @@ CLI transcripts remain in native agent homes. Change panel home only if you unde
 | **通用** | 语言、外观（跟随系统 / 浅色 / 深色）、Agent 操作授权 |
 | **模型** | OpenAI 兼容 LLM / embeddings 端点与模型 |
 | **Sessions** | 各 Agent 目录、会话列表 / 同步相关 |
-| **Workbench** | 默认 Agent、⌘T 行为、**终端主题** 与相关默认 |
-| **Report** | 回顾 / Memory 相关偏好 |
+| **Workbench** | 默认 Agent、⌘T 行为、**工作区 Mention**、**终端主题** 与相关默认 |
 | **数据** | Panel home 路径、打开数据目录、**备份导出 / 合并导入** |
 | **日志** | 应用错误 / 警告日志（脱敏）、清空、在访达中显示 |
 | **用量** | 本机 LLM 用量汇总 |
@@ -152,6 +154,10 @@ Desktop 设置 **不是** VS Code 的 `agentResume.*`。可共用的值（如 LL
 ```
 
 `workbench`、`im`、`shared` 是独立分组；缺省分组表示未配置，不是空覆盖。不要把 API Key、主题或 panel home 写进该文件。
+
+### 工作区 Mention
+
+**设置 → Workbench → 工作区 Mention** 把全局包写在 `settings.desktop.json` 的 `workbench.composerMentions`，不是某个仓库的 `.arp`。完整用法（新建会话、`arpm`、限制）见 [工作区 Mention](workspace-mentions.md)。
 
 ### Agent 操作授权
 
@@ -208,5 +214,5 @@ CLI 原文仍在各 Agent 原生目录。修改 panel home 时请确保两产品
 
 ### 相关文档
 
-- [Report](report.md) · [Agent](agent.md) · [Workbench](workbench.md) · [Notes](notes.md)  
+- [Report](report.md) · [Agent](agent.md) · [Workbench](workbench.md) · [Notes](notes.md) · [工作区 Mention](workspace-mentions.md)  
 - 扩展设置：[扩展设置](../panel/settings-and-data.md)

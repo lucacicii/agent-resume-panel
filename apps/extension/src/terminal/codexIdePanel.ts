@@ -8,9 +8,9 @@ import { storePendingResume } from "./pendingResume";
  * Bump this when OpenAI changes Codex IDE resume routing.
  * Setting `agentResume.codexIdePanelResume.implementationVersion` must match for panel resume to run.
  */
-export const CODEX_IDE_PANEL_IMPLEMENTATION_VERSION = 1;
+const CODEX_IDE_PANEL_IMPLEMENTATION_VERSION = 1;
 
-export const CODEX_IDE_PANEL_IMPLEMENTATION_NOTE =
+const CODEX_IDE_PANEL_IMPLEMENTATION_NOTE =
   "v1: codex://threads/{id}, openai-codex://route/local/{id}, and {editorScheme}://openai.chatgpt/local/{id}";
 
 const CODEX_EXTENSION_IDS = ["openai.chatgpt", "OpenAI.chatgpt"];
@@ -21,9 +21,9 @@ const CODEX_LOCAL_ROUTE_PREFIX = "/local";
 
 const WARNING_STATE_KEY = "agentResume.codexIdePanelWarningShown";
 
-export type CodexResumeMode = "terminal" | "panel" | "app";
+type CodexResumeMode = "terminal" | "panel" | "app";
 
-export type CodexIdePanelResumeResult = "opened" | "needsFolderOpen" | "disabled" | "unsupported";
+type CodexIdePanelResumeResult = "opened" | "needsFolderOpen" | "disabled" | "unsupported";
 
 export function getCodexResumeMode(): CodexResumeMode {
   return vscode.workspace
@@ -31,13 +31,13 @@ export function getCodexResumeMode(): CodexResumeMode {
     .get<CodexResumeMode>("codexResumeMode", "terminal");
 }
 
-export function isCodexIdePanelResumeEnabled(): boolean {
+function isCodexIdePanelResumeEnabled(): boolean {
   return vscode.workspace
     .getConfiguration("agentResume")
     .get<boolean>("codexIdePanelResume.enabled", true);
 }
 
-export function isCodexIdePanelImplementationCompatible(): boolean {
+function isCodexIdePanelImplementationCompatible(): boolean {
   const expected = vscode.workspace
     .getConfiguration("agentResume")
     .get<number>(
@@ -60,7 +60,7 @@ export function isCodexIdePanelResumeAvailable(): boolean {
   return isCodexIdePanelResumeEnabled() && isCodexIdePanelImplementationCompatible();
 }
 
-export function getCodexExtension(): vscode.Extension<unknown> | undefined {
+function getCodexExtension(): vscode.Extension<unknown> | undefined {
   for (const extensionId of CODEX_EXTENSION_IDS) {
     const extension = vscode.extensions.getExtension(extensionId);
     if (extension) {
@@ -71,10 +71,6 @@ export function getCodexExtension(): vscode.Extension<unknown> | undefined {
   return vscode.extensions.all.find((extension) => extension.id.toLowerCase().endsWith(".chatgpt"));
 }
 
-export function isCodexExtensionInstalled(): boolean {
-  return Boolean(getCodexExtension());
-}
-
 export async function applyCodexIdePanelContext(): Promise<void> {
   await vscode.commands.executeCommand(
     "setContext",
@@ -83,7 +79,7 @@ export async function applyCodexIdePanelContext(): Promise<void> {
   );
 }
 
-export async function openCodexIdePanelResume(
+async function openCodexIdePanelResume(
   session: AgentSession,
   context?: vscode.ExtensionContext
 ): Promise<CodexIdePanelResumeResult> {

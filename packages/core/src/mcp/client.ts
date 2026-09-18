@@ -21,7 +21,6 @@ export interface McpToolCallResult {
 export class NoteMcpClient {
   private client: Client | null = null;
   private stdioTransport: StdioClientTransport | null = null;
-  private inMemoryTransport: InMemoryTransport | null = null;
 
   /**
    * Connect to an MCP server via stdio by spawning a child process.
@@ -57,7 +56,6 @@ export class NoteMcpClient {
     }
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await server.connect(serverTransport);
-    this.inMemoryTransport = clientTransport;
     this.client = new Client(
       { name: "agent-resume-ask", version: "0.1.0" }
     );
@@ -85,7 +83,6 @@ export class NoteMcpClient {
       await this.client.close();
       this.client = null;
       this.stdioTransport = null;
-      this.inMemoryTransport = null;
     }
   }
 }

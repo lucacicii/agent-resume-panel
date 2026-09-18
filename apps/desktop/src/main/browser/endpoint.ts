@@ -3,7 +3,7 @@ import * as path from "node:path";
 import { browserMcpEndpointPath, resolvePanelHome } from "@agent-resume/core";
 import type { BrowserMcpServerHandle } from "./mcpServer";
 
-export type BrowserMcpEndpointFile = {
+type BrowserMcpEndpointFile = {
   url: string;
   token: string;
   port: number;

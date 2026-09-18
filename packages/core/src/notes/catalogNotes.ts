@@ -3,6 +3,8 @@ import { sessionGtdKey } from "../gtd/store";
 import { isGtdStatus, type GtdStatus } from "../gtd/types";
 import { normalizeProjectPath } from "../pathUtils";
 import { escapeSqlLiteral, runSqlite, runSqliteJson } from "../sqlite";
+import { parseStringListJson } from "./work";
+import type { NoteWorkFields } from "./frontmatter";
 import type { NoteScope } from "./paths";
 
 export interface NoteRecord {
@@ -20,6 +22,13 @@ export interface NoteRecord {
   updatedAtMs: number;
   fsMtimeMs?: number;
   gtdStatus?: GtdStatus;
+  /** Present only on tasks (front-matter `work: true`). */
+  work?: NoteWorkFields;
+}
+
+/** A task: any note whose front-matter is marked `work: true`. */
+export interface TaskRecord extends NoteRecord {
+  work: NoteWorkFields;
 }
 
 interface NoteRow {
@@ -37,6 +46,41 @@ interface NoteRow {
   updated_at_ms: number;
   fs_mtime_ms: number | null;
   gtd_status: string | null;
+  next_action?: string | null;
+  decision?: string | null;
+  sessions_json?: string | null;
+  projects_json?: string | null;
+  primary_project?: string | null;
+  work_note_id?: string | null;
+}
+
+/** Work fields of a row that was joined against the `note_work` side table. */
+function workFieldsFromRow(row: NoteRow): NoteWorkFields | undefined {
+  if (!row.work_note_id) {
+    return undefined;
+  }
+  const work: NoteWorkFields = {};
+  if (row.next_action) work.next = row.next_action;
+  if (row.decision) work.decision = row.decision;
+  const sessions = parseStringListJson(row.sessions_json ?? null);
+  if (sessions) work.sessions = sessions;
+  const projects = parseStringListJson(row.projects_json ?? null);
+  if (projects) work.projects = projects;
+  if (row.primary_project) work.primaryProject = row.primary_project;
+  return work;
+}
+
+/**
+ * Every note read carries its task fields, so callers never have to ask
+ * again whether a note is a task.
+ */
+const NOTE_COLUMNS = `n.*, g.status AS gtd_status,
+            w.note_id AS work_note_id, w.next_action, w.decision, w.sessions_json, w.projects_json, w.primary_project`;
+const NOTE_JOINS = `LEFT JOIN note_gtd g ON g.note_id = n.note_id
+     LEFT JOIN note_work w ON w.note_id = n.note_id`;
+
+function mapRowWithWork(row: NoteRow): NoteRecord {
+  return { ...mapRow(row), work: workFieldsFromRow(row) };
 }
 
 function mapRow(row: NoteRow): NoteRecord {
@@ -71,27 +115,28 @@ export async function listAllNotes(dbPath: string, limit?: number): Promise<Note
     : ` LIMIT ${Math.max(1, Math.min(Math.floor(Number(limit)) || 1, 50_000))}`;
   const rows = await runSqliteJson<NoteRow>(
     dbPath,
-    `SELECT n.*, g.status AS gtd_status
-     FROM notes n LEFT JOIN note_gtd g ON g.note_id = n.note_id
+    `SELECT ${NOTE_COLUMNS}
+     FROM notes n
+     ${NOTE_JOINS}
      ORDER BY n.updated_at_ms DESC${limitClause};`
   );
-  return rows.map(mapRow);
+  return rows.map(mapRowWithWork);
 }
 
 export async function getNoteById(dbPath: string, noteId: string): Promise<NoteRecord | undefined> {
   const rows = await runSqliteJson<NoteRow>(
     dbPath,
-    `SELECT n.*, g.status AS gtd_status FROM notes n LEFT JOIN note_gtd g ON g.note_id = n.note_id WHERE n.note_id = '${escapeSqlLiteral(noteId)}' LIMIT 1;`
+    `SELECT ${NOTE_COLUMNS} FROM notes n ${NOTE_JOINS} WHERE n.note_id = '${escapeSqlLiteral(noteId)}' LIMIT 1;`
   );
-  return rows[0] ? mapRow(rows[0]) : undefined;
+  return rows[0] ? mapRowWithWork(rows[0]) : undefined;
 }
 
 export async function getNoteByRelPath(dbPath: string, relMdPath: string): Promise<NoteRecord | undefined> {
   const rows = await runSqliteJson<NoteRow>(
     dbPath,
-    `SELECT n.*, g.status AS gtd_status FROM notes n LEFT JOIN note_gtd g ON g.note_id = n.note_id WHERE n.rel_md_path = '${escapeSqlLiteral(relMdPath)}' LIMIT 1;`
+    `SELECT ${NOTE_COLUMNS} FROM notes n ${NOTE_JOINS} WHERE n.rel_md_path = '${escapeSqlLiteral(relMdPath)}' LIMIT 1;`
   );
-  return rows[0] ? mapRow(rows[0]) : undefined;
+  return rows[0] ? mapRowWithWork(rows[0]) : undefined;
 }
 
 export async function listSessionNotes(
@@ -101,35 +146,35 @@ export async function listSessionNotes(
 ): Promise<NoteRecord[]> {
   const rows = await runSqliteJson<NoteRow>(
     dbPath,
-    `SELECT n.*, g.status AS gtd_status FROM notes n LEFT JOIN note_gtd g ON g.note_id = n.note_id
+    `SELECT ${NOTE_COLUMNS} FROM notes n ${NOTE_JOINS}
      WHERE n.scope = 'session'
        AND provider = '${escapeSqlLiteral(provider)}'
        AND agent_session_id = '${escapeSqlLiteral(sessionId)}'
      ORDER BY updated_at_ms DESC;`
   );
-  return rows.map(mapRow);
+  return rows.map(mapRowWithWork);
 }
 
 export async function listLibraryNotes(dbPath: string): Promise<NoteRecord[]> {
   const rows = await runSqliteJson<NoteRow>(
     dbPath,
-    `SELECT n.*, g.status AS gtd_status FROM notes n LEFT JOIN note_gtd g ON g.note_id = n.note_id
+    `SELECT ${NOTE_COLUMNS} FROM notes n ${NOTE_JOINS}
      WHERE n.scope = 'library'
      ORDER BY updated_at_ms DESC;`
   );
-  return rows.map(mapRow);
+  return rows.map(mapRowWithWork);
 }
 
 export async function listProjectNotes(dbPath: string, projectPath: string): Promise<NoteRecord[]> {
   const normalized = normalizeProjectPath(projectPath);
   const rows = await runSqliteJson<NoteRow>(
     dbPath,
-    `SELECT n.*, g.status AS gtd_status FROM notes n LEFT JOIN note_gtd g ON g.note_id = n.note_id
+    `SELECT ${NOTE_COLUMNS} FROM notes n ${NOTE_JOINS}
      WHERE n.scope = 'project'
        AND project_path = '${escapeSqlLiteral(normalized)}'
      ORDER BY updated_at_ms DESC;`
   );
-  return rows.map(mapRow);
+  return rows.map(mapRowWithWork);
 }
 
 export async function upsertNoteRecord(dbPath: string, record: NoteRecord): Promise<void> {
@@ -189,6 +234,8 @@ export async function deleteNoteRecord(dbPath: string, noteId: string): Promise<
   await runSqlite(
     dbPath,
     `DELETE FROM note_gtd WHERE note_id = '${escapeSqlLiteral(noteId)}';
+     DELETE FROM note_work WHERE note_id = '${escapeSqlLiteral(noteId)}';
+     DELETE FROM work_item_sessions WHERE work_item_note_id = '${escapeSqlLiteral(noteId)}';
      DELETE FROM notes WHERE note_id = '${escapeSqlLiteral(noteId)}';`
   );
 }
@@ -201,8 +248,102 @@ export async function deleteNotesByRelPaths(dbPath: string, relPaths: string[]):
   await runSqlite(
     dbPath,
     `DELETE FROM note_gtd WHERE note_id IN (SELECT note_id FROM notes WHERE rel_md_path IN (${list}));
+     DELETE FROM note_work WHERE note_id IN (SELECT note_id FROM notes WHERE rel_md_path IN (${list}));
+     DELETE FROM work_item_sessions WHERE work_item_note_id IN (SELECT note_id FROM notes WHERE rel_md_path IN (${list}));
      DELETE FROM notes WHERE rel_md_path IN (${list});`
   );
+}
+
+/** Every task ↔ session link, with the task's display title. */
+export interface TaskSessionLink {
+  noteId: string;
+  title?: string;
+  provider: string;
+  sessionId: string;
+}
+
+/** One linked session of a task, with the project its cwd belongs to. */
+export interface TaskSessionDetail {
+  provider: string;
+  sessionId: string;
+  projectPath?: string;
+}
+
+export async function listTaskSessionDetails(
+  dbPath: string,
+  noteId: string
+): Promise<TaskSessionDetail[]> {
+  const rows = await runSqliteJson<{ provider: string; agent_session_id: string; project_path: string | null }>(
+    dbPath,
+    `SELECT s.provider, s.agent_session_id, se.project_path
+     FROM work_item_sessions s
+     LEFT JOIN sessions se ON se.provider = s.provider AND se.agent_session_id = s.agent_session_id
+     WHERE s.work_item_note_id = '${escapeSqlLiteral(noteId)}';`
+  );
+  return rows.map((row) => ({
+    provider: row.provider,
+    sessionId: row.agent_session_id,
+    projectPath: row.project_path?.trim() || undefined
+  }));
+}
+
+/** The task a session belongs to, when it is linked to one. */
+export async function findTaskNoteIdForSession(
+  dbPath: string,
+  provider: string,
+  sessionId: string
+): Promise<string | undefined> {
+  const rows = await runSqliteJson<{ work_item_note_id: string }>(
+    dbPath,
+    `SELECT work_item_note_id FROM work_item_sessions
+     WHERE provider = '${escapeSqlLiteral(provider)}'
+       AND agent_session_id = '${escapeSqlLiteral(sessionId)}'
+     LIMIT 1;`
+  );
+  return rows[0]?.work_item_note_id?.trim() || undefined;
+}
+
+export async function listTaskSessionLinks(dbPath: string): Promise<TaskSessionLink[]> {
+  const rows = await runSqliteJson<{ note_id: string; title: string | null; provider: string; agent_session_id: string }>(
+    dbPath,
+    `SELECT s.work_item_note_id AS note_id, n.title, s.provider, s.agent_session_id
+     FROM work_item_sessions s
+     LEFT JOIN notes n ON n.note_id = s.work_item_note_id;`
+  );
+  return rows.map((row) => ({
+    noteId: row.note_id,
+    title: row.title?.trim() || undefined,
+    provider: row.provider,
+    sessionId: row.agent_session_id
+  }));
+}
+
+/** `note_id` → distinct project paths of the task's linked sessions. */
+export async function listTaskSessionProjects(dbPath: string): Promise<Record<string, string[]>> {
+  const rows = await runSqliteJson<{ note_id: string; project_path: string }>(
+    dbPath,
+    `SELECT DISTINCT s.work_item_note_id AS note_id, se.project_path AS project_path
+     FROM work_item_sessions s
+     JOIN sessions se ON se.provider = s.provider AND se.agent_session_id = s.agent_session_id
+     WHERE se.project_path IS NOT NULL AND TRIM(se.project_path) != '';`
+  );
+  const output: Record<string, string[]> = {};
+  for (const row of rows) {
+    (output[row.note_id] ??= []).push(row.project_path);
+  }
+  return output;
+}
+
+export async function listTasks(dbPath: string): Promise<TaskRecord[]> {
+  const rows = await runSqliteJson<NoteRow>(
+    dbPath,
+    `SELECT ${NOTE_COLUMNS}
+     FROM notes n
+     JOIN note_work w ON w.note_id = n.note_id
+     LEFT JOIN note_gtd g ON g.note_id = n.note_id
+     ORDER BY n.updated_at_ms DESC;`
+  );
+  return rows.map((row) => ({ ...mapRow(row), work: workFieldsFromRow(row) ?? {} }));
 }
 
 export async function loadSessionNoteFlags(dbPath: string): Promise<Set<string>> {

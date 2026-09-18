@@ -30,7 +30,7 @@ import {
   type Translate
 } from "./imUtils";
 
-export interface ImComposerProps {
+interface ImComposerProps {
   members: ImMember[];
   draft: string;
   quotes: ImQuotedMessage[];

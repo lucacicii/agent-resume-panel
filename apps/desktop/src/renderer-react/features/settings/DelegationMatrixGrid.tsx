@@ -1,7 +1,6 @@
 import { useCallback, useState, type JSX } from "react";
 import { isBuiltinTemplateId, isProjectRoleTemplateId, type ImRoleTemplate } from "../../../shared/imTypes";
 import { roleColor, roleInitial, type Translate } from "../im/imUtils";
-import { ThemeIcon } from "../../components/ThemeIcon";
 
 interface DelegationMatrixGridProps {
   templates: ImRoleTemplate[];

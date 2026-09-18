@@ -13,14 +13,14 @@
 
 import { execFile } from "node:child_process";
 
-export type BlockedNotification = {
+type BlockedNotification = {
   paneId: number;
   agent: string;
   /** Optional session title, when the pane reported one. */
   title?: string;
 };
 
-export type BlockedNotifier = {
+type BlockedNotifier = {
   notify: (items: readonly BlockedNotification[]) => void;
 };
 

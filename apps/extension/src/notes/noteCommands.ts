@@ -14,7 +14,7 @@ import { NoteOwner } from "./notesPaths";
 import { NotesStore } from "./notesStore";
 import { NotesTreeProvider, NotesTreeNode } from "./notesTree";
 
-export async function openNoteRecord(notesStore: NotesStore, record: NoteRecord): Promise<void> {
+async function openNoteRecord(notesStore: NotesStore, record: NoteRecord): Promise<void> {
   const abs = notesStore.absolutePath(record);
   const document = await vscode.workspace.openTextDocument(vscode.Uri.file(abs));
   await vscode.window.showTextDocument(document, { preview: false });

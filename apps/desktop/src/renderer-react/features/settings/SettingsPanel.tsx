@@ -7,7 +7,7 @@ import { listProviderModels } from "./providerPool";
 import { desktopApi } from "../../bridge";
 import { Status, type StatusKind } from "../../components/Status";
 import { useI18n } from "../../i18n";
-import { AboutPane, BackupPane, LogsPane, NotesPane, ReportPane, StoragePane, UsagePane, WorkbenchPane, type UsageDetailTab } from "./AdditionalPanes";
+import { AboutPane, BackupPane, LogsPane, NotesPane, StoragePane, UsagePane, WorkbenchPane, type UsageDetailTab } from "./AdditionalPanes";
 import { ImSettingsPane } from "./ImSettingsPane";
 import { AgentStatusPane } from "./AgentStatusPane";
 import { McpPane } from "./McpPane";
@@ -17,8 +17,6 @@ import {
   generalPatch,
   providersDraftFromSettings,
   providersPatch,
-  reportDraftFromSettings,
-  reportPatch,
   notesDraftFromSettings,
   notesPatch,
   sessionsDraftFromSettings,
@@ -30,21 +28,20 @@ import {
   type GeneralDraft,
   type ProvidersDraft,
   type NotesDraft,
-  type ReportDraft,
   type SessionsDraft,
   type StorageDraft,
   type WorkbenchDraft
 } from "./model";
 
-type Pane = "general" | "providers" | "sessions" | "workbench" | "im" | "notes" | "report" | "storage" | "mcp" | "agentStatus" | "usage" | "logs" | "backup" | "about";
+type Pane = "general" | "providers" | "sessions" | "workbench" | "im" | "notes" | "storage" | "mcp" | "agentStatus" | "usage" | "logs" | "backup" | "about";
 type EditablePane = Exclude<Pane, "mcp" | "usage" | "logs" | "backup" | "about" | "im">;
 
 function isEditablePane(value: Pane): value is EditablePane {
   return value !== "mcp" && value !== "usage" && value !== "logs" && value !== "backup" && value !== "about" && value !== "im";
 }
 
-export type SettingsPanelProps = {
-  /** Production path is always "window" (auxiliary BrowserWindow). */
+type SettingsPanelProps = {
+  /** Production path is the in-window overlay ("embedded"). */
   variant?: "window" | "embedded";
   initialPane?: string;
 };
@@ -56,7 +53,6 @@ const panes: Array<{ id: Pane; key: string; desc: string }> = [
   { id: "workbench", key: "desktop.settings.paneWorkbench", desc: "desktop.settings.paneWorkbenchDesc" },
   { id: "im", key: "desktop.settings.paneIm", desc: "desktop.settings.paneImDesc" },
   { id: "notes", key: "desktop.settings.paneNotes", desc: "desktop.settings.paneNotesDesc" },
-  { id: "report", key: "desktop.settings.paneReport", desc: "desktop.settings.paneReportDesc" },
   { id: "storage", key: "desktop.settings.paneStorage", desc: "desktop.settings.paneStorageDesc" },
   { id: "mcp", key: "desktop.settings.paneMcp", desc: "desktop.settings.paneMcpDesc" },
   { id: "agentStatus", key: "desktop.settings.paneAgentStatus", desc: "desktop.settings.paneAgentStatusDesc" },
@@ -71,20 +67,18 @@ function asPane(value: unknown): Pane {
 }
 
 export function SettingsPanel({
-  variant = "window",
+  variant = "embedded",
   initialPane
 }: SettingsPanelProps): React.ReactPortal | null {
   const { t } = useI18n();
   const host = document.getElementById("react-settings");
-  const isWindow = variant === "window";
-  const [open, setOpen] = useState(isWindow);
+  const [open, setOpen] = useState(variant === "window");
   const [pane, setPane] = useState<Pane>(() => asPane(initialPane));
   const [settings, setSettings] = useState<PanelSettings | null>(null);
   const [general, setGeneral] = useState<GeneralDraft | null>(null);
   const [providers, setProviders] = useState<ProvidersDraft | null>(null);
   const [sessions, setSessions] = useState<SessionsDraft | null>(null);
   const [workbench, setWorkbench] = useState<WorkbenchDraft | null>(null);
-  const [report, setReport] = useState<ReportDraft | null>(null);
   const [storage, setStorage] = useState<StorageDraft | null>(null);
   const [notes, setNotes] = useState<NotesDraft | null>(null);
   const [status, setStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
@@ -102,7 +96,6 @@ export function SettingsPanel({
     setProviders(providersDraftFromSettings(next));
     setSessions(sessionsDraftFromSettings(next));
     setWorkbench(workbenchDraftFromSettings(next));
-    setReport(reportDraftFromSettings(next));
     setStorage(storageDraftFromSettings(next));
     setNotes(notesDraftFromSettings(next));
   }, []);
@@ -117,59 +110,45 @@ export function SettingsPanel({
     if (value === "sessions") return JSON.stringify(sessions) !== JSON.stringify(sessionsDraftFromSettings(base));
     if (value === "workbench") return JSON.stringify(workbench) !== JSON.stringify(workbenchDraftFromSettings(base));
     if (value === "notes") return JSON.stringify(notes) !== JSON.stringify(notesDraftFromSettings(base));
-    if (value === "report") return JSON.stringify(report) !== JSON.stringify(reportDraftFromSettings(base));
     if (value === "storage") return JSON.stringify(storage) !== JSON.stringify(storageDraftFromSettings(base));
     return false;
-  }, [general, providers, sessions, workbench, notes, report, storage]);
+  }, [general, providers, sessions, workbench, notes, storage]);
 
   paneRef.current = pane;
   const isDirtyForPaneRef = useRef(isDirtyForPane);
   isDirtyForPaneRef.current = isDirtyForPane;
+  const openRef = useRef(open);
+  openRef.current = open;
+
+  const applyOpen = useCallback((nextPane: unknown) => {
+    const next = asPane(nextPane);
+    if (openRef.current && isDirtyForPaneRef.current(paneRef.current) && next !== paneRef.current) {
+      setPendingPane(next);
+      return;
+    }
+    setPane(next);
+    setOpen(true);
+    if (!openRef.current) {
+      void load().catch((error: unknown) =>
+        setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" })
+      );
+    }
+  }, [load]);
 
   useEffect(() => {
-    if (isWindow) {
-      void load().catch((error: unknown) =>
-        setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" })
-      );
-      const stopNavigate =
-        typeof desktopApi().onSettingsNavigate === "function"
-          ? desktopApi().onSettingsNavigate((payload) => {
-              const next = asPane(payload?.pane);
-              if (isDirtyForPaneRef.current(paneRef.current)) {
-                setPendingPane(next);
-                return;
-              }
-              setPane(next);
-            })
-          : () => undefined;
-      return () => {
-        stopNavigate();
-      };
-    }
-
     const onOpen = (event: Event) => {
-      setPane(asPane(event instanceof CustomEvent ? event.detail : "general"));
-      setOpen(true);
-      void load().catch((error: unknown) =>
-        setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" })
-      );
-    };
-    const onTabChange = (event: Event) => {
-      if ((event as CustomEvent<string>).detail !== "settings") {
-        if (isDirtyForPaneRef.current(paneRef.current)) {
-          setPendingClose(true);
-          return;
-        }
-        setOpen(false);
-      }
+      applyOpen(event instanceof CustomEvent ? event.detail : "general");
     };
     window.addEventListener("agent-resume:settings-open", onOpen);
-    window.addEventListener("agent-resume:tab-change", onTabChange);
+    const stopNavigate =
+      typeof desktopApi().onSettingsNavigate === "function"
+        ? desktopApi().onSettingsNavigate((payload) => applyOpen(payload?.pane))
+        : () => undefined;
     return () => {
       window.removeEventListener("agent-resume:settings-open", onOpen);
-      window.removeEventListener("agent-resume:tab-change", onTabChange);
+      stopNavigate();
     };
-  }, [isWindow, load]);
+  }, [applyOpen]);
 
   const save = useCallback(async (next: PanelSettings, section: EditablePane) => {
     setSavingSection(section);
@@ -180,19 +159,8 @@ export function SettingsPanel({
         section
       });
       hydrate(result.settings);
-      // Window mode: main window receives settings via IPC broadcast only (K17)
-      if (!isWindow) {
-        window.dispatchEvent(
-          new CustomEvent("agent-resume:settings-saved", {
-            detail: { settings: result.settings, section, sync: result.sync }
-          })
-        );
-      }
       setStatus({
-        text: t(
-          "desktop.settings.saved",
-          result.schedulerEnabled ? t("desktop.settings.schedulerOn") : t("desktop.settings.schedulerOff")
-        ),
+        text: t("desktop.settings.saved", ""),
         kind: "ok"
       });
     } catch (error) {
@@ -207,17 +175,16 @@ export function SettingsPanel({
     } finally {
       setSavingSection(null);
     }
-  }, [hydrate, isWindow, t]);
+  }, [hydrate, t]);
 
-  const currentDraft = useCallback((section: EditablePane): GeneralDraft | ProvidersDraft | SessionsDraft | WorkbenchDraft | NotesDraft | ReportDraft | StorageDraft | null => {
+  const currentDraft = useCallback((section: EditablePane): GeneralDraft | ProvidersDraft | SessionsDraft | WorkbenchDraft | NotesDraft | StorageDraft | null => {
     if (section === "general") return general;
     if (section === "providers") return providers;
     if (section === "sessions") return sessions;
     if (section === "workbench") return workbench;
     if (section === "notes") return notes;
-    if (section === "report") return report;
     return storage;
-  }, [general, providers, sessions, workbench, notes, report, storage]);
+  }, [general, providers, sessions, workbench, notes, storage]);
 
   const savedDraftFor = useCallback((section: EditablePane) => {
     const base = lastSavedSettings.current;
@@ -227,7 +194,6 @@ export function SettingsPanel({
     if (section === "sessions") return sessionsDraftFromSettings(base);
     if (section === "workbench") return workbenchDraftFromSettings(base);
     if (section === "notes") return notesDraftFromSettings(base);
-    if (section === "report") return reportDraftFromSettings(base);
     return storageDraftFromSettings(base);
   }, []);
 
@@ -239,7 +205,7 @@ export function SettingsPanel({
   }, [currentDraft, savedDraftFor]);
 
   const hasAnyDirty = useCallback((): boolean => {
-    const sections: EditablePane[] = ["general", "providers", "sessions", "workbench", "notes", "report", "storage"];
+    const sections: EditablePane[] = ["general", "providers", "sessions", "workbench", "notes", "storage"];
     return sections.some((s) => isDirty(s));
   }, [isDirty]);
 
@@ -262,7 +228,6 @@ export function SettingsPanel({
       : section === "sessions" ? sessionsPatch(settings, draft as SessionsDraft)
       : section === "workbench" ? workbenchPatch(settings, draft as WorkbenchDraft)
       : section === "notes" ? notesPatch(settings, draft as NotesDraft)
-      : section === "report" ? reportPatch(settings, draft as ReportDraft)
       : storagePatch(settings, draft as StorageDraft);
     await save({ ...settings, ...patch }, section);
   }, [settings, currentDraft, save, t]);
@@ -279,7 +244,6 @@ export function SettingsPanel({
     else if (section === "sessions") setSessions(sessionsDraftFromSettings(base));
     else if (section === "workbench") setWorkbench(workbenchDraftFromSettings(base));
     else if (section === "notes") setNotes(notesDraftFromSettings(base));
-    else if (section === "report") setReport(reportDraftFromSettings(base));
     else setStorage(storageDraftFromSettings(base));
     setStatus({ text: "" });
   }, []);
@@ -295,15 +259,9 @@ export function SettingsPanel({
   }, [pane, isDirty]);
 
   const doClose = useCallback(() => {
-    if (isWindow) {
-      if (typeof desktopApi().closeSettingsWindow === "function") {
-        void desktopApi().closeSettingsWindow();
-      }
-      return;
-    }
     setOpen(false);
     window.dispatchEvent(new Event("agent-resume:settings-closed"));
-  }, [isWindow]);
+  }, []);
 
   const requestClose = useCallback(() => {
     if (hasAnyDirty()) {
@@ -313,7 +271,18 @@ export function SettingsPanel({
     doClose();
   }, [hasAnyDirty, doClose]);
 
-  if (!host || !open || !settings || !general || !providers || !sessions || !workbench || !notes || !report || !storage) return null;
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      requestClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open, requestClose]);
+
+  if (!host || !open || !settings || !general || !providers || !sessions || !workbench || !notes || !storage) return null;
   const current = panes.find((item) => item.id === pane) || panes[0];
   const close = requestClose;
   const editable = isEditablePane(pane);
@@ -325,21 +294,6 @@ export function SettingsPanel({
     : pane === "workbench" ? <WorkbenchPane draft={workbench} setDraft={(value) => setWorkbench(value)} t={t} />
     : pane === "im" ? <ImSettingsPane t={t} />
     : pane === "notes" ? <NotesPane draft={notes} setDraft={setNotes} t={t} />
-    : pane === "report" ? (
-      <ReportPane
-        draft={report}
-        setDraft={(value) => setReport(value)}
-        t={t}
-        onOpenScheduleLog={() => {
-          if (isEditablePane(pane) && isDirty(pane)) {
-            setPendingPane("usage" as Pane);
-            return;
-          }
-          setUsageDetailTab("schedule");
-          setPane("usage");
-        }}
-      />
-    )
     : pane === "storage" ? <StoragePane draft={storage} setDraft={(value) => setStorage(value)} t={t} />
     : pane === "mcp" ? <McpPane t={t} />
     : pane === "agentStatus" ? <AgentStatusPane t={t} />
@@ -348,7 +302,9 @@ export function SettingsPanel({
     : pane === "backup" ? <BackupPane t={t} /> : <AboutPane t={t} />;
 
   return createPortal(
-    <section className="panel active react-settings-panel">
+    <div className="settings-overlay" role="dialog" aria-modal="true" aria-label={t("desktop.settings.title")}>
+      <button type="button" className="settings-overlay-backdrop" aria-label={t("desktop.settings.done")} onClick={close} />
+      <section className="panel active react-settings-panel">
       <div className="toolbar">
         <h2 className="quiet-title">{t("desktop.settings.title")}</h2>
         <button type="button" className="ghost-btn" onClick={close}>{t("desktop.settings.done")}</button>
@@ -434,7 +390,8 @@ export function SettingsPanel({
           ) : null}
         </div>
       </div>
-    </section>,
+    </section>
+    </div>,
     host
   );
 }

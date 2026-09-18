@@ -3,11 +3,12 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { expandHome } from "@agent-resume/core";
 
+/** Largest file the workbench opens for editing; bigger files stay external. */
 export const MAX_WORKBENCH_EDIT_BYTES = 2 * 1024 * 1024;
 
 export type WorkbenchTextEncoding = "utf8" | "utf8-bom" | "utf16le" | "utf16be";
 
-export type WorkbenchFileInspection =
+type WorkbenchFileInspection =
   | {
       kind: "text";
       content: string;
@@ -24,12 +25,12 @@ export type WorkbenchFileInspection =
     }
   | { kind: "missing" };
 
-export type WorkbenchFileSaveResult =
+type WorkbenchFileSaveResult =
   | { ok: true; version: string; size: number; mtimeMs: number }
   | { ok: false; reason: "conflict"; version: string; size: number; mtimeMs: number }
   | { ok: false; reason: "missing" };
 
-export type WorkbenchFileCreateResult =
+type WorkbenchFileCreateResult =
   | { ok: true; version: string; size: number; mtimeMs: number }
   | { ok: false; reason: "exists" };
 

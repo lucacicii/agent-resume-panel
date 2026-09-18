@@ -24,9 +24,9 @@ import { Terminal } from "@xterm/headless";
  * (no scrollback), but inline agents paint into the normal buffer and the
  * snapshot wants a few rows above the viewport.
  */
-export const MIRROR_SCROLLBACK = 200;
+const MIRROR_SCROLLBACK = 200;
 /** Rows above the viewport included in a snapshot, mirroring the old UI read. */
-export const SCREEN_HEADROOM_ROWS = 5;
+const SCREEN_HEADROOM_ROWS = 5;
 /** Width table version; the renderer sets the same one (`TerminalView`). */
 export const MIRROR_UNICODE_VERSION = "11";
 

@@ -94,9 +94,18 @@ export {
   parseNoteDocument,
   buildNoteDocument,
   extractTitle,
+  noteTitle,
   contentPreview
 } from "./notes/frontmatter";
 export type { NoteFrontmatter, ParsedNoteDocument } from "./notes/frontmatter";
+export {
+  TASK_KNOWLEDGE_BEGIN,
+  TASK_KNOWLEDGE_END,
+  UNTITLED_TASK_NAME,
+  isTaskFrontmatter,
+  taskPromptBody,
+  normalizeTaskDocument
+} from "./notes/taskNote";
 export {
   localDateString,
   formatNoteFilename,

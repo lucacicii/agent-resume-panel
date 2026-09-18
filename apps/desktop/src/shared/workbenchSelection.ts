@@ -1,4 +1,11 @@
-/** Open Workbench session dots shared across the main window and floating notes. */
+/**
+ * Open Workbench session dots shared across the main window and floating notes.
+ *
+ * This module is the **single source** of the session dot vocabulary and payload
+ * shape: the renderer derives `SessionDotStatus` and `ActiveSessionDot` from it,
+ * so a status added here must be handled by every `Record<SessionDotStatus, ...>`
+ * map on both sides of the process boundary.
+ */
 
 export const WORKBENCH_SESSION_DOT_STATUSES = [
   "awaiting_user",
@@ -19,7 +26,7 @@ export type WorkbenchActiveSessionDot = {
 };
 
 /** Same allowlist as Workbench "New session" picker (`cli:*` / `acp:*`). */
-export const WORKBENCH_SEND_SELECTION_TARGETS = [
+const WORKBENCH_SEND_SELECTION_TARGETS = [
   "cli:codex",
   "cli:claude",
   "cli:grok",
@@ -68,7 +75,7 @@ const MAX_SELECTION_TEXT_CHARS = 200_000;
 const MAX_ACTIVE_SESSIONS = 200;
 const MAX_LABEL_CHARS = 2_000;
 
-export function isWorkbenchSendSelectionTarget(value: unknown): value is WorkbenchSendSelectionTarget {
+function isWorkbenchSendSelectionTarget(value: unknown): value is WorkbenchSendSelectionTarget {
   return typeof value === "string" && SEND_SELECTION_TARGET_SET.has(value);
 }
 

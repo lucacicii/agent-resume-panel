@@ -7,7 +7,7 @@ const DEFAULT_CONTEXT_CHARS = 120_000;
 const MIN_SOURCE_BUDGET = 2_000;
 const MAX_REDUCE_ROUNDS = 8;
 
-export interface HierarchicalDigestOptions {
+interface HierarchicalDigestOptions {
   llm: LlmRuntimeConfig;
   desktopDb: string;
   source: "daily" | "weekly" | "monthly";
@@ -24,7 +24,7 @@ export interface HierarchicalDigestOptions {
   reduceMessage?: (round: number) => string;
 }
 
-export interface HierarchicalDigestResult {
+interface HierarchicalDigestResult {
   content: string;
   chunkCount: number;
 }

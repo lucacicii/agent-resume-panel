@@ -1,7 +1,7 @@
 import { createPortal } from "react-dom";
 import { useEffect, useRef, useState } from "react";
 import { useI18n } from "../i18n";
-import { clearAll, getPage, getTotalCount, subscribe, type NotificationEntry } from "./notificationStore";
+import { clearAll, getPage, getTotalCount, subscribe } from "./notificationStore";
 
 const PAGE_SIZE = 10;
 

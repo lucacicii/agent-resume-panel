@@ -30,7 +30,7 @@ import { GitBranchSelector, GitRepositorySelector } from "./GitGraphView";
 const COMMIT_INPUT_MIN_HEIGHT = 96;
 const COMMIT_INPUT_MAX_HEIGHT = 190;
 
-export function GitTreeCheckbox({
+function GitTreeCheckbox({
   state,
   ariaLabel,
   disabled,
@@ -61,7 +61,7 @@ export function GitTreeCheckbox({
   </button>;
 }
 
-export function GitChangeTree({
+function GitChangeTree({
   nodes,
   depth,
   staged,

@@ -6,7 +6,7 @@ import { extractPreviewContent, finalizePreviewMessages, isUserOrAssistantRole }
 import type { FinalizePreviewOptions } from "./text";
 import { PreviewHomes, SessionPreviewResult } from "./types";
 
-export interface CursorChatMeta {
+interface CursorChatMeta {
   id: string;
   title: string;
   cwd: string;

@@ -12,13 +12,13 @@ import {
   desktopDbPath,
   ensureDesktopDbSchema,
   ensureExtensionCatalogSchema,
-  ensureProjectForPath,
   handleLinkGraphTrace,
   insertReportEntry,
   localDayRange,
+  mcpSessionContextFromEnv,
   NotesStore,
   runSqlite,
-  toPortableKey
+  setSessionGtdStatus
 } from "../dist/index.js";
 
 async function setupTestContext() {
@@ -113,20 +113,23 @@ test("MCP server exposes all note, report, session, and project tools", async ()
       "note_set_parent",
       "note_tree_read",
       "note_write",
-      "project_list",
-      "project_merge",
-      "project_reconcile",
-      "project_tidy",
       "report_list",
       "report_read",
       "report_search",
       "session_list",
-      "session_move",
       "session_read",
       "session_read_transcript",
       "session_resume",
       "session_search",
-      "session_set_gtd"
+      "session_set_gtd",
+      "task_create",
+      "task_link_session",
+      "task_list",
+      "task_read",
+      "task_unlink_session",
+      "task_write",
+      "workbench_list",
+      "workbench_read"
     ]);
   } finally {
     await client.close();
@@ -416,18 +419,31 @@ test("note_search returns empty message when no matches", async () => {
   }
 });
 
-test("note_create with project scope requires projectPath", async () => {
-  const { ctx } = await setupTestContext();
+test("note tools reject project scope and never expose project notes", async () => {
+  const { ctx, store } = await setupTestContext();
+  const projectNote = await store.createProjectNote("/tmp/mcp-project", "# Extension only");
   const server = createNoteMcpServer(ctx);
   const client = await connectClient(server);
 
   try {
-    const result = await client.callTool({
+    const created = await client.callTool({
       name: "note_create",
-      arguments: { scope: "project", title: "Missing Path" }
+      arguments: { scope: "project", title: "Nope", projectPath: "/tmp/mcp-project" }
     });
-    assert.equal(result.isError, true);
-    assert.ok(result.content[0].text.includes("projectPath is required"));
+    assert.equal(created.isError, true);
+
+    const read = await client.callTool({
+      name: "note_read",
+      arguments: { noteId: projectNote.noteId }
+    });
+    assert.equal(read.isError, true);
+    assert.match(read.content[0].text, /VS Code extension/i);
+
+    const list = parseToolJson(await client.callTool({
+      name: "note_list",
+      arguments: { scope: "all" }
+    }));
+    assert.ok(!list.items.some((item) => item.noteId === projectNote.noteId));
   } finally {
     await client.close();
     await server.close();
@@ -536,30 +552,27 @@ test("note_delete removes the note", async () => {
   }
 });
 
-test("note MCP creates and reads linked Project Note trees", async () => {
-  const { ctx } = await setupTestContext();
+test("note MCP creates and reads linked note trees under a task", async () => {
+  const { ctx, store } = await setupTestContext();
   const server = createNoteMcpServer(ctx);
   const client = await connectClient(server);
 
   try {
-    const rootResult = await client.callTool({
-      name: "note_create",
-      arguments: { scope: "project", projectPath: "/tmp/mcp-tree", title: "Root", body: "Root body" }
-    });
-    const root = parseToolJson(rootResult).note;
+    const root = await store.createTask({ title: "Root task" });
     const childResult = await client.callTool({
       name: "note_create",
       arguments: { parentNoteId: root.noteId, title: "Child", body: "Child body" }
     });
     const child = parseToolJson(childResult).note;
-    assert.equal(child.owner.scope, "project");
+    assert.equal(child.owner.scope, "library");
     assert.equal(child.link.parentNoteId, root.noteId);
 
     const list = parseToolJson(await client.callTool({
       name: "note_list",
-      arguments: { rootOnly: true, scope: "project" }
+      arguments: { rootOnly: true, scope: "library" }
     }));
-    assert.deepEqual(list.items.map((item) => item.noteId), [root.noteId]);
+    assert.ok(list.items.some((item) => item.noteId === root.noteId));
+    assert.ok(!list.items.some((item) => item.noteId === child.noteId));
 
     const tree = parseToolJson(await client.callTool({
       name: "note_tree_read",
@@ -575,11 +588,11 @@ test("note MCP creates and reads linked Project Note trees", async () => {
   }
 });
 
-test("note MCP reparenting enforces Project Note tree invariants", async () => {
+test("note MCP reparenting enforces link tree invariants", async () => {
   const { ctx, store } = await setupTestContext();
-  const a = await store.createProjectNote("/tmp/mcp-links", "# A");
-  const b = await store.createProjectNote("/tmp/mcp-links", "# B");
-  const library = await store.createLibraryNote("# Library");
+  const a = await store.createTask({ title: "A" });
+  const b = await store.createTask({ title: "B" });
+  const session = await store.createSessionNote({ provider: "codex", id: "mcp-links" }, "# Session");
   const server = createNoteMcpServer(ctx);
   const client = await connectClient(server);
 
@@ -599,10 +612,10 @@ test("note MCP reparenting enforces Project Note tree invariants", async () => {
 
     const invalid = await client.callTool({
       name: "note_set_parent",
-      arguments: { noteId: library.noteId, parentNoteId: a.noteId }
+      arguments: { noteId: session.noteId, parentNoteId: a.noteId }
     });
     assert.equal(invalid.isError, true);
-    assert.match(invalid.content[0].text, /project note/i);
+    assert.match(invalid.content[0].text, /session note/i);
 
     const detached = await client.callTool({
       name: "note_set_parent",
@@ -617,7 +630,7 @@ test("note MCP reparenting enforces Project Note tree invariants", async () => {
 
 test("note MCP preserves frontmatter through write/append and detaches on cross-scope move", async () => {
   const { ctx, store } = await setupTestContext();
-  const root = await store.createProjectNote("/tmp/mcp-move", "# Root\n\nroot");
+  const root = await store.createTask({ title: "Move root" });
   const child = await store.createLinkedChildNote(root.noteId, "# Child\n\nold");
   const original = await store.readNoteContent(child.noteId);
   const idLine = original.match(/^id: .*$/m)?.[0];
@@ -634,14 +647,14 @@ test("note MCP preserves frontmatter through write/append and detaches on cross-
 
     const moved = await client.callTool({
       name: "note_move",
-      arguments: { noteId: child.noteId, scope: "library" }
+      arguments: { noteId: child.noteId, scope: "session", provider: "codex", sessionId: "mcp-move" }
     });
     assert.equal(parseToolJson(moved).detachedFromTree, true);
-    const roots = parseToolJson(await client.callTool({
+    const library = parseToolJson(await client.callTool({
       name: "note_list",
-      arguments: { rootOnly: true }
+      arguments: { scope: "library", rootOnly: true }
     }));
-    assert.ok(roots.items.some((item) => item.noteId === child.noteId));
+    assert.ok(!library.items.some((item) => item.noteId === child.noteId));
 
     const renamed = await client.callTool({
       name: "note_rename",
@@ -837,83 +850,183 @@ test("link_graph_trace is hidden when enableLinkGraphTrace is false", async () =
   }
 });
 
-test("project_reconcile links same-path sessions and project_list reflects counts", async () => {
-  const { ctx, catalogDb } = await setupTestContext();
-  const projectPath = path.join(os.homedir(), "reconcile-mcp");
-  await seedSession(catalogDb, { id: "rc-1", title: "One", projectPath });
-  await seedSession(catalogDb, { id: "rc-2", title: "Two", projectPath });
+test("task_create exposes a task with multi-root references and GTD", async () => {
+  const { ctx } = await setupTestContext();
   const server = createNoteMcpServer(ctx);
   const client = await connectClient(server);
 
   try {
-    const reconcile = parseToolJson(await client.callTool({ name: "project_reconcile", arguments: {} }));
-    assert.equal(reconcile.ok, true);
-    assert.ok(reconcile.linkedSessions >= 1);
-
-    const projects = parseToolJson(await client.callTool({ name: "project_list", arguments: {} }));
-    const merged = projects.filter((p) => p.portableKey === toPortableKey(projectPath));
-    assert.equal(merged.length, 1);
-    assert.equal(merged[0].sessionCount, 2);
-  } finally {
-    await client.close();
-    await server.close();
-  }
-});
-
-test("project_merge reassigns sessions and removes the source project", async () => {
-  const { ctx, catalogDb } = await setupTestContext();
-  const pathA = path.join(os.homedir(), "merge-mcp-a");
-  const pathB = path.join(os.homedir(), "merge-mcp-b");
-  await seedSession(catalogDb, { id: "pm-a", title: "A", projectPath: pathA });
-  await seedSession(catalogDb, { id: "pm-b", title: "B", projectPath: pathB });
-  const server = createNoteMcpServer(ctx);
-  const client = await connectClient(server);
-
-  try {
-    await client.callTool({ name: "project_reconcile", arguments: {} });
-    let projects = parseToolJson(await client.callTool({ name: "project_list", arguments: {} }));
-    const a = projects.find((p) => p.portableKey === toPortableKey(pathA));
-    const b = projects.find((p) => p.portableKey === toPortableKey(pathB));
-    assert.ok(a && b && a.projectId !== b.projectId);
-
-    const merged = parseToolJson(await client.callTool({
-      name: "project_merge",
-      arguments: { sourceProjectId: a.projectId, targetProjectId: b.projectId }
+    const created = parseToolJson(await client.callTool({
+      name: "task_create",
+      arguments: {
+        title: "Ship multi-root workbench",
+        next: "Write the migration",
+        decision: "Which roots to keep",
+        roots: ["/tmp/root-a", "/tmp/root-b"],
+        primaryRoot: "/tmp/root-a"
+      }
     }));
-    assert.equal(merged.ok, true);
-    assert.equal(merged.targetProjectId, b.projectId);
-    assert.ok(merged.mergedSessions >= 1);
+    assert.equal(created.ok, true);
+    assert.ok(created.noteId);
+    assert.equal(created.gtdStatus, "inbox");
 
-    projects = parseToolJson(await client.callTool({ name: "project_list", arguments: {} }));
-    assert.ok(!projects.some((p) => p.projectId === a.projectId));
+    const list = parseToolJson(await client.callTool({ name: "task_list", arguments: {} }));
+    const task = list.find((t) => t.noteId === created.noteId);
+    assert.ok(task);
+    assert.equal(task.title, "Ship multi-root workbench");
+    assert.equal(task.next, "Write the migration");
+    assert.deepEqual(task.roots.slice().sort(), ["/tmp/root-a", "/tmp/root-b"]);
+    assert.equal(task.primaryRoot, "/tmp/root-a");
+    assert.equal(task.gtdStatus, "inbox");
+
+    const read = parseToolJson(await client.callTool({
+      name: "task_read",
+      arguments: { noteId: created.noteId }
+    }));
+    assert.equal(read.work.next, "Write the migration");
+    assert.equal(read.work.decision, "Which roots to keep");
+    assert.deepEqual(read.work.roots.slice().sort(), ["/tmp/root-a", "/tmp/root-b"]);
+    assert.deepEqual(read.workbenches, []);
   } finally {
     await client.close();
     await server.close();
   }
 });
 
-test("project_tidy reports candidates in dry run and hides them when applied", async () => {
-  const { ctx, catalogDb } = await setupTestContext();
-  const ghost = path.join(os.tmpdir(), `ghost-project-${Date.now()}`);
-  await ensureProjectForPath(catalogDb, ghost); // directory does not exist → pathMissing
+test("task_write updates next, decision, roots, and GTD status", async () => {
+  const { ctx } = await setupTestContext();
   const server = createNoteMcpServer(ctx);
   const client = await connectClient(server);
 
   try {
-    const dry = parseToolJson(await client.callTool({ name: "project_tidy", arguments: {} }));
-    assert.equal(dry.dryRun, true);
-    assert.equal(dry.hiddenProjects, 0);
-    assert.ok(dry.candidates.some((c) => c.portableKey === toPortableKey(ghost)));
+    const created = parseToolJson(await client.callTool({
+      name: "task_create",
+      arguments: { title: "Editable task", next: "Old next", decision: "Old decision" }
+    }));
 
-    let projects = parseToolJson(await client.callTool({ name: "project_list", arguments: {} }));
-    assert.ok(projects.some((p) => p.portableKey === toPortableKey(ghost)));
+    const written = parseToolJson(await client.callTool({
+      name: "task_write",
+      arguments: {
+        noteId: created.noteId,
+        next: "New next",
+        decision: null,
+        roots: ["/tmp/only-root"],
+        gtdStatus: "next"
+      }
+    }));
+    assert.equal(written.work.next, "New next");
+    assert.equal(written.work.decision, undefined);
+    assert.deepEqual(written.work.roots, ["/tmp/only-root"]);
+    assert.equal(written.gtdStatus, "next");
 
-    const applied = parseToolJson(await client.callTool({ name: "project_tidy", arguments: { apply: true } }));
-    assert.equal(applied.dryRun, false);
-    assert.ok(applied.hiddenProjects >= 1);
+    const read = parseToolJson(await client.callTool({
+      name: "task_read",
+      arguments: { noteId: created.noteId }
+    }));
+    assert.equal(read.work.next, "New next");
+    assert.equal(read.work.decision, undefined);
+    assert.deepEqual(read.work.roots, ["/tmp/only-root"]);
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
 
-    projects = parseToolJson(await client.callTool({ name: "project_list", arguments: {} }));
-    assert.ok(!projects || !projects.some((p) => p.portableKey === toPortableKey(ghost)));
+test("task_link_session rebinds the session root and task_unlink_session removes the link", async () => {
+  const { ctx, catalogDb } = await setupTestContext();
+  const pathA = path.join(os.homedir(), "task-from");
+  const pathB = path.join(os.homedir(), "task-to");
+  await seedSession(catalogDb, { id: "tk-1", title: "Linked", projectPath: pathA });
+  const server = createNoteMcpServer(ctx);
+  const client = await connectClient(server);
+
+  try {
+    const created = parseToolJson(await client.callTool({
+      name: "task_create",
+      arguments: { title: "Link me", roots: [pathA] }
+    }));
+
+    const linked = parseToolJson(await client.callTool({
+      name: "task_link_session",
+      arguments: { noteId: created.noteId, provider: "codex", sessionId: "tk-1", rootPath: pathB }
+    }));
+    assert.equal(linked.ok, true);
+    assert.equal(linked.sessionKey, "codex:tk-1");
+    assert.equal(path.resolve(linked.rebind.newPath), path.resolve(pathB));
+
+    const read = parseToolJson(await client.callTool({
+      name: "session_read",
+      arguments: { provider: "codex", sessionId: "tk-1" }
+    }));
+    assert.equal(path.resolve(read.rootPath), path.resolve(pathB));
+
+    const task = parseToolJson(await client.callTool({
+      name: "task_read",
+      arguments: { noteId: created.noteId }
+    }));
+    assert.ok(task.work.sessions.includes("codex:tk-1"));
+    assert.ok(task.linkedSessions.some((session) => session.sessionId === "tk-1"));
+    assert.ok(task.work.roots.includes(pathB));
+
+    const unlinked = parseToolJson(await client.callTool({
+      name: "task_unlink_session",
+      arguments: { noteId: created.noteId, provider: "codex", sessionId: "tk-1" }
+    }));
+    assert.equal(unlinked.removed, true);
+
+    const after = parseToolJson(await client.callTool({
+      name: "task_read",
+      arguments: { noteId: created.noteId }
+    }));
+    assert.ok(!after.work.sessions.includes("codex:tk-1"));
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+test("task tools reject notes that are not tasks", async () => {
+  const { ctx } = await setupTestContext();
+  const note = await ctx.notesStore.createLibraryNote("# Plain note");
+  const server = createNoteMcpServer(ctx);
+  const client = await connectClient(server);
+
+  try {
+    const result = await client.callTool({
+      name: "task_read",
+      arguments: { noteId: note.noteId }
+    });
+    assert.equal(result.isError, true);
+    assert.match(result.content[0].text, /not a task/i);
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+test("workbench tools degrade gracefully without desktop workbench tables", async () => {
+  const { ctx } = await setupTestContext();
+  const server = createNoteMcpServer(ctx);
+  const client = await connectClient(server);
+
+  try {
+    const created = parseToolJson(await client.callTool({
+      name: "task_create",
+      arguments: { title: "Workbench task" }
+    }));
+
+    const listResult = await client.callTool({
+      name: "workbench_list",
+      arguments: { taskNoteId: created.noteId }
+    });
+    assert.notEqual(listResult.isError, true);
+    assert.match(listResult.content[0].text, /No workbenches/);
+
+    const missing = await client.callTool({
+      name: "workbench_read",
+      arguments: { workbenchId: "wb_missing" }
+    });
+    assert.equal(missing.isError, true);
   } finally {
     await client.close();
     await server.close();
@@ -943,58 +1056,168 @@ test("AGENT_TOOL_CATALOG matches the tools registered by the MCP server", async 
   }
 });
 
-test("session_move reassigns a session to a different project directory", async () => {
-  const { ctx, catalogDb } = await setupTestContext();
-  const pathA = path.join(os.homedir(), "move-from");
-  const pathB = path.join(os.homedir(), "move-to");
-  await seedSession(catalogDb, { id: "mv-1", title: "Move me", projectPath: pathA });
-  const server = createNoteMcpServer(ctx);
+test("mcpSessionContextFromEnv reads the injected identity and ignores blanks", () => {
+  assert.deepEqual(
+    mcpSessionContextFromEnv({
+      AGENT_RESUME_PROVIDER: "chat",
+      AGENT_RESUME_SESSION_ID: "rec-1",
+      AGENT_RESUME_WORK_ITEM_ID: "note-1"
+    }),
+    { provider: "chat", sessionId: "rec-1", taskNoteId: "note-1" }
+  );
+  assert.deepEqual(
+    mcpSessionContextFromEnv({ AGENT_RESUME_PROVIDER: "  ", AGENT_RESUME_SESSION_ID: "" }),
+    { provider: undefined, sessionId: undefined, taskNoteId: undefined }
+  );
+});
+
+test("note_create defaults to the task bound to the current session", async () => {
+  const { ctx } = await setupTestContext();
+  const task = await ctx.notesStore.createTask({ title: "Bound task", sessions: ["codex:ctx-1"] });
+  const scopedCtx = { ...ctx, sessionContext: { provider: "codex", sessionId: "ctx-1" } };
+  const server = createNoteMcpServer(scopedCtx);
   const client = await connectClient(server);
 
   try {
-    await client.callTool({ name: "project_reconcile", arguments: {} });
-
-    const moved = parseToolJson(await client.callTool({
-      name: "session_move",
-      arguments: { provider: "codex", sessionId: "mv-1", targetProjectPath: pathB }
+    const created = parseToolJson(await client.callTool({
+      name: "note_create",
+      arguments: { title: "Ctx note", body: "body" }
     }));
-    assert.equal(moved.ok, true);
-    assert.equal(moved.moved, true);
-    assert.equal(path.resolve(moved.newPath), path.resolve(pathB));
-
-    const read = parseToolJson(await client.callTool({
-      name: "session_read",
-      arguments: { provider: "codex", sessionId: "mv-1" }
-    }));
-    assert.equal(path.resolve(read.projectPath), path.resolve(pathB));
-
-    const projects = parseToolJson(await client.callTool({ name: "project_list", arguments: {} }));
-    const target = projects.find((p) => p.portableKey === toPortableKey(pathB));
-    assert.ok(target && target.sessionCount === 1);
+    assert.equal(created.resolvedVia, "session");
+    assert.equal(created.note.owner.scope, "library");
+    assert.equal(created.note.link.parentNoteId, task.noteId);
   } finally {
     await client.close();
     await server.close();
   }
 });
 
-test("session_move errors on unknown session and on missing target path", async () => {
+test("note_create honors an explicit AGENT_RESUME_WORK_ITEM_ID", async () => {
   const { ctx } = await setupTestContext();
+  const task = await ctx.notesStore.createTask({ title: "Context task" });
+  const scopedCtx = { ...ctx, sessionContext: { taskNoteId: task.noteId } };
+  const server = createNoteMcpServer(scopedCtx);
+  const client = await connectClient(server);
+
+  try {
+    const created = parseToolJson(await client.callTool({
+      name: "note_create",
+      arguments: { title: "Context child" }
+    }));
+    assert.equal(created.resolvedVia, "context");
+    assert.equal(created.note.link.parentNoteId, task.noteId);
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+test("note_create falls back to the session when no task is bound", async () => {
+  const { ctx } = await setupTestContext();
+  const scopedCtx = { ...ctx, sessionContext: { provider: "codex", sessionId: "ctx-2" } };
+  const server = createNoteMcpServer(scopedCtx);
+  const client = await connectClient(server);
+
+  try {
+    const created = parseToolJson(await client.callTool({
+      name: "note_create",
+      arguments: { title: "Session note" }
+    }));
+    assert.equal(created.resolvedVia, "context");
+    assert.equal(created.note.owner.scope, "session");
+    assert.equal(created.note.owner.sessionId, "ctx-2");
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+test("note_create is unbound without session identity and explicit scope wins", async () => {
+  const { ctx } = await setupTestContext();
+  const task = await ctx.notesStore.createTask({ title: "Wins", sessions: ["codex:ctx-3"] });
+  const scopedCtx = { ...ctx, sessionContext: { provider: "codex", sessionId: "ctx-3" } };
+  const server = createNoteMcpServer(scopedCtx);
+  const client = await connectClient(server);
+
+  try {
+    const explicit = parseToolJson(await client.callTool({
+      name: "note_create",
+      arguments: { scope: "library", title: "Detached" }
+    }));
+    assert.equal(explicit.resolvedVia, "explicit");
+    assert.equal(explicit.note.link.parentNoteId, undefined);
+  } finally {
+    await client.close();
+    await server.close();
+  }
+
+  const bare = createNoteMcpServer(ctx);
+  const bareClient = await connectClient(bare);
+  try {
+    const created = parseToolJson(await bareClient.callTool({
+      name: "note_create",
+      arguments: { title: "Unbound" }
+    }));
+    assert.equal(created.resolvedVia, "none");
+    assert.equal(created.note.owner.scope, "library");
+    assert.equal(created.note.link.parentNoteId, undefined);
+    assert.ok(task.noteId);
+  } finally {
+    await bareClient.close();
+    await bare.close();
+  }
+});
+
+test("note_list defaults to the bound task subtree", async () => {
+  const { ctx } = await setupTestContext();
+  const task = await ctx.notesStore.createTask({ title: "Tree", sessions: ["codex:ctx-4"] });
+  const child = await ctx.notesStore.createLinkedChildNote(task.noteId, "# Child");
+  const other = await ctx.notesStore.createLibraryNote("# Other");
+  const scopedCtx = { ...ctx, sessionContext: { provider: "codex", sessionId: "ctx-4" } };
+  const server = createNoteMcpServer(scopedCtx);
+  const client = await connectClient(server);
+
+  try {
+    const list = parseToolJson(await client.callTool({ name: "note_list", arguments: {} }));
+    const ids = list.items.map((item) => item.noteId);
+    assert.ok(ids.includes(task.noteId));
+    assert.ok(ids.includes(child.noteId));
+    assert.ok(!ids.includes(other.noteId));
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+test("task_list and task_read expose the GTD rollup of linked sessions", async () => {
+  const { ctx, catalogDb } = await setupTestContext();
+  await seedSession(catalogDb, { id: "gtd-r1", title: "Rollup session", projectPath: "/tmp/rollup" });
   const server = createNoteMcpServer(ctx);
   const client = await connectClient(server);
 
   try {
-    const missing = await client.callTool({
-      name: "session_move",
-      arguments: { provider: "codex", sessionId: "does-not-exist", targetProjectPath: "/tmp/x" }
+    const created = parseToolJson(await client.callTool({
+      name: "task_create",
+      arguments: { title: "Rollup task" }
+    }));
+    await client.callTool({
+      name: "task_link_session",
+      arguments: { noteId: created.noteId, provider: "codex", sessionId: "gtd-r1" }
     });
-    assert.equal(missing.isError, true);
-    assert.match(missing.content[0].text, /not found/i);
+    await setSessionGtdStatus(catalogDb, "codex", "gtd-r1", "next");
 
-    const noTarget = await client.callTool({
-      name: "session_move",
-      arguments: { provider: "codex", sessionId: "does-not-exist" }
-    });
-    assert.equal(noTarget.isError, true);
+    const list = parseToolJson(await client.callTool({ name: "task_list", arguments: {} }));
+    const task = list.find((entry) => entry.noteId === created.noteId);
+    assert.equal(task.rollupStatus, "next");
+    assert.equal(task.gtdTotal, 1);
+    assert.equal(task.pinnedStatus, undefined);
+
+    const read = parseToolJson(await client.callTool({
+      name: "task_read",
+      arguments: { noteId: created.noteId }
+    }));
+    assert.equal(read.rollupStatus, "next");
+    assert.equal(read.gtdTotal, 1);
   } finally {
     await client.close();
     await server.close();

@@ -22,7 +22,7 @@ import { findCursorTranscriptFile, listCursorChatMetas } from "./transcript/curs
 
 export type SyncableAgentProvider = Exclude<AgentProvider, "chat">;
 
-export type CatalogSchemaMode = "extension" | "desktop";
+type CatalogSchemaMode = "extension" | "desktop";
 
 export interface AgentSessionSyncOptions {
   dbPath: string;

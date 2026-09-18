@@ -33,7 +33,7 @@ export interface ProviderFetchModelsResult {
   message?: string;
 }
 
-export function parseProviderTestKind(value: unknown): ProviderTestKind {
+function parseProviderTestKind(value: unknown): ProviderTestKind {
   if (value === "text" || value === "embedding") {
     return value;
   }

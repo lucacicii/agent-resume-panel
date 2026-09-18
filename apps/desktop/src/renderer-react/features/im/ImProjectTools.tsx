@@ -15,14 +15,14 @@ function statusError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export interface UseImProjectToolsOptions {
+interface UseImProjectToolsOptions {
   rootPath: string | null;
   room?: ImRoom | null;
   allMembers?: ImMember[];
   onJumpToMessage?: (messageId: string) => void;
 }
 
-export type ImActiveSidePane = "explorer" | "call_chain" | null;
+type ImActiveSidePane = "explorer" | "call_chain" | null;
 
 export function useImProjectTools(optionsOrRoot: UseImProjectToolsOptions | string | null): {
   toolbar: ReactNode;
@@ -136,7 +136,7 @@ export function useImProjectTools(optionsOrRoot: UseImProjectToolsOptions | stri
       <aside className="wb-side-panel im-project-tools-panel" style={{ width: sideWidth }}>
         <div className="wb-side-pane wb-explorer-side-pane">
           <WorkbenchFileExplorer
-            rootPath={rootPath || ""}
+            roots={rootPath ? [rootPath] : []}
             onOpenFile={(path) => void openPath(path)}
             onOpenPreview={(path) => void openPath(path)}
             onError={(message) => notifyDesktop({ text: message, kind: "error" })}

@@ -47,19 +47,19 @@ export interface SessionToolContext {
 }
 
 export const SESSION_SEARCH_DEFAULT_LIMIT = 20;
-export const SESSION_READ_DEFAULT_MAX_SUMMARY = 8000;
-export const SESSION_READ_MAX_SUMMARY = 16_000;
-export const SESSION_TRANSCRIPT_DEFAULT_MAX = 2500;
-export const SESSION_TRANSCRIPT_MAX = 8000;
+const SESSION_READ_DEFAULT_MAX_SUMMARY = 8000;
+const SESSION_READ_MAX_SUMMARY = 16_000;
+const SESSION_TRANSCRIPT_DEFAULT_MAX = 2500;
+const SESSION_TRANSCRIPT_MAX = 8000;
 
 const providerEnum = z.enum(["codex", "claude", "agy", "grok", "opencode", "pi", "prime", "chat"]);
 
 const filterFields = {
   provider: providerEnum.optional().describe("Filter by agent provider."),
-  projectPath: z
+  rootPath: z
     .string()
     .optional()
-    .describe("Substring match on project working directory path."),
+    .describe("Substring match on the session's root working directory path."),
   gtdStatus: z
     .enum(GTD_STATUSES as unknown as [string, ...string[]])
     .optional()
@@ -169,7 +169,7 @@ function clampTranscriptChars(max?: number): number {
 
 function filtersFromArgs(args: {
   provider?: string;
-  projectPath?: string;
+  rootPath?: string;
   gtdStatus?: string;
   fromMs?: number;
   toMs?: number;
@@ -179,7 +179,7 @@ function filtersFromArgs(args: {
   return {
     query: args.query,
     provider: args.provider,
-    projectPath: args.projectPath,
+    projectPath: args.rootPath,
     gtdStatus: args.gtdStatus,
     fromMs: args.fromMs,
     toMs: args.toMs,
@@ -192,7 +192,7 @@ function hitToJson(hit: SessionSearchHit): Record<string, unknown> {
     provider: hit.provider,
     sessionId: hit.sessionId,
     title: hit.title,
-    projectPath: hit.projectPath,
+    rootPath: hit.projectPath,
     updatedAtMs: hit.updatedAtMs
   };
   if (hit.messageCount != null) {
@@ -223,7 +223,7 @@ export async function handleSessionSearch(
   args: {
     query: string;
     provider?: string;
-    projectPath?: string;
+    rootPath?: string;
     gtdStatus?: string;
     fromMs?: number;
     toMs?: number;
@@ -298,7 +298,7 @@ export async function handleSessionSearch(
 export async function handleSessionList(
   args: {
     provider?: string;
-    projectPath?: string;
+    rootPath?: string;
     gtdStatus?: string;
     fromMs?: number;
     toMs?: number;
@@ -355,7 +355,7 @@ export async function handleSessionRead(
     provider: session.provider,
     sessionId: session.id,
     title: session.title,
-    projectPath: session.projectPath,
+    rootPath: session.projectPath,
     updatedAtMs: session.updatedAt
   };
   if (session.messageCount != null) {
@@ -593,7 +593,7 @@ export async function handleSessionResume(
             sessionId,
             title: session.title,
             command,
-            projectPath: session.projectPath,
+            rootPath: session.projectPath,
             launched: false
           },
           null,

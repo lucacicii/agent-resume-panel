@@ -8,7 +8,6 @@
 
 import { execFile, spawn } from "node:child_process";
 import { closeSync, existsSync, openSync } from "node:fs";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import { connectAgentStatusClient } from "./client";
@@ -85,7 +84,7 @@ export function resolveDaemonEntryPath(options: {
   );
 }
 
-export type EnsureDaemonResult = {
+type EnsureDaemonResult = {
   started: boolean;
   endpoint: AgentStatusEndpoint;
 };
@@ -175,13 +174,6 @@ export async function stopAgentStatusDaemon(panelHome: string): Promise<void> {
   }
 }
 
-/** Read the live endpoint, or null when no compatible daemon is running. */
-export async function readAgentStatusEndpoint(
-  panelHome: string
-): Promise<AgentStatusEndpoint | null> {
-  return readLiveEndpoint(agentStatusPaths(panelHome));
-}
-
 export type AgentStatusDaemonStatus = {
   running: boolean;
   panelHome: string;
@@ -236,75 +228,6 @@ export async function readAgentStatusDaemonStatus(panelHome: string): Promise<Ag
 
 // --------------------------------------------------------------------------- launchd
 
-export type LaunchAgentConfig = {
-  execPath: string;
-  entryPath: string;
-  panelHome: string;
-  logPath: string;
-};
-
-/** Build the plist body. Exported for tests. */
-export function buildLaunchAgentPlist(config: LaunchAgentConfig): string {
-  const args = [config.execPath, config.entryPath, "--panel-home", config.panelHome]
-    .map((value) => `    <string>${escapeXml(value)}</string>`)
-    .join("\n");
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key>
-  <string>${AGENT_STATUS_LAUNCH_AGENT_LABEL}</string>
-  <key>ProgramArguments</key>
-  <array>
-${args}
-  </array>
-  <key>EnvironmentVariables</key>
-  <dict>
-    <key>ELECTRON_RUN_AS_NODE</key>
-    <string>1</string>
-    <key>${AGENT_STATUS_PANEL_HOME_ENV}</key>
-    <string>${escapeXml(config.panelHome)}</string>
-  </dict>
-  <key>RunAtLoad</key>
-  <true/>
-  <key>KeepAlive</key>
-  <dict>
-    <key>SuccessfulExit</key>
-    <false/>
-  </dict>
-  <key>ThrottleInterval</key>
-  <integer>5</integer>
-  <key>ProcessType</key>
-  <string>Background</string>
-  <key>StandardOutPath</key>
-  <string>${escapeXml(config.logPath)}</string>
-  <key>StandardErrorPath</key>
-  <string>${escapeXml(config.logPath)}</string>
-</dict>
-</plist>
-`;
-}
-
-/** Write the plist and load it. Existing registrations are replaced. */
-export async function installAgentStatusLaunchAgent(
-  config: LaunchAgentConfig
-): Promise<{ plistPath: string }> {
-  const plistPath = launchAgentPlistPath();
-  await mkdir(path.dirname(plistPath), { recursive: true });
-  await writeFile(plistPath, buildLaunchAgentPlist(config), "utf8");
-  await bootoutLaunchAgent();
-  await execFileAsync("launchctl", ["bootstrap", launchDomain(), plistPath]).catch((error) => {
-    throw new Error(`launchctl bootstrap failed: ${describe(error)}`);
-  });
-  return { plistPath };
-}
-
-/** Unload and delete the launch agent. Safe to call when nothing is installed. */
-export async function uninstallAgentStatusLaunchAgent(): Promise<void> {
-  await bootoutLaunchAgent();
-  await rm(launchAgentPlistPath(), { force: true });
-}
-
 /** True when the plist exists and launchd knows the service. */
 export async function isAgentStatusLaunchAgentInstalled(): Promise<boolean> {
   const plistPath = launchAgentPlistPath();
@@ -317,23 +240,9 @@ export async function isAgentStatusLaunchAgentInstalled(): Promise<boolean> {
   }
 }
 
-export async function readLaunchAgentPlist(): Promise<string | null> {
-  try {
-    return await readFile(launchAgentPlistPath(), "utf8");
-  } catch {
-    return null;
-  }
-}
-
 function launchDomain(): string {
   const uid = typeof process.getuid === "function" ? process.getuid() : 0;
   return `gui/${uid}`;
-}
-
-async function bootoutLaunchAgent(): Promise<void> {
-  await execFileAsync("launchctl", ["bootout", `${launchDomain()}/${AGENT_STATUS_LAUNCH_AGENT_LABEL}`]).catch(
-    () => undefined
-  );
 }
 
 // ---------------------------------------------------------------------------- helpers
@@ -369,14 +278,4 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function escapeXml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
-}
 
-function describe(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}

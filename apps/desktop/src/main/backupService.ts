@@ -75,7 +75,7 @@ const NATIVE_PROVIDERS = new Set<Exclude<NativeConversationProvider, "cursor-ide
 
 export type BackupStorageTarget = "local-file" | "icloud-drive";
 
-export type BackupProgressPhase = "preparing" | "snapshotting" | "collecting" | "archiving" | "validating" | "merging" | "finalizing" | "complete";
+type BackupProgressPhase = "preparing" | "snapshotting" | "collecting" | "archiving" | "validating" | "merging" | "finalizing" | "complete";
 
 export interface BackupProgressEvent {
   operation: "export" | "import";
@@ -83,7 +83,7 @@ export interface BackupProgressEvent {
   percent: number;
 }
 
-export interface BackupCreateOptions {
+interface BackupCreateOptions {
   target: BackupStorageTarget;
   includeCredentials: boolean;
   includeNativeConversations?: boolean;
@@ -91,7 +91,7 @@ export interface BackupCreateOptions {
   onProgress?: (event: BackupProgressEvent) => void;
 }
 
-export interface BackupImportOptions {
+interface BackupImportOptions {
   includeCredentials: boolean;
   password?: string;
   restoreNativeConversations?: boolean;
@@ -119,7 +119,7 @@ export interface BackupStoredItem {
   providers: NativeConversationProviderSummary[];
 }
 
-export interface BackupStorageProvider {
+interface BackupStorageProvider {
   target: BackupStorageTarget;
   status(): Promise<BackupStorageTargetStatus>;
   publish(options: { fileName: string; write: (partialPath: string) => Promise<void> }): Promise<string>;
@@ -212,6 +212,8 @@ const DESKTOP_UPDATED_TABLES: Record<string, { keys: string[]; timestamp: string
   report_jobs: { keys: ["job_key"], timestamp: "updated_at_ms" },
   workbench_session_folders: { keys: ["folder_id"], timestamp: "updated_at_ms" },
   workbench_session_folder_items: { keys: ["provider", "agent_session_id"], timestamp: "updated_at_ms" },
+  task_workbenches: { keys: ["workbench_id"], timestamp: "updated_at_ms" },
+  task_workbench_sessions: { keys: ["workbench_id", "provider", "agent_session_id"], timestamp: "updated_at_ms" },
   note_chunks: { keys: ["chunk_id"], timestamp: "updated_at_ms" },
   note_vector_index: { keys: ["note_id"], timestamp: "indexed_at_ms" },
   session_embeddings: { keys: ["provider", "agent_session_id"], timestamp: "updated_at_ms" },

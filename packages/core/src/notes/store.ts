@@ -12,6 +12,7 @@ import { resolvePanelHome } from "../panelHome";
 import { normalizeProjectPath } from "../pathUtils";
 import {
   deleteNoteRecord,
+  getCatalogMeta,
   getNoteById,
   listAllNotes,
   listLibraryNotes,
@@ -19,21 +20,40 @@ import {
   listSessionNotes,
   loadProjectNoteFlags,
   loadSessionNoteFlags,
+  listTaskSessionDetails,
+  listTaskSessionLinks,
+  listTaskSessionProjects,
+  listTasks,
+  findTaskNoteIdForSession,
+  setCatalogMeta,
   upsertNoteRecord,
-  type NoteRecord
+  type NoteRecord,
+  type TaskRecord,
+  type TaskSessionDetail,
+  type TaskSessionLink
 } from "./catalogNotes";
 import {
   buildNoteDocument,
   contentPreview,
-  extractTitle,
+  noteTitle,
   parseNoteDocument,
-  type NoteFrontmatter
+  type NoteFrontmatter,
+  type NoteWorkFields
 } from "./frontmatter";
+import {
+  isTaskFrontmatter,
+  normalizeTaskDocument,
+  newTaskBody,
+  isUntitledTaskName,
+  UNTITLED_TASK_NAME
+} from "./taskNote";
+import { syncNoteWorkFromFrontmatter, ensureTaskSessionIndex, isWorkNote } from "./work";
 import {
   nextNoteFilename,
   normalizeNoteFilename,
   noteAssetsDirName,
   noteStem,
+  parseNoteFilename,
   rewriteAssetReferences,
   uniqueNoteFilename
 } from "./naming";
@@ -107,6 +127,16 @@ export class NotesStore {
     await this.ensureSchema(this.dbPath);
     await fs.mkdir(notesRoot(this.panelHome), { recursive: true });
     await this.reload();
+    // One-time mirror of existing task session links into the index table.
+    await ensureTaskSessionIndex(this.dbPath);
+    // One-time rewrite of existing tasks onto the title/heading convention.
+    await this.migrateTaskNotes();
+    // One-time recovery of names the old file-rename flow left only in the file name.
+    await this.migrateTaskNames();
+    // One-time cleanup of the legacy heading reminder suffix.
+    await this.migrateTaskNotesDropSuffix();
+    // One-time rename of task files onto the file-follows-name rule.
+    await this.migrateTaskFilesToTitles();
   }
 
   async reload(): Promise<void> {
@@ -118,6 +148,142 @@ export class NotesStore {
 
   getAllNotes(): NoteRecord[] {
     return this.cachedNotes;
+  }
+
+  /**
+   * One-time rewrite of existing tasks onto the title/heading convention:
+   * the name moves into front-matter `title`, the heading gains the reminder
+   * suffix, and the knowledge region is added without dropping any content.
+   */
+  private async migrateTaskNotes(): Promise<void> {
+    const key = "work_item_notes_migrated_v1";
+    if ((await getCatalogMeta(this.dbPath, key)) === "1") {
+      return;
+    }
+    const items = await listTasks(this.dbPath);
+    for (const item of items) {
+      try {
+        const absPath = absFromRelMdPath(this.panelHome, item.relMdPath);
+        const raw = await fs.readFile(absPath, "utf8");
+        const doc = parseNoteDocument(raw);
+        if (!isTaskFrontmatter(doc.frontmatter)) {
+          continue;
+        }
+        const normalized = normalizeTaskDocument(
+          doc.frontmatter,
+          doc.body
+        );
+        const next = buildNoteDocument(normalized.frontmatter, normalized.body);
+        if (next !== raw) {
+          await fs.writeFile(absPath, next, "utf8");
+        }
+        await this.refreshNoteFromDisk(item);
+      } catch {
+        // A single unreadable file must not block startup; reconcile catches up later.
+      }
+    }
+    await setCatalogMeta(this.dbPath, key, "1");
+  }
+
+  /**
+   * Notes that predate the name field were "renamed" by renaming their file. Recover
+   * those names once, but never invent one from an allocated date-sequence file name.
+   */
+  private async migrateTaskNames(): Promise<void> {
+    const key = "work_item_notes_names_migrated_v1";
+    if ((await getCatalogMeta(this.dbPath, key)) === "1") {
+      return;
+    }
+    const items = await listTasks(this.dbPath);
+    for (const item of items) {
+      try {
+        if (!isUntitledTaskName(item.title)) {
+          continue;
+        }
+        if (parseNoteFilename(item.filename)) {
+          continue;
+        }
+        await this.renameNote(item.noteId, noteStem(item.filename));
+      } catch {
+        // A single unreadable file must not block startup.
+      }
+    }
+    await setCatalogMeta(this.dbPath, key, "1");
+  }
+
+  /**
+   * One-time cleanup of the legacy heading reminder suffix: headings become the
+   * plain name and the `titleSuffix` front-matter field is dropped.
+   */
+  private async migrateTaskNotesDropSuffix(): Promise<void> {
+    const key = "work_item_notes_suffix_dropped_v1";
+    if ((await getCatalogMeta(this.dbPath, key)) === "1") {
+      return;
+    }
+    for (const item of await listTasks(this.dbPath)) {
+      try {
+        const absPath = absFromRelMdPath(this.panelHome, item.relMdPath);
+        const raw = await fs.readFile(absPath, "utf8");
+        const doc = parseNoteDocument(raw);
+        if (!isTaskFrontmatter(doc.frontmatter)) {
+          continue;
+        }
+        const normalized = normalizeTaskDocument(doc.frontmatter, doc.body);
+        const next = buildNoteDocument(normalized.frontmatter, normalized.body);
+        if (next !== raw) {
+          await fs.writeFile(absPath, next, "utf8");
+        }
+        await this.refreshNoteFromDisk(item);
+      } catch {
+        // A single unreadable file must not block startup; reconcile catches up later.
+      }
+    }
+    await setCatalogMeta(this.dbPath, key, "1");
+  }
+
+  /**
+   * One-time rename of task files allocated before the file-follows-name
+   * rule (e.g. a file still called 未命名任务.md under a real name). The
+   * address table surfaces the file path to agents, so it must carry the name.
+   */
+  private async migrateTaskFilesToTitles(): Promise<void> {
+    const key = "work_item_files_follow_title_v1";
+    if ((await getCatalogMeta(this.dbPath, key)) === "1") {
+      return;
+    }
+    for (const item of await listTasks(this.dbPath)) {
+      try {
+        await this.renameTaskFileToTitle(item, item.title);
+      } catch {
+        // A single unreadable file must not block startup; reconcile catches up later.
+      }
+    }
+    await setCatalogMeta(this.dbPath, key, "1");
+  }
+
+  /** Project notes marked `work: true`, with their work fields and GTD status. */
+  async listTasks(): Promise<TaskRecord[]> {
+    return listTasks(this.dbPath);
+  }
+
+  /** Indexed task ↔ session links (session → task reverse lookup). */
+  async listTaskSessionLinks(): Promise<TaskSessionLink[]> {
+    return listTaskSessionLinks(this.dbPath);
+  }
+
+  /** The task a session belongs to, when it is linked to one. */
+  async findTaskNoteIdForSession(provider: string, sessionId: string): Promise<string | undefined> {
+    return findTaskNoteIdForSession(this.dbPath, provider, sessionId);
+  }
+
+  /** `note_id` → project paths derived from the task's linked sessions. */
+  async listTaskSessionProjects(): Promise<Record<string, string[]>> {
+    return listTaskSessionProjects(this.dbPath);
+  }
+
+  /** Linked sessions of one task, with each session's project path. */
+  async listTaskSessionDetails(noteId: string): Promise<TaskSessionDetail[]> {
+    return listTaskSessionDetails(this.dbPath, noteId);
   }
 
   hasSessionNote(session: Pick<AgentSession, "provider" | "id">): boolean {
@@ -187,27 +353,96 @@ export class NotesStore {
   async writeNoteContent(noteId: string, content: string): Promise<NoteRecord & { content?: string }> {
     const record = await getNoteById(this.dbPath, noteId);
     if (!record) throw new Error("Note not found.");
-    await fs.writeFile(this.absolutePath(record), content, "utf8");
-    await this.refreshNoteFromDisk(record);
+    const next = this.normalizeTaskContent(content);
+    const synced = await this.syncTaskFileToContent(record, next);
+    await fs.writeFile(this.absolutePath(synced.record), synced.content, "utf8");
+    await this.refreshNoteFromDisk(synced.record);
     const updated = await getNoteById(this.dbPath, noteId);
     if (!updated) throw new Error("Note not found after write.");
-    return { ...updated, content };
+    return { ...updated, content: synced.content };
+  }
+
+  /**
+   * Tasks keep their name in front-matter and put `<name><suffix>` in the
+   * heading, so the reminder survives agent writes. Editing the heading renames
+   * the task; a body that lost its heading gets one back.
+   */
+  private normalizeTaskContent(content: string): string {
+    const doc = parseNoteDocument(content);
+    if (!isTaskFrontmatter(doc.frontmatter)) {
+      return content;
+    }
+    const normalized = normalizeTaskDocument(
+      doc.frontmatter,
+      doc.body
+    );
+    return buildNoteDocument(normalized.frontmatter, normalized.body);
+  }
+
+  /**
+   * Rename a task's file to follow its front-matter name. Collisions with
+   * another note's file get a numeric suffix, so renaming never fails. The DB
+   * record is kept in step; content writes are left to the caller.
+   */
+  private async renameTaskFileToTitle(record: NoteRecord, title: string | undefined): Promise<NoteRecord> {
+    const desired = normalizeNoteFilename(title?.trim() || "");
+    if (!desired || desired === record.filename) {
+      return record;
+    }
+    const ownerDir = path.join(this.panelHome, "notes", record.relDir);
+    const existing = await listMarkdownFilenames(ownerDir);
+    const newFilename = uniqueNoteFilename(desired, existing);
+    if (newFilename === record.filename) {
+      return record;
+    }
+    await renameNoteFiles(ownerDir, record.filename, newFilename, (content) =>
+      rewriteAssetReferences(content, record.filename, newFilename)
+    );
+    const updated: NoteRecord = {
+      ...record,
+      filename: newFilename,
+      relMdPath: path.join("notes", record.relDir, newFilename)
+    };
+    await upsertNoteRecord(this.dbPath, updated);
+    this.cachedNotes = this.cachedNotes.map((note) => (note.noteId === updated.noteId ? updated : note));
+    return updated;
+  }
+
+  /**
+   * Keep a task's file in step with the name in the content about to be
+   * written, and adjust the content's asset references when the file moved.
+   */
+  private async syncTaskFileToContent(
+    record: NoteRecord,
+    content: string
+  ): Promise<{ record: NoteRecord; content: string }> {
+    const doc = parseNoteDocument(content);
+    if (!isTaskFrontmatter(doc.frontmatter)) {
+      return { record, content };
+    }
+    const renamed = await this.renameTaskFileToTitle(record, doc.frontmatter.title);
+    if (renamed.filename === record.filename) {
+      return { record: renamed, content };
+    }
+    return { record: renamed, content: rewriteAssetReferences(content, record.filename, renamed.filename) };
   }
 
   /** Write already-validated note content with an atomic rename and no materialization. */
   async writeValidatedNoteContent(noteId: string, content: string): Promise<NoteRecord> {
     const record = await getNoteById(this.dbPath, noteId);
     if (!record) throw new Error("Note not found.");
-    const target = this.absolutePath(record);
+    const next = this.normalizeTaskContent(content);
+    const synced = await this.syncTaskFileToContent(record, next);
+    const target = this.absolutePath(synced.record);
     const temporary = `${target}.${process.pid}.${Date.now()}.tmp`;
     try {
-      await fs.writeFile(temporary, content, "utf8");
+      await fs.writeFile(temporary, synced.content, "utf8");
       await fs.rename(temporary, target);
     } catch (error) {
       await fs.rm(temporary, { force: true }).catch(() => {});
       throw error;
     }
-    await this.refreshNoteFromDisk(record);
+    await this.refreshNoteFromDisk(synced.record);
     const updated = await getNoteById(this.dbPath, noteId);
     if (!updated) throw new Error("Note disappeared after write.");
     return updated;
@@ -232,6 +467,69 @@ export class NotesStore {
       projectPath: normalizeProjectPath(projectPath)
     };
     return this.createNote(owner, body);
+  }
+
+  /**
+   * Create a task. Tasks are library-scoped: they reference projects
+   * instead of belonging to one, so a single task can span repositories.
+   */
+  async createTask(
+    input: {
+      title?: string;
+      next?: string;
+      decision?: string;
+      sessions?: string[];
+      projects?: string[];
+      primaryProject?: string;
+    } = {}
+  ): Promise<NoteRecord> {
+    const owner: NoteOwner = { scope: "library" };
+    const ownerDir = await ensureOwnerDir(this.panelHome, owner);
+    const existing = await listMarkdownFilenames(ownerDir);
+    const name = input.title?.trim() || UNTITLED_TASK_NAME;
+    // The file carries the task's name from the start — the address table
+    // surfaces the path to agents, so a placeholder allocation would leak.
+    const filename = uniqueNoteFilename(name, existing);
+    const noteId = newNoteId();
+    const createdAtMs = Date.now();
+    const fm: NoteFrontmatter = {
+      id: noteId,
+      scope: "library",
+      createdAt: new Date(createdAtMs).toISOString(),
+      work: true
+    };
+    fm.title = name;
+    const work: NoteWorkFields = {};
+    if (input.next) { fm.next = input.next; work.next = input.next; }
+    if (input.decision) { fm.decision = input.decision; work.decision = input.decision; }
+    const sessions = (input.sessions ?? []).map((entry) => entry.trim()).filter(Boolean);
+    if (sessions.length > 0) { fm.sessions = sessions; work.sessions = sessions; }
+    const projects = (input.projects ?? []).map((entry) => normalizeProjectPath(entry.trim())).filter(Boolean);
+    if (projects.length > 0) { fm.projects = projects; work.projects = projects; }
+    const primary = input.primaryProject ? normalizeProjectPath(input.primaryProject.trim()) : projects[0];
+    if (primary) { fm.primaryProject = primary; work.primaryProject = primary; }
+    const body = newTaskBody(name);
+    const relDir = ownerRelDir(owner);
+    const absPath = path.join(ownerDir, filename);
+    await fs.writeFile(absPath, buildNoteDocument(fm, body), "utf8");
+    const mtime = await fileMtimeMs(absPath);
+    const record: NoteRecord = {
+      noteId,
+      scope: "library",
+      filename,
+      relDir,
+      relMdPath: path.join("notes", relDir, filename),
+      title: noteTitle(fm, body),
+      contentPreview: contentPreview(body),
+      createdAtMs,
+      updatedAtMs: mtime,
+      fsMtimeMs: mtime,
+      work
+    };
+    await upsertNoteRecord(this.dbPath, record);
+    await syncNoteWorkFromFrontmatter(this.dbPath, noteId, fm);
+    await this.refreshFlagsFromCacheInsert(record);
+    return record;
   }
 
   async createLibraryNote(body = ""): Promise<NoteRecord> {
@@ -267,7 +565,7 @@ export class NotesStore {
       filename,
       relDir: ownerRelDir(owner),
       relMdPath: path.join("notes", ownerRelDir(owner), filename),
-      title: extractTitle(body),
+      title: noteTitle(undefined, body),
       contentPreview: contentPreview(body),
       createdAtMs,
       updatedAtMs: mtime,
@@ -342,7 +640,7 @@ export class NotesStore {
           filename,
           relDir: ownerRelDir(owner),
           relMdPath: path.join("notes", ownerRelDir(owner), filename),
-          title: extractTitle(body),
+          title: noteTitle(fm, body),
           contentPreview: contentPreview(body),
           createdAtMs,
           updatedAtMs: mtime,
@@ -399,16 +697,11 @@ export class NotesStore {
   }
 
   /**
-   * Root notes for list UI: library/session always roots; project notes without a parent.
+   * Root notes for list UI: library/session always roots; linked notes are not.
    */
   async listRootNotes(): Promise<NoteRecord[]> {
     const childIds = await listLinkedChildNoteIds(this.dbPath);
-    return this.cachedNotes.filter((note) => {
-      if (note.scope !== "project") {
-        return true;
-      }
-      return !childIds.has(note.noteId);
-    });
+    return this.cachedNotes.filter((note) => !childIds.has(note.noteId));
   }
 
   async setNoteParent(childNoteId: string, parentNoteId: string | null): Promise<void> {
@@ -424,10 +717,17 @@ export class NotesStore {
     if (!parent) {
       throw new Error("Parent note not found.");
     }
-    if (parent.scope !== "project" || !parent.projectPath) {
-      throw new Error("Linked children can only be created under a project note.");
+    // Tasks live in the library bucket, so that is where their children go:
+    // the notes vector index only covers notes, not the task workspace.
+    const parentIsTask = await isWorkNote(this.dbPath, parentNoteId);
+    if (!parentIsTask && (parent.scope !== "project" || !parent.projectPath)) {
+      throw new Error(
+        "Linked children can only be created under a project note or a task."
+      );
     }
-    const child = await this.createProjectNote(parent.projectPath, body);
+    const child = parentIsTask
+      ? await this.createLibraryNote(body)
+      : await this.createProjectNote(parent.projectPath as string, body);
     try {
       await setParentLink(this.dbPath, child.noteId, parentNoteId);
     } catch (error) {
@@ -480,7 +780,13 @@ export class NotesStore {
       body = parseNoteDocument(rewriteAssetReferences(raw, record.filename, newFilename)).body;
     }
 
-    const fm = frontmatterForOwner(doc.frontmatter.id || record.noteId, newOwner, doc.frontmatter.createdAt);
+    const fm = frontmatterForOwner(doc.frontmatter, newOwner, record.noteId);
+    if (fm.work) {
+      // Keep the title/heading convention intact across a move.
+      const normalized = normalizeTaskDocument(fm, body);
+      Object.assign(fm, normalized.frontmatter);
+      body = normalized.body;
+    }
     await fs.writeFile(newMd, buildNoteDocument(fm, body), "utf8");
 
     const oldAssets = path.join(oldOwnerDir, noteAssetsDirName(record.filename));
@@ -514,7 +820,7 @@ export class NotesStore {
       filename: newFilename,
       relDir: ownerRelDir(newOwner),
       relMdPath: path.join("notes", ownerRelDir(newOwner), newFilename),
-      title: extractTitle(body),
+      title: noteTitle(fm, body),
       contentPreview: contentPreview(body),
       gtdStatus: record.gtdStatus,
       createdAtMs: record.createdAtMs,
@@ -522,6 +828,7 @@ export class NotesStore {
       fsMtimeMs: mtime
     };
     await upsertNoteRecord(this.dbPath, updated);
+    await syncNoteWorkFromFrontmatter(this.dbPath, updated.noteId, fm);
     this.cachedNotes = this.cachedNotes.map((n) => (n.noteId === updated.noteId ? updated : n));
     await this.rebuildFlagsFromCache();
     return updated;
@@ -532,6 +839,34 @@ export class NotesStore {
     if (!record) {
       throw new Error("Note not found.");
     }
+    const absPath = this.absolutePath(record);
+    const raw = await fs.readFile(absPath, "utf8");
+    const doc = parseNoteDocument(raw);
+    if (isTaskFrontmatter(doc.frontmatter)) {
+      // A task is identified by its front-matter name, and its file follows
+      // that name (collision-suffixed), so paths surfaced to agents always carry
+      // the real name.
+      const normalized = normalizeTaskDocument(
+        doc.frontmatter,
+        doc.body,
+        { name: noteStem(normalizeNoteFilename(desiredName) || desiredName) }
+      );
+      const next = buildNoteDocument(normalized.frontmatter, normalized.body);
+      const synced = await this.syncTaskFileToContent(record, next);
+      const targetPath = this.absolutePath(synced.record);
+      await fs.writeFile(targetPath, synced.content, "utf8");
+      const mtime = await fileMtimeMs(targetPath);
+      const updated: NoteRecord = {
+        ...synced.record,
+        title: normalized.frontmatter.title,
+        updatedAtMs: mtime,
+        fsMtimeMs: mtime
+      };
+      await upsertNoteRecord(this.dbPath, updated);
+      this.cachedNotes = this.cachedNotes.map((n) => (n.noteId === updated.noteId ? updated : n));
+      return updated;
+    }
+
     const newFilename = normalizeNoteFilename(desiredName);
     if (!newFilename) {
       throw new Error("Invalid note name.");
@@ -546,19 +881,19 @@ export class NotesStore {
       throw new Error(`A note named "${newFilename}" already exists.`);
     }
 
-    const { absPath } = await renameNoteFiles(ownerDir, record.filename, newFilename, (raw) =>
-      rewriteAssetReferences(raw, record.filename, newFilename)
+    const { absPath: renamedPath } = await renameNoteFiles(ownerDir, record.filename, newFilename, (content) =>
+      rewriteAssetReferences(content, record.filename, newFilename)
     );
 
-    const raw = await fs.readFile(absPath, "utf8");
-    const doc = parseNoteDocument(raw);
-    const mtime = await fileMtimeMs(absPath);
+    const renamedRaw = await fs.readFile(renamedPath, "utf8");
+    const renamedDoc = parseNoteDocument(renamedRaw);
+    const mtime = await fileMtimeMs(renamedPath);
     const updated: NoteRecord = {
       ...record,
       filename: newFilename,
       relMdPath: path.join("notes", record.relDir, newFilename),
-      title: extractTitle(doc.body),
-      contentPreview: contentPreview(doc.body),
+      title: noteTitle(renamedDoc.frontmatter, renamedDoc.body),
+      contentPreview: contentPreview(renamedDoc.body),
       updatedAtMs: mtime,
       fsMtimeMs: mtime
     };
@@ -601,12 +936,13 @@ export class NotesStore {
     const mtime = await fileMtimeMs(abs);
     const updated: NoteRecord = {
       ...record,
-      title: extractTitle(doc.body),
+      title: noteTitle(doc.frontmatter, doc.body),
       contentPreview: contentPreview(doc.body),
       updatedAtMs: mtime,
       fsMtimeMs: mtime
     };
     await upsertNoteRecord(this.dbPath, updated);
+    await syncNoteWorkFromFrontmatter(this.dbPath, record.noteId, doc.frontmatter);
     this.cachedNotes = this.cachedNotes.map((n) => (n.noteId === updated.noteId ? updated : n));
   }
 
@@ -674,14 +1010,14 @@ function ownersEqual(a: NoteOwner, b: NoteOwner): boolean {
 }
 
 function frontmatterForOwner(
-  noteId: string,
+  source: NoteFrontmatter,
   owner: NoteOwner,
-  createdAt?: string
+  fallbackId: string
 ): NoteFrontmatter {
   const fm: NoteFrontmatter = {
-    id: noteId,
+    id: source.id || fallbackId,
     scope: owner.scope,
-    createdAt
+    createdAt: source.createdAt
   };
   if (owner.scope === "project") {
     fm.projectPath = owner.projectPath;
@@ -691,6 +1027,28 @@ function frontmatterForOwner(
     if (owner.projectPath) {
       fm.projectPath = owner.projectPath;
     }
+  }
+  // Task fields survive moves; they are not derivable from the owner.
+  if (source.work) {
+    fm.work = true;
+  }
+  if (source.title) {
+    fm.title = source.title;
+  }
+  if (source.next) {
+    fm.next = source.next;
+  }
+  if (source.decision) {
+    fm.decision = source.decision;
+  }
+  if (source.sessions && source.sessions.length > 0) {
+    fm.sessions = source.sessions;
+  }
+  if (source.projects && source.projects.length > 0) {
+    fm.projects = source.projects;
+  }
+  if (source.primaryProject) {
+    fm.primaryProject = source.primaryProject;
   }
   return fm;
 }

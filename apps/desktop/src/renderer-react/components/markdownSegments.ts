@@ -22,9 +22,9 @@ import {
  * Segments are cut on `streamdown` block boundaries, so the rendered result is
  * identical to rendering the whole document in one pass.
  */
-export const MARKDOWN_SEGMENT_MIN_CHARS = 2_000;
+const MARKDOWN_SEGMENT_MIN_CHARS = 2_000;
 
-export type MarkdownSegment = {
+type MarkdownSegment = {
   /** Raw markdown of the segment (may still grow while it is the open one). */
   raw: string;
   /** Sanitized markdown handed to the renderer. */
@@ -44,7 +44,7 @@ export type MarkdownSegmentState = {
  * `noteId: <uuid>` into note links. Shared by whole-document and fragment
  * preparation so both run the same pipeline.
  */
-export function preprocessMarkdownLinks(markdown: string): string {
+function preprocessMarkdownLinks(markdown: string): string {
   let result = markdown.replace(/\[(N|S|D)(\d+)\](?!\()/g, "[$1$2](#citation-$1$2)");
   result = result.replace(
     /(noteId[:：]\s*(?:`|<code>)?)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})((?:`|<\/code>)?)/gi,
@@ -66,7 +66,7 @@ export function prepareMarkdownFragment(markdown: string, options?: MarkdownImag
   return sanitizeMarkdownProseTags(rewritten);
 }
 
-export function markdownOptionsKey(options?: MarkdownImageOptions): string {
+function markdownOptionsKey(options?: MarkdownImageOptions): string {
   return options ? `${options.baseDir || ""}\u0000${options.rootDir || ""}` : "";
 }
 

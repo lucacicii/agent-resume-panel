@@ -19,7 +19,8 @@
   },
   "bin": {
     "agent-resume-mcp": "./dist/mcp/cli.js",
-    "agent-resume-browser-mcp": "./dist/mcp/browserCli.js"
+    "agent-resume-browser-mcp": "./dist/mcp/browserCli.js",
+    "arpm": "./dist/settings/arpm.js"
   },
   "engines": {
     "node": ">=18"

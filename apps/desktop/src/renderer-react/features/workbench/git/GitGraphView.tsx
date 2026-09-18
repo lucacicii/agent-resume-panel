@@ -16,7 +16,7 @@ import {
   graphCurvePath
 } from "./workbenchGitModel";
 
-export function GitGraphSvg({ row, layout }: { row: GitGraphRow; layout: GitGraphLayout }): React.JSX.Element {
+function GitGraphSvg({ row, layout }: { row: GitGraphRow; layout: GitGraphLayout }): React.JSX.Element {
   const radius = 4;
   const midY = layout.rowHeight / 2;
   const color = (column: number) => layout.columnColors[column] ?? column % 8;

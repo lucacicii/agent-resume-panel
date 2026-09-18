@@ -1370,8 +1370,6 @@ Implement the search indexing algorithm as designed.
   it("resolves project-scoped file role in delegation target and creates proposal", async () => {
     const store = await createStore();
     const project = await store.createProject("Project Role Delegation");
-    const room = await store.getRoom(project.projectId);
-    const arch = room.members.find((m) => m.templateId === "role_architect")!;
 
     const dbaMember = await store.addMemberFromTemplate(project.projectId, {
       templateId: "project_role_dba",

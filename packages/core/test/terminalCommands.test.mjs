@@ -1,6 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildNewSessionCommand, supportsNewSessionYoloMode } from "../dist/index.js";
+import {
+  buildNewSessionCommand,
+  buildResumeCommand,
+  sessionContextFlags,
+  supportsNewSessionYoloMode,
+  supportsSessionContext
+} from "../dist/index.js";
 
 test("supportsNewSessionYoloMode accurately identifies providers with YOLO support", () => {
   assert.equal(supportsNewSessionYoloMode("codex"), true);
@@ -33,4 +39,73 @@ test("buildNewSessionCommand rejects providers without a verified YOLO mode", ()
   assert.throws(() => buildNewSessionCommand("pi", "/work/app", "yolo"), /YOLO mode is not supported/);
   assert.throws(() => buildNewSessionCommand("cursor-ide", "/work/app", "yolo"), /YOLO mode is not supported/);
 });
+
+test("supportsSessionContext identifies providers with verified session context flags", () => {
+  assert.equal(supportsSessionContext("codex"), true);
+  assert.equal(supportsSessionContext("claude"), true);
+  assert.equal(supportsSessionContext("pi"), true);
+  assert.equal(supportsSessionContext("prime"), true);
+  assert.equal(supportsSessionContext("agy"), false);
+  assert.equal(supportsSessionContext("cursor"), false);
+  assert.equal(supportsSessionContext("opencode"), false);
+});
+
+test("sessionContextFlags crafts provider-specific extra prompt flags", () => {
+  assert.equal(
+    sessionContextFlags("codex", "/tmp/ws/AGENTS.md"),
+    "-c \"developer_instructions=$(cat '/tmp/ws/AGENTS.md')\""
+  );
+  assert.equal(
+    sessionContextFlags("claude", "/tmp/ws/AGENTS.md"),
+    "--append-system-prompt \"$(cat '/tmp/ws/AGENTS.md')\""
+  );
+  assert.equal(
+    sessionContextFlags("pi", "/tmp/ws/AGENTS.md"),
+    "--append-system-prompt \"$(cat '/tmp/ws/AGENTS.md')\""
+  );
+  assert.equal(
+    sessionContextFlags("prime", "/tmp/ws/AGENTS.md"),
+    "--append-system-prompt \"$(cat '/tmp/ws/AGENTS.md')\""
+  );
+  assert.equal(sessionContextFlags("agy", "/tmp/ws/AGENTS.md"), "");
+});
+
+test("buildNewSessionCommand and buildResumeCommand append the context flag", () => {
+  const file = "/tmp/ws/AGENTS.md";
+  assert.equal(
+    buildNewSessionCommand("codex", "/work/app", "standard", file),
+    "codex --cd '/work/app' -c \"developer_instructions=$(cat '/tmp/ws/AGENTS.md')\""
+  );
+  assert.equal(
+    buildNewSessionCommand("claude", "/work/app", "standard", file),
+    "claude --append-system-prompt \"$(cat '/tmp/ws/AGENTS.md')\""
+  );
+  // Unsupported providers are left unchanged.
+  assert.equal(buildNewSessionCommand("agy", "/work/app", "standard", file), "agy");
+
+  const session = {
+    id: "sess-1",
+    provider: "claude",
+    projectPath: "/work/app",
+    title: "test",
+    updatedAt: 1
+  };
+  assert.equal(
+    buildResumeCommand(session, file),
+    "claude --resume 'sess-1' --append-system-prompt \"$(cat '/tmp/ws/AGENTS.md')\""
+  );
+
+  const codexSession = {
+    id: "sess-2",
+    provider: "codex",
+    projectPath: "/work/app",
+    title: "test",
+    updatedAt: 1
+  };
+  assert.equal(
+    buildResumeCommand(codexSession, file),
+    "codex resume --cd '/work/app' 'sess-2' -c \"developer_instructions=$(cat '/tmp/ws/AGENTS.md')\""
+  );
+});
+
 

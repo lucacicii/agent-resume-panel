@@ -13,9 +13,8 @@ export interface FloatingSessionNoteTarget {
   sessionTitle: string;
 }
 
-export type FloatingNoteTarget =
+type FloatingNoteTarget =
   | FloatingSessionNoteTarget
-  | { kind: "project"; projectPath: string; projectName?: string; initialGtdStatus: GtdStatus }
   | { kind: "library"; initialGtdStatus: GtdStatus };
 
 type Note = Awaited<ReturnType<ReturnType<typeof desktopApi>["notesList"]>>[number];
@@ -26,7 +25,7 @@ export function sessionNoteMatchesTarget(note: Note, target: FloatingSessionNote
     && note.agentSessionId === target.sessionId;
 }
 
-export function sessionNoteTitle(target: Pick<FloatingSessionNoteTarget, "projectName" | "projectPath" | "sessionTitle" | "sessionId">): string {
+function sessionNoteTitle(target: Pick<FloatingSessionNoteTarget, "projectName" | "projectPath" | "sessionTitle" | "sessionId">): string {
   const project = target.projectName?.trim()
     || target.projectPath.replaceAll("\\", "/").split("/").filter(Boolean).at(-1)
     || target.projectPath.trim();
@@ -64,9 +63,6 @@ function isSessionTarget(target: FloatingNoteTarget): target is FloatingSessionN
 
 function floatingNoteOwnerLabel(target: FloatingNoteTarget, t: (key: string) => string): string {
   if (isSessionTarget(target)) {
-    return target.projectName?.trim() || basename(target.projectPath) || target.projectPath;
-  }
-  if (target.kind === "project") {
     return target.projectName?.trim() || basename(target.projectPath) || target.projectPath;
   }
   return t("desktop.notes.librarySection");
@@ -155,12 +151,6 @@ export function FloatingSessionNote({
   noteIdRef.current = noteId;
   dirtyRef.current = dirty;
   findQueryRef.current = findQuery;
-
-  const reportFocused = useCallback((focused: boolean) => {
-    if (typeof window.agentResume.setFloatingNoteFocused === "function") {
-      window.agentResume.setFloatingNoteFocused(focused);
-    }
-  }, []);
 
   const clearSaveTimer = useCallback(() => {
     if (saveTimerRef.current !== null) {
@@ -307,7 +297,6 @@ export function FloatingSessionNote({
         const initial = initialFloatingNoteContent();
         const created = await desktopApi().notesCreate({
           scope: target.kind,
-          projectPath: target.kind === "project" ? target.projectPath : undefined,
           body: initial
         });
         if (loadSequenceRef.current !== sequence) {
@@ -436,13 +425,6 @@ export function FloatingSessionNote({
     clearSaveTimer();
   }, [clearSaveTimer]);
 
-  // Report the initial focus state (the editor auto-focuses after load via
-  // onFocus) and clear it on unmount so main re-enables ⌘+Arrow pane navigation.
-  useEffect(() => {
-    reportFocused(noteRef.current?.contains(document.activeElement) === true);
-    return () => reportFocused(false);
-  }, [reportFocused]);
-
   const updateGtdStatus = async (status: GtdStatus | null) => {
     const currentNoteId = noteIdRef.current;
     if (!currentNoteId || loading || creating || deleting) return;
@@ -544,11 +526,6 @@ export function FloatingSessionNote({
     style={position ? { left: `${position.left}px`, top: `${position.top}px`, right: "auto" } : undefined}
     role="dialog"
     aria-label={t("desktop.workbench.floatingNote")}
-    onFocus={() => reportFocused(true)}
-    onBlur={(event) => {
-      const next = event.relatedTarget instanceof Node ? event.relatedTarget : null;
-      if (!(next && noteRef.current?.contains(next))) reportFocused(false);
-    }}
   >
     <header className="wb-floating-note-head" onPointerDown={onHeaderPointerDown}>
       <div className="wb-floating-note-heading">
@@ -677,7 +654,7 @@ export function FloatingSessionNote({
           onChange={updateContent}
           ariaLabel={t("desktop.workbench.floatingNoteEditor")}
           language="markdown"
-          selectionProjectPath={isSessionTarget(target) || target.kind === "project" ? target.projectPath : undefined}
+          selectionProjectPath={isSessionTarget(target) ? target.projectPath : undefined}
           fontSize={13}
           wordWrap
         />

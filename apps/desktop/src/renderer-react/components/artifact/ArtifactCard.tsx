@@ -1,11 +1,11 @@
-import React, { memo, useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import hljs from "highlight.js";
 import { ThemeIcon } from "../ThemeIcon";
 import { useI18n } from "../../i18n";
 import { ArtifactHtmlSandbox } from "./ArtifactHtmlSandbox";
 import { ArtifactSvgViewer } from "./ArtifactSvgViewer";
 
-export interface ArtifactCardProps {
+interface ArtifactCardProps {
   language: string;
   code: string;
   title?: string;

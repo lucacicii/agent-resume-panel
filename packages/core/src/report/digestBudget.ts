@@ -30,9 +30,8 @@ export class DigestBudgetExceededError extends Error {
   }
 }
 
-export function digestCallBudget(settings: PanelSettings): number {
-  const value = Number(settings.report?.maxDigestLlmCalls ?? 100);
-  return Math.max(10, Math.min(Number.isFinite(value) ? Math.floor(value) : 100, 1_000));
+export function digestCallBudget(_settings?: PanelSettings): number {
+  return 100;
 }
 
 function sourceBudget(maxContextChars?: number): number {

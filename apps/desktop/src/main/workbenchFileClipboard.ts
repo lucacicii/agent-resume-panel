@@ -36,18 +36,18 @@ function run(argv) {
 }
 `;
 
-export interface WorkbenchPasteCopiedEntry {
+interface WorkbenchPasteCopiedEntry {
   sourcePath: string;
   destinationPath: string;
   isDirectory: boolean;
 }
 
-export interface WorkbenchPasteFailure {
+interface WorkbenchPasteFailure {
   sourcePath: string;
   message: string;
 }
 
-export interface WorkbenchPasteResult {
+interface WorkbenchPasteResult {
   copied: WorkbenchPasteCopiedEntry[];
   failures: WorkbenchPasteFailure[];
 }
@@ -85,7 +85,7 @@ export async function readMacPasteboardFilePaths(): Promise<string[]> {
   return parsePasteboardPaths(await runPasteboardScript(READ_FILE_URLS_SCRIPT));
 }
 
-export async function writeMacPasteboardFilePaths(paths: string[]): Promise<void> {
+async function writeMacPasteboardFilePaths(paths: string[]): Promise<void> {
   if (!paths.length) throw new Error("没有可复制的文件");
   const stdout = await runPasteboardScript(WRITE_FILE_URLS_SCRIPT, [JSON.stringify(paths)]);
   const result: unknown = JSON.parse(stdout || "{}");

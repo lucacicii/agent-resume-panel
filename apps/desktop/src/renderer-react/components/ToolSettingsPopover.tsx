@@ -2,17 +2,18 @@ import type { AgentToolCategory, AgentToolDescriptor } from "@agent-resume/core"
 import { ThemeIcon } from "./ThemeIcon";
 import type { ReactNode } from "react";
 
-export type AskToolMode = "auto" | "custom" | "off";
+type AskToolMode = "auto" | "custom" | "off";
 export interface AskToolPrefs {
   mode: AskToolMode;
   enabledTools: string[];
 }
 
-export const TOOL_CATEGORY_ORDER: AgentToolCategory[] = [
+const TOOL_CATEGORY_ORDER: AgentToolCategory[] = [
   "notes",
+  "task",
+  "workbench",
   "reports",
   "sessions",
-  "projects",
   "link_graph",
   "skills",
   "browser",
@@ -46,9 +47,10 @@ export function ToolSettingsPopover({
   ];
   const categoryLabel: Record<AgentToolCategory, string> = {
     notes: t("desktop.agent.toolCategory.notes"),
+    task: t("desktop.agent.toolCategory.task", "Tasks"),
+    workbench: t("desktop.agent.toolCategory.workbench", "Workbenches"),
     reports: t("desktop.agent.toolCategory.reports"),
     sessions: t("desktop.agent.toolCategory.sessions"),
-    projects: t("desktop.agent.toolCategory.projects"),
     link_graph: t("desktop.agent.toolCategory.link_graph"),
     skills: t("desktop.agent.toolCategory.skills", "Skills"),
     browser: t("desktop.agent.toolCategory.browser", "Browser"),

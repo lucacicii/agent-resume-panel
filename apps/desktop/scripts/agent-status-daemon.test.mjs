@@ -34,9 +34,6 @@ const { AGENT_STATUS_API_VERSION } = await import(
 const { RUNNING_WINDOW_MS } = await import(
   path.join(here, "..", "dist", "main", "agentStatus", "engine", "arbitrate.js")
 );
-const { buildLaunchAgentPlist } = await import(
-  path.join(here, "..", "dist", "main", "agentStatus", "lifecycle.js")
-);
 const { ensureAgentStatusDaemon, stopAgentStatusDaemon } = await import(
   path.join(here, "..", "dist", "main", "agentStatus", "lifecycle.js")
 );
@@ -109,19 +106,6 @@ async function main() {
   assert.equal(fromEnv.replace, false);
   console.log("ok 1 - daemon args: flag, env, and default sources");
 
-  // ------------------------------------------------------------ launchd plist
-  const plist = buildLaunchAgentPlist({
-    execPath: "/Applications/Agent & Resume.app/Contents/MacOS/Agent Resume",
-    entryPath: "/Applications/Agent Resume.app/Contents/Resources/app.asar/dist/main/agentStatus/daemon.js",
-    panelHome,
-    logPath: paths.log
-  });
-  assert.match(plist, /<key>Label<\/key>\n\s*<string>dev\.agentresume\.agent-status<\/string>/);
-  assert.match(plist, /<key>RunAtLoad<\/key>\n\s*<true\/>/);
-  assert.match(plist, /<key>SuccessfulExit<\/key>\n\s*<false\/>/);
-  assert.match(plist, /Agent &amp; Resume/);
-  assert.match(plist, /<key>ELECTRON_RUN_AS_NODE<\/key>/);
-  console.log("ok 2 - launchd plist: label, keep-alive policy, XML escaping");
 
   // ------------------------------------------------------------- daemon startup
   const first = startDaemon();
@@ -137,7 +121,7 @@ async function main() {
   assert.ok(paths.socket.startsWith(os.tmpdir()), "the socket must live in the short per-user temp dir");
   assert.ok(paths.endpoint.startsWith(paths.dir), "the discovery handle must live under the panel home");
   assert.equal(mode(paths.endpoint), 0o600, "endpoint file must be 0600");
-  console.log("ok 3 - startup: endpoint published, dir 0700, socket/endpoint 0600");
+  console.log("ok 2 - startup: endpoint published, dir 0700, socket/endpoint 0600");
 
   // ------------------------------------------------------------------ handshake
   const client = await connect("app");
@@ -145,14 +129,14 @@ async function main() {
   assert.equal(client.hello.appVersion, APP_VERSION);
   assert.equal(client.hello.paneCount, 0);
   assert.equal(client.hello.subscriberCount, 0);
-  console.log("ok 4 - handshake: api version and empty pane count");
+  console.log("ok 3 - handshake: api version and empty pane count");
 
   // ------------------------------------------------------- single instance guard
   const second = startDaemon();
   assert.equal(await daemonExited(second.child), 0);
   assert.match(second.logs.join(""), /already running/);
   assert.ok(await readLiveEndpoint(paths), "the first daemon must keep the socket");
-  console.log("ok 5 - single instance: second daemon exits 0 and leaves the socket alone");
+  console.log("ok 4 - single instance: second daemon exits 0 and leaves the socket alone");
 
   // --------------------------------------------------- telemetry → derived state
   const now = Date.now();
@@ -169,12 +153,12 @@ async function main() {
   assert.equal(snapshot.byPaneId["1"].state, "working");
   assert.equal(snapshot.byPaneId["1"].source, "activity");
   assert.equal(snapshot.bySessionKey["cli:abc"].paneId, 1);
-  console.log("ok 6 - telemetry: fresh output settles to working/activity");
+  console.log("ok 5 - telemetry: fresh output settles to working/activity");
 
   await client.request("telemetry.publish", { paneId: 1, lastOutputAt: now, toolRunning: true, at: now });
   snapshot = await client.request("status.snapshot");
   assert.equal(snapshot.byPaneId["1"].source, "process");
-  console.log("ok 7 - telemetry: a running tool outranks raw activity");
+  console.log("ok 6 - telemetry: a running tool outranks raw activity");
 
   await client.request("telemetry.publish", {
     paneId: 1,
@@ -185,7 +169,24 @@ async function main() {
   snapshot = await client.request("status.snapshot");
   assert.equal(snapshot.byPaneId["1"].state, "idle");
   assert.equal(snapshot.byPaneId["1"].source, "fallback");
-  console.log("ok 8 - telemetry: stale silence reports idle instead of inventing a state");
+  console.log("ok 7 - telemetry: stale silence reports idle instead of inventing a state");
+
+  // ----------------------------------------------------------------- transitions
+  const transitions = await client.request("status.transitions", {});
+  assert.ok(Array.isArray(transitions));
+  assert.ok(
+    transitions.some((t) => t.paneId === 1 && t.from === "working" && t.to === "idle"),
+    "a settled working→idle change must be recorded"
+  );
+  assert.ok(
+    transitions.every((t, i) => i === 0 || t.seq > transitions[i - 1].seq),
+    "transition seq must be monotonic"
+  );
+  assert.ok(
+    transitions.filter((t) => t.seq <= 0).length === 0,
+    "every transition carries a positive seq"
+  );
+  console.log("ok 7b - transitions: settled changes are recorded and sequenced");
 
   // ------------------------------------------------------------------- identity
   await client.request("telemetry.publish", {
@@ -206,7 +207,7 @@ async function main() {
   assert.equal(unidentified, null);
   snapshot = await client.request("status.snapshot");
   assert.equal(snapshot.byPaneId["1"].agent, "claude", "an unresolved frame must not erase a known agent");
-  console.log("ok 9 - identity: the sensor names the agent and unknown never erases it");
+  console.log("ok 8 - identity: the sensor names the agent and unknown never erases it");
 
   // --------------------------------------------------------------- screen rules
   // A dialog on screen blocks a pane with no hook attached, and `explain`
@@ -271,7 +272,7 @@ async function main() {
   // recognises the visible input line as a live idle prompt.
   assert.equal(snapshot.byPaneId["4"].state, "idle");
   assert.equal(snapshot.byPaneId["4"].matchedRule.id, "live_prompt_box");
-  console.log("ok 10 - screen rules: a dialog blocks, its explanation is complete, prose does not");
+  console.log("ok 9 - screen rules: a dialog blocks, its explanation is complete, prose does not");
 
   // --------------------------------------------------------- native report order
   const applied = await client.request("pane.report_state", {
@@ -316,7 +317,7 @@ async function main() {
   assert.deepEqual(subagent, { applied: false });
   snapshot = await client.request("status.snapshot");
   assert.equal(snapshot.byPaneId["1"].state, "blocked", "sub-agent hooks must not own the pane");
-  console.log("ok 11 - native reports: applied, stale dropped, sub-agent dropped");
+  console.log("ok 10 - native reports: applied, stale dropped, sub-agent dropped");
 
   // ------------------------------------------------------------- explain readout
   const explain = await client.request("status.explain", { paneId: 1 });
@@ -324,7 +325,7 @@ async function main() {
   assert.equal(explain.agent, "claude");
   assert.match(explain.reason, /agent-resume:claude/);
   assert.equal(await client.request("status.explain", { paneId: 999 }), null);
-  console.log("ok 12 - explain: authority, source, and reason for a pane");
+  console.log("ok 11 - explain: authority, source, and reason for a pane");
 
   // ----------------------------------------------------------------- subscription
   const received = [];
@@ -338,7 +339,25 @@ async function main() {
   assert.equal(received[0].event, "status.changed");
   assert.equal(received[0].data.byPaneId["2"].state, "working");
   unsubscribe();
-  console.log("ok 13 - subscription: status.changed pushed only on real change");
+  console.log("ok 12 - subscription: status.changed pushed only on real change");
+
+  const transitionEvents = [];
+  const unsubscribeTransitions = client.subscribe((event) => {
+    if (event.event === "status.transition") transitionEvents.push(event.data);
+  });
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  await client.request("telemetry.publish", {
+    paneId: 2,
+    lastOutputAt: Date.now() - RUNNING_WINDOW_MS - 1_000,
+    toolRunning: false,
+    at: Date.now()
+  });
+  await waitFor(() => transitionEvents.length > 0, "a status.transition push");
+  assert.equal(transitionEvents[0].from, "working");
+  assert.equal(transitionEvents[0].to, "idle");
+  assert.equal(transitionEvents[0].paneId, 2);
+  unsubscribeTransitions();
+  console.log("ok 12b - subscription: status.transition carries the from→to change");
 
   // ------------------------------------------------------------- protocol errors
   await assert.rejects(
@@ -350,7 +369,7 @@ async function main() {
     (error) => error.code === "bad_request"
   );
   assert.ok(await client.request("status.snapshot"), "the daemon must survive bad input");
-  console.log("ok 14 - protocol: unknown method and malformed payload degrade to errors, daemon stays up");
+  console.log("ok 13 - protocol: unknown method and malformed payload degrade to errors, daemon stays up");
 
   // --------------------------------------------------------------- persistence
   await client.request("pane.forget", { paneId: 2 });
@@ -369,7 +388,7 @@ async function main() {
   const persistedNative = persisted.panes.find((pane) => pane.paneId === 1);
   assert.equal(persistedNative.native.state, "blocked");
   assert.equal(JSON.stringify(persisted).includes("screenText"), false, "screen text must never be persisted");
-  console.log("ok 15 - shutdown: socket unlinked, endpoint removed, durable state kept without screen text");
+  console.log("ok 14 - shutdown: socket unlinked, endpoint removed, durable state kept without screen text");
 
   const restarted = startDaemon();
   await waitFor(() => readLiveEndpoint(paths), "the restarted daemon");
@@ -386,7 +405,7 @@ async function main() {
   assert.equal(restored.byPaneId["1"].state, "blocked");
   assert.equal(restored.byPaneId["1"].authority, "native");
   assert.equal(restored.byPaneId["2"], undefined, "forgotten panes must stay forgotten");
-  console.log("ok 16 - restart: native reports are restored from state.json");
+  console.log("ok 15 - restart: native reports are restored from state.json");
 
   // ---------------------------------------------------------- replace + shutdown
   const replacement = startDaemon(["--replace"]);
@@ -408,7 +427,7 @@ async function main() {
   assert.equal(await daemonExited(replacement.child), 0);
   assert.equal(await readEndpointFile(paths), null);
   assert.equal(fs.existsSync(paths.socket), false);
-  console.log("ok 17 - replace and shutdown request: clean handover, no stale socket");
+  console.log("ok 16 - replace and shutdown request: clean handover, no stale socket");
 
   // -------------------------------------------------- app-side ensure / stop
   const ensured = await ensureAgentStatusDaemon({
@@ -435,7 +454,7 @@ async function main() {
   await stopAgentStatusDaemon(panelHome);
   assert.equal(await readLiveEndpoint(paths), null, "stopAgentStatusDaemon must remove the endpoint");
   assert.equal(fs.existsSync(paths.socket), false, "stopAgentStatusDaemon must release the socket");
-  console.log("ok 18 - app lifecycle: ensure reuses a compatible daemon, stop releases the socket");
+  console.log("ok 17 - app lifecycle: ensure reuses a compatible daemon, stop releases the socket");
 }
 
 let failure = null;
