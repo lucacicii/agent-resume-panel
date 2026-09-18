@@ -8,7 +8,7 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## English
 
-### Unreleased
+### [0.2.28]
 
 #### Changed
 
@@ -633,7 +633,7 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## 简体中文
 
-### 未发布
+### [0.2.28]
 
 #### 变更
 
