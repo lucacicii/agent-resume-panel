@@ -816,23 +816,6 @@ export type { RenameHomes } from "./session/rename";
 export { updateNativeSessionCwd } from "./session/nativeCwd";
 export type { NativeCwdUpdateResult, NativeCwdUpdateReason } from "./session/nativeCwd";
 
-// Link graph engine (domain — no Notes/Session deps; MCP + Desktop both call this)
-export { runLinkGraphTrace } from "./linkgraph/agent";
-export {
-  factsFromSteps,
-  reconcileOpenEnds,
-  sanitizeLinkGraphSummary
-} from "./linkgraph/evidence";
-export { normalizeLinkGraphSymbol } from "./linkgraph/symbol";
-export type {
-  LinkGraphTraceArgs,
-  LinkGraphTraceResult,
-  LinkGraphStep,
-  LinkGraphTimelineItem,
-  LinkGraphFacts,
-  LinkGraphOpenEnd
-} from "./linkgraph/types";
-
 // MCP server and tool-calling support
 export {
   createNoteMcpServer,
@@ -841,11 +824,6 @@ export {
   MCP_SERVER_NAME,
   MCP_SERVER_VERSION
 } from "./mcp/server";
-export {
-  handleLinkGraphTrace,
-  linkGraphTraceSchema
-} from "./mcp/linkGraphTools";
-export type { LinkGraphMcpResult, LinkGraphTraceInput } from "./mcp/linkGraphTools";
 export {
   handleMemoryRetrieve,
   memoryRetrieveSchema

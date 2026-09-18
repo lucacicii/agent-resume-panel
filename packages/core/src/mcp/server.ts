@@ -77,7 +77,6 @@ import {
   workbenchListSchema,
   workbenchReadSchema
 } from "./workbenchTools";
-import { handleLinkGraphTrace, linkGraphTraceSchema } from "./linkGraphTools";
 import { mcpSessionContextFromEnv } from "./sessionContext";
 
 export const MCP_SERVER_NAME = "agent-resume-notes";
@@ -99,14 +98,6 @@ export interface AgentMcpContext extends NoteToolContext {
     external?: boolean;
     error?: string;
   }>;
-  /** Expose link_graph_trace. Default true; Ask sets it to the project-scoped state. */
-  enableLinkGraphTrace?: boolean;
-  /** Default workspaceRoot for link_graph_trace (Ask injects the selected project path). */
-  linkGraphWorkspaceRoot?: string;
-  /** Abort signal forwarded to the link_graph_trace engine (Ask cancel). */
-  linkGraphSignal?: AbortSignal;
-  /** Ask returns a condensed chain+summary instead of the full primaryChain/timeline. */
-  linkGraphCompact?: boolean;
 }
 
 export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
@@ -114,7 +105,7 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
     { name: MCP_SERVER_NAME, version: MCP_SERVER_VERSION },
     {
       instructions:
-        "Use Agent Resume tools when a user asks to record, save, organize, review, plan, follow up, or update local project/session state, even if they do not name MCP. Search for the target first; never guess a session when multiple matches exist. For Notes, preserve noteId and managed frontmatter, use note_tree_read for task (task) knowledge trees, and do not overwrite, delete, move, rename, or change a user note unless the user explicitly asks. Project notes belong to the VS Code extension and are not exposed here. For cross-stack field/API/call-chain discovery (前端字段到后端 Controller/VO), call link_graph_trace once with workspaceRoot + symbol (+ filePath/line); the server runs an internal LLM agent that searches and only uses tools for verification."
+        "Use Agent Resume tools when a user asks to record, save, organize, review, plan, follow up, or update local project/session state, even if they do not name MCP. Search for the target first; never guess a session when multiple matches exist. For Notes, preserve noteId and managed frontmatter, use note_tree_read for task (task) knowledge trees, and do not overwrite, delete, move, rename, or change a user note unless the user explicitly asks. Project notes belong to the VS Code extension and are not exposed here."
     }
   );
 
@@ -542,39 +533,6 @@ export function createNoteMcpServer(ctx: AgentMcpContext): McpServer {
       return handleWorkbenchRead(args, workbenchCtx);
     }
   );
-
-  if (ctx.enableLinkGraphTrace !== false) {
-    server.registerTool(
-      "link_graph_trace",
-      {
-        description:
-          "Trace a code field/symbol across frontend → API client → HTTP path → backend handler → DTO/VO in one call. "
-          + "An internal LLM agent performs the full search step-by-step; tools only read/search/verify. "
-          + "Use when the user asks for 链路图, call chain, where a form field goes, FE-BE mapping, or API lineage. "
-          + "Requires symbol; workspaceRoot defaults to the conversation's project when omitted; pass filePath and line when known. "
-          + "Returns a structured primaryChain (or a compact chain when compact is set), summary, and openEnds. "
-          + "Requires Agent Resume LLM settings to be configured.",
-        inputSchema: linkGraphTraceSchema
-      },
-      async (args: {
-        workspaceRoot?: string;
-        symbol: string;
-        filePath?: string;
-        line?: number;
-        selection?: string;
-        language?: string;
-        backendRoots?: string[];
-        timeBudgetMs?: number;
-        compact?: boolean;
-      }) => {
-        return handleLinkGraphTrace(args, {
-          defaultWorkspaceRoot: ctx.linkGraphWorkspaceRoot,
-          signal: ctx.linkGraphSignal,
-          compact: ctx.linkGraphCompact
-        });
-      }
-    );
-  }
 
   return server;
 }

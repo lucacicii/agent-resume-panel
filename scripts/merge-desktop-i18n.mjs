@@ -63,31 +63,6 @@ const obsoleteDesktopKeys = new Set([
   "desktop.workbench.titleSuggested",
   "desktop.workbench.titleEmpty",
   "desktop.im.emptyRoomNoFolder",
-  // Link Graph: removed dig/continue/branches UI (core agent only)
-  "desktop.workbench.linkGraphIncomplete",
-  "desktop.workbench.linkGraphMeta",
-  "desktop.workbench.linkGraphChain",
-  "desktop.workbench.linkGraphAllHits",
-  "desktop.workbench.linkGraphContinue",
-  "desktop.workbench.linkGraphTogglePreview",
-  "desktop.workbench.linkGraphContinueNoProgress",
-  "desktop.workbench.linkGraphChainCumulativeHint",
-  "desktop.workbench.linkGraphLlmPath",
-  "desktop.workbench.linkGraphShowMore",
-  "desktop.workbench.linkGraphShowLess",
-  "desktop.workbench.linkGraphMainPath",
-  "desktop.workbench.linkGraphMainPathHint",
-  "desktop.workbench.linkGraphEvidence",
-  "desktop.workbench.linkGraphPrimaryChainHint",
-  "desktop.workbench.linkGraphBranches",
-  "desktop.workbench.linkGraphBranchesHint",
-  "desktop.workbench.linkGraphPrunedBranches",
-  "desktop.workbench.linkGraphPrunedHint",
-  "desktop.workbench.linkGraphDiscarded",
-  "desktop.workbench.linkGraphChainGroups",
-  "desktop.workbench.linkGraphChainGroupsHint",
-  "desktop.workbench.linkGraphBranchGroup",
-  "desktop.workbench.linkGraphTruncated",
   // Settings → Models replaced by Settings → Providers (provider pool)
   "desktop.settings.paneModels",
   "desktop.settings.paneModelsDesc",
@@ -357,6 +332,10 @@ function isObsoleteDesktopKey(key) {
   // `desktop.settings.imAction*` / `imDelegation*` / `imRoutingModelUse*` etc.,
   // but never the unrelated `desktop.settings.image*` keys.
   if (/^desktop\.settings\.im(?!age)/.test(key)) return true;
+  // Link Graph feature removed (Workbench panel + MCP tool).
+  if (key.startsWith("desktop.workbench.linkGraph")) return true;
+  if (key === "desktop.workbench.sidePanelLinkGraph" || key === "desktop.workbench.quickAccessShowLinkGraph") return true;
+  if (key === "desktop.agent.toolCategory.link_graph") return true;
   return false;
 }
 

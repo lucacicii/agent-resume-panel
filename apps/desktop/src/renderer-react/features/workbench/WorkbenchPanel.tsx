@@ -74,8 +74,6 @@ import {
   WorkbenchFileExplorer,
   type WorkbenchFileExplorerHandle
 } from "./WorkbenchFileExplorer";
-import { LinkGraphSidePane } from "./LinkGraphSidePane";
-import { useWorkbenchLinkGraph } from "./linkgraph/useWorkbenchLinkGraph";
 import { useWorkbenchSearch } from "./search/useWorkbenchSearch";
 import { rankSearchRootOptions, type SearchRootOption } from "./search/rootPicker";
 import { WorkbenchSearchSidePane } from "./search/WorkbenchSearchSidePane";
@@ -221,7 +219,7 @@ type BrowserPane = {
   startUrl?: string;
   surfaceKind: "workbench" | "window";
 };
-type SideView = "files" | "git" | "search" | "scripts" | "linkgraph" | null;
+type SideView = "files" | "git" | "search" | "scripts" | null;
 type SearchReveal = { path: string; line: number; column: number; endColumn: number };
 const GTD_STATUSES = ["inbox", "next", "waiting", "someday", "reference", "done"] as const satisfies readonly GtdStatus[];
 /** Shared empty list so a project-less task keeps a stable array identity. */
@@ -839,20 +837,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       terminalsRef.current.forEach((pane) => void refreshTerminalGitRef.current(pane.key));
     },
     notifyStatus: setStatus
-  });
-
-  const {
-    linkGraphResult,
-    linkGraphProgress,
-    linkGraphBusy,
-    linkGraphError,
-    linkGraphLanguage,
-    runLinkGraph,
-    refreshLinkGraph,
-    changeLinkGraphLanguage,
-    cancelLinkGraph
-  } = useWorkbenchLinkGraph({
-    onOpenSide: () => setSide("linkgraph")
   });
 
   useEffect(() => { terminalsRef.current = terminals; }, [terminals]);
@@ -4183,25 +4167,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
   };
 
-  const openLinkGraphFromEditor = useCallback(() => {
-    const projectRoot = currentEditor ? (projectForPath(currentEditor.path) || selectedProject) : selectedProject;
-    if (!projectRoot || !currentEditor) return;
-    const selection = editorRef.current?.getSelectionRange();
-    const text = selection?.text.trim() || editorRef.current?.getSelectedText().trim() || "";
-    if (!text) {
-      setStatus({ text: t("desktop.workbench.linkGraphNeedSelection"), kind: "error" });
-      return;
-    }
-    void runLinkGraph({
-      projectPath: projectRoot,
-      filePath: currentEditor.path,
-      selection: text,
-      startLine: selection?.startLine || 1,
-      endLine: selection?.endLine || selection?.startLine || 1,
-      outputLanguage: linkGraphLanguage
-    });
-  }, [currentEditor, linkGraphLanguage, projectForPath, runLinkGraph, selectedProject, t]);
-
   const {
     quickAccessOpen,
     quickAccessMode,
@@ -5357,14 +5322,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       disabledReason: noProjectReason,
       run: () => openWorkbenchView("scripts")
     },
-    {
-      id: "workbench.linkgraph",
-      label: t("desktop.workbench.quickAccessShowLinkGraph"),
-      category: t("desktop.workbench.quickAccessCategoryPanels"),
-      keywords: "link graph call chain dependency relation",
-      disabledReason: noProjectReason,
-      run: () => openWorkbenchView("linkgraph")
-    },
     // 6. Files / 文件
     {
       id: "file.goToFile",
@@ -6109,21 +6066,7 @@ export function WorkbenchPanel(): ReactPortal | null {
               setSearchSelectedKey(key);
               void openFile(match.path, { path: match.path, line: match.line, column: match.column, endColumn: match.endColumn }, projectForPath(match.path) || undefined);
             }}
-          /> : side === "linkgraph" ? <LinkGraphSidePane result={linkGraphResult} progress={linkGraphProgress} busy={linkGraphBusy} error={linkGraphError} outputLanguage={linkGraphLanguage} onOutputLanguageChange={changeLinkGraphLanguage} onRefresh={linkGraphResult ? refreshLinkGraph : undefined} onCancel={cancelLinkGraph} onOpen={(target) => {
-              const root = selectedProject || "";
-              const raw = target.path.replaceAll("\\", "/");
-              const isAbs = raw.startsWith("/") || /^[A-Za-z]:\//.test(raw);
-              const hit = linkGraphResult?.hits.find((item) => item.path === target.path || item.relativePath === raw);
-              const absolute = isAbs
-                ? target.path
-                : hit?.path || (root ? `${root.replace(/\/+$/, "")}/${raw.replace(/^\/+/, "")}` : target.path);
-              void openFile(absolute, {
-                path: absolute,
-                line: target.line,
-                column: target.column || 1,
-                endColumn: target.endColumn || (target.column || 1) + 1
-              });
-            }} /> : <div className="wb-side-pane">
+          /> : <div className="wb-side-pane">
             <div className="wb-side-pane-head wb-git-pane-head">
               <span className="wb-side-pane-title">{gitHistoryContext ? gitHistoryTitle : t("desktop.workbench.sidePanelGit")}</span>
               <div className="wb-git-actions">{gitHistoryContext ? <>
@@ -6186,7 +6129,6 @@ export function WorkbenchPanel(): ReactPortal | null {
           <div className="context-menu-separator" role="separator" />
         </>
       ) : null}
-      <button type="button" role="menuitem" disabled={!editorContextMenu.hasSelection} onClick={() => { setEditorContextMenu(null); openLinkGraphFromEditor(); }}>{t("desktop.workbench.linkGraphView")}</button>
     </div> : null}
     {selectionResult ? (
       <SelectionActionResult

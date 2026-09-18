@@ -14,7 +14,6 @@ const TOOL_CATEGORY_ORDER: AgentToolCategory[] = [
   "workbench",
   "reports",
   "sessions",
-  "link_graph",
   "skills",
   "browser",
   "mcp"
@@ -51,7 +50,6 @@ export function ToolSettingsPopover({
     workbench: t("desktop.agent.toolCategory.workbench", "Workbenches"),
     reports: t("desktop.agent.toolCategory.reports"),
     sessions: t("desktop.agent.toolCategory.sessions"),
-    link_graph: t("desktop.agent.toolCategory.link_graph"),
     skills: t("desktop.agent.toolCategory.skills", "Skills"),
     browser: t("desktop.agent.toolCategory.browser", "Browser"),
     mcp: t("desktop.agent.toolCategory.mcp", "MCP")

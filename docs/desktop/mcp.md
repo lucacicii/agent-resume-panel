@@ -10,10 +10,10 @@ Agent Resume Desktop exposes **two local MCP services** over stdio. Both start o
 
 | Service | Transport | Entry | Consumers | Tool areas |
 |---|---|---|---|---|
-| `agent-resume` | stdio (`ELECTRON_RUN_AS_NODE`) | `@agent-resume/core` `dist/mcp/cli.js` | External TUI clients, ACP sessions | Notes, tasks, workbenches, reports, sessions, link graph |
+| `agent-resume` | stdio (`ELECTRON_RUN_AS_NODE`) | `@agent-resume/core` `dist/mcp/cli.js` | External TUI clients, ACP sessions | Notes, tasks, workbenches, reports, sessions |
 | `agent-resume-browser` | ACP: in-app loopback HTTP MCP with a bearer token; TUI: stdio proxy `dist/mcp/browserCli.js` → endpoint file → loopback server | `apps/desktop/src/main/browser/mcpServer.ts` | External TUI clients, ACP sessions | 15 `browser_*` tools |
 
-The data service exposes **31 tools**, not 31 independent services:
+The data service exposes **30 tools**, not 30 independent services:
 
 | Area | Tools | Access |
 |---|---:|---|
@@ -22,7 +22,6 @@ The data service exposes **31 tools**, not 31 independent services:
 | Workbenches | 2 | Read-only |
 | Reports and memory retrieval | 4 | Read-only |
 | Sessions | 6 | Read, GTD update, and resume-command generation |
-| Link graph | 1 | Read-only code lineage (`link_graph_trace`) |
 
 The service does not listen on a network port and does not add an authentication layer. Any client registered on this Mac receives the same access as the local Desktop data store. Register only agents and configurations you trust.
 
@@ -48,25 +47,6 @@ For **Cursor**, **Pi**, and **Grok Build**, use **Copy config** in the MCP setti
 Use **Update** after moving or reinstalling Agent Resume. This Mac's automatic clients are re-synced with both services (`agent-resume` and `agent-resume-browser`) at startup and after any settings save; the browser entry follows **Settings → Browser**. **Remove** drops the `agent-resume` entry from an automatically managed client.
 
 ### Tool reference
-
-#### Link graph (code lineage)
-
-| Tool | Purpose |
-|---|---|
-| `link_graph_trace` | **One call** traces a field/symbol across FE → API client → HTTP path → backend handler → DTO/VO. Independent of Notes/Session — only needs Agent Resume LLM settings. An internal LLM agent performs the full search; filesystem/rg tools only verify. Pass `workspaceRoot` + `symbol`, and preferably `filePath` + `line`. Desktop Workbench uses the same core engine in-process. |
-
-Example arguments:
-
-```json
-{
-  "workspaceRoot": "/Users/you/my-app",
-  "filePath": "/Users/you/my-app/web/src/views/report_center/invoice_details/index.vue",
-  "symbol": "deliveryNum",
-  "line": 57
-}
-```
-
-Returns JSON with `primaryChain`, `timeline`, `summary`, `openEnds`, `facts`, and `bridgeStatus`.
 
 #### Notes and note GTD
 
@@ -165,10 +145,10 @@ Agent Resume Desktop 暴露 **两个本机 MCP 服务**，均使用 stdio。两�
 
 | 服务 | 传输方式 | 入口 | 消费方 | 工具域 |
 |---|---|---|---|---|
-| `agent-resume` | stdio（`ELECTRON_RUN_AS_NODE`） | `@agent-resume/core` `dist/mcp/cli.js` | 外部 TUI 客户端、ACP 会话 | Notes、Tasks、Workbenches、Reports、Sessions、链路图 |
+| `agent-resume` | stdio（`ELECTRON_RUN_AS_NODE`） | `@agent-resume/core` `dist/mcp/cli.js` | 外部 TUI 客户端、ACP 会话 | Notes、Tasks、Workbenches、Reports、Sessions |
 | `agent-resume-browser` | ACP：应用内回环 HTTP MCP（Bearer Token）；TUI：stdio 代理 `dist/mcp/browserCli.js` → 端点文件 → 回环服务 | `apps/desktop/src/main/browser/mcpServer.ts` | 外部 TUI 客户端、ACP 会话 | 15 个 `browser_*` 工具 |
 
-数据服务包含 **31 个工具**，不是 31 个相互独立的服务：
+数据服务包含 **30 个工具**，不是 30 个相互独立的服务：
 
 | 范围 | 工具数 | 权限 |
 |---|---:|---|
@@ -177,7 +157,6 @@ Agent Resume Desktop 暴露 **两个本机 MCP 服务**，均使用 stdio。两�
 | Workbenches | 2 | 只读 |
 | Reports 与记忆检索 | 4 | 只读 |
 | Sessions | 6 | 读取、更新 GTD、生成恢复命令 |
-| 链路图 | 1 | 只读代码血缘（`link_graph_trace`） |
 
 服务不会监听网络端口，也不会额外增加认证层。本机上注册的任意客户端都会获得访问 Desktop 本机数据的权限，因此只应注册你信任的 Agent 与配置。
 
@@ -203,25 +182,6 @@ Desktop 可自动检测并注册以下客户端：
 移动或重新安装 Agent Resume 后，可选择 **更新**。本机的自动客户端会在启动时和每次保存设置后同时同步两个服务（`agent-resume` 与 `agent-resume-browser`）；浏览器条目跟随 **设置 → 浏览器**。选择 **移除** 会从自动管理的客户端移除 `agent-resume` 条目。
 
 ### 工具说明
-
-#### 链路图（代码血缘）
-
-| 工具 | 用途 |
-|---|---|
-| `link_graph_trace` | **一次调用**完成字段/符号跨端链路：前端 → API 客户端 → HTTP 路径 → 后端 handler → DTO/VO。与 Notes/Session **解耦**，仅需 Agent Resume LLM 配置。内部由 LLM 逐步搜索，工具只做读盘/rg 验证。必填 `workspaceRoot` + `symbol`，建议同时传 `filePath`、`line`。Desktop Workbench 进程内调用同一 core 引擎。 |
-
-示例参数：
-
-```json
-{
-  "workspaceRoot": "/Users/you/my-app",
-  "filePath": "/Users/you/my-app/web/src/views/report_center/invoice_details/index.vue",
-  "symbol": "deliveryNum",
-  "line": 57
-}
-```
-
-返回 JSON：`primaryChain`、`timeline`、`summary`、`openEnds`、`facts`、`bridgeStatus`。
 
 #### Notes 与笔记 GTD
 

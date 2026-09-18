@@ -12,7 +12,6 @@ import {
   desktopDbPath,
   ensureDesktopDbSchema,
   ensureExtensionCatalogSchema,
-  handleLinkGraphTrace,
   insertReportEntry,
   localDayRange,
   mcpSessionContextFromEnv,
@@ -99,7 +98,6 @@ test("MCP server exposes all note, report, session, and project tools", async ()
     const result = await client.listTools();
     const names = result.tools.map((t) => t.name).sort();
     assert.deepEqual(names, [
-      "link_graph_trace",
       "memory_retrieve",
       "note_append",
       "note_create",
@@ -831,25 +829,6 @@ test("report_search returns a structured response", async () => {
   }
 });
 
-test("link_graph_trace fails fast when neither workspaceRoot nor a default is provided", async () => {
-  const result = await handleLinkGraphTrace({ symbol: "deliveryNum" });
-  assert.equal(result.isError, true);
-  assert.match(result.content[0].text, /workspaceRoot is required/);
-});
-
-test("link_graph_trace is hidden when enableLinkGraphTrace is false", async () => {
-  const { ctx } = await setupTestContext();
-  const server = createNoteMcpServer({ ...ctx, enableLinkGraphTrace: false });
-  const client = await connectClient(server);
-  try {
-    const names = (await client.listTools()).tools.map((t) => t.name);
-    assert.ok(!names.includes("link_graph_trace"));
-  } finally {
-    await client.close();
-    await server.close();
-  }
-});
-
 test("task_create exposes a task with multi-root references and GTD", async () => {
   const { ctx } = await setupTestContext();
   const server = createNoteMcpServer(ctx);
@@ -1035,7 +1014,7 @@ test("workbench tools degrade gracefully without desktop workbench tables", asyn
 
 test("AGENT_TOOL_CATALOG matches the tools registered by the MCP server", async () => {
   const { ctx } = await setupTestContext();
-  const server = createNoteMcpServer(ctx); // default ctx keeps link_graph_trace registered
+  const server = createNoteMcpServer(ctx);
   const client = await connectClient(server);
   try {
     const registered = (await client.listTools()).tools.map((t) => t.name);

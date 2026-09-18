@@ -32,11 +32,6 @@ import type {
 } from "../main/providerSettings";
 import type { WorkbenchFileSystemChangedEvent } from "../main/workbenchWatcher";
 import type {
-  LinkGraphAnalyzeArgs,
-  LinkGraphAnalyzeResult,
-  LinkGraphProgressEvent
-} from "../shared/linkGraphTypes";
-import type {
   WorkbenchActiveSessionDot,
   WorkbenchFocusSessionRequest,
   WorkbenchFocusSessionResult,
@@ -917,9 +912,6 @@ export interface DesktopApi {
     skipped: Array<{ path: string; reason: string }>;
     totalReplaced: number;
   }>;
-  linkGraphAnalyze(args: LinkGraphAnalyzeArgs): Promise<LinkGraphAnalyzeResult>;
-  linkGraphCancel(): Promise<{ ok: boolean }>;
-  onLinkGraphProgress(callback: (event: LinkGraphProgressEvent) => void): () => void;
   terminalGitStatus(args: {
     cwd: string;
     nestedScan?: { maxDepth?: number; ignoreDirs?: string[]; maxRepos?: number };
@@ -1636,13 +1628,6 @@ const api: DesktopApi = {
   workbenchSearchText: (args) => ipcRenderer.invoke("workbench:searchText", args),
   workbenchSearchTextCancel: () => ipcRenderer.invoke("workbench:searchTextCancel"),
   workbenchReplaceText: (args) => ipcRenderer.invoke("workbench:replaceText", args),
-  linkGraphAnalyze: (args) => ipcRenderer.invoke("linkgraph:analyze", args),
-  linkGraphCancel: () => ipcRenderer.invoke("linkgraph:cancel"),
-  onLinkGraphProgress: (callback) => {
-    const handler = (_event: Electron.IpcRendererEvent, payload: LinkGraphProgressEvent) => callback(payload);
-    ipcRenderer.on("linkgraph:progress", handler);
-    return () => ipcRenderer.removeListener("linkgraph:progress", handler);
-  },
   terminalGitStatus: (args) => ipcRenderer.invoke("terminal:gitStatus", args),
   terminalGitFetch: (args) => ipcRenderer.invoke("terminal:gitFetch", args),
   terminalGitStage: (args) => ipcRenderer.invoke("terminal:gitStage", args),

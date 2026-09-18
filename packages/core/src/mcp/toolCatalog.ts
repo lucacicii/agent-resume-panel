@@ -12,7 +12,6 @@ export type AgentToolCategory =
   | "workbench"
   | "reports"
   | "sessions"
-  | "link_graph"
   | "skills"
   | "browser"
   | "mcp";
@@ -72,9 +71,6 @@ export const AGENT_TOOL_CATALOG: readonly AgentToolDescriptor[] = [
   // workbenches
   { name: "workbench_list", description: "List a task's workbenches and their project bindings", category: "workbench" },
   { name: "workbench_read", description: "Read one workbench's binding, layout, and linked sessions", category: "workbench" },
-
-  // link_graph
-  { name: "link_graph_trace", description: "Trace a symbol across frontend → API → backend", category: "link_graph" },
 
 ];
 

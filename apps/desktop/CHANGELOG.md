@@ -19,6 +19,7 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 #### Removed
 
+- **Workbench Link Graph**: the Link Graph side panel (toolbar button, editor context-menu action, quick access entry, and its `linkgraph:analyze` / `linkgraph:cancel` / `linkgraph:progress` IPC) is gone, together with the `link_graph_trace` MCP tool and the core link-graph engine it shared. The Desktop/MCP tool set drops from 33 to 32
 - **Agent actions setting**: the dead **General → Agent actions** toggle is gone. The live permission control is **Workbench → ACP permissions**
 - **Dead desktop settings**: `desktop.windowWidth/Height`, `alwaysAllowAgent*`, unused `desktop.browser.*` fields (cookie import, download/snapshot policy, window bounds, read-tool auto-allow), `workbench.gitNestedScanMaxRepos`, and the retired `report.*` block (the digest scheduler uses code defaults)
 - **Project context menu**: projects are no longer a browsable list, so the **Settings → Workbench → Project context menu** group and the workbench project right-click menu are gone. This removes the `workbench.projectContextMenu` setting and the project pin / rename / hide / merge / split / reveal / copy-path / set-local-folder / open-in-editor actions together with their IPC routes (`projects:hide`, `projects:setPinned`, `projects:pickLocalPath`, `projects:setLocalPath`, `projects:setAlias`, `projects:revealInFinder`, `projects:copyLocalPath`, `projects:listPathVariants`, `projects:merge`, `projects:splitPath`, `workbench:openProjectInEditor`)

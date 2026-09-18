@@ -92,7 +92,6 @@ import {
   type AgentSessionSyncResult
 } from "@agent-resume/core";
 import { safeHandle } from "./ipcUtils";
-import { registerLinkGraphIpc } from "./linkgraph/linkGraphIpc";
 import { installArpmShell, installArpmShim, resolveArpmCliPath } from "./arpmInstall";
 import {
   createExternalBrowserMcpLaunchConfig,
@@ -3301,7 +3300,6 @@ app.whenReady().then(async () => {
       browserSettingsCache = settings.desktop?.browser || null;
     })
     .catch(() => undefined);
-  registerLinkGraphIpc(() => mainWindow, () => app.getLocale());
   tryRegisterPtyIpc();
   // The daemon deliberately outlives this process — see startAgentStatus.
   void loadSettings()
