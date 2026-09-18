@@ -67,7 +67,6 @@ describe("settings model", () => {
     expect(draft.toolMaxContextChars).toBe(120_000);
     expect(draft.chatDisableThinking).toBe(false);
     expect(generalDraftFromSettings(settings).desktopTheme).toBe("system");
-    expect(generalDraftFromSettings(settings).alwaysAllowAgentNonDestructiveOperations).toBe(false);
   });
 
   it("persists specialized model selections when set", () => {
@@ -114,20 +113,6 @@ describe("settings model", () => {
     expect(patch.providers).toHaveLength(1);
     // Embedding model was removed, so the selection is dropped.
     expect(patch.modelSelections?.embedding).toBeUndefined();
-  });
-
-  it("keeps non-delete Agent approval enabled by default and persists an explicit opt-in", () => {
-    const draft = generalDraftFromSettings(settings);
-    const patch = generalPatch(settings, { ...draft, alwaysAllowAgentNonDestructiveOperations: true });
-    expect(patch.desktop?.alwaysAllowAgentNonDestructiveOperations).toBe(true);
-    expect(patch.desktop?.alwaysAllowAgentWriteOperations).toBe(false);
-  });
-
-  it("maps the legacy Agent approval setting to the non-delete policy", () => {
-    expect(generalDraftFromSettings({
-      ...settings,
-      desktop: { ...settings.desktop, alwaysAllowAgentWriteOperations: true }
-    }).alwaysAllowAgentNonDestructiveOperations).toBe(true);
   });
 
   it("detects embedding identity changes for model or provider base URL", () => {

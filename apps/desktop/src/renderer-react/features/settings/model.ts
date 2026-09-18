@@ -175,7 +175,6 @@ interface NotificationsDraft {
 export interface GeneralDraft {
   uiLanguage: UiLanguageValue;
   desktopTheme: "system" | "light" | "dark";
-  alwaysAllowAgentNonDestructiveOperations: boolean;
   notifications: NotificationsDraft;
 }
 
@@ -336,7 +335,6 @@ export function generalDraftFromSettings(settings: PanelSettings): GeneralDraft 
   return {
     uiLanguage: normalizeOutputLanguage(settings.uiLanguage),
     desktopTheme: settings.desktop?.theme || "system",
-    alwaysAllowAgentNonDestructiveOperations: settings.desktop?.alwaysAllowAgentNonDestructiveOperations === true || settings.desktop?.alwaysAllowAgentWriteOperations === true,
     notifications: notificationsDraftFromSettings(settings)
   };
 }
@@ -460,9 +458,7 @@ export function generalPatch(settings: PanelSettings, draft: GeneralDraft): Part
     uiLanguage: draft.uiLanguage,
     desktop: {
       ...settings.desktop,
-      theme: draft.desktopTheme,
-      alwaysAllowAgentWriteOperations: false,
-      alwaysAllowAgentNonDestructiveOperations: draft.alwaysAllowAgentNonDestructiveOperations
+      theme: draft.desktopTheme
     },
     notifications: notificationsPatch(settings, draft.notifications)
   };

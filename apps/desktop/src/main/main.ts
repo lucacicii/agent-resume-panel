@@ -442,10 +442,8 @@ function resolveWorkbenchTerminalMode(settings: PanelSettings): "xterm" | "exter
 
 function systemTerminalSettings(settings: PanelSettings) {
   return {
-    externalLaunchMode:
-      settings.workbench?.externalLaunchMode || settings.ghosttyLaunchMode || "executeCommand",
-    externalAutoPasteDelayMs:
-      settings.workbench?.externalAutoPasteDelayMs ?? settings.ghosttyAutoPasteDelayMs
+    externalLaunchMode: settings.workbench?.externalLaunchMode || "executeCommand",
+    externalAutoPasteDelayMs: settings.workbench?.externalAutoPasteDelayMs
   };
 }
 

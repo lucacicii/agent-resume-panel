@@ -44,7 +44,7 @@ export const overridesByKey = {
   "desktop.settings.stalePurge": row("削除"),
   "desktop.settings.visibilityFootnote": row("各プロバイダーのアーカイブ／サブエージェント session の一覧表示を制御します。"),
   "desktop.settings.newSessionGroup": row("新規 Session"),
-  "desktop.settings.scratchDir": row("一時ディレクトリ"),
+  "desktop.settings.scratchDir": row("一時セッションディレクトリ"),
   "desktop.settings.projectEditor": row("プロジェクトエディター"),
   "desktop.settings.projectEditorDesc": row("ワークベンチからプロジェクトを開くときに使うエディター"),
   "desktop.settings.editorAuto": row("自動検出"),

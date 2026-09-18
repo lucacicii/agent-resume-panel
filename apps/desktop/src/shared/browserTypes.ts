@@ -15,9 +15,7 @@ export type BrowserTabStateDto = {
 export type BrowserPolicyState = {
   allowHosts: string[];
   blockHosts: string[];
-  allowDownloads: boolean;
   allowPopups: boolean;
-  snapshotMode: "a11y" | "dom-lite" | "screenshot";
   maxTabs: number;
 };
 

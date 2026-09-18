@@ -21,13 +21,12 @@ import {
   runSqlite
 } from "../dist/index.js";
 
-async function fixture(maxDigestLlmCalls = 100) {
+async function fixture() {
   const panelHome = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-report-refresh-"));
   const catalogDb = path.join(panelHome, "catalog.db");
   const desktopDb = path.join(panelHome, ".desktop", "desktop.db");
   await fs.writeFile(path.join(panelHome, "settings.desktop.json"), JSON.stringify({
-    panelHome,
-    report: { maxDigestLlmCalls }
+    panelHome
   }));
   await ensureExtensionCatalogSchema(catalogDb);
   await ensureDesktopDbSchema(desktopDb);
@@ -108,8 +107,7 @@ test("range pagination and report links remain complete beyond 200 sessions", as
 test("call budget blocks an unapproved large digest without dropping sessions", () => {
   const settings = {
     llm: { maxContextChars: 120000 },
-    embedding: {},
-    report: { maxDigestLlmCalls: 100 }
+    embedding: {}
   };
   const sessions = Array.from({ length: 201 }, (_, index) => ({
     provider: "codex",

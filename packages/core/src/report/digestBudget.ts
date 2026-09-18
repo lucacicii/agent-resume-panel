@@ -30,7 +30,7 @@ export class DigestBudgetExceededError extends Error {
   }
 }
 
-export function digestCallBudget(_settings?: PanelSettings): number {
+export function digestCallBudget(): number {
   return 100;
 }
 
@@ -81,7 +81,7 @@ export function estimateDailyForSessions(
     settings.llmOptions?.tool?.maxContextChars
   );
   const estimatedLlmCalls = summaryCallCount + digestCallCount;
-  const callBudget = digestCallBudget(settings);
+  const callBudget = digestCallBudget();
   return {
     level: "daily",
     periodKey,
@@ -162,7 +162,7 @@ export async function estimateDigestRun(options: {
   }
   digestCallCount += estimateHierarchicalCallCount(dailySourceLengths, settings.llmOptions?.tool?.maxContextChars);
   const estimatedLlmCalls = summaryCallCount + digestCallCount;
-  const callBudget = digestCallBudget(settings);
+  const callBudget = digestCallBudget();
   return {
     level: options.level,
     periodKey: period.label,

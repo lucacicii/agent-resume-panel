@@ -14,8 +14,8 @@ Use the **⚙** button in the top bar. Settings panes:
 
 | Pane | Typical contents |
 |------|------------------|
-| **General** | Language, appearance (system / light / dark), Agent action approvals |
-| **Models** | OpenAI-compatible LLM / embeddings endpoints and models |
+| **General** | Language, appearance (system / light / dark), notifications |
+| **Providers** | AI provider pool and per-feature model selection |
 | **Sessions** | Agent home paths, session list / sync related options |
 | **Workbench** | Default agent, ⌘T behavior, **workspace mentions**, **terminal theme** and related defaults |
 | **Selection** | Text selection actions (built-in Translate / Explain and custom actions) |
@@ -51,10 +51,6 @@ Commit-message style in **Settings → Workbench** is the user default. A repo c
 ### Workspace mentions
 
 **Settings → Workbench → Workspace mentions** stores global packs in `settings.desktop.json` (`workbench.composerMentions`). They are not per-repo `.arp` files. Full usage (New session, `arpm`, limits): [Workspace mentions](workspace-mentions.md).
-
-### Agent action approvals
-
-**General → Agent actions** includes **Always allow non-delete Agent actions**. It is off by default. When enabled, classified write, launch, command, and network actions in Agent Q&A skip the per-action confirmation. Delete and unknown-risk actions still require confirmation every time. The [Agent execution flow](agent.md#execution-flow-and-approvals) shows the resulting status and source for each action.
 
 ### Panel home (shared)
 
@@ -120,8 +116,8 @@ CLI transcripts remain in native agent homes. Change panel home only if you unde
 
 | 页 | 常见内容 |
 |----|----------|
-| **通用** | 语言、外观（跟随系统 / 浅色 / 深色）、Agent 操作授权 |
-| **模型** | OpenAI 兼容 LLM / embeddings 端点与模型 |
+| **通用** | 语言、外观（跟随系统 / 浅色 / 深色）、通知 |
+| **模型** | AI 供应商池与分功能模型选择 |
 | **Sessions** | 各 Agent 目录、会话列表 / 同步相关 |
 | **Workbench** | 默认 Agent、⌘T 行为、**工作区 Mention**、**终端主题** 与相关默认 |
 | **数据** | Panel home 路径、打开数据目录、**备份导出 / 合并导入** |
@@ -156,10 +152,6 @@ Desktop 设置 **不是** VS Code 的 `agentResume.*`。可共用的值（如 LL
 ### 工作区 Mention
 
 **设置 → Workbench → 工作区 Mention** 把全局包写在 `settings.desktop.json` 的 `workbench.composerMentions`，不是某个仓库的 `.arp`。完整用法（新建会话、`arpm`、限制）见 [工作区 Mention](workspace-mentions.md)。
-
-### Agent 操作授权
-
-**通用 → Agent 操作** 提供 **始终允许非删除 Agent 操作**，默认关闭。开启后，Agent 问答中已分类的写入、启动、命令和网络操作会跳过逐次确认；删除和未知风险操作仍会每次确认。每项操作的来源、状态与详情可在 [Agent 执行流程](agent.md#执行流程与授权) 查看。
 
 ### 数据目录（共用）
 

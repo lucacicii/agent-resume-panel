@@ -30,7 +30,7 @@ import {
 } from "../git/prompts";
 import { normalizeWorkbenchComposerMentions } from "./mentions";
 
-type LegacyPanelSettings = Partial<PanelSettings> & { memory?: PanelSettings["report"] };
+type LegacyPanelSettings = Partial<PanelSettings>;
 const WORKBENCH_EDITOR_TAB_SIZES = new Set([2, 4, 8]);
 const WORKBENCH_EDITOR_SAVE_DELAYS = new Set([300, 600, 1000, 2000]);
 const PROJECT_MENU_ACTIONS = new Set<string>(ALL_WORKBENCH_PROJECT_CONTEXT_MENU);
@@ -153,22 +153,6 @@ function migrateLegacySettings(partial: LegacyPanelSettings): Partial<PanelSetti
     const { autoSessionExecutionNotes: _removed, ...desktop } = partial.desktop as typeof partial.desktop & { autoSessionExecutionNotes?: boolean };
     partial = { ...partial, desktop };
   }
-  if (
-    partial.desktop?.alwaysAllowAgentNonDestructiveOperations === undefined &&
-    partial.desktop?.alwaysAllowAgentWriteOperations !== undefined
-  ) {
-    partial = {
-      ...partial,
-      desktop: {
-        ...partial.desktop,
-        alwaysAllowAgentNonDestructiveOperations: partial.desktop.alwaysAllowAgentWriteOperations
-      }
-    };
-  }
-  if (partial.memory && !partial.report) {
-    const { memory, ...rest } = partial;
-    return { ...rest, report: memory };
-  }
   return partial;
 }
 
@@ -199,10 +183,6 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
     providers: partial.providers,
     modelSelections: partial.modelSelections,
     llmOptions: partial.llmOptions,
-    report: {
-      ...base.report,
-      ...(partial.report || {})
-    },
     // Desktop session auto jobs (summary / embeddings / transcript index).
     // Must be merged or Settings → Sessions saves report success but never persist.
     sessionSummaryAuto: {
@@ -247,11 +227,6 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
               ?? base.desktop?.browser?.defaultPolicy?.blockHosts
               ?? DEFAULT_DESKTOP_BROWSER_SETTINGS.defaultPolicy.blockHosts)
           ]
-        },
-        chromeCookieImport: {
-          ...DEFAULT_DESKTOP_BROWSER_SETTINGS.chromeCookieImport,
-          ...base.desktop?.browser?.chromeCookieImport,
-          ...(partial.desktop?.browser?.chromeCookieImport || {})
         }
       }
     },
@@ -294,10 +269,7 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
     },
     // Desktop ACP (permissions, launch overrides, experimental vendor UI).
     // Must merge or Workbench ACP toggles never persist across save/reload.
-    acp: mergeAcpSettings(base.acp, partial.acp),
-    ghosttyExecutable: partial.ghosttyExecutable?.trim() || base.ghosttyExecutable,
-    ghosttyLaunchMode: partial.ghosttyLaunchMode || base.ghosttyLaunchMode,
-    ghosttyAutoPasteDelayMs: partial.ghosttyAutoPasteDelayMs ?? base.ghosttyAutoPasteDelayMs
+    acp: mergeAcpSettings(base.acp, partial.acp)
   });
 }
 

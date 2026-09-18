@@ -35,8 +35,6 @@ export interface RunDailyDigestOptions {
   systemLocale?: string;
   allowOverBudget?: boolean;
   trigger?: DigestRunTrigger;
-  /** @deprecated Digests use session summaries. Kept for API compatibility. */
-  includeTranscripts?: boolean;
 }
 
 export interface RunDailyDigestResult {

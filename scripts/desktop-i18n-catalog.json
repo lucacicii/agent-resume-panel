@@ -46,7 +46,7 @@
     "desktop.settings.paneSelectionDesc": "Text selection actions",
     "desktop.settings.selectionActions": "Selection actions",
     "desktop.settings.selectionActionsHint": "Shown in the right-click menu when you select text.",
-    "desktop.settings.selectionBuiltin": "Builtin",
+    "desktop.settings.selectionBuiltin": "Built-in",
     "desktop.settings.selectionNewAction": "New action",
     "desktop.settings.selectionName": "Name",
     "desktop.settings.selectionActionPrompt": "Prompt",

@@ -8,6 +8,18 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## English
 
+### Unreleased
+
+#### Changed
+
+- **Settings labels**: renamed misleading desktop settings (`Panel home`, `Default new session agent`, `Editor & terminal`, `External terminal launch`, `Sessions`, `Data`, `Stale sessions`, `Max sessions per sync`, `Per-feature models`, `Summary embeddings`, `Transcript embeddings`, `Temporary session folder`) so they describe the desktop app instead of the VS Code extension
+- **Notifications group**: the **General → Notifications** group now uses the same header layout as every other settings group
+
+#### Removed
+
+- **Agent actions setting**: the dead **General → Agent actions** toggle is gone. The live permission control is **Workbench → ACP permissions**
+- **Dead desktop settings**: `desktop.windowWidth/Height`, `alwaysAllowAgent*`, unused `desktop.browser.*` fields (cookie import, download/snapshot policy, window bounds, read-tool auto-allow), `workbench.gitNestedScanMaxRepos`, and the retired `report.*` block (the digest scheduler uses code defaults)
+
 ### [0.2.27]
 
 #### Added
@@ -617,6 +629,18 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 ---
 
 ## 简体中文
+
+### 未发布
+
+#### 变更
+
+- **设置文案**：重命名语义不清的桌面设置（`Panel home`、`Default new session agent`、`Editor & terminal`、`External terminal launch`、`Sessions`、`Data`、`Stale sessions`、`Max sessions per sync`、`Per-feature models`、`Summary embeddings`、`Transcript embeddings`、`Temporary session folder`），使其描述桌面端而非 VS Code 扩展
+- **通知分组**：**通用 → 通知** 分组改用与其他设置分组一致的标题布局
+
+#### 移除
+
+- **Agent 操作设置**：无效的 **通用 → Agent 操作** 开关已删除，权限控制以 **Workbench → ACP permissions** 为准
+- **失效的桌面设置**：`desktop.windowWidth/Height`、`alwaysAllowAgent*`、未使用的 `desktop.browser.*`（cookie 导入、下载/快照策略、窗口边界、只读工具自动放行）、`workbench.gitNestedScanMaxRepos`，以及已废弃的 `report.*`（摘要调度使用代码默认值）
 
 ### [0.2.27]
 
