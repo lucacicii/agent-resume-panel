@@ -92,11 +92,33 @@ function tokenStartAtCursor(value: string, cursor: number): number {
   return Math.max(before.lastIndexOf(" "), before.lastIndexOf("\n"), before.lastIndexOf("\t")) + 1;
 }
 
-function hashTokenAtCursor(value: string, cursor: number): { start: number; query: string } | null {
+/** Join a slash-relative path onto an absolute directory, keeping the platform separator. */
+function joinDirPath(base: string, relative: string): string {
+  const separator = base.includes("\\") && !base.includes("/") ? "\\" : "/";
+  const trimmed = base.replace(/[\\/]+$/, "");
+  const tail = relative.split(/[\\/]+/).filter(Boolean).join(separator);
+  return tail ? `${trimmed}${separator}${tail}` : trimmed;
+}
+
+/**
+ * `#` mention at the cursor. The token may contain `/` to walk into nested
+ * directories: `#src/comp` → dirPath `src`, query `comp`; `#src/` → dirPath `src`.
+ */
+function hashTokenAtCursor(
+  value: string,
+  cursor: number
+): { start: number; dirPath: string; query: string } | null {
   const start = tokenStartAtCursor(value, cursor);
   const token = value.slice(start, cursor);
   if (!token.startsWith("#") || token.slice(1).includes("#")) return null;
-  return { start, query: token.slice(1) };
+  const body = token.slice(1);
+  const lastSlash = body.lastIndexOf("/");
+  const rawDir = lastSlash >= 0 ? body.slice(0, lastSlash) : "";
+  return {
+    start,
+    dirPath: rawDir.replace(/^(?:\/+)|(?:\/+)$/g, "").replace(/\/{2,}/g, "/"),
+    query: lastSlash >= 0 ? body.slice(lastSlash + 1) : body
+  };
 }
 
 /**
@@ -219,6 +241,29 @@ export function TerminalComposer(props: {
   const slashItemRefs = useRef<Array<HTMLLIElement | null>>([]);
   const directoryRoot = pane.projectPath || pane.cwd;
   const hashToken = useMemo(() => hashTokenAtCursor(value, cursor), [cursor, value]);
+  /** Already-walked part of the `#` token (`#src/comp` → `src`). */
+  const directoryQueryPath = hashToken?.dirPath ?? "";
+  /**
+   * Inside the shared workspace a `#` token starts with a project label
+   * (`#api/src`), so that project's own path is the listing root for the level.
+   */
+  const directoryProject = useMemo(() => {
+    if (!directoryQueryPath) return undefined;
+    const first = directoryQueryPath.split("/")[0];
+    return workspaceProjects.find((project) => project.label === first);
+  }, [directoryQueryPath, workspaceProjects]);
+  const directoryListRoot = directoryProject ? directoryProject.path : directoryRoot;
+  /** Absolute directory the current `#` level lists. */
+  const currentDirectory = useMemo(() => {
+    if (!hashToken) return null;
+    if (!directoryQueryPath) return directoryRoot;
+    const rest = directoryProject
+      ? directoryQueryPath.split("/").slice(1).join("/")
+      : directoryQueryPath;
+    return rest ? joinDirPath(directoryListRoot, rest) : directoryListRoot;
+  }, [directoryListRoot, directoryProject, directoryQueryPath, directoryRoot, hashToken]);
+  /** At the shared-workspace root the suggestions are projects, not folders. */
+  const sharedWorkspaceRoot = directoryQueryPath === "" && workspaceProjects.length > 0;
   const slashToken = useMemo(() => slashTokenAtCursor(value, cursor), [cursor, value]);
   const slashQuery = slashToken?.query ?? null;
   const slashMatches = useMemo(
@@ -228,9 +273,9 @@ export function TerminalComposer(props: {
   const directorySuggestions = useMemo<ComposerPathSuggestion[]>(() => {
     if (!hashToken) return [];
     const query = hashToken.query.toLowerCase();
-    // Shared workspace: its own directory holds no repo folders, so the task's
-    // referenced projects are the useful `#` targets.
-    if (workspaceProjects.length) {
+    // Shared workspace root: its own directory holds no repo folders, so the
+    // task's referenced projects are the useful `#` targets.
+    if (sharedWorkspaceRoot) {
       return workspaceProjects
         .filter((project) =>
           project.label.toLowerCase().includes(query) || project.path.toLowerCase().includes(query)
@@ -251,7 +296,7 @@ export function TerminalComposer(props: {
         return ap !== bp ? (ap ? -1 : 1) : a.localeCompare(b, undefined, { sensitivity: "base" });
       })
       .map((name) => ({ kind: "directory", name }));
-  }, [directories, hashToken, workspaceProjects]);
+  }, [directories, hashToken, sharedWorkspaceRoot, workspaceProjects]);
   const [activeDirectory, setActiveDirectory] = useState(0);
   const [dragOver, setDragOver] = useState(false);
   const dragDepth = useRef(0);
@@ -313,11 +358,20 @@ export function TerminalComposer(props: {
   }, [activeSlash, slashMatches, slashOpen]);
 
   useEffect(() => {
-    if (workspaceProjects.length) return;
-    if (!directoryOpen || directories !== null || directoriesError) return;
+    setActiveDirectory(0);
+    // The shared workspace root lists projects, not the workspace's own folders.
+    if (sharedWorkspaceRoot) {
+      setDirectories(null);
+      setDirectoriesError("");
+      setDirectoriesLoading(false);
+      return;
+    }
+    if (!directoryOpen || !currentDirectory) return;
     let cancelled = false;
+    setDirectories(null);
+    setDirectoriesError("");
     setDirectoriesLoading(true);
-    void desktopApi().workbenchListDirectory({ rootPath: directoryRoot, dirPath: directoryRoot })
+    void desktopApi().workbenchListDirectory({ rootPath: directoryListRoot, dirPath: currentDirectory })
       .then(({ entries }) => {
         if (cancelled) return;
         setDirectories(entries.filter((entry) => entry.isDirectory).map((entry) => entry.name));
@@ -329,7 +383,7 @@ export function TerminalComposer(props: {
         if (!cancelled) setDirectoriesLoading(false);
       });
     return () => { cancelled = true; };
-  }, [directories, directoriesError, directoryOpen, directoryRoot, workspaceProjects.length]);
+  }, [currentDirectory, directoryListRoot, directoryOpen, sharedWorkspaceRoot]);
 
   useEffect(() => {
     if (!activePane) setFocused(false);
@@ -487,16 +541,73 @@ export function TerminalComposer(props: {
 
   const acceptDirectory = useCallback((suggestion: ComposerPathSuggestion) => {
     if (!hashToken) return;
-    const inserted = suggestion.kind === "project" ? suggestion.path : `#${suggestion.name}`;
+    // Inside a shared-workspace project the final value is the absolute path,
+    // matching what the root-level project entry inserts.
+    const inserted = suggestion.kind === "project"
+      ? suggestion.path
+      : directoryProject
+        ? joinDirPath(currentDirectory ?? directoryProject.path, suggestion.name)
+        : `#${directoryQueryPath ? `${directoryQueryPath}/${suggestion.name}` : suggestion.name}`;
     const next = `${value.slice(0, hashToken.start)}${inserted}${value.slice(cursor)}`;
     const nextCursor = hashToken.start + inserted.length;
     applyValue(next);
-    setCursor(nextCursor);
     setDirectoriesDismissed(true);
     setActiveDirectory(0);
-    requestAnimationFrame(() => inputRef.current?.setSelectionRange(nextCursor, nextCursor));
-    inputRef.current?.focus();
-  }, [applyValue, cursor, hashToken, value]);
+    // Move the caret after React commits the new value; focus/select read the
+    // DOM selection, so sync the state only once the caret is in place.
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (el) {
+        el.focus();
+        el.setSelectionRange(nextCursor, nextCursor);
+      }
+      setCursor(nextCursor);
+    });
+  }, [applyValue, currentDirectory, cursor, directoryProject, directoryQueryPath, hashToken, value]);
+
+  /**
+   * Right arrow: walk into the highlighted directory (or shared-workspace
+   * project) and keep the menu open on the next level.
+   */
+  const enterDirectory = useCallback((suggestion: ComposerPathSuggestion) => {
+    if (!hashToken) return;
+    const inserted = suggestion.kind === "project"
+      ? `#${suggestion.label}/`
+      : `#${directoryQueryPath ? `${directoryQueryPath}/${suggestion.name}` : suggestion.name}/`;
+    const next = `${value.slice(0, hashToken.start)}${inserted}${value.slice(cursor)}`;
+    const nextCursor = hashToken.start + inserted.length;
+    applyValue(next);
+    setActiveDirectory(0);
+    setDirectoriesDismissed(false);
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (el) {
+        el.focus();
+        el.setSelectionRange(nextCursor, nextCursor);
+      }
+      setCursor(nextCursor);
+    });
+  }, [applyValue, cursor, directoryQueryPath, hashToken, value]);
+
+  /** Left arrow: step back up one directory level. */
+  const leaveDirectory = useCallback(() => {
+    if (!hashToken || !directoryQueryPath) return;
+    const parent = directoryQueryPath.split("/").filter(Boolean).slice(0, -1).join("/");
+    const inserted = parent ? `#${parent}/` : "#";
+    const next = `${value.slice(0, hashToken.start)}${inserted}${value.slice(cursor)}`;
+    const nextCursor = hashToken.start + inserted.length;
+    applyValue(next);
+    setActiveDirectory(0);
+    setDirectoriesDismissed(false);
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (el) {
+        el.focus();
+        el.setSelectionRange(nextCursor, nextCursor);
+      }
+      setCursor(nextCursor);
+    });
+  }, [applyValue, cursor, directoryQueryPath, hashToken, value]);
 
   const onInputChange = useCallback((event: React.ChangeEvent<HTMLTextAreaElement>) => {
     const next = event.target.value;
@@ -522,6 +633,11 @@ export function TerminalComposer(props: {
         setDirectoriesDismissed(true);
         return;
       }
+      if (event.key === "ArrowLeft" && directoryQueryPath) {
+        event.preventDefault();
+        leaveDirectory();
+        return;
+      }
       if (directorySuggestions.length) {
         if (event.key === "ArrowDown") {
           event.preventDefault();
@@ -531,6 +647,12 @@ export function TerminalComposer(props: {
         if (event.key === "ArrowUp") {
           event.preventDefault();
           setActiveDirectory((current) => (current - 1 + directorySuggestions.length) % directorySuggestions.length);
+          return;
+        }
+        if (event.key === "ArrowRight") {
+          event.preventDefault();
+          const pick = directorySuggestions[activeDirectory];
+          if (pick) enterDirectory(pick);
           return;
         }
         if (isTab) {
@@ -647,7 +769,7 @@ export function TerminalComposer(props: {
       }
       return;
     }
-  }, [acceptDirectory, acceptSlashItem, acceptSuggestion, activeDirectory, activeSlash, applyValue, directoryOpen, directorySuggestions, history, historyIndex, sendToTerminal, slashMatches, slashOpen, suggestions, suggestionsOpen, activeSuggestion, value]);
+  }, [acceptDirectory, acceptSlashItem, acceptSuggestion, activeDirectory, activeSlash, applyValue, directoryOpen, directoryQueryPath, directorySuggestions, enterDirectory, history, historyIndex, leaveDirectory, sendToTerminal, slashMatches, slashOpen, suggestions, suggestionsOpen, activeSuggestion, value]);
 
   const insertAtCursor = useCallback((text: string) => {
     const el = inputRef.current;
@@ -811,9 +933,9 @@ export function TerminalComposer(props: {
           id={`${listId}-directories`}
           className="wb-terminal-composer-suggestions"
           role="listbox"
-          aria-label={workspaceProjects.length ? t("desktop.workbench.terminalComposerProjectSuggestions") : t("desktop.workbench.terminalComposerDirectorySuggestions")}
+          aria-label={sharedWorkspaceRoot ? t("desktop.workbench.terminalComposerProjectSuggestions") : t("desktop.workbench.terminalComposerDirectorySuggestions")}
         >
-          {!workspaceProjects.length && directoriesLoading ? (
+          {!sharedWorkspaceRoot && directoriesLoading ? (
             <li className="wb-terminal-composer-suggestion" role="option" aria-disabled="true">
               <span className="wb-terminal-composer-suggestion-text">{t("desktop.workbench.terminalComposerDirectoryLoading")}</span>
             </li>
@@ -835,16 +957,18 @@ export function TerminalComposer(props: {
               onClick={() => acceptDirectory(suggestion)}
             >
               <span className="wb-terminal-composer-suggestion-text">
-                {suggestion.kind === "project" ? suggestion.label : `#${suggestion.name}`}
+                {suggestion.kind === "project"
+                  ? suggestion.label
+                  : `#${directoryQueryPath ? `${directoryQueryPath}/` : ""}${suggestion.name}`}
               </span>
               {suggestion.kind === "project" ? (
                 <span className="wb-terminal-composer-suggestion-desc">{suggestion.path}</span>
               ) : null}
-              <span className="wb-terminal-composer-suggestion-kbd" aria-hidden="true">Tab</span>
+              <span className="wb-terminal-composer-suggestion-kbd" aria-hidden="true">Tab · →</span>
             </li>
           )) : (
             <li className="wb-terminal-composer-suggestion" role="option" aria-disabled="true">
-              <span className="wb-terminal-composer-suggestion-text">{workspaceProjects.length ? t("desktop.workbench.terminalComposerProjectNoMatch") : directories && directories.length ? t("desktop.workbench.terminalComposerDirectoryNoMatch") : t("desktop.workbench.terminalComposerDirectoryEmpty")}</span>
+              <span className="wb-terminal-composer-suggestion-text">{sharedWorkspaceRoot ? t("desktop.workbench.terminalComposerProjectNoMatch") : directories && directories.length ? t("desktop.workbench.terminalComposerDirectoryNoMatch") : t("desktop.workbench.terminalComposerDirectoryEmpty")}</span>
             </li>
           )}
         </ul>
