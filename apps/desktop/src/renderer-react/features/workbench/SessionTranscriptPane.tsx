@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { desktopApi } from "../../bridge";
 import { StreamdownRenderer } from "../../components/StreamdownRenderer";
+import { useOverlayState } from "../../components/useOverlayMotion";
 import { ProviderIcon } from "../../components/ProviderIcon";
 
 import { ThemeIcon } from "../../components/ThemeIcon";
@@ -229,7 +230,7 @@ export const SessionTranscriptPane = React.memo(function SessionTranscriptPane({
   const [expandedThinking, setExpandedThinking] = useState<Record<string, boolean>>({});
   const [translations, setTranslations] = useState<Record<string, string>>({});
   const [translatingIds, setTranslatingIds] = useState<Set<string>>(new Set());
-  const [imagePreview, setImagePreview] = useState("");
+  const [imagePreview, setImagePreview, imagePreviewClosing] = useOverlayState<string>();
   const bodyRef = useRef<HTMLDivElement>(null);
   const userScrolledUpRef = useRef(false);
   const previewRef = useRef<TranscriptPreview | null>(null);
@@ -779,7 +780,7 @@ export const SessionTranscriptPane = React.memo(function SessionTranscriptPane({
           ) : null}
         </div>
       ) : null}
-      {imagePreview ? <div className="notes-image-preview" role="dialog" aria-modal="true" onClick={() => setImagePreview("")}><img src={imagePreview} alt="" /><button type="button" className="notes-image-preview-close" aria-label={t("desktop.common.close")} onClick={() => setImagePreview("")}><ThemeIcon name="close" size={16} /></button></div> : null}
+      {imagePreview ? <div className={`notes-image-preview${imagePreviewClosing ? " is-closing" : ""}`} role="dialog" aria-modal="true" onClick={() => setImagePreview(null)}><img src={imagePreview} alt="" /><button type="button" className="notes-image-preview-close" aria-label={t("desktop.common.close")} onClick={() => setImagePreview(null)}><ThemeIcon name="close" size={16} /></button></div> : null}
     </div>
   );
 });

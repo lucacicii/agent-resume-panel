@@ -252,8 +252,14 @@ Allowed on: `.ops-menu`, `.sidebar-project-filter-thumb`, `.sheet-panel` (option
 | Segmented thumb slide | 220ms | `--ease-out` |
 | Sheet enter | 220ms | ease-out (translate X, no bounce) |
 | Progress bar width | 220ms | ease-out |
+| Popover / menu enter | 150ms | `--ease-out` |
+| Overlay backdrop fade | 220ms | `--ease-out` |
+| Centered dialog enter | 220ms | `--ease-out` (translate Y + scale, no bounce) |
+| Overlay exit | 220ms (popovers and menus 150ms) | `--ease-out` (reverse of the entrance) |
 
 Always provide `@media (prefers-reduced-motion: reduce)` overrides (disable transforms/transitions). Reference: existing `.sidebar-project-filter-thumb` pattern.
+
+Overlay layers never appear or disappear instantly. On the way in, a backdrop fades with `backdrop-in` while its panel enters with `modal-in`, both at `--duration-normal`, so the layer reads as one motion. On the way out the pair reverses through `.is-closing`. Anchored popovers, menus, and context menus use `mac-popover-enter` / `popover-out` at `--duration-fast`. Reuse those shared keyframes — do not add per-component entrance or exit keyframes. Surface mapping and the `.is-closing` wiring: §4.21.
 
 ### 2.7 Z-Index Scale
 
@@ -460,10 +466,10 @@ Migrate `.notes-target-tabs` to use the thumb pattern if it does not already. Do
 | Property | Value |
 | --- | --- |
 | Width | `min(440px, 100%)` (wide variant: existing `.sheet-wide` rules) |
-| Backdrop | `rgba(0, 0, 0, 0.28)` |
+| Backdrop | `rgba(0, 0, 0, 0.28)`, fades in with `backdrop-in` |
 | Panel bg | `--color-control-bg` |
 | Left edge | `1px solid var(--color-separator)` |
-| Animation | translateX from off-screen, 220ms ease-out |
+| Animation | `sheet-in`, translateX 220ms `--ease-out` (no bounce) |
 | Head | Title 15px semibold; close/actions right-aligned |
 
 Used for: Sessions (`#sheetSessions`), GTD (`#sheetGtd`). Settings uses a full-panel swap (`#tab-settings`), not a sheet. **Do not** replace with centered dialogs.
@@ -627,6 +633,59 @@ Remove: `box-shadow` on bubbles, radial-gradient on `.chat-log`.
 - Disclosure rows: chevron + headline; hover fill on head only.
 - Markdown overlay: full-area over sheet body, z-index 60; backdrop click dismisses.
 - Prefer sheet context over new window.
+
+### 4.21 Dialog & Overlay Motion
+
+**Rule:** no dialog, sheet, popover, or menu appears or disappears without a transition. Classify the surface by how it is anchored, then reuse the matching shared keyframe pair.
+
+#### Entrance
+
+| Surface shape | Keyframe | Duration | Classes |
+| --- | --- | --- | --- |
+| Centered dialog panel | `modal-in` | `--duration-normal` | `.sheet-modal-panel`, `.artifact-modal-dialog`, `.wb-note-created-panel`, `.wb-git-log-dialog` |
+| Right sheet panel | `sheet-in` | `--duration-normal` | `.sheet-panel` |
+| Backdrop / full-area overlay | `backdrop-in` | `--duration-normal` | `.sheet-backdrop`, `.wb-note-created-backdrop`, `.artifact-modal-backdrop`, `.notes-image-preview`, `.settings-overlay`, `[data-streamdown="table-fullscreen"]` |
+| Anchored popover, menu, context menu | `mac-popover-enter` | `--duration-fast` | `.rail-account-menu`, `.wb-context-menu`, `.notes-context-menu`, `.chat-context-menu`, `.notification-popover`, `.chat-tools-popover`, `.wb-git-branch-popover`, `.selection-action-result` |
+| Command palette | `mac-spotlight-fade` + `mac-spotlight-enter` | `--duration-fast` | `.quick-access-overlay`, `.quick-access-panel` |
+
+#### Exit
+
+Overlays render as `{state ? <Overlay/> : null}`, so clearing the state unmounts them on the same frame and an exit animation could never run. `useOverlayState` / `useOverlayPresence` (`renderer-react/components/useOverlayMotion.ts`) keep the overlay mounted for `OVERLAY_EXIT_MS` (240ms) and report `closing`, which the caller applies as `.is-closing`.
+
+| Surface shape | Keyframe | Duration | Applied to |
+| --- | --- | --- | --- |
+| Centered dialog panel | `modal-out` | `--duration-normal` | `.wb-note-created-panel`, `.artifact-modal-dialog`, `.sheet-modal-panel`, `.wb-git-log-dialog` |
+| Right sheet drawer | `sheet-out` | `--duration-normal` | `.sheet-panel` |
+| Backdrop / full-area overlay | `backdrop-out` | `--duration-normal` | `.wb-note-created-backdrop`, `.sheet-backdrop`, `.artifact-modal-backdrop`, `.notes-image-preview`, `.settings-overlay`, `.quick-access-overlay` |
+| Anchored popover, menu, context menu | `popover-out` | `--duration-fast` | `.rail-account-menu`, `.wb-context-menu`, `.notes-context-menu`, `.chat-context-menu`, `.notification-popover`, `.chat-tools-popover`, `.wb-git-branch-popover`, `.selection-action-result` |
+| Command palette | `backdrop-out` on the layer, `modal-out` on the panel | `--duration-normal` / `--duration-fast` | `.quick-access-overlay`, `.quick-access-panel` |
+
+**Wiring a new overlay:**
+
+```tsx
+// Boolean-driven (an `open` prop or a plain flag).
+const presence = useOverlayPresence(open);
+if (!presence.mounted) return null;
+return <div className={`my-overlay${presence.closing ? " is-closing" : ""}`}>…</div>;
+
+// Nullable-data-driven: drop-in replacement for useState.
+const [dialog, setDialog, dialogClosing] = useOverlayState<DialogState>();
+return dialog
+  ? <div className={`my-overlay${dialogClosing ? " is-closing" : ""}`}>…{dialog.title}…</div>
+  : null;
+```
+
+- `useOverlayState` keeps the last value during the exit, so the JSX keeps rendering what it rendered before. Keep the state nullable and let the hook clear it — clearing it from a plain `useState` unmounts the overlay before the exit runs.
+- `useOverlayPresence` derives the flipping render itself, so a parent must gate its portal on `presence.mounted` rather than on the raw `open` flag. Gating on `open` unmounts the child before its own exit can run, and the exit hook's first render after the flip must not be skipped — a mount/unmount/remount inside one commit shows a flash, not a transition.
+- Do **not** use `useOverlayState` for data that is reset for a loading state while the overlay stays open; that reset would be deferred and stale content would linger. Use a dedicated `useOverlayPresence` flag instead.
+- A caller that toggles a surface from its own trigger must ignore the closing window (for example `.wb-new-session-picker`) so a second click reopens instead of being swallowed.
+- **Do not position panels with `transform`.** The shared keyframes own `transform`, so a centering `translate(-50%, -50%)` would be overwritten. Center with `inset: 0; margin: auto; width: fit-content; height: fit-content` instead.
+- Backdrop and panel must both animate at the same duration. A dialog that fades its backdrop but pops its panel — or the reverse — is a defect.
+- Every `.is-closing` rule sets `pointer-events: none` so a dismissing overlay cannot swallow clicks.
+- Reduced motion is inherited from §2.6 (`--duration-fast` / `--duration-normal` become `0ms`). Do not hard-code durations; a literal such as `0.2s` bypasses the reduced-motion override.
+- Known gap: `[data-streamdown="table-fullscreen"]` is created and removed by the `streamdown` library, which owns that node's lifecycle, so it has entrance motion only. Matching exit motion requires a library-side hook.
+
+**Shared dialog shell:** `.wb-note-created-overlay` / `.wb-note-created-backdrop` / `.wb-note-created-panel` is the reusable centered-dialog shell (rename project, rename note, merge/split project, move session to task, GTD new task, GTD new/edit template). New confirm and prompt dialogs reuse it instead of introducing another overlay class.
 
 ---
 
@@ -809,7 +868,8 @@ Run after **each** migration phase:
 | Dark appearance | System dark mode |
 | Chrome | Drag title bar; click tabs; traffic lights visible |
 | Keyboard | Tab through new/changed controls; focus ring visible |
-| Reduced motion | Enable macOS Reduce motion; segmented thumb and sheet animations disabled |
+| Reduced motion | Enable macOS Reduce motion; segmented thumb, sheet, and dialog animations disabled |
+| Overlay motion | Every dialog, backdrop, sheet, and popover enters and exits per §4.21; no surface pops in or snaps out |
 
 ---
 
@@ -820,6 +880,7 @@ Quick reference for refactor scope (non-exhaustive; see `styles.css` for full li
 | Panel | Key selectors |
 | --- | --- |
 | Global | `.top`, `.mac-top`, `.tab`, `.panel`, `.toolbar`, `.sheet*`, `.muted`, `.status` |
+| Overlays | `.sheet-*`, `.wb-note-created-*`, `.artifact-modal-*`, `.settings-overlay`, `.quick-access-*`, `.notes-image-preview`, `.wb-git-log-dialog`, `[data-streamdown="table-fullscreen"]`, `useOverlayMotion.ts` |
 | Memory | `.memory-*`, `.cal-*`, `.digest-*`, `.gen-progress*` |
 | Ask | `.ask-*`, `.chat-*`, `.sidebar-folders-*` |
 | Notes | `.notes-*`, `.sidebar-project-*`, `.pane-resizer` |

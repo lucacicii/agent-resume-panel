@@ -3414,7 +3414,8 @@ describe("WorkbenchPanel", () => {
       executionMode: "standard",
       taskNoteId: "wi-test"
     }));
-    expect(screen.queryByRole("menu", { name: "Default agent" })).toBeNull();
+    // The picker stays mounted while its exit animation runs.
+    await waitFor(() => expect(screen.queryByRole("menu", { name: "Default agent" })).toBeNull());
 
     fireEvent.click(newSessionButton);
     const reopenedMenu = await screen.findByRole("menu", { name: "Default agent" });
@@ -5742,7 +5743,8 @@ describe("WorkbenchPanel", () => {
       filePath: "/work/app/apps/desktop/src/app.ts"
     }));
     await waitFor(() => expect(document.querySelectorAll('[data-pane-group="code"] .wb-terminal-tab.is-editor')).toHaveLength(1));
-    expect(screen.queryByRole("menuitem", { name: "Open File" })).toBeNull();
+    // The context menu stays mounted while its exit animation runs.
+    await waitFor(() => expect(screen.queryByRole("menuitem", { name: "Open File" })).toBeNull());
 
     fireEvent.contextMenu(gitRow, { clientX: 40, clientY: 50 });
     fireEvent.click(await screen.findByRole("menuitem", { name: "Open with default app" }));
@@ -5750,12 +5752,13 @@ describe("WorkbenchPanel", () => {
       rootPath: "/work/app/apps/desktop",
       filePath: "/work/app/apps/desktop/src/app.ts"
     }));
-    expect(screen.queryByRole("menuitem", { name: "Open with default app" })).toBeNull();
+    // The context menu stays mounted while its exit animation runs.
+    await waitFor(() => expect(screen.queryByRole("menuitem", { name: "Open with default app" })).toBeNull());
 
     fireEvent.contextMenu(gitRow, { clientX: 40, clientY: 50 });
     fireEvent.click(await screen.findByRole("menuitem", { name: "Copy Path" }));
     expect(clipboardWriteText).toHaveBeenCalledWith("/work/app/apps/desktop/src/app.ts");
-    expect(screen.queryByRole("menuitem", { name: "Copy Path" })).toBeNull();
+    await waitFor(() => expect(screen.queryByRole("menuitem", { name: "Copy Path" })).toBeNull());
   });
 
   it("opens the diff file in the editor from the diff head button", async () => {

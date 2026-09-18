@@ -148,7 +148,8 @@ describe("SelectionSendMenu", () => {
       text: "Model unavailable",
       kind: "error"
     }));
-    expect(screen.queryByRole("dialog")).toBeNull();
+    // The result popover stays mounted while its exit animation runs.
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
   it("keeps the result popover inside the viewport", () => {

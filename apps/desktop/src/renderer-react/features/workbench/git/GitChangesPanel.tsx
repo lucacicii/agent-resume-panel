@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, type ReactPortal } from "react";
 import { createPortal } from "react-dom";
 import { ThemeIcon } from "../../../components/ThemeIcon";
+import { useOverlayState } from "../../../components/useOverlayMotion";
 import { useI18n } from "../../../i18n";
 import { startWorkbenchPathDrag } from "../workbenchDnd";
 import {
@@ -251,7 +252,7 @@ export function GitChangesPanel({
 }): ReactPortal | null {
   const { t } = useI18n();
   const [host, setHost] = useState<HTMLElement | null>(null);
-  const [contextMenu, setContextMenu] = useState<{ change: GitChange; x: number; y: number } | null>(null);
+  const [contextMenu, setContextMenu, contextMenuClosing] = useOverlayState<{ change: GitChange; x: number; y: number }>();
   const commitInputRef = useRef<HTMLTextAreaElement | null>(null);
   const [commitInputHeight, setCommitInputHeight] = useState<number | null>(null);
   const [commitInputResizing, setCommitInputResizing] = useState(false);
@@ -458,7 +459,7 @@ export function GitChangesPanel({
     </div>
   </div>
     {contextMenu ? createPortal(<div
-      className="wb-context-menu wb-git-context-menu"
+      className={`wb-context-menu wb-git-context-menu${contextMenuClosing ? " is-closing" : ""}`}
       role="menu"
       style={{
         left: Math.max(8, Math.min(contextMenu.x, window.innerWidth - 196)),

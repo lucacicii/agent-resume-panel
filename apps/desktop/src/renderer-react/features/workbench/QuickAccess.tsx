@@ -1,5 +1,6 @@
 import { ThemeIcon } from "../../components/ThemeIcon";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useOverlayPresence } from "../../components/useOverlayMotion";
 import {
   compareQuickAccessPathMatches,
   fuzzyMatchPath,
@@ -197,7 +198,9 @@ export function QuickAccess({
     optionRefs.current.get(activeId)?.scrollIntoView?.({ block: "nearest" });
   }, [activeId]);
 
-  if (!open) return null;
+  const presence = useOverlayPresence(open);
+
+  if (!presence.mounted) return null;
   const displayValue = mode === "commands" ? `>${query}` : query;
   const mac = typeof navigator !== "undefined" && /mac/i.test(navigator.platform);
 
@@ -224,7 +227,7 @@ export function QuickAccess({
     selectResult((activeIndex + offset + resultCount) % resultCount);
   };
 
-  return <div className="quick-access-overlay">
+  return <div className={`quick-access-overlay${presence.closing ? " is-closing" : ""}`}>
     <button type="button" className="quick-access-backdrop" aria-label={labels.close} onClick={onClose} />
     <section className="quick-access-panel" role="dialog" aria-modal="true" aria-label={labels.dialog}>
       <div className="quick-access-input-row">

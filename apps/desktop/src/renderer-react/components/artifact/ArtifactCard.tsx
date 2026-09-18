@@ -1,6 +1,7 @@
 import { memo, useCallback, useMemo, useState } from "react";
 import hljs from "highlight.js";
 import { ThemeIcon } from "../ThemeIcon";
+import { useOverlayPresence } from "../useOverlayMotion";
 import { useI18n } from "../../i18n";
 import { ArtifactHtmlSandbox } from "./ArtifactHtmlSandbox";
 import { ArtifactSvgViewer } from "./ArtifactSvgViewer";
@@ -102,6 +103,8 @@ export const ArtifactCard = memo(function ArtifactCard({
     a.remove();
     URL.revokeObjectURL(url);
   }, [code, normalizedLang, title]);
+
+  const fullscreen = useOverlayPresence(isFullscreen);
 
   const renderContent = (fullscreenMode = false) => {
     if (activeTab === "preview") {
@@ -208,9 +211,9 @@ export const ArtifactCard = memo(function ArtifactCard({
         </div>
       </div>
 
-      {isFullscreen && (
+      {fullscreen.mounted && (
         <div
-          className="artifact-modal-backdrop"
+          className={`artifact-modal-backdrop${fullscreen.closing ? " is-closing" : ""}`}
           role="dialog"
           aria-modal="true"
           onClick={() => setIsFullscreen(false)}

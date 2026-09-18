@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ThemeIcon } from "../../components/ThemeIcon";
+import { useOverlayState } from "../../components/useOverlayMotion";
 import { desktopApi } from "../../bridge";
 import { useI18n } from "../../i18n";
 import type { SessionDotStatus } from "./sessionStatus";
@@ -255,7 +256,7 @@ export function TerminalComposer(props: {
   const [dragOver, setDragOver] = useState(false);
   const dragDepth = useRef(0);
   const [pendingImages, setPendingImages] = useState<PastedComposerImage[]>([]);
-  const [imagePreview, setImagePreview] = useState("");
+  const [imagePreview, setImagePreview, imagePreviewClosing] = useOverlayState<string>();
 
   const sendDisabled = ptyId === null || !value.trim();
 
@@ -417,7 +418,7 @@ export function TerminalComposer(props: {
       setActiveDirectory(0);
       setActiveSlash(0);
       setPendingImages([]);
-      setImagePreview("");
+      setImagePreview(null);
       return;
     }
     setHistory((current) => {
@@ -436,7 +437,7 @@ export function TerminalComposer(props: {
     applyValue("");
     draftRef.current = "";
     setPendingImages([]);
-    setImagePreview("");
+    setImagePreview(null);
   }, [applyValue, onRunSlashCommand, onSendToTerminal, pane.cwd, ptyId, tuiSlashCommands, value]);
 
   const acceptSuggestion = useCallback((command: string) => {
@@ -472,7 +473,7 @@ export function TerminalComposer(props: {
         setSlashDismissed(true);
         setActiveSlash(0);
         setPendingImages([]);
-        setImagePreview("");
+        setImagePreview(null);
         return;
       }
       applyValue(`/${item.command.name}`);
@@ -672,7 +673,7 @@ export function TerminalComposer(props: {
       applyValue(`${value.slice(0, index)}${value.slice(index + quoted.length)}`);
     }
     setPendingImages((current) => current.filter((item) => item.id !== id));
-    setImagePreview((current) => (current === target.previewUrl ? "" : current));
+    setImagePreview((current) => (current === target.previewUrl ? null : current));
   }, [applyValue, pendingImages, value]);
 
   const onPaste = useCallback((event: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -909,18 +910,18 @@ export function TerminalComposer(props: {
       ) : null}
       {imagePreview ? createPortal(
         <div
-          className="notes-image-preview"
+          className={`notes-image-preview${imagePreviewClosing ? " is-closing" : ""}`}
           role="dialog"
           aria-modal="true"
           aria-label={t("desktop.workbench.terminalComposerImagePreview")}
-          onClick={() => setImagePreview("")}
+          onClick={() => setImagePreview(null)}
         >
           <img src={imagePreview} alt="" />
           <button
             type="button"
             className="notes-image-preview-close"
             aria-label={t("desktop.common.close")}
-            onClick={() => setImagePreview("")}
+            onClick={() => setImagePreview(null)}
           >
             <ThemeIcon name="close" size={16} />
           </button>

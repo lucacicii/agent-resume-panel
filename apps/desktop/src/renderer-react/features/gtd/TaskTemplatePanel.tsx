@@ -2,6 +2,7 @@ import { ThemeIcon } from "../../components/ThemeIcon";
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useState } from "react";
 import { desktopApi } from "../../bridge";
+import { useOverlayState } from "../../components/useOverlayMotion";
 import { useI18n } from "../../i18n";
 
 /** One reusable GTD task template as the renderer sees it. */
@@ -42,8 +43,8 @@ export function TaskTemplatePanel({
 }): React.JSX.Element | null {
   const { ready, t } = useI18n();
   const [templates, setTemplates] = useState<TaskTemplate[]>([]);
-  const [draft, setDraft] = useState<TemplateDraft | null>(null);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; template: TaskTemplate } | null>(null);
+  const [draft, setDraft, draftClosing] = useOverlayState<TemplateDraft>();
+  const [contextMenu, setContextMenu, contextMenuClosing] = useOverlayState<{ x: number; y: number; template: TaskTemplate }>();
 
   const text = useCallback(
     (key: string, ...args: Array<string | number>) => (ready ? t(key, ...args) : key),
@@ -213,7 +214,7 @@ export function TaskTemplatePanel({
         </div>
       </aside>
       {draft && host ? createPortal(
-        <div className="wb-note-created-overlay">
+        <div className={`wb-note-created-overlay${draftClosing ? " is-closing" : ""}`}>
           <div className="wb-note-created-backdrop" onClick={() => { if (!draft.busy) setDraft(null); }} />
           <form
             className="wb-note-created-panel gtd-new-task-panel"
@@ -269,7 +270,7 @@ export function TaskTemplatePanel({
       ) : null}
       {contextMenu && host ? createPortal(
         <div
-          className="wb-context-menu"
+          className={`wb-context-menu${contextMenuClosing ? " is-closing" : ""}`}
           role="menu"
           style={{
             left: Math.max(8, Math.min(contextMenu.x, window.innerWidth - 220)),

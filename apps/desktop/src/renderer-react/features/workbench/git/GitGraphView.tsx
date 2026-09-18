@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, type ReactPortal } from "react";
 import { createPortal } from "react-dom";
 import { ThemeIcon } from "../../../components/ThemeIcon";
 import { desktopApi } from "../../../bridge";
+import { useOverlayPresence } from "../../../components/useOverlayMotion";
 import { useI18n } from "../../../i18n";
 import {
   type GitGraphLayout,
@@ -158,6 +159,8 @@ export function GitBranchSelector({
     };
   }, [open]);
 
+  const presence = useOverlayPresence(open);
+
   if (!repoRoot) return null;
   const localBranches = branches?.mode === "direct" ? branches.localBranches || branches.branches || [] : [];
   const remoteBranches = branches?.mode === "direct" ? branches.remoteBranches || [] : [];
@@ -188,8 +191,8 @@ export function GitBranchSelector({
     <span>{value || "-"}</span>
     <ThemeIcon name="chevron-down" size={11} aria-hidden="true" />
   </button>;
-  const menu = open ? createPortal(<div
-    className="react-git-branch-control react-git-branch-popover wb-git-branch-popover"
+  const menu = presence.mounted ? createPortal(<div
+    className={`react-git-branch-control react-git-branch-popover wb-git-branch-popover${presence.closing ? " is-closing" : ""}`}
     style={menuPosition || undefined}
     role="menu"
     aria-label={ariaLabel}

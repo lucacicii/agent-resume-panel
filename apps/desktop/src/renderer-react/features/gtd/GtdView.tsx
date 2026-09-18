@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent a
 import type { GtdStatus, TaskGtdRollup } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { notifyDesktop } from "../../components/Notifications";
+import { useOverlayState } from "../../components/useOverlayMotion";
 import { useI18n } from "../../i18n";
 import { taskFromRecord, type WorkbenchTask } from "../workbench/task";
 import { ensureTaskWorkbenches, listAllTaskWorkbenches, workbenchDisplayName, type Workbench } from "../workbench/workbenchModel";
@@ -36,11 +37,11 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
   const [renaming, setRenaming] = useState<{ noteId: string; value: string; busy: boolean } | null>(null);
   const renameCommitSkipRef = useRef(false);
   const [creating, setCreating] = useState(false);
-  const [newTask, setNewTask] = useState<{ title: string; projectPath: string; busy: boolean; error: string } | null>(null);
+  const [newTask, setNewTask, newTaskClosing] = useOverlayState<{ title: string; projectPath: string; busy: boolean; error: string }>();
   const [workbenchesByTask, setWorkbenchesByTask] = useState<Record<string, Workbench[]>>({});
   /** Tasks whose workbench already has a window, so the card can say so. */
   const [tasksWithWindows, setTasksWithWindows] = useState<Set<string>>(new Set());
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: GtdCard } | null>(null);
+  const [contextMenu, setContextMenu, contextMenuClosing] = useOverlayState<{ x: number; y: number; item: GtdCard }>();
 
   const text = useCallback(
     (key: string, ...args: Array<string | number>) => (ready ? t(key, ...args) : key),
@@ -591,7 +592,7 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
       </div>
     </section>
     {newTask ? (
-      <div className="wb-note-created-overlay">
+      <div className={`wb-note-created-overlay${newTaskClosing ? " is-closing" : ""}`}>
         <div className="wb-note-created-backdrop" onClick={() => { if (!newTask.busy) setNewTask(null); }} />
         <form
           className="wb-note-created-panel gtd-new-task-panel"
@@ -638,7 +639,7 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
     ) : null}
     {contextMenu ? (
       <div
-        className="wb-context-menu"
+        className={`wb-context-menu${contextMenuClosing ? " is-closing" : ""}`}
         role="menu"
         style={{
           left: Math.max(8, Math.min(contextMenu.x, window.innerWidth - 220)),

@@ -93,7 +93,8 @@ describe("AppChrome", () => {
     fireEvent.click(settingsItem);
 
     expect(settingsOpen).toHaveBeenCalledWith(expect.objectContaining({ detail: "general" }));
-    expect(screen.queryByRole("menuitem", { name: "Settings" })).toBeNull();
+    // The menu stays mounted while its exit animation runs.
+    await waitFor(() => expect(screen.queryByRole("menuitem", { name: "Settings" })).toBeNull());
 
     window.removeEventListener("agent-resume:settings-open", settingsOpen);
   });

@@ -123,7 +123,11 @@ export function useWorkbenchQuickAccess(options: {
   }, [projectForPath, t]);
 
   const openQuickAccess = useCallback((mode: QuickAccessMode) => {
-    if (!quickAccessOpen && document.querySelector('[aria-modal="true"]')) return;
+    // A dismissing overlay keeps its `aria-modal` node mounted for the length of
+    // its exit animation (useOverlayMotion.ts), so only a settled overlay blocks
+    // the palette.
+    const openModal = document.querySelector('[aria-modal="true"]');
+    if (!quickAccessOpen && openModal && !openModal.closest(".is-closing")) return;
     onDismissOverlaysRef.current();
     setQuickAccessMode(mode);
     setQuickAccessQuery("");

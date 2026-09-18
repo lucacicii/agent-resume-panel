@@ -6,6 +6,7 @@ import type { AiProvider, ModelKind, ModelSelection, PanelSettings, ProviderMode
 import { listProviderModels } from "./providerPool";
 import { desktopApi } from "../../bridge";
 import { Status, type StatusKind } from "../../components/Status";
+import { useOverlayPresence } from "../../components/useOverlayMotion";
 import { useI18n } from "../../i18n";
 import { AboutPane, BackupPane, LogsPane, NotesPane, StoragePane, UsagePane, WorkbenchPane, type UsageDetailTab } from "./AdditionalPanes";
 import { SelectionSettingsPane } from "./SelectionSettingsPane";
@@ -240,7 +241,9 @@ export function SettingsPanel({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [open, requestClose]);
 
-  if (!host || !open || !settings || !general || !providers || !sessions || !workbench || !notes || !storage) return null;
+  const presence = useOverlayPresence(open);
+
+  if (!host || !presence.mounted || !settings || !general || !providers || !sessions || !workbench || !notes || !storage) return null;
   const current = panes.find((item) => item.id === pane) || panes[0];
   const body = pane === "general" ? <GeneralPane draft={general} setDraft={setGeneral} commit={(value) => commit("general", value)} t={t} />
     : pane === "providers" ? <ProvidersPane draft={providers} setDraft={setProviders} commit={(value) => commit("providers", value)} t={t} />
@@ -256,7 +259,7 @@ export function SettingsPanel({
     : pane === "backup" ? <BackupPane t={t} /> : <AboutPane t={t} />;
 
   return createPortal(
-    <div className="settings-overlay" role="dialog" aria-modal="true" aria-label={t("desktop.settings.title")}>
+    <div className={`settings-overlay${presence.closing ? " is-closing" : ""}`} role="dialog" aria-modal="true" aria-label={t("desktop.settings.title")}>
       <button type="button" className="settings-overlay-backdrop" aria-label={t("desktop.settings.done")} onClick={requestClose} />
       <section className="panel active react-settings-panel">
       <div className="toolbar">

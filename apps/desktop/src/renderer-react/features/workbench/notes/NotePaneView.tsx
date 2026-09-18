@@ -9,6 +9,7 @@ import { imageSrcFromElement, posixDirname, posixJoin } from "../../../component
 import { GTD_STATUSES } from "../../../gtd";
 import { useI18n } from "../../../i18n";
 import { notifyDesktop } from "../../../components/Notifications";
+import { useOverlayState } from "../../../components/useOverlayMotion";
 import { SelectionSendMenu, type SelectionSendMenuState } from "../../../selection/SelectionSendMenu";
 import { NoteLinkTree } from "./NoteLinkTree";
 
@@ -194,9 +195,9 @@ export function NotePaneView({ noteId, active, onOpenNote, onTitleChange, onDirt
   const [findOpen, setFindOpen] = useState(false);
   const [findQuery, setFindQuery] = useState("");
   const [findResult, setFindResult] = useState<CodeEditorSearchResult | null>(null);
-  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
-  const [renameDialog, setRenameDialog] = useState<RenameDialogState | null>(null);
-  const [imagePreview, setImagePreview] = useState("");
+  const [contextMenu, setContextMenu, contextMenuClosing] = useOverlayState<ContextMenuState>();
+  const [renameDialog, setRenameDialog, renameDialogClosing] = useOverlayState<RenameDialogState>();
+  const [imagePreview, setImagePreview, imagePreviewClosing] = useOverlayState<string>();
   const [selectionMenu, setSelectionMenu] = useState<SelectionSendMenuState | null>(null);
 
   const editorRef = useRef<CodeEditorHandle>(null);
@@ -828,7 +829,7 @@ export function NotePaneView({ noteId, active, onOpenNote, onTitleChange, onDirt
       {selectionMenu ? <SelectionSendMenu menu={selectionMenu} onClose={() => setSelectionMenu(null)} /> : null}
       {contextMenu ? (
         <div
-          className="notes-context-menu"
+          className={`notes-context-menu${contextMenuClosing ? " is-closing" : ""}`}
           role="menu"
           style={{
             left: Math.max(8, Math.min(contextMenu.x, window.innerWidth - 220)),
@@ -870,7 +871,7 @@ export function NotePaneView({ noteId, active, onOpenNote, onTitleChange, onDirt
         </div>
       ) : null}
       {renameDialog ? (
-        <div className="wb-note-created-overlay">
+        <div className={`wb-note-created-overlay${renameDialogClosing ? " is-closing" : ""}`}>
           <div className="wb-note-created-backdrop" onClick={() => setRenameDialog(null)} />
           <form className="wb-note-created-panel" role="dialog" aria-modal="true" onSubmit={(event) => { event.preventDefault(); void applyRenameDialog(); }}>
             <p className="wb-note-created-title">{t("desktop.common.rename")}</p>
@@ -883,9 +884,9 @@ export function NotePaneView({ noteId, active, onOpenNote, onTitleChange, onDirt
         </div>
       ) : null}
       {imagePreview ? (
-        <div className="notes-image-preview" role="dialog" aria-modal="true" onClick={() => setImagePreview("")}>
+        <div className={`notes-image-preview${imagePreviewClosing ? " is-closing" : ""}`} role="dialog" aria-modal="true" onClick={() => setImagePreview(null)}>
           <img src={imagePreview} alt="" />
-          <button type="button" className="notes-image-preview-close" aria-label={t("desktop.common.close")} onClick={() => setImagePreview("")}><ThemeIcon name="close" size={16} /></button>
+          <button type="button" className="notes-image-preview-close" aria-label={t("desktop.common.close")} onClick={() => setImagePreview(null)}><ThemeIcon name="close" size={16} /></button>
         </div>
       ) : null}
     </div>

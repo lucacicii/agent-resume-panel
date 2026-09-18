@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect } from "react";
 import { desktopApi } from "../bridge";
+import { useOverlayState } from "../components/useOverlayMotion";
 import { notifyDesktop } from "../components/Notifications";
 import { ThemeIcon } from "../components/ThemeIcon";
 import { renderMarkdown } from "../components/Markdown";
@@ -40,12 +41,13 @@ export function copySelectionText(text: string, successText: string): void {
 
 export function useSelectionActionResult(): {
   selectionResult: SelectionActionResultState | null;
+  selectionResultClosing: boolean;
   runSelectionAction: (input: SelectionActionRunInput) => Promise<void>;
   copySelectionResult: (text: string) => void;
   clearSelectionResult: () => void;
 } {
   const { t } = useI18n();
-  const [selectionResult, setSelectionResult] = useState<SelectionActionResultState | null>(null);
+  const [selectionResult, setSelectionResult, selectionResultClosing] = useOverlayState<SelectionActionResultState>();
 
   const runSelectionAction = useCallback(async ({ action, text, x, y }: SelectionActionRunInput) => {
     const title = selectionActionLabel(action, t);
@@ -69,7 +71,7 @@ export function useSelectionActionResult(): {
 
   const clearSelectionResult = useCallback(() => setSelectionResult(null), []);
 
-  return { selectionResult, runSelectionAction, copySelectionResult, clearSelectionResult };
+  return { selectionResult, selectionResultClosing, runSelectionAction, copySelectionResult, clearSelectionResult };
 }
 
 function resultPosition(x: number, y: number): { left: number; top: number } {
@@ -82,10 +84,12 @@ function resultPosition(x: number, y: number): { left: number; top: number } {
 
 export function SelectionActionResult({
   result,
+  closing = false,
   onClose,
   onCopy
 }: {
   result: SelectionActionResultState;
+  closing?: boolean;
   onClose: () => void;
   onCopy: (text: string) => void;
 }): React.JSX.Element {
@@ -104,7 +108,7 @@ export function SelectionActionResult({
 
   return (
     <div
-      className="selection-action-result"
+      className={`selection-action-result${closing ? " is-closing" : ""}`}
       role="dialog"
       aria-label={result.title}
       style={resultPosition(result.x, result.y)}

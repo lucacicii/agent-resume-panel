@@ -856,6 +856,7 @@ html[data-window-mode="task"] #react-chrome:empty {
   display: flex;
   flex-direction: column;
   background: var(--color-window-bg, var(--panel));
+  animation: backdrop-in var(--duration-normal) var(--ease-out);
 }
 
 .settings-overlay-backdrop {
@@ -989,6 +990,7 @@ html[data-window-mode="task"] #react-chrome:empty {
   position: absolute;
   inset: 0;
   background: rgba(0, 0, 0, 0.28);
+  animation: backdrop-in var(--duration-normal) var(--ease-out);
 }
 
 .sheet-panel {
@@ -1032,6 +1034,123 @@ html[data-window-mode="task"] #react-chrome:empty {
     transform: none;
     opacity: 1;
   }
+}
+
+/* Overlay backdrop fade. Every modal backdrop pairs this with `modal-in` on its
+   panel so the layer reads as one motion instead of popping in. */
+@keyframes backdrop-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Overlay exit motion (design system §4.21)
+
+   Every overlay animates out as the reverse of its entrance. `useOverlayState`
+   and `useOverlayPresence` keep the overlay mounted for the duration of the exit
+   and apply `.is-closing`. Every selector below is strictly more specific than
+   its base rule, so this block wins regardless of where it sits in the file.
+   --------------------------------------------------------------------------- */
+@keyframes backdrop-out {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes modal-out {
+  from {
+    transform: none;
+    opacity: 1;
+  }
+
+  to {
+    transform: translateY(6px) scale(0.99);
+    opacity: 0;
+  }
+}
+
+@keyframes sheet-out {
+  from {
+    transform: none;
+    opacity: 1;
+  }
+
+  to {
+    transform: translateX(12px);
+    opacity: 0;
+  }
+}
+
+@keyframes popover-out {
+  from {
+    transform: none;
+    opacity: 1;
+  }
+
+  to {
+    transform: translateY(-4px) scale(0.98);
+    opacity: 0;
+  }
+}
+
+/* A dismissing overlay must not swallow clicks while it animates away. */
+.wb-note-created-overlay.is-closing,
+.artifact-modal-backdrop.is-closing,
+.sheet.is-closing {
+  pointer-events: none;
+}
+
+/* Centered dialogs: backdrop fades, panel sinks back. */
+.wb-note-created-overlay.is-closing .wb-note-created-backdrop,
+.artifact-modal-backdrop.is-closing,
+.sheet.is-closing .sheet-backdrop {
+  animation: backdrop-out var(--duration-normal) var(--ease-out) both;
+}
+
+.wb-note-created-overlay.is-closing .wb-note-created-panel,
+.artifact-modal-backdrop.is-closing .artifact-modal-dialog,
+.sheet.is-closing .sheet-panel,
+.wb-git-log-dialog.is-closing {
+  animation: modal-out var(--duration-normal) var(--ease-out) both;
+}
+
+/* The drawer sheet slides back out instead of sinking. */
+.sheet.is-closing .sheet-panel:not(.sheet-modal-panel) {
+  animation: sheet-out var(--duration-normal) var(--ease-out) both;
+}
+
+/* Full-area overlays fade out as a single layer. */
+.notes-image-preview.is-closing,
+.settings-overlay.is-closing,
+.quick-access-overlay.is-closing {
+  animation: backdrop-out var(--duration-normal) var(--ease-out) both;
+  pointer-events: none;
+}
+
+.quick-access-overlay.is-closing .quick-access-panel {
+  animation: modal-out var(--duration-fast) var(--ease-out) both;
+}
+
+/* Anchored popovers, menus, and context menus fade back toward their anchor. */
+.chat-tools-popover.is-closing,
+.wb-git-branch-popover.is-closing,
+.selection-action-result.is-closing,
+.notification-popover.is-closing,
+.rail-account-menu.is-closing,
+.wb-context-menu.is-closing,
+.notes-context-menu.is-closing,
+.chat-context-menu.is-closing {
+  animation: popover-out var(--duration-fast) var(--ease-out) both;
+  pointer-events: none;
 }
 
 .sheet-actions .session-preview-actions {
@@ -9484,6 +9603,7 @@ textarea.wb-editor-host {
   border: 1px solid var(--color-separator, var(--border));
   border-radius: 8px;
   box-shadow: var(--shadow-popover, 0 8px 24px rgba(0, 0, 0, 0.18));
+  animation: mac-popover-enter var(--duration-fast) var(--ease-out);
 }
 
 .wb-git-branch-popover[hidden] {
@@ -9557,10 +9677,11 @@ textarea.wb-editor-host {
 
 .wb-git-log-dialog {
   position: fixed;
+  inset: 0;
+  margin: auto;
+  width: fit-content;
+  height: fit-content;
   z-index: 2150;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
   min-width: min(320px, calc(100vw - 32px));
   padding: 14px;
   display: flex;
@@ -9570,6 +9691,7 @@ textarea.wb-editor-host {
   border: 1px solid var(--color-separator, var(--border));
   border-radius: 10px;
   box-shadow: var(--shadow-popover, 0 8px 24px rgba(0, 0, 0, 0.18));
+  animation: modal-in var(--duration-normal) var(--ease-out);
 }
 
 .wb-git-log-dialog-title {
@@ -9988,6 +10110,7 @@ textarea.wb-floating-note-editor {
   position: absolute;
   inset: 0;
   background: rgba(0, 0, 0, 0.4);
+  animation: backdrop-in var(--duration-normal) var(--ease-out);
 }
 
 .wb-note-created-panel {
@@ -10002,6 +10125,7 @@ textarea.wb-floating-note-editor {
   border: 1px solid var(--border);
   border-radius: 12px;
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.22);
+  animation: modal-in var(--duration-normal) var(--ease-out);
 }
 
 .wb-note-created-panel:has(.wb-git-commit-auto-btn) {
@@ -11801,6 +11925,7 @@ textarea.notes-editor-host:focus {
   place-items: center;
   padding: 54px 24px 24px;
   background: rgba(0, 0, 0, 0.84);
+  animation: backdrop-in var(--duration-normal) var(--ease-out);
 }
 
 .notes-image-preview[hidden] {
@@ -11907,6 +12032,7 @@ textarea.notes-editor-host:focus {
   border-radius: var(--radius-lg);
   background: var(--color-elevated-bg);
   box-shadow: var(--shadow-popover);
+  animation: mac-popover-enter var(--duration-fast) var(--ease-out);
 }
 
 .chat-tools-popover-head {
@@ -13434,6 +13560,7 @@ html[data-window-mode="browser"] #react-chrome {
   border-radius: var(--radius-xl);
   background: var(--color-elevated-bg);
   box-shadow: var(--shadow-popover);
+  animation: mac-popover-enter var(--duration-fast) var(--ease-out);
 }
 .selection-action-result header {
   display: flex;
@@ -13862,7 +13989,7 @@ html[data-window-mode="browser"] #react-chrome {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  animation: artifactModalFadeIn 0.2s ease-out;
+  animation: backdrop-in var(--duration-normal) var(--ease-out);
 }
 
 .artifact-modal-dialog {
@@ -13876,6 +14003,7 @@ html[data-window-mode="browser"] #react-chrome {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  animation: modal-in var(--duration-normal) var(--ease-out);
 }
 
 .artifact-card-header.is-modal-header {
@@ -13894,17 +14022,6 @@ html[data-window-mode="browser"] #react-chrome {
 .artifact-card-body.is-modal-body .artifact-code-view {
   flex: 1;
   height: 100%;
-}
-
-@keyframes artifactModalFadeIn {
-  from {
-    opacity: 0;
-    transform: scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
 }
 
 /* ==========================================================================
@@ -14088,18 +14205,7 @@ html[data-window-mode="browser"] #react-chrome {
   box-sizing: border-box !important;
   padding: 0 !important;
   margin: 0 !important;
-  animation: tableFullscreenFadeIn 0.15s ease-out;
-}
-
-@keyframes tableFullscreenFadeIn {
-  from {
-    opacity: 0;
-    transform: scale(0.995);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
+  animation: backdrop-in var(--duration-normal) var(--ease-out);
 }
 
 [data-streamdown="table-fullscreen"] [data-streamdown="table-wrapper"] {

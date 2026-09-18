@@ -214,6 +214,7 @@ export function SelectionSendMenu({
   const [menuOpen, setMenuOpen] = useState(true);
   const {
     selectionResult,
+    selectionResultClosing,
     runSelectionAction,
     copySelectionResult,
     clearSelectionResult
@@ -271,6 +272,7 @@ export function SelectionSendMenu({
       {selectionResult ? (
         <SelectionActionResult
           result={selectionResult}
+          closing={selectionResultClosing}
           onClose={closeAll}
           onCopy={copySelectionResult}
         />
