@@ -1,4 +1,4 @@
-import { BrowserWindow } from "electron";
+import { webContents as webContentsRegistry } from "electron";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -23,7 +23,14 @@ interface PtySession {
   lastRows: number;
   shell: string;
   startedAt: number;
-  attached: boolean;
+  /**
+   * Window that renders this pane, or null while no xterm is mounted. One pty
+   * has at most one renderer: two windows on the same pty would double the
+   * output parsing and fight over its size.
+   */
+  ownerWebContentsId: number | null;
+  /** Owner binding that already registered its `destroyed` cleanup. */
+  ownerListenerFor: number | null;
   replayChunks: string[];
   replayBytes: number;
   pendingForward: string[];
@@ -46,7 +53,7 @@ type PtyRuntimeMetrics = {
 /** Tail of PTY output kept while xterm is unmounted. Always drain onData. */
 export const PTY_REPLAY_LIMIT = 256 * 1024;
 /** Soft cap on concurrent PTY sessions. Spawn still succeeds. */
-const PTY_SOFT_LIMIT = 12;
+const PTY_SOFT_LIMIT = 24;
 const FORWARD_FLUSH_MS = 16;
 const FORWARD_FLUSH_BYTES = 64 * 1024;
 
@@ -80,7 +87,7 @@ function createPtySession(
   cols: number,
   rows: number,
   shell: string,
-  attached: boolean,
+  ownerWebContentsId: number | null,
   mcpEnv: Record<string, string> = {}
 ): PtySession {
   return {
@@ -91,7 +98,8 @@ function createPtySession(
     lastRows: rows,
     shell,
     startedAt: Date.now(),
-    attached,
+    ownerWebContentsId,
+    ownerListenerFor: null,
     replayChunks: [],
     replayBytes: 0,
     pendingForward: [],
@@ -134,11 +142,49 @@ function clearForwardQueue(session: PtySession): void {
   session.pendingForwardBytes = 0;
 }
 
-function flushForward(id: number, win: BrowserWindow | null): void {
+/** Resolve the window that renders this pane, dropping owners that are gone. */
+function ownerContents(session: PtySession): Electron.WebContents | null {
+  const id = session.ownerWebContentsId;
+  if (id == null) return null;
+  const found = webContentsRegistry.fromId(id);
+  if (!found || found.isDestroyed()) {
+    session.ownerWebContentsId = null;
+    session.ownerListenerFor = null;
+    return null;
+  }
+  return found;
+}
+
+/**
+ * Bind a pane to the window that renders it. Windows can disappear without
+ * telling us (crash, force close), so every binding carries its own cleanup.
+ */
+function bindOwner(session: PtySession, contents: Electron.WebContents): void {
+  session.ownerWebContentsId = contents.id;
+  if (session.ownerListenerFor === contents.id) return;
+  session.ownerListenerFor = contents.id;
+  contents.once("destroyed", () => {
+    if (session.ownerWebContentsId !== contents.id) return;
+    session.ownerWebContentsId = null;
+    session.ownerListenerFor = null;
+    clearForwardQueue(session);
+  });
+}
+
+/** Deliver a pty event to the window that currently renders the pane. */
+function sendToOwner(id: number, channel: string, payload: unknown): void {
+  const session = ptySessions.get(id);
+  if (!session) return;
+  const owner = ownerContents(session);
+  if (!owner) return;
+  owner.send(channel, payload);
+}
+
+function flushForward(id: number): void {
   const session = ptySessions.get(id);
   if (!session) return;
   session.flushTimer = null;
-  if (!session.attached || !session.pendingForward.length) {
+  if (session.ownerWebContentsId == null || !session.pendingForward.length) {
     session.pendingForward = [];
     session.pendingForwardBytes = 0;
     return;
@@ -146,23 +192,23 @@ function flushForward(id: number, win: BrowserWindow | null): void {
   const data = session.pendingForward.join("");
   session.pendingForward = [];
   session.pendingForwardBytes = 0;
-  if (win && !win.isDestroyed()) {
-    session.forwardedBytes += data.length;
-    win.webContents.send("terminal:data", { id, data });
-  }
+  const owner = ownerContents(session);
+  if (!owner) return;
+  session.forwardedBytes += data.length;
+  owner.send("terminal:data", { id, data });
 }
 
-function queueForward(id: number, data: string, win: BrowserWindow | null): void {
+function queueForward(id: number, data: string): void {
   const session = ptySessions.get(id);
-  if (!session || !session.attached || !data) return;
+  if (!session || session.ownerWebContentsId == null || !data) return;
   session.pendingForward.push(data);
   session.pendingForwardBytes += data.length;
   if (session.pendingForwardBytes >= FORWARD_FLUSH_BYTES) {
-    flushForward(id, win);
+    flushForward(id);
     return;
   }
   if (!session.flushTimer) {
-    session.flushTimer = setTimeout(() => flushForward(id, win), FORWARD_FLUSH_MS);
+    session.flushTimer = setTimeout(() => flushForward(id), FORWARD_FLUSH_MS);
     session.flushTimer.unref?.();
   }
 }
@@ -448,8 +494,7 @@ function spawnPty(
 
 function attachPtyHandlers(
   ptyInstance: pty.IPty,
-  id: number,
-  win: BrowserWindow | null
+  id: number
 ): void {
   ptyInstance.onData((data) => {
     const session = ptySessions.get(id);
@@ -460,15 +505,15 @@ function attachPtyHandlers(
     // Always drain. Pause means "don't forward to xterm", never "stop reading".
     appendReplay(session, forwarded);
     session.outputBytes += forwarded.length;
-    if (session.attached) {
-      queueForward(id, forwarded, win);
+    if (session.ownerWebContentsId != null) {
+      queueForward(id, forwarded);
     }
   });
   ptyInstance.onExit(() => {
     const session = ptySessions.get(id);
     if (!session) return;
 
-    const { respawnOnExit, lastSpawnCwd, lastCols, lastRows, shell, startedAt, attached, mcpEnv } = session;
+    const { respawnOnExit, lastSpawnCwd, lastCols, lastRows, shell, startedAt, ownerWebContentsId, mcpEnv } = session;
     ptySessions.delete(id);
     const livedMs = Date.now() - startedAt;
     if (respawnOnExit && lastSpawnCwd && livedMs >= 400) {
@@ -477,13 +522,14 @@ function attachPtyHandlers(
           AGENT_RESUME_PANE_ID: String(id),
           ...mcpEnv
         });
-        const next = createPtySession(newPty, lastSpawnCwd, lastCols, lastRows, shell, attached, mcpEnv);
+        const next = createPtySession(newPty, lastSpawnCwd, lastCols, lastRows, shell, ownerWebContentsId, mcpEnv);
+        next.ownerListenerFor = session.ownerListenerFor;
         ptySessions.set(id, next);
         // A fresh shell is a fresh screen: reset the mirror, keep the session.
         getAgentStatusSensor()?.attach(id, { cols: lastCols, rows: lastRows, cwd: lastSpawnCwd });
-        attachPtyHandlers(newPty, id, win);
-        if (attached && win && !win.isDestroyed()) {
-          win.webContents.send("terminal:respawned", { id });
+        attachPtyHandlers(newPty, id);
+        if (ownerWebContentsId != null) {
+          sendToOwner(id, "terminal:respawned", { id });
         }
         return;
       } catch (error) {
@@ -495,9 +541,7 @@ function attachPtyHandlers(
 
     // No process left to sense: the daemon should forget this pane.
     getAgentStatusSensor()?.detach(id);
-    if (win && !win.isDestroyed()) {
-      win.webContents.send("terminal:exit", { id });
-    }
+    sendToOwner(id, "terminal:exit", { id });
   });
 }
 
@@ -514,7 +558,7 @@ export function getPtyRuntimeMetrics(): PtyRuntimeMetrics {
   let outputBytes = 0;
   let forwardedBytes = 0;
   for (const session of ptySessions.values()) {
-    if (session.attached) attachedCount += 1;
+    if (session.ownerWebContentsId != null) attachedCount += 1;
     replayBytes += session.replayBytes;
     outputBytes += session.outputBytes;
     forwardedBytes += session.forwardedBytes;
@@ -554,7 +598,7 @@ function ensurePiAgentResumeBridge(): void {
   }
 }
 
-export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
+export function registerPtyIpc(): void {
   ensurePiAgentResumeBridge();
 
   safeHandle(
@@ -568,7 +612,6 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
       const rows = Math.max(2, Math.floor(args.rows || 24));
       const cwd = resolveCwd(args.cwd);
       const id = ++nextTerminalId;
-      const win = getWindow();
       const mcpEnv = mcpSessionEnv(args);
 
       let ptyInstance: pty.IPty;
@@ -580,10 +623,10 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
       }
 
       // Start detached so boot output lands in the replay buffer until xterm attaches.
-      ptySessions.set(id, createPtySession(ptyInstance, cwd, cols, rows, shell, false, mcpEnv));
+      ptySessions.set(id, createPtySession(ptyInstance, cwd, cols, rows, shell, null, mcpEnv));
       // Register with the status sensor before any output can arrive.
       getAgentStatusSensor()?.attach(id, { cols, rows, cwd, sessionKey: args.sessionKey });
-      attachPtyHandlers(ptyInstance, id, win);
+      attachPtyHandlers(ptyInstance, id);
       const softLimitReached = ptySessions.size >= PTY_SOFT_LIMIT;
       const warnSoftLimit = softLimitReached && !warnedSoftLimit;
       if (warnSoftLimit) warnedSoftLimit = true;
@@ -592,11 +635,12 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
     }
   );
 
-  safeHandle("terminal:attach", (_event, args: { id: number }) => {
+  safeHandle("terminal:attach", (event, args: { id: number }) => {
     const session = ptySessions.get(Math.floor(args.id));
     if (!session) return { ok: false as const, replay: "" };
     clearForwardQueue(session);
-    session.attached = true;
+    // Attaching is a hand-off: the caller becomes the one window that renders it.
+    bindOwner(session, event.sender);
     const replay = replayText(session);
     session.replayChunks = replay ? [replay] : [];
     session.replayBytes = replay.length;
@@ -604,10 +648,12 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
   });
 
   safeHandle("terminal:detach", (_event, args: { id: number }) => {
-    const session = ptySessions.get(Math.floor(args.id));
+    const id = Math.floor(args.id);
+    const session = ptySessions.get(id);
     if (session) {
-      flushForward(Math.floor(args.id), getWindow());
-      session.attached = false;
+      flushForward(id);
+      session.ownerWebContentsId = null;
+      session.ownerListenerFor = null;
       clearForwardQueue(session);
     }
     return { ok: true };
@@ -619,11 +665,15 @@ export function registerPtyIpc(getWindow: () => BrowserWindow | null): void {
     return { ok: true };
   });
 
-  safeHandle("terminal:resize", (_event, args: { id: number; cols: number; rows: number }) => {
+  safeHandle("terminal:resize", (event, args: { id: number; cols: number; rows: number }) => {
     const id = Math.floor(args.id);
     const session = ptySessions.get(id);
     const cols = Math.max(2, Math.floor(args.cols || 80));
     const rows = Math.max(2, Math.floor(args.rows || 24));
+    // One pty, one size: a window that does not render the pane must not set it.
+    if (session && session.ownerWebContentsId != null && session.ownerWebContentsId !== event.sender.id) {
+      return { ok: true };
+    }
     if (session) {
       session.lastCols = cols;
       session.lastRows = rows;

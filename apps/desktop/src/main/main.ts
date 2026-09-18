@@ -296,7 +296,7 @@ function tryRegisterPtyIpc(): void {
   try {
     // Lazy-load so node-pty native binding issues do not block other IPC handlers.
     const { registerPtyIpc, getPtyPid } = require("./ptyHost") as typeof import("./ptyHost");
-    registerPtyIpc(() => mainWindow);
+    registerPtyIpc();
     ptyPidResolver = getPtyPid;
   } catch (error) {
     void recordAppError({

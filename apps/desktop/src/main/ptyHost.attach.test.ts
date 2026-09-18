@@ -6,6 +6,33 @@ const ipcMocks = vi.hoisted(() => ({
 
 type DataHandler = (data: string) => void;
 
+type FakeSender = {
+  id: number;
+  send: ReturnType<typeof vi.fn>;
+  once: ReturnType<typeof vi.fn>;
+  isDestroyed: () => boolean;
+};
+
+const senders = vi.hoisted(() => {
+  const byId = new Map<number, FakeSender>();
+  return {
+    byId,
+    create(id: number): FakeSender {
+      const sender: FakeSender = {
+        id,
+        send: vi.fn(),
+        once: vi.fn(),
+        isDestroyed: () => false
+      };
+      byId.set(id, sender);
+      return sender;
+    },
+    reset(): void {
+      byId.clear();
+    }
+  };
+});
+
 const ptyMocks = vi.hoisted(() => {
   const instances: Array<{
     write: ReturnType<typeof vi.fn>;
@@ -32,7 +59,11 @@ const ptyMocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("electron", () => ({ BrowserWindow: class {} }));
+// WebContents ids are how panes find their window, so the mock registry is the
+// only way a pty can reach a renderer.
+vi.mock("electron", () => ({
+  webContents: { fromId: (id: number) => senders.byId.get(id) ?? null }
+}));
 vi.mock("node-pty", () => ({ spawn: ptyMocks.spawn }));
 vi.mock("./ipcUtils", () => ({
   safeHandle: (channel: string, handler: (...args: unknown[]) => unknown) => ipcMocks.handlers.set(channel, handler)
@@ -54,58 +85,147 @@ function handler<T>(channel: string): (...args: unknown[]) => Promise<T> {
   return found as (...args: unknown[]) => Promise<T>;
 }
 
+function flush(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 25));
+}
+
 describe("pty attach / detach replay", () => {
   afterEach(() => {
     destroyPtyOnQuit();
     ipcMocks.handlers.clear();
     ptyMocks.instances.length = 0;
     ptyMocks.spawn.mockClear();
+    senders.reset();
   });
 
   it("keeps draining detached output and replays it on attach", async () => {
-    const send = vi.fn();
-    registerPtyIpc(() => ({ isDestroyed: () => false, webContents: { send } }) as never);
-    const spawned = await handler<{ id: number }>("terminal:spawn")({}, { cwd: process.cwd(), cols: 80, rows: 24 });
+    registerPtyIpc();
+    const sender = senders.create(11);
+    const spawned = await handler<{ id: number }>("terminal:spawn")(
+      { sender },
+      { cwd: process.cwd(), cols: 80, rows: 24 }
+    );
     expect(spawned.id).toBeGreaterThan(0);
     const instance = ptyMocks.instances[0];
     expect(instance).toBeTruthy();
 
     instance.emit("boot-");
-    expect(send).not.toHaveBeenCalled();
+    expect(sender.send).not.toHaveBeenCalled();
 
-    const firstAttach = await handler<{ ok: boolean; replay: string }>("terminal:attach")({}, { id: spawned.id });
+    const firstAttach = await handler<{ ok: boolean; replay: string }>("terminal:attach")(
+      { sender },
+      { id: spawned.id }
+    );
     expect(firstAttach.replay).toContain("boot-");
-    send.mockClear();
+    sender.send.mockClear();
     instance.emit("vis");
     instance.emit("ible-");
-    expect(send).not.toHaveBeenCalled();
-    await new Promise((resolve) => setTimeout(resolve, 25));
-    expect(send).toHaveBeenCalledTimes(1);
-    expect(send).toHaveBeenCalledWith("terminal:data", { id: spawned.id, data: "visible-" });
+    expect(sender.send).not.toHaveBeenCalled();
+    await flush();
+    expect(sender.send).toHaveBeenCalledTimes(1);
+    expect(sender.send).toHaveBeenCalledWith("terminal:data", { id: spawned.id, data: "visible-" });
 
-    await handler("terminal:detach")({}, { id: spawned.id });
-    send.mockClear();
+    await handler("terminal:detach")({ sender }, { id: spawned.id });
+    sender.send.mockClear();
     instance.emit("hidden-output");
-    expect(send).not.toHaveBeenCalled();
+    expect(sender.send).not.toHaveBeenCalled();
 
-    const attached = await handler<{ ok: boolean; replay: string }>("terminal:attach")({}, { id: spawned.id });
+    const attached = await handler<{ ok: boolean; replay: string }>("terminal:attach")(
+      { sender },
+      { id: spawned.id }
+    );
     expect(attached.ok).toBe(true);
     expect(attached.replay).toContain("visible-");
     expect(attached.replay).toContain("hidden-output");
 
-    send.mockClear();
+    sender.send.mockClear();
     instance.emit("after-attach");
-    await new Promise((resolve) => setTimeout(resolve, 25));
-    expect(send).toHaveBeenCalledWith("terminal:data", { id: spawned.id, data: "after-attach" });
+    await flush();
+    expect(sender.send).toHaveBeenCalledWith("terminal:data", { id: spawned.id, data: "after-attach" });
+  });
+
+  it("hands a pane to the window that attaches last", async () => {
+    registerPtyIpc();
+    const board = senders.create(21);
+    const taskWindow = senders.create(22);
+    const spawned = await handler<{ id: number }>("terminal:spawn")(
+      { sender: board },
+      { cwd: process.cwd(), cols: 80, rows: 24 }
+    );
+    const instance = ptyMocks.instances[0];
+
+    await handler("terminal:attach")({ sender: board }, { id: spawned.id });
+    instance.emit("from-board");
+    await flush();
+    expect(board.send).toHaveBeenCalledWith("terminal:data", { id: spawned.id, data: "from-board" });
+
+    board.send.mockClear();
+    const handoff = await handler<{ ok: boolean; replay: string }>("terminal:attach")(
+      { sender: taskWindow },
+      { id: spawned.id }
+    );
+    // The new owner catches up from the replay the attach call returns.
+    expect(handoff.replay).toContain("from-board");
+    expect(taskWindow.send).not.toHaveBeenCalled();
+    taskWindow.send.mockClear();
+
+    instance.emit("after-handoff");
+    await flush();
+    expect(board.send).not.toHaveBeenCalled();
+    expect(taskWindow.send).toHaveBeenCalledWith("terminal:data", { id: spawned.id, data: "after-handoff" });
+  });
+
+  it("ignores a resize from a window that does not render the pane", async () => {
+    registerPtyIpc();
+    const owner = senders.create(31);
+    const other = senders.create(32);
+    const spawned = await handler<{ id: number }>("terminal:spawn")(
+      { sender: owner },
+      { cwd: process.cwd(), cols: 80, rows: 24 }
+    );
+    const instance = ptyMocks.instances[0];
+    await handler("terminal:attach")({ sender: owner }, { id: spawned.id });
+    instance.resize.mockClear();
+
+    await handler("terminal:resize")({ sender: other }, { id: spawned.id, cols: 120, rows: 40 });
+    expect(instance.resize).not.toHaveBeenCalled();
+
+    await handler("terminal:resize")({ sender: owner }, { id: spawned.id, cols: 100, rows: 30 });
+    expect(instance.resize).toHaveBeenCalledWith(100, 30);
+  });
+
+  it("stops forwarding once the owning window is gone", async () => {
+    registerPtyIpc();
+    const owner = senders.create(41);
+    const spawned = await handler<{ id: number }>("terminal:spawn")(
+      { sender: owner },
+      { cwd: process.cwd(), cols: 80, rows: 24 }
+    );
+    const instance = ptyMocks.instances[0];
+    await handler("terminal:attach")({ sender: owner }, { id: spawned.id });
+
+    // The window disappeared without detaching: the id no longer resolves.
+    senders.byId.delete(41);
+    owner.send.mockClear();
+    instance.emit("orphan-output");
+    await flush();
+    expect(owner.send).not.toHaveBeenCalled();
   });
 
   it("caps the replay buffer instead of growing without bound", async () => {
-    registerPtyIpc(() => ({ isDestroyed: () => false, webContents: { send: vi.fn() } }) as never);
-    const spawned = await handler<{ id: number }>("terminal:spawn")({}, { cwd: process.cwd() });
-    await handler("terminal:detach")({}, { id: spawned.id });
+    registerPtyIpc();
+    const sender = senders.create(51);
+    const spawned = await handler<{ id: number }>("terminal:spawn")(
+      { sender },
+      { cwd: process.cwd() }
+    );
+    await handler("terminal:detach")({ sender }, { id: spawned.id });
     const instance = ptyMocks.instances[0];
     instance.emit("a".repeat(PTY_REPLAY_LIMIT + 2048));
-    const attached = await handler<{ ok: boolean; replay: string }>("terminal:attach")({}, { id: spawned.id });
+    const attached = await handler<{ ok: boolean; replay: string }>("terminal:attach")(
+      { sender },
+      { id: spawned.id }
+    );
     expect(attached.replay.length).toBeLessThanOrEqual(PTY_REPLAY_LIMIT);
     expect(attached.replay.endsWith("a".repeat(64))).toBe(true);
   });
