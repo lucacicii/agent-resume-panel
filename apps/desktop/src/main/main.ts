@@ -16,7 +16,6 @@ import {
   supportsNewSessionYoloMode,
   MCP_SESSION_ENV,
   type NewSessionExecutionMode,
-  updateNativeSessionCwd,
   effectivePanelHome,
   expandHome,
   listTaskGtdRollups,
@@ -50,7 +49,6 @@ import {
   resolveProjectCwdForPath,
   listProjectPathVariants,
   mergeProjectsInCatalog,
-  moveSessionToProjectInCatalog,
   splitProjectPathInCatalog,
   listWorkbenchSessionFolders,
   listWorkbenchSessionFolderAssignments,
@@ -133,8 +131,7 @@ import {
   promptAcpChat,
   registerAcpIpc,
   setAcpModel,
-  setAcpThoughtLevel,
-  setAcpRecordProjectPath
+  setAcpThoughtLevel
 } from "./acp/acpHost";
 import { flushImStreamingMessages, registerImIpc } from "./im/ipc";
 import { getAcpRecord, updateAcpRecord } from "./acp/store";
@@ -2383,59 +2380,6 @@ function registerIpc(): void {
         await hideSessionAction({ provider, id });
       }
       return { ok: true };
-    }
-  );
-
-  ipcMain.handle(
-    "sessions:moveToProject",
-    async (_event, args: { provider: AgentProvider; id: string; targetProjectPath: string }) => {
-      const provider = args.provider;
-      const id = String(args.id || "").trim();
-      const targetProjectPath = String(args.targetProjectPath || "").trim();
-      if (!provider || !id || !targetProjectPath) {
-        throw new Error("provider, id, and targetProjectPath are required.");
-      }
-      const settings = await loadSettings();
-      const paths = await loadPanelDbPaths(settings);
-      // Physical move first: rewrite the provider's native cwd so the next sync
-      // converges native_project_path (and project_path) onto the target.
-      // Best-effort — any failure falls back to the catalog-only move below and
-      // the two-layer value rule keeps the user assignment sticky.
-      let nativeUpdated = false;
-      try {
-        const homes = resolvePreviewHomes(settings);
-        const native = await updateNativeSessionCwd(provider, id, targetProjectPath, homes);
-        nativeUpdated = native.ok;
-      } catch {
-        nativeUpdated = false;
-      }
-      const result = await moveSessionToProjectInCatalog(
-        paths.catalogDb,
-        provider,
-        id,
-        targetProjectPath
-      );
-      if (provider === "chat") {
-        const updatedLive = await setAcpRecordProjectPath(id, result.newPath);
-        if (!updatedLive) {
-          const record = await getAcpRecord(effectivePanelHome(settings), id);
-          if (record && record.projectPath !== result.newPath) {
-            await updateAcpRecord(effectivePanelHome(settings), {
-              ...record,
-              projectPath: result.newPath,
-              updatedAt: Date.now()
-            });
-          }
-        }
-      }
-      if (result.moved && result.fromProjectId && result.fromProjectId !== result.toProjectId) {
-        try {
-          await removeWorkbenchSessionFromFolder(paths.desktopDb, provider, id);
-        } catch {
-          // Desktop workbench tables may be absent — catalog move is already done.
-        }
-      }
-      return { ...result, nativeUpdated };
     }
   );
 

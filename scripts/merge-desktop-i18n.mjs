@@ -37,6 +37,13 @@ const obsoleteDesktopKeys = new Set([
   "desktop.workbench.sidePanelBack",
   // Quick Access project picker: the workbench switches tasks, not projects.
   "desktop.workbench.quickAccessSwitchProject",
+  // Session "move to project" replaced by "move to task".
+  "desktop.workbench.moveToProject",
+  "desktop.workbench.moveToProjectTitle",
+  "desktop.workbench.moveToProjectHint",
+  "desktop.workbench.moveToProjectRunning",
+  "desktop.workbench.moveToProjectDone",
+  "desktop.workbench.moveToProjectNoTargets",
   "desktop.workbench.renameSession",
   "desktop.workbench.renameSessionTitle",
   "desktop.workbench.generatingTitle",

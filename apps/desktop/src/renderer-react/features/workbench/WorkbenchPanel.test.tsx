@@ -922,29 +922,15 @@ describe("WorkbenchPanel", () => {
     expect(document.querySelector(".wb-detail-project-path")?.textContent).toBe("/work/docs");
   });
 
-  it("moves a session to another project from the context menu", async () => {
+  it("moves a session to a task from the context menu", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
     document.body.append(host);
-    let sessions = [
+    const sessions = [
       { provider: "codex" as const, id: "session-1", title: "App work", projectPath: "/work/app", projectId: "project-1", updatedAt: 2 },
       { provider: "codex" as const, id: "session-2", title: "Docs work", projectPath: "/work/docs", projectId: "project-2", updatedAt: 1 }
     ];
-    const moveSessionToProject = vi.fn(async () => {
-      sessions = [
-        { provider: "codex" as const, id: "session-1", title: "App work", projectPath: "/work/docs", projectId: "project-2", updatedAt: 2 },
-        { provider: "codex" as const, id: "session-2", title: "Docs work", projectPath: "/work/docs", projectId: "project-2", updatedAt: 1 }
-      ];
-      return {
-        provider: "codex",
-        sessionId: "session-1",
-        moved: true,
-        fromProjectId: "project-1",
-        toProjectId: "project-2",
-        oldPath: "/work/app",
-        newPath: "/work/docs"
-      };
-    });
+    const notesLinkSessionToTask = vi.fn(async () => ({ noteId: "task-1" }));
     const listSessions = vi.fn(async () => sessions);
     const listProjects = vi.fn(async () => [
       { projectId: "project-1", portableKey: "/work/app", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/app", pathMissing: false, sessionCount: sessions.filter((item) => item.projectId === "project-1").length },
@@ -953,11 +939,11 @@ describe("WorkbenchPanel", () => {
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages: {
         ...FOLDER_DRAG_TEST_MESSAGES,
-        "desktop.workbench.moveToProject": "Move to project…",
-        "desktop.workbench.moveToProjectTitle": "Move session {0} to…",
-        "desktop.workbench.moveToProjectHint": "Reassigns this session in the panel.",
-        "desktop.workbench.moveToProjectRunning": "Moving…",
-        "desktop.workbench.moveToProjectDone": "Moved session to {0}."
+        "desktop.workbench.moveToTask": "Move to task…",
+        "desktop.workbench.moveToTaskTitle": "Move session {0} to…",
+        "desktop.workbench.moveToTaskHint": "Reassigns this session to a task in the panel.",
+        "desktop.workbench.moveToTaskRunning": "Moving…",
+        "desktop.workbench.moveToTaskDone": "Moved session to {0}."
       } }),
       onLocaleChanged: () => () => undefined,
       onWorkbenchCmdT: () => () => undefined,
@@ -971,36 +957,36 @@ describe("WorkbenchPanel", () => {
       querySessionsPage: querySessionsPageFromList(listSessions),
       listProjects,
       listWorkbenchSessionFolders: async () => ({ folders: [], assignments: [] }),
-      moveSessionToProject,
+      notesListTasks: async () => [
+        { noteId: "task-1", scope: "library", filename: "task-1.md", relDir: "", relMdPath: "task-1.md", title: "Ship the release", createdAtMs: 1, updatedAtMs: 1, work: { sessions: [] } }
+      ],
+      notesLinkSessionToTask,
       workbenchOpenSession: async () => ({ mode: "external-system", cwd: "/work/app", external: true })
     } as unknown as typeof window.agentResume;
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
     fireEvent.contextMenu(await screen.findByRole("button", { name: /App work/ }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Move to project…" }));
-    const dialog = await screen.findByRole("dialog", { name: "Move to project…" });
-    expect(within(dialog).queryByRole("button", { name: /app/i })).toBeNull();
-    fireEvent.click(within(dialog).getByRole("button", { name: /Docs/ }));
-    await waitFor(() => expect(moveSessionToProject).toHaveBeenCalledWith({
-      provider: "codex",
-      id: "session-1",
-      targetProjectPath: "/work/docs"
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Move to task…" }));
+    const dialog = await screen.findByRole("dialog", { name: "Move to task…" });
+    fireEvent.click(within(dialog).getByRole("button", { name: /Ship the release/ }));
+    await waitFor(() => expect(notesLinkSessionToTask).toHaveBeenCalledWith({
+      noteId: "task-1",
+      sessionKey: "codex:session-1",
+      projectPath: "/work/app"
     }));
-    await activateTaskDirectory("/work/docs");
-    expect(await screen.findByRole("button", { name: /App work/ })).toBeTruthy();
   });
 
-  it("shows an error when there is no other project to move into", async () => {
+  it("shows an error when there is no task to move into", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
     document.body.append(host);
-    const moveSessionToProject = vi.fn();
+    const notesLinkSessionToTask = vi.fn();
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages: {
         ...FOLDER_DRAG_TEST_MESSAGES,
-        "desktop.workbench.moveToProject": "Move to project…",
-        "desktop.workbench.moveToProjectNoTargets": "No other projects available to move into."
+        "desktop.workbench.moveToTask": "Move to task…",
+        "desktop.workbench.moveToTaskNoTargets": "No tasks available to move into."
       } }),
       onLocaleChanged: () => () => undefined,
       onWorkbenchCmdT: () => () => undefined,
@@ -1020,16 +1006,17 @@ describe("WorkbenchPanel", () => {
         { projectId: "project-1", portableKey: "/work/app", alias: "", hidden: false, pinned: false, lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/app", pathMissing: false, sessionCount: 1 }
       ],
       listWorkbenchSessionFolders: async () => ({ folders: [], assignments: [] }),
-      moveSessionToProject,
+      notesListTasks: async () => [],
+      notesLinkSessionToTask,
       workbenchOpenSession: async () => ({ mode: "external-system", cwd: "/work/app", external: true })
     } as unknown as typeof window.agentResume;
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
     fireEvent.contextMenu(await screen.findByRole("button", { name: /App work/ }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Move to project…" }));
-    await waitFor(() => expect(notificationMocks.notifyDesktop).toHaveBeenCalledWith({ text: "No other projects available to move into.", kind: "error" }));
-    expect(moveSessionToProject).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Move to task…" }));
+    await waitFor(() => expect(notificationMocks.notifyDesktop).toHaveBeenCalledWith({ text: "No tasks available to move into.", kind: "error" }));
+    expect(notesLinkSessionToTask).not.toHaveBeenCalled();
   });
 
   it("opens develop-equivalent project and session context actions", async () => {
@@ -4696,6 +4683,8 @@ describe("WorkbenchPanel", () => {
     expect(row.querySelector(".wb-gtd-status-badge")?.textContent).toBe("Next");
 
     fireEvent.contextMenu(row);
+    // The note menu no longer offers an "open note" item; clicking the row opens it.
+    expect(screen.queryByRole("menuitem", { name: "Open note" })).toBeNull();
     const waitingTag = await screen.findByRole("menuitemradio", { name: "Waiting" });
     expect(waitingTag.classList.contains("wb-gtd-context-tag")).toBe(true);
     fireEvent.click(waitingTag);
@@ -7851,6 +7840,88 @@ describe("WorkbenchPanel", () => {
     const filterTabs = document.querySelectorAll<HTMLButtonElement>(".wb-note-list-toolbar .wb-note-filter .wb-left-tab");
     fireEvent.click(filterTabs[1]);
     await waitFor(() => expect(screen.getByText("Other session")).toBeTruthy());
+    // The "all" list tags each session with its owning task.
+    expect([...document.querySelectorAll(".wb-list .wb-task-badge")].map((badge) => badge.textContent)).toEqual(["Cross-repo feature"]);
+  });
+
+  it("drops a removed session from the task session list", async () => {
+    let allSessions = [
+      { provider: "codex" as const, id: "s1", title: "Task session", projectPath: "/work/app", updatedAt: 2 },
+      { provider: "claude" as const, id: "s2", title: "Other session", projectPath: "/work/api", updatedAt: 1 }
+    ];
+    const querySessionsPage = vi.fn(async (args?: { keys?: Array<{ provider: string; id: string }> }) => {
+      if (args?.keys?.length) {
+        const sessions = allSessions.filter((s) => args.keys!.some((k) => k.provider === s.provider && k.id === s.id));
+        return { sessions, total: sessions.length };
+      }
+      return { sessions: allSessions, total: allSessions.length };
+    });
+    const hideSession = vi.fn(async ({ provider, id }: { provider: string; id: string }) => {
+      allSessions = allSessions.filter((s) => !(s.provider === provider && s.id === id));
+      return { ok: true };
+    });
+    const hideSessions = vi.fn(async ({ sessions: targets }: { sessions: Array<{ provider: string; id: string }> }) => {
+      const keys = new Set(targets.map((target) => `${target.provider}:${target.id}`));
+      allSessions = allSessions.filter((s) => !keys.has(`${s.provider}:${s.id}`));
+      return { ok: true };
+    });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.common.search": "Search", "desktop.common.refresh": "Refresh",
+        "desktop.workbench.taskView": "Task",
+        "desktop.workbench.taskOpenNote": "Open note",
+        "desktop.workbench.taskNext": "Next:",
+        "desktop.workbench.taskSessions": "{0} sessions",
+        "desktop.workbench.filterTask": "Task",
+        "desktop.workbench.filterAll": "All",
+        "desktop.workbench.sessionFilter": "Filter sessions",
+        "desktop.workbench.removeFromPanel": "Remove from panel",
+        "desktop.workbench.removeConfirm": "Remove \"{0}\" from panel?",
+        "desktop.workbench.removeMultipleConfirm": "Remove {0} sessions?",
+        "desktop.workbench.ownedByTask": "Task: {0}"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      querySessionsPage,
+      hideSession,
+      hideSessions,
+      notesListTasks: async () => [{
+        noteId: "wi-1", title: "Cross-repo feature", gtdStatus: "next",
+        work: { sessions: ["codex:s1"], projects: ["/work/app"], primaryProject: "/work/app" }
+      }],
+      notesListLinks: async () => [],
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-task", { detail: {
+        noteId: "wi-1", title: "Cross-repo feature", status: "next",
+        sessions: ["codex:s1"], projects: ["/work/app"], primaryProject: "/work/app"
+      } }));
+    });
+
+    const row = await screen.findByRole("button", { name: /Task session/ });
+    fireEvent.contextMenu(row);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Remove from panel" }));
+    await waitFor(() => expect(hideSession).toHaveBeenCalledWith({ provider: "codex", id: "s1" }));
+    // The hidden session must leave the task-scoped list immediately.
+    await waitFor(() => expect(screen.queryByText("Task session")).toBeNull());
+    confirm.mockRestore();
   });
 
   it("shows no sessions for a task that has none instead of falling back to all", async () => {
@@ -8576,6 +8647,7 @@ describe("WorkbenchPanel", () => {
       getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
       listSessions: async () => [],
       notesRead, notesList, notesResolveLinkRoot, notesGetSubtree,
+      notesListLinks: async () => [],
       notesListTasks: async () => [{
         noteId: "wi-1", scope: "project", projectPath: "/work/app",
         filename: "realtime-status.md", relDir: "projects/app", relMdPath: "notes/projects/app/realtime-status.md",
@@ -8618,6 +8690,8 @@ describe("WorkbenchPanel", () => {
     const filterTabs = document.querySelectorAll<HTMLButtonElement>(".wb-note-filter .wb-left-tab");
     fireEvent.click(filterTabs[1]);
     await waitFor(() => expect(screen.getByRole("button", { name: "Scratch pad" })).toBeTruthy());
+    // "All" tags the task's own notes with the owning task, and leaves loose notes untagged.
+    expect([...document.querySelectorAll(".wb-note-list .wb-task-badge")].map((badge) => badge.textContent)).toEqual(["Realtime status"]);
 
     // Re-entering the task resets the left panel to the Sessions tab.
     await act(async () => {

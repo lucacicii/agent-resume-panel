@@ -275,21 +275,6 @@ export interface DesktopApi {
   }>;
   hideSession(args: { provider: string; id: string }): Promise<{ ok: boolean }>;
   hideSessions(args: { sessions: Array<{ provider: string; id: string }> }): Promise<{ ok: boolean }>;
-  moveSessionToProject(args: {
-    provider: string;
-    id: string;
-    targetProjectPath: string;
-  }): Promise<{
-    provider: string;
-    sessionId: string;
-    moved: boolean;
-    fromProjectId: string | null;
-    toProjectId: string;
-    oldPath: string;
-    newPath: string;
-    /** True when the provider's native cwd was also rewritten (physical move). */
-    nativeUpdated: boolean;
-  }>;
   createScratchDir(): Promise<string>;
   workbenchGetProjectEditor(): Promise<{
     selected: "auto" | "vscode" | "vscodium" | "cursor" | "windsurf";
@@ -1613,7 +1598,6 @@ const api: DesktopApi = {
   renameSession: (args) => ipcRenderer.invoke("sessions:rename", args),
   hideSession: (args) => ipcRenderer.invoke("sessions:hide", args),
   hideSessions: (args) => ipcRenderer.invoke("sessions:hideMany", args),
-  moveSessionToProject: (args) => ipcRenderer.invoke("sessions:moveToProject", args),
   createScratchDir: () => ipcRenderer.invoke("workbench:createScratchDir"),
   workbenchGetProjectEditor: () => ipcRenderer.invoke("workbench:getProjectEditor"),
   workbenchOpenProjectInEditor: (args) => ipcRenderer.invoke("workbench:openProjectInEditor", args),

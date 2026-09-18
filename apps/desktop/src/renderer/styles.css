@@ -10712,6 +10712,25 @@ body.is-pane-resizing-row * {
   white-space: nowrap;
 }
 
+/* Owning task chip shown when the note/session list is switched to "all". */
+.wb-task-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 0 6px;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary, #8b8b8b);
+  background: color-mix(in srgb, var(--text-secondary, #8b8b8b) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-secondary, #8b8b8b) 26%, transparent);
+  white-space: nowrap;
+}
+
 .wb-project-pick-panel {
   width: min(420px, calc(100vw - 32px));
   max-height: min(70vh, 560px);
