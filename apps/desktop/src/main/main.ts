@@ -1620,8 +1620,8 @@ async function installApplicationMenu(): Promise<void> {
   const sessionsItem: Electron.MenuItemConstructorOptions = {
     label: sessionsLabel,
     click: () => {
+      // Sessions live in their task's window now; the board is where you pick one.
       revealMainWindow();
-      mainWindow?.webContents.send("sessions:open");
     }
   };
 
@@ -1760,22 +1760,31 @@ function registerIpc(): void {
 
   safeHandle("workbench:getActiveSessions", async () => workbenchActiveSessions);
 
+  /** The window that owns a pane, else the workbench window in front. */
+  function workbenchWindowFor(paneKey?: string): BrowserWindow | null {
+    const owner = paneKey ? windowForPaneKey(paneKey) : null;
+    const target = owner ?? focusedOrRecentTaskWindow();
+    if (!target || target.isDestroyed()) return null;
+    if (target.isMinimized()) target.restore();
+    target.show();
+    target.focus();
+    return target;
+  }
+
   safeHandle("workbench:focusSession", async (_event, payload: unknown) => {
     const request = parseWorkbenchFocusSessionRequest(payload);
-    const target = revealMainWindow();
-    if (!target || target.isDestroyed()) {
-      throw new Error("Workbench window is not available.");
-    }
+    const target = workbenchWindowFor(request.paneKey);
+    if (!target) throw new Error("No workbench window is open.");
     target.webContents.send("workbench:focusSession", request);
     return { ok: true as const };
   });
 
   safeHandle("workbench:sendSelection", async (_event, payload: unknown) => {
     const request = parseWorkbenchSendSelectionRequest(payload);
-    const target = revealMainWindow();
-    if (!target || target.isDestroyed()) {
-      throw new Error("Workbench window is not available.");
-    }
+    // An existing session is focused where it lives; a new agent needs any
+    // workbench window, since only a workbench can host the pane.
+    const target = workbenchWindowFor(request.kind === "existing-session" ? request.paneKey : undefined);
+    if (!target) throw new Error("No workbench window is open.");
     target.webContents.send("workbench:sendSelection", request);
     return { ok: true as const };
   });

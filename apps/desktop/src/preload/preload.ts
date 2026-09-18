@@ -116,7 +116,6 @@ export interface DesktopApi {
   /** Fetch the model list of a provider using current Providers form values. */
   providersFetchModels(args: { baseUrl: string; apiKey?: string }): Promise<ProviderFetchModelsResult>;
   openSettingsWindow(options?: { pane?: string }): Promise<void>;
-  onOpenSessions(callback: () => void): () => void;
   /** Open an existing note in a standalone floating window (same surface as ⌘/Ctrl+D). */
   standaloneNoteOpen(args: {
     noteId: string;
@@ -1572,11 +1571,6 @@ const api: DesktopApi = {
     const handler = (_event: Electron.IpcRendererEvent, payload: { pane: string }) => callback(payload);
     ipcRenderer.on("settings:navigate", handler);
     return () => ipcRenderer.removeListener("settings:navigate", handler);
-  },
-  onOpenSessions: (callback) => {
-    const handler = () => callback();
-    ipcRenderer.on("sessions:open", handler);
-    return () => ipcRenderer.removeListener("sessions:open", handler);
   },
   onSettingsChanged: (callback) => {
     const handler = (
