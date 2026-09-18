@@ -6,9 +6,11 @@
  * channel also carries the settings actions (install the hook for an agent,
  * start/stop the daemon) and the diagnostics reads (`status.explain`,
  * `pane.screen`) that power the inspector.
+ *
+ * Pushes go to every window: the board and any workbench window show the same
+ * status, and only the panes of the window that owns a pty are live there.
  */
 
-import type { BrowserWindow } from "electron";
 import type { DetectionExplain, PaneScreenDump } from "../../shared/agentStatusTypes";
 import { safeHandle } from "../ipcUtils";
 import type { AgentStatusBridge } from "./bridge";
@@ -36,7 +38,8 @@ import { agentStatusPaths } from "./paths";
 const AGENT_STATUS_CHANGED_CHANNEL = "agentStatus:changed";
 
 type AgentStatusIpcContext = {
-  getWindow: () => BrowserWindow | null;
+  /** Status is window-agnostic: every window showing panes needs the pushes. */
+  broadcast: (channel: string, payload: unknown) => void;
   bridge: AgentStatusBridge;
   /** Resolved lazily: the panel home is a setting and can change at runtime. */
   getPanelHome: () => string;
@@ -51,9 +54,7 @@ export function registerAgentStatusIpc(deps: AgentStatusIpcContext): void {
   safeHandle("agentStatus:getSnapshot", () => deps.bridge.getSnapshot());
 
   deps.bridge.subscribe((snapshot) => {
-    const win = deps.getWindow();
-    if (!win || win.isDestroyed()) return;
-    win.webContents.send(AGENT_STATUS_CHANGED_CHANNEL, snapshot);
+    deps.broadcast(AGENT_STATUS_CHANGED_CHANNEL, snapshot);
   });
 
   const integrationContext = (): AgentIntegrationContext => ({

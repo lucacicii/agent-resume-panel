@@ -116,7 +116,6 @@ export interface DesktopApi {
   /** Fetch the model list of a provider using current Providers form values. */
   providersFetchModels(args: { baseUrl: string; apiKey?: string }): Promise<ProviderFetchModelsResult>;
   openSettingsWindow(options?: { pane?: string }): Promise<void>;
-  onOpenSessions(callback: () => void): () => void;
   /** Open an existing note in a standalone floating window (same surface as ⌘/Ctrl+D). */
   standaloneNoteOpen(args: {
     noteId: string;
@@ -133,6 +132,29 @@ export interface DesktopApi {
   standaloneNoteClose(): Promise<{ ok: boolean }>;
   standaloneNoteCloseReady(args: { ok: boolean }): Promise<{ ok: boolean }>;
   onStandaloneNoteCloseRequested(callback: () => void): () => void;
+  /**
+   * Open the window that hosts one task workbench, or focus it when it is
+   * already open. One workbenchId maps to one window (and one workbench copy).
+   */
+  taskWindowOpen(args: {
+    noteId: string;
+    workbenchId: string;
+    title?: string;
+    x?: number;
+    y?: number;
+  }): Promise<{ ok: true; created: boolean } | { ok: false; reason: "limit"; limit: number }>;
+  /** Open workbench windows, for board badges and tray menus. */
+  taskWindowList(): Promise<Array<{ workbenchId: string; noteId: string; title: string }>>;
+  onTaskWindowsChanged(callback: (windows: Array<{ workbenchId: string; noteId: string; title: string }>) => void): () => void;
+  taskWindowFocus(args: { workbenchId: string }): Promise<{ ok: boolean }>;
+  taskWindowGetState(): Promise<{ workbenchId: string; noteId: string; title: string }>;
+  taskWindowSetTitle(args: { title: string }): Promise<{ ok: boolean }>;
+  taskWindowClose(): Promise<{ ok: boolean }>;
+  /** The host refused to open another workbench window (cap reached). */
+  onTaskWindowLimit(callback: (payload: { limit: number }) => void): () => void;
+  /** The host asked this window to close; answer with `taskWindowCloseReady`. */
+  onTaskWindowCloseRequested(callback: () => void): () => void;
+  taskWindowCloseReady(args: { ok: boolean }): Promise<{ ok: boolean }>;
   browserCreate(args: {
     projectPath: string;
     startUrl?: string;
@@ -612,6 +634,8 @@ export interface DesktopApi {
     rows?: number;
     /** Session the pane belongs to, when the renderer already knows it. */
     sessionKey?: string;
+    /** Workbench the pane belongs to, so a reopened workbench can find it again. */
+    workbenchId?: string;
     /** Extra env for the agent process (allowlisted `AGENT_RESUME_*` keys only). */
     env?: Record<string, string>;
   }): Promise<{ id: number; count?: number; softLimit?: number; warnSoftLimit?: boolean }>;
@@ -619,8 +643,15 @@ export interface DesktopApi {
   terminalDetach(args: { id: number }): Promise<{ ok: boolean }>;
   terminalInput(args: { id: number; data: string }): Promise<{ ok: boolean }>;
   terminalResize(args: { id: number; cols: number; rows: number }): Promise<{ ok: boolean }>;
-  /** Bind the session identity a pane belongs to (status attribution). */
-  terminalBindSession(args: { id: number; sessionKey?: string; cwd?: string }): Promise<{ ok: boolean }>;
+  /** Bind the session and workbench a pane belongs to (status + restore). */
+  terminalBindSession(args: {
+    id: number;
+    sessionKey?: string;
+    cwd?: string;
+    workbenchId?: string;
+  }): Promise<{ ok: boolean }>;
+  /** Panes of one workbench that are still running, for re-attaching after a reopen. */
+  terminalListForWorkbench(args: { workbenchId: string }): Promise<Array<{ id: number; cwd: string; cols: number; rows: number }>>;
   terminalDestroy(args: { id: number }): Promise<{ ok: boolean }>;
   workbenchComposerSendAppend(args: {
     paneKey: string;
@@ -672,6 +703,12 @@ export interface DesktopApi {
     acp: {
       count: number;
       liveCount: number;
+    };
+    /** Open workbench windows, their cap, and how long each took to open. */
+    windows: {
+      count: number;
+      limit: number;
+      timings: Array<{ workbenchId: string; loadMs: number | null; showMs: number | null }>;
     };
   }>;
   terminalGitInfo(args: {
@@ -1488,6 +1525,31 @@ const api: DesktopApi = {
     ipcRenderer.on("standalone-note:requestClose", handler);
     return () => ipcRenderer.removeListener("standalone-note:requestClose", handler);
   },
+  taskWindowOpen: (args) => ipcRenderer.invoke("task-window:open", args),
+  taskWindowList: () => ipcRenderer.invoke("task-window:list"),
+  onTaskWindowsChanged: (callback) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      windows: Array<{ workbenchId: string; noteId: string; title: string }>
+    ) => callback(windows);
+    ipcRenderer.on("task-window:changed", handler);
+    return () => ipcRenderer.removeListener("task-window:changed", handler);
+  },
+  taskWindowFocus: (args) => ipcRenderer.invoke("task-window:focus", args),
+  taskWindowGetState: () => ipcRenderer.invoke("task-window:getState"),
+  taskWindowSetTitle: (args) => ipcRenderer.invoke("task-window:setTitle", args),
+  taskWindowClose: () => ipcRenderer.invoke("task-window:close"),
+  onTaskWindowLimit: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: { limit: number }) => callback(payload);
+    ipcRenderer.on("task-window:limit", handler);
+    return () => ipcRenderer.removeListener("task-window:limit", handler);
+  },
+  onTaskWindowCloseRequested: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on("task-window:requestClose", handler);
+    return () => ipcRenderer.removeListener("task-window:requestClose", handler);
+  },
+  taskWindowCloseReady: (args) => ipcRenderer.invoke("task-window:closeReady", args),
   browserCreate: (args) => ipcRenderer.invoke("browser:create", args),
   browserDestroy: (args) => ipcRenderer.invoke("browser:destroy", args),
   browserList: () => ipcRenderer.invoke("browser:list"),
@@ -1515,11 +1577,6 @@ const api: DesktopApi = {
     const handler = (_event: Electron.IpcRendererEvent, payload: { pane: string }) => callback(payload);
     ipcRenderer.on("settings:navigate", handler);
     return () => ipcRenderer.removeListener("settings:navigate", handler);
-  },
-  onOpenSessions: (callback) => {
-    const handler = () => callback();
-    ipcRenderer.on("sessions:open", handler);
-    return () => ipcRenderer.removeListener("sessions:open", handler);
   },
   onSettingsChanged: (callback) => {
     const handler = (
@@ -1706,6 +1763,7 @@ const api: DesktopApi = {
   terminalInput: (args) => ipcRenderer.invoke("terminal:input", args),
   terminalResize: (args) => ipcRenderer.invoke("terminal:resize", args),
   terminalBindSession: (args) => ipcRenderer.invoke("terminal:bindSession", args),
+  terminalListForWorkbench: (args) => ipcRenderer.invoke("terminal:listForWorkbench", args),
   terminalDestroy: (args) => ipcRenderer.invoke("terminal:destroy", args),
   workbenchComposerSendAppend: (args) => ipcRenderer.invoke("workbench:composerSendAppend", args),
   workbenchComposerSendList: (args) => ipcRenderer.invoke("workbench:composerSendList", args),

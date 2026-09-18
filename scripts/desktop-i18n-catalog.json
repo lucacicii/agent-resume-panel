@@ -29,7 +29,12 @@
     "desktop.gtd.pinnedHint": "Pinned status; clear it to follow this task's notes and sessions",
     "desktop.gtd.followChildren": "Follow children",
     "desktop.gtd.unmarked": "Unmarked",
-    "desktop.gtd.unmarkedHint": "No GTD status set"
+    "desktop.gtd.unmarkedHint": "No GTD status set",
+    "desktop.gtd.openInWindow": "Open in a new window",
+    "desktop.gtd.windowLimit": "At most {0} workbench windows can be open at once",
+    "desktop.gtd.windowNoWorkbench": "This task has no workbench to open",
+    "desktop.gtd.windowMissing": "This window is missing its task",
+    "desktop.gtd.windowOpen": "Open in its own window"
   },
   "ja": {
     "desktop.workbench.lastExitWaiting": "前回終了時にこのセッションは入力待ちでした",
@@ -61,7 +66,12 @@
     "desktop.gtd.pinnedHint": "固定されたステータス。解除するとタスク配下に追従します",
     "desktop.gtd.followChildren": "子項目に追従",
     "desktop.gtd.unmarked": "未設定",
-    "desktop.gtd.unmarkedHint": "GTD ステータスが未設定です"
+    "desktop.gtd.unmarkedHint": "GTD ステータスが未設定です",
+    "desktop.gtd.openInWindow": "新しいウィンドウで開く",
+    "desktop.gtd.windowLimit": "ワークベンチウィンドウは同時に{0}個まで開けます",
+    "desktop.gtd.windowNoWorkbench": "このタスクには開けるワークベンチがありません",
+    "desktop.gtd.windowMissing": "このウィンドウにはタスクがありません",
+    "desktop.gtd.windowOpen": "独立したウィンドウで開いています"
   },
   "zh-cn": {
     "desktop.workbench.lastExitWaiting": "上次退出时该会话在等待你的输入",
@@ -93,6 +103,11 @@
     "desktop.gtd.pinnedHint": "已固定状态；清除后跟随该任务下的笔记与会话",
     "desktop.gtd.followChildren": "跟随子项",
     "desktop.gtd.unmarked": "未标记",
-    "desktop.gtd.unmarkedHint": "尚未设置 GTD 状态"
+    "desktop.gtd.unmarkedHint": "尚未设置 GTD 状态",
+    "desktop.gtd.openInWindow": "在独立窗口打开",
+    "desktop.gtd.windowLimit": "最多同时打开 {0} 个任务窗口",
+    "desktop.gtd.windowNoWorkbench": "该任务没有可打开的 Workbench",
+    "desktop.gtd.windowMissing": "该窗口缺少任务参数",
+    "desktop.gtd.windowOpen": "已在独立窗口打开"
   }
 }

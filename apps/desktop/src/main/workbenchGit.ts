@@ -17,6 +17,7 @@ import * as path from "node:path";
 import { isGitRepo, queryGitRoot } from "./gitNestedScan";
 import { buildGitGraphLayout, type GitGraphLayout } from "./gitGraphLayout";
 import { safeHandle } from "./ipcUtils";
+import { shareGitQuery } from "./gitQueryShare";
 import { parseGitStatusPorcelainV1Z, stagedRepoPaths } from "./workbenchGitStatus";
 import { resolveCanonicalWorkbenchPath } from "./workbenchFileIo";
 import { toGitDiffHunkMetadata, type GitDiffHunk } from "./workbenchGitDiff";
@@ -780,15 +781,19 @@ export function registerWorkbenchGitIpc(getSystemLocale: () => string): void {
 
   safeHandle("terminal:gitFetch", async (_event, args: { repoRoot: string }) => {
     const repoRoot = await resolveRepoRoot(args.repoRoot);
-    try {
-      await execFileAsync("git", ["-C", repoRoot, "fetch", "--prune"], {
-        timeout: 60000,
-        maxBuffer: 1024 * 1024
-      });
-    } catch (error) {
-      throw new Error(formatExecError(error));
-    }
-    return { ok: true };
+    // Every window on this repository runs its own auto-fetch timer; one fetch
+    // per simultaneous sweep is enough.
+    return shareGitQuery(`fetch\0${repoRoot}`, async () => {
+      try {
+        await execFileAsync("git", ["-C", repoRoot, "fetch", "--prune"], {
+          timeout: 60000,
+          maxBuffer: 1024 * 1024
+        });
+      } catch (error) {
+        throw new Error(formatExecError(error));
+      }
+      return { ok: true };
+    });
   });
 
   safeHandle("terminal:gitStage", async (_event, args: { repoRoot: string; paths: string[] }) => {

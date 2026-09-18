@@ -1,6 +1,5 @@
 import * as crypto from "node:crypto";
-import type { BrowserWindow } from "electron";
-import { shell } from "electron";
+import { BrowserWindow, shell } from "electron";
 import type { PanelSettings } from "@agent-resume/core";
 import { effectivePanelHome } from "@agent-resume/core";
 import type { RequestPermissionRequest, RequestPermissionResponse } from "@agentclientprotocol/sdk" with {
@@ -972,37 +971,44 @@ class AcpChatController {
 }
 
 let imStreamHandler: ((event: AcpStreamEvent) => Promise<void>) | null | undefined;
-const pendingWindowStreamEvents = new Map<string, { getMainWindow: GetMainWindow; event: AcpStreamEvent; timer: ReturnType<typeof setTimeout> }>();
+const pendingStreamEvents = new Map<string, { event: AcpStreamEvent; timer: ReturnType<typeof setTimeout> }>();
 
-function emitStreamEventToWindow(getMainWindow: GetMainWindow, event: AcpStreamEvent): void {
-  const win = getMainWindow();
-  if (!win || win.isDestroyed()) return;
-
+/**
+ * Send an ACP stream event to every window.
+ *
+ * Chats live in workbench windows, so a single target would leave every other
+ * window's chat frozen. Streamed deltas stay coalesced per message.
+ */
+function emitStreamEvent(event: AcpStreamEvent): void {
   if (event.type === "assistantDelta" && event.streaming) {
     const key = `${event.chatId}:${event.id}`;
-    const existing = pendingWindowStreamEvents.get(key);
+    const existing = pendingStreamEvents.get(key);
     if (existing) {
       existing.event = event;
       return;
     }
     const timer = setTimeout(() => {
-      const pending = pendingWindowStreamEvents.get(key);
+      const pending = pendingStreamEvents.get(key);
       if (!pending) return;
-      pendingWindowStreamEvents.delete(key);
-      const target = pending.getMainWindow();
-      if (target && !target.isDestroyed()) {
-        target.webContents.send("acp:stream", pending.event);
-      }
+      pendingStreamEvents.delete(key);
+      sendStreamEvent(pending.event);
     }, 16);
-    pendingWindowStreamEvents.set(key, { getMainWindow, event, timer });
+    pendingStreamEvents.set(key, { event, timer });
     return;
   }
 
-  win.webContents.send("acp:stream", event);
+  sendStreamEvent(event);
 }
 
-function emitToWindow(getMainWindow: GetMainWindow, event: AcpStreamEvent): void {
-  emitStreamEventToWindow(getMainWindow, event);
+function sendStreamEvent(event: AcpStreamEvent): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (win.isDestroyed()) continue;
+    try { win.webContents.send("acp:stream", event); } catch { /* renderer may be closing */ }
+  }
+}
+
+function emitToWindow(_getMainWindow: GetMainWindow, event: AcpStreamEvent): void {
+  emitStreamEvent(event);
   if (imStreamHandler === undefined) {
     imStreamHandler = null;
     void import("../im/ipc").then((mod) => {

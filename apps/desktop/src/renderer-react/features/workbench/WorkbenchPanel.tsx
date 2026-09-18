@@ -59,6 +59,7 @@ import {
   sessionNoteMatchesTarget,
   type FloatingSessionNoteTarget
 } from "./FloatingSessionNote";
+import { DiffWorkerPool } from "./diffWorkerPool";
 import {
   WorkbenchDiffView,
   type WorkbenchDiffHunkTarget,
@@ -120,6 +121,7 @@ import {
   createTaskWorkbench,
   deleteTaskWorkbench,
   ensureTaskWorkbenches,
+  mergeTaskSessionKeys,
   readActiveWorkbenchId,
   renameTaskWorkbench,
   setTaskWorkbenchLayout,
@@ -404,6 +406,43 @@ function workbenchScope(workbenchId: string | null | undefined): string | null {
   return workbenchId ? `wb:${workbenchId}` : null;
 }
 
+/** Shape of `TaskWorkbench.layoutJson`, written by the persist effect below. */
+type PersistedWorkbenchLayout = {
+  openNoteIds?: unknown;
+  activePaneKey?: unknown;
+  terminals?: unknown;
+};
+
+/** A terminal pane as it is stored, so a reopened workbench can adopt its pty. */
+type PersistedTerminalPane = Pick<
+  TerminalPane,
+  "key" | "title" | "group" | "cwd" | "projectPath" | "sessionKey" | "command"
+> & { ptyId: number };
+
+/** Stored pane entries are untrusted: they come from an older layout blob. */
+function readPersistedTerminals(parsed: PersistedWorkbenchLayout): PersistedTerminalPane[] {
+  if (!Array.isArray(parsed.terminals)) return [];
+  const panes: PersistedTerminalPane[] = [];
+  for (const entry of parsed.terminals) {
+    if (!entry || typeof entry !== "object") continue;
+    const pane = entry as Record<string, unknown>;
+    if (typeof pane.key !== "string" || typeof pane.cwd !== "string") continue;
+    if (typeof pane.ptyId !== "number") continue;
+    if (pane.group !== "session" && pane.group !== "terminal") continue;
+    panes.push({
+      key: pane.key,
+      ptyId: pane.ptyId,
+      group: pane.group,
+      cwd: pane.cwd,
+      title: typeof pane.title === "string" ? pane.title : "",
+      projectPath: typeof pane.projectPath === "string" ? pane.projectPath : pane.cwd,
+      ...(typeof pane.sessionKey === "string" ? { sessionKey: pane.sessionKey } : {}),
+      ...(typeof pane.command === "string" ? { command: pane.command } : {})
+    });
+  }
+  return panes;
+}
+
 /** Record a bound session as owned by the active workbench (best-effort). */
 function recordSessionInWorkbench(workbenchId: string | null | undefined, sessionKey: string): void {
   if (!workbenchId || typeof desktopApi().assignSessionToTaskWorkbench !== "function") return;
@@ -530,8 +569,25 @@ function formatDateTime(timestamp: number): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+/** Persist a layout value for the workbench this window is showing. */
+function writeWorkbenchValue(key: string, workbenchId: string | null | undefined, value: string): void {
+  try { localStorage.setItem(workbenchScopedKey(key, workbenchId), value); } catch { /* storage is optional */ }
+}
+
 function storageString(key: string): string {
   try { return localStorage.getItem(key) || ""; } catch { return ""; }
+}
+
+/**
+ * UI state that belongs to one workbench rather than to the app.
+ *
+ * Every window shares one localStorage, so two windows showing different
+ * workbenches would otherwise overwrite each other's pane widths and view mode.
+ * The unscoped key stays as the fallback for the first window, before its
+ * workbench resolves.
+ */
+function workbenchScopedKey(key: string, workbenchId: string | null | undefined): string {
+  return workbenchId ? `${key}:${workbenchId}` : key;
 }
 
 function loadPinnedProjects(): Set<string> {
@@ -712,6 +768,8 @@ export function WorkbenchPanel(): ReactPortal | null {
   const terminalsRef = useRef<TerminalPane[]>([]);
   const refreshTerminalGitRef = useRef<(key: string) => Promise<void>>(async () => {});
   const editorsRef = useRef<EditorPane[]>([]);
+  /** Latest editor save, so the window-close flush never captures a stale one. */
+  const saveEditorRef = useRef<(key: string) => Promise<boolean>>(async () => true);
   const diffsRef = useRef<DiffPane[]>([]);
   const notePanesRef = useRef<NotePane[]>([]);
   const fileExplorerRef = useRef<WorkbenchFileExplorerHandle | null>(null);
@@ -1676,8 +1734,8 @@ export function WorkbenchPanel(): ReactPortal | null {
   const scopeProjectsRef = useRef<string[]>(scopeProjects);
   useEffect(() => { scopeProjectsRef.current = scopeProjects; }, [scopeProjects]);
   const taskSessionKeys = useMemo(
-    () => liveTask?.sessions ?? taskScope?.sessions ?? [],
-    [liveTask, taskScope]
+    () => mergeTaskSessionKeys(liveTask?.sessions ?? taskScope?.sessions ?? [], terminals, activeWorkbenchId ?? null),
+    [liveTask, taskScope, terminals, activeWorkbenchId]
   );
   /**
    * Whether the task's session set is authoritative. A task that exists in
@@ -1790,7 +1848,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const toggleSessionViewMode = useCallback(() => {
     setSessionViewMode((current) => {
       const next = current === "hybrid" ? "terminal" : "hybrid";
-      localStorage.setItem(SESSION_VIEW_MODE_KEY, next);
+      writeWorkbenchValue(SESSION_VIEW_MODE_KEY, activeWorkbenchIdRef.current, next);
       return next;
     });
   }, []);
@@ -2554,8 +2612,8 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
   }, [openNotePane]);
 
-  const closeActivePane = useCallback(() => {
-    if (!activePane) return;
+  const closeActivePane = useCallback((): boolean => {
+    if (!activePane) return false;
     if (activePane.startsWith("terminal:")) {
       closeTerminal(activePane);
     } else if (activePane.startsWith("acp:")) {
@@ -2569,6 +2627,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     } else {
       closeDiff(activePane);
     }
+    return true;
   }, [activePane, closeAcpChat, closeBrowser, closeDiff, closeEditor, closeNotePane, closeTerminal]);
 
   const openBlankTerminal = useCallback(async (targetProject?: string) => {
@@ -2706,7 +2765,7 @@ export function WorkbenchPanel(): ReactPortal | null {
           const terminalKey = addTerminal(title, launchCwd, result.command, launchCwd, undefined, "session", { initialPrompt: prompt, env: result.env });
           addPendingSession(terminalKey, target.provider, launchCwd, title);
           setSessionViewMode("hybrid");
-          localStorage.setItem(SESSION_VIEW_MODE_KEY, "hybrid");
+          writeWorkbenchValue(SESSION_VIEW_MODE_KEY, activeWorkbenchIdRef.current, "hybrid");
         }
         await loadSessions();
       }
@@ -2841,8 +2900,30 @@ export function WorkbenchPanel(): ReactPortal | null {
   }, [active, activePane]);
 
   useEffect(() => desktopApi().onWorkbenchCmdW(() => {
-    if (active) closeActivePane();
+    if (!active) return;
+    if (closeActivePane()) return;
+    // A workbench window with no pane left to close is the window itself.
+    if (document.documentElement.dataset.windowMode === "task") void desktopApi().taskWindowClose();
   }), [active, closeActivePane]);
+
+  /**
+   * Closing a workbench window flushes its unsaved editor buffers first; if one
+   * cannot be saved, the window stays open rather than dropping the edit.
+   */
+  useEffect(() => {
+    if (document.documentElement.dataset.windowMode !== "task") return;
+    const stop = desktopApi().onTaskWindowCloseRequested?.(() => {
+      void (async () => {
+        const dirty = editorsRef.current.filter((pane) => pane.dirty).map((pane) => pane.key);
+        for (const key of dirty) {
+          try { await saveEditorRef.current(key); } catch { /* reported by the editor status */ }
+        }
+        const stillDirty = editorsRef.current.some((pane) => pane.dirty);
+        await desktopApi().taskWindowCloseReady?.({ ok: !stillDirty }).catch(() => undefined);
+      })();
+    });
+    return () => stop?.();
+  }, []);
 
   /** ⌘⇧F / Ctrl+Shift+F — open Find in Files (Search side panel). */
   useEffect(() => {
@@ -3056,7 +3137,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       selectProject(projectPath, { keepSessionKey: true });
       const terminalKey = addTerminal(session.title || session.id, cwd, command, projectPath, key);
       setSessionViewMode("hybrid");
-      localStorage.setItem(SESSION_VIEW_MODE_KEY, "hybrid");
+      writeWorkbenchValue(SESSION_VIEW_MODE_KEY, activeWorkbenchIdRef.current, "hybrid");
       // Box-primary: an agent session pane lands text entry in its composer
       // (deferred until the PTY spawns). Shell panes keep raw xterm focus.
       focusWorkbenchPane(terminalKey);
@@ -3097,7 +3178,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     selectProject(projectPath);
     const paneKey = addTerminal(detail.title || detail.id, detail.cwd, detail.command, projectPath, key, "session", detail.initialPrompt ? { initialPrompt: detail.initialPrompt } : undefined);
     setSessionViewMode("hybrid");
-    localStorage.setItem(SESSION_VIEW_MODE_KEY, "hybrid");
+    writeWorkbenchValue(SESSION_VIEW_MODE_KEY, activeWorkbenchIdRef.current, "hybrid");
     setActiveSessionKey(key);
     focusWorkbenchPane(paneKey);
   }, [addTerminal, focusWorkbenchPane, selectProject, setActivePane]);
@@ -3276,6 +3357,17 @@ export function WorkbenchPanel(): ReactPortal | null {
     selectProject(workbench.projectPath, { keepSessionKey: true });
   }, [activeWorkbenchId, workbenches, selectProject]);
 
+  // Pane geometry and the session view mode belong to the workbench, so a
+  // window picks up the values of the workbench it is showing.
+  useEffect(() => {
+    if (!activeWorkbenchId) return;
+    setListWidth(storedWidth(workbenchScopedKey(LIST_WIDTH_KEY, activeWorkbenchId), 324, 240, 720));
+    setSideWidth(storedWidth(workbenchScopedKey(SIDE_WIDTH_KEY, activeWorkbenchId), 320, 240, 840));
+    setTuiSplitHeight(storedWidth(workbenchScopedKey(TUI_SPLIT_HEIGHT_KEY, activeWorkbenchId), 180, 80, 600));
+    const mode = storageString(workbenchScopedKey(SESSION_VIEW_MODE_KEY, activeWorkbenchId));
+    if (mode === "terminal" || mode === "hybrid") setSessionViewMode(mode);
+  }, [activeWorkbenchId]);
+
   const activateWorkbench = useCallback((workbench: Workbench) => {
     setActiveWorkbenchId(workbench.workbenchId);
     activeWorkbenchIdRef.current = workbench.workbenchId;
@@ -3346,31 +3438,87 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
   }, [activateWorkbench, discardWorkbenchPanes, t]);
 
-  // Persist a workbench's open note panes so its workspace is restored later.
+  /**
+   * Re-attach the terminals a workbench had before its window was closed.
+   *
+   * The panes die with the renderer, but their ptys do not: a pane restored with
+   * `ptyId` set adopts the running process (TerminalView attaches and replays)
+   * instead of spawning a second agent for the same work.
+   */
+  const restoreWorkbenchTerminals = useCallback(async (
+    workbenchId: string,
+    persisted: PersistedTerminalPane[],
+    projectPath: string | null
+  ): Promise<void> => {
+    if (!persisted.length || typeof desktopApi().terminalListForWorkbench !== "function") return;
+    const live = await desktopApi().terminalListForWorkbench({ workbenchId }).catch(() => []);
+    if (!live.length) return;
+    const liveIds = new Set(live.map((entry) => entry.id));
+    const knownPtyIds = new Set(
+      terminalsRef.current
+        .map((pane) => pane.ptyId)
+        .filter((id): id is number => typeof id === "number")
+    );
+    const additions = persisted
+      .filter((pane) => liveIds.has(pane.ptyId) && !knownPtyIds.has(pane.ptyId))
+      .map((pane): TerminalPane => ({ ...pane, workbenchId }));
+    if (!additions.length) return;
+    terminalsRef.current = [...terminalsRef.current, ...additions];
+    setTerminals((current) => [
+      ...current,
+      ...additions.filter((pane) => !current.some((item) => item.key === pane.key))
+    ]);
+    const scope = workbenchScope(workbenchId);
+    if (scope && !activePanesRef.current[scope]) {
+      setActivePane(additions[additions.length - 1]!.key, projectPath ?? selectedProject);
+    }
+  }, [selectedProject, setActivePane]);
+
+  // Persist a workbench's panes so its workspace can be restored later. The
+  // terminals carry their pty id: a reopened workbench adopts those processes.
   useEffect(() => {
     const workbenchId = activeWorkbenchIdRef.current;
     if (!workbenchId || typeof desktopApi().setTaskWorkbenchLayout !== "function") return;
     const openNoteIds = notePanesRef.current
       .filter((pane) => pane.workbenchId === workbenchId)
       .map((pane) => pane.noteId);
-    void setTaskWorkbenchLayout(workbenchId, JSON.stringify({ openNoteIds })).catch(() => undefined);
-  }, [notePanes]);
+    const terminalsForWorkbench = terminalsRef.current
+      .filter((pane) => pane.workbenchId === workbenchId && typeof pane.ptyId === "number")
+      .map((pane) => ({
+        key: pane.key,
+        ptyId: pane.ptyId,
+        title: pane.title,
+        group: pane.group,
+        cwd: pane.cwd,
+        projectPath: pane.projectPath,
+        ...(pane.sessionKey ? { sessionKey: pane.sessionKey } : {}),
+        ...(pane.command ? { command: pane.command } : {})
+      }));
+    const activePaneKey = activePanesRef.current[workbenchScope(workbenchId) ?? ""] || "";
+    void setTaskWorkbenchLayout(
+      workbenchId,
+      JSON.stringify({ openNoteIds, terminals: terminalsForWorkbench, activePaneKey })
+    ).catch(() => undefined);
+  }, [notePanes, terminals]);
 
-  // Restore a workbench's persisted note panes when it becomes active.
+  // Restore a workbench's persisted panes when it becomes active.
   useEffect(() => {
     const workbenchId = activeWorkbenchId;
     if (!workbenchId) return;
     const workbench = workbenchesRef.current.find((item) => item.workbenchId === workbenchId);
     if (!workbench?.layoutJson) return;
     let openNoteIds: string[] = [];
+    let parsed: PersistedWorkbenchLayout = {};
     try {
-      const parsed = JSON.parse(workbench.layoutJson) as { openNoteIds?: unknown };
+      parsed = JSON.parse(workbench.layoutJson) as PersistedWorkbenchLayout;
       if (Array.isArray(parsed?.openNoteIds)) {
         openNoteIds = parsed.openNoteIds.filter((id): id is string => typeof id === "string");
       }
     } catch {
       return;
     }
+    const persistedTerminals = readPersistedTerminals(parsed);
+    void restoreWorkbenchTerminals(workbenchId, persistedTerminals, workbench.projectPath);
     if (!openNoteIds.length) return;
     const scope = `wb:${workbenchId}`;
     const existing = new Set(notePanesRef.current.map((pane) => pane.key));
@@ -3394,7 +3542,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       if (firstKey) setActivePane(firstKey, workbench.projectPath ?? selectedProject);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeWorkbenchId]);
+  }, [activeWorkbenchId, restoreWorkbenchTerminals]);
 
   // Open the task's note once its workbench is active (request comes from the board).
   useEffect(() => {
@@ -4207,6 +4355,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       return false;
     }
   };
+  saveEditorRef.current = saveEditor;
 
   const saveTimers = useRef(new Map<string, number>());
   useEffect(() => () => saveTimers.current.forEach((timer) => window.clearTimeout(timer)), []);
@@ -5154,8 +5303,8 @@ export function WorkbenchPanel(): ReactPortal | null {
     const current = kind === "list" ? listWidth : sideWidth;
     const limits = kind === "list" ? [240, 720] : [240, 840];
     const next = Math.max(limits[0], Math.min(limits[1], current + delta));
-    if (kind === "list") { setListWidth(next); localStorage.setItem(LIST_WIDTH_KEY, String(next)); }
-    else { setSideWidth(next); localStorage.setItem(SIDE_WIDTH_KEY, String(next)); }
+    if (kind === "list") { setListWidth(next); writeWorkbenchValue(LIST_WIDTH_KEY, activeWorkbenchIdRef.current, String(next)); }
+    else { setSideWidth(next); writeWorkbenchValue(SIDE_WIDTH_KEY, activeWorkbenchIdRef.current, String(next)); }
   };
 
   const contextMenuWidth = contextMenu?.kind === "session" || contextMenu?.kind === "session-tab" ? 210 : 240;
@@ -5588,9 +5737,12 @@ export function WorkbenchPanel(): ReactPortal | null {
   if (!host) return null;
 
   const headerSlot = document.getElementById("app-header-slot");
+  // A workbench window has no app header to portal into, so it renders the same
+  // header itself, where the window's own chrome strip is.
+  const inlineHeader = document.documentElement.dataset.windowMode === "task";
   const detailHeader = (
     <WorkbenchDetailHeader
-      onBackToGtd={() => window.dispatchEvent(new CustomEvent("agent-resume:view-gtd"))}
+      onBackToGtd={inlineHeader ? undefined : () => window.dispatchEvent(new CustomEvent("agent-resume:view-gtd"))}
       selectedProject={sideRoot}
       projectLabel={sideRoot ? aliases[sideRoot] || basename(sideRoot) : ""}
       emptyLabel={taskScope ? t("desktop.workbench.taskNoProject") : undefined}
@@ -5604,6 +5756,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   );
 
   return createPortal(<><section className="panel workbench-panel react-workbench-panel" hidden={!active}>
+    {inlineHeader && active ? <div className="wb-window-header">{detailHeader}</div> : null}
     <div className="workbench-layout" style={{ "--wb-list-width": `${listWidth}px`, "--wb-side-panel-width": `${sideWidth}px` } as CSSProperties}>
       <aside className="wb-list-pane">
         {taskScope && (
@@ -5825,7 +5978,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       </aside>
       <ResizeHandle label={t("desktop.workbench.resizeSessions")} onDelta={(delta) => setWidth("list", delta)} />
       <main className="wb-detail">
-        {active && headerSlot ? createPortal(detailHeader, headerSlot) : null}
+        {active && headerSlot && !inlineHeader ? createPortal(detailHeader, headerSlot) : null}
         {taskScope && workbenches.length > 0 ? (
           <div className="wb-workbench-bar" role="tablist" aria-label={t("desktop.workbench.workbenchTabs")}>
             {workbenches.map((workbench) => {
@@ -5926,7 +6079,7 @@ export function WorkbenchPanel(): ReactPortal | null {
                     onDelta={(delta) => {
                       setTuiSplitHeight((prev) => {
                         const next = Math.max(80, Math.min(600, prev - delta));
-                        localStorage.setItem(TUI_SPLIT_HEIGHT_KEY, String(next));
+                        writeWorkbenchValue(TUI_SPLIT_HEIGHT_KEY, activeWorkbenchIdRef.current, String(next));
                         return next;
                       });
                     }}
@@ -6072,7 +6225,7 @@ export function WorkbenchPanel(): ReactPortal | null {
             <button type="button" className="wb-editor-find-btn app-inline-search-btn" aria-label={t("desktop.common.findPrev")} onClick={() => runEditorFind("backward")}><ThemeIcon name="arrow-up" size={14} /></button>
             <button type="button" className="wb-editor-find-btn app-inline-search-btn" aria-label={t("desktop.common.findNext")} onClick={() => runEditorFind("forward")}><ThemeIcon name="arrow-down" size={14} /></button>
             <button type="button" className="wb-editor-find-btn app-inline-search-btn" aria-label={t("desktop.common.closeFind")} onClick={closeEditorFind}><ThemeIcon name="close" size={14} /></button>
-          </div> : null}{currentEditor ? <div className="wb-editor-pane" onContextMenu={(event) => { event.preventDefault(); const selectedText = editorRef.current?.getSelectedText().trim() || ""; setEditorContextMenu({ x: event.clientX, y: event.clientY, hasSelection: Boolean(selectedText), selectedText }); }}>{editorDiskAlert}{currentEditor.view === "preview" ? <div className="wb-editor-preview markdown-body" onClick={(event) => { const src = imageSrcFromElement(event.target); if (src) setImagePreview(src); }} dangerouslySetInnerHTML={{ __html: renderMarkdown(currentEditor.content, { baseDir: posixDirname(currentEditor.path), rootDir: currentEditor.projectPath, imageLabels: { openInBrowser: t("desktop.markdown.openInBrowser"), unavailable: t("desktop.markdown.imageUnavailable"), remoteImage: t("desktop.markdown.remoteImage") } }) }} /> : <CodeEditor ref={editorRef} className="wb-editor-host" value={currentEditor.content} onChange={(value) => updateEditorContent(currentEditor.key, value)} onBlur={() => { if (currentEditor.dirty) void saveEditor(currentEditor.key); }} ariaLabel={currentEditor.path} filePath={currentEditor.path} selectionProjectPath={currentEditor.projectPath} readOnly={editorSettings?.editable === false} fontSize={editorSettings?.fontSize ?? 13} wordWrap={editorSettings?.wordWrap ?? false} tabSize={editorSettings?.tabSize ?? 4} appearance={editorAppearance} />}<div className="wb-editor-status"><span className="wb-editor-status-path">{currentEditor.path}</span><span className="wb-editor-status-state">{currentEditor.saving ? t("desktop.workbench.fileSaving") : currentEditor.diskState === "changed" ? t("desktop.workbench.fileConflict") : currentEditor.diskState === "deleted" ? t("desktop.workbench.fileDeletedOnDisk") : currentEditor.diskState === "external" ? t("desktop.workbench.fileUnavailableOnDisk") : currentEditor.dirty ? t("desktop.workbench.fileModified") : t("desktop.workbench.fileSaved")}</span><button type="button" className="wb-git-action-btn" disabled={!currentEditor.dirty || currentEditor.saving || Boolean(currentEditor.diskState) || editorSettings?.editable === false} onClick={() => void saveEditor(currentEditor.key)} aria-label={t("desktop.common.save")}><ThemeIcon name="save" size={15} /></button></div></div> : null}{currentDiff ? <div className="wb-git-diff-pane"><div className="wb-diff-head"><strong className="wb-diff-title">{currentDiff.path}</strong><button type="button" className="wb-git-action-btn wb-diff-open" aria-label={t("desktop.workbench.fileOpen")} title={t("desktop.workbench.fileOpen")} onClick={() => void openFile(gitChangeFilePath(currentDiff))}><ThemeIcon name="file" size={14} /></button></div><div className="wb-diff-labels"><span className="wb-diff-label">{currentDiff.oldLabel}</span><span className="wb-diff-label">{currentDiff.newLabel}</span></div><WorkbenchDiffView diff={currentDiff} appearance={editorAppearance} onDiscardHunk={(target) => void discardGitHunk(currentDiff, target)} onDiscardLine={(target) => void discardGitLine(currentDiff, target)} onStageHunk={(target) => void stageGitHunk(currentDiff, target)} onUnstageHunk={(target) => void unstageGitHunk(currentDiff, target)} onStageLine={(target) => void stageGitLine(currentDiff, target)} onUnstageLine={(target) => void unstageGitLine(currentDiff, target)} /></div> : null}{currentNotePane ? <NotePaneView key={currentNotePane.key} noteId={currentNotePane.noteId} active={active} onOpenNote={(noteId) => openNotePane(noteId)} onTitleChange={updateNotePaneTitle} onDirtyChange={setNotePaneDirty} onClose={() => closeNotePane(currentNotePane.key)} /> : null}{acpChats.map((pane) => {
+          </div> : null}{currentEditor ? <div className="wb-editor-pane" onContextMenu={(event) => { event.preventDefault(); const selectedText = editorRef.current?.getSelectedText().trim() || ""; setEditorContextMenu({ x: event.clientX, y: event.clientY, hasSelection: Boolean(selectedText), selectedText }); }}>{editorDiskAlert}{currentEditor.view === "preview" ? <div className="wb-editor-preview markdown-body" onClick={(event) => { const src = imageSrcFromElement(event.target); if (src) setImagePreview(src); }} dangerouslySetInnerHTML={{ __html: renderMarkdown(currentEditor.content, { baseDir: posixDirname(currentEditor.path), rootDir: currentEditor.projectPath, imageLabels: { openInBrowser: t("desktop.markdown.openInBrowser"), unavailable: t("desktop.markdown.imageUnavailable"), remoteImage: t("desktop.markdown.remoteImage") } }) }} /> : <CodeEditor ref={editorRef} className="wb-editor-host" value={currentEditor.content} onChange={(value) => updateEditorContent(currentEditor.key, value)} onBlur={() => { if (currentEditor.dirty) void saveEditor(currentEditor.key); }} ariaLabel={currentEditor.path} filePath={currentEditor.path} selectionProjectPath={currentEditor.projectPath} readOnly={editorSettings?.editable === false} fontSize={editorSettings?.fontSize ?? 13} wordWrap={editorSettings?.wordWrap ?? false} tabSize={editorSettings?.tabSize ?? 4} appearance={editorAppearance} />}<div className="wb-editor-status"><span className="wb-editor-status-path">{currentEditor.path}</span><span className="wb-editor-status-state">{currentEditor.saving ? t("desktop.workbench.fileSaving") : currentEditor.diskState === "changed" ? t("desktop.workbench.fileConflict") : currentEditor.diskState === "deleted" ? t("desktop.workbench.fileDeletedOnDisk") : currentEditor.diskState === "external" ? t("desktop.workbench.fileUnavailableOnDisk") : currentEditor.dirty ? t("desktop.workbench.fileModified") : t("desktop.workbench.fileSaved")}</span><button type="button" className="wb-git-action-btn" disabled={!currentEditor.dirty || currentEditor.saving || Boolean(currentEditor.diskState) || editorSettings?.editable === false} onClick={() => void saveEditor(currentEditor.key)} aria-label={t("desktop.common.save")}><ThemeIcon name="save" size={15} /></button></div></div> : null}{currentDiff ? <div className="wb-git-diff-pane"><div className="wb-diff-head"><strong className="wb-diff-title">{currentDiff.path}</strong><button type="button" className="wb-git-action-btn wb-diff-open" aria-label={t("desktop.workbench.fileOpen")} title={t("desktop.workbench.fileOpen")} onClick={() => void openFile(gitChangeFilePath(currentDiff))}><ThemeIcon name="file" size={14} /></button></div><div className="wb-diff-labels"><span className="wb-diff-label">{currentDiff.oldLabel}</span><span className="wb-diff-label">{currentDiff.newLabel}</span></div><DiffWorkerPool><WorkbenchDiffView diff={currentDiff} appearance={editorAppearance} onDiscardHunk={(target) => void discardGitHunk(currentDiff, target)} onDiscardLine={(target) => void discardGitLine(currentDiff, target)} onStageHunk={(target) => void stageGitHunk(currentDiff, target)} onUnstageHunk={(target) => void unstageGitHunk(currentDiff, target)} onStageLine={(target) => void stageGitLine(currentDiff, target)} onUnstageLine={(target) => void unstageGitLine(currentDiff, target)} /></DiffWorkerPool></div> : null}{currentNotePane ? <NotePaneView key={currentNotePane.key} noteId={currentNotePane.noteId} active={active} onOpenNote={(noteId) => openNotePane(noteId)} onTitleChange={updateNotePaneTitle} onDirtyChange={setNotePaneDirty} onClose={() => closeNotePane(currentNotePane.key)} /> : null}{acpChats.map((pane) => {
             const visible = paneScopeKey(pane) === activeScopeKey && activePane === pane.key;
             return <AcpChatView
               key={pane.key}

@@ -15,9 +15,17 @@ function createDiffHighlightWorker(): Worker {
   return new Worker(DIFF_WORKER_URL);
 }
 
+/**
+ * Diff highlighting workers.
+ *
+ * Mounted around the diff view itself, so the pool is created when a diff is
+ * actually shown and torn down with it. Two workers per diff view is enough to
+ * keep highlighting off the main thread without paying for idle threads in every
+ * workbench window.
+ */
 const diffWorkerPoolOptions: WorkerPoolOptions = {
   workerFactory: createDiffHighlightWorker,
-  poolSize: 4
+  poolSize: 2
 };
 
 const diffWorkerHighlighterOptions: WorkerInitializationRenderOptions = {

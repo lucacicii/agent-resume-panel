@@ -23,28 +23,32 @@ export type WorkbenchFileSystemChangedEvent =
       sequence: number;
     };
 
-type WatchState = {
-  sender: WebContents;
+/**
+ * One watch per project root, shared by every window that shows it.
+ *
+ * Several workbench windows commonly show the same repository, and a recursive
+ * watcher plus a rescan timer per window would multiply both the descriptors and
+ * the CPU for identical information. The watch itself is therefore shared; each
+ * window only subscribes to the roots it currently displays.
+ */
+type SharedWatch = {
   rootPath: string;
   recursiveWatcher: fs.FSWatcher | null;
   batchTimer: NodeJS.Timeout | null;
   pollTimer: NodeJS.Timeout | null;
   pollIndex: number;
-  active: boolean;
   pendingPaths: Set<string>;
   fullRescan: boolean;
   sequence: number;
+  /** Windows watching this root, so a gone window can be forgotten. */
+  subscribers: Map<number, WebContents>;
+  /** Subscribers that are currently showing their workbench. */
+  activeSenders: Set<number>;
   stopped: boolean;
 };
 
-/** One watch set per renderer sender, keyed by resolved root path. */
-const watches = new Map<number, Map<string, WatchState>>();
-
-function forEachWatch(visitor: (state: WatchState) => void): void {
-  for (const senderWatches of watches.values()) {
-    for (const state of senderWatches.values()) visitor(state);
-  }
-}
+/** Project root → shared watch. */
+const watches = new Map<string, SharedWatch>();
 
 type WorkbenchWatcherRuntimeMetrics = {
   watcherCount: number;
@@ -69,137 +73,185 @@ function closeWatcher(watcher: fs.FSWatcher): void {
   try { watcher.close(); } catch { /* watcher may already be closed */ }
 }
 
-function emit(state: WatchState, event: WorkbenchFileSystemChangedEvent): void {
-  if (state.stopped || state.sender.isDestroyed()) return;
-  try { state.sender.send("workbench:fileSystemChanged", event); } catch { /* renderer may be closing */ }
+/** Deliver an event to every subscriber that is currently showing its workbench. */
+function emit(watch: SharedWatch, event: WorkbenchFileSystemChangedEvent): void {
+  if (watch.stopped) return;
+  for (const [senderId, sender] of watch.subscribers) {
+    if (!watch.activeSenders.has(senderId)) continue;
+    if (sender.isDestroyed()) continue;
+    try { sender.send("workbench:fileSystemChanged", event); } catch { /* renderer may be closing */ }
+  }
 }
 
-function queueChange(state: WatchState, changedPath: string | null): void {
-  if (state.stopped || !state.active) return;
+function queueChange(watch: SharedWatch, changedPath: string | null): void {
+  if (watch.stopped) return;
+  if (!hasActiveSubscriber(watch)) return;
   if (!changedPath) {
-    state.fullRescan = true;
+    watch.fullRescan = true;
   } else {
     const resolved = path.resolve(changedPath);
-    if (!isWithinRoot(resolved, state.rootPath)) {
-      state.fullRescan = true;
-    } else if (state.pendingPaths.size < MAX_PENDING_PATHS) {
-      state.pendingPaths.add(resolved);
+    if (!isWithinRoot(resolved, watch.rootPath)) {
+      watch.fullRescan = true;
+    } else if (watch.pendingPaths.size < MAX_PENDING_PATHS) {
+      watch.pendingPaths.add(resolved);
     } else {
-      state.fullRescan = true;
+      watch.fullRescan = true;
     }
   }
-  if (state.batchTimer) return;
-  state.batchTimer = setTimeout(() => {
-    state.batchTimer = null;
-    if (state.stopped) return;
-    const paths = [...state.pendingPaths];
-    state.pendingPaths.clear();
-    const fullRescan = state.fullRescan;
-    state.fullRescan = false;
-    emit(state, {
+  if (watch.batchTimer) return;
+  watch.batchTimer = setTimeout(() => {
+    watch.batchTimer = null;
+    if (watch.stopped) return;
+    const paths = [...watch.pendingPaths];
+    watch.pendingPaths.clear();
+    const fullRescan = watch.fullRescan;
+    watch.fullRescan = false;
+    emit(watch, {
       type: "change",
-      rootPath: state.rootPath,
+      rootPath: watch.rootPath,
       paths,
       fullRescan,
-      sequence: ++state.sequence
+      sequence: ++watch.sequence
     });
   }, CHANGE_BATCH_MS);
 }
 
-function installPolling(state: WatchState): void {
-  if (state.stopped || state.pollTimer) return;
-  if (!state.active) return;
-  const delay = WORKBENCH_POLL_INTERVALS_MS[state.pollIndex]
-    || WORKBENCH_POLL_INTERVALS_MS[WORKBENCH_POLL_INTERVALS_MS.length - 1]!;
-  state.pollTimer = setTimeout(() => {
-    state.pollTimer = null;
-    if (state.stopped || !state.active) return;
-    queueChange(state, null);
-    state.pollIndex = Math.min(state.pollIndex + 1, WORKBENCH_POLL_INTERVALS_MS.length - 1);
-    installPolling(state);
-  }, delay);
-  state.pollTimer.unref?.();
-  queueChange(state, null);
+function hasActiveSubscriber(watch: SharedWatch): boolean {
+  for (const senderId of watch.activeSenders) {
+    if (watch.subscribers.has(senderId)) return true;
+  }
+  return false;
 }
 
-function fallBackToPolling(state: WatchState, error: unknown): void {
-  if (state.stopped || state.pollTimer) return;
+function installPolling(watch: SharedWatch): void {
+  if (watch.stopped || watch.pollTimer) return;
+  if (!hasActiveSubscriber(watch)) return;
+  const delay = WORKBENCH_POLL_INTERVALS_MS[watch.pollIndex]
+    || WORKBENCH_POLL_INTERVALS_MS[WORKBENCH_POLL_INTERVALS_MS.length - 1]!;
+  watch.pollTimer = setTimeout(() => {
+    watch.pollTimer = null;
+    if (watch.stopped || !hasActiveSubscriber(watch)) return;
+    queueChange(watch, null);
+    watch.pollIndex = Math.min(watch.pollIndex + 1, WORKBENCH_POLL_INTERVALS_MS.length - 1);
+    installPolling(watch);
+  }, delay);
+  watch.pollTimer.unref?.();
+  queueChange(watch, null);
+}
+
+function stopPolling(watch: SharedWatch): void {
+  if (watch.pollTimer) clearTimeout(watch.pollTimer);
+  watch.pollTimer = null;
+  if (watch.batchTimer) clearTimeout(watch.batchTimer);
+  watch.batchTimer = null;
+  watch.pendingPaths.clear();
+  watch.fullRescan = false;
+}
+
+function fallBackToPolling(watch: SharedWatch, error: unknown): void {
+  if (watch.stopped || watch.pollTimer) return;
   const message = error instanceof Error ? error.message : String(error);
   console.warn(`[workbench] Recursive file watching unavailable; using adaptive polling: ${message}`);
-  if (state.recursiveWatcher) closeWatcher(state.recursiveWatcher);
-  state.recursiveWatcher = null;
-  installPolling(state);
+  if (watch.recursiveWatcher) closeWatcher(watch.recursiveWatcher);
+  watch.recursiveWatcher = null;
+  installPolling(watch);
 }
 
-export function setWorkbenchWatcherActive(active: boolean): void {
-  forEachWatch((state) => {
-    const wasActive = state.active;
-    state.active = active;
-    if (!active) {
-      if (state.pollTimer) clearTimeout(state.pollTimer);
-      state.pollTimer = null;
-      if (state.batchTimer) clearTimeout(state.batchTimer);
-      state.batchTimer = null;
-      state.pendingPaths.clear();
-      state.fullRescan = false;
-      return;
+function installWatchers(watch: SharedWatch): void {
+  let watcher: fs.FSWatcher;
+  try {
+    watcher = fs.watch(watch.rootPath, { recursive: true, persistent: false }, (_eventType, filename) => {
+      queueChange(watch, filename ? path.join(watch.rootPath, filename.toString()) : null);
+    });
+  } catch (error) {
+    fallBackToPolling(watch, error);
+    return;
+  }
+  watcher.on("error", (error) => fallBackToPolling(watch, error));
+  watch.recursiveWatcher = watcher;
+}
+
+/**
+ * Mark one window's workbench as visible or hidden.
+ *
+ * Hiding the last visible subscriber stops the poll timer; showing one again
+ * restarts the fast interval and asks for a full rescan, since changes that
+ * happened while it was hidden were deliberately not delivered.
+ */
+export function setWorkbenchWatcherActive(senderId: number, active: boolean): void {
+  for (const watch of watches.values()) {
+    if (!watch.subscribers.has(senderId)) continue;
+    const wasActive = watch.activeSenders.has(senderId);
+    if (active) watch.activeSenders.add(senderId);
+    else watch.activeSenders.delete(senderId);
+
+    if (!hasActiveSubscriber(watch)) {
+      stopPolling(watch);
+      continue;
     }
-    state.pollIndex = 0;
-    if (!state.recursiveWatcher) installPolling(state);
-    if (!wasActive) queueChange(state, null);
-  });
+    watch.pollIndex = 0;
+    if (!watch.recursiveWatcher) installPolling(watch);
+    if (active && !wasActive) queueChange(watch, null);
+  }
 }
 
 export function getWorkbenchWatcherRuntimeMetrics(): WorkbenchWatcherRuntimeMetrics {
   let watcherCount = 0;
   let pollingCount = 0;
   let activeCount = 0;
-  forEachWatch((state) => {
+  for (const watch of watches.values()) {
     watcherCount += 1;
-    if (state.pollTimer) pollingCount += 1;
-    if (state.active) activeCount += 1;
-  });
+    if (watch.pollTimer) pollingCount += 1;
+    if (hasActiveSubscriber(watch)) activeCount += 1;
+  }
   return { watcherCount, pollingCount, activeCount };
 }
 
-function installWatchers(state: WatchState): void {
-  try {
-    const watcher = fs.watch(state.rootPath, { recursive: true, persistent: false }, (_eventType, filename) => {
-      queueChange(state, filename ? path.join(state.rootPath, filename.toString()) : null);
-    });
-    watcher.on("error", (error) => fallBackToPolling(state, error));
-    state.recursiveWatcher = watcher;
-  } catch (error) {
-    fallBackToPolling(state, error);
+function dropWatch(watch: SharedWatch): void {
+  if (watch.stopped) return;
+  watch.stopped = true;
+  stopPolling(watch);
+  if (watch.recursiveWatcher) closeWatcher(watch.recursiveWatcher);
+  watch.recursiveWatcher = null;
+  watch.subscribers.clear();
+  watch.activeSenders.clear();
+}
+
+/** Forget every subscription of one window, closing roots nobody watches. */
+function stopSender(senderId: number): void {
+  for (const [rootPath, watch] of watches) {
+    if (!watch.subscribers.delete(senderId)) continue;
+    watch.activeSenders.delete(senderId);
+    if (watch.subscribers.size === 0) {
+      dropWatch(watch);
+      watches.delete(rootPath);
+      continue;
+    }
+    if (!hasActiveSubscriber(watch)) stopPolling(watch);
   }
 }
 
-function stopWatch(state: WatchState): void {
-  if (state.stopped) return;
-  state.stopped = true;
-  if (state.batchTimer) clearTimeout(state.batchTimer);
-  if (state.pollTimer) clearTimeout(state.pollTimer);
-  if (state.recursiveWatcher) closeWatcher(state.recursiveWatcher);
-  state.pendingPaths.clear();
-}
-
-function stopSender(senderId: number): void {
-  const senderWatches = watches.get(senderId);
-  if (!senderWatches) return;
-  watches.delete(senderId);
-  for (const state of senderWatches.values()) stopWatch(state);
-}
-
 export function disposeWorkbenchWatchers(): void {
-  for (const senderId of [...watches.keys()]) stopSender(senderId);
+  for (const [rootPath, watch] of watches) {
+    dropWatch(watch);
+    watches.delete(rootPath);
+  }
 }
 
-export function registerWorkbenchWatcherIpc(getMainWindow: () => BrowserWindow | null): void {
+export function registerWorkbenchWatcherIpc(
+  getMainWindow: () => BrowserWindow | null,
+  isAppWindowSender: (sender: WebContents) => boolean = () => false
+): void {
   safeHandle(
     "workbench:setFileWatch",
     async (event, args: { rootPaths: string[] | null }) => {
-      if (event.sender !== getMainWindow()?.webContents) throw new Error("无效的窗口来源");
-      stopSender(event.sender.id);
+      // Every workbench window watches its own roots; the main window is listed
+      // explicitly so a foreign webContents (browser pane) can never subscribe.
+      if (event.sender !== getMainWindow()?.webContents && !isAppWindowSender(event.sender)) {
+        throw new Error("无效的窗口来源");
+      }
+      const senderId = event.sender.id;
+      stopSender(senderId);
       const requested = args?.rootPaths;
       if (!requested || !requested.length) return { rootPaths: [] as string[] };
       // A project referenced by a synced task may not exist here; skip those
@@ -216,25 +268,30 @@ export function registerWorkbenchWatcherIpc(getMainWindow: () => BrowserWindow |
           // Skip unwatchable roots.
         }
       }
-      const senderWatches = new Map<string, WatchState>();
-      watches.set(event.sender.id, senderWatches);
-      event.sender.once("destroyed", () => stopSender(event.sender.id));
+      event.sender.once("destroyed", () => stopSender(senderId));
       for (const rootPath of rootPaths) {
-        const state: WatchState = {
-          sender: event.sender,
-          rootPath,
-          recursiveWatcher: null,
-          batchTimer: null,
-          pollTimer: null,
-          pollIndex: 0,
-          active: true,
-          pendingPaths: new Set(),
-          fullRescan: false,
-          sequence: 0,
-          stopped: false
-        };
-        senderWatches.set(rootPath, state);
-        installWatchers(state);
+        let watch = watches.get(rootPath);
+        if (!watch) {
+          watch = {
+            rootPath,
+            recursiveWatcher: null,
+            batchTimer: null,
+            pollTimer: null,
+            pollIndex: 0,
+            pendingPaths: new Set(),
+            fullRescan: false,
+            sequence: 0,
+            subscribers: new Map(),
+            activeSenders: new Set(),
+            stopped: false
+          };
+          watches.set(rootPath, watch);
+          installWatchers(watch);
+        }
+        watch.subscribers.set(senderId, event.sender);
+        watch.activeSenders.add(senderId);
+        watch.pollIndex = 0;
+        if (!watch.recursiveWatcher && !watch.pollTimer) installPolling(watch);
       }
       return { rootPaths };
     }

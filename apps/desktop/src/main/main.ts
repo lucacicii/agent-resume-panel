@@ -148,6 +148,22 @@ import {
 import { registerWorkbenchGitIpc } from "./workbenchGit";
 import { registerWorkbenchScriptsIpc } from "./workbenchScripts";
 import {
+  closeAllTaskWindows,
+  focusTaskWindow,
+  focusedOrRecentTaskWindow,
+  isTaskWindowSender,
+  listTaskWindows,
+  MAX_TASK_WINDOWS,
+  openTaskWindow,
+  openTaskWindowCount,
+  setTaskWindowTitle,
+  summarizeTaskWindows,
+  taskWindowOpenTimings,
+  taskWindowStateForSender,
+  type TaskWindowDeps
+} from "./taskWindows";
+import { loadStoredTaskWindows, saveStoredTaskWindows, taskWindowStatePath } from "./taskWindowStore";
+import {
   disposeBrowserController,
   disposeBrowserMcpServer,
   listBrowserToolDescriptors,
@@ -176,6 +192,7 @@ import {
 import { collectNewConfirmedWaitingSessions } from "./sessionWaitingNotifications";
 import { checkForDesktopUpdate, getAppVersion } from "./updateCheck";
 import { loadPanelDbPaths } from "./panelDatabases";
+import { findWorkbenchForSession, type SessionOwner } from "./sessionOwnership";
 import { buildI18nBundle, desktopT, initI18nService } from "./i18nService";
 import { shouldSyncSessionsAfterSettingsSave, type SaveSettingsOptions } from "./sessionSettingsSync";
 import {
@@ -265,6 +282,7 @@ import {
   recordAppError,
   type AppErrorLogLevel
 } from "./appErrorLog";
+import type { StatusSnapshot } from "../shared/agentStatusTypes";
 
 installProcessErrorHandlers();
 
@@ -279,13 +297,16 @@ let agentStatusBridge: AgentStatusBridge | null = null;
 let agentStatusSensor: AgentStatusSensor | null = null;
 /** Resolved lazily by `tryRegisterPtyIpc`; absent when node-pty failed to load. */
 let ptyPidResolver: ((id: number) => number | null) | null = null;
+/** Panes a window renders; the rest keep running unwatched. */
+let ptyAttachedResolver: (() => number[]) | null = null;
 
 function tryRegisterPtyIpc(): void {
   try {
     // Lazy-load so node-pty native binding issues do not block other IPC handlers.
-    const { registerPtyIpc, getPtyPid } = require("./ptyHost") as typeof import("./ptyHost");
-    registerPtyIpc(() => mainWindow);
+    const { registerPtyIpc, getPtyPid, getAttachedPtyIds } = require("./ptyHost") as typeof import("./ptyHost");
+    registerPtyIpc();
     ptyPidResolver = getPtyPid;
+    ptyAttachedResolver = getAttachedPtyIds;
   } catch (error) {
     void recordAppError({
       source: "pty-host",
@@ -366,7 +387,7 @@ function ensureAgentStatusRuntime(): void {
     })
   );
   registerAgentStatusIpc({
-    getWindow: () => mainWindow,
+    broadcast: (channel, payload) => broadcastToRenderers(channel, payload),
     bridge,
     getPanelHome: () => agentStatusPanelHome,
     execPath: process.execPath,
@@ -374,6 +395,10 @@ function ensureAgentStatusRuntime(): void {
     isPackaged: app.isPackaged,
     resourcesPath: process.resourcesPath,
     appPath: app.getAppPath()
+  });
+  bridge.subscribe((snapshot) => {
+    latestAgentSnapshot = snapshot;
+    refreshWorkbenchActiveSessions();
   });
   bridge.onTransition((transition) => {
     const sessionKey = transition.sessionKey?.trim();
@@ -535,10 +560,79 @@ let browserSettingsCache: import("@agent-resume/core").DesktopBrowserSettings | 
 let notifiedWaitingSessions = new Set<string>();
 
 function flushPendingTrayFocus(): void {
-  if (!pendingTrayFocus || !mainWindow || mainWindow.isDestroyed() || !mainWindowRendererReady) return;
-  const payload = pendingTrayFocus;
+  revealSessionOwner();
+}
+
+/**
+ * Bring the window that owns a session to the front and hand it the focus
+ * request. The board window hosts no workbench, so a session can only be
+ * focused in the workbench window that reported it — and when no workbench window
+ * is open, the session's task window is opened instead.
+ */
+function revealSessionOwner(): void {
+  const pending = pendingTrayFocus;
+  if (!pending) return;
+  const owner = windowForPaneKey(pending.paneKey) ?? focusedOrRecentTaskWindow();
+  if (owner && !owner.isDestroyed()) {
+    pendingTrayFocus = null;
+    if (owner.isMinimized()) owner.restore();
+    owner.show();
+    owner.focus();
+    owner.webContents.send("workbench:focusSession", pending);
+    return;
+  }
+  void openTaskWindowForSession(pending);
+}
+
+/** No workbench window is up: open the task window that owns the session. */
+async function openTaskWindowForSession(pending: { paneKey: string; projectPath?: string }): Promise<void> {
+  const sessionKeyValue = workbenchActiveSessions
+    .find((dot) => dot.paneKey === pending.paneKey)?.sessionKey || "";
+  const owner = await workbenchOwnershipForSession(sessionKeyValue);
+  if (!owner) {
+    pendingTrayFocus = null;
+    revealMainWindow();
+    return;
+  }
   pendingTrayFocus = null;
-  mainWindow.webContents.send("workbench:focusSession", payload);
+  const opened = openTaskWindow(taskWindowDeps(), {
+    noteId: owner.noteId,
+    workbenchId: owner.workbenchId,
+    ...(owner.title ? { title: owner.title } : {})
+  });
+  if (!opened.ok) {
+    notifyTaskWindowLimit(opened.limit);
+    revealMainWindow();
+  }
+}
+
+/** Task link lookup behind {@link workbenchOwnershipForSession}. */
+async function workbenchOwnershipForSession(
+  sessionKeyValue: string
+): Promise<(SessionOwner & { title?: string }) | null> {
+  if (!sessionKeyValue) return null;
+  try {
+    const paths = await loadPanelDbPaths();
+    const workbenches = await listAllTaskWorkbenches(paths.desktopDb);
+    const entries = await Promise.all(workbenches.map(async (workbench) => [
+      workbench.workbenchId,
+      await listTaskWorkbenchSessionLinks(paths.desktopDb, workbench.workbenchId).catch(() => [])
+    ] as const));
+    const owner = findWorkbenchForSession(workbenches, new Map(entries), sessionKeyValue);
+    if (!owner) return null;
+    const record = await notesRead(owner.noteId).then((read) => read.record).catch(() => null);
+    const workbench = workbenches.find((item) => item.workbenchId === owner.workbenchId);
+    return { ...owner, title: record?.title || workbench?.name || undefined };
+  } catch {
+    return null;
+  }
+}
+
+/** Tell the user why a workbench window could not be opened. */
+function notifyTaskWindowLimit(limit: number): void {
+  const window = revealMainWindow();
+  if (!window || window.isDestroyed()) return;
+  window.webContents.send("task-window:limit", { limit });
 }
 
 function showMainWindowIfReady(): void {
@@ -570,8 +664,19 @@ let allowAppQuit = false;
 let quitCleanupDone = false;
 let sessionSyncTimer: NodeJS.Timeout | null = null;
 let sessionSyncInFlight: Promise<AgentSessionSyncResult> | null = null;
-let workbenchActive = false;
-let workbenchActiveSessions: ReturnType<typeof parseWorkbenchActiveSessionDots> = [];
+/**
+ * Windows whose workbench surface is currently the visible one. Per window, not
+ * global: several workbench windows can be open at once, and each one owns its
+ * own ⌘W / file-watch semantics.
+ */
+const workbenchActiveSenders = new Set<number>();
+/**
+ * Session dots per reporting window. Each workbench window publishes the panes
+ * it is showing, so the tray and the notifications describe the whole app
+ * instead of one window.
+ */
+const workbenchActiveSessionsBySender = new Map<number, WorkbenchActiveSessionDot[]>();
+let workbenchActiveSessions: WorkbenchActiveSessionDot[] = [];
 const SESSION_SYNC_INTERVAL_MS = 60_000;
 
 const SETTINGS_PANES = [
@@ -602,13 +707,105 @@ function stringList(value: unknown): string[] | undefined {
 function broadcastToRenderers(channel: string, ...args: unknown[]): void {
   const windows = [
     mainWindow,
-    ...[...standaloneNoteWindows.values()].map((state) => state.window)
+    ...[...standaloneNoteWindows.values()].map((state) => state.window),
+    ...listTaskWindows().map((state) => state.window)
   ];
   for (const win of windows) {
     if (win && !win.isDestroyed()) {
       win.webContents.send(channel, ...args);
     }
   }
+}
+
+/** True while `win` is showing its workbench surface. */
+function workbenchIsActive(win: BrowserWindow | null): boolean {
+  if (!win || win.isDestroyed()) return false;
+  return workbenchActiveSenders.has(win.webContents.id);
+}
+
+function anyWorkbenchActive(): boolean {
+  return workbenchActiveSenders.size > 0;
+}
+
+/** Drop senders whose window is gone; call whenever the window set changes. */
+function pruneWorkbenchActiveSenders(): void {
+  const alive = new Set(BrowserWindow.getAllWindows().map((win) => win.webContents.id));
+  for (const id of [...workbenchActiveSenders]) {
+    if (!alive.has(id)) workbenchActiveSenders.delete(id);
+  }
+  for (const id of [...workbenchActiveSessionsBySender.keys()]) {
+    if (!alive.has(id)) workbenchActiveSessionsBySender.delete(id);
+  }
+}
+
+/** Latest daemon snapshot: the only view of panes whose window is gone. */
+let latestAgentSnapshot: StatusSnapshot | null = null;
+let workbenchActiveSessionsSignature = "";
+
+/**
+ * Panes no window is rendering.
+ *
+ * Their agents keep running after the window closes, and the daemon keeps
+ * tracking them, so the tray can still reach them.
+ */
+function unwatchedPaneDots(): WorkbenchActiveSessionDot[] {
+  const snapshot = latestAgentSnapshot;
+  if (!snapshot) return [];
+  const attached = new Set(ptyAttachedResolver?.() ?? []);
+  const dots: WorkbenchActiveSessionDot[] = [];
+  for (const pane of Object.values(snapshot.byPaneId)) {
+    if (attached.has(pane.paneId)) continue;
+    if (pane.state !== "blocked" && pane.state !== "working") continue;
+    dots.push({
+      paneKey: `pane:${pane.paneId}`,
+      projectPath: "",
+      title: pane.agent,
+      sessionKey: pane.sessionKey?.trim() ?? "",
+      status: pane.state === "blocked" ? "awaiting_user" : "running"
+    });
+  }
+  return dots;
+}
+
+/**
+ * Every window's dots, merged by session key (else pane key).
+ *
+ * Window reports come last because a window knows the session title and project
+ * path; the daemon view covers panes whose window is gone.
+ */
+function mergedWorkbenchActiveSessions(): WorkbenchActiveSessionDot[] {
+  const byKey = new Map<string, WorkbenchActiveSessionDot>();
+  for (const dot of unwatchedPaneDots()) byKey.set(dot.sessionKey || dot.paneKey, dot);
+  for (const dots of workbenchActiveSessionsBySender.values()) {
+    for (const dot of dots) byKey.set(dot.sessionKey || dot.paneKey, dot);
+  }
+  return [...byKey.values()];
+}
+
+/** Recompute the app-wide dot list; nothing else happens when it is unchanged. */
+function refreshWorkbenchActiveSessions(): void {
+  const next = mergedWorkbenchActiveSessions();
+  const signature = next
+    .map((dot) => `${dot.paneKey}|${dot.sessionKey}|${dot.status}`)
+    .sort()
+    .join(",");
+  if (signature === workbenchActiveSessionsSignature) return;
+  workbenchActiveSessionsSignature = signature;
+  workbenchActiveSessions = next;
+  const newlyWaiting = collectNewConfirmedWaitingSessions(workbenchActiveSessions, notifiedWaitingSessions);
+  syncSessionDotsTray();
+  broadcastToRenderers("workbench:activeSessions", workbenchActiveSessions);
+  if (newlyWaiting.length > 0) void showSessionWaitingNotifications(newlyWaiting);
+}
+
+/** The window that reported a pane, so session events reach the right place. */
+function windowForPaneKey(paneKey: string): BrowserWindow | null {
+  for (const [senderId, dots] of workbenchActiveSessionsBySender) {
+    if (!dots.some((dot) => dot.paneKey === paneKey)) continue;
+    const win = BrowserWindow.getAllWindows().find((candidate) => candidate.webContents.id === senderId);
+    if (win && !win.isDestroyed()) return win;
+  }
+  return null;
 }
 
 function syncSessionDotsTray(): void {
@@ -646,9 +843,7 @@ function syncSessionDotsTray(): void {
         paneKey: target.paneKey,
         projectPath: target.projectPath || undefined
       };
-      const window = revealMainWindow();
-      if (!window || window.isDestroyed()) return;
-      if (mainWindowRendererReady) flushPendingTrayFocus();
+      revealSessionOwner();
     });
   } else {
     sessionDotsTray.setImage(image);
@@ -688,9 +883,7 @@ async function showSessionWaitingNotifications(sessions: readonly WorkbenchActiv
           paneKey: session.paneKey,
           projectPath: projectPath || undefined
         };
-        const window = revealMainWindow();
-        if (!window || window.isDestroyed()) return;
-        if (mainWindowRendererReady) flushPendingTrayFocus();
+        revealSessionOwner();
       });
       notification.show();
     } catch (error) {
@@ -1085,6 +1278,7 @@ function performQuitCleanup(): void {
     globalShortcut.unregister(registeredRecentStandaloneNoteShortcut);
     registeredRecentStandaloneNoteShortcut = "";
   }
+  closeAllTaskWindows();
   disposeWorkbenchWatchers();
   disposeBrowserController();
   void disposeBrowserMcpServer();
@@ -1157,9 +1351,8 @@ function shouldScheduleBackgroundAnalysis(): boolean {
 
 async function syncAndNotify(): Promise<AgentSessionSyncResult> {
   const result = await syncSessions();
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send("sessions:synced", result);
-  }
+  // Every window lists sessions, so every window refreshes when the catalog moves.
+  broadcastToRenderers("sessions:synced", result);
   if (shouldScheduleBackgroundAnalysis()) {
     scheduleSessionSummaryAuto(2_000);
     scheduleSessionTranscriptIndexAuto(3_000);
@@ -1308,14 +1501,12 @@ function startSessionSyncTimer(): void {
 }
 
 function notifySessionSyncFailure(error: unknown): void {
-  mainWindow?.webContents.send("sessions:syncFailed", error instanceof Error ? error.message : String(error));
+  broadcastToRenderers("sessions:syncFailed", error instanceof Error ? error.message : String(error));
 }
 
 function startDesktopNotesIndexer(): void {
   startNotesIndexer((progress) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send("notes:indexProgress", progress);
-    }
+    broadcastToRenderers("notes:indexProgress", progress);
   });
 }
 
@@ -1388,7 +1579,7 @@ function registerWorkbenchShortcuts(win: BrowserWindow): void {
       return;
     }
 
-    if (workbenchActive && isWorkbenchCmdWInput(input)) {
+    if (workbenchIsActive(win) && isWorkbenchCmdWInput(input)) {
       event.preventDefault();
       if (!win.isDestroyed()) {
         win.webContents.send("workbench:cmdW");
@@ -1434,7 +1625,6 @@ function createWindow(): void {
     mainWindowReadyToShow = true;
     showMainWindowIfReady();
   });
-  registerWorkbenchShortcuts(mainWindow);
   mainWindow.loadFile(path.join(__dirname, "..", "renderer", "index.html"));
   mainWindow.webContents.once("did-finish-load", () => resumeSessionSync());
   mainWindow.on("show", () => {
@@ -1448,7 +1638,9 @@ function createWindow(): void {
   mainWindow.on("minimize", stopSessionSyncTimer);
   mainWindow.on("close", (event) => {
     if (allowAppQuit) return;
-    const keepHidden = process.platform === "darwin" || standaloneNoteWindows.size > 0;
+    const keepHidden = process.platform === "darwin"
+      || standaloneNoteWindows.size > 0
+      || openTaskWindowCount() > 0;
     if (!keepHidden) return;
     event.preventDefault();
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
@@ -1456,7 +1648,8 @@ function createWindow(): void {
   mainWindow.on("closed", () => {
     stopSessionSyncTimer();
     void flushImStreamingMessages();
-    workbenchActive = false;
+    // Other windows may still be showing a workbench; only their own senders count.
+    pruneWorkbenchActiveSenders();
     mainWindowReadyToShow = false;
     mainWindowRendererReady = false;
     mainWindow = null;
@@ -1486,8 +1679,8 @@ async function installApplicationMenu(): Promise<void> {
   const sessionsItem: Electron.MenuItemConstructorOptions = {
     label: sessionsLabel,
     click: () => {
+      // Sessions live in their task's window now; the board is where you pick one.
       revealMainWindow();
-      mainWindow?.webContents.send("sessions:open");
     }
   };
 
@@ -1538,6 +1731,94 @@ async function installApplicationMenu(): Promise<void> {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+/**
+ * Windows waiting on a renderer answer before they may close.
+ *
+ * A workbench window can hold unsaved editor buffers, so closing asks the
+ * renderer to flush them first — the bargain the floating note windows make.
+ */
+const pendingTaskWindowCloses = new Map<number, { settle: (closed: boolean) => void }>();
+const TASK_WINDOW_CLOSE_TIMEOUT_MS = 15_000;
+
+function registerTaskWindowCloseGuard(win: BrowserWindow): void {
+  const senderId = win.webContents.id;
+  let allowClose = false;
+  win.on("close", (event) => {
+    if (allowClose || allowAppQuit || win.webContents.isDestroyed()) return;
+    event.preventDefault();
+    if (pendingTaskWindowCloses.has(senderId)) return;
+    const timer = setTimeout(() => {
+      pendingTaskWindowCloses.delete(senderId);
+      allowClose = true;
+      if (!win.isDestroyed()) win.close();
+    }, TASK_WINDOW_CLOSE_TIMEOUT_MS);
+    timer.unref?.();
+    pendingTaskWindowCloses.set(senderId, {
+      settle: (closed: boolean) => {
+        clearTimeout(timer);
+        pendingTaskWindowCloses.delete(senderId);
+        if (!closed || win.isDestroyed()) return;
+        allowClose = true;
+        win.close();
+      }
+    });
+    win.webContents.send("task-window:requestClose");
+  });
+  win.on("closed", () => {
+    pendingTaskWindowCloses.get(senderId)?.settle(false);
+  });
+}
+
+/**
+ * Dependencies for workbench windows. Preload and renderer paths mirror the main
+ * window's so every window loads the same bridge and bundle, and each workbench
+ * window keeps the workbench window's ⌘T / ⌘⇧F / ⌘P / ⌘W: those act on the
+ * workbench that window hosts.
+ */
+function taskWindowDeps(): TaskWindowDeps {
+  const icon = loadAppIcon();
+  return {
+    preloadPath: path.join(__dirname, "..", "preload", "preload.js"),
+    rendererIndex: path.join(__dirname, "..", "renderer", "index.html"),
+    ...(icon ? { icon } : {}),
+    onCreated: (win) => {
+      registerWorkbenchShortcuts(win);
+      registerTaskWindowCloseGuard(win);
+    },
+    onChange: (windows) => {
+      pruneWorkbenchActiveSenders();
+      broadcastToRenderers("task-window:changed", windows);
+      persistOpenTaskWindows();
+    }
+  };
+}
+
+/** Remember the open workbench windows so the next launch can restore them. */
+function persistOpenTaskWindows(): void {
+  const entries = summarizeTaskWindows().map(({ workbenchId, noteId, title }) => ({ workbenchId, noteId, title }));
+  void loadPanelDbPaths()
+    .then((paths) => saveStoredTaskWindows(taskWindowStatePath(paths.desktopDb), entries))
+    .catch(() => undefined);
+}
+
+/** Reopen the workbench windows that were open when the app last ran. */
+async function restoreTaskWindows(): Promise<void> {
+  try {
+    const paths = await loadPanelDbPaths();
+    const stored = await loadStoredTaskWindows(taskWindowStatePath(paths.desktopDb));
+    for (const entry of stored) {
+      if (openTaskWindowCount() >= MAX_TASK_WINDOWS) break;
+      openTaskWindow(taskWindowDeps(), {
+        noteId: entry.noteId,
+        workbenchId: entry.workbenchId,
+        ...(entry.title ? { title: entry.title } : {})
+      });
+    }
+  } catch (error) {
+    void recordAppError({ source: "task-window", message: "Could not restore workbench windows.", error });
+  }
+}
+
 function registerIpc(): void {
   ipcMain.on("main:rendererReady", (event) => {
     if (event.sender !== mainWindow?.webContents) return;
@@ -1547,39 +1828,45 @@ function registerIpc(): void {
   });
 
   ipcMain.on("workbench:setActive", (event, active: unknown) => {
-    if (event.sender === mainWindow?.webContents) {
-      workbenchActive = active === true;
-      setWorkbenchWatcherActive(workbenchActive);
-    }
+    if (active === true) workbenchActiveSenders.add(event.sender.id);
+    else workbenchActiveSenders.delete(event.sender.id);
+    setWorkbenchWatcherActive(event.sender.id, active === true);
   });
 
   ipcMain.on("workbench:activeSessions", (event, payload: unknown) => {
-    if (event.sender !== mainWindow?.webContents) return;
-    workbenchActiveSessions = parseWorkbenchActiveSessionDots(payload);
-    const newlyWaiting = collectNewConfirmedWaitingSessions(workbenchActiveSessions, notifiedWaitingSessions);
-    syncSessionDotsTray();
-    broadcastToRenderers("workbench:activeSessions", workbenchActiveSessions);
-    if (newlyWaiting.length > 0) void showSessionWaitingNotifications(newlyWaiting);
+    const dots = parseWorkbenchActiveSessionDots(payload);
+    if (dots.length) workbenchActiveSessionsBySender.set(event.sender.id, dots);
+    else workbenchActiveSessionsBySender.delete(event.sender.id);
+    refreshWorkbenchActiveSessions();
   });
 
   safeHandle("workbench:getActiveSessions", async () => workbenchActiveSessions);
 
+  /** The window that owns a pane, else the workbench window in front. */
+  function workbenchWindowFor(paneKey?: string): BrowserWindow | null {
+    const owner = paneKey ? windowForPaneKey(paneKey) : null;
+    const target = owner ?? focusedOrRecentTaskWindow();
+    if (!target || target.isDestroyed()) return null;
+    if (target.isMinimized()) target.restore();
+    target.show();
+    target.focus();
+    return target;
+  }
+
   safeHandle("workbench:focusSession", async (_event, payload: unknown) => {
     const request = parseWorkbenchFocusSessionRequest(payload);
-    const target = revealMainWindow();
-    if (!target || target.isDestroyed()) {
-      throw new Error("Workbench window is not available.");
-    }
+    const target = workbenchWindowFor(request.paneKey);
+    if (!target) throw new Error("No workbench window is open.");
     target.webContents.send("workbench:focusSession", request);
     return { ok: true as const };
   });
 
   safeHandle("workbench:sendSelection", async (_event, payload: unknown) => {
     const request = parseWorkbenchSendSelectionRequest(payload);
-    const target = revealMainWindow();
-    if (!target || target.isDestroyed()) {
-      throw new Error("Workbench window is not available.");
-    }
+    // An existing session is focused where it lives; a new agent needs any
+    // workbench window, since only a workbench can host the pane.
+    const target = workbenchWindowFor(request.kind === "existing-session" ? request.paneKey : undefined);
+    if (!target) throw new Error("No workbench window is open.");
     target.webContents.send("workbench:sendSelection", request);
     return { ok: true as const };
   });
@@ -1600,7 +1887,7 @@ function registerIpc(): void {
         };
       }
     })();
-    return { ...getWorkbenchWatcherRuntimeMetrics(), pty, acp: getAcpRuntimeMetrics() };
+    return { ...getWorkbenchWatcherRuntimeMetrics(), pty, acp: getAcpRuntimeMetrics(), windows: { count: openTaskWindowCount(), limit: MAX_TASK_WINDOWS, timings: taskWindowOpenTimings() } };
   });
 
   ipcMain.handle("panel:getHome", async () => {
@@ -2831,6 +3118,53 @@ function registerIpc(): void {
     return { ok: true as const };
   });
   ipcMain.handle(
+    "task-window:open",
+    async (_event, args: { noteId?: unknown; workbenchId?: unknown; title?: unknown; x?: unknown; y?: unknown }) => {
+      const noteId = typeof args?.noteId === "string" ? args.noteId.trim() : "";
+      const workbenchId = typeof args?.workbenchId === "string" ? args.workbenchId.trim() : "";
+      if (!noteId || !workbenchId) throw new Error("A task note id and a workbench id are required.");
+      const result = openTaskWindow(taskWindowDeps(), {
+        noteId,
+        workbenchId,
+        ...(typeof args?.title === "string" && args.title.trim() ? { title: args.title.trim() } : {}),
+        ...(typeof args?.x === "number" && Number.isFinite(args.x) ? { x: args.x } : {}),
+        ...(typeof args?.y === "number" && Number.isFinite(args.y) ? { y: args.y } : {})
+      });
+      return result;
+    }
+  );
+  ipcMain.handle("task-window:list", async () => summarizeTaskWindows());
+  ipcMain.handle("task-window:focus", async (_event, args: { workbenchId?: unknown }) => {
+    const workbenchId = typeof args?.workbenchId === "string" ? args.workbenchId.trim() : "";
+    return { ok: workbenchId ? focusTaskWindow(workbenchId) : false };
+  });
+  ipcMain.handle("task-window:getState", async (event) => {
+    const state = taskWindowStateForSender(event.sender);
+    if (!state || state.window.isDestroyed()) throw new Error("Task window not found.");
+    return { workbenchId: state.workbenchId, noteId: state.noteId, title: state.title };
+  });
+  ipcMain.handle("task-window:setTitle", async (event, args: { title?: unknown }) => {
+    const state = taskWindowStateForSender(event.sender);
+    if (!state || state.window.isDestroyed()) return { ok: false as const };
+    if (typeof args?.title === "string") {
+      setTaskWindowTitle(state.workbenchId, args.title);
+      broadcastToRenderers("task-window:changed", summarizeTaskWindows());
+    }
+    return { ok: true as const };
+  });
+  ipcMain.handle("task-window:close", async (event) => {
+    const state = taskWindowStateForSender(event.sender);
+    if (!state || state.window.isDestroyed()) return { ok: false as const };
+    state.window.close();
+    return { ok: true as const };
+  });
+  ipcMain.handle("task-window:closeReady", async (event, args: { ok?: unknown }) => {
+    const pending = pendingTaskWindowCloses.get(event.sender.id);
+    if (!pending) return { ok: false as const };
+    pending.settle(args?.ok === true);
+    return { ok: args?.ok === true } as const;
+  });
+  ipcMain.handle(
     "notes:resumeSession",
     async (_event, args: { provider: AgentProvider; sessionId: string; initialPrompt?: string }) => {
       const resume = async (): Promise<{
@@ -2855,7 +3189,15 @@ function registerIpc(): void {
               mode: result.mode,
               initialPrompt: args.initialPrompt?.trim() || undefined
             };
-            broadcastToRenderers("workbench:resumeFromAgent", payload);
+            // Resuming a session opens a pane, so it belongs in a workbench
+            // window: the board window has none.
+            const target = focusedOrRecentTaskWindow();
+            if (target && !target.isDestroyed()) {
+              if (target.isMinimized()) target.restore();
+              target.show();
+              target.focus();
+              target.webContents.send("workbench:resumeFromAgent", payload);
+            }
           }
           return {
             ok: true,
@@ -3138,7 +3480,7 @@ app.whenReady().then(async () => {
     getMainWindow: () => mainWindow
   });
   registerImIpc({
-    getMainWindow: () => mainWindow,
+    broadcast: (event) => broadcastToRenderers("im:event", event),
     acp: {
       connect: (chatId) => connectAcpChat(chatId),
       prompt: (chatId, text, images) => promptAcpChat(chatId, text, images ?? []),
@@ -3150,7 +3492,7 @@ app.whenReady().then(async () => {
     }
   });
   registerWorkbenchFsIpc();
-  registerWorkbenchWatcherIpc(() => mainWindow);
+  registerWorkbenchWatcherIpc(() => mainWindow, (sender) => isTaskWindowSender(sender));
   registerWorkbenchGitIpc(() => app.getLocale());
   registerWorkbenchScriptsIpc();
   registerBrowserIpc({
@@ -3183,6 +3525,7 @@ app.whenReady().then(async () => {
   }
   createWindow();
   syncSessionDotsTray();
+  void restoreTaskWindows();
   nativeTheme.on("updated", () => syncSessionDotsTray());
 
   void (async () => {
@@ -3303,7 +3646,7 @@ app.whenReady().then(async () => {
 });
 
 app.on("before-quit", (event) => {
-  if (!allowAppQuit && standaloneNoteWindows.size > 0) {
+  if (!allowAppQuit && (standaloneNoteWindows.size > 0 || openTaskWindowCount() > 0)) {
     event.preventDefault();
     void beginAppQuit().catch((error) => {
       void recordAppError({ source: "standalone-note", message: "Application quit coordination failed.", error });
@@ -3325,10 +3668,10 @@ app.on("before-quit", (event) => {
 });
 
 app.on("window-all-closed", () => {
-  const notesOpen = standaloneNoteWindows.size > 0;
+  const backgroundWindowsOpen = standaloneNoteWindows.size > 0 || openTaskWindowCount() > 0;
   // macOS: app stays in Dock without windows — keep scheduler/notes indexer running so
   // scheduled digests still fire. Hide-on-close also keeps the hidden main window alive.
-  if (process.platform !== "darwin" && !notesOpen) {
+  if (process.platform !== "darwin" && !backgroundWindowsOpen) {
     stopMemoryScheduler();
     stopNotesIndexer();
     stopSessionSummaryAuto();

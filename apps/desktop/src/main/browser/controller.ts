@@ -42,6 +42,11 @@ type InternalSession = {
   workbenchBounds: BrowserRect | null;
   /** Whether the workbench host currently wants the view visible. */
   workbenchVisible: boolean;
+  /**
+   * Window that hosts the workbench surface. A workbench lives in its own
+   * window, so this must not fall back to whichever window happens to be first.
+   */
+  workbenchWindowId: number | null;
 };
 
 function projectHash(projectPath: string): string {
@@ -133,7 +138,8 @@ export class BrowserController {
       state,
       tabs: new Map(),
       workbenchBounds: null,
-      workbenchVisible: surfaceKind === "workbench"
+      workbenchVisible: surfaceKind === "workbench",
+      workbenchWindowId: hostWindow.id
     };
     this.sessions.set(browserId, internal);
 
@@ -185,11 +191,11 @@ export class BrowserController {
           win.focus();
         }
       } else {
-        const main = this.deps.getMainWindow();
-        if (main && !main.isDestroyed()) {
-          if (main.isMinimized()) main.restore();
-          main.show();
-          main.focus();
+        const host = this.workbenchHost(session);
+        if (host && !host.isDestroyed()) {
+          if (host.isMinimized()) host.restore();
+          host.show();
+          host.focus();
         }
       }
       return cloneState(session.state);
@@ -205,7 +211,7 @@ export class BrowserController {
       session.workbenchVisible = false;
     } else {
       closeBrowserWindow(browserId);
-      const main = this.deps.getMainWindow();
+      const main = this.workbenchHost(session);
       if (!main || main.isDestroyed()) {
         throw new Error("Main window is not available.");
       }
@@ -260,7 +266,7 @@ export class BrowserController {
       this.detachActiveView(session);
       return { ok: true };
     }
-    const main = this.deps.getMainWindow();
+    const main = this.workbenchHost(session);
     const rect = session.workbenchBounds;
     if (main && !main.isDestroyed() && rect && rect.width > 0 && rect.height > 0) {
       this.attachActiveView(session, main, rect);
@@ -451,6 +457,13 @@ export class BrowserController {
     const pref = this.deps.getDefaultSurface?.() || "workbench";
     if (pref === "last-used") return this.lastUsedSurface;
     return pref === "window" ? "window" : "workbench";
+  }
+
+  /** The window showing this browser's workbench surface, if it still exists. */
+  private workbenchHost(session: InternalSession): BrowserWindow | null {
+    const remembered = session.workbenchWindowId != null ? BrowserWindow.fromId(session.workbenchWindowId) : null;
+    if (remembered && !remembered.isDestroyed()) return remembered;
+    return this.deps.getMainWindow();
   }
 
   private resolveHostWindow(kind: BrowserSurfaceKind, preferredWindowId?: number): BrowserWindow | null {

@@ -1,6 +1,6 @@
 import type { JSX } from "react";
 import {
-  Activity, Archive, ArrowDown, ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUp, ArrowUpToLine, AtSign, Bell, Bot, Check,
+  Activity, AppWindow, Archive, ArrowDown, ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUp, ArrowUpToLine, AtSign, Bell, Bot, Check,
   ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Circle, Clipboard, Cloud, Command,
   Copy, CornerDownRight, Download, Ellipsis, ExternalLink, Eye, EyeOff, File, FileArchive, FileAudio,
   FileCode2, FileCog, FileDiff, FileImage, FileJson, FilePlus2,
@@ -29,6 +29,7 @@ const ICONS = {
   history: History, "layout-dashboard": LayoutDashboard, loader: LoaderCircle,
   "message-square": MessageSquare, "message-square-plus": MessageSquarePlus, "message-square-warning": MessageSquareWarning,
   "panel-right": PanelRight, paperclip: Paperclip, pencil: Pencil, pin: Pin, play: Play, plus: Plus,
+  "app-window": AppWindow,
   quote: Quote, refresh: RefreshCw, replace: Replace, "replace-all": ReplaceAll, save: Save, search: Search, send: Send, settings: Settings,
   "shield-check": ShieldCheck, sparkles: Sparkles, square: Square, "square-kanban": SquareKanban,
   terminal: TerminalSquare,

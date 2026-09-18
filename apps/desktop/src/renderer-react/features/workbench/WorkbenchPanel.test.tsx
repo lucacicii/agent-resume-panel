@@ -104,7 +104,9 @@ vi.mock("@pierre/diffs/react", () => ({
   CodeView: forwardRef((_: { options?: Record<string, unknown> }, ref) => {
     useImperativeHandle(ref, () => ({ scrollTo: vi.fn() }));
     return <div data-testid="workbench-code-view" />;
-  })
+  }),
+  // The diff pane mounts the pool provider; the mock only has to pass through.
+  WorkerPoolContextProvider: ({ children }: { children?: React.ReactNode }) => <>{children}</>
 }));
 
 vi.mock("@xterm/xterm", () => ({ Terminal: class {
@@ -9106,5 +9108,174 @@ describe("WorkbenchPanel", () => {
     fireEvent.click(await screen.findByRole("button", { name: "New linked child note" }));
     await waitFor(() => expect(notesCreateLinkedChild).toHaveBeenCalledWith({ parentNoteId: "wi-child" }));
     await waitFor(() => expect(notesRead).toHaveBeenCalledWith({ noteId: "child-1" }));
+  });
+  it("adopts the workbench's running ptys instead of spawning new agents", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const terminalSpawn = vi.fn(async () => ({ id: 999 }));
+    const terminalAttach = vi.fn(async ({ id }: { id: number }) => ({ ok: true, replay: `replay-${id}` }));
+    const terminalListForWorkbench = vi.fn(async () => [{ id: 77, cwd: "/work/app", cols: 80, rows: 24 }]);
+    const layoutJson = JSON.stringify({
+      openNoteIds: [],
+      activePaneKey: "terminal:kept",
+      terminals: [
+        {
+          key: "terminal:kept",
+          ptyId: 77,
+          title: "Fix renderer",
+          group: "session",
+          cwd: "/work/app",
+          projectPath: "/work/app",
+          sessionKey: "codex:session-1",
+          command: "codex resume session-1"
+        },
+        // Not running any more: the pane must not come back.
+        { key: "terminal:dead", ptyId: 78, title: "Gone", group: "terminal", cwd: "/work/app", projectPath: "/work/app" }
+      ]
+    });
+
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.workbench.allSessions": "All sessions",
+        "desktop.workbench.newSession": "New session",
+        "desktop.workbench.selectSessionHint": "Select a session"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      notesListTasks: async () => [],
+      ensureTaskWorkbench: async () => ({ workbenchId: "wb-keep" }),
+      listTaskWorkbenches: async () => [{
+        workbenchId: "wb-keep",
+        taskNoteId: "wi-keep",
+        name: "",
+        projectPath: "/work/app",
+        position: 0,
+        layoutJson,
+        createdAtMs: 1,
+        updatedAtMs: 2
+      }],
+      listTaskWorkbenchSessionLinks: async () => [],
+      setTaskWorkbenchLayout: async () => ({ ok: true }),
+      terminalListForWorkbench,
+      terminalSpawn,
+      terminalAttach,
+      terminalDetach: async () => ({ ok: true }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      workbenchSetFileWatch: async () => ({ rootPaths: [] })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-task", { detail: {
+        noteId: "wi-keep", title: "Kept", status: "next", sessions: [],
+        projects: ["/work/app"], primaryProject: "/work/app", workbenchId: "wb-keep"
+      } }));
+    });
+
+    await waitFor(() => expect(terminalListForWorkbench).toHaveBeenCalledWith({ workbenchId: "wb-keep" }));
+    await waitFor(() => expect(terminalAttach).toHaveBeenCalledWith({ id: 77 }));
+    expect(terminalSpawn).not.toHaveBeenCalled();
+    // The dead pane stays dead: only the running pty comes back.
+    expect(terminalAttach).not.toHaveBeenCalledWith({ id: 78 });
+    await waitFor(() => expect(document.querySelectorAll(".wb-terminal-tab").length).toBe(1));
+  });
+  it("answers a workbench window close request after flushing", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    let closeRequest: (() => void) | undefined;
+    const taskWindowCloseReady = vi.fn(async () => ({ ok: true }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.workbench.allSessions": "All sessions",
+        "desktop.workbench.newSession": "New session",
+        "desktop.workbench.selectSessionHint": "Select a session"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      onTaskWindowCloseRequested: (callback: () => void) => {
+        closeRequest = callback;
+        return () => { closeRequest = undefined; };
+      },
+      taskWindowCloseReady,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      notesListTasks: async () => [],
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] })
+    } as unknown as typeof window.agentResume;
+
+    document.documentElement.dataset.windowMode = "task";
+    try {
+      render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+      await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+      await waitFor(() => expect(closeRequest).toBeTruthy());
+
+      await act(async () => { closeRequest?.(); });
+      // Nothing dirty: the window may close immediately.
+      await waitFor(() => expect(taskWindowCloseReady).toHaveBeenCalledWith({ ok: true }));
+    } finally {
+      document.documentElement.dataset.windowMode = "main";
+    }
+  });
+
+  it("renders the detail header inside a workbench window", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.workbench.allSessions": "All sessions",
+        "desktop.workbench.sidePanelExplorer": "Explorer",
+        "desktop.workbench.sidePanelGit": "Git",
+        "desktop.workbench.newSession": "New session"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      notesListTasks: async () => [],
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] })
+    } as unknown as typeof window.agentResume;
+
+    document.documentElement.dataset.windowMode = "task";
+    try {
+      render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+      await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+
+      // The window has no app header, so the workbench carries its own chrome.
+      const strip = await waitFor(() => {
+        const found = document.querySelector(".wb-window-header");
+        expect(found).toBeTruthy();
+        return found;
+      });
+      expect(strip.querySelector(".wb-detail-tools")).toBeTruthy();
+      // There is no board to go back to.
+      expect(strip.querySelector(".wb-back-to-gtd")).toBeNull();
+      // And it is not also portaled into an app header slot.
+      expect(document.querySelector(".mac-top .wb-detail-head")).toBeNull();
+    } finally {
+      document.documentElement.dataset.windowMode = "main";
+    }
   });
 });

@@ -31,6 +31,10 @@ function renderGtd(overrides?: Partial<typeof window.agentResume>) {
         "desktop.gtd.noLooseNotes": "No notes",
         "desktop.workbench.deleteTask": "Delete task",
         "desktop.workbench.taskOpenNote": "Open note",
+        "desktop.gtd.windowOpen": "Open in its own window",
+        "desktop.gtd.openInWindow": "Open in a new window",
+        "desktop.gtd.windowLimit": "At most {0} workbench windows can be open at once",
+        "desktop.gtd.windowNoWorkbench": "This task has no workbench to open",
         "desktop.workbench.gtdStatus.inbox": "Inbox",
         "desktop.workbench.gtdStatus.next": "Next",
         "desktop.workbench.gtdStatus.waiting": "Waiting",
@@ -71,6 +75,15 @@ function renderGtd(overrides?: Partial<typeof window.agentResume>) {
       title: "New task", createdAtMs: 3, updatedAtMs: 3, gtdStatus: "inbox", work: { sessions: [] }
     })),
     notesRenameTask: vi.fn(async ({ noteId, title }: { noteId: string; title: string }) => ({ noteId, title, updatedAtMs: 9 })),
+    listAllTaskWorkbenches: async () => [],
+    ensureTaskWorkbench: vi.fn(async () => ({ workbenchId: "wb-1" })),
+    listTaskWorkbenches: vi.fn(async () => [
+      { workbenchId: "wb-1", taskNoteId: "t-1", name: "", projectPath: "/work/app", position: 0, layoutJson: null, createdAtMs: 1, updatedAtMs: 1 }
+    ]),
+    taskWindowOpen: vi.fn(async () => ({ ok: true as const, created: true })),
+    taskWindowList: vi.fn(async () => [] as Array<{ workbenchId: string; noteId: string; title: string }>),
+    onTaskWindowsChanged: () => () => undefined,
+    standaloneNoteOpen: vi.fn(async () => ({ ok: true as const })),
     taskTemplatesList: async () => [],
     taskTemplatesCreate: vi.fn(async ({ title, projectPaths }: { title: string; projectPaths?: string[] }) => ({ templateId: "tpl-new", title, projectPaths: projectPaths ?? [], createdAtMs: 1, updatedAtMs: 1 })),
     taskTemplatesUpdate: vi.fn(async ({ templateId, title, projectPaths }: { templateId: string; title: string; projectPaths?: string[] }) => ({ templateId, title, projectPaths: projectPaths ?? [], createdAtMs: 1, updatedAtMs: 1 })),
@@ -99,30 +112,21 @@ describe("GtdView", () => {
     expect(somedayColumn?.textContent).toContain("Someday idea");
   });
 
-  it("opens a task in the workbench when its card is clicked", async () => {
+  it("opens a task in its own workbench window when its card is clicked", async () => {
     renderGtd();
-    const listener = vi.fn();
-    window.addEventListener("agent-resume:view-open-task", listener);
     fireEvent.click(await screen.findByRole("button", { name: /Realtime status/ }));
-    expect(listener).toHaveBeenCalledWith(expect.objectContaining({
-      detail: expect.objectContaining({ noteId: "t-1", title: "Realtime status" })
+    await waitFor(() => expect(window.agentResume.taskWindowOpen).toHaveBeenCalledWith({
+      noteId: "t-1",
+      workbenchId: "wb-1",
+      title: "Realtime status"
     }));
-    // Entering a task lands on its sessions, not its note.
-    const detail = (listener.mock.calls.at(-1)?.[0] as CustomEvent<{ openNote?: boolean }>).detail;
-    expect(detail.openNote).toBeUndefined();
-    window.removeEventListener("agent-resume:view-open-task", listener);
   });
 
-  it("offers Open note in the card context menu", async () => {
+  it("opens the task note in a floating note window", async () => {
     renderGtd();
-    const listener = vi.fn();
-    window.addEventListener("agent-resume:view-open-task", listener);
     fireEvent.contextMenu(await screen.findByRole("button", { name: /Realtime status/ }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Open note" }));
-    expect(listener).toHaveBeenCalledWith(expect.objectContaining({
-      detail: expect.objectContaining({ noteId: "t-1", openNote: true })
-    }));
-    window.removeEventListener("agent-resume:view-open-task", listener);
+    await waitFor(() => expect(window.agentResume.standaloneNoteOpen).toHaveBeenCalledWith({ noteId: "t-1" }));
   });
 
   it("moves a task between columns on drop by setting its GTD status", async () => {
@@ -179,13 +183,12 @@ describe("GtdView", () => {
       ]
     } as unknown as Partial<typeof window.agentResume>);
     const chip = await screen.findByRole("button", { name: "Frontend" });
-    const listener = vi.fn();
-    window.addEventListener("agent-resume:view-open-task", listener);
     fireEvent.click(chip);
-    expect(listener).toHaveBeenCalledWith(expect.objectContaining({
-      detail: expect.objectContaining({ noteId: "t-1", workbenchId: "wb-2" })
+    await waitFor(() => expect(window.agentResume.taskWindowOpen).toHaveBeenCalledWith({
+      noteId: "t-1",
+      workbenchId: "wb-2",
+      title: "Realtime status"
     }));
-    window.removeEventListener("agent-resume:view-open-task", listener);
   });
 
   it("navigates cards with arrow keys", async () => {
@@ -323,6 +326,31 @@ describe("GtdView", () => {
     await waitFor(() => expect(taskTemplatesCreate).toHaveBeenCalledWith({
       title: "Ship feature",
       projectPaths: ["/work/app", "/work/web"]
+    }));
+  });
+  it("marks the tasks whose workbench is open in a window", async () => {
+    renderGtd({
+      taskWindowList: vi.fn(async () => [{ workbenchId: "wb-1", noteId: "t-1", title: "Realtime status" }])
+    } as unknown as Partial<typeof window.agentResume>);
+
+    const card = await screen.findByRole("button", { name: /Realtime status/ });
+    await waitFor(() => expect(card.querySelector(".gtd-card-window")).toBeTruthy());
+    // A task without a window carries no badge.
+    expect(screen.getByRole("button", { name: /Someday idea/ }).querySelector(".gtd-card-window")).toBeNull();
+  });
+
+  it("opens the task window when the window badge is clicked", async () => {
+    renderGtd({
+      taskWindowList: vi.fn(async () => [{ workbenchId: "wb-1", noteId: "t-1", title: "Realtime status" }])
+    } as unknown as Partial<typeof window.agentResume>);
+
+    const card = await screen.findByRole("button", { name: /Realtime status/ });
+    await waitFor(() => expect(card.querySelector(".gtd-card-window")).toBeTruthy());
+    fireEvent.click(card.querySelector(".gtd-card-window")!);
+    await waitFor(() => expect(window.agentResume.taskWindowOpen).toHaveBeenCalledWith({
+      noteId: "t-1",
+      workbenchId: "wb-1",
+      title: "Realtime status"
     }));
   });
 });

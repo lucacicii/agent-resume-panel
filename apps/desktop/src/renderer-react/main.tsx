@@ -1,4 +1,4 @@
-import React, { StrictMode, useEffect, useState } from "react";
+import React, { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { I18nProvider } from "./i18n";
 import { AppChrome } from "./components/AppChrome";
@@ -10,8 +10,9 @@ import { SettingsPanel } from "./features/settings/SettingsPanel";
 import { StandaloneNoteWindow } from "./features/workbench/notes/StandaloneNoteWindow";
 import { BrowserStandaloneWindow } from "./features/browser/BrowserStandaloneWindow";
 import { WorkbenchPanel } from "./features/workbench/WorkbenchPanel";
+import { taskFromRecord } from "./features/workbench/task";
 import { GtdView } from "./features/gtd/GtdView";
-import { DiffWorkerPool } from "./features/workbench/diffWorkerPool";
+import { BoardQuickAccess } from "./features/gtd/BoardQuickAccess";
 import { settingsChangedToCustomEvents } from "./settingsBroadcast";
 import { updateConfig } from "./components/notificationStore";
 import type { PanelSettings } from "@agent-resume/core";
@@ -43,14 +44,25 @@ function syncNotificationConfig(settings: PanelSettings): void {
   });
 }
 
-function getDesktopWindowMode(): "main" | "standalone-note" | "browser" {
+function getDesktopWindowMode(): "main" | "standalone-note" | "browser" | "task" {
   try {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("mode") === "standalone-note") return "standalone-note";
-    if (params.get("mode") === "browser") return "browser";
+    const mode = params.get("mode");
+    if (mode === "standalone-note") return "standalone-note";
+    if (mode === "browser") return "browser";
+    if (mode === "task") return "task";
     return "main";
   } catch {
     return "main";
+  }
+}
+
+function getTaskWindowParams(): { noteId: string; workbenchId: string } {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return { noteId: params.get("noteId") || "", workbenchId: params.get("workbenchId") || "" };
+  } catch {
+    return { noteId: "", workbenchId: "" };
   }
 }
 
@@ -148,52 +160,19 @@ function MainDesktopRuntime(): React.JSX.Element {
   );
 }
 
+/**
+ * The board window.
+ *
+ * It is deliberately the cheap surface: the board plus the settings overlay,
+ * and no workbench. Workbenches own the panes and the ptys, so they live in
+ * their own windows and the board opens and focuses those instead.
+ */
 function MainRendererRuntime(): React.JSX.Element {
-  const { ready } = useI18n();
-  const [view, setView] = useState<"gtd" | "workbench">("gtd");
-
-  useEffect(() => {
-    const onGtd = () => setView("gtd");
-    const onOpenTask = (event: Event) => {
-      const detail = (event as CustomEvent<Record<string, unknown>>).detail;
-      setView("workbench");
-      if (detail && typeof detail.noteId === "string") {
-        window.dispatchEvent(new CustomEvent("agent-resume:workbench-task", { detail }));
-      }
-    };
-    const onTabRequest = (event: Event) => {
-      const next = (event as CustomEvent<string>).detail;
-      if (next === "workbench") setView("workbench");
-      else if (next === "gtd") setView("gtd");
-    };
-    window.addEventListener("agent-resume:view-gtd", onGtd);
-    window.addEventListener("agent-resume:view-open-task", onOpenTask);
-    window.addEventListener("agent-resume:tab-request", onTabRequest);
-    const stopSessions = typeof window.agentResume.onOpenSessions === "function"
-      ? window.agentResume.onOpenSessions(() => setView("gtd"))
-      : () => undefined;
-    return () => {
-      window.removeEventListener("agent-resume:view-gtd", onGtd);
-      window.removeEventListener("agent-resume:view-open-task", onOpenTask);
-      window.removeEventListener("agent-resume:tab-request", onTabRequest);
-      stopSessions();
-    };
-  }, []);
-
-  // `tab-change` still tells the always-mounted Workbench whether it is the
-  // visible surface (it drives its own `active` state and reloads on show).
-  useEffect(() => {
-    if (!ready) return;
-    window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: view }));
-  }, [ready, view]);
-
   return (
     <>
       <AppChrome />
-      <DiffWorkerPool>
-        <WorkbenchPanel />
-      </DiffWorkerPool>
-      <GtdView active={view === "gtd"} />
+      <GtdView active />
+      <BoardQuickAccess />
       <SettingsPanel variant="embedded" />
       <SelectionSendHost />
       <Notifications />
@@ -225,6 +204,81 @@ function BrowserDesktopRuntime(): React.JSX.Element {
   );
 }
 
+function TaskWindowMissingParams(): React.JSX.Element {
+  const { t } = useI18n();
+  return <div className="renderer-bridge-error" role="alert"><p>{t("desktop.gtd.windowMissing")}</p></div>;
+}
+
+/**
+ * A workbench window.
+ *
+ * The window hosts exactly one workbench and no board or app chrome, so its
+ * cost is the fixed bundle plus the panes of that one workbench. The task is
+ * handed to the workbench through the same `agent-resume:workbench-task` event
+ * the board uses — the window does not reach into workbench state.
+ */
+function TaskRendererRuntime(): React.JSX.Element {
+  const { ready, t } = useI18n();
+  const [title, setTitle] = useState("");
+  const missingParams = !getTaskWindowParams().noteId;
+  const bootstrappedRef = useRef(false);
+
+  useEffect(() => {
+    if (!ready || bootstrappedRef.current) return;
+    const params = getTaskWindowParams();
+    if (!params.noteId) return;
+    bootstrappedRef.current = true;
+    let cancelled = false;
+    void (async () => {
+      let detail: Record<string, unknown> = { noteId: params.noteId };
+      try {
+        const records = typeof window.agentResume.notesListTasks === "function"
+          ? await window.agentResume.notesListTasks()
+          : [];
+        const record = records.find((item) => item.noteId === params.noteId);
+        if (record) {
+          const task = taskFromRecord(record);
+          detail = { ...task, projects: task.projects ?? [] };
+        }
+      } catch {
+        // A minimal payload still scopes the workbench; it resolves the rest itself.
+      }
+      if (cancelled) return;
+      setTitle(typeof detail.title === "string" && detail.title ? detail.title : t("desktop.workbench.taskView"));
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-task", {
+        detail: { ...detail, workbenchId: params.workbenchId }
+      }));
+      window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" }));
+    })();
+    return () => { cancelled = true; };
+  }, [ready, t]);
+
+  useEffect(() => {
+    if (!title) return;
+    document.title = title;
+    void window.agentResume.taskWindowSetTitle?.({ title }).catch(() => undefined);
+  }, [title]);
+
+  if (missingParams) return <TaskWindowMissingParams />;
+
+  return (
+    <>
+      <WorkbenchPanel />
+      <SelectionSendHost />
+      <Notifications />
+    </>
+  );
+}
+
+function TaskDesktopRuntime(): React.JSX.Element {
+  return (
+    <I18nProvider>
+      <MainRuntimeBootstrap />
+      <TaskRendererRuntime />
+    </I18nProvider>
+  );
+}
+
 const windowMode = getDesktopWindowMode();
 document.documentElement.dataset.windowMode = windowMode;
 if (windowMode === "standalone-note") {
@@ -249,7 +303,9 @@ if (host) {
           ? <StandaloneNoteDesktopRuntime />
           : windowMode === "browser"
             ? <BrowserDesktopRuntime />
-            : <MainDesktopRuntime />}
+            : windowMode === "task"
+              ? <TaskDesktopRuntime />
+              : <MainDesktopRuntime />}
       </StrictMode>
     );
   }

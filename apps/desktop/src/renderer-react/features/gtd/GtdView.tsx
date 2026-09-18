@@ -3,9 +3,10 @@ import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { GtdStatus, TaskGtdRollup } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
+import { notifyDesktop } from "../../components/Notifications";
 import { useI18n } from "../../i18n";
 import { taskFromRecord, type WorkbenchTask } from "../workbench/task";
-import { listAllTaskWorkbenches, workbenchDisplayName, type Workbench } from "../workbench/workbenchModel";
+import { ensureTaskWorkbenches, listAllTaskWorkbenches, workbenchDisplayName, type Workbench } from "../workbench/workbenchModel";
 import type { ActiveSessionDot } from "../workbench/activeSessionDots";
 import { rollupDot, needsYou } from "../workbench/sessionStatus/taskRollup";
 import { sessionDotStatusClass } from "../workbench/sessionStatus/dotStatus";
@@ -15,6 +16,10 @@ import { TaskTemplatePanel, type TaskTemplate } from "./TaskTemplatePanel";
 const GTD_COLUMNS: GtdStatus[] = ["inbox", "next", "waiting", "someday", "reference", "done"];
 
 type GtdCard = WorkbenchTask & { projects: string[] };
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 export function GtdView({ active }: { active: boolean }): React.ReactPortal | null {
   const host = document.getElementById("react-gtd");
@@ -31,6 +36,8 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
   const [creating, setCreating] = useState(false);
   const [newTask, setNewTask] = useState<{ title: string; projectPath: string; busy: boolean; error: string } | null>(null);
   const [workbenchesByTask, setWorkbenchesByTask] = useState<Record<string, Workbench[]>>({});
+  /** Tasks whose workbench already has a window, so the card can say so. */
+  const [tasksWithWindows, setTasksWithWindows] = useState<Set<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: GtdCard } | null>(null);
 
   const text = useCallback(
@@ -63,6 +70,16 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
     [rollups]
   );
 
+  const loadOpenWindows = useCallback(async () => {
+    if (typeof desktopApi().taskWindowList !== "function") return;
+    try {
+      const windows = await desktopApi().taskWindowList();
+      setTasksWithWindows(new Set(windows.map((entry) => entry.noteId)));
+    } catch {
+      /* the board works without the badge */
+    }
+  }, []);
+
   const loadWorkbenches = useCallback(async () => {
     const list = await listAllTaskWorkbenches();
     const map: Record<string, Workbench[]> = {};
@@ -76,7 +93,16 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
     if (!active) return;
     void load();
     void loadWorkbenches();
-  }, [active, load, loadWorkbenches]);
+    void loadOpenWindows();
+  }, [active, load, loadWorkbenches, loadOpenWindows]);
+
+  // The host broadcasts the window set, so the badge follows open/close.
+  useEffect(() => {
+    const stop = desktopApi().onTaskWindowsChanged?.((windows) => {
+      setTasksWithWindows(new Set(windows.map((entry) => entry.noteId)));
+    });
+    return () => stop?.();
+  }, []);
 
   useEffect(() => {
     const onMutated = () => { void load(); void loadWorkbenches(); };
@@ -96,28 +122,56 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
     return () => window.removeEventListener("agent-resume:active-sessions", onActiveSessions);
   }, []);
 
-  const openTask = useCallback((item: GtdCard, workbenchId?: string, options?: { openNote?: boolean }) => {
-    window.dispatchEvent(new CustomEvent("agent-resume:view-open-task", {
-      detail: {
+  /**
+   * Open a task's workbench in its own window, focusing it when it is open.
+   *
+   * A workbench owns the panes and their ptys, so exactly one of them exists:
+   * the board opens and focuses windows instead of mounting a second copy.
+   */
+  const openTask = useCallback(async (item: GtdCard, workbenchId?: string): Promise<void> => {
+    try {
+      const workbenches = workbenchId ? [] : await ensureTaskWorkbenches(item.noteId);
+      const target = workbenchId ?? workbenches[0]?.workbenchId;
+      if (!target) throw new Error(text("desktop.gtd.windowNoWorkbench"));
+      const opened = await desktopApi().taskWindowOpen({
         noteId: item.noteId,
-        title: item.title,
-        status: item.status,
-        next: item.next,
-        decision: item.decision,
-        sessions: item.sessions,
-        projects: item.projects,
-        primaryProject: item.primaryProject,
-        // Entering a task lands on its sessions; only the explicit "open note"
-        // action asks for the note.
-        ...(options?.openNote ? { openNote: true } : {}),
-        ...(workbenchId ? { workbenchId } : {})
+        workbenchId: target,
+        title: item.title
+      });
+      if (!opened.ok) {
+        notifyDesktop({ text: text("desktop.gtd.windowLimit", opened.limit), kind: "error", durationMs: 6000 });
       }
-    }));
+    } catch (error) {
+      notifyDesktop({ text: errorMessage(error), kind: "error" });
+    }
+  }, [text]);
+
+  /** The task note is a note: it opens in its own floating window. */
+  const openTaskNote = useCallback(async (item: GtdCard): Promise<void> => {
+    try {
+      await desktopApi().standaloneNoteOpen({ noteId: item.noteId });
+    } catch (error) {
+      notifyDesktop({ text: errorMessage(error), kind: "error" });
+    }
   }, []);
 
   const openNewTask = useCallback(() => {
     setNewTask({ title: "", projectPath: "", busy: false, error: "" });
   }, []);
+
+  useEffect(() => {
+    const onNewTask = () => openNewTask();
+    window.addEventListener("agent-resume:gtd-new-task", onNewTask);
+    return () => window.removeEventListener("agent-resume:gtd-new-task", onNewTask);
+  }, [openNewTask]);
+
+  /** The host refuses a fifth workbench window; say so where the user is looking. */
+  useEffect(() => {
+    const stop = desktopApi().onTaskWindowLimit?.(({ limit }) => {
+      notifyDesktop({ text: text("desktop.gtd.windowLimit", limit), kind: "error", durationMs: 6000 });
+    });
+    return () => stop?.();
+  }, [text]);
 
   const pickProject = useCallback(async () => {
     if (!newTask || newTask.busy) return;
@@ -152,7 +206,7 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
       await load();
       window.dispatchEvent(new Event("agent-resume:notes-mutated"));
       setNewTask(null);
-      openTask({ ...taskFromRecord(created), projects: created.work?.projects ?? [] });
+      void openTask({ ...taskFromRecord(created), projects: created.work?.projects ?? [] });
     } catch (error) {
       setNewTask((current) => current ? { ...current, busy: false, error: error instanceof Error ? error.message : String(error) } : current);
     } finally {
@@ -444,7 +498,7 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
                       data-gtd-note-id={item.noteId}
                       className="gtd-card-main"
                       title={item.title}
-                      onClick={() => openTask(item)}
+                      onClick={() => void openTask(item)}
                     >
                       <span className="gtd-card-title">{item.title}</span>
                       {item.next ? <span className="gtd-card-next">{item.next}</span> : null}
@@ -463,6 +517,11 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
                             {text("desktop.gtd.rollupProgress", rollups[item.noteId].counts.done, rollups[item.noteId].total)}
                           </span>
                         ) : null}
+                        {tasksWithWindows.has(item.noteId) ? (
+                          <span className="gtd-card-window" title={text("desktop.gtd.windowOpen")}>
+                            <ThemeIcon name="app-window" size={12} aria-hidden="true" />
+                          </span>
+                        ) : null}
                         {rollups[item.noteId]?.override ? (
                           <span className="gtd-card-pin" title={text("desktop.gtd.pinnedHint")}>{text("desktop.gtd.pinned")}</span>
                         ) : null}
@@ -477,7 +536,7 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
                             type="button"
                             className="gtd-card-project"
                             title={workbench.projectPath || workbenchDisplayName(workbench)}
-                            onClick={() => openTask(item, workbench.workbenchId)}
+                            onClick={() => void openTask(item, workbench.workbenchId)}
                           >
                             {workbenchDisplayName(workbench)}
                           </button>
@@ -492,7 +551,7 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
                             type="button"
                             className="gtd-card-project"
                             title={projectPath}
-                            onClick={() => openTask(item)}
+                            onClick={() => void openTask(item)}
                           >
                             {projectPath.split(/[\\/]/).filter(Boolean).at(-1) || projectPath}
                           </button>
@@ -573,8 +632,13 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
         <button
           type="button"
           role="menuitem"
-          onClick={() => { const item = contextMenu.item; setContextMenu(null); openTask(item, undefined, { openNote: true }); }}
+          onClick={() => { const item = contextMenu.item; setContextMenu(null); void openTaskNote(item); }}
         >{text("desktop.workbench.taskOpenNote")}</button>
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => { const item = contextMenu.item; setContextMenu(null); void openTask(item); }}
+        >{text("desktop.gtd.openInWindow")}</button>
         {rollups[contextMenu.item.noteId]?.override ? (
           <button
             type="button"
