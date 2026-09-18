@@ -153,13 +153,16 @@ import {
   focusedOrRecentTaskWindow,
   isTaskWindowSender,
   listTaskWindows,
+  MAX_TASK_WINDOWS,
   openTaskWindow,
   openTaskWindowCount,
   setTaskWindowTitle,
   summarizeTaskWindows,
+  taskWindowOpenTimings,
   taskWindowStateForSender,
   type TaskWindowDeps
 } from "./taskWindows";
+import { loadStoredTaskWindows, saveStoredTaskWindows, taskWindowStatePath } from "./taskWindowStore";
 import {
   disposeBrowserController,
   disposeBrowserMcpServer,
@@ -1785,8 +1788,35 @@ function taskWindowDeps(): TaskWindowDeps {
     onChange: (windows) => {
       pruneWorkbenchActiveSenders();
       broadcastToRenderers("task-window:changed", windows);
+      persistOpenTaskWindows();
     }
   };
+}
+
+/** Remember the open workbench windows so the next launch can restore them. */
+function persistOpenTaskWindows(): void {
+  const entries = summarizeTaskWindows().map(({ workbenchId, noteId, title }) => ({ workbenchId, noteId, title }));
+  void loadPanelDbPaths()
+    .then((paths) => saveStoredTaskWindows(taskWindowStatePath(paths.desktopDb), entries))
+    .catch(() => undefined);
+}
+
+/** Reopen the workbench windows that were open when the app last ran. */
+async function restoreTaskWindows(): Promise<void> {
+  try {
+    const paths = await loadPanelDbPaths();
+    const stored = await loadStoredTaskWindows(taskWindowStatePath(paths.desktopDb));
+    for (const entry of stored) {
+      if (openTaskWindowCount() >= MAX_TASK_WINDOWS) break;
+      openTaskWindow(taskWindowDeps(), {
+        noteId: entry.noteId,
+        workbenchId: entry.workbenchId,
+        ...(entry.title ? { title: entry.title } : {})
+      });
+    }
+  } catch (error) {
+    void recordAppError({ source: "task-window", message: "Could not restore workbench windows.", error });
+  }
 }
 
 function registerIpc(): void {
@@ -1857,7 +1887,7 @@ function registerIpc(): void {
         };
       }
     })();
-    return { ...getWorkbenchWatcherRuntimeMetrics(), pty, acp: getAcpRuntimeMetrics() };
+    return { ...getWorkbenchWatcherRuntimeMetrics(), pty, acp: getAcpRuntimeMetrics(), windows: { count: openTaskWindowCount(), limit: MAX_TASK_WINDOWS, timings: taskWindowOpenTimings() } };
   });
 
   ipcMain.handle("panel:getHome", async () => {
@@ -3495,6 +3525,7 @@ app.whenReady().then(async () => {
   }
   createWindow();
   syncSessionDotsTray();
+  void restoreTaskWindows();
   nativeTheme.on("updated", () => syncSessionDotsTray());
 
   void (async () => {

@@ -704,6 +704,12 @@ export interface DesktopApi {
       count: number;
       liveCount: number;
     };
+    /** Open workbench windows, their cap, and how long each took to open. */
+    windows: {
+      count: number;
+      limit: number;
+      timings: Array<{ workbenchId: string; loadMs: number | null; showMs: number | null }>;
+    };
   }>;
   terminalGitInfo(args: {
     cwd: string;

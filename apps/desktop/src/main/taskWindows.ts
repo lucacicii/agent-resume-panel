@@ -22,6 +22,8 @@ export type TaskWindowState = {
   noteId: string;
   title: string;
   window: BrowserWindow;
+  /** Cold-open timings, for "is the window slow?" questions. */
+  timings: { created: number; loadedAt?: number; shownAt?: number };
 };
 
 export type TaskWindowSummary = {
@@ -80,6 +82,19 @@ export function listTaskWindows(): TaskWindowState[] {
 
 export function openTaskWindowCount(): number {
   return listTaskWindows().length;
+}
+
+/** How long each open window took to load and to show, in milliseconds. */
+export function taskWindowOpenTimings(): Array<{
+  workbenchId: string;
+  loadMs: number | null;
+  showMs: number | null;
+}> {
+  return listTaskWindows().map((state) => ({
+    workbenchId: state.workbenchId,
+    loadMs: state.timings.loadedAt != null ? state.timings.loadedAt - state.timings.created : null,
+    showMs: state.timings.shownAt != null ? state.timings.shownAt - state.timings.created : null
+  }));
 }
 
 export function getTaskWindow(workbenchId: string): BrowserWindow | null {
@@ -160,9 +175,14 @@ export function openTaskWindow(deps: TaskWindowDeps, args: OpenTaskWindowArgs): 
     workbenchId: args.workbenchId,
     noteId: args.noteId,
     title,
-    window: win
+    window: win,
+    timings: { created: Date.now() }
   };
   taskWindows.set(args.workbenchId, state);
+
+  win.webContents.once("did-finish-load", () => {
+    state.timings.loadedAt = Date.now();
+  });
 
   const rememberBounds = () => {
     if (!win.isDestroyed()) boundsByWorkbenchId.set(args.workbenchId, win.getBounds());
@@ -180,6 +200,11 @@ export function openTaskWindow(deps: TaskWindowDeps, args: OpenTaskWindowArgs): 
   positionTaskWindow(win, args);
   win.once("ready-to-show", () => {
     if (win.isDestroyed()) return;
+    state.timings.shownAt = Date.now();
+    console.log(
+      `[task-window] ${args.workbenchId} shown in ${state.timings.shownAt - state.timings.created}ms`
+      + (state.timings.loadedAt != null ? ` (loaded ${state.timings.loadedAt - state.timings.created}ms)` : "")
+    );
     win.show();
     win.focus();
   });

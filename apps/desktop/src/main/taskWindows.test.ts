@@ -11,7 +11,7 @@ const fake = vi.hoisted(() => {
     static nextId = () => nextId++;
 
     options: Record<string, unknown>;
-    webContents: { id: number };
+    webContents: { id: number; once: (event: string, listener: FakeListener) => void; emit: (event: string) => void };
     destroyed = false;
     title: string;
     shown = 0;
@@ -22,9 +22,19 @@ const fake = vi.hoisted(() => {
     constructor(options: Record<string, unknown>) {
       this.options = options;
       this.title = String(options.title ?? "");
-      this.webContents = { id: nextId++ };
+      this.webContents = {
+        id: nextId++,
+        once: (event: string, listener: FakeListener) => {
+          if (event === "did-finish-load") this.loadedListeners.push(listener);
+        },
+        emit: (event: string) => {
+          if (event === "did-finish-load") for (const listener of this.loadedListeners.splice(0)) listener();
+        }
+      };
       windows.push(this as unknown as Record<string, unknown>);
     }
+
+    private loadedListeners: FakeListener[] = [];
 
     isDestroyed(): boolean {
       return this.destroyed;
@@ -110,6 +120,7 @@ import {
   openTaskWindow,
   setTaskWindowTitle,
   summarizeTaskWindows,
+  taskWindowOpenTimings,
   taskWindowStateForSender
 } from "./taskWindows";
 
@@ -204,5 +215,19 @@ describe("task workbench windows", () => {
     expect(listTaskWindows()).toHaveLength(0);
     expect(onChange.onChange).toHaveBeenCalledWith([]);
     expect(closeTaskWindow("wb-1")).toBe(false);
+  });
+
+  it("reports how long a window took to load and show", () => {
+    openTaskWindow(deps(), { noteId: "note-1", workbenchId: "wb-1" });
+    const win = listTaskWindows()[0]!.window as unknown as { webContents: { emit: (event: string) => void }; emit: (event: string) => void };
+
+    win.webContents.emit("did-finish-load");
+    win.emit("ready-to-show");
+
+    const timings = taskWindowOpenTimings();
+    expect(timings).toHaveLength(1);
+    expect(timings[0]!.workbenchId).toBe("wb-1");
+    expect(timings[0]!.loadMs).toBeGreaterThanOrEqual(0);
+    expect(timings[0]!.showMs).toBeGreaterThanOrEqual(0);
   });
 });
