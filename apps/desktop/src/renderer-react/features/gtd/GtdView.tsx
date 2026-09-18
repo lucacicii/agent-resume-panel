@@ -136,6 +136,12 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
     setNewTask({ title: "", projectPath: "", busy: false, error: "" });
   }, []);
 
+  useEffect(() => {
+    const onNewTask = () => openNewTask();
+    window.addEventListener("agent-resume:gtd-new-task", onNewTask);
+    return () => window.removeEventListener("agent-resume:gtd-new-task", onNewTask);
+  }, [openNewTask]);
+
   const pickProject = useCallback(async () => {
     if (!newTask || newTask.busy) return;
     if (typeof desktopApi().pickDirectory !== "function") return;

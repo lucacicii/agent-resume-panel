@@ -12,6 +12,7 @@ import { BrowserStandaloneWindow } from "./features/browser/BrowserStandaloneWin
 import { WorkbenchPanel } from "./features/workbench/WorkbenchPanel";
 import { taskFromRecord } from "./features/workbench/task";
 import { GtdView } from "./features/gtd/GtdView";
+import { BoardQuickAccess } from "./features/gtd/BoardQuickAccess";
 import { settingsChangedToCustomEvents } from "./settingsBroadcast";
 import { updateConfig } from "./components/notificationStore";
 import type { PanelSettings } from "@agent-resume/core";
@@ -171,6 +172,7 @@ function MainRendererRuntime(): React.JSX.Element {
     <>
       <AppChrome />
       <GtdView active />
+      <BoardQuickAccess />
       <SettingsPanel variant="embedded" />
       <SelectionSendHost />
       <Notifications />
