@@ -272,13 +272,6 @@ export interface DesktopApi {
       label: string;
     } | null;
   }>;
-  workbenchOpenProjectInEditor(args: { projectPath: string }): Promise<{
-    ok: boolean;
-    editor: {
-      id: "vscode" | "vscodium" | "cursor" | "windsurf";
-      label: string;
-    };
-  }>;
   workbenchOpenSession(args: {
     provider: string;
     id: string;
@@ -1326,7 +1319,6 @@ export interface DesktopApi {
   notesReveal(args: { noteId: string }): Promise<{ ok: boolean }>;
   notesCopyPath(args: { noteId: string }): Promise<{ path: string }>;
   listProjectAliases(): Promise<Record<string, string>>;
-  setProjectAlias(args: { projectPath: string; alias: string }): Promise<{ ok: boolean }>;
   listProjects(opts?: { includeHidden?: boolean }): Promise<
     Array<{
       projectId: string;
@@ -1358,35 +1350,12 @@ export interface DesktopApi {
     } }
     | { ok: false; canceled: true }
   >;
-  hideProject(args: { projectId?: string; projectPath?: string }): Promise<{
-    projectId: string;
-    hiddenSessions: number;
-  }>;
-  setProjectLocalPath(args: { projectId: string; absolutePath: string }): Promise<{ ok: boolean }>;
-  pickProjectLocalPath(args: { projectId: string; title?: string }): Promise<
-    | { ok: true; absolutePath: string; resolved: { cwd: string; source: string; projectId: string; portableKey: string } }
-    | { ok: false; canceled: true }
-  >;
-  setProjectPinned(args: { projectId: string; pinned: boolean }): Promise<{ ok: boolean }>;
-  revealProjectInFinder(args: { projectId?: string; projectPath?: string }): Promise<{ ok: boolean; path: string }>;
-  copyProjectLocalPath(args: { projectId?: string; projectPath?: string }): Promise<{ ok: boolean; path: string }>;
   resolveProjectCwd(args: { projectId?: string; projectPath?: string }): Promise<{
     cwd: string;
     source: "local" | "portable" | "rehome" | "missing";
     projectId: string;
     portableKey: string;
   }>;
-  listProjectPathVariants(args: { projectId: string }): Promise<
-    Array<{ absolutePath: string; portableKey: string; sessionCount: number }>
-  >;
-  mergeProjects(args: {
-    sourceProjectId: string;
-    targetProjectId: string;
-  }): Promise<{ targetProjectId: string; mergedSessions: number }>;
-  splitProjectPath(args: {
-    sourceProjectId: string;
-    absolutePath: string;
-  }): Promise<{ projectId: string; movedSessions: number; created: boolean }>;
   getI18nBundle(): Promise<{ locale: string; messages: Record<string, string> }>;
   getAppVersion(): Promise<string>;
   checkForUpdate(options?: { force?: boolean }): Promise<UpdateCheckResult>;
@@ -1524,7 +1493,6 @@ const api: DesktopApi = {
   hideSessions: (args) => ipcRenderer.invoke("sessions:hideMany", args),
   createScratchDir: () => ipcRenderer.invoke("workbench:createScratchDir"),
   workbenchGetProjectEditor: () => ipcRenderer.invoke("workbench:getProjectEditor"),
-  workbenchOpenProjectInEditor: (args) => ipcRenderer.invoke("workbench:openProjectInEditor", args),
   workbenchOpenSession: (args) => ipcRenderer.invoke("workbench:openSession", args),
   setWorkbenchActiveSessions: (sessions) => {
     ipcRenderer.send("workbench:activeSessions", sessions);
@@ -1820,19 +1788,9 @@ const api: DesktopApi = {
   notesReveal: (args) => ipcRenderer.invoke("notes:reveal", args),
   notesCopyPath: (args) => ipcRenderer.invoke("notes:copyPath", args),
   listProjectAliases: () => ipcRenderer.invoke("projects:listAliases"),
-  setProjectAlias: (args) => ipcRenderer.invoke("projects:setAlias", args),
   listProjects: (opts) => ipcRenderer.invoke("projects:list", opts),
   addProject: (args) => ipcRenderer.invoke("projects:addProject", args),
-  hideProject: (args) => ipcRenderer.invoke("projects:hide", args),
-  setProjectLocalPath: (args) => ipcRenderer.invoke("projects:setLocalPath", args),
-  pickProjectLocalPath: (args) => ipcRenderer.invoke("projects:pickLocalPath", args),
-  setProjectPinned: (args) => ipcRenderer.invoke("projects:setPinned", args),
-  revealProjectInFinder: (args) => ipcRenderer.invoke("projects:revealInFinder", args),
-  copyProjectLocalPath: (args) => ipcRenderer.invoke("projects:copyLocalPath", args),
   resolveProjectCwd: (args) => ipcRenderer.invoke("projects:resolveCwd", args),
-  listProjectPathVariants: (args) => ipcRenderer.invoke("projects:listPathVariants", args),
-  mergeProjects: (args) => ipcRenderer.invoke("projects:merge", args),
-  splitProjectPath: (args) => ipcRenderer.invoke("projects:splitPath", args),
   getI18nBundle: () => ipcRenderer.invoke("i18n:getBundle"),
   getAppVersion: async () => {
     const result = (await ipcRenderer.invoke("app:getVersion")) as { version?: string };

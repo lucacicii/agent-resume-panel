@@ -2,7 +2,7 @@ import { useCallback, useEffect } from "react";
 import { desktopApi } from "../bridge";
 import { useOverlayState } from "../components/useOverlayMotion";
 import { notifyDesktop } from "../components/Notifications";
-import { ThemeIcon } from "../components/ThemeIcon";
+import { ICON_SIZE, ThemeIcon } from "../components/ThemeIcon";
 import { renderMarkdown } from "../components/Markdown";
 import { useI18n } from "../i18n";
 import type { SelectionAction } from "../../shared/selectionActions";
@@ -129,7 +129,7 @@ export function SelectionActionResult({
             title={t("desktop.common.close")}
             onClick={onClose}
           >
-            <ThemeIcon name="close" size={12} />
+            <ThemeIcon name="close" size={ICON_SIZE.inline} />
           </button>
         </span>
       </header>

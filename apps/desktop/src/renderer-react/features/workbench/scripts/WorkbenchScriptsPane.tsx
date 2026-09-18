@@ -1,4 +1,4 @@
-import { ThemeIcon } from "../../../components/ThemeIcon";
+import { ICON_SIZE, ThemeIcon } from "../../../components/ThemeIcon";
 import { useI18n } from "../../../i18n";
 import { ScriptsTree, type ScriptEntryView, type ScriptPackageView } from "../ScriptsTree";
 
@@ -32,10 +32,10 @@ export function WorkbenchScriptsPane({
     return <div className={`wb-explorer-scripts${collapsed ? " is-collapsed" : ""}`}>
       <div className="wb-explorer-scripts-head">
         <button type="button" className="wb-explorer-scripts-toggle" aria-expanded={!collapsed} onClick={onToggleCollapsed}>
-          <span className={`wb-file-tree-chevron${collapsed ? "" : " is-expanded"}`}><ThemeIcon name="chevron-right" size={12} /></span>
+          <span className={`wb-file-tree-chevron${collapsed ? "" : " is-expanded"}`}><ThemeIcon name="chevron-right" size={ICON_SIZE.inline} /></span>
           <span className="wb-side-pane-title">{t("desktop.workbench.sidePanelScripts")}</span>
         </button>
-        {selectedProject ? <button type="button" className="wb-git-action-btn" disabled={loading} onClick={onRefresh} aria-label={t("desktop.workbench.scriptsRefresh")} title={t("desktop.workbench.scriptsRefresh")}><ThemeIcon name="refresh" size={14} className={loading ? "spin" : undefined} /></button> : null}
+        {selectedProject ? <button type="button" className="wb-git-action-btn" disabled={loading} onClick={onRefresh} aria-label={t("desktop.workbench.scriptsRefresh")} title={t("desktop.workbench.scriptsRefresh")}><ThemeIcon name="refresh" size={ICON_SIZE.default} className={loading ? "spin" : undefined} /></button> : null}
       </div>
       {!collapsed ? <ScriptsTree packages={packages} loading={loading} error={error || null} truncated={truncated} hasProject={hasProject} compact emptyHint={t("desktop.workbench.scriptsEmpty")} noRootHint={t("desktop.workbench.sidePanelNoRoot")} onRun={onRun} /> : null}
     </div>;

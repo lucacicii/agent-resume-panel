@@ -1,4 +1,4 @@
-import { ThemeIcon } from "../../components/ThemeIcon";
+import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { GtdStatus, TaskGtdRollup } from "@agent-resume/core";
@@ -392,7 +392,7 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
   const toolbar = (
     <div className="gtd-toolbar">
       <span className="gtd-toolbar-title">
-        <ThemeIcon name="square-kanban" size={15} aria-hidden="true" />
+        <ThemeIcon name="square-kanban" size={ICON_SIZE.default} aria-hidden="true" />
         {text("desktop.gtd.title")}
       </span>
       <div className="gtd-toolbar-actions">
@@ -414,7 +414,7 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
           disabled={creating}
           onClick={openNewTask}
         >
-          <ThemeIcon name={creating ? "loader" : "plus"} className={creating ? "spin" : undefined} size={15} aria-hidden="true" />
+          <ThemeIcon name={creating ? "loader" : "plus"} className={creating ? "spin" : undefined} size={ICON_SIZE.default} aria-hidden="true" />
         </button>
       </div>
     </div>
@@ -524,11 +524,11 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
                       <span className="gtd-card-meta">
                         {dotStatus !== "open" ? <span className={`session-dot${sessionDotStatusClass(dotStatus)}`} aria-hidden="true" /> : null}
                         <span className="gtd-card-meta-item">
-                          <ThemeIcon name="bot" size={12} aria-hidden="true" />
+                          <ThemeIcon name="bot" size={ICON_SIZE.inline} aria-hidden="true" />
                           {item.sessions.length}
                         </span>
                         <span className="gtd-card-meta-item">
-                          <ThemeIcon name="square-kanban" size={12} aria-hidden="true" />
+                          <ThemeIcon name="square-kanban" size={ICON_SIZE.inline} aria-hidden="true" />
                           {taskWorkbenches.length || item.projects.length}
                         </span>
                         {rollups[item.noteId]?.total ? (
@@ -538,7 +538,7 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
                         ) : null}
                         {tasksWithWindows.has(item.noteId) ? (
                           <span className="gtd-card-window" title={text("desktop.gtd.windowOpen")}>
-                            <ThemeIcon name="app-window" size={12} aria-hidden="true" />
+                            <ThemeIcon name="app-window" size={ICON_SIZE.inline} aria-hidden="true" />
                           </span>
                         ) : null}
                         {rollups[item.noteId]?.override ? (
@@ -624,7 +624,7 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
                     className="gtd-new-task-project-clear"
                     aria-label={text("desktop.common.close")}
                     onClick={() => setNewTask((current) => current ? { ...current, projectPath: "" } : current)}
-                  ><ThemeIcon name="close" size={12} /></button>
+                  ><ThemeIcon name="close" size={ICON_SIZE.inline} /></button>
                 </span>
               ) : null}
             </div>

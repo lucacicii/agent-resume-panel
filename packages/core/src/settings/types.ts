@@ -174,39 +174,6 @@ export interface WorkbenchComposerMention {
   roots: WorkbenchComposerMentionRoot[];
 }
 
-/** Project row context-menu actions (Workbench). */
-export type WorkbenchProjectContextMenuAction =
-  | "pin"
-  | "newSession"
-  | "editor"
-  | "rename"
-  | "setLocalPath"
-  | "copyPath"
-  | "reveal"
-  | "merge"
-  | "split"
-  | "remove";
-
-/** Default project context menu items (shown when setting is unset). */
-export const DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU: WorkbenchProjectContextMenuAction[] = [
-  "newSession",
-  "reveal",
-  "remove"
-];
-
-export const ALL_WORKBENCH_PROJECT_CONTEXT_MENU: WorkbenchProjectContextMenuAction[] = [
-  "pin",
-  "newSession",
-  "editor",
-  "rename",
-  "setLocalPath",
-  "copyPath",
-  "reveal",
-  "merge",
-  "split",
-  "remove"
-];
-
 export interface WorkbenchEditorSettings {
   /** Whether project text files can be edited in the embedded editor. Default true. */
   editable?: boolean;
@@ -301,11 +268,6 @@ export interface WorkbenchSettings {
   transcriptFontSize?: number;
   /** Embedded Workbench file editor preferences. */
   editor?: WorkbenchEditorSettings;
-  /**
-   * Enabled project context-menu actions.
-   * When unset, defaults to newSession, note, reveal, remove.
-   */
-  projectContextMenu?: WorkbenchProjectContextMenuAction[];
   /** User-defined `/trigger` expansions for the terminal composer. Default empty. */
   composerSlashPhrases?: WorkbenchComposerSlashPhrase[];
   /** Global workspace packs for New session / `arpm`. Default empty. */
@@ -500,7 +462,6 @@ export const DEFAULT_SETTINGS: PanelSettings = {
     terminalRenderer: "webgl",
     gitCommitMessageStyle: "conventional",
     gitCommitCustomInstructions: DEFAULT_CONVENTIONAL_COMMIT_INSTRUCTIONS,
-    projectContextMenu: [...DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU],
     composerSlashPhrases: [],
     composerMentions: [],
     transcriptFontSize: 14,

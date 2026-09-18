@@ -1,4 +1,4 @@
-import { ThemeIcon } from "../../components/ThemeIcon";
+import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useState } from "react";
 import { desktopApi } from "../../bridge";
@@ -165,7 +165,7 @@ export function TaskTemplatePanel({
       <aside className="gtd-template-panel" aria-label={text("desktop.gtd.templates")}>
         <div className="gtd-template-head">
           <span className="gtd-template-head-title">
-            <ThemeIcon name="layout-dashboard" size={14} aria-hidden="true" />
+            <ThemeIcon name="layout-dashboard" size={ICON_SIZE.dense} aria-hidden="true" />
             {text("desktop.gtd.templates")}
           </span>
           <button
@@ -175,7 +175,7 @@ export function TaskTemplatePanel({
             title={text("desktop.gtd.newTemplate")}
             onClick={openNewTemplate}
           >
-            <ThemeIcon name="plus" size={14} aria-hidden="true" />
+            <ThemeIcon name="plus" size={ICON_SIZE.dense} aria-hidden="true" />
           </button>
         </div>
         <div className="gtd-template-list">
@@ -198,12 +198,12 @@ export function TaskTemplatePanel({
                 setContextMenu({ x: event.clientX, y: event.clientY, template });
               }}
             >
-              <ThemeIcon name="grip-vertical" className="gtd-template-grip" size={13} aria-hidden="true" />
+              <ThemeIcon name="grip-vertical" className="gtd-template-grip" size={ICON_SIZE.dense} aria-hidden="true" />
               <span className="gtd-template-body">
                 <span className="gtd-template-title">{template.title}</span>
                 {template.projectPaths.length > 0 ? (
                   <span className="gtd-template-project" title={template.projectPaths.join("\n")}>
-                    <ThemeIcon name="folder" size={11} aria-hidden="true" />
+                    <ThemeIcon name="folder" size={ICON_SIZE.inline} aria-hidden="true" />
                     {projectLabel(template.projectPaths[0])}
                     {template.projectPaths.length > 1 ? ` +${template.projectPaths.length - 1}` : ""}
                   </span>
@@ -250,7 +250,7 @@ export function TaskTemplatePanel({
                       className="gtd-new-task-project-clear"
                       aria-label={text("desktop.common.close")}
                       onClick={() => removeProject(projectPath)}
-                    ><ThemeIcon name="close" size={12} /></button>
+                    ><ThemeIcon name="close" size={ICON_SIZE.inline} /></button>
                   </span>
                 ))}
               </div>

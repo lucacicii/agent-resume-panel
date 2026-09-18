@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ThemeIcon } from "../../components/ThemeIcon";
+import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { useOverlayState } from "../../components/useOverlayMotion";
 import { desktopApi } from "../../bridge";
 import { useI18n } from "../../i18n";
@@ -759,7 +759,7 @@ export function TerminalComposer(props: {
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => removePendingImage(image.id)}
               >
-                <ThemeIcon name="close" size={11} />
+                <ThemeIcon name="close" size={ICON_SIZE.inline} />
               </button>
             </div>
           ))}
@@ -803,7 +803,7 @@ export function TerminalComposer(props: {
           onMouseDown={(event) => event.preventDefault()}
           onClick={sendToTerminal}
         >
-          <ThemeIcon name="send" size={16} />
+          <ThemeIcon name="send" size={ICON_SIZE.default} />
         </button>
       </div>
       {directoryOpen ? (
@@ -923,7 +923,7 @@ export function TerminalComposer(props: {
             aria-label={t("desktop.common.close")}
             onClick={() => setImagePreview(null)}
           >
-            <ThemeIcon name="close" size={16} />
+            <ThemeIcon name="close" size={ICON_SIZE.default} />
           </button>
         </div>,
         document.body

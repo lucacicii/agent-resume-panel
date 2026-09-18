@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, type ReactPortal } from "react";
 import { createPortal } from "react-dom";
-import { ThemeIcon } from "../../../components/ThemeIcon";
+import { ICON_SIZE, ThemeIcon } from "../../../components/ThemeIcon";
 import { desktopApi } from "../../../bridge";
 import { useOverlayPresence } from "../../../components/useOverlayMotion";
 import { useI18n } from "../../../i18n";
@@ -57,7 +57,7 @@ export function GitCommitBranches({ commit }: { commit: GitLogCommit }): React.J
       title={branch}
       key={branch}
     >
-      <ThemeIcon name="git-branch" size={10} aria-hidden="true" />
+      <ThemeIcon name="git-branch" size={ICON_SIZE.inline} aria-hidden="true" />
       <span>{branch}</span>
     </span>)}
   </span>;
@@ -70,8 +70,8 @@ export function GitActionIcons({ visible }: { visible: boolean }): React.JSX.Ele
   }, [visible]);
   if (!visible) return null;
   const icons = [
-    { label: "Git log", icon: <ThemeIcon name="history" size={16} /> },
-    { label: "Refresh", icon: <ThemeIcon name="refresh" size={16} /> }
+    { label: "Git log", icon: <ThemeIcon name="history" size={ICON_SIZE.default} /> },
+    { label: "Refresh", icon: <ThemeIcon name="refresh" size={ICON_SIZE.default} /> }
   ];
   return <>{hosts.map((host, index) => icons[index] ? createPortal(<span className="react-git-action-icon" title={icons[index].label} aria-hidden="true">{icons[index].icon}</span>, host) : null)}</>;
 }
@@ -187,9 +187,9 @@ export function GitBranchSelector({
     aria-expanded={open}
     onClick={openMenu}
   >
-    <ThemeIcon name="git-branch" size={12} aria-hidden="true" />
+    <ThemeIcon name="git-branch" size={ICON_SIZE.inline} aria-hidden="true" />
     <span>{value || "-"}</span>
-    <ThemeIcon name="chevron-down" size={11} aria-hidden="true" />
+    <ThemeIcon name="chevron-down" size={ICON_SIZE.inline} aria-hidden="true" />
   </button>;
   const menu = presence.mounted ? createPortal(<div
     className={`react-git-branch-control react-git-branch-popover wb-git-branch-popover${presence.closing ? " is-closing" : ""}`}
@@ -243,7 +243,7 @@ export function BranchGraphNavigation({
     setHost(visible ? document.querySelector<HTMLElement>("#react-workbench .wb-git-pane-head") : null);
   }, [visible]);
   return visible && host ? createPortal(<div className="react-branch-graph-nav">
-    <button type="button" className="wb-diff-back" aria-label={ariaLabel} onClick={onBack}><ThemeIcon name="chevron-left" size={15} /></button>
+    <button type="button" className="wb-diff-back" aria-label={ariaLabel} onClick={onBack}><ThemeIcon name="chevron-left" size={ICON_SIZE.default} /></button>
     <span className="react-branch-graph-title">{title}</span>
   </div>, host) : null;
 }

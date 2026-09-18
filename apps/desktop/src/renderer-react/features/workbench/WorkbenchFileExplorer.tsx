@@ -1,4 +1,4 @@
-import { ThemeIcon, type ThemeIconName } from "../../components/ThemeIcon";
+import { ICON_SIZE, ThemeIcon, type ThemeIconName } from "../../components/ThemeIcon";
 import {
   Fragment,
   forwardRef,
@@ -32,6 +32,12 @@ export interface WorkbenchFileExplorerHandle {
   refresh: () => Promise<void>;
   revealPath: (targetPath: string) => Promise<void>;
 }
+
+// File-type accents are the single sanctioned icon color exception; everything
+// else inherits `currentColor`. See ui-design-system.md §4.22.
+const FILE_ICON_COLORS = {
+  folder: "#dcb67a"
+} as const;
 
 function getFileIconComponent(filename: string): { name: ThemeIconName; color?: string } {
   // Handle exact filenames for common configuration files
@@ -601,14 +607,14 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
         onContextMenu={(event) => openContextMenu(event, entry)}
       >
         {entry.isDirectory
-          ? <button type="button" className={`wb-file-tree-chevron${expanded ? " is-expanded" : ""}`} aria-label={expanded ? "Collapse folder" : "Expand folder"} onClick={(event) => { event.stopPropagation(); void toggleDirectory(entry.path); }}><ThemeIcon name="chevron-right" size={14} /></button>
+          ? <button type="button" className={`wb-file-tree-chevron${expanded ? " is-expanded" : ""}`} aria-label={expanded ? "Collapse folder" : "Expand folder"} onClick={(event) => { event.stopPropagation(); void toggleDirectory(entry.path); }}><ThemeIcon name="chevron-right" size={ICON_SIZE.dense} /></button>
           : <span className="wb-file-tree-chevron is-placeholder" />}
         {(() => {
           if (entry.isDirectory) {
-            return <ThemeIcon name="folder" size={15} color="#dcb67a" className="wb-file-tree-icon" />;
+            return <ThemeIcon name="folder" size={ICON_SIZE.dense} color={FILE_ICON_COLORS.folder} className="wb-file-tree-icon" />;
           }
           const { name, color } = getFileIconComponent(entry.name);
-          return <ThemeIcon name={name} size={15} color={color} className="wb-file-tree-icon" />;
+          return <ThemeIcon name={name} size={ICON_SIZE.dense} color={color} className="wb-file-tree-icon" />;
         })()}
         <span className="wb-file-tree-label" title={entry.path}>{entry.name}</span>
       </div>;
@@ -618,7 +624,7 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
   return <>
     <div className="wb-side-pane-head">
       <span className="wb-side-pane-title">{t("desktop.workbench.sidePanelExplorer")}</span>
-      {roots.length ? <button type="button" className="wb-git-action-btn" disabled={refreshing} onClick={() => void refreshManually()} aria-label={t("desktop.common.refresh")} title={t("desktop.common.refresh")}><ThemeIcon name="refresh" size={14} className={refreshing ? "spin" : undefined} /></button> : null}
+      {roots.length ? <button type="button" className="wb-git-action-btn" disabled={refreshing} onClick={() => void refreshManually()} aria-label={t("desktop.common.refresh")} title={t("desktop.common.refresh")}><ThemeIcon name="refresh" size={ICON_SIZE.default} className={refreshing ? "spin" : undefined} /></button> : null}
     </div>
     <div className="wb-file-tree wb-explorer-file-tree" role="tree" tabIndex={0} onKeyDown={handleTreeKeyDown}>
       {roots.length ? roots.map((root) => {
@@ -639,9 +645,9 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
             onContextMenu={(event) => openContextMenu(event, { path: root, isDirectory: true })}
           >
             {roots.length > 1
-              ? <button type="button" className={`wb-file-tree-chevron${expanded ? " is-expanded" : ""}`} aria-label={expanded ? "Collapse folder" : "Expand folder"} onClick={(event) => { event.stopPropagation(); void toggleDirectory(root); }}><ThemeIcon name="chevron-right" size={14} /></button>
+              ? <button type="button" className={`wb-file-tree-chevron${expanded ? " is-expanded" : ""}`} aria-label={expanded ? "Collapse folder" : "Expand folder"} onClick={(event) => { event.stopPropagation(); void toggleDirectory(root); }}><ThemeIcon name="chevron-right" size={ICON_SIZE.dense} /></button>
               : null}
-            <ThemeIcon name="folder-open" size={15} color="#dcb67a" className="wb-file-tree-icon" />
+            <ThemeIcon name="folder-open" size={ICON_SIZE.dense} color={FILE_ICON_COLORS.folder} className="wb-file-tree-icon" />
             <span className="wb-file-tree-label" title={root}>{basename(root)}</span>
           </div>
           {roots.length === 1 || expanded ? renderTree(root, 1) : null}

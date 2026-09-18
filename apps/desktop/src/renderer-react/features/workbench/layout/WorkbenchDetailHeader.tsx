@@ -1,4 +1,4 @@
-import { ThemeIcon } from "../../../components/ThemeIcon";
+import { ICON_SIZE, ThemeIcon } from "../../../components/ThemeIcon";
 import { useI18n } from "../../../i18n";
 import type { TerminalPane } from "../terminal/TerminalView";
 
@@ -40,7 +40,7 @@ export function WorkbenchDetailHeader({
         aria-label={t("desktop.gtd.backToGtd")}
         title={t("desktop.gtd.backToGtd")}
         onClick={onBackToGtd}
-      ><ThemeIcon name="arrow-left" size={17} /></button>
+      ><ThemeIcon name="arrow-left" size={ICON_SIZE.default} /></button>
     ) : null}
     <div className="wb-detail-head">
       <span className="wb-detail-project-label">
@@ -53,7 +53,7 @@ export function WorkbenchDetailHeader({
             aria-label={t("desktop.common.revealInFinder")}
             title={t("desktop.common.revealInFinder")}
             onClick={onRevealDirectory}
-          ><ThemeIcon name="folder-open" size={13} aria-hidden="true" /></button>
+          ><ThemeIcon name="folder-open" size={ICON_SIZE.dense} aria-hidden="true" /></button>
         ) : null}
       </span>
       <div className="wb-detail-head-actions">
@@ -67,17 +67,17 @@ export function WorkbenchDetailHeader({
                 : branchStatusLabel}
               onClick={(event) => void onOpenBranchMenu(branchStatusPane, event.currentTarget)}
             >
-              <ThemeIcon name="git-branch" size={12} aria-hidden="true" />
+              <ThemeIcon name="git-branch" size={ICON_SIZE.inline} aria-hidden="true" />
               <span className="wb-terminal-status-branch-label">{branchStatusLabel}</span>
             </button>
           </div>
         ) : null}
         <div className="wb-detail-tools">
-          <button type="button" className={`wb-detail-tool${side === "files" ? " active" : ""}`} aria-pressed={side === "files"} aria-label={t("desktop.workbench.sidePanelExplorer")} title={t("desktop.workbench.sidePanelExplorer")} onClick={() => onToggleSide("files")}><ThemeIcon name="folder-tree" size={16} /></button>
-          <button type="button" className={`wb-detail-tool${side === "scripts" ? " active" : ""}`} aria-pressed={side === "scripts"} aria-label={t("desktop.workbench.sidePanelScripts")} title={t("desktop.workbench.sidePanelScripts")} onClick={() => onToggleSide("scripts")}><ThemeIcon name="play" size={16} /></button>
-          <button type="button" className={`wb-detail-tool${side === "search" ? " active" : ""}`} aria-pressed={side === "search"} aria-label={t("desktop.workbench.sidePanelSearch")} title={t("desktop.workbench.sidePanelSearch")} onClick={() => onToggleSide("search")}><ThemeIcon name="search" size={16} /></button>
-          <button type="button" className={`wb-detail-tool${side === "linkgraph" ? " active" : ""}`} aria-pressed={side === "linkgraph"} aria-label={t("desktop.workbench.sidePanelLinkGraph")} title={t("desktop.workbench.sidePanelLinkGraph")} onClick={() => onToggleSide("linkgraph")}><ThemeIcon name="waypoints" size={16} /></button>
-          <button type="button" className={`wb-detail-tool${side === "git" ? " active" : ""}`} aria-pressed={side === "git"} aria-label={t("desktop.workbench.sidePanelGit")} title={t("desktop.workbench.sidePanelGit")} onClick={() => onToggleSide("git")}><ThemeIcon name="git-branch" size={16} /></button>
+          <button type="button" className={`wb-detail-tool${side === "files" ? " active" : ""}`} aria-pressed={side === "files"} aria-label={t("desktop.workbench.sidePanelExplorer")} title={t("desktop.workbench.sidePanelExplorer")} onClick={() => onToggleSide("files")}><ThemeIcon name="folder-tree" size={ICON_SIZE.default} /></button>
+          <button type="button" className={`wb-detail-tool${side === "scripts" ? " active" : ""}`} aria-pressed={side === "scripts"} aria-label={t("desktop.workbench.sidePanelScripts")} title={t("desktop.workbench.sidePanelScripts")} onClick={() => onToggleSide("scripts")}><ThemeIcon name="play" size={ICON_SIZE.default} /></button>
+          <button type="button" className={`wb-detail-tool${side === "search" ? " active" : ""}`} aria-pressed={side === "search"} aria-label={t("desktop.workbench.sidePanelSearch")} title={t("desktop.workbench.sidePanelSearch")} onClick={() => onToggleSide("search")}><ThemeIcon name="search" size={ICON_SIZE.default} /></button>
+          <button type="button" className={`wb-detail-tool${side === "linkgraph" ? " active" : ""}`} aria-pressed={side === "linkgraph"} aria-label={t("desktop.workbench.sidePanelLinkGraph")} title={t("desktop.workbench.sidePanelLinkGraph")} onClick={() => onToggleSide("linkgraph")}><ThemeIcon name="waypoints" size={ICON_SIZE.default} /></button>
+          <button type="button" className={`wb-detail-tool${side === "git" ? " active" : ""}`} aria-pressed={side === "git"} aria-label={t("desktop.workbench.sidePanelGit")} title={t("desktop.workbench.sidePanelGit")} onClick={() => onToggleSide("git")}><ThemeIcon name="git-branch" size={ICON_SIZE.default} /></button>
         </div>
       </div>
     </div>

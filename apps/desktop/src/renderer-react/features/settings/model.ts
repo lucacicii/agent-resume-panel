@@ -5,52 +5,13 @@ import type {
   PanelSettings,
   ProviderModel,
   WorkbenchComposerMention,
-  WorkbenchComposerSlashPhrase,
-  WorkbenchProjectContextMenuAction
+  WorkbenchComposerSlashPhrase
 } from "@agent-resume/core";
 import {
   resolveTerminalThemeId,
   type WorkbenchTerminalThemeId
 } from "../workbench/terminalThemes";
 import { isModelKind, normalizeBaseUrl, resolveSelectedModel } from "./providerPool";
-
-/** Keep in sync with packages/core WorkbenchProjectContextMenuAction. */
-export const ALL_WORKBENCH_PROJECT_CONTEXT_MENU: WorkbenchProjectContextMenuAction[] = [
-  "pin",
-  "newSession",
-  "editor",
-  "rename",
-  "setLocalPath",
-  "copyPath",
-  "reveal",
-  "merge",
-  "split",
-  "remove"
-];
-
-export const DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU: WorkbenchProjectContextMenuAction[] = [
-  "newSession",
-  "reveal",
-  "remove"
-];
-
-const PROJECT_MENU_SET = new Set<string>(ALL_WORKBENCH_PROJECT_CONTEXT_MENU);
-
-function normalizeProjectContextMenu(
-  value: WorkbenchProjectContextMenuAction[] | undefined | null
-): WorkbenchProjectContextMenuAction[] {
-  if (!Array.isArray(value)) {
-    return [...DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU];
-  }
-  const seen = new Set<WorkbenchProjectContextMenuAction>();
-  const output: WorkbenchProjectContextMenuAction[] = [];
-  for (const entry of value) {
-    if (!PROJECT_MENU_SET.has(entry) || seen.has(entry)) continue;
-    seen.add(entry);
-    output.push(entry);
-  }
-  return output;
-}
 
 const COMPOSER_SLASH_TRIGGER = /^[A-Za-z0-9_-]{1,40}$/;
 const COMPOSER_SLASH_PHRASE_MAX = 4000;
@@ -256,8 +217,6 @@ export interface WorkbenchDraft {
   gitCommitCustomInstructions: string;
   gitNestedScanMaxDepth: number;
   gitNestedScanIgnoreDirs: string;
-  /** Enabled Workbench project context-menu actions. */
-  projectContextMenu: WorkbenchProjectContextMenuAction[];
   /** User-defined `/trigger` expansions for the terminal composer. */
   composerSlashPhrases: WorkbenchComposerSlashPhrase[];
   /** Global workspace packs for New session / `arpm`. */
@@ -616,9 +575,6 @@ export function workbenchDraftFromSettings(settings: PanelSettings): WorkbenchDr
     gitCommitCustomInstructions: workbench?.gitCommitCustomInstructions || "",
     gitNestedScanMaxDepth: numberInRange(workbench?.gitNestedScanMaxDepth, 6, 1, 10),
     gitNestedScanIgnoreDirs: Array.isArray(workbench?.gitNestedScanIgnoreDirs) ? workbench.gitNestedScanIgnoreDirs.join("\n") : "",
-    projectContextMenu: normalizeProjectContextMenu(
-      workbench?.projectContextMenu ?? DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU
-    ),
     composerSlashPhrases: normalizeComposerSlashPhrases(workbench?.composerSlashPhrases),
     composerMentions: normalizeComposerMentions(workbench?.composerMentions),
     acpAutoApprovePermissions: settings.acp?.autoApprovePermissions === "allowAll" ? "allowAll" : "ask",
@@ -672,7 +628,6 @@ export function workbenchPatch(settings: PanelSettings, draft: WorkbenchDraft): 
       gitCommitCustomInstructions: draft.gitCommitCustomInstructions,
       gitNestedScanMaxDepth: numberInRange(draft.gitNestedScanMaxDepth, 6, 1, 10),
       gitNestedScanIgnoreDirs: draft.gitNestedScanIgnoreDirs.split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean),
-      projectContextMenu: normalizeProjectContextMenu(draft.projectContextMenu),
       composerSlashPhrases: normalizeComposerSlashPhrases(draft.composerSlashPhrases),
       composerMentions: normalizeComposerMentions(draft.composerMentions)
     },

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, type ReactPortal } from "react";
 import { createPortal } from "react-dom";
-import { ThemeIcon } from "../../../components/ThemeIcon";
+import { ICON_SIZE, ThemeIcon } from "../../../components/ThemeIcon";
 import { useOverlayState } from "../../../components/useOverlayMotion";
 import { useI18n } from "../../../i18n";
 import { startWorkbenchPathDrag } from "../workbenchDnd";
@@ -57,7 +57,7 @@ function GitTreeCheckbox({
       onChange(!(checked || mixed));
     }}
   >
-    {checked ? <ThemeIcon name="check" size={11} strokeWidth={3} aria-hidden="true" /> : null}
+    {checked ? <ThemeIcon name="check" size={ICON_SIZE.inline} aria-hidden="true" /> : null}
     {mixed ? <span className="wb-git-check-dash" aria-hidden="true" /> : null}
   </button>;
 }
@@ -115,8 +115,8 @@ function GitChangeTree({
             onToggleStage({ repoRoot, paths: repoPaths }, checked);
           }} />
           <button type="button" className="wb-git-tree-row-main" aria-expanded={isExpanded} onClick={() => onToggleDir(expandKey)}>
-            <span className={`wb-file-tree-chevron${isExpanded ? " is-expanded" : ""}`}><ThemeIcon name="chevron-right" size={12} /></span>
-            <ThemeIcon name="folder" size={14} className="wb-file-tree-icon" />
+            <span className={`wb-file-tree-chevron${isExpanded ? " is-expanded" : ""}`}><ThemeIcon name="chevron-right" size={ICON_SIZE.inline} /></span>
+            <ThemeIcon name="folder" size={ICON_SIZE.dense} className="wb-file-tree-icon" />
             <span className="wb-file-tree-label" title={node.path}>{node.name}</span>
           </button>
           <button
@@ -127,7 +127,7 @@ function GitChangeTree({
             title={discardLabel}
             onClick={() => onDiscardDirectory(node.path, repoRoot)}
           >
-            {directoryDiscarding ? <ThemeIcon name="loader" size={13} className="spin" /> : <ThemeIcon name="undo" size={13} />}
+            {directoryDiscarding ? <ThemeIcon name="loader" size={ICON_SIZE.dense} className="spin" /> : <ThemeIcon name="undo" size={ICON_SIZE.dense} />}
           </button>
         </div>
         {isExpanded ? <div className="wb-file-tree-children"><GitChangeTree nodes={node.children} depth={depth + 1} staged={staged} expanded={expanded} activeDiff={activeDiff} discarding={discarding} onToggleDir={onToggleDir} onToggleStage={onToggleStage} onOpen={onOpen} onContextMenu={onContextMenu} onDiscard={onDiscard} onDiscardDirectory={onDiscardDirectory} discardLabel={discardLabel} /></div> : null}
@@ -167,7 +167,7 @@ function GitChangeTree({
         title={discardLabel}
         onClick={() => onDiscard(node.change!)}
       >
-        {discarding.has(key) ? <ThemeIcon name="loader" size={13} className="spin" /> : <ThemeIcon name="undo" size={13} />}
+        {discarding.has(key) ? <ThemeIcon name="loader" size={ICON_SIZE.dense} className="spin" /> : <ThemeIcon name="undo" size={ICON_SIZE.dense} />}
       </button>
     </div>;
   })}</>;
@@ -416,7 +416,7 @@ export function GitChangesPanel({
           title={labels.autoGenerate}
           onClick={onSuggestCommit}
         >
-          {commitBusy ? <ThemeIcon name="loader" className="spin wb-git-default-loading" size={16} /> : <ThemeIcon name="sparkles" size={16} />}
+          {commitBusy ? <ThemeIcon name="loader" className="spin wb-git-default-loading" size={ICON_SIZE.default} /> : <ThemeIcon name="sparkles" size={ICON_SIZE.default} />}
         </button>
         <button
           type="button"
@@ -426,7 +426,7 @@ export function GitChangesPanel({
           title={labels.commit}
           onClick={() => onCommit(false)}
         >
-          <ThemeIcon name="check" size={16} />
+          <ThemeIcon name="check" size={ICON_SIZE.default} />
         </button>
         <button
           type="button"
@@ -436,7 +436,7 @@ export function GitChangesPanel({
           title={labels.commitAndPush}
           onClick={() => onCommit(true)}
         >
-          <ThemeIcon name="arrow-up-to-line" size={16} />
+          <ThemeIcon name="arrow-up-to-line" size={ICON_SIZE.default} />
         </button>
         {trackingLabel ? <button
           type="button"
@@ -449,7 +449,7 @@ export function GitChangesPanel({
         >
           <ThemeIcon
             name={syncing ? "loader" : "refresh"}
-            size={14}
+            size={ICON_SIZE.dense}
             className={`wb-git-tracking-icon${syncing ? " spin" : ""}`}
             aria-hidden="true"
           />

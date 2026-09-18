@@ -17,7 +17,7 @@ import type { AgentIntegrationStatus } from "../../../main/agentStatus/integrati
 import type { AgentStatusDaemonStatus } from "../../../main/agentStatus/lifecycle";
 import type { DetectionExplain, PaneScreenDump, PaneStatus } from "../../../shared/agentStatusTypes";
 import { desktopApi } from "../../bridge";
-import { ThemeIcon } from "../../components/ThemeIcon";
+import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { Status, type StatusKind } from "../../components/Status";
 
 type Translate = (key: string, ...args: Array<string | number>) => string;
@@ -195,7 +195,7 @@ export function AgentStatusPane({ t }: { t: Translate }) {
               <li key={pane.paneId}>
                 <div>
                   <strong>
-                    <ThemeIcon name="terminal" size={12} /> {t("desktop.settings.agentStatus.paneLabel", pane.paneId)}
+                    <ThemeIcon name="terminal" size={ICON_SIZE.inline} /> {t("desktop.settings.agentStatus.paneLabel", pane.paneId)}
                   </strong>
                   <span className="muted">
                     {pane.agent} · {pane.state} · {pane.source}

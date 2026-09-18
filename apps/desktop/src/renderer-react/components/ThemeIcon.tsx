@@ -13,6 +13,24 @@ import {
   type LucideProps
 } from "lucide-react";
 
+/**
+ * Icon size ladder. Icons are sized only through these tokens — the rendered
+ * pixel value is an implementation detail of this file.
+ *
+ * - `inline`    in-text hints, badges, metadata, graph nodes
+ * - `dense`     trees, list rows, tabs, dense toolbars
+ * - `default`   toolbar buttons, icon buttons, top bar
+ * - `prominent` empty states, heroes, settings headers
+ */
+export const ICON_SIZE = {
+  inline: 12,
+  dense: 13,
+  default: 16,
+  prominent: 20
+} as const;
+
+export type ThemeIconSize = (typeof ICON_SIZE)[keyof typeof ICON_SIZE];
+
 /** Semantic icon registry. A missing built-in icon is a compile-time error. */
 const ICONS = {
   activity: Activity, archive: Archive, "arrow-down": ArrowDown, "arrow-down-to-line": ArrowDownToLine,
@@ -38,14 +56,20 @@ const ICONS = {
 } as const satisfies Record<string, LucideIcon>;
 
 export type ThemeIconName = keyof typeof ICONS;
-type ThemeIconProps = LucideProps & { name: ThemeIconName };
+// `size`/`width`/`height`/`strokeWidth` are owned by this component so every icon
+// shares one ladder, one stroke weight and one grid. See ui-design-system.md §4.22.
+type ThemeIconProps = Omit<LucideProps, "size" | "width" | "height" | "strokeWidth"> & {
+  name: ThemeIconName;
+  size?: ThemeIconSize;
+};
 
 /**
- * The one icon entry point for Desktop. Visual themes style this stable semantic
- * SVG through `data-theme-icon`; business views never choose another theme's icon.
+ * The one icon entry point for Desktop: lucide SVG on a 24px grid, 2px monoline
+ * stroke, `currentColor`, decorative by default. Icons are chosen by semantic
+ * name only — business views never import an icon library directly.
  */
-export function ThemeIcon({ name, ...props }: ThemeIconProps): JSX.Element {
+export function ThemeIcon({ name, size = ICON_SIZE.default, ...props }: ThemeIconProps): JSX.Element {
   const Icon = ICONS[name];
   if (!Icon) return <span className="theme-icon-missing" data-theme-icon={name} aria-hidden="true" />;
-  return <Icon data-theme-icon={name} {...props} />;
+  return <Icon data-theme-icon={name} width={size} height={size} aria-hidden="true" {...props} />;
 }

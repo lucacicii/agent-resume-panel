@@ -1,4 +1,4 @@
-import { ThemeIcon } from "../../components/ThemeIcon";
+import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { useEffect, useMemo, useState } from "react";
 import { useI18n } from "../../i18n";
 
@@ -105,9 +105,9 @@ export function WorkbenchSearchPane({
             <div className="wb-search-file-group" key={group.path} role="treeitem" aria-expanded={isExpanded}>
               <button type="button" className="wb-search-file-row" onClick={toggle}>
                 <span className={`wb-file-tree-chevron${isExpanded ? " is-expanded" : ""}`}>
-                  <ThemeIcon name="chevron-right" size={12} />
+                  <ThemeIcon name="chevron-right" size={ICON_SIZE.inline} />
                 </span>
-                <ThemeIcon name="file-code" size={14} className="wb-file-tree-icon" />
+                <ThemeIcon name="file-code" size={ICON_SIZE.dense} className="wb-file-tree-icon" />
                 <span className="wb-search-file-label" title={group.path}>{group.relativePath}</span>
                 <span className="wb-search-file-count">{group.matches.length}</span>
               </button>

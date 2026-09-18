@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPoi
 import { CodeEditor, type CodeEditorHandle, type CodeEditorSearchResult } from "../../components/CodeEditor";
 import { desktopApi } from "../../bridge";
 import { GTD_STATUSES, type GtdStatus } from "../../gtd";
-import { ThemeIcon } from "../../components/ThemeIcon";
+import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { useI18n } from "../../i18n";
 
 export interface FloatingSessionNoteTarget {
@@ -552,7 +552,7 @@ export function FloatingSessionNote({
           disabled={!noteId || loading || creating || deleting}
           onClick={openFind}
         >
-          <ThemeIcon name="search" size={15} aria-hidden="true" />
+          <ThemeIcon name="search" size={ICON_SIZE.default} aria-hidden="true" />
         </button>
         <button
           type="button"
@@ -562,7 +562,7 @@ export function FloatingSessionNote({
           disabled={!noteId || loading || creating || deleting}
           onClick={() => void deleteNote()}
         >
-          <ThemeIcon name="trash" size={15} aria-hidden="true" />
+          <ThemeIcon name="trash" size={ICON_SIZE.default} aria-hidden="true" />
         </button>
         <button
           type="button"
@@ -572,18 +572,18 @@ export function FloatingSessionNote({
           disabled={deleting}
           onClick={() => void close()}
         >
-          <ThemeIcon name="close" size={15} aria-hidden="true" />
+          <ThemeIcon name="close" size={ICON_SIZE.default} aria-hidden="true" />
         </button>
       </div>
     </header>
     {loading ? <div className="wb-floating-note-state" role="status" aria-live="polite">
-      <ThemeIcon name="loader" size={15} className="spin" aria-hidden="true" />
+      <ThemeIcon name="loader" size={ICON_SIZE.default} className="spin" aria-hidden="true" />
       <span>{creating ? t("desktop.workbench.floatingNoteCreating") : t("desktop.workbench.floatingNoteLoading")}</span>
     </div> : noteId ? <>
       <div className="wb-floating-note-body">
         {findOpen ? (
           <div className="notes-find-bar app-inline-search" role="search">
-            <ThemeIcon name="search" size={14} aria-hidden="true" />
+            <ThemeIcon name="search" size={ICON_SIZE.dense} aria-hidden="true" />
             <input
               ref={findRef}
               className="notes-find-input app-inline-search-input"
@@ -627,7 +627,7 @@ export function FloatingSessionNote({
               aria-label={t("desktop.common.findPrev")}
               onClick={() => runFind("backward")}
             >
-              <ThemeIcon name="arrow-up" size={14} />
+              <ThemeIcon name="arrow-up" size={ICON_SIZE.dense} />
             </button>
             <button
               type="button"
@@ -635,7 +635,7 @@ export function FloatingSessionNote({
               aria-label={t("desktop.common.findNext")}
               onClick={() => runFind("forward")}
             >
-              <ThemeIcon name="arrow-down" size={14} />
+              <ThemeIcon name="arrow-down" size={ICON_SIZE.dense} />
             </button>
             <button
               type="button"
@@ -643,7 +643,7 @@ export function FloatingSessionNote({
               aria-label={t("desktop.common.closeFind")}
               onClick={closeFind}
             >
-              <ThemeIcon name="close" size={14} />
+              <ThemeIcon name="close" size={ICON_SIZE.dense} />
             </button>
           </div>
         ) : null}

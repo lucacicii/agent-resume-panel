@@ -1,4 +1,4 @@
-import { ThemeIcon } from "./ThemeIcon";
+import { ICON_SIZE, ThemeIcon } from "./ThemeIcon";
 import { createPortal } from "react-dom";
 import { useEffect, useRef, useState } from "react";
 import { desktopApi } from "../bridge";
@@ -120,7 +120,7 @@ export function AppChrome(): React.JSX.Element {
             onClick={() => setAvatarMenuOpen((open) => !open)}
           >
             <span className="app-account-avatar" aria-hidden="true">
-              <ThemeIcon name="user" size={16} />
+              <ThemeIcon name="user" size={ICON_SIZE.default} />
             </span>
           </button>
         </Tooltip>
@@ -133,7 +133,7 @@ export function AppChrome(): React.JSX.Element {
                   className="rail-account-menu-item"
                   onClick={() => openSettings("general")}
                 >
-                  <ThemeIcon name="settings" size={14} aria-hidden="true" />
+                  <ThemeIcon name="settings" size={ICON_SIZE.dense} aria-hidden="true" />
                   {settingsLabel}
                 </button>
               </div>,

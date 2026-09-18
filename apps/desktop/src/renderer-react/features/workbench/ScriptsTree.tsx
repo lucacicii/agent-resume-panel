@@ -1,4 +1,4 @@
-import { ThemeIcon } from "../../components/ThemeIcon";
+import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useI18n } from "../../i18n";
 
@@ -142,9 +142,9 @@ export function ScriptsTree({
                 onClick={() => toggle(group.key)}
               >
                 <span className={`wb-file-tree-chevron${groupOpen ? " is-expanded" : ""}`}>
-                  <ThemeIcon name="chevron-right" size={12} />
+                  <ThemeIcon name="chevron-right" size={ICON_SIZE.inline} />
                 </span>
-                <ThemeIcon name="terminal" size={14} className="wb-file-tree-icon" />
+                <ThemeIcon name="terminal" size={ICON_SIZE.dense} className="wb-file-tree-icon" />
                 <span className="wb-file-tree-label" title={group.relativeRoot}>
                   {group.label}
                 </span>
@@ -172,7 +172,7 @@ export function ScriptsTree({
                             onClick={() => toggle(pkg.id)}
                           >
                             <span className={`wb-file-tree-chevron${pkgOpen ? " is-expanded" : ""}`}>
-                              <ThemeIcon name="chevron-right" size={12} />
+                              <ThemeIcon name="chevron-right" size={ICON_SIZE.inline} />
                             </span>
                             <span className="wb-scripts-kind-badge is-inline">
                               {t(kindLabelKey(pkg.kind))}
@@ -193,7 +193,7 @@ export function ScriptsTree({
                                   onDoubleClick={() => onRun(script, pkg)}
                                 >
                                   <span className="wb-file-tree-chevron is-placeholder" aria-hidden="true" />
-                                  <ThemeIcon name="play" size={12} className="wb-file-tree-icon wb-scripts-play-icon" />
+                                  <ThemeIcon name="play" size={ICON_SIZE.dense} className="wb-file-tree-icon wb-scripts-play-icon" />
                                   <span className="wb-file-tree-label">{script.name}</span>
                                 </button>
                               ))
@@ -214,7 +214,7 @@ export function ScriptsTree({
                             onDoubleClick={() => onRun(script, pkg)}
                           >
                             <span className="wb-file-tree-chevron is-placeholder" aria-hidden="true" />
-                            <ThemeIcon name="play" size={12} className="wb-file-tree-icon wb-scripts-play-icon" />
+                            <ThemeIcon name="play" size={ICON_SIZE.inline} className="wb-file-tree-icon wb-scripts-play-icon" />
                             <span className="wb-file-tree-label">{script.name}</span>
                           </button>
                         ))}
@@ -245,7 +245,7 @@ export function ScriptsTree({
               aria-label={t("desktop.workbench.scriptsRefresh")}
               title={t("desktop.workbench.scriptsRefresh")}
             >
-              <ThemeIcon name="refresh" size={14} className={loading ? "spin" : undefined} />
+              <ThemeIcon name="refresh" size={ICON_SIZE.default} className={loading ? "spin" : undefined} />
             </button>
           </div>
         ) : null
@@ -261,7 +261,7 @@ export function ScriptsTree({
               aria-label={t("desktop.workbench.scriptsRefresh")}
               title={t("desktop.workbench.scriptsRefresh")}
             >
-              <ThemeIcon name="refresh" size={14} className={loading ? "spin" : undefined} />
+              <ThemeIcon name="refresh" size={ICON_SIZE.default} className={loading ? "spin" : undefined} />
             </button>
           ) : null}
         </div>

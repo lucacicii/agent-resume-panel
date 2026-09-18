@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ThemeIcon } from "../components/ThemeIcon";
+import { ICON_SIZE, ThemeIcon } from "../components/ThemeIcon";
 import { desktopApi } from "../bridge";
 import { notifyDesktop } from "../components/Notifications";
 import { useI18n } from "../i18n";
@@ -119,7 +119,7 @@ export function SelectionSendItems({
         }}
       >
         <span>{t("desktop.notes.sendToAgent")}</span>
-        <ThemeIcon name="chevron-right" className="context-menu-chevron" size={14} aria-hidden="true" />
+        <ThemeIcon name="chevron-right" className="context-menu-chevron" size={ICON_SIZE.dense} aria-hidden="true" />
       </button>
       <button
         ref={sessionItemRef}
@@ -139,7 +139,7 @@ export function SelectionSendItems({
         }}
       >
         <span>{t("desktop.notes.sendToSession")}</span>
-        <ThemeIcon name="chevron-right" className="context-menu-chevron" size={14} aria-hidden="true" />
+        <ThemeIcon name="chevron-right" className="context-menu-chevron" size={ICON_SIZE.dense} aria-hidden="true" />
       </button>
       {agentFlyout ? (
         <div

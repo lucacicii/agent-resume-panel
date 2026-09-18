@@ -27,7 +27,6 @@ import {
   listComposerSends,
   importComposerSendsForSession,
   hideSessionAction,
-  hideProjectAction,
   listLlmUsageEvents,
   listProjects,
   listScheduleRuns,
@@ -39,17 +38,11 @@ import {
   loadProjectAliasesMap,
   loadSessionPreview,
   loadSettings,
-  setProjectAliasInCatalog,
-  setProjectLocalPath,
-  setProjectPinnedInCatalog,
   ensureProjectForPath,
   unhideProjectInCatalog,
   setProjectKeptVisibleInCatalog,
   resolveProjectCwd,
   resolveProjectCwdForPath,
-  listProjectPathVariants,
-  mergeProjectsInCatalog,
-  splitProjectPathInCatalog,
   listWorkbenchSessionFolders,
   listWorkbenchSessionFolderAssignments,
   listAllWorkbenchSessionFolders,
@@ -59,7 +52,6 @@ import {
   deleteWorkbenchSessionFolder,
   assignWorkbenchSessionToFolder,
   removeWorkbenchSessionFromFolder,
-  mergeWorkbenchSessionFolders,
   listTaskWorkbenches,
   listAllTaskWorkbenches,
   createTaskWorkbench,
@@ -97,7 +89,6 @@ import {
   type GtdStatus,
   type NoteRecord,
   type PanelSettings,
-  type WorkbenchProjectEditor,
   type AgentSessionSyncResult
 } from "@agent-resume/core";
 import { safeHandle } from "./ipcUtils";
@@ -2449,16 +2440,6 @@ function registerIpc(): void {
   });
 
   safeHandle(
-    "workbench:openProjectInEditor",
-    async (_event, args: { projectPath: string }) => {
-      const settings = await loadSettings();
-      const selected: WorkbenchProjectEditor = settings.workbench?.projectEditor || "auto";
-      const editor = await openProjectInEditor(args.projectPath, selected, app.getLocale());
-      return { ok: true, editor };
-    }
-  );
-
-  safeHandle(
     "workbench:openSession",
     async (_event, args: { provider: AgentProvider; id: string }) => {
       void loadPanelDbPaths()
@@ -3230,15 +3211,6 @@ function registerIpc(): void {
     return loadProjectAliasesMap(paths.catalogDb);
   });
 
-  ipcMain.handle(
-    "projects:setAlias",
-    async (_event, args: { projectPath: string; alias: string }) => {
-      const paths = await loadPanelDbPaths();
-      await setProjectAliasInCatalog(paths.catalogDb, args.projectPath, args.alias);
-      return { ok: true };
-    }
-  );
-
   ipcMain.handle("projects:list", async (_event, opts?: { includeHidden?: boolean }) => {
     const paths = await loadPanelDbPaths();
     return listProjects(paths.catalogDb, opts);
@@ -3275,98 +3247,6 @@ function registerIpc(): void {
   );
 
   ipcMain.handle(
-    "projects:hide",
-    async (_event, args: { projectId?: string; projectPath?: string }) => {
-      return hideProjectAction(args);
-    }
-  );
-
-  ipcMain.handle(
-    "projects:setLocalPath",
-    async (_event, args: { projectId: string; absolutePath: string }) => {
-      const paths = await loadPanelDbPaths();
-      await setProjectLocalPath(paths.catalogDb, args.projectId, args.absolutePath);
-      return { ok: true };
-    }
-  );
-
-  ipcMain.handle(
-    "projects:pickLocalPath",
-    async (_event, args: { projectId: string; title?: string }) => {
-      const result = await showDirectoryPicker({ title: args.title || "Select local project folder" });
-      if (!result.ok) {
-        return { ok: false as const, canceled: true as const };
-      }
-      const absolutePath = result.path;
-      const paths = await loadPanelDbPaths();
-      await setProjectLocalPath(paths.catalogDb, args.projectId, absolutePath);
-      const resolved = await resolveProjectCwd(paths.catalogDb, args.projectId);
-      return { ok: true as const, absolutePath, resolved };
-    }
-  );
-
-  ipcMain.handle(
-    "projects:setPinned",
-    async (_event, args: { projectId: string; pinned: boolean }) => {
-      const paths = await loadPanelDbPaths();
-      await setProjectPinnedInCatalog(paths.catalogDb, args.projectId, args.pinned === true);
-      return { ok: true };
-    }
-  );
-
-  async function resolveProjectPathForDesktop(args: {
-    projectId?: string;
-    projectPath?: string;
-  }): Promise<{ cwd: string; source: string }> {
-    const paths = await loadPanelDbPaths();
-    let resolved;
-    if (args.projectId?.trim()) {
-      resolved = await resolveProjectCwd(paths.catalogDb, args.projectId.trim());
-    } else if (args.projectPath?.trim()) {
-      resolved = await resolveProjectCwdForPath(paths.catalogDb, args.projectPath.trim());
-    } else {
-      throw new Error("projectId or projectPath is required.");
-    }
-    if (resolved.source === "missing" || !resolved.cwd?.trim()) {
-      throw new Error(
-        "Local project folder was not found on this machine. Use “Set local folder…” first."
-      );
-    }
-    try {
-      const stat = await fs.stat(resolved.cwd);
-      if (!stat.isDirectory()) {
-        throw new Error("Local project path is not a directory.");
-      }
-    } catch (error) {
-      if (error instanceof Error && error.message.includes("not a directory")) throw error;
-      throw new Error(
-        "Local project folder was not found on this machine. Use “Set local folder…” first."
-      );
-    }
-    const real = await fs.realpath(resolved.cwd).catch(() => path.resolve(resolved.cwd));
-    return { cwd: real, source: resolved.source };
-  }
-
-  ipcMain.handle(
-    "projects:revealInFinder",
-    async (_event, args: { projectId?: string; projectPath?: string }) => {
-      const { cwd } = await resolveProjectPathForDesktop(args);
-      // showItemInFolder selects the item in its parent; works for files and directories.
-      shell.showItemInFolder(cwd);
-      return { ok: true, path: cwd };
-    }
-  );
-
-  ipcMain.handle(
-    "projects:copyLocalPath",
-    async (_event, args: { projectId?: string; projectPath?: string }) => {
-      const { cwd } = await resolveProjectPathForDesktop(args);
-      clipboard.writeText(cwd);
-      return { ok: true, path: cwd };
-    }
-  );
-
-  ipcMain.handle(
     "projects:resolveCwd",
     async (_event, args: { projectId?: string; projectPath?: string }) => {
       const paths = await loadPanelDbPaths();
@@ -3380,31 +3260,6 @@ function registerIpc(): void {
     }
   );
 
-  ipcMain.handle(
-    "projects:listPathVariants",
-    async (_event, args: { projectId: string }) => {
-      const paths = await loadPanelDbPaths();
-      return listProjectPathVariants(paths.catalogDb, args.projectId);
-    }
-  );
-
-  ipcMain.handle(
-    "projects:merge",
-    async (_event, args: { sourceProjectId: string; targetProjectId: string }) => {
-      const paths = await loadPanelDbPaths();
-      const result = await mergeProjectsInCatalog(paths.catalogDb, args.sourceProjectId, args.targetProjectId);
-      await mergeWorkbenchSessionFolders(paths.desktopDb, args.sourceProjectId, args.targetProjectId);
-      return result;
-    }
-  );
-
-  ipcMain.handle(
-    "projects:splitPath",
-    async (_event, args: { sourceProjectId: string; absolutePath: string }) => {
-      const paths = await loadPanelDbPaths();
-      return splitProjectPathInCatalog(paths.catalogDb, args.sourceProjectId, args.absolutePath);
-    }
-  );
 }
 
 // Fail closed: never open a GUI instance when an outdated MCP client still passes

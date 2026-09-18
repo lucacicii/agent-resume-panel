@@ -1,4 +1,4 @@
-import { ThemeIcon } from "../../components/ThemeIcon";
+import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { desktopApi } from "../../bridge";
@@ -260,11 +260,11 @@ function AcpToolChip({ tool, t }: { tool: ToolCall; t: Translate }): React.JSX.E
       }}
     >
       {tool.status === "in_progress" || tool.status === "pending" ? (
-        <ThemeIcon name="loader" size={12} className="spin" aria-hidden="true" />
+        <ThemeIcon name="loader" size={ICON_SIZE.inline} className="spin" aria-hidden="true" />
       ) : tool.status === "completed" ? (
-        <ThemeIcon name="check" size={12} aria-hidden="true" />
+        <ThemeIcon name="check" size={ICON_SIZE.inline} aria-hidden="true" />
       ) : (
-        <ThemeIcon name="close" size={12} aria-hidden="true" />
+        <ThemeIcon name="close" size={ICON_SIZE.inline} aria-hidden="true" />
       )}
       <span ref={labelRef} className="wb-acp-tool-label">
         {label}
@@ -1157,7 +1157,7 @@ export function AcpChatView({
           <span className={`wb-acp-status-dot ${connectionStatus}`} aria-hidden="true" />
           <div className="wb-acp-header-text">
             <div className="wb-acp-title">
-              <ProviderIcon provider={provider} size={15} className="wb-acp-title-icon" aria-hidden="true" />
+              <ProviderIcon provider={provider} size={ICON_SIZE.default} className="wb-acp-title-icon" aria-hidden="true" />
               <span>{headerTitle || t("desktop.workbench.acpChat")}</span>
             </div>
             <div className="wb-acp-meta muted">
@@ -1214,7 +1214,7 @@ export function AcpChatView({
                   >
                     {showSender ? (
                       <div className="chat-sender">
-                        <ProviderIcon provider={provider} size={14} aria-hidden="true" />
+                        <ProviderIcon provider={provider} size={ICON_SIZE.dense} aria-hidden="true" />
                         {providerLabel(provider, t)}
                       </div>
                     ) : null}
@@ -1222,7 +1222,7 @@ export function AcpChatView({
                       {message.role === "plan" ? (
                         <div className="wb-acp-plan-inline">
                           <div className="wb-acp-plan-inline-head">
-                            <ThemeIcon name="file-text" size={14} aria-hidden="true" />
+                            <ThemeIcon name="file-text" size={ICON_SIZE.dense} aria-hidden="true" />
                             <strong>{t("desktop.workbench.acpPlanTitle")}</strong>
                           </div>
                           <p className="wb-acp-plan-inline-snippet">
@@ -1261,7 +1261,7 @@ export function AcpChatView({
                       <div className="wb-acp-message-attachments">
                         {message.files?.map((file) => (
                           <div className="wb-acp-file-chip" key={file.id} title={file.absolutePath || file.fileName}>
-                            <ThemeIcon name="file-text" size={13} aria-hidden="true" />
+                            <ThemeIcon name="file-text" size={ICON_SIZE.dense} aria-hidden="true" />
                             <span className="wb-acp-file-name">{file.fileName}</span>
                             {file.sizeBytes != null ? <span className="wb-acp-file-size">{formatBytes(file.sizeBytes)}</span> : null}
                           </div>
@@ -1288,7 +1288,7 @@ export function AcpChatView({
                             className="chat-copy-btn"
                             onClick={() => void copyText(message.text)}
                           >
-                            <ThemeIcon name="copy" size={12} aria-hidden="true" />
+                            <ThemeIcon name="copy" size={ICON_SIZE.inline} aria-hidden="true" />
                             {t("desktop.common.copy")}
                           </button>
                         ) : null}
@@ -1306,7 +1306,7 @@ export function AcpChatView({
             <div className="chat-message chat-message-in is-cluster-start is-cluster-end">
               <div className="chat-bubble assistant streaming">
                 <div className="chat-sender">
-                  <ProviderIcon provider={provider} size={14} aria-hidden="true" />
+                  <ProviderIcon provider={provider} size={ICON_SIZE.dense} aria-hidden="true" />
                   {providerLabel(provider, t)}
                 </div>
                 <div className="chat-body">
@@ -1439,12 +1439,12 @@ export function AcpChatView({
                   aria-label={t("desktop.common.close")}
                   onClick={() => setPending((current) => current.filter((entry) => entry.id !== item.id))}
                 >
-                  <ThemeIcon name="close" size={12} />
+                  <ThemeIcon name="close" size={ICON_SIZE.default} />
                 </button>
               </div>
             ) : (
               <div className="wb-acp-pending-file" key={item.id} title={item.absolutePath || item.fileName}>
-                <ThemeIcon name="file-text" size={14} aria-hidden="true" />
+                <ThemeIcon name="file-text" size={ICON_SIZE.dense} aria-hidden="true" />
                 <div className="wb-acp-pending-file-meta">
                   <span className="wb-acp-file-name">{item.fileName}</span>
                   <span className="wb-acp-file-size muted">{formatBytes(item.sizeBytes)}</span>
@@ -1455,7 +1455,7 @@ export function AcpChatView({
                   aria-label={t("desktop.common.close")}
                   onClick={() => setPending((current) => current.filter((entry) => entry.id !== item.id))}
                 >
-                  <ThemeIcon name="close" size={12} />
+                  <ThemeIcon name="close" size={ICON_SIZE.default} />
                 </button>
               </div>
             )
@@ -1477,7 +1477,7 @@ export function AcpChatView({
                     disabled={isRunning || isConnecting}
                     onClick={clearSlashTag}
                   >
-                    <ThemeIcon name="close" size={11} aria-hidden="true" />
+                    <ThemeIcon name="close" size={ICON_SIZE.inline} aria-hidden="true" />
                   </button>
                 </span>
               ) : null}
@@ -1575,7 +1575,7 @@ export function AcpChatView({
                   disabled={!attachEnabled}
                   onClick={() => fileInputRef.current?.click()}
                 >
-                  <ThemeIcon name="paperclip" size={16} />
+                  <ThemeIcon name="paperclip" size={ICON_SIZE.default} />
                 </button>
                 <input
                   ref={fileInputRef}
@@ -1666,7 +1666,7 @@ export function AcpChatView({
             <span className="chat-compose-toolbar-spacer" />
             {isRunning ? (
               <button type="button" className="chat-send-btn" aria-label={t("desktop.common.cancel")} onClick={() => void cancel()}>
-                <ThemeIcon name="square" size={15} />
+                <ThemeIcon name="square" size={ICON_SIZE.default} />
               </button>
             ) : (
               <button
@@ -1676,7 +1676,7 @@ export function AcpChatView({
                 disabled={!canSend}
                 onClick={() => void send()}
               >
-                <ThemeIcon name="send" size={18} />
+                <ThemeIcon name="send" size={ICON_SIZE.prominent} />
               </button>
             )}
           </div>
@@ -1693,7 +1693,7 @@ export function AcpChatView({
       actions={
         latestPlan?.path ? (
           <button type="button" className="ghost-btn" onClick={() => void openPlanInEditor()}>
-            <ThemeIcon name="external-link" size={14} aria-hidden="true" />
+            <ThemeIcon name="external-link" size={ICON_SIZE.dense} aria-hidden="true" />
             {t("desktop.workbench.acpPlanOpen")}
           </button>
         ) : null

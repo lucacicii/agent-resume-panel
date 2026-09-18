@@ -238,8 +238,6 @@ const messages = {
   "desktop.settings.gitNestedScanMaxDepthDesc": "Max depth desc",
   "desktop.settings.gitNestedScanIgnoreDirs": "Ignore dirs",
   "desktop.settings.gitNestedScanIgnoreDirsDesc": "Ignore dirs desc",
-  "desktop.settings.projectContextMenuGroup": "Project context menu",
-  "desktop.settings.projectContextMenuDesc": "Context menu desc",
   "desktop.settings.notesGroup": "Notes",
   "desktop.settings.notesFootnote": "Notes are Markdown files.",
   "desktop.settings.appData": "App data",

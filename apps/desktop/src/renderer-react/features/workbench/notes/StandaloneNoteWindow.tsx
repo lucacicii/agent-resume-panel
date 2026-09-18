@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CodeEditor, type CodeEditorHandle, type CodeEditorSearchResult } from "../../../components/CodeEditor";
-import { ThemeIcon } from "../../../components/ThemeIcon";
+import { ICON_SIZE, ThemeIcon } from "../../../components/ThemeIcon";
 import { desktopApi } from "../../../bridge";
 import { GTD_STATUSES, type GtdStatus } from "../../../gtd";
 import { useI18n } from "../../../i18n";
@@ -318,7 +318,7 @@ export function StandaloneNoteWindow({ noteId }: { noteId: string }): React.JSX.
             disabled={!record || loading || deleting}
             onClick={openFind}
           >
-            <ThemeIcon name="search" size={15} aria-hidden="true" />
+            <ThemeIcon name="search" size={ICON_SIZE.default} aria-hidden="true" />
           </button>
           <button
             type="button"
@@ -328,7 +328,7 @@ export function StandaloneNoteWindow({ noteId }: { noteId: string }): React.JSX.
             disabled={!record || loading || deleting}
             onClick={() => void deleteNote()}
           >
-            <ThemeIcon name="trash" size={15} aria-hidden="true" />
+            <ThemeIcon name="trash" size={ICON_SIZE.default} aria-hidden="true" />
           </button>
           <button
             type="button"
@@ -339,7 +339,7 @@ export function StandaloneNoteWindow({ noteId }: { noteId: string }): React.JSX.
             disabled={deleting}
             onClick={() => void togglePinned()}
           >
-            <ThemeIcon name="pin" size={15} aria-hidden="true" />
+            <ThemeIcon name="pin" size={ICON_SIZE.default} aria-hidden="true" />
           </button>
           <button
             type="button"
@@ -349,13 +349,13 @@ export function StandaloneNoteWindow({ noteId }: { noteId: string }): React.JSX.
             disabled={deleting}
             onClick={() => void close()}
           >
-            <ThemeIcon name="close" size={15} aria-hidden="true" />
+            <ThemeIcon name="close" size={ICON_SIZE.default} aria-hidden="true" />
           </button>
         </div>
       </header>
       {loading ? (
         <div className="standalone-note-window-state" role="status" aria-live="polite">
-          <ThemeIcon name="loader" size={15} className="spin" aria-hidden="true" />
+          <ThemeIcon name="loader" size={ICON_SIZE.default} className="spin" aria-hidden="true" />
           <span>{t("desktop.standaloneNote.loading")}</span>
         </div>
       ) : record ? (
@@ -376,7 +376,7 @@ export function StandaloneNoteWindow({ noteId }: { noteId: string }): React.JSX.
           <div className="standalone-note-window-body">
             {findOpen ? (
               <div className="notes-find-bar app-inline-search" role="search">
-                <ThemeIcon name="search" size={14} aria-hidden="true" />
+                <ThemeIcon name="search" size={ICON_SIZE.dense} aria-hidden="true" />
                 <input
                   ref={findRef}
                   className="notes-find-input app-inline-search-input"
@@ -420,7 +420,7 @@ export function StandaloneNoteWindow({ noteId }: { noteId: string }): React.JSX.
                   aria-label={t("desktop.common.findPrev")}
                   onClick={() => runFind("backward")}
                 >
-                  <ThemeIcon name="arrow-up" size={14} />
+                  <ThemeIcon name="arrow-up" size={ICON_SIZE.dense} />
                 </button>
                 <button
                   type="button"
@@ -428,7 +428,7 @@ export function StandaloneNoteWindow({ noteId }: { noteId: string }): React.JSX.
                   aria-label={t("desktop.common.findNext")}
                   onClick={() => runFind("forward")}
                 >
-                  <ThemeIcon name="arrow-down" size={14} />
+                  <ThemeIcon name="arrow-down" size={ICON_SIZE.dense} />
                 </button>
                 <button
                   type="button"
@@ -436,7 +436,7 @@ export function StandaloneNoteWindow({ noteId }: { noteId: string }): React.JSX.
                   aria-label={t("desktop.common.closeFind")}
                   onClick={closeFind}
                 >
-                  <ThemeIcon name="close" size={14} />
+                  <ThemeIcon name="close" size={ICON_SIZE.dense} />
                 </button>
               </div>
             ) : null}

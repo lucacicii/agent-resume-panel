@@ -1,9 +1,9 @@
 import type { JSX } from "react";
-import { ThemeIcon } from "./ThemeIcon";
+import { ICON_SIZE, ThemeIcon, type ThemeIconSize } from "./ThemeIcon";
 
 type ProviderIconProps = {
   provider: string;
-  size?: number;
+  size?: ThemeIconSize;
   className?: string;
 };
 
@@ -40,7 +40,7 @@ function resolveProviderIcon(provider: string | undefined): string | undefined {
   return undefined;
 }
 
-export function ProviderIcon({ provider, size = 14, className }: ProviderIconProps): JSX.Element {
+export function ProviderIcon({ provider, size = ICON_SIZE.dense, className }: ProviderIconProps): JSX.Element {
   const iconSrc = resolveProviderIcon(provider);
 
   if (iconSrc) {

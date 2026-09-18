@@ -1,7 +1,7 @@
 # macOS Desktop Design System
 
-> **Scope:** Electron desktop renderer only (`apps/desktop/src/renderer/`).  
-> **Authority:** This document is the single source of truth for visual design. All desktop UI work must conform to it.  
+> **Scope:** Electron desktop renderer only (`apps/desktop/src/renderer-react/` components + `apps/desktop/src/renderer/styles.css`).  
+> **Authority:** This document is the single source of truth for visual design. All desktop UI work must conform to it. Where it disagrees with a generic design skill (for example the `macos-design` skill's SF Symbols section), **this document wins** — the app standardizes on lucide, not SF Symbols.  
 > **Reference:** [Apple macOS Human Interface Guidelines](https://developer.apple.com/design/human-interface-guidelines/designing-for-macos)
 
 Agent execution rules live in [`ui-policy.md`](ui-policy.md). This file defines **what** the UI should look like and **how** to migrate [`styles.css`](../../apps/desktop/src/renderer/styles.css).
@@ -390,7 +390,7 @@ No border in default state. `.ask-toolbar .ghost-btn.active` uses accent border 
 
 #### Icon button (`.icon-btn`, `.notes-icon-btn`, `.btn-icon-toggle`)
 
-- Size: 28×28px hit target; SVG: 16×16px, `display: block`, `fill: none`, `stroke: currentColor`, `stroke-width: 2`, round caps and joins.
+- Size: 28×28px hit target; SVG: `ICON_SIZE.default` (16×16), `display: block`, `fill: none`, `stroke: currentColor`, `stroke-width: 2`, round caps and joins. See §4.22 for the icon contract.
 - Default: border none; transparent background; primary label color; `display: grid` with `place-items: center`; `--radius-md` hover target.
 - Hover: a subtle `color-mix(in srgb, var(--text) 5%, transparent)` fill. Do not add a persistent track, outer border, or separator solely to contain icon buttons.
 - Destructive variant (`.notes-toolbar-delete`): hover uses `--color-destructive` at 14% fill.
@@ -427,8 +427,8 @@ Reference markup and CSS:
   display: grid; place-items: center; cursor: pointer;
 }
 .notes-segmented button svg {
-  display: block; width: 16px; height: 16px; fill: none;
-  stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+  display: block; fill: none;
+  stroke: currentColor; stroke-linecap: round; stroke-linejoin: round;
 }
 .notes-segmented button:hover { background: color-mix(in srgb, var(--text) 5%, transparent); }
 .notes-segmented button.active { color: var(--accent); }
@@ -693,6 +693,44 @@ return dialog
 - Known gap: `[data-streamdown="table-fullscreen"]` is created and removed by the `streamdown` library, which owns that node's lifecycle, so it has entrance motion only. Matching exit motion requires a library-side hook.
 
 **Shared dialog shell:** `.wb-note-created-overlay` / `.wb-note-created-backdrop` / `.wb-note-created-panel` is the reusable centered-dialog shell (rename project, rename note, merge/split project, move session to task, GTD new task, GTD new/edit template). New confirm and prompt dialogs reuse it instead of introducing another overlay class.
+
+### 4.22 Iconography
+
+**Single entry point:** `apps/desktop/src/renderer-react/components/ThemeIcon.tsx`
+
+Every icon in the desktop renderer goes through `<ThemeIcon name="…" />`. Business views never import an icon library and never hand-roll an icon SVG.
+
+| Rule | Value |
+| --- | --- |
+| Library | `lucide-react`, imported **only** by `ThemeIcon.tsx` |
+| Grid | 24×24 viewBox |
+| Stroke | `stroke-width: 2`, round caps and joins (the component's defaults) |
+| Color | `currentColor`; the only sanctioned exception is the file-type accent table in `WorkbenchFileExplorer.tsx` |
+| Accessibility | Decorative by default (`aria-hidden="true"` from `ThemeIcon`); icon-only buttons still need a localized `aria-label` + `title` (§6) |
+
+**Semantic names only.** Names are kebab-case ids resolved through the `ICONS` registry, so an unknown name is a compile-time error. Add a new icon to the registry instead of importing it at the call site.
+
+**Size ladder** — `ICON_SIZE` in `ThemeIcon.tsx` is the only place a pixel value is written:
+
+| Token | px | Use |
+| --- | --- | --- |
+| `ICON_SIZE.inline` | 12 | In-text hints, badges, metadata, graph nodes, tiny glyphs |
+| `ICON_SIZE.dense` | 13 | Trees, list rows, tabs, dense toolbars |
+| `ICON_SIZE.default` | 16 | Toolbar buttons, icon buttons (28×28 hit target), top bar, secondary panes |
+| `ICON_SIZE.prominent` | 20 | Empty states, heroes, settings headers |
+
+Omit `size` to get `default`. Do not pass raw numbers — `size` is typed to the four tokens and `themeIconContract.test.ts` rejects literals.
+
+**Sizing lives in the component, not the stylesheet.** `styles.css` must not declare `width`, `height`, or `stroke-width` on an icon `svg` selector, and must not reference lucide directly. CSS keeps layout and transform only (for example `.wb-file-tree-chevron.is-expanded svg { transform: rotate(90deg) }`).
+
+**Not icons — do not convert to `ThemeIcon`:**
+
+- Data visualisation and diagrams: `.wb-git-log-graph-row-canvas`, `.notes-link-dendrogram-svg`, `.artifact-svg-canvas`, `.wb-terminal-tui-drop-shape`
+- User or generated SVG content: artifact preview, markdown code blocks
+- Library-owned chrome: `[data-streamdown="table-wrapper"] button svg`
+- Brand marks: `ProviderIcon`, whose raster logos sit on the same `ICON_SIZE` ladder
+
+**Enforcement:** `src/renderer-react/components/themeIconContract.test.ts` statically asserts the library boundary, the absence of per-call `strokeWidth`, token-only sizing, and the CSS rule above. Run `pnpm --filter @agent-resume/desktop run test:renderer` after touching icons.
 
 ---
 

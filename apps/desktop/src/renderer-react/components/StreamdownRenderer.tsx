@@ -1,7 +1,7 @@
 import React, { memo, useCallback, useMemo, useRef, useState } from "react";
 import { Streamdown, type Components, type UrlTransform } from "streamdown";
 import hljs from "highlight.js";
-import { ThemeIcon } from "./ThemeIcon";
+import { ICON_SIZE, ThemeIcon } from "./ThemeIcon";
 import { useI18n } from "../i18n";
 import { ArtifactCard } from "./artifact/ArtifactCard";
 import { buildMarkdownSegments, type MarkdownSegmentState } from "./markdownSegments";
@@ -100,7 +100,7 @@ const StandardCodeBlock = memo(function StandardCodeBlock({ language, code }: St
           onClick={handleCopy}
           aria-label={t("desktop.common.copy", "Copy")}
         >
-          <ThemeIcon name={copied ? "check" : "copy"} size={12} aria-hidden="true" />
+          <ThemeIcon name={copied ? "check" : "copy"} size={ICON_SIZE.inline} aria-hidden="true" />
           <span className="code-copy-label">
             {copied ? t("desktop.artifact.copied") : t("desktop.common.copy")}
           </span>

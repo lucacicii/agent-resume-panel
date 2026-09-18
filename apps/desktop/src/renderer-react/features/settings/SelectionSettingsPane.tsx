@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { PanelSettings } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
-import { ThemeIcon } from "../../components/ThemeIcon";
+import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import {
   isBuiltinSelectionActionId,
   type SelectionAction
@@ -160,7 +160,7 @@ export function SelectionSettingsPane({ t }: { t: Translate }): React.JSX.Elemen
                     title={t("desktop.settings.selectionActionMoveUp", action.name)}
                     onClick={() => void moveAction(index, -1)}
                   >
-                    <ThemeIcon name="arrow-up" size={12} aria-hidden="true" />
+                    <ThemeIcon name="arrow-up" size={ICON_SIZE.inline} aria-hidden="true" />
                   </button>
                   <button
                     type="button"
@@ -170,7 +170,7 @@ export function SelectionSettingsPane({ t }: { t: Translate }): React.JSX.Elemen
                     title={t("desktop.settings.selectionActionMoveDown", action.name)}
                     onClick={() => void moveAction(index, 1)}
                   >
-                    <ThemeIcon name="arrow-down" size={12} aria-hidden="true" />
+                    <ThemeIcon name="arrow-down" size={ICON_SIZE.inline} aria-hidden="true" />
                   </button>
                 </span>
               </div>

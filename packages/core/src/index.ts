@@ -52,7 +52,6 @@ export type {
   WorkbenchEditorSettings,
   WorkbenchEditorTabSize,
   WorkbenchEditorAutoSaveDelayMs,
-  WorkbenchProjectContextMenuAction,
   WorkbenchComposerSlashPhrase,
   WorkbenchComposerMention,
   WorkbenchComposerMentionRoot,
@@ -78,15 +77,12 @@ export type {
 export {
   DEFAULT_SETTINGS,
   DEFAULT_DESKTOP_BROWSER_SETTINGS,
-  DEFAULT_WORKBENCH_PROJECT_CONTEXT_MENU,
-  ALL_WORKBENCH_PROJECT_CONTEXT_MENU,
   WORKBENCH_TERMINAL_THEME_IDS,
   WORKBENCH_TERMINAL_RENDERERS,
   WORKBENCH_TERMINAL_ENGINES,
   ACP_AGENT_PROVIDERS
 } from "./settings/types";
 export {
-  normalizeWorkbenchProjectContextMenu,
   normalizeWorkbenchComposerSlashPhrases,
   normalizeWorkbenchTerminalTheme,
   normalizeWorkbenchTerminalEngine,
@@ -684,8 +680,7 @@ export {
   suggestSessionRenameAction,
   autoRenameSessionAction,
   renameSessionAction,
-  hideSessionAction,
-  hideProjectAction
+  hideSessionAction
 } from "./session/actions";
 export {
   suggestSessionTitleFromMessages,

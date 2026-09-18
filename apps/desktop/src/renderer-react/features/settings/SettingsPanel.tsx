@@ -1,4 +1,4 @@
-import { ThemeIcon } from "../../components/ThemeIcon";
+import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { appearanceStateFromSettings } from "../../themes";
@@ -608,7 +608,7 @@ function ProvidersPane({ draft, setDraft, commit, t }: { draft: ProvidersDraft; 
                 title={t("desktop.settings.providerRemove")}
                 onClick={() => removeProvider(provider.id)}
               >
-                <ThemeIcon name="trash" size={14} aria-hidden="true" />
+                <ThemeIcon name="trash" size={ICON_SIZE.dense} aria-hidden="true" />
               </button>
             </div>
           ))
@@ -670,7 +670,7 @@ function ProvidersPane({ draft, setDraft, commit, t }: { draft: ProvidersDraft; 
                         setRevealedApiKey((current) => !current);
                       }}
                     >
-                      {revealedApiKey ? <ThemeIcon name="eye-off" size={15} aria-hidden="true" /> : <ThemeIcon name="eye" size={15} aria-hidden="true" />}
+                      {revealedApiKey ? <ThemeIcon name="eye-off" size={ICON_SIZE.default} aria-hidden="true" /> : <ThemeIcon name="eye" size={ICON_SIZE.default} aria-hidden="true" />}
                     </button>
                   </span>
                 </label>
@@ -741,7 +741,7 @@ function ProvidersPane({ draft, setDraft, commit, t }: { draft: ProvidersDraft; 
                           title={t("desktop.settings.modelRemove")}
                           onClick={() => removeModel(model.id)}
                         >
-                          <ThemeIcon name="trash" size={14} aria-hidden="true" />
+                          <ThemeIcon name="trash" size={ICON_SIZE.dense} aria-hidden="true" />
                         </button>
                       </div>
                     ))}
