@@ -9107,4 +9107,85 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(notesCreateLinkedChild).toHaveBeenCalledWith({ parentNoteId: "wi-child" }));
     await waitFor(() => expect(notesRead).toHaveBeenCalledWith({ noteId: "child-1" }));
   });
+  it("adopts the workbench's running ptys instead of spawning new agents", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const terminalSpawn = vi.fn(async () => ({ id: 999 }));
+    const terminalAttach = vi.fn(async ({ id }: { id: number }) => ({ ok: true, replay: `replay-${id}` }));
+    const terminalListForWorkbench = vi.fn(async () => [{ id: 77, cwd: "/work/app", cols: 80, rows: 24 }]);
+    const layoutJson = JSON.stringify({
+      openNoteIds: [],
+      activePaneKey: "terminal:kept",
+      terminals: [
+        {
+          key: "terminal:kept",
+          ptyId: 77,
+          title: "Fix renderer",
+          group: "session",
+          cwd: "/work/app",
+          projectPath: "/work/app",
+          sessionKey: "codex:session-1",
+          command: "codex resume session-1"
+        },
+        // Not running any more: the pane must not come back.
+        { key: "terminal:dead", ptyId: 78, title: "Gone", group: "terminal", cwd: "/work/app", projectPath: "/work/app" }
+      ]
+    });
+
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.workbench.allSessions": "All sessions",
+        "desktop.workbench.newSession": "New session",
+        "desktop.workbench.selectSessionHint": "Select a session"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      notesListTasks: async () => [],
+      ensureTaskWorkbench: async () => ({ workbenchId: "wb-keep" }),
+      listTaskWorkbenches: async () => [{
+        workbenchId: "wb-keep",
+        taskNoteId: "wi-keep",
+        name: "",
+        projectPath: "/work/app",
+        position: 0,
+        layoutJson,
+        createdAtMs: 1,
+        updatedAtMs: 2
+      }],
+      listTaskWorkbenchSessionLinks: async () => [],
+      setTaskWorkbenchLayout: async () => ({ ok: true }),
+      terminalListForWorkbench,
+      terminalSpawn,
+      terminalAttach,
+      terminalDetach: async () => ({ ok: true }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      workbenchSetFileWatch: async () => ({ rootPaths: [] })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-task", { detail: {
+        noteId: "wi-keep", title: "Kept", status: "next", sessions: [],
+        projects: ["/work/app"], primaryProject: "/work/app", workbenchId: "wb-keep"
+      } }));
+    });
+
+    await waitFor(() => expect(terminalListForWorkbench).toHaveBeenCalledWith({ workbenchId: "wb-keep" }));
+    await waitFor(() => expect(terminalAttach).toHaveBeenCalledWith({ id: 77 }));
+    expect(terminalSpawn).not.toHaveBeenCalled();
+    // The dead pane stays dead: only the running pty comes back.
+    expect(terminalAttach).not.toHaveBeenCalledWith({ id: 78 });
+    await waitFor(() => expect(document.querySelectorAll(".wb-terminal-tab").length).toBe(1));
+  });
 });

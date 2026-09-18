@@ -24,6 +24,11 @@ interface PtySession {
   shell: string;
   startedAt: number;
   /**
+   * Workbench this pane belongs to, when it has one. Panes survive their window
+   * because this is how a reopened workbench finds them again.
+   */
+  workbenchId: string | null;
+  /**
    * Window that renders this pane, or null while no xterm is mounted. One pty
    * has at most one renderer: two windows on the same pty would double the
    * output parsing and fight over its size.
@@ -88,7 +93,8 @@ function createPtySession(
   rows: number,
   shell: string,
   ownerWebContentsId: number | null,
-  mcpEnv: Record<string, string> = {}
+  mcpEnv: Record<string, string> = {},
+  workbenchId: string | null = null
 ): PtySession {
   return {
     pty: ptyInstance,
@@ -98,6 +104,7 @@ function createPtySession(
     lastRows: rows,
     shell,
     startedAt: Date.now(),
+    workbenchId,
     ownerWebContentsId,
     ownerListenerFor: null,
     replayChunks: [],
@@ -522,7 +529,7 @@ function attachPtyHandlers(
           AGENT_RESUME_PANE_ID: String(id),
           ...mcpEnv
         });
-        const next = createPtySession(newPty, lastSpawnCwd, lastCols, lastRows, shell, ownerWebContentsId, mcpEnv);
+        const next = createPtySession(newPty, lastSpawnCwd, lastCols, lastRows, shell, ownerWebContentsId, mcpEnv, session.workbenchId);
         next.ownerListenerFor = session.ownerListenerFor;
         ptySessions.set(id, next);
         // A fresh shell is a fresh screen: reset the mirror, keep the session.
@@ -605,13 +612,14 @@ export function registerPtyIpc(): void {
     "terminal:spawn",
     async (
       _event,
-      args: { cwd: string; command?: string; cols?: number; rows?: number; sessionKey?: string; env?: Record<string, string> }
+      args: { cwd: string; command?: string; cols?: number; rows?: number; sessionKey?: string; workbenchId?: string; env?: Record<string, string> }
     ) => {
       const shell = resolveShell();
       const cols = Math.max(2, Math.floor(args.cols || 80));
       const rows = Math.max(2, Math.floor(args.rows || 24));
       const cwd = resolveCwd(args.cwd);
       const id = ++nextTerminalId;
+      const workbenchId = args.workbenchId?.trim() || null;
       const mcpEnv = mcpSessionEnv(args);
 
       let ptyInstance: pty.IPty;
@@ -623,7 +631,7 @@ export function registerPtyIpc(): void {
       }
 
       // Start detached so boot output lands in the replay buffer until xterm attaches.
-      ptySessions.set(id, createPtySession(ptyInstance, cwd, cols, rows, shell, null, mcpEnv));
+      ptySessions.set(id, createPtySession(ptyInstance, cwd, cols, rows, shell, null, mcpEnv, workbenchId));
       // Register with the status sensor before any output can arrive.
       getAgentStatusSensor()?.attach(id, { cols, rows, cwd, sessionKey: args.sessionKey });
       attachPtyHandlers(ptyInstance, id);
@@ -686,18 +694,39 @@ export function registerPtyIpc(): void {
   /**
    * Bind the session identity a pane belongs to.
    *
-   * The renderer knows the session (`cli:<id>`, `chat:<recordId>`) while main
-   * only knows the PTY, and a pane can be spawned before its session resolves —
-   * so this is called again whenever the binding changes.
+   * The renderer knows the session (`cli:<id>`, `chat:<recordId>`) and the
+   * workbench while main only knows the PTY, and a pane can be spawned before
+   * either resolves — so this is called again whenever the binding changes.
    */
   safeHandle(
     "terminal:bindSession",
-    (_event, args: { id: number; sessionKey?: string; cwd?: string }) => {
+    (_event, args: { id: number; sessionKey?: string; cwd?: string; workbenchId?: string }) => {
       const id = Math.floor(args.id);
+      const session = ptySessions.get(id);
+      if (session && typeof args.workbenchId === "string" && args.workbenchId.trim()) {
+        session.workbenchId = args.workbenchId.trim();
+      }
       getAgentStatusSensor()?.bindSession(id, { sessionKey: args.sessionKey, cwd: args.cwd });
       return { ok: true };
     }
   );
+
+  /**
+   * Panes of one workbench that are still running.
+   *
+   * A reopened workbench uses this to re-attach the terminals it had instead of
+   * spawning a second set of agent processes for them.
+   */
+  safeHandle("terminal:listForWorkbench", (_event, args: { workbenchId: string }) => {
+    const workbenchId = args?.workbenchId?.trim();
+    if (!workbenchId) return [];
+    const panes: Array<{ id: number; cwd: string; cols: number; rows: number }> = [];
+    for (const [id, session] of ptySessions) {
+      if (session.workbenchId !== workbenchId) continue;
+      panes.push({ id, cwd: session.lastSpawnCwd, cols: session.lastCols, rows: session.lastRows });
+    }
+    return panes;
+  });
 
   safeHandle("terminal:destroy", (_event, args: { id: number }) => {
     destroyPtyById(Math.floor(args.id));

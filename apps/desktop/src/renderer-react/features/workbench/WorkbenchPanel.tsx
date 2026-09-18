@@ -404,6 +404,43 @@ function workbenchScope(workbenchId: string | null | undefined): string | null {
   return workbenchId ? `wb:${workbenchId}` : null;
 }
 
+/** Shape of `TaskWorkbench.layoutJson`, written by the persist effect below. */
+type PersistedWorkbenchLayout = {
+  openNoteIds?: unknown;
+  activePaneKey?: unknown;
+  terminals?: unknown;
+};
+
+/** A terminal pane as it is stored, so a reopened workbench can adopt its pty. */
+type PersistedTerminalPane = Pick<
+  TerminalPane,
+  "key" | "title" | "group" | "cwd" | "projectPath" | "sessionKey" | "command"
+> & { ptyId: number };
+
+/** Stored pane entries are untrusted: they come from an older layout blob. */
+function readPersistedTerminals(parsed: PersistedWorkbenchLayout): PersistedTerminalPane[] {
+  if (!Array.isArray(parsed.terminals)) return [];
+  const panes: PersistedTerminalPane[] = [];
+  for (const entry of parsed.terminals) {
+    if (!entry || typeof entry !== "object") continue;
+    const pane = entry as Record<string, unknown>;
+    if (typeof pane.key !== "string" || typeof pane.cwd !== "string") continue;
+    if (typeof pane.ptyId !== "number") continue;
+    if (pane.group !== "session" && pane.group !== "terminal") continue;
+    panes.push({
+      key: pane.key,
+      ptyId: pane.ptyId,
+      group: pane.group,
+      cwd: pane.cwd,
+      title: typeof pane.title === "string" ? pane.title : "",
+      projectPath: typeof pane.projectPath === "string" ? pane.projectPath : pane.cwd,
+      ...(typeof pane.sessionKey === "string" ? { sessionKey: pane.sessionKey } : {}),
+      ...(typeof pane.command === "string" ? { command: pane.command } : {})
+    });
+  }
+  return panes;
+}
+
 /** Record a bound session as owned by the active workbench (best-effort). */
 function recordSessionInWorkbench(workbenchId: string | null | undefined, sessionKey: string): void {
   if (!workbenchId || typeof desktopApi().assignSessionToTaskWorkbench !== "function") return;
@@ -3346,31 +3383,87 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
   }, [activateWorkbench, discardWorkbenchPanes, t]);
 
-  // Persist a workbench's open note panes so its workspace is restored later.
+  /**
+   * Re-attach the terminals a workbench had before its window was closed.
+   *
+   * The panes die with the renderer, but their ptys do not: a pane restored with
+   * `ptyId` set adopts the running process (TerminalView attaches and replays)
+   * instead of spawning a second agent for the same work.
+   */
+  const restoreWorkbenchTerminals = useCallback(async (
+    workbenchId: string,
+    persisted: PersistedTerminalPane[],
+    projectPath: string | null
+  ): Promise<void> => {
+    if (!persisted.length || typeof desktopApi().terminalListForWorkbench !== "function") return;
+    const live = await desktopApi().terminalListForWorkbench({ workbenchId }).catch(() => []);
+    if (!live.length) return;
+    const liveIds = new Set(live.map((entry) => entry.id));
+    const knownPtyIds = new Set(
+      terminalsRef.current
+        .map((pane) => pane.ptyId)
+        .filter((id): id is number => typeof id === "number")
+    );
+    const additions = persisted
+      .filter((pane) => liveIds.has(pane.ptyId) && !knownPtyIds.has(pane.ptyId))
+      .map((pane): TerminalPane => ({ ...pane, workbenchId }));
+    if (!additions.length) return;
+    terminalsRef.current = [...terminalsRef.current, ...additions];
+    setTerminals((current) => [
+      ...current,
+      ...additions.filter((pane) => !current.some((item) => item.key === pane.key))
+    ]);
+    const scope = workbenchScope(workbenchId);
+    if (scope && !activePanesRef.current[scope]) {
+      setActivePane(additions[additions.length - 1]!.key, projectPath ?? selectedProject);
+    }
+  }, [selectedProject, setActivePane]);
+
+  // Persist a workbench's panes so its workspace can be restored later. The
+  // terminals carry their pty id: a reopened workbench adopts those processes.
   useEffect(() => {
     const workbenchId = activeWorkbenchIdRef.current;
     if (!workbenchId || typeof desktopApi().setTaskWorkbenchLayout !== "function") return;
     const openNoteIds = notePanesRef.current
       .filter((pane) => pane.workbenchId === workbenchId)
       .map((pane) => pane.noteId);
-    void setTaskWorkbenchLayout(workbenchId, JSON.stringify({ openNoteIds })).catch(() => undefined);
-  }, [notePanes]);
+    const terminalsForWorkbench = terminalsRef.current
+      .filter((pane) => pane.workbenchId === workbenchId && typeof pane.ptyId === "number")
+      .map((pane) => ({
+        key: pane.key,
+        ptyId: pane.ptyId,
+        title: pane.title,
+        group: pane.group,
+        cwd: pane.cwd,
+        projectPath: pane.projectPath,
+        ...(pane.sessionKey ? { sessionKey: pane.sessionKey } : {}),
+        ...(pane.command ? { command: pane.command } : {})
+      }));
+    const activePaneKey = activePanesRef.current[workbenchScope(workbenchId) ?? ""] || "";
+    void setTaskWorkbenchLayout(
+      workbenchId,
+      JSON.stringify({ openNoteIds, terminals: terminalsForWorkbench, activePaneKey })
+    ).catch(() => undefined);
+  }, [notePanes, terminals]);
 
-  // Restore a workbench's persisted note panes when it becomes active.
+  // Restore a workbench's persisted panes when it becomes active.
   useEffect(() => {
     const workbenchId = activeWorkbenchId;
     if (!workbenchId) return;
     const workbench = workbenchesRef.current.find((item) => item.workbenchId === workbenchId);
     if (!workbench?.layoutJson) return;
     let openNoteIds: string[] = [];
+    let parsed: PersistedWorkbenchLayout = {};
     try {
-      const parsed = JSON.parse(workbench.layoutJson) as { openNoteIds?: unknown };
+      parsed = JSON.parse(workbench.layoutJson) as PersistedWorkbenchLayout;
       if (Array.isArray(parsed?.openNoteIds)) {
         openNoteIds = parsed.openNoteIds.filter((id): id is string => typeof id === "string");
       }
     } catch {
       return;
     }
+    const persistedTerminals = readPersistedTerminals(parsed);
+    void restoreWorkbenchTerminals(workbenchId, persistedTerminals, workbench.projectPath);
     if (!openNoteIds.length) return;
     const scope = `wb:${workbenchId}`;
     const existing = new Set(notePanesRef.current.map((pane) => pane.key));
@@ -3394,7 +3487,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       if (firstKey) setActivePane(firstKey, workbench.projectPath ?? selectedProject);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeWorkbenchId]);
+  }, [activeWorkbenchId, restoreWorkbenchTerminals]);
 
   // Open the task's note once its workbench is active (request comes from the board).
   useEffect(() => {

@@ -630,6 +630,8 @@ export interface DesktopApi {
     rows?: number;
     /** Session the pane belongs to, when the renderer already knows it. */
     sessionKey?: string;
+    /** Workbench the pane belongs to, so a reopened workbench can find it again. */
+    workbenchId?: string;
     /** Extra env for the agent process (allowlisted `AGENT_RESUME_*` keys only). */
     env?: Record<string, string>;
   }): Promise<{ id: number; count?: number; softLimit?: number; warnSoftLimit?: boolean }>;
@@ -637,8 +639,15 @@ export interface DesktopApi {
   terminalDetach(args: { id: number }): Promise<{ ok: boolean }>;
   terminalInput(args: { id: number; data: string }): Promise<{ ok: boolean }>;
   terminalResize(args: { id: number; cols: number; rows: number }): Promise<{ ok: boolean }>;
-  /** Bind the session identity a pane belongs to (status attribution). */
-  terminalBindSession(args: { id: number; sessionKey?: string; cwd?: string }): Promise<{ ok: boolean }>;
+  /** Bind the session and workbench a pane belongs to (status + restore). */
+  terminalBindSession(args: {
+    id: number;
+    sessionKey?: string;
+    cwd?: string;
+    workbenchId?: string;
+  }): Promise<{ ok: boolean }>;
+  /** Panes of one workbench that are still running, for re-attaching after a reopen. */
+  terminalListForWorkbench(args: { workbenchId: string }): Promise<Array<{ id: number; cwd: string; cols: number; rows: number }>>;
   terminalDestroy(args: { id: number }): Promise<{ ok: boolean }>;
   workbenchComposerSendAppend(args: {
     paneKey: string;
@@ -1738,6 +1747,7 @@ const api: DesktopApi = {
   terminalInput: (args) => ipcRenderer.invoke("terminal:input", args),
   terminalResize: (args) => ipcRenderer.invoke("terminal:resize", args),
   terminalBindSession: (args) => ipcRenderer.invoke("terminal:bindSession", args),
+  terminalListForWorkbench: (args) => ipcRenderer.invoke("terminal:listForWorkbench", args),
   terminalDestroy: (args) => ipcRenderer.invoke("terminal:destroy", args),
   workbenchComposerSendAppend: (args) => ipcRenderer.invoke("workbench:composerSendAppend", args),
   workbenchComposerSendList: (args) => ipcRenderer.invoke("workbench:composerSendList", args),

@@ -589,7 +589,7 @@ export const TerminalView = memo(function TerminalView({ pane, active, themeId, 
       onPtyRef.current(pane.key, id, terminal);
       // Status attribution: main only knows the PTY, the renderer knows the
       // session (and may learn it after the pane was spawned).
-      void desktopApi().terminalBindSession?.({ id, sessionKey: pane.sessionKey, cwd: pane.cwd });
+      void desktopApi().terminalBindSession?.({ id, sessionKey: pane.sessionKey, cwd: pane.cwd, workbenchId: pane.workbenchId });
       syncScrollState();
       setReady(true);
       // Re-fit after attach in case layout settled during spawn.
@@ -636,6 +636,7 @@ export const TerminalView = memo(function TerminalView({ pane, active, themeId, 
             cols: terminal.cols,
             rows: terminal.rows,
             sessionKey: pane.sessionKey,
+            workbenchId: pane.workbenchId,
             env: pane.env
           }).then(async (spawned) => {
             const { id } = spawned;
@@ -702,8 +703,8 @@ export const TerminalView = memo(function TerminalView({ pane, active, themeId, 
   useEffect(() => {
     const id = ptyId.current;
     if (id == null) return;
-    void desktopApi().terminalBindSession?.({ id, sessionKey: pane.sessionKey, cwd: pane.cwd });
-  }, [pane.cwd, pane.sessionKey]);
+    void desktopApi().terminalBindSession?.({ id, sessionKey: pane.sessionKey, cwd: pane.cwd, workbenchId: pane.workbenchId });
+  }, [pane.cwd, pane.sessionKey, pane.workbenchId]);
 
   // Hot-swap accelerated renderer when settings change — keep the same PTY/session.
   useEffect(() => {

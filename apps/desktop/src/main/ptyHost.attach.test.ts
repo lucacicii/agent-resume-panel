@@ -212,6 +212,35 @@ describe("pty attach / detach replay", () => {
     expect(owner.send).not.toHaveBeenCalled();
   });
 
+  it("lists the panes of a workbench so a reopened one can adopt them", async () => {
+    registerPtyIpc();
+    const sender = senders.create(61);
+    const mine = await handler<{ id: number }>("terminal:spawn")(
+      { sender },
+      { cwd: process.cwd(), workbenchId: "wb-1" }
+    );
+    const other = await handler<{ id: number }>("terminal:spawn")(
+      { sender },
+      { cwd: process.cwd(), workbenchId: "wb-2" }
+    );
+    await handler("terminal:attach")({ sender }, { id: mine.id });
+
+    const panes = await handler<Array<{ id: number; cwd: string }>>("terminal:listForWorkbench")(
+      { sender },
+      { workbenchId: "wb-1" }
+    );
+    expect(panes.map((pane) => pane.id)).toEqual([mine.id]);
+    expect(panes[0]!.cwd).toBe(process.cwd());
+
+    // A pane bound after it was spawned still joins its workbench.
+    await handler("terminal:bindSession")({ sender }, { id: other.id, workbenchId: "wb-1" });
+    const rejoined = await handler<Array<{ id: number }>>("terminal:listForWorkbench")(
+      { sender },
+      { workbenchId: "wb-1" }
+    );
+    expect(rejoined.map((pane) => pane.id).sort()).toEqual([mine.id, other.id].sort());
+  });
+
   it("caps the replay buffer instead of growing without bound", async () => {
     registerPtyIpc();
     const sender = senders.create(51);
