@@ -36,6 +36,8 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
   const [creating, setCreating] = useState(false);
   const [newTask, setNewTask] = useState<{ title: string; projectPath: string; busy: boolean; error: string } | null>(null);
   const [workbenchesByTask, setWorkbenchesByTask] = useState<Record<string, Workbench[]>>({});
+  /** Tasks whose workbench already has a window, so the card can say so. */
+  const [tasksWithWindows, setTasksWithWindows] = useState<Set<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: GtdCard } | null>(null);
 
   const text = useCallback(
@@ -68,6 +70,16 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
     [rollups]
   );
 
+  const loadOpenWindows = useCallback(async () => {
+    if (typeof desktopApi().taskWindowList !== "function") return;
+    try {
+      const windows = await desktopApi().taskWindowList();
+      setTasksWithWindows(new Set(windows.map((entry) => entry.noteId)));
+    } catch {
+      /* the board works without the badge */
+    }
+  }, []);
+
   const loadWorkbenches = useCallback(async () => {
     const list = await listAllTaskWorkbenches();
     const map: Record<string, Workbench[]> = {};
@@ -81,7 +93,16 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
     if (!active) return;
     void load();
     void loadWorkbenches();
-  }, [active, load, loadWorkbenches]);
+    void loadOpenWindows();
+  }, [active, load, loadWorkbenches, loadOpenWindows]);
+
+  // The host broadcasts the window set, so the badge follows open/close.
+  useEffect(() => {
+    const stop = desktopApi().onTaskWindowsChanged?.((windows) => {
+      setTasksWithWindows(new Set(windows.map((entry) => entry.noteId)));
+    });
+    return () => stop?.();
+  }, []);
 
   useEffect(() => {
     const onMutated = () => { void load(); void loadWorkbenches(); };
@@ -494,6 +515,11 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
                         {rollups[item.noteId]?.total ? (
                           <span className="gtd-card-meta-item gtd-card-rollup" title={text("desktop.gtd.rollupHint")}>
                             {text("desktop.gtd.rollupProgress", rollups[item.noteId].counts.done, rollups[item.noteId].total)}
+                          </span>
+                        ) : null}
+                        {tasksWithWindows.has(item.noteId) ? (
+                          <span className="gtd-card-window" title={text("desktop.gtd.windowOpen")}>
+                            <ThemeIcon name="app-window" size={12} aria-hidden="true" />
                           </span>
                         ) : null}
                         {rollups[item.noteId]?.override ? (

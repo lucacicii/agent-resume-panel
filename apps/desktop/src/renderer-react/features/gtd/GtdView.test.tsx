@@ -31,6 +31,10 @@ function renderGtd(overrides?: Partial<typeof window.agentResume>) {
         "desktop.gtd.noLooseNotes": "No notes",
         "desktop.workbench.deleteTask": "Delete task",
         "desktop.workbench.taskOpenNote": "Open note",
+        "desktop.gtd.windowOpen": "Open in its own window",
+        "desktop.gtd.openInWindow": "Open in a new window",
+        "desktop.gtd.windowLimit": "At most {0} workbench windows can be open at once",
+        "desktop.gtd.windowNoWorkbench": "This task has no workbench to open",
         "desktop.workbench.gtdStatus.inbox": "Inbox",
         "desktop.workbench.gtdStatus.next": "Next",
         "desktop.workbench.gtdStatus.waiting": "Waiting",
@@ -77,6 +81,8 @@ function renderGtd(overrides?: Partial<typeof window.agentResume>) {
       { workbenchId: "wb-1", taskNoteId: "t-1", name: "", projectPath: "/work/app", position: 0, layoutJson: null, createdAtMs: 1, updatedAtMs: 1 }
     ]),
     taskWindowOpen: vi.fn(async () => ({ ok: true as const, created: true })),
+    taskWindowList: vi.fn(async () => [] as Array<{ workbenchId: string; noteId: string; title: string }>),
+    onTaskWindowsChanged: () => () => undefined,
     standaloneNoteOpen: vi.fn(async () => ({ ok: true as const })),
     taskTemplatesList: async () => [],
     taskTemplatesCreate: vi.fn(async ({ title, projectPaths }: { title: string; projectPaths?: string[] }) => ({ templateId: "tpl-new", title, projectPaths: projectPaths ?? [], createdAtMs: 1, updatedAtMs: 1 })),
@@ -321,5 +327,15 @@ describe("GtdView", () => {
       title: "Ship feature",
       projectPaths: ["/work/app", "/work/web"]
     }));
+  });
+  it("marks the tasks whose workbench is open in a window", async () => {
+    renderGtd({
+      taskWindowList: vi.fn(async () => [{ workbenchId: "wb-1", noteId: "t-1", title: "Realtime status" }])
+    } as unknown as Partial<typeof window.agentResume>);
+
+    const card = await screen.findByRole("button", { name: /Realtime status/ });
+    await waitFor(() => expect(card.querySelector(".gtd-card-window")).toBeTruthy());
+    // A task without a window carries no badge.
+    expect(screen.getByRole("button", { name: /Someday idea/ }).querySelector(".gtd-card-window")).toBeNull();
   });
 });

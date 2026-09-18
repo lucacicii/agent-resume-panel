@@ -16593,6 +16593,13 @@ html[data-window-mode="browser"] #react-chrome {
   font-weight: 600;
 }
 
+/* Marks a task whose workbench is already open in its own window. */
+.gtd-card-window {
+  display: inline-flex;
+  align-items: center;
+  color: var(--color-accent, var(--color-label-secondary));
+}
+
 .gtd-card-projects {
   display: flex;
   flex-wrap: wrap;
