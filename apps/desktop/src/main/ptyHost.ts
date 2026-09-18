@@ -552,6 +552,15 @@ function attachPtyHandlers(
   });
 }
 
+/** Panes a window is rendering right now (the rest keep running unwatched). */
+export function getAttachedPtyIds(): number[] {
+  const ids: number[] = [];
+  for (const [id, session] of ptySessions) {
+    if (session.ownerWebContentsId != null) ids.push(id);
+  }
+  return ids;
+}
+
 /** OS pid backing a node-pty session, for process-tree inspection. */
 export function getPtyPid(id: number): number | null {
   const session = ptySessions.get(Math.floor(id));

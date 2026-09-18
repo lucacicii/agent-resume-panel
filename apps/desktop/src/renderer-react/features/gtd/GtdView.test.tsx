@@ -338,4 +338,19 @@ describe("GtdView", () => {
     // A task without a window carries no badge.
     expect(screen.getByRole("button", { name: /Someday idea/ }).querySelector(".gtd-card-window")).toBeNull();
   });
+
+  it("opens the task window when the window badge is clicked", async () => {
+    renderGtd({
+      taskWindowList: vi.fn(async () => [{ workbenchId: "wb-1", noteId: "t-1", title: "Realtime status" }])
+    } as unknown as Partial<typeof window.agentResume>);
+
+    const card = await screen.findByRole("button", { name: /Realtime status/ });
+    await waitFor(() => expect(card.querySelector(".gtd-card-window")).toBeTruthy());
+    fireEvent.click(card.querySelector(".gtd-card-window")!);
+    await waitFor(() => expect(window.agentResume.taskWindowOpen).toHaveBeenCalledWith({
+      noteId: "t-1",
+      workbenchId: "wb-1",
+      title: "Realtime status"
+    }));
+  });
 });

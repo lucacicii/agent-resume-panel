@@ -279,6 +279,7 @@ import {
   recordAppError,
   type AppErrorLogLevel
 } from "./appErrorLog";
+import type { StatusSnapshot } from "../shared/agentStatusTypes";
 
 installProcessErrorHandlers();
 
@@ -293,13 +294,16 @@ let agentStatusBridge: AgentStatusBridge | null = null;
 let agentStatusSensor: AgentStatusSensor | null = null;
 /** Resolved lazily by `tryRegisterPtyIpc`; absent when node-pty failed to load. */
 let ptyPidResolver: ((id: number) => number | null) | null = null;
+/** Panes a window renders; the rest keep running unwatched. */
+let ptyAttachedResolver: (() => number[]) | null = null;
 
 function tryRegisterPtyIpc(): void {
   try {
     // Lazy-load so node-pty native binding issues do not block other IPC handlers.
-    const { registerPtyIpc, getPtyPid } = require("./ptyHost") as typeof import("./ptyHost");
+    const { registerPtyIpc, getPtyPid, getAttachedPtyIds } = require("./ptyHost") as typeof import("./ptyHost");
     registerPtyIpc();
     ptyPidResolver = getPtyPid;
+    ptyAttachedResolver = getAttachedPtyIds;
   } catch (error) {
     void recordAppError({
       source: "pty-host",
@@ -388,6 +392,10 @@ function ensureAgentStatusRuntime(): void {
     isPackaged: app.isPackaged,
     resourcesPath: process.resourcesPath,
     appPath: app.getAppPath()
+  });
+  bridge.subscribe((snapshot) => {
+    latestAgentSnapshot = snapshot;
+    refreshWorkbenchActiveSessions();
   });
   bridge.onTransition((transition) => {
     const sessionKey = transition.sessionKey?.trim();
@@ -727,13 +735,64 @@ function pruneWorkbenchActiveSenders(): void {
   }
 }
 
-/** Every window's dots, merged by session key (else pane key). */
+/** Latest daemon snapshot: the only view of panes whose window is gone. */
+let latestAgentSnapshot: StatusSnapshot | null = null;
+let workbenchActiveSessionsSignature = "";
+
+/**
+ * Panes no window is rendering.
+ *
+ * Their agents keep running after the window closes, and the daemon keeps
+ * tracking them, so the tray can still reach them.
+ */
+function unwatchedPaneDots(): WorkbenchActiveSessionDot[] {
+  const snapshot = latestAgentSnapshot;
+  if (!snapshot) return [];
+  const attached = new Set(ptyAttachedResolver?.() ?? []);
+  const dots: WorkbenchActiveSessionDot[] = [];
+  for (const pane of Object.values(snapshot.byPaneId)) {
+    if (attached.has(pane.paneId)) continue;
+    if (pane.state !== "blocked" && pane.state !== "working") continue;
+    dots.push({
+      paneKey: `pane:${pane.paneId}`,
+      projectPath: "",
+      title: pane.agent,
+      sessionKey: pane.sessionKey?.trim() ?? "",
+      status: pane.state === "blocked" ? "awaiting_user" : "running"
+    });
+  }
+  return dots;
+}
+
+/**
+ * Every window's dots, merged by session key (else pane key).
+ *
+ * Window reports come last because a window knows the session title and project
+ * path; the daemon view covers panes whose window is gone.
+ */
 function mergedWorkbenchActiveSessions(): WorkbenchActiveSessionDot[] {
   const byKey = new Map<string, WorkbenchActiveSessionDot>();
+  for (const dot of unwatchedPaneDots()) byKey.set(dot.sessionKey || dot.paneKey, dot);
   for (const dots of workbenchActiveSessionsBySender.values()) {
     for (const dot of dots) byKey.set(dot.sessionKey || dot.paneKey, dot);
   }
   return [...byKey.values()];
+}
+
+/** Recompute the app-wide dot list; nothing else happens when it is unchanged. */
+function refreshWorkbenchActiveSessions(): void {
+  const next = mergedWorkbenchActiveSessions();
+  const signature = next
+    .map((dot) => `${dot.paneKey}|${dot.sessionKey}|${dot.status}`)
+    .sort()
+    .join(",");
+  if (signature === workbenchActiveSessionsSignature) return;
+  workbenchActiveSessionsSignature = signature;
+  workbenchActiveSessions = next;
+  const newlyWaiting = collectNewConfirmedWaitingSessions(workbenchActiveSessions, notifiedWaitingSessions);
+  syncSessionDotsTray();
+  broadcastToRenderers("workbench:activeSessions", workbenchActiveSessions);
+  if (newlyWaiting.length > 0) void showSessionWaitingNotifications(newlyWaiting);
 }
 
 /** The window that reported a pane, so session events reach the right place. */
@@ -1748,11 +1807,7 @@ function registerIpc(): void {
     const dots = parseWorkbenchActiveSessionDots(payload);
     if (dots.length) workbenchActiveSessionsBySender.set(event.sender.id, dots);
     else workbenchActiveSessionsBySender.delete(event.sender.id);
-    workbenchActiveSessions = mergedWorkbenchActiveSessions();
-    const newlyWaiting = collectNewConfirmedWaitingSessions(workbenchActiveSessions, notifiedWaitingSessions);
-    syncSessionDotsTray();
-    broadcastToRenderers("workbench:activeSessions", workbenchActiveSessions);
-    if (newlyWaiting.length > 0) void showSessionWaitingNotifications(newlyWaiting);
+    refreshWorkbenchActiveSessions();
   });
 
   safeHandle("workbench:getActiveSessions", async () => workbenchActiveSessions);
