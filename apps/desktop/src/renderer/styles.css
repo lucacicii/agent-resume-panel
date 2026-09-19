@@ -7,6 +7,12 @@
 
   /* Semantic surfaces */
   --color-window-bg: #f5f5f7;
+  /*
+   * Content surfaces (board canvas, workbench detail, settings form). Slightly
+   * translucent so the desktop behind the window tints them a little, while
+   * cards and inputs stay opaque so text keeps its contrast.
+   */
+  --color-content-bg: rgba(245, 245, 247, 0.88);
   --color-sidebar-bg: rgba(246, 246, 246, 0.5);
   --color-control-bg: #ffffff;
   --color-secondary-bg: #ebebf0;
@@ -176,6 +182,7 @@
 [data-theme="light"] {
   color-scheme: light;
   --color-window-bg: #f5f5f7;
+  --color-content-bg: rgba(245, 245, 247, 0.88);
   --color-sidebar-bg: rgba(246, 246, 246, 0.5);
   --color-control-bg: #ffffff;
   --color-secondary-bg: #ebebf0;
@@ -240,6 +247,7 @@
 [data-theme="dark"] {
   color-scheme: dark;
   --color-window-bg: #1e1e1e;
+  --color-content-bg: rgba(30, 30, 30, 0.88);
   --color-sidebar-bg: rgba(30, 30, 30, 0.5);
   --color-control-bg: #2c2c2e;
   --color-secondary-bg: #3a3a3c;
@@ -314,6 +322,7 @@
   :root:not([data-theme="light"]) {
     color-scheme: dark;
     --color-window-bg: #1e1e1e;
+    --color-content-bg: rgba(30, 30, 30, 0.88);
     --color-sidebar-bg: rgba(30, 30, 30, 0.5);
     --color-control-bg: #2c2c2e;
     --color-secondary-bg: #3a3a3c;
@@ -489,13 +498,13 @@ html[data-window-mode="settings"] body {
   background: transparent;
 }
 
-/* Board: translucent toolbar and template sidebar, solid board. */
+/* Board: translucent toolbar and template sidebar, faintly translucent board. */
 html[data-window-mode="main"] body > main {
   background: transparent;
 }
 
 html[data-window-mode="main"] .gtd-board {
-  background: var(--color-window-bg);
+  background: var(--color-content-bg);
 }
 
 html[data-window-mode="main"] .top,
@@ -505,9 +514,9 @@ html[data-window-mode="settings"] .settings-nav {
   -webkit-backdrop-filter: none;
 }
 
-/* Settings: the sidebar shows through, the form stays readable. */
+/* Settings: the sidebar shows through, the form is readable. */
 html[data-window-mode="settings"] .settings-main {
-  background: var(--color-window-bg);
+  background: var(--color-content-bg);
 }
 
 @media (prefers-reduced-transparency: reduce) {
@@ -521,6 +530,12 @@ html[data-window-mode="settings"] .settings-main {
   .top,
   .wb-window-header,
   .wb-list-pane {
+    background: var(--color-window-bg);
+  }
+
+  html[data-window-mode="main"] .gtd-board,
+  html[data-window-mode="task"] .wb-detail,
+  html[data-window-mode="settings"] .settings-main {
     background: var(--color-window-bg);
   }
 }
@@ -5167,7 +5182,8 @@ body.is-pane-resizing-v * {
   min-height: 0;
   min-width: 0;
   overflow: hidden;
-  background: var(--bg);
+  /* Content canvas: faintly translucent, like the board and the settings form. */
+  background: var(--color-content-bg);
 }
 
 .wb-detail-head {
