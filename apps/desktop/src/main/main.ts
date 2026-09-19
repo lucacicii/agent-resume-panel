@@ -1565,8 +1565,6 @@ function createWindow(): void {
     // (`styles.css` § real macOS material).
     vibrancy: "sidebar",
     visualEffectState: "followWindow",
-    transparent: true,
-    hasShadow: true,
     backgroundColor: WINDOW_BACKGROUND_TRANSPARENT,
     ...(icon ? { icon } : {}),
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
@@ -1644,8 +1642,6 @@ function openSettingsWindow(options?: { pane?: unknown }): void {
     // Same treatment as the board: sidebar over the material, form stays opaque.
     vibrancy: "sidebar",
     visualEffectState: "followWindow",
-    transparent: true,
-    hasShadow: true,
     backgroundColor: WINDOW_BACKGROUND_TRANSPARENT,
     ...(icon ? { icon } : {}),
     webPreferences: {

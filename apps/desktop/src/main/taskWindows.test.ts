@@ -189,10 +189,11 @@ describe("task workbench windows", () => {
     const [light, dark] = fake.windows as Array<{ options: Record<string, unknown> }>;
     if (process.platform === "darwin") {
       // The window header and the task list show the desktop through, so the
-      // window must not paint a colour of its own.
+      // window must not paint a colour of its own. `transparent` stays off: on
+      // macOS it makes the window frameless.
       expect(light!.options.backgroundColor).toBe(WINDOW_BACKGROUND_TRANSPARENT);
       expect(light!.options.vibrancy).toBe("sidebar");
-      expect(light!.options.transparent).toBe(true);
+      expect(light!.options.transparent).toBeUndefined();
       return;
     }
     // Elsewhere the themed background is what keeps the close from flashing white.

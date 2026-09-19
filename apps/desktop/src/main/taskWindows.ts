@@ -165,8 +165,6 @@ export function openTaskWindow(deps: TaskWindowDeps, args: OpenTaskWindowArgs): 
       ? {
           vibrancy: "sidebar" as const,
           visualEffectState: "followWindow" as const,
-          transparent: true,
-          hasShadow: true,
           backgroundColor: WINDOW_BACKGROUND_TRANSPARENT
         }
       : {
