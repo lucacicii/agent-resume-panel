@@ -13,8 +13,31 @@ const apiMocks = vi.hoisted(() => ({
   workbenchCopyPath: vi.fn(),
   workbenchClipboardHasFiles: vi.fn(),
   workbenchPastePaths: vi.fn(),
-  clipboardWriteText: vi.fn()
+  clipboardWriteText: vi.fn(),
+  contextMenuShow: vi.fn()
 }));
+
+interface MenuItemSpec {
+  id?: string;
+  label?: string;
+  type?: string;
+  enabled?: boolean;
+}
+
+/** Every context menu in the Explorer is native now; this is its item list. */
+function menuItems(): MenuItemSpec[] {
+  const calls = apiMocks.contextMenuShow.mock.calls as unknown as Array<[{ items: MenuItemSpec[] }]>;
+  return calls.at(-1)?.[0]?.items ?? [];
+}
+
+function menuLabels(): string[] {
+  return menuItems().map((item) => item.label ?? "");
+}
+
+/** Make the next native context menu resolve as if the user picked `id`. */
+function pickMenuItem(id: string | null): void {
+  apiMocks.contextMenuShow.mockResolvedValue(id);
+}
 
 vi.mock("../../bridge", () => ({ desktopApi: () => apiMocks }));
 vi.mock("../../i18n", () => ({
@@ -29,6 +52,7 @@ afterEach(() => {
   apiMocks.workbenchClipboardHasFiles.mockReset();
   apiMocks.workbenchPastePaths.mockReset();
   apiMocks.clipboardWriteText.mockReset();
+  apiMocks.contextMenuShow.mockReset();
 });
 
 describe("WorkbenchFileExplorer", () => {
@@ -240,6 +264,7 @@ describe("WorkbenchFileExplorer", () => {
       entries: [{ name: "package.json", path: "/work/app/package.json", isDirectory: false }]
     });
     apiMocks.workbenchClipboardHasFiles.mockResolvedValue({ hasFiles: true });
+    pickMenuItem(null);
 
     render(<WorkbenchFileExplorer
       roots={["/work/app"]}
@@ -249,12 +274,17 @@ describe("WorkbenchFileExplorer", () => {
     const row = (await screen.findByText("package.json")).closest("[role=treeitem]")!;
     fireEvent.contextMenu(row, { clientX: 20, clientY: 30 });
 
-    expect(await screen.findByRole("menuitem", { name: "desktop.common.copy" })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: "desktop.common.copyPath" })).toBeTruthy();
-    await waitFor(() => expect((screen.getByRole("menuitem", {
-      name: "desktop.common.paste"
-    }) as HTMLButtonElement).disabled).toBe(false));
-    expect(screen.getByRole("menuitem", { name: "desktop.workbench.explorerRevealInFinder" })).toBeTruthy();
+    await waitFor(() => expect(apiMocks.contextMenuShow).toHaveBeenCalled());
+    expect(menuLabels()).toEqual(expect.arrayContaining([
+      "desktop.common.copy",
+      "desktop.common.copyPath",
+      "desktop.common.paste",
+      "desktop.workbench.explorerRevealInFinder"
+    ]));
+    // Paste is offered only when the pasteboard actually holds files.
+    expect(menuItems().find((item) => item.id === "paste")?.enabled).toBe(true);
+    const [point] = apiMocks.contextMenuShow.mock.calls.at(-1) as unknown as [{ x: number; y: number }];
+    expect(point).toMatchObject({ x: 20, y: 30 });
   });
 
   it("offers Git file history only for files and passes the absolute path", async () => {
@@ -266,6 +296,7 @@ describe("WorkbenchFileExplorer", () => {
     });
     apiMocks.workbenchClipboardHasFiles.mockResolvedValue({ hasFiles: false });
     const onShowGitHistory = vi.fn();
+    pickMenuItem(null);
 
     render(<WorkbenchFileExplorer
       roots={["/work/app"]}
@@ -276,14 +307,14 @@ describe("WorkbenchFileExplorer", () => {
 
     const directoryRow = (await screen.findByText("src")).closest("[role=treeitem]")!;
     fireEvent.contextMenu(directoryRow, { clientX: 20, clientY: 30 });
-    expect(screen.queryByRole("menuitem", { name: "desktop.workbench.explorerGitFileHistory" })).toBeNull();
+    await waitFor(() => expect(apiMocks.contextMenuShow).toHaveBeenCalled());
+    expect(menuLabels()).not.toContain("desktop.workbench.explorerGitFileHistory");
 
     const fileRow = screen.getByText("package.json").closest("[role=treeitem]")!;
+    pickMenuItem("git-history");
     fireEvent.contextMenu(fileRow, { clientX: 20, clientY: 30 });
-    fireEvent.click(screen.getByRole("menuitem", { name: "desktop.workbench.explorerGitFileHistory" }));
 
-    expect(onShowGitHistory).toHaveBeenCalledWith("/work/app/package.json");
-    expect(screen.queryByRole("menuitem", { name: "desktop.workbench.explorerGitFileHistory" })).toBeNull();
+    await waitFor(() => expect(onShowGitHistory).toHaveBeenCalledWith("/work/app/package.json"));
   });
 
   it("offers Preview only for Markdown file labels and opens them in preview mode", async () => {
@@ -296,6 +327,7 @@ describe("WorkbenchFileExplorer", () => {
     });
     apiMocks.workbenchClipboardHasFiles.mockResolvedValue({ hasFiles: false });
     const onOpenPreview = vi.fn();
+    pickMenuItem(null);
 
     render(<WorkbenchFileExplorer
       roots={["/work/app"]}
@@ -307,21 +339,20 @@ describe("WorkbenchFileExplorer", () => {
     // Directories and non-Markdown files never offer Preview.
     const directoryRow = (await screen.findByText("src")).closest("[role=treeitem]")!;
     fireEvent.contextMenu(directoryRow, { clientX: 20, clientY: 30 });
-    expect(screen.queryByRole("menuitem", { name: "desktop.workbench.preview" })).toBeNull();
-    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(apiMocks.contextMenuShow).toHaveBeenCalled());
+    expect(menuLabels()).not.toContain("desktop.workbench.preview");
 
     const fileRow = screen.getByText("package.json").closest("[role=treeitem]")!;
     fireEvent.contextMenu(fileRow, { clientX: 20, clientY: 30 });
-    expect(screen.queryByRole("menuitem", { name: "desktop.workbench.preview" })).toBeNull();
-    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(menuItems().length).toBeGreaterThan(0));
+    expect(menuLabels()).not.toContain("desktop.workbench.preview");
 
     // Right-clicking the Markdown file label exposes Preview and opens it in preview mode.
     const markdownLabel = screen.getByText("README.md");
+    pickMenuItem("preview");
     fireEvent.contextMenu(markdownLabel, { clientX: 20, clientY: 30 });
-    fireEvent.click(await screen.findByRole("menuitem", { name: "desktop.workbench.preview" }));
 
-    expect(onOpenPreview).toHaveBeenCalledWith("/work/app/README.md");
-    expect(screen.queryByRole("menuitem", { name: "desktop.workbench.preview" })).toBeNull();
+    await waitFor(() => expect(onOpenPreview).toHaveBeenCalledWith("/work/app/README.md"));
   });
 
   it("copies absolute file and directory paths as text from the context menu", async () => {
@@ -332,6 +363,7 @@ describe("WorkbenchFileExplorer", () => {
       ]
     });
     apiMocks.workbenchClipboardHasFiles.mockResolvedValue({ hasFiles: false });
+    pickMenuItem("copy-path");
 
     render(<WorkbenchFileExplorer
       roots={["/work/app"]}
@@ -341,13 +373,11 @@ describe("WorkbenchFileExplorer", () => {
 
     const directoryRow = (await screen.findByText("src")).closest("[role=treeitem]")!;
     fireEvent.contextMenu(directoryRow, { clientX: 20, clientY: 30 });
-    fireEvent.click(screen.getByRole("menuitem", { name: "desktop.common.copyPath" }));
-    expect(apiMocks.clipboardWriteText).toHaveBeenLastCalledWith("/work/app/src");
+    await waitFor(() => expect(apiMocks.clipboardWriteText).toHaveBeenLastCalledWith("/work/app/src"));
 
     const fileRow = screen.getByText("package.json").closest("[role=treeitem]")!;
     fireEvent.contextMenu(fileRow, { clientX: 20, clientY: 30 });
-    fireEvent.click(screen.getByRole("menuitem", { name: "desktop.common.copyPath" }));
-    expect(apiMocks.clipboardWriteText).toHaveBeenLastCalledWith("/work/app/package.json");
+    await waitFor(() => expect(apiMocks.clipboardWriteText).toHaveBeenLastCalledWith("/work/app/package.json"));
   });
 
   it("offers Find in Folder for directories and scopes files to their parent folder", async () => {
@@ -359,6 +389,7 @@ describe("WorkbenchFileExplorer", () => {
     });
     apiMocks.workbenchClipboardHasFiles.mockResolvedValue({ hasFiles: false });
     const onFindInFolder = vi.fn();
+    pickMenuItem("find-in-folder");
 
     render(<WorkbenchFileExplorer
       roots={["/work/app"]}
@@ -370,15 +401,12 @@ describe("WorkbenchFileExplorer", () => {
     // A directory searches inside itself.
     const directoryRow = (await screen.findByText("src")).closest("[role=treeitem]")!;
     fireEvent.contextMenu(directoryRow, { clientX: 20, clientY: 30 });
-    fireEvent.click(screen.getByRole("menuitem", { name: "desktop.workbench.findInFolder" }));
-    expect(onFindInFolder).toHaveBeenCalledWith("/work/app/src");
-    expect(screen.queryByRole("menu")).toBeNull();
+    await waitFor(() => expect(onFindInFolder).toHaveBeenCalledWith("/work/app/src"));
 
     // A file searches its containing folder.
     const fileRow = screen.getByText("package.json").closest("[role=treeitem]")!;
     fireEvent.contextMenu(fileRow, { clientX: 20, clientY: 30 });
-    fireEvent.click(screen.getByRole("menuitem", { name: "desktop.workbench.findInFolder" }));
-    expect(onFindInFolder).toHaveBeenLastCalledWith("/work/app");
+    await waitFor(() => expect(onFindInFolder).toHaveBeenLastCalledWith("/work/app"));
   });
 
   it("hides Find in Folder when no handler is wired", async () => {
@@ -386,6 +414,7 @@ describe("WorkbenchFileExplorer", () => {
       entries: [{ name: "src", path: "/work/app/src", isDirectory: true }]
     });
     apiMocks.workbenchClipboardHasFiles.mockResolvedValue({ hasFiles: false });
+    pickMenuItem(null);
 
     render(<WorkbenchFileExplorer
       roots={["/work/app"]}
@@ -395,7 +424,8 @@ describe("WorkbenchFileExplorer", () => {
 
     const directoryRow = (await screen.findByText("src")).closest("[role=treeitem]")!;
     fireEvent.contextMenu(directoryRow, { clientX: 20, clientY: 30 });
-    expect(screen.queryByRole("menuitem", { name: "desktop.workbench.findInFolder" })).toBeNull();
+    await waitFor(() => expect(apiMocks.contextMenuShow).toHaveBeenCalled());
+    expect(menuLabels()).not.toContain("desktop.workbench.findInFolder");
   });
 
   it("renders every shared-workspace root and lists each under its own root", async () => {
@@ -437,6 +467,7 @@ describe("WorkbenchFileExplorer", () => {
           : []
     }));
     apiMocks.workbenchClipboardHasFiles.mockResolvedValue({ hasFiles: false });
+    pickMenuItem("reveal");
 
     render(<WorkbenchFileExplorer
       roots={["/work/app", "/work/api"]}
@@ -446,7 +477,6 @@ describe("WorkbenchFileExplorer", () => {
 
     const fileRow = (await screen.findByText("api.ts")).closest("[role=treeitem]")!;
     fireEvent.contextMenu(fileRow, { clientX: 5, clientY: 5 });
-    fireEvent.click(screen.getByRole("menuitem", { name: "desktop.workbench.explorerRevealInFinder" }));
     await waitFor(() => expect(apiMocks.workbenchRevealPath).toHaveBeenCalledWith({
       rootPath: "/work/api",
       targetPath: "/work/api/api.ts"

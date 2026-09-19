@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { ICON_SIZE, ThemeIcon } from "../../../components/ThemeIcon";
 import { desktopApi } from "../../../bridge";
 import { useOverlayPresence } from "../../../components/useOverlayMotion";
+import { useMenuKeyboard, useMenuPosition } from "../../../components/menuOverlay";
 import { useI18n } from "../../../i18n";
 import {
   type GitGraphLayout,
@@ -112,6 +113,7 @@ export function GitBranchSelector({
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const requestRef = useRef(0);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
 
@@ -160,6 +162,13 @@ export function GitBranchSelector({
   }, [open]);
 
   const presence = useOverlayPresence(open);
+  // Anchored popover: the shared hook flips it at the window edge and gives it
+  // the keyboard behaviour a macOS menu is expected to have.
+  useMenuPosition(presence.mounted, menuRef, {
+    x: menuPosition?.left ?? 0,
+    y: menuPosition?.top ?? 0
+  });
+  useMenuKeyboard(presence.mounted, menuRef, () => setOpen(false));
 
   if (!repoRoot) return null;
   const localBranches = branches?.mode === "direct" ? branches.localBranches || branches.branches || [] : [];
@@ -192,8 +201,9 @@ export function GitBranchSelector({
     <ThemeIcon name="chevron-down" size={ICON_SIZE.inline} aria-hidden="true" />
   </button>;
   const menu = presence.mounted ? createPortal(<div
+    ref={menuRef}
     className={`react-git-branch-control react-git-branch-popover wb-git-branch-popover${presence.closing ? " is-closing" : ""}`}
-    style={menuPosition || undefined}
+    style={{ ...(menuPosition ?? {}), visibility: "hidden" }}
     role="menu"
     aria-label={ariaLabel}
   >

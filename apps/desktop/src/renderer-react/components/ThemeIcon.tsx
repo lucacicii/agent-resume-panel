@@ -57,7 +57,7 @@ const ICONS = {
 
 export type ThemeIconName = keyof typeof ICONS;
 // `size`/`width`/`height`/`strokeWidth` are owned by this component so every icon
-// shares one ladder, one stroke weight and one grid. See ui-design-system.md §4.22.
+// shares one ladder, one stroke weight and one grid. See themeIconContract.test.ts.
 type ThemeIconProps = Omit<LucideProps, "size" | "width" | "height" | "strokeWidth"> & {
   name: ThemeIconName;
   size?: ThemeIconSize;

@@ -6,6 +6,7 @@ import {
   hitTestTrayDotFromScreen,
   NOTE_COLOR_DARK,
   NOTE_COLOR_LIGHT,
+  renderSessionDotsRgba,
   renderSessionDotsTrayPng,
   STATUS_COLORS_DARK,
   STATUS_COLORS_LIGHT,
@@ -156,6 +157,20 @@ describe("renderSessionDotsTrayPng", () => {
     const logical = trayIconSize(3);
     expect(width).toBe(logical.width * 2);
     expect(height).toBe(logical.height * 2);
+  });
+
+  it("draws the idle icon as a black mask so macOS can tint it as a template", () => {
+    // A template image is an alpha mask: colour lives in the alpha channel, and
+    // every visible pixel is black. That is what makes the idle item adapt to
+    // light mode, dark mode, and a tinted menu bar.
+    const { rgba } = renderSessionDotsRgba([], { scale: 2, monochrome: true });
+    let opaque = 0;
+    for (let index = 0; index < rgba.length; index += 4) {
+      if (rgba[index + 3] === 0) continue;
+      opaque += 1;
+      expect([rgba[index], rgba[index + 1], rgba[index + 2]]).toEqual([0, 0, 0]);
+    }
+    expect(opaque).toBeGreaterThan(0);
   });
 });
 

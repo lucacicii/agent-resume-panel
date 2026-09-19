@@ -42,7 +42,7 @@ export function BoardQuickAccess(): React.ReactPortal | null {
         label: text("desktop.top.settings"),
         category: text("desktop.workbench.quickAccessCategoryApplication"),
         keywords: "settings preferences",
-        run: () => { window.dispatchEvent(new CustomEvent("agent-resume:settings-open", { detail: "general" })); }
+        run: () => { void desktopApi().openSettingsWindow?.({ pane: "general" }).catch(() => undefined); }
       }
     ];
     try {

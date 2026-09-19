@@ -3,8 +3,18 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import { GtdView } from "./GtdView";
 
-function renderGtd(overrides?: Partial<typeof window.agentResume>) {
-  const host = document.createElement("div");
+type ContextMenuArgs = { x: number; y: number; items: Array<{ id?: string }> };
+
+/** Stub `contextMenuShow` so a test can "pick" a menu item. */
+function contextMenuReturning(id: string | null) {
+  return vi.fn(async (_args: ContextMenuArgs) => id);
+}
+
+function contextMenuIds(mock: { mock: { calls: Array<[ContextMenuArgs]> } }): Array<string | undefined> {
+  return (mock.mock.calls[0]?.[0]?.items ?? []).map((item) => item.id);
+}
+
+function renderGtd(overrides?: Partial<typeof window.agentResume>) {  const host = document.createElement("div");
   host.id = "react-gtd";
   document.body.append(host);
   const header = document.createElement("div");
@@ -88,6 +98,7 @@ function renderGtd(overrides?: Partial<typeof window.agentResume>) {
     taskTemplatesCreate: vi.fn(async ({ title, projectPaths }: { title: string; projectPaths?: string[] }) => ({ templateId: "tpl-new", title, projectPaths: projectPaths ?? [], createdAtMs: 1, updatedAtMs: 1 })),
     taskTemplatesUpdate: vi.fn(async ({ templateId, title, projectPaths }: { templateId: string; title: string; projectPaths?: string[] }) => ({ templateId, title, projectPaths: projectPaths ?? [], createdAtMs: 1, updatedAtMs: 1 })),
     taskTemplatesDelete: vi.fn(async () => ({ ok: true })),
+    contextMenuShow: vi.fn(async () => null),
     ...overrides
   } as unknown as typeof window.agentResume;
 
@@ -123,10 +134,11 @@ describe("GtdView", () => {
   });
 
   it("opens the task note in a floating note window", async () => {
-    renderGtd();
+    const contextMenuShow = contextMenuReturning("note");
+    renderGtd({ contextMenuShow } as unknown as Partial<typeof window.agentResume>);
     fireEvent.contextMenu(await screen.findByRole("button", { name: /Realtime status/ }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Open note" }));
     await waitFor(() => expect(window.agentResume.standaloneNoteOpen).toHaveBeenCalledWith({ noteId: "t-1" }));
+    expect(contextMenuIds(contextMenuShow)).toContain("note");
   });
 
   it("moves a task between columns on drop by setting its GTD status", async () => {
@@ -203,13 +215,11 @@ describe("GtdView", () => {
 
   it("deletes a session-less task from its context menu", async () => {
     const notesDelete = vi.fn(async () => ({ ok: true, deletedNoteIds: ["t-2"] }));
-    renderGtd({ notesDelete } as unknown as Partial<typeof window.agentResume>);
+    renderGtd({ notesDelete, contextMenuShow: contextMenuReturning("delete") } as unknown as Partial<typeof window.agentResume>);
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
 
     const card = await screen.findByRole("button", { name: /Someday idea/ });
     fireEvent.contextMenu(card);
-    const del = await screen.findByRole("menuitem", { name: "Delete task" });
-    fireEvent.click(del);
 
     await waitFor(() => expect(notesDelete).toHaveBeenCalledWith({ noteId: "t-2" }));
     expect(confirmSpy).toHaveBeenCalled();
@@ -217,10 +227,12 @@ describe("GtdView", () => {
   });
 
   it("does not offer delete for a task that has sessions", async () => {
-    renderGtd();
+    const contextMenuShow = contextMenuReturning(null);
+    renderGtd({ contextMenuShow } as unknown as Partial<typeof window.agentResume>);
     const card = await screen.findByRole("button", { name: /Realtime status/ });
     fireEvent.contextMenu(card);
-    expect(screen.queryByRole("menuitem", { name: "Delete task" })).toBeNull();
+    await waitFor(() => expect(contextMenuShow).toHaveBeenCalled());
+    expect(contextMenuIds(contextMenuShow)).not.toContain("delete");
   });
 
   it("creates a pre-filled task by dropping a template onto a column", async () => {
@@ -279,11 +291,10 @@ describe("GtdView", () => {
 
   it("renames a task from its context menu", async () => {
     const notesRenameTask = vi.fn(async () => ({ noteId: "t-1", title: "Renamed", updatedAtMs: 9 }));
-    renderGtd({ notesRenameTask } as unknown as Partial<typeof window.agentResume>);
+    renderGtd({ notesRenameTask, contextMenuShow: contextMenuReturning("rename") } as unknown as Partial<typeof window.agentResume>);
 
     const card = await screen.findByRole("button", { name: /Realtime status/ });
     fireEvent.contextMenu(card);
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
 
     const input = await screen.findByRole("textbox", { name: "Title" });
     fireEvent.change(input, { target: { value: "Renamed" } });

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { CodeEditor, type CodeEditorHandle, type CodeEditorSearchResult } from "../../../components/CodeEditor";
 import { ICON_SIZE, ThemeIcon } from "../../../components/ThemeIcon";
 import { desktopApi } from "../../../bridge";
+import { confirmDestructive } from "../../../confirmAction";
 import { GTD_STATUSES, type GtdStatus } from "../../../gtd";
 import { useI18n } from "../../../i18n";
 import { STANDALONE_NOTE_INITIAL_CONTENT } from "../../../../shared/standaloneNote";
@@ -40,6 +41,12 @@ export function StandaloneNoteWindow({ noteId }: { noteId: string }): React.JSX.
   contentRef.current = content;
   dirtyRef.current = dirty;
   findQueryRef.current = findQuery;
+
+  // macOS reads the edited state from the window: the close button shows a dot.
+  useEffect(() => {
+    if (typeof desktopApi().standaloneNoteDocumentState !== "function") return;
+    void desktopApi().standaloneNoteDocumentState({ noteId, dirty }).catch(() => undefined);
+  }, [dirty, noteId]);
 
   const clearSaveTimer = useCallback(() => {
     if (saveTimerRef.current !== null) {
@@ -264,9 +271,14 @@ export function StandaloneNoteWindow({ noteId }: { noteId: string }): React.JSX.
 
   const title = record?.title || record?.filename || t("desktop.standaloneNote.title");
 
+  // A note window is a document window: its title is the document's name.
+  useEffect(() => {
+    if (title) document.title = title;
+  }, [title]);
+
   const deleteNote = useCallback(async () => {
     if (!record || deleting) return;
-    if (!window.confirm(t("desktop.notes.deleteConfirm", title))) return;
+    if (!(await confirmDestructive(t("desktop.notes.deleteConfirm", title), t("desktop.common.delete")))) return;
     setDeleting(true);
     clearSaveTimer();
     try {

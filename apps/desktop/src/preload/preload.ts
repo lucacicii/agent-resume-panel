@@ -178,6 +178,39 @@ export interface DesktopApi {
       sync?: AgentSessionSyncResult;
     }) => void
   ): () => void;
+  /** The macOS accent colour as `#rrggbb`, or null to use the system blue. */
+  systemAccent(): Promise<string | null>;
+  onSystemAccentChanged(callback: (accent: string | null) => void): () => void;
+  /** Edit ▸ Find… (⌘F) — the menu owns the accelerator, so it forwards here. */
+  onMenuFind(callback: () => void): () => void;
+  /**
+   * Show a native context menu at a point in this window. Resolves with the id of
+   * the chosen item, or null when the menu was dismissed.
+   */
+  contextMenuShow(args: {
+    x: number;
+    y: number;
+    items: Array<{
+      id?: string;
+      label?: string;
+      type?: "normal" | "separator" | "checkbox";
+      enabled?: boolean;
+      checked?: boolean;
+      submenu?: unknown[];
+    }>;
+  }): Promise<string | null>;
+  /** Native confirmation alert; resolves true when the user confirmed. */
+  dialogConfirm(args: {
+    message: string;
+    detail?: string;
+    confirmLabel?: string;
+    cancelLabel?: string;
+    destructive?: boolean;
+  }): Promise<boolean>;
+  /** Native fullscreen changes, so chrome can drop the traffic-light inset. */
+  onWindowFullscreenChanged(callback: (fullscreen: boolean) => void): () => void;
+  /** Report unsaved state so the close button shows the edited dot. */
+  standaloneNoteDocumentState(args: { noteId: string; dirty: boolean }): Promise<{ ok: boolean }>;
   syncSessions(): Promise<AgentSessionSyncResult>;
   notifyRendererReady(): void;
   onSessionsSynced(callback: (result: AgentSessionSyncResult) => void): () => void;
@@ -1456,6 +1489,25 @@ const api: DesktopApi = {
     ipcRenderer.on("settings:changed", handler);
     return () => ipcRenderer.removeListener("settings:changed", handler);
   },
+  systemAccent: () => ipcRenderer.invoke("appearance:accent"),
+  onSystemAccentChanged: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, accent: string | null) => callback(accent);
+    ipcRenderer.on("appearance:accentChanged", handler);
+    return () => ipcRenderer.removeListener("appearance:accentChanged", handler);
+  },
+  onMenuFind: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on("menu:find", handler);
+    return () => ipcRenderer.removeListener("menu:find", handler);
+  },
+  contextMenuShow: (args) => ipcRenderer.invoke("contextMenu:show", args),
+  dialogConfirm: (args) => ipcRenderer.invoke("dialog:confirm", args),
+  onWindowFullscreenChanged: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, fullscreen: boolean) => callback(fullscreen);
+    ipcRenderer.on("window:fullscreenChanged", handler);
+    return () => ipcRenderer.removeListener("window:fullscreenChanged", handler);
+  },
+  standaloneNoteDocumentState: (args) => ipcRenderer.invoke("standaloneNote:documentState", args),
   syncSessions: () => ipcRenderer.invoke("sessions:sync"),
   notifyRendererReady: () => ipcRenderer.send("main:rendererReady"),
   countSessions: () => ipcRenderer.invoke("sessions:count"),

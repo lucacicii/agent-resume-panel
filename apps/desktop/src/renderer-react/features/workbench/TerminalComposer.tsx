@@ -898,7 +898,7 @@ export function TerminalComposer(props: {
         aria-controls={activeListId}
         aria-expanded={activeListId !== undefined}
         aria-activedescendant={activeOptionId}
-        spellCheck={false}
+        spellCheck
         enterKeyHint="send"
         onChange={onInputChange}
         onPaste={onPaste}

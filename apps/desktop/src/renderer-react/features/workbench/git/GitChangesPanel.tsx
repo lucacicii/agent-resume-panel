@@ -1,7 +1,7 @@
-import React, { useEffect, useRef, useState, type ReactPortal } from "react";
+import React, { useCallback, useEffect, useRef, useState, type ReactPortal } from "react";
 import { createPortal } from "react-dom";
 import { ICON_SIZE, ThemeIcon } from "../../../components/ThemeIcon";
-import { useOverlayState } from "../../../components/useOverlayMotion";
+import { contextMenuPoint, showContextMenuAt } from "../../../nativeContextMenu";
 import { useI18n } from "../../../i18n";
 import { startWorkbenchPathDrag } from "../workbenchDnd";
 import {
@@ -252,7 +252,23 @@ export function GitChangesPanel({
 }): ReactPortal | null {
   const { t } = useI18n();
   const [host, setHost] = useState<HTMLElement | null>(null);
-  const [contextMenu, setContextMenu, contextMenuClosing] = useOverlayState<{ change: GitChange; x: number; y: number }>();
+  /**
+   * File menu. Native: the system draws the highlight, flips at the window edge,
+   * and owns the keyboard.
+   */
+  const openFileMenu = useCallback(async (
+    event: { clientX: number; clientY: number },
+    change: GitChange
+  ) => {
+    const choice = await showContextMenuAt(contextMenuPoint(event), [
+      { id: "open", label: labels.openFile },
+      { id: "open-default", label: labels.openDefault },
+      { id: "copy-path", label: labels.copyPath }
+    ]);
+    if (choice === "open") onOpenFile(change);
+    else if (choice === "open-default") onOpenExternal(change);
+    else if (choice === "copy-path") onCopyPath(change);
+  }, [labels.copyPath, labels.openDefault, labels.openFile, onCopyPath, onOpenExternal, onOpenFile]);
   const commitInputRef = useRef<HTMLTextAreaElement | null>(null);
   const [commitInputHeight, setCommitInputHeight] = useState<number | null>(null);
   const [commitInputResizing, setCommitInputResizing] = useState(false);
@@ -260,26 +276,6 @@ export function GitChangesPanel({
   useEffect(() => {
     setHost(visible ? document.querySelector<HTMLElement>("#react-workbench .wb-git-panel") : null);
   }, [visible, git, gitRoot]);
-
-  useEffect(() => {
-    if (!contextMenu) return;
-    const dismiss = (event: MouseEvent) => {
-      if (!(event.target instanceof Element) || !event.target.closest(".wb-context-menu")) setContextMenu(null);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setContextMenu(null);
-    };
-    window.addEventListener("mousedown", dismiss);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("mousedown", dismiss);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [contextMenu]);
-
-  useEffect(() => {
-    setContextMenu(null);
-  }, [visible, gitRoot]);
 
   const beginCommitInputResize = (event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -366,7 +362,7 @@ export function GitChangesPanel({
                 onContextMenu={(event, change) => {
                   event.preventDefault();
                   event.stopPropagation();
-                  setContextMenu({ change, x: event.clientX, y: event.clientY });
+                  void openFileMenu(event, change);
                 }}
                 onDiscard={onDiscard}
                 onDiscardDirectory={(directoryPath, repoRoot) => {
@@ -458,18 +454,5 @@ export function GitChangesPanel({
       </div>
     </div>
   </div>
-    {contextMenu ? createPortal(<div
-      className={`wb-context-menu wb-git-context-menu${contextMenuClosing ? " is-closing" : ""}`}
-      role="menu"
-      style={{
-        left: Math.max(8, Math.min(contextMenu.x, window.innerWidth - 196)),
-        top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - 120))
-      }}
-      onContextMenu={(event) => event.preventDefault()}
-    >
-      <button type="button" role="menuitem" onClick={() => { onOpenFile(contextMenu.change); setContextMenu(null); }}>{labels.openFile}</button>
-      <button type="button" role="menuitem" onClick={() => { onOpenExternal(contextMenu.change); setContextMenu(null); }}>{labels.openDefault}</button>
-      <button type="button" role="menuitem" onClick={() => { onCopyPath(contextMenu.change); setContextMenu(null); }}>{labels.copyPath}</button>
-    </div>, document.body) : null}
   </>, host);
 }

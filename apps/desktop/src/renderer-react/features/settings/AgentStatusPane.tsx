@@ -19,6 +19,7 @@ import type { DetectionExplain, PaneScreenDump, PaneStatus } from "../../../shar
 import { desktopApi } from "../../bridge";
 import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { Status, type StatusKind } from "../../components/Status";
+import { confirmAction, confirmDestructive } from "../../confirmAction";
 
 type Translate = (key: string, ...args: Array<string | number>) => string;
 
@@ -70,7 +71,7 @@ export function AgentStatusPane({ t }: { t: Translate }) {
   const toggle = useCallback(
     async (integration: AgentIntegrationStatus) => {
       const action = integration.installed ? "uninstall" : "install";
-      if (!window.confirm(t(`desktop.settings.agentStatus.${action}Confirm`, integration.label))) return;
+      if (!(await confirmAction(t(`desktop.settings.agentStatus.${action}Confirm`, integration.label)))) return;
       setBusy(integration.id);
       try {
         const call = integration.installed
@@ -92,7 +93,7 @@ export function AgentStatusPane({ t }: { t: Translate }) {
   );
 
   const toggleDaemon = useCallback(async () => {
-    if (daemon?.running && !window.confirm(t("desktop.settings.agentStatus.stopDaemonConfirm"))) return;
+    if (daemon?.running && !(await confirmDestructive(t("desktop.settings.agentStatus.stopDaemonConfirm"), t("desktop.common.confirm")))) return;
     setBusy("daemon");
     try {
       const call = daemon?.running ? desktopApi().agentStatusStopDaemon : desktopApi().agentStatusStartDaemon;

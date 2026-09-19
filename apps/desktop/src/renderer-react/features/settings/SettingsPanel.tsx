@@ -6,8 +6,8 @@ import type { AiProvider, ModelKind, ModelSelection, PanelSettings, ProviderMode
 import { listProviderModels } from "./providerPool";
 import { desktopApi } from "../../bridge";
 import { Status, type StatusKind } from "../../components/Status";
-import { useOverlayPresence } from "../../components/useOverlayMotion";
 import { useI18n } from "../../i18n";
+import { confirmAction, confirmDestructive } from "../../confirmAction";
 import { AboutPane, BackupPane, LogsPane, NotesPane, StoragePane, UsagePane, WorkbenchPane, type UsageDetailTab } from "./AdditionalPanes";
 import { SelectionSettingsPane } from "./SelectionSettingsPane";
 import { AgentStatusPane } from "./AgentStatusPane";
@@ -58,8 +58,7 @@ function sectionPatch(section: EditablePane, base: PanelSettings, draft: Editabl
 }
 
 type SettingsPanelProps = {
-  /** Production path is the in-window overlay ("embedded"). */
-  variant?: "window" | "embedded";
+  /** Pane to select when the window opens (from `?pane=`). */
   initialPane?: string;
 };
 
@@ -84,12 +83,10 @@ function asPane(value: unknown): Pane {
 }
 
 export function SettingsPanel({
-  variant = "embedded",
   initialPane
 }: SettingsPanelProps): React.ReactPortal | null {
   const { t } = useI18n();
   const host = document.getElementById("react-settings");
-  const [open, setOpen] = useState(variant === "window");
   const [pane, setPane] = useState<Pane>(() => asPane(initialPane));
   const [settings, setSettings] = useState<PanelSettings | null>(null);
   const [general, setGeneral] = useState<GeneralDraft | null>(null);
@@ -137,17 +134,19 @@ export function SettingsPanel({
 
   const load = useCallback(async () => hydrate(await desktopApi().getSettings()), [hydrate]);
 
-  const openRef = useRef(open);
-  openRef.current = open;
-
   const applyOpen = useCallback((nextPane: unknown) => {
     setPane(asPane(nextPane));
-    setOpen(true);
-    if (!openRef.current) {
-      void load().catch((error: unknown) =>
-        setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" })
-      );
-    }
+    void load().catch((error: unknown) =>
+      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" })
+    );
+  }, [load]);
+
+  // The window loads its own data on mount: it is opened by the main process, so
+  // there is no "open" event to wait for.
+  useEffect(() => {
+    void load().catch((error: unknown) =>
+      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" })
+    );
   }, [load]);
 
   useEffect(() => {
@@ -176,7 +175,7 @@ export function SettingsPanel({
     const patch = sectionPatch(section, base, nextDraft);
     if (JSON.stringify({ ...base, ...patch }) === JSON.stringify(base)) return;
     if (section === "providers" && embeddingSearchIdentityChanged(base, nextDraft as ProvidersDraft)) {
-      if (!window.confirm(t("desktop.settings.embeddingModelChangeConfirm"))) {
+      if (!(await confirmAction(t("desktop.settings.embeddingModelChangeConfirm")))) {
         setProviders(providersDraftFromSettings(base));
         setStatus({ text: t("desktop.settings.embeddingModelChangeCancelled"), kind: "error" });
         return;
@@ -220,7 +219,6 @@ export function SettingsPanel({
   }, [pane]);
 
   const doClose = useCallback(() => {
-    setOpen(false);
     window.dispatchEvent(new Event("agent-resume:settings-closed"));
   }, []);
 
@@ -228,10 +226,10 @@ export function SettingsPanel({
     // Blur the focused control first so an input commits before the panel closes.
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     doClose();
+    window.close();
   }, [doClose]);
 
   useEffect(() => {
-    if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
@@ -239,11 +237,9 @@ export function SettingsPanel({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open, requestClose]);
+  }, [requestClose]);
 
-  const presence = useOverlayPresence(open);
-
-  if (!host || !presence.mounted || !settings || !general || !providers || !sessions || !workbench || !notes || !storage) return null;
+  if (!host || !settings || !general || !providers || !sessions || !workbench || !notes || !storage) return null;
   const current = panes.find((item) => item.id === pane) || panes[0];
   const body = pane === "general" ? <GeneralPane draft={general} setDraft={setGeneral} commit={(value) => commit("general", value)} t={t} />
     : pane === "providers" ? <ProvidersPane draft={providers} setDraft={setProviders} commit={(value) => commit("providers", value)} t={t} />
@@ -259,13 +255,8 @@ export function SettingsPanel({
     : pane === "backup" ? <BackupPane t={t} /> : <AboutPane t={t} />;
 
   return createPortal(
-    <div className={`settings-overlay${presence.closing ? " is-closing" : ""}`} role="dialog" aria-modal="true" aria-label={t("desktop.settings.title")}>
-      <button type="button" className="settings-overlay-backdrop" aria-label={t("desktop.settings.done")} onClick={requestClose} />
+    <div className="settings-window" aria-label={t("desktop.settings.title")}>
       <section className="panel active react-settings-panel">
-      <div className="toolbar">
-        <h2 className="quiet-title">{t("desktop.settings.title")}</h2>
-        <button type="button" className="ghost-btn" onClick={requestClose}>{t("desktop.settings.done")}</button>
-      </div>
       <div className="settings-layout">
         <aside className="settings-nav" aria-label={t("desktop.settings.navLabel")}>
           {panes.map((item) => (
@@ -365,8 +356,8 @@ function ProvidersPane({ draft, setDraft, commit, t }: { draft: ProvidersDraft; 
     setSelectedProviderId(id);
   };
 
-  const removeProvider = (providerId: string) => {
-    if (!window.confirm(t("desktop.settings.providerRemoveConfirm"))) return;
+  const removeProvider = async (providerId: string) => {
+    if (!(await confirmDestructive(t("desktop.settings.providerRemoveConfirm"), t("desktop.common.remove")))) return;
     const providers = draft.providers.filter((entry) => entry.id !== providerId);
     const clearIfSelected = (selection: ModelSelection) => selection.providerId === providerId ? {} : selection;
     const next = {
@@ -606,7 +597,7 @@ function ProvidersPane({ draft, setDraft, commit, t }: { draft: ProvidersDraft; 
                 data-testid={`settings-remove-provider-${provider.id}`}
                 aria-label={t("desktop.settings.providerRemove")}
                 title={t("desktop.settings.providerRemove")}
-                onClick={() => removeProvider(provider.id)}
+                onClick={() => void removeProvider(provider.id)}
               >
                 <ThemeIcon name="trash" size={ICON_SIZE.dense} aria-hidden="true" />
               </button>

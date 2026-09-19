@@ -5135,6 +5135,7 @@ describe("WorkbenchPanel", () => {
       }),
       workbenchClipboardHasFiles: async () => ({ hasFiles: false }),
       workbenchSetFileWatch: async () => ({ rootPaths: ["/work/app"] }),
+      contextMenuShow: vi.fn(async () => "find-in-folder"),
       terminalGitStatus: async () => ({ isRepo: false, root: null, staged: [], unstaged: [], nestedRepos: [], tracking: [] })
     } as unknown as typeof window.agentResume;
 
@@ -5144,7 +5145,9 @@ describe("WorkbenchPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Explorer", pressed: false }));
     const folderRow = (await screen.findByText("src")).closest("[role=treeitem]")!;
     fireEvent.contextMenu(folderRow, { clientX: 30, clientY: 40 });
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Find in Folder" }));
+    await waitFor(() => expect(window.agentResume.contextMenuShow).toHaveBeenCalledWith(expect.objectContaining({
+      items: expect.arrayContaining([expect.objectContaining({ id: "find-in-folder" })])
+    })));
 
     // The search pane opens with the folder glob pre-filled and details visible.
     const searchInput = await screen.findByRole("searchbox", { name: "Search" });
@@ -5198,6 +5201,7 @@ describe("WorkbenchPanel", () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
     document.body.append(host);
+    const contextMenuShow = vi.fn(async (_args: { items: Array<{ id?: string }> }) => null as string | null);
     const workbenchGitFileLog = vi.fn(async () => ({
       repoRoot: "/work/app",
       repoPath: "src/app.ts",
@@ -5270,7 +5274,8 @@ describe("WorkbenchPanel", () => {
       workbenchGitFileLog,
       terminalGitShow,
       terminalGitShowFileDiffSides,
-      clipboardWriteText
+      clipboardWriteText,
+      contextMenuShow
     } as unknown as typeof window.agentResume;
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
@@ -5278,24 +5283,26 @@ describe("WorkbenchPanel", () => {
     await activateTaskDirectory("/work/app");
     fireEvent.click(screen.getByRole("button", { name: "Explorer", pressed: false }));
     const fileRow = (await screen.findByText("app.ts")).closest("[role=treeitem]")!;
+    contextMenuShow.mockResolvedValue("git-history");
     fireEvent.contextMenu(fileRow, { clientX: 20, clientY: 30 });
-    fireEvent.click(await screen.findByRole("menuitem", { name: "View Git File History" }));
 
     await waitFor(() => expect(workbenchGitFileLog).toHaveBeenCalledWith({
       rootPath: "/work/app",
       filePath: "/work/app/src/app.ts",
       limit: 150
     }));
-    expect(await screen.findByText("File history · app.ts")).toBeTruthy();
+    expect(workbenchGitFileLog).toHaveBeenCalledTimes(1);
+    // The pane opens through an async bridge call; give it room under load.
+    expect(await screen.findByText("File history · app.ts", undefined, { timeout: 5000 })).toBeTruthy();
     expect(await screen.findByText("feature")).toBeTruthy();
     const remoteBranch = await screen.findByText("origin/feature");
+    contextMenuShow.mockResolvedValue("copy-branch");
     fireEvent.contextMenu(remoteBranch, { clientX: 30, clientY: 40 });
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Copy branch name" }));
-    expect(clipboardWriteText).toHaveBeenLastCalledWith("origin/feature");
+    await waitFor(() => expect(clipboardWriteText).toHaveBeenLastCalledWith("origin/feature"));
     const commitRow = await screen.findByRole("button", { name: /Update app/ });
+    contextMenuShow.mockResolvedValue("copy-hash");
     fireEvent.contextMenu(commitRow, { clientX: 30, clientY: 40 });
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Copy commit hash" }));
-    expect(clipboardWriteText).toHaveBeenLastCalledWith("1234567890abcdef1234567890abcdef12345678");
+    await waitFor(() => expect(clipboardWriteText).toHaveBeenLastCalledWith("1234567890abcdef1234567890abcdef12345678"));
     fireEvent.click(commitRow);
     await waitFor(() => expect(terminalGitShow).toHaveBeenCalledWith({
       repoRoot: "/work/app",
@@ -5371,6 +5378,7 @@ describe("WorkbenchPanel", () => {
       }
     }));
     const terminalGitRevert = vi.fn(async () => ({ ok: true }));
+    const contextMenuShow = vi.fn(async (_args: { items: Array<{ id?: string }> }) => null as string | null);
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages: {
@@ -5388,7 +5396,8 @@ describe("WorkbenchPanel", () => {
       terminalGitStatus,
       terminalGitFetch: async () => ({ ok: true }),
       terminalGitLog,
-      terminalGitRevert
+      terminalGitRevert,
+      contextMenuShow
     } as unknown as typeof window.agentResume;
 
     try {
@@ -5400,9 +5409,9 @@ describe("WorkbenchPanel", () => {
       await waitFor(() => expect(terminalGitLog).toHaveBeenCalledWith({ repoRoot: "/work/app", limit: 150 }));
       // Right-click the branch node (decoration pill) to open its context menu.
       const branchPill = await screen.findByText("feature");
+      contextMenuShow.mockResolvedValue("revert");
       fireEvent.contextMenu(branchPill, { clientX: 30, clientY: 40 });
-      fireEvent.click(await screen.findByRole("menuitem", { name: "Revert" }));
-      expect(confirm).toHaveBeenCalledWith("Revert commit Update app? This creates a new commit that undoes its changes.");
+      await waitFor(() => expect(confirm).toHaveBeenCalledWith("Revert commit Update app? This creates a new commit that undoes its changes."));
       await waitFor(() => expect(terminalGitRevert).toHaveBeenCalledWith({ repoRoot: "/work/app", hash: commit.hash }));
       await waitFor(() => expect(notificationMocks.notifyDesktop).toHaveBeenCalledWith({ text: "Reverted commit 1234567.", kind: "ok" }));
     } finally {
@@ -5452,6 +5461,7 @@ describe("WorkbenchPanel", () => {
       }
     }));
     const terminalGitMerge = vi.fn(async () => ({ ok: true }));
+    const contextMenuShow = vi.fn(async (_args: { items: Array<{ id?: string }> }) => null as string | null);
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages: {
@@ -5469,7 +5479,8 @@ describe("WorkbenchPanel", () => {
       terminalGitStatus,
       terminalGitFetch: async () => ({ ok: true }),
       terminalGitLog,
-      terminalGitMerge
+      terminalGitMerge,
+      contextMenuShow
     } as unknown as typeof window.agentResume;
 
     try {
@@ -5481,9 +5492,9 @@ describe("WorkbenchPanel", () => {
       await waitFor(() => expect(terminalGitLog).toHaveBeenCalledWith({ repoRoot: "/work/app", limit: 150 }));
       // Right-click the branch node (decoration pill) to open its context menu.
       const branchPill = await screen.findByText("feature");
+      contextMenuShow.mockResolvedValue("merge");
       fireEvent.contextMenu(branchPill, { clientX: 30, clientY: 40 });
-      fireEvent.click(await screen.findByRole("menuitem", { name: "Merge into current branch" }));
-      expect(confirm).toHaveBeenCalledWith("Merge commit Update app into the current branch?");
+      await waitFor(() => expect(confirm).toHaveBeenCalledWith("Merge commit Update app into the current branch?"));
       await waitFor(() => expect(terminalGitMerge).toHaveBeenCalledWith({ repoRoot: "/work/app", hash: commit.hash }));
       await waitFor(() => expect(notificationMocks.notifyDesktop).toHaveBeenCalledWith({ text: "Merge completed.", kind: "ok" }));
     } finally {
@@ -5533,6 +5544,7 @@ describe("WorkbenchPanel", () => {
       }
     }));
     const terminalGitCherryPick = vi.fn(async () => ({ ok: true }));
+    const contextMenuShow = vi.fn(async (_args: { items: Array<{ id?: string }> }) => null as string | null);
     const terminalGitCheckoutCommit = vi.fn(async () => ({ ok: true }));
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
     window.agentResume = {
@@ -5552,7 +5564,8 @@ describe("WorkbenchPanel", () => {
       terminalGitFetch: async () => ({ ok: true }),
       terminalGitLog,
       terminalGitCherryPick,
-      terminalGitCheckoutCommit
+      terminalGitCheckoutCommit,
+      contextMenuShow
     } as unknown as typeof window.agentResume;
 
     try {
@@ -5563,15 +5576,15 @@ describe("WorkbenchPanel", () => {
       fireEvent.click(await screen.findByRole("button", { name: "Git log" }));
       await waitFor(() => expect(terminalGitLog).toHaveBeenCalledWith({ repoRoot: "/work/app", limit: 150 }));
       const branchPill = await screen.findByText("feature");
+      contextMenuShow.mockResolvedValue("cherry-pick");
       fireEvent.contextMenu(branchPill, { clientX: 30, clientY: 40 });
-      fireEvent.click(await screen.findByRole("menuitem", { name: "Cherry-pick commit" }));
-      expect(confirm).toHaveBeenCalledWith("Cherry-pick commit Update app onto the current branch?");
+      await waitFor(() => expect(confirm).toHaveBeenCalledWith("Cherry-pick commit Update app onto the current branch?"));
       await waitFor(() => expect(terminalGitCherryPick).toHaveBeenCalledWith({ repoRoot: "/work/app", hash: commit.hash }));
 
       // Checkout commit is also reachable from the same context menu.
+      contextMenuShow.mockResolvedValue("checkout");
       fireEvent.contextMenu(branchPill, { clientX: 30, clientY: 40 });
-      fireEvent.click(await screen.findByRole("menuitem", { name: "Checkout commit" }));
-      expect(confirm).toHaveBeenCalledWith("Checkout commit Update app (detached HEAD)? Your worktree will move to that revision.");
+      await waitFor(() => expect(confirm).toHaveBeenCalledWith("Checkout commit Update app (detached HEAD)? Your worktree will move to that revision."));
       await waitFor(() => expect(terminalGitCheckoutCommit).toHaveBeenCalledWith({ repoRoot: "/work/app", hash: commit.hash }));
     } finally {
       confirm.mockRestore();
@@ -5620,6 +5633,7 @@ describe("WorkbenchPanel", () => {
       }
     }));
     const terminalGitReset = vi.fn(async () => ({ ok: true }));
+    const contextMenuShow = vi.fn(async (_args: { items: Array<{ id?: string }> }) => null as string | null);
     const terminalGitBranchFromCommit = vi.fn(async () => ({ ok: true }));
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
     window.agentResume = {
@@ -5639,7 +5653,8 @@ describe("WorkbenchPanel", () => {
       terminalGitFetch: async () => ({ ok: true }),
       terminalGitLog,
       terminalGitReset,
-      terminalGitBranchFromCommit
+      terminalGitBranchFromCommit,
+      contextMenuShow
     } as unknown as typeof window.agentResume;
 
     try {
@@ -5652,15 +5667,15 @@ describe("WorkbenchPanel", () => {
       const branchPill = await screen.findByText("feature");
 
       // Reset dialog: pick the mixed mode.
+      contextMenuShow.mockResolvedValue("reset");
       fireEvent.contextMenu(branchPill, { clientX: 30, clientY: 40 });
-      fireEvent.click(await screen.findByRole("menuitem", { name: "Reset…" }));
       fireEvent.click(await screen.findByRole("button", { name: "Mixed (unstage changes)" }));
-      expect(confirm).toHaveBeenCalledWith("Reset the current branch to Update app (Mixed (unstage changes))?");
+      await waitFor(() => expect(confirm).toHaveBeenCalledWith("Reset the current branch to Update app (Mixed (unstage changes))?"));
       await waitFor(() => expect(terminalGitReset).toHaveBeenCalledWith({ repoRoot: "/work/app", hash: commit.hash, mode: "mixed" }));
 
       // Branch dialog: type a name and create.
+      contextMenuShow.mockResolvedValue("new-branch");
       fireEvent.contextMenu(branchPill, { clientX: 30, clientY: 40 });
-      fireEvent.click(await screen.findByRole("menuitem", { name: "New Branch from Commit…" }));
       fireEvent.change(await screen.findByPlaceholderText("Branch name"), { target: { value: "fix/from-commit" } });
       fireEvent.click(await screen.findByRole("button", { name: "Create" }));
       await waitFor(() => expect(terminalGitBranchFromCommit).toHaveBeenCalledWith({ repoRoot: "/work/app", hash: commit.hash, branch: "fix/from-commit" }));
@@ -5700,6 +5715,7 @@ describe("WorkbenchPanel", () => {
     }));
     const workbenchOpenPath = vi.fn(async () => ({ ok: true }));
     const clipboardWriteText = vi.fn();
+    const contextMenuShow = vi.fn(async (_args: { items: Array<{ id?: string }> }) => null as string | null);
     window.matchMedia = vi.fn().mockReturnValue({
       matches: false,
       media: "",
@@ -5727,7 +5743,8 @@ describe("WorkbenchPanel", () => {
       terminalGitFetch: async () => ({ ok: true }),
       workbenchInspectFile,
       workbenchOpenPath,
-      clipboardWriteText
+      clipboardWriteText,
+      contextMenuShow
     } as unknown as typeof window.agentResume;
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
@@ -5736,29 +5753,29 @@ describe("WorkbenchPanel", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
 
     const gitRow = await screen.findByTitle("apps/desktop/src/app.ts");
+    contextMenuShow.mockResolvedValue("open");
     fireEvent.contextMenu(gitRow, { clientX: 40, clientY: 50 });
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Open File" }));
     await waitFor(() => expect(workbenchInspectFile).toHaveBeenCalledWith({
       rootPath: "/work/app/apps/desktop",
       filePath: "/work/app/apps/desktop/src/app.ts"
     }));
     await waitFor(() => expect(document.querySelectorAll('[data-pane-group="code"] .wb-terminal-tab.is-editor')).toHaveLength(1));
-    // The context menu stays mounted while its exit animation runs.
-    await waitFor(() => expect(screen.queryByRole("menuitem", { name: "Open File" })).toBeNull());
+    expect(contextMenuShow.mock.calls.at(-1)?.[0]?.items.map((item: { id?: string }) => item.id)).toEqual([
+      "open",
+      "open-default",
+      "copy-path"
+    ]);
 
+    contextMenuShow.mockResolvedValue("open-default");
     fireEvent.contextMenu(gitRow, { clientX: 40, clientY: 50 });
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Open with default app" }));
     await waitFor(() => expect(workbenchOpenPath).toHaveBeenCalledWith({
       rootPath: "/work/app/apps/desktop",
       filePath: "/work/app/apps/desktop/src/app.ts"
     }));
-    // The context menu stays mounted while its exit animation runs.
-    await waitFor(() => expect(screen.queryByRole("menuitem", { name: "Open with default app" })).toBeNull());
 
+    contextMenuShow.mockResolvedValue("copy-path");
     fireEvent.contextMenu(gitRow, { clientX: 40, clientY: 50 });
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Copy Path" }));
-    expect(clipboardWriteText).toHaveBeenCalledWith("/work/app/apps/desktop/src/app.ts");
-    await waitFor(() => expect(screen.queryByRole("menuitem", { name: "Copy Path" })).toBeNull());
+    await waitFor(() => expect(clipboardWriteText).toHaveBeenCalledWith("/work/app/apps/desktop/src/app.ts"));
   });
 
   it("opens the diff file in the editor from the diff head button", async () => {
@@ -7149,7 +7166,8 @@ describe("WorkbenchPanel", () => {
       listSessions: async () => [{ provider: "codex", id: "session-1", title: "App", projectPath: "/work/app", updatedAt: 1 }],
       workbenchListDirectory,
       workbenchInspectFile,
-      workbenchClipboardHasFiles: async () => ({ hasFiles: false })
+      workbenchClipboardHasFiles: async () => ({ hasFiles: false }),
+      contextMenuShow: async () => "preview"
     } as unknown as typeof window.agentResume;
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
@@ -7163,7 +7181,6 @@ describe("WorkbenchPanel", () => {
       return row!;
     });
     fireEvent.contextMenu(markdownLabel, { clientX: 20, clientY: 30 });
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Preview" }));
 
     // The file opens in the same editor tab directly in preview mode.
     await waitFor(() => expect(document.querySelector(".wb-editor-preview")).not.toBeNull());

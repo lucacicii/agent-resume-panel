@@ -85,17 +85,16 @@ describe("AppChrome", () => {
     renderChrome();
     await screen.findByRole("button", { name: "Account" });
 
-    const settingsOpen = vi.fn();
-    window.addEventListener("agent-resume:settings-open", settingsOpen);
+    const openSettingsWindow = vi.fn(async () => ({ ok: true }));
+    (window.agentResume as unknown as { openSettingsWindow: typeof openSettingsWindow }).openSettingsWindow = openSettingsWindow;
 
     fireEvent.click(screen.getByRole("button", { name: "Account" }));
     const settingsItem = await screen.findByRole("menuitem", { name: "Settings" });
     fireEvent.click(settingsItem);
 
-    expect(settingsOpen).toHaveBeenCalledWith(expect.objectContaining({ detail: "general" }));
+    // Settings is its own window, so the menu asks the main process for it.
+    await waitFor(() => expect(openSettingsWindow).toHaveBeenCalledWith({ pane: "general" }));
     // The menu stays mounted while its exit animation runs.
     await waitFor(() => expect(screen.queryByRole("menuitem", { name: "Settings" })).toBeNull());
-
-    window.removeEventListener("agent-resume:settings-open", settingsOpen);
   });
 });

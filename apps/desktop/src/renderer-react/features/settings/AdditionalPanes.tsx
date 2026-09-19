@@ -4,6 +4,7 @@ import type { WorkbenchComposerMention } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { Status, type StatusKind } from "../../components/Status";
+import { confirmAction, confirmDestructive } from "../../confirmAction";
 import { WORKBENCH_TERMINAL_THEME_IDS } from "../workbench/terminalThemes";
 import type { NotesDraft, StorageDraft, WorkbenchDraft } from "./model";
 import { formatShortcutForDisplay, WORKBENCH_NEW_SESSION_TARGET_OPTIONS } from "./model";
@@ -341,7 +342,7 @@ export function WorkbenchPane({ draft, setDraft, commit, t }: { draft: Workbench
     </div></section>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.gitCommitMessageGroup")}</h3><div className="settings-group-body">
       <SelectRow title={t("desktop.settings.gitCommitMessageStyle")} description={t("desktop.settings.gitCommitMessageStyleDesc")} value={draft.gitCommitMessageStyle} onChange={(value) => update("gitCommitMessageStyle", value as WorkbenchDraft["gitCommitMessageStyle"])}><option value="conventional">{t("desktop.settings.gitCommitMessageStyleConventional")}</option><option value="gitmoji">{t("desktop.settings.gitCommitMessageStyleGitmoji")}</option><option value="custom">{t("desktop.settings.gitCommitMessageStyleCustom")}</option></SelectRow>
-      {draft.gitCommitMessageStyle === "custom" ? <label className="settings-field"><span className="settings-field-label">{t("desktop.settings.gitCommitCustomInstructions")}</span><span className="settings-field-desc muted">{t("desktop.settings.gitCommitCustomInstructionsDesc")}</span><textarea rows={6} maxLength={4000} spellCheck={false} value={draft.gitCommitCustomInstructions} onChange={(event) => update("gitCommitCustomInstructions", event.target.value, { commit: false })} onBlur={() => commit(draft)} /></label> : null}
+      {draft.gitCommitMessageStyle === "custom" ? <label className="settings-field"><span className="settings-field-label">{t("desktop.settings.gitCommitCustomInstructions")}</span><span className="settings-field-desc muted">{t("desktop.settings.gitCommitCustomInstructionsDesc")}</span><textarea rows={6} maxLength={4000} spellCheck value={draft.gitCommitCustomInstructions} onChange={(event) => update("gitCommitCustomInstructions", event.target.value, { commit: false })} onBlur={() => commit(draft)} /></label> : null}
     </div></section>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.gitNestedScanGroup")}</h3><div className="settings-group-body">
       <SelectRow title={t("desktop.settings.gitNestedScanMaxDepth")} description={t("desktop.settings.gitNestedScanMaxDepthDesc")} value={draft.gitNestedScanMaxDepth} onChange={(value) => update("gitNestedScanMaxDepth", Number(value))}>{Array.from({ length: 10 }, (_, index) => <option key={index + 1} value={index + 1}>{index + 1}</option>)}</SelectRow>
@@ -456,7 +457,7 @@ export function BackupPane({ t }: { t: Translate }) {
       setBackupStatus({ text: t("desktop.backup.passwordRequired"), kind: "error" });
       return;
     }
-    if (!window.confirm(t("desktop.backup.importConfirm", pendingImport.fileCount))) return;
+    if (!(await confirmDestructive(t("desktop.backup.importConfirm", pendingImport.fileCount), t("desktop.common.confirm")))) return;
     setBackupProgress({ operation: "import", phase: "preparing", percent: 0 });
     setBackupBusy(true);
     try {
@@ -639,7 +640,7 @@ export function LogsPane({ t }: { t: Translate }) {
   }, [load]);
 
   const clear = async () => {
-    if (!window.confirm(t("desktop.logs.clearConfirm"))) {
+    if (!(await confirmDestructive(t("desktop.logs.clearConfirm"), t("desktop.common.clear")))) {
       return;
     }
     setBusy(true);
