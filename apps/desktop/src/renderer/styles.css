@@ -12,8 +12,9 @@
    * translucent so the desktop behind the window tints them a little, while
    * cards and inputs stay opaque so text keeps its contrast.
    */
-  --color-content-bg: rgba(245, 245, 247, 0.88);
-  --color-sidebar-bg: rgba(246, 246, 246, 0.5);
+  --color-content-bg: rgba(245, 245, 247, 0.82);
+  --color-pane-bg: rgba(245, 245, 247, 0.88);
+  --color-sidebar-bg: rgba(246, 246, 246, 0.42);
   --color-control-bg: #ffffff;
   --color-secondary-bg: #ebebf0;
   --color-tertiary-bg: #e5e5ea;
@@ -163,7 +164,7 @@
   --agent-chat: var(--accent);
 
   /* Workbench terminal (matches xterm theme) */
-  --wb-terminal-surface: #f5f5f7;
+  --wb-terminal-surface: rgba(245, 245, 247, 0.88);
   --wb-terminal-tab-active-label: rgba(0, 0, 0, 0.88);
 
   /* Workbench git graph lanes */
@@ -182,8 +183,9 @@
 [data-theme="light"] {
   color-scheme: light;
   --color-window-bg: #f5f5f7;
-  --color-content-bg: rgba(245, 245, 247, 0.88);
-  --color-sidebar-bg: rgba(246, 246, 246, 0.5);
+  --color-content-bg: rgba(245, 245, 247, 0.82);
+  --color-pane-bg: rgba(245, 245, 247, 0.88);
+  --color-sidebar-bg: rgba(246, 246, 246, 0.42);
   --color-control-bg: #ffffff;
   --color-secondary-bg: #ebebf0;
   --color-tertiary-bg: #e5e5ea;
@@ -225,7 +227,7 @@
   --shadow-popover: 0 0 0 0.5px rgba(0, 0, 0, 0.08), 0 4px 16px rgba(0, 0, 0, 0.12), 0 12px 32px rgba(0, 0, 0, 0.06);
   --shadow-spotlight: 0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 8px 24px rgba(0, 0, 0, 0.14), 0 24px 60px rgba(0, 0, 0, 0.16);
   --shadow-segment-thumb: 0 1px 2px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.05);
-  --wb-terminal-surface: #f5f5f7;
+  --wb-terminal-surface: rgba(245, 245, 247, 0.88);
   --wb-terminal-tab-active-label: rgba(0, 0, 0, 0.88);
 
   /* Markdown Typography & Element Colors (Light Mode) */
@@ -247,8 +249,9 @@
 [data-theme="dark"] {
   color-scheme: dark;
   --color-window-bg: #1e1e1e;
-  --color-content-bg: rgba(30, 30, 30, 0.88);
-  --color-sidebar-bg: rgba(30, 30, 30, 0.5);
+  --color-content-bg: rgba(30, 30, 30, 0.82);
+  --color-pane-bg: rgba(30, 30, 30, 0.88);
+  --color-sidebar-bg: rgba(30, 30, 30, 0.42);
   --color-control-bg: #2c2c2e;
   --color-secondary-bg: #3a3a3c;
   --color-tertiary-bg: #48484a;
@@ -290,7 +293,7 @@
   --shadow-popover: 0 0 0 0.5px rgba(255, 255, 255, 0.12), 0 6px 20px rgba(0, 0, 0, 0.4), 0 16px 40px rgba(0, 0, 0, 0.25);
   --shadow-spotlight: 0 0 0 0.5px rgba(255, 255, 255, 0.15), 0 8px 30px rgba(0, 0, 0, 0.5), 0 24px 70px rgba(0, 0, 0, 0.35);
   --shadow-segment-thumb: 0 1px 3px rgba(0, 0, 0, 0.35), 0 0 0 0.5px rgba(255, 255, 255, 0.12);
-  --wb-terminal-surface: #1e1e1e;
+  --wb-terminal-surface: rgba(30, 30, 30, 0.88);
   --wb-terminal-tab-active-label: rgba(255, 255, 255, 0.88);
 
   /* Markdown Typography & Element Colors (Dark Mode) */
@@ -322,8 +325,9 @@
   :root:not([data-theme="light"]) {
     color-scheme: dark;
     --color-window-bg: #1e1e1e;
-    --color-content-bg: rgba(30, 30, 30, 0.88);
-    --color-sidebar-bg: rgba(30, 30, 30, 0.5);
+    --color-content-bg: rgba(30, 30, 30, 0.82);
+    --color-pane-bg: rgba(30, 30, 30, 0.88);
+    --color-sidebar-bg: rgba(30, 30, 30, 0.42);
     --color-control-bg: #2c2c2e;
     --color-secondary-bg: #3a3a3c;
     --color-tertiary-bg: #48484a;
@@ -365,7 +369,7 @@
     --shadow-popover: 0 0 0 0.5px rgba(255, 255, 255, 0.12), 0 6px 20px rgba(0, 0, 0, 0.4), 0 16px 40px rgba(0, 0, 0, 0.25);
     --shadow-spotlight: 0 0 0 0.5px rgba(255, 255, 255, 0.15), 0 8px 30px rgba(0, 0, 0, 0.5), 0 24px 70px rgba(0, 0, 0, 0.35);
     --shadow-segment-thumb: 0 1px 3px rgba(0, 0, 0, 0.35), 0 0 0 0.5px rgba(255, 255, 255, 0.12);
-    --wb-terminal-surface: #1e1e1e;
+    --wb-terminal-surface: rgba(30, 30, 30, 0.88);
     --wb-terminal-tab-active-label: rgba(255, 255, 255, 0.88);
 
     /* Markdown Typography & Element Colors (Dark Mode system preference) */
@@ -536,6 +540,14 @@ html[data-window-mode="settings"] .settings-main {
   html[data-window-mode="main"] .gtd-board,
   html[data-window-mode="task"] .wb-detail,
   html[data-window-mode="settings"] .settings-main {
+    background: var(--color-window-bg);
+  }
+
+  :root {
+    --color-pane-bg: var(--color-window-bg);
+  }
+
+  .wb-terminal-host {
     background: var(--color-window-bg);
   }
 }
@@ -4852,7 +4864,7 @@ code {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: var(--bg);
+  background: var(--color-pane-bg);
 }
 
 .wb-session-split-transcript .wb-side-pane {
@@ -4893,7 +4905,7 @@ code {
   align-items: center;
   justify-content: space-between;
   padding: 0 8px 0 12px;
-  background: var(--color-window-bg);
+  background: var(--color-pane-bg);
   border-bottom: 1px solid var(--color-separator);
   user-select: none;
 
@@ -5384,7 +5396,7 @@ body.is-pane-resizing-v * {
   flex-direction: column;
   min-height: 0;
   border-left: 1px solid var(--color-separator);
-  background: var(--color-window-bg);
+  background: var(--color-pane-bg);
 }
 
 .wb-side-panel.is-hidden {
@@ -7745,7 +7757,7 @@ body.is-pane-resizing-v * {
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
-  background: var(--color-window-bg);
+  background: var(--color-pane-bg);
 }
 
 .wb-diff-code-view > * {
@@ -7800,7 +7812,7 @@ body.is-pane-resizing-v * {
   flex-direction: column;
   flex: 0 0 auto;
   min-width: 0;
-  background: var(--color-window-bg);
+  background: var(--color-pane-bg);
 }
 
 /* Safari/Finder style segmented tab bar */
@@ -7811,7 +7823,7 @@ body.is-pane-resizing-v * {
   height: 32px;
   padding: 0;
   border-bottom: 0.5px solid var(--color-separator);
-  background: var(--color-window-bg);
+  background: var(--color-pane-bg);
   flex-shrink: 0;
 }
 
@@ -8834,7 +8846,7 @@ select.wb-acp-toolbar-select option {
 }
 
 .wb-editor-pane {
-  background: var(--color-window-bg);
+  background: var(--color-pane-bg);
   display: flex;
   flex: 1;
   min-height: 0;
@@ -8889,7 +8901,7 @@ select.wb-acp-toolbar-select option {
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
-  background: var(--color-window-bg);
+  background: var(--color-pane-bg);
 }
 
 textarea.wb-editor-host {
@@ -8912,7 +8924,7 @@ textarea.wb-editor-host {
   overflow: auto;
   padding: 12px 16px 24px;
   box-sizing: border-box;
-  background: var(--color-window-bg);
+  background: var(--color-pane-bg);
   color: var(--color-label-primary);
   font-size: 13px;
   line-height: 1.55;
@@ -11445,7 +11457,7 @@ body.is-pane-resizing-row * {
   min-height: 0;
   min-width: 0;
   overflow: hidden;
-  background: var(--bg);
+  background: var(--color-pane-bg);
 }
 
 .notes-link-tree-panel {
@@ -11456,7 +11468,7 @@ body.is-pane-resizing-row * {
   flex-direction: column;
   background:
     linear-gradient(180deg, var(--color-fill-quaternary, rgba(128, 128, 128, 0.1)) 0%, transparent 100%),
-    var(--color-control-bg, var(--bg, #fff));
+    var(--color-pane-bg);
 }
 
 .notes-link-tree-head {
@@ -11924,7 +11936,7 @@ body.is-pane-resizing-row * {
   border-radius: 8px;
   overflow: hidden;
   box-sizing: border-box;
-  background: var(--bg);
+  background: var(--color-pane-bg);
 }
 
 textarea.notes-editor-host {
