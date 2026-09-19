@@ -8,6 +8,28 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## English
 
+### [0.2.29]
+
+#### Added
+
+- **Native menu bar**: **File** (New note, New terminal, Recent notes, Close tab, Close window), **Edit** (undo/redo, cut/copy/paste, Paste and Match Style, select all, **Find** ⌘F, **Find in files** ⇧⌘F, spelling, substitutions, speech), **View** (Quick access ⌘P, Command palette ⇧⌘P, zoom, full screen), **Window** (minimize, zoom, the open-window list, bring all to front) and **Help**. Every standard role keeps an explicit localized label — macOS localizes selectors by system language, so an app in another language used to show English titles — and the menu bar is now the single owner of every shortcut the app implements. Right-clicking the Dock icon opens the app's own menu (New note, Recent notes, board)
+- **Native context menus**: the explorer, tab, note, editor and Git right-click menus are real `NSMenu`s — system highlight, edge flipping, keyboard navigation, and the standard editing commands, Services, and share entries. Only surfaces an `NSMenu` cannot express (tag grids, agent pickers, colour swatches) keep a DOM menu, now sharing one placement and keyboard hook. Menu specs coming from the renderer are clamped in the main process (60 items, 3 levels, label and id length)
+- **Native alerts**: confirmations are `NSAlert`s instead of `window.confirm` — the app icon, the system appearance and language, and a verb button that names the action (`Delete`, `Discard`). A destructive alert lists **Cancel** first and keeps Return on Cancel, while a plain question defaults to the confirm button
+- **System accent colour**: selection, focus rings, tinted fills, and Markdown links follow the accent colour from **System Settings → Appearance**, and change with it while the app runs
+- **Translucent workbench and note windows**: they adopt the macOS sidebar vibrancy material, and the content and sidebar surfaces are translucent on every window. Cards and inputs stay opaque so text keeps its contrast, with an opaque fallback under **Reduce transparency**
+
+#### Changed
+
+- **Native chrome follows the app theme**: picking Light or Dark in Settings now also sets the native appearance, so menus, alerts, window frames, scrollbars, and the menu bar icon no longer disagree with a Light app on a Dark macOS
+- **Tooltips**: the custom DOM tooltip component is gone; tooltips are the system's own (`title`), with the platform's delay, appearance, and language
+- **Settings window**: the account menu and ⌘, open Settings in its own window instead of taking over the current one
+- **Menu bar icon**: with no live sessions the item is a monochrome template image, so it stays right in light mode, dark mode, and over a tinted menu bar; colour is reserved for status dots
+- **Standalone note window**: the window now carries the note title and the macOS edited dot while the note has unsaved changes
+
+#### Removed
+
+- **Workbench Link Graph**: the Link Graph side panel (toolbar button, editor context-menu action, quick access entry, and its `linkgraph:analyze` / `linkgraph:cancel` / `linkgraph:progress` IPC) is gone, together with the `link_graph_trace` MCP tool and the core link-graph engine it shared. The Desktop/MCP tool set drops from 33 to 32
+
 ### [0.2.28]
 
 #### Changed
@@ -19,7 +41,6 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 #### Removed
 
-- **Workbench Link Graph**: the Link Graph side panel (toolbar button, editor context-menu action, quick access entry, and its `linkgraph:analyze` / `linkgraph:cancel` / `linkgraph:progress` IPC) is gone, together with the `link_graph_trace` MCP tool and the core link-graph engine it shared. The Desktop/MCP tool set drops from 33 to 32
 - **Agent actions setting**: the dead **General → Agent actions** toggle is gone. The live permission control is **Workbench → ACP permissions**
 - **Dead desktop settings**: `desktop.windowWidth/Height`, `alwaysAllowAgent*`, unused `desktop.browser.*` fields (cookie import, download/snapshot policy, window bounds, read-tool auto-allow), `workbench.gitNestedScanMaxRepos`, and the retired `report.*` block (the digest scheduler uses code defaults)
 - **Project context menu**: projects are no longer a browsable list, so the **Settings → Workbench → Project context menu** group and the workbench project right-click menu are gone. This removes the `workbench.projectContextMenu` setting and the project pin / rename / hide / merge / split / reveal / copy-path / set-local-folder / open-in-editor actions together with their IPC routes (`projects:hide`, `projects:setPinned`, `projects:pickLocalPath`, `projects:setLocalPath`, `projects:setAlias`, `projects:revealInFinder`, `projects:copyLocalPath`, `projects:listPathVariants`, `projects:merge`, `projects:splitPath`, `workbench:openProjectInEditor`)
@@ -633,6 +654,28 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 ---
 
 ## 简体中文
+
+### [0.2.29]
+
+#### 新增
+
+- **原生菜单栏**：新增完整的 macOS 菜单栏 —— **文件**（新建笔记、新建终端、最近笔记、关闭标签页、关闭窗口）、**编辑**（撤销/重做、剪切/复制/粘贴、粘贴并匹配样式、全选、**查找** ⌘F、**在文件中查找** ⇧⌘F、拼写检查、替换、语音）、**显示**（快速访问 ⌘P、命令面板 ⇧⌘P、缩放、全屏）、**窗口**（最小化、缩放、打开的窗口列表、前置全部窗口）与 **帮助**。所有标准角色都保留显式本地化标题——macOS 按系统语言本地化选择器，此前非英文界面在英文系统下会显示英文标题；菜单栏现在统一承载应用实现的全部快捷键。右键 Dock 图标会弹出应用自己的菜单（新建笔记、最近笔记、看板）
+- **原生右键菜单**：文件树、标签页、笔记、编辑器与 Git 的右键菜单改为真正的 `NSMenu`——系统高亮、贴边翻转、键盘操作，以及标准编辑命令、服务与共享项。只有 `NSMenu` 无法表达的表面（标签网格、agent 选择器、颜色样本）保留 DOM 菜单，并共用同一套定位与键盘钩子。渲染层提交的菜单定义在主进程做上限裁剪（60 项、3 层、标题与 id 长度）
+- **原生弹窗**：确认提示改用 `NSAlert`，不再使用 `window.confirm`——带应用图标、跟随系统外观与语言，按钮直接写明动作（「删除」「丢弃」）。破坏性操作把 **取消** 放在首位且回车默认落在取消；普通询问默认落在确认按钮
+- **系统强调色**：选中态、焦点环、浅色填充与 Markdown 链接跟随 **系统设置 → 外观** 的强调色，运行中修改即时生效
+- **半透明 Workbench 与笔记窗口**：窗口改用 macOS 侧边栏毛玻璃材质，各窗口的内容与侧边栏底色变为半透明。卡片与输入框保持不透明以确保文字对比度，开启 **降低透明度** 时回退为不透明
+
+#### 变更
+
+- **原生外观跟随应用主题**：在设置中选择浅色/深色时会同步设置原生外观，菜单、弹窗、窗口边框、滚动条与菜单栏图标不再与浅色（或深色）的应用界面不一致
+- **提示气泡**：移除自研 DOM Tooltip 组件，改用系统自带提示（`title`），延时、外观与语言都交给平台
+- **设置窗口**：账户菜单与 ⌘, 改为在独立窗口中打开设置，不再接管当前窗口
+- **菜单栏图标**：无活动会话时使用单色模板图标，在浅色、深色与有色菜单栏下都正确显示；颜色只留给状态圆点
+- **独立笔记窗口**：窗口会带上笔记标题，有未保存修改时显示 macOS「已编辑」圆点
+
+#### 移除
+
+- **Workbench 链路图**：链路图侧边面板（工具栏按钮、编辑器右键菜单项、快速访问入口，及其 `linkgraph:analyze` / `linkgraph:cancel` / `linkgraph:progress` IPC）已移除，同时删除共享的 `link_graph_trace` MCP 工具与 core 链路图引擎。Desktop / MCP 工具数从 33 降到 32
 
 ### [0.2.28]
 
