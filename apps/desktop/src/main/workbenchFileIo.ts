@@ -41,7 +41,7 @@ function isPathWithinRoot(targetPath: string, rootPath: string): boolean {
 function resolveLexicalWorkbenchPath(rootPath: string, targetPath: string): string {
   const resolvedRoot = path.resolve(expandHome(rootPath.trim()));
   const raw = expandHome(targetPath.trim());
-  // Relative paths are project-relative (e.g. search / link-graph hops), not CWD-relative.
+  // Relative paths are project-relative (e.g. search hops), not CWD-relative.
   const resolvedTarget = path.isAbsolute(raw)
     ? path.resolve(raw)
     : path.resolve(resolvedRoot, raw);

@@ -38,6 +38,6 @@ Do not edit extension `apps/extension/locales/` for desktop UI copy.
 - Keep `contextIsolation: true` and `nodeIntegration: false`.
 - A workbench exists in exactly one window: `workbenchId` is the window key, and the board window hosts no workbench. Anything that opens a session (task card, chip, tray dot, waiting notification, resumed session) must route through `taskWindows.ts` rather than assuming the board window can host a pane.
 - Any new capability follows main handler, preload method, and renderer call as one contract change.
-- Desktop UI visual work must follow [`.agents/extended/ui-design-system.md`](../extended/ui-design-system.md) (macOS HIG tokens, components, migration phases).
+- Desktop UI visual work must follow [`.agents/extended/ui-policy.md`](../extended/ui-policy.md) (Electron desktop rules) and the Apple macOS HIG. macOS conformance rules live in that policy file — read it before touching windows, menus, dialogs, or appearance.
 - Use `pnpm run build:desktop` for compilation and asset verification; use `pnpm run dev:desktop` for interactive checks. `build:desktop` runs both desktop type checks, but it is a distribution step — during development run `pnpm run typecheck:desktop` (root) instead, since neither root `compile` nor `test:renderer` type-checks desktop code.
 - Desktop releases are independent: bump `apps/desktop/package.json`, then `pnpm run release:desktop:mac`.

@@ -7,7 +7,7 @@ import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateA
  * unmounts them on the same frame and the reverse animation can never run. Both
  * hooks keep the overlay mounted for `OVERLAY_EXIT_MS` while reporting `closing`,
  * which the caller turns into the `.is-closing` class that drives the `*-out`
- * keyframes (design system §4.21).
+ * keyframes in `renderer/styles.css`.
  */
 
 /** `--duration-normal` (220ms) plus one frame of slack for the unmount. */
@@ -85,4 +85,19 @@ export function useOverlayState<T>(): [T | null, Dispatch<SetStateAction<T | nul
   }, [cancelExit]);
 
   return [value, setOverlayValue, closing];
+}
+
+/**
+ * A ref that is true while the component is mounted.
+ *
+ * Async work that resumes after an `await` — a native context menu, a native
+ * alert, a bridge call — must not touch state or call back into the app once the
+ * window or pane is gone. Guard those continuations with this.
+ */
+export function useMountedRef() {
+  const mounted = useRef(true);
+  useEffect(() => () => {
+    mounted.current = false;
+  }, []);
+  return mounted;
 }

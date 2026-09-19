@@ -1,5 +1,5 @@
 import { BrowserWindow, screen, type NativeImage } from "electron";
-import { windowBackgroundColor } from "./windowAppearance";
+import { WINDOW_BACKGROUND_TRANSPARENT, windowBackgroundColor } from "./windowAppearance";
 
 /**
  * Task workbench windows.
@@ -159,9 +159,19 @@ export function openTaskWindow(deps: TaskWindowDeps, args: OpenTaskWindowArgs): 
     ...MIN_SIZE,
     title,
     show: false,
-    // Electron's default background is white, and a window composites it while its
-    // webContents is torn down — leaving it unset flashes white on close.
-    backgroundColor: windowBackgroundColor(),
+    // Workbench windows are translucent like the board: the window header and the
+    // task/session list are a sidebar, everything else is content and opaque.
+    ...(process.platform === "darwin"
+      ? {
+          vibrancy: "sidebar" as const,
+          visualEffectState: "followWindow" as const,
+          backgroundColor: WINDOW_BACKGROUND_TRANSPARENT
+        }
+      : {
+          // Electron's default background is white, and a window composites it
+          // while its webContents is torn down — unset flashes white on close.
+          backgroundColor: windowBackgroundColor()
+        }),
     ...(deps.icon ? { icon: deps.icon } : {}),
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     trafficLightPosition: process.platform === "darwin" ? { x: 14, y: 14 } : undefined,

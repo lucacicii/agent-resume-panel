@@ -57,6 +57,45 @@ export function applyDesktopAppearance(state: DesktopAppearanceState): void {
   root.style.colorScheme = state.appearance;
 }
 
+/**
+ * Inject the user's macOS accent colour.
+ *
+ * `styles.css` keeps `--color-accent` and everything derived from it (hover,
+ * active, tinted fill, focus ring, Markdown links) pointing at `--accent-base`,
+ * so setting one custom property re-themes selection and focus app-wide. A null
+ * or malformed value removes the override and the CSS fallback applies.
+ */
+export function applySystemAccent(accent: string | null | undefined): void {
+  const root = document.documentElement;
+  if (typeof accent === "string" && /^#[0-9a-f]{6}$/i.test(accent)) {
+    root.style.setProperty("--accent-base", accent.toLowerCase());
+  } else {
+    root.style.removeProperty("--accent-base");
+  }
+}
+
+/**
+ * Apply the current accent and follow System Settings → Appearance while the
+ * app runs. Returns the unsubscribe function.
+ */
+export function startSystemAccentSync(): () => void {
+  const api = window.agentResume;
+  if (typeof api?.systemAccent !== "function") return () => undefined;
+  let active = true;
+  void api.systemAccent()
+    .then((accent) => {
+      if (active) applySystemAccent(accent);
+    })
+    .catch(() => undefined);
+  const stop = typeof api.onSystemAccentChanged === "function"
+    ? api.onSystemAccentChanged((accent) => applySystemAccent(accent))
+    : undefined;
+  return () => {
+    active = false;
+    stop?.();
+  };
+}
+
 export function appThemeTerminal(_state: DesktopAppearanceState): Record<string, string> {
   return { ...CLASSIC_TERMINAL };
 }

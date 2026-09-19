@@ -14,9 +14,10 @@ import { taskFromRecord } from "./features/workbench/task";
 import { GtdView } from "./features/gtd/GtdView";
 import { BoardQuickAccess } from "./features/gtd/BoardQuickAccess";
 import { settingsChangedToCustomEvents } from "./settingsBroadcast";
+import { startMenuCommandBridge } from "./menuCommands";
 import { updateConfig } from "./components/notificationStore";
 import type { PanelSettings } from "@agent-resume/core";
-import { applyDesktopAppearance, appearanceStateFromSettings, type DesktopAppearanceState } from "./themes";
+import { applyDesktopAppearance, appearanceStateFromSettings, startSystemAccentSync, type DesktopAppearanceState } from "./themes";
 
 export function applyTheme(settings: Parameters<typeof appearanceStateFromSettings>[0]): DesktopAppearanceState {
   const state = appearanceStateFromSettings(settings);
@@ -44,13 +45,14 @@ function syncNotificationConfig(settings: PanelSettings): void {
   });
 }
 
-function getDesktopWindowMode(): "main" | "standalone-note" | "browser" | "task" {
+function getDesktopWindowMode(): "main" | "standalone-note" | "browser" | "task" | "settings" {
   try {
     const params = new URLSearchParams(window.location.search);
     const mode = params.get("mode");
     if (mode === "standalone-note") return "standalone-note";
     if (mode === "browser") return "browser";
     if (mode === "task") return "task";
+    if (mode === "settings") return "settings";
     return "main";
   } catch {
     return "main";
@@ -77,6 +79,8 @@ function getStandaloneNoteId(): string {
 function MainRuntimeBootstrap(): null {
   useEffect(() => {
     let active = true;
+    const stopAccent = startSystemAccentSync();
+    const stopMenuCommands = startMenuCommandBridge();
     const onAppearanceChange = (event: Event) => applyAppearanceState((event as CustomEvent<DesktopAppearanceState>).detail);
     const onSystemAppearance = () => {
       void window.agentResume.getSettings().then((settings) => {
@@ -105,6 +109,8 @@ function MainRuntimeBootstrap(): null {
       window.removeEventListener("agent-resume:appearance-change", onAppearanceChange);
       media.removeEventListener("change", onSystemAppearance);
       stopSettings();
+      stopAccent();
+      stopMenuCommands();
     };
   }, []);
   return null;
@@ -113,6 +119,8 @@ function MainRuntimeBootstrap(): null {
 function SettingsRuntimeBootstrap(): null {
   useEffect(() => {
     let active = true;
+    const stopAccent = startSystemAccentSync();
+    const stopMenuCommands = startMenuCommandBridge();
     const onAppearanceChange = (event: Event) => applyAppearanceState((event as CustomEvent<DesktopAppearanceState>).detail);
     const onSystemAppearance = () => {
       void window.agentResume.getSettings().then((settings) => {
@@ -136,6 +144,8 @@ function SettingsRuntimeBootstrap(): null {
       window.removeEventListener("agent-resume:appearance-change", onAppearanceChange);
       media.removeEventListener("change", onSystemAppearance);
       stopSettings();
+      stopAccent();
+      stopMenuCommands();
     };
   }, []);
   return null;
@@ -149,12 +159,32 @@ function MainRendererReadySignal(): null {
   return null;
 }
 
+/**
+ * Track native fullscreen in the DOM.
+ *
+ * macOS hides the title bar in fullscreen, so the header must drop the
+ * traffic-light inset and its drag strip; `data-fullscreen` is what the
+ * stylesheet keys off.
+ */
+function WindowChromeRuntime(): null {
+  useEffect(() => {
+    const api = window.agentResume;
+    if (typeof api?.onWindowFullscreenChanged !== "function") return;
+    return api.onWindowFullscreenChanged((fullscreen) => {
+      if (fullscreen) document.documentElement.dataset.fullscreen = "true";
+      else delete document.documentElement.dataset.fullscreen;
+    });
+  }, []);
+  return null;
+}
+
 function MainDesktopRuntime(): React.JSX.Element {
   return (
     <I18nProvider>
       <MainRendererReadySignal />
       <StartupMask />
       <MainRuntimeBootstrap />
+      <WindowChromeRuntime />
       <MainRendererRuntime />
     </I18nProvider>
   );
@@ -173,10 +203,44 @@ function MainRendererRuntime(): React.JSX.Element {
       <AppChrome />
       <GtdView active />
       <BoardQuickAccess />
-      <SettingsPanel variant="embedded" />
       <SelectionSendHost />
       <Notifications />
     </>
+  );
+}
+
+function getSettingsPane(): string {
+  try {
+    return new URLSearchParams(window.location.search).get("pane") || "general";
+  } catch {
+    return "general";
+  }
+}
+
+/**
+ * Set the window title from the app's language.
+ *
+ * `hiddenInset` windows show no title, but plain windows (Settings, browser,
+ * notes) take theirs from `document.title`, which otherwise stays the English
+ * string in `index.html`.
+ */
+function WindowTitleRuntime({ titleKey }: { titleKey: string }): null {
+  const { ready, t } = useI18n();
+  useEffect(() => {
+    if (ready) document.title = t(titleKey);
+  }, [ready, t, titleKey]);
+  return null;
+}
+
+/** The Settings window: the panel is the whole window, not an overlay. */
+function SettingsDesktopRuntime(): React.JSX.Element {
+  return (
+    <I18nProvider>
+      <SettingsRuntimeBootstrap />
+      <WindowChromeRuntime />
+      <WindowTitleRuntime titleKey="desktop.settings.title" />
+      <SettingsPanel initialPane={getSettingsPane()} />
+    </I18nProvider>
   );
 }
 
@@ -190,6 +254,8 @@ function StandaloneNoteDesktopRuntime(): React.JSX.Element {
   return (
     <I18nProvider>
       <SettingsRuntimeBootstrap />
+      <WindowChromeRuntime />
+      <WindowTitleRuntime titleKey="desktop.standaloneNote.title" />
       {noteId ? <StandaloneNoteWindow noteId={noteId} /> : <StandaloneNoteMissingId />}
     </I18nProvider>
   );
@@ -199,6 +265,8 @@ function BrowserDesktopRuntime(): React.JSX.Element {
   return (
     <I18nProvider>
       <SettingsRuntimeBootstrap />
+      <WindowChromeRuntime />
+      <WindowTitleRuntime titleKey="desktop.browser.windowTitle" />
       <BrowserStandaloneWindow />
     </I18nProvider>
   );
@@ -274,6 +342,7 @@ function TaskDesktopRuntime(): React.JSX.Element {
   return (
     <I18nProvider>
       <MainRuntimeBootstrap />
+      <WindowChromeRuntime />
       <TaskRendererRuntime />
     </I18nProvider>
   );
@@ -281,11 +350,6 @@ function TaskDesktopRuntime(): React.JSX.Element {
 
 const windowMode = getDesktopWindowMode();
 document.documentElement.dataset.windowMode = windowMode;
-if (windowMode === "standalone-note") {
-  document.title = "Standalone Note";
-} else if (windowMode === "browser") {
-  document.title = "Browser";
-}
 
 const host = document.getElementById("react-chrome");
 if (host) {
@@ -303,9 +367,11 @@ if (host) {
           ? <StandaloneNoteDesktopRuntime />
           : windowMode === "browser"
             ? <BrowserDesktopRuntime />
-            : windowMode === "task"
-              ? <TaskDesktopRuntime />
-              : <MainDesktopRuntime />}
+            : windowMode === "settings"
+              ? <SettingsDesktopRuntime />
+              : windowMode === "task"
+                ? <TaskDesktopRuntime />
+                : <MainDesktopRuntime />}
       </StrictMode>
     );
   }

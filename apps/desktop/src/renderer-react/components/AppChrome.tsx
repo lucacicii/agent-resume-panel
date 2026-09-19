@@ -3,8 +3,8 @@ import { createPortal } from "react-dom";
 import { useEffect, useRef, useState } from "react";
 import { desktopApi } from "../bridge";
 import { useI18n } from "../i18n";
-import { Tooltip } from "./Tooltip";
 import { useOverlayPresence } from "./useOverlayMotion";
+import { useMenuKeyboard, useMenuPosition } from "./menuOverlay";
 import { BellNotificationButton } from "./BellNotificationButton";
 
 type FloatingNoteDot = { noteId: string; title: string };
@@ -72,6 +72,14 @@ export function AppChrome(): React.JSX.Element {
   }, [avatarMenuOpen]);
 
   const avatarMenu = useOverlayPresence(avatarMenuOpen);
+  const closeAvatarMenu = () => setAvatarMenuOpen(false);
+  // Anchored popover: the shared hook owns placement and the keyboard, like the
+  // system menu it stands in for.
+  useMenuPosition(avatarMenu.mounted, avatarMenuRef, {
+    x: Math.min(avatarBtnRef.current?.getBoundingClientRect().right ?? 8, window.innerWidth - 240),
+    y: avatarBtnRef.current?.getBoundingClientRect().bottom ?? 8
+  });
+  useMenuKeyboard(avatarMenu.mounted, avatarMenuRef, closeAvatarMenu);
 
   const focusNote = (dot: FloatingNoteDot) => {
     const api = desktopApi();
@@ -81,7 +89,8 @@ export function AppChrome(): React.JSX.Element {
 
   const openSettings = (pane = "general") => {
     setAvatarMenuOpen(false);
-    window.dispatchEvent(new CustomEvent("agent-resume:settings-open", { detail: pane }));
+    // Settings lives in its own window (⌘,), so ask the main process for it.
+    void desktopApi().openSettingsWindow?.({ pane }).catch(() => undefined);
   };
 
   const text = (key: string, fallback: string) => (ready ? t(key) : fallback);
@@ -94,39 +103,40 @@ export function AppChrome(): React.JSX.Element {
       {noteDots.length > 0 ? (
         <div className="app-note-dots" role="group" aria-label={text("desktop.notes.floatingDots", "Floating notes")}>
           {noteDots.map((dot) => (
-            <Tooltip key={dot.noteId} label={dot.title}>
-              <button
-                type="button"
-                className="app-note-dot-btn"
-                aria-label={dot.title}
-                onClick={() => focusNote(dot)}
-              >
-                <span className="app-note-dot" aria-hidden="true" />
-              </button>
-            </Tooltip>
+            <button
+              key={dot.noteId}
+              type="button"
+              className="app-note-dot-btn"
+              // System tooltip: `title` is drawn by the platform with its own
+              // delay, appearance, and language.
+              title={dot.title}
+              aria-label={dot.title}
+              onClick={() => focusNote(dot)}
+            >
+              <span className="app-note-dot" aria-hidden="true" />
+            </button>
           ))}
         </div>
       ) : null}
       <BellNotificationButton />
       <div className="app-account">
-        <Tooltip label={avatarLabel}>
-          <button
-            ref={avatarBtnRef}
-            type="button"
-            className={`app-account-btn${avatarMenuOpen ? " is-open" : ""}`}
-            aria-label={avatarLabel}
-            aria-haspopup="menu"
-            aria-expanded={avatarMenuOpen}
-            onClick={() => setAvatarMenuOpen((open) => !open)}
-          >
-            <span className="app-account-avatar" aria-hidden="true">
-              <ThemeIcon name="user" size={ICON_SIZE.default} />
-            </span>
-          </button>
-        </Tooltip>
+        <button
+          ref={avatarBtnRef}
+          type="button"
+          className={`app-account-btn${avatarMenuOpen ? " is-open" : ""}`}
+          title={avatarLabel}
+          aria-label={avatarLabel}
+          aria-haspopup="menu"
+          aria-expanded={avatarMenuOpen}
+          onClick={() => setAvatarMenuOpen((open) => !open)}
+        >
+          <span className="app-account-avatar" aria-hidden="true">
+            <ThemeIcon name="user" size={ICON_SIZE.default} />
+          </span>
+        </button>
         {avatarMenu.mounted
           ? createPortal(
-              <div ref={avatarMenuRef} className={`rail-account-menu${avatarMenu.closing ? " is-closing" : ""}`} role="menu" aria-label={avatarLabel}>
+              <div ref={avatarMenuRef} className={`rail-account-menu${avatarMenu.closing ? " is-closing" : ""}`} role="menu" aria-label={avatarLabel} style={{ visibility: "hidden" }}>
                 <button
                   type="button"
                   role="menuitem"

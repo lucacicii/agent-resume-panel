@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { ICON_SIZE } from "./ThemeIcon";
 
 /**
- * Static guard for the Desktop icon contract (ui-design-system.md §4.22).
+ * Static guard for the Desktop icon contract.
  *
  * Icons have exactly one entry point (`ThemeIcon`), one size ladder, one stroke
  * weight and no per-component sizing in CSS. These rules used to drift across

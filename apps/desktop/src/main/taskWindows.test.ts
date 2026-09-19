@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 type FakeListener = (...args: unknown[]) => void;
 
-import { WINDOW_BACKGROUND_DARK, WINDOW_BACKGROUND_LIGHT } from "./windowAppearance";
+import { WINDOW_BACKGROUND_DARK, WINDOW_BACKGROUND_LIGHT, WINDOW_BACKGROUND_TRANSPARENT } from "./windowAppearance";
 
 const fake = vi.hoisted(() => {
   const windows: Array<Record<string, unknown>> = [];
@@ -181,14 +181,22 @@ describe("task workbench windows", () => {
     expect(again.onChange).not.toHaveBeenCalled();
   });
 
-  it("gives a workbench window the themed background instead of Electron's white default", () => {
+  it("makes a workbench window translucent on macOS and themed elsewhere", () => {
     openTaskWindow(deps(), { noteId: "note-1", workbenchId: "wb-light" });
     fake.nativeTheme.shouldUseDarkColors = true;
     openTaskWindow(deps(), { noteId: "note-2", workbenchId: "wb-dark" });
 
-    // Leaving `backgroundColor` unset makes the window flash white while its
-    // webContents is torn down on close.
     const [light, dark] = fake.windows as Array<{ options: Record<string, unknown> }>;
+    if (process.platform === "darwin") {
+      // The window header and the task list show the desktop through, so the
+      // window must not paint a colour of its own. `transparent` stays off: on
+      // macOS it makes the window frameless.
+      expect(light!.options.backgroundColor).toBe(WINDOW_BACKGROUND_TRANSPARENT);
+      expect(light!.options.vibrancy).toBe("sidebar");
+      expect(light!.options.transparent).toBeUndefined();
+      return;
+    }
+    // Elsewhere the themed background is what keeps the close from flashing white.
     expect(light!.options.backgroundColor).toBe(WINDOW_BACKGROUND_LIGHT);
     expect(dark!.options.backgroundColor).toBe(WINDOW_BACKGROUND_DARK);
   });

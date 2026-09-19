@@ -11,6 +11,8 @@ import {
 import { desktopApi } from "../../bridge";
 import { notifyDesktop } from "../../components/Notifications";
 import { useI18n } from "../../i18n";
+import { contextMenuPoint, showContextMenuAt, type NativeContextMenuItem } from "../../nativeContextMenu";
+import { useMountedRef } from "../../components/useOverlayMotion";
 import { startWorkbenchPathDrag } from "./workbenchDnd";
 
 type DesktopApi = ReturnType<typeof desktopApi>;
@@ -21,20 +23,13 @@ interface ExplorerTarget {
   isDirectory: boolean;
 }
 
-interface ExplorerContextMenu {
-  x: number;
-  y: number;
-  target: ExplorerTarget;
-  clipboardHasFiles: boolean;
-}
-
 export interface WorkbenchFileExplorerHandle {
   refresh: () => Promise<void>;
   revealPath: (targetPath: string) => Promise<void>;
 }
 
 // File-type accents are the single sanctioned icon color exception; everything
-// else inherits `currentColor`. See ui-design-system.md §4.22.
+// else inherits `currentColor`. See themeIconContract.test.ts.
 const FILE_ICON_COLORS = {
   folder: "#dcb67a"
 } as const;
@@ -236,8 +231,8 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
   const [directories, setDirectories] = useState<Record<string, DirectoryEntry[]>>({});
   const [openDirectories, setOpenDirectories] = useState<Set<string>>(new Set());
   const [selectedPath, setSelectedPath] = useState("");
-  const [contextMenu, setContextMenu] = useState<ExplorerContextMenu | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const mountedRef = useMountedRef();
   const rootsRef = useRef(roots);
   rootsRef.current = roots;
   /** Identity of the root set; changes reset the tree even when the array reference is new. */
@@ -283,22 +278,6 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
     });
     return () => window.cancelAnimationFrame(frame);
   }, [activePath, directories, openDirectories, rootForPath]);
-
-  useEffect(() => {
-    if (!contextMenu) return;
-    const close = () => setContextMenu(null);
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") close();
-    };
-    window.addEventListener("pointerdown", close);
-    window.addEventListener("blur", close);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("pointerdown", close);
-      window.removeEventListener("blur", close);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [contextMenu]);
 
   const loadDirectory = useCallback(async (targetRoot: string, directoryPath: string) => {
     const sequence = (loadSequenceRef.current.get(directoryPath) || 0) + 1;
@@ -402,7 +381,6 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
     setDirectories({});
     setOpenDirectories(new Set(currentRoots));
     setSelectedPath("");
-    setContextMenu(null);
     for (const root of currentRoots) void loadDirectory(root, root);
   }, [loadDirectory, rootsKey]);
 
@@ -469,7 +447,6 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
   const copyTarget = async (target: ExplorerTarget) => {
     const targetRoot = rootForPath(target.path);
     if (!targetRoot) return;
-    setContextMenu(null);
     try {
       await desktopApi().workbenchCopyPath({ rootPath: targetRoot, sourcePath: target.path });
       reportStatus(t("desktop.workbench.explorerCopied", basename(target.path)));
@@ -479,7 +456,6 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
   };
 
   const copyPathTarget = (target: ExplorerTarget) => {
-    setContextMenu(null);
     try {
       desktopApi().clipboardWriteText(target.path);
       reportStatus(t("desktop.workbench.explorerPathCopied"));
@@ -491,7 +467,6 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
   const pasteTarget = async (target: ExplorerTarget) => {
     const targetRoot = rootForPath(target.path);
     if (!targetRoot) return;
-    setContextMenu(null);
     const targetDirectory = target.isDirectory ? target.path : parentPath(target.path);
     try {
       const result = await desktopApi().workbenchPastePaths({ rootPath: targetRoot, targetDirectory });
@@ -517,7 +492,6 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
   const revealTarget = async (target: ExplorerTarget) => {
     const targetRoot = rootForPath(target.path);
     if (!targetRoot) return;
-    setContextMenu(null);
     try {
       await desktopApi().workbenchRevealPath({ rootPath: targetRoot, targetPath: target.path });
     } catch (error) {
@@ -527,7 +501,6 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
 
   const showGitHistoryTarget = async (target: ExplorerTarget) => {
     if (target.isDirectory || !onShowGitHistory) return;
-    setContextMenu(null);
     await onShowGitHistory(target.path);
   };
 
@@ -536,27 +509,53 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
     // A file scopes to its containing folder; a folder scopes to itself.
     const scope = target.isDirectory ? target.path : parentPath(target.path);
     if (!scope) return;
-    setContextMenu(null);
     void onFindInFolder(scope);
   };
 
   const previewTarget = (target: ExplorerTarget) => {
     if (target.isDirectory || !onOpenPreview) return;
-    setContextMenu(null);
     void onOpenPreview(target.path);
   };
 
-  const openContextMenu = (event: React.MouseEvent<HTMLElement>, target: ExplorerTarget) => {
+  /** Native menu: the clipboard check has to settle before the menu can gray Paste. */
+  const openContextMenu = async (event: React.MouseEvent<HTMLElement>, target: ExplorerTarget) => {
     event.preventDefault();
     event.stopPropagation();
     event.currentTarget.focus();
     setSelectedPath(target.path);
-    setContextMenu({ x: event.clientX, y: event.clientY, target, clipboardHasFiles: false });
-    void desktopApi().workbenchClipboardHasFiles()
-      .then((result) => setContextMenu((current) => current && current.target.path === target.path
-        ? { ...current, clipboardHasFiles: result.hasFiles }
-        : current))
-      .catch(() => undefined);
+    let clipboardHasFiles = false;
+    try {
+      clipboardHasFiles = (await desktopApi().workbenchClipboardHasFiles()).hasFiles;
+    } catch {
+      // Paste stays disabled when the clipboard cannot be read.
+    }
+    if (!mountedRef.current) return;
+    const items: NativeContextMenuItem[] = [];
+    if (!target.isDirectory && isMarkdownFilePath(target.path) && onOpenPreview) {
+      items.push({ id: "preview", label: t("desktop.workbench.preview") });
+    }
+    items.push(
+      { id: "copy", label: t("desktop.common.copy") },
+      { id: "copy-path", label: t("desktop.common.copyPath") },
+      { id: "paste", label: t("desktop.common.paste"), enabled: clipboardHasFiles },
+      { type: "separator" }
+    );
+    if (!target.isDirectory && onShowGitHistory) {
+      items.push({ id: "git-history", label: t("desktop.workbench.explorerGitFileHistory") });
+    }
+    if (onFindInFolder) items.push({ id: "find-in-folder", label: t("desktop.workbench.findInFolder") });
+    items.push({ id: "reveal", label: t("desktop.workbench.explorerRevealInFinder") });
+
+    const choice = await showContextMenuAt(contextMenuPoint(event), items);
+    // A menu can outlive its window; never act on an unmounted tree.
+    if (!mountedRef.current) return;
+    if (choice === "preview") previewTarget(target);
+    else if (choice === "copy") void copyTarget(target);
+    else if (choice === "copy-path") copyPathTarget(target);
+    else if (choice === "paste") void pasteTarget(target);
+    else if (choice === "git-history") void showGitHistoryTarget(target);
+    else if (choice === "find-in-folder") findInFolderTarget(target);
+    else if (choice === "reveal") void revealTarget(target);
   };
 
   const handleTreeKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -654,26 +653,5 @@ export const WorkbenchFileExplorer = forwardRef<WorkbenchFileExplorerHandle, {
         </Fragment>;
       }) : <p className="muted wb-file-tree-empty">{t("desktop.workbench.sidePanelNoRoot")}</p>}
     </div>
-    {contextMenu ? <div
-      className="wb-context-menu wb-explorer-context-menu"
-      role="menu"
-      style={{
-        left: Math.max(8, Math.min(contextMenu.x, window.innerWidth - 188)),
-        top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - 190))
-      }}
-      onPointerDown={(event) => event.stopPropagation()}
-      onContextMenu={(event) => event.preventDefault()}
-    >
-      {!contextMenu.target.isDirectory && isMarkdownFilePath(contextMenu.target.path) && onOpenPreview
-        ? <button type="button" role="menuitem" onClick={() => void previewTarget(contextMenu.target)}>{t("desktop.workbench.preview")}</button>
-        : null}
-      <button type="button" role="menuitem" onClick={() => void copyTarget(contextMenu.target)}>{t("desktop.common.copy")}</button>
-      <button type="button" role="menuitem" onClick={() => copyPathTarget(contextMenu.target)}>{t("desktop.common.copyPath")}</button>
-      <button type="button" role="menuitem" disabled={!contextMenu.clipboardHasFiles} onClick={() => void pasteTarget(contextMenu.target)}>{t("desktop.common.paste")}</button>
-      <div className="context-menu-separator" role="separator" />
-      {!contextMenu.target.isDirectory && onShowGitHistory ? <button type="button" role="menuitem" onClick={() => void showGitHistoryTarget(contextMenu.target)}>{t("desktop.workbench.explorerGitFileHistory")}</button> : null}
-      {onFindInFolder ? <button type="button" role="menuitem" onClick={() => findInFolderTarget(contextMenu.target)}>{t("desktop.workbench.findInFolder")}</button> : null}
-      <button type="button" role="menuitem" onClick={() => void revealTarget(contextMenu.target)}>{t("desktop.workbench.explorerRevealInFinder")}</button>
-    </div> : null}
   </>;
 });

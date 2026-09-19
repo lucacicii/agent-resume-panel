@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { McpClientInfo } from "../../../main/mcpRegistration";
 import { desktopApi } from "../../bridge";
 import { Status, type StatusKind } from "../../components/Status";
+import { confirmAction, confirmDestructive } from "../../confirmAction";
 
 type Translate = (key: string, ...args: Array<string | number>) => string;
 
@@ -25,10 +26,10 @@ export function McpPane({ t }: { t: Translate }) {
 
   useEffect(() => { void refresh(); }, [refresh]);
 
-  const confirmWriteAccess = () => window.confirm(t("desktop.settings.mcpWriteConfirm"));
+  const confirmWriteAccess = () => confirmAction(t("desktop.settings.mcpWriteConfirm"));
 
   const register = async (client: McpClientInfo) => {
-    if (!confirmWriteAccess()) return;
+    if (!(await confirmWriteAccess())) return;
     setBusy(client.id);
     try {
       await desktopApi().registerMcpClient({ clientId: client.id, replace: client.registered });
@@ -42,7 +43,7 @@ export function McpPane({ t }: { t: Translate }) {
   };
 
   const remove = async (client: McpClientInfo) => {
-    if (!window.confirm(t("desktop.settings.mcpRemoveConfirm", client.label))) return;
+    if (!(await confirmDestructive(t("desktop.settings.mcpRemoveConfirm", client.label), t("desktop.common.remove")))) return;
     setBusy(client.id);
     try {
       await desktopApi().removeMcpClient({ clientId: client.id });
@@ -56,7 +57,7 @@ export function McpPane({ t }: { t: Translate }) {
   };
 
   const registerAll = async () => {
-    if (!confirmWriteAccess()) return;
+    if (!(await confirmWriteAccess())) return;
     setBusy("all");
     try {
       const result = await desktopApi().registerAllMcpClients();

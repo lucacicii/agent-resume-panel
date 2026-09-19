@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, Notification, powerMonitor, screen, shell, Tray } from "electron";
+import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, Notification, powerMonitor, screen, session, shell, Tray } from "electron";
 import { existsSync, readFileSync } from "node:fs";
 import { constants } from "node:fs";
 import * as fs from "node:fs/promises";
@@ -6,6 +6,7 @@ import * as path from "node:path";
 import {
   AGENT_TOOL_CATALOG,
   type AgentToolDescriptor,
+  absFromRelMdPath,
   discoverSkills,
   readSkillContent,
   skillToToolDescriptor,
@@ -92,7 +93,6 @@ import {
   type AgentSessionSyncResult
 } from "@agent-resume/core";
 import { safeHandle } from "./ipcUtils";
-import { registerLinkGraphIpc } from "./linkgraph/linkGraphIpc";
 import { installArpmShell, installArpmShim, resolveArpmCliPath } from "./arpmInstall";
 import {
   createExternalBrowserMcpLaunchConfig,
@@ -149,7 +149,10 @@ import {
   taskWindowStateForSender,
   type TaskWindowDeps
 } from "./taskWindows";
-import { applyWindowBackgrounds, windowBackgroundColor } from "./windowAppearance";
+import { applyNativeThemeSource, applyWindowBackgrounds, markTranslucentWindow, windowBackgroundColor, WINDOW_BACKGROUND_TRANSPARENT } from "./windowAppearance";
+import { currentAccentColor, subscribeAccentColorChange } from "./systemAccent";
+import { attachDefaultContextMenu, sanitizeContextMenuItems, showContextMenu } from "./contextMenu";
+import { confirmDialogOptions } from "./confirmDialog";
 import { loadStoredTaskWindows, saveStoredTaskWindows, taskWindowStatePath } from "./taskWindowStore";
 import {
   disposeBrowserController,
@@ -161,7 +164,6 @@ import { syncExternalMcpRegistration } from "./externalMcp";
 import {
   DEFAULT_RECENT_STANDALONE_NOTE_SHORTCUT,
   DEFAULT_STANDALONE_NOTE_SHORTCUT,
-  isQuickAccessShortcut,
   normalizeGlobalShortcut
 } from "./desktopShortcuts";
 import { STANDALONE_NOTE_INITIAL_CONTENT } from "../shared/standaloneNote";
@@ -177,12 +179,13 @@ import {
   hitTestTrayDotFromScreen,
   sessionDotsTrayImage,
   trayTooltip,
+  type TrayItem,
   type TrayWorkbench
 } from "./sessionDotsTray";
 import { collectNewConfirmedWaitingSessions } from "./sessionWaitingNotifications";
 import { checkForDesktopUpdate, getAppVersion } from "./updateCheck";
 import { loadPanelDbPaths } from "./panelDatabases";
-import { buildI18nBundle, desktopT, initI18nService } from "./i18nService";
+import { buildI18nBundle, desktopT, initI18nService, resolveDesktopLocale } from "./i18nService";
 import { shouldSyncSessionsAfterSettingsSave, type SaveSettingsOptions } from "./sessionSettingsSync";
 import {
   invalidateNotesStore,
@@ -545,6 +548,9 @@ let mainWindow: BrowserWindow | null = null;
 let mainWindowReadyToShow = false;
 let mainWindowRendererReady = false;
 let sessionDotsTray: Tray | null = null;
+let disposeAccentSubscription: (() => void) | null = null;
+/** Last settings read, so context menus and the menu bar share one locale. */
+let uiSettingsCache: PanelSettings | undefined;
 let browserSettingsCache: import("@agent-resume/core").DesktopBrowserSettings | null = null;
 let notifiedWaitingSessions = new Set<string>();
 /** Display data per workbench, so a tray dot for a closed window still has a name. */
@@ -636,6 +642,8 @@ type StandaloneNoteWindowState = {
   title: string;
   window: BrowserWindow;
   allowClose: boolean;
+  /** The represented filename is resolved once, on the first dirty report. */
+  representedFilename?: boolean;
   closeRequest?: {
     resolve: (closed: boolean) => void;
     timer: NodeJS.Timeout;
@@ -836,6 +844,40 @@ function syncSessionDotsTray(): void {
     sessionDotsTray.setImage(image);
   }
   sessionDotsTray.setToolTip(tooltip);
+  // A menu bar item opens a menu: right-click gets the list, and the menu also
+  // makes the individual dots reachable by keyboard.
+  sessionDotsTray.setContextMenu(trayContextMenu(items, extra));
+}
+
+/** The menu bar item's menu: every open session and note, then the app. */
+function trayContextMenu(
+  items: readonly TrayItem[],
+  extra: number
+): Electron.Menu {
+  const settings = uiSettingsCache;
+  const entries: Electron.MenuItemConstructorOptions[] = items.map((item) => ({
+    label: item.kind === "note"
+      ? (item.title.trim() || desktopT(settings, "desktop.standaloneNote.title"))
+      : (item.title.trim() || desktopT(settings, "desktop.workbench.taskView")),
+    click: () => {
+      if (item.kind === "note") {
+        void openStandaloneNoteById(item.noteId).catch(() => undefined);
+        return;
+      }
+      void revealWorkbench({ workbenchId: item.workbenchId, noteId: item.noteId });
+    }
+  }));
+  if (extra > 0) {
+    entries.push({ label: `+${extra}`, enabled: false });
+  }
+  if (!entries.length) {
+    entries.push({ label: desktopT(settings, "desktop.tray.noOpenSessions"), enabled: false });
+  }
+  entries.push(
+    { type: "separator" },
+    { label: desktopT(settings, "desktop.tray.showBoard"), click: () => revealMainWindow() }
+  );
+  return Menu.buildFromTemplate(entries);
 }
 
 function destroySessionDotsTray(): void {
@@ -1256,6 +1298,8 @@ function performQuitCleanup(): void {
   if (quitCleanupDone) return;
   quitCleanupDone = true;
   destroySessionDotsTray();
+  disposeAccentSubscription?.();
+  disposeAccentSubscription = null;
   if (registeredStandaloneNoteShortcut) {
     globalShortcut.unregister(registeredStandaloneNoteShortcut);
     registeredStandaloneNoteShortcut = "";
@@ -1500,79 +1544,6 @@ function resumeSessionSync(): void {
   void syncAndNotify().catch(notifySessionSyncFailure);
 }
 
-function isWorkbenchCmdTInput(input: Electron.Input): boolean {
-  if (input.type !== "keyDown") {
-    return false;
-  }
-  if (!(input.control || input.meta) || input.alt || input.shift) {
-    return false;
-  }
-  const key = input.key?.toLowerCase();
-  return key === "t" || input.code === "KeyT";
-}
-
-function isWorkbenchCmdWInput(input: Electron.Input): boolean {
-  if (input.type !== "keyDown") {
-    return false;
-  }
-  if (!(input.control || input.meta) || input.alt || input.shift) {
-    return false;
-  }
-  const key = input.key?.toLowerCase();
-  return key === "w" || input.code === "KeyW";
-}
-
-/** VS Code-style Find in Files: ⌘⇧F / Ctrl+Shift+F */
-function isWorkbenchCmdShiftFInput(input: Electron.Input): boolean {
-  if (input.type !== "keyDown") {
-    return false;
-  }
-  if (!(input.control || input.meta) || !input.shift || input.alt) {
-    return false;
-  }
-  const key = input.key?.toLowerCase();
-  return key === "f" || input.code === "KeyF";
-}
-
-function registerWorkbenchShortcuts(win: BrowserWindow): void {
-  win.webContents.on("before-input-event", (event, input) => {
-    if (isQuickAccessShortcut(input, true)) {
-      event.preventDefault();
-      if (!win.isDestroyed()) win.webContents.send("workbench:cmdShiftP");
-      return;
-    }
-
-    if (isQuickAccessShortcut(input, false)) {
-      event.preventDefault();
-      if (!win.isDestroyed()) win.webContents.send("workbench:cmdP");
-      return;
-    }
-
-    if (isWorkbenchCmdTInput(input)) {
-      event.preventDefault();
-      if (!win.isDestroyed()) {
-        win.webContents.send("workbench:cmdT");
-      }
-      return;
-    }
-
-    if (isWorkbenchCmdShiftFInput(input)) {
-      event.preventDefault();
-      if (!win.isDestroyed()) {
-        win.webContents.send("workbench:cmdShiftF");
-      }
-      return;
-    }
-
-    if (workbenchIsActive(win) && isWorkbenchCmdWInput(input)) {
-      event.preventDefault();
-      if (!win.isDestroyed()) {
-        win.webContents.send("workbench:cmdW");
-      }
-    }
-  });
-}
-
 const DEFAULT_WINDOW_SIZE = {
   width: 1120,
   height: 780
@@ -1589,8 +1560,12 @@ function createWindow(): void {
     title: "Agent Resume Desktop",
     // Keep the main window hidden until Chromium and the renderer have painted the initial loading shell.
     show: false,
-    // Match the system fallback surface in case the native window is exposed before the renderer paint.
-    backgroundColor: windowBackgroundColor(),
+    // A non-opaque window with the macOS sidebar material behind it: the toolbar
+    // and the sidebars are translucent tokens, the content paints itself opaque
+    // (`styles.css` § real macOS material).
+    vibrancy: "sidebar",
+    visualEffectState: "followWindow",
+    backgroundColor: WINDOW_BACKGROUND_TRANSPARENT,
     ...(icon ? { icon } : {}),
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     trafficLightPosition: process.platform === "darwin" ? { x: 14, y: 14 } : undefined,
@@ -1606,6 +1581,7 @@ function createWindow(): void {
   // display work area instead, so the first visible frame is already full-sized.
   const display = screen.getDisplayMatching(mainWindow.getBounds());
   mainWindow.setBounds(display.workArea);
+  markTranslucentWindow(mainWindow);
   mainWindow.once("ready-to-show", () => {
     mainWindowReadyToShow = true;
     showMainWindowIfReady();
@@ -1637,37 +1613,297 @@ function createWindow(): void {
   });
 }
 
-function openSettingsInMainWindow(options?: { pane?: unknown }): void {
+let settingsWindow: BrowserWindow | null = null;
+
+/**
+ * Settings owns a window, the way macOS expects ⌘, to behave.
+ *
+ * It is a normal, non-modal window: the user can keep it open and work in the
+ * board behind it, and ⌘W closes it. Opening it again focuses the existing one
+ * and selects the requested pane.
+ */
+function openSettingsWindow(options?: { pane?: unknown }): void {
   const pane = normalizeSettingsPane(options?.pane);
-  const win = revealMainWindow();
-  win?.webContents.send("settings:navigate", { pane });
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    if (settingsWindow.isMinimized()) settingsWindow.restore();
+    settingsWindow.show();
+    settingsWindow.focus();
+    settingsWindow.webContents.send("settings:navigate", { pane });
+    return;
+  }
+  const icon = loadAppIcon();
+  const win = new BrowserWindow({
+    width: 780,
+    height: 600,
+    minWidth: 620,
+    minHeight: 460,
+    title: desktopT(uiSettingsCache, "desktop.settings.title"),
+    show: false,
+    // Same treatment as the board: sidebar over the material, form stays opaque.
+    vibrancy: "sidebar",
+    visualEffectState: "followWindow",
+    backgroundColor: WINDOW_BACKGROUND_TRANSPARENT,
+    ...(icon ? { icon } : {}),
+    webPreferences: {
+      preload: path.join(__dirname, "..", "preload", "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
+    }
+  });
+  settingsWindow = win;
+  markTranslucentWindow(win);
+  win.once("ready-to-show", () => {
+    if (!win.isDestroyed()) win.show();
+  });
+  win.on("closed", () => {
+    if (settingsWindow === win) settingsWindow = null;
+  });
+  void win
+    .loadFile(path.join(__dirname, "..", "renderer", "index.html"), {
+      query: { mode: "settings", pane }
+    })
+    .catch((error) => {
+      void recordAppError({ source: "settings-window", message: "Settings window failed to load.", error });
+    });
 }
 
-/** Application menu: Settings… with ⌘,/Ctrl+, (macOS app menu / File on other platforms). */
+/**
+ * The window a menu command should act on.
+ *
+ * Electron passes the focused window to a `click` handler; fall back to the
+ * focused window and then the board, so a command still lands somewhere while a
+ * native child window (a browser view host, DevTools) holds focus.
+ */
+function menuTargetWindow(candidate: Electron.BaseWindow | null | undefined): BrowserWindow | null {
+  if (candidate instanceof BrowserWindow && !candidate.isDestroyed()) return candidate;
+  const focused = BrowserWindow.getFocusedWindow();
+  if (focused && !focused.isDestroyed()) return focused;
+  return mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+}
+
+/**
+ * Application menu.
+ *
+ * The menu bar is the single owner of every shortcut the app implements: an
+ * accelerator registered here is consumed by macOS and never reaches the page,
+ * so each item forwards to the renderer channel the panes already answer. That
+ * keeps one implementation per command and makes every shortcut discoverable.
+ */
+/**
+ * Point the spell checker at the language the UI is in.
+ *
+ * Chromium ships a fixed dictionary set; asking for something unavailable is an
+ * error, so the candidates are intersected with what the build actually has.
+ * English stays in the list as a fallback for technical prose.
+ */
+function applySpellCheckerLanguages(locale: string): void {
+  try {
+    const available = session.defaultSession.availableSpellCheckerLanguages;
+    const candidates = locale === "zh-cn"
+      ? ["zh-CN", "en-US"]
+      : locale === "ja"
+        ? ["ja", "en-US"]
+        : ["en-US"];
+    const languages = candidates.filter((code) => available.includes(code));
+    if (languages.length) session.defaultSession.setSpellCheckerLanguages(languages);
+  } catch {
+    // Keep Chromium's default when the dictionary cannot be set.
+  }
+}
+
 async function installApplicationMenu(): Promise<void> {
   const settings = await loadSettings();
-  const settingsLabel = desktopT(settings, "desktop.menu.settings");
-  const sessionsLabel = desktopT(settings, "desktop.menu.sessions");
-  const checkForUpdatesLabel = desktopT(settings, "desktop.menu.checkForUpdates");
+  uiSettingsCache = settings;
+  applySpellCheckerLanguages(resolveDesktopLocale(settings));
+  const t = (key: string, ...args: Array<string | number>) => desktopT(settings, key, ...args);
   const isMac = process.platform === "darwin";
 
   const settingsItem: Electron.MenuItemConstructorOptions = {
-    label: settingsLabel,
+    label: t("desktop.menu.settings"),
     accelerator: "CommandOrControl+,",
-    click: () => openSettingsInMainWindow({ pane: "general" })
-  };
-
-  const sessionsItem: Electron.MenuItemConstructorOptions = {
-    label: sessionsLabel,
-    click: () => {
-      // Sessions live in their task's window now; the board is where you pick one.
-      revealMainWindow();
-    }
+    click: () => openSettingsWindow({ pane: "general" })
   };
 
   const checkForUpdatesItem: Electron.MenuItemConstructorOptions = {
-    label: checkForUpdatesLabel,
-    click: () => openSettingsInMainWindow({ pane: "about" })
+    label: t("desktop.menu.checkForUpdates"),
+    click: () => openSettingsWindow({ pane: "about" })
+  };
+
+  /** Send a command to the focused window when it hosts a workbench. */
+  const workbenchCommand = (channel: string) => (_item: Electron.MenuItem, win?: Electron.BaseWindow) => {
+    const target = menuTargetWindow(win);
+    if (target && workbenchIsActive(target)) target.webContents.send(channel);
+  };
+
+  const closeTabItem: Electron.MenuItemConstructorOptions = {
+    label: t("desktop.menu.closeTab"),
+    accelerator: "CommandOrControl+W",
+    click: (_item, win) => {
+      const target = menuTargetWindow(win);
+      if (!target) return;
+      // A workbench window owns tabs; anywhere else ⌘W closes the window, the
+      // way macOS does it everywhere.
+      if (workbenchIsActive(target)) target.webContents.send("workbench:cmdW");
+      else target.close();
+    }
+  };
+
+  const fileMenu: Electron.MenuItemConstructorOptions = {
+    label: t("desktop.menu.file"),
+    submenu: [
+      {
+        label: t("desktop.menu.newNote"),
+        accelerator: "CommandOrControl+N",
+        click: () => {
+          void openStandaloneNoteWindow().catch((error) => {
+            void recordAppError({ source: "application-menu", message: "Could not create standalone note.", error });
+          });
+        }
+      },
+      {
+        label: t("desktop.menu.newTerminal"),
+        accelerator: "CommandOrControl+T",
+        click: workbenchCommand("workbench:cmdT")
+      },
+      {
+        label: t("desktop.menu.recentNotes"),
+        click: () => {
+          void showRecentStandaloneNotesMenu().catch((error) => {
+            void recordAppError({ source: "application-menu", message: "Could not open recent notes menu.", error });
+          });
+        }
+      },
+      { type: "separator" },
+      closeTabItem,
+      { role: "close", label: t("desktop.menu.closeWindow") }
+    ]
+  };
+
+  // macOS localizes the standard *selectors* by system language, not by the
+  // app's language, so role items keep English titles on an English system while
+  // our own items follow the UI language. Every role therefore carries an
+  // explicit localized label: the menu bar speaks one language.
+  const editMenu: Electron.MenuItemConstructorOptions = {
+    label: t("desktop.menu.edit"),
+    submenu: [
+      { role: "undo", label: t("desktop.menu.undo") },
+      { role: "redo", label: t("desktop.menu.redo") },
+      { type: "separator" },
+      { role: "cut", label: t("desktop.menu.cut") },
+      { role: "copy", label: t("desktop.menu.copy") },
+      { role: "paste", label: t("desktop.menu.paste") },
+      ...(isMac ? [{ role: "pasteAndMatchStyle" as const, label: t("desktop.menu.pasteAndMatchStyle") }] : []),
+      { role: "delete", label: t("desktop.menu.delete") },
+      { role: "selectAll", label: t("desktop.menu.selectAll") },
+      { type: "separator" },
+      {
+        label: t("desktop.menu.find"),
+        accelerator: "CommandOrControl+F",
+        click: (_item, win) => {
+          const target = menuTargetWindow(win);
+          if (!target) return;
+          target.webContents.send("menu:find");
+        }
+      },
+      {
+        label: t("desktop.menu.findInFiles"),
+        accelerator: "CommandOrControl+Shift+F",
+        click: workbenchCommand("workbench:cmdShiftF")
+      },
+      ...(isMac
+        ? [
+            { type: "separator" as const },
+            { role: "toggleSpellChecker" as const, label: t("desktop.menu.spellingCheck") },
+            { role: "showSubstitutions" as const, label: t("desktop.menu.substitutions") },
+            { type: "separator" as const },
+            {
+              label: t("desktop.menu.speech"),
+              submenu: [
+                { role: "startSpeaking" as const, label: t("desktop.menu.startSpeaking") },
+                { role: "stopSpeaking" as const, label: t("desktop.menu.stopSpeaking") }
+              ]
+            }
+          ]
+        : [])
+    ]
+  };
+
+  /**
+   * Window menu.
+   *
+   * Built by hand instead of using `role: "windowMenu"` so the title and the
+   * standard items follow the app's language, and so the open windows are listed
+   * with the titles the user sees.
+   */
+  const windowMenu: Electron.MenuItemConstructorOptions = {
+    label: t("desktop.menu.window"),
+    submenu: [
+      { role: "minimize", label: t("desktop.menu.minimize") },
+      { role: "zoom", label: t("desktop.menu.zoom") },
+      { type: "separator" },
+      ...(() => {
+        const windows = BrowserWindow.getAllWindows().filter((win) => !win.isDestroyed() && win.isVisible());
+        if (!windows.length) return [{ label: t("desktop.menu.noWindows"), enabled: false }];
+        return windows.slice(0, 20).map((win) => ({
+          label: win.getTitle() || app.name,
+          type: "checkbox" as const,
+          checked: win.isFocused(),
+          click: () => {
+            if (win.isDestroyed()) return;
+            win.show();
+            win.focus();
+          }
+        }));
+      })(),
+      { type: "separator" },
+      { role: "front", label: t("desktop.menu.bringAllToFront") }
+    ]
+  };
+
+  const viewMenu: Electron.MenuItemConstructorOptions = {
+    label: t("desktop.menu.view"),
+    submenu: [
+      {
+        label: t("desktop.menu.quickAccess"),
+        accelerator: "CommandOrControl+P",
+        click: workbenchCommand("workbench:cmdP")
+      },
+      {
+        label: t("desktop.menu.commandPalette"),
+        accelerator: "CommandOrControl+Shift+P",
+        click: workbenchCommand("workbench:cmdShiftP")
+      },
+      { type: "separator" },
+      { role: "resetZoom", label: t("desktop.menu.actualSize") },
+      { role: "zoomIn", label: t("desktop.menu.zoomIn") },
+      { role: "zoomOut", label: t("desktop.menu.zoomOut") },
+      { type: "separator" },
+      { role: "togglefullscreen" as const, label: t("desktop.menu.enterFullScreen") },
+      // Reload and DevTools never ship: a released app has no use for them and
+      // they advertise the Chromium runtime.
+      ...(app.isPackaged
+        ? []
+        : [
+            { type: "separator" as const },
+            { role: "reload" as const, label: t("desktop.menu.reload") },
+            { role: "forceReload" as const, label: t("desktop.menu.forceReload") },
+            { role: "toggleDevTools" as const, label: t("desktop.menu.toggleDevTools") }
+          ])
+    ]
+  };
+
+  const helpMenu: Electron.MenuItemConstructorOptions = {
+    role: "help",
+    label: t("desktop.menu.help"),
+    submenu: [
+      {
+        label: t("desktop.menu.reportIssue"),
+        click: () => {
+          void shell.openExternal("https://github.com/lucacicii/agent-resume-panel/issues").catch(() => undefined);
+        }
+      }
+    ]
   };
 
   const template: Electron.MenuItemConstructorOptions[] = [
@@ -1676,39 +1912,69 @@ async function installApplicationMenu(): Promise<void> {
           {
             label: app.name,
             submenu: [
-              { role: "about" as const },
+              { role: "about" as const, label: t("desktop.menu.about", app.name) },
               { type: "separator" as const },
-              settingsItem,
-              sessionsItem,
               checkForUpdatesItem,
+              settingsItem,
               { type: "separator" as const },
-              { role: "services" as const },
+              { role: "services" as const, label: t("desktop.menu.services") },
               { type: "separator" as const },
-              { role: "hide" as const },
-              { role: "hideOthers" as const },
-              { role: "unhide" as const },
+              { role: "hide" as const, label: t("desktop.menu.hide", app.name) },
+              { role: "hideOthers" as const, label: t("desktop.menu.hideOthers") },
+              { role: "unhide" as const, label: t("desktop.menu.showAll") },
               { type: "separator" as const },
-              { role: "quit" as const }
+              { role: "quit" as const, label: t("desktop.menu.quit", app.name) }
             ]
           }
         ]
       : [
           {
-            label: "File",
+            label: t("desktop.menu.file"),
             submenu: [
               settingsItem,
-              sessionsItem,
               checkForUpdatesItem,
               { type: "separator" as const },
-              { role: "quit" as const }
+              ...(fileMenu.submenu as Electron.MenuItemConstructorOptions[]),
+              { type: "separator" as const },
+              { role: "quit" as const, label: t("desktop.menu.quit", app.name) }
             ]
           }
         ]),
-    { role: "editMenu" },
-    { role: "viewMenu" },
-    { role: "windowMenu" }
+    ...(isMac ? [fileMenu] : []),
+    editMenu,
+    viewMenu,
+    windowMenu,
+    helpMenu
   ];
 
+  if (isMac) {
+    // Give the native About panel the same facts the Settings → About pane shows.
+    app.setAboutPanelOptions({
+      applicationName: app.name,
+      applicationVersion: app.getVersion(),
+      copyright: "© Agent Resume",
+      credits: "Session OS + Memory for local AI agents."
+    });
+    // Right-clicking the Dock icon is a menu in every macOS app.
+    app.dock?.setMenu(
+      Menu.buildFromTemplate([
+        {
+          label: t("desktop.menu.newNote"),
+          click: () => {
+            void openStandaloneNoteWindow().catch(() => undefined);
+          }
+        },
+        {
+          label: t("desktop.menu.recentNotes"),
+          click: () => {
+            void showRecentStandaloneNotesMenu().catch(() => undefined);
+          }
+        },
+        { type: "separator" },
+        { label: t("desktop.gtd.title"), click: () => revealMainWindow() }
+      ])
+    );
+  }
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
@@ -1763,7 +2029,8 @@ function taskWindowDeps(): TaskWindowDeps {
     rendererIndex: path.join(__dirname, "..", "renderer", "index.html"),
     ...(icon ? { icon } : {}),
     onCreated: (win) => {
-      registerWorkbenchShortcuts(win);
+      // Workbench windows are translucent too: window header and task/session list.
+      markTranslucentWindow(win);
       registerTaskWindowCloseGuard(win);
       void loadWorkbenchMeta();
     },
@@ -1883,6 +2150,84 @@ function registerIpc(): void {
   ipcMain.handle("settings:get", async () => {
     return loadSettings();
   });
+
+  safeHandle("appearance:accent", async () => currentAccentColor());
+
+  // Document semantics for standalone note windows: the close button shows the
+  // edited dot, and the represented filename gives the window a document path.
+  safeHandle(
+    "standaloneNote:documentState",
+    async (_event, args?: { noteId?: unknown; dirty?: unknown }) => {
+      const noteId = typeof args?.noteId === "string" ? args.noteId : "";
+      const state = noteId ? standaloneNoteWindows.get(noteId) : undefined;
+      if (!state || state.window.isDestroyed()) return { ok: false };
+      state.window.setDocumentEdited(args?.dirty === true);
+      if (!state.representedFilename) {
+        try {
+          const settings = await loadSettings();
+          const { record } = await notesRead(noteId);
+          if (record.relMdPath) {
+            state.window.setRepresentedFilename(
+              absFromRelMdPath(effectivePanelHome(settings), record.relMdPath)
+            );
+          }
+          state.representedFilename = true;
+        } catch {
+          // The path is a nicety; the edited dot is the part that matters.
+        }
+      }
+      return { ok: true };
+    }
+  );
+
+  // The renderer owns the item list (labels are localized there) and gets back
+  // the id of whatever the user picked, or null when the menu was dismissed.
+  safeHandle(
+    "dialog:confirm",
+    async (
+      event,
+      args?: {
+        message?: unknown;
+        detail?: unknown;
+        confirmLabel?: unknown;
+        cancelLabel?: unknown;
+        destructive?: unknown;
+      }
+    ) => {
+      const message = typeof args?.message === "string" ? args.message.trim() : "";
+      if (!message) return false;
+      const options = confirmDialogOptions(
+        {
+          message,
+          ...(typeof args?.detail === "string" ? { detail: args.detail } : {}),
+          ...(typeof args?.confirmLabel === "string" ? { confirmLabel: args.confirmLabel } : {}),
+          ...(typeof args?.cancelLabel === "string" ? { cancelLabel: args.cancelLabel } : {}),
+          destructive: args?.destructive === true
+        },
+        {
+          confirm: desktopT(uiSettingsCache, "desktop.common.confirm"),
+          cancel: desktopT(uiSettingsCache, "desktop.common.cancel")
+        }
+      );
+      const win = BrowserWindow.fromWebContents(event.sender);
+      const result = win && !win.isDestroyed()
+        ? await dialog.showMessageBox(win, options)
+        : await dialog.showMessageBox(options);
+      return result.response === 1;
+    }
+  );
+
+  safeHandle(
+    "contextMenu:show",
+    async (event, args?: { x?: unknown; y?: unknown; items?: unknown }) => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      const items = sanitizeContextMenuItems(args?.items);
+      if (!items.length) return null;
+      const x = typeof args?.x === "number" && Number.isFinite(args.x) ? args.x : 0;
+      const y = typeof args?.y === "number" && Number.isFinite(args.y) ? args.y : 0;
+      return showContextMenu(win, items, { x, y });
+    }
+  );
 
   ipcMain.handle(
     "dialog:pickDirectory",
@@ -2135,6 +2480,8 @@ function registerIpc(): void {
       invalidateNotesStore();
       await refreshMemorySchedulerFromSettings();
       const saved = await loadSettings();
+      applyNativeThemeSource(saved.desktop?.theme);
+      uiSettingsCache = saved;
       browserSettingsCache = saved.desktop?.browser || null;
       try {
         const mcp = await syncExternalMcpRegistration(saved);
@@ -2181,7 +2528,7 @@ function registerIpc(): void {
   );
 
   safeHandle("settings:openWindow", async (_event, options?: { pane?: unknown }) => {
-    openSettingsInMainWindow(options);
+    openSettingsWindow(options);
   });
 
   ipcMain.handle("sessions:sync", async () => syncAndNotify());
@@ -3296,12 +3643,24 @@ app.whenReady().then(async () => {
     getDefaultPolicy: () => browserSettingsCache?.defaultPolicy,
     getDefaultSurface: () => browserSettingsCache?.defaultSurface || "workbench"
   });
-  void loadSettings()
-    .then((settings) => {
-      browserSettingsCache = settings.desktop?.browser || null;
-    })
-    .catch(() => undefined);
-  registerLinkGraphIpc(() => mainWindow, () => app.getLocale());
+  // Appearance must be resolved before the first window: `themeSource` decides
+  // the native chrome and `shouldUseDarkColors`, so the window background, tray
+  // image, and menus are all built from the value the user actually chose.
+  let startupSettings: PanelSettings | undefined;
+  try {
+    startupSettings = await loadSettings();
+  } catch {
+    // Fall back to the system appearance when settings cannot be read.
+  }
+  applyNativeThemeSource(startupSettings?.desktop?.theme);
+  if (startupSettings) browserSettingsCache = startupSettings.desktop?.browser || null;
+  // Accent colour is a system setting, not an app setting: it can change while
+  // the app runs, so every window hears about it.
+  disposeAccentSubscription = subscribeAccentColorChange((accent) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send("appearance:accentChanged", accent);
+    }
+  });
   tryRegisterPtyIpc();
   // The daemon deliberately outlives this process — see startAgentStatus.
   void loadSettings()
@@ -3327,7 +3686,8 @@ app.whenReady().then(async () => {
 
   void (async () => {
     try {
-      const settings = await loadSettings();
+      const settings = startupSettings ?? (await loadSettings());
+      applyNativeThemeSource(settings.desktop?.theme);
       initializeStandaloneNoteShortcut(settings);
       await installApplicationMenu();
       startDesktopNotesIndexer();
@@ -3439,6 +3799,30 @@ app.whenReady().then(async () => {
     }
     revealMainWindow();
     void refreshMemorySchedulerFromSettings();
+  });
+});
+
+app.on("browser-window-created", (_event, win) => {
+  if (win.isDestroyed()) return;
+  const report = (fullscreen: boolean) => {
+    if (!win.isDestroyed()) win.webContents.send("window:fullscreenChanged", fullscreen);
+  };
+  // In fullscreen macOS hides the title bar, so the traffic-light clearance and
+  // the drag strip must go with it — otherwise the header keeps 78px of dead
+  // space and swallows clicks along the top edge.
+  win.on("enter-full-screen", () => report(true));
+  win.on("leave-full-screen", () => report(false));
+  // The Window menu lists the open windows, so it is rebuilt when that set changes.
+  const refreshMenu = () => void installApplicationMenu().catch(() => undefined);
+  win.on("closed", refreshMenu);
+  refreshMenu();
+});
+
+app.on("web-contents-created", (_event, contents) => {
+  // One install point, so every window — board, workbench, note, and the pages
+  // inside the embedded browser — answers a right-click the way macOS expects.
+  attachDefaultContextMenu(contents, {
+    translate: (key) => desktopT(uiSettingsCache, key)
   });
 });
 

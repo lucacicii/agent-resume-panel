@@ -32,7 +32,7 @@ Load these references only when relevant:
 
 - Product boundaries (extension vs desktop vs core): [`.agents/extended/product-independence.md`](.agents/extended/product-independence.md)
 - TypeScript, VS Code extension, Electron, workspace, or build work: [`.agents/extended/dev-rules.md`](.agents/extended/dev-rules.md)
-- UI or renderer work: [`.agents/extended/ui-policy.md`](.agents/extended/ui-policy.md) and [`.agents/extended/ui-design-system.md`](.agents/extended/ui-design-system.md) (desktop visual spec)
+- UI or renderer work: [`.agents/extended/ui-policy.md`](.agents/extended/ui-policy.md) (desktop + extension UI rules; desktop follows [Apple macOS HIG](https://developer.apple.com/design/human-interface-guidelines/designing-for-macos))
 - Filesystem, process, database, authentication, network, or secret handling: [`.agents/extended/security.md`](.agents/extended/security.md)
 
 ## Verification

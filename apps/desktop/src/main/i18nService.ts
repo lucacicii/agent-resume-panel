@@ -43,7 +43,7 @@ export function initI18nService(appRoot: string): void {
   initialized = true;
 }
 
-function resolveDesktopLocale(settings: PanelSettings | undefined): UiLocale {
+export function resolveDesktopLocale(settings: PanelSettings | undefined): UiLocale {
   const pref = normalizeUiLanguagePreference(settings?.uiLanguage ?? UI_LANGUAGE_AUTO);
   return resolveUiLocale(pref, app.getLocale());
 }

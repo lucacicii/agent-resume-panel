@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { CodeEditor, type CodeEditorHandle, type CodeEditorSearchResult } from "../../components/CodeEditor";
 import { desktopApi } from "../../bridge";
+import { confirmDestructive } from "../../confirmAction";
 import { GTD_STATUSES, type GtdStatus } from "../../gtd";
 import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { useI18n } from "../../i18n";
@@ -453,7 +454,7 @@ export function FloatingSessionNote({
   const deleteNote = useCallback(async () => {
     const currentNoteId = noteIdRef.current;
     if (!currentNoteId || loading || creating || deleting) return;
-    if (!window.confirm(t("desktop.notes.deleteConfirm", displayTitle))) return;
+    if (!(await confirmDestructive(t("desktop.notes.deleteConfirm", displayTitle), t("desktop.common.delete")))) return;
     setDeleting(true);
     clearSaveTimer();
     try {

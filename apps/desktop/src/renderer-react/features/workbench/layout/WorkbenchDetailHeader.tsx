@@ -2,7 +2,7 @@ import { ICON_SIZE, ThemeIcon } from "../../../components/ThemeIcon";
 import { useI18n } from "../../../i18n";
 import type { TerminalPane } from "../terminal/TerminalView";
 
-type WorkbenchSideView = "files" | "git" | "search" | "scripts" | "linkgraph" | null;
+type WorkbenchSideView = "files" | "git" | "search" | "scripts" | null;
 
 export function WorkbenchDetailHeader({
   onBackToGtd,
@@ -76,7 +76,6 @@ export function WorkbenchDetailHeader({
           <button type="button" className={`wb-detail-tool${side === "files" ? " active" : ""}`} aria-pressed={side === "files"} aria-label={t("desktop.workbench.sidePanelExplorer")} title={t("desktop.workbench.sidePanelExplorer")} onClick={() => onToggleSide("files")}><ThemeIcon name="folder-tree" size={ICON_SIZE.default} /></button>
           <button type="button" className={`wb-detail-tool${side === "scripts" ? " active" : ""}`} aria-pressed={side === "scripts"} aria-label={t("desktop.workbench.sidePanelScripts")} title={t("desktop.workbench.sidePanelScripts")} onClick={() => onToggleSide("scripts")}><ThemeIcon name="play" size={ICON_SIZE.default} /></button>
           <button type="button" className={`wb-detail-tool${side === "search" ? " active" : ""}`} aria-pressed={side === "search"} aria-label={t("desktop.workbench.sidePanelSearch")} title={t("desktop.workbench.sidePanelSearch")} onClick={() => onToggleSide("search")}><ThemeIcon name="search" size={ICON_SIZE.default} /></button>
-          <button type="button" className={`wb-detail-tool${side === "linkgraph" ? " active" : ""}`} aria-pressed={side === "linkgraph"} aria-label={t("desktop.workbench.sidePanelLinkGraph")} title={t("desktop.workbench.sidePanelLinkGraph")} onClick={() => onToggleSide("linkgraph")}><ThemeIcon name="waypoints" size={ICON_SIZE.default} /></button>
           <button type="button" className={`wb-detail-tool${side === "git" ? " active" : ""}`} aria-pressed={side === "git"} aria-label={t("desktop.workbench.sidePanelGit")} title={t("desktop.workbench.sidePanelGit")} onClick={() => onToggleSide("git")}><ThemeIcon name="git-branch" size={ICON_SIZE.default} /></button>
         </div>
       </div>

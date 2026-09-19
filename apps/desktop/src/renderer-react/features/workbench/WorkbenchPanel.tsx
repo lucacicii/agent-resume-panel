@@ -27,6 +27,9 @@ import {
   resolveComposerMention
 } from "../settings/model";
 import { desktopApi } from "../../bridge";
+import { confirmDestructive } from "../../confirmAction";
+import { contextMenuPoint, showContextMenuAt } from "../../nativeContextMenu";
+import { useMenuKeyboard, useMenuPosition } from "../../components/menuOverlay";
 import { CodeEditor, type CodeEditorHandle, type CodeEditorSearchResult } from "../../components/CodeEditor";
 import type { CodeMirrorAppearance } from "../../components/codeMirrorThemes";
 import { renderMarkdown } from "../../components/Markdown";
@@ -74,8 +77,6 @@ import {
   WorkbenchFileExplorer,
   type WorkbenchFileExplorerHandle
 } from "./WorkbenchFileExplorer";
-import { LinkGraphSidePane } from "./LinkGraphSidePane";
-import { useWorkbenchLinkGraph } from "./linkgraph/useWorkbenchLinkGraph";
 import { useWorkbenchSearch } from "./search/useWorkbenchSearch";
 import { rankSearchRootOptions, type SearchRootOption } from "./search/rootPicker";
 import { WorkbenchSearchSidePane } from "./search/WorkbenchSearchSidePane";
@@ -221,7 +222,7 @@ type BrowserPane = {
   startUrl?: string;
   surfaceKind: "workbench" | "window";
 };
-type SideView = "files" | "git" | "search" | "scripts" | "linkgraph" | null;
+type SideView = "files" | "git" | "search" | "scripts" | null;
 type SearchReveal = { path: string; line: number; column: number; endColumn: number };
 const GTD_STATUSES = ["inbox", "next", "waiting", "someday", "reference", "done"] as const satisfies readonly GtdStatus[];
 /** Shared empty list so a project-less task keeps a stable array identity. */
@@ -695,6 +696,8 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [gitLogLoading, setGitLogLoading] = useState(false);
   const [gitLogError, setGitLogError] = useState("");
   const [discardingGitPaths, setDiscardingGitPaths] = useState<Set<string>>(() => new Set());
+  const editorContextMenuRef = useRef<HTMLDivElement>(null);
+  const branchMenuRef = useRef<HTMLDivElement>(null);
   const [branchPane, setBranchPane] = useState<TerminalPane | null>(null);
   const [branchMenuPosition, setBranchMenuPosition] = useState<BranchMenuPosition | null>(null);
   const [branchResult, setBranchResult] = useState<TerminalGitBranches | null>(null);
@@ -705,7 +708,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   }, []);
   const [contextMenu, setContextMenu, contextMenuClosing] = useOverlayState<WorkbenchContextMenu>();
   const [floatingNoteTarget, setFloatingNoteTarget] = useState<FloatingSessionNoteTarget | null>(null);
-  const [gitLogContextMenu, setGitLogContextMenu, gitLogContextMenuClosing] = useOverlayState<GitLogContextMenu>();
   const [gitLogDialog, setGitLogDialog, gitLogDialogClosing] = useOverlayState<GitLogDialog>();
   const gitLogDialogBusyRef = useRef(false);
   const gitLogDialogInputRef = useRef<HTMLInputElement | null>(null);
@@ -758,6 +760,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const settingsRef = useRef<PanelSettings | null>(null);
   const newSessionButtonRef = useRef<HTMLButtonElement>(null);
   const newSessionPickerRef = useRef<HTMLDivElement>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
 
   const liveTaskEarly = taskScope
     ? tasks.find((item) => item.noteId === taskScope.noteId)
@@ -839,20 +842,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       terminalsRef.current.forEach((pane) => void refreshTerminalGitRef.current(pane.key));
     },
     notifyStatus: setStatus
-  });
-
-  const {
-    linkGraphResult,
-    linkGraphProgress,
-    linkGraphBusy,
-    linkGraphError,
-    linkGraphLanguage,
-    runLinkGraph,
-    refreshLinkGraph,
-    changeLinkGraphLanguage,
-    cancelLinkGraph
-  } = useWorkbenchLinkGraph({
-    onOpenSide: () => setSide("linkgraph")
   });
 
   useEffect(() => { terminalsRef.current = terminals; }, [terminals]);
@@ -1452,22 +1441,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [active, contextMenu, selectedSessionKeys.size]);
-
-  useEffect(() => {
-    if (!gitLogContextMenu) return;
-    const dismiss = (event: MouseEvent) => {
-      if (!(event.target instanceof Element) || !event.target.closest(".wb-git-log-context-menu")) setGitLogContextMenu(null);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setGitLogContextMenu(null);
-    };
-    window.addEventListener("mousedown", dismiss);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("mousedown", dismiss);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [gitLogContextMenu]);
 
   useEffect(() => {
     if (!gitLogDialog) return;
@@ -2347,11 +2320,22 @@ export function WorkbenchPanel(): ReactPortal | null {
   const closeEditor = useCallback((key: string) => {
     const pane = editors.find((item) => item.key === key);
     if (!pane) return;
-    if (pane.dirty && !window.confirm(t("desktop.workbench.fileDiscardConfirm", basename(pane.path)))) return;
-    if (activePane === key) closeEditorFind();
-    const remainingEditors = editors.filter((item) => item.key !== key);
-    setEditors(remainingEditors);
-    nextPaneAfterClose(paneScopeKey(pane), key, { remainingEditors });
+    const close = () => {
+      if (activePane === key) closeEditorFind();
+      const remainingEditors = editors.filter((item) => item.key !== key);
+      setEditors(remainingEditors);
+      nextPaneAfterClose(paneScopeKey(pane), key, { remainingEditors });
+    };
+    if (!pane.dirty) {
+      close();
+      return;
+    }
+    // Native discard prompt: it resolves before the pane is torn down.
+    void (async () => {
+      if (await confirmDestructive(t("desktop.workbench.fileDiscardConfirm", basename(pane.path)), t("desktop.common.discard"))) {
+        close();
+      }
+    })();
   }, [activePane, closeEditorFind, editors, nextPaneAfterClose, t]);
 
   const closeDiff = useCallback((key: string) => {
@@ -3382,7 +3366,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     const taskNoteId = taskScopeRef.current?.noteId;
     if (!taskNoteId) return;
     if (workbenchesRef.current.length <= 1) return;
-    if (!window.confirm(t("desktop.workbench.deleteWorkbenchConfirm", workbenchDisplayName(workbench)))) return;
+    if (!(await confirmDestructive(t("desktop.workbench.deleteWorkbenchConfirm", workbenchDisplayName(workbench)), t("desktop.common.delete")))) return;
     try {
       await deleteTaskWorkbench(workbench.workbenchId);
       discardWorkbenchPanes(workbench.workbenchId);
@@ -3579,7 +3563,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const removeProject = useCallback(async (projectPath: string) => {
     const scope = taskScopeRef.current;
     if (!scope || typeof desktopApi().notesRemoveTaskProject !== "function") return;
-    if (!window.confirm(t("desktop.workbench.removeProjectConfirm", basename(projectPath)))) return;
+    if (!(await confirmDestructive(t("desktop.workbench.removeProjectConfirm", basename(projectPath)), t("desktop.common.remove")))) return;
     try {
       await desktopApi().notesRemoveTaskProject({ noteId: scope.noteId, projectPath });
       if (sessionTargetRef.current && projectPathKey(sessionTargetRef.current) === projectPathKey(projectPath)) {
@@ -3845,7 +3829,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         if (menu.taskHasSessions) return;
         if (typeof desktopApi().notesDelete !== "function") return;
         const label = menu.taskTitle || menu.noteId;
-        if (!window.confirm(t("desktop.workbench.deleteTaskConfirm", label))) return;
+        if (!(await confirmDestructive(t("desktop.workbench.deleteTaskConfirm", label), t("desktop.common.delete")))) return;
         try {
           await desktopApi().notesDelete({ noteId: menu.noteId });
           if (taskScopeRef.current?.noteId === menu.noteId) {
@@ -3944,8 +3928,8 @@ export function WorkbenchPanel(): ReactPortal | null {
         ? selectedCatalog
         : [session];
       const confirmed = targets.length > 1
-        ? window.confirm(t("desktop.workbench.removeMultipleConfirm", targets.length))
-        : window.confirm(t("desktop.workbench.removeConfirm", session.title || session.id));
+        ? await confirmDestructive(t("desktop.workbench.removeMultipleConfirm", targets.length), t("desktop.common.remove"))
+        : await confirmDestructive(t("desktop.workbench.removeConfirm", session.title || session.id), t("desktop.common.remove"));
       if (!confirmed) return;
       await removeSelectedSessionsFromPanel(targets);
     }
@@ -4182,25 +4166,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       setActivePane(key, targetProject);
     } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
   };
-
-  const openLinkGraphFromEditor = useCallback(() => {
-    const projectRoot = currentEditor ? (projectForPath(currentEditor.path) || selectedProject) : selectedProject;
-    if (!projectRoot || !currentEditor) return;
-    const selection = editorRef.current?.getSelectionRange();
-    const text = selection?.text.trim() || editorRef.current?.getSelectedText().trim() || "";
-    if (!text) {
-      setStatus({ text: t("desktop.workbench.linkGraphNeedSelection"), kind: "error" });
-      return;
-    }
-    void runLinkGraph({
-      projectPath: projectRoot,
-      filePath: currentEditor.path,
-      selection: text,
-      startLine: selection?.startLine || 1,
-      endLine: selection?.endLine || selection?.startLine || 1,
-      outputLanguage: linkGraphLanguage
-    });
-  }, [currentEditor, linkGraphLanguage, projectForPath, runLinkGraph, selectedProject, t]);
 
   const {
     quickAccessOpen,
@@ -4550,7 +4515,7 @@ export function WorkbenchPanel(): ReactPortal | null {
             : "desktop.workbench.gitDiscardConfirm",
           targetPath
         );
-    if (!window.confirm(confirmMessage)) return;
+    if (!(await confirmDestructive(confirmMessage, t("desktop.common.discard")))) return;
     setDiscardingGitPaths((current) => {
       const next = new Set(current);
       keys.forEach((key) => next.add(key));
@@ -4632,7 +4597,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     const confirmMessage = pane.source === "staged"
       ? t("desktop.workbench.gitDiscardHunkStagedConfirm", pane.path)
       : t("desktop.workbench.gitDiscardHunkConfirm", pane.path);
-    if (!window.confirm(confirmMessage)) return;
+    if (!(await confirmDestructive(confirmMessage, t("desktop.common.discard")))) return;
     try {
       await desktopApi().terminalGitDiscardHunk({
         repoRoot: pane.repoRoot,
@@ -4651,7 +4616,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     const confirmMessage = pane.source === "staged"
       ? t("desktop.workbench.gitDiscardLineStagedConfirm", pane.path)
       : t("desktop.workbench.gitDiscardLineConfirm", pane.path);
-    if (!window.confirm(confirmMessage)) return;
+    if (!(await confirmDestructive(confirmMessage, t("desktop.common.discard")))) return;
     try {
       await desktopApi().terminalGitDiscardLine({
         repoRoot: pane.repoRoot,
@@ -4812,30 +4777,47 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
   };
 
-  const openGitLogContextMenu = (event: React.MouseEvent, commit: GitLogCommit) => {
-    event.preventDefault();
-    const branchTarget = event.target instanceof Element
-      ? event.target.closest<HTMLElement>("[data-branch-name]")
-      : null;
-    setGitLogContextMenu({
-      x: event.clientX,
-      y: event.clientY,
-      commit,
-      branchName: branchTarget?.dataset.branchName || gitCommitBranchNames(commit)[0] || null
-    });
+  /**
+   * Commit menu. Native: system highlight and edge flipping, keyboard driven,
+   * and the destructive Revert entry sits last after a separator.
+   */
+  const openGitLogContextMenu = async (event: { clientX: number; clientY: number; target: EventTarget | null }, commit: GitLogCommit) => {
+    const branchName = event.target instanceof Element
+      ? event.target.closest<HTMLElement>("[data-branch-name]")?.dataset.branchName
+        || gitCommitBranchNames(commit)[0]
+        || null
+      : gitCommitBranchNames(commit)[0] || null;
+    const choice = await showContextMenuAt(contextMenuPoint(event), [
+      { id: "copy-hash", label: t("desktop.workbench.gitCopyCommitHash") },
+      ...(branchName ? [{ id: "copy-branch", label: t("desktop.workbench.gitCopyBranchName") }] : []),
+      { type: "separator" },
+      { id: "cherry-pick", label: t("desktop.workbench.gitCherryPick") },
+      { id: "new-branch", label: t("desktop.workbench.gitNewBranchFromCommit") },
+      { id: "checkout", label: t("desktop.workbench.gitCheckoutCommit") },
+      { id: "reset", label: t("desktop.workbench.gitReset") },
+      { type: "separator" },
+      { id: "merge", label: t("desktop.workbench.gitMerge") },
+      { id: "revert", label: t("desktop.workbench.gitRevert") }
+    ]);
+    if (choice === "copy-hash") desktopApi().clipboardWriteText?.(commit.hash);
+    else if (choice === "copy-branch" && branchName) desktopApi().clipboardWriteText?.(branchName);
+    else if (choice === "cherry-pick") void cherryPickGitLogCommit(commit);
+    else if (choice === "new-branch") setGitLogDialog({ kind: "branch", commit });
+    else if (choice === "checkout") void checkoutGitLogCommit(commit);
+    else if (choice === "reset") setGitLogDialog({ kind: "reset", commit });
+    else if (choice === "merge") void mergeGitLogCommit(commit);
+    else if (choice === "revert") void revertGitLogCommit(commit);
   };
 
   const copyGitLogValue = (value: string) => {
     desktopApi().clipboardWriteText?.(value);
-    setGitLogContextMenu(null);
   };
 
   const revertGitLogCommit = async (commit: GitLogCommit) => {
     const repoRoot = gitHistoryContext?.repoRoot || gitRoot;
     if (!repoRoot) return;
     const label = commit.subject || commit.shortHash;
-    if (!window.confirm(t("desktop.workbench.gitRevertConfirm", label))) return;
-    setGitLogContextMenu(null);
+    if (!(await confirmDestructive(t("desktop.workbench.gitRevertConfirm", label), t("desktop.workbench.gitRevert")))) return;
     try {
       await desktopApi().terminalGitRevert({ repoRoot, hash: commit.hash });
       notifyGitSuccess("desktop.workbench.gitRevertSucceeded", commit.shortHash);
@@ -4854,8 +4836,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     const repoRoot = gitHistoryContext?.repoRoot || gitRoot;
     if (!repoRoot) return;
     const label = commit.subject || commit.shortHash;
-    if (!window.confirm(t("desktop.workbench.gitMergeConfirm", label))) return;
-    setGitLogContextMenu(null);
+    if (!(await confirmDestructive(t("desktop.workbench.gitMergeConfirm", label), t("desktop.workbench.gitMerge")))) return;
     try {
       await desktopApi().terminalGitMerge({ repoRoot, hash: commit.hash });
       notifyGitSuccess("desktop.workbench.gitMergeSucceeded");
@@ -4874,8 +4855,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     const repoRoot = gitHistoryContext?.repoRoot || gitRoot;
     if (!repoRoot) return;
     const label = commit.subject || commit.shortHash;
-    if (!window.confirm(t("desktop.workbench.gitCherryPickConfirm", label))) return;
-    setGitLogContextMenu(null);
+    if (!(await confirmDestructive(t("desktop.workbench.gitCherryPickConfirm", label), t("desktop.workbench.gitCherryPick")))) return;
     try {
       await desktopApi().terminalGitCherryPick({ repoRoot, hash: commit.hash });
       notifyGitSuccess("desktop.workbench.gitCherryPickSucceeded", commit.shortHash);
@@ -4894,8 +4874,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     const repoRoot = gitHistoryContext?.repoRoot || gitRoot;
     if (!repoRoot) return;
     const label = commit.subject || commit.shortHash;
-    if (!window.confirm(t("desktop.workbench.gitCheckoutCommitConfirm", label))) return;
-    setGitLogContextMenu(null);
+    if (!(await confirmDestructive(t("desktop.workbench.gitCheckoutCommitConfirm", label), t("desktop.workbench.gitCheckoutCommit")))) return;
     try {
       await desktopApi().terminalGitCheckoutCommit({ repoRoot, hash: commit.hash });
       notifyGitSuccess("desktop.workbench.gitCheckoutCommitSucceeded", commit.shortHash);
@@ -4914,7 +4893,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     const repoRoot = gitHistoryContext?.repoRoot || gitRoot;
     if (!repoRoot || gitLogDialogBusyRef.current) return;
     const label = commit.subject || commit.shortHash;
-    if (!window.confirm(t("desktop.workbench.gitResetConfirm", label, t(`desktop.workbench.gitResetMode${mode === "soft" ? "Soft" : mode === "mixed" ? "Mixed" : "Hard"}`)))) return;
+    if (!(await confirmDestructive(t("desktop.workbench.gitResetConfirm", label, t(`desktop.workbench.gitResetMode${mode === "soft" ? "Soft" : mode === "mixed" ? "Mixed" : "Hard"}`)), t("desktop.workbench.gitReset")))) return;
     gitLogDialogBusyRef.current = true;
     setGitLogDialog(null);
     try {
@@ -4967,7 +4946,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     setGitHistoryContext(null);
     setGitLog(null);
     setGitShow(null);
-    setGitLogContextMenu(null);
     setGitLogLoading(false);
     setGitLogError("");
     if (returnToExplorer) setSide("files");
@@ -5074,6 +5052,16 @@ export function WorkbenchPanel(): ReactPortal | null {
   const contextMenuLeft = contextMenu
     ? Math.max(8, Math.min(contextMenu.x, window.innerWidth - contextMenuWidth - 8))
     : 8;
+  // Both of these are DOM menus (the GTD tag grid and the agent picker have no
+  // NSMenu equivalent), so they get the measured position and the keyboard
+  // behaviour from the shared hook instead of guessed clamps.
+  const closeContextMenu = useCallback(() => setContextMenu(null), [setContextMenu]);
+  useMenuPosition(
+    Boolean(contextMenu) && !contextMenuClosing,
+    contextMenuRef,
+    { x: contextMenu?.x ?? 0, y: contextMenu?.y ?? 0 }
+  );
+  useMenuKeyboard(Boolean(contextMenu) && !contextMenuClosing, contextMenuRef, closeContextMenu);
 
   const editorDiskAlert = currentEditor?.diskState ? <div
     className={`wb-editor-disk-alert is-${currentEditor.diskState}`}
@@ -5087,16 +5075,20 @@ export function WorkbenchPanel(): ReactPortal | null {
     <div className="wb-editor-disk-actions">
       {currentEditor.diskState === "changed" ? <>
         <button type="button" onClick={() => {
-          if (!currentEditor.dirty || window.confirm(t("desktop.workbench.fileReloadConfirm"))) {
-            void reloadEditorFromDisk(currentEditor.key);
-          }
+          void (async () => {
+            if (!currentEditor.dirty || (await confirmDestructive(t("desktop.workbench.fileReloadConfirm"), t("desktop.common.discard")))) {
+              void reloadEditorFromDisk(currentEditor.key);
+            }
+          })();
         }}>{t("desktop.workbench.fileReload")}</button>
         <button type="button" disabled={editorSettings?.editable === false} onClick={() => void saveEditor(currentEditor.key, true)}>{t("desktop.workbench.fileOverwrite")}</button>
       </> : currentEditor.diskState === "deleted" ?
         <button type="button" disabled={editorSettings?.editable === false} onClick={() => {
-          if (window.confirm(t("desktop.workbench.fileRecreateConfirm", basename(currentEditor.path)))) {
-            void recreateEditorFile(currentEditor.key);
-          }
+          void (async () => {
+            if (await confirmDestructive(t("desktop.workbench.fileRecreateConfirm", basename(currentEditor.path)), t("desktop.workbench.fileRecreate"))) {
+              void recreateEditorFile(currentEditor.key);
+            }
+          })();
         }}>{t("desktop.workbench.fileRecreate")}</button>
         : <button type="button" onClick={() => void desktopApi().workbenchOpenPath({
           rootPath: currentEditor.projectPath,
@@ -5357,14 +5349,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       disabledReason: noProjectReason,
       run: () => openWorkbenchView("scripts")
     },
-    {
-      id: "workbench.linkgraph",
-      label: t("desktop.workbench.quickAccessShowLinkGraph"),
-      category: t("desktop.workbench.quickAccessCategoryPanels"),
-      keywords: "link graph call chain dependency relation",
-      disabledReason: noProjectReason,
-      run: () => openWorkbenchView("linkgraph")
-    },
     // 6. Files / 文件
     {
       id: "file.goToFile",
@@ -5421,12 +5405,44 @@ export function WorkbenchPanel(): ReactPortal | null {
       shortcut: shortcut(","),
       run: () => {
         closeQuickAccess();
-        window.dispatchEvent(new CustomEvent("agent-resume:settings-open", { detail: "general" }));
+        // Settings is its own window now; the main process opens or focuses it.
+        void desktopApi().openSettingsWindow?.({ pane: "general" }).catch(() => undefined);
       }
     }
   ];
 
   const newSessionAnchorRect = newSessionButtonRef.current?.getBoundingClientRect();
+  const closeNewSessionPicker = useCallback(() => setNewSessionPicker(null), [setNewSessionPicker]);
+  useMenuPosition(
+    Boolean(newSessionPicker) && !newSessionPickerClosing,
+    newSessionPickerRef,
+    { x: newSessionAnchorRect?.left ?? 0, y: (newSessionAnchorRect?.bottom ?? 0) + 4 }
+  );
+  useMenuKeyboard(
+    Boolean(newSessionPicker) && !newSessionPickerClosing,
+    newSessionPickerRef,
+    closeNewSessionPicker
+  );
+  // The editor menu carries the selection actions (rich content, not an NSMenu), so
+  // it keeps its DOM but takes the shared measured position and keyboard handling.
+  const closeEditorContextMenu = useCallback(() => setEditorContextMenu(null), [setEditorContextMenu]);
+  useMenuPosition(
+    Boolean(editorContextMenu) && !editorContextMenuClosing,
+    editorContextMenuRef,
+    { x: editorContextMenu?.x ?? 0, y: editorContextMenu?.y ?? 0 }
+  );
+  useMenuKeyboard(
+    Boolean(editorContextMenu) && !editorContextMenuClosing,
+    editorContextMenuRef,
+    closeEditorContextMenu
+  );
+  const closeBranchMenu = useCallback(() => setBranchPane(null), []);
+  useMenuPosition(Boolean(branchPane), branchMenuRef, {
+    x: branchMenuPosition ? Math.max(8, window.innerWidth - branchMenuPosition.right) : 8,
+    y: branchMenuPosition?.top ?? 0
+  });
+  useMenuKeyboard(Boolean(branchPane), branchMenuRef, closeBranchMenu);
+
   const newSessionPickerStyle = newSessionAnchorRect
     ? {
         left: Math.max(8, Math.min(newSessionAnchorRect.left, window.innerWidth - 248)),
@@ -5698,8 +5714,10 @@ export function WorkbenchPanel(): ReactPortal | null {
         <div className="wb-list-meta-row"><p className="wb-list-meta">{selectedSessionKeys.size > 1 ? t("desktop.workbench.selectedCount", selectedSessionKeys.size) : sessionQuery ? t("desktop.workbench.listMetaSearch", selectedSessionScope, sessionQuery, visibleSessions.length + visiblePendingSessions.length) : `${visibleSessions.length + visiblePendingSessions.length} / ${sessionsTotal + selectedPendingSessions.length}`}</p>{selectedSessionKeys.size > 1 ? <button type="button" className="wb-list-remove-btn" onClick={() => {
           const targets = visibleSessions.filter((item) => selectedSessionKeys.has(sessionKey(item)));
           if (!targets.length) return;
-          if (!window.confirm(t("desktop.workbench.removeMultipleConfirm", targets.length))) return;
-          void removeSelectedSessionsFromPanel(targets);
+          void (async () => {
+            if (!(await confirmDestructive(t("desktop.workbench.removeMultipleConfirm", targets.length), t("desktop.common.remove")))) return;
+            void removeSelectedSessionsFromPanel(targets);
+          })();
         }}>{t("desktop.workbench.removeFromPanel")}</button> : null}<button type="button" className="wb-icon-btn" aria-label={t("desktop.common.refresh")} title={t("desktop.common.refresh")} onClick={() => void reloadWorkbench()}><ThemeIcon name="refresh" size={ICON_SIZE.default} /></button></div>
         {visibleSessionRows.length ? <VirtualList
           className="wb-list"
@@ -6109,21 +6127,7 @@ export function WorkbenchPanel(): ReactPortal | null {
               setSearchSelectedKey(key);
               void openFile(match.path, { path: match.path, line: match.line, column: match.column, endColumn: match.endColumn }, projectForPath(match.path) || undefined);
             }}
-          /> : side === "linkgraph" ? <LinkGraphSidePane result={linkGraphResult} progress={linkGraphProgress} busy={linkGraphBusy} error={linkGraphError} outputLanguage={linkGraphLanguage} onOutputLanguageChange={changeLinkGraphLanguage} onRefresh={linkGraphResult ? refreshLinkGraph : undefined} onCancel={cancelLinkGraph} onOpen={(target) => {
-              const root = selectedProject || "";
-              const raw = target.path.replaceAll("\\", "/");
-              const isAbs = raw.startsWith("/") || /^[A-Za-z]:\//.test(raw);
-              const hit = linkGraphResult?.hits.find((item) => item.path === target.path || item.relativePath === raw);
-              const absolute = isAbs
-                ? target.path
-                : hit?.path || (root ? `${root.replace(/\/+$/, "")}/${raw.replace(/^\/+/, "")}` : target.path);
-              void openFile(absolute, {
-                path: absolute,
-                line: target.line,
-                column: target.column || 1,
-                endColumn: target.endColumn || (target.column || 1) + 1
-              });
-            }} /> : <div className="wb-side-pane">
+          /> : <div className="wb-side-pane">
             <div className="wb-side-pane-head wb-git-pane-head">
               <span className="wb-side-pane-title">{gitHistoryContext ? gitHistoryTitle : t("desktop.workbench.sidePanelGit")}</span>
               <div className="wb-git-actions">{gitHistoryContext ? <>
@@ -6170,8 +6174,8 @@ export function WorkbenchPanel(): ReactPortal | null {
         </div>
       </main>
     </div>
-    {branchPane ? <div className="wb-git-branch-popover" style={branchMenuPosition || undefined}>{branchResult?.mode === "nested" ? <div className="wb-git-branch-list">{renderBranchMenu()}</div> : <><div className="wb-git-branch-repo-head">{branchResult?.repoRoot || branchPane.repoRoot || branchPane.cwd}</div><div className="wb-git-branch-list">{renderBranchMenu()}</div></>}</div> : null}
-    {editorContextMenu ? <div className={`wb-context-menu notes-selection-menu${editorContextMenuClosing ? " is-closing" : ""}`} role="menu" style={{ left: Math.max(8, Math.min(editorContextMenu.x, window.innerWidth - 220)), top: Math.max(8, Math.min(editorContextMenu.y, window.innerHeight - 120)) }} onContextMenu={(event) => event.preventDefault()}>
+    {branchPane ? <div ref={branchMenuRef} className="wb-git-branch-popover" style={{ ...(branchMenuPosition ?? {}), visibility: "hidden" }}>{branchResult?.mode === "nested" ? <div className="wb-git-branch-list">{renderBranchMenu()}</div> : <><div className="wb-git-branch-repo-head">{branchResult?.repoRoot || branchPane.repoRoot || branchPane.cwd}</div><div className="wb-git-branch-list">{renderBranchMenu()}</div></>}</div> : null}
+    {editorContextMenu ? <div ref={editorContextMenuRef} className={`wb-context-menu notes-selection-menu${editorContextMenuClosing ? " is-closing" : ""}`} role="menu" style={{ left: editorContextMenu.x, top: editorContextMenu.y, visibility: "hidden" }} onContextMenu={(event) => event.preventDefault()}>
       {editorContextMenu.selectedText ? (
         <>
           <SelectionActionItems
@@ -6186,7 +6190,6 @@ export function WorkbenchPanel(): ReactPortal | null {
           <div className="context-menu-separator" role="separator" />
         </>
       ) : null}
-      <button type="button" role="menuitem" disabled={!editorContextMenu.hasSelection} onClick={() => { setEditorContextMenu(null); openLinkGraphFromEditor(); }}>{t("desktop.workbench.linkGraphView")}</button>
     </div> : null}
     {selectionResult ? (
       <SelectionActionResult
@@ -6196,26 +6199,6 @@ export function WorkbenchPanel(): ReactPortal | null {
         onCopy={copySelectionResult}
       />
     ) : null}
-    {gitLogContextMenu ? <div
-      className={`wb-context-menu wb-git-log-context-menu${gitLogContextMenuClosing ? " is-closing" : ""}`}
-      role="menu"
-      style={{
-        left: Math.max(8, Math.min(gitLogContextMenu.x, window.innerWidth - 220)),
-        top: Math.max(8, Math.min(gitLogContextMenu.y, window.innerHeight - (gitLogContextMenu.branchName ? 336 : 292)))
-      }}
-      onContextMenu={(event) => event.preventDefault()}
-    >
-      <button type="button" role="menuitem" onClick={() => copyGitLogValue(gitLogContextMenu.commit.hash)}>{t("desktop.workbench.gitCopyCommitHash")}</button>
-      {gitLogContextMenu.branchName ? <button type="button" role="menuitem" title={gitLogContextMenu.branchName} onClick={() => copyGitLogValue(gitLogContextMenu.branchName!)}>{t("desktop.workbench.gitCopyBranchName")}</button> : null}
-      <div className="context-menu-separator" role="separator" />
-      <button type="button" role="menuitem" onClick={() => void cherryPickGitLogCommit(gitLogContextMenu.commit)}>{t("desktop.workbench.gitCherryPick")}</button>
-      <button type="button" role="menuitem" onClick={() => { setGitLogDialog({ kind: "branch", commit: gitLogContextMenu.commit }); setGitLogContextMenu(null); }}>{t("desktop.workbench.gitNewBranchFromCommit")}</button>
-      <button type="button" role="menuitem" onClick={() => void checkoutGitLogCommit(gitLogContextMenu.commit)}>{t("desktop.workbench.gitCheckoutCommit")}</button>
-      <button type="button" role="menuitem" onClick={() => { setGitLogDialog({ kind: "reset", commit: gitLogContextMenu.commit }); setGitLogContextMenu(null); }}>{t("desktop.workbench.gitReset")}</button>
-      <div className="context-menu-separator" role="separator" />
-      <button type="button" role="menuitem" onClick={() => void mergeGitLogCommit(gitLogContextMenu.commit)}>{t("desktop.workbench.gitMerge")}</button>
-      <button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => void revertGitLogCommit(gitLogContextMenu.commit)}>{t("desktop.workbench.gitRevert")}</button>
-    </div> : null}
     {gitLogDialog ? <div className={`wb-git-log-dialog${gitLogDialogClosing ? " is-closing" : ""}`} role="dialog" aria-modal="true">
       {gitLogDialog.kind === "branch" ? <>
         <div className="wb-git-log-dialog-title">{t("desktop.workbench.gitBranchFromCommitTitle", gitLogDialog.commit.subject || gitLogDialog.commit.shortHash)}</div>
@@ -6241,7 +6224,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         </div>
       </>}
     </div> : null}
-    {newSessionPicker ? <div ref={newSessionPickerRef} className={`wb-context-menu wb-new-session-picker${newSessionPickerClosing ? " is-closing" : ""}`} role="menu" aria-label={t("desktop.settings.defaultAgent")} style={newSessionPickerStyle} onMouseDown={(event) => event.stopPropagation()} onKeyDown={handleNewSessionPickerKeyDown}>
+    {newSessionPicker ? <div ref={newSessionPickerRef} className={`wb-context-menu wb-new-session-picker${newSessionPickerClosing ? " is-closing" : ""}`} role="menu" aria-label={t("desktop.settings.defaultAgent")} style={{ ...newSessionPickerStyle, visibility: "hidden" }} onMouseDown={(event) => event.stopPropagation()} onKeyDown={handleNewSessionPickerKeyDown}>
       {(settings?.workbench?.composerMentions?.length ?? 0) > 0 ? <>
         <span className="wb-context-menu-label">{t("desktop.settings.composerMentionsWorkspace")}</span>
         <button type="button" role="menuitem" aria-pressed={!newSessionPicker.mentionId} onClick={() => void chooseNewSessionMention(undefined)}>{t("desktop.settings.composerMentionsCurrentProject")}</button>
@@ -6258,7 +6241,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         {WORKBENCH_NEW_SESSION_TARGET_OPTIONS.filter((option) => option.group === "acp").map((option) => <button type="button" role="menuitem" key={option.value} onClick={() => void chooseNewSessionTarget(option.value)}>{t(`desktop.settings.newSessionTarget.${option.value.replace(":", "_")}`)}</button>)}
       </>}
     </div> : null}
-    {contextMenu && !(contextMenu.kind === "task" && !contextMenu.workspaceDir && contextMenu.taskHasSessions) ? <div className={`wb-context-menu${contextMenu.kind === "session" || contextMenu.kind === "session-tab" ? " wb-session-context-menu" : ""}${contextMenuClosing ? " is-closing" : ""}`} role="menu" style={{ left: contextMenuLeft, top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - contextMenuHeight)) }} onContextMenu={(event) => event.preventDefault()}>
+    {contextMenu && !(contextMenu.kind === "task" && !contextMenu.workspaceDir && contextMenu.taskHasSessions) ? <div ref={contextMenuRef} className={`wb-context-menu${contextMenu.kind === "session" || contextMenu.kind === "session-tab" ? " wb-session-context-menu" : ""}${contextMenuClosing ? " is-closing" : ""}`} role="menu" style={{ left: contextMenuLeft, top: contextMenu.y, visibility: "hidden" }} onContextMenu={(event) => event.preventDefault()}>
       {contextMenu.kind === "session-tab" ? <button type="button" role="menuitem" onClick={() => void runContextAction("floatingNote")}>{t(contextMenu.hasFloatingNote ? "desktop.workbench.openFloatingNote" : "desktop.workbench.addFloatingNote")}</button> : contextMenu.kind === "editor-tab" ? <button type="button" role="menuitem" onClick={() => void runContextAction("toggleEditorPreview")}>{t(contextMenu.editorPreview ? "desktop.common.edit" : "desktop.workbench.preview")}</button> : contextMenu.kind === "note" ? <>
         <span className="wb-context-menu-label">{t("desktop.workbench.setGtdStatus")}</span>
         <div className="wb-gtd-context-tags" role="group" aria-label={t("desktop.workbench.setGtdStatus")}>

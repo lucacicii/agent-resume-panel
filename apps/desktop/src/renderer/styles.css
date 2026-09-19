@@ -7,7 +7,14 @@
 
   /* Semantic surfaces */
   --color-window-bg: #f5f5f7;
-  --color-sidebar-bg: rgba(246, 246, 246, 0.78);
+  /*
+   * Content surfaces (board canvas, workbench detail, settings form). Slightly
+   * translucent so the desktop behind the window tints them a little, while
+   * cards and inputs stay opaque so text keeps its contrast.
+   */
+  --color-content-bg: rgba(245, 245, 247, 0.82);
+  --color-pane-bg: rgba(245, 245, 247, 0.88);
+  --color-sidebar-bg: rgba(246, 246, 246, 0.42);
   --color-control-bg: #ffffff;
   --color-secondary-bg: #ebebf0;
   --color-tertiary-bg: #e5e5ea;
@@ -29,10 +36,12 @@
   --color-label-tertiary: rgba(0, 0, 0, 0.28);
   --color-label-quaternary: rgba(0, 0, 0, 0.12);
 
-  /* Apple System Accents (Light default) */
-  --color-accent: #007aff;
-  --color-accent-hover: #0066d6;
-  --color-accent-active: #0055b3;
+  /* Apple System Accents. `--accent-base` is injected at runtime from the
+     user's macOS accent colour; every related token derives from it, so one
+     variable drives selection, focus, tinted fills, and link colours. */
+  --color-accent: var(--accent-base, #007aff);
+  --color-accent-hover: color-mix(in srgb, var(--color-accent) 84%, #000000);
+  --color-accent-active: color-mix(in srgb, var(--color-accent) 70%, #000000);
   --color-destructive: #ff3b30;
   --color-destructive-hover: #d72b21;
   --color-success: #34c759;
@@ -42,11 +51,11 @@
   --color-teal: #5ac8fa;
 
   /* Tinted Fills */
-  --color-fill-primary: rgba(0, 122, 255, 0.12);
+  --color-fill-primary: color-mix(in srgb, var(--color-accent) 12%, transparent);
   --color-fill-secondary: rgba(0, 0, 0, 0.05);
   --color-fill-tertiary: rgba(0, 0, 0, 0.03);
   --color-fill-quaternary: rgba(0, 0, 0, 0.02);
-  --color-focus-ring: rgba(0, 122, 255, 0.42);
+  --color-focus-ring: color-mix(in srgb, var(--color-accent) 42%, transparent);
   --editor-caret-color: #1c1c1e;
 
   /* Markdown Typography & Element Colors (Light Mode) */
@@ -56,13 +65,13 @@
   --color-md-code: #cf222e;
   --color-md-code-bg: rgba(175, 15, 30, 0.06);
   --color-md-code-border: rgba(175, 15, 30, 0.16);
-  --color-md-link: #007aff;
-  --color-md-link-hover: #005bb5;
+  --color-md-link: var(--color-accent);
+  --color-md-link-hover: color-mix(in srgb, var(--color-accent) 82%, #000000);
   --color-md-strong: #000000;
-  --color-md-quote-bar: #007aff;
-  --color-md-quote-bg: rgba(0, 122, 255, 0.04);
+  --color-md-quote-bar: var(--color-accent);
+  --color-md-quote-bg: color-mix(in srgb, var(--color-accent) 4%, transparent);
   --color-md-quote-text: #4b5563;
-  --color-md-marker: #007aff;
+  --color-md-marker: var(--color-accent);
 
   /* Native Chat Surfaces (macOS Conversation Style) */
   --chat-bg: var(--color-window-bg);
@@ -155,7 +164,7 @@
   --agent-chat: var(--accent);
 
   /* Workbench terminal (matches xterm theme) */
-  --wb-terminal-surface: #f5f5f7;
+  --wb-terminal-surface: rgba(245, 245, 247, 0.88);
   --wb-terminal-tab-active-label: rgba(0, 0, 0, 0.88);
 
   /* Workbench git graph lanes */
@@ -174,7 +183,9 @@
 [data-theme="light"] {
   color-scheme: light;
   --color-window-bg: #f5f5f7;
-  --color-sidebar-bg: rgba(246, 246, 246, 0.78);
+  --color-content-bg: rgba(245, 245, 247, 0.82);
+  --color-pane-bg: rgba(245, 245, 247, 0.88);
+  --color-sidebar-bg: rgba(246, 246, 246, 0.42);
   --color-control-bg: #ffffff;
   --color-secondary-bg: #ebebf0;
   --color-tertiary-bg: #e5e5ea;
@@ -187,19 +198,19 @@
   --color-label-secondary: rgba(0, 0, 0, 0.55);
   --color-label-tertiary: rgba(0, 0, 0, 0.28);
   --color-label-quaternary: rgba(0, 0, 0, 0.12);
-  --color-accent: #007aff;
-  --color-accent-hover: #0066d6;
-  --color-accent-active: #0055b3;
+  --color-accent: var(--accent-base, #007aff);
+  --color-accent-hover: color-mix(in srgb, var(--color-accent) 84%, #000000);
+  --color-accent-active: color-mix(in srgb, var(--color-accent) 70%, #000000);
   --color-destructive: #ff3b30;
   --color-destructive-hover: #d72b21;
   --color-success: #34c759;
   --color-warning: #ff9500;
   --color-note: #ffcc00;
-  --color-fill-primary: rgba(0, 122, 255, 0.12);
+  --color-fill-primary: color-mix(in srgb, var(--color-accent) 12%, transparent);
   --color-fill-secondary: rgba(0, 0, 0, 0.05);
   --color-fill-tertiary: rgba(0, 0, 0, 0.03);
   --color-fill-quaternary: rgba(0, 0, 0, 0.02);
-  --color-focus-ring: rgba(0, 122, 255, 0.42);
+  --color-focus-ring: color-mix(in srgb, var(--color-accent) 42%, transparent);
   --editor-caret-color: #1c1c1e;
 
   /* Native Chat Surfaces */
@@ -216,7 +227,7 @@
   --shadow-popover: 0 0 0 0.5px rgba(0, 0, 0, 0.08), 0 4px 16px rgba(0, 0, 0, 0.12), 0 12px 32px rgba(0, 0, 0, 0.06);
   --shadow-spotlight: 0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 8px 24px rgba(0, 0, 0, 0.14), 0 24px 60px rgba(0, 0, 0, 0.16);
   --shadow-segment-thumb: 0 1px 2px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.05);
-  --wb-terminal-surface: #f5f5f7;
+  --wb-terminal-surface: rgba(245, 245, 247, 0.88);
   --wb-terminal-tab-active-label: rgba(0, 0, 0, 0.88);
 
   /* Markdown Typography & Element Colors (Light Mode) */
@@ -226,19 +237,21 @@
   --color-md-code: #cf222e;
   --color-md-code-bg: rgba(175, 15, 30, 0.06);
   --color-md-code-border: rgba(175, 15, 30, 0.16);
-  --color-md-link: #007aff;
-  --color-md-link-hover: #005bb5;
+  --color-md-link: var(--color-accent);
+  --color-md-link-hover: color-mix(in srgb, var(--color-accent) 82%, #000000);
   --color-md-strong: #000000;
-  --color-md-quote-bar: #007aff;
-  --color-md-quote-bg: rgba(0, 122, 255, 0.04);
+  --color-md-quote-bar: var(--color-accent);
+  --color-md-quote-bg: color-mix(in srgb, var(--color-accent) 4%, transparent);
   --color-md-quote-text: #4b5563;
-  --color-md-marker: #007aff;
+  --color-md-marker: var(--color-accent);
 }
 
 [data-theme="dark"] {
   color-scheme: dark;
   --color-window-bg: #1e1e1e;
-  --color-sidebar-bg: rgba(30, 30, 30, 0.78);
+  --color-content-bg: rgba(30, 30, 30, 0.82);
+  --color-pane-bg: rgba(30, 30, 30, 0.88);
+  --color-sidebar-bg: rgba(30, 30, 30, 0.42);
   --color-control-bg: #2c2c2e;
   --color-secondary-bg: #3a3a3c;
   --color-tertiary-bg: #48484a;
@@ -251,19 +264,19 @@
   --color-label-secondary: rgba(255, 255, 255, 0.55);
   --color-label-tertiary: rgba(255, 255, 255, 0.28);
   --color-label-quaternary: rgba(255, 255, 255, 0.12);
-  --color-accent: #0a84ff;
-  --color-accent-hover: #409cff;
-  --color-accent-active: #60adff;
+  --color-accent: color-mix(in srgb, var(--accent-base, #0a84ff) 90%, #ffffff);
+  --color-accent-hover: color-mix(in srgb, var(--color-accent) 80%, #ffffff);
+  --color-accent-active: color-mix(in srgb, var(--color-accent) 62%, #ffffff);
   --color-destructive: #ff453a;
   --color-destructive-hover: #ff6961;
   --color-success: #30d158;
   --color-warning: #ff9f0a;
   --color-note: #ffd60a;
-  --color-fill-primary: rgba(10, 132, 255, 0.18);
+  --color-fill-primary: color-mix(in srgb, var(--color-accent) 18%, transparent);
   --color-fill-secondary: rgba(255, 255, 255, 0.08);
   --color-fill-tertiary: rgba(255, 255, 255, 0.05);
   --color-fill-quaternary: rgba(255, 255, 255, 0.03);
-  --color-focus-ring: rgba(10, 132, 255, 0.55);
+  --color-focus-ring: color-mix(in srgb, var(--color-accent) 55%, transparent);
   --editor-caret-color: #ffffff;
 
   /* Native Chat Surfaces */
@@ -280,7 +293,7 @@
   --shadow-popover: 0 0 0 0.5px rgba(255, 255, 255, 0.12), 0 6px 20px rgba(0, 0, 0, 0.4), 0 16px 40px rgba(0, 0, 0, 0.25);
   --shadow-spotlight: 0 0 0 0.5px rgba(255, 255, 255, 0.15), 0 8px 30px rgba(0, 0, 0, 0.5), 0 24px 70px rgba(0, 0, 0, 0.35);
   --shadow-segment-thumb: 0 1px 3px rgba(0, 0, 0, 0.35), 0 0 0 0.5px rgba(255, 255, 255, 0.12);
-  --wb-terminal-surface: #1e1e1e;
+  --wb-terminal-surface: rgba(30, 30, 30, 0.88);
   --wb-terminal-tab-active-label: rgba(255, 255, 255, 0.88);
 
   /* Markdown Typography & Element Colors (Dark Mode) */
@@ -290,13 +303,13 @@
   --color-md-code: #ff7b72;
   --color-md-code-bg: rgba(255, 123, 114, 0.12);
   --color-md-code-border: rgba(255, 123, 114, 0.25);
-  --color-md-link: #409cff;
-  --color-md-link-hover: #70b4ff;
+  --color-md-link: color-mix(in srgb, var(--color-accent) 85%, #ffffff);
+  --color-md-link-hover: color-mix(in srgb, var(--color-accent) 70%, #ffffff);
   --color-md-strong: #ffffff;
-  --color-md-quote-bar: #0a84ff;
-  --color-md-quote-bg: rgba(10, 132, 255, 0.08);
+  --color-md-quote-bar: var(--color-accent);
+  --color-md-quote-bg: color-mix(in srgb, var(--color-accent) 8%, transparent);
   --color-md-quote-text: #a1a1aa;
-  --color-md-marker: #409cff;
+  --color-md-marker: color-mix(in srgb, var(--color-accent) 85%, #ffffff);
 
   --wb-git-lane-0: #0a84ff;
   --wb-git-lane-1: #bf5af2;
@@ -312,7 +325,9 @@
   :root:not([data-theme="light"]) {
     color-scheme: dark;
     --color-window-bg: #1e1e1e;
-    --color-sidebar-bg: rgba(30, 30, 30, 0.78);
+    --color-content-bg: rgba(30, 30, 30, 0.82);
+    --color-pane-bg: rgba(30, 30, 30, 0.88);
+    --color-sidebar-bg: rgba(30, 30, 30, 0.42);
     --color-control-bg: #2c2c2e;
     --color-secondary-bg: #3a3a3c;
     --color-tertiary-bg: #48484a;
@@ -325,19 +340,19 @@
     --color-label-secondary: rgba(255, 255, 255, 0.55);
     --color-label-tertiary: rgba(255, 255, 255, 0.28);
     --color-label-quaternary: rgba(255, 255, 255, 0.12);
-    --color-accent: #0a84ff;
-    --color-accent-hover: #409cff;
-    --color-accent-active: #60adff;
+    --color-accent: color-mix(in srgb, var(--accent-base, #0a84ff) 90%, #ffffff);
+    --color-accent-hover: color-mix(in srgb, var(--color-accent) 80%, #ffffff);
+    --color-accent-active: color-mix(in srgb, var(--color-accent) 62%, #ffffff);
     --color-destructive: #ff453a;
     --color-destructive-hover: #ff6961;
     --color-success: #30d158;
     --color-warning: #ff9f0a;
     --color-note: #ffd60a;
-    --color-fill-primary: rgba(10, 132, 255, 0.18);
+    --color-fill-primary: color-mix(in srgb, var(--color-accent) 18%, transparent);
     --color-fill-secondary: rgba(255, 255, 255, 0.08);
     --color-fill-tertiary: rgba(255, 255, 255, 0.05);
     --color-fill-quaternary: rgba(255, 255, 255, 0.03);
-    --color-focus-ring: rgba(10, 132, 255, 0.55);
+    --color-focus-ring: color-mix(in srgb, var(--color-accent) 55%, transparent);
     --editor-caret-color: #ffffff;
 
     /* Native Chat Surfaces */
@@ -354,7 +369,7 @@
     --shadow-popover: 0 0 0 0.5px rgba(255, 255, 255, 0.12), 0 6px 20px rgba(0, 0, 0, 0.4), 0 16px 40px rgba(0, 0, 0, 0.25);
     --shadow-spotlight: 0 0 0 0.5px rgba(255, 255, 255, 0.15), 0 8px 30px rgba(0, 0, 0, 0.5), 0 24px 70px rgba(0, 0, 0, 0.35);
     --shadow-segment-thumb: 0 1px 3px rgba(0, 0, 0, 0.35), 0 0 0 0.5px rgba(255, 255, 255, 0.12);
-    --wb-terminal-surface: #1e1e1e;
+    --wb-terminal-surface: rgba(30, 30, 30, 0.88);
     --wb-terminal-tab-active-label: rgba(255, 255, 255, 0.88);
 
     /* Markdown Typography & Element Colors (Dark Mode system preference) */
@@ -364,13 +379,13 @@
     --color-md-code: #ff7b72;
     --color-md-code-bg: rgba(255, 123, 114, 0.12);
     --color-md-code-border: rgba(255, 123, 114, 0.25);
-    --color-md-link: #409cff;
-    --color-md-link-hover: #70b4ff;
+    --color-md-link: color-mix(in srgb, var(--color-accent) 85%, #ffffff);
+    --color-md-link-hover: color-mix(in srgb, var(--color-accent) 70%, #ffffff);
     --color-md-strong: #ffffff;
-    --color-md-quote-bar: #0a84ff;
-    --color-md-quote-bg: rgba(10, 132, 255, 0.08);
+    --color-md-quote-bar: var(--color-accent);
+    --color-md-quote-bg: color-mix(in srgb, var(--color-accent) 8%, transparent);
     --color-md-quote-text: #a1a1aa;
-    --color-md-marker: #409cff;
+    --color-md-marker: color-mix(in srgb, var(--color-accent) 85%, #ffffff);
 
     --wb-git-lane-0: #0a84ff;
     --wb-git-lane-1: #bf5af2;
@@ -394,39 +409,30 @@
   box-sizing: border-box;
 }
 
-/* macOS Native Overlay Scrollbars */
-::-webkit-scrollbar {
-  width: 7px;
-  height: 7px;
+/*
+ * Cursor policy.
+ *
+ * macOS keeps the arrow cursor on controls — buttons, tabs, menu items, list
+ * rows — and reserves the pointing hand for links. Per-component
+ * `cursor: pointer` declarations were removed for that reason; anything that
+ * behaves like a link opts in here.
+ */
+a[href],
+.markdown-body a,
+.notes-link-tree-label,
+[data-cursor="pointer"] {
+  cursor: pointer;
 }
 
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.18);
-  border-radius: 999px;
-  border: 1.5px solid transparent;
-  background-clip: padding-box;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.32);
-  background-clip: padding-box;
-}
-
-[data-theme="dark"] ::-webkit-scrollbar-thumb,
-:root:not([data-theme="light"]) ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-  background-clip: padding-box;
-}
-
-[data-theme="dark"] ::-webkit-scrollbar-thumb:hover,
-:root:not([data-theme="light"]) ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.35);
-  background-clip: padding-box;
-}
+/*
+ * Scrollbars stay system-managed.
+ *
+ * Styling `::-webkit-scrollbar` turns Chromium's overlay scrollbar into a
+ * classic one that is always painted and always takes layout width, ignoring
+ * System Settings ▸ Appearance ▸ Show scroll bars. Surfaces that must own their
+ * scrollbar (the terminal viewport, narrow tab strips) scope the rules to
+ * themselves.
+ */
 
 html,
 body {
@@ -450,9 +456,110 @@ body {
   user-select: none;
 }
 
-/* Allow text selection in readable text content */
-p, span, h1, h2, h3, h4, h5, h6, input, textarea, pre, code, .markdown-body {
+/*
+ * Text selection follows content, not element names.
+ *
+ * Selecting by tag (`p`, `span`, …) made chrome labels selectable and let a drag
+ * start inside buttons, while leaving real content like the chat log or a diff
+ * unselectable. Chrome stays inert; every reading and editing surface is
+ * selectable so double-click-a-word, triple-click-a-line, and ⌘A behave like
+ * they do in a native text view.
+ */
+input,
+textarea,
+select,
+[contenteditable="true"],
+pre,
+code,
+.cm-editor,
+.xterm,
+.markdown-body,
+.digest-body,
+.cal-detail,
+.chat-log,
+.wb-diff,
+.session-preview,
+.transcript-body {
   user-select: text;
+  -webkit-user-select: text;
+}
+
+/*
+ * Translucent chrome.
+ *
+ * The board, workbench and Settings windows are non-opaque, so they must not
+ * paint a window-sized background — that would hide the desktop behind the
+ * chrome. Chrome and sidebars are translucent tokens; content surfaces paint
+ * themselves opaque so text stays readable. `backdrop-filter` is dropped where a
+ * bar sits directly on the window backdrop (double blur costs GPU and looks
+ * muddier); popovers above page content keep it.
+ *
+ * Reduce Transparency falls back to solid surfaces.
+ */
+html[data-window-mode="main"] body,
+html[data-window-mode="task"] body,
+html[data-window-mode="settings"] body {
+  background: transparent;
+}
+
+/* Board: translucent toolbar and template sidebar, faintly translucent board. */
+html[data-window-mode="main"] body > main {
+  background: transparent;
+}
+
+html[data-window-mode="main"] .gtd-board {
+  background: var(--color-content-bg);
+}
+
+html[data-window-mode="main"] .top,
+html[data-window-mode="task"] .wb-window-header,
+html[data-window-mode="settings"] .settings-nav {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* Settings: the sidebar shows through, the form is readable. */
+html[data-window-mode="settings"] .settings-main {
+  background: var(--color-content-bg);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  html[data-window-mode="main"] body,
+  html[data-window-mode="task"] body,
+  html[data-window-mode="settings"] body {
+    background: var(--color-window-bg);
+  }
+
+  html[data-window-mode="settings"] .settings-nav,
+  .top,
+  .wb-window-header,
+  .wb-list-pane {
+    background: var(--color-window-bg);
+  }
+
+  html[data-window-mode="main"] .gtd-board,
+  html[data-window-mode="task"] .wb-detail,
+  html[data-window-mode="settings"] .settings-main {
+    background: var(--color-window-bg);
+  }
+
+  :root {
+    --color-pane-bg: var(--color-window-bg);
+  }
+
+  .wb-terminal-host {
+    background: var(--color-window-bg);
+  }
+}
+
+/*
+ * Fullscreen drops the title bar: remove the traffic-light clearance and the
+ * drag strip so the header behaves like content instead of dead space.
+ */
+html[data-fullscreen="true"] .mac-top,
+html[data-fullscreen="true"][data-window-mode="task"] .wb-window-header {
+  padding-left: var(--space-4);
+  -webkit-app-region: no-drag;
 }
 
 .renderer-bridge-error {
@@ -576,7 +683,7 @@ textarea:focus-visible,
   display: grid;
   place-items: center;
   border-radius: var(--radius-md);
-  cursor: pointer;
+
   transition: background var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-spring);
 }
 
@@ -622,7 +729,7 @@ textarea:focus-visible,
   display: grid;
   place-items: center;
   border-radius: 50%;
-  cursor: pointer;
+
   color: var(--color-label-secondary);
   transition: color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
 }
@@ -698,7 +805,7 @@ textarea:focus-visible,
   border-radius: var(--radius-md);
   font-size: var(--font-size-body);
   font-family: inherit;
-  cursor: pointer;
+
   transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
 }
 
@@ -756,47 +863,13 @@ textarea:focus-visible,
   }
 }
 
-/* Native Apple System Tooltip (Compact dark translucent capsule) */
-.tooltip-wrap {
-  display: inline-flex;
-  -webkit-app-region: no-drag;
-}
-
-.tooltip {
-  position: fixed;
-  z-index: 500;
-  max-width: 280px;
-  padding: 4px 8px;
-  border-radius: var(--radius-sm);
-  background: rgba(30, 30, 30, 0.88);
-  backdrop-filter: saturate(180%) blur(12px);
-  -webkit-backdrop-filter: saturate(180%) blur(12px);
-  border: 0.5px solid rgba(255, 255, 255, 0.15);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.24);
-  color: #ffffff;
-  font-size: var(--font-size-caption, 11px);
-  line-height: 1.35;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  pointer-events: none;
-}
-
-[data-theme="dark"] .tooltip {
-  background: rgba(50, 50, 52, 0.9);
-  border: 0.5px solid rgba(255, 255, 255, 0.2);
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .tooltip {
-    animation: tooltip-fade var(--duration-fast, 140ms) var(--ease-out, ease-out);
-  }
-}
-
-@keyframes tooltip-fade {
-  from { opacity: 0; transform: translateY(2px); }
-  to { opacity: 1; transform: translateY(0); }
-}
+/*
+ * Tooltips are the platform's own.
+ *
+ * Controls carry `title`, so macOS draws the tooltip with its own delay,
+ * appearance, and language. The hand-rolled capsule that used to live here is
+ * gone: two tooltip systems on the same control produced two tooltips.
+ */
 
 /* Window Mode Layout Adaptations */
 html[data-window-mode="main"] body > main {
@@ -808,6 +881,30 @@ html[data-window-mode="main"] #react-settings:not(:empty) {
   position: absolute;
   inset: 0;
   z-index: 40;
+}
+
+/* Settings window (data-window-mode=settings): the panel owns the whole window,
+   with no backdrop and no modal semantics. */
+html[data-window-mode="settings"] body > main {
+  position: relative;
+  padding: 0;
+}
+
+html[data-window-mode="settings"] #react-settings {
+  display: block;
+  position: absolute;
+  inset: 0;
+}
+
+/* The window has a native title bar, so there is no in-page toolbar and no
+   separator under one; the split view fills the whole frame. */
+html[data-window-mode="settings"] .settings-window,
+html[data-window-mode="settings"] .settings-window > .react-settings-panel {
+  height: 100%;
+}
+
+html[data-window-mode="settings"] .settings-layout {
+  border-top: none;
 }
 
 /* Workbench window (data-window-mode=task): Native titlebar with traffic light clearance */
@@ -909,7 +1006,7 @@ html[data-window-mode="task"] #react-chrome:empty {
   font-size: var(--font-size-body);
   font-weight: var(--font-weight-medium);
   font-family: inherit;
-  cursor: pointer;
+
   transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
 }
 
@@ -936,7 +1033,7 @@ html[data-window-mode="task"] #react-chrome:empty {
   height: 28px;
   padding: 5px;
   border-radius: var(--radius-md);
-  cursor: pointer;
+
   display: inline-grid;
   place-items: center;
   transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
@@ -1052,7 +1149,7 @@ html[data-window-mode="task"] #react-chrome:empty {
 }
 
 /* ---------------------------------------------------------------------------
-   Overlay exit motion (design system §4.21)
+   Overlay exit motion
 
    Every overlay animates out as the reverse of its entrance. `useOverlayState`
    and `useOverlayPresence` keep the overlay mounted for the duration of the exit
@@ -1271,7 +1368,7 @@ html[data-window-mode="task"] #react-chrome:empty {
   background: transparent;
   color: var(--text);
   padding: 10px 12px;
-  cursor: pointer;
+
   font-size: 12px;
 }
 
@@ -1540,7 +1637,7 @@ html[data-window-mode="task"] #react-chrome:empty {
   font-size: var(--font-size-body);
   font-weight: var(--font-weight-medium);
   line-height: 1.3;
-  cursor: pointer;
+
   transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
 }
 
@@ -1782,7 +1879,7 @@ html[data-window-mode="task"] #react-chrome:empty {
   font-weight: 500;
   padding: 4px 10px;
   border-radius: var(--radius-sm, 4px);
-  cursor: pointer;
+
   white-space: nowrap;
   text-align: center;
   transition: color 0.15s ease;
@@ -1962,7 +2059,7 @@ html[data-window-mode="task"] #react-chrome:empty {
   border: 1px solid transparent;
   background: transparent;
   color: var(--text);
-  cursor: pointer;
+
 }
 
 .settings-provider-item-main:hover {
@@ -2001,7 +2098,7 @@ html[data-window-mode="task"] #react-chrome:empty {
   background: transparent;
   border: 0;
   border-radius: var(--radius-md);
-  cursor: pointer;
+
 }
 
 .settings-provider-remove:hover {
@@ -2273,7 +2370,7 @@ html[data-window-mode="task"] #react-chrome:empty {
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
-  cursor: pointer;
+
 }
 
 .settings-toggle input {
@@ -2335,7 +2432,7 @@ html[data-window-mode="task"] #react-chrome:empty {
   font-size: var(--font-size-headline);
   font-weight: var(--font-weight-semibold);
   text-align: left;
-  cursor: pointer;
+
 }
 
 .settings-disclosure-head:hover {
@@ -2473,7 +2570,7 @@ html[data-window-mode="task"] #react-chrome:empty {
   border: none;
   background: transparent;
   text-align: left;
-  cursor: pointer;
+
   transition: background-color 120ms ease;
 }
 
@@ -2794,7 +2891,7 @@ button.btn {
   font-family: inherit;
   line-height: 1;
   white-space: nowrap;
-  cursor: pointer;
+
   user-select: none;
   transition: background var(--duration-fast) var(--ease-out),
               border-color var(--duration-fast) var(--ease-out),
@@ -2980,7 +3077,7 @@ textarea::placeholder {
   font-size: var(--font-size-body);
   font-weight: 500;
   font-family: inherit;
-  cursor: pointer;
+
   transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
 }
 
@@ -3191,7 +3288,7 @@ main {
   font-size: var(--font-size-body);
   line-height: 1.2;
   font-family: inherit;
-  cursor: pointer;
+
   flex: 0 0 auto;
   transition: background var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out);
 }
@@ -3373,7 +3470,7 @@ legend {
   flex: 0 0 auto;
   margin-bottom: 6px;
   font-size: 12px;
-  cursor: pointer;
+
   user-select: none;
 }
 
@@ -3460,7 +3557,7 @@ legend {
   background: transparent;
   color: var(--text);
   text-align: left;
-  cursor: pointer;
+
 }
 
 .cal-session-row:hover {
@@ -3743,7 +3840,7 @@ legend {
   color: var(--color-accent);
   font-weight: var(--font-weight-medium);
   text-decoration: none;
-  cursor: pointer;
+
 }
 
 .digest-card .digest-body .digest-ref:hover {
@@ -4248,7 +4345,7 @@ code {
   font-size: 11px;
   line-height: 1;
   padding: 0;
-  cursor: pointer;
+
 }
 
 .tool-trace-empty {
@@ -4350,7 +4447,7 @@ code {
   padding: 6px 4px;
   background: transparent;
   color: var(--color-label-primary);
-  cursor: pointer;
+
   font: inherit;
   font-size: var(--font-size-caption);
   line-height: var(--line-height-body);
@@ -4528,7 +4625,7 @@ code {
   border-radius: 50%;
   background: color-mix(in srgb, var(--color-accent, var(--accent)) 18%, transparent);
   color: inherit;
-  cursor: pointer;
+
   flex: 0 0 auto;
 }
 
@@ -4571,7 +4668,7 @@ code {
   font: inherit;
   font-size: var(--font-size-callout);
   text-align: left;
-  cursor: pointer;
+
 }
 
 .wb-acp-command:hover,
@@ -4653,7 +4750,7 @@ code {
   align-items: center;
   justify-content: center;
   line-height: 0;
-  cursor: pointer;
+
   transition: opacity var(--duration-fast) var(--ease-out);
 }
 
@@ -4767,7 +4864,7 @@ code {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: var(--bg);
+  background: var(--color-pane-bg);
 }
 
 .wb-session-split-transcript .wb-side-pane {
@@ -4808,10 +4905,10 @@ code {
   align-items: center;
   justify-content: space-between;
   padding: 0 8px 0 12px;
-  background: var(--color-window-bg);
+  background: var(--color-pane-bg);
   border-bottom: 1px solid var(--color-separator);
   user-select: none;
-  cursor: pointer;
+
 }
 
 .wb-session-split-tui-title {
@@ -4870,7 +4967,7 @@ code {
   font: inherit;
   font-size: 12px;
   font-weight: 500;
-  cursor: pointer;
+
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
 }
 
@@ -5015,7 +5112,7 @@ body.is-pane-resizing-v * {
   padding: 0 8px 0 7px;
   font: inherit;
   color: var(--color-label-secondary, var(--muted));
-  cursor: pointer;
+
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -5097,7 +5194,8 @@ body.is-pane-resizing-v * {
   min-height: 0;
   min-width: 0;
   overflow: hidden;
-  background: var(--bg);
+  /* Content canvas: faintly translucent, like the board and the settings form. */
+  background: var(--color-content-bg);
 }
 
 .wb-detail-head {
@@ -5162,7 +5260,7 @@ body.is-pane-resizing-v * {
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--color-label-secondary);
-  cursor: pointer;
+
   transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
 }
 
@@ -5207,7 +5305,7 @@ body.is-pane-resizing-v * {
   gap: 4px;
   font-size: 11px;
   font-family: var(--font-family-mono);
-  cursor: pointer;
+
   transition: background var(--duration-fast) var(--ease-out),
               color var(--duration-fast) var(--ease-out),
               border-color var(--duration-fast) var(--ease-out);
@@ -5245,7 +5343,7 @@ body.is-pane-resizing-v * {
   height: 26px;
   border-radius: var(--radius-md);
   color: var(--color-label-secondary);
-  cursor: pointer;
+
   display: grid;
   place-items: center;
   transition: background var(--duration-fast) var(--ease-out),
@@ -5298,7 +5396,7 @@ body.is-pane-resizing-v * {
   flex-direction: column;
   min-height: 0;
   border-left: 1px solid var(--color-separator);
-  background: var(--color-window-bg);
+  background: var(--color-pane-bg);
 }
 
 .wb-side-panel.is-hidden {
@@ -5396,7 +5494,7 @@ body.is-pane-resizing-v * {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
+
   transition: background 0.1s ease, color 0.1s ease;
 }
 
@@ -5492,7 +5590,7 @@ body.is-pane-resizing-v * {
   font-size: 11px;
   font-weight: 600;
   text-align: left;
-  cursor: pointer;
+
   user-select: none;
   white-space: nowrap;
   box-sizing: border-box;
@@ -5547,7 +5645,7 @@ body.is-pane-resizing-v * {
   font: inherit;
   font-size: 12px;
   text-align: left;
-  cursor: pointer;
+
   box-sizing: border-box;
 }
 
@@ -5611,7 +5709,7 @@ body.is-pane-resizing-v * {
   background: var(--color-elevated-bg, var(--panel));
   color: var(--color-label-primary, var(--text));
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
-  cursor: pointer;
+
   transition: transform 0.15s ease, background 0.15s ease, opacity 0.15s ease;
 }
 
@@ -5746,7 +5844,7 @@ body.is-pane-resizing-v * {
   font-size: 11px;
   font-weight: 600;
   text-align: left;
-  cursor: pointer;
+
 }
 
 .wb-transcript-thinking-toggle svg {
@@ -5890,7 +5988,7 @@ body.is-pane-resizing-v * {
   border: 1px solid var(--color-separator, var(--border));
   background: transparent;
   color: var(--color-label-secondary, var(--muted));
-  cursor: pointer;
+
   transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
 }
 
@@ -5958,7 +6056,7 @@ body.is-pane-resizing-v * {
   border: none;
   background: transparent;
   color: inherit;
-  cursor: pointer;
+
   text-align: left;
 }
 
@@ -6028,7 +6126,7 @@ body.is-pane-resizing-v * {
   text-align: left;
   font: inherit;
   color: inherit;
-  cursor: pointer;
+
 }
 
 .wb-scripts-tree button.wb-file-tree-row:hover,
@@ -6142,7 +6240,7 @@ body.is-pane-resizing-v * {
   color: var(--color-label-primary, var(--text));
   font-family: var(--font-family-mono, Menlo, Monaco, "Courier New", monospace);
   font-size: var(--font-size-caption, 11px);
-  cursor: pointer;
+
 }
 
 .react-git-branch-trigger span {
@@ -6185,7 +6283,7 @@ body.is-pane-resizing-v * {
   height: 28px;
   padding: 5px;
   border-radius: var(--radius-md);
-  cursor: pointer;
+
   display: grid;
   place-items: center;
   flex-shrink: 0;
@@ -6385,7 +6483,7 @@ body.is-pane-resizing-v * {
   background: transparent;
   text-align: left;
   padding: 3px 10px 3px 2px;
-  cursor: pointer;
+
   color: var(--text);
   display: flex;
   align-items: center;
@@ -6530,7 +6628,7 @@ body.is-pane-resizing-v * {
   border-radius: var(--radius-sm, 4px);
   background: transparent;
   color: var(--muted);
-  cursor: pointer;
+
 }
 
 .wb-git-log-detail-close:hover {
@@ -6581,7 +6679,7 @@ body.is-pane-resizing-v * {
   font-size: 11px;
   font-family: Menlo, Monaco, "Courier New", monospace;
   padding: 3px 0;
-  cursor: pointer;
+
 }
 
 .wb-git-log-file:hover {
@@ -6642,7 +6740,7 @@ body.is-pane-resizing-v * {
   gap: 4px;
   min-height: 22px;
   padding: 0 8px 0 0;
-  cursor: pointer;
+
   user-select: none;
   color: var(--text);
 }
@@ -6675,7 +6773,7 @@ body.is-pane-resizing-v * {
   border: none;
   background: transparent;
   padding: 0;
-  cursor: pointer;
+
 }
 
 .wb-file-tree-chevron svg {
@@ -6861,7 +6959,7 @@ body.is-pane-resizing-v * {
   border-radius: var(--radius-md, 6px);
   font-size: 11px;
   font-weight: 600;
-  cursor: pointer;
+
 }
 
 .wb-search-option:hover {
@@ -6945,7 +7043,7 @@ body.is-pane-resizing-v * {
   padding: 0;
   text-align: left;
   color: var(--text);
-  cursor: pointer;
+
   font: inherit;
 }
 
@@ -7073,7 +7171,7 @@ body.is-pane-resizing-v * {
   background: var(--color-fill-primary, rgba(0, 122, 255, 0.14));
   color: var(--color-accent, #007aff);
   font: 600 11px/1 inherit;
-  cursor: pointer;
+
 }
 
 .wb-search-replace-all:hover:not(:disabled) {
@@ -7098,7 +7196,7 @@ body.is-pane-resizing-v * {
   border-radius: var(--radius-sm, 4px);
   background: transparent;
   color: var(--muted);
-  cursor: pointer;
+
   opacity: 0;
 }
 
@@ -7212,7 +7310,7 @@ body.is-pane-resizing-v * {
   border-radius: 3px;
   background: var(--color-control-bg, var(--panel, #fff));
   color: #fff;
-  cursor: pointer;
+
   appearance: none;
   -webkit-appearance: none;
   font: inherit;
@@ -7288,7 +7386,7 @@ body.is-pane-resizing-v * {
   font: inherit;
   text-align: left;
   padding: 0;
-  cursor: pointer;
+
 }
 
 .wb-git-tree-row-main:hover .wb-file-tree-label {
@@ -7306,7 +7404,7 @@ body.is-pane-resizing-v * {
   border-radius: var(--radius-md, 6px);
   background: transparent;
   color: var(--color-label-secondary, var(--muted));
-  cursor: pointer;
+
 }
 
 .wb-git-discard-btn:hover:not(:disabled) {
@@ -7398,7 +7496,7 @@ body.is-pane-resizing-v * {
   gap: 6px;
   min-height: 24px;
   padding: 0 10px;
-  cursor: pointer;
+
   font-size: 12px;
   color: var(--text);
 }
@@ -7459,7 +7557,7 @@ body.is-pane-resizing-v * {
   height: 28px;
   border-radius: var(--radius-md);
   color: var(--text);
-  cursor: pointer;
+
   display: grid;
   place-items: center;
 }
@@ -7548,7 +7646,7 @@ body.is-pane-resizing-v * {
   color: var(--color-label-secondary);
   background: transparent;
   font: inherit;
-  cursor: pointer;
+
 }
 
 .wb-diff-mode-btn {
@@ -7623,7 +7721,7 @@ body.is-pane-resizing-v * {
   border: 0;
   border-radius: 4px;
   fill: currentColor;
-  cursor: pointer;
+
   touch-action: none;
 }
 
@@ -7659,7 +7757,7 @@ body.is-pane-resizing-v * {
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
-  background: var(--color-window-bg);
+  background: var(--color-pane-bg);
 }
 
 .wb-diff-code-view > * {
@@ -7714,7 +7812,7 @@ body.is-pane-resizing-v * {
   flex-direction: column;
   flex: 0 0 auto;
   min-width: 0;
-  background: var(--color-window-bg);
+  background: var(--color-pane-bg);
 }
 
 /* Safari/Finder style segmented tab bar */
@@ -7725,7 +7823,7 @@ body.is-pane-resizing-v * {
   height: 32px;
   padding: 0;
   border-bottom: 0.5px solid var(--color-separator);
-  background: var(--color-window-bg);
+  background: var(--color-pane-bg);
   flex-shrink: 0;
 }
 
@@ -7819,7 +7917,7 @@ body.is-pane-resizing-v * {
 button.wb-pane-tab-group-label {
   appearance: none;
   border-right: 0.5px solid var(--color-separator);
-  cursor: pointer;
+
   transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
 }
 
@@ -7890,7 +7988,7 @@ button.wb-pane-tab-group-label.is-busy {
   padding: 0 8px 0 var(--space-3);
   height: 100%;
   align-self: stretch;
-  cursor: pointer;
+
   font-size: var(--font-size-body);
   line-height: 32px;
   overflow: hidden;
@@ -7944,7 +8042,7 @@ button.wb-pane-tab-group-label.is-busy {
   border: none;
   background: transparent;
   border-radius: var(--radius-sm);
-  cursor: pointer;
+
   flex-shrink: 0;
   opacity: 0;
   display: grid;
@@ -8297,7 +8395,7 @@ select.wb-acp-toolbar-select option {
   color: var(--color-label-tertiary);
   border: none;
   background: transparent;
-  cursor: pointer;
+
   padding: 1px 4px;
   border-radius: var(--radius-xs);
   transition: color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
@@ -8368,7 +8466,7 @@ select.wb-acp-toolbar-select option {
 }
 
 .wb-acp-tool.is-expandable {
-  cursor: pointer;
+
 }
 
 .wb-acp-tool.is-expandable:hover {
@@ -8563,7 +8661,7 @@ select.wb-acp-toolbar-select option {
   color: inherit;
   font: inherit;
   text-align: left;
-  cursor: pointer;
+
 }
 
 .wb-acp-question-option:hover {
@@ -8748,7 +8846,7 @@ select.wb-acp-toolbar-select option {
 }
 
 .wb-editor-pane {
-  background: var(--color-window-bg);
+  background: var(--color-pane-bg);
   display: flex;
   flex: 1;
   min-height: 0;
@@ -8786,7 +8884,7 @@ select.wb-acp-toolbar-select option {
   padding: 3px 8px;
   color: var(--color-label-primary);
   background: var(--color-control-bg);
-  cursor: pointer;
+
   font-size: 11px;
 }
 
@@ -8803,7 +8901,7 @@ select.wb-acp-toolbar-select option {
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
-  background: var(--color-window-bg);
+  background: var(--color-pane-bg);
 }
 
 textarea.wb-editor-host {
@@ -8826,7 +8924,7 @@ textarea.wb-editor-host {
   overflow: auto;
   padding: 12px 16px 24px;
   box-sizing: border-box;
-  background: var(--color-window-bg);
+  background: var(--color-pane-bg);
   color: var(--color-label-primary);
   font-size: 13px;
   line-height: 1.55;
@@ -8955,7 +9053,7 @@ textarea.wb-editor-host {
   border-radius: var(--radius-md);
   background: transparent;
   color: inherit;
-  cursor: pointer;
+
 }
 
 .wb-diff-find-btn.app-inline-search-btn:hover,
@@ -9054,7 +9152,7 @@ textarea.wb-editor-host {
   border-radius: var(--radius-md);
   background: transparent;
   color: inherit;
-  cursor: pointer;
+
   place-items: center;
 }
 
@@ -9250,7 +9348,7 @@ textarea.wb-editor-host {
   padding: 0;
   border: none;
   background: transparent;
-  cursor: pointer;
+
 }
 
 .wb-terminal-composer-pending-image-open img {
@@ -9280,7 +9378,7 @@ textarea.wb-editor-host {
   border-radius: 50%;
   background: rgba(0, 0, 0, 0.65);
   color: #fff;
-  cursor: pointer;
+
   transition: transform var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
 }
 
@@ -9353,7 +9451,7 @@ textarea.wb-editor-host {
   border-radius: 50%;
   background: var(--tui-compose-accent);
   color: #ffffff;
-  cursor: pointer;
+
   transition: transform var(--duration-fast) var(--ease-out), filter var(--duration-fast) var(--ease-out);
 }
 
@@ -9407,7 +9505,7 @@ textarea.wb-editor-host {
   padding: 5px 8px;
   border-radius: var(--radius-md);
   color: var(--color-label-primary);
-  cursor: pointer;
+
   font-family: var(--font-family-mono);
   font-size: 12px;
   line-height: 1.3;
@@ -9534,7 +9632,7 @@ textarea.wb-editor-host {
   border-radius: 6px;
   background: transparent;
   color: inherit;
-  cursor: pointer;
+
 }
 
 .wb-terminal-search-btn:hover,
@@ -9575,7 +9673,7 @@ textarea.wb-editor-host {
   background: transparent;
   padding: 2px 6px;
   margin: 0;
-  cursor: pointer;
+
   border-radius: 4px;
 }
 
@@ -9650,7 +9748,7 @@ textarea.wb-editor-host {
   text-align: left;
   padding: 7px 10px;
   border-radius: 6px;
-  cursor: pointer;
+
   font-size: 12px;
   font-family: Menlo, Monaco, "Courier New", monospace;
   overflow: hidden;
@@ -9800,7 +9898,7 @@ textarea.wb-editor-host {
   text-align: left;
   padding: 5px 9px;
   border-radius: var(--radius-md);
-  cursor: pointer;
+
   font-size: var(--font-size-body);
   line-height: 1.35;
   width: 100%;
@@ -9998,7 +10096,7 @@ textarea.wb-editor-host {
   border-radius: var(--radius-md);
   background: transparent;
   color: var(--color-label-secondary);
-  cursor: pointer;
+
 }
 
 .wb-floating-note-close:hover,
@@ -10172,7 +10270,7 @@ textarea.wb-floating-note-editor {
   color: var(--text);
   padding: 7px 14px;
   font-size: 13px;
-  cursor: pointer;
+
 }
 
 .wb-note-created-btn:hover {
@@ -10283,7 +10381,7 @@ textarea.wb-floating-note-editor {
   background: transparent;
   color: var(--color-label-secondary);
   border-radius: var(--radius-md);
-  cursor: pointer;
+
   -webkit-app-region: no-drag;
   transition: color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
 }
@@ -10378,7 +10476,7 @@ textarea.wb-floating-note-editor {
   background: transparent;
   color: var(--muted);
   font-size: 11px;
-  cursor: pointer;
+
   padding: 2px 6px;
   border-radius: var(--radius-sm);
   transition: color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
@@ -10462,7 +10560,7 @@ textarea.wb-floating-note-editor {
   display: grid;
   place-items: center;
   border-radius: var(--radius-sm);
-  cursor: pointer;
+
   font-size: 16px;
   line-height: 1;
   transition: background var(--duration-fast) var(--ease-out);
@@ -10622,7 +10720,7 @@ textarea.wb-floating-note-editor {
   width: 12px;
   border-radius: 50%;
   background: color-mix(in srgb, var(--muted) 55%, transparent);
-  cursor: pointer;
+
 }
 
 .sidebar-project-filter-segmented {
@@ -10701,7 +10799,7 @@ textarea.wb-floating-note-editor {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  cursor: pointer;
+
   transition: color 0.18s ease;
 }
 
@@ -10735,7 +10833,7 @@ textarea.wb-floating-note-editor {
   border-radius: 6px;
   display: grid;
   place-items: center;
-  cursor: pointer;
+
   padding: 5px;
 }
 
@@ -10796,7 +10894,7 @@ textarea.wb-floating-note-editor {
   background: transparent;
   color: var(--text);
   text-align: left;
-  cursor: pointer;
+
   font-size: 13px;
 }
 
@@ -10842,7 +10940,7 @@ textarea.wb-floating-note-editor {
 
 .wb-session-folder-chevron.has-children {
   opacity: 0.85;
-  cursor: pointer;
+
 }
 
 .wb-session-folder-chevron.is-expanded svg {
@@ -10954,7 +11052,9 @@ textarea.wb-floating-note-editor {
   flex-direction: column;
   min-height: 0;
   border-right: none;
-  background: color-mix(in srgb, var(--bg) 96%, var(--panel));
+  /* A sidebar, not a content column: same translucent treatment as the rest of
+     the chrome, so the desktop shows through it. */
+  background: var(--color-sidebar-bg);
 }
 
 .wb-list-pane {
@@ -11032,7 +11132,7 @@ body.is-pane-resizing-row * {
   height: 28px;
   padding: 5px;
   border-radius: 6px;
-  cursor: pointer;
+
   display: grid;
   place-items: center;
 }
@@ -11130,7 +11230,7 @@ body.is-pane-resizing-row * {
   background: transparent;
   color: var(--color-label-primary);
   text-align: left;
-  cursor: pointer;
+
   transition: background var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
 }
 
@@ -11237,7 +11337,7 @@ body.is-pane-resizing-row * {
   background: transparent;
   color: inherit;
   text-align: left;
-  cursor: pointer;
+
 }
 
 .wb-project-pick-item:hover:not(:disabled) {
@@ -11279,7 +11379,7 @@ body.is-pane-resizing-row * {
   color: var(--color-destructive);
   font: inherit;
   font-size: 11px;
-  cursor: pointer;
+
 }
 
 .wb-list-remove-btn:hover {
@@ -11357,7 +11457,7 @@ body.is-pane-resizing-row * {
   min-height: 0;
   min-width: 0;
   overflow: hidden;
-  background: var(--bg);
+  background: var(--color-pane-bg);
 }
 
 .notes-link-tree-panel {
@@ -11368,7 +11468,7 @@ body.is-pane-resizing-row * {
   flex-direction: column;
   background:
     linear-gradient(180deg, var(--color-fill-quaternary, rgba(128, 128, 128, 0.1)) 0%, transparent 100%),
-    var(--color-control-bg, var(--bg, #fff));
+    var(--color-pane-bg);
 }
 
 .notes-link-tree-head {
@@ -11524,7 +11624,7 @@ body.is-pane-resizing-row * {
 }
 
 .notes-link-dendrogram-node {
-  cursor: pointer;
+
   outline: none;
 }
 
@@ -11593,7 +11693,7 @@ body.is-pane-resizing-row * {
 }
 
 .notes-link-dendrogram-node.is-renameable {
-  cursor: pointer;
+
 }
 
 .notes-link-dendrogram-node.is-renaming .notes-link-dendrogram-dot {
@@ -11712,7 +11812,7 @@ body.is-pane-resizing-row * {
   height: 28px;
   padding: 5px;
   border-radius: 6px;
-  cursor: pointer;
+
   display: grid;
   place-items: center;
 }
@@ -11799,7 +11899,7 @@ body.is-pane-resizing-row * {
   border-radius: 6px;
   background: transparent;
   color: inherit;
-  cursor: pointer;
+
 }
 
 .notes-find-btn.app-inline-search-btn:hover,
@@ -11836,7 +11936,7 @@ body.is-pane-resizing-row * {
   border-radius: 8px;
   overflow: hidden;
   box-sizing: border-box;
-  background: var(--bg);
+  background: var(--color-pane-bg);
 }
 
 textarea.notes-editor-host {
@@ -11934,7 +12034,7 @@ textarea.notes-editor-host:focus {
   color: #fff;
   padding: 7px 12px;
   font-size: 13px;
-  cursor: pointer;
+
   backdrop-filter: blur(10px);
 }
 
@@ -11976,7 +12076,7 @@ textarea.notes-editor-host:focus {
   align-items: center;
   justify-content: center;
   padding: 0;
-  cursor: pointer;
+
   transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out);
 }
 
@@ -12060,7 +12160,7 @@ textarea.notes-editor-host:focus {
   line-height: 1.2;
   white-space: nowrap;
   border-radius: var(--radius-md);
-  cursor: pointer;
+
   transition: color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
 }
 
@@ -12117,7 +12217,7 @@ textarea.notes-editor-host:focus {
   gap: 6px;
   padding: 3px 4px;
   border-radius: var(--radius-sm);
-  cursor: pointer;
+
 }
 
 .chat-tools-item:hover {
@@ -12333,7 +12433,7 @@ html[data-window-mode="standalone-note"] #react-workbench {
   border-radius: var(--radius-md);
   color: var(--color-label-secondary);
   background: transparent;
-  cursor: pointer;
+
 }
 
 .standalone-note-window-button:hover,
@@ -12691,7 +12791,7 @@ html[data-window-mode="standalone-note"] #react-workbench {
   justify-content: space-between;
   gap: 10px;
   text-align: left;
-  cursor: pointer;
+
 }
 
 .settings-backup-item:hover { background: var(--color-fill-tertiary); }
@@ -12805,7 +12905,7 @@ html[data-window-mode="standalone-note"] #react-workbench {
   font-weight: var(--font-weight-medium);
   line-height: 22px;
   font-family: inherit;
-  cursor: pointer;
+
   white-space: nowrap;
   user-select: none;
   transition: background var(--duration-fast) var(--ease-out),
@@ -12864,7 +12964,7 @@ html[data-window-mode="standalone-note"] #react-workbench {
   padding: 1px 6px; border: 1px solid var(--color-separator); border-radius: 999px;
 }
 .wb-task-pin {
-  appearance: none; border: none; cursor: pointer; font-family: inherit;
+  appearance: none; border: none;font-family: inherit;
   display: inline-flex; align-items: center; gap: 3px;
   flex: 0 0 auto; font-size: 10px; font-weight: 600; color: var(--color-warning);
   padding: 1px 6px; border-radius: 999px;
@@ -12889,7 +12989,7 @@ html[data-window-mode="standalone-note"] #react-workbench {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  cursor: pointer;
+
   white-space: nowrap;
   flex: 0 0 auto;
   line-height: 18px;
@@ -12908,11 +13008,11 @@ html[data-window-mode="standalone-note"] #react-workbench {
 .wb-task-add-project {
   appearance: none; border: 1px dashed var(--color-separator-opaque); background: transparent;
   color: var(--color-label-secondary); border-radius: 999px; padding: 0 8px; font-size: 10px;
-  line-height: 20px; max-width: 170px; cursor: pointer;
+  line-height: 20px; max-width: 170px;
 }
 .wb-task-add-project:hover { border-color: var(--color-accent); color: var(--color-label-primary); }
 .wb-task-target { margin: 0; font-size: 10px; color: var(--color-label-tertiary); display: flex; align-items: center; gap: 2px; }
-.wb-task-target-reset { appearance: none; border: 0; background: transparent; color: inherit; cursor: pointer; padding: 0 2px; display: inline-flex; }
+.wb-task-target-reset { appearance: none; border: 0; background: transparent; color: inherit;padding: 0 2px; display: inline-flex; }
 .wb-task-target-reset:hover { color: var(--color-accent); }
 .wb-task-project {
   display: inline-flex; align-items: center; gap: 2px; padding: 0 4px 0 6px;
@@ -12921,11 +13021,11 @@ html[data-window-mode="standalone-note"] #react-workbench {
 }
 .wb-task-project.is-active { border-color: var(--color-accent); color: var(--color-accent); }
 .wb-task-project-chip {
-  appearance: none; border: 0; background: transparent; color: inherit; cursor: pointer; font: inherit;
+  appearance: none; border: 0; background: transparent; color: inherit;font: inherit;
   padding: 0; max-width: 132px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .wb-task-project-remove {
-  appearance: none; border: 0; background: transparent; color: inherit; cursor: pointer;
+  appearance: none; border: 0; background: transparent; color: inherit;
   padding: 0 1px; display: inline-flex; opacity: 0; transition: opacity 0.12s;
 }
 .wb-task-project:hover .wb-task-project-remove,
@@ -12942,340 +13042,6 @@ html[data-window-mode="standalone-note"] #react-workbench {
 .wb-folder-row.is-drop-target {
   background: color-mix(in srgb, var(--color-accent) 16%, transparent);
   box-shadow: inset 0 0 0 1px var(--color-accent);
-}
-
-/* Workbench Link Graph side panel */
-.wb-linkgraph-pane {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  height: 100%;
-}
-.wb-linkgraph-head-actions {
-  display: flex;
-  gap: 4px;
-  margin-left: auto;
-}
-.wb-linkgraph-body {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-height: 0;
-  overflow: auto;
-  padding: 0 10px 12px;
-}
-.wb-linkgraph-meta {
-  margin: 0;
-  font-size: 11px;
-  word-break: break-all;
-}
-.wb-linkgraph-lang {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  justify-content: space-between;
-}
-.wb-linkgraph-lang-label {
-  font-size: 11px;
-  color: var(--color-label-secondary);
-  flex-shrink: 0;
-}
-.wb-linkgraph-lang-select {
-  min-width: 0;
-  flex: 1;
-  max-width: 160px;
-  height: 26px;
-  border: 1px solid var(--color-separator);
-  border-radius: var(--radius-md, 8px);
-  background: var(--color-control-bg, var(--color-elevated-bg));
-  color: var(--color-label-primary);
-  font-size: 11px;
-  padding: 0 6px;
-}
-.wb-linkgraph-status {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0;
-  font-size: 12px;
-  color: var(--color-label-secondary);
-}
-.wb-linkgraph-status.is-busy {
-  color: var(--color-label-primary);
-}
-.wb-linkgraph-status.is-error {
-  color: var(--color-destructive);
-}
-.wb-linkgraph-section {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.wb-linkgraph-section-title {
-  margin: 0;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--color-label-secondary);
-  text-transform: none;
-  letter-spacing: 0;
-}
-.wb-linkgraph-section-toggle {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  text-align: left;
-}
-.wb-linkgraph-section-toggle .is-expanded,
-.wb-linkgraph-summary {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.45;
-  color: var(--color-label-primary);
-  white-space: pre-wrap;
-}
-.wb-linkgraph-hint {
-  margin: 4px 0 0;
-  font-size: 11px;
-}
-.wb-linkgraph-chain {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.wb-linkgraph-hop-main,
-.wb-linkgraph-hop.is-llm-path .wb-linkgraph-hop-main {
-  border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-separator));
-  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
-}
-.wb-linkgraph-hop-main:hover,
-.wb-linkgraph-role {
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--color-accent);
-}
-.wb-linkgraph-role.is-definition { color: var(--color-accent); }
-.wb-linkgraph-role.is-write { color: var(--color-warning, #ff9500); }
-.wb-linkgraph-role.is-read { color: var(--color-success, #34c759); }
-.wb-linkgraph-role.is-call { color: #af52de; }
-.wb-linkgraph-role.is-transform { color: #5ac8fa; }
-.wb-linkgraph-role.is-import { color: #5ac8fa; }
-.wb-linkgraph-role.is-bridge { color: #ff9500; }
-.wb-linkgraph-role.is-reference { color: var(--color-success, #34c759); }
-.wb-linkgraph-role.is-other { color: var(--color-label-secondary); }
-.wb-linkgraph-hop.is-bridge .wb-linkgraph-hop-main {
-  border-color: color-mix(in srgb, #ff9500 50%, var(--color-separator));
-  background: color-mix(in srgb, #ff9500 8%, transparent);
-}
-.wb-linkgraph-hop.is-terminal .wb-linkgraph-hop-main {
-  border-color: color-mix(in srgb, var(--color-accent) 40%, var(--color-separator));
-}
-.wb-linkgraph-bridge-badge {
-  font-size: 10px;
-  font-weight: 600;
-  color: #ff9500;
-  text-transform: uppercase;
-}
-.wb-linkgraph-group {
-  border: 1px solid var(--color-separator, rgba(0, 0, 0, 0.12));
-  border-radius: var(--radius-md, 8px);
-  background: var(--color-secondary-bg, rgba(0, 0, 0, 0.03));
-  overflow: hidden;
-}
-.wb-linkgraph-group.is-primary {
-  border-color: color-mix(in srgb, var(--color-accent) 35%, var(--color-separator));
-}
-.wb-linkgraph-group-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  text-align: left;
-  padding: 8px 10px;
-  font-size: 12px;
-}
-.wb-linkgraph-group-head:hover {
-  background: var(--color-fill-secondary, rgba(0, 0, 0, 0.05));
-}
-.wb-linkgraph-group-title {
-  font-weight: 650;
-  color: var(--color-label-primary);
-}
-.wb-linkgraph-group-meta {
-  font-size: 11px;
-  word-break: break-all;
-  flex: 1 1 auto;
-  min-width: 0;
-}
-.wb-linkgraph-group-steps {
-  margin: 0;
-  padding: 0 8px 8px;
-  border-top: 1px solid var(--color-separator, rgba(0, 0, 0, 0.08));
-  padding-top: 6px;
-}
-.wb-linkgraph-step-index {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  border-radius: 999px;
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--color-label-secondary);
-  background: var(--color-fill-tertiary, rgba(0, 0, 0, 0.06));
-}
-.wb-linkgraph-terminal-badge {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--color-accent);
-  text-transform: uppercase;
-}
-.wb-linkgraph-page-refs {
-  margin: 2px 0 6px 28px;
-}
-.wb-linkgraph-page-ref-list {
-  list-style: none;
-  margin: 4px 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.wb-linkgraph-page-ref-btn {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  width: 100%;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  text-align: left;
-  font-size: 11px;
-  padding: 4px 6px;
-  border-radius: 6px;
-}
-.wb-linkgraph-page-ref-btn:hover {
-  background: var(--color-fill-secondary, rgba(0, 0, 0, 0.05));
-}
-.wb-linkgraph-open-ends {
-  list-style: none;
-  margin: 4px 0 0;
-  padding: 0 4px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 11px;
-}
-.wb-linkgraph-open-ends code {
-  font-size: 10px;
-}
-.wb-linkgraph-timeline {
-  list-style: none;
-  margin: 6px 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.wb-linkgraph-timeline-item {
-  display: flex;
-  gap: 8px;
-  align-items: flex-start;
-  font-size: 12px;
-}
-.wb-linkgraph-timeline-status {
-  flex: 0 0 16px;
-  width: 16px;
-  text-align: center;
-  font-weight: 700;
-  line-height: 1.4;
-  color: var(--color-label-secondary);
-}
-.wb-linkgraph-timeline-item.is-done .wb-linkgraph-timeline-status {
-  color: var(--color-success, #34c759);
-}
-.wb-linkgraph-timeline-item.is-running .wb-linkgraph-timeline-status {
-  color: var(--color-accent);
-}
-.wb-linkgraph-timeline-item.is-failed .wb-linkgraph-timeline-status {
-  color: var(--color-danger, #ff3b30);
-}
-.wb-linkgraph-timeline-body {
-  flex: 1;
-  min-width: 0;
-}
-.wb-linkgraph-timeline-title {
-  font-weight: 600;
-  line-height: 1.35;
-}
-.wb-linkgraph-timeline-phase {
-  display: inline-block;
-  margin-right: 6px;
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--color-label-tertiary);
-}
-.wb-linkgraph-timeline-detail {
-  margin: 2px 0 0;
-  font-size: 11px;
-  line-height: 1.35;
-}
-.wb-linkgraph-timeline-evidence {
-  list-style: none;
-  margin: 4px 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.wb-linkgraph-timeline-ev-btn {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 1px;
-  width: 100%;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  text-align: left;
-  font-size: 11px;
-  padding: 3px 4px;
-  border-radius: 6px;
-}
-.wb-linkgraph-timeline-ev-btn:hover {
-  background: var(--color-fill-secondary, rgba(0, 0, 0, 0.05));
-}
-.wb-linkgraph-hop-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--color-label-primary);
-}
-.wb-linkgraph-hop-loc,
-.wb-linkgraph-hop-narrative,
-.wb-linkgraph-empty {
-  margin: 12px 4px;
-  font-size: 12px;
-  line-height: 1.4;
 }
 
 /* agent-browser-pane */
@@ -13327,7 +13093,7 @@ html[data-window-mode="standalone-note"] #react-workbench {
   color: inherit;
   padding: 6px 4px 6px 8px;
   min-width: 0;
-  cursor: pointer;
+
 }
 .browser-chrome-tab-label span {
   overflow: hidden;
@@ -13346,7 +13112,7 @@ html[data-window-mode="standalone-note"] #react-workbench {
   width: 28px;
   height: 28px;
   border-radius: 8px;
-  cursor: pointer;
+
 }
 .browser-chrome-tab-close:hover,
 .browser-chrome-new-tab:hover,
@@ -13511,7 +13277,7 @@ html[data-window-mode="browser"] #react-chrome {
   font-size: 11px;
   padding: 2px 8px;
   border-radius: 4px;
-  cursor: pointer;
+
   opacity: 0.7;
   transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
   display: inline-flex;
@@ -13609,7 +13375,7 @@ html[data-window-mode="browser"] #react-chrome {
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--color-label-secondary);
-  cursor: pointer;
+
 }
 .selection-settings-order-btn:hover:not(:disabled),
 .selection-settings-order-btn:focus-visible {
@@ -13632,7 +13398,7 @@ html[data-window-mode="browser"] #react-chrome {
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  cursor: pointer;
+
   user-select: none;
   white-space: nowrap;
   line-height: 1.4;
@@ -13772,7 +13538,7 @@ html[data-window-mode="browser"] #react-chrome {
   background: transparent;
   border: none;
   border-radius: 4px;
-  cursor: pointer;
+
   transition: all var(--duration-fast, 0.15s) ease;
 }
 
@@ -13802,7 +13568,7 @@ html[data-window-mode="browser"] #react-chrome {
   background: transparent;
   border: 1px solid transparent;
   color: var(--text-secondary, #888);
-  cursor: pointer;
+
   transition: all var(--duration-fast, 0.15s) ease;
 }
 
@@ -13867,7 +13633,7 @@ html[data-window-mode="browser"] #react-chrome {
   border-radius: 4px;
   border: 1px solid transparent;
   background: transparent;
-  cursor: pointer;
+
   padding: 0;
   display: flex;
   align-items: center;
@@ -14050,7 +13816,7 @@ html[data-window-mode="browser"] #react-chrome {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
+
   width: 26px;
   height: 26px;
   box-sizing: border-box;
@@ -14337,7 +14103,7 @@ html[data-window-mode="browser"] #react-chrome {
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--color-label-secondary);
-  cursor: pointer;
+
   transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
 }
 
@@ -14566,7 +14332,7 @@ html[data-window-mode="browser"] #react-chrome {
   color: inherit;
   font: inherit;
   text-align: left;
-  cursor: pointer;
+
 }
 
 .gtd-card-main:focus-visible {
@@ -14659,7 +14425,7 @@ html[data-window-mode="browser"] #react-chrome {
   background: var(--color-fill-secondary);
   color: var(--color-label-secondary);
   font-size: var(--font-size-micro, 11px);
-  cursor: pointer;
+
   transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
 }
 
@@ -14734,7 +14500,7 @@ html[data-window-mode="browser"] #react-chrome {
   background: var(--color-control-bg);
   box-shadow: var(--shadow-subtle);
   color: var(--color-label-primary);
-  cursor: pointer;
+
   transition: background var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
 }
 
@@ -14762,7 +14528,7 @@ html[data-window-mode="browser"] #react-chrome {
   place-items: center;
   border-radius: var(--radius-md);
   color: var(--muted);
-  cursor: pointer;
+
   -webkit-app-region: no-drag;
 }
 
@@ -14814,7 +14580,7 @@ html[data-window-mode="browser"] #react-chrome {
   font-size: var(--font-size-caption, 12px);
   font-family: inherit;
   white-space: nowrap;
-  cursor: pointer;
+
 }
 
 .wb-workbench-tab.active .wb-workbench-tab-label {
@@ -14833,7 +14599,7 @@ html[data-window-mode="browser"] #react-chrome {
   border-radius: var(--radius-sm, 4px);
   background: transparent;
   color: var(--muted);
-  cursor: pointer;
+
 }
 
 .wb-workbench-tab-close:hover {
@@ -14867,7 +14633,7 @@ html[data-window-mode="browser"] #react-chrome {
   border-radius: var(--radius-md);
   background: transparent;
   color: var(--muted);
-  cursor: pointer;
+
 }
 
 .wb-workbench-add:hover {
@@ -14930,7 +14696,7 @@ html[data-window-mode="browser"] #react-chrome {
   border-radius: 999px;
   background: transparent;
   color: var(--muted);
-  cursor: pointer;
+
 }
 
 .gtd-new-task-project-clear:hover {
@@ -14963,7 +14729,7 @@ html[data-window-mode="browser"] #react-chrome {
   color: var(--muted);
   font-family: inherit;
   font-size: var(--font-size-caption, 12px);
-  cursor: pointer;
+
 }
 
 .wb-left-tab:hover:not(:disabled) {
@@ -15043,7 +14809,7 @@ html[data-window-mode="browser"] #react-chrome {
   font: inherit;
   font-size: var(--font-size-caption, 12px);
   text-align: left;
-  cursor: pointer;
+
 }
 
 .wb-note-list-item:hover {

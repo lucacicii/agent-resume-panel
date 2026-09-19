@@ -3,6 +3,7 @@ import { ResizeHandle } from "../../../components/ResizeHandle";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GtdStatus } from "@agent-resume/core";
 import { desktopApi } from "../../../bridge";
+import { confirmDestructive } from "../../../confirmAction";
 import { CodeEditor, type CodeEditorHandle, type CodeEditorSearchResult } from "../../../components/CodeEditor";
 import { renderMarkdown } from "../../../components/Markdown";
 import { imageSrcFromElement, posixDirname, posixJoin } from "../../../components/markdownImage";
@@ -10,6 +11,7 @@ import { GTD_STATUSES } from "../../../gtd";
 import { useI18n } from "../../../i18n";
 import { notifyDesktop } from "../../../components/Notifications";
 import { useOverlayState } from "../../../components/useOverlayMotion";
+import { useMenuKeyboard, useMenuPosition } from "../../../components/menuOverlay";
 import { SelectionSendMenu, type SelectionSendMenuState } from "../../../selection/SelectionSendMenu";
 import { NoteLinkTree } from "./NoteLinkTree";
 
@@ -196,6 +198,16 @@ export function NotePaneView({ noteId, active, onOpenNote, onTitleChange, onDirt
   const [findQuery, setFindQuery] = useState("");
   const [findResult, setFindResult] = useState<CodeEditorSearchResult | null>(null);
   const [contextMenu, setContextMenu, contextMenuClosing] = useOverlayState<ContextMenuState>();
+  const contextMenuRef = useRef<HTMLDivElement>(null);
+  const closeContextMenu = useCallback(() => setContextMenu(null), [setContextMenu]);
+  // A DOM menu (the GTD status grid has no NSMenu equivalent) still has to behave
+  // like a macOS menu: measure it, flip it, and drive it from the keyboard.
+  useMenuPosition(
+    Boolean(contextMenu) && !contextMenuClosing,
+    contextMenuRef,
+    { x: contextMenu?.x ?? 0, y: contextMenu?.y ?? 0 }
+  );
+  useMenuKeyboard(Boolean(contextMenu) && !contextMenuClosing, contextMenuRef, closeContextMenu);
   const [renameDialog, setRenameDialog, renameDialogClosing] = useOverlayState<RenameDialogState>();
   const [imagePreview, setImagePreview, imagePreviewClosing] = useOverlayState<string>();
   const [selectionMenu, setSelectionMenu] = useState<SelectionSendMenuState | null>(null);
@@ -581,7 +593,7 @@ export function NotePaneView({ noteId, active, onOpenNote, onTitleChange, onDirt
     const message = childCount > 0
       ? t("desktop.notes.deleteWithChildren", titleFor(note), childCount)
       : t("desktop.notes.deleteConfirm", titleFor(note));
-    if (!window.confirm(message)) return;
+    if (!(await confirmDestructive(message, t("desktop.common.delete")))) return;
     try {
       saveTimer.current !== null && window.clearTimeout(saveTimer.current);
       saveTimer.current = null;
@@ -829,11 +841,13 @@ export function NotePaneView({ noteId, active, onOpenNote, onTitleChange, onDirt
       {selectionMenu ? <SelectionSendMenu menu={selectionMenu} onClose={() => setSelectionMenu(null)} /> : null}
       {contextMenu ? (
         <div
+          ref={contextMenuRef}
           className={`notes-context-menu${contextMenuClosing ? " is-closing" : ""}`}
           role="menu"
           style={{
-            left: Math.max(8, Math.min(contextMenu.x, window.innerWidth - 220)),
-            top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - 420))
+            left: contextMenu.x,
+            top: contextMenu.y,
+            visibility: "hidden"
           }}
           onContextMenu={(event) => event.preventDefault()}
         >

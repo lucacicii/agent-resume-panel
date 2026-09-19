@@ -60,7 +60,7 @@ Rules:
 | Surface | Design language | Policy doc |
 | --- | --- | --- |
 | VS Code extension | VS Code platform (native tree views, webviews) | `.agents/extended/ui-policy.md` § VS Code |
-| Electron desktop | macOS HIG tokens and components | `.agents/extended/ui-design-system.md` |
+| Electron desktop | macOS HIG (windows, menus, dialogs, appearance) | `.agents/extended/ui-policy.md` § Electron Desktop |
 
 Do not apply desktop visual tokens to extension webviews, or VS Code patterns to the desktop renderer.
 

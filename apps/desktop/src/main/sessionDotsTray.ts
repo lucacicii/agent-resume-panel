@@ -42,7 +42,7 @@ type TrayWorkbenchItem = {
   title: string;
   status: WorkbenchSessionDotStatus;
 };
-type TrayItem = TrayNoteItem | TrayWorkbenchItem;
+export type TrayItem = TrayNoteItem | TrayWorkbenchItem;
 
 /** One tray row per workbench that has an open window or a live session. */
 export type TrayWorkbench = {
@@ -222,10 +222,11 @@ function statusSuffix(status: WorkbenchSessionDotStatus): string {
   return "";
 }
 
-export function renderSessionDotsTrayPng(
+/** Pixel data for the menu bar icon, before PNG encoding (kept testable). */
+export function renderSessionDotsRgba(
   items: readonly TrayItem[],
-  options?: { dark?: boolean; scale?: number }
-): Buffer {
+  options?: { dark?: boolean; scale?: number; monochrome?: boolean }
+): { width: number; height: number; rgba: Buffer } {
   const dark = options?.dark === true;
   const scale = Math.max(1, Math.min(3, Math.round(options?.scale || 2)));
   const visible = items.slice(0, TRAY_MAX_DOTS);
@@ -234,7 +235,7 @@ export function renderSessionDotsTrayPng(
   const height = logical.height * scale;
   const rgba = Buffer.alloc(width * height * 4);
   const palette = dark ? STATUS_COLORS_DARK : STATUS_COLORS_LIGHT;
-  const idle = dark ? IDLE_COLOR_DARK : IDLE_COLOR_LIGHT;
+  const idle = options?.monochrome ? ([0, 0, 0] as [number, number, number]) : dark ? IDLE_COLOR_DARK : IDLE_COLOR_LIGHT;
   const noteColor = dark ? NOTE_COLOR_DARK : NOTE_COLOR_LIGHT;
   const cy = (logical.height / 2) * scale;
   const radius = (TRAY_DOT_DIAMETER / 2) * scale;
@@ -251,10 +252,27 @@ export function renderSessionDotsTrayPng(
       }
     }
   }
+  return { width, height, rgba };
+}
+
+export function renderSessionDotsTrayPng(
+  items: readonly TrayItem[],
+  options?: { dark?: boolean; scale?: number; monochrome?: boolean }
+): Buffer {
+  const { width, height, rgba } = renderSessionDotsRgba(items, options);
   return encodePng(width, height, rgba);
 }
 
 export function sessionDotsTrayImage(items: readonly TrayItem[]): NativeImage {
+  if (items.length === 0) {
+    // Idle menu bar item: a template image, so macOS draws it in the menu bar's
+    // own colour and it stays correct in light mode, dark mode, and over a
+    // tinted menu bar. Colour is reserved for the live status dots.
+    const png = renderSessionDotsTrayPng([], { dark: false, scale: 2, monochrome: true });
+    const image = nativeImage.createFromBuffer(png, { scaleFactor: 2 });
+    image.setTemplateImage(true);
+    return image;
+  }
   const dark = nativeTheme.shouldUseDarkColors;
   const png = renderSessionDotsTrayPng(items, { dark, scale: 2 });
   const image = nativeImage.createFromBuffer(png, { scaleFactor: 2 });

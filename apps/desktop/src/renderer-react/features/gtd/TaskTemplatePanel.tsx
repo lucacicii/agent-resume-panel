@@ -2,7 +2,9 @@ import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useState } from "react";
 import { desktopApi } from "../../bridge";
+import { confirmDestructive } from "../../confirmAction";
 import { useOverlayState } from "../../components/useOverlayMotion";
+import { contextMenuPoint, showContextMenuAt } from "../../nativeContextMenu";
 import { useI18n } from "../../i18n";
 
 /** One reusable GTD task template as the renderer sees it. */
@@ -44,7 +46,6 @@ export function TaskTemplatePanel({
   const { ready, t } = useI18n();
   const [templates, setTemplates] = useState<TaskTemplate[]>([]);
   const [draft, setDraft, draftClosing] = useOverlayState<TemplateDraft>();
-  const [contextMenu, setContextMenu, contextMenuClosing] = useOverlayState<{ x: number; y: number; template: TaskTemplate }>();
 
   const text = useCallback(
     (key: string, ...args: Array<string | number>) => (ready ? t(key, ...args) : key),
@@ -71,27 +72,11 @@ export function TaskTemplatePanel({
     return () => window.removeEventListener("agent-resume:notes-mutated", onMutated);
   }, [active, load]);
 
-  useEffect(() => {
-    if (!contextMenu) return;
-    const dismiss = (event: MouseEvent) => {
-      if (!(event.target instanceof Element) || !event.target.closest(".wb-context-menu")) setContextMenu(null);
-    };
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") setContextMenu(null); };
-    window.addEventListener("mousedown", dismiss);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("mousedown", dismiss);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [contextMenu]);
-
   const openNewTemplate = useCallback(() => {
-    setContextMenu(null);
     setDraft({ title: "", projectPaths: [], busy: false, error: "" });
   }, []);
 
   const openEditTemplate = useCallback((template: TaskTemplate) => {
-    setContextMenu(null);
     setDraft({
       templateId: template.templateId,
       title: template.title,
@@ -145,9 +130,8 @@ export function TaskTemplatePanel({
   }, [draft, load, text]);
 
   const deleteTemplate = useCallback(async (template: TaskTemplate) => {
-    setContextMenu(null);
     if (typeof desktopApi().taskTemplatesDelete !== "function") return;
-    if (!window.confirm(text("desktop.gtd.deleteTemplateConfirm", template.title))) return;
+    if (!(await confirmDestructive(text("desktop.gtd.deleteTemplateConfirm", template.title), text("desktop.common.delete")))) return;
     try {
       await desktopApi().taskTemplatesDelete({ templateId: template.templateId });
       setTemplates((current) => current.filter((entry) => entry.templateId !== template.templateId));
@@ -155,6 +139,23 @@ export function TaskTemplatePanel({
       void load();
     }
   }, [text, load]);
+
+  /**
+   * Template menu. Native: it highlights with the system accent, flips at the
+   * window edge, and is keyboard navigable without any code of ours.
+   */
+  const openTemplateMenu = useCallback(async (
+    event: { clientX: number; clientY: number },
+    template: TaskTemplate
+  ) => {
+    const choice = await showContextMenuAt(contextMenuPoint(event), [
+      { id: "edit", label: text("desktop.gtd.editTemplate") },
+      { type: "separator" },
+      { id: "delete", label: text("desktop.gtd.deleteTemplate") }
+    ]);
+    if (choice === "edit") openEditTemplate(template);
+    else if (choice === "delete") void deleteTemplate(template);
+  }, [deleteTemplate, openEditTemplate, text]);
 
   if (!active) return null;
 
@@ -195,7 +196,7 @@ export function TaskTemplatePanel({
               onDragEnd={() => onDragTemplateChange(null)}
               onContextMenu={(event) => {
                 event.preventDefault();
-                setContextMenu({ x: event.clientX, y: event.clientY, template });
+                void openTemplateMenu(event, template);
               }}
             >
               <ThemeIcon name="grip-vertical" className="gtd-template-grip" size={ICON_SIZE.dense} aria-hidden="true" />
@@ -265,31 +266,6 @@ export function TaskTemplatePanel({
               </button>
             </div>
           </form>
-        </div>,
-        host
-      ) : null}
-      {contextMenu && host ? createPortal(
-        <div
-          className={`wb-context-menu${contextMenuClosing ? " is-closing" : ""}`}
-          role="menu"
-          style={{
-            left: Math.max(8, Math.min(contextMenu.x, window.innerWidth - 220)),
-            top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - 120))
-          }}
-          onContextMenu={(event) => event.preventDefault()}
-        >
-          <button type="button" role="menuitem" onClick={() => openEditTemplate(contextMenu.template)}>
-            {text("desktop.gtd.editTemplate")}
-          </button>
-          <div className="context-menu-separator" role="separator" />
-          <button
-            type="button"
-            role="menuitem"
-            className="context-menu-item-danger"
-            onClick={() => void deleteTemplate(contextMenu.template)}
-          >
-            {text("desktop.gtd.deleteTemplate")}
-          </button>
         </div>,
         host
       ) : null}

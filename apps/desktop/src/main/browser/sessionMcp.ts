@@ -17,7 +17,7 @@ type SessionMcpBuildArgs = {
 export async function buildSessionMcpServers(args: SessionMcpBuildArgs): Promise<McpServer[]> {
   const servers: McpServer[] = [];
 
-  // 1. Core Data MCP Server (notes, reports, sessions, projects, link_graph, tags)
+  // 1. Core Data MCP Server (notes, reports, sessions, projects, tags)
   try {
     const { app } = await import("electron");
     const { resolveExternalMcpCliPath } = await import("../mcpRegistration");

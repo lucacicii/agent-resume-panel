@@ -316,14 +316,10 @@ function renderWindowSettings(initialPane = "general", overrides?: Record<string
   } as unknown as typeof window.agentResume;
   render(
     <I18nProvider>
-      <SettingsPanel variant="embedded" initialPane={initialPane} />
+      <SettingsPanel initialPane={initialPane} />
     </I18nProvider>
   );
-  const open = (pane = initialPane) => {
-    window.dispatchEvent(new CustomEvent("agent-resume:settings-open", { detail: pane }));
-  };
-  open(initialPane);
-  return { host, saveSettings, providersTestConnection, providersFetchModels, navigateHandlers, open };
+  return { host, saveSettings, providersTestConnection, providersFetchModels, navigateHandlers };
 }
 
 describe("SettingsPanel (window)", () => {
@@ -332,11 +328,11 @@ describe("SettingsPanel (window)", () => {
     document.getElementById("react-settings")?.remove();
   });
 
-  it("opens as an overlay and ignores primary tab changes", async () => {
-    const { host, open } = renderWindowSettings();
-    await act(async () => open());
+  it("renders the panel in the window and ignores primary tab changes", async () => {
+    const { host } = renderWindowSettings();
     await waitFor(() => expect(host.querySelector(".react-settings-panel")).not.toBeNull());
-    expect(host.querySelector(".settings-overlay")).not.toBeNull();
+    // A Settings window has no overlay, no backdrop, and no dialog semantics.
+    expect(host.querySelector(".settings-overlay")).toBeNull();
 
     await act(async () => {
       window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "notes" }));
@@ -344,19 +340,14 @@ describe("SettingsPanel (window)", () => {
     expect(host.querySelector(".react-settings-panel")).not.toBeNull();
   });
 
-  it("Done closes the in-window overlay", async () => {
-    const { host, open } = renderWindowSettings();
-    await act(async () => open());
+  it("has no Done button: ⌘W closes the window", async () => {
+    const { host } = renderWindowSettings();
     await waitFor(() => expect(host.querySelector(".react-settings-panel")).not.toBeNull());
-    const done = host.querySelector("button.ghost-btn");
-    expect(done).not.toBeNull();
-    fireEvent.click(done!);
-    await waitFor(() => expect(host.querySelector(".react-settings-panel")).toBeNull());
+    expect(host.querySelector("button.ghost-btn")).toBeNull();
   });
 
   it("navigates pane via onSettingsNavigate", async () => {
-    const { host, navigateHandlers, open } = renderWindowSettings("general");
-    await act(async () => open());
+    const { host, navigateHandlers } = renderWindowSettings("general");
     await waitFor(() => expect(host.querySelector(".react-settings-panel")).not.toBeNull());
     await act(async () => {
       navigateHandlers[0]?.({ pane: "providers" });

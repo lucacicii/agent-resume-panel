@@ -94,6 +94,20 @@ const wrapping = new Compartment();
 const tabs = new Compartment();
 const theme = new Compartment();
 const language = new Compartment();
+const contentAttributes = new Compartment();
+
+/**
+ * Prose is spelled checked, code is not.
+ *
+ * macOS users expect the red underline in anything they write sentences in; a
+ * compiler, a diff, or a config file must stay quiet. Markdown is prose.
+ */
+const SPELLCHECKED_LANGUAGES = new Set(["markdown", "md", "text", "txt"]);
+
+function languageSupportsSpellcheck(filePath?: string, languageId?: string): boolean {
+  const key = normalizeLanguageKey(filePath, languageId);
+  return SPELLCHECKED_LANGUAGES.has(key) || key.endsWith(".md");
+}
 const externalValueSync = Annotation.define<boolean>();
 
 interface SearchMatch {
@@ -303,6 +317,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
   pasteImage.current = onPasteImage;
   handlesPaste.current = shouldHandlePaste;
   appearanceMode.current = appearance;
+  const spellcheckEnabled = !readOnly && languageSupportsSpellcheck(filePath, languageId);
 
   useImperativeHandle(ref, () => ({
     focus: () => view.current?.focus(),
@@ -409,6 +424,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
 
   useEffect(() => {
     if (!host.current) return;
+    const spellcheckAtCreation = !readOnly && languageSupportsSpellcheck(filePath, languageId);
     const state = EditorState.create({
       doc: value,
       extensions: [
@@ -426,7 +442,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
         wrapping.of(wordWrap ? EditorView.lineWrapping : []),
         tabs.of(EditorState.tabSize.of(tabSize)),
         editable.of(EditorView.editable.of(!readOnly)),
-        EditorView.contentAttributes.of({ "aria-label": ariaLabel }),
+        EditorView.contentAttributes.of({ "aria-label": ariaLabel, spellcheck: spellcheckAtCreation ? "true" : "false" }),
         EditorView.domEventHandlers({
           blur: () => { blur.current?.(); return false; },
           paste: (event, instance) => {
@@ -513,8 +529,18 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
   useEffect(() => {
     const instance = view.current;
     if (!instance) return;
-    instance.dispatch({ effects: language.reconfigure(languageExtension(filePath, languageId)) });
-  }, [filePath, languageId]);
+    instance.dispatch({
+      effects: [
+        language.reconfigure(languageExtension(filePath, languageId)),
+        contentAttributes.reconfigure(
+          EditorView.contentAttributes.of({
+            "aria-label": ariaLabel,
+            spellcheck: !readOnly && languageSupportsSpellcheck(filePath, languageId) ? "true" : "false"
+          })
+        )
+      ]
+    });
+  }, [ariaLabel, filePath, languageId, readOnly]);
 
   useEffect(() => {
     const instance = view.current;

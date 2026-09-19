@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { PanelSettings } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
+import { confirmDestructive } from "../../confirmAction";
 import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import {
   isBuiltinSelectionActionId,
@@ -101,7 +102,7 @@ export function SelectionSettingsPane({ t }: { t: Translate }): React.JSX.Elemen
 
   const removeAction = useCallback(async () => {
     if (!selectedAction || isBuiltinSelectionActionId(selectedAction.actionId)) return;
-    if (!window.confirm(t("desktop.settings.selectionDeleteActionConfirm"))) return;
+    if (!(await confirmDestructive(t("desktop.settings.selectionDeleteActionConfirm"), t("desktop.common.delete")))) return;
     try {
       await desktopApi().selectionDeleteAction({ actionId: selectedAction.actionId });
       setSelectedActionId("");

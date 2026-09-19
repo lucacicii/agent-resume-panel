@@ -3,8 +3,10 @@ import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { GtdStatus, TaskGtdRollup } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
+import { confirmDestructive } from "../../confirmAction";
 import { notifyDesktop } from "../../components/Notifications";
-import { useOverlayState } from "../../components/useOverlayMotion";
+import { useOverlayState, useMountedRef } from "../../components/useOverlayMotion";
+import { contextMenuPoint, showContextMenuAt } from "../../nativeContextMenu";
 import { useI18n } from "../../i18n";
 import { taskFromRecord, type WorkbenchTask } from "../workbench/task";
 import { ensureTaskWorkbenches, listAllTaskWorkbenches, workbenchDisplayName, type Workbench } from "../workbench/workbenchModel";
@@ -41,7 +43,7 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
   const [workbenchesByTask, setWorkbenchesByTask] = useState<Record<string, Workbench[]>>({});
   /** Tasks whose workbench already has a window, so the card can say so. */
   const [tasksWithWindows, setTasksWithWindows] = useState<Set<string>>(new Set());
-  const [contextMenu, setContextMenu, contextMenuClosing] = useOverlayState<{ x: number; y: number; item: GtdCard }>();
+  const mountedRef = useMountedRef();
 
   const text = useCallback(
     (key: string, ...args: Array<string | number>) => (ready ? t(key, ...args) : key),
@@ -309,10 +311,9 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
 
   /** Delete a task that has never been linked to a session. */
   const deleteTask = useCallback(async (item: GtdCard) => {
-    setContextMenu(null);
     if (item.sessions.length > 0) return;
     if (typeof desktopApi().notesDelete !== "function") return;
-    if (!window.confirm(text("desktop.workbench.deleteTaskConfirm", item.title))) return;
+    if (!(await confirmDestructive(text("desktop.workbench.deleteTaskConfirm", item.title), text("desktop.common.delete")))) return;
     try {
       await desktopApi().notesDelete({ noteId: item.noteId });
       setItems((current) => current.filter((entry) => entry.noteId !== item.noteId));
@@ -323,19 +324,31 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
     }
   }, [text, load]);
 
-  useEffect(() => {
-    if (!contextMenu) return;
-    const dismiss = (event: MouseEvent) => {
-      if (!(event.target instanceof Element) || !event.target.closest(".wb-context-menu")) setContextMenu(null);
-    };
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") setContextMenu(null); };
-    window.addEventListener("mousedown", dismiss);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("mousedown", dismiss);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [contextMenu]);
+  /**
+   * Board card menu. Native, so it highlights with the system accent, flips at
+   * screen edges, and is keyboard navigable.
+   */
+  const openContextMenu = useCallback(async (event: { clientX: number; clientY: number }, item: GtdCard) => {
+    const pinned = Boolean(rollups[item.noteId]?.override);
+    const choice = await showContextMenuAt(contextMenuPoint(event), [
+      { id: "rename", label: text("desktop.common.rename") },
+      { id: "note", label: text("desktop.workbench.taskOpenNote") },
+      { id: "open", label: text("desktop.gtd.openInWindow") },
+      ...(pinned ? [{ id: "unpin", label: text("desktop.gtd.followChildren") }] : []),
+      ...(item.sessions.length === 0
+        ? [
+            { type: "separator" as const },
+            { id: "delete", label: text("desktop.workbench.deleteTask") }
+          ]
+        : [])
+    ]);
+    if (!mountedRef.current) return;
+    if (choice === "rename") startRename(item);
+    else if (choice === "note") void openTaskNote(item);
+    else if (choice === "open") void openTask(item);
+    else if (choice === "unpin") void clearPin(item.noteId);
+    else if (choice === "delete") void deleteTask(item);
+  }, [clearPin, deleteTask, openTask, openTaskNote, rollups, startRename, text]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -471,7 +484,7 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
                     className={`gtd-card${waiting ? " is-needs-you" : ""}`}
                     onContextMenu={(event) => {
                       event.preventDefault();
-                      setContextMenu({ x: event.clientX, y: event.clientY, item });
+                      void openContextMenu(event, item);
                     }}
                     onDragStart={(event) => {
                       setDragNoteId(item.noteId);
@@ -635,51 +648,6 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
             <button type="submit" className="wb-note-created-btn primary" disabled={newTask.busy}>{text("desktop.gtd.createTask")}</button>
           </div>
         </form>
-      </div>
-    ) : null}
-    {contextMenu ? (
-      <div
-        className={`wb-context-menu${contextMenuClosing ? " is-closing" : ""}`}
-        role="menu"
-        style={{
-          left: Math.max(8, Math.min(contextMenu.x, window.innerWidth - 220)),
-          top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - 120))
-        }}
-        onContextMenu={(event) => event.preventDefault()}
-      >
-        <button
-          type="button"
-          role="menuitem"
-          onClick={() => { const item = contextMenu.item; setContextMenu(null); startRename(item); }}
-        >{text("desktop.common.rename")}</button>
-        <button
-          type="button"
-          role="menuitem"
-          onClick={() => { const item = contextMenu.item; setContextMenu(null); void openTaskNote(item); }}
-        >{text("desktop.workbench.taskOpenNote")}</button>
-        <button
-          type="button"
-          role="menuitem"
-          onClick={() => { const item = contextMenu.item; setContextMenu(null); void openTask(item); }}
-        >{text("desktop.gtd.openInWindow")}</button>
-        {rollups[contextMenu.item.noteId]?.override ? (
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => { const item = contextMenu.item; setContextMenu(null); void clearPin(item.noteId); }}
-          >{text("desktop.gtd.followChildren")}</button>
-        ) : null}
-        {contextMenu.item.sessions.length === 0 ? (
-          <>
-            <div className="context-menu-separator" role="separator" />
-            <button
-              type="button"
-              role="menuitem"
-              className="context-menu-item-danger"
-              onClick={() => void deleteTask(contextMenu.item)}
-            >{text("desktop.workbench.deleteTask")}</button>
-          </>
-        ) : null}
       </div>
     ) : null}
   </>, host);
