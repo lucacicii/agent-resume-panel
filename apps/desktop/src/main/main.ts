@@ -936,6 +936,24 @@ function revealMainWindow(): BrowserWindow | null {
   return mainWindow;
 }
 
+/**
+ * Show a board view: bring the board window forward and tell it which view to
+ * show. A freshly created window has no renderer yet, so the message waits for
+ * `did-finish-load` instead of being dropped.
+ */
+function showBoardView(view: "gtd" | "notes"): void {
+  const existed = Boolean(mainWindow && !mainWindow.isDestroyed());
+  const board = revealMainWindow();
+  if (!board) return;
+  if (existed) {
+    board.webContents.send("nav:show", view);
+    return;
+  }
+  board.webContents.once("did-finish-load", () => {
+    if (!board.isDestroyed()) board.webContents.send("nav:show", view);
+  });
+}
+
 function configuredStandaloneNoteShortcut(settings: PanelSettings): string {
   const raw = settings.notes?.newStandaloneNoteShortcut;
   return normalizeGlobalShortcut(
@@ -1868,6 +1886,21 @@ async function installApplicationMenu(): Promise<void> {
   const viewMenu: Electron.MenuItemConstructorOptions = {
     label: t("desktop.menu.view"),
     submenu: [
+      {
+        label: t("desktop.menu.showGtdBoard"),
+        accelerator: "CommandOrControl+1",
+        click: () => {
+          showBoardView("gtd");
+        }
+      },
+      {
+        label: t("desktop.menu.showNotes"),
+        accelerator: "CommandOrControl+2",
+        click: () => {
+          showBoardView("notes");
+        }
+      },
+      { type: "separator" },
       {
         label: t("desktop.menu.quickAccess"),
         accelerator: "CommandOrControl+P",

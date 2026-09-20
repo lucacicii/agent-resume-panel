@@ -194,6 +194,8 @@ export interface DesktopApi {
   onTaskTemplatesChanged(callback: () => void): () => void;
   /** Edit ▸ Find… (⌘F) — the menu owns the accelerator, so it forwards here. */
   onMenuFind(callback: () => void): () => void;
+  /** View ▸ Show GTD Board / Show Notes (⌘1/⌘2) — board-window view switch. */
+  onNavShow(callback: (view: "gtd" | "notes") => void): () => void;
   /**
    * Show a native context menu at a point in this window. Resolves with the id of
    * the chosen item, or null when the menu was dismissed.
@@ -1527,6 +1529,11 @@ const api: DesktopApi = {
     const handler = () => callback();
     ipcRenderer.on("menu:find", handler);
     return () => ipcRenderer.removeListener("menu:find", handler);
+  },
+  onNavShow: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, view: "gtd" | "notes") => callback(view);
+    ipcRenderer.on("nav:show", handler);
+    return () => ipcRenderer.removeListener("nav:show", handler);
   },
   contextMenuShow: (args) => ipcRenderer.invoke("contextMenu:show", args),
   dialogConfirm: (args) => ipcRenderer.invoke("dialog:confirm", args),

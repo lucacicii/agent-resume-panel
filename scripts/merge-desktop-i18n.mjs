@@ -251,7 +251,6 @@ const obsoleteDesktopKeys = new Set([
   // Retired command palette dead view/session navigation keys
   "desktop.workbench.quickAccessShowReport",
   "desktop.workbench.quickAccessShowAgent",
-  "desktop.workbench.quickAccessShowNotes",
   "desktop.workbench.quickAccessOpenSessions",
   // IM module removed: task rooms, role templates, delegation, knowledge, and the
   // room/discussion-room Workbench chrome are gone. Selection actions moved to

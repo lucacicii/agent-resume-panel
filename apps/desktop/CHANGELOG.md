@@ -8,6 +8,17 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## English
 
+### [Unreleased]
+
+#### Added
+
+- **Board navigation sidebar**: the board window gains a full-height nav sidebar (GTD / Notes) with a gliding hover highlight, collapsible to an icon rail, and restored across launches. The macOS traffic lights now sit over the sidebar, as in Finder, and the sidebar stops being a drag surface in full screen. **View ▸ Show GTD Board (⌘1)** and **View ▸ Show Notes (⌘2)** bring the board forward and switch views; the quick access palette gained the same two commands, and the selected view is remembered
+- **Notes in the board window**: a Notes module beside the GTD board — a searchable list of root notes grouped into tasks, project notes and library notes, with child-count badges, new-note and import actions, and live search across the whole index. The editor pane is the same note view the workbench uses (link tree, edit/preview, find, attachments, GTD status)
+
+#### Changed
+
+- **Board window layout**: the board is now a grid with a full-height sidebar column, so the header starts beside the sidebar instead of spanning the window
+
 ### [0.2.29]
 
 #### Added
@@ -654,6 +665,17 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 ---
 
 ## 简体中文
+
+### [Unreleased]
+
+#### 新增
+
+- **看板导航侧栏**：看板窗口新增全高导航侧栏（GTD / 笔记），带滑动高亮、可折叠为图标栏并在重启后保持。macOS 红绿灯现在位于侧栏之上（与 Finder 一致），全屏时侧栏不再作为拖拽区。**显示 ▸ 显示 GTD 看板（⌘1）** 与 **显示 ▸ 显示笔记（⌘2）** 会前置看板并切换视图；快速访问面板新增同样两个命令，所选视图会被记住
+- **看板窗口中的笔记模块**：GTD 看板旁新增笔记模块——可搜索的根笔记列表，按任务、项目笔记、笔记库分组，带子笔记数徽标、新建与导入操作，并支持对全量索引的实时搜索。编辑面板沿用工作台的笔记视图（链接树、编辑/预览、查找、附件、GTD 状态）
+
+#### 变更
+
+- **看板窗口布局**：看板改为网格布局并含全高侧栏列，顶栏从侧栏右侧开始，不再横跨整个窗口
 
 ### [0.2.29]
 
