@@ -11808,9 +11808,9 @@ body.is-pane-resizing-row * {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  background:
-    linear-gradient(180deg, var(--color-fill-quaternary, rgba(128, 128, 128, 0.1)) 0%, transparent 100%),
-    var(--color-pane-bg);
+  /* Transparent so the whole pane reads as one surface: the pane's translucent
+     background shows through here exactly as it does in the editor below. */
+  background: transparent;
 }
 
 .notes-link-tree-head {
@@ -12095,9 +12095,9 @@ body.is-pane-resizing-row * {
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
-  /* Match the linked-notes panel/dendrogram surface so the tree and the editor
-     read as one continuous tone. */
-  background: var(--color-pane-bg);
+  /* Transparent so the tree and the editor share the pane's single translucent
+     surface instead of stacking two slightly different tints. */
+  background: transparent;
 }
 
 .notes-detail-head {
@@ -12303,6 +12303,14 @@ textarea.notes-editor-host:focus {
 .notes-editor-host .cm-editor {
   height: 100%;
   border-radius: 8px;
+}
+
+/* The dark CodeMirror theme (oneDark) paints #282c34 on the editor root and
+   gutters, which covers the pane surface. Keep the notes editor transparent so
+   it matches the linked-notes panel behind it (the light theme already is). */
+.notes-editor-host .cm-editor,
+.notes-editor-host .cm-editor .cm-gutters {
+  background: transparent;
 }
 
 .notes-editor-host .cm-scroller {
