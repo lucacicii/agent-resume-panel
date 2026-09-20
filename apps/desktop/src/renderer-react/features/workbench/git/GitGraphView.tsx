@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, type ReactPortal } from "react";
 import { createPortal } from "react-dom";
 import { ICON_SIZE, ThemeIcon } from "../../../components/ThemeIcon";
+import { NativeMenuSelect } from "../../../components/NativeMenuSelect";
 import { desktopApi } from "../../../bridge";
 import { showContextMenuAt, type NativeContextMenuItem } from "../../../nativeContextMenu";
 import { useI18n } from "../../../i18n";
@@ -91,9 +92,13 @@ export function GitRepositorySelector({
     const only = repositories[0];
     return <span className="wb-git-repo-select is-static" title={only?.root || value} aria-label={ariaLabel}>{only?.label || basename(value)}</span>;
   }
-  return <select className="react-git-repo-select wb-git-repo-select" value={value} aria-label={ariaLabel} onChange={(event) => onChange(event.target.value)}>
-    {repositories.map((repository) => <option value={repository.root} key={repository.root}>{repository.label}</option>)}
-  </select>;
+  return <NativeMenuSelect
+    className="react-git-repo-select wb-git-repo-select"
+    value={value}
+    ariaLabel={ariaLabel}
+    options={repositories.map((repository) => ({ value: repository.root, label: repository.label }))}
+    onChange={onChange}
+  />;
 }
 
 export function GitBranchSelector({

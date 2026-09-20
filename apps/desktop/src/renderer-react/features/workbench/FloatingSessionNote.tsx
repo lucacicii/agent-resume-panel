@@ -4,6 +4,7 @@ import { desktopApi } from "../../bridge";
 import { confirmDestructive } from "../../confirmAction";
 import { DESKTOP_GTD_STATUSES, desktopGtdColumn, type GtdStatus } from "../../gtd";
 import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
+import { NativeMenuSelect } from "../../components/NativeMenuSelect";
 import { useI18n } from "../../i18n";
 
 export interface FloatingSessionNoteTarget {
@@ -534,17 +535,18 @@ export function FloatingSessionNote({
         <span title={displayTitle}>{secondaryLabel}</span>
       </div>
       <div className="wb-floating-note-actions">
-        <select
+        <NativeMenuSelect
           className="wb-floating-note-status"
-          aria-label={t("desktop.workbench.setGtdStatus")}
+          ariaLabel={t("desktop.workbench.setGtdStatus")}
           title={t("desktop.workbench.setGtdStatus")}
           value={gtdStatus ? desktopGtdColumn(gtdStatus) : ""}
           disabled={!noteId || loading || creating || deleting}
-          onChange={(event) => void updateGtdStatus(event.target.value ? event.target.value as GtdStatus : null)}
-        >
-          <option value="">{t("desktop.workbench.clearGtdStatus")}</option>
-          {DESKTOP_GTD_STATUSES.map((status) => <option value={status} key={status}>{t(`desktop.workbench.gtdStatus.${status}`)}</option>)}
-        </select>
+          options={[
+            { value: "", label: t("desktop.workbench.clearGtdStatus") },
+            ...DESKTOP_GTD_STATUSES.map((status) => ({ value: status, label: t(`desktop.workbench.gtdStatus.${status}`) }))
+          ]}
+          onChange={(value) => void updateGtdStatus(value ? value as GtdStatus : null)}
+        />
         <button
           type="button"
           className="wb-floating-note-close"

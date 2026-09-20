@@ -4187,8 +4187,7 @@ describe("WorkbenchPanel", () => {
     expect(document.querySelectorAll(".wb-git-repo-group").length).toBe(2);
     expect(await screen.findByTitle("src/app.ts")).toBeTruthy();
     expect(screen.getByTitle("src/core.ts")).toBeTruthy();
-    const repoSelect = screen.getByRole("combobox", { name: "Git repository" });
-    expect(repoSelect).toHaveProperty("value", "/work/monorepo/packages/app");
+    const repoSelect = screen.getByRole("button", { name: "Git repository: packages/app" });
     expect(repoSelect.closest(".wb-git-commit-composer")).not.toBeNull();
     expect(screen.getByRole("button", { name: "Switch branch: main" }).closest(".wb-git-commit-composer")).not.toBeNull();
 
@@ -4287,8 +4286,8 @@ describe("WorkbenchPanel", () => {
     await activateTaskDirectory("/work/monorepo");
     fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
 
-    const repoSelect = await screen.findByRole("combobox", { name: "Git repository" });
-    expect(repoSelect).toHaveProperty("value", "/work/monorepo/packages/core");
+    const repoSelect = await screen.findByRole("button", { name: "Git repository: packages/core" });
+    expect(screen.getByTitle("/work/monorepo/packages/core")).toBeTruthy();
     expect(await screen.findByRole("button", { name: "Switch branch: dev" })).toBeTruthy();
     expect(screen.queryByTitle("/work/monorepo/packages/app")).toBeNull();
     expect(screen.getByTitle("/work/monorepo/packages/core")).toBeTruthy();
@@ -4318,7 +4317,7 @@ describe("WorkbenchPanel", () => {
     };
   }
 
-  async function renderGitRepositorySelector(getStatus: () => Promise<unknown>): Promise<HTMLSelectElement> {
+  async function renderGitRepositorySelector(getStatus: () => Promise<unknown>, contextMenuShow: ReturnType<typeof vi.fn> = vi.fn(async () => null)): Promise<HTMLButtonElement> {
     const host = document.createElement("div");
     host.id = "react-workbench";
     document.body.append(host);
@@ -4370,14 +4369,15 @@ describe("WorkbenchPanel", () => {
       getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
       listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/monorepo", updatedAt: 1 }],
       terminalGitStatus: async () => getStatus(),
-      terminalGitFetch: async () => ({ ok: true })
+      terminalGitFetch: async () => ({ ok: true }),
+      contextMenuShow
     } as unknown as typeof window.agentResume;
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
     await activateTaskDirectory("/work/monorepo");
     fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
-    return screen.findByRole("combobox", { name: "Git repository" }) as Promise<HTMLSelectElement>;
+    return screen.findByRole("button", { name: /^Git repository:/ }) as Promise<HTMLButtonElement>;
   }
 
   it("moves the automatic repo selector to a nested repository that becomes dirty", async () => {
@@ -4394,17 +4394,11 @@ describe("WorkbenchPanel", () => {
 
     try {
       await renderGitRepositorySelector(async () => status);
-      expect(screen.getByRole("combobox", { name: "Git repository" })).toHaveProperty(
-        "value",
-        "/work/monorepo/packages/app"
-      );
+      expect(screen.getByRole("button", { name: "Git repository: packages/app" })).toBeTruthy();
 
       status = gitRepositorySelectionStatus([coreFile]);
       await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
-      await waitFor(() => expect(screen.getByRole("combobox", { name: "Git repository" })).toHaveProperty(
-        "value",
-        "/work/monorepo/packages/core"
-      ));
+      await waitFor(() => expect(screen.getByRole("button", { name: "Git repository: packages/core" })).toBeTruthy());
     } finally {
       vi.useRealTimers();
     }
@@ -4423,16 +4417,13 @@ describe("WorkbenchPanel", () => {
     let status = gitRepositorySelectionStatus([]);
 
     try {
-      const repoSelect = await renderGitRepositorySelector(async () => status);
-      fireEvent.change(repoSelect, { target: { value: "/work/monorepo/packages/core" } });
-      expect(repoSelect).toHaveProperty("value", "/work/monorepo/packages/core");
+      const repoSelect = await renderGitRepositorySelector(async () => status, vi.fn(async () => "/work/monorepo/packages/core"));
+      fireEvent.click(repoSelect);
+      await waitFor(() => expect(screen.getByRole("button", { name: "Git repository: packages/core" })).toBeTruthy());
 
       status = gitRepositorySelectionStatus([appFile]);
       await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
-      await waitFor(() => expect(screen.getByRole("combobox", { name: "Git repository" })).toHaveProperty(
-        "value",
-        "/work/monorepo/packages/core"
-      ));
+      await waitFor(() => expect(screen.getByRole("button", { name: "Git repository: packages/core" })).toBeTruthy());
       expect(screen.getByTitle("/work/monorepo/packages/app")).toBeTruthy();
     } finally {
       vi.useRealTimers();

@@ -6568,10 +6568,14 @@ body.is-pane-resizing-v * {
   max-width: none;
   min-width: 0;
   flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1);
   height: 22px;
   min-height: 22px;
   font-size: 11px;
-  padding: 0 var(--space-5) 0 var(--space-1-5);
+  padding: 0 var(--space-1-5);
   border-radius: 4px;
   border: 1px solid var(--color-separator, var(--border));
   background-color: var(--color-control-bg, var(--bg));
@@ -6585,6 +6589,15 @@ body.is-pane-resizing-v * {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The label inside a native-menu select trigger; the chevron stays put. */
+.native-menu-select-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
 }
 
 .react-git-branch-trigger {
@@ -10349,8 +10362,12 @@ textarea.wb-editor-host {
 
 .wb-floating-note-status,
 .standalone-note-window-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1);
   height: 28px;
-  padding: 0 var(--space-6) 0 var(--space-2);
+  padding: 0 var(--space-2);
   border: 1px solid var(--color-separator);
   border-radius: var(--radius-md);
   color: var(--color-label-secondary);

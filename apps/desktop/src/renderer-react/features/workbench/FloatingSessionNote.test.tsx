@@ -95,6 +95,7 @@ function installBridge(overrides: Partial<typeof window.agentResume> = {}) {
     notesSetGtdStatus: vi.fn(async ({ noteId, status }: { noteId: string; status: string | null }) => ({ ...note(noteId, Date.now()), gtdStatus: status || undefined })),
     notesDelete: vi.fn(async ({ noteId }: { noteId: string }) => ({ ok: true, deletedNoteIds: [noteId] })),
     notesCreate: vi.fn(async () => ({ noteId: "created-note", filename: "created.md" })),
+    contextMenuShow: vi.fn(async () => null),
     ...overrides
   } as unknown as typeof window.agentResume;
 }
@@ -187,11 +188,11 @@ describe("FloatingSessionNote", () => {
 
   it("sets the floating note GTD status through catalog metadata", async () => {
     const notesSetGtdStatus = vi.fn(async ({ noteId, status }: { noteId: string; status: GtdStatus | null }) => ({ ...note(noteId, 30), gtdStatus: status || undefined }));
-    installBridge({ notesSetGtdStatus });
+    installBridge({ notesSetGtdStatus, contextMenuShow: vi.fn(async () => "waiting") });
     render(<I18nProvider><FloatingSessionNote target={target} onClose={vi.fn()} /></I18nProvider>);
 
     await screen.findByRole("textbox", { name: "Floating note editor" });
-    fireEvent.change(screen.getByRole("combobox", { name: "Set GTD status" }), { target: { value: "waiting" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Set GTD status/ }));
     await waitFor(() => expect(notesSetGtdStatus).toHaveBeenCalledWith({ noteId: "created-note", status: "waiting" }));
   });
 
