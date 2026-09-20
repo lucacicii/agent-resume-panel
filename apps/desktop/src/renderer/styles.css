@@ -3004,7 +3004,10 @@ input[type="month"]:focus,
   box-shadow: 0 0 0 3px var(--color-focus-ring);
 }
 
-/* macOS Native Pop-Up Button (Select) */
+/* macOS Native Pop-Up Button (Select)
+   The arrow lives in the three declarations below. Component rules that restyle a
+   select must override `background-color` (never the `background` shorthand),
+   otherwise they reset repeat/size/position and the arrow tiles across the box. */
 select {
   appearance: none;
   -webkit-appearance: none;
@@ -6208,11 +6211,13 @@ body.is-pane-resizing-v * {
   max-width: none;
   min-width: 0;
   flex: 1 1 0;
+  height: 22px;
+  min-height: 22px;
   font-size: 11px;
-  padding: 2px 6px;
+  padding: 0 20px 0 6px;
   border-radius: 4px;
   border: 1px solid var(--color-separator, var(--border));
-  background: var(--color-control-bg, var(--bg));
+  background-color: var(--color-control-bg, var(--bg));
   color: var(--text);
 }
 
@@ -10064,11 +10069,11 @@ textarea.wb-editor-host {
 .wb-floating-note-status,
 .standalone-note-window-status {
   height: 28px;
-  padding: 0 7px;
+  padding: 0 22px 0 7px;
   border: 1px solid var(--color-separator);
   border-radius: var(--radius-md);
   color: var(--color-label-secondary);
-  background: var(--color-control-bg);
+  background-color: var(--color-control-bg);
   font: inherit;
   font-size: var(--font-size-caption);
 }
