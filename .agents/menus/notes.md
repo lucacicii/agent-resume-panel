@@ -11,7 +11,8 @@
 | extension notes sidebar and commands | `src/notes/` | Tree provider, note commands, import, image insertion, and local file operations. |
 | extension catalog note flags | `src/catalog/notes.ts` | Reflects note presence in session and project UI. |
 | desktop notes service | `apps/desktop/src/main/notesService.ts`, `apps/desktop/src/main/noteIndexer.ts` | Main-process note operations, links IPC, and vector indexing. |
-| desktop notes UI | `apps/desktop/src/renderer-react/features/notes/NotesPanel.tsx` | List (root notes), link tree, editor, preview, search, import, and attachment interactions. |
+| desktop board notes module | `apps/desktop/src/renderer-react/features/notes/NotesView.tsx` | Board-window notes view: searchable root-note list grouped into tasks, project notes, and library notes, with new/import actions. |
+| desktop note editing surface | `apps/desktop/src/renderer-react/features/workbench/notes/NotePaneView.tsx`, `notes/StandaloneNoteWindow.tsx` | Single-note pane (link tree, edit/preview, find, attachments, GTD status) reused by the workbench and the board notes view, plus standalone floating note windows. |
 
 ## Constraints
 

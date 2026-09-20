@@ -15,7 +15,9 @@ import { ensureTaskWorkbenches } from "../workbench/workbenchModel";
  * are handled here because the board window installs no workbench shortcuts.
  */
 export function BoardQuickAccess(): React.ReactPortal | null {
-  const host = document.getElementById("react-gtd");
+  // The palette is a fixed overlay, so it portals to the body: it must stay
+  // visible whichever board view is showing (`#react-gtd` is hidden in Notes).
+  const host = document.body;
   const { t, ready } = useI18n();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -30,6 +32,20 @@ export function BoardQuickAccess(): React.ReactPortal | null {
   const loadCommands = useCallback(async (): Promise<QuickAccessCommand[]> => {
     const text = (key: string) => (ready ? t(key) : key);
     const base: QuickAccessCommand[] = [
+      {
+        id: "view.gtd",
+        label: text("desktop.workbench.quickAccessShowGtd"),
+        category: text("desktop.workbench.quickAccessCategoryNavigation"),
+        keywords: "view gtd board tasks kanban switch surface",
+        run: () => { window.dispatchEvent(new CustomEvent("agent-resume:board-view", { detail: "gtd" })); }
+      },
+      {
+        id: "view.notes",
+        label: text("desktop.workbench.quickAccessShowNotes"),
+        category: text("desktop.workbench.quickAccessCategoryNavigation"),
+        keywords: "view notes switch surface markdown",
+        run: () => { window.dispatchEvent(new CustomEvent("agent-resume:board-view", { detail: "notes" })); }
+      },
       {
         id: "task.new",
         label: text("desktop.gtd.newTask"),

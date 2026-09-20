@@ -96,7 +96,7 @@ export const sessionSetGtdSchema = {
   sessionId: z.string().min(1).describe("Native agent session id."),
   status: z
     .enum(GTD_ACTIVE_STATUSES as unknown as [string, ...string[]])
-    .describe("GTD status: inbox, next, waiting, someday, or reference. Done is set manually from a session menu."),
+    .describe("GTD status: inbox, next, waiting, someday, reference, or done."),
   reason: z
     .string()
     .optional()

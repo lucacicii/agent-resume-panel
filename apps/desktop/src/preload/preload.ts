@@ -52,14 +52,23 @@ import type {
   BrowserPolicyState,
   BrowserSessionState
 } from "../shared/browserTypes";
+import type { TaskColorKey } from "../shared/taskColors";
 
 /** Reusable GTD task template stored in `desktop.db`. */
 export type TaskTemplate = {
   templateId: string;
   title: string;
   projectPaths: string[];
+  /** Fixed-palette accent color; omitted when the template has none. */
+  colorKey?: TaskColorKey;
   createdAtMs: number;
   updatedAtMs: number;
+};
+
+/** A task's resolved accent: template palette key plus derived shade step. */
+export type TaskAccent = {
+  colorKey: TaskColorKey;
+  shade: number;
 };
 
 export interface DesktopApi {
@@ -181,8 +190,12 @@ export interface DesktopApi {
   /** The macOS accent colour as `#rrggbb`, or null to use the system blue. */
   systemAccent(): Promise<string | null>;
   onSystemAccentChanged(callback: (accent: string | null) => void): () => void;
+  /** Template recolors/deletes re-resolve task accents; every window hears. */
+  onTaskTemplatesChanged(callback: () => void): () => void;
   /** Edit ▸ Find… (⌘F) — the menu owns the accelerator, so it forwards here. */
   onMenuFind(callback: () => void): () => void;
+  /** View ▸ Show GTD Board / Show Notes (⌘1/⌘2) — board-window view switch. */
+  onNavShow(callback: (view: "gtd" | "notes") => void): () => void;
   /**
    * Show a native context menu at a point in this window. Resolves with the id of
    * the chosen item, or null when the menu was dismissed.
@@ -1169,6 +1182,8 @@ export interface DesktopApi {
         projects?: string[];
         primaryProject?: string;
       };
+      /** Template-derived accent; omitted for tasks with no colored template. */
+      accent?: TaskAccent;
     }>
   >;
   notesCreateTask(args: {
@@ -1180,6 +1195,8 @@ export interface DesktopApi {
     primaryProject?: string;
     /** Initial GTD column; defaults to `inbox` when omitted. */
     status?: GtdStatus;
+    /** Link the created task to this template (snapshots its color). */
+    templateId?: string;
   }): Promise<{
     noteId: string;
     scope: string;
@@ -1191,6 +1208,7 @@ export interface DesktopApi {
     updatedAtMs: number;
     gtdStatus?: GtdStatus;
     work?: { next?: string; decision?: string; sessions?: string[]; projects?: string[]; primaryProject?: string };
+    accent?: TaskAccent;
   }>;
   /** Rename a task's name (front-matter title + heading). */
   notesRenameTask(args: { noteId: string; title: string }): Promise<{
@@ -1199,8 +1217,14 @@ export interface DesktopApi {
     updatedAtMs: number;
   }>;
   taskTemplatesList(): Promise<Array<TaskTemplate>>;
-  taskTemplatesCreate(args: { title: string; projectPaths?: string[] }): Promise<TaskTemplate>;
-  taskTemplatesUpdate(args: { templateId: string; title: string; projectPaths?: string[] }): Promise<TaskTemplate>;
+  taskTemplatesCreate(args: { title: string; projectPaths?: string[]; colorKey?: TaskColorKey }): Promise<TaskTemplate>;
+  taskTemplatesUpdate(args: {
+    templateId: string;
+    title: string;
+    projectPaths?: string[];
+    /** Always sets the color; null clears it. */
+    colorKey?: TaskColorKey | null;
+  }): Promise<TaskTemplate>;
   taskTemplatesDelete(args: { templateId: string }): Promise<{ ok: boolean }>;
   notesLinkSessionToTask(args: { noteId: string; sessionKey: string; projectPath?: string }): Promise<{ noteId: string }>;
   notesListTaskSessionLinks(): Promise<Array<{ noteId: string; title?: string; provider: string; sessionId: string }>>;
@@ -1495,10 +1519,21 @@ const api: DesktopApi = {
     ipcRenderer.on("appearance:accentChanged", handler);
     return () => ipcRenderer.removeListener("appearance:accentChanged", handler);
   },
+  /** Template recolors/deletes re-resolve task accents; every window hears. */
+  onTaskTemplatesChanged: (callback: () => void) => {
+    const handler = () => callback();
+    ipcRenderer.on("taskTemplates:changed", handler);
+    return () => ipcRenderer.removeListener("taskTemplates:changed", handler);
+  },
   onMenuFind: (callback) => {
     const handler = () => callback();
     ipcRenderer.on("menu:find", handler);
     return () => ipcRenderer.removeListener("menu:find", handler);
+  },
+  onNavShow: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, view: "gtd" | "notes") => callback(view);
+    ipcRenderer.on("nav:show", handler);
+    return () => ipcRenderer.removeListener("nav:show", handler);
   },
   contextMenuShow: (args) => ipcRenderer.invoke("contextMenu:show", args),
   dialogConfirm: (args) => ipcRenderer.invoke("dialog:confirm", args),

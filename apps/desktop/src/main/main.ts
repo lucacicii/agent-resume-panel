@@ -228,9 +228,13 @@ import { showDirectoryPicker } from "./directoryPicker";
 import {
   createTaskTemplate,
   deleteTaskTemplate,
+  linkTaskTemplate,
   listTaskTemplates,
+  resolveTaskColorKeys,
+  unlinkTaskTemplate,
   updateTaskTemplate
 } from "./taskTemplates";
+import { isTaskColorKey, taskAccent } from "../shared/taskColors";
 import { refreshMemorySchedulerFromSettings, stopMemoryScheduler } from "./scheduler";
 import {
   ensureAgentStatusDaemon,
@@ -932,6 +936,24 @@ function revealMainWindow(): BrowserWindow | null {
   return mainWindow;
 }
 
+/**
+ * Show a board view: bring the board window forward and tell it which view to
+ * show. A freshly created window has no renderer yet, so the message waits for
+ * `did-finish-load` instead of being dropped.
+ */
+function showBoardView(view: "gtd" | "notes"): void {
+  const existed = Boolean(mainWindow && !mainWindow.isDestroyed());
+  const board = revealMainWindow();
+  if (!board) return;
+  if (existed) {
+    board.webContents.send("nav:show", view);
+    return;
+  }
+  board.webContents.once("did-finish-load", () => {
+    if (!board.isDestroyed()) board.webContents.send("nav:show", view);
+  });
+}
+
 function configuredStandaloneNoteShortcut(settings: PanelSettings): string {
   const raw = settings.notes?.newStandaloneNoteShortcut;
   return normalizeGlobalShortcut(
@@ -1545,8 +1567,8 @@ function resumeSessionSync(): void {
 }
 
 const DEFAULT_WINDOW_SIZE = {
-  width: 1120,
-  height: 780
+  width: 1640,
+  height: 870
 } as const;
 
 function createWindow(): void {
@@ -1555,6 +1577,7 @@ function createWindow(): void {
   const icon = loadAppIcon();
   mainWindow = new BrowserWindow({
     ...DEFAULT_WINDOW_SIZE,
+    center: true,
     minWidth: 860,
     minHeight: 600,
     title: "Agent Resume Desktop",
@@ -1577,10 +1600,6 @@ function createWindow(): void {
     }
   });
 
-  // BrowserWindow#maximize() implicitly shows hidden macOS windows. Size it to the
-  // display work area instead, so the first visible frame is already full-sized.
-  const display = screen.getDisplayMatching(mainWindow.getBounds());
-  mainWindow.setBounds(display.workArea);
   markTranslucentWindow(mainWindow);
   mainWindow.once("ready-to-show", () => {
     mainWindowReadyToShow = true;
@@ -1864,6 +1883,21 @@ async function installApplicationMenu(): Promise<void> {
   const viewMenu: Electron.MenuItemConstructorOptions = {
     label: t("desktop.menu.view"),
     submenu: [
+      {
+        label: t("desktop.menu.showGtdBoard"),
+        accelerator: "CommandOrControl+1",
+        click: () => {
+          showBoardView("gtd");
+        }
+      },
+      {
+        label: t("desktop.menu.showNotes"),
+        accelerator: "CommandOrControl+2",
+        click: () => {
+          showBoardView("notes");
+        }
+      },
+      { type: "separator" },
       {
         label: t("desktop.menu.quickAccess"),
         accelerator: "CommandOrControl+P",
@@ -3219,35 +3253,69 @@ function registerIpc(): void {
   ipcMain.handle("logs:openDir", async () => openAppErrorLogDir());
 
   ipcMain.handle("notes:list", async () => notesList());
-  ipcMain.handle("notes:listTasks", async () => notesListTasks());
+  ipcMain.handle("notes:listTasks", async () => {
+    const items = await notesListTasks();
+    const colorKeys = await resolveTaskColorKeys();
+    if (!colorKeys.size) return items;
+    return items.map((item) => {
+      const colorKey = colorKeys.get(item.noteId);
+      return colorKey ? { ...item, accent: taskAccent(colorKey, item.noteId) } : item;
+    });
+  });
+  // Recolors and deletions re-resolve every linked task's accent, so every
+  // window must hear about them — the same broadcast pattern the system accent
+  // uses. Creations add no task colors and stay board-local.
+  const broadcastTemplatesChanged = () => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send("taskTemplates:changed");
+    }
+  };
   ipcMain.handle("taskTemplates:list", async () => listTaskTemplates());
-  ipcMain.handle("taskTemplates:create", async (_event, args: { title?: unknown; projectPaths?: unknown }) => {
-    if (typeof args?.title !== "string" || !args.title.trim()) {
-      throw new Error("A template name is required.");
+  ipcMain.handle(
+    "taskTemplates:create",
+    async (_event, args: { title?: unknown; projectPaths?: unknown; colorKey?: unknown }) => {
+      if (typeof args?.title !== "string" || !args.title.trim()) {
+        throw new Error("A template name is required.");
+      }
+      return createTaskTemplate({
+        title: args.title,
+        projectPaths: stringList(args?.projectPaths),
+        colorKey: isTaskColorKey(args?.colorKey) ? args.colorKey : undefined
+      });
     }
-    return createTaskTemplate({
-      title: args.title,
-      projectPaths: stringList(args?.projectPaths)
-    });
-  });
-  ipcMain.handle("taskTemplates:update", async (_event, args: { templateId?: unknown; title?: unknown; projectPaths?: unknown }) => {
-    if (typeof args?.templateId !== "string" || !args.templateId.trim()) {
-      throw new Error("A task template id is required.");
+  );
+  ipcMain.handle(
+    "taskTemplates:update",
+    async (
+      _event,
+      args: { templateId?: unknown; title?: unknown; projectPaths?: unknown; colorKey?: unknown }
+    ) => {
+      if (typeof args?.templateId !== "string" || !args.templateId.trim()) {
+        throw new Error("A task template id is required.");
+      }
+      if (typeof args?.title !== "string" || !args.title.trim()) {
+        throw new Error("A template name is required.");
+      }
+      return updateTaskTemplate({
+        templateId: args.templateId,
+        title: args.title,
+        projectPaths: stringList(args?.projectPaths),
+        // Updates always set the color: a valid key, or null to clear it.
+        colorKey: isTaskColorKey(args?.colorKey) ? args.colorKey : null
+      }).then((template) => {
+        broadcastTemplatesChanged();
+        return template;
+      });
     }
-    if (typeof args?.title !== "string" || !args.title.trim()) {
-      throw new Error("A template name is required.");
-    }
-    return updateTaskTemplate({
-      templateId: args.templateId,
-      title: args.title,
-      projectPaths: stringList(args?.projectPaths)
-    });
-  });
+  );
   ipcMain.handle("taskTemplates:delete", async (_event, args: { templateId?: unknown }) => {
     if (typeof args?.templateId !== "string" || !args.templateId.trim()) {
       throw new Error("A task template id is required.");
     }
-    return deleteTaskTemplate(args.templateId);
+    return deleteTaskTemplate(args.templateId).then((result) => {
+      broadcastTemplatesChanged();
+      return result;
+    });
   });
   ipcMain.handle("notes:removeTaskProject", async (_event, args: { noteId?: unknown; projectPath?: unknown }) => {
     if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
@@ -3299,17 +3367,36 @@ function registerIpc(): void {
       projectPath: typeof args.projectPath === "string" ? args.projectPath : undefined
     });
   });
-  ipcMain.handle("notes:createTask", async (_event, args: { title?: unknown; next?: unknown; decision?: unknown; sessions?: unknown; projects?: unknown; primaryProject?: unknown; status?: unknown }) => {
-    return notesCreateTask({
-      title: typeof args?.title === "string" ? args.title : undefined,
-      next: typeof args?.next === "string" ? args.next : undefined,
-      decision: typeof args?.decision === "string" ? args.decision : undefined,
-      sessions: stringList(args?.sessions),
-      projects: stringList(args?.projects),
-      primaryProject: typeof args?.primaryProject === "string" ? args.primaryProject : undefined,
-      status: typeof args?.status === "string" && isGtdStatus(args.status) ? args.status : undefined
-    });
-  });
+  ipcMain.handle(
+    "notes:createTask",
+    async (
+      _event,
+      args: {
+        title?: unknown;
+        next?: unknown;
+        decision?: unknown;
+        sessions?: unknown;
+        projects?: unknown;
+        primaryProject?: unknown;
+        status?: unknown;
+        templateId?: unknown;
+      }
+    ) => {
+      const record = await notesCreateTask({
+        title: typeof args?.title === "string" ? args.title : undefined,
+        next: typeof args?.next === "string" ? args.next : undefined,
+        decision: typeof args?.decision === "string" ? args.decision : undefined,
+        sessions: stringList(args?.sessions),
+        projects: stringList(args?.projects),
+        primaryProject: typeof args?.primaryProject === "string" ? args.primaryProject : undefined,
+        status: typeof args?.status === "string" && isGtdStatus(args.status) ? args.status : undefined
+      });
+      const templateId = typeof args?.templateId === "string" ? args.templateId.trim() : "";
+      if (!templateId) return record;
+      const colorKey = await linkTaskTemplate({ noteId: record.noteId, templateId });
+      return colorKey ? { ...record, accent: taskAccent(colorKey, record.noteId) } : record;
+    }
+  );
   ipcMain.handle("notes:listRoot", async () => notesListRootNotes());
   ipcMain.handle("notes:listLinks", async () => notesListLinks());
   ipcMain.handle("notes:listLinkedChildIds", async () => notesListLinkedChildIds());
@@ -3521,6 +3608,7 @@ function registerIpc(): void {
   );
   ipcMain.handle("notes:delete", async (_event, args: { noteId: string }) => {
     const result = await notesDelete(args.noteId);
+    await unlinkTaskTemplate(args.noteId);
     scheduleNotesIndex();
     return result;
   });

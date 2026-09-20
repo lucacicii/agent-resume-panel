@@ -407,7 +407,6 @@
   "desktop.usage.summaryStatus": "過去 {0} 日 · {1} 回の呼び出し",
   "desktop.workbench.allSessions": "すべての Sessions",
   "desktop.workbench.autoRename": "自動で名前を変更",
-  "desktop.workbench.autoRenaming": "自動で名前を変更中…",
   "desktop.workbench.checkoutBranchFailed": "ブランチを切り替えられませんでした: {0}",
   "desktop.workbench.closeTerminal": "ターミナルを閉じる",
   "desktop.workbench.editorAuto": "エディター",

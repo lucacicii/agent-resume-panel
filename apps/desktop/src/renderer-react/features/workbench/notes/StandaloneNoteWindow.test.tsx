@@ -65,11 +65,9 @@ const messages = {
   "desktop.common.findPrev": "Previous match",
   "desktop.common.findNext": "Next match",
   "desktop.common.closeFind": "Close find",
-  "desktop.workbench.gtdStatus.inbox": "Inbox",
-  "desktop.workbench.gtdStatus.next": "Next",
+  "desktop.workbench.gtdStatus.inbox": "To do",
+  "desktop.workbench.gtdStatus.next": "In progress",
   "desktop.workbench.gtdStatus.waiting": "Waiting",
-  "desktop.workbench.gtdStatus.someday": "Someday",
-  "desktop.workbench.gtdStatus.reference": "Reference",
   "desktop.workbench.gtdStatus.done": "Done"
 };
 
@@ -129,6 +127,7 @@ function installBridge(overrides: Partial<typeof window.agentResume> = {}) {
     standaloneNoteCloseReady,
     onStandaloneNoteCloseRequested: closeRequested,
     workbenchSendSelection,
+    contextMenuShow: vi.fn(async () => null),
     getWorkbenchActiveSessions: async () => [],
     onWorkbenchActiveSessions: (callback: (sessions: Array<{ paneKey: string; title: string; projectPath: string; sessionKey: string; status: "open" }>) => void) => {
       callback([]);
@@ -204,11 +203,11 @@ describe("StandaloneNoteWindow", () => {
   });
 
   it("sets the note GTD status through catalog metadata", async () => {
-    const { notesSetGtdStatus } = installBridge();
+    const { notesSetGtdStatus } = installBridge({ contextMenuShow: vi.fn(async () => "next") });
     render(<I18nProvider><StandaloneNoteWindow noteId="note-1" /></I18nProvider>);
 
     await screen.findByRole("textbox", { name: "Standalone note editor" });
-    fireEvent.change(screen.getByRole("combobox", { name: "Note GTD status" }), { target: { value: "next" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Note GTD status/ }));
     await waitFor(() => expect(notesSetGtdStatus).toHaveBeenCalledWith({ noteId: "note-1", status: "next" }));
   });
 

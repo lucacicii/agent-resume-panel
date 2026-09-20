@@ -1,4 +1,5 @@
 import type { GtdStatus, NoteWorkFields } from "@agent-resume/core";
+import type { TaskAccent } from "../../../shared/taskColors";
 
 /**
  * One task as the renderer navigates and scopes it.
@@ -19,6 +20,8 @@ export type WorkbenchTask = {
   /** Projects this task references (0..n). */
   projects?: string[];
   primaryProject?: string;
+  /** Template-derived accent driving the window's color family. */
+  accent?: TaskAccent;
   updatedAtMs?: number;
 };
 
@@ -34,6 +37,7 @@ export type TaskSource = {
   gtdStatus?: GtdStatus;
   updatedAtMs: number;
   work?: NoteWorkFields;
+  accent?: TaskAccent;
 };
 
 /** Normalize a catalog note/task record into the renderer shape. */
@@ -47,6 +51,7 @@ export function taskFromRecord(record: TaskSource): WorkbenchTask {
     sessions: record.work?.sessions ?? [],
     projects: record.work?.projects,
     primaryProject: record.work?.primaryProject,
+    accent: record.accent,
     updatedAtMs: record.updatedAtMs
   };
 }

@@ -11,10 +11,13 @@ type FloatingNoteDot = { noteId: string; title: string };
 
 /**
  * The app is GTD-first: there is no primary-tab rail anymore. The header keeps
- * the global chrome — the per-view toolbar slot, floating-note dots, the
- * notification bell, and the account/settings menu.
+ * the global chrome — the sidebar toggle, the per-view toolbar slot,
+ * floating-note dots, the notification bell, and the account/settings menu.
  */
-export function AppChrome(): React.JSX.Element {
+export function AppChrome({ sidebarCollapsed, onToggleSidebar }: {
+  sidebarCollapsed: boolean;
+  onToggleSidebar: () => void;
+}): React.JSX.Element {
   const { ready, t } = useI18n();
   const [noteDots, setNoteDots] = useState<FloatingNoteDot[]>([]);
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
@@ -96,9 +99,23 @@ export function AppChrome(): React.JSX.Element {
   const text = (key: string, fallback: string) => (ready ? t(key) : fallback);
   const avatarLabel = text("desktop.chrome.account", "Account");
   const settingsLabel = text("desktop.top.settings", "Settings");
+  const sidebarLabel = sidebarCollapsed
+    ? text("desktop.nav.expand", "Expand sidebar")
+    : text("desktop.nav.collapse", "Collapse sidebar");
 
   return (
     <header className="top mac-top">
+      <button
+        type="button"
+        className={`app-sidebar-toggle${sidebarCollapsed ? " is-collapsed" : ""}`}
+        aria-label={sidebarLabel}
+        title={sidebarLabel}
+        aria-expanded={!sidebarCollapsed}
+        aria-controls="react-nav"
+        onClick={onToggleSidebar}
+      >
+        <ThemeIcon name="panel-left" size={ICON_SIZE.default} />
+      </button>
       <div id="app-header-slot" />
       {noteDots.length > 0 ? (
         <div className="app-note-dots" role="group" aria-label={text("desktop.notes.floatingDots", "Floating notes")}>

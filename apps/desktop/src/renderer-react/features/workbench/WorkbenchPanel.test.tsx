@@ -1066,7 +1066,57 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(renameSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1", title: "Auto renamed session · app" }));
     await waitFor(() => expect(listSessions.mock.calls.length).toBeGreaterThanOrEqual(2));
     await waitFor(() => expect(onMutated).toHaveBeenCalled());
+    expect(notificationMocks.notifyDesktop).not.toHaveBeenCalled();
     window.removeEventListener("agent-resume:sessions-mutated", onMutated);
+  });
+
+  it("notifies on failure when auto rename cannot update the native store", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const autoRenameSession = vi.fn(async () => ({
+      title: "Auto renamed session",
+      previousTitle: "Fix renderer",
+      session: { provider: "codex", id: "session-1", title: "Auto renamed session", projectPath: "/work/app", updatedAt: 1 },
+      nativeRenamed: false
+    }));
+    const renameSession = vi.fn(async () => ({
+      session: { provider: "codex", id: "session-1", title: "Auto renamed session · app", projectPath: "/work/app", updatedAt: 1 },
+      nativeRenamed: false,
+      nativeError: "native boom"
+    }));
+    const listSessions = vi.fn(async () => [
+      { provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }
+    ]);
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.workbench.sidebarView": "Workbench sidebar view", "desktop.workbench.projectsView": "Project view", "desktop.workbench.gtdView": "GTD view", "desktop.workbench.filterGtdSessions": "Filter GTD sessions", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.newSessionTitle": "New session {0}", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.openInChatGpt": "Open in ChatGPT", "desktop.workbench.preview": "Preview", "desktop.workbench.autoRename": "Auto rename", "desktop.sessions.renamed": "Renamed to {0}", "desktop.sessions.renamedNativeError": " (catalog updated; native: {0})"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions,
+      autoRenameSession,
+      renameSession,
+      workbenchOpenSession: async () => ({ mode: "external-system", cwd: "/work/app", external: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    const session = await screen.findByRole("button", { name: /Fix renderer/ });
+    notificationMocks.notifyDesktop.mockClear();
+    fireEvent.contextMenu(session);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Auto rename" }));
+    await waitFor(() => expect(renameSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1", title: "Auto renamed session · app" }));
+    await waitFor(() => expect(notificationMocks.notifyDesktop).toHaveBeenCalledWith({
+      text: 'Renamed to Auto renamed session · app (catalog updated; native: native boom)',
+      kind: "error"
+    }));
   });
 
   it("auto renames an inactive session after two minutes", async () => {
@@ -1125,6 +1175,7 @@ describe("WorkbenchPanel", () => {
       await act(async () => { await vi.advanceTimersByTimeAsync(2 * 60_000); });
       await waitFor(() => expect(autoRenameSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1", persist: false }));
       await waitFor(() => expect(renameSession).toHaveBeenCalledWith({ provider: "codex", id: "session-1", title: "Auto renamed session · app" }));
+      expect(notificationMocks.notifyDesktop).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }
@@ -3850,6 +3901,10 @@ describe("WorkbenchPanel", () => {
       repoRoot: "/work/app"
     }));
     const terminalGitCheckout = vi.fn(async () => ({ branch: "feature/ui", repoRoot: "/work/app" }));
+    const contextMenuShow = vi.fn(async (_args: { x: number; y: number; items: Array<{ id?: string; label?: string; checked?: boolean }> }): Promise<string | null> => null);
+    const chooseBranch = (label: string) => {
+      contextMenuShow.mockImplementationOnce(async (args) => args.items.find((item) => item.label === label)?.id ?? null);
+    };
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages: {
         "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.close": "Close", "desktop.common.cancel": "Cancel", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.sidePanelNoChanges": "No changes", "desktop.workbench.sidePanelStaged": "Staged", "desktop.workbench.sidePanelChanges": "Changes", "desktop.workbench.sidePanelGitUnavailable": "Git unavailable", "desktop.workbench.sidePanelNoRoot": "No root", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.gitCommit": "Commit", "desktop.workbench.gitCommitAndPush": "Commit & Push", "desktop.workbench.gitCommitAndPushSucceeded": "Commit and push completed.", "desktop.workbench.gitCommitDialogTitle": "Commit changes", "desktop.workbench.resizeCommitInput": "Resize commit input", "desktop.workbench.gitCommitAutoGenerate": "Auto generate", "desktop.workbench.gitCommitSuggestedLlm": "AI message", "desktop.workbench.gitCommitSuggestedUnconfigured": "Rule message", "desktop.workbench.gitCommitSuggestedFallback": "Fallback message", "desktop.workbench.gitSync": "Sync", "desktop.workbench.gitLog": "Git log", "desktop.workbench.gitSyncSucceeded": "Sync completed.", "desktop.workbench.gitSyncFailed": "Sync failed: {0}", "desktop.workbench.gitCommitSucceeded": "Commit completed.", "desktop.workbench.gitCommitSucceededPushFailed": "Commit completed, but push failed: {0}", "desktop.workbench.gitStatusRefreshFailed": "Could not refresh Git status: {0}", "desktop.workbench.gitBranchTracking": "↑{0}  ↓{1}", "desktop.workbench.gitNoUpstream": "{0} · no upstream", "desktop.workbench.switchBranch": "Switch branch", "desktop.workbench.gitLocalBranches": "Local Branches", "desktop.workbench.gitRemoteBranches": "Remote Branches", "desktop.workbench.gitNoLocalBranches": "No local branches", "desktop.workbench.gitNoRemoteBranches": "No origin branches", "desktop.workbench.checkoutBranchSucceeded": "Switched to branch {0}.", "desktop.workbench.checkoutBranchFailed": "Could not switch branch: {0}"
@@ -3872,7 +3927,8 @@ describe("WorkbenchPanel", () => {
       terminalGitStage,
       terminalGitUnstage,
       terminalGitBranches,
-      terminalGitCheckout
+      terminalGitCheckout,
+      contextMenuShow
     } as unknown as typeof window.agentResume;
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
@@ -3895,27 +3951,21 @@ describe("WorkbenchPanel", () => {
     });
 
     const branchTrigger = await screen.findByRole("button", { name: "Switch branch: main" });
+    chooseBranch("origin/feature/ui");
     fireEvent.click(branchTrigger);
-    expect(await screen.findByText("Local Branches")).toBeTruthy();
-    fireEvent.keyDown(window, { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("menu", { name: "Switch branch" })).toBeNull());
-    fireEvent.click(branchTrigger);
-    fireEvent.mouseDown(document.body);
-    await waitFor(() => expect(screen.queryByRole("menu", { name: "Switch branch" })).toBeNull());
-    fireEvent.click(branchTrigger);
-    expect(await screen.findByText("Local Branches")).toBeTruthy();
-    expect(screen.getByText("Remote Branches")).toBeTruthy();
-    expect(screen.getByRole("menuitemradio", { name: "main" }).getAttribute("aria-checked")).toBe("true");
-    fireEvent.click(screen.getByRole("menuitem", { name: "origin/feature/ui" }));
     await waitFor(() => expect(terminalGitCheckout).toHaveBeenCalledWith({
       cwd: "/work/app",
       branch: "feature/ui",
       remote: "origin",
       repoRoot: "/work/app"
     }));
-    await waitFor(() => expect(screen.queryByRole("menu", { name: "Switch branch" })).toBeNull());
+    // The picker is a native NSMenu now: assert the item list the renderer sends.
+    const branchItems = contextMenuShow.mock.calls.at(-1)![0].items;
+    expect(branchItems.find((item) => item.label === "Local Branches")).toBeTruthy();
+    expect(branchItems.find((item) => item.label === "Remote Branches")).toBeTruthy();
+    expect(branchItems.find((item) => item.label === "main")?.checked).toBe(true);
+    chooseBranch("feature-local");
     fireEvent.click(branchTrigger);
-    fireEvent.click(await screen.findByRole("menuitemradio", { name: "feature-local" }));
     await waitFor(() => expect(terminalGitCheckout).toHaveBeenLastCalledWith({
       cwd: "/work/app",
       branch: "feature-local",
@@ -4137,8 +4187,7 @@ describe("WorkbenchPanel", () => {
     expect(document.querySelectorAll(".wb-git-repo-group").length).toBe(2);
     expect(await screen.findByTitle("src/app.ts")).toBeTruthy();
     expect(screen.getByTitle("src/core.ts")).toBeTruthy();
-    const repoSelect = screen.getByRole("combobox", { name: "Git repository" });
-    expect(repoSelect).toHaveProperty("value", "/work/monorepo/packages/app");
+    const repoSelect = screen.getByRole("button", { name: "Git repository: packages/app" });
     expect(repoSelect.closest(".wb-git-commit-composer")).not.toBeNull();
     expect(screen.getByRole("button", { name: "Switch branch: main" }).closest(".wb-git-commit-composer")).not.toBeNull();
 
@@ -4237,8 +4286,8 @@ describe("WorkbenchPanel", () => {
     await activateTaskDirectory("/work/monorepo");
     fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
 
-    const repoSelect = await screen.findByRole("combobox", { name: "Git repository" });
-    expect(repoSelect).toHaveProperty("value", "/work/monorepo/packages/core");
+    const repoSelect = await screen.findByRole("button", { name: "Git repository: packages/core" });
+    expect(screen.getByTitle("/work/monorepo/packages/core")).toBeTruthy();
     expect(await screen.findByRole("button", { name: "Switch branch: dev" })).toBeTruthy();
     expect(screen.queryByTitle("/work/monorepo/packages/app")).toBeNull();
     expect(screen.getByTitle("/work/monorepo/packages/core")).toBeTruthy();
@@ -4268,7 +4317,7 @@ describe("WorkbenchPanel", () => {
     };
   }
 
-  async function renderGitRepositorySelector(getStatus: () => Promise<unknown>): Promise<HTMLSelectElement> {
+  async function renderGitRepositorySelector(getStatus: () => Promise<unknown>, contextMenuShow: ReturnType<typeof vi.fn> = vi.fn(async () => null)): Promise<HTMLButtonElement> {
     const host = document.createElement("div");
     host.id = "react-workbench";
     document.body.append(host);
@@ -4320,14 +4369,15 @@ describe("WorkbenchPanel", () => {
       getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
       listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/monorepo", updatedAt: 1 }],
       terminalGitStatus: async () => getStatus(),
-      terminalGitFetch: async () => ({ ok: true })
+      terminalGitFetch: async () => ({ ok: true }),
+      contextMenuShow
     } as unknown as typeof window.agentResume;
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
     await activateTaskDirectory("/work/monorepo");
     fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
-    return screen.findByRole("combobox", { name: "Git repository" }) as Promise<HTMLSelectElement>;
+    return screen.findByRole("button", { name: /^Git repository:/ }) as Promise<HTMLButtonElement>;
   }
 
   it("moves the automatic repo selector to a nested repository that becomes dirty", async () => {
@@ -4344,17 +4394,11 @@ describe("WorkbenchPanel", () => {
 
     try {
       await renderGitRepositorySelector(async () => status);
-      expect(screen.getByRole("combobox", { name: "Git repository" })).toHaveProperty(
-        "value",
-        "/work/monorepo/packages/app"
-      );
+      expect(screen.getByRole("button", { name: "Git repository: packages/app" })).toBeTruthy();
 
       status = gitRepositorySelectionStatus([coreFile]);
       await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
-      await waitFor(() => expect(screen.getByRole("combobox", { name: "Git repository" })).toHaveProperty(
-        "value",
-        "/work/monorepo/packages/core"
-      ));
+      await waitFor(() => expect(screen.getByRole("button", { name: "Git repository: packages/core" })).toBeTruthy());
     } finally {
       vi.useRealTimers();
     }
@@ -4373,16 +4417,13 @@ describe("WorkbenchPanel", () => {
     let status = gitRepositorySelectionStatus([]);
 
     try {
-      const repoSelect = await renderGitRepositorySelector(async () => status);
-      fireEvent.change(repoSelect, { target: { value: "/work/monorepo/packages/core" } });
-      expect(repoSelect).toHaveProperty("value", "/work/monorepo/packages/core");
+      const repoSelect = await renderGitRepositorySelector(async () => status, vi.fn(async () => "/work/monorepo/packages/core"));
+      fireEvent.click(repoSelect);
+      await waitFor(() => expect(screen.getByRole("button", { name: "Git repository: packages/core" })).toBeTruthy());
 
       status = gitRepositorySelectionStatus([appFile]);
       await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
-      await waitFor(() => expect(screen.getByRole("combobox", { name: "Git repository" })).toHaveProperty(
-        "value",
-        "/work/monorepo/packages/core"
-      ));
+      await waitFor(() => expect(screen.getByRole("button", { name: "Git repository: packages/core" })).toBeTruthy());
       expect(screen.getByTitle("/work/monorepo/packages/app")).toBeTruthy();
     } finally {
       vi.useRealTimers();
@@ -4626,7 +4667,7 @@ describe("WorkbenchPanel", () => {
     const setSessionGtdStatus = vi.fn(async () => ({ ok: true }));
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages: {
-        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.common.rename": "Rename", "desktop.workbench.sidebarView": "Workbench sidebar view", "desktop.workbench.projectsView": "Project view", "desktop.workbench.gtdView": "GTD view", "desktop.workbench.filterGtdSessions": "Filter GTD sessions", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.openInChatGpt": "Open in ChatGPT", "desktop.workbench.preview": "Preview", "desktop.workbench.mountNote": "Mount note", "desktop.workbench.removeFromPanel": "Remove", "desktop.workbench.setGtdStatus": "Set GTD status", "desktop.workbench.clearGtdStatus": "Clear GTD status", "desktop.workbench.gtdStatusSaveFailed": "Save failed: {0}", "desktop.workbench.gtdStatusLabel": "GTD status: {0}", "desktop.workbench.gtdCompleted": "Completed", "desktop.workbench.gtdStatus.inbox": "Inbox", "desktop.workbench.gtdStatus.next": "Next", "desktop.workbench.gtdStatus.waiting": "Waiting", "desktop.workbench.gtdStatus.someday": "Someday", "desktop.workbench.gtdStatus.reference": "Reference", "desktop.workbench.gtdStatus.done": "Done"
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.common.rename": "Rename", "desktop.workbench.sidebarView": "Workbench sidebar view", "desktop.workbench.projectsView": "Project view", "desktop.workbench.gtdView": "GTD view", "desktop.workbench.filterGtdSessions": "Filter GTD sessions", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.openInChatGpt": "Open in ChatGPT", "desktop.workbench.preview": "Preview", "desktop.workbench.mountNote": "Mount note", "desktop.workbench.removeFromPanel": "Remove", "desktop.workbench.setGtdStatus": "Set GTD status", "desktop.workbench.clearGtdStatus": "Clear GTD status", "desktop.workbench.gtdStatusSaveFailed": "Save failed: {0}", "desktop.workbench.gtdStatusLabel": "GTD status: {0}", "desktop.workbench.gtdCompleted": "Completed", "desktop.workbench.gtdStatus.inbox": "To do", "desktop.workbench.gtdStatus.next": "In progress", "desktop.workbench.gtdStatus.waiting": "Waiting", "desktop.workbench.gtdStatus.done": "Done"
       } }),
       onLocaleChanged: () => () => undefined,
       onWorkbenchCmdT: () => () => undefined,
@@ -4648,7 +4689,7 @@ describe("WorkbenchPanel", () => {
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
     const nextSession = await screen.findByRole("button", { name: /Ship GTD view/ });
-    expect(nextSession.querySelector(".wb-gtd-status-badge")?.textContent).toBe("Next");
+    expect(nextSession.querySelector(".wb-gtd-status-badge")?.textContent).toBe("In progress");
 
     fireEvent.contextMenu(nextSession);
     const waitingTag = await screen.findByRole("menuitemradio", { name: "Waiting" });
@@ -4681,9 +4722,8 @@ describe("WorkbenchPanel", () => {
         "desktop.workbench.newNote": "New note", "desktop.workbench.taskOpenNote": "Open note",
         "desktop.workbench.setGtdStatus": "Set GTD status", "desktop.workbench.clearGtdStatus": "Clear GTD status",
         "desktop.workbench.gtdStatusLabel": "GTD status: {0}", "desktop.workbench.gtdStatusSaveFailed": "Save failed: {0}",
-        "desktop.workbench.gtdStatus.inbox": "Inbox", "desktop.workbench.gtdStatus.next": "Next",
-        "desktop.workbench.gtdStatus.waiting": "Waiting", "desktop.workbench.gtdStatus.someday": "Someday",
-        "desktop.workbench.gtdStatus.reference": "Reference", "desktop.workbench.gtdStatus.done": "Done",
+        "desktop.workbench.gtdStatus.inbox": "To do", "desktop.workbench.gtdStatus.next": "In progress",
+        "desktop.workbench.gtdStatus.waiting": "Waiting", "desktop.workbench.gtdStatus.done": "Done",
         "desktop.gtd.unmarked": "Unmarked", "desktop.gtd.unmarkedHint": "No GTD status set"
       } }),
       onLocaleChanged: () => () => undefined,
@@ -4711,7 +4751,7 @@ describe("WorkbenchPanel", () => {
     fireEvent.click(await screen.findByRole("tab", { name: "Note" }));
 
     const row = await screen.findByRole("button", { name: "Design doc" });
-    expect(row.querySelector(".wb-gtd-status-badge")?.textContent).toBe("Next");
+    expect(row.querySelector(".wb-gtd-status-badge")?.textContent).toBe("In progress");
 
     fireEvent.contextMenu(row);
     // The note menu no longer offers an "open note" item; clicking the row opens it.
@@ -4725,10 +4765,11 @@ describe("WorkbenchPanel", () => {
     ).toBe("Waiting"));
   });
 
-  it("dismisses the branch popover on outside click and Escape", async () => {
+  it("opens the branch picker as a native NSMenu", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
     document.body.append(host);
+    const contextMenuShow = vi.fn(async (_args: { x: number; y: number; items: Array<{ id?: string; label?: string; checked?: boolean }> }): Promise<string | null> => null);
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages: {
         "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.close": "Close", "desktop.common.loading": "Loading", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.closeTerminal": "Close terminal", "desktop.workbench.gitBranchesLoaded": "Branches loaded"
@@ -4747,7 +4788,8 @@ describe("WorkbenchPanel", () => {
       terminalGitInfo: async () => ({ mode: "direct", isRepo: true, branch: "main", repoRoot: "/work/app", nestedRepos: [] }),
       terminalGitBranches: async () => ({ mode: "direct", current: "main", branches: ["main", "feature"], repoRoot: "/work/app" }),
       terminalDestroy: async () => ({ ok: true }),
-      terminalResize: async () => ({ ok: true })
+      terminalResize: async () => ({ ok: true }),
+      contextMenuShow
     } as unknown as typeof window.agentResume;
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
@@ -4756,15 +4798,11 @@ describe("WorkbenchPanel", () => {
     const branchButton = await screen.findByRole("button", { name: "main" });
     expect(branchButton.closest(".wb-detail-head")).not.toBeNull();
     fireEvent.click(branchButton);
-    await waitFor(() => expect(document.querySelector(".wb-git-branch-popover")).toBeTruthy());
+    await waitFor(() => expect(contextMenuShow).toHaveBeenCalled());
+    const items = contextMenuShow.mock.calls.at(-1)![0].items;
+    expect(items.map((item) => item.label)).toEqual(expect.arrayContaining(["main", "feature"]));
+    expect(items.find((item) => item.label === "main")?.checked).toBe(true);
     expect(notificationMocks.notifyDesktop).not.toHaveBeenCalled();
-    fireEvent.mouseDown(document.body);
-    await waitFor(() => expect(document.querySelector(".wb-git-branch-popover")).toBeNull());
-
-    fireEvent.click(branchButton);
-    await waitFor(() => expect(document.querySelector(".wb-git-branch-popover")).toBeTruthy());
-    fireEvent.keyDown(window, { key: "Escape" });
-    await waitFor(() => expect(document.querySelector(".wb-git-branch-popover")).toBeNull());
   });
 
   it("opens the search side panel from Cmd+Shift+F bridge", async () => {
@@ -5293,7 +5331,9 @@ describe("WorkbenchPanel", () => {
     }));
     expect(workbenchGitFileLog).toHaveBeenCalledTimes(1);
     // The pane opens through an async bridge call; give it room under load.
-    expect(await screen.findByText("File history · app.ts", undefined, { timeout: 5000 })).toBeTruthy();
+    // The plain pane title and the portaled graph title legitimately co-exist
+    // in the DOM (CSS hides one); match either.
+    expect((await screen.findAllByText("File history · app.ts", undefined, { timeout: 5000 })).length).toBeGreaterThan(0);
     expect(await screen.findByText("feature")).toBeTruthy();
     const remoteBranch = await screen.findByText("origin/feature");
     contextMenuShow.mockResolvedValue("copy-branch");
@@ -6286,7 +6326,7 @@ describe("WorkbenchPanel", () => {
     ];
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages: {
-        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.common.rename": "Rename", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.openInChatGpt": "Open in ChatGPT", "desktop.workbench.preview": "Preview", "desktop.workbench.mountNote": "Mount note", "desktop.workbench.addFloatingNote": "Add floating note", "desktop.workbench.openFloatingNote": "Open floating note", "desktop.workbench.removeFromPanel": "Remove from panel", "desktop.workbench.setGtdStatus": "Set GTD status", "desktop.workbench.gtdStatus.inbox": "Inbox", "desktop.workbench.gtdStatus.next": "Next", "desktop.workbench.gtdStatus.waiting": "Waiting", "desktop.workbench.gtdStatus.someday": "Someday", "desktop.workbench.gtdStatus.reference": "Reference", "desktop.workbench.gtdStatus.done": "Done", "desktop.workbench.floatingNote": "Floating note", "desktop.workbench.floatingNoteClose": "Close floating note", "desktop.workbench.floatingNoteEditor": "Floating note editor", "desktop.workbench.floatingNoteLoading": "Loading floating note…", "desktop.workbench.floatingNoteCreating": "Creating floating note…", "desktop.workbench.floatingNoteSaved": "Saved", "desktop.workbench.floatingNoteUnsaved": "Unsaved changes", "desktop.workbench.floatingNoteSaving": "Saving…", "desktop.workbench.floatingNoteLoadFailed": "Could not open floating note.", "desktop.workbench.floatingNoteLoadError": "Could not open floating note: {0}", "desktop.workbench.floatingNoteSaveFailed": "Save failed: {0}"
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.common.rename": "Rename", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.openInChatGpt": "Open in ChatGPT", "desktop.workbench.preview": "Preview", "desktop.workbench.mountNote": "Mount note", "desktop.workbench.addFloatingNote": "Add floating note", "desktop.workbench.openFloatingNote": "Open floating note", "desktop.workbench.removeFromPanel": "Remove from panel", "desktop.workbench.setGtdStatus": "Set GTD status", "desktop.workbench.gtdStatus.inbox": "To do", "desktop.workbench.gtdStatus.next": "In progress", "desktop.workbench.gtdStatus.waiting": "Waiting", "desktop.workbench.gtdStatus.done": "Done", "desktop.workbench.floatingNote": "Floating note", "desktop.workbench.floatingNoteClose": "Close floating note", "desktop.workbench.floatingNoteEditor": "Floating note editor", "desktop.workbench.floatingNoteLoading": "Loading floating note…", "desktop.workbench.floatingNoteCreating": "Creating floating note…", "desktop.workbench.floatingNoteSaved": "Saved", "desktop.workbench.floatingNoteUnsaved": "Unsaved changes", "desktop.workbench.floatingNoteSaving": "Saving…", "desktop.workbench.floatingNoteLoadFailed": "Could not open floating note.", "desktop.workbench.floatingNoteLoadError": "Could not open floating note: {0}", "desktop.workbench.floatingNoteSaveFailed": "Save failed: {0}"
       } }),
       onLocaleChanged: () => () => undefined,
       onWorkbenchCmdT: () => () => undefined,
@@ -7249,11 +7289,9 @@ describe("WorkbenchPanel", () => {
     "desktop.workbench.removeMultipleConfirm": "Remove {0} sessions from panel? Native agent storage is unchanged.",
     "desktop.workbench.selectedCount": "{0} selected",
     "desktop.workbench.setGtdStatus": "Set GTD status",
-    "desktop.workbench.gtdStatus.inbox": "Inbox",
-    "desktop.workbench.gtdStatus.next": "Next",
+    "desktop.workbench.gtdStatus.inbox": "To do",
+    "desktop.workbench.gtdStatus.next": "In progress",
     "desktop.workbench.gtdStatus.waiting": "Waiting",
-    "desktop.workbench.gtdStatus.someday": "Someday",
-    "desktop.workbench.gtdStatus.reference": "Reference",
     "desktop.workbench.gtdStatus.done": "Done"
   };
 
@@ -7701,7 +7739,7 @@ describe("WorkbenchPanel", () => {
         "desktop.workbench.gtdView": "GTD",
         "desktop.workbench.filterTasks": "Filter tasks",
         "desktop.workbench.noTasks": "No tasks yet",
-        "desktop.workbench.gtdStatus.next": "Next",
+        "desktop.workbench.gtdStatus.next": "In progress",
         "desktop.workbench.taskView": "Task",
         "desktop.workbench.taskOpenNote": "Open note",
         "desktop.workbench.taskClear": "Exit task",

@@ -85,14 +85,28 @@ function iconCssSizeOffenders(): string[] {
 }
 
 describe("icon contract", () => {
-  it("keeps the four-step size ladder stable", () => {
-    expect(ICON_SIZE).toEqual({ inline: 12, dense: 13, default: 16, prominent: 20 });
-    expect(new Set(Object.values(ICON_SIZE)).size).toBe(4);
+  it("keeps the size ladder stable and pixel-aligned", () => {
+    expect(ICON_SIZE).toEqual({
+      inline: 12,
+      dense: 14,
+      default: 16,
+      prominent: 20,
+      hero: 24
+    });
+    expect(new Set(Object.values(ICON_SIZE)).size).toBe(5);
+    // Every ladder step must be an even integer for pixel-perfect centering on Retina and 1x screens.
+    for (const [token, size] of Object.entries(ICON_SIZE)) {
+      expect(size % 2, `Icon size token ${token} (${size}px) must be an even integer`).toBe(0);
+    }
   });
 
-  it("imports lucide only through ThemeIcon", () => {
+  it("imports icon libraries only through ThemeIcon", () => {
     const offenders = SOURCE_FILES
-      .filter((file) => relative(file) !== THEME_ICON_FILE && /from\s+"lucide-react"/.test(read(file)))
+      .filter(
+        (file) =>
+          relative(file) !== THEME_ICON_FILE &&
+          (/from\s+["']lucide-react["']/.test(read(file)) || /from\s+["']sf-symbols-lib/.test(read(file)))
+      )
       .map(relative);
     expect(offenders).toEqual([]);
   });

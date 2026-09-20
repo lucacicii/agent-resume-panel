@@ -2,6 +2,7 @@ import React, { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { I18nProvider } from "./i18n";
 import { AppChrome } from "./components/AppChrome";
+import { AppSidebar, type BoardView } from "./components/AppSidebar";
 import { StartupMask } from "./components/StartupMask";
 import { Notifications } from "./components/Notifications";
 import { SelectionSendHost } from "./selection/SelectionSendHost";
@@ -12,6 +13,7 @@ import { BrowserStandaloneWindow } from "./features/browser/BrowserStandaloneWin
 import { WorkbenchPanel } from "./features/workbench/WorkbenchPanel";
 import { taskFromRecord } from "./features/workbench/task";
 import { GtdView } from "./features/gtd/GtdView";
+import { NotesView } from "./features/notes/NotesView";
 import { BoardQuickAccess } from "./features/gtd/BoardQuickAccess";
 import { settingsChangedToCustomEvents } from "./settingsBroadcast";
 import { startMenuCommandBridge } from "./menuCommands";
@@ -193,15 +195,79 @@ function MainDesktopRuntime(): React.JSX.Element {
 /**
  * The board window.
  *
- * It is deliberately the cheap surface: the board plus the settings overlay,
- * and no workbench. Workbenches own the panes and the ptys, so they live in
- * their own windows and the board opens and focuses those instead.
+ * It is deliberately the cheap surface: the nav sidebar plus one of the two
+ * primary views (GTD board or Notes), and no workbench. Workbenches own the
+ * panes and the ptys, so they live in their own windows and the board opens
+ * and focuses those instead.
  */
+const BOARD_VIEW_KEY = "board-view";
+const NAV_COLLAPSED_KEY = "board-nav-collapsed";
+
+function storedBoardView(): BoardView {
+  try {
+    return localStorage.getItem(BOARD_VIEW_KEY) === "notes" ? "notes" : "gtd";
+  } catch {
+    return "gtd";
+  }
+}
+
+function storedNavCollapsed(): boolean {
+  try {
+    return localStorage.getItem(NAV_COLLAPSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 function MainRendererRuntime(): React.JSX.Element {
+  const [view, setView] = useState<BoardView>(storedBoardView);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(storedNavCollapsed);
+
+  // The stylesheet keys host visibility off this attribute, the same way it
+  // does for `data-fullscreen`; both views stay mounted-capable, only one shows.
+  useEffect(() => {
+    document.documentElement.dataset.boardView = view;
+    try {
+      localStorage.setItem(BOARD_VIEW_KEY, view);
+    } catch {
+      /* persistence is optional */
+    }
+  }, [view]);
+
+  // ⌘1/⌘2 arrive as menu IPC (macOS eats registered accelerators); the quick
+  // access palette dispatches the same switch as a window event.
+  useEffect(() => {
+    const api = window.agentResume;
+    const stopMenu = typeof api?.onNavShow === "function"
+      ? api.onNavShow((next) => setView(next))
+      : undefined;
+    const onPaletteView = (event: Event) => {
+      const detail = (event as CustomEvent<BoardView>).detail;
+      if (detail === "gtd" || detail === "notes") setView(detail);
+    };
+    window.addEventListener("agent-resume:board-view", onPaletteView);
+    return () => {
+      stopMenu?.();
+      window.removeEventListener("agent-resume:board-view", onPaletteView);
+    };
+  }, []);
+
+  // The sidebar collapse is owned here: the toggle lives in the header, the
+  // rail width lives in the sidebar, and both read this one state.
+  useEffect(() => {
+    try {
+      localStorage.setItem(NAV_COLLAPSED_KEY, sidebarCollapsed ? "1" : "0");
+    } catch {
+      /* persistence is optional */
+    }
+  }, [sidebarCollapsed]);
+
   return (
     <>
-      <AppChrome />
-      <GtdView active />
+      <AppSidebar view={view} onViewChange={setView} collapsed={sidebarCollapsed} />
+      <AppChrome sidebarCollapsed={sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed((collapsed) => !collapsed)} />
+      <GtdView active={view === "gtd"} />
+      {view === "notes" ? <NotesView active /> : null}
       <BoardQuickAccess />
       <SelectionSendHost />
       <Notifications />

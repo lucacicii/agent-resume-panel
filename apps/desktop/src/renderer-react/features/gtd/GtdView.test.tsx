@@ -45,11 +45,9 @@ function renderGtd(overrides?: Partial<typeof window.agentResume>) {  const host
         "desktop.gtd.openInWindow": "Open in a new window",
         "desktop.gtd.windowLimit": "At most {0} workbench windows can be open at once",
         "desktop.gtd.windowNoWorkbench": "This task has no workbench to open",
-        "desktop.workbench.gtdStatus.inbox": "Inbox",
-        "desktop.workbench.gtdStatus.next": "Next",
+        "desktop.workbench.gtdStatus.inbox": "To do",
+        "desktop.workbench.gtdStatus.next": "In progress",
         "desktop.workbench.gtdStatus.waiting": "Waiting",
-        "desktop.workbench.gtdStatus.someday": "Someday",
-        "desktop.workbench.gtdStatus.reference": "Reference",
         "desktop.workbench.gtdStatus.done": "Done",
         "desktop.gtd.templates": "Templates",
         "desktop.gtd.newTemplate": "New template",
@@ -119,8 +117,9 @@ describe("GtdView", () => {
     expect(screen.getByText("Someday idea")).toBeTruthy();
     const nextColumn = host.querySelector('[data-gtd-column="next"]');
     expect(nextColumn?.textContent).toContain("Realtime status");
-    const somedayColumn = host.querySelector('[data-gtd-column="someday"]');
-    expect(somedayColumn?.textContent).toContain("Someday idea");
+    // `someday` is no longer a surfaced column: it folds onto "to do".
+    const inboxColumn = host.querySelector('[data-gtd-column="inbox"]');
+    expect(inboxColumn?.textContent).toContain("Someday idea");
   });
 
   it("opens a task in its own workbench window when its card is clicked", async () => {
@@ -208,9 +207,9 @@ describe("GtdView", () => {
     const nextCard = await screen.findByRole("button", { name: /Realtime status/ });
     nextCard.focus();
     expect(document.activeElement).toBe(nextCard);
-    fireEvent.keyDown(nextCard, { key: "ArrowRight" });
-    const somedayCard = await screen.findByRole("button", { name: /Someday idea/ });
-    expect(document.activeElement).toBe(somedayCard);
+    fireEvent.keyDown(nextCard, { key: "ArrowLeft" });
+    const inboxCard = await screen.findByRole("button", { name: /Someday idea/ });
+    expect(document.activeElement).toBe(inboxCard);
   });
 
   it("deletes a session-less task from its context menu", async () => {
@@ -282,7 +281,8 @@ describe("GtdView", () => {
       title: "Write release notes",
       projects: ["/work/app", "/work/web"],
       primaryProject: "/work/app",
-      status: "next"
+      status: "next",
+      templateId: "tpl-1"
     }));
     // The just-created card opens its inline rename with the template name.
     const renameInput = await screen.findByRole("textbox", { name: "Title" });
@@ -314,6 +314,38 @@ describe("GtdView", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create template" }));
 
     await waitFor(() => expect(taskTemplatesCreate).toHaveBeenCalledWith({ title: "Daily standup", projectPaths: [] }));
+  });
+
+  it("creates a template with the chosen palette color", async () => {
+    const taskTemplatesCreate = vi.fn(async ({ title }: { title: string }) => ({
+      templateId: "tpl-color", title, projectPaths: [], colorKey: "purple", createdAtMs: 1, updatedAtMs: 1
+    }));
+    renderGtd({ taskTemplatesCreate } as unknown as Partial<typeof window.agentResume>);
+
+    fireEvent.click(await screen.findByRole("button", { name: "New template" }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "Template name" }), { target: { value: "Night build" } });
+    fireEvent.click(screen.getByRole("button", { name: "purple" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create template" }));
+
+    await waitFor(() => expect(taskTemplatesCreate).toHaveBeenCalledWith({
+      title: "Night build",
+      projectPaths: [],
+      colorKey: "purple"
+    }));
+  });
+
+  it("paints a card's accent bar from the task's template color", async () => {
+    renderGtd({
+      notesListTasks: async () => [{
+        noteId: "t-blue", title: "Blue task", filename: "t-blue.md", relDir: "", relMdPath: "", scope: "library",
+        createdAtMs: 1, updatedAtMs: 1, work: { sessions: [], projects: [] },
+        accent: { colorKey: "blue", shade: 2 }
+      }]
+    } as unknown as Partial<typeof window.agentResume>);
+
+    const card = await screen.findByText("Blue task").then((el) => el.closest(".gtd-card"));
+    expect(card?.getAttribute("data-task-accent")).toBe("blue");
+    expect(card?.getAttribute("data-task-shade")).toBe("2");
   });
 
   it("collects several projects for one template", async () => {

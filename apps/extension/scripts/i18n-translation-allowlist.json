@@ -4,6 +4,7 @@
     "desktop.common.intervalSeconds",
     "desktop.dialog.markdown",
     "desktop.gtd.title",
+    "desktop.nav.gtd",
     "desktop.report.digestDetailTitle",
     "desktop.report.gtdStatusLabel",
     "desktop.report.sessionsTitle",

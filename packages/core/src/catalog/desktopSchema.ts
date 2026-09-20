@@ -10,6 +10,11 @@ export const TASK_TEMPLATE_PROJECT_PATHS_MIGRATION_SQL = `
 ALTER TABLE task_templates ADD COLUMN project_paths_json TEXT;
 `;
 
+/** Task templates carry a fixed-palette color key for task/window accents. */
+export const TASK_TEMPLATE_COLOR_MIGRATION_SQL = `
+ALTER TABLE task_templates ADD COLUMN color_key TEXT;
+`;
+
 export const DESKTOP_ONLY_SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS gtd_ai_audit (
   id TEXT PRIMARY KEY,
@@ -32,6 +37,16 @@ CREATE TABLE IF NOT EXISTS task_templates (
   updated_at_ms INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_task_templates_updated ON task_templates(updated_at_ms DESC);
+
+-- Which template a task was created from, with the template's color snapshotted
+-- at creation so deleting the template leaves the task's accent intact.
+CREATE TABLE IF NOT EXISTS task_template_links (
+  note_id TEXT PRIMARY KEY,
+  template_id TEXT NOT NULL,
+  color_key TEXT,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS note_chunks (
   chunk_id TEXT PRIMARY KEY,

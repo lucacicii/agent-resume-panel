@@ -26,9 +26,15 @@ import {
   matchComposerMentionForCwd,
   resolveComposerMention
 } from "../settings/model";
+import {
+  DESKTOP_GTD_STATUSES,
+  desktopGtdColumn,
+  desktopGtdLabelKey,
+  type DesktopGtdStatus
+} from "../../gtd";
 import { desktopApi } from "../../bridge";
 import { confirmDestructive } from "../../confirmAction";
-import { contextMenuPoint, showContextMenuAt } from "../../nativeContextMenu";
+import { contextMenuPoint, showContextMenuAt, type NativeContextMenuItem } from "../../nativeContextMenu";
 import { useMenuKeyboard, useMenuPosition } from "../../components/menuOverlay";
 import { CodeEditor, type CodeEditorHandle, type CodeEditorSearchResult } from "../../components/CodeEditor";
 import type { CodeMirrorAppearance } from "../../components/codeMirrorThemes";
@@ -93,7 +99,6 @@ import { resolveTerminalThemeId } from "./terminalThemes";
 import { appearanceStateFromSettings } from "../../themes";
 import { storedWidth } from "../../storage";
 import {
-  type TerminalGitBranches,
   type GitChange,
   type GitLog,
   type GitLogCommit,
@@ -224,7 +229,7 @@ type BrowserPane = {
 };
 type SideView = "files" | "git" | "search" | "scripts" | null;
 type SearchReveal = { path: string; line: number; column: number; endColumn: number };
-const GTD_STATUSES = ["inbox", "next", "waiting", "someday", "reference", "done"] as const satisfies readonly GtdStatus[];
+const GTD_STATUSES = DESKTOP_GTD_STATUSES;
 /** Shared empty list so a project-less task keeps a stable array identity. */
 const EMPTY_PROJECT_PATHS: string[] = [];
 const WORKBENCH_SESSION_ROW_HEIGHT = 64;
@@ -330,11 +335,6 @@ function isOtherMachineSession(session: AgentSession, _localPath?: string | null
   // (cannot know current username without IPC; avoid over-flagging).
   return false;
 }
-type BranchMenuPosition = {
-  right: number;
-  top: number;
-};
-
 const PROJECT_KEY = "workbench-selected-project";
 const QUICK_ACCESS_PROJECT_KEY = "workbench-quick-access-project";
 const LIST_WIDTH_KEY = "wb-list-pane-width";
@@ -697,10 +697,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [gitLogError, setGitLogError] = useState("");
   const [discardingGitPaths, setDiscardingGitPaths] = useState<Set<string>>(() => new Set());
   const editorContextMenuRef = useRef<HTMLDivElement>(null);
-  const branchMenuRef = useRef<HTMLDivElement>(null);
-  const [branchPane, setBranchPane] = useState<TerminalPane | null>(null);
-  const [branchMenuPosition, setBranchMenuPosition] = useState<BranchMenuPosition | null>(null);
-  const [branchResult, setBranchResult] = useState<TerminalGitBranches | null>(null);
 
   const [settings, setSettings] = useState<PanelSettings | null>(null);
   const setStatus = useCallback((s: { text: string; kind?: "error" | "ok" | "warning" }) => {
@@ -963,6 +959,33 @@ export function WorkbenchPanel(): ReactPortal | null {
     };
   }, [taskScope?.noteId]);
 
+  // Keep the scoped task's accent in step with refreshed task records, so a
+  // template recolor re-skins this window on its next task refresh.
+  useEffect(() => {
+    const noteId = taskScope?.noteId;
+    if (!noteId) return;
+    const record = tasks.find((item) => item.noteId === noteId);
+    if (!record?.accent) return;
+    if (taskScope.accent?.colorKey === record.accent.colorKey
+      && taskScope.accent?.shade === record.accent.shade) return;
+    setTaskScope((current) => current && current.noteId === noteId ? { ...current, accent: record.accent } : current);
+  }, [tasks, taskScope]);
+
+  // The task's accent dresses the whole window: html[data-task-accent] plus
+  // data-task-shade drive the CSS color-family derivation in styles.css. Only
+  // task windows set it; board and standalone-note windows stay neutral.
+  useEffect(() => {
+    const root = document.documentElement;
+    const accent = taskScope?.accent;
+    if (accent && root.dataset.windowMode === "task") {
+      root.dataset.taskAccent = accent.colorKey;
+      root.dataset.taskShade = String(accent.shade);
+    } else {
+      delete root.dataset.taskAccent;
+      delete root.dataset.taskShade;
+    }
+  }, [taskScope?.accent]);
+
   const openSessionKeys = useMemo(() => {
     const keys = new Set(terminals.flatMap((pane) => (pane.sessionKey ? [pane.sessionKey] : [])));
     for (const pane of acpChats) {
@@ -1163,7 +1186,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     deferredAutoRenameKeysRef.current.delete(`${provider}:${id}`);
     const session = sessionsRef.current.find((item) => item.provider === provider && item.id === id);
     if (!session) return; // Session was hidden/deleted — nothing left to auto-rename.
-    if (activeRef.current) setStatus({ text: t("desktop.workbench.autoRenaming"), kind: "ok" });
     try {
       const projectName = session.projectPath ? basename(session.projectPath) : "";
       let result: { title: string; nativeRenamed: boolean; nativeError?: string };
@@ -1178,10 +1200,12 @@ export function WorkbenchPanel(): ReactPortal | null {
         result = await desktopApi().autoRenameSession({ provider, id, persist: true });
       }
       await loadSessions();
-      let text = t("desktop.sessions.renamed", result.title);
-      if (!result.nativeRenamed && result.nativeError) text += t("desktop.sessions.renamedNativeError", result.nativeError);
-      if (activeRef.current) {
-        setStatus({ text, kind: result.nativeRenamed || !result.nativeError ? "ok" : "error" });
+      // Success is silent; the list refresh already reflects the new title.
+      if (activeRef.current && !result.nativeRenamed && result.nativeError) {
+        setStatus({
+          text: t("desktop.sessions.renamed", result.title) + t("desktop.sessions.renamedNativeError", result.nativeError),
+          kind: "error",
+        });
       }
       window.dispatchEvent(new CustomEvent("agent-resume:sessions-mutated", { detail: { kind: "session-title" } }));
     } catch (error) {
@@ -1493,28 +1517,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [newSessionPicker]);
-
-  useEffect(() => {
-    if (!branchPane) return;
-    const dismiss = (event: MouseEvent) => {
-      if (!(event.target instanceof Element) || !event.target.closest(".wb-git-branch-popover")) {
-        setBranchPane(null);
-        setBranchResult(null);
-      }
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setBranchPane(null);
-        setBranchResult(null);
-      }
-    };
-    window.addEventListener("mousedown", dismiss);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("mousedown", dismiss);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [branchPane]);
 
   const allProjects = useMemo((): WorkbenchProject[] => {
     if (catalogProjects.length) {
@@ -3182,6 +3184,13 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
   }, []);
 
+  // Template recolors/deletes re-resolve task accents; refresh so an open
+  // window re-skins (via the accent-sync effect) without being reopened.
+  useEffect(() => {
+    const stop = desktopApi().onTaskTemplatesChanged?.(() => { void loadTasks(); });
+    return () => stop?.();
+  }, [loadTasks]);
+
   /** All notes, for the left-panel note list. */
   const loadNotes = useCallback(async () => {
     if (typeof desktopApi().notesList !== "function") return;
@@ -3862,8 +3871,8 @@ export function WorkbenchPanel(): ReactPortal | null {
       if (action.startsWith("gtd:")) {
         const status = action === "gtd:clear"
           ? null
-          : GTD_STATUSES.includes(action.slice(4) as GtdStatus)
-            ? action.slice(4) as GtdStatus
+          : GTD_STATUSES.includes(action.slice(4) as DesktopGtdStatus)
+            ? action.slice(4) as DesktopGtdStatus
             : null;
         if (action !== "gtd:clear" && !status) return;
         try {
@@ -3889,8 +3898,8 @@ export function WorkbenchPanel(): ReactPortal | null {
     if (action.startsWith("gtd:")) {
       const status = action === "gtd:clear"
         ? null
-        : GTD_STATUSES.includes(action.slice(4) as GtdStatus)
-          ? action.slice(4) as GtdStatus
+        : GTD_STATUSES.includes(action.slice(4) as DesktopGtdStatus)
+          ? action.slice(4) as DesktopGtdStatus
           : null;
       if (action !== "gtd:clear" && !status) return;
       try {
@@ -4188,7 +4197,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     quickAccessProjectKey: QUICK_ACCESS_PROJECT_KEY,
     onDismissOverlays: () => {
       setContextMenu(null);
-      setBranchPane(null);
       setProjectPickDialog(null);
     }
   });
@@ -4959,52 +4967,61 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
   };
 
-  const openBranchMenu = async (pane: TerminalPane, anchor: HTMLButtonElement) => {
+  const checkoutBranch = async (pane: TerminalPane, branch: string, repoRoot?: string | null) => {
     try {
-      const rect = anchor.getBoundingClientRect();
-      setBranchMenuPosition({
-        right: Math.max(8, window.innerWidth - rect.right),
-        // Detail-head button: open menu below the chip (was bottom-anchored when status lived under the terminal).
-        top: Math.min(window.innerHeight - 16, rect.bottom + 6)
-      });
-      setBranchPane(pane);
-      setBranchResult(null);
-      const workbench = settingsRef.current?.workbench;
-      const result = await desktopApi().terminalGitBranches({
-        cwd: pane.cwd,
-        nestedScan: {
-          maxDepth: workbench?.gitNestedScanMaxDepth,
-          ignoreDirs: workbench?.gitNestedScanIgnoreDirs
-        }
-      });
-      setBranchResult(result);
-    } catch (error) { notifyGitFailure("desktop.workbench.loadBranchesFailed", error); }
-  };
-
-  const checkoutBranch = async (branch: string, repoRoot?: string | null) => {
-    if (!branchPane) return;
-    try {
-      await desktopApi().terminalGitCheckout({ cwd: branchPane.cwd, branch, repoRoot: repoRoot || branchPane.repoRoot || undefined });
-      setBranchPane(null);
-      setBranchResult(null);
-      await refreshTerminalGit(branchPane.key);
+      await desktopApi().terminalGitCheckout({ cwd: pane.cwd, branch, repoRoot: repoRoot || pane.repoRoot || undefined });
+      await refreshTerminalGit(pane.key);
       await refreshGit();
       notifyGitSuccess("desktop.workbench.checkoutBranchSucceeded", branch);
     } catch (error) { notifyGitFailure("desktop.workbench.checkoutBranchFailed", error); }
   };
 
-  const renderBranchMenu = (): React.JSX.Element | React.JSX.Element[] => {
-    if (!branchResult) return <p className="wb-git-branch-empty muted">{t("desktop.common.loading")}</p>;
-    if (branchResult.mode === "nested") {
-      if (!branchResult.repos?.length) return <p className="wb-git-branch-empty muted">{t("desktop.workbench.noGitBranches")}</p>;
-      return branchResult.repos.map((repo) => <div className="wb-git-branch-repo-group" key={repo.root}>
-        <div className="wb-git-branch-repo-head">{repo.displayPath || repo.root || t("desktop.workbench.nestedRepoUntitled")}</div>
-        {repo.branches.length ? repo.branches.map((branch) => <button type="button" className={`wb-git-branch-item${branch === repo.current ? " active" : ""}`} key={branch} onClick={() => void checkoutBranch(branch, repo.root)}>{branch}</button>) : <p className="wb-git-branch-empty muted">{t("desktop.workbench.noGitBranches")}</p>}
-      </div>);
-    }
-    const branches = branchResult.branches || [];
-    if (!branches.length) return <p className="wb-git-branch-empty muted">{t("desktop.workbench.noGitBranches")}</p>;
-    return branches.map((branch) => <button type="button" className={`wb-git-branch-item${branch === (branchResult.current ?? branchPane?.branch) ? " active" : ""}`} key={branch} onClick={() => void checkoutBranch(branch, branchResult.repoRoot)}>{branch}</button>);
+  /**
+   * Branch picker as a native `NSMenu`: one checkbox item per branch, or a
+   * submenu per repo when the pane spans nested repos. Item ids map back to the
+   * checkout target so labels never have to be parsed.
+   */
+  const openBranchMenu = async (pane: TerminalPane, anchor: HTMLButtonElement) => {
+    // Use the same repository set as the Git panel so a multi-project workspace
+    // lists every repo (with a header), not just the active pane's repo.
+    const repositories = gitRepositories.length
+      ? gitRepositories
+      : [{ root: pane.repoRoot || pane.cwd, label: pane.repoRoot || pane.cwd }];
+    const listed = await Promise.all(repositories.map(async (repository) => {
+      try {
+        return { repository, result: await desktopApi().terminalGitBranches({ cwd: repository.root }) };
+      } catch {
+        return { repository, result: null };
+      }
+    }));
+    const items: NativeContextMenuItem[] = [];
+    const targetById = new Map<string, { branch: string; repoRoot: string }>();
+    const multi = repositories.length > 1;
+    listed.forEach(({ repository, result }, repoIndex) => {
+      const branches = result?.branches || [];
+      if (multi) {
+        if (items.length) items.push({ type: "separator" });
+        items.push({ label: repository.label, enabled: false });
+      }
+      if (!branches.length) {
+        if (!multi) items.push({ label: t("desktop.workbench.noGitBranches"), enabled: false });
+        return;
+      }
+      branches.forEach((branch, branchIndex) => {
+        const id = `r${repoIndex}_${branchIndex}`;
+        targetById.set(id, { branch, repoRoot: repository.root });
+        items.push({
+          id,
+          label: branch,
+          type: "checkbox",
+          checked: branch === (result?.current ?? (repository.root === pane.repoRoot ? pane.branch : null))
+        });
+      });
+    });
+    const rect = anchor.getBoundingClientRect();
+    const chosen = await showContextMenuAt({ x: rect.left, y: rect.bottom + 6 }, items);
+    const target = chosen ? targetById.get(chosen) : undefined;
+    if (target) await checkoutBranch(pane, target.branch, target.repoRoot);
   };
 
   useEffect(() => {
@@ -5436,13 +5453,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     editorContextMenuRef,
     closeEditorContextMenu
   );
-  const closeBranchMenu = useCallback(() => setBranchPane(null), []);
-  useMenuPosition(Boolean(branchPane), branchMenuRef, {
-    x: branchMenuPosition ? Math.max(8, window.innerWidth - branchMenuPosition.right) : 8,
-    y: branchMenuPosition?.top ?? 0
-  });
-  useMenuKeyboard(Boolean(branchPane), branchMenuRef, closeBranchMenu);
-
   const newSessionPickerStyle = newSessionAnchorRect
     ? {
         left: Math.max(8, Math.min(newSessionAnchorRect.left, window.innerWidth - 248)),
@@ -5459,33 +5469,33 @@ export function WorkbenchPanel(): ReactPortal | null {
     <div className="wb-terminal-tabs is-session-group" data-pane-group="session">
       <button ref={newSessionButtonRef} type="button" className={`wb-pane-tab-group-label${terminalCreating ? " is-busy" : ""}`} disabled={terminalCreating} aria-label={t("desktop.workbench.newSession")} title={t("desktop.workbench.newSession")} aria-haspopup="menu" aria-expanded={Boolean(newSessionPicker)} onClick={() => { if (newSessionPicker && !newSessionPickerClosing) setNewSessionPicker(null); else void newSession(); }}>{terminalCreating ? <ThemeIcon name="loader" className="spin" size={ICON_SIZE.dense} aria-hidden="true" /> : <ThemeIcon name="bot" size={ICON_SIZE.dense} aria-hidden="true" />}</button>
       <div className="wb-terminal-tabs-list" role="tablist" aria-label={t("desktop.workbench.tabGroupSession")}>
-        {currentSessionTerminals.map((pane) => <div className={`wb-terminal-tab is-session${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key} onContextMenu={(event) => sessionTabMenu(event, terminalSessionNoteTarget(pane, aliases[pane.projectPath] || basename(pane.projectPath)), pane.key)}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ProviderIcon provider={sessionIdentityFromKey(pane.sessionKey)?.provider || ""} size={ICON_SIZE.dense} aria-hidden="true" />{sessionTabDot(sessionRuntimeByPaneKey.get(pane.key)?.status)}{sessionTabTitle(pane, sessionTitles)}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeTerminal")} onClick={() => closeTerminal(pane.key)}><ThemeIcon name="close" size={ICON_SIZE.default} /></button></div>)}
-        {currentAcpChats.map((pane) => <div className={`wb-terminal-tab is-session is-acp${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key} onContextMenu={(event) => sessionTabMenu(event, acpSessionNoteTarget(pane, aliases[pane.projectPath] || basename(pane.projectPath)), pane.key)}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ProviderIcon provider={pane.provider} size={ICON_SIZE.dense} aria-hidden="true" />{sessionTabDot(sessionRuntimeByPaneKey.get(pane.key)?.status)}{sessionTabTitle(pane, sessionTitles)}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeAcpChat")} onClick={() => closeAcpChat(pane.key)}><ThemeIcon name="close" size={ICON_SIZE.default} /></button></div>)}
+        {currentSessionTerminals.map((pane) => <div className={`wb-terminal-tab is-session${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key} onContextMenu={(event) => sessionTabMenu(event, terminalSessionNoteTarget(pane, aliases[pane.projectPath] || basename(pane.projectPath)), pane.key)}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ProviderIcon provider={sessionIdentityFromKey(pane.sessionKey)?.provider || ""} size={ICON_SIZE.dense} aria-hidden="true" />{sessionTabDot(sessionRuntimeByPaneKey.get(pane.key)?.status)}{sessionTabTitle(pane, sessionTitles)}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeTerminal")} onClick={() => closeTerminal(pane.key)}><ThemeIcon name="close" size={ICON_SIZE.dense} /></button></div>)}
+        {currentAcpChats.map((pane) => <div className={`wb-terminal-tab is-session is-acp${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key} onContextMenu={(event) => sessionTabMenu(event, acpSessionNoteTarget(pane, aliases[pane.projectPath] || basename(pane.projectPath)), pane.key)}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ProviderIcon provider={pane.provider} size={ICON_SIZE.dense} aria-hidden="true" />{sessionTabDot(sessionRuntimeByPaneKey.get(pane.key)?.status)}{sessionTabTitle(pane, sessionTitles)}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeAcpChat")} onClick={() => closeAcpChat(pane.key)}><ThemeIcon name="close" size={ICON_SIZE.dense} /></button></div>)}
       </div>
     </div>
     <div className="wb-terminal-tabs is-terminal-group" data-pane-group="terminal">
       <button type="button" className={`wb-pane-tab-group-label${terminalCreating ? " is-busy" : ""}`} disabled={terminalCreating} aria-label={t("desktop.workbench.newTerminal")} title={t("desktop.workbench.newTerminal")} onClick={() => void openBlankTerminal()}>{terminalCreating ? <ThemeIcon name="loader" className="spin" size={ICON_SIZE.dense} aria-hidden="true" /> : <ThemeIcon name="terminal" size={ICON_SIZE.dense} aria-hidden="true" />}</button>
       <div className="wb-terminal-tabs-list" role="tablist" aria-label={t("desktop.workbench.tabGroupTerminal")}>
-        {currentShellTerminals.map((pane) => <div className={`wb-terminal-tab is-terminal${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="terminal" size={ICON_SIZE.dense} aria-hidden="true" />{pane.title}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeTerminal")} onClick={() => closeTerminal(pane.key)}><ThemeIcon name="close" size={ICON_SIZE.default} /></button></div>)}
+        {currentShellTerminals.map((pane) => <div className={`wb-terminal-tab is-terminal${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="terminal" size={ICON_SIZE.dense} aria-hidden="true" />{pane.title}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeTerminal")} onClick={() => closeTerminal(pane.key)}><ThemeIcon name="close" size={ICON_SIZE.dense} /></button></div>)}
       </div>
     </div>
     {currentEditors.length || currentDiffs.length ? <div className="wb-terminal-tabs is-code-group" data-pane-group="code">
       <div className="wb-pane-tab-group-label" aria-label={t("desktop.workbench.tabGroupCode")} title={t("desktop.workbench.tabGroupCode")}><ThemeIcon name="file-code" size={ICON_SIZE.dense} aria-hidden="true" /></div>
       <div className="wb-terminal-tabs-list" role="tablist" aria-label={t("desktop.workbench.tabGroupCode")}>
-        {currentEditors.map((pane) => <div className={`wb-terminal-tab is-editor${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key} onContextMenu={(event) => editorTabMenu(event, pane)}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="file-code" size={ICON_SIZE.dense} aria-hidden="true" />{pane.dirty ? "* " : ""}{basename(pane.path)}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeFile")} onClick={() => closeEditor(pane.key)}><ThemeIcon name="close" size={ICON_SIZE.default} /></button></div>)}
-        {currentDiffs.map((pane) => <div className={`wb-terminal-tab is-diff${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="file-diff" size={ICON_SIZE.dense} aria-hidden="true" />{basename(pane.path)}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeDiff")} onClick={() => closeDiff(pane.key)}><ThemeIcon name="close" size={ICON_SIZE.default} /></button></div>)}
+        {currentEditors.map((pane) => <div className={`wb-terminal-tab is-editor${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key} onContextMenu={(event) => editorTabMenu(event, pane)}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="file-code" size={ICON_SIZE.dense} aria-hidden="true" />{pane.dirty ? "* " : ""}{basename(pane.path)}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeFile")} onClick={() => closeEditor(pane.key)}><ThemeIcon name="close" size={ICON_SIZE.dense} /></button></div>)}
+        {currentDiffs.map((pane) => <div className={`wb-terminal-tab is-diff${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="file-diff" size={ICON_SIZE.dense} aria-hidden="true" />{basename(pane.path)}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.workbench.closeDiff")} onClick={() => closeDiff(pane.key)}><ThemeIcon name="close" size={ICON_SIZE.dense} /></button></div>)}
       </div>
     </div> : null}
     <div className="wb-terminal-tabs is-note-group" data-pane-group="note">
       <button type="button" className="wb-pane-tab-group-label" aria-label={t("desktop.notes.newLinkedChild")} title={t("desktop.notes.newLinkedChild")} onClick={() => void addChildNote()}><ThemeIcon name="file-plus" size={ICON_SIZE.dense} aria-hidden="true" /></button>
       <div className="wb-terminal-tabs-list" role="tablist" aria-label={t("desktop.notes.allNotes")}>
-        {currentNotePanes.map((pane) => <div className={`wb-terminal-tab is-note${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="file-text" size={ICON_SIZE.dense} aria-hidden="true" />{pane.dirty ? "* " : ""}{pane.title || t("desktop.notes.allNotes")}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.common.close")} onClick={() => closeNotePane(pane.key)}><ThemeIcon name="close" size={ICON_SIZE.default} /></button></div>)}
+        {currentNotePanes.map((pane) => <div className={`wb-terminal-tab is-note${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="file-text" size={ICON_SIZE.dense} aria-hidden="true" />{pane.dirty ? "* " : ""}{pane.title || t("desktop.notes.allNotes")}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.common.close")} onClick={() => closeNotePane(pane.key)}><ThemeIcon name="close" size={ICON_SIZE.dense} /></button></div>)}
       </div>
     </div>
     <div className="wb-terminal-tabs is-browser-group" data-pane-group="browser">
       <button type="button" className="wb-pane-tab-group-label" aria-label={t("desktop.browser.newBrowser")} title={t("desktop.browser.newBrowser")} onClick={() => void openBrowser()}><ThemeIcon name="globe" size={ICON_SIZE.dense} aria-hidden="true" /></button>
       <div className="wb-terminal-tabs-list" role="tablist" aria-label={t("desktop.workbench.tabGroupBrowser")}>
-        {currentBrowsers.map((pane) => <div className={`wb-terminal-tab is-browser${activePane === pane.key ? " active" : ""}${pane.surfaceKind === "window" ? " is-popped-out" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="globe" size={ICON_SIZE.dense} aria-hidden="true" />{pane.title}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.browser.closeBrowser")} onClick={() => closeBrowser(pane.key)}><ThemeIcon name="close" size={ICON_SIZE.default} /></button></div>)}
+        {currentBrowsers.map((pane) => <div className={`wb-terminal-tab is-browser${activePane === pane.key ? " active" : ""}${pane.surfaceKind === "window" ? " is-popped-out" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="globe" size={ICON_SIZE.dense} aria-hidden="true" />{pane.title}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.browser.closeBrowser")} onClick={() => closeBrowser(pane.key)}><ThemeIcon name="close" size={ICON_SIZE.dense} /></button></div>)}
       </div>
     </div>
   </div>;
@@ -5569,8 +5579,8 @@ export function WorkbenchPanel(): ReactPortal | null {
             <div className="wb-task-head">
               <ThemeIcon name="square-kanban" size={ICON_SIZE.dense} aria-hidden="true" />
               <span className="wb-task-title">{taskScope.title || taskScope.noteId}</span>
-              <span className={`wb-task-status is-${taskRollup?.status ?? taskScope.status}`}>
-                {t(`desktop.workbench.gtdStatus.${taskRollup?.status ?? taskScope.status}`)}
+              <span className={`wb-task-status is-${desktopGtdColumn(taskRollup?.status ?? taskScope.status)}`}>
+                {t(desktopGtdLabelKey(taskRollup?.status ?? taskScope.status))}
               </span>
               {taskRollup?.total ? (
                 <span className="wb-task-rollup" title={t("desktop.gtd.rollupHint")}>
@@ -5696,7 +5706,7 @@ export function WorkbenchPanel(): ReactPortal | null {
                   <span className="wb-note-list-item-title">{note.title}</span>
                   {taskScope && noteFilter === "all" && taskByNoteId.has(note.noteId) ? <span className="wb-task-badge" aria-hidden="true" title={t("desktop.workbench.ownedByTask", taskByNoteId.get(note.noteId)?.title ?? "")}>{taskByNoteId.get(note.noteId)?.title}</span> : null}
                   {note.gtdStatus
-                    ? <span className={`wb-gtd-status-badge is-${note.gtdStatus}`} aria-label={t("desktop.workbench.gtdStatusLabel", t(`desktop.workbench.gtdStatus.${note.gtdStatus}`))}>{t(`desktop.workbench.gtdStatus.${note.gtdStatus}`)}</span>
+                    ? <span className={`wb-gtd-status-badge is-${desktopGtdColumn(note.gtdStatus)}`} aria-label={t("desktop.workbench.gtdStatusLabel", t(desktopGtdLabelKey(note.gtdStatus)))}>{t(desktopGtdLabelKey(note.gtdStatus))}</span>
                     : <span className="wb-gtd-status-badge is-unmarked" title={t("desktop.gtd.unmarkedHint")}>{t("desktop.gtd.unmarked")}</span>}
                 </button>
               )) : <p className="muted wb-list-empty">{t("desktop.workbench.noNotes")}</p>}
@@ -6174,7 +6184,6 @@ export function WorkbenchPanel(): ReactPortal | null {
         </div>
       </main>
     </div>
-    {branchPane ? <div ref={branchMenuRef} className="wb-git-branch-popover" style={{ ...(branchMenuPosition ?? {}), visibility: "hidden" }}>{branchResult?.mode === "nested" ? <div className="wb-git-branch-list">{renderBranchMenu()}</div> : <><div className="wb-git-branch-repo-head">{branchResult?.repoRoot || branchPane.repoRoot || branchPane.cwd}</div><div className="wb-git-branch-list">{renderBranchMenu()}</div></>}</div> : null}
     {editorContextMenu ? <div ref={editorContextMenuRef} className={`wb-context-menu notes-selection-menu${editorContextMenuClosing ? " is-closing" : ""}`} role="menu" style={{ left: editorContextMenu.x, top: editorContextMenu.y, visibility: "hidden" }} onContextMenu={(event) => event.preventDefault()}>
       {editorContextMenu.selectedText ? (
         <>

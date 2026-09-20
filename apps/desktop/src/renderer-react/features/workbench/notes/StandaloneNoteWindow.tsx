@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CodeEditor, type CodeEditorHandle, type CodeEditorSearchResult } from "../../../components/CodeEditor";
 import { ICON_SIZE, ThemeIcon } from "../../../components/ThemeIcon";
+import { NativeMenuSelect } from "../../../components/NativeMenuSelect";
 import { desktopApi } from "../../../bridge";
 import { confirmDestructive } from "../../../confirmAction";
-import { GTD_STATUSES, type GtdStatus } from "../../../gtd";
+import { DESKTOP_GTD_STATUSES, desktopGtdColumn, type GtdStatus } from "../../../gtd";
 import { useI18n } from "../../../i18n";
 import { STANDALONE_NOTE_INITIAL_CONTENT } from "../../../../shared/standaloneNote";
 import { SelectionSendMenu, type SelectionSendMenuState } from "../../../selection/SelectionSendMenu";
@@ -373,17 +374,18 @@ export function StandaloneNoteWindow({ noteId }: { noteId: string }): React.JSX.
       ) : record ? (
         <>
           <div className="standalone-note-window-meta">
-            <select
+            <NativeMenuSelect
               className="standalone-note-window-status"
-              aria-label={t("desktop.notes.gtdStatusLabel")}
+              ariaLabel={t("desktop.notes.gtdStatusLabel")}
               title={t("desktop.notes.gtdStatusLabel")}
-              value={record?.gtdStatus ?? ""}
+              value={record?.gtdStatus ? desktopGtdColumn(record.gtdStatus) : ""}
               disabled={!record || loading || deleting}
-              onChange={(event) => void updateGtdStatus(event.target.value ? event.target.value as GtdStatus : null)}
-            >
-              <option value="">{t("desktop.notes.clearGtdStatus")}</option>
-              {GTD_STATUSES.map((status) => <option value={status} key={status}>{t(`desktop.workbench.gtdStatus.${status}`)}</option>)}
-            </select>
+              options={[
+                { value: "", label: t("desktop.notes.clearGtdStatus") },
+                ...DESKTOP_GTD_STATUSES.map((status) => ({ value: status, label: t(`desktop.workbench.gtdStatus.${status}`) }))
+              ]}
+              onChange={(value) => void updateGtdStatus(value ? value as GtdStatus : null)}
+            />
           </div>
           <div className="standalone-note-window-body">
             {findOpen ? (
