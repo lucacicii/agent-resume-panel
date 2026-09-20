@@ -411,10 +411,6 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
   const headerSlot = document.getElementById("app-header-slot");
   const toolbar = (
     <div className="gtd-toolbar">
-      <span className="gtd-toolbar-title">
-        <ThemeIcon name="square-kanban" size={ICON_SIZE.default} aria-hidden="true" />
-        {text("desktop.gtd.title")}
-      </span>
       <div className="gtd-toolbar-actions">
         <input
           className="gtd-search"

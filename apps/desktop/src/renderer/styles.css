@@ -757,6 +757,41 @@ html[data-window-mode="main"] .mac-top {
   -webkit-app-region: no-drag;
 }
 
+/* Sidebar toggle: the header's leading control, next to the rail it collapses. */
+.app-sidebar-toggle {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-right: var(--space-2);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-label-secondary);
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.app-sidebar-toggle:hover {
+  background: var(--color-fill-secondary);
+  color: var(--color-label-primary);
+}
+
+.app-sidebar-toggle:active {
+  transform: scale(0.96);
+}
+
+.app-sidebar-toggle svg {
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.app-sidebar-toggle.is-collapsed svg {
+  transform: rotate(180deg);
+}
+
 /* ==========================================================================
    Board Nav Sidebar (full-height, Finder-style)
    ========================================================================== */
@@ -864,14 +899,6 @@ html[data-window-mode="main"] .mac-top {
     transform var(--duration-fast) var(--ease-out);
 }
 
-.app-sidebar-footer {
-  display: flex;
-  flex-direction: column;
-  margin-top: auto;
-  padding: 8px;
-  border-top: 0.5px solid var(--color-separator);
-}
-
 /* Collapsed rail: the clip hides labels; icons stay at their expanded x. */
 .app-sidebar.is-collapsed {
   width: 56px;
@@ -883,10 +910,6 @@ html[data-window-mode="main"] .mac-top {
   pointer-events: none;
 }
 
-.app-sidebar.is-collapsed .app-sidebar-collapse svg {
-  transform: rotate(180deg);
-}
-
 /*
  * Reduce Motion is honoured per surface here: the global `--duration-*`
  * zeroing rule earlier in this file does not reach the CSSOM (pre-existing),
@@ -896,7 +919,9 @@ html[data-window-mode="main"] .mac-top {
   .app-sidebar,
   .app-sidebar-glide,
   .app-sidebar-copy,
-  .app-sidebar-row {
+  .app-sidebar-row,
+  .app-sidebar-toggle,
+  .app-sidebar-toggle svg {
     transition: none;
   }
 }
@@ -15043,15 +15068,6 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
   flex: 1 1 auto;
   min-width: 0;
   -webkit-app-region: no-drag;
-}
-
-.gtd-toolbar-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--font-size-body, 13px);
-  font-weight: var(--font-weight-semibold, 600);
-  color: var(--color-label-primary);
 }
 
 .gtd-toolbar-actions {

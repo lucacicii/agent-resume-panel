@@ -201,6 +201,7 @@ function MainDesktopRuntime(): React.JSX.Element {
  * and focuses those instead.
  */
 const BOARD_VIEW_KEY = "board-view";
+const NAV_COLLAPSED_KEY = "board-nav-collapsed";
 
 function storedBoardView(): BoardView {
   try {
@@ -210,8 +211,17 @@ function storedBoardView(): BoardView {
   }
 }
 
+function storedNavCollapsed(): boolean {
+  try {
+    return localStorage.getItem(NAV_COLLAPSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 function MainRendererRuntime(): React.JSX.Element {
   const [view, setView] = useState<BoardView>(storedBoardView);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(storedNavCollapsed);
 
   // The stylesheet keys host visibility off this attribute, the same way it
   // does for `data-fullscreen`; both views stay mounted-capable, only one shows.
@@ -242,10 +252,20 @@ function MainRendererRuntime(): React.JSX.Element {
     };
   }, []);
 
+  // The sidebar collapse is owned here: the toggle lives in the header, the
+  // rail width lives in the sidebar, and both read this one state.
+  useEffect(() => {
+    try {
+      localStorage.setItem(NAV_COLLAPSED_KEY, sidebarCollapsed ? "1" : "0");
+    } catch {
+      /* persistence is optional */
+    }
+  }, [sidebarCollapsed]);
+
   return (
     <>
-      <AppSidebar view={view} onViewChange={setView} />
-      <AppChrome />
+      <AppSidebar view={view} onViewChange={setView} collapsed={sidebarCollapsed} />
+      <AppChrome sidebarCollapsed={sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed((collapsed) => !collapsed)} />
       <GtdView active={view === "gtd"} />
       {view === "notes" ? <NotesView active /> : null}
       <BoardQuickAccess />

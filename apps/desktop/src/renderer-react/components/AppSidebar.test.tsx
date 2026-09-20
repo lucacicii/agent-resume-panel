@@ -11,7 +11,7 @@ const messages = {
   "desktop.nav.expand": "Expand sidebar"
 };
 
-function renderSidebar({ view = "gtd" as "gtd" | "notes" } = {}) {
+function renderSidebar({ view = "gtd" as "gtd" | "notes", collapsed = false } = {}) {
   const host = document.createElement("div");
   host.id = "react-nav";
   document.body.append(host);
@@ -22,7 +22,7 @@ function renderSidebar({ view = "gtd" as "gtd" | "notes" } = {}) {
   const onViewChange = vi.fn();
   render(
     <I18nProvider>
-      <AppSidebar view={view} onViewChange={onViewChange} />
+      <AppSidebar view={view} onViewChange={onViewChange} collapsed={collapsed} />
     </I18nProvider>
   );
   return { onViewChange };
@@ -52,35 +52,12 @@ describe("AppSidebar", () => {
     expect(onViewChange).toHaveBeenCalledWith("notes");
   });
 
-  it("collapses, persists, and expands the rail", async () => {
-    renderSidebar({ view: "gtd" });
-    const collapse = await screen.findByRole("button", { name: "Collapse sidebar" });
-    expect(collapse.getAttribute("aria-expanded")).toBe("true");
-
-    fireEvent.click(collapse);
-    await waitFor(() => {
-      expect(document.querySelector(".app-sidebar")?.classList.contains("is-collapsed")).toBe(true);
-      expect(localStorage.getItem("board-nav-collapsed")).toBe("1");
-    });
-    const expand = screen.getByRole("button", { name: "Expand sidebar" });
-    expect(expand.getAttribute("aria-expanded")).toBe("false");
-
-    fireEvent.click(expand);
-    await waitFor(() => {
-      expect(document.querySelector(".app-sidebar")?.classList.contains("is-collapsed")).toBe(false);
-      expect(localStorage.getItem("board-nav-collapsed")).toBe("0");
-    });
-  });
-
-  it("restores the collapsed state from storage on mount", async () => {
-    localStorage.setItem("board-nav-collapsed", "1");
-    renderSidebar({ view: "notes" });
-    const rail = await waitFor(() => {
-      const node = document.querySelector(".app-sidebar");
-      expect(node).toBeTruthy();
-      return node!;
-    });
-    expect(rail.classList.contains("is-collapsed")).toBe(true);
+  it("collapses the rail when the window says so", async () => {
+    renderSidebar({ view: "notes", collapsed: true });
+    await screen.findByRole("navigation", { name: "Navigation" });
+    const rail = document.querySelector(".app-sidebar");
+    expect(rail?.classList.contains("is-collapsed")).toBe(true);
+    expect(rail?.getAttribute("data-collapsed")).toBe("true");
     expect(screen.getByRole("button", { name: "Notes" }).getAttribute("aria-current")).toBe("page");
   });
 

@@ -5,8 +5,10 @@ import { AppChrome } from "./AppChrome";
 
 function renderChrome(options?: {
   standaloneNoteList?: Array<{ noteId: string; title: string }>;
+  sidebarCollapsed?: boolean;
 }) {
   let notesChangedHandler: ((notes: Array<{ noteId: string; title: string }>) => void) | undefined;
+  const onToggleSidebar = vi.fn();
   const standaloneNoteOpen = vi.fn(async () => ({ ok: true as const }));
   const standaloneNoteList = vi.fn(async () => options?.standaloneNoteList ?? []);
   window.agentResume = {
@@ -29,13 +31,17 @@ function renderChrome(options?: {
 
   render(
     <I18nProvider>
-      <AppChrome />
+      <AppChrome
+        sidebarCollapsed={options?.sidebarCollapsed ?? false}
+        onToggleSidebar={onToggleSidebar}
+      />
     </I18nProvider>
   );
   return {
     pushNoteDots: (notes: Array<{ noteId: string; title: string }>) => notesChangedHandler?.(notes),
     standaloneNoteOpen,
-    standaloneNoteList
+    standaloneNoteList,
+    onToggleSidebar
   };
 }
 
@@ -79,6 +85,24 @@ describe("AppChrome", () => {
     });
     const dots = [...document.querySelectorAll<HTMLButtonElement>(".app-note-dot-btn")];
     expect(dots.map((dot) => dot.getAttribute("aria-label"))).toEqual(["Alpha note", "Beta note"]);
+  });
+
+  it("toggles the sidebar from the header control", async () => {
+    const { onToggleSidebar } = renderChrome();
+    const collapse = await screen.findByRole("button", { name: "Collapse sidebar" });
+    expect(collapse.getAttribute("aria-expanded")).toBe("true");
+    // The toggle sits at the leading edge, before the per-view toolbar slot.
+    expect(collapse.nextElementSibling?.id).toBe("app-header-slot");
+
+    fireEvent.click(collapse);
+    expect(onToggleSidebar).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers to expand once the sidebar is collapsed", async () => {
+    renderChrome({ sidebarCollapsed: true });
+    const expand = await screen.findByRole("button", { name: "Expand sidebar" });
+    expect(expand.getAttribute("aria-expanded")).toBe("false");
+    expect(expand.classList.contains("is-collapsed")).toBe(true);
   });
 
   it("opens Settings from the account menu", async () => {

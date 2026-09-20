@@ -1,34 +1,27 @@
 import { ICON_SIZE, ThemeIcon, type ThemeIconName } from "./ThemeIcon";
 import { createPortal } from "react-dom";
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import { useI18n } from "../i18n";
 import { useGlideHighlight } from "./useGlideHighlight";
 
 /** The board window's primary views, in nav order. */
 export type BoardView = "gtd" | "notes";
 
-const NAV_COLLAPSED_KEY = "board-nav-collapsed";
-
-function storedCollapsed(): boolean {
-  try {
-    return localStorage.getItem(NAV_COLLAPSED_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
 /**
  * The board's full-height navigation sidebar (Finder-style): a traffic-light
- * strip on top, the primary views below, and the collapse toggle at the bottom.
- * Hover feedback is the shared gliding highlight (see `useGlideHighlight`).
+ * strip on top with the primary views below. Hover feedback is the shared
+ * gliding highlight (see `useGlideHighlight`).
+ *
+ * The collapse state is owned by the window (the toggle lives in the header),
+ * so the sidebar only renders the rail the header asks for.
  */
-export function AppSidebar({ view, onViewChange }: {
+export function AppSidebar({ view, onViewChange, collapsed }: {
   view: BoardView;
   onViewChange: (view: BoardView) => void;
+  collapsed: boolean;
 }): React.JSX.Element | null {
   const host = document.getElementById("react-nav");
   const { ready, t } = useI18n();
-  const [collapsed, setCollapsed] = useState(storedCollapsed);
   const { containerRef: navRef, setRow, glide, moveGlide, hideGlide } = useGlideHighlight(view);
 
   const text = (key: string, fallback: string) => (ready ? t(key) : fallback);
@@ -37,25 +30,10 @@ export function AppSidebar({ view, onViewChange }: {
     { view: "notes", icon: "notebook", label: text("desktop.nav.notes", "Notes") }
   ];
 
-  const toggleCollapsed = useCallback(() => {
-    setCollapsed((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem(NAV_COLLAPSED_KEY, next ? "1" : "0");
-      } catch {
-        /* persistence is optional */
-      }
-      return next;
-    });
-  }, []);
-
   /** Move the glide pill to a row; the active row keeps its own fill instead. */
   const move = useCallback((target: BoardView) => moveGlide(target), [moveGlide]);
 
   const navLabel = text("desktop.nav.label", "Navigation");
-  const collapseLabel = collapsed
-    ? text("desktop.nav.expand", "Expand sidebar")
-    : text("desktop.nav.collapse", "Collapse sidebar");
 
   if (!host) return null;
   return createPortal(
@@ -92,19 +70,6 @@ export function AppSidebar({ view, onViewChange }: {
               </button>
             );
           })}
-        </div>
-        <div className="app-sidebar-footer">
-          <button
-            type="button"
-            className="app-sidebar-row app-sidebar-collapse"
-            aria-label={collapseLabel}
-            title={collapseLabel}
-            aria-expanded={!collapsed}
-            onClick={toggleCollapsed}
-          >
-            <ThemeIcon name="panel-left" size={ICON_SIZE.default} />
-            <span className="app-sidebar-copy">{collapseLabel}</span>
-          </button>
         </div>
       </div>
     </nav>,
