@@ -251,19 +251,19 @@ export function NotesView({ active }: { active: boolean }): React.JSX.Element | 
                   ? <p className="notes-view-section">{text("desktop.notes.sectionProjects", "Project notes")}</p>
                   : null}
                 {notes.map((note) => (
-                    <button
-                      key={note.noteId}
-                      ref={(node) => { setRow(note.noteId, node); }}
-                      type="button"
-                      className={`notes-view-row${note.noteId === selectedId ? " is-active" : ""}`}
-                      aria-current={note.noteId === selectedId ? "true" : undefined}
-                      onClick={() => setSelectedId(note.noteId)}
-                      onPointerEnter={() => moveGlide(note.noteId)}
-                    >
-                      <span className="notes-view-row-title">{displayTitle(note.noteId, note)}</span>
-                      {(childCounts[note.noteId] ?? 0) > 0 ? (
-                        <span className="notes-view-count" aria-hidden="true">{childCounts[note.noteId]}</span>
-                      ) : null}
+                  <button
+                    key={note.noteId}
+                    ref={(node) => { setRow(note.noteId, node); }}
+                    type="button"
+                    className={`notes-view-row${note.noteId === selectedId ? " is-active" : ""}`}
+                    aria-current={note.noteId === selectedId ? "true" : undefined}
+                    onClick={() => setSelectedId(note.noteId)}
+                    onPointerEnter={() => moveGlide(note.noteId)}
+                  >
+                    <span className="notes-view-row-title">{displayTitle(note.noteId, note)}</span>
+                    {(childCounts[note.noteId] ?? 0) > 0 ? (
+                      <span className="notes-view-count" aria-hidden="true">{childCounts[note.noteId]}</span>
+                    ) : null}
                   </button>
                 ))}
               </section>
