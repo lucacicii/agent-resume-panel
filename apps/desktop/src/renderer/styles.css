@@ -123,10 +123,21 @@
 
   --letter-spacing-tight: -0.015em;
 
-  /* Spacing (8pt HIG Grid) */
+  /*
+   * Spacing — macOS 8pt grid with a 2px optical step.
+   *
+   * The primary grid is 8px (`--space-2`); 4px is the half step and 2px the
+   * optical step. Every padding/margin/gap/inset in the renderer resolves to one
+   * of these tokens; only hard 1px/0.5px hairlines and icon nudges are exempt.
+   * 18px/22px/28px are off-spec: snap them to the nearest token.
+   */
+  --space-0-5: 2px;
   --space-1: 4px;
+  --space-1-5: 6px;
   --space-2: 8px;
+  --space-2-5: 10px;
   --space-3: 12px;
+  --space-3-5: 14px;
   --space-4: 16px;
   --space-5: 20px;
   --space-6: 24px;
@@ -660,7 +671,7 @@ html[data-fullscreen="true"] .app-sidebar {
   display: grid;
   place-content: center;
   min-height: 100vh;
-  padding: 32px;
+  padding: var(--space-8);
   box-sizing: border-box;
   color: var(--color-label-primary);
   text-align: center;
@@ -668,7 +679,7 @@ html[data-fullscreen="true"] .app-sidebar {
 }
 
 .renderer-bridge-error h1 {
-  margin: 0 0 8px;
+  margin: 0 0 var(--space-2);
   font-size: 18px;
 }
 
@@ -713,7 +724,7 @@ textarea:focus-visible,
   min-height: 52px;
   height: 52px;
   /* 78px clearance perfectly accommodates macOS traffic lights (x:14, y:14) */
-  padding: 0 16px 0 78px;
+  padding: 0 var(--space-4) 0 78px;
   -webkit-app-region: drag;
   user-select: none;
 }
@@ -724,7 +735,7 @@ textarea:focus-visible,
  * The header keeps its own drag strip across the content column.
  */
 html[data-window-mode="main"] .mac-top {
-  padding-left: 16px;
+  padding-left: var(--space-4);
 }
 
 .mac-top button,
@@ -850,7 +861,7 @@ html[data-window-mode="main"] .mac-top {
   display: flex;
   flex-direction: column;
   gap: 1px;
-  padding: 0 8px;
+  padding: 0 var(--space-2);
 }
 
 /* Gliding hover pill: one highlight that travels between rows. */
@@ -872,9 +883,9 @@ html[data-window-mode="main"] .mac-top {
   z-index: 1;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   height: 32px;
-  padding: 0 8px;
+  padding: 0 var(--space-2);
   border: none;
   border-radius: var(--radius-lg);
   background: transparent;
@@ -886,6 +897,12 @@ html[data-window-mode="main"] .mac-top {
 
 .app-sidebar-row:hover {
   color: var(--color-label-primary);
+}
+
+/* The glyph owns its 16px box: the flex label must not squeeze it (otherwise the
+   icon shrinks to ~6px and reads smaller than the sidebar toggle). */
+.app-sidebar-row svg {
+  flex-shrink: 0;
 }
 
 .app-sidebar-row:active {
@@ -913,10 +930,21 @@ html[data-window-mode="main"] .mac-top {
   width: 56px;
 }
 
+/* Keep the nav inside the rail: the fixed 224px inner clips the row, which left
+   the hover/active pill flat against the sidebar edge. At 56px the pill insets
+   symmetrically again. */
+.app-sidebar.is-collapsed .app-sidebar-nav {
+  width: 56px;
+}
+
+/* Labels are gone in the rail, so the glyph centers in the row instead of keeping
+   its expanded left inset. */
+.app-sidebar.is-collapsed .app-sidebar-row {
+  justify-content: center;
+}
+
 .app-sidebar.is-collapsed .app-sidebar-copy {
-  opacity: 0;
-  transform: translateX(-8px);
-  pointer-events: none;
+  display: none;
 }
 
 /*
@@ -939,8 +967,8 @@ html[data-window-mode="main"] .mac-top {
 .app-note-dots {
   display: flex;
   align-items: center;
-  gap: 3px;
-  margin-right: 4px;
+  gap: var(--space-1);
+  margin-right: var(--space-1);
   -webkit-app-region: no-drag;
 }
 
@@ -1036,13 +1064,13 @@ html[data-window-mode="main"] .mac-top {
   position: fixed;
   z-index: 320;
   min-width: 190px;
-  padding: 5px;
+  padding: var(--space-1-5);
   display: flex;
   flex-direction: column;
   /* Opens to the right of the avatar button and grows upward, so it scales out of
      the corner nearest that anchor. */
   transform-origin: bottom left;
-  gap: 2px;
+  gap: var(--space-0-5);
   border: 0.5px solid var(--color-separator);
   border-radius: var(--radius-xl);
   background: var(--color-elevated-bg);
@@ -1073,7 +1101,7 @@ html[data-window-mode="main"] .mac-top {
   gap: var(--space-2);
   width: 100%;
   text-align: left;
-  padding: 6px 9px;
+  padding: var(--space-1-5) var(--space-2-5);
   border-radius: var(--radius-md);
   font-size: var(--font-size-body);
   font-family: inherit;
@@ -1231,7 +1259,7 @@ html[data-window-mode="task"] .wb-window-header {
   gap: var(--space-2);
   min-height: 52px;
   height: 52px;
-  padding: 0 16px 0 78px;
+  padding: 0 var(--space-4) 0 78px;
   border-bottom: 0.5px solid var(--color-separator);
   background: var(--color-sidebar-bg);
   backdrop-filter: var(--backdrop-blur);
@@ -1287,7 +1315,7 @@ html[data-window-mode="task"] #react-chrome:empty {
 .settings-overlay .toolbar {
   flex: 0 0 auto;
   align-items: center;
-  padding: 10px 16px;
+  padding: var(--space-2-5) var(--space-4);
   border-bottom: 1px solid var(--color-separator, var(--border));
 }
 
@@ -1309,7 +1337,7 @@ html[data-window-mode="task"] #react-chrome:empty {
   background: transparent;
   color: var(--color-accent);
   border-radius: var(--radius-md);
-  padding: 0 10px;
+  padding: 0 var(--space-2-5);
   height: 28px;
   display: inline-flex;
   align-items: center;
@@ -1342,7 +1370,7 @@ html[data-window-mode="task"] #react-chrome:empty {
   color: var(--color-label-secondary);
   width: 28px;
   height: 28px;
-  padding: 5px;
+  padding: var(--space-1-5);
   border-radius: var(--radius-md);
 
   display: inline-grid;
@@ -1576,7 +1604,7 @@ svg[data-icon-system="sf"] * {
 .sheet-actions .tool-btn {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--space-1-5);
 }
 
 .sheet-actions .tool-btn.is-danger {
@@ -1611,7 +1639,7 @@ svg[data-icon-system="sf"] * {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 14px 16px;
+  padding: var(--space-3-5) var(--space-4);
   border-bottom: 1px solid var(--border);
 }
 
@@ -1629,20 +1657,20 @@ svg[data-icon-system="sf"] * {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: nowrap;
   min-width: 0;
-  margin-left: 12px;
+  margin-left: var(--space-3);
 }
 
 .sheet-body {
-  padding: 14px 16px 16px;
+  padding: var(--space-3-5) var(--space-4) var(--space-4);
   overflow: hidden;
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-2-5);
 }
 
 /* GTD sheet: preview fills remaining viewport height. */
@@ -1683,7 +1711,7 @@ svg[data-icon-system="sf"] * {
   border-bottom: 1px solid var(--border);
   background: transparent;
   color: var(--text);
-  padding: 10px 12px;
+  padding: var(--space-2-5) var(--space-3);
 
   font-size: 12px;
 }
@@ -1698,7 +1726,7 @@ svg[data-icon-system="sf"] * {
 
 .s-provider-tag {
   display: inline-block;
-  padding: 1px 6px;
+  padding: 1px var(--space-1-5);
   border-radius: 4px;
   font-size: 10px;
   font-weight: 600;
@@ -1743,7 +1771,7 @@ svg[data-icon-system="sf"] * {
   align-items: center;
   max-width: 84px;
   overflow: hidden;
-  padding: 1px 6px;
+  padding: 1px var(--space-1-5);
   border-radius: var(--radius-sm);
   color: color-mix(in srgb, var(--gtd-status-color) 78%, var(--color-label-primary));
   background: color-mix(in srgb, var(--gtd-status-color) 16%, transparent);
@@ -1791,7 +1819,7 @@ svg[data-icon-system="sf"] * {
 
 .session-row .s-meta {
   color: var(--muted);
-  margin-top: 2px;
+  margin-top: var(--space-0-5);
   font-size: 11px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1803,8 +1831,8 @@ svg[data-icon-system="sf"] * {
   flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 6px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1-5);
 }
 
 .session-preview-title {
@@ -1819,7 +1847,7 @@ svg[data-icon-system="sf"] * {
 .session-preview-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--space-1-5);
   flex: 0 0 auto;
 }
 
@@ -1829,14 +1857,14 @@ svg[data-icon-system="sf"] * {
 }
 
 .session-preview-meta {
-  margin-bottom: 8px;
+  margin-bottom: var(--space-2);
   font-size: 11px;
   word-break: break-all;
 }
 
 .session-summary-box {
-  margin: 0 0 12px;
-  padding: 10px 12px;
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2-5) var(--space-3);
   border-radius: 10px;
   border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
   background: color-mix(in srgb, var(--accent) 8%, var(--panel));
@@ -1861,8 +1889,8 @@ svg[data-icon-system="sf"] * {
 }
 
 .preview-msg {
-  margin-bottom: 12px;
-  padding: 8px 10px;
+  margin-bottom: var(--space-3);
+  padding: var(--space-2) var(--space-2-5);
   border-radius: 10px;
   border: 1px solid var(--border);
   background: var(--panel);
@@ -1881,7 +1909,7 @@ svg[data-icon-system="sf"] * {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--muted);
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
 }
 
 /* Settings: left nav + right content
@@ -1923,10 +1951,10 @@ svg[data-icon-system="sf"] * {
   background: var(--color-sidebar-bg);
   backdrop-filter: var(--backdrop-blur);
   -webkit-backdrop-filter: var(--backdrop-blur);
-  padding: 12px 10px;
+  padding: var(--space-3) var(--space-2-5);
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: var(--space-1);
   overflow-y: auto;
 }
 
@@ -1934,7 +1962,7 @@ svg[data-icon-system="sf"] * {
 .settings-nav .settings-nav-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   width: 100%;
   margin: 0;
   text-align: left;
@@ -1943,7 +1971,7 @@ svg[data-icon-system="sf"] * {
   background: transparent;
   color: var(--color-label-secondary);
   border-radius: var(--radius-md);
-  padding: 6px 10px;
+  padding: var(--space-1-5) var(--space-2-5);
   font-size: var(--font-size-body);
   font-weight: var(--font-weight-medium);
   line-height: 1.3;
@@ -1974,7 +2002,7 @@ svg[data-icon-system="sf"] * {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding: 16px 24px 20px;
+  padding: var(--space-4) var(--space-6) var(--space-5);
   background: var(--color-window-bg);
 }
 
@@ -1983,9 +2011,9 @@ svg[data-icon-system="sf"] * {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 16px;
-  padding-bottom: 12px;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-3);
   border-bottom: 0.5px solid var(--color-separator);
 }
 
@@ -1999,7 +2027,7 @@ svg[data-icon-system="sf"] * {
 }
 
 .settings-pane-desc {
-  margin: 4px 0 0;
+  margin: var(--space-1) 0 0;
   font-size: var(--font-size-callout);
   line-height: var(--line-height-body);
   color: var(--color-label-secondary);
@@ -2010,7 +2038,7 @@ svg[data-icon-system="sf"] * {
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
-  gap: 10px;
+  gap: var(--space-2-5);
   flex-shrink: 0;
 }
 
@@ -2025,7 +2053,7 @@ svg[data-icon-system="sf"] * {
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: var(--space-2-5);
   flex-shrink: 0;
 }
 
@@ -2033,13 +2061,13 @@ svg[data-icon-system="sf"] * {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-2-5);
 }
 
 .settings-inline-label {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   font-size: var(--font-size-callout);
   color: var(--muted);
 }
@@ -2085,8 +2113,8 @@ svg[data-icon-system="sf"] * {
   max-width: none;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding-bottom: 8px;
+  gap: var(--space-3);
+  padding-bottom: var(--space-2);
 }
 
 #tab-settings .settings-pane-usage,
@@ -2106,7 +2134,7 @@ svg[data-icon-system="sf"] * {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
   padding-bottom: 0;
 }
 
@@ -2136,7 +2164,7 @@ svg[data-icon-system="sf"] * {
 
 .settings-group-title {
   margin: 0;
-  padding: 10px 14px;
+  padding: var(--space-2-5) var(--space-3-5);
   font-size: var(--font-size-headline);
   font-weight: var(--font-weight-semibold);
   line-height: var(--line-height-tight);
@@ -2150,8 +2178,8 @@ svg[data-icon-system="sf"] * {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 10px 14px;
+  gap: var(--space-4);
+  padding: var(--space-2-5) var(--space-3-5);
   border-bottom: 0.5px solid var(--color-separator);
   background: var(--color-fill-quaternary);
 }
@@ -2187,7 +2215,7 @@ svg[data-icon-system="sf"] * {
   color: var(--color-label-secondary);
   font-size: 12px;
   font-weight: 500;
-  padding: 4px 10px;
+  padding: var(--space-1) var(--space-2-5);
   border-radius: var(--radius-sm, 4px);
 
   white-space: nowrap;
@@ -2226,7 +2254,7 @@ svg[data-icon-system="sf"] * {
 .settings-field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 #settingsGitCommitCustomInstructions[hidden] {
@@ -2252,7 +2280,7 @@ svg[data-icon-system="sf"] * {
 
 .settings-field-input-wrap input {
   width: 100%;
-  padding-right: 36px;
+  padding-right: var(--space-8);
 }
 
 .settings-field-reveal {
@@ -2273,12 +2301,12 @@ svg[data-icon-system="sf"] * {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 8px 0;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
 }
 
 .settings-group-body-rows .settings-row {
-  padding: 8px 0;
+  padding: var(--space-2) 0;
 }
 
 .settings-row-label {
@@ -2286,7 +2314,7 @@ svg[data-icon-system="sf"] * {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0-5);
 }
 
 .settings-row-title {
@@ -2312,7 +2340,7 @@ svg[data-icon-system="sf"] * {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   color: var(--muted);
   font-size: var(--font-size-caption);
 }
@@ -2334,7 +2362,7 @@ svg[data-icon-system="sf"] * {
 .settings-provider-layout {
   display: grid;
   grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
-  gap: 12px;
+  gap: var(--space-3);
   align-items: start;
   width: 100%;
   flex-shrink: 0;
@@ -2343,18 +2371,18 @@ svg[data-icon-system="sf"] * {
 .settings-provider-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
   max-height: 480px;
   overflow-y: auto;
   min-width: 0;
-  padding-right: 8px;
+  padding-right: var(--space-2);
   border-right: 1px solid var(--color-separator);
 }
 
 .settings-provider-item {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .settings-provider-item-main {
@@ -2362,9 +2390,9 @@ svg[data-icon-system="sf"] * {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0-5);
   text-align: left;
-  padding: 8px 10px;
+  padding: var(--space-2) var(--space-2-5);
   border-radius: var(--radius-md);
   border: 1px solid transparent;
   background: transparent;
@@ -2419,7 +2447,7 @@ svg[data-icon-system="sf"] * {
 .settings-provider-detail {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
   min-width: 0;
   flex-shrink: 0;
 }
@@ -2427,8 +2455,8 @@ svg[data-icon-system="sf"] * {
 .settings-provider-models {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding-top: 8px;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
   border-top: 1px solid var(--color-separator);
 }
 
@@ -2436,8 +2464,8 @@ svg[data-icon-system="sf"] * {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  margin-top: 4px;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
 }
 
 .settings-provider-actions .settings-row-control {
@@ -2455,17 +2483,17 @@ svg[data-icon-system="sf"] * {
 .settings-provider-models-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
   max-height: 260px;
   overflow-y: auto;
-  padding-right: 4px;
+  padding-right: var(--space-1);
 }
 
 .settings-provider-model-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 0;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
   border-bottom: 1px solid color-mix(in srgb, var(--color-separator) 60%, transparent);
 }
 
@@ -2477,7 +2505,7 @@ svg[data-icon-system="sf"] * {
   flex: 0 0 auto;
   font-size: 11px;
   font-weight: 500;
-  padding: 2px 6px;
+  padding: var(--space-0-5) var(--space-1-5);
   border-radius: 4px;
   background: color-mix(in srgb, var(--text) 8%, transparent);
   color: var(--muted);
@@ -2504,9 +2532,9 @@ svg[data-icon-system="sf"] * {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  margin-top: 6px;
-  padding-top: 8px;
+  gap: var(--space-2);
+  margin-top: var(--space-1-5);
+  padding-top: var(--space-2);
   border-top: 1px solid var(--color-separator);
 }
 
@@ -2543,7 +2571,7 @@ svg[data-icon-system="sf"] * {
   .settings-provider-list {
     max-height: 240px;
     padding-right: 0;
-    padding-bottom: 8px;
+    padding-bottom: var(--space-2);
     border-right: none;
     border-bottom: 1px solid var(--color-separator);
   }
@@ -2551,7 +2579,7 @@ svg[data-icon-system="sf"] * {
 
 .settings-callout {
   margin: 0;
-  padding: 8px 10px;
+  padding: var(--space-2) var(--space-2-5);
   border-radius: var(--radius-md);
   font-size: var(--font-size-callout);
   line-height: var(--line-height-body);
@@ -2564,8 +2592,8 @@ svg[data-icon-system="sf"] * {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  margin-top: 4px;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
 }
 
 .settings-path-display {
@@ -2581,7 +2609,7 @@ svg[data-icon-system="sf"] * {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  padding-top: 4px;
+  padding-top: var(--space-1);
   border-top: 1px solid var(--color-separator);
 }
 
@@ -2592,9 +2620,9 @@ svg[data-icon-system="sf"] * {
 .settings-schedule-status {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-top: 8px;
-  padding-top: 10px;
+  gap: var(--space-1-5);
+  margin-top: var(--space-2);
+  padding-top: var(--space-2-5);
   border-top: 1px solid var(--color-separator);
 }
 
@@ -2607,14 +2635,14 @@ svg[data-icon-system="sf"] * {
 .settings-action-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .settings-item {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2, 8px);
-  padding: var(--space-3, 12px);
+  gap: var(--space-2, var(--space-2));
+  padding: var(--space-3, var(--space-3));
   border: 1px solid var(--color-separator);
   border-radius: var(--radius-md, 8px);
 }
@@ -2622,12 +2650,12 @@ svg[data-icon-system="sf"] * {
 .settings-item-row {
   display: flex;
   align-items: center;
-  gap: var(--space-2, 8px);
+  gap: var(--space-2, var(--space-2));
   min-width: 0;
 }
 
 .settings-item-row .tool-btn {
-  padding: 4px 6px !important;
+  padding: var(--space-1) var(--space-1-5) !important;
 }
 
 .settings-item-prefix {
@@ -2653,7 +2681,7 @@ svg[data-icon-system="sf"] * {
 }
 
 .settings-item-subrow {
-  padding-left: 18px;
+  padding-left: var(--space-5);
 }
 
 .settings-item-subrow-icon {
@@ -2665,14 +2693,14 @@ svg[data-icon-system="sf"] * {
   display: inline-flex;
   align-items: center;
   justify-content: flex-end;
-  gap: var(--space-2, 8px);
+  gap: var(--space-2, var(--space-2));
   flex-wrap: wrap;
 }
 
 .settings-mcp-actions .tool-btn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .settings-toggle {
@@ -2732,10 +2760,10 @@ svg[data-icon-system="sf"] * {
 .settings-disclosure-head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   width: 100%;
   margin: 0;
-  padding: 10px 12px;
+  padding: var(--space-2-5) var(--space-3);
   border: none;
   background: color-mix(in srgb, var(--panel) 88%, var(--bg));
   color: var(--text);
@@ -2795,7 +2823,7 @@ svg[data-icon-system="sf"] * {
   flex-direction: column;
   align-items: center;
   text-align: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   padding: var(--space-4) var(--space-3) var(--space-2);
 }
 
@@ -2805,7 +2833,7 @@ svg[data-icon-system="sf"] * {
   border-radius: 18px;
   overflow: hidden;
   flex-shrink: 0;
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
   box-shadow:
     0 1px 2px rgba(0, 0, 0, 0.1),
     0 8px 20px rgba(0, 0, 0, 0.14);
@@ -2834,7 +2862,7 @@ svg[data-icon-system="sf"] * {
 }
 
 .settings-about-tagline {
-  margin: 2px 0 0;
+  margin: var(--space-0-5) 0 0;
   max-width: 280px;
   font-size: var(--font-size-callout);
   line-height: 1.45;
@@ -2842,8 +2870,8 @@ svg[data-icon-system="sf"] * {
 }
 
 .settings-about-update {
-  margin: 0 0 20px;
-  padding: 12px 14px;
+  margin: 0 0 var(--space-5);
+  padding: var(--space-3) var(--space-3-5);
   border-radius: var(--radius-lg);
   background: var(--color-secondary-bg, #ebebf0);
   border: 1px solid var(--color-separator, rgba(60, 60, 67, 0.12));
@@ -2855,7 +2883,7 @@ svg[data-icon-system="sf"] * {
 }
 
 .settings-about-update-text {
-  margin: 0 0 10px;
+  margin: 0 0 var(--space-2-5);
   font-size: var(--font-size-callout);
   color: var(--text);
   line-height: 1.45;
@@ -2864,7 +2892,7 @@ svg[data-icon-system="sf"] * {
 .settings-about-update-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .settings-about-rows {
@@ -2874,9 +2902,9 @@ svg[data-icon-system="sf"] * {
 .settings-about-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
   width: 100%;
-  padding: 11px 12px;
+  padding: var(--space-3) var(--space-3);
   border: none;
   background: transparent;
   text-align: left;
@@ -2917,7 +2945,7 @@ svg[data-icon-system="sf"] * {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0-5);
 }
 
 .settings-about-row-title {
@@ -2949,8 +2977,8 @@ svg[data-icon-system="sf"] * {
 .settings-about-privacy {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 12px 14px;
+  gap: var(--space-2-5);
+  padding: var(--space-3) var(--space-3-5);
   border-radius: var(--radius-lg);
   border: 1px solid var(--color-separator-opaque);
   background: color-mix(in srgb, var(--color-fill-secondary, rgba(0, 0, 0, 0.04)) 65%, var(--panel));
@@ -2998,7 +3026,7 @@ svg[data-icon-system="sf"] * {
 .section-h {
   font-size: 13px;
   font-weight: 600;
-  margin: 16px 0 8px;
+  margin: var(--space-4) 0 var(--space-2);
   color: var(--muted);
 }
 
@@ -3007,7 +3035,7 @@ svg[data-icon-system="sf"] * {
 .usage-card {
   border: 1px solid var(--color-separator-opaque, var(--border));
   border-radius: var(--radius-lg);
-  padding: 10px 12px;
+  padding: var(--space-2-5) var(--space-3);
   background: var(--panel);
   min-width: 0;
 }
@@ -3024,7 +3052,7 @@ svg[data-icon-system="sf"] * {
   font-size: 16px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  margin-top: 4px;
+  margin-top: var(--space-1);
   line-height: 1.25;
   word-break: break-word;
 }
@@ -3033,7 +3061,7 @@ svg[data-icon-system="sf"] * {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 2px 4px;
+  gap: var(--space-0-5) var(--space-1);
   font-size: 14px;
 }
 
@@ -3045,7 +3073,7 @@ svg[data-icon-system="sf"] * {
 .usage-sources {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-1-5);
   flex-shrink: 0;
   min-width: 0;
 }
@@ -3060,16 +3088,16 @@ svg[data-icon-system="sf"] * {
 .usage-sources-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--space-1-5);
   min-width: 0;
 }
 
 .usage-source-chip {
   display: inline-flex;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--space-2);
   max-width: 100%;
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   border-radius: 999px;
   background: var(--color-fill-secondary, rgba(127, 127, 127, 0.12));
   border: 1px solid var(--color-separator, var(--border));
@@ -3098,7 +3126,7 @@ svg[data-icon-system="sf"] * {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
   overflow: hidden;
 }
 
@@ -3110,7 +3138,7 @@ svg[data-icon-system="sf"] * {
 
 .usage-detail-tabs button {
   font-size: 12px;
-  padding-inline: 6px;
+  padding-inline: var(--space-1-5);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3152,7 +3180,7 @@ svg[data-icon-system="sf"] * {
 
 .table-wrap.compact th,
 .table-wrap.compact td {
-  padding: 6px 8px;
+  padding: var(--space-1-5) var(--space-2);
 }
 
 h1 {
@@ -3169,7 +3197,7 @@ h2 {
 .muted {
   color: var(--muted);
   font-size: 12px;
-  margin: 4px 0 0;
+  margin: var(--space-1) 0 0;
 }
 
 .tabs {
@@ -3190,7 +3218,7 @@ button.btn {
   justify-content: center;
   gap: var(--space-1);
   height: 28px;
-  padding: 0 12px;
+  padding: 0 var(--space-3);
   border: 0.5px solid var(--color-separator-opaque);
   border-radius: var(--radius-md);
   background: var(--color-control-bg);
@@ -3290,7 +3318,7 @@ input[type="month"],
 .form-row input,
 .gtd-search {
   height: 28px;
-  padding: 0 8px;
+  padding: 0 var(--space-2);
   border: 0.5px solid var(--color-separator-opaque);
   border-radius: var(--radius-md);
   background: var(--color-control-bg);
@@ -3324,7 +3352,7 @@ select {
   height: 28px;
   min-height: 28px;
   line-height: normal;
-  padding: 0 28px 0 10px;
+  padding: 0 var(--space-8) 0 var(--space-2-5);
   border: 0.5px solid var(--color-separator-opaque);
   border-radius: var(--radius-md);
   background-color: var(--color-control-bg);
@@ -3372,7 +3400,7 @@ select option {
   background-color: var(--color-elevated-bg);
   color: var(--color-label-primary);
   font-size: var(--font-size-body);
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
 }
 
 input::placeholder,
@@ -3386,7 +3414,7 @@ textarea::placeholder {
   background: transparent;
   color: var(--muted);
   border-radius: var(--radius-md);
-  padding: 6px 12px;
+  padding: var(--space-1-5) var(--space-3);
   font-size: var(--font-size-body);
   font-weight: 500;
   font-family: inherit;
@@ -3420,7 +3448,7 @@ textarea::placeholder {
 }
 
 main {
-  padding: 10px 16px 12px;
+  padding: var(--space-2-5) var(--space-4) var(--space-3);
   max-width: 100%;
   width: 100%;
   box-sizing: border-box;
@@ -3457,8 +3485,8 @@ main {
   flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
-  gap: 8px 12px;
+  margin-bottom: var(--space-3);
+  gap: var(--space-2) var(--space-3);
   width: 100%;
   max-width: 100%;
   min-width: 0;
@@ -3467,12 +3495,12 @@ main {
 
 .gen-progress {
   flex: 0 0 auto;
-  margin: 8px 12px 0;
+  margin: var(--space-2) var(--space-3) 0;
 }
 
 .gen-progress {
   margin-top: 0;
-  padding: 12px 14px;
+  padding: var(--space-3) var(--space-3-5);
   border-radius: 12px;
   border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
   background: color-mix(in srgb, var(--accent) 8%, var(--panel));
@@ -3486,7 +3514,7 @@ main {
 
 .gen-progress-line {
   position: relative;
-  padding-left: 22px;
+  padding-left: var(--space-6);
   font-size: 12px;
   line-height: 1.4;
   color: var(--text);
@@ -3577,7 +3605,7 @@ main {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   min-width: 0;
   max-width: 100%;
 }
@@ -3597,7 +3625,7 @@ main {
   background: var(--panel) !important;
   color: var(--text) !important;
   border-radius: var(--radius-md);
-  padding: 5px 10px !important;
+  padding: var(--space-1-5) var(--space-2-5) !important;
   font-size: var(--font-size-body);
   line-height: 1.2;
   font-family: inherit;
@@ -3626,7 +3654,7 @@ main {
 
 .row {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
   flex-wrap: wrap;
   min-width: 0;
@@ -3636,7 +3664,7 @@ main {
 .inline-label {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   font-size: 12px;
   color: var(--muted);
 }
@@ -3646,7 +3674,7 @@ main {
   background: var(--bg);
   color: var(--text);
   border-radius: 8px;
-  padding: 6px 8px;
+  padding: var(--space-1-5) var(--space-2);
   font-size: 13px;
 }
 
@@ -3667,7 +3695,7 @@ table {
 th,
 td {
   text-align: left;
-  padding: 8px 10px;
+  padding: var(--space-2) var(--space-2-5);
   border-bottom: 1px solid var(--border);
   vertical-align: top;
 }
@@ -3696,7 +3724,7 @@ td.time {
 
 .form {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
   max-width: 640px;
 }
 
@@ -3712,7 +3740,7 @@ input {
   background: var(--panel);
   color: var(--text);
   border-radius: var(--radius-md);
-  padding: 8px 10px;
+  padding: var(--space-2) var(--space-2-5);
   font-size: var(--font-size-body);
   font-family: inherit;
 }
@@ -3722,11 +3750,11 @@ fieldset {
   border-radius: var(--radius-xl);
   padding: var(--space-3);
   display: grid;
-  gap: 10px;
+  gap: var(--space-2-5);
 }
 
 legend {
-  padding: 0 6px;
+  padding: 0 var(--space-1-5);
   color: var(--muted);
   font-size: 12px;
 }
@@ -3752,7 +3780,7 @@ legend {
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--panel);
-  padding: 10px;
+  padding: var(--space-2-5);
   min-width: 0;
   max-width: 100%;
   flex: 0 0 auto;
@@ -3772,16 +3800,16 @@ legend {
   flex-direction: column;
   min-width: 0;
   overflow: hidden;
-  padding: 8px 8px 10px;
+  padding: var(--space-2) var(--space-2) var(--space-2-5);
 }
 
 .cal-session-panel-head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-2);
   flex: 0 0 auto;
-  margin-bottom: 6px;
+  margin-bottom: var(--space-1-5);
   font-size: 12px;
 
   user-select: none;
@@ -3794,7 +3822,7 @@ legend {
 .cal-session-head-meta {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   min-width: 0;
 }
 
@@ -3824,12 +3852,12 @@ legend {
 }
 
 .cal-session-empty {
-  margin: 8px 0;
+  margin: var(--space-2) 0;
   font-size: 11px;
 }
 
 .cal-session-group {
-  margin: 0 0 8px;
+  margin: 0 0 var(--space-2);
 }
 
 /* Outer week block in month view — sticky title sticks while scrolling this week */
@@ -3842,9 +3870,9 @@ legend {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
-  padding: 4px 8px;
-  margin: 4px 0 2px;
+  gap: var(--space-1-5);
+  padding: var(--space-1) var(--space-2);
+  margin: var(--space-1) 0 var(--space-0-5);
   font-size: 11px;
   font-weight: 600;
   color: var(--muted);
@@ -3852,7 +3880,7 @@ legend {
   border-bottom: 1px solid var(--border);
 }
 .cal-session-group-count { font-size: 10px; font-weight: 400; }
-.cal-session-search-row { padding: 6px 8px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--panel) 96%, var(--bg)); }
+.cal-session-search-row { padding: var(--space-1-5) var(--space-2); border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--panel) 96%, var(--bg)); }
 .cal-session-search { width: 100%; }
 
 /* Month view has a second sticky layer above each day title. */
@@ -3860,11 +3888,11 @@ legend {
 .cal-session-row {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
   box-sizing: border-box;
   width: calc(100% - 16px);
-  margin: 0 8px 4px;
-  padding: 10px 12px;
+  margin: 0 var(--space-2) var(--space-1);
+  padding: var(--space-2-5) var(--space-3);
   border: none;
   border-radius: 8px;
   background: transparent;
@@ -3943,7 +3971,7 @@ legend {
   border: none;
   border-radius: 0;
   background: transparent;
-  padding: 12px 0;
+  padding: var(--space-3) 0;
   min-width: 0;
   max-width: 100%;
   min-height: 0;
@@ -3953,7 +3981,7 @@ legend {
 }
 
 .cal-detail h3 {
-  margin: 0 0 8px;
+  margin: 0 0 var(--space-2);
   font-size: 14px;
 }
 
@@ -3975,8 +4003,8 @@ legend {
 .cal-detail-loading {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 16px 2px;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-0-5);
   font-size: 13px;
   color: var(--muted);
 }
@@ -4005,8 +4033,8 @@ legend {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 4px;
-  padding: 4px 2px;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-0-5);
 }
 
 .detail-generating .empty-hint {
@@ -4015,7 +4043,7 @@ legend {
 }
 
 .detail-generating-key {
-  margin-left: 6px;
+  margin-left: var(--space-1-5);
   font-variant-numeric: tabular-nums;
   color: var(--accent);
   font-weight: 600;
@@ -4033,12 +4061,12 @@ legend {
 .digest-panel {
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 12px;
+  padding: var(--space-3);
   background: color-mix(in srgb, var(--bg) 55%, var(--panel));
 }
 
 .digest-panel-head {
-  margin-bottom: 8px;
+  margin-bottom: var(--space-2);
 }
 
 .digest-panel-head h3 {
@@ -4051,7 +4079,7 @@ legend {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 10px;
+  gap: var(--space-2-5);
 }
 
 .digest-panel-empty .empty-hint {
@@ -4064,8 +4092,8 @@ legend {
 }
 
 .digest-stale-banner {
-  margin-bottom: 12px;
-  padding: 10px 12px;
+  margin-bottom: var(--space-3);
+  padding: var(--space-2-5) var(--space-3);
   border-radius: var(--radius-xl);
   border: 1px solid color-mix(in srgb, var(--color-warning) 40%, var(--border));
   background: color-mix(in srgb, var(--color-warning) 10%, var(--panel));
@@ -4082,7 +4110,7 @@ legend {
   border-radius: 12px;
   padding: 0;
   background: color-mix(in srgb, var(--bg) 55%, var(--panel));
-  margin-bottom: 12px;
+  margin-bottom: var(--space-3);
   overflow: hidden;
 }
 
@@ -4091,7 +4119,7 @@ legend {
 }
 
 .digest-card-head {
-  padding: 10px 12px 8px;
+  padding: var(--space-2-5) var(--space-3) var(--space-2);
   border-bottom: 1px solid var(--border);
   background: var(--panel);
   position: sticky;
@@ -4104,8 +4132,8 @@ legend {
   flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 4px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
 }
 
 .digest-card-head h3 {
@@ -4115,7 +4143,7 @@ legend {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   flex: 1 1 auto;
   min-width: 0;
 }
@@ -4123,13 +4151,13 @@ legend {
 .digest-card-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--space-1-5);
   flex: 0 0 auto;
 }
 
 .digest-card-actions .tool-btn {
   font-size: 11px;
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   white-space: nowrap;
 }
 
@@ -4140,7 +4168,7 @@ legend {
 
 .digest-card .digest-body {
   margin: 0;
-  padding: 12px 14px 14px;
+  padding: var(--space-3) var(--space-3-5) var(--space-3-5);
   font-size: 12px;
   line-height: 1.6;
   color: var(--text);
@@ -4183,7 +4211,7 @@ legend {
 .legend-item {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: var(--space-1);
   font-size: 9px;
   color: var(--muted);
 }
@@ -4353,7 +4381,7 @@ legend {
 
 .markdown-body th,
 .markdown-body td {
-  padding: 6px 9px;
+  padding: var(--space-1-5) var(--space-2-5);
   border: 1px solid var(--border);
   text-align: left;
   vertical-align: top;
@@ -4372,12 +4400,12 @@ legend {
 .card {
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 12px 14px;
+  padding: var(--space-3) var(--space-3-5);
   background: var(--panel);
 }
 
 .card h3 {
-  margin: 0 0 10px;
+  margin: 0 0 var(--space-2-5);
   font-size: 13px;
   color: var(--muted);
   font-weight: 600;
@@ -4392,7 +4420,7 @@ legend {
   background: var(--bg);
   color: var(--text);
   border-radius: 8px;
-  padding: 8px 10px;
+  padding: var(--space-2) var(--space-2-5);
   font-size: 13px;
   width: 100%;
 }
@@ -4401,7 +4429,7 @@ legend {
   display: flex !important;
   flex-direction: row !important;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   color: var(--text) !important;
   font-size: 13px !important;
 }
@@ -4411,11 +4439,11 @@ legend {
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  padding: 2px 6px;
+  padding: var(--space-0-5) var(--space-1-5);
   border-radius: 999px;
   border: 1px solid var(--border);
   color: var(--muted);
-  margin-right: 6px;
+  margin-right: var(--space-1-5);
 }
 
 .badge.daily {
@@ -4436,7 +4464,7 @@ legend {
 .score {
   font-size: 11px;
   color: var(--accent);
-  margin-left: 6px;
+  margin-left: var(--space-1-5);
 }
 
 .meta-line {
@@ -4455,7 +4483,7 @@ code {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 14px 12px 10px;
+  padding: var(--space-3-5) var(--space-3) var(--space-2-5);
   background: var(--chat-bg);
   overscroll-behavior: contain;
 }
@@ -4482,11 +4510,11 @@ code {
   margin: auto;
   max-width: 320px;
   text-align: center;
-  padding: 24px 16px;
+  padding: var(--space-6) var(--space-4);
 }
 
 .chat-empty-title {
-  margin: 0 0 6px;
+  margin: 0 0 var(--space-1-5);
   font-size: var(--font-size-title);
   font-weight: 600;
   color: var(--text);
@@ -4514,7 +4542,7 @@ code {
 
 .chat-bubble {
   max-width: 70%;
-  padding: 8px 11px 6px;
+  padding: var(--space-2) var(--space-3) var(--space-1-5);
   font-size: 14px;
   line-height: 1.42;
   word-break: break-word;
@@ -4545,11 +4573,11 @@ code {
   font-size: 12px;
   font-weight: 600;
   color: var(--tg-sender);
-  margin-bottom: 3px;
+  margin-bottom: var(--space-1);
 }
 
 .chat-body {
-  margin-bottom: 2px;
+  margin-bottom: var(--space-0-5);
   min-width: 0;
 }
 
@@ -4640,8 +4668,8 @@ code {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
-  margin-top: 2px;
+  gap: var(--space-2);
+  margin-top: var(--space-0-5);
 }
 
 .chat-footer-meta {
@@ -4685,7 +4713,7 @@ code {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  padding: var(--space-2) 10px;
+  padding: var(--space-2) var(--space-2-5);
   border-top: 1px solid var(--color-separator);
   background: color-mix(in srgb, var(--color-warning) 10%, var(--chat-compose-bg));
 }
@@ -4694,7 +4722,7 @@ code {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0-5);
 }
 
 .agent-tool-approval-copy strong {
@@ -4757,7 +4785,7 @@ code {
   gap: var(--space-1);
   border: 0;
   border-radius: var(--radius-md);
-  padding: 6px 4px;
+  padding: var(--space-1-5) var(--space-1);
   background: transparent;
   color: var(--color-label-primary);
 
@@ -4785,7 +4813,7 @@ code {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  padding: var(--space-2) 4px var(--space-3) 24px;
+  padding: var(--space-2) var(--space-1) var(--space-3) var(--space-6);
 }
 
 .citation-sheet-item-body h5 {
@@ -4840,7 +4868,7 @@ code {
   position: relative;
   z-index: 50;
   display: flex;
-  padding: 10px 14px 14px;
+  padding: var(--space-2-5) var(--space-3-5) var(--space-3-5);
   background: var(--color-sidebar-bg);
   backdrop-filter: var(--backdrop-blur);
   -webkit-backdrop-filter: var(--backdrop-blur);
@@ -4876,7 +4904,7 @@ code {
   display: flex;
   flex-flow: row nowrap;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   min-width: 0;
   width: 100%;
 }
@@ -4896,17 +4924,17 @@ code {
   /* Match first-line height with the chip so they read as one run of text. */
   min-height: 28px;
   line-height: 1.4;
-  padding-top: 3px;
+  padding-top: var(--space-1);
 }
 
 .wb-acp-slash-tag {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   flex: 0 0 auto;
   max-width: min(42%, 16em);
-  margin-top: 2px; /* sit on the first text line */
-  padding: 3px 4px 3px 8px;
+  margin-top: var(--space-0-5); /* sit on the first text line */
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-2);
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--color-accent, var(--accent)) 28%, transparent);
   background: color-mix(in srgb, var(--color-accent, var(--accent)) 14%, transparent);
@@ -4958,7 +4986,7 @@ code {
   bottom: calc(100% + var(--space-2));
   left: var(--space-2);
   max-height: min(240px, 40vh);
-  padding: 6px;
+  padding: var(--space-1-5);
   overflow-y: auto;
   border: 1px solid var(--color-separator-opaque);
   border-radius: var(--radius-lg);
@@ -4973,7 +5001,7 @@ code {
   width: 100%;
   min-height: 30px;
   gap: var(--space-2);
-  padding: 6px 8px;
+  padding: var(--space-1-5) var(--space-2);
   border: 0;
   border-radius: var(--radius-md);
   background: transparent;
@@ -5186,7 +5214,7 @@ code {
 }
 
 .wb-session-split-transcript .wb-transcript-body {
-  padding: 16px 16px 24px 24px;
+  padding: var(--space-4) var(--space-4) var(--space-6) var(--space-6);
 }
 
 .wb-session-split-transcript .wb-transcript-body.has-outline-open {
@@ -5217,7 +5245,7 @@ code {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 8px 0 12px;
+  padding: 0 var(--space-2) 0 var(--space-3);
   background: var(--color-pane-bg);
   border-bottom: 1px solid var(--color-separator);
   user-select: none;
@@ -5227,7 +5255,7 @@ code {
 .wb-session-split-tui-title {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   font-size: 11px;
   font-weight: 600;
   color: var(--muted);
@@ -5238,7 +5266,7 @@ code {
 .wb-session-split-tui-actions {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .wb-session-split-tui-body {
@@ -5271,8 +5299,8 @@ code {
 .wb-terminal-mode-toggle-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
+  gap: var(--space-1-5);
+  padding: var(--space-1) var(--space-2-5);
   border-radius: var(--radius-sm, 4px);
   border: 1px solid var(--color-separator);
   background: var(--color-control-bg);
@@ -5390,7 +5418,7 @@ body.is-pane-resizing-v * {
   display: flex;
   align-items: center;
   min-width: 0;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 #react-workbench .react-branch-graph-nav .wb-diff-back {
@@ -5422,13 +5450,13 @@ body.is-pane-resizing-v * {
   border: 1px solid var(--color-separator, var(--border));
   border-radius: var(--radius-full, 999px);
   background: var(--color-fill-tertiary, color-mix(in srgb, var(--text) 4%, transparent));
-  padding: 0 8px 0 7px;
+  padding: 0 var(--space-2) 0 var(--space-2);
   font: inherit;
   color: var(--color-label-secondary, var(--muted));
 
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--space-1-5);
   flex: 0 0 auto;
   transition: background var(--duration-fast, 150ms) var(--ease-out, ease-out),
     border-color var(--duration-fast, 150ms) var(--ease-out, ease-out),
@@ -5467,7 +5495,7 @@ body.is-pane-resizing-v * {
 /* The sync status belongs with the commit actions, but remains visually
    distinct from the destructive-to-repeat action icons. */
 #react-workbench .wb-git-commit-actions .wb-git-tracking-btn {
-  margin-left: 4px;
+  margin-left: var(--space-1);
 }
 
 /* The React tree portal replaces the previous flat change rows while retaining
@@ -5519,7 +5547,7 @@ body.is-pane-resizing-v * {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-  padding: 0 12px;
+  padding: 0 var(--space-3);
   border-bottom: none;
   background: transparent;
 }
@@ -5529,7 +5557,7 @@ body.is-pane-resizing-v * {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   overflow: hidden;
   color: var(--color-label-secondary);
   font-size: 12px;
@@ -5586,7 +5614,7 @@ body.is-pane-resizing-v * {
 .wb-detail-head-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   flex: 0 0 auto;
   min-width: 0;
   max-width: 55%;
@@ -5611,11 +5639,11 @@ body.is-pane-resizing-v * {
   background: var(--color-fill-secondary);
   color: var(--color-label-secondary);
   height: 24px;
-  padding: 0 8px;
+  padding: 0 var(--space-2);
   border-radius: var(--radius-full);
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   font-size: 11px;
   font-family: var(--font-family-mono);
 
@@ -5641,7 +5669,7 @@ body.is-pane-resizing-v * {
 .wb-detail-tools {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: var(--space-1);
   flex-shrink: 0;
 }
 
@@ -5735,9 +5763,9 @@ body.is-pane-resizing-v * {
 .wb-transcript-head-search {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  margin-left: 6px;
-  padding: 2px 6px;
+  gap: var(--space-1);
+  margin-left: var(--space-1-5);
+  padding: var(--space-0-5) var(--space-1-5);
   border-radius: var(--radius-sm, 5px);
   border: 1px solid var(--color-separator);
   background: var(--color-control-bg);
@@ -5782,7 +5810,7 @@ body.is-pane-resizing-v * {
   color: var(--color-label-secondary);
   white-space: nowrap;
   user-select: none;
-  padding: 0 2px;
+  padding: 0 var(--space-0-5);
 }
 
 .wb-transcript-head-search-count.is-empty {
@@ -5845,7 +5873,7 @@ body.is-pane-resizing-v * {
 
 .wb-transcript-status {
   margin: 0;
-  padding: 8px 10px;
+  padding: var(--space-2) var(--space-2-5);
   font-size: 12px;
 }
 
@@ -5891,11 +5919,11 @@ body.is-pane-resizing-v * {
   appearance: none;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   width: 100%;
   min-height: 28px;
   margin: 0;
-  padding: 5px 10px;
+  padding: var(--space-1-5) var(--space-2-5);
   border: none;
   background: transparent;
   color: var(--color-label-secondary, var(--muted));
@@ -5935,7 +5963,7 @@ body.is-pane-resizing-v * {
 
 .wb-transcript-outline-list {
   margin: 0;
-  padding: 4px 6px 6px;
+  padding: var(--space-1) var(--space-1-5) var(--space-1-5);
   list-style: none;
   overflow-y: auto;
   overflow-x: hidden;
@@ -5947,10 +5975,10 @@ body.is-pane-resizing-v * {
   appearance: none;
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--space-2);
   width: 100%;
   margin: 0;
-  padding: 4px 6px;
+  padding: var(--space-1) var(--space-1-5);
   border: none;
   border-radius: var(--radius-md, 6px);
   background: transparent;
@@ -5996,7 +6024,7 @@ body.is-pane-resizing-v * {
   min-width: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 8px 16px 12px;
+  padding: var(--space-2) var(--space-4) var(--space-3);
   user-select: text;
   -webkit-user-select: text;
   box-sizing: border-box;
@@ -6038,7 +6066,7 @@ body.is-pane-resizing-v * {
 .wb-transcript-body .preview-msg .role {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
 }
 
 .wb-transcript-body .wb-transcript-role-icon {
@@ -6136,7 +6164,7 @@ body.is-pane-resizing-v * {
 }
 
 .wb-transcript-thinking {
-  margin: 0 0 8px;
+  margin: 0 0 var(--space-2);
   border: 1px solid var(--color-separator, var(--border));
   border-radius: var(--radius-md, 6px);
   background: var(--color-fill-tertiary, color-mix(in srgb, var(--text) 4%, transparent));
@@ -6146,10 +6174,10 @@ body.is-pane-resizing-v * {
   appearance: none;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   width: 100%;
   margin: 0;
-  padding: 5px 8px;
+  padding: var(--space-1-5) var(--space-2);
   border: none;
   background: transparent;
   color: var(--color-label-secondary, var(--muted));
@@ -6180,7 +6208,7 @@ body.is-pane-resizing-v * {
 }
 
 .wb-transcript-thinking-body {
-  padding: 0 8px 8px;
+  padding: 0 var(--space-2) var(--space-2);
   color: var(--color-label-secondary, var(--muted));
 }
 
@@ -6194,7 +6222,7 @@ body.is-pane-resizing-v * {
 
 .wb-transcript-compose {
   flex: 0 0 auto;
-  padding: var(--space-3, 8px) 10px 10px;
+  padding: var(--space-3, var(--space-2)) var(--space-2-5) var(--space-2-5);
   border-top: 1px solid var(--color-separator);
   background: var(--chat-compose-bg, var(--color-window-bg));
 }
@@ -6211,7 +6239,7 @@ body.is-pane-resizing-v * {
   flex-direction: column;
   align-items: stretch;
   gap: 0;
-  padding: var(--space-3, 8px) var(--space-3, 8px) var(--space-2, 6px);
+  padding: var(--space-3, var(--space-2)) var(--space-3, var(--space-2)) var(--space-2, var(--space-1-5));
   border: 1px solid var(--color-separator-opaque);
   border-radius: 20px;
   background: color-mix(in srgb, var(--chat-compose-field, var(--color-secondary-bg)) 84%, var(--chat-compose-bg, var(--color-window-bg)));
@@ -6244,7 +6272,7 @@ body.is-pane-resizing-v * {
   display: flex;
   align-self: stretch;
   justify-content: flex-end;
-  padding: 6px 0 0;
+  padding: var(--space-1-5) 0 0;
 }
 
 .wb-transcript-compose .wb-terminal-composer.is-docked .wb-terminal-composer-suggestions {
@@ -6284,17 +6312,17 @@ body.is-pane-resizing-v * {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 6px;
-  padding-top: 5px;
+  gap: var(--space-1-5);
+  margin-top: var(--space-1-5);
+  padding-top: var(--space-1-5);
   border-top: 1px dashed var(--color-separator, var(--border));
 }
 
 .wb-transcript-body .wb-transcript-action-btn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 7px;
+  gap: var(--space-1);
+  padding: var(--space-0-5) var(--space-2);
   font-size: 11px;
   font-weight: 500;
   border-radius: 4px;
@@ -6353,19 +6381,19 @@ body.is-pane-resizing-v * {
 .wb-explorer-scripts-head {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   min-height: 28px;
-  padding-right: 6px;
+  padding-right: var(--space-1-5);
 }
 
 .wb-explorer-scripts-toggle {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   flex: 1;
   min-width: 0;
   min-height: 28px;
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   border: none;
   background: transparent;
   color: inherit;
@@ -6397,8 +6425,8 @@ body.is-pane-resizing-v * {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
-  padding: 4px 10px;
+  gap: var(--space-1-5);
+  padding: var(--space-1) var(--space-2-5);
   border-bottom: 1px solid var(--color-separator);
 }
 
@@ -6406,7 +6434,7 @@ body.is-pane-resizing-v * {
   justify-content: flex-end;
   border-bottom: none;
   min-height: 24px;
-  padding: 0 8px 2px;
+  padding: 0 var(--space-2) var(--space-0-5);
 }
 
 .wb-scripts-pane.is-compact .wb-scripts-tree,
@@ -6419,7 +6447,7 @@ body.is-pane-resizing-v * {
 .wb-scripts-tree {
   flex: 1;
   overflow: auto;
-  padding: 2px 0 8px;
+  padding: var(--space-0-5) 0 var(--space-2);
   font-size: 12px;
   background: transparent;
 }
@@ -6465,7 +6493,7 @@ body.is-pane-resizing-v * {
 .wb-scripts-kind-badge {
   flex-shrink: 0;
   margin-left: auto;
-  padding: 0 6px;
+  padding: 0 var(--space-1-5);
   border-radius: 999px;
   font-size: 10px;
   font-weight: 600;
@@ -6489,7 +6517,7 @@ body.is-pane-resizing-v * {
 
 .wb-scripts-status,
 .wb-scripts-truncated {
-  margin: 8px 10px;
+  margin: var(--space-2) var(--space-2-5);
   font-size: 12px;
 }
 
@@ -6507,13 +6535,13 @@ body.is-pane-resizing-v * {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 8px;
-  padding: 4px 10px;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-1) var(--space-2-5);
   border-bottom: 1px solid var(--color-separator);
 }
 
 .wb-git-pane-head {
-  gap: 6px 8px;
+  gap: var(--space-1-5) var(--space-2);
   justify-content: space-between;
 }
 
@@ -6524,7 +6552,7 @@ body.is-pane-resizing-v * {
   height: 22px;
   min-height: 22px;
   font-size: 11px;
-  padding: 0 20px 0 6px;
+  padding: 0 var(--space-5) 0 var(--space-1-5);
   border-radius: 4px;
   border: 1px solid var(--color-separator, var(--border));
   background-color: var(--color-control-bg, var(--bg));
@@ -6546,9 +6574,9 @@ body.is-pane-resizing-v * {
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 4px;
+  gap: var(--space-1);
   appearance: none;
-  padding: 3px 6px;
+  padding: var(--space-1) var(--space-1-5);
   border: 1px solid var(--color-separator, var(--border));
   border-radius: var(--radius-sm, 4px);
   background: var(--color-control-bg, var(--bg));
@@ -6585,7 +6613,7 @@ body.is-pane-resizing-v * {
 .wb-git-actions {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   flex-shrink: 0;
 }
 
@@ -6596,7 +6624,7 @@ body.is-pane-resizing-v * {
   color: var(--text);
   width: 28px;
   height: 28px;
-  padding: 5px;
+  padding: var(--space-1-5);
   border-radius: var(--radius-md);
 
   display: grid;
@@ -6631,7 +6659,7 @@ body.is-pane-resizing-v * {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
-  padding: 4px 0;
+  padding: var(--space-1) 0;
   overflow-x: auto;
   display: flex;
   flex-direction: column;
@@ -6646,7 +6674,7 @@ body.is-pane-resizing-v * {
   flex-shrink: 0;
   display: flex;
   align-items: stretch;
-  padding: 0 4px 0 8px;
+  padding: 0 var(--space-1) 0 var(--space-2);
   overflow: visible;
 }
 
@@ -6655,7 +6683,7 @@ body.is-pane-resizing-v * {
   top: 50%;
   transform: translateY(-50%);
   max-width: 72px;
-  padding: 2px 3px;
+  padding: var(--space-0-5) var(--space-1);
   border-radius: var(--radius-sm);
   background: var(--color-window-bg);
   overflow: hidden;
@@ -6797,7 +6825,7 @@ body.is-pane-resizing-v * {
   border: none;
   background: transparent;
   text-align: left;
-  padding: 3px 10px 3px 2px;
+  padding: var(--space-1) var(--space-2-5) var(--space-1) var(--space-0-5);
 
   color: var(--text);
   display: flex;
@@ -6827,7 +6855,7 @@ body.is-pane-resizing-v * {
 .wb-git-log-branches {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: var(--space-1);
   min-width: 0;
   max-width: 100%;
   overflow-x: auto;
@@ -6842,9 +6870,9 @@ body.is-pane-resizing-v * {
 .wb-git-log-decoration-pill {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--space-0-5);
   flex: 0 0 auto;
-  padding: 1px 5px;
+  padding: 1px var(--space-1-5);
   border: 1px solid var(--color-separator);
   border-radius: var(--radius-sm);
   background: var(--color-control-bg);
@@ -6886,7 +6914,7 @@ body.is-pane-resizing-v * {
   font-size: 10px;
   color: var(--muted);
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
   flex-wrap: nowrap;
   align-items: center;
   overflow: hidden;
@@ -6907,22 +6935,22 @@ body.is-pane-resizing-v * {
 }
 
 .wb-git-log-detail {
-  padding: 8px 10px 12px;
+  padding: var(--space-2) var(--space-2-5) var(--space-3);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-2-5);
 }
 
 .wb-git-log-detail-head {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .wb-git-log-detail-title-row {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: var(--space-2);
   min-width: 0;
 }
 
@@ -6978,13 +7006,13 @@ body.is-pane-resizing-v * {
 .wb-git-log-files {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0-5);
 }
 
 .wb-git-log-file {
   display: flex;
   align-items: baseline;
-  gap: 6px;
+  gap: var(--space-1-5);
   width: 100%;
   border: 0;
   border-radius: var(--radius-sm, 4px);
@@ -6993,7 +7021,7 @@ body.is-pane-resizing-v * {
   text-align: left;
   font-size: 11px;
   font-family: Menlo, Monaco, "Courier New", monospace;
-  padding: 3px 0;
+  padding: var(--space-1) 0;
 
 }
 
@@ -7045,16 +7073,16 @@ body.is-pane-resizing-v * {
 .wb-file-tree {
   flex: 1;
   overflow: auto;
-  padding: 4px 0;
+  padding: var(--space-1) 0;
   font-size: 12px;
 }
 
 .wb-file-tree-row {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   min-height: 22px;
-  padding: 0 8px 0 0;
+  padding: 0 var(--space-2) 0 0;
 
   user-select: none;
   color: var(--text);
@@ -7129,7 +7157,7 @@ body.is-pane-resizing-v * {
 }
 
 .wb-file-tree-empty {
-  padding: 12px 10px;
+  padding: var(--space-3) var(--space-2-5);
   font-size: 12px;
 }
 
@@ -7144,15 +7172,15 @@ body.is-pane-resizing-v * {
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 8px 10px;
+  gap: var(--space-1-5);
+  padding: var(--space-2) var(--space-2-5);
   border-bottom: 1px solid var(--color-separator);
 }
 
 .wb-search-input {
   width: 100%;
   min-height: 28px;
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-md, 6px);
   border: 1px solid var(--color-separator, var(--border));
   background: var(--color-control-bg, var(--bg));
@@ -7172,8 +7200,8 @@ body.is-pane-resizing-v * {
   width: 100%;
   min-width: 0;
   align-items: center;
-  gap: 4px;
-  padding: 3px 4px;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
   border: 0;
   border-radius: var(--radius-md, 6px);
   background: transparent;
@@ -7200,7 +7228,7 @@ body.is-pane-resizing-v * {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 4px;
+  padding: var(--space-1);
 }
 
 .wb-search-project-row {
@@ -7210,8 +7238,8 @@ body.is-pane-resizing-v * {
   min-height: 36px;
   grid-template-columns: 18px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 6px;
-  padding: 5px 7px;
+  gap: var(--space-1-5);
+  padding: var(--space-1-5) var(--space-2);
   border: 0;
   border-radius: var(--radius-md, 6px);
   background: transparent;
@@ -7260,7 +7288,7 @@ body.is-pane-resizing-v * {
 .wb-search-options {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .wb-search-option {
@@ -7270,7 +7298,7 @@ body.is-pane-resizing-v * {
   color: var(--muted);
   min-width: 28px;
   height: 24px;
-  padding: 0 6px;
+  padding: 0 var(--space-1-5);
   border-radius: var(--radius-md, 6px);
   font-size: 11px;
   font-weight: 600;
@@ -7289,7 +7317,7 @@ body.is-pane-resizing-v * {
 }
 
 .wb-search-status {
-  padding: 12px 10px;
+  padding: var(--space-3) var(--space-2-5);
   font-size: 12px;
   margin: 0;
 }
@@ -7301,7 +7329,7 @@ body.is-pane-resizing-v * {
 .wb-search-meta {
   flex: 0 0 auto;
   margin: 0;
-  padding: 6px 10px 4px;
+  padding: var(--space-1-5) var(--space-2-5) var(--space-1);
   font-size: 11px;
   color: var(--muted);
 }
@@ -7310,7 +7338,7 @@ body.is-pane-resizing-v * {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 0 0 8px;
+  padding: 0 0 var(--space-2);
 }
 
 .wb-search-file-group {
@@ -7323,12 +7351,12 @@ body.is-pane-resizing-v * {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   min-height: 22px;
 }
 
 .wb-search-file-row {
-  padding: 0 4px 0 8px;
+  padding: 0 var(--space-1) 0 var(--space-2);
 }
 
 .wb-search-file-row:hover,
@@ -7337,8 +7365,8 @@ body.is-pane-resizing-v * {
 }
 
 .wb-search-match-row {
-  padding: 0 4px 0 28px;
-  gap: 8px;
+  padding: 0 var(--space-1) 0 var(--space-8);
+  gap: var(--space-2);
 }
 
 .wb-search-match-row.is-selected {
@@ -7363,11 +7391,11 @@ body.is-pane-resizing-v * {
 }
 
 .wb-search-file-main {
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .wb-search-match-main {
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .wb-search-file-label {
@@ -7428,18 +7456,18 @@ body.is-pane-resizing-v * {
 .wb-search-extras {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-1-5);
 }
 
 .wb-search-extras > .wb-search-input {
   min-height: 24px;
-  padding: 3px 8px;
+  padding: var(--space-1) var(--space-2);
 }
 
 .wb-search-glob-row {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: var(--space-1);
 }
 
 .wb-search-glob-label {
@@ -7452,7 +7480,7 @@ body.is-pane-resizing-v * {
 
 .wb-search-glob-input {
   min-height: 24px;
-  padding: 3px 8px;
+  padding: var(--space-1) var(--space-2);
   font-size: 11px;
 }
 
@@ -7460,8 +7488,8 @@ body.is-pane-resizing-v * {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px 4px 10px;
+  gap: var(--space-2);
+  padding: var(--space-1-5) var(--space-2) var(--space-1) var(--space-2-5);
 }
 
 .wb-search-meta-row .wb-search-meta {
@@ -7478,9 +7506,9 @@ body.is-pane-resizing-v * {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--space-1-5);
   height: 24px;
-  padding: 0 9px;
+  padding: 0 var(--space-2-5);
   border-radius: var(--radius-md, 6px);
   border: 1px solid color-mix(in srgb, var(--color-accent, #007aff) 30%, transparent);
   background: var(--color-fill-primary, rgba(0, 122, 255, 0.14));
@@ -7552,18 +7580,18 @@ body.is-pane-resizing-v * {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
-  padding: 4px 0 8px;
+  padding: var(--space-1) 0 var(--space-2);
 }
 
 .wb-git-section {
-  margin-bottom: 8px;
+  margin-bottom: var(--space-2);
 }
 
 .wb-git-section-title {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
+  gap: var(--space-1-5);
+  padding: var(--space-1) var(--space-2-5);
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
@@ -7583,15 +7611,15 @@ body.is-pane-resizing-v * {
 }
 
 .wb-git-repo-group + .wb-git-repo-group {
-  margin-top: 8px;
+  margin-top: var(--space-2);
 }
 
 .wb-git-repo-group-title {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin: 0 8px 2px;
-  padding: 4px 8px;
+  gap: var(--space-1-5);
+  margin: 0 var(--space-2) var(--space-0-5);
+  padding: var(--space-1) var(--space-2);
   min-height: 24px;
   border-radius: var(--radius-sm, 6px);
   background: var(--color-fill-secondary, color-mix(in srgb, var(--text) 6%, transparent));
@@ -7616,7 +7644,7 @@ body.is-pane-resizing-v * {
   height: 15px;
   min-width: 15px;
   min-height: 15px;
-  margin: 0 2px 0 0;
+  margin: 0 var(--space-0-5) 0 0;
   padding: 0;
   display: inline-flex;
   align-items: center;
@@ -7668,7 +7696,7 @@ body.is-pane-resizing-v * {
 }
 
 .wb-git-tree {
-  padding: 2px 0 4px;
+  padding: var(--space-0-5) 0 var(--space-1);
 }
 
 .wb-git-tree .wb-file-tree-row {
@@ -7679,9 +7707,9 @@ body.is-pane-resizing-v * {
   font: inherit;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   min-height: 24px;
-  padding-right: 8px;
+  padding-right: var(--space-2);
   box-sizing: border-box;
 }
 
@@ -7694,7 +7722,7 @@ body.is-pane-resizing-v * {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   border: none;
   background: transparent;
   color: inherit;
@@ -7754,8 +7782,8 @@ body.is-pane-resizing-v * {
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px;
+  gap: var(--space-2);
+  padding: var(--space-2-5);
   border-top: 1px solid var(--color-separator, var(--border));
   background: var(--color-secondary-bg, var(--panel));
 }
@@ -7763,7 +7791,7 @@ body.is-pane-resizing-v * {
 .wb-git-commit-target {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   min-width: 0;
 }
 
@@ -7790,7 +7818,7 @@ body.is-pane-resizing-v * {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .wb-git-commit-auto-btn {
@@ -7808,9 +7836,9 @@ body.is-pane-resizing-v * {
 .wb-git-file {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   min-height: 24px;
-  padding: 0 10px;
+  padding: 0 var(--space-2-5);
 
   font-size: 12px;
   color: var(--text);
@@ -7848,7 +7876,7 @@ body.is-pane-resizing-v * {
 }
 
 .wb-git-empty {
-  padding: 12px 10px;
+  padding: var(--space-3) var(--space-2-5);
   font-size: 12px;
 }
 
@@ -7856,16 +7884,16 @@ body.is-pane-resizing-v * {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   min-height: 30px;
-  padding: 0 6px 0 4px;
+  padding: 0 var(--space-1-5) 0 var(--space-1);
   border-bottom: 1px solid var(--color-separator);
 }
 
 .wb-diff-back {
   appearance: none;
   margin: 0;
-  padding: 5px;
+  padding: var(--space-1-5);
   border: none;
   background: transparent;
   width: 28px;
@@ -7911,7 +7939,7 @@ body.is-pane-resizing-v * {
 }
 
 .wb-diff-label {
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   font-size: 11px;
   font-weight: 600;
   color: var(--muted);
@@ -7937,9 +7965,9 @@ body.is-pane-resizing-v * {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   min-height: 30px;
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   border-bottom: 1px solid var(--color-separator);
   background: var(--color-control-bg);
 }
@@ -7947,7 +7975,7 @@ body.is-pane-resizing-v * {
 .wb-diff-mode-toggle {
   display: inline-flex;
   gap: 1px;
-  padding: 2px;
+  padding: var(--space-0-5);
   border: 1px solid var(--color-separator);
   border-radius: var(--radius-md);
   background: var(--color-secondary-bg);
@@ -7965,7 +7993,7 @@ body.is-pane-resizing-v * {
 }
 
 .wb-diff-mode-btn {
-  padding: 3px 8px;
+  padding: var(--space-1) var(--space-2);
   font-size: var(--font-size-caption);
 }
 
@@ -7998,25 +8026,25 @@ body.is-pane-resizing-v * {
 .wb-diff-discard-btn {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--space-1-5);
   min-height: 24px;
-  padding: 3px 8px;
+  padding: var(--space-1) var(--space-2);
   color: var(--color-destructive);
 }
 
 .wb-diff-stage-btn {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--space-1-5);
   min-height: 24px;
-  padding: 3px 8px;
+  padding: var(--space-1) var(--space-2);
   color: var(--color-label-primary);
 }
 
 .wb-diff-line-actions {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--space-0-5);
   margin: 0 calc(-1lh + 1ch) 0 0;
   position: relative;
   z-index: 4;
@@ -8187,8 +8215,8 @@ body.is-pane-resizing-v * {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
-  padding: 6px 16px;
+  gap: var(--space-2);
+  padding: var(--space-1-5) var(--space-4);
   border-top: 0.5px solid var(--color-separator);
   font-size: var(--font-size-micro);
   color: var(--color-label-secondary);
@@ -8300,7 +8328,7 @@ button.wb-pane-tab-group-label.is-busy {
   border: none;
   box-shadow: none;
   color: var(--color-label-secondary);
-  padding: 0 8px 0 var(--space-3);
+  padding: 0 var(--space-2) 0 var(--space-3);
   height: 100%;
   align-self: stretch;
 
@@ -8319,14 +8347,14 @@ button.wb-pane-tab-group-label.is-busy {
 .wb-terminal-tab-label img {
   flex: 0 0 auto;
   vertical-align: -0.15em;
-  margin-right: 4px;
+  margin-right: var(--space-1);
 }
 
 .wb-terminal-tab-label .session-dot {
   display: inline-block;
   width: 6px;
   height: 6px;
-  margin-right: 5px;
+  margin-right: var(--space-1-5);
   vertical-align: middle;
 }
 
@@ -8353,7 +8381,7 @@ button.wb-pane-tab-group-label.is-busy {
   min-width: 20px;
   height: 20px;
   align-self: center;
-  margin-right: 4px;
+  margin-right: var(--space-1);
   border: none;
   background: transparent;
   border-radius: var(--radius-sm);
@@ -8442,8 +8470,8 @@ button.wb-pane-tab-group-label.is-busy {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 8px 14px;
+  gap: var(--space-2-5);
+  padding: var(--space-2) var(--space-3-5);
   border-bottom: 0.5px solid var(--color-separator);
   background: var(--color-sidebar-bg);
   backdrop-filter: var(--backdrop-blur);
@@ -8453,7 +8481,7 @@ button.wb-pane-tab-group-label.is-busy {
 .wb-acp-header-main {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-2-5);
   min-width: 0;
 }
 
@@ -8486,7 +8514,7 @@ button.wb-pane-tab-group-label.is-busy {
 .wb-acp-title {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   font-weight: var(--font-weight-semibold);
   font-size: var(--font-size-headline);
   color: var(--color-label-primary);
@@ -8513,7 +8541,7 @@ select.wb-acp-toolbar-select {
   min-width: 52px !important;
   height: 22px !important;
   margin: 0 !important;
-  padding: 0 18px 0 7px !important;
+  padding: 0 var(--space-5) 0 var(--space-2) !important;
   border: 0.5px solid var(--color-separator-strong) !important;
   border-radius: var(--radius-sm) !important;
   background-color: var(--color-fill-secondary) !important;
@@ -8557,7 +8585,7 @@ select.wb-acp-toolbar-select option {
 }
 
 .wb-acp-compose .chat-compose-toolbar {
-  gap: 6px;
+  gap: var(--space-1-5);
   flex-wrap: wrap;
   align-items: center;
 }
@@ -8567,17 +8595,17 @@ select.wb-acp-toolbar-select option {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 14px 16px 18px;
+  padding: var(--space-3-5) var(--space-4) var(--space-5);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
   background: var(--acp-chat-bg);
 }
 
 .wb-acp-message-block {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
   content-visibility: auto;
   contain-intrinsic-size: 0 96px;
 }
@@ -8585,11 +8613,11 @@ select.wb-acp-toolbar-select option {
 .wb-acp-day-separator {
   display: flex;
   justify-content: center;
-  margin: 14px 0 10px;
+  margin: var(--space-3-5) 0 var(--space-2-5);
 }
 
 .wb-acp-day-separator span {
-  padding: 3px 12px;
+  padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-full);
   background: var(--color-fill-secondary);
   border: 0.5px solid var(--color-separator);
@@ -8607,16 +8635,16 @@ select.wb-acp-toolbar-select option {
 }
 
 .wb-acp-log .chat-message.is-cluster-start {
-  margin-top: 8px;
+  margin-top: var(--space-2);
 }
 
 .wb-acp-log .chat-message.is-cluster-continue {
-  margin-top: 3px;
+  margin-top: var(--space-1);
 }
 
 .wb-acp-log .chat-bubble {
   max-width: 78%;
-  padding: 8px 12px 6px;
+  padding: var(--space-2) var(--space-3) var(--space-1-5);
   border-radius: var(--acp-bubble-radius);
   font-size: 13.5px;
   line-height: 1.45;
@@ -8664,7 +8692,7 @@ select.wb-acp-toolbar-select option {
   color: var(--color-label-primary);
   font-weight: var(--font-weight-semibold);
   font-size: var(--font-size-title);
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
 }
 
 .wb-acp-log .chat-empty-hint {
@@ -8675,8 +8703,8 @@ select.wb-acp-toolbar-select option {
 .wb-acp-log .chat-sender {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  margin-bottom: 3px;
+  gap: var(--space-1);
+  margin-bottom: var(--space-1);
   color: var(--acp-meta-color);
   font-size: 12px;
   font-weight: var(--font-weight-semibold);
@@ -8691,9 +8719,9 @@ select.wb-acp-toolbar-select option {
 }
 
 .wb-acp-log .chat-footer {
-  margin-top: 4px;
+  margin-top: var(--space-1);
   min-height: 14px;
-  gap: 6px;
+  gap: var(--space-1-5);
   display: flex;
   align-items: center;
 }
@@ -8706,12 +8734,12 @@ select.wb-acp-toolbar-select option {
 .wb-acp-log .chat-copy-btn {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: var(--space-1);
   color: var(--color-label-tertiary);
   border: none;
   background: transparent;
 
-  padding: 1px 4px;
+  padding: 1px var(--space-1);
   border-radius: var(--radius-xs);
   transition: color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
 }
@@ -8724,8 +8752,8 @@ select.wb-acp-toolbar-select option {
 .wb-acp-tools {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 8px;
+  gap: var(--space-1-5);
+  margin-top: var(--space-2);
   max-width: 100%;
 }
 
@@ -8744,7 +8772,7 @@ select.wb-acp-toolbar-select option {
   box-sizing: border-box;
   display: inline-flex;
   align-items: flex-start;
-  gap: 4px;
+  gap: var(--space-1);
   max-width: 100%;
   margin: 0;
   padding: var(--wb-acp-tool-pad-y) var(--wb-acp-tool-pad-x);
@@ -8766,7 +8794,7 @@ select.wb-acp-toolbar-select option {
 .wb-acp-tool > svg {
   flex: 0 0 auto;
   /* Center icon against the first text line. */
-  margin-top: calc((1em * var(--wb-acp-tool-line-height) - 12px) / 2);
+  margin-top: calc((1em * var(--wb-acp-tool-line-height) - var(--space-3)) / 2);
 }
 
 .wb-acp-tool-label {
@@ -8814,14 +8842,14 @@ select.wb-acp-toolbar-select option {
 .wb-acp-plan-inline {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-1-5);
   min-width: 0;
 }
 
 .wb-acp-plan-inline-head {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   font-size: 12px;
 }
 
@@ -8843,7 +8871,7 @@ select.wb-acp-toolbar-select option {
 .wb-acp-plan-sheet-body {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-2-5);
 }
 
 .wb-acp-plan-sheet-path {
@@ -8858,16 +8886,16 @@ select.wb-acp-toolbar-select option {
 }
 
 .wb-acp-permission {
-  margin: 0 12px 8px;
+  margin: 0 var(--space-3) var(--space-2);
 }
 
 /* Sequential bouncing dots while the model is generating. */
 .wb-acp-jumping-dots {
   display: inline-flex;
   align-items: flex-end;
-  gap: 3px;
+  gap: var(--space-1);
   min-height: 1.1em;
-  padding: 2px 1px 0;
+  padding: var(--space-0-5) 1px 0;
   vertical-align: baseline;
 }
 
@@ -8910,23 +8938,23 @@ select.wb-acp-toolbar-select option {
 
 .wb-acp-log .chat-body .wb-acp-jumping-dots {
   display: flex;
-  margin-top: 2px;
+  margin-top: var(--space-0-5);
 }
 
 .wb-acp-log .chat-body .chat-body-text + .wb-acp-jumping-dots {
-  margin-top: 6px;
+  margin-top: var(--space-1-5);
 }
 
 .wb-acp-question-card {
   flex: 0 0 auto;
-  margin: 0 12px 10px;
-  padding: 10px 12px;
+  margin: 0 var(--space-3) var(--space-2-5);
+  padding: var(--space-2-5) var(--space-3);
   border: 1px solid var(--color-separator);
   border-radius: var(--radius-lg);
   background: var(--chat-compose-bg, var(--panel));
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-2-5);
   max-height: min(42vh, 360px);
   overflow: auto;
 }
@@ -8940,13 +8968,13 @@ select.wb-acp-toolbar-select option {
 .wb-acp-question-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .wb-acp-question-item {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-1-5);
 }
 
 .wb-acp-question-text {
@@ -8959,17 +8987,17 @@ select.wb-acp-toolbar-select option {
 .wb-acp-question-options {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .wb-acp-question-option {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 2px;
+  gap: var(--space-0-5);
   width: 100%;
   margin: 0;
-  padding: 7px 10px;
+  padding: var(--space-2) var(--space-2-5);
   border: 1px solid var(--color-separator);
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--color-label-primary, var(--text)) 4%, transparent);
@@ -9003,7 +9031,7 @@ select.wb-acp-toolbar-select option {
 .wb-acp-question-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .wb-acp-chat.is-dragover {
@@ -9028,17 +9056,17 @@ select.wb-acp-toolbar-select option {
 .wb-acp-message-attachments {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 8px;
+  gap: var(--space-1-5);
+  margin-top: var(--space-2);
 }
 
 .wb-acp-file-chip,
 .wb-acp-pending-file {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   max-width: 100%;
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   border-radius: 8px;
   border: 1px solid var(--color-separator);
   background: color-mix(in srgb, var(--panel, #1e1e1e) 88%, #000);
@@ -9059,8 +9087,8 @@ select.wb-acp-toolbar-select option {
 
 .wb-acp-pending-images {
   display: flex;
-  gap: 8px;
-  padding: 0 12px 8px;
+  gap: var(--space-2);
+  padding: 0 var(--space-3) var(--space-2);
   flex-wrap: wrap;
 }
 
@@ -9110,7 +9138,7 @@ select.wb-acp-toolbar-select option {
 .wb-acp-compose {
   flex: 0 0 auto;
   border-top: 0.5px solid var(--color-separator);
-  padding: 10px 14px 14px;
+  padding: var(--space-2-5) var(--space-3-5) var(--space-3-5);
   background: var(--color-sidebar-bg);
   backdrop-filter: var(--backdrop-blur);
   -webkit-backdrop-filter: var(--backdrop-blur);
@@ -9119,7 +9147,7 @@ select.wb-acp-toolbar-select option {
 .wb-terminal-tab-label {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .wb-terminal-pane {
@@ -9142,7 +9170,7 @@ select.wb-acp-toolbar-select option {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: var(--space-2-5);
   margin: 0;
   color: var(--color-label-secondary);
   background: var(--wb-terminal-surface, var(--color-window-bg));
@@ -9173,8 +9201,8 @@ select.wb-acp-toolbar-select option {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 6px 10px;
+  gap: var(--space-2);
+  padding: var(--space-1-5) var(--space-2-5);
   border-bottom: 1px solid var(--color-separator);
   color: var(--color-label-primary);
   background: color-mix(in srgb, var(--color-warning, #ff9500) 12%, var(--color-control-bg));
@@ -9189,14 +9217,14 @@ select.wb-acp-toolbar-select option {
 .wb-editor-disk-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   flex-shrink: 0;
 }
 
 .wb-editor-disk-actions button {
   border: 1px solid var(--color-separator-opaque);
   border-radius: var(--radius-sm);
-  padding: 3px 8px;
+  padding: var(--space-1) var(--space-2);
   color: var(--color-label-primary);
   background: var(--color-control-bg);
 
@@ -9223,7 +9251,7 @@ textarea.wb-editor-host {
   width: 100%;
   resize: none;
   border: 0;
-  padding: 12px;
+  padding: var(--space-3);
   color: var(--color-label-primary);
   font-family: var(--font-family-mono);
   font-size: 12px;
@@ -9250,7 +9278,7 @@ textarea.wb-editor-host {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
-  padding: 12px 16px 24px;
+  padding: var(--space-3) var(--space-4) var(--space-6);
   box-sizing: border-box;
   background: var(--color-pane-bg);
   color: var(--color-label-primary);
@@ -9261,7 +9289,7 @@ textarea.wb-editor-host {
 .wb-editor-preview img {
   display: block;
   max-width: 100%;
-  margin: 12px 0;
+  margin: var(--space-3) 0;
   border-radius: 8px;
 }
 
@@ -9270,8 +9298,8 @@ textarea.wb-editor-host {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 2px 10px;
+  gap: var(--space-2);
+  padding: var(--space-0-5) var(--space-2-5);
   border-top: 1px solid var(--color-separator);
   background: var(--color-control-bg);
   color: var(--color-label-secondary);
@@ -9309,7 +9337,7 @@ textarea.wb-editor-host {
 }
 
 .wb-git-diff-pane .wb-diff-head {
-  padding-left: 10px;
+  padding-left: var(--space-2-5);
   background: var(--color-window-bg);
 }
 
@@ -9323,9 +9351,9 @@ textarea.wb-editor-host {
   z-index: 4;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   min-height: 30px;
-  padding: 3px 4px 3px 7px;
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-2);
   border: 1px solid var(--color-separator-opaque);
   border-radius: var(--radius-lg);
   background: color-mix(in srgb, var(--color-control-bg) 96%, var(--color-window-bg));
@@ -9339,7 +9367,7 @@ textarea.wb-editor-host {
   flex: 0 1 180px;
   min-width: 80px;
   margin: 0;
-  padding: 4px 6px;
+  padding: var(--space-1) var(--space-1-5);
   border: 1px solid var(--color-separator-opaque);
   border-radius: var(--radius-md);
   background: var(--color-secondary-bg);
@@ -9460,7 +9488,7 @@ textarea.wb-editor-host {
   width: 48px;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: var(--space-0-5);
   color: var(--tui-drop-color);
   transform: translateY(-50%);
 }
@@ -9596,7 +9624,7 @@ textarea.wb-editor-host {
   backdrop-filter: var(--backdrop-blur);
   -webkit-backdrop-filter: var(--backdrop-blur);
   border-top: 0.5px solid var(--color-separator);
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
 }
 
 .wb-terminal-composer-stack-list {
@@ -9622,8 +9650,8 @@ textarea.wb-editor-host {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 4px;
-  padding: 6px 10px;
+  gap: var(--space-1);
+  padding: var(--space-1-5) var(--space-2-5);
   border-radius: var(--radius-lg);
   border: 0.5px solid var(--tui-compose-border);
   background: var(--tui-compose-bg);
@@ -9651,9 +9679,9 @@ textarea.wb-editor-host {
 
 .wb-terminal-composer-pending-images {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
-  padding: 2px 2px 4px;
+  padding: var(--space-0-5) var(--space-0-5) var(--space-1);
 }
 
 .wb-terminal-composer-pending-image {
@@ -9727,7 +9755,7 @@ textarea.wb-editor-host {
   min-height: 24px;
   max-height: 120px;
   margin: 0;
-  padding: 4px 6px;
+  padding: var(--space-1) var(--space-1-5);
   border: none;
   border-radius: 0;
   background: transparent;
@@ -9753,9 +9781,9 @@ textarea.wb-editor-host {
   display: flex;
   align-items: center;
   align-self: flex-end;
-  gap: 8px;
+  gap: var(--space-2);
   flex-shrink: 0;
-  padding-bottom: 2px;
+  padding-bottom: var(--space-0-5);
 }
 
 .wb-terminal-composer-hint {
@@ -9815,7 +9843,7 @@ textarea.wb-editor-host {
   z-index: 12;
   max-height: min(240px, 40vh);
   margin: 0;
-  padding: 4px;
+  padding: var(--space-1);
   overflow-y: auto;
   list-style: none;
   border: 0.5px solid var(--color-separator);
@@ -9829,8 +9857,8 @@ textarea.wb-editor-host {
 .wb-terminal-composer-suggestion {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 5px 8px;
+  gap: var(--space-2);
+  padding: var(--space-1-5) var(--space-2);
   border-radius: var(--radius-md);
   color: var(--color-label-primary);
 
@@ -9888,8 +9916,8 @@ textarea.wb-editor-host {
   left: 0;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
+  gap: var(--space-1-5);
+  padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
   background: var(--color-elevated-bg);
   box-shadow: var(--shadow-popover);
@@ -9914,8 +9942,8 @@ textarea.wb-editor-host {
   z-index: 4;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 8px;
+  gap: var(--space-1-5);
+  padding: var(--space-1-5) var(--space-2);
   border-radius: 8px;
   border: 1px solid var(--color-separator);
   background: color-mix(in srgb, var(--color-elevated-bg) 96%, #000);
@@ -9927,7 +9955,7 @@ textarea.wb-editor-host {
   width: 160px;
   min-width: 0;
   margin: 0;
-  padding: 4px 6px;
+  padding: var(--space-1) var(--space-1-5);
   border: 1px solid var(--color-separator);
   border-radius: 6px;
   background: color-mix(in srgb, var(--color-secondary-bg) 82%, #000);
@@ -9972,10 +10000,10 @@ textarea.wb-editor-host {
 .wb-terminal-status {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   flex-shrink: 0;
   min-height: 22px;
-  padding: 2px 10px;
+  padding: var(--space-0-5) var(--space-2-5);
   border-top: 1px solid var(--color-separator);
   background: var(--wb-terminal-surface);
   color: var(--wb-terminal-tab-active-label);
@@ -9987,7 +10015,7 @@ textarea.wb-editor-host {
 .wb-terminal-status-branch {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   flex-shrink: 1;
   min-width: 0;
   max-width: 100%;
@@ -9999,7 +10027,7 @@ textarea.wb-editor-host {
   appearance: none;
   border: none;
   background: transparent;
-  padding: 2px 6px;
+  padding: var(--space-0-5) var(--space-1-5);
   margin: 0;
 
   border-radius: 4px;
@@ -10038,26 +10066,26 @@ textarea.wb-editor-host {
 
 .wb-git-branch-list {
   overflow-y: auto;
-  padding: 4px;
+  padding: var(--space-1);
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0-5);
 }
 
 .wb-git-branch-repo-group {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0-5);
 }
 
 .wb-git-branch-repo-group+.wb-git-branch-repo-group {
-  margin-top: 6px;
-  padding-top: 6px;
+  margin-top: var(--space-1-5);
+  padding-top: var(--space-1-5);
   border-top: 1px solid var(--color-separator, var(--border));
 }
 
 .wb-git-branch-repo-head {
-  padding: 4px 10px 2px;
+  padding: var(--space-1) var(--space-2-5) var(--space-0-5);
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -10074,7 +10102,7 @@ textarea.wb-editor-host {
   background: transparent;
   color: var(--text);
   text-align: left;
-  padding: 7px 10px;
+  padding: var(--space-2) var(--space-2-5);
   border-radius: 6px;
 
   font-size: 12px;
@@ -10096,7 +10124,7 @@ textarea.wb-editor-host {
 
 .wb-git-branch-empty {
   margin: 0;
-  padding: 10px;
+  padding: var(--space-2-5);
   font-size: 12px;
   text-align: center;
 }
@@ -10109,10 +10137,10 @@ textarea.wb-editor-host {
   height: fit-content;
   z-index: 2150;
   min-width: min(320px, calc(100vw - 32px));
-  padding: 14px;
+  padding: var(--space-3-5);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-2-5);
   background: var(--color-elevated-bg, var(--bg));
   border: 1px solid var(--color-separator, var(--border));
   border-radius: 10px;
@@ -10131,7 +10159,7 @@ textarea.wb-editor-host {
 
 .wb-git-log-dialog-row {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
 }
 
@@ -10145,7 +10173,7 @@ textarea.wb-editor-host {
   color: var(--text);
   font-size: 12px;
   font-family: Menlo, Monaco, "Courier New", monospace;
-  padding: 5px 8px;
+  padding: var(--space-1-5) var(--space-2);
 }
 
 .wb-git-log-dialog-input:focus-visible {
@@ -10155,7 +10183,7 @@ textarea.wb-editor-host {
 
 .wb-git-log-dialog-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   justify-content: flex-end;
   align-items: center;
 }
@@ -10172,7 +10200,7 @@ textarea.wb-editor-host {
   align-items: center;
   justify-content: center;
   pointer-events: none;
-  padding: 20px;
+  padding: var(--space-5);
   text-align: center;
 }
 
@@ -10194,12 +10222,12 @@ textarea.wb-editor-host {
   border: 0.5px solid var(--color-separator);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-popover);
-  padding: 5px;
+  padding: var(--space-1-5);
   max-height: calc(100vh - 16px);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0-5);
   animation: mac-popover-enter var(--duration-fast) var(--ease-out);
 }
 
@@ -10224,7 +10252,7 @@ textarea.wb-editor-host {
   background: transparent;
   color: var(--color-label-primary);
   text-align: left;
-  padding: 5px 9px;
+  padding: var(--space-1-5) var(--space-2-5);
   border-radius: var(--radius-md);
 
   font-size: var(--font-size-body);
@@ -10233,7 +10261,7 @@ textarea.wb-editor-host {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
   box-sizing: border-box;
   transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
 }
@@ -10251,7 +10279,7 @@ textarea.wb-editor-host {
 }
 
 .wb-context-menu-label {
-  padding: 4px 9px 2px;
+  padding: var(--space-1) var(--space-2-5) var(--space-0-5);
   color: var(--color-label-tertiary);
   font-size: var(--font-size-caption);
   font-weight: var(--font-weight-semibold);
@@ -10259,7 +10287,7 @@ textarea.wb-editor-host {
 
 .notes-context-menu-label,
 .context-menu-label {
-  padding: 4px 9px 2px;
+  padding: var(--space-1) var(--space-2-5) var(--space-0-5);
   color: var(--color-label-tertiary);
   font-size: 10px;
   font-weight: var(--font-weight-semibold);
@@ -10270,8 +10298,8 @@ textarea.wb-editor-host {
 .wb-gtd-context-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  padding: 2px 10px 6px;
+  gap: var(--space-1-5);
+  padding: var(--space-0-5) var(--space-2-5) var(--space-1-5);
 }
 
 .wb-gtd-context-tag {
@@ -10281,7 +10309,7 @@ textarea.wb-editor-host {
 .wb-context-menu .wb-gtd-context-tag {
   width: auto;
   min-height: 24px;
-  padding: 2px 8px;
+  padding: var(--space-0-5) var(--space-2);
   border: 1px solid transparent;
   border-radius: 999px;
   background: color-mix(in srgb, var(--gtd-status-color) 16%, transparent);
@@ -10311,7 +10339,7 @@ textarea.wb-editor-host {
 
 .context-menu-separator {
   height: 1px;
-  margin: 4px 8px;
+  margin: var(--space-1) var(--space-2);
   background: var(--color-separator);
   border: 0;
   flex-shrink: 0;
@@ -10349,7 +10377,7 @@ textarea.wb-editor-host {
   justify-content: space-between;
   gap: var(--space-3);
   min-height: 42px;
-  padding: 8px 10px 8px 14px;
+  padding: var(--space-2) var(--space-2-5) var(--space-2) var(--space-3-5);
   border-bottom: 1px solid var(--color-separator);
   background: var(--color-control-bg);
   cursor: grab;
@@ -10366,7 +10394,7 @@ textarea.wb-editor-host {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0-5);
 }
 
 .wb-floating-note-heading strong {
@@ -10386,13 +10414,13 @@ textarea.wb-editor-host {
 .wb-floating-note-actions {
   display: inline-flex;
   flex: 0 0 auto;
-  gap: 2px;
+  gap: var(--space-0-5);
 }
 
 .wb-floating-note-status,
 .standalone-note-window-status {
   height: 28px;
-  padding: 0 22px 0 7px;
+  padding: 0 var(--space-6) 0 var(--space-2);
   border: 1px solid var(--color-separator);
   border-radius: var(--radius-md);
   color: var(--color-label-secondary);
@@ -10419,7 +10447,7 @@ textarea.wb-editor-host {
   place-items: center;
   width: 28px;
   height: 28px;
-  padding: 5px;
+  padding: var(--space-1-5);
   border: none;
   border-radius: var(--radius-md);
   background: transparent;
@@ -10474,13 +10502,13 @@ textarea.wb-editor-host {
 
 .wb-floating-note-editor .cm-content {
   min-height: 100%;
-  padding: 10px 12px;
+  padding: var(--space-2-5) var(--space-3);
 }
 
 textarea.wb-floating-note-editor {
   width: 100%;
   resize: none;
-  padding: 12px;
+  padding: var(--space-3);
   border: none;
   outline: none;
   color: var(--color-label-primary);
@@ -10494,7 +10522,7 @@ textarea.wb-floating-note-editor {
   display: flex;
   align-items: center;
   min-height: 26px;
-  padding: 3px 12px;
+  padding: var(--space-1) var(--space-3);
   border-top: 1px solid var(--color-separator);
   color: var(--color-label-secondary);
   background: var(--color-control-bg);
@@ -10511,8 +10539,8 @@ textarea.wb-floating-note-editor {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 20px;
+  gap: var(--space-2);
+  padding: var(--space-5);
   color: var(--color-label-secondary);
   font-size: var(--font-size-callout);
   text-align: center;
@@ -10531,7 +10559,7 @@ textarea.wb-floating-note-editor {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: var(--space-6);
   box-sizing: border-box;
 }
 
@@ -10552,8 +10580,8 @@ textarea.wb-floating-note-editor {
   width: min(360px, 100%);
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 18px 20px;
+  gap: var(--space-3);
+  padding: var(--space-5) var(--space-5);
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -10568,7 +10596,7 @@ textarea.wb-floating-note-editor {
 .wb-note-created-panel .wb-note-created-actions:has(.wb-git-commit-auto-btn) {
   flex-wrap: nowrap;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
 }
 
 .wb-note-created-panel .wb-note-created-actions .wb-git-commit-auto-btn {
@@ -10580,7 +10608,7 @@ textarea.wb-floating-note-editor {
 .wb-note-created-panel .wb-note-created-actions:has(.wb-git-commit-auto-btn) .wb-note-created-btn {
   flex-shrink: 0;
   white-space: nowrap;
-  padding: 7px 10px;
+  padding: var(--space-2) var(--space-2-5);
 }
 
 .wb-note-created-title {
@@ -10592,9 +10620,9 @@ textarea.wb-floating-note-editor {
 .wb-note-created-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
   justify-content: flex-end;
-  margin-top: 4px;
+  margin-top: var(--space-1);
 }
 
 .wb-note-created-btn {
@@ -10603,7 +10631,7 @@ textarea.wb-floating-note-editor {
   border-radius: 8px;
   background: transparent;
   color: var(--text);
-  padding: 7px 14px;
+  padding: var(--space-2) var(--space-3-5);
   font-size: 13px;
 
 }
@@ -10626,7 +10654,7 @@ textarea.wb-floating-note-editor {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .wb-rename-head .wb-note-created-title {
@@ -10656,7 +10684,7 @@ textarea.wb-floating-note-editor {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 8px;
+  gap: var(--space-2);
   max-width: calc(100vw - 40px);
   pointer-events: none;
 }
@@ -10664,7 +10692,7 @@ textarea.wb-floating-note-editor {
 .desktop-notification {
   position: relative;
   max-width: min(420px, calc(100vw - 40px));
-  padding: 10px 14px;
+  padding: var(--space-2-5) var(--space-3-5);
   border: 0.5px solid var(--color-separator);
   border-radius: var(--radius-xl);
   background: var(--color-elevated-bg);
@@ -10749,7 +10777,7 @@ textarea.wb-floating-note-editor {
   right: -1px;
   min-width: 15px;
   height: 15px;
-  padding: 0 3px;
+  padding: 0 var(--space-1);
   border-radius: 999px;
   background: var(--color-destructive);
   color: #ffffff;
@@ -10794,7 +10822,7 @@ textarea.wb-floating-note-editor {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px;
+  padding: var(--space-2-5) var(--space-3-5);
   border-bottom: 0.5px solid var(--color-separator);
   flex-shrink: 0;
 }
@@ -10812,7 +10840,7 @@ textarea.wb-floating-note-editor {
   color: var(--muted);
   font-size: 11px;
 
-  padding: 2px 6px;
+  padding: var(--space-0-5) var(--space-1-5);
   border-radius: var(--radius-sm);
   transition: color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
 }
@@ -10825,11 +10853,11 @@ textarea.wb-floating-note-editor {
 .notification-list {
   flex: 1 1 auto;
   overflow-y: auto;
-  padding: 4px 0;
+  padding: var(--space-1) 0;
 }
 
 .notification-empty {
-  padding: 32px 16px;
+  padding: var(--space-8) var(--space-4);
   text-align: center;
   color: var(--muted);
   font-size: 12px;
@@ -10838,8 +10866,8 @@ textarea.wb-floating-note-editor {
 .notification-item {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
-  padding: 8px 14px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3-5);
   transition: background var(--duration-fast) var(--ease-out);
 }
 
@@ -10852,7 +10880,7 @@ textarea.wb-floating-note-editor {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  margin-top: 6px;
+  margin-top: var(--space-1-5);
 }
 
 .notification-dot.is-error { background: var(--color-destructive, var(--danger)); }
@@ -10879,8 +10907,8 @@ textarea.wb-floating-note-editor {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 8px 14px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3-5);
   border-top: 1px solid var(--color-separator, var(--border));
   flex-shrink: 0;
 }
@@ -10940,7 +10968,7 @@ textarea.wb-floating-note-editor {
   border-radius: 8px;
   background: color-mix(in srgb, var(--bg) 88%, var(--text) 6%);
   color: var(--text);
-  padding: 8px 10px;
+  padding: var(--space-2) var(--space-2-5);
   font-size: 14px;
   font-family: inherit;
   outline: none;
@@ -10949,8 +10977,8 @@ textarea.wb-floating-note-editor {
 .wb-git-commit-input {
   width: 100%;
   box-sizing: border-box;
-  margin: 0 0 12px;
-  padding: 10px 12px;
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2-5) var(--space-3);
   border: 1px solid var(--color-separator, var(--border));
   border-radius: 8px;
   background: var(--color-control-bg, var(--bg));
@@ -11007,9 +11035,9 @@ textarea.wb-floating-note-editor {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0-5);
   overflow: auto;
-  padding: 4px 6px 12px;
+  padding: var(--space-1) var(--space-1-5) var(--space-3);
 }
 
 .sidebar-folders-pane.is-collapsed .wb-folders,
@@ -11021,9 +11049,9 @@ textarea.wb-floating-note-editor {
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-1-5);
   min-width: 0;
-  padding: 2px 8px 8px;
+  padding: var(--space-0-5) var(--space-2) var(--space-2);
   border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
 }
 
@@ -11036,7 +11064,7 @@ textarea.wb-floating-note-editor {
   box-sizing: border-box;
   border: none;
   border-radius: var(--radius-md);
-  padding: 6px 9px;
+  padding: var(--space-1-5) var(--space-2-5);
   font-size: var(--font-size-callout);
   background: var(--color-secondary-bg);
   color: var(--text);
@@ -11128,7 +11156,7 @@ textarea.wb-floating-note-editor {
   border: none;
   background: transparent;
   color: var(--muted);
-  padding: 4px 6px;
+  padding: var(--space-1) var(--space-1-5);
   font-size: 11px;
   line-height: 1.2;
   white-space: nowrap;
@@ -11140,7 +11168,7 @@ textarea.wb-floating-note-editor {
 
 @container (max-width: 128px) {
   .sidebar-project-filter-segmented button {
-    padding: 4px 2px;
+    padding: var(--space-1) var(--space-0-5);
     font-size: 10px;
   }
 }
@@ -11169,7 +11197,7 @@ textarea.wb-floating-note-editor {
   display: grid;
   place-items: center;
 
-  padding: 5px;
+  padding: var(--space-1-5);
 }
 
 .sidebar-collapse-toggle svg {
@@ -11190,7 +11218,7 @@ textarea.wb-floating-note-editor {
 }
 
 .wb-folder-section {
-  margin-top: 10px;
+  margin-top: var(--space-2-5);
 }
 
 .wb-folder-section-head {
@@ -11205,11 +11233,11 @@ textarea.wb-floating-note-editor {
 
 .wb-add-project-btn,
 .wb-add-task-btn {
-  margin-right: 4px;
+  margin-right: var(--space-1);
 }
 
 .wb-folder-section-label {
-  padding: 4px 8px 6px;
+  padding: var(--space-1) var(--space-2) var(--space-1-5);
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -11220,10 +11248,10 @@ textarea.wb-floating-note-editor {
 .wb-folder-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   width: 100%;
   min-height: 30px;
-  padding: 5px 8px;
+  padding: var(--space-1-5) var(--space-2);
   border: none;
   border-radius: 6px;
   background: transparent;
@@ -11247,18 +11275,18 @@ textarea.wb-floating-note-editor {
 /* Workbench projects show a title and path, so give each row more breathing room. */
 .wb-folder-row {
   min-height: 38px;
-  padding-block: 6px;
+  padding-block: var(--space-1-5);
 }
 
 .wb-session-folder-row,
 .wb-session-folder-root {
   min-height: 30px;
-  padding-block: 5px;
+  padding-block: var(--space-1-5);
   font-size: 12px;
 }
 
 .wb-session-folder-root {
-  padding-left: 24px;
+  padding-left: var(--space-6);
   color: var(--muted);
 }
 
@@ -11301,13 +11329,13 @@ textarea.wb-floating-note-editor {
 
 .wb-gtd-folder-row {
   min-height: 30px;
-  padding-block: 5px;
+  padding-block: var(--space-1-5);
 }
 
 .wb-gtd-completed-group {
-  margin-top: 4px;
+  margin-top: var(--space-1);
   border-top: 1px solid var(--color-separator);
-  padding-top: 4px;
+  padding-top: var(--space-1);
 }
 
 .wb-gtd-completed-toggle svg {
@@ -11320,7 +11348,7 @@ textarea.wb-floating-note-editor {
 }
 
 .wb-gtd-completed-child {
-  padding-left: 28px;
+  padding-left: var(--space-8);
 }
 
 .wb-gtd-status-dot {
@@ -11377,7 +11405,7 @@ textarea.wb-floating-note-editor {
 }
 
 .wb-folders-empty {
-  margin: 8px;
+  margin: var(--space-2);
   font-size: 12px;
 }
 
@@ -11465,7 +11493,7 @@ body.is-pane-resizing-row * {
   color: var(--text);
   width: 28px;
   height: 28px;
-  padding: 5px;
+  padding: var(--space-1-5);
   border-radius: 6px;
 
   display: grid;
@@ -11504,7 +11532,7 @@ body.is-pane-resizing-row * {
   box-sizing: border-box;
   border: none;
   border-radius: 8px;
-  padding: 7px 10px;
+  padding: var(--space-2) var(--space-2-5);
   font-size: 13px;
   background: color-mix(in srgb, var(--panel) 88%, var(--text) 6%);
   color: var(--text);
@@ -11527,8 +11555,8 @@ body.is-pane-resizing-row * {
 .wb-list-meta-row {
   display: flex;
   align-items: center;
-  gap: 4px;
-  margin: 0 8px 4px 12px;
+  gap: var(--space-1);
+  margin: 0 var(--space-2) var(--space-1) var(--space-3);
   flex-shrink: 0;
 }
 
@@ -11537,7 +11565,7 @@ body.is-pane-resizing-row * {
   flex: 1;
   overflow: auto;
   min-height: 0;
-  padding: 4px 0 8px;
+  padding: var(--space-1) 0 var(--space-2);
 }
 
 .wb-list .virtual-list-row > .wb-list-item {
@@ -11546,7 +11574,7 @@ body.is-pane-resizing-row * {
 }
 
 .wb-list-empty {
-  margin: 16px 12px;
+  margin: var(--space-4) var(--space-3);
   font-size: 12px;
 }
 
@@ -11554,12 +11582,12 @@ body.is-pane-resizing-row * {
 .wb-list-item {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: var(--space-1);
   box-sizing: border-box;
   width: calc(100% - 14px);
   min-width: 0;
-  margin: 0 7px 3px;
-  padding: 8px 10px;
+  margin: 0 var(--space-2) var(--space-1);
+  padding: var(--space-2) var(--space-2-5);
   border: none;
   border-radius: var(--radius-md);
   background: transparent;
@@ -11612,8 +11640,8 @@ body.is-pane-resizing-row * {
 .wb-other-machine-badge {
   display: inline-flex;
   align-items: center;
-  margin-left: 6px;
-  padding: 0 6px;
+  margin-left: var(--space-1-5);
+  padding: 0 var(--space-1-5);
   border-radius: 999px;
   font-size: 10px;
   font-weight: 600;
@@ -11627,8 +11655,8 @@ body.is-pane-resizing-row * {
 .wb-task-badge {
   display: inline-flex;
   align-items: center;
-  margin-left: 6px;
-  padding: 0 6px;
+  margin-left: var(--space-1-5);
+  padding: 0 var(--space-1-5);
   max-width: 140px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -11647,26 +11675,26 @@ body.is-pane-resizing-row * {
   max-height: min(70vh, 560px);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-2-5);
 }
 
 .wb-project-pick-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
   max-height: 280px;
   overflow: auto;
   margin: 0 -4px;
-  padding: 0 4px;
+  padding: 0 var(--space-1);
 }
 
 .wb-project-pick-item {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 2px;
+  gap: var(--space-0-5);
   width: 100%;
-  padding: 8px 10px;
+  padding: var(--space-2) var(--space-2-5);
   border: 1px solid transparent;
   border-radius: 8px;
   background: transparent;
@@ -11707,7 +11735,7 @@ body.is-pane-resizing-row * {
   appearance: none;
   flex: 0 0 auto;
   margin: 0;
-  padding: 2px 8px;
+  padding: var(--space-0-5) var(--space-2);
   border: none;
   border-radius: var(--radius-md);
   background: transparent;
@@ -11725,7 +11753,7 @@ body.is-pane-resizing-row * {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .wb-list-item-title {
@@ -11743,7 +11771,7 @@ body.is-pane-resizing-row * {
   min-width: 0;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
 }
 
 .wb-session-activity-dot {
@@ -11777,12 +11805,12 @@ body.is-pane-resizing-row * {
 }
 
 .wb-list-item-preview .wb-list-item-date {
-  margin-right: 6px;
+  margin-right: var(--space-1-5);
 }
 
 .wb-list-item-preview .s-provider-tag,
 .wb-list-item-preview .wb-gtd-status-badge {
-  margin-right: 6px;
+  margin-right: var(--space-1-5);
 }
 
 .notes-detail {
@@ -11817,8 +11845,8 @@ body.is-pane-resizing-row * {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 10px 16px 2px 20px;
+  gap: var(--space-2);
+  padding: var(--space-2-5) var(--space-4) var(--space-0-5) var(--space-5);
   flex-shrink: 0;
 }
 
@@ -11835,7 +11863,7 @@ body.is-pane-resizing-row * {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 0 8px 8px;
+  padding: 0 var(--space-2) var(--space-2);
   position: relative;
   user-select: none;
 }
@@ -11847,8 +11875,8 @@ body.is-pane-resizing-row * {
 .notes-link-dendrogram-detach {
   display: none;
   flex-shrink: 0;
-  margin: 0 4px 8px;
-  padding: 8px 12px;
+  margin: 0 var(--space-1) var(--space-2);
+  padding: var(--space-2) var(--space-3);
   border-radius: 8px;
   border: 1px dashed var(--color-separator-opaque, rgba(128, 128, 128, 0.45));
   font-size: 11px;
@@ -11898,10 +11926,10 @@ body.is-pane-resizing-row * {
   z-index: 10000;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   transform: translate(-50%, -120%);
   pointer-events: none;
-  padding: 4px 10px 4px 6px;
+  padding: var(--space-1) var(--space-2-5) var(--space-1) var(--space-1-5);
   border-radius: 999px;
   background: color-mix(in srgb, var(--color-control-bg, #1c1c1e) 92%, transparent);
   border: 1px solid color-mix(in srgb, var(--color-accent, #0a84ff) 45%, transparent);
@@ -12026,7 +12054,7 @@ body.is-pane-resizing-row * {
 }
 
 .notes-link-dendrogram-truncated {
-  margin: 4px 8px 0;
+  margin: var(--space-1) var(--space-2) 0;
   font-size: 11px;
 }
 
@@ -12048,7 +12076,7 @@ body.is-pane-resizing-row * {
   transform: translate(-50%, -50%);
   box-sizing: border-box;
   margin: 0;
-  padding: 2px 8px;
+  padding: var(--space-0-5) var(--space-2);
   min-width: 96px;
   max-width: 260px;
   height: 22px;
@@ -12104,9 +12132,9 @@ body.is-pane-resizing-row * {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--space-4);
   flex-shrink: 0;
-  padding: 16px 20px 8px;
+  padding: var(--space-4) var(--space-5) var(--space-2);
 }
 
 .notes-detail-title {
@@ -12131,7 +12159,7 @@ body.is-pane-resizing-row * {
   border-radius: 0;
   background: transparent;
   color: var(--text);
-  padding: 0 0 2px;
+  padding: 0 0 var(--space-0-5);
   outline: none;
   font-family: inherit;
   box-sizing: border-box;
@@ -12145,7 +12173,7 @@ body.is-pane-resizing-row * {
 .notes-segmented {
   display: inline-flex;
   flex-shrink: 0;
-  gap: 2px;
+  gap: var(--space-0-5);
 }
 
 .notes-segmented button {
@@ -12155,7 +12183,7 @@ body.is-pane-resizing-row * {
   color: var(--text);
   width: 28px;
   height: 28px;
-  padding: 5px;
+  padding: var(--space-1-5);
   border-radius: 6px;
 
   display: grid;
@@ -12187,9 +12215,9 @@ body.is-pane-resizing-row * {
   z-index: 4;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   margin: 0;
-  padding: 6px 8px;
+  padding: var(--space-1-5) var(--space-2);
   border-radius: 8px;
   border: 1px solid var(--border);
   background: color-mix(in srgb, var(--panel) 94%, var(--bg));
@@ -12206,7 +12234,7 @@ body.is-pane-resizing-row * {
   flex: 0 0 auto;
   min-width: 0;
   margin: 0;
-  padding: 4px 6px;
+  padding: var(--space-1) var(--space-1-5);
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg);
@@ -12288,7 +12316,7 @@ body.is-pane-resizing-row * {
 
 textarea.notes-editor-host {
   resize: none;
-  padding: 14px 16px;
+  padding: var(--space-3-5) var(--space-4);
   color: var(--text);
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 13px;
@@ -12321,7 +12349,7 @@ textarea.notes-editor-host:focus {
 
 .wb-editor-host .cm-content,
 .notes-editor-host .cm-content {
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   min-height: 100%;
 }
 
@@ -12333,7 +12361,7 @@ textarea.notes-editor-host:focus {
 
 .markdown-body pre code.hljs {
   display: block;
-  padding: 10px 12px;
+  padding: var(--space-2-5) var(--space-3);
   border: 1px solid var(--border);
   border-radius: 6px;
   overflow-x: auto;
@@ -12343,7 +12371,7 @@ textarea.notes-editor-host:focus {
 
 .notes-preview {
   overflow: auto;
-  padding: 4px 8px 8px;
+  padding: var(--space-1) var(--space-2) var(--space-2);
   min-height: 0;
   height: 100%;
   box-sizing: border-box;
@@ -12353,7 +12381,7 @@ textarea.notes-editor-host:focus {
   display: block;
   max-width: 100%;
   max-height: 70vh;
-  margin: 12px 0;
+  margin: var(--space-3) 0;
   border-radius: 8px;
   cursor: zoom-in;
 }
@@ -12369,7 +12397,8 @@ textarea.notes-editor-host:focus {
   z-index: 1600;
   display: grid;
   place-items: center;
-  padding: 54px 24px 24px;
+  /* 54px clears the 52px window toolbar (+2px); fixed chrome inset, not a spacing token. */
+  padding: 54px var(--space-6) var(--space-6);
   background: rgba(0, 0, 0, 0.84);
   animation: backdrop-in var(--duration-normal) var(--ease-out);
 }
@@ -12393,7 +12422,7 @@ textarea.notes-editor-host:focus {
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.12);
   color: #fff;
-  padding: 7px 12px;
+  padding: var(--space-2) var(--space-3);
   font-size: 13px;
 
   backdrop-filter: blur(10px);
@@ -12473,7 +12502,7 @@ textarea.notes-editor-host:focus {
   max-height: min(70vh, 480px);
   display: flex;
   flex-direction: column;
-  padding: 8px;
+  padding: var(--space-2);
   border: 1px solid var(--color-separator-opaque);
   border-radius: var(--radius-lg);
   background: var(--color-elevated-bg);
@@ -12502,8 +12531,8 @@ textarea.notes-editor-host:focus {
 
 .chat-tools-modes {
   display: flex;
-  gap: 4px;
-  padding: 2px;
+  gap: var(--space-1);
+  padding: var(--space-0-5);
   border: 1px solid var(--color-separator);
   border-radius: var(--radius-lg);
   background: var(--color-secondary-bg);
@@ -12516,7 +12545,7 @@ textarea.notes-editor-host:focus {
   border: none;
   background: transparent;
   color: var(--color-label-secondary);
-  padding: 4px 6px;
+  padding: var(--space-1) var(--space-1-5);
   font-size: var(--font-size-caption);
   line-height: 1.2;
   white-space: nowrap;
@@ -12545,22 +12574,22 @@ textarea.notes-editor-host:focus {
 .chat-tools-quick-actions {
   display: flex;
   gap: var(--space-2);
-  margin: var(--space-2) 0 2px;
+  margin: var(--space-2) 0 var(--space-0-5);
 }
 
 .chat-tools-quick-actions .ghost-btn {
-  padding: 2px 8px;
+  padding: var(--space-0-5) var(--space-2);
   font-size: var(--font-size-caption);
 }
 
 .chat-tools-scroll {
   overflow-y: auto;
   max-height: 260px;
-  margin-top: 2px;
+  margin-top: var(--space-0-5);
 }
 
 .chat-tools-category {
-  margin-bottom: 2px;
+  margin-bottom: var(--space-0-5);
 }
 
 .chat-tools-category-label {
@@ -12568,15 +12597,15 @@ textarea.notes-editor-host:focus {
   text-transform: uppercase;
   letter-spacing: 0.4px;
   color: var(--color-label-tertiary);
-  margin: var(--space-2) 0 2px;
-  padding: 0 4px;
+  margin: var(--space-2) 0 var(--space-0-5);
+  padding: 0 var(--space-1);
 }
 
 .chat-tools-item {
   display: flex;
   align-items: baseline;
-  gap: 6px;
-  padding: 3px 4px;
+  gap: var(--space-1-5);
+  padding: var(--space-1) var(--space-1);
   border-radius: var(--radius-sm);
 
 }
@@ -12611,14 +12640,14 @@ textarea.notes-editor-host:focus {
 .chat-tools-empty-hint {
   font-size: var(--font-size-caption);
   color: var(--color-label-tertiary);
-  padding: var(--space-2) 4px;
+  padding: var(--space-2) var(--space-1);
 }
 
 .chat-tools-foot {
   font-size: var(--font-size-micro);
   color: var(--color-label-tertiary);
   margin-top: var(--space-2);
-  padding: 0 4px;
+  padding: 0 var(--space-1);
 }
 
 .app-startup-mask {
@@ -12629,7 +12658,7 @@ textarea.notes-editor-host:focus {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: var(--space-6);
   box-sizing: border-box;
   opacity: 1;
   transition: opacity var(--app-startup-mask-fade-ms) var(--ease-out);
@@ -12656,8 +12685,8 @@ textarea.notes-editor-host:focus {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
-  padding: 28px 32px;
+  gap: var(--space-4);
+  padding: var(--space-8) var(--space-8);
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--radius-xl, 12px);
@@ -12685,7 +12714,7 @@ textarea.notes-editor-host:focus {
 .app-startup-status {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-2-5);
 }
 
 .app-startup-message {
@@ -12744,7 +12773,7 @@ html[data-window-mode="standalone-note"] #react-workbench {
   gap: var(--space-3);
   min-height: 52px;
   height: 52px;
-  padding: 0 16px 0 78px;
+  padding: 0 var(--space-4) 0 78px;
   border-bottom: 0.5px solid var(--color-separator);
   background: var(--color-sidebar-bg);
   backdrop-filter: var(--backdrop-blur);
@@ -12757,7 +12786,7 @@ html[data-window-mode="standalone-note"] #react-workbench {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0-5);
 }
 
 .standalone-note-window-heading strong,
@@ -12779,7 +12808,7 @@ html[data-window-mode="standalone-note"] #react-workbench {
 
 .standalone-note-window-actions {
   display: inline-flex;
-  gap: 2px;
+  gap: var(--space-0-5);
   -webkit-app-region: no-drag;
 }
 
@@ -12789,7 +12818,7 @@ html[data-window-mode="standalone-note"] #react-workbench {
   place-items: center;
   width: 28px;
   height: 28px;
-  padding: 5px;
+  padding: var(--space-1-5);
   border: none;
   border-radius: var(--radius-md);
   color: var(--color-label-secondary);
@@ -12825,8 +12854,8 @@ html[data-window-mode="standalone-note"] #react-workbench {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
+  gap: var(--space-1-5);
+  padding: var(--space-1-5) var(--space-2-5);
   border-bottom: 1px solid var(--color-separator);
   background: var(--color-control-bg);
   -webkit-app-region: no-drag;
@@ -12859,14 +12888,14 @@ html[data-window-mode="standalone-note"] #react-workbench {
 
 .standalone-note-window-editor .cm-content {
   min-height: 100%;
-  padding: 12px 14px;
+  padding: var(--space-3) var(--space-3-5);
 }
 
 .standalone-note-window-foot {
   display: flex;
   align-items: center;
   min-height: 28px;
-  padding: 3px 12px;
+  padding: var(--space-1) var(--space-3);
   border-top: 1px solid var(--color-separator);
   color: var(--color-label-secondary);
   background: var(--color-control-bg);
@@ -12883,8 +12912,8 @@ html[data-window-mode="standalone-note"] #react-workbench {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 20px;
+  gap: var(--space-2);
+  padding: var(--space-5);
   color: var(--color-label-secondary);
   font-size: var(--font-size-callout);
   text-align: center;
@@ -12897,7 +12926,7 @@ html[data-window-mode="standalone-note"] #react-workbench {
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: 64px 16px 16px;
+  padding: calc(var(--space-8) * 2) var(--space-4) var(--space-4);
   animation: mac-spotlight-fade var(--duration-fast) var(--ease-out);
 }
 
@@ -12959,7 +12988,7 @@ html[data-window-mode="standalone-note"] #react-workbench {
   grid-template-columns: 22px minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-2);
-  padding: 0 14px;
+  padding: 0 var(--space-3-5);
   border-bottom: 0.5px solid var(--color-separator);
 }
 
@@ -12985,7 +13014,7 @@ html[data-window-mode="standalone-note"] #react-workbench {
 
 .quick-access-panel kbd {
   min-width: 28px;
-  padding: 2px 6px;
+  padding: var(--space-0-5) var(--space-1-5);
   border: 0.5px solid var(--color-separator);
   border-radius: var(--radius-sm);
   background: var(--color-fill-secondary);
@@ -12997,7 +13026,7 @@ html[data-window-mode="standalone-note"] #react-workbench {
 .quick-access-limit {
   flex: 0 0 auto;
   overflow: hidden;
-  padding: 6px 14px;
+  padding: var(--space-1-5) var(--space-3-5);
   border-top: 0.5px solid var(--color-separator);
   color: var(--color-label-tertiary);
   font-size: var(--font-size-caption);
@@ -13008,14 +13037,14 @@ html[data-window-mode="standalone-note"] #react-workbench {
 .quick-access-results {
   min-height: 38px;
   overflow-y: auto;
-  padding: 6px;
+  padding: var(--space-1-5);
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0-5);
 }
 
 .quick-access-section-header {
-  padding: 8px 10px 4px;
+  padding: var(--space-2) var(--space-2-5) var(--space-1);
   font-size: 10px;
   font-weight: var(--font-weight-semibold, 600);
   color: var(--color-label-tertiary);
@@ -13032,7 +13061,7 @@ html[data-window-mode="standalone-note"] #react-workbench {
   grid-template-columns: 20px minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-2);
-  padding: 5px 10px;
+  padding: var(--space-1-5) var(--space-2-5);
   border: 0;
   border-radius: var(--radius-md);
   background: transparent;
@@ -13111,7 +13140,7 @@ html[data-window-mode="standalone-note"] #react-workbench {
   justify-content: center;
   gap: var(--space-2);
   margin: 0;
-  padding: 12px 16px;
+  padding: var(--space-3) var(--space-4);
   color: var(--color-label-secondary);
   font-size: var(--font-size-body);
 }
@@ -13142,7 +13171,7 @@ html[data-window-mode="standalone-note"] #react-workbench {
 }
 
 .settings-backup-list .settings-row {
-  padding: 8px 10px;
+  padding: var(--space-2) var(--space-2-5);
   background: var(--color-secondary-bg);
 }
 
@@ -13153,11 +13182,11 @@ html[data-window-mode="standalone-note"] #react-workbench {
   border-top: 1px solid var(--color-separator);
   background: transparent;
   color: var(--color-label-primary);
-  padding: 8px 10px;
+  padding: var(--space-2) var(--space-2-5);
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 10px;
+  gap: var(--space-2-5);
   text-align: left;
 
 }
@@ -13213,16 +13242,16 @@ html[data-window-mode="standalone-note"] #react-workbench {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   grid-template-rows: auto auto;
-  column-gap: 16px;
-  row-gap: 2px;
+  column-gap: var(--space-4);
+  row-gap: var(--space-0-5);
   align-items: center;
-  padding: 8px 0;
+  padding: var(--space-2) 0;
 }
 
 .settings-theme-field + .settings-row,
 .settings-row + .settings-theme-field {
   border-top: 0.5px solid var(--color-separator);
-  padding-top: 10px;
+  padding-top: var(--space-2-5);
 }
 
 .settings-theme-field .settings-field-label {
@@ -13253,8 +13282,8 @@ html[data-window-mode="standalone-note"] #react-workbench {
   align-items: center;
   flex: 0 0 auto;
   height: 26px;
-  padding: 2px;
-  gap: 2px;
+  padding: var(--space-0-5);
+  gap: var(--space-0-5);
   background: var(--color-fill-secondary);
   border: 0.5px solid var(--color-separator);
   border-radius: 7px;
@@ -13268,7 +13297,7 @@ html[data-window-mode="standalone-note"] #react-workbench {
   color: var(--color-label-secondary);
   border-radius: 5px;
   height: 22px;
-  padding: 0 10px;
+  padding: 0 var(--space-2-5);
   font-size: 12px;
   font-weight: var(--font-weight-medium);
   line-height: 22px;
@@ -13311,17 +13340,17 @@ html[data-window-mode="standalone-note"] #react-workbench {
 }
 
 .wb-task {
-  display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; margin: 8px 8px 4px;
+  display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2) var(--space-2-5); margin: var(--space-2) var(--space-2) var(--space-1);
   border: 1px solid var(--color-separator-opaque); border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--color-accent) 7%, transparent);
 }
-.wb-task-head { display: flex; align-items: center; gap: 6px; }
+.wb-task-head { display: flex; align-items: center; gap: var(--space-1-5); }
 .wb-task-title {
   flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-weight: 600; font-size: 12px; color: var(--color-label-primary);
 }
 .wb-task-status {
-  flex: 0 0 auto; font-size: 10px; padding: 1px 7px; border-radius: 999px;
+  flex: 0 0 auto; font-size: 10px; padding: 1px var(--space-2); border-radius: 999px;
   background: var(--color-fill-secondary); color: var(--color-label-secondary);
 }
 .wb-task-status.is-done { color: var(--color-success); }
@@ -13329,21 +13358,21 @@ html[data-window-mode="standalone-note"] #react-workbench {
 .wb-task-status.is-next { color: var(--color-accent); }
 .wb-task-rollup {
   flex: 0 0 auto; font-size: 10px; color: var(--color-label-tertiary);
-  padding: 1px 6px; border: 1px solid var(--color-separator); border-radius: 999px;
+  padding: 1px var(--space-1-5); border: 1px solid var(--color-separator); border-radius: 999px;
 }
 .wb-task-pin {
   appearance: none; border: none;font-family: inherit;
-  display: inline-flex; align-items: center; gap: 3px;
+  display: inline-flex; align-items: center; gap: var(--space-1);
   flex: 0 0 auto; font-size: 10px; font-weight: 600; color: var(--color-warning);
-  padding: 1px 6px; border-radius: 999px;
+  padding: 1px var(--space-1-5); border-radius: 999px;
   background: color-mix(in srgb, var(--color-warning) 16%, transparent);
 }
-.wb-task-line { margin: 0; font-size: 11px; line-height: 1.4; color: var(--color-label-secondary); display: flex; gap: 5px; }
+.wb-task-line { margin: 0; font-size: 11px; line-height: 1.4; color: var(--color-label-secondary); display: flex; gap: var(--space-1-5); }
 .wb-task-label { color: var(--color-label-tertiary); flex: 0 0 auto; }
 .wb-task-line.is-decision { color: var(--color-warning); align-items: flex-start; }
 .wb-task-line.is-decision svg { flex: 0 0 auto; margin-top: 1px; }
 .wb-task-count { margin: 0; font-size: 10px; color: var(--color-label-tertiary); }
-.wb-task-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 2px 6px 6px; }
+.wb-task-filters { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1-5); padding: var(--space-0-5) var(--space-1-5) var(--space-1-5); }
 .wb-task-filter { flex: 1 1 auto; min-width: 0; }
 .wb-task-needs-chip {
   appearance: none;
@@ -13351,12 +13380,12 @@ html[data-window-mode="standalone-note"] #react-workbench {
   background: var(--panel);
   color: var(--muted);
   border-radius: 9999px;
-  padding: 2px 8px;
+  padding: var(--space-0-5) var(--space-2);
   font-size: 11px;
   font-weight: 500;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--space-1-5);
 
   white-space: nowrap;
   flex: 0 0 auto;
@@ -13372,18 +13401,18 @@ html[data-window-mode="standalone-note"] #react-workbench {
   border-color: var(--color-accent, #3b82f6);
   color: var(--color-accent, #3b82f6);
 }
-.wb-task-projects { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.wb-task-projects { display: flex; flex-wrap: wrap; gap: var(--space-1); align-items: center; }
 .wb-task-add-project {
   appearance: none; border: 1px dashed var(--color-separator-opaque); background: transparent;
-  color: var(--color-label-secondary); border-radius: 999px; padding: 0 8px; font-size: 10px;
+  color: var(--color-label-secondary); border-radius: 999px; padding: 0 var(--space-2); font-size: 10px;
   line-height: 20px; max-width: 170px;
 }
 .wb-task-add-project:hover { border-color: var(--color-accent); color: var(--color-label-primary); }
-.wb-task-target { margin: 0; font-size: 10px; color: var(--color-label-tertiary); display: flex; align-items: center; gap: 2px; }
-.wb-task-target-reset { appearance: none; border: 0; background: transparent; color: inherit;padding: 0 2px; display: inline-flex; }
+.wb-task-target { margin: 0; font-size: 10px; color: var(--color-label-tertiary); display: flex; align-items: center; gap: var(--space-0-5); }
+.wb-task-target-reset { appearance: none; border: 0; background: transparent; color: inherit;padding: 0 var(--space-0-5); display: inline-flex; }
 .wb-task-target-reset:hover { color: var(--color-accent); }
 .wb-task-project {
-  display: inline-flex; align-items: center; gap: 2px; padding: 0 4px 0 6px;
+  display: inline-flex; align-items: center; gap: var(--space-0-5); padding: 0 var(--space-1) 0 var(--space-1-5);
   border: 1px solid transparent; border-radius: 999px; max-width: 170px;
   background: var(--color-fill-secondary); color: var(--color-label-secondary); font-size: 10px;
 }
@@ -13399,7 +13428,7 @@ html[data-window-mode="standalone-note"] #react-workbench {
 .wb-task-project:hover .wb-task-project-remove,
 .wb-task-project:focus-within .wb-task-project-remove { opacity: 0.65; }
 .wb-task-project-remove:hover { opacity: 1; color: var(--color-destructive); }
-.wb-task-section { padding-top: 4px; }
+.wb-task-section { padding-top: var(--space-1); }
 .wb-task-row .wb-folder-row-label { font-weight: 600; }
 .wb-task-row .wb-gtd-status-dot { flex: 0 0 auto; }
 .wb-task-row .session-dot { flex: 0 0 auto; }
@@ -13422,7 +13451,7 @@ html[data-window-mode="standalone-note"] #react-workbench {
   flex: 0 0 auto;
 }
 .browser-chrome.is-window {
-  padding-top: 8px;
+  padding-top: var(--space-2);
   -webkit-app-region: drag;
 }
 .browser-chrome.is-window .browser-chrome-toolbar,
@@ -13434,8 +13463,8 @@ html[data-window-mode="standalone-note"] #react-workbench {
 .browser-chrome-tabs {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 8px 0;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2) 0;
   min-height: 30px;
   overflow-x: auto;
 }
@@ -13455,11 +13484,11 @@ html[data-window-mode="standalone-note"] #react-workbench {
 .browser-chrome-tab-label {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   border: 0;
   background: transparent;
   color: inherit;
-  padding: 6px 4px 6px 8px;
+  padding: var(--space-1-5) var(--space-1) var(--space-1-5) var(--space-2);
   min-width: 0;
 
 }
@@ -13493,21 +13522,21 @@ html[data-window-mode="standalone-note"] #react-workbench {
 }
 .browser-chrome-btn.is-primary {
   width: auto;
-  padding: 0 12px;
-  gap: 6px;
+  padding: 0 var(--space-3);
+  gap: var(--space-1-5);
   background: color-mix(in srgb, var(--accent, #5b8cff) 18%, transparent);
 }
 .browser-chrome-toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px 8px;
+  gap: var(--space-2);
+  padding: var(--space-1-5) var(--space-2) var(--space-2);
 }
 .browser-chrome-nav,
 .browser-chrome-actions {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--space-0-5);
   flex: 0 0 auto;
 }
 .browser-chrome-url-form {
@@ -13515,8 +13544,8 @@ html[data-window-mode="standalone-note"] #react-workbench {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 10px;
+  gap: var(--space-2);
+  padding: 0 var(--space-2-5);
   height: 32px;
   border-radius: 999px;
   background: color-mix(in srgb, currentColor 8%, transparent);
@@ -13548,7 +13577,7 @@ html[data-window-mode="standalone-note"] #react-workbench {
   position: relative;
 }
 .browser-pane-error {
-  padding: 6px 10px;
+  padding: var(--space-1-5) var(--space-2-5);
   color: var(--danger, #ff6b6b);
   font-size: 12px;
 }
@@ -13556,18 +13585,18 @@ html[data-window-mode="standalone-note"] #react-workbench {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: var(--space-6);
 }
 .browser-pane-placeholder-card {
   max-width: 360px;
   text-align: center;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
 }
 .browser-pane-placeholder-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   justify-content: center;
   flex-wrap: wrap;
 }
@@ -13591,9 +13620,9 @@ html[data-window-mode="browser"] #react-chrome {
 .markdown-body .md-image-missing {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   max-width: 100%;
-  padding: 6px 8px;
+  padding: var(--space-1-5) var(--space-2);
   border: 1px dashed var(--color-separator, rgba(255, 255, 255, 0.16));
   border-radius: 6px;
   color: var(--color-label-secondary);
@@ -13606,7 +13635,7 @@ html[data-window-mode="browser"] #react-chrome {
 .selection-action-result-actions {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   flex: none;
 }
 /* --- Markdown code blocks: language header + hover-only copy button --- */
@@ -13619,14 +13648,14 @@ html[data-window-mode="browser"] #react-chrome {
   border-radius: var(--radius-md, 6px);
   background: var(--color-secondary-bg);
   overflow: hidden;
-  margin: 10px 0;
+  margin: var(--space-2-5) 0;
 }
 .code-block-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 4px 10px;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2-5);
   font-size: 11px;
   background: color-mix(in srgb, var(--color-window-bg) 80%, var(--color-secondary-bg));
   border-bottom: 1px solid var(--color-separator);
@@ -13643,14 +13672,14 @@ html[data-window-mode="browser"] #react-chrome {
   background: transparent;
   color: var(--color-label-secondary);
   font-size: 11px;
-  padding: 2px 8px;
+  padding: var(--space-0-5) var(--space-2);
   border-radius: 4px;
 
   opacity: 0.7;
   transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
 }
 .code-block:hover .code-copy-btn,
 .code-copy-btn:focus-visible {
@@ -13662,7 +13691,7 @@ html[data-window-mode="browser"] #react-chrome {
 }
 .code-block pre {
   margin: 0;
-  padding: 10px 14px;
+  padding: var(--space-2-5) var(--space-3-5);
   border: none;
   border-radius: 0;
   background: transparent;
@@ -13674,7 +13703,7 @@ html[data-window-mode="browser"] #react-chrome {
   width: min(360px, calc(100vw - 16px));
   max-height: min(320px, calc(100vh - 24px));
   overflow: auto;
-  padding: 8px 10px;
+  padding: var(--space-2) var(--space-2-5);
   border: 1px solid var(--color-separator);
   border-radius: var(--radius-xl);
   background: var(--color-elevated-bg);
@@ -13685,8 +13714,8 @@ html[data-window-mode="browser"] #react-chrome {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 6px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1-5);
 }
 .selection-action-running {
   margin: 0;
@@ -13695,19 +13724,19 @@ html[data-window-mode="browser"] #react-chrome {
 }
 .selection-settings-split {
   display: flex;
-  gap: 16px;
+  gap: var(--space-4);
   min-height: 280px;
 }
 .selection-settings-list {
   width: 260px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
 }
 .selection-settings-action-row {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   min-width: 0;
 }
 .selection-settings-item {
@@ -13715,12 +13744,12 @@ html[data-window-mode="browser"] #react-chrome {
   flex: 1 1 auto;
   min-width: 0;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-2);
   text-align: left;
   border: 0;
   background: transparent;
   color: inherit;
-  padding: 6px 8px;
+  padding: var(--space-1-5) var(--space-2);
   border-radius: 6px;
 }
 .selection-settings-item.active,
@@ -13730,7 +13759,7 @@ html[data-window-mode="browser"] #react-chrome {
 .selection-settings-order-controls {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--space-0-5);
   flex: none;
 }
 .selection-settings-order-btn {
@@ -13759,12 +13788,12 @@ html[data-window-mode="browser"] #react-chrome {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-2-5);
 }
 .selection-settings-checkbox-item {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   font-size: 12px;
 
   user-select: none;
@@ -13781,13 +13810,13 @@ html[data-window-mode="browser"] #react-chrome {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
+  gap: var(--space-1-5);
 }
 
 .legend-item {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
 }
 
 .legend-badge {
@@ -13819,7 +13848,7 @@ html[data-window-mode="browser"] #react-chrome {
    ========================================================================== */
 
 .artifact-card {
-  margin: 12px 0;
+  margin: var(--space-3) 0;
   border-radius: var(--radius-md, 8px);
   border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
   background: var(--bg-surface, #141414);
@@ -13836,8 +13865,8 @@ html[data-window-mode="browser"] #react-chrome {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 12px;
-  gap: 12px;
+  padding: var(--space-1-5) var(--space-3);
+  gap: var(--space-3);
   background: var(--bg-hover, rgba(255, 255, 255, 0.03));
   border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
   user-select: none;
@@ -13846,7 +13875,7 @@ html[data-window-mode="browser"] #react-chrome {
 .artifact-card-badge-wrap {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   min-width: 0;
   flex: 1;
 }
@@ -13854,7 +13883,7 @@ html[data-window-mode="browser"] #react-chrome {
 .artifact-lang-badge {
   display: inline-flex;
   align-items: center;
-  padding: 1px 6px;
+  padding: 1px var(--space-1-5);
   font-size: 10px;
   font-weight: 700;
   font-family: var(--font-mono, monospace);
@@ -13889,17 +13918,17 @@ html[data-window-mode="browser"] #react-chrome {
   display: inline-flex;
   align-items: center;
   background: rgba(0, 0, 0, 0.3);
-  padding: 2px;
+  padding: var(--space-0-5);
   border-radius: 6px;
   border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
-  gap: 2px;
+  gap: var(--space-0-5);
 }
 
 .artifact-tab-btn {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 3px 9px;
+  gap: var(--space-1-5);
+  padding: var(--space-1) var(--space-2-5);
   font-size: 11px;
   font-weight: 500;
   color: var(--text-secondary, #a1a1a1);
@@ -13923,7 +13952,7 @@ html[data-window-mode="browser"] #react-chrome {
 .artifact-card-actions {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .artifact-action-btn {
@@ -13986,8 +14015,8 @@ html[data-window-mode="browser"] #react-chrome {
   right: 8px;
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px 5px;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-1-5);
   background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(6px);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -14045,7 +14074,7 @@ html[data-window-mode="browser"] #react-chrome {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: var(--space-6);
   min-height: inherit;
   overflow: auto;
 }
@@ -14084,7 +14113,7 @@ html[data-window-mode="browser"] #react-chrome {
 
 .artifact-code-view pre {
   margin: 0;
-  padding: 12px 16px;
+  padding: var(--space-3) var(--space-4);
   font-family: var(--font-mono, monospace);
   font-size: 12px;
   line-height: 1.6;
@@ -14107,7 +14136,7 @@ html[data-window-mode="browser"] #react-chrome {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: var(--space-6);
   animation: backdrop-in var(--duration-normal) var(--ease-out);
 }
 
@@ -14126,7 +14155,7 @@ html[data-window-mode="browser"] #react-chrome {
 }
 
 .artifact-card-header.is-modal-header {
-  padding: 10px 16px;
+  padding: var(--space-2-5) var(--space-4);
 }
 
 .artifact-card-body.is-modal-body {
@@ -14151,12 +14180,12 @@ html[data-window-mode="browser"] #react-chrome {
 [data-streamdown="table-wrapper"] {
   display: flex !important;
   flex-direction: column !important;
-  gap: 6px !important;
-  margin: 10px 0 !important;
+  gap: var(--space-1-5) !important;
+  margin: var(--space-2-5) 0 !important;
   border: 1px solid var(--color-separator, var(--border)) !important;
   border-radius: var(--radius-md, 8px) !important;
   background: var(--color-fill-tertiary, color-mix(in srgb, var(--text) 3%, transparent)) !important;
-  padding: 6px 8px 8px !important;
+  padding: var(--space-1-5) var(--space-2) var(--space-2) !important;
   max-width: 100% !important;
   box-sizing: border-box !important;
   min-width: 0 !important;
@@ -14168,8 +14197,8 @@ html[data-window-mode="browser"] #react-chrome {
   flex-direction: row !important;
   align-items: center !important;
   justify-content: flex-end !important;
-  gap: 4px !important;
-  margin-bottom: 2px !important;
+  gap: var(--space-1) !important;
+  margin-bottom: var(--space-0-5) !important;
   flex-shrink: 0 !important;
 }
 
@@ -14180,7 +14209,7 @@ html[data-window-mode="browser"] #react-chrome {
   background: transparent;
   color: var(--color-label-secondary, var(--muted));
   border-radius: var(--radius-sm, 4px);
-  padding: 4px;
+  padding: var(--space-1);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -14226,10 +14255,10 @@ html[data-window-mode="browser"] #react-chrome {
   border: 1px solid var(--color-separator, var(--border)) !important;
   border-radius: var(--radius-md, 6px) !important;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35) !important;
-  padding: 4px !important;
+  padding: var(--space-1) !important;
   display: flex !important;
   flex-direction: column !important;
-  gap: 2px !important;
+  gap: var(--space-0-5) !important;
 }
 
 /* Dropdown menu items */
@@ -14238,7 +14267,7 @@ html[data-window-mode="browser"] #react-chrome {
   width: 100% !important;
   height: auto !important;
   text-align: left !important;
-  padding: 6px 10px !important;
+  padding: var(--space-1-5) var(--space-2-5) !important;
   font-size: 12px !important;
   line-height: 1.4 !important;
   border-radius: var(--radius-sm, 4px) !important;
@@ -14281,7 +14310,7 @@ html[data-window-mode="browser"] #react-chrome {
 }
 
 [data-streamdown="table"] th {
-  padding: 6px 10px !important;
+  padding: var(--space-1-5) var(--space-2-5) !important;
   font-weight: 600 !important;
   font-size: 12px !important;
   text-align: left !important;
@@ -14291,7 +14320,7 @@ html[data-window-mode="browser"] #react-chrome {
 }
 
 [data-streamdown="table"] td {
-  padding: 6px 10px !important;
+  padding: var(--space-1-5) var(--space-2-5) !important;
   font-size: 12px !important;
   color: var(--color-label-primary, var(--text)) !important;
   border: 1px solid var(--color-separator, var(--border)) !important;
@@ -14346,8 +14375,8 @@ html[data-window-mode="browser"] #react-chrome {
   display: flex !important;
   align-items: center !important;
   justify-content: flex-end !important;
-  gap: 8px !important;
-  padding: 10px 18px !important;
+  gap: var(--space-2) !important;
+  padding: var(--space-2-5) var(--space-5) !important;
   border-bottom: 1px solid var(--color-separator, var(--border)) !important;
   background: var(--color-secondary-bg, var(--panel)) !important;
   box-sizing: border-box !important;
@@ -14377,7 +14406,7 @@ html[data-window-mode="browser"] #react-chrome {
   min-height: 0 !important;
   max-height: none !important;
   overflow: auto !important;
-  padding: 16px 20px !important;
+  padding: var(--space-4) var(--space-5) !important;
   border: none !important;
   border-radius: 0 !important;
   background: var(--color-window-bg, var(--bg)) !important;
@@ -14393,13 +14422,13 @@ html[data-window-mode="browser"] #react-chrome {
 }
 
 [data-streamdown="table-fullscreen"] [data-streamdown="table"] th {
-  padding: 10px 14px !important;
+  padding: var(--space-2-5) var(--space-3-5) !important;
   font-size: 13px !important;
   background: var(--color-secondary-bg, var(--panel)) !important;
 }
 
 [data-streamdown="table-fullscreen"] [data-streamdown="table"] td {
-  padding: 8px 14px !important;
+  padding: var(--space-2) var(--space-3-5) !important;
   font-size: 13px !important;
 }
 
@@ -14437,16 +14466,19 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  /* macOS-standard card, matching the detail pane: inset and rounded. The gap to
+     the detail card replaces the old divider. */
+  margin: var(--space-2) 0 var(--space-2) var(--space-2);
+  border-radius: var(--radius-xl);
   background: var(--color-sidebar-bg);
-  border-right: 0.5px solid var(--color-separator);
 }
 
 .notes-view-search {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   height: 44px;
-  padding: 0 10px 0 14px;
+  padding: 0 var(--space-2-5) 0 var(--space-3-5);
   border-bottom: 0.5px solid var(--color-separator);
   color: var(--color-label-tertiary);
   flex: 0 0 auto;
@@ -14489,13 +14521,13 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
 
 .notes-view-segment {
   flex: 0 0 auto;
-  padding: 8px 10px;
+  padding: var(--space-2) var(--space-2-5);
   border-bottom: 0.5px solid var(--color-separator);
 }
 
 .notes-view-error {
   margin: 0;
-  padding: 8px 14px 0;
+  padding: var(--space-2) var(--space-3-5) 0;
   font-size: var(--font-size-caption);
   color: var(--color-destructive);
   flex: 0 0 auto;
@@ -14506,7 +14538,7 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  padding: 8px;
+  padding: var(--space-2);
 }
 
 .notes-view-glide {
@@ -14523,7 +14555,7 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
 }
 
 .notes-view-section {
-  margin: 10px 6px 4px;
+  margin: var(--space-2-5) var(--space-1-5) var(--space-1);
   font-size: var(--font-size-caption);
   font-weight: var(--font-weight-semibold);
   letter-spacing: 0.04em;
@@ -14536,10 +14568,10 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
   z-index: 1;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   width: 100%;
   height: 32px;
-  padding: 0 8px;
+  padding: 0 var(--space-2);
   border: none;
   border-radius: var(--radius-lg);
   background: transparent;
@@ -14573,7 +14605,7 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
 }
 
 .notes-view-empty {
-  margin: 10px 6px;
+  margin: var(--space-2-5) var(--space-1-5);
   font-size: var(--font-size-body);
   color: var(--color-label-tertiary);
 }
@@ -14581,12 +14613,12 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
 .notes-view-empty-block {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 8px 6px;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-1-5);
 }
 
 .notes-view-hint {
-  margin: 0 6px;
+  margin: 0 var(--space-1-5);
   font-size: var(--font-size-callout);
   color: var(--color-label-tertiary);
 }
@@ -14597,6 +14629,14 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  /* macOS-standard card: inset the detail pane so its rounded corners read as a
+     card against the translucent window, separate from the note list. */
+  padding: var(--space-2);
+}
+
+.notes-view-detail > .notes-detail,
+.notes-view-detail > .notes-view-detail-empty {
+  border-radius: var(--radius-xl);
 }
 
 .notes-view-detail-empty {
@@ -14631,10 +14671,14 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
 .gtd-board {
   display: flex;
   align-items: stretch;
-  gap: 14px;
+  gap: var(--space-3-5);
   flex: 1 1 auto;
   min-height: 0;
-  padding: 14px 18px 18px;
+  /* macOS-standard card: inset from the template sidebar and the window edges so
+     the rounded corners read against the translucent window. */
+  margin: var(--space-2);
+  padding: var(--space-3-5) var(--space-5) var(--space-5);
+  border-radius: var(--radius-xl);
   overflow-x: auto;
   overflow-y: hidden;
 }
@@ -14647,7 +14691,10 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border-right: 0.5px solid var(--color-separator);
+  /* macOS-standard card, matching the board and the notes list: inset and rounded.
+     The gap to the board replaces the old divider. */
+  margin: var(--space-2) 0 var(--space-2) var(--space-2);
+  border-radius: var(--radius-xl);
   background: var(--color-sidebar-bg);
 }
 
@@ -14656,13 +14703,13 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
   align-items: center;
   gap: var(--space-2);
   flex-shrink: 0;
-  padding: 14px 12px 8px;
+  padding: var(--space-3-5) var(--space-3) var(--space-2);
 }
 
 .gtd-template-head-title {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   color: var(--color-label-secondary);
   font-size: var(--font-size-caption, 11px);
   font-weight: var(--font-weight-semibold, 600);
@@ -14703,12 +14750,12 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 4px 10px 14px;
+  gap: var(--space-1-5);
+  padding: var(--space-1) var(--space-2-5) var(--space-3-5);
 }
 
 .gtd-template-empty {
-  margin: 16px 0;
+  margin: var(--space-4) 0;
   color: var(--color-label-tertiary);
   font-size: var(--font-size-caption, 12px);
   text-align: center;
@@ -14717,9 +14764,9 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
 .gtd-template-item {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   min-width: 0;
-  padding: 8px 10px;
+  padding: var(--space-2) var(--space-2-5);
   border: 0.5px solid var(--color-separator);
   border-radius: var(--radius-md);
   background: var(--color-card-bg);
@@ -14761,7 +14808,7 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
 .gtd-template-body {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0-5);
   min-width: 0;
 }
 
@@ -14777,7 +14824,7 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
 .gtd-template-project {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   overflow: hidden;
   color: var(--color-label-tertiary);
   font-size: var(--font-size-caption, 11px);
@@ -14799,7 +14846,7 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
 .gtd-template-color-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
 }
 
 .gtd-template-swatch {
@@ -14841,7 +14888,7 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
 .gtd-card-rename {
   width: 100%;
   min-width: 0;
-  padding: 4px 6px;
+  padding: var(--space-1) var(--space-2);
   border: 0.5px solid var(--color-focus-ring);
   border-radius: var(--radius-sm);
   background: var(--color-control-bg);
@@ -14878,9 +14925,9 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
 .gtd-column-head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   flex-shrink: 0;
-  padding: 10px 12px;
+  padding: var(--space-2-5) var(--space-3);
   border-bottom: 0.5px solid var(--color-separator);
 }
 
@@ -14912,12 +14959,12 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px;
+  gap: var(--space-2);
+  padding: var(--space-2-5);
 }
 
 .gtd-column-empty {
-  margin: 16px 0;
+  margin: var(--space-4) 0;
   color: var(--color-label-tertiary);
   font-size: var(--font-size-caption, 12px);
   text-align: center;
@@ -14927,9 +14974,9 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
 .gtd-card {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-1-5);
   min-width: 0;
-  padding: 10px 12px;
+  padding: var(--space-2-5) var(--space-3);
   color: var(--color-label-primary);
   background: var(--color-card-bg);
   border: 0.5px solid var(--color-separator);
@@ -14966,7 +15013,7 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
   appearance: none;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-1-5);
   width: 100%;
   min-width: 0;
   overflow: hidden;
@@ -15014,7 +15061,7 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
 .gtd-card-meta {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   color: var(--color-label-tertiary);
   font-size: var(--font-size-micro, 11px);
 }
@@ -15022,11 +15069,11 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
 .gtd-card-meta-item {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: var(--space-1);
 }
 
 .gtd-card-rollup {
-  padding: 1px 6px;
+  padding: 1px var(--space-1-5);
   border: 0.5px solid var(--color-separator);
   border-radius: var(--radius-full);
   font-size: var(--font-size-micro, 11px);
@@ -15034,7 +15081,7 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
 }
 
 .gtd-card-pin {
-  padding: 1px 6px;
+  padding: 1px var(--space-1-5);
   border-radius: var(--radius-full);
   color: var(--color-warning);
   background: color-mix(in srgb, var(--color-warning) 14%, transparent);
@@ -15052,7 +15099,7 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
 .gtd-card-projects {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--space-1);
   min-width: 0;
 }
 
@@ -15064,7 +15111,7 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding: 2px 8px;
+  padding: var(--space-0-5) var(--space-2);
   border-radius: var(--radius-full);
   background: var(--color-fill-secondary);
   color: var(--color-label-secondary);
@@ -15081,7 +15128,7 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
 .gtd-card-project .session-dot {
   display: inline-block;
   vertical-align: -1px;
-  margin-right: 4px;
+  margin-right: var(--space-1);
 }
 
 .gtd-card-project.is-needs-you {
@@ -15097,7 +15144,7 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
 .gtd-toolbar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
   flex: 1 1 auto;
   min-width: 0;
   -webkit-app-region: no-drag;
@@ -15107,14 +15154,14 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .gtd-search {
   width: 220px;
   max-width: 32vw;
   height: 28px;
-  padding: 0 8px;
+  padding: 0 var(--space-2);
   border: 0.5px solid var(--color-separator-opaque);
   border-radius: var(--radius-md);
   background: var(--color-control-bg);
@@ -15181,10 +15228,10 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
 .wb-workbench-bar {
   display: flex;
   align-items: stretch;
-  gap: 2px;
+  gap: var(--space-0-5);
   flex-shrink: 0;
   height: 32px;
-  padding: 0 8px;
+  padding: 0 var(--space-2);
   border-bottom: 1px solid var(--color-separator);
   background: var(--color-window-bg);
   overflow-x: auto;
@@ -15211,9 +15258,9 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
 .wb-workbench-tab-label {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   height: 100%;
-  padding: 0 10px;
+  padding: 0 var(--space-2-5);
   border: none;
   background: transparent;
   color: var(--muted);
@@ -15234,7 +15281,7 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
   place-items: center;
   width: 20px;
   height: 20px;
-  margin-right: 4px;
+  margin-right: var(--space-1);
   border: none;
   border-radius: var(--radius-sm, 4px);
   background: transparent;
@@ -15250,8 +15297,8 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
 .wb-workbench-tab-input {
   width: 120px;
   height: 22px;
-  margin: 0 4px;
-  padding: 0 6px;
+  margin: 0 var(--space-1);
+  padding: 0 var(--space-1-5);
   border: 1px solid var(--accent);
   border-radius: var(--radius-sm, 4px);
   background: var(--color-control-bg, var(--panel));
@@ -15268,7 +15315,7 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
   width: 26px;
   height: 26px;
   align-self: center;
-  margin-left: 2px;
+  margin-left: var(--space-0-5);
   border: none;
   border-radius: var(--radius-md);
   background: transparent;
@@ -15285,14 +15332,14 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
 .gtd-new-task-panel {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-2-5);
   min-width: min(420px, calc(100vw - 32px));
 }
 
 .gtd-new-task-field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
   font-size: var(--font-size-caption, 12px);
   color: var(--color-label-secondary, var(--muted));
 }
@@ -15310,16 +15357,16 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
 .gtd-new-task-project {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
 .gtd-new-task-project-path {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   max-width: 100%;
-  padding: 2px 4px 2px 10px;
+  padding: var(--space-0-5) var(--space-1) var(--space-0-5) var(--space-2-5);
   border-radius: 999px;
   background: var(--color-fill-tertiary);
   color: var(--text);
@@ -15355,7 +15402,7 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
   align-items: stretch;
   flex-shrink: 0;
   height: 30px;
-  padding: 0 6px;
+  padding: 0 var(--space-1-5);
   border-bottom: 1px solid var(--color-separator);
   background: var(--color-window-bg);
 }
@@ -15365,7 +15412,7 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
   border: none;
   border-bottom: 2px solid transparent;
   background: transparent;
-  padding: 0 12px;
+  padding: 0 var(--space-3);
   color: var(--muted);
   font-family: inherit;
   font-size: var(--font-size-caption, 12px);
@@ -15390,9 +15437,9 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
 .wb-note-list-toolbar {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   flex-shrink: 0;
-  padding: 6px 8px;
+  padding: var(--space-1-5) var(--space-2);
   border-bottom: 1px solid var(--color-separator);
 }
 
@@ -15408,7 +15455,7 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
 
 .wb-note-filter .wb-left-tab {
   height: 100%;
-  padding: 0 10px;
+  padding: 0 var(--space-2-5);
   border-bottom: none;
 }
 
@@ -15431,17 +15478,17 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 8px;
+  gap: var(--space-0-5);
+  padding: var(--space-2);
 }
 
 .wb-note-list-item {
   appearance: none;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   width: 100%;
-  padding: 6px 8px;
+  padding: var(--space-1-5) var(--space-2);
   border: none;
   border-radius: var(--radius-md);
   background: transparent;

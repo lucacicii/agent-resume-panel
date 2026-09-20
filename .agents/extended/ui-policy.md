@@ -42,6 +42,7 @@ The window is Chromium, but everything the operating system can draw must be dra
 ### Controls, type, and layout
 
 - Design tokens are semantic CSS custom properties in `styles.css` `:root` (`--color-*`, `--space-*`, `--radius-*`, `--font-size-*`, `--duration-*`). New rules use tokens, never raw hex values.
+- Padding, margin, and gap follow the macOS 8pt grid spec in [`.agents/extended/ui-spacing.md`](ui-spacing.md): every spacing value is a `--space-*` token, with only hairlines, fixed chrome geometry, and optical nudges exempt.
 - System font stack only (`-apple-system`), with an 11–15px ladder; no web fonts.
 - Hit targets are 24×24px minimum, 28×28px for icon buttons. iOS patterns (bottom tab bars, FABs, 44pt targets, swipe-only navigation) are not used.
 - Scrollbars stay system-managed: never override `::-webkit-scrollbar` globally; scope it to a surface only when that surface must own its scrollbar (for example the terminal).
