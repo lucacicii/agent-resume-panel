@@ -3901,6 +3901,10 @@ describe("WorkbenchPanel", () => {
       repoRoot: "/work/app"
     }));
     const terminalGitCheckout = vi.fn(async () => ({ branch: "feature/ui", repoRoot: "/work/app" }));
+    const contextMenuShow = vi.fn(async (_args: { x: number; y: number; items: Array<{ id?: string; label?: string; checked?: boolean }> }): Promise<string | null> => null);
+    const chooseBranch = (label: string) => {
+      contextMenuShow.mockImplementationOnce(async (args) => args.items.find((item) => item.label === label)?.id ?? null);
+    };
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages: {
         "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.close": "Close", "desktop.common.cancel": "Cancel", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.sidePanelNoChanges": "No changes", "desktop.workbench.sidePanelStaged": "Staged", "desktop.workbench.sidePanelChanges": "Changes", "desktop.workbench.sidePanelGitUnavailable": "Git unavailable", "desktop.workbench.sidePanelNoRoot": "No root", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.gitCommit": "Commit", "desktop.workbench.gitCommitAndPush": "Commit & Push", "desktop.workbench.gitCommitAndPushSucceeded": "Commit and push completed.", "desktop.workbench.gitCommitDialogTitle": "Commit changes", "desktop.workbench.resizeCommitInput": "Resize commit input", "desktop.workbench.gitCommitAutoGenerate": "Auto generate", "desktop.workbench.gitCommitSuggestedLlm": "AI message", "desktop.workbench.gitCommitSuggestedUnconfigured": "Rule message", "desktop.workbench.gitCommitSuggestedFallback": "Fallback message", "desktop.workbench.gitSync": "Sync", "desktop.workbench.gitLog": "Git log", "desktop.workbench.gitSyncSucceeded": "Sync completed.", "desktop.workbench.gitSyncFailed": "Sync failed: {0}", "desktop.workbench.gitCommitSucceeded": "Commit completed.", "desktop.workbench.gitCommitSucceededPushFailed": "Commit completed, but push failed: {0}", "desktop.workbench.gitStatusRefreshFailed": "Could not refresh Git status: {0}", "desktop.workbench.gitBranchTracking": "↑{0}  ↓{1}", "desktop.workbench.gitNoUpstream": "{0} · no upstream", "desktop.workbench.switchBranch": "Switch branch", "desktop.workbench.gitLocalBranches": "Local Branches", "desktop.workbench.gitRemoteBranches": "Remote Branches", "desktop.workbench.gitNoLocalBranches": "No local branches", "desktop.workbench.gitNoRemoteBranches": "No origin branches", "desktop.workbench.checkoutBranchSucceeded": "Switched to branch {0}.", "desktop.workbench.checkoutBranchFailed": "Could not switch branch: {0}"
@@ -3923,7 +3927,8 @@ describe("WorkbenchPanel", () => {
       terminalGitStage,
       terminalGitUnstage,
       terminalGitBranches,
-      terminalGitCheckout
+      terminalGitCheckout,
+      contextMenuShow
     } as unknown as typeof window.agentResume;
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
@@ -3946,27 +3951,21 @@ describe("WorkbenchPanel", () => {
     });
 
     const branchTrigger = await screen.findByRole("button", { name: "Switch branch: main" });
+    chooseBranch("origin/feature/ui");
     fireEvent.click(branchTrigger);
-    expect(await screen.findByText("Local Branches")).toBeTruthy();
-    fireEvent.keyDown(window, { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("menu", { name: "Switch branch" })).toBeNull());
-    fireEvent.click(branchTrigger);
-    fireEvent.mouseDown(document.body);
-    await waitFor(() => expect(screen.queryByRole("menu", { name: "Switch branch" })).toBeNull());
-    fireEvent.click(branchTrigger);
-    expect(await screen.findByText("Local Branches")).toBeTruthy();
-    expect(screen.getByText("Remote Branches")).toBeTruthy();
-    expect(screen.getByRole("menuitemradio", { name: "main" }).getAttribute("aria-checked")).toBe("true");
-    fireEvent.click(screen.getByRole("menuitem", { name: "origin/feature/ui" }));
     await waitFor(() => expect(terminalGitCheckout).toHaveBeenCalledWith({
       cwd: "/work/app",
       branch: "feature/ui",
       remote: "origin",
       repoRoot: "/work/app"
     }));
-    await waitFor(() => expect(screen.queryByRole("menu", { name: "Switch branch" })).toBeNull());
+    // The picker is a native NSMenu now: assert the item list the renderer sends.
+    const branchItems = contextMenuShow.mock.calls.at(-1)![0].items;
+    expect(branchItems.find((item) => item.label === "Local Branches")).toBeTruthy();
+    expect(branchItems.find((item) => item.label === "Remote Branches")).toBeTruthy();
+    expect(branchItems.find((item) => item.label === "main")?.checked).toBe(true);
+    chooseBranch("feature-local");
     fireEvent.click(branchTrigger);
-    fireEvent.click(await screen.findByRole("menuitemradio", { name: "feature-local" }));
     await waitFor(() => expect(terminalGitCheckout).toHaveBeenLastCalledWith({
       cwd: "/work/app",
       branch: "feature-local",
@@ -4775,10 +4774,11 @@ describe("WorkbenchPanel", () => {
     ).toBe("Waiting"));
   });
 
-  it("dismisses the branch popover on outside click and Escape", async () => {
+  it("opens the branch picker as a native NSMenu", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
     document.body.append(host);
+    const contextMenuShow = vi.fn(async (_args: { x: number; y: number; items: Array<{ id?: string; label?: string; checked?: boolean }> }): Promise<string | null> => null);
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages: {
         "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.close": "Close", "desktop.common.loading": "Loading", "desktop.common.refresh": "Refresh", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.closeTerminal": "Close terminal", "desktop.workbench.gitBranchesLoaded": "Branches loaded"
@@ -4797,7 +4797,8 @@ describe("WorkbenchPanel", () => {
       terminalGitInfo: async () => ({ mode: "direct", isRepo: true, branch: "main", repoRoot: "/work/app", nestedRepos: [] }),
       terminalGitBranches: async () => ({ mode: "direct", current: "main", branches: ["main", "feature"], repoRoot: "/work/app" }),
       terminalDestroy: async () => ({ ok: true }),
-      terminalResize: async () => ({ ok: true })
+      terminalResize: async () => ({ ok: true }),
+      contextMenuShow
     } as unknown as typeof window.agentResume;
 
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
@@ -4806,15 +4807,11 @@ describe("WorkbenchPanel", () => {
     const branchButton = await screen.findByRole("button", { name: "main" });
     expect(branchButton.closest(".wb-detail-head")).not.toBeNull();
     fireEvent.click(branchButton);
-    await waitFor(() => expect(document.querySelector(".wb-git-branch-popover")).toBeTruthy());
+    await waitFor(() => expect(contextMenuShow).toHaveBeenCalled());
+    const items = contextMenuShow.mock.calls.at(-1)![0].items;
+    expect(items.map((item) => item.label)).toEqual(expect.arrayContaining(["main", "feature"]));
+    expect(items.find((item) => item.label === "main")?.checked).toBe(true);
     expect(notificationMocks.notifyDesktop).not.toHaveBeenCalled();
-    fireEvent.mouseDown(document.body);
-    await waitFor(() => expect(document.querySelector(".wb-git-branch-popover")).toBeNull());
-
-    fireEvent.click(branchButton);
-    await waitFor(() => expect(document.querySelector(".wb-git-branch-popover")).toBeTruthy());
-    fireEvent.keyDown(window, { key: "Escape" });
-    await waitFor(() => expect(document.querySelector(".wb-git-branch-popover")).toBeNull());
   });
 
   it("opens the search side panel from Cmd+Shift+F bridge", async () => {

@@ -2,8 +2,7 @@ import React, { useEffect, useRef, useState, type ReactPortal } from "react";
 import { createPortal } from "react-dom";
 import { ICON_SIZE, ThemeIcon } from "../../../components/ThemeIcon";
 import { desktopApi } from "../../../bridge";
-import { useOverlayPresence } from "../../../components/useOverlayMotion";
-import { useMenuKeyboard, useMenuPosition } from "../../../components/menuOverlay";
+import { showContextMenuAt, type NativeContextMenuItem } from "../../../nativeContextMenu";
 import { useI18n } from "../../../i18n";
 import {
   type GitGraphLayout,
@@ -110,131 +109,65 @@ export function GitBranchSelector({
 }): React.JSX.Element | null {
   const { t } = useI18n();
   const [branches, setBranches] = useState<TerminalGitBranches | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [open, setOpen] = useState(false);
-  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const requestRef = useRef(0);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
 
-  useEffect(() => {
-    const requestId = requestRef.current + 1;
-    requestRef.current = requestId;
-    if (!repoRoot) {
-      setBranches(null);
-      setLoading(false);
-      return;
-    }
-    const api = desktopApi();
-    if (typeof api.terminalGitBranches !== "function") {
-      setBranches(null);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    void api.terminalGitBranches({ cwd: repoRoot }).then((result) => {
-      if (requestRef.current === requestId) setBranches(result);
-    }).catch(() => {
-      if (requestRef.current === requestId) setBranches(null);
-    }).finally(() => {
-      if (requestRef.current === requestId) setLoading(false);
-    });
-    return () => { requestRef.current += 1; };
-  }, [repoRoot, value]);
-
-  useEffect(() => {
-    if (!open) return;
-    const dismiss = (event: MouseEvent) => {
-      if (!(event.target instanceof Element) || !event.target.closest(".react-git-branch-control")) setOpen(false);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setOpen(false);
-        buttonRef.current?.focus();
-      }
-    };
-    window.addEventListener("mousedown", dismiss);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("mousedown", dismiss);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open]);
-
-  const presence = useOverlayPresence(open);
-  // Anchored popover: the shared hook flips it at the window edge and gives it
-  // the keyboard behaviour a macOS menu is expected to have.
-  useMenuPosition(presence.mounted, menuRef, {
-    x: menuPosition?.left ?? 0,
-    y: menuPosition?.top ?? 0
-  });
-  useMenuKeyboard(presence.mounted, menuRef, () => setOpen(false));
-
-  if (!repoRoot) return null;
-  const localBranches = branches?.mode === "direct" ? branches.localBranches || branches.branches || [] : [];
-  const remoteBranches = branches?.mode === "direct" ? branches.remoteBranches || [] : [];
-  const openMenu = () => {
+  /**
+   * Branch picker as a native `NSMenu`: local branches as checkbox items and
+   * remote branches under a separator. Item ids map back to the selection.
+   */
+  const openMenu = async () => {
     const rect = buttonRef.current?.getBoundingClientRect();
-    if (rect) {
-      setMenuPosition({
-        top: Math.min(rect.bottom + 4, window.innerHeight - 16),
-        left: Math.max(8, Math.min(rect.left, window.innerWidth - 268))
+    if (!rect) return;
+    let result = branches;
+    if (!result) {
+      const api = desktopApi();
+      if (typeof api.terminalGitBranches !== "function") return;
+      try {
+        result = await api.terminalGitBranches({ cwd: repoRoot });
+        setBranches(result);
+      } catch { return; }
+    }
+    const direct = result.mode === "direct" ? result : null;
+    const localBranches = direct?.localBranches || direct?.branches || [];
+    const remoteBranches = direct?.remoteBranches || [];
+    const items: NativeContextMenuItem[] = [];
+    const selectionById = new Map<string, { branch: string; remote?: string }>();
+    if (localBranches.length) {
+      items.push({ label: t("desktop.workbench.gitLocalBranches"), enabled: false });
+      localBranches.forEach((branch, index) => {
+        const id = `l${index}`;
+        selectionById.set(id, { branch });
+        items.push({ id, label: branch, type: "checkbox", checked: branch === value });
       });
     }
-    setOpen((current) => !current);
+    if (remoteBranches.length) {
+      if (items.length) items.push({ type: "separator" });
+      items.push({ label: t("desktop.workbench.gitRemoteBranches"), enabled: false });
+      remoteBranches.forEach((branch, index) => {
+        const id = `r${index}`;
+        selectionById.set(id, { branch: branch.name, remote: branch.remote });
+        items.push({ id, label: branch.fullName });
+      });
+    }
+    if (!items.length) items.push({ label: t("desktop.workbench.gitNoLocalBranches"), enabled: false });
+    const chosen = await showContextMenuAt({ x: rect.left, y: rect.bottom + 4 }, items);
+    const selection = chosen ? selectionById.get(chosen) : undefined;
+    if (selection) onChange(selection);
   };
-  const selectBranch = (selection: { branch: string; remote?: string }) => {
-    setOpen(false);
-    onChange(selection);
-  };
-  const trigger = <button
+
+  if (!repoRoot) return null;
+  return <button
     ref={buttonRef}
     type="button"
     className="react-git-branch-control react-git-branch-trigger"
     aria-label={`${ariaLabel}: ${value || "-"}`}
     aria-haspopup="menu"
-    aria-expanded={open}
-    onClick={openMenu}
+    onClick={() => void openMenu()}
   >
     <ThemeIcon name="git-branch" size={ICON_SIZE.inline} aria-hidden="true" />
     <span>{value || "-"}</span>
     <ThemeIcon name="chevron-down" size={ICON_SIZE.inline} aria-hidden="true" />
   </button>;
-  const menu = presence.mounted ? createPortal(<div
-    ref={menuRef}
-    className={`react-git-branch-control react-git-branch-popover wb-git-branch-popover${presence.closing ? " is-closing" : ""}`}
-    style={{ ...(menuPosition ?? {}), visibility: "hidden" }}
-    role="menu"
-    aria-label={ariaLabel}
-  >
-    <div className="wb-git-branch-list">
-      {loading && !branches ? <p className="wb-git-branch-empty muted" role="status">{t("desktop.common.loading")}</p> : <>
-        <div className="wb-git-branch-repo-group">
-          <div className="wb-git-branch-repo-head">{t("desktop.workbench.gitLocalBranches")}</div>
-          {localBranches.length ? localBranches.map((branch) => <button
-            type="button"
-            role="menuitemradio"
-            aria-checked={branch === value}
-            className={`wb-git-branch-item${branch === value ? " active" : ""}`}
-            key={branch}
-            onClick={() => selectBranch({ branch })}
-          >{branch}</button>) : <p className="wb-git-branch-empty muted">{t("desktop.workbench.gitNoLocalBranches")}</p>}
-        </div>
-        <div className="wb-git-branch-repo-group">
-          <div className="wb-git-branch-repo-head">{t("desktop.workbench.gitRemoteBranches")}</div>
-          {remoteBranches.length ? remoteBranches.map((branch) => <button
-            type="button"
-            role="menuitem"
-            className="wb-git-branch-item"
-            title={branch.fullName}
-            key={branch.fullName}
-            onClick={() => selectBranch({ branch: branch.name, remote: branch.remote })}
-          >{branch.fullName}</button>) : <p className="wb-git-branch-empty muted">{t("desktop.workbench.gitNoRemoteBranches")}</p>}
-        </div>
-      </>}
-    </div>
-  </div>, document.body) : null;
-  return <>{trigger}{menu}</>;
 }
 
 export function BranchGraphNavigation({

@@ -34,7 +34,7 @@ import {
 } from "../../gtd";
 import { desktopApi } from "../../bridge";
 import { confirmDestructive } from "../../confirmAction";
-import { contextMenuPoint, showContextMenuAt } from "../../nativeContextMenu";
+import { contextMenuPoint, showContextMenuAt, type NativeContextMenuItem } from "../../nativeContextMenu";
 import { useMenuKeyboard, useMenuPosition } from "../../components/menuOverlay";
 import { CodeEditor, type CodeEditorHandle, type CodeEditorSearchResult } from "../../components/CodeEditor";
 import type { CodeMirrorAppearance } from "../../components/codeMirrorThemes";
@@ -99,7 +99,6 @@ import { resolveTerminalThemeId } from "./terminalThemes";
 import { appearanceStateFromSettings } from "../../themes";
 import { storedWidth } from "../../storage";
 import {
-  type TerminalGitBranches,
   type GitChange,
   type GitLog,
   type GitLogCommit,
@@ -336,11 +335,6 @@ function isOtherMachineSession(session: AgentSession, _localPath?: string | null
   // (cannot know current username without IPC; avoid over-flagging).
   return false;
 }
-type BranchMenuPosition = {
-  right: number;
-  top: number;
-};
-
 const PROJECT_KEY = "workbench-selected-project";
 const QUICK_ACCESS_PROJECT_KEY = "workbench-quick-access-project";
 const LIST_WIDTH_KEY = "wb-list-pane-width";
@@ -703,10 +697,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [gitLogError, setGitLogError] = useState("");
   const [discardingGitPaths, setDiscardingGitPaths] = useState<Set<string>>(() => new Set());
   const editorContextMenuRef = useRef<HTMLDivElement>(null);
-  const branchMenuRef = useRef<HTMLDivElement>(null);
-  const [branchPane, setBranchPane] = useState<TerminalPane | null>(null);
-  const [branchMenuPosition, setBranchMenuPosition] = useState<BranchMenuPosition | null>(null);
-  const [branchResult, setBranchResult] = useState<TerminalGitBranches | null>(null);
 
   const [settings, setSettings] = useState<PanelSettings | null>(null);
   const setStatus = useCallback((s: { text: string; kind?: "error" | "ok" | "warning" }) => {
@@ -1527,28 +1517,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [newSessionPicker]);
-
-  useEffect(() => {
-    if (!branchPane) return;
-    const dismiss = (event: MouseEvent) => {
-      if (!(event.target instanceof Element) || !event.target.closest(".wb-git-branch-popover")) {
-        setBranchPane(null);
-        setBranchResult(null);
-      }
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setBranchPane(null);
-        setBranchResult(null);
-      }
-    };
-    window.addEventListener("mousedown", dismiss);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("mousedown", dismiss);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [branchPane]);
 
   const allProjects = useMemo((): WorkbenchProject[] => {
     if (catalogProjects.length) {
@@ -4229,7 +4197,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     quickAccessProjectKey: QUICK_ACCESS_PROJECT_KEY,
     onDismissOverlays: () => {
       setContextMenu(null);
-      setBranchPane(null);
       setProjectPickDialog(null);
     }
   });
@@ -5000,52 +4967,61 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
   };
 
-  const openBranchMenu = async (pane: TerminalPane, anchor: HTMLButtonElement) => {
+  const checkoutBranch = async (pane: TerminalPane, branch: string, repoRoot?: string | null) => {
     try {
-      const rect = anchor.getBoundingClientRect();
-      setBranchMenuPosition({
-        right: Math.max(8, window.innerWidth - rect.right),
-        // Detail-head button: open menu below the chip (was bottom-anchored when status lived under the terminal).
-        top: Math.min(window.innerHeight - 16, rect.bottom + 6)
-      });
-      setBranchPane(pane);
-      setBranchResult(null);
-      const workbench = settingsRef.current?.workbench;
-      const result = await desktopApi().terminalGitBranches({
-        cwd: pane.cwd,
-        nestedScan: {
-          maxDepth: workbench?.gitNestedScanMaxDepth,
-          ignoreDirs: workbench?.gitNestedScanIgnoreDirs
-        }
-      });
-      setBranchResult(result);
-    } catch (error) { notifyGitFailure("desktop.workbench.loadBranchesFailed", error); }
-  };
-
-  const checkoutBranch = async (branch: string, repoRoot?: string | null) => {
-    if (!branchPane) return;
-    try {
-      await desktopApi().terminalGitCheckout({ cwd: branchPane.cwd, branch, repoRoot: repoRoot || branchPane.repoRoot || undefined });
-      setBranchPane(null);
-      setBranchResult(null);
-      await refreshTerminalGit(branchPane.key);
+      await desktopApi().terminalGitCheckout({ cwd: pane.cwd, branch, repoRoot: repoRoot || pane.repoRoot || undefined });
+      await refreshTerminalGit(pane.key);
       await refreshGit();
       notifyGitSuccess("desktop.workbench.checkoutBranchSucceeded", branch);
     } catch (error) { notifyGitFailure("desktop.workbench.checkoutBranchFailed", error); }
   };
 
-  const renderBranchMenu = (): React.JSX.Element | React.JSX.Element[] => {
-    if (!branchResult) return <p className="wb-git-branch-empty muted">{t("desktop.common.loading")}</p>;
-    if (branchResult.mode === "nested") {
-      if (!branchResult.repos?.length) return <p className="wb-git-branch-empty muted">{t("desktop.workbench.noGitBranches")}</p>;
-      return branchResult.repos.map((repo) => <div className="wb-git-branch-repo-group" key={repo.root}>
-        <div className="wb-git-branch-repo-head">{repo.displayPath || repo.root || t("desktop.workbench.nestedRepoUntitled")}</div>
-        {repo.branches.length ? repo.branches.map((branch) => <button type="button" className={`wb-git-branch-item${branch === repo.current ? " active" : ""}`} key={branch} onClick={() => void checkoutBranch(branch, repo.root)}>{branch}</button>) : <p className="wb-git-branch-empty muted">{t("desktop.workbench.noGitBranches")}</p>}
-      </div>);
-    }
-    const branches = branchResult.branches || [];
-    if (!branches.length) return <p className="wb-git-branch-empty muted">{t("desktop.workbench.noGitBranches")}</p>;
-    return branches.map((branch) => <button type="button" className={`wb-git-branch-item${branch === (branchResult.current ?? branchPane?.branch) ? " active" : ""}`} key={branch} onClick={() => void checkoutBranch(branch, branchResult.repoRoot)}>{branch}</button>);
+  /**
+   * Branch picker as a native `NSMenu`: one checkbox item per branch, or a
+   * submenu per repo when the pane spans nested repos. Item ids map back to the
+   * checkout target so labels never have to be parsed.
+   */
+  const openBranchMenu = async (pane: TerminalPane, anchor: HTMLButtonElement) => {
+    // Use the same repository set as the Git panel so a multi-project workspace
+    // lists every repo (with a header), not just the active pane's repo.
+    const repositories = gitRepositories.length
+      ? gitRepositories
+      : [{ root: pane.repoRoot || pane.cwd, label: pane.repoRoot || pane.cwd }];
+    const listed = await Promise.all(repositories.map(async (repository) => {
+      try {
+        return { repository, result: await desktopApi().terminalGitBranches({ cwd: repository.root }) };
+      } catch {
+        return { repository, result: null };
+      }
+    }));
+    const items: NativeContextMenuItem[] = [];
+    const targetById = new Map<string, { branch: string; repoRoot: string }>();
+    const multi = repositories.length > 1;
+    listed.forEach(({ repository, result }, repoIndex) => {
+      const branches = result?.branches || [];
+      if (multi) {
+        if (items.length) items.push({ type: "separator" });
+        items.push({ label: repository.label, enabled: false });
+      }
+      if (!branches.length) {
+        if (!multi) items.push({ label: t("desktop.workbench.noGitBranches"), enabled: false });
+        return;
+      }
+      branches.forEach((branch, branchIndex) => {
+        const id = `r${repoIndex}_${branchIndex}`;
+        targetById.set(id, { branch, repoRoot: repository.root });
+        items.push({
+          id,
+          label: branch,
+          type: "checkbox",
+          checked: branch === (result?.current ?? (repository.root === pane.repoRoot ? pane.branch : null))
+        });
+      });
+    });
+    const rect = anchor.getBoundingClientRect();
+    const chosen = await showContextMenuAt({ x: rect.left, y: rect.bottom + 6 }, items);
+    const target = chosen ? targetById.get(chosen) : undefined;
+    if (target) await checkoutBranch(pane, target.branch, target.repoRoot);
   };
 
   useEffect(() => {
@@ -5477,13 +5453,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     editorContextMenuRef,
     closeEditorContextMenu
   );
-  const closeBranchMenu = useCallback(() => setBranchPane(null), []);
-  useMenuPosition(Boolean(branchPane), branchMenuRef, {
-    x: branchMenuPosition ? Math.max(8, window.innerWidth - branchMenuPosition.right) : 8,
-    y: branchMenuPosition?.top ?? 0
-  });
-  useMenuKeyboard(Boolean(branchPane), branchMenuRef, closeBranchMenu);
-
   const newSessionPickerStyle = newSessionAnchorRect
     ? {
         left: Math.max(8, Math.min(newSessionAnchorRect.left, window.innerWidth - 248)),
@@ -6215,7 +6184,6 @@ export function WorkbenchPanel(): ReactPortal | null {
         </div>
       </main>
     </div>
-    {branchPane ? <div ref={branchMenuRef} className="wb-git-branch-popover" style={{ ...(branchMenuPosition ?? {}), visibility: "hidden" }}>{branchResult?.mode === "nested" ? <div className="wb-git-branch-list">{renderBranchMenu()}</div> : <><div className="wb-git-branch-repo-head">{branchResult?.repoRoot || branchPane.repoRoot || branchPane.cwd}</div><div className="wb-git-branch-list">{renderBranchMenu()}</div></>}</div> : null}
     {editorContextMenu ? <div ref={editorContextMenuRef} className={`wb-context-menu notes-selection-menu${editorContextMenuClosing ? " is-closing" : ""}`} role="menu" style={{ left: editorContextMenu.x, top: editorContextMenu.y, visibility: "hidden" }} onContextMenu={(event) => event.preventDefault()}>
       {editorContextMenu.selectedText ? (
         <>

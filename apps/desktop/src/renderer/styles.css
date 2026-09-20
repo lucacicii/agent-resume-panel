@@ -1586,7 +1586,6 @@ svg[data-icon-system="sf"] * {
 
 /* Anchored popovers, menus, and context menus fade back toward their anchor. */
 .chat-tools-popover.is-closing,
-.wb-git-branch-popover.is-closing,
 .selection-action-result.is-closing,
 .notification-popover.is-closing,
 .rail-account-menu.is-closing,
@@ -6616,18 +6615,13 @@ body.is-pane-resizing-v * {
 }
 
 .react-git-branch-trigger:hover,
-.react-git-branch-trigger:focus-visible,
-.react-git-branch-trigger[aria-expanded="true"] {
+.react-git-branch-trigger:focus-visible {
   background: var(--color-fill-secondary, color-mix(in srgb, var(--text) 6%, transparent));
 }
 
 .react-git-branch-trigger:focus-visible {
   outline: 2px solid var(--color-focus-ring, var(--accent));
   outline-offset: 1px;
-}
-
-.react-git-branch-popover {
-  min-width: 240px;
 }
 
 .wb-git-actions {
@@ -10064,90 +10058,6 @@ textarea.wb-editor-host {
   opacity: 0.7;
 }
 
-.wb-git-branch-popover {
-  position: fixed;
-  z-index: 2100;
-  min-width: 180px;
-  max-width: min(320px, calc(100vw - 16px));
-  max-height: min(280px, calc(100vh - 16px));
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  background: var(--color-elevated-bg, var(--bg));
-  border: 1px solid var(--color-separator, var(--border));
-  border-radius: 8px;
-  box-shadow: var(--shadow-popover, 0 8px 24px rgba(0, 0, 0, 0.18));
-  animation: mac-popover-enter var(--duration-fast) var(--ease-out);
-}
-
-.wb-git-branch-popover[hidden] {
-  display: none !important;
-}
-
-.wb-git-branch-list {
-  overflow-y: auto;
-  padding: var(--space-1);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-0-5);
-}
-
-.wb-git-branch-repo-group {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-0-5);
-}
-
-.wb-git-branch-repo-group+.wb-git-branch-repo-group {
-  margin-top: var(--space-1-5);
-  padding-top: var(--space-1-5);
-  border-top: 1px solid var(--color-separator, var(--border));
-}
-
-.wb-git-branch-repo-head {
-  padding: var(--space-1) var(--space-2-5) var(--space-0-5);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: var(--color-description, var(--muted));
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.wb-git-branch-item {
-  appearance: none;
-  border: none;
-  background: transparent;
-  color: var(--text);
-  text-align: left;
-  padding: var(--space-2) var(--space-2-5);
-  border-radius: 6px;
-
-  font-size: 12px;
-  font-family: Menlo, Monaco, "Courier New", monospace;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.wb-git-branch-item:hover,
-.wb-git-branch-item:focus-visible {
-  background: var(--color-fill-secondary, color-mix(in srgb, var(--text) 6%, transparent));
-}
-
-.wb-git-branch-item.active {
-  color: var(--color-accent, var(--accent));
-  background: var(--color-fill-primary, color-mix(in srgb, var(--accent) 12%, transparent));
-}
-
-.wb-git-branch-empty {
-  margin: 0;
-  padding: var(--space-2-5);
-  font-size: 12px;
-  text-align: center;
-}
 
 .wb-git-log-dialog {
   position: fixed;
