@@ -963,6 +963,33 @@ export function WorkbenchPanel(): ReactPortal | null {
     };
   }, [taskScope?.noteId]);
 
+  // Keep the scoped task's accent in step with refreshed task records, so a
+  // template recolor re-skins this window on its next task refresh.
+  useEffect(() => {
+    const noteId = taskScope?.noteId;
+    if (!noteId) return;
+    const record = tasks.find((item) => item.noteId === noteId);
+    if (!record?.accent) return;
+    if (taskScope.accent?.colorKey === record.accent.colorKey
+      && taskScope.accent?.shade === record.accent.shade) return;
+    setTaskScope((current) => current && current.noteId === noteId ? { ...current, accent: record.accent } : current);
+  }, [tasks, taskScope]);
+
+  // The task's accent dresses the whole window: html[data-task-accent] plus
+  // data-task-shade drive the CSS color-family derivation in styles.css. Only
+  // task windows set it; board and standalone-note windows stay neutral.
+  useEffect(() => {
+    const root = document.documentElement;
+    const accent = taskScope?.accent;
+    if (accent && root.dataset.windowMode === "task") {
+      root.dataset.taskAccent = accent.colorKey;
+      root.dataset.taskShade = String(accent.shade);
+    } else {
+      delete root.dataset.taskAccent;
+      delete root.dataset.taskShade;
+    }
+  }, [taskScope?.accent]);
+
   const openSessionKeys = useMemo(() => {
     const keys = new Set(terminals.flatMap((pane) => (pane.sessionKey ? [pane.sessionKey] : [])));
     for (const pane of acpChats) {
@@ -3182,6 +3209,13 @@ export function WorkbenchPanel(): ReactPortal | null {
       /* the sidebar list is best-effort; the board remains the source of truth */
     }
   }, []);
+
+  // Template recolors/deletes re-resolve task accents; refresh so an open
+  // window re-skins (via the accent-sync effect) without being reopened.
+  useEffect(() => {
+    const stop = desktopApi().onTaskTemplatesChanged?.(() => { void loadTasks(); });
+    return () => stop?.();
+  }, [loadTasks]);
 
   /** All notes, for the left-panel note list. */
   const loadNotes = useCallback(async () => {

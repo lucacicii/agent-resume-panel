@@ -5344,7 +5344,9 @@ describe("WorkbenchPanel", () => {
     }));
     expect(workbenchGitFileLog).toHaveBeenCalledTimes(1);
     // The pane opens through an async bridge call; give it room under load.
-    expect(await screen.findByText("File history · app.ts", undefined, { timeout: 5000 })).toBeTruthy();
+    // The plain pane title and the portaled graph title legitimately co-exist
+    // in the DOM (CSS hides one); match either.
+    expect((await screen.findAllByText("File history · app.ts", undefined, { timeout: 5000 })).length).toBeGreaterThan(0);
     expect(await screen.findByText("feature")).toBeTruthy();
     const remoteBranch = await screen.findByText("origin/feature");
     contextMenuShow.mockResolvedValue("copy-branch");

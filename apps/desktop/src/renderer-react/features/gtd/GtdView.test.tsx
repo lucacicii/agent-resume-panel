@@ -282,7 +282,8 @@ describe("GtdView", () => {
       title: "Write release notes",
       projects: ["/work/app", "/work/web"],
       primaryProject: "/work/app",
-      status: "next"
+      status: "next",
+      templateId: "tpl-1"
     }));
     // The just-created card opens its inline rename with the template name.
     const renameInput = await screen.findByRole("textbox", { name: "Title" });
@@ -314,6 +315,38 @@ describe("GtdView", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create template" }));
 
     await waitFor(() => expect(taskTemplatesCreate).toHaveBeenCalledWith({ title: "Daily standup", projectPaths: [] }));
+  });
+
+  it("creates a template with the chosen palette color", async () => {
+    const taskTemplatesCreate = vi.fn(async ({ title }: { title: string }) => ({
+      templateId: "tpl-color", title, projectPaths: [], colorKey: "purple", createdAtMs: 1, updatedAtMs: 1
+    }));
+    renderGtd({ taskTemplatesCreate } as unknown as Partial<typeof window.agentResume>);
+
+    fireEvent.click(await screen.findByRole("button", { name: "New template" }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "Template name" }), { target: { value: "Night build" } });
+    fireEvent.click(screen.getByRole("button", { name: "purple" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create template" }));
+
+    await waitFor(() => expect(taskTemplatesCreate).toHaveBeenCalledWith({
+      title: "Night build",
+      projectPaths: [],
+      colorKey: "purple"
+    }));
+  });
+
+  it("paints a card's accent bar from the task's template color", async () => {
+    renderGtd({
+      notesListTasks: async () => [{
+        noteId: "t-blue", title: "Blue task", filename: "t-blue.md", relDir: "", relMdPath: "", scope: "library",
+        createdAtMs: 1, updatedAtMs: 1, work: { sessions: [], projects: [] },
+        accent: { colorKey: "blue", shade: 2 }
+      }]
+    } as unknown as Partial<typeof window.agentResume>);
+
+    const card = await screen.findByText("Blue task").then((el) => el.closest(".gtd-card"));
+    expect(card?.getAttribute("data-task-accent")).toBe("blue");
+    expect(card?.getAttribute("data-task-shade")).toBe("2");
   });
 
   it("collects several projects for one template", async () => {

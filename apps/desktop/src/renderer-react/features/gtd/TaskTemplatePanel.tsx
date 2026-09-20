@@ -6,12 +6,15 @@ import { confirmDestructive } from "../../confirmAction";
 import { useOverlayState } from "../../components/useOverlayMotion";
 import { contextMenuPoint, showContextMenuAt } from "../../nativeContextMenu";
 import { useI18n } from "../../i18n";
+import { TASK_COLOR_KEYS, type TaskColorKey } from "../../../shared/taskColors";
 
 /** One reusable GTD task template as the renderer sees it. */
 export type TaskTemplate = {
   templateId: string;
   title: string;
   projectPaths: string[];
+  /** Fixed-palette accent color; absent when the template has none. */
+  colorKey?: TaskColorKey;
   createdAtMs: number;
   updatedAtMs: number;
 };
@@ -21,6 +24,8 @@ type TemplateDraft = {
   templateId?: string;
   title: string;
   projectPaths: string[];
+  /** null keeps the template's tasks neutral. */
+  colorKey: TaskColorKey | null;
   busy: boolean;
   error: string;
 };
@@ -73,7 +78,7 @@ export function TaskTemplatePanel({
   }, [active, load]);
 
   const openNewTemplate = useCallback(() => {
-    setDraft({ title: "", projectPaths: [], busy: false, error: "" });
+    setDraft({ title: "", projectPaths: [], colorKey: null, busy: false, error: "" });
   }, []);
 
   const openEditTemplate = useCallback((template: TaskTemplate) => {
@@ -81,6 +86,7 @@ export function TaskTemplatePanel({
       templateId: template.templateId,
       title: template.title,
       projectPaths: [...template.projectPaths],
+      colorKey: template.colorKey ?? null,
       busy: false,
       error: ""
     });
@@ -118,9 +124,14 @@ export function TaskTemplatePanel({
     try {
       const projectPaths = draft.projectPaths.map((entry) => entry.trim()).filter(Boolean);
       if (draft.templateId) {
-        await api.taskTemplatesUpdate({ templateId: draft.templateId, title, projectPaths });
+        await api.taskTemplatesUpdate({
+          templateId: draft.templateId,
+          title,
+          projectPaths,
+          colorKey: draft.colorKey
+        });
       } else {
-        await api.taskTemplatesCreate({ title, projectPaths });
+        await api.taskTemplatesCreate({ title, projectPaths, colorKey: draft.colorKey ?? undefined });
       }
       setDraft(null);
       await load();
@@ -200,6 +211,14 @@ export function TaskTemplatePanel({
               }}
             >
               <ThemeIcon name="grip-vertical" className="gtd-template-grip" size={ICON_SIZE.dense} aria-hidden="true" />
+              {template.colorKey ? (
+                <span
+                  className="gtd-template-color"
+                  data-task-accent={template.colorKey}
+                  data-task-shade="1"
+                  aria-hidden="true"
+                />
+              ) : null}
               <span className="gtd-template-body">
                 <span className="gtd-template-title">{template.title}</span>
                 {template.projectPaths.length > 0 ? (
@@ -253,6 +272,32 @@ export function TaskTemplatePanel({
                       onClick={() => removeProject(projectPath)}
                     ><ThemeIcon name="close" size={ICON_SIZE.inline} /></button>
                   </span>
+                ))}
+              </div>
+            </div>
+            <div className="gtd-new-task-field">
+              <span>{text("desktop.gtd.templateColor")}</span>
+              <div className="gtd-template-color-row" role="group" aria-label={text("desktop.gtd.templateColor")}>
+                <button
+                  type="button"
+                  className="gtd-template-swatch is-none"
+                  aria-pressed={draft.colorKey == null}
+                  aria-label={text("desktop.gtd.templateColorNone")}
+                  title={text("desktop.gtd.templateColorNone")}
+                  onClick={() => setDraft((current) => current ? { ...current, colorKey: null } : current)}
+                />
+                {TASK_COLOR_KEYS.map((key) => (
+                  <button
+                    type="button"
+                    key={key}
+                    className="gtd-template-swatch"
+                    data-task-accent={key}
+                    data-task-shade="1"
+                    aria-pressed={draft.colorKey === key}
+                    aria-label={key}
+                    title={key}
+                    onClick={() => setDraft((current) => current ? { ...current, colorKey: key } : current)}
+                  />
                 ))}
               </div>
             </div>

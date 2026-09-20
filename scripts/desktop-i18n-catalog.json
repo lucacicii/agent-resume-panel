@@ -66,7 +66,9 @@
     "desktop.workbench.terminalComposerProjectSuggestions": "Project paths",
     "desktop.workbench.terminalComposerProjectNoMatch": "No matching projects",
     "desktop.settings.selectionCreateAction": "Create",
-    "desktop.settings.panelHomeFootnote": "Reveal uses the saved path. Changes are saved automatically."
+    "desktop.settings.panelHomeFootnote": "Reveal uses the saved path. Changes are saved automatically.",
+    "desktop.gtd.templateColor": "Color",
+    "desktop.gtd.templateColorNone": "None"
   },
   "ja": {
     "desktop.workbench.lastExitWaiting": "前回終了時にこのセッションは入力待ちでした",
@@ -135,7 +137,9 @@
     "desktop.workbench.terminalComposerProjectSuggestions": "プロジェクトのパス",
     "desktop.workbench.terminalComposerProjectNoMatch": "一致するプロジェクトがありません",
     "desktop.settings.selectionCreateAction": "作成",
-    "desktop.settings.panelHomeFootnote": "表示は保存済みパスを使用。変更は自動保存されます。"
+    "desktop.settings.panelHomeFootnote": "表示は保存済みパスを使用。変更は自動保存されます。",
+    "desktop.gtd.templateColor": "カラー",
+    "desktop.gtd.templateColorNone": "なし"
   },
   "zh-cn": {
     "desktop.workbench.lastExitWaiting": "上次退出时该会话在等待你的输入",
@@ -204,6 +208,8 @@
     "desktop.workbench.terminalComposerProjectSuggestions": "项目路径",
     "desktop.workbench.terminalComposerProjectNoMatch": "没有匹配的项目",
     "desktop.settings.selectionCreateAction": "创建",
-    "desktop.settings.panelHomeFootnote": "打开操作使用已保存的路径，修改会自动保存。"
+    "desktop.settings.panelHomeFootnote": "打开操作使用已保存的路径，修改会自动保存。",
+    "desktop.gtd.templateColor": "颜色",
+    "desktop.gtd.templateColorNone": "无"
   }
 }

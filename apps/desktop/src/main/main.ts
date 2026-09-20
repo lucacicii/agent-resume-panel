@@ -228,9 +228,13 @@ import { showDirectoryPicker } from "./directoryPicker";
 import {
   createTaskTemplate,
   deleteTaskTemplate,
+  linkTaskTemplate,
   listTaskTemplates,
+  resolveTaskColorKeys,
+  unlinkTaskTemplate,
   updateTaskTemplate
 } from "./taskTemplates";
+import { isTaskColorKey, taskAccent } from "../shared/taskColors";
 import { refreshMemorySchedulerFromSettings, stopMemoryScheduler } from "./scheduler";
 import {
   ensureAgentStatusDaemon,
@@ -3219,35 +3223,69 @@ function registerIpc(): void {
   ipcMain.handle("logs:openDir", async () => openAppErrorLogDir());
 
   ipcMain.handle("notes:list", async () => notesList());
-  ipcMain.handle("notes:listTasks", async () => notesListTasks());
+  ipcMain.handle("notes:listTasks", async () => {
+    const items = await notesListTasks();
+    const colorKeys = await resolveTaskColorKeys();
+    if (!colorKeys.size) return items;
+    return items.map((item) => {
+      const colorKey = colorKeys.get(item.noteId);
+      return colorKey ? { ...item, accent: taskAccent(colorKey, item.noteId) } : item;
+    });
+  });
+  // Recolors and deletions re-resolve every linked task's accent, so every
+  // window must hear about them — the same broadcast pattern the system accent
+  // uses. Creations add no task colors and stay board-local.
+  const broadcastTemplatesChanged = () => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send("taskTemplates:changed");
+    }
+  };
   ipcMain.handle("taskTemplates:list", async () => listTaskTemplates());
-  ipcMain.handle("taskTemplates:create", async (_event, args: { title?: unknown; projectPaths?: unknown }) => {
-    if (typeof args?.title !== "string" || !args.title.trim()) {
-      throw new Error("A template name is required.");
+  ipcMain.handle(
+    "taskTemplates:create",
+    async (_event, args: { title?: unknown; projectPaths?: unknown; colorKey?: unknown }) => {
+      if (typeof args?.title !== "string" || !args.title.trim()) {
+        throw new Error("A template name is required.");
+      }
+      return createTaskTemplate({
+        title: args.title,
+        projectPaths: stringList(args?.projectPaths),
+        colorKey: isTaskColorKey(args?.colorKey) ? args.colorKey : undefined
+      });
     }
-    return createTaskTemplate({
-      title: args.title,
-      projectPaths: stringList(args?.projectPaths)
-    });
-  });
-  ipcMain.handle("taskTemplates:update", async (_event, args: { templateId?: unknown; title?: unknown; projectPaths?: unknown }) => {
-    if (typeof args?.templateId !== "string" || !args.templateId.trim()) {
-      throw new Error("A task template id is required.");
+  );
+  ipcMain.handle(
+    "taskTemplates:update",
+    async (
+      _event,
+      args: { templateId?: unknown; title?: unknown; projectPaths?: unknown; colorKey?: unknown }
+    ) => {
+      if (typeof args?.templateId !== "string" || !args.templateId.trim()) {
+        throw new Error("A task template id is required.");
+      }
+      if (typeof args?.title !== "string" || !args.title.trim()) {
+        throw new Error("A template name is required.");
+      }
+      return updateTaskTemplate({
+        templateId: args.templateId,
+        title: args.title,
+        projectPaths: stringList(args?.projectPaths),
+        // Updates always set the color: a valid key, or null to clear it.
+        colorKey: isTaskColorKey(args?.colorKey) ? args.colorKey : null
+      }).then((template) => {
+        broadcastTemplatesChanged();
+        return template;
+      });
     }
-    if (typeof args?.title !== "string" || !args.title.trim()) {
-      throw new Error("A template name is required.");
-    }
-    return updateTaskTemplate({
-      templateId: args.templateId,
-      title: args.title,
-      projectPaths: stringList(args?.projectPaths)
-    });
-  });
+  );
   ipcMain.handle("taskTemplates:delete", async (_event, args: { templateId?: unknown }) => {
     if (typeof args?.templateId !== "string" || !args.templateId.trim()) {
       throw new Error("A task template id is required.");
     }
-    return deleteTaskTemplate(args.templateId);
+    return deleteTaskTemplate(args.templateId).then((result) => {
+      broadcastTemplatesChanged();
+      return result;
+    });
   });
   ipcMain.handle("notes:removeTaskProject", async (_event, args: { noteId?: unknown; projectPath?: unknown }) => {
     if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
@@ -3299,17 +3337,36 @@ function registerIpc(): void {
       projectPath: typeof args.projectPath === "string" ? args.projectPath : undefined
     });
   });
-  ipcMain.handle("notes:createTask", async (_event, args: { title?: unknown; next?: unknown; decision?: unknown; sessions?: unknown; projects?: unknown; primaryProject?: unknown; status?: unknown }) => {
-    return notesCreateTask({
-      title: typeof args?.title === "string" ? args.title : undefined,
-      next: typeof args?.next === "string" ? args.next : undefined,
-      decision: typeof args?.decision === "string" ? args.decision : undefined,
-      sessions: stringList(args?.sessions),
-      projects: stringList(args?.projects),
-      primaryProject: typeof args?.primaryProject === "string" ? args.primaryProject : undefined,
-      status: typeof args?.status === "string" && isGtdStatus(args.status) ? args.status : undefined
-    });
-  });
+  ipcMain.handle(
+    "notes:createTask",
+    async (
+      _event,
+      args: {
+        title?: unknown;
+        next?: unknown;
+        decision?: unknown;
+        sessions?: unknown;
+        projects?: unknown;
+        primaryProject?: unknown;
+        status?: unknown;
+        templateId?: unknown;
+      }
+    ) => {
+      const record = await notesCreateTask({
+        title: typeof args?.title === "string" ? args.title : undefined,
+        next: typeof args?.next === "string" ? args.next : undefined,
+        decision: typeof args?.decision === "string" ? args.decision : undefined,
+        sessions: stringList(args?.sessions),
+        projects: stringList(args?.projects),
+        primaryProject: typeof args?.primaryProject === "string" ? args.primaryProject : undefined,
+        status: typeof args?.status === "string" && isGtdStatus(args.status) ? args.status : undefined
+      });
+      const templateId = typeof args?.templateId === "string" ? args.templateId.trim() : "";
+      if (!templateId) return record;
+      const colorKey = await linkTaskTemplate({ noteId: record.noteId, templateId });
+      return colorKey ? { ...record, accent: taskAccent(colorKey, record.noteId) } : record;
+    }
+  );
   ipcMain.handle("notes:listRoot", async () => notesListRootNotes());
   ipcMain.handle("notes:listLinks", async () => notesListLinks());
   ipcMain.handle("notes:listLinkedChildIds", async () => notesListLinkedChildIds());
@@ -3521,6 +3578,7 @@ function registerIpc(): void {
   );
   ipcMain.handle("notes:delete", async (_event, args: { noteId: string }) => {
     const result = await notesDelete(args.noteId);
+    await unlinkTaskTemplate(args.noteId);
     scheduleNotesIndex();
     return result;
   });

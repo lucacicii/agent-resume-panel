@@ -115,6 +115,12 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
     return () => window.removeEventListener("agent-resume:notes-mutated", onMutated);
   }, [load, loadWorkbenches]);
 
+  // Template recolors/deletes re-resolve card accents; reload the cards.
+  useEffect(() => {
+    const stop = desktopApi().onTaskTemplatesChanged?.(() => { void load(); });
+    return () => stop?.();
+  }, [load]);
+
   // Live status comes from main, which merges every workbench window's report
   // (plus daemon-only panes). Grouping by workbench here is what gives the board
   // one status per workbench chip.
@@ -266,7 +272,8 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
         ...(template.projectPaths.length > 0
           ? { projects: template.projectPaths, primaryProject: template.projectPaths[0] }
           : {}),
-        status
+        status,
+        templateId: template.templateId
       });
       await load();
       window.dispatchEvent(new Event("agent-resume:notes-mutated"));
@@ -482,6 +489,8 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
                     key={item.noteId}
                     draggable
                     className={`gtd-card${waiting ? " is-needs-you" : ""}`}
+                    data-task-accent={item.accent?.colorKey}
+                    data-task-shade={item.accent?.shade}
                     onContextMenu={(event) => {
                       event.preventDefault();
                       void openContextMenu(event, item);

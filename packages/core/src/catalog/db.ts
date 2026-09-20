@@ -5,6 +5,7 @@ import { REPORT_SCHEMA_SQL } from "../report/schema";
 import {
   DESKTOP_ONLY_SCHEMA_SQL,
   SYNC_STATE_DESKTOP_MIGRATION_SQL,
+  TASK_TEMPLATE_COLOR_MIGRATION_SQL,
   TASK_TEMPLATE_PROJECT_PATHS_MIGRATION_SQL
 } from "./desktopSchema";
 import { EXTENSION_MIGRATION_SQL, EXTENSION_SCHEMA_SQL } from "./extensionSchema";
@@ -105,6 +106,7 @@ export async function ensureDesktopDbSchema(desktopDb: string): Promise<void> {
     await runSqlite(target, REPORT_SCHEMA_SQL);
     await runSqlite(target, DESKTOP_ONLY_SCHEMA_SQL);
     await runIdempotentStatements(target, TASK_TEMPLATE_PROJECT_PATHS_MIGRATION_SQL);
+    await runIdempotentStatements(target, TASK_TEMPLATE_COLOR_MIGRATION_SQL);
     verifiedDesktopDbPaths.add(target);
   })().finally(() => {
     desktopDbInFlight.delete(target);

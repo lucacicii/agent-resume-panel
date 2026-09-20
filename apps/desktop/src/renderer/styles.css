@@ -321,7 +321,71 @@
   --wb-git-lane-7: #63e6e2;
 }
 
-@media (prefers-color-scheme: dark) {
+/* ===== Task accent color family (task windows) =====
+   A task window whose task carries a template accent sets html[data-task-accent]
+   and data-task-shade on the document root. The anchors below hold one hue and
+   one lightness/saturation step per (palette key, shade); they are unprefixed
+   so any element can carry the same pair — the derivation blocks re-express
+   the background-family tokens for a whole window, while board cards and
+   template swatches paint themselves from the same anchors. Shades run
+   0 (lightest) to 3 (darkest): tasks of the same template differ in overall
+   lightness, which is what makes side-by-side windows readable at a glance.
+   Keep the keys in step with TASK_COLOR_KEYS in src/shared/taskColors.ts. */
+[data-task-accent="blue"][data-task-shade="0"] { --task-h: 221; --task-dl: 6; --task-ds: 6; }
+[data-task-accent="blue"][data-task-shade="1"] { --task-h: 221; --task-dl: 2; --task-ds: 2; }
+[data-task-accent="blue"][data-task-shade="2"] { --task-h: 221; --task-dl: -2; --task-ds: 0; }
+[data-task-accent="blue"][data-task-shade="3"] { --task-h: 221; --task-dl: -7; --task-ds: 3; }
+[data-task-accent="teal"][data-task-shade="0"] { --task-h: 174; --task-dl: 6; --task-ds: 6; }
+[data-task-accent="teal"][data-task-shade="1"] { --task-h: 174; --task-dl: 2; --task-ds: 2; }
+[data-task-accent="teal"][data-task-shade="2"] { --task-h: 174; --task-dl: -2; --task-ds: 0; }
+[data-task-accent="teal"][data-task-shade="3"] { --task-h: 174; --task-dl: -7; --task-ds: 3; }
+[data-task-accent="green"][data-task-shade="0"] { --task-h: 145; --task-dl: 6; --task-ds: 6; }
+[data-task-accent="green"][data-task-shade="1"] { --task-h: 145; --task-dl: 2; --task-ds: 2; }
+[data-task-accent="green"][data-task-shade="2"] { --task-h: 145; --task-dl: -2; --task-ds: 0; }
+[data-task-accent="green"][data-task-shade="3"] { --task-h: 145; --task-dl: -7; --task-ds: 3; }
+[data-task-accent="yellow"][data-task-shade="0"] { --task-h: 52; --task-dl: 6; --task-ds: 6; }
+[data-task-accent="yellow"][data-task-shade="1"] { --task-h: 52; --task-dl: 2; --task-ds: 2; }
+[data-task-accent="yellow"][data-task-shade="2"] { --task-h: 52; --task-dl: -2; --task-ds: 0; }
+[data-task-accent="yellow"][data-task-shade="3"] { --task-h: 52; --task-dl: -7; --task-ds: 3; }
+[data-task-accent="orange"][data-task-shade="0"] { --task-h: 22; --task-dl: 6; --task-ds: 6; }
+[data-task-accent="orange"][data-task-shade="1"] { --task-h: 22; --task-dl: 2; --task-ds: 2; }
+[data-task-accent="orange"][data-task-shade="2"] { --task-h: 22; --task-dl: -2; --task-ds: 0; }
+[data-task-accent="orange"][data-task-shade="3"] { --task-h: 22; --task-dl: -7; --task-ds: 3; }
+[data-task-accent="red"][data-task-shade="0"] { --task-h: 355; --task-dl: 6; --task-ds: 6; }
+[data-task-accent="red"][data-task-shade="1"] { --task-h: 355; --task-dl: 2; --task-ds: 2; }
+[data-task-accent="red"][data-task-shade="2"] { --task-h: 355; --task-dl: -2; --task-ds: 0; }
+[data-task-accent="red"][data-task-shade="3"] { --task-h: 355; --task-dl: -7; --task-ds: 3; }
+[data-task-accent="pink"][data-task-shade="0"] { --task-h: 330; --task-dl: 6; --task-ds: 6; }
+[data-task-accent="pink"][data-task-shade="1"] { --task-h: 330; --task-dl: 2; --task-ds: 2; }
+[data-task-accent="pink"][data-task-shade="2"] { --task-h: 330; --task-dl: -2; --task-ds: 0; }
+[data-task-accent="pink"][data-task-shade="3"] { --task-h: 330; --task-dl: -7; --task-ds: 3; }
+[data-task-accent="purple"][data-task-shade="0"] { --task-h: 262; --task-dl: 6; --task-ds: 6; }
+[data-task-accent="purple"][data-task-shade="1"] { --task-h: 262; --task-dl: 2; --task-ds: 2; }
+[data-task-accent="purple"][data-task-shade="2"] { --task-h: 262; --task-dl: -2; --task-ds: 0; }
+[data-task-accent="purple"][data-task-shade="3"] { --task-h: 262; --task-dl: -7; --task-ds: 3; }
+
+html[data-task-accent] {
+  --task-s: calc(40% + var(--task-ds) * 1.2%);
+  --color-window-bg: hsl(var(--task-h) calc(var(--task-s) * 0.7) calc(96.5% + var(--task-dl) * 1%));
+  --color-sidebar-bg: hsl(var(--task-h) calc(var(--task-s) * 1.3) calc(90% + var(--task-dl) * 1%) / 0.42);
+  --color-content-bg: hsl(var(--task-h) var(--task-s) calc(95% + var(--task-dl) * 1%) / 0.82);
+  --color-pane-bg: hsl(var(--task-h) var(--task-s) calc(93.5% + var(--task-dl) * 1%) / 0.88);
+  --color-card-bg: hsl(var(--task-h) calc(var(--task-s) * 0.5) calc(99.2% + var(--task-dl) * 1%));
+  --color-separator: hsl(var(--task-h) calc(var(--task-s) * 2) 35% / 0.12);
+}
+
+/* Dark tints need a much higher input saturation: the translucent layers
+   composite over a dark vibrancy surface that dilutes them heavily, and a
+   low base reads as neutral gray across templates. */
+html[data-theme="dark"][data-task-accent] {
+  --task-s: calc(56% + var(--task-ds) * 1.2%);
+  --color-window-bg: hsl(var(--task-h) calc(var(--task-s) * 0.5) calc(12.5% + var(--task-dl) * 0.9%));
+  --color-sidebar-bg: hsl(var(--task-h) calc(var(--task-s) * 0.85) calc(17% + var(--task-dl) * 0.9%) / 0.42);
+  --color-content-bg: hsl(var(--task-h) calc(var(--task-s) * 0.45) calc(14% + var(--task-dl) * 0.9%) / 0.82);
+  --color-pane-bg: hsl(var(--task-h) calc(var(--task-s) * 0.5) calc(15.5% + var(--task-dl) * 0.9%) / 0.88);
+  --color-card-bg: hsl(var(--task-h) calc(var(--task-s) * 0.3) calc(16.5% + var(--task-dl) * 0.9%));
+  --color-separator: hsl(var(--task-h) var(--task-s) 60% / 0.12);
+}
   :root:not([data-theme="light"]) {
     color-scheme: dark;
     --color-window-bg: #1e1e1e;
@@ -395,6 +459,17 @@
     --wb-git-lane-5: #64d2ff;
     --wb-git-lane-6: #5e5ce6;
     --wb-git-lane-7: #63e6e2;
+  }
+
+  /* System-preference dark mirrors the explicit dark accent block above. */
+  html[data-task-accent]:not([data-theme="light"]) {
+    --task-s: calc(56% + var(--task-ds) * 1.2%);
+    --color-window-bg: hsl(var(--task-h) calc(var(--task-s) * 0.5) calc(12.5% + var(--task-dl) * 0.9%));
+    --color-sidebar-bg: hsl(var(--task-h) calc(var(--task-s) * 0.85) calc(17% + var(--task-dl) * 0.9%) / 0.42);
+    --color-content-bg: hsl(var(--task-h) calc(var(--task-s) * 0.45) calc(14% + var(--task-dl) * 0.9%) / 0.82);
+    --color-pane-bg: hsl(var(--task-h) calc(var(--task-s) * 0.5) calc(15.5% + var(--task-dl) * 0.9%) / 0.88);
+    --color-card-bg: hsl(var(--task-h) calc(var(--task-s) * 0.3) calc(16.5% + var(--task-dl) * 0.9%));
+    --color-separator: hsl(var(--task-h) var(--task-s) 60% / 0.12);
   }
 }
 
@@ -14141,7 +14216,7 @@ html[data-window-mode="browser"] #react-chrome {
 
 .gtd-template-item {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 6px;
   min-width: 0;
   padding: 8px 10px;
@@ -14202,6 +14277,55 @@ html[data-window-mode="browser"] #react-chrome {
   font-size: var(--font-size-caption, 11px);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Template accent dot on a library item, painted from the same anchors
+   the task-window skin and the board card bar use. */
+.gtd-template-color {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: hsl(var(--task-h) calc(55% + var(--task-ds) * 1%) calc(52% + var(--task-dl) * 0.8%));
+  box-shadow: 0 0 0 0.5px var(--color-separator-strong);
+}
+
+.gtd-template-color-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gtd-template-swatch {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  background: hsl(var(--task-h) calc(55% + var(--task-ds) * 1%) calc(52% + var(--task-dl) * 0.8%));
+  box-shadow: 0 0 0 0.5px var(--color-separator-strong);
+}
+
+.gtd-template-swatch.is-none {
+  position: relative;
+  background: var(--color-tertiary-bg);
+}
+
+.gtd-template-swatch.is-none::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  top: 50%;
+  height: 1.5px;
+  border-radius: 1px;
+  background: var(--color-label-tertiary);
+  transform: rotate(-45deg);
+}
+
+.gtd-template-swatch[aria-pressed="true"] {
+  box-shadow: 0 0 0 2px var(--color-focus-ring);
 }
 
 .gtd-card-main-renaming {
@@ -14315,6 +14439,22 @@ html[data-window-mode="browser"] #react-chrome {
   transition: border-color var(--duration-fast) var(--ease-out),
               box-shadow var(--duration-fast) var(--ease-out),
               transform var(--duration-fast) var(--ease-out);
+}
+
+/* Template accent: the left bar marks the card's color family and shade. */
+.gtd-card[data-task-accent] {
+  position: relative;
+}
+
+.gtd-card[data-task-accent]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: hsl(var(--task-h) calc(55% + var(--task-ds) * 1%) calc(52% + var(--task-dl) * 0.8%));
 }
 
 .gtd-card:hover {
