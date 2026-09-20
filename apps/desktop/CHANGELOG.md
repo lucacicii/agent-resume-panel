@@ -8,16 +8,29 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## English
 
-### [Unreleased]
+### [0.2.30]
 
 #### Added
 
 - **Board navigation sidebar**: the board window gains a full-height nav sidebar (GTD / Notes) with a gliding hover highlight, collapsible to an icon rail, and restored across launches. The macOS traffic lights now sit over the sidebar, as in Finder, and the sidebar stops being a drag surface in full screen. **View ▸ Show GTD Board (⌘1)** and **View ▸ Show Notes (⌘2)** bring the board forward and switch views; the quick access palette gained the same two commands, and the selected view is remembered
 - **Notes in the board window**: a Notes module beside the GTD board — a searchable list of root notes grouped into tasks, project notes and library notes, with child-count badges, new-note and import actions, and live search across the whole index. The editor pane is the same note view the workbench uses (link tree, edit/preview, find, attachments, GTD status)
+- **SF Symbols icons**: Desktop icons come from Apple's SF Symbols, with an open-source fallback, on a five-step even-pixel ladder (12 / 14 / 16 / 20 / 24 px) so they stay crisp on Retina
+- **Task template colour families**: task templates gain a fixed eight-colour palette; dropping a template on the board records the link and every task derives a stable shade from its note id, so two tasks made from the same template differ in lightness. Workbench windows re-tint from the template — in light, dark and system-dark — and board cards carry a matching accent bar. Recolouring or deleting a template re-skins the open windows, and a deleted template falls back to the shade captured at creation
+- **Native select menus**: the Git repository selector, the branch pickers (workbench detail header and Git panel) and the note GTD status selects open as native `NSMenu`s with checkbox items instead of Chromium's own pop-up. A multi-repo workspace lists one header per repository, and a branch label is never parsed back out of the menu
+- **Board window size**: the board opens at 1640 × 870, centred on the display, so the four GTD columns fit without a horizontal scrollbar even with the nav expanded
 
 #### Changed
 
-- **Board window layout**: the board is now a grid with a full-height sidebar column, so the header starts beside the sidebar instead of spanning the window
+- **Four GTD states**: the board and the status menus now expose To do / In progress / Waiting / Done. The catalog keeps the full six-state vocabulary, so Someday and Reference fold onto To do and existing marks never drop off the board; a task rolls up as Waiting → In progress → To do → Done, and only counts as done when every contribution is done
+- **Board window layout**: the board is now a grid with a full-height sidebar column, so the header starts beside the sidebar instead of spanning the window, and it leads with the sidebar toggle
+- **macOS spacing**: spacing, control heights and corner radii were reworked onto the platform's scale — the board panes are rounded, and the workbench detail header, the tab bar and the Notes pane sit on one translucent surface
+- **Terminal tab close icon**: sized with the tab icons instead of with the tab text
+
+#### Fixed
+
+- **Editor scrolling**: the CodeMirror scroller rules are restored, so long files scroll again in the workbench editor, the floating note and the standalone note window instead of being clipped by their host
+- **Select chevrons**: the repository and GTD status selects no longer tile a stray chevron across the trigger in dark mode or drop it in light mode, and the repository select now matches the row height
+- **Session auto-rename**: the Workbench no longer toasts progress and success; only a failure to rename the session in the native store raises an error notification
 
 ### [0.2.29]
 
@@ -666,16 +679,29 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## 简体中文
 
-### [Unreleased]
+### [0.2.30]
 
 #### 新增
 
 - **看板导航侧栏**：看板窗口新增全高导航侧栏（GTD / 笔记），带滑动高亮、可折叠为图标栏并在重启后保持。macOS 红绿灯现在位于侧栏之上（与 Finder 一致），全屏时侧栏不再作为拖拽区。**显示 ▸ 显示 GTD 看板（⌘1）** 与 **显示 ▸ 显示笔记（⌘2）** 会前置看板并切换视图；快速访问面板新增同样两个命令，所选视图会被记住
 - **看板窗口中的笔记模块**：GTD 看板旁新增笔记模块——可搜索的根笔记列表，按任务、项目笔记、笔记库分组，带子笔记数徽标、新建与导入操作，并支持对全量索引的实时搜索。编辑面板沿用工作台的笔记视图（链接树、编辑/预览、查找、附件、GTD 状态）
+- **SF Symbols 图标**：Desktop 图标改用 Apple SF Symbols，并带开源回退方案；图标尺寸落在五档偶数像素阶梯（12 / 14 / 16 / 20 / 24 px），在 Retina 屏上更锐利
+- **任务模板配色家族**：任务模板新增固定八色调色板；把模板拖到看板上会记录该关联，每个任务再由笔记 id 推导出稳定的深浅，因此同一模板生成的任务窗口明暗各异。工作台窗口按模板重新着色（浅色、显式深色与跟随系统深色三种路径），看板卡片带同色强调条。模板改色或删除会实时重绘已打开窗口，模板被删除时回退到创建时的颜色快照
+- **原生下拉菜单**：Git 仓库选择器、分支选择器（工作台详情栏与 Git 面板）以及笔记的 GTD 状态选择器都改为原生 `NSMenu`（复选项形式），不再使用 Chromium 自带弹层。多仓库工作区按仓库分组显示表头，菜单项的显示文本不再被反向解析
+- **看板窗口尺寸**：看板以 1640 × 870 居中打开，即使侧栏展开，四个 GTD 列也不会出现横向滚动条
 
 #### 变更
 
-- **看板窗口布局**：看板改为网格布局并含全高侧栏列，顶栏从侧栏右侧开始，不再横跨整个窗口
+- **GTD 状态精简为四态**：看板与状态菜单现在只有 待办 / 进行中 / 等待 / 已完成。共享 catalog 仍保留完整六态词表，因此「将来可能」与「参考资料」会归入待办，已有的标记也不会从看板上消失；任务汇总优先级为 等待 → 进行中 → 待办 → 已完成，只有全部贡献都完成时才算完成
+- **看板窗口布局**：看板改为网格布局并含全高侧栏列，顶栏从侧栏右侧开始，不再横跨整个窗口，并以侧栏开关作为首个按钮
+- **macOS 间距**：间距、控件高度与圆角统一到平台尺度——看板面板改为圆角，工作台详情栏、标签栏与笔记面板共用一个半透明表面
+- **终端标签关闭图标**：改为与标签图标同尺寸，而不是随标签文字
+
+#### 修复
+
+- **编辑器滚动**：恢复 CodeMirror 滚动容器规则，长文件在工作台编辑器、浮动笔记与独立笔记窗口中可正常滚动，不再被外层容器裁掉
+- **下拉箭头**：仓库选择器与 GTD 状态选择器的箭头不再在深色模式下平铺成一片、或在浅色模式下消失，仓库选择器高度也与所在行对齐
+- **会话自动重命名**：工作台不再弹出进行中与成功提示，只有在原生存储重命名失败时才报错
 
 ### [0.2.29]
 
