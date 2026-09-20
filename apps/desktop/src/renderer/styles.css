@@ -5535,8 +5535,28 @@ body.is-pane-resizing-v * {
   min-height: 0;
   min-width: 0;
   overflow: hidden;
-  /* Content canvas: faintly translucent, like the board and the settings form. */
-  background: var(--color-content-bg);
+  /* Content canvas: the same translucent surface as the menu bar and the notes
+     pane, so the window material shows through the whole workbench. */
+  background: var(--color-sidebar-bg);
+}
+
+/* Panes inherit the detail surface instead of stacking their own tints, so the
+   terminal, editor, diff, split transcript, and tab strips stay translucent. */
+.wb-detail .wb-pane-tab-groups,
+.wb-detail .wb-terminal-tabs,
+.wb-detail .wb-terminal-host,
+.wb-detail .wb-terminal-loading,
+.wb-detail .wb-editor-pane,
+.wb-detail .wb-editor-host,
+.wb-detail .wb-editor-preview,
+.wb-detail .wb-git-diff-pane,
+.wb-detail .wb-git-diff-pane .wb-diff-head,
+.wb-detail .wb-diff-code-view,
+.wb-detail .wb-session-split-transcript,
+.wb-detail .wb-session-split-tui-head,
+.wb-detail .wb-editor-host .cm-editor,
+.wb-detail .wb-editor-host .cm-editor .cm-gutters {
+  background: transparent;
 }
 
 .wb-detail-head {
@@ -15233,7 +15253,7 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
   height: 32px;
   padding: 0 var(--space-2);
   border-bottom: 1px solid var(--color-separator);
-  background: var(--color-window-bg);
+  background: var(--color-sidebar-bg);
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -15404,7 +15424,7 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
   height: 30px;
   padding: 0 var(--space-1-5);
   border-bottom: 1px solid var(--color-separator);
-  background: var(--color-window-bg);
+  background: var(--color-sidebar-bg);
 }
 
 .wb-left-tab {
