@@ -210,7 +210,7 @@ export function TaskTemplatePanel({
                 void openTemplateMenu(event, template);
               }}
             >
-              <ThemeIcon name="grip-vertical" className="gtd-template-grip" size={ICON_SIZE.dense} aria-hidden="true" />
+              <ThemeIcon name="copy" className="gtd-template-icon" size={ICON_SIZE.dense} aria-hidden="true" />
               {template.colorKey ? (
                 <span
                   className="gtd-template-color"

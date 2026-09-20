@@ -132,6 +132,13 @@
   --space-6: 24px;
   --space-8: 32px;
 
+  /* Icon Size Ladder (Pixel-aligned HIG even grid) */
+  --icon-size-inline: 12px;
+  --icon-size-dense: 14px;
+  --icon-size-default: 16px;
+  --icon-size-prominent: 20px;
+  --icon-size-hero: 24px;
+
   /* Radius (macOS Standard) */
   --radius-xs: 3px;
   --radius-sm: 4px;
@@ -1348,6 +1355,11 @@ html[data-window-mode="task"] #react-chrome:empty {
   stroke: currentColor;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+svg[data-icon-system="sf"],
+svg[data-icon-system="sf"] * {
+  stroke: none;
 }
 
 .icon-btn:hover:not(:disabled) {
@@ -14459,6 +14471,12 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
   color: var(--color-label-primary);
 }
 
+.notes-view-segment {
+  flex: 0 0 auto;
+  padding: 8px 10px;
+  border-bottom: 0.5px solid var(--color-separator);
+}
+
 .notes-view-error {
   margin: 0;
   padding: 8px 14px 0;
@@ -14712,10 +14730,16 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
   box-shadow: 0 0 0 2px var(--color-focus-ring);
 }
 
+.gtd-template-icon,
 .gtd-template-grip {
   flex-shrink: 0;
-  margin-top: 2px;
   color: var(--color-label-tertiary);
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.gtd-template-item:hover .gtd-template-icon,
+.gtd-template-item:hover .gtd-template-grip {
+  color: var(--color-label-secondary);
 }
 
 .gtd-template-body {
@@ -15097,21 +15121,26 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
   width: 28px;
   height: 28px;
   padding: 0;
-  border: 0.5px solid var(--color-separator-opaque);
+  border: none;
   border-radius: var(--radius-md);
-  background: var(--color-control-bg);
-  box-shadow: var(--shadow-subtle);
+  background: transparent;
   color: var(--color-label-primary);
 
-  transition: background var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
 }
 
 .gtd-new-btn:hover:not(:disabled) {
-  background: var(--color-secondary-bg);
+  background: var(--color-fill-secondary);
 }
 
 .gtd-new-btn:active:not(:disabled) {
   transform: scale(0.96);
+  background: var(--color-fill-tertiary);
+}
+
+.gtd-new-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-focus-ring);
 }
 
 .gtd-new-btn:disabled {

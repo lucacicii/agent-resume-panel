@@ -19,6 +19,11 @@ const messages = {
   "desktop.common.loading": "Loading…",
   "desktop.notes.selectOrCreate": "Select or create a note",
   "desktop.notes.viewSearch": "Search notes…",
+  "desktop.notes.segmentTasks": "Tasks",
+  "desktop.notes.segmentLibrary": "Notes",
+  "desktop.notes.segmentLabel": "Tasks and notes library",
+  "desktop.notes.segmentTasksEmpty": "No tasks yet",
+  "desktop.notes.segmentLibraryEmpty": "No notes here yet",
   "desktop.notes.viewImport": "Import notes…",
   "desktop.notes.sectionResults": "Results",
   "desktop.notes.sectionTasks": "Tasks",
@@ -95,25 +100,34 @@ describe("NotesView", () => {
     document.getElementById("react-notes")?.remove();
   });
 
-  it("groups roots into tasks, project notes, and library, and auto-selects the first", async () => {
+  it("filters roots by segment and auto-selects the first of each", async () => {
     renderNotes();
 
-    expect(await screen.findByText("Tasks")).toBeTruthy();
-    expect(screen.getByText("Project notes")).toBeTruthy();
-    expect(screen.getByText("Library")).toBeTruthy();
+    // Default segment is tasks: task row visible, project/library rows hidden.
+    const tasksTab = await screen.findByRole("tab", { name: "Tasks" });
+    expect(tasksTab.getAttribute("aria-selected")).toBe("true");
     expect(screen.getByText("Ship the release")).toBeTruthy();
-    expect(screen.getByText("App journal")).toBeTruthy();
-    expect(screen.getByText("Scratch pad")).toBeTruthy();
+    expect(screen.queryByText("App journal")).toBeNull();
+    expect(screen.queryByText("Scratch pad")).toBeNull();
     // Child count badge on the task root.
     expect(screen.getByText("3")).toBeTruthy();
 
     const pane = await screen.findByTestId("note-pane");
     expect(pane.getAttribute("data-note-id")).toBe("t-1");
     expect(pane.getAttribute("data-active")).toBe("true");
+
+    // Switching to the notes library reveals project + library notes and reselects.
+    fireEvent.click(screen.getByRole("tab", { name: "Notes" }));
+    await waitFor(() => expect(screen.getByText("Project notes")).toBeTruthy());
+    expect(screen.getByText("App journal")).toBeTruthy();
+    expect(screen.getByText("Scratch pad")).toBeTruthy();
+    expect(screen.queryByText("Ship the release")).toBeNull();
+    expect(screen.getByTestId("note-pane").getAttribute("data-note-id")).toBe("p-1");
   });
 
   it("selects another note on row click", async () => {
     renderNotes();
+    fireEvent.click(await screen.findByRole("tab", { name: "Notes" }));
     fireEvent.click(await screen.findByText("Scratch pad"));
     const pane = await waitFor(() => {
       const node = screen.getByTestId("note-pane");
@@ -133,17 +147,17 @@ describe("NotesView", () => {
 
   it("searches the whole index once a query is typed", async () => {
     renderNotes();
-    await screen.findByText("Tasks");
+    await screen.findByRole("tab", { name: "Tasks" });
     fireEvent.change(screen.getByRole("searchbox", { name: "Search notes…" }), { target: { value: "checklist" } });
 
     await waitFor(() => expect(screen.getByText("Results")).toBeTruthy());
     await waitFor(() => expect(screen.getByText("Release checklist")).toBeTruthy());
-    expect(screen.queryByText("Tasks")).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Tasks" })).toBeNull();
   });
 
   it("shows the empty search state when nothing matches", async () => {
     renderNotes();
-    await screen.findByText("Tasks");
+    await screen.findByRole("tab", { name: "Tasks" });
     fireEvent.change(screen.getByRole("searchbox", { name: "Search notes…" }), { target: { value: "zzz-nothing" } });
 
     await waitFor(() => expect(screen.getByText("No notes match your search.")).toBeTruthy());
@@ -156,6 +170,14 @@ describe("NotesView", () => {
     await waitFor(() => expect(window.agentResume.notesCreate).toHaveBeenCalledWith({ scope: "library" }));
     await waitFor(() =>
       expect(screen.getByTestId("note-pane").getAttribute("data-note-id")).toBe("n-new"));
+  });
+
+  it("shows a segment-specific empty state when the segment has no notes", async () => {
+    renderNotes({ notesListRoot: async () => [roots[2]], notesList: async () => [roots[2]] });
+
+    expect(await screen.findByText("No tasks yet")).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: "Notes" }));
+    await waitFor(() => expect(screen.getByText("Scratch pad")).toBeTruthy());
   });
 
   it("shows the empty state when there are no notes", async () => {

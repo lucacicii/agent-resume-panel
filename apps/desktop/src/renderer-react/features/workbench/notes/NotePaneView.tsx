@@ -742,13 +742,13 @@ export function NotePaneView({ noteId, active, onOpenNote, onTitleChange, onDirt
           </form>
           : <h1 className="notes-detail-title" onDoubleClick={() => setEditingTitle(true)} title={t("desktop.notes.dblClickEdit")}>{title}</h1>}
         <div className="notes-segmented" role="tablist">
-          <button type="button" role="tab" className={view === "edit" ? "active" : ""} aria-label={t("desktop.common.edit")} onClick={() => setView("edit")}><ThemeIcon name="pencil" size={ICON_SIZE.default} /></button>
-          <button type="button" role="tab" className={view === "view" ? "active" : ""} aria-label={t("desktop.common.view")} onClick={() => { void flushSave(); setView("view"); }}><ThemeIcon name="eye" size={ICON_SIZE.default} /></button>
-          <button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.findInNote")} onClick={openFind}><ThemeIcon name="search" size={ICON_SIZE.default} /></button>
-          <button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.openAsFloating")} title={t("desktop.notes.openAsFloating")} onClick={() => void openStandalone(selected.noteId)}><ThemeIcon name="external-link" size={ICON_SIZE.default} /></button>
-          <button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.copyPath")} onClick={() => void desktopApi().notesCopyPath({ noteId: selected.noteId })}><ThemeIcon name="clipboard" size={ICON_SIZE.default} /></button>
-          <button type="button" className="notes-icon-btn" aria-label={t("desktop.common.revealInFinder")} onClick={() => void desktopApi().notesReveal({ noteId: selected.noteId })}><ThemeIcon name="folder-open" size={ICON_SIZE.default} /></button>
-          <button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.deleteNote")} onClick={() => void remove(selected)}><ThemeIcon name="trash" size={ICON_SIZE.default} /></button>
+          <button type="button" role="tab" className={view === "edit" ? "active" : ""} aria-label={t("desktop.common.edit")} onClick={() => setView("edit")}><ThemeIcon name="pencil" size={ICON_SIZE.dense} /></button>
+          <button type="button" role="tab" className={view === "view" ? "active" : ""} aria-label={t("desktop.common.view")} onClick={() => { void flushSave(); setView("view"); }}><ThemeIcon name="eye" size={ICON_SIZE.dense} /></button>
+          <button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.findInNote")} onClick={openFind}><ThemeIcon name="search" size={ICON_SIZE.dense} /></button>
+          <button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.openAsFloating")} title={t("desktop.notes.openAsFloating")} onClick={() => void openStandalone(selected.noteId)}><ThemeIcon name="external-link" size={ICON_SIZE.dense} /></button>
+          <button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.copyPath")} onClick={() => void desktopApi().notesCopyPath({ noteId: selected.noteId })}><ThemeIcon name="clipboard" size={ICON_SIZE.dense} /></button>
+          <button type="button" className="notes-icon-btn" aria-label={t("desktop.common.revealInFinder")} onClick={() => void desktopApi().notesReveal({ noteId: selected.noteId })}><ThemeIcon name="folder-open" size={ICON_SIZE.dense} /></button>
+          <button type="button" className="notes-icon-btn" aria-label={t("desktop.notes.deleteNote")} onClick={() => void remove(selected)}><ThemeIcon name="trash" size={ICON_SIZE.dense} /></button>
         </div>
       </div>
       <div className="notes-editor-body">

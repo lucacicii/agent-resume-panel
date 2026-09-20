@@ -430,7 +430,7 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
           disabled={creating}
           onClick={openNewTask}
         >
-          <ThemeIcon name={creating ? "loader" : "plus"} className={creating ? "spin" : undefined} size={ICON_SIZE.default} aria-hidden="true" />
+          <ThemeIcon name={creating ? "loader" : "plus"} className={creating ? "spin" : undefined} size={ICON_SIZE.dense} aria-hidden="true" />
         </button>
       </div>
     </div>

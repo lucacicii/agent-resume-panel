@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { desktopApi } from "../../bridge";
 import { useI18n } from "../../i18n";
 import { useGlideHighlight } from "../../components/useGlideHighlight";
+import { SegmentedControl } from "../../components/SegmentedControl";
 import { NotePaneView } from "../workbench/notes/NotePaneView";
 
 type RootNote = Awaited<ReturnType<ReturnType<typeof desktopApi>["notesListRoot"]>>[number];
@@ -13,14 +14,23 @@ function noteTitle(note: { title?: string; filename: string }): string {
   return note.title || note.filename.replace(/\.md$/i, "");
 }
 
+type NotesKind = "task" | "project" | "library";
+/** The list's top-level segment: tasks, or the notes library (project + library). */
+type NotesSegment = "task" | "library";
+
 /** Tasks (`work` present), project notes (path, no `work`), plain library notes. */
-function noteKind(note: { work?: unknown; projectPath?: string }): "task" | "project" | "library" {
+function noteKind(note: { work?: unknown; projectPath?: string }): NotesKind {
   if (note.work) return "task";
   if (note.projectPath) return "project";
   return "library";
 }
 
-const KIND_ORDER: Array<"task" | "project" | "library"> = ["task", "project", "library"];
+const KIND_ORDER: NotesKind[] = ["task", "project", "library"];
+const SEGMENT_OPTIONS = ["task", "library"] as const;
+const SEGMENT_KINDS: Record<NotesSegment, NotesKind[]> = {
+  task: ["task"],
+  library: ["project", "library"]
+};
 
 /**
  * The board's Notes module: a searchable list of root notes (grouped into
@@ -35,6 +45,7 @@ export function NotesView({ active }: { active: boolean }): React.JSX.Element | 
   const [childCounts, setChildCounts] = useState<Record<string, number>>({});
   const [titles, setTitles] = useState<Record<string, string>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [segment, setSegment] = useState<NotesSegment>("task");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<AnyNote[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -98,7 +109,7 @@ export function NotesView({ active }: { active: boolean }): React.JSX.Element | 
   }, [query]);
 
   const grouped = useMemo(() => {
-    const groups: Record<"task" | "project" | "library", RootNote[]> = { task: [], project: [], library: [] };
+    const groups: Record<NotesKind, RootNote[]> = { task: [], project: [], library: [] };
     if (results !== null) return null;
     for (const note of roots) groups[noteKind(note)].push(note);
     for (const kind of KIND_ORDER) {
@@ -107,12 +118,27 @@ export function NotesView({ active }: { active: boolean }): React.JSX.Element | 
     return groups;
   }, [results, roots]);
 
-  // First load selects the first root so the right pane is never dead.
+  // The segment filters the grouped roots; search always spans the whole index.
+  const visibleSections = useMemo(() => {
+    if (results !== null || !grouped) return null;
+    return SEGMENT_KINDS[segment]
+      .map((kind) => ({ kind, notes: grouped[kind] }))
+      .filter((section) => section.notes.length > 0);
+  }, [results, grouped, segment]);
+
+  // First load selects the first note of the active segment so the right pane is never dead.
   useEffect(() => {
     if (selectedOnceRef.current || loading || !roots.length) return;
     selectedOnceRef.current = true;
-    setSelectedId((prev) => prev ?? roots[0].noteId);
-  }, [loading, roots]);
+    const preferred = SEGMENT_KINDS[segment].flatMap((kind) => grouped?.[kind] ?? [])[0];
+    setSelectedId((prev) => prev ?? preferred?.noteId ?? roots[0].noteId);
+  }, [grouped, loading, roots, segment]);
+
+  const changeSegment = (next: NotesSegment) => {
+    setSegment(next);
+    const visible = SEGMENT_KINDS[next].flatMap((kind) => grouped?.[kind] ?? []);
+    setSelectedId(visible.length ? visible[0].noteId : null);
+  };
 
   const displayTitle = (noteId: string, fallback: { title?: string; filename: string }): string =>
     titles[noteId] ?? noteTitle(fallback);
@@ -172,6 +198,19 @@ export function NotesView({ active }: { active: boolean }): React.JSX.Element | 
             <ThemeIcon name="upload" size={ICON_SIZE.default} />
           </button>
         </div>
+        {results === null ? (
+          <div className="notes-view-segment">
+            <SegmentedControl
+              value={segment}
+              options={SEGMENT_OPTIONS}
+              onChange={changeSegment}
+              getLabel={(value) => value === "task"
+                ? text("desktop.notes.segmentTasks", "Tasks")
+                : text("desktop.notes.segmentLibrary", "Notes")}
+              aria-label={text("desktop.notes.segmentLabel", "Tasks and notes library")}
+            />
+          </div>
+        ) : null}
         {error ? <p className="notes-view-error" role="alert">{error}</p> : null}
         <div ref={containerRef} className="notes-view-rows" onPointerLeave={hideGlide}>
           <span
@@ -205,19 +244,13 @@ export function NotesView({ active }: { active: boolean }): React.JSX.Element | 
               <p className="notes-view-empty">{text("desktop.notes.viewEmptyTitle", "No notes yet")}</p>
               <p className="notes-view-hint">{text("desktop.notes.viewEmptyHint", "Create your first note to get started.")}</p>
             </div>
-          ) : (
-            KIND_ORDER.map((kind) => {
-              const notes = grouped?.[kind] ?? [];
-              if (!notes.length) return null;
-              const label = kind === "task"
-                ? text("desktop.notes.sectionTasks", "Tasks")
-                : kind === "project"
-                  ? text("desktop.notes.sectionProjects", "Project notes")
-                  : text("desktop.notes.sectionLibrary", "Library");
-              return (
-                <section key={kind}>
-                  <p className="notes-view-section">{label}</p>
-                  {notes.map((note) => (
+          ) : visibleSections && visibleSections.length > 0 ? (
+            visibleSections.map(({ kind, notes }) => (
+              <section key={kind}>
+                {kind === "project"
+                  ? <p className="notes-view-section">{text("desktop.notes.sectionProjects", "Project notes")}</p>
+                  : null}
+                {notes.map((note) => (
                     <button
                       key={note.noteId}
                       ref={(node) => { setRow(note.noteId, node); }}
@@ -231,11 +264,18 @@ export function NotesView({ active }: { active: boolean }): React.JSX.Element | 
                       {(childCounts[note.noteId] ?? 0) > 0 ? (
                         <span className="notes-view-count" aria-hidden="true">{childCounts[note.noteId]}</span>
                       ) : null}
-                    </button>
-                  ))}
-                </section>
-              );
-            })
+                  </button>
+                ))}
+              </section>
+            ))
+          ) : (
+            <div className="notes-view-empty-block">
+              <p className="notes-view-empty">
+                {segment === "task"
+                  ? text("desktop.notes.segmentTasksEmpty", "No tasks yet")
+                  : text("desktop.notes.segmentLibraryEmpty", "No notes here yet")}
+              </p>
+            </div>
           )}
         </div>
       </div>

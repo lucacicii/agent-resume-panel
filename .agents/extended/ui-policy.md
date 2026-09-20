@@ -46,7 +46,7 @@ The window is Chromium, but everything the operating system can draw must be dra
 - Hit targets are 24×24px minimum, 28×28px for icon buttons. iOS patterns (bottom tab bars, FABs, 44pt targets, swipe-only navigation) are not used.
 - Scrollbars stay system-managed: never override `::-webkit-scrollbar` globally; scope it to a surface only when that surface must own its scrollbar (for example the terminal).
 - The arrow cursor is correct for buttons and list rows; `cursor: pointer` is reserved for links and link-like text.
-- Icons go through `<ThemeIcon name="…" />` (lucide, one size ladder, one stroke weight). This is a deliberate deviation from SF Symbols; the single entry point is what keeps it consistent.
+- Icons go through `<ThemeIcon name="…" />` with Apple SF Symbols prioritized for native macOS HIG alignment, falling back to Open Symbols (Lucide) where appropriate. Sizing follows a strict 5-step even-pixel ladder (`inline: 12px`, `dense: 14px`, `default: 16px`, `prominent: 20px`, `hero: 24px`) to guarantee integer pixel centering on Retina and standard displays, and the single entry point keeps appearance consistent across the entire application.
 - Keyboard accessibility is mandatory: semantic buttons and inputs, `aria-label` plus `title` on icon-only controls, `aria-expanded` / `aria-pressed` / `aria-selected` state, visible `:focus-visible` rings, and Enter/Escape semantics in dialogs.
 
 ### Renderer boundaries
