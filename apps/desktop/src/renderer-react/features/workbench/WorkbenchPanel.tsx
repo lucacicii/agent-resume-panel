@@ -26,6 +26,12 @@ import {
   matchComposerMentionForCwd,
   resolveComposerMention
 } from "../settings/model";
+import {
+  DESKTOP_GTD_STATUSES,
+  desktopGtdColumn,
+  desktopGtdLabelKey,
+  type DesktopGtdStatus
+} from "../../gtd";
 import { desktopApi } from "../../bridge";
 import { confirmDestructive } from "../../confirmAction";
 import { contextMenuPoint, showContextMenuAt } from "../../nativeContextMenu";
@@ -224,7 +230,7 @@ type BrowserPane = {
 };
 type SideView = "files" | "git" | "search" | "scripts" | null;
 type SearchReveal = { path: string; line: number; column: number; endColumn: number };
-const GTD_STATUSES = ["inbox", "next", "waiting", "someday", "reference", "done"] as const satisfies readonly GtdStatus[];
+const GTD_STATUSES = DESKTOP_GTD_STATUSES;
 /** Shared empty list so a project-less task keeps a stable array identity. */
 const EMPTY_PROJECT_PATHS: string[] = [];
 const WORKBENCH_SESSION_ROW_HEIGHT = 64;
@@ -3897,8 +3903,8 @@ export function WorkbenchPanel(): ReactPortal | null {
       if (action.startsWith("gtd:")) {
         const status = action === "gtd:clear"
           ? null
-          : GTD_STATUSES.includes(action.slice(4) as GtdStatus)
-            ? action.slice(4) as GtdStatus
+          : GTD_STATUSES.includes(action.slice(4) as DesktopGtdStatus)
+            ? action.slice(4) as DesktopGtdStatus
             : null;
         if (action !== "gtd:clear" && !status) return;
         try {
@@ -3924,8 +3930,8 @@ export function WorkbenchPanel(): ReactPortal | null {
     if (action.startsWith("gtd:")) {
       const status = action === "gtd:clear"
         ? null
-        : GTD_STATUSES.includes(action.slice(4) as GtdStatus)
-          ? action.slice(4) as GtdStatus
+        : GTD_STATUSES.includes(action.slice(4) as DesktopGtdStatus)
+          ? action.slice(4) as DesktopGtdStatus
           : null;
       if (action !== "gtd:clear" && !status) return;
       try {
@@ -5604,8 +5610,8 @@ export function WorkbenchPanel(): ReactPortal | null {
             <div className="wb-task-head">
               <ThemeIcon name="square-kanban" size={ICON_SIZE.dense} aria-hidden="true" />
               <span className="wb-task-title">{taskScope.title || taskScope.noteId}</span>
-              <span className={`wb-task-status is-${taskRollup?.status ?? taskScope.status}`}>
-                {t(`desktop.workbench.gtdStatus.${taskRollup?.status ?? taskScope.status}`)}
+              <span className={`wb-task-status is-${desktopGtdColumn(taskRollup?.status ?? taskScope.status)}`}>
+                {t(desktopGtdLabelKey(taskRollup?.status ?? taskScope.status))}
               </span>
               {taskRollup?.total ? (
                 <span className="wb-task-rollup" title={t("desktop.gtd.rollupHint")}>
@@ -5731,7 +5737,7 @@ export function WorkbenchPanel(): ReactPortal | null {
                   <span className="wb-note-list-item-title">{note.title}</span>
                   {taskScope && noteFilter === "all" && taskByNoteId.has(note.noteId) ? <span className="wb-task-badge" aria-hidden="true" title={t("desktop.workbench.ownedByTask", taskByNoteId.get(note.noteId)?.title ?? "")}>{taskByNoteId.get(note.noteId)?.title}</span> : null}
                   {note.gtdStatus
-                    ? <span className={`wb-gtd-status-badge is-${note.gtdStatus}`} aria-label={t("desktop.workbench.gtdStatusLabel", t(`desktop.workbench.gtdStatus.${note.gtdStatus}`))}>{t(`desktop.workbench.gtdStatus.${note.gtdStatus}`)}</span>
+                    ? <span className={`wb-gtd-status-badge is-${desktopGtdColumn(note.gtdStatus)}`} aria-label={t("desktop.workbench.gtdStatusLabel", t(desktopGtdLabelKey(note.gtdStatus)))}>{t(desktopGtdLabelKey(note.gtdStatus))}</span>
                     : <span className="wb-gtd-status-badge is-unmarked" title={t("desktop.gtd.unmarkedHint")}>{t("desktop.gtd.unmarked")}</span>}
                 </button>
               )) : <p className="muted wb-list-empty">{t("desktop.workbench.noNotes")}</p>}

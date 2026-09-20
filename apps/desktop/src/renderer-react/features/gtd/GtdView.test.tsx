@@ -45,11 +45,9 @@ function renderGtd(overrides?: Partial<typeof window.agentResume>) {  const host
         "desktop.gtd.openInWindow": "Open in a new window",
         "desktop.gtd.windowLimit": "At most {0} workbench windows can be open at once",
         "desktop.gtd.windowNoWorkbench": "This task has no workbench to open",
-        "desktop.workbench.gtdStatus.inbox": "Inbox",
-        "desktop.workbench.gtdStatus.next": "Next",
+        "desktop.workbench.gtdStatus.inbox": "To do",
+        "desktop.workbench.gtdStatus.next": "In progress",
         "desktop.workbench.gtdStatus.waiting": "Waiting",
-        "desktop.workbench.gtdStatus.someday": "Someday",
-        "desktop.workbench.gtdStatus.reference": "Reference",
         "desktop.workbench.gtdStatus.done": "Done",
         "desktop.gtd.templates": "Templates",
         "desktop.gtd.newTemplate": "New template",
@@ -119,8 +117,9 @@ describe("GtdView", () => {
     expect(screen.getByText("Someday idea")).toBeTruthy();
     const nextColumn = host.querySelector('[data-gtd-column="next"]');
     expect(nextColumn?.textContent).toContain("Realtime status");
-    const somedayColumn = host.querySelector('[data-gtd-column="someday"]');
-    expect(somedayColumn?.textContent).toContain("Someday idea");
+    // `someday` is no longer a surfaced column: it folds onto "to do".
+    const inboxColumn = host.querySelector('[data-gtd-column="inbox"]');
+    expect(inboxColumn?.textContent).toContain("Someday idea");
   });
 
   it("opens a task in its own workbench window when its card is clicked", async () => {
@@ -208,9 +207,9 @@ describe("GtdView", () => {
     const nextCard = await screen.findByRole("button", { name: /Realtime status/ });
     nextCard.focus();
     expect(document.activeElement).toBe(nextCard);
-    fireEvent.keyDown(nextCard, { key: "ArrowRight" });
-    const somedayCard = await screen.findByRole("button", { name: /Someday idea/ });
-    expect(document.activeElement).toBe(somedayCard);
+    fireEvent.keyDown(nextCard, { key: "ArrowLeft" });
+    const inboxCard = await screen.findByRole("button", { name: /Someday idea/ });
+    expect(document.activeElement).toBe(inboxCard);
   });
 
   it("deletes a session-less task from its context menu", async () => {

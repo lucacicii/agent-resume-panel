@@ -16,10 +16,15 @@ import { rollupDot } from "../workbench/sessionStatus/taskRollup";
 import { sessionDotStatusClass } from "../workbench/sessionStatus/dotStatus";
 import type { SessionDotStatus } from "../workbench/sessionStatus";
 import { rollupSessionDotStatus } from "../../../shared/workbenchSelection";
+import {
+  DESKTOP_GTD_STATUSES,
+  desktopGtdColumnFromRollup,
+  type DesktopGtdStatus
+} from "../../gtd";
 import { TaskTemplatePanel, type TaskTemplate } from "./TaskTemplatePanel";
 
 /** Board column order — `done` last so active work reads first. */
-const GTD_COLUMNS: GtdStatus[] = ["inbox", "next", "waiting", "someday", "reference", "done"];
+const GTD_COLUMNS: readonly DesktopGtdStatus[] = DESKTOP_GTD_STATUSES;
 
 type GtdCard = WorkbenchTask & { projects: string[] };
 
@@ -71,7 +76,7 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
 
   /** Column status: the rollup unless the task is pinned by its own mark. */
   const statusOf = useCallback(
-    (item: GtdCard): GtdStatus => rollups[item.noteId]?.status ?? item.status ?? "inbox",
+    (item: GtdCard): DesktopGtdStatus => desktopGtdColumnFromRollup(rollups[item.noteId], item.status),
     [rollups]
   );
 
@@ -392,7 +397,7 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
       return;
     }
     const direction = key === "ArrowRight" ? 1 : -1;
-    const status = columnEl.dataset.gtdColumn as GtdStatus;
+    const status = columnEl.dataset.gtdColumn as DesktopGtdStatus;
     let columnIndex = GTD_COLUMNS.indexOf(status) + direction;
     while (columnIndex >= 0 && columnIndex < GTD_COLUMNS.length) {
       const targetColumn = event.currentTarget.querySelector<HTMLElement>(`[data-gtd-column="${GTD_COLUMNS[columnIndex]}"]`);

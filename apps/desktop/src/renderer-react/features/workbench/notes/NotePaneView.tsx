@@ -7,7 +7,7 @@ import { confirmDestructive } from "../../../confirmAction";
 import { CodeEditor, type CodeEditorHandle, type CodeEditorSearchResult } from "../../../components/CodeEditor";
 import { renderMarkdown } from "../../../components/Markdown";
 import { imageSrcFromElement, posixDirname, posixJoin } from "../../../components/markdownImage";
-import { GTD_STATUSES } from "../../../gtd";
+import { DESKTOP_GTD_STATUSES, desktopGtdColumn } from "../../../gtd";
 import { useI18n } from "../../../i18n";
 import { notifyDesktop } from "../../../components/Notifications";
 import { useOverlayState } from "../../../components/useOverlayMotion";
@@ -854,8 +854,8 @@ export function NotePaneView({ noteId, active, onOpenNote, onTitleChange, onDirt
           <button type="button" role="menuitem" onClick={() => { void openStandalone(contextMenu.note.noteId); setContextMenu(null); }}>{t("desktop.notes.openAsFloating")}</button>
           <div className="context-menu-separator" role="separator" />
           <div className="notes-context-menu-label">{t("desktop.notes.gtdStatusLabel")}</div>
-          {GTD_STATUSES.map((gtdStatus) => (
-            <button type="button" role="menuitem" key={gtdStatus} className={contextMenu.note.gtdStatus === gtdStatus ? "is-active" : ""} onClick={() => void setNoteGtdStatus(contextMenu.note, gtdStatus)}>
+          {DESKTOP_GTD_STATUSES.map((gtdStatus) => (
+            <button type="button" role="menuitem" key={gtdStatus} className={desktopGtdColumn(contextMenu.note.gtdStatus) === gtdStatus ? "is-active" : ""} onClick={() => void setNoteGtdStatus(contextMenu.note, gtdStatus)}>
               <span className={`wb-gtd-status-dot is-${gtdStatus}`} aria-hidden="true" />
               {t(`desktop.workbench.gtdStatus.${gtdStatus}`)}
             </button>

@@ -45,11 +45,9 @@ const messages = {
   "desktop.workbench.setGtdStatus": "Set GTD status",
   "desktop.workbench.clearGtdStatus": "Clear GTD status",
   "desktop.workbench.gtdStatusSaveFailed": "Could not save GTD status: {0}",
-  "desktop.workbench.gtdStatus.inbox": "Inbox",
-  "desktop.workbench.gtdStatus.next": "Next",
+  "desktop.workbench.gtdStatus.inbox": "To do",
+  "desktop.workbench.gtdStatus.next": "In progress",
   "desktop.workbench.gtdStatus.waiting": "Waiting",
-  "desktop.workbench.gtdStatus.someday": "Someday",
-  "desktop.workbench.gtdStatus.reference": "Reference",
   "desktop.workbench.gtdStatus.done": "Done"
 };
 

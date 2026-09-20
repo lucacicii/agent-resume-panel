@@ -618,6 +618,8 @@ html[data-window-mode="settings"] .settings-main {
   .top,
   .app-sidebar,
   .notes-view-list,
+  .notes-detail.wb-note-pane.is-active,
+  .notes-view-detail-empty,
   .wb-window-header,
   .wb-list-pane {
     background: var(--color-window-bg);
@@ -1761,12 +1763,6 @@ svg[data-icon-system="sf"] * {
 .wb-gtd-status-badge.is-waiting,
 .wb-gtd-status-dot.is-waiting,
 .wb-gtd-context-tag.is-waiting { --gtd-status-color: var(--color-warning); }
-.wb-gtd-status-badge.is-someday,
-.wb-gtd-status-dot.is-someday,
-.wb-gtd-context-tag.is-someday { --gtd-status-color: #af52de; }
-.wb-gtd-status-badge.is-reference,
-.wb-gtd-status-dot.is-reference,
-.wb-gtd-context-tag.is-reference { --gtd-status-color: #0d9488; }
 .wb-gtd-status-badge.is-done,
 .wb-gtd-status-dot.is-done,
 .wb-gtd-context-tag.is-done { --gtd-status-color: var(--color-success); }
@@ -11799,6 +11795,13 @@ body.is-pane-resizing-row * {
   background: var(--color-pane-bg);
 }
 
+/* The active note pane matches the window chrome (menu bar and notes list):
+   the same translucent sidebar token, no CSS backdrop-filter — the window's
+   native vibrancy already blurs the backdrop. */
+.notes-detail.wb-note-pane.is-active {
+  background: var(--color-sidebar-bg);
+}
+
 .notes-link-tree-panel {
   flex: 0 0 auto;
   min-height: 0;
@@ -12092,6 +12095,9 @@ body.is-pane-resizing-row * {
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
+  /* Match the linked-notes panel/dendrogram surface so the tree and the editor
+     read as one continuous tone. */
+  background: var(--color-pane-bg);
 }
 
 .notes-detail-head {
@@ -12275,7 +12281,9 @@ body.is-pane-resizing-row * {
   border-radius: 8px;
   overflow: hidden;
   box-sizing: border-box;
-  background: var(--color-pane-bg);
+  /* The editor card is transparent so the pane's translucent surface (and the
+     window vibrancy behind it) shows through, matching view mode. */
+  background: transparent;
 }
 
 textarea.notes-editor-host {
@@ -14591,7 +14599,7 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
   justify-content: center;
   gap: var(--space-3);
   color: var(--color-label-tertiary);
-  background: var(--color-pane-bg);
+  background: var(--color-sidebar-bg);
 }
 
 /* Explicit, like the other surfaces: the global duration tokens do not reach
@@ -14875,13 +14883,6 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
   border-radius: 50%;
   flex-shrink: 0;
 }
-
-.wb-gtd-status-dot.is-inbox { background: var(--color-accent); }
-.wb-gtd-status-dot.is-next { background: var(--color-warning); }
-.wb-gtd-status-dot.is-waiting { background: #ff9f0a; }
-.wb-gtd-status-dot.is-someday { background: var(--color-purple); }
-.wb-gtd-status-dot.is-reference { background: #8e8e93; }
-.wb-gtd-status-dot.is-done { background: var(--color-success); }
 
 .gtd-column-title {
   font-size: var(--font-size-caption, 12px);

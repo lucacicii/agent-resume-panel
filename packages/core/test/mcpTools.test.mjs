@@ -286,7 +286,9 @@ test("session_search finds catalog sessions by title and session_read returns su
       name: "session_set_gtd",
       arguments: { provider: "codex", sessionId: "sess-auth-1", status: "done" }
     });
-    assert.equal(gtdDone.isError, true);
+    assert.notEqual(gtdDone.isError, true);
+    assert.ok(gtdDone.content[0].text.includes("GTD updated"));
+    assert.ok(gtdDone.content[0].text.includes("\"status\": \"done\""));
 
     const gtdMissing = await client.callTool({
       name: "session_set_gtd",

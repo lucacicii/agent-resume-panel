@@ -65,11 +65,9 @@ const messages = {
   "desktop.common.findPrev": "Previous match",
   "desktop.common.findNext": "Next match",
   "desktop.common.closeFind": "Close find",
-  "desktop.workbench.gtdStatus.inbox": "Inbox",
-  "desktop.workbench.gtdStatus.next": "Next",
+  "desktop.workbench.gtdStatus.inbox": "To do",
+  "desktop.workbench.gtdStatus.next": "In progress",
   "desktop.workbench.gtdStatus.waiting": "Waiting",
-  "desktop.workbench.gtdStatus.someday": "Someday",
-  "desktop.workbench.gtdStatus.reference": "Reference",
   "desktop.workbench.gtdStatus.done": "Done"
 };
 

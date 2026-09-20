@@ -4677,7 +4677,7 @@ describe("WorkbenchPanel", () => {
     const setSessionGtdStatus = vi.fn(async () => ({ ok: true }));
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages: {
-        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.common.rename": "Rename", "desktop.workbench.sidebarView": "Workbench sidebar view", "desktop.workbench.projectsView": "Project view", "desktop.workbench.gtdView": "GTD view", "desktop.workbench.filterGtdSessions": "Filter GTD sessions", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.openInChatGpt": "Open in ChatGPT", "desktop.workbench.preview": "Preview", "desktop.workbench.mountNote": "Mount note", "desktop.workbench.removeFromPanel": "Remove", "desktop.workbench.setGtdStatus": "Set GTD status", "desktop.workbench.clearGtdStatus": "Clear GTD status", "desktop.workbench.gtdStatusSaveFailed": "Save failed: {0}", "desktop.workbench.gtdStatusLabel": "GTD status: {0}", "desktop.workbench.gtdCompleted": "Completed", "desktop.workbench.gtdStatus.inbox": "Inbox", "desktop.workbench.gtdStatus.next": "Next", "desktop.workbench.gtdStatus.waiting": "Waiting", "desktop.workbench.gtdStatus.someday": "Someday", "desktop.workbench.gtdStatus.reference": "Reference", "desktop.workbench.gtdStatus.done": "Done"
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.common.rename": "Rename", "desktop.workbench.sidebarView": "Workbench sidebar view", "desktop.workbench.projectsView": "Project view", "desktop.workbench.gtdView": "GTD view", "desktop.workbench.filterGtdSessions": "Filter GTD sessions", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.openInChatGpt": "Open in ChatGPT", "desktop.workbench.preview": "Preview", "desktop.workbench.mountNote": "Mount note", "desktop.workbench.removeFromPanel": "Remove", "desktop.workbench.setGtdStatus": "Set GTD status", "desktop.workbench.clearGtdStatus": "Clear GTD status", "desktop.workbench.gtdStatusSaveFailed": "Save failed: {0}", "desktop.workbench.gtdStatusLabel": "GTD status: {0}", "desktop.workbench.gtdCompleted": "Completed", "desktop.workbench.gtdStatus.inbox": "To do", "desktop.workbench.gtdStatus.next": "In progress", "desktop.workbench.gtdStatus.waiting": "Waiting", "desktop.workbench.gtdStatus.done": "Done"
       } }),
       onLocaleChanged: () => () => undefined,
       onWorkbenchCmdT: () => () => undefined,
@@ -4699,7 +4699,7 @@ describe("WorkbenchPanel", () => {
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
     const nextSession = await screen.findByRole("button", { name: /Ship GTD view/ });
-    expect(nextSession.querySelector(".wb-gtd-status-badge")?.textContent).toBe("Next");
+    expect(nextSession.querySelector(".wb-gtd-status-badge")?.textContent).toBe("In progress");
 
     fireEvent.contextMenu(nextSession);
     const waitingTag = await screen.findByRole("menuitemradio", { name: "Waiting" });
@@ -4732,9 +4732,8 @@ describe("WorkbenchPanel", () => {
         "desktop.workbench.newNote": "New note", "desktop.workbench.taskOpenNote": "Open note",
         "desktop.workbench.setGtdStatus": "Set GTD status", "desktop.workbench.clearGtdStatus": "Clear GTD status",
         "desktop.workbench.gtdStatusLabel": "GTD status: {0}", "desktop.workbench.gtdStatusSaveFailed": "Save failed: {0}",
-        "desktop.workbench.gtdStatus.inbox": "Inbox", "desktop.workbench.gtdStatus.next": "Next",
-        "desktop.workbench.gtdStatus.waiting": "Waiting", "desktop.workbench.gtdStatus.someday": "Someday",
-        "desktop.workbench.gtdStatus.reference": "Reference", "desktop.workbench.gtdStatus.done": "Done",
+        "desktop.workbench.gtdStatus.inbox": "To do", "desktop.workbench.gtdStatus.next": "In progress",
+        "desktop.workbench.gtdStatus.waiting": "Waiting", "desktop.workbench.gtdStatus.done": "Done",
         "desktop.gtd.unmarked": "Unmarked", "desktop.gtd.unmarkedHint": "No GTD status set"
       } }),
       onLocaleChanged: () => () => undefined,
@@ -4762,7 +4761,7 @@ describe("WorkbenchPanel", () => {
     fireEvent.click(await screen.findByRole("tab", { name: "Note" }));
 
     const row = await screen.findByRole("button", { name: "Design doc" });
-    expect(row.querySelector(".wb-gtd-status-badge")?.textContent).toBe("Next");
+    expect(row.querySelector(".wb-gtd-status-badge")?.textContent).toBe("In progress");
 
     fireEvent.contextMenu(row);
     // The note menu no longer offers an "open note" item; clicking the row opens it.
@@ -6339,7 +6338,7 @@ describe("WorkbenchPanel", () => {
     ];
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages: {
-        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.common.rename": "Rename", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.openInChatGpt": "Open in ChatGPT", "desktop.workbench.preview": "Preview", "desktop.workbench.mountNote": "Mount note", "desktop.workbench.addFloatingNote": "Add floating note", "desktop.workbench.openFloatingNote": "Open floating note", "desktop.workbench.removeFromPanel": "Remove from panel", "desktop.workbench.setGtdStatus": "Set GTD status", "desktop.workbench.gtdStatus.inbox": "Inbox", "desktop.workbench.gtdStatus.next": "Next", "desktop.workbench.gtdStatus.waiting": "Waiting", "desktop.workbench.gtdStatus.someday": "Someday", "desktop.workbench.gtdStatus.reference": "Reference", "desktop.workbench.gtdStatus.done": "Done", "desktop.workbench.floatingNote": "Floating note", "desktop.workbench.floatingNoteClose": "Close floating note", "desktop.workbench.floatingNoteEditor": "Floating note editor", "desktop.workbench.floatingNoteLoading": "Loading floating note…", "desktop.workbench.floatingNoteCreating": "Creating floating note…", "desktop.workbench.floatingNoteSaved": "Saved", "desktop.workbench.floatingNoteUnsaved": "Unsaved changes", "desktop.workbench.floatingNoteSaving": "Saving…", "desktop.workbench.floatingNoteLoadFailed": "Could not open floating note.", "desktop.workbench.floatingNoteLoadError": "Could not open floating note: {0}", "desktop.workbench.floatingNoteSaveFailed": "Save failed: {0}"
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter", "desktop.common.search": "Search", "desktop.common.all": "All", "desktop.common.active": "Active", "desktop.common.pinned": "Pinned", "desktop.common.refresh": "Refresh", "desktop.common.rename": "Rename", "desktop.workbench.allSessions": "All sessions", "desktop.workbench.noSessionsInProject": "No sessions", "desktop.workbench.noProjects": "No projects", "desktop.workbench.sidePanelExplorer": "Explorer", "desktop.workbench.sidePanelGit": "Git", "desktop.workbench.newTerminal": "New terminal", "desktop.workbench.newSession": "New session", "desktop.workbench.selectSessionHint": "Select a session", "desktop.workbench.selectProjectHint": "Select a project", "desktop.workbench.externalTerminalHint": "Opened externally", "desktop.workbench.terminalLabel": "Terminal {0}", "desktop.workbench.openInChatGpt": "Open in ChatGPT", "desktop.workbench.preview": "Preview", "desktop.workbench.mountNote": "Mount note", "desktop.workbench.addFloatingNote": "Add floating note", "desktop.workbench.openFloatingNote": "Open floating note", "desktop.workbench.removeFromPanel": "Remove from panel", "desktop.workbench.setGtdStatus": "Set GTD status", "desktop.workbench.gtdStatus.inbox": "To do", "desktop.workbench.gtdStatus.next": "In progress", "desktop.workbench.gtdStatus.waiting": "Waiting", "desktop.workbench.gtdStatus.done": "Done", "desktop.workbench.floatingNote": "Floating note", "desktop.workbench.floatingNoteClose": "Close floating note", "desktop.workbench.floatingNoteEditor": "Floating note editor", "desktop.workbench.floatingNoteLoading": "Loading floating note…", "desktop.workbench.floatingNoteCreating": "Creating floating note…", "desktop.workbench.floatingNoteSaved": "Saved", "desktop.workbench.floatingNoteUnsaved": "Unsaved changes", "desktop.workbench.floatingNoteSaving": "Saving…", "desktop.workbench.floatingNoteLoadFailed": "Could not open floating note.", "desktop.workbench.floatingNoteLoadError": "Could not open floating note: {0}", "desktop.workbench.floatingNoteSaveFailed": "Save failed: {0}"
       } }),
       onLocaleChanged: () => () => undefined,
       onWorkbenchCmdT: () => () => undefined,
@@ -7302,11 +7301,9 @@ describe("WorkbenchPanel", () => {
     "desktop.workbench.removeMultipleConfirm": "Remove {0} sessions from panel? Native agent storage is unchanged.",
     "desktop.workbench.selectedCount": "{0} selected",
     "desktop.workbench.setGtdStatus": "Set GTD status",
-    "desktop.workbench.gtdStatus.inbox": "Inbox",
-    "desktop.workbench.gtdStatus.next": "Next",
+    "desktop.workbench.gtdStatus.inbox": "To do",
+    "desktop.workbench.gtdStatus.next": "In progress",
     "desktop.workbench.gtdStatus.waiting": "Waiting",
-    "desktop.workbench.gtdStatus.someday": "Someday",
-    "desktop.workbench.gtdStatus.reference": "Reference",
     "desktop.workbench.gtdStatus.done": "Done"
   };
 
@@ -7754,7 +7751,7 @@ describe("WorkbenchPanel", () => {
         "desktop.workbench.gtdView": "GTD",
         "desktop.workbench.filterTasks": "Filter tasks",
         "desktop.workbench.noTasks": "No tasks yet",
-        "desktop.workbench.gtdStatus.next": "Next",
+        "desktop.workbench.gtdStatus.next": "In progress",
         "desktop.workbench.taskView": "Task",
         "desktop.workbench.taskOpenNote": "Open note",
         "desktop.workbench.taskClear": "Exit task",

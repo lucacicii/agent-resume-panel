@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPoi
 import { CodeEditor, type CodeEditorHandle, type CodeEditorSearchResult } from "../../components/CodeEditor";
 import { desktopApi } from "../../bridge";
 import { confirmDestructive } from "../../confirmAction";
-import { GTD_STATUSES, type GtdStatus } from "../../gtd";
+import { DESKTOP_GTD_STATUSES, desktopGtdColumn, type GtdStatus } from "../../gtd";
 import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { useI18n } from "../../i18n";
 
@@ -538,12 +538,12 @@ export function FloatingSessionNote({
           className="wb-floating-note-status"
           aria-label={t("desktop.workbench.setGtdStatus")}
           title={t("desktop.workbench.setGtdStatus")}
-          value={gtdStatus ?? ""}
+          value={gtdStatus ? desktopGtdColumn(gtdStatus) : ""}
           disabled={!noteId || loading || creating || deleting}
           onChange={(event) => void updateGtdStatus(event.target.value ? event.target.value as GtdStatus : null)}
         >
           <option value="">{t("desktop.workbench.clearGtdStatus")}</option>
-          {GTD_STATUSES.map((status) => <option value={status} key={status}>{t(`desktop.workbench.gtdStatus.${status}`)}</option>)}
+          {DESKTOP_GTD_STATUSES.map((status) => <option value={status} key={status}>{t(`desktop.workbench.gtdStatus.${status}`)}</option>)}
         </select>
         <button
           type="button"
