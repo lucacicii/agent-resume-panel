@@ -9198,7 +9198,20 @@ textarea.wb-editor-host {
   outline: none;
 }
 
+/*
+ * CodeMirror builds `.cm-editor` / `.cm-scroller` itself, so those class names
+ * never appear in the desktop sources — these rules still match live DOM.
+ * The scroller owns the overflow, so the editor needs a definite height: a
+ * content-sized editor inside the clipping host cannot scroll at all.
+ */
 .wb-editor-host .cm-editor,
+.wb-editor-host .cm-scroller {
+  height: 100%;
+}
+
+.wb-editor-host .cm-scroller {
+  overflow: auto;
+}
 
 .wb-editor-preview {
   flex: 1 1 auto;
@@ -10418,6 +10431,13 @@ textarea.wb-editor-host {
 }
 
 .wb-floating-note-editor .cm-editor,
+.wb-floating-note-editor .cm-scroller {
+  height: 100%;
+}
+
+.wb-floating-note-editor .cm-scroller {
+  overflow: auto;
+}
 
 .wb-floating-note-editor .cm-content {
   min-height: 100%;
@@ -12240,6 +12260,12 @@ textarea.notes-editor-host:focus {
   border-radius: 8px;
 }
 
+.notes-editor-host .cm-scroller {
+  font-size: 13px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  line-height: 1.55;
+}
+
 .wb-editor-host .cm-content,
 .notes-editor-host .cm-content {
   padding: 8px 12px;
@@ -12770,6 +12796,13 @@ html[data-window-mode="standalone-note"] #react-workbench {
 }
 
 .standalone-note-window-editor .cm-editor,
+.standalone-note-window-editor .cm-scroller {
+  height: 100%;
+}
+
+.standalone-note-window-editor .cm-scroller {
+  overflow: auto;
+}
 
 .standalone-note-window-editor .cm-content {
   min-height: 100%;
