@@ -378,7 +378,6 @@ const flat = {
   "desktop.workbench.renameProjectDisplay": { en: "Project display name", "zh-cn": "项目显示名" },
   "desktop.workbench.renameDisplayHint": { en: "Display name only; disk path unchanged", "zh-cn": "仅改显示名，不影响磁盘路径" },
   "desktop.workbench.autoRename": { en: "Auto rename", "zh-cn": "自动重命名" },
-  "desktop.workbench.autoRenaming": { en: "Auto renaming…", "zh-cn": "正在自动重命名…" },
   "desktop.workbench.selectProject": { en: "Select a project", "zh-cn": "请选择一个 project" },
   "desktop.workbench.scratchDir": { en: "Scratch dir (new)", "zh-cn": "临时目录（新建）" },
   "desktop.workbench.scratchDirTitle": { en: "New session in workbench scratch dir", "zh-cn": "在工作台临时目录中新建 session" },

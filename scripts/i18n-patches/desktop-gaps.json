@@ -2041,11 +2041,6 @@
       "zh": "自动重命名"
     },
     {
-      "key": "desktop.workbench.autoRenaming",
-      "en": "Auto renaming…",
-      "zh": "正在自动重命名…"
-    },
-    {
       "key": "desktop.workbench.checkoutBranchFailed",
       "en": "Could not switch branch: {0}",
       "zh": "无法切换分支：{0}"

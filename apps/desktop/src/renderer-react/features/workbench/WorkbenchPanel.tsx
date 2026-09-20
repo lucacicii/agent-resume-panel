@@ -1163,7 +1163,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     deferredAutoRenameKeysRef.current.delete(`${provider}:${id}`);
     const session = sessionsRef.current.find((item) => item.provider === provider && item.id === id);
     if (!session) return; // Session was hidden/deleted — nothing left to auto-rename.
-    if (activeRef.current) setStatus({ text: t("desktop.workbench.autoRenaming"), kind: "ok" });
     try {
       const projectName = session.projectPath ? basename(session.projectPath) : "";
       let result: { title: string; nativeRenamed: boolean; nativeError?: string };
@@ -1178,10 +1177,12 @@ export function WorkbenchPanel(): ReactPortal | null {
         result = await desktopApi().autoRenameSession({ provider, id, persist: true });
       }
       await loadSessions();
-      let text = t("desktop.sessions.renamed", result.title);
-      if (!result.nativeRenamed && result.nativeError) text += t("desktop.sessions.renamedNativeError", result.nativeError);
-      if (activeRef.current) {
-        setStatus({ text, kind: result.nativeRenamed || !result.nativeError ? "ok" : "error" });
+      // Success is silent; the list refresh already reflects the new title.
+      if (activeRef.current && !result.nativeRenamed && result.nativeError) {
+        setStatus({
+          text: t("desktop.sessions.renamed", result.title) + t("desktop.sessions.renamedNativeError", result.nativeError),
+          kind: "error",
+        });
       }
       window.dispatchEvent(new CustomEvent("agent-resume:sessions-mutated", { detail: { kind: "session-title" } }));
     } catch (error) {

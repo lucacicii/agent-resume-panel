@@ -131,6 +131,7 @@ const DESKTOP_DEAD = [
   "desktop.sessions.summarizeBtn",
   "desktop.sessions.summarizingBtn",
   "desktop.sessions.summaryLabel",
+  "desktop.workbench.autoRenaming",
   "desktop.workbench.editorNotFound",
   "desktop.workbench.editorNotFoundAuto",
   "desktop.workbench.metaCount",
