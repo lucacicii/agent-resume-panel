@@ -1567,8 +1567,8 @@ function resumeSessionSync(): void {
 }
 
 const DEFAULT_WINDOW_SIZE = {
-  width: 1120,
-  height: 780
+  width: 1640,
+  height: 870
 } as const;
 
 function createWindow(): void {
@@ -1577,6 +1577,7 @@ function createWindow(): void {
   const icon = loadAppIcon();
   mainWindow = new BrowserWindow({
     ...DEFAULT_WINDOW_SIZE,
+    center: true,
     minWidth: 860,
     minHeight: 600,
     title: "Agent Resume Desktop",
@@ -1599,10 +1600,6 @@ function createWindow(): void {
     }
   });
 
-  // BrowserWindow#maximize() implicitly shows hidden macOS windows. Size it to the
-  // display work area instead, so the first visible frame is already full-sized.
-  const display = screen.getDisplayMatching(mainWindow.getBounds());
-  mainWindow.setBounds(display.workArea);
   markTranslucentWindow(mainWindow);
   mainWindow.once("ready-to-show", () => {
     mainWindowReadyToShow = true;
