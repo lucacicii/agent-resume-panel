@@ -277,6 +277,11 @@ vi.stubGlobal("ResizeObserver", class {
   disconnect() {}
 });
 
+const contextMenuShow = vi.fn(async (_args: { x: number; y: number; items: Array<{ id?: string; label?: string }> }): Promise<string | null> => null);
+const chooseContextMenuItem = (label: string) => {
+  contextMenuShow.mockImplementationOnce(async (args) => args.items.find((item) => item.label === label)?.id ?? null);
+};
+
 beforeEach(() => {
   localStorage.setItem("workbench-sidebar-view-v2", "workitems");
   // AppChrome hosts per-tab toolbars in the app header; mirror that DOM here.
@@ -317,6 +322,7 @@ afterEach(() => {
   vi.useRealTimers();
   cleanup();
   notificationMocks.notifyDesktop.mockClear();
+  contextMenuShow.mockImplementation(async () => null);
   xtermMocks.instances.length = 0;
   xtermMocks.resizeObservers.length = 0;
   xtermMocks.fitDimensions = { cols: 80, rows: 24 };
@@ -3441,6 +3447,7 @@ describe("WorkbenchPanel", () => {
       listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
       workbenchNewSession,
       acpCreateSession,
+      contextMenuShow,
       onAcpStream: () => () => undefined,
       acpConnect: async () => ({ record: { id: "acp-new", title: "ACP session", projectPath: "/work/app", provider: "codex", createdAt: 1, updatedAt: 1, messageCount: 0 }, init: {} }),
       acpDisconnect: async () => ({ ok: true }),
@@ -3455,31 +3462,29 @@ describe("WorkbenchPanel", () => {
     await activateTaskDirectory("/work/app");
     const newSessionButton = screen.getByRole("button", { name: /New session/i });
 
+    chooseContextMenuItem("Claude");
     fireEvent.click(newSessionButton);
-    const menu = await screen.findByRole("menu", { name: "Default agent" });
-    expect(newSessionButton.getAttribute("aria-expanded")).toBe("true");
-    fireEvent.click(within(menu).getByRole("menuitem", { name: "Claude" }));
     await waitFor(() => expect(workbenchNewSession).toHaveBeenCalledWith({
       cwd: "/work/app",
       provider: "claude",
       executionMode: "standard",
       taskNoteId: "wi-test"
     }));
-    // The picker stays mounted while its exit animation runs.
-    await waitFor(() => expect(screen.queryByRole("menu", { name: "Default agent" })).toBeNull());
+    // The picker is a native NSMenu now: assert the grouped items the renderer sends.
+    const items = contextMenuShow.mock.calls.at(-1)![0].items;
+    expect(items.find((item) => item.label === "CLI (terminal)")).toBeTruthy();
+    expect(items.find((item) => item.label === "ACP (visual chat)")).toBeTruthy();
 
+    chooseContextMenuItem("ACP · Codex");
     fireEvent.click(newSessionButton);
-    const reopenedMenu = await screen.findByRole("menu", { name: "Default agent" });
-    fireEvent.click(within(reopenedMenu).getByRole("menuitem", { name: "ACP · Codex" }));
     await waitFor(() => expect(acpCreateSession).toHaveBeenCalledWith({ projectPath: "/work/app", provider: "codex" }));
 
+    chooseContextMenuItem("ACP · Prime Agent");
     fireEvent.click(newSessionButton);
-    const primeMenu = await screen.findByRole("menu", { name: "Default agent" });
-    fireEvent.click(within(primeMenu).getByRole("menuitem", { name: "ACP · Prime Agent" }));
     await waitFor(() => expect(acpCreateSession).toHaveBeenCalledWith({ projectPath: "/work/app", provider: "prime" }));
   });
 
-  it("launches a new session in a workspace mention cwd", async () => {
+  it("lists only the CLI/ACP targets when there is no default agent", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
     document.body.append(host);
@@ -3509,6 +3514,7 @@ describe("WorkbenchPanel", () => {
           ]
         }]
       } }),
+      contextMenuShow,
       listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
       workbenchNewSession,
       onAcpStream: () => () => undefined,
@@ -3521,18 +3527,18 @@ describe("WorkbenchPanel", () => {
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
     await activateTaskDirectory("/work/app");
+    chooseContextMenuItem("Claude");
     fireEvent.click(document.querySelector(".wb-pane-tab-group-label") as HTMLButtonElement);
-    const menu = await screen.findByRole("menu", { name: "Default agent" });
-    fireEvent.mouseDown(within(menu).getByRole("menuitem", { name: "anfeng" }));
-    fireEvent.click(within(menu).getByRole("menuitem", { name: "anfeng" }));
-    await waitFor(() => expect(within(menu).getByRole("menuitem", { name: "anfeng" }).getAttribute("aria-pressed")).toBe("true"));
-    fireEvent.click(within(menu).getByRole("menuitem", { name: "Claude" }));
     await waitFor(() => expect(workbenchNewSession).toHaveBeenCalledWith({
-      cwd: "/work/c",
+      cwd: "/work/app",
       provider: "claude",
       executionMode: "standard",
       taskNoteId: "wi-test"
     }));
+    // No default agent  CLI/ACP only; the workspace mention step is gone.
+    const items = contextMenuShow.mock.calls.at(-1)![0].items;
+    expect(items.find((item) => item.label === "anfeng")).toBeUndefined();
+    expect(items.find((item) => item.label === "CLI (terminal)")).toBeTruthy();
   });
 
   it("launches immediately when a workspace mention is chosen with a default agent", async () => {
@@ -3562,6 +3568,7 @@ describe("WorkbenchPanel", () => {
           roots: [{ path: "/work/c", role: "work" }]
         }]
       } }),
+      contextMenuShow,
       listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
       workbenchNewSession,
       onAcpStream: () => () => undefined,
@@ -3574,16 +3581,17 @@ describe("WorkbenchPanel", () => {
     render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
     await activateTaskDirectory("/work/app");
+    chooseContextMenuItem("anfeng");
     fireEvent.click(document.querySelector(".wb-pane-tab-group-label") as HTMLButtonElement);
-    const menu = await screen.findByRole("menu", { name: "Default agent" });
-    fireEvent.mouseDown(within(menu).getByRole("menuitem", { name: "anfeng" }));
-    fireEvent.click(within(menu).getByRole("menuitem", { name: "anfeng" }));
     await waitFor(() => expect(workbenchNewSession).toHaveBeenCalledWith({
       cwd: "/work/c",
       provider: "codex",
       executionMode: "standard",
       taskNoteId: "wi-test"
     }));
+    const items = contextMenuShow.mock.calls.at(-1)![0].items;
+    expect(items.find((item) => item.label === "Workspace")).toBeTruthy();
+    expect(items.find((item) => item.label === "anfeng")).toBeTruthy();
   });
 
   it("does not leave loading visible for external-system new sessions", async () => {
