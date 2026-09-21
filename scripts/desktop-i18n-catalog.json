@@ -113,7 +113,8 @@
     "desktop.workbench.scriptTemplateCreated": "Created template \"{0}\" with this script",
     "desktop.workbench.scriptSentLinkedToTemplate": "Sent, and this task is now linked to the template",
     "desktop.workbench.scriptSendToTemplateNamed": "Send to template \"{0}\"",
-    "desktop.workbench.scriptSendToOtherTemplate": "Send to another template…"
+    "desktop.workbench.scriptSendToOtherTemplate": "Send to another template…",
+    "desktop.menu.reviewGitChanges": "Review Git Changes…"
   },
   "ja": {
     "desktop.nav.label": "ナビゲーション",
@@ -229,7 +230,8 @@
     "desktop.workbench.scriptTemplateCreated": "テンプレート「{0}」を作成し、このスクリプトを追加しました",
     "desktop.workbench.scriptSentLinkedToTemplate": "送信し、このタスクをテンプレートに紐付けました",
     "desktop.workbench.scriptSendToTemplateNamed": "テンプレート「{0}」へ送る",
-    "desktop.workbench.scriptSendToOtherTemplate": "他のテンプレートへ送る…"
+    "desktop.workbench.scriptSendToOtherTemplate": "他のテンプレートへ送る…",
+    "desktop.menu.reviewGitChanges": "Git の変更を確認…"
   },
   "zh-cn": {
     "desktop.nav.label": "导航",
@@ -345,6 +347,7 @@
     "desktop.workbench.scriptTemplateCreated": "已创建模板“{0}”并加入该脚本",
     "desktop.workbench.scriptSentLinkedToTemplate": "已发送，并把本任务关联到该模板",
     "desktop.workbench.scriptSendToTemplateNamed": "发送到模板「{0}」",
-    "desktop.workbench.scriptSendToOtherTemplate": "发送到其他模板…"
+    "desktop.workbench.scriptSendToOtherTemplate": "发送到其他模板…",
+    "desktop.menu.reviewGitChanges": "审查 Git 变更…"
   }
 }

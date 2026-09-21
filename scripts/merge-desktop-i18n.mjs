@@ -34,6 +34,7 @@ const obsoleteDesktopKeys = new Set([
   "desktop.settings.visualThemeClassic",
   "desktop.settings.visualThemeClassicDesc",
   "desktop.gtd.backToGtd",
+  "desktop.workbench.gitToolChanges",
   "desktop.settings.visualThemeCyberpunk",
   "desktop.settings.visualThemeCyberpunkDesc",
   "desktop.settings.visualThemeDos",

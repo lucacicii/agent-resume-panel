@@ -2924,6 +2924,31 @@ export function WorkbenchPanel(): ReactPortal | null {
     };
   }, [active]);
 
+  /** ⌃⇧G / Ctrl+Shift+G — open the Git side panel to review the session's changes. */
+  useEffect(() => {
+    const openGitPanel = () => {
+      if (!active) return;
+      setSide("git");
+    };
+    const unsub =
+      typeof desktopApi().onWorkbenchCmdShiftG === "function"
+        ? desktopApi().onWorkbenchCmdShiftG(openGitPanel)
+        : () => undefined;
+    // Renderer fallback when main bridge is unavailable (tests / older preload).
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!active) return;
+      if (!(event.metaKey || event.ctrlKey) || !event.shiftKey || event.altKey) return;
+      if (event.key.toLowerCase() !== "g") return;
+      event.preventDefault();
+      openGitPanel();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      unsub();
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [active]);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (!active || !(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "w") return;
@@ -6115,7 +6140,7 @@ export function WorkbenchPanel(): ReactPortal | null {
                   >
                     <ThemeIcon name="file-diff" size={ICON_SIZE.dense} aria-hidden="true" />
                     <span>{t("desktop.workbench.sessionGitReviewAction")}</span>
-                    <kbd className="wb-session-git-review-shortcut">⌃⇧G</kbd>
+                    <kbd className="wb-session-git-review-shortcut">{macShortcuts ? "⌃⇧G" : "Ctrl+Shift+G"}</kbd>
                   </button>
                   <button
                     type="button"

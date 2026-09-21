@@ -46,6 +46,9 @@
   --color-destructive-hover: #d72b21;
   --color-success: #34c759;
   --color-warning: #ff9500;
+  /* Soft wash behind warning text (awaiting-user chip, etc.). */
+  --color-warning-subtle: rgba(255, 149, 0, 0.14);
+  --color-button-text: #ffffff;
   --color-note: #ffcc00;
   --color-purple: #af52de;
   --color-teal: #5ac8fa;
@@ -225,6 +228,8 @@
   --color-destructive-hover: #d72b21;
   --color-success: #34c759;
   --color-warning: #ff9500;
+  --color-warning-subtle: rgba(255, 149, 0, 0.14);
+  --color-button-text: #ffffff;
   --color-note: #ffcc00;
   --color-fill-primary: color-mix(in srgb, var(--color-accent) 12%, transparent);
   --color-fill-secondary: rgba(0, 0, 0, 0.05);
@@ -291,6 +296,8 @@
   --color-destructive-hover: #ff6961;
   --color-success: #30d158;
   --color-warning: #ff9f0a;
+  --color-warning-subtle: rgba(255, 159, 10, 0.18);
+  --color-button-text: #ffffff;
   --color-note: #ffd60a;
   --color-fill-primary: color-mix(in srgb, var(--color-accent) 18%, transparent);
   --color-fill-secondary: rgba(255, 255, 255, 0.08);
@@ -438,6 +445,8 @@ html[data-theme="dark"][data-task-accent] {
     --color-destructive-hover: #ff6961;
     --color-success: #30d158;
     --color-warning: #ff9f0a;
+    --color-warning-subtle: rgba(255, 159, 10, 0.18);
+    --color-button-text: #ffffff;
     --color-note: #ffd60a;
     --color-fill-primary: color-mix(in srgb, var(--color-accent) 18%, transparent);
     --color-fill-secondary: rgba(255, 255, 255, 0.08);
@@ -5226,10 +5235,10 @@ code {
   margin-left: var(--space-2);
   padding: 1px var(--space-1-5);
   border-radius: var(--radius-sm);
-  background: var(--color-warning-subtle, rgba(234, 179, 8, 0.15));
-  color: var(--color-warning, #eab308);
-  font-size: var(--font-size-micro, 11px);
-  font-weight: var(--font-weight-medium, 500);
+  background: var(--color-warning-subtle);
+  color: var(--color-warning);
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-medium);
   text-transform: none;
   letter-spacing: normal;
 }
@@ -5643,8 +5652,8 @@ body.is-pane-resizing-v * {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: none;
   border-radius: var(--radius-sm);
@@ -5730,8 +5739,8 @@ body.is-pane-resizing-v * {
   border: none;
   background: transparent;
   box-shadow: none;
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   border-radius: var(--radius-md);
   color: var(--color-label-secondary);
 
@@ -5746,18 +5755,18 @@ body.is-pane-resizing-v * {
   position: absolute;
   top: -3px;
   right: -5px;
-  min-width: 14px;
-  height: 14px;
+  min-width: 15px;
+  height: 15px;
   padding: 0 3px;
   border-radius: 999px;
-  background: var(--color-warning, #eab308);
-  color: #1a1a1a;
-  font-size: 9px;
-  font-weight: 700;
-  line-height: 14px;
+  background: var(--color-warning);
+  color: var(--color-button-text);
+  font-size: var(--font-size-micro);
+  font-weight: var(--font-weight-bold);
+  line-height: 15px;
   text-align: center;
   pointer-events: none;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 1px 2px var(--color-label-quaternary);
 }
 
 .wb-detail-tool svg {
@@ -7955,14 +7964,14 @@ body.is-pane-resizing-v * {
 
 .wb-git-clean-title {
   margin: 0;
-  font-size: var(--font-size-body, 13px);
-  font-weight: var(--font-weight-medium, 500);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
   color: var(--color-label-primary);
 }
 
 .wb-git-clean-hint {
   margin: 0;
-  font-size: var(--font-size-micro, 11px);
+  font-size: var(--font-size-caption);
   color: var(--color-label-tertiary);
 }
 
@@ -7970,12 +7979,13 @@ body.is-pane-resizing-v * {
   appearance: none;
   margin-top: var(--space-2);
   padding: var(--space-1) var(--space-3);
+  min-height: 24px;
   border: 1px solid var(--color-separator);
   border-radius: var(--radius-sm);
   background: var(--color-fill-secondary);
   color: var(--color-label-primary);
-  font-size: var(--font-size-micro, 11px);
-  font-weight: var(--font-weight-medium, 500);
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-medium);
   display: inline-flex;
   align-items: center;
   gap: var(--space-1-5);
@@ -8015,8 +8025,8 @@ body.is-pane-resizing-v * {
   border-radius: var(--radius-sm);
   background: var(--color-fill-secondary);
   color: var(--color-accent);
-  font-size: var(--font-size-micro, 11px);
-  font-weight: var(--font-weight-medium, 500);
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-medium);
 }
 
 .wb-diff-ask-agent:hover {
@@ -8523,9 +8533,9 @@ button.wb-pane-tab-group-label.is-busy {
 .wb-terminal-tab-close {
   appearance: none;
   color: var(--color-label-tertiary);
-  width: 20px;
-  min-width: 20px;
-  height: 20px;
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
   align-self: center;
   margin-right: var(--space-1);
   border: none;
@@ -9807,7 +9817,7 @@ textarea.wb-editor-host {
   padding: var(--space-1) var(--space-3);
   background: var(--color-fill-secondary);
   border-top: 0.5px solid var(--color-separator);
-  font-size: var(--font-size-micro, 11px);
+  font-size: var(--font-size-caption);
   color: var(--color-label-secondary);
 }
 
@@ -9815,7 +9825,7 @@ textarea.wb-editor-host {
   display: flex;
   align-items: center;
   gap: var(--space-1-5);
-  font-weight: var(--font-weight-medium, 500);
+  font-weight: var(--font-weight-medium);
 }
 
 .wb-session-git-review-info svg {
@@ -9828,12 +9838,13 @@ textarea.wb-editor-host {
   background: var(--color-control-bg, var(--color-fill-primary));
   border-radius: var(--radius-sm);
   padding: var(--space-0-5) var(--space-2);
+  min-height: 24px;
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
   color: var(--color-label-primary);
-  font-size: var(--font-size-micro, 11px);
-  font-weight: var(--font-weight-semibold, 600);
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-semibold);
   transition: background var(--duration-fast) var(--ease-out),
               border-color var(--duration-fast) var(--ease-out);
 }
@@ -9849,12 +9860,12 @@ textarea.wb-editor-host {
 }
 
 .wb-session-git-review-shortcut {
-  font-size: 10px;
+  font-size: var(--font-size-micro);
   font-family: var(--font-family-mono);
   color: var(--color-label-tertiary);
   padding: 0 var(--space-0-5);
   background: var(--color-fill-secondary);
-  border-radius: var(--radius-xs, 2px);
+  border-radius: var(--radius-xs);
 }
 
 .wb-session-git-review-actions {
@@ -9865,19 +9876,34 @@ textarea.wb-editor-host {
 
 .wb-session-git-commit-btn {
   background: var(--color-accent);
-  color: var(--color-button-text, #ffffff);
+  color: var(--color-button-text);
   border-color: var(--color-accent);
 }
 
 .wb-session-git-commit-btn:hover:not(:disabled) {
-  background: var(--color-accent-hover, color-mix(in srgb, var(--color-accent) 85%, black));
-  border-color: var(--color-accent-hover, color-mix(in srgb, var(--color-accent) 85%, black));
-  color: #ffffff;
+  background: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+  color: var(--color-button-text);
 }
 
 .wb-session-git-commit-btn.is-busy {
   opacity: 0.75;
   cursor: default;
+}
+
+/* Reduced motion: the controls added around the review flow keep their colour
+   feedback but drop the animated transitions. */
+@media (prefers-reduced-motion: reduce) {
+  .wb-detail-tool,
+  .wb-detail-project-reveal,
+  .wb-session-git-review-btn,
+  .wb-session-git-commit-btn,
+  .wb-git-clean-action-btn,
+  .wb-diff-ask-agent,
+  .wb-workbench-tab-close,
+  .wb-terminal-tab-close {
+    transition: none;
+  }
 }
 
 /* TUI composer — docked input bar under wb-session-split-tui. */
@@ -15473,8 +15499,8 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
   appearance: none;
   display: grid;
   place-items: center;
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   margin-right: var(--space-1);
   border: none;
   border-radius: var(--radius-sm, 4px);

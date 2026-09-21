@@ -1088,6 +1088,8 @@ export interface DesktopApi {
   onWorkbenchCmdShiftP(callback: () => void): () => void;
   /** Find in Files (⌘⇧F / Ctrl+Shift+F). */
   onWorkbenchCmdShiftF(callback: () => void): () => void;
+  /** Review Git changes (⌃⇧G / Ctrl+Shift+G). */
+  onWorkbenchCmdShiftG(callback: () => void): () => void;
   getReportEntry(reportId: string): Promise<ReportEntry | null>;
   /** Static catalog of chat tools and discovered skills/mcp tools. */
   listAgentTools(args?: { projectPath?: string }): Promise<AgentToolDescriptor[]>;
@@ -1858,6 +1860,11 @@ const api: DesktopApi = {
     const handler = () => callback();
     ipcRenderer.on("workbench:cmdShiftF", handler);
     return () => ipcRenderer.removeListener("workbench:cmdShiftF", handler);
+  },
+  onWorkbenchCmdShiftG: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on("workbench:cmdShiftG", handler);
+    return () => ipcRenderer.removeListener("workbench:cmdShiftG", handler);
   },
   getReportEntry: (reportId) => ipcRenderer.invoke("report:getEntry", reportId),
   listAgentTools: (args) => ipcRenderer.invoke("agent:listTools", args),

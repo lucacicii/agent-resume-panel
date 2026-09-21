@@ -56,11 +56,20 @@ describe("WorkbenchDetailHeader", () => {
 
   it("prioritizes Git in the toolbar and shows a badge when there are uncommitted changes", async () => {
     renderHeader({ gitDirtyCount: 4 });
+    // The count is part of the accessible name, not just the badge.
+    const gitButton = await screen.findByRole("button", { name: "Git, 4" });
     const tools = document.querySelectorAll<HTMLButtonElement>(".wb-detail-tool");
-    await screen.findByRole("button", { name: "Git" });
-    expect(tools[0]?.getAttribute("aria-label")).toBe("Git");
-    const badge = tools[0]?.querySelector(".wb-detail-tool-badge");
+    expect(tools[0]).toBe(gitButton);
+    const badge = gitButton.querySelector(".wb-detail-tool-badge");
     expect(badge?.textContent).toBe("4");
-    expect(tools[0]?.getAttribute("title")).toBe("Git (4)");
+    // The tooltip carries the accelerator so the shortcut is discoverable here.
+    expect(gitButton.getAttribute("title")).toMatch(/^Git, 4 \((.+)G\)$/);
+  });
+
+  it("keeps the Git label bare and drops the badge when the tree is clean", async () => {
+    renderHeader({ gitDirtyCount: 0 });
+    const gitButton = await screen.findByRole("button", { name: "Git" });
+    expect(gitButton.querySelector(".wb-detail-tool-badge")).toBeNull();
+    expect(gitButton.getAttribute("title")).toMatch(/^Git \((.+)G\)$/);
   });
 });

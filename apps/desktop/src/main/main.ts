@@ -1914,6 +1914,11 @@ async function installApplicationMenu(): Promise<void> {
         accelerator: "CommandOrControl+Shift+P",
         click: workbenchCommand("workbench:cmdShiftP")
       },
+      {
+        label: t("desktop.menu.reviewGitChanges"),
+        accelerator: "CommandOrControl+Shift+G",
+        click: workbenchCommand("workbench:cmdShiftG")
+      },
       { type: "separator" },
       { role: "resetZoom", label: t("desktop.menu.actualSize") },
       { role: "zoomIn", label: t("desktop.menu.zoomIn") },

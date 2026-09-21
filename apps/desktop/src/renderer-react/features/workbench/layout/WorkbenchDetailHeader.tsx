@@ -38,6 +38,16 @@ export function WorkbenchDetailHeader({
   gitDirtyCount?: number;
 }): React.JSX.Element {
   const { t } = useI18n();
+  // Accelerators are surfaced in tooltips so the keyboard path is discoverable
+  // where the control lives, not only in the menu bar.
+  const isMac = typeof navigator !== "undefined" && /mac/i.test(navigator.platform);
+  const shiftAccel = (key: string, meta: boolean) =>
+    isMac ? `${meta ? "⌘" : "⌃"}⇧${key}` : `Ctrl+Shift+${key}`;
+  const gitAccel = shiftAccel("G", false);
+  const searchAccel = shiftAccel("F", true);
+  const gitLabel = gitDirtyCount > 0
+    ? `${t("desktop.workbench.sidePanelGit")}, ${gitDirtyCount}`
+    : t("desktop.workbench.sidePanelGit");
   return <>
     <div className="wb-detail-head">
       <span className="wb-detail-project-label">
@@ -76,8 +86,8 @@ export function WorkbenchDetailHeader({
             type="button"
             className={`wb-detail-tool${side === "git" ? " active" : ""}${gitDirtyCount > 0 ? " has-changes" : ""}`}
             aria-pressed={side === "git"}
-            aria-label={t("desktop.workbench.sidePanelGit")}
-            title={gitDirtyCount > 0 ? `${t("desktop.workbench.sidePanelGit")} (${gitDirtyCount})` : t("desktop.workbench.sidePanelGit")}
+            aria-label={gitLabel}
+            title={`${gitLabel} (${gitAccel})`}
             onClick={() => onToggleSide("git")}
           >
             <ThemeIcon name="git-branch" size={ICON_SIZE.default} />
@@ -102,7 +112,7 @@ export function WorkbenchDetailHeader({
             className={`wb-detail-tool${side === "search" ? " active" : ""}`}
             aria-pressed={side === "search"}
             aria-label={t("desktop.workbench.sidePanelSearch")}
-            title={t("desktop.workbench.sidePanelSearch")}
+            title={`${t("desktop.workbench.sidePanelSearch")} (${searchAccel})`}
             onClick={() => onToggleSide("search")}
           >
             <ThemeIcon name="search" size={ICON_SIZE.default} />
