@@ -670,6 +670,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [editors, setEditors] = useState<EditorPane[]>([]);
   const [imagePreview, setImagePreview, imagePreviewClosing] = useOverlayState<string>();
   const [diffs, setDiffs] = useState<DiffPane[]>([]);
+  const [diffSplitReview, setDiffSplitReview] = useState<boolean>(() => storageString("wb-diff-split-review") === "true");
   const [acpChats, setAcpChats] = useState<AcpChatPane[]>([]);
   const [browsers, setBrowsers] = useState<BrowserPane[]>([]);
   const [notePanes, setNotePanes] = useState<NotePane[]>([]);
@@ -815,6 +816,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     commitBusy,
     commitSuggestion,
     gitRepositories,
+    stagedCommitPaths,
     canCommit,
     projectTracking,
     refreshGit,
@@ -846,6 +848,40 @@ export function WorkbenchPanel(): ReactPortal | null {
   useEffect(() => { diffsRef.current = diffs; }, [diffs]);
   useEffect(() => { notePanesRef.current = notePanes; }, [notePanes]);
   useEffect(() => { selectedProjectRef.current = selectedProject; }, [selectedProject]);
+
+  const handleCommitAndPushFromBanner = useCallback(async () => {
+    if (commitBusy || !gitRoot) return;
+    if (canCommit) {
+      await commit(true);
+      return;
+    }
+    if (!stagedCommitPaths.length && git && gitRoot) {
+      const unstagedInRoot = git.unstaged.filter((c) => c.repoRoot === gitRoot);
+      if (unstagedInRoot.length) {
+        await toggleGitStage({ repoRoot: gitRoot, paths: unstagedInRoot.map((c) => c.repoPath) }, true);
+      }
+    }
+    let msg = commitMessage.trim();
+    if (!msg) {
+      try {
+        const paths = stagedCommitPaths.length
+          ? stagedCommitPaths
+          : (git?.unstaged.filter((c) => c.repoRoot === gitRoot).map((c) => c.repoPath) || []);
+        if (paths.length) {
+          const result = await desktopApi().terminalGitSuggestCommit({ repoRoot: gitRoot, paths });
+          msg = result.message.trim();
+          setCommitMessage(result.message);
+        }
+      } catch {
+        /* fall through */
+      }
+    }
+    if (!msg) {
+      setSide("git");
+      return;
+    }
+    await commit(true, msg);
+  }, [canCommit, commit, commitBusy, commitMessage, git, gitRoot, stagedCommitPaths, toggleGitStage]);
 
   const refreshOpenGitDiffs = useCallback(async (changedPaths: ReadonlySet<string> | null) => {
     if (!selectedProject) return;
@@ -4628,6 +4664,28 @@ export function WorkbenchPanel(): ReactPortal | null {
     } catch (error) { notifyGitFailure("desktop.workbench.sidePanelDiffFailed", error); }
   };
 
+  const askAgentAboutDiff = useCallback((diff: DiffPane) => {
+    const sessionPane = terminalsRef.current.find((t) => paneScopeKey(t) === activeScopeKey && t.group === "session")
+      || terminalsRef.current.find((t) => t.group === "session");
+    const acpPane = acpChatsRef.current.find((c) => paneScopeKey(c) === activeScopeKey);
+    const targetKey = sessionPane?.key || acpPane?.key;
+    const targetProjectPath = sessionPane?.projectPath || acpPane?.projectPath || diff.projectPath;
+    const feedbackPrefix = t("desktop.workbench.diffFeedbackPrefix", basename(diff.path));
+
+    if (targetKey) {
+      setActivePane(targetKey, targetProjectPath);
+      setComposerDrafts((current) => ({
+        ...current,
+        [targetKey]: current[targetKey] ? `${current[targetKey]}\n${feedbackPrefix}` : feedbackPrefix
+      }));
+      window.requestAnimationFrame(() => {
+        composerFocusRefs.current.get(targetKey)?.({ caret: "end" });
+      });
+    } else {
+      void requestNewSession(targetProjectPath);
+    }
+  }, [activeScopeKey, requestNewSession, setActivePane, t]);
+
   const matchCachedGitChange = (filePath: string): { change: GitChange; staged: boolean } | null => {
     const target = normalizeWorkbenchPath(filePath);
     const cached = gitRef.current;
@@ -5797,6 +5855,8 @@ export function WorkbenchPanel(): ReactPortal | null {
     </div>
   ) : null;
 
+  const gitDirtyCount = (git?.staged?.length ?? 0) + (git?.unstaged?.length ?? 0);
+
   const detailHeader = (
     <WorkbenchDetailHeader
       title={headerTitle}
@@ -5810,7 +5870,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       onOpenBranchMenu={openBranchMenu}
       onToggleSide={(view) => setSide((current) => current === view ? null : view)}
       centerContent={workbenchTabsBar}
-      gitDirtyCount={(git?.staged?.length ?? 0) + (git?.unstaged?.length ?? 0)}
+      gitDirtyCount={gitDirtyCount}
     />
   );
 
@@ -6041,6 +6101,39 @@ export function WorkbenchPanel(): ReactPortal | null {
             const composerProjects = taskWorkspaceDir && projectPathKey(pane.cwd) === projectPathKey(taskWorkspaceDir)
               ? composerWorkspaceProjects
               : EMPTY_COMPOSER_WORKSPACE_PROJECTS;
+            const gitReviewBanner = isSession && gitDirtyCount > 0 && side !== "git" ? (
+              <div className="wb-session-git-review-banner">
+                <div className="wb-session-git-review-info">
+                  <ThemeIcon name="git-branch" size={ICON_SIZE.dense} aria-hidden="true" />
+                  <span>{t("desktop.workbench.sessionGitReviewHint", gitDirtyCount)}</span>
+                </div>
+                <div className="wb-session-git-review-actions">
+                  <button
+                    type="button"
+                    className="wb-session-git-review-btn"
+                    onClick={() => setSide("git")}
+                  >
+                    <ThemeIcon name="file-diff" size={ICON_SIZE.dense} aria-hidden="true" />
+                    <span>{t("desktop.workbench.sessionGitReviewAction")}</span>
+                    <kbd className="wb-session-git-review-shortcut">⌃⇧G</kbd>
+                  </button>
+                  <button
+                    type="button"
+                    className={`wb-session-git-review-btn wb-session-git-commit-btn${commitBusy ? " is-busy" : ""}`}
+                    disabled={commitBusy}
+                    title={t("desktop.workbench.gitCommitAndPush")}
+                    onClick={() => void handleCommitAndPushFromBanner()}
+                  >
+                    {commitBusy ? (
+                      <ThemeIcon name="loader" size={ICON_SIZE.dense} className="spin" aria-hidden="true" />
+                    ) : (
+                      <ThemeIcon name="upload" size={ICON_SIZE.dense} aria-hidden="true" />
+                    )}
+                    <span>{t("desktop.workbench.gitCommitAndPush")}</span>
+                  </button>
+                </div>
+              </div>
+            ) : null;
 
             if (showSplit) {
               const provider = sessionIdentity?.provider || pending?.provider || "codex";
@@ -6127,6 +6220,7 @@ export function WorkbenchPanel(): ReactPortal | null {
                       </div>
                     ) : null}
                   </div>
+                  {gitReviewBanner}
                   <TerminalComposerStack
                     items={[{
                       pane: { key: pane.key, cwd: pane.cwd, group: pane.group, projectPath: pane.projectPath },
@@ -6165,7 +6259,9 @@ export function WorkbenchPanel(): ReactPortal | null {
                 ) : null}
                 <TerminalView pane={pane} active={active} themeId={terminalThemeId} appearance={desktopAppearance} rendererMode={terminalRendererMode} engineType={terminalEngine} onPty={onPty} onDetach={onPtyDetach} onInput={onTerminalInput} onInitialPromptSubmitted={onInitialPromptSubmitted} mouseTracking={terminalMouseTrackingRef} />
                 {pane.group === "session" ? (
-                  <TerminalComposerStack
+                  <>
+                    {gitReviewBanner}
+                    <TerminalComposerStack
                     items={[{
                       pane: { key: pane.key, cwd: pane.cwd, group: pane.group, projectPath: pane.projectPath },
                       ptyId: pane.ptyId ?? null,
@@ -6182,6 +6278,7 @@ export function WorkbenchPanel(): ReactPortal | null {
                     slashPhrases={settings?.workbench?.composerSlashPhrases ?? []}
                     workspaceProjects={composerProjects}
                   />
+                </>
                 ) : null}
               </div>
             );
@@ -6219,7 +6316,81 @@ export function WorkbenchPanel(): ReactPortal | null {
             <button type="button" className="wb-editor-find-btn app-inline-search-btn" aria-label={t("desktop.common.findPrev")} onClick={() => runEditorFind("backward")}><ThemeIcon name="arrow-up" size={ICON_SIZE.dense} /></button>
             <button type="button" className="wb-editor-find-btn app-inline-search-btn" aria-label={t("desktop.common.findNext")} onClick={() => runEditorFind("forward")}><ThemeIcon name="arrow-down" size={ICON_SIZE.dense} /></button>
             <button type="button" className="wb-editor-find-btn app-inline-search-btn" aria-label={t("desktop.common.closeFind")} onClick={closeEditorFind}><ThemeIcon name="close" size={ICON_SIZE.dense} /></button>
-          </div> : null}{currentEditor ? <div className="wb-editor-pane" onContextMenu={(event) => { event.preventDefault(); const selectedText = editorRef.current?.getSelectedText().trim() || ""; setEditorContextMenu({ x: event.clientX, y: event.clientY, hasSelection: Boolean(selectedText), selectedText }); }}>{editorDiskAlert}{currentEditor.view === "preview" ? <div className="wb-editor-preview markdown-body" onClick={(event) => { const src = imageSrcFromElement(event.target); if (src) setImagePreview(src); }} dangerouslySetInnerHTML={{ __html: renderMarkdown(currentEditor.content, { baseDir: posixDirname(currentEditor.path), rootDir: currentEditor.projectPath, imageLabels: { openInBrowser: t("desktop.markdown.openInBrowser"), unavailable: t("desktop.markdown.imageUnavailable"), remoteImage: t("desktop.markdown.remoteImage") } }) }} /> : <CodeEditor ref={editorRef} className="wb-editor-host" value={currentEditor.content} onChange={(value) => updateEditorContent(currentEditor.key, value)} onBlur={() => { if (currentEditor.dirty) void saveEditor(currentEditor.key); }} ariaLabel={currentEditor.path} filePath={currentEditor.path} selectionProjectPath={currentEditor.projectPath} readOnly={editorSettings?.editable === false} fontSize={editorSettings?.fontSize ?? 13} wordWrap={editorSettings?.wordWrap ?? false} tabSize={editorSettings?.tabSize ?? 4} appearance={editorAppearance} />}<div className="wb-editor-status"><span className="wb-editor-status-path">{currentEditor.path}</span><span className="wb-editor-status-state">{currentEditor.saving ? t("desktop.workbench.fileSaving") : currentEditor.diskState === "changed" ? t("desktop.workbench.fileConflict") : currentEditor.diskState === "deleted" ? t("desktop.workbench.fileDeletedOnDisk") : currentEditor.diskState === "external" ? t("desktop.workbench.fileUnavailableOnDisk") : currentEditor.dirty ? t("desktop.workbench.fileModified") : t("desktop.workbench.fileSaved")}</span><button type="button" className="wb-git-action-btn" disabled={!currentEditor.dirty || currentEditor.saving || Boolean(currentEditor.diskState) || editorSettings?.editable === false} onClick={() => void saveEditor(currentEditor.key)} aria-label={t("desktop.common.save")}><ThemeIcon name="save" size={ICON_SIZE.default} /></button></div></div> : null}{currentDiff ? <div className="wb-git-diff-pane"><div className="wb-diff-head"><strong className="wb-diff-title">{currentDiff.path}</strong><button type="button" className="wb-git-action-btn wb-diff-open" aria-label={t("desktop.workbench.fileOpen")} title={t("desktop.workbench.fileOpen")} onClick={() => void openFile(gitChangeFilePath(currentDiff))}><ThemeIcon name="file" size={ICON_SIZE.default} /></button></div><div className="wb-diff-labels"><span className="wb-diff-label">{currentDiff.oldLabel}</span><span className="wb-diff-label">{currentDiff.newLabel}</span></div><DiffWorkerPool><WorkbenchDiffView diff={currentDiff} appearance={editorAppearance} onDiscardHunk={(target) => void discardGitHunk(currentDiff, target)} onDiscardLine={(target) => void discardGitLine(currentDiff, target)} onStageHunk={(target) => void stageGitHunk(currentDiff, target)} onUnstageHunk={(target) => void unstageGitHunk(currentDiff, target)} onStageLine={(target) => void stageGitLine(currentDiff, target)} onUnstageLine={(target) => void unstageGitLine(currentDiff, target)} /></DiffWorkerPool></div> : null}{currentNotePane ? <NotePaneView key={currentNotePane.key} noteId={currentNotePane.noteId} active={active} onOpenNote={(noteId) => openNotePane(noteId)} onTitleChange={updateNotePaneTitle} onDirtyChange={setNotePaneDirty} onClose={() => closeNotePane(currentNotePane.key)} /> : null}{acpChats.map((pane) => {
+          </div> : null}{currentEditor ? <div className="wb-editor-pane" onContextMenu={(event) => { event.preventDefault(); const selectedText = editorRef.current?.getSelectedText().trim() || ""; setEditorContextMenu({ x: event.clientX, y: event.clientY, hasSelection: Boolean(selectedText), selectedText }); }}>{editorDiskAlert}{currentEditor.view === "preview" ? <div className="wb-editor-preview markdown-body" onClick={(event) => { const src = imageSrcFromElement(event.target); if (src) setImagePreview(src); }} dangerouslySetInnerHTML={{ __html: renderMarkdown(currentEditor.content, { baseDir: posixDirname(currentEditor.path), rootDir: currentEditor.projectPath, imageLabels: { openInBrowser: t("desktop.markdown.openInBrowser"), unavailable: t("desktop.markdown.imageUnavailable"), remoteImage: t("desktop.markdown.remoteImage") } }) }} /> : <CodeEditor ref={editorRef} className="wb-editor-host" value={currentEditor.content} onChange={(value) => updateEditorContent(currentEditor.key, value)} onBlur={() => { if (currentEditor.dirty) void saveEditor(currentEditor.key); }} ariaLabel={currentEditor.path} filePath={currentEditor.path} selectionProjectPath={currentEditor.projectPath} readOnly={editorSettings?.editable === false} fontSize={editorSettings?.fontSize ?? 13} wordWrap={editorSettings?.wordWrap ?? false} tabSize={editorSettings?.tabSize ?? 4} appearance={editorAppearance} />}<div className="wb-editor-status"><span className="wb-editor-status-path">{currentEditor.path}</span><span className="wb-editor-status-state">{currentEditor.saving ? t("desktop.workbench.fileSaving") : currentEditor.diskState === "changed" ? t("desktop.workbench.fileConflict") : currentEditor.diskState === "deleted" ? t("desktop.workbench.fileDeletedOnDisk") : currentEditor.diskState === "external" ? t("desktop.workbench.fileUnavailableOnDisk") : currentEditor.dirty ? t("desktop.workbench.fileModified") : t("desktop.workbench.fileSaved")}</span><button type="button" className="wb-git-action-btn" disabled={!currentEditor.dirty || currentEditor.saving || Boolean(currentEditor.diskState) || editorSettings?.editable === false} onClick={() => void saveEditor(currentEditor.key)} aria-label={t("desktop.common.save")}><ThemeIcon name="save" size={ICON_SIZE.default} /></button></div></div> : null}{currentDiff ? (() => {
+    const targetSessionPane = terminals.find((pane) => paneScopeKey(pane) === activeScopeKey && pane.group === "session")
+      || terminals.find((pane) => pane.group === "session");
+    const diffPane = (
+      <div className="wb-git-diff-pane">
+        <div className="wb-diff-head">
+          <strong className="wb-diff-title">{currentDiff.path}</strong>
+          <div className="wb-diff-actions">
+            {targetSessionPane ? (
+              <button
+                type="button"
+                className={`wb-git-action-btn wb-diff-split-toggle${diffSplitReview ? " is-active" : ""}`}
+                aria-pressed={diffSplitReview}
+                aria-label={t("desktop.workbench.diffSplitReview")}
+                title={t("desktop.workbench.diffSplitReview")}
+                onClick={() => setDiffSplitReview((v) => {
+                  const next = !v;
+                  writeWorkbenchValue("wb-diff-split-review", activeWorkbenchIdRef.current, String(next));
+                  return next;
+                })}
+              >
+                <ThemeIcon name="panel-right" size={ICON_SIZE.dense} />
+                <span>{t("desktop.workbench.diffSplitReview")}</span>
+              </button>
+            ) : null}
+            <button type="button" className="wb-git-action-btn wb-diff-ask-agent" aria-label={t("desktop.workbench.diffAskAgent")} title={t("desktop.workbench.diffAskAgent")} onClick={() => askAgentAboutDiff(currentDiff)}><ThemeIcon name="bot" size={ICON_SIZE.dense} /><span>{t("desktop.workbench.diffAskAgent")}</span></button>
+            <button type="button" className="wb-git-action-btn wb-diff-open" aria-label={t("desktop.workbench.fileOpen")} title={t("desktop.workbench.fileOpen")} onClick={() => void openFile(gitChangeFilePath(currentDiff))}><ThemeIcon name="file" size={ICON_SIZE.default} /></button>
+          </div>
+        </div>
+        <div className="wb-diff-labels"><span className="wb-diff-label">{currentDiff.oldLabel}</span><span className="wb-diff-label">{currentDiff.newLabel}</span></div>
+        <DiffWorkerPool><WorkbenchDiffView diff={currentDiff} appearance={editorAppearance} onDiscardHunk={(target) => void discardGitHunk(currentDiff, target)} onDiscardLine={(target) => void discardGitLine(currentDiff, target)} onStageHunk={(target) => void stageGitHunk(currentDiff, target)} onUnstageHunk={(target) => void unstageGitHunk(currentDiff, target)} onStageLine={(target) => void stageGitLine(currentDiff, target)} onUnstageLine={(target) => void unstageGitLine(currentDiff, target)} /></DiffWorkerPool>
+      </div>
+    );
+    if (diffSplitReview && targetSessionPane) {
+      const targetSessionIdentity = sessionIdentityFromKey(targetSessionPane.sessionKey);
+      return (
+        <div className="wb-diff-split-layout">
+          <div className="wb-diff-split-session">
+            <div className="wb-session-split-transcript">
+              <SessionTranscriptPane
+                provider={targetSessionIdentity?.provider || "codex"}
+                sessionId={targetSessionIdentity?.sessionId || ""}
+                iconProvider={targetSessionIdentity?.provider || "codex"}
+                active={active}
+                fontSize={settings?.workbench?.transcriptFontSize ?? 14}
+                focusUserMessage={transcriptFocus}
+                onRefresh={triggerSessionSync}
+              />
+            </div>
+            <TerminalComposerStack
+              items={[{
+                pane: { key: targetSessionPane.key, cwd: targetSessionPane.cwd, group: targetSessionPane.group, projectPath: targetSessionPane.projectPath },
+                ptyId: targetSessionPane.ptyId ?? null,
+                activePane: true,
+                value: composerDrafts[targetSessionPane.key] || "",
+                provider: targetSessionIdentity?.provider
+              }]}
+              onChange={setComposerDraft}
+              onSendToTerminal={sendComposerToTerminal}
+              onRunSlashCommand={runComposerSlashCommand}
+              onActivate={activateComposerPane}
+              onClose={closeTerminal}
+              registerFocus={registerComposerFocus}
+              slashPhrases={settings?.workbench?.composerSlashPhrases ?? []}
+              workspaceProjects={targetSessionPane.cwd === taskWorkspaceDir ? composerWorkspaceProjects : EMPTY_COMPOSER_WORKSPACE_PROJECTS}
+            />
+          </div>
+          <div className="wb-diff-split-diff">
+            {diffPane}
+          </div>
+        </div>
+      );
+    }
+    return diffPane;
+  })() : null}{currentNotePane ? <NotePaneView key={currentNotePane.key} noteId={currentNotePane.noteId} active={active} onOpenNote={(noteId) => openNotePane(noteId)} onTitleChange={updateNotePaneTitle} onDirtyChange={setNotePaneDirty} onClose={() => closeNotePane(currentNotePane.key)} /> : null}{acpChats.map((pane) => {
             const visible = paneScopeKey(pane) === activeScopeKey && activePane === pane.key;
             return <AcpChatView
               key={pane.key}
@@ -6502,10 +6673,14 @@ export function WorkbenchPanel(): ReactPortal | null {
       onCommitMessageChange={setCommitMessage}
       onSuggestCommit={() => void suggestCommit()}
       onCommit={(pushAfter) => void commit(pushAfter)}
+      onNewSession={() => void newSession()}
       labels={{
         stagedTitle: t("desktop.workbench.sidePanelStaged"),
         changesTitle: t("desktop.workbench.sidePanelChanges"),
         noChanges: t("desktop.workbench.sidePanelNoChanges"),
+        cleanTitle: t("desktop.workbench.gitCleanTitle"),
+        cleanHint: t("desktop.workbench.gitCleanHint"),
+        cleanNewSession: t("desktop.workbench.gitCleanNewSession"),
         unavailable: sideRoot ? t("desktop.workbench.sidePanelGitUnavailable") : t("desktop.workbench.sidePanelNoRoot"),
         messageLabel: t("desktop.workbench.gitCommitDialogTitle"),
         resizeInput: t("desktop.workbench.resizeCommitInput"),

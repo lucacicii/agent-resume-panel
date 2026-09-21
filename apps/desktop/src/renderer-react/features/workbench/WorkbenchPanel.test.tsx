@@ -3854,6 +3854,178 @@ describe("WorkbenchPanel", () => {
     expect(localStorage.getItem("wb-session-view-mode")).toBe("hybrid");
   });
 
+  it("shows a git review banner above composer when a session has uncommitted changes and opens git panel on click", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const gitFile = {
+      path: "src/index.ts",
+      repoPath: "src/index.ts",
+      repoRoot: "/work/app",
+      status: "M",
+      staged: false,
+      unstaged: true
+    };
+    const terminalSpawn = vi.fn(async () => ({ id: 1 }));
+    window.agentResume = {
+      getI18nBundle: async () => ({
+        locale: "en",
+        messages: {
+          ...ARROW_TEST_MESSAGES,
+          "desktop.workbench.sessionGitReviewHint": "{0} uncommitted changes",
+          "desktop.workbench.sessionGitReviewAction": "Review Git"
+        }
+      }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listProjects: async () => [{
+        projectId: "project-1",
+        portableKey: "/work/app",
+        alias: "",
+        hidden: false,
+        pinned: false,
+        lastSeenAtMs: 1,
+        updatedAtMs: 1,
+        localPath: "/work/app",
+        pathMissing: false,
+        sessionCount: 1
+      }],
+      querySessionsPage: async () => ({
+        sessions: [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+        total: 1
+      }),
+      workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: "/work/app" }),
+      terminalSpawn,
+      terminalDestroy: async () => ({ ok: true }),
+      terminalGitStatus: async () => ({
+        isRepo: true,
+        root: "/work/app",
+        staged: [],
+        unstaged: [gitFile],
+        nestedRepos: [],
+        tracking: [{ repoRoot: "/work/app", branch: "main", upstream: "origin/main", ahead: 0, behind: 0 }]
+      }),
+      terminalResize: async () => ({ ok: true }),
+      terminalInput: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
+    await waitFor(() => expect(terminalSpawn).toHaveBeenCalledTimes(1));
+
+    const reviewBanner = await waitFor(() => {
+      const banner = document.querySelector(".wb-session-git-review-banner");
+      expect(banner).not.toBeNull();
+      return banner as HTMLElement;
+    });
+    expect(reviewBanner.textContent).toContain("uncommitted changes");
+
+    const reviewBtn = reviewBanner.querySelector<HTMLButtonElement>(".wb-session-git-review-btn")!;
+    expect(reviewBanner.querySelector(".wb-session-git-commit-btn")).not.toBeNull();
+    fireEvent.click(reviewBtn);
+    await waitFor(() => expect(document.querySelector(".wb-side-panel")).not.toBeNull());
+    await waitFor(() => expect(document.querySelector(".wb-session-git-review-banner")).toBeNull());
+  });
+
+  it("commits and pushes directly from the review banner when clicked", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const gitFile = {
+      path: "src/index.ts",
+      repoPath: "src/index.ts",
+      repoRoot: "/work/app",
+      status: "M",
+      staged: true,
+      unstaged: false
+    };
+    const terminalSpawn = vi.fn(async () => ({ id: 1 }));
+    let committed = false;
+    const terminalGitStatus = vi.fn(async () => ({
+      isRepo: true,
+      root: "/work/app",
+      staged: committed ? [] : [gitFile],
+      unstaged: [],
+      nestedRepos: [],
+      tracking: [{ repoRoot: "/work/app", branch: "main", upstream: "origin/main", ahead: 0, behind: 0 }]
+    }));
+    const terminalGitCommit = vi.fn(async () => { committed = true; return { ok: true }; });
+    const terminalGitPush = vi.fn(async () => ({ ok: true }));
+
+    window.agentResume = {
+      getI18nBundle: async () => ({
+        locale: "en",
+        messages: {
+          ...ARROW_TEST_MESSAGES,
+          "desktop.workbench.sessionGitReviewHint": "{0} uncommitted changes",
+          "desktop.workbench.sessionGitReviewAction": "Review Git",
+          "desktop.workbench.gitCommitAndPush": "Commit & Push",
+          "desktop.workbench.gitCommitAndPushSucceeded": "Commit and push completed."
+        }
+      }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listProjects: async () => [{
+        projectId: "project-1",
+        portableKey: "/work/app",
+        alias: "",
+        hidden: false,
+        pinned: false,
+        lastSeenAtMs: 1,
+        updatedAtMs: 1,
+        localPath: "/work/app",
+        pathMissing: false,
+        sessionCount: 1
+      }],
+      querySessionsPage: async () => ({
+        sessions: [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+        total: 1
+      }),
+      workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: "/work/app" }),
+      terminalSpawn,
+      terminalDestroy: async () => ({ ok: true }),
+      terminalGitStatus,
+      terminalGitCommit,
+      terminalGitPush,
+      terminalGitSuggestCommit: async () => ({ message: "chore: sync", source: "heuristic" as const }),
+      terminalResize: async () => ({ ok: true }),
+      terminalInput: async () => ({ ok: true }),
+      workbenchComposerSendList: async () => []
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
+    await waitFor(() => expect(terminalSpawn).toHaveBeenCalledTimes(1));
+
+    const commitBtn = await waitFor(() => {
+      const btn = document.querySelector<HTMLButtonElement>(".wb-session-git-commit-btn");
+      expect(btn).not.toBeNull();
+      return btn!;
+    });
+
+    fireEvent.click(commitBtn);
+    await waitFor(() => expect(terminalGitCommit).toHaveBeenCalledWith(expect.objectContaining({
+      repoRoot: "/work/app",
+      message: "chore: sync",
+      paths: ["src/index.ts"]
+    })));
+    await waitFor(() => expect(terminalGitPush).toHaveBeenCalledWith({ repoRoot: "/work/app" }));
+  });
+
   it("reports state-changing Git actions and keeps refreshes silent", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
@@ -5904,6 +6076,193 @@ describe("WorkbenchPanel", () => {
       filePath: "/work/app/src/app.ts"
     }));
     await waitFor(() => expect(document.querySelectorAll('[data-pane-group="code"] .wb-terminal-tab.is-editor')).toHaveLength(1));
+  });
+
+  it("switches to the active session and prefills composer when clicking ask agent to modify in diff head", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const gitFile = {
+      path: "src/app.ts",
+      repoPath: "src/app.ts",
+      repoRoot: "/work/app",
+      status: "M",
+      staged: false,
+      unstaged: true
+    };
+    const terminalSpawn = vi.fn(async () => ({ id: 1 }));
+    const terminalGitStatus = vi.fn(async () => ({
+      isRepo: true,
+      root: "/work/app",
+      staged: [],
+      unstaged: [gitFile],
+      nestedRepos: [],
+      tracking: []
+    }));
+    const terminalGitDiffSides = vi.fn(async () => ({
+      oldLabel: "HEAD",
+      newLabel: "Working Tree",
+      oldText: "export const old = true;\n",
+      newText: "export const app = true;\n",
+      hunks: []
+    }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        ...ARROW_TEST_MESSAGES,
+        "desktop.workbench.diffAskAgent": "Ask Agent to Modify",
+        "desktop.workbench.diffFeedbackPrefix": "Regarding changes in {0}:\n",
+        "desktop.workbench.sidePanelGit": "Git",
+        "desktop.workbench.sidePanelChanges": "Changes"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listProjects: async () => [{
+        projectId: "project-1",
+        portableKey: "/work/app",
+        alias: "",
+        hidden: false,
+        pinned: false,
+        lastSeenAtMs: 1,
+        updatedAtMs: 1,
+        localPath: "/work/app",
+        pathMissing: false,
+        sessionCount: 1
+      }],
+      querySessionsPage: async () => ({
+        sessions: [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+        total: 1
+      }),
+      workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: "/work/app" }),
+      terminalSpawn,
+      terminalDestroy: async () => ({ ok: true }),
+      terminalGitStatus,
+      terminalGitDiffSides,
+      terminalResize: async () => ({ ok: true }),
+      terminalInput: async () => ({ ok: true }),
+      workbenchComposerSendList: async () => []
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
+    await waitFor(() => expect(terminalSpawn).toHaveBeenCalledTimes(1));
+
+    // Open Git panel and click the changed file to open the diff view
+    fireEvent.click(screen.getByRole("button", { name: "Git" }));
+    fireEvent.click(await screen.findByTitle("src/app.ts"));
+    await waitFor(() => expect(document.querySelector(".wb-git-diff-pane")).not.toBeNull());
+
+    // Click "Ask Agent to Modify" in diff head
+    const askAgentBtn = await screen.findByRole("button", { name: "Ask Agent to Modify" });
+    fireEvent.click(askAgentBtn);
+
+    // Verifies it returned to the session view and prefilled the composer with the diff path
+    await waitFor(() => expect(document.querySelector(".wb-terminal-composer-input")).not.toBeNull());
+    const composerInput = document.querySelector<HTMLTextAreaElement>(".wb-terminal-composer-input")!;
+    expect(composerInput.value).toContain("Regarding changes in app.ts:");
+  });
+
+  it("toggles side-by-side review mode to view session transcript and git diff simultaneously", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const gitFile = {
+      path: "src/app.ts",
+      repoPath: "src/app.ts",
+      repoRoot: "/work/app",
+      status: "M",
+      staged: false,
+      unstaged: true
+    };
+    const terminalSpawn = vi.fn(async () => ({ id: 1 }));
+    const terminalGitStatus = vi.fn(async () => ({
+      isRepo: true,
+      root: "/work/app",
+      staged: [],
+      unstaged: [gitFile],
+      nestedRepos: [],
+      tracking: []
+    }));
+    const terminalGitDiffSides = vi.fn(async () => ({
+      oldLabel: "HEAD",
+      newLabel: "Working Tree",
+      oldText: "export const old = true;\n",
+      newText: "export const app = true;\n",
+      hunks: []
+    }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        ...ARROW_TEST_MESSAGES,
+        "desktop.workbench.diffSplitReview": "Side-by-Side Review",
+        "desktop.workbench.diffAskAgent": "Ask Agent to Modify",
+        "desktop.workbench.diffFeedbackPrefix": "Regarding changes in {0}:\n",
+        "desktop.workbench.sidePanelGit": "Git",
+        "desktop.workbench.sidePanelChanges": "Changes"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listProjects: async () => [{
+        projectId: "project-1",
+        portableKey: "/work/app",
+        alias: "",
+        hidden: false,
+        pinned: false,
+        lastSeenAtMs: 1,
+        updatedAtMs: 1,
+        localPath: "/work/app",
+        pathMissing: false,
+        sessionCount: 1
+      }],
+      querySessionsPage: async () => ({
+        sessions: [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+        total: 1
+      }),
+      workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: "/work/app" }),
+      terminalSpawn,
+      terminalDestroy: async () => ({ ok: true }),
+      terminalGitStatus,
+      terminalGitDiffSides,
+      terminalResize: async () => ({ ok: true }),
+      terminalInput: async () => ({ ok: true }),
+      workbenchComposerSendList: async () => []
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
+    await waitFor(() => expect(terminalSpawn).toHaveBeenCalledTimes(1));
+
+    // Open Git panel and click the changed file to open the diff view
+    fireEvent.click(screen.getByRole("button", { name: "Git" }));
+    fireEvent.click(await screen.findByTitle("src/app.ts"));
+    await waitFor(() => expect(document.querySelector(".wb-git-diff-pane")).not.toBeNull());
+
+    // Click "Side-by-Side Review" toggle
+    const splitBtn = await screen.findByRole("button", { name: "Side-by-Side Review" });
+    fireEvent.click(splitBtn);
+
+    // Verifies both session transcript and diff pane are rendered in side-by-side layout
+    await waitFor(() => expect(document.querySelector(".wb-diff-split-layout")).not.toBeNull());
+    expect(document.querySelector(".wb-diff-split-session")).not.toBeNull();
+    expect(document.querySelector(".wb-diff-split-diff")).not.toBeNull();
+    expect(document.querySelector(".wb-diff-split-diff .wb-git-diff-pane")).not.toBeNull();
+
+    // Toggling again returns to regular full diff view
+    fireEvent.click(screen.getByRole("button", { name: "Side-by-Side Review" }));
+    await waitFor(() => expect(document.querySelector(".wb-diff-split-layout")).toBeNull());
+    expect(document.querySelector(".wb-git-diff-pane")).not.toBeNull();
   });
 
   it("discards a Git file after confirmation and refreshes its status", async () => {

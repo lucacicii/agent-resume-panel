@@ -54,7 +54,7 @@ export function useWorkbenchGit(options: {
   selectGitRoot: (root: string) => void;
   setCommitMessage: (value: string) => void;
   suggestCommit: () => Promise<void>;
-  commit: (pushAfter?: boolean) => Promise<void>;
+  commit: (pushAfter?: boolean, messageOverride?: string) => Promise<void>;
   syncGitBranch: () => Promise<void>;
   checkoutGitPanelBranch: (selection: { branch: string; remote?: string }) => Promise<void>;
   notifyGitSuccess: (key: string, ...args: Array<string | number>) => void;
@@ -343,14 +343,15 @@ export function useWorkbenchGit(options: {
     finally { setCommitBusy(false); }
   }, [gitRoot, notifyGitFailure, stagedCommitPaths]);
 
-  const commit = useCallback(async (pushAfter = false) => {
-    if (!gitRoot || !commitMessage.trim() || !stagedCommitPaths.length) return;
+  const commit = useCallback(async (pushAfter = false, messageOverride?: string) => {
+    const finalMessage = (messageOverride ?? commitMessage).trim();
+    if (!gitRoot || !finalMessage || !stagedCommitPaths.length) return;
     let result: { ok: boolean; skipped?: string[] } | undefined;
     try {
       setCommitBusy(true);
       result = await desktopApi().terminalGitCommit({
         repoRoot: gitRoot,
-        message: commitMessage.trim(),
+        message: finalMessage,
         paths: stagedCommitPaths
       });
     } catch (error) {

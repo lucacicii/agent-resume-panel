@@ -7939,14 +7939,89 @@ body.is-pane-resizing-v * {
   font-size: 12px;
 }
 
+.wb-git-clean-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6) var(--space-4);
+  text-align: center;
+  gap: var(--space-1-5);
+}
+
+.wb-git-clean-state svg {
+  color: var(--color-success);
+}
+
+.wb-git-clean-title {
+  margin: 0;
+  font-size: var(--font-size-body, 13px);
+  font-weight: var(--font-weight-medium, 500);
+  color: var(--color-label-primary);
+}
+
+.wb-git-clean-hint {
+  margin: 0;
+  font-size: var(--font-size-micro, 11px);
+  color: var(--color-label-tertiary);
+}
+
+.wb-git-clean-action-btn {
+  appearance: none;
+  margin-top: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-sm);
+  background: var(--color-fill-secondary);
+  color: var(--color-label-primary);
+  font-size: var(--font-size-micro, 11px);
+  font-weight: var(--font-weight-medium, 500);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  transition: background var(--duration-fast) var(--ease-out),
+              border-color var(--duration-fast) var(--ease-out);
+}
+
+.wb-git-clean-action-btn:hover {
+  background: var(--color-fill-tertiary);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
 .wb-diff-head {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: var(--space-1);
-  min-height: 30px;
-  padding: 0 var(--space-1-5) 0 var(--space-1);
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: 32px;
+  padding: 0 var(--space-2) 0 var(--space-2-5);
   border-bottom: 1px solid var(--color-separator);
+}
+
+.wb-diff-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.wb-diff-ask-agent {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  height: 24px;
+  border-radius: var(--radius-sm);
+  background: var(--color-fill-secondary);
+  color: var(--color-accent);
+  font-size: var(--font-size-micro, 11px);
+  font-weight: var(--font-weight-medium, 500);
+}
+
+.wb-diff-ask-agent:hover {
+  background: var(--color-fill-tertiary);
+  color: var(--color-accent);
 }
 
 .wb-diff-back {
@@ -9397,6 +9472,50 @@ textarea.wb-editor-host {
   color: var(--color-label-secondary);
 }
 
+.wb-diff-split-layout {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.wb-diff-split-session {
+  flex: 1 1 50%;
+  min-width: 300px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--color-window-bg);
+  border-right: 1px solid var(--color-separator);
+}
+
+.wb-diff-split-session .wb-session-split-transcript {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.wb-diff-split-diff {
+  flex: 1 1 50%;
+  min-width: 300px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.wb-diff-split-diff .wb-git-diff-pane {
+  flex: 1 1 auto;
+  height: 100%;
+}
+
+.wb-diff-split-toggle.is-active {
+  background: var(--color-fill-primary);
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
 .wb-git-diff-pane {
   position: relative;
   background: var(--color-window-bg);
@@ -9677,6 +9796,88 @@ textarea.wb-editor-host {
   .wb-terminal-tui-drop-shape path {
     transition: none;
   }
+}
+
+/* Git review affordance banner above composer */
+.wb-session-git-review-banner {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-1) var(--space-3);
+  background: var(--color-fill-secondary);
+  border-top: 0.5px solid var(--color-separator);
+  font-size: var(--font-size-micro, 11px);
+  color: var(--color-label-secondary);
+}
+
+.wb-session-git-review-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  font-weight: var(--font-weight-medium, 500);
+}
+
+.wb-session-git-review-info svg {
+  color: var(--color-warning);
+}
+
+.wb-session-git-review-btn {
+  appearance: none;
+  border: 1px solid var(--color-separator);
+  background: var(--color-control-bg, var(--color-fill-primary));
+  border-radius: var(--radius-sm);
+  padding: var(--space-0-5) var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--color-label-primary);
+  font-size: var(--font-size-micro, 11px);
+  font-weight: var(--font-weight-semibold, 600);
+  transition: background var(--duration-fast) var(--ease-out),
+              border-color var(--duration-fast) var(--ease-out);
+}
+
+.wb-session-git-review-btn:hover {
+  background: var(--color-fill-tertiary);
+  border-color: var(--color-accent);
+}
+
+.wb-session-git-review-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-focus-ring);
+}
+
+.wb-session-git-review-shortcut {
+  font-size: 10px;
+  font-family: var(--font-family-mono);
+  color: var(--color-label-tertiary);
+  padding: 0 var(--space-0-5);
+  background: var(--color-fill-secondary);
+  border-radius: var(--radius-xs, 2px);
+}
+
+.wb-session-git-review-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+}
+
+.wb-session-git-commit-btn {
+  background: var(--color-accent);
+  color: var(--color-button-text, #ffffff);
+  border-color: var(--color-accent);
+}
+
+.wb-session-git-commit-btn:hover:not(:disabled) {
+  background: var(--color-accent-hover, color-mix(in srgb, var(--color-accent) 85%, black));
+  border-color: var(--color-accent-hover, color-mix(in srgb, var(--color-accent) 85%, black));
+  color: #ffffff;
+}
+
+.wb-session-git-commit-btn.is-busy {
+  opacity: 0.75;
+  cursor: default;
 }
 
 /* TUI composer — docked input bar under wb-session-split-tui. */
