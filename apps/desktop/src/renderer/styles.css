@@ -46,6 +46,9 @@
   --color-destructive-hover: #d72b21;
   --color-success: #34c759;
   --color-warning: #ff9500;
+  /* Soft wash behind warning text (awaiting-user chip, etc.). */
+  --color-warning-subtle: rgba(255, 149, 0, 0.14);
+  --color-button-text: #ffffff;
   --color-note: #ffcc00;
   --color-purple: #af52de;
   --color-teal: #5ac8fa;
@@ -225,6 +228,8 @@
   --color-destructive-hover: #d72b21;
   --color-success: #34c759;
   --color-warning: #ff9500;
+  --color-warning-subtle: rgba(255, 149, 0, 0.14);
+  --color-button-text: #ffffff;
   --color-note: #ffcc00;
   --color-fill-primary: color-mix(in srgb, var(--color-accent) 12%, transparent);
   --color-fill-secondary: rgba(0, 0, 0, 0.05);
@@ -291,6 +296,8 @@
   --color-destructive-hover: #ff6961;
   --color-success: #30d158;
   --color-warning: #ff9f0a;
+  --color-warning-subtle: rgba(255, 159, 10, 0.18);
+  --color-button-text: #ffffff;
   --color-note: #ffd60a;
   --color-fill-primary: color-mix(in srgb, var(--color-accent) 18%, transparent);
   --color-fill-secondary: rgba(255, 255, 255, 0.08);
@@ -383,6 +390,13 @@
 [data-task-accent="purple"][data-task-shade="1"] { --task-h: 262; --task-dl: 2; --task-ds: 2; }
 [data-task-accent="purple"][data-task-shade="2"] { --task-h: 262; --task-dl: -2; --task-ds: 0; }
 [data-task-accent="purple"][data-task-shade="3"] { --task-h: 262; --task-dl: -7; --task-ds: 3; }
+/* Image-derived accents: the same lightness/saturation steps as the palette,
+   with the hue injected as an inline --task-h custom property on the element
+   carrying data-task-accent (a task card or the workbench document root). */
+[data-task-accent="custom"][data-task-shade="0"] { --task-dl: 6; --task-ds: 6; }
+[data-task-accent="custom"][data-task-shade="1"] { --task-dl: 2; --task-ds: 2; }
+[data-task-accent="custom"][data-task-shade="2"] { --task-dl: -2; --task-ds: 0; }
+[data-task-accent="custom"][data-task-shade="3"] { --task-dl: -7; --task-ds: 3; }
 
 html[data-task-accent] {
   --task-s: calc(40% + var(--task-ds) * 1.2%);
@@ -431,6 +445,8 @@ html[data-theme="dark"][data-task-accent] {
     --color-destructive-hover: #ff6961;
     --color-success: #30d158;
     --color-warning: #ff9f0a;
+    --color-warning-subtle: rgba(255, 159, 10, 0.18);
+    --color-button-text: #ffffff;
     --color-note: #ffd60a;
     --color-fill-primary: color-mix(in srgb, var(--color-accent) 18%, transparent);
     --color-fill-secondary: rgba(255, 255, 255, 0.08);
@@ -1059,27 +1075,6 @@ html[data-window-mode="main"] .mac-top {
   box-shadow: 0 0 0 0.5px var(--color-separator);
 }
 
-/* Native macOS Account Menu Popover */
-.rail-account-menu {
-  position: fixed;
-  z-index: 320;
-  min-width: 190px;
-  padding: var(--space-1-5);
-  display: flex;
-  flex-direction: column;
-  /* Opens to the right of the avatar button and grows upward, so it scales out of
-     the corner nearest that anchor. */
-  transform-origin: bottom left;
-  gap: var(--space-0-5);
-  border: 0.5px solid var(--color-separator);
-  border-radius: var(--radius-xl);
-  background: var(--color-elevated-bg);
-  backdrop-filter: var(--backdrop-blur);
-  -webkit-backdrop-filter: var(--backdrop-blur);
-  box-shadow: var(--shadow-popover);
-  animation: mac-popover-enter var(--duration-fast) var(--ease-out);
-}
-
 @keyframes mac-popover-enter {
   from {
     opacity: 0;
@@ -1089,35 +1084,6 @@ html[data-window-mode="main"] .mac-top {
     opacity: 1;
     transform: translateY(0) scale(1);
   }
-}
-
-.rail-account-menu-item {
-  appearance: none;
-  border: none;
-  background: transparent;
-  color: var(--color-label-primary);
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  width: 100%;
-  text-align: left;
-  padding: var(--space-1-5) var(--space-2-5);
-  border-radius: var(--radius-md);
-  font-size: var(--font-size-body);
-  font-family: inherit;
-
-  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
-}
-
-.rail-account-menu-item:hover {
-  background: var(--color-accent);
-  color: #ffffff;
-}
-
-.rail-account-menu-item:focus-visible {
-  outline: none;
-  background: var(--color-accent);
-  color: #ffffff;
 }
 
 /* Session status dots (Apple-style status bullets) */
@@ -1588,7 +1554,6 @@ svg[data-icon-system="sf"] * {
 .chat-tools-popover.is-closing,
 .selection-action-result.is-closing,
 .notification-popover.is-closing,
-.rail-account-menu.is-closing,
 .wb-context-menu.is-closing,
 .notes-context-menu.is-closing,
 .chat-context-menu.is-closing {
@@ -2329,9 +2294,14 @@ svg[data-icon-system="sf"] * {
 
 .settings-row-control {
   flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1);
   min-width: 140px;
   max-width: 240px;
   height: 28px;
+  padding: 0 var(--space-2);
   line-height: normal;
 }
 
@@ -5216,10 +5186,6 @@ code {
   padding: var(--space-4) var(--space-4) var(--space-6) var(--space-6);
 }
 
-.wb-session-split-transcript .wb-transcript-body.has-outline-open {
-  padding-right: var(--transcript-outline-gutter, 272px);
-}
-
 .wb-session-split-transcript .wb-transcript-md.markdown-body {
   max-width: 100%;
 }
@@ -5260,6 +5226,21 @@ code {
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+.wb-session-split-tui-awaiting {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: var(--space-2);
+  padding: 1px var(--space-1-5);
+  border-radius: var(--radius-sm);
+  background: var(--color-warning-subtle);
+  color: var(--color-warning);
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-medium);
+  text-transform: none;
+  letter-spacing: normal;
 }
 
 .wb-session-split-tui-actions {
@@ -5571,6 +5552,54 @@ body.is-pane-resizing-v * {
   background: transparent;
 }
 
+.wb-detail-head-center {
+  display: flex;
+  align-items: center;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 45%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.wb-detail-head-center::-webkit-scrollbar {
+  display: none;
+}
+
+.wb-detail-head-center .wb-workbench-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-0-5);
+  height: 26px;
+  padding: 0;
+  border-bottom: none;
+  background: transparent;
+  flex-shrink: 0;
+}
+
+.wb-detail-head-center .wb-workbench-tab {
+  height: 24px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: var(--color-fill-secondary);
+}
+
+.wb-detail-head-center .wb-workbench-tab.active {
+  background: var(--color-fill-primary);
+  border-color: var(--color-separator);
+}
+
+.wb-detail-head-center .wb-workbench-tab-label {
+  padding: 0 var(--space-2);
+  line-height: 24px;
+}
+
+.wb-detail-head-center .wb-workbench-add {
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-sm);
+}
+
 .wb-detail-project-label {
   flex: 1 1 auto;
   min-width: 0;
@@ -5581,6 +5610,16 @@ body.is-pane-resizing-v * {
   color: var(--color-label-secondary);
   font-size: 12px;
   font-weight: var(--font-weight-semibold);
+}
+
+/* The scoped task's template image, leading the header title. `contain`
+   (Aspect Fit) keeps the whole image visible instead of cropping it. */
+.wb-detail-task-image {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
 }
 
 .wb-detail-project-label-text {
@@ -5613,8 +5652,8 @@ body.is-pane-resizing-v * {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: none;
   border-radius: var(--radius-sm);
@@ -5693,14 +5732,15 @@ body.is-pane-resizing-v * {
 }
 
 .wb-detail-tool {
+  position: relative;
   appearance: none;
   margin: 0;
   padding: 0;
   border: none;
   background: transparent;
   box-shadow: none;
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   border-radius: var(--radius-md);
   color: var(--color-label-secondary);
 
@@ -5711,8 +5751,29 @@ body.is-pane-resizing-v * {
               transform var(--duration-fast) var(--ease-out);
 }
 
+.wb-detail-tool-badge {
+  position: absolute;
+  top: -3px;
+  right: -5px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: var(--color-warning);
+  color: var(--color-button-text);
+  font-size: var(--font-size-micro);
+  font-weight: var(--font-weight-bold);
+  line-height: 15px;
+  text-align: center;
+  pointer-events: none;
+  box-shadow: 0 1px 2px var(--color-label-quaternary);
+}
+
 .wb-detail-tool svg {
   display: block;
+}
+
+.wb-detail-tool svg[data-icon-system="lucide"] {
   stroke: currentColor;
   fill: none;
   stroke-linecap: round;
@@ -5903,16 +5964,25 @@ body.is-pane-resizing-v * {
   display: flex;
   overflow: hidden;
   --transcript-outline-width: 240px;
-  --transcript-outline-gutter: 272px;
+}
+
+/* Invisible hover trigger that reveals the turns outline over the markdown. */
+.wb-transcript-outline-zone {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 15;
+  width: calc(var(--transcript-outline-width, 240px) + 2 * var(--space-4, 16px));
+  height: min(55%, 320px);
 }
 
 .wb-transcript-outline {
   position: absolute;
   top: 10px;
   right: 16px;
-  z-index: 15;
   display: flex;
   flex-direction: column;
+  width: var(--transcript-outline-width, 240px);
   max-height: calc(100% - 20px);
   border: 1px solid var(--color-separator);
   border-radius: var(--radius-lg, 8px);
@@ -5921,63 +5991,44 @@ body.is-pane-resizing-v * {
   -webkit-backdrop-filter: blur(16px);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
   box-sizing: border-box;
-  transition: width 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.15s ease;
   overflow: hidden;
+
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-4px);
+  transition: opacity var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
 }
 
-.wb-transcript-outline.is-open {
-  width: var(--transcript-outline-width, 240px);
+.wb-transcript-outline-zone:hover .wb-transcript-outline,
+.wb-transcript-outline-zone:focus-within .wb-transcript-outline {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
 }
 
-.wb-transcript-outline.is-collapsed {
-  width: auto;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+/* After a jump click, keep the outline hidden until the pointer leaves the zone and returns. */
+.wb-transcript-outline-zone.is-dismissed .wb-transcript-outline {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-4px);
 }
 
-.wb-transcript-outline-toggle {
-  appearance: none;
+.wb-transcript-outline-head {
   display: flex;
   align-items: center;
   gap: var(--space-1-5);
+  flex: 0 0 auto;
   width: 100%;
   min-height: 28px;
-  margin: 0;
   padding: var(--space-1-5) var(--space-2-5);
-  border: none;
-  background: transparent;
-  color: var(--color-label-secondary, var(--muted));
-  font: inherit;
-  font-size: 11px;
-  font-weight: 600;
-  text-align: left;
-
-  user-select: none;
-  white-space: nowrap;
-  box-sizing: border-box;
-}
-
-.wb-transcript-outline-toggle svg {
-  flex-shrink: 0;
-  transition: transform 0.15s ease;
-}
-
-.wb-transcript-outline-toggle .is-expanded {
-  transform: rotate(90deg);
-}
-
-.wb-transcript-outline.is-open .wb-transcript-outline-toggle {
   border-bottom: 1px solid var(--color-separator);
   background: var(--color-fill-tertiary, color-mix(in srgb, var(--text) 3%, transparent));
-}
-
-.wb-transcript-outline-toggle:hover {
-  color: var(--color-label-primary, var(--text));
-  background: var(--color-fill-secondary, color-mix(in srgb, var(--text) 6%, transparent));
-}
-
-.wb-transcript-outline-toggle:focus-visible {
-  outline: 2px solid var(--color-accent, var(--accent));
-  outline-offset: -2px;
+  color: var(--color-label-secondary, var(--muted));
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  user-select: none;
+  box-sizing: border-box;
 }
 
 .wb-transcript-outline-list {
@@ -6047,11 +6098,6 @@ body.is-pane-resizing-v * {
   user-select: text;
   -webkit-user-select: text;
   box-sizing: border-box;
-  transition: padding-right 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.wb-transcript-body.has-outline-open {
-  padding-right: var(--transcript-outline-gutter, 272px);
 }
 
 .wb-transcript-scroll-bottom-btn {
@@ -6071,10 +6117,6 @@ body.is-pane-resizing-v * {
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
 
   transition: transform 0.15s ease, background 0.15s ease, opacity 0.15s ease;
-}
-
-.wb-transcript-content-wrap:has(.wb-transcript-outline.is-open) .wb-transcript-scroll-bottom-btn {
-  right: calc(var(--transcript-outline-gutter, 272px) + 12px);
 }
 
 .wb-transcript-scroll-bottom-btn:hover {
@@ -6371,7 +6413,6 @@ body.is-pane-resizing-v * {
 @media (max-width: 420px) {
   .wb-transcript-content-wrap {
     --transcript-outline-width: 180px;
-    --transcript-outline-gutter: 196px;
   }
 }
 
@@ -7907,14 +7948,121 @@ body.is-pane-resizing-v * {
   font-size: 12px;
 }
 
+.wb-git-clean-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6) var(--space-4);
+  text-align: center;
+  gap: var(--space-1-5);
+}
+
+.wb-git-clean-state svg {
+  color: var(--color-success);
+}
+
+.wb-git-clean-title {
+  margin: 0;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-label-primary);
+}
+
+.wb-git-clean-hint {
+  margin: 0;
+  font-size: var(--font-size-caption);
+  color: var(--color-label-tertiary);
+}
+
+.wb-git-clean-action-btn {
+  appearance: none;
+  margin-top: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  min-height: 24px;
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-sm);
+  background: var(--color-fill-secondary);
+  color: var(--color-label-primary);
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-medium);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  transition: background var(--duration-fast) var(--ease-out),
+              border-color var(--duration-fast) var(--ease-out);
+}
+
+.wb-git-clean-action-btn:hover {
+  background: var(--color-fill-tertiary);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
 .wb-diff-head {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: var(--space-1);
-  min-height: 30px;
-  padding: 0 var(--space-1-5) 0 var(--space-1);
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: 32px;
+  padding: 0 var(--space-2) 0 var(--space-2-5);
   border-bottom: 1px solid var(--color-separator);
+}
+
+.wb-diff-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  /* Never let a long file path squeeze the actions out of the bar. */
+  flex: 0 0 auto;
+}
+
+/* Label-bearing buttons in the diff bar. These are deliberately NOT composed
+   with .wb-git-action-btn: that class is a 28x28 icon button (grid + fixed
+   width), which squashed wrapped the label out of the box. */
+.wb-diff-ask-agent,
+.wb-diff-split-toggle {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: 0 0 auto;
+  height: 24px;
+  min-height: 24px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-sm);
+  background: var(--color-fill-secondary);
+  color: var(--color-label-primary);
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+  transition: background var(--duration-fast) var(--ease-out),
+              border-color var(--duration-fast) var(--ease-out),
+              color var(--duration-fast) var(--ease-out);
+}
+
+.wb-diff-ask-agent {
+  color: var(--color-accent);
+}
+
+.wb-diff-ask-agent:hover,
+.wb-diff-split-toggle:hover {
+  background: var(--color-fill-tertiary);
+  border-color: var(--color-accent);
+}
+
+.wb-diff-ask-agent:focus-visible,
+.wb-diff-split-toggle:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-focus-ring);
+}
+
+.wb-diff-split-toggle.is-active {
+  background: var(--color-fill-primary);
+  color: var(--color-accent);
+  border-color: var(--color-accent);
 }
 
 .wb-diff-back {
@@ -8176,24 +8324,36 @@ body.is-pane-resizing-v * {
   position: relative;
 }
 
-/* Workbench pane groups share one active pane but keep type-specific tab rows. */
+/* Workbench unified single-row tab strip with type-specific sections. */
 .wb-pane-tab-groups {
   display: flex;
-  flex-direction: column;
-  flex: 0 0 auto;
+  flex-direction: row;
+  align-items: stretch;
+  flex: 0 0 32px;
+  height: 32px;
+  min-height: 32px;
+  max-height: 32px;
   min-width: 0;
   background: var(--color-pane-bg);
+  border-bottom: 0.5px solid var(--color-separator);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.wb-pane-tab-groups::-webkit-scrollbar {
+  display: none;
 }
 
 /* Safari/Finder style segmented tab bar */
 .wb-terminal-tabs {
-  display: flex;
+  display: inline-flex;
   align-items: stretch;
   min-height: 32px;
   height: 32px;
   padding: 0;
-  border-bottom: 0.5px solid var(--color-separator);
-  background: var(--color-pane-bg);
+  border-bottom: none;
+  background: transparent;
   flex-shrink: 0;
 }
 
@@ -8332,8 +8492,8 @@ button.wb-pane-tab-group-label.is-busy {
 
 .wb-terminal-tab.active {
   z-index: 1;
-  background: var(--color-control-bg);
-  border-bottom: 0.5px solid var(--color-control-bg);
+  background: var(--color-sidebar-bg);
+  border-bottom: 0.5px solid var(--color-sidebar-bg);
   margin-bottom: -0.5px;
 }
 
@@ -8404,9 +8564,9 @@ button.wb-pane-tab-group-label.is-busy {
 .wb-terminal-tab-close {
   appearance: none;
   color: var(--color-label-tertiary);
-  width: 20px;
-  min-width: 20px;
-  height: 20px;
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
   align-self: center;
   margin-right: var(--space-1);
   border: none;
@@ -8556,11 +8716,15 @@ button.wb-pane-tab-group-label.is-busy {
 }
 
 /* Compact macOS-style pop-up for ACP mode/model/thinking */
-#react-workbench select.wb-acp-toolbar-select,
-.wb-acp-chat select.wb-acp-toolbar-select,
-select.wb-acp-toolbar-select {
+#react-workbench .wb-acp-toolbar-select,
+.wb-acp-chat .wb-acp-toolbar-select,
+.wb-acp-toolbar-select {
   appearance: none !important;
   -webkit-appearance: none !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-0-5);
   flex: 0 0 auto !important;
   box-sizing: border-box !important;
   width: auto !important;
@@ -8568,47 +8732,38 @@ select.wb-acp-toolbar-select {
   min-width: 52px !important;
   height: 22px !important;
   margin: 0 !important;
-  padding: 0 var(--space-5) 0 var(--space-2) !important;
+  padding: 0 var(--space-1-5) !important;
   border: 0.5px solid var(--color-separator-strong) !important;
   border-radius: var(--radius-sm) !important;
   background-color: var(--color-fill-secondary) !important;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='12' viewBox='0 0 8 12' fill='none'%3E%3Cpath d='M1.5 4.25L4 1.75L6.5 4.25' stroke='%238E8E93' stroke-width='1.25' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M1.5 7.75L4 10.25L6.5 7.75' stroke='%238E8E93' stroke-width='1.25' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
-  background-repeat: no-repeat !important;
-  background-position: right 5px center !important;
-  background-size: 7px 11px !important;
   color: var(--color-label-primary) !important;
   font: 500 11px/1.2 var(--font-family-system) !important;
   letter-spacing: -0.01em;
-  text-overflow: ellipsis;
   white-space: nowrap;
   cursor: default;
   transition: background-color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out);
 }
 
-#react-workbench select.wb-acp-toolbar-select:hover:not(:disabled),
-.wb-acp-chat select.wb-acp-toolbar-select:hover:not(:disabled),
-select.wb-acp-toolbar-select:hover:not(:disabled) {
+#react-workbench .wb-acp-toolbar-select:hover:not(:disabled),
+.wb-acp-chat .wb-acp-toolbar-select:hover:not(:disabled),
+.wb-acp-toolbar-select:hover:not(:disabled) {
   background-color: var(--color-fill-tertiary) !important;
   border-color: var(--color-accent) !important;
 }
 
-#react-workbench select.wb-acp-toolbar-select:focus-visible,
-.wb-acp-chat select.wb-acp-toolbar-select:focus-visible,
-select.wb-acp-toolbar-select:focus-visible {
+#react-workbench .wb-acp-toolbar-select:focus-visible,
+.wb-acp-chat .wb-acp-toolbar-select:focus-visible,
+.wb-acp-toolbar-select:focus-visible {
   outline: none !important;
   border-color: var(--color-accent) !important;
   box-shadow: 0 0 0 2px var(--color-focus-ring) !important;
 }
 
-#react-workbench select.wb-acp-toolbar-select:disabled,
-.wb-acp-chat select.wb-acp-toolbar-select:disabled,
-select.wb-acp-toolbar-select:disabled {
+#react-workbench .wb-acp-toolbar-select:disabled,
+.wb-acp-chat .wb-acp-toolbar-select:disabled,
+.wb-acp-toolbar-select:disabled {
   opacity: 0.45;
   cursor: not-allowed;
-}
-
-select.wb-acp-toolbar-select option {
-  font-size: 12px;
 }
 
 .wb-acp-compose .chat-compose-toolbar {
@@ -9358,6 +9513,51 @@ textarea.wb-editor-host {
   color: var(--color-label-secondary);
 }
 
+.wb-diff-split-layout {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.wb-diff-split-session {
+  flex: 1 1 50%;
+  min-width: 300px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--color-window-bg);
+  border-right: 1px solid var(--color-separator);
+}
+
+.wb-diff-split-session .wb-session-split-transcript {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.wb-diff-split-acp {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.wb-diff-split-diff {
+  flex: 1 1 50%;
+  min-width: 300px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.wb-diff-split-diff .wb-git-diff-pane {
+  flex: 1 1 auto;
+  height: 100%;
+}
+
 .wb-git-diff-pane {
   position: relative;
   background: var(--color-window-bg);
@@ -9636,6 +9836,105 @@ textarea.wb-editor-host {
 @media (prefers-reduced-motion: reduce) {
   .wb-terminal-tui-drop-shape,
   .wb-terminal-tui-drop-shape path {
+    transition: none;
+  }
+}
+
+/* Git review affordance banner above composer */
+.wb-session-git-review-banner {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-1) var(--space-3);
+  background: var(--color-fill-secondary);
+  border-top: 0.5px solid var(--color-separator);
+  font-size: var(--font-size-caption);
+  color: var(--color-label-secondary);
+}
+
+.wb-session-git-review-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  font-weight: var(--font-weight-medium);
+}
+
+.wb-session-git-review-info svg {
+  color: var(--color-warning);
+}
+
+.wb-session-git-review-btn {
+  appearance: none;
+  border: 1px solid var(--color-separator);
+  background: var(--color-control-bg, var(--color-fill-primary));
+  border-radius: var(--radius-sm);
+  padding: var(--space-0-5) var(--space-2);
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--color-label-primary);
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-semibold);
+  transition: background var(--duration-fast) var(--ease-out),
+              border-color var(--duration-fast) var(--ease-out);
+}
+
+.wb-session-git-review-btn:hover {
+  background: var(--color-fill-tertiary);
+  border-color: var(--color-accent);
+}
+
+.wb-session-git-review-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-focus-ring);
+}
+
+.wb-session-git-review-shortcut {
+  font-size: var(--font-size-micro);
+  font-family: var(--font-family-mono);
+  color: var(--color-label-tertiary);
+  padding: 0 var(--space-0-5);
+  background: var(--color-fill-secondary);
+  border-radius: var(--radius-xs);
+}
+
+.wb-session-git-review-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+}
+
+.wb-session-git-commit-btn {
+  background: var(--color-accent);
+  color: var(--color-button-text);
+  border-color: var(--color-accent);
+}
+
+.wb-session-git-commit-btn:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+  color: var(--color-button-text);
+}
+
+.wb-session-git-commit-btn.is-busy {
+  opacity: 0.75;
+  cursor: default;
+}
+
+/* Reduced motion: the controls added around the review flow keep their colour
+   feedback but drop the animated transitions. */
+@media (prefers-reduced-motion: reduce) {
+  .wb-detail-tool,
+  .wb-detail-project-reveal,
+  .wb-session-git-review-btn,
+  .wb-session-git-commit-btn,
+  .wb-git-clean-action-btn,
+  .wb-diff-ask-agent,
+  .wb-diff-split-toggle,
+  .wb-workbench-tab-close,
+  .wb-terminal-tab-close {
     transition: none;
   }
 }
@@ -11481,7 +11780,7 @@ body.is-pane-resizing-row * {
   border-radius: 8px;
   padding: var(--space-2) var(--space-2-5);
   font-size: 13px;
-  background: color-mix(in srgb, var(--panel) 88%, var(--text) 6%);
+  background: var(--color-sidebar-bg);
   color: var(--text);
 }
 
@@ -14747,6 +15046,34 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
   transition: color var(--duration-fast) var(--ease-out);
 }
 
+/* Template image thumbnail in the library list, replacing the drag glyph. */
+.gtd-template-thumb {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+}
+
+/* Image picker row + preview inside the template form. */
+.gtd-template-image-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+}
+
+.gtd-template-image-preview {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+  border-radius: var(--radius-md);
+}
+
+.gtd-template-image-colors {
+  margin-top: var(--space-1-5);
+}
+
 .gtd-template-item:hover .gtd-template-icon,
 .gtd-template-item:hover .gtd-template-grip {
   color: var(--color-label-secondary);
@@ -15151,26 +15478,6 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
   cursor: default;
 }
 
-.wb-back-to-gtd {
-  appearance: none;
-  border: none;
-  background: transparent;
-  padding: 0;
-  width: 28px;
-  height: 28px;
-  display: grid;
-  place-items: center;
-  border-radius: var(--radius-md);
-  color: var(--muted);
-
-  -webkit-app-region: no-drag;
-}
-
-.wb-back-to-gtd:hover {
-  color: var(--text);
-  background: var(--color-fill-tertiary);
-}
-
 /* ===== Task workbench tab strip (GTD task → n workbenches) ===== */
 .wb-workbench-bar {
   display: flex;
@@ -15198,7 +15505,7 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
 }
 
 .wb-workbench-tab.active {
-  background: var(--panel);
+  background: var(--color-sidebar-bg);
   border-color: var(--color-separator);
 }
 
@@ -15214,7 +15521,6 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
   font-size: var(--font-size-caption, 12px);
   font-family: inherit;
   white-space: nowrap;
-
 }
 
 .wb-workbench-tab.active .wb-workbench-tab-label {
@@ -15226,14 +15532,13 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
   appearance: none;
   display: grid;
   place-items: center;
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   margin-right: var(--space-1);
   border: none;
   border-radius: var(--radius-sm, 4px);
   background: transparent;
   color: var(--muted);
-
 }
 
 .wb-workbench-tab-close:hover {

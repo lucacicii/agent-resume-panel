@@ -61,10 +61,33 @@ function getDesktopWindowMode(): "main" | "standalone-note" | "browser" | "task"
   }
 }
 
-function getTaskWindowParams(): { noteId: string; workbenchId: string } {
+function getTaskWindowParams(): { noteId: string; workbenchId: string; runScript?: { name: string; command: string; cwd: string } } {
   try {
     const params = new URLSearchParams(window.location.search);
-    return { noteId: params.get("noteId") || "", workbenchId: params.get("workbenchId") || "" };
+    const noteId = params.get("noteId") || "";
+    const workbenchId = params.get("workbenchId") || "";
+    // New windows receive the script through the URL (encoded twice: once by
+    // the opener, once by the query serialization), so decode defensively.
+    const rawRunScript = params.get("runScript");
+    if (!noteId || !rawRunScript) return { noteId, workbenchId };
+    try {
+      const decoded = decodeURIComponent(rawRunScript);
+      const parsed = JSON.parse(decoded) as { name?: unknown; command?: unknown; cwd?: unknown };
+      if (typeof parsed?.command === "string" && typeof parsed?.cwd === "string") {
+        return {
+          noteId,
+          workbenchId,
+          runScript: {
+            name: typeof parsed.name === "string" && parsed.name ? parsed.name : parsed.command,
+            command: parsed.command,
+            cwd: parsed.cwd
+          }
+        };
+      }
+    } catch {
+      // A malformed param is dropped, not fatal: the task still opens.
+    }
+    return { noteId, workbenchId };
   } catch {
     return { noteId: "", workbenchId: "" };
   }
@@ -383,6 +406,13 @@ function TaskRendererRuntime(): React.JSX.Element {
         detail: { ...detail, workbenchId: params.workbenchId }
       }));
       window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" }));
+      // A pending script run rides along with the task: the workbench mounts
+      // with the task event above, so this lands on a live listener.
+      if (params.runScript) {
+        window.dispatchEvent(new CustomEvent("agent-resume:workbench-run-script", {
+          detail: params.runScript
+        }));
+      }
     })();
     return () => { cancelled = true; };
   }, [ready, t]);

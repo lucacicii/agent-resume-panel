@@ -201,6 +201,7 @@ export function GitChangesPanel({
   onCommitMessageChange,
   onSuggestCommit,
   onCommit,
+  onNewSession,
   labels
 }: {
   visible: boolean;
@@ -230,6 +231,7 @@ export function GitChangesPanel({
   onCommitMessageChange: (value: string) => void;
   onSuggestCommit: () => void;
   onCommit: (pushAfter: boolean) => void;
+  onNewSession?: () => void;
   labels: {
     stagedTitle: string;
     changesTitle: string;
@@ -248,6 +250,9 @@ export function GitChangesPanel({
     openDefault: string;
     copyPath: string;
     discard: string;
+    cleanTitle?: string;
+    cleanHint?: string;
+    cleanNewSession?: string;
   };
 }): ReactPortal | null {
   const { t } = useI18n();
@@ -377,7 +382,23 @@ export function GitChangesPanel({
             </div>
           </div>)}
         </section>;
-      }) : <p className="muted wb-git-empty">{labels.noChanges}</p>}
+      }) : (
+        <div className="wb-git-clean-state">
+          <ThemeIcon name="check" size={ICON_SIZE.prominent} aria-hidden="true" />
+          <p className="wb-git-clean-title">{labels.cleanTitle || labels.noChanges}</p>
+          {labels.cleanHint ? <p className="muted wb-git-clean-hint">{labels.cleanHint}</p> : null}
+          {onNewSession ? (
+            <button
+              type="button"
+              className="wb-git-clean-action-btn"
+              onClick={onNewSession}
+            >
+              <ThemeIcon name="bot" size={ICON_SIZE.dense} aria-hidden="true" />
+              <span>{labels.cleanNewSession || t("desktop.workbench.newSession")}</span>
+            </button>
+          ) : null}
+        </div>
+      )}
     </div>
     <div className="wb-git-commit-composer">
       <div className="wb-git-commit-target">

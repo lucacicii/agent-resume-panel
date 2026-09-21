@@ -13,7 +13,8 @@ export function WorkbenchScriptsPane({
   collapsed,
   onToggleCollapsed,
   onRefresh,
-  onRun
+  onRun,
+  onScriptContextMenu
 }: {
   compact?: boolean;
   hasProject: boolean;
@@ -26,6 +27,8 @@ export function WorkbenchScriptsPane({
   onToggleCollapsed?: () => void;
   onRefresh?: () => void;
   onRun: (script: ScriptEntryView, pkg: ScriptPackageView) => void;
+  /** Right-click anywhere in the pane; see `ScriptsTree`. */
+  onScriptContextMenu?: (event: { clientX: number; clientY: number }, scripts: ScriptEntryView[]) => void;
 }): React.JSX.Element {
   const { t } = useI18n();
   if (compact) {
@@ -37,10 +40,10 @@ export function WorkbenchScriptsPane({
         </button>
         {selectedProject ? <button type="button" className="wb-git-action-btn" disabled={loading} onClick={onRefresh} aria-label={t("desktop.workbench.scriptsRefresh")} title={t("desktop.workbench.scriptsRefresh")}><ThemeIcon name="refresh" size={ICON_SIZE.default} className={loading ? "spin" : undefined} /></button> : null}
       </div>
-      {!collapsed ? <ScriptsTree packages={packages} loading={loading} error={error || null} truncated={truncated} hasProject={hasProject} compact emptyHint={t("desktop.workbench.scriptsEmpty")} noRootHint={t("desktop.workbench.sidePanelNoRoot")} onRun={onRun} /> : null}
+      {!collapsed ? <ScriptsTree packages={packages} loading={loading} error={error || null} truncated={truncated} hasProject={hasProject} compact emptyHint={t("desktop.workbench.scriptsEmpty")} noRootHint={t("desktop.workbench.sidePanelNoRoot")} onRun={onRun} onScriptContextMenu={onScriptContextMenu} /> : null}
     </div>;
   }
   return <div className="wb-side-pane">
-    <ScriptsTree packages={packages} loading={loading} error={error || null} truncated={truncated} hasProject={hasProject} emptyHint={t("desktop.workbench.scriptsEmpty")} noRootHint={t("desktop.workbench.sidePanelNoRoot")} onRefresh={onRefresh} onRun={onRun} />
+    <ScriptsTree packages={packages} loading={loading} error={error || null} truncated={truncated} hasProject={hasProject} emptyHint={t("desktop.workbench.scriptsEmpty")} noRootHint={t("desktop.workbench.sidePanelNoRoot")} onRefresh={onRefresh} onRun={onRun} onScriptContextMenu={onScriptContextMenu} />
   </div>;
 }

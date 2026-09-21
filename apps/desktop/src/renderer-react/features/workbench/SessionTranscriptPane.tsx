@@ -224,7 +224,7 @@ export const SessionTranscriptPane = React.memo(function SessionTranscriptPane({
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [outlineOpen, setOutlineOpen] = useState(true);
+  const [outlineDismissed, setOutlineDismissed] = useState(false);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const [renderMarkdownView, setRenderMarkdownView] = useState(true);
   const [expandedThinking, setExpandedThinking] = useState<Record<string, boolean>>({});
@@ -693,7 +693,7 @@ export const SessionTranscriptPane = React.memo(function SessionTranscriptPane({
       {model.messages.length ? (
         <div className="wb-transcript-content-wrap">
           <div
-            className={`wb-transcript-body${outlineOpen ? " has-outline-open" : ""}`}
+            className="wb-transcript-body"
             ref={bodyRef}
             onScroll={handleScroll}
             style={{ ["--wb-transcript-font-size" as string]: `${fontSize}px` }}
@@ -735,25 +735,26 @@ export const SessionTranscriptPane = React.memo(function SessionTranscriptPane({
             )}
           </div>
 
-          <aside className={`wb-transcript-outline${outlineOpen ? " is-open" : " is-collapsed"}`}>
-            <button
-              type="button"
-              className="wb-transcript-outline-toggle"
-              aria-expanded={outlineOpen}
-              onClick={() => setOutlineOpen((current) => !current)}
-            >
-              <ThemeIcon name="chevron-right" className={outlineOpen ? "is-expanded" : ""} size={ICON_SIZE.inline} />
-              <span>{t("desktop.workbench.transcriptOutline")} · {model.outline.length}</span>
-            </button>
-            {outlineOpen ? (
-              model.outline.length ? (
+          <div
+            className={`wb-transcript-outline-zone${outlineDismissed ? " is-dismissed" : ""}`}
+            onPointerLeave={() => setOutlineDismissed(false)}
+          >
+            <aside className="wb-transcript-outline" aria-label={t("desktop.workbench.transcriptOutline")}>
+              <div className="wb-transcript-outline-head">
+                <span>{t("desktop.workbench.transcriptOutline")} · {model.outline.length}</span>
+              </div>
+              {model.outline.length ? (
                 <ol className="wb-transcript-outline-list">
                   {model.outline.map((item) => (
                     <li key={item.id}>
                       <button
                         type="button"
                         className={`wb-transcript-outline-item${selectedId === item.messageId ? " is-selected" : ""}`}
-                        onClick={() => scrollToMessage(item.messageId)}
+                        onClick={(event) => {
+                          event.currentTarget.blur();
+                          scrollToMessage(item.messageId);
+                          setOutlineDismissed(true);
+                        }}
                       >
                         <span className="wb-transcript-outline-index">#{item.index}</span>
                         <span className="wb-transcript-outline-title">{item.title}</span>
@@ -763,9 +764,9 @@ export const SessionTranscriptPane = React.memo(function SessionTranscriptPane({
                 </ol>
               ) : (
                 <p className="muted wb-transcript-status">{t("desktop.workbench.transcriptNoMatches")}</p>
-              )
-            ) : null}
-          </aside>
+              )}
+            </aside>
+          </div>
 
           {showScrollBottom ? (
             <button

@@ -52,7 +52,7 @@ import type {
   BrowserPolicyState,
   BrowserSessionState
 } from "../shared/browserTypes";
-import type { TaskColorKey } from "../shared/taskColors";
+import type { TaskColorKey, TaskCustomColor } from "../shared/taskColors";
 
 /** Reusable GTD task template stored in `desktop.db`. */
 export type TaskTemplate = {
@@ -61,13 +61,36 @@ export type TaskTemplate = {
   projectPaths: string[];
   /** Fixed-palette accent color; omitted when the template has none. */
   colorKey?: TaskColorKey;
+  /** Image-derived accent color (`#rrggbb`); mutually exclusive with colorKey. */
+  customColor?: TaskCustomColor;
+  /** Candidate colors extracted from the template image, first is recommended. */
+  imageColors?: TaskCustomColor[];
+  /** The persisted template image as a `data:image/png` URL; absent when none. */
+  imageDataUrl?: string;
+  /** Workbench scripts sent to this template; offered by every task it derives. */
+  scripts: TaskTemplateScript[];
   createdAtMs: number;
   updatedAtMs: number;
 };
 
-/** A task's resolved accent: template palette key plus derived shade step. */
+/** A template image to persist: normalized PNG plus its extracted colors. */
+export type TaskTemplateImage = {
+  pngBase64: string;
+  colors: TaskCustomColor[];
+};
+
+/** One workbench script sent to a template; every task it derives can run it. */
+export type TaskTemplateScript = {
+  id: string;
+  name: string;
+  command: string;
+  cwd: string;
+};
+
+/** A task's resolved accent: palette key or custom color, plus derived shade step. */
 export type TaskAccent = {
-  colorKey: TaskColorKey;
+  colorKey?: TaskColorKey;
+  customColor?: TaskCustomColor;
   shade: number;
 };
 
@@ -134,6 +157,8 @@ export interface DesktopApi {
     title?: string;
     x?: number;
     y?: number;
+    /** Run this script in a fresh terminal pane once the workbench is up. */
+    runScript?: { name: string; command: string; cwd: string };
   }): Promise<{ ok: true; created: boolean } | { ok: false; reason: "limit"; limit: number }>;
   /** Open workbench windows, for board badges and tray menus. */
   taskWindowList(): Promise<Array<{ workbenchId: string; noteId: string; title: string }>>;
@@ -144,6 +169,8 @@ export interface DesktopApi {
   taskWindowClose(): Promise<{ ok: boolean }>;
   /** The host refused to open another workbench window (cap reached). */
   onTaskWindowLimit(callback: (payload: { limit: number }) => void): () => void;
+  /** Run a template script in this window's workbench (sent while it was open). */
+  onTaskWindowRunScript(callback: (payload: { name: string; command: string; cwd: string }) => void): () => void;
   /** The host asked this window to close; answer with `taskWindowCloseReady`. */
   onTaskWindowCloseRequested(callback: () => void): () => void;
   taskWindowCloseReady(args: { ok: boolean }): Promise<{ ok: boolean }>;
@@ -1061,6 +1088,8 @@ export interface DesktopApi {
   onWorkbenchCmdShiftP(callback: () => void): () => void;
   /** Find in Files (⌘⇧F / Ctrl+Shift+F). */
   onWorkbenchCmdShiftF(callback: () => void): () => void;
+  /** Review Git changes (⌃⇧G / Ctrl+Shift+G). */
+  onWorkbenchCmdShiftG(callback: () => void): () => void;
   getReportEntry(reportId: string): Promise<ReportEntry | null>;
   /** Static catalog of chat tools and discovered skills/mcp tools. */
   listAgentTools(args?: { projectPath?: string }): Promise<AgentToolDescriptor[]>;
@@ -1184,6 +1213,8 @@ export interface DesktopApi {
       };
       /** Template-derived accent; omitted for tasks with no colored template. */
       accent?: TaskAccent;
+      /** The template this task was created from; omitted for unlinked tasks. */
+      templateId?: string;
     }>
   >;
   notesCreateTask(args: {
@@ -1217,15 +1248,39 @@ export interface DesktopApi {
     updatedAtMs: number;
   }>;
   taskTemplatesList(): Promise<Array<TaskTemplate>>;
-  taskTemplatesCreate(args: { title: string; projectPaths?: string[]; colorKey?: TaskColorKey }): Promise<TaskTemplate>;
+  taskTemplatesCreate(args: {
+    title: string;
+    projectPaths?: string[];
+    colorKey?: TaskColorKey;
+    customColor?: TaskCustomColor;
+    image?: TaskTemplateImage;
+    /** Scripts to seed the template with (e.g. create-from-script). */
+    scripts?: Array<{ name: string; command: string; cwd: string }>;
+  }): Promise<TaskTemplate>;
   taskTemplatesUpdate(args: {
     templateId: string;
     title: string;
     projectPaths?: string[];
-    /** Always sets the color; null clears it. */
+    /** Always sets the accent; null clears it. */
     colorKey?: TaskColorKey | null;
+    /** Always sets the accent; a value clears the palette key. */
+    customColor?: TaskCustomColor | null;
+    /** Replace/attach the image, null to remove it, omit to keep the stored one. */
+    image?: TaskTemplateImage | null;
   }): Promise<TaskTemplate>;
   taskTemplatesDelete(args: { templateId: string }): Promise<{ ok: boolean }>;
+  /** Send a workbench script to a template; `added` is false when it was already there. */
+  taskTemplatesAddScript(args: {
+    templateId: string;
+    script: { name: string; command: string; cwd: string };
+  }): Promise<{ template: TaskTemplate; added: boolean }>;
+  taskTemplatesRemoveScript(args: { templateId: string; scriptId: string }): Promise<TaskTemplate>;
+  /** Link an existing task to a template (send-to-template from an unlinked task). */
+  taskTemplatesLinkTask(args: { noteId: string; templateId: string }): Promise<{ ok: boolean; accent?: TaskAccent }>;
+  /** Native image pick; returns a normalized ≤256px PNG as base64. */
+  taskTemplatesPickImage(): Promise<{ ok: true; pngBase64: string } | { ok: false; canceled: true }>;
+  /** The scoped task's template image as a data URL; absent when it has none. */
+  taskTemplateImageForTask(args: { noteId: string }): Promise<{ imageDataUrl?: string }>;
   notesLinkSessionToTask(args: { noteId: string; sessionKey: string; projectPath?: string }): Promise<{ noteId: string }>;
   notesListTaskSessionLinks(): Promise<Array<{ noteId: string; title?: string; provider: string; sessionId: string }>>;
   /** Allocate/refresh a task's neutral workspace; returns its directory. */
@@ -1470,6 +1525,14 @@ const api: DesktopApi = {
     const handler = (_event: Electron.IpcRendererEvent, payload: { limit: number }) => callback(payload);
     ipcRenderer.on("task-window:limit", handler);
     return () => ipcRenderer.removeListener("task-window:limit", handler);
+  },
+  onTaskWindowRunScript: (callback) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      payload: { name: string; command: string; cwd: string }
+    ) => callback(payload);
+    ipcRenderer.on("task-window:run-script", handler);
+    return () => ipcRenderer.removeListener("task-window:run-script", handler);
   },
   onTaskWindowCloseRequested: (callback) => {
     const handler = () => callback();
@@ -1798,6 +1861,11 @@ const api: DesktopApi = {
     ipcRenderer.on("workbench:cmdShiftF", handler);
     return () => ipcRenderer.removeListener("workbench:cmdShiftF", handler);
   },
+  onWorkbenchCmdShiftG: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on("workbench:cmdShiftG", handler);
+    return () => ipcRenderer.removeListener("workbench:cmdShiftG", handler);
+  },
   getReportEntry: (reportId) => ipcRenderer.invoke("report:getEntry", reportId),
   listAgentTools: (args) => ipcRenderer.invoke("agent:listTools", args),
   listSkills: (args) => ipcRenderer.invoke("skills:list", args),
@@ -1823,6 +1891,11 @@ const api: DesktopApi = {
   taskTemplatesCreate: (args) => ipcRenderer.invoke("taskTemplates:create", args),
   taskTemplatesUpdate: (args) => ipcRenderer.invoke("taskTemplates:update", args),
   taskTemplatesDelete: (args) => ipcRenderer.invoke("taskTemplates:delete", args),
+  taskTemplatesAddScript: (args) => ipcRenderer.invoke("taskTemplates:addScript", args),
+  taskTemplatesRemoveScript: (args) => ipcRenderer.invoke("taskTemplates:removeScript", args),
+  taskTemplatesLinkTask: (args) => ipcRenderer.invoke("taskTemplates:linkTask", args),
+  taskTemplatesPickImage: () => ipcRenderer.invoke("taskTemplates:pickImage"),
+  taskTemplateImageForTask: (args) => ipcRenderer.invoke("taskTemplate:imageForTask", args),
   notesCreateTask: (args) => ipcRenderer.invoke("notes:createTask", args),
   notesLinkSessionToTask: (args) => ipcRenderer.invoke("notes:linkSessionToTask", args),
   notesListTaskSessionLinks: () => ipcRenderer.invoke("notes:listTaskSessionLinks"),

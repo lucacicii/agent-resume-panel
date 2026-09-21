@@ -3,6 +3,7 @@ import type { PanelSettings } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { confirmDestructive } from "../../confirmAction";
 import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
+import { NativeMenuSelect } from "../../components/NativeMenuSelect";
 import {
   isBuiltinSelectionActionId,
   type SelectionAction
@@ -191,25 +192,23 @@ export function SelectionSettingsPane({ t }: { t: Translate }): React.JSX.Elemen
             </label>
             <label className="settings-field">
               <span className="settings-field-label">{t("desktop.settings.selectionActionModel")}</span>
-              <select
+              <NativeMenuSelect
                 className="settings-row-control"
-                data-testid="settings-selection-action-model-select"
+                testId="settings-selection-action-model-select"
+                ariaLabel={t("desktop.settings.selectionActionModel")}
+                title={t("desktop.settings.selectionActionModel")}
                 value={actionProviderId && actionModelId ? `${actionProviderId}:${actionModelId}` : ""}
-                onChange={(event) => {
-                  const val = event.target.value;
-                  const [pId, mId] = val ? val.split(":") : ["", ""];
+                options={[
+                  { value: "", label: t("desktop.settings.selectionActionModelDefault") },
+                  ...listProviderModels(settings?.providers ?? [], "text").map((item) => ({ value: `${item.providerId}:${item.modelId}`, label: `${item.providerName} / ${item.modelId}` }))
+                ]}
+                onChange={(value) => {
+                  const [pId, mId] = value ? value.split(":") : ["", ""];
                   setActionProviderId(pId || "");
                   setActionModelId(mId || "");
                   void persistAction({ providerId: pId || "", modelId: mId || "" });
                 }}
-              >
-                <option value="">{t("desktop.settings.selectionActionModelDefault")}</option>
-                {listProviderModels(settings?.providers ?? [], "text").map((item) => (
-                  <option key={`${item.providerId}:${item.modelId}`} value={`${item.providerId}:${item.modelId}`}>
-                    {item.providerName} / {item.modelId}
-                  </option>
-                ))}
-              </select>
+              />
             </label>
             <label className="settings-field">
               <span className="settings-field-label">{t("desktop.settings.selectionActionPrompt")}</span>

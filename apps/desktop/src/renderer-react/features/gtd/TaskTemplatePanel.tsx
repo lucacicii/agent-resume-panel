@@ -6,17 +6,42 @@ import { confirmDestructive } from "../../confirmAction";
 import { useOverlayState } from "../../components/useOverlayMotion";
 import { contextMenuPoint, showContextMenuAt } from "../../nativeContextMenu";
 import { useI18n } from "../../i18n";
-import { TASK_COLOR_KEYS, type TaskColorKey } from "../../../shared/taskColors";
+import { TASK_COLOR_KEYS, type TaskColorKey, type TaskCustomColor } from "../../../shared/taskColors";
+import { extractImageColorCandidates } from "./imageColorCandidates";
 
 /** One reusable GTD task template as the renderer sees it. */
+/** One workbench script sent to a template; every task it derives can run it. */
+export type TaskTemplateScript = {
+  id: string;
+  name: string;
+  command: string;
+  cwd: string;
+};
+
 export type TaskTemplate = {
   templateId: string;
   title: string;
   projectPaths: string[];
   /** Fixed-palette accent color; absent when the template has none. */
   colorKey?: TaskColorKey;
+  /** Image-derived accent color (`#rrggbb`); mutually exclusive with colorKey. */
+  customColor?: TaskCustomColor;
+  /** Candidate colors extracted from the template image, first is recommended. */
+  imageColors?: TaskCustomColor[];
+  /** The persisted template image as a `data:image/png` URL; absent when none. */
+  imageDataUrl?: string;
+  /** Workbench scripts sent to this template; offered by every task it derives. */
+  scripts: TaskTemplateScript[];
   createdAtMs: number;
   updatedAtMs: number;
+};
+
+/** The draft's image: preview plus the candidates to choose from. */
+type TemplateDraftImage = {
+  dataUrl: string;
+  /** Base64 PNG to persist; empty when reusing the stored image unchanged. */
+  pngBase64: string;
+  colors: TaskCustomColor[];
 };
 
 type TemplateDraft = {
@@ -26,6 +51,14 @@ type TemplateDraft = {
   projectPaths: string[];
   /** null keeps the template's tasks neutral. */
   colorKey: TaskColorKey | null;
+  /** A picked image color; null keeps the palette choice (or none). */
+  customColor: TaskCustomColor | null;
+  /** Current image preview + candidates; null when the template has none. */
+  image: TemplateDraftImage | null;
+  /** True once the image was picked or removed in this edit; drives save semantics. */
+  imageChanged: boolean;
+  /** The template's scripts, shown read-only; removal is immediate. */
+  scripts: TaskTemplateScript[];
   busy: boolean;
   error: string;
 };
@@ -39,7 +72,9 @@ function projectLabel(projectPath: string): string {
  *
  * Templates are dragged onto a column to create a pre-filled task, so the
  * panel owns create/edit/delete plus the drag payload, while `GtdView` owns the
- * drop target and task creation.
+ * drop target and task creation. A template may carry an image; its extracted
+ * colors become selectable accents whose hue is passed through to workbench
+ * windows via the task link.
  */
 export function TaskTemplatePanel({
   active,
@@ -51,6 +86,7 @@ export function TaskTemplatePanel({
   const { ready, t } = useI18n();
   const [templates, setTemplates] = useState<TaskTemplate[]>([]);
   const [draft, setDraft, draftClosing] = useOverlayState<TemplateDraft>();
+  const [pickingImage, setPickingImage] = useState(false);
 
   const text = useCallback(
     (key: string, ...args: Array<string | number>) => (ready ? t(key, ...args) : key),
@@ -78,19 +114,53 @@ export function TaskTemplatePanel({
   }, [active, load]);
 
   const openNewTemplate = useCallback(() => {
-    setDraft({ title: "", projectPaths: [], colorKey: null, busy: false, error: "" });
+    setDraft({
+      title: "",
+      projectPaths: [],
+      colorKey: null,
+      customColor: null,
+      image: null,
+      imageChanged: false,
+      scripts: [],
+      busy: false,
+      error: ""
+    });
   }, []);
 
   const openEditTemplate = useCallback((template: TaskTemplate) => {
+    const storedImage = template.imageDataUrl && template.imageColors && template.imageColors.length > 0
+      ? { dataUrl: template.imageDataUrl, pngBase64: "", colors: template.imageColors }
+      : null;
     setDraft({
       templateId: template.templateId,
       title: template.title,
       projectPaths: [...template.projectPaths],
       colorKey: template.colorKey ?? null,
+      customColor: template.customColor ?? null,
+      image: storedImage,
+      imageChanged: false,
+      scripts: [...template.scripts],
       busy: false,
       error: ""
     });
   }, []);
+
+  /** Script removal is immediate (not part of save): the IPC returns the
+   * updated template, which refreshes both the library and the open draft. */
+  const removeScript = useCallback(async (scriptId: string) => {
+    const templateId = draft?.templateId;
+    if (!templateId || draft?.busy) return;
+    const api = desktopApi();
+    if (typeof api.taskTemplatesRemoveScript !== "function") return;
+    try {
+      const updated = await api.taskTemplatesRemoveScript({ templateId, scriptId });
+      setTemplates((current) => current.map((entry) =>
+        entry.templateId === updated.templateId ? { ...entry, scripts: updated.scripts } : entry));
+      setDraft((current) => current ? { ...current, scripts: updated.scripts } : current);
+    } catch {
+      void load();
+    }
+  }, [draft, load]);
 
   const pickProject = useCallback(async () => {
     if (!draft || draft.busy || typeof desktopApi().pickDirectory !== "function") return;
@@ -111,6 +181,64 @@ export function TaskTemplatePanel({
       : current);
   }, []);
 
+  /**
+   * Pick an image through the native dialog, then extract dominant colors in
+   * the renderer. The recommended candidate (first) becomes the draft accent;
+   * grayscale images without a usable color are rejected with a hint.
+   */
+  const pickImage = useCallback(async () => {
+    if (!draft || draft.busy || pickingImage) return;
+    const api = desktopApi();
+    if (typeof api.taskTemplatesPickImage !== "function") return;
+    setPickingImage(true);
+    try {
+      const picked = await api.taskTemplatesPickImage();
+      if (!picked.ok) return;
+      const dataUrl = `data:image/png;base64,${picked.pngBase64}`;
+      const colors = await extractImageColorCandidates(dataUrl);
+      if (colors.length === 0) {
+        setDraft((current) => current
+          ? { ...current, error: text("desktop.gtd.templateImageNoColors") }
+          : current);
+        return;
+      }
+      setDraft((current) => current
+        ? {
+            ...current,
+            image: { dataUrl, pngBase64: picked.pngBase64, colors },
+            imageChanged: true,
+            customColor: colors[0],
+            colorKey: null,
+            error: ""
+          }
+        : current);
+    } catch (error) {
+      setDraft((current) => current
+        ? { ...current, error: error instanceof Error ? error.message : String(error) }
+        : current);
+    } finally {
+      setPickingImage(false);
+    }
+  }, [draft, pickingImage, text]);
+
+  const removeImage = useCallback(() => {
+    setDraft((current) => current
+      ? { ...current, image: null, imageChanged: true, error: "" }
+      : current);
+  }, []);
+
+  const selectPaletteColor = useCallback((key: TaskColorKey | null) => {
+    setDraft((current) => current
+      ? { ...current, colorKey: key, customColor: null }
+      : current);
+  }, []);
+
+  const selectImageColor = useCallback((hex: TaskCustomColor) => {
+    setDraft((current) => current
+      ? { ...current, customColor: hex, colorKey: null }
+      : current);
+  }, []);
+
   const saveTemplate = useCallback(async () => {
     if (!draft || draft.busy) return;
     const title = draft.title.trim();
@@ -123,15 +251,30 @@ export function TaskTemplatePanel({
     setDraft((current) => current ? { ...current, busy: true, error: "" } : current);
     try {
       const projectPaths = draft.projectPaths.map((entry) => entry.trim()).filter(Boolean);
+      // Only persist image bytes when the image changed in this edit; an
+      // unchanged stored image is kept, a removed one is cleared with null.
+      const image = draft.imageChanged
+        ? draft.image && draft.image.pngBase64
+          ? { pngBase64: draft.image.pngBase64, colors: draft.image.colors }
+          : null
+        : undefined;
       if (draft.templateId) {
         await api.taskTemplatesUpdate({
           templateId: draft.templateId,
           title,
           projectPaths,
-          colorKey: draft.colorKey
+          colorKey: draft.colorKey,
+          customColor: draft.customColor,
+          ...(image !== undefined ? { image } : {})
         });
       } else {
-        await api.taskTemplatesCreate({ title, projectPaths, colorKey: draft.colorKey ?? undefined });
+        await api.taskTemplatesCreate({
+          title,
+          projectPaths,
+          colorKey: draft.colorKey ?? undefined,
+          customColor: draft.customColor ?? undefined,
+          ...(image !== undefined && image !== null ? { image } : {})
+        });
       }
       setDraft(null);
       await load();
@@ -210,12 +353,22 @@ export function TaskTemplatePanel({
                 void openTemplateMenu(event, template);
               }}
             >
-              <ThemeIcon name="copy" className="gtd-template-icon" size={ICON_SIZE.dense} aria-hidden="true" />
+              {template.imageDataUrl ? (
+                <img className="gtd-template-thumb" src={template.imageDataUrl} alt="" aria-hidden="true" />
+              ) : (
+                <ThemeIcon name="copy" className="gtd-template-icon" size={ICON_SIZE.dense} aria-hidden="true" />
+              )}
               {template.colorKey ? (
                 <span
                   className="gtd-template-color"
                   data-task-accent={template.colorKey}
                   data-task-shade="1"
+                  aria-hidden="true"
+                />
+              ) : template.customColor ? (
+                <span
+                  className="gtd-template-color is-custom"
+                  style={{ background: template.customColor }}
                   aria-hidden="true"
                 />
               ) : null}
@@ -281,10 +434,10 @@ export function TaskTemplatePanel({
                 <button
                   type="button"
                   className="gtd-template-swatch is-none"
-                  aria-pressed={draft.colorKey == null}
+                  aria-pressed={draft.colorKey == null && draft.customColor == null}
                   aria-label={text("desktop.gtd.templateColorNone")}
                   title={text("desktop.gtd.templateColorNone")}
-                  onClick={() => setDraft((current) => current ? { ...current, colorKey: null } : current)}
+                  onClick={() => selectPaletteColor(null)}
                 />
                 {TASK_COLOR_KEYS.map((key) => (
                   <button
@@ -296,11 +449,80 @@ export function TaskTemplatePanel({
                     aria-pressed={draft.colorKey === key}
                     aria-label={key}
                     title={key}
-                    onClick={() => setDraft((current) => current ? { ...current, colorKey: key } : current)}
+                    onClick={() => selectPaletteColor(key)}
                   />
                 ))}
               </div>
             </div>
+            <div className="gtd-new-task-field">
+              <span>{text("desktop.gtd.templateImage")}</span>
+              <div className="gtd-template-image-row">
+                {draft.image ? (
+                  <img className="gtd-template-image-preview" src={draft.image.dataUrl} alt={text("desktop.gtd.templateImage")} />
+                ) : null}
+                <button
+                  type="button"
+                  className="wb-note-created-btn"
+                  disabled={pickingImage}
+                  onClick={() => void pickImage()}
+                >
+                  {text(draft.image ? "desktop.gtd.templateChangeImage" : "desktop.gtd.templatePickImage")}
+                </button>
+                {draft.image ? (
+                  <button
+                    type="button"
+                    className="gtd-new-task-project-clear"
+                    aria-label={text("desktop.gtd.templateRemoveImage")}
+                    title={text("desktop.gtd.templateRemoveImage")}
+                    onClick={removeImage}
+                  ><ThemeIcon name="close" size={ICON_SIZE.inline} /></button>
+                ) : null}
+              </div>
+              {draft.image && draft.image.colors.length > 0 ? (
+                <div
+                  className="gtd-template-color-row gtd-template-image-colors"
+                  role="group"
+                  aria-label={text("desktop.gtd.templateImageColors")}
+                >
+                  {draft.image.colors.map((hex) => (
+                    <button
+                      type="button"
+                      key={hex}
+                      className="gtd-template-swatch is-custom"
+                      style={{ background: hex }}
+                      aria-pressed={draft.customColor === hex}
+                      aria-label={hex}
+                      title={hex}
+                      onClick={() => selectImageColor(hex)}
+                    />
+                  ))}
+                </div>
+              ) : null}
+            </div>
+            {draft.templateId ? (
+              <div className="gtd-new-task-field">
+                <span>{text("desktop.gtd.templateScripts")}</span>
+                {draft.scripts.length === 0 ? (
+                  <p className="muted gtd-template-scripts-empty">{text("desktop.gtd.templateScriptsEmpty")}</p>
+                ) : (
+                  <div className="gtd-new-task-project">
+                    {draft.scripts.map((script) => (
+                      <span key={script.id} className="gtd-new-task-project-path" title={script.command}>
+                        {script.name}
+                        <button
+                          type="button"
+                          className="gtd-new-task-project-clear"
+                          aria-label={text("desktop.gtd.templateRemoveScript")}
+                          title={text("desktop.gtd.templateRemoveScript")}
+                          disabled={draft.busy}
+                          onClick={() => void removeScript(script.id)}
+                        ><ThemeIcon name="close" size={ICON_SIZE.inline} /></button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : null}
             {draft.error ? <p className="gtd-new-task-error" role="alert">{draft.error}</p> : null}
             <div className="wb-note-created-actions">
               <button type="button" className="wb-note-created-btn" disabled={draft.busy} onClick={() => setDraft(null)}>

@@ -17,7 +17,8 @@ export function NativeMenuSelect<T extends string>({
   className,
   ariaLabel,
   title,
-  disabled
+  disabled,
+  testId
 }: {
   value: T;
   options: ReadonlyArray<{ value: T; label: string }>;
@@ -26,6 +27,7 @@ export function NativeMenuSelect<T extends string>({
   ariaLabel: string;
   title?: string;
   disabled?: boolean;
+  testId?: string;
 }): React.JSX.Element {
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const current = options.find((option) => option.value === value);
@@ -51,6 +53,7 @@ export function NativeMenuSelect<T extends string>({
       ref={buttonRef}
       type="button"
       className={className}
+      data-testid={testId}
       aria-label={`${ariaLabel}: ${current?.label ?? ""}`}
       aria-haspopup="menu"
       title={title ?? current?.label}

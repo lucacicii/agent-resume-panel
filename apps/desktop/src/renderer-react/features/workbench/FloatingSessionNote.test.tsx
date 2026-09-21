@@ -174,6 +174,40 @@ describe("FloatingSessionNote", () => {
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
+  it("keeps the note and the open find bar when the locale changes", async () => {
+    // The provider swaps in a new bundle on a locale change, which changes `t`'s
+    // identity. The note-load effect must not depend on it: doing so re-ran the
+    // load, wiping the editor (unsaved text included) and closing the find bar.
+    let emitLocale: ((bundle: { locale: string; messages: Record<string, string> }) => void) | undefined;
+    const notesRead = vi.fn(async ({ noteId }: { noteId: string }) => ({ record: note(noteId, 20), content: "# Latest\n" }));
+    installBridge({
+      onLocaleChanged: (callback: (bundle: { locale: string; messages: Record<string, string> }) => void) => {
+        emitLocale = callback;
+        return () => undefined;
+      },
+      notesList: async () => [note("latest", 20)],
+      notesRead
+    });
+    const onClose = vi.fn();
+    render(<I18nProvider><FloatingSessionNote target={target} onClose={onClose} /></I18nProvider>);
+
+    const editor = (await screen.findByRole("textbox", { name: "Floating note editor" })) as HTMLTextAreaElement;
+    expect(notesRead).toHaveBeenCalledTimes(1);
+
+    const typed = "# Latest\nEdited before the locale change";
+    fireEvent.change(editor, { target: { value: typed } });
+    fireEvent.keyDown(window, { key: "f", metaKey: true });
+    await screen.findByRole("textbox", { name: "Find in note" });
+
+    await act(async () => { emitLocale?.({ locale: "zh-cn", messages }); });
+
+    // The locale landing must not reload the note or dismiss the find bar.
+    expect(screen.getByRole("textbox", { name: "Find in note" })).toBeTruthy();
+    expect(notesRead).toHaveBeenCalledTimes(1);
+    expect(document.querySelector<HTMLTextAreaElement>("textarea[aria-label='Floating note editor']")?.value).toBe(typed);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it("opens find from the toolbar button", async () => {
     installBridge({
       notesList: async () => [note("latest", 20)],

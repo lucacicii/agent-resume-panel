@@ -238,7 +238,7 @@ describe("AcpChatView slash commands", () => {
 describe("AcpChatView modes and plan preview", () => {
   it("cycles session modes with Shift+Tab", async () => {
     await renderChat();
-    await waitFor(() => expect(screen.getByRole("combobox", { name: /mode/i })).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("button", { name: /mode/i })).toBeTruthy());
     const shiftTab = () => {
       window.dispatchEvent(
         new KeyboardEvent("keydown", {

@@ -77,7 +77,7 @@ const fake = vi.hoisted(() => {
     }
 
     getBounds(): Electron.Rectangle {
-      return { x: 0, y: 0, width: 1180, height: 820 };
+      return { x: 0, y: 0, width: 1700, height: 960 };
     }
 
     setPosition(): void {

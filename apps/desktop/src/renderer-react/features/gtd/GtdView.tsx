@@ -1,6 +1,7 @@
 import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { createPortal } from "react-dom";
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent, CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GtdStatus, TaskGtdRollup } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { confirmDestructive } from "../../confirmAction";
@@ -22,6 +23,7 @@ import {
   type DesktopGtdStatus
 } from "../../gtd";
 import { TaskTemplatePanel, type TaskTemplate } from "./TaskTemplatePanel";
+import { hueFromHex } from "../../../shared/taskColors";
 
 /** Board column order — `done` last so active work reads first. */
 const GTD_COLUMNS: readonly DesktopGtdStatus[] = DESKTOP_GTD_STATUSES;
@@ -160,7 +162,11 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
    * A workbench owns the panes and their ptys, so exactly one of them exists:
    * the board opens and focuses windows instead of mounting a second copy.
    */
-  const openTask = useCallback(async (item: GtdCard, workbenchId?: string): Promise<void> => {
+  const openTask = useCallback(async (
+    item: GtdCard,
+    workbenchId?: string,
+    runScript?: { name: string; command: string; cwd: string }
+  ): Promise<void> => {
     try {
       const workbenches = workbenchId ? [] : await ensureTaskWorkbenches(item.noteId);
       const target = workbenchId ?? workbenches[0]?.workbenchId;
@@ -168,7 +174,8 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
       const opened = await desktopApi().taskWindowOpen({
         noteId: item.noteId,
         workbenchId: target,
-        title: item.title
+        title: item.title,
+        ...(runScript ? { runScript } : {})
       });
       if (!opened.ok) {
         notifyDesktop({ text: text("desktop.gtd.windowLimit", opened.limit), kind: "error", durationMs: 6000 });
@@ -342,11 +349,31 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
    */
   const openContextMenu = useCallback(async (event: { clientX: number; clientY: number }, item: GtdCard) => {
     const pinned = Boolean(rollups[item.noteId]?.override);
+    // The template this task came from supplies runnable commands; the menu
+    // shows each command verbatim so one click opens the task and runs it.
+    let templateScripts: Array<{ id: string; name: string; command: string; cwd: string }> = [];
+    if (item.templateId && typeof desktopApi().taskTemplatesList === "function") {
+      try {
+        const templates = await desktopApi().taskTemplatesList();
+        templateScripts = templates.find((template) => template.templateId === item.templateId)?.scripts ?? [];
+      } catch {
+        templateScripts = []; // the menu degrades to the standard entries
+      }
+    }
     const choice = await showContextMenuAt(contextMenuPoint(event), [
       { id: "rename", label: text("desktop.common.rename") },
       { id: "note", label: text("desktop.workbench.taskOpenNote") },
       { id: "open", label: text("desktop.gtd.openInWindow") },
       ...(pinned ? [{ id: "unpin", label: text("desktop.gtd.followChildren") }] : []),
+      ...(templateScripts.length > 0
+        ? [
+            { type: "separator" as const },
+            ...templateScripts.map((script) => ({
+              id: `script:${script.id}`,
+              label: script.command
+            }))
+          ]
+        : []),
       ...(item.sessions.length === 0
         ? [
             { type: "separator" as const },
@@ -360,6 +387,10 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
     else if (choice === "open") void openTask(item);
     else if (choice === "unpin") void clearPin(item.noteId);
     else if (choice === "delete") void deleteTask(item);
+    else if (choice?.startsWith("script:")) {
+      const script = templateScripts.find((entry) => entry.id === choice.slice("script:".length));
+      if (script) void openTask(item, undefined, { name: script.name, command: script.command, cwd: script.cwd });
+    }
   }, [clearPin, deleteTask, openTask, openTaskNote, rollups, startRename, text]);
 
   const filtered = useMemo(() => {
@@ -490,8 +521,11 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
                     key={item.noteId}
                     draggable
                     className={`gtd-card${waiting ? " is-needs-you" : ""}`}
-                    data-task-accent={item.accent?.colorKey}
+                    data-task-accent={item.accent?.colorKey ?? (item.accent?.customColor ? "custom" : undefined)}
                     data-task-shade={item.accent?.shade}
+                    {...(item.accent?.customColor
+                      ? { style: { "--task-h": hueFromHex(item.accent.customColor) } as CSSProperties }
+                      : {})}
                     onContextMenu={(event) => {
                       event.preventDefault();
                       void openContextMenu(event, item);
