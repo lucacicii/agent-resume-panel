@@ -337,7 +337,7 @@ const LIST_WIDTH_KEY = "wb-list-pane-width";
 const SIDE_WIDTH_KEY = "wb-side-panel-width";
 const SESSION_VIEW_MODE_KEY = "wb-session-view-mode";
 /** Whether a diff pane shows the session transcript beside it, per workbench. */
-const DIFF_SPLIT_REVIEW_KEY = "wb-diff-split-review";
+const DIFF_SESSION_ALONGSIDE_KEY = "wb-diff-session-alongside";
 const TUI_SPLIT_HEIGHT_KEY = "wb-tui-split-height";
 const ALL_PROJECTS_PANE_KEY = "__all_projects__";
 
@@ -672,7 +672,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [editors, setEditors] = useState<EditorPane[]>([]);
   const [imagePreview, setImagePreview, imagePreviewClosing] = useOverlayState<string>();
   const [diffs, setDiffs] = useState<DiffPane[]>([]);
-  const [diffSplitReview, setDiffSplitReview] = useState<boolean>(() => storageString(DIFF_SPLIT_REVIEW_KEY) === "true");
+  const [diffSessionAlongside, setDiffSessionAlongside] = useState<boolean>(() => storageString(DIFF_SESSION_ALONGSIDE_KEY) === "true");
   const [acpChats, setAcpChats] = useState<AcpChatPane[]>([]);
   const [browsers, setBrowsers] = useState<BrowserPane[]>([]);
   const [notePanes, setNotePanes] = useState<NotePane[]>([]);
@@ -3397,7 +3397,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     setTuiSplitHeight(storedWidth(workbenchScopedKey(TUI_SPLIT_HEIGHT_KEY, activeWorkbenchId), 180, 80, 600));
     const mode = storageString(workbenchScopedKey(SESSION_VIEW_MODE_KEY, activeWorkbenchId));
     if (mode === "terminal" || mode === "hybrid") setSessionViewMode(mode);
-    setDiffSplitReview(storageString(workbenchScopedKey(DIFF_SPLIT_REVIEW_KEY, activeWorkbenchId)) === "true");
+    setDiffSessionAlongside(storageString(workbenchScopedKey(DIFF_SESSION_ALONGSIDE_KEY, activeWorkbenchId)) === "true");
   }, [activeWorkbenchId]);
 
   const activateWorkbench = useCallback((workbench: Workbench) => {
@@ -6363,18 +6363,18 @@ export function WorkbenchPanel(): ReactPortal | null {
             {hasReviewPartner ? (
               <button
                 type="button"
-                className={`wb-diff-split-toggle${diffSplitReview ? " is-active" : ""}`}
-                aria-pressed={diffSplitReview}
-                aria-label={t("desktop.workbench.diffSplitReview")}
-                title={t("desktop.workbench.diffSplitReview")}
-                onClick={() => setDiffSplitReview((v) => {
+                className={`wb-diff-split-toggle${diffSessionAlongside ? " is-active" : ""}`}
+                aria-pressed={diffSessionAlongside}
+                aria-label={t("desktop.workbench.diffSessionAlongside")}
+                title={t("desktop.workbench.diffSessionAlongside")}
+                onClick={() => setDiffSessionAlongside((v) => {
                   const next = !v;
-                  writeWorkbenchValue(DIFF_SPLIT_REVIEW_KEY, activeWorkbenchIdRef.current, String(next));
+                  writeWorkbenchValue(DIFF_SESSION_ALONGSIDE_KEY, activeWorkbenchIdRef.current, String(next));
                   return next;
                 })}
               >
                 <ThemeIcon name="panel-right" size={ICON_SIZE.dense} />
-                <span>{t("desktop.workbench.diffSplitReview")}</span>
+                <span>{t("desktop.workbench.diffSessionAlongside")}</span>
               </button>
             ) : null}
             <button type="button" className="wb-diff-ask-agent" aria-label={t("desktop.workbench.diffAskAgent")} title={t("desktop.workbench.diffAskAgent")} onClick={() => askAgentAboutDiff(currentDiff)}><ThemeIcon name="bot" size={ICON_SIZE.dense} /><span>{t("desktop.workbench.diffAskAgent")}</span></button>
@@ -6385,7 +6385,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         <DiffWorkerPool><WorkbenchDiffView diff={currentDiff} appearance={editorAppearance} onDiscardHunk={(target) => void discardGitHunk(currentDiff, target)} onDiscardLine={(target) => void discardGitLine(currentDiff, target)} onStageHunk={(target) => void stageGitHunk(currentDiff, target)} onUnstageHunk={(target) => void unstageGitHunk(currentDiff, target)} onStageLine={(target) => void stageGitLine(currentDiff, target)} onUnstageLine={(target) => void unstageGitLine(currentDiff, target)} /></DiffWorkerPool>
       </div>
     );
-    if (diffSplitReview && (targetSessionPane || targetAcpChat)) {
+    if (diffSessionAlongside && (targetSessionPane || targetAcpChat)) {
       const targetSessionIdentity = targetSessionPane ? sessionIdentityFromKey(targetSessionPane.sessionKey) : null;
       const acpChat = targetAcpChat;
       return (

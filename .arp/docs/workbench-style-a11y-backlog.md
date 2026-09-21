@@ -108,3 +108,53 @@ rule sets `box-shadow: none`). Specificity resolves the other way: the global
 `(0,1,1)` and outranks the `(0,1,0)` class rule, so the ring renders. The
 `background: transparent` on `.wb-terminal-tab-label:focus-visible` is redundant
 but harmless. No change made.
+
+---
+
+# Follow-ups found while fixing the screenshot report
+
+## A. Diff-bar label buttons were composed with an icon-button class
+
+`.wb-git-action-btn` is a **28×28 icon button** (`width: 28px; display: grid`). The
+side-by-side toggle and the ask-agent button were layered on top of it, so they
+stayed 28px wide and their labels wrapped out of the box — the toggle looked like
+a bare icon, the ask-agent label spilled over the pane edge.
+
+Fixed by dropping that class from both (`.wb-diff-open` keeps it, being
+icon-only) and giving them a self-contained rule. Tests assert neither carries
+`.wb-git-action-btn`.
+
+## B. Side-by-side review was unavailable for ACP chat sessions
+
+The toggle was gated on a *terminal-backed* session pane, so for an ACP chat it
+did not render at all — while the ask-agent button beside it did. Now an active
+ACP chat counts as a review partner and renders as the left column.
+
+The preference is also persisted per workbench and rehydrated on workbench
+switch; it previously only ever read the unscoped key.
+
+## C. Floating note reloaded itself on any locale change (data loss)
+
+`FloatingSessionNote`'s load effect listed `t` as a dependency, and `t` changes
+identity whenever the i18n bundle resolves or the locale switches. A locale
+change therefore re-ran the load: it cleared the editor and the dirty flag,
+**discarding unsaved text**, and closed the find bar.
+
+This also surfaced as an intermittent test failure, because the bundle resolving
+shortly after mount triggered that same teardown.
+
+Fixed two ways:
+- the load effect no longer depends on `t`; it depends on `target` alone, and
+  failures are stored as `{ key, detail }` and formatted at render time instead
+  of being frozen in whichever locale happened to be active.
+- the pre-existing "shows load errors" test had been passing *because* of the
+  re-run, which re-threw the error once the bundle arrived; render-time
+  formatting now covers that properly.
+
+## D. Two different "split"s in one pane
+
+The diff's own toolbar toggles `Split` / `Unified` (old vs new code), and the
+review toggle was called `Side-by-Side Review` / `分屏对照审查`. Same word, two
+different axes. Renamed to `Session Alongside` / `会话对照` / `セッション併記`,
+with the key renamed `diffSplitReview` → `diffSessionAlongside` and the old key
+retired through `obsoleteDesktopKeys`.

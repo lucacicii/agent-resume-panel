@@ -93,6 +93,9 @@ type FloatingNoteDrag = {
 
 const FLOATING_NOTE_VIEWPORT_MARGIN = 8;
 
+/** A load/save/delete failure: message key plus the raw detail to interpolate. */
+type FloatingNoteError = { key: string; detail: string };
+
 function clampFloatingNotePosition(
   left: number,
   top: number,
@@ -128,7 +131,13 @@ export function FloatingSessionNote({
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [dirty, setDirty] = useState(false);
-  const [error, setError] = useState("");
+  /**
+   * A failure is stored as its message key plus the raw detail, not as a
+   * pre-formatted string, so it re-renders in the current locale and the load
+   * effect never needs `t` as a dependency (which used to re-run the load and
+   * drop unsaved text on a locale change).
+   */
+  const [error, setError] = useState<FloatingNoteError | null>(null);
   const [position, setPosition] = useState<FloatingNotePosition | null>(null);
   const [dragging, setDragging] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
@@ -176,11 +185,10 @@ export function FloatingSessionNote({
           dirtyRef.current = false;
           setDirty(false);
         }
-        setError("");
+        setError(null);
         return true;
       } catch (saveError) {
-        const message = t("desktop.workbench.floatingNoteSaveFailed", errorMessage(saveError));
-        setError(message);
+        setError({ key: "desktop.workbench.floatingNoteSaveFailed", detail: errorMessage(saveError) });
         return false;
       } finally {
         setSaving(false);
@@ -214,7 +222,7 @@ export function FloatingSessionNote({
         return;
       } catch (deleteError) {
         closingRef.current = false;
-        setError(t("desktop.workbench.floatingNoteDeleteFailed", errorMessage(deleteError)));
+        setError({ key: "desktop.workbench.floatingNoteDeleteFailed", detail: errorMessage(deleteError) });
         return;
       }
     }
@@ -238,7 +246,7 @@ export function FloatingSessionNote({
     setDeleting(false);
     setDirty(false);
     dirtyRef.current = false;
-    setError("");
+    setError(null);
     setContent("");
     contentRef.current = "";
     setNoteId("");
@@ -320,7 +328,7 @@ export function FloatingSessionNote({
         if (loadSequenceRef.current !== sequence) return;
         setCreating(false);
         setLoading(false);
-        setError(t("desktop.workbench.floatingNoteLoadError", errorMessage(loadError)));
+        setError({ key: "desktop.workbench.floatingNoteLoadError", detail: errorMessage(loadError) });
       }
     };
 
@@ -329,7 +337,7 @@ export function FloatingSessionNote({
       clearSaveTimer();
       loadSequenceRef.current += 1;
     };
-  }, [clearSaveTimer, t, target]);
+  }, [clearSaveTimer, target]);
 
   const clearFindSearch = useCallback(() => {
     editorRef.current?.clearSearch();
@@ -433,9 +441,9 @@ export function FloatingSessionNote({
     try {
       const updated = await desktopApi().notesSetGtdStatus({ noteId: currentNoteId, status });
       setGtdStatus(updated.gtdStatus);
-      setError("");
+      setError(null);
     } catch (statusError) {
-      setError(t("desktop.workbench.gtdStatusSaveFailed", errorMessage(statusError)));
+      setError({ key: "desktop.workbench.gtdStatusSaveFailed", detail: errorMessage(statusError) });
     }
   };
 
@@ -444,7 +452,7 @@ export function FloatingSessionNote({
     contentRef.current = nextContent;
     dirtyRef.current = true;
     setDirty(true);
-    setError("");
+    setError(null);
     clearSaveTimer();
     saveTimerRef.current = window.setTimeout(() => {
       saveTimerRef.current = null;
@@ -466,7 +474,7 @@ export function FloatingSessionNote({
       onClose();
     } catch (deleteError) {
       setDeleting(false);
-      setError(t("desktop.workbench.floatingNoteDeleteFailed", errorMessage(deleteError)));
+      setError({ key: "desktop.workbench.floatingNoteDeleteFailed", detail: errorMessage(deleteError) });
     }
   }, [clearSaveTimer, creating, deleting, displayTitle, loading, onClose, t]);
 
@@ -521,6 +529,9 @@ export function FloatingSessionNote({
   useEffect(() => () => {
     dragRef.current = null;
   }, []);
+
+  // Failures are formatted here, so they follow the current locale.
+  const errorText = error ? t(error.key, error.detail) : "";
 
   return <section
     ref={noteRef}
@@ -664,7 +675,7 @@ export function FloatingSessionNote({
       </div>
       <footer className="wb-floating-note-foot">
         <span className={error ? "is-error" : undefined} role={error ? "alert" : "status"} aria-live="polite">
-          {error || (deleting
+          {errorText || (deleting
             ? t("desktop.workbench.floatingNoteDeleting")
             : saving
               ? t("desktop.workbench.floatingNoteSaving")
@@ -674,7 +685,7 @@ export function FloatingSessionNote({
         </span>
       </footer>
     </> : <div className="wb-floating-note-state is-error" role="alert">
-      <span>{error || t("desktop.workbench.floatingNoteLoadFailed")}</span>
+      <span>{errorText || t("desktop.workbench.floatingNoteLoadFailed")}</span>
     </div>}
   </section>;
 }

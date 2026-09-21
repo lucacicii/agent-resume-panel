@@ -6205,7 +6205,7 @@ describe("WorkbenchPanel", () => {
     expect(composerInput.value).toContain("Regarding changes in app.ts:");
   });
 
-  it("toggles side-by-side review mode to view session transcript and git diff simultaneously", async () => {
+  it("toggles session-alongside review mode to view session transcript and git diff simultaneously", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
     document.body.append(host);
@@ -6236,7 +6236,7 @@ describe("WorkbenchPanel", () => {
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages: {
         ...ARROW_TEST_MESSAGES,
-        "desktop.workbench.diffSplitReview": "Side-by-Side Review",
+        "desktop.workbench.diffSessionAlongside": "Session Alongside",
         "desktop.workbench.diffAskAgent": "Ask Agent to Modify",
         "desktop.workbench.diffFeedbackPrefix": "Regarding changes in {0}:\n",
         "desktop.workbench.sidePanelGit": "Git",
@@ -6287,7 +6287,7 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(document.querySelector(".wb-git-diff-pane")).not.toBeNull());
 
     // Click "Side-by-Side Review" toggle
-    const splitBtn = await screen.findByRole("button", { name: "Side-by-Side Review" });
+    const splitBtn = await screen.findByRole("button", { name: "Session Alongside" });
     expect(splitBtn.classList.contains("wb-git-action-btn")).toBe(false);
     fireEvent.click(splitBtn);
 
@@ -6298,7 +6298,7 @@ describe("WorkbenchPanel", () => {
     expect(document.querySelector(".wb-diff-split-diff .wb-git-diff-pane")).not.toBeNull();
 
     // Toggling again returns to regular full diff view
-    fireEvent.click(screen.getByRole("button", { name: "Side-by-Side Review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Session Alongside" }));
     await waitFor(() => expect(document.querySelector(".wb-diff-split-layout")).toBeNull());
     expect(document.querySelector(".wb-git-diff-pane")).not.toBeNull();
   });
@@ -6312,7 +6312,7 @@ describe("WorkbenchPanel", () => {
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages: {
         ...ARROW_TEST_MESSAGES,
-        "desktop.workbench.diffSplitReview": "Side-by-Side Review",
+        "desktop.workbench.diffSessionAlongside": "Session Alongside",
         "desktop.workbench.diffAskAgent": "Ask Agent to Modify",
         "desktop.workbench.fileOpen": "Open File",
         "desktop.workbench.acpEmptyTitle": "ACP chat",
@@ -6366,7 +6366,7 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(document.querySelector(".wb-git-diff-pane")).not.toBeNull());
 
     // The toggle must be offered, and must pair the diff with the chat.
-    const splitBtn = await screen.findByRole("button", { name: "Side-by-Side Review" });
+    const splitBtn = await screen.findByRole("button", { name: "Session Alongside" });
     fireEvent.click(splitBtn);
     await waitFor(() => expect(document.querySelector(".wb-diff-split-acp")).not.toBeNull());
     expect(document.querySelector(".wb-diff-split-diff .wb-git-diff-pane")).not.toBeNull();
