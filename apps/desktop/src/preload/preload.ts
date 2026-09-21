@@ -67,6 +67,8 @@ export type TaskTemplate = {
   imageColors?: TaskCustomColor[];
   /** The persisted template image as a `data:image/png` URL; absent when none. */
   imageDataUrl?: string;
+  /** Workbench scripts sent to this template; offered by every task it derives. */
+  scripts: TaskTemplateScript[];
   createdAtMs: number;
   updatedAtMs: number;
 };
@@ -75,6 +77,14 @@ export type TaskTemplate = {
 export type TaskTemplateImage = {
   pngBase64: string;
   colors: TaskCustomColor[];
+};
+
+/** One workbench script sent to a template; every task it derives can run it. */
+export type TaskTemplateScript = {
+  id: string;
+  name: string;
+  command: string;
+  cwd: string;
 };
 
 /** A task's resolved accent: palette key or custom color, plus derived shade step. */
@@ -147,6 +157,8 @@ export interface DesktopApi {
     title?: string;
     x?: number;
     y?: number;
+    /** Run this script in a fresh terminal pane once the workbench is up. */
+    runScript?: { name: string; command: string; cwd: string };
   }): Promise<{ ok: true; created: boolean } | { ok: false; reason: "limit"; limit: number }>;
   /** Open workbench windows, for board badges and tray menus. */
   taskWindowList(): Promise<Array<{ workbenchId: string; noteId: string; title: string }>>;
@@ -157,6 +169,8 @@ export interface DesktopApi {
   taskWindowClose(): Promise<{ ok: boolean }>;
   /** The host refused to open another workbench window (cap reached). */
   onTaskWindowLimit(callback: (payload: { limit: number }) => void): () => void;
+  /** Run a template script in this window's workbench (sent while it was open). */
+  onTaskWindowRunScript(callback: (payload: { name: string; command: string; cwd: string }) => void): () => void;
   /** The host asked this window to close; answer with `taskWindowCloseReady`. */
   onTaskWindowCloseRequested(callback: () => void): () => void;
   taskWindowCloseReady(args: { ok: boolean }): Promise<{ ok: boolean }>;
@@ -1197,6 +1211,8 @@ export interface DesktopApi {
       };
       /** Template-derived accent; omitted for tasks with no colored template. */
       accent?: TaskAccent;
+      /** The template this task was created from; omitted for unlinked tasks. */
+      templateId?: string;
     }>
   >;
   notesCreateTask(args: {
@@ -1236,6 +1252,8 @@ export interface DesktopApi {
     colorKey?: TaskColorKey;
     customColor?: TaskCustomColor;
     image?: TaskTemplateImage;
+    /** Scripts to seed the template with (e.g. create-from-script). */
+    scripts?: Array<{ name: string; command: string; cwd: string }>;
   }): Promise<TaskTemplate>;
   taskTemplatesUpdate(args: {
     templateId: string;
@@ -1249,6 +1267,14 @@ export interface DesktopApi {
     image?: TaskTemplateImage | null;
   }): Promise<TaskTemplate>;
   taskTemplatesDelete(args: { templateId: string }): Promise<{ ok: boolean }>;
+  /** Send a workbench script to a template; `added` is false when it was already there. */
+  taskTemplatesAddScript(args: {
+    templateId: string;
+    script: { name: string; command: string; cwd: string };
+  }): Promise<{ template: TaskTemplate; added: boolean }>;
+  taskTemplatesRemoveScript(args: { templateId: string; scriptId: string }): Promise<TaskTemplate>;
+  /** Link an existing task to a template (send-to-template from an unlinked task). */
+  taskTemplatesLinkTask(args: { noteId: string; templateId: string }): Promise<{ ok: boolean; accent?: TaskAccent }>;
   /** Native image pick; returns a normalized ≤256px PNG as base64. */
   taskTemplatesPickImage(): Promise<{ ok: true; pngBase64: string } | { ok: false; canceled: true }>;
   /** The scoped task's template image as a data URL; absent when it has none. */
@@ -1497,6 +1523,14 @@ const api: DesktopApi = {
     const handler = (_event: Electron.IpcRendererEvent, payload: { limit: number }) => callback(payload);
     ipcRenderer.on("task-window:limit", handler);
     return () => ipcRenderer.removeListener("task-window:limit", handler);
+  },
+  onTaskWindowRunScript: (callback) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      payload: { name: string; command: string; cwd: string }
+    ) => callback(payload);
+    ipcRenderer.on("task-window:run-script", handler);
+    return () => ipcRenderer.removeListener("task-window:run-script", handler);
   },
   onTaskWindowCloseRequested: (callback) => {
     const handler = () => callback();
@@ -1850,6 +1884,9 @@ const api: DesktopApi = {
   taskTemplatesCreate: (args) => ipcRenderer.invoke("taskTemplates:create", args),
   taskTemplatesUpdate: (args) => ipcRenderer.invoke("taskTemplates:update", args),
   taskTemplatesDelete: (args) => ipcRenderer.invoke("taskTemplates:delete", args),
+  taskTemplatesAddScript: (args) => ipcRenderer.invoke("taskTemplates:addScript", args),
+  taskTemplatesRemoveScript: (args) => ipcRenderer.invoke("taskTemplates:removeScript", args),
+  taskTemplatesLinkTask: (args) => ipcRenderer.invoke("taskTemplates:linkTask", args),
   taskTemplatesPickImage: () => ipcRenderer.invoke("taskTemplates:pickImage"),
   taskTemplateImageForTask: (args) => ipcRenderer.invoke("taskTemplate:imageForTask", args),
   notesCreateTask: (args) => ipcRenderer.invoke("notes:createTask", args),

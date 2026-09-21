@@ -47,6 +47,8 @@ export type TaskTemplate = {
   imageColors?: TaskCustomColor[];
   /** The persisted image as a base64 `data:image/png` URL; absent when none. */
   imageDataUrl?: string;
+  /** Workbench scripts sent to this template; offered by every task it derives. */
+  scripts: TaskTemplateScript[];
   createdAtMs: number;
   updatedAtMs: number;
 };
@@ -57,6 +59,14 @@ export type TaskTemplateImageInput = {
   colors: TaskCustomColor[];
 };
 
+/** One workbench script sent to the template: a runnable command in a folder. */
+export type TaskTemplateScript = {
+  id: string;
+  name: string;
+  command: string;
+  cwd: string;
+};
+
 interface TaskTemplateRow {
   template_id: string;
   title: string;
@@ -65,6 +75,7 @@ interface TaskTemplateRow {
   custom_color: string | null;
   image_colors_json: string | null;
   image_path: string | null;
+  scripts_json: string | null;
   created_at_ms: number;
   updated_at_ms: number;
 }
@@ -99,6 +110,55 @@ function parseImageColors(raw: string | null): TaskCustomColor[] {
   }
 }
 
+/** How many scripts one template may carry; sends past the cap are rejected. */
+const MAX_TEMPLATE_SCRIPTS = 20;
+
+function clampText(value: unknown, max: number): string {
+  return typeof value === "string" ? value.trim().slice(0, max) : "";
+}
+
+function parseScripts(raw: string | null): TaskTemplateScript[] {
+  if (!raw) return [];
+  try {
+    const value = JSON.parse(raw);
+    if (!Array.isArray(value)) return [];
+    const out: TaskTemplateScript[] = [];
+    for (const entry of value) {
+      if (!entry || typeof entry !== "object") continue;
+      const record = entry as Record<string, unknown>;
+      const command = clampText(record.command, 500);
+      const cwd = clampText(record.cwd, 1000);
+      if (!command || !cwd) continue;
+      out.push({
+        id: clampText(record.id, 120) || randomUUID(),
+        name: clampText(record.name, 200) || command,
+        command,
+        cwd
+      });
+      if (out.length >= MAX_TEMPLATE_SCRIPTS) break;
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+/** Validate caller-supplied scripts for creation; ids are always fresh. */
+function normalizeScripts(input: unknown): TaskTemplateScript[] {
+  if (!Array.isArray(input)) return [];
+  const out: TaskTemplateScript[] = [];
+  for (const entry of input) {
+    if (!entry || typeof entry !== "object") continue;
+    const record = entry as Record<string, unknown>;
+    const command = clampText(record.command, 500);
+    const cwd = clampText(record.cwd, 1000);
+    if (!command || !cwd) continue;
+    out.push({ id: randomUUID(), name: clampText(record.name, 200) || command, command, cwd });
+    if (out.length >= MAX_TEMPLATE_SCRIPTS) break;
+  }
+  return out;
+}
+
 /** Where a template's image lives, relative to panelHome. */
 function templateImagePath(templateId: string): string {
   return path.join("templates", `${templateId}.png`);
@@ -118,6 +178,7 @@ function mapRow(row: TaskTemplateRow, options?: { imageDataUrl?: string }): Task
     customColor: normalizeCustomHexColor(row.custom_color),
     ...(imageColors.length > 0 ? { imageColors } : {}),
     ...(options?.imageDataUrl ? { imageDataUrl: options.imageDataUrl } : {}),
+    scripts: parseScripts(row.scripts_json),
     createdAtMs: row.created_at_ms,
     updatedAtMs: row.updated_at_ms
   };
@@ -158,7 +219,7 @@ async function openTemplateDb(): Promise<string> {
 }
 
 const SELECT_COLUMNS =
-  "template_id, title, project_paths_json, color_key, custom_color, image_colors_json, image_path, created_at_ms, updated_at_ms";
+  "template_id, title, project_paths_json, color_key, custom_color, image_colors_json, image_path, scripts_json, created_at_ms, updated_at_ms";
 
 /** Read the persisted image as a data URL; absent when missing or unreadable. */
 async function readImageDataUrl(relPath: string | null): Promise<string | undefined> {
@@ -215,16 +276,20 @@ export async function createTaskTemplate(args: {
   colorKey?: TaskColorKey | null;
   customColor?: TaskCustomColor | null;
   image?: TaskTemplateImageInput | null;
+  /** Scripts to seed the template with (id is assigned here). */
+  scripts?: unknown;
 }): Promise<TaskTemplate> {
   const dbPath = await openTemplateDb();
   const nowMs = Date.now();
   const title = args.title.trim();
   const projectPaths = normalizeProjectPaths(args.projectPaths);
   const accent = normalizeAccent(args);
+  const scripts = normalizeScripts(args.scripts);
   const template: TaskTemplate = {
     templateId: randomUUID(),
     title,
     projectPaths,
+    scripts,
     createdAtMs: nowMs,
     updatedAtMs: nowMs
   };
@@ -239,7 +304,7 @@ export async function createTaskTemplate(args: {
     : null;
   await runSqlite(
     dbPath,
-    `INSERT INTO task_templates (template_id, title, project_paths_json, color_key, custom_color, image_colors_json, image_path, created_at_ms, updated_at_ms)
+    `INSERT INTO task_templates (template_id, title, project_paths_json, color_key, custom_color, image_colors_json, image_path, scripts_json, created_at_ms, updated_at_ms)
      VALUES (
        '${escapeSqlLiteral(template.templateId)}',
        '${escapeSqlLiteral(title)}',
@@ -248,6 +313,7 @@ export async function createTaskTemplate(args: {
        ${sqlNullable(accent.customColor)},
        ${sqlNullable(template.imageColors ? JSON.stringify(template.imageColors) : undefined)},
        ${sqlNullable(imagePath ?? undefined)},
+       ${sqlNullable(scripts.length ? JSON.stringify(scripts) : undefined)},
        ${nowMs},
        ${nowMs}
      );`
@@ -323,6 +389,90 @@ export async function deleteTaskTemplate(templateId: string): Promise<{ ok: bool
   // Deleting the template deletes its image file.
   if (rows[0]?.image_path) await deleteTemplateImage(rows[0].image_path);
   return { ok: true };
+}
+
+/** One template row by id, for script mutations that read-then-write. */
+async function readTemplateRow(dbPath: string, templateId: string): Promise<TaskTemplateRow> {
+  const rows = await runSqliteJson<TaskTemplateRow>(
+    dbPath,
+    `SELECT ${SELECT_COLUMNS} FROM task_templates WHERE template_id = '${escapeSqlLiteral(templateId)}' LIMIT 1;`
+  );
+  if (!rows[0]) throw new Error("Task template not found.");
+  return rows[0];
+}
+
+/** Re-read after a mutation and hand back the renderer-facing template. */
+async function readTemplate(dbPath: string, templateId: string): Promise<TaskTemplate> {
+  const row = await readTemplateRow(dbPath, templateId);
+  return mapRow(row, { imageDataUrl: await readImageDataUrl(row.image_path) });
+}
+
+/**
+ * Send one workbench script to a template. A script already stored with the
+ * same command and cwd is not duplicated; `added` tells the caller which
+ * happened so the toast can say so.
+ */
+export async function addTaskTemplateScript(args: {
+  templateId: string;
+  script: { name?: unknown; command?: unknown; cwd?: unknown };
+}): Promise<{ template: TaskTemplate; added: boolean }> {
+  const dbPath = await openTemplateDb();
+  const command = clampText(args.script?.command, 500);
+  const cwd = clampText(args.script?.cwd, 1000);
+  const name = clampText(args.script?.name, 200) || command;
+  if (!command || !cwd) throw new Error("A script command and cwd are required.");
+  const current = await readTemplateRow(dbPath, args.templateId);
+  const scripts = parseScripts(current.scripts_json);
+  if (scripts.some((script) => script.command === command && script.cwd === cwd)) {
+    return {
+      template: mapRow(current, { imageDataUrl: await readImageDataUrl(current.image_path) }),
+      added: false
+    };
+  }
+  if (scripts.length >= MAX_TEMPLATE_SCRIPTS) {
+    throw new Error(`A template holds at most ${MAX_TEMPLATE_SCRIPTS} scripts.`);
+  }
+  scripts.push({ id: randomUUID(), name, command, cwd });
+  await runSqlite(
+    dbPath,
+    `UPDATE task_templates
+     SET scripts_json = ${sqlNullable(JSON.stringify(scripts))},
+         updated_at_ms = ${Date.now()}
+     WHERE template_id = '${escapeSqlLiteral(args.templateId)}';`
+  );
+  return { template: await readTemplate(dbPath, args.templateId), added: true };
+}
+
+/** Drop one script from a template; removing an unknown id is a no-op. */
+export async function removeTaskTemplateScript(args: {
+  templateId: string;
+  scriptId: string;
+}): Promise<TaskTemplate> {
+  const dbPath = await openTemplateDb();
+  const current = await readTemplateRow(dbPath, args.templateId);
+  const scripts = parseScripts(current.scripts_json);
+  if (!scripts.some((script) => script.id === args.scriptId)) {
+    return mapRow(current, { imageDataUrl: await readImageDataUrl(current.image_path) });
+  }
+  const next = scripts.filter((script) => script.id !== args.scriptId);
+  await runSqlite(
+    dbPath,
+    `UPDATE task_templates
+     SET scripts_json = ${sqlNullable(next.length ? JSON.stringify(next) : undefined)},
+         updated_at_ms = ${Date.now()}
+     WHERE template_id = '${escapeSqlLiteral(args.templateId)}';`
+  );
+  return readTemplate(dbPath, args.templateId);
+}
+
+/** note_id → template_id for every linked task. */
+export async function listTaskTemplateLinks(): Promise<Map<string, string>> {
+  const dbPath = await openTemplateDb();
+  const rows = await runSqliteJson<{ note_id: string; template_id: string }>(
+    dbPath,
+    "SELECT note_id, template_id FROM task_template_links;"
+  );
+  return new Map(rows.map((row) => [row.note_id, row.template_id]));
 }
 
 /**

@@ -7,7 +7,7 @@ vi.mock("./imageColorCandidates", () => ({
   extractImageColorCandidates: vi.fn(async () => ["#e04040", "#4060e0"])
 }));
 
-type ContextMenuArgs = { x: number; y: number; items: Array<{ id?: string }> };
+type ContextMenuArgs = { x: number; y: number; items: Array<{ id?: string; label?: string }> };
 
 /** Stub `contextMenuShow` so a test can "pick" a menu item. */
 function contextMenuReturning(id: string | null) {
@@ -279,7 +279,7 @@ describe("GtdView", () => {
       notesCreateTask,
       notesListTasks,
       taskTemplatesList: async () => [
-        { templateId: "tpl-1", title: "Write release notes", projectPaths: ["/work/app", "/work/web"], createdAtMs: 1, updatedAtMs: 1 }
+        { templateId: "tpl-1", title: "Write release notes", projectPaths: ["/work/app", "/work/web"], scripts: [], createdAtMs: 1, updatedAtMs: 1 }
       ]
     } as unknown as Partial<typeof window.agentResume>);
 
@@ -388,6 +388,7 @@ describe("GtdView", () => {
         customColor: "#e04040",
         imageColors: ["#e04040", "#4060e0"],
         imageDataUrl: "data:image/png;base64,aXBo",
+        scripts: [],
         createdAtMs: 1,
         updatedAtMs: 1
       }]
@@ -505,5 +506,52 @@ describe("GtdView", () => {
       workbenchId: "wb-1",
       title: "Realtime status"
     }));
+  });
+
+  it("lists the task template's scripts as commands and opens the task running one", async () => {
+    const contextMenuShow = vi.fn(async (_args: ContextMenuArgs) => "script:sc-1");
+    renderGtd({
+      contextMenuShow,
+      notesListTasks: async () => [
+        {
+          noteId: "t-9", scope: "library", projectPath: undefined,
+          filename: "deploy.md", relDir: "", relMdPath: "deploy.md",
+          title: "Deploy check", createdAtMs: 1, updatedAtMs: 5, gtdStatus: "inbox",
+          work: { sessions: [] }, templateId: "tpl-9"
+        }
+      ],
+      taskTemplatesList: async () => [{
+        templateId: "tpl-9", title: "Deploy", projectPaths: [],
+        scripts: [
+          { id: "sc-1", name: "dev", command: "pnpm dev", cwd: "/work/app" },
+          { id: "sc-2", name: "build", command: "pnpm build", cwd: "/work/app" }
+        ],
+        createdAtMs: 1, updatedAtMs: 1
+      }]
+    } as unknown as Partial<typeof window.agentResume>);
+
+    fireEvent.contextMenu(await screen.findByRole("button", { name: /Deploy check/ }));
+    await waitFor(() => expect(contextMenuShow).toHaveBeenCalled());
+    const items = contextMenuShow.mock.calls[0]?.[0]?.items ?? [];
+    // The command text itself is the label, so one click is one instruction.
+    expect(items.find((item) => item.id === "script:sc-1")?.label).toBe("pnpm dev");
+    expect(items.find((item) => item.id === "script:sc-2")?.label).toBe("pnpm build");
+    await waitFor(() => expect(window.agentResume.taskWindowOpen).toHaveBeenCalledWith({
+      noteId: "t-9",
+      workbenchId: "wb-1",
+      title: "Deploy check",
+      runScript: { name: "dev", command: "pnpm dev", cwd: "/work/app" }
+    }));
+  });
+
+  it("keeps script entries out of the card menu for unlinked tasks", async () => {
+    const contextMenuShow = vi.fn(async (_args: ContextMenuArgs) => null);
+    const taskTemplatesList = vi.fn(async () => []);
+    renderGtd({ contextMenuShow, taskTemplatesList } as unknown as Partial<typeof window.agentResume>);
+
+    fireEvent.contextMenu(await screen.findByRole("button", { name: /Realtime status/ }));
+    await waitFor(() => expect(contextMenuShow).toHaveBeenCalled());
+    const ids = contextMenuShow.mock.calls[0]?.[0]?.items ?? [];
+    expect(ids.some((item) => item.id?.startsWith("script:"))).toBe(false);
   });
 });

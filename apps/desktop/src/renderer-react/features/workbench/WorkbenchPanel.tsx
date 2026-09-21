@@ -95,6 +95,7 @@ import {
   type QuickAccessFile
 } from "./QuickAccess";
 import { useWorkbenchScripts } from "./scripts/useWorkbenchScripts";
+import type { ScriptEntryView } from "./ScriptsTree";
 import { WorkbenchScriptsPane } from "./scripts/WorkbenchScriptsPane";
 import { resolveTerminalThemeId } from "./terminalThemes";
 import { appearanceStateFromSettings } from "../../themes";
@@ -627,6 +628,11 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [noteLinks, setNoteLinks] = useState<Array<{ parentNoteId: string; childNoteId: string }>>([]);
   /** Pending request to open a task's note once its workbench is active. */
   const [taskNoteRequest, setTaskNoteRequest] = useState<{ noteId: string; title?: string; nonce: number } | null>(null);
+  /** Pending script run once the scoped workbench is active (task card menu). */
+  const [runScriptRequest, setRunScriptRequest] = useState<{
+    script: { name: string; command: string; cwd: string };
+    nonce: number;
+  } | null>(null);
   /** Persisted workbenches of the scoped task (GTD task → n workbenches). */
   const [workbenches, setWorkbenches] = useState<Workbench[]>([]);
   const [activeWorkbenchId, setActiveWorkbenchId] = useState<string | null>(null);
@@ -3517,6 +3523,16 @@ export function WorkbenchPanel(): ReactPortal | null {
     setTaskNoteRequest(null);
   }, [taskNoteRequest, activeWorkbenchId, openNotePane]);
 
+  // Run a requested template script once the scoped workbench is active; a
+  // fresh window queues it through its task event, an open one runs it now.
+  useEffect(() => {
+    if (!runScriptRequest || !activeWorkbenchId) return;
+    const { name, command, cwd } = runScriptRequest.script;
+    const projectPath = projectForPath(cwd) || selectedProject || cwd;
+    addTerminal(name, cwd, command, projectPath);
+    setRunScriptRequest(null);
+  }, [runScriptRequest, activeWorkbenchId, addTerminal, projectForPath, selectedProject]);
+
   useEffect(() => {
     const onTask = (event: Event) => {
       const detail = (event as CustomEvent<WorkbenchTask>).detail;
@@ -3548,6 +3564,34 @@ export function WorkbenchPanel(): ReactPortal | null {
     return () => {
       window.removeEventListener("agent-resume:workbench-task", onTask);
       window.removeEventListener("agent-resume:workbench-task-clear", onTaskClear);
+    };
+  }, []);
+
+  // A script run requested for this workbench: from this window's task event
+  // (fresh window) or from the main process (already-open window).
+  useEffect(() => {
+    const request = (payload: { name?: unknown; command?: unknown; cwd?: unknown }) => {
+      if (typeof payload?.command !== "string" || !payload.command.trim()) return;
+      if (typeof payload?.cwd !== "string" || !payload.cwd.trim()) return;
+      setRunScriptRequest({
+        script: {
+          name: typeof payload.name === "string" && payload.name.trim() ? payload.name : payload.command,
+          command: payload.command,
+          cwd: payload.cwd
+        },
+        nonce: Date.now()
+      });
+    };
+    const onWindowRunScript = (event: Event) => {
+      request((event as CustomEvent<{ name?: string; command?: string; cwd?: string }>).detail);
+    };
+    window.addEventListener("agent-resume:workbench-run-script", onWindowRunScript);
+    const stopIpc = typeof desktopApi().onTaskWindowRunScript === "function"
+      ? desktopApi().onTaskWindowRunScript(request)
+      : undefined;
+    return () => {
+      window.removeEventListener("agent-resume:workbench-run-script", onWindowRunScript);
+      stopIpc?.();
     };
   }, []);
 
@@ -4033,6 +4077,149 @@ export function WorkbenchPanel(): ReactPortal | null {
     editorReconcilesRef.current.set(key, state);
     return state.promise;
   }, [syncEditorFromDisk]);
+
+  /**
+   * Right-click anywhere in the scripts pane. A concrete script row sends that
+   * one; a package/group row (or empty space) offers the scripts it covers.
+   */
+  const onScriptContextMenu = useCallback(async (event: { clientX: number; clientY: number }, scripts: ScriptEntryView[]) => {
+    if (!scripts.length) return;
+    const payloadOf = (script: ScriptEntryView) => ({
+      name: script.name,
+      command: script.run.command,
+      cwd: script.run.cwd
+    });
+    const sendToTemplate = async (templateId: string, script: ScriptEntryView) => {
+      try {
+        const result = await desktopApi().taskTemplatesAddScript({ templateId, script: payloadOf(script) });
+        // A task with no template joins the one it just sent to: without the
+        // link its own card would never offer the command it just contributed.
+        let linked = false;
+        const noteId = taskScope?.noteId;
+        if (!taskScope?.templateId && noteId && typeof desktopApi().taskTemplatesLinkTask === "function") {
+          try {
+            await desktopApi().taskTemplatesLinkTask({ noteId, templateId });
+            linked = true;
+            setTaskScope((current) => current ? { ...current, templateId } : current);
+            window.dispatchEvent(new Event("agent-resume:notes-mutated"));
+          } catch {
+            linked = false;
+          }
+        }
+
+        setStatus({
+          text: !result.added
+            ? t("desktop.workbench.scriptAlreadyOnTemplate")
+            : linked
+              ? t("desktop.workbench.scriptSentLinkedToTemplate")
+              : t("desktop.workbench.scriptSentToTemplate"),
+          kind: "ok"
+        });
+      } catch (error) {
+        setStatus({ text: statusError(error), kind: "error" });
+      }
+    };
+    const createTemplateWith = async (script: ScriptEntryView) => {
+      try {
+        const template = await desktopApi().taskTemplatesCreate({
+          title: script.name,
+          ...(taskScope?.projects?.length ? { projectPaths: taskScope.projects } : {}),
+          scripts: [payloadOf(script)]
+        });
+        const noteId = taskScope?.noteId;
+        if (noteId && !taskScope?.templateId && typeof desktopApi().taskTemplatesLinkTask === "function") {
+          try {
+            await desktopApi().taskTemplatesLinkTask({ noteId, templateId: template.templateId });
+            setTaskScope((current) => current ? { ...current, templateId: template.templateId } : current);
+            window.dispatchEvent(new Event("agent-resume:notes-mutated"));
+          } catch {
+            /* the template still exists; only the link failed */
+          }
+        }
+        setStatus({ text: t("desktop.workbench.scriptTemplateCreated", template.title), kind: "ok" });
+      } catch (error) {
+        setStatus({ text: statusError(error), kind: "error" });
+      }
+    };
+
+    // The common case: the task came from a template, so one click is enough.
+    const ownTemplateId = taskScope?.templateId;
+    /**
+     * Pick the template a task most likely belongs to when it has no link yet.
+     * Board conventions pair names like the "天脊" template with "天脊-1012"
+     * tasks, so a title prefix wins over an overlapping project.
+     */
+    const suggestTemplate = (templates: Array<{ templateId: string; title: string; projectPaths: string[] }>) => {
+      const title = (taskScope?.title ?? "").trim();
+      const projects = taskScope?.projects ?? [];
+      const byTitle = templates
+        .filter((template) => title && template.title && title.startsWith(template.title))
+        .sort((a, b) => b.title.length - a.title.length)[0];
+      if (byTitle) return byTitle;
+      return templates.find((template) =>
+        template.projectPaths.length > 0 && projects.some((project) => template.projectPaths.includes(project)));
+    };
+    const pickTemplate = async (script: ScriptEntryView) => {
+      let templates: Array<{ templateId: string; title: string; projectPaths: string[] }> = [];
+      try {
+        if (typeof desktopApi().taskTemplatesList === "function") templates = await desktopApi().taskTemplatesList();
+      } catch {
+        templates = [];
+      }
+      if (!templates.length) {
+        await showContextMenuAt(contextMenuPoint(event), [
+          { id: "none", label: t("desktop.workbench.scriptNoTemplate"), enabled: false }
+        ]);
+        return;
+      }
+      const suggested = suggestTemplate(templates);
+      const items: NativeContextMenuItem[] = [
+        // One click for the likely template; the picker stays one item below.
+        ...(suggested
+          ? [{ id: `tpl:${suggested.templateId}`, label: t("desktop.workbench.scriptSendToTemplateNamed", suggested.title) }]
+          : []),
+        {
+          id: "send",
+          label: t("desktop.workbench.scriptSendToOtherTemplate"),
+          submenu: [
+            ...templates.map((template) => ({ id: `tpl:${template.templateId}`, label: template.title })),
+            { type: "separator" as const },
+            { id: "new", label: t("desktop.gtd.createTemplate") }
+          ]
+        }
+      ];
+      const choice = await showContextMenuAt(contextMenuPoint(event), items);
+      if (!choice || choice === "none") return;
+      if (choice === "new") await createTemplateWith(script);
+      else if (choice.startsWith("tpl:")) await sendToTemplate(choice.slice("tpl:".length), script);
+    };
+
+    // A package/group/background right-click covers several scripts: choose one first.
+    if (scripts.length > 1) {
+      const choice = await showContextMenuAt(contextMenuPoint(event), [{
+        id: "send",
+        label: t("desktop.workbench.scriptSendToTemplate"),
+        submenu: scripts.map((script) => ({ id: `pick:${script.id}`, label: script.name }))
+      }]);
+      const script = choice?.startsWith("pick:")
+        ? scripts.find((entry) => entry.id === choice.slice("pick:".length))
+        : undefined;
+      if (!script) return;
+      if (ownTemplateId) await sendToTemplate(ownTemplateId, script);
+      else await pickTemplate(script);
+      return;
+    }
+
+    const script = scripts[0];
+    if (ownTemplateId) {
+      const choice = await showContextMenuAt(contextMenuPoint(event), [
+        { id: "send", label: t("desktop.workbench.scriptSendToTemplate") }
+      ]);
+      if (choice === "send") await sendToTemplate(ownTemplateId, script);
+      return;
+    }
+    await pickTemplate(script);
+  }, [taskScope, t, setStatus]);
 
   const {
     scriptPackages,
@@ -6067,7 +6254,7 @@ export function WorkbenchPanel(): ReactPortal | null {
               onDestroyed={() => closeBrowser(pane.key)}
             />;
           })}{terminalCreating && !currentTerminals.some((pane) => !pane.ptyId) && !currentAcpChat ? <div className="wb-terminal-loading wb-terminal-loading-stack" role="status" aria-live="polite"><ThemeIcon name="loader" className="spin" size={ICON_SIZE.prominent} aria-hidden="true" /><span>{t("desktop.common.loading")}</span></div> : null}{!terminalCreating && !currentTerminals.length && !currentEditors.length && !currentDiffs.length && !currentAcpChats.length && !currentBrowsers.length && !currentNotePanes.length ? <p className="muted wb-terminal-hint">{selectedProject ? t("desktop.workbench.selectSessionHint") : t("desktop.workbench.selectProjectHint")}</p> : null}</div></div>
-          {side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane wb-explorer-side-pane"><WorkbenchFileExplorer ref={fileExplorerRef} roots={sideRoots} activePath={currentFilePath} onOpenFile={(path) => void openFile(path, undefined, projectForPath(path) || undefined)} onOpenPreview={(path) => void openFile(path, undefined, projectForPath(path) || undefined, "preview")} onShowGitHistory={(path) => void loadGitFileHistory(path)} onFindInFolder={findInExplorerFolder} onError={(message) => setStatus({ text: message, kind: "error" })} /><WorkbenchScriptsPane compact hasProject={sideRoots.length > 0} selectedProject={sideRoot} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} collapsed={scriptsSectionCollapsed} onToggleCollapsed={toggleScriptsSectionCollapsed} onRefresh={sideRoots.length ? () => void loadScripts() : undefined} onRun={runScript} /></div> : side === "scripts" ? <WorkbenchScriptsPane hasProject={sideRoots.length > 0} selectedProject={sideRoot} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} onRefresh={sideRoots.length ? () => void loadScripts() : undefined} onRun={runScript} /> : side === "search" ? <WorkbenchSearchSidePane
+          {side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane wb-explorer-side-pane"><WorkbenchFileExplorer ref={fileExplorerRef} roots={sideRoots} activePath={currentFilePath} onOpenFile={(path) => void openFile(path, undefined, projectForPath(path) || undefined)} onOpenPreview={(path) => void openFile(path, undefined, projectForPath(path) || undefined, "preview")} onShowGitHistory={(path) => void loadGitFileHistory(path)} onFindInFolder={findInExplorerFolder} onError={(message) => setStatus({ text: message, kind: "error" })} /><WorkbenchScriptsPane compact hasProject={sideRoots.length > 0} selectedProject={sideRoot} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} collapsed={scriptsSectionCollapsed} onToggleCollapsed={toggleScriptsSectionCollapsed} onRefresh={sideRoots.length ? () => void loadScripts() : undefined} onRun={runScript} onScriptContextMenu={onScriptContextMenu} /></div> : side === "scripts" ? <WorkbenchScriptsPane hasProject={sideRoots.length > 0} selectedProject={sideRoot} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} onRefresh={sideRoots.length ? () => void loadScripts() : undefined} onRun={runScript} onScriptContextMenu={onScriptContextMenu} /> : side === "search" ? <WorkbenchSearchSidePane
             selectedProject={sideRoots[0] ?? null}
             searchQuery={searchQuery}
             onSearchQueryChange={setSearchQuery}

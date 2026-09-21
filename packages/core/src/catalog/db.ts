@@ -7,7 +7,8 @@ import {
   SYNC_STATE_DESKTOP_MIGRATION_SQL,
   TASK_TEMPLATE_COLOR_MIGRATION_SQL,
   TASK_TEMPLATE_CUSTOM_COLOR_MIGRATION_SQL,
-  TASK_TEMPLATE_PROJECT_PATHS_MIGRATION_SQL
+  TASK_TEMPLATE_PROJECT_PATHS_MIGRATION_SQL,
+  TASK_TEMPLATE_SCRIPTS_MIGRATION_SQL
 } from "./desktopSchema";
 import { EXTENSION_MIGRATION_SQL, EXTENSION_SCHEMA_SQL } from "./extensionSchema";
 import { ensureProjectsCatalogSchema } from "./projects";
@@ -109,6 +110,7 @@ export async function ensureDesktopDbSchema(desktopDb: string): Promise<void> {
     await runIdempotentStatements(target, TASK_TEMPLATE_PROJECT_PATHS_MIGRATION_SQL);
     await runIdempotentStatements(target, TASK_TEMPLATE_COLOR_MIGRATION_SQL);
     await runIdempotentStatements(target, TASK_TEMPLATE_CUSTOM_COLOR_MIGRATION_SQL);
+    await runIdempotentStatements(target, TASK_TEMPLATE_SCRIPTS_MIGRATION_SQL);
     verifiedDesktopDbPaths.add(target);
   })().finally(() => {
     desktopDbInFlight.delete(target);

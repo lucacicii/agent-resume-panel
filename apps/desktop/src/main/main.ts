@@ -138,6 +138,7 @@ import {
   closeAllTaskWindows,
   focusTaskWindow,
   focusedOrRecentTaskWindow,
+  getTaskWindow,
   isTaskWindowSender,
   listTaskWindows,
   MAX_TASK_WINDOWS,
@@ -226,10 +227,13 @@ import {
 } from "./notesService";
 import { showDirectoryPicker } from "./directoryPicker";
 import {
+  addTaskTemplateScript,
   createTaskTemplate,
   deleteTaskTemplate,
   linkTaskTemplate,
+  listTaskTemplateLinks,
   listTaskTemplates,
+  removeTaskTemplateScript,
   resolveTaskAccents,
   taskTemplateImageForNote,
   unlinkTaskTemplate,
@@ -3256,12 +3260,19 @@ function registerIpc(): void {
 
   ipcMain.handle("notes:list", async () => notesList());
   ipcMain.handle("notes:listTasks", async () => {
-    const items = await notesListTasks();
-    const accents = await resolveTaskAccents();
-    if (!accents.size) return items;
+    const [items, accents, templateLinks] = await Promise.all([
+      notesListTasks(),
+      resolveTaskAccents(),
+      listTaskTemplateLinks()
+    ]);
     return items.map((item) => {
       const source = accents.get(item.noteId);
-      return source ? { ...item, accent: taskAccent(source, item.noteId) } : item;
+      const templateId = templateLinks.get(item.noteId);
+      return {
+        ...item,
+        ...(source ? { accent: taskAccent(source, item.noteId) } : {}),
+        ...(templateId ? { templateId } : {})
+      };
     });
   });
   // Recolors and deletions re-resolve every linked task's accent, so every
@@ -3300,7 +3311,7 @@ function registerIpc(): void {
     "taskTemplates:create",
     async (
       _event,
-      args: { title?: unknown; projectPaths?: unknown; colorKey?: unknown; customColor?: unknown; image?: unknown }
+      args: { title?: unknown; projectPaths?: unknown; colorKey?: unknown; customColor?: unknown; image?: unknown; scripts?: unknown }
     ) => {
       if (typeof args?.title !== "string" || !args.title.trim()) {
         throw new Error("A template name is required.");
@@ -3309,7 +3320,8 @@ function registerIpc(): void {
         title: args.title,
         projectPaths: stringList(args?.projectPaths),
         ...accentArgs(args),
-        image: imageArgs(args?.image) ?? null
+        image: imageArgs(args?.image) ?? null,
+        scripts: args?.scripts
       });
     }
   );
@@ -3364,6 +3376,60 @@ function registerIpc(): void {
       return result;
     });
   });
+  /** Validate a script arg pair for send-to-template: command and cwd are required. */
+  const scriptArgs = (script: unknown): { name?: unknown; command?: unknown; cwd?: unknown } =>
+    (script && typeof script === "object" ? script : {}) as { name?: unknown; command?: unknown; cwd?: unknown };
+  ipcMain.handle(
+    "taskTemplates:addScript",
+    async (_event, args: { templateId?: unknown; script?: unknown }) => {
+      if (typeof args?.templateId !== "string" || !args.templateId.trim()) {
+        throw new Error("A task template id is required.");
+      }
+      return addTaskTemplateScript({
+        templateId: args.templateId,
+        script: scriptArgs(args?.script)
+      }).then((result) => {
+        if (result.added) broadcastTemplatesChanged();
+        return result;
+      });
+    }
+  );
+  ipcMain.handle(
+    "taskTemplates:removeScript",
+    async (_event, args: { templateId?: unknown; scriptId?: unknown }) => {
+      if (typeof args?.templateId !== "string" || !args.templateId.trim()) {
+        throw new Error("A task template id is required.");
+      }
+      if (typeof args?.scriptId !== "string" || !args.scriptId.trim()) {
+        throw new Error("A template script id is required.");
+      }
+      return removeTaskTemplateScript({
+        templateId: args.templateId,
+        scriptId: args.scriptId
+      }).then((template) => {
+        broadcastTemplatesChanged();
+        return template;
+      });
+    }
+  );
+  /**
+   * Link an existing task to a template. Sending a script from a task that has
+   * no template uses this so the task's own card offers the command too.
+   */
+  ipcMain.handle(
+    "taskTemplates:linkTask",
+    async (_event, args: { noteId?: unknown; templateId?: unknown }) => {
+      if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
+        throw new Error("A task note id is required.");
+      }
+      if (typeof args?.templateId !== "string" || !args.templateId.trim()) {
+        throw new Error("A task template id is required.");
+      }
+      const accent = await linkTaskTemplate({ noteId: args.noteId, templateId: args.templateId });
+      broadcastTemplatesChanged();
+      return { ok: true as const, ...(accent ? { accent: taskAccent(accent, args.noteId) } : {}) };
+    }
+  );
   ipcMain.handle("notes:removeTaskProject", async (_event, args: { noteId?: unknown; projectPath?: unknown }) => {
     if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
       throw new Error("A task note id is required.");
@@ -3529,17 +3595,41 @@ function registerIpc(): void {
   });
   ipcMain.handle(
     "task-window:open",
-    async (_event, args: { noteId?: unknown; workbenchId?: unknown; title?: unknown; x?: unknown; y?: unknown }) => {
+    async (
+      _event,
+      args: { noteId?: unknown; workbenchId?: unknown; title?: unknown; x?: unknown; y?: unknown; runScript?: unknown }
+    ) => {
       const noteId = typeof args?.noteId === "string" ? args.noteId.trim() : "";
       const workbenchId = typeof args?.workbenchId === "string" ? args.workbenchId.trim() : "";
       if (!noteId || !workbenchId) throw new Error("A task note id and a workbench id are required.");
+      const runScriptSource = args?.runScript && typeof args.runScript === "object"
+        ? args.runScript as { name?: unknown; command?: unknown; cwd?: unknown }
+        : {};
+      const runCommand = typeof runScriptSource.command === "string" ? runScriptSource.command.trim() : "";
+      const runCwd = typeof runScriptSource.cwd === "string" ? runScriptSource.cwd.trim() : "";
+      const runScript = runCommand && runCwd
+        ? {
+            name: (typeof runScriptSource.name === "string" ? runScriptSource.name.trim() : "") || runCommand,
+            command: runCommand,
+            cwd: runCwd
+          }
+        : undefined;
       const result = openTaskWindow(taskWindowDeps(), {
         noteId,
         workbenchId,
         ...(typeof args?.title === "string" && args.title.trim() ? { title: args.title.trim() } : {}),
         ...(typeof args?.x === "number" && Number.isFinite(args.x) ? { x: args.x } : {}),
-        ...(typeof args?.y === "number" && Number.isFinite(args.y) ? { y: args.y } : {})
+        ...(typeof args?.y === "number" && Number.isFinite(args.y) ? { y: args.y } : {}),
+        ...(runScript ? { runScript } : {})
       });
+      // An already-open window never reloads, so the script reaches it as a
+      // live message instead of through the URL the fresh window reads.
+      if (runScript && result.ok && !result.created) {
+        const existing = getTaskWindow(workbenchId);
+        if (existing && !existing.isDestroyed()) {
+          existing.webContents.send("task-window:run-script", runScript);
+        }
+      }
       return result;
     }
   );

@@ -5177,10 +5177,6 @@ code {
   padding: var(--space-4) var(--space-4) var(--space-6) var(--space-6);
 }
 
-.wb-session-split-transcript .wb-transcript-body.has-outline-open {
-  padding-right: var(--transcript-outline-gutter, 272px);
-}
-
 .wb-session-split-transcript .wb-transcript-md.markdown-body {
   max-width: 100%;
 }
@@ -5874,16 +5870,25 @@ body.is-pane-resizing-v * {
   display: flex;
   overflow: hidden;
   --transcript-outline-width: 240px;
-  --transcript-outline-gutter: 272px;
+}
+
+/* Invisible hover trigger that reveals the turns outline over the markdown. */
+.wb-transcript-outline-zone {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 15;
+  width: calc(var(--transcript-outline-width, 240px) + 2 * var(--space-4, 16px));
+  height: min(55%, 320px);
 }
 
 .wb-transcript-outline {
   position: absolute;
   top: 10px;
   right: 16px;
-  z-index: 15;
   display: flex;
   flex-direction: column;
+  width: var(--transcript-outline-width, 240px);
   max-height: calc(100% - 20px);
   border: 1px solid var(--color-separator);
   border-radius: var(--radius-lg, 8px);
@@ -5892,63 +5897,44 @@ body.is-pane-resizing-v * {
   -webkit-backdrop-filter: blur(16px);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
   box-sizing: border-box;
-  transition: width 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.15s ease;
   overflow: hidden;
+
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-4px);
+  transition: opacity var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
 }
 
-.wb-transcript-outline.is-open {
-  width: var(--transcript-outline-width, 240px);
+.wb-transcript-outline-zone:hover .wb-transcript-outline,
+.wb-transcript-outline-zone:focus-within .wb-transcript-outline {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
 }
 
-.wb-transcript-outline.is-collapsed {
-  width: auto;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+/* After a jump click, keep the outline hidden until the pointer leaves the zone and returns. */
+.wb-transcript-outline-zone.is-dismissed .wb-transcript-outline {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-4px);
 }
 
-.wb-transcript-outline-toggle {
-  appearance: none;
+.wb-transcript-outline-head {
   display: flex;
   align-items: center;
   gap: var(--space-1-5);
+  flex: 0 0 auto;
   width: 100%;
   min-height: 28px;
-  margin: 0;
   padding: var(--space-1-5) var(--space-2-5);
-  border: none;
-  background: transparent;
-  color: var(--color-label-secondary, var(--muted));
-  font: inherit;
-  font-size: 11px;
-  font-weight: 600;
-  text-align: left;
-
-  user-select: none;
-  white-space: nowrap;
-  box-sizing: border-box;
-}
-
-.wb-transcript-outline-toggle svg {
-  flex-shrink: 0;
-  transition: transform 0.15s ease;
-}
-
-.wb-transcript-outline-toggle .is-expanded {
-  transform: rotate(90deg);
-}
-
-.wb-transcript-outline.is-open .wb-transcript-outline-toggle {
   border-bottom: 1px solid var(--color-separator);
   background: var(--color-fill-tertiary, color-mix(in srgb, var(--text) 3%, transparent));
-}
-
-.wb-transcript-outline-toggle:hover {
-  color: var(--color-label-primary, var(--text));
-  background: var(--color-fill-secondary, color-mix(in srgb, var(--text) 6%, transparent));
-}
-
-.wb-transcript-outline-toggle:focus-visible {
-  outline: 2px solid var(--color-accent, var(--accent));
-  outline-offset: -2px;
+  color: var(--color-label-secondary, var(--muted));
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  user-select: none;
+  box-sizing: border-box;
 }
 
 .wb-transcript-outline-list {
@@ -6018,11 +6004,6 @@ body.is-pane-resizing-v * {
   user-select: text;
   -webkit-user-select: text;
   box-sizing: border-box;
-  transition: padding-right 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.wb-transcript-body.has-outline-open {
-  padding-right: var(--transcript-outline-gutter, 272px);
 }
 
 .wb-transcript-scroll-bottom-btn {
@@ -6042,10 +6023,6 @@ body.is-pane-resizing-v * {
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
 
   transition: transform 0.15s ease, background 0.15s ease, opacity 0.15s ease;
-}
-
-.wb-transcript-content-wrap:has(.wb-transcript-outline.is-open) .wb-transcript-scroll-bottom-btn {
-  right: calc(var(--transcript-outline-gutter, 272px) + 12px);
 }
 
 .wb-transcript-scroll-bottom-btn:hover {
@@ -6342,7 +6319,6 @@ body.is-pane-resizing-v * {
 @media (max-width: 420px) {
   .wb-transcript-content-wrap {
     --transcript-outline-width: 180px;
-    --transcript-outline-gutter: 196px;
   }
 }
 
@@ -8303,8 +8279,8 @@ button.wb-pane-tab-group-label.is-busy {
 
 .wb-terminal-tab.active {
   z-index: 1;
-  background: var(--color-control-bg);
-  border-bottom: 0.5px solid var(--color-control-bg);
+  background: var(--color-sidebar-bg);
+  border-bottom: 0.5px solid var(--color-sidebar-bg);
   margin-bottom: -0.5px;
 }
 
@@ -11447,7 +11423,7 @@ body.is-pane-resizing-row * {
   border-radius: 8px;
   padding: var(--space-2) var(--space-2-5);
   font-size: 13px;
-  background: color-mix(in srgb, var(--panel) 88%, var(--text) 6%);
+  background: var(--color-sidebar-bg);
   color: var(--text);
 }
 
@@ -15192,7 +15168,7 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
 }
 
 .wb-workbench-tab.active {
-  background: var(--panel);
+  background: var(--color-sidebar-bg);
   border-color: var(--color-separator);
 }
 
@@ -15208,7 +15184,6 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
   font-size: var(--font-size-caption, 12px);
   font-family: inherit;
   white-space: nowrap;
-
 }
 
 .wb-workbench-tab.active .wb-workbench-tab-label {
@@ -15227,7 +15202,6 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
   border-radius: var(--radius-sm, 4px);
   background: transparent;
   color: var(--muted);
-
 }
 
 .wb-workbench-tab-close:hover {

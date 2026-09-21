@@ -20,6 +20,8 @@ export type WorkbenchTask = {
   /** Projects this task references (0..n). */
   projects?: string[];
   primaryProject?: string;
+  /** The template this task was created from, when it has one. */
+  templateId?: string;
   /** Template-derived accent driving the window's color family. */
   accent?: TaskAccent;
   updatedAtMs?: number;
@@ -38,6 +40,7 @@ export type TaskSource = {
   updatedAtMs: number;
   work?: NoteWorkFields;
   accent?: TaskAccent;
+  templateId?: string;
 };
 
 /** Normalize a catalog note/task record into the renderer shape. */
@@ -51,6 +54,7 @@ export function taskFromRecord(record: TaskSource): WorkbenchTask {
     sessions: record.work?.sessions ?? [],
     projects: record.work?.projects,
     primaryProject: record.work?.primaryProject,
+    templateId: record.templateId,
     accent: record.accent,
     updatedAtMs: record.updatedAtMs
   };

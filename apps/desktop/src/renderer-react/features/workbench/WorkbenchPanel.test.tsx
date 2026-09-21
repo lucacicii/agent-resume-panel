@@ -9458,4 +9458,312 @@ describe("WorkbenchPanel", () => {
       document.documentElement.dataset.windowMode = "main";
     }
   });
+
+  it("runs a requested template script in a new terminal pane once the workbench is active", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const workbench = {
+      workbenchId: "wb-run", taskNoteId: "wi-run", name: "Run", projectPath: "/work/app",
+      position: 0, layoutJson: null, createdAtMs: 1, updatedAtMs: 1
+    };
+    let runScriptListener: ((payload: { name: string; command: string; cwd: string }) => void) | undefined;
+    const terminalSpawn = vi.fn(async () => ({ id: 77 }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.common.search": "Search", "desktop.common.refresh": "Refresh", "desktop.common.all": "All",
+        "desktop.common.close": "Close",
+        "desktop.workbench.tasksView": "Tasks",
+        "desktop.workbench.taskView": "Task",
+        "desktop.workbench.taskOpenNote": "Open note",
+        "desktop.workbench.taskClear": "Exit task",
+        "desktop.workbench.workbenchTabs": "Workbenches",
+        "desktop.workbench.newWorkbench": "New workbench",
+        "desktop.workbench.deleteWorkbench": "Delete workbench",
+        "desktop.workbench.deleteWorkbenchConfirm": "Delete workbench \"{0}\"?",
+        "desktop.workbench.newTerminal": "New terminal",
+        "desktop.workbench.closeTerminal": "Close terminal",
+        "desktop.workbench.terminalTabs": "Terminal tabs"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      onTaskWindowRunScript: (callback: (payload: { name: string; command: string; cwd: string }) => void) => {
+        runScriptListener = callback;
+        return () => undefined;
+      },
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      notesListTasks: async () => [],
+      ensureTaskWorkbench: async () => workbench,
+      listTaskWorkbenches: async () => [workbench],
+      setTaskWorkbenchLayout: async () => ({ ok: true }),
+      terminalSpawn,
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true }),
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] })
+    } as unknown as typeof window.agentResume;
+
+    try {
+      render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+      await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+      await act(async () => {
+        window.dispatchEvent(new CustomEvent("agent-resume:workbench-task", {
+          detail: { noteId: "wi-run", title: "Deploy", status: "inbox", sessions: [], projects: ["/work/app"], primaryProject: "/work/app" }
+        }));
+      });
+      await waitFor(() => expect(document.querySelectorAll(".wb-workbench-tab").length).toBe(1));
+
+      // The already-open window path: main sends the run request as IPC.
+      await act(async () => {
+        runScriptListener?.({ name: "dev", command: "pnpm dev", cwd: "/work/app" });
+      });
+      await waitFor(() => expect(terminalSpawn).toHaveBeenCalledWith(
+        expect.objectContaining({ cwd: "/work/app", command: "pnpm dev", workbenchId: "wb-run" })
+      ));
+
+      // The fresh-window path: the task event is followed by the queued run.
+      terminalSpawn.mockClear();
+      await act(async () => {
+        window.dispatchEvent(new CustomEvent("agent-resume:workbench-run-script", {
+          detail: { name: "build", command: "pnpm build", cwd: "/work/app" }
+        }));
+      });
+      await waitFor(() => expect(terminalSpawn).toHaveBeenCalledWith(
+        expect.objectContaining({ cwd: "/work/app", command: "pnpm build", workbenchId: "wb-run" })
+      ));
+    } finally {
+      host.remove();
+    }
+  });
+
+  it("sends a right-clicked script to the task's own template", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const workbench = {
+      workbenchId: "wb-tpl", taskNoteId: "wi-tpl", name: "Deploy", projectPath: "/work/app",
+      position: 0, layoutJson: null, createdAtMs: 1, updatedAtMs: 1
+    };
+    const contextMenuShow = vi.fn(async () => "send");
+    const taskTemplatesAddScript = vi.fn(async () => ({
+      template: { templateId: "tpl-1", title: "Deploy", projectPaths: [], scripts: [], createdAtMs: 1, updatedAtMs: 1 },
+      added: true
+    }));
+    const taskTemplatesLinkTask = vi.fn(async () => ({ ok: true as const }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.common.search": "Search", "desktop.common.refresh": "Refresh", "desktop.common.all": "All",
+        "desktop.notes.filterProjects": "Filter projects", "desktop.notes.projectFilter": "Project filter",
+        "desktop.workbench.tasksView": "Tasks",
+        "desktop.workbench.taskView": "Task",
+        "desktop.workbench.taskOpenNote": "Open note",
+        "desktop.workbench.taskClear": "Exit task",
+        "desktop.workbench.workbenchTabs": "Workbenches",
+        "desktop.workbench.newWorkbench": "New workbench",
+        "desktop.workbench.deleteWorkbench": "Delete workbench",
+        "desktop.workbench.deleteWorkbenchConfirm": "Delete workbench \"{0}\"?",
+        "desktop.workbench.sidePanelExplorer": "Explorer",
+        "desktop.workbench.sidePanelScripts": "Scripts",
+        "desktop.workbench.sidePanelGit": "Git",
+        "desktop.workbench.sidePanelSearch": "Search panel",
+        "desktop.workbench.scriptsEmpty": "No scripts",
+        "desktop.workbench.scriptsRefresh": "Refresh scripts",
+        "desktop.workbench.scriptSendToTemplate": "Send to Template",
+        "desktop.workbench.scriptSentToTemplate": "Sent to the task's template",
+        "desktop.workbench.scriptAlreadyOnTemplate": "This script is already on the template"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      notesListTasks: async () => [],
+      ensureTaskWorkbench: async () => workbench,
+      listTaskWorkbenches: async () => [workbench],
+      setTaskWorkbenchLayout: async () => ({ ok: true }),
+      workbenchListScripts: async () => ({
+        truncated: false,
+        packages: [{
+          id: "pkg-1", kind: "npm", packageRoot: "/work/app", relativeRoot: "",
+          label: "app", manifestPath: "/work/app/package.json",
+          scripts: [{ id: "s-dev", name: "dev", run: { cwd: "/work/app", command: "pnpm dev" } }]
+        }]
+      }),
+      contextMenuShow,
+      taskTemplatesAddScript,
+      taskTemplatesLinkTask,
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    document.documentElement.dataset.windowMode = "task";
+    try {
+      render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+      await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+      await act(async () => {
+        window.dispatchEvent(new CustomEvent("agent-resume:workbench-task", {
+          detail: {
+            noteId: "wi-tpl", title: "Deploy task", status: "inbox", sessions: [],
+            projects: ["/work/app"], primaryProject: "/work/app", templateId: "tpl-1"
+          }
+        }));
+      });
+
+      fireEvent.click(await screen.findByRole("button", { name: "Scripts" }));
+      const scriptRow = await screen.findByRole("button", { name: "dev" });
+      fireEvent.contextMenu(scriptRow);
+
+      await waitFor(() => expect(taskTemplatesAddScript).toHaveBeenCalledWith({
+        templateId: "tpl-1",
+        script: { name: "dev", command: "pnpm dev", cwd: "/work/app" }
+      }));
+      const items = (contextMenuShow.mock.calls[0] as unknown as [{ items: Array<{ label?: string }> }] | undefined)?.[0]?.items ?? [];
+      expect(items.map((item) => item.label)).toContain("Send to Template");
+      // An already-linked task must not be re-linked.
+      expect(taskTemplatesLinkTask).not.toHaveBeenCalled();
+    } finally {
+      document.documentElement.dataset.windowMode = "main";
+      host.remove();
+    }
+  });
+
+  it("offers a template submenu for a script when the task is not linked to one", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const workbench = {
+      workbenchId: "wb-pick", taskNoteId: "wi-pick", name: "Pick", projectPath: "/work/app",
+      position: 0, layoutJson: null, createdAtMs: 1, updatedAtMs: 1
+    };
+    const contextMenuShow = vi.fn(async () => "tpl:tpl-2");
+    const taskTemplatesList = vi.fn(async () => [
+      { templateId: "tpl-2", title: "Release", projectPaths: [], scripts: [], createdAtMs: 1, updatedAtMs: 1 },
+      { templateId: "tpl-3", title: "Ops", projectPaths: [], scripts: [], createdAtMs: 1, updatedAtMs: 1 }
+    ]);
+    const taskTemplatesAddScript = vi.fn(async () => ({
+      template: { templateId: "tpl-2", title: "Release", projectPaths: [], scripts: [], createdAtMs: 1, updatedAtMs: 1 },
+      added: true
+    }));
+    const taskTemplatesLinkTask = vi.fn(async () => ({ ok: true as const }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.common.search": "Search", "desktop.common.refresh": "Refresh", "desktop.common.all": "All",
+        "desktop.workbench.tasksView": "Tasks",
+        "desktop.workbench.taskView": "Task",
+        "desktop.workbench.taskOpenNote": "Open note",
+        "desktop.workbench.taskClear": "Exit task",
+        "desktop.workbench.workbenchTabs": "Workbenches",
+        "desktop.workbench.newWorkbench": "New workbench",
+        "desktop.workbench.deleteWorkbench": "Delete workbench",
+        "desktop.workbench.deleteWorkbenchConfirm": "Delete workbench \"{0}\"?",
+        "desktop.workbench.sidePanelScripts": "Scripts",
+        "desktop.workbench.scriptsEmpty": "No scripts",
+        "desktop.workbench.scriptsRefresh": "Refresh scripts",
+        "desktop.workbench.scriptSendToTemplate": "Send to Template",
+        "desktop.workbench.scriptNoTemplate": "No template yet",
+        "desktop.workbench.scriptSendToTemplateNamed": "Send to template \"{0}\"",
+        "desktop.workbench.scriptSendToOtherTemplate": "Send to another template…",
+        "desktop.workbench.scriptTemplateCreated": "Created template \"{0}\"",
+        "desktop.gtd.createTemplate": "Create template"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      notesListTasks: async () => [],
+      ensureTaskWorkbench: async () => workbench,
+      listTaskWorkbenches: async () => [workbench],
+      setTaskWorkbenchLayout: async () => ({ ok: true }),
+      workbenchListScripts: async () => ({
+        truncated: false,
+        packages: [{
+          id: "pkg-1", kind: "npm", packageRoot: "/work/app", relativeRoot: "",
+          label: "app", manifestPath: "/work/app/package.json",
+          scripts: [
+            { id: "s-dev", name: "dev", run: { cwd: "/work/app", command: "pnpm dev" } },
+            { id: "s-build", name: "build", run: { cwd: "/work/app", command: "pnpm build" } }
+          ]
+        }]
+      }),
+      contextMenuShow,
+      taskTemplatesList,
+      taskTemplatesAddScript,
+      taskTemplatesLinkTask,
+      terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    document.documentElement.dataset.windowMode = "task";
+    try {
+      render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+      await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+      await act(async () => {
+        window.dispatchEvent(new CustomEvent("agent-resume:workbench-task", {
+          detail: {
+            noteId: "wi-pick", title: "Release-1012", status: "inbox", sessions: [],
+            projects: ["/work/app"], primaryProject: "/work/app" // no templateId
+          }
+        }));
+      });
+
+      fireEvent.click(await screen.findByRole("button", { name: "Scripts" }));
+      fireEvent.contextMenu(await screen.findByRole("button", { name: "dev" }));
+
+      await waitFor(() => expect(taskTemplatesList).toHaveBeenCalled());
+      const items = (contextMenuShow.mock.calls[0] as unknown as [
+        { items: Array<{ id?: string; label?: string; submenu?: Array<{ id?: string; label?: string }> }> }
+      ] | undefined)?.[0]?.items ?? [];
+      // The task title prefixes the template name, so one click targets "Release".
+      expect(items[0]?.id).toBe("tpl:tpl-2");
+      expect(items[0]?.label).toBe('Send to template "Release"');
+      const send = items.find((item) => item.id === "send");
+      expect(send?.label).toBe("Send to another template…");
+      expect(send?.submenu?.map((item) => item.label).filter(Boolean)).toEqual(["Release", "Ops", "Create template"]);
+      // The single script row sends that one script after the template pick.
+      await waitFor(() => expect(taskTemplatesAddScript).toHaveBeenCalledWith({
+        templateId: "tpl-2",
+        script: { name: "dev", command: "pnpm dev", cwd: "/work/app" }
+      }));
+
+      // Right-clicking the package row offers every script in it, then the
+      // template picker resolves on the follow-up menu.
+      taskTemplatesAddScript.mockClear();
+      contextMenuShow.mockReset();
+      contextMenuShow.mockResolvedValueOnce("pick:s-build").mockResolvedValueOnce("tpl:tpl-2");
+      fireEvent.contextMenu(document.querySelector(".wb-scripts-group-row")!);
+      await waitFor(() => expect(contextMenuShow).toHaveBeenCalled());
+      const groupItems = (contextMenuShow.mock.calls[0] as unknown as [
+        { items: Array<{ label?: string; submenu?: Array<{ id?: string; label?: string }> }> }
+      ] | undefined)?.[0]?.items ?? [];
+      expect(groupItems[0]?.submenu?.map((item) => item.label)).toEqual(["dev", "build"]);
+      await waitFor(() => expect(taskTemplatesAddScript).toHaveBeenCalledWith({
+        templateId: "tpl-2",
+        script: { name: "build", command: "pnpm build", cwd: "/work/app" }
+      }));
+      // The task had no template, so the send links it — its own card then shows the command.
+      await waitFor(() => expect(taskTemplatesLinkTask).toHaveBeenCalledWith({
+        noteId: "wi-pick",
+        templateId: "tpl-2"
+      }));
+    } finally {
+      document.documentElement.dataset.windowMode = "main";
+      host.remove();
+    }
+  });
 });

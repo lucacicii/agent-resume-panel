@@ -50,6 +50,15 @@ export type OpenTaskWindowArgs = {
   /** Screen point to center the new window on (used by drag-out). */
   x?: number;
   y?: number;
+  /** A script the window should run once its workbench is up (card menu “open task and execute”). */
+  runScript?: TaskWindowRunScript;
+};
+
+/** A command to execute in a fresh terminal pane of a task workbench window. */
+export type TaskWindowRunScript = {
+  name: string;
+  command: string;
+  cwd: string;
 };
 
 export type OpenTaskWindowResult =
@@ -224,7 +233,12 @@ export function openTaskWindow(deps: TaskWindowDeps, args: OpenTaskWindowArgs): 
   });
   void win
     .loadFile(deps.rendererIndex, {
-      query: { mode: "task", noteId: args.noteId, workbenchId: args.workbenchId }
+      query: {
+        mode: "task",
+        noteId: args.noteId,
+        workbenchId: args.workbenchId,
+        ...(args.runScript ? { runScript: encodeURIComponent(JSON.stringify(args.runScript)) } : {})
+      }
     })
     .catch(() => undefined);
 

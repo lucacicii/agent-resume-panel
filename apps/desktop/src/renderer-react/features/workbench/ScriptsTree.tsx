@@ -33,6 +33,11 @@ type ScriptsTreeProps = {
   compact?: boolean;
   onRefresh?: () => void;
   onRun: (script: ScriptEntryView, pkg: ScriptPackageView) => void;
+  /**
+   * Right-click anywhere in the pane: one script when a script row was hit, the
+   * package's scripts on a package row, everything otherwise.
+   */
+  onScriptContextMenu?: (event: { clientX: number; clientY: number }, scripts: ScriptEntryView[]) => void;
 };
 
 type PathGroup = {
@@ -91,7 +96,8 @@ export function ScriptsTree({
   hasProject,
   compact,
   onRefresh,
-  onRun
+  onRun,
+  onScriptContextMenu
 }: ScriptsTreeProps): React.JSX.Element {
   const { t } = useI18n();
   const groups = useMemo(() => groupByPath(packages), [packages]);
@@ -108,6 +114,43 @@ export function ScriptsTree({
       else next.add(id);
       return next;
     });
+  };
+
+  /**
+   * Which scripts a right-click targets: the row's script, the package's whole
+   * set, the group's set, or everything in the pane. Right-clicking anywhere in
+   * the pane must never be a dead end, since only script rows used to respond.
+   */
+  const scriptsAtTarget = (target: EventTarget | null): ScriptEntryView[] => {
+    const element = target instanceof Element ? target : null;
+    const scriptRow = element?.closest<HTMLElement>("[data-script-id]");
+    const scriptId = scriptRow?.dataset.scriptId;
+    if (scriptId) {
+      for (const pkg of packages) {
+        const found = pkg.scripts.find((script) => script.id === scriptId);
+        if (found) return [found];
+      }
+    }
+    const packageId = element?.closest<HTMLElement>("[data-package-id]")?.dataset.packageId;
+    if (packageId) {
+      const pkg = packages.find((entry) => entry.id === packageId);
+      if (pkg?.scripts.length) return pkg.scripts;
+    }
+    const groupKey = element?.closest<HTMLElement>("[data-script-group]")?.dataset.scriptGroup;
+    if (groupKey) {
+      const group = groups.find((entry) => entry.key === groupKey);
+      const scripts = group?.packages.flatMap((pkg) => pkg.scripts) ?? [];
+      if (scripts.length) return scripts;
+    }
+    return packages.flatMap((pkg) => pkg.scripts);
+  };
+
+  const onPaneContextMenu = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (!onScriptContextMenu) return;
+    const scripts = scriptsAtTarget(event.target);
+    if (!scripts.length) return;
+    event.preventDefault();
+    onScriptContextMenu(event, scripts);
   };
 
   let body: ReactNode;
@@ -134,7 +177,7 @@ export function ScriptsTree({
           const groupOpen = expanded.has(group.key);
           const multiKind = group.packages.length > 1;
           return (
-            <div key={group.key} className="wb-scripts-group" role="treeitem" aria-expanded={groupOpen}>
+            <div key={group.key} className="wb-scripts-group" role="treeitem" aria-expanded={groupOpen} data-script-group={group.key}>
               <button
                 type="button"
                 className="wb-file-tree-row wb-scripts-group-row"
@@ -164,7 +207,7 @@ export function ScriptsTree({
                     const showKindRow = multiKind;
                     if (showKindRow) {
                       return (
-                        <div key={pkg.id} role="group">
+                        <div key={pkg.id} role="group" data-package-id={pkg.id}>
                           <button
                             type="button"
                             className="wb-file-tree-row wb-scripts-package-row"
@@ -186,6 +229,7 @@ export function ScriptsTree({
                                 <button
                                   type="button"
                                   key={script.id}
+                                  data-script-id={script.id}
                                   className="wb-file-tree-row wb-scripts-script-row"
                                   style={{ paddingLeft: `${8 + 28}px` }}
                                   title={script.detail ? `${script.run.command}\n${script.detail}` : script.run.command}
@@ -202,11 +246,12 @@ export function ScriptsTree({
                       );
                     }
                     return (
-                      <div key={pkg.id} role="group">
+                      <div key={pkg.id} role="group" data-package-id={pkg.id}>
                         {pkg.scripts.map((script) => (
                           <button
                             type="button"
                             key={script.id}
+                            data-script-id={script.id}
                             className="wb-file-tree-row wb-scripts-script-row"
                             style={{ paddingLeft: `${8 + 14}px` }}
                             title={script.detail ? `${script.run.command}\n${script.detail}` : script.run.command}
@@ -233,7 +278,7 @@ export function ScriptsTree({
   }
 
   return (
-    <div className={`wb-scripts-pane${compact ? " is-compact" : ""}`}>
+    <div className={`wb-scripts-pane${compact ? " is-compact" : ""}`} onContextMenu={onPaneContextMenu}>
       {compact ? (
         onRefresh ? (
           <div className="wb-scripts-pane-head is-compact-head">

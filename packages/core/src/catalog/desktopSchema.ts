@@ -28,6 +28,16 @@ ALTER TABLE task_templates ADD COLUMN image_path TEXT;
 ALTER TABLE task_template_links ADD COLUMN custom_color TEXT;
 `;
 
+/**
+ * Task templates carry the workbench scripts sent to them, so every task
+ * created from a template can offer those commands in its card menu. Each
+ * entry is `{ id, name, command, cwd }`; scripts are read live, never
+ * snapshotted per task.
+ */
+export const TASK_TEMPLATE_SCRIPTS_MIGRATION_SQL = `
+ALTER TABLE task_templates ADD COLUMN scripts_json TEXT;
+`;
+
 export const DESKTOP_ONLY_SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS gtd_ai_audit (
   id TEXT PRIMARY KEY,
@@ -50,6 +60,7 @@ CREATE TABLE IF NOT EXISTS task_templates (
   custom_color TEXT,
   image_colors_json TEXT,
   image_path TEXT,
+  scripts_json TEXT,
   created_at_ms INTEGER NOT NULL,
   updated_at_ms INTEGER NOT NULL
 );

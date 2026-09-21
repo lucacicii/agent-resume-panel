@@ -10,6 +10,14 @@ import { TASK_COLOR_KEYS, type TaskColorKey, type TaskCustomColor } from "../../
 import { extractImageColorCandidates } from "./imageColorCandidates";
 
 /** One reusable GTD task template as the renderer sees it. */
+/** One workbench script sent to a template; every task it derives can run it. */
+export type TaskTemplateScript = {
+  id: string;
+  name: string;
+  command: string;
+  cwd: string;
+};
+
 export type TaskTemplate = {
   templateId: string;
   title: string;
@@ -22,6 +30,8 @@ export type TaskTemplate = {
   imageColors?: TaskCustomColor[];
   /** The persisted template image as a `data:image/png` URL; absent when none. */
   imageDataUrl?: string;
+  /** Workbench scripts sent to this template; offered by every task it derives. */
+  scripts: TaskTemplateScript[];
   createdAtMs: number;
   updatedAtMs: number;
 };
@@ -47,6 +57,8 @@ type TemplateDraft = {
   image: TemplateDraftImage | null;
   /** True once the image was picked or removed in this edit; drives save semantics. */
   imageChanged: boolean;
+  /** The template's scripts, shown read-only; removal is immediate. */
+  scripts: TaskTemplateScript[];
   busy: boolean;
   error: string;
 };
@@ -109,6 +121,7 @@ export function TaskTemplatePanel({
       customColor: null,
       image: null,
       imageChanged: false,
+      scripts: [],
       busy: false,
       error: ""
     });
@@ -126,10 +139,28 @@ export function TaskTemplatePanel({
       customColor: template.customColor ?? null,
       image: storedImage,
       imageChanged: false,
+      scripts: [...template.scripts],
       busy: false,
       error: ""
     });
   }, []);
+
+  /** Script removal is immediate (not part of save): the IPC returns the
+   * updated template, which refreshes both the library and the open draft. */
+  const removeScript = useCallback(async (scriptId: string) => {
+    const templateId = draft?.templateId;
+    if (!templateId || draft?.busy) return;
+    const api = desktopApi();
+    if (typeof api.taskTemplatesRemoveScript !== "function") return;
+    try {
+      const updated = await api.taskTemplatesRemoveScript({ templateId, scriptId });
+      setTemplates((current) => current.map((entry) =>
+        entry.templateId === updated.templateId ? { ...entry, scripts: updated.scripts } : entry));
+      setDraft((current) => current ? { ...current, scripts: updated.scripts } : current);
+    } catch {
+      void load();
+    }
+  }, [draft, load]);
 
   const pickProject = useCallback(async () => {
     if (!draft || draft.busy || typeof desktopApi().pickDirectory !== "function") return;
@@ -468,6 +499,30 @@ export function TaskTemplatePanel({
                 </div>
               ) : null}
             </div>
+            {draft.templateId ? (
+              <div className="gtd-new-task-field">
+                <span>{text("desktop.gtd.templateScripts")}</span>
+                {draft.scripts.length === 0 ? (
+                  <p className="muted gtd-template-scripts-empty">{text("desktop.gtd.templateScriptsEmpty")}</p>
+                ) : (
+                  <div className="gtd-new-task-project">
+                    {draft.scripts.map((script) => (
+                      <span key={script.id} className="gtd-new-task-project-path" title={script.command}>
+                        {script.name}
+                        <button
+                          type="button"
+                          className="gtd-new-task-project-clear"
+                          aria-label={text("desktop.gtd.templateRemoveScript")}
+                          title={text("desktop.gtd.templateRemoveScript")}
+                          disabled={draft.busy}
+                          onClick={() => void removeScript(script.id)}
+                        ><ThemeIcon name="close" size={ICON_SIZE.inline} /></button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : null}
             {draft.error ? <p className="gtd-new-task-error" role="alert">{draft.error}</p> : null}
             <div className="wb-note-created-actions">
               <button type="button" className="wb-note-created-btn" disabled={draft.busy} onClick={() => setDraft(null)}>
