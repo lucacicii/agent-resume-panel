@@ -6303,6 +6303,75 @@ describe("WorkbenchPanel", () => {
     expect(document.querySelector(".wb-git-diff-pane")).not.toBeNull();
   });
 
+  it("offers side-by-side review for an ACP chat session, not only for terminals", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const acpSession = { provider: "chat", id: "record-1", title: "ACP task", projectPath: "/work/app", acpProvider: "claude", updatedAt: 1 };
+    const gitFile = { path: "src/app.ts", repoPath: "src/app.ts", repoRoot: "/work/app", status: "M", staged: false, unstaged: true };
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        ...ARROW_TEST_MESSAGES,
+        "desktop.workbench.diffSplitReview": "Side-by-Side Review",
+        "desktop.workbench.diffAskAgent": "Ask Agent to Modify",
+        "desktop.workbench.fileOpen": "Open File",
+        "desktop.workbench.acpEmptyTitle": "ACP chat",
+        "desktop.workbench.acpEmptyHint": "Send a message",
+        "desktop.workbench.acpInputPlaceholder": "Message",
+        "desktop.workbench.acpConnecting": "Connecting…",
+        "desktop.workbench.acpReady": "Ready",
+        "desktop.workbench.acpError": "Error",
+        "desktop.workbench.acpProvider.claude": "Claude Code"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      onAcpStream: () => () => undefined,
+      acpConnect: async () => ({ record: { id: "record-1", title: "ACP task", projectPath: "/work/app", provider: "claude", acpSessionId: "native-1", createdAt: 1, updatedAt: 1 }, init: {} }),
+      acpDisconnect: async () => ({ ok: true }),
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [acpSession],
+      notesList: async () => [],
+      terminalGitStatus: async () => ({
+        isRepo: true,
+        root: "/work/app",
+        staged: [],
+        unstaged: [gitFile],
+        nestedRepos: [],
+        tracking: []
+      }),
+      terminalGitDiffSides: async () => ({
+        oldLabel: "HEAD",
+        newLabel: "Working Tree",
+        oldText: "export const old = true;\n",
+        newText: "export const app = true;\n",
+        hunks: []
+      }),
+      terminalGitFetch: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+
+    // Only an ACP chat is open — there is no terminal-backed session at all.
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:workbench-open-session", { detail: acpSession })));
+    await waitFor(() => expect(document.querySelector(".wb-terminal-tab.is-acp")).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: /^Git/ }));
+    fireEvent.click(await screen.findByTitle("src/app.ts"));
+    await waitFor(() => expect(document.querySelector(".wb-git-diff-pane")).not.toBeNull());
+
+    // The toggle must be offered, and must pair the diff with the chat.
+    const splitBtn = await screen.findByRole("button", { name: "Side-by-Side Review" });
+    fireEvent.click(splitBtn);
+    await waitFor(() => expect(document.querySelector(".wb-diff-split-acp")).not.toBeNull());
+    expect(document.querySelector(".wb-diff-split-diff .wb-git-diff-pane")).not.toBeNull();
+  });
+
   it("discards a Git file after confirmation and refreshes its status", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";

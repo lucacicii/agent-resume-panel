@@ -336,6 +336,8 @@ const QUICK_ACCESS_PROJECT_KEY = "workbench-quick-access-project";
 const LIST_WIDTH_KEY = "wb-list-pane-width";
 const SIDE_WIDTH_KEY = "wb-side-panel-width";
 const SESSION_VIEW_MODE_KEY = "wb-session-view-mode";
+/** Whether a diff pane shows the session transcript beside it, per workbench. */
+const DIFF_SPLIT_REVIEW_KEY = "wb-diff-split-review";
 const TUI_SPLIT_HEIGHT_KEY = "wb-tui-split-height";
 const ALL_PROJECTS_PANE_KEY = "__all_projects__";
 
@@ -670,7 +672,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [editors, setEditors] = useState<EditorPane[]>([]);
   const [imagePreview, setImagePreview, imagePreviewClosing] = useOverlayState<string>();
   const [diffs, setDiffs] = useState<DiffPane[]>([]);
-  const [diffSplitReview, setDiffSplitReview] = useState<boolean>(() => storageString("wb-diff-split-review") === "true");
+  const [diffSplitReview, setDiffSplitReview] = useState<boolean>(() => storageString(DIFF_SPLIT_REVIEW_KEY) === "true");
   const [acpChats, setAcpChats] = useState<AcpChatPane[]>([]);
   const [browsers, setBrowsers] = useState<BrowserPane[]>([]);
   const [notePanes, setNotePanes] = useState<NotePane[]>([]);
@@ -3395,6 +3397,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     setTuiSplitHeight(storedWidth(workbenchScopedKey(TUI_SPLIT_HEIGHT_KEY, activeWorkbenchId), 180, 80, 600));
     const mode = storageString(workbenchScopedKey(SESSION_VIEW_MODE_KEY, activeWorkbenchId));
     if (mode === "terminal" || mode === "hybrid") setSessionViewMode(mode);
+    setDiffSplitReview(storageString(workbenchScopedKey(DIFF_SPLIT_REVIEW_KEY, activeWorkbenchId)) === "true");
   }, [activeWorkbenchId]);
 
   const activateWorkbench = useCallback((workbench: Workbench) => {
@@ -6342,14 +6345,22 @@ export function WorkbenchPanel(): ReactPortal | null {
             <button type="button" className="wb-editor-find-btn app-inline-search-btn" aria-label={t("desktop.common.findNext")} onClick={() => runEditorFind("forward")}><ThemeIcon name="arrow-down" size={ICON_SIZE.dense} /></button>
             <button type="button" className="wb-editor-find-btn app-inline-search-btn" aria-label={t("desktop.common.closeFind")} onClick={closeEditorFind}><ThemeIcon name="close" size={ICON_SIZE.dense} /></button>
           </div> : null}{currentEditor ? <div className="wb-editor-pane" onContextMenu={(event) => { event.preventDefault(); const selectedText = editorRef.current?.getSelectedText().trim() || ""; setEditorContextMenu({ x: event.clientX, y: event.clientY, hasSelection: Boolean(selectedText), selectedText }); }}>{editorDiskAlert}{currentEditor.view === "preview" ? <div className="wb-editor-preview markdown-body" onClick={(event) => { const src = imageSrcFromElement(event.target); if (src) setImagePreview(src); }} dangerouslySetInnerHTML={{ __html: renderMarkdown(currentEditor.content, { baseDir: posixDirname(currentEditor.path), rootDir: currentEditor.projectPath, imageLabels: { openInBrowser: t("desktop.markdown.openInBrowser"), unavailable: t("desktop.markdown.imageUnavailable"), remoteImage: t("desktop.markdown.remoteImage") } }) }} /> : <CodeEditor ref={editorRef} className="wb-editor-host" value={currentEditor.content} onChange={(value) => updateEditorContent(currentEditor.key, value)} onBlur={() => { if (currentEditor.dirty) void saveEditor(currentEditor.key); }} ariaLabel={currentEditor.path} filePath={currentEditor.path} selectionProjectPath={currentEditor.projectPath} readOnly={editorSettings?.editable === false} fontSize={editorSettings?.fontSize ?? 13} wordWrap={editorSettings?.wordWrap ?? false} tabSize={editorSettings?.tabSize ?? 4} appearance={editorAppearance} />}<div className="wb-editor-status"><span className="wb-editor-status-path">{currentEditor.path}</span><span className="wb-editor-status-state">{currentEditor.saving ? t("desktop.workbench.fileSaving") : currentEditor.diskState === "changed" ? t("desktop.workbench.fileConflict") : currentEditor.diskState === "deleted" ? t("desktop.workbench.fileDeletedOnDisk") : currentEditor.diskState === "external" ? t("desktop.workbench.fileUnavailableOnDisk") : currentEditor.dirty ? t("desktop.workbench.fileModified") : t("desktop.workbench.fileSaved")}</span><button type="button" className="wb-git-action-btn" disabled={!currentEditor.dirty || currentEditor.saving || Boolean(currentEditor.diskState) || editorSettings?.editable === false} onClick={() => void saveEditor(currentEditor.key)} aria-label={t("desktop.common.save")}><ThemeIcon name="save" size={ICON_SIZE.default} /></button></div></div> : null}{currentDiff ? (() => {
+    // The review partner may be a terminal-backed session or an ACP chat. Both are
+    // "the session" as far as the user is concerned, so the toggle accepts
+    // either — keying it on terminals alone hid it for ACP sessions.
     const targetSessionPane = terminals.find((pane) => paneScopeKey(pane) === activeScopeKey && pane.group === "session")
-      || terminals.find((pane) => pane.group === "session");
+      || terminals.find((pane) => pane.group === "session")
+      || null;
+    const targetAcpChat = acpChats.find((pane) => paneScopeKey(pane) === activeScopeKey)
+      || acpChats[0]
+      || null;
+    const hasReviewPartner = Boolean(targetSessionPane || targetAcpChat);
     const diffPane = (
       <div className="wb-git-diff-pane">
         <div className="wb-diff-head">
           <strong className="wb-diff-title">{currentDiff.path}</strong>
           <div className="wb-diff-actions">
-            {targetSessionPane ? (
+            {hasReviewPartner ? (
               <button
                 type="button"
                 className={`wb-diff-split-toggle${diffSplitReview ? " is-active" : ""}`}
@@ -6358,7 +6369,7 @@ export function WorkbenchPanel(): ReactPortal | null {
                 title={t("desktop.workbench.diffSplitReview")}
                 onClick={() => setDiffSplitReview((v) => {
                   const next = !v;
-                  writeWorkbenchValue("wb-diff-split-review", activeWorkbenchIdRef.current, String(next));
+                  writeWorkbenchValue(DIFF_SPLIT_REVIEW_KEY, activeWorkbenchIdRef.current, String(next));
                   return next;
                 })}
               >
@@ -6374,39 +6385,66 @@ export function WorkbenchPanel(): ReactPortal | null {
         <DiffWorkerPool><WorkbenchDiffView diff={currentDiff} appearance={editorAppearance} onDiscardHunk={(target) => void discardGitHunk(currentDiff, target)} onDiscardLine={(target) => void discardGitLine(currentDiff, target)} onStageHunk={(target) => void stageGitHunk(currentDiff, target)} onUnstageHunk={(target) => void unstageGitHunk(currentDiff, target)} onStageLine={(target) => void stageGitLine(currentDiff, target)} onUnstageLine={(target) => void unstageGitLine(currentDiff, target)} /></DiffWorkerPool>
       </div>
     );
-    if (diffSplitReview && targetSessionPane) {
-      const targetSessionIdentity = sessionIdentityFromKey(targetSessionPane.sessionKey);
+    if (diffSplitReview && (targetSessionPane || targetAcpChat)) {
+      const targetSessionIdentity = targetSessionPane ? sessionIdentityFromKey(targetSessionPane.sessionKey) : null;
+      const acpChat = targetAcpChat;
       return (
         <div className="wb-diff-split-layout">
           <div className="wb-diff-split-session">
-            <div className="wb-session-split-transcript">
-              <SessionTranscriptPane
-                provider={targetSessionIdentity?.provider || "codex"}
-                sessionId={targetSessionIdentity?.sessionId || ""}
-                iconProvider={targetSessionIdentity?.provider || "codex"}
-                active={active}
-                fontSize={settings?.workbench?.transcriptFontSize ?? 14}
-                focusUserMessage={transcriptFocus}
-                onRefresh={triggerSessionSync}
-              />
-            </div>
-            <TerminalComposerStack
-              items={[{
-                pane: { key: targetSessionPane.key, cwd: targetSessionPane.cwd, group: targetSessionPane.group, projectPath: targetSessionPane.projectPath },
-                ptyId: targetSessionPane.ptyId ?? null,
-                activePane: true,
-                value: composerDrafts[targetSessionPane.key] || "",
-                provider: targetSessionIdentity?.provider
-              }]}
-              onChange={setComposerDraft}
-              onSendToTerminal={sendComposerToTerminal}
-              onRunSlashCommand={runComposerSlashCommand}
-              onActivate={activateComposerPane}
-              onClose={closeTerminal}
-              registerFocus={registerComposerFocus}
-              slashPhrases={settings?.workbench?.composerSlashPhrases ?? []}
-              workspaceProjects={targetSessionPane.cwd === taskWorkspaceDir ? composerWorkspaceProjects : EMPTY_COMPOSER_WORKSPACE_PROJECTS}
-            />
+            {targetSessionPane ? (
+              <>
+                <div className="wb-session-split-transcript">
+                  <SessionTranscriptPane
+                    provider={targetSessionIdentity?.provider || "codex"}
+                    sessionId={targetSessionIdentity?.sessionId || ""}
+                    iconProvider={targetSessionIdentity?.provider || "codex"}
+                    active={active}
+                    fontSize={settings?.workbench?.transcriptFontSize ?? 14}
+                    focusUserMessage={transcriptFocus}
+                    onRefresh={triggerSessionSync}
+                  />
+                </div>
+                <TerminalComposerStack
+                  items={[{
+                    pane: { key: targetSessionPane.key, cwd: targetSessionPane.cwd, group: targetSessionPane.group, projectPath: targetSessionPane.projectPath },
+                    ptyId: targetSessionPane.ptyId ?? null,
+                    activePane: true,
+                    value: composerDrafts[targetSessionPane.key] || "",
+                    provider: targetSessionIdentity?.provider
+                  }]}
+                  onChange={setComposerDraft}
+                  onSendToTerminal={sendComposerToTerminal}
+                  onRunSlashCommand={runComposerSlashCommand}
+                  onActivate={activateComposerPane}
+                  onClose={closeTerminal}
+                  registerFocus={registerComposerFocus}
+                  slashPhrases={settings?.workbench?.composerSlashPhrases ?? []}
+                  workspaceProjects={targetSessionPane.cwd === taskWorkspaceDir ? composerWorkspaceProjects : EMPTY_COMPOSER_WORKSPACE_PROJECTS}
+                />
+              </>
+            ) : acpChat ? (
+              <div className="wb-diff-split-acp">
+                <AcpChatView
+                  key={acpChat.key}
+                  recordId={acpChat.recordId}
+                  provider={acpChat.provider}
+                  projectPath={acpChat.projectPath}
+                  title={acpChat.title}
+                  active={active}
+                  initialPrompt={acpChat.initialPrompt}
+                  onTitleChange={(nextTitle) => {
+                    setAcpChats((current) => current.map((item) => item.key === acpChat.key ? { ...item, title: nextTitle } : item));
+                    setSessions((current) => current.map((item) =>
+                      sessionKey(item) === acpListSessionKey(acpChat.recordId) ? { ...item, title: nextTitle } : item
+                    ));
+                  }}
+                  onSessionReady={refreshSessionsAfterAcpConnect}
+                  onInitialPromptSubmitted={() => {
+                    setAcpChats((current) => current.map((item) => item.key === acpChat.key ? { ...item, initialPrompt: undefined } : item));
+                  }}
+                />
+              </div>
+            ) : null}
           </div>
           <div className="wb-diff-split-diff">
             {diffPane}
