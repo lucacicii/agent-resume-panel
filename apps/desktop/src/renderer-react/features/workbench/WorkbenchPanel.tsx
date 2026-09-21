@@ -32,6 +32,7 @@ import {
   desktopGtdLabelKey,
   type DesktopGtdStatus
 } from "../../gtd";
+import { hueFromHex } from "../../../shared/taskColors";
 import { desktopApi } from "../../bridge";
 import { confirmDestructive } from "../../confirmAction";
 import { contextMenuPoint, showContextMenuAt, type NativeContextMenuItem } from "../../nativeContextMenu";
@@ -611,6 +612,8 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [sessionQuery, setSessionQuery] = useState("");
   /** Task workspace scope (set by the board); renders a dedicated view. */
   const [taskScope, setTaskScope] = useState<WorkbenchTask | null>(null);
+  /** The scoped task's template image, shown in the detail header. */
+  const [taskImage, setTaskImage] = useState<string | null>(null);
   /** Left panel tab: the task's notes, or its session list. */
   const [leftTab, setLeftTab] = useState<"note" | "session">("session");
   /** Left-panel note list: all notes, optionally filtered to the task's note tree. */
@@ -959,22 +962,32 @@ export function WorkbenchPanel(): ReactPortal | null {
     const record = tasks.find((item) => item.noteId === noteId);
     if (!record?.accent) return;
     if (taskScope.accent?.colorKey === record.accent.colorKey
+      && taskScope.accent?.customColor === record.accent.customColor
       && taskScope.accent?.shade === record.accent.shade) return;
     setTaskScope((current) => current && current.noteId === noteId ? { ...current, accent: record.accent } : current);
   }, [tasks, taskScope]);
 
   // The task's accent dresses the whole window: html[data-task-accent] plus
-  // data-task-shade drive the CSS color-family derivation in styles.css. Only
-  // task windows set it; board and standalone-note windows stay neutral.
+  // data-task-shade drive the CSS color-family derivation in styles.css.
+  // Palette keys pick their hue from the attribute rules; an image-derived
+  // custom color sets "custom" and injects its hue via the inline --task-h
+  // custom property. Only task windows set it; board and standalone-note
+  // windows stay neutral.
   useEffect(() => {
     const root = document.documentElement;
     const accent = taskScope?.accent;
     if (accent && root.dataset.windowMode === "task") {
-      root.dataset.taskAccent = accent.colorKey;
+      root.dataset.taskAccent = accent.colorKey ?? "custom";
       root.dataset.taskShade = String(accent.shade);
+      if (accent.customColor) {
+        root.style.setProperty("--task-h", String(hueFromHex(accent.customColor)));
+      } else {
+        root.style.removeProperty("--task-h");
+      }
     } else {
       delete root.dataset.taskAccent;
       delete root.dataset.taskShade;
+      root.style.removeProperty("--task-h");
     }
   }, [taskScope?.accent]);
 
@@ -3158,10 +3171,36 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   // Template recolors/deletes re-resolve task accents; refresh so an open
   // window re-skins (via the accent-sync effect) without being reopened.
+  // The header image comes from the same event: a replaced or removed
+  // template image updates the thumbnail in place.
+  const loadTaskImage = useCallback(async (noteId: string) => {
+    if (typeof desktopApi().taskTemplateImageForTask !== "function") return;
+    try {
+      const result = await desktopApi().taskTemplateImageForTask({ noteId });
+      if (taskScopeRef.current?.noteId !== noteId) return; // stale response
+      setTaskImage(result.imageDataUrl ?? null);
+    } catch {
+      if (taskScopeRef.current?.noteId === noteId) setTaskImage(null);
+    }
+  }, []);
   useEffect(() => {
-    const stop = desktopApi().onTaskTemplatesChanged?.(() => { void loadTasks(); });
+    const stop = desktopApi().onTaskTemplatesChanged?.(() => {
+      void loadTasks();
+      const noteId = taskScopeRef.current?.noteId;
+      if (noteId) void loadTaskImage(noteId);
+    });
     return () => stop?.();
-  }, [loadTasks]);
+  }, [loadTaskImage, loadTasks]);
+
+  // Fetch the scoped task's template image once per scope change.
+  useEffect(() => {
+    const noteId = taskScope?.noteId;
+    if (!noteId) {
+      setTaskImage(null);
+      return;
+    }
+    void loadTaskImage(noteId);
+  }, [taskScope?.noteId, loadTaskImage]);
 
   /** All notes, for the left-panel note list. */
   const loadNotes = useCallback(async () => {
@@ -5514,6 +5553,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       title={headerTitle}
       directory={headerDirectory}
       onRevealDirectory={headerDirectory ? revealHeaderDirectory : undefined}
+      imageUrl={taskScope ? taskImage : null}
       side={side}
       branchStatusLabel={branchStatusLabel}
       branchStatusPane={branchStatusPane}

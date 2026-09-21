@@ -15,6 +15,19 @@ export const TASK_TEMPLATE_COLOR_MIGRATION_SQL = `
 ALTER TABLE task_templates ADD COLUMN color_key TEXT;
 `;
 
+/**
+ * Task templates carry an image-derived custom accent color (`#rrggbb`,
+ * mutually exclusive with `color_key`), the candidate colors extracted from
+ * the uploaded image, and the persisted image path relative to panelHome.
+ * Task links snapshot the custom color like they snapshot the palette key.
+ */
+export const TASK_TEMPLATE_CUSTOM_COLOR_MIGRATION_SQL = `
+ALTER TABLE task_templates ADD COLUMN custom_color TEXT;
+ALTER TABLE task_templates ADD COLUMN image_colors_json TEXT;
+ALTER TABLE task_templates ADD COLUMN image_path TEXT;
+ALTER TABLE task_template_links ADD COLUMN custom_color TEXT;
+`;
+
 export const DESKTOP_ONLY_SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS gtd_ai_audit (
   id TEXT PRIMARY KEY,
@@ -33,6 +46,10 @@ CREATE TABLE IF NOT EXISTS task_templates (
   template_id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
   project_paths_json TEXT,
+  color_key TEXT,
+  custom_color TEXT,
+  image_colors_json TEXT,
+  image_path TEXT,
   created_at_ms INTEGER NOT NULL,
   updated_at_ms INTEGER NOT NULL
 );
@@ -44,6 +61,7 @@ CREATE TABLE IF NOT EXISTS task_template_links (
   note_id TEXT PRIMARY KEY,
   template_id TEXT NOT NULL,
   color_key TEXT,
+  custom_color TEXT,
   created_at_ms INTEGER NOT NULL,
   updated_at_ms INTEGER NOT NULL
 );

@@ -3,6 +3,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import { GtdView } from "./GtdView";
 
+vi.mock("./imageColorCandidates", () => ({
+  extractImageColorCandidates: vi.fn(async () => ["#e04040", "#4060e0"])
+}));
+
 type ContextMenuArgs = { x: number; y: number; items: Array<{ id?: string }> };
 
 /** Stub `contextMenuShow` so a test can "pick" a menu item. */
@@ -53,6 +57,14 @@ function renderGtd(overrides?: Partial<typeof window.agentResume>) {  const host
         "desktop.gtd.newTemplate": "New template",
         "desktop.gtd.templateTitle": "Template name",
         "desktop.gtd.templateProject": "Project",
+        "desktop.gtd.templateColor": "Color",
+        "desktop.gtd.templateColorNone": "None",
+        "desktop.gtd.templateImage": "Image",
+        "desktop.gtd.templatePickImage": "Pick image…",
+        "desktop.gtd.templateChangeImage": "Change image…",
+        "desktop.gtd.templateRemoveImage": "Remove image",
+        "desktop.gtd.templateImageColors": "Colors from image",
+        "desktop.gtd.templateImageNoColors": "No vivid colors found in this image.",
         "desktop.gtd.emptyTemplates": "No templates",
         "desktop.gtd.createTemplate": "Create template",
         "desktop.gtd.editTemplate": "Edit template",
@@ -96,6 +108,7 @@ function renderGtd(overrides?: Partial<typeof window.agentResume>) {  const host
     taskTemplatesCreate: vi.fn(async ({ title, projectPaths }: { title: string; projectPaths?: string[] }) => ({ templateId: "tpl-new", title, projectPaths: projectPaths ?? [], createdAtMs: 1, updatedAtMs: 1 })),
     taskTemplatesUpdate: vi.fn(async ({ templateId, title, projectPaths }: { templateId: string; title: string; projectPaths?: string[] }) => ({ templateId, title, projectPaths: projectPaths ?? [], createdAtMs: 1, updatedAtMs: 1 })),
     taskTemplatesDelete: vi.fn(async () => ({ ok: true })),
+    taskTemplatesPickImage: vi.fn(async () => ({ ok: false as const, canceled: true })),
     contextMenuShow: vi.fn(async () => null),
     ...overrides
   } as unknown as typeof window.agentResume;
@@ -334,6 +347,67 @@ describe("GtdView", () => {
     }));
   });
 
+  it("creates a template with an image, defaulting to its recommended color", async () => {
+    const taskTemplatesCreate = vi.fn(async ({ title }: { title: string }) => ({
+      templateId: "tpl-img", title, projectPaths: [], createdAtMs: 1, updatedAtMs: 1
+    }));
+    renderGtd({
+      taskTemplatesCreate,
+      taskTemplatesPickImage: vi.fn(async () => ({ ok: true as const, pngBase64: "aXBo" }))
+    } as unknown as Partial<typeof window.agentResume>);
+
+    fireEvent.click(await screen.findByRole("button", { name: "New template" }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "Template name" }), { target: { value: "Poster task" } });
+    fireEvent.click(screen.getByRole("button", { name: "Pick image…" }));
+
+    // The recommended candidate (first) is preselected; another can be picked.
+    const recommended = await screen.findByRole("button", { name: "#e04040" });
+    expect(recommended.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "#4060e0" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Create template" }));
+    await waitFor(() => expect(taskTemplatesCreate).toHaveBeenCalledWith({
+      title: "Poster task",
+      projectPaths: [],
+      customColor: "#4060e0",
+      image: { pngBase64: "aXBo", colors: ["#e04040", "#4060e0"] }
+    }));
+  });
+
+  it("keeps a stored template image untouched when only the title changes", async () => {
+    const taskTemplatesUpdate = vi.fn(async ({ templateId, title }: { templateId: string; title: string }) => ({
+      templateId, title, projectPaths: [], createdAtMs: 1, updatedAtMs: 1
+    }));
+    renderGtd({
+      taskTemplatesUpdate,
+      contextMenuShow: contextMenuReturning("edit"),
+      taskTemplatesList: async () => [{
+        templateId: "tpl-img",
+        title: "Poster task",
+        projectPaths: [],
+        customColor: "#e04040",
+        imageColors: ["#e04040", "#4060e0"],
+        imageDataUrl: "data:image/png;base64,aXBo",
+        createdAtMs: 1,
+        updatedAtMs: 1
+      }]
+    } as unknown as Partial<typeof window.agentResume>);
+
+    const item = await screen.findByText("Poster task").then((el) => el.closest(".gtd-template-item"));
+    fireEvent.contextMenu(item!);
+    const titleInput = await screen.findByRole("textbox", { name: "Template name" });
+    expect((titleInput as HTMLInputElement).value).toBe("Poster task");
+    fireEvent.change(titleInput, { target: { value: "Poster task v2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(taskTemplatesUpdate).toHaveBeenCalled());
+    const args = (taskTemplatesUpdate as ReturnType<typeof vi.fn>).mock.calls[0][0] as Record<string, unknown>;
+    expect(args.title).toBe("Poster task v2");
+    expect(args.customColor).toBe("#e04040");
+    // No image key: the stored image is kept as-is.
+    expect("image" in args).toBe(false);
+  });
+
   it("paints a card's accent bar from the task's template color", async () => {
     renderGtd({
       notesListTasks: async () => [{
@@ -346,6 +420,22 @@ describe("GtdView", () => {
     const card = await screen.findByText("Blue task").then((el) => el.closest(".gtd-card"));
     expect(card?.getAttribute("data-task-accent")).toBe("blue");
     expect(card?.getAttribute("data-task-shade")).toBe("2");
+  });
+
+  it("paints a custom accent card from the hue of an image-derived color", async () => {
+    renderGtd({
+      notesListTasks: async () => [{
+        noteId: "t-custom", title: "Custom task", filename: "t-custom.md", relDir: "", relMdPath: "", scope: "library",
+        createdAtMs: 1, updatedAtMs: 1, work: { sessions: [], projects: [] },
+        accent: { customColor: "#e04040", shade: 1 }
+      }]
+    } as unknown as Partial<typeof window.agentResume>);
+
+    const card = await screen.findByText("Custom task").then((el) => el.closest(".gtd-card"));
+    expect(card?.getAttribute("data-task-accent")).toBe("custom");
+    expect(card?.getAttribute("data-task-shade")).toBe("1");
+    // Hue of #e04040 ≈ 0 (red) injected as an inline custom property.
+    expect((card as HTMLElement).style.getPropertyValue("--task-h")).toBe("0");
   });
 
   it("collects several projects for one template", async () => {

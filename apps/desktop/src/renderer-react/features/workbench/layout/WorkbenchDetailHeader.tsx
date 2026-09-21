@@ -9,6 +9,7 @@ export function WorkbenchDetailHeader({
   title,
   directory,
   onRevealDirectory,
+  imageUrl,
   side,
   branchStatusLabel,
   branchStatusPane,
@@ -24,6 +25,8 @@ export function WorkbenchDetailHeader({
   directory: string | null;
   /** Reveal `directory` in Finder; omitted when it cannot be shown. */
   onRevealDirectory?: () => void;
+  /** The scoped task's template image; absent when the task has none. */
+  imageUrl?: string | null;
   side: WorkbenchSideView;
   branchStatusLabel: string | null;
   branchStatusPane: TerminalPane | null;
@@ -44,6 +47,7 @@ export function WorkbenchDetailHeader({
     ) : null}
     <div className="wb-detail-head">
       <span className="wb-detail-project-label">
+        {imageUrl ? <img className="wb-detail-task-image" src={imageUrl} alt="" aria-hidden="true" /> : null}
         <span className="wb-detail-project-label-text">{title}</span>
         {directory ? <span className="wb-detail-project-path">{directory}</span> : null}
         {directory && onRevealDirectory ? (

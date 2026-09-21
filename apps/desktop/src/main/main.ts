@@ -230,11 +230,13 @@ import {
   deleteTaskTemplate,
   linkTaskTemplate,
   listTaskTemplates,
-  resolveTaskColorKeys,
+  resolveTaskAccents,
+  taskTemplateImageForNote,
   unlinkTaskTemplate,
   updateTaskTemplate
 } from "./taskTemplates";
-import { isTaskColorKey, taskAccent } from "../shared/taskColors";
+import { pickTemplateImage } from "./templateImagePicker";
+import { isCustomHexColor, isTaskColorKey, taskAccent, type TaskAccentSource } from "../shared/taskColors";
 import { refreshMemorySchedulerFromSettings, stopMemoryScheduler } from "./scheduler";
 import {
   ensureAgentStatusDaemon,
@@ -3255,11 +3257,11 @@ function registerIpc(): void {
   ipcMain.handle("notes:list", async () => notesList());
   ipcMain.handle("notes:listTasks", async () => {
     const items = await notesListTasks();
-    const colorKeys = await resolveTaskColorKeys();
-    if (!colorKeys.size) return items;
+    const accents = await resolveTaskAccents();
+    if (!accents.size) return items;
     return items.map((item) => {
-      const colorKey = colorKeys.get(item.noteId);
-      return colorKey ? { ...item, accent: taskAccent(colorKey, item.noteId) } : item;
+      const source = accents.get(item.noteId);
+      return source ? { ...item, accent: taskAccent(source, item.noteId) } : item;
     });
   });
   // Recolors and deletions re-resolve every linked task's accent, so every
@@ -3271,16 +3273,43 @@ function registerIpc(): void {
     }
   };
   ipcMain.handle("taskTemplates:list", async () => listTaskTemplates());
+  /** Validate an accent arg pair: a custom hex wins over a palette key. */
+  const accentArgs = (args: { colorKey?: unknown; customColor?: unknown }): TaskAccentSource => {
+    if (isCustomHexColor(args?.customColor)) return { customColor: args.customColor.toLowerCase() };
+    return { colorKey: isTaskColorKey(args?.colorKey) ? args.colorKey : undefined };
+  };
+  /** Validate an image arg: { pngBase64, colors } to set, null to remove, undefined to keep. */
+  const imageArgs = (
+    image: unknown
+  ): { pngBase64: string; colors: string[] } | null | undefined => {
+    if (image === null) return null;
+    if (typeof image !== "object" || image === null) return undefined;
+    const record = image as { pngBase64?: unknown; colors?: unknown };
+    if (typeof record.pngBase64 !== "string" || !record.pngBase64) {
+      throw new Error("A template image needs PNG data.");
+    }
+    const colors = Array.isArray(record.colors)
+      ? record.colors.filter(isCustomHexColor)
+      : [];
+    if (colors.length === 0) {
+      throw new Error("A template image needs extracted colors.");
+    }
+    return { pngBase64: record.pngBase64, colors };
+  };
   ipcMain.handle(
     "taskTemplates:create",
-    async (_event, args: { title?: unknown; projectPaths?: unknown; colorKey?: unknown }) => {
+    async (
+      _event,
+      args: { title?: unknown; projectPaths?: unknown; colorKey?: unknown; customColor?: unknown; image?: unknown }
+    ) => {
       if (typeof args?.title !== "string" || !args.title.trim()) {
         throw new Error("A template name is required.");
       }
       return createTaskTemplate({
         title: args.title,
         projectPaths: stringList(args?.projectPaths),
-        colorKey: isTaskColorKey(args?.colorKey) ? args.colorKey : undefined
+        ...accentArgs(args),
+        image: imageArgs(args?.image) ?? null
       });
     }
   );
@@ -3288,7 +3317,14 @@ function registerIpc(): void {
     "taskTemplates:update",
     async (
       _event,
-      args: { templateId?: unknown; title?: unknown; projectPaths?: unknown; colorKey?: unknown }
+      args: {
+        templateId?: unknown;
+        title?: unknown;
+        projectPaths?: unknown;
+        colorKey?: unknown;
+        customColor?: unknown;
+        image?: unknown;
+      }
     ) => {
       if (typeof args?.templateId !== "string" || !args.templateId.trim()) {
         throw new Error("A task template id is required.");
@@ -3300,12 +3336,23 @@ function registerIpc(): void {
         templateId: args.templateId,
         title: args.title,
         projectPaths: stringList(args?.projectPaths),
-        // Updates always set the color: a valid key, or null to clear it.
-        colorKey: isTaskColorKey(args?.colorKey) ? args.colorKey : null
+        // Updates always set the accent; the image is kept unless given.
+        ...accentArgs(args),
+        image: imageArgs(args?.image)
       }).then((template) => {
         broadcastTemplatesChanged();
         return template;
       });
+    }
+  );
+  ipcMain.handle("taskTemplates:pickImage", async () => pickTemplateImage());
+  ipcMain.handle(
+    "taskTemplate:imageForTask",
+    async (_event, args: { noteId?: unknown }) => {
+      if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
+        throw new Error("A task note id is required.");
+      }
+      return { imageDataUrl: await taskTemplateImageForNote(args.noteId) };
     }
   );
   ipcMain.handle("taskTemplates:delete", async (_event, args: { templateId?: unknown }) => {
@@ -3393,8 +3440,8 @@ function registerIpc(): void {
       });
       const templateId = typeof args?.templateId === "string" ? args.templateId.trim() : "";
       if (!templateId) return record;
-      const colorKey = await linkTaskTemplate({ noteId: record.noteId, templateId });
-      return colorKey ? { ...record, accent: taskAccent(colorKey, record.noteId) } : record;
+      const source = await linkTaskTemplate({ noteId: record.noteId, templateId });
+      return source ? { ...record, accent: taskAccent(source, record.noteId) } : record;
     }
   );
   ipcMain.handle("notes:listRoot", async () => notesListRootNotes());

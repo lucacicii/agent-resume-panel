@@ -1,6 +1,7 @@
 import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { createPortal } from "react-dom";
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent, CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GtdStatus, TaskGtdRollup } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { confirmDestructive } from "../../confirmAction";
@@ -22,6 +23,7 @@ import {
   type DesktopGtdStatus
 } from "../../gtd";
 import { TaskTemplatePanel, type TaskTemplate } from "./TaskTemplatePanel";
+import { hueFromHex } from "../../../shared/taskColors";
 
 /** Board column order — `done` last so active work reads first. */
 const GTD_COLUMNS: readonly DesktopGtdStatus[] = DESKTOP_GTD_STATUSES;
@@ -490,8 +492,11 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
                     key={item.noteId}
                     draggable
                     className={`gtd-card${waiting ? " is-needs-you" : ""}`}
-                    data-task-accent={item.accent?.colorKey}
+                    data-task-accent={item.accent?.colorKey ?? (item.accent?.customColor ? "custom" : undefined)}
                     data-task-shade={item.accent?.shade}
+                    {...(item.accent?.customColor
+                      ? { style: { "--task-h": hueFromHex(item.accent.customColor) } as CSSProperties }
+                      : {})}
                     onContextMenu={(event) => {
                       event.preventDefault();
                       void openContextMenu(event, item);

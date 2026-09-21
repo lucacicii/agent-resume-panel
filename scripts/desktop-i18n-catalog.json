@@ -88,7 +88,13 @@
     "desktop.settings.selectionCreateAction": "Create",
     "desktop.settings.panelHomeFootnote": "Reveal uses the saved path. Changes are saved automatically.",
     "desktop.gtd.templateColor": "Color",
-    "desktop.gtd.templateColorNone": "None"
+    "desktop.gtd.templateColorNone": "None",
+    "desktop.gtd.templateImage": "Image",
+    "desktop.gtd.templatePickImage": "Pick image…",
+    "desktop.gtd.templateChangeImage": "Change image…",
+    "desktop.gtd.templateRemoveImage": "Remove image",
+    "desktop.gtd.templateImageColors": "Colors from image",
+    "desktop.gtd.templateImageNoColors": "No vivid colors found in this image."
   },
   "ja": {
     "desktop.nav.label": "ナビゲーション",
@@ -179,7 +185,13 @@
     "desktop.settings.selectionCreateAction": "作成",
     "desktop.settings.panelHomeFootnote": "表示は保存済みパスを使用。変更は自動保存されます。",
     "desktop.gtd.templateColor": "カラー",
-    "desktop.gtd.templateColorNone": "なし"
+    "desktop.gtd.templateColorNone": "なし",
+    "desktop.gtd.templateImage": "画像",
+    "desktop.gtd.templatePickImage": "画像を選択…",
+    "desktop.gtd.templateChangeImage": "画像を変更…",
+    "desktop.gtd.templateRemoveImage": "画像を削除",
+    "desktop.gtd.templateImageColors": "画像から抽出したカラー",
+    "desktop.gtd.templateImageNoColors": "画像から鮮やかな色が見つかりませんでした。"
   },
   "zh-cn": {
     "desktop.nav.label": "导航",
@@ -270,6 +282,12 @@
     "desktop.settings.selectionCreateAction": "创建",
     "desktop.settings.panelHomeFootnote": "打开操作使用已保存的路径，修改会自动保存。",
     "desktop.gtd.templateColor": "颜色",
-    "desktop.gtd.templateColorNone": "无"
+    "desktop.gtd.templateColorNone": "无",
+    "desktop.gtd.templateImage": "图片",
+    "desktop.gtd.templatePickImage": "选择图片…",
+    "desktop.gtd.templateChangeImage": "更换图片…",
+    "desktop.gtd.templateRemoveImage": "移除图片",
+    "desktop.gtd.templateImageColors": "图片提取的颜色",
+    "desktop.gtd.templateImageNoColors": "图片中未找到可用的鲜艳颜色。"
   }
 }

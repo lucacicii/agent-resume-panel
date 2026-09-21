@@ -52,7 +52,7 @@ import type {
   BrowserPolicyState,
   BrowserSessionState
 } from "../shared/browserTypes";
-import type { TaskColorKey } from "../shared/taskColors";
+import type { TaskColorKey, TaskCustomColor } from "../shared/taskColors";
 
 /** Reusable GTD task template stored in `desktop.db`. */
 export type TaskTemplate = {
@@ -61,13 +61,26 @@ export type TaskTemplate = {
   projectPaths: string[];
   /** Fixed-palette accent color; omitted when the template has none. */
   colorKey?: TaskColorKey;
+  /** Image-derived accent color (`#rrggbb`); mutually exclusive with colorKey. */
+  customColor?: TaskCustomColor;
+  /** Candidate colors extracted from the template image, first is recommended. */
+  imageColors?: TaskCustomColor[];
+  /** The persisted template image as a `data:image/png` URL; absent when none. */
+  imageDataUrl?: string;
   createdAtMs: number;
   updatedAtMs: number;
 };
 
-/** A task's resolved accent: template palette key plus derived shade step. */
+/** A template image to persist: normalized PNG plus its extracted colors. */
+export type TaskTemplateImage = {
+  pngBase64: string;
+  colors: TaskCustomColor[];
+};
+
+/** A task's resolved accent: palette key or custom color, plus derived shade step. */
 export type TaskAccent = {
-  colorKey: TaskColorKey;
+  colorKey?: TaskColorKey;
+  customColor?: TaskCustomColor;
   shade: number;
 };
 
@@ -1217,15 +1230,29 @@ export interface DesktopApi {
     updatedAtMs: number;
   }>;
   taskTemplatesList(): Promise<Array<TaskTemplate>>;
-  taskTemplatesCreate(args: { title: string; projectPaths?: string[]; colorKey?: TaskColorKey }): Promise<TaskTemplate>;
+  taskTemplatesCreate(args: {
+    title: string;
+    projectPaths?: string[];
+    colorKey?: TaskColorKey;
+    customColor?: TaskCustomColor;
+    image?: TaskTemplateImage;
+  }): Promise<TaskTemplate>;
   taskTemplatesUpdate(args: {
     templateId: string;
     title: string;
     projectPaths?: string[];
-    /** Always sets the color; null clears it. */
+    /** Always sets the accent; null clears it. */
     colorKey?: TaskColorKey | null;
+    /** Always sets the accent; a value clears the palette key. */
+    customColor?: TaskCustomColor | null;
+    /** Replace/attach the image, null to remove it, omit to keep the stored one. */
+    image?: TaskTemplateImage | null;
   }): Promise<TaskTemplate>;
   taskTemplatesDelete(args: { templateId: string }): Promise<{ ok: boolean }>;
+  /** Native image pick; returns a normalized ≤256px PNG as base64. */
+  taskTemplatesPickImage(): Promise<{ ok: true; pngBase64: string } | { ok: false; canceled: true }>;
+  /** The scoped task's template image as a data URL; absent when it has none. */
+  taskTemplateImageForTask(args: { noteId: string }): Promise<{ imageDataUrl?: string }>;
   notesLinkSessionToTask(args: { noteId: string; sessionKey: string; projectPath?: string }): Promise<{ noteId: string }>;
   notesListTaskSessionLinks(): Promise<Array<{ noteId: string; title?: string; provider: string; sessionId: string }>>;
   /** Allocate/refresh a task's neutral workspace; returns its directory. */
@@ -1823,6 +1850,8 @@ const api: DesktopApi = {
   taskTemplatesCreate: (args) => ipcRenderer.invoke("taskTemplates:create", args),
   taskTemplatesUpdate: (args) => ipcRenderer.invoke("taskTemplates:update", args),
   taskTemplatesDelete: (args) => ipcRenderer.invoke("taskTemplates:delete", args),
+  taskTemplatesPickImage: () => ipcRenderer.invoke("taskTemplates:pickImage"),
+  taskTemplateImageForTask: (args) => ipcRenderer.invoke("taskTemplate:imageForTask", args),
   notesCreateTask: (args) => ipcRenderer.invoke("notes:createTask", args),
   notesLinkSessionToTask: (args) => ipcRenderer.invoke("notes:linkSessionToTask", args),
   notesListTaskSessionLinks: () => ipcRenderer.invoke("notes:listTaskSessionLinks"),
