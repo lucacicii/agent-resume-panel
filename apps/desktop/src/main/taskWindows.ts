@@ -13,7 +13,7 @@ import { WINDOW_BACKGROUND_TRANSPARENT, windowBackgroundColor } from "./windowAp
  * pty ownership.
  */
 
-const DEFAULT_SIZE = { width: 1180, height: 820 } as const;
+const DEFAULT_SIZE = { width: 1700, height: 960 } as const;
 const MIN_SIZE = { minWidth: 860, minHeight: 600 } as const;
 /** Each window is a renderer process plus its panes; four is the budget. */
 export const MAX_TASK_WINDOWS = 4;
