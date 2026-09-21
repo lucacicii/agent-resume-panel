@@ -331,6 +331,11 @@ afterEach(() => {
   localStorage.removeItem("workbench-sidebar-view-v2");
   localStorage.removeItem("workbench-selected-project");
   localStorage.removeItem("workbench-quick-access-project");
+  // Per-workbench UI state is stored as `<key>` or `<key>:<workbenchId>`; clear
+  // both shapes so a test that toggles one cannot leak into the next.
+  for (const key of Object.keys(localStorage)) {
+    if (key.startsWith("wb-diff-session-alongside")) localStorage.removeItem(key);
+  }
   Reflect.deleteProperty(window, "agentResume");
 });
 
@@ -8201,6 +8206,75 @@ describe("WorkbenchPanel", () => {
       paneKey
     }));
     await waitFor(() => expect(terminalInput).toHaveBeenCalledWith({ id: 21, data: "follow up\r" }));
+  });
+
+  it("offers session-alongside review from the catalog even when no session pane is open", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const gitFile = { path: "src/app.ts", repoPath: "src/app.ts", repoRoot: "/work/app", status: "M", staged: false, unstaged: true };
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        ...ARROW_TEST_MESSAGES,
+        "desktop.workbench.diffSessionAlongside": "Session Alongside",
+        "desktop.workbench.diffAskAgent": "Ask Agent to Modify",
+        "desktop.workbench.fileOpen": "Open File"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listProjects: async () => [{
+        projectId: "proj-a", portableKey: "/work/app", alias: "App", hidden: false, pinned: false,
+        lastSeenAtMs: null, updatedAtMs: 0, localPath: "/work/app", pathMissing: false, sessionCount: 1
+      }],
+      // The session exists in the catalog, but its pane is intentionally never opened.
+      listSessions: async () => [{ provider: "codex", id: "s1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 5 }],
+      notesListTasks: async () => [],
+      terminalGitStatus: async () => ({
+        isRepo: true,
+        root: "/work/app",
+        staged: [],
+        unstaged: [gitFile],
+        nestedRepos: [],
+        tracking: []
+      }),
+      terminalGitDiffSides: async () => ({
+        oldLabel: "HEAD",
+        newLabel: "Working Tree",
+        oldText: "export const old = true;\n",
+        newText: "export const app = true;\n",
+        hunks: []
+      }),
+      terminalGitFetch: async () => ({ ok: true }),
+      terminalDestroy: async () => ({ ok: true }),
+      terminalResize: async () => ({ ok: true })
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("agent-resume:workbench-task", { detail: {
+        noteId: "wi-1", title: "Realtime status", status: "next", projects: ["/work/app"], sessions: ["codex:s1"]
+      } }));
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: /^Git/ }));
+    fireEvent.click(await screen.findByTitle("src/app.ts"));
+    await waitFor(() => expect(document.querySelector(".wb-git-diff-pane")).not.toBeNull());
+    // No terminal pane was ever spawned for this workbench.
+    expect(document.querySelectorAll(".wb-terminal-tab.is-session")).toHaveLength(0);
+
+    const toggle = await screen.findByRole("button", { name: "Session Alongside" });
+    fireEvent.click(toggle);
+
+    // The transcript is read from the catalog; input stays disabled without a live pane.
+    await waitFor(() => expect(document.querySelector(".wb-diff-split-session .wb-session-split-transcript")).not.toBeNull());
+    expect(document.querySelector(".wb-diff-split-session .wb-terminal-composer")).toBeNull();
   });
 
   it("organizes the Workbench by tasks", async () => {

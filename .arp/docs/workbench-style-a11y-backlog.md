@@ -158,3 +158,29 @@ review toggle was called `Side-by-Side Review` / `分屏对照审查`. Same word
 different axes. Renamed to `Session Alongside` / `会话对照` / `セッション併記`,
 with the key renamed `diffSplitReview` → `diffSessionAlongside` and the old key
 retired through `obsoleteDesktopKeys`.
+
+## E. Session-alongside was gated on an open pane, not on the session
+
+After B, the toggle still went missing in the reported case. The gate asked "is
+there an open session *pane*", but the transcript pane is loaded from the catalog
+by `provider` + `sessionId` — it never needed a live pane. So browsing the session
+list and opening a diff hid the toggle for no good reason.
+
+Now the review target resolves in priority order:
+
+1. a live terminal session pane (also enables the composer),
+2. a live ACP chat pane,
+3. the catalog session the user last touched (`activeSessionKey`), else the most
+   recent CLI session in the list — transcript only, no composer, since nothing
+   can take input in that case.
+
+ACP sessions are excluded from (3): they have no CLI transcript, so showing them
+would need a chat view the catalog cannot supply.
+
+Covered by a test that opens a diff with **no session pane at all** and asserts
+the toggle appears and renders the transcript without a composer; it fails if the
+catalog fallback is removed.
+
+Also added `wb-diff-session-alongside*` to the test `afterEach` cleanup — the
+toggle persists to localStorage, so a test that switched it on leaked into the
+next one.
