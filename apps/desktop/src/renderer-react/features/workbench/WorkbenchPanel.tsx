@@ -6352,7 +6352,7 @@ export function WorkbenchPanel(): ReactPortal | null {
             {targetSessionPane ? (
               <button
                 type="button"
-                className={`wb-git-action-btn wb-diff-split-toggle${diffSplitReview ? " is-active" : ""}`}
+                className={`wb-diff-split-toggle${diffSplitReview ? " is-active" : ""}`}
                 aria-pressed={diffSplitReview}
                 aria-label={t("desktop.workbench.diffSplitReview")}
                 title={t("desktop.workbench.diffSplitReview")}
@@ -6366,7 +6366,7 @@ export function WorkbenchPanel(): ReactPortal | null {
                 <span>{t("desktop.workbench.diffSplitReview")}</span>
               </button>
             ) : null}
-            <button type="button" className="wb-git-action-btn wb-diff-ask-agent" aria-label={t("desktop.workbench.diffAskAgent")} title={t("desktop.workbench.diffAskAgent")} onClick={() => askAgentAboutDiff(currentDiff)}><ThemeIcon name="bot" size={ICON_SIZE.dense} /><span>{t("desktop.workbench.diffAskAgent")}</span></button>
+            <button type="button" className="wb-diff-ask-agent" aria-label={t("desktop.workbench.diffAskAgent")} title={t("desktop.workbench.diffAskAgent")} onClick={() => askAgentAboutDiff(currentDiff)}><ThemeIcon name="bot" size={ICON_SIZE.dense} /><span>{t("desktop.workbench.diffAskAgent")}</span></button>
             <button type="button" className="wb-git-action-btn wb-diff-open" aria-label={t("desktop.workbench.fileOpen")} title={t("desktop.workbench.fileOpen")} onClick={() => void openFile(gitChangeFilePath(currentDiff))}><ThemeIcon name="file" size={ICON_SIZE.default} /></button>
           </div>
         </div>

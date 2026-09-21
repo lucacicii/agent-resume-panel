@@ -8014,24 +8014,55 @@ body.is-pane-resizing-v * {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
+  /* Never let a long file path squeeze the actions out of the bar. */
+  flex: 0 0 auto;
 }
 
-.wb-diff-ask-agent {
+/* Label-bearing buttons in the diff bar. These are deliberately NOT composed
+   with .wb-git-action-btn: that class is a 28x28 icon button (grid + fixed
+   width), which squashed wrapped the label out of the box. */
+.wb-diff-ask-agent,
+.wb-diff-split-toggle {
+  appearance: none;
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  padding: 0 var(--space-2);
+  flex: 0 0 auto;
   height: 24px;
+  min-height: 24px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-separator);
   border-radius: var(--radius-sm);
   background: var(--color-fill-secondary);
-  color: var(--color-accent);
+  color: var(--color-label-primary);
   font-size: var(--font-size-caption);
   font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+  transition: background var(--duration-fast) var(--ease-out),
+              border-color var(--duration-fast) var(--ease-out),
+              color var(--duration-fast) var(--ease-out);
 }
 
-.wb-diff-ask-agent:hover {
-  background: var(--color-fill-tertiary);
+.wb-diff-ask-agent {
   color: var(--color-accent);
+}
+
+.wb-diff-ask-agent:hover,
+.wb-diff-split-toggle:hover {
+  background: var(--color-fill-tertiary);
+  border-color: var(--color-accent);
+}
+
+.wb-diff-ask-agent:focus-visible,
+.wb-diff-split-toggle:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-focus-ring);
+}
+
+.wb-diff-split-toggle.is-active {
+  background: var(--color-fill-primary);
+  color: var(--color-accent);
+  border-color: var(--color-accent);
 }
 
 .wb-diff-back {
@@ -9520,12 +9551,6 @@ textarea.wb-editor-host {
   height: 100%;
 }
 
-.wb-diff-split-toggle.is-active {
-  background: var(--color-fill-primary);
-  color: var(--color-accent);
-  border-color: var(--color-accent);
-}
-
 .wb-git-diff-pane {
   position: relative;
   background: var(--color-window-bg);
@@ -9900,6 +9925,7 @@ textarea.wb-editor-host {
   .wb-session-git-commit-btn,
   .wb-git-clean-action-btn,
   .wb-diff-ask-agent,
+  .wb-diff-split-toggle,
   .wb-workbench-tab-close,
   .wb-terminal-tab-close {
     transition: none;

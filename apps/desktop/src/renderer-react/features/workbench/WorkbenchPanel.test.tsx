@@ -6193,6 +6193,10 @@ describe("WorkbenchPanel", () => {
 
     // Click "Ask Agent to Modify" in diff head
     const askAgentBtn = await screen.findByRole("button", { name: "Ask Agent to Modify" });
+    // Both diff-bar buttons carry a label, so they must not be composed with
+    // .wb-git-action-btn: that is a 28x28 icon button (grid + fixed width) and
+    // would squash the label out of the box.
+    expect(askAgentBtn.classList.contains("wb-git-action-btn")).toBe(false);
     fireEvent.click(askAgentBtn);
 
     // Verifies it returned to the session view and prefilled the composer with the diff path
@@ -6284,6 +6288,7 @@ describe("WorkbenchPanel", () => {
 
     // Click "Side-by-Side Review" toggle
     const splitBtn = await screen.findByRole("button", { name: "Side-by-Side Review" });
+    expect(splitBtn.classList.contains("wb-git-action-btn")).toBe(false);
     fireEvent.click(splitBtn);
 
     // Verifies both session transcript and diff pane are rendered in side-by-side layout
