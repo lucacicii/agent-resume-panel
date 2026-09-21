@@ -2080,10 +2080,9 @@ export function WorkbenchPanel(): ReactPortal | null {
       selectProject(pane.projectPath, { keepSessionKey: true, keepSide: true });
     }
     setActivePane(paneKey, pane.projectPath);
-    const submitDirectly = sessionViewMode === "hybrid" && tuiCollapsed;
     void desktopApi().terminalInput({
       id: pane.ptyId,
-      data: submitDirectly ? `${text}\r` : text
+      data: `${text}\r`
     });
     onTerminalInput(paneKey);
     const identity = sessionIdentityFromKey(pane.sessionKey);
@@ -2121,12 +2120,10 @@ export function WorkbenchPanel(): ReactPortal | null {
     if (!identity) {
       triggerSessionSync();
     }
-    if (!submitDirectly) {
-      window.requestAnimationFrame(() => {
-        terminalRefs.current.get(pane.ptyId!)?.focus();
-      });
-    }
-  }, [composerDrafts, onTerminalInput, sessionViewMode, setActivePane, tuiCollapsed]);
+    window.requestAnimationFrame(() => {
+      terminalRefs.current.get(pane.ptyId!)?.focus();
+    });
+  }, [composerDrafts, onTerminalInput, setActivePane]);
 
   const runComposerSlashCommand = useCallback((paneKey: string, command: TuiSlashCommand, args = "") => {
     const pane = terminalsRef.current.find((item) => item.key === paneKey);
@@ -5734,6 +5731,72 @@ export function WorkbenchPanel(): ReactPortal | null {
       }
     })();
   };
+  const workbenchTabsBar = taskScope && workbenches.length > 0 ? (
+    <div className="wb-workbench-bar" role="tablist" aria-label={t("desktop.workbench.workbenchTabs")}>
+      {workbenches.map((workbench) => {
+        const wbDot = rollupDot({ work: { sessions: workbenchSessionKeys[workbench.workbenchId] ?? [] } }, dotByKey);
+        return (
+        <div
+          key={workbench.workbenchId}
+          className={`wb-workbench-tab${workbench.workbenchId === activeWorkbenchId ? " active" : ""}`}
+        >
+          {renamingWorkbenchId === workbench.workbenchId ? (
+            <input
+              className="wb-workbench-tab-input"
+              value={workbenchRenameDraft}
+              autoFocus
+              aria-label={t("desktop.common.rename")}
+              onChange={(event) => setWorkbenchRenameDraft(event.target.value)}
+              onBlur={() => void commitWorkbenchRename()}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") { event.preventDefault(); void commitWorkbenchRename(); }
+                if (event.key === "Escape") { event.preventDefault(); setRenamingWorkbenchId(null); }
+              }}
+            />
+          ) : (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={workbench.workbenchId === activeWorkbenchId}
+              className="wb-workbench-tab-label"
+              title={workbench.projectPath || workbenchDisplayName(workbench)}
+              onClick={() => activateWorkbench(workbench)}
+              onDoubleClick={() => {
+                setRenamingWorkbenchId(workbench.workbenchId);
+                setWorkbenchRenameDraft(workbenchDisplayName(workbench));
+              }}
+            >
+              <ThemeIcon name="square-kanban" size={ICON_SIZE.dense} aria-hidden="true" />
+              {wbDot && wbDot.status !== "open" ? <span className={`session-dot${sessionDotStatusClass(wbDot.status)}`} aria-hidden="true" /> : null}
+              {workbenchDisplayName(workbench)}
+            </button>
+          )}
+          {workbenches.length > 1 ? (
+            <button
+              type="button"
+              className="wb-workbench-tab-close"
+              aria-label={t("desktop.workbench.deleteWorkbench")}
+              title={t("desktop.workbench.deleteWorkbench")}
+              onClick={() => void removeWorkbench(workbench)}
+            >
+              <ThemeIcon name="close" size={ICON_SIZE.inline} />
+            </button>
+          ) : null}
+        </div>
+        );
+      })}
+      <button
+        type="button"
+        className="wb-workbench-add"
+        aria-label={t("desktop.workbench.newWorkbench")}
+        title={t("desktop.workbench.newWorkbench")}
+        onClick={() => void addWorkbench()}
+      >
+        <ThemeIcon name="plus" size={ICON_SIZE.dense} aria-hidden="true" />
+      </button>
+    </div>
+  ) : null;
+
   const detailHeader = (
     <WorkbenchDetailHeader
       title={headerTitle}
@@ -5746,6 +5809,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       branchStatusNested={branchStatusNested}
       onOpenBranchMenu={openBranchMenu}
       onToggleSide={(view) => setSide((current) => current === view ? null : view)}
+      centerContent={workbenchTabsBar}
     />
   );
 
@@ -5966,71 +6030,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       <ResizeHandle label={t("desktop.workbench.resizeSessions")} onDelta={(delta) => setWidth("list", delta)} />
       <main className="wb-detail">
         {active && headerSlot && !inlineHeader ? createPortal(detailHeader, headerSlot) : null}
-        {taskScope && workbenches.length > 0 ? (
-          <div className="wb-workbench-bar" role="tablist" aria-label={t("desktop.workbench.workbenchTabs")}>
-            {workbenches.map((workbench) => {
-              const wbDot = rollupDot({ work: { sessions: workbenchSessionKeys[workbench.workbenchId] ?? [] } }, dotByKey);
-              return (
-              <div
-                key={workbench.workbenchId}
-                className={`wb-workbench-tab${workbench.workbenchId === activeWorkbenchId ? " active" : ""}`}
-              >
-                {renamingWorkbenchId === workbench.workbenchId ? (
-                  <input
-                    className="wb-workbench-tab-input"
-                    value={workbenchRenameDraft}
-                    autoFocus
-                    aria-label={t("desktop.common.rename")}
-                    onChange={(event) => setWorkbenchRenameDraft(event.target.value)}
-                    onBlur={() => void commitWorkbenchRename()}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") { event.preventDefault(); void commitWorkbenchRename(); }
-                      if (event.key === "Escape") { event.preventDefault(); setRenamingWorkbenchId(null); }
-                    }}
-                  />
-                ) : (
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={workbench.workbenchId === activeWorkbenchId}
-                    className="wb-workbench-tab-label"
-                    title={workbench.projectPath || workbenchDisplayName(workbench)}
-                    onClick={() => activateWorkbench(workbench)}
-                    onDoubleClick={() => {
-                      setRenamingWorkbenchId(workbench.workbenchId);
-                      setWorkbenchRenameDraft(workbenchDisplayName(workbench));
-                    }}
-                  >
-                    <ThemeIcon name="square-kanban" size={ICON_SIZE.dense} aria-hidden="true" />
-                    {wbDot && wbDot.status !== "open" ? <span className={`session-dot${sessionDotStatusClass(wbDot.status)}`} aria-hidden="true" /> : null}
-                    {workbenchDisplayName(workbench)}
-                  </button>
-                )}
-                {workbenches.length > 1 ? (
-                  <button
-                    type="button"
-                    className="wb-workbench-tab-close"
-                    aria-label={t("desktop.workbench.deleteWorkbench")}
-                    title={t("desktop.workbench.deleteWorkbench")}
-                    onClick={() => void removeWorkbench(workbench)}
-                  >
-                    <ThemeIcon name="close" size={ICON_SIZE.inline} />
-                  </button>
-                ) : null}
-              </div>
-              );
-            })}
-            <button
-              type="button"
-              className="wb-workbench-add"
-              aria-label={t("desktop.workbench.newWorkbench")}
-              title={t("desktop.workbench.newWorkbench")}
-              onClick={() => void addWorkbench()}
-            >
-              <ThemeIcon name="plus" size={ICON_SIZE.dense} aria-hidden="true" />
-            </button>
-          </div>
-        ) : null}
         <div className="wb-detail-body">
           <div className="wb-terminal-shell">{paneTabGroups}<div className="wb-terminal-stack">{terminals.filter((pane) => paneScopeKey(pane) === activeScopeKey && pane.key === activePane).map((pane) => {
             const sessionIdentity = sessionIdentityFromKey(pane.sessionKey);
@@ -6081,6 +6080,12 @@ export function WorkbenchPanel(): ReactPortal | null {
                       <span className="wb-session-split-tui-title">
                         <ThemeIcon name="terminal" size={ICON_SIZE.dense} />
                         <span>{t("desktop.workbench.terminalConsole")}</span>
+                        {tuiCollapsed && sessionRuntimeByPaneKey.get(pane.key)?.status === "awaiting_user" ? (
+                          <span className="wb-session-split-tui-awaiting">
+                            <span className="session-dot is-awaiting" aria-hidden="true" />
+                            <span>{t("desktop.workbench.sessionDot.awaiting")}</span>
+                          </span>
+                        ) : null}
                       </span>
                       <div className="wb-session-split-tui-actions" onClick={(e) => e.stopPropagation()}>
                         <button

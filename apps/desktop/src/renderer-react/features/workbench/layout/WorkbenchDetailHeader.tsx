@@ -14,7 +14,8 @@ export function WorkbenchDetailHeader({
   branchStatusPane,
   branchStatusNested,
   onOpenBranchMenu,
-  onToggleSide
+  onToggleSide,
+  centerContent
 }: {
   /** What the header names: the task, or a bare project selection. */
   title: string;
@@ -30,6 +31,8 @@ export function WorkbenchDetailHeader({
   branchStatusNested: boolean;
   onOpenBranchMenu: (pane: TerminalPane, anchor: HTMLButtonElement) => void;
   onToggleSide: (view: Exclude<WorkbenchSideView, null>) => void;
+  /** Optional center content, e.g. task workbench tabs. */
+  centerContent?: React.ReactNode;
 }): React.JSX.Element {
   const { t } = useI18n();
   return <>
@@ -48,6 +51,7 @@ export function WorkbenchDetailHeader({
           ><ThemeIcon name="folder-open" size={ICON_SIZE.dense} aria-hidden="true" /></button>
         ) : null}
       </span>
+      {centerContent ? <div className="wb-detail-head-center">{centerContent}</div> : null}
       <div className="wb-detail-head-actions">
         {branchStatusLabel && branchStatusPane ? (
           <div className="wb-terminal-status">

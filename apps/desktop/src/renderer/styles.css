@@ -5219,6 +5219,21 @@ code {
   letter-spacing: 0.04em;
 }
 
+.wb-session-split-tui-awaiting {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: var(--space-2);
+  padding: 1px var(--space-1-5);
+  border-radius: var(--radius-sm);
+  background: var(--color-warning-subtle, rgba(234, 179, 8, 0.15));
+  color: var(--color-warning, #eab308);
+  font-size: var(--font-size-micro, 11px);
+  font-weight: var(--font-weight-medium, 500);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
 .wb-session-split-tui-actions {
   display: inline-flex;
   align-items: center;
@@ -5526,6 +5541,54 @@ body.is-pane-resizing-v * {
   padding: 0 var(--space-3);
   border-bottom: none;
   background: transparent;
+}
+
+.wb-detail-head-center {
+  display: flex;
+  align-items: center;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 45%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.wb-detail-head-center::-webkit-scrollbar {
+  display: none;
+}
+
+.wb-detail-head-center .wb-workbench-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-0-5);
+  height: 26px;
+  padding: 0;
+  border-bottom: none;
+  background: transparent;
+  flex-shrink: 0;
+}
+
+.wb-detail-head-center .wb-workbench-tab {
+  height: 24px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: var(--color-fill-secondary);
+}
+
+.wb-detail-head-center .wb-workbench-tab.active {
+  background: var(--color-fill-primary);
+  border-color: var(--color-separator);
+}
+
+.wb-detail-head-center .wb-workbench-tab-label {
+  padding: 0 var(--space-2);
+  line-height: 24px;
+}
+
+.wb-detail-head-center .wb-workbench-add {
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-sm);
 }
 
 .wb-detail-project-label {

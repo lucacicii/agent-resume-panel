@@ -1545,7 +1545,7 @@ describe("WorkbenchPanel", () => {
     if (!composerInput) throw new Error("composer input missing");
     fireEvent.change(composerInput, { target: { value: "inspect src" } });
     fireEvent.click(screen.getByRole("button", { name: "Send to terminal" }));
-    await waitFor(() => expect(terminalInput).toHaveBeenCalledWith({ id: 1, data: "inspect src" }));
+    await waitFor(() => expect(terminalInput).toHaveBeenCalledWith({ id: 1, data: "inspect src\r" }));
     expect(composerInput.value).toBe("");
     expect(workbenchComposerSendAppend).toHaveBeenCalledWith(expect.objectContaining({ text: "inspect src", projectPath: "/work/app" }));
     await waitFor(() => expect(xtermMocks.instances[0].focusCalls).toBeGreaterThan(0));
@@ -6262,6 +6262,8 @@ describe("WorkbenchPanel", () => {
     await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
     fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
     await waitFor(() => expect(document.querySelector(".wb-terminal-tab.is-session.active .session-dot.is-awaiting")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "desktop.common.collapse" }));
+    await waitFor(() => expect(document.querySelector(".wb-session-split-tui-awaiting")).toBeTruthy());
   });
 
   it("opens a floating note from an active CLI session tab and creates the session note", async () => {
