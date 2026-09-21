@@ -9450,8 +9450,6 @@ describe("WorkbenchPanel", () => {
         return found as HTMLElement;
       });
       expect(strip.querySelector(".wb-detail-tools")).toBeTruthy();
-      // There is no board to go back to.
-      expect(strip.querySelector(".wb-back-to-gtd")).toBeNull();
       // And it is not also portaled into an app header slot.
       expect(document.querySelector(".mac-top .wb-detail-head")).toBeNull();
     } finally {

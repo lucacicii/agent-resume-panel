@@ -5680,6 +5680,9 @@ body.is-pane-resizing-v * {
 
 .wb-detail-tool svg {
   display: block;
+}
+
+.wb-detail-tool svg[data-icon-system="lucide"] {
   stroke: currentColor;
   fill: none;
   stroke-linecap: round;
@@ -8123,24 +8126,36 @@ body.is-pane-resizing-v * {
   position: relative;
 }
 
-/* Workbench pane groups share one active pane but keep type-specific tab rows. */
+/* Workbench unified single-row tab strip with type-specific sections. */
 .wb-pane-tab-groups {
   display: flex;
-  flex-direction: column;
-  flex: 0 0 auto;
+  flex-direction: row;
+  align-items: stretch;
+  flex: 0 0 32px;
+  height: 32px;
+  min-height: 32px;
+  max-height: 32px;
   min-width: 0;
   background: var(--color-pane-bg);
+  border-bottom: 0.5px solid var(--color-separator);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.wb-pane-tab-groups::-webkit-scrollbar {
+  display: none;
 }
 
 /* Safari/Finder style segmented tab bar */
 .wb-terminal-tabs {
-  display: flex;
+  display: inline-flex;
   align-items: stretch;
   min-height: 32px;
   height: 32px;
   padding: 0;
-  border-bottom: 0.5px solid var(--color-separator);
-  background: var(--color-pane-bg);
+  border-bottom: none;
+  background: transparent;
   flex-shrink: 0;
 }
 
@@ -15119,26 +15134,6 @@ html[data-window-mode="main"]:not([data-board-view="notes"]) #react-notes {
 .gtd-new-btn:disabled {
   opacity: 0.5;
   cursor: default;
-}
-
-.wb-back-to-gtd {
-  appearance: none;
-  border: none;
-  background: transparent;
-  padding: 0;
-  width: 28px;
-  height: 28px;
-  display: grid;
-  place-items: center;
-  border-radius: var(--radius-md);
-  color: var(--muted);
-
-  -webkit-app-region: no-drag;
-}
-
-.wb-back-to-gtd:hover {
-  color: var(--text);
-  background: var(--color-fill-tertiary);
 }
 
 /* ===== Task workbench tab strip (GTD task → n workbenches) ===== */

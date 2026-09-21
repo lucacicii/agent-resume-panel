@@ -39,7 +39,6 @@ function renderGtd(overrides?: Partial<typeof window.agentResume>) {  const host
         "desktop.gtd.taskTitleRequired": "Title is required",
         "desktop.common.cancel": "Cancel",
         "desktop.common.close": "Close",
-        "desktop.gtd.backToGtd": "Back to GTD",
         "desktop.gtd.notesPanel": "Notes",
         "desktop.gtd.newLooseNote": "New note",
         "desktop.gtd.noLooseNotes": "No notes",

@@ -5,7 +5,6 @@ import type { TerminalPane } from "../terminal/TerminalView";
 type WorkbenchSideView = "files" | "git" | "search" | "scripts" | null;
 
 export function WorkbenchDetailHeader({
-  onBackToGtd,
   title,
   directory,
   onRevealDirectory,
@@ -17,8 +16,6 @@ export function WorkbenchDetailHeader({
   onOpenBranchMenu,
   onToggleSide
 }: {
-  /** Return to the GTD board (the app's root view). */
-  onBackToGtd?: () => void;
   /** What the header names: the task, or a bare project selection. */
   title: string;
   /** Absolute directory the header points at, or null when there is none. */
@@ -36,15 +33,6 @@ export function WorkbenchDetailHeader({
 }): React.JSX.Element {
   const { t } = useI18n();
   return <>
-    {onBackToGtd ? (
-      <button
-        type="button"
-        className="wb-back-to-gtd"
-        aria-label={t("desktop.gtd.backToGtd")}
-        title={t("desktop.gtd.backToGtd")}
-        onClick={onBackToGtd}
-      ><ThemeIcon name="arrow-left" size={ICON_SIZE.default} /></button>
-    ) : null}
     <div className="wb-detail-head">
       <span className="wb-detail-project-label">
         {imageUrl ? <img className="wb-detail-task-image" src={imageUrl} alt="" aria-hidden="true" /> : null}

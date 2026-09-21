@@ -9,7 +9,6 @@ function renderHeader(overrides?: Partial<Parameters<typeof WorkbenchDetailHeade
       locale: "en",
       messages: {
         "desktop.common.revealInFinder": "Reveal in Finder",
-        "desktop.gtd.backToGtd": "Back to GTD",
         "desktop.workbench.sidePanelExplorer": "Explorer",
         "desktop.workbench.sidePanelScripts": "Scripts",
         "desktop.workbench.sidePanelSearch": "Search",

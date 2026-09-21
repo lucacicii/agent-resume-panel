@@ -5736,7 +5736,6 @@ export function WorkbenchPanel(): ReactPortal | null {
   };
   const detailHeader = (
     <WorkbenchDetailHeader
-      onBackToGtd={inlineHeader ? undefined : () => window.dispatchEvent(new CustomEvent("agent-resume:view-gtd"))}
       title={headerTitle}
       directory={headerDirectory}
       onRevealDirectory={headerDirectory ? revealHeaderDirectory : undefined}
