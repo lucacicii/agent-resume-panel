@@ -1,5 +1,6 @@
 import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
-import { useCallback, useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
+import { NativeMenuSelect } from "../../components/NativeMenuSelect";
+import { Children, isValidElement, useCallback, useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { WorkbenchComposerMention } from "@agent-resume/core";
 import { desktopApi } from "../../bridge";
 import { SegmentedControl } from "../../components/SegmentedControl";
@@ -31,7 +32,15 @@ function ToggleRow({ title, description, checked, onChange }: { title: string; d
 }
 
 function SelectRow({ title, description, value, onChange, children }: { title: string; description?: string; value: string | number; onChange: (value: string) => void; children: ReactNode }) {
-  return <label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{title}</span>{description ? <span className="settings-row-desc">{description}</span> : null}</span><select className="settings-row-control" value={value} onChange={(event) => onChange(event.target.value)}>{children}</select></label>;
+  // The caller keeps the declarative `<option>` children; read them into the
+  // value/label pairs the native menu needs.
+  const options = Children.toArray(children).flatMap((child) => {
+    if (!isValidElement(child)) return [];
+    const props = child.props as { value?: string | number; children?: ReactNode };
+    if (props.value === undefined) return [];
+    return [{ value: String(props.value), label: String(props.children ?? props.value) }];
+  });
+  return <label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{title}</span>{description ? <span className="settings-row-desc">{description}</span> : null}</span><NativeMenuSelect className="settings-row-control" ariaLabel={title} title={title} value={String(value)} options={options} onChange={onChange} /></label>;
 }
 
 export function WorkbenchPane({ draft, setDraft, commit, t }: { draft: WorkbenchDraft; setDraft: (value: WorkbenchDraft) => void; commit: (value: WorkbenchDraft) => void; t: Translate }) {

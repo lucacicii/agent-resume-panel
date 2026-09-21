@@ -1059,27 +1059,6 @@ html[data-window-mode="main"] .mac-top {
   box-shadow: 0 0 0 0.5px var(--color-separator);
 }
 
-/* Native macOS Account Menu Popover */
-.rail-account-menu {
-  position: fixed;
-  z-index: 320;
-  min-width: 190px;
-  padding: var(--space-1-5);
-  display: flex;
-  flex-direction: column;
-  /* Opens to the right of the avatar button and grows upward, so it scales out of
-     the corner nearest that anchor. */
-  transform-origin: bottom left;
-  gap: var(--space-0-5);
-  border: 0.5px solid var(--color-separator);
-  border-radius: var(--radius-xl);
-  background: var(--color-elevated-bg);
-  backdrop-filter: var(--backdrop-blur);
-  -webkit-backdrop-filter: var(--backdrop-blur);
-  box-shadow: var(--shadow-popover);
-  animation: mac-popover-enter var(--duration-fast) var(--ease-out);
-}
-
 @keyframes mac-popover-enter {
   from {
     opacity: 0;
@@ -1089,35 +1068,6 @@ html[data-window-mode="main"] .mac-top {
     opacity: 1;
     transform: translateY(0) scale(1);
   }
-}
-
-.rail-account-menu-item {
-  appearance: none;
-  border: none;
-  background: transparent;
-  color: var(--color-label-primary);
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  width: 100%;
-  text-align: left;
-  padding: var(--space-1-5) var(--space-2-5);
-  border-radius: var(--radius-md);
-  font-size: var(--font-size-body);
-  font-family: inherit;
-
-  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
-}
-
-.rail-account-menu-item:hover {
-  background: var(--color-accent);
-  color: #ffffff;
-}
-
-.rail-account-menu-item:focus-visible {
-  outline: none;
-  background: var(--color-accent);
-  color: #ffffff;
 }
 
 /* Session status dots (Apple-style status bullets) */
@@ -1588,7 +1538,6 @@ svg[data-icon-system="sf"] * {
 .chat-tools-popover.is-closing,
 .selection-action-result.is-closing,
 .notification-popover.is-closing,
-.rail-account-menu.is-closing,
 .wb-context-menu.is-closing,
 .notes-context-menu.is-closing,
 .chat-context-menu.is-closing {
@@ -2329,9 +2278,14 @@ svg[data-icon-system="sf"] * {
 
 .settings-row-control {
   flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1);
   min-width: 140px;
   max-width: 240px;
   height: 28px;
+  padding: 0 var(--space-2);
   line-height: normal;
 }
 
@@ -8556,11 +8510,15 @@ button.wb-pane-tab-group-label.is-busy {
 }
 
 /* Compact macOS-style pop-up for ACP mode/model/thinking */
-#react-workbench select.wb-acp-toolbar-select,
-.wb-acp-chat select.wb-acp-toolbar-select,
-select.wb-acp-toolbar-select {
+#react-workbench .wb-acp-toolbar-select,
+.wb-acp-chat .wb-acp-toolbar-select,
+.wb-acp-toolbar-select {
   appearance: none !important;
   -webkit-appearance: none !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-0-5);
   flex: 0 0 auto !important;
   box-sizing: border-box !important;
   width: auto !important;
@@ -8568,47 +8526,38 @@ select.wb-acp-toolbar-select {
   min-width: 52px !important;
   height: 22px !important;
   margin: 0 !important;
-  padding: 0 var(--space-5) 0 var(--space-2) !important;
+  padding: 0 var(--space-1-5) !important;
   border: 0.5px solid var(--color-separator-strong) !important;
   border-radius: var(--radius-sm) !important;
   background-color: var(--color-fill-secondary) !important;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='12' viewBox='0 0 8 12' fill='none'%3E%3Cpath d='M1.5 4.25L4 1.75L6.5 4.25' stroke='%238E8E93' stroke-width='1.25' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M1.5 7.75L4 10.25L6.5 7.75' stroke='%238E8E93' stroke-width='1.25' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
-  background-repeat: no-repeat !important;
-  background-position: right 5px center !important;
-  background-size: 7px 11px !important;
   color: var(--color-label-primary) !important;
   font: 500 11px/1.2 var(--font-family-system) !important;
   letter-spacing: -0.01em;
-  text-overflow: ellipsis;
   white-space: nowrap;
   cursor: default;
   transition: background-color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out);
 }
 
-#react-workbench select.wb-acp-toolbar-select:hover:not(:disabled),
-.wb-acp-chat select.wb-acp-toolbar-select:hover:not(:disabled),
-select.wb-acp-toolbar-select:hover:not(:disabled) {
+#react-workbench .wb-acp-toolbar-select:hover:not(:disabled),
+.wb-acp-chat .wb-acp-toolbar-select:hover:not(:disabled),
+.wb-acp-toolbar-select:hover:not(:disabled) {
   background-color: var(--color-fill-tertiary) !important;
   border-color: var(--color-accent) !important;
 }
 
-#react-workbench select.wb-acp-toolbar-select:focus-visible,
-.wb-acp-chat select.wb-acp-toolbar-select:focus-visible,
-select.wb-acp-toolbar-select:focus-visible {
+#react-workbench .wb-acp-toolbar-select:focus-visible,
+.wb-acp-chat .wb-acp-toolbar-select:focus-visible,
+.wb-acp-toolbar-select:focus-visible {
   outline: none !important;
   border-color: var(--color-accent) !important;
   box-shadow: 0 0 0 2px var(--color-focus-ring) !important;
 }
 
-#react-workbench select.wb-acp-toolbar-select:disabled,
-.wb-acp-chat select.wb-acp-toolbar-select:disabled,
-select.wb-acp-toolbar-select:disabled {
+#react-workbench .wb-acp-toolbar-select:disabled,
+.wb-acp-chat .wb-acp-toolbar-select:disabled,
+.wb-acp-toolbar-select:disabled {
   opacity: 0.45;
   cursor: not-allowed;
-}
-
-select.wb-acp-toolbar-select option {
-  font-size: 12px;
 }
 
 .wb-acp-compose .chat-compose-toolbar {

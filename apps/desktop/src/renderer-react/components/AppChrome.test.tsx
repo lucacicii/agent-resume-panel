@@ -110,15 +110,17 @@ describe("AppChrome", () => {
     await screen.findByRole("button", { name: "Account" });
 
     const openSettingsWindow = vi.fn(async () => ({ ok: true }));
-    (window.agentResume as unknown as { openSettingsWindow: typeof openSettingsWindow }).openSettingsWindow = openSettingsWindow;
+    const contextMenuShow = vi.fn(async (_args: { x: number; y: number; items: Array<{ id?: string; label?: string }> }): Promise<string | null> => "settings");
+    Object.assign(window.agentResume as unknown as Record<string, unknown>, { openSettingsWindow, contextMenuShow });
 
     fireEvent.click(screen.getByRole("button", { name: "Account" }));
-    const settingsItem = await screen.findByRole("menuitem", { name: "Settings" });
-    fireEvent.click(settingsItem);
+
+    // The account menu is a native NSMenu now: assert the item list the renderer sends.
+    await waitFor(() => expect(contextMenuShow).toHaveBeenCalled());
+    const items = contextMenuShow.mock.calls.at(-1)![0].items;
+    expect(items.find((item) => item.label === "Settings")?.id).toBe("settings");
 
     // Settings is its own window, so the menu asks the main process for it.
     await waitFor(() => expect(openSettingsWindow).toHaveBeenCalledWith({ pane: "general" }));
-    // The menu stays mounted while its exit animation runs.
-    await waitFor(() => expect(screen.queryByRole("menuitem", { name: "Settings" })).toBeNull());
   });
 });

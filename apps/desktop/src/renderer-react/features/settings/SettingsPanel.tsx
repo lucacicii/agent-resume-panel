@@ -1,4 +1,5 @@
 import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
+import { NativeMenuSelect } from "../../components/NativeMenuSelect";
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { appearanceStateFromSettings } from "../../themes";
@@ -313,9 +314,9 @@ function GeneralPane({ draft, setDraft, commit, t }: { draft: GeneralDraft; setD
   return <>
     <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.appearance")}</h3><div className="settings-group-body">
       <div className="settings-theme-field"><span className="settings-field-label">{t("desktop.settings.theme")}</span><span className="settings-field-desc muted">{t("desktop.settings.themeDesc")}</span><div className="theme-mode-control" role="radiogroup" aria-label={t("desktop.settings.theme")}>{(["system", "light", "dark"] as const).map((mode) => <button type="button" role="radio" aria-checked={draft.desktopTheme === mode} className={draft.desktopTheme === mode ? "is-selected" : ""} key={mode} onClick={() => update("desktopTheme", mode)}>{t(mode === "system" ? "desktop.settings.themeSystem" : mode === "light" ? "desktop.settings.themeLight" : "desktop.settings.themeDark")}</button>)}</div></div>
-      <label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">UI Language</span><span className="settings-row-desc">{t("desktop.settings.fieldUiLanguageDescription")}</span></span><select className="settings-row-control" value={draft.uiLanguage} onChange={(event) => update("uiLanguage", event.target.value as GeneralDraft["uiLanguage"])}><option value="auto">{t("desktop.settings.fieldUiLanguageOptionAuto")}</option><option value="en">English</option><option value="zh-cn">简体中文</option><option value="ja">日本語</option></select></label>
+      <label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">UI Language</span><span className="settings-row-desc">{t("desktop.settings.fieldUiLanguageDescription")}</span></span><NativeMenuSelect className="settings-row-control" ariaLabel="UI Language" title="UI Language" value={draft.uiLanguage} options={[{ value: "auto", label: t("desktop.settings.fieldUiLanguageOptionAuto") }, { value: "en", label: "English" }, { value: "zh-cn", label: "简体中文" }, { value: "ja", label: "日本語" }]} onChange={(value) => update("uiLanguage", value as GeneralDraft["uiLanguage"])} /></label>
     </div></section>
-    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.notificationsGroup")}</h3><div className="settings-group-body"><label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{t("desktop.settings.notificationsAutoClear")}</span><span className="settings-row-desc">{t("desktop.settings.notificationsAutoClearDesc")}</span></span><select className="settings-row-control" value={draft.notifications.autoClearMinutes} onChange={(event) => update("notifications", { ...draft.notifications, autoClearMinutes: Number(event.target.value) })}><option value="15">{t("desktop.settings.autoClearMinutes.15")}</option><option value="30">{t("desktop.settings.autoClearMinutes.30")}</option><option value="60">{t("desktop.settings.autoClearMinutes.60")}</option><option value="240">{t("desktop.settings.autoClearMinutes.240")}</option><option value="1440">{t("desktop.settings.autoClearMinutes.1440")}</option><option value="0">{t("desktop.settings.autoClearMinutes.0")}</option></select></label></div></section>
+    <section className="settings-group"><h3 className="settings-group-title">{t("desktop.settings.notificationsGroup")}</h3><div className="settings-group-body"><label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{t("desktop.settings.notificationsAutoClear")}</span><span className="settings-row-desc">{t("desktop.settings.notificationsAutoClearDesc")}</span></span><NativeMenuSelect className="settings-row-control" ariaLabel={t("desktop.settings.notificationsAutoClear")} title={t("desktop.settings.notificationsAutoClear")} value={String(draft.notifications.autoClearMinutes)} options={[{ value: "15", label: t("desktop.settings.autoClearMinutes.15") }, { value: "30", label: t("desktop.settings.autoClearMinutes.30") }, { value: "60", label: t("desktop.settings.autoClearMinutes.60") }, { value: "240", label: t("desktop.settings.autoClearMinutes.240") }, { value: "1440", label: t("desktop.settings.autoClearMinutes.1440") }, { value: "0", label: t("desktop.settings.autoClearMinutes.0") }]} onChange={(value) => update("notifications", { ...draft.notifications, autoClearMinutes: Number(value) })} /></label></div></section>
   </>;
 }
 
@@ -529,27 +530,25 @@ function ProvidersPane({ draft, setDraft, commit, t }: { draft: ProvidersDraft; 
           <span className="settings-row-desc">{t(descKey)}</span>
         </span>
         {options.length ? (
-          <select
+          <NativeMenuSelect
             className="settings-row-control"
-            data-testid={testIdOverride || `settings-model-select-${kind}`}
+            testId={testIdOverride || `settings-model-select-${kind}`}
+            ariaLabel={t(labelKey)}
+            title={t(labelKey)}
             value={value}
-            onChange={(event) => {
-              const val = event.target.value;
-              if (!val) {
+            options={[
+              { value: "", label: placeholderOverride || t("desktop.settings.modelPlaceholder") },
+              ...options.map((option) => ({ value: `${option.providerId}:${option.modelId}`, label: `${option.providerName} / ${option.modelId}` }))
+            ]}
+            onChange={(next) => {
+              if (!next) {
                 onChange({});
                 return;
               }
-              const [providerId, modelId] = val.split(":");
+              const [providerId, modelId] = next.split(":");
               onChange({ providerId: providerId || undefined, modelId: modelId || undefined });
             }}
-          >
-            <option value="">{placeholderOverride || t("desktop.settings.modelPlaceholder")}</option>
-            {options.map((option) => (
-              <option key={`${option.providerId}:${option.modelId}`} value={`${option.providerId}:${option.modelId}`}>
-                {option.providerName} / {option.modelId}
-              </option>
-            ))}
-          </select>
+          />
         ) : (
           <span className="settings-row-control settings-row-hint">{emptyHint}</span>
         )}
@@ -666,16 +665,18 @@ function ProvidersPane({ draft, setDraft, commit, t }: { draft: ProvidersDraft; 
                   </span>
                 </label>
                 <div className="settings-provider-actions">
-                  <select
+                  <NativeMenuSelect
                     className="settings-row-control settings-provider-test-kind"
-                    data-testid="settings-provider-test-kind"
+                    testId="settings-provider-test-kind"
+                    ariaLabel={t("desktop.settings.testConnectionKind")}
+                    title={t("desktop.settings.testConnectionKind")}
                     value={testKind}
-                    onChange={(event) => setTestKind(event.target.value as ModelTestKind)}
-                    aria-label={t("desktop.settings.testConnectionKind")}
-                  >
-                    <option value="text">{t("desktop.settings.modelKindText")}</option>
-                    <option value="embedding">{t("desktop.settings.modelKindEmbedding")}</option>
-                  </select>
+                    options={[
+                      { value: "text", label: t("desktop.settings.modelKindText") },
+                      { value: "embedding", label: t("desktop.settings.modelKindEmbedding") }
+                    ]}
+                    onChange={(value) => setTestKind(value as ModelTestKind)}
+                  />
                   <button
                     type="button"
                     className="ghost-btn"
@@ -707,23 +708,25 @@ function ProvidersPane({ draft, setDraft, commit, t }: { draft: ProvidersDraft; 
                       <div className="settings-provider-model-row" key={model.id}>
                         <span className="settings-provider-model-kind">{kindLabel(model.kind)}</span>
                         <span className="settings-provider-model-id" title={model.id}>{model.id}</span>
-                        <select
+                        <NativeMenuSelect
                           className="settings-row-control settings-provider-model-kind-select"
-                          data-testid={`settings-provider-model-kind-${model.id}`}
-                          aria-label={t("desktop.settings.modelKind")}
+                          testId={`settings-provider-model-kind-${model.id}`}
+                          ariaLabel={t("desktop.settings.modelKind")}
+                          title={t("desktop.settings.modelKind")}
                           value={model.kind}
-                          onChange={(event) => {
-                            const kind = event.target.value as ModelKind;
+                          options={[
+                            { value: "text", label: t("desktop.settings.modelKindText") },
+                            { value: "image", label: t("desktop.settings.modelKindImage") },
+                            { value: "embedding", label: t("desktop.settings.modelKindEmbedding") }
+                          ]}
+                          onChange={(value) => {
+                            const kind = value as ModelKind;
                             patchProvider(selectedProvider.id, (provider) => ({
                               ...provider,
                               models: provider.models.map((entry) => entry.id === model.id ? { ...entry, kind } : entry)
                             }));
                           }}
-                        >
-                          <option value="text">{t("desktop.settings.modelKindText")}</option>
-                          <option value="image">{t("desktop.settings.modelKindImage")}</option>
-                          <option value="embedding">{t("desktop.settings.modelKindEmbedding")}</option>
-                        </select>
+                        />
                         <button
                           type="button"
                           className="settings-provider-remove"
@@ -740,25 +743,21 @@ function ProvidersPane({ draft, setDraft, commit, t }: { draft: ProvidersDraft; 
                 )}
                 <div className="settings-provider-add-model">
                   {selectedProvider && (fetchedByProvider[selectedProvider.id] ?? []).filter((m) => !selectedProvider.models.some((existing) => existing.id === m.id)).length > 0 ? (
-                    <select
+                    <NativeMenuSelect
                       className="settings-row-control settings-provider-add-model-select"
-                      data-testid="settings-add-model-select"
+                      testId="settings-add-model-select"
+                      ariaLabel={t("desktop.settings.selectFetchedModel", (fetchedByProvider[selectedProvider.id] ?? []).filter((m) => !selectedProvider.models.some((existing) => existing.id === m.id)).length)}
                       value={((fetchedByProvider[selectedProvider.id] ?? []).find((m) => m.id === newModelId)?.id) ?? ""}
-                      onChange={(event) => {
-                        const val = event.target.value;
-                        setNewModelId(val);
-                        const matched = (fetchedByProvider[selectedProvider.id] ?? []).find((m) => m.id === val);
+                      options={[
+                        { value: "", label: t("desktop.settings.selectFetchedModel", (fetchedByProvider[selectedProvider.id] ?? []).filter((m) => !selectedProvider.models.some((existing) => existing.id === m.id)).length) },
+                        ...(fetchedByProvider[selectedProvider.id] ?? []).filter((m) => !selectedProvider.models.some((existing) => existing.id === m.id)).map((model) => ({ value: model.id, label: `${model.id} (${kindLabel(model.kind)})` }))
+                      ]}
+                      onChange={(value) => {
+                        setNewModelId(value);
+                        const matched = (fetchedByProvider[selectedProvider.id] ?? []).find((m) => m.id === value);
                         if (matched) setNewModelKind(matched.kind);
                       }}
-                      aria-label={t("desktop.settings.selectFetchedModel", (fetchedByProvider[selectedProvider.id] ?? []).filter((m) => !selectedProvider.models.some((existing) => existing.id === m.id)).length)}
-                    >
-                      <option value="">{t("desktop.settings.selectFetchedModel", (fetchedByProvider[selectedProvider.id] ?? []).filter((m) => !selectedProvider.models.some((existing) => existing.id === m.id)).length)}</option>
-                      {(fetchedByProvider[selectedProvider.id] ?? []).filter((m) => !selectedProvider.models.some((existing) => existing.id === m.id)).map((model) => (
-                        <option key={model.id} value={model.id}>
-                          {model.id} ({kindLabel(model.kind)})
-                        </option>
-                      ))}
-                    </select>
+                    />
                   ) : null}
                   <input
                     type="text"
@@ -769,17 +768,19 @@ function ProvidersPane({ draft, setDraft, commit, t }: { draft: ProvidersDraft; 
                     onChange={(event) => setNewModelId(event.target.value)}
                     onKeyDown={(event) => { if (event.key === "Enter") addModel(); }}
                   />
-                  <select
+                  <NativeMenuSelect
                     className="settings-row-control settings-provider-add-model-kind"
-                    data-testid="settings-add-model-kind"
-                    aria-label={t("desktop.settings.modelKind")}
+                    testId="settings-add-model-kind"
+                    ariaLabel={t("desktop.settings.modelKind")}
+                    title={t("desktop.settings.modelKind")}
                     value={newModelKind}
-                    onChange={(event) => setNewModelKind(event.target.value as ModelKind)}
-                  >
-                    <option value="text">{t("desktop.settings.modelKindText")}</option>
-                    <option value="image">{t("desktop.settings.modelKindImage")}</option>
-                    <option value="embedding">{t("desktop.settings.modelKindEmbedding")}</option>
-                  </select>
+                    options={[
+                      { value: "text", label: t("desktop.settings.modelKindText") },
+                      { value: "image", label: t("desktop.settings.modelKindImage") },
+                      { value: "embedding", label: t("desktop.settings.modelKindEmbedding") }
+                    ]}
+                    onChange={(value) => setNewModelKind(value as ModelKind)}
+                  />
                   <button
                     type="button"
                     className="ghost-btn"
@@ -863,12 +864,7 @@ function ProvidersPane({ draft, setDraft, commit, t }: { draft: ProvidersDraft; 
             <span className="settings-row-title">{t("desktop.settings.outputLanguage")}</span>
             <span className="settings-row-desc">{t("desktop.settings.fieldOutputLanguageDescription")}</span>
           </span>
-          <select className="settings-row-control" value={draft.toolOutputLanguage} onChange={(event) => update("toolOutputLanguage", event.target.value as typeof draft.toolOutputLanguage)}>
-            <option value="auto">{t("desktop.settings.fieldOutputLanguageOptionAuto")}</option>
-            <option value="en">English</option>
-            <option value="zh-cn">简体中文</option>
-            <option value="ja">日本語</option>
-          </select>
+          <NativeMenuSelect className="settings-row-control" ariaLabel={t("desktop.settings.outputLanguage")} title={t("desktop.settings.outputLanguage")} value={draft.toolOutputLanguage} options={[{ value: "auto", label: t("desktop.settings.fieldOutputLanguageOptionAuto") }, { value: "en", label: "English" }, { value: "zh-cn", label: "简体中文" }, { value: "ja", label: "日本語" }]} onChange={(value) => update("toolOutputLanguage", value as typeof draft.toolOutputLanguage)} />
         </label>
         {selectionRow(
           "desktop.settings.gtdModelUse",
@@ -920,7 +916,7 @@ function SessionsPane({ draft, setDraft, commit, t }: { draft: SessionsDraft; se
       <h3 className="settings-group-title">{t("desktop.settings.sync")}</h3>
       <div className="settings-group-body">
         <label className="settings-field"><span className="settings-field-label">{t("desktop.settings.syncMax")}</span><input type="number" min="1" max="50000" value={draft.maxItems} onChange={(event) => update("maxItems", Number(event.target.value), { commit: false })} onBlur={() => commit(draft)} /></label>
-        <label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{t("desktop.settings.stalePolicy")}</span><span className="settings-row-desc">{t("desktop.settings.stalePolicyDesc")}</span></span><select className="settings-row-control" value={draft.stalePolicy} onChange={(event) => update("stalePolicy", event.target.value === "purge" ? "purge" : "off")}><option value="off">{t("desktop.settings.staleOff")}</option><option value="purge">{t("desktop.settings.stalePurge")}</option></select></label>
+        <label className="settings-row"><span className="settings-row-label"><span className="settings-row-title">{t("desktop.settings.stalePolicy")}</span><span className="settings-row-desc">{t("desktop.settings.stalePolicyDesc")}</span></span><NativeMenuSelect className="settings-row-control" ariaLabel={t("desktop.settings.stalePolicy")} title={t("desktop.settings.stalePolicy")} value={draft.stalePolicy} options={[{ value: "off", label: t("desktop.settings.staleOff") }, { value: "purge", label: t("desktop.settings.stalePurge") }]} onChange={(value) => update("stalePolicy", value === "purge" ? "purge" : "off")} /></label>
         {toggles.map(([key, label]) => <label className="settings-row" key={key}><span className="settings-row-label"><span className="settings-row-title">{t(label)}</span></span><span className="settings-toggle"><input type="checkbox" role="switch" checked={draft[key]} onChange={(event) => update(key, event.target.checked)} /><span className="settings-toggle-track" aria-hidden="true" /></span></label>)}
       </div>
     </section>

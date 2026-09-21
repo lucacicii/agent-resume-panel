@@ -1,10 +1,8 @@
 import { ICON_SIZE, ThemeIcon } from "./ThemeIcon";
-import { createPortal } from "react-dom";
 import { useEffect, useRef, useState } from "react";
 import { desktopApi } from "../bridge";
 import { useI18n } from "../i18n";
-import { useOverlayPresence } from "./useOverlayMotion";
-import { useMenuKeyboard, useMenuPosition } from "./menuOverlay";
+import { showContextMenuAt } from "../nativeContextMenu";
 import { BellNotificationButton } from "./BellNotificationButton";
 
 type FloatingNoteDot = { noteId: string; title: string };
@@ -20,9 +18,7 @@ export function AppChrome({ sidebarCollapsed, onToggleSidebar }: {
 }): React.JSX.Element {
   const { ready, t } = useI18n();
   const [noteDots, setNoteDots] = useState<FloatingNoteDot[]>([]);
-  const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
   const avatarBtnRef = useRef<HTMLButtonElement | null>(null);
-  const avatarMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const api = desktopApi();
@@ -43,47 +39,6 @@ export function AppChrome({ sidebarCollapsed, onToggleSidebar }: {
     };
   }, []);
 
-  useEffect(() => {
-    if (!avatarMenuOpen) return;
-    const onPointerDown = (event: MouseEvent) => {
-      const target = event.target as Node;
-      if (avatarBtnRef.current?.contains(target) || avatarMenuRef.current?.contains(target)) return;
-      setAvatarMenuOpen(false);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setAvatarMenuOpen(false);
-    };
-    document.addEventListener("mousedown", onPointerDown);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", onPointerDown);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [avatarMenuOpen]);
-
-  useEffect(() => {
-    if (!avatarMenuOpen) return;
-    const btn = avatarBtnRef.current;
-    const menu = avatarMenuRef.current;
-    if (!btn || !menu) return;
-    const rect = btn.getBoundingClientRect();
-    const gap = 8;
-    const left = Math.min(rect.right + gap, window.innerWidth - menu.offsetWidth - 8);
-    const top = Math.max(8, Math.min(rect.bottom - menu.offsetHeight, window.innerHeight - menu.offsetHeight - 8));
-    menu.style.left = `${Math.max(8, left)}px`;
-    menu.style.top = `${top}px`;
-  }, [avatarMenuOpen]);
-
-  const avatarMenu = useOverlayPresence(avatarMenuOpen);
-  const closeAvatarMenu = () => setAvatarMenuOpen(false);
-  // Anchored popover: the shared hook owns placement and the keyboard, like the
-  // system menu it stands in for.
-  useMenuPosition(avatarMenu.mounted, avatarMenuRef, {
-    x: Math.min(avatarBtnRef.current?.getBoundingClientRect().right ?? 8, window.innerWidth - 240),
-    y: avatarBtnRef.current?.getBoundingClientRect().bottom ?? 8
-  });
-  useMenuKeyboard(avatarMenu.mounted, avatarMenuRef, closeAvatarMenu);
-
   const focusNote = (dot: FloatingNoteDot) => {
     const api = desktopApi();
     if (typeof api.standaloneNoteOpen !== "function") return;
@@ -91,7 +46,6 @@ export function AppChrome({ sidebarCollapsed, onToggleSidebar }: {
   };
 
   const openSettings = (pane = "general") => {
-    setAvatarMenuOpen(false);
     // Settings lives in its own window (⌘,), so ask the main process for it.
     void desktopApi().openSettingsWindow?.({ pane }).catch(() => undefined);
   };
@@ -102,6 +56,14 @@ export function AppChrome({ sidebarCollapsed, onToggleSidebar }: {
   const sidebarLabel = sidebarCollapsed
     ? text("desktop.nav.expand", "Expand sidebar")
     : text("desktop.nav.collapse", "Collapse sidebar");
+
+  /** The account menu is a native `NSMenu` anchored to the avatar button. */
+  const openAccountMenu = async () => {
+    const rect = avatarBtnRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const chosen = await showContextMenuAt({ x: rect.left, y: rect.bottom + 4 }, [{ id: "settings", label: settingsLabel }]);
+    if (chosen === "settings") openSettings();
+  };
 
   return (
     <header className="top mac-top">
@@ -140,33 +102,16 @@ export function AppChrome({ sidebarCollapsed, onToggleSidebar }: {
         <button
           ref={avatarBtnRef}
           type="button"
-          className={`app-account-btn${avatarMenuOpen ? " is-open" : ""}`}
+          className="app-account-btn"
           title={avatarLabel}
           aria-label={avatarLabel}
           aria-haspopup="menu"
-          aria-expanded={avatarMenuOpen}
-          onClick={() => setAvatarMenuOpen((open) => !open)}
+          onClick={() => void openAccountMenu()}
         >
           <span className="app-account-avatar" aria-hidden="true">
             <ThemeIcon name="user" size={ICON_SIZE.default} />
           </span>
         </button>
-        {avatarMenu.mounted
-          ? createPortal(
-              <div ref={avatarMenuRef} className={`rail-account-menu${avatarMenu.closing ? " is-closing" : ""}`} role="menu" aria-label={avatarLabel} style={{ visibility: "hidden" }}>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="rail-account-menu-item"
-                  onClick={() => openSettings("general")}
-                >
-                  <ThemeIcon name="settings" size={ICON_SIZE.dense} aria-hidden="true" />
-                  {settingsLabel}
-                </button>
-              </div>,
-              document.body
-            )
-          : null}
       </div>
     </header>
   );

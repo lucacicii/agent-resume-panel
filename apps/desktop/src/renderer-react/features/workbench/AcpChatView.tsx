@@ -1,4 +1,5 @@
 import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
+import { NativeMenuSelect } from "../../components/NativeMenuSelect";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { desktopApi } from "../../bridge";
@@ -1590,78 +1591,54 @@ export function AcpChatView({
               </>
             ) : null}
             {modelSelect ? (
-              <select
+              <NativeMenuSelect
                 className="wb-acp-toolbar-select"
                 value={modelSelect.value}
                 disabled={isRunning || isConnecting}
-                aria-label={t("desktop.workbench.acpModel")}
+                ariaLabel={t("desktop.workbench.acpModel")}
                 title={t("desktop.workbench.acpModel")}
-                onChange={(event) => {
-                  const value = event.target.value;
+                options={modelSelect.options.map((option) => ({ value: option.value, label: option.name }))}
+                onChange={(value) => {
                   if (modelSelect.kind === "config") void onConfigSelectChange(modelSelect.configId, value);
                   else void onLegacyModelChange(value);
                 }}
-              >
-                {modelSelect.options.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.name}
-                  </option>
-                ))}
-              </select>
+              />
             ) : null}
             {modeSelect ? (
-              <select
+              <NativeMenuSelect
                 className="wb-acp-toolbar-select"
                 value={modeSelect.value}
                 disabled={isRunning || isConnecting}
-                aria-label={t("desktop.workbench.acpMode")}
+                ariaLabel={t("desktop.workbench.acpMode")}
                 title={t("desktop.workbench.acpMode")}
-                onChange={(event) => {
-                  const value = event.target.value;
+                options={modeSelect.options.map((option) => ({ value: option.value, label: option.name }))}
+                onChange={(value) => {
                   if (modeSelect.kind === "native-mode") void onModeChange(value);
                   else void onConfigSelectChange(modeSelect.configId, value);
                 }}
-              >
-                {modeSelect.options.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.name}
-                  </option>
-                ))}
-              </select>
+              />
             ) : null}
             {collaborationSelect ? (
-              <select
+              <NativeMenuSelect
                 className="wb-acp-toolbar-select"
                 value={collaborationSelect.value}
                 disabled={isRunning || isConnecting}
-                aria-label={t("desktop.workbench.acpCollaboration")}
+                ariaLabel={t("desktop.workbench.acpCollaboration")}
                 title={t("desktop.workbench.acpCollaboration")}
-                onChange={(event) =>
-                  void onConfigSelectChange(collaborationSelect.configId, event.target.value)
-                }
-              >
-                {collaborationSelect.options.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.name}
-                  </option>
-                ))}
-              </select>
+                options={collaborationSelect.options.map((option) => ({ value: option.value, label: option.name }))}
+                onChange={(value) => void onConfigSelectChange(collaborationSelect.configId, value)}
+              />
             ) : null}
             {thinkingSelect ? (
-              <select
+              <NativeMenuSelect
                 className="wb-acp-toolbar-select"
                 value={thinkingSelect.value}
                 disabled={isRunning || isConnecting}
-                aria-label={t("desktop.workbench.acpEffort")}
+                ariaLabel={t("desktop.workbench.acpEffort")}
                 title={t("desktop.workbench.acpEffort")}
-                onChange={(event) => void onConfigSelectChange(thinkingSelect.configId, event.target.value)}
-              >
-                {thinkingSelect.options.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.name}
-                  </option>
-                ))}
-              </select>
+                options={thinkingSelect.options.map((option) => ({ value: option.value, label: option.name }))}
+                onChange={(value) => void onConfigSelectChange(thinkingSelect.configId, value)}
+              />
             ) : null}
             <span className="chat-compose-toolbar-spacer" />
             {isRunning ? (

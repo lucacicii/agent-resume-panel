@@ -270,6 +270,7 @@ function renderWindowSettings(initialPane = "general", overrides?: Record<string
     ]
   }));
   const navigateHandlers: Array<(payload: { pane: string }) => void> = [];
+  const contextMenuShow = vi.fn(async (): Promise<string | null> => null);
   vi.spyOn(window, "confirm").mockReturnValue(true);
   window.agentResume = {
     getI18nBundle: async () => ({ locale: "en", messages }),
@@ -312,6 +313,7 @@ function renderWindowSettings(initialPane = "general", overrides?: Record<string
     selectionCreateAction: vi.fn(async () => ({ actionId: "custom-action" })),
     selectionUpdateAction: vi.fn(async () => ({ actionId: "custom-action" })),
     selectionDeleteAction: vi.fn(async () => ({ ok: true })),
+    contextMenuShow,
     ...overrides
   } as unknown as typeof window.agentResume;
   render(
@@ -319,7 +321,7 @@ function renderWindowSettings(initialPane = "general", overrides?: Record<string
       <SettingsPanel initialPane={initialPane} />
     </I18nProvider>
   );
-  return { host, saveSettings, providersTestConnection, providersFetchModels, navigateHandlers };
+  return { host, saveSettings, providersTestConnection, providersFetchModels, navigateHandlers, contextMenuShow };
 }
 
 describe("SettingsPanel (window)", () => {
@@ -468,7 +470,7 @@ describe("SettingsPanel (window)", () => {
   });
 
   it("fetches provider models and tests the connection without saving", async () => {
-    const { host, providersTestConnection, providersFetchModels, saveSettings } = renderWindowSettings("providers");
+    const { host, providersTestConnection, providersFetchModels, saveSettings, contextMenuShow } = renderWindowSettings("providers");
     await waitFor(() => expect(host.querySelector('[data-testid="settings-fetch-provider-models"]')).not.toBeNull());
     saveSettings.mockClear();
 
@@ -481,9 +483,11 @@ describe("SettingsPanel (window)", () => {
     expect(saveSettings).not.toHaveBeenCalled();
 
     // Selecting a fetched model from the dropdown auto-populates the ID and kind, then Add adds it
-    const addSelect = host.querySelector('[data-testid="settings-add-model-select"]') as HTMLSelectElement;
+    const addSelect = host.querySelector('[data-testid="settings-add-model-select"]') as HTMLButtonElement;
     expect(addSelect).not.toBeNull();
-    fireEvent.change(addSelect, { target: { value: "dall-e-3" } });
+    contextMenuShow.mockResolvedValueOnce("dall-e-3");
+    fireEvent.click(addSelect);
+    await waitFor(() => expect(addSelect.getAttribute("aria-label")).toContain("dall-e-3"));
     fireEvent.click(host.querySelector('[data-testid="settings-add-model"]')!);
     await waitFor(() => expect(host.querySelector('[data-testid="settings-remove-model-dall-e-3"]')).not.toBeNull());
 
@@ -497,8 +501,10 @@ describe("SettingsPanel (window)", () => {
     await waitFor(() => expect(host.textContent).toContain("Connected mock (text:test)"));
 
     // Switch the kind to embedding and test again with the embedding model.
-    const kindSelect = host.querySelector('[data-testid="settings-provider-test-kind"]') as HTMLSelectElement;
-    fireEvent.change(kindSelect, { target: { value: "embedding" } });
+    const kindSelect = host.querySelector('[data-testid="settings-provider-test-kind"]') as HTMLButtonElement;
+    contextMenuShow.mockResolvedValueOnce("embedding");
+    fireEvent.click(kindSelect);
+    await waitFor(() => expect(kindSelect.getAttribute("aria-label")).toContain("Embedding"));
     fireEvent.click(host.querySelector('[data-testid="settings-test-provider"]')!);
     await waitFor(() => expect(providersTestConnection).toHaveBeenCalledWith(expect.objectContaining({
       kind: "embedding",
