@@ -8,6 +8,29 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## English
 
+### [0.2.31]
+
+#### Added
+
+- **Workbench detail header**: the workbench tab bar moves into a detail header above the panes — a centred tab strip, a leading toolbar whose Git tool comes first and carries a dirty-count badge (staged + unstaged, capped at 99+), and Sessions promoted ahead of Notes so entering a task lands on it. Collapsed TUI panes show an awaiting-user indicator, and the composer always submits with a trailing newline and refocuses the terminal
+- **Session → review → commit loop**: a bar above the session composer surfaces "{n} uncommitted changes" whenever the active session has staged or unstaged work, with Review Git and Commit & Push actions. Commit & Push auto-stages the repo, auto-suggests a commit message and only falls back to opening the Git panel when it cannot commit; a clean repo replaces the empty Git panel with a card offering to start a new session
+- **Session-alongside review**: the diff header gains a toggle that renders the session transcript beside the diff, persisted per workbench and rehydrated on switch. "Ask Agent to Modify" jumps back to the active session with the changed file prefilled as context. The partner resolves in priority order — a live terminal session, a live ACP chat (rendered as the left column), then the last-touched or most recent catalog session, read-only
+- **Task template scripts**: workbench scripts can be sent to a template (capped at 20) and every task derived from it offers them; the template library and the new-task draft list them, and removal takes effect immediately
+- **Image colour picker for task templates**: templates pick an image through a native dialog; it is normalised to a ≤256 px PNG, persisted with the template, and re-quantized in the renderer into candidate accents for the template, its tasks and the workbench detail header
+- **Task window size**: task windows open at 1700 × 960 by default
+
+#### Changed
+
+- **New-session picker is a native menu**: the picker opens as a native `NSMenu`. With a resolved default agent it lists workspace mentions as checkbox items; otherwise it lists the CLI/ACP target groups and starts the session in the current project, replacing the old two-step workspace-then-target flow
+- **Native menu migration completed**: the ACP toolbar selects (model, mode, collaboration, effort), the settings selects, the selection-action model select and the account menu all open as native `NSMenu`s; the leftover select chrome (chevrons, option rules) is removed
+
+#### Fixed
+
+- **Floating note keeps unsaved text**: the load effect no longer depends on the i18n bundle, so a locale change (or the bundle resolving just after mount) no longer clears the editor, discards the dirty flag or closes the find bar
+- **Diff-header buttons**: the session-alongside toggle and the ask-agent button no longer collapse into a 28 px square with the label spilling outside; they get their own label-bearing rule with hover and focus-visible states
+- **Review Git shortcut**: ⌃⇧G (View ▸ Review Git Changes…) is registered for real instead of being advertised with nothing listening
+- **Style and accessibility pass**: hit targets raised to at least 24 px (detail tools 28, tab close 24, review/commit buttons min-height 24), missing `--color-warning-subtle` and `--color-button-text` tokens added, the change-count badge and shortcut hints tokenized, the Git tool announces its count in its accessible name, tooltips show accelerators (⌘⇧F, ⌃⇧G), new transitions disable under prefers-reduced-motion, and label text uses the caption size instead of the micro token
+
 ### [0.2.30]
 
 #### Added
@@ -678,6 +701,29 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 ---
 
 ## 简体中文
+
+### [0.2.31]
+
+#### 新增
+
+- **工作台详情栏**：工作台标签栏移入窗格上方的详情栏——居中标签条、工具栏前置 Git 工具并带脏改动计数徽标（暂存 + 未暂存，99+ 封顶）、Sessions 标签提到 Notes 之前，进入任务即落在会话页。折叠的 TUI 窗格显示等待用户指示，composer 始终以换行提交并重新聚焦终端
+- **会话 → 审查 → 提交闭环**：会话 composer 上方的提示条在活跃会话存在暂存或未暂存改动时显示「{n} 个未提交改动」，提供 Review Git 与 Commit & Push。Commit & Push 自动暂存仓库改动、自动生成提交信息，仅在仍无法提交时才回退打开 Git 面板；仓库干净时，空白 Git 面板替换为提供新建会话的干净状态卡片
+- **会话对照审查**：diff 头部新增开关，把会话转录渲染在 diff 旁，按工作台持久化并在切换时恢复。「Ask Agent to Modify」跳回活跃会话并把改动文件作为上下文预填。对照伙伴按优先级解析——活跃终端会话、活跃 ACP 聊天（作为左列渲染）、最后触碰或最近的 catalog 会话（只读）
+- **任务模板脚本**：工作台脚本可发送给模板（上限 20 个），由它派生的每个任务都可运行；模板库与新建任务草稿列出这些脚本，移除即时生效
+- **任务模板取色器**：模板通过原生存储对话框选择图片，归一化为 ≤256 px PNG 随模板持久化，并在渲染层重新量化为模板、任务与工作台详情栏的候选强调色
+- **任务窗口尺寸**：任务窗口默认以 1700 × 960 打开
+
+#### 变更
+
+- **新建会话选择器改为原生菜单**：以原生 `NSMenu` 打开。有默认 agent 时列出工作区提及作为复选项；否则列出 CLI/ACP 目标组并在当前项目启动会话，取代旧的两步（先选工作区再选目标）流程
+- **原生菜单迁移完成**：ACP 工具栏选择器（模型、模式、协作、effort）、设置页选择器、选区操作模型选择器与账户菜单全部改为原生 `NSMenu`；遗留的 select 样式（箭头、option 规则）已移除
+
+#### 修复
+
+- **浮动笔记保留未保存文本**：加载副作用不再依赖 i18n bundle，语言切换（或挂载后 bundle 才解析）不再清空编辑器、丢失脏标记或关闭查找栏
+- **Diff 头部按钮**：会话对照开关与 ask-agent 按钮不再塌缩成 28 px 方块导致标签溢出窗格；改为自带标签规则，含悬停与 focus-visible 状态
+- **Review Git 快捷键**：⌃⇧G（显示 ▸ Review Git Changes…）真正注册生效，不再是无人监听的提示
+- **样式与可访问性收尾**：点击目标至少 24 px（详情工具 28、标签关闭 24、审查/提交按钮最小高 24），补齐缺失的 `--color-warning-subtle` 与 `--color-button-text` 令牌，改动计数徽标与快捷键提示令牌化，Git 工具在可访问名称中播报计数，工具提示显示快捷键（⌘⇧F、⌃⇧G），新过渡在 prefers-reduced-motion 下停用，标签文本改用 caption 字号
 
 ### [0.2.30]
 
