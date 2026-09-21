@@ -7269,7 +7269,7 @@ describe("WorkbenchPanel", () => {
     });
     expect(previewImg.getAttribute("src")).toBe("file:///work/app/docs/shot.png");
     fireEvent.click(previewImg);
-    expect(document.querySelector(".notes-image-preview img")?.getAttribute("src")).toBe("file:///work/app/docs/shot.png");
+    await waitFor(() => expect(document.querySelector(".notes-image-preview img")?.getAttribute("src")).toBe("file:///work/app/docs/shot.png"));
   });
 
   const SESSION_SELECT_MESSAGES: Record<string, string> = {
@@ -8779,10 +8779,10 @@ describe("WorkbenchPanel", () => {
     });
 
     // Entering a task lands on the Sessions tab (its session list).
-    await waitFor(() => expect(document.querySelectorAll(".wb-left-tab")[1]?.classList.contains("active")).toBe(true));
+    await waitFor(() => expect(document.querySelectorAll(".wb-left-tab")[0]?.classList.contains("active")).toBe(true));
 
     fireEvent.click(await screen.findByRole("button", { name: "Open note" }));
-    expect(document.querySelectorAll(".wb-left-tab")[0]?.classList.contains("active")).toBe(true);
+    expect(document.querySelectorAll(".wb-left-tab")[1]?.classList.contains("active")).toBe(true);
 
     // Task filter: only the task's note tree is listed.
     const row = await screen.findByRole("button", { name: "Realtime status" });
@@ -8807,7 +8807,7 @@ describe("WorkbenchPanel", () => {
         noteId: "wi-1", title: "Realtime status", status: "next", sessions: []
       } }));
     });
-    await waitFor(() => expect(document.querySelectorAll(".wb-left-tab")[1]?.classList.contains("active")).toBe(true));
+    await waitFor(() => expect(document.querySelectorAll(".wb-left-tab")[0]?.classList.contains("active")).toBe(true));
   });
 
   it("loads a task's workbenches as a tab strip and switches the active one", async () => {

@@ -53,4 +53,14 @@ describe("WorkbenchDetailHeader", () => {
     const label = head.querySelector(".wb-detail-project-label")!;
     expect(label.firstElementChild).toBe(image);
   });
+
+  it("prioritizes Git in the toolbar and shows a badge when there are uncommitted changes", async () => {
+    renderHeader({ gitDirtyCount: 4 });
+    const tools = document.querySelectorAll<HTMLButtonElement>(".wb-detail-tool");
+    await screen.findByRole("button", { name: "Git" });
+    expect(tools[0]?.getAttribute("aria-label")).toBe("Git");
+    const badge = tools[0]?.querySelector(".wb-detail-tool-badge");
+    expect(badge?.textContent).toBe("4");
+    expect(tools[0]?.getAttribute("title")).toBe("Git (4)");
+  });
 });

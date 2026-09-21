@@ -5810,6 +5810,7 @@ export function WorkbenchPanel(): ReactPortal | null {
       onOpenBranchMenu={openBranchMenu}
       onToggleSide={(view) => setSide((current) => current === view ? null : view)}
       centerContent={workbenchTabsBar}
+      gitDirtyCount={(git?.staged?.length ?? 0) + (git?.unstaged?.length ?? 0)}
     />
   );
 
@@ -5921,8 +5922,8 @@ export function WorkbenchPanel(): ReactPortal | null {
           </section>
         )}
         <div className="wb-left-tabs" role="tablist" aria-label={t("desktop.workbench.leftPaneTabs")}>
-          <button type="button" role="tab" className={`wb-left-tab${leftTab === "note" ? " active" : ""}`} aria-selected={leftTab === "note"} onClick={() => setLeftTab("note")}>{t("desktop.workbench.noteTab")}</button>
           <button type="button" role="tab" className={`wb-left-tab${leftTab === "session" ? " active" : ""}`} aria-selected={leftTab === "session"} onClick={() => setLeftTab("session")}>{t("desktop.workbench.sessionTab")}</button>
+          <button type="button" role="tab" className={`wb-left-tab${leftTab === "note" ? " active" : ""}`} aria-selected={leftTab === "note"} onClick={() => setLeftTab("note")}>{t("desktop.workbench.noteTab")}</button>
         </div>
         {leftTab === "note" ? (
           <>
