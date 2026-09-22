@@ -171,7 +171,7 @@ function findTextRanges(root: HTMLElement, needle: string): Range[] {
         return NodeFilter.FILTER_SKIP;
       }
       const parent = node.parentElement;
-      if (parent && (parent.closest("button") || parent.closest(".wb-transcript-head-search") || parent.closest(".wb-transcript-outline"))) {
+      if (parent && (parent.closest("button") || parent.closest(".wb-transcript-head-search") || parent.closest(".wb-transcript-outline") || parent.closest(".wb-transcript-outline-wrap"))) {
         return NodeFilter.FILTER_REJECT;
       }
       return NodeFilter.FILTER_ACCEPT;
@@ -225,6 +225,10 @@ export const SessionTranscriptPane = React.memo(function SessionTranscriptPane({
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [outlineDismissed, setOutlineDismissed] = useState(false);
+  const [outlineHovered, setOutlineHovered] = useState(false);
+  const [outlinePinned, setOutlinePinned] = useState(false);
+  const outlineTimer = useRef<number>(0);
+  const outlineWrapRef = useRef<HTMLDivElement>(null);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const [renderMarkdownView, setRenderMarkdownView] = useState(true);
   const [expandedThinking, setExpandedThinking] = useState<Record<string, boolean>>({});
@@ -236,6 +240,60 @@ export const SessionTranscriptPane = React.memo(function SessionTranscriptPane({
   const previewRef = useRef<TranscriptPreview | null>(null);
   const requestRef = useRef(0);
   const currentSessionKeyRef = useRef("");
+
+  const handleOutlineEnter = useCallback(() => {
+    if (outlineTimer.current) window.clearTimeout(outlineTimer.current);
+    setOutlineDismissed(false);
+    setOutlineHovered(true);
+  }, []);
+
+  const handleOutlineLeave = useCallback(() => {
+    if (outlineTimer.current) window.clearTimeout(outlineTimer.current);
+    outlineTimer.current = window.setTimeout(() => {
+      setOutlineHovered(false);
+    }, 200);
+  }, []);
+
+  const dismissOutline = useCallback(() => {
+    if (outlineTimer.current) window.clearTimeout(outlineTimer.current);
+    setOutlineDismissed(true);
+    setOutlineHovered(false);
+    setOutlinePinned(false);
+  }, []);
+
+  const toggleOutlinePinned = useCallback(() => {
+    if (outlineTimer.current) window.clearTimeout(outlineTimer.current);
+    setOutlineDismissed(false);
+    setOutlinePinned((prev) => !prev);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (outlineTimer.current) window.clearTimeout(outlineTimer.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!outlinePinned) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOutlinePinned(false);
+      }
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      if (outlineWrapRef.current && !outlineWrapRef.current.contains(event.target as Node)) {
+        setOutlinePinned(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("pointerdown", onPointerDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("pointerdown", onPointerDown);
+    };
+  }, [outlinePinned]);
+
+  const isOutlineVisible = !outlineDismissed && (outlinePinned || outlineHovered);
 
   const loadPreview = useCallback(async () => {
     if (!provider || !sessionId) return;
@@ -735,15 +793,47 @@ export const SessionTranscriptPane = React.memo(function SessionTranscriptPane({
             )}
           </div>
 
-          <div
-            className={`wb-transcript-outline-zone${outlineDismissed ? " is-dismissed" : ""}`}
-            onPointerLeave={() => setOutlineDismissed(false)}
-          >
-            <aside className="wb-transcript-outline" aria-label={t("desktop.workbench.transcriptOutline")}>
-              <div className="wb-transcript-outline-head">
-                <span>{t("desktop.workbench.transcriptOutline")} · {model.outline.length}</span>
-              </div>
-              {model.outline.length ? (
+          {model.outline.length ? (
+            <div
+              ref={outlineWrapRef}
+              className={`wb-transcript-outline-wrap${outlineDismissed ? " is-dismissed" : ""}${isOutlineVisible ? " is-open" : ""}`}
+              onMouseEnter={handleOutlineEnter}
+              onMouseLeave={handleOutlineLeave}
+              onPointerLeave={() => {
+                setOutlineDismissed(false);
+                handleOutlineLeave();
+              }}
+            >
+              <button
+                type="button"
+                className={`wb-transcript-outline-badge${isOutlineVisible ? " is-active" : ""}`}
+                onClick={toggleOutlinePinned}
+                aria-expanded={isOutlineVisible}
+                aria-haspopup="true"
+                aria-label={`${t("desktop.workbench.transcriptOutline")} · ${model.outline.length}`}
+                title={`${t("desktop.workbench.transcriptOutline")} · ${model.outline.length}`}
+              >
+                <ThemeIcon name="folder-tree" size={ICON_SIZE.inline} />
+                <span className="wb-transcript-outline-badge-text">
+                  {t("desktop.workbench.transcriptOutline")}
+                </span>
+                <span className="wb-transcript-outline-badge-count">{model.outline.length}</span>
+                <ThemeIcon
+                  name="chevron-down"
+                  size={ICON_SIZE.inline}
+                  className={`wb-transcript-outline-chevron${isOutlineVisible ? " is-expanded" : ""}`}
+                  aria-hidden="true"
+                />
+              </button>
+              <aside
+                className="wb-transcript-outline"
+                aria-label={t("desktop.workbench.transcriptOutline")}
+                onMouseEnter={handleOutlineEnter}
+                onMouseLeave={handleOutlineLeave}
+              >
+                <div className="wb-transcript-outline-head">
+                  <span>{t("desktop.workbench.transcriptOutline")} · {model.outline.length}</span>
+                </div>
                 <ol className="wb-transcript-outline-list">
                   {model.outline.map((item) => (
                     <li key={item.id}>
@@ -753,7 +843,7 @@ export const SessionTranscriptPane = React.memo(function SessionTranscriptPane({
                         onClick={(event) => {
                           event.currentTarget.blur();
                           scrollToMessage(item.messageId);
-                          setOutlineDismissed(true);
+                          dismissOutline();
                         }}
                       >
                         <span className="wb-transcript-outline-index">#{item.index}</span>
@@ -762,11 +852,9 @@ export const SessionTranscriptPane = React.memo(function SessionTranscriptPane({
                     </li>
                   ))}
                 </ol>
-              ) : (
-                <p className="muted wb-transcript-status">{t("desktop.workbench.transcriptNoMatches")}</p>
-              )}
-            </aside>
-          </div>
+              </aside>
+            </div>
+          ) : null}
 
           {showScrollBottom ? (
             <button

@@ -100,6 +100,55 @@ describe("SessionTranscriptPane", () => {
     HTMLElement.prototype.scrollIntoView = original;
   });
 
+  it("renders a hoverable outline badge trigger that reveals and dismisses the turns outline", async () => {
+    apiMocks.previewSession.mockResolvedValue({
+      session: { provider: "codex", id: "session-1" },
+      preview: {
+        title: "Outline test",
+        messages: [
+          { role: "user", text: "First turn" },
+          { role: "assistant", text: "Response 1" },
+          { role: "user", text: "Second turn" }
+        ]
+      }
+    });
+    const scrollIntoView = vi.fn();
+    const original = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+
+    render(<SessionTranscriptPane provider="codex" sessionId="session-1" active />);
+    const badge = await screen.findByRole("button", { name: "desktop.workbench.transcriptOutline · 2" });
+    expect(badge).toBeTruthy();
+    expect(badge.className).toContain("wb-transcript-outline-badge");
+
+    const wrap = badge.closest(".wb-transcript-outline-wrap");
+    expect(wrap).toBeTruthy();
+    expect(wrap?.className).not.toContain("is-open");
+
+    // Hover reveals outline
+    fireEvent.mouseEnter(badge);
+    expect(wrap?.className).toContain("is-open");
+    expect(badge.className).toContain("is-active");
+
+    // Clicking an item scrolls and dismisses
+    const itemBtn = screen.getByRole("button", { name: /Second turn/ });
+    fireEvent.click(itemBtn);
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "start" });
+    expect(wrap?.className).toContain("is-dismissed");
+
+    // Pointer leave resets dismissed state
+    fireEvent.pointerLeave(wrap!);
+    expect(wrap?.className).not.toContain("is-dismissed");
+
+    // Click toggles pinned state
+    fireEvent.click(badge);
+    expect(wrap?.className).toContain("is-open");
+    fireEvent.click(badge);
+    expect(wrap?.className).not.toContain("is-open");
+
+    HTMLElement.prototype.scrollIntoView = original;
+  });
+
   it("scrolls to a composer tip that is only a suffix of the user message", async () => {
     apiMocks.previewSession.mockResolvedValue({
       session: { provider: "codex", id: "session-1" },

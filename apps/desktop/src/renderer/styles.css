@@ -5938,30 +5938,95 @@ body.is-pane-resizing-v * {
   --transcript-outline-width: 240px;
 }
 
-/* Invisible hover trigger that reveals the turns outline over the markdown. */
-.wb-transcript-outline-zone {
+/* Visible outline badge trigger that reveals turns on hover or click, replacing the invisible hover zone */
+.wb-transcript-outline-wrap {
   position: absolute;
-  top: 0;
-  right: 0;
+  top: 10px;
+  right: 16px;
   z-index: 15;
-  width: calc(var(--transcript-outline-width, 240px) + 2 * var(--space-4, 16px));
-  height: min(55%, 320px);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  pointer-events: none;
+}
+
+.wb-transcript-outline-badge {
+  pointer-events: auto;
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 24px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-full, 999px);
+  background: color-mix(in srgb, var(--color-window-bg) 88%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  color: var(--color-label-secondary, var(--muted));
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  box-sizing: border-box;
+  transition: background var(--duration-fast) var(--ease-out),
+              border-color var(--duration-fast) var(--ease-out),
+              color var(--duration-fast) var(--ease-out),
+              box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.wb-transcript-outline-badge:hover,
+.wb-transcript-outline-badge.is-active,
+.wb-transcript-outline-wrap:hover .wb-transcript-outline-badge,
+.wb-transcript-outline-wrap.is-open .wb-transcript-outline-badge {
+  color: var(--color-label-primary, var(--text));
+  border-color: var(--color-separator-opaque, var(--color-separator));
+  background: color-mix(in srgb, var(--color-window-bg) 96%, transparent);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.16);
+}
+
+.wb-transcript-outline-badge:focus-visible {
+  outline: 2px solid var(--color-accent, var(--accent));
+  outline-offset: 1px;
+}
+
+.wb-transcript-outline-badge-text {
+  line-height: 1;
+}
+
+.wb-transcript-outline-badge-count {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--color-accent, var(--accent));
+  line-height: 1;
+}
+
+.wb-transcript-outline-chevron {
+  opacity: 0.65;
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.wb-transcript-outline-chevron.is-expanded {
+  transform: rotate(180deg);
 }
 
 .wb-transcript-outline {
   position: absolute;
-  top: 10px;
-  right: 16px;
+  top: calc(100% + 4px);
+  right: 0;
   display: flex;
   flex-direction: column;
   width: var(--transcript-outline-width, 240px);
-  max-height: calc(100% - 20px);
+  max-height: min(340px, calc(100vh - 240px));
   border: 1px solid var(--color-separator);
   border-radius: var(--radius-lg, 8px);
-  background: color-mix(in srgb, var(--color-window-bg) 88%, transparent);
+  background: color-mix(in srgb, var(--color-window-bg) 92%, transparent);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
   box-sizing: border-box;
   overflow: hidden;
 
@@ -5971,18 +6036,30 @@ body.is-pane-resizing-v * {
   transition: opacity var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
 }
 
-.wb-transcript-outline-zone:hover .wb-transcript-outline,
-.wb-transcript-outline-zone:focus-within .wb-transcript-outline {
+/* Bridge gap between badge and outline popover to maintain hover continuity */
+.wb-transcript-outline::before {
+  content: "";
+  position: absolute;
+  top: -8px;
+  left: 0;
+  right: 0;
+  height: 8px;
+  pointer-events: auto;
+}
+
+.wb-transcript-outline-wrap:hover .wb-transcript-outline,
+.wb-transcript-outline-wrap:focus-within .wb-transcript-outline,
+.wb-transcript-outline-wrap.is-open .wb-transcript-outline {
   opacity: 1;
   pointer-events: auto;
   transform: none;
 }
 
-/* After a jump click, keep the outline hidden until the pointer leaves the zone and returns. */
-.wb-transcript-outline-zone.is-dismissed .wb-transcript-outline {
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(-4px);
+/* After a jump click, keep the outline hidden until the pointer leaves the wrap and returns. */
+.wb-transcript-outline-wrap.is-dismissed .wb-transcript-outline {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transform: translateY(-4px) !important;
 }
 
 .wb-transcript-outline-head {
@@ -15743,6 +15820,24 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   color: var(--color-label-tertiary);
   font-size: var(--font-size-caption, 12px);
   text-align: center;
+}
+
+.gtd-column-more-btn {
+  margin-top: var(--space-1);
+  padding: var(--space-1-5) var(--space-2);
+  font-size: var(--font-size-caption, 12px);
+  color: var(--color-label-secondary);
+  background: var(--color-fill-tertiary);
+  border: 0.5px solid var(--color-separator);
+  border-radius: var(--radius-md, 8px);
+  cursor: pointer;
+  text-align: center;
+  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+
+.gtd-column-more-btn:hover {
+  background: var(--color-fill-secondary);
+  color: var(--color-label-primary);
 }
 
 /* Kanban Cards (Apple HIG Card styling) */
