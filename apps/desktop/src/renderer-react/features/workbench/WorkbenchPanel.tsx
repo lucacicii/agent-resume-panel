@@ -234,6 +234,20 @@ type SearchReveal = { path: string; line: number; column: number; endColumn: num
 const GTD_STATUSES = DESKTOP_GTD_STATUSES;
 /** Shared empty list so a project-less task keeps a stable array identity. */
 const EMPTY_PROJECT_PATHS: string[] = [];
+/** Stable empty identity for the review banner's commit scope. */
+const EMPTY_COMMIT_PATHS: string[] = [];
+
+/**
+ * Tooltip body for the review banner's commit button: the paths that will be
+ * committed, capped so a large dirty tree cannot produce an unbounded tooltip.
+ */
+function formatCommitScopeTooltip(paths: readonly string[]): string {
+  if (!paths.length) return "—";
+  const MAX = 12;
+  const shown = paths.slice(0, MAX);
+  const rest = paths.length - shown.length;
+  return [shown.join("\n"), rest > 0 ? `+${rest}` : ""].filter(Boolean).join("\n");
+}
 const WORKBENCH_SESSION_ROW_HEIGHT = 64;
 type CatalogProject = {
   projectId: string;
@@ -820,7 +834,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     commitBusy,
     commitSuggestion,
     gitRepositories,
-    stagedCommitPaths,
     canCommit,
     projectTracking,
     refreshGit,
@@ -853,39 +866,48 @@ export function WorkbenchPanel(): ReactPortal | null {
   useEffect(() => { notePanesRef.current = notePanes; }, [notePanes]);
   useEffect(() => { selectedProjectRef.current = selectedProject; }, [selectedProject]);
 
+  /**
+   * Paths the review banner's Commit & Push will commit: everything dirty in the
+   * repo it targets, staged or not. Derived from `git` on every render rather
+   * than from `stagedCommitPaths`, which lags a staging round trip.
+   */
+  const bannerCommitPaths = useMemo(() => {
+    if (!gitRoot || !git) return EMPTY_COMMIT_PATHS;
+    const paths = new Set<string>();
+    for (const change of [...git.staged, ...git.unstaged]) {
+      if (change.repoRoot === gitRoot) paths.add(change.repoPath);
+    }
+    return [...paths];
+  }, [git, gitRoot]);
+
   const handleCommitAndPushFromBanner = useCallback(async () => {
     if (commitBusy || !gitRoot) return;
-    if (canCommit) {
-      await commit(true);
+    // Nothing dirty in the target repo → there is nothing this button can do,
+    // so open the panel instead of failing silently.
+    if (!bannerCommitPaths.length) {
+      setSide("git");
       return;
-    }
-    if (!stagedCommitPaths.length && git && gitRoot) {
-      const unstagedInRoot = git.unstaged.filter((c) => c.repoRoot === gitRoot);
-      if (unstagedInRoot.length) {
-        await toggleGitStage({ repoRoot: gitRoot, paths: unstagedInRoot.map((c) => c.repoPath) }, true);
-      }
     }
     let msg = commitMessage.trim();
     if (!msg) {
+      // Generate from the paths we are about to commit: `suggestCommit` reads the
+      // staged set, which is empty when the user never staged anything.
       try {
-        const paths = stagedCommitPaths.length
-          ? stagedCommitPaths
-          : (git?.unstaged.filter((c) => c.repoRoot === gitRoot).map((c) => c.repoPath) || []);
-        if (paths.length) {
-          const result = await desktopApi().terminalGitSuggestCommit({ repoRoot: gitRoot, paths });
-          msg = result.message.trim();
-          setCommitMessage(result.message);
-        }
+        const result = await desktopApi().terminalGitSuggestCommit({ repoRoot: gitRoot, paths: bannerCommitPaths });
+        msg = result.message.trim();
+        setCommitMessage(result.message);
       } catch {
-        /* fall through */
+        /* fall through to the panel */
       }
     }
     if (!msg) {
       setSide("git");
       return;
     }
-    await commit(true, msg);
-  }, [canCommit, commit, commitBusy, commitMessage, git, gitRoot, stagedCommitPaths, toggleGitStage]);
+    // `terminalGitCommit` stages the paths it is given, so no separate staging
+    // round trip is needed here.
+    await commit(true, msg, bannerCommitPaths);
+  }, [bannerCommitPaths, commit, commitBusy, commitMessage, gitRoot]);
 
   const refreshOpenGitDiffs = useCallback(async (changedPaths: ReadonlySet<string> | null) => {
     if (!selectedProject) return;
@@ -6171,7 +6193,10 @@ export function WorkbenchPanel(): ReactPortal | null {
                     type="button"
                     className={`wb-session-git-review-btn wb-session-git-commit-btn${commitBusy ? " is-busy" : ""}`}
                     disabled={commitBusy}
-                    title={t("desktop.workbench.gitCommitAndPush")}
+                    /* Name the repo and the exact files: this button commits
+                       everything dirty in one repo, which is more than a session
+                       touched. */
+                    title={`${t("desktop.workbench.gitCommitAndPush")} · ${basename(gitRoot)}\n${formatCommitScopeTooltip(bannerCommitPaths)}`}
                     onClick={() => void handleCommitAndPushFromBanner()}
                   >
                     {commitBusy ? (
@@ -6179,7 +6204,7 @@ export function WorkbenchPanel(): ReactPortal | null {
                     ) : (
                       <ThemeIcon name="upload" size={ICON_SIZE.dense} aria-hidden="true" />
                     )}
-                    <span>{t("desktop.workbench.gitCommitAndPush")}</span>
+                    <span>{t("desktop.workbench.gitCommitAndPush")} ({bannerCommitPaths.length})</span>
                   </button>
                 </div>
               </div>

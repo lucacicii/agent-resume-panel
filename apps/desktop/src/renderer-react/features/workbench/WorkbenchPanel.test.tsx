@@ -4031,6 +4031,85 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(terminalGitPush).toHaveBeenCalledWith({ repoRoot: "/work/app" }));
   });
 
+  it("stages then commits the working-tree changes from the review banner when nothing was staged yet", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const gitFile = { path: "src/index.ts", repoPath: "src/index.ts", repoRoot: "/work/app", status: "M", staged: false, unstaged: true };
+    const terminalSpawn = vi.fn(async () => ({ id: 1 }));
+    // A file that is modified but NOT staged: canCommit is false, so the banner
+    // has to stage it first and then commit exactly that path.
+    let staged = false;
+    const terminalGitStatus = vi.fn(async () => ({
+      isRepo: true,
+      root: "/work/app",
+      staged: staged ? [{ ...gitFile, staged: true, unstaged: false }] : [],
+      unstaged: staged ? [] : [gitFile],
+      nestedRepos: [],
+      tracking: [{ repoRoot: "/work/app", branch: "main", upstream: "origin/main", ahead: 0, behind: 0 }]
+    }));
+    const terminalGitCommit = vi.fn(async () => ((staged = true), { ok: true }));
+    const terminalGitPush = vi.fn(async () => ({ ok: true }));
+
+    window.agentResume = {
+      getI18nBundle: async () => ({
+        locale: "en",
+        messages: {
+          ...ARROW_TEST_MESSAGES,
+          "desktop.workbench.sessionGitReviewHint": "{0} uncommitted changes",
+          "desktop.workbench.sessionGitReviewAction": "Review Git",
+          "desktop.workbench.gitCommitAndPush": "Commit & Push"
+        }
+      }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listProjects: async () => [{
+        projectId: "project-1", portableKey: "/work/app", alias: "", hidden: false, pinned: false,
+        lastSeenAtMs: 1, updatedAtMs: 1, localPath: "/work/app", pathMissing: false, sessionCount: 1
+      }],
+      querySessionsPage: async () => ({
+        sessions: [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
+        total: 1
+      }),
+      workbenchOpenSession: async () => ({ mode: "xterm", command: "codex resume session-1", cwd: "/work/app" }),
+      terminalSpawn,
+      terminalDestroy: async () => ({ ok: true }),
+      terminalGitStatus,
+      terminalGitCommit,
+      terminalGitPush,
+      terminalGitSuggestCommit: async () => ({ message: "chore: sync", source: "heuristic" as const }),
+      terminalResize: async () => ({ ok: true }),
+      terminalInput: async () => ({ ok: true }),
+      workbenchComposerSendList: async () => []
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    fireEvent.click(await screen.findByRole("button", { name: /Fix renderer/ }));
+    await waitFor(() => expect(terminalSpawn).toHaveBeenCalledTimes(1));
+
+    const commitBtn = await waitFor(() => {
+      const btn = document.querySelector<HTMLButtonElement>(".wb-session-git-commit-btn");
+      expect(btn).not.toBeNull();
+      return btn!;
+    });
+    fireEvent.click(commitBtn);
+
+    // Staging happens inside terminalGitCommit (`git add -- <paths>`), so the
+    // banner only has to hand it the right set.
+    await waitFor(() => expect(terminalGitCommit).toHaveBeenCalledWith(expect.objectContaining({
+      repoRoot: "/work/app",
+      paths: ["src/index.ts"]
+    })));
+    await waitFor(() => expect(terminalGitPush).toHaveBeenCalledWith({ repoRoot: "/work/app" }));
+  });
+
   it("reports state-changing Git actions and keeps refreshes silent", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
@@ -7733,12 +7812,14 @@ describe("WorkbenchPanel", () => {
     });
     fireEvent.contextMenu(editorTab);
     fireEvent.click(await screen.findByRole("menuitem", { name: "Preview" }));
-    const previewImg = await waitFor(() => {
+    await waitFor(() => {
       const img = document.querySelector<HTMLImageElement>(".wb-editor-preview img");
-      expect(img).not.toBeNull();
-      return img!;
+      expect(img?.getAttribute("src")).toBe("file:///work/app/docs/shot.png");
     });
-    expect(previewImg.getAttribute("src")).toBe("file:///work/app/docs/shot.png");
+    // Re-query at click time: the preview is dangerouslySetInnerHTML, so any
+    // re-render replaces the subtree. A stale node reference would be detached
+    // and its click would never bubble to the handler that opens the lightbox.
+    const previewImg = document.querySelector<HTMLImageElement>(".wb-editor-preview img")!;
     fireEvent.click(previewImg);
     await waitFor(() => expect(document.querySelector(".notes-image-preview img")?.getAttribute("src")).toBe("file:///work/app/docs/shot.png"));
   });

@@ -184,3 +184,44 @@ catalog fallback is removed.
 Also added `wb-diff-session-alongside*` to the test `afterEach` cleanup — the
 toggle persists to localStorage, so a test that switched it on leaked into the
 next one.
+
+## F. Review banner's Commit & Push silently did nothing
+
+Reproduced with a test before changing anything: with a repo whose only change was
+**unstaged** (the normal state after a session — nothing staged), clicking
+`Commit & Push` called `terminalGitCommit` **zero times**.
+
+Cause: the handler staged the files with `toggleGitStage`, then called
+`commit(true, msg)`; but `commit` closes over `stagedCommitPaths`, which is derived
+from the `git` state and had not been recomputed yet. `commit` opens with
+`if (!gitRoot || !finalMessage || !stagedCommitPaths.length) return;`, so it
+returned silently — no error, no toast, nothing.
+
+Fix: `commit(pushAfter, messageOverride, pathsOverride?)`, and the banner computes
+its own scope from `git` on every render (`bannerCommitPaths`). The explicit
+staging round trip is gone too — `terminalGitCommit` already runs
+`git add -- <paths>` for what it is handed, so passing the paths is both simpler
+and free of the state-ordering hazard.
+
+Visibility: the button now carries the number of files it will commit and names
+the target repo plus the file list in its tooltip, because that scope is
+"everything dirty in one repo" — wider than any one session.
+
+## G. The last intermittent test failure (markdown image lightbox)
+
+`renders local markdown images in preview and opens a lightbox on click` captured
+the preview `<img>` node and clicked it later. The preview is rendered through
+`dangerouslySetInnerHTML`, so a re-render replaces the subtree; a click on the
+detached node never reaches React's handler on the container, so the lightbox
+never opened and the assertion timed out. It only showed up under parallel load,
+where more re-renders land between the grab and the click. Re-querying the node at
+click time fixes it. Three consecutive full-suite runs are now clean.
+
+## Left alone on purpose
+
+`terminalGitCommit` unstaging previously-staged files that are not in the commit
+is **intended** and covered by the test `commits a selected Unicode path and
+leaves unselected changes out of the commit`. It is only reachable once a caller
+commits a subset of the staged set, which nothing does today. Changed nothing;
+worth revisiting when session-scoped commits land, since it discards the user's
+staging choices for those files as a side effect.
