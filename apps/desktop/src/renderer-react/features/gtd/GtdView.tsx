@@ -128,6 +128,12 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
     return () => stop?.();
   }, [load]);
 
+  // Background session sync updates rollups (linked sessions & statuses); reload.
+  useEffect(() => {
+    const stop = desktopApi().onSessionsSynced?.(() => { void load(); });
+    return () => stop?.();
+  }, [load]);
+
   // Live status comes from main, which merges every workbench window's report
   // (plus daemon-only panes). Grouping by workbench here is what gives the board
   // one status per workbench chip.

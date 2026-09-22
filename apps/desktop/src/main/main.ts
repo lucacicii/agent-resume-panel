@@ -2127,6 +2127,8 @@ async function restoreTaskWindows(): Promise<void> {
         workbenchId: entry.workbenchId,
         ...(entry.title ? { title: entry.title } : {})
       });
+      // Stagger window restoration so Chromium processes do not compete for resources on startup
+      await new Promise((resolve) => setTimeout(resolve, 200));
     }
   } catch (error) {
     void recordAppError({ source: "task-window", message: "Could not restore workbench windows.", error });
@@ -3908,7 +3910,6 @@ app.whenReady().then(async () => {
     getMainWindow: () => mainWindow
   });
   registerSelectionIpc();
-  registerSelectionIpc();
   registerWorkbenchFsIpc();
   registerWorkbenchWatcherIpc(() => mainWindow, (sender) => isTaskWindowSender(sender));
   registerWorkbenchGitIpc(() => app.getLocale());
@@ -3956,7 +3957,7 @@ app.whenReady().then(async () => {
   createWindow();
   void loadWorkbenchMeta();
   syncSessionDotsTray();
-  void restoreTaskWindows();
+  setTimeout(() => void restoreTaskWindows(), 1_000);
   nativeTheme.on("updated", () => {
     syncSessionDotsTray();
     applyWindowBackgrounds();
@@ -3974,87 +3975,92 @@ app.whenReady().then(async () => {
       startSessionEmbeddingIndexAuto();
       await refreshMemorySchedulerFromSettings();
 
-      try {
-        const installed = installArpmShim({
-          execPath: process.execPath,
-          cliPath: resolveArpmCliPath({
-            isPackaged: app.isPackaged,
-            resourcesPath: process.resourcesPath,
-            appPath: app.getAppPath()
-          }),
-          panelHome: resolvePanelHome(settings.panelHome)
-        });
-        if (installed.written) {
-          console.log(`[agent-resume] Installed arpm at ${installed.path}`);
-        } else if (installed.skipped) {
-          void recordAppError({
-            source: "arpm-install",
-            message: `Skipped arpm install: ${installed.skipped}`
-          });
-        }
-        const shell = installArpmShell({ panelHome: resolvePanelHome(settings.panelHome) });
-        if (shell.rcPaths.length) {
-          console.log(`[agent-resume] Wired arpm shell cd hook in ${shell.rcPaths.join(", ")}`);
-        }
-      } catch (error) {
-        void recordAppError({
-          source: "arpm-install",
-          message: "Failed to install arpm on PATH.",
-          error
-        });
-      }
+      // Defer external environment and MCP sync until after the main window is active and idle.
+      setTimeout(() => {
+        void (async () => {
+          try {
+            const installed = installArpmShim({
+              execPath: process.execPath,
+              cliPath: resolveArpmCliPath({
+                isPackaged: app.isPackaged,
+                resourcesPath: process.resourcesPath,
+                appPath: app.getAppPath()
+              }),
+              panelHome: resolvePanelHome(settings.panelHome)
+            });
+            if (installed.written) {
+              console.log(`[agent-resume] Installed arpm at ${installed.path}`);
+            } else if (installed.skipped) {
+              void recordAppError({
+                source: "arpm-install",
+                message: `Skipped arpm install: ${installed.skipped}`
+              });
+            }
+            const shell = installArpmShell({ panelHome: resolvePanelHome(settings.panelHome) });
+            if (shell.rcPaths.length) {
+              console.log(`[agent-resume] Wired arpm shell cd hook in ${shell.rcPaths.join(", ")}`);
+            }
+          } catch (error) {
+            void recordAppError({
+              source: "arpm-install",
+              message: "Failed to install arpm on PATH.",
+              error
+            });
+          }
 
-      // Rewrite any client configs still pointing at the old GUI Electron MCP entry in background.
-      try {
-        const launch = createExternalMcpLaunchConfig({
-          executablePath: process.execPath,
-          cliPath: resolveExternalMcpCliPath({
-            isPackaged: app.isPackaged,
-            resourcesPath: process.resourcesPath,
-            appPath: app.getAppPath()
-          }),
-          panelHome: resolvePanelHome(settings.panelHome)
-        });
-        const migrated = await migrateLegacyAgentResumeRegistrations(launch);
-        if (migrated.migrated.length > 0) {
-          console.log(`[agent-resume] Migrated MCP clients to headless CLI: ${migrated.migrated.join(", ")}`);
-        }
-        for (const failure of migrated.failed) {
-          void recordAppError({
-            source: "mcp-migrate",
-            message: `MCP migrate failed (${failure.target}): ${failure.error}`
-          });
-        }
-      } catch (error) {
-        void recordAppError({
-          source: "mcp-migrate",
-          message: "MCP legacy migration failed.",
-          error
-        });
-      }
+          // Rewrite any client configs still pointing at the old GUI Electron MCP entry in background.
+          try {
+            const launch = createExternalMcpLaunchConfig({
+              executablePath: process.execPath,
+              cliPath: resolveExternalMcpCliPath({
+                isPackaged: app.isPackaged,
+                resourcesPath: process.resourcesPath,
+                appPath: app.getAppPath()
+              }),
+              panelHome: resolvePanelHome(settings.panelHome)
+            });
+            const migrated = await migrateLegacyAgentResumeRegistrations(launch);
+            if (migrated.migrated.length > 0) {
+              console.log(`[agent-resume] Migrated MCP clients to headless CLI: ${migrated.migrated.join(", ")}`);
+            }
+            for (const failure of migrated.failed) {
+              void recordAppError({
+                source: "mcp-migrate",
+                message: `MCP migrate failed (${failure.target}): ${failure.error}`
+              });
+            }
+          } catch (error) {
+            void recordAppError({
+              source: "mcp-migrate",
+              message: "MCP legacy migration failed.",
+              error
+            });
+          }
 
-      // Publish browser MCP endpoint + register both MCP services for TUI/CLI clients.
-      try {
-        browserSettingsCache = settings.desktop?.browser || null;
-        const mcp = await syncExternalMcpRegistration(settings);
-        if (mcp.registered.length) {
-          console.log(
-            `[agent-resume] External MCP registered for: ${mcp.registered.join(", ")}`
-          );
-        }
-        for (const failure of mcp.failed) {
-          void recordAppError({
-            source: "external-mcp",
-            message: `External MCP sync failed (${failure.target}): ${failure.error}`
-          });
-        }
-      } catch (error) {
-        void recordAppError({
-          source: "external-mcp",
-          message: "External MCP startup sync failed.",
-          error
-        });
-      }
+          // Publish browser MCP endpoint + register both MCP services for TUI/CLI clients.
+          try {
+            browserSettingsCache = settings.desktop?.browser || null;
+            const mcp = await syncExternalMcpRegistration(settings);
+            if (mcp.registered.length) {
+              console.log(
+                `[agent-resume] External MCP registered for: ${mcp.registered.join(", ")}`
+              );
+            }
+            for (const failure of mcp.failed) {
+              void recordAppError({
+                source: "external-mcp",
+                message: `External MCP sync failed (${failure.target}): ${failure.error}`
+              });
+            }
+          } catch (error) {
+            void recordAppError({
+              source: "external-mcp",
+              message: "External MCP startup sync failed.",
+              error
+            });
+          }
+        })();
+      }, 5_000);
     } catch (error) {
       void recordAppError({
         source: "startup-background",
