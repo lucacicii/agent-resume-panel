@@ -344,6 +344,24 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
   }, [text, load]);
 
   /**
+   * Archive tasks: they leave the board and show up in the archive view.
+   * Used by both the card menu (one id) and the done column's bulk button.
+   */
+  const archiveTasks = useCallback(async (noteIds: string[]): Promise<void> => {
+    const ids = [...new Set(noteIds.filter(Boolean))];
+    if (ids.length === 0 || typeof desktopApi().notesSetArchived !== "function") return;
+    try {
+      await desktopApi().notesSetArchived({ noteIds: ids, archived: true });
+      setItems((current) => current.filter((item) => !ids.includes(item.noteId)));
+      window.dispatchEvent(new Event("agent-resume:notes-mutated"));
+      notifyDesktop({ text: text("desktop.gtd.archiveDone", ids.length), durationMs: 3000 });
+    } catch (error) {
+      notifyDesktop({ text: text("desktop.gtd.archiveFailed", errorMessage(error)), kind: "error" });
+      void load();
+    }
+  }, [load, text]);
+
+  /**
    * Board card menu. Native, so it highlights with the system accent, flips at
    * screen edges, and is keyboard navigable.
    */
@@ -364,6 +382,7 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
       { id: "rename", label: text("desktop.common.rename") },
       { id: "note", label: text("desktop.workbench.taskOpenNote") },
       { id: "open", label: text("desktop.gtd.openInWindow") },
+      { id: "archive", label: text("desktop.gtd.archiveTask") },
       ...(pinned ? [{ id: "unpin", label: text("desktop.gtd.followChildren") }] : []),
       ...(templateScripts.length > 0
         ? [
@@ -385,18 +404,21 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
     if (choice === "rename") startRename(item);
     else if (choice === "note") void openTaskNote(item);
     else if (choice === "open") void openTask(item);
+    else if (choice === "archive") void archiveTasks([item.noteId]);
     else if (choice === "unpin") void clearPin(item.noteId);
     else if (choice === "delete") void deleteTask(item);
     else if (choice?.startsWith("script:")) {
       const script = templateScripts.find((entry) => entry.id === choice.slice("script:".length));
       if (script) void openTask(item, undefined, { name: script.name, command: script.command, cwd: script.cwd });
     }
-  }, [clearPin, deleteTask, openTask, openTaskNote, rollups, startRename, text]);
+  }, [archiveTasks, clearPin, deleteTask, openTask, openTaskNote, rollups, startRename, text]);
 
   const filtered = useMemo(() => {
+    // Archived tasks live in the archive view, not on the board.
+    const active = items.filter((item) => item.archivedAtMs == null);
     const q = query.trim().toLowerCase();
-    if (!q) return items;
-    return items.filter((item) => `${item.title} ${item.projects.join(" ")}`.toLowerCase().includes(q));
+    if (!q) return active;
+    return active.filter((item) => `${item.title} ${item.projects.join(" ")}`.toLowerCase().includes(q));
   }, [items, query]);
 
   const columns = useMemo(() => GTD_COLUMNS.map((status) => ({
@@ -510,6 +532,17 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
               <span className={`wb-gtd-status-dot is-${status}`} aria-hidden="true" />
               <span className="gtd-column-title">{text(`desktop.workbench.gtdStatus.${status}`)}</span>
               <span className="gtd-column-count">{columnItems.length}</span>
+              {status === "done" && columnItems.length > 0 ? (
+                <button
+                  type="button"
+                  className="gtd-column-archive"
+                  title={text("desktop.gtd.archiveAllDoneHint")}
+                  aria-label={text("desktop.gtd.archiveAllDone")}
+                  onClick={() => void archiveTasks(columnItems.map((item) => item.noteId))}
+                >
+                  <ThemeIcon name="archive" size={ICON_SIZE.inline} aria-hidden="true" />
+                </button>
+              ) : null}
             </div>
             <div className="gtd-column-body">
               {columnItems.map((item) => {

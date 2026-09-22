@@ -337,6 +337,16 @@ export async function notesSetGtdStatus(noteId: string, status: GtdStatus | null
     : store.setNoteGtdStatus(noteId, status);
 }
 
+/** Archive or restore tasks. The whole batch shares one timestamp. */
+export async function notesSetArchived(noteIds: string[], archived: boolean): Promise<void> {
+  const store = await getDesktopNotesStore();
+  if (archived) {
+    await store.archiveTasks(noteIds);
+  } else {
+    await store.unarchiveTasks(noteIds);
+  }
+}
+
 export async function notesRead(noteId: string): Promise<{ record: DesktopNoteRecord; content: string }> {
   const store = await getDesktopNotesStore();
   const record = await store.getNote(noteId);

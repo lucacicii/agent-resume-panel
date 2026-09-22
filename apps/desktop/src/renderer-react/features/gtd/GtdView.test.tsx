@@ -43,6 +43,11 @@ function renderGtd(overrides?: Partial<typeof window.agentResume>) {  const host
         "desktop.gtd.newLooseNote": "New note",
         "desktop.gtd.noLooseNotes": "No notes",
         "desktop.workbench.deleteTask": "Delete task",
+        "desktop.gtd.archiveTask": "Archive",
+        "desktop.gtd.archiveAllDone": "Archive all completed tasks",
+        "desktop.gtd.archiveAllDoneHint": "Move every completed task to the archive",
+        "desktop.gtd.archiveDone": "Archived {0} task(s)",
+        "desktop.gtd.archiveFailed": "Archive failed: {0}",
         "desktop.workbench.taskOpenNote": "Open note",
         "desktop.gtd.windowOpen": "Open in its own window",
         "desktop.gtd.openInWindow": "Open in a new window",
@@ -89,6 +94,7 @@ function renderGtd(overrides?: Partial<typeof window.agentResume>) {  const host
       }
     ],
     notesSetGtdStatus: vi.fn(async () => ({ ok: true })),
+    notesSetArchived: vi.fn(async () => undefined),
     notesCreateTask: vi.fn(async () => ({
       noteId: "t-3", scope: "library", filename: "new.md", relDir: "", relMdPath: "new.md",
       title: "New task", createdAtMs: 3, updatedAtMs: 3, gtdStatus: "inbox", work: { sessions: [] }
@@ -552,5 +558,59 @@ describe("GtdView", () => {
     await waitFor(() => expect(contextMenuShow).toHaveBeenCalled());
     const ids = contextMenuShow.mock.calls[0]?.[0]?.items ?? [];
     expect(ids.some((item) => item.id?.startsWith("script:"))).toBe(false);
+  });
+
+  it("keeps archived tasks off the board", async () => {
+    renderGtd({
+      notesListTasks: async () => [
+        {
+          noteId: "t-arch", scope: "library", filename: "filed.md", relDir: "", relMdPath: "filed.md",
+          title: "Filed away", createdAtMs: 1, updatedAtMs: 9, gtdStatus: "done",
+          archivedAtMs: 123,
+          work: { sessions: [] }
+        },
+        {
+          noteId: "t-1", scope: "library", filename: "live.md", relDir: "", relMdPath: "live.md",
+          title: "Still active", createdAtMs: 1, updatedAtMs: 5, gtdStatus: "next",
+          work: { sessions: [] }
+        }
+      ]
+    } as unknown as Partial<typeof window.agentResume>);
+
+    expect(await screen.findByText("Still active")).toBeTruthy();
+    expect(screen.queryByText("Filed away")).toBeNull();
+  });
+
+  it("archives a task from its context menu", async () => {
+    renderGtd({ contextMenuShow: contextMenuReturning("archive") } as unknown as Partial<typeof window.agentResume>);
+    fireEvent.contextMenu(await screen.findByRole("button", { name: /Realtime status/ }));
+    await waitFor(() => expect(window.agentResume.notesSetArchived).toHaveBeenCalledWith({
+      noteIds: ["t-1"],
+      archived: true
+    }));
+  });
+
+  it("archives the whole done column from its header button", async () => {
+    renderGtd({
+      notesListTasks: async () => [
+        {
+          noteId: "t-done-1", scope: "library", filename: "a.md", relDir: "", relMdPath: "a.md",
+          title: "Done one", createdAtMs: 1, updatedAtMs: 7, gtdStatus: "done", work: { sessions: [] }
+        },
+        {
+          noteId: "t-done-2", scope: "library", filename: "b.md", relDir: "", relMdPath: "b.md",
+          title: "Done two", createdAtMs: 1, updatedAtMs: 6, gtdStatus: "done", work: { sessions: [] }
+        }
+      ]
+    } as unknown as Partial<typeof window.agentResume>);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Archive all completed tasks" }));
+    await waitFor(() => expect(window.agentResume.notesSetArchived).toHaveBeenCalled());
+    const args = (window.agentResume.notesSetArchived as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
+      noteIds: string[];
+      archived: boolean;
+    };
+    expect(args.archived).toBe(true);
+    expect([...args.noteIds].sort()).toEqual(["t-done-1", "t-done-2"]);
   });
 });

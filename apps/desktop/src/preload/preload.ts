@@ -222,7 +222,7 @@ export interface DesktopApi {
   /** Edit ▸ Find… (⌘F) — the menu owns the accelerator, so it forwards here. */
   onMenuFind(callback: () => void): () => void;
   /** View ▸ Show GTD Board / Show Notes (⌘1/⌘2) — board-window view switch. */
-  onNavShow(callback: (view: "gtd" | "notes") => void): () => void;
+  onNavShow(callback: (view: "gtd" | "notes" | "archive" | "sessions") => void): () => void;
   /**
    * Show a native context menu at a point in this window. Resolves with the id of
    * the chosen item, or null when the menu was dismissed.
@@ -266,18 +266,29 @@ export interface DesktopApi {
     limit?: number;
     cursor?: { updatedAt: number; provider: string; id: string };
     search?: string;
-    provider?: string;
+    providers?: string[];
     fromMs?: number;
     toMs?: number;
     projectPath?: string;
     projectId?: string;
-    gtdStatus?: GtdStatus;
+    taskNoteId?: string;
+    gtdStatuses?: string[];
+    gtdUntagged?: boolean;
     keys?: Array<{ provider: string; id: string }>;
     unassignedOnly?: boolean;
   }): Promise<{
     sessions: AgentSession[];
     total: number;
     nextCursor?: { updatedAt: number; provider: string; id: string };
+  }>;
+  /** Filter-chip counts for the whole catalog (search and date filters ignored). */
+  sessionFacets(): Promise<{
+    total: number;
+    byProvider: Record<string, number>;
+    byGtdStatus: Record<string, number>;
+    untagged: number;
+    byTask: Record<string, number>;
+    unassigned: number;
   }>;
   clearSessionLastExitWaiting(args: { provider: string; id: string }): Promise<{ ok: boolean }>;
   listSessionGtdStatuses(): Promise<Record<string, GtdStatus>>;
@@ -1206,6 +1217,8 @@ export interface DesktopApi {
       createdAtMs: number;
       updatedAtMs: number;
       fsMtimeMs?: number;
+      /** Present only for archived tasks; the archive timestamp in ms. */
+      archivedAtMs?: number;
       work: {
         next?: string;
         decision?: string;
@@ -1285,6 +1298,8 @@ export interface DesktopApi {
   taskTemplateImageForTask(args: { noteId: string }): Promise<{ imageDataUrl?: string }>;
   notesLinkSessionToTask(args: { noteId: string; sessionKey: string; projectPath?: string }): Promise<{ noteId: string }>;
   notesListTaskSessionLinks(): Promise<Array<{ noteId: string; title?: string; provider: string; sessionId: string }>>;
+  /** The task a session is linked to, or null when it is unassigned. */
+  notesTaskNoteIdForSession(args: { provider: string; sessionId: string }): Promise<string | null>;
   /** Allocate/refresh a task's neutral workspace; returns its directory. */
   notesEnsureTaskWorkspace(args: { noteId: string }): Promise<{ dir: string }>;
   /** The neutral workspace directory and whether it exists; never creates it. */
@@ -1360,6 +1375,7 @@ export interface DesktopApi {
     updatedAtMs: number;
     fsMtimeMs?: number;
   }>;
+  notesSetArchived(args: { noteIds: string[]; archived: boolean }): Promise<void>;
   notesRead(args: { noteId: string }): Promise<{
     record: {
       noteId: string;
@@ -1623,6 +1639,7 @@ const api: DesktopApi = {
     return () => ipcRenderer.removeListener("sessions:syncFailed", handler);
   },
   querySessionsPage: (args) => ipcRenderer.invoke("sessions:queryPage", args),
+  sessionFacets: () => ipcRenderer.invoke("sessions:facets"),
   clearSessionLastExitWaiting: (args) => ipcRenderer.invoke("sessions:clearLastExitWaiting", args),
   listSessionGtdStatuses: () => ipcRenderer.invoke("gtd:listSessionStatuses"),
   listTaskGtdRollups: () => ipcRenderer.invoke("gtd:listTaskRollups"),
@@ -1901,6 +1918,7 @@ const api: DesktopApi = {
   notesCreateTask: (args) => ipcRenderer.invoke("notes:createTask", args),
   notesLinkSessionToTask: (args) => ipcRenderer.invoke("notes:linkSessionToTask", args),
   notesListTaskSessionLinks: () => ipcRenderer.invoke("notes:listTaskSessionLinks"),
+  notesTaskNoteIdForSession: (args) => ipcRenderer.invoke("notes:taskNoteIdForSession", args),
   notesEnsureTaskWorkspace: (args) => ipcRenderer.invoke("notes:ensureTaskWorkspace", args),
   notesTaskWorkspace: (args) => ipcRenderer.invoke("notes:taskWorkspace", args),
   notesOpenTaskWorkspace: (args) => ipcRenderer.invoke("notes:openTaskWorkspace", args),
@@ -1916,6 +1934,7 @@ const api: DesktopApi = {
   notesGetSubtree: (args) => ipcRenderer.invoke("notes:getSubtree", args),
   notesResolveLinkRoot: (args) => ipcRenderer.invoke("notes:resolveLinkRoot", args),
   notesSetGtdStatus: (args) => ipcRenderer.invoke("notes:setGtdStatus", args),
+  notesSetArchived: (args) => ipcRenderer.invoke("notes:setArchived", args),
   notesRead: (args) => ipcRenderer.invoke("notes:read", args),
   notesWrite: (args) => ipcRenderer.invoke("notes:write", args),
   notesResumeSession: (args) => ipcRenderer.invoke("notes:resumeSession", args),

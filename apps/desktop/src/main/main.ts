@@ -33,6 +33,7 @@ import {
   listScheduleRuns,
   countSessions,
   querySessionsPage,
+  sessionFacetCounts,
   unhideAllSessionsInCatalog,
   unhideSessionInCatalog,
   unhideAllProjectsInCatalog,
@@ -221,6 +222,7 @@ import {
   notesResolveLinkRoot,
   notesReveal,
   notesSetGtdStatus,
+  notesSetArchived,
   notesSetParent,
   notesWrite,
   settingsOpenPanelHome
@@ -947,7 +949,7 @@ function revealMainWindow(): BrowserWindow | null {
  * show. A freshly created window has no renderer yet, so the message waits for
  * `did-finish-load` instead of being dropped.
  */
-function showBoardView(view: "gtd" | "notes"): void {
+function showBoardView(view: "gtd" | "notes" | "archive" | "sessions"): void {
   const existed = Boolean(mainWindow && !mainWindow.isDestroyed());
   const board = revealMainWindow();
   if (!board) return;
@@ -1903,6 +1905,20 @@ async function installApplicationMenu(): Promise<void> {
           showBoardView("notes");
         }
       },
+      {
+        label: t("desktop.menu.showArchive"),
+        accelerator: "CommandOrControl+3",
+        click: () => {
+          showBoardView("archive");
+        }
+      },
+      {
+        label: t("desktop.menu.showSessions"),
+        accelerator: "CommandOrControl+4",
+        click: () => {
+          showBoardView("sessions");
+        }
+      },
       { type: "separator" },
       {
         label: t("desktop.menu.quickAccess"),
@@ -2596,32 +2612,48 @@ function registerIpc(): void {
     limit?: number;
     cursor?: { updatedAt: number; provider: string; id: string };
     search?: string;
-    provider?: string;
+    providers?: string[];
     fromMs?: number;
     toMs?: number;
     projectPath?: string;
     projectId?: string;
-    gtdStatus?: string;
+    taskNoteId?: string;
+    gtdStatuses?: string[];
+    gtdUntagged?: boolean;
     keys?: Array<{ provider: string; id: string }>;
     unassignedOnly?: boolean;
   }) => {
     const settings = await loadSettings();
     const paths = await loadPanelDbPaths(settings);
-    const provider = args?.provider?.trim();
     const validProviders = new Set<AgentProvider>(["codex", "claude", "agy", "grok", "opencode", "pi", "prime", "cursor", "cursor-ide", "chat"]);
-    if (provider && !validProviders.has(provider as AgentProvider)) throw new Error("Invalid session provider.");
-    if (args?.gtdStatus && !isGtdStatus(args.gtdStatus)) throw new Error("Invalid GTD status.");
+    const providers = (args?.providers ?? []).map((value) => String(value).trim()).filter(Boolean);
+    for (const provider of providers) {
+      if (!validProviders.has(provider as AgentProvider)) throw new Error("Invalid session provider.");
+    }
+    const gtdStatuses = (args?.gtdStatuses ?? []).map((value) => String(value).trim()).filter(Boolean);
+    for (const status of gtdStatuses) {
+      if (!isGtdStatus(status)) throw new Error("Invalid GTD status.");
+    }
     const request = {
       ...args,
       keys: args?.keys,
-      provider: provider as AgentProvider | undefined,
+      providers: providers.length ? providers : undefined,
       search: args?.search?.trim() || undefined,
       projectPath: args?.projectPath?.trim() || undefined,
       projectId: args?.projectId?.trim() || undefined,
-      gtdStatus: args?.gtdStatus?.trim() || undefined,
+      taskNoteId: args?.taskNoteId?.trim() || undefined,
+      gtdStatuses: gtdStatuses.length ? gtdStatuses : undefined,
+      gtdUntagged: args?.gtdUntagged === true || undefined,
       unassignedOnly: args?.unassignedOnly === true || undefined
     };
     return querySessionsPage(paths.catalogDb, request);
+  });
+
+  // Counts behind the filter chips: the list is paginated, so the chips cannot
+  // be derived from what is on screen.
+  ipcMain.handle("sessions:facets", async () => {
+    const paths = await loadPanelDbPaths();
+    return sessionFacetCounts(paths.catalogDb);
   });
 
   ipcMain.handle("sessions:clearLastExitWaiting", async (_event, args: { provider: string; id: string }) => {
@@ -3452,6 +3484,12 @@ function registerIpc(): void {
     return notesEnsureTaskWorkspace(args.noteId);
   });
   ipcMain.handle("notes:listTaskSessionLinks", async () => notesListTaskSessionLinks());
+  ipcMain.handle("notes:taskNoteIdForSession", async (_event, args: { provider?: unknown; sessionId?: unknown }) => {
+    if (typeof args?.provider !== "string" || typeof args?.sessionId !== "string") {
+      throw new Error("A session provider and id are required.");
+    }
+    return (await notesTaskNoteIdForSession({ provider: args.provider, sessionId: args.sessionId })) ?? null;
+  });
   ipcMain.handle("notes:taskWorkspace", async (_event, args: { noteId?: unknown }) => {
     if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
       throw new Error("A task note id is required.");
@@ -3552,6 +3590,15 @@ function registerIpc(): void {
     const result = await notesSetGtdStatus(args.noteId, status);
     scheduleNotesIndex();
     return result;
+  });
+  ipcMain.handle("notes:setArchived", async (_event, args: { noteIds?: unknown; archived?: unknown }) => {
+    const noteIds = Array.isArray(args?.noteIds)
+      ? args.noteIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0)
+      : [];
+    if (noteIds.length === 0 || typeof args?.archived !== "boolean") {
+      throw new Error("Invalid archive request.");
+    }
+    await notesSetArchived(noteIds, args.archived);
   });
   ipcMain.handle("notes:read", async (_event, args: { noteId: string }) => notesRead(args.noteId));
   ipcMain.handle("notes:write", async (_event, args: { noteId: string; content: string }) => {

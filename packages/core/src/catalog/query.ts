@@ -179,12 +179,18 @@ export interface SessionQueryRequest {
   limit?: number;
   cursor?: SessionQueryCursor;
   search?: string;
-  provider?: AgentProvider;
+  /** Keep only sessions from these providers (matches every one of them). */
+  providers?: string[];
   fromMs?: number;
   toMs?: number;
   projectPath?: string;
   projectId?: string;
-  gtdStatus?: string;
+  /** Keep only sessions this work item owns (the reverse of `work_item_sessions`). */
+  taskNoteId?: string;
+  /** Keep only sessions carrying one of these stored GTD marks. */
+  gtdStatuses?: string[];
+  /** Keep only sessions that carry no stored GTD mark. */
+  gtdUntagged?: boolean;
   keys?: Array<{ provider: string; id: string }>;
   unassignedOnly?: boolean;
 }
@@ -212,10 +218,18 @@ export async function querySessionsPage(
   const where: string[] = ["s.hidden = 0"];
   const add = (sql: string) => where.push(sql);
   const like = (value: string) => `%${value.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
+  const inList = (values: string[]) =>
+    values.map((value) => `'${escapeSqlLiteral(value)}'`).join(", ");
 
-  if (request.provider) add(`s.provider = '${escapeSqlLiteral(request.provider)}'`);
+  const providers = (request.providers ?? []).map((value) => value.trim()).filter(Boolean);
+  if (providers.length > 0) add(`s.provider IN (${inList(providers)})`);
   if (request.projectPath?.trim()) add(`s.project_path = '${escapeSqlLiteral(request.projectPath.trim())}'`);
   if (request.projectId?.trim()) add(`s.project_id = '${escapeSqlLiteral(request.projectId.trim())}'`);
+  if (request.taskNoteId?.trim()) {
+    add(`EXISTS (SELECT 1 FROM work_item_sessions w
+      WHERE w.provider = s.provider AND w.agent_session_id = s.agent_session_id
+        AND w.work_item_note_id = '${escapeSqlLiteral(request.taskNoteId.trim())}')`);
+  }
   if (request.fromMs != null) {
     if (!Number.isFinite(request.fromMs)) throw new Error("Invalid session fromMs.");
     add(`s.updated_at_ms >= ${Math.floor(request.fromMs)}`);
@@ -233,8 +247,12 @@ export async function querySessionsPage(
       OR s.project_path LIKE '${term}' ESCAPE '\\' COLLATE NOCASE
       OR s.session_summary LIKE '${term}' ESCAPE '\\' COLLATE NOCASE)`);
   }
-  if (request.gtdStatus?.trim()) {
-    add(`EXISTS (SELECT 1 FROM session_gtd g WHERE g.provider = s.provider AND g.agent_session_id = s.agent_session_id AND g.status = '${escapeSqlLiteral(request.gtdStatus.trim())}')`);
+  const gtdStatuses = (request.gtdStatuses ?? []).map((value) => value.trim()).filter(Boolean);
+  if (gtdStatuses.length > 0) {
+    add(`EXISTS (SELECT 1 FROM session_gtd g WHERE g.provider = s.provider AND g.agent_session_id = s.agent_session_id AND g.status IN (${inList(gtdStatuses)}))`);
+  }
+  if (request.gtdUntagged) {
+    add(`NOT EXISTS (SELECT 1 FROM session_gtd g WHERE g.provider = s.provider AND g.agent_session_id = s.agent_session_id)`);
   }
   if (request.unassignedOnly) {
     add(`NOT EXISTS (SELECT 1 FROM work_item_sessions w WHERE w.provider = s.provider AND w.agent_session_id = s.agent_session_id)`);
@@ -274,5 +292,80 @@ export async function querySessionsPage(
     nextCursor: sessions.length === limit && last
       ? { updatedAt: last.updatedAt, provider: last.provider, id: last.id }
       : undefined
+  };
+}
+
+export interface SessionFacetCounts {
+  /** Visible sessions in the catalog, before any filter. */
+  total: number;
+  byProvider: Record<string, number>;
+  byGtdStatus: Record<string, number>;
+  /** Visible sessions with no stored GTD mark. */
+  untagged: number;
+  /** Visible sessions per owning work item. */
+  byTask: Record<string, number>;
+  /** Visible sessions owned by no work item. */
+  unassigned: number;
+}
+
+/**
+ * Filter-chip counts for the whole catalog, ignoring search and date filters.
+ *
+ * A paginated list only ever holds a few pages, so the counts behind the
+ * provider / GTD chips have to come from SQL rather than from what is rendered.
+ */
+export async function sessionFacetCounts(dbPath: string): Promise<SessionFacetCounts> {
+  const [totalRows, providerRows, gtdRows, untaggedRows, taskRows, unassignedRows] = await Promise.all([
+    runSqliteJson<{ n: number }>(dbPath, `SELECT COUNT(*) AS n FROM sessions WHERE hidden = 0;`),
+    runSqliteJson<{ provider: string; n: number }>(
+      dbPath,
+      `SELECT provider, COUNT(*) AS n FROM sessions WHERE hidden = 0 GROUP BY provider;`
+    ),
+    runSqliteJson<{ status: string; n: number }>(
+      dbPath,
+      `SELECT g.status AS status, COUNT(*) AS n
+       FROM session_gtd g
+       JOIN sessions s ON s.provider = g.provider AND s.agent_session_id = g.agent_session_id
+       WHERE s.hidden = 0
+       GROUP BY g.status;`
+    ),
+    runSqliteJson<{ n: number }>(
+      dbPath,
+      `SELECT COUNT(*) AS n FROM sessions s
+       WHERE s.hidden = 0
+         AND NOT EXISTS (SELECT 1 FROM session_gtd g
+                         WHERE g.provider = s.provider AND g.agent_session_id = s.agent_session_id);`
+    ),
+    runSqliteJson<{ note_id: string; n: number }>(
+      dbPath,
+      `SELECT w.work_item_note_id AS note_id, COUNT(*) AS n
+       FROM work_item_sessions w
+       JOIN sessions s ON s.provider = w.provider AND s.agent_session_id = w.agent_session_id
+       WHERE s.hidden = 0
+       GROUP BY w.work_item_note_id;`
+    ),
+    runSqliteJson<{ n: number }>(
+      dbPath,
+      `SELECT COUNT(*) AS n FROM sessions s
+       WHERE s.hidden = 0
+         AND NOT EXISTS (SELECT 1 FROM work_item_sessions w
+                         WHERE w.provider = s.provider AND w.agent_session_id = s.agent_session_id);`
+    )
+  ]);
+
+  const byProvider: Record<string, number> = {};
+  for (const row of providerRows) byProvider[row.provider] = Number(row.n) || 0;
+  const byGtdStatus: Record<string, number> = {};
+  for (const row of gtdRows) byGtdStatus[row.status] = Number(row.n) || 0;
+  const byTask: Record<string, number> = {};
+  for (const row of taskRows) byTask[row.note_id] = Number(row.n) || 0;
+
+  return {
+    total: Number(totalRows[0]?.n) || 0,
+    byProvider,
+    byGtdStatus,
+    untagged: Number(untaggedRows[0]?.n) || 0,
+    byTask,
+    unassigned: Number(unassignedRows[0]?.n) || 0
   };
 }

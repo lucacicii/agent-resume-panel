@@ -13,6 +13,8 @@ import { BrowserStandaloneWindow } from "./features/browser/BrowserStandaloneWin
 import { WorkbenchPanel } from "./features/workbench/WorkbenchPanel";
 import { taskFromRecord } from "./features/workbench/task";
 import { GtdView } from "./features/gtd/GtdView";
+import { ArchiveView } from "./features/archive/ArchiveView";
+import { SessionsView } from "./features/sessions/SessionsView";
 import { NotesView } from "./features/notes/NotesView";
 import { BoardQuickAccess } from "./features/gtd/BoardQuickAccess";
 import { settingsChangedToCustomEvents } from "./settingsBroadcast";
@@ -228,7 +230,9 @@ const NAV_COLLAPSED_KEY = "board-nav-collapsed";
 
 function storedBoardView(): BoardView {
   try {
-    return localStorage.getItem(BOARD_VIEW_KEY) === "notes" ? "notes" : "gtd";
+    const stored = localStorage.getItem(BOARD_VIEW_KEY);
+    if (stored === "notes" || stored === "archive" || stored === "sessions") return stored;
+    return "gtd";
   } catch {
     return "gtd";
   }
@@ -266,7 +270,7 @@ function MainRendererRuntime(): React.JSX.Element {
       : undefined;
     const onPaletteView = (event: Event) => {
       const detail = (event as CustomEvent<BoardView>).detail;
-      if (detail === "gtd" || detail === "notes") setView(detail);
+      if (detail === "gtd" || detail === "notes" || detail === "archive" || detail === "sessions") setView(detail);
     };
     window.addEventListener("agent-resume:board-view", onPaletteView);
     return () => {
@@ -291,6 +295,8 @@ function MainRendererRuntime(): React.JSX.Element {
       <AppChrome sidebarCollapsed={sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed((collapsed) => !collapsed)} />
       <GtdView active={view === "gtd"} />
       {view === "notes" ? <NotesView active /> : null}
+      {view === "archive" ? <ArchiveView active /> : null}
+      {view === "sessions" ? <SessionsView active /> : null}
       <BoardQuickAccess />
       <SelectionSendHost />
       <Notifications />

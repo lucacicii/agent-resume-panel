@@ -10,7 +10,7 @@ import {
   TASK_TEMPLATE_PROJECT_PATHS_MIGRATION_SQL,
   TASK_TEMPLATE_SCRIPTS_MIGRATION_SQL
 } from "./desktopSchema";
-import { EXTENSION_MIGRATION_SQL, EXTENSION_SCHEMA_SQL } from "./extensionSchema";
+import { EXTENSION_MIGRATION_SQL, EXTENSION_SCHEMA_SQL, NOTE_ARCHIVE_SCHEMA_SQL } from "./extensionSchema";
 import { ensureProjectsCatalogSchema } from "./projects";
 
 async function tableExists(dbPath: string, tableName: string): Promise<boolean> {
@@ -76,6 +76,7 @@ export async function ensureExtensionCatalogSchema(dbPath: string): Promise<void
     await ensureWalMode(target);
     await runIdempotentStatements(target, EXTENSION_SCHEMA_SQL);
     await runIdempotentStatements(target, EXTENSION_MIGRATION_SQL);
+    await runIdempotentStatements(target, NOTE_ARCHIVE_SCHEMA_SQL);
     await ensureProjectsCatalogSchema(target);
     verifiedExtensionCatalogPaths.add(target);
   })().finally(() => {

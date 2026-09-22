@@ -1,4 +1,18 @@
 /**
+ * GTD task archive marks.
+ *
+ * A note is "archived" when it has a row here; the timestamp orders the archive
+ * list. This lives in its own table on purpose: `note_work` is rewritten from
+ * front-matter on every save, so an archive flag stored there would be wiped.
+ */
+export const NOTE_ARCHIVE_SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS note_archive (
+  note_id TEXT PRIMARY KEY,
+  archived_at_ms INTEGER NOT NULL
+);
+`;
+
+/**
  * Frozen mirror of src/catalog/db.ts (VS Code extension catalog schema).
  * Keep in sync manually when the extension schema changes intentionally.
  */

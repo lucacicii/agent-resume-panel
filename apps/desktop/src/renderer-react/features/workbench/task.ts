@@ -25,6 +25,8 @@ export type WorkbenchTask = {
   /** Template-derived accent driving the window's color family. */
   accent?: TaskAccent;
   updatedAtMs?: number;
+  /** Present only for archived tasks; the archive timestamp in ms. */
+  archivedAtMs?: number;
 };
 
 /**
@@ -38,6 +40,7 @@ export type TaskSource = {
   filename: string;
   gtdStatus?: GtdStatus;
   updatedAtMs: number;
+  archivedAtMs?: number;
   work?: NoteWorkFields;
   accent?: TaskAccent;
   templateId?: string;
@@ -56,6 +59,7 @@ export function taskFromRecord(record: TaskSource): WorkbenchTask {
     primaryProject: record.work?.primaryProject,
     templateId: record.templateId,
     accent: record.accent,
-    updatedAtMs: record.updatedAtMs
+    updatedAtMs: record.updatedAtMs,
+    archivedAtMs: record.archivedAtMs
   };
 }

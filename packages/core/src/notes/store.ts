@@ -7,6 +7,10 @@ import {
   clearNoteGtdStatus as clearCatalogNoteGtdStatus,
   setNoteGtdStatus as setCatalogNoteGtdStatus
 } from "./gtd";
+import {
+  archiveNotes as archiveCatalogNotes,
+  unarchiveNotes as unarchiveCatalogNotes
+} from "./archive";
 import type { GtdStatus } from "../gtd/types";
 import { resolvePanelHome } from "../panelHome";
 import { normalizeProjectPath } from "../pathUtils";
@@ -336,6 +340,28 @@ export class NotesStore {
     }
     this.cachedNotes = this.cachedNotes.map((note) => note.noteId === noteId ? updated : note);
     return updated;
+  }
+
+  /** Mark notes archived. Re-archiving just refreshes the archive timestamp. */
+  async archiveTasks(noteIds: readonly string[]): Promise<void> {
+    await archiveCatalogNotes(this.dbPath, noteIds);
+    await this.refreshCachedNotes(noteIds);
+  }
+
+  /** Restore notes from the archive. Ids that are not archived are ignored. */
+  async unarchiveTasks(noteIds: readonly string[]): Promise<void> {
+    await unarchiveCatalogNotes(this.dbPath, noteIds);
+    await this.refreshCachedNotes(noteIds);
+  }
+
+  /** Re-read the given notes so `cachedNotes` matches the archive table. */
+  private async refreshCachedNotes(noteIds: readonly string[]): Promise<void> {
+    const updates = await Promise.all(noteIds.map((noteId) => getNoteById(this.dbPath, noteId)));
+    const byId = new Map(
+      updates.filter((note): note is NoteRecord => Boolean(note)).map((note) => [note.noteId, note])
+    );
+    if (byId.size === 0) return;
+    this.cachedNotes = this.cachedNotes.map((note) => byId.get(note.noteId) ?? note);
   }
 
   absolutePath(record: NoteRecord): string {

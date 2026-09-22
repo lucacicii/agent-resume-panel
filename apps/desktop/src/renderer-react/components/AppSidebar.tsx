@@ -7,7 +7,7 @@ import { showContextMenuAt } from "../nativeContextMenu";
 import { useGlideHighlight } from "./useGlideHighlight";
 
 /** The board window's primary views, in nav order. */
-export type BoardView = "gtd" | "notes";
+export type BoardView = "gtd" | "notes" | "archive" | "sessions";
 
 /**
  * The board's full-height navigation sidebar (Finder-style): a traffic-light
