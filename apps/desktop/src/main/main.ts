@@ -2264,13 +2264,14 @@ function registerIpc(): void {
 
   safeHandle(
     "contextMenu:show",
-    async (event, args?: { x?: unknown; y?: unknown; items?: unknown }) => {
+    async (event, args?: { x?: unknown; y?: unknown; items?: unknown; anchor?: unknown }) => {
       const win = BrowserWindow.fromWebContents(event.sender);
       const items = sanitizeContextMenuItems(args?.items);
       if (!items.length) return null;
       const x = typeof args?.x === "number" && Number.isFinite(args.x) ? args.x : 0;
       const y = typeof args?.y === "number" && Number.isFinite(args.y) ? args.y : 0;
-      return showContextMenu(win, items, { x, y });
+      const anchor = args?.anchor === "bottom" ? "bottom" : "top";
+      return showContextMenu(win, items, { x, y }, anchor);
     }
   );
 

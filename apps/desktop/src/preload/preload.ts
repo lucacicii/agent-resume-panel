@@ -230,6 +230,8 @@ export interface DesktopApi {
   contextMenuShow(args: {
     x: number;
     y: number;
+    /** "bottom" anchors the menu's lower edge at y, opening it upward. */
+    anchor?: "top" | "bottom";
     items: Array<{
       id?: string;
       label?: string;

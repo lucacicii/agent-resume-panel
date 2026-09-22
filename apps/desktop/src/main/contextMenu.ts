@@ -82,13 +82,27 @@ function debugMenus(label: string, items: readonly ContextMenuItemSpec[] | reado
 }
 
 /**
+ * macOS menu row height at the system default text size (points). `NSMenu`
+ * anchors a pop-up on an item's top-left corner (Apple: "the top left corner of
+ * the specified item is positioned at the specified location"), so a
+ * bottom-anchored popup must lift its anchor by one row for the menu's lower
+ * edge to land on the caller's point.
+ */
+const ESTIMATED_MENU_ITEM_HEIGHT = 22;
+
+/**
  * Show a native menu at a point in `win` and resolve with the chosen item id,
  * or null when the menu is dismissed.
+ *
+ * `anchor` decides which edge lands on the point: "top" (the default) opens
+ * the menu downward from the point; "bottom" opens it upward, for controls
+ * pinned to a surface's bottom edge (e.g. the sidebar account row).
  */
 export function showContextMenu(
   win: BrowserWindow | null,
   items: readonly ContextMenuItemSpec[],
-  point: { x: number; y: number }
+  point: { x: number; y: number },
+  anchor: "top" | "bottom" = "top"
 ): Promise<string | null> {
   if (!items.length) return Promise.resolve(null);
   debugMenus("renderer context menu", items);
@@ -99,10 +113,14 @@ export function showContextMenu(
         selected = id;
       })
     );
+    // "bottom": the caller's point is where the menu's lower edge should sit.
+    // Positioning the last item there (minus its row) stacks every item upward.
+    const y = Math.max(0, Math.round(anchor === "bottom" ? point.y - ESTIMATED_MENU_ITEM_HEIGHT : point.y));
     menu.popup({
       ...(win ? { window: win } : {}),
       x: Math.max(0, Math.round(point.x)),
-      y: Math.max(0, Math.round(point.y)),
+      y,
+      ...(anchor === "bottom" ? { positioningItem: menu.items.length - 1 } : {}),
       callback: () => resolve(selected)
     });
   });

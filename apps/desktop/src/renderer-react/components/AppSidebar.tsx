@@ -47,11 +47,11 @@ export function AppSidebar({ view, onViewChange, collapsed }: {
     void desktopApi().openSettingsWindow?.({ pane }).catch(() => undefined);
   };
 
-  /** The account menu is a native `NSMenu` anchored below the account row. */
+  /** The account menu is a native `NSMenu` opening upward from the rail bottom. */
   const openAccountMenu = async () => {
     const rect = accountBtnRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const chosen = await showContextMenuAt({ x: rect.left, y: rect.bottom + 4 }, [{ id: "settings", label: settingsLabel }]);
+    const chosen = await showContextMenuAt({ x: rect.left, y: rect.top - 4 }, [{ id: "settings", label: settingsLabel }], "bottom");
     if (chosen === "settings") openSettings();
   };
 

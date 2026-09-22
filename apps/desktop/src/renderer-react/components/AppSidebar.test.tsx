@@ -98,15 +98,17 @@ describe("AppSidebar", () => {
     await screen.findByRole("button", { name: "Account" });
 
     const openSettingsWindow = vi.fn(async () => ({ ok: true }));
-    const contextMenuShow = vi.fn(async (_args: { x: number; y: number; items: Array<{ id?: string; label?: string }> }): Promise<string | null> => "settings");
+    const contextMenuShow = vi.fn(async (_args: { x: number; y: number; anchor?: string; items: Array<{ id?: string; label?: string }> }): Promise<string | null> => "settings");
     Object.assign(window.agentResume as unknown as Record<string, unknown>, { openSettingsWindow, contextMenuShow });
 
     fireEvent.click(screen.getByRole("button", { name: "Account" }));
 
-    // The account menu is a native NSMenu: assert the item list the renderer sends.
+    // The account menu is a native NSMenu: assert the payload the renderer sends —
+    // the menu opens upward (bottom-anchored) from the rail-bottom row.
     await waitFor(() => expect(contextMenuShow).toHaveBeenCalled());
-    const items = contextMenuShow.mock.calls.at(-1)![0].items;
-    expect(items.find((item) => item.label === "Settings")?.id).toBe("settings");
+    const payload = contextMenuShow.mock.calls.at(-1)![0];
+    expect(payload.anchor).toBe("bottom");
+    expect(payload.items.find((item) => item.label === "Settings")?.id).toBe("settings");
 
     // Settings is its own window, so the menu asks the main process for it.
     await waitFor(() => expect(openSettingsWindow).toHaveBeenCalledWith({ pane: "general" }));

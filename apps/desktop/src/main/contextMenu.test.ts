@@ -2,16 +2,18 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({
   BrowserWindow: { fromWebContents: () => null },
-  Menu: { buildFromTemplate: vi.fn(() => ({ popup: vi.fn() })) },
+  Menu: { buildFromTemplate: vi.fn(() => ({ popup: vi.fn(), items: [] })) },
   clipboard: { writeText: vi.fn() },
   shell: { openExternal: vi.fn() }
 }));
 
+import { Menu } from "electron";
 import {
   contextMenuTemplate,
   defaultContextMenuTemplate,
   hasDefaultContextMenu,
   sanitizeContextMenuItems,
+  showContextMenu,
   type ContextMenuActions,
   type ContextMenuTarget
 } from "./contextMenu";
@@ -171,5 +173,74 @@ describe("defaultContextMenuTemplate", () => {
       const template = defaultContextMenuTemplate(value, actions());
       expect(template[template.length - 1]?.type).not.toBe("separator");
     }
+  });
+});
+
+describe("showContextMenu", () => {
+  /** A menu mock that records popup options and can choose an item or dismiss. */
+  function mockMenu(itemCount: number): {
+    popup: ReturnType<typeof vi.fn>;
+    choose: () => void;
+    dismiss: () => void;
+  } {
+    const popup = vi.fn();
+    const items = Array.from({ length: itemCount });
+    let choose: () => void = () => undefined;
+    vi.mocked(Menu.buildFromTemplate).mockImplementationOnce(
+      ((template: Electron.MenuItemConstructorOptions[]) => {
+        // `contextMenuTemplate` closes the chosen id over this callback.
+        choose = template.find((item) => typeof item.click === "function")?.click as () => void;
+        return { popup, items };
+      }) as unknown as typeof Menu.buildFromTemplate
+    );
+    return {
+      popup,
+      choose: () => choose(),
+      dismiss: () => popup.mock.calls[0]?.[0]?.callback?.()
+    };
+  }
+
+  it("pops up downward from the point by default", async () => {
+    const { popup, dismiss } = mockMenu(1);
+    const promise = showContextMenu(null, [{ id: "open", label: "Open" }], { x: 10, y: 20 });
+
+    expect(popup).toHaveBeenCalledWith(expect.objectContaining({ x: 10, y: 20 }));
+    expect(popup.mock.calls[0][0]).not.toHaveProperty("positioningItem");
+
+    dismiss();
+    await expect(promise).resolves.toBeNull();
+  });
+
+  it("bottom-anchors the menu so it opens upward from the point", async () => {
+    const { popup, dismiss } = mockMenu(3);
+    const promise = showContextMenu(null, [{ id: "settings", label: "Settings" }], { x: 8, y: 100 }, "bottom");
+
+    const options = popup.mock.calls[0][0];
+    // The anchor lifts by one row so the menu's lower edge lands on the point.
+    expect(options.y).toBe(100 - 22);
+    // Positioning the last item there stacks every item above it.
+    expect(options.positioningItem).toBe(2);
+
+    dismiss();
+    await expect(promise).resolves.toBeNull();
+  });
+
+  it("keeps the anchor inside the screen when the point sits high", async () => {
+    const { popup, dismiss } = mockMenu(1);
+    const promise = showContextMenu(null, [{ id: "settings", label: "Settings" }], { x: 0, y: 4 }, "bottom");
+
+    expect(popup.mock.calls[0][0].y).toBe(0);
+
+    dismiss();
+    await expect(promise).resolves.toBeNull();
+  });
+
+  it("resolves with the chosen item id", async () => {
+    const { popup, choose, dismiss } = mockMenu(1);
+    const promise = showContextMenu(null, [{ id: "open", label: "Open" }], { x: 1, y: 2 });
+
+    choose();
+    dismiss();
+    await expect(promise).resolves.toBe("open");
   });
 });
