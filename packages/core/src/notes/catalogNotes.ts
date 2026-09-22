@@ -22,6 +22,8 @@ export interface NoteRecord {
   updatedAtMs: number;
   fsMtimeMs?: number;
   gtdStatus?: GtdStatus;
+  /** Present only for archived notes; the archive timestamp in ms. */
+  archivedAtMs?: number;
   /** Present only on tasks (front-matter `work: true`). */
   work?: NoteWorkFields;
 }
@@ -52,6 +54,7 @@ interface NoteRow {
   projects_json?: string | null;
   primary_project?: string | null;
   work_note_id?: string | null;
+  archived_at_ms?: number | null;
 }
 
 /** Work fields of a row that was joined against the `note_work` side table. */
@@ -74,10 +77,11 @@ function workFieldsFromRow(row: NoteRow): NoteWorkFields | undefined {
  * Every note read carries its task fields, so callers never have to ask
  * again whether a note is a task.
  */
-const NOTE_COLUMNS = `n.*, g.status AS gtd_status,
+const NOTE_COLUMNS = `n.*, g.status AS gtd_status, a.archived_at_ms AS archived_at_ms,
             w.note_id AS work_note_id, w.next_action, w.decision, w.sessions_json, w.projects_json, w.primary_project`;
 const NOTE_JOINS = `LEFT JOIN note_gtd g ON g.note_id = n.note_id
-     LEFT JOIN note_work w ON w.note_id = n.note_id`;
+     LEFT JOIN note_work w ON w.note_id = n.note_id
+     LEFT JOIN note_archive a ON a.note_id = n.note_id`;
 
 function mapRowWithWork(row: NoteRow): NoteRecord {
   return { ...mapRow(row), work: workFieldsFromRow(row) };
@@ -98,7 +102,8 @@ function mapRow(row: NoteRow): NoteRecord {
     createdAtMs: row.created_at_ms,
     updatedAtMs: row.updated_at_ms,
     fsMtimeMs: row.fs_mtime_ms ?? undefined,
-    gtdStatus: row.gtd_status && isGtdStatus(row.gtd_status) ? row.gtd_status : undefined
+    gtdStatus: row.gtd_status && isGtdStatus(row.gtd_status) ? row.gtd_status : undefined,
+    archivedAtMs: row.archived_at_ms == null ? undefined : Number(row.archived_at_ms)
   };
 }
 
@@ -235,6 +240,7 @@ export async function deleteNoteRecord(dbPath: string, noteId: string): Promise<
     dbPath,
     `DELETE FROM note_gtd WHERE note_id = '${escapeSqlLiteral(noteId)}';
      DELETE FROM note_work WHERE note_id = '${escapeSqlLiteral(noteId)}';
+     DELETE FROM note_archive WHERE note_id = '${escapeSqlLiteral(noteId)}';
      DELETE FROM work_item_sessions WHERE work_item_note_id = '${escapeSqlLiteral(noteId)}';
      DELETE FROM notes WHERE note_id = '${escapeSqlLiteral(noteId)}';`
   );
@@ -249,6 +255,7 @@ export async function deleteNotesByRelPaths(dbPath: string, relPaths: string[]):
     dbPath,
     `DELETE FROM note_gtd WHERE note_id IN (SELECT note_id FROM notes WHERE rel_md_path IN (${list}));
      DELETE FROM note_work WHERE note_id IN (SELECT note_id FROM notes WHERE rel_md_path IN (${list}));
+     DELETE FROM note_archive WHERE note_id IN (SELECT note_id FROM notes WHERE rel_md_path IN (${list}));
      DELETE FROM work_item_sessions WHERE work_item_note_id IN (SELECT note_id FROM notes WHERE rel_md_path IN (${list}));
      DELETE FROM notes WHERE rel_md_path IN (${list});`
   );
@@ -341,6 +348,7 @@ export async function listTasks(dbPath: string): Promise<TaskRecord[]> {
      FROM notes n
      JOIN note_work w ON w.note_id = n.note_id
      LEFT JOIN note_gtd g ON g.note_id = n.note_id
+     LEFT JOIN note_archive a ON a.note_id = n.note_id
      ORDER BY n.updated_at_ms DESC;`
   );
   return rows.map((row) => ({ ...mapRow(row), work: workFieldsFromRow(row) ?? {} }));

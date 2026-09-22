@@ -38,7 +38,7 @@ export function startNotesIndexer(
   void loadSettings().then((settings) => {
     if (generation !== startGeneration || !embeddingConfigFromSettings(settings)) return;
     timer = setInterval(() => scheduleNotesIndex(0), NOTES_INDEX_INTERVAL_MS);
-    scheduleNotesIndex(1_000);
+    scheduleNotesIndex(30_000);
   }).catch((error) => void recordAppError({ source: "notes-indexer", error }));
 }
 

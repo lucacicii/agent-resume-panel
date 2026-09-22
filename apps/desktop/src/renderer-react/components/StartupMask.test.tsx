@@ -25,56 +25,56 @@ function renderStartupMask() {
 }
 
 describe("StartupMask", () => {
-  it("stays visible until i18n and the initial session sync finish", async () => {
+  it("stays visible until i18n is ready, then hides and dismisses", async () => {
     const bundle = deferred<{ locale: string; messages: Record<string, string> }>();
-    const sync = deferred<unknown>();
-    const syncSessions = vi.fn(() => sync.promise);
     window.agentResume = {
       getI18nBundle: () => bundle.promise,
-      onLocaleChanged: () => () => undefined,
-      syncSessions
+      onLocaleChanged: () => () => undefined
     } as unknown as typeof window.agentResume;
 
     renderStartupMask();
 
-    expect(screen.getByRole("status").textContent).toContain("Syncing agent sessions…");
-    expect(syncSessions).not.toHaveBeenCalled();
+    expect(document.querySelector(".app-startup-mask")).not.toBeNull();
+    expect(document.querySelector(".app-startup-mask")?.className).not.toContain("is-hiding");
 
     await act(async () => {
       bundle.resolve({
         locale: "en",
-        messages: { "desktop.workbench.syncingSessions": "Syncing agent sessions…" }
+        messages: {}
       });
       await Promise.resolve();
     });
-    await waitFor(() => expect(syncSessions).toHaveBeenCalledTimes(1));
-    expect(screen.getByRole("status").textContent).toContain("Syncing agent sessions…");
 
-    await act(async () => {
-      sync.resolve({});
-      await sync.promise;
-    });
     await waitFor(() => expect(document.querySelector(".app-startup-mask")?.className).toContain("is-hiding"));
-    await waitFor(() => expect(screen.queryByRole("status")).toBeNull(), { timeout: 1_000 });
+    await waitFor(() => expect(document.querySelector(".app-startup-mask")).toBeNull(), { timeout: 1_000 });
   });
 
-  it("dismisses when the initial session sync fails", async () => {
-    const syncSessions = vi.fn(async () => {
-      throw new Error("sync unavailable");
-    });
+  it("dismisses immediately when prefers-reduced-motion is active", async () => {
     window.agentResume = {
       getI18nBundle: async () => ({
         locale: "en",
-        messages: { "desktop.workbench.syncingSessions": "Syncing agent sessions…" }
+        messages: {}
       }),
-      onLocaleChanged: () => () => undefined,
-      syncSessions
+      onLocaleChanged: () => () => undefined
     } as unknown as typeof window.agentResume;
 
-    renderStartupMask();
+    const originalMatchMedia = window.matchMedia;
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: query.includes("prefers-reduced-motion"),
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn()
+    }));
 
-    await waitFor(() => expect(syncSessions).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(document.querySelector(".app-startup-mask")?.className).toContain("is-hiding"));
-    await waitFor(() => expect(screen.queryByRole("status")).toBeNull(), { timeout: 1_000 });
+    try {
+      renderStartupMask();
+      await waitFor(() => expect(document.querySelector(".app-startup-mask")).toBeNull());
+    } finally {
+      window.matchMedia = originalMatchMedia;
+    }
   });
 });

@@ -21,6 +21,7 @@ import {
   expandHome,
   listTaskGtdRollups,
   resolveTaskGtdRollup,
+  type TaskGtdRollup,
   getReportEntryById,
   getSessionById,
   getUsageSummary,
@@ -33,6 +34,7 @@ import {
   listScheduleRuns,
   countSessions,
   querySessionsPage,
+  sessionFacetCounts,
   unhideAllSessionsInCatalog,
   unhideSessionInCatalog,
   unhideAllProjectsInCatalog,
@@ -221,6 +223,7 @@ import {
   notesResolveLinkRoot,
   notesReveal,
   notesSetGtdStatus,
+  notesSetArchived,
   notesSetParent,
   notesWrite,
   settingsOpenPanelHome
@@ -242,6 +245,8 @@ import {
 import { pickTemplateImage } from "./templateImagePicker";
 import { isCustomHexColor, isTaskColorKey, taskAccent, type TaskAccentSource } from "../shared/taskColors";
 import { refreshMemorySchedulerFromSettings, stopMemoryScheduler } from "./scheduler";
+import { registerThunderIpc } from "./thunder/thunderIpc";
+import { startThunderScheduler, stopThunderScheduler } from "./thunder/thunderScheduler";
 import {
   ensureAgentStatusDaemon,
   resolveDaemonEntryPath,
@@ -565,6 +570,10 @@ let browserSettingsCache: import("@agent-resume/core").DesktopBrowserSettings | 
 let notifiedWaitingSessions = new Set<string>();
 /** Display data per workbench, so a tray dot for a closed window still has a name. */
 let workbenchMetaById = new Map<string, { noteId: string; label: string }>();
+let cachedAllWorkbenches: Awaited<ReturnType<typeof listAllTaskWorkbenches>> | null = null;
+let cachedTaskRollups: Record<string, TaskGtdRollup> | null = null;
+let cachedTaskRollupsAt = 0;
+const TASK_ROLLUPS_CACHE_MS = 2_000;
 
 function workbenchLabel(name: string, projectPath: string): string {
   const explicit = name.trim();
@@ -577,6 +586,7 @@ async function loadWorkbenchMeta(): Promise<void> {
   try {
     const paths = await loadPanelDbPaths();
     const workbenches = await listAllTaskWorkbenches(paths.desktopDb);
+    cachedAllWorkbenches = workbenches;
     const next = new Map<string, { noteId: string; label: string }>();
     for (const workbench of workbenches) {
       next.set(workbench.workbenchId, {
@@ -947,7 +957,7 @@ function revealMainWindow(): BrowserWindow | null {
  * show. A freshly created window has no renderer yet, so the message waits for
  * `did-finish-load` instead of being dropped.
  */
-function showBoardView(view: "gtd" | "notes"): void {
+function showBoardView(view: "gtd" | "notes" | "archive" | "sessions"): void {
   const existed = Boolean(mainWindow && !mainWindow.isDestroyed());
   const board = revealMainWindow();
   if (!board) return;
@@ -1341,6 +1351,7 @@ function performQuitCleanup(): void {
   disposeBrowserController();
   void disposeBrowserMcpServer();
   stopMemoryScheduler();
+  stopThunderScheduler();
   stopNotesIndexer();
   stopSessionSummaryAuto();
   stopSessionTranscriptIndexAuto();
@@ -1407,6 +1418,7 @@ function shouldScheduleBackgroundAnalysis(): boolean {
 }
 
 async function syncAndNotify(): Promise<AgentSessionSyncResult> {
+  cachedTaskRollups = null;
   const result = await syncSessions();
   // Every window lists sessions, so every window refreshes when the catalog moves.
   broadcastToRenderers("sessions:synced", result);
@@ -1903,6 +1915,20 @@ async function installApplicationMenu(): Promise<void> {
           showBoardView("notes");
         }
       },
+      {
+        label: t("desktop.menu.showArchive"),
+        accelerator: "CommandOrControl+3",
+        click: () => {
+          showBoardView("archive");
+        }
+      },
+      {
+        label: t("desktop.menu.showSessions"),
+        accelerator: "CommandOrControl+4",
+        click: () => {
+          showBoardView("sessions");
+        }
+      },
       { type: "separator" },
       {
         label: t("desktop.menu.quickAccess"),
@@ -2111,6 +2137,8 @@ async function restoreTaskWindows(): Promise<void> {
         workbenchId: entry.workbenchId,
         ...(entry.title ? { title: entry.title } : {})
       });
+      // Stagger window restoration so Chromium processes do not compete for resources on startup
+      await new Promise((resolve) => setTimeout(resolve, 200));
     }
   } catch (error) {
     void recordAppError({ source: "task-window", message: "Could not restore workbench windows.", error });
@@ -2264,13 +2292,14 @@ function registerIpc(): void {
 
   safeHandle(
     "contextMenu:show",
-    async (event, args?: { x?: unknown; y?: unknown; items?: unknown }) => {
+    async (event, args?: { x?: unknown; y?: unknown; items?: unknown; anchor?: unknown }) => {
       const win = BrowserWindow.fromWebContents(event.sender);
       const items = sanitizeContextMenuItems(args?.items);
       if (!items.length) return null;
       const x = typeof args?.x === "number" && Number.isFinite(args.x) ? args.x : 0;
       const y = typeof args?.y === "number" && Number.isFinite(args.y) ? args.y : 0;
-      return showContextMenu(win, items, { x, y });
+      const anchor = args?.anchor === "bottom" ? "bottom" : "top";
+      return showContextMenu(win, items, { x, y }, anchor);
     }
   );
 
@@ -2595,32 +2624,48 @@ function registerIpc(): void {
     limit?: number;
     cursor?: { updatedAt: number; provider: string; id: string };
     search?: string;
-    provider?: string;
+    providers?: string[];
     fromMs?: number;
     toMs?: number;
     projectPath?: string;
     projectId?: string;
-    gtdStatus?: string;
+    taskNoteId?: string;
+    gtdStatuses?: string[];
+    gtdUntagged?: boolean;
     keys?: Array<{ provider: string; id: string }>;
     unassignedOnly?: boolean;
   }) => {
     const settings = await loadSettings();
     const paths = await loadPanelDbPaths(settings);
-    const provider = args?.provider?.trim();
     const validProviders = new Set<AgentProvider>(["codex", "claude", "agy", "grok", "opencode", "pi", "prime", "cursor", "cursor-ide", "chat"]);
-    if (provider && !validProviders.has(provider as AgentProvider)) throw new Error("Invalid session provider.");
-    if (args?.gtdStatus && !isGtdStatus(args.gtdStatus)) throw new Error("Invalid GTD status.");
+    const providers = (args?.providers ?? []).map((value) => String(value).trim()).filter(Boolean);
+    for (const provider of providers) {
+      if (!validProviders.has(provider as AgentProvider)) throw new Error("Invalid session provider.");
+    }
+    const gtdStatuses = (args?.gtdStatuses ?? []).map((value) => String(value).trim()).filter(Boolean);
+    for (const status of gtdStatuses) {
+      if (!isGtdStatus(status)) throw new Error("Invalid GTD status.");
+    }
     const request = {
       ...args,
       keys: args?.keys,
-      provider: provider as AgentProvider | undefined,
+      providers: providers.length ? providers : undefined,
       search: args?.search?.trim() || undefined,
       projectPath: args?.projectPath?.trim() || undefined,
       projectId: args?.projectId?.trim() || undefined,
-      gtdStatus: args?.gtdStatus?.trim() || undefined,
+      taskNoteId: args?.taskNoteId?.trim() || undefined,
+      gtdStatuses: gtdStatuses.length ? gtdStatuses : undefined,
+      gtdUntagged: args?.gtdUntagged === true || undefined,
       unassignedOnly: args?.unassignedOnly === true || undefined
     };
     return querySessionsPage(paths.catalogDb, request);
+  });
+
+  // Counts behind the filter chips: the list is paginated, so the chips cannot
+  // be derived from what is on screen.
+  ipcMain.handle("sessions:facets", async () => {
+    const paths = await loadPanelDbPaths();
+    return sessionFacetCounts(paths.catalogDb);
   });
 
   ipcMain.handle("sessions:clearLastExitWaiting", async (_event, args: { provider: string; id: string }) => {
@@ -2635,8 +2680,15 @@ function registerIpc(): void {
   });
 
   ipcMain.handle("gtd:listTaskRollups", async () => {
+    const now = Date.now();
+    if (cachedTaskRollups && now - cachedTaskRollupsAt < TASK_ROLLUPS_CACHE_MS) {
+      return cachedTaskRollups;
+    }
     const paths = await loadPanelDbPaths();
-    return listTaskGtdRollups(paths.catalogDb);
+    const rollups = await listTaskGtdRollups(paths.catalogDb);
+    cachedTaskRollups = rollups;
+    cachedTaskRollupsAt = now;
+    return rollups;
   });
 
   ipcMain.handle("gtd:taskRollup", async (_event, args: { noteId: string }) => {
@@ -2653,6 +2705,7 @@ function registerIpc(): void {
       const id = String(args?.id || "").trim();
       if (!provider || !id) throw new Error("Session provider and id are required");
       const paths = await loadPanelDbPaths();
+      cachedTaskRollups = null;
       if (args?.status == null) {
         await clearSessionGtdStatus(paths.catalogDb, provider, id);
       } else if (isGtdStatus(args.status)) {
@@ -3041,8 +3094,10 @@ function registerIpc(): void {
   );
 
   safeHandle("taskWorkbenches:listAll", async () => {
+    if (cachedAllWorkbenches) return cachedAllWorkbenches;
     const paths = await loadPanelDbPaths();
-    return listAllTaskWorkbenches(paths.desktopDb);
+    cachedAllWorkbenches = await listAllTaskWorkbenches(paths.desktopDb);
+    return cachedAllWorkbenches;
   });
 
   safeHandle(
@@ -3264,9 +3319,9 @@ function registerIpc(): void {
   ipcMain.handle("logs:openDir", async () => openAppErrorLogDir());
 
   ipcMain.handle("notes:list", async () => notesList());
-  ipcMain.handle("notes:listTasks", async () => {
+  ipcMain.handle("notes:listTasks", async (_event, args?: { includeArchived?: boolean }) => {
     const [items, accents, templateLinks] = await Promise.all([
-      notesListTasks(),
+      notesListTasks(args),
       resolveTaskAccents(),
       listTaskTemplateLinks()
     ]);
@@ -3451,6 +3506,12 @@ function registerIpc(): void {
     return notesEnsureTaskWorkspace(args.noteId);
   });
   ipcMain.handle("notes:listTaskSessionLinks", async () => notesListTaskSessionLinks());
+  ipcMain.handle("notes:taskNoteIdForSession", async (_event, args: { provider?: unknown; sessionId?: unknown }) => {
+    if (typeof args?.provider !== "string" || typeof args?.sessionId !== "string") {
+      throw new Error("A session provider and id are required.");
+    }
+    return (await notesTaskNoteIdForSession({ provider: args.provider, sessionId: args.sessionId })) ?? null;
+  });
   ipcMain.handle("notes:taskWorkspace", async (_event, args: { noteId?: unknown }) => {
     if (typeof args?.noteId !== "string" || !args.noteId.trim()) {
       throw new Error("A task note id is required.");
@@ -3549,8 +3610,19 @@ function registerIpc(): void {
       throw new Error("Invalid note GTD status.");
     }
     const result = await notesSetGtdStatus(args.noteId, status);
+    cachedTaskRollups = null;
     scheduleNotesIndex();
     return result;
+  });
+  ipcMain.handle("notes:setArchived", async (_event, args: { noteIds?: unknown; archived?: unknown }) => {
+    const noteIds = Array.isArray(args?.noteIds)
+      ? args.noteIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0)
+      : [];
+    if (noteIds.length === 0 || typeof args?.archived !== "boolean") {
+      throw new Error("Invalid archive request.");
+    }
+    cachedTaskRollups = null;
+    await notesSetArchived(noteIds, args.archived);
   });
   ipcMain.handle("notes:read", async (_event, args: { noteId: string }) => notesRead(args.noteId));
   ipcMain.handle("notes:write", async (_event, args: { noteId: string; content: string }) => {
@@ -3860,7 +3932,6 @@ app.whenReady().then(async () => {
     getMainWindow: () => mainWindow
   });
   registerSelectionIpc();
-  registerSelectionIpc();
   registerWorkbenchFsIpc();
   registerWorkbenchWatcherIpc(() => mainWindow, (sender) => isTaskWindowSender(sender));
   registerWorkbenchGitIpc(() => app.getLocale());
@@ -3873,6 +3944,7 @@ app.whenReady().then(async () => {
     getDefaultPolicy: () => browserSettingsCache?.defaultPolicy,
     getDefaultSurface: () => browserSettingsCache?.defaultSurface || "workbench"
   });
+  registerThunderIpc();
   // Appearance must be resolved before the first window: `themeSource` decides
   // the native chrome and `shouldUseDarkColors`, so the window background, tray
   // image, and menus are all built from the value the user actually chose.
@@ -3908,7 +3980,7 @@ app.whenReady().then(async () => {
   createWindow();
   void loadWorkbenchMeta();
   syncSessionDotsTray();
-  void restoreTaskWindows();
+  setTimeout(() => void restoreTaskWindows(), 1_000);
   nativeTheme.on("updated", () => {
     syncSessionDotsTray();
     applyWindowBackgrounds();
@@ -3925,88 +3997,94 @@ app.whenReady().then(async () => {
       startSessionTranscriptIndexAuto();
       startSessionEmbeddingIndexAuto();
       await refreshMemorySchedulerFromSettings();
+      startThunderScheduler();
 
-      try {
-        const installed = installArpmShim({
-          execPath: process.execPath,
-          cliPath: resolveArpmCliPath({
-            isPackaged: app.isPackaged,
-            resourcesPath: process.resourcesPath,
-            appPath: app.getAppPath()
-          }),
-          panelHome: resolvePanelHome(settings.panelHome)
-        });
-        if (installed.written) {
-          console.log(`[agent-resume] Installed arpm at ${installed.path}`);
-        } else if (installed.skipped) {
-          void recordAppError({
-            source: "arpm-install",
-            message: `Skipped arpm install: ${installed.skipped}`
-          });
-        }
-        const shell = installArpmShell({ panelHome: resolvePanelHome(settings.panelHome) });
-        if (shell.rcPaths.length) {
-          console.log(`[agent-resume] Wired arpm shell cd hook in ${shell.rcPaths.join(", ")}`);
-        }
-      } catch (error) {
-        void recordAppError({
-          source: "arpm-install",
-          message: "Failed to install arpm on PATH.",
-          error
-        });
-      }
+      // Defer external environment and MCP sync until after the main window is active and idle.
+      setTimeout(() => {
+        void (async () => {
+          try {
+            const installed = installArpmShim({
+              execPath: process.execPath,
+              cliPath: resolveArpmCliPath({
+                isPackaged: app.isPackaged,
+                resourcesPath: process.resourcesPath,
+                appPath: app.getAppPath()
+              }),
+              panelHome: resolvePanelHome(settings.panelHome)
+            });
+            if (installed.written) {
+              console.log(`[agent-resume] Installed arpm at ${installed.path}`);
+            } else if (installed.skipped) {
+              void recordAppError({
+                source: "arpm-install",
+                message: `Skipped arpm install: ${installed.skipped}`
+              });
+            }
+            const shell = installArpmShell({ panelHome: resolvePanelHome(settings.panelHome) });
+            if (shell.rcPaths.length) {
+              console.log(`[agent-resume] Wired arpm shell cd hook in ${shell.rcPaths.join(", ")}`);
+            }
+          } catch (error) {
+            void recordAppError({
+              source: "arpm-install",
+              message: "Failed to install arpm on PATH.",
+              error
+            });
+          }
 
-      // Rewrite any client configs still pointing at the old GUI Electron MCP entry in background.
-      try {
-        const launch = createExternalMcpLaunchConfig({
-          executablePath: process.execPath,
-          cliPath: resolveExternalMcpCliPath({
-            isPackaged: app.isPackaged,
-            resourcesPath: process.resourcesPath,
-            appPath: app.getAppPath()
-          }),
-          panelHome: resolvePanelHome(settings.panelHome)
-        });
-        const migrated = await migrateLegacyAgentResumeRegistrations(launch);
-        if (migrated.migrated.length > 0) {
-          console.log(`[agent-resume] Migrated MCP clients to headless CLI: ${migrated.migrated.join(", ")}`);
-        }
-        for (const failure of migrated.failed) {
-          void recordAppError({
-            source: "mcp-migrate",
-            message: `MCP migrate failed (${failure.target}): ${failure.error}`
-          });
-        }
-      } catch (error) {
-        void recordAppError({
-          source: "mcp-migrate",
-          message: "MCP legacy migration failed.",
-          error
-        });
-      }
+          // Rewrite any client configs still pointing at the old GUI Electron MCP entry in background.
+          try {
+            const launch = createExternalMcpLaunchConfig({
+              executablePath: process.execPath,
+              cliPath: resolveExternalMcpCliPath({
+                isPackaged: app.isPackaged,
+                resourcesPath: process.resourcesPath,
+                appPath: app.getAppPath()
+              }),
+              panelHome: resolvePanelHome(settings.panelHome)
+            });
+            const migrated = await migrateLegacyAgentResumeRegistrations(launch);
+            if (migrated.migrated.length > 0) {
+              console.log(`[agent-resume] Migrated MCP clients to headless CLI: ${migrated.migrated.join(", ")}`);
+            }
+            for (const failure of migrated.failed) {
+              void recordAppError({
+                source: "mcp-migrate",
+                message: `MCP migrate failed (${failure.target}): ${failure.error}`
+              });
+            }
+          } catch (error) {
+            void recordAppError({
+              source: "mcp-migrate",
+              message: "MCP legacy migration failed.",
+              error
+            });
+          }
 
-      // Publish browser MCP endpoint + register both MCP services for TUI/CLI clients.
-      try {
-        browserSettingsCache = settings.desktop?.browser || null;
-        const mcp = await syncExternalMcpRegistration(settings);
-        if (mcp.registered.length) {
-          console.log(
-            `[agent-resume] External MCP registered for: ${mcp.registered.join(", ")}`
-          );
-        }
-        for (const failure of mcp.failed) {
-          void recordAppError({
-            source: "external-mcp",
-            message: `External MCP sync failed (${failure.target}): ${failure.error}`
-          });
-        }
-      } catch (error) {
-        void recordAppError({
-          source: "external-mcp",
-          message: "External MCP startup sync failed.",
-          error
-        });
-      }
+          // Publish browser MCP endpoint + register both MCP services for TUI/CLI clients.
+          try {
+            browserSettingsCache = settings.desktop?.browser || null;
+            const mcp = await syncExternalMcpRegistration(settings);
+            if (mcp.registered.length) {
+              console.log(
+                `[agent-resume] External MCP registered for: ${mcp.registered.join(", ")}`
+              );
+            }
+            for (const failure of mcp.failed) {
+              void recordAppError({
+                source: "external-mcp",
+                message: `External MCP sync failed (${failure.target}): ${failure.error}`
+              });
+            }
+          } catch (error) {
+            void recordAppError({
+              source: "external-mcp",
+              message: "External MCP startup sync failed.",
+              error
+            });
+          }
+        })();
+      }, 5_000);
     } catch (error) {
       void recordAppError({
         source: "startup-background",

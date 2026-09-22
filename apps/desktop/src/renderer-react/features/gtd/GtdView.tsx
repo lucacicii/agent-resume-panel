@@ -27,6 +27,7 @@ import { hueFromHex } from "../../../shared/taskColors";
 
 /** Board column order — `done` last so active work reads first. */
 const GTD_COLUMNS: readonly DesktopGtdStatus[] = DESKTOP_GTD_STATUSES;
+const INITIAL_COLUMN_LIMIT = 40;
 
 type GtdCard = WorkbenchTask & { projects: string[] };
 
@@ -43,6 +44,7 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
   const [dragNoteId, setDragNoteId] = useState<string | null>(null);
   const [dragTemplate, setDragTemplate] = useState<TaskTemplate | null>(null);
   const [dropColumn, setDropColumn] = useState<GtdStatus | null>(null);
+  const [columnLimits, setColumnLimits] = useState<Record<string, number>>({});
   const [renaming, setRenaming] = useState<{ noteId: string; value: string; busy: boolean } | null>(null);
   const renameCommitSkipRef = useRef(false);
   const [creating, setCreating] = useState(false);
@@ -61,7 +63,7 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
     if (typeof desktopApi().notesListTasks !== "function") return;
     try {
       const [records, nextRollups] = await Promise.all([
-        desktopApi().notesListTasks(),
+        desktopApi().notesListTasks({ includeArchived: false }),
         typeof desktopApi().listTaskGtdRollups === "function"
           ? desktopApi().listTaskGtdRollups().catch(() => ({} as Record<string, TaskGtdRollup>))
           : Promise.resolve({} as Record<string, TaskGtdRollup>)
@@ -125,6 +127,12 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
   // Template recolors/deletes re-resolve card accents; reload the cards.
   useEffect(() => {
     const stop = desktopApi().onTaskTemplatesChanged?.(() => { void load(); });
+    return () => stop?.();
+  }, [load]);
+
+  // Background session sync updates rollups (linked sessions & statuses); reload.
+  useEffect(() => {
+    const stop = desktopApi().onSessionsSynced?.(() => { void load(); });
     return () => stop?.();
   }, [load]);
 
@@ -344,6 +352,24 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
   }, [text, load]);
 
   /**
+   * Archive tasks: they leave the board and show up in the archive view.
+   * Used by both the card menu (one id) and the done column's bulk button.
+   */
+  const archiveTasks = useCallback(async (noteIds: string[]): Promise<void> => {
+    const ids = [...new Set(noteIds.filter(Boolean))];
+    if (ids.length === 0 || typeof desktopApi().notesSetArchived !== "function") return;
+    try {
+      await desktopApi().notesSetArchived({ noteIds: ids, archived: true });
+      setItems((current) => current.filter((item) => !ids.includes(item.noteId)));
+      window.dispatchEvent(new Event("agent-resume:notes-mutated"));
+      notifyDesktop({ text: text("desktop.gtd.archiveDone", ids.length), durationMs: 3000 });
+    } catch (error) {
+      notifyDesktop({ text: text("desktop.gtd.archiveFailed", errorMessage(error)), kind: "error" });
+      void load();
+    }
+  }, [load, text]);
+
+  /**
    * Board card menu. Native, so it highlights with the system accent, flips at
    * screen edges, and is keyboard navigable.
    */
@@ -364,6 +390,7 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
       { id: "rename", label: text("desktop.common.rename") },
       { id: "note", label: text("desktop.workbench.taskOpenNote") },
       { id: "open", label: text("desktop.gtd.openInWindow") },
+      { id: "archive", label: text("desktop.gtd.archiveTask") },
       ...(pinned ? [{ id: "unpin", label: text("desktop.gtd.followChildren") }] : []),
       ...(templateScripts.length > 0
         ? [
@@ -385,18 +412,21 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
     if (choice === "rename") startRename(item);
     else if (choice === "note") void openTaskNote(item);
     else if (choice === "open") void openTask(item);
+    else if (choice === "archive") void archiveTasks([item.noteId]);
     else if (choice === "unpin") void clearPin(item.noteId);
     else if (choice === "delete") void deleteTask(item);
     else if (choice?.startsWith("script:")) {
       const script = templateScripts.find((entry) => entry.id === choice.slice("script:".length));
       if (script) void openTask(item, undefined, { name: script.name, command: script.command, cwd: script.cwd });
     }
-  }, [clearPin, deleteTask, openTask, openTaskNote, rollups, startRename, text]);
+  }, [archiveTasks, clearPin, deleteTask, openTask, openTaskNote, rollups, startRename, text]);
 
   const filtered = useMemo(() => {
+    // Archived tasks live in the archive view, not on the board.
+    const active = items.filter((item) => item.archivedAtMs == null);
     const q = query.trim().toLowerCase();
-    if (!q) return items;
-    return items.filter((item) => `${item.title} ${item.projects.join(" ")}`.toLowerCase().includes(q));
+    if (!q) return active;
+    return active.filter((item) => `${item.title} ${item.projects.join(" ")}`.toLowerCase().includes(q));
   }, [items, query]);
 
   const columns = useMemo(() => GTD_COLUMNS.map((status) => ({
@@ -477,7 +507,11 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
     <section className="panel workbench-panel react-gtd-panel" hidden={!active} aria-label={text("desktop.gtd.title")}>
       <TaskTemplatePanel active={active} onDragTemplateChange={setDragTemplate} />
       <div className="gtd-board" onKeyDown={onBoardKeyDown}>
-        {columns.map(({ status, items: columnItems }) => (
+        {columns.map(({ status, items: columnItems }) => {
+          const limit = columnLimits[status] ?? INITIAL_COLUMN_LIMIT;
+          const visibleItems = columnItems.slice(0, limit);
+          const remaining = columnItems.length - visibleItems.length;
+          return (
           <div
             key={status}
             className={`gtd-column${dropColumn === status ? " is-drop-target" : ""}`}
@@ -510,9 +544,20 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
               <span className={`wb-gtd-status-dot is-${status}`} aria-hidden="true" />
               <span className="gtd-column-title">{text(`desktop.workbench.gtdStatus.${status}`)}</span>
               <span className="gtd-column-count">{columnItems.length}</span>
+              {status === "done" && columnItems.length > 0 ? (
+                <button
+                  type="button"
+                  className="gtd-column-archive"
+                  title={text("desktop.gtd.archiveAllDoneHint")}
+                  aria-label={text("desktop.gtd.archiveAllDone")}
+                  onClick={() => void archiveTasks(columnItems.map((item) => item.noteId))}
+                >
+                  <ThemeIcon name="archive" size={ICON_SIZE.inline} aria-hidden="true" />
+                </button>
+              ) : null}
             </div>
             <div className="gtd-column-body">
-              {columnItems.map((item) => {
+              {visibleItems.map((item) => {
                 const dotStatus = taskDotStatus(item);
                 const waiting = dotStatus === "awaiting_user";
                 const taskWorkbenches = workbenchesByTask[item.noteId] ?? [];
@@ -643,9 +688,19 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
                 );
               })}
               {columnItems.length === 0 ? <p className="gtd-column-empty">{text("desktop.gtd.emptyColumn")}</p> : null}
+              {remaining > 0 ? (
+                <button
+                  type="button"
+                  className="gtd-column-more-btn"
+                  onClick={() => setColumnLimits((prev) => ({ ...prev, [status]: (prev[status] ?? INITIAL_COLUMN_LIMIT) + 40 }))}
+                >
+                  {text("desktop.gtd.loadMore", remaining)}
+                </button>
+              ) : null}
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
     </section>
     {newTask ? (

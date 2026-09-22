@@ -37,7 +37,7 @@ export function startSessionSummaryAuto(): void {
   void loadSettings().then((settings) => {
     if (generation !== startGeneration || !resolveSessionSummaryAutoSettings(settings).enabled) return;
     timer = setInterval(() => scheduleSessionSummaryAuto(0), TICK_INTERVAL_MS);
-    scheduleSessionSummaryAuto(5_000);
+    scheduleSessionSummaryAuto(45_000);
   }).catch((error) => void recordAppError({ source: "session-summary-auto", error }));
 }
 

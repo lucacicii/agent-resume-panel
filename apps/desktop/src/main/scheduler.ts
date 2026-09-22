@@ -40,9 +40,6 @@ function startMemoryScheduler(): void {
       void recordAppError({ source: "memory-scheduler", error: err });
     });
   }, 60_000);
-  void tick().catch((err) => {
-    void recordAppError({ source: "memory-scheduler", error: err });
-  });
 }
 
 const DEFAULT_SCHEDULE_HOURS = { dailyHour: 22, weeklyHour: 9, monthlyHour: 9 } as const;

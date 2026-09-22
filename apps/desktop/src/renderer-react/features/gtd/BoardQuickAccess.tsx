@@ -47,6 +47,20 @@ export function BoardQuickAccess(): React.ReactPortal | null {
         run: () => { window.dispatchEvent(new CustomEvent("agent-resume:board-view", { detail: "notes" })); }
       },
       {
+        id: "view.archive",
+        label: text("desktop.workbench.quickAccessShowArchive"),
+        category: text("desktop.workbench.quickAccessCategoryNavigation"),
+        keywords: "view archive filed away done switch surface",
+        run: () => { window.dispatchEvent(new CustomEvent("agent-resume:board-view", { detail: "archive" })); }
+      },
+      {
+        id: "view.sessions",
+        label: text("desktop.workbench.quickAccessShowSessions"),
+        category: text("desktop.workbench.quickAccessCategoryNavigation"),
+        keywords: "view sessions history catalog switch surface",
+        run: () => { window.dispatchEvent(new CustomEvent("agent-resume:board-view", { detail: "sessions" })); }
+      },
+      {
         id: "task.new",
         label: text("desktop.gtd.newTask"),
         category: text("desktop.workbench.quickAccessCategoryTasks"),
@@ -62,8 +76,11 @@ export function BoardQuickAccess(): React.ReactPortal | null {
       }
     ];
     try {
-      const records = typeof desktopApi().notesListTasks === "function" ? await desktopApi().notesListTasks() : [];
-      const tasks = records.map((record) => taskFromRecord(record)).slice(0, 100);
+      const records = typeof desktopApi().notesListTasks === "function" ? await desktopApi().notesListTasks({ includeArchived: false }) : [];
+      const tasks = records
+        .map((record) => taskFromRecord(record))
+        .filter((task) => task.archivedAtMs == null)
+        .slice(0, 100);
       return [
         ...base,
         ...tasks.map((task): QuickAccessCommand => ({

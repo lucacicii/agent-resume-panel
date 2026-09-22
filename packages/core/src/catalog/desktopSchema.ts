@@ -268,4 +268,42 @@ CREATE INDEX IF NOT EXISTS idx_workbench_composer_sends_pane
   ON workbench_composer_sends(pane_key, created_at_ms DESC);
 CREATE INDEX IF NOT EXISTS idx_workbench_composer_sends_session_key
   ON workbench_composer_sends(session_key, created_at_ms DESC);
+
+CREATE TABLE IF NOT EXISTS thunder_schedules (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  prompt TEXT NOT NULL,
+  workspace_dir TEXT,
+  model TEXT,
+  trigger_type TEXT NOT NULL,
+  trigger_value TEXT NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  last_run_at_ms INTEGER,
+  last_status TEXT,
+  last_error TEXT,
+  last_output TEXT,
+  next_run_at_ms INTEGER,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_thunder_schedules_next_run
+  ON thunder_schedules(enabled, next_run_at_ms);
+
+CREATE TABLE IF NOT EXISTS thunder_schedule_runs (
+  id TEXT PRIMARY KEY,
+  schedule_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  trigger_source TEXT NOT NULL,
+  prompt TEXT NOT NULL,
+  workspace_dir TEXT,
+  model TEXT,
+  output TEXT,
+  error TEXT,
+  started_at_ms INTEGER NOT NULL,
+  finished_at_ms INTEGER,
+  logs_json TEXT,
+  FOREIGN KEY (schedule_id) REFERENCES thunder_schedules(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_thunder_schedule_runs_schedule
+  ON thunder_schedule_runs(schedule_id, started_at_ms DESC);
 `;

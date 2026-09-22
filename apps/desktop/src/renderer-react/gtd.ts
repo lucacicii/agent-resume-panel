@@ -57,3 +57,23 @@ export function desktopGtdColumnFromRollup(
 export function desktopGtdLabelKey(status: GtdStatus | undefined): string {
   return `desktop.workbench.gtdStatus.${desktopGtdColumn(status)}`;
 }
+
+/**
+ * Stored statuses a desktop column stands for when filtering.
+ *
+ * `someday` and `reference` are not surfaced as columns but stay in storage, so
+ * a "To do" filter has to match them too — otherwise those sessions become
+ * unreachable from any chip.
+ */
+export function desktopGtdColumnStatuses(status: DesktopGtdStatus): GtdStatus[] {
+  switch (status) {
+    case "next":
+      return ["next"];
+    case "waiting":
+      return ["waiting"];
+    case "done":
+      return ["done"];
+    default:
+      return ["inbox", "someday", "reference"];
+  }
+}

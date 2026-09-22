@@ -36,7 +36,7 @@ export function startSessionTranscriptIndexAuto(): void {
   void loadSettings().then((settings) => {
     if (generation !== startGeneration || !resolveSessionTranscriptIndexSettings(settings).enabled) return;
     timer = setInterval(() => scheduleSessionTranscriptIndexAuto(0), TICK_INTERVAL_MS);
-    scheduleSessionTranscriptIndexAuto(15_000);
+    scheduleSessionTranscriptIndexAuto(60_000);
   }).catch((error) => void recordAppError({ source: "session-transcript-index-auto", error }));
 }
 

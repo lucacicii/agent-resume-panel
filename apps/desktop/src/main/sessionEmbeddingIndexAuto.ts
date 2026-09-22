@@ -36,7 +36,7 @@ export function startSessionEmbeddingIndexAuto(): void {
   void loadSettings().then((settings) => {
     if (generation !== startGeneration || !resolveSessionEmbeddingIndexSettings(settings).enabled) return;
     timer = setInterval(() => scheduleSessionEmbeddingIndexAuto(0), TICK_INTERVAL_MS);
-    scheduleSessionEmbeddingIndexAuto(20_000);
+    scheduleSessionEmbeddingIndexAuto(75_000);
   }).catch((error) => void recordAppError({ source: "session-embedding-index-auto", error }));
 }
 

@@ -91,6 +91,8 @@ const obsoleteDesktopKeys = new Set([
   // Archive tab removed; digests stay on the scheduler + MCP.
   "desktop.tabs.report",
   "desktop.im.openInReport",
+  // Retired archive keys. `desktop.archive.search` is NOT here: the new
+  // board archive view reuses that key for its own search box.
   "desktop.archive.decision",
   "desktop.archive.historyEmpty",
   "desktop.archive.lastExitWaiting",
@@ -102,7 +104,6 @@ const obsoleteDesktopKeys = new Set([
   "desktop.archive.projects",
   "desktop.archive.reportMentioned",
   "desktop.archive.reportsTitle",
-  "desktop.archive.search",
   "desktop.archive.searchPlaceholder",
   "desktop.archive.sessionsAllTime",
   "desktop.archive.unassignedEmpty",

@@ -38,6 +38,8 @@ import {
 
 let notesStore: NotesStore | null = null;
 let notesStoreKey = "";
+let lastReconcileMs = 0;
+const RECONCILE_THROTTLE_MS = 5_000;
 
 type DesktopNoteRecord = NoteRecord;
 
@@ -51,23 +53,35 @@ async function getDesktopNotesStore(): Promise<NotesStore> {
     notesStore = new NotesStore(dbPath, panelHome);
     await notesStore.initialize();
     notesStoreKey = key;
+    lastReconcileMs = Date.now();
   }
   return notesStore;
 }
 
+async function maybeReloadNotesStore(store: NotesStore, force = false): Promise<void> {
+  const now = Date.now();
+  if (force || now - lastReconcileMs > RECONCILE_THROTTLE_MS) {
+    await store.reload();
+    lastReconcileMs = now;
+  }
+}
+
 export async function notesList(): Promise<DesktopNoteRecord[]> {
   const store = await getDesktopNotesStore();
-  await store.reload();
+  await maybeReloadNotesStore(store);
   return store.getAllNotes();
 }
 
 /** Project notes marked `work: true` — the board's unit of management. */
-export async function notesListTasks(): Promise<TaskRecord[]> {
+export async function notesListTasks(options?: { includeArchived?: boolean }): Promise<TaskRecord[]> {
   const settings = await loadSettings();
   const panelHome = effectivePanelHome(settings);
   const store = await getDesktopNotesStore();
-  await store.reload();
-  const items = await store.listTasks();
+  await maybeReloadNotesStore(store);
+  let items = await store.listTasks();
+  if (options?.includeArchived === false) {
+    items = items.filter((item) => item.archivedAtMs == null);
+  }
   if (!items.length) return items;
 
   // `projects` is referenced, not owned: the union of declared projects and the
@@ -91,7 +105,7 @@ export async function notesListTasks(): Promise<TaskRecord[]> {
 /** Indexed task ↔ session links, for the session → task reverse lookup. */
 export async function notesListTaskSessionLinks(): Promise<TaskSessionLink[]> {
   const store = await getDesktopNotesStore();
-  await store.reload();
+  await maybeReloadNotesStore(store);
   return store.listTaskSessionLinks();
 }
 
@@ -337,6 +351,16 @@ export async function notesSetGtdStatus(noteId: string, status: GtdStatus | null
     : store.setNoteGtdStatus(noteId, status);
 }
 
+/** Archive or restore tasks. The whole batch shares one timestamp. */
+export async function notesSetArchived(noteIds: string[], archived: boolean): Promise<void> {
+  const store = await getDesktopNotesStore();
+  if (archived) {
+    await store.archiveTasks(noteIds);
+  } else {
+    await store.unarchiveTasks(noteIds);
+  }
+}
+
 export async function notesRead(noteId: string): Promise<{ record: DesktopNoteRecord; content: string }> {
   const store = await getDesktopNotesStore();
   const record = await store.getNote(noteId);
@@ -555,4 +579,5 @@ export async function notesListChildCounts(): Promise<Record<string, number>> {
 export function invalidateNotesStore(): void {
   notesStore = null;
   notesStoreKey = "";
+  lastReconcileMs = 0;
 }

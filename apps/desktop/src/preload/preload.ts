@@ -13,8 +13,16 @@ import type {
   WorkbenchSessionFolder,
   WorkbenchSessionFolderAssignment,
   TaskWorkbench,
-  TaskWorkbenchSessionLink
+  TaskWorkbenchSessionLink,
+  ThunderSchedule,
+  ThunderScheduleRun,
+  ThunderScheduleInput,
+  ThunderScheduleRunLogEntry
 } from "@agent-resume/core";
+import type {
+  ThunderModelInfo,
+  ThunderAgentEvent
+} from "../main/thunder/thunderProtocol";
 import type { McpClientInfo } from "../main/mcpRegistration";
 import type {
   AgentIntegrationId,
@@ -53,6 +61,17 @@ import type {
   BrowserSessionState
 } from "../shared/browserTypes";
 import type { TaskColorKey, TaskCustomColor } from "../shared/taskColors";
+export type { TaskColorKey, TaskCustomColor };
+export type {
+  ThunderSchedule,
+  ThunderScheduleRun,
+  ThunderScheduleInput,
+  ThunderScheduleRunLogEntry
+} from "@agent-resume/core";
+export type {
+  ThunderModelInfo,
+  ThunderAgentEvent
+} from "../main/thunder/thunderProtocol";
 
 /** Reusable GTD task template stored in `desktop.db`. */
 export type TaskTemplate = {
@@ -222,7 +241,7 @@ export interface DesktopApi {
   /** Edit ▸ Find… (⌘F) — the menu owns the accelerator, so it forwards here. */
   onMenuFind(callback: () => void): () => void;
   /** View ▸ Show GTD Board / Show Notes (⌘1/⌘2) — board-window view switch. */
-  onNavShow(callback: (view: "gtd" | "notes") => void): () => void;
+  onNavShow(callback: (view: "gtd" | "notes" | "archive" | "sessions") => void): () => void;
   /**
    * Show a native context menu at a point in this window. Resolves with the id of
    * the chosen item, or null when the menu was dismissed.
@@ -230,6 +249,8 @@ export interface DesktopApi {
   contextMenuShow(args: {
     x: number;
     y: number;
+    /** "bottom" anchors the menu's lower edge at y, opening it upward. */
+    anchor?: "top" | "bottom";
     items: Array<{
       id?: string;
       label?: string;
@@ -264,18 +285,29 @@ export interface DesktopApi {
     limit?: number;
     cursor?: { updatedAt: number; provider: string; id: string };
     search?: string;
-    provider?: string;
+    providers?: string[];
     fromMs?: number;
     toMs?: number;
     projectPath?: string;
     projectId?: string;
-    gtdStatus?: GtdStatus;
+    taskNoteId?: string;
+    gtdStatuses?: string[];
+    gtdUntagged?: boolean;
     keys?: Array<{ provider: string; id: string }>;
     unassignedOnly?: boolean;
   }): Promise<{
     sessions: AgentSession[];
     total: number;
     nextCursor?: { updatedAt: number; provider: string; id: string };
+  }>;
+  /** Filter-chip counts for the whole catalog (search and date filters ignored). */
+  sessionFacets(): Promise<{
+    total: number;
+    byProvider: Record<string, number>;
+    byGtdStatus: Record<string, number>;
+    untagged: number;
+    byTask: Record<string, number>;
+    unassigned: number;
   }>;
   clearSessionLastExitWaiting(args: { provider: string; id: string }): Promise<{ ok: boolean }>;
   listSessionGtdStatuses(): Promise<Record<string, GtdStatus>>;
@@ -1190,7 +1222,7 @@ export interface DesktopApi {
       };
     }>
   >;
-  notesListTasks(): Promise<
+  notesListTasks(options?: { includeArchived?: boolean }): Promise<
     Array<{
       noteId: string;
       scope: string;
@@ -1204,6 +1236,8 @@ export interface DesktopApi {
       createdAtMs: number;
       updatedAtMs: number;
       fsMtimeMs?: number;
+      /** Present only for archived tasks; the archive timestamp in ms. */
+      archivedAtMs?: number;
       work: {
         next?: string;
         decision?: string;
@@ -1283,6 +1317,8 @@ export interface DesktopApi {
   taskTemplateImageForTask(args: { noteId: string }): Promise<{ imageDataUrl?: string }>;
   notesLinkSessionToTask(args: { noteId: string; sessionKey: string; projectPath?: string }): Promise<{ noteId: string }>;
   notesListTaskSessionLinks(): Promise<Array<{ noteId: string; title?: string; provider: string; sessionId: string }>>;
+  /** The task a session is linked to, or null when it is unassigned. */
+  notesTaskNoteIdForSession(args: { provider: string; sessionId: string }): Promise<string | null>;
   /** Allocate/refresh a task's neutral workspace; returns its directory. */
   notesEnsureTaskWorkspace(args: { noteId: string }): Promise<{ dir: string }>;
   /** The neutral workspace directory and whether it exists; never creates it. */
@@ -1358,6 +1394,7 @@ export interface DesktopApi {
     updatedAtMs: number;
     fsMtimeMs?: number;
   }>;
+  notesSetArchived(args: { noteIds: string[]; archived: boolean }): Promise<void>;
   notesRead(args: { noteId: string }): Promise<{
     record: {
       noteId: string;
@@ -1465,6 +1502,28 @@ export interface DesktopApi {
   checkForUpdate(options?: { force?: boolean }): Promise<UpdateCheckResult>;
   openExternalUrl(url: string): Promise<void>;
   onLocaleChanged(callback: (bundle: { locale: string; messages: Record<string, string> }) => void): () => void;
+
+  // Schedules & Thunder integration
+  schedulesList(): Promise<ThunderSchedule[]>;
+  schedulesGet(args: { id: string }): Promise<ThunderSchedule | null>;
+  schedulesCreate(args: { input: ThunderScheduleInput }): Promise<ThunderSchedule>;
+  schedulesUpdate(args: { id: string; input: Partial<ThunderScheduleInput> }): Promise<ThunderSchedule>;
+  schedulesDelete(args: { id: string }): Promise<boolean>;
+  schedulesToggle(args: { id: string; enabled: boolean }): Promise<ThunderSchedule>;
+  schedulesRunNow(args: { id: string }): Promise<{ runId: string }>;
+  schedulesCancelRun(args: { runId: string }): Promise<boolean>;
+  schedulesListRuns(args: { scheduleId: string; limit?: number }): Promise<ThunderScheduleRun[]>;
+  schedulesGetRun(args: { runId: string }): Promise<ThunderScheduleRun | null>;
+  thunderGetStatus(): Promise<{
+    available: boolean;
+    repoPath: string | null;
+    daemonPath: string | null;
+    models: ThunderModelInfo[];
+    error?: string;
+  }>;
+  thunderListModels(): Promise<ThunderModelInfo[]>;
+  onScheduleRunEvent(callback: (payload: { scheduleId: string; runId: string; event: ThunderAgentEvent; accumulatedOutput: string }) => void): () => void;
+  onScheduleStatusChanged(callback: (payload: { scheduleId: string; runId: string; status: string; output?: string; error?: string }) => void): () => void;
 }
 
 const api: DesktopApi = {
@@ -1621,6 +1680,7 @@ const api: DesktopApi = {
     return () => ipcRenderer.removeListener("sessions:syncFailed", handler);
   },
   querySessionsPage: (args) => ipcRenderer.invoke("sessions:queryPage", args),
+  sessionFacets: () => ipcRenderer.invoke("sessions:facets"),
   clearSessionLastExitWaiting: (args) => ipcRenderer.invoke("sessions:clearLastExitWaiting", args),
   listSessionGtdStatuses: () => ipcRenderer.invoke("gtd:listSessionStatuses"),
   listTaskGtdRollups: () => ipcRenderer.invoke("gtd:listTaskRollups"),
@@ -1886,7 +1946,7 @@ const api: DesktopApi = {
   logsClear: () => ipcRenderer.invoke("logs:clear"),
   logsOpenDir: () => ipcRenderer.invoke("logs:openDir"),
   notesList: () => ipcRenderer.invoke("notes:list"),
-  notesListTasks: () => ipcRenderer.invoke("notes:listTasks"),
+  notesListTasks: (options) => ipcRenderer.invoke("notes:listTasks", options),
   taskTemplatesList: () => ipcRenderer.invoke("taskTemplates:list"),
   taskTemplatesCreate: (args) => ipcRenderer.invoke("taskTemplates:create", args),
   taskTemplatesUpdate: (args) => ipcRenderer.invoke("taskTemplates:update", args),
@@ -1899,6 +1959,7 @@ const api: DesktopApi = {
   notesCreateTask: (args) => ipcRenderer.invoke("notes:createTask", args),
   notesLinkSessionToTask: (args) => ipcRenderer.invoke("notes:linkSessionToTask", args),
   notesListTaskSessionLinks: () => ipcRenderer.invoke("notes:listTaskSessionLinks"),
+  notesTaskNoteIdForSession: (args) => ipcRenderer.invoke("notes:taskNoteIdForSession", args),
   notesEnsureTaskWorkspace: (args) => ipcRenderer.invoke("notes:ensureTaskWorkspace", args),
   notesTaskWorkspace: (args) => ipcRenderer.invoke("notes:taskWorkspace", args),
   notesOpenTaskWorkspace: (args) => ipcRenderer.invoke("notes:openTaskWorkspace", args),
@@ -1914,6 +1975,7 @@ const api: DesktopApi = {
   notesGetSubtree: (args) => ipcRenderer.invoke("notes:getSubtree", args),
   notesResolveLinkRoot: (args) => ipcRenderer.invoke("notes:resolveLinkRoot", args),
   notesSetGtdStatus: (args) => ipcRenderer.invoke("notes:setGtdStatus", args),
+  notesSetArchived: (args) => ipcRenderer.invoke("notes:setArchived", args),
   notesRead: (args) => ipcRenderer.invoke("notes:read", args),
   notesWrite: (args) => ipcRenderer.invoke("notes:write", args),
   notesResumeSession: (args) => ipcRenderer.invoke("notes:resumeSession", args),
@@ -1950,6 +2012,36 @@ const api: DesktopApi = {
     ) => callback(bundle);
     ipcRenderer.on("i18n:localeChanged", handler);
     return () => ipcRenderer.removeListener("i18n:localeChanged", handler);
+  },
+
+  // Schedules & Thunder
+  schedulesList: () => ipcRenderer.invoke("schedule:list"),
+  schedulesGet: (args) => ipcRenderer.invoke("schedule:get", args),
+  schedulesCreate: (args) => ipcRenderer.invoke("schedule:create", args),
+  schedulesUpdate: (args) => ipcRenderer.invoke("schedule:update", args),
+  schedulesDelete: (args) => ipcRenderer.invoke("schedule:delete", args),
+  schedulesToggle: (args) => ipcRenderer.invoke("schedule:toggle", args),
+  schedulesRunNow: (args) => ipcRenderer.invoke("schedule:runNow", args),
+  schedulesCancelRun: (args) => ipcRenderer.invoke("schedule:cancelRun", args),
+  schedulesListRuns: (args) => ipcRenderer.invoke("schedule:listRuns", args),
+  schedulesGetRun: (args) => ipcRenderer.invoke("schedule:getRun", args),
+  thunderGetStatus: () => ipcRenderer.invoke("thunder:status"),
+  thunderListModels: () => ipcRenderer.invoke("thunder:listModels"),
+  onScheduleRunEvent: (callback) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      payload: { scheduleId: string; runId: string; event: ThunderAgentEvent; accumulatedOutput: string }
+    ) => callback(payload);
+    ipcRenderer.on("schedule:run-event", handler);
+    return () => ipcRenderer.removeListener("schedule:run-event", handler);
+  },
+  onScheduleStatusChanged: (callback) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      payload: { scheduleId: string; runId: string; status: string; output?: string; error?: string }
+    ) => callback(payload);
+    ipcRenderer.on("schedule:status-changed", handler);
+    return () => ipcRenderer.removeListener("schedule:status-changed", handler);
   }
 };
 

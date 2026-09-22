@@ -1,8 +1,7 @@
 import { ICON_SIZE, ThemeIcon } from "./ThemeIcon";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { desktopApi } from "../bridge";
 import { useI18n } from "../i18n";
-import { showContextMenuAt } from "../nativeContextMenu";
 import { BellNotificationButton } from "./BellNotificationButton";
 
 type FloatingNoteDot = { noteId: string; title: string };
@@ -10,7 +9,8 @@ type FloatingNoteDot = { noteId: string; title: string };
 /**
  * The app is GTD-first: there is no primary-tab rail anymore. The header keeps
  * the global chrome — the sidebar toggle, the per-view toolbar slot,
- * floating-note dots, the notification bell, and the account/settings menu.
+ * floating-note dots, and the notification bell. The account menu lives in
+ * the sidebar footer (see `AppSidebar`).
  */
 export function AppChrome({ sidebarCollapsed, onToggleSidebar }: {
   sidebarCollapsed: boolean;
@@ -18,7 +18,6 @@ export function AppChrome({ sidebarCollapsed, onToggleSidebar }: {
 }): React.JSX.Element {
   const { ready, t } = useI18n();
   const [noteDots, setNoteDots] = useState<FloatingNoteDot[]>([]);
-  const avatarBtnRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     const api = desktopApi();
@@ -45,25 +44,10 @@ export function AppChrome({ sidebarCollapsed, onToggleSidebar }: {
     void api.standaloneNoteOpen({ noteId: dot.noteId }).catch(() => undefined);
   };
 
-  const openSettings = (pane = "general") => {
-    // Settings lives in its own window (⌘,), so ask the main process for it.
-    void desktopApi().openSettingsWindow?.({ pane }).catch(() => undefined);
-  };
-
   const text = (key: string, fallback: string) => (ready ? t(key) : fallback);
-  const avatarLabel = text("desktop.chrome.account", "Account");
-  const settingsLabel = text("desktop.top.settings", "Settings");
   const sidebarLabel = sidebarCollapsed
     ? text("desktop.nav.expand", "Expand sidebar")
     : text("desktop.nav.collapse", "Collapse sidebar");
-
-  /** The account menu is a native `NSMenu` anchored to the avatar button. */
-  const openAccountMenu = async () => {
-    const rect = avatarBtnRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const chosen = await showContextMenuAt({ x: rect.left, y: rect.bottom + 4 }, [{ id: "settings", label: settingsLabel }]);
-    if (chosen === "settings") openSettings();
-  };
 
   return (
     <header className="top mac-top">
@@ -98,21 +82,6 @@ export function AppChrome({ sidebarCollapsed, onToggleSidebar }: {
         </div>
       ) : null}
       <BellNotificationButton />
-      <div className="app-account">
-        <button
-          ref={avatarBtnRef}
-          type="button"
-          className="app-account-btn"
-          title={avatarLabel}
-          aria-label={avatarLabel}
-          aria-haspopup="menu"
-          onClick={() => void openAccountMenu()}
-        >
-          <span className="app-account-avatar" aria-hidden="true">
-            <ThemeIcon name="user" size={ICON_SIZE.default} />
-          </span>
-        </button>
-      </div>
     </header>
   );
 }

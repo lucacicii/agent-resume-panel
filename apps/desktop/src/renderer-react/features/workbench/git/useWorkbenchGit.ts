@@ -54,7 +54,7 @@ export function useWorkbenchGit(options: {
   selectGitRoot: (root: string) => void;
   setCommitMessage: (value: string) => void;
   suggestCommit: () => Promise<void>;
-  commit: (pushAfter?: boolean, messageOverride?: string) => Promise<void>;
+  commit: (pushAfter?: boolean, messageOverride?: string, pathsOverride?: string[]) => Promise<void>;
   syncGitBranch: () => Promise<void>;
   checkoutGitPanelBranch: (selection: { branch: string; remote?: string }) => Promise<void>;
   notifyGitSuccess: (key: string, ...args: Array<string | number>) => void;
@@ -343,16 +343,20 @@ export function useWorkbenchGit(options: {
     finally { setCommitBusy(false); }
   }, [gitRoot, notifyGitFailure, stagedCommitPaths]);
 
-  const commit = useCallback(async (pushAfter = false, messageOverride?: string) => {
+  const commit = useCallback(async (pushAfter = false, messageOverride?: string, pathsOverride?: string[]) => {
     const finalMessage = (messageOverride ?? commitMessage).trim();
-    if (!gitRoot || !finalMessage || !stagedCommitPaths.length) return;
+    // `pathsOverride` lets a caller stage-and-commit a set it just computed. Relying
+    // on `stagedCommitPaths` there races the state update, which made the review
+    // banner's "stage everything then commit" path commit nothing at all.
+    const commitPaths = pathsOverride?.length ? pathsOverride : stagedCommitPaths;
+    if (!gitRoot || !finalMessage || !commitPaths.length) return;
     let result: { ok: boolean; skipped?: string[] } | undefined;
     try {
       setCommitBusy(true);
       result = await desktopApi().terminalGitCommit({
         repoRoot: gitRoot,
         message: finalMessage,
-        paths: stagedCommitPaths
+        paths: commitPaths
       });
     } catch (error) {
       notifyGitFailure("desktop.workbench.gitCommitFailed", error);

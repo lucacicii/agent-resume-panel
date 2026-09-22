@@ -1,16 +1,20 @@
 import { ICON_SIZE, ThemeIcon, type ThemeIconName } from "./ThemeIcon";
 import { createPortal } from "react-dom";
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
+import { desktopApi } from "../bridge";
 import { useI18n } from "../i18n";
+import { showContextMenuAt } from "../nativeContextMenu";
 import { useGlideHighlight } from "./useGlideHighlight";
 
 /** The board window's primary views, in nav order. */
-export type BoardView = "gtd" | "notes";
+export type BoardView = "gtd" | "notes" | "schedule" | "archive" | "sessions";
 
 /**
  * The board's full-height navigation sidebar (Finder-style): a traffic-light
- * strip on top with the primary views below. Hover feedback is the shared
- * gliding highlight (see `useGlideHighlight`).
+ * strip on top with the primary views below, and the account menu pinned to
+ * the rail's bottom. Nav hover feedback is the shared gliding highlight (see
+ * `useGlideHighlight`); the account row, living outside the nav, owns its
+ * hover fill.
  *
  * The collapse state is owned by the window (the toggle lives in the header),
  * so the sidebar only renders the rail the header asks for.
@@ -23,17 +27,34 @@ export function AppSidebar({ view, onViewChange, collapsed }: {
   const host = document.getElementById("react-nav");
   const { ready, t } = useI18n();
   const { containerRef: navRef, setRow, glide, moveGlide, hideGlide } = useGlideHighlight(view);
+  const accountBtnRef = useRef<HTMLButtonElement | null>(null);
 
   const text = (key: string, fallback: string) => (ready ? t(key) : fallback);
   const items: Array<{ view: BoardView; icon: ThemeIconName; label: string }> = [
     { view: "gtd", icon: "square-kanban", label: text("desktop.nav.gtd", "GTD") },
-    { view: "notes", icon: "notebook", label: text("desktop.nav.notes", "Notes") }
+    { view: "notes", icon: "notebook", label: text("desktop.nav.notes", "Notes") },
+    { view: "schedule", icon: "clock", label: text("desktop.nav.schedule", "Schedule") }
   ];
 
   /** Move the glide pill to a row; the active row keeps its own fill instead. */
   const move = useCallback((target: BoardView) => moveGlide(target), [moveGlide]);
 
   const navLabel = text("desktop.nav.label", "Navigation");
+  const accountLabel = text("desktop.chrome.account", "Account");
+  const settingsLabel = text("desktop.top.settings", "Settings");
+
+  const openSettings = (pane = "general") => {
+    // Settings lives in its own window (⌘,), so ask the main process for it.
+    void desktopApi().openSettingsWindow?.({ pane }).catch(() => undefined);
+  };
+
+  /** The account menu is a native `NSMenu` opening upward from the rail bottom. */
+  const openAccountMenu = async () => {
+    const rect = accountBtnRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const chosen = await showContextMenuAt({ x: rect.left, y: rect.top - 4 }, [{ id: "settings", label: settingsLabel }], "bottom");
+    if (chosen === "settings") openSettings();
+  };
 
   if (!host) return null;
   return createPortal(
@@ -70,6 +91,21 @@ export function AppSidebar({ view, onViewChange, collapsed }: {
               </button>
             );
           })}
+        </div>
+        {/* Account row: pinned to the rail bottom, outside the nav's glide. */}
+        <div className="app-sidebar-footer">
+          <button
+            ref={accountBtnRef}
+            type="button"
+            className="app-sidebar-row"
+            title={accountLabel}
+            aria-label={accountLabel}
+            aria-haspopup="menu"
+            onClick={() => void openAccountMenu()}
+          >
+            <ThemeIcon name="user" size={ICON_SIZE.default} />
+            <span className="app-sidebar-copy">{accountLabel}</span>
+          </button>
         </div>
       </div>
     </nav>,

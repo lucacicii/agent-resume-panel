@@ -104,6 +104,12 @@ export {
   clearNoteGtdStatus
 } from "./notes/gtd";
 export {
+  loadNoteArchiveMap,
+  getNoteArchivedAtMs,
+  archiveNotes,
+  unarchiveNotes
+} from "./notes/archive";
+export {
   TASK_GTD_LADDER,
   emptyTaskGtdCounts,
   rollupTaskGtdStatuses,
@@ -168,7 +174,7 @@ export {
   resetCatalogSchemaCache
 } from "./catalog/db";
 
-export { listSessions, listSessionsInRange, listSessionsInRangePage, listAllSessionsInRange, getSessionById, countSessions, querySessionsPage } from "./catalog/query";
+export { listSessions, listSessionsInRange, listSessionsInRangePage, listAllSessionsInRange, getSessionById, countSessions, querySessionsPage, sessionFacetCounts, type SessionFacetCounts } from "./catalog/query";
 export { setSessionLastExitWaiting, recordLastExitWaitingSessions, clearSessionLastExitWaiting } from "./catalog/lastExitWaiting";
 export type { SessionRangeCursor, SessionQueryCursor, SessionQueryRequest, SessionQueryPage } from "./catalog/query";
 export type { SessionCatalogCounts } from "./catalog/query";
@@ -947,4 +953,17 @@ export type {
   NativeConversationCollection,
   CollectNativeConversationsOptions
 } from "./backup/nativeConversations";
+
+export type {
+  ScheduleTriggerType,
+  ScheduleStatus,
+  ScheduleRunStatus,
+  ScheduleRunTriggerSource,
+  ThunderSchedule,
+  ThunderScheduleRun,
+  ThunderScheduleRunLogEntry,
+  ThunderScheduleInput,
+  ThunderModelInfo,
+  ThunderAgentEvent
+} from "./thunder/types";
 

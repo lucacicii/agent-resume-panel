@@ -234,6 +234,20 @@ type SearchReveal = { path: string; line: number; column: number; endColumn: num
 const GTD_STATUSES = DESKTOP_GTD_STATUSES;
 /** Shared empty list so a project-less task keeps a stable array identity. */
 const EMPTY_PROJECT_PATHS: string[] = [];
+/** Stable empty identity for the review banner's commit scope. */
+const EMPTY_COMMIT_PATHS: string[] = [];
+
+/**
+ * Tooltip body for the review banner's commit button: the paths that will be
+ * committed, capped so a large dirty tree cannot produce an unbounded tooltip.
+ */
+function formatCommitScopeTooltip(paths: readonly string[]): string {
+  if (!paths.length) return "—";
+  const MAX = 12;
+  const shown = paths.slice(0, MAX);
+  const rest = paths.length - shown.length;
+  return [shown.join("\n"), rest > 0 ? `+${rest}` : ""].filter(Boolean).join("\n");
+}
 const WORKBENCH_SESSION_ROW_HEIGHT = 64;
 type CatalogProject = {
   projectId: string;
@@ -734,6 +748,8 @@ export function WorkbenchPanel(): ReactPortal | null {
   const saveEditorRef = useRef<(key: string) => Promise<boolean>>(async () => true);
   const diffsRef = useRef<DiffPane[]>([]);
   const notePanesRef = useRef<NotePane[]>([]);
+  /** Workbenches whose persisted layout was already adopted in this panel instance. */
+  const restoredWorkbenchesRef = useRef<Set<string>>(new Set());
   const fileExplorerRef = useRef<WorkbenchFileExplorerHandle | null>(null);
   const selectedProjectRef = useRef<string | null>(selectedProject);
   const catalogProjectsRef = useRef<CatalogProject[]>(catalogProjects);
@@ -818,7 +834,6 @@ export function WorkbenchPanel(): ReactPortal | null {
     commitBusy,
     commitSuggestion,
     gitRepositories,
-    stagedCommitPaths,
     canCommit,
     projectTracking,
     refreshGit,
@@ -851,39 +866,48 @@ export function WorkbenchPanel(): ReactPortal | null {
   useEffect(() => { notePanesRef.current = notePanes; }, [notePanes]);
   useEffect(() => { selectedProjectRef.current = selectedProject; }, [selectedProject]);
 
+  /**
+   * Paths the review banner's Commit & Push will commit: everything dirty in the
+   * repo it targets, staged or not. Derived from `git` on every render rather
+   * than from `stagedCommitPaths`, which lags a staging round trip.
+   */
+  const bannerCommitPaths = useMemo(() => {
+    if (!gitRoot || !git) return EMPTY_COMMIT_PATHS;
+    const paths = new Set<string>();
+    for (const change of [...git.staged, ...git.unstaged]) {
+      if (change.repoRoot === gitRoot) paths.add(change.repoPath);
+    }
+    return [...paths];
+  }, [git, gitRoot]);
+
   const handleCommitAndPushFromBanner = useCallback(async () => {
     if (commitBusy || !gitRoot) return;
-    if (canCommit) {
-      await commit(true);
+    // Nothing dirty in the target repo → there is nothing this button can do,
+    // so open the panel instead of failing silently.
+    if (!bannerCommitPaths.length) {
+      setSide("git");
       return;
-    }
-    if (!stagedCommitPaths.length && git && gitRoot) {
-      const unstagedInRoot = git.unstaged.filter((c) => c.repoRoot === gitRoot);
-      if (unstagedInRoot.length) {
-        await toggleGitStage({ repoRoot: gitRoot, paths: unstagedInRoot.map((c) => c.repoPath) }, true);
-      }
     }
     let msg = commitMessage.trim();
     if (!msg) {
+      // Generate from the paths we are about to commit: `suggestCommit` reads the
+      // staged set, which is empty when the user never staged anything.
       try {
-        const paths = stagedCommitPaths.length
-          ? stagedCommitPaths
-          : (git?.unstaged.filter((c) => c.repoRoot === gitRoot).map((c) => c.repoPath) || []);
-        if (paths.length) {
-          const result = await desktopApi().terminalGitSuggestCommit({ repoRoot: gitRoot, paths });
-          msg = result.message.trim();
-          setCommitMessage(result.message);
-        }
+        const result = await desktopApi().terminalGitSuggestCommit({ repoRoot: gitRoot, paths: bannerCommitPaths });
+        msg = result.message.trim();
+        setCommitMessage(result.message);
       } catch {
-        /* fall through */
+        /* fall through to the panel */
       }
     }
     if (!msg) {
       setSide("git");
       return;
     }
-    await commit(true, msg);
-  }, [canCommit, commit, commitBusy, commitMessage, git, gitRoot, stagedCommitPaths, toggleGitStage]);
+    // `terminalGitCommit` stages the paths it is given, so no separate staging
+    // round trip is needed here.
+    await commit(true, msg, bannerCommitPaths);
+  }, [bannerCommitPaths, commit, commitBusy, commitMessage, gitRoot]);
 
   const refreshOpenGitDiffs = useCallback(async (changedPaths: ReadonlySet<string> | null) => {
     if (!selectedProject) return;
@@ -2510,6 +2534,13 @@ export function WorkbenchPanel(): ReactPortal | null {
     setNotePanes((current) => current.map((pane) => pane.noteId === noteId ? { ...pane, title } : pane));
   }, []);
 
+  /** Resolve a note's display title for a pane opened or restored without one. */
+  const resolveNoteTitle = useCallback((noteId: string) => {
+    void desktopApi().notesRead({ noteId }).then((result) => {
+      updateNotePaneTitle(noteId, result.record.title || result.record.filename.replace(/\.md$/i, "") || noteId);
+    }).catch(() => undefined);
+  }, [updateNotePaneTitle]);
+
   const setNotePaneDirty = useCallback((noteId: string, dirty: boolean) => {
     setNotePanes((current) => current.map((pane) => pane.noteId === noteId ? { ...pane, dirty } : pane));
   }, []);
@@ -2519,16 +2550,19 @@ export function WorkbenchPanel(): ReactPortal | null {
     if (!noteId) return;
     const workbenchId = activeWorkbenchIdRef.current ?? undefined;
     const key = workbenchId ? `note:${workbenchId}:${noteId}` : `note:${noteId}`;
-    setNotePanes((current) => current.some((pane) => pane.key === key)
-      ? current
-      : [...current, { key, noteId, projectPath: selectedProjectRef.current, title: title || "", workbenchId }]);
+    setNotePanes((current) => {
+      const existing = current.find((pane) => pane.key === key);
+      if (existing) {
+        // Backfill a restored pane whose title has not resolved yet.
+        return existing.title || !title
+          ? current
+          : current.map((pane) => pane.key === key ? { ...pane, title } : pane);
+      }
+      return [...current, { key, noteId, projectPath: selectedProjectRef.current, title: title || "", workbenchId }];
+    });
     setActivePane(key);
-    if (!title) {
-      void desktopApi().notesRead({ noteId }).then((result) => {
-        updateNotePaneTitle(noteId, result.record.title || result.record.filename.replace(/\.md$/i, "") || noteId);
-      }).catch(() => undefined);
-    }
-  }, [setActivePane, updateNotePaneTitle]);
+    if (!title) resolveNoteTitle(noteId);
+  }, [setActivePane, resolveNoteTitle]);
 
   const closeNotePane = useCallback((key: string) => {
     const remaining = notePanesRef.current.filter((item) => item.key !== key);
@@ -3537,6 +3571,11 @@ export function WorkbenchPanel(): ReactPortal | null {
   useEffect(() => {
     const workbenchId = activeWorkbenchId;
     if (!workbenchId) return;
+    // Restore once per workbench: afterwards the live panes are the source of
+    // truth, so re-running (e.g. after the active pane changes) would resurrect
+    // tabs the user closed.
+    if (restoredWorkbenchesRef.current.has(workbenchId)) return;
+    restoredWorkbenchesRef.current.add(workbenchId);
     const workbench = workbenchesRef.current.find((item) => item.workbenchId === workbenchId);
     if (!workbench?.layoutJson) return;
     let openNoteIds: string[] = [];
@@ -3563,11 +3602,16 @@ export function WorkbenchPanel(): ReactPortal | null {
         title: "",
         workbenchId
       }));
-    if (additions.length) setNotePanes((current) => {
-      const keys = new Set(current.map((pane) => pane.key));
-      const fresh = additions.filter((pane) => !keys.has(pane.key));
-      return fresh.length ? [...current, ...fresh] : current;
-    });
+    if (additions.length) {
+      setNotePanes((current) => {
+        const keys = new Set(current.map((pane) => pane.key));
+        const fresh = additions.filter((pane) => !keys.has(pane.key));
+        return fresh.length ? [...current, ...fresh] : current;
+      });
+      // Restored panes carry no title; fetch each one so the tab shows the
+      // note's real name even before the pane is activated.
+      for (const pane of additions) resolveNoteTitle(pane.noteId);
+    }
     if (!activePanesRef.current[scope] && (additions[0] || existing.size)) {
       const firstKey = additions[0]?.key
         ?? notePanesRef.current.find((pane) => pane.workbenchId === workbenchId)?.key;
@@ -5751,7 +5795,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     <div className="wb-terminal-tabs is-note-group" data-pane-group="note">
       <button type="button" className="wb-pane-tab-group-label" aria-label={t("desktop.notes.newLinkedChild")} title={t("desktop.notes.newLinkedChild")} onClick={() => void addChildNote()}><ThemeIcon name="file-plus" size={ICON_SIZE.dense} aria-hidden="true" /></button>
       <div className="wb-terminal-tabs-list" role="tablist" aria-label={t("desktop.notes.allNotes")}>
-        {currentNotePanes.map((pane) => <div className={`wb-terminal-tab is-note${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="file-text" size={ICON_SIZE.dense} aria-hidden="true" />{pane.dirty ? "* " : ""}{pane.title || t("desktop.notes.allNotes")}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.common.close")} onClick={() => closeNotePane(pane.key)}><ThemeIcon name="close" size={ICON_SIZE.dense} /></button></div>)}
+        {currentNotePanes.map((pane) => <div className={`wb-terminal-tab is-note${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="file-text" size={ICON_SIZE.dense} aria-hidden="true" />{pane.dirty ? "* " : ""}{pane.title || t("desktop.common.loading")}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.common.close")} onClick={() => closeNotePane(pane.key)}><ThemeIcon name="close" size={ICON_SIZE.dense} /></button></div>)}
       </div>
     </div>
     <div className="wb-terminal-tabs is-browser-group" data-pane-group="browser">
@@ -6149,7 +6193,10 @@ export function WorkbenchPanel(): ReactPortal | null {
                     type="button"
                     className={`wb-session-git-review-btn wb-session-git-commit-btn${commitBusy ? " is-busy" : ""}`}
                     disabled={commitBusy}
-                    title={t("desktop.workbench.gitCommitAndPush")}
+                    /* Name the repo and the exact files: this button commits
+                       everything dirty in one repo, which is more than a session
+                       touched. */
+                    title={`${t("desktop.workbench.gitCommitAndPush")} · ${basename(gitRoot)}\n${formatCommitScopeTooltip(bannerCommitPaths)}`}
                     onClick={() => void handleCommitAndPushFromBanner()}
                   >
                     {commitBusy ? (
@@ -6157,7 +6204,7 @@ export function WorkbenchPanel(): ReactPortal | null {
                     ) : (
                       <ThemeIcon name="upload" size={ICON_SIZE.dense} aria-hidden="true" />
                     )}
-                    <span>{t("desktop.workbench.gitCommitAndPush")}</span>
+                    <span>{t("desktop.workbench.gitCommitAndPush")} ({bannerCommitPaths.length})</span>
                   </button>
                 </div>
               </div>
