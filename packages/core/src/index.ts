@@ -954,3 +954,16 @@ export type {
   CollectNativeConversationsOptions
 } from "./backup/nativeConversations";
 
+export type {
+  ScheduleTriggerType,
+  ScheduleStatus,
+  ScheduleRunStatus,
+  ScheduleRunTriggerSource,
+  ThunderSchedule,
+  ThunderScheduleRun,
+  ThunderScheduleRunLogEntry,
+  ThunderScheduleInput,
+  ThunderModelInfo,
+  ThunderAgentEvent
+} from "./thunder/types";
+

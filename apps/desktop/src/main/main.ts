@@ -245,6 +245,8 @@ import {
 import { pickTemplateImage } from "./templateImagePicker";
 import { isCustomHexColor, isTaskColorKey, taskAccent, type TaskAccentSource } from "../shared/taskColors";
 import { refreshMemorySchedulerFromSettings, stopMemoryScheduler } from "./scheduler";
+import { registerThunderIpc } from "./thunder/thunderIpc";
+import { startThunderScheduler, stopThunderScheduler } from "./thunder/thunderScheduler";
 import {
   ensureAgentStatusDaemon,
   resolveDaemonEntryPath,
@@ -1349,6 +1351,7 @@ function performQuitCleanup(): void {
   disposeBrowserController();
   void disposeBrowserMcpServer();
   stopMemoryScheduler();
+  stopThunderScheduler();
   stopNotesIndexer();
   stopSessionSummaryAuto();
   stopSessionTranscriptIndexAuto();
@@ -3941,6 +3944,7 @@ app.whenReady().then(async () => {
     getDefaultPolicy: () => browserSettingsCache?.defaultPolicy,
     getDefaultSurface: () => browserSettingsCache?.defaultSurface || "workbench"
   });
+  registerThunderIpc();
   // Appearance must be resolved before the first window: `themeSource` decides
   // the native chrome and `shouldUseDarkColors`, so the window background, tray
   // image, and menus are all built from the value the user actually chose.
@@ -3993,6 +3997,7 @@ app.whenReady().then(async () => {
       startSessionTranscriptIndexAuto();
       startSessionEmbeddingIndexAuto();
       await refreshMemorySchedulerFromSettings();
+      startThunderScheduler();
 
       // Defer external environment and MCP sync until after the main window is active and idle.
       setTimeout(() => {

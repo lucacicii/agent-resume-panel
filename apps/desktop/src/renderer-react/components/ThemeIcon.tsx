@@ -1,7 +1,7 @@
 import type { ComponentType, JSX } from "react";
 import {
   Activity, AppWindow, Archive, ArrowDown, ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUp, ArrowUpToLine, AtSign, Bell, Bot, Check,
-  ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Circle, Clipboard, Cloud, Command,
+  ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Circle, Clipboard, Clock, Cloud, Command,
   Copy, CornerDownRight, Download, Ellipsis, ExternalLink, Eye, EyeOff, File, FileArchive, FileAudio,
   FileCode2, FileCog, FileDiff, FileImage, FileJson, FilePlus2,
   FileSpreadsheet, FileTerminal, FileText, FileVideo, Folder, FolderOpen,
@@ -135,7 +135,7 @@ const OPEN_ICONS = {
   "arrow-left": ArrowLeft, "arrow-right": ArrowRight,
   "arrow-up": ArrowUp, "arrow-up-to-line": ArrowUpToLine, "at-sign": AtSign, bell: Bell, bot: Bot, check: Check,
   "chevron-down": ChevronDown, "chevron-left": ChevronLeft, "chevron-right": ChevronRight, "chevron-up": ChevronUp,
-  circle: Circle, clipboard: Clipboard, cloud: Cloud, command: Command, copy: Copy,
+  circle: Circle, clipboard: Clipboard, clock: Clock, cloud: Cloud, command: Command, copy: Copy,
   download: Download, ellipsis: Ellipsis, "external-link": ExternalLink, eye: Eye, "eye-off": EyeOff,
   file: File, "file-archive": FileArchive, "file-audio": FileAudio, "file-code": FileCode2,
   "file-cog": FileCog, "file-diff": FileDiff, "file-image": FileImage, "file-json": FileJson,

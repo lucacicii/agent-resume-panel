@@ -7,6 +7,7 @@ const messages = {
   "desktop.nav.label": "Navigation",
   "desktop.nav.gtd": "GTD",
   "desktop.nav.notes": "Notes",
+  "desktop.nav.schedule": "Schedule",
   "desktop.nav.collapse": "Collapse sidebar",
   "desktop.nav.expand": "Expand sidebar",
   "desktop.chrome.account": "Account",
@@ -37,15 +38,23 @@ describe("AppSidebar", () => {
     document.getElementById("react-nav")?.remove();
   });
 
-  it("renders the two views and marks the active one current", async () => {
+  it("renders the navigation views and marks the active one current", async () => {
     renderSidebar({ view: "gtd" });
     const nav = await screen.findByRole("navigation", { name: "Navigation" });
     expect(nav).toBeTruthy();
 
     const gtd = screen.getByRole("button", { name: "GTD" });
     const notes = screen.getByRole("button", { name: "Notes" });
+    const schedule = screen.getByRole("button", { name: "Schedule" });
     expect(gtd.getAttribute("aria-current")).toBe("page");
     expect(notes.getAttribute("aria-current")).toBeNull();
+    expect(schedule.getAttribute("aria-current")).toBeNull();
+  });
+
+  it("switches to schedule view when the schedule row is clicked", async () => {
+    const { onViewChange } = renderSidebar({ view: "gtd" });
+    fireEvent.click(await screen.findByRole("button", { name: "Schedule" }));
+    expect(onViewChange).toHaveBeenCalledWith("schedule");
   });
 
   it("switches the view when a row is clicked", async () => {

@@ -13,8 +13,16 @@ import type {
   WorkbenchSessionFolder,
   WorkbenchSessionFolderAssignment,
   TaskWorkbench,
-  TaskWorkbenchSessionLink
+  TaskWorkbenchSessionLink,
+  ThunderSchedule,
+  ThunderScheduleRun,
+  ThunderScheduleInput,
+  ThunderScheduleRunLogEntry
 } from "@agent-resume/core";
+import type {
+  ThunderModelInfo,
+  ThunderAgentEvent
+} from "../main/thunder/thunderProtocol";
 import type { McpClientInfo } from "../main/mcpRegistration";
 import type {
   AgentIntegrationId,
@@ -53,6 +61,17 @@ import type {
   BrowserSessionState
 } from "../shared/browserTypes";
 import type { TaskColorKey, TaskCustomColor } from "../shared/taskColors";
+export type { TaskColorKey, TaskCustomColor };
+export type {
+  ThunderSchedule,
+  ThunderScheduleRun,
+  ThunderScheduleInput,
+  ThunderScheduleRunLogEntry
+} from "@agent-resume/core";
+export type {
+  ThunderModelInfo,
+  ThunderAgentEvent
+} from "../main/thunder/thunderProtocol";
 
 /** Reusable GTD task template stored in `desktop.db`. */
 export type TaskTemplate = {
@@ -1483,6 +1502,28 @@ export interface DesktopApi {
   checkForUpdate(options?: { force?: boolean }): Promise<UpdateCheckResult>;
   openExternalUrl(url: string): Promise<void>;
   onLocaleChanged(callback: (bundle: { locale: string; messages: Record<string, string> }) => void): () => void;
+
+  // Schedules & Thunder integration
+  schedulesList(): Promise<ThunderSchedule[]>;
+  schedulesGet(args: { id: string }): Promise<ThunderSchedule | null>;
+  schedulesCreate(args: { input: ThunderScheduleInput }): Promise<ThunderSchedule>;
+  schedulesUpdate(args: { id: string; input: Partial<ThunderScheduleInput> }): Promise<ThunderSchedule>;
+  schedulesDelete(args: { id: string }): Promise<boolean>;
+  schedulesToggle(args: { id: string; enabled: boolean }): Promise<ThunderSchedule>;
+  schedulesRunNow(args: { id: string }): Promise<{ runId: string }>;
+  schedulesCancelRun(args: { runId: string }): Promise<boolean>;
+  schedulesListRuns(args: { scheduleId: string; limit?: number }): Promise<ThunderScheduleRun[]>;
+  schedulesGetRun(args: { runId: string }): Promise<ThunderScheduleRun | null>;
+  thunderGetStatus(): Promise<{
+    available: boolean;
+    repoPath: string | null;
+    daemonPath: string | null;
+    models: ThunderModelInfo[];
+    error?: string;
+  }>;
+  thunderListModels(): Promise<ThunderModelInfo[]>;
+  onScheduleRunEvent(callback: (payload: { scheduleId: string; runId: string; event: ThunderAgentEvent; accumulatedOutput: string }) => void): () => void;
+  onScheduleStatusChanged(callback: (payload: { scheduleId: string; runId: string; status: string; output?: string; error?: string }) => void): () => void;
 }
 
 const api: DesktopApi = {
@@ -1971,6 +2012,36 @@ const api: DesktopApi = {
     ) => callback(bundle);
     ipcRenderer.on("i18n:localeChanged", handler);
     return () => ipcRenderer.removeListener("i18n:localeChanged", handler);
+  },
+
+  // Schedules & Thunder
+  schedulesList: () => ipcRenderer.invoke("schedule:list"),
+  schedulesGet: (args) => ipcRenderer.invoke("schedule:get", args),
+  schedulesCreate: (args) => ipcRenderer.invoke("schedule:create", args),
+  schedulesUpdate: (args) => ipcRenderer.invoke("schedule:update", args),
+  schedulesDelete: (args) => ipcRenderer.invoke("schedule:delete", args),
+  schedulesToggle: (args) => ipcRenderer.invoke("schedule:toggle", args),
+  schedulesRunNow: (args) => ipcRenderer.invoke("schedule:runNow", args),
+  schedulesCancelRun: (args) => ipcRenderer.invoke("schedule:cancelRun", args),
+  schedulesListRuns: (args) => ipcRenderer.invoke("schedule:listRuns", args),
+  schedulesGetRun: (args) => ipcRenderer.invoke("schedule:getRun", args),
+  thunderGetStatus: () => ipcRenderer.invoke("thunder:status"),
+  thunderListModels: () => ipcRenderer.invoke("thunder:listModels"),
+  onScheduleRunEvent: (callback) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      payload: { scheduleId: string; runId: string; event: ThunderAgentEvent; accumulatedOutput: string }
+    ) => callback(payload);
+    ipcRenderer.on("schedule:run-event", handler);
+    return () => ipcRenderer.removeListener("schedule:run-event", handler);
+  },
+  onScheduleStatusChanged: (callback) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      payload: { scheduleId: string; runId: string; status: string; output?: string; error?: string }
+    ) => callback(payload);
+    ipcRenderer.on("schedule:status-changed", handler);
+    return () => ipcRenderer.removeListener("schedule:status-changed", handler);
   }
 };
 

@@ -1,0 +1,425 @@
+import { spawn, type ChildProcess } from "node:child_process";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import * as readline from "node:readline";
+import { randomUUID } from "node:crypto";
+import { loadSettings } from "@agent-resume/core";
+import { buildAugmentedPath } from "../processPath";
+import type {
+  ThunderDaemonIncoming,
+  ThunderModelInfo,
+  ThunderObservedEvent
+} from "./thunderProtocol";
+
+interface PendingRequest {
+  resolve: (data: any) => void;
+  reject: (err: Error) => void;
+  timer: NodeJS.Timeout;
+}
+
+interface ActiveTask {
+  onEvent?: (event: ThunderObservedEvent) => void;
+  resolve: (result: { finalContent?: string; finishReason: string; activePlugins?: string[] }) => void;
+  reject: (err: Error) => void;
+}
+
+export class ThunderClient {
+  private child: ChildProcess | null = null;
+  private rl: readline.Interface | null = null;
+  private pendingRequests = new Map<string, PendingRequest>();
+  private activeTasks = new Map<string, ActiveTask>();
+  private startingPromise: Promise<void> | null = null;
+
+  /**
+   * Search candidate paths to locate the Thunder repository or daemon binary.
+   */
+  public resolveDaemon(): {
+    repoPath: string | null;
+    binaryPath: string | null;
+    scriptPath: string | null;
+  } {
+    const candidates: string[] = [];
+
+    if (process.env.THUNDER_DAEMON_BIN && fs.existsSync(process.env.THUNDER_DAEMON_BIN)) {
+      return {
+        repoPath: path.dirname(path.dirname(path.dirname(process.env.THUNDER_DAEMON_BIN))),
+        binaryPath: process.env.THUNDER_DAEMON_BIN,
+        scriptPath: null
+      };
+    }
+
+    if (process.env.THUNDER_PATH) {
+      candidates.push(process.env.THUNDER_PATH);
+    }
+
+    candidates.push(
+      "/Users/lucas/wz/GitHub/thunder",
+      path.resolve(__dirname, "../../../../../thunder"),
+      path.resolve(process.cwd(), "../thunder"),
+      path.join(os.homedir(), "wz/GitHub/thunder"),
+      path.join(os.homedir(), "GitHub/thunder")
+    );
+
+    for (const repo of candidates) {
+      if (!fs.existsSync(repo)) continue;
+
+      const releaseBin = path.join(repo, "thunder-agent-daemon/target/release/thunder-daemon");
+      if (fs.existsSync(releaseBin)) {
+        return { repoPath: repo, binaryPath: releaseBin, scriptPath: path.join(repo, "daemon.sh") };
+      }
+
+      const debugBin = path.join(repo, "thunder-agent-daemon/target/debug/thunder-daemon");
+      if (fs.existsSync(debugBin)) {
+        return { repoPath: repo, binaryPath: debugBin, scriptPath: path.join(repo, "daemon.sh") };
+      }
+
+      const daemonSh = path.join(repo, "daemon.sh");
+      if (fs.existsSync(daemonSh)) {
+        return { repoPath: repo, binaryPath: null, scriptPath: daemonSh };
+      }
+
+      return { repoPath: repo, binaryPath: null, scriptPath: null };
+    }
+
+    return { repoPath: null, binaryPath: null, scriptPath: null };
+  }
+
+  public async getStatus(): Promise<{
+    available: boolean;
+    repoPath: string | null;
+    daemonPath: string | null;
+    models: ThunderModelInfo[];
+    error?: string;
+  }> {
+    const resolved = this.resolveDaemon();
+    if (!resolved.binaryPath && !resolved.scriptPath) {
+      return {
+        available: false,
+        repoPath: resolved.repoPath,
+        daemonPath: null,
+        models: [],
+        error: "Thunder daemon binary or daemon.sh not found."
+      };
+    }
+
+    try {
+      await this.ensureRunning();
+      const ping = await this.ping();
+      let models: ThunderModelInfo[] = [];
+      try {
+        models = await this.listModels();
+      } catch {
+        // Models might be empty if no provider credentials yet
+      }
+      return {
+        available: Boolean(ping?.pong),
+        repoPath: resolved.repoPath,
+        daemonPath: resolved.binaryPath || resolved.scriptPath,
+        models
+      };
+    } catch (err) {
+      return {
+        available: false,
+        repoPath: resolved.repoPath,
+        daemonPath: resolved.binaryPath || resolved.scriptPath,
+        models: [],
+        error: err instanceof Error ? err.message : String(err)
+      };
+    }
+  }
+
+  public async ensureRunning(): Promise<void> {
+    if (this.child && !this.child.killed && this.child.exitCode === null) {
+      return;
+    }
+
+    if (this.startingPromise) {
+      return this.startingPromise;
+    }
+
+    this.startingPromise = this.startProcess().finally(() => {
+      this.startingPromise = null;
+    });
+
+    return this.startingPromise;
+  }
+
+  private async startProcess(): Promise<void> {
+    const resolved = this.resolveDaemon();
+    if (!resolved.binaryPath && !resolved.scriptPath) {
+      throw new Error("Thunder daemon binary not found. Please compile thunder-agent-daemon or check repo path.");
+    }
+
+    let command: string;
+    let args: string[] = [];
+    let cwd = resolved.repoPath || process.cwd();
+
+    if (resolved.binaryPath) {
+      command = resolved.binaryPath;
+      cwd = path.dirname(resolved.binaryPath);
+    } else {
+      command = "/bin/bash";
+      args = [resolved.scriptPath!];
+    }
+
+    // Prepare environment with augmented PATH and settings credentials
+    const env: Record<string, string> = {
+      ...process.env,
+      PATH: buildAugmentedPath(process.env.PATH || ""),
+      RUST_LOG: process.env.RUST_LOG || "info,thunder_daemon=debug,thunder_agent_root=debug,thunder_agent_loop=debug,thunder_agent_providers=debug"
+    } as Record<string, string>;
+
+    try {
+      const settings = await loadSettings();
+      if (settings?.providers) {
+        for (const [providerId, prov] of Object.entries(settings.providers)) {
+          const key = (prov as any)?.apiKey;
+          if (typeof key === "string" && key.trim()) {
+            if (providerId.includes("openai")) env.OPENAI_API_KEY = key.trim();
+            else if (providerId.includes("anthropic")) env.ANTHROPIC_API_KEY = key.trim();
+            else if (providerId.includes("deepseek")) env.DEEPSEEK_API_KEY = key.trim();
+            else if (providerId.includes("google") || providerId.includes("gemini")) env.GEMINI_API_KEY = key.trim();
+          }
+        }
+      }
+    } catch {
+      // settings loading optional
+    }
+
+    console.log(`[thunder-client] Spawning Thunder daemon: command=${command}, args=${JSON.stringify(args)}, cwd=${cwd}`);
+
+    const child = spawn(command, args, {
+      cwd,
+      env,
+      stdio: ["pipe", "pipe", "pipe"]
+    });
+
+    this.child = child;
+
+    const rl = readline.createInterface({
+      input: child.stdout!,
+      terminal: false
+    });
+    this.rl = rl;
+
+    rl.on("line", (line) => {
+      this.handleIncomingLine(line);
+    });
+
+    child.stderr?.on("data", (data) => {
+      const text = data.toString().trim();
+      if (text) {
+        console.log("[thunder-daemon:stderr]", text);
+      }
+    });
+
+    child.on("error", (err) => {
+      console.error("[thunder-daemon:error]", err);
+      this.cleanup();
+    });
+
+    child.on("exit", (code, signal) => {
+      console.info(`[thunder-daemon:exit] code=${code} signal=${signal}`);
+      this.cleanup();
+    });
+  }
+
+  private handleIncomingLine(line: string): void {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+
+    let msg: ThunderDaemonIncoming;
+    try {
+      msg = JSON.parse(trimmed);
+    } catch {
+      console.warn("[thunder-daemon:malformed]", trimmed);
+      return;
+    }
+
+    switch (msg.type) {
+      case "response": {
+        if (msg.id && this.pendingRequests.has(msg.id)) {
+          const req = this.pendingRequests.get(msg.id)!;
+          this.pendingRequests.delete(msg.id);
+          clearTimeout(req.timer);
+          if (msg.success) {
+            req.resolve(msg.data);
+          } else {
+            req.reject(new Error(msg.error || "Daemon request failed"));
+          }
+        }
+        break;
+      }
+      case "observed_event": {
+        console.log(`[thunder-client:event] task=${msg.task_id} type=${msg.event?.event?.type}`);
+        const task = this.activeTasks.get(msg.task_id);
+        if (task?.onEvent) {
+          try {
+            task.onEvent(msg.event);
+          } catch (err) {
+            console.error("[thunder-daemon:event-handler-error]", err);
+          }
+        }
+        break;
+      }
+      case "task_completed": {
+        console.log(`[thunder-client:completed] task=${msg.task_id} finish_reason=${msg.finish_reason} content_len=${msg.final_content?.length ?? 0}`);
+        const task = this.activeTasks.get(msg.task_id);
+        if (task) {
+          this.activeTasks.delete(msg.task_id);
+          if (msg.finish_reason === "Error" && !msg.final_content) {
+            task.reject(new Error("Task terminated with error status (check daemon logs)"));
+          } else {
+            task.resolve({
+              finalContent: msg.final_content,
+              finishReason: msg.finish_reason,
+              activePlugins: msg.active_plugins
+            });
+          }
+        }
+        break;
+      }
+      case "task_failed": {
+        console.error(`[thunder-client:failed] task=${msg.task_id} error=${msg.error}`);
+        const task = this.activeTasks.get(msg.task_id);
+        if (task) {
+          this.activeTasks.delete(msg.task_id);
+          task.reject(new Error(msg.error || "Thunder task failed"));
+        }
+        break;
+      }
+    }
+  }
+
+  private async sendCommand<T = any>(
+    method: string,
+    params: Record<string, unknown> = {},
+    timeoutMs = 15_000
+  ): Promise<T> {
+    await this.ensureRunning();
+    if (!this.child?.stdin || this.child.killed) {
+      throw new Error("Thunder daemon is not running");
+    }
+
+    const id = `req_${randomUUID()}`;
+    const payload = JSON.stringify({ method, id, ...params }) + "\n";
+
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        if (this.pendingRequests.has(id)) {
+          this.pendingRequests.delete(id);
+          reject(new Error(`Thunder daemon command '${method}' timed out after ${timeoutMs}ms`));
+        }
+      }, timeoutMs);
+
+      this.pendingRequests.set(id, { resolve, reject, timer });
+      this.child!.stdin!.write(payload);
+    });
+  }
+
+  public async ping(): Promise<{ pong: boolean; version?: string }> {
+    return this.sendCommand("ping", {}, 5000);
+  }
+
+  public async listModels(): Promise<ThunderModelInfo[]> {
+    const res = await this.sendCommand<{ models: ThunderModelInfo[] }>("list_models", {}, 10_000);
+    return res?.models || [];
+  }
+
+  public async runTask(options: {
+    taskId: string;
+    prompt: string;
+    workspaceDir?: string;
+    model?: string;
+    sessionId?: string;
+    useMock?: boolean;
+    onEvent?: (event: ThunderObservedEvent) => void;
+  }): Promise<{ finalContent?: string; finishReason: string; activePlugins?: string[] }> {
+    await this.ensureRunning();
+    if (!this.child?.stdin || this.child.killed) {
+      throw new Error("Thunder daemon is not running");
+    }
+
+    const taskId = options.taskId;
+
+    return new Promise<{ finalContent?: string; finishReason: string; activePlugins?: string[] }>(
+      async (resolve, reject) => {
+        this.activeTasks.set(taskId, {
+          onEvent: options.onEvent,
+          resolve,
+          reject
+        });
+
+        try {
+          // Send run_task request (acknowledged synchronously)
+          await this.sendCommand(
+            "run_task",
+            {
+              task_id: taskId,
+              prompt: options.prompt,
+              workspace_dir: options.workspaceDir,
+              model: options.model,
+              session_id: options.sessionId,
+              use_mock: options.useMock
+            },
+            30_000
+          );
+        } catch (err) {
+          this.activeTasks.delete(taskId);
+          reject(err);
+        }
+      }
+    );
+  }
+
+  public async cancelTask(taskId: string): Promise<boolean> {
+    if (!this.child || this.child.killed) return false;
+    try {
+      const res = await this.sendCommand<{ task_id: string; cancelled: boolean }>(
+        "cancel_task",
+        { task_id: taskId },
+        5000
+      );
+      return Boolean(res?.cancelled);
+    } catch {
+      return false;
+    }
+  }
+
+  public cleanup(): void {
+    for (const [id, req] of this.pendingRequests) {
+      clearTimeout(req.timer);
+      req.reject(new Error("Thunder daemon process closed"));
+    }
+    this.pendingRequests.clear();
+
+    for (const [taskId, task] of this.activeTasks) {
+      task.reject(new Error("Thunder daemon process closed"));
+    }
+    this.activeTasks.clear();
+
+    if (this.rl) {
+      this.rl.close();
+      this.rl = null;
+    }
+
+    if (this.child && !this.child.killed) {
+      try {
+        this.child.kill("SIGTERM");
+      } catch {
+        // ignore
+      }
+      this.child = null;
+    }
+  }
+}
+
+let singletonClient: ThunderClient | null = null;
+
+export function getThunderClient(): ThunderClient {
+  if (!singletonClient) {
+    singletonClient = new ThunderClient();
+  }
+  return singletonClient;
+}
