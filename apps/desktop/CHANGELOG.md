@@ -8,6 +8,26 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## English
 
+### [0.2.32]
+
+#### Added
+
+- **Scheduling (Thunder)**: a new **Schedule** view in the sidebar turns Thunder into a cron-style automation — each schedule stores a prompt, workspace, model and trigger (interval, daily, cron or manual-only) and runs it through Thunder's agent loop with bash, filesystem, skills and MCP tools. The detail pane has three tabs — overview (status, next/last run, enable or pause, run now), live run (streamed output alongside the agent's tool-call activity) and history (every past run with its result); deleting a schedule removes its history too
+- **Archive**: archived tasks get their own sidebar view — searchable, showing when each was archived, with a restore-to-board action; the GTD board gains "Archive all completed tasks", and the board and quick access palette stop listing archived tasks
+- **Sessions view**: a sidebar view over the whole catalog — a newest-first keyset-paginated list with search, age, provider, GTD and task filters plus facet counts, all applied in SQL, and a detail sheet per session with title editing, AI rename, project, updated time, copyable key and summary
+- **Transcript outline badge**: the transcript pane's outline opens from a hover badge that can be pinned or dismissed, replacing the full-height hover zone that hijacked the pointer
+
+#### Changed
+
+- **Faster launch**: heavy startup work is deferred — task-window restoration staggers until after startup, `arpm` install and MCP sync wait five seconds past main-window readiness, background indexers/summarizers and the scheduler's first tick are delayed, and the startup mask dismisses once i18n is ready instead of waiting for session sync; GTD rollups reload when the background sync lands
+- **Account menu in the sidebar footer**: the avatar leaves the header and pins to the sidebar's bottom rail with its own hover fill, outside the nav highlight; its menu bottom-anchors so it opens upward from the footer, and other native context menus near the screen bottom open upward too
+- **Board and quick access keep up**: task rollups, task templates and the all-workbenches listing are cached in the main process and invalidated on change; each board column renders its first 40 cards and loads the rest on demand
+
+#### Fixed
+
+- **Commit & Push actually commits**: with only unstaged changes — the normal state right after a session — the review banner's Commit & Push staged the files and then silently did nothing; the handler now passes the paths it just computed, the banner no longer pre-stages, the button shows how many files it will commit, and the tooltip names the repository and paths
+- **Workbench note tabs restore once**: the persisted layout is applied only once per workbench, so closed tabs are no longer resurrected on every switch, and restored inactive tabs resolve their display titles
+
 ### [0.2.31]
 
 #### Added
@@ -701,6 +721,26 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 ---
 
 ## 简体中文
+
+### [0.2.32]
+
+#### 新增
+
+- **定时调度（Thunder）**：侧栏新增 **Schedule（调度）** 视图，把 Thunder 变成 cron 式自动化——每条调度保存提示词、工作区、模型与触发方式（间隔 / 每天 / cron / 仅手动），到点后经由 Thunder 的 agent 循环执行（bash、文件系统、技能与 MCP 工具）。详情面板分三个标签——概览（状态、下次/上次执行、启用或暂停、立即运行）、实时执行（流式输出与 agent 工具调用活动）与历史（每次执行及结果）；删除调度会一并删除其历史
+- **归档**：已归档任务有了独立的侧栏视图——支持搜索、显示归档时间、可一键恢复到看板；GTD 看板新增「归档全部已完成任务」，看板与快速访问不再列出已归档任务
+- **会话视图**：覆盖整个 catalog 的侧栏视图——按更新时间倒序、keyset 分页加载，搜索、时间、provider、GTD 与任务过滤全部在 SQL 侧完成并带分面计数；每个会话可打开详情面板，编辑标题、AI 重命名、查看项目与更新时间、复制会话键与摘要
+- **转录大纲徽标**：转录面板的大纲改为由悬停徽标触发，可固定、可关闭，取代原来抢占指针的全高悬停区
+
+#### 变更
+
+- **启动更快**：繁重的启动工作被推迟——任务窗口恢复错峰到启动之后，`arpm` 安装与 MCP 同步在主窗口就绪 5 秒后才执行，后台索引/摘要与调度器首次 tick 延后，启动遮罩在 i18n 就绪后即消失、不再等待会话同步；后台同步完成后重载 GTD 汇总
+- **账户菜单移至侧栏底部**：头像离开顶部栏，固定在侧栏底部栏轨上，有独立悬停填充且不参与导航高亮；其菜单底部锚定、从页脚向上展开，靠近屏幕底部的其他原生右键菜单同样向上展开
+- **看板与快速访问跟手**：任务汇总、任务模板与全部工作台列表在主进程缓存并在变更时失效；看板每列先渲染 40 张卡片，其余按需加载
+
+#### 修复
+
+- **Commit & Push 真的会提交**：仓库只有未暂存改动（会话刚结束时的常态）时，审查提示条的 Commit & Push 先暂存文件、随后静默什么都不做；处理器现在直接传入刚计算出的路径、提示条不再预暂存，按钮显示将要提交的文件数，工具提示标明仓库与路径
+- **工作台笔记标签只恢复一次**：持久化布局每个工作台只应用一次，关闭的标签不再在每次切换时复活，恢复的非活动标签也能解析出显示标题
 
 ### [0.2.31]
 
