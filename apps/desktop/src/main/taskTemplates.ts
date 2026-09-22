@@ -247,7 +247,16 @@ async function deleteTemplateImage(relPath: string | null): Promise<void> {
   await fs.rm(path.join(await panelHomeRoot(), relPath), { force: true }).catch(() => undefined);
 }
 
+let cachedTemplates: TaskTemplate[] | null = null;
+
+export function invalidateTaskTemplatesCache(): void {
+  cachedTemplates = null;
+}
+
 export async function listTaskTemplates(): Promise<TaskTemplate[]> {
+  if (cachedTemplates) {
+    return cachedTemplates;
+  }
   const dbPath = await openTemplateDb();
   const panelHome = await panelHomeRoot();
   const rows = await runSqliteJson<TaskTemplateRow>(
@@ -267,6 +276,7 @@ export async function listTaskTemplates(): Promise<TaskTemplate[]> {
     }
     out.push(mapRow(row, { imageDataUrl }));
   }
+  cachedTemplates = out;
   return out;
 }
 
@@ -318,6 +328,7 @@ export async function createTaskTemplate(args: {
        ${nowMs}
      );`
   );
+  invalidateTaskTemplatesCache();
   return template;
 }
 
@@ -376,6 +387,7 @@ export async function updateTaskTemplate(args: {
     `SELECT ${SELECT_COLUMNS} FROM task_templates WHERE template_id = '${escapeSqlLiteral(args.templateId)}' LIMIT 1;`
   );
   if (!rows[0]) throw new Error("Task template not found.");
+  invalidateTaskTemplatesCache();
   return mapRow(rows[0], { imageDataUrl: await readImageDataUrl(rows[0].image_path) });
 }
 
@@ -388,6 +400,7 @@ export async function deleteTaskTemplate(templateId: string): Promise<{ ok: bool
   await runSqlite(dbPath, `DELETE FROM task_templates WHERE template_id = '${escapeSqlLiteral(templateId)}';`);
   // Deleting the template deletes its image file.
   if (rows[0]?.image_path) await deleteTemplateImage(rows[0].image_path);
+  invalidateTaskTemplatesCache();
   return { ok: true };
 }
 
@@ -440,6 +453,7 @@ export async function addTaskTemplateScript(args: {
          updated_at_ms = ${Date.now()}
      WHERE template_id = '${escapeSqlLiteral(args.templateId)}';`
   );
+  invalidateTaskTemplatesCache();
   return { template: await readTemplate(dbPath, args.templateId), added: true };
 }
 
@@ -462,6 +476,7 @@ export async function removeTaskTemplateScript(args: {
          updated_at_ms = ${Date.now()}
      WHERE template_id = '${escapeSqlLiteral(args.templateId)}';`
   );
+  invalidateTaskTemplatesCache();
   return readTemplate(dbPath, args.templateId);
 }
 

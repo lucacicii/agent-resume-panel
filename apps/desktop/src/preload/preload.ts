@@ -1203,7 +1203,7 @@ export interface DesktopApi {
       };
     }>
   >;
-  notesListTasks(): Promise<
+  notesListTasks(options?: { includeArchived?: boolean }): Promise<
     Array<{
       noteId: string;
       scope: string;
@@ -1905,7 +1905,7 @@ const api: DesktopApi = {
   logsClear: () => ipcRenderer.invoke("logs:clear"),
   logsOpenDir: () => ipcRenderer.invoke("logs:openDir"),
   notesList: () => ipcRenderer.invoke("notes:list"),
-  notesListTasks: () => ipcRenderer.invoke("notes:listTasks"),
+  notesListTasks: (options) => ipcRenderer.invoke("notes:listTasks", options),
   taskTemplatesList: () => ipcRenderer.invoke("taskTemplates:list"),
   taskTemplatesCreate: (args) => ipcRenderer.invoke("taskTemplates:create", args),
   taskTemplatesUpdate: (args) => ipcRenderer.invoke("taskTemplates:update", args),

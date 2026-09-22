@@ -27,6 +27,7 @@ import { hueFromHex } from "../../../shared/taskColors";
 
 /** Board column order — `done` last so active work reads first. */
 const GTD_COLUMNS: readonly DesktopGtdStatus[] = DESKTOP_GTD_STATUSES;
+const INITIAL_COLUMN_LIMIT = 40;
 
 type GtdCard = WorkbenchTask & { projects: string[] };
 
@@ -43,6 +44,7 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
   const [dragNoteId, setDragNoteId] = useState<string | null>(null);
   const [dragTemplate, setDragTemplate] = useState<TaskTemplate | null>(null);
   const [dropColumn, setDropColumn] = useState<GtdStatus | null>(null);
+  const [columnLimits, setColumnLimits] = useState<Record<string, number>>({});
   const [renaming, setRenaming] = useState<{ noteId: string; value: string; busy: boolean } | null>(null);
   const renameCommitSkipRef = useRef(false);
   const [creating, setCreating] = useState(false);
@@ -61,7 +63,7 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
     if (typeof desktopApi().notesListTasks !== "function") return;
     try {
       const [records, nextRollups] = await Promise.all([
-        desktopApi().notesListTasks(),
+        desktopApi().notesListTasks({ includeArchived: false }),
         typeof desktopApi().listTaskGtdRollups === "function"
           ? desktopApi().listTaskGtdRollups().catch(() => ({} as Record<string, TaskGtdRollup>))
           : Promise.resolve({} as Record<string, TaskGtdRollup>)
@@ -505,7 +507,11 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
     <section className="panel workbench-panel react-gtd-panel" hidden={!active} aria-label={text("desktop.gtd.title")}>
       <TaskTemplatePanel active={active} onDragTemplateChange={setDragTemplate} />
       <div className="gtd-board" onKeyDown={onBoardKeyDown}>
-        {columns.map(({ status, items: columnItems }) => (
+        {columns.map(({ status, items: columnItems }) => {
+          const limit = columnLimits[status] ?? INITIAL_COLUMN_LIMIT;
+          const visibleItems = columnItems.slice(0, limit);
+          const remaining = columnItems.length - visibleItems.length;
+          return (
           <div
             key={status}
             className={`gtd-column${dropColumn === status ? " is-drop-target" : ""}`}
@@ -551,7 +557,7 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
               ) : null}
             </div>
             <div className="gtd-column-body">
-              {columnItems.map((item) => {
+              {visibleItems.map((item) => {
                 const dotStatus = taskDotStatus(item);
                 const waiting = dotStatus === "awaiting_user";
                 const taskWorkbenches = workbenchesByTask[item.noteId] ?? [];
@@ -682,9 +688,19 @@ export function GtdView({ active }: { active: boolean }): React.ReactPortal | nu
                 );
               })}
               {columnItems.length === 0 ? <p className="gtd-column-empty">{text("desktop.gtd.emptyColumn")}</p> : null}
+              {remaining > 0 ? (
+                <button
+                  type="button"
+                  className="gtd-column-more-btn"
+                  onClick={() => setColumnLimits((prev) => ({ ...prev, [status]: (prev[status] ?? INITIAL_COLUMN_LIMIT) + 40 }))}
+                >
+                  {text("desktop.gtd.loadMore", remaining)}
+                </button>
+              ) : null}
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
     </section>
     {newTask ? (

@@ -74,6 +74,7 @@ function renderGtd(overrides?: Partial<typeof window.agentResume>) {  const host
         "desktop.gtd.editTemplate": "Edit template",
         "desktop.gtd.deleteTemplate": "Delete template",
         "desktop.gtd.deleteTemplateConfirm": "Delete template \"{0}\"?",
+        "desktop.gtd.loadMore": "Load more ({0})",
         "desktop.common.rename": "Rename",
         "desktop.common.save": "Save"
       }
@@ -612,5 +613,35 @@ describe("GtdView", () => {
     };
     expect(args.archived).toBe(true);
     expect([...args.noteIds].sort()).toEqual(["t-done-1", "t-done-2"]);
+  });
+
+  it("limits visible cards to 40 per column and expands on load more", async () => {
+    const manyTasks = Array.from({ length: 45 }, (_, i) => ({
+      noteId: `task-inbox-${i}`,
+      scope: "library",
+      filename: `task-${i}.md`,
+      relDir: "",
+      relMdPath: `task-${i}.md`,
+      title: `Inbox item ${i}`,
+      createdAtMs: 1,
+      updatedAtMs: 100 + i,
+      gtdStatus: "inbox" as const,
+      work: { sessions: [] }
+    }));
+
+    renderGtd({
+      notesListTasks: async () => manyTasks
+    } as unknown as Partial<typeof window.agentResume>);
+
+    expect(await screen.findByText("Inbox item 44")).toBeTruthy();
+    // Item 0 (oldest) should be clipped initially because only 40 items are visible
+    expect(screen.queryByText("Inbox item 0")).toBeNull();
+
+    const loadMoreBtn = await screen.findByRole("button", { name: "Load more (5)" });
+    expect(loadMoreBtn).toBeTruthy();
+
+    fireEvent.click(loadMoreBtn);
+    expect(await screen.findByText("Inbox item 0")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Load more/ })).toBeNull();
   });
 });

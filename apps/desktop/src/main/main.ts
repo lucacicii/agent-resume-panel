@@ -21,6 +21,7 @@ import {
   expandHome,
   listTaskGtdRollups,
   resolveTaskGtdRollup,
+  type TaskGtdRollup,
   getReportEntryById,
   getSessionById,
   getUsageSummary,
@@ -567,6 +568,10 @@ let browserSettingsCache: import("@agent-resume/core").DesktopBrowserSettings | 
 let notifiedWaitingSessions = new Set<string>();
 /** Display data per workbench, so a tray dot for a closed window still has a name. */
 let workbenchMetaById = new Map<string, { noteId: string; label: string }>();
+let cachedAllWorkbenches: Awaited<ReturnType<typeof listAllTaskWorkbenches>> | null = null;
+let cachedTaskRollups: Record<string, TaskGtdRollup> | null = null;
+let cachedTaskRollupsAt = 0;
+const TASK_ROLLUPS_CACHE_MS = 2_000;
 
 function workbenchLabel(name: string, projectPath: string): string {
   const explicit = name.trim();
@@ -579,6 +584,7 @@ async function loadWorkbenchMeta(): Promise<void> {
   try {
     const paths = await loadPanelDbPaths();
     const workbenches = await listAllTaskWorkbenches(paths.desktopDb);
+    cachedAllWorkbenches = workbenches;
     const next = new Map<string, { noteId: string; label: string }>();
     for (const workbench of workbenches) {
       next.set(workbench.workbenchId, {
@@ -1409,6 +1415,7 @@ function shouldScheduleBackgroundAnalysis(): boolean {
 }
 
 async function syncAndNotify(): Promise<AgentSessionSyncResult> {
+  cachedTaskRollups = null;
   const result = await syncSessions();
   // Every window lists sessions, so every window refreshes when the catalog moves.
   broadcastToRenderers("sessions:synced", result);
@@ -2670,8 +2677,15 @@ function registerIpc(): void {
   });
 
   ipcMain.handle("gtd:listTaskRollups", async () => {
+    const now = Date.now();
+    if (cachedTaskRollups && now - cachedTaskRollupsAt < TASK_ROLLUPS_CACHE_MS) {
+      return cachedTaskRollups;
+    }
     const paths = await loadPanelDbPaths();
-    return listTaskGtdRollups(paths.catalogDb);
+    const rollups = await listTaskGtdRollups(paths.catalogDb);
+    cachedTaskRollups = rollups;
+    cachedTaskRollupsAt = now;
+    return rollups;
   });
 
   ipcMain.handle("gtd:taskRollup", async (_event, args: { noteId: string }) => {
@@ -2688,6 +2702,7 @@ function registerIpc(): void {
       const id = String(args?.id || "").trim();
       if (!provider || !id) throw new Error("Session provider and id are required");
       const paths = await loadPanelDbPaths();
+      cachedTaskRollups = null;
       if (args?.status == null) {
         await clearSessionGtdStatus(paths.catalogDb, provider, id);
       } else if (isGtdStatus(args.status)) {
@@ -3076,8 +3091,10 @@ function registerIpc(): void {
   );
 
   safeHandle("taskWorkbenches:listAll", async () => {
+    if (cachedAllWorkbenches) return cachedAllWorkbenches;
     const paths = await loadPanelDbPaths();
-    return listAllTaskWorkbenches(paths.desktopDb);
+    cachedAllWorkbenches = await listAllTaskWorkbenches(paths.desktopDb);
+    return cachedAllWorkbenches;
   });
 
   safeHandle(
@@ -3299,9 +3316,9 @@ function registerIpc(): void {
   ipcMain.handle("logs:openDir", async () => openAppErrorLogDir());
 
   ipcMain.handle("notes:list", async () => notesList());
-  ipcMain.handle("notes:listTasks", async () => {
+  ipcMain.handle("notes:listTasks", async (_event, args?: { includeArchived?: boolean }) => {
     const [items, accents, templateLinks] = await Promise.all([
-      notesListTasks(),
+      notesListTasks(args),
       resolveTaskAccents(),
       listTaskTemplateLinks()
     ]);
@@ -3590,6 +3607,7 @@ function registerIpc(): void {
       throw new Error("Invalid note GTD status.");
     }
     const result = await notesSetGtdStatus(args.noteId, status);
+    cachedTaskRollups = null;
     scheduleNotesIndex();
     return result;
   });
@@ -3600,6 +3618,7 @@ function registerIpc(): void {
     if (noteIds.length === 0 || typeof args?.archived !== "boolean") {
       throw new Error("Invalid archive request.");
     }
+    cachedTaskRollups = null;
     await notesSetArchived(noteIds, args.archived);
   });
   ipcMain.handle("notes:read", async (_event, args: { noteId: string }) => notesRead(args.noteId));

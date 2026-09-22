@@ -76,7 +76,7 @@ export function BoardQuickAccess(): React.ReactPortal | null {
       }
     ];
     try {
-      const records = typeof desktopApi().notesListTasks === "function" ? await desktopApi().notesListTasks() : [];
+      const records = typeof desktopApi().notesListTasks === "function" ? await desktopApi().notesListTasks({ includeArchived: false }) : [];
       const tasks = records
         .map((record) => taskFromRecord(record))
         .filter((task) => task.archivedAtMs == null)
