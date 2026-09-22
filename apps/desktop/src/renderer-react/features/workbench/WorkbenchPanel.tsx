@@ -734,6 +734,8 @@ export function WorkbenchPanel(): ReactPortal | null {
   const saveEditorRef = useRef<(key: string) => Promise<boolean>>(async () => true);
   const diffsRef = useRef<DiffPane[]>([]);
   const notePanesRef = useRef<NotePane[]>([]);
+  /** Workbenches whose persisted layout was already adopted in this panel instance. */
+  const restoredWorkbenchesRef = useRef<Set<string>>(new Set());
   const fileExplorerRef = useRef<WorkbenchFileExplorerHandle | null>(null);
   const selectedProjectRef = useRef<string | null>(selectedProject);
   const catalogProjectsRef = useRef<CatalogProject[]>(catalogProjects);
@@ -2510,6 +2512,13 @@ export function WorkbenchPanel(): ReactPortal | null {
     setNotePanes((current) => current.map((pane) => pane.noteId === noteId ? { ...pane, title } : pane));
   }, []);
 
+  /** Resolve a note's display title for a pane opened or restored without one. */
+  const resolveNoteTitle = useCallback((noteId: string) => {
+    void desktopApi().notesRead({ noteId }).then((result) => {
+      updateNotePaneTitle(noteId, result.record.title || result.record.filename.replace(/\.md$/i, "") || noteId);
+    }).catch(() => undefined);
+  }, [updateNotePaneTitle]);
+
   const setNotePaneDirty = useCallback((noteId: string, dirty: boolean) => {
     setNotePanes((current) => current.map((pane) => pane.noteId === noteId ? { ...pane, dirty } : pane));
   }, []);
@@ -2519,16 +2528,19 @@ export function WorkbenchPanel(): ReactPortal | null {
     if (!noteId) return;
     const workbenchId = activeWorkbenchIdRef.current ?? undefined;
     const key = workbenchId ? `note:${workbenchId}:${noteId}` : `note:${noteId}`;
-    setNotePanes((current) => current.some((pane) => pane.key === key)
-      ? current
-      : [...current, { key, noteId, projectPath: selectedProjectRef.current, title: title || "", workbenchId }]);
+    setNotePanes((current) => {
+      const existing = current.find((pane) => pane.key === key);
+      if (existing) {
+        // Backfill a restored pane whose title has not resolved yet.
+        return existing.title || !title
+          ? current
+          : current.map((pane) => pane.key === key ? { ...pane, title } : pane);
+      }
+      return [...current, { key, noteId, projectPath: selectedProjectRef.current, title: title || "", workbenchId }];
+    });
     setActivePane(key);
-    if (!title) {
-      void desktopApi().notesRead({ noteId }).then((result) => {
-        updateNotePaneTitle(noteId, result.record.title || result.record.filename.replace(/\.md$/i, "") || noteId);
-      }).catch(() => undefined);
-    }
-  }, [setActivePane, updateNotePaneTitle]);
+    if (!title) resolveNoteTitle(noteId);
+  }, [setActivePane, resolveNoteTitle]);
 
   const closeNotePane = useCallback((key: string) => {
     const remaining = notePanesRef.current.filter((item) => item.key !== key);
@@ -3537,6 +3549,11 @@ export function WorkbenchPanel(): ReactPortal | null {
   useEffect(() => {
     const workbenchId = activeWorkbenchId;
     if (!workbenchId) return;
+    // Restore once per workbench: afterwards the live panes are the source of
+    // truth, so re-running (e.g. after the active pane changes) would resurrect
+    // tabs the user closed.
+    if (restoredWorkbenchesRef.current.has(workbenchId)) return;
+    restoredWorkbenchesRef.current.add(workbenchId);
     const workbench = workbenchesRef.current.find((item) => item.workbenchId === workbenchId);
     if (!workbench?.layoutJson) return;
     let openNoteIds: string[] = [];
@@ -3563,11 +3580,16 @@ export function WorkbenchPanel(): ReactPortal | null {
         title: "",
         workbenchId
       }));
-    if (additions.length) setNotePanes((current) => {
-      const keys = new Set(current.map((pane) => pane.key));
-      const fresh = additions.filter((pane) => !keys.has(pane.key));
-      return fresh.length ? [...current, ...fresh] : current;
-    });
+    if (additions.length) {
+      setNotePanes((current) => {
+        const keys = new Set(current.map((pane) => pane.key));
+        const fresh = additions.filter((pane) => !keys.has(pane.key));
+        return fresh.length ? [...current, ...fresh] : current;
+      });
+      // Restored panes carry no title; fetch each one so the tab shows the
+      // note's real name even before the pane is activated.
+      for (const pane of additions) resolveNoteTitle(pane.noteId);
+    }
     if (!activePanesRef.current[scope] && (additions[0] || existing.size)) {
       const firstKey = additions[0]?.key
         ?? notePanesRef.current.find((pane) => pane.workbenchId === workbenchId)?.key;
@@ -5751,7 +5773,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     <div className="wb-terminal-tabs is-note-group" data-pane-group="note">
       <button type="button" className="wb-pane-tab-group-label" aria-label={t("desktop.notes.newLinkedChild")} title={t("desktop.notes.newLinkedChild")} onClick={() => void addChildNote()}><ThemeIcon name="file-plus" size={ICON_SIZE.dense} aria-hidden="true" /></button>
       <div className="wb-terminal-tabs-list" role="tablist" aria-label={t("desktop.notes.allNotes")}>
-        {currentNotePanes.map((pane) => <div className={`wb-terminal-tab is-note${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="file-text" size={ICON_SIZE.dense} aria-hidden="true" />{pane.dirty ? "* " : ""}{pane.title || t("desktop.notes.allNotes")}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.common.close")} onClick={() => closeNotePane(pane.key)}><ThemeIcon name="close" size={ICON_SIZE.dense} /></button></div>)}
+        {currentNotePanes.map((pane) => <div className={`wb-terminal-tab is-note${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="file-text" size={ICON_SIZE.dense} aria-hidden="true" />{pane.dirty ? "* " : ""}{pane.title || t("desktop.common.loading")}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.common.close")} onClick={() => closeNotePane(pane.key)}><ThemeIcon name="close" size={ICON_SIZE.dense} /></button></div>)}
       </div>
     </div>
     <div className="wb-terminal-tabs is-browser-group" data-pane-group="browser">

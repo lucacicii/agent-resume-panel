@@ -761,7 +761,6 @@ html[data-window-mode="main"] .mac-top {
 .mac-top [role="button"],
 .mac-top [role="tab"],
 .mac-top .app-note-dots,
-.mac-top .app-account,
 .mac-top .bell-btn {
   -webkit-app-region: no-drag;
 }
@@ -964,6 +963,22 @@ html[data-window-mode="main"] .mac-top {
 }
 
 /*
+ * Account footer: the row the header used to carry, pinned to the rail bottom
+ * (`margin-top: auto` inside the flex inner column). It lives outside the nav,
+ * so the gliding pill never reaches it — the row owns its hover fill instead.
+ * Drag-opt-out comes from `.app-sidebar button`; collapsed behaviour (label
+ * hidden, icon centered) reuses the nav row rules above.
+ */
+.app-sidebar-footer {
+  margin-top: auto;
+  padding: 0 var(--space-2) var(--space-3);
+}
+
+.app-sidebar-footer .app-sidebar-row:hover {
+  background: var(--color-fill-secondary);
+}
+
+/*
  * Reduce Motion is honoured per surface here: the global `--duration-*`
  * zeroing rule earlier in this file does not reach the CSSOM (pre-existing),
  * so the sidebar follows the same explicit pattern as the other surfaces.
@@ -1027,54 +1042,7 @@ html[data-window-mode="main"] .mac-top {
   transition: transform var(--duration-fast) var(--ease-out);
 }
 
-/* Header chrome: account avatar & popover menu */
-.app-account {
-  -webkit-app-region: no-drag;
-  display: flex;
-  align-items: center;
-}
-
-.app-account-btn {
-  -webkit-app-region: no-drag;
-  appearance: none;
-  border: none;
-  background: transparent;
-  padding: 0;
-  width: 28px;
-  height: 28px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-
-  color: var(--color-label-secondary);
-  transition: color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
-}
-
-.app-account-btn:hover,
-.app-account-btn.is-open {
-  color: var(--color-label-primary);
-  background: var(--color-fill-secondary);
-}
-
-.app-account-btn:active {
-  transform: scale(0.96);
-}
-
-.app-account-btn:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--color-focus-ring);
-}
-
-.app-account-avatar {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: var(--color-fill-secondary);
-  box-shadow: 0 0 0 0.5px var(--color-separator);
-}
-
+/* Entrance animation shared by popover-style surfaces */
 @keyframes mac-popover-enter {
   from {
     opacity: 0;

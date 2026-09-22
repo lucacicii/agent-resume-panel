@@ -9578,9 +9578,11 @@ describe("WorkbenchPanel", () => {
       },
       content: "# restored"
     }));
+    const layoutJson = JSON.stringify({ openNoteIds: ["n-one", "n-two"] });
     window.agentResume = {
       getI18nBundle: async () => ({ locale: "en", messages: {
         "desktop.common.search": "Search", "desktop.common.refresh": "Refresh", "desktop.common.all": "All",
+        "desktop.common.close": "Close", "desktop.common.loading": "Loading…",
         "desktop.workbench.tasksView": "Tasks",
         "desktop.workbench.filterTasks": "Filter tasks",
         "desktop.workbench.noTasks": "No tasks yet",
@@ -9611,11 +9613,11 @@ describe("WorkbenchPanel", () => {
       }],
       listTaskWorkbenches: async () => [{
         workbenchId: "wb-lay", taskNoteId: "wi-lay", name: "Layout", projectPath: "/work/app",
-        position: 0, layoutJson: JSON.stringify({ openNoteIds: ["n-restored"] }), createdAtMs: 1, updatedAtMs: 1
+        position: 0, layoutJson, createdAtMs: 1, updatedAtMs: 1
       }],
       ensureTaskWorkbench: async () => ({
         workbenchId: "wb-lay", taskNoteId: "wi-lay", name: "Layout", projectPath: "/work/app",
-        position: 0, layoutJson: JSON.stringify({ openNoteIds: ["n-restored"] }), createdAtMs: 1, updatedAtMs: 1
+        position: 0, layoutJson, createdAtMs: 1, updatedAtMs: 1
       }),
       terminalGitInfo: async () => ({ mode: "none", isRepo: false, branch: null, repoRoot: null, nestedRepos: [] }),
       terminalDestroy: async () => ({ ok: true }),
@@ -9635,9 +9637,23 @@ describe("WorkbenchPanel", () => {
       } }));
     });
 
-    await waitFor(() => expect(document.querySelectorAll(".wb-terminal-tab.is-note").length).toBe(1));
-    expect(notesRead).toHaveBeenCalledWith({ noteId: "n-restored" });
+    const noteTabs = () => [...document.querySelectorAll<HTMLElement>(".wb-terminal-tab.is-note")];
+    await waitFor(() => expect(noteTabs().length).toBe(2));
+    expect(notesRead).toHaveBeenCalledWith({ noteId: "n-one" });
+    expect(notesRead).toHaveBeenCalledWith({ noteId: "n-two" });
     expect(document.querySelector(".wb-note-pane")).not.toBeNull();
+    // The inactive restored tab shows its own resolved title, not a placeholder.
+    await waitFor(() => expect(noteTabs().map((tab) => tab.textContent).join("\n")).toContain("Note n-two"));
+
+    // Closing the active tab removes it: the pane must stay closed, not come
+    // back deactivated from the persisted layout.
+    fireEvent.click(noteTabs()[0]!.querySelector(".wb-terminal-tab-close") as HTMLElement);
+    await waitFor(() => expect(noteTabs().length).toBe(1));
+    expect(noteTabs()[0]!.textContent).toContain("Note n-two");
+    // Switching the active pane must not resurrect the closed tab either.
+    fireEvent.click(noteTabs()[0]!.querySelector(".wb-terminal-tab-label") as HTMLElement);
+    await waitFor(() => expect(noteTabs()[0]!.className).toContain("active"));
+    expect(noteTabs().length).toBe(1);
     localStorage.removeItem("workbench-active-v1:wi-lay");
   });
 

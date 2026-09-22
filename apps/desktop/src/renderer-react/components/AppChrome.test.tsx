@@ -15,9 +15,7 @@ function renderChrome(options?: {
     getI18nBundle: async () => ({
       locale: "en",
       messages: {
-        "desktop.notes.floatingDots": "Floating notes",
-        "desktop.chrome.account": "Account",
-        "desktop.top.settings": "Settings"
+        "desktop.notes.floatingDots": "Floating notes"
       }
     }),
     onLocaleChanged: () => () => undefined,
@@ -50,7 +48,9 @@ describe("AppChrome", () => {
 
   it("renders the header chrome without a primary-tab rail", async () => {
     renderChrome();
-    expect(await screen.findByRole("button", { name: "Account" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Collapse sidebar" })).toBeTruthy();
+    // The account menu lives in the sidebar footer now, not in the header.
+    expect(screen.queryByRole("button", { name: "Account" })).toBeNull();
     expect(document.querySelector(".app-nav-rail")).toBeNull();
     expect(document.querySelector(".session-dots-cluster")).toBeNull();
     expect(document.getElementById("app-header-slot")).not.toBeNull();
@@ -60,7 +60,7 @@ describe("AppChrome", () => {
     const { standaloneNoteOpen, pushNoteDots } = renderChrome({
       standaloneNoteList: [{ noteId: "n1", title: "Scratch pad" }]
     });
-    expect(await screen.findByRole("button", { name: "Account" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Collapse sidebar" })).toBeTruthy();
     await waitFor(() => expect(document.querySelectorAll(".app-note-dot-btn").length).toBe(1));
 
     const noteDot = document.querySelector<HTMLButtonElement>(".app-note-dot-btn");
@@ -74,7 +74,7 @@ describe("AppChrome", () => {
 
   it("updates floating note dots when the open-notes list changes", async () => {
     const { pushNoteDots } = renderChrome();
-    await screen.findByRole("button", { name: "Account" });
+    await screen.findByRole("button", { name: "Collapse sidebar" });
     expect(document.querySelectorAll(".app-note-dot-btn").length).toBe(0);
 
     await act(async () => {
@@ -103,24 +103,5 @@ describe("AppChrome", () => {
     const expand = await screen.findByRole("button", { name: "Expand sidebar" });
     expect(expand.getAttribute("aria-expanded")).toBe("false");
     expect(expand.classList.contains("is-collapsed")).toBe(true);
-  });
-
-  it("opens Settings from the account menu", async () => {
-    renderChrome();
-    await screen.findByRole("button", { name: "Account" });
-
-    const openSettingsWindow = vi.fn(async () => ({ ok: true }));
-    const contextMenuShow = vi.fn(async (_args: { x: number; y: number; items: Array<{ id?: string; label?: string }> }): Promise<string | null> => "settings");
-    Object.assign(window.agentResume as unknown as Record<string, unknown>, { openSettingsWindow, contextMenuShow });
-
-    fireEvent.click(screen.getByRole("button", { name: "Account" }));
-
-    // The account menu is a native NSMenu now: assert the item list the renderer sends.
-    await waitFor(() => expect(contextMenuShow).toHaveBeenCalled());
-    const items = contextMenuShow.mock.calls.at(-1)![0].items;
-    expect(items.find((item) => item.label === "Settings")?.id).toBe("settings");
-
-    // Settings is its own window, so the menu asks the main process for it.
-    await waitFor(() => expect(openSettingsWindow).toHaveBeenCalledWith({ pane: "general" }));
   });
 });

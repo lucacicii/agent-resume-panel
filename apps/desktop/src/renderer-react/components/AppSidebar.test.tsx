@@ -8,7 +8,9 @@ const messages = {
   "desktop.nav.gtd": "GTD",
   "desktop.nav.notes": "Notes",
   "desktop.nav.collapse": "Collapse sidebar",
-  "desktop.nav.expand": "Expand sidebar"
+  "desktop.nav.expand": "Expand sidebar",
+  "desktop.chrome.account": "Account",
+  "desktop.top.settings": "Settings"
 };
 
 function renderSidebar({ view = "gtd" as "gtd" | "notes", collapsed = false } = {}) {
@@ -74,5 +76,39 @@ describe("AppSidebar", () => {
     // Hovering the active row hands selection feedback back to its own fill.
     fireEvent.pointerEnter(screen.getByRole("button", { name: "GTD" }));
     await waitFor(() => expect(glide!.style.opacity).toBe("0"));
+  });
+
+  it("renders the account row pinned to the rail bottom, outside the nav", async () => {
+    renderSidebar({ view: "gtd" });
+    const account = await screen.findByRole("button", { name: "Account" });
+    expect(account.getAttribute("aria-haspopup")).toBe("menu");
+    // The account lives in the sidebar footer, not among the nav rows.
+    expect(account.closest(".app-sidebar-footer")).toBeTruthy();
+    expect(account.closest(".app-sidebar-nav")).toBeNull();
+  });
+
+  it("keeps the account row when the rail is collapsed", async () => {
+    renderSidebar({ view: "gtd", collapsed: true });
+    const account = await screen.findByRole("button", { name: "Account" });
+    expect(account.closest(".app-sidebar.is-collapsed")).toBeTruthy();
+  });
+
+  it("opens Settings from the account menu", async () => {
+    renderSidebar({ view: "gtd" });
+    await screen.findByRole("button", { name: "Account" });
+
+    const openSettingsWindow = vi.fn(async () => ({ ok: true }));
+    const contextMenuShow = vi.fn(async (_args: { x: number; y: number; items: Array<{ id?: string; label?: string }> }): Promise<string | null> => "settings");
+    Object.assign(window.agentResume as unknown as Record<string, unknown>, { openSettingsWindow, contextMenuShow });
+
+    fireEvent.click(screen.getByRole("button", { name: "Account" }));
+
+    // The account menu is a native NSMenu: assert the item list the renderer sends.
+    await waitFor(() => expect(contextMenuShow).toHaveBeenCalled());
+    const items = contextMenuShow.mock.calls.at(-1)![0].items;
+    expect(items.find((item) => item.label === "Settings")?.id).toBe("settings");
+
+    // Settings is its own window, so the menu asks the main process for it.
+    await waitFor(() => expect(openSettingsWindow).toHaveBeenCalledWith({ pane: "general" }));
   });
 });
