@@ -1543,6 +1543,7 @@ export interface DesktopApi {
   }): Promise<ThunderChatTaskResult>;
   thunderChatCancelTask(args: { taskId: string }): Promise<boolean>;
   onThunderChatEvent(callback: (payload: ThunderChatStreamPayload) => void): () => void;
+  onThunderModelsChanged(callback: () => void): () => void;
   onScheduleRunEvent(callback: (payload: { scheduleId: string; runId: string; event: ThunderAgentEvent; accumulatedOutput: string }) => void): () => void;
   onScheduleStatusChanged(callback: (payload: { scheduleId: string; runId: string; status: string; output?: string; error?: string }) => void): () => void;
 }
@@ -2058,6 +2059,11 @@ const api: DesktopApi = {
     const handler = (_event: Electron.IpcRendererEvent, payload: ThunderChatStreamPayload) => callback(payload);
     ipcRenderer.on("thunder:chat:event", handler);
     return () => ipcRenderer.removeListener("thunder:chat:event", handler);
+  },
+  onThunderModelsChanged: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on("thunder:models:changed", handler);
+    return () => ipcRenderer.removeListener("thunder:models:changed", handler);
   },
   onScheduleRunEvent: (callback) => {
     const handler = (

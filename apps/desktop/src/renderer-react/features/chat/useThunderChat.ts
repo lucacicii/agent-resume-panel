@@ -158,8 +158,10 @@ export function useThunderChat() {
       if (status.models && status.models.length > 0) {
         setModels(status.models);
         setSelectedModel((prev) => {
-          const effective = prev || status.models[0].selection_id || status.models[0].id;
-          return effective;
+          if (prev && status.models.some((m) => (m.selection_id || m.id) === prev)) {
+            return prev;
+          }
+          return status.models[0].selection_id || status.models[0].id;
         });
         setThinkingLevel((prev) => {
           if (prev) return prev;
@@ -577,6 +579,23 @@ export function useThunderChat() {
     void refreshDaemonStatus();
     void loadConversations();
   }, [refreshDaemonStatus, loadConversations]);
+
+  // Real-time updates when ~/.thunder/models.json or auth.json change on disk
+  useEffect(() => {
+    const unsub = desktopApi().onThunderModelsChanged?.(() => {
+      void refreshDaemonStatus();
+    });
+    return () => unsub?.();
+  }, [refreshDaemonStatus]);
+
+  // Window focus auto-refresh
+  useEffect(() => {
+    const onFocus = () => {
+      void refreshDaemonStatus();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [refreshDaemonStatus]);
 
   const isWorkspaceLocked = Boolean(activeSessionId && workspaceDir);
 

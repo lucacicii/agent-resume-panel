@@ -1,3 +1,6 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { BrowserWindow } from "electron";
 import { safeHandle } from "../ipcUtils";
 import {
@@ -16,7 +19,47 @@ import { getThunderClient } from "./thunderClient";
 import { notesGetTaskWorkspaceContext, notesLinkSessionToTask } from "../notesService";
 import type { ThunderScheduleInput } from "@agent-resume/core";
 
+let configWatcher: fs.FSWatcher | null = null;
+
+function startThunderConfigWatcher(): void {
+  if (configWatcher) return;
+  const home = os.homedir();
+  const thunderDir = path.join(home, ".thunder");
+  if (!fs.existsSync(thunderDir)) {
+    try {
+      fs.mkdirSync(thunderDir, { recursive: true });
+    } catch {
+      return;
+    }
+  }
+
+  let debounceTimer: NodeJS.Timeout | null = null;
+  const notifyChange = () => {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      console.log("[thunder-ipc] .thunder config changed, notifying renderers");
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (!win.isDestroyed()) {
+          win.webContents.send("thunder:models:changed");
+        }
+      }
+    }, 300);
+  };
+
+  try {
+    configWatcher = fs.watch(thunderDir, (_eventType, filename) => {
+      if (filename && (filename.includes("models.json") || filename.includes("auth.json"))) {
+        notifyChange();
+      }
+    });
+  } catch (err) {
+    console.warn("[thunder-ipc] Failed to watch .thunder dir:", err);
+  }
+}
+
 export function registerThunderIpc(): void {
+  startThunderConfigWatcher();
+
   safeHandle("schedule:list", async () => {
     return listSchedules();
   });
