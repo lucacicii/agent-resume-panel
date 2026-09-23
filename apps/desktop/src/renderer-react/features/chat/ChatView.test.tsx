@@ -61,6 +61,7 @@ describe("ChatView", () => {
         updated_at_ms: Date.now() - 500
       }),
       thunderChatDeleteConversation: vi.fn().mockResolvedValue(true),
+      thunderChatTruncateConversation: vi.fn().mockResolvedValue(true),
       thunderChatRunTask: vi.fn().mockResolvedValue({
         finalContent: "Thunder task finished.",
         finishReason: "Done"
@@ -127,6 +128,68 @@ describe("ChatView", () => {
       expect(window.agentResume.thunderChatRunTask).toHaveBeenCalledWith(
         expect.objectContaining({
           prompt: "Hello Thunder Agent"
+        })
+      );
+    });
+  });
+
+  it("regenerates the assistant response when clicking Regenerate", async () => {
+    render(
+      <I18nProvider>
+        <ChatView active={true} />
+      </I18nProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Inspect Git Status & Changes").length).toBeGreaterThanOrEqual(1);
+    });
+
+    const items = screen.getAllByText("Inspect Git Status & Changes");
+    fireEvent.click(items[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText("Working tree is clean.")).toBeTruthy();
+    });
+
+    const regenBtn = screen.getByTitle("Regenerate answer");
+    fireEvent.click(regenBtn);
+
+    await waitFor(() => {
+      expect(window.agentResume.thunderChatTruncateConversation).toHaveBeenCalled();
+      expect(window.agentResume.thunderChatRunTask).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: "Check git status"
+        })
+      );
+    });
+  });
+
+  it("resends user prompt when clicking Resend", async () => {
+    render(
+      <I18nProvider>
+        <ChatView active={true} />
+      </I18nProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Inspect Git Status & Changes").length).toBeGreaterThanOrEqual(1);
+    });
+
+    const items = screen.getAllByText("Inspect Git Status & Changes");
+    fireEvent.click(items[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText("Check git status")).toBeTruthy();
+    });
+
+    const resendBtn = screen.getByTitle("Resend this message");
+    fireEvent.click(resendBtn);
+
+    await waitFor(() => {
+      expect(window.agentResume.thunderChatTruncateConversation).toHaveBeenCalled();
+      expect(window.agentResume.thunderChatRunTask).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: "Check git status"
         })
       );
     });

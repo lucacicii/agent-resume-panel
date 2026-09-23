@@ -108,6 +108,15 @@ export interface ThunderToolCall {
   function: ThunderToolCallFunction;
 }
 
+export interface ThunderToolExecutionRecord {
+  toolCallId: string;
+  name: string;
+  arguments: Record<string, unknown>;
+  result?: unknown;
+  isRunning?: boolean;
+  isError?: boolean;
+}
+
 export interface ThunderChatMessage {
   role: "system" | "user" | "assistant" | "tool";
   content?: string | null;
@@ -115,6 +124,7 @@ export interface ThunderChatMessage {
   tool_calls?: ThunderToolCall[];
   tool_call_id?: string;
   reasoning?: string;
+  tool_executions?: ThunderToolExecutionRecord[];
   stats?: {
     turn?: number;
     prompt_tokens?: number;

@@ -23,6 +23,10 @@ interface ChatMainProps {
   onSendMessage: (prompt: string, options?: { workspaceDir?: string; model?: string }) => void;
   onCancelTask: () => void;
   onNewSession: () => void;
+  onRegenerate?: (index: number) => void;
+  onResend?: (index: number) => void;
+  onEditPrompt?: (text: string) => void;
+  prefillPrompt?: { text: string; id: number } | null;
   daemonOnline?: boolean;
 }
 
@@ -43,6 +47,10 @@ export function ChatMain({
   onSendMessage,
   onCancelTask,
   onNewSession,
+  onRegenerate,
+  onResend,
+  onEditPrompt,
+  prefillPrompt,
   daemonOnline = true
 }: ChatMainProps) {
   const scrollEndRef = useRef<HTMLDivElement | null>(null);
@@ -90,7 +98,14 @@ export function ChatMain({
         ) : (
           <div className="tb-messages-container">
             {messages.map((msg, idx) => (
-              <ChatMessageItem key={`msg_${idx}`} message={msg} />
+              <ChatMessageItem
+                key={`msg_${idx}`}
+                message={msg}
+                index={idx}
+                onRegenerate={onRegenerate}
+                onResend={onResend}
+                onEdit={onEditPrompt}
+              />
             ))}
 
             {/* Live Streaming Turn */}
@@ -100,6 +115,7 @@ export function ChatMain({
                   role: "assistant",
                   content: streamingText
                 }}
+                index={messages.length}
                 isStreaming={true}
                 streamingReasoning={streamingReasoning}
                 streamingTools={streamingTools}
@@ -123,6 +139,7 @@ export function ChatMain({
         onSelectWorkspaceDir={onSelectWorkspaceDir}
         useMock={useMock}
         onToggleMock={onToggleMock}
+        prefillPrompt={prefillPrompt}
       />
     </div>
   );

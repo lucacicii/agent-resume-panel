@@ -16,6 +16,7 @@ interface ChatComposerProps {
   useMock: boolean;
   onToggleMock: (mock: boolean) => void;
   placeholder?: string;
+  prefillPrompt?: { text: string; id: number } | null;
 }
 
 export function ChatComposer({
@@ -29,10 +30,25 @@ export function ChatComposer({
   onSelectWorkspaceDir,
   useMock,
   onToggleMock,
-  placeholder = "Ask Thunder agent anything, or type @ to reference context..."
+  placeholder = "Ask Thunder agent anything, or type @ to reference context...",
+  prefillPrompt
 }: ChatComposerProps) {
   const [text, setText] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // Handle prefill injection from edit prompt actions
+  useEffect(() => {
+    if (prefillPrompt && prefillPrompt.text) {
+      setText(prefillPrompt.text);
+      setTimeout(() => {
+        const el = textareaRef.current;
+        if (el) {
+          el.focus();
+          el.setSelectionRange(el.value.length, el.value.length);
+        }
+      }, 50);
+    }
+  }, [prefillPrompt]);
 
   // Auto-resize textarea
   useEffect(() => {

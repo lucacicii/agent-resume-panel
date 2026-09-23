@@ -1530,6 +1530,7 @@ export interface DesktopApi {
   thunderChatListConversations(): Promise<ThunderConversationSummary[]>;
   thunderChatGetConversation(args: { sessionId: string }): Promise<ThunderConversation | null>;
   thunderChatDeleteConversation(args: { sessionId: string }): Promise<boolean>;
+  thunderChatTruncateConversation(args: { sessionId: string; keepCount: number }): Promise<boolean>;
   thunderChatRunTask(args: {
     taskId: string;
     prompt: string;
@@ -2048,6 +2049,7 @@ const api: DesktopApi = {
   thunderChatListConversations: () => ipcRenderer.invoke("thunder:chat:listConversations"),
   thunderChatGetConversation: (args) => ipcRenderer.invoke("thunder:chat:getConversation", args),
   thunderChatDeleteConversation: (args) => ipcRenderer.invoke("thunder:chat:deleteConversation", args),
+  thunderChatTruncateConversation: (args) => ipcRenderer.invoke("thunder:chat:truncateConversation", args),
   thunderChatRunTask: (args) => ipcRenderer.invoke("thunder:chat:runTask", args),
   thunderChatCancelTask: (args) => ipcRenderer.invoke("thunder:chat:cancelTask", args),
   onThunderChatEvent: (callback) => {

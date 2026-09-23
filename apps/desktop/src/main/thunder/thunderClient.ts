@@ -403,6 +403,48 @@ export class ThunderClient {
     }
   }
 
+  public async truncateConversation(sessionId: string, keepCount: number): Promise<boolean> {
+    try {
+      const home = os.homedir();
+      const convFile = path.join(home, ".thunder", "conversations", sessionId, "conversation.json");
+      if (!fs.existsSync(convFile)) return false;
+      const raw = await fs.promises.readFile(convFile, "utf-8");
+      const conv = JSON.parse(raw);
+      if (conv && Array.isArray(conv.messages)) {
+        conv.messages = conv.messages.slice(0, Math.max(0, keepCount));
+        conv.updated_at_ms = Date.now();
+        await fs.promises.writeFile(convFile, JSON.stringify(conv, null, 2));
+
+        const indexFile = path.join(home, ".thunder", "conversations", "index.json");
+        if (fs.existsSync(indexFile)) {
+          try {
+            const indexRaw = await fs.promises.readFile(indexFile, "utf-8");
+            const indexParsed = JSON.parse(indexRaw);
+            if (Array.isArray(indexParsed)) {
+              const item = indexParsed.find((c: any) => c.id === sessionId);
+              if (item) {
+                item.message_count = conv.messages.length;
+                item.updated_at_ms = conv.updated_at_ms;
+                await fs.promises.writeFile(indexFile, JSON.stringify(indexParsed, null, 2));
+              }
+            } else if (indexParsed && typeof indexParsed === "object" && indexParsed[sessionId]) {
+              indexParsed[sessionId].message_count = conv.messages.length;
+              indexParsed[sessionId].updated_at_ms = conv.updated_at_ms;
+              await fs.promises.writeFile(indexFile, JSON.stringify(indexParsed, null, 2));
+            }
+          } catch {
+            // ignore index update error
+          }
+        }
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error("[thunder-client] truncateConversation error:", err);
+      return false;
+    }
+  }
+
   private async listConversationsFromDisk(): Promise<ThunderConversationSummary[]> {
     try {
       const home = os.homedir();

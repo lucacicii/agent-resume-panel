@@ -83,6 +83,13 @@ export function registerThunderIpc(): void {
   });
 
   safeHandle(
+    "thunder:chat:truncateConversation",
+    async (_event, args: { sessionId: string; keepCount: number }) => {
+      return getThunderClient().truncateConversation(args.sessionId, args.keepCount);
+    }
+  );
+
+  safeHandle(
     "thunder:chat:runTask",
     async (
       _event,

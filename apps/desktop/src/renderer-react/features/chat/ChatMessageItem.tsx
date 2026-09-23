@@ -8,16 +8,24 @@ import type { ActiveToolInfo } from "./useThunderChat";
 
 interface ChatMessageItemProps {
   message: ThunderChatMessage;
+  index?: number;
   isStreaming?: boolean;
   streamingReasoning?: string;
   streamingTools?: ActiveToolInfo[];
+  onRegenerate?: (index: number) => void;
+  onResend?: (index: number) => void;
+  onEdit?: (text: string) => void;
 }
 
 export function ChatMessageItem({
   message,
+  index = 0,
   isStreaming = false,
   streamingReasoning = "",
-  streamingTools = []
+  streamingTools = [],
+  onRegenerate,
+  onResend,
+  onEdit
 }: ChatMessageItemProps) {
   const [copied, setCopied] = useState(false);
   const isUser = message.role === "user";
@@ -49,8 +57,11 @@ export function ChatMessageItem({
     });
   }, [message.tool_calls]);
 
-  const activeReasoning = message.reasoning || (isStreaming ? streamingReasoning : "");
-  const activeTools = isStreaming ? streamingTools : historicalTools;
+  const activeReasoning = (isStreaming ? streamingReasoning : "") || message.reasoning || "";
+  const activeTools =
+    (isStreaming && streamingTools.length > 0 ? streamingTools : null) ||
+    message.tool_executions ||
+    historicalTools;
 
   return (
     <div className={`tb-message-row${isUser ? " is-user" : " is-assistant"}`}>
@@ -98,6 +109,57 @@ export function ChatMessageItem({
           ) : null}
         </div>
 
+        {/* User Message Action Toolbar */}
+        {isUser && message.content && (
+          <div className="tb-message-user-toolbar">
+            <button
+              type="button"
+              className="tb-message-action-btn"
+              onClick={handleCopy}
+              title="Copy message"
+            >
+              <ThemeIcon name={copied ? "check" : "copy"} size={ICON_SIZE.inline} />
+            </button>
+            {onEdit && (
+              <button
+                type="button"
+                className="tb-message-action-btn"
+                onClick={() => onEdit(message.content || "")}
+                title="Edit and quote to composer"
+              >
+                <ThemeIcon name="pencil" size={ICON_SIZE.inline} />
+              </button>
+            )}
+            {onResend && (
+              <button
+                type="button"
+                className="tb-message-action-btn"
+                onClick={() => onResend(index)}
+                disabled={isStreaming}
+                title="Resend this message"
+              >
+                <ThemeIcon name="refresh" size={ICON_SIZE.inline} />
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Error Retry Banner */}
+        {!isUser && message.content?.startsWith("⚠️") && onRegenerate && (
+          <div className="tb-message-error-action">
+            <button
+              type="button"
+              className="tb-message-retry-btn"
+              onClick={() => onRegenerate(index)}
+              disabled={isStreaming}
+              title="Retry task execution"
+            >
+              <ThemeIcon name="refresh" size={ICON_SIZE.inline} />
+              <span>Retry Task</span>
+            </button>
+          </div>
+        )}
+
         {/* Message Actions & Meta Footer */}
         {!isUser && message.content && (
           <div className="tb-message-footer">
@@ -110,6 +172,19 @@ export function ChatMessageItem({
               <ThemeIcon name={copied ? "check" : "copy"} size={ICON_SIZE.inline} />
               <span>{copied ? "Copied" : "Copy"}</span>
             </button>
+
+            {onRegenerate && !message.content.startsWith("⚠️") && (
+              <button
+                type="button"
+                className="tb-message-action-btn"
+                onClick={() => onRegenerate(index)}
+                disabled={isStreaming}
+                title="Regenerate answer"
+              >
+                <ThemeIcon name="refresh" size={ICON_SIZE.inline} />
+                <span>Regenerate</span>
+              </button>
+            )}
 
             {message.stats && (
               <span className="tb-message-stats">

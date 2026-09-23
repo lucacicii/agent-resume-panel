@@ -26,6 +26,10 @@ export function ChatView({ active }: { active: boolean }): React.JSX.Element | n
     createNewSession,
     deleteSession,
     sendMessage,
+    resendUserMessage,
+    regenerateResponse,
+    composerPrefill,
+    prefillComposer,
     cancelCurrentTask,
     refreshDaemonStatus
   } = useThunderChat();
@@ -76,6 +80,10 @@ export function ChatView({ active }: { active: boolean }): React.JSX.Element | n
         onSendMessage={sendMessage}
         onCancelTask={cancelCurrentTask}
         onNewSession={createNewSession}
+        onRegenerate={regenerateResponse}
+        onResend={resendUserMessage}
+        onEditPrompt={prefillComposer}
+        prefillPrompt={composerPrefill}
         daemonOnline={Boolean(daemonStatus?.available)}
       />
     </div>,

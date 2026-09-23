@@ -967,6 +967,7 @@ export type {
   ThunderAgentEvent,
   ThunderToolCallFunction,
   ThunderToolCall,
+  ThunderToolExecutionRecord,
   ThunderChatMessage,
   ThunderConversationSummary,
   ThunderConversation,

@@ -13,8 +13,76 @@ export interface ActiveToolInfo {
   name: string;
   arguments: Record<string, unknown>;
   result?: unknown;
-  isRunning: boolean;
+  isRunning?: boolean;
   isError?: boolean;
+}
+
+function normalizeConversationMessages(rawMessages: ThunderChatMessage[]): ThunderChatMessage[] {
+  const result: ThunderChatMessage[] = [];
+  const toolResultsByCallId = new Map<string, string>();
+
+  // Collect tool outputs first
+  for (const msg of rawMessages) {
+    if (msg.role === "tool" && msg.tool_call_id && msg.content) {
+      toolResultsByCallId.set(msg.tool_call_id, msg.content);
+    }
+  }
+
+  for (let i = 0; i < rawMessages.length; i++) {
+    const msg = rawMessages[i];
+    if (msg.role === "tool") {
+      // Standalone tool messages are absorbed into the assistant turn's tool_executions
+      continue;
+    }
+
+    if (msg.role === "user") {
+      result.push(msg);
+      continue;
+    }
+
+    if (msg.role === "assistant") {
+      const executions: ActiveToolInfo[] = [];
+      if (Array.isArray(msg.tool_executions)) {
+        executions.push(...msg.tool_executions);
+      } else if (Array.isArray(msg.tool_calls)) {
+        for (const tc of msg.tool_calls) {
+          let argsObj: Record<string, unknown> = {};
+          try {
+            argsObj = JSON.parse(tc.function.arguments);
+          } catch {
+            argsObj = { raw: tc.function.arguments };
+          }
+          executions.push({
+            toolCallId: tc.id,
+            name: tc.function.name,
+            arguments: argsObj,
+            result: toolResultsByCallId.get(tc.id),
+            isRunning: false
+          });
+        }
+      }
+
+      const prevMsg = result[result.length - 1];
+      if (prevMsg && prevMsg.role === "assistant" && (!prevMsg.content || !msg.content)) {
+        if (executions.length > 0) {
+          prevMsg.tool_executions = [...(prevMsg.tool_executions || []), ...executions];
+        }
+        if (msg.content) {
+          prevMsg.content = msg.content;
+        }
+        if (msg.reasoning && !prevMsg.reasoning) {
+          prevMsg.reasoning = msg.reasoning;
+        }
+      } else {
+        result.push({
+          ...msg,
+          tool_executions: executions.length > 0 ? executions : msg.tool_executions
+        });
+      }
+    }
+  }
+
+  return result;
 }
 
 export function useThunderChat() {
@@ -29,6 +97,9 @@ export function useThunderChat() {
   const [streamingText, setStreamingText] = useState("");
   const [streamingReasoning, setStreamingReasoning] = useState("");
   const [streamingTools, setStreamingTools] = useState<ActiveToolInfo[]>([]);
+
+  // Composer prefill trigger for editing previous prompts
+  const [composerPrefill, setComposerPrefill] = useState<{ text: string; id: number } | null>(null);
 
   // Environment & configuration
   const [models, setModels] = useState<ThunderModelInfo[]>([]);
@@ -96,7 +167,7 @@ export function useThunderChat() {
       setActiveSessionId(sessionId);
       const conv = await desktopApi().thunderChatGetConversation({ sessionId });
       if (conv && Array.isArray(conv.messages)) {
-        setMessages(conv.messages);
+        setMessages(normalizeConversationMessages(conv.messages));
       } else {
         setMessages([]);
       }
@@ -185,11 +256,14 @@ export function useThunderChat() {
         // Task finalized
         const finalContent = result.finalContent || streamingTextRef.current;
         const finalReasoning = streamingReasoningRef.current;
+        const finalTools =
+          streamingToolsRef.current.length > 0 ? [...streamingToolsRef.current] : undefined;
 
         const assistantMsg: ThunderChatMessage = {
           role: "assistant",
           content: finalContent || "(No response output)",
-          reasoning: finalReasoning || undefined
+          reasoning: finalReasoning || undefined,
+          tool_executions: finalTools
         };
 
         setMessages((prev) => [...prev, assistantMsg]);
@@ -204,7 +278,9 @@ export function useThunderChat() {
         const errMsg: ThunderChatMessage = {
           role: "assistant",
           content: `⚠️ **Task failed**: ${err instanceof Error ? err.message : String(err)}`,
-          reasoning: streamingReasoningRef.current || undefined
+          reasoning: streamingReasoningRef.current || undefined,
+          tool_executions:
+            streamingToolsRef.current.length > 0 ? [...streamingToolsRef.current] : undefined
         };
         setMessages((prev) => [...prev, errMsg]);
       } finally {
@@ -213,6 +289,77 @@ export function useThunderChat() {
       }
     },
     [activeSessionId, isStreaming, loadConversations, models, selectedModel, useMock, workspaceDir]
+  );
+
+  const prefillComposer = useCallback((text: string) => {
+    setComposerPrefill({ text, id: Date.now() });
+  }, []);
+
+  const resendUserMessage = useCallback(
+    async (userIndex: number, options?: { model?: string; workspaceDir?: string }) => {
+      if (isStreaming || userIndex < 0 || userIndex >= messages.length) return;
+      const targetMsg = messages[userIndex];
+      if (targetMsg.role !== "user" || !targetMsg.content) return;
+
+      const prompt = targetMsg.content;
+
+      // Truncate in-memory messages to before this user message
+      setMessages((prev) => prev.slice(0, userIndex));
+
+      // Truncate disk conversation if active session exists
+      if (activeSessionId) {
+        try {
+          await desktopApi().thunderChatTruncateConversation({
+            sessionId: activeSessionId,
+            keepCount: userIndex
+          });
+        } catch (err) {
+          console.warn("Failed to truncate disk conversation on resend:", err);
+        }
+      }
+
+      // Re-send the prompt
+      await sendMessage(prompt, options);
+    },
+    [activeSessionId, isStreaming, messages, sendMessage]
+  );
+
+  const regenerateResponse = useCallback(
+    async (assistantIndex: number, options?: { model?: string; workspaceDir?: string }) => {
+      if (isStreaming || assistantIndex < 0 || assistantIndex >= messages.length) return;
+
+      // Find preceding user prompt
+      let userIndex = -1;
+      for (let i = assistantIndex - 1; i >= 0; i--) {
+        if (messages[i].role === "user" && messages[i].content) {
+          userIndex = i;
+          break;
+        }
+      }
+
+      if (userIndex === -1) return;
+
+      const prompt = messages[userIndex].content!;
+
+      // Truncate in-memory messages to before this user turn
+      setMessages((prev) => prev.slice(0, userIndex));
+
+      // Truncate disk conversation
+      if (activeSessionId) {
+        try {
+          await desktopApi().thunderChatTruncateConversation({
+            sessionId: activeSessionId,
+            keepCount: userIndex
+          });
+        } catch (err) {
+          console.warn("Failed to truncate disk conversation on regenerate:", err);
+        }
+      }
+
+      // Re-send the prompt
+      await sendMessage(prompt, options);
+    },
+    [activeSessionId, isStreaming, messages, sendMessage]
   );
 
   const cancelCurrentTask = useCallback(async () => {
@@ -311,6 +458,10 @@ export function useThunderChat() {
     createNewSession,
     deleteSession,
     sendMessage,
+    resendUserMessage,
+    regenerateResponse,
+    composerPrefill,
+    prefillComposer,
     cancelCurrentTask,
     refreshDaemonStatus
   };
