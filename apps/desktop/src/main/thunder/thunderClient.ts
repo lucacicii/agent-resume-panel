@@ -6,6 +6,7 @@ import * as readline from "node:readline";
 import { randomUUID } from "node:crypto";
 import { loadSettings } from "@agent-resume/core";
 import { buildAugmentedPath } from "../processPath";
+import { syncPanelProvidersToThunder } from "./thunderProviderSync";
 import type {
   ThunderDaemonIncoming,
   ThunderModelInfo,
@@ -163,12 +164,25 @@ export class ThunderClient {
       args = [resolved.scriptPath!];
     }
 
+    // Synchronize Agent Resume Panel providers to Thunder's THUNDER_CONFIG_DIR
+    let thunderConfigDir: string | undefined;
+    try {
+      const syncResult = await syncPanelProvidersToThunder();
+      thunderConfigDir = syncResult.configDir;
+    } catch (err) {
+      console.warn("[thunder-client] Failed to sync panel providers to thunder:", err);
+    }
+
     // Prepare environment with augmented PATH and settings credentials
     const env: Record<string, string> = {
       ...process.env,
       PATH: buildAugmentedPath(process.env.PATH || ""),
       RUST_LOG: process.env.RUST_LOG || "info,thunder_daemon=debug,thunder_agent_root=debug,thunder_agent_loop=debug,thunder_agent_providers=debug"
     } as Record<string, string>;
+
+    if (thunderConfigDir) {
+      env.THUNDER_CONFIG_DIR = thunderConfigDir;
+    }
 
     try {
       const settings = await loadSettings();
@@ -384,6 +398,18 @@ export class ThunderClient {
       return Boolean(res?.cancelled);
     } catch {
       return false;
+    }
+  }
+
+  public async reloadProviders(): Promise<void> {
+    try {
+      await syncPanelProvidersToThunder();
+      if (this.child && !this.child.killed && this.child.exitCode === null) {
+        this.cleanup();
+        await this.ensureRunning();
+      }
+    } catch (err) {
+      console.error("[thunder-client] Failed to reload providers:", err);
     }
   }
 

@@ -246,6 +246,7 @@ import { pickTemplateImage } from "./templateImagePicker";
 import { isCustomHexColor, isTaskColorKey, taskAccent, type TaskAccentSource } from "../shared/taskColors";
 import { refreshMemorySchedulerFromSettings, stopMemoryScheduler } from "./scheduler";
 import { registerThunderIpc } from "./thunder/thunderIpc";
+import { getThunderClient } from "./thunder/thunderClient";
 import { startThunderScheduler, stopThunderScheduler } from "./thunder/thunderScheduler";
 import {
   ensureAgentStatusDaemon,
@@ -2553,6 +2554,7 @@ function registerIpc(): void {
       }
       invalidateNotesStore();
       await refreshMemorySchedulerFromSettings();
+      void getThunderClient().reloadProviders();
       const saved = await loadSettings();
       applyNativeThemeSource(saved.desktop?.theme);
       uiSettingsCache = saved;
