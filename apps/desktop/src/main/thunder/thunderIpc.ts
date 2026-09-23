@@ -1,3 +1,4 @@
+import { BrowserWindow } from "electron";
 import { safeHandle } from "../ipcUtils";
 import {
   cancelScheduleRun,
@@ -67,5 +68,61 @@ export function registerThunderIpc(): void {
 
   safeHandle("thunder:listModels", async () => {
     return getThunderClient().listModels();
+  });
+
+  safeHandle("thunder:chat:listConversations", async () => {
+    return getThunderClient().listConversations();
+  });
+
+  safeHandle("thunder:chat:getConversation", async (_event, args: { sessionId: string }) => {
+    return getThunderClient().getConversation(args.sessionId);
+  });
+
+  safeHandle("thunder:chat:deleteConversation", async (_event, args: { sessionId: string }) => {
+    return getThunderClient().deleteConversation(args.sessionId);
+  });
+
+  safeHandle(
+    "thunder:chat:runTask",
+    async (
+      _event,
+      args: {
+        taskId: string;
+        prompt: string;
+        sessionId?: string;
+        model?: string;
+        workspaceDir?: string;
+        useMock?: boolean;
+      }
+    ) => {
+      const client = getThunderClient();
+      const effectiveSessionId = args.sessionId || `sess_${Date.now()}`;
+      return client.runTask({
+        taskId: args.taskId,
+        prompt: args.prompt,
+        sessionId: effectiveSessionId,
+        model: args.model,
+        workspaceDir: args.workspaceDir,
+        useMock: args.useMock,
+        onEvent: (event) => {
+          for (const win of BrowserWindow.getAllWindows()) {
+            if (win.isDestroyed()) continue;
+            try {
+              win.webContents.send("thunder:chat:event", {
+                taskId: args.taskId,
+                sessionId: effectiveSessionId,
+                event
+              });
+            } catch {
+              // ignore when window destroyed
+            }
+          }
+        }
+      });
+    }
+  );
+
+  safeHandle("thunder:chat:cancelTask", async (_event, args: { taskId: string }) => {
+    return getThunderClient().cancelTask(args.taskId);
   });
 }

@@ -964,6 +964,15 @@ export type {
   ThunderScheduleRunLogEntry,
   ThunderScheduleInput,
   ThunderModelInfo,
-  ThunderAgentEvent
+  ThunderAgentEvent,
+  ThunderToolCallFunction,
+  ThunderToolCall,
+  ThunderChatMessage,
+  ThunderConversationSummary,
+  ThunderConversation,
+  ThunderObservedEvent,
+  ThunderChatStreamPayload,
+  ThunderChatTaskOptions,
+  ThunderChatTaskResult
 } from "./thunder/types";
 

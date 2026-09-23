@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ThemeIcon } from "../../components/ThemeIcon";
+import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { StreamdownRenderer } from "../../components/StreamdownRenderer";
 import { desktopApi } from "../../bridge";
 import { useI18n } from "../../i18n";
@@ -78,13 +78,13 @@ export function ScheduleHistory({ schedule }: ScheduleHistoryProps) {
             onClick={() => void loadRuns()}
             title={text("desktop.top.refresh", "Refresh")}
           >
-            <ThemeIcon name="refresh" size={14} />
+            <ThemeIcon name="refresh" size={ICON_SIZE.dense} />
           </button>
         </div>
 
         {loading ? (
           <div className="schedule-history-loading">
-            <ThemeIcon name="loader" size={16} />
+            <ThemeIcon name="loader" size={ICON_SIZE.default} />
             <span>{text("desktop.top.loading", "Loading…")}</span>
           </div>
         ) : runs.length === 0 ? (
@@ -140,7 +140,7 @@ export function ScheduleHistory({ schedule }: ScheduleHistoryProps) {
 
             {selectedRun.error && (
               <div className="schedule-run-error-box">
-                <ThemeIcon name="close" size={14} />
+                <ThemeIcon name="close" size={ICON_SIZE.dense} />
                 <span>{selectedRun.error}</span>
               </div>
             )}

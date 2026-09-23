@@ -10,7 +10,9 @@ import { syncPanelProvidersToThunder } from "./thunderProviderSync";
 import type {
   ThunderDaemonIncoming,
   ThunderModelInfo,
-  ThunderObservedEvent
+  ThunderObservedEvent,
+  ThunderConversationSummary,
+  ThunderConversation
 } from "./thunderProtocol";
 
 interface PendingRequest {
@@ -341,6 +343,124 @@ export class ThunderClient {
     return res?.models || [];
   }
 
+  public async listConversations(): Promise<ThunderConversationSummary[]> {
+    try {
+      const res = await this.sendCommand<ThunderConversationSummary[] | { conversations?: ThunderConversationSummary[] }>(
+        "list_conversations",
+        {},
+        10_000
+      );
+      if (Array.isArray(res)) return res;
+      if (res && Array.isArray((res as any).conversations)) return (res as any).conversations;
+      return this.listConversationsFromDisk();
+    } catch {
+      return this.listConversationsFromDisk();
+    }
+  }
+
+  public async getConversation(sessionId: string): Promise<ThunderConversation | null> {
+    try {
+      const res = await this.sendCommand<ThunderConversation | null>(
+        "get_conversation",
+        { session_id: sessionId },
+        10_000
+      );
+      if (res && (res as any).id) return res;
+      return this.getConversationFromDisk(sessionId);
+    } catch {
+      return this.getConversationFromDisk(sessionId);
+    }
+  }
+
+  public async deleteConversation(sessionId: string): Promise<boolean> {
+    try {
+      const home = os.homedir();
+      const convDir = path.join(home, ".thunder", "conversations", sessionId);
+      if (fs.existsSync(convDir)) {
+        await fs.promises.rm(convDir, { recursive: true, force: true });
+        const indexFile = path.join(home, ".thunder", "conversations", "index.json");
+        if (fs.existsSync(indexFile)) {
+          try {
+            const raw = await fs.promises.readFile(indexFile, "utf-8");
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) {
+              const updated = parsed.filter((item: any) => item.id !== sessionId);
+              await fs.promises.writeFile(indexFile, JSON.stringify(updated, null, 2));
+            } else if (parsed && typeof parsed === "object") {
+              delete parsed[sessionId];
+              await fs.promises.writeFile(indexFile, JSON.stringify(parsed, null, 2));
+            }
+          } catch {
+            // ignore index parse error
+          }
+        }
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error("[thunder-client] deleteConversation error:", err);
+      return false;
+    }
+  }
+
+  private async listConversationsFromDisk(): Promise<ThunderConversationSummary[]> {
+    try {
+      const home = os.homedir();
+      const indexFile = path.join(home, ".thunder", "conversations", "index.json");
+      if (fs.existsSync(indexFile)) {
+        try {
+          const raw = await fs.promises.readFile(indexFile, "utf-8");
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) return parsed;
+          if (parsed && typeof parsed === "object") return Object.values(parsed);
+        } catch {
+          // fallback to directory scan
+        }
+      }
+      const dir = path.join(home, ".thunder", "conversations");
+      if (!fs.existsSync(dir)) return [];
+      const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+      const summaries: ThunderConversationSummary[] = [];
+      for (const ent of entries) {
+        if (!ent.isDirectory()) continue;
+        const convFile = path.join(dir, ent.name, "conversation.json");
+        if (fs.existsSync(convFile)) {
+          try {
+            const convRaw = await fs.promises.readFile(convFile, "utf-8");
+            const c = JSON.parse(convRaw);
+            summaries.push({
+              id: c.id || ent.name,
+              title: c.title,
+              status: c.status || "active",
+              message_count: Array.isArray(c.messages) ? c.messages.length : 0,
+              turn_count: c.stats?.turn_count || 0,
+              total_tokens: c.stats?.total_tokens || 0,
+              created_at_ms: c.created_at_ms || Date.now(),
+              updated_at_ms: c.updated_at_ms || Date.now()
+            });
+          } catch {
+            // ignore corrupt entry
+          }
+        }
+      }
+      return summaries.sort((a, b) => b.updated_at_ms - a.updated_at_ms);
+    } catch {
+      return [];
+    }
+  }
+
+  private async getConversationFromDisk(sessionId: string): Promise<ThunderConversation | null> {
+    try {
+      const home = os.homedir();
+      const convFile = path.join(home, ".thunder", "conversations", sessionId, "conversation.json");
+      if (!fs.existsSync(convFile)) return null;
+      const raw = await fs.promises.readFile(convFile, "utf-8");
+      return JSON.parse(raw) as ThunderConversation;
+    } catch {
+      return null;
+    }
+  }
+
   public async runTask(options: {
     taskId: string;
     prompt: string;
@@ -366,12 +486,18 @@ export class ThunderClient {
         });
 
         try {
+          let effectivePrompt = options.prompt;
+          if (options.workspaceDir && options.workspaceDir.trim()) {
+            const ws = options.workspaceDir.trim();
+            effectivePrompt = `[Active Workspace: ${ws}]\n\n${options.prompt}`;
+          }
+
           // Send run_task request (acknowledged synchronously)
           await this.sendCommand(
             "run_task",
             {
               task_id: taskId,
-              prompt: options.prompt,
+              prompt: effectivePrompt,
               workspace_dir: options.workspaceDir,
               model: options.model,
               session_id: options.sessionId,

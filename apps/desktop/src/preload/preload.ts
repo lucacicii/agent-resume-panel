@@ -21,7 +21,12 @@ import type {
 } from "@agent-resume/core";
 import type {
   ThunderModelInfo,
-  ThunderAgentEvent
+  ThunderAgentEvent,
+  ThunderConversationSummary,
+  ThunderConversation,
+  ThunderChatStreamPayload,
+  ThunderChatTaskOptions,
+  ThunderChatTaskResult
 } from "../main/thunder/thunderProtocol";
 import type { McpClientInfo } from "../main/mcpRegistration";
 import type {
@@ -1522,6 +1527,19 @@ export interface DesktopApi {
     error?: string;
   }>;
   thunderListModels(): Promise<ThunderModelInfo[]>;
+  thunderChatListConversations(): Promise<ThunderConversationSummary[]>;
+  thunderChatGetConversation(args: { sessionId: string }): Promise<ThunderConversation | null>;
+  thunderChatDeleteConversation(args: { sessionId: string }): Promise<boolean>;
+  thunderChatRunTask(args: {
+    taskId: string;
+    prompt: string;
+    sessionId?: string;
+    model?: string;
+    workspaceDir?: string;
+    useMock?: boolean;
+  }): Promise<ThunderChatTaskResult>;
+  thunderChatCancelTask(args: { taskId: string }): Promise<boolean>;
+  onThunderChatEvent(callback: (payload: ThunderChatStreamPayload) => void): () => void;
   onScheduleRunEvent(callback: (payload: { scheduleId: string; runId: string; event: ThunderAgentEvent; accumulatedOutput: string }) => void): () => void;
   onScheduleStatusChanged(callback: (payload: { scheduleId: string; runId: string; status: string; output?: string; error?: string }) => void): () => void;
 }
@@ -2027,6 +2045,16 @@ const api: DesktopApi = {
   schedulesGetRun: (args) => ipcRenderer.invoke("schedule:getRun", args),
   thunderGetStatus: () => ipcRenderer.invoke("thunder:status"),
   thunderListModels: () => ipcRenderer.invoke("thunder:listModels"),
+  thunderChatListConversations: () => ipcRenderer.invoke("thunder:chat:listConversations"),
+  thunderChatGetConversation: (args) => ipcRenderer.invoke("thunder:chat:getConversation", args),
+  thunderChatDeleteConversation: (args) => ipcRenderer.invoke("thunder:chat:deleteConversation", args),
+  thunderChatRunTask: (args) => ipcRenderer.invoke("thunder:chat:runTask", args),
+  thunderChatCancelTask: (args) => ipcRenderer.invoke("thunder:chat:cancelTask", args),
+  onThunderChatEvent: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: ThunderChatStreamPayload) => callback(payload);
+    ipcRenderer.on("thunder:chat:event", handler);
+    return () => ipcRenderer.removeListener("thunder:chat:event", handler);
+  },
   onScheduleRunEvent: (callback) => {
     const handler = (
       _event: Electron.IpcRendererEvent,

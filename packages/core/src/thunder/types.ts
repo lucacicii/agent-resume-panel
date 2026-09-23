@@ -96,3 +96,81 @@ export interface ThunderScheduleInput {
   triggerValue: string;
   enabled?: boolean;
 }
+
+export interface ThunderToolCallFunction {
+  name: string;
+  arguments: string;
+}
+
+export interface ThunderToolCall {
+  id: string;
+  type: string;
+  function: ThunderToolCallFunction;
+}
+
+export interface ThunderChatMessage {
+  role: "system" | "user" | "assistant" | "tool";
+  content?: string | null;
+  name?: string;
+  tool_calls?: ThunderToolCall[];
+  tool_call_id?: string;
+  reasoning?: string;
+  stats?: {
+    turn?: number;
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    duration_ms?: number;
+    tool_calls_count?: number;
+  };
+}
+
+export interface ThunderConversationSummary {
+  id: string;
+  title?: string;
+  parent_id?: string;
+  status: string;
+  message_count: number;
+  turn_count: number;
+  total_tokens: number;
+  tags?: string[];
+  created_at_ms: number;
+  updated_at_ms: number;
+}
+
+export interface ThunderConversation {
+  id: string;
+  title?: string;
+  parent_id?: string;
+  system_prompt?: string;
+  status: string;
+  messages: ThunderChatMessage[];
+  created_at_ms: number;
+  updated_at_ms: number;
+}
+
+export interface ThunderObservedEvent {
+  agent_id: string;
+  event: ThunderAgentEvent;
+}
+
+export interface ThunderChatStreamPayload {
+  taskId: string;
+  sessionId: string;
+  event: ThunderObservedEvent;
+}
+
+export interface ThunderChatTaskOptions {
+  taskId: string;
+  prompt: string;
+  sessionId?: string;
+  model?: string;
+  workspaceDir?: string;
+  useMock?: boolean;
+}
+
+export interface ThunderChatTaskResult {
+  finalContent?: string;
+  finishReason: string;
+  activePlugins?: string[];
+}
+

@@ -1,3 +1,12 @@
+export type {
+  ThunderConversationSummary,
+  ThunderConversation,
+  ThunderChatMessage,
+  ThunderChatStreamPayload,
+  ThunderChatTaskOptions,
+  ThunderChatTaskResult
+} from "@agent-resume/core";
+
 export interface ThunderModelInfo {
   id: string;
   provider: string;

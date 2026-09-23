@@ -172,7 +172,7 @@ export function ScheduleLiveRun({
             onClick={handleCancel}
             disabled={cancelling}
           >
-            <ThemeIcon name="close" size={14} />
+            <ThemeIcon name="close" size={ICON_SIZE.dense} />
             <span>{cancelling ? text("desktop.schedule.cancelling", "Stopping…") : text("desktop.schedule.stop", "Stop Task")}</span>
           </button>
         ) : null}
@@ -187,7 +187,7 @@ export function ScheduleLiveRun({
         <div className="schedule-live-body">
           {errorMessage && (
             <div className="schedule-run-error-box">
-              <ThemeIcon name="close" size={14} />
+              <ThemeIcon name="close" size={ICON_SIZE.dense} />
               <span>{errorMessage}</span>
             </div>
           )}
@@ -195,7 +195,7 @@ export function ScheduleLiveRun({
           {reasoning ? (
             <div className="schedule-live-reasoning">
               <div className="schedule-live-reasoning-title">
-                <ThemeIcon name="sparkles" size={12} />
+                <ThemeIcon name="sparkles" size={ICON_SIZE.inline} />
                 <span>{text("desktop.schedule.thinkingProcess", "Thinking / Reasoning Process")}</span>
               </div>
               <pre className="schedule-live-reasoning-body">{reasoning}</pre>
@@ -215,7 +215,7 @@ export function ScheduleLiveRun({
                     )}
                     {e.type === "tool_start" && (
                       <div className="schedule-event-tool">
-                        <ThemeIcon name="wrench" size={12} />
+                        <ThemeIcon name="wrench" size={ICON_SIZE.inline} />
                         <span className="schedule-tool-name">{e.toolName}</span>
                         {e.toolArgs && (
                           <pre className="schedule-tool-args">
@@ -226,7 +226,7 @@ export function ScheduleLiveRun({
                     )}
                     {e.type === "tool_result" && (
                       <div className="schedule-event-result">
-                        <ThemeIcon name="check" size={12} />
+                        <ThemeIcon name="check" size={ICON_SIZE.inline} />
                         <span className="schedule-tool-name">{e.toolName} completed</span>
                       </div>
                     )}

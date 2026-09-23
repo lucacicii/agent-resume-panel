@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Sheet } from "../../components/Sheet";
-import { ThemeIcon } from "../../components/ThemeIcon";
+import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { desktopApi } from "../../bridge";
 import { useI18n } from "../../i18n";
@@ -210,7 +210,7 @@ export function ScheduleEditorSheet({
               onClick={handlePickDirectory}
               title={text("desktop.schedule.browse", "Browse")}
             >
-              <ThemeIcon name="folder-open" size={14} />
+              <ThemeIcon name="folder-open" size={ICON_SIZE.dense} />
               <span>{text("desktop.schedule.browse", "Browse")}</span>
             </button>
           </div>

@@ -49,6 +49,9 @@ The window is Chromium, but everything the operating system can draw must be dra
 - The arrow cursor is correct for buttons and list rows; `cursor: pointer` is reserved for links and link-like text.
 - Icons go through `<ThemeIcon name="…" />` with Apple SF Symbols prioritized for native macOS HIG alignment, falling back to Open Symbols (Lucide) where appropriate. Sizing follows a strict 5-step even-pixel ladder (`inline: 12px`, `dense: 14px`, `default: 16px`, `prominent: 20px`, `hero: 24px`) to guarantee integer pixel centering on Retina and standard displays, and the single entry point keeps appearance consistent across the entire application.
 - Keyboard accessibility is mandatory: semantic buttons and inputs, `aria-label` plus `title` on icon-only controls, `aria-expanded` / `aria-pressed` / `aria-selected` state, visible `:focus-visible` rings, and Enter/Escape semantics in dialogs.
+- **Selects and Dropdown Menus (Critical Convention)**:
+  - **Always prefer `NativeMenuSelect` (`src/renderer-react/components/NativeMenuSelect.tsx`)** for custom styled selects, toolbar dropdowns, and pill chips. It renders a clean trigger button and triggers an authentic platform `NSMenu` via native context menu bridge.
+  - **Never use bare `<select>` with `background: transparent` or `background: none`**. In `styles.css`, global `select` defines an SVG chevron via `background-image`. The `background` shorthand resets `background-repeat: repeat` and `background-size: auto`, causing the chevron SVG arrows to tile repeatedly as wallpaper across the entire box (`^^^^^ vvvvv`), accompanied by a broken focus ring. If a raw `<select>` must be styled, always override `background-color` specifically (never `background` shorthand), or explicitly declare `background-image: none !important; background-repeat: no-repeat !important; appearance: none; -webkit-appearance: none; outline: none; border: none; box-shadow: none;`.
 
 ### Renderer boundaries
 
