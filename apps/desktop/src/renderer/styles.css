@@ -17782,6 +17782,113 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   margin-bottom: 6px;
 }
 
+/* --- Grouped Tool Calls Container (similar to ThinkingState) --- */
+.tb-tool-group-container {
+  border: 0.5px solid var(--color-separator);
+  border-radius: var(--radius-md, 8px);
+  background: var(--color-secondary-bg);
+  overflow: hidden;
+  margin-bottom: 4px;
+  transition: border-color 0.2s ease;
+}
+
+.tb-tool-group-container.is-running {
+  border-color: color-mix(in srgb, var(--color-accent) 35%, transparent);
+}
+
+.tb-tool-group-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 10px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--color-label-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+}
+
+.tb-tool-group-header:hover {
+  color: var(--color-label-primary);
+}
+
+.tb-tool-group-header-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.tb-tool-group-icon {
+  color: var(--color-accent);
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.tb-tool-group-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 460px;
+}
+
+.tb-tool-group-count-badge {
+  font-size: 10.5px;
+  color: var(--color-label-tertiary);
+  background: var(--color-tertiary-bg);
+  padding: 1px 5px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.tb-tool-group-error-badge {
+  font-size: 10.5px;
+  color: var(--color-destructive);
+  background: rgba(255, 59, 48, 0.12);
+  padding: 1px 5px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.tb-tool-group-spinner {
+  width: 7px;
+  height: 7px;
+  border: 1.5px solid var(--color-accent);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: tb-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+.tb-tool-group-chevron {
+  display: flex;
+  align-items: center;
+  color: var(--color-label-tertiary);
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.tb-tool-group-chevron.is-open {
+  transform: rotate(90deg);
+}
+
+.tb-tool-group-body {
+  padding: 8px 10px 10px 10px;
+  border-top: 0.5px solid var(--color-separator);
+  background: var(--color-pane-bg);
+}
+
+.tb-tool-group-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .tb-tool-chip {
   border: 0.5px solid var(--color-separator);
   border-radius: var(--radius-md, 8px);

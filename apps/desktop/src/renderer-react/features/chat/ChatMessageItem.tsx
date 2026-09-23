@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { StreamdownRenderer } from "../../components/StreamdownRenderer";
 import { ThinkingState } from "./ThinkingState";
-import { ToolChip } from "./ToolChip";
+import { ToolCallsState } from "./ToolCallsState";
 import type { ThunderChatMessage } from "@agent-resume/core";
 import type { ActiveToolInfo } from "./useThunderChat";
 
@@ -73,13 +73,13 @@ export function ChatMessageItem({
           />
         )}
 
-        {/* Tool Call Chips */}
+        {/* Grouped Tool Calls (Collapsed by default, similar to Thinking) */}
         {activeTools.length > 0 && (
-          <div className="tb-message-tools-stack">
-            {activeTools.map((tool) => (
-              <ToolChip key={tool.toolCallId} tool={tool} />
-            ))}
-          </div>
+          <ToolCallsState
+            tools={activeTools}
+            isStreaming={isStreaming}
+            defaultExpanded={false}
+          />
         )}
 
         {/* Message Content */}
