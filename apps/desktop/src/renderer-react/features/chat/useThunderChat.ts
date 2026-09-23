@@ -104,7 +104,7 @@ export function useThunderChat() {
   // Environment & configuration
   const [models, setModels] = useState<ThunderModelInfo[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>("");
-  const [thinkingLevel, setThinkingLevel] = useState<string>("medium");
+  const [thinkingLevel, setThinkingLevel] = useState<string>("");
   const [workspaceDir, setWorkspaceDir] = useState<string>(() => {
     try {
       return (
@@ -143,7 +143,15 @@ export function useThunderChat() {
       setDaemonStatus(status);
       if (status.models && status.models.length > 0) {
         setModels(status.models);
-        setSelectedModel((prev) => prev || status.models[0].selection_id || status.models[0].id);
+        setSelectedModel((prev) => {
+          const effective = prev || status.models[0].selection_id || status.models[0].id;
+          return effective;
+        });
+        setThinkingLevel((prev) => {
+          if (prev) return prev;
+          const target = status.models[0];
+          return target?.default_thinking_level || (target?.reasoning ? "medium" : "off");
+        });
       }
     } catch (err) {
       console.warn("Failed to get thunder daemon status:", err);
@@ -181,6 +189,11 @@ export function useThunderChat() {
         }
         if (conv.thinking_level) {
           setThinkingLevel(conv.thinking_level);
+        } else if (conv.model) {
+          const target = models.find((m) => (m.selection_id || m.id) === conv.model);
+          if (target?.default_thinking_level) {
+            setThinkingLevel(target.default_thinking_level);
+          }
         }
         if (Array.isArray(conv.messages)) {
           setMessages(normalizeConversationMessages(conv.messages));
@@ -206,7 +219,24 @@ export function useThunderChat() {
     setStreamingText("");
     setStreamingReasoning("");
     setStreamingTools([]);
-  }, []);
+    const target = models.find((m) => (m.selection_id || m.id) === selectedModel);
+    if (target) {
+      const nextDef = target.default_thinking_level || (target.reasoning ? "medium" : "off");
+      setThinkingLevel(nextDef);
+    }
+  }, [models, selectedModel]);
+
+  const handleSelectModel = useCallback(
+    (modelId: string) => {
+      setSelectedModel(modelId);
+      const target = models.find((m) => (m.selection_id || m.id) === modelId);
+      if (target) {
+        const nextDef = target.default_thinking_level || (target.reasoning ? "medium" : "off");
+        setThinkingLevel(nextDef);
+      }
+    },
+    [models]
+  );
 
   const deleteSession = useCallback(
     async (sessionId: string) => {
@@ -246,7 +276,12 @@ export function useThunderChat() {
       setActiveTaskId(taskId);
 
       const model = options?.model || selectedModel || (models[0]?.selection_id ?? "mock");
-      const thinking = options?.thinking_level || thinkingLevel;
+      const currentModelInfo = models.find((m) => (m.selection_id || m.id) === model);
+      const thinking =
+        options?.thinking_level ||
+        thinkingLevel ||
+        currentModelInfo?.default_thinking_level ||
+        (currentModelInfo?.reasoning ? "medium" : "off");
       const ws =
         options?.workspaceDir ||
         workspaceDir ||
@@ -478,7 +513,7 @@ export function useThunderChat() {
     isWorkspaceLocked,
     useMock,
     daemonStatus,
-    setSelectedModel,
+    setSelectedModel: handleSelectModel,
     setThinkingLevel,
     setWorkspaceDir,
     setUseMock,

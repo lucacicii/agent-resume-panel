@@ -42,11 +42,49 @@ describe("ChatView", () => {
         repoPath: "/path/to/thunder",
         daemonPath: "/path/to/thunder/daemon.sh",
         models: [
-          { id: "gpt-4o", provider: "openai", name: "GPT-4o", selection_id: "openai/gpt-4o", available: true }
+          {
+            id: "gpt-4o",
+            provider: "openai",
+            name: "GPT-4o",
+            selection_id: "openai/gpt-4o",
+            available: true,
+            reasoning: false,
+            thinking_levels: ["off"],
+            default_thinking_level: "off"
+          },
+          {
+            id: "o3-mini",
+            provider: "openai",
+            name: "o3-mini",
+            selection_id: "openai/o3-mini",
+            available: true,
+            reasoning: true,
+            thinking_levels: ["off", "low", "medium", "high"],
+            default_thinking_level: "medium"
+          }
         ]
       }),
       thunderListModels: vi.fn().mockResolvedValue([
-        { id: "gpt-4o", provider: "openai", name: "GPT-4o", selection_id: "openai/gpt-4o", available: true }
+        {
+          id: "gpt-4o",
+          provider: "openai",
+          name: "GPT-4o",
+          selection_id: "openai/gpt-4o",
+          available: true,
+          reasoning: false,
+          thinking_levels: ["off"],
+          default_thinking_level: "off"
+        },
+        {
+          id: "o3-mini",
+          provider: "openai",
+          name: "o3-mini",
+          selection_id: "openai/o3-mini",
+          available: true,
+          reasoning: true,
+          thinking_levels: ["off", "low", "medium", "high"],
+          default_thinking_level: "medium"
+        }
       ]),
       thunderChatListConversations: vi.fn().mockResolvedValue(mockConversations),
       thunderChatGetConversation: vi.fn().mockResolvedValue({
@@ -71,7 +109,8 @@ describe("ChatView", () => {
       }),
       thunderChatCancelTask: vi.fn().mockResolvedValue(true),
       onThunderChatEvent: vi.fn().mockReturnValue(() => undefined),
-      pickDirectory: vi.fn().mockResolvedValue({ ok: true, path: "/work/repo" })
+      pickDirectory: vi.fn().mockResolvedValue({ ok: true, path: "/work/repo" }),
+      contextMenuShow: vi.fn().mockResolvedValue(null)
     } as any;
   });
 
@@ -227,6 +266,66 @@ describe("ChatView", () => {
           prompt: "Follow up question",
           model: "openai/gpt-4o",
           workspaceDir: "/work/repo",
+          thinking_level: "high"
+        })
+      );
+    });
+  });
+
+  it("dynamically reads model thinking_levels and switches to model default_thinking_level", async () => {
+    let capturedMenuItems: any[] = [];
+    window.agentResume.contextMenuShow = vi.fn().mockImplementation(async ({ items }) => {
+      capturedMenuItems = items;
+      return "openai/o3-mini";
+    });
+
+    render(
+      <I18nProvider>
+        <ChatView active={true} />
+      </I18nProvider>
+    );
+
+    // Initial model is gpt-4o, non-reasoning with levels ["off"]
+    await waitFor(() => {
+      const modelBtn = screen.getByLabelText(/Select Model: GPT-4o/i);
+      expect(modelBtn).toBeTruthy();
+    });
+
+    const thinkingBtn = screen.getByLabelText(/Thinking Level/i) as HTMLButtonElement;
+    expect(thinkingBtn.disabled).toBe(true);
+    expect(thinkingBtn.textContent).toContain("Thinking: Off");
+
+    // Click model select button to switch to o3-mini
+    const modelBtn = screen.getByLabelText(/Select Model: GPT-4o/i);
+    fireEvent.click(modelBtn);
+
+    await waitFor(() => {
+      expect(thinkingBtn.disabled).toBe(false);
+      expect(thinkingBtn.textContent).toContain("Thinking: Medium");
+    });
+
+    // Click thinking level button to verify options passed to contextMenuShow
+    window.agentResume.contextMenuShow = vi.fn().mockImplementation(async ({ items }) => {
+      capturedMenuItems = items;
+      return "high";
+    });
+    fireEvent.click(thinkingBtn);
+
+    await waitFor(() => {
+      expect(capturedMenuItems.map((i) => i.id)).toEqual(["off", "low", "medium", "high"]);
+      expect(thinkingBtn.textContent).toContain("Thinking: High");
+    });
+
+    // Send a message and verify that the updated thinking_level "high" is submitted
+    const textarea = screen.getByPlaceholderText(/Ask Thunder agent anything/i);
+    fireEvent.change(textarea, { target: { value: "Perform reasoning calculation" } });
+    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
+
+    await waitFor(() => {
+      expect(window.agentResume.thunderChatRunTask).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: "Perform reasoning calculation",
+          model: "openai/o3-mini",
           thinking_level: "high"
         })
       );

@@ -14,6 +14,9 @@ export interface ThunderModelInfo {
   name: string;
   selection_id: string;
   available: boolean;
+  reasoning?: boolean;
+  thinking_levels?: string[];
+  default_thinking_level?: string;
 }
 
 export type ThunderAgentEvent =

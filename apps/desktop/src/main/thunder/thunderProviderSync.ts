@@ -31,7 +31,13 @@ export async function syncPanelProvidersToThunder(
         name: string;
         baseUrl?: string;
         api: string;
-        models: Array<{ id: string; name?: string }>;
+        models: Array<{
+          id: string;
+          name?: string;
+          reasoning?: boolean;
+          thinkingLevels?: string[];
+          defaultThinkingLevel?: string;
+        }>;
       }
     >;
   } = {

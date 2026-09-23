@@ -18192,6 +18192,12 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   user-select: none;
 }
 
+.tb-chip-disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  user-select: none;
+}
+
 .tb-chip-locked:hover {
   background: var(--color-secondary-bg);
   color: var(--color-label-secondary);

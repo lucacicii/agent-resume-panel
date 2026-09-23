@@ -22,13 +22,6 @@ interface ChatComposerProps {
   prefillPrompt?: { text: string; id: number } | null;
 }
 
-const THINKING_OPTIONS = [
-  { value: "off", label: "Thinking: Off" },
-  { value: "low", label: "Thinking: Low" },
-  { value: "medium", label: "Thinking: Medium" },
-  { value: "high", label: "Thinking: High" }
-];
-
 export function ChatComposer({
   onSend,
   onCancel,
@@ -134,6 +127,48 @@ export function ChatComposer({
     }));
   }, [models]);
 
+  const currentModel = useMemo(() => {
+    return models.find((m) => (m.selection_id || m.id) === selectedModel);
+  }, [models, selectedModel]);
+
+  const thinkingOptions = useMemo(() => {
+    const levels = currentModel?.thinking_levels;
+    if (Array.isArray(levels) && levels.length > 0) {
+      return levels.map((lvl) => {
+        const capitalized = lvl.charAt(0).toUpperCase() + lvl.slice(1);
+        return {
+          value: lvl,
+          label: `Thinking: ${capitalized}`
+        };
+      });
+    }
+
+    if (currentModel?.reasoning) {
+      return [
+        { value: "off", label: "Thinking: Off" },
+        { value: "low", label: "Thinking: Low" },
+        { value: "medium", label: "Thinking: Medium" },
+        { value: "high", label: "Thinking: High" }
+      ];
+    }
+
+    return [{ value: "off", label: "Thinking: Off" }];
+  }, [currentModel]);
+
+  const supportsThinking = useMemo(() => {
+    if (!currentModel) return false;
+    if (currentModel.reasoning) return true;
+    const levels = currentModel.thinking_levels;
+    if (Array.isArray(levels) && levels.length > 1) return true;
+    if (Array.isArray(levels) && levels.length === 1 && levels[0] !== "off") return true;
+    return false;
+  }, [currentModel]);
+
+  const effectiveThinkingLevel = useMemo(() => {
+    if (!supportsThinking) return "off";
+    return thinkingLevel || currentModel?.default_thinking_level || "medium";
+  }, [supportsThinking, thinkingLevel, currentModel]);
+
   return (
     <div className="tb-composer-wrapper">
       <div className={`tb-composer-box${isStreaming ? " is-active" : ""}`}>
@@ -166,16 +201,20 @@ export function ChatComposer({
             </div>
 
             {/* Thinking Level Chip */}
-            <div className="tb-composer-chip">
+            <div className={`tb-composer-chip${!supportsThinking ? " tb-chip-disabled" : ""}`}>
               <ThemeIcon name="sparkles" size={ICON_SIZE.inline} />
               <NativeMenuSelect
                 className="tb-composer-native-select"
-                value={thinkingLevel || "medium"}
-                options={THINKING_OPTIONS}
+                value={effectiveThinkingLevel}
+                options={thinkingOptions}
                 onChange={onSelectThinkingLevel}
-                disabled={isStreaming}
+                disabled={isStreaming || !supportsThinking || thinkingOptions.length <= 1}
                 ariaLabel="Thinking Level"
-                title={`Thinking Level: ${thinkingLevel}`}
+                title={
+                  supportsThinking
+                    ? `Thinking Level: ${effectiveThinkingLevel}`
+                    : "Thinking not supported by this model"
+                }
               />
             </div>
 
