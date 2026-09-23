@@ -138,6 +138,9 @@ export interface ThunderConversationSummary {
   id: string;
   title?: string;
   parent_id?: string;
+  model?: string;
+  workspace?: string;
+  thinking_level?: string;
   status: string;
   message_count: number;
   turn_count: number;
@@ -152,6 +155,9 @@ export interface ThunderConversation {
   title?: string;
   parent_id?: string;
   system_prompt?: string;
+  model?: string;
+  workspace?: string;
+  thinking_level?: string;
   status: string;
   messages: ThunderChatMessage[];
   created_at_ms: number;
@@ -175,6 +181,7 @@ export interface ThunderChatTaskOptions {
   sessionId?: string;
   model?: string;
   workspaceDir?: string;
+  thinking_level?: string;
   useMock?: boolean;
 }
 

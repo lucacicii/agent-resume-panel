@@ -18186,6 +18186,17 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   transition: all 0.12s ease;
 }
 
+.tb-chip-locked {
+  cursor: default;
+  opacity: 0.82;
+  user-select: none;
+}
+
+.tb-chip-locked:hover {
+  background: var(--color-secondary-bg);
+  color: var(--color-label-secondary);
+}
+
 .tb-chip-button:hover {
   background: var(--color-tertiary-bg);
   color: var(--color-label-primary);

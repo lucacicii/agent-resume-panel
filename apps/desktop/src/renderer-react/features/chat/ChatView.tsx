@@ -16,10 +16,13 @@ export function ChatView({ active }: { active: boolean }): React.JSX.Element | n
     streamingTools,
     models,
     selectedModel,
+    thinkingLevel,
     workspaceDir,
+    isWorkspaceLocked,
     useMock,
     daemonStatus,
     setSelectedModel,
+    setThinkingLevel,
     setWorkspaceDir,
     setUseMock,
     selectSession,
@@ -73,8 +76,11 @@ export function ChatView({ active }: { active: boolean }): React.JSX.Element | n
         models={models}
         selectedModel={selectedModel}
         onSelectModel={setSelectedModel}
+        thinkingLevel={thinkingLevel}
+        onSelectThinkingLevel={setThinkingLevel}
         workspaceDir={workspaceDir}
         onSelectWorkspaceDir={setWorkspaceDir}
+        isWorkspaceLocked={isWorkspaceLocked}
         useMock={useMock}
         onToggleMock={setUseMock}
         onSendMessage={sendMessage}

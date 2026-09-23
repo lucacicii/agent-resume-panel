@@ -104,6 +104,7 @@ export function useThunderChat() {
   // Environment & configuration
   const [models, setModels] = useState<ThunderModelInfo[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>("");
+  const [thinkingLevel, setThinkingLevel] = useState<string>("medium");
   const [workspaceDir, setWorkspaceDir] = useState<string>(() => {
     try {
       return (
@@ -166,8 +167,26 @@ export function useThunderChat() {
       setLoading(true);
       setActiveSessionId(sessionId);
       const conv = await desktopApi().thunderChatGetConversation({ sessionId });
-      if (conv && Array.isArray(conv.messages)) {
-        setMessages(normalizeConversationMessages(conv.messages));
+      if (conv) {
+        if (conv.model) {
+          setSelectedModel(conv.model);
+        }
+        if (conv.workspace) {
+          setWorkspaceDir(conv.workspace);
+          try {
+            localStorage.setItem("chat-selected-workspace", conv.workspace);
+          } catch {
+            // ignore
+          }
+        }
+        if (conv.thinking_level) {
+          setThinkingLevel(conv.thinking_level);
+        }
+        if (Array.isArray(conv.messages)) {
+          setMessages(normalizeConversationMessages(conv.messages));
+        } else {
+          setMessages([]);
+        }
       } else {
         setMessages([]);
       }
@@ -205,7 +224,10 @@ export function useThunderChat() {
   );
 
   const sendMessage = useCallback(
-    async (prompt: string, options?: { model?: string; workspaceDir?: string }) => {
+    async (
+      prompt: string,
+      options?: { model?: string; workspaceDir?: string; thinking_level?: string }
+    ) => {
       const trimmed = prompt.trim();
       if (!trimmed || isStreaming) return;
 
@@ -224,6 +246,7 @@ export function useThunderChat() {
       setActiveTaskId(taskId);
 
       const model = options?.model || selectedModel || (models[0]?.selection_id ?? "mock");
+      const thinking = options?.thinking_level || thinkingLevel;
       const ws =
         options?.workspaceDir ||
         workspaceDir ||
@@ -250,6 +273,7 @@ export function useThunderChat() {
           sessionId: activeSessionId || undefined,
           model,
           workspaceDir: ws,
+          thinking_level: thinking,
           useMock
         });
 
@@ -435,6 +459,8 @@ export function useThunderChat() {
     void loadConversations();
   }, [refreshDaemonStatus, loadConversations]);
 
+  const isWorkspaceLocked = Boolean(activeSessionId && workspaceDir);
+
   return {
     conversations,
     activeSessionId,
@@ -447,10 +473,13 @@ export function useThunderChat() {
     streamingTools,
     models,
     selectedModel,
+    thinkingLevel,
     workspaceDir,
+    isWorkspaceLocked,
     useMock,
     daemonStatus,
     setSelectedModel,
+    setThinkingLevel,
     setWorkspaceDir,
     setUseMock,
     loadConversations,

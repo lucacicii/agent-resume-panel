@@ -52,6 +52,9 @@ describe("ChatView", () => {
       thunderChatGetConversation: vi.fn().mockResolvedValue({
         id: "sess_1",
         title: "Inspect Git Status & Changes",
+        model: "openai/gpt-4o",
+        workspace: "/work/repo",
+        thinking_level: "high",
         status: "active",
         messages: [
           { role: "user", content: "Check git status" },
@@ -190,6 +193,41 @@ describe("ChatView", () => {
       expect(window.agentResume.thunderChatRunTask).toHaveBeenCalledWith(
         expect.objectContaining({
           prompt: "Check git status"
+        })
+      );
+    });
+  });
+
+  it("restores bound model, workspace, and thinking level from conversation", async () => {
+    render(
+      <I18nProvider>
+        <ChatView active={true} />
+      </I18nProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Inspect Git Status & Changes").length).toBeGreaterThanOrEqual(1);
+    });
+
+    const items = screen.getAllByText("Inspect Git Status & Changes");
+    fireEvent.click(items[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText("Check git status")).toBeTruthy();
+    });
+
+    // Send a message and check that the bound model, workspace, and thinking_level are sent
+    const textarea = screen.getByPlaceholderText(/Ask Thunder agent anything/i);
+    fireEvent.change(textarea, { target: { value: "Follow up question" } });
+    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
+
+    await waitFor(() => {
+      expect(window.agentResume.thunderChatRunTask).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: "Follow up question",
+          model: "openai/gpt-4o",
+          workspaceDir: "/work/repo",
+          thinking_level: "high"
         })
       );
     });

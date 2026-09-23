@@ -5,19 +5,29 @@ import { desktopApi } from "../../bridge";
 import type { ThunderModelInfo } from "@agent-resume/core";
 
 interface ChatComposerProps {
-  onSend: (prompt: string, options?: { workspaceDir?: string; model?: string }) => void;
+  onSend: (prompt: string, options?: { workspaceDir?: string; model?: string; thinking_level?: string }) => void;
   onCancel: () => void;
   isStreaming: boolean;
   models: ThunderModelInfo[];
   selectedModel: string;
   onSelectModel: (model: string) => void;
+  thinkingLevel: string;
+  onSelectThinkingLevel: (level: string) => void;
   workspaceDir: string;
   onSelectWorkspaceDir: (dir: string) => void;
+  workspaceLocked?: boolean;
   useMock: boolean;
   onToggleMock: (mock: boolean) => void;
   placeholder?: string;
   prefillPrompt?: { text: string; id: number } | null;
 }
+
+const THINKING_OPTIONS = [
+  { value: "off", label: "Thinking: Off" },
+  { value: "low", label: "Thinking: Low" },
+  { value: "medium", label: "Thinking: Medium" },
+  { value: "high", label: "Thinking: High" }
+];
 
 export function ChatComposer({
   onSend,
@@ -26,8 +36,11 @@ export function ChatComposer({
   models,
   selectedModel,
   onSelectModel,
+  thinkingLevel,
+  onSelectThinkingLevel,
   workspaceDir,
   onSelectWorkspaceDir,
+  workspaceLocked = false,
   useMock,
   onToggleMock,
   placeholder = "Ask Thunder agent anything, or type @ to reference context...",
@@ -79,7 +92,7 @@ export function ChatComposer({
         return;
       }
       if (text.trim()) {
-        onSend(text, { workspaceDir, model: selectedModel });
+        onSend(text, { workspaceDir, model: selectedModel, thinking_level: thinkingLevel });
         setText("");
       }
     }
@@ -89,12 +102,13 @@ export function ChatComposer({
     if (isStreaming) {
       onCancel();
     } else if (text.trim()) {
-      onSend(text, { workspaceDir, model: selectedModel });
+      onSend(text, { workspaceDir, model: selectedModel, thinking_level: thinkingLevel });
       setText("");
     }
   };
 
   const handlePickDirectory = async () => {
+    if (workspaceLocked) return;
     try {
       const picked = await desktopApi().pickDirectory();
       if (picked && picked.ok) {
@@ -151,13 +165,31 @@ export function ChatComposer({
               />
             </div>
 
+            {/* Thinking Level Chip */}
+            <div className="tb-composer-chip">
+              <ThemeIcon name="sparkles" size={ICON_SIZE.inline} />
+              <NativeMenuSelect
+                className="tb-composer-native-select"
+                value={thinkingLevel || "medium"}
+                options={THINKING_OPTIONS}
+                onChange={onSelectThinkingLevel}
+                disabled={isStreaming}
+                ariaLabel="Thinking Level"
+                title={`Thinking Level: ${thinkingLevel}`}
+              />
+            </div>
+
             {/* Workspace Directory Chip */}
             <button
               type="button"
-              className="tb-composer-chip tb-chip-button"
+              className={`tb-composer-chip${workspaceLocked ? " tb-chip-locked" : " tb-chip-button"}`}
               onClick={handlePickDirectory}
-              disabled={isStreaming}
-              title={workspaceDir || "Click to select execution folder"}
+              disabled={isStreaming || workspaceLocked}
+              title={
+                workspaceLocked
+                  ? `${workspaceDir} (Workspace is bound to this conversation and cannot be changed)`
+                  : (workspaceDir || "Click to select execution folder")
+              }
             >
               <ThemeIcon name="folder" size={ICON_SIZE.inline} />
               <span className="tb-chip-label">{workspaceName}</span>

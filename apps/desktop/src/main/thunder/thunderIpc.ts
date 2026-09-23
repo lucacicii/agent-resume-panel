@@ -99,6 +99,7 @@ export function registerThunderIpc(): void {
         sessionId?: string;
         model?: string;
         workspaceDir?: string;
+        thinking_level?: string;
         useMock?: boolean;
       }
     ) => {
@@ -110,6 +111,7 @@ export function registerThunderIpc(): void {
         sessionId: effectiveSessionId,
         model: args.model,
         workspaceDir: args.workspaceDir,
+        thinking_level: args.thinking_level,
         useMock: args.useMock,
         onEvent: (event) => {
           for (const win of BrowserWindow.getAllWindows()) {

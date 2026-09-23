@@ -16,11 +16,14 @@ interface ChatMainProps {
   models: ThunderModelInfo[];
   selectedModel: string;
   onSelectModel: (model: string) => void;
+  thinkingLevel: string;
+  onSelectThinkingLevel: (level: string) => void;
   workspaceDir: string;
   onSelectWorkspaceDir: (dir: string) => void;
+  isWorkspaceLocked?: boolean;
   useMock: boolean;
   onToggleMock: (mock: boolean) => void;
-  onSendMessage: (prompt: string, options?: { workspaceDir?: string; model?: string }) => void;
+  onSendMessage: (prompt: string, options?: { workspaceDir?: string; model?: string; thinking_level?: string }) => void;
   onCancelTask: () => void;
   onNewSession: () => void;
   onRegenerate?: (index: number) => void;
@@ -40,8 +43,11 @@ export function ChatMain({
   models,
   selectedModel,
   onSelectModel,
+  thinkingLevel,
+  onSelectThinkingLevel,
   workspaceDir,
   onSelectWorkspaceDir,
+  isWorkspaceLocked,
   useMock,
   onToggleMock,
   onSendMessage,
@@ -135,8 +141,11 @@ export function ChatMain({
         models={models}
         selectedModel={selectedModel}
         onSelectModel={onSelectModel}
+        thinkingLevel={thinkingLevel}
+        onSelectThinkingLevel={onSelectThinkingLevel}
         workspaceDir={workspaceDir}
         onSelectWorkspaceDir={onSelectWorkspaceDir}
+        workspaceLocked={isWorkspaceLocked}
         useMock={useMock}
         onToggleMock={onToggleMock}
         prefillPrompt={prefillPrompt}

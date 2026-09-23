@@ -473,6 +473,9 @@ export class ThunderClient {
             summaries.push({
               id: c.id || ent.name,
               title: c.title,
+              model: c.model,
+              workspace: c.workspace,
+              thinking_level: c.thinking_level,
               status: c.status || "active",
               message_count: Array.isArray(c.messages) ? c.messages.length : 0,
               turn_count: c.stats?.turn_count || 0,
@@ -509,6 +512,7 @@ export class ThunderClient {
     workspaceDir?: string;
     model?: string;
     sessionId?: string;
+    thinking_level?: string;
     useMock?: boolean;
     onEvent?: (event: ThunderObservedEvent) => void;
   }): Promise<{ finalContent?: string; finishReason: string; activePlugins?: string[] }> {
@@ -542,6 +546,7 @@ export class ThunderClient {
               prompt: effectivePrompt,
               workspace_dir: options.workspaceDir,
               model: options.model,
+              thinking_level: options.thinking_level,
               session_id: options.sessionId,
               use_mock: options.useMock
             },
