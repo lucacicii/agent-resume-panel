@@ -105,6 +105,20 @@ export function useThunderChat() {
   const [models, setModels] = useState<ThunderModelInfo[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [thinkingLevel, setThinkingLevel] = useState<string>("");
+  const [workspaceSource, setWorkspaceSource] = useState<"finder" | "gtd">(() => {
+    try {
+      return (localStorage.getItem("chat-workspace-source") as "finder" | "gtd") || "finder";
+    } catch {
+      return "finder";
+    }
+  });
+  const [taskNoteId, setTaskNoteId] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem("chat-selected-task-note-id") || null;
+    } catch {
+      return null;
+    }
+  });
   const [workspaceDir, setWorkspaceDir] = useState<string>(() => {
     try {
       return (
@@ -187,6 +201,46 @@ export function useThunderChat() {
             // ignore
           }
         }
+
+        // Restore GTD task binding if session is associated with a task
+        if (typeof desktopApi().notesTaskNoteIdForSession === "function") {
+          try {
+            const linkedNoteId = await desktopApi().notesTaskNoteIdForSession({
+              provider: "chat",
+              sessionId
+            });
+            if (linkedNoteId) {
+              setTaskNoteId(linkedNoteId);
+              setWorkspaceSource("gtd");
+              try {
+                localStorage.setItem("chat-workspace-source", "gtd");
+                localStorage.setItem("chat-selected-task-note-id", linkedNoteId);
+              } catch {
+                // ignore
+              }
+            } else if (conv.workspace && conv.workspace.includes("/workspaces/")) {
+              const match = conv.workspace.match(/\/workspaces\/([a-zA-Z0-9_-]+)/);
+              if (match && match[1]) {
+                setTaskNoteId(match[1]);
+                setWorkspaceSource("gtd");
+                try {
+                  localStorage.setItem("chat-workspace-source", "gtd");
+                  localStorage.setItem("chat-selected-task-note-id", match[1]);
+                } catch {
+                  // ignore
+                }
+              } else {
+                setTaskNoteId(null);
+                setWorkspaceSource("finder");
+              }
+            } else {
+              setTaskNoteId(null);
+              setWorkspaceSource("finder");
+            }
+          } catch {
+            // ignore
+          }
+        }
         if (conv.thinking_level) {
           setThinkingLevel(conv.thinking_level);
         } else if (conv.model) {
@@ -225,6 +279,32 @@ export function useThunderChat() {
       setThinkingLevel(nextDef);
     }
   }, [models, selectedModel]);
+
+  const setWorkspaceGtdTask = useCallback((noteId: string, dir: string) => {
+    setTaskNoteId(noteId);
+    setWorkspaceSource("gtd");
+    setWorkspaceDir(dir);
+    try {
+      localStorage.setItem("chat-workspace-source", "gtd");
+      localStorage.setItem("chat-selected-task-note-id", noteId);
+      localStorage.setItem("chat-selected-workspace", dir);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const setWorkspaceFinderDir = useCallback((dir: string) => {
+    setTaskNoteId(null);
+    setWorkspaceSource("finder");
+    setWorkspaceDir(dir);
+    try {
+      localStorage.setItem("chat-workspace-source", "finder");
+      localStorage.setItem("chat-selected-task-note-id", "");
+      localStorage.setItem("chat-selected-workspace", dir);
+    } catch {
+      // ignore
+    }
+  }, []);
 
   const handleSelectModel = useCallback(
     (modelId: string) => {
@@ -302,12 +382,16 @@ export function useThunderChat() {
       }
 
       try {
+        const effectiveTaskNoteId =
+          workspaceSource === "gtd" && taskNoteId ? taskNoteId : undefined;
+
         const result = await desktopApi().thunderChatRunTask({
           taskId,
           prompt: trimmed,
           sessionId: activeSessionId || undefined,
           model,
           workspaceDir: ws,
+          taskNoteId: effectiveTaskNoteId,
           thinking_level: thinking,
           useMock
         });
@@ -510,12 +594,16 @@ export function useThunderChat() {
     selectedModel,
     thinkingLevel,
     workspaceDir,
+    workspaceSource,
+    taskNoteId,
     isWorkspaceLocked,
     useMock,
     daemonStatus,
     setSelectedModel: handleSelectModel,
     setThinkingLevel,
     setWorkspaceDir,
+    setWorkspaceGtdTask,
+    setWorkspaceFinderDir,
     setUseMock,
     loadConversations,
     selectSession,

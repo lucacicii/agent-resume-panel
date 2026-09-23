@@ -20,6 +20,10 @@ interface ChatMainProps {
   onSelectThinkingLevel: (level: string) => void;
   workspaceDir: string;
   onSelectWorkspaceDir: (dir: string) => void;
+  workspaceSource?: "finder" | "gtd";
+  taskNoteId?: string | null;
+  onSelectGtdTask?: (noteId: string, dir: string) => void;
+  onSelectFinderDir?: (dir: string) => void;
   isWorkspaceLocked?: boolean;
   useMock: boolean;
   onToggleMock: (mock: boolean) => void;
@@ -47,6 +51,10 @@ export function ChatMain({
   onSelectThinkingLevel,
   workspaceDir,
   onSelectWorkspaceDir,
+  workspaceSource,
+  taskNoteId,
+  onSelectGtdTask,
+  onSelectFinderDir,
   isWorkspaceLocked,
   useMock,
   onToggleMock,
@@ -145,6 +153,10 @@ export function ChatMain({
         onSelectThinkingLevel={onSelectThinkingLevel}
         workspaceDir={workspaceDir}
         onSelectWorkspaceDir={onSelectWorkspaceDir}
+        workspaceSource={workspaceSource}
+        taskNoteId={taskNoteId}
+        onSelectGtdTask={onSelectGtdTask}
+        onSelectFinderDir={onSelectFinderDir}
         workspaceLocked={isWorkspaceLocked}
         useMock={useMock}
         onToggleMock={onToggleMock}

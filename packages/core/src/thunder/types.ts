@@ -184,6 +184,7 @@ export interface ThunderChatTaskOptions {
   sessionId?: string;
   model?: string;
   workspaceDir?: string;
+  taskNoteId?: string;
   thinking_level?: string;
   useMock?: boolean;
 }

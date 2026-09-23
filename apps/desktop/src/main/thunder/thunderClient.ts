@@ -510,6 +510,14 @@ export class ThunderClient {
     taskId: string;
     prompt: string;
     workspaceDir?: string;
+    taskNoteId?: string;
+    gtdContext?: {
+      title: string;
+      status: string;
+      backgroundMd: string;
+      projects: string[];
+      noteAbsPath?: string;
+    };
     model?: string;
     sessionId?: string;
     thinking_level?: string;
@@ -533,7 +541,21 @@ export class ThunderClient {
 
         try {
           let effectivePrompt = options.prompt;
-          if (options.workspaceDir && options.workspaceDir.trim()) {
+          if (options.gtdContext) {
+            const ctx = options.gtdContext;
+            const lines = [
+              `# Active GTD Task: ${ctx.title || "Untitled Task"} (Status: ${ctx.status || "inbox"})`,
+              options.workspaceDir ? `Workspace Directory: ${options.workspaceDir}` : undefined,
+              ctx.projects && ctx.projects.length > 0
+                ? `Shared Repositories / 共享目录:\n${ctx.projects.map((p) => `- ${p}`).join("\n")}`
+                : undefined,
+              ctx.backgroundMd?.trim()
+                ? `## GTD Task Background Knowledge / 背景知识:\n${ctx.backgroundMd.trim()}`
+                : undefined
+            ].filter(Boolean);
+
+            effectivePrompt = `[GTD Task Context]\n${lines.join("\n\n")}\n[End Task Context]\n\n${options.prompt}`;
+          } else if (options.workspaceDir && options.workspaceDir.trim()) {
             const ws = options.workspaceDir.trim();
             effectivePrompt = `[Active Workspace: ${ws}]\n\n${options.prompt}`;
           }

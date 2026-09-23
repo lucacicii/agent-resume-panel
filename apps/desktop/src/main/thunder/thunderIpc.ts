@@ -13,6 +13,7 @@ import {
   updateSchedule
 } from "./thunderScheduler";
 import { getThunderClient } from "./thunderClient";
+import { notesGetTaskWorkspaceContext, notesLinkSessionToTask } from "../notesService";
 import type { ThunderScheduleInput } from "@agent-resume/core";
 
 export function registerThunderIpc(): void {
@@ -99,18 +100,59 @@ export function registerThunderIpc(): void {
         sessionId?: string;
         model?: string;
         workspaceDir?: string;
+        taskNoteId?: string;
         thinking_level?: string;
         useMock?: boolean;
       }
     ) => {
       const client = getThunderClient();
       const effectiveSessionId = args.sessionId || `sess_${Date.now()}`;
+
+      let effectiveWorkspaceDir = args.workspaceDir;
+      let gtdContext:
+        | {
+            title: string;
+            status: string;
+            backgroundMd: string;
+            projects: string[];
+            noteAbsPath?: string;
+          }
+        | undefined;
+
+      if (args.taskNoteId) {
+        try {
+          const taskCtx = await notesGetTaskWorkspaceContext(args.taskNoteId);
+          gtdContext = {
+            title: taskCtx.title,
+            status: taskCtx.status,
+            backgroundMd: taskCtx.backgroundMd,
+            projects: taskCtx.projects,
+            noteAbsPath: taskCtx.noteAbsPath
+          };
+          if (!effectiveWorkspaceDir) {
+            effectiveWorkspaceDir = taskCtx.dir;
+          }
+          // Link this chat session with the GTD task
+          void notesLinkSessionToTask({
+            noteId: args.taskNoteId,
+            sessionKey: `chat:${effectiveSessionId}`,
+            projectPath: effectiveWorkspaceDir
+          }).catch((err) => {
+            console.warn("[thunder-chat] failed to link session to task:", err);
+          });
+        } catch (err) {
+          console.warn("[thunder-chat] failed to load GTD task workspace context:", err);
+        }
+      }
+
       return client.runTask({
         taskId: args.taskId,
         prompt: args.prompt,
         sessionId: effectiveSessionId,
         model: args.model,
-        workspaceDir: args.workspaceDir,
+        workspaceDir: effectiveWorkspaceDir,
+        taskNoteId: args.taskNoteId,
+        gtdContext,
         thinking_level: args.thinking_level,
         useMock: args.useMock,
         onEvent: (event) => {

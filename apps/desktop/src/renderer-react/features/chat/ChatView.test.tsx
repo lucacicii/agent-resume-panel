@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import { ChatView } from "./ChatView";
+import { sortGtdTasks } from "./ChatComposer";
 import type { ThunderConversationSummary } from "@agent-resume/core";
 
 const mockConversations: ThunderConversationSummary[] = [
@@ -110,7 +111,20 @@ describe("ChatView", () => {
       thunderChatCancelTask: vi.fn().mockResolvedValue(true),
       onThunderChatEvent: vi.fn().mockReturnValue(() => undefined),
       pickDirectory: vi.fn().mockResolvedValue({ ok: true, path: "/work/repo" }),
-      contextMenuShow: vi.fn().mockResolvedValue(null)
+      contextMenuShow: vi.fn().mockResolvedValue(null),
+      notesListTasks: vi.fn().mockResolvedValue([
+        { noteId: "task-done", title: "Completed Task", gtdStatus: "done", updatedAtMs: 1000 },
+        { noteId: "task-todo-1", title: "First Todo Task", gtdStatus: "inbox", updatedAtMs: 5000 },
+        { noteId: "task-next", title: "In Progress Task", gtdStatus: "next", updatedAtMs: 4000 },
+        { noteId: "task-waiting", title: "Waiting Task", gtdStatus: "waiting", updatedAtMs: 3000 },
+        { noteId: "task-todo-2", title: "Second Todo Task", gtdStatus: "inbox", updatedAtMs: 6000 }
+      ]),
+      notesEnsureTaskWorkspace: vi.fn().mockResolvedValue({ dir: "/work/gtd/task-todo-2" }),
+      notesTaskNoteIdForSession: vi.fn().mockResolvedValue(null),
+      notesRead: vi.fn().mockResolvedValue({
+        record: { title: "Second Todo Task", gtdStatus: "inbox" },
+        content: "# Second Todo Task\n\nTask background knowledge"
+      })
     } as any;
   });
 
@@ -329,6 +343,122 @@ describe("ChatView", () => {
           thinking_level: "high"
         })
       );
+    });
+  });
+
+  it("sorts GTD tasks in TODO -> DONE default order", () => {
+    const rawTasks = [
+      { noteId: "done-1", title: "Finished", gtdStatus: "done", updatedAtMs: 100 },
+      { noteId: "next-1", title: "In Progress", gtdStatus: "next", updatedAtMs: 200 },
+      { noteId: "todo-old", title: "Older Todo", gtdStatus: "inbox", updatedAtMs: 300 },
+      { noteId: "waiting-1", title: "Blocked", gtdStatus: "waiting", updatedAtMs: 400 },
+      { noteId: "todo-new", title: "Newer Todo", gtdStatus: "inbox", updatedAtMs: 500 }
+    ];
+
+    const sorted = sortGtdTasks(rawTasks);
+    expect(sorted.map((t) => t.noteId)).toEqual([
+      "todo-new",
+      "todo-old",
+      "next-1",
+      "waiting-1",
+      "done-1"
+    ]);
+  });
+
+  it("selects workspace from Finder and updates workspace label", async () => {
+    window.agentResume.contextMenuShow = vi.fn().mockResolvedValue("finder:choose");
+    window.agentResume.pickDirectory = vi.fn().mockResolvedValue({
+      ok: true,
+      path: "/Users/lucas/workspace/my-project"
+    });
+
+    render(
+      <I18nProvider>
+        <ChatView active={true} />
+      </I18nProvider>
+    );
+
+    const wsBtn = screen.getByLabelText("选择工作区");
+    fireEvent.click(wsBtn);
+
+    await waitFor(() => {
+      expect(window.agentResume.pickDirectory).toHaveBeenCalled();
+      expect(wsBtn.textContent).toContain("my-project");
+    });
+  });
+
+  it("selects a GTD task and passes taskNoteId when sending prompt", async () => {
+    let capturedMenuItems: any[] = [];
+    window.agentResume.contextMenuShow = vi.fn().mockImplementation(async ({ items }) => {
+      capturedMenuItems = items;
+      return "gtd:task-todo-2";
+    });
+
+    render(
+      <I18nProvider>
+        <ChatView active={true} />
+      </I18nProvider>
+    );
+
+    const wsBtn = screen.getByLabelText("选择工作区");
+    fireEvent.click(wsBtn);
+
+    await waitFor(() => {
+      expect(window.agentResume.notesEnsureTaskWorkspace).toHaveBeenCalledWith({
+        noteId: "task-todo-2"
+      });
+      // Should show [待办] Second Todo Task
+      expect(wsBtn.textContent).toContain("Second Todo Task");
+      expect(wsBtn.textContent).toContain("[待办]");
+    });
+
+    // Menu should contain Finder option and GTD tasks ordered TODO -> DONE
+    expect(capturedMenuItems.some((i) => i.id === "finder:choose")).toBe(true);
+    const gtdItems = capturedMenuItems.filter((i) => i.id && i.id.startsWith("gtd:"));
+    expect(gtdItems.map((i) => i.id)).toEqual([
+      "gtd:task-todo-2",
+      "gtd:task-todo-1",
+      "gtd:task-next",
+      "gtd:task-waiting",
+      "gtd:task-done"
+    ]);
+
+    // Send a message and verify taskNoteId is passed along with workspaceDir
+    const textarea = screen.getByPlaceholderText(/Ask Thunder agent anything/i);
+    fireEvent.change(textarea, { target: { value: "Review task requirements" } });
+    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
+
+    await waitFor(() => {
+      expect(window.agentResume.thunderChatRunTask).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: "Review task requirements",
+          taskNoteId: "task-todo-2",
+          workspaceDir: "/work/gtd/task-todo-2"
+        })
+      );
+    });
+  });
+
+  it("restores GTD task workspace binding when selecting linked session", async () => {
+    window.agentResume.notesTaskNoteIdForSession = vi.fn().mockResolvedValue("task-next");
+
+    render(
+      <I18nProvider>
+        <ChatView active={true} />
+      </I18nProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Inspect Git Status & Changes").length).toBeGreaterThanOrEqual(1);
+    });
+
+    const items = screen.getAllByText("Inspect Git Status & Changes");
+    fireEvent.click(items[0]);
+
+    const wsBtn = screen.getByLabelText("选择工作区");
+    await waitFor(() => {
+      expect(wsBtn.textContent).toContain("In Progress Task");
+      expect(wsBtn.textContent).toContain("[进行中]");
     });
   });
 });
