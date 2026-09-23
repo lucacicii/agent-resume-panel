@@ -3,7 +3,34 @@ import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { NativeMenuSelect } from "../../components/NativeMenuSelect";
 import { showContextMenuAt, type NativeContextMenuItem } from "../../nativeContextMenu";
 import { desktopApi } from "../../bridge";
-import type { ThunderModelInfo } from "@agent-resume/core";
+import type { AgentToolDescriptor, SkillDescriptor, ThunderModelInfo } from "@agent-resume/core";
+import {
+  atTokenAtCursor,
+  hashTokenAtCursor,
+  joinDirPath,
+  slashTokenAtCursor
+} from "./chatTokens";
+
+export type ChatSlashSuggestion = {
+  kind: "skill" | "mcp" | "command";
+  name: string;
+  description: string;
+  location?: string;
+};
+
+export type ChatMentionSuggestion = {
+  kind: "note" | "task" | "session";
+  id: string;
+  title: string;
+  subtitle?: string;
+  badge: string;
+  gtdStatus?: string;
+};
+
+export type ChatPathSuggestion =
+  | { kind: "directory"; name: string; relativePath: string }
+  | { kind: "file"; name: string; relativePath: string }
+  | { kind: "project"; label: string; path: string };
 
 interface TaskSummary {
   noteId: string;
@@ -40,6 +67,135 @@ export function sortGtdTasks<T extends { gtdStatus?: string; updatedAtMs?: numbe
     }
     return (b.updatedAtMs || 0) - (a.updatedAtMs || 0);
   });
+}
+
+/**
+ * Compile prompt by reading referenced skills, notes/tasks/sessions (@), and files (#)
+ * into rich context blocks prepended to the user's prompt.
+ */
+export async function compileChatPrompt(
+  rawText: string,
+  options: {
+    workspaceDir?: string;
+    skills?: SkillDescriptor[];
+    tools?: AgentToolDescriptor[];
+    referencedMentions?: ChatMentionSuggestion[];
+    referencedFiles?: string[];
+  }
+): Promise<string> {
+  let userText = rawText.trim();
+  if (!userText) return "";
+
+  const contextBlocks: string[] = [];
+
+  // 1. Resolve leading slash command: /skill-name or /tool-name
+  const slashMatch = userText.match(/^\/([a-zA-Z0-9_-]+)(?:\s+(.*))?$/s);
+  if (slashMatch) {
+    const cmdName = slashMatch[1] ?? "";
+    const rest = (slashMatch[2] || "").trim();
+
+    const matchedSkill = options.skills?.find(
+      (s) => s.name.toLowerCase() === cmdName.toLowerCase()
+    );
+    if (matchedSkill?.location && typeof desktopApi().readSkill === "function") {
+      try {
+        const content = await desktopApi().readSkill({ location: matchedSkill.location });
+        if (content) {
+          contextBlocks.push(
+            `[Active Skill Instructions: ${matchedSkill.name}]\n${content.trim()}\n[End Skill Instructions]`
+          );
+          userText = rest || `Execute skill ${matchedSkill.name}`;
+        }
+      } catch (err) {
+        console.warn("Failed to read skill instructions:", err);
+      }
+    } else {
+      const matchedTool = options.tools?.find(
+        (t) => t.name.toLowerCase() === cmdName.toLowerCase()
+      );
+      if (matchedTool) {
+        contextBlocks.push(
+          `[Requested MCP Tool: ${matchedTool.name}]\nDescription: ${matchedTool.description}\n[End Requested MCP Tool]`
+        );
+        userText = rest || `Use tool ${matchedTool.name}`;
+      }
+    }
+  }
+
+  // 2. Resolve @ mentions (Notes, Tasks, Sessions)
+  const resolvedMentionIds = new Set<string>();
+  if (options.referencedMentions && options.referencedMentions.length > 0) {
+    for (const mention of options.referencedMentions) {
+      if (resolvedMentionIds.has(mention.id)) continue;
+      resolvedMentionIds.add(mention.id);
+
+      try {
+        if (mention.kind === "note" && typeof desktopApi().notesRead === "function") {
+          const note = await desktopApi().notesRead({ noteId: mention.id });
+          if (note?.content) {
+            contextBlocks.push(
+              `[Referenced Note: ${note.record?.title || mention.title}]\n${note.content.trim()}\n[End Referenced Note]`
+            );
+          }
+        } else if (mention.kind === "task" && typeof desktopApi().notesRead === "function") {
+          const taskDoc = await desktopApi().notesRead({ noteId: mention.id });
+          const body = taskDoc?.content ? taskDoc.content.trim() : "";
+          const status = mention.gtdStatus ? GTD_STATUS_LABELS[mention.gtdStatus] || mention.gtdStatus : "待办";
+          contextBlocks.push(
+            `[Referenced GTD Task: ${mention.title} (Status: ${status})]\n${body}\n[End Referenced Task]`
+          );
+        } else if (mention.kind === "session" && typeof desktopApi().thunderChatGetConversation === "function") {
+          const conv = await desktopApi().thunderChatGetConversation({ sessionId: mention.id });
+          if (conv && Array.isArray(conv.messages) && conv.messages.length > 0) {
+            const recent = conv.messages.slice(-6).map((m: any) => {
+              const content = typeof m.content === "string" ? m.content : JSON.stringify(m.content);
+              return `${m.role || "user"}: ${content}`;
+            }).join("\n\n");
+            contextBlocks.push(
+              `[Referenced Conversation: ${conv.title || mention.title}]\n${recent}\n[End Referenced Conversation]`
+            );
+          }
+        }
+      } catch (err) {
+        console.warn(`Failed to resolve mention ${mention.kind}:${mention.id}:`, err);
+      }
+    }
+  }
+
+  // 3. Resolve # files
+  const filePathsToRead = new Set<string>(options.referencedFiles || []);
+  const hashMatches = Array.from(userText.matchAll(/(?:^|\s)#([a-zA-Z0-9_\-./\\]+)/g));
+  for (const m of hashMatches) {
+    const rawPath = m[1];
+    if (rawPath && !rawPath.endsWith("/")) {
+      filePathsToRead.add(rawPath);
+    }
+  }
+
+  if (filePathsToRead.size > 0 && options.workspaceDir && typeof desktopApi().workbenchReadFileText === "function") {
+    for (const filePath of filePathsToRead) {
+      try {
+        const fileRes = await desktopApi().workbenchReadFileText({
+          rootPath: options.workspaceDir,
+          filePath,
+          maxBytes: 64 * 1024
+        });
+        if (fileRes && typeof fileRes.content === "string") {
+          contextBlocks.push(
+            `[Referenced File: ${filePath}${fileRes.truncated ? " (truncated)" : ""}]\n${fileRes.content.trim()}\n[End Referenced File]`
+          );
+        }
+      } catch {
+        // File may be invalid, directory, or omitted; skip silently
+      }
+    }
+  }
+
+  if (contextBlocks.length === 0) {
+    return userText;
+  }
+
+  return `${contextBlocks.join("\n\n")}\n\n${userText}`;
 }
 
 interface ChatComposerProps {
@@ -82,13 +238,36 @@ export function ChatComposer({
   workspaceLocked = false,
   useMock,
   onToggleMock,
-  placeholder = "Ask Thunder agent anything, or type @ to reference context...",
+  placeholder = "Ask Thunder agent anything, or type / for skills/mcp, @ for context, # for files...",
   prefillPrompt
 }: ChatComposerProps) {
   const [text, setText] = useState("");
+  const [cursor, setCursor] = useState(0);
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
+  const [skills, setSkills] = useState<SkillDescriptor[]>([]);
+  const [tools, setTools] = useState<AgentToolDescriptor[]>([]);
+  const [notes, setNotes] = useState<Array<{ id: string; title: string; folder?: string }>>([]);
+  const [conversations, setConversations] = useState<Array<{ id: string; title?: string; message_count?: number }>>([]);
+  const [referencedMentions, setReferencedMentions] = useState<ChatMentionSuggestion[]>([]);
+  const [referencedFiles, setReferencedFiles] = useState<string[]>([]);
+
+  const [slashDismissed, setSlashDismissed] = useState(false);
+  const [mentionDismissed, setMentionDismissed] = useState(false);
+  const [directoryDismissed, setDirectoriesDismissed] = useState(false);
+
+  const [activeSlash, setActiveSlash] = useState(0);
+  const [activeMention, setActiveMention] = useState(0);
+  const [activeDirectory, setActiveDirectory] = useState(0);
+
+  const [directoryEntries, setDirectoryEntries] = useState<Array<{ name: string; isDirectory: boolean }> | null>(null);
+  const [directoryLoading, setDirectoryLoading] = useState(false);
+  const [directoryError, setDirectoryError] = useState("");
+
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const workspaceButtonRef = useRef<HTMLButtonElement | null>(null);
+  const slashItemRefs = useRef<Array<HTMLLIElement | null>>([]);
+  const mentionItemRefs = useRef<Array<HTMLLIElement | null>>([]);
+  const directoryItemRefs = useRef<Array<HTMLLIElement | null>>([]);
 
   const loadTasks = useCallback(async () => {
     if (typeof desktopApi().notesListTasks !== "function") return;
@@ -109,6 +288,60 @@ export function ChatComposer({
     return () => window.removeEventListener("agent-resume:notes-mutated", handleMutated);
   }, [loadTasks]);
 
+  // Load skills & agent tools
+  useEffect(() => {
+    let cancelled = false;
+    const loadSkillsAndTools = async () => {
+      try {
+        if (typeof desktopApi().listSkills === "function") {
+          const s = await desktopApi().listSkills({ projectPath: workspaceDir });
+          if (!cancelled && Array.isArray(s)) setSkills(s);
+        }
+        if (typeof desktopApi().listAgentTools === "function") {
+          const t = await desktopApi().listAgentTools({ projectPath: workspaceDir });
+          if (!cancelled && Array.isArray(t)) setTools(t);
+        }
+      } catch (err) {
+        console.warn("Failed to load skills/tools:", err);
+      }
+    };
+    void loadSkillsAndTools();
+    return () => {
+      cancelled = true;
+    };
+  }, [workspaceDir]);
+
+  // Load notes & conversations for @ mentions
+  useEffect(() => {
+    let cancelled = false;
+    const loadNotesAndConvs = async () => {
+      try {
+        if (typeof desktopApi().notesList === "function") {
+          const n = await desktopApi().notesList();
+          if (!cancelled && Array.isArray(n)) {
+            setNotes(
+              n.map((item) => ({
+                id: item.noteId,
+                title: item.title || item.noteId,
+                folder: item.relDir
+              }))
+            );
+          }
+        }
+        if (typeof desktopApi().thunderChatListConversations === "function") {
+          const c = await desktopApi().thunderChatListConversations();
+          if (!cancelled && Array.isArray(c)) setConversations(c);
+        }
+      } catch (err) {
+        console.warn("Failed to load notes/conversations:", err);
+      }
+    };
+    void loadNotesAndConvs();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const currentTask = useMemo(() => {
     if (workspaceSource === "gtd" && taskNoteId) {
       return tasks.find((t) => t.noteId === taskNoteId) || null;
@@ -125,6 +358,7 @@ export function ChatComposer({
         if (el) {
           el.focus();
           el.setSelectionRange(el.value.length, el.value.length);
+          setCursor(el.value.length);
         }
       }, 50);
     }
@@ -152,15 +386,452 @@ export function ChatComposer({
     }
   }, [workspaceDir, onSelectWorkspaceDir]);
 
+  // Cursor tokens
+  const slashToken = useMemo(() => slashTokenAtCursor(text, cursor), [cursor, text]);
+  const atToken = useMemo(() => atTokenAtCursor(text, cursor), [cursor, text]);
+  const hashToken = useMemo(() => hashTokenAtCursor(text, cursor), [cursor, text]);
+
+  // Slash suggestions (/): skills + mcp tools
+  const slashSuggestions = useMemo<ChatSlashSuggestion[]>(() => {
+    if (!slashToken) return [];
+    const q = slashToken.query.toLowerCase();
+    const out: ChatSlashSuggestion[] = [];
+
+    for (const s of skills) {
+      if (!q || s.name.toLowerCase().includes(q) || s.description?.toLowerCase().includes(q)) {
+        out.push({
+          kind: "skill",
+          name: s.name,
+          description: s.description || "Skill",
+          location: s.location
+        });
+      }
+    }
+
+    for (const t of tools) {
+      if (t.kind === "skill") continue;
+      if (!q || t.name.toLowerCase().includes(q) || t.description?.toLowerCase().includes(q)) {
+        out.push({
+          kind: "mcp",
+          name: t.name,
+          description: t.description || "MCP Tool"
+        });
+      }
+    }
+
+    return out.slice(0, 30);
+  }, [slashToken, skills, tools]);
+
+  // Mention suggestions (@): notes, GTD tasks, sessions
+  const mentionSuggestions = useMemo<ChatMentionSuggestion[]>(() => {
+    if (!atToken) return [];
+    const q = atToken.query.toLowerCase();
+    const out: ChatMentionSuggestion[] = [];
+
+    // GTD Tasks first
+    for (const t of sortGtdTasks(tasks)) {
+      const title = t.title || t.noteId;
+      const statusLabel = GTD_STATUS_LABELS[t.gtdStatus || "inbox"] || "待办";
+      if (!q || title.toLowerCase().includes(q) || statusLabel.toLowerCase().includes(q)) {
+        out.push({
+          kind: "task",
+          id: t.noteId,
+          title,
+          subtitle: `[${statusLabel}]`,
+          badge: "任务",
+          gtdStatus: t.gtdStatus
+        });
+      }
+    }
+
+    // Notes
+    for (const n of notes) {
+      if (!q || n.title.toLowerCase().includes(q) || n.folder?.toLowerCase().includes(q)) {
+        out.push({
+          kind: "note",
+          id: n.id,
+          title: n.title,
+          subtitle: n.folder || "笔记",
+          badge: "笔记"
+        });
+      }
+    }
+
+    // Sessions
+    for (const c of conversations) {
+      const title = c.title || "会话";
+      if (!q || title.toLowerCase().includes(q)) {
+        out.push({
+          kind: "session",
+          id: c.id,
+          title,
+          subtitle: `${c.message_count || 0} 条消息`,
+          badge: "会话"
+        });
+      }
+    }
+
+    return out.slice(0, 30);
+  }, [atToken, tasks, notes, conversations]);
+
+  // Path suggestions (#): directories and files
+  const directoryQueryPath = hashToken?.dirPath ?? "";
+  const workspaceProjects = currentTask?.work?.projects || [];
+  const sharedWorkspaceRoot = directoryQueryPath === "" && workspaceProjects.length > 0;
+
+  const directoryProject = useMemo(() => {
+    if (!directoryQueryPath) return undefined;
+    const first = directoryQueryPath.split("/")[0];
+    return workspaceProjects.find((p) => p.split("/").pop() === first || p === first);
+  }, [directoryQueryPath, workspaceProjects]);
+
+  const directoryListRoot = directoryProject ? directoryProject : workspaceDir;
+
+  const currentDirectory = useMemo(() => {
+    if (!hashToken) return null;
+    if (!directoryQueryPath) return workspaceDir;
+    const rest = directoryProject
+      ? directoryQueryPath.split("/").slice(1).join("/")
+      : directoryQueryPath;
+    return rest ? joinDirPath(directoryListRoot, rest) : directoryListRoot;
+  }, [directoryListRoot, directoryProject, directoryQueryPath, hashToken, workspaceDir]);
+
+  useEffect(() => {
+    setActiveDirectory(0);
+    if (sharedWorkspaceRoot) {
+      setDirectoryEntries(null);
+      setDirectoryError("");
+      setDirectoryLoading(false);
+      return;
+    }
+    if (!hashToken || !currentDirectory || typeof desktopApi().workbenchListDirectory !== "function") {
+      return;
+    }
+    let cancelled = false;
+    setDirectoryEntries(null);
+    setDirectoryError("");
+    setDirectoryLoading(true);
+
+    void desktopApi().workbenchListDirectory({ rootPath: directoryListRoot, dirPath: currentDirectory })
+      .then((res) => {
+        if (cancelled) return;
+        setDirectoryEntries(res.entries || []);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setDirectoryError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        if (!cancelled) setDirectoryLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentDirectory, directoryListRoot, hashToken, sharedWorkspaceRoot]);
+
+  const directorySuggestions = useMemo<ChatPathSuggestion[]>(() => {
+    if (!hashToken) return [];
+    const q = hashToken.query.toLowerCase();
+
+    if (sharedWorkspaceRoot) {
+      return workspaceProjects
+        .map((projPath) => {
+          const label = projPath.split("/").filter(Boolean).pop() || projPath;
+          return { kind: "project" as const, label, path: projPath };
+        })
+        .filter((p) => !q || p.label.toLowerCase().includes(q) || p.path.toLowerCase().includes(q));
+    }
+
+    if (!directoryEntries) return [];
+
+    return directoryEntries
+      .filter((entry) => !q || entry.name.toLowerCase().includes(q))
+      .sort((a, b) => {
+        if (a.isDirectory !== b.isDirectory) {
+          return a.isDirectory ? -1 : 1;
+        }
+        return a.name.localeCompare(b.name);
+      })
+      .map((entry) => {
+        const rel = directoryQueryPath ? `${directoryQueryPath}/${entry.name}` : entry.name;
+        return entry.isDirectory
+          ? { kind: "directory" as const, name: entry.name, relativePath: rel }
+          : { kind: "file" as const, name: entry.name, relativePath: rel };
+      });
+  }, [directoryEntries, directoryQueryPath, hashToken, sharedWorkspaceRoot, workspaceProjects]);
+
+  const slashOpen = Boolean(slashToken) && !slashDismissed && slashSuggestions.length > 0;
+  const mentionOpen = !slashOpen && Boolean(atToken) && !mentionDismissed && mentionSuggestions.length > 0;
+  const directoryOpen = !slashOpen && !mentionOpen && Boolean(hashToken) && !directoryDismissed;
+
+  // Auto-scroll active option into view
+  useEffect(() => {
+    if (!slashOpen || !slashSuggestions.length) return;
+    const frame = requestAnimationFrame(() => {
+      const el = slashItemRefs.current[activeSlash];
+      if (typeof el?.scrollIntoView === "function") {
+        el.scrollIntoView({ block: "nearest" });
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [activeSlash, slashOpen, slashSuggestions]);
+
+  useEffect(() => {
+    if (!mentionOpen || !mentionSuggestions.length) return;
+    const frame = requestAnimationFrame(() => {
+      const el = mentionItemRefs.current[activeMention];
+      if (typeof el?.scrollIntoView === "function") {
+        el.scrollIntoView({ block: "nearest" });
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [activeMention, mentionOpen, mentionSuggestions]);
+
+  useEffect(() => {
+    if (!directoryOpen || !directorySuggestions.length) return;
+    const frame = requestAnimationFrame(() => {
+      const el = directoryItemRefs.current[activeDirectory];
+      if (typeof el?.scrollIntoView === "function") {
+        el.scrollIntoView({ block: "nearest" });
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [activeDirectory, directoryOpen, directorySuggestions]);
+
+  const acceptSlashSuggestion = useCallback(
+    (item: ChatSlashSuggestion) => {
+      if (!slashToken) return;
+      const inserted = `/${item.name} `;
+      const next = `${text.slice(0, slashToken.start)}${inserted}${text.slice(cursor)}`;
+      const nextCursor = slashToken.start + inserted.length;
+      setText(next);
+      setSlashDismissed(true);
+      setActiveSlash(0);
+      requestAnimationFrame(() => {
+        const el = textareaRef.current;
+        if (el) {
+          el.focus();
+          el.setSelectionRange(nextCursor, nextCursor);
+        }
+        setCursor(nextCursor);
+      });
+    },
+    [cursor, slashToken, text]
+  );
+
+  const acceptMentionSuggestion = useCallback(
+    (item: ChatMentionSuggestion) => {
+      if (!atToken) return;
+      const inserted = `@${item.title} `;
+      const next = `${text.slice(0, atToken.start)}${inserted}${text.slice(cursor)}`;
+      const nextCursor = atToken.start + inserted.length;
+      setText(next);
+      setMentionDismissed(true);
+      setActiveMention(0);
+      setReferencedMentions((prev) => [...prev, item]);
+      requestAnimationFrame(() => {
+        const el = textareaRef.current;
+        if (el) {
+          el.focus();
+          el.setSelectionRange(nextCursor, nextCursor);
+        }
+        setCursor(nextCursor);
+      });
+    },
+    [atToken, cursor, text]
+  );
+
+  const enterDirectory = useCallback(
+    (suggestion: ChatPathSuggestion) => {
+      if (!hashToken) return;
+      const inserted =
+        suggestion.kind === "project"
+          ? `#${suggestion.label}/`
+          : `#${directoryQueryPath ? `${directoryQueryPath}/${suggestion.name}` : suggestion.name}/`;
+      const next = `${text.slice(0, hashToken.start)}${inserted}${text.slice(cursor)}`;
+      const nextCursor = hashToken.start + inserted.length;
+      setText(next);
+      setActiveDirectory(0);
+      setDirectoriesDismissed(false);
+      requestAnimationFrame(() => {
+        const el = textareaRef.current;
+        if (el) {
+          el.focus();
+          el.setSelectionRange(nextCursor, nextCursor);
+        }
+        setCursor(nextCursor);
+      });
+    },
+    [cursor, directoryQueryPath, hashToken, text]
+  );
+
+  const leaveDirectory = useCallback(() => {
+    if (!hashToken || !directoryQueryPath) return;
+    const parent = directoryQueryPath.split("/").filter(Boolean).slice(0, -1).join("/");
+    const inserted = parent ? `#${parent}/` : "#";
+    const next = `${text.slice(0, hashToken.start)}${inserted}${text.slice(cursor)}`;
+    const nextCursor = hashToken.start + inserted.length;
+    setText(next);
+    setActiveDirectory(0);
+    setDirectoriesDismissed(false);
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (el) {
+        el.focus();
+        el.setSelectionRange(nextCursor, nextCursor);
+      }
+      setCursor(nextCursor);
+    });
+  }, [cursor, directoryQueryPath, hashToken, text]);
+
+  const acceptDirectory = useCallback(
+    (suggestion: ChatPathSuggestion) => {
+      if (!hashToken) return;
+      if (suggestion.kind === "directory" || suggestion.kind === "project") {
+        enterDirectory(suggestion);
+        return;
+      }
+      const inserted = `#${suggestion.relativePath} `;
+      const next = `${text.slice(0, hashToken.start)}${inserted}${text.slice(cursor)}`;
+      const nextCursor = hashToken.start + inserted.length;
+      setText(next);
+      setDirectoriesDismissed(true);
+      setActiveDirectory(0);
+      setReferencedFiles((prev) => [...new Set([...prev, suggestion.relativePath])]);
+      requestAnimationFrame(() => {
+        const el = textareaRef.current;
+        if (el) {
+          el.focus();
+          el.setSelectionRange(nextCursor, nextCursor);
+        }
+        setCursor(nextCursor);
+      });
+    },
+    [enterDirectory, hashToken, cursor, text]
+  );
+
+  const doSend = async () => {
+    if (isStreaming) {
+      onCancel();
+      return;
+    }
+    const currentText = text.trim();
+    if (!currentText) return;
+
+    setText("");
+    const mentionsToCompile = [...referencedMentions];
+    const filesToCompile = [...referencedFiles];
+    setReferencedMentions([]);
+    setReferencedFiles([]);
+
+    try {
+      const effectivePrompt = await compileChatPrompt(currentText, {
+        workspaceDir,
+        skills,
+        tools,
+        referencedMentions: mentionsToCompile,
+        referencedFiles: filesToCompile
+      });
+      onSend(effectivePrompt, { workspaceDir, model: selectedModel, thinking_level: thinkingLevel });
+    } catch (err) {
+      console.warn("Failed to compile prompt context:", err);
+      onSend(currentText, { workspaceDir, model: selectedModel, thinking_level: thinkingLevel });
+    }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (slashOpen && slashSuggestions.length > 0) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setSlashDismissed(true);
+        return;
+      }
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setActiveSlash((prev) => (prev + 1) % slashSuggestions.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setActiveSlash((prev) => (prev - 1 + slashSuggestions.length) % slashSuggestions.length);
+        return;
+      }
+      if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
+        e.preventDefault();
+        const pick = slashSuggestions[activeSlash] ?? slashSuggestions[0];
+        if (pick) acceptSlashSuggestion(pick);
+        return;
+      }
+    }
+
+    if (mentionOpen && mentionSuggestions.length > 0) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setMentionDismissed(true);
+        return;
+      }
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setActiveMention((prev) => (prev + 1) % mentionSuggestions.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setActiveMention((prev) => (prev - 1 + mentionSuggestions.length) % mentionSuggestions.length);
+        return;
+      }
+      if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
+        e.preventDefault();
+        const pick = mentionSuggestions[activeMention] ?? mentionSuggestions[0];
+        if (pick) acceptMentionSuggestion(pick);
+        return;
+      }
+    }
+
+    if (directoryOpen) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setDirectoriesDismissed(true);
+        return;
+      }
+      if (e.key === "ArrowLeft" && directoryQueryPath) {
+        e.preventDefault();
+        leaveDirectory();
+        return;
+      }
+      if (directorySuggestions.length > 0) {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          setActiveDirectory((prev) => (prev + 1) % directorySuggestions.length);
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          setActiveDirectory((prev) => (prev - 1 + directorySuggestions.length) % directorySuggestions.length);
+          return;
+        }
+        if (e.key === "ArrowRight") {
+          e.preventDefault();
+          const pick = directorySuggestions[activeDirectory];
+          if (pick) enterDirectory(pick);
+          return;
+        }
+        if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
+          e.preventDefault();
+          const pick = directorySuggestions[activeDirectory];
+          if (pick) acceptDirectory(pick);
+          return;
+        }
+      }
+    }
+
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       if (isStreaming) {
         return;
       }
       if (text.trim()) {
-        onSend(text, { workspaceDir, model: selectedModel, thinking_level: thinkingLevel });
-        setText("");
+        void doSend();
       }
     }
   };
@@ -169,8 +840,7 @@ export function ChatComposer({
     if (isStreaming) {
       onCancel();
     } else if (text.trim()) {
-      onSend(text, { workspaceDir, model: selectedModel, thinking_level: thinkingLevel });
-      setText("");
+      void doSend();
     }
   };
 
@@ -349,12 +1019,160 @@ export function ChatComposer({
             ref={textareaRef}
             className="tb-composer-textarea"
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => {
+              const next = e.target.value;
+              setText(next);
+              setCursor(e.target.selectionStart || next.length);
+              setSlashDismissed(false);
+              setMentionDismissed(false);
+              setDirectoriesDismissed(false);
+            }}
+            onSelect={(e) => {
+              setCursor(e.currentTarget.selectionStart || 0);
+            }}
+            onClick={(e) => {
+              setCursor(e.currentTarget.selectionStart || 0);
+            }}
+            onKeyUp={(e) => {
+              setCursor(e.currentTarget.selectionStart || 0);
+            }}
             onKeyDown={handleKeyDown}
             placeholder={placeholder}
             rows={1}
           />
         </div>
+
+        {slashOpen ? (
+          <ul
+            id="chat-composer-slash-list"
+            className="wb-terminal-composer-suggestions"
+            role="listbox"
+            aria-label="Slash commands"
+          >
+            {slashSuggestions.map((item, index) => (
+              <li
+                ref={(el) => {
+                  slashItemRefs.current[index] = el;
+                }}
+                key={`${item.kind}:${item.name}`}
+                id={`chat-slash-${index}`}
+                role="option"
+                aria-selected={index === activeSlash}
+                className={`wb-terminal-composer-suggestion${index === activeSlash ? " is-active" : ""}`}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => acceptSlashSuggestion(item)}
+              >
+                <ThemeIcon
+                  name={item.kind === "skill" ? "sparkles" : "wrench"}
+                  size={ICON_SIZE.dense}
+                />
+                <span className="wb-terminal-composer-suggestion-text">/{item.name}</span>
+                <span className="tb-composer-suggestion-badge">
+                  {item.kind === "skill" ? "Skill" : "MCP"}
+                </span>
+                {item.description ? (
+                  <span className="wb-terminal-composer-suggestion-desc">{item.description}</span>
+                ) : null}
+                <span className="wb-terminal-composer-suggestion-kbd" aria-hidden="true">Tab</span>
+              </li>
+            ))}
+          </ul>
+        ) : mentionOpen ? (
+          <ul
+            id="chat-composer-mention-list"
+            className="wb-terminal-composer-suggestions"
+            role="listbox"
+            aria-label="Mention context"
+          >
+            {mentionSuggestions.map((item, index) => {
+              const iconName =
+                item.kind === "task"
+                  ? "square-kanban"
+                  : item.kind === "note"
+                    ? "notebook"
+                    : "message-square";
+              return (
+                <li
+                  ref={(el) => {
+                    mentionItemRefs.current[index] = el;
+                  }}
+                  key={`${item.kind}:${item.id}`}
+                  id={`chat-mention-${index}`}
+                  role="option"
+                  aria-selected={index === activeMention}
+                  className={`wb-terminal-composer-suggestion${index === activeMention ? " is-active" : ""}`}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => acceptMentionSuggestion(item)}
+                >
+                  <ThemeIcon name={iconName} size={ICON_SIZE.dense} />
+                  <span className="wb-terminal-composer-suggestion-text">@{item.title}</span>
+                  <span className="tb-composer-suggestion-badge">{item.badge}</span>
+                  {item.subtitle ? (
+                    <span className="wb-terminal-composer-suggestion-desc">{item.subtitle}</span>
+                  ) : null}
+                  <span className="wb-terminal-composer-suggestion-kbd" aria-hidden="true">Tab</span>
+                </li>
+              );
+            })}
+          </ul>
+        ) : directoryOpen ? (
+          <ul
+            id="chat-composer-directory-list"
+            className="wb-terminal-composer-suggestions"
+            role="listbox"
+            aria-label="Files and directories"
+          >
+            {directoryLoading ? (
+              <li className="wb-terminal-composer-suggestion" role="option" aria-disabled="true">
+                <span className="wb-terminal-composer-suggestion-text">正在加载目录内容...</span>
+              </li>
+            ) : directoryError ? (
+              <li className="wb-terminal-composer-suggestion" role="option" aria-disabled="true">
+                <span className="wb-terminal-composer-suggestion-text">{directoryError}</span>
+              </li>
+            ) : directorySuggestions.length > 0 ? (
+              directorySuggestions.map((suggestion, index) => {
+                const isDir = suggestion.kind === "directory" || suggestion.kind === "project";
+                const iconName =
+                  suggestion.kind === "project" ? "square-kanban" : isDir ? "folder" : "file-code";
+                const displayLabel =
+                  suggestion.kind === "project"
+                    ? suggestion.label
+                    : `#${suggestion.relativePath}${isDir ? "/" : ""}`;
+                return (
+                  <li
+                    ref={(el) => {
+                      directoryItemRefs.current[index] = el;
+                    }}
+                    key={suggestion.kind === "project" ? suggestion.path : suggestion.relativePath}
+                    id={`chat-directory-${index}`}
+                    role="option"
+                    aria-selected={index === activeDirectory}
+                    className={`wb-terminal-composer-suggestion${index === activeDirectory ? " is-active" : ""}`}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => acceptDirectory(suggestion)}
+                  >
+                    <ThemeIcon name={iconName} size={ICON_SIZE.dense} />
+                    <span className="wb-terminal-composer-suggestion-text">{displayLabel}</span>
+                    <span className="tb-composer-suggestion-badge">
+                      {suggestion.kind === "project" ? "项目" : isDir ? "目录" : "文件"}
+                    </span>
+                    {suggestion.kind === "project" ? (
+                      <span className="wb-terminal-composer-suggestion-desc">{suggestion.path}</span>
+                    ) : null}
+                    <span className="wb-terminal-composer-suggestion-kbd" aria-hidden="true">
+                      {isDir ? "Tab · →" : "Tab"}
+                    </span>
+                  </li>
+                );
+              })
+            ) : (
+              <li className="wb-terminal-composer-suggestion" role="option" aria-disabled="true">
+                <span className="wb-terminal-composer-suggestion-text">无匹配文件或目录</span>
+              </li>
+            )}
+          </ul>
+        ) : null}
 
         <div className="tb-composer-toolbar">
           <div className="tb-composer-tools-left">

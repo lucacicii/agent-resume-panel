@@ -18113,6 +18113,7 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 }
 
 .tb-composer-box {
+  position: relative;
   pointer-events: auto;
   max-width: 800px;
   margin: 0 auto;
@@ -18122,7 +18123,7 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.04);
   backdrop-filter: var(--backdrop-blur-heavy);
   -webkit-backdrop-filter: var(--backdrop-blur-heavy);
-  overflow: hidden;
+  overflow: visible;
   transition: all 0.15s ease;
 }
 
@@ -18291,6 +18292,25 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 .tb-composer-tools-right {
   display: flex;
   align-items: center;
+}
+
+.tb-composer-suggestion-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm, 4px);
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  background: var(--color-fill-secondary);
+  color: var(--color-label-secondary);
+  flex-shrink: 0;
+}
+
+.wb-terminal-composer-suggestion.is-active .tb-composer-suggestion-badge {
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
 }
 
 .tb-composer-action-btn {
