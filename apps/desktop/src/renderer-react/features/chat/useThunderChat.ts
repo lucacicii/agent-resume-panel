@@ -19,6 +19,7 @@ export interface ChatRunMetrics {
   promptTokens?: number;
   completionTokens?: number;
   cachedTokens?: number;
+  reasoningTokens?: number;
   totalTokens?: number;
   durationMs?: number;
 }
@@ -167,6 +168,7 @@ export function useThunderChat() {
   const [sessionTotalTokens, setSessionTotalTokens] = useState<number>(0);
   const [currentContextTokens, setCurrentContextTokens] = useState<number>(0);
   const [streamTokensCount, setStreamTokensCount] = useState(0);
+  const [streamReasoningCount, setStreamReasoningCount] = useState(0);
   const [streamStartTime, setStreamStartTime] = useState<number | null>(null);
 
   // A question the agent is blocked on; rendered as a bubble until answered.
@@ -383,6 +385,7 @@ export function useThunderChat() {
           promptTokens: trace.stats.total_prompt_tokens,
           completionTokens: trace.stats.total_completion_tokens,
           cachedTokens: trace.stats.total_cached_tokens ?? 0,
+          reasoningTokens: trace.stats.total_reasoning_tokens,
           totalTokens: (trace.stats.total_prompt_tokens || 0) + (trace.stats.total_completion_tokens || 0),
           durationMs: trace.stats.total_duration_ms
         });
@@ -544,7 +547,8 @@ export function useThunderChat() {
       setStreamingReasoning("");
       setStreamingTools([]);
       setStreamTokensCount(0);
-      setStreamStartTime(Date.now());
+      setStreamReasoningCount(0);
+      setStreamStartTime(null);
       setIsStreaming(true);
 
       const taskId = `task_${Date.now()}`;
@@ -635,6 +639,7 @@ export function useThunderChat() {
           setStreamingReasoning("");
           setStreamingTools([]);
           setStreamTokensCount(0);
+          setStreamReasoningCount(0);
           setStreamStartTime(null);
           setIsStreaming(false);
           setActiveTaskId(null);
@@ -649,6 +654,7 @@ export function useThunderChat() {
                   promptTokens: latestTrace.stats.total_prompt_tokens,
                   completionTokens: latestTrace.stats.total_completion_tokens,
                   cachedTokens: latestTrace.stats.total_cached_tokens ?? 0,
+                  reasoningTokens: latestTrace.stats.total_reasoning_tokens,
                   totalTokens: (latestTrace.stats.total_prompt_tokens || 0) + (latestTrace.stats.total_completion_tokens || 0),
                   durationMs: latestTrace.stats.total_duration_ms
                 });
@@ -842,6 +848,9 @@ export function useThunderChat() {
           stream.streamingReasoning += delta;
           if (isCurrentSession) {
             setStreamingReasoning((prev) => prev + delta);
+            setStreamTokensCount((prev) => prev + 1);
+            setStreamReasoningCount((prev) => prev + 1);
+            setStreamStartTime((prev) => prev || Date.now());
           }
           break;
         }
@@ -885,6 +894,7 @@ export function useThunderChat() {
             const cached = typeof stats.cached_tokens === "number"
               ? stats.cached_tokens
               : (pt !== undefined ? 0 : undefined);
+            const reasoning = typeof stats.reasoning_tokens === "number" ? stats.reasoning_tokens : undefined;
             const dur = typeof stats.duration_ms === "number" ? stats.duration_ms : 0;
             const tps = typeof stats.tokens_per_second === "number" && Number.isFinite(stats.tokens_per_second)
               ? stats.tokens_per_second
@@ -895,6 +905,7 @@ export function useThunderChat() {
               promptTokens: pt,
               completionTokens: ct,
               cachedTokens: cached,
+              reasoningTokens: reasoning,
               totalTokens: turnTotal,
               durationMs: dur
             });
@@ -912,6 +923,7 @@ export function useThunderChat() {
             const pt = typeof stats.total_prompt_tokens === "number" ? stats.total_prompt_tokens : undefined;
             const ct = typeof stats.total_completion_tokens === "number" ? stats.total_completion_tokens : undefined;
             const cached = typeof stats.total_cached_tokens === "number" ? stats.total_cached_tokens : 0;
+            const reasoning = typeof stats.total_reasoning_tokens === "number" ? stats.total_reasoning_tokens : undefined;
             const dur = typeof stats.total_duration_ms === "number" ? stats.total_duration_ms : 0;
             const tps = typeof stats.avg_tokens_per_second === "number" && Number.isFinite(stats.avg_tokens_per_second)
               ? stats.avg_tokens_per_second
@@ -922,6 +934,7 @@ export function useThunderChat() {
               promptTokens: pt,
               completionTokens: ct,
               cachedTokens: cached,
+              reasoningTokens: reasoning,
               totalTokens: total,
               durationMs: dur
             });
@@ -1060,7 +1073,11 @@ export function useThunderChat() {
     telemetryNotices,
     isCollectingTrace,
     lastRunMetrics,
-    streamingMetrics: { tokensCount: streamTokensCount, tps: liveStreamingTps },
+    streamingMetrics: {
+      tokensCount: streamTokensCount,
+      tps: liveStreamingTps,
+      reasoningCount: streamReasoningCount
+    },
     sessionTotalTokens,
     currentContextTokens,
     contextWindowLimit

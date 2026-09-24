@@ -356,4 +356,72 @@ describe("ChatComposer UI popovers and keyboard interactions", () => {
     expect(onSend.mock.calls[0][1]).toMatchObject({ role: "plan" });
   });
 
+  it("keeps the Cache badge always visible during streaming and renders reasoning tokens", () => {
+    const { container, rerender } = render(
+      <ChatComposer
+        {...defaultProps}
+        isStreaming={true}
+        streamingMetrics={{ tokensCount: 150, tps: 25.5, reasoningCount: 90 }}
+        lastRunMetrics={{
+          promptTokens: 1000,
+          completionTokens: 200,
+          cachedTokens: 800,
+          reasoningTokens: 120,
+          totalTokens: 1200,
+          tps: 30
+        }}
+      />
+    );
+
+    // During streaming: tok/s, token count, and reasoning breakdown are displayed
+    expect(container.textContent).toContain("25.5 tok/s");
+    expect(container.textContent).toContain("150 tokens");
+    expect(container.textContent).toContain("(含思考 90)");
+
+    // Cache badge is ALWAYS visible during streaming and retains previous-turn cache info
+    const cacheBadge = container.querySelector(".tb-metrics-cache-badge");
+    expect(cacheBadge).not.toBeNull();
+    expect(cacheBadge?.textContent).toContain("Cache 800");
+    expect(cacheBadge?.textContent).toContain("80%");
+
+    // Now switch to completed (non-streaming) turn
+    rerender(
+      <ChatComposer
+        {...defaultProps}
+        isStreaming={false}
+        lastRunMetrics={{
+          promptTokens: 1000,
+          completionTokens: 350,
+          cachedTokens: 800,
+          reasoningTokens: 200,
+          totalTokens: 1350,
+          tps: 28.4
+        }}
+      />
+    );
+
+    // Completed turn: speed, turn tokens, breakdown with reasoning tokens, and persistent Cache badge
+    expect(container.textContent).toContain("28.4 tok/s");
+    expect(container.textContent).toContain("Turn: 1,350");
+    expect(container.textContent).toContain("In 1,000 · Out 350 (含思考 200)");
+    const finishedCacheBadge = container.querySelector(".tb-metrics-cache-badge");
+    expect(finishedCacheBadge).not.toBeNull();
+    expect(finishedCacheBadge?.textContent).toContain("Cache 800");
+  });
+
+  it("renders Cache 0 in initial state without crashing or disappearing", () => {
+    const { container } = render(
+      <ChatComposer
+        {...defaultProps}
+        isStreaming={false}
+        lastRunMetrics={null}
+      />
+    );
+
+    expect(container.textContent).toContain("Ready");
+    const cacheBadge = container.querySelector(".tb-metrics-cache-badge");
+    expect(cacheBadge).not.toBeNull();
+    expect(cacheBadge?.textContent).toContain("Cache 0");
+    expect(cacheBadge?.className).toContain("is-zero");
+  });
 });

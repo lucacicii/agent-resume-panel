@@ -86,6 +86,7 @@ export interface ThunderTurnStats {
   prompt_tokens?: number;
   completion_tokens?: number;
   cached_tokens?: number;
+  reasoning_tokens?: number;
   duration_ms: number;
   tool_calls_count: number;
   tokens_per_second?: number;
@@ -96,6 +97,7 @@ export interface ThunderAgentStats {
   total_prompt_tokens: number;
   total_completion_tokens: number;
   total_cached_tokens?: number;
+  total_reasoning_tokens?: number;
   total_duration_ms: number;
   total_tool_executions: number;
   total_tool_time_ms: number;

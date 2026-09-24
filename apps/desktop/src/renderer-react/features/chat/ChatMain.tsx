@@ -56,7 +56,7 @@ interface ChatMainProps {
   telemetryNotices?: ThunderTelemetryNotice[];
   isCollectingTrace?: boolean;
   lastRunMetrics?: ChatRunMetrics | null;
-  streamingMetrics?: { tokensCount: number; tps: number } | null;
+  streamingMetrics?: { tokensCount: number; tps: number; reasoningCount?: number } | null;
   sessionTotalTokens?: number;
   currentContextTokens?: number;
   contextWindowLimit?: number;

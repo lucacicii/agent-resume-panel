@@ -18847,6 +18847,10 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   border: 1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.05));
 }
 
+.tb-metrics-cache-badge.is-streaming {
+  opacity: 0.8;
+}
+
 [data-theme="dark"] .tb-metrics-cache-badge:not(.is-zero) {
   background: rgba(16, 185, 129, 0.18);
   color: #34d399;

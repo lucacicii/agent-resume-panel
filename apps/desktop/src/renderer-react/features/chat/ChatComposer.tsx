@@ -229,7 +229,7 @@ interface ChatComposerProps {
   placeholder?: string;
   prefillPrompt?: { text: string; id: number } | null;
   lastRunMetrics?: ChatRunMetrics | null;
-  streamingMetrics?: { tokensCount: number; tps: number } | null;
+  streamingMetrics?: { tokensCount: number; tps: number; reasoningCount?: number } | null;
   sessionTotalTokens?: number;
   currentContextTokens?: number;
   contextWindowLimit?: number;
@@ -1273,6 +1273,11 @@ export function ChatComposer({
                 <span className="tb-metrics-divider" />
                 <span className="tb-metrics-tokens">
                   {typeof streamingMetrics?.tokensCount === "number" ? streamingMetrics.tokensCount : 0} tokens
+                  {typeof streamingMetrics?.reasoningCount === "number" && streamingMetrics.reasoningCount > 0 ? (
+                    <span className="tb-metrics-breakdown">
+                      {" "}(含思考 {streamingMetrics.reasoningCount.toLocaleString()})
+                    </span>
+                  ) : null}
                 </span>
               </>
             ) : lastRunMetrics && (typeof lastRunMetrics.totalTokens === "number" || typeof lastRunMetrics.tps === "number") ? (
@@ -1289,38 +1294,47 @@ export function ChatComposer({
                   Turn: {lastRunMetrics.totalTokens !== undefined ? `${lastRunMetrics.totalTokens.toLocaleString()}` : null}
                   {lastRunMetrics.promptTokens !== undefined && lastRunMetrics.completionTokens !== undefined ? (
                     <span className="tb-metrics-breakdown">
-                      {" "}(In {lastRunMetrics.promptTokens.toLocaleString()} · Out {lastRunMetrics.completionTokens.toLocaleString()})
+                      {" "}(In {lastRunMetrics.promptTokens.toLocaleString()} · Out {lastRunMetrics.completionTokens.toLocaleString()}
+                      {typeof lastRunMetrics.reasoningTokens === "number" && lastRunMetrics.reasoningTokens > 0
+                        ? ` (含思考 ${lastRunMetrics.reasoningTokens.toLocaleString()})`
+                        : ""}
+                      )
                     </span>
                   ) : null}
                 </span>
-                {typeof lastRunMetrics.cachedTokens === "number" || lastRunMetrics.totalTokens !== undefined ? (() => {
-                  const cachedCount = typeof lastRunMetrics.cachedTokens === "number" ? lastRunMetrics.cachedTokens : 0;
-                  const isHit = cachedCount > 0;
-                  const hitPercent = isHit && typeof lastRunMetrics.promptTokens === "number" && lastRunMetrics.promptTokens > 0
-                    ? Math.round((cachedCount / lastRunMetrics.promptTokens) * 100)
-                    : null;
-                  return (
-                    <>
-                      <span className="tb-metrics-divider" />
-                      <span
-                        className={`tb-metrics-cache-badge${!isHit ? " is-zero" : ""}`}
-                        title={
-                          isHit
-                            ? `Prompt Cache 命中: ${cachedCount.toLocaleString()} tokens${hitPercent !== null ? ` (${hitPercent}%)` : ""}`
-                            : "Prompt Cache: 0 tokens (未命中缓存)"
-                        }
-                      >
-                        <ThemeIcon name="zap" size={ICON_SIZE.inline} />
-                        Cache {cachedCount.toLocaleString()}
-                        {hitPercent !== null ? ` (${hitPercent}%)` : null}
-                      </span>
-                    </>
-                  );
-                })() : null}
               </>
             ) : (
               <span className="tb-metrics-speed">⚡ Ready</span>
             )}
+
+            {/* Prompt Cache 常显徽章：流式生成和空闲期间均持续显示，不再跳闪 */}
+            {(() => {
+              const cachedCount = typeof lastRunMetrics?.cachedTokens === "number" ? lastRunMetrics.cachedTokens : 0;
+              const promptCount = typeof lastRunMetrics?.promptTokens === "number" ? lastRunMetrics.promptTokens : 0;
+              const isHit = cachedCount > 0;
+              const hitPercent = isHit && promptCount > 0 ? Math.round((cachedCount / promptCount) * 100) : null;
+              const titleText = isStreaming
+                ? isHit
+                  ? `Prompt Cache: 上一轮已命中 ${cachedCount.toLocaleString()} tokens${hitPercent !== null ? ` (${hitPercent}%)` : ""}，本轮生成中...`
+                  : "Prompt Cache: 本轮生成中..."
+                : isHit
+                  ? `Prompt Cache 命中: ${cachedCount.toLocaleString()} tokens${hitPercent !== null ? ` (${hitPercent}%)` : ""}`
+                  : "Prompt Cache: 0 tokens (未命中缓存)";
+
+              return (
+                <>
+                  <span className="tb-metrics-divider" />
+                  <span
+                    className={`tb-metrics-cache-badge${!isHit ? " is-zero" : ""}${isStreaming ? " is-streaming" : ""}`}
+                    title={titleText}
+                  >
+                    <ThemeIcon name="zap" size={ICON_SIZE.inline} />
+                    Cache {cachedCount.toLocaleString()}
+                    {hitPercent !== null ? ` (${hitPercent}%)` : null}
+                  </span>
+                </>
+              );
+            })()}
           </div>
 
           <div className="tb-metrics-group tb-metrics-right">
