@@ -6,6 +6,12 @@ import * as readline from "node:readline";
 import { randomUUID } from "node:crypto";
 import { loadSettings } from "@agent-resume/core";
 import { buildAugmentedPath } from "../processPath";
+import {
+  describeThunderResolution,
+  resolveThunderDaemon,
+  type ThunderDaemonLocation,
+  type ThunderDaemonSettings
+} from "./daemonResolver";
 import type {
   ThunderRoleInfo,
   ThunderDaemonIncoming,
@@ -16,6 +22,9 @@ import type {
   ThunderTaskTrace,
   ThunderTitleResult
 } from "./thunderProtocol";
+
+/** How long a loaded `settings.thunder` snapshot is trusted before re-reading it. */
+const THUNDER_SETTINGS_TTL_MS = 5_000;
 
 interface PendingRequest {
   resolve: (data: any) => void;
@@ -42,59 +51,43 @@ export class ThunderClient {
   private pendingRequests = new Map<string, PendingRequest>();
   private activeTasks = new Map<string, ActiveTask>();
   private startingPromise: Promise<void> | null = null;
+  private thunderSettings: ThunderDaemonSettings | null = null;
+  private thunderSettingsLoadedAt = 0;
 
   /**
-   * Search candidate paths to locate the Thunder repository or daemon binary.
+   * Re-read `settings.thunder` so a hand-edited settings.json takes effect without a
+   * restart. Cached briefly because `getStatus()` races with UI polling.
    */
-  public resolveDaemon(): {
-    repoPath: string | null;
-    binaryPath: string | null;
-    scriptPath: string | null;
-  } {
-    const candidates: string[] = [];
-
-    if (process.env.THUNDER_DAEMON_BIN && fs.existsSync(process.env.THUNDER_DAEMON_BIN)) {
-      return {
-        repoPath: path.dirname(path.dirname(path.dirname(process.env.THUNDER_DAEMON_BIN))),
-        binaryPath: process.env.THUNDER_DAEMON_BIN,
-        scriptPath: null
-      };
+  public async refreshThunderSettings(force = false): Promise<void> {
+    const now = Date.now();
+    if (!force && this.thunderSettingsLoadedAt && now - this.thunderSettingsLoadedAt < THUNDER_SETTINGS_TTL_MS) {
+      return;
     }
-
-    if (process.env.THUNDER_PATH) {
-      candidates.push(process.env.THUNDER_PATH);
+    this.thunderSettingsLoadedAt = now;
+    try {
+      const settings = await loadSettings();
+      this.thunderSettings = settings?.thunder ?? null;
+    } catch {
+      // Settings are optional; discovery keeps working from env vars and layout probes.
+      this.thunderSettings = null;
     }
+  }
 
-    candidates.push(
-      "/Users/lucas/wz/GitHub/thunder",
-      path.resolve(__dirname, "../../../../../thunder"),
-      path.resolve(process.cwd(), "../thunder"),
-      path.join(os.homedir(), "wz/GitHub/thunder"),
-      path.join(os.homedir(), "GitHub/thunder")
-    );
-
-    for (const repo of candidates) {
-      if (!fs.existsSync(repo)) continue;
-
-      const releaseBin = path.join(repo, "thunder-agent-daemon/target/release/thunder-daemon");
-      if (fs.existsSync(releaseBin)) {
-        return { repoPath: repo, binaryPath: releaseBin, scriptPath: path.join(repo, "daemon.sh") };
-      }
-
-      const debugBin = path.join(repo, "thunder-agent-daemon/target/debug/thunder-daemon");
-      if (fs.existsSync(debugBin)) {
-        return { repoPath: repo, binaryPath: debugBin, scriptPath: path.join(repo, "daemon.sh") };
-      }
-
-      const daemonSh = path.join(repo, "daemon.sh");
-      if (fs.existsSync(daemonSh)) {
-        return { repoPath: repo, binaryPath: null, scriptPath: daemonSh };
-      }
-
-      return { repoPath: repo, binaryPath: null, scriptPath: null };
+  /**
+   * Locate the Thunder daemon. The rules live in `./daemonResolver` (pure, unit-tested);
+   * this only supplies the runtime context.
+   */
+  public resolveDaemon(): ThunderDaemonLocation {
+    const location = resolveThunderDaemon({
+      moduleDir: __dirname,
+      cwd: process.cwd(),
+      resourcesPath: process.resourcesPath,
+      settings: this.thunderSettings
+    });
+    if (process.env.THUNDER_DEBUG === "1") {
+      console.log(`[thunder-client] resolveDaemon → ${describeThunderResolution(location)}`);
     }
-
-    return { repoPath: null, binaryPath: null, scriptPath: null };
+    return location;
   }
 
   public async getStatus(): Promise<{
@@ -102,8 +95,13 @@ export class ThunderClient {
     repoPath: string | null;
     daemonPath: string | null;
     models: ThunderModelInfo[];
+    /** Which discovery rule matched; `none` means nothing usable was found. */
+    source: ThunderDaemonLocation["source"];
+    /** Probed paths, for the settings UI / doctor output. */
+    candidates: string[];
     error?: string;
   }> {
+    await this.refreshThunderSettings();
     const resolved = this.resolveDaemon();
     if (!resolved.binaryPath && !resolved.scriptPath) {
       return {
@@ -111,7 +109,11 @@ export class ThunderClient {
         repoPath: resolved.repoPath,
         daemonPath: null,
         models: [],
-        error: "Thunder daemon binary or daemon.sh not found."
+        source: resolved.source,
+        candidates: resolved.candidates,
+        error: resolved.repoPath
+          ? `Found a thunder checkout at ${resolved.repoPath}, but it has no daemon binary. Build it: cargo build --release -p thunder-agent-daemon`
+          : "Thunder daemon not found. Set THUNDER_PATH (a thunder checkout), THUNDER_DAEMON_BIN (a binary), or settings.thunder.{repoPath,daemonPath}."
       };
     }
 
@@ -128,7 +130,9 @@ export class ThunderClient {
         available: Boolean(ping?.pong),
         repoPath: resolved.repoPath,
         daemonPath: resolved.binaryPath || resolved.scriptPath,
-        models
+        models,
+        source: resolved.source,
+        candidates: resolved.candidates
       };
     } catch (err) {
       return {
@@ -136,6 +140,8 @@ export class ThunderClient {
         repoPath: resolved.repoPath,
         daemonPath: resolved.binaryPath || resolved.scriptPath,
         models: [],
+        source: resolved.source,
+        candidates: resolved.candidates,
         error: err instanceof Error ? err.message : String(err)
       };
     }
@@ -158,9 +164,13 @@ export class ThunderClient {
   }
 
   private async startProcess(): Promise<void> {
+    await this.refreshThunderSettings();
     const resolved = this.resolveDaemon();
     if (!resolved.binaryPath && !resolved.scriptPath) {
-      throw new Error("Thunder daemon binary not found. Please compile thunder-agent-daemon or check repo path.");
+      throw new Error(
+        `Thunder daemon not found (${describeThunderResolution(resolved)}). ` +
+          "Set THUNDER_PATH to a thunder checkout, or build thunder-agent-daemon."
+      );
     }
 
     let command: string;
@@ -805,6 +815,7 @@ export class ThunderClient {
 
   public async reloadProviders(): Promise<void> {
     try {
+      await this.refreshThunderSettings(true);
       if (this.child && !this.child.killed && this.child.exitCode === null) {
         this.cleanup();
         await this.ensureRunning();

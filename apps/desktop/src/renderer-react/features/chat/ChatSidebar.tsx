@@ -15,6 +15,8 @@ interface ChatSidebarProps {
   daemonStatus: {
     available: boolean;
     models: any[];
+    /** Where the daemon was found; `none` = nothing usable on this machine. */
+    source?: string;
     error?: string;
   } | null;
   onRefreshDaemon: () => void;
@@ -285,7 +287,7 @@ export function ChatSidebar({
           type="button"
           className="tb-daemon-status-btn"
           onClick={onRefreshDaemon}
-          title="Click to refresh Thunder Daemon status"
+          title={daemonStatus?.error || "Click to refresh Thunder Daemon status"}
         >
           <span
             className={`tb-status-dot${daemonStatus?.available ? " online" : " offline"}`}
@@ -295,7 +297,9 @@ export function ChatSidebar({
             <span className="tb-daemon-detail">
               {daemonStatus?.available
                 ? `${daemonStatus.models?.length || 0} models ready`
-                : "Offline / Fallback"}
+                : daemonStatus?.error
+                  ? "Not found — check Settings"
+                  : "Offline / Fallback"}
             </span>
           </div>
         </button>

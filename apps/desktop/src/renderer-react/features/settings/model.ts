@@ -262,6 +262,12 @@ export interface NotesDraft {
   recentStandaloneNoteShortcut: string;
 }
 
+/** Thunder daemon location overrides; both empty means "auto-detect". */
+export interface ThunderDraft {
+  repoPath: string;
+  daemonPath: string;
+}
+
 export function formatShortcutForDisplay(value: string, platform = typeof navigator === "undefined" ? "" : navigator.platform): string {
   const isMac = /mac/i.test(platform);
   const parts = value.split("+").filter(Boolean);
@@ -690,5 +696,21 @@ export function notesPatch(settings: PanelSettings, draft: NotesDraft): Partial<
       newStandaloneNoteShortcut: draft.newStandaloneNoteShortcut.trim(),
       recentStandaloneNoteShortcut: draft.recentStandaloneNoteShortcut.trim()
     }
+  };
+}
+
+export function thunderDraftFromSettings(settings: PanelSettings): ThunderDraft {
+  return {
+    repoPath: settings.thunder?.repoPath || "",
+    daemonPath: settings.thunder?.daemonPath || ""
+  };
+}
+
+export function thunderPatch(_settings: PanelSettings, draft: ThunderDraft): Partial<PanelSettings> {
+  const repoPath = draft.repoPath.trim();
+  const daemonPath = draft.daemonPath.trim();
+  // An empty block means "no override": auto-discovery must keep running.
+  return {
+    thunder: repoPath || daemonPath ? { repoPath: repoPath || undefined, daemonPath: daemonPath || undefined } : undefined
   };
 }

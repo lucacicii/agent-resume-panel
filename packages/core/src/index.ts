@@ -72,7 +72,8 @@ export type {
   AgentSessionSyncSettings,
   AgentSessionSyncFilters,
   SessionSyncStalePolicy,
-  NotificationsSettings
+  NotificationsSettings,
+  ThunderSettings
 } from "./settings/types";
 export {
   DEFAULT_SETTINGS,

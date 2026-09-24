@@ -13,6 +13,7 @@ import { AboutPane, BackupPane, LogsPane, NotesPane, StoragePane, UsagePane, Wor
 import { SelectionSettingsPane } from "./SelectionSettingsPane";
 import { AgentStatusPane } from "./AgentStatusPane";
 import { McpPane } from "./McpPane";
+import { ThunderPane } from "./ThunderPane";
 import {
   embeddingSearchIdentityChanged,
   generalDraftFromSettings,
@@ -25,6 +26,8 @@ import {
   sessionsPatch,
   storageDraftFromSettings,
   storagePatch,
+  thunderDraftFromSettings,
+  thunderPatch,
   workbenchDraftFromSettings,
   workbenchPatch,
   type GeneralDraft,
@@ -32,13 +35,14 @@ import {
   type NotesDraft,
   type SessionsDraft,
   type StorageDraft,
+  type ThunderDraft,
   type WorkbenchDraft
 } from "./model";
 
-type Pane = "general" | "providers" | "sessions" | "workbench" | "selection" | "notes" | "storage" | "mcp" | "agentStatus" | "usage" | "logs" | "backup" | "about";
+type Pane = "general" | "providers" | "sessions" | "workbench" | "selection" | "notes" | "storage" | "mcp" | "thunder" | "agentStatus" | "usage" | "logs" | "backup" | "about";
 type EditablePane = Exclude<Pane, "mcp" | "usage" | "logs" | "backup" | "about" | "selection" | "agentStatus">;
 
-type EditableDraft = GeneralDraft | ProvidersDraft | SessionsDraft | WorkbenchDraft | NotesDraft | StorageDraft;
+type EditableDraft = GeneralDraft | ProvidersDraft | SessionsDraft | WorkbenchDraft | NotesDraft | StorageDraft | ThunderDraft;
 
 function savedDraftFor(section: EditablePane, base: PanelSettings): EditableDraft {
   return section === "general" ? generalDraftFromSettings(base)
@@ -46,6 +50,7 @@ function savedDraftFor(section: EditablePane, base: PanelSettings): EditableDraf
     : section === "sessions" ? sessionsDraftFromSettings(base)
     : section === "workbench" ? workbenchDraftFromSettings(base)
     : section === "notes" ? notesDraftFromSettings(base)
+    : section === "thunder" ? thunderDraftFromSettings(base)
     : storageDraftFromSettings(base);
 }
 
@@ -55,6 +60,7 @@ function sectionPatch(section: EditablePane, base: PanelSettings, draft: Editabl
     : section === "sessions" ? sessionsPatch(base, draft as SessionsDraft)
     : section === "workbench" ? workbenchPatch(base, draft as WorkbenchDraft)
     : section === "notes" ? notesPatch(base, draft as NotesDraft)
+    : section === "thunder" ? thunderPatch(base, draft as ThunderDraft)
     : storagePatch(base, draft as StorageDraft);
 }
 
@@ -72,6 +78,7 @@ const panes: Array<{ id: Pane; key: string; desc: string }> = [
   { id: "notes", key: "desktop.settings.paneNotes", desc: "desktop.settings.paneNotesDesc" },
   { id: "storage", key: "desktop.settings.paneStorage", desc: "desktop.settings.paneStorageDesc" },
   { id: "mcp", key: "desktop.settings.paneMcp", desc: "desktop.settings.paneMcpDesc" },
+  { id: "thunder", key: "desktop.settings.paneThunder", desc: "desktop.settings.paneThunderDesc" },
   { id: "agentStatus", key: "desktop.settings.paneAgentStatus", desc: "desktop.settings.paneAgentStatusDesc" },
   { id: "usage", key: "desktop.settings.paneUsage", desc: "desktop.settings.paneUsageDesc" },
   { id: "logs", key: "desktop.settings.paneLogs", desc: "desktop.settings.paneLogsDesc" },
@@ -96,6 +103,7 @@ export function SettingsPanel({
   const [workbench, setWorkbench] = useState<WorkbenchDraft | null>(null);
   const [storage, setStorage] = useState<StorageDraft | null>(null);
   const [notes, setNotes] = useState<NotesDraft | null>(null);
+  const [thunder, setThunder] = useState<ThunderDraft | null>(null);
   const [status, setStatus] = useState<{ text: string; kind?: StatusKind }>({ text: "" });
   const [usageDetailTab, setUsageDetailTab] = useState<UsageDetailTab | undefined>(undefined);
   const lastSavedSettings = useRef<PanelSettings | null>(null);
@@ -117,6 +125,7 @@ export function SettingsPanel({
       sessions: JSON.stringify(syncedDraft("sessions")),
       workbench: JSON.stringify(syncedDraft("workbench")),
       notes: JSON.stringify(syncedDraft("notes")),
+      thunder: JSON.stringify(syncedDraft("thunder")),
       storage: JSON.stringify(syncedDraft("storage"))
     };
     const keepIfEdited = <D,>(section: EditablePane, prev: D | null, freshDraft: D): D =>
@@ -128,6 +137,7 @@ export function SettingsPanel({
     setSessions((prev) => keepIfEdited("sessions", prev, sessionsDraftFromSettings(next)));
     setWorkbench((prev) => keepIfEdited("workbench", prev, workbenchDraftFromSettings(next)));
     setNotes((prev) => keepIfEdited("notes", prev, notesDraftFromSettings(next)));
+    setThunder((prev) => keepIfEdited("thunder", prev, thunderDraftFromSettings(next)));
     setStorage((prev) => keepIfEdited("storage", prev, storageDraftFromSettings(next)));
   }, []);
 
@@ -202,6 +212,7 @@ export function SettingsPanel({
         else if (section === "sessions") setSessions(sessionsDraftFromSettings(last));
         else if (section === "workbench") setWorkbench(workbenchDraftFromSettings(last));
         else if (section === "notes") setNotes(notesDraftFromSettings(last));
+        else if (section === "thunder") setThunder(thunderDraftFromSettings(last));
         else setStorage(storageDraftFromSettings(last));
       }
       setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
@@ -240,7 +251,7 @@ export function SettingsPanel({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [requestClose]);
 
-  if (!host || !settings || !general || !providers || !sessions || !workbench || !notes || !storage) return null;
+  if (!host || !settings || !general || !providers || !sessions || !workbench || !notes || !thunder || !storage) return null;
   const current = panes.find((item) => item.id === pane) || panes[0];
   const body = pane === "general" ? <GeneralPane draft={general} setDraft={setGeneral} commit={(value) => commit("general", value)} t={t} />
     : pane === "providers" ? <ProvidersPane draft={providers} setDraft={setProviders} commit={(value) => commit("providers", value)} t={t} />
@@ -250,6 +261,7 @@ export function SettingsPanel({
     : pane === "notes" ? <NotesPane draft={notes} setDraft={setNotes} commit={(value) => commit("notes", value)} t={t} />
     : pane === "storage" ? <StoragePane draft={storage} setDraft={setStorage} commit={(value) => commit("storage", value)} t={t} />
     : pane === "mcp" ? <McpPane t={t} />
+    : pane === "thunder" ? <ThunderPane draft={thunder} setDraft={setThunder} commit={(value) => commit("thunder", value)} t={t} />
     : pane === "agentStatus" ? <AgentStatusPane t={t} />
     : pane === "usage" ? <UsagePane t={t} initialDetailTab={usageDetailTab} />
     : pane === "logs" ? <LogsPane t={t} />

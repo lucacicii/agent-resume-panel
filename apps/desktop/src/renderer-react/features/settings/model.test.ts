@@ -14,6 +14,8 @@ import {
   sessionsPatch,
   storageDraftFromSettings,
   storagePatch,
+  thunderDraftFromSettings,
+  thunderPatch,
   workbenchDraftFromSettings,
   workbenchPatch
 } from "./model";
@@ -436,5 +438,20 @@ describe("settings model", () => {
     expect(reset.agentHomes).toBeUndefined();
   });
 
+  it("keeps Thunder daemon overrides empty instead of pinning an empty block", () => {
+    // An empty block would look like a deliberate override and could mask auto-discovery.
+    expect(thunderPatch(settings, { repoPath: "", daemonPath: "" }).thunder).toBeUndefined();
+    expect(thunderPatch(settings, { repoPath: "  ", daemonPath: "  " }).thunder).toBeUndefined();
+  });
 
+  it("round-trips Thunder daemon overrides", () => {
+    const saved = thunderPatch(settings, { repoPath: " ~/wz/thunder ", daemonPath: "" });
+    expect(saved.thunder).toEqual({ repoPath: "~/wz/thunder", daemonPath: undefined });
+
+    const draft = thunderDraftFromSettings({ ...settings, thunder: saved.thunder });
+    expect(draft).toEqual({ repoPath: "~/wz/thunder", daemonPath: "" });
+
+    const both = thunderPatch(settings, { repoPath: "~/wz/thunder", daemonPath: "/opt/bin/thunder-daemon" });
+    expect(both.thunder).toEqual({ repoPath: "~/wz/thunder", daemonPath: "/opt/bin/thunder-daemon" });
+  });
 });

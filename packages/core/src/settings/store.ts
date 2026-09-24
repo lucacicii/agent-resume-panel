@@ -245,7 +245,16 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
     },
     // Desktop ACP (permissions, launch overrides, experimental vendor UI).
     // Must merge or Workbench ACP toggles never persist across save/reload.
-    acp: mergeAcpSettings(base.acp, partial.acp)
+    acp: mergeAcpSettings(base.acp, partial.acp),
+    // Thunder daemon location override. Must be merged or a hand-edited
+    // settings.json would be silently dropped on the next save. An empty block is
+    // stored as absent so "no override" stays unambiguous.
+    thunder: partial.thunder?.repoPath?.trim() || partial.thunder?.daemonPath?.trim()
+      ? {
+          repoPath: partial.thunder?.repoPath?.trim() || undefined,
+          daemonPath: partial.thunder?.daemonPath?.trim() || undefined
+        }
+      : undefined
   });
 }
 

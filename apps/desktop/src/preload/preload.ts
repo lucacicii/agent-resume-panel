@@ -1527,6 +1527,10 @@ export interface DesktopApi {
     repoPath: string | null;
     daemonPath: string | null;
     models: ThunderModelInfo[];
+    /** Discovery rule that matched (env / settings / bundled / dev-sibling / …). */
+    source?: string;
+    /** Paths probed, in priority order — shown by Settings → Thunder diagnostics. */
+    candidates?: string[];
     error?: string;
   }>;
   thunderListModels(): Promise<ThunderModelInfo[]>;

@@ -159,6 +159,10 @@ export function useThunderChat() {
     repoPath: string | null;
     daemonPath: string | null;
     models: ThunderModelInfo[];
+    /** Discovery rule that matched (env / settings / bundled / dev-sibling / …). */
+    source?: string;
+    /** Paths probed, in priority order. */
+    candidates?: string[];
     error?: string;
   } | null>(null);
 
