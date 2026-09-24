@@ -19027,6 +19027,21 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   flex-shrink: 0;
 }
 
+/* Role suggestions: a mode, so it reads differently from Skill / MCP. */
+.tb-composer-suggestion-badge.is-role {
+  background: var(--color-tint-blue, rgba(10, 132, 255, 0.14));
+  color: var(--color-blue, #0a84ff);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* Agent question bubble sits directly above the composer, in flow. */
+.tb-chat-main .wb-acp-question-card {
+  margin: 0 auto 10px;
+  max-width: 720px;
+  width: calc(100% - 32px);
+}
+
 .wb-terminal-composer-suggestion.is-active .tb-composer-suggestion-badge {
   background: rgba(255, 255, 255, 0.2);
   color: #ffffff;

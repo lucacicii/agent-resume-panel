@@ -3,7 +3,12 @@ import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { NativeMenuSelect } from "../../components/NativeMenuSelect";
 import { showContextMenuAt, type NativeContextMenuItem } from "../../nativeContextMenu";
 import { desktopApi } from "../../bridge";
-import type { AgentToolDescriptor, SkillDescriptor, ThunderModelInfo } from "@agent-resume/core";
+import type {
+  AgentToolDescriptor,
+  SkillDescriptor,
+  ThunderModelInfo,
+  ThunderRoleInfo
+} from "@agent-resume/core";
 import type { ChatRunMetrics } from "./useThunderChat";
 import {
   atTokenAtCursor,
@@ -13,10 +18,12 @@ import {
 } from "./chatTokens";
 
 export type ChatSlashSuggestion = {
-  kind: "skill" | "mcp" | "command";
+  kind: "skill" | "mcp" | "command" | "role";
   name: string;
   description: string;
   location?: string;
+  /** Roles carry their capability tier so the list can badge them. */
+  permission?: string;
 };
 
 export type ChatMentionSuggestion = {
@@ -200,10 +207,12 @@ export async function compileChatPrompt(
 }
 
 interface ChatComposerProps {
-  onSend: (prompt: string, options?: { workspaceDir?: string; model?: string; thinking_level?: string }) => void;
+  onSend: (prompt: string, options?: { workspaceDir?: string; model?: string; thinking_level?: string; role?: string }) => void;
   onCancel: () => void;
   isStreaming: boolean;
   models: ThunderModelInfo[];
+  /** Roles offered as slash commands; the host enforces their permission. */
+  roles?: ThunderRoleInfo[];
   selectedModel: string;
   onSelectModel: (model: string) => void;
   thinkingLevel: string;
@@ -250,6 +259,7 @@ export function ChatComposer({
   onCancel,
   isStreaming,
   models,
+  roles = [],
   selectedModel,
   onSelectModel,
   thinkingLevel,
@@ -427,6 +437,19 @@ export function ChatComposer({
     const q = slashToken.query.toLowerCase();
     const out: ChatSlashSuggestion[] = [];
 
+    // Roles first: a role is a mode, so it should outrank skills and MCP tools.
+    for (const r of roles) {
+      const haystack = `${r.name} ${r.id} ${r.description || ""}`.toLowerCase();
+      if (!q || haystack.includes(q)) {
+        out.push({
+          kind: "role",
+          name: r.id,
+          description: r.description || `${r.name} · ${r.permission}`,
+          permission: r.permission
+        });
+      }
+    }
+
     for (const s of skills) {
       if (!q || s.name.toLowerCase().includes(q) || s.description?.toLowerCase().includes(q)) {
         out.push({
@@ -450,7 +473,7 @@ export function ChatComposer({
     }
 
     return out.slice(0, 30);
-  }, [slashToken, skills, tools]);
+  }, [slashToken, skills, tools, roles]);
 
   // Mention suggestions (@): notes, GTD tasks, sessions
   const mentionSuggestions = useMemo<ChatMentionSuggestion[]>(() => {
@@ -740,6 +763,14 @@ export function ChatComposer({
     [enterDirectory, hashToken, cursor, text]
   );
 
+  // A leading `/id` (or `/alias`) selects that role for this send.
+  const activeRole = useMemo(() => {
+    const m = text.match(/^\/([a-zA-Z0-9_-]+)/);
+    if (!m) return null;
+    const token = (m[1] || "").toLowerCase();
+    return roles.find((r) => r.id.toLowerCase() === token || (r.aliases || []).some((a) => a.toLowerCase() === token)) || null;
+  }, [text, roles]);
+
   const doSend = async () => {
     if (isStreaming) {
       onCancel();
@@ -762,10 +793,20 @@ export function ChatComposer({
         referencedMentions: mentionsToCompile,
         referencedFiles: filesToCompile
       });
-      onSend(effectivePrompt, { workspaceDir, model: selectedModel, thinking_level: thinkingLevel });
+      onSend(effectivePrompt, {
+        workspaceDir,
+        model: selectedModel,
+        thinking_level: thinkingLevel,
+        role: activeRole?.id
+      });
     } catch (err) {
       console.warn("Failed to compile prompt context:", err);
-      onSend(currentText, { workspaceDir, model: selectedModel, thinking_level: thinkingLevel });
+      onSend(currentText, {
+      workspaceDir,
+      model: selectedModel,
+      thinking_level: thinkingLevel,
+      role: activeRole?.id
+    });
     }
   };
 
@@ -1099,12 +1140,22 @@ export function ChatComposer({
                 onClick={() => acceptSlashSuggestion(item)}
               >
                 <ThemeIcon
-                  name={item.kind === "skill" ? "sparkles" : "wrench"}
+                  name={
+                    item.kind === "role"
+                      ? "shield-check"
+                      : item.kind === "skill"
+                        ? "sparkles"
+                        : "wrench"
+                  }
                   size={ICON_SIZE.dense}
                 />
                 <span className="wb-terminal-composer-suggestion-text">/{item.name}</span>
-                <span className="tb-composer-suggestion-badge">
-                  {item.kind === "skill" ? "Skill" : "MCP"}
+                <span className={`tb-composer-suggestion-badge${item.kind === "role" ? " is-role" : ""}`}>
+                  {item.kind === "role"
+                    ? `Role · ${item.permission === "read" ? "read-only" : item.permission === "write" ? "write" : "full"}`
+                    : item.kind === "skill"
+                      ? "Skill"
+                      : "MCP"}
                 </span>
                 {item.description ? (
                   <span className="wb-terminal-composer-suggestion-desc">{item.description}</span>

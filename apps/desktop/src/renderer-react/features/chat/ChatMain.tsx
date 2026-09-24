@@ -2,12 +2,15 @@ import React, { useEffect, useRef, useState } from "react";
 import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { ChatMessageItem } from "./ChatMessageItem";
 import { ChatComposer } from "./ChatComposer";
+import { ChatQuestionBubble } from "./ChatQuestionBubble";
 import { ChatEmptyState } from "./ChatEmptyState";
 import { TracePopover } from "./TracePopover";
 import { FileChangesPopover } from "./FileChangesPopover";
 import type {
   ThunderChatMessage,
   ThunderModelInfo,
+  ThunderRoleInfo,
+  ThunderQuestionItem,
   ThunderFileChangeRecord,
   ThunderTaskTrace,
   ThunderTelemetryNotice
@@ -36,7 +39,10 @@ interface ChatMainProps {
   isWorkspaceLocked?: boolean;
   useMock: boolean;
   onToggleMock: (mock: boolean) => void;
-  onSendMessage: (prompt: string, options?: { workspaceDir?: string; model?: string; thinking_level?: string }) => void;
+  onSendMessage: (
+    prompt: string,
+    options?: { workspaceDir?: string; model?: string; thinking_level?: string; role?: string }
+  ) => void;
   onCancelTask: () => void;
   onNewSession: () => void;
   onRegenerate?: (index: number) => void;
@@ -54,6 +60,12 @@ interface ChatMainProps {
   sessionTotalTokens?: number;
   currentContextTokens?: number;
   contextWindowLimit?: number;
+  /** Roles offered as slash commands. */
+  roles?: ThunderRoleInfo[];
+  /** Question the agent is blocked on, rendered as a bubble. */
+  pendingQuestion?: { questionId: string; taskId: string; questions: ThunderQuestionItem[] } | null;
+  onAnswerQuestion?: (answers: Record<string, string> | undefined, cancelled?: boolean) => void | Promise<void>;
+  onDismissQuestion?: () => void | Promise<void>;
 }
 
 export function ChatMain({
@@ -94,7 +106,11 @@ export function ChatMain({
   streamingMetrics,
   sessionTotalTokens,
   currentContextTokens,
-  contextWindowLimit
+  contextWindowLimit,
+  roles = [],
+  pendingQuestion,
+  onAnswerQuestion,
+  onDismissQuestion
 }: ChatMainProps) {
   const scrollEndRef = useRef<HTMLDivElement | null>(null);
   const [isTraceOpen, setIsTraceOpen] = useState(false);
@@ -215,6 +231,16 @@ export function ChatMain({
         )}
       </div>
 
+      {/* Agent question bubble — the task is parked until answered */}
+      {pendingQuestion && pendingQuestion.questions.length > 0 ? (
+        <ChatQuestionBubble
+          questionId={pendingQuestion.questionId}
+          questions={pendingQuestion.questions}
+          onAnswer={(answers) => onAnswerQuestion?.(answers, false)}
+          onDismiss={() => onDismissQuestion?.()}
+        />
+      ) : null}
+
       {/* Floating Composer */}
       <ChatComposer
         onSend={onSendMessage}
@@ -240,6 +266,7 @@ export function ChatMain({
         sessionTotalTokens={sessionTotalTokens}
         currentContextTokens={currentContextTokens}
         contextWindowLimit={contextWindowLimit}
+        roles={roles}
       />
     </div>
   );

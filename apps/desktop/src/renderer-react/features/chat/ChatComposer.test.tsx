@@ -290,4 +290,70 @@ describe("ChatComposer UI popovers and keyboard interactions", () => {
       );
     });
   });
+  it("offers roles in the slash palette ahead of skills and tools", async () => {
+    const roles = [
+      {
+        id: "plan",
+        name: "Plan",
+        aliases: ["p"],
+        description: "Plan before acting",
+        permission: "read"
+      }
+    ];
+    render(<ChatComposer {...defaultProps} roles={roles} />);
+
+    const textarea = screen.getByRole("textbox");
+    fireEvent.change(textarea, { target: { value: "/", selectionStart: 1 } });
+
+    const list = await screen.findByRole("listbox", { name: /slash commands/i });
+    const options = list.querySelectorAll('[role="option"]');
+    expect(options[0]?.textContent).toContain("/plan");
+    expect(options[0]?.textContent).toContain("read-only");
+  });
+
+  it("passes the selected role id when sending a leading slash command", async () => {
+    const onSend = vi.fn();
+    const roles = [
+      { id: "plan", name: "Plan", aliases: [], description: "Plan only", permission: "read" }
+    ];
+    render(<ChatComposer {...defaultProps} onSend={onSend} roles={roles} />);
+
+    const textarea = screen.getByRole("textbox");
+    fireEvent.change(textarea, { target: { value: "/plan refactor auth" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    await waitFor(() => expect(onSend).toHaveBeenCalled());
+    expect(onSend.mock.calls[0][1]).toMatchObject({ role: "plan" });
+  });
+
+  it("omits the role when the prompt has no leading slash command", async () => {
+    const onSend = vi.fn();
+    const roles = [
+      { id: "plan", name: "Plan", aliases: [], description: "Plan only", permission: "read" }
+    ];
+    render(<ChatComposer {...defaultProps} onSend={onSend} roles={roles} />);
+
+    const textarea = screen.getByRole("textbox");
+    fireEvent.change(textarea, { target: { value: "just a normal question" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    await waitFor(() => expect(onSend).toHaveBeenCalled());
+    expect(onSend.mock.calls[0][1]?.role).toBeUndefined();
+  });
+
+  it("resolves a role alias to its canonical id", async () => {
+    const onSend = vi.fn();
+    const roles = [
+      { id: "plan", name: "Plan", aliases: ["p"], description: "Plan only", permission: "read" }
+    ];
+    render(<ChatComposer {...defaultProps} onSend={onSend} roles={roles} />);
+
+    const textarea = screen.getByRole("textbox");
+    fireEvent.change(textarea, { target: { value: "/p refactor auth" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    await waitFor(() => expect(onSend).toHaveBeenCalled());
+    expect(onSend.mock.calls[0][1]).toMatchObject({ role: "plan" });
+  });
+
 });

@@ -8,7 +8,9 @@ import type {
   ThunderChatStreamPayload,
   ThunderFileChangeRecord,
   ThunderTurnStats,
-  ThunderAgentStats
+  ThunderAgentStats,
+  ThunderQuestionItem,
+  ThunderRoleInfo
 } from "@agent-resume/core";
 import { useTraceCollector } from "./useTraceCollector";
 
@@ -166,6 +168,16 @@ export function useThunderChat() {
   const [currentContextTokens, setCurrentContextTokens] = useState<number>(0);
   const [streamTokensCount, setStreamTokensCount] = useState(0);
   const [streamStartTime, setStreamStartTime] = useState<number | null>(null);
+
+  // A question the agent is blocked on; rendered as a bubble until answered.
+  const [pendingQuestion, setPendingQuestion] = useState<{
+    questionId: string;
+    taskId: string;
+    questions: ThunderQuestionItem[];
+  } | null>(null);
+
+  // Roles available as slash commands (global + project scope).
+  const [roles, setRoles] = useState<ThunderRoleInfo[]>([]);
 
   // End-to-end task trace and file modification tracking
   const {
@@ -396,6 +408,8 @@ export function useThunderChat() {
     setMessages([]);
     setIsStreaming(false);
     setActiveTaskId(null);
+    // A bubble belongs to the session that raised it.
+    setPendingQuestion(null);
     setStreamingText("");
     setStreamingReasoning("");
     setStreamingTools([]);
@@ -506,7 +520,7 @@ export function useThunderChat() {
   const sendMessage = useCallback(
     async (
       prompt: string,
-      options?: { model?: string; workspaceDir?: string; thinking_level?: string }
+      options?: { model?: string; workspaceDir?: string; thinking_level?: string; role?: string }
     ) => {
       const trimmed = prompt.trim();
       if (!trimmed) return;
@@ -589,7 +603,8 @@ export function useThunderChat() {
           workspaceDir: ws,
           taskNoteId: effectiveTaskNoteId,
           thinking_level: thinking,
-          useMock
+          useMock,
+          role: options?.role
         });
 
         // Task finalized
@@ -615,6 +630,7 @@ export function useThunderChat() {
 
         if (activeSessionIdRef.current === effectiveSessionId) {
           setMessages((prev) => [...prev, assistantMsg]);
+          setPendingQuestion(null);
           setStreamingText("");
           setStreamingReasoning("");
           setStreamingTools([]);
@@ -657,6 +673,7 @@ export function useThunderChat() {
         };
         if (activeSessionIdRef.current === effectiveSessionId) {
           setMessages((prev) => [...prev, errMsg]);
+          setPendingQuestion(null);
           setIsStreaming(false);
           setActiveTaskId(null);
         }
@@ -742,11 +759,46 @@ export function useThunderChat() {
     [activeSessionId, isStreaming, messages, sendMessage]
   );
 
+  const answerQuestion = useCallback(
+    async (answers: Record<string, string> | undefined, cancelled = false) => {
+      const pending = pendingQuestion;
+      if (!pending) return;
+      setPendingQuestion(null);
+      try {
+        await desktopApi().thunderChatAnswerQuestion({
+          questionId: pending.questionId,
+          answers,
+          cancelled
+        });
+      } catch (err) {
+        console.warn("[thunder-chat] failed to answer question:", err);
+      }
+    },
+    [pendingQuestion]
+  );
+
+  const dismissQuestion = useCallback(async () => {
+    await answerQuestion(undefined, true);
+  }, [answerQuestion]);
+
   const cancelCurrentTask = useCallback(async () => {
     const curSessId = activeSessionIdRef.current;
     const stream = curSessId ? activeStreamsRef.current.get(curSessId) : null;
     const targetTaskId = stream?.taskId || activeTaskIdRef.current;
     if (!targetTaskId) return;
+
+    // Cancelling frees a parked question: tell the daemon so its routing table
+    // does not keep a dangling oneshot, then drop the bubble locally.
+    setPendingQuestion((prev) => {
+      if (prev && prev.taskId === targetTaskId) {
+        void desktopApi()
+          .thunderChatAnswerQuestion({ questionId: prev.questionId, cancelled: true })
+          .catch(() => undefined);
+        return null;
+      }
+      return prev;
+    });
+
     try {
       await desktopApi().thunderChatCancelTask({ taskId: targetTaskId });
     } catch (err) {
@@ -876,6 +928,19 @@ export function useThunderChat() {
           }
           break;
         }
+        case "user_question": {
+          const q = ev as any;
+          setPendingQuestion({
+            questionId: String(q.question_id || ""),
+            taskId,
+            questions: Array.isArray(q.questions) ? q.questions : []
+          });
+          break;
+        }
+        case "task_paused": {
+          console.info("[thunder-event:task_paused]", (ev as any).reason);
+          break;
+        }
         case "error": {
           console.warn("[thunder-event:error]", (ev as any).message);
           break;
@@ -895,6 +960,24 @@ export function useThunderChat() {
     void refreshDaemonStatus();
     void loadConversations();
   }, [refreshDaemonStatus, loadConversations]);
+
+  // Roles are scope-dependent: a project may add or override global roles.
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      if (typeof desktopApi().thunderListRoles !== "function") return;
+      try {
+        const list = await desktopApi().thunderListRoles({ workspaceDir: workspaceDir || undefined });
+        if (!cancelled && Array.isArray(list)) setRoles(list);
+      } catch (err) {
+        console.warn("[thunder-chat] failed to load roles:", err);
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [workspaceDir]);
 
   // Real-time updates when ~/.thunder/models.json or auth.json change on disk
   useEffect(() => {
@@ -966,6 +1049,10 @@ export function useThunderChat() {
     composerPrefill,
     prefillComposer,
     cancelCurrentTask,
+    pendingQuestion,
+    answerQuestion,
+    dismissQuestion,
+    roles,
     refreshDaemonStatus,
     currentTrace,
     traceSpans,
