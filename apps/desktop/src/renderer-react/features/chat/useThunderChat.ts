@@ -160,6 +160,8 @@ export function useThunderChat() {
 
   // Performance & Token metrics
   const [lastRunMetrics, setLastRunMetrics] = useState<ChatRunMetrics | null>(null);
+  const [sessionTotalTokens, setSessionTotalTokens] = useState<number>(0);
+  const [currentContextTokens, setCurrentContextTokens] = useState<number>(0);
   const [streamTokensCount, setStreamTokensCount] = useState(0);
   const [streamStartTime, setStreamStartTime] = useState<number | null>(null);
 
@@ -326,6 +328,23 @@ export function useThunderChat() {
       } else {
         setMessages([]);
       }
+      // Track session total tokens
+      const totTokens = conv?.stats?.total_tokens || 0;
+      setSessionTotalTokens(totTokens);
+
+      // Estimate current context occupancy from last assistant message or messages
+      let ctxTokens = 0;
+      const lastAssistant = [...(conv?.messages || [])].reverse().find((m) => m.role === "assistant");
+      if (lastAssistant?.stats?.prompt_tokens && lastAssistant?.stats?.completion_tokens) {
+        ctxTokens = lastAssistant.stats.prompt_tokens + lastAssistant.stats.completion_tokens;
+      } else if (Array.isArray(conv?.messages) && conv.messages.length > 0) {
+        ctxTokens = conv.messages.reduce(
+          (acc, m) => acc + Math.max(1, Math.ceil((m.content || "").length / 3)),
+          0
+        );
+      }
+      setCurrentContextTokens(ctxTokens);
+
       // Check if this session has an active background stream
       const stream = activeStreamsRef.current.get(sessionId);
       if (stream) {
@@ -377,6 +396,8 @@ export function useThunderChat() {
     setStreamingText("");
     setStreamingReasoning("");
     setStreamingTools([]);
+    setSessionTotalTokens(0);
+    setCurrentContextTokens(0);
     resetTrace();
     const target = models.find((m) => (m.selection_id || m.id) === selectedModel);
     if (target) {
@@ -751,14 +772,20 @@ export function useThunderChat() {
             const tps = typeof stats.tokens_per_second === "number" && Number.isFinite(stats.tokens_per_second)
               ? stats.tokens_per_second
               : (dur > 0 && ct !== undefined ? ct / (dur / 1000) : undefined);
+            const turnTotal = (pt !== undefined || ct !== undefined) ? (pt || 0) + (ct || 0) : undefined;
             setLastRunMetrics({
               tps,
               promptTokens: pt,
               completionTokens: ct,
               cachedTokens: cached,
-              totalTokens: (pt !== undefined || ct !== undefined) ? (pt || 0) + (ct || 0) : undefined,
+              totalTokens: turnTotal,
               durationMs: dur
             });
+
+            if (turnTotal !== undefined && turnTotal > 0) {
+              setSessionTotalTokens((prev) => prev + turnTotal);
+              setCurrentContextTokens(turnTotal);
+            }
           }
           break;
         }
@@ -808,6 +835,11 @@ export function useThunderChat() {
     return streamTokensCount / elapsedSec;
   }, [isStreaming, streamStartTime, streamTokensCount]);
 
+  const contextWindowLimit = useMemo(() => {
+    const currentModelInfo = models.find((m) => (m.selection_id || m.id) === selectedModel);
+    return currentModelInfo?.context_window;
+  }, [models, selectedModel]);
+
   return {
     conversations,
     activeSessionId,
@@ -850,6 +882,9 @@ export function useThunderChat() {
     telemetryNotices,
     isCollectingTrace,
     lastRunMetrics,
-    streamingMetrics: { tokensCount: streamTokensCount, tps: liveStreamingTps }
+    streamingMetrics: { tokensCount: streamTokensCount, tps: liveStreamingTps },
+    sessionTotalTokens,
+    currentContextTokens,
+    contextWindowLimit
   };
 }

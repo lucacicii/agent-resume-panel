@@ -18765,6 +18765,28 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   font-weight: 600;
 }
 
+.tb-metrics-context,
+.tb-metrics-total {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tb-metrics-value {
+  font-weight: 500;
+  color: var(--color-label-primary);
+}
+
+.tb-metrics-percent {
+  color: var(--color-label-tertiary);
+  font-size: 10px;
+}
+
+.tb-metrics-percent.is-warning {
+  color: #ff9300;
+  font-weight: 600;
+}
+
 .tb-composer-toolbar {
   display: flex;
   align-items: center;

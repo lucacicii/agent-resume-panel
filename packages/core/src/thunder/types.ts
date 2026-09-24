@@ -30,6 +30,8 @@ export interface ThunderModelInfo {
   reasoning?: boolean;
   thinking_levels?: string[];
   default_thinking_level?: string;
+  context_window?: number;
+  max_tokens?: number;
 }
 
 export interface ThunderTelemetryNotice {

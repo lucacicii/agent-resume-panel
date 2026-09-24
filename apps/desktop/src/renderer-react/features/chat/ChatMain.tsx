@@ -51,6 +51,9 @@ interface ChatMainProps {
   isCollectingTrace?: boolean;
   lastRunMetrics?: ChatRunMetrics | null;
   streamingMetrics?: { tokensCount: number; tps: number } | null;
+  sessionTotalTokens?: number;
+  currentContextTokens?: number;
+  contextWindowLimit?: number;
 }
 
 export function ChatMain({
@@ -88,7 +91,10 @@ export function ChatMain({
   telemetryNotices = [],
   isCollectingTrace = false,
   lastRunMetrics,
-  streamingMetrics
+  streamingMetrics,
+  sessionTotalTokens,
+  currentContextTokens,
+  contextWindowLimit
 }: ChatMainProps) {
   const scrollEndRef = useRef<HTMLDivElement | null>(null);
   const [isTraceOpen, setIsTraceOpen] = useState(false);
@@ -231,6 +237,9 @@ export function ChatMain({
         prefillPrompt={prefillPrompt}
         lastRunMetrics={lastRunMetrics}
         streamingMetrics={streamingMetrics}
+        sessionTotalTokens={sessionTotalTokens}
+        currentContextTokens={currentContextTokens}
+        contextWindowLimit={contextWindowLimit}
       />
     </div>
   );

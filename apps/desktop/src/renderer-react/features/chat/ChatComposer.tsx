@@ -221,6 +221,28 @@ interface ChatComposerProps {
   prefillPrompt?: { text: string; id: number } | null;
   lastRunMetrics?: ChatRunMetrics | null;
   streamingMetrics?: { tokensCount: number; tps: number } | null;
+  sessionTotalTokens?: number;
+  currentContextTokens?: number;
+  contextWindowLimit?: number;
+}
+
+function formatCompactTokens(num: number): string {
+  if (num >= 1_000_000) {
+    const val = num / 1_000_000;
+    return `${val % 1 === 0 ? val.toFixed(0) : val.toFixed(1)}M`;
+  }
+  if (num >= 1_000) {
+    const val = num / 1_000;
+    return `${val % 1 === 0 ? val.toFixed(0) : val.toFixed(0)}k`;
+  }
+  return String(num);
+}
+
+function formatTokenCount(num: number): string {
+  if (num >= 100_000) {
+    return formatCompactTokens(num);
+  }
+  return num.toLocaleString();
 }
 
 export function ChatComposer({
@@ -244,7 +266,10 @@ export function ChatComposer({
   placeholder = "Ask Thunder agent anything, or type / for skills/mcp, @ for context, # for files...",
   prefillPrompt,
   lastRunMetrics,
-  streamingMetrics
+  streamingMetrics,
+  sessionTotalTokens = 0,
+  currentContextTokens = 0,
+  contextWindowLimit
 }: ChatComposerProps) {
   const [text, setText] = useState("");
   const [cursor, setCursor] = useState(0);
@@ -1016,6 +1041,12 @@ export function ChatComposer({
     return thinkingLevel || currentModel?.default_thinking_level || "medium";
   }, [supportsThinking, thinkingLevel, currentModel]);
 
+  const draftTokens = text.trim().length > 0 ? Math.max(1, Math.ceil(text.trim().length / 3)) : 0;
+  const contextTokensWithDraft = (currentContextTokens || 0) + draftTokens;
+  const contextPercent = contextWindowLimit && contextWindowLimit > 0
+    ? Math.min(100, Math.round((contextTokensWithDraft / contextWindowLimit) * 100))
+    : null;
+
   return (
     <div className="tb-composer-wrapper">
       <div className={`tb-composer-box${isStreaming ? " is-active" : ""}`}>
@@ -1181,69 +1212,86 @@ export function ChatComposer({
 
         {/* Token, Cache & Speed Statistics Bar (Always Visible) */}
         <div className="tb-composer-metrics-bar">
-          {isStreaming ? (
-            <div className="tb-metrics-group">
-              <span className="tb-metrics-pulse" />
-              <span className="tb-metrics-speed">
-                ⚡ {typeof streamingMetrics?.tps === "number" && Number.isFinite(streamingMetrics.tps) ? streamingMetrics.tps.toFixed(1) : "0.0"} tok/s
-              </span>
-              <span className="tb-metrics-divider" />
-              <span className="tb-metrics-tokens">
-                {typeof streamingMetrics?.tokensCount === "number" ? streamingMetrics.tokensCount : 0} tokens
-              </span>
-            </div>
-          ) : lastRunMetrics && (typeof lastRunMetrics.totalTokens === "number" || typeof lastRunMetrics.tps === "number") ? (
-            <div className="tb-metrics-group">
-              {typeof lastRunMetrics.tps === "number" && Number.isFinite(lastRunMetrics.tps) && lastRunMetrics.tps > 0 ? (
-                <>
-                  <span className="tb-metrics-speed">
-                    ⚡ {lastRunMetrics.tps.toFixed(1)} tok/s
-                  </span>
-                  <span className="tb-metrics-divider" />
-                </>
-              ) : null}
-              <span className="tb-metrics-tokens">
-                {typeof lastRunMetrics.totalTokens === "number" && Number.isFinite(lastRunMetrics.totalTokens)
-                  ? `${lastRunMetrics.totalTokens.toLocaleString()} tokens`
-                  : null}
-                {typeof lastRunMetrics.promptTokens === "number" && typeof lastRunMetrics.completionTokens === "number" ? (
-                  <span className="tb-metrics-breakdown">
-                    {" "}(In {lastRunMetrics.promptTokens.toLocaleString()} · Out {lastRunMetrics.completionTokens.toLocaleString()})
-                  </span>
+          <div className="tb-metrics-group tb-metrics-left">
+            {isStreaming ? (
+              <>
+                <span className="tb-metrics-pulse" />
+                <span className="tb-metrics-speed">
+                  ⚡ {typeof streamingMetrics?.tps === "number" && Number.isFinite(streamingMetrics.tps) ? streamingMetrics.tps.toFixed(1) : "0.0"} tok/s
+                </span>
+                <span className="tb-metrics-divider" />
+                <span className="tb-metrics-tokens">
+                  {typeof streamingMetrics?.tokensCount === "number" ? streamingMetrics.tokensCount : 0} tokens
+                </span>
+              </>
+            ) : lastRunMetrics && (typeof lastRunMetrics.totalTokens === "number" || typeof lastRunMetrics.tps === "number") ? (
+              <>
+                {typeof lastRunMetrics.tps === "number" && Number.isFinite(lastRunMetrics.tps) && lastRunMetrics.tps > 0 ? (
+                  <>
+                    <span className="tb-metrics-speed">
+                      ⚡ {lastRunMetrics.tps.toFixed(1)} tok/s
+                    </span>
+                    <span className="tb-metrics-divider" />
+                  </>
                 ) : null}
-              </span>
-              {typeof lastRunMetrics.cachedTokens === "number" && lastRunMetrics.cachedTokens > 0 ? (
-                <>
-                  <span className="tb-metrics-divider" />
-                  <span className="tb-metrics-cache-badge" title="Prompt Cache 命中数量">
-                    <ThemeIcon name="zap" size={ICON_SIZE.inline} />
-                    Cache {lastRunMetrics.cachedTokens.toLocaleString()}
-                    {typeof lastRunMetrics.promptTokens === "number" && lastRunMetrics.promptTokens > 0 ? (
-                      ` (${Math.round((lastRunMetrics.cachedTokens / lastRunMetrics.promptTokens) * 100)}%)`
-                    ) : null}
-                  </span>
-                </>
-              ) : null}
-            </div>
-          ) : (
-            <div className="tb-metrics-group">
+                <span className="tb-metrics-tokens">
+                  Turn: {lastRunMetrics.totalTokens !== undefined ? `${lastRunMetrics.totalTokens.toLocaleString()}` : null}
+                  {lastRunMetrics.promptTokens !== undefined && lastRunMetrics.completionTokens !== undefined ? (
+                    <span className="tb-metrics-breakdown">
+                      {" "}(In {lastRunMetrics.promptTokens.toLocaleString()} · Out {lastRunMetrics.completionTokens.toLocaleString()})
+                    </span>
+                  ) : null}
+                </span>
+                {typeof lastRunMetrics.cachedTokens === "number" && lastRunMetrics.cachedTokens > 0 ? (
+                  <>
+                    <span className="tb-metrics-divider" />
+                    <span className="tb-metrics-cache-badge" title="Prompt Cache 命中数量">
+                      <ThemeIcon name="zap" size={ICON_SIZE.inline} />
+                      Cache {lastRunMetrics.cachedTokens.toLocaleString()}
+                      {typeof lastRunMetrics.promptTokens === "number" && lastRunMetrics.promptTokens > 0 ? (
+                        ` (${Math.round((lastRunMetrics.cachedTokens / lastRunMetrics.promptTokens) * 100)}%)`
+                      ) : null}
+                    </span>
+                  </>
+                ) : null}
+              </>
+            ) : (
               <span className="tb-metrics-speed">⚡ Ready</span>
-              <span className="tb-metrics-divider" />
-              <span className="tb-metrics-tokens">
-                {text.trim().length > 0
-                  ? `~${Math.max(1, Math.ceil(text.trim().length / 3))} prompt tokens`
-                  : "0 tokens"}
-              </span>
-            </div>
-          )}
+            )}
+          </div>
 
-          {!isStreaming && text.trim().length > 0 && lastRunMetrics ? (
-            <div className="tb-metrics-group">
-              <span className="tb-metrics-breakdown">
-                Draft: ~{Math.max(1, Math.ceil(text.trim().length / 3))} tokens
+          <div className="tb-metrics-group tb-metrics-right">
+            {/* 上下文占用 */}
+            <span
+              className="tb-metrics-context"
+              title={`当前上下文占用 / 模型窗口上限: ${contextTokensWithDraft.toLocaleString()}${contextWindowLimit ? ` / ${contextWindowLimit.toLocaleString()}` : ""}`}
+            >
+              <ThemeIcon name="notebook" size={ICON_SIZE.inline} />
+              <span>上下文: </span>
+              <span className="tb-metrics-value">
+                {formatTokenCount(contextTokensWithDraft)}
+                {contextWindowLimit ? ` / ${formatCompactTokens(contextWindowLimit)}` : ""}
               </span>
-            </div>
-          ) : null}
+              {contextPercent !== null && (
+                <span className={`tb-metrics-percent${contextPercent >= 80 ? " is-warning" : ""}`}>
+                  ({contextPercent}%)
+                </span>
+              )}
+            </span>
+
+            <span className="tb-metrics-divider" />
+
+            {/* 对话累计总消耗 */}
+            <span
+              className="tb-metrics-total"
+              title="当前对话全部轮次累计消耗的总 Token 数"
+            >
+              <span>总消耗: </span>
+              <span className="tb-metrics-value">
+                {(sessionTotalTokens || 0).toLocaleString()}
+              </span>
+            </span>
+          </div>
         </div>
 
         <div className="tb-composer-toolbar">

@@ -11,19 +11,9 @@ export type {
   ThunderTraceSpan,
   ThunderTaskTrace,
   ThunderTurnStats,
-  ThunderAgentStats
+  ThunderAgentStats,
+  ThunderModelInfo
 } from "@agent-resume/core";
-
-export interface ThunderModelInfo {
-  id: string;
-  provider: string;
-  name: string;
-  selection_id: string;
-  available: boolean;
-  reasoning?: boolean;
-  thinking_levels?: string[];
-  default_thinking_level?: string;
-}
 
 export type ThunderAgentEvent =
   | { type: "turn_start"; turn: number; timestamp: number }
