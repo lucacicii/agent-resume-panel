@@ -19,6 +19,13 @@ export interface ActiveToolInfo {
   isError?: boolean;
 }
 
+interface SessionStream {
+  taskId: string;
+  streamingText: string;
+  streamingReasoning: string;
+  streamingTools: ActiveToolInfo[];
+}
+
 function normalizeConversationMessages(rawMessages: ThunderChatMessage[]): ThunderChatMessage[] {
   const result: ThunderChatMessage[] = [];
   const toolResultsByCallId = new Map<string, string>();
@@ -158,6 +165,11 @@ export function useThunderChat() {
 
   const activeTaskIdRef = useRef<string | null>(null);
   activeTaskIdRef.current = activeTaskId;
+
+  const activeSessionIdRef = useRef<string | null>(null);
+  activeSessionIdRef.current = activeSessionId;
+
+  const activeStreamsRef = useRef<Map<string, SessionStream>>(new Map());
 
   const streamingTextRef = useRef("");
   streamingTextRef.current = streamingText;
@@ -299,9 +311,21 @@ export function useThunderChat() {
       } else {
         setMessages([]);
       }
-      setStreamingText("");
-      setStreamingReasoning("");
-      setStreamingTools([]);
+      // Check if this session has an active background stream
+      const stream = activeStreamsRef.current.get(sessionId);
+      if (stream) {
+        setIsStreaming(true);
+        setActiveTaskId(stream.taskId);
+        setStreamingText(stream.streamingText);
+        setStreamingReasoning(stream.streamingReasoning);
+        setStreamingTools(stream.streamingTools);
+      } else {
+        setIsStreaming(false);
+        setActiveTaskId(null);
+        setStreamingText("");
+        setStreamingReasoning("");
+        setStreamingTools([]);
+      }
 
       // Load persistent trace for this conversation
       void loadTrace(sessionId);
@@ -310,11 +334,14 @@ export function useThunderChat() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [loadTrace, models, setFileChanges]);
 
   const createNewSession = useCallback(() => {
     setActiveSessionId(null);
+    activeSessionIdRef.current = null;
     setMessages([]);
+    setIsStreaming(false);
+    setActiveTaskId(null);
     setStreamingText("");
     setStreamingReasoning("");
     setStreamingTools([]);
@@ -385,7 +412,16 @@ export function useThunderChat() {
       options?: { model?: string; workspaceDir?: string; thinking_level?: string }
     ) => {
       const trimmed = prompt.trim();
-      if (!trimmed || isStreaming) return;
+      if (!trimmed) return;
+
+      const effectiveSessionId = activeSessionIdRef.current || `sess_${Date.now()}`;
+      if (!activeSessionIdRef.current) {
+        setActiveSessionId(effectiveSessionId);
+        activeSessionIdRef.current = effectiveSessionId;
+      }
+
+      // Prevent starting duplicate tasks in the same session while it is streaming
+      if (activeStreamsRef.current.has(effectiveSessionId)) return;
 
       const userMsg: ThunderChatMessage = {
         role: "user",
@@ -400,6 +436,13 @@ export function useThunderChat() {
 
       const taskId = `task_${Date.now()}`;
       setActiveTaskId(taskId);
+
+      activeStreamsRef.current.set(effectiveSessionId, {
+        taskId,
+        streamingText: "",
+        streamingReasoning: "",
+        streamingTools: []
+      });
 
       const model = options?.model || selectedModel || (models[0]?.selection_id ?? "mock");
       const currentModelInfo = models.find((m) => (m.selection_id || m.id) === model);
@@ -429,7 +472,7 @@ export function useThunderChat() {
 
       startTaskTrace({
         taskId,
-        sessionId: activeSessionId || `sess_${Date.now()}`,
+        sessionId: effectiveSessionId,
         model,
         workspaceDir: ws,
         prompt: trimmed
@@ -442,7 +485,7 @@ export function useThunderChat() {
         const result = await desktopApi().thunderChatRunTask({
           taskId,
           prompt: trimmed,
-          sessionId: activeSessionId || undefined,
+          sessionId: effectiveSessionId,
           model,
           workspaceDir: ws,
           taskNoteId: effectiveTaskNoteId,
@@ -451,10 +494,13 @@ export function useThunderChat() {
         });
 
         // Task finalized
-        const finalContent = result.finalContent || streamingTextRef.current;
-        const finalReasoning = streamingReasoningRef.current;
+        const streamState = activeStreamsRef.current.get(effectiveSessionId);
+        const finalContent = result.finalContent || streamState?.streamingText || "";
+        const finalReasoning = streamState?.streamingReasoning || undefined;
         const finalTools =
-          streamingToolsRef.current.length > 0 ? [...streamingToolsRef.current] : undefined;
+          streamState && streamState.streamingTools.length > 0
+            ? [...streamState.streamingTools]
+            : undefined;
 
         finishTaskTrace({
           finishReason: result.finishReason,
@@ -464,14 +510,18 @@ export function useThunderChat() {
         const assistantMsg: ThunderChatMessage = {
           role: "assistant",
           content: finalContent || "(No response output)",
-          reasoning: finalReasoning || undefined,
+          reasoning: finalReasoning,
           tool_executions: finalTools
         };
 
-        setMessages((prev) => [...prev, assistantMsg]);
-        setStreamingText("");
-        setStreamingReasoning("");
-        setStreamingTools([]);
+        if (activeSessionIdRef.current === effectiveSessionId) {
+          setMessages((prev) => [...prev, assistantMsg]);
+          setStreamingText("");
+          setStreamingReasoning("");
+          setStreamingTools([]);
+          setIsStreaming(false);
+          setActiveTaskId(null);
+        }
 
         // Reload conversation list and session if newly created
         await loadConversations();
@@ -483,18 +533,22 @@ export function useThunderChat() {
         });
         const errMsg: ThunderChatMessage = {
           role: "assistant",
-          content: `⚠️ **Task failed**: ${err instanceof Error ? err.message : String(err)}`,
-          reasoning: streamingReasoningRef.current || undefined,
-          tool_executions:
-            streamingToolsRef.current.length > 0 ? [...streamingToolsRef.current] : undefined
+          content: `⚠️ **Task failed**: ${err instanceof Error ? err.message : String(err)}`
         };
-        setMessages((prev) => [...prev, errMsg]);
+        if (activeSessionIdRef.current === effectiveSessionId) {
+          setMessages((prev) => [...prev, errMsg]);
+          setIsStreaming(false);
+          setActiveTaskId(null);
+        }
       } finally {
-        setIsStreaming(false);
-        setActiveTaskId(null);
+        activeStreamsRef.current.delete(effectiveSessionId);
+        if (activeSessionIdRef.current === effectiveSessionId) {
+          setIsStreaming(false);
+          setActiveTaskId(null);
+        }
       }
     },
-    [activeSessionId, isStreaming, loadConversations, models, selectedModel, useMock, workspaceDir]
+    [finishTaskTrace, loadConversations, models, selectedModel, startTaskTrace, taskNoteId, thinkingLevel, useMock, workspaceDir, workspaceSource]
   );
 
   const prefillComposer = useCallback((text: string) => {
@@ -569,9 +623,12 @@ export function useThunderChat() {
   );
 
   const cancelCurrentTask = useCallback(async () => {
-    if (!activeTaskIdRef.current) return;
+    const curSessId = activeSessionIdRef.current;
+    const stream = curSessId ? activeStreamsRef.current.get(curSessId) : null;
+    const targetTaskId = stream?.taskId || activeTaskIdRef.current;
+    if (!targetTaskId) return;
     try {
-      await desktopApi().thunderChatCancelTask({ taskId: activeTaskIdRef.current });
+      await desktopApi().thunderChatCancelTask({ taskId: targetTaskId });
     } catch (err) {
       console.error("Failed to cancel thunder task:", err);
     }
@@ -580,51 +637,70 @@ export function useThunderChat() {
   // Subscribe to real-time events from Thunder daemon
   useEffect(() => {
     const unsub = desktopApi().onThunderChatEvent((payload: ThunderChatStreamPayload) => {
-      if (activeTaskIdRef.current && payload.taskId !== activeTaskIdRef.current) return;
-
-      const ev = payload.event?.event;
+      const { taskId, sessionId, event } = payload;
+      const ev = event?.event;
       if (!ev) return;
 
-      recordTraceEvent(ev, payload.taskId);
+      const isCurrentSession = activeSessionIdRef.current === sessionId;
+
+      let stream = activeStreamsRef.current.get(sessionId);
+      if (!stream) {
+        stream = {
+          taskId,
+          streamingText: "",
+          streamingReasoning: "",
+          streamingTools: []
+        };
+        activeStreamsRef.current.set(sessionId, stream);
+      }
 
       switch (ev.type) {
         case "token_delta": {
           const delta = (ev as any).delta || "";
-          setStreamingText((prev) => prev + delta);
+          stream.streamingText += delta;
+          if (isCurrentSession) {
+            setStreamingText((prev) => prev + delta);
+          }
           break;
         }
         case "reasoning_delta": {
           const delta = (ev as any).delta || "";
-          setStreamingReasoning((prev) => prev + delta);
+          stream.streamingReasoning += delta;
+          if (isCurrentSession) {
+            setStreamingReasoning((prev) => prev + delta);
+          }
           break;
         }
         case "tool_exec_start": {
           const toolCallId = (ev as any).tool_call_id || `tool_${Date.now()}`;
           const name = (ev as any).name || "tool";
           const args = (ev as any).arguments || {};
-          setStreamingTools((prev) => {
-            const exists = prev.find((t) => t.toolCallId === toolCallId);
-            if (exists) return prev;
-            return [...prev, { toolCallId, name, arguments: args, isRunning: true }];
-          });
+          const exists = stream.streamingTools.find((t) => t.toolCallId === toolCallId);
+          if (!exists) {
+            stream.streamingTools.push({ toolCallId, name, arguments: args, isRunning: true });
+          }
+          if (isCurrentSession) {
+            setStreamingTools([...stream.streamingTools]);
+          }
           break;
         }
         case "tool_exec_result": {
           const toolCallId = (ev as any).tool_call_id;
           const result = (ev as any).result;
-          setStreamingTools((prev) =>
-            prev.map((t) => {
-              if (t.toolCallId === toolCallId) {
-                return {
-                  ...t,
-                  isRunning: false,
-                  result: result?.output,
-                  isError: Boolean(result?.is_error)
-                };
-              }
-              return t;
-            })
-          );
+          stream.streamingTools = stream.streamingTools.map((t) => {
+            if (t.toolCallId === toolCallId) {
+              return {
+                ...t,
+                isRunning: false,
+                result: result?.output,
+                isError: Boolean(result?.is_error)
+              };
+            }
+            return t;
+          });
+          if (isCurrentSession) {
+            setStreamingTools([...stream.streamingTools]);
+          }
           break;
         }
         case "error": {
@@ -632,10 +708,14 @@ export function useThunderChat() {
           break;
         }
       }
+
+      if (isCurrentSession) {
+        recordTraceEvent(ev, taskId);
+      }
     });
 
     return () => unsub?.();
-  }, []);
+  }, [recordTraceEvent]);
 
   // Initial load
   useEffect(() => {

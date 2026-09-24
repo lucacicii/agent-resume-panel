@@ -146,18 +146,6 @@ export function ChatMain({
               <span className="tb-header-badge">{fileChanges.length}</span>
             )}
           </button>
-
-          {hasMessages && (
-            <button
-              type="button"
-              className="tb-header-action-btn"
-              onClick={onNewSession}
-              title="Start a new chat"
-            >
-              <ThemeIcon name="message-square-plus" size={ICON_SIZE.dense} />
-              <span>New</span>
-            </button>
-          )}
         </div>
       </header>
 
