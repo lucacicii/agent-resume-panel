@@ -11,7 +11,8 @@ import type {
   ThunderModelInfo,
   ThunderObservedEvent,
   ThunderConversationSummary,
-  ThunderConversation
+  ThunderConversation,
+  ThunderTaskTrace
 } from "./thunderProtocol";
 
 interface PendingRequest {
@@ -428,6 +429,84 @@ export class ThunderClient {
     } catch (err) {
       console.error("[thunder-client] truncateConversation error:", err);
       return false;
+    }
+  }
+
+  public async getTrace(args: { sessionId: string; taskId?: string }): Promise<ThunderTaskTrace | null> {
+    try {
+      const resp = await this.sendCommand<ThunderTaskTrace>("get_trace", {
+        session_id: args.sessionId,
+        task_id: args.taskId
+      });
+      if (resp) {
+        return resp;
+      }
+    } catch {
+      // Fallback to disk read
+    }
+
+    try {
+      const home = os.homedir();
+      const traceDir = path.join(home, ".thunder", "conversations", args.sessionId, "traces");
+      if (!fs.existsSync(traceDir)) return null;
+
+      let traceFile: string;
+      if (args.taskId) {
+        traceFile = path.join(traceDir, `${args.taskId}.json`);
+      } else {
+        const files = await fs.promises.readdir(traceDir);
+        const jsonFiles = files.filter((f) => f.endsWith(".json"));
+        if (jsonFiles.length === 0) return null;
+        jsonFiles.sort().reverse();
+        traceFile = path.join(traceDir, jsonFiles[0]);
+      }
+
+      if (fs.existsSync(traceFile)) {
+        const raw = await fs.promises.readFile(traceFile, "utf-8");
+        return JSON.parse(raw) as ThunderTaskTrace;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  public async listTraces(args: { sessionId: string }): Promise<Array<{ task_id: string; started_at_ms: number; duration_ms?: number; prompt?: string }>> {
+    try {
+      const resp = await this.sendCommand<{ traces?: Array<{ task_id: string; started_at_ms: number; duration_ms?: number; prompt?: string }> }>("list_traces", {
+        session_id: args.sessionId
+      });
+      if (resp?.traces && Array.isArray(resp.traces)) {
+        return resp.traces;
+      }
+    } catch {
+      // Fallback
+    }
+
+    try {
+      const home = os.homedir();
+      const traceDir = path.join(home, ".thunder", "conversations", args.sessionId, "traces");
+      if (!fs.existsSync(traceDir)) return [];
+      const files = await fs.promises.readdir(traceDir);
+      const results: Array<{ task_id: string; started_at_ms: number; duration_ms?: number; prompt?: string }> = [];
+      for (const file of files) {
+        if (!file.endsWith(".json")) continue;
+        try {
+          const raw = await fs.promises.readFile(path.join(traceDir, file), "utf-8");
+          const parsed = JSON.parse(raw);
+          results.push({
+            task_id: parsed.task_id || file.replace(".json", ""),
+            started_at_ms: parsed.started_at_ms || 0,
+            duration_ms: parsed.duration_ms,
+            prompt: parsed.prompt
+          });
+        } catch {
+          // ignore
+        }
+      }
+      return results.sort((a, b) => b.started_at_ms - a.started_at_ms);
+    } catch {
+      return [];
     }
   }
 

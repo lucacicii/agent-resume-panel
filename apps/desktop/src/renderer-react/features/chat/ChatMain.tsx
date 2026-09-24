@@ -1,10 +1,19 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { ChatMessageItem } from "./ChatMessageItem";
 import { ChatComposer } from "./ChatComposer";
 import { ChatEmptyState } from "./ChatEmptyState";
-import type { ThunderChatMessage, ThunderModelInfo } from "@agent-resume/core";
+import { TracePopover } from "./TracePopover";
+import { FileChangesPopover } from "./FileChangesPopover";
+import type {
+  ThunderChatMessage,
+  ThunderModelInfo,
+  ThunderFileChangeRecord,
+  ThunderTaskTrace,
+  ThunderTelemetryNotice
+} from "@agent-resume/core";
 import type { ActiveToolInfo } from "./useThunderChat";
+import type { TraceSpan } from "./useTraceCollector";
 
 interface ChatMainProps {
   sessionTitle?: string;
@@ -35,6 +44,11 @@ interface ChatMainProps {
   onEditPrompt?: (text: string) => void;
   prefillPrompt?: { text: string; id: number } | null;
   daemonOnline?: boolean;
+  currentTrace?: ThunderTaskTrace | null;
+  traceSpans?: TraceSpan[];
+  fileChanges?: ThunderFileChangeRecord[];
+  telemetryNotices?: ThunderTelemetryNotice[];
+  isCollectingTrace?: boolean;
 }
 
 export function ChatMain({
@@ -65,9 +79,16 @@ export function ChatMain({
   onResend,
   onEditPrompt,
   prefillPrompt,
-  daemonOnline = true
+  daemonOnline = true,
+  currentTrace,
+  traceSpans = [],
+  fileChanges = [],
+  telemetryNotices = [],
+  isCollectingTrace = false
 }: ChatMainProps) {
   const scrollEndRef = useRef<HTMLDivElement | null>(null);
+  const [isTraceOpen, setIsTraceOpen] = useState(false);
+  const [isFilesOpen, setIsFilesOpen] = useState(false);
 
   // Auto-scroll when messages or streaming tokens change
   useEffect(() => {
@@ -88,6 +109,44 @@ export function ChatMain({
         </div>
 
         <div className="tb-chat-header-actions">
+          {/* Trace Popover Trigger */}
+          <button
+            type="button"
+            className={`tb-header-action-btn${isTraceOpen ? " is-active" : ""}`}
+            onClick={() => setIsTraceOpen(!isTraceOpen)}
+            title="View execution trace and telemetry"
+          >
+            <ThemeIcon name="activity" size={ICON_SIZE.dense} />
+            <span>Trace</span>
+            {isCollectingTrace ? (
+              <span className="tb-header-pulse" />
+            ) : currentTrace?.duration_ms ? (
+              <span
+                style={{
+                  fontSize: "10px",
+                  color: "var(--color-label-tertiary)",
+                  fontFamily: "var(--font-family-mono, monospace)"
+                }}
+              >
+                {(currentTrace.duration_ms / 1000).toFixed(1)}s
+              </span>
+            ) : null}
+          </button>
+
+          {/* Files Popover Trigger */}
+          <button
+            type="button"
+            className={`tb-header-action-btn${isFilesOpen ? " is-active" : ""}`}
+            onClick={() => setIsFilesOpen(!isFilesOpen)}
+            title="View modified files"
+          >
+            <ThemeIcon name="file-diff" size={ICON_SIZE.dense} />
+            <span>Files</span>
+            {fileChanges.length > 0 && (
+              <span className="tb-header-badge">{fileChanges.length}</span>
+            )}
+          </button>
+
           {hasMessages && (
             <button
               type="button"
@@ -101,6 +160,23 @@ export function ChatMain({
           )}
         </div>
       </header>
+
+      {/* Popovers */}
+      <TracePopover
+        isOpen={isTraceOpen}
+        onClose={() => setIsTraceOpen(false)}
+        trace={currentTrace || null}
+        spans={traceSpans}
+        telemetryNotices={telemetryNotices}
+        isCollecting={isCollectingTrace}
+      />
+
+      <FileChangesPopover
+        isOpen={isFilesOpen}
+        onClose={() => setIsFilesOpen(false)}
+        files={fileChanges}
+        workspaceDir={workspaceDir}
+      />
 
       {/* Messages Feed or Empty State */}
       <div className="tb-chat-feed">

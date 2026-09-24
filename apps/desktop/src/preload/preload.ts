@@ -26,7 +26,8 @@ import type {
   ThunderConversation,
   ThunderChatStreamPayload,
   ThunderChatTaskOptions,
-  ThunderChatTaskResult
+  ThunderChatTaskResult,
+  ThunderTaskTrace
 } from "../main/thunder/thunderProtocol";
 import type { McpClientInfo } from "../main/mcpRegistration";
 import type {
@@ -1542,6 +1543,8 @@ export interface DesktopApi {
     useMock?: boolean;
   }): Promise<ThunderChatTaskResult>;
   thunderChatCancelTask(args: { taskId: string }): Promise<boolean>;
+  thunderChatGetTrace(args: { sessionId: string; taskId?: string }): Promise<ThunderTaskTrace | null>;
+  thunderChatListTraces(args: { sessionId: string }): Promise<Array<{ task_id: string; started_at_ms: number; duration_ms?: number; prompt?: string }>>;
   onThunderChatEvent(callback: (payload: ThunderChatStreamPayload) => void): () => void;
   onThunderModelsChanged(callback: () => void): () => void;
   onScheduleRunEvent(callback: (payload: { scheduleId: string; runId: string; event: ThunderAgentEvent; accumulatedOutput: string }) => void): () => void;
@@ -2055,6 +2058,8 @@ const api: DesktopApi = {
   thunderChatTruncateConversation: (args) => ipcRenderer.invoke("thunder:chat:truncateConversation", args),
   thunderChatRunTask: (args) => ipcRenderer.invoke("thunder:chat:runTask", args),
   thunderChatCancelTask: (args) => ipcRenderer.invoke("thunder:chat:cancelTask", args),
+  thunderChatGetTrace: (args) => ipcRenderer.invoke("thunder:chat:getTrace", args),
+  thunderChatListTraces: (args) => ipcRenderer.invoke("thunder:chat:listTraces", args),
   onThunderChatEvent: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, payload: ThunderChatStreamPayload) => callback(payload);
     ipcRenderer.on("thunder:chat:event", handler);

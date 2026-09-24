@@ -5,8 +5,10 @@ import type {
   ThunderConversation,
   ThunderConversationSummary,
   ThunderModelInfo,
-  ThunderChatStreamPayload
+  ThunderChatStreamPayload,
+  ThunderFileChangeRecord
 } from "@agent-resume/core";
+import { useTraceCollector } from "./useTraceCollector";
 
 export interface ActiveToolInfo {
   toolCallId: string;
@@ -139,6 +141,21 @@ export function useThunderChat() {
     error?: string;
   } | null>(null);
 
+  // End-to-end task trace and file modification tracking
+  const {
+    currentTrace,
+    spans: traceSpans,
+    fileChanges,
+    telemetryNotices,
+    isCollecting: isCollectingTrace,
+    startTaskTrace,
+    recordEvent: recordTraceEvent,
+    finishTaskTrace,
+    loadTrace,
+    resetTrace,
+    setFileChanges
+  } = useTraceCollector();
+
   const activeTaskIdRef = useRef<string | null>(null);
   activeTaskIdRef.current = activeTaskId;
 
@@ -253,6 +270,29 @@ export function useThunderChat() {
         }
         if (Array.isArray(conv.messages)) {
           setMessages(normalizeConversationMessages(conv.messages));
+
+          // Backfill file modification records from conversation tool calls
+          const extractedFiles: ThunderFileChangeRecord[] = [];
+          for (const msg of conv.messages) {
+            if (Array.isArray(msg.tool_executions)) {
+              for (const te of msg.tool_executions) {
+                if (te.name === "write_file") {
+                  const p = (te.arguments?.path as string) || "";
+                  if (p) {
+                    extractedFiles.push({
+                      path: p,
+                      tool: "write_file",
+                      action: te.isError ? "failed" : "written",
+                      timestamp: conv.updated_at_ms || Date.now()
+                    });
+                  }
+                }
+              }
+            }
+          }
+          if (extractedFiles.length > 0) {
+            setFileChanges(extractedFiles);
+          }
         } else {
           setMessages([]);
         }
@@ -262,6 +302,9 @@ export function useThunderChat() {
       setStreamingText("");
       setStreamingReasoning("");
       setStreamingTools([]);
+
+      // Load persistent trace for this conversation
+      void loadTrace(sessionId);
     } catch (err) {
       console.error("Failed to load conversation:", err);
     } finally {
@@ -275,12 +318,13 @@ export function useThunderChat() {
     setStreamingText("");
     setStreamingReasoning("");
     setStreamingTools([]);
+    resetTrace();
     const target = models.find((m) => (m.selection_id || m.id) === selectedModel);
     if (target) {
       const nextDef = target.default_thinking_level || (target.reasoning ? "medium" : "off");
       setThinkingLevel(nextDef);
     }
-  }, [models, selectedModel]);
+  }, [models, resetTrace, selectedModel]);
 
   const setWorkspaceGtdTask = useCallback((noteId: string, dir: string) => {
     setTaskNoteId(noteId);
@@ -383,6 +427,14 @@ export function useThunderChat() {
         setWorkspaceDir(ws);
       }
 
+      startTaskTrace({
+        taskId,
+        sessionId: activeSessionId || `sess_${Date.now()}`,
+        model,
+        workspaceDir: ws,
+        prompt: trimmed
+      });
+
       try {
         const effectiveTaskNoteId =
           workspaceSource === "gtd" && taskNoteId ? taskNoteId : undefined;
@@ -404,6 +456,11 @@ export function useThunderChat() {
         const finalTools =
           streamingToolsRef.current.length > 0 ? [...streamingToolsRef.current] : undefined;
 
+        finishTaskTrace({
+          finishReason: result.finishReason,
+          finalContent
+        });
+
         const assistantMsg: ThunderChatMessage = {
           role: "assistant",
           content: finalContent || "(No response output)",
@@ -420,6 +477,10 @@ export function useThunderChat() {
         await loadConversations();
       } catch (err) {
         console.error("Thunder task execution failed:", err);
+        finishTaskTrace({
+          finishReason: "error",
+          finalContent: err instanceof Error ? err.message : String(err)
+        });
         const errMsg: ThunderChatMessage = {
           role: "assistant",
           content: `⚠️ **Task failed**: ${err instanceof Error ? err.message : String(err)}`,
@@ -523,6 +584,8 @@ export function useThunderChat() {
 
       const ev = payload.event?.event;
       if (!ev) return;
+
+      recordTraceEvent(ev, payload.taskId);
 
       switch (ev.type) {
         case "token_delta": {
@@ -634,6 +697,11 @@ export function useThunderChat() {
     composerPrefill,
     prefillComposer,
     cancelCurrentTask,
-    refreshDaemonStatus
+    refreshDaemonStatus,
+    currentTrace,
+    traceSpans,
+    fileChanges,
+    telemetryNotices,
+    isCollectingTrace
   };
 }

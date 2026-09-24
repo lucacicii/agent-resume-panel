@@ -32,6 +32,59 @@ export interface ThunderModelInfo {
   default_thinking_level?: string;
 }
 
+export interface ThunderTelemetryNotice {
+  layer: string;
+  action: string;
+  ground_truth: string;
+  self_healed?: string;
+  guidance?: string;
+}
+
+export interface ThunderFileChangeRecord {
+  path: string;
+  tool: string;
+  action: "written" | "created" | "modified" | "deleted" | "failed" | string;
+  bytes?: number;
+  turn?: number;
+  timestamp?: number;
+  toolCallId?: string;
+}
+
+export interface ThunderTraceSpan {
+  id: string;
+  turn: number;
+  type: "thinking" | "token" | "tool" | "telemetry" | "file";
+  name: string;
+  startedAtMs: number;
+  durationMs?: number;
+  status?: "running" | "completed" | "failed";
+  data?: Record<string, unknown>;
+}
+
+export interface ThunderTaskTrace {
+  task_id: string;
+  session_id: string;
+  model?: string;
+  workspace_dir?: string;
+  prompt?: string;
+  started_at_ms: number;
+  finished_at_ms?: number;
+  duration_ms?: number;
+  finish_reason?: string;
+  stats?: {
+    total_turns?: number;
+    total_prompt_tokens?: number;
+    total_completion_tokens?: number;
+    total_duration_ms?: number;
+    total_tool_executions?: number;
+    total_tool_time_ms?: number;
+  };
+  final_content?: string;
+  events?: ThunderObservedEvent[];
+  file_changes?: ThunderFileChangeRecord[];
+  telemetry_notices?: ThunderTelemetryNotice[];
+}
+
 export type ThunderAgentEvent =
   | { type: "turn_start"; turn: number; timestamp: number }
   | { type: "token_delta"; turn: number; delta: string }
@@ -58,7 +111,28 @@ export type ThunderAgentEvent =
         output: unknown;
         error?: string;
         is_error: boolean;
+        duration_ms?: number;
+        telemetry?: ThunderTelemetryNotice;
       };
+    }
+  | {
+      type: "file_change";
+      turn: number;
+      tool_call_id: string;
+      path: string;
+      action: "written" | "created" | "modified" | "deleted" | "failed" | string;
+      bytes?: number;
+      tool_name: string;
+    }
+  | {
+      type: "telemetry_notice";
+      turn: number;
+      tool_call_id: string;
+      layer: string;
+      action: string;
+      ground_truth: string;
+      self_healed?: string;
+      guidance?: string;
     }
   | { type: "turn_end"; turn: number; stats?: unknown }
   | { type: "done"; stats?: unknown }

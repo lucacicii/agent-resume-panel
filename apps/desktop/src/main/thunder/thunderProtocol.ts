@@ -5,7 +5,11 @@ export type {
   ThunderToolExecutionRecord,
   ThunderChatStreamPayload,
   ThunderChatTaskOptions,
-  ThunderChatTaskResult
+  ThunderChatTaskResult,
+  ThunderTelemetryNotice,
+  ThunderFileChangeRecord,
+  ThunderTraceSpan,
+  ThunderTaskTrace
 } from "@agent-resume/core";
 
 export interface ThunderModelInfo {
@@ -45,7 +49,28 @@ export type ThunderAgentEvent =
         output: unknown;
         error?: string;
         is_error: boolean;
+        duration_ms?: number;
+        telemetry?: import("@agent-resume/core").ThunderTelemetryNotice;
       };
+    }
+  | {
+      type: "file_change";
+      turn: number;
+      tool_call_id: string;
+      path: string;
+      action: "written" | "created" | "modified" | "deleted" | "failed" | string;
+      bytes?: number;
+      tool_name: string;
+    }
+  | {
+      type: "telemetry_notice";
+      turn: number;
+      tool_call_id: string;
+      layer: string;
+      action: string;
+      ground_truth: string;
+      self_healed?: string;
+      guidance?: string;
     }
   | { type: "turn_end"; turn: number; stats?: unknown }
   | { type: "done"; stats?: unknown }

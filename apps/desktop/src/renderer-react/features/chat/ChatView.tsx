@@ -38,7 +38,12 @@ export function ChatView({ active }: { active: boolean }): React.JSX.Element | n
     composerPrefill,
     prefillComposer,
     cancelCurrentTask,
-    refreshDaemonStatus
+    refreshDaemonStatus,
+    currentTrace,
+    traceSpans,
+    fileChanges,
+    telemetryNotices,
+    isCollectingTrace
   } = useThunderChat();
 
   // Keyboard shortcut: ⌘N for new conversation
@@ -99,6 +104,11 @@ export function ChatView({ active }: { active: boolean }): React.JSX.Element | n
         onEditPrompt={prefillComposer}
         prefillPrompt={composerPrefill}
         daemonOnline={Boolean(daemonStatus?.available)}
+        currentTrace={currentTrace}
+        traceSpans={traceSpans}
+        fileChanges={fileChanges}
+        telemetryNotices={telemetryNotices}
+        isCollectingTrace={isCollectingTrace}
       />
     </div>,
     host

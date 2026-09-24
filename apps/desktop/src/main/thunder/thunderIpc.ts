@@ -219,4 +219,12 @@ export function registerThunderIpc(): void {
   safeHandle("thunder:chat:cancelTask", async (_event, args: { taskId: string }) => {
     return getThunderClient().cancelTask(args.taskId);
   });
+
+  safeHandle("thunder:chat:getTrace", async (_event, args: { sessionId: string; taskId?: string }) => {
+    return getThunderClient().getTrace(args);
+  });
+
+  safeHandle("thunder:chat:listTraces", async (_event, args: { sessionId: string }) => {
+    return getThunderClient().listTraces(args);
+  });
 }
