@@ -223,7 +223,10 @@ export function stageThunderSidecar(arch, {
     target: resolved.target,
     source: resolved.source,
     checkout: resolved.checkout ?? null,
-    sha256: sha256(stagedBinary),
+    // Hash of the file *as staged*: code signing rewrites the embedded signature, so
+    // the copy inside the bundle will not hash the same. Useful as a "which build is
+    // in here" fingerprint, not as a verification checksum.
+    sha256Staged: sha256(stagedBinary),
     bytes: fs.statSync(stagedBinary).size,
     stagedAt: new Date().toISOString()
   };
@@ -232,7 +235,7 @@ export function stageThunderSidecar(arch, {
     `${JSON.stringify(metadata, null, 2)}\n`
   );
   log(
-    `[thunder-sidecar] ${arch}: staged ${THUNDER_DAEMON_BIN} (${metadata.source}, ${(metadata.bytes / 1e6).toFixed(1)} MB, sha256 ${metadata.sha256.slice(0, 12)}…)`
+    `[thunder-sidecar] ${arch}: staged ${THUNDER_DAEMON_BIN} (${metadata.source}, ${(metadata.bytes / 1e6).toFixed(1)} MB, staged sha256 ${metadata.sha256Staged.slice(0, 12)}…)`
   );
   return { ok: true, arch, resourceDir: sidecarResourceDir(arch), stagedBinary, source: metadata.source, metadata };
 }

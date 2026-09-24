@@ -90,7 +90,7 @@ AGENT_RESUME_REQUIRE_THUNDER=1 pnpm run pack:desktop   # fail instead of shippin
 AGENT_RESUME_THUNDER_DIR=~/thunder-artifacts pnpm run pack:desktop
 ```
 
-Cross-arch builds need the Rust target (`rustup target add aarch64-apple-darwin` for arm64 on an Intel Mac) — without it the arch is packed *without* a bundled daemon and the script says so, unless `AGENT_RESUME_REQUIRE_THUNDER=1`. The staged binary is signed with `--options runtime --timestamp` when `AGENT_RESUME_CODESIGN_IDENTITY` is a real identity, then the bundle is signed as before. `dev:mac` never bundles, so your live checkout always wins during development.
+Cross-arch builds need the Rust target (`rustup target add aarch64-apple-darwin` for arm64 on an Intel Mac) — without it that arch is packed *without* a bundled daemon; `pack:desktop` prints a boxed warning naming every DMG that lost the daemon, and `AGENT_RESUME_REQUIRE_THUNDER=1` turns it into a hard failure instead. The staged binary is signed with `--options runtime --timestamp` when `AGENT_RESUME_CODESIGN_IDENTITY` is a real identity, then the bundle is signed as before. `dev:mac` never bundles, so your live checkout always wins during development.
 
 ### Install
 
@@ -165,7 +165,7 @@ AGENT_RESUME_REQUIRE_THUNDER=1 pnpm run pack:desktop    # 拿不到就报错，�
 AGENT_RESUME_THUNDER_DIR=~/thunder-artifacts pnpm run pack:desktop
 ```
 
-跨架构需要先装 Rust target（在 Intel Mac 上打 arm64 要 `rustup target add aarch64-apple-darwin`）—— 缺了它，该架构会**不带 daemon** 打包并明确提示；加 `AGENT_RESUME_REQUIRE_THUNDER=1` 则直接失败。`AGENT_RESUME_CODESIGN_IDENTITY` 是真实身份时，内置二进制会用 `--options runtime --timestamp` 单独签名，然后再签整个 bundle。`dev:mac` 从不内置，保证开发时始终用你本地 checkout。
+跨架构需要先装 Rust target（在 Intel Mac 上打 arm64 要 `rustup target add aarch64-apple-darwin`）—— 缺了它，该架构会**不带 daemon** 打包；`pack:desktop` 会在结尾用醒目的警告框列出所有丢了 daemon 的 DMG，加 `AGENT_RESUME_REQUIRE_THUNDER=1` 则直接失败。`AGENT_RESUME_CODESIGN_IDENTITY` 是真实身份时，内置二进制会用 `--options runtime --timestamp` 单独签名，然后再签整个 bundle。`dev:mac` 从不内置，保证开发时始终用你本地 checkout。
 
 ### 安装
 

@@ -12,7 +12,8 @@ const arch = process.arch === "arm64" ? "arm64" : "x64";
 
 runDesktopBuild();
 
-const appBundle = needsRepack(arch) ? await packMacApp(arch) : findAppBundle(arch);
+const packed = needsRepack(arch) ? await packMacApp(arch, { bundleThunder: false }) : { appBundle: findAppBundle(arch) };
+const appBundle = packed.appBundle;
 if (!appBundle) {
   throw new Error("Failed to locate Agent Resume.app");
 }

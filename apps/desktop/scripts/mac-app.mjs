@@ -379,11 +379,14 @@ export async function packMacApp(arch, { bundleThunder = false } = {}) {
     console.log(`Bundled Thunder daemon: ${bundled}`);
   }
   signMacApp(appBundle);
+  // Records what the bundle actually contains, not what was requested: an arch whose
+  // daemon could not be staged must not look like a complete release pack.
+  const thunderBundled = Boolean(sidecar?.ok);
   fs.writeFileSync(
     stampFileFor(arch),
-    JSON.stringify({ version: 1, arch, bundleId, sourceMtime: latestRepackMtime(), bundleThunder: Boolean(bundleThunder) })
+    JSON.stringify({ version: 1, arch, bundleId, sourceMtime: latestRepackMtime(), bundleThunder: thunderBundled })
   );
-  return appBundle;
+  return { appBundle, thunderBundled, thunderSource: sidecar?.ok ? sidecar.source : null };
 }
 
 export function stageMacDmgContents(appBundle, stagingDir) {
