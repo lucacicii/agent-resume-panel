@@ -21,6 +21,35 @@ export interface ThunderSchedule {
   updatedAtMs: number;
 }
 
+/** A question the agent is blocked on; rendered as a chat bubble. */
+export interface ThunderQuestionOption {
+  label: string;
+  description?: string;
+}
+
+export interface ThunderQuestionItem {
+  question: string;
+  header?: string;
+  multi_select?: boolean;
+  multiSelect?: boolean;
+  options: ThunderQuestionOption[];
+}
+
+/** A role as reported by the Thunder daemon (`list_roles`). */
+export interface ThunderRoleInfo {
+  id: string;
+  name: string;
+  aliases?: string[];
+  description?: string;
+  /** Capability tier enforced host-side. */
+  permission: "read" | "write" | "bash" | string;
+  persona?: string;
+  model?: string | null;
+  thinking_level?: string | null;
+  ask_user?: boolean;
+  exit_gate?: boolean;
+}
+
 export interface ThunderModelInfo {
   id: string;
   provider: string;
