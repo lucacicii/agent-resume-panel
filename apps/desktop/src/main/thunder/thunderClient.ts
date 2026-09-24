@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 import { loadSettings } from "@agent-resume/core";
 import { buildAugmentedPath } from "../processPath";
 import type {
+  ThunderRoleInfo,
   ThunderDaemonIncoming,
   ThunderModelInfo,
   ThunderObservedEvent,
@@ -297,6 +298,43 @@ export class ThunderClient {
         if (task) {
           this.activeTasks.delete(msg.task_id);
           task.reject(new Error(msg.error || "Thunder task failed"));
+        }
+        break;
+      }
+      case "user_question": {
+        // The agent is blocked awaiting an answer. Re-shape it into the standard
+        // observed-event envelope so the renderer's existing switch handles it
+        // without a second event channel.
+        console.log(`[thunder-client:user_question] task=${msg.task_id} q=${msg.question_id}`);
+        const task = this.activeTasks.get(msg.task_id);
+        if (task?.onEvent) {
+          try {
+            task.onEvent({
+              agent_id: msg.task_id,
+              event: {
+                type: "user_question",
+                question_id: msg.question_id,
+                questions: msg.questions
+              }
+            } as ThunderObservedEvent);
+          } catch (err) {
+            console.error("[thunder-daemon:user-question-handler-error]", err);
+          }
+        }
+        break;
+      }
+      case "task_paused": {
+        console.log(`[thunder-client:task_paused] task=${msg.task_id} reason=${msg.reason}`);
+        const task = this.activeTasks.get(msg.task_id);
+        if (task?.onEvent) {
+          try {
+            task.onEvent({
+              agent_id: msg.task_id,
+              event: { type: "task_paused", reason: msg.reason }
+            } as ThunderObservedEvent);
+          } catch (err) {
+            console.error("[thunder-daemon:task-paused-handler-error]", err);
+          }
         }
         break;
       }
@@ -633,6 +671,8 @@ export class ThunderClient {
     sessionId?: string;
     thinking_level?: string;
     useMock?: boolean;
+    /** Role id to activate host-side (enforces permission). */
+    role?: string;
     onEvent?: (event: ThunderObservedEvent) => void;
   }): Promise<{ finalContent?: string; finishReason: string; activePlugins?: string[] }> {
     await this.ensureRunning();
@@ -681,7 +721,8 @@ export class ThunderClient {
               model: options.model,
               thinking_level: options.thinking_level,
               session_id: options.sessionId,
-              use_mock: options.useMock
+              use_mock: options.useMock,
+              role: options.role
             },
             30_000
           );
@@ -691,6 +732,51 @@ export class ThunderClient {
         }
       }
     );
+  }
+
+  /** List roles visible from global + project scopes (host is the authority). */
+  public async listRoles(workspaceDir?: string): Promise<ThunderRoleInfo[]> {
+    try {
+      const res = await this.sendCommand<{ roles?: ThunderRoleInfo[] }>(
+        "list_roles",
+        { workspace_dir: workspaceDir },
+        10_000
+      );
+      return Array.isArray(res?.roles) ? res.roles : [];
+    } catch {
+      // Roles are optional; a daemon without them must not break the palette.
+      return [];
+    }
+  }
+
+  /** Answer a pending `ask_user_question` so the parked agent can continue. */
+  public async answerQuestion(options: {
+    questionId: string;
+    answers?: Record<string, string>;
+    cancelled?: boolean;
+  }): Promise<boolean> {
+    const res = await this.sendCommand<{ delivered?: boolean }>(
+      "answer_question",
+      {
+        question_id: options.questionId,
+        answers: options.answers ?? {},
+        cancelled: options.cancelled ?? false
+      },
+      10_000
+    );
+    return Boolean(res?.delivered);
+  }
+
+  /** Cooperatively pause a running task at its next tool boundary. */
+  public async pauseTask(taskId: string): Promise<boolean> {
+    const res = await this.sendCommand<{ paused?: boolean }>("pause_task", { task_id: taskId }, 10_000);
+    return Boolean(res?.paused);
+  }
+
+  /** Resume a paused task. */
+  public async resumeTask(taskId: string): Promise<boolean> {
+    const res = await this.sendCommand<{ resumed?: boolean }>("resume_task", { task_id: taskId }, 10_000);
+    return Boolean(res?.resumed);
   }
 
   public async cancelTask(taskId: string): Promise<boolean> {

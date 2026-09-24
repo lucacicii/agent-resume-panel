@@ -25,6 +25,36 @@ export interface ThunderTitleResult {
   error?: string;
 }
 
+/** One selectable option inside a question bubble. */
+export interface ThunderQuestionOption {
+  label: string;
+  description?: string;
+}
+
+/** One question the agent is blocked on, rendered as a bubble. */
+export interface ThunderQuestionItem {
+  question: string;
+  header?: string;
+  multi_select?: boolean;
+  multiSelect?: boolean;
+  options: ThunderQuestionOption[];
+}
+
+/** A role as reported by the daemon (`list_roles`). */
+export interface ThunderRoleInfo {
+  id: string;
+  name: string;
+  aliases?: string[];
+  description?: string;
+  /** Capability tier enforced by the host. */
+  permission: "read" | "write" | "bash" | string;
+  persona?: string;
+  model?: string | null;
+  thinking_level?: string | null;
+  ask_user?: boolean;
+  exit_gate?: boolean;
+}
+
 export type ThunderAgentEvent =
   | { type: "turn_start"; turn: number; timestamp: number }
   | { type: "token_delta"; turn: number; delta: string }
@@ -75,6 +105,12 @@ export type ThunderAgentEvent =
       guidance?: string;
     }
   | { type: "turn_end"; turn: number; stats?: import("@agent-resume/core").ThunderTurnStats }
+  | {
+      type: "user_question";
+      question_id: string;
+      questions: ThunderQuestionItem[];
+    }
+  | { type: "task_paused"; reason: string }
   | { type: "done"; stats?: unknown }
   | { type: "error"; message: string }
   | { type: string; [key: string]: unknown };
@@ -110,4 +146,17 @@ export type ThunderDaemonIncoming =
       task_id: string;
       session_id?: string;
       error: string;
+    }
+  | {
+      type: "user_question";
+      task_id: string;
+      session_id?: string;
+      question_id: string;
+      questions: ThunderQuestionItem[];
+    }
+  | {
+      type: "task_paused";
+      task_id: string;
+      session_id?: string;
+      reason: string;
     };

@@ -21,6 +21,7 @@ import type {
 } from "@agent-resume/core";
 import type {
   ThunderModelInfo,
+  ThunderRoleInfo,
   ThunderAgentEvent,
   ThunderConversationSummary,
   ThunderConversation,
@@ -1529,6 +1530,8 @@ export interface DesktopApi {
     error?: string;
   }>;
   thunderListModels(): Promise<ThunderModelInfo[]>;
+  /** Roles from ~/.thunder/roles.jsonl and <workspace>/.arp/roles.jsonl. */
+  thunderListRoles(args?: { workspaceDir?: string }): Promise<ThunderRoleInfo[]>;
   thunderChatListConversations(): Promise<ThunderConversationSummary[]>;
   thunderChatGetConversation(args: { sessionId: string }): Promise<ThunderConversation | null>;
   thunderChatGenerateTitle(args: { sessionId: string; force?: boolean }): Promise<ThunderTitleResult>;
@@ -1544,8 +1547,18 @@ export interface DesktopApi {
     taskNoteId?: string;
     thinking_level?: string;
     useMock?: boolean;
+    /** Role id; the host enforces its permission tier. */
+    role?: string;
   }): Promise<ThunderChatTaskResult>;
   thunderChatCancelTask(args: { taskId: string }): Promise<boolean>;
+  /** Answer a pending ask_user_question bubble. */
+  thunderChatAnswerQuestion(args: {
+    questionId: string;
+    answers?: Record<string, string>;
+    cancelled?: boolean;
+  }): Promise<boolean>;
+  thunderChatPauseTask(args: { taskId: string }): Promise<boolean>;
+  thunderChatResumeTask(args: { taskId: string }): Promise<boolean>;
   thunderChatGetTrace(args: { sessionId: string; taskId?: string }): Promise<ThunderTaskTrace | null>;
   thunderChatListTraces(args: { sessionId: string }): Promise<Array<{ task_id: string; started_at_ms: number; duration_ms?: number; prompt?: string }>>;
   onThunderChatEvent(callback: (payload: ThunderChatStreamPayload) => void): () => void;
@@ -2055,6 +2068,7 @@ const api: DesktopApi = {
   schedulesGetRun: (args) => ipcRenderer.invoke("schedule:getRun", args),
   thunderGetStatus: () => ipcRenderer.invoke("thunder:status"),
   thunderListModels: () => ipcRenderer.invoke("thunder:listModels"),
+  thunderListRoles: (args) => ipcRenderer.invoke("thunder:listRoles", args),
   thunderChatListConversations: () => ipcRenderer.invoke("thunder:chat:listConversations"),
   thunderChatGetConversation: (args) => ipcRenderer.invoke("thunder:chat:getConversation", args),
   thunderChatGenerateTitle: (args) => ipcRenderer.invoke("thunder:chat:generateTitle", args),
@@ -2063,6 +2077,9 @@ const api: DesktopApi = {
   thunderChatTruncateConversation: (args) => ipcRenderer.invoke("thunder:chat:truncateConversation", args),
   thunderChatRunTask: (args) => ipcRenderer.invoke("thunder:chat:runTask", args),
   thunderChatCancelTask: (args) => ipcRenderer.invoke("thunder:chat:cancelTask", args),
+  thunderChatAnswerQuestion: (args) => ipcRenderer.invoke("thunder:chat:answerQuestion", args),
+  thunderChatPauseTask: (args) => ipcRenderer.invoke("thunder:chat:pauseTask", args),
+  thunderChatResumeTask: (args) => ipcRenderer.invoke("thunder:chat:resumeTask", args),
   thunderChatGetTrace: (args) => ipcRenderer.invoke("thunder:chat:getTrace", args),
   thunderChatListTraces: (args) => ipcRenderer.invoke("thunder:chat:listTraces", args),
   onThunderChatEvent: (callback) => {

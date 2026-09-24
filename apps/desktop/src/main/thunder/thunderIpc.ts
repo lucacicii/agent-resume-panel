@@ -114,6 +114,10 @@ export function registerThunderIpc(): void {
     return getThunderClient().listModels();
   });
 
+  safeHandle("thunder:listRoles", async (_event, args?: { workspaceDir?: string }) => {
+    return getThunderClient().listRoles(args?.workspaceDir);
+  });
+
   safeHandle("thunder:chat:listConversations", async () => {
     return getThunderClient().listConversations();
   });
@@ -160,6 +164,7 @@ export function registerThunderIpc(): void {
         taskNoteId?: string;
         thinking_level?: string;
         useMock?: boolean;
+        role?: string;
       }
     ) => {
       const client = getThunderClient();
@@ -212,6 +217,7 @@ export function registerThunderIpc(): void {
         gtdContext,
         thinking_level: args.thinking_level,
         useMock: args.useMock,
+        role: args.role,
         onEvent: (event) => {
           for (const win of BrowserWindow.getAllWindows()) {
             if (win.isDestroyed()) continue;
@@ -232,6 +238,21 @@ export function registerThunderIpc(): void {
 
   safeHandle("thunder:chat:cancelTask", async (_event, args: { taskId: string }) => {
     return getThunderClient().cancelTask(args.taskId);
+  });
+
+  safeHandle(
+    "thunder:chat:answerQuestion",
+    async (_event, args: { questionId: string; answers?: Record<string, string>; cancelled?: boolean }) => {
+      return getThunderClient().answerQuestion(args);
+    }
+  );
+
+  safeHandle("thunder:chat:pauseTask", async (_event, args: { taskId: string }) => {
+    return getThunderClient().pauseTask(args.taskId);
+  });
+
+  safeHandle("thunder:chat:resumeTask", async (_event, args: { taskId: string }) => {
+    return getThunderClient().resumeTask(args.taskId);
   });
 
   safeHandle("thunder:chat:getTrace", async (_event, args: { sessionId: string; taskId?: string }) => {
