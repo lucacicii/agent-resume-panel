@@ -122,6 +122,20 @@ export function registerThunderIpc(): void {
     return getThunderClient().getConversation(args.sessionId);
   });
 
+  safeHandle(
+    "thunder:chat:generateTitle",
+    async (_event, args: { sessionId: string; force?: boolean }) => {
+      return getThunderClient().generateConversationTitle(args.sessionId, args.force ?? false);
+    }
+  );
+
+  safeHandle(
+    "thunder:chat:setTitle",
+    async (_event, args: { sessionId: string; title: string }) => {
+      return getThunderClient().setConversationTitle(args.sessionId, args.title);
+    }
+  );
+
   safeHandle("thunder:chat:deleteConversation", async (_event, args: { sessionId: string }) => {
     return getThunderClient().deleteConversation(args.sessionId);
   });

@@ -1242,18 +1242,30 @@ export function ChatComposer({
                     </span>
                   ) : null}
                 </span>
-                {typeof lastRunMetrics.cachedTokens === "number" && lastRunMetrics.cachedTokens > 0 ? (
-                  <>
-                    <span className="tb-metrics-divider" />
-                    <span className="tb-metrics-cache-badge" title="Prompt Cache 命中数量">
-                      <ThemeIcon name="zap" size={ICON_SIZE.inline} />
-                      Cache {lastRunMetrics.cachedTokens.toLocaleString()}
-                      {typeof lastRunMetrics.promptTokens === "number" && lastRunMetrics.promptTokens > 0 ? (
-                        ` (${Math.round((lastRunMetrics.cachedTokens / lastRunMetrics.promptTokens) * 100)}%)`
-                      ) : null}
-                    </span>
-                  </>
-                ) : null}
+                {typeof lastRunMetrics.cachedTokens === "number" || lastRunMetrics.totalTokens !== undefined ? (() => {
+                  const cachedCount = typeof lastRunMetrics.cachedTokens === "number" ? lastRunMetrics.cachedTokens : 0;
+                  const isHit = cachedCount > 0;
+                  const hitPercent = isHit && typeof lastRunMetrics.promptTokens === "number" && lastRunMetrics.promptTokens > 0
+                    ? Math.round((cachedCount / lastRunMetrics.promptTokens) * 100)
+                    : null;
+                  return (
+                    <>
+                      <span className="tb-metrics-divider" />
+                      <span
+                        className={`tb-metrics-cache-badge${!isHit ? " is-zero" : ""}`}
+                        title={
+                          isHit
+                            ? `Prompt Cache 命中: ${cachedCount.toLocaleString()} tokens${hitPercent !== null ? ` (${hitPercent}%)` : ""}`
+                            : "Prompt Cache: 0 tokens (未命中缓存)"
+                        }
+                      >
+                        <ThemeIcon name="zap" size={ICON_SIZE.inline} />
+                        Cache {cachedCount.toLocaleString()}
+                        {hitPercent !== null ? ` (${hitPercent}%)` : null}
+                      </span>
+                    </>
+                  );
+                })() : null}
               </>
             ) : (
               <span className="tb-metrics-speed">⚡ Ready</span>

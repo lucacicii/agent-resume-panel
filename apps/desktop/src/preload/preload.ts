@@ -27,7 +27,8 @@ import type {
   ThunderChatStreamPayload,
   ThunderChatTaskOptions,
   ThunderChatTaskResult,
-  ThunderTaskTrace
+  ThunderTaskTrace,
+  ThunderTitleResult
 } from "../main/thunder/thunderProtocol";
 import type { McpClientInfo } from "../main/mcpRegistration";
 import type {
@@ -1530,6 +1531,8 @@ export interface DesktopApi {
   thunderListModels(): Promise<ThunderModelInfo[]>;
   thunderChatListConversations(): Promise<ThunderConversationSummary[]>;
   thunderChatGetConversation(args: { sessionId: string }): Promise<ThunderConversation | null>;
+  thunderChatGenerateTitle(args: { sessionId: string; force?: boolean }): Promise<ThunderTitleResult>;
+  thunderChatSetTitle(args: { sessionId: string; title: string }): Promise<ThunderTitleResult>;
   thunderChatDeleteConversation(args: { sessionId: string }): Promise<boolean>;
   thunderChatTruncateConversation(args: { sessionId: string; keepCount: number }): Promise<boolean>;
   thunderChatRunTask(args: {
@@ -2054,6 +2057,8 @@ const api: DesktopApi = {
   thunderListModels: () => ipcRenderer.invoke("thunder:listModels"),
   thunderChatListConversations: () => ipcRenderer.invoke("thunder:chat:listConversations"),
   thunderChatGetConversation: (args) => ipcRenderer.invoke("thunder:chat:getConversation", args),
+  thunderChatGenerateTitle: (args) => ipcRenderer.invoke("thunder:chat:generateTitle", args),
+  thunderChatSetTitle: (args) => ipcRenderer.invoke("thunder:chat:setTitle", args),
   thunderChatDeleteConversation: (args) => ipcRenderer.invoke("thunder:chat:deleteConversation", args),
   thunderChatTruncateConversation: (args) => ipcRenderer.invoke("thunder:chat:truncateConversation", args),
   thunderChatRunTask: (args) => ipcRenderer.invoke("thunder:chat:runTask", args),

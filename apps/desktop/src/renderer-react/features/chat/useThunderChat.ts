@@ -160,6 +160,7 @@ export function useThunderChat() {
 
   // Performance & Token metrics
   const [lastRunMetrics, setLastRunMetrics] = useState<ChatRunMetrics | null>(null);
+  const [titleNotice, setTitleNotice] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const [sessionTotalTokens, setSessionTotalTokens] = useState<number>(0);
   const [currentContextTokens, setCurrentContextTokens] = useState<number>(0);
   const [streamTokensCount, setStreamTokensCount] = useState(0);
@@ -368,14 +369,15 @@ export function useThunderChat() {
           tps: trace.stats.avg_tokens_per_second,
           promptTokens: trace.stats.total_prompt_tokens,
           completionTokens: trace.stats.total_completion_tokens,
-          cachedTokens: trace.stats.total_cached_tokens,
+          cachedTokens: trace.stats.total_cached_tokens ?? 0,
           totalTokens: (trace.stats.total_prompt_tokens || 0) + (trace.stats.total_completion_tokens || 0),
           durationMs: trace.stats.total_duration_ms
         });
       } else if (conv && conv.stats) {
         setLastRunMetrics({
           totalTokens: conv.stats.total_tokens,
-          durationMs: conv.stats.duration_ms
+          durationMs: conv.stats.duration_ms,
+          cachedTokens: 0
         });
       } else {
         setLastRunMetrics(null);
@@ -458,6 +460,47 @@ export function useThunderChat() {
     },
     [activeSessionId, createNewSession, loadConversations]
   );
+
+  /** AI-rename a conversation via the daemon's utility model; surfaces errors to the UI. */
+  const aiRenameSession = useCallback(
+    async (sessionId: string, force = false) => {
+      const res = await desktopApi()
+        .thunderChatGenerateTitle({ sessionId, force })
+        .catch((err) => ({ ok: false as const, errorKind: "unknown", error: String(err) }));
+      if (res.ok && res.title) {
+        setTitleNotice({ kind: "success", text: `已重命名：「${res.title}」` });
+      } else {
+        setTitleNotice({
+          kind: "error",
+          text: `AI 命名失败${res.errorKind ? ` (${res.errorKind})` : ""}：${res.error || "未知错误"}`
+        });
+      }
+      await loadConversations();
+    },
+    [loadConversations]
+  );
+
+  /** Manually rename a conversation; manual titles are protected from auto-renames. */
+  const renameSession = useCallback(
+    async (sessionId: string, title: string) => {
+      const res = await desktopApi()
+        .thunderChatSetTitle({ sessionId, title })
+        .catch((err) => ({ ok: false as const, errorKind: "unknown", error: String(err) }));
+      if (res.ok) {
+        setTitleNotice({ kind: "success", text: `已重命名：「${res.title || title}」` });
+      } else {
+        setTitleNotice({
+          kind: "error",
+          text: `重命名失败${res.errorKind ? ` (${res.errorKind})` : ""}：${res.error || "未知错误"}`
+        });
+      }
+      await loadConversations();
+      return res.ok;
+    },
+    [loadConversations]
+  );
+
+  const dismissTitleNotice = useCallback(() => setTitleNotice(null), []);
 
   const sendMessage = useCallback(
     async (
@@ -767,7 +810,9 @@ export function useThunderChat() {
           if (stats && isCurrentSession) {
             const pt = typeof stats.prompt_tokens === "number" ? stats.prompt_tokens : undefined;
             const ct = typeof stats.completion_tokens === "number" ? stats.completion_tokens : undefined;
-            const cached = typeof stats.cached_tokens === "number" ? stats.cached_tokens : undefined;
+            const cached = typeof stats.cached_tokens === "number"
+              ? stats.cached_tokens
+              : (pt !== undefined ? 0 : undefined);
             const dur = typeof stats.duration_ms === "number" ? stats.duration_ms : 0;
             const tps = typeof stats.tokens_per_second === "number" && Number.isFinite(stats.tokens_per_second)
               ? stats.tokens_per_second
@@ -869,6 +914,10 @@ export function useThunderChat() {
     selectSession,
     createNewSession,
     deleteSession,
+    aiRenameSession,
+    renameSession,
+    titleNotice,
+    dismissTitleNotice,
     sendMessage,
     resendUserMessage,
     regenerateResponse,

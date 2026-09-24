@@ -12,13 +12,21 @@ import type {
   ThunderObservedEvent,
   ThunderConversationSummary,
   ThunderConversation,
-  ThunderTaskTrace
+  ThunderTaskTrace,
+  ThunderTitleResult
 } from "./thunderProtocol";
 
 interface PendingRequest {
   resolve: (data: any) => void;
   reject: (err: Error) => void;
   timer: NodeJS.Timeout;
+}
+
+/** Normalize a rejected daemon command into a structured title error result. */
+function titleErrorResult(err: unknown): ThunderTitleResult {
+  const message = err instanceof Error ? err.message : String(err);
+  const kindMatch = /^\[(\w+)\]\s*/.exec(message);
+  return { ok: false, errorKind: kindMatch?.[1] || "unknown", error: message };
 }
 
 interface ActiveTask {
@@ -356,6 +364,44 @@ export class ThunderClient {
       return this.getConversationFromDisk(sessionId);
     } catch {
       return this.getConversationFromDisk(sessionId);
+    }
+  }
+
+  /**
+   * AI-generate a conversation title via the daemon's utility model.
+   * Never throws: returns structured error info so the UI can display it.
+   */
+  public async generateConversationTitle(
+    sessionId: string,
+    force = false
+  ): Promise<ThunderTitleResult> {
+    try {
+      // Title generation can take 30s+ on slower utility models — long timeout
+      const res = await this.sendCommand<{ title?: string }>(
+        "generate_title",
+        { session_id: sessionId, force },
+        60_000
+      );
+      return { ok: true, title: res?.title };
+    } catch (err) {
+      return titleErrorResult(err);
+    }
+  }
+
+  /** Manually set a conversation title (locks it against future auto-renames). */
+  public async setConversationTitle(
+    sessionId: string,
+    title: string
+  ): Promise<ThunderTitleResult> {
+    try {
+      const res = await this.sendCommand<{ title?: string }>(
+        "set_conversation_title",
+        { session_id: sessionId, title },
+        10_000
+      );
+      return { ok: true, title: res?.title };
+    } catch (err) {
+      return titleErrorResult(err);
     }
   }
 

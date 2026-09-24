@@ -15,6 +15,16 @@ export type {
   ThunderModelInfo
 } from "@agent-resume/core";
 
+/** Result of AI-title generation or manual title setting (errors are structured, never thrown). */
+export interface ThunderTitleResult {
+  ok: boolean;
+  title?: string;
+  /** Machine-readable error kind: no_utility_model | client_error | api_error | empty_title | store_error | manual_locked | not_found | invalid_title | unknown */
+  errorKind?: string;
+  /** Human-readable error detail for display */
+  error?: string;
+}
+
 export type ThunderAgentEvent =
   | { type: "turn_start"; turn: number; timestamp: number }
   | { type: "token_delta"; turn: number; delta: string }
