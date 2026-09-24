@@ -26,7 +26,8 @@
     "test:workbench-replace": "node scripts/workbench-replace.test.mjs",
     "test:agent-status": "node scripts/agent-status-daemon.test.mjs",
     "agent-status:capture": "node scripts/agent-status-capture.mjs",
-    "agent-status:mine": "node scripts/agent-status-mine.mjs"
+    "agent-status:mine": "node scripts/agent-status-mine.mjs",
+    "test:thunder-sidecar": "node scripts/thunder-sidecar.test.mjs"
   },
   "dependencies": {
     "@agent-resume/core": "workspace:*",

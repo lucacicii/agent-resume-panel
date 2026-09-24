@@ -58,6 +58,26 @@ assert.equal(
 assert.equal(isBuildStampCurrent("200", 200, "arm64"), false);
 assert.equal(isBuildStampCurrent("invalid", 200, "arm64"), false);
 
+// A dev pack (no bundled daemon) and a release pack must never be mistaken for each other.
+const releaseStamp = JSON.stringify({
+  version: 1,
+  arch: "arm64",
+  bundleId: "com.thunder-luc.agent-resume",
+  sourceMtime: 200,
+  bundleThunder: true
+});
+assert.equal(isBuildStampCurrent(releaseStamp, 200, "arm64", true), true);
+assert.equal(isBuildStampCurrent(releaseStamp, 200, "arm64"), false);
+const devStamp = JSON.stringify({
+  version: 1,
+  arch: "arm64",
+  bundleId: "com.thunder-luc.agent-resume",
+  sourceMtime: 200,
+  bundleThunder: false
+});
+assert.equal(isBuildStampCurrent(devStamp, 200, "arm64"), true);
+assert.equal(isBuildStampCurrent(devStamp, 200, "arm64", true), false);
+
 const testRoot = fs.mkdtempSync(path.join(os.tmpdir(), "agent-resume-mac-app-test-"));
 try {
   const appBundle = path.join(testRoot, "Agent Resume.app");

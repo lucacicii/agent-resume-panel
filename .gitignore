@@ -12,6 +12,7 @@ apps/desktop/release/
 apps/desktop/.dev-app-stamp
 apps/desktop/.dev-app-stamp-*
 apps/desktop/.electron-zips/
+apps/desktop/.thunder-sidecar/
 apps/desktop/.pack-staging/
 
 # Packaged VS Code extension artifacts

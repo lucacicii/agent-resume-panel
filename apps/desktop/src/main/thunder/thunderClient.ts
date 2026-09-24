@@ -179,7 +179,10 @@ export class ThunderClient {
 
     if (resolved.binaryPath) {
       command = resolved.binaryPath;
-      cwd = path.dirname(resolved.binaryPath);
+      // Never run with a cwd inside the app bundle: `Resources` is read-only for
+      // notarized builds and the daemon's cwd is only a fallback workspace anyway
+      // (the panel passes `workspace_dir` per task).
+      cwd = resolved.source === "bundled" ? os.homedir() : path.dirname(resolved.binaryPath);
     } else {
       command = "/bin/bash";
       args = [resolved.scriptPath!];

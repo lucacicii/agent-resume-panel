@@ -6,6 +6,12 @@ import { fileURLToPath } from "node:url";
 import { downloadArtifact } from "@electron/get";
 import { packager } from "@electron/packager";
 import { ensureSpawnHelpersExecutable } from "./fix-node-pty.mjs";
+import {
+  assertBundledDaemon,
+  bundledDaemonPath,
+  stageThunderSidecar,
+  thunderResourcePaths
+} from "./thunder-sidecar.mjs";
 
 const require = createRequire(import.meta.url);
 const PACKAGER_ATTEMPTS = 3;
@@ -67,13 +73,15 @@ function latestRepackMtime() {
 
 const stampFileFor = (arch) => path.join(root, `.dev-app-stamp-${arch}`);
 
-export function isBuildStampCurrent(rawStamp, sourceMtime, arch) {
+export function isBuildStampCurrent(rawStamp, sourceMtime, arch, bundleThunder = false) {
   try {
     const stamp = JSON.parse(rawStamp);
     return (
       stamp?.version === 1 &&
       stamp.arch === arch &&
       stamp.bundleId === bundleId &&
+      // A dev pack (no daemon) must not be reused as a release pack, and vice versa.
+      Boolean(stamp.bundleThunder) === bundleThunder &&
       stamp.sourceMtime >= sourceMtime
     );
   } catch {
@@ -81,12 +89,12 @@ export function isBuildStampCurrent(rawStamp, sourceMtime, arch) {
   }
 }
 
-export function needsRepack(arch) {
+export function needsRepack(arch, bundleThunder = false) {
   const appBundle = findAppBundle(arch);
   if (!appBundle) return true;
   const stampFile = stampFileFor(arch);
   if (!fs.existsSync(stampFile)) return true;
-  return !isBuildStampCurrent(fs.readFileSync(stampFile, "utf8"), latestRepackMtime(), arch);
+  return !isBuildStampCurrent(fs.readFileSync(stampFile, "utf8"), latestRepackMtime(), arch, bundleThunder);
 }
 
 function signMacApp(appBundle) {
@@ -96,6 +104,27 @@ function signMacApp(appBundle) {
     cwd: root,
     stdio: "inherit"
   });
+}
+
+/**
+ * Sign the embedded Thunder daemon on its own before the bundle is signed.
+ * `--deep` would usually reach it, but nested binaries are exactly what notarization
+ * rejects, and a real identity also wants hardened runtime + a secure timestamp.
+ */
+function signEmbeddedThunder(appBundle) {
+  const binary = bundledDaemonPath(appBundle);
+  if (!fs.existsSync(binary)) return;
+  const identity = process.env.AGENT_RESUME_CODESIGN_IDENTITY || "-";
+  const adHoc = identity === "-";
+  const args = [
+    "--force",
+    "--sign",
+    identity,
+    ...(adHoc ? [] : ["--options", "runtime", "--timestamp"]),
+    binary
+  ];
+  console.log(`Signing bundled Thunder daemon (${adHoc ? "ad-hoc" : identity})`);
+  execFileSync("codesign", args, { cwd: root, stdio: "inherit" });
 }
 
 function installedElectronVersion() {
@@ -298,7 +327,7 @@ export function flattenDeployedNodeModulesForAsar(deployRoot) {
   }
 }
 
-export async function packMacApp(arch) {
+export async function packMacApp(arch, { bundleThunder = false } = {}) {
   if (process.platform !== "darwin") {
     throw new Error("pack:mac is only supported on macOS.");
   }
@@ -308,6 +337,11 @@ export async function packMacApp(arch) {
   if (!fs.existsSync(iconPath)) {
     throw new Error(`Missing app icon: ${iconPath}. Run pnpm run build first.`);
   }
+  // Release builds embed the Thunder daemon; `dev:mac` deliberately does not, so a
+  // developer's live checkout is never shadowed by a stale packaged copy.
+  const sidecar = bundleThunder
+    ? stageThunderSidecar(arch, { require: process.env.AGENT_RESUME_REQUIRE_THUNDER === "1" })
+    : null;
   deployDesktop();
   const electronZipDir = await ensureElectronZipDir(arch);
   console.log(`Packaging macOS ${arch} .app...`);
@@ -330,6 +364,8 @@ export async function packMacApp(arch) {
       asar: {
         unpackDir: "node_modules/node-pty"
       },
+      // Lands at Contents/Resources/thunder/bin/thunder-daemon.
+      ...(thunderResourcePaths(sidecar).length ? { extraResource: thunderResourcePaths(sidecar) } : {}),
       prune: false
     })
   );
@@ -337,10 +373,15 @@ export async function packMacApp(arch) {
   if (!appBundle) {
     throw new Error(`Packaging finished but Agent Resume.app was not found for ${arch} under release/`);
   }
+  if (sidecar?.ok) {
+    const bundled = assertBundledDaemon(appBundle);
+    signEmbeddedThunder(appBundle);
+    console.log(`Bundled Thunder daemon: ${bundled}`);
+  }
   signMacApp(appBundle);
   fs.writeFileSync(
     stampFileFor(arch),
-    JSON.stringify({ version: 1, arch, bundleId, sourceMtime: latestRepackMtime() })
+    JSON.stringify({ version: 1, arch, bundleId, sourceMtime: latestRepackMtime(), bundleThunder: Boolean(bundleThunder) })
   );
   return appBundle;
 }
