@@ -9,7 +9,9 @@ export type {
   ThunderTelemetryNotice,
   ThunderFileChangeRecord,
   ThunderTraceSpan,
-  ThunderTaskTrace
+  ThunderTaskTrace,
+  ThunderTurnStats,
+  ThunderAgentStats
 } from "@agent-resume/core";
 
 export interface ThunderModelInfo {
@@ -72,7 +74,7 @@ export type ThunderAgentEvent =
       self_healed?: string;
       guidance?: string;
     }
-  | { type: "turn_end"; turn: number; stats?: unknown }
+  | { type: "turn_end"; turn: number; stats?: import("@agent-resume/core").ThunderTurnStats }
   | { type: "done"; stats?: unknown }
   | { type: "error"; message: string }
   | { type: string; [key: string]: unknown };

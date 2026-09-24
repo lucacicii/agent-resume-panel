@@ -18704,6 +18704,67 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   color: var(--color-label-tertiary);
 }
 
+/* --- Composer Metrics Bar (Token, Cache & Speed) --- */
+.tb-composer-metrics-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px 14px 4px 14px;
+  font-size: 11px;
+  color: var(--color-label-tertiary);
+  font-family: var(--font-family-mono, monospace);
+  user-select: none;
+  border-top: 0.5px solid var(--color-separator);
+}
+
+.tb-metrics-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.tb-metrics-pulse {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+  animation: tbPulse 1.5s infinite;
+}
+
+.tb-metrics-speed {
+  font-weight: 600;
+  color: var(--color-label-secondary);
+}
+
+.tb-metrics-divider {
+  display: inline-block;
+  width: 1px;
+  height: 10px;
+  background: var(--color-separator);
+}
+
+.tb-metrics-tokens {
+  color: var(--color-label-secondary);
+}
+
+.tb-metrics-breakdown {
+  color: var(--color-label-tertiary);
+  font-size: 10px;
+}
+
+.tb-metrics-cache-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(16, 185, 129, 0.12);
+  color: #107d32;
+  font-size: 10px;
+  font-weight: 600;
+}
+
 .tb-composer-toolbar {
   display: flex;
   align-items: center;

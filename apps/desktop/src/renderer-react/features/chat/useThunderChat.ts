@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { desktopApi } from "../../bridge";
 import type {
   ThunderChatMessage,
@@ -6,9 +6,19 @@ import type {
   ThunderConversationSummary,
   ThunderModelInfo,
   ThunderChatStreamPayload,
-  ThunderFileChangeRecord
+  ThunderFileChangeRecord,
+  ThunderTurnStats
 } from "@agent-resume/core";
 import { useTraceCollector } from "./useTraceCollector";
+
+export interface ChatRunMetrics {
+  tps?: number;
+  promptTokens?: number;
+  completionTokens?: number;
+  cachedTokens?: number;
+  totalTokens?: number;
+  durationMs?: number;
+}
 
 export interface ActiveToolInfo {
   toolCallId: string;
@@ -147,6 +157,11 @@ export function useThunderChat() {
     models: ThunderModelInfo[];
     error?: string;
   } | null>(null);
+
+  // Performance & Token metrics
+  const [lastRunMetrics, setLastRunMetrics] = useState<ChatRunMetrics | null>(null);
+  const [streamTokensCount, setStreamTokensCount] = useState(0);
+  const [streamStartTime, setStreamStartTime] = useState<number | null>(null);
 
   // End-to-end task trace and file modification tracking
   const {
@@ -327,8 +342,25 @@ export function useThunderChat() {
         setStreamingTools([]);
       }
 
-      // Load persistent trace for this conversation
-      void loadTrace(sessionId);
+      // Load persistent trace for this conversation and populate run metrics
+      const trace = await loadTrace(sessionId);
+      if (trace?.stats) {
+        setLastRunMetrics({
+          tps: trace.stats.avg_tokens_per_second,
+          promptTokens: trace.stats.total_prompt_tokens,
+          completionTokens: trace.stats.total_completion_tokens,
+          cachedTokens: trace.stats.total_cached_tokens,
+          totalTokens: (trace.stats.total_prompt_tokens || 0) + (trace.stats.total_completion_tokens || 0),
+          durationMs: trace.stats.total_duration_ms
+        });
+      } else if (conv && conv.stats) {
+        setLastRunMetrics({
+          totalTokens: conv.stats.total_tokens,
+          durationMs: conv.stats.duration_ms
+        });
+      } else {
+        setLastRunMetrics(null);
+      }
     } catch (err) {
       console.error("Failed to load conversation:", err);
     } finally {
@@ -432,6 +464,8 @@ export function useThunderChat() {
       setStreamingText("");
       setStreamingReasoning("");
       setStreamingTools([]);
+      setStreamTokensCount(0);
+      setStreamStartTime(Date.now());
       setIsStreaming(true);
 
       const taskId = `task_${Date.now()}`;
@@ -519,6 +553,8 @@ export function useThunderChat() {
           setStreamingText("");
           setStreamingReasoning("");
           setStreamingTools([]);
+          setStreamTokensCount(0);
+          setStreamStartTime(null);
           setIsStreaming(false);
           setActiveTaskId(null);
         }
@@ -660,6 +696,8 @@ export function useThunderChat() {
           stream.streamingText += delta;
           if (isCurrentSession) {
             setStreamingText((prev) => prev + delta);
+            setStreamTokensCount((prev) => prev + 1);
+            setStreamStartTime((prev) => prev || Date.now());
           }
           break;
         }
@@ -703,6 +741,27 @@ export function useThunderChat() {
           }
           break;
         }
+        case "turn_end": {
+          const stats = (ev as any).stats as ThunderTurnStats | undefined;
+          if (stats && isCurrentSession) {
+            const pt = typeof stats.prompt_tokens === "number" ? stats.prompt_tokens : undefined;
+            const ct = typeof stats.completion_tokens === "number" ? stats.completion_tokens : undefined;
+            const cached = typeof stats.cached_tokens === "number" ? stats.cached_tokens : undefined;
+            const dur = typeof stats.duration_ms === "number" ? stats.duration_ms : 0;
+            const tps = typeof stats.tokens_per_second === "number" && Number.isFinite(stats.tokens_per_second)
+              ? stats.tokens_per_second
+              : (dur > 0 && ct !== undefined ? ct / (dur / 1000) : undefined);
+            setLastRunMetrics({
+              tps,
+              promptTokens: pt,
+              completionTokens: ct,
+              cachedTokens: cached,
+              totalTokens: (pt !== undefined || ct !== undefined) ? (pt || 0) + (ct || 0) : undefined,
+              durationMs: dur
+            });
+          }
+          break;
+        }
         case "error": {
           console.warn("[thunder-event:error]", (ev as any).message);
           break;
@@ -741,6 +800,13 @@ export function useThunderChat() {
   }, [refreshDaemonStatus]);
 
   const isWorkspaceLocked = Boolean(activeSessionId && workspaceDir);
+
+  const liveStreamingTps = useMemo(() => {
+    if (!isStreaming || !streamStartTime || streamTokensCount === 0) return 0;
+    const elapsedSec = (Date.now() - streamStartTime) / 1000;
+    if (elapsedSec <= 0.2) return 0;
+    return streamTokensCount / elapsedSec;
+  }, [isStreaming, streamStartTime, streamTokensCount]);
 
   return {
     conversations,
@@ -782,6 +848,8 @@ export function useThunderChat() {
     traceSpans,
     fileChanges,
     telemetryNotices,
-    isCollectingTrace
+    isCollectingTrace,
+    lastRunMetrics,
+    streamingMetrics: { tokensCount: streamTokensCount, tps: liveStreamingTps }
   };
 }

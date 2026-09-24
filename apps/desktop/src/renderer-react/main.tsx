@@ -18,6 +18,7 @@ import { SessionsView } from "./features/sessions/SessionsView";
 import { NotesView } from "./features/notes/NotesView";
 import { ScheduleView } from "./features/schedule/ScheduleView";
 import { ChatView } from "./features/chat/ChatView";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { BoardQuickAccess } from "./features/gtd/BoardQuickAccess";
 import { settingsChangedToCustomEvents } from "./settingsBroadcast";
 import { startMenuCommandBridge } from "./menuCommands";
@@ -298,7 +299,11 @@ function MainRendererRuntime(): React.JSX.Element {
       <GtdView active={view === "gtd"} />
       {view === "notes" ? <NotesView active /> : null}
       {view === "schedule" ? <ScheduleView active /> : null}
-      {view === "chat" ? <ChatView active /> : null}
+      {view === "chat" ? (
+        <ErrorBoundary>
+          <ChatView active />
+        </ErrorBoundary>
+      ) : null}
       {view === "archive" ? <ArchiveView active /> : null}
       {view === "sessions" ? <SessionsView active /> : null}
       <BoardQuickAccess />

@@ -50,6 +50,27 @@ export interface ThunderFileChangeRecord {
   toolCallId?: string;
 }
 
+export interface ThunderTurnStats {
+  turn: number;
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  cached_tokens?: number;
+  duration_ms: number;
+  tool_calls_count: number;
+  tokens_per_second?: number;
+}
+
+export interface ThunderAgentStats {
+  total_turns: number;
+  total_prompt_tokens: number;
+  total_completion_tokens: number;
+  total_cached_tokens?: number;
+  total_duration_ms: number;
+  total_tool_executions: number;
+  total_tool_time_ms: number;
+  avg_tokens_per_second?: number;
+}
+
 export interface ThunderTraceSpan {
   id: string;
   turn: number;
@@ -71,14 +92,7 @@ export interface ThunderTaskTrace {
   finished_at_ms?: number;
   duration_ms?: number;
   finish_reason?: string;
-  stats?: {
-    total_turns?: number;
-    total_prompt_tokens?: number;
-    total_completion_tokens?: number;
-    total_duration_ms?: number;
-    total_tool_executions?: number;
-    total_tool_time_ms?: number;
-  };
+  stats?: ThunderAgentStats;
   final_content?: string;
   events?: ThunderObservedEvent[];
   file_changes?: ThunderFileChangeRecord[];
@@ -134,7 +148,7 @@ export type ThunderAgentEvent =
       self_healed?: string;
       guidance?: string;
     }
-  | { type: "turn_end"; turn: number; stats?: unknown }
+  | { type: "turn_end"; turn: number; stats?: ThunderTurnStats }
   | { type: "done"; stats?: unknown }
   | { type: "error"; message: string }
   | { type: string; [key: string]: unknown };
@@ -237,6 +251,13 @@ export interface ThunderConversation {
   thinking_level?: string;
   status: string;
   messages: ThunderChatMessage[];
+  stats?: {
+    total_tokens?: number;
+    message_count?: number;
+    turn_count?: number;
+    tool_calls_count?: number;
+    duration_ms?: number;
+  };
   created_at_ms: number;
   updated_at_ms: number;
 }

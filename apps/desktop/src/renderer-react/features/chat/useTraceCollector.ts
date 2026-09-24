@@ -418,8 +418,10 @@ export function useTraceCollector() {
         if (reconstructedFiles.length > 0) setFileChanges(reconstructedFiles);
         if (reconstructedNotices.length > 0) setTelemetryNotices(reconstructedNotices);
       }
+      return trace;
     } catch (err) {
       console.warn("[useTraceCollector] Failed to load trace:", err);
+      return null;
     }
   }, []);
 

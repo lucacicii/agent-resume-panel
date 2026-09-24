@@ -4,6 +4,7 @@ import { NativeMenuSelect } from "../../components/NativeMenuSelect";
 import { showContextMenuAt, type NativeContextMenuItem } from "../../nativeContextMenu";
 import { desktopApi } from "../../bridge";
 import type { AgentToolDescriptor, SkillDescriptor, ThunderModelInfo } from "@agent-resume/core";
+import type { ChatRunMetrics } from "./useThunderChat";
 import {
   atTokenAtCursor,
   hashTokenAtCursor,
@@ -218,6 +219,8 @@ interface ChatComposerProps {
   onToggleMock: (mock: boolean) => void;
   placeholder?: string;
   prefillPrompt?: { text: string; id: number } | null;
+  lastRunMetrics?: ChatRunMetrics | null;
+  streamingMetrics?: { tokensCount: number; tps: number } | null;
 }
 
 export function ChatComposer({
@@ -239,7 +242,9 @@ export function ChatComposer({
   useMock,
   onToggleMock,
   placeholder = "Ask Thunder agent anything, or type / for skills/mcp, @ for context, # for files...",
-  prefillPrompt
+  prefillPrompt,
+  lastRunMetrics,
+  streamingMetrics
 }: ChatComposerProps) {
   const [text, setText] = useState("");
   const [cursor, setCursor] = useState(0);
@@ -1173,6 +1178,73 @@ export function ChatComposer({
             )}
           </ul>
         ) : null}
+
+        {/* Token, Cache & Speed Statistics Bar (Always Visible) */}
+        <div className="tb-composer-metrics-bar">
+          {isStreaming ? (
+            <div className="tb-metrics-group">
+              <span className="tb-metrics-pulse" />
+              <span className="tb-metrics-speed">
+                ⚡ {typeof streamingMetrics?.tps === "number" && Number.isFinite(streamingMetrics.tps) ? streamingMetrics.tps.toFixed(1) : "0.0"} tok/s
+              </span>
+              <span className="tb-metrics-divider" />
+              <span className="tb-metrics-tokens">
+                {typeof streamingMetrics?.tokensCount === "number" ? streamingMetrics.tokensCount : 0} tokens
+              </span>
+            </div>
+          ) : lastRunMetrics && (typeof lastRunMetrics.totalTokens === "number" || typeof lastRunMetrics.tps === "number") ? (
+            <div className="tb-metrics-group">
+              {typeof lastRunMetrics.tps === "number" && Number.isFinite(lastRunMetrics.tps) && lastRunMetrics.tps > 0 ? (
+                <>
+                  <span className="tb-metrics-speed">
+                    ⚡ {lastRunMetrics.tps.toFixed(1)} tok/s
+                  </span>
+                  <span className="tb-metrics-divider" />
+                </>
+              ) : null}
+              <span className="tb-metrics-tokens">
+                {typeof lastRunMetrics.totalTokens === "number" && Number.isFinite(lastRunMetrics.totalTokens)
+                  ? `${lastRunMetrics.totalTokens.toLocaleString()} tokens`
+                  : null}
+                {typeof lastRunMetrics.promptTokens === "number" && typeof lastRunMetrics.completionTokens === "number" ? (
+                  <span className="tb-metrics-breakdown">
+                    {" "}(In {lastRunMetrics.promptTokens.toLocaleString()} · Out {lastRunMetrics.completionTokens.toLocaleString()})
+                  </span>
+                ) : null}
+              </span>
+              {typeof lastRunMetrics.cachedTokens === "number" && lastRunMetrics.cachedTokens > 0 ? (
+                <>
+                  <span className="tb-metrics-divider" />
+                  <span className="tb-metrics-cache-badge" title="Prompt Cache 命中数量">
+                    <ThemeIcon name="zap" size={ICON_SIZE.inline} />
+                    Cache {lastRunMetrics.cachedTokens.toLocaleString()}
+                    {typeof lastRunMetrics.promptTokens === "number" && lastRunMetrics.promptTokens > 0 ? (
+                      ` (${Math.round((lastRunMetrics.cachedTokens / lastRunMetrics.promptTokens) * 100)}%)`
+                    ) : null}
+                  </span>
+                </>
+              ) : null}
+            </div>
+          ) : (
+            <div className="tb-metrics-group">
+              <span className="tb-metrics-speed">⚡ Ready</span>
+              <span className="tb-metrics-divider" />
+              <span className="tb-metrics-tokens">
+                {text.trim().length > 0
+                  ? `~${Math.max(1, Math.ceil(text.trim().length / 3))} prompt tokens`
+                  : "0 tokens"}
+              </span>
+            </div>
+          )}
+
+          {!isStreaming && text.trim().length > 0 && lastRunMetrics ? (
+            <div className="tb-metrics-group">
+              <span className="tb-metrics-breakdown">
+                Draft: ~{Math.max(1, Math.ceil(text.trim().length / 3))} tokens
+              </span>
+            </div>
+          ) : null}
+        </div>
 
         <div className="tb-composer-toolbar">
           <div className="tb-composer-tools-left">

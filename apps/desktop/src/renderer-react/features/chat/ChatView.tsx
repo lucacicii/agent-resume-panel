@@ -43,7 +43,9 @@ export function ChatView({ active }: { active: boolean }): React.JSX.Element | n
     traceSpans,
     fileChanges,
     telemetryNotices,
-    isCollectingTrace
+    isCollectingTrace,
+    lastRunMetrics,
+    streamingMetrics
   } = useThunderChat();
 
   // Keyboard shortcut: ⌘N for new conversation
@@ -109,6 +111,8 @@ export function ChatView({ active }: { active: boolean }): React.JSX.Element | n
         fileChanges={fileChanges}
         telemetryNotices={telemetryNotices}
         isCollectingTrace={isCollectingTrace}
+        lastRunMetrics={lastRunMetrics}
+        streamingMetrics={streamingMetrics}
       />
     </div>,
     host

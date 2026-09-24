@@ -12,7 +12,7 @@ import type {
   ThunderTaskTrace,
   ThunderTelemetryNotice
 } from "@agent-resume/core";
-import type { ActiveToolInfo } from "./useThunderChat";
+import type { ActiveToolInfo, ChatRunMetrics } from "./useThunderChat";
 import type { TraceSpan } from "./useTraceCollector";
 
 interface ChatMainProps {
@@ -49,6 +49,8 @@ interface ChatMainProps {
   fileChanges?: ThunderFileChangeRecord[];
   telemetryNotices?: ThunderTelemetryNotice[];
   isCollectingTrace?: boolean;
+  lastRunMetrics?: ChatRunMetrics | null;
+  streamingMetrics?: { tokensCount: number; tps: number } | null;
 }
 
 export function ChatMain({
@@ -84,7 +86,9 @@ export function ChatMain({
   traceSpans = [],
   fileChanges = [],
   telemetryNotices = [],
-  isCollectingTrace = false
+  isCollectingTrace = false,
+  lastRunMetrics,
+  streamingMetrics
 }: ChatMainProps) {
   const scrollEndRef = useRef<HTMLDivElement | null>(null);
   const [isTraceOpen, setIsTraceOpen] = useState(false);
@@ -225,6 +229,8 @@ export function ChatMain({
         useMock={useMock}
         onToggleMock={onToggleMock}
         prefillPrompt={prefillPrompt}
+        lastRunMetrics={lastRunMetrics}
+        streamingMetrics={streamingMetrics}
       />
     </div>
   );
