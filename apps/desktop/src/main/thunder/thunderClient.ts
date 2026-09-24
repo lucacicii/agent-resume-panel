@@ -659,6 +659,8 @@ export class ThunderClient {
     taskId: string;
     prompt: string;
     workspaceDir?: string;
+    /** Extra roots (referenced repositories) granted the workspace's read/write standing. */
+    extraWorkspaceDirs?: string[];
     taskNoteId?: string;
     gtdContext?: {
       title: string;
@@ -718,6 +720,10 @@ export class ThunderClient {
               task_id: taskId,
               prompt: effectivePrompt,
               workspace_dir: options.workspaceDir,
+              extra_workspace_dirs:
+                options.extraWorkspaceDirs && options.extraWorkspaceDirs.length > 0
+                  ? options.extraWorkspaceDirs
+                  : undefined,
               model: options.model,
               thinking_level: options.thinking_level,
               session_id: options.sessionId,

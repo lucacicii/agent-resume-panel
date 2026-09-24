@@ -171,6 +171,7 @@ export function registerThunderIpc(): void {
       const effectiveSessionId = args.sessionId || `sess_${Date.now()}`;
 
       let effectiveWorkspaceDir = args.workspaceDir;
+      let extraWorkspaceDirs: string[] | undefined;
       let gtdContext:
         | {
             title: string;
@@ -194,6 +195,18 @@ export function registerThunderIpc(): void {
           if (!effectiveWorkspaceDir) {
             effectiveWorkspaceDir = taskCtx.dir;
           }
+          // Referenced repositories join the jail as extra roots: same
+          // read/write standing as the neutral workspace, so read_file /
+          // write_file / shell targets inside them stop tripping the path
+          // traversal guard. Only directories that actually exist on this
+          // machine are passed (synced-from-elsewhere paths are skipped).
+          extraWorkspaceDirs = (taskCtx.projects ?? []).filter((projectDir) => {
+            try {
+              return fs.statSync(projectDir).isDirectory();
+            } catch {
+              return false;
+            }
+          });
           // Link this chat session with the GTD task
           void notesLinkSessionToTask({
             noteId: args.taskNoteId,
@@ -213,6 +226,7 @@ export function registerThunderIpc(): void {
         sessionId: effectiveSessionId,
         model: args.model,
         workspaceDir: effectiveWorkspaceDir,
+        extraWorkspaceDirs,
         taskNoteId: args.taskNoteId,
         gtdContext,
         thinking_level: args.thinking_level,
