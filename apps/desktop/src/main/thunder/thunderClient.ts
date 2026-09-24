@@ -289,6 +289,8 @@ export class ThunderClient {
               activePlugins: msg.active_plugins
             });
           }
+        } else {
+          console.warn(`[thunder-client:completed] No active task listener found for task=${msg.task_id}`);
         }
         break;
       }
@@ -298,6 +300,8 @@ export class ThunderClient {
         if (task) {
           this.activeTasks.delete(msg.task_id);
           task.reject(new Error(msg.error || "Thunder task failed"));
+        } else {
+          console.warn(`[thunder-client:failed] No active task listener found for task=${msg.task_id}`);
         }
         break;
       }

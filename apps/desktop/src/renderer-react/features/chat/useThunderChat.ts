@@ -203,6 +203,7 @@ export function useThunderChat() {
   activeSessionIdRef.current = activeSessionId;
 
   const activeStreamsRef = useRef<Map<string, SessionStream>>(new Map());
+  const finalizedTasksRef = useRef<Set<string>>(new Set());
 
   const streamingTextRef = useRef("");
   streamingTextRef.current = streamingText;
@@ -362,7 +363,15 @@ export function useThunderChat() {
       setCurrentContextTokens(ctxTokens);
 
       // Check if this session has an active background stream
-      const stream = activeStreamsRef.current.get(sessionId);
+      let stream = activeStreamsRef.current.get(sessionId);
+      const lastMsg = Array.isArray(conv?.messages) && conv.messages.length > 0
+        ? conv.messages[conv.messages.length - 1]
+        : null;
+      if (stream && lastMsg && lastMsg.role === "assistant" && lastMsg.content) {
+        // If the persisted conversation already has the assistant's response, clean up stale background stream
+        activeStreamsRef.current.delete(sessionId);
+        stream = undefined;
+      }
       if (stream) {
         setIsStreaming(true);
         setActiveTaskId(stream.taskId);
@@ -520,6 +529,103 @@ export function useThunderChat() {
 
   const dismissTitleNotice = useCallback(() => setTitleNotice(null), []);
 
+  const finalizeSessionTurn = useCallback(
+    (opts: {
+      sessionId: string;
+      taskId?: string;
+      finalContent?: string;
+      finalReasoning?: string;
+      finalTools?: ActiveToolInfo[];
+      finishReason?: string;
+    }) => {
+      const { sessionId, taskId, finishReason } = opts;
+      const streamState = activeStreamsRef.current.get(sessionId);
+      const effectiveTaskId = taskId || streamState?.taskId;
+
+      // Idempotency: if already finalized for this task, do not duplicate message or stats
+      if (effectiveTaskId && finalizedTasksRef.current.has(effectiveTaskId)) {
+        return;
+      }
+      if (effectiveTaskId) {
+        finalizedTasksRef.current.add(effectiveTaskId);
+        if (finalizedTasksRef.current.size > 200) {
+          const first = finalizedTasksRef.current.values().next().value;
+          if (first) finalizedTasksRef.current.delete(first);
+        }
+      }
+
+      const content = opts.finalContent ?? streamState?.streamingText ?? "";
+      const reasoning = opts.finalReasoning ?? streamState?.streamingReasoning ?? undefined;
+      const rawTools = opts.finalTools ?? (streamState && streamState.streamingTools.length > 0 ? streamState.streamingTools : undefined);
+      const toolExecutions = rawTools?.map((t) => ({
+        toolCallId: t.toolCallId,
+        name: t.name,
+        arguments: t.arguments,
+        result: t.result,
+        isError: t.isError,
+        isRunning: false
+      }));
+
+      // Finish trace collector span/timing
+      finishTaskTrace({
+        finishReason: finishReason || "Done",
+        finalContent: content
+      });
+
+      const assistantMsg: ThunderChatMessage = {
+        role: "assistant",
+        content: content || "(No response output)",
+        reasoning: reasoning || undefined,
+        tool_executions: toolExecutions
+      };
+
+      const isCurrentSession = activeSessionIdRef.current === sessionId;
+
+      if (isCurrentSession) {
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (last?.role === "assistant" && last?.content === assistantMsg.content) {
+            return prev;
+          }
+          return [...prev, assistantMsg];
+        });
+        setPendingQuestion(null);
+        setStreamingText("");
+        setStreamingReasoning("");
+        setStreamingTools([]);
+        setStreamTokensCount(0);
+        setStreamReasoningCount(0);
+        setStreamStartTime(null);
+        setIsStreaming(false);
+        setActiveTaskId(null);
+
+        // Guarantee sync with finalized trace metrics on disk
+        void (async () => {
+          try {
+            const latestTrace = await loadTrace(sessionId, effectiveTaskId);
+            if (latestTrace?.stats) {
+              setLastRunMetrics({
+                tps: latestTrace.stats.avg_tokens_per_second,
+                promptTokens: latestTrace.stats.total_prompt_tokens,
+                completionTokens: latestTrace.stats.total_completion_tokens,
+                cachedTokens: latestTrace.stats.total_cached_tokens ?? 0,
+                reasoningTokens: latestTrace.stats.total_reasoning_tokens,
+                totalTokens: (latestTrace.stats.total_prompt_tokens || 0) + (latestTrace.stats.total_completion_tokens || 0),
+                durationMs: latestTrace.stats.total_duration_ms
+              });
+            }
+          } catch {
+            // keep live metrics
+          }
+        })();
+      }
+
+      // Always clear the stream from active streams map
+      activeStreamsRef.current.delete(sessionId);
+    },
+    [finishTaskTrace, loadTrace]
+  );
+
   const sendMessage = useCallback(
     async (
       prompt: string,
@@ -611,77 +717,33 @@ export function useThunderChat() {
           role: options?.role
         });
 
-        // Task finalized
-        const streamState = activeStreamsRef.current.get(effectiveSessionId);
-        const finalContent = result.finalContent || streamState?.streamingText || "";
-        const finalReasoning = streamState?.streamingReasoning || undefined;
-        const finalTools =
-          streamState && streamState.streamingTools.length > 0
-            ? [...streamState.streamingTools]
-            : undefined;
-
-        finishTaskTrace({
-          finishReason: result.finishReason,
-          finalContent
+        // Task finalized via IPC invoke return
+        finalizeSessionTurn({
+          sessionId: effectiveSessionId,
+          taskId,
+          finalContent: result.finalContent,
+          finishReason: result.finishReason
         });
-
-        const assistantMsg: ThunderChatMessage = {
-          role: "assistant",
-          content: finalContent || "(No response output)",
-          reasoning: finalReasoning,
-          tool_executions: finalTools
-        };
-
-        if (activeSessionIdRef.current === effectiveSessionId) {
-          setMessages((prev) => [...prev, assistantMsg]);
-          setPendingQuestion(null);
-          setStreamingText("");
-          setStreamingReasoning("");
-          setStreamingTools([]);
-          setStreamTokensCount(0);
-          setStreamReasoningCount(0);
-          setStreamStartTime(null);
-          setIsStreaming(false);
-          setActiveTaskId(null);
-
-          // Guarantee sync with finalized trace metrics on disk (persists multi-turn total_cached_tokens)
-          void (async () => {
-            try {
-              const latestTrace = await loadTrace(effectiveSessionId);
-              if (latestTrace?.stats) {
-                setLastRunMetrics({
-                  tps: latestTrace.stats.avg_tokens_per_second,
-                  promptTokens: latestTrace.stats.total_prompt_tokens,
-                  completionTokens: latestTrace.stats.total_completion_tokens,
-                  cachedTokens: latestTrace.stats.total_cached_tokens ?? 0,
-                  reasoningTokens: latestTrace.stats.total_reasoning_tokens,
-                  totalTokens: (latestTrace.stats.total_prompt_tokens || 0) + (latestTrace.stats.total_completion_tokens || 0),
-                  durationMs: latestTrace.stats.total_duration_ms
-                });
-              }
-            } catch {
-              // keep live metrics
-            }
-          })();
-        }
 
         // Reload conversation list and session if newly created
         await loadConversations();
       } catch (err) {
         console.error("Thunder task execution failed:", err);
-        finishTaskTrace({
-          finishReason: "error",
-          finalContent: err instanceof Error ? err.message : String(err)
-        });
-        const errMsg: ThunderChatMessage = {
-          role: "assistant",
-          content: `⚠️ **Task failed**: ${err instanceof Error ? err.message : String(err)}`
-        };
-        if (activeSessionIdRef.current === effectiveSessionId) {
-          setMessages((prev) => [...prev, errMsg]);
-          setPendingQuestion(null);
-          setIsStreaming(false);
-          setActiveTaskId(null);
+        if (!finalizedTasksRef.current.has(taskId)) {
+          finishTaskTrace({
+            finishReason: "error",
+            finalContent: err instanceof Error ? err.message : String(err)
+          });
+          const errMsg: ThunderChatMessage = {
+            role: "assistant",
+            content: `⚠️ **Task failed**: ${err instanceof Error ? err.message : String(err)}`
+          };
+          if (activeSessionIdRef.current === effectiveSessionId) {
+            setMessages((prev) => [...prev, errMsg]);
+            setPendingQuestion(null);
+            setIsStreaming(false);
+            setActiveTaskId(null);
+          }
         }
       } finally {
         activeStreamsRef.current.delete(effectiveSessionId);
@@ -691,7 +753,7 @@ export function useThunderChat() {
         }
       }
     },
-    [finishTaskTrace, loadConversations, models, selectedModel, startTaskTrace, taskNoteId, thinkingLevel, useMock, workspaceDir, workspaceSource]
+    [finalizeSessionTurn, finishTaskTrace, loadConversations, models, selectedModel, startTaskTrace, taskNoteId, thinkingLevel, useMock, workspaceDir, workspaceSource]
   );
 
   const prefillComposer = useCallback((text: string) => {
@@ -791,12 +853,12 @@ export function useThunderChat() {
     const curSessId = activeSessionIdRef.current;
     const stream = curSessId ? activeStreamsRef.current.get(curSessId) : null;
     const targetTaskId = stream?.taskId || activeTaskIdRef.current;
-    if (!targetTaskId) return;
+    if (!targetTaskId && !isStreaming) return;
 
     // Cancelling frees a parked question: tell the daemon so its routing table
     // does not keep a dangling oneshot, then drop the bubble locally.
     setPendingQuestion((prev) => {
-      if (prev && prev.taskId === targetTaskId) {
+      if (prev && (!targetTaskId || prev.taskId === targetTaskId)) {
         void desktopApi()
           .thunderChatAnswerQuestion({ questionId: prev.questionId, cancelled: true })
           .catch(() => undefined);
@@ -805,12 +867,35 @@ export function useThunderChat() {
       return prev;
     });
 
+    // Force stop locally immediately so UI never gets stuck
+    if (curSessId && stream) {
+      finalizeSessionTurn({
+        sessionId: curSessId,
+        taskId: targetTaskId || stream.taskId,
+        finalContent: stream.streamingText || "(Cancelled)",
+        finalReasoning: stream.streamingReasoning || undefined,
+        finalTools: stream.streamingTools.length > 0 ? stream.streamingTools : undefined,
+        finishReason: "cancelled"
+      });
+    } else {
+      setIsStreaming(false);
+      setActiveTaskId(null);
+      setStreamingText("");
+      setStreamingReasoning("");
+      setStreamingTools([]);
+      setStreamTokensCount(0);
+      setStreamReasoningCount(0);
+      setStreamStartTime(null);
+    }
+
     try {
-      await desktopApi().thunderChatCancelTask({ taskId: targetTaskId });
+      if (targetTaskId) {
+        await desktopApi().thunderChatCancelTask({ taskId: targetTaskId });
+      }
     } catch (err) {
       console.error("Failed to cancel thunder task:", err);
     }
-  }, []);
+  }, [finalizeSessionTurn, isStreaming]);
 
   // Subscribe to real-time events from Thunder daemon
   useEffect(() => {
@@ -919,6 +1004,9 @@ export function useThunderChat() {
         }
         case "loop_complete": {
           const stats = (ev as any).stats as ThunderAgentStats | undefined;
+          const finishReason = (ev as any).finish_reason as string | undefined;
+          const finalContent = (ev as any).final_content as string | undefined;
+
           if (stats && isCurrentSession) {
             const pt = typeof stats.total_prompt_tokens === "number" ? stats.total_prompt_tokens : undefined;
             const ct = typeof stats.total_completion_tokens === "number" ? stats.total_completion_tokens : undefined;
@@ -939,6 +1027,14 @@ export function useThunderChat() {
               durationMs: dur
             });
           }
+
+          // Authoritative loop completion from daemon: finalize turn immediately without waiting for disk trace
+          finalizeSessionTurn({
+            sessionId,
+            taskId,
+            finalContent,
+            finishReason: finishReason ? String(finishReason) : "done"
+          });
           break;
         }
         case "user_question": {
@@ -966,7 +1062,7 @@ export function useThunderChat() {
     });
 
     return () => unsub?.();
-  }, [recordTraceEvent]);
+  }, [finalizeSessionTurn, recordTraceEvent]);
 
   // Initial load
   useEffect(() => {
