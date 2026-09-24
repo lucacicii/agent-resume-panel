@@ -7,7 +7,8 @@ import type {
   ThunderModelInfo,
   ThunderChatStreamPayload,
   ThunderFileChangeRecord,
-  ThunderTurnStats
+  ThunderTurnStats,
+  ThunderAgentStats
 } from "@agent-resume/core";
 import { useTraceCollector } from "./useTraceCollector";
 
@@ -621,6 +622,25 @@ export function useThunderChat() {
           setStreamStartTime(null);
           setIsStreaming(false);
           setActiveTaskId(null);
+
+          // Guarantee sync with finalized trace metrics on disk (persists multi-turn total_cached_tokens)
+          void (async () => {
+            try {
+              const latestTrace = await loadTrace(effectiveSessionId);
+              if (latestTrace?.stats) {
+                setLastRunMetrics({
+                  tps: latestTrace.stats.avg_tokens_per_second,
+                  promptTokens: latestTrace.stats.total_prompt_tokens,
+                  completionTokens: latestTrace.stats.total_completion_tokens,
+                  cachedTokens: latestTrace.stats.total_cached_tokens ?? 0,
+                  totalTokens: (latestTrace.stats.total_prompt_tokens || 0) + (latestTrace.stats.total_completion_tokens || 0),
+                  durationMs: latestTrace.stats.total_duration_ms
+                });
+              }
+            } catch {
+              // keep live metrics
+            }
+          })();
         }
 
         // Reload conversation list and session if newly created
@@ -831,6 +851,28 @@ export function useThunderChat() {
               setSessionTotalTokens((prev) => prev + turnTotal);
               setCurrentContextTokens(turnTotal);
             }
+          }
+          break;
+        }
+        case "loop_complete": {
+          const stats = (ev as any).stats as ThunderAgentStats | undefined;
+          if (stats && isCurrentSession) {
+            const pt = typeof stats.total_prompt_tokens === "number" ? stats.total_prompt_tokens : undefined;
+            const ct = typeof stats.total_completion_tokens === "number" ? stats.total_completion_tokens : undefined;
+            const cached = typeof stats.total_cached_tokens === "number" ? stats.total_cached_tokens : 0;
+            const dur = typeof stats.total_duration_ms === "number" ? stats.total_duration_ms : 0;
+            const tps = typeof stats.avg_tokens_per_second === "number" && Number.isFinite(stats.avg_tokens_per_second)
+              ? stats.avg_tokens_per_second
+              : (dur > 0 && ct !== undefined ? ct / (dur / 1000) : undefined);
+            const total = (pt !== undefined || ct !== undefined) ? (pt || 0) + (ct || 0) : undefined;
+            setLastRunMetrics({
+              tps,
+              promptTokens: pt,
+              completionTokens: ct,
+              cachedTokens: cached,
+              totalTokens: total,
+              durationMs: dur
+            });
           }
           break;
         }
