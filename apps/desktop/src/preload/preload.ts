@@ -17,7 +17,8 @@ import type {
   ThunderSchedule,
   ThunderScheduleRun,
   ThunderScheduleInput,
-  ThunderScheduleRunLogEntry
+  ThunderScheduleRunLogEntry,
+  ThunderActiveStreamSnapshot
 } from "@agent-resume/core";
 import type {
   ThunderModelInfo,
@@ -74,7 +75,8 @@ export type {
   ThunderSchedule,
   ThunderScheduleRun,
   ThunderScheduleInput,
-  ThunderScheduleRunLogEntry
+  ThunderScheduleRunLogEntry,
+  ThunderActiveStreamSnapshot
 } from "@agent-resume/core";
 export type {
   ThunderModelInfo,
@@ -1564,6 +1566,7 @@ export interface DesktopApi {
   thunderChatPauseTask(args: { taskId: string }): Promise<boolean>;
   thunderChatResumeTask(args: { taskId: string }): Promise<boolean>;
   thunderChatGetTrace(args: { sessionId: string; taskId?: string }): Promise<ThunderTaskTrace | null>;
+  thunderChatGetActiveStream(args: { sessionId: string }): Promise<ThunderActiveStreamSnapshot | null>;
   thunderChatListTraces(args: { sessionId: string }): Promise<Array<{ task_id: string; started_at_ms: number; duration_ms?: number; prompt?: string }>>;
   onThunderChatEvent(callback: (payload: ThunderChatStreamPayload) => void): () => void;
   onThunderModelsChanged(callback: () => void): () => void;
@@ -2085,6 +2088,7 @@ const api: DesktopApi = {
   thunderChatPauseTask: (args) => ipcRenderer.invoke("thunder:chat:pauseTask", args),
   thunderChatResumeTask: (args) => ipcRenderer.invoke("thunder:chat:resumeTask", args),
   thunderChatGetTrace: (args) => ipcRenderer.invoke("thunder:chat:getTrace", args),
+  thunderChatGetActiveStream: (args) => ipcRenderer.invoke("thunder:chat:getActiveStream", args),
   thunderChatListTraces: (args) => ipcRenderer.invoke("thunder:chat:listTraces", args),
   onThunderChatEvent: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, payload: ThunderChatStreamPayload) => callback(payload);

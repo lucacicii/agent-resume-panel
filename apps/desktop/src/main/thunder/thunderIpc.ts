@@ -16,6 +16,12 @@ import {
   updateSchedule
 } from "./thunderScheduler";
 import { getThunderClient } from "./thunderClient";
+import {
+  accumulateStreamEvent,
+  createActiveStreamSnapshot,
+  finishActiveStream,
+  getActiveStream
+} from "./thunderStreamBuffer";
 import { notesGetTaskWorkspaceContext, notesLinkSessionToTask } from "../notesService";
 import type { ThunderScheduleInput } from "@agent-resume/core";
 
@@ -220,35 +226,52 @@ export function registerThunderIpc(): void {
         }
       }
 
-      return client.runTask({
+      const snapshot = createActiveStreamSnapshot({
+        sessionId: effectiveSessionId,
         taskId: args.taskId,
         prompt: args.prompt,
-        sessionId: effectiveSessionId,
         model: args.model,
-        workspaceDir: effectiveWorkspaceDir,
-        extraWorkspaceDirs,
-        taskNoteId: args.taskNoteId,
-        gtdContext,
-        thinking_level: args.thinking_level,
-        useMock: args.useMock,
-        role: args.role,
-        onEvent: (event) => {
-          for (const win of BrowserWindow.getAllWindows()) {
-            if (win.isDestroyed()) continue;
-            try {
-              win.webContents.send("thunder:chat:event", {
-                taskId: args.taskId,
-                sessionId: effectiveSessionId,
-                event
-              });
-            } catch {
-              // ignore when window destroyed
+        workspaceDir: effectiveWorkspaceDir
+      });
+
+      try {
+        return await client.runTask({
+          taskId: args.taskId,
+          prompt: args.prompt,
+          sessionId: effectiveSessionId,
+          model: args.model,
+          workspaceDir: effectiveWorkspaceDir,
+          extraWorkspaceDirs,
+          taskNoteId: args.taskNoteId,
+          gtdContext,
+          thinking_level: args.thinking_level,
+          useMock: args.useMock,
+          role: args.role,
+          onEvent: (event) => {
+            accumulateStreamEvent(snapshot, event);
+            for (const win of BrowserWindow.getAllWindows()) {
+              if (win.isDestroyed()) continue;
+              try {
+                win.webContents.send("thunder:chat:event", {
+                  taskId: args.taskId,
+                  sessionId: effectiveSessionId,
+                  event
+                });
+              } catch {
+                // ignore when window destroyed
+              }
             }
           }
-        }
-      });
+        });
+      } finally {
+        finishActiveStream(effectiveSessionId, args.taskId);
+      }
     }
   );
+
+  safeHandle("thunder:chat:getActiveStream", async (_event, args: { sessionId: string }) => {
+    return getActiveStream(args.sessionId);
+  });
 
   safeHandle("thunder:chat:cancelTask", async (_event, args: { taskId: string }) => {
     return getThunderClient().cancelTask(args.taskId);

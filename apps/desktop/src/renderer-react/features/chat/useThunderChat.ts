@@ -10,7 +10,8 @@ import type {
   ThunderTurnStats,
   ThunderAgentStats,
   ThunderQuestionItem,
-  ThunderRoleInfo
+  ThunderRoleInfo,
+  ThunderActiveStreamSnapshot
 } from "@agent-resume/core";
 import { useTraceCollector } from "./useTraceCollector";
 
@@ -86,15 +87,26 @@ function normalizeConversationMessages(rawMessages: ThunderChatMessage[]): Thund
       }
 
       const prevMsg = result[result.length - 1];
-      if (prevMsg && prevMsg.role === "assistant" && (!prevMsg.content || !msg.content)) {
+      if (prevMsg && prevMsg.role === "assistant") {
+        // Consecutive assistant messages belong to one user turn: the agent loop
+        // emits one assistant step per tool call. Keep them in a single block so
+        // every tool call of the turn lives in one group instead of one group per
+        // step.
         if (executions.length > 0) {
           prevMsg.tool_executions = [...(prevMsg.tool_executions || []), ...executions];
         }
-        if (msg.content) {
-          prevMsg.content = msg.content;
+        if (msg.content && msg.content !== prevMsg.content) {
+          prevMsg.content = prevMsg.content
+            ? `${prevMsg.content}\n\n${msg.content}`
+            : msg.content;
         }
-        if (msg.reasoning && !prevMsg.reasoning) {
-          prevMsg.reasoning = msg.reasoning;
+        if (msg.reasoning) {
+          prevMsg.reasoning = prevMsg.reasoning
+            ? `${prevMsg.reasoning}\n\n${msg.reasoning}`
+            : msg.reasoning;
+        }
+        if (msg.stats) {
+          prevMsg.stats = msg.stats;
         }
       } else {
         result.push({
@@ -196,6 +208,7 @@ export function useThunderChat() {
     recordEvent: recordTraceEvent,
     finishTaskTrace,
     loadTrace,
+    restoreFromSnapshot,
     resetTrace,
     setFileChanges
   } = useTraceCollector();
@@ -368,6 +381,7 @@ export function useThunderChat() {
 
       // Check if this session has an active background stream
       let stream = activeStreamsRef.current.get(sessionId);
+      let snapshot: ThunderActiveStreamSnapshot | null = null;
       const lastMsg = Array.isArray(conv?.messages) && conv.messages.length > 0
         ? conv.messages[conv.messages.length - 1]
         : null;
@@ -375,6 +389,23 @@ export function useThunderChat() {
         // If the persisted conversation already has the assistant's response, clean up stale background stream
         activeStreamsRef.current.delete(sessionId);
         stream = undefined;
+      }
+      if (!stream) {
+        // This renderer may have unmounted while the daemon kept streaming; the
+        // main process buffered the in-flight task so we can resume it here.
+        snapshot = await desktopApi()
+          .thunderChatGetActiveStream({ sessionId })
+          .catch(() => null);
+        if (snapshot && !snapshot.isRunning) snapshot = null;
+        if (snapshot) {
+          stream = {
+            taskId: snapshot.taskId,
+            streamingText: snapshot.streamingText,
+            streamingReasoning: snapshot.streamingReasoning,
+            streamingTools: snapshot.streamingTools
+          };
+          activeStreamsRef.current.set(sessionId, stream);
+        }
       }
       if (stream) {
         setIsStreaming(true);
@@ -411,12 +442,17 @@ export function useThunderChat() {
       } else {
         setLastRunMetrics(null);
       }
+
+      // Replace the disk trace with the live in-flight trace when resuming.
+      if (snapshot) {
+        restoreFromSnapshot(snapshot);
+      }
     } catch (err) {
       console.error("Failed to load conversation:", err);
     } finally {
       setLoading(false);
     }
-  }, [loadTrace, models, setFileChanges]);
+  }, [loadTrace, models, restoreFromSnapshot, setFileChanges]);
 
   const createNewSession = useCallback(() => {
     setActiveSessionId(null);
@@ -926,7 +962,7 @@ export function useThunderChat() {
           const delta = (ev as any).delta || "";
           stream.streamingText += delta;
           if (isCurrentSession) {
-            setStreamingText((prev) => prev + delta);
+            setStreamingText(stream.streamingText);
             setStreamTokensCount((prev) => prev + 1);
             setStreamStartTime((prev) => prev || Date.now());
           }
@@ -936,7 +972,7 @@ export function useThunderChat() {
           const delta = (ev as any).delta || "";
           stream.streamingReasoning += delta;
           if (isCurrentSession) {
-            setStreamingReasoning((prev) => prev + delta);
+            setStreamingReasoning(stream.streamingReasoning);
             setStreamTokensCount((prev) => prev + 1);
             setStreamReasoningCount((prev) => prev + 1);
             setStreamStartTime((prev) => prev || Date.now());

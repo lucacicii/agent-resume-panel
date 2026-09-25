@@ -306,6 +306,25 @@ export interface ThunderChatStreamPayload {
   event: ThunderObservedEvent;
 }
 
+/**
+ * Live snapshot of an in-flight Thunder task, buffered in the main process so a
+ * renderer that unmounted and remounted mid-answer can resume the stream instead
+ * of restarting from the next incremental delta.
+ */
+export interface ThunderActiveStreamSnapshot {
+  sessionId: string;
+  taskId: string;
+  prompt?: string;
+  model?: string;
+  workspaceDir?: string;
+  startedAtMs: number;
+  isRunning: boolean;
+  streamingText: string;
+  streamingReasoning: string;
+  streamingTools: ThunderToolExecutionRecord[];
+  events: ThunderObservedEvent[];
+}
+
 export interface ThunderChatTaskOptions {
   taskId: string;
   prompt: string;

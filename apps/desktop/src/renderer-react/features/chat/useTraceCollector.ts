@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import { desktopApi } from "../../bridge";
 import type {
+  ThunderActiveStreamSnapshot,
   ThunderAgentEvent,
   ThunderFileChangeRecord,
   ThunderTaskTrace,
@@ -326,6 +327,36 @@ export function useTraceCollector() {
     }
   }, []);
 
+  /**
+   * Rebuild the live trace (spans, file changes, telemetry) from a snapshot the
+   * main process buffered for an in-flight task. Replays through `recordEvent`
+   * so the restored timeline matches one that streamed without interruption.
+   */
+  const restoreFromSnapshot = useCallback(
+    (snapshot: ThunderActiveStreamSnapshot) => {
+      activeTaskIdRef.current = snapshot.taskId;
+      activeSessionIdRef.current = snapshot.sessionId;
+      startTimesRef.current.clear();
+      setIsCollecting(true);
+      setSpans([]);
+      setFileChanges([]);
+      setTelemetryNotices([]);
+      setCurrentTrace({
+        task_id: snapshot.taskId,
+        session_id: snapshot.sessionId,
+        model: snapshot.model,
+        workspace_dir: snapshot.workspaceDir,
+        prompt: snapshot.prompt,
+        started_at_ms: snapshot.startedAtMs,
+        events: []
+      });
+      for (const observed of snapshot.events) {
+        recordEvent(observed.event, snapshot.taskId);
+      }
+    },
+    [recordEvent]
+  );
+
   const finishTaskTrace = useCallback(
     (result: { finishReason: string; finalContent?: string }) => {
       const now = Date.now();
@@ -435,6 +466,7 @@ export function useTraceCollector() {
     recordEvent,
     finishTaskTrace,
     loadTrace,
+    restoreFromSnapshot,
     resetTrace,
     setFileChanges,
     setTelemetryNotices

@@ -1000,6 +1000,7 @@ export type {
   ThunderConversation,
   ThunderObservedEvent,
   ThunderChatStreamPayload,
+  ThunderActiveStreamSnapshot,
   ThunderChatTaskOptions,
   ThunderChatTaskResult
 } from "./thunder/types";

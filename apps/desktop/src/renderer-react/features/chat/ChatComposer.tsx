@@ -1312,7 +1312,7 @@ export function ChatComposer({
               const cachedCount = typeof lastRunMetrics?.cachedTokens === "number" ? lastRunMetrics.cachedTokens : 0;
               const promptCount = typeof lastRunMetrics?.promptTokens === "number" ? lastRunMetrics.promptTokens : 0;
               const isHit = cachedCount > 0;
-              const hitPercent = isHit && promptCount > 0 ? Math.round((cachedCount / promptCount) * 100) : null;
+              const hitPercent = isHit && promptCount > 0 ? ((cachedCount / promptCount) * 100).toFixed(2) : null;
               const titleText = isStreaming
                 ? isHit
                   ? `Prompt Cache: 上一轮已命中 ${cachedCount.toLocaleString()} tokens${hitPercent !== null ? ` (${hitPercent}%)` : ""}，本轮生成中...`

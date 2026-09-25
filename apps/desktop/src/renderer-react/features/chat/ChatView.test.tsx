@@ -109,6 +109,8 @@ describe("ChatView", () => {
         finishReason: "Done"
       }),
       thunderChatCancelTask: vi.fn().mockResolvedValue(true),
+      thunderChatGetTrace: vi.fn().mockResolvedValue(null),
+      thunderChatGetActiveStream: vi.fn().mockResolvedValue(null),
       onThunderChatEvent: vi.fn().mockReturnValue(() => undefined),
       pickDirectory: vi.fn().mockResolvedValue({ ok: true, path: "/work/repo" }),
       contextMenuShow: vi.fn().mockResolvedValue(null),
@@ -167,6 +169,137 @@ describe("ChatView", () => {
       expect(screen.getByText("Check git status")).toBeTruthy();
       expect(screen.getByText("Working tree is clean.")).toBeTruthy();
     });
+  });
+
+  it("resumes an in-flight stream after the chat is reopened", async () => {
+    const captured: { emit: ((payload: any) => void) | null } = { emit: null };
+    window.agentResume.onThunderChatEvent = vi.fn((callback: (payload: any) => void) => {
+      captured.emit = callback;
+      return () => undefined;
+    }) as any;
+    window.agentResume.thunderChatGetConversation = vi.fn().mockResolvedValue({
+      id: "sess_1",
+      title: "Inspect Git Status & Changes",
+      model: "openai/gpt-4o",
+      workspace: "/work/repo",
+      status: "active",
+      messages: [{ role: "user", content: "Do the thing" }],
+      created_at_ms: Date.now() - 1000,
+      updated_at_ms: Date.now() - 500
+    });
+    const snapshot = {
+      sessionId: "sess_1",
+      taskId: "task_live",
+      prompt: "Do the thing",
+      model: "openai/gpt-4o",
+      workspaceDir: "/work/repo",
+      startedAtMs: Date.now() - 2000,
+      isRunning: true,
+      streamingText: "Partial answer",
+      streamingReasoning: "Deep thought",
+      streamingTools: [],
+      events: [
+        { agent_id: "task_live", event: { type: "turn_start", turn: 1, timestamp: Date.now() - 2000 } },
+        { agent_id: "task_live", event: { type: "token_delta", turn: 1, delta: "Partial " } },
+        { agent_id: "task_live", event: { type: "token_delta", turn: 1, delta: "answer" } },
+        { agent_id: "task_live", event: { type: "reasoning_delta", turn: 1, delta: "Deep thought" } },
+        {
+          agent_id: "task_live",
+          event: {
+            type: "file_change",
+            turn: 1,
+            tool_call_id: "f1",
+            path: "/work/repo/a.ts",
+            action: "modified",
+            tool_name: "write_file"
+          }
+        }
+      ]
+    };
+    window.agentResume.thunderChatGetActiveStream = vi.fn().mockResolvedValue(snapshot) as any;
+
+    render(
+      <I18nProvider>
+        <ChatView active={true} />
+      </I18nProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Inspect Git Status & Changes").length).toBeGreaterThanOrEqual(1);
+    });
+    fireEvent.click(screen.getAllByText("Inspect Git Status & Changes")[0]);
+
+    // Body + thinking restored from the main-process buffer, not from increment zero.
+    await waitFor(() => {
+      expect(screen.getByText("Partial answer")).toBeTruthy();
+    });
+    expect(document.querySelector(".tb-thinking-container")).not.toBeNull();
+    // File changes rebuilt from the buffered `file_change` event.
+    expect(document.querySelector(".tb-header-badge")?.textContent).toBe("1");
+
+    // Later deltas continue the restored buffer.
+    captured.emit?.({
+      taskId: "task_live",
+      sessionId: "sess_1",
+      event: { agent_id: "task_live", event: { type: "token_delta", turn: 1, delta: " continued" } }
+    });
+    await waitFor(() => {
+      expect(screen.getByText("Partial answer continued")).toBeTruthy();
+    });
+  });
+
+  it("groups the agent loop's tool calls into one block per user turn", async () => {
+    window.agentResume.thunderChatGetConversation = vi.fn().mockResolvedValue({
+      id: "sess_1",
+      title: "Inspect Git Status & Changes",
+      model: "openai/gpt-4o",
+      workspace: "/work/repo",
+      status: "active",
+      messages: [
+        { role: "user", content: "Do the thing" },
+        {
+          role: "assistant",
+          content: "Step one",
+          tool_executions: [{ toolCallId: "t1", name: "bash", arguments: { command: "ls" } }]
+        },
+        { role: "tool", content: "out1", tool_call_id: "t1" },
+        {
+          role: "assistant",
+          content: "Step two",
+          tool_executions: [{ toolCallId: "t2", name: "read_file", arguments: { path: "a" } }]
+        },
+        {
+          role: "assistant",
+          content: "Step three",
+          tool_executions: [{ toolCallId: "t3", name: "write_file", arguments: { path: "b" } }]
+        }
+      ],
+      created_at_ms: Date.now() - 1000,
+      updated_at_ms: Date.now() - 500
+    });
+
+    render(
+      <I18nProvider>
+        <ChatView active={true} />
+      </I18nProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Inspect Git Status & Changes").length).toBeGreaterThanOrEqual(1);
+    });
+    fireEvent.click(screen.getAllByText("Inspect Git Status & Changes")[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText("Step one")).toBeTruthy();
+    });
+
+    // One tool group for the whole user turn, not one per agent step.
+    const groups = document.querySelectorAll(".tb-tool-group-container");
+    expect(groups.length).toBe(1);
+    expect(groups[0]?.textContent).toContain("Used 3 tools");
+    // Every step's text is preserved.
+    expect(screen.getByText("Step two")).toBeTruthy();
+    expect(screen.getByText("Step three")).toBeTruthy();
   });
 
   it("submits a new message through the composer", async () => {

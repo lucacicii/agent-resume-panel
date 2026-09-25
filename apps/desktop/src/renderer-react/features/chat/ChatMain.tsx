@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { ChatMessageItem } from "./ChatMessageItem";
 import { ChatComposer } from "./ChatComposer";
@@ -19,6 +19,7 @@ import type { ActiveToolInfo, ChatRunMetrics } from "./useThunderChat";
 import type { TraceSpan } from "./useTraceCollector";
 
 interface ChatMainProps {
+  sessionId?: string | null;
   sessionTitle?: string;
   messages: ThunderChatMessage[];
   isStreaming: boolean;
@@ -69,6 +70,7 @@ interface ChatMainProps {
 }
 
 export function ChatMain({
+  sessionId,
   sessionTitle,
   messages,
   isStreaming,
@@ -112,16 +114,32 @@ export function ChatMain({
   onAnswerQuestion,
   onDismissQuestion
 }: ChatMainProps) {
-  const scrollEndRef = useRef<HTMLDivElement | null>(null);
+  const feedRef = useRef<HTMLDivElement | null>(null);
+  /** A strategy while true: follow the newest content (正文 + thinking). */
+  const stickToBottom = useRef(true);
   const [isTraceOpen, setIsTraceOpen] = useState(false);
   const [isFilesOpen, setIsFilesOpen] = useState(false);
 
-  // Auto-scroll when messages or streaming tokens change
-  useEffect(() => {
-    scrollEndRef.current?.scrollIntoView?.({ behavior: "smooth" });
-  }, [messages.length, streamingText, streamingReasoning, streamingTools.length]);
+  const scrollToBottom = useCallback((force = false) => {
+    const node = feedRef.current;
+    if (!node) return;
+    if (!force && !stickToBottom.current) return;
+    node.scrollTop = node.scrollHeight;
+  }, []);
+
+  // Switching conversations always starts pinned to the newest content.
+  useLayoutEffect(() => {
+    stickToBottom.current = true;
+    scrollToBottom(true);
+  }, [sessionId, scrollToBottom]);
+
+  // A strategy: follow streaming content unless the user scrolled away (B).
+  useLayoutEffect(() => {
+    scrollToBottom();
+  }, [messages.length, streamingText, streamingReasoning, streamingTools, scrollToBottom]);
 
   const hasMessages = messages.length > 0 || isStreaming;
+  const showEmptyState = !hasMessages;
 
   return (
     <div className="tb-chat-main">
@@ -193,8 +211,12 @@ export function ChatMain({
       />
 
       {/* Messages Feed or Empty State */}
-      <div className="tb-chat-feed">
-        {!hasMessages ? (
+      <div className="tb-chat-feed" ref={feedRef} onScroll={(event) => {
+        const node = event.currentTarget;
+        if (node.clientHeight <= 0) return;
+        stickToBottom.current = node.scrollHeight - node.scrollTop - node.clientHeight < 80;
+      }}>
+        {showEmptyState ? (
           <ChatEmptyState
             onSelectPrompt={onSendMessage}
             daemonOnline={daemonOnline}
@@ -226,7 +248,7 @@ export function ChatMain({
               />
             )}
 
-            <div ref={scrollEndRef} className="tb-scroll-anchor" />
+            <div className="tb-scroll-anchor" />
           </div>
         )}
       </div>

@@ -382,7 +382,7 @@ describe("ChatComposer UI popovers and keyboard interactions", () => {
     const cacheBadge = container.querySelector(".tb-metrics-cache-badge");
     expect(cacheBadge).not.toBeNull();
     expect(cacheBadge?.textContent).toContain("Cache 800");
-    expect(cacheBadge?.textContent).toContain("80%");
+    expect(cacheBadge?.textContent).toContain("80.00%");
 
     // Now switch to completed (non-streaming) turn
     rerender(
@@ -423,5 +423,25 @@ describe("ChatComposer UI popovers and keyboard interactions", () => {
     expect(cacheBadge).not.toBeNull();
     expect(cacheBadge?.textContent).toContain("Cache 0");
     expect(cacheBadge?.className).toContain("is-zero");
+  });
+
+  it("renders Cache hit ratio with two decimal places", () => {
+    const { container } = render(
+      <ChatComposer
+        {...defaultProps}
+        isStreaming={false}
+        lastRunMetrics={{
+          promptTokens: 1234,
+          completionTokens: 200,
+          cachedTokens: 800,
+          totalTokens: 1434
+        }}
+      />
+    );
+
+    const cacheBadge = container.querySelector(".tb-metrics-cache-badge");
+    expect(cacheBadge).not.toBeNull();
+    expect(cacheBadge?.textContent).toContain("Cache 800");
+    expect(cacheBadge?.textContent).toContain("64.83%");
   });
 });

@@ -17572,17 +17572,42 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   text-overflow: ellipsis;
 }
 
-.tb-header-action-btn {
-  display: flex;
+/*
+ * Trace / Files pills.
+ *
+ * Each pill carries a label plus an optional live metric (a run duration, or a
+ * modified-file count). An equal-column grid keeps the two the same size
+ * whichever metric is showing, and `minmax(124px, 1fr)` gives both one shared
+ * floor so the row does not jump as metrics come and go. 124px is measured
+ * chrome geometry: the widest realistic pair ("1200.0s" + a "99+" badge) needs
+ * 119.4px, and the 1fr ceiling still lets an outlier value widen both pills
+ * instead of clipping it.
+ */
+.tb-chat-header-actions {
+  flex: 0 0 auto;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(124px, 1fr);
   align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
-  border-radius: var(--radius-sm, 6px);
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.tb-header-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1-5);
+  /* Fixed height centers the pair in the 48px header: (48 - 26) / 2 = 11px. */
+  height: 26px;
+  padding: 0 var(--space-2-5);
+  border-radius: var(--radius-sm);
   background: var(--color-secondary-bg);
   border: 0.5px solid var(--color-separator);
   color: var(--color-label-primary);
   font-size: 12px;
   font-weight: 500;
+  white-space: nowrap;
   cursor: pointer;
 }
 

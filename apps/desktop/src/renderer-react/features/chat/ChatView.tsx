@@ -131,6 +131,7 @@ export function ChatView({ active }: { active: boolean }): React.JSX.Element | n
       />
 
       <ChatMain
+        sessionId={activeSessionId}
         sessionTitle={activeSession?.title}
         messages={messages}
         isStreaming={isStreaming}
