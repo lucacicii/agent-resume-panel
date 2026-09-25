@@ -120,4 +120,26 @@ describe("ChatMain auto-scroll", () => {
     );
     expect(feed.scrollTop).toBe(2400);
   });
+
+  it("renders the Git Diff button and opens GitDiffPopover when clicked", () => {
+    const props = baseProps();
+    renderChatMain(props);
+
+    const diffBtn = document.querySelector('button[title="View Git diff and commit conversation changes"]');
+    expect(diffBtn).toBeTruthy();
+    expect(diffBtn?.textContent).toContain("Git Diff");
+
+    // Popover is initially closed
+    expect(document.querySelector(".tb-git-diff-popover")).toBeNull();
+
+    // Clicking button opens the popover
+    fireEvent.click(diffBtn!);
+    expect(document.querySelector(".tb-git-diff-popover")).toBeTruthy();
+
+    // Clicking close button inside popover closes it
+    const closeBtn = document.querySelector(".tb-git-diff-popover .tb-trace-close-btn");
+    expect(closeBtn).toBeTruthy();
+    fireEvent.click(closeBtn!);
+    expect(document.querySelector(".tb-git-diff-popover")).toBeNull();
+  });
 });

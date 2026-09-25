@@ -1063,7 +1063,7 @@ export interface DesktopApi {
     cwd: string;
     path: string;
     staged?: boolean;
-  }): Promise<{ oldLabel: string; newLabel: string; oldText: string; newText: string; hunks: GitDiffHunk[] }>;
+  }): Promise<{ oldLabel: string; newLabel: string; oldText: string; newText: string; hunks: GitDiffHunk[]; patch?: string }>;
   terminalGitDiscardChange(args: { repoRoot: string; path: string }): Promise<{ ok: boolean }>;
   terminalGitDiscardHunk(args: {
     repoRoot: string;

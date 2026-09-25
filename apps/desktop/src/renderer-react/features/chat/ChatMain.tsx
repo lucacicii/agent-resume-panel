@@ -1,11 +1,17 @@
-import React, { useCallback, useLayoutEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
+import { desktopApi } from "../../bridge";
 import { ChatMessageItem } from "./ChatMessageItem";
 import { ChatComposer } from "./ChatComposer";
 import { ChatQuestionBubble } from "./ChatQuestionBubble";
 import { ChatEmptyState } from "./ChatEmptyState";
 import { TracePopover } from "./TracePopover";
 import { FileChangesPopover } from "./FileChangesPopover";
+import { GitDiffPopover } from "./GitDiffPopover";
+import {
+  extractConversationTouchedPaths,
+  filterConversationDirtyFiles
+} from "./gitDiffUtils";
 import type {
   ThunderChatMessage,
   ThunderModelInfo,
@@ -119,6 +125,60 @@ export function ChatMain({
   const stickToBottom = useRef(true);
   const [isTraceOpen, setIsTraceOpen] = useState(false);
   const [isFilesOpen, setIsFilesOpen] = useState(false);
+  const [isGitDiffOpen, setIsGitDiffOpen] = useState(false);
+  const [conversationDirtyCount, setConversationDirtyCount] = useState<number>(0);
+
+  // Keep git diff badge count in sync with conversation file modifications
+  useEffect(() => {
+    let cancelled = false;
+    if (!workspaceDir) {
+      setConversationDirtyCount(0);
+      return;
+    }
+
+    const updateCount = async () => {
+      try {
+        const gitInfo = await desktopApi()
+          .terminalGitInfo({ cwd: workspaceDir })
+          .catch(() => ({ isRepo: false, repoRoot: null, branch: null }));
+        if (!gitInfo.isRepo || cancelled) {
+          if (!cancelled) setConversationDirtyCount(0);
+          return;
+        }
+        const root = gitInfo.repoRoot || workspaceDir;
+        const touched = extractConversationTouchedPaths({
+          fileChanges,
+          messages,
+          streamingTools,
+          repoRoot: root,
+          workspaceDir
+        });
+        if (touched.size === 0) {
+          if (!cancelled) setConversationDirtyCount(0);
+          return;
+        }
+        const status = await desktopApi()
+          .terminalGitStatus({ cwd: root })
+          .catch(() => null);
+        if (!status || cancelled) return;
+        const dirtyCandidates = [
+          ...(status.unstaged || []),
+          ...(status.staged || [])
+        ].map((f) => ({ path: f.path, repoPath: f.repoPath, status: f.status }));
+        const matched = filterConversationDirtyFiles(dirtyCandidates, touched);
+        if (!cancelled) {
+          setConversationDirtyCount(matched.length);
+        }
+      } catch {
+        if (!cancelled) setConversationDirtyCount(0);
+      }
+    };
+
+    void updateCount();
+    return () => {
+      cancelled = true;
+    };
+  }, [workspaceDir, fileChanges, messages, streamingTools]);
 
   const scrollToBottom = useCallback((force = false) => {
     const node = feedRef.current;
@@ -190,6 +250,20 @@ export function ChatMain({
               <span className="tb-header-badge">{fileChanges.length}</span>
             )}
           </button>
+
+          {/* Git Diff Popover Trigger */}
+          <button
+            type="button"
+            className={`tb-header-action-btn${isGitDiffOpen ? " is-active" : ""}`}
+            onClick={() => setIsGitDiffOpen(!isGitDiffOpen)}
+            title="View Git diff and commit conversation changes"
+          >
+            <ThemeIcon name="git-branch" size={ICON_SIZE.dense} />
+            <span>Git Diff</span>
+            {conversationDirtyCount > 0 && (
+              <span className="tb-header-badge">{conversationDirtyCount}</span>
+            )}
+          </button>
         </div>
       </header>
 
@@ -208,6 +282,16 @@ export function ChatMain({
         onClose={() => setIsFilesOpen(false)}
         files={fileChanges}
         workspaceDir={workspaceDir}
+      />
+
+      <GitDiffPopover
+        isOpen={isGitDiffOpen}
+        onClose={() => setIsGitDiffOpen(false)}
+        workspaceDir={workspaceDir}
+        fileChanges={fileChanges}
+        messages={messages}
+        streamingTools={streamingTools}
+        onCommitSuccess={() => setConversationDirtyCount(0)}
       />
 
       {/* Messages Feed or Empty State */}

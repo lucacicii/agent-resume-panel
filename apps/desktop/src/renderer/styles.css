@@ -17587,7 +17587,7 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   flex: 0 0 auto;
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: minmax(124px, 1fr);
+  grid-auto-columns: minmax(116px, 1fr);
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
@@ -17692,6 +17692,11 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 
 .tb-files-popover {
   width: 460px;
+}
+
+.tb-git-diff-popover {
+  width: 660px;
+  max-width: 90vw;
 }
 
 @keyframes tbTraceSlideIn {
@@ -18162,6 +18167,278 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   gap: 6px;
   font-size: 11px;
   color: var(--color-label-tertiary);
+}
+
+/* ==========================================================================
+   Git Diff Popover & Accordion View
+   ========================================================================== */
+
+.tb-git-commit-bar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: 4px;
+}
+
+.tb-git-commit-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.tb-git-commit-input {
+  flex: 1 1 auto;
+  height: 28px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--color-window-bg);
+  border: 0.5px solid var(--color-separator);
+  color: var(--color-label-primary);
+  font-size: 12px;
+  outline: none;
+}
+
+.tb-git-commit-input:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--color-focus-ring);
+}
+
+.tb-git-suggest-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 28px;
+  padding: 0 var(--space-2-5);
+  border-radius: var(--radius-sm);
+  background: var(--color-tertiary-bg);
+  border: 0.5px solid var(--color-separator);
+  color: var(--color-label-primary);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tb-git-suggest-btn:hover:not(:disabled) {
+  background: var(--color-secondary-bg);
+}
+
+.tb-git-suggest-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tb-git-commit-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  min-height: 28px;
+}
+
+.tb-git-error-text {
+  font-size: 11px;
+  color: var(--color-destructive);
+  max-width: 360px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-right: auto;
+}
+
+.tb-git-success-text {
+  font-size: 11px;
+  color: var(--color-success);
+  font-weight: 500;
+  margin-right: auto;
+}
+
+.tb-git-commit-push-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  height: 28px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--color-accent);
+  color: var(--color-button-text);
+  border: none;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tb-git-commit-push-btn:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+}
+
+.tb-git-commit-push-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tb-git-diff-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 12px 16px;
+}
+
+.tb-git-accordion-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.tb-git-diff-item {
+  border: 0.5px solid var(--color-separator);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--color-window-bg);
+}
+
+.tb-git-diff-item-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 8px 12px;
+  background: var(--color-secondary-bg);
+  border: none;
+  font-size: 12px;
+  color: var(--color-label-primary);
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+}
+
+.tb-git-diff-item-header:hover {
+  background: var(--color-tertiary-bg);
+}
+
+.tb-git-diff-chevron {
+  display: inline-flex;
+  align-items: center;
+  transition: transform 0.15s ease-out;
+  color: var(--color-label-tertiary);
+}
+
+.tb-git-diff-chevron.is-expanded {
+  transform: rotate(90deg);
+}
+
+.tb-git-diff-path {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-family-mono, monospace);
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.tb-git-diff-stats {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-family-mono, monospace);
+  font-size: 11px;
+  font-weight: 600;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.tb-git-diff-add {
+  color: #107d32;
+}
+
+.tb-git-diff-del {
+  color: #d8001b;
+}
+
+.tb-git-diff-item-body {
+  border-top: 0.5px solid var(--color-separator);
+  max-height: 380px;
+  overflow: auto;
+  background: var(--color-window-bg);
+}
+
+.tb-git-diff-lines {
+  font-family: var(--font-family-mono, monospace);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.tb-git-diff-line {
+  display: flex;
+  align-items: flex-start;
+  padding: 1px 8px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  min-height: 18px;
+}
+
+.tb-git-diff-line-header {
+  background: color-mix(in srgb, var(--color-purple) 10%, var(--color-secondary-bg));
+  color: var(--color-label-secondary);
+  font-weight: 600;
+  padding: 3px 8px;
+}
+
+.tb-git-diff-hunk-header {
+  font-weight: 600;
+  color: var(--color-label-secondary);
+  font-size: 10.5px;
+}
+
+.tb-git-diff-line-add {
+  background: rgba(52, 199, 89, 0.12);
+  color: #107d32;
+}
+
+.tb-git-diff-line-del {
+  background: rgba(255, 59, 48, 0.12);
+  color: #d8001b;
+}
+
+.tb-git-diff-line-context {
+  color: var(--color-label-primary);
+}
+
+.tb-git-diff-gutter {
+  width: 32px;
+  flex: 0 0 32px;
+  text-align: right;
+  margin-right: 6px;
+  color: var(--color-label-tertiary);
+  user-select: none;
+  font-size: 10px;
+}
+
+.tb-git-diff-sign {
+  width: 14px;
+  flex: 0 0 14px;
+  text-align: center;
+  user-select: none;
+  font-weight: 600;
+}
+
+.tb-git-diff-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.tb-git-diff-loading,
+.tb-git-diff-error,
+.tb-git-diff-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 16px;
+  color: var(--color-label-tertiary);
+  font-size: 12px;
 }
 
 /* --- Chat Feed --- */
