@@ -362,15 +362,21 @@ export function useThunderChat() {
       } else {
         setMessages([]);
       }
-      // Track session total tokens
-      const totTokens = conv?.stats?.total_tokens || 0;
+      // Track session total tokens. Prefer the daemon's cumulative provider usage
+      // (includes cache reads/writes); `total_tokens` is only the working-context
+      // estimate and used to mix in fresh usage on every save.
+      const totTokens = conv?.stats?.total_used_tokens ?? conv?.stats?.total_tokens ?? 0;
       setSessionTotalTokens(totTokens);
 
-      // Estimate current context occupancy from last assistant message or messages
+      // Estimate current context occupancy. Prefer the daemon's estimated working
+      // context; fall back to per-message stats and finally a rough character
+      // heuristic when older conversations carry neither.
       let ctxTokens = 0;
       const lastAssistant = [...(conv?.messages || [])].reverse().find((m) => m.role === "assistant");
       if (lastAssistant?.stats?.prompt_tokens && lastAssistant?.stats?.completion_tokens) {
         ctxTokens = lastAssistant.stats.prompt_tokens + lastAssistant.stats.completion_tokens;
+      } else if (typeof conv?.stats?.total_tokens === "number" && conv.stats.total_tokens > 0) {
+        ctxTokens = conv.stats.total_tokens;
       } else if (Array.isArray(conv?.messages) && conv.messages.length > 0) {
         ctxTokens = conv.messages.reduce(
           (acc, m) => acc + Math.max(1, Math.ceil((m.content || "").length / 3)),
@@ -435,7 +441,7 @@ export function useThunderChat() {
         });
       } else if (conv && conv.stats) {
         setLastRunMetrics({
-          totalTokens: conv.stats.total_tokens,
+          totalTokens: conv.stats.total_used_tokens ?? conv.stats.total_tokens,
           durationMs: conv.stats.duration_ms,
           cachedTokens: 0
         });

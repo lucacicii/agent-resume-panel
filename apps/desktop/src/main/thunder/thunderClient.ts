@@ -646,6 +646,7 @@ export class ThunderClient {
               message_count: Array.isArray(c.messages) ? c.messages.length : 0,
               turn_count: c.stats?.turn_count || 0,
               total_tokens: c.stats?.total_tokens || 0,
+              total_used_tokens: c.stats?.total_used_tokens ?? c.stats?.total_tokens ?? 0,
               created_at_ms: c.created_at_ms || Date.now(),
               updated_at_ms: c.updated_at_ms || Date.now()
             });

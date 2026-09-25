@@ -269,6 +269,8 @@ export interface ThunderConversationSummary {
   message_count: number;
   turn_count: number;
   total_tokens: number;
+  /** Cumulative provider-reported usage (includes cache reads/writes). */
+  total_used_tokens?: number;
   tags?: string[];
   created_at_ms: number;
   updated_at_ms: number;
@@ -286,6 +288,8 @@ export interface ThunderConversation {
   messages: ThunderChatMessage[];
   stats?: {
     total_tokens?: number;
+    /** Cumulative provider-reported usage across the conversation (includes cache). */
+    total_used_tokens?: number;
     message_count?: number;
     turn_count?: number;
     tool_calls_count?: number;

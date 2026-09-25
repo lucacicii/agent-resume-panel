@@ -64,6 +64,10 @@ export interface ResolveThunderDaemonOptions {
 
 /** Daemon binary paths relative to a thunder checkout root. */
 const REPO_BINARY_RELATIVE_PATHS = [
+  // Unified workspace: the whole monorepo builds into `<repo>/target/{release,debug}`.
+  path.join("target", "release", "thunder-daemon"),
+  path.join("target", "debug", "thunder-daemon"),
+  // Legacy per-crate layout (pre-workspace-unification checkouts).
   path.join("thunder-agent-daemon", "target", "release", "thunder-daemon"),
   path.join("thunder-agent-daemon", "target", "debug", "thunder-daemon"),
   // Bundled layout: `Contents/Resources/thunder/bin/thunder-daemon`.
@@ -117,15 +121,21 @@ function daemonInRepo(repo: string, exists: (p: string) => boolean): DaemonInRep
 
 /**
  * Derive the checkout root from a direct binary path so `repoPath` stays useful.
- * `<repo>/thunder-agent-daemon/target/release/thunder-daemon` → `<repo>`.
+ * `<repo>/target/release/thunder-daemon` → `<repo>` (unified workspace),
+ * `<repo>/thunder-agent-daemon/target/release/thunder-daemon` → `<repo>` (legacy).
+ * Anything else falls back to the binary's own directory.
  */
 export function repoRootForBinary(binaryPath: string): string {
   const parts = path.normalize(binaryPath).split(path.sep);
   const isCargoTarget =
     parts.at(-1) === "thunder-daemon" &&
     parts.at(-3) === "target" &&
-    parts.at(-4) === "thunder-agent-daemon";
-  if (isCargoTarget) return parts.slice(0, -4).join(path.sep) || path.sep;
+    (parts.at(-2) === "release" || parts.at(-2) === "debug");
+  if (isCargoTarget) {
+    // Legacy layout nests the crate dir; unified layout has the repo directly above `target`.
+    const cut = parts.at(-4) === "thunder-agent-daemon" ? -4 : -3;
+    return parts.slice(0, cut).join(path.sep) || path.sep;
+  }
   return path.dirname(binaryPath);
 }
 

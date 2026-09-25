@@ -43,6 +43,9 @@ function resolve(overrides: Partial<Parameters<typeof resolveThunderDaemon>[0]> 
 
 const RELEASE_BIN = path.join(SIBLING_REPO, "thunder-agent-daemon/target/release/thunder-daemon");
 const DEBUG_BIN = path.join(SIBLING_REPO, "thunder-agent-daemon/target/debug/thunder-daemon");
+// Unified workspace: the monorepo builds into `<repo>/target/{release,debug}`.
+const UNIFIED_RELEASE_BIN = path.join(SIBLING_REPO, "target/release/thunder-daemon");
+const UNIFIED_DEBUG_BIN = path.join(SIBLING_REPO, "target/debug/thunder-daemon");
 const SCRIPT = path.join(SIBLING_REPO, "daemon.sh");
 
 describe("resolveThunderDaemon", () => {
@@ -124,6 +127,20 @@ describe("resolveThunderDaemon", () => {
     expect(candidates.some((candidate) => candidate.startsWith("/Users/lucas"))).toBe(false);
   });
 
+  it("finds the unified workspace binary at <repo>/target", () => {
+    const location = resolve({ paths: [UNIFIED_RELEASE_BIN, SCRIPT] });
+
+    expect(location.source).toBe("dev-sibling");
+    expect(location.binaryPath).toBe(UNIFIED_RELEASE_BIN);
+    expect(location.repoPath).toBe(SIBLING_REPO);
+  });
+
+  it("prefers the unified workspace binary over a stale legacy per-crate build", () => {
+    const location = resolve({ paths: [UNIFIED_DEBUG_BIN, RELEASE_BIN, SCRIPT] });
+
+    expect(location.binaryPath).toBe(UNIFIED_DEBUG_BIN);
+  });
+
   it("prefers release over debug inside one checkout", () => {
     const location = resolve({ paths: [DEBUG_BIN, RELEASE_BIN, SCRIPT] });
 
@@ -165,7 +182,12 @@ describe("resolveThunderDaemon", () => {
 });
 
 describe("repoRootForBinary", () => {
-  it("strips the cargo target path", () => {
+  it("strips the unified workspace target path", () => {
+    expect(repoRootForBinary("/w/thunder/target/release/thunder-daemon")).toBe("/w/thunder");
+    expect(repoRootForBinary("/w/thunder/target/debug/thunder-daemon")).toBe("/w/thunder");
+  });
+
+  it("strips the legacy cargo target path", () => {
     expect(repoRootForBinary("/w/thunder/thunder-agent-daemon/target/release/thunder-daemon")).toBe("/w/thunder");
     expect(repoRootForBinary("/w/thunder/thunder-agent-daemon/target/debug/thunder-daemon")).toBe("/w/thunder");
   });
