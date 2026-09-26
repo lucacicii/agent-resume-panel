@@ -158,4 +158,48 @@ describe("useTraceCollector", () => {
     expect(result.current.currentTrace?.finish_reason).toBe("done");
     expect(result.current.currentTrace?.final_content).toBe("All completed!");
   });
+
+  it("normalizes a seconds-resolution turn_start timestamp to milliseconds", () => {
+    const { result } = renderHook(() => useTraceCollector());
+
+    act(() => {
+      result.current.startTaskTrace({
+        taskId: "task_ts",
+        sessionId: "sess_ts",
+        model: "openai/gpt-4o",
+        workspaceDir: "/ws",
+        prompt: "hello"
+      });
+    });
+
+    // Older daemons emitted turn_start.timestamp in SECONDS (10 digits).
+    const secondsTs = Math.floor(Date.now() / 1000);
+    act(() => {
+      const ev: ThunderAgentEvent = {
+        type: "turn_start",
+        turn: 1,
+        timestamp: secondsTs
+      };
+      result.current.recordEvent(ev, "task_ts");
+    });
+
+    const turnSpan = result.current.spans.find((s) => s.id === "turn_1");
+    // The stored start must be milliseconds, not a raw seconds value.
+    expect(turnSpan?.startedAtMs).toBe(secondsTs * 1000);
+
+    act(() => {
+      const ev: ThunderAgentEvent = {
+        type: "turn_end",
+        turn: 1,
+        stats: { duration_ms: 1500 }
+      };
+      result.current.recordEvent(ev, "task_ts");
+    });
+
+    const ended = result.current.spans.find((s) => s.id === "turn_1");
+    // Must be a plausible duration (< 1 minute), never ~1.78e9 seconds.
+    expect(ended?.durationMs).toBeDefined();
+    expect(ended!.durationMs!).toBeLessThan(60_000);
+    expect(ended!.durationMs!).toBeGreaterThanOrEqual(0);
+  });
 });

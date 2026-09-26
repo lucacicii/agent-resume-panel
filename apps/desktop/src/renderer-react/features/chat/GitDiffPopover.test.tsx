@@ -221,4 +221,78 @@ describe("GitDiffPopover", () => {
     const btn = screen.getByText("Commit & Push (0)").closest("button");
     expect(btn?.disabled).toBe(true);
   });
+
+  it("detects nested repositories and commits each dirty repo", async () => {
+    window.agentResume.terminalGitStatus = vi.fn().mockResolvedValue({
+      isRepo: true,
+      root: null,
+      nestedRepos: [
+        { root: "/work/mono/pkg-a", displayPath: "pkg-a" },
+        { root: "/work/mono/pkg-b", displayPath: "pkg-b" }
+      ],
+      staged: [],
+      unstaged: [
+        { path: "pkg-a/index.ts", repoPath: "index.ts", repoRoot: "/work/mono/pkg-a", status: "modified" },
+        { path: "pkg-b/index.ts", repoPath: "index.ts", repoRoot: "/work/mono/pkg-b", status: "modified" }
+      ]
+    });
+    const fileChanges: ThunderFileChangeRecord[] = [
+      { path: "/work/mono/pkg-a/index.ts", tool: "write_file", action: "written" },
+      { path: "/work/mono/pkg-b/index.ts", tool: "write_file", action: "written" }
+    ];
+
+    render(
+      <GitDiffPopover
+        isOpen={true}
+        onClose={vi.fn()}
+        workspaceDir="/work/mono"
+        workspaceDirs={["/work/mono"]}
+        nestedScan={{ maxDepth: 6 }}
+        fileChanges={fileChanges}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("2 files")).toBeTruthy();
+    });
+    // The workspace root that is not itself a repo is scanned with nestedScan.
+    expect(window.agentResume.terminalGitStatus).toHaveBeenCalledWith({
+      cwd: "/work/mono",
+      nestedScan: { maxDepth: 6 }
+    });
+    // Each repo renders its own group and loads its own diff.
+    expect(screen.getByText("pkg-a")).toBeTruthy();
+    expect(screen.getByText("pkg-b")).toBeTruthy();
+    await waitFor(() => {
+      expect(window.agentResume.terminalGitDiffSides).toHaveBeenCalledWith({
+        cwd: "/work/mono/pkg-a",
+        path: "index.ts",
+        staged: false
+      });
+      expect(window.agentResume.terminalGitDiffSides).toHaveBeenCalledWith({
+        cwd: "/work/mono/pkg-b",
+        path: "index.ts",
+        staged: false
+      });
+    });
+
+    fireEvent.click(screen.getByText("Commit & Push (2)"));
+
+    await waitFor(() => {
+      expect(window.agentResume.terminalGitCommit).toHaveBeenCalledWith({
+        repoRoot: "/work/mono/pkg-a",
+        message: "fix(app): update variable a to 2",
+        paths: ["index.ts"]
+      });
+      expect(window.agentResume.terminalGitCommit).toHaveBeenCalledWith({
+        repoRoot: "/work/mono/pkg-b",
+        message: "fix(app): update variable a to 2",
+        paths: ["index.ts"]
+      });
+    });
+    await waitFor(() => {
+      expect(window.agentResume.terminalGitPush).toHaveBeenCalledWith({ repoRoot: "/work/mono/pkg-a" });
+      expect(window.agentResume.terminalGitPush).toHaveBeenCalledWith({ repoRoot: "/work/mono/pkg-b" });
+    });
+  });
 });

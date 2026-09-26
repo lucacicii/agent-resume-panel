@@ -75,11 +75,23 @@ export function useTraceCollector() {
     if (activeTaskIdRef.current && taskId !== activeTaskIdRef.current) return;
     const now = Date.now();
 
+    /**
+     * Normalizes an event timestamp to milliseconds. Older daemons emitted
+     * `turn_start.timestamp` in seconds, which produced absurd durations
+     * (~1.78e9 s) when subtracted from a millisecond `Date.now()`.
+     */
+    const eventTsMs = (raw: unknown): number => {
+      if (typeof raw === "number" && raw > 1e12) return raw;
+      if (typeof raw === "number" && raw > 1e9) return raw * 1000;
+      return now;
+    };
+
     switch (ev.type) {
       case "turn_start": {
         const turn = (ev as any).turn || 1;
         const spanId = `turn_${turn}`;
-        startTimesRef.current.set(spanId, (ev as any).timestamp || now);
+        const startTs = eventTsMs((ev as any).timestamp);
+        startTimesRef.current.set(spanId, startTs);
         setSpans((prev) => [
           ...prev,
           {
@@ -87,7 +99,7 @@ export function useTraceCollector() {
             turn,
             type: "turn",
             name: `Turn ${turn}`,
-            startedAtMs: (ev as any).timestamp || now,
+            startedAtMs: startTs,
             status: "running"
           }
         ]);

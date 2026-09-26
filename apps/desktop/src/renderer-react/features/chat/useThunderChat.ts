@@ -436,7 +436,13 @@ export function useThunderChat() {
           cachedTokens: trace.stats.total_cached_tokens ?? 0,
           reasoningTokens: trace.stats.total_reasoning_tokens,
           totalTokens: (trace.stats.total_prompt_tokens || 0) + (trace.stats.total_completion_tokens || 0),
-          durationMs: trace.stats.total_duration_ms
+          // Prefer the daemon's wall-clock task time (user message -> task end)
+          durationMs: trace.wall_duration_ms ?? trace.stats.total_duration_ms ?? trace.duration_ms
+        });
+      } else if (trace && typeof trace.wall_duration_ms === "number") {
+        setLastRunMetrics({
+          durationMs: trace.wall_duration_ms ?? trace.duration_ms,
+          cachedTokens: 0
         });
       } else if (conv && conv.stats) {
         setLastRunMetrics({
@@ -656,7 +662,13 @@ export function useThunderChat() {
                 cachedTokens: latestTrace.stats.total_cached_tokens ?? 0,
                 reasoningTokens: latestTrace.stats.total_reasoning_tokens,
                 totalTokens: (latestTrace.stats.total_prompt_tokens || 0) + (latestTrace.stats.total_completion_tokens || 0),
-                durationMs: latestTrace.stats.total_duration_ms
+                // Prefer the daemon's wall-clock task time (user message -> task end)
+                durationMs: latestTrace.wall_duration_ms ?? latestTrace.stats.total_duration_ms ?? latestTrace.duration_ms
+              });
+            } else if (latestTrace && typeof latestTrace.wall_duration_ms === "number") {
+              setLastRunMetrics({
+                durationMs: latestTrace.wall_duration_ms ?? latestTrace.duration_ms,
+                cachedTokens: 0
               });
             }
           } catch {

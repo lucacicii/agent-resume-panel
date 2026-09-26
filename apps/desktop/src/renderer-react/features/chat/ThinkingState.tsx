@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 
 interface ThinkingStateProps {
@@ -15,6 +15,28 @@ export function ThinkingState({
   const [expanded, setExpanded] = useState(defaultExpanded || isStreaming);
   const [seconds, setSeconds] = useState(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  /** A strategy while true: follow the newest reasoning unless the user scrolls up (B). */
+  const stickToBottom = useRef(true);
+
+  const scrollToBottom = useCallback((force = false) => {
+    const node = contentRef.current;
+    if (!node) return;
+    if (!force && !stickToBottom.current) return;
+    node.scrollTop = node.scrollHeight;
+  }, []);
+
+  // A strategy: follow streaming reasoning unless the user scrolled away (B).
+  useLayoutEffect(() => {
+    scrollToBottom();
+  }, [reasoning, expanded, scrollToBottom]);
+
+  // Opening the panel always resumes at the newest reasoning.
+  useLayoutEffect(() => {
+    if (!expanded) return;
+    stickToBottom.current = true;
+    scrollToBottom(true);
+  }, [expanded, scrollToBottom]);
 
   useEffect(() => {
     if (isStreaming) {
@@ -67,7 +89,16 @@ export function ThinkingState({
 
       {expanded && (
         <div className="tb-thinking-body">
-          <div className="tb-thinking-content">
+          <div
+            className="tb-thinking-content"
+            ref={contentRef}
+            onScroll={(event) => {
+              const node = event.currentTarget;
+              if (node.clientHeight <= 0) return;
+              stickToBottom.current =
+                node.scrollHeight - node.scrollTop - node.clientHeight < 24;
+            }}
+          >
             {reasoning || "Analyzing context and planning next steps..."}
             {isStreaming && <span className="tb-thinking-caret" />}
           </div>

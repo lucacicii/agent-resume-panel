@@ -273,6 +273,26 @@ function dirtyGitRoots(result: GitStatusResult): string[] {
 }
 
 /**
+ * Every repository root a status result could refer to: an optional preferred
+ * root, the scan root, discovered nested repos, change targets, and tracking
+ * entries. Shared by the workbench git panel and the chat git diff popover so
+ * both enumerate repositories identically.
+ */
+export function collectGitRoots(result: GitStatusResult, preferredRoot = ""): string[] {
+  const roots = new Set<string>();
+  if (preferredRoot) roots.add(preferredRoot);
+  if (result.root) roots.add(result.root);
+  (result.nestedRepos || []).forEach((repo) => roots.add(repo.root));
+  [...result.staged, ...result.unstaged].forEach((change) => {
+    if (change.repoRoot) roots.add(change.repoRoot);
+  });
+  (result.tracking || []).forEach((item) => {
+    if (item.repoRoot) roots.add(item.repoRoot);
+  });
+  return [...roots].filter(Boolean);
+}
+
+/**
  * Merge per-project git status results into the single shape the panel consumes.
  * One project returns unchanged; several force the multi-repo view (`root: null`
  * plus a `nestedRepos` entry per repo) so shared-workspace projects each render

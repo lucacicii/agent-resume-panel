@@ -155,6 +155,10 @@ describe("FloatingSessionNote", () => {
     });
     render(<I18nProvider><FloatingSessionNote target={target} onClose={onClose} /></I18nProvider>);
     await screen.findByRole("textbox", { name: "Floating note editor" });
+    // Let the mount effects flush: the window keydown listener closes over
+    // `loading`, and until the effect re-runs after `loading` flips to false the
+    // stale handler drops Cmd+F.
+    await act(async () => {});
 
     fireEvent.keyDown(window, { key: "f", metaKey: true });
     const input = await screen.findByRole("textbox", { name: "Find in note" });

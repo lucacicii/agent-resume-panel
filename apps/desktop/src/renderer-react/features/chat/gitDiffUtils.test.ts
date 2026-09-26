@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   extractConversationTouchedPaths,
+  extractConversationTouchedPathsByRepo,
   filterConversationDirtyFiles,
   normalizeRepoPath,
-  parseDiffLines
+  parseDiffLines,
+  resolveRepoRelativePath
 } from "./gitDiffUtils";
 import type { ThunderChatMessage, ThunderFileChangeRecord } from "@agent-resume/core";
 
@@ -89,20 +91,105 @@ describe("gitDiffUtils", () => {
     });
   });
 
+  describe("resolveRepoRelativePath", () => {
+    const repos = ["/work/mono/pkg-a", "/work/mono/pkg-b"];
+
+    it("picks the longest matching repo for an absolute path", () => {
+      expect(resolveRepoRelativePath("/work/mono/pkg-b/src/index.ts", repos, "/work/mono")).toEqual({
+        repoRoot: "/work/mono/pkg-b",
+        repoPath: "src/index.ts"
+      });
+      expect(resolveRepoRelativePath("/work/mono/pkg-a/index.ts", repos, "/work/mono")).toEqual({
+        repoRoot: "/work/mono/pkg-a",
+        repoPath: "index.ts"
+      });
+    });
+
+    it("joins a relative path against the workspace before matching", () => {
+      expect(resolveRepoRelativePath("pkg-a/src/app.ts", repos, "/work/mono")).toEqual({
+        repoRoot: "/work/mono/pkg-a",
+        repoPath: "src/app.ts"
+      });
+    });
+
+    it("falls back to the workspace when the path is relative to a repo root", () => {
+      expect(resolveRepoRelativePath("src/app.ts", ["/work/mono"], "/work/mono")).toEqual({
+        repoRoot: "/work/mono",
+        repoPath: "src/app.ts"
+      });
+    });
+
+    it("returns null for paths outside every repo and for the repo root itself", () => {
+      expect(resolveRepoRelativePath("/elsewhere/file.ts", repos, "/work/mono")).toBeNull();
+      expect(resolveRepoRelativePath("/work/mono/pkg-a", repos, "/work/mono")).toBeNull();
+    });
+  });
+
+  describe("extractConversationTouchedPathsByRepo", () => {
+    it("attributes absolute paths to the repo that contains them", () => {
+      const touched = extractConversationTouchedPathsByRepo({
+        repoRoots: ["/work/mono/pkg-a", "/work/mono/pkg-b"],
+        workspaceDir: "/work/mono",
+        fileChanges: [
+          { path: "/work/mono/pkg-a/index.ts", tool: "write_file", action: "written" },
+          { path: "/work/mono/pkg-b/index.ts", tool: "write_file", action: "written" }
+        ]
+      });
+
+      expect([...touched.get("/work/mono/pkg-a") || []]).toEqual(["index.ts"]);
+      expect([...touched.get("/work/mono/pkg-b") || []]).toEqual(["index.ts"]);
+    });
+
+    it("resolves relative tool paths against the workspace", () => {
+      const touched = extractConversationTouchedPathsByRepo({
+        repoRoots: ["/work/app"],
+        workspaceDir: "/work/app",
+        messages: [
+          {
+            role: "assistant",
+            tool_executions: [
+              { toolCallId: "c1", name: "edit_file", arguments: { path: "src/from-execution.ts" } }
+            ]
+          }
+        ]
+      });
+
+      expect([...touched.get("/work/app") || []]).toEqual(["src/from-execution.ts"]);
+    });
+  });
+
   describe("filterConversationDirtyFiles", () => {
     it("returns only dirty files that belong to the conversation", () => {
       const allDirty = [
-        { path: "src/one.ts", status: "modified" },
-        { path: "src/other-agent.ts", status: "modified" },
-        { path: "src/user-edit.ts", status: "untracked" },
-        { path: "src/two.ts", status: "deleted" }
+        { path: "src/one.ts", repoRoot: "/repo", repoPath: "src/one.ts", status: "modified" },
+        { path: "src/other-agent.ts", repoRoot: "/repo", repoPath: "src/other-agent.ts", status: "modified" },
+        { path: "src/user-edit.ts", repoRoot: "/repo", repoPath: "src/user-edit.ts", status: "untracked" },
+        { path: "src/two.ts", repoRoot: "/repo", repoPath: "src/two.ts", status: "deleted" }
       ];
 
-      const touched = new Set(["src/one.ts", "src/two.ts"]);
+      const touched = new Map<string, Set<string>>([
+        ["/repo", new Set(["src/one.ts", "src/two.ts"])]
+      ]);
       const filtered = filterConversationDirtyFiles(allDirty, touched);
 
-      expect(filtered).toHaveLength(2);
-      expect(filtered.map((f) => f.path)).toEqual(["src/one.ts", "src/two.ts"]);
+      expect(filtered.map((f) => f.repoPath)).toEqual(["src/one.ts", "src/two.ts"]);
+      expect(filtered.map((f) => f.repoRoot)).toEqual(["/repo", "/repo"]);
+    });
+
+    it("keeps identical paths in sibling repositories separate", () => {
+      const allDirty = [
+        { path: "pkg-a/index.ts", repoRoot: "/work/mono/pkg-a", repoPath: "index.ts", status: "modified" },
+        { path: "pkg-b/index.ts", repoRoot: "/work/mono/pkg-b", repoPath: "index.ts", status: "modified" }
+      ];
+
+      const filtered = filterConversationDirtyFiles(
+        allDirty,
+        new Map([[ "/work/mono/pkg-b", new Set(["index.ts"]) ]])
+      );
+
+      expect(filtered).toHaveLength(1);
+      expect(filtered[0].repoRoot).toBe("/work/mono/pkg-b");
+      expect(filtered[0].displayPath).toBe("pkg-b/index.ts");
     });
   });
 

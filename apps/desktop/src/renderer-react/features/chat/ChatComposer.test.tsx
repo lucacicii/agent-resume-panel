@@ -442,4 +442,49 @@ describe("ChatComposer UI popovers and keyboard interactions", () => {
     expect(cacheBadge?.textContent).toContain("Cache 800");
     expect(cacheBadge?.textContent).toContain("64.83%");
   });
+
+  it("renders the 总耗时 badge with humanized duration and hides it when unavailable", () => {
+    // Seconds with one decimal place
+    const { container, rerender } = render(
+      <ChatComposer
+        {...defaultProps}
+        isStreaming={false}
+        lastRunMetrics={{ totalTokens: 1200, durationMs: 4200 }}
+      />
+    );
+    let durationBadge = container.querySelector(".tb-metrics-duration");
+    expect(durationBadge).not.toBeNull();
+    expect(durationBadge?.textContent).toContain("总耗时: 4.2s");
+
+    // Minutes and hours formatting
+    rerender(
+      <ChatComposer
+        {...defaultProps}
+        isStreaming={false}
+        lastRunMetrics={{ totalTokens: 1200, durationMs: 65_000 }}
+      />
+    );
+    durationBadge = container.querySelector(".tb-metrics-duration");
+    expect(durationBadge?.textContent).toContain("总耗时: 1m 05s");
+
+    rerender(
+      <ChatComposer
+        {...defaultProps}
+        isStreaming={false}
+        lastRunMetrics={{ totalTokens: 1200, durationMs: 3_723_000 }}
+      />
+    );
+    durationBadge = container.querySelector(".tb-metrics-duration");
+    expect(durationBadge?.textContent).toContain("总耗时: 1h 02m");
+
+    // Hidden when no duration is known (fresh session)
+    rerender(
+      <ChatComposer
+        {...defaultProps}
+        isStreaming={false}
+        lastRunMetrics={{ totalTokens: 100 }}
+      />
+    );
+    expect(container.querySelector(".tb-metrics-duration")).toBeNull();
+  });
 });

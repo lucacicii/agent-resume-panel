@@ -252,6 +252,28 @@ function formatTokenCount(num: number): string {
   return num.toLocaleString();
 }
 
+/** Format a duration for the "总耗时" badge: 3.2s / 45s / 1m 05s / 1h 02m. */
+function formatDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return "—";
+  const totalSec = ms / 1000;
+  if (totalSec < 60) {
+    const sec = Math.floor(totalSec);
+    const frac = totalSec - sec;
+    // Sub-minute durations keep one decimal for a sense of precision
+    return frac >= 0.05 ? `${totalSec.toFixed(1)}s` : `${sec}s`;
+  }
+  const totalMin = Math.floor(totalSec / 60);
+  if (totalMin < 60) {
+    const remSec = Math.round(totalSec % 60);
+    return remSec === 60
+      ? `${totalMin + 1}m`
+      : `${totalMin}m ${String(remSec).padStart(2, "0")}s`;
+  }
+  const hours = Math.floor(totalMin / 60);
+  const remMin = Math.round(totalMin % 60);
+  return remMin === 60 ? `${hours + 1}h` : `${hours}h ${String(remMin).padStart(2, "0")}m`;
+}
+
 export function ChatComposer({
   onSend,
   onCancel,
@@ -1364,6 +1386,21 @@ export function ChatComposer({
                 {(sessionTotalTokens || 0).toLocaleString()}
               </span>
             </span>
+
+            {/* 本轮任务总耗时：从发出消息到任务结束，发送新消息后重新计算 */}
+            {typeof lastRunMetrics?.durationMs === "number" && Number.isFinite(lastRunMetrics.durationMs) ? (
+              <>
+                <span className="tb-metrics-divider" />
+                <span
+                  className="tb-metrics-total tb-metrics-duration"
+                  title="本轮耗时：从你发出消息到 agent 结束任务（含排队与工具执行），发送新消息后重新计算"
+                >
+                  <ThemeIcon name="clock" size={ICON_SIZE.inline} />
+                  <span>总耗时: </span>
+                  <span className="tb-metrics-value">{formatDuration(lastRunMetrics.durationMs)}</span>
+                </span>
+              </>
+            ) : null}
           </div>
         </div>
 

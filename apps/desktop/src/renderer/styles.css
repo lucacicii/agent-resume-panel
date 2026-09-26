@@ -65,9 +65,9 @@
   --color-md-h1: #111827;
   --color-md-h2: #1f2937;
   --color-md-h3: #374151;
-  --color-md-code: #cf222e;
-  --color-md-code-bg: rgba(175, 15, 30, 0.06);
-  --color-md-code-border: rgba(175, 15, 30, 0.16);
+  --color-md-code: #2f6feb;
+  --color-md-code-bg: rgba(47, 111, 235, 0.08);
+  --color-md-code-border: rgba(47, 111, 235, 0.22);
   --color-md-link: var(--color-accent);
   --color-md-link-hover: color-mix(in srgb, var(--color-accent) 82%, #000000);
   --color-md-strong: #000000;
@@ -80,9 +80,9 @@
   --chat-bg: var(--color-window-bg);
   --chat-compose-bg: rgba(255, 255, 255, 0.82);
   --chat-compose-field: var(--color-secondary-bg);
-  --chat-bubble-user: var(--color-accent);
+  --chat-bubble-user: color-mix(in srgb, var(--color-accent) 10%, transparent);
   --chat-bubble-assistant: var(--color-control-bg);
-  --chat-bubble-user-text: #ffffff;
+  --chat-bubble-user-text: var(--color-label-primary);
   --chat-bubble-assistant-text: var(--color-label-primary);
   --chat-meta: var(--color-accent);
   --chat-send: var(--color-accent);
@@ -242,9 +242,9 @@
   --chat-bg: var(--color-window-bg);
   --chat-compose-bg: rgba(255, 255, 255, 0.82);
   --chat-compose-field: var(--color-secondary-bg);
-  --chat-bubble-user: var(--color-accent);
+  --chat-bubble-user: color-mix(in srgb, var(--color-accent) 10%, transparent);
   --chat-bubble-assistant: var(--color-control-bg);
-  --chat-bubble-user-text: #ffffff;
+  --chat-bubble-user-text: var(--color-label-primary);
   --chat-bubble-assistant-text: var(--color-label-primary);
 
   --shadow-subtle: 0 0 0 0.5px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
@@ -259,9 +259,9 @@
   --color-md-h1: #111827;
   --color-md-h2: #1f2937;
   --color-md-h3: #374151;
-  --color-md-code: #cf222e;
-  --color-md-code-bg: rgba(175, 15, 30, 0.06);
-  --color-md-code-border: rgba(175, 15, 30, 0.16);
+  --color-md-code: #2f6feb;
+  --color-md-code-bg: rgba(47, 111, 235, 0.08);
+  --color-md-code-border: rgba(47, 111, 235, 0.22);
   --color-md-link: var(--color-accent);
   --color-md-link-hover: color-mix(in srgb, var(--color-accent) 82%, #000000);
   --color-md-strong: #000000;
@@ -310,9 +310,9 @@
   --chat-bg: var(--color-window-bg);
   --chat-compose-bg: rgba(44, 44, 46, 0.82);
   --chat-compose-field: var(--color-secondary-bg);
-  --chat-bubble-user: var(--color-accent);
+  --chat-bubble-user: color-mix(in srgb, var(--color-accent) 10%, transparent);
   --chat-bubble-assistant: var(--color-control-bg);
-  --chat-bubble-user-text: #ffffff;
+  --chat-bubble-user-text: var(--color-label-primary);
   --chat-bubble-assistant-text: var(--color-label-primary);
 
   --shadow-subtle: 0 0 0 0.5px rgba(255, 255, 255, 0.08), 0 1px 3px rgba(0, 0, 0, 0.3);
@@ -327,9 +327,9 @@
   --color-md-h1: #ffffff;
   --color-md-h2: #f3f4f6;
   --color-md-h3: #e5e7eb;
-  --color-md-code: #ff7b72;
-  --color-md-code-bg: rgba(255, 123, 114, 0.12);
-  --color-md-code-border: rgba(255, 123, 114, 0.25);
+  --color-md-code: #79c0ff;
+  --color-md-code-bg: rgba(121, 192, 255, 0.12);
+  --color-md-code-border: rgba(121, 192, 255, 0.25);
   --color-md-link: color-mix(in srgb, var(--color-accent) 85%, #ffffff);
   --color-md-link-hover: color-mix(in srgb, var(--color-accent) 70%, #ffffff);
   --color-md-strong: #ffffff;
@@ -459,9 +459,9 @@ html[data-theme="dark"][data-task-accent] {
     --chat-bg: var(--color-window-bg);
     --chat-compose-bg: rgba(44, 44, 46, 0.82);
     --chat-compose-field: var(--color-secondary-bg);
-    --chat-bubble-user: var(--color-accent);
+    --chat-bubble-user: color-mix(in srgb, var(--color-accent) 10%, transparent);
     --chat-bubble-assistant: var(--color-control-bg);
-    --chat-bubble-user-text: #ffffff;
+    --chat-bubble-user-text: var(--color-label-primary);
     --chat-bubble-assistant-text: var(--color-label-primary);
 
     --shadow-subtle: 0 0 0 0.5px rgba(255, 255, 255, 0.08), 0 1px 3px rgba(0, 0, 0, 0.3);
@@ -476,9 +476,9 @@ html[data-theme="dark"][data-task-accent] {
     --color-md-h1: #ffffff;
     --color-md-h2: #f3f4f6;
     --color-md-h3: #e5e7eb;
-    --color-md-code: #ff7b72;
-    --color-md-code-bg: rgba(255, 123, 114, 0.12);
-    --color-md-code-border: rgba(255, 123, 114, 0.25);
+    --color-md-code: #79c0ff;
+    --color-md-code-bg: rgba(121, 192, 255, 0.12);
+    --color-md-code-border: rgba(121, 192, 255, 0.25);
     --color-md-link: color-mix(in srgb, var(--color-accent) 85%, #ffffff);
     --color-md-link-hover: color-mix(in srgb, var(--color-accent) 70%, #ffffff);
     --color-md-strong: #ffffff;
@@ -585,6 +585,7 @@ code,
 .cm-editor,
 .xterm,
 .markdown-body,
+.tb-markdown-view,
 .digest-body,
 .cal-detail,
 .chat-log,
@@ -4176,6 +4177,10 @@ legend {
 
 /* Middle session list filter strip */
 
+.markdown-body {
+  line-height: 1.55;
+}
+
 .markdown-body> :first-child {
   margin-top: 0;
 }
@@ -4299,9 +4304,9 @@ legend {
 .markdown-body code:not(pre code) {
   padding: 0.15em 0.4em;
   border-radius: var(--radius-sm, 4px);
-  background: var(--color-md-code-bg, rgba(255, 123, 114, 0.12));
-  color: var(--color-md-code, #ff7b72);
-  border: 1px solid var(--color-md-code-border, rgba(255, 123, 114, 0.28));
+  background: var(--color-md-code-bg, rgba(121, 192, 255, 0.12));
+  color: var(--color-md-code, #79c0ff);
+  border: 1px solid var(--color-md-code-border, rgba(121, 192, 255, 0.25));
   font-size: 0.9em;
   letter-spacing: -0.01em;
 }
@@ -4487,8 +4492,8 @@ code {
 .chat-bubble {
   max-width: 70%;
   padding: var(--space-2) var(--space-3) var(--space-1-5);
-  font-size: 14px;
-  line-height: 1.42;
+  font-size: 13.5px;
+  line-height: 1.55;
   word-break: break-word;
   border: 1px solid var(--color-separator);
 }
@@ -4528,41 +4533,11 @@ code {
 .chat-bubble .markdown-body {
   color: inherit;
   font-size: inherit;
-  line-height: inherit;
   overflow-wrap: anywhere;
 }
 
-.chat-bubble .markdown-body h1,
-.chat-bubble .markdown-body h2,
-.chat-bubble .markdown-body h3,
-.chat-bubble .markdown-body h4,
-.chat-bubble .markdown-body h5,
-.chat-bubble .markdown-body h6 {
-  color: inherit;
-  margin: 0.85em 0 0.4em;
-}
-
-.chat-bubble .markdown-body h1 {
-  font-size: 1.25em;
-}
-
-.chat-bubble .markdown-body h2 {
-  font-size: 1.15em;
-}
-
-.chat-bubble .markdown-body h3 {
-  font-size: 1.05em;
-}
-
-.chat-bubble .markdown-body p,
-.chat-bubble .markdown-body ul,
-.chat-bubble .markdown-body ol,
-.chat-bubble .markdown-body blockquote,
-.chat-bubble .markdown-body pre,
-.chat-bubble .markdown-body table,
-.chat-bubble .markdown-body hr {
-  margin: 0 0 0.65em;
-}
+/* Headings/paragraph spacing and line-height come from the shared
+ * .markdown-body base so ACP chat matches notes/transcript/AI chat. */
 
 .chat-bubble .markdown-body a {
   color: var(--tg-sender);
@@ -6214,13 +6189,12 @@ body.is-pane-resizing-v * {
 
 .wb-transcript-md.markdown-body,
 .wb-transcript-plain {
-  font-size: var(--wb-transcript-font-size, 14px);
+  font-size: var(--wb-transcript-font-size, 13.5px);
   user-select: text;
   cursor: text;
 }
 
 .wb-transcript-md.markdown-body {
-  line-height: 1.45;
   white-space: normal;
   word-break: normal;
   overflow-wrap: break-word;
@@ -6243,38 +6217,8 @@ body.is-pane-resizing-v * {
   overflow-wrap: normal;
 }
 
-.wb-transcript-md.markdown-body > :first-child {
-  margin-top: 0;
-}
-
-.wb-transcript-md.markdown-body > :last-child {
-  margin-bottom: 0;
-}
-
-.wb-transcript-md.markdown-body h1,
-.wb-transcript-md.markdown-body h2,
-.wb-transcript-md.markdown-body h3,
-.wb-transcript-md.markdown-body h4,
-.wb-transcript-md.markdown-body h5,
-.wb-transcript-md.markdown-body h6 {
-  margin: 0.7em 0 0.3em;
-}
-
-.wb-transcript-md.markdown-body p,
-.wb-transcript-md.markdown-body ul,
-.wb-transcript-md.markdown-body ol,
-.wb-transcript-md.markdown-body blockquote,
-.wb-transcript-md.markdown-body pre,
-.wb-transcript-md.markdown-body table,
-.wb-transcript-md.markdown-body hr {
-  margin: 0 0 0.45em;
-}
-
-.wb-transcript-md.markdown-body li + li,
-.wb-transcript-md.markdown-body li > ul,
-.wb-transcript-md.markdown-body li > ol {
-  margin-top: 0.12em;
-}
+/* Typography (headings/paragraph/list spacing, line-height) comes from the
+ * shared .markdown-body base so transcript matches notes/chat/previews. */
 
 .wb-transcript-thinking {
   margin: 0 0 var(--space-2);
@@ -9115,8 +9059,7 @@ button.wb-pane-tab-group-label.is-busy {
 }
 
 .wb-acp-plan-markdown {
-  font-size: 13px;
-  line-height: 1.45;
+  font-size: 13.5px;
 }
 
 .wb-acp-permission {
@@ -9516,15 +9459,7 @@ textarea.wb-editor-host {
   box-sizing: border-box;
   background: var(--color-pane-bg);
   color: var(--color-label-primary);
-  font-size: 13px;
-  line-height: 1.55;
-}
-
-.wb-editor-preview img {
-  display: block;
-  max-width: 100%;
-  margin: var(--space-3) 0;
-  border-radius: 8px;
+  font-size: 13.5px;
 }
 
 .wb-editor-status {
@@ -12673,20 +12608,7 @@ textarea.notes-editor-host:focus {
   min-height: 0;
   height: 100%;
   box-sizing: border-box;
-}
-
-.notes-preview img {
-  display: block;
-  max-width: 100%;
-  max-height: 70vh;
-  margin: var(--space-3) 0;
-  border-radius: 8px;
-  cursor: zoom-in;
-}
-
-.notes-preview img:focus {
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
+  font-size: 13.5px;
 }
 
 .notes-image-preview {
@@ -13909,10 +13831,18 @@ html[data-window-mode="browser"] #react-chrome {
 }
 
 .markdown-body img.md-preview-img {
+  display: block;
   max-width: 100%;
+  max-height: 70vh;
   height: auto;
-  border-radius: 6px;
+  margin: var(--space-3) 0;
+  border-radius: 8px;
   cursor: zoom-in;
+}
+
+.markdown-body img.md-preview-img:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }
 .markdown-body .md-image-remote,
 .markdown-body .md-image-missing {
@@ -17593,6 +17523,115 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   min-width: 0;
 }
 
+/* Find-in-conversation search field (mirrors .wb-transcript-head-search) */
+.tb-chat-search {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-0-5) var(--space-1-5);
+  border-radius: var(--radius-sm, 5px);
+  border: 1px solid var(--color-separator);
+  background: var(--color-control-bg);
+  box-sizing: border-box;
+  flex: 0 1 240px;
+  height: 24px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.tb-chat-search:focus-within {
+  border-color: var(--color-focus-ring);
+  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--color-focus-ring) 45%, transparent);
+}
+
+.tb-chat-search-icon {
+  flex-shrink: 0;
+  color: var(--color-label-tertiary);
+}
+
+.tb-chat-search-input {
+  appearance: none;
+  flex: 1 1 auto;
+  min-width: 60px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--color-label-primary);
+  font: inherit;
+  font-size: 11.5px;
+  outline: none;
+}
+
+.tb-chat-search-input::placeholder {
+  color: var(--color-label-tertiary);
+}
+
+.tb-chat-search-count {
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-label-secondary);
+  white-space: nowrap;
+  user-select: none;
+  padding: 0 var(--space-0-5);
+}
+
+.tb-chat-search-count.is-empty {
+  color: var(--color-destructive, #ff453a);
+}
+
+.tb-chat-search-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.tb-chat-search-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--color-label-secondary);
+  border-radius: 3px;
+  padding: 1px;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.tb-chat-search-btn:hover {
+  background: var(--color-fill-secondary);
+  color: var(--color-label-primary);
+}
+
+/* Chat search highlights via CSS Custom Highlight API */
+::highlight(chat-search) {
+  background-color: #ffd600;
+  color: #000000;
+}
+
+[data-theme="dark"] ::highlight(chat-search),
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) ::highlight(chat-search) {
+    background-color: rgba(250, 204, 21, 0.45);
+    color: #ffffff;
+  }
+}
+
+::highlight(chat-search-active) {
+  background-color: #ff9800;
+  color: #000000;
+}
+
+[data-theme="dark"] ::highlight(chat-search-active),
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) ::highlight(chat-search-active) {
+    background-color: #ff9800;
+    color: #000000;
+  }
+}
+
 .tb-header-action-btn {
   display: inline-flex;
   align-items: center;
@@ -18288,6 +18327,25 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+}
+
+/* Multi-repo workspaces group their conversation changes under a repo label. */
+.tb-git-repo-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.tb-git-repo-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin: var(--space-1) 0 0;
+  color: var(--color-label-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
 }
 
 .tb-git-diff-item {

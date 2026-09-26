@@ -5,8 +5,8 @@ import type { GtdStatus } from "@agent-resume/core";
 import { desktopApi } from "../../../bridge";
 import { confirmDestructive } from "../../../confirmAction";
 import { CodeEditor, type CodeEditorHandle, type CodeEditorSearchResult } from "../../../components/CodeEditor";
-import { renderMarkdown } from "../../../components/Markdown";
-import { imageSrcFromElement, posixDirname, posixJoin } from "../../../components/markdownImage";
+import { StreamdownRenderer } from "../../../components/StreamdownRenderer";
+import { posixDirname, posixJoin } from "../../../components/markdownImage";
 import { DESKTOP_GTD_STATUSES, desktopGtdColumn } from "../../../gtd";
 import { useI18n } from "../../../i18n";
 import { notifyDesktop } from "../../../components/Notifications";
@@ -654,20 +654,32 @@ export function NotePaneView({ noteId, active, onOpenNote, onTitleChange, onDirt
   const treeRootSelectedId = selected?.noteId || "";
   const linkable = selected ? isLinkable(selected) && Boolean(subtree) : false;
 
-  const previewHtml = useMemo(() => {
-    if (!selected) return "";
-    return renderMarkdown(content, panelHome
+  const previewImageOptions = useMemo(() => {
+    if (!selected) return undefined;
+    return panelHome
       ? {
         baseDir: posixDirname(posixJoin(panelHome, selected.relMdPath)),
-        rootDir: posixJoin(panelHome, "notes"),
-        imageLabels: {
-          openInBrowser: t("desktop.markdown.openInBrowser"),
-          unavailable: t("desktop.markdown.imageUnavailable"),
-          remoteImage: t("desktop.markdown.remoteImage")
-        }
+        rootDir: posixJoin(panelHome, "notes")
       }
-      : undefined);
-  }, [content, panelHome, selected, t]);
+      : undefined;
+  }, [panelHome, selected]);
+
+  const previewImageLabels = useMemo(() => ({
+    openInBrowser: t("desktop.markdown.openInBrowser"),
+    unavailable: t("desktop.markdown.imageUnavailable"),
+    remoteImage: t("desktop.markdown.remoteImage")
+  }), [t]);
+
+  const handlePreviewImageClick = useCallback((src: string) => setImagePreview(src), []);
+
+  // Re-collect the find session when the rendered content changes underneath
+  // an open find bar: React reconciliation replaces text nodes and the Range
+  // objects held by the previous session go stale.
+  useEffect(() => {
+    if (!findOpen || viewRef.current !== "view" || !findQueryRef.current.trim()) return;
+    runFind("forward", findQueryRef.current, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [content, previewImageOptions]);
 
   if (loading) {
     return <div className="notes-empty-state" role="status" aria-live="polite">
@@ -829,10 +841,17 @@ export function NotePaneView({ noteId, active, onOpenNote, onTitleChange, onDirt
             />
             : <div
               ref={previewRef}
-              className="notes-preview markdown-body"
-              onClick={(event) => { const src = imageSrcFromElement(event.target); if (src) setImagePreview(src); }}
-              dangerouslySetInnerHTML={{ __html: previewHtml }}
-            />}
+              className="notes-preview"
+            >
+              <StreamdownRenderer
+                className="notes-preview-body markdown-body"
+                content={content}
+                hardBreaks
+                imageOptions={previewImageOptions}
+                imageLabels={previewImageLabels}
+                onImageClick={handlePreviewImageClick}
+              />
+            </div>}
         </div>
       </div>
       <footer className="wb-note-pane-foot" role="status" aria-live="polite">

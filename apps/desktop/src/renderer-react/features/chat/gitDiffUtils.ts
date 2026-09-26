@@ -1,4 +1,6 @@
 import type { ThunderChatMessage, ThunderFileChangeRecord } from "@agent-resume/core";
+import { desktopApi } from "../../bridge";
+import { collectGitRoots, mergeGitStatuses, type GitStatusResult } from "../workbench/git/workbenchGitModel";
 import type { ActiveToolInfo } from "./useThunderChat";
 
 export interface GitDiffDisplayLine {
@@ -151,39 +153,254 @@ export function extractConversationTouchedPaths(options: {
   return touched;
 }
 
+function toPosixPath(value: string): string {
+  return value.replace(/\\/g, "/");
+}
+
+function normalizeRoot(value: string): string {
+  return toPosixPath(value || "").trim().replace(/\/+$/, "");
+}
+
+function isAbsolutePath(value: string): boolean {
+  return value.startsWith("/") || /^[A-Za-z]:\//.test(value);
+}
+
+/** Resolve `.` / `..` segments while preserving an absolute prefix. */
+function normalizeAbsolutePath(value: string): string {
+  const clean = toPosixPath(value).trim();
+  const resolveSegments = (raw: string): string => {
+    const resolved: string[] = [];
+    for (const part of raw.split("/")) {
+      if (!part || part === ".") continue;
+      if (part === "..") {
+        if (resolved.length && resolved[resolved.length - 1] !== "..") resolved.pop();
+        continue;
+      }
+      resolved.push(part);
+    }
+    return resolved.join("/");
+  };
+  if (/^[A-Za-z]:\//.test(clean)) return `${clean.slice(0, 2)}/${resolveSegments(clean.slice(2))}`;
+  return `/${resolveSegments(clean)}`;
+}
+
+/**
+ * Resolve a tool/file path to the repository it belongs to and the repo-relative
+ * path within it. Absolute paths are matched against the longest repo root;
+ * relative paths are joined against the session workspace before matching.
+ * This is what lets a shared workspace or nested monorepo attribute a change to
+ * the right repository instead of the first one that happens to have a match.
+ */
+export function resolveRepoRelativePath(
+  rawPath: string | null | undefined,
+  repoRoots: string[],
+  workspaceDir?: string
+): { repoRoot: string; repoPath: string } | null {
+  if (!rawPath || typeof rawPath !== "string") return null;
+  const clean = toPosixPath(rawPath).trim();
+  if (!clean || clean.includes("\0")) return null;
+
+  let absolute: string;
+  if (isAbsolutePath(clean)) {
+    absolute = normalizeAbsolutePath(clean);
+  } else {
+    const base = workspaceDir ? normalizeAbsolutePath(workspaceDir) : "";
+    if (!base) return null;
+    absolute = normalizeAbsolutePath(`${base}/${clean}`);
+  }
+
+  let best: string | null = null;
+  for (const root of repoRoots) {
+    if (absolute === root || absolute.startsWith(`${root}/`)) {
+      if (!best || root.length > best.length) best = root;
+    }
+  }
+  if (!best) return null;
+
+  const repoPath = absolute.slice(best.length).replace(/^\/+/, "");
+  return repoPath ? { repoRoot: best, repoPath } : null;
+}
+
+/**
+ * Collects the repo-relative paths touched by the current conversation, grouped
+ * by repository. Mirrors {@link extractConversationTouchedPaths} but keeps each
+ * repo's namespace separate so identical relative paths in sibling repos never
+ * collide.
+ */
+export function extractConversationTouchedPathsByRepo(options: {
+  repoRoots: string[];
+  workspaceDir?: string;
+  fileChanges?: ThunderFileChangeRecord[];
+  messages?: ThunderChatMessage[];
+  streamingTools?: ActiveToolInfo[];
+}): Map<string, Set<string>> {
+  const { fileChanges = [], messages = [], streamingTools = [], workspaceDir } = options;
+  const repoRoots = [...new Set(options.repoRoots.map(normalizeRoot).filter(Boolean))];
+  const touched = new Map<string, Set<string>>();
+  if (!repoRoots.length) return touched;
+
+  const addPath = (rawPath: string | null | undefined) => {
+    if (!rawPath) return;
+    const resolved = resolveRepoRelativePath(rawPath, repoRoots, workspaceDir);
+    if (!resolved) return;
+    const set = touched.get(resolved.repoRoot) || new Set<string>();
+    set.add(resolved.repoPath);
+    touched.set(resolved.repoRoot, set);
+  };
+
+  // 1. Explicit file change records from trace collector
+  for (const fc of fileChanges) {
+    if (fc.action !== "failed" && fc.path) addPath(fc.path);
+  }
+
+  // 2. Tool executions and tool calls in messages
+  for (const msg of messages) {
+    if (Array.isArray(msg.tool_executions)) {
+      for (const tool of msg.tool_executions) {
+        if (FILE_MODIFYING_TOOLS.has(tool.name) || tool.name.includes("file") || tool.name.includes("edit")) {
+          addPath(extractFilePathFromArgs(tool.arguments));
+        }
+      }
+    }
+    if (Array.isArray(msg.tool_calls)) {
+      for (const tc of msg.tool_calls) {
+        const fnName = tc.function?.name || "";
+        if (FILE_MODIFYING_TOOLS.has(fnName) || fnName.includes("file") || fnName.includes("edit")) {
+          try {
+            const parsed = JSON.parse(tc.function.arguments);
+            addPath(extractFilePathFromArgs(parsed));
+          } catch {
+            // ignore malformed arguments
+          }
+        }
+      }
+    }
+  }
+
+  // 3. Streaming tools in current active turn
+  for (const st of streamingTools) {
+    if (FILE_MODIFYING_TOOLS.has(st.name) || st.name.includes("file") || st.name.includes("edit")) {
+      addPath(extractFilePathFromArgs(st.arguments));
+    }
+  }
+
+  return touched;
+}
+
 export interface DirtyGitFile {
   path: string;
+  repoRoot?: string;
   repoPath?: string;
   status: string;
 }
 
+/** One conversation-touched dirty file, scoped to its repository. */
+export interface ConversationGitFile {
+  repoRoot: string;
+  repoPath: string;
+  /** Workspace-relative display path from the status result. */
+  displayPath: string;
+  status: string;
+}
+
 /**
- * Filters a repository's full dirty file list down to only the files
- * that were modified in the current conversation.
+ * Filters a repository's full dirty file list down to only the files that were
+ * modified in the current conversation, matching on the repository + path pair.
  */
 export function filterConversationDirtyFiles(
   allDirtyFiles: DirtyGitFile[],
-  touchedPaths: Set<string>
-): DirtyGitFile[] {
-  if (touchedPaths.size === 0) return [];
+  touchedByRepo: Map<string, Set<string>>
+): ConversationGitFile[] {
+  if (touchedByRepo.size === 0) return [];
 
-  const result: DirtyGitFile[] = [];
+  const result: ConversationGitFile[] = [];
   const seen = new Set<string>();
 
   for (const file of allDirtyFiles) {
-    const candidate = file.repoPath || file.path;
-    const clean = candidate.replace(/\\/g, "/").replace(/^\.?\//, "");
-    if (touchedPaths.has(clean) && !seen.has(clean)) {
-      seen.add(clean);
-      result.push({
-        path: clean,
-        repoPath: clean,
-        status: file.status || "modified"
-      });
-    }
+    const repoRoot = file.repoRoot || "";
+    const repoKey = normalizeRoot(repoRoot);
+    if (!repoKey) continue;
+    const touched = touchedByRepo.get(repoKey);
+    if (!touched?.size) continue;
+
+    const repoPath = toPosixPath(file.repoPath || file.path || "").replace(/^\.?\//, "");
+    if (!repoPath) continue;
+    const key = `${repoKey}\0${repoPath}`;
+    if (!touched.has(repoPath) || seen.has(key)) continue;
+
+    seen.add(key);
+    result.push({
+      repoRoot,
+      repoPath,
+      displayPath: file.path || repoPath,
+      status: file.status || "modified"
+    });
   }
 
   return result;
+}
+
+export interface GitNestedScanOptions {
+  maxDepth?: number;
+  ignoreDirs?: string[];
+  maxRepos?: number;
+}
+
+export interface ConversationGitSnapshot {
+  status: GitStatusResult | null;
+  repoRoots: string[];
+  files: ConversationGitFile[];
+}
+
+/**
+ * Loads the conversation's dirty git files across a shared/nested workspace.
+ * Runs status per workspace root with the same nested scan the workbench uses,
+ * merges the results into one multi-repo status, and keeps only the files this
+ * conversation touched.
+ */
+export async function loadConversationGitFiles(options: {
+  workspaceDirs: string[];
+  workspaceDir?: string;
+  nestedScan?: GitNestedScanOptions;
+  fileChanges?: ThunderFileChangeRecord[];
+  messages?: ThunderChatMessage[];
+  streamingTools?: ActiveToolInfo[];
+}): Promise<ConversationGitSnapshot> {
+  const { nestedScan, fileChanges = [], messages = [], streamingTools = [] } = options;
+  const roots = [...new Set(options.workspaceDirs.map((dir) => dir?.trim()).filter(Boolean))];
+  const workspaceDir = options.workspaceDir || roots[0];
+  if (!roots.length) return { status: null, repoRoots: [], files: [] };
+
+  const results = await Promise.all(roots.map((cwd) =>
+    desktopApi().terminalGitStatus({ cwd, nestedScan }).catch(() => null)
+  ));
+  const projects: string[] = [];
+  const statuses: GitStatusResult[] = [];
+  results.forEach((result, index) => {
+    if (result) {
+      projects.push(roots[index]);
+      statuses.push(result);
+    }
+  });
+  if (!statuses.length) return { status: null, repoRoots: [], files: [] };
+
+  const status = mergeGitStatuses(projects, statuses);
+  const repoRoots = collectGitRoots(status);
+  const touchedByRepo = extractConversationTouchedPathsByRepo({
+    repoRoots,
+    workspaceDir,
+    fileChanges,
+    messages,
+    streamingTools
+  });
+  const dirty: DirtyGitFile[] = [...status.staged, ...status.unstaged].map((change) => ({
+    path: change.path,
+    repoPath: change.repoPath,
+    repoRoot: change.repoRoot || status.root || (repoRoots.length === 1 ? repoRoots[0] : ""),
+    status: change.status
+  }));
+
+  return { status, repoRoots, files: filterConversationDirtyFiles(dirty, touchedByRepo) };
 }
 
 const HUNK_HEADER_REGEX = /^@@\s+-(\d+)(?:,(\d+))?\s+\+(\d+)(?:,(\d+))?\s+@@(.*)$/;

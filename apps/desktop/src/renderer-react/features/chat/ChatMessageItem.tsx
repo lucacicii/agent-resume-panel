@@ -15,6 +15,16 @@ interface ChatMessageItemProps {
   onRegenerate?: (index: number) => void;
   onResend?: (index: number) => void;
   onEdit?: (text: string) => void;
+  /** Translated text to show instead of the original message content. */
+  displayText?: string;
+  /** A translation for this message is currently showing. */
+  translated?: boolean;
+  /** A translation for this message is in flight. */
+  isTranslating?: boolean;
+  onTranslate?: (index: number, text: string) => void;
+  translateLabel?: string;
+  restoreLabel?: string;
+  translatingLabel?: string;
 }
 
 export function ChatMessageItem({
@@ -25,7 +35,14 @@ export function ChatMessageItem({
   streamingTools = [],
   onRegenerate,
   onResend,
-  onEdit
+  onEdit,
+  displayText,
+  translated = false,
+  isTranslating = false,
+  onTranslate,
+  translateLabel = "Translate",
+  restoreLabel = "Show original",
+  translatingLabel = "Translating…"
 }: ChatMessageItemProps) {
   const [copied, setCopied] = useState(false);
   const isUser = message.role === "user";
@@ -97,9 +114,10 @@ export function ChatMessageItem({
         <div className="tb-message-bubble">
           {message.content ? (
             <StreamdownRenderer
-              content={message.content}
+              content={displayText ?? message.content}
               isAnimating={isStreaming}
-              className="tb-markdown-view"
+              className="tb-markdown-view markdown-body"
+              hardBreaks
             />
           ) : isStreaming ? (
             <div className="tb-streaming-placeholder">
@@ -144,6 +162,7 @@ export function ChatMessageItem({
           </div>
         )}
 
+        {/* Message Actions & Meta Footer: translate + copy + regenerate */}
         {/* Error Retry Banner */}
         {!isUser && message.content?.startsWith("⚠️") && onRegenerate && (
           <div className="tb-message-error-action">
@@ -160,9 +179,22 @@ export function ChatMessageItem({
           </div>
         )}
 
-        {/* Message Actions & Meta Footer */}
+        {/* Message Actions & Meta Footer: translate + copy + regenerate */}
         {!isUser && message.content && (
           <div className="tb-message-footer">
+            {onTranslate ? (
+              <button
+                type="button"
+                className="tb-message-action-btn"
+                disabled={isTranslating || isStreaming}
+                onClick={() => onTranslate(index, message.content || "")}
+                title={translated ? restoreLabel : translateLabel}
+                aria-label={translated ? restoreLabel : translateLabel}
+              >
+                <ThemeIcon name="globe" size={ICON_SIZE.inline} />
+                <span>{translated ? restoreLabel : isTranslating ? translatingLabel : translateLabel}</span>
+              </button>
+            ) : null}
             <button
               type="button"
               className="tb-message-action-btn"

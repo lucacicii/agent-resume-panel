@@ -7,21 +7,43 @@ import type {
 } from "@agent-resume/core";
 import type { ActiveToolInfo } from "./useThunderChat";
 import {
-  extractConversationTouchedPaths,
-  filterConversationDirtyFiles,
+  loadConversationGitFiles,
   parseDiffLines,
-  type DirtyGitFile,
+  type ConversationGitFile,
+  type GitNestedScanOptions,
   type ParsedDiffResult
 } from "./gitDiffUtils";
+import { basename, type GitStatusResult } from "../workbench/git/workbenchGitModel";
 
 export interface GitDiffPopoverProps {
   isOpen: boolean;
   onClose: () => void;
   workspaceDir: string;
+  /** All repo roots in the session workspace (shared/nested projects). */
+  workspaceDirs?: string[];
+  nestedScan?: GitNestedScanOptions;
   fileChanges?: ThunderFileChangeRecord[];
   messages?: ThunderChatMessage[];
   streamingTools?: ActiveToolInfo[];
   onCommitSuccess?: () => void;
+}
+
+/** Stable per-file key: the same repo-relative path can exist in two repos. */
+function conversationFileKey(file: Pick<ConversationGitFile, "repoRoot" | "repoPath">): string {
+  return `${file.repoRoot}\0${file.repoPath}`;
+}
+
+/** Group conversation files by repository, so each repo commits its own paths. */
+function groupConversationFilesByRepo(files: ConversationGitFile[]): Array<{ repoRoot: string; paths: string[] }> {
+  const groups = new Map<string, Set<string>>();
+  for (const file of files) {
+    const paths = groups.get(file.repoRoot) || new Set<string>();
+    paths.add(file.repoPath);
+    groups.set(file.repoRoot, paths);
+  }
+  return [...groups.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([repoRoot, paths]) => ({ repoRoot, paths: [...paths] }));
 }
 
 interface FileDiffState {
@@ -34,14 +56,17 @@ export function GitDiffPopover({
   isOpen,
   onClose,
   workspaceDir,
+  workspaceDirs,
+  nestedScan,
   fileChanges = [],
   messages = [],
   streamingTools = [],
   onCommitSuccess
 }: GitDiffPopoverProps): React.JSX.Element | null {
-  const [repoRoot, setRepoRoot] = useState<string>("");
+  const [status, setStatus] = useState<GitStatusResult | null>(null);
   const [isRepo, setIsRepo] = useState<boolean>(true);
-  const [conversationFiles, setConversationFiles] = useState<DirtyGitFile[]>([]);
+  const [repoRoots, setRepoRoots] = useState<string[]>([]);
+  const [conversationFiles, setConversationFiles] = useState<ConversationGitFile[]>([]);
   const [fileDiffs, setFileDiffs] = useState<Record<string, FileDiffState>>({});
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
@@ -55,24 +80,19 @@ export function GitDiffPopover({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isLoadingStatus, setIsLoadingStatus] = useState<boolean>(false);
 
-  // Identify all touched paths in the current conversation
-  const touchedPaths = useMemo(() => {
-    if (!repoRoot && !workspaceDir) return new Set<string>();
-    return extractConversationTouchedPaths({
-      fileChanges,
-      messages,
-      streamingTools,
-      repoRoot: repoRoot || workspaceDir,
-      workspaceDir
-    });
-  }, [fileChanges, messages, streamingTools, repoRoot, workspaceDir]);
+  const workspaceRoots = useMemo(() => (
+    workspaceDirs && workspaceDirs.length
+      ? [...new Set(workspaceDirs.map((dir) => dir?.trim()).filter(Boolean))]
+      : workspaceDir ? [workspaceDir] : []
+  ), [workspaceDirs, workspaceDir]);
 
-  // Load single file diff
+  // Load single file diff from the repository that owns the path.
   const loadSingleFileDiff = useCallback(
     async (root: string, relPath: string) => {
+      const key = conversationFileKey({ repoRoot: root, repoPath: relPath });
       setFileDiffs((prev) => ({
         ...prev,
-        [relPath]: { loading: true, diff: prev[relPath]?.diff }
+        [key]: { loading: true, diff: prev[key]?.diff }
       }));
       try {
         const sides = await desktopApi().terminalGitDiffSides({
@@ -83,12 +103,12 @@ export function GitDiffPopover({
         const parsed = parseDiffLines(sides);
         setFileDiffs((prev) => ({
           ...prev,
-          [relPath]: { loading: false, diff: parsed }
+          [key]: { loading: false, diff: parsed }
         }));
       } catch (err) {
         setFileDiffs((prev) => ({
           ...prev,
-          [relPath]: {
+          [key]: {
             loading: false,
             error: err instanceof Error ? err.message : String(err)
           }
@@ -98,62 +118,45 @@ export function GitDiffPopover({
     []
   );
 
-  // Refresh dirty files and their diffs
+  // Refresh dirty files and their diffs across every repo in the workspace.
   const refresh = useCallback(async () => {
-    if (!workspaceDir) return;
+    if (!workspaceRoots.length) {
+      setStatus(null);
+      setIsRepo(false);
+      setRepoRoots([]);
+      setConversationFiles([]);
+      return;
+    }
     setIsLoadingStatus(true);
     setErrorMessage(null);
 
     try {
-      const gitInfo = await desktopApi()
-        .terminalGitInfo({ cwd: workspaceDir })
-        .catch(() => ({ isRepo: false, repoRoot: null, branch: null }));
-
-      if (!gitInfo.isRepo) {
-        setIsRepo(false);
-        setConversationFiles([]);
-        setIsLoadingStatus(false);
-        return;
-      }
-
-      setIsRepo(true);
-      const root = gitInfo.repoRoot || workspaceDir;
-      setRepoRoot(root);
-
-      const status = await desktopApi().terminalGitStatus({ cwd: root });
-      const dirtyCandidates: DirtyGitFile[] = [
-        ...(status.unstaged || []),
-        ...(status.staged || [])
-      ].map((f) => ({
-        path: f.path,
-        repoPath: f.repoPath,
-        status: f.status
-      }));
-
-      const activeTouched = extractConversationTouchedPaths({
+      const snapshot = await loadConversationGitFiles({
+        workspaceDirs: workspaceRoots,
+        workspaceDir,
+        nestedScan,
         fileChanges,
         messages,
-        streamingTools,
-        repoRoot: root,
-        workspaceDir
+        streamingTools
       });
-
-      const matched = filterConversationDirtyFiles(dirtyCandidates, activeTouched);
-      setConversationFiles(matched);
+      setStatus(snapshot.status);
+      setIsRepo(snapshot.status?.isRepo ?? false);
+      setRepoRoots(snapshot.repoRoots);
+      setConversationFiles(snapshot.files);
 
       // Default expand all matched files
-      setExpandedPaths(new Set(matched.map((m) => m.path)));
+      setExpandedPaths(new Set(snapshot.files.map(conversationFileKey)));
 
       // Fetch diffs in parallel
-      for (const item of matched) {
-        void loadSingleFileDiff(root, item.path);
+      for (const item of snapshot.files) {
+        void loadSingleFileDiff(item.repoRoot, item.repoPath);
       }
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : String(err));
     } finally {
       setIsLoadingStatus(false);
     }
-  }, [workspaceDir, fileChanges, messages, streamingTools, loadSingleFileDiff]);
+  }, [workspaceRoots, workspaceDir, nestedScan, fileChanges, messages, streamingTools, loadSingleFileDiff]);
 
   useEffect(() => {
     if (isOpen) {
@@ -161,16 +164,38 @@ export function GitDiffPopover({
     }
   }, [isOpen, refresh]);
 
+  const repoGroups = useMemo(() => groupConversationFilesByRepo(conversationFiles), [conversationFiles]);
+  const repoFileGroups = useMemo(() => {
+    const groups = new Map<string, ConversationGitFile[]>();
+    for (const file of conversationFiles) {
+      const files = groups.get(file.repoRoot) || [];
+      files.push(file);
+      groups.set(file.repoRoot, files);
+    }
+    return [...groups.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([repoRoot, files]) => ({ repoRoot, files }));
+  }, [conversationFiles]);
+  const primaryRepo = useMemo(() => (
+    repoGroups.length
+      ? [...repoGroups].sort((left, right) => right.paths.length - left.paths.length || left.repoRoot.localeCompare(right.repoRoot))[0]
+      : null
+  ), [repoGroups]);
+  const repoLabel = (root: string) => (
+    status?.nestedRepos?.find((repo) => repo.root === root)?.displayPath || basename(root)
+  );
+
   // Toggle single file accordion
-  const toggleAccordion = (path: string) => {
+  const toggleAccordion = (file: ConversationGitFile) => {
+    const key = conversationFileKey(file);
     setExpandedPaths((prev) => {
       const next = new Set(prev);
-      if (next.has(path)) {
-        next.delete(path);
+      if (next.has(key)) {
+        next.delete(key);
       } else {
-        next.add(path);
-        if (!fileDiffs[path]?.diff && repoRoot) {
-          void loadSingleFileDiff(repoRoot, path);
+        next.add(key);
+        if (!fileDiffs[key]?.diff) {
+          void loadSingleFileDiff(file.repoRoot, file.repoPath);
         }
       }
       return next;
@@ -181,14 +206,13 @@ export function GitDiffPopover({
   const toggleAll = () => {
     if (expandedPaths.size === conversationFiles.length) {
       setExpandedPaths(new Set());
-    } else {
-      setExpandedPaths(new Set(conversationFiles.map((f) => f.path)));
-      if (repoRoot) {
-        for (const f of conversationFiles) {
-          if (!fileDiffs[f.path]?.diff) {
-            void loadSingleFileDiff(repoRoot, f.path);
-          }
-        }
+      return;
+    }
+    setExpandedPaths(new Set(conversationFiles.map(conversationFileKey)));
+    for (const file of conversationFiles) {
+      const key = conversationFileKey(file);
+      if (!fileDiffs[key]?.diff) {
+        void loadSingleFileDiff(file.repoRoot, file.repoPath);
       }
     }
   };
@@ -201,14 +225,13 @@ export function GitDiffPopover({
 
   // Generate commit message from .arp and desktop settings via LLM / heuristic
   const handleSuggestCommitMessage = async () => {
-    if (!repoRoot || conversationFiles.length === 0 || isGeneratingMessage) return;
+    if (!primaryRepo || conversationFiles.length === 0 || isGeneratingMessage) return;
     setIsGeneratingMessage(true);
     setErrorMessage(null);
     try {
-      const paths = conversationFiles.map((f) => f.path);
       const res = await desktopApi().terminalGitSuggestCommit({
-        repoRoot,
-        paths
+        repoRoot: primaryRepo.repoRoot,
+        paths: primaryRepo.paths
       });
       if (res?.message) {
         setCommitMessage(res.message);
@@ -220,22 +243,22 @@ export function GitDiffPopover({
     }
   };
 
-  // 1-Click Commit and Push only conversation files
+  // 1-Click Commit and Push only conversation files, per repository.
   const handleCommitAndPush = async () => {
-    if (!repoRoot || conversationFiles.length === 0 || isCommitting) return;
+    if (!repoGroups.length || isCommitting) return;
     setIsCommitting(true);
     setErrorMessage(null);
     setSuccessMessage(null);
 
-    const paths = conversationFiles.map((f) => f.path);
     let msg = commitMessage.trim();
 
     try {
       if (!msg) {
+        if (!primaryRepo) throw new Error("Unable to generate commit message.");
         setCommitStatusLabel("Generating message...");
         const res = await desktopApi().terminalGitSuggestCommit({
-          repoRoot,
-          paths
+          repoRoot: primaryRepo.repoRoot,
+          paths: primaryRepo.paths
         });
         msg = res.message.trim();
         setCommitMessage(res.message);
@@ -245,17 +268,19 @@ export function GitDiffPopover({
         throw new Error("Unable to generate commit message.");
       }
 
-      setCommitStatusLabel("Committing...");
-      await desktopApi().terminalGitCommit({
-        repoRoot,
-        message: msg,
-        paths
-      });
+      for (const group of repoGroups) {
+        setCommitStatusLabel("Committing...");
+        await desktopApi().terminalGitCommit({
+          repoRoot: group.repoRoot,
+          message: msg,
+          paths: group.paths
+        });
 
-      setCommitStatusLabel("Pushing...");
-      await desktopApi().terminalGitPush({ repoRoot });
+        setCommitStatusLabel("Pushing...");
+        await desktopApi().terminalGitPush({ repoRoot: group.repoRoot });
+      }
 
-      setSuccessMessage(`Committed and pushed ${paths.length} file${paths.length > 1 ? "s" : ""}!`);
+      setSuccessMessage(`Committed and pushed ${conversationFiles.length} file${conversationFiles.length > 1 ? "s" : ""}!`);
       setCommitMessage("");
       onCommitSuccess?.();
 
@@ -441,11 +466,20 @@ export function GitDiffPopover({
             </div>
           ) : (
             <div className="tb-git-accordion-list">
-              {conversationFiles.map((file) => {
-                const isExpanded = expandedPaths.has(file.path);
-                const state = fileDiffs[file.path];
+              {repoFileGroups.map(({ repoRoot: groupRoot, files }) => (
+                <div key={groupRoot} className="tb-git-repo-group">
+                  {repoRoots.length > 1 ? (
+                    <div className="tb-git-repo-heading" title={groupRoot}>
+                      <ThemeIcon name="git-branch" size={ICON_SIZE.inline} />
+                      <span>{repoLabel(groupRoot)}</span>
+                    </div>
+                  ) : null}
+              {files.map((file) => {
+                const key = conversationFileKey(file);
+                const isExpanded = expandedPaths.has(key);
+                const state = fileDiffs[key];
                 const diff = state?.diff;
-                const isCopied = copiedPath === file.path;
+                const isCopied = copiedPath === file.displayPath;
 
                 const statusLabel =
                   file.status === "untracked" || file.status === "added"
@@ -455,16 +489,16 @@ export function GitDiffPopover({
                     : "M";
 
                 return (
-                  <div key={file.path} className="tb-git-diff-item">
+                  <div key={key} className="tb-git-diff-item">
                     <div
                       role="button"
                       tabIndex={0}
                       className="tb-git-diff-item-header"
-                      onClick={() => toggleAccordion(file.path)}
+                      onClick={() => toggleAccordion(file)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();
-                          toggleAccordion(file.path);
+                          toggleAccordion(file);
                         }
                       }}
                       aria-expanded={isExpanded}
@@ -492,8 +526,8 @@ export function GitDiffPopover({
                         {statusLabel}
                       </span>
 
-                      <span className="tb-git-diff-path" title={file.path}>
-                        {file.path}
+                      <span className="tb-git-diff-path" title={file.displayPath}>
+                        {file.displayPath}
                       </span>
 
                       {diff && (
@@ -516,7 +550,7 @@ export function GitDiffPopover({
                         className="tb-file-copy-btn"
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleCopy(file.path);
+                          handleCopy(file.displayPath);
                         }}
                         title="Copy file path"
                       >
@@ -586,6 +620,8 @@ export function GitDiffPopover({
                   </div>
                 );
               })}
+                </div>
+              ))}
             </div>
           )}
         </div>

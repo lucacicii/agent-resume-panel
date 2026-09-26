@@ -124,6 +124,8 @@ export interface ThunderTaskTrace {
   started_at_ms: number;
   finished_at_ms?: number;
   duration_ms?: number;
+  /** Wall-clock time from task receipt (user message) to completion. */
+  wall_duration_ms?: number;
   finish_reason?: string;
   stats?: ThunderAgentStats;
   final_content?: string;
