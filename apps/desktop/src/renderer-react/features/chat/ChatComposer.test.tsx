@@ -137,8 +137,6 @@ describe("ChatComposer UI popovers and keyboard interactions", () => {
     onSelectThinkingLevel: vi.fn(),
     workspaceDir: "/test/workspace",
     onSelectWorkspaceDir: vi.fn(),
-    useMock: false,
-    onToggleMock: vi.fn()
   };
 
   beforeEach(() => {

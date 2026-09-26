@@ -19234,12 +19234,6 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   color: var(--color-label-primary);
 }
 
-.tb-chip-button.is-active-mock {
-  background: rgba(255, 149, 0, 0.14);
-  border-color: var(--color-warning, #ff9500);
-  color: var(--color-warning, #ff9500);
-}
-
 .tb-chip-label {
   max-width: 130px;
   white-space: nowrap;

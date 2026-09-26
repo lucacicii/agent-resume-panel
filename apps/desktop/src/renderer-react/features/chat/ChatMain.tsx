@@ -44,8 +44,6 @@ interface ChatMainProps {
   onSelectGtdTask?: (noteId: string, dir: string) => void;
   onSelectFinderDir?: (dir: string) => void;
   isWorkspaceLocked?: boolean;
-  useMock: boolean;
-  onToggleMock: (mock: boolean) => void;
   onSendMessage: (
     prompt: string,
     options?: { workspaceDir?: string; model?: string; thinking_level?: string; role?: string }
@@ -95,8 +93,6 @@ export function ChatMain({
   onSelectGtdTask,
   onSelectFinderDir,
   isWorkspaceLocked,
-  useMock,
-  onToggleMock,
   onSendMessage,
   onCancelTask,
   onNewSession,
@@ -364,8 +360,6 @@ export function ChatMain({
         onSelectGtdTask={onSelectGtdTask}
         onSelectFinderDir={onSelectFinderDir}
         workspaceLocked={isWorkspaceLocked}
-        useMock={useMock}
-        onToggleMock={onToggleMock}
         prefillPrompt={prefillPrompt}
         lastRunMetrics={lastRunMetrics}
         streamingMetrics={streamingMetrics}

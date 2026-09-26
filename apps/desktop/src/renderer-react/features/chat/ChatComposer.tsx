@@ -224,8 +224,6 @@ interface ChatComposerProps {
   onSelectGtdTask?: (noteId: string, dir: string) => void;
   onSelectFinderDir?: (dir: string) => void;
   workspaceLocked?: boolean;
-  useMock: boolean;
-  onToggleMock: (mock: boolean) => void;
   placeholder?: string;
   prefillPrompt?: { text: string; id: number } | null;
   lastRunMetrics?: ChatRunMetrics | null;
@@ -271,8 +269,6 @@ export function ChatComposer({
   onSelectGtdTask,
   onSelectFinderDir,
   workspaceLocked = false,
-  useMock,
-  onToggleMock,
   placeholder = "Ask Thunder agent anything, or type / for skills/mcp, @ for context, # for files...",
   prefillPrompt,
   lastRunMetrics,
@@ -1423,18 +1419,6 @@ export function ChatComposer({
               {!workspaceLocked && (
                 <ThemeIcon name="chevron-down" size={ICON_SIZE.inline} aria-hidden="true" />
               )}
-            </button>
-
-            {/* Mock Mode Toggle Chip */}
-            <button
-              type="button"
-              className={`tb-composer-chip tb-chip-button${useMock ? " is-active-mock" : ""}`}
-              onClick={() => onToggleMock(!useMock)}
-              disabled={isStreaming}
-              title="Toggle Mock execution without calling LLM APIs"
-            >
-              <ThemeIcon name="sparkles" size={ICON_SIZE.inline} />
-              <span className="tb-chip-label">{useMock ? "Mock Mode (ON)" : "Mock Mode"}</span>
             </button>
           </div>
 

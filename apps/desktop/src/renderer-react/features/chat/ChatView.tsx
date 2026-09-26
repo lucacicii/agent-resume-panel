@@ -21,14 +21,12 @@ export function ChatView({ active }: { active: boolean }): React.JSX.Element | n
     workspaceSource,
     taskNoteId,
     isWorkspaceLocked,
-    useMock,
     daemonStatus,
     setSelectedModel,
     setThinkingLevel,
     setWorkspaceDir,
     setWorkspaceGtdTask,
     setWorkspaceFinderDir,
-    setUseMock,
     selectSession,
     createNewSession,
     deleteSession,
@@ -150,8 +148,6 @@ export function ChatView({ active }: { active: boolean }): React.JSX.Element | n
         onSelectGtdTask={setWorkspaceGtdTask}
         onSelectFinderDir={setWorkspaceFinderDir}
         isWorkspaceLocked={isWorkspaceLocked}
-        useMock={useMock}
-        onToggleMock={setUseMock}
         onSendMessage={sendMessage}
         onCancelTask={cancelCurrentTask}
         onNewSession={createNewSession}

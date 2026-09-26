@@ -22,8 +22,6 @@ function baseProps() {
     onSelectThinkingLevel: vi.fn(),
     workspaceDir: "",
     onSelectWorkspaceDir: vi.fn(),
-    useMock: false,
-    onToggleMock: vi.fn(),
     onSendMessage: vi.fn(),
     onCancelTask: vi.fn(),
     onNewSession: vi.fn()

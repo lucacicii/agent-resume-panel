@@ -337,7 +337,6 @@ export interface ThunderChatTaskOptions {
   workspaceDir?: string;
   taskNoteId?: string;
   thinking_level?: string;
-  useMock?: boolean;
 }
 
 export interface ThunderChatTaskResult {

@@ -690,7 +690,6 @@ export class ThunderClient {
     model?: string;
     sessionId?: string;
     thinking_level?: string;
-    useMock?: boolean;
     /** Role id to activate host-side (enforces permission). */
     role?: string;
     onEvent?: (event: ThunderObservedEvent) => void;
@@ -745,7 +744,6 @@ export class ThunderClient {
               model: options.model,
               thinking_level: options.thinking_level,
               session_id: options.sessionId,
-              use_mock: options.useMock,
               role: options.role
             },
             30_000

@@ -165,7 +165,6 @@ export function useThunderChat() {
       return "";
     }
   });
-  const [useMock, setUseMock] = useState(false);
   const [daemonStatus, setDaemonStatus] = useState<{
     available: boolean;
     repoPath: string | null;
@@ -759,7 +758,6 @@ export function useThunderChat() {
           workspaceDir: ws,
           taskNoteId: effectiveTaskNoteId,
           thinking_level: thinking,
-          useMock,
           role: options?.role
         });
 
@@ -799,7 +797,7 @@ export function useThunderChat() {
         }
       }
     },
-    [finalizeSessionTurn, finishTaskTrace, loadConversations, models, selectedModel, startTaskTrace, taskNoteId, thinkingLevel, useMock, workspaceDir, workspaceSource]
+    [finalizeSessionTurn, finishTaskTrace, loadConversations, models, selectedModel, startTaskTrace, taskNoteId, thinkingLevel, workspaceDir, workspaceSource]
   );
 
   const prefillComposer = useCallback((text: string) => {
@@ -1182,14 +1180,12 @@ export function useThunderChat() {
     workspaceSource,
     taskNoteId,
     isWorkspaceLocked,
-    useMock,
     daemonStatus,
     setSelectedModel: handleSelectModel,
     setThinkingLevel,
     setWorkspaceDir,
     setWorkspaceGtdTask,
     setWorkspaceFinderDir,
-    setUseMock,
     loadConversations,
     selectSession,
     createNewSession,

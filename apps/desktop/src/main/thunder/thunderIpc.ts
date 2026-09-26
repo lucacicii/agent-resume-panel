@@ -169,7 +169,6 @@ export function registerThunderIpc(): void {
         workspaceDir?: string;
         taskNoteId?: string;
         thinking_level?: string;
-        useMock?: boolean;
         role?: string;
       }
     ) => {
@@ -245,7 +244,6 @@ export function registerThunderIpc(): void {
           taskNoteId: args.taskNoteId,
           gtdContext,
           thinking_level: args.thinking_level,
-          useMock: args.useMock,
           role: args.role,
           onEvent: (event) => {
             accumulateStreamEvent(snapshot, event);

@@ -1552,7 +1552,6 @@ export interface DesktopApi {
     workspaceDir?: string;
     taskNoteId?: string;
     thinking_level?: string;
-    useMock?: boolean;
     /** Role id; the host enforces its permission tier. */
     role?: string;
   }): Promise<ThunderChatTaskResult>;
