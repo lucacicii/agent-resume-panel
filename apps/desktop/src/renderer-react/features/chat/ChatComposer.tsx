@@ -231,6 +231,12 @@ interface ChatComposerProps {
   sessionTotalTokens?: number;
   currentContextTokens?: number;
   contextWindowLimit?: number;
+  /**
+   * Content docked directly above the composer box inside the floating
+   * wrapper (e.g. the agent question card), so it rides the same layer and
+   * can never be covered by the input.
+   */
+  docked?: React.ReactNode;
 }
 
 function formatCompactTokens(num: number): string {
@@ -297,7 +303,8 @@ export function ChatComposer({
   streamingMetrics,
   sessionTotalTokens = 0,
   currentContextTokens = 0,
-  contextWindowLimit
+  contextWindowLimit,
+  docked
 }: ChatComposerProps) {
   const [text, setText] = useState("");
   const [cursor, setCursor] = useState(0);
@@ -1108,6 +1115,7 @@ export function ChatComposer({
 
   return (
     <div className="tb-composer-wrapper">
+      {docked ?? null}
       <div className={`tb-composer-box${isStreaming ? " is-active" : ""}`}>
         <div className="tb-composer-input-area">
           <textarea

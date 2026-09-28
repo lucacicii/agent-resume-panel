@@ -19393,11 +19393,31 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   letter-spacing: 0;
 }
 
-/* Agent question bubble sits directly above the composer, in flow. */
-.tb-chat-main .wb-acp-question-card {
+/*
+ * Agent question bubble docks directly above the composer box, inside the
+ * floating composer layer (.tb-composer-wrapper, z-index 20, pointer-events:
+ * none). It used to sit in flow under the wrapper, where the composer covered
+ * it entirely — docking it in the same layer keeps it visible and clickable.
+ */
+.tb-chat-main .tb-composer-wrapper .wb-acp-question-card {
+  pointer-events: auto;
+  flex: 0 0 auto;
   margin: 0 auto 10px;
   max-width: 720px;
   width: calc(100% - 32px);
+  /* Translucent card floating over messages: blur like the composer box. */
+  backdrop-filter: var(--backdrop-blur-heavy);
+  -webkit-backdrop-filter: var(--backdrop-blur-heavy);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+/*
+ * While a question is docked, grow the feed's composer clearance so the card
+ * (capped at min(42vh, 360px) tall) plus the input doesn't cover the newest
+ * messages that prompted it.
+ */
+.tb-chat-main.has-question .tb-chat-feed {
+  padding-bottom: calc(min(42vh, 360px) + 200px);
 }
 
 .wb-terminal-composer-suggestion.is-active .tb-composer-suggestion-badge {

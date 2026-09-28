@@ -320,16 +320,19 @@ export function ChatMain({
     scrollToBottom(true);
   }, [sessionId, scrollToBottom]);
 
-  // A strategy: follow streaming content unless the user scrolled away (B).
-  useLayoutEffect(() => {
-    scrollToBottom();
-  }, [messages.length, streamingText, streamingReasoning, streamingTools, scrollToBottom]);
-
   const hasMessages = messages.length > 0 || isStreaming;
   const showEmptyState = !hasMessages;
+  /** The agent is blocked on ask_user_question — the card docks above the composer. */
+  const hasQuestion = Boolean(pendingQuestion && pendingQuestion.questions.length > 0);
+
+  // A strategy: follow streaming content unless the user scrolled away (B).
+  // The question card also docks/un-docks, so re-pin then too.
+  useLayoutEffect(() => {
+    scrollToBottom();
+  }, [messages.length, streamingText, streamingReasoning, streamingTools, hasQuestion, scrollToBottom]);
 
   return (
-    <div className="tb-chat-main">
+    <div className={hasQuestion ? "tb-chat-main has-question" : "tb-chat-main"}>
       {/* Chat Header */}
       <header className="tb-chat-header">
         <div className="tb-chat-header-title-box">
@@ -532,18 +535,20 @@ export function ChatMain({
         )}
       </div>
 
-      {/* Agent question bubble — the task is parked until answered */}
-      {pendingQuestion && pendingQuestion.questions.length > 0 ? (
-        <ChatQuestionBubble
-          questionId={pendingQuestion.questionId}
-          questions={pendingQuestion.questions}
-          onAnswer={(answers) => onAnswerQuestion?.(answers, false)}
-          onDismiss={() => onDismissQuestion?.()}
-        />
-      ) : null}
-
-      {/* Floating Composer */}
+      {/* Floating Composer. The agent question bubble (task parked until
+          answered) docks directly above the input inside the same floating
+          layer, so the composer can never cover it. */}
       <ChatComposer
+        docked={
+          hasQuestion && pendingQuestion ? (
+            <ChatQuestionBubble
+              questionId={pendingQuestion.questionId}
+              questions={pendingQuestion.questions}
+              onAnswer={(answers) => onAnswerQuestion?.(answers, false)}
+              onDismiss={() => onDismissQuestion?.()}
+            />
+          ) : null
+        }
         onSend={onSendMessage}
         onCancel={onCancelTask}
         isStreaming={isStreaming}
