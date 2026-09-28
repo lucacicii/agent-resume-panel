@@ -488,3 +488,134 @@ describe("ChatComposer UI popovers and keyboard interactions", () => {
     expect(container.querySelector(".tb-metrics-duration")).toBeNull();
   });
 });
+
+describe("ChatComposer role chip and Shift+Tab cycling", () => {
+  const roles = [
+    { id: "plan", name: "Plan", permission: "read", mode: "plan" },
+    { id: "architect", name: "Architect", permission: "write", mode: "accept_edits" },
+    { id: "pm", name: "Project Manager", permission: "read", mode: "plan" }
+  ];
+
+  const roleProps = {
+    onSend: vi.fn(),
+    onCancel: vi.fn(),
+    isStreaming: false,
+    models: [{ id: "mock-1", name: "Mock Model", selection_id: "mock-1", provider: "mock", available: true }],
+    selectedModel: "mock-1",
+    onSelectModel: vi.fn(),
+    thinkingLevel: "off",
+    onSelectThinkingLevel: vi.fn(),
+    workspaceDir: "/test/workspace",
+    onSelectWorkspaceDir: vi.fn(),
+    roles
+  };
+
+  beforeEach(() => {
+    (window as any).agentResume = {};
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  const chip = () => screen.getByRole("button", { name: /^Role:/ });
+
+  it("renders the role chip after the thinking chip, showing Auto by default", () => {
+    render(<ChatComposer {...roleProps} selectedRole={null} onSelectRole={vi.fn()} />);
+    expect(chip().textContent).toContain("Role: Auto");
+    // Order: Model → Thinking → Role → Workspace
+    const chips = Array.from(document.querySelectorAll(".tb-composer-tools-left .tb-composer-chip"));
+    const labels = chips.map((el) => el.textContent || "");
+    const thinkingIdx = labels.findIndex((l) => l.includes("Thinking"));
+    const roleIdx = labels.findIndex((l) => l.includes("Role:"));
+    const workspaceIdx = labels.findIndex((l) => l.includes("GTD") || l.includes("Finder"));
+    expect(thinkingIdx).toBeGreaterThanOrEqual(0);
+    expect(roleIdx).toBeGreaterThan(thinkingIdx);
+    if (workspaceIdx >= 0) expect(roleIdx).toBeLessThan(workspaceIdx);
+  });
+
+  it("shows the tier and mode of the selected role on the chip", () => {
+    render(<ChatComposer {...roleProps} selectedRole="architect" onSelectRole={vi.fn()} />);
+    expect(chip().textContent).toContain("write · accept_edits");
+  });
+
+  it("Shift+Tab cycles Auto → first role → … and wraps back to Auto", () => {
+    const onSelectRole = vi.fn();
+    const { rerender } = render(
+      <ChatComposer {...roleProps} selectedRole={null} onSelectRole={onSelectRole} />
+    );
+    const textarea = screen.getByPlaceholderText(/Ask Thunder agent anything/i);
+
+    // auto → plan
+    fireEvent.keyDown(textarea, { key: "Tab", shiftKey: true });
+    expect(onSelectRole).toHaveBeenLastCalledWith("plan");
+    rerender(<ChatComposer {...roleProps} selectedRole="plan" onSelectRole={onSelectRole} />);
+    expect(chip().textContent).toContain("Role: Plan");
+
+    // plan → architect
+    fireEvent.keyDown(textarea, { key: "Tab", shiftKey: true });
+    expect(onSelectRole).toHaveBeenLastCalledWith("architect");
+    rerender(<ChatComposer {...roleProps} selectedRole="pm" onSelectRole={onSelectRole} />);
+
+    // pm → auto (wrap)
+    fireEvent.keyDown(textarea, { key: "Tab", shiftKey: true });
+    expect(onSelectRole).toHaveBeenLastCalledWith(null);
+  });
+
+  it("a leading /id still overrides the chip for that one send", async () => {
+    const onSend = vi.fn();
+    render(
+      <ChatComposer {...roleProps} selectedRole="pm" onSelectRole={vi.fn()} onSend={onSend} />
+    );
+    const textarea = screen.getByPlaceholderText(/Ask Thunder agent anything/i);
+    fireEvent.change(textarea, { target: { value: "/plan sketch the migration" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    await waitFor(() => expect(onSend).toHaveBeenCalled());
+    expect(onSend.mock.calls[0][1]?.role).toBe("plan");
+  });
+
+  it("sends with the chip's role when no /id prefix is present", async () => {
+    const onSend = vi.fn();
+    render(
+      <ChatComposer {...roleProps} selectedRole="pm" onSelectRole={vi.fn()} onSend={onSend} />
+    );
+    const textarea = screen.getByPlaceholderText(/Ask Thunder agent anything/i);
+    fireEvent.change(textarea, { target: { value: "Plan the sprint" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    await waitFor(() => expect(onSend).toHaveBeenCalled());
+    expect(onSend.mock.calls[0][1]?.role).toBe("pm");
+  });
+
+  it("Shift+Tab cycles even while the slash menu is open (plain Tab still accepts)", async () => {
+    (window as any).agentResume = {
+      listSkills: vi.fn().mockResolvedValue([
+        { name: "dividend-cows", description: "screener", location: "/s/SKILL.md", directory: "/s", scope: "user" }
+      ]),
+      listAgentTools: vi.fn().mockResolvedValue([]),
+      notesList: vi.fn().mockResolvedValue([]),
+      notesListTasks: vi.fn().mockResolvedValue([]),
+      thunderChatListConversations: vi.fn().mockResolvedValue([]),
+      workbenchListDirectory: vi.fn().mockResolvedValue({ entries: [] })
+    };
+    const onSelectRole = vi.fn();
+    render(
+      <ChatComposer {...roleProps} selectedRole={null} onSelectRole={onSelectRole} />
+    );
+    const textarea = screen.getByPlaceholderText(/Ask Thunder agent anything/i);
+    fireEvent.change(textarea, { target: { value: "/", selectionStart: 1 } });
+    await waitFor(() =>
+      expect(screen.getByRole("listbox", { name: /slash commands/i })).toBeTruthy()
+    );
+
+    fireEvent.keyDown(textarea, { key: "Tab", shiftKey: true });
+    expect(onSelectRole).toHaveBeenLastCalledWith("plan");
+    expect((textarea as HTMLTextAreaElement).value).toBe("/");
+  });
+
+  it("disables the role chip while streaming", () => {
+    render(
+      <ChatComposer {...roleProps} isStreaming selectedRole="pm" onSelectRole={vi.fn()} />
+    );
+    expect((chip() as HTMLButtonElement).disabled).toBe(true);
+  });
+});

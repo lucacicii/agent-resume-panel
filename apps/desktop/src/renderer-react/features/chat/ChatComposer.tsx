@@ -213,6 +213,9 @@ interface ChatComposerProps {
   models: ThunderModelInfo[];
   /** Roles offered as slash commands; the host enforces their permission. */
   roles?: ThunderRoleInfo[];
+  /** The chip's persistent role selection; null/empty means "auto". */
+  selectedRole?: string | null;
+  onSelectRole?: (roleId: string | null) => void;
   selectedModel: string;
   onSelectModel: (model: string) => void;
   thinkingLevel: string;
@@ -286,6 +289,8 @@ export function ChatComposer({
   isStreaming,
   models,
   roles = [],
+  selectedRole = null,
+  onSelectRole,
   selectedModel,
   onSelectModel,
   thinkingLevel,
@@ -822,7 +827,9 @@ export function ChatComposer({
         workspaceDir,
         model: selectedModel,
         thinking_level: thinkingLevel,
-        role: activeRole?.id
+        // A leading `/id` is a one-shot pick and overrides the chip for this
+        // send; the chip selection persists across sends until switched.
+        role: activeRole?.id ?? (selectedRole || undefined)
       });
     } catch (err) {
       console.warn("Failed to compile prompt context:", err);
@@ -830,12 +837,20 @@ export function ChatComposer({
       workspaceDir,
       model: selectedModel,
       thinking_level: thinkingLevel,
-      role: activeRole?.id
+      role: activeRole?.id ?? (selectedRole || undefined)
     });
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Role cycling rides on Shift+Tab, one layer above every autocomplete:
+    // the menus accept plain Tab / Enter, so Shift+Tab can safely own this.
+    if (e.key === "Tab" && e.shiftKey && roles.length > 0 && onSelectRole) {
+      e.preventDefault();
+      cycleRole();
+      return;
+    }
+
     if (slashOpen && slashSuggestions.length > 0) {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -1106,6 +1121,33 @@ export function ChatComposer({
     if (!supportsThinking) return "off";
     return thinkingLevel || currentModel?.default_thinking_level || "medium";
   }, [supportsThinking, thinkingLevel, currentModel]);
+
+  // Role chip options: "auto" first, then roles in daemon order (id-sorted).
+  // The tier/mode suffix keeps the blast radius visible at a glance.
+  const roleOptions = useMemo(() => {
+    const options: Array<{ value: string; label: string }> = [{ value: "", label: "Role: Auto" }];
+    for (const role of roles) {
+      const meta = [role.permission, role.mode].filter(Boolean).join(" · ");
+      options.push({
+        value: role.id,
+        label: meta ? `Role: ${role.name} (${meta})` : `Role: ${role.name}`
+      });
+    }
+    return options;
+  }, [roles]);
+
+  const currentRole = useMemo(() => {
+    return roles.find((r) => r.id === selectedRole) || null;
+  }, [roles, selectedRole]);
+
+  /** Shift+Tab cycles [auto → role1 → role2 → … → auto]; plain Tab stays with autocomplete. */
+  const cycleRole = useCallback(() => {
+    if (!onSelectRole || roles.length === 0) return;
+    const ids = ["", ...roles.map((r) => r.id)];
+    const index = ids.indexOf(selectedRole || "");
+    const next = ids[(index + 1) % ids.length];
+    onSelectRole(next || null);
+  }, [onSelectRole, roles, selectedRole]);
 
   const draftTokens = text.trim().length > 0 ? Math.max(1, Math.ceil(text.trim().length / 3)) : 0;
   const contextTokensWithDraft = (currentContextTokens || 0) + draftTokens;
@@ -1442,6 +1484,24 @@ export function ChatComposer({
                   supportsThinking
                     ? `Thinking Level: ${effectiveThinkingLevel}`
                     : "Thinking not supported by this model"
+                }
+              />
+            </div>
+
+            {/* Role Chip: persistent role selection; Shift+Tab cycles. */}
+            <div className={`tb-composer-chip${roles.length === 0 ? " tb-chip-disabled" : ""}`}>
+              <ThemeIcon name="user" size={ICON_SIZE.inline} />
+              <NativeMenuSelect
+                className="tb-composer-native-select"
+                value={selectedRole || ""}
+                options={roleOptions}
+                onChange={(value) => onSelectRole?.(value || null)}
+                disabled={isStreaming || roles.length === 0}
+                ariaLabel="Role"
+                title={
+                  roles.length === 0
+                    ? "No roles available (define them in Settings → Thunder)"
+                    : `Role: ${currentRole ? `${currentRole.name} (${[currentRole.permission, currentRole.mode].filter(Boolean).join(" · ")})` : "Auto"} — Shift+Tab to cycle`
                 }
               />
             </div>

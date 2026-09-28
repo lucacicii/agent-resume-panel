@@ -43,11 +43,39 @@ export interface ThunderRoleInfo {
   description?: string;
   /** Capability tier enforced host-side. */
   permission: "read" | "write" | "bash" | string;
+  /** Approval mode declared by the role (`roles.jsonl` is the single source). */
+  mode?: "plan" | "ask" | "accept_edits" | "manual" | "yolo" | string | null;
+  /** Keyword auto-selection triggers (plain-language prompts, no slash command). */
+  triggers?: string[];
   persona?: string;
   model?: string | null;
   thinking_level?: string | null;
   ask_user?: boolean;
   exit_gate?: boolean;
+  enabled?: boolean;
+}
+
+/** One parsed line of `~/.thunder/roles.jsonl`, raw JSON preserved so the settings editor can round-trip fields it does not model. */
+export interface ThunderRoleRecord {
+  /** Parsed JSON of the line — every field, including unknown ones. */
+  raw: Record<string, unknown>;
+  /** Whether this id is one of the app's bundled built-in roles. */
+  builtin: boolean;
+}
+
+/** Shape of `~/.thunder/models.json` (provider registry + utility model selection). */
+export interface ThunderModelsConfig {
+  providers: Record<string, ThunderModelsProvider>;
+  utilityModel?: string;
+}
+
+export interface ThunderModelsProvider {
+  name?: string;
+  api?: string;
+  apiKey?: string;
+  baseUrl?: string;
+  models?: Array<Record<string, unknown>>;
+  [key: string]: unknown;
 }
 
 export interface ThunderModelInfo {

@@ -40,20 +40,7 @@ export interface ThunderQuestionItem {
   options: ThunderQuestionOption[];
 }
 
-/** A role as reported by the daemon (`list_roles`). */
-export interface ThunderRoleInfo {
-  id: string;
-  name: string;
-  aliases?: string[];
-  description?: string;
-  /** Capability tier enforced by the host. */
-  permission: "read" | "write" | "bash" | string;
-  persona?: string;
-  model?: string | null;
-  thinking_level?: string | null;
-  ask_user?: boolean;
-  exit_gate?: boolean;
-}
+export type { ThunderRoleInfo, ThunderRoleRecord, ThunderModelsConfig, ThunderModelsProvider } from "@agent-resume/core";
 
 export type ThunderAgentEvent =
   | { type: "turn_start"; turn: number; timestamp: number }

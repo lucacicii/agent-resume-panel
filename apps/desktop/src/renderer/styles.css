@@ -2538,6 +2538,109 @@ svg[data-icon-system="sf"] * {
   margin-top: var(--space-1);
 }
 
+/* ── Thunder roles / models editors (Settings → Thunder) ── */
+
+.settings-roles-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.tb-role-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+  padding: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.tb-role-card.is-builtin {
+  border-color: var(--accent, var(--primary));
+}
+
+.tb-role-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.tb-role-card-head input,
+.tb-role-card-head select {
+  min-width: 0;
+}
+
+.tb-role-id {
+  font-family: var(--font-family-mono);
+  max-width: 12ch;
+}
+
+.tb-role-badge {
+  flex: none;
+  font-size: var(--font-size-caption, 11px);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent-contrast, #fff);
+  background: var(--accent, var(--primary));
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.tb-role-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-2);
+}
+
+.tb-role-card-body textarea {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-callout, 12px);
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.tb-role-card-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.tb-role-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-callout, 12px);
+  color: var(--muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.tb-models-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-callout, 12px);
+}
+
+.tb-models-table th,
+.tb-models-table td {
+  text-align: left;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  max-width: 24ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tb-models-table th {
+  color: var(--muted);
+  font-weight: 500;
+}
+
 .settings-path-display {
   flex: 1 1 auto;
   min-width: 0;

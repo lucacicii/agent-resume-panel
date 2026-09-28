@@ -16,6 +16,7 @@ import {
   updateSchedule
 } from "./thunderScheduler";
 import { getThunderClient } from "./thunderClient";
+import { createThunderConfigStore } from "./thunderConfig";
 import {
   accumulateStreamEvent,
   createActiveStreamSnapshot,
@@ -23,7 +24,7 @@ import {
   getActiveStream
 } from "./thunderStreamBuffer";
 import { notesGetTaskWorkspaceContext, notesLinkSessionToTask } from "../notesService";
-import type { ThunderScheduleInput } from "@agent-resume/core";
+import type { ThunderModelsConfig, ThunderRoleRecord, ThunderScheduleInput } from "@agent-resume/core";
 
 let configWatcher: fs.FSWatcher | null = null;
 
@@ -47,6 +48,7 @@ function startThunderConfigWatcher(): void {
       for (const win of BrowserWindow.getAllWindows()) {
         if (!win.isDestroyed()) {
           win.webContents.send("thunder:models:changed");
+          win.webContents.send("thunder:roles:changed");
         }
       }
     }, 300);
@@ -54,7 +56,12 @@ function startThunderConfigWatcher(): void {
 
   try {
     configWatcher = fs.watch(thunderDir, (_eventType, filename) => {
-      if (filename && (filename.includes("models.json") || filename.includes("auth.json"))) {
+      if (
+        filename &&
+        (filename.includes("models.json") ||
+          filename.includes("auth.json") ||
+          filename.includes("roles.jsonl"))
+      ) {
         notifyChange();
       }
     });
@@ -65,6 +72,13 @@ function startThunderConfigWatcher(): void {
 
 export function registerThunderIpc(): void {
   startThunderConfigWatcher();
+  const config = createThunderConfigStore();
+  // Ship the built-in roles with the app: missing ones are appended once at
+  // boot, never overwriting a user's edited definition of the same id.
+  const { ensured } = config.ensureBuiltinRoles();
+  if (ensured.length > 0) {
+    console.log(`[thunder-ipc] Ensured built-in roles: ${ensured.join(", ")}`);
+  }
 
   safeHandle("schedule:list", async () => {
     return listSchedules();
@@ -123,6 +137,29 @@ export function registerThunderIpc(): void {
   safeHandle("thunder:listRoles", async (_event, args?: { workspaceDir?: string }) => {
     return getThunderClient().listRoles(args?.workspaceDir);
   });
+
+  // ── Config file editors (Settings → Thunder) ────────────────────────────
+  // The daemon reloads both files per request, so writes here apply to the
+  // very next run without a daemon restart.
+
+  safeHandle("thunder:readRolesFile", () => config.readRolesFile());
+
+  safeHandle(
+    "thunder:writeRolesFile",
+    (_event, args: { records: ThunderRoleRecord[] }) =>
+      config.writeRolesFile(args?.records ?? [])
+  );
+
+  safeHandle("thunder:resetBuiltinRole", (_event, args: { id: string }) => {
+    config.resetBuiltinRole(args?.id ?? "");
+  });
+
+  safeHandle("thunder:readModelsConfig", () => config.readModelsConfig());
+
+  safeHandle(
+    "thunder:writeModelsConfig",
+    (_event, args: { config: ThunderModelsConfig }) => config.writeModelsConfig(args?.config)
+  );
 
   safeHandle("thunder:chat:listConversations", async () => {
     return getThunderClient().listConversations();

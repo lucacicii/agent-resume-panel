@@ -72,6 +72,9 @@ interface ChatMainProps {
   contextWindowLimit?: number;
   /** Roles offered as slash commands. */
   roles?: ThunderRoleInfo[];
+  /** The composer chip's persistent role selection ("" = auto). */
+  selectedRole?: string | null;
+  onSelectRole?: (roleId: string | null) => void;
   /** Question the agent is blocked on, rendered as a bubble. */
   pendingQuestion?: { questionId: string; taskId: string; questions: ThunderQuestionItem[] } | null;
   onAnswerQuestion?: (answers: Record<string, string> | undefined, cancelled?: boolean) => void | Promise<void>;
@@ -118,6 +121,8 @@ export function ChatMain({
   currentContextTokens,
   contextWindowLimit,
   roles = [],
+  selectedRole = null,
+  onSelectRole,
   pendingQuestion,
   onAnswerQuestion,
   onDismissQuestion
@@ -571,6 +576,8 @@ export function ChatMain({
         currentContextTokens={currentContextTokens}
         contextWindowLimit={contextWindowLimit}
         roles={roles}
+        selectedRole={selectedRole}
+        onSelectRole={onSelectRole}
       />
     </div>
   );
