@@ -31,9 +31,14 @@ describe("createThunderConfigStore roles", () => {
   it("creates the file with every built-in role when none exists", () => {
     const { store } = tempStore();
     const { ensured } = store.ensureBuiltinRoles();
-    expect([...ensured].sort()).toEqual(["architect", "plan", "pm"]);
+    expect([...ensured].sort()).toEqual(["architect", "coder", "plan", "pm"]);
     const records = store.readRolesFile();
-    expect(records.map((r) => String(r.raw.id)).sort()).toEqual(["architect", "plan", "pm"]);
+    expect(records.map((r) => String(r.raw.id)).sort()).toEqual([
+      "architect",
+      "coder",
+      "plan",
+      "pm"
+    ]);
     expect(records.every((r) => r.builtin)).toBe(true);
   });
 
@@ -49,7 +54,7 @@ describe("createThunderConfigStore roles", () => {
     );
 
     const { ensured } = store.ensureBuiltinRoles();
-    expect(ensured.sort()).toEqual(["architect", "pm"]);
+    expect(ensured.sort()).toEqual(["architect", "coder", "pm"]);
 
     const records = store.readRolesFile();
     const plan = records.find((r) => r.raw.id === "plan");
@@ -117,8 +122,8 @@ describe("createThunderConfigStore roles", () => {
     expect(() => store.resetBuiltinRole("nope")).toThrow(/Not a built-in role/);
   });
 
-  it("BUILT_IN_ROLE_IDS covers exactly plan, architect, pm", () => {
-    expect([...BUILT_IN_ROLE_IDS].sort()).toEqual(["architect", "plan", "pm"]);
+  it("BUILT_IN_ROLE_IDS covers exactly plan, architect, coder, pm", () => {
+    expect([...BUILT_IN_ROLE_IDS].sort()).toEqual(["architect", "coder", "plan", "pm"]);
   });
 });
 

@@ -36,8 +36,9 @@ export interface ThunderConfigStore {
  * disables deletion; `resetBuiltinRole` restores the shipped definition.
  *
  * Keep field semantics in sync with thunder's `RoleSpec`
- * (thunder-agent-root/src/roles.rs): permission = capability tier,
- * mode = approval policy, triggers = keyword auto-selection.
+ * (thunder-agent-root/src/roles.rs): permission = capability tier
+ * (read ⊂ write ⊂ bash), mode = approval policy
+ * (never / shell_only / mutations / always), triggers = keyword auto-selection.
  */
 export const BUILT_IN_ROLES: ReadonlyArray<Record<string, unknown>> = [
   {
@@ -55,7 +56,7 @@ export const BUILT_IN_ROLES: ReadonlyArray<Record<string, unknown>> = [
       "4. The plan must state: current-state facts, exact files to touch, risks, and how to verify."
     ],
     permission: "read",
-    mode: "plan",
+    mode: "never",
     askUser: true,
     exitGate: true,
     enabled: true
@@ -78,11 +79,46 @@ export const BUILT_IN_ROLES: ReadonlyArray<Record<string, unknown>> = [
       "6. You have no shell: do not claim a design is verified by building or running it."
     ],
     permission: "write",
-    mode: "accept_edits",
+    mode: "never",
     askUser: true,
     exitGate: false,
     enabled: true,
     triggers: ["架构", "architecture", "设计", "design", "技术方案", "ADR"]
+  },
+  {
+    id: "coder",
+    name: "Coder",
+    aliases: ["dev", "implement"],
+    description:
+      "Implementation: writes and refactors code, then builds and tests it. Full shell access; shell commands ask for approval by default.",
+    persona: [
+      "You are an implementation-focused software engineer. You write the code, not the design docs.",
+      "",
+      "Rules:",
+      "1. Read the surrounding code before editing — match the existing style, naming, and error conventions.",
+      "2. Make the smallest change that fully solves the task; do not refactor beyond the brief.",
+      "3. After every meaningful change, run the project's build and the relevant tests, then report the real result — never claim success without having run it.",
+      "4. When a change touches a public interface, update its call sites in the same turn.",
+      "5. If the task is ambiguous or a decision materially changes the approach, call ask_user_question instead of guessing.",
+      "6. Prefer write_file / edit over shell redirection for source edits so every change stays reviewable."
+    ],
+    permission: "bash",
+    mode: "shell_only",
+    askUser: true,
+    exitGate: false,
+    enabled: true,
+    triggers: [
+      "实现",
+      "编码",
+      "写代码",
+      "开发",
+      "implement",
+      "coding",
+      "refactor",
+      "重构",
+      "fix bug",
+      "修 bug"
+    ]
   },
   {
     id: "pm",
@@ -101,7 +137,7 @@ export const BUILT_IN_ROLES: ReadonlyArray<Record<string, unknown>> = [
       "5. Never modify files and never run shell commands — you have no such tools. Plans and reports go into the conversation."
     ],
     permission: "read",
-    mode: "plan",
+    mode: "never",
     askUser: true,
     exitGate: true,
     enabled: true,
