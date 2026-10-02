@@ -92,6 +92,22 @@ const silent = () => undefined;
 }
 
 {
+  // Unified workspace: cargo outputs to `<repo>/target`, not the crate dir.
+  const checkout = "/checkouts/thunder";
+  const unified = path.join(checkout, "target/release/thunder-daemon");
+  const resolved = resolveThunderBinary({
+    arch: "x64",
+    hostArch: "x64",
+    env: { THUNDER_PATH: checkout },
+    exists: probe([checkout, unified]),
+    runCargo: () => ({ ok: true }),
+    log: silent
+  });
+  assert.equal(resolved.ok, true);
+  assert.equal(resolved.binaryPath, unified);
+}
+
+{
   // Cross build: --target <triple> and the target-scoped binary path.
   const checkout = "/checkouts/thunder";
   const built = path.join(checkout, "thunder-agent-daemon/target/aarch64-apple-darwin/release/thunder-daemon");
