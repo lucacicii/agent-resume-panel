@@ -177,9 +177,16 @@ export function resolveThunderBinary({
     };
   }
 
-  const binaryPath = path.join(crateDir, "target", ...(crossCompile ? [target] : []), "release", THUNDER_DAEMON_BIN);
-  if (!exists(binaryPath)) {
-    return { ok: false, reason: `cargo reported success but ${binaryPath} is missing` };
+  // Unified workspace outputs to `<repo>/target`; legacy per-crate checkouts output
+  // to `<crate>/target`. Probe the unified path first so both layouts work.
+  const targetSeg = crossCompile ? [target] : [];
+  const candidates = [
+    path.join(checkout, "target", ...targetSeg, "release", THUNDER_DAEMON_BIN),
+    path.join(crateDir, "target", ...targetSeg, "release", THUNDER_DAEMON_BIN)
+  ];
+  const binaryPath = candidates.find((candidate) => exists(candidate));
+  if (!binaryPath) {
+    return { ok: false, reason: `cargo reported success but none of these exist: ${candidates.join(", ")}` };
   }
   return { ok: true, binaryPath, source: "cargo-build", target, checkout };
 }
@@ -245,9 +252,14 @@ export function resolveThunderTuiBinary({
     };
   }
 
-  const binaryPath = path.join(checkout, "target", ...(crossCompile ? [target] : []), "release", THUNDER_TUI_BIN);
-  if (!exists(binaryPath)) {
-    return { ok: false, reason: `cargo reported success but ${binaryPath} is missing` };
+  const targetSeg = crossCompile ? [target] : [];
+  const candidates = [
+    path.join(checkout, "target", ...targetSeg, "release", THUNDER_TUI_BIN),
+    path.join(checkout, "thunder-agent-core", "tui", "target", ...targetSeg, "release", THUNDER_TUI_BIN)
+  ];
+  const binaryPath = candidates.find((candidate) => exists(candidate));
+  if (!binaryPath) {
+    return { ok: false, reason: `cargo reported success but none of these exist: ${candidates.join(", ")}` };
   }
   return { ok: true, binaryPath, source: "cargo-build", target, checkout };
 }
