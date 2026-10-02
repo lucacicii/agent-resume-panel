@@ -180,7 +180,51 @@ export function ThunderPane({ draft, setDraft, commit, t }: {
 // ── Roles editor ─────────────────────────────────────────────────────────────
 
 const PERMISSION_OPTIONS = ["read", "write", "bash"] as const;
-const MODE_OPTIONS = ["", "plan", "ask", "accept_edits", "manual", "yolo"] as const;
+const MODE_OPTIONS = ["never", "shell_only", "mutations", "always"] as const;
+
+function getPermissionLabel(perm: string): string {
+  switch (perm) {
+    case "read":
+      return "read · 只读";
+    case "write":
+      return "write · 可写文件";
+    case "bash":
+      return "bash · 完整+Shell";
+    default:
+      return perm;
+  }
+}
+
+function getModeLabel(mode: string): string {
+  switch (mode) {
+    case "":
+    case "never":
+    case "yolo":
+    case "plan":
+      return "never · 无需审批";
+    case "shell_only":
+    case "accept_edits":
+      return "shell_only · 仅Shell审批";
+    case "mutations":
+    case "ask":
+      return "mutations · 改写与Shell审批";
+    case "always":
+    case "manual":
+      return "always · 步步全审批";
+    default:
+      return mode;
+  }
+}
+
+function getAvailableModes(permission: string): readonly string[] {
+  if (permission === "read") {
+    return ["never", "always"];
+  }
+  if (permission === "write") {
+    return ["never", "mutations", "always"];
+  }
+  return ["never", "shell_only", "mutations", "always"];
+}
 
 function personaToText(value: unknown): string {
   if (Array.isArray(value)) return value.map(String).join("\n");
@@ -263,7 +307,7 @@ function RolesSection({ t }: { t: Translate }) {
     setRecords((prev) => [
       ...(prev ?? []),
       {
-        raw: { id, name: "New Role", permission: "write", mode: "ask", enabled: true },
+        raw: { id, name: "New Role", permission: "write", mode: "mutations", enabled: true },
         builtin: false
       }
     ]);
@@ -319,26 +363,46 @@ function RolesSection({ t }: { t: Translate }) {
                       placeholder={t("desktop.settings.thunderRolesName")}
                       onChange={(event) => patchRaw(id, { name: event.target.value })}
                     />
-                    <select
-                      value={String(record.raw.permission ?? "write")}
-                      title={t("desktop.settings.thunderRolesPermission")}
-                      onChange={(event) => patchRaw(id, { permission: event.target.value })}
+                    <label className="tb-role-select-group" title={t("desktop.settings.thunderRolesPermission")}>
+                      <span className="tb-role-select-label">权限</span>
+                      <select
+                        value={String(record.raw.permission ?? "write")}
+                        onChange={(event) => {
+                          const newPerm = event.target.value;
+                          const currentMode = String(record.raw.mode ?? "never");
+                          const validModes = getAvailableModes(newPerm);
+                          const nextMode = validModes.includes(currentMode) ? currentMode : "never";
+                          patchRaw(id, { permission: newPerm, mode: nextMode });
+                        }}
+                      >
+                        {PERMISSION_OPTIONS.map((option) => (
+                          <option key={option} value={option}>
+                            {getPermissionLabel(option)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label
+                      className="tb-role-select-group"
+                      title={
+                        record.raw.permission === "read"
+                          ? "只读角色无写操作与终端命令，自动无需审批直接放行（如需全量审计可切换为 always）。"
+                          : t("desktop.settings.thunderRolesMode")
+                      }
                     >
-                      {PERMISSION_OPTIONS.map((option) => (
-                        <option key={option} value={option}>{option}</option>
-                      ))}
-                    </select>
-                    <select
-                      value={String(record.raw.mode ?? "")}
-                      title={t("desktop.settings.thunderRolesMode")}
-                      onChange={(event) => patchRaw(id, { mode: event.target.value || undefined })}
-                    >
-                      {MODE_OPTIONS.map((option) => (
-                        <option key={option} value={option}>
-                          {option || t("desktop.settings.thunderRolesModeDefault")}
-                        </option>
-                      ))}
-                    </select>
+                      <span className="tb-role-select-label">审批</span>
+                      <select
+                        value={String(record.raw.mode ?? "never")}
+                        onChange={(event) => patchRaw(id, { mode: event.target.value })}
+                      >
+                        {getAvailableModes(String(record.raw.permission ?? "write")).map((option) => (
+                          <option key={option} value={option}>
+                            {getModeLabel(option)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                     <label className="tb-role-toggle">
                       <input
                         type="checkbox"
