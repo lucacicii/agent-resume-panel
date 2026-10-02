@@ -207,6 +207,7 @@ export function registerThunderIpc(): void {
         taskNoteId?: string;
         thinking_level?: string;
         role?: string;
+        attachments?: import("@agent-resume/core").ThunderImageAttachment[];
       }
     ) => {
       const client = getThunderClient();
@@ -282,6 +283,7 @@ export function registerThunderIpc(): void {
           gtdContext,
           thinking_level: args.thinking_level,
           role: args.role,
+          attachments: args.attachments,
           onEvent: (event) => {
             accumulateStreamEvent(snapshot, event);
             for (const win of BrowserWindow.getAllWindows()) {

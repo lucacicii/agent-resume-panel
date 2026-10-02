@@ -6,6 +6,7 @@ import { desktopApi } from "../../bridge";
 import type {
   AgentToolDescriptor,
   SkillDescriptor,
+  ThunderImageAttachment,
   ThunderModelInfo,
   ThunderRoleInfo
 } from "@agent-resume/core";
@@ -34,6 +35,39 @@ export type ChatMentionSuggestion = {
   badge: string;
   gtdStatus?: string;
 };
+
+export interface PendingChatImage {
+  id: string;
+  name: string;
+  mimeType: string;
+  previewUrl: string;
+  path?: string;
+  data?: string;
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("Failed to read file"));
+    reader.readAsDataURL(file);
+  });
+}
+
+function electronPath(file: File): string | undefined {
+  const value = (file as File & { path?: string }).path;
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+const ALLOWED_IMAGE_MIME = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/jpg",
+  "image/webp",
+  "image/gif"
+]);
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_PENDING_IMAGES = 10;
 
 export type ChatPathSuggestion =
   | { kind: "directory"; name: string; relativePath: string }
@@ -207,7 +241,16 @@ export async function compileChatPrompt(
 }
 
 interface ChatComposerProps {
-  onSend: (prompt: string, options?: { workspaceDir?: string; model?: string; thinking_level?: string; role?: string }) => void;
+  onSend: (
+    prompt: string,
+    options?: {
+      workspaceDir?: string;
+      model?: string;
+      thinking_level?: string;
+      role?: string;
+      attachments?: ThunderImageAttachment[];
+    }
+  ) => void;
   onCancel: () => void;
   isStreaming: boolean;
   models: ThunderModelInfo[];
@@ -334,10 +377,153 @@ export function ChatComposer({
   const [directoryError, setDirectoryError] = useState("");
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const workspaceButtonRef = useRef<HTMLButtonElement | null>(null);
   const slashItemRefs = useRef<Array<HTMLLIElement | null>>([]);
   const mentionItemRefs = useRef<Array<HTMLLIElement | null>>([]);
   const directoryItemRefs = useRef<Array<HTMLLIElement | null>>([]);
+
+  const [pendingImages, setPendingImages] = useState<PendingChatImage[]>([]);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+
+  const removePendingImage = useCallback((id: string) => {
+    setPendingImages((prev) => prev.filter((img) => img.id !== id));
+  }, []);
+
+  const handlePaste = useCallback(
+    async (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+      const items = [...(event.clipboardData?.items ?? [])];
+      const imageItems = items.filter((item) => item.type.startsWith("image/"));
+      if (!imageItems.length) return;
+
+      event.preventDefault();
+      const next: PendingChatImage[] = [];
+      let currentCount = pendingImages.length;
+
+      for (const item of imageItems) {
+        if (currentCount >= MAX_PENDING_IMAGES) break;
+        const file = item.getAsFile();
+        if (!file) continue;
+
+        if (file.size > MAX_IMAGE_BYTES) {
+          console.warn(`Image ${file.name} exceeds 5MB limit`);
+          continue;
+        }
+
+        const mimeType = file.type || "image/png";
+        if (!ALLOWED_IMAGE_MIME.has(mimeType.toLowerCase())) continue;
+
+        const dataUrl = await readFileAsDataUrl(file);
+        const data = dataUrl.split(",")[1] || "";
+        const filePath = electronPath(file);
+
+        next.push({
+          id: `img_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          name: file.name || "Pasted Image",
+          mimeType,
+          previewUrl: dataUrl,
+          path: filePath,
+          data
+        });
+        currentCount += 1;
+      }
+
+      if (next.length > 0) {
+        setPendingImages((prev) => [...prev, ...next]);
+      }
+    },
+    [pendingImages.length]
+  );
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    if (e.dataTransfer.types.includes("Files")) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+    }
+  }, []);
+
+  const handleDrop = useCallback(
+    async (e: React.DragEvent) => {
+      const files = Array.from(e.dataTransfer.files || []);
+      const imageFiles = files.filter(
+        (f) => f.type.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(f.name)
+      );
+      if (!imageFiles.length) return;
+
+      e.preventDefault();
+      const next: PendingChatImage[] = [];
+      let currentCount = pendingImages.length;
+
+      for (const file of imageFiles) {
+        if (currentCount >= MAX_PENDING_IMAGES) break;
+        if (file.size > MAX_IMAGE_BYTES) {
+          console.warn(`Image ${file.name} exceeds 5MB limit`);
+          continue;
+        }
+        const mimeType = file.type || "image/png";
+        if (file.type && !ALLOWED_IMAGE_MIME.has(mimeType.toLowerCase())) continue;
+
+        const dataUrl = await readFileAsDataUrl(file);
+        const data = dataUrl.split(",")[1] || "";
+        const filePath = electronPath(file);
+
+        next.push({
+          id: `img_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          name: file.name,
+          mimeType,
+          previewUrl: dataUrl,
+          path: filePath,
+          data
+        });
+        currentCount += 1;
+      }
+
+      if (next.length > 0) {
+        setPendingImages((prev) => [...prev, ...next]);
+      }
+    },
+    [pendingImages.length]
+  );
+
+  const handleFileInputChange = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(e.target.files || []);
+      if (!files.length) return;
+
+      const next: PendingChatImage[] = [];
+      let currentCount = pendingImages.length;
+
+      for (const file of files) {
+        if (currentCount >= MAX_PENDING_IMAGES) break;
+        if (file.size > MAX_IMAGE_BYTES) {
+          console.warn(`Image ${file.name} exceeds 5MB limit`);
+          continue;
+        }
+        const mimeType = file.type || "image/png";
+        if (file.type && !ALLOWED_IMAGE_MIME.has(mimeType.toLowerCase())) continue;
+
+        const dataUrl = await readFileAsDataUrl(file);
+        const data = dataUrl.split(",")[1] || "";
+        const filePath = electronPath(file);
+
+        next.push({
+          id: `img_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          name: file.name,
+          mimeType,
+          previewUrl: dataUrl,
+          path: filePath,
+          data
+        });
+        currentCount += 1;
+      }
+
+      if (next.length > 0) {
+        setPendingImages((prev) => [...prev, ...next]);
+      }
+      e.target.value = "";
+    },
+    [pendingImages.length]
+  );
 
   const loadTasks = useCallback(async () => {
     if (typeof desktopApi().notesListTasks !== "function") return;
@@ -807,13 +993,20 @@ export function ChatComposer({
       return;
     }
     const currentText = text.trim();
-    if (!currentText) return;
+    if (!currentText && pendingImages.length === 0) return;
 
     setText("");
     const mentionsToCompile = [...referencedMentions];
     const filesToCompile = [...referencedFiles];
+    const attachmentsToSend: ThunderImageAttachment[] = pendingImages.map((img) => ({
+      name: img.name,
+      mimeType: img.mimeType,
+      path: img.path,
+      data: img.data
+    }));
     setReferencedMentions([]);
     setReferencedFiles([]);
+    setPendingImages([]);
 
     try {
       const effectivePrompt = await compileChatPrompt(currentText, {
@@ -823,22 +1016,24 @@ export function ChatComposer({
         referencedMentions: mentionsToCompile,
         referencedFiles: filesToCompile
       });
-      onSend(effectivePrompt, {
+      onSend(effectivePrompt || "Please analyze the attached image.", {
         workspaceDir,
         model: selectedModel,
         thinking_level: thinkingLevel,
         // A leading `/id` is a one-shot pick and overrides the chip for this
         // send; the chip selection persists across sends until switched.
-        role: activeRole?.id ?? (selectedRole || undefined)
+        role: activeRole?.id ?? (selectedRole || undefined),
+        attachments: attachmentsToSend.length > 0 ? attachmentsToSend : undefined
       });
     } catch (err) {
       console.warn("Failed to compile prompt context:", err);
-      onSend(currentText, {
-      workspaceDir,
-      model: selectedModel,
-      thinking_level: thinkingLevel,
-      role: activeRole?.id ?? (selectedRole || undefined)
-    });
+      onSend(currentText || "Please analyze the attached image.", {
+        workspaceDir,
+        model: selectedModel,
+        thinking_level: thinkingLevel,
+        role: activeRole?.id ?? (selectedRole || undefined),
+        attachments: attachmentsToSend.length > 0 ? attachmentsToSend : undefined
+      });
     }
   };
 
@@ -941,7 +1136,7 @@ export function ChatComposer({
       if (isStreaming) {
         return;
       }
-      if (text.trim()) {
+      if (text.trim() || pendingImages.length > 0) {
         void doSend();
       }
     }
@@ -950,7 +1145,7 @@ export function ChatComposer({
   const handleSendClick = () => {
     if (isStreaming) {
       onCancel();
-    } else if (text.trim()) {
+    } else if (text.trim() || pendingImages.length > 0) {
       void doSend();
     }
   };
@@ -1156,14 +1351,44 @@ export function ChatComposer({
     : null;
 
   return (
-    <div className="tb-composer-wrapper">
+    <div
+      className="tb-composer-wrapper"
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
       {docked ?? null}
       <div className={`tb-composer-box${isStreaming ? " is-active" : ""}`}>
+        {pendingImages.length > 0 && (
+          <div className="wb-terminal-composer-pending-images" aria-label="Attached images">
+            {pendingImages.map((img) => (
+              <div className="wb-terminal-composer-pending-image" key={img.id}>
+                <button
+                  type="button"
+                  className="wb-terminal-composer-pending-image-open"
+                  title={img.name}
+                  onClick={() => setImagePreview(img.previewUrl)}
+                >
+                  <img src={img.previewUrl} alt={img.name} />
+                </button>
+                <button
+                  type="button"
+                  className="wb-terminal-composer-pending-image-remove"
+                  title="Remove image"
+                  aria-label="Remove image"
+                  onClick={() => removePendingImage(img.id)}
+                >
+                  <ThemeIcon name="close" size={ICON_SIZE.inline} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="tb-composer-input-area">
           <textarea
             ref={textareaRef}
             className="tb-composer-textarea"
             value={text}
+            onPaste={handlePaste}
             onChange={(e) => {
               const next = e.target.value;
               setText(next);
@@ -1456,6 +1681,28 @@ export function ChatComposer({
 
         <div className="tb-composer-toolbar">
           <div className="tb-composer-tools-left">
+            {/* Hidden image file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
+              multiple
+              style={{ display: "none" }}
+              onChange={handleFileInputChange}
+            />
+
+            {/* Attach Image Button */}
+            <button
+              type="button"
+              className="tb-composer-chip"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isStreaming}
+              title="Attach images (PNG, JPEG, WebP, GIF)"
+              aria-label="Attach images"
+            >
+              <ThemeIcon name="paperclip" size={ICON_SIZE.inline} />
+            </button>
+
             {/* Model Selector Chip */}
             <div className="tb-composer-chip">
               <ThemeIcon name="bot" size={ICON_SIZE.inline} />
@@ -1530,9 +1777,9 @@ export function ChatComposer({
           <div className="tb-composer-tools-right">
             <button
               type="button"
-              className={`tb-composer-action-btn${isStreaming ? " is-stop" : ""}${!isStreaming && !text.trim() ? " is-disabled" : ""}`}
+              className={`tb-composer-action-btn${isStreaming ? " is-stop" : ""}${!isStreaming && !text.trim() && pendingImages.length === 0 ? " is-disabled" : ""}`}
               onClick={handleSendClick}
-              disabled={!isStreaming && !text.trim()}
+              disabled={!isStreaming && !text.trim() && pendingImages.length === 0}
               aria-label={isStreaming ? "Stop task" : "Send message"}
               title={isStreaming ? "Stop task" : "Send (Enter)"}
             >
@@ -1545,6 +1792,25 @@ export function ChatComposer({
           </div>
         </div>
       </div>
+
+      {imagePreview ? (
+        <div
+          className="notes-image-preview"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setImagePreview(null)}
+        >
+          <img src={imagePreview} alt="" />
+          <button
+            type="button"
+            className="notes-image-preview-close"
+            aria-label="Close"
+            onClick={() => setImagePreview(null)}
+          >
+            <ThemeIcon name="close" size={ICON_SIZE.default} />
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -619,3 +619,83 @@ describe("ChatComposer role chip and Shift+Tab cycling", () => {
     expect((chip() as HTMLButtonElement).disabled).toBe(true);
   });
 });
+
+describe("ChatComposer image attachments", () => {
+  const defaultProps = {
+    onSend: vi.fn(),
+    onCancel: vi.fn(),
+    isStreaming: false,
+    models: [{ id: "mock-1", name: "Mock Model", selection_id: "mock-1", provider: "mock", available: true }],
+    selectedModel: "mock-1",
+    onSelectModel: vi.fn(),
+    thinkingLevel: "off",
+    onSelectThinkingLevel: vi.fn(),
+    workspaceDir: "/test/workspace",
+    onSelectWorkspaceDir: vi.fn(),
+  };
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("attaches pasted image and sends it with prompt", async () => {
+    const onSend = vi.fn();
+    render(<ChatComposer {...defaultProps} onSend={onSend} />);
+    const textarea = screen.getByPlaceholderText(/Ask Thunder agent anything/i);
+
+    const file = new File([new Uint8Array([137, 80, 78, 71])], "test.png", { type: "image/png" });
+    const clipboardData = {
+      items: [
+        {
+          type: "image/png",
+          getAsFile: () => file
+        }
+      ]
+    };
+
+    fireEvent.paste(textarea, { clipboardData });
+
+    await waitFor(() => {
+      expect(document.querySelector(".wb-terminal-composer-pending-image")).toBeTruthy();
+    });
+
+    // Send button should be enabled even with empty text
+    const sendBtn = screen.getByRole("button", { name: /Send message/i });
+    expect((sendBtn as HTMLButtonElement).disabled).toBe(false);
+
+    // Type prompt and send
+    fireEvent.change(textarea, { target: { value: "Analyze this image" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    await waitFor(() => expect(onSend).toHaveBeenCalled());
+    expect(onSend.mock.calls[0][0]).toContain("Analyze this image");
+    expect(onSend.mock.calls[0][1]?.attachments).toHaveLength(1);
+    expect(onSend.mock.calls[0][1]?.attachments[0]?.name).toBe("test.png");
+    expect(onSend.mock.calls[0][1]?.attachments[0]?.mimeType).toBe("image/png");
+
+    // After send, pending images should be cleared
+    expect(document.querySelector(".wb-terminal-composer-pending-image")).toBeNull();
+  });
+
+  it("removes attached image when remove button is clicked", async () => {
+    render(<ChatComposer {...defaultProps} />);
+    const textarea = screen.getByPlaceholderText(/Ask Thunder agent anything/i);
+
+    const file = new File([new Uint8Array([137, 80, 78, 71])], "remove-me.png", { type: "image/png" });
+    fireEvent.paste(textarea, {
+      clipboardData: {
+        items: [{ type: "image/png", getAsFile: () => file }]
+      }
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector(".wb-terminal-composer-pending-image")).toBeTruthy();
+    });
+
+    const removeBtn = screen.getByRole("button", { name: /Remove image/i });
+    fireEvent.click(removeBtn);
+
+    expect(document.querySelector(".wb-terminal-composer-pending-image")).toBeNull();
+  });
+});
+

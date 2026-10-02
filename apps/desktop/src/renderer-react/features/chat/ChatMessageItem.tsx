@@ -45,6 +45,7 @@ export function ChatMessageItem({
   translatingLabel = "Translating…"
 }: ChatMessageItemProps) {
   const [copied, setCopied] = useState(false);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const isUser = message.role === "user";
 
   const handleCopy = async () => {
@@ -112,6 +113,35 @@ export function ChatMessageItem({
 
         {/* Message Content */}
         <div className="tb-message-bubble">
+          {isUser && message.parts && message.parts.some((p) => p.type === "image") && (
+            <div className="wb-terminal-composer-pending-images tb-message-images">
+              {message.parts
+                .filter((p) => p.type === "image")
+                .map((p, idx) => {
+                  if (p.type !== "image") return null;
+                  const src = p.data
+                    ? p.data.startsWith("data:")
+                      ? p.data
+                      : `data:${p.mimeType};base64,${p.data}`
+                    : p.path
+                      ? `file://${p.path}`
+                      : "";
+                  if (!src) return null;
+                  return (
+                    <div className="wb-terminal-composer-pending-image" key={`img_${idx}`}>
+                      <button
+                        type="button"
+                        className="wb-terminal-composer-pending-image-open"
+                        onClick={() => setImagePreview(src)}
+                        title={p.name || "Attached image"}
+                      >
+                        <img src={src} alt={p.name || ""} />
+                      </button>
+                    </div>
+                  );
+                })}
+            </div>
+          )}
           {message.content ? (
             <StreamdownRenderer
               content={displayText ?? message.content}
@@ -228,6 +258,25 @@ export function ChatMessageItem({
           </div>
         )}
       </div>
+
+      {imagePreview ? (
+        <div
+          className="notes-image-preview"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setImagePreview(null)}
+        >
+          <img src={imagePreview} alt="" />
+          <button
+            type="button"
+            className="notes-image-preview-close"
+            aria-label="Close"
+            onClick={() => setImagePreview(null)}
+          >
+            <ThemeIcon name="close" size={ICON_SIZE.default} />
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -51,7 +51,13 @@ interface ChatMainProps {
   isWorkspaceLocked?: boolean;
   onSendMessage: (
     prompt: string,
-    options?: { workspaceDir?: string; model?: string; thinking_level?: string; role?: string }
+    options?: {
+      workspaceDir?: string;
+      model?: string;
+      thinking_level?: string;
+      role?: string;
+      attachments?: import("@agent-resume/core").ThunderImageAttachment[];
+    }
   ) => void;
   onCancelTask: () => void;
   onNewSession: () => void;

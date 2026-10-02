@@ -11,6 +11,7 @@ import type {
   ThunderAgentStats,
   ThunderQuestionItem,
   ThunderRoleInfo,
+  ThunderImageAttachment,
   ThunderActiveStreamSnapshot
 } from "@agent-resume/core";
 import { useTraceCollector } from "./useTraceCollector";
@@ -707,7 +708,13 @@ export function useThunderChat() {
   const sendMessage = useCallback(
     async (
       prompt: string,
-      options?: { model?: string; workspaceDir?: string; thinking_level?: string; role?: string }
+      options?: {
+        model?: string;
+        workspaceDir?: string;
+        thinking_level?: string;
+        role?: string;
+        attachments?: ThunderImageAttachment[];
+      }
     ) => {
       const trimmed = prompt.trim();
       if (!trimmed) return;
@@ -721,9 +728,23 @@ export function useThunderChat() {
       // Prevent starting duplicate tasks in the same session while it is streaming
       if (activeStreamsRef.current.has(effectiveSessionId)) return;
 
+      const parts = options?.attachments?.length
+        ? [
+            { type: "text" as const, text: trimmed },
+            ...options.attachments.map((att) => ({
+              type: "image" as const,
+              mimeType: att.mimeType || "image/png",
+              data: att.data,
+              path: att.path,
+              name: att.name
+            }))
+          ]
+        : undefined;
+
       const userMsg: ThunderChatMessage = {
         role: "user",
-        content: trimmed
+        content: trimmed,
+        parts
       };
 
       setMessages((prev) => [...prev, userMsg]);
@@ -791,7 +812,8 @@ export function useThunderChat() {
           workspaceDir: ws,
           taskNoteId: effectiveTaskNoteId,
           thinking_level: thinking,
-          role: options?.role
+          role: options?.role,
+          attachments: options?.attachments
         });
 
         // Task finalized via IPC invoke return
@@ -860,8 +882,24 @@ export function useThunderChat() {
         }
       }
 
+      // Extract attachments from the user message if it had any
+      const attachments: ThunderImageAttachment[] = [];
+      for (const p of targetMsg.parts || []) {
+        if (p.type === "image") {
+          attachments.push({
+            mimeType: p.mimeType,
+            data: p.data,
+            path: p.path,
+            name: p.name
+          });
+        }
+      }
+
       // Re-send the prompt
-      await sendMessage(prompt, options);
+      await sendMessage(prompt, {
+        ...options,
+        attachments: attachments.length > 0 ? attachments : undefined
+      });
     },
     [activeSessionId, isStreaming, messages, sendMessage]
   );
@@ -881,7 +919,19 @@ export function useThunderChat() {
 
       if (userIndex === -1) return;
 
-      const prompt = messages[userIndex].content!;
+      const targetUser = messages[userIndex];
+      const prompt = targetUser.content!;
+      const attachments: ThunderImageAttachment[] = [];
+      for (const p of targetUser.parts || []) {
+        if (p.type === "image") {
+          attachments.push({
+            mimeType: p.mimeType,
+            data: p.data,
+            path: p.path,
+            name: p.name
+          });
+        }
+      }
 
       // Truncate in-memory messages to before this user turn
       setMessages((prev) => prev.slice(0, userIndex));
@@ -899,7 +949,10 @@ export function useThunderChat() {
       }
 
       // Re-send the prompt
-      await sendMessage(prompt, options);
+      await sendMessage(prompt, {
+        ...options,
+        attachments: attachments.length > 0 ? attachments : undefined
+      });
     },
     [activeSessionId, isStreaming, messages, sendMessage]
   );

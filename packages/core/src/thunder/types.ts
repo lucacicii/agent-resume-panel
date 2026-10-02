@@ -85,6 +85,7 @@ export interface ThunderModelInfo {
   selection_id: string;
   available: boolean;
   reasoning?: boolean;
+  input?: string[];
   thinking_levels?: string[];
   default_thinking_level?: string;
   context_window?: number;
@@ -271,9 +272,29 @@ export interface ThunderToolExecutionRecord {
   isError?: boolean;
 }
 
+export type ThunderContentPart =
+  | { type: "text"; text: string }
+  | {
+      type: "image";
+      mimeType: string;
+      data?: string;
+      path?: string;
+      sha256?: string;
+      name?: string;
+    };
+
+export interface ThunderImageAttachment {
+  mimeType?: string;
+  name?: string;
+  data?: string;
+  path?: string;
+  sizeBytes?: number;
+}
+
 export interface ThunderChatMessage {
   role: "system" | "user" | "assistant" | "tool";
   content?: string | null;
+  parts?: ThunderContentPart[];
   name?: string;
   tool_calls?: ThunderToolCall[];
   tool_call_id?: string;
@@ -367,6 +388,8 @@ export interface ThunderChatTaskOptions {
   workspaceDir?: string;
   taskNoteId?: string;
   thinking_level?: string;
+  role?: string;
+  attachments?: ThunderImageAttachment[];
 }
 
 export interface ThunderChatTaskResult {

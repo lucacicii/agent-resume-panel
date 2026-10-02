@@ -20,6 +20,7 @@ import type {
   ThunderObservedEvent,
   ThunderConversationSummary,
   ThunderConversation,
+  ThunderImageAttachment,
   ThunderTaskTrace,
   ThunderTitleResult
 } from "./thunderProtocol";
@@ -717,6 +718,7 @@ export class ThunderClient {
     thinking_level?: string;
     /** Role id to activate host-side (enforces permission). */
     role?: string;
+    attachments?: ThunderImageAttachment[];
     onEvent?: (event: ThunderObservedEvent) => void;
   }): Promise<{ finalContent?: string; finishReason: string; activePlugins?: string[] }> {
     await this.ensureRunning();
@@ -769,7 +771,11 @@ export class ThunderClient {
               model: options.model,
               thinking_level: options.thinking_level,
               session_id: options.sessionId,
-              role: options.role
+              role: options.role,
+              attachments:
+                options.attachments && options.attachments.length > 0
+                  ? options.attachments
+                  : undefined
             },
             30_000
           );

@@ -2,6 +2,8 @@ export type {
   ThunderConversationSummary,
   ThunderConversation,
   ThunderChatMessage,
+  ThunderContentPart,
+  ThunderImageAttachment,
   ThunderToolExecutionRecord,
   ThunderChatStreamPayload,
   ThunderChatTaskOptions,

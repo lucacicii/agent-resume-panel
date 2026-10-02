@@ -998,6 +998,8 @@ export type {
   ThunderToolCallFunction,
   ThunderToolCall,
   ThunderToolExecutionRecord,
+  ThunderContentPart,
+  ThunderImageAttachment,
   ThunderChatMessage,
   ThunderConversationSummary,
   ThunderConversation,

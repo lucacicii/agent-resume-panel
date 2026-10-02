@@ -31,6 +31,7 @@ import type {
   ThunderChatStreamPayload,
   ThunderChatTaskOptions,
   ThunderChatTaskResult,
+  ThunderImageAttachment,
   ThunderTaskTrace,
   ThunderTitleResult
 } from "../main/thunder/thunderProtocol";
@@ -1570,6 +1571,7 @@ export interface DesktopApi {
     thinking_level?: string;
     /** Role id; the host enforces its permission tier. */
     role?: string;
+    attachments?: ThunderImageAttachment[];
   }): Promise<ThunderChatTaskResult>;
   thunderChatCancelTask(args: { taskId: string }): Promise<boolean>;
   /** Answer a pending ask_user_question bubble. */
