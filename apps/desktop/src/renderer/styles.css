@@ -8779,6 +8779,20 @@ button.wb-pane-tab-group-label.is-busy {
   display: none !important;
 }
 
+/* Thunder visual chat reuses the board chat (`tb-chat-main`) inside a workbench
+   pane; the wrapper only supplies the flex box and hidden handling. */
+.wb-thunder-chat {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-top: 0.5px solid var(--color-separator);
+}
+
+.wb-thunder-chat[hidden] {
+  display: none !important;
+}
+
 .wb-acp-header {
   flex: 0 0 auto;
   display: flex;

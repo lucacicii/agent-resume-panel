@@ -9,7 +9,9 @@ import { ensureSpawnHelpersExecutable } from "./fix-node-pty.mjs";
 import {
   assertBundledDaemon,
   bundledDaemonPath,
+  bundledTuiPath,
   stageThunderSidecar,
+  stageThunderTui,
   thunderResourcePaths
 } from "./thunder-sidecar.mjs";
 
@@ -112,19 +114,21 @@ function signMacApp(appBundle) {
  * rejects, and a real identity also wants hardened runtime + a secure timestamp.
  */
 function signEmbeddedThunder(appBundle) {
-  const binary = bundledDaemonPath(appBundle);
-  if (!fs.existsSync(binary)) return;
+  const binaries = [bundledDaemonPath(appBundle), bundledTuiPath(appBundle)].filter((binary) => fs.existsSync(binary));
+  if (!binaries.length) return;
   const identity = process.env.AGENT_RESUME_CODESIGN_IDENTITY || "-";
   const adHoc = identity === "-";
-  const args = [
-    "--force",
-    "--sign",
-    identity,
-    ...(adHoc ? [] : ["--options", "runtime", "--timestamp"]),
-    binary
-  ];
-  console.log(`Signing bundled Thunder daemon (${adHoc ? "ad-hoc" : identity})`);
-  execFileSync("codesign", args, { cwd: root, stdio: "inherit" });
+  for (const binary of binaries) {
+    const args = [
+      "--force",
+      "--sign",
+      identity,
+      ...(adHoc ? [] : ["--options", "runtime", "--timestamp"]),
+      binary
+    ];
+    console.log(`Signing bundled Thunder binary ${path.basename(binary)} (${adHoc ? "ad-hoc" : identity})`);
+    execFileSync("codesign", args, { cwd: root, stdio: "inherit" });
+  }
 }
 
 function installedElectronVersion() {
@@ -339,9 +343,12 @@ export async function packMacApp(arch, { bundleThunder = false } = {}) {
   }
   // Release builds embed the Thunder daemon; `dev:mac` deliberately does not, so a
   // developer's live checkout is never shadowed by a stale packaged copy.
+  const requireThunder = process.env.AGENT_RESUME_REQUIRE_THUNDER === "1";
   const sidecar = bundleThunder
-    ? stageThunderSidecar(arch, { require: process.env.AGENT_RESUME_REQUIRE_THUNDER === "1" })
+    ? stageThunderSidecar(arch, { require: requireThunder })
     : null;
+  // The TUI ships beside the daemon so `cli:thunder` works in a packaged app.
+  if (sidecar?.ok) stageThunderTui(arch, { require: requireThunder });
   deployDesktop();
   const electronZipDir = await ensureElectronZipDir(arch);
   console.log(`Packaging macOS ${arch} .app...`);
@@ -364,7 +371,7 @@ export async function packMacApp(arch, { bundleThunder = false } = {}) {
       asar: {
         unpackDir: "node_modules/node-pty"
       },
-      // Lands at Contents/Resources/thunder/bin/thunder-daemon.
+      // Lands at Contents/Resources/thunder/bin/{thunder-daemon,thunder-tui}.
       ...(thunderResourcePaths(sidecar).length ? { extraResource: thunderResourcePaths(sidecar) } : {}),
       prune: false
     })

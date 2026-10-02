@@ -35,18 +35,22 @@ export type ThunderDaemonSource =
 export interface ThunderDaemonLocation {
   /** Thunder workspace root, when one was identified (informational: UI + logs). */
   repoPath: string | null;
-  /** Ready-to-spawn `thunder-daemon` binary, if one was found. */
+  /** Ready-to-spawn binary (thunder-daemon / thunder-tui), if one was found. */
   binaryPath: string | null;
-  /** Fallback `daemon.sh` (builds on demand via cargo) when no binary exists. */
+  /** Fallback build script (daemon.sh / run.sh) when no binary exists. */
   scriptPath: string | null;
   source: ThunderDaemonSource;
   /** Every path probed, in order, so "why didn't it find my build?" is answerable. */
   candidates: string[];
+  /** Binary this location describes; drives the diagnostic wording. */
+  binaryName: string;
 }
 
 export interface ThunderDaemonSettings {
   repoPath?: string;
   daemonPath?: string;
+  /** Explicit `thunder-tui` binary for the TUI new-session target. */
+  tuiPath?: string;
 }
 
 export interface ResolveThunderDaemonOptions {
@@ -75,7 +79,18 @@ const REPO_BINARY_RELATIVE_PATHS = [
   "thunder-daemon"
 ];
 
+/** TUI binary paths. The TUI crate nests under `thunder-agent-core/tui` in the monorepo. */
+const REPO_TUI_BINARY_RELATIVE_PATHS = [
+  path.join("target", "release", "thunder-tui"),
+  path.join("target", "debug", "thunder-tui"),
+  path.join("thunder-agent-core", "tui", "target", "release", "thunder-tui"),
+  path.join("thunder-agent-core", "tui", "target", "debug", "thunder-tui"),
+  path.join("bin", "thunder-tui"),
+  "thunder-tui"
+];
+
 const REPO_SCRIPT_RELATIVE_PATH = "daemon.sh";
+const REPO_TUI_SCRIPT_RELATIVE_PATH = "run.sh";
 
 /** Subdirectories of a packaged app's `Resources/` that may hold a bundled daemon. */
 const BUNDLED_RESOURCE_DIRS = [path.join("thunder", "bin"), "thunder"];
@@ -102,16 +117,45 @@ interface DaemonInRepo {
   scriptPath: string | null;
 }
 
-function daemonInRepo(repo: string, exists: (p: string) => boolean): DaemonInRepo | null {
-  for (const relative of REPO_BINARY_RELATIVE_PATHS) {
+/** Which Thunder binary a resolution targets, plus its on-disk layout. */
+interface ThunderBinarySpec {
+  binaryName: string;
+  binaryRelativePaths: string[];
+  scriptRelativePath: string;
+  envBinVar: string;
+  settingsBinKey: "daemonPath" | "tuiPath";
+}
+
+const DAEMON_SPEC: ThunderBinarySpec = {
+  binaryName: "thunder-daemon",
+  binaryRelativePaths: REPO_BINARY_RELATIVE_PATHS,
+  scriptRelativePath: REPO_SCRIPT_RELATIVE_PATH,
+  envBinVar: "THUNDER_DAEMON_BIN",
+  settingsBinKey: "daemonPath"
+};
+
+const TUI_SPEC: ThunderBinarySpec = {
+  binaryName: "thunder-tui",
+  binaryRelativePaths: REPO_TUI_BINARY_RELATIVE_PATHS,
+  scriptRelativePath: REPO_TUI_SCRIPT_RELATIVE_PATH,
+  envBinVar: "THUNDER_TUI_BIN",
+  settingsBinKey: "tuiPath"
+};
+
+function binaryInRepo(
+  repo: string,
+  exists: (p: string) => boolean,
+  spec: ThunderBinarySpec
+): DaemonInRepo | null {
+  for (const relative of spec.binaryRelativePaths) {
     const binaryPath = path.join(repo, relative);
     if (exists(binaryPath)) {
-      const scriptPath = path.join(repo, REPO_SCRIPT_RELATIVE_PATH);
+      const scriptPath = path.join(repo, spec.scriptRelativePath);
       return { binaryPath, scriptPath: exists(scriptPath) ? scriptPath : null };
     }
   }
 
-  const scriptPath = path.join(repo, REPO_SCRIPT_RELATIVE_PATH);
+  const scriptPath = path.join(repo, spec.scriptRelativePath);
   if (exists(scriptPath)) {
     return { binaryPath: null, scriptPath };
   }
@@ -127,20 +171,27 @@ function daemonInRepo(repo: string, exists: (p: string) => boolean): DaemonInRep
  */
 export function repoRootForBinary(binaryPath: string): string {
   const parts = path.normalize(binaryPath).split(path.sep);
+  const name = parts.at(-1);
   const isCargoTarget =
-    parts.at(-1) === "thunder-daemon" &&
+    (name === "thunder-daemon" || name === "thunder-tui") &&
     parts.at(-3) === "target" &&
     (parts.at(-2) === "release" || parts.at(-2) === "debug");
   if (isCargoTarget) {
     // Legacy layout nests the crate dir; unified layout has the repo directly above `target`.
-    const cut = parts.at(-4) === "thunder-agent-daemon" ? -4 : -3;
-    return parts.slice(0, cut).join(path.sep) || path.sep;
+    const crateDir = parts.at(-4);
+    if (crateDir === "thunder-agent-daemon") return parts.slice(0, -4).join(path.sep) || path.sep;
+    if (crateDir === "tui") return parts.slice(0, -5).join(path.sep) || path.sep;
+    return parts.slice(0, -3).join(path.sep) || path.sep;
   }
   return path.dirname(binaryPath);
 }
 
-function scriptNextToBinary(binaryPath: string, exists: (p: string) => boolean): string | null {
-  const scriptPath = path.join(repoRootForBinary(binaryPath), REPO_SCRIPT_RELATIVE_PATH);
+function scriptNextToBinary(
+  binaryPath: string,
+  exists: (p: string) => boolean,
+  spec: ThunderBinarySpec
+): string | null {
+  const scriptPath = path.join(repoRootForBinary(binaryPath), spec.scriptRelativePath);
   return exists(scriptPath) ? scriptPath : null;
 }
 
@@ -148,7 +199,10 @@ function scriptNextToBinary(binaryPath: string, exists: (p: string) => boolean):
  * Resolve the daemon location from highest- to lowest-priority rule:
  * explicit binary → explicit repo → bundled → dev sibling → cwd → `$HOME` guesses.
  */
-export function resolveThunderDaemon(options: ResolveThunderDaemonOptions = {}): ThunderDaemonLocation {
+function resolveThunderBinary(
+  spec: ThunderBinarySpec,
+  options: ResolveThunderDaemonOptions = {}
+): ThunderDaemonLocation {
   const env = options.env ?? process.env;
   const exists = options.exists ?? fs.existsSync;
   const homedir = options.homedir ?? os.homedir();
@@ -170,20 +224,21 @@ export function resolveThunderDaemon(options: ResolveThunderDaemonOptions = {}):
     binaryPath: found.binaryPath,
     scriptPath: found.scriptPath,
     source,
-    candidates
+    candidates,
+    binaryName: spec.binaryName
   });
 
   // 1. Explicit binaries beat any layout guessing.
   const explicitBinaries: Array<{ value: string | undefined; source: ThunderDaemonSource }> = [
-    { value: env.THUNDER_DAEMON_BIN?.trim(), source: "env-daemon-bin" },
-    { value: options.settings?.daemonPath?.trim(), source: "settings-daemon-path" }
+    { value: env[spec.envBinVar]?.trim(), source: "env-daemon-bin" },
+    { value: options.settings?.[spec.settingsBinKey]?.trim(), source: "settings-daemon-path" }
   ];
   for (const { value, source } of explicitBinaries) {
     if (!value) continue;
     if (probe(value)) {
       return build(source, repoRootForBinary(value), {
         binaryPath: value,
-        scriptPath: scriptNextToBinary(value, exists)
+        scriptPath: scriptNextToBinary(value, exists, spec)
       });
     }
   }
@@ -214,12 +269,12 @@ export function resolveThunderDaemon(options: ResolveThunderDaemonOptions = {}):
     pushRepo(path.join(homedir, relative), "local-checkout");
   }
 
-  // A directory that exists but holds neither binary nor daemon.sh is only a last
-  // resort: keep scanning so a runnable copy later in the list still wins.
+  // A directory that exists but holds neither binary nor the build script is only
+  // a last resort: keep scanning so a runnable copy later in the list still wins.
   let emptyRepo: string | null = null;
   for (const { dir, source } of repos) {
     if (!probe(dir)) continue;
-    const found = daemonInRepo(dir, exists);
+    const found = binaryInRepo(dir, exists, spec);
     if (found) return build(source, dir, found);
     emptyRepo = emptyRepo ?? dir;
   }
@@ -229,17 +284,35 @@ export function resolveThunderDaemon(options: ResolveThunderDaemonOptions = {}):
     binaryPath: null,
     scriptPath: null,
     source: "none",
-    candidates
+    candidates,
+    binaryName: spec.binaryName
   };
+}
+
+/**
+ * Locate the Thunder daemon binary (`thunder-daemon`).
+ * Rules: explicit bin → explicit repo → bundled → dev sibling → cwd → `$HOME` guesses.
+ */
+export function resolveThunderDaemon(options: ResolveThunderDaemonOptions = {}): ThunderDaemonLocation {
+  return resolveThunderBinary(DAEMON_SPEC, options);
+}
+
+/**
+ * Locate the Thunder TUI binary (`thunder-tui`) with the same discovery rules, so a
+ * checkout that runs the daemon can also run the interactive terminal client.
+ */
+export function resolveThunderTui(options: ResolveThunderDaemonOptions = {}): ThunderDaemonLocation {
+  return resolveThunderBinary(TUI_SPEC, options);
 }
 
 /** One-line diagnostic for logs / error messages. */
 export function describeThunderResolution(location: ThunderDaemonLocation): string {
+  const name = location.binaryName || "thunder-daemon";
   if (location.binaryPath || location.scriptPath) {
-    return `source=${location.source} daemon=${location.binaryPath || location.scriptPath} repo=${location.repoPath ?? "-"}`;
+    return `source=${location.source} ${name}=${location.binaryPath || location.scriptPath} repo=${location.repoPath ?? "-"}`;
   }
   if (location.repoPath) {
-    return `source=none repo=${location.repoPath} (no thunder-daemon binary or daemon.sh inside)`;
+    return `source=none repo=${location.repoPath} (no ${name} binary or build script inside)`;
   }
   return `source=none probed=${location.candidates.length} paths: ${location.candidates.join(", ")}`;
 }

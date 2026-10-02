@@ -227,7 +227,12 @@ export interface WorkbenchDraft {
   acpExperimentalGrokVendorUi: boolean;
 }
 
-export const WORKBENCH_NEW_SESSION_TARGET_OPTIONS: Array<{ value: string; group: "cli" | "acp" }> = [
+export type WorkbenchNewSessionTargetGroup = "cli" | "acp" | "thunder";
+
+export const WORKBENCH_NEW_SESSION_TARGET_OPTIONS: Array<{
+  value: string;
+  group: WorkbenchNewSessionTargetGroup;
+}> = [
   { value: "cli:codex", group: "cli" },
   { value: "cli:claude", group: "cli" },
   { value: "cli:grok", group: "cli" },
@@ -236,12 +241,14 @@ export const WORKBENCH_NEW_SESSION_TARGET_OPTIONS: Array<{ value: string; group:
   { value: "cli:pi", group: "cli" },
   { value: "cli:prime", group: "cli" },
   { value: "cli:cursor", group: "cli" },
+  { value: "cli:thunder", group: "cli" },
   { value: "acp:claude", group: "acp" },
   { value: "acp:codex", group: "acp" },
   { value: "acp:grok", group: "acp" },
   { value: "acp:opencode", group: "acp" },
   { value: "acp:pi", group: "acp" },
-  { value: "acp:prime", group: "acp" }
+  { value: "acp:prime", group: "acp" },
+  { value: "thunder:visual", group: "thunder" }
 ];
 
 export interface StorageDraft {
@@ -262,10 +269,12 @@ export interface NotesDraft {
   recentStandaloneNoteShortcut: string;
 }
 
-/** Thunder daemon location overrides; both empty means "auto-detect". */
+/** Thunder binary location overrides; all empty means "auto-detect". */
 export interface ThunderDraft {
   repoPath: string;
   daemonPath: string;
+  /** `thunder-tui` override for the `cli:thunder` Workbench target. */
+  tuiPath?: string;
 }
 
 export function formatShortcutForDisplay(value: string, platform = typeof navigator === "undefined" ? "" : navigator.platform): string {
@@ -702,15 +711,23 @@ export function notesPatch(settings: PanelSettings, draft: NotesDraft): Partial<
 export function thunderDraftFromSettings(settings: PanelSettings): ThunderDraft {
   return {
     repoPath: settings.thunder?.repoPath || "",
-    daemonPath: settings.thunder?.daemonPath || ""
+    daemonPath: settings.thunder?.daemonPath || "",
+    tuiPath: settings.thunder?.tuiPath || ""
   };
 }
 
 export function thunderPatch(_settings: PanelSettings, draft: ThunderDraft): Partial<PanelSettings> {
   const repoPath = draft.repoPath.trim();
   const daemonPath = draft.daemonPath.trim();
+  const tuiPath = (draft.tuiPath || "").trim();
   // An empty block means "no override": auto-discovery must keep running.
   return {
-    thunder: repoPath || daemonPath ? { repoPath: repoPath || undefined, daemonPath: daemonPath || undefined } : undefined
+    thunder: repoPath || daemonPath || tuiPath
+      ? {
+          repoPath: repoPath || undefined,
+          daemonPath: daemonPath || undefined,
+          tuiPath: tuiPath || undefined
+        }
+      : undefined
   };
 }

@@ -89,6 +89,11 @@ export function WorkbenchPane({ draft, setDraft, commit, t }: { draft: Workbench
             <option key={option.value} value={option.value}>{t(`desktop.settings.newSessionTarget.${option.value.replace(":", "_")}`)}</option>
           ))}
         </optgroup>
+        <optgroup label={t("desktop.settings.newSessionGroupThunder")}>
+          {WORKBENCH_NEW_SESSION_TARGET_OPTIONS.filter((option) => option.group === "thunder").map((option) => (
+            <option key={option.value} value={option.value}>{t(`desktop.settings.newSessionTarget.${option.value.replace(":", "_")}`)}</option>
+          ))}
+        </optgroup>
       </SelectRow>
       <ToggleRow
         title={t("desktop.settings.newSessionYolo")}

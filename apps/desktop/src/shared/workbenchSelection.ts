@@ -59,7 +59,7 @@ export type WorkbenchActiveSessionDot = {
   workbenchId: string;
 };
 
-/** Same allowlist as Workbench "New session" picker (`cli:*` / `acp:*`). */
+/** Same allowlist as Workbench "New session" picker (`cli:*` / `acp:*` / `thunder:*`). */
 const WORKBENCH_SEND_SELECTION_TARGETS = [
   "cli:codex",
   "cli:claude",
@@ -69,12 +69,14 @@ const WORKBENCH_SEND_SELECTION_TARGETS = [
   "cli:pi",
   "cli:prime",
   "cli:cursor",
+  "cli:thunder",
   "acp:claude",
   "acp:codex",
   "acp:grok",
   "acp:opencode",
   "acp:pi",
-  "acp:prime"
+  "acp:prime",
+  "thunder:visual"
 ] as const;
 
 export type WorkbenchSendSelectionTarget = (typeof WORKBENCH_SEND_SELECTION_TARGETS)[number];

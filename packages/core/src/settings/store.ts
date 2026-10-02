@@ -249,12 +249,14 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
     // Thunder daemon location override. Must be merged or a hand-edited
     // settings.json would be silently dropped on the next save. An empty block is
     // stored as absent so "no override" stays unambiguous.
-    thunder: partial.thunder?.repoPath?.trim() || partial.thunder?.daemonPath?.trim()
-      ? {
-          repoPath: partial.thunder?.repoPath?.trim() || undefined,
-          daemonPath: partial.thunder?.daemonPath?.trim() || undefined
-        }
-      : undefined
+    thunder:
+      partial.thunder?.repoPath?.trim() || partial.thunder?.daemonPath?.trim() || partial.thunder?.tuiPath?.trim()
+        ? {
+            repoPath: partial.thunder?.repoPath?.trim() || undefined,
+            daemonPath: partial.thunder?.daemonPath?.trim() || undefined,
+            tuiPath: partial.thunder?.tuiPath?.trim() || undefined
+          }
+        : undefined
   });
 }
 

@@ -8,9 +8,12 @@ import {
   bundledDaemonPath,
   findThunderCheckout,
   resolveThunderBinary,
+  resolveThunderTuiBinary,
   sidecarResourceDir,
   stagedBinaryPath,
+  stagedTuiBinaryPath,
   stageThunderSidecar,
+  stageThunderTui,
   thunderResourcePaths
 } from "./thunder-sidecar.mjs";
 
@@ -207,6 +210,47 @@ const silent = () => undefined;
     assertBundledDaemon("/Applications/Agent Resume.app", { exists: probe([bundledDaemonPath("/Applications/Agent Resume.app")]) }),
     bundledDaemonPath("/Applications/Agent Resume.app")
   );
+}
+
+// ── TUI resolution + staging ────────────────────────────────────────────────
+{
+  const checkout = "/checkouts/thunder";
+  const built = path.join(checkout, "target/release/thunder-tui");
+  const calls = [];
+  const resolved = resolveThunderTuiBinary({
+    arch: "x64",
+    hostArch: "x64",
+    env: { THUNDER_PATH: checkout },
+    exists: probe([checkout, built]),
+    runCargo: (call) => {
+      calls.push(call);
+      return { ok: true };
+    },
+    log: silent
+  });
+  assert.equal(resolved.source, "cargo-build");
+  assert.equal(resolved.binaryPath, built);
+  assert.deepEqual(calls[0].args, ["build", "--release", "-p", "thunder-tui"]);
+  assert.equal(calls[0].crateDir, checkout);
+}
+
+{
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "thunder-tui-sidecar-"));
+  const fake = path.join(tempRoot, "thunder-tui");
+  fs.writeFileSync(fake, "#!/bin/sh\necho stub\n");
+  const staged = stageThunderTui("x64", {
+    resolve: () => ({ ok: true, binaryPath: fake, source: "test", target: THUNDER_TARGETS.x64 }),
+    log: silent
+  });
+  assert.equal(staged.ok, true);
+  const stagedFile = stagedTuiBinaryPath("x64");
+  assert.equal(fs.existsSync(stagedFile), true, `expected ${stagedFile} to be staged`);
+  assert.equal(fs.statSync(stagedFile).mode & 0o111, 0o111, "staged TUI must be executable");
+  // The TUI metadata is nested so it never clobbers a previously staged daemon.
+  const version = JSON.parse(fs.readFileSync(path.join(staged.resourceDir, "VERSION.json"), "utf8"));
+  assert.equal(version.tui.source, "test");
+  fs.rmSync(path.dirname(staged.resourceDir), { recursive: true, force: true });
+  fs.rmSync(tempRoot, { recursive: true, force: true });
 }
 
 console.log("thunder-sidecar tests passed");

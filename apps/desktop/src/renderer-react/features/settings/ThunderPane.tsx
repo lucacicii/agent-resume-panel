@@ -107,6 +107,19 @@ export function ThunderPane({ draft, setDraft, commit, t }: {
           />
         </label>
         <p className="settings-footnote">{t("desktop.settings.thunderDaemonPathDesc")}</p>
+        <label className="settings-field">
+          <span className="settings-field-label">{t("desktop.settings.thunderTuiPath")}</span>
+          <input
+            value={draft.tuiPath || ""}
+            spellCheck={false}
+            autoCapitalize="off"
+            autoCorrect="off"
+            placeholder={t("desktop.settings.thunderTuiPathPlaceholder")}
+            onChange={(event) => update({ tuiPath: event.target.value }, { commit: false })}
+            onBlur={() => commit(draft)}
+          />
+        </label>
+        <p className="settings-footnote">{t("desktop.settings.thunderTuiPathDesc")}</p>
       </div>
     </section>
 
@@ -134,6 +147,15 @@ export function ThunderPane({ draft, setDraft, commit, t }: {
             <span className="settings-row-label">
               <span className="settings-row-title">{t("desktop.settings.thunderResolvedDaemon")}</span>
               <span className="settings-row-desc">{daemonPath}</span>
+            </span>
+          </div>
+        ) : null}
+
+        {status?.tuiPath ? (
+          <div className="settings-row">
+            <span className="settings-row-label">
+              <span className="settings-row-title">{t("desktop.settings.thunderResolvedTui")}</span>
+              <span className="settings-row-desc">{status.tuiPath}</span>
             </span>
           </div>
         ) : null}

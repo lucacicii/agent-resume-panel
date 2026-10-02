@@ -441,6 +441,8 @@ export interface DesktopApi {
     noteId?: string;
     taskNoteId?: string;
     initialPrompt?: string;
+    /** `cli:thunder`: resume this Thunder conversation id in the TUI. */
+    resumeSessionId?: string;
   }): Promise<{
     mode: string;
     command?: string;
@@ -1530,6 +1532,8 @@ export interface DesktopApi {
     available: boolean;
     repoPath: string | null;
     daemonPath: string | null;
+    /** Resolved `thunder-tui` binary (or its checkout root), for `cli:thunder`. */
+    tuiPath?: string | null;
     models: ThunderModelInfo[];
     /** Discovery rule that matched (env / settings / bundled / dev-sibling / …). */
     source?: string;

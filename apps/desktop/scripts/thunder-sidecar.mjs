@@ -30,6 +30,7 @@ const sidecarRoot = path.join(root, ".thunder-sidecar");
 
 export const THUNDER_TARGETS = { x64: "x86_64-apple-darwin", arm64: "aarch64-apple-darwin" };
 export const THUNDER_DAEMON_BIN = "thunder-daemon";
+export const THUNDER_TUI_BIN = "thunder-tui";
 
 /** Relative layout inside the bundle: `Contents/Resources/thunder` + `bin/thunder-daemon`. */
 const RESOURCE_DIR_NAME = "thunder";
@@ -53,9 +54,19 @@ export function stagedBinaryPath(arch) {
   return path.join(sidecarResourceDir(arch), ...BUNDLE_SUBDIR, THUNDER_DAEMON_BIN);
 }
 
+/** Where the bundled `thunder-tui` binary lands (beside the daemon). */
+export function stagedTuiBinaryPath(arch) {
+  return path.join(sidecarResourceDir(arch), ...BUNDLE_SUBDIR, THUNDER_TUI_BIN);
+}
+
 /** Where the daemon must end up inside a packaged `.app`. */
 export function bundledDaemonPath(appBundle) {
   return path.join(appBundle, "Contents", "Resources", RESOURCE_DIR_NAME, ...BUNDLE_SUBDIR, THUNDER_DAEMON_BIN);
+}
+
+/** Where the TUI must end up inside a packaged `.app` (beside the daemon). */
+export function bundledTuiPath(appBundle) {
+  return path.join(appBundle, "Contents", "Resources", RESOURCE_DIR_NAME, ...BUNDLE_SUBDIR, THUNDER_TUI_BIN);
 }
 
 /** Fallback checkout probe used only when the compiled runtime resolver is unavailable. */
@@ -173,6 +184,74 @@ export function resolveThunderBinary({
   return { ok: true, binaryPath, source: "cargo-build", target, checkout };
 }
 
+/**
+ * Find or build a `thunder-tui` for `arch`, mirroring the daemon rules. The TUI
+ * builds from the workspace root (`cargo build -p thunder-tui`) into
+ * `<checkout>/target/<target?>/release/thunder-tui`.
+ */
+export function resolveThunderTuiBinary({
+  arch,
+  env = process.env,
+  hostArch = process.arch,
+  homedir = os.homedir(),
+  exists = fs.existsSync,
+  runCargo,
+  findCheckout = findThunderCheckout,
+  log = console.log
+}) {
+  const target = THUNDER_TARGETS[arch];
+  if (!target) return { ok: false, reason: `unsupported arch "${arch}"` };
+
+  const explicit = env.AGENT_RESUME_THUNDER_TUI_BIN?.trim();
+  if (explicit) {
+    if (!exists(explicit)) {
+      return { ok: false, reason: `AGENT_RESUME_THUNDER_TUI_BIN points at a missing file: ${explicit}` };
+    }
+    return { ok: true, binaryPath: explicit, source: "env-bin", target };
+  }
+
+  const artifactDir = env.AGENT_RESUME_THUNDER_TUI_DIR?.trim() || env.AGENT_RESUME_THUNDER_DIR?.trim();
+  if (artifactDir) {
+    const candidates = [
+      path.join(artifactDir, arch, THUNDER_TUI_BIN),
+      path.join(artifactDir, THUNDER_TUI_BIN)
+    ];
+    for (const candidate of candidates) {
+      if (exists(candidate)) return { ok: true, binaryPath: candidate, source: "artifact-dir", target };
+    }
+  }
+
+  const checkout = findCheckout({ env, homedir, exists, log });
+  if (!checkout) {
+    return {
+      ok: false,
+      reason: "no thunder checkout found",
+      hint: "Set THUNDER_PATH=/path/to/thunder, or AGENT_RESUME_THUNDER_TUI_BIN / AGENT_RESUME_THUNDER_TUI_DIR for prebuilt binaries."
+    };
+  }
+
+  const host = THUNDER_TARGETS[hostArch] ?? hostTarget();
+  const crossCompile = target !== host;
+  const args = ["build", "--release", "-p", "thunder-tui"];
+  if (crossCompile) args.push("--target", target);
+
+  const run = runCargo ?? defaultRunCargo;
+  const built = run({ crateDir: checkout, args, log });
+  if (!built?.ok) {
+    return {
+      ok: false,
+      reason: `cargo build failed in ${checkout}: ${built?.message ?? "unknown error"}`,
+      hint: crossCompile ? `Cross builds need the target installed: rustup target add ${target}` : undefined
+    };
+  }
+
+  const binaryPath = path.join(checkout, "target", ...(crossCompile ? [target] : []), "release", THUNDER_TUI_BIN);
+  if (!exists(binaryPath)) {
+    return { ok: false, reason: `cargo reported success but ${binaryPath} is missing` };
+  }
+  return { ok: true, binaryPath, source: "cargo-build", target, checkout };
+}
+
 function defaultRunCargo({ crateDir, args, log }) {
   const home = os.homedir();
   const candidates = [process.env.CARGO, "cargo", path.join(home, ".cargo", "bin", "cargo")].filter(Boolean);
@@ -213,8 +292,8 @@ export function stageThunderSidecar(arch, {
   }
 
   const stagedBinary = stagedBinaryPath(arch);
-  fs.rmSync(sidecarResourceDir(arch), { recursive: true, force: true });
   fs.mkdirSync(path.dirname(stagedBinary), { recursive: true });
+  fs.rmSync(stagedBinary, { force: true });
   fs.copyFileSync(resolved.binaryPath, stagedBinary);
   fs.chmodSync(stagedBinary, 0o755);
 
@@ -230,12 +309,62 @@ export function stageThunderSidecar(arch, {
     bytes: fs.statSync(stagedBinary).size,
     stagedAt: new Date().toISOString()
   };
-  fs.writeFileSync(
-    path.join(sidecarResourceDir(arch), "VERSION.json"),
-    `${JSON.stringify(metadata, null, 2)}\n`
-  );
+  writeVersionMetadata(arch, metadata);
   log(
     `[thunder-sidecar] ${arch}: staged ${THUNDER_DAEMON_BIN} (${metadata.source}, ${(metadata.bytes / 1e6).toFixed(1)} MB, staged sha256 ${metadata.sha256Staged.slice(0, 12)}…)`
+  );
+  return { ok: true, arch, resourceDir: sidecarResourceDir(arch), stagedBinary, source: metadata.source, metadata };
+}
+
+/** Merge one arch's metadata into `VERSION.json` without dropping the sibling binary's entry. */
+function writeVersionMetadata(arch, metadata, binKey) {
+  const versionFile = path.join(sidecarResourceDir(arch), "VERSION.json");
+  let existing = {};
+  try {
+    existing = JSON.parse(fs.readFileSync(versionFile, "utf8"));
+  } catch {
+    existing = {};
+  }
+  const next = binKey ? { ...existing, [binKey]: metadata } : { ...existing, ...metadata };
+  fs.writeFileSync(versionFile, `${JSON.stringify(next, null, 2)}\n`);
+}
+
+/**
+ * Resolve + copy `thunder-tui` beside the daemon for one arch. Same staging dir,
+ * so the runtime resolver finds it at `Contents/Resources/thunder/bin/thunder-tui`.
+ */
+export function stageThunderTui(arch, {
+  require: required = false,
+  log = console.log,
+  resolve: resolveBinary = resolveThunderTuiBinary,
+  ...resolveOptions
+} = {}) {
+  const resolved = resolveBinary({ arch, log, ...resolveOptions });
+  if (!resolved.ok) {
+    const message = `[thunder-sidecar] ${arch}: ${resolved.reason}${resolved.hint ? ` — ${resolved.hint}` : ""}`;
+    if (required) throw new Error(message);
+    log(`${message} → packaging without a bundled TUI (cli:thunder falls back to THUNDER_PATH / settings).`);
+    return { ok: false, arch, reason: resolved.reason, hint: resolved.hint };
+  }
+
+  const stagedBinary = stagedTuiBinaryPath(arch);
+  fs.mkdirSync(path.dirname(stagedBinary), { recursive: true });
+  fs.rmSync(stagedBinary, { force: true });
+  fs.copyFileSync(resolved.binaryPath, stagedBinary);
+  fs.chmodSync(stagedBinary, 0o755);
+
+  const metadata = {
+    arch,
+    target: resolved.target,
+    source: resolved.source,
+    checkout: resolved.checkout ?? null,
+    sha256Staged: sha256(stagedBinary),
+    bytes: fs.statSync(stagedBinary).size,
+    stagedAt: new Date().toISOString()
+  };
+  writeVersionMetadata(arch, metadata, "tui");
+  log(
+    `[thunder-sidecar] ${arch}: staged ${THUNDER_TUI_BIN} (${metadata.source}, ${(metadata.bytes / 1e6).toFixed(1)} MB, staged sha256 ${metadata.sha256Staged.slice(0, 12)}…)`
   );
   return { ok: true, arch, resourceDir: sidecarResourceDir(arch), stagedBinary, source: metadata.source, metadata };
 }

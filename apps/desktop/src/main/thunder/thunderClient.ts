@@ -9,6 +9,7 @@ import { buildAugmentedPath } from "../processPath";
 import {
   describeThunderResolution,
   resolveThunderDaemon,
+  resolveThunderTui,
   type ThunderDaemonLocation,
   type ThunderDaemonSettings
 } from "./daemonResolver";
@@ -90,10 +91,29 @@ export class ThunderClient {
     return location;
   }
 
+  /**
+   * Locate the Thunder TUI binary with the same discovery rules as the daemon, so
+   * the `cli:thunder` new-session target works wherever the daemon resolves.
+   */
+  public resolveTui(): ThunderDaemonLocation {
+    const location = resolveThunderTui({
+      moduleDir: __dirname,
+      cwd: process.cwd(),
+      resourcesPath: process.resourcesPath,
+      settings: this.thunderSettings
+    });
+    if (process.env.THUNDER_DEBUG === "1") {
+      console.log(`[thunder-client] resolveTui → ${describeThunderResolution(location)}`);
+    }
+    return location;
+  }
+
   public async getStatus(): Promise<{
     available: boolean;
     repoPath: string | null;
     daemonPath: string | null;
+    /** Resolved `thunder-tui` binary (or its build script), for the TUI new-session target. */
+    tuiPath: string | null;
     models: ThunderModelInfo[];
     /** Which discovery rule matched; `none` means nothing usable was found. */
     source: ThunderDaemonLocation["source"];
@@ -103,11 +123,14 @@ export class ThunderClient {
   }> {
     await this.refreshThunderSettings();
     const resolved = this.resolveDaemon();
+    const resolvedTui = this.resolveTui();
+    const tuiPath = resolvedTui.binaryPath || resolvedTui.scriptPath;
     if (!resolved.binaryPath && !resolved.scriptPath) {
       return {
         available: false,
         repoPath: resolved.repoPath,
         daemonPath: null,
+        tuiPath,
         models: [],
         source: resolved.source,
         candidates: resolved.candidates,
@@ -130,6 +153,7 @@ export class ThunderClient {
         available: Boolean(ping?.pong),
         repoPath: resolved.repoPath,
         daemonPath: resolved.binaryPath || resolved.scriptPath,
+        tuiPath,
         models,
         source: resolved.source,
         candidates: resolved.candidates
@@ -139,6 +163,7 @@ export class ThunderClient {
         available: false,
         repoPath: resolved.repoPath,
         daemonPath: resolved.binaryPath || resolved.scriptPath,
+        tuiPath,
         models: [],
         source: resolved.source,
         candidates: resolved.candidates,

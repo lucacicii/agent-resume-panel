@@ -1030,6 +1030,171 @@ describe("WorkbenchPanel", () => {
     window.removeEventListener("agent-resume:workbench-open-session", onPreview);
   });
 
+  it("opens a Thunder visual chat pane for the thunder:visual new-session target", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const workbenchNewSession = vi.fn(async () => ({ mode: "xterm", command: "thunder-tui", cwd: "/work/app" }));
+    const acpCreateSession = vi.fn();
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.workbench.newSession": "New session",
+        "desktop.workbench.thunderChat": "Thunder Chat",
+        "desktop.workbench.closeThunderChat": "Close Thunder chat",
+        "desktop.workbench.selectSessionHint": "Select a session",
+        "desktop.workbench.selectProjectHint": "Select a project",
+        "desktop.common.loading": "Loading…"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionTarget: "thunder:visual" } }),
+      listSessions: async () => [],
+      workbenchGetProjectEditor: async () => ({ selected: "auto", available: false, editor: null }),
+      workbenchNewSession,
+      acpCreateSession,
+      thunderGetStatus: async () => ({ available: true, repoPath: "/thunder", daemonPath: "/thunder/daemon", tuiPath: "/thunder/tui", models: [] }),
+      thunderChatListConversations: async () => [],
+      thunderChatGetConversation: async () => null,
+      thunderChatGetActiveStream: async () => null,
+      thunderChatGetTrace: async () => null,
+      onThunderChatEvent: () => () => undefined,
+      onThunderModelsChanged: () => () => undefined,
+      onThunderRolesChanged: () => () => undefined,
+      thunderListRoles: async () => [],
+      notesRead: async () => ({ record: { work: { projects: [] } }, content: "" }),
+      notesListTasks: async () => [],
+      notesLinkSessionToTask: vi.fn(async () => ({}))
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await activateTaskDirectory("/work/app");
+    fireEvent.click(await waitFor(() => document.querySelector(".wb-pane-tab-group-label") as HTMLButtonElement));
+    await waitFor(() => expect(document.querySelector(".wb-terminal-tab.is-thunder")).toBeTruthy());
+    expect(workbenchNewSession).not.toHaveBeenCalled();
+    expect(acpCreateSession).not.toHaveBeenCalled();
+  });
+
+  it("launches the Thunder TUI through workbenchNewSession for cli:thunder", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const workbenchNewSession = vi.fn(async () => ({ mode: "external-system", cwd: "/work/app", external: true }));
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.workbench.newSession": "New session",
+        "desktop.workbench.newSessionTitle": "New session {0}",
+        "desktop.workbench.selectSessionHint": "Select a session",
+        "desktop.workbench.selectProjectHint": "Select a project",
+        "desktop.common.loading": "Loading…"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionTarget: "cli:thunder" } }),
+      listSessions: async () => [],
+      workbenchGetProjectEditor: async () => ({ selected: "auto", available: false, editor: null }),
+      workbenchNewSession,
+      notesRead: async () => ({ record: { work: { projects: [] } }, content: "" }),
+      notesListTasks: async () => []
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await activateTaskDirectory("/work/app");
+    fireEvent.click(await waitFor(() => document.querySelector(".wb-pane-tab-group-label") as HTMLButtonElement));
+    await waitFor(() => expect(workbenchNewSession).toHaveBeenCalledWith({
+      cwd: "/work/app",
+      provider: "thunder",
+      executionMode: "standard",
+      taskNoteId: "wi-test"
+    }));
+  });
+
+  it("lists a Thunder conversation and opens it as a visual pane", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    window.agentResume = {
+      getI18nBundle: async () => ({ locale: "en", messages: {
+        "desktop.workbench.newSession": "New session",
+        "desktop.workbench.thunderChat": "Thunder Chat",
+        "desktop.workbench.closeThunderChat": "Close Thunder chat",
+        "desktop.workbench.openThunderChat": "Open as visual chat",
+        "desktop.workbench.resumeThunderTui": "Resume in Thunder TUI",
+        "desktop.workbench.selectSessionHint": "Select a session",
+        "desktop.workbench.selectProjectHint": "Select a project",
+        "desktop.common.loading": "Loading…"
+      } }),
+      onLocaleChanged: () => () => undefined,
+      onWorkbenchCmdT: () => () => undefined,
+      onWorkbenchCmdW: () => () => undefined,
+      onTerminalData: () => () => undefined,
+      onTerminalExit: () => () => undefined,
+      onTerminalRespawned: () => () => undefined,
+      listProjectAliases: async () => ({}),
+      getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
+      listSessions: async () => [],
+      workbenchGetProjectEditor: async () => ({ selected: "auto", available: false, editor: null }),
+      contextMenuShow,
+      workbenchNewSession: vi.fn(async () => ({ mode: "external-system", cwd: "/work/app", external: true })),
+      thunderGetStatus: async () => ({ available: true, repoPath: "/thunder", daemonPath: "/thunder/daemon", tuiPath: "/thunder/tui", models: [] }),
+      thunderChatListConversations: async () => [{
+        id: "sess_external",
+        title: "Earlier Thunder chat",
+        workspace: "/work/app",
+        status: "active",
+        message_count: 2,
+        turn_count: 1,
+        total_tokens: 5,
+        created_at_ms: Date.now() - 1000,
+        updated_at_ms: Date.now() - 500
+      }],
+      thunderChatGetConversation: async () => ({
+        id: "sess_external",
+        title: "Earlier Thunder chat",
+        workspace: "/work/app",
+        status: "active",
+        messages: [],
+        created_at_ms: 0,
+        updated_at_ms: 0
+      }),
+      thunderChatGetActiveStream: async () => null,
+      thunderChatGetTrace: async () => null,
+      onThunderChatEvent: () => () => undefined,
+      onThunderModelsChanged: () => () => undefined,
+      onThunderRolesChanged: () => () => undefined,
+      thunderListRoles: async () => [],
+      notesRead: async () => ({ record: { work: { projects: [] } }, content: "" }),
+      notesListTasks: async () => []
+    } as unknown as typeof window.agentResume;
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await activateTaskDirectory("/work/app");
+    const row = await screen.findByText("Earlier Thunder chat");
+    fireEvent.click(row);
+    await waitFor(() => expect(document.querySelector(".wb-terminal-tab.is-thunder")).toBeTruthy());
+
+    // The row context menu can resume the same conversation in the native TUI.
+    chooseContextMenuItem("Resume in Thunder TUI");
+    fireEvent.contextMenu(document.querySelector(".wb-list-item") as HTMLElement);
+    await waitFor(() => expect(window.agentResume.workbenchNewSession).toHaveBeenCalledWith(expect.objectContaining({
+      cwd: "/work/app",
+      provider: "thunder",
+      resumeSessionId: "sess_external"
+    })));
+  });
+
   it("auto renames a session from its context menu", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";

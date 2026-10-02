@@ -29,6 +29,14 @@ type DotAcpChat = {
   workbenchId?: string;
 };
 
+type DotThunderChat = {
+  key: string;
+  sessionId?: string;
+  title: string;
+  projectPath: string;
+  workbenchId?: string;
+};
+
 /** ACP panes are keyed `acp:${recordId}` in the status store. */
 function acpPaneKey(recordId: string): string {
   return `acp:${recordId}`;
@@ -45,7 +53,8 @@ export function collectActiveSessionDots(
   terminals: ReadonlyArray<DotTerminal>,
   acpChats: ReadonlyArray<DotAcpChat>,
   sessionTitles: ReadonlyMap<string, string>,
-  runtimeByPaneKey: ReadonlyMap<string, SessionDotRuntime> = new Map()
+  runtimeByPaneKey: ReadonlyMap<string, SessionDotRuntime> = new Map(),
+  thunderChats: ReadonlyArray<DotThunderChat> = []
 ): ActiveSessionDot[] {
   const dots: ActiveSessionDot[] = [];
 
@@ -73,6 +82,20 @@ export function collectActiveSessionDots(
       projectPath: pane.projectPath,
       title,
       sessionKey: key,
+      status: runtime?.status ?? "open",
+      workbenchId: pane.workbenchId ?? ""
+    });
+  }
+
+  for (const pane of thunderChats) {
+    const title = sessionTitles.get(pane.key)?.trim() || pane.title;
+    const runtime = runtimeByPaneKey.get(pane.key);
+    dots.push({
+      paneKey: pane.key,
+      projectPath: pane.projectPath,
+      title,
+      // A draft pane has no conversation yet, so it carries no session key.
+      sessionKey: pane.sessionId ? pane.key : "",
       status: runtime?.status ?? "open",
       workbenchId: pane.workbenchId ?? ""
     });

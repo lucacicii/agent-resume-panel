@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import * as path from "node:path";
-import { describeThunderResolution, repoRootForBinary, resolveThunderDaemon } from "./daemonResolver";
+import { describeThunderResolution, repoRootForBinary, resolveThunderDaemon, resolveThunderTui } from "./daemonResolver";
 
 /**
  * Path discovery used to be inline in `thunderClient` with zero tests, and it silently
@@ -32,6 +32,18 @@ function probe(paths: string[]): (candidate: string) => boolean {
 function resolve(overrides: Partial<Parameters<typeof resolveThunderDaemon>[0]> & { paths?: string[] } = {}) {
   const { paths = [], ...rest } = overrides;
   return resolveThunderDaemon({
+    env: {},
+    moduleDir: MODULE_DIR,
+    cwd: "/",
+    homedir: HOME,
+    exists: probe(paths),
+    ...rest
+  });
+}
+
+function resolveTui(overrides: Partial<Parameters<typeof resolveThunderTui>[0]> & { paths?: string[] } = {}) {
+  const { paths = [], ...rest } = overrides;
+  return resolveThunderTui({
     env: {},
     moduleDir: MODULE_DIR,
     cwd: "/",
@@ -181,6 +193,36 @@ describe("resolveThunderDaemon", () => {
   });
 });
 
+const TUI_UNIFIED_BIN = path.join(SIBLING_REPO, "target/release/thunder-tui");
+const TUI_SCRIPT = path.join(SIBLING_REPO, "run.sh");
+
+describe("resolveThunderTui", () => {
+  it("finds thunder-tui in the unified workspace target", () => {
+    const location = resolveTui({ paths: [TUI_UNIFIED_BIN] });
+
+    expect(location.source).toBe("dev-sibling");
+    expect(location.binaryPath).toBe(TUI_UNIFIED_BIN);
+    expect(location.binaryName).toBe("thunder-tui");
+  });
+
+  it("honours THUNDER_TUI_BIN and settings.thunder.tuiPath", () => {
+    const envBin = "/opt/tui/thunder-tui";
+    expect(resolveTui({ env: { THUNDER_TUI_BIN: envBin }, paths: [envBin] }).binaryPath).toBe(envBin);
+
+    const settingsBin = "/opt/settings/thunder-tui";
+    const withSettings = resolveTui({ settings: { tuiPath: settingsBin }, paths: [settingsBin] });
+    expect(withSettings.binaryPath).toBe(settingsBin);
+  });
+
+  it("falls back to run.sh and names the TUI in diagnostics", () => {
+    const location = resolveTui({ paths: [TUI_SCRIPT] });
+
+    expect(location.binaryPath).toBeNull();
+    expect(location.scriptPath).toBe(TUI_SCRIPT);
+    expect(describeThunderResolution(location)).toContain("thunder-tui");
+  });
+});
+
 describe("repoRootForBinary", () => {
   it("strips the unified workspace target path", () => {
     expect(repoRootForBinary("/w/thunder/target/release/thunder-daemon")).toBe("/w/thunder");
@@ -190,6 +232,10 @@ describe("repoRootForBinary", () => {
   it("strips the legacy cargo target path", () => {
     expect(repoRootForBinary("/w/thunder/thunder-agent-daemon/target/release/thunder-daemon")).toBe("/w/thunder");
     expect(repoRootForBinary("/w/thunder/thunder-agent-daemon/target/debug/thunder-daemon")).toBe("/w/thunder");
+  });
+
+  it("strips the nested TUI crate target path", () => {
+    expect(repoRootForBinary("/w/thunder/thunder-agent-core/tui/target/release/thunder-tui")).toBe("/w/thunder");
   });
 
   it("falls back to the parent directory for arbitrary layouts", () => {

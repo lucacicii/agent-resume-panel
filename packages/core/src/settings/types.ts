@@ -375,10 +375,12 @@ export interface NotificationsSettings {
  * over `repoPath` when both are set.
  */
 export interface ThunderSettings {
-  /** Path to a thunder checkout; `<repo>/thunder-agent-daemon/target/{release,debug}/thunder-daemon` is used. */
+  /** Path to a thunder checkout; `<repo>/target/{release,debug}/thunder-{daemon,tui}` is used. */
   repoPath?: string;
   /** Direct path to a `thunder-daemon` executable. */
   daemonPath?: string;
+  /** Direct path to a `thunder-tui` executable (the `cli:thunder` Workbench target). */
+  tuiPath?: string;
 }
 
 export interface PanelSettings {
