@@ -1,10 +1,46 @@
-export interface ThunderModelInfo {
-  id: string;
-  provider: string;
-  name: string;
-  selection_id: string;
-  available: boolean;
+export type {
+  ThunderConversationSummary,
+  ThunderConversation,
+  ThunderChatMessage,
+  ThunderToolExecutionRecord,
+  ThunderChatStreamPayload,
+  ThunderChatTaskOptions,
+  ThunderChatTaskResult,
+  ThunderTelemetryNotice,
+  ThunderFileChangeRecord,
+  ThunderTraceSpan,
+  ThunderTaskTrace,
+  ThunderTurnStats,
+  ThunderAgentStats,
+  ThunderModelInfo
+} from "@agent-resume/core";
+
+/** Result of AI-title generation or manual title setting (errors are structured, never thrown). */
+export interface ThunderTitleResult {
+  ok: boolean;
+  title?: string;
+  /** Machine-readable error kind: no_utility_model | client_error | api_error | empty_title | store_error | manual_locked | not_found | invalid_title | unknown */
+  errorKind?: string;
+  /** Human-readable error detail for display */
+  error?: string;
 }
+
+/** One selectable option inside a question bubble. */
+export interface ThunderQuestionOption {
+  label: string;
+  description?: string;
+}
+
+/** One question the agent is blocked on, rendered as a bubble. */
+export interface ThunderQuestionItem {
+  question: string;
+  header?: string;
+  multi_select?: boolean;
+  multiSelect?: boolean;
+  options: ThunderQuestionOption[];
+}
+
+export type { ThunderRoleInfo, ThunderRoleRecord, ThunderModelsConfig, ThunderModelsProvider } from "@agent-resume/core";
 
 export type ThunderAgentEvent =
   | { type: "turn_start"; turn: number; timestamp: number }
@@ -32,9 +68,36 @@ export type ThunderAgentEvent =
         output: unknown;
         error?: string;
         is_error: boolean;
+        duration_ms?: number;
+        telemetry?: import("@agent-resume/core").ThunderTelemetryNotice;
       };
     }
-  | { type: "turn_end"; turn: number; stats?: unknown }
+  | {
+      type: "file_change";
+      turn: number;
+      tool_call_id: string;
+      path: string;
+      action: "written" | "created" | "modified" | "deleted" | "failed" | string;
+      bytes?: number;
+      tool_name: string;
+    }
+  | {
+      type: "telemetry_notice";
+      turn: number;
+      tool_call_id: string;
+      layer: string;
+      action: string;
+      ground_truth: string;
+      self_healed?: string;
+      guidance?: string;
+    }
+  | { type: "turn_end"; turn: number; stats?: import("@agent-resume/core").ThunderTurnStats }
+  | {
+      type: "user_question";
+      question_id: string;
+      questions: ThunderQuestionItem[];
+    }
+  | { type: "task_paused"; reason: string }
   | { type: "done"; stats?: unknown }
   | { type: "error"; message: string }
   | { type: string; [key: string]: unknown };
@@ -70,4 +133,17 @@ export type ThunderDaemonIncoming =
       task_id: string;
       session_id?: string;
       error: string;
+    }
+  | {
+      type: "user_question";
+      task_id: string;
+      session_id?: string;
+      question_id: string;
+      questions: ThunderQuestionItem[];
+    }
+  | {
+      type: "task_paused";
+      task_id: string;
+      session_id?: string;
+      reason: string;
     };

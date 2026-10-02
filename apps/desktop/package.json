@@ -1,6 +1,6 @@
 {
   "name": "@agent-resume/desktop",
-  "version": "0.2.32",
+  "version": "0.2.33",
   "private": true,
   "author": "lucacicii",
   "license": "AGPL-3.0-only",
@@ -26,7 +26,8 @@
     "test:workbench-replace": "node scripts/workbench-replace.test.mjs",
     "test:agent-status": "node scripts/agent-status-daemon.test.mjs",
     "agent-status:capture": "node scripts/agent-status-capture.mjs",
-    "agent-status:mine": "node scripts/agent-status-mine.mjs"
+    "agent-status:mine": "node scripts/agent-status-mine.mjs",
+    "test:thunder-sidecar": "node scripts/thunder-sidecar.test.mjs"
   },
   "dependencies": {
     "@agent-resume/core": "workspace:*",
@@ -69,10 +70,10 @@
     "dompurify": "^3.4.11",
     "highlight.js": "^11.11.1",
     "lucide-react": "^0.468.0",
-    "marked": "^18.0.6",
     "node-pty": "^1.0.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
+    "remark-breaks": "^4.0.0",
     "sf-symbols-lib": "^2.0.1",
     "streamdown": "^2.6.0",
     "yauzl": "^3.4.0",

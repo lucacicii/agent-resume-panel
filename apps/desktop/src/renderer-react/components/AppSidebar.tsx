@@ -7,7 +7,7 @@ import { showContextMenuAt } from "../nativeContextMenu";
 import { useGlideHighlight } from "./useGlideHighlight";
 
 /** The board window's primary views, in nav order. */
-export type BoardView = "gtd" | "notes" | "schedule" | "archive" | "sessions";
+export type BoardView = "gtd" | "notes" | "schedule" | "chat" | "archive" | "sessions";
 
 /**
  * The board's full-height navigation sidebar (Finder-style): a traffic-light
@@ -33,7 +33,8 @@ export function AppSidebar({ view, onViewChange, collapsed }: {
   const items: Array<{ view: BoardView; icon: ThemeIconName; label: string }> = [
     { view: "gtd", icon: "square-kanban", label: text("desktop.nav.gtd", "GTD") },
     { view: "notes", icon: "notebook", label: text("desktop.nav.notes", "Notes") },
-    { view: "schedule", icon: "clock", label: text("desktop.nav.schedule", "Schedule") }
+    { view: "schedule", icon: "clock", label: text("desktop.nav.schedule", "Schedule") },
+    { view: "chat", icon: "message-square", label: text("desktop.nav.chat", "Chat") }
   ];
 
   /** Move the glide pill to a row; the active row keeps its own fill instead. */

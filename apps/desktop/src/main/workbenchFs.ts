@@ -115,6 +115,7 @@ interface GitDiffSidesResult {
   oldText: string;
   newText: string;
   hunks: GitDiffHunk[];
+  patch?: string;
 }
 
 function formatExecError(error: unknown): string {
@@ -478,7 +479,7 @@ async function queryGitDiffSides(
     }
   }
 
-  return { oldLabel, newLabel, oldText, newText, hunks: toGitDiffHunkMetadata(patch) };
+  return { oldLabel, newLabel, oldText, newText, hunks: toGitDiffHunkMetadata(patch), patch };
 }
 
 async function queryGitDiffPatch(repoRoot: string, repoPath: string, staged: boolean): Promise<string> {

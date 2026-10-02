@@ -17,11 +17,22 @@ import type {
   ThunderSchedule,
   ThunderScheduleRun,
   ThunderScheduleInput,
-  ThunderScheduleRunLogEntry
+  ThunderScheduleRunLogEntry,
+  ThunderActiveStreamSnapshot
 } from "@agent-resume/core";
 import type {
   ThunderModelInfo,
-  ThunderAgentEvent
+  ThunderModelsConfig,
+  ThunderRoleInfo,
+  ThunderRoleRecord,
+  ThunderAgentEvent,
+  ThunderConversationSummary,
+  ThunderConversation,
+  ThunderChatStreamPayload,
+  ThunderChatTaskOptions,
+  ThunderChatTaskResult,
+  ThunderTaskTrace,
+  ThunderTitleResult
 } from "../main/thunder/thunderProtocol";
 import type { McpClientInfo } from "../main/mcpRegistration";
 import type {
@@ -66,7 +77,8 @@ export type {
   ThunderSchedule,
   ThunderScheduleRun,
   ThunderScheduleInput,
-  ThunderScheduleRunLogEntry
+  ThunderScheduleRunLogEntry,
+  ThunderActiveStreamSnapshot
 } from "@agent-resume/core";
 export type {
   ThunderModelInfo,
@@ -429,6 +441,8 @@ export interface DesktopApi {
     noteId?: string;
     taskNoteId?: string;
     initialPrompt?: string;
+    /** `cli:thunder`: resume this Thunder conversation id in the TUI. */
+    resumeSessionId?: string;
   }): Promise<{
     mode: string;
     command?: string;
@@ -1053,7 +1067,7 @@ export interface DesktopApi {
     cwd: string;
     path: string;
     staged?: boolean;
-  }): Promise<{ oldLabel: string; newLabel: string; oldText: string; newText: string; hunks: GitDiffHunk[] }>;
+  }): Promise<{ oldLabel: string; newLabel: string; oldText: string; newText: string; hunks: GitDiffHunk[]; patch?: string }>;
   terminalGitDiscardChange(args: { repoRoot: string; path: string }): Promise<{ ok: boolean }>;
   terminalGitDiscardHunk(args: {
     repoRoot: string;
@@ -1518,10 +1532,61 @@ export interface DesktopApi {
     available: boolean;
     repoPath: string | null;
     daemonPath: string | null;
+    /** Resolved `thunder-tui` binary (or its checkout root), for `cli:thunder`. */
+    tuiPath?: string | null;
     models: ThunderModelInfo[];
+    /** Discovery rule that matched (env / settings / bundled / dev-sibling / …). */
+    source?: string;
+    /** Paths probed, in priority order — shown by Settings → Thunder diagnostics. */
+    candidates?: string[];
     error?: string;
   }>;
   thunderListModels(): Promise<ThunderModelInfo[]>;
+  /** Roles from ~/.thunder/roles.jsonl and <workspace>/.arp/roles.jsonl. */
+  thunderListRoles(args?: { workspaceDir?: string }): Promise<ThunderRoleInfo[]>;
+  /** Settings editor: raw `~/.thunder/roles.jsonl` records with unknown fields preserved. */
+  thunderReadRolesFile(): Promise<ThunderRoleRecord[]>;
+  /** Settings editor: write the full records list back as JSONL (`.bak` kept). */
+  thunderWriteRolesFile(args: { records: ThunderRoleRecord[] }): Promise<void>;
+  /** Settings editor: restore the shipped definition of one built-in role. */
+  thunderResetBuiltinRole(args: { id: string }): Promise<void>;
+  /** Settings editor: `~/.thunder/models.json` providers + utility model. */
+  thunderReadModelsConfig(): Promise<ThunderModelsConfig>;
+  /** Settings editor: write `~/.thunder/models.json` (validated; `.bak` kept). */
+  thunderWriteModelsConfig(args: { config: ThunderModelsConfig }): Promise<void>;
+  thunderChatListConversations(): Promise<ThunderConversationSummary[]>;
+  thunderChatGetConversation(args: { sessionId: string }): Promise<ThunderConversation | null>;
+  thunderChatGenerateTitle(args: { sessionId: string; force?: boolean }): Promise<ThunderTitleResult>;
+  thunderChatSetTitle(args: { sessionId: string; title: string }): Promise<ThunderTitleResult>;
+  thunderChatDeleteConversation(args: { sessionId: string }): Promise<boolean>;
+  thunderChatTruncateConversation(args: { sessionId: string; keepCount: number }): Promise<boolean>;
+  thunderChatRunTask(args: {
+    taskId: string;
+    prompt: string;
+    sessionId?: string;
+    model?: string;
+    workspaceDir?: string;
+    taskNoteId?: string;
+    thinking_level?: string;
+    /** Role id; the host enforces its permission tier. */
+    role?: string;
+  }): Promise<ThunderChatTaskResult>;
+  thunderChatCancelTask(args: { taskId: string }): Promise<boolean>;
+  /** Answer a pending ask_user_question bubble. */
+  thunderChatAnswerQuestion(args: {
+    questionId: string;
+    answers?: Record<string, string>;
+    cancelled?: boolean;
+  }): Promise<boolean>;
+  thunderChatPauseTask(args: { taskId: string }): Promise<boolean>;
+  thunderChatResumeTask(args: { taskId: string }): Promise<boolean>;
+  thunderChatGetTrace(args: { sessionId: string; taskId?: string }): Promise<ThunderTaskTrace | null>;
+  thunderChatGetActiveStream(args: { sessionId: string }): Promise<ThunderActiveStreamSnapshot | null>;
+  thunderChatListTraces(args: { sessionId: string }): Promise<Array<{ task_id: string; started_at_ms: number; duration_ms?: number; prompt?: string }>>;
+  onThunderChatEvent(callback: (payload: ThunderChatStreamPayload) => void): () => void;
+  onThunderModelsChanged(callback: () => void): () => void;
+  /** Fired when `~/.thunder/roles.jsonl` changes on disk (settings edits, hand edits). */
+  onThunderRolesChanged(callback: () => void): () => void;
   onScheduleRunEvent(callback: (payload: { scheduleId: string; runId: string; event: ThunderAgentEvent; accumulatedOutput: string }) => void): () => void;
   onScheduleStatusChanged(callback: (payload: { scheduleId: string; runId: string; status: string; output?: string; error?: string }) => void): () => void;
 }
@@ -2027,6 +2092,41 @@ const api: DesktopApi = {
   schedulesGetRun: (args) => ipcRenderer.invoke("schedule:getRun", args),
   thunderGetStatus: () => ipcRenderer.invoke("thunder:status"),
   thunderListModels: () => ipcRenderer.invoke("thunder:listModels"),
+  thunderListRoles: (args) => ipcRenderer.invoke("thunder:listRoles", args),
+  thunderReadRolesFile: () => ipcRenderer.invoke("thunder:readRolesFile"),
+  thunderWriteRolesFile: (args) => ipcRenderer.invoke("thunder:writeRolesFile", args),
+  thunderResetBuiltinRole: (args) => ipcRenderer.invoke("thunder:resetBuiltinRole", args),
+  thunderReadModelsConfig: () => ipcRenderer.invoke("thunder:readModelsConfig"),
+  thunderWriteModelsConfig: (args) => ipcRenderer.invoke("thunder:writeModelsConfig", args),
+  thunderChatListConversations: () => ipcRenderer.invoke("thunder:chat:listConversations"),
+  thunderChatGetConversation: (args) => ipcRenderer.invoke("thunder:chat:getConversation", args),
+  thunderChatGenerateTitle: (args) => ipcRenderer.invoke("thunder:chat:generateTitle", args),
+  thunderChatSetTitle: (args) => ipcRenderer.invoke("thunder:chat:setTitle", args),
+  thunderChatDeleteConversation: (args) => ipcRenderer.invoke("thunder:chat:deleteConversation", args),
+  thunderChatTruncateConversation: (args) => ipcRenderer.invoke("thunder:chat:truncateConversation", args),
+  thunderChatRunTask: (args) => ipcRenderer.invoke("thunder:chat:runTask", args),
+  thunderChatCancelTask: (args) => ipcRenderer.invoke("thunder:chat:cancelTask", args),
+  thunderChatAnswerQuestion: (args) => ipcRenderer.invoke("thunder:chat:answerQuestion", args),
+  thunderChatPauseTask: (args) => ipcRenderer.invoke("thunder:chat:pauseTask", args),
+  thunderChatResumeTask: (args) => ipcRenderer.invoke("thunder:chat:resumeTask", args),
+  thunderChatGetTrace: (args) => ipcRenderer.invoke("thunder:chat:getTrace", args),
+  thunderChatGetActiveStream: (args) => ipcRenderer.invoke("thunder:chat:getActiveStream", args),
+  thunderChatListTraces: (args) => ipcRenderer.invoke("thunder:chat:listTraces", args),
+  onThunderChatEvent: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: ThunderChatStreamPayload) => callback(payload);
+    ipcRenderer.on("thunder:chat:event", handler);
+    return () => ipcRenderer.removeListener("thunder:chat:event", handler);
+  },
+  onThunderModelsChanged: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on("thunder:models:changed", handler);
+    return () => ipcRenderer.removeListener("thunder:models:changed", handler);
+  },
+  onThunderRolesChanged: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on("thunder:roles:changed", handler);
+    return () => ipcRenderer.removeListener("thunder:roles:changed", handler);
+  },
   onScheduleRunEvent: (callback) => {
     const handler = (
       _event: Electron.IpcRendererEvent,

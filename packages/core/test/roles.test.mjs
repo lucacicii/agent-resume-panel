@@ -4,141 +4,192 @@ import * as os from "node:os";
 import * as path from "node:path";
 import test from "node:test";
 import {
-  discoverProjectRoles,
-  parseRoleMarkdown
+  discoverRoles,
+  discoverEnabledRoles,
+  normalizeRoleRecord,
+  personaToText,
+  readRolesFile,
+  renderRolePreamble,
+  resolveRole,
+  resolveThunderHome,
+  roleAllowsExec,
+  roleAllowsWrite
 } from "../dist/index.js";
 
-test("parseRoleMarkdown extracts full YAML frontmatter and body", () => {
-  const content = `---
-name: DBA Expert
-agent: pi
-model: deepseek-reasoner
-thoughtLevel: high
-permissions: write
-tools:
-  fsWrite: true
-  execute: true
-callable:
-  - Developer
-  - role_tester
-autoDispatch: true
-enabled: true
----
-# Persona
-You are the Database Administrator (DBA) for this repository.
-Analyze SQL migrations and database schema designs.
-`;
-  const result = parseRoleMarkdown(content, { fileName: "dba-expert.md" });
+async function tempDir() {
+  return await fs.mkdtemp(path.join(os.tmpdir(), "arp-roles-"));
+}
 
-  assert.equal(result.slug, "dba-expert");
-  assert.equal(result.name, "DBA Expert");
-  assert.equal(result.agent, "pi");
-  assert.equal(result.model, "deepseek-reasoner");
-  assert.equal(result.thoughtLevel, "high");
-  assert.equal(result.permissions, "write");
-  assert.deepEqual(result.tools, { fsRead: true, fsWrite: true, execute: true });
-  assert.deepEqual(result.callable, ["Developer", "role_tester"]);
-  assert.equal(result.autoDispatch, true);
-  assert.equal(result.enabled, true);
-  assert.ok(result.persona.includes("You are the Database Administrator (DBA)"));
+const PLAN = {
+  id: "plan",
+  name: "Plan",
+  aliases: ["p"],
+  persona: ["You plan first.", "Never write files."],
+  permission: "read",
+  askUser: true,
+  exitGate: true,
+  enabled: true
+};
+
+async function writeRoles(filePath, records) {
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, records.map((r) => JSON.stringify(r)).join("\n") + "\n", "utf8");
+}
+
+test("normalizeRoleRecord applies defaults and flattens persona", () => {
+  const role = normalizeRoleRecord(PLAN, { filePath: "/x/roles.jsonl", fileName: "roles.jsonl" });
+  assert.ok(role);
+  assert.equal(role.id, "plan");
+  assert.equal(role.name, "Plan");
+  assert.deepEqual(role.aliases, ["p"]);
+  assert.equal(role.persona, "You plan first.\nNever write files.");
+  assert.equal(role.permission, "read");
+  assert.equal(role.askUser, true);
+  assert.equal(role.exitGate, true);
+  assert.equal(role.enabled, true);
 });
 
-test("parseRoleMarkdown handles inline array callable and fallback values", () => {
-  const content = `---
-callable: [Developer, role_architect, UI Designer]
-auto_dispatch: false
----
-You are a specialized code reviewer.
-`;
-  const result = parseRoleMarkdown(content, { fileName: "code_reviewer.md" });
-
-  assert.equal(result.slug, "code-reviewer");
-  assert.equal(result.name, "Code Reviewer");
-  assert.equal(result.agent, "claude");
-  assert.equal(result.model, undefined);
-  assert.equal(result.permissions, "read");
-  assert.deepEqual(result.tools, { fsRead: true, fsWrite: false, execute: false });
-  assert.deepEqual(result.callable, ["Developer", "role_architect", "UI Designer"]);
-  assert.equal(result.autoDispatch, false);
-  assert.equal(result.enabled, true);
-  assert.ok(result.persona.includes("You are a specialized code reviewer."));
+test("normalizeRoleRecord defaults permission to read and enabled to true", () => {
+  const role = normalizeRoleRecord({ id: "bare" }, { filePath: "/f", fileName: "f" });
+  assert.ok(role);
+  assert.equal(role.permission, "read");
+  assert.equal(role.enabled, true);
+  assert.equal(role.askUser, false);
+  assert.deepEqual(role.aliases, []);
+  assert.equal(role.name, "bare", "name falls back to id");
 });
 
-test("parseRoleMarkdown falls back cleanly when no frontmatter is provided", () => {
-  const content = `You are a security auditor inspecting dependency vulnerabilities and API tokens.`;
-  const result = parseRoleMarkdown(content, { fileName: "security-auditor.md" });
-
-  assert.equal(result.slug, "security-auditor");
-  assert.equal(result.name, "Security Auditor");
-  assert.equal(result.agent, "claude");
-  assert.equal(result.permissions, "read");
-  assert.deepEqual(result.tools, { fsRead: true, fsWrite: false, execute: false });
-  assert.deepEqual(result.callable, []);
-  assert.equal(result.autoDispatch, false);
-  assert.equal(result.persona, content);
-});
-
-test("discoverProjectRoles scans .arp/roles/*.md and returns descriptors", async () => {
-  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "roles-test-"));
-  const projectPath = path.join(tmpDir, "project");
-  const rolesDir = path.join(projectPath, ".arp", "roles");
-  await fs.mkdir(rolesDir, { recursive: true });
-
-  // 1. Create role A (DBA)
-  await fs.writeFile(
-    path.join(rolesDir, "dba.md"),
-    `---
-name: DBA Specialist
-agent: pi
-callable:
-  - Developer
----
-You are DBA.`
-  );
-
-  // 2. Create role B (Security)
-  await fs.writeFile(
-    path.join(rolesDir, "security.md"),
-    `---
-name: Security Analyst
-agent: codex
-tools:
-  fsWrite: true
----
-You are Security.`
-  );
-
-  // 3. Create non-markdown file (should be ignored)
-  await fs.writeFile(path.join(rolesDir, "README.txt"), "This is not a role file.");
-
-  try {
-    const roles = await discoverProjectRoles({ projectPath });
-    assert.equal(roles.length, 2);
-
-    const dba = roles.find((r) => r.slug === "dba");
-    assert.ok(dba);
-    assert.equal(dba.id, "project_role_dba");
-    assert.equal(dba.name, "DBA Specialist");
-    assert.equal(dba.agent, "pi");
-    assert.deepEqual(dba.callable, ["Developer"]);
-
-    const security = roles.find((r) => r.slug === "security");
-    assert.ok(security);
-    assert.equal(security.id, "project_role_security");
-    assert.equal(security.name, "Security Analyst");
-    assert.equal(security.agent, "codex");
-    assert.equal(security.tools.fsWrite, true);
-    assert.equal(security.permissions, "write");
-  } finally {
-    await fs.rm(tmpDir, { recursive: true, force: true });
+test("normalizeRoleRecord rejects rows without a usable id", () => {
+  for (const bad of [null, undefined, 42, "str", {}, { id: "   " }, { id: 7 }]) {
+    assert.equal(normalizeRoleRecord(bad, { filePath: "/f", fileName: "f" }), null);
   }
 });
 
-test("discoverProjectRoles handles missing directory and empty options", async () => {
-  const nonExistent = path.join(os.tmpdir(), "non-existent-roles-path-12345");
-  const result1 = await discoverProjectRoles({ projectPath: nonExistent });
-  assert.deepEqual(result1, []);
+test("snake_case aliases are accepted alongside camelCase", () => {
+  const role = normalizeRoleRecord(
+    { id: "x", ask_user: true, exit_gate: true, thinking_level: "high" },
+    { filePath: "/f", fileName: "f" }
+  );
+  assert.ok(role);
+  assert.equal(role.askUser, true);
+  assert.equal(role.exitGate, true);
+  assert.equal(role.thinkingLevel, "high");
+});
 
-  const result2 = await discoverProjectRoles({});
-  assert.deepEqual(result2, []);
+test("an invalid permission string falls back to read", () => {
+  const role = normalizeRoleRecord({ id: "x", permission: "root" }, { filePath: "/f", fileName: "f" });
+  assert.ok(role);
+  assert.equal(role.permission, "read");
+});
+
+test("readRolesFile skips malformed lines without losing valid ones", async () => {
+  const dir = await tempDir();
+  const file = path.join(dir, "roles.jsonl");
+  await fs.writeFile(
+    file,
+    [
+      JSON.stringify({ id: "good" }),
+      "{ this is not json",
+      "",
+      JSON.stringify({ id: "also_good", permission: "bash" })
+    ].join("\n") + "\n",
+    "utf8"
+  );
+
+  const roles = await readRolesFile(file);
+  assert.equal(roles.length, 2, "two valid rows survive one bad row");
+  assert.deepEqual(roles.map((r) => r.id).sort(), ["also_good", "good"]);
+});
+
+test("readRolesFile returns [] for a missing file", async () => {
+  assert.deepEqual(await readRolesFile(path.join(await tempDir(), "nope.jsonl")), []);
+});
+
+test("discoverRoles merges global then project, project overriding by id", async () => {
+  const home = await tempDir();
+  const project = await tempDir();
+  const thunderHome = path.join(home, ".thunder");
+
+  await writeRoles(path.join(thunderHome, "roles.jsonl"), [
+    { id: "plan", name: "Global Plan", permission: "bash" },
+    { id: "global_only", permission: "read" }
+  ]);
+  await writeRoles(path.join(project, ".arp", "roles.jsonl"), [
+    { id: "plan", name: "Project Plan", permission: "read" }
+  ]);
+
+  const roles = await discoverRoles({ projectPath: project, thunderHome });
+  const plan = roles.find((r) => r.id === "plan");
+  assert.ok(plan);
+  assert.equal(plan.name, "Project Plan", "project scope wins");
+  assert.equal(plan.permission, "read");
+  assert.equal(roles.filter((r) => r.id === "plan").length, 1, "same id does not duplicate");
+  assert.ok(roles.some((r) => r.id === "global_only"), "global-only roles survive");
+});
+
+test("discoverEnabledRoles filters disabled roles", async () => {
+  const thunderHome = await tempDir();
+  await writeRoles(path.join(thunderHome, "roles.jsonl"), [
+    { id: "on", enabled: true },
+    { id: "off", enabled: false }
+  ]);
+
+  const all = await discoverRoles({ thunderHome });
+  assert.equal(all.length, 2);
+
+  const enabled = await discoverEnabledRoles({ thunderHome });
+  assert.deepEqual(enabled.map((r) => r.id), ["on"]);
+  assert.equal(all[0].id, "on", "enabled roles sort first");
+});
+
+test("resolveRole matches id, alias, case-insensitively and with a leading slash", () => {
+  const roles = [
+    { id: "plan", aliases: ["p"] },
+    { id: "reviewer", aliases: [] }
+  ];
+  assert.equal(resolveRole(roles, "plan")?.id, "plan");
+  assert.equal(resolveRole(roles, "/plan")?.id, "plan");
+  assert.equal(resolveRole(roles, "P")?.id, "plan");
+  assert.equal(resolveRole(roles, "reviewer")?.id, "reviewer");
+  assert.equal(resolveRole(roles, "review"), undefined);
+});
+
+test("resolveThunderHome honours explicit, env, then HOME", () => {
+  assert.equal(resolveThunderHome({ thunderHome: "/explicit" }), "/explicit");
+  assert.equal(resolveThunderHome({ thunderHome: null, userHome: "/home/u" }), "/home/u/.thunder");
+});
+
+test("renderRolePreamble states the capability tier", () => {
+  const read = renderRolePreamble({
+    id: "plan",
+    name: "Plan",
+    persona: "Plan only.",
+    permission: "read",
+    aliases: [],
+    askUser: true,
+    exitGate: true,
+    enabled: true,
+    triggers: [],
+    filePath: "/f",
+    fileName: "f"
+  });
+  assert.match(read, /\[Active Role: Plan\]/);
+  assert.match(read, /read-only \(fs_write=off, bash=off\)/);
+  assert.match(read, /Plan only\./);
+  assert.match(read, /\[End Role\]/);
+});
+
+test("permission helpers agree with the Rust ladder", () => {
+  assert.equal(roleAllowsWrite("read"), false);
+  assert.equal(roleAllowsWrite("write"), true);
+  assert.equal(roleAllowsWrite("bash"), true);
+  assert.equal(roleAllowsExec("read"), false);
+  assert.equal(roleAllowsExec("write"), false);
+  assert.equal(roleAllowsExec("bash"), true);
+});
+
+test("personaToText handles string, array and missing", () => {
+  assert.equal(personaToText("a"), "a");
+  assert.equal(personaToText(["a", "b"]), "a\nb");
+  assert.equal(personaToText(undefined), "");
 });

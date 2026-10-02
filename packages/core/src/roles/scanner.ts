@@ -1,259 +1,229 @@
 import * as fs from "node:fs/promises";
+import * as os from "node:os";
 import * as path from "node:path";
+import { readJsonLines } from "../transcript/jsonl";
 import type {
-  DiscoverProjectRolesOptions,
-  ProjectRoleAgent,
+  DiscoverRolesOptions,
   ProjectRoleDescriptor,
-  ProjectRolePermission,
-  ProjectRoleTools
+  RolePermission,
+  RolePersona,
+  RoleRecord
 } from "./types";
 
-const VALID_AGENTS: ReadonlySet<string> = new Set(["pi", "claude", "codex"]);
+const VALID_PERMISSIONS: ReadonlySet<string> = new Set(["read", "write", "bash"]);
+const DEFAULT_PERMISSION: RolePermission = "read";
 
-function parseBoolean(value: unknown, defaultValue = false): boolean {
+/** JSONL file holding roles for one scope. */
+export const ROLES_FILE_NAME = "roles.jsonl";
+
+/**
+ * Resolve `~/.thunder`, honouring `THUNDER_CONFIG_DIR` exactly like the Rust
+ * host (`thunder-agent-root::roles::RoleRegistry::thunder_home`).
+ */
+export function resolveThunderHome(
+  options: { thunderHome?: string | null; userHome?: string | null } = {}
+): string {
+  const explicit = options.thunderHome?.trim();
+  if (explicit) return explicit;
+
+  const fromEnv = process.env.THUNDER_CONFIG_DIR?.trim();
+  if (fromEnv) return fromEnv;
+
+  const home = options.userHome?.trim() || process.env.HOME || os.homedir();
+  return path.join(home, ".thunder");
+}
+
+/** Flatten a persona (string or string[]) to text. */
+export function personaToText(persona: RolePersona | undefined): string {
+  if (typeof persona === "string") return persona;
+  if (Array.isArray(persona)) return persona.join("\n");
+  return "";
+}
+
+function parsePermission(value: unknown): RolePermission {
+  if (typeof value === "string" && VALID_PERMISSIONS.has(value.trim().toLowerCase())) {
+    return value.trim().toLowerCase() as RolePermission;
+  }
+  return DEFAULT_PERMISSION;
+}
+
+function parseBoolean(value: unknown, fallback: boolean): boolean {
   if (typeof value === "boolean") return value;
   if (typeof value === "number") return value !== 0;
   if (typeof value === "string") {
     const s = value.trim().toLowerCase();
-    if (s === "true" || s === "1" || s === "yes" || s === "on") return true;
-    if (s === "false" || s === "0" || s === "no" || s === "off") return false;
+    if (["true", "1", "yes", "on"].includes(s)) return true;
+    if (["false", "0", "no", "off"].includes(s)) return false;
   }
-  return defaultValue;
+  return fallback;
 }
 
-function parseAgent(value: unknown, defaultValue: ProjectRoleAgent = "claude"): ProjectRoleAgent {
-  if (typeof value === "string") {
-    const s = value.trim().toLowerCase();
-    if (VALID_AGENTS.has(s)) return s as ProjectRoleAgent;
+function parseStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.filter((v): v is string => typeof v === "string").map((v) => v.trim()).filter(Boolean);
   }
-  return defaultValue;
-}
-
-function parsePermission(value: unknown, tools: ProjectRoleTools): ProjectRolePermission {
-  if (typeof value === "string") {
-    const s = value.trim().toLowerCase();
-    if (s === "write" || s === "read") return s;
+  if (typeof value === "string" && value.trim()) {
+    return [value.trim()];
   }
-  return tools.fsWrite ? "write" : "read";
-}
-
-function slugToName(slug: string): string {
-  return slug
-    .replace(/[-_]+/g, " ")
-    .replace(/\b\w/g, (char) => char.toUpperCase())
-    .trim() || "Custom Role";
+  return [];
 }
 
 /**
- * Extract YAML-like frontmatter and Markdown body from a role file.
+ * Normalize one JSONL record. Returns `null` when the record has no usable id,
+ * so a partially written line never breaks the whole palette.
+ *
+ * Unknown fields are ignored on purpose: the panel should tolerate a role file
+ * authored for a newer host rather than reject it.
  */
-export function parseRoleMarkdown(
-  content: string,
-  options?: { filePath?: string; fileName?: string; fallbackSlug?: string }
-): Omit<ProjectRoleDescriptor, "id" | "filePath" | "fileName" | "updatedAtMs"> & {
-  slug: string;
-} {
-  const fileName = options?.fileName || (options?.filePath ? path.basename(options.filePath) : "");
-  const baseSlug = (options?.fallbackSlug || fileName.replace(/\.[^/.]+$/, "") || "custom-role")
-    .toLowerCase()
-    .replace(/_/g, "-")
-    .replace(/[^a-z0-9-]/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "") || "custom-role";
+export function normalizeRoleRecord(
+  record: unknown,
+  source: { filePath: string; fileName: string; updatedAtMs?: number }
+): ProjectRoleDescriptor | null {
+  if (!record || typeof record !== "object") return null;
+  const raw = record as RoleRecord;
 
-  const trimmed = content.trim();
-  let frontmatterStr = "";
-  let rawBody = trimmed;
+  const id = typeof raw.id === "string" ? raw.id.trim() : "";
+  if (!id) return null;
 
-  if (trimmed.startsWith("---")) {
-    const endIdx = trimmed.indexOf("\n---", 3);
-    if (endIdx !== -1) {
-      frontmatterStr = trimmed.slice(3, endIdx).trim();
-      rawBody = trimmed.slice(endIdx + 4).trim();
-    }
-  }
-
-  let name: string | undefined;
-  let agentRaw: string | undefined;
-  let model: string | undefined;
-  let thoughtLevel: string | undefined;
-  let permissionsRaw: string | undefined;
-  const toolsRaw: { fsWrite?: boolean; execute?: boolean } = {};
-  const callable: string[] = [];
-  let autoDispatch = false;
-  let enabled = true;
-
-  if (frontmatterStr) {
-    const lines = frontmatterStr.split(/\r?\n/);
-    let currentKey = "";
-    let inCallableList = false;
-    let inToolsBlock = false;
-
-    for (const rawLine of lines) {
-      const line = rawLine.replace(/#.*$/, ""); // strip inline comments
-      const trimmedLine = line.trim();
-      if (!trimmedLine) continue;
-
-      const isIndented = rawLine.startsWith("  ") || rawLine.startsWith("\t");
-
-      if (isIndented && inCallableList) {
-        const itemMatch = trimmedLine.match(/^-\s*(.*)$/);
-        if (itemMatch) {
-          const itemVal = itemMatch[1]!.trim().replace(/^["']|["']$/g, "");
-          if (itemVal) callable.push(itemVal);
-          continue;
-        }
-      }
-
-      if (isIndented && inToolsBlock) {
-        const toolMatch = trimmedLine.match(/^([a-zA-Z0-9_-]+)\s*:\s*(.*)$/);
-        if (toolMatch) {
-          const k = toolMatch[1]!.toLowerCase();
-          const v = toolMatch[2]!.trim();
-          if (k === "fswrite" || k === "fs_write" || k === "write") {
-            toolsRaw.fsWrite = parseBoolean(v, false);
-          } else if (k === "execute" || k === "exec") {
-            toolsRaw.execute = parseBoolean(v, false);
-          }
-          continue;
-        }
-      }
-
-      const match = trimmedLine.match(/^([a-zA-Z0-9_.-]+)\s*:\s*(.*)$/);
-      if (match) {
-        currentKey = match[1]!.toLowerCase();
-        const value = match[2]!.trim().replace(/^["']|["']$/g, "");
-        inCallableList = false;
-        inToolsBlock = false;
-
-        switch (currentKey) {
-          case "name":
-            name = value;
-            break;
-          case "agent":
-            agentRaw = value;
-            break;
-          case "model":
-            model = value || undefined;
-            break;
-          case "thoughtlevel":
-          case "thought_level":
-            thoughtLevel = value || undefined;
-            break;
-          case "permission":
-          case "permissions":
-            permissionsRaw = value;
-            break;
-          case "autodispatch":
-          case "auto_dispatch":
-            autoDispatch = parseBoolean(value, false);
-            break;
-          case "enabled":
-            enabled = parseBoolean(value, true);
-            break;
-          case "tools":
-            inToolsBlock = true;
-            break;
-          case "callable":
-          case "callables":
-          case "callable_template_ids":
-            if (value.startsWith("[") && value.endsWith("]")) {
-              const arrayItems = value
-                .slice(1, -1)
-                .split(",")
-                .map((s) => s.trim().replace(/^["']|["']$/g, ""))
-                .filter(Boolean);
-              callable.push(...arrayItems);
-            } else if (value) {
-              callable.push(value);
-            } else {
-              inCallableList = true;
-            }
-            break;
-          case "tools.fswrite":
-          case "tools.fs_write":
-            toolsRaw.fsWrite = parseBoolean(value, false);
-            break;
-          case "tools.execute":
-          case "tools.exec":
-            toolsRaw.execute = parseBoolean(value, false);
-            break;
-        }
-      }
-    }
-  }
-
-  // Fallbacks
-  const finalTools: ProjectRoleTools = {
-    fsRead: true,
-    fsWrite: toolsRaw.fsWrite ?? (permissionsRaw === "write"),
-    execute: toolsRaw.execute ?? false
-  };
-
-  const finalName = name || slugToName(baseSlug);
-  const finalAgent = parseAgent(agentRaw, "claude");
-  const finalPermissions = parsePermission(permissionsRaw, finalTools);
-  const finalPersona = rawBody || `You are ${finalName} for this project.`;
+  const persona = personaToText(raw.persona);
 
   return {
-    slug: baseSlug,
-    name: finalName,
-    persona: finalPersona,
-    agent: finalAgent,
-    model: model || undefined,
-    thoughtLevel: thoughtLevel || undefined,
-    permissions: finalPermissions,
-    tools: finalTools,
-    callable: [...new Set(callable)],
-    autoDispatch,
-    enabled
+    id,
+    name: typeof raw.name === "string" && raw.name.trim() ? raw.name.trim() : id,
+    aliases: parseStringArray(raw.aliases),
+    description: typeof raw.description === "string" && raw.description.trim() ? raw.description.trim() : undefined,
+    persona,
+    permission: parsePermission(raw.permission),
+    model: typeof raw.model === "string" && raw.model.trim() ? raw.model.trim() : undefined,
+    thinkingLevel: (() => {
+      const tl = raw.thinkingLevel ?? raw.thinking_level;
+      return typeof tl === "string" && tl.trim() ? tl.trim() : undefined;
+    })(),
+    askUser: parseBoolean(raw.askUser ?? raw.ask_user, false),
+    exitGate: parseBoolean(raw.exitGate ?? raw.exit_gate, false),
+    enabled: parseBoolean(raw.enabled, true),
+    triggers: parseStringArray(raw.triggers),
+    filePath: source.filePath,
+    fileName: source.fileName,
+    updatedAtMs: source.updatedAtMs
   };
 }
 
 /**
- * Scan <projectPath>/.arp/roles/*.md and return all discovered project-scoped roles.
+ * Read one `roles.jsonl`. Missing files yield `[]`; malformed lines are skipped
+ * (the file is append-friendly, so a partial trailing write is expected).
  */
-export async function discoverProjectRoles(
-  options: DiscoverProjectRolesOptions = {}
+export async function readRolesFile(
+  filePath: string
 ): Promise<ProjectRoleDescriptor[]> {
-  const { projectPath } = options;
-  if (!projectPath) return [];
-
-  const rolesDir = path.join(projectPath, ".arp", "roles");
-  let entries: Array<{ name: string; isFile: () => boolean }>;
+  let updatedAtMs: number | undefined;
   try {
-    const dirList = await fs.readdir(rolesDir, { withFileTypes: true });
-    entries = dirList;
+    const stats = await fs.stat(filePath);
+    updatedAtMs = stats.mtimeMs;
   } catch {
     return [];
   }
 
-  const mdFiles = entries.filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".md"));
-  const results: ProjectRoleDescriptor[] = [];
+  const rows = await readJsonLines<unknown>(filePath);
+  const fileName = path.basename(filePath);
 
-  for (const file of mdFiles) {
-    const filePath = path.join(rolesDir, file.name);
-    try {
-      const stats = await fs.stat(filePath);
-      const content = await fs.readFile(filePath, "utf8");
-      const parsed = parseRoleMarkdown(content, {
-        filePath,
-        fileName: file.name
-      });
-      const id = `project_role_${parsed.slug}`;
+  const out: ProjectRoleDescriptor[] = [];
+  for (const row of rows) {
+    const role = normalizeRoleRecord(row, { filePath, fileName, updatedAtMs });
+    if (role) out.push(role);
+  }
+  return out;
+}
 
-      results.push({
-        ...parsed,
-        id,
-        filePath,
-        fileName: file.name,
-        updatedAtMs: stats.mtimeMs
-      });
-    } catch {
-      // Ignore unreadable or corrupt file
+/** Where a scope's roles live. */
+export function rolesFilePath(scopeDir: string): string {
+  return path.join(scopeDir, ROLES_FILE_NAME);
+}
+
+/**
+ * Discover roles from global + project scopes.
+ *
+ * Scope order is global first, then project, so a project role with the same
+ * `id` deterministically overrides the global one — matching the Rust host.
+ * The returned array keeps that override applied and is sorted by id.
+ */
+export async function discoverRoles(
+  options: DiscoverRolesOptions = {}
+): Promise<ProjectRoleDescriptor[]> {
+  const thunderHome = resolveThunderHome(options);
+
+  const sources: string[] = [rolesFilePath(thunderHome)];
+  if (options.projectPath) {
+    sources.push(rolesFilePath(path.join(options.projectPath, ".arp")));
+  }
+
+  const merged = new Map<string, ProjectRoleDescriptor>();
+  for (const source of sources) {
+    for (const role of await readRolesFile(source)) {
+      merged.set(role.id, role);
     }
   }
 
-  results.sort((a, b) => a.slug.localeCompare(b.slug));
-  return results;
+  const list = [...merged.values()];
+  // Enabled first, then alphabetical — mirrors `RoleRegistry::list`.
+  list.sort((a, b) => {
+    if (a.enabled !== b.enabled) return a.enabled ? -1 : 1;
+    return a.id.toLowerCase().localeCompare(b.id.toLowerCase());
+  });
+  return list;
+}
+
+/** Enabled roles only — what a slash palette should offer. */
+export async function discoverEnabledRoles(
+  options: DiscoverRolesOptions = {}
+): Promise<ProjectRoleDescriptor[]> {
+  return (await discoverRoles(options)).filter((role) => role.enabled);
+}
+
+/** Resolve a role by id or alias (case-insensitive, leading `/` tolerated). */
+export function resolveRole(
+  roles: ProjectRoleDescriptor[],
+  token: string
+): ProjectRoleDescriptor | undefined {
+  const t = token.trim().replace(/^\//, "").toLowerCase();
+  return roles.find(
+    (r) => r.id.toLowerCase() === t || r.aliases.some((a) => a.toLowerCase() === t)
+  );
+}
+
+/**
+ * Render the prompt preamble for an active role.
+ *
+ * Sent to the host as context; the host independently re-resolves the role by id
+ * and enforces `permission`, so this text is descriptive, never authoritative.
+ */
+export function renderRolePreamble(role: ProjectRoleDescriptor): string {
+  const capability =
+    role.permission === "read"
+      ? "read-only (fs_write=off, bash=off)"
+      : role.permission === "write"
+        ? "read+write (fs_write=on, bash=off)"
+        : "full (fs_write=on, bash=on)";
+
+  const body = role.persona.trim() || `You are ${role.name}.`;
+  return `[Active Role: ${role.name}]\npermission: ${capability}\n${body}\n[End Role]`;
+}
+
+/**
+ * @deprecated Markdown roles are no longer supported; use `readRolesFile`.
+ * Retained only so existing imports keep compiling.
+ */
+export function parseRoleMarkdown(): never {
+  throw new Error(
+    "parseRoleMarkdown is removed: roles are JSONL now. Use discoverRoles() / readRolesFile()."
+  );
+}
+
+/**
+ * @deprecated Use `discoverRoles`. Kept as an alias for older call sites.
+ */
+export async function discoverProjectRoles(
+  options: DiscoverRolesOptions = {}
+): Promise<ProjectRoleDescriptor[]> {
+  return discoverRoles(options);
 }

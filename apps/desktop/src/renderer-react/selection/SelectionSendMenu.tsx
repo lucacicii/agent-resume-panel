@@ -173,6 +173,18 @@ export function SelectionSendItems({
               {t(`desktop.settings.newSessionTarget.${option.value.replace(":", "_")}`)}
             </button>
           ))}
+          <div className="context-menu-separator" role="separator" />
+          <div className="notes-context-menu-label">{t("desktop.settings.newSessionGroupThunder")}</div>
+          {WORKBENCH_NEW_SESSION_TARGET_OPTIONS.filter((option) => option.group === "thunder").map((option) => (
+            <button
+              type="button"
+              role="menuitem"
+              key={option.value}
+              onClick={() => sendToAgent(option.value as WorkbenchSendSelectionTarget)}
+            >
+              {t(`desktop.settings.newSessionTarget.${option.value.replace(":", "_")}`)}
+            </button>
+          ))}
         </div>
       ) : null}
       {sessionFlyout ? (

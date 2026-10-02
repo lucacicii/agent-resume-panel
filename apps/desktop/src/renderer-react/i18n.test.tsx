@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { I18nProvider, useI18n } from "./i18n";
 
 function Probe(): React.JSX.Element {
@@ -21,6 +21,8 @@ describe("i18n", () => {
     );
 
     expect(await screen.findByText("Hello, Agent")).not.toBeNull();
-    expect(document.documentElement.classList.contains("i18n-ready")).toBe(true);
+    // The bundle (text) and the `ready` flag commit in separate microtasks, so
+    // the class lands one commit after the text does.
+    await waitFor(() => expect(document.documentElement.classList.contains("i18n-ready")).toBe(true));
   });
 });

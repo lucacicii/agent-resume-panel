@@ -159,6 +159,45 @@ export async function notesEnsureTaskWorkspace(noteId: string): Promise<{ dir: s
 }
 
 /**
+ * Retrieve a GTD task's complete execution context for AI chat / external agents:
+ * neutral workspace directory, background markdown, referenced shared projects, and note path.
+ */
+export async function notesGetTaskWorkspaceContext(noteId: string): Promise<{
+  dir: string;
+  title: string;
+  status: string;
+  backgroundMd: string;
+  projects: string[];
+  noteAbsPath: string;
+}> {
+  const settings = await loadSettings();
+  const panelHome = effectivePanelHome(settings);
+  const store = await getDesktopNotesStore();
+  const { dir } = await notesEnsureTaskWorkspace(noteId);
+  const { record, content } = await notesRead(noteId);
+  const doc = parseNoteDocument(content);
+
+  const declared = (doc.frontmatter.projects ?? []).map((entry) => entry.trim()).filter(Boolean);
+  const fromSessions = await store.listTaskSessionProjects();
+  const projects = mergeTaskProjects({
+    panelHome,
+    declared,
+    sessionProjects: fromSessions[noteId] ?? []
+  });
+
+  const backgroundMd = taskKnowledgeText(doc.body) || doc.body.trim();
+
+  return {
+    dir,
+    title: record.title || extractTitle(doc.body) || record.filename || noteId,
+    status: record.gtdStatus ?? "inbox",
+    backgroundMd,
+    projects,
+    noteAbsPath: absFromRelMdPath(panelHome, record.relMdPath)
+  };
+}
+
+/**
  * The task's context block for a session that runs in `cwd`: the block is
  * refreshed on demand, and returned only when the session runs outside the
  * workspace (there the agents read the file from their working directory).

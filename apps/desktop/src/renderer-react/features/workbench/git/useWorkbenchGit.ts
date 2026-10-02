@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { desktopApi } from "../../../bridge";
 import { notifyDesktop } from "../../../components/Notifications";
+import { useMountedRef } from "../../../components/useOverlayMotion";
 import { useI18n } from "../../../i18n";
 import {
   type CommitSuggestion,
@@ -10,6 +11,7 @@ import {
   GIT_AUTO_FETCH_MAX_ROOTS,
   GIT_STATUS_POLL_MS,
   basename,
+  collectGitRoots,
   defaultGitRoot,
   gitDirectoryKeys,
   gitOperationError,
@@ -84,6 +86,12 @@ export function useWorkbenchGit(options: {
   const [commitSuggestion, setCommitSuggestion] = useState<CommitSuggestion | null>(null);
   const gitStageQueuesRef = useRef(new Map<string, Promise<void>>());
   const gitStatusInFlightRef = useRef(false);
+  /**
+   * The status lock is cleared by the in-flight call's `finally`, which can
+   * land after this hook unmounts. Waiters must stop when that happens,
+   * otherwise they keep scheduling timers against a torn-down `window`.
+   */
+  const mountedRef = useMountedRef();
   const gitRefreshPendingRef = useRef(false);
   const refreshGitRef = useRef<(withNotification?: boolean) => Promise<void>>(async () => {});
   const gitFetchInFlightRef = useRef(false);
@@ -105,29 +113,19 @@ export function useWorkbenchGit(options: {
     notifyDesktop({ text: t(key, gitOperationError(error)), kind: "error" });
   }, [t]);
 
-  const collectGitRoots = useCallback((result: GitStatusResult, preferredRoot = ""): string[] => {
-    const roots = new Set<string>();
-    if (preferredRoot) roots.add(preferredRoot);
-    if (result.root) roots.add(result.root);
-    (result.nestedRepos || []).forEach((repo) => roots.add(repo.root));
-    [...result.staged, ...result.unstaged].forEach((change) => {
-      if (change.repoRoot) roots.add(change.repoRoot);
-    });
-    (result.tracking || []).forEach((item) => {
-      if (item.repoRoot) roots.add(item.repoRoot);
-    });
-    return [...roots].filter(Boolean);
-  }, []);
-
   const refreshGit = useCallback(async (withNotification = false) => {
+    if (!mountedRef.current) return;
     const projects = selectedProjects;
     if (!projects.length) return;
     const projectsIdentity = projectRootsKey(projects);
     if (gitStatusInFlightRef.current) {
       if (withNotification) {
-        while (gitStatusInFlightRef.current) {
+        while (gitStatusInFlightRef.current && mountedRef.current) {
           await new Promise((resolve) => window.setTimeout(resolve, 50));
         }
+        // Unmounted while waiting out the in-flight status call: do not start
+        // another one against a dead component.
+        if (!mountedRef.current) return;
       } else {
         gitRefreshPendingRef.current = true;
         return;
@@ -180,7 +178,7 @@ export function useWorkbenchGit(options: {
       }
     }
   }, [
-    collectGitRoots,
+    mountedRef,
     nestedScanIgnoreDirs,
     nestedScanMaxDepth,
     notifyGitFailure,
@@ -193,6 +191,7 @@ export function useWorkbenchGit(options: {
   useEffect(() => { refreshGitRef.current = refreshGit; }, [refreshGit]);
 
   const autoFetchGit = useCallback(async (force = false) => {
+    if (!mountedRef.current) return;
     if (!selectedProjects.length || gitFetchInFlightRef.current) return;
     const now = Date.now();
     if (!force && now - gitLastFetchAtRef.current < GIT_AUTO_FETCH_MS) return;
@@ -202,9 +201,10 @@ export function useWorkbenchGit(options: {
         await refreshGit(false);
         // A concurrent poll may hold the status lock; wait it out so the repo
         // roots are known before fetching instead of skipping the sweep.
-        while (gitStatusInFlightRef.current) {
+        while (gitStatusInFlightRef.current && mountedRef.current) {
           await new Promise((resolve) => window.setTimeout(resolve, 20));
         }
+        if (!mountedRef.current) return;
         if (!gitRootsRef.current.length) await refreshGit(false);
       }
       const roots = gitRootsRef.current.slice(0, GIT_AUTO_FETCH_MAX_ROOTS);
@@ -220,7 +220,7 @@ export function useWorkbenchGit(options: {
     } finally {
       gitFetchInFlightRef.current = false;
     }
-  }, [refreshGit, selectedProjects]);
+  }, [mountedRef, refreshGit, selectedProjects]);
 
   useEffect(() => {
     gitRootsRef.current = [];

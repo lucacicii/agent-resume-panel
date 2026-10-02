@@ -21,12 +21,145 @@ export interface ThunderSchedule {
   updatedAtMs: number;
 }
 
+/** A question the agent is blocked on; rendered as a chat bubble. */
+export interface ThunderQuestionOption {
+  label: string;
+  description?: string;
+}
+
+export interface ThunderQuestionItem {
+  question: string;
+  header?: string;
+  multi_select?: boolean;
+  multiSelect?: boolean;
+  options: ThunderQuestionOption[];
+}
+
+/** A role as reported by the Thunder daemon (`list_roles`). */
+export interface ThunderRoleInfo {
+  id: string;
+  name: string;
+  aliases?: string[];
+  description?: string;
+  /** Capability tier enforced host-side. */
+  permission: "read" | "write" | "bash" | string;
+  /** Approval mode declared by the role (`roles.jsonl` is the single source). */
+  mode?: "plan" | "ask" | "accept_edits" | "manual" | "yolo" | string | null;
+  /** Keyword auto-selection triggers (plain-language prompts, no slash command). */
+  triggers?: string[];
+  persona?: string;
+  model?: string | null;
+  thinking_level?: string | null;
+  ask_user?: boolean;
+  exit_gate?: boolean;
+  enabled?: boolean;
+}
+
+/** One parsed line of `~/.thunder/roles.jsonl`, raw JSON preserved so the settings editor can round-trip fields it does not model. */
+export interface ThunderRoleRecord {
+  /** Parsed JSON of the line — every field, including unknown ones. */
+  raw: Record<string, unknown>;
+  /** Whether this id is one of the app's bundled built-in roles. */
+  builtin: boolean;
+}
+
+/** Shape of `~/.thunder/models.json` (provider registry + utility model selection). */
+export interface ThunderModelsConfig {
+  providers: Record<string, ThunderModelsProvider>;
+  utilityModel?: string;
+}
+
+export interface ThunderModelsProvider {
+  name?: string;
+  api?: string;
+  apiKey?: string;
+  baseUrl?: string;
+  models?: Array<Record<string, unknown>>;
+  [key: string]: unknown;
+}
+
 export interface ThunderModelInfo {
   id: string;
   provider: string;
   name: string;
   selection_id: string;
   available: boolean;
+  reasoning?: boolean;
+  thinking_levels?: string[];
+  default_thinking_level?: string;
+  context_window?: number;
+  max_tokens?: number;
+}
+
+export interface ThunderTelemetryNotice {
+  layer: string;
+  action: string;
+  ground_truth: string;
+  self_healed?: string;
+  guidance?: string;
+}
+
+export interface ThunderFileChangeRecord {
+  path: string;
+  tool: string;
+  action: "written" | "created" | "modified" | "deleted" | "failed" | string;
+  bytes?: number;
+  turn?: number;
+  timestamp?: number;
+  toolCallId?: string;
+}
+
+export interface ThunderTurnStats {
+  turn: number;
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  cached_tokens?: number;
+  reasoning_tokens?: number;
+  duration_ms: number;
+  tool_calls_count: number;
+  tokens_per_second?: number;
+}
+
+export interface ThunderAgentStats {
+  total_turns: number;
+  total_prompt_tokens: number;
+  total_completion_tokens: number;
+  total_cached_tokens?: number;
+  total_reasoning_tokens?: number;
+  total_duration_ms: number;
+  total_tool_executions: number;
+  total_tool_time_ms: number;
+  avg_tokens_per_second?: number;
+}
+
+export interface ThunderTraceSpan {
+  id: string;
+  turn: number;
+  type: "thinking" | "token" | "tool" | "telemetry" | "file";
+  name: string;
+  startedAtMs: number;
+  durationMs?: number;
+  status?: "running" | "completed" | "failed";
+  data?: Record<string, unknown>;
+}
+
+export interface ThunderTaskTrace {
+  task_id: string;
+  session_id: string;
+  model?: string;
+  workspace_dir?: string;
+  prompt?: string;
+  started_at_ms: number;
+  finished_at_ms?: number;
+  duration_ms?: number;
+  /** Wall-clock time from task receipt (user message) to completion. */
+  wall_duration_ms?: number;
+  finish_reason?: string;
+  stats?: ThunderAgentStats;
+  final_content?: string;
+  events?: ThunderObservedEvent[];
+  file_changes?: ThunderFileChangeRecord[];
+  telemetry_notices?: ThunderTelemetryNotice[];
 }
 
 export type ThunderAgentEvent =
@@ -55,9 +188,30 @@ export type ThunderAgentEvent =
         output: unknown;
         error?: string;
         is_error: boolean;
+        duration_ms?: number;
+        telemetry?: ThunderTelemetryNotice;
       };
     }
-  | { type: "turn_end"; turn: number; stats?: unknown }
+  | {
+      type: "file_change";
+      turn: number;
+      tool_call_id: string;
+      path: string;
+      action: "written" | "created" | "modified" | "deleted" | "failed" | string;
+      bytes?: number;
+      tool_name: string;
+    }
+  | {
+      type: "telemetry_notice";
+      turn: number;
+      tool_call_id: string;
+      layer: string;
+      action: string;
+      ground_truth: string;
+      self_healed?: string;
+      guidance?: string;
+    }
+  | { type: "turn_end"; turn: number; stats?: ThunderTurnStats }
   | { type: "done"; stats?: unknown }
   | { type: "error"; message: string }
   | { type: string; [key: string]: unknown };
@@ -96,3 +250,128 @@ export interface ThunderScheduleInput {
   triggerValue: string;
   enabled?: boolean;
 }
+
+export interface ThunderToolCallFunction {
+  name: string;
+  arguments: string;
+}
+
+export interface ThunderToolCall {
+  id: string;
+  type: string;
+  function: ThunderToolCallFunction;
+}
+
+export interface ThunderToolExecutionRecord {
+  toolCallId: string;
+  name: string;
+  arguments: Record<string, unknown>;
+  result?: unknown;
+  isRunning?: boolean;
+  isError?: boolean;
+}
+
+export interface ThunderChatMessage {
+  role: "system" | "user" | "assistant" | "tool";
+  content?: string | null;
+  name?: string;
+  tool_calls?: ThunderToolCall[];
+  tool_call_id?: string;
+  reasoning?: string;
+  tool_executions?: ThunderToolExecutionRecord[];
+  stats?: {
+    turn?: number;
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    duration_ms?: number;
+    tool_calls_count?: number;
+  };
+}
+
+export interface ThunderConversationSummary {
+  id: string;
+  title?: string;
+  parent_id?: string;
+  model?: string;
+  workspace?: string;
+  thinking_level?: string;
+  status: string;
+  message_count: number;
+  turn_count: number;
+  total_tokens: number;
+  /** Cumulative provider-reported usage (includes cache reads/writes). */
+  total_used_tokens?: number;
+  tags?: string[];
+  created_at_ms: number;
+  updated_at_ms: number;
+}
+
+export interface ThunderConversation {
+  id: string;
+  title?: string;
+  parent_id?: string;
+  system_prompt?: string;
+  model?: string;
+  workspace?: string;
+  thinking_level?: string;
+  status: string;
+  messages: ThunderChatMessage[];
+  stats?: {
+    total_tokens?: number;
+    /** Cumulative provider-reported usage across the conversation (includes cache). */
+    total_used_tokens?: number;
+    message_count?: number;
+    turn_count?: number;
+    tool_calls_count?: number;
+    duration_ms?: number;
+  };
+  created_at_ms: number;
+  updated_at_ms: number;
+}
+
+export interface ThunderObservedEvent {
+  agent_id: string;
+  event: ThunderAgentEvent;
+}
+
+export interface ThunderChatStreamPayload {
+  taskId: string;
+  sessionId: string;
+  event: ThunderObservedEvent;
+}
+
+/**
+ * Live snapshot of an in-flight Thunder task, buffered in the main process so a
+ * renderer that unmounted and remounted mid-answer can resume the stream instead
+ * of restarting from the next incremental delta.
+ */
+export interface ThunderActiveStreamSnapshot {
+  sessionId: string;
+  taskId: string;
+  prompt?: string;
+  model?: string;
+  workspaceDir?: string;
+  startedAtMs: number;
+  isRunning: boolean;
+  streamingText: string;
+  streamingReasoning: string;
+  streamingTools: ThunderToolExecutionRecord[];
+  events: ThunderObservedEvent[];
+}
+
+export interface ThunderChatTaskOptions {
+  taskId: string;
+  prompt: string;
+  sessionId?: string;
+  model?: string;
+  workspaceDir?: string;
+  taskNoteId?: string;
+  thinking_level?: string;
+}
+
+export interface ThunderChatTaskResult {
+  finalContent?: string;
+  finishReason: string;
+  activePlugins?: string[];
+}
+

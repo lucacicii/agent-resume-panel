@@ -246,6 +246,7 @@ import { pickTemplateImage } from "./templateImagePicker";
 import { isCustomHexColor, isTaskColorKey, taskAccent, type TaskAccentSource } from "../shared/taskColors";
 import { refreshMemorySchedulerFromSettings, stopMemoryScheduler } from "./scheduler";
 import { registerThunderIpc } from "./thunder/thunderIpc";
+import { getThunderClient } from "./thunder/thunderClient";
 import { startThunderScheduler, stopThunderScheduler } from "./thunder/thunderScheduler";
 import {
   ensureAgentStatusDaemon,
@@ -455,6 +456,32 @@ function systemTerminalSettings(settings: PanelSettings) {
     externalLaunchMode: settings.workbench?.externalLaunchMode || "executeCommand",
     externalAutoPasteDelayMs: settings.workbench?.externalAutoPasteDelayMs
   };
+}
+
+/** POSIX single-quote so paths with spaces or quotes survive the PTY shell. */
+function shellQuoteArg(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+/**
+ * Command line for the embedded `cli:thunder` target: the built TUI binary, else the
+ * checkout's `run.sh` (which builds on demand via cargo).
+ */
+async function buildThunderTuiCommand(resumeSessionId?: string): Promise<string> {
+  const client = getThunderClient();
+  await client.refreshThunderSettings(true);
+  const resolved = client.resolveTui();
+  const flags = resumeSessionId?.trim() ? ` --session ${shellQuoteArg(resumeSessionId.trim())}` : "";
+  if (resolved.binaryPath) return `${shellQuoteArg(resolved.binaryPath)}${flags}`;
+  if (resolved.repoPath) {
+    // No built binary: run through cargo from the *session's* cwd so the TUI still
+    // opens the workbench project (run.sh would cd into the checkout root).
+    const manifest = path.join(resolved.repoPath, "Cargo.toml");
+    return `cargo run --manifest-path ${shellQuoteArg(manifest)} -p thunder-tui --bin thunder-tui --${flags}`;
+  }
+  throw new Error(
+    "Thunder TUI binary not found. Set THUNDER_PATH to a thunder checkout, THUNDER_TUI_BIN to the binary, or settings.thunder.{repoPath,tuiPath}. Build it: cargo build --release -p thunder-tui"
+  );
 }
 
 async function resolveSessionCwd(
@@ -2553,6 +2580,7 @@ function registerIpc(): void {
       }
       invalidateNotesStore();
       await refreshMemorySchedulerFromSettings();
+      void getThunderClient().reloadProviders();
       const saved = await loadSettings();
       applyNativeThemeSource(saved.desktop?.theme);
       uiSettingsCache = saved;
@@ -2919,12 +2947,14 @@ function registerIpc(): void {
       _event,
       args: {
         cwd: string;
-        provider: AgentProvider;
+        provider: AgentProvider | "thunder";
         executionMode: "standard" | "note-yolo";
         useSystemTerminalOnly?: boolean;
         noteId?: string;
         taskNoteId?: string;
         initialPrompt?: string;
+        /** `cli:thunder`: resume this Thunder conversation id in the TUI. */
+        resumeSessionId?: string;
       }
     ) => {
       const cwd = expandHome(args.cwd?.trim() || "");
@@ -2941,14 +2971,18 @@ function registerIpc(): void {
         requestedYolo = settings.workbench?.newSessionYolo === true;
       }
 
-      const yoloSupported = requestedYolo && supportsNewSessionYoloMode(args.provider);
+      const yoloSupported =
+        requestedYolo && args.provider !== "thunder" && supportsNewSessionYoloMode(args.provider);
       const executionMode: NewSessionExecutionMode = yoloSupported ? "yolo" : "standard";
-      const command = buildNewSessionCommand(
-        args.provider,
-        cwd,
-        executionMode,
-        await taskContextFile(args.taskNoteId, cwd)
-      );
+      const command =
+        args.provider === "thunder"
+          ? await buildThunderTuiCommand(args.resumeSessionId)
+          : buildNewSessionCommand(
+              args.provider,
+              cwd,
+              executionMode,
+              await taskContextFile(args.taskNoteId, cwd)
+            );
       const unsupportedYolo = requestedYolo && !yoloSupported;
       const warning = unsupportedYolo
         ? `YOLO mode is not supported for provider: ${args.provider}. Starting in standard mode.`

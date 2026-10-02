@@ -174,7 +174,7 @@ export function ScheduleView({ active }: { active: boolean }): React.JSX.Element
             onClick={handleCreate}
             title={text("desktop.schedule.addSchedule", "Add Schedule")}
           >
-            <ThemeIcon name="plus" size={14} />
+            <ThemeIcon name="plus" size={ICON_SIZE.dense} />
           </button>
         </div>
 
@@ -199,15 +199,15 @@ export function ScheduleView({ active }: { active: boolean }): React.JSX.Element
         <div className="schedule-list-items">
           {loading ? (
             <div className="schedule-list-loading">
-              <ThemeIcon name="loader" size={16} />
+              <ThemeIcon name="loader" size={ICON_SIZE.default} />
               <span>{text("desktop.top.loading", "Loading…")}</span>
             </div>
           ) : filteredSchedules.length === 0 ? (
             <div className="schedule-list-empty">
-              <ThemeIcon name="clock" size={24} />
+              <ThemeIcon name="clock" size={ICON_SIZE.hero} />
               <p>{text("desktop.schedule.emptyList", "No schedules found.")}</p>
               <button type="button" className="btn btn-secondary btn-sm" onClick={handleCreate}>
-                <ThemeIcon name="plus" size={12} />
+                <ThemeIcon name="plus" size={ICON_SIZE.inline} />
                 <span>{text("desktop.schedule.createFirst", "Create Schedule")}</span>
               </button>
             </div>
@@ -249,7 +249,7 @@ export function ScheduleView({ active }: { active: boolean }): React.JSX.Element
                         void handleRunNow(s);
                       }}
                     >
-                      <ThemeIcon name={isRunning ? "loader" : "play"} size={12} />
+                      <ThemeIcon name={isRunning ? "loader" : "play"} size={ICON_SIZE.inline} />
                     </button>
                   </div>
 
@@ -304,18 +304,18 @@ export function ScheduleView({ active }: { active: boolean }): React.JSX.Element
                 </div>
                 <div className="schedule-detail-meta-row">
                   <span className="schedule-detail-frequency">
-                    <ThemeIcon name="clock" size={12} />
+                    <ThemeIcon name="clock" size={ICON_SIZE.inline} />
                     {formatTriggerDesc(selectedSchedule)}
                   </span>
                   {selectedSchedule.workspaceDir && (
                     <span className="schedule-detail-cwd">
-                      <ThemeIcon name="folder" size={12} />
+                      <ThemeIcon name="folder" size={ICON_SIZE.inline} />
                       {selectedSchedule.workspaceDir}
                     </span>
                   )}
                   {selectedSchedule.model && (
                     <span className="schedule-detail-model">
-                      <ThemeIcon name="bot" size={12} />
+                      <ThemeIcon name="bot" size={ICON_SIZE.inline} />
                       {selectedSchedule.model}
                     </span>
                   )}
@@ -332,7 +332,7 @@ export function ScheduleView({ active }: { active: boolean }): React.JSX.Element
                 >
                   <ThemeIcon
                     name={activeRunningMap[selectedSchedule.id] ? "loader" : "play"}
-                    size={14}
+                    size={ICON_SIZE.dense}
                   />
                   <span>
                     {activeRunningMap[selectedSchedule.id]
@@ -357,7 +357,7 @@ export function ScheduleView({ active }: { active: boolean }): React.JSX.Element
                   onClick={() => handleEdit(selectedSchedule)}
                   title={text("desktop.top.edit", "Edit")}
                 >
-                  <ThemeIcon name="pencil" size={14} />
+                  <ThemeIcon name="pencil" size={ICON_SIZE.dense} />
                 </button>
 
                 <button
@@ -366,7 +366,7 @@ export function ScheduleView({ active }: { active: boolean }): React.JSX.Element
                   onClick={() => void handleDelete(selectedSchedule)}
                   title={text("desktop.top.delete", "Delete")}
                 >
-                  <ThemeIcon name="trash" size={14} />
+                  <ThemeIcon name="trash" size={ICON_SIZE.dense} />
                 </button>
               </div>
             </div>
@@ -475,7 +475,7 @@ export function ScheduleView({ active }: { active: boolean }): React.JSX.Element
               )}
             </p>
             <button type="button" className="btn btn-primary" onClick={handleCreate}>
-              <ThemeIcon name="plus" size={14} />
+              <ThemeIcon name="plus" size={ICON_SIZE.dense} />
               <span>{text("desktop.schedule.addSchedule", "Add Schedule")}</span>
             </button>
           </div>

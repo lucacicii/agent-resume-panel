@@ -100,6 +100,7 @@ const TranscriptMessageRow = React.memo(function TranscriptMessageRow({
                   content={message.thinking}
                   className="wb-transcript-md markdown-body"
                   onImageClick={onImageClick}
+                  hardBreaks
                 />
               ) : (
                 <div className="wb-transcript-plain">{message.thinking}</div>
@@ -114,6 +115,7 @@ const TranscriptMessageRow = React.memo(function TranscriptMessageRow({
             content={displayText}
             className="wb-transcript-md markdown-body"
             onImageClick={onImageClick}
+            hardBreaks
           />
         ) : (
           <div className="wb-transcript-plain">{displayText}</div>

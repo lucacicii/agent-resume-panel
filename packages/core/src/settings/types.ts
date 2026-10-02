@@ -366,6 +366,23 @@ export interface NotificationsSettings {
   maxHistory?: number;
 }
 
+/**
+ * Thunder Agent daemon location (Desktop Chat / Schedule).
+ *
+ * The daemon is a Rust sidecar that ships *outside* this app: developers run it
+ * from a sibling checkout, users either get a bundled copy under
+ * `Contents/Resources/thunder` or point at their own build. `daemonPath` wins
+ * over `repoPath` when both are set.
+ */
+export interface ThunderSettings {
+  /** Path to a thunder checkout; `<repo>/target/{release,debug}/thunder-{daemon,tui}` is used. */
+  repoPath?: string;
+  /** Direct path to a `thunder-daemon` executable. */
+  daemonPath?: string;
+  /** Direct path to a `thunder-tui` executable (the `cli:thunder` Workbench target). */
+  tuiPath?: string;
+}
+
 export interface PanelSettings {
   /** Optional override; default ~/.agent-resume-panel. */
   panelHome?: string;
@@ -410,6 +427,8 @@ export interface PanelSettings {
   acp?: AcpSettings;
   /** Desktop notification history and auto-clear preferences. */
   notifications?: NotificationsSettings;
+  /** Thunder Agent daemon location override; auto-discovery runs when unset. */
+  thunder?: ThunderSettings;
 }
 
 export const DEFAULT_SETTINGS: PanelSettings = {

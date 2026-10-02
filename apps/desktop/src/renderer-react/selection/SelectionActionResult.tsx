@@ -3,7 +3,7 @@ import { desktopApi } from "../bridge";
 import { useOverlayState } from "../components/useOverlayMotion";
 import { notifyDesktop } from "../components/Notifications";
 import { ICON_SIZE, ThemeIcon } from "../components/ThemeIcon";
-import { renderMarkdown } from "../components/Markdown";
+import { StreamdownRenderer } from "../components/StreamdownRenderer";
 import { useI18n } from "../i18n";
 import type { SelectionAction } from "../../shared/selectionActions";
 
@@ -136,7 +136,7 @@ export function SelectionActionResult({
       {result.loading ? (
         <p className="selection-action-running" role="status">{t("desktop.selection.actionRunning")}</p>
       ) : (
-        <div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(result.text) }} />
+        <StreamdownRenderer content={result.text} hardBreaks />
       )}
     </div>
   );

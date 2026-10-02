@@ -1,5 +1,5 @@
 import { parseMarkdownIntoBlocks } from "streamdown";
-import { sanitizeMarkdownProseTags } from "./Markdown";
+import { sanitizeMarkdownProseTags } from "./markdownSanitize";
 import {
   promoteBareImagePaths,
   rewriteMarkdownImageSyntax,

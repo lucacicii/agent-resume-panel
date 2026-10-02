@@ -14,6 +14,8 @@ import {
   sessionsPatch,
   storageDraftFromSettings,
   storagePatch,
+  thunderDraftFromSettings,
+  thunderPatch,
   workbenchDraftFromSettings,
   workbenchPatch
 } from "./model";
@@ -333,6 +335,23 @@ describe("settings model", () => {
     expect(patch.acp?.autoApprovePermissions).toBe("ask");
   });
 
+  it("round-trips the Thunder new-session targets", () => {
+    const tui = workbenchDraftFromSettings({
+      ...settings,
+      workbench: { defaultNewSessionTarget: "cli:thunder" }
+    });
+    expect(tui.defaultNewSessionTarget).toBe("cli:thunder");
+
+    const visual = workbenchDraftFromSettings({
+      ...settings,
+      workbench: { defaultNewSessionTarget: "thunder:visual" }
+    });
+    expect(visual.defaultNewSessionTarget).toBe("thunder:visual");
+
+    const patch = workbenchPatch(settings, { ...visual, defaultNewSessionTarget: "thunder:visual" });
+    expect(patch.workbench?.defaultNewSessionTarget).toBe("thunder:visual");
+  });
+
   it("defaults and persists the Workbench CLI YOLO preference", () => {
     const draft = workbenchDraftFromSettings(settings);
     expect(draft.newSessionYolo).toBe(false);
@@ -436,5 +455,28 @@ describe("settings model", () => {
     expect(reset.agentHomes).toBeUndefined();
   });
 
+  it("keeps Thunder daemon overrides empty instead of pinning an empty block", () => {
+    // An empty block would look like a deliberate override and could mask auto-discovery.
+    expect(thunderPatch(settings, { repoPath: "", daemonPath: "", tuiPath: "" }).thunder).toBeUndefined();
+    expect(thunderPatch(settings, { repoPath: "  ", daemonPath: "  " }).thunder).toBeUndefined();
+  });
 
+  it("round-trips Thunder daemon and TUI overrides", () => {
+    const saved = thunderPatch(settings, { repoPath: " ~/wz/thunder ", daemonPath: "" });
+    expect(saved.thunder).toEqual({ repoPath: "~/wz/thunder", daemonPath: undefined, tuiPath: undefined });
+
+    const draft = thunderDraftFromSettings({ ...settings, thunder: saved.thunder });
+    expect(draft).toEqual({ repoPath: "~/wz/thunder", daemonPath: "", tuiPath: "" });
+
+    const both = thunderPatch(settings, {
+      repoPath: "~/wz/thunder",
+      daemonPath: "/opt/bin/thunder-daemon",
+      tuiPath: " /opt/bin/thunder-tui "
+    });
+    expect(both.thunder).toEqual({
+      repoPath: "~/wz/thunder",
+      daemonPath: "/opt/bin/thunder-daemon",
+      tuiPath: "/opt/bin/thunder-tui"
+    });
+  });
 });

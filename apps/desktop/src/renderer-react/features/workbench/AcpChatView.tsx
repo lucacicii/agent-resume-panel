@@ -3,7 +3,7 @@ import { NativeMenuSelect } from "../../components/NativeMenuSelect";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { desktopApi } from "../../bridge";
-import { renderMarkdown } from "../../components/Markdown";
+import { StreamdownRenderer } from "../../components/StreamdownRenderer";
 import { Sheet } from "../../components/Sheet";
 import { notifyDesktop } from "../../components/Notifications";
 import { useI18n } from "../../i18n";
@@ -1247,11 +1247,10 @@ export function AcpChatView({
                       ) : outbound ? (
                         <div className="chat-user-text">{message.text}</div>
                       ) : message.text ? (
-                        <div
+                        <StreamdownRenderer
                           className="chat-body-text markdown-body"
-                          dangerouslySetInnerHTML={{
-                            __html: renderMarkdown(message.text)
-                          }}
+                          content={message.text}
+                          hardBreaks
                         />
                       ) : null}
                       {message.streaming ? (
@@ -1681,9 +1680,10 @@ export function AcpChatView({
           {latestPlan.path}
         </p>
       ) : null}
-      <div
+      <StreamdownRenderer
         className="markdown-body wb-acp-plan-markdown"
-        dangerouslySetInnerHTML={{ __html: renderMarkdown(latestPlan?.content || "") }}
+        content={latestPlan?.content || ""}
+        hardBreaks
       />
     </Sheet>
     </>

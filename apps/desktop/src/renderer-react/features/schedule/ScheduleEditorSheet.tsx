@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Sheet } from "../../components/Sheet";
-import { ThemeIcon } from "../../components/ThemeIcon";
+import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { desktopApi } from "../../bridge";
 import { useI18n } from "../../i18n";
@@ -50,6 +50,21 @@ export function ScheduleEditorSheet({
   const [availableModels, setAvailableModels] = useState<ThunderModelInfo[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const groupedModels = useMemo(() => {
+    const panelModels: ThunderModelInfo[] = [];
+    const otherModels: ThunderModelInfo[] = [];
+
+    for (const m of availableModels) {
+      if (m.provider.startsWith("panel-") || m.provider === "panel-default" || m.provider === "panel-chat") {
+        panelModels.push(m);
+      } else {
+        otherModels.push(m);
+      }
+    }
+
+    return { panelModels, otherModels };
+  }, [availableModels]);
 
   // Load models on open
   useEffect(() => {
@@ -195,7 +210,7 @@ export function ScheduleEditorSheet({
               onClick={handlePickDirectory}
               title={text("desktop.schedule.browse", "Browse")}
             >
-              <ThemeIcon name="folder-open" size={14} />
+              <ThemeIcon name="folder-open" size={ICON_SIZE.dense} />
               <span>{text("desktop.schedule.browse", "Browse")}</span>
             </button>
           </div>
@@ -290,11 +305,24 @@ export function ScheduleEditorSheet({
               onChange={(e) => setModel(e.target.value)}
             >
               <option value="">{text("desktop.schedule.defaultModel", "Default (Thunder auto-select)")}</option>
-              {availableModels.map((m) => (
-                <option key={m.selection_id || m.id} value={m.selection_id || m.id}>
-                  {m.name || m.id} ({m.provider})
-                </option>
-              ))}
+              {groupedModels.panelModels.length > 0 && (
+                <optgroup label={text("desktop.schedule.groupPanel", "Agent Resume Panel Models")}>
+                  {groupedModels.panelModels.map((m) => (
+                    <option key={m.selection_id || m.id} value={m.selection_id || m.id}>
+                      {m.name || m.id} ({m.provider})
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {groupedModels.otherModels.length > 0 && (
+                <optgroup label={text("desktop.schedule.groupExternal", "Pi & Global Providers")}>
+                  {groupedModels.otherModels.map((m) => (
+                    <option key={m.selection_id || m.id} value={m.selection_id || m.id}>
+                      {m.name || m.id} ({m.provider})
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
           ) : (
             <input
@@ -320,10 +348,14 @@ export function ScheduleEditorSheet({
 
         <div className="schedule-form-actions">
           <button type="button" className="btn btn-secondary" onClick={onClose} disabled={saving}>
-            {text("desktop.top.cancel", "Cancel")}
+            {text("desktop.common.cancel", "Cancel")}
           </button>
           <button type="submit" className="btn btn-primary" disabled={saving}>
-            {saving ? text("desktop.top.saving", "Saving…") : isEditing ? text("desktop.top.save", "Save Changes") : text("desktop.schedule.createBtn", "Create Schedule")}
+            {saving
+              ? text("desktop.schedule.saving", "Saving…")
+              : isEditing
+              ? text("desktop.common.save", "Save Changes")
+              : text("desktop.schedule.createBtn", "Create Schedule")}
           </button>
         </div>
       </form>

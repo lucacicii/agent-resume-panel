@@ -1,3 +1,7 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { BrowserWindow } from "electron";
 import { safeHandle } from "../ipcUtils";
 import {
   cancelScheduleRun,
@@ -12,9 +16,70 @@ import {
   updateSchedule
 } from "./thunderScheduler";
 import { getThunderClient } from "./thunderClient";
-import type { ThunderScheduleInput } from "@agent-resume/core";
+import { createThunderConfigStore } from "./thunderConfig";
+import {
+  accumulateStreamEvent,
+  createActiveStreamSnapshot,
+  finishActiveStream,
+  getActiveStream
+} from "./thunderStreamBuffer";
+import { notesGetTaskWorkspaceContext, notesLinkSessionToTask } from "../notesService";
+import type { ThunderModelsConfig, ThunderRoleRecord, ThunderScheduleInput } from "@agent-resume/core";
+
+let configWatcher: fs.FSWatcher | null = null;
+
+function startThunderConfigWatcher(): void {
+  if (configWatcher) return;
+  const home = os.homedir();
+  const thunderDir = path.join(home, ".thunder");
+  if (!fs.existsSync(thunderDir)) {
+    try {
+      fs.mkdirSync(thunderDir, { recursive: true });
+    } catch {
+      return;
+    }
+  }
+
+  let debounceTimer: NodeJS.Timeout | null = null;
+  const notifyChange = () => {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      console.log("[thunder-ipc] .thunder config changed, notifying renderers");
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (!win.isDestroyed()) {
+          win.webContents.send("thunder:models:changed");
+          win.webContents.send("thunder:roles:changed");
+        }
+      }
+    }, 300);
+  };
+
+  try {
+    configWatcher = fs.watch(thunderDir, (_eventType, filename) => {
+      if (
+        filename &&
+        (filename.includes("models.json") ||
+          filename.includes("auth.json") ||
+          filename.includes("roles.jsonl"))
+      ) {
+        notifyChange();
+      }
+    });
+  } catch (err) {
+    console.warn("[thunder-ipc] Failed to watch .thunder dir:", err);
+  }
+}
 
 export function registerThunderIpc(): void {
+  startThunderConfigWatcher();
+  const config = createThunderConfigStore();
+  // Ship the built-in roles with the app: missing ones are appended once at
+  // boot, never overwriting a user's edited definition of the same id.
+  const { ensured } = config.ensureBuiltinRoles();
+  if (ensured.length > 0) {
+    console.log(`[thunder-ipc] Ensured built-in roles: ${ensured.join(", ")}`);
+  }
+
   safeHandle("schedule:list", async () => {
     return listSchedules();
   });
@@ -67,5 +132,206 @@ export function registerThunderIpc(): void {
 
   safeHandle("thunder:listModels", async () => {
     return getThunderClient().listModels();
+  });
+
+  safeHandle("thunder:listRoles", async (_event, args?: { workspaceDir?: string }) => {
+    return getThunderClient().listRoles(args?.workspaceDir);
+  });
+
+  // ── Config file editors (Settings → Thunder) ────────────────────────────
+  // The daemon reloads both files per request, so writes here apply to the
+  // very next run without a daemon restart.
+
+  safeHandle("thunder:readRolesFile", () => config.readRolesFile());
+
+  safeHandle(
+    "thunder:writeRolesFile",
+    (_event, args: { records: ThunderRoleRecord[] }) =>
+      config.writeRolesFile(args?.records ?? [])
+  );
+
+  safeHandle("thunder:resetBuiltinRole", (_event, args: { id: string }) => {
+    config.resetBuiltinRole(args?.id ?? "");
+  });
+
+  safeHandle("thunder:readModelsConfig", () => config.readModelsConfig());
+
+  safeHandle(
+    "thunder:writeModelsConfig",
+    (_event, args: { config: ThunderModelsConfig }) => config.writeModelsConfig(args?.config)
+  );
+
+  safeHandle("thunder:chat:listConversations", async () => {
+    return getThunderClient().listConversations();
+  });
+
+  safeHandle("thunder:chat:getConversation", async (_event, args: { sessionId: string }) => {
+    return getThunderClient().getConversation(args.sessionId);
+  });
+
+  safeHandle(
+    "thunder:chat:generateTitle",
+    async (_event, args: { sessionId: string; force?: boolean }) => {
+      return getThunderClient().generateConversationTitle(args.sessionId, args.force ?? false);
+    }
+  );
+
+  safeHandle(
+    "thunder:chat:setTitle",
+    async (_event, args: { sessionId: string; title: string }) => {
+      return getThunderClient().setConversationTitle(args.sessionId, args.title);
+    }
+  );
+
+  safeHandle("thunder:chat:deleteConversation", async (_event, args: { sessionId: string }) => {
+    return getThunderClient().deleteConversation(args.sessionId);
+  });
+
+  safeHandle(
+    "thunder:chat:truncateConversation",
+    async (_event, args: { sessionId: string; keepCount: number }) => {
+      return getThunderClient().truncateConversation(args.sessionId, args.keepCount);
+    }
+  );
+
+  safeHandle(
+    "thunder:chat:runTask",
+    async (
+      _event,
+      args: {
+        taskId: string;
+        prompt: string;
+        sessionId?: string;
+        model?: string;
+        workspaceDir?: string;
+        taskNoteId?: string;
+        thinking_level?: string;
+        role?: string;
+      }
+    ) => {
+      const client = getThunderClient();
+      const effectiveSessionId = args.sessionId || `sess_${Date.now()}`;
+
+      let effectiveWorkspaceDir = args.workspaceDir;
+      let extraWorkspaceDirs: string[] | undefined;
+      let gtdContext:
+        | {
+            title: string;
+            status: string;
+            backgroundMd: string;
+            projects: string[];
+            noteAbsPath?: string;
+          }
+        | undefined;
+
+      if (args.taskNoteId) {
+        try {
+          const taskCtx = await notesGetTaskWorkspaceContext(args.taskNoteId);
+          gtdContext = {
+            title: taskCtx.title,
+            status: taskCtx.status,
+            backgroundMd: taskCtx.backgroundMd,
+            projects: taskCtx.projects,
+            noteAbsPath: taskCtx.noteAbsPath
+          };
+          if (!effectiveWorkspaceDir) {
+            effectiveWorkspaceDir = taskCtx.dir;
+          }
+          // Referenced repositories join the jail as extra roots: same
+          // read/write standing as the neutral workspace, so read_file /
+          // write_file / shell targets inside them stop tripping the path
+          // traversal guard. Only directories that actually exist on this
+          // machine are passed (synced-from-elsewhere paths are skipped).
+          extraWorkspaceDirs = (taskCtx.projects ?? []).filter((projectDir) => {
+            try {
+              return fs.statSync(projectDir).isDirectory();
+            } catch {
+              return false;
+            }
+          });
+          // Link this chat session with the GTD task
+          void notesLinkSessionToTask({
+            noteId: args.taskNoteId,
+            sessionKey: `chat:${effectiveSessionId}`,
+            projectPath: effectiveWorkspaceDir
+          }).catch((err) => {
+            console.warn("[thunder-chat] failed to link session to task:", err);
+          });
+        } catch (err) {
+          console.warn("[thunder-chat] failed to load GTD task workspace context:", err);
+        }
+      }
+
+      const snapshot = createActiveStreamSnapshot({
+        sessionId: effectiveSessionId,
+        taskId: args.taskId,
+        prompt: args.prompt,
+        model: args.model,
+        workspaceDir: effectiveWorkspaceDir
+      });
+
+      try {
+        return await client.runTask({
+          taskId: args.taskId,
+          prompt: args.prompt,
+          sessionId: effectiveSessionId,
+          model: args.model,
+          workspaceDir: effectiveWorkspaceDir,
+          extraWorkspaceDirs,
+          taskNoteId: args.taskNoteId,
+          gtdContext,
+          thinking_level: args.thinking_level,
+          role: args.role,
+          onEvent: (event) => {
+            accumulateStreamEvent(snapshot, event);
+            for (const win of BrowserWindow.getAllWindows()) {
+              if (win.isDestroyed()) continue;
+              try {
+                win.webContents.send("thunder:chat:event", {
+                  taskId: args.taskId,
+                  sessionId: effectiveSessionId,
+                  event
+                });
+              } catch {
+                // ignore when window destroyed
+              }
+            }
+          }
+        });
+      } finally {
+        finishActiveStream(effectiveSessionId, args.taskId);
+      }
+    }
+  );
+
+  safeHandle("thunder:chat:getActiveStream", async (_event, args: { sessionId: string }) => {
+    return getActiveStream(args.sessionId);
+  });
+
+  safeHandle("thunder:chat:cancelTask", async (_event, args: { taskId: string }) => {
+    return getThunderClient().cancelTask(args.taskId);
+  });
+
+  safeHandle(
+    "thunder:chat:answerQuestion",
+    async (_event, args: { questionId: string; answers?: Record<string, string>; cancelled?: boolean }) => {
+      return getThunderClient().answerQuestion(args);
+    }
+  );
+
+  safeHandle("thunder:chat:pauseTask", async (_event, args: { taskId: string }) => {
+    return getThunderClient().pauseTask(args.taskId);
+  });
+
+  safeHandle("thunder:chat:resumeTask", async (_event, args: { taskId: string }) => {
+    return getThunderClient().resumeTask(args.taskId);
+  });
+
+  safeHandle("thunder:chat:getTrace", async (_event, args: { sessionId: string; taskId?: string }) => {
+    return getThunderClient().getTrace(args);
+  });
+
+  safeHandle("thunder:chat:listTraces", async (_event, args: { sessionId: string }) => {
+    return getThunderClient().listTraces(args);
   });
 }

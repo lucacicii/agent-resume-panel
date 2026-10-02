@@ -2,10 +2,10 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, within, cleanup, fireEvent } from "@testing-library/react";
 import { StreamdownRenderer } from "./StreamdownRenderer";
 import { buildMarkdownSegments } from "./markdownSegments";
-import * as MarkdownModule from "./Markdown";
+import * as SanitizeModule from "./markdownSanitize";
 
-vi.mock("./Markdown", async (importOriginal) => {
-  const actual = await importOriginal<typeof MarkdownModule>();
+vi.mock("./markdownSanitize", async (importOriginal) => {
+  const actual = await importOriginal<typeof SanitizeModule>();
   return { ...actual, sanitizeMarkdownProseTags: vi.fn(actual.sanitizeMarkdownProseTags) };
 });
 
@@ -24,7 +24,7 @@ describe("StreamdownRenderer integration test suite", () => {
   });
 
   it("reuses closed markdown segments while streaming content grows", () => {
-    const sanitizeSpy = vi.mocked(MarkdownModule.sanitizeMarkdownProseTags);
+    const sanitizeSpy = vi.mocked(SanitizeModule.sanitizeMarkdownProseTags);
     sanitizeSpy.mockClear();
     const doc = streamingDoc(40);
     const initialSegments = buildMarkdownSegments(null, `${doc}tail`, undefined).segments;
@@ -204,5 +204,102 @@ describe("StreamdownRenderer integration test suite", () => {
     expect(onImageClick).toHaveBeenCalledWith("file:///work/app/docs/shot.png");
     expect(container.querySelector("img[src^=\"https://\"]")).toBeNull();
     expect(container.textContent).toContain("cdn.example.com");
+  });
+});
+
+describe("StreamdownRenderer parity with the retired marked renderer", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("renders legacy :::gtd blocks as ordinary Markdown without a task card", () => {
+    const { container } = render(<StreamdownRenderer content={":::gtd waiting\nWait for the design review\n:::"} hardBreaks />);
+    expect(container.querySelector(".note-gtd-card, .gtd-status-tag")).toBeNull();
+    expect(container.textContent).toContain("Wait for the design review");
+  });
+
+  it("leaves legacy executable directives as inert Markdown", () => {
+    const md = [
+      ":::note-child idle note=abc",
+      "Child task",
+      ":::"
+    ].join("\n");
+    const { container } = render(<StreamdownRenderer content={md} hardBreaks />);
+    expect(container.querySelector(".note-exec-card, .note-child-card")).toBeNull();
+    expect(container.textContent).toContain("Child task");
+  });
+
+  it("prevents unclosed <style> in prose from truncating subsequent markdown content", () => {
+    const input = [
+      "In ads_cst_credit/index.vue:",
+      "- Import digitUppercase.",
+      "- Note that ads_cst_credit file currently has NO <style> block.",
+      "All checks pass. Here is the summary:",
+      "## 变更说明",
+      "文件: index.vue",
+      "1,000,000.00",
+      "壹佰万元整"
+    ].join("\n");
+    const { container } = render(<StreamdownRenderer content={input} hardBreaks />);
+    const text = container.textContent || "";
+    expect(text).toContain("变更说明");
+    expect(text).toContain("壹佰万元整");
+    expect(text).toContain("style");
+    expect(text).toContain("All checks pass");
+  });
+
+  it("escapes prose <script> and generic tags without dropping them or following text", () => {
+    const input = "Declare List<String> and Map<K, V> without <script>alert(1)</script> eating text.\n## Next Section";
+    const { container } = render(<StreamdownRenderer content={input} hardBreaks />);
+    const text = container.textContent || "";
+    expect(text).toContain("List<String>");
+    expect(text).toContain("Map<K, V>");
+    expect(text).toContain("<script>alert(1)</script>");
+    expect(within(container).getByRole("heading", { level: 2 }).textContent).toContain("Next Section");
+  });
+
+  it("retains code block content without double-escaping inside code fences", () => {
+    const input = "```vue\n<style scoped>\n.foo { color: red; }\n</style>\n```\nAfter code block.";
+    const { container } = render(<StreamdownRenderer content={input} hardBreaks />);
+    const code = container.querySelector("pre code");
+    expect(code?.textContent).toContain("<style scoped>");
+    expect(code?.className).toContain("hljs");
+    expect(container.textContent).toContain("After code block.");
+  });
+
+  it("preserves safe html tags in prose", () => {
+    const input = "Press <kbd>Ctrl</kbd> + <kbd>C</kbd> to copy. <br> Next line <b>bold</b>.";
+    const { container } = render(<StreamdownRenderer content={input} hardBreaks />);
+    expect(container.querySelectorAll("kbd").length).toBe(2);
+    expect(container.querySelector("b")?.textContent).toBe("bold");
+  });
+
+  it("renders nothing for empty content without crashing", () => {
+    const { container } = render(<StreamdownRenderer content="" hardBreaks />);
+    expect(container.querySelector("*")).toBeNull();
+  });
+
+  it("converts single newlines to <br> only when hardBreaks is enabled", () => {
+    const md = "first line\nsecond line";
+
+    const plain = render(<StreamdownRenderer content={md} />);
+    expect(plain.container.querySelector("br")).toBeNull();
+    expect(plain.container.querySelector("p")?.textContent).toBe("first line\nsecond line");
+    cleanup();
+
+    const breaking = render(<StreamdownRenderer content={md} hardBreaks />);
+    expect(breaking.container.querySelector("p br")).toBeTruthy();
+    expect(breaking.container.querySelector("p")?.textContent).toBe("first line\nsecond line");
+  });
+
+  it("keeps GFM features with hardBreaks enabled", () => {
+    const md = [
+      "| Name | Path |",
+      "| --- | --- |",
+      "| Page | src/views/index.vue |"
+    ].join("\n");
+    const { container } = render(<StreamdownRenderer content={md} hardBreaks />);
+    expect(container.querySelector("table")).toBeTruthy();
+    expect(container.textContent).toContain("src/views/index.vue");
   });
 });

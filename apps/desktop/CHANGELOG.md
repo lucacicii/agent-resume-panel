@@ -8,6 +8,27 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## English
 
+### [0.2.33]
+
+#### Added
+
+- **Thunder chat**: a full chat surface on the Thunder agent runtime — streamed tokens and thinking, collapsible tool-call groups, execution-trace and file-change popovers, live token / speed and context-window meters, per-conversation thinking level, AI and manual renaming, regenerate / resend / edit, `/` slash and `@` mention autocomplete, inline agent questions, and background streaming that survives switching conversations; sessions bind to a GTD task workspace and can hand the task's repositories to the agent as extra roots
+- **Thunder roles**: built-in Plan, Architect, Coder and Project Manager roles with permission tiers and approval modes, `/role` slash commands and a Settings → Thunder editor; roles are stored in `~/.thunder/roles.jsonl`
+- **Thunder in the Workbench**: `Thunder (TUI)` and `Thunder (Visual)` new-session targets; Thunder conversations are listed in the Workbench session list (scoped to the task) and can be opened as a visual pane or resumed in the native TUI
+- **Bundled Thunder runtime**: packaged builds embed `thunder-daemon` and `thunder-tui` per architecture, signed alongside the app; a build without them is impossible to miss
+- **Chat rendering**: in-conversation text search and a reworked Markdown renderer
+
+#### Changed
+
+- The Thunder daemon location resolves from settings, environment variables and the bundled copy, and `~/.thunder` is watched for model changes
+- Chat metrics come from the daemon's per-turn and per-run agent stats
+
+#### Fixed
+
+- The agent question card docks above the composer instead of covering it
+- Token and speed metrics match the pi-bridge usage contract
+- Creating a conversation store for a freshly shared `~/.thunder/conversations` no longer fails when the TUI and daemon race to create it
+
 ### [0.2.32]
 
 #### Added
@@ -721,6 +742,27 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 ---
 
 ## 简体中文
+
+### [0.2.33]
+
+#### 新增
+
+- **Thunder 聊天**：基于 Thunder Agent 运行时的完整聊天界面——流式正文与思考链、可折叠的工具调用分组、执行轨迹与文件变更浮层、实时 token / 速度与上下文占用计量、按会话的记忆档位、AI 与手动重命名、重新生成 / 重发 / 编辑、`/` 斜杠与 `@` 提及补全、内联 Agent 反问，以及切换会话后仍在后台流式运行；会话可绑定 GTD 任务工作区，并把任务仓库作为额外根目录交给 Agent
+- **Thunder 角色**：内置 Plan、Architect、Coder、Project Manager 四种角色，带权限层级与审批模式，支持 `/role` 斜杠命令与「设置 → Thunder」编辑器；角色存放于 `~/.thunder/roles.jsonl`
+- **Thunder 接入 Workbench**：新增 `Thunder (TUI)` 与 `Thunder (Visual)` 新建会话目标；Thunder 会话会出现在 Workbench 会话列表中（按任务过滤），既可作为可视化 pane 打开，也可在原生 TUI 中恢复
+- **内置 Thunder 运行时**：打包版按架构内置 `thunder-daemon` 与 `thunder-tui` 并随应用签名；缺少内置的包一眼可见
+- **聊天渲染**：会话内文本查找与重写的 Markdown 渲染
+
+#### 变更
+
+- Thunder 守护进程位置会从设置、环境变量与内置副本解析，并监听 `~/.thunder` 的模型变更
+- 聊天计量改为读取守护进程的每轮与每次运行的 Agent 统计
+
+#### 修复
+
+- Agent 反问卡片停靠在输入框上方，不再遮挡
+- token 与速度计量与 pi-bridge 的用量契约对齐
+- TUI 与守护进程同时创建全新的 `~/.thunder/conversations` 时，会话存储不再因竞态而失败
 
 ### [0.2.32]
 

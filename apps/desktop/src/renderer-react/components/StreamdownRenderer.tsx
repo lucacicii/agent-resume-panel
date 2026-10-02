@@ -1,5 +1,6 @@
 import React, { memo, useCallback, useMemo, useRef, useState } from "react";
-import { Streamdown, type Components, type UrlTransform } from "streamdown";
+import { Streamdown, defaultRemarkPlugins, type Components, type UrlTransform } from "streamdown";
+import remarkBreaks from "remark-breaks";
 import hljs from "highlight.js";
 import { ICON_SIZE, ThemeIcon } from "./ThemeIcon";
 import { useI18n } from "../i18n";
@@ -21,6 +22,8 @@ interface StreamdownRendererProps {
   onImageClick?: (url: string) => void;
   imageOptions?: MarkdownImageOptions;
   imageLabels?: Partial<MarkdownImageLabels>;
+  /** Render single newlines as hard breaks (<br>), matching the legacy marked `breaks: true` semantics. */
+  hardBreaks?: boolean;
 }
 
 function escapeHtml(text: string): string {
@@ -116,6 +119,19 @@ const StandardCodeBlock = memo(function StandardCodeBlock({ language, code }: St
   );
 });
 
+type RemarkPlugins = NonNullable<React.ComponentProps<typeof Streamdown>["remarkPlugins"]>;
+
+/**
+ * remark-breaks appended to streamdown's own defaults (gfm + codeMeta).
+ * Passing `remarkPlugins` replaces the internal default chain, so the defaults
+ * must be restated. Module-level constant keeps the array identity stable for
+ * Streamdown's memo comparator and parse cache.
+ */
+const HARD_BREAK_REMARK_PLUGINS: RemarkPlugins = [
+  ...Object.values(defaultRemarkPlugins),
+  remarkBreaks
+];
+
 /**
  * Renders one markdown segment. Segments keep their identity while the document
  * only grows, so a growing neighbour does not re-parse unchanged markdown.
@@ -124,12 +140,14 @@ const MarkdownSegmentView = memo(function MarkdownSegmentView({
   content,
   components,
   translations,
-  urlTransform
+  urlTransform,
+  remarkPlugins
 }: {
   content: string;
   components: Components;
   translations: React.ComponentProps<typeof Streamdown>["translations"];
   urlTransform: UrlTransform;
+  remarkPlugins?: RemarkPlugins;
 }): React.JSX.Element {
   return (
     <Streamdown
@@ -138,6 +156,7 @@ const MarkdownSegmentView = memo(function MarkdownSegmentView({
       animated={false}
       translations={translations}
       urlTransform={urlTransform}
+      remarkPlugins={remarkPlugins}
     >
       {content}
     </Streamdown>
@@ -151,7 +170,8 @@ export const StreamdownRenderer = memo(function StreamdownRenderer({
   onNoteClick,
   onImageClick,
   imageOptions,
-  imageLabels
+  imageLabels,
+  hardBreaks = false
 }: StreamdownRendererProps) {
   const { t } = useSafeI18n();
 
@@ -328,6 +348,7 @@ export const StreamdownRenderer = memo(function StreamdownRenderer({
           components={components}
           translations={translations}
           urlTransform={urlTransform}
+          remarkPlugins={hardBreaks ? HARD_BREAK_REMARK_PLUGINS : undefined}
         />
       ))}
     </div>

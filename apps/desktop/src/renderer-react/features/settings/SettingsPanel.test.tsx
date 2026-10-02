@@ -245,7 +245,30 @@ const messages = {
   "desktop.settings.panelHome": "Panel home",
   "desktop.settings.panelHomeFootnote": "Reveal uses saved path.",
   "desktop.common.revealInFinder": "Reveal",
-  "desktop.settings.selectionCreateAction": "Create"
+  "desktop.settings.selectionCreateAction": "Create",
+  "desktop.settings.paneThunder": "Thunder",
+  "desktop.settings.paneThunderDesc": "Daemon used by Chat",
+  "desktop.settings.thunderLocation": "Daemon location",
+  "desktop.settings.thunderLocationDesc": "Thunder is a separate Rust workspace.",
+  "desktop.settings.thunderRepoPath": "Thunder checkout",
+  "desktop.settings.thunderRepoPathPlaceholder": "~/wz/thunder",
+  "desktop.settings.thunderRepoPathDesc": "Looks for the cargo target inside.",
+  "desktop.settings.thunderDaemonPath": "Daemon binary",
+  "desktop.settings.thunderDaemonPathPlaceholder": "/path/to/thunder-daemon",
+  "desktop.settings.thunderDaemonPathDesc": "Wins over the checkout.",
+  "desktop.settings.thunderBrowse": "Choose…",
+  "desktop.settings.thunderStatusTitle": "Detected daemon",
+  "desktop.settings.thunderStateOnline": "Connected · {0} models",
+  "desktop.settings.thunderStateNotRunning": "Found but not running",
+  "desktop.settings.thunderStateNotFound": "Not found on this machine",
+  "desktop.settings.thunderSource": "Found via {0}",
+  "desktop.settings.thunderSourceUnknown": "No candidate matched",
+  "desktop.settings.thunderResolvedDaemon": "Daemon",
+  "desktop.settings.thunderResolvedRepo": "Checkout",
+  "desktop.settings.thunderModels": "Models",
+  "desktop.settings.thunderCheck": "Check",
+  "desktop.settings.thunderCandidates": "Paths checked ({0})",
+  "desktop.settings.thunderModelsFootnote": "Models come from ~/.thunder."
 };
 
 function renderWindowSettings(initialPane = "general", overrides?: Record<string, unknown>) {
@@ -650,5 +673,55 @@ describe("SettingsPanel (window)", () => {
     const names = [...host.querySelectorAll(".selection-settings-action-row .selection-settings-item")]
       .map((item) => item.firstChild?.textContent ?? "");
     expect(names.indexOf("Translate")).toBeLessThan(names.indexOf("Explain"));
+  });
+
+  it("shows the Thunder daemon location and resolution, then saves overrides on blur", async () => {
+    const thunderGetStatus = vi.fn(async () => ({
+      available: true,
+      repoPath: "/Users/tester/wz/thunder",
+      daemonPath: "/Users/tester/wz/thunder/thunder-agent-daemon/target/release/thunder-daemon",
+      models: [{ id: "openai/gpt-4o" }],
+      source: "dev-sibling",
+      candidates: ["/Users/tester/wz/thunder"]
+    }));
+    const { host, saveSettings } = renderWindowSettings("thunder", {
+      thunderGetStatus,
+      pickDirectory: vi.fn(async () => ({ ok: true, path: "/opt/thunder" }))
+    });
+
+    await waitFor(() => expect(host.querySelector('input[placeholder="/path/to/thunder-daemon"]')).not.toBeNull());
+    await waitFor(() => expect(host.textContent).toContain("Connected · 1 models"));
+    expect(host.textContent).toContain("Found via dev-sibling");
+    expect(host.textContent).toContain("openai/gpt-4o");
+    expect(host.textContent).toContain("release/thunder-daemon");
+
+    const input = host.querySelector('input[placeholder="~/wz/thunder"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "/opt/thunder" } });
+    expect(saveSettings).not.toHaveBeenCalled();
+    fireEvent.blur(input);
+
+    await waitFor(() => expect(saveSettings).toHaveBeenCalledTimes(1));
+    const saved = saveSettings.mock.calls[0][0] as { thunder?: unknown };
+    expect(saved.thunder).toEqual({ repoPath: "/opt/thunder", daemonPath: undefined });
+  });
+
+  it("explains why the Thunder daemon was not found", async () => {
+    const { host } = renderWindowSettings("thunder", {
+      thunderGetStatus: vi.fn(async () => ({
+        available: false,
+        repoPath: null,
+        daemonPath: null,
+        models: [],
+        source: "none",
+        candidates: ["/a/thunder", "/b/thunder"],
+        error: "Thunder daemon not found. Set THUNDER_PATH…"
+      }))
+    });
+
+    await waitFor(() => expect(host.textContent).toContain("Thunder daemon not found. Set THUNDER_PATH…"));
+    expect(host.textContent).toContain("Not found on this machine");
+    expect(host.textContent).toContain("No candidate matched");
+    expect(host.textContent).toContain("Paths checked (2)");
+    expect(host.textContent).toContain("/a/thunder");
   });
 });
