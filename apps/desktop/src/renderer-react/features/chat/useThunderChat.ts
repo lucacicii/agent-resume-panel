@@ -10,7 +10,6 @@ import type {
   ThunderTurnStats,
   ThunderAgentStats,
   ThunderQuestionItem,
-  ThunderRoleInfo,
   ThunderImageAttachment,
   ThunderActiveStreamSnapshot
 } from "@agent-resume/core";
@@ -193,30 +192,6 @@ export function useThunderChat() {
     taskId: string;
     questions: ThunderQuestionItem[];
   } | null>(null);
-
-  // Roles available as slash commands (global + project scope).
-  const [roles, setRoles] = useState<ThunderRoleInfo[]>([]);
-
-  // The composer chip's persistent role selection. Unlike the `/id` prefix
-  // (one-shot, resolved in the composer), this survives across sends until
-  // switched back to "auto". Persisted so a restart keeps the choice.
-  const [selectedRole, setSelectedRole] = useState<string | null>(() => {
-    try {
-      return localStorage.getItem("chat-selected-role") || null;
-    } catch {
-      return null;
-    }
-  });
-
-  const selectRole = useCallback((roleId: string | null) => {
-    setSelectedRole(roleId);
-    try {
-      if (roleId) localStorage.setItem("chat-selected-role", roleId);
-      else localStorage.removeItem("chat-selected-role");
-    } catch {
-      // localStorage unavailable: selection stays session-scoped.
-    }
-  }, []);
 
   // End-to-end task trace and file modification tracking
   const {
@@ -712,7 +687,6 @@ export function useThunderChat() {
         model?: string;
         workspaceDir?: string;
         thinking_level?: string;
-        role?: string;
         attachments?: ThunderImageAttachment[];
       }
     ) => {
@@ -812,7 +786,6 @@ export function useThunderChat() {
           workspaceDir: ws,
           taskNoteId: effectiveTaskNoteId,
           thinking_level: thinking,
-          role: options?.role,
           attachments: options?.attachments
         });
 
@@ -1200,33 +1173,6 @@ export function useThunderChat() {
     void loadConversations();
   }, [refreshDaemonStatus, loadConversations]);
 
-  // Roles are scope-dependent: a project may add or override global roles.
-  // Reloaded on workspace switch and whenever ~/.thunder/roles.jsonl changes
-  // on disk (settings editor or hand edits) — the daemon re-reads per request,
-  // so the freshest list is always one IPC away. A disappeared selection is
-  // dropped back to "auto" rather than dangling.
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      if (typeof desktopApi().thunderListRoles !== "function") return;
-      try {
-        const list = await desktopApi().thunderListRoles({ workspaceDir: workspaceDir || undefined });
-        if (!cancelled && Array.isArray(list)) {
-          setRoles(list);
-          setSelectedRole((prev) => (prev && list.some((r) => r.id === prev) ? prev : null));
-        }
-      } catch (err) {
-        console.warn("[thunder-chat] failed to load roles:", err);
-      }
-    };
-    void load();
-    const unsub = desktopApi().onThunderRolesChanged?.(() => void load());
-    return () => {
-      cancelled = true;
-      unsub?.();
-    };
-  }, [workspaceDir]);
-
   // Real-time updates when ~/.thunder/models.json or auth.json change on disk
   useEffect(() => {
     const unsub = desktopApi().onThunderModelsChanged?.(() => {
@@ -1298,9 +1244,6 @@ export function useThunderChat() {
     pendingQuestion,
     answerQuestion,
     dismissQuestion,
-    roles,
-    selectedRole,
-    selectRole,
     refreshDaemonStatus,
     currentTrace,
     traceSpans,

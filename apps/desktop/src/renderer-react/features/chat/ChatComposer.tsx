@@ -7,8 +7,7 @@ import type {
   AgentToolDescriptor,
   SkillDescriptor,
   ThunderImageAttachment,
-  ThunderModelInfo,
-  ThunderRoleInfo
+  ThunderModelInfo
 } from "@agent-resume/core";
 import type { ChatRunMetrics } from "./useThunderChat";
 import {
@@ -19,12 +18,10 @@ import {
 } from "./chatTokens";
 
 export type ChatSlashSuggestion = {
-  kind: "skill" | "mcp" | "command" | "role";
+  kind: "skill" | "mcp" | "command";
   name: string;
   description: string;
   location?: string;
-  /** Roles carry their capability tier so the list can badge them. */
-  permission?: string;
 };
 
 export type ChatMentionSuggestion = {
@@ -247,18 +244,12 @@ interface ChatComposerProps {
       workspaceDir?: string;
       model?: string;
       thinking_level?: string;
-      role?: string;
       attachments?: ThunderImageAttachment[];
     }
   ) => void;
   onCancel: () => void;
   isStreaming: boolean;
   models: ThunderModelInfo[];
-  /** Roles offered as slash commands; the host enforces their permission. */
-  roles?: ThunderRoleInfo[];
-  /** The chip's persistent role selection; null/empty means "auto". */
-  selectedRole?: string | null;
-  onSelectRole?: (roleId: string | null) => void;
   selectedModel: string;
   onSelectModel: (model: string) => void;
   thinkingLevel: string;
@@ -331,9 +322,6 @@ export function ChatComposer({
   onCancel,
   isStreaming,
   models,
-  roles = [],
-  selectedRole = null,
-  onSelectRole,
   selectedModel,
   onSelectModel,
   thinkingLevel,
@@ -653,19 +641,6 @@ export function ChatComposer({
     const q = slashToken.query.toLowerCase();
     const out: ChatSlashSuggestion[] = [];
 
-    // Roles first: a role is a mode, so it should outrank skills and MCP tools.
-    for (const r of roles) {
-      const haystack = `${r.name} ${r.id} ${r.description || ""}`.toLowerCase();
-      if (!q || haystack.includes(q)) {
-        out.push({
-          kind: "role",
-          name: r.id,
-          description: r.description || `${r.name} · ${r.permission}`,
-          permission: r.permission
-        });
-      }
-    }
-
     for (const s of skills) {
       if (!q || s.name.toLowerCase().includes(q) || s.description?.toLowerCase().includes(q)) {
         out.push({
@@ -689,7 +664,7 @@ export function ChatComposer({
     }
 
     return out.slice(0, 30);
-  }, [slashToken, skills, tools, roles]);
+  }, [slashToken, skills, tools]);
 
   // Mention suggestions (@): notes, GTD tasks, sessions
   const mentionSuggestions = useMemo<ChatMentionSuggestion[]>(() => {
@@ -979,14 +954,6 @@ export function ChatComposer({
     [enterDirectory, hashToken, cursor, text]
   );
 
-  // A leading `/id` (or `/alias`) selects that role for this send.
-  const activeRole = useMemo(() => {
-    const m = text.match(/^\/([a-zA-Z0-9_-]+)/);
-    if (!m) return null;
-    const token = (m[1] || "").toLowerCase();
-    return roles.find((r) => r.id.toLowerCase() === token || (r.aliases || []).some((a) => a.toLowerCase() === token)) || null;
-  }, [text, roles]);
-
   const doSend = async () => {
     if (isStreaming) {
       onCancel();
@@ -1020,9 +987,6 @@ export function ChatComposer({
         workspaceDir,
         model: selectedModel,
         thinking_level: thinkingLevel,
-        // A leading `/id` is a one-shot pick and overrides the chip for this
-        // send; the chip selection persists across sends until switched.
-        role: activeRole?.id ?? (selectedRole || undefined),
         attachments: attachmentsToSend.length > 0 ? attachmentsToSend : undefined
       });
     } catch (err) {
@@ -1031,21 +995,12 @@ export function ChatComposer({
         workspaceDir,
         model: selectedModel,
         thinking_level: thinkingLevel,
-        role: activeRole?.id ?? (selectedRole || undefined),
         attachments: attachmentsToSend.length > 0 ? attachmentsToSend : undefined
       });
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // Role cycling rides on Shift+Tab, one layer above every autocomplete:
-    // the menus accept plain Tab / Enter, so Shift+Tab can safely own this.
-    if (e.key === "Tab" && e.shiftKey && roles.length > 0 && onSelectRole) {
-      e.preventDefault();
-      cycleRole();
-      return;
-    }
-
     if (slashOpen && slashSuggestions.length > 0) {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -1317,33 +1272,6 @@ export function ChatComposer({
     return thinkingLevel || currentModel?.default_thinking_level || "medium";
   }, [supportsThinking, thinkingLevel, currentModel]);
 
-  // Role chip options: "auto" first, then roles in daemon order (id-sorted).
-  // The tier/mode suffix keeps the blast radius visible at a glance.
-  const roleOptions = useMemo(() => {
-    const options: Array<{ value: string; label: string }> = [{ value: "", label: "Role: Auto" }];
-    for (const role of roles) {
-      const meta = [role.permission, role.mode].filter(Boolean).join(" · ");
-      options.push({
-        value: role.id,
-        label: meta ? `Role: ${role.name} (${meta})` : `Role: ${role.name}`
-      });
-    }
-    return options;
-  }, [roles]);
-
-  const currentRole = useMemo(() => {
-    return roles.find((r) => r.id === selectedRole) || null;
-  }, [roles, selectedRole]);
-
-  /** Shift+Tab cycles [auto → role1 → role2 → … → auto]; plain Tab stays with autocomplete. */
-  const cycleRole = useCallback(() => {
-    if (!onSelectRole || roles.length === 0) return;
-    const ids = ["", ...roles.map((r) => r.id)];
-    const index = ids.indexOf(selectedRole || "");
-    const next = ids[(index + 1) % ids.length];
-    onSelectRole(next || null);
-  }, [onSelectRole, roles, selectedRole]);
-
   const draftTokens = text.trim().length > 0 ? Math.max(1, Math.ceil(text.trim().length / 3)) : 0;
   const contextTokensWithDraft = (currentContextTokens || 0) + draftTokens;
   const contextPercent = contextWindowLimit && contextWindowLimit > 0
@@ -1433,22 +1361,12 @@ export function ChatComposer({
                 onClick={() => acceptSlashSuggestion(item)}
               >
                 <ThemeIcon
-                  name={
-                    item.kind === "role"
-                      ? "shield-check"
-                      : item.kind === "skill"
-                        ? "sparkles"
-                        : "wrench"
-                  }
+                  name={item.kind === "skill" ? "sparkles" : "wrench"}
                   size={ICON_SIZE.dense}
                 />
                 <span className="wb-terminal-composer-suggestion-text">/{item.name}</span>
-                <span className={`tb-composer-suggestion-badge${item.kind === "role" ? " is-role" : ""}`}>
-                  {item.kind === "role"
-                    ? `Role · ${item.permission === "read" ? "read-only" : item.permission === "write" ? "write" : "full"}`
-                    : item.kind === "skill"
-                      ? "Skill"
-                      : "MCP"}
+                <span className="tb-composer-suggestion-badge">
+                  {item.kind === "skill" ? "Skill" : "MCP"}
                 </span>
                 {item.description ? (
                   <span className="wb-terminal-composer-suggestion-desc">{item.description}</span>
@@ -1731,24 +1649,6 @@ export function ChatComposer({
                   supportsThinking
                     ? `Thinking Level: ${effectiveThinkingLevel}`
                     : "Thinking not supported by this model"
-                }
-              />
-            </div>
-
-            {/* Role Chip: persistent role selection; Shift+Tab cycles. */}
-            <div className={`tb-composer-chip${roles.length === 0 ? " tb-chip-disabled" : ""}`}>
-              <ThemeIcon name="user" size={ICON_SIZE.inline} />
-              <NativeMenuSelect
-                className="tb-composer-native-select"
-                value={selectedRole || ""}
-                options={roleOptions}
-                onChange={(value) => onSelectRole?.(value || null)}
-                disabled={isStreaming || roles.length === 0}
-                ariaLabel="Role"
-                title={
-                  roles.length === 0
-                    ? "No roles available (define them in Settings → Thunder)"
-                    : `Role: ${currentRole ? `${currentRole.name} (${[currentRole.permission, currentRole.mode].filter(Boolean).join(" · ")})` : "Auto"} — Shift+Tab to cycle`
                 }
               />
             </div>

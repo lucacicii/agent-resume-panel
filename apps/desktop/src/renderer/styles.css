@@ -2538,7 +2538,7 @@ svg[data-icon-system="sf"] * {
   margin-top: var(--space-1);
 }
 
-/* ── Thunder roles / models editors (Settings → Thunder) ── */
+/* ── Thunder models editor (Settings → Thunder) ── */
 
 .settings-roles-list {
   display: flex;

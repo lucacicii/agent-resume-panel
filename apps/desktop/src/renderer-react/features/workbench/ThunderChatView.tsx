@@ -76,7 +76,7 @@ export function ThunderChatView({
   const handleSend = useCallback(
     (
       prompt: string,
-      options?: { workspaceDir?: string; model?: string; thinking_level?: string; role?: string }
+      options?: { workspaceDir?: string; model?: string; thinking_level?: string }
     ) => {
       void chat.sendMessage(prompt, { ...options, workspaceDir: options?.workspaceDir || projectPath });
     },
@@ -144,9 +144,6 @@ export function ThunderChatView({
       sessionTotalTokens={chat.sessionTotalTokens}
       currentContextTokens={chat.currentContextTokens}
       contextWindowLimit={chat.contextWindowLimit}
-      roles={chat.roles}
-      selectedRole={chat.selectedRole}
-      onSelectRole={chat.selectRole}
       pendingQuestion={chat.pendingQuestion}
       onAnswerQuestion={chat.answerQuestion}
       onDismissQuestion={chat.dismissQuestion}

@@ -867,34 +867,6 @@ export type {
   DiscoverSkillsOptions
 } from "./skills";
 export {
-  discoverRoles,
-  discoverEnabledRoles,
-  discoverProjectRoles,
-  readRolesFile,
-  resolveRole,
-  resolveThunderHome,
-  renderRolePreamble,
-  normalizeRoleRecord,
-  rolesFilePath,
-  personaToText,
-  parseRoleMarkdown,
-  ROLES_FILE_NAME,
-  ROLE_PERMISSION_LABELS,
-  roleAllowsWrite,
-  roleAllowsExec
-} from "./roles";
-export type {
-  DiscoverRolesOptions,
-  DiscoverProjectRolesOptions,
-  ProjectRoleAgent,
-  ProjectRoleDescriptor,
-  ProjectRolePermission,
-  ProjectRoleTools,
-  RolePermission,
-  RolePersona,
-  RoleRecord
-} from "./roles";
-export {
   handleSessionSearch,
   handleSessionList,
   handleSessionRead,
@@ -982,8 +954,6 @@ export type {
   ThunderScheduleRunLogEntry,
   ThunderScheduleInput,
   ThunderModelInfo,
-  ThunderRoleInfo,
-  ThunderRoleRecord,
   ThunderModelsConfig,
   ThunderModelsProvider,
   ThunderQuestionItem,

@@ -17,7 +17,6 @@ import type {
   PanelSettings,
   ThunderChatMessage,
   ThunderModelInfo,
-  ThunderRoleInfo,
   ThunderQuestionItem,
   ThunderFileChangeRecord,
   ThunderTaskTrace,
@@ -55,7 +54,6 @@ interface ChatMainProps {
       workspaceDir?: string;
       model?: string;
       thinking_level?: string;
-      role?: string;
       attachments?: import("@agent-resume/core").ThunderImageAttachment[];
     }
   ) => void;
@@ -76,11 +74,6 @@ interface ChatMainProps {
   sessionTotalTokens?: number;
   currentContextTokens?: number;
   contextWindowLimit?: number;
-  /** Roles offered as slash commands. */
-  roles?: ThunderRoleInfo[];
-  /** The composer chip's persistent role selection ("" = auto). */
-  selectedRole?: string | null;
-  onSelectRole?: (roleId: string | null) => void;
   /** Question the agent is blocked on, rendered as a bubble. */
   pendingQuestion?: { questionId: string; taskId: string; questions: ThunderQuestionItem[] } | null;
   onAnswerQuestion?: (answers: Record<string, string> | undefined, cancelled?: boolean) => void | Promise<void>;
@@ -126,9 +119,6 @@ export function ChatMain({
   sessionTotalTokens,
   currentContextTokens,
   contextWindowLimit,
-  roles = [],
-  selectedRole = null,
-  onSelectRole,
   pendingQuestion,
   onAnswerQuestion,
   onDismissQuestion
@@ -581,9 +571,6 @@ export function ChatMain({
         sessionTotalTokens={sessionTotalTokens}
         currentContextTokens={currentContextTokens}
         contextWindowLimit={contextWindowLimit}
-        roles={roles}
-        selectedRole={selectedRole}
-        onSelectRole={onSelectRole}
       />
     </div>
   );

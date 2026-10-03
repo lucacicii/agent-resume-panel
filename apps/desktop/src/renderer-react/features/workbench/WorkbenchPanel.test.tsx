@@ -1064,8 +1064,6 @@ describe("WorkbenchPanel", () => {
       thunderChatGetTrace: async () => null,
       onThunderChatEvent: () => () => undefined,
       onThunderModelsChanged: () => () => undefined,
-      onThunderRolesChanged: () => () => undefined,
-      thunderListRoles: async () => [],
       notesRead: async () => ({ record: { work: { projects: [] } }, content: "" }),
       notesListTasks: async () => [],
       notesLinkSessionToTask: vi.fn(async () => ({}))
@@ -1172,8 +1170,6 @@ describe("WorkbenchPanel", () => {
       thunderChatGetTrace: async () => null,
       onThunderChatEvent: () => () => undefined,
       onThunderModelsChanged: () => () => undefined,
-      onThunderRolesChanged: () => () => undefined,
-      thunderListRoles: async () => [],
       notesRead: async () => ({ record: { work: { projects: [] } }, content: "" }),
       notesListTasks: async () => []
     } as unknown as typeof window.agentResume;

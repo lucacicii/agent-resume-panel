@@ -37,9 +37,6 @@ export function ChatView({ active }: { active: boolean }): React.JSX.Element | n
     pendingQuestion,
     answerQuestion,
     dismissQuestion,
-    roles,
-    selectedRole,
-    selectRole,
     sendMessage,
     resendUserMessage,
     regenerateResponse,
@@ -169,9 +166,6 @@ export function ChatView({ active }: { active: boolean }): React.JSX.Element | n
         sessionTotalTokens={sessionTotalTokens}
         currentContextTokens={currentContextTokens}
         contextWindowLimit={contextWindowLimit}
-        roles={roles}
-        selectedRole={selectedRole}
-        onSelectRole={selectRole}
         pendingQuestion={pendingQuestion}
         onAnswerQuestion={answerQuestion}
         onDismissQuestion={dismissQuestion}

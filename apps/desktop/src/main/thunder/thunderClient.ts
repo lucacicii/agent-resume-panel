@@ -14,7 +14,6 @@ import {
   type ThunderDaemonSettings
 } from "./daemonResolver";
 import type {
-  ThunderRoleInfo,
   ThunderDaemonIncoming,
   ThunderModelInfo,
   ThunderObservedEvent,
@@ -716,8 +715,6 @@ export class ThunderClient {
     model?: string;
     sessionId?: string;
     thinking_level?: string;
-    /** Role id to activate host-side (enforces permission). */
-    role?: string;
     attachments?: ThunderImageAttachment[];
     onEvent?: (event: ThunderObservedEvent) => void;
   }): Promise<{ finalContent?: string; finishReason: string; activePlugins?: string[] }> {
@@ -771,7 +768,6 @@ export class ThunderClient {
               model: options.model,
               thinking_level: options.thinking_level,
               session_id: options.sessionId,
-              role: options.role,
               attachments:
                 options.attachments && options.attachments.length > 0
                   ? options.attachments
@@ -785,21 +781,6 @@ export class ThunderClient {
         }
       }
     );
-  }
-
-  /** List roles visible from global + project scopes (host is the authority). */
-  public async listRoles(workspaceDir?: string): Promise<ThunderRoleInfo[]> {
-    try {
-      const res = await this.sendCommand<{ roles?: ThunderRoleInfo[] }>(
-        "list_roles",
-        { workspace_dir: workspaceDir },
-        10_000
-      );
-      return Array.isArray(res?.roles) ? res.roles : [];
-    } catch {
-      // Roles are optional; a daemon without them must not break the palette.
-      return [];
-    }
   }
 
   /** Answer a pending `ask_user_question` so the parked agent can continue. */

@@ -23,8 +23,6 @@ import type {
 import type {
   ThunderModelInfo,
   ThunderModelsConfig,
-  ThunderRoleInfo,
-  ThunderRoleRecord,
   ThunderAgentEvent,
   ThunderConversationSummary,
   ThunderConversation,
@@ -1543,14 +1541,6 @@ export interface DesktopApi {
     error?: string;
   }>;
   thunderListModels(): Promise<ThunderModelInfo[]>;
-  /** Roles from ~/.thunder/roles.jsonl and <workspace>/.arp/roles.jsonl. */
-  thunderListRoles(args?: { workspaceDir?: string }): Promise<ThunderRoleInfo[]>;
-  /** Settings editor: raw `~/.thunder/roles.jsonl` records with unknown fields preserved. */
-  thunderReadRolesFile(): Promise<ThunderRoleRecord[]>;
-  /** Settings editor: write the full records list back as JSONL (`.bak` kept). */
-  thunderWriteRolesFile(args: { records: ThunderRoleRecord[] }): Promise<void>;
-  /** Settings editor: restore the shipped definition of one built-in role. */
-  thunderResetBuiltinRole(args: { id: string }): Promise<void>;
   /** Settings editor: `~/.thunder/models.json` providers + utility model. */
   thunderReadModelsConfig(): Promise<ThunderModelsConfig>;
   /** Settings editor: write `~/.thunder/models.json` (validated; `.bak` kept). */
@@ -1569,8 +1559,6 @@ export interface DesktopApi {
     workspaceDir?: string;
     taskNoteId?: string;
     thinking_level?: string;
-    /** Role id; the host enforces its permission tier. */
-    role?: string;
     attachments?: ThunderImageAttachment[];
   }): Promise<ThunderChatTaskResult>;
   thunderChatCancelTask(args: { taskId: string }): Promise<boolean>;
@@ -1587,8 +1575,6 @@ export interface DesktopApi {
   thunderChatListTraces(args: { sessionId: string }): Promise<Array<{ task_id: string; started_at_ms: number; duration_ms?: number; prompt?: string }>>;
   onThunderChatEvent(callback: (payload: ThunderChatStreamPayload) => void): () => void;
   onThunderModelsChanged(callback: () => void): () => void;
-  /** Fired when `~/.thunder/roles.jsonl` changes on disk (settings edits, hand edits). */
-  onThunderRolesChanged(callback: () => void): () => void;
   onScheduleRunEvent(callback: (payload: { scheduleId: string; runId: string; event: ThunderAgentEvent; accumulatedOutput: string }) => void): () => void;
   onScheduleStatusChanged(callback: (payload: { scheduleId: string; runId: string; status: string; output?: string; error?: string }) => void): () => void;
 }
@@ -2094,10 +2080,6 @@ const api: DesktopApi = {
   schedulesGetRun: (args) => ipcRenderer.invoke("schedule:getRun", args),
   thunderGetStatus: () => ipcRenderer.invoke("thunder:status"),
   thunderListModels: () => ipcRenderer.invoke("thunder:listModels"),
-  thunderListRoles: (args) => ipcRenderer.invoke("thunder:listRoles", args),
-  thunderReadRolesFile: () => ipcRenderer.invoke("thunder:readRolesFile"),
-  thunderWriteRolesFile: (args) => ipcRenderer.invoke("thunder:writeRolesFile", args),
-  thunderResetBuiltinRole: (args) => ipcRenderer.invoke("thunder:resetBuiltinRole", args),
   thunderReadModelsConfig: () => ipcRenderer.invoke("thunder:readModelsConfig"),
   thunderWriteModelsConfig: (args) => ipcRenderer.invoke("thunder:writeModelsConfig", args),
   thunderChatListConversations: () => ipcRenderer.invoke("thunder:chat:listConversations"),
@@ -2123,11 +2105,6 @@ const api: DesktopApi = {
     const handler = () => callback();
     ipcRenderer.on("thunder:models:changed", handler);
     return () => ipcRenderer.removeListener("thunder:models:changed", handler);
-  },
-  onThunderRolesChanged: (callback) => {
-    const handler = () => callback();
-    ipcRenderer.on("thunder:roles:changed", handler);
-    return () => ipcRenderer.removeListener("thunder:roles:changed", handler);
   },
   onScheduleRunEvent: (callback) => {
     const handler = (

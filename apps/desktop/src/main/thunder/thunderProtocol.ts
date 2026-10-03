@@ -42,7 +42,7 @@ export interface ThunderQuestionItem {
   options: ThunderQuestionOption[];
 }
 
-export type { ThunderRoleInfo, ThunderRoleRecord, ThunderModelsConfig, ThunderModelsProvider } from "@agent-resume/core";
+export type { ThunderModelsConfig, ThunderModelsProvider } from "@agent-resume/core";
 
 export type ThunderAgentEvent =
   | { type: "turn_start"; turn: number; timestamp: number }
