@@ -7,12 +7,9 @@ import { ChatComposer } from "./ChatComposer";
 import { ChatQuestionBubble } from "./ChatQuestionBubble";
 import { ChatEmptyState } from "./ChatEmptyState";
 import { TracePopover } from "./TracePopover";
-import { FileChangesPopover } from "./FileChangesPopover";
-import { GitDiffPopover } from "./GitDiffPopover";
-import {
-  loadConversationGitFiles,
-  type GitNestedScanOptions
-} from "./gitDiffUtils";
+import { ChatChangesPopover } from "./ChatChangesPopover";
+import { useConversationChanges } from "./useConversationChanges";
+import type { GitNestedScanOptions } from "./gitDiffUtils";
 import type {
   PanelSettings,
   ThunderChatMessage,
@@ -127,9 +124,7 @@ export function ChatMain({
   /** A strategy while true: follow the newest content (正文 + thinking). */
   const stickToBottom = useRef(true);
   const [isTraceOpen, setIsTraceOpen] = useState(false);
-  const [isFilesOpen, setIsFilesOpen] = useState(false);
-  const [isGitDiffOpen, setIsGitDiffOpen] = useState(false);
-  const [conversationDirtyCount, setConversationDirtyCount] = useState<number>(0);
+  const [isChangesOpen, setIsChangesOpen] = useState(false);
   const [nestedScan, setNestedScan] = useState<GitNestedScanOptions | undefined>(undefined);
   const [workspaceDirs, setWorkspaceDirs] = useState<string[]>(() => (workspaceDir ? [workspaceDir] : []));
 
@@ -279,34 +274,16 @@ export function ChatMain({
     };
   }, [workspaceDir, workspaceSource, taskNoteId]);
 
-  // Keep the git diff badge in sync with conversation file modifications across
-  // every repo in the workspace.
-  useEffect(() => {
-    let cancelled = false;
-    if (!workspaceDirs.length) {
-      setConversationDirtyCount(0);
-      return;
-    }
-    const updateCount = async () => {
-      try {
-        const snapshot = await loadConversationGitFiles({
-          workspaceDirs,
-          workspaceDir,
-          nestedScan,
-          fileChanges,
-          messages,
-          streamingTools
-        });
-        if (!cancelled) setConversationDirtyCount(snapshot.files.length);
-      } catch {
-        if (!cancelled) setConversationDirtyCount(0);
-      }
-    };
-    void updateCount();
-    return () => {
-      cancelled = true;
-    };
-  }, [workspaceDirs, workspaceDir, nestedScan, fileChanges, messages, streamingTools]);
+  // Single source of truth for conversation git changes: drives both the header
+  // badge and every tab of the Changes panel, so the two numbers can never disagree.
+  const changes = useConversationChanges({
+    workspaceDirs,
+    workspaceDir,
+    nestedScan,
+    fileChanges,
+    messages,
+    streamingTools
+  });
 
   const scrollToBottom = useCallback((force = false) => {
     const node = feedRef.current;
@@ -427,31 +404,17 @@ export function ChatMain({
             ) : null}
           </button>
 
-          {/* Files Popover Trigger */}
+          {/* Changes Popover Trigger (single entry for diff + footprint) */}
           <button
             type="button"
-            className={`tb-header-action-btn${isFilesOpen ? " is-active" : ""}`}
-            onClick={() => setIsFilesOpen(!isFilesOpen)}
-            title="View modified files"
-          >
-            <ThemeIcon name="file-diff" size={ICON_SIZE.dense} />
-            <span>Files</span>
-            {fileChanges.length > 0 && (
-              <span className="tb-header-badge">{fileChanges.length}</span>
-            )}
-          </button>
-
-          {/* Git Diff Popover Trigger */}
-          <button
-            type="button"
-            className={`tb-header-action-btn${isGitDiffOpen ? " is-active" : ""}`}
-            onClick={() => setIsGitDiffOpen(!isGitDiffOpen)}
-            title="View Git diff and commit conversation changes"
+            className={`tb-header-action-btn${isChangesOpen ? " is-active" : ""}`}
+            onClick={() => setIsChangesOpen(!isChangesOpen)}
+            title={t("desktop.chat.changes.tooltip")}
           >
             <ThemeIcon name="git-branch" size={ICON_SIZE.dense} />
-            <span>Git Diff</span>
-            {conversationDirtyCount > 0 && (
-              <span className="tb-header-badge">{conversationDirtyCount}</span>
+            <span>{t("desktop.chat.changes.label")}</span>
+            {changes.badgeCount > 0 && (
+              <span className="tb-header-badge">{changes.badgeCount}</span>
             )}
           </button>
         </div>
@@ -467,23 +430,11 @@ export function ChatMain({
         isCollecting={isCollectingTrace}
       />
 
-      <FileChangesPopover
-        isOpen={isFilesOpen}
-        onClose={() => setIsFilesOpen(false)}
-        files={fileChanges}
+      <ChatChangesPopover
+        isOpen={isChangesOpen}
+        onClose={() => setIsChangesOpen(false)}
         workspaceDir={workspaceDir}
-      />
-
-      <GitDiffPopover
-        isOpen={isGitDiffOpen}
-        onClose={() => setIsGitDiffOpen(false)}
-        workspaceDir={workspaceDir}
-        workspaceDirs={workspaceDirs}
-        nestedScan={nestedScan}
-        fileChanges={fileChanges}
-        messages={messages}
-        streamingTools={streamingTools}
-        onCommitSuccess={() => setConversationDirtyCount(0)}
+        changes={changes}
       />
 
       {/* Messages Feed or Empty State */}
