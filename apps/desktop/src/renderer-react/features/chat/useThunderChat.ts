@@ -127,6 +127,16 @@ export function useThunderChat() {
   const [loading, setLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  /**
+   * Input queued into the running task.
+   *
+   * `steering` enters at the next turn boundary (after the tool calls already
+   * in flight), `followUp` only once the run has nothing else to do.
+   */
+  const [queued, setQueued] = useState<{ steering: string[]; followUp: string[] }>({
+    steering: [],
+    followUp: []
+  });
 
   // Streaming buffers for active generation
   const [streamingText, setStreamingText] = useState("");
@@ -470,6 +480,7 @@ export function useThunderChat() {
     setActiveTaskId(null);
     // A bubble belongs to the session that raised it.
     setPendingQuestion(null);
+    setQueued({ steering: [], followUp: [] });
     setStreamingText("");
     setStreamingReasoning("");
     setStreamingTools([]);
@@ -646,6 +657,7 @@ export function useThunderChat() {
         setStreamStartTime(null);
         setIsStreaming(false);
         setActiveTaskId(null);
+        setQueued({ steering: [], followUp: [] });
 
         // Guarantee sync with finalized trace metrics on disk
         void (async () => {
@@ -952,11 +964,64 @@ export function useThunderChat() {
     await answerQuestion(undefined, true);
   }, [answerQuestion]);
 
+  /**
+   * Queue text into the running task.
+   *
+   * `steer` enters at the next turn boundary — after the tool calls already in
+   * flight, before the next model request — and can keep alive a run that was
+   * about to conclude. `follow_up` enters only once the run has nothing else
+   * to do. Neither interrupts a tool that is executing.
+   */
+  const queueIntoRunningTask = useCallback(
+    async (message: string, behavior: "steer" | "follow_up"): Promise<boolean> => {
+      const text = message.trim();
+      const targetTaskId = activeTaskIdRef.current;
+      if (!text || !targetTaskId) return false;
+      try {
+        const result = await desktopApi().thunderChatSteerTask({
+          taskId: targetTaskId,
+          message: text,
+          behavior
+        });
+        return result !== null;
+      } catch (err) {
+        console.error("Failed to queue message into thunder task:", err);
+        return false;
+      }
+    },
+    []
+  );
+
+  const steerRunningTask = useCallback(
+    (message: string) => queueIntoRunningTask(message, "steer"),
+    [queueIntoRunningTask]
+  );
+
+  const followUpRunningTask = useCallback(
+    (message: string) => queueIntoRunningTask(message, "follow_up"),
+    [queueIntoRunningTask]
+  );
+
   const cancelCurrentTask = useCallback(async () => {
     const curSessId = activeSessionIdRef.current;
     const stream = curSessId ? activeStreamsRef.current.get(curSessId) : null;
     const targetTaskId = stream?.taskId || activeTaskIdRef.current;
     if (!targetTaskId && !isStreaming) return;
+
+    // Hand queued input back to the composer before cancelling: dropping it
+    // silently is the one thing a user cannot recover from.
+    if (targetTaskId) {
+      try {
+        const cleared = await desktopApi().thunderChatClearTaskQueue({ taskId: targetTaskId });
+        const restored = [...(cleared?.steering ?? []), ...(cleared?.followUp ?? [])]
+          .filter((t) => t.trim())
+          .join("\n\n");
+        if (restored) prefillComposer(restored);
+      } catch {
+        // Best-effort: the cancel below must still happen.
+      }
+      setQueued({ steering: [], followUp: [] });
+    }
 
     // Cancelling frees a parked question: tell the daemon so its routing table
     // does not keep a dangling oneshot, then drop the bubble locally.
@@ -998,7 +1063,7 @@ export function useThunderChat() {
     } catch (err) {
       console.error("Failed to cancel thunder task:", err);
     }
-  }, [finalizeSessionTurn, isStreaming]);
+  }, [finalizeSessionTurn, isStreaming, prefillComposer]);
 
   // Subscribe to real-time events from Thunder daemon
   useEffect(() => {
@@ -1153,6 +1218,26 @@ export function useThunderChat() {
           console.info("[thunder-event:task_paused]", (ev as any).reason);
           break;
         }
+        case "steer_accepted": {
+          // The queued message has joined the run: show it now rather than
+          // waiting for the turn to finish.
+          const text = String((ev as any).message || "");
+          if (isCurrentSession && text) {
+            setMessages((prev) => [...prev, { role: "user", content: text }]);
+          }
+          break;
+        }
+        case "task_queue_update": {
+          if (isCurrentSession) {
+            const steering = (ev as any).steering;
+            const followUp = (ev as any).follow_up;
+            setQueued({
+              steering: Array.isArray(steering) ? steering : [],
+              followUp: Array.isArray(followUp) ? followUp : []
+            });
+          }
+          break;
+        }
         case "error": {
           console.warn("[thunder-event:error]", (ev as any).message);
           break;
@@ -1211,6 +1296,9 @@ export function useThunderChat() {
     loading,
     isStreaming,
     activeTaskId,
+    queued,
+    steerRunningTask,
+    followUpRunningTask,
     streamingText,
     streamingReasoning,
     streamingTools,

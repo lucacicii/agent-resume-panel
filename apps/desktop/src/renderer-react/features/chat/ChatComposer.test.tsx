@@ -500,5 +500,47 @@ describe("ChatComposer image attachments", () => {
 
     expect(document.querySelector(".wb-terminal-composer-pending-image")).toBeNull();
   });
-});
 
+  it("steers the running task on Enter and queues a follow-up on Alt+Enter", () => {
+    const onSteer = vi.fn();
+    const onFollowUp = vi.fn();
+    render(
+      <ChatComposer
+        {...defaultProps}
+        isStreaming
+        onSteer={onSteer}
+        onFollowUp={onFollowUp}
+        queuedCount={2}
+      />
+    );
+    const textarea = screen.getByPlaceholderText(/Ask Thunder agent anything/i) as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "change of plan" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    expect(onSteer).toHaveBeenCalledWith("change of plan");
+    expect(onFollowUp).not.toHaveBeenCalled();
+    expect(textarea.value).toBe("");
+
+    fireEvent.change(textarea, { target: { value: "then summarise" } });
+    fireEvent.keyDown(textarea, { key: "Enter", altKey: true });
+    expect(onFollowUp).toHaveBeenCalledWith("then summarise");
+    expect(textarea.value).toBe("");
+  });
+
+  it("does nothing on Enter while streaming when the host cannot steer", () => {
+    const onSend = vi.fn();
+    render(<ChatComposer {...defaultProps} isStreaming onSend={onSend} />);
+    const textarea = screen.getByPlaceholderText(/Ask Thunder agent anything/i) as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "hi" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    expect(onSend).not.toHaveBeenCalled();
+    expect(textarea.value).toBe("hi");
+  });
+
+  it("shows the pending badge while a run is live", () => {
+    render(<ChatComposer {...defaultProps} isStreaming queuedCount={3} />);
+    expect(screen.getByText(/3 queued/)).toBeTruthy();
+  });
+});

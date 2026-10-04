@@ -249,6 +249,17 @@ interface ChatComposerProps {
   ) => void;
   onCancel: () => void;
   isStreaming: boolean;
+  /**
+   * Queue text into the running task.
+   *
+   * `steer` enters at the next turn boundary (after the tool calls already in
+   * flight), `follow_up` only once the run has nothing else to do. Optional so
+   * a host that cannot steer simply behaves as before.
+   */
+  onSteer?: (message: string) => void;
+  onFollowUp?: (message: string) => void;
+  /** Pending queue size, for the badge. */
+  queuedCount?: number;
   models: ThunderModelInfo[];
   selectedModel: string;
   onSelectModel: (model: string) => void;
@@ -321,6 +332,9 @@ export function ChatComposer({
   onSend,
   onCancel,
   isStreaming,
+  onSteer,
+  onFollowUp,
+  queuedCount,
   models,
   selectedModel,
   onSelectModel,
@@ -1089,6 +1103,18 @@ export function ChatComposer({
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       if (isStreaming) {
+        // A run is in flight: Enter steers it, Alt/Option+Enter queues a
+        // follow-up. Neither interrupts the tool that is running.
+        const trimmed = text.trim();
+        const canQueue = Boolean(onSteer || onFollowUp);
+        if (!trimmed || !canQueue) return;
+        if (e.altKey && onFollowUp) {
+          onFollowUp(trimmed);
+        } else if (onSteer) {
+          onSteer(trimmed);
+        }
+        setText("");
+        setPendingImages([]);
         return;
       }
       if (text.trim() || pendingImages.length > 0) {
@@ -1285,6 +1311,12 @@ export function ChatComposer({
       onDrop={handleDrop}
     >
       {docked ?? null}
+      {isStreaming && (queuedCount ?? 0) > 0 && (
+        <div className="tb-composer-queued" aria-label="Queued messages">
+          <span>📥 {queuedCount} queued</span>
+          <span>Enter steers · ⌥Enter follows up</span>
+        </div>
+      )}
       <div className={`tb-composer-box${isStreaming ? " is-active" : ""}`}>
         {pendingImages.length > 0 && (
           <div className="wb-terminal-composer-pending-images" aria-label="Attached images">

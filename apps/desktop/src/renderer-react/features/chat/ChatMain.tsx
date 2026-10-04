@@ -30,6 +30,11 @@ interface ChatMainProps {
   sessionTitle?: string;
   messages: ThunderChatMessage[];
   isStreaming: boolean;
+  /** Pending steering / follow-up count, for the composer badge. */
+  queuedCount?: number;
+  /** Queue text into the running task (steering / follow-up). */
+  onSteerMessage?: (message: string) => void;
+  onFollowUpMessage?: (message: string) => void;
   streamingText: string;
   streamingReasoning: string;
   streamingTools: ActiveToolInfo[];
@@ -83,6 +88,9 @@ export function ChatMain({
   sessionTitle,
   messages,
   isStreaming,
+  queuedCount,
+  onSteerMessage,
+  onFollowUpMessage,
   streamingText,
   streamingReasoning,
   streamingTools,
@@ -504,6 +512,9 @@ export function ChatMain({
         onSend={onSendMessage}
         onCancel={onCancelTask}
         isStreaming={isStreaming}
+        queuedCount={queuedCount}
+        onSteer={onSteerMessage}
+        onFollowUp={onFollowUpMessage}
         models={models}
         selectedModel={selectedModel}
         onSelectModel={onSelectModel}

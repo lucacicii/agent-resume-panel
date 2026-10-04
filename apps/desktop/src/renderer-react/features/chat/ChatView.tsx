@@ -43,6 +43,9 @@ export function ChatView({ active }: { active: boolean }): React.JSX.Element | n
     composerPrefill,
     prefillComposer,
     cancelCurrentTask,
+    queued,
+    steerRunningTask,
+    followUpRunningTask,
     refreshDaemonStatus,
     currentTrace,
     traceSpans,
@@ -150,6 +153,9 @@ export function ChatView({ active }: { active: boolean }): React.JSX.Element | n
         isWorkspaceLocked={isWorkspaceLocked}
         onSendMessage={sendMessage}
         onCancelTask={cancelCurrentTask}
+        queuedCount={queued.steering.length + queued.followUp.length}
+        onSteerMessage={(message) => void steerRunningTask(message)}
+        onFollowUpMessage={(message) => void followUpRunningTask(message)}
         onNewSession={createNewSession}
         onRegenerate={regenerateResponse}
         onResend={resendUserMessage}
