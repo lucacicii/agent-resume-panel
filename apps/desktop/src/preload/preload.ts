@@ -1570,6 +1570,20 @@ export interface DesktopApi {
   }): Promise<boolean>;
   thunderChatPauseTask(args: { taskId: string }): Promise<boolean>;
   thunderChatResumeTask(args: { taskId: string }): Promise<boolean>;
+  /**
+   * Queue user input into a running task. `behavior` is required: `steer`
+   * enters at the next turn boundary, `follow_up` only once the run has
+   * nothing else to do.
+   */
+  thunderChatSteerTask(args: {
+    taskId: string;
+    message: string;
+    behavior: "steer" | "follow_up";
+  }): Promise<{ queued: number } | null>;
+  /** Drop everything queued and return its text, for an editor restore. */
+  thunderChatClearTaskQueue(args: {
+    taskId: string;
+  }): Promise<{ steering: string[]; followUp: string[] } | null>;
   thunderChatGetTrace(args: { sessionId: string; taskId?: string }): Promise<ThunderTaskTrace | null>;
   thunderChatGetActiveStream(args: { sessionId: string }): Promise<ThunderActiveStreamSnapshot | null>;
   thunderChatListTraces(args: { sessionId: string }): Promise<Array<{ task_id: string; started_at_ms: number; duration_ms?: number; prompt?: string }>>;
@@ -2093,6 +2107,8 @@ const api: DesktopApi = {
   thunderChatAnswerQuestion: (args) => ipcRenderer.invoke("thunder:chat:answerQuestion", args),
   thunderChatPauseTask: (args) => ipcRenderer.invoke("thunder:chat:pauseTask", args),
   thunderChatResumeTask: (args) => ipcRenderer.invoke("thunder:chat:resumeTask", args),
+  thunderChatSteerTask: (args) => ipcRenderer.invoke("thunder:chat:steerTask", args),
+  thunderChatClearTaskQueue: (args) => ipcRenderer.invoke("thunder:chat:clearTaskQueue", args),
   thunderChatGetTrace: (args) => ipcRenderer.invoke("thunder:chat:getTrace", args),
   thunderChatGetActiveStream: (args) => ipcRenderer.invoke("thunder:chat:getActiveStream", args),
   thunderChatListTraces: (args) => ipcRenderer.invoke("thunder:chat:listTraces", args),

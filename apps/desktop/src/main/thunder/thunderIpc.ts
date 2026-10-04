@@ -299,6 +299,20 @@ export function registerThunderIpc(): void {
     return getThunderClient().resumeTask(args.taskId);
   });
 
+  safeHandle(
+    "thunder:chat:steerTask",
+    async (
+      _event,
+      args: { taskId: string; message: string; behavior: "steer" | "follow_up" }
+    ) => {
+      return getThunderClient().steerTask(args.taskId, args.message, args.behavior);
+    }
+  );
+
+  safeHandle("thunder:chat:clearTaskQueue", async (_event, args: { taskId: string }) => {
+    return getThunderClient().clearTaskQueue(args.taskId);
+  });
+
   safeHandle("thunder:chat:getTrace", async (_event, args: { sessionId: string; taskId?: string }) => {
     return getThunderClient().getTrace(args);
   });

@@ -20,6 +20,7 @@ import type {
   ThunderConversationSummary,
   ThunderConversation,
   ThunderImageAttachment,
+  ThunderQueueBehavior,
   ThunderTaskTrace,
   ThunderTitleResult
 } from "./thunderProtocol";
@@ -376,6 +377,24 @@ export class ThunderClient {
             } as ThunderObservedEvent);
           } catch (err) {
             console.error("[thunder-daemon:task-paused-handler-error]", err);
+          }
+        }
+        break;
+      }
+      case "task_queue_update": {
+        const task = this.activeTasks.get(msg.task_id);
+        if (task?.onEvent) {
+          try {
+            task.onEvent({
+              agent_id: msg.task_id,
+              event: {
+                type: "task_queue_update",
+                steering: msg.steering ?? [],
+                follow_up: msg.follow_up ?? []
+              }
+            } as ThunderObservedEvent);
+          } catch (err) {
+            console.error("[thunder-daemon:task-queue-handler-error]", err);
           }
         }
         break;
@@ -811,6 +830,43 @@ export class ThunderClient {
   public async resumeTask(taskId: string): Promise<boolean> {
     const res = await this.sendCommand<{ resumed?: boolean }>("resume_task", { task_id: taskId }, 10_000);
     return Boolean(res?.resumed);
+  }
+
+  /**
+   * Queue user input into a running task.
+   *
+   * `behavior` is required by the daemon: `steer` enters at the next turn
+   * boundary (after the current tool calls), `follow_up` only once the run has
+   * nothing else to do. Neither interrupts a tool that is executing.
+   */
+  public async steerTask(
+    taskId: string,
+    message: string,
+    behavior: ThunderQueueBehavior
+  ): Promise<{ queued: number } | null> {
+    const res = await this.sendCommand<{ queued?: number }>(
+      "steer_task",
+      { task_id: taskId, message, behavior },
+      10_000
+    );
+    if (res === null) return null;
+    return { queued: res?.queued ?? 0 };
+  }
+
+  /**
+   * Drop everything queued into a running task and return its text, so the
+   * caller can put it back in the editor when the user aborts.
+   */
+  public async clearTaskQueue(
+    taskId: string
+  ): Promise<{ steering: string[]; followUp: string[] } | null> {
+    const res = await this.sendCommand<{ steering?: string[]; follow_up?: string[] }>(
+      "clear_queue",
+      { task_id: taskId },
+      10_000
+    );
+    if (res === null) return null;
+    return { steering: res?.steering ?? [], followUp: res?.follow_up ?? [] };
   }
 
   public async cancelTask(taskId: string): Promise<boolean> {
