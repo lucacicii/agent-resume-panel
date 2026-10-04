@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import { ChatView } from "./ChatView";
@@ -109,6 +109,7 @@ describe("ChatView", () => {
         finishReason: "Done"
       }),
       thunderChatCancelTask: vi.fn().mockResolvedValue(true),
+      thunderChatClearTaskQueue: vi.fn().mockResolvedValue({ steering: [], followUp: [] }),
       thunderChatGetTrace: vi.fn().mockResolvedValue(null),
       thunderChatGetActiveStream: vi.fn().mockResolvedValue(null),
       onThunderChatEvent: vi.fn().mockReturnValue(() => undefined),
@@ -592,6 +593,96 @@ describe("ChatView", () => {
     await waitFor(() => {
       expect(wsBtn.textContent).toContain("In Progress Task");
       expect(wsBtn.textContent).toContain("[进行中]");
+    });
+  });
+
+  it("stopping keeps the partial answer and leaves the composer ready", async () => {
+    // A run that hangs, so there is something to stop.
+    let releaseRun: (value: { finalContent: string; finishReason: string }) => void = () => {};
+    (window.agentResume.thunderChatRunTask as any).mockReturnValueOnce(
+      new Promise((resolve) => {
+        releaseRun = resolve as typeof releaseRun;
+      })
+    );
+
+    // Capture the event callback so the test can play a token.
+    let emit: ((payload: unknown) => void) | null = null;
+    (window.agentResume.onThunderChatEvent as any).mockImplementation(
+      (cb: (payload: unknown) => void) => {
+        emit = cb;
+        return () => undefined;
+      }
+    );
+
+    render(
+      <I18nProvider>
+        <ChatView active={true} />
+      </I18nProvider>
+    );
+
+    // Work inside the existing session so the ids are known.
+    await waitFor(() => {
+      expect(screen.getAllByText("Inspect Git Status & Changes").length).toBeGreaterThanOrEqual(1);
+    });
+    fireEvent.click(screen.getAllByText("Inspect Git Status & Changes")[0]);
+    await waitFor(() => {
+      expect(screen.getByText("Working tree is clean.")).toBeTruthy();
+    });
+
+    const textarea = screen.getByPlaceholderText(/Ask Thunder agent anything/i);
+    fireEvent.change(textarea, { target: { value: "start something long" } });
+    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
+
+    await waitFor(() => {
+      expect(window.agentResume.thunderChatRunTask).toHaveBeenCalledWith(
+        expect.objectContaining({ sessionId: "sess_1" })
+      );
+    });
+
+    // A token lands, so there is a partial answer worth keeping.
+    await waitFor(() => expect(emit).toBeTruthy());
+    act(() => {
+      emit!({
+        taskId: "task_cancel",
+        sessionId: "sess_1",
+        event: { event: { type: "token_delta", delta: "half an answer" } }
+      });
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/half an answer/)).toBeTruthy();
+    });
+
+    // Stop it.
+    fireEvent.click(screen.getByTitle("Stop task"));
+
+    await waitFor(() => {
+      expect(window.agentResume.thunderChatCancelTask).toHaveBeenCalled();
+    });
+    // What the user already read is still there, and stopping is not a failure.
+    expect(screen.getByText(/half an answer/)).toBeTruthy();
+    expect(screen.queryByText(/Task failed/)).toBeNull();
+    expect(screen.queryByText(/Agent execution failed/)).toBeNull();
+
+    // The run settles as cancelled.
+    await act(async () => {
+      releaseRun({ finalContent: "half an answer", finishReason: "Cancelled" });
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector(".tb-composer-box.is-active")).toBeNull();
+    });
+
+    // And the next message actually goes out: this is the whole point of the
+    // feature, so it is asserted rather than inferred from the composer state.
+    (window.agentResume.thunderChatRunTask as any).mockResolvedValue({
+      finalContent: "ok",
+      finishReason: "Done"
+    });
+    fireEvent.change(textarea, { target: { value: "carry on" } });
+    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
+
+    await waitFor(() => {
+      expect(window.agentResume.thunderChatRunTask).toHaveBeenCalledTimes(2);
     });
   });
 });

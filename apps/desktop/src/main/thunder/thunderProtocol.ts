@@ -148,6 +148,12 @@ export type ThunderDaemonIncoming =
       task_id: string;
       session_id?: string;
       error: string;
+      /**
+       * The run's terminal reason when one exists (`Cancelled`, `Error`, ...).
+       * Absent when the daemon failed before a run started, which is what lets a
+       * client tell "the agent stopped" from "we never got going".
+       */
+      finish_reason?: string;
     }
   | {
       type: "user_question";
