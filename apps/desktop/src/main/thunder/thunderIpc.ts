@@ -303,9 +303,19 @@ export function registerThunderIpc(): void {
     "thunder:chat:steerTask",
     async (
       _event,
-      args: { taskId: string; message: string; behavior: "steer" | "follow_up" }
+      args: {
+        taskId: string;
+        message: string;
+        behavior: "steer" | "follow_up";
+        attachments?: import("@agent-resume/core").ThunderImageAttachment[];
+      }
     ) => {
-      return getThunderClient().steerTask(args.taskId, args.message, args.behavior);
+      return getThunderClient().steerTask(
+        args.taskId,
+        args.message,
+        args.behavior,
+        args.attachments
+      );
     }
   );
 

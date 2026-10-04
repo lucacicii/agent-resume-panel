@@ -842,11 +842,12 @@ export class ThunderClient {
   public async steerTask(
     taskId: string,
     message: string,
-    behavior: ThunderQueueBehavior
+    behavior: ThunderQueueBehavior,
+    attachments?: ThunderImageAttachment[]
   ): Promise<{ queued: number } | null> {
     const res = await this.sendCommand<{ queued?: number }>(
       "steer_task",
-      { task_id: taskId, message, behavior },
+      { task_id: taskId, message, behavior, attachments },
       10_000
     );
     if (res === null) return null;

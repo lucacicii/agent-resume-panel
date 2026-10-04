@@ -973,15 +973,20 @@ export function useThunderChat() {
    * to do. Neither interrupts a tool that is executing.
    */
   const queueIntoRunningTask = useCallback(
-    async (message: string, behavior: "steer" | "follow_up"): Promise<boolean> => {
+    async (
+      message: string,
+      behavior: "steer" | "follow_up",
+      attachments?: ThunderImageAttachment[]
+    ): Promise<boolean> => {
       const text = message.trim();
       const targetTaskId = activeTaskIdRef.current;
-      if (!text || !targetTaskId) return false;
+      if ((!text && !attachments?.length) || !targetTaskId) return false;
       try {
         const result = await desktopApi().thunderChatSteerTask({
           taskId: targetTaskId,
           message: text,
-          behavior
+          behavior,
+          attachments
         });
         return result !== null;
       } catch (err) {
@@ -993,12 +998,14 @@ export function useThunderChat() {
   );
 
   const steerRunningTask = useCallback(
-    (message: string) => queueIntoRunningTask(message, "steer"),
+    (message: string, attachments?: ThunderImageAttachment[]) =>
+      queueIntoRunningTask(message, "steer", attachments),
     [queueIntoRunningTask]
   );
 
   const followUpRunningTask = useCallback(
-    (message: string) => queueIntoRunningTask(message, "follow_up"),
+    (message: string, attachments?: ThunderImageAttachment[]) =>
+      queueIntoRunningTask(message, "follow_up", attachments),
     [queueIntoRunningTask]
   );
 

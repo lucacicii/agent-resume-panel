@@ -256,8 +256,8 @@ interface ChatComposerProps {
    * flight), `follow_up` only once the run has nothing else to do. Optional so
    * a host that cannot steer simply behaves as before.
    */
-  onSteer?: (message: string) => void;
-  onFollowUp?: (message: string) => void;
+  onSteer?: (message: string, attachments?: ThunderImageAttachment[]) => void;
+  onFollowUp?: (message: string, attachments?: ThunderImageAttachment[]) => void;
   /** Pending queue size, for the badge. */
   queuedCount?: number;
   models: ThunderModelInfo[];
@@ -1105,13 +1105,25 @@ export function ChatComposer({
       if (isStreaming) {
         // A run is in flight: Enter steers it, Alt/Option+Enter queues a
         // follow-up. Neither interrupts the tool that is running.
+        //
+        // Staged images ride along, so "look at this screenshot" works the same
+        // whether the run is idle or live.
+        const attachments: ThunderImageAttachment[] = pendingImages.map((img) => ({
+          name: img.name,
+          mimeType: img.mimeType,
+          path: img.path,
+          data: img.data
+        }));
         const trimmed = text.trim();
         const canQueue = Boolean(onSteer || onFollowUp);
-        if (!trimmed || !canQueue) return;
+        if ((!trimmed && attachments.length === 0) || !canQueue) return;
+        const prompt =
+          trimmed || (attachments.length > 0 ? "Please analyze the attached image." : "");
+        const withAttachments = attachments.length > 0 ? attachments : undefined;
         if (e.altKey && onFollowUp) {
-          onFollowUp(trimmed);
+          onFollowUp(prompt, withAttachments);
         } else if (onSteer) {
-          onSteer(trimmed);
+          onSteer(prompt, withAttachments);
         }
         setText("");
         setPendingImages([]);

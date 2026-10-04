@@ -154,8 +154,10 @@ export function ChatView({ active }: { active: boolean }): React.JSX.Element | n
         onSendMessage={sendMessage}
         onCancelTask={cancelCurrentTask}
         queuedCount={queued.steering.length + queued.followUp.length}
-        onSteerMessage={(message) => void steerRunningTask(message)}
-        onFollowUpMessage={(message) => void followUpRunningTask(message)}
+        onSteerMessage={(message, attachments) => void steerRunningTask(message, attachments)}
+        onFollowUpMessage={(message, attachments) =>
+          void followUpRunningTask(message, attachments)
+        }
         onNewSession={createNewSession}
         onRegenerate={regenerateResponse}
         onResend={resendUserMessage}

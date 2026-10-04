@@ -33,8 +33,14 @@ interface ChatMainProps {
   /** Pending steering / follow-up count, for the composer badge. */
   queuedCount?: number;
   /** Queue text into the running task (steering / follow-up). */
-  onSteerMessage?: (message: string) => void;
-  onFollowUpMessage?: (message: string) => void;
+  onSteerMessage?: (
+    message: string,
+    attachments?: import("@agent-resume/core").ThunderImageAttachment[]
+  ) => void;
+  onFollowUpMessage?: (
+    message: string,
+    attachments?: import("@agent-resume/core").ThunderImageAttachment[]
+  ) => void;
   streamingText: string;
   streamingReasoning: string;
   streamingTools: ActiveToolInfo[];

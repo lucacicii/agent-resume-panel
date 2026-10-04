@@ -1579,6 +1579,7 @@ export interface DesktopApi {
     taskId: string;
     message: string;
     behavior: "steer" | "follow_up";
+    attachments?: import("@agent-resume/core").ThunderImageAttachment[];
   }): Promise<{ queued: number } | null>;
   /** Drop everything queued and return its text, for an editor restore. */
   thunderChatClearTaskQueue(args: {

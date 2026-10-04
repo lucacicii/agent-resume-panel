@@ -517,13 +517,13 @@ describe("ChatComposer image attachments", () => {
 
     fireEvent.change(textarea, { target: { value: "change of plan" } });
     fireEvent.keyDown(textarea, { key: "Enter" });
-    expect(onSteer).toHaveBeenCalledWith("change of plan");
+    expect(onSteer).toHaveBeenCalledWith("change of plan", undefined);
     expect(onFollowUp).not.toHaveBeenCalled();
     expect(textarea.value).toBe("");
 
     fireEvent.change(textarea, { target: { value: "then summarise" } });
     fireEvent.keyDown(textarea, { key: "Enter", altKey: true });
-    expect(onFollowUp).toHaveBeenCalledWith("then summarise");
+    expect(onFollowUp).toHaveBeenCalledWith("then summarise", undefined);
     expect(textarea.value).toBe("");
   });
 
@@ -542,5 +542,32 @@ describe("ChatComposer image attachments", () => {
   it("shows the pending badge while a run is live", () => {
     render(<ChatComposer {...defaultProps} isStreaming queuedCount={3} />);
     expect(screen.getByText(/3 queued/)).toBeTruthy();
+  });
+
+  it("sends staged images along with a steer", async () => {
+    const onSteer = vi.fn();
+    render(<ChatComposer {...defaultProps} isStreaming onSteer={onSteer} />);
+    const textarea = screen.getByPlaceholderText(/Ask Thunder agent anything/i) as HTMLTextAreaElement;
+
+    const file = new File([new Uint8Array([137, 80, 78, 71])], "shot.png", { type: "image/png" });
+    fireEvent.paste(textarea, {
+      clipboardData: {
+        items: [{ type: "image/png", getAsFile: () => file }]
+      }
+    });
+    await waitFor(() => {
+      expect(document.querySelector(".wb-terminal-composer-pending-image")).toBeTruthy();
+    });
+
+    fireEvent.change(textarea, { target: { value: "look at this" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    expect(onSteer).toHaveBeenCalledTimes(1);
+    const [message, attachments] = onSteer.mock.calls[0];
+    expect(message).toBe("look at this");
+    expect(attachments).toHaveLength(1);
+    expect(attachments[0].mimeType).toBe("image/png");
+    // The staging area is consumed exactly as a normal send would consume it.
+    expect(document.querySelector(".wb-terminal-composer-pending-image")).toBeNull();
   });
 });
