@@ -238,18 +238,23 @@ describe("ChatView", () => {
     // File changes rebuilt from the buffered `file_change` event.
     expect(document.querySelector(".tb-header-badge")?.textContent).toBe("1");
 
-    // Later deltas continue the restored buffer.
+    // Later deltas continue the restored buffer. The buffered stream ended on a
+    // reasoning run, so the resume opens a new answer run after it — arrival
+    // order is what the feed shows, not one lane concatenated into another.
     captured.emit?.({
       taskId: "task_live",
       sessionId: "sess_1",
       event: { agent_id: "task_live", event: { type: "token_delta", turn: 1, delta: " continued" } }
     });
     await waitFor(() => {
-      expect(screen.getByText("Partial answer continued")).toBeTruthy();
+      expect(screen.getByText("continued")).toBeTruthy();
     });
+    const buffered = screen.getByText("Partial answer");
+    const resumed = screen.getByText("continued");
+    expect(buffered.compareDocumentPosition(resumed) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("groups the agent loop's tool calls into one block per user turn", async () => {
+  it("keeps one block per agent step so turn output never merges", async () => {
     window.agentResume.thunderChatGetConversation = vi.fn().mockResolvedValue({
       id: "sess_1",
       title: "Inspect Git Status & Changes",
@@ -294,13 +299,91 @@ describe("ChatView", () => {
       expect(screen.getByText("Step one")).toBeTruthy();
     });
 
-    // One tool group for the whole user turn, not one per agent step.
+    // One block per agent step: consecutive steps are separate turns' output and
+    // must not be glued into a single block.
     const groups = document.querySelectorAll(".tb-tool-group-container");
-    expect(groups.length).toBe(1);
-    expect(groups[0]?.textContent).toContain("Used 3 tools");
-    // Every step's text is preserved.
-    expect(screen.getByText("Step two")).toBeTruthy();
-    expect(screen.getByText("Step three")).toBeTruthy();
+    expect(groups.length).toBe(3);
+    expect(groups[0]?.textContent).toContain("Used 1 tool");
+    expect(groups[1]?.textContent).toContain("Used 1 tool");
+    expect(groups[2]?.textContent).toContain("Used 1 tool");
+
+    // The blocks keep transcript order instead of being regrouped.
+    const ordered = ["Step one", "Step two", "Step three"].map((text) => screen.getByText(text));
+    expect(ordered[0].compareDocumentPosition(ordered[1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(ordered[1].compareDocumentPosition(ordered[2]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("interleaves thinking, tool calls and text in the order the events arrive", async () => {
+    // A run that hangs, so the feed stays live while the test plays events.
+    (window.agentResume.thunderChatRunTask as any).mockReturnValueOnce(new Promise(() => {}));
+
+    let emit: ((payload: unknown) => void) | null = null;
+    (window.agentResume.onThunderChatEvent as any).mockImplementation(
+      (cb: (payload: unknown) => void) => {
+        emit = cb;
+        return () => undefined;
+      }
+    );
+
+    render(
+      <I18nProvider>
+        <ChatView active={true} />
+      </I18nProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Inspect Git Status & Changes").length).toBeGreaterThanOrEqual(1);
+    });
+    fireEvent.click(screen.getAllByText("Inspect Git Status & Changes")[0]);
+    await waitFor(() => {
+      expect(screen.getByText("Working tree is clean.")).toBeTruthy();
+    });
+
+    const textarea = screen.getByPlaceholderText(/Ask Thunder agent anything/i);
+    fireEvent.change(textarea, { target: { value: "do the thing" } });
+    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
+    await waitFor(() => expect(emit).toBeTruthy());
+
+    const play = (event: Record<string, unknown>) =>
+      act(() => {
+        emit!({ taskId: "task_live", sessionId: "sess_1", event: { event } });
+      });
+
+    // reasoning → tool → answer → tool → answer: the second answer must land
+    // after the first tool block, not be folded into one lane above it.
+    play({ type: "reasoning_delta", turn: 1, delta: "checking things first" });
+    play({ type: "tool_exec_start", turn: 1, tool_call_id: "t1", name: "bash", arguments: { command: "ls" } });
+    play({ type: "tool_exec_result", turn: 1, tool_call_id: "t1", result: { output: "out1" } });
+    play({ type: "token_delta", turn: 1, delta: "first answer" });
+    play({ type: "tool_exec_start", turn: 1, tool_call_id: "t2", name: "read_file", arguments: { path: "a" } });
+    play({ type: "tool_exec_result", turn: 1, tool_call_id: "t2", result: { output: "out2" } });
+    play({ type: "token_delta", turn: 1, delta: "second answer" });
+
+    await waitFor(() => {
+      expect(screen.getByText(/second answer/)).toBeTruthy();
+    });
+
+    const rows = document.querySelectorAll<HTMLElement>(".tb-message-container");
+    const live = rows[rows.length - 1];
+    const thinking = live.querySelector(".tb-thinking-container")!;
+    const toolGroups = live.querySelectorAll(".tb-tool-group-container");
+    expect(toolGroups.length).toBe(2);
+    expect(thinking.compareDocumentPosition(toolGroups[0]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(toolGroups[0].compareDocumentPosition(toolGroups[1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(toolGroups[1].compareDocumentPosition(screen.getByText(/second answer/)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    // The daemon's own completion must not reflow the block the user just read.
+    play({ type: "loop_complete", finish_reason: "Done", final_content: "first answersecond answer" });
+
+    await waitFor(() => {
+      expect(document.querySelector(".tb-thinking-container.is-streaming")).toBeNull();
+    });
+    const settledRows = document.querySelectorAll<HTMLElement>(".tb-message-container");
+    const settled = settledRows[settledRows.length - 1];
+    const settledGroups = settled.querySelectorAll(".tb-tool-group-container");
+    expect(settledGroups.length).toBe(2);
+    expect(settled.querySelector(".tb-thinking-container")).not.toBeNull();
+    expect(settledGroups[1].compareDocumentPosition(screen.getByText(/second answer/)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("submits a new message through the composer", async () => {

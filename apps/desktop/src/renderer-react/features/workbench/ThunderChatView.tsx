@@ -111,9 +111,7 @@ export function ThunderChatView({
       sessionTitle={activeConversation?.title || title}
       messages={chat.messages}
       isStreaming={chat.isStreaming}
-      streamingText={chat.streamingText}
-      streamingReasoning={chat.streamingReasoning}
-      streamingTools={chat.streamingTools}
+      liveSegments={chat.liveSegments}
       models={chat.models}
       selectedModel={chat.selectedModel}
       onSelectModel={chat.setSelectedModel}

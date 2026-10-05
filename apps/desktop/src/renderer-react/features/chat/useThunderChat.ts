@@ -34,11 +34,130 @@ export interface ActiveToolInfo {
   isError?: boolean;
 }
 
+/**
+ * One run of the in-flight turn, in the order its events arrived.
+ *
+ * The chat is a single chronological stream: thinking, the answer and tool
+ * calls interleave the way they were produced instead of being regrouped into
+ * one "thinking" lane above one "tools" lane above one "answer" lane.
+ */
+export type LiveSegment =
+  | { kind: "reasoning"; text: string }
+  | { kind: "text"; text: string }
+  | { kind: "tools"; tools: ActiveToolInfo[] };
+
+/** A chat message plus the ordered segments this renderer watched it stream in. */
+export type RenderedChatMessage = ThunderChatMessage & { segments?: LiveSegment[] };
+
 interface SessionStream {
   taskId: string;
   streamingText: string;
   streamingReasoning: string;
   streamingTools: ActiveToolInfo[];
+  segments: LiveSegment[];
+}
+
+/** Append a delta to the trailing run of the same kind, or open a new run. */
+function appendDelta(segments: LiveSegment[], kind: "reasoning" | "text", delta: string): void {
+  const last = segments[segments.length - 1];
+  if (last && last.kind === kind) {
+    last.text += delta;
+    return;
+  }
+  segments.push({ kind, text: delta });
+}
+
+/** Add a tool call to the trailing tool run, or open a new run. */
+function appendTool(segments: LiveSegment[], tool: ActiveToolInfo): void {
+  const last = segments[segments.length - 1];
+  if (last && last.kind === "tools") {
+    last.tools.push(tool);
+    return;
+  }
+  segments.push({ kind: "tools", tools: [tool] });
+}
+
+/** Fold a tool result into the run that announced the call. */
+function updateTool(
+  segments: LiveSegment[],
+  toolCallId: string,
+  update: (tool: ActiveToolInfo) => ActiveToolInfo
+): boolean {
+  for (let i = segments.length - 1; i >= 0; i--) {
+    const segment = segments[i];
+    if (segment.kind !== "tools") continue;
+    const index = segment.tools.findIndex((t) => t.toolCallId === toolCallId);
+    if (index !== -1) {
+      segment.tools[index] = update(segment.tools[index]);
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Rebuild the ordered segments of an in-flight turn from the main process's
+ * buffered event log, so a renderer that remounted mid-answer resumes with the
+ * real interleaving instead of three regrouped lanes.
+ */
+function rebuildSegments(events: ThunderActiveStreamSnapshot["events"]): LiveSegment[] {
+  const segments: LiveSegment[] = [];
+  for (const observed of events) {
+    const ev = observed?.event as { type?: string } & Record<string, any>;
+    if (!ev?.type) continue;
+    switch (ev.type) {
+      case "token_delta":
+        appendDelta(segments, "text", ev.delta || "");
+        break;
+      case "reasoning_delta":
+        appendDelta(segments, "reasoning", ev.delta || "");
+        break;
+      case "tool_exec_start": {
+        const toolCallId = String(ev.tool_call_id || `tool_${segments.length}`);
+        const tool: ActiveToolInfo = {
+          toolCallId,
+          name: ev.name || "tool",
+          arguments: ev.arguments || {},
+          isRunning: true
+        };
+        if (!updateTool(segments, toolCallId, () => tool)) appendTool(segments, tool);
+        break;
+      }
+      case "tool_exec_result": {
+        const toolCallId = String(ev.tool_call_id || "");
+        updateTool(segments, toolCallId, (tool) => ({
+          ...tool,
+          isRunning: false,
+          result: ev.result?.output,
+          isError: Boolean(ev.result?.is_error)
+        }));
+        break;
+      }
+    }
+  }
+  return segments;
+}
+
+/**
+ * Freeze the live segments onto the finished message: tool runs stop spinning,
+ * and a body that never streamed (a daemon `final_content`, or "(Cancelled)")
+ * is appended as its own run so it still shows.
+ */
+function freezeSegments(segments: LiveSegment[], content: string): LiveSegment[] {
+  const frozen: LiveSegment[] = segments.map((segment) =>
+    segment.kind === "tools"
+      ? {
+          kind: "tools",
+          tools: segment.tools.map((tool) => ({ ...tool, isRunning: false }))
+        }
+      : { ...segment }
+  );
+  const streamed = frozen
+    .filter((segment): segment is { kind: "text"; text: string } => segment.kind === "text")
+    .map((segment) => segment.text)
+    .join("");
+  if (!streamed && content) frozen.push({ kind: "text", text: content });
+  return frozen;
 }
 
 function normalizeConversationMessages(rawMessages: ThunderChatMessage[]): ThunderChatMessage[] {
@@ -54,6 +173,13 @@ function normalizeConversationMessages(rawMessages: ThunderChatMessage[]): Thund
 
   for (let i = 0; i < rawMessages.length; i++) {
     const msg = rawMessages[i];
+    if (msg.role === "system") {
+      // The system prompt is engine plumbing, not conversation: the daemon
+      // splices it into each request's prefix, so the feed must not render it.
+      // Filtered explicitly rather than left to fall through the branches below.
+      continue;
+    }
+
     if (msg.role === "tool") {
       // Standalone tool messages are absorbed into the assistant turn's tool_executions
       continue;
@@ -86,34 +212,14 @@ function normalizeConversationMessages(rawMessages: ThunderChatMessage[]): Thund
         }
       }
 
-      const prevMsg = result[result.length - 1];
-      if (prevMsg && prevMsg.role === "assistant") {
-        // Consecutive assistant messages belong to one user turn: the agent loop
-        // emits one assistant step per tool call. Keep them in a single block so
-        // every tool call of the turn lives in one group instead of one group per
-        // step.
-        if (executions.length > 0) {
-          prevMsg.tool_executions = [...(prevMsg.tool_executions || []), ...executions];
-        }
-        if (msg.content && msg.content !== prevMsg.content) {
-          prevMsg.content = prevMsg.content
-            ? `${prevMsg.content}\n\n${msg.content}`
-            : msg.content;
-        }
-        if (msg.reasoning) {
-          prevMsg.reasoning = prevMsg.reasoning
-            ? `${prevMsg.reasoning}\n\n${msg.reasoning}`
-            : msg.reasoning;
-        }
-        if (msg.stats) {
-          prevMsg.stats = msg.stats;
-        }
-      } else {
-        result.push({
-          ...msg,
-          tool_executions: executions.length > 0 ? executions : msg.tool_executions
-        });
-      }
+      // One block per engine step: the agent loop emits one assistant message
+      // per step, and merging consecutive steps glued different turns' output
+      // into one block. Keeping them apart is what makes the feed a faithful,
+      // chronologically ordered transcript.
+      result.push({
+        ...msg,
+        tool_executions: executions.length > 0 ? executions : msg.tool_executions
+      });
     }
   }
 
@@ -123,7 +229,7 @@ function normalizeConversationMessages(rawMessages: ThunderChatMessage[]): Thund
 export function useThunderChat() {
   const [conversations, setConversations] = useState<ThunderConversationSummary[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<ThunderChatMessage[]>([]);
+  const [messages, setMessages] = useState<RenderedChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
@@ -138,10 +244,12 @@ export function useThunderChat() {
     followUp: []
   });
 
-  // Streaming buffers for active generation
-  const [streamingText, setStreamingText] = useState("");
-  const [streamingReasoning, setStreamingReasoning] = useState("");
-  const [streamingTools, setStreamingTools] = useState<ActiveToolInfo[]>([]);
+  /**
+   * The in-flight turn, in the exact order its events arrived. Cleared when the
+   * run finalizes; the finished message keeps the same segments so the feed
+   * does not reflow when the answer lands.
+   */
+  const [liveSegments, setLiveSegments] = useState<LiveSegment[]>([]);
 
   // Composer prefill trigger for editing previous prompts
   const [composerPrefill, setComposerPrefill] = useState<{ text: string; id: number } | null>(null);
@@ -227,15 +335,6 @@ export function useThunderChat() {
 
   const activeStreamsRef = useRef<Map<string, SessionStream>>(new Map());
   const finalizedTasksRef = useRef<Set<string>>(new Set());
-
-  const streamingTextRef = useRef("");
-  streamingTextRef.current = streamingText;
-
-  const streamingReasoningRef = useRef("");
-  streamingReasoningRef.current = streamingReasoning;
-
-  const streamingToolsRef = useRef<ActiveToolInfo[]>([]);
-  streamingToolsRef.current = streamingTools;
 
   const refreshDaemonStatus = useCallback(async () => {
     try {
@@ -414,7 +513,8 @@ export function useThunderChat() {
             taskId: snapshot.taskId,
             streamingText: snapshot.streamingText,
             streamingReasoning: snapshot.streamingReasoning,
-            streamingTools: snapshot.streamingTools
+            streamingTools: snapshot.streamingTools,
+            segments: rebuildSegments(snapshot.events)
           };
           activeStreamsRef.current.set(sessionId, stream);
         }
@@ -422,15 +522,11 @@ export function useThunderChat() {
       if (stream) {
         setIsStreaming(true);
         setActiveTaskId(stream.taskId);
-        setStreamingText(stream.streamingText);
-        setStreamingReasoning(stream.streamingReasoning);
-        setStreamingTools(stream.streamingTools);
+        setLiveSegments(stream.segments);
       } else {
         setIsStreaming(false);
         setActiveTaskId(null);
-        setStreamingText("");
-        setStreamingReasoning("");
-        setStreamingTools([]);
+        setLiveSegments([]);
       }
 
       // Load persistent trace for this conversation and populate run metrics
@@ -481,9 +577,7 @@ export function useThunderChat() {
     // A bubble belongs to the session that raised it.
     setPendingQuestion(null);
     setQueued({ steering: [], followUp: [] });
-    setStreamingText("");
-    setStreamingReasoning("");
-    setStreamingTools([]);
+    setLiveSegments([]);
     setSessionTotalTokens(0);
     setCurrentContextTokens(0);
     resetTrace();
@@ -595,6 +689,7 @@ export function useThunderChat() {
       finalContent?: string;
       finalReasoning?: string;
       finalTools?: ActiveToolInfo[];
+      finalSegments?: LiveSegment[];
       finishReason?: string;
     }) => {
       const { sessionId, taskId, finishReason } = opts;
@@ -616,6 +711,7 @@ export function useThunderChat() {
       const content = opts.finalContent ?? streamState?.streamingText ?? "";
       const reasoning = opts.finalReasoning ?? streamState?.streamingReasoning ?? undefined;
       const rawTools = opts.finalTools ?? (streamState && streamState.streamingTools.length > 0 ? streamState.streamingTools : undefined);
+      const segments = opts.finalSegments ?? streamState?.segments;
       const toolExecutions = rawTools?.map((t) => ({
         toolCallId: t.toolCallId,
         name: t.name,
@@ -631,11 +727,12 @@ export function useThunderChat() {
         finalContent: content
       });
 
-      const assistantMsg: ThunderChatMessage = {
+      const assistantMsg: RenderedChatMessage = {
         role: "assistant",
         content: content || "(No response output)",
         reasoning: reasoning || undefined,
-        tool_executions: toolExecutions
+        tool_executions: toolExecutions,
+        segments: segments && segments.length > 0 ? freezeSegments(segments, content) : undefined
       };
 
       const isCurrentSession = activeSessionIdRef.current === sessionId;
@@ -649,9 +746,7 @@ export function useThunderChat() {
           return [...prev, assistantMsg];
         });
         setPendingQuestion(null);
-        setStreamingText("");
-        setStreamingReasoning("");
-        setStreamingTools([]);
+        setLiveSegments([]);
         setStreamTokensCount(0);
         setStreamReasoningCount(0);
         setStreamStartTime(null);
@@ -734,9 +829,7 @@ export function useThunderChat() {
       };
 
       setMessages((prev) => [...prev, userMsg]);
-      setStreamingText("");
-      setStreamingReasoning("");
-      setStreamingTools([]);
+      setLiveSegments([]);
       setStreamTokensCount(0);
       setStreamReasoningCount(0);
       setStreamStartTime(null);
@@ -749,7 +842,8 @@ export function useThunderChat() {
         taskId,
         streamingText: "",
         streamingReasoning: "",
-        streamingTools: []
+        streamingTools: [],
+        segments: []
       });
 
       const model = options?.model || selectedModel || (models[0]?.selection_id ?? "mock");
@@ -1050,14 +1144,13 @@ export function useThunderChat() {
         finalContent: stream.streamingText || "(Cancelled)",
         finalReasoning: stream.streamingReasoning || undefined,
         finalTools: stream.streamingTools.length > 0 ? stream.streamingTools : undefined,
+        finalSegments: stream.segments,
         finishReason: "cancelled"
       });
     } else {
       setIsStreaming(false);
       setActiveTaskId(null);
-      setStreamingText("");
-      setStreamingReasoning("");
-      setStreamingTools([]);
+      setLiveSegments([]);
       setStreamTokensCount(0);
       setStreamReasoningCount(0);
       setStreamStartTime(null);
@@ -1087,17 +1180,27 @@ export function useThunderChat() {
           taskId,
           streamingText: "",
           streamingReasoning: "",
-          streamingTools: []
+          streamingTools: [],
+          segments: []
         };
         activeStreamsRef.current.set(sessionId, stream);
       }
+      const activeStream = stream;
+
+      // One state write per event keeps the transcript in true time order: the
+      // segments are mutated in place and a shallow copy is published, so React
+      // re-renders the live turn without the hook rebuilding the array itself.
+      const publishSegments = () => {
+        if (isCurrentSession) setLiveSegments([...activeStream.segments]);
+      };
 
       switch (ev.type) {
         case "token_delta": {
           const delta = (ev as any).delta || "";
           stream.streamingText += delta;
+          appendDelta(stream.segments, "text", delta);
           if (isCurrentSession) {
-            setStreamingText(stream.streamingText);
+            publishSegments();
             setStreamTokensCount((prev) => prev + 1);
             setStreamStartTime((prev) => prev || Date.now());
           }
@@ -1106,8 +1209,9 @@ export function useThunderChat() {
         case "reasoning_delta": {
           const delta = (ev as any).delta || "";
           stream.streamingReasoning += delta;
+          appendDelta(stream.segments, "reasoning", delta);
           if (isCurrentSession) {
-            setStreamingReasoning(stream.streamingReasoning);
+            publishSegments();
             setStreamTokensCount((prev) => prev + 1);
             setStreamReasoningCount((prev) => prev + 1);
             setStreamStartTime((prev) => prev || Date.now());
@@ -1120,11 +1224,13 @@ export function useThunderChat() {
           const args = (ev as any).arguments || {};
           const exists = stream.streamingTools.find((t) => t.toolCallId === toolCallId);
           if (!exists) {
-            stream.streamingTools.push({ toolCallId, name, arguments: args, isRunning: true });
+            const tool: ActiveToolInfo = { toolCallId, name, arguments: args, isRunning: true };
+            stream.streamingTools.push(tool);
+            if (!updateTool(stream.segments, toolCallId, () => tool)) {
+              appendTool(stream.segments, tool);
+            }
           }
-          if (isCurrentSession) {
-            setStreamingTools([...stream.streamingTools]);
-          }
+          publishSegments();
           break;
         }
         case "tool_exec_result": {
@@ -1141,9 +1247,13 @@ export function useThunderChat() {
             }
             return t;
           });
-          if (isCurrentSession) {
-            setStreamingTools([...stream.streamingTools]);
-          }
+          updateTool(stream.segments, toolCallId, (t) => ({
+            ...t,
+            isRunning: false,
+            result: result?.output,
+            isError: Boolean(result?.is_error)
+          }));
+          publishSegments();
           break;
         }
         case "turn_end": {
@@ -1306,9 +1416,7 @@ export function useThunderChat() {
     queued,
     steerRunningTask,
     followUpRunningTask,
-    streamingText,
-    streamingReasoning,
-    streamingTools,
+    liveSegments,
     models,
     selectedModel,
     thinkingLevel,

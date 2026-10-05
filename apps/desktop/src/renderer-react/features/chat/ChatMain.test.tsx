@@ -12,9 +12,7 @@ function baseProps() {
     sessionTitle: "Test Chat",
     messages,
     isStreaming: true,
-    streamingText: "",
-    streamingReasoning: "",
-    streamingTools: [],
+    liveSegments: [],
     models: [],
     selectedModel: "",
     onSelectModel: vi.fn(),
@@ -71,14 +69,20 @@ describe("ChatMain auto-scroll", () => {
 
     rerender(
       <I18nProvider>
-        <ChatMain {...props} streamingText="chunk-1" />
+        <ChatMain {...props} liveSegments={[{ kind: "text", text: "chunk-1" }]} />
       </I18nProvider>
     );
     expect(feed.scrollTop).toBe(2400);
 
     rerender(
       <I18nProvider>
-        <ChatMain {...props} streamingText="chunk-1 chunk-2" streamingReasoning="thinking" />
+        <ChatMain
+          {...props}
+          liveSegments={[
+            { kind: "text", text: "chunk-1 chunk-2" },
+            { kind: "reasoning", text: "thinking" }
+          ]}
+        />
       </I18nProvider>
     );
     expect(feed.scrollTop).toBe(2400);
@@ -94,7 +98,7 @@ describe("ChatMain auto-scroll", () => {
 
     rerender(
       <I18nProvider>
-        <ChatMain {...props} streamingText="new content arrives" />
+        <ChatMain {...props} liveSegments={[{ kind: "text", text: "new content arrives" }]} />
       </I18nProvider>
     );
     expect(feed.scrollTop).toBe(0);
@@ -104,7 +108,7 @@ describe("ChatMain auto-scroll", () => {
     fireEvent.scroll(feed);
     rerender(
       <I18nProvider>
-        <ChatMain {...props} streamingText="new content arrives again" />
+        <ChatMain {...props} liveSegments={[{ kind: "text", text: "new content arrives again" }]} />
       </I18nProvider>
     );
     expect(feed.scrollTop).toBe(2400);

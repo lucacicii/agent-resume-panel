@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { useTextSearchHighlight } from "../../components/useTextSearch";
 import { desktopApi } from "../../bridge";
@@ -12,14 +12,13 @@ import { useConversationChanges } from "./useConversationChanges";
 import type { GitNestedScanOptions } from "./gitDiffUtils";
 import type {
   PanelSettings,
-  ThunderChatMessage,
   ThunderModelInfo,
   ThunderQuestionItem,
   ThunderFileChangeRecord,
   ThunderTaskTrace,
   ThunderTelemetryNotice
 } from "@agent-resume/core";
-import type { ActiveToolInfo, ChatRunMetrics } from "./useThunderChat";
+import type { ChatRunMetrics, LiveSegment, RenderedChatMessage } from "./useThunderChat";
 import type { TraceSpan } from "./useTraceCollector";
 import { useI18n } from "../../i18n";
 
@@ -28,7 +27,7 @@ interface ChatMainProps {
   active?: boolean;
   sessionId?: string | null;
   sessionTitle?: string;
-  messages: ThunderChatMessage[];
+  messages: RenderedChatMessage[];
   isStreaming: boolean;
   /** Pending steering / follow-up count, for the composer badge. */
   queuedCount?: number;
@@ -41,9 +40,8 @@ interface ChatMainProps {
     message: string,
     attachments?: import("@agent-resume/core").ThunderImageAttachment[]
   ) => void;
-  streamingText: string;
-  streamingReasoning: string;
-  streamingTools: ActiveToolInfo[];
+  /** The in-flight turn as ordered runs, so the feed stays in true time order. */
+  liveSegments: LiveSegment[];
   models: ThunderModelInfo[];
   selectedModel: string;
   onSelectModel: (model: string) => void;
@@ -94,12 +92,10 @@ export function ChatMain({
   sessionTitle,
   messages,
   isStreaming,
+  liveSegments,
   queuedCount,
   onSteerMessage,
   onFollowUpMessage,
-  streamingText,
-  streamingReasoning,
-  streamingTools,
   models,
   selectedModel,
   onSelectModel,
@@ -166,6 +162,24 @@ export function ChatMain({
     []
   );
 
+  // The live turn is one ordered stream; the answer text and the tool list are
+  // read back out of it for the parts of the UI that still need them flat.
+  const liveContent = useMemo(
+    () =>
+      liveSegments
+        .filter((segment): segment is Extract<LiveSegment, { kind: "text" }> => segment.kind === "text")
+        .map((segment) => segment.text)
+        .join(""),
+    [liveSegments]
+  );
+  const streamingTools = useMemo(
+    () =>
+      liveSegments
+        .filter((segment): segment is Extract<LiveSegment, { kind: "tools" }> => segment.kind === "tools")
+        .flatMap((segment) => segment.tools),
+    [liveSegments]
+  );
+
   const toggleTranslate = useCallback(async (idx: number, text: string) => {
     if (!text.trim()) return;
     const key = `${idx}:${text.length}`;
@@ -204,7 +218,7 @@ export function ChatMain({
   const search = useTextSearchHighlight({
     rootRef: feedRef,
     highlightPrefix: "chat-search",
-    deps: [messages, isStreaming, streamingText]
+    deps: [messages, isStreaming, liveSegments]
   });
 
   useEffect(() => {
@@ -321,7 +335,7 @@ export function ChatMain({
   // The question card also docks/un-docks, so re-pin then too.
   useLayoutEffect(() => {
     scrollToBottom();
-  }, [messages.length, streamingText, streamingReasoning, streamingTools, hasQuestion, scrollToBottom]);
+  }, [messages.length, liveSegments, hasQuestion, scrollToBottom]);
 
   return (
     <div className={hasQuestion ? "tb-chat-main has-question" : "tb-chat-main"}>
@@ -469,6 +483,7 @@ export function ChatMain({
                 key={`msg_${idx}`}
                 message={msg}
                 index={idx}
+                segments={msg.segments}
                 displayText={translations[messageKey(idx, msg.content)]}
                 translated={Boolean(translations[messageKey(idx, msg.content)])}
                 isTranslating={translatingIds.has(messageKey(idx, msg.content))}
@@ -487,12 +502,11 @@ export function ChatMain({
               <ChatMessageItem
                 message={{
                   role: "assistant",
-                  content: streamingText
+                  content: liveContent
                 }}
                 index={messages.length}
                 isStreaming={true}
-                streamingReasoning={streamingReasoning}
-                streamingTools={streamingTools}
+                segments={liveSegments}
               />
             )}
 

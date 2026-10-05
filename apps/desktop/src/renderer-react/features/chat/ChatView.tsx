@@ -11,9 +11,7 @@ export function ChatView({ active }: { active: boolean }): React.JSX.Element | n
     activeSessionId,
     messages,
     isStreaming,
-    streamingText,
-    streamingReasoning,
-    streamingTools,
+    liveSegments,
     models,
     selectedModel,
     thinkingLevel,
@@ -136,9 +134,7 @@ export function ChatView({ active }: { active: boolean }): React.JSX.Element | n
         sessionTitle={activeSession?.title}
         messages={messages}
         isStreaming={isStreaming}
-        streamingText={streamingText}
-        streamingReasoning={streamingReasoning}
-        streamingTools={streamingTools}
+        liveSegments={liveSegments}
         models={models}
         selectedModel={selectedModel}
         onSelectModel={setSelectedModel}

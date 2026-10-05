@@ -19072,12 +19072,19 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   display: flex;
   align-items: center;
   gap: 6px;
+  flex: 1;
+  min-width: 0;
 }
 
 .tb-thinking-sparkle {
   color: var(--color-accent);
   display: flex;
   align-items: center;
+  flex-shrink: 0;
+}
+
+.tb-thinking-title {
+  flex-shrink: 0;
 }
 
 .tb-thinking-time-badge {
@@ -19094,12 +19101,96 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   border-radius: 50%;
   background: var(--color-accent);
   animation: tb-pulse 1.2s infinite ease-in-out;
+  flex-shrink: 0;
+}
+
+/*
+ * Collapsed reasoning tail.
+ *
+ * While the model is thinking this is a one-line window: the reasoning text
+ * lives in a column that is one row taller than the window, and each time a new
+ * line starts the column animates up by exactly one row, so the previous line
+ * wheels out of the top as the newest one rises into place. The mask softens
+ * both edges the way a picker wheel does.
+ */
+.tb-thinking-ticker {
+  display: block;
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 18px;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    #000 38%,
+    #000 62%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    #000 38%,
+    #000 62%,
+    transparent 100%
+  );
+}
+
+.tb-thinking-ticker-roll {
+  display: flex;
+  flex-direction: column;
+  animation: tb-ticker-roll var(--duration-normal) var(--ease-glide) forwards;
+}
+
+.tb-thinking-ticker-row {
+  height: 18px;
+  line-height: 18px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 11.5px;
+  font-style: italic;
+  color: var(--color-label-tertiary);
+}
+
+.tb-thinking-ticker-row.is-current {
+  color: var(--color-label-secondary);
+}
+
+@keyframes tb-ticker-roll {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tb-thinking-ticker-roll {
+    animation: none;
+    transform: translateY(-50%);
+  }
+}
+
+/* Collapsed, settled: one line of context instead of a moving window. */
+.tb-thinking-excerpt {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 11.5px;
+  font-weight: 400;
+  font-style: italic;
+  color: var(--color-label-tertiary);
 }
 
 .tb-thinking-chevron {
   display: flex;
   align-items: center;
   transition: transform 0.2s ease;
+  flex-shrink: 0;
 }
 
 .tb-thinking-chevron.is-open {
@@ -19916,5 +20007,4 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   color: var(--color-label-secondary);
   line-height: 1.4;
 }
-
 
