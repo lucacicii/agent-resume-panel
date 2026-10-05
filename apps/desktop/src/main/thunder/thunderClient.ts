@@ -444,12 +444,23 @@ export class ThunderClient {
         {},
         10_000
       );
-      if (Array.isArray(res)) return res;
-      if (res && Array.isArray((res as any).conversations)) return (res as any).conversations;
+      if (Array.isArray(res)) return this.spokenOnly(res);
+      if (res && Array.isArray((res as any).conversations)) {
+        return this.spokenOnly((res as any).conversations);
+      }
       return this.listConversationsFromDisk();
     } catch {
       return this.listConversationsFromDisk();
     }
+  }
+
+  /**
+   * A conversation nobody has spoken to is not a session. The store refuses to
+   * persist one and the daemon already filters `list_conversations`; this keeps
+   * rows an older build wrote out of the panel's list as well.
+   */
+  private spokenOnly(rows: ThunderConversationSummary[]): ThunderConversationSummary[] {
+    return rows.filter((row) => (row.turn_count ?? 0) > 0);
   }
 
   public async getConversation(sessionId: string): Promise<ThunderConversation | null> {
@@ -663,8 +674,10 @@ export class ThunderClient {
         try {
           const raw = await fs.promises.readFile(indexFile, "utf-8");
           const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed)) return parsed;
-          if (parsed && typeof parsed === "object") return Object.values(parsed);
+          if (Array.isArray(parsed)) return this.spokenOnly(parsed);
+          if (parsed && typeof parsed === "object") {
+            return this.spokenOnly(Object.values(parsed) as ThunderConversationSummary[]);
+          }
         } catch {
           // fallback to directory scan
         }
@@ -699,7 +712,7 @@ export class ThunderClient {
           }
         }
       }
-      return summaries.sort((a, b) => b.updated_at_ms - a.updated_at_ms);
+      return this.spokenOnly(summaries).sort((a, b) => b.updated_at_ms - a.updated_at_ms);
     } catch {
       return [];
     }
