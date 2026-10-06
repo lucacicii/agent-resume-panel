@@ -29,6 +29,13 @@ export type SessionTranscriptModel = {
   outline: TranscriptOutlineItem[];
 };
 
+/**
+ * Whitelist of the roles the transcript pane draws.
+ *
+ * Only the real dialogue is a "turn": the system prompt (engine plumbing, spliced
+ * into each request by the daemon) and the raw tool channel are deliberately not
+ * representable here, so no upstream shape can leak them into the outline.
+ */
 function isTranscriptRole(role: string): role is TranscriptMessageRole {
   return role === "user" || role === "assistant";
 }

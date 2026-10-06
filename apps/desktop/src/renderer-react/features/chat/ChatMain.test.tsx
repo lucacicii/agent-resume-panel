@@ -12,9 +12,7 @@ function baseProps() {
     sessionTitle: "Test Chat",
     messages,
     isStreaming: true,
-    streamingText: "",
-    streamingReasoning: "",
-    streamingTools: [],
+    liveSegments: [],
     models: [],
     selectedModel: "",
     onSelectModel: vi.fn(),
@@ -47,7 +45,13 @@ function renderChatMain(props: Parameters<typeof ChatMain>[0]) {
 describe("ChatMain auto-scroll", () => {
   beforeEach(() => {
     window.agentResume = {
-      getI18nBundle: vi.fn().mockResolvedValue({ locale: "en", messages: {} }),
+      getI18nBundle: vi.fn().mockResolvedValue({
+        locale: "en",
+        messages: {
+          "desktop.chat.changes.label": "Changes",
+          "desktop.chat.changes.tooltip": "View files changed in this conversation"
+        }
+      }),
       onI18nBundleChanged: vi.fn().mockReturnValue(() => undefined),
       onLocaleChanged: vi.fn().mockReturnValue(() => undefined),
       contextMenuShow: vi.fn().mockResolvedValue(null)
@@ -65,14 +69,20 @@ describe("ChatMain auto-scroll", () => {
 
     rerender(
       <I18nProvider>
-        <ChatMain {...props} streamingText="chunk-1" />
+        <ChatMain {...props} liveSegments={[{ kind: "text", text: "chunk-1" }]} />
       </I18nProvider>
     );
     expect(feed.scrollTop).toBe(2400);
 
     rerender(
       <I18nProvider>
-        <ChatMain {...props} streamingText="chunk-1 chunk-2" streamingReasoning="thinking" />
+        <ChatMain
+          {...props}
+          liveSegments={[
+            { kind: "text", text: "chunk-1 chunk-2" },
+            { kind: "reasoning", text: "thinking" }
+          ]}
+        />
       </I18nProvider>
     );
     expect(feed.scrollTop).toBe(2400);
@@ -88,7 +98,7 @@ describe("ChatMain auto-scroll", () => {
 
     rerender(
       <I18nProvider>
-        <ChatMain {...props} streamingText="new content arrives" />
+        <ChatMain {...props} liveSegments={[{ kind: "text", text: "new content arrives" }]} />
       </I18nProvider>
     );
     expect(feed.scrollTop).toBe(0);
@@ -98,7 +108,7 @@ describe("ChatMain auto-scroll", () => {
     fireEvent.scroll(feed);
     rerender(
       <I18nProvider>
-        <ChatMain {...props} streamingText="new content arrives again" />
+        <ChatMain {...props} liveSegments={[{ kind: "text", text: "new content arrives again" }]} />
       </I18nProvider>
     );
     expect(feed.scrollTop).toBe(2400);
@@ -119,26 +129,37 @@ describe("ChatMain auto-scroll", () => {
     expect(feed.scrollTop).toBe(2400);
   });
 
-  it("renders the Git Diff button and opens GitDiffPopover when clicked", () => {
+  it("renders a single Changes button that opens the Changes panel", async () => {
     const props = baseProps();
     renderChatMain(props);
 
-    const diffBtn = document.querySelector('button[title="View Git diff and commit conversation changes"]');
-    expect(diffBtn).toBeTruthy();
-    expect(diffBtn?.textContent).toContain("Git Diff");
+    // The old Files / Git Diff buttons are gone.
+    expect(document.querySelector('button[title="View modified files"]')).toBeNull();
+    expect(
+      document.querySelector('button[title="View Git diff and commit conversation changes"]')
+    ).toBeNull();
+
+    const changesBtn = await waitFor(() => {
+      const button = document.querySelector(
+        'button[title="View files changed in this conversation"]'
+      );
+      expect(button).toBeTruthy();
+      return button;
+    });
+    expect(changesBtn?.textContent).toContain("Changes");
 
     // Popover is initially closed
-    expect(document.querySelector(".tb-git-diff-popover")).toBeNull();
+    expect(document.querySelector(".tb-changes-popover")).toBeNull();
 
     // Clicking button opens the popover
-    fireEvent.click(diffBtn!);
-    expect(document.querySelector(".tb-git-diff-popover")).toBeTruthy();
+    fireEvent.click(changesBtn!);
+    expect(document.querySelector(".tb-changes-popover")).toBeTruthy();
 
     // Clicking close button inside popover closes it
-    const closeBtn = document.querySelector(".tb-git-diff-popover .tb-trace-close-btn");
+    const closeBtn = document.querySelector(".tb-changes-popover .tb-trace-close-btn");
     expect(closeBtn).toBeTruthy();
     fireEvent.click(closeBtn!);
-    expect(document.querySelector(".tb-git-diff-popover")).toBeNull();
+    expect(document.querySelector(".tb-changes-popover")).toBeNull();
   });
 
   it("counts conversation changes across a shared workspace and scans nested repos", async () => {
@@ -186,7 +207,7 @@ describe("ChatMain auto-scroll", () => {
 
     await waitFor(() => {
       const badge = document.querySelector(
-        'button[title="View Git diff and commit conversation changes"] .tb-header-badge'
+        'button[title="View files changed in this conversation"] .tb-header-badge'
       );
       expect(badge?.textContent).toBe("2");
     });

@@ -288,72 +288,6 @@ describe("ChatComposer UI popovers and keyboard interactions", () => {
       );
     });
   });
-  it("offers roles in the slash palette ahead of skills and tools", async () => {
-    const roles = [
-      {
-        id: "plan",
-        name: "Plan",
-        aliases: ["p"],
-        description: "Plan before acting",
-        permission: "read"
-      }
-    ];
-    render(<ChatComposer {...defaultProps} roles={roles} />);
-
-    const textarea = screen.getByRole("textbox");
-    fireEvent.change(textarea, { target: { value: "/", selectionStart: 1 } });
-
-    const list = await screen.findByRole("listbox", { name: /slash commands/i });
-    const options = list.querySelectorAll('[role="option"]');
-    expect(options[0]?.textContent).toContain("/plan");
-    expect(options[0]?.textContent).toContain("read-only");
-  });
-
-  it("passes the selected role id when sending a leading slash command", async () => {
-    const onSend = vi.fn();
-    const roles = [
-      { id: "plan", name: "Plan", aliases: [], description: "Plan only", permission: "read" }
-    ];
-    render(<ChatComposer {...defaultProps} onSend={onSend} roles={roles} />);
-
-    const textarea = screen.getByRole("textbox");
-    fireEvent.change(textarea, { target: { value: "/plan refactor auth" } });
-    fireEvent.keyDown(textarea, { key: "Enter" });
-
-    await waitFor(() => expect(onSend).toHaveBeenCalled());
-    expect(onSend.mock.calls[0][1]).toMatchObject({ role: "plan" });
-  });
-
-  it("omits the role when the prompt has no leading slash command", async () => {
-    const onSend = vi.fn();
-    const roles = [
-      { id: "plan", name: "Plan", aliases: [], description: "Plan only", permission: "read" }
-    ];
-    render(<ChatComposer {...defaultProps} onSend={onSend} roles={roles} />);
-
-    const textarea = screen.getByRole("textbox");
-    fireEvent.change(textarea, { target: { value: "just a normal question" } });
-    fireEvent.keyDown(textarea, { key: "Enter" });
-
-    await waitFor(() => expect(onSend).toHaveBeenCalled());
-    expect(onSend.mock.calls[0][1]?.role).toBeUndefined();
-  });
-
-  it("resolves a role alias to its canonical id", async () => {
-    const onSend = vi.fn();
-    const roles = [
-      { id: "plan", name: "Plan", aliases: ["p"], description: "Plan only", permission: "read" }
-    ];
-    render(<ChatComposer {...defaultProps} onSend={onSend} roles={roles} />);
-
-    const textarea = screen.getByRole("textbox");
-    fireEvent.change(textarea, { target: { value: "/p refactor auth" } });
-    fireEvent.keyDown(textarea, { key: "Enter" });
-
-    await waitFor(() => expect(onSend).toHaveBeenCalled());
-    expect(onSend.mock.calls[0][1]).toMatchObject({ role: "plan" });
-  });
-
   it("keeps the Cache badge always visible during streaming and renders reasoning tokens", () => {
     const { container, rerender } = render(
       <ChatComposer
@@ -489,14 +423,8 @@ describe("ChatComposer UI popovers and keyboard interactions", () => {
   });
 });
 
-describe("ChatComposer role chip and Shift+Tab cycling", () => {
-  const roles = [
-    { id: "plan", name: "Plan", permission: "read", mode: "plan" },
-    { id: "architect", name: "Architect", permission: "write", mode: "accept_edits" },
-    { id: "pm", name: "Project Manager", permission: "read", mode: "plan" }
-  ];
-
-  const roleProps = {
+describe("ChatComposer image attachments", () => {
+  const defaultProps = {
     onSend: vi.fn(),
     onCancel: vi.fn(),
     isStreaming: false,
@@ -507,115 +435,139 @@ describe("ChatComposer role chip and Shift+Tab cycling", () => {
     onSelectThinkingLevel: vi.fn(),
     workspaceDir: "/test/workspace",
     onSelectWorkspaceDir: vi.fn(),
-    roles
   };
-
-  beforeEach(() => {
-    (window as any).agentResume = {};
-  });
 
   afterEach(() => {
     cleanup();
   });
 
-  const chip = () => screen.getByRole("button", { name: /^Role:/ });
-
-  it("renders the role chip after the thinking chip, showing Auto by default", () => {
-    render(<ChatComposer {...roleProps} selectedRole={null} onSelectRole={vi.fn()} />);
-    expect(chip().textContent).toContain("Role: Auto");
-    // Order: Model → Thinking → Role → Workspace
-    const chips = Array.from(document.querySelectorAll(".tb-composer-tools-left .tb-composer-chip"));
-    const labels = chips.map((el) => el.textContent || "");
-    const thinkingIdx = labels.findIndex((l) => l.includes("Thinking"));
-    const roleIdx = labels.findIndex((l) => l.includes("Role:"));
-    const workspaceIdx = labels.findIndex((l) => l.includes("GTD") || l.includes("Finder"));
-    expect(thinkingIdx).toBeGreaterThanOrEqual(0);
-    expect(roleIdx).toBeGreaterThan(thinkingIdx);
-    if (workspaceIdx >= 0) expect(roleIdx).toBeLessThan(workspaceIdx);
-  });
-
-  it("shows the tier and mode of the selected role on the chip", () => {
-    render(<ChatComposer {...roleProps} selectedRole="architect" onSelectRole={vi.fn()} />);
-    expect(chip().textContent).toContain("write · accept_edits");
-  });
-
-  it("Shift+Tab cycles Auto → first role → … and wraps back to Auto", () => {
-    const onSelectRole = vi.fn();
-    const { rerender } = render(
-      <ChatComposer {...roleProps} selectedRole={null} onSelectRole={onSelectRole} />
-    );
-    const textarea = screen.getByPlaceholderText(/Ask Thunder agent anything/i);
-
-    // auto → plan
-    fireEvent.keyDown(textarea, { key: "Tab", shiftKey: true });
-    expect(onSelectRole).toHaveBeenLastCalledWith("plan");
-    rerender(<ChatComposer {...roleProps} selectedRole="plan" onSelectRole={onSelectRole} />);
-    expect(chip().textContent).toContain("Role: Plan");
-
-    // plan → architect
-    fireEvent.keyDown(textarea, { key: "Tab", shiftKey: true });
-    expect(onSelectRole).toHaveBeenLastCalledWith("architect");
-    rerender(<ChatComposer {...roleProps} selectedRole="pm" onSelectRole={onSelectRole} />);
-
-    // pm → auto (wrap)
-    fireEvent.keyDown(textarea, { key: "Tab", shiftKey: true });
-    expect(onSelectRole).toHaveBeenLastCalledWith(null);
-  });
-
-  it("a leading /id still overrides the chip for that one send", async () => {
+  it("attaches pasted image and sends it with prompt", async () => {
     const onSend = vi.fn();
-    render(
-      <ChatComposer {...roleProps} selectedRole="pm" onSelectRole={vi.fn()} onSend={onSend} />
-    );
+    render(<ChatComposer {...defaultProps} onSend={onSend} />);
     const textarea = screen.getByPlaceholderText(/Ask Thunder agent anything/i);
-    fireEvent.change(textarea, { target: { value: "/plan sketch the migration" } });
-    fireEvent.keyDown(textarea, { key: "Enter" });
-    await waitFor(() => expect(onSend).toHaveBeenCalled());
-    expect(onSend.mock.calls[0][1]?.role).toBe("plan");
-  });
 
-  it("sends with the chip's role when no /id prefix is present", async () => {
-    const onSend = vi.fn();
-    render(
-      <ChatComposer {...roleProps} selectedRole="pm" onSelectRole={vi.fn()} onSend={onSend} />
-    );
-    const textarea = screen.getByPlaceholderText(/Ask Thunder agent anything/i);
-    fireEvent.change(textarea, { target: { value: "Plan the sprint" } });
-    fireEvent.keyDown(textarea, { key: "Enter" });
-    await waitFor(() => expect(onSend).toHaveBeenCalled());
-    expect(onSend.mock.calls[0][1]?.role).toBe("pm");
-  });
-
-  it("Shift+Tab cycles even while the slash menu is open (plain Tab still accepts)", async () => {
-    (window as any).agentResume = {
-      listSkills: vi.fn().mockResolvedValue([
-        { name: "dividend-cows", description: "screener", location: "/s/SKILL.md", directory: "/s", scope: "user" }
-      ]),
-      listAgentTools: vi.fn().mockResolvedValue([]),
-      notesList: vi.fn().mockResolvedValue([]),
-      notesListTasks: vi.fn().mockResolvedValue([]),
-      thunderChatListConversations: vi.fn().mockResolvedValue([]),
-      workbenchListDirectory: vi.fn().mockResolvedValue({ entries: [] })
+    const file = new File([new Uint8Array([137, 80, 78, 71])], "test.png", { type: "image/png" });
+    const clipboardData = {
+      items: [
+        {
+          type: "image/png",
+          getAsFile: () => file
+        }
+      ]
     };
-    const onSelectRole = vi.fn();
-    render(
-      <ChatComposer {...roleProps} selectedRole={null} onSelectRole={onSelectRole} />
-    );
-    const textarea = screen.getByPlaceholderText(/Ask Thunder agent anything/i);
-    fireEvent.change(textarea, { target: { value: "/", selectionStart: 1 } });
-    await waitFor(() =>
-      expect(screen.getByRole("listbox", { name: /slash commands/i })).toBeTruthy()
-    );
 
-    fireEvent.keyDown(textarea, { key: "Tab", shiftKey: true });
-    expect(onSelectRole).toHaveBeenLastCalledWith("plan");
-    expect((textarea as HTMLTextAreaElement).value).toBe("/");
+    fireEvent.paste(textarea, { clipboardData });
+
+    await waitFor(() => {
+      expect(document.querySelector(".wb-terminal-composer-pending-image")).toBeTruthy();
+    });
+
+    // Send button should be enabled even with empty text
+    const sendBtn = screen.getByRole("button", { name: /Send message/i });
+    expect((sendBtn as HTMLButtonElement).disabled).toBe(false);
+
+    // Type prompt and send
+    fireEvent.change(textarea, { target: { value: "Analyze this image" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    await waitFor(() => expect(onSend).toHaveBeenCalled());
+    expect(onSend.mock.calls[0][0]).toContain("Analyze this image");
+    expect(onSend.mock.calls[0][1]?.attachments).toHaveLength(1);
+    expect(onSend.mock.calls[0][1]?.attachments[0]?.name).toBe("test.png");
+    expect(onSend.mock.calls[0][1]?.attachments[0]?.mimeType).toBe("image/png");
+
+    // After send, pending images should be cleared
+    expect(document.querySelector(".wb-terminal-composer-pending-image")).toBeNull();
   });
 
-  it("disables the role chip while streaming", () => {
+  it("removes attached image when remove button is clicked", async () => {
+    render(<ChatComposer {...defaultProps} />);
+    const textarea = screen.getByPlaceholderText(/Ask Thunder agent anything/i);
+
+    const file = new File([new Uint8Array([137, 80, 78, 71])], "remove-me.png", { type: "image/png" });
+    fireEvent.paste(textarea, {
+      clipboardData: {
+        items: [{ type: "image/png", getAsFile: () => file }]
+      }
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector(".wb-terminal-composer-pending-image")).toBeTruthy();
+    });
+
+    const removeBtn = screen.getByRole("button", { name: /Remove image/i });
+    fireEvent.click(removeBtn);
+
+    expect(document.querySelector(".wb-terminal-composer-pending-image")).toBeNull();
+  });
+
+  it("steers the running task on Enter and queues a follow-up on Alt+Enter", () => {
+    const onSteer = vi.fn();
+    const onFollowUp = vi.fn();
     render(
-      <ChatComposer {...roleProps} isStreaming selectedRole="pm" onSelectRole={vi.fn()} />
+      <ChatComposer
+        {...defaultProps}
+        isStreaming
+        onSteer={onSteer}
+        onFollowUp={onFollowUp}
+        queuedCount={2}
+      />
     );
-    expect((chip() as HTMLButtonElement).disabled).toBe(true);
+    const textarea = screen.getByPlaceholderText(/Ask Thunder agent anything/i) as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "change of plan" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    expect(onSteer).toHaveBeenCalledWith("change of plan", undefined);
+    expect(onFollowUp).not.toHaveBeenCalled();
+    expect(textarea.value).toBe("");
+
+    fireEvent.change(textarea, { target: { value: "then summarise" } });
+    fireEvent.keyDown(textarea, { key: "Enter", altKey: true });
+    expect(onFollowUp).toHaveBeenCalledWith("then summarise", undefined);
+    expect(textarea.value).toBe("");
+  });
+
+  it("does nothing on Enter while streaming when the host cannot steer", () => {
+    const onSend = vi.fn();
+    render(<ChatComposer {...defaultProps} isStreaming onSend={onSend} />);
+    const textarea = screen.getByPlaceholderText(/Ask Thunder agent anything/i) as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "hi" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    expect(onSend).not.toHaveBeenCalled();
+    expect(textarea.value).toBe("hi");
+  });
+
+  it("shows the pending badge while a run is live", () => {
+    render(<ChatComposer {...defaultProps} isStreaming queuedCount={3} />);
+    expect(screen.getByText(/3 queued/)).toBeTruthy();
+  });
+
+  it("sends staged images along with a steer", async () => {
+    const onSteer = vi.fn();
+    render(<ChatComposer {...defaultProps} isStreaming onSteer={onSteer} />);
+    const textarea = screen.getByPlaceholderText(/Ask Thunder agent anything/i) as HTMLTextAreaElement;
+
+    const file = new File([new Uint8Array([137, 80, 78, 71])], "shot.png", { type: "image/png" });
+    fireEvent.paste(textarea, {
+      clipboardData: {
+        items: [{ type: "image/png", getAsFile: () => file }]
+      }
+    });
+    await waitFor(() => {
+      expect(document.querySelector(".wb-terminal-composer-pending-image")).toBeTruthy();
+    });
+
+    fireEvent.change(textarea, { target: { value: "look at this" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    expect(onSteer).toHaveBeenCalledTimes(1);
+    const [message, attachments] = onSteer.mock.calls[0];
+    expect(message).toBe("look at this");
+    expect(attachments).toHaveLength(1);
+    expect(attachments[0].mimeType).toBe("image/png");
+    // The staging area is consumed exactly as a normal send would consume it.
+    expect(document.querySelector(".wb-terminal-composer-pending-image")).toBeNull();
   });
 });

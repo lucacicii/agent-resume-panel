@@ -4,14 +4,18 @@ import { StreamdownRenderer } from "../../components/StreamdownRenderer";
 import { ThinkingState } from "./ThinkingState";
 import { ToolCallsState } from "./ToolCallsState";
 import type { ThunderChatMessage } from "@agent-resume/core";
-import type { ActiveToolInfo } from "./useThunderChat";
+import type { ActiveToolInfo, LiveSegment } from "./useThunderChat";
 
 interface ChatMessageItemProps {
   message: ThunderChatMessage;
   index?: number;
   isStreaming?: boolean;
-  streamingReasoning?: string;
-  streamingTools?: ActiveToolInfo[];
+  /**
+   * The ordered runs of a turn this renderer watched stream in. When present the
+   * body is laid out in true time order; otherwise the message's own shape
+   * (reasoning, then answer, then tool calls) is used.
+   */
+  segments?: LiveSegment[];
   onRegenerate?: (index: number) => void;
   onResend?: (index: number) => void;
   onEdit?: (text: string) => void;
@@ -31,8 +35,7 @@ export function ChatMessageItem({
   message,
   index = 0,
   isStreaming = false,
-  streamingReasoning = "",
-  streamingTools = [],
+  segments,
   onRegenerate,
   onResend,
   onEdit,
@@ -45,6 +48,7 @@ export function ChatMessageItem({
   translatingLabel = "Translating…"
 }: ChatMessageItemProps) {
   const [copied, setCopied] = useState(false);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const isUser = message.role === "user";
 
   const handleCopy = async () => {
@@ -74,44 +78,92 @@ export function ChatMessageItem({
     });
   }, [message.tool_calls]);
 
-  const activeReasoning = (isStreaming ? streamingReasoning : "") || message.reasoning || "";
-  const activeTools =
-    (isStreaming && streamingTools.length > 0 ? streamingTools : null) ||
-    message.tool_executions ||
-    historicalTools;
+  const activeReasoning = message.reasoning || "";
+  const activeTools = message.tool_executions || historicalTools;
+  const liveSegments = segments ?? [];
+  const lastSegmentIndex = liveSegments.length - 1;
+  const lastTextIndex = liveSegments.reduce(
+    (found, segment, segmentIndex) => (segment.kind === "text" ? segmentIndex : found),
+    -1
+  );
 
-  return (
-    <div className={`tb-message-row${isUser ? " is-user" : " is-assistant"}`}>
-      <div className="tb-message-avatar">
-        {isUser ? (
-          <span className="tb-avatar-user">You</span>
-        ) : (
-          <span className="tb-avatar-agent">
-            <ThemeIcon name="sparkles" size={ICON_SIZE.dense} />
-          </span>
-        )}
-      </div>
-
-      <div className="tb-message-container">
-        {/* Thinking / Reasoning Section */}
+  // A turn still streaming is one ordered stream; a turn read back from disk has
+  // lost that order, so it falls back to the shape the engine persisted.
+  const body =
+    liveSegments.length > 0 ? (
+      liveSegments.map((segment, segmentIndex) => {
+        const isLast = segmentIndex === lastSegmentIndex;
+        if (segment.kind === "reasoning") {
+          return (
+            <ThinkingState
+              key={`seg_reasoning_${segmentIndex}`}
+              reasoning={segment.text}
+              isStreaming={isStreaming && isLast}
+            />
+          );
+        }
+        if (segment.kind === "tools") {
+          return (
+            <ToolCallsState
+              key={`seg_tools_${segmentIndex}`}
+              tools={segment.tools}
+              isStreaming={isStreaming && isLast}
+              defaultExpanded={false}
+            />
+          );
+        }
+        return (
+          <div className="tb-message-bubble" key={`seg_text_${segmentIndex}`}>
+            <StreamdownRenderer
+              content={segmentIndex === lastTextIndex && displayText ? displayText : segment.text}
+              isAnimating={isStreaming && isLast}
+              className="tb-markdown-view markdown-body"
+              hardBreaks
+            />
+          </div>
+        );
+      })
+    ) : (
+      <>
         {activeReasoning && (
-          <ThinkingState
-            reasoning={activeReasoning}
-            isStreaming={isStreaming && !message.content}
-          />
+          <ThinkingState reasoning={activeReasoning} isStreaming={isStreaming && !message.content} />
         )}
 
         {/* Grouped Tool Calls (Collapsed by default, similar to Thinking) */}
         {activeTools.length > 0 && (
-          <ToolCallsState
-            tools={activeTools}
-            isStreaming={isStreaming}
-            defaultExpanded={false}
-          />
+          <ToolCallsState tools={activeTools} isStreaming={isStreaming} defaultExpanded={false} />
         )}
 
-        {/* Message Content */}
         <div className="tb-message-bubble">
+          {isUser && message.parts && message.parts.some((p) => p.type === "image") && (
+            <div className="wb-terminal-composer-pending-images tb-message-images">
+              {message.parts
+                .filter((p) => p.type === "image")
+                .map((p, idx) => {
+                  if (p.type !== "image") return null;
+                  const src = p.data
+                    ? p.data.startsWith("data:")
+                      ? p.data
+                      : `data:${p.mimeType};base64,${p.data}`
+                    : p.path
+                      ? `file://${p.path}`
+                      : "";
+                  if (!src) return null;
+                  return (
+                    <div className="wb-terminal-composer-pending-image" key={`img_${idx}`}>
+                      <button
+                        type="button"
+                        className="wb-terminal-composer-pending-image-open"
+                        onClick={() => setImagePreview(src)}
+                        title={p.name || "Attached image"}
+                      >
+                        <img src={src} alt={p.name || ""} />
+                      </button>
+                    </div>
+                  );
+                })}
+            </div>
+          )}
           {message.content ? (
             <StreamdownRenderer
               content={displayText ?? message.content}
@@ -126,6 +178,23 @@ export function ChatMessageItem({
             </div>
           ) : null}
         </div>
+      </>
+    );
+
+  return (
+    <div className={`tb-message-row${isUser ? " is-user" : " is-assistant"}`}>
+      <div className="tb-message-avatar">
+        {isUser ? (
+          <span className="tb-avatar-user">You</span>
+        ) : (
+          <span className="tb-avatar-agent">
+            <ThemeIcon name="sparkles" size={ICON_SIZE.dense} />
+          </span>
+        )}
+      </div>
+
+      <div className="tb-message-container">
+        {body}
 
         {/* User Message Action Toolbar */}
         {isUser && message.content && (
@@ -228,6 +297,25 @@ export function ChatMessageItem({
           </div>
         )}
       </div>
+
+      {imagePreview ? (
+        <div
+          className="notes-image-preview"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setImagePreview(null)}
+        >
+          <img src={imagePreview} alt="" />
+          <button
+            type="button"
+            className="notes-image-preview-close"
+            aria-label="Close"
+            onClick={() => setImagePreview(null)}
+          >
+            <ThemeIcon name="close" size={ICON_SIZE.default} />
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

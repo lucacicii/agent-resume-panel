@@ -76,7 +76,7 @@ export function ThunderChatView({
   const handleSend = useCallback(
     (
       prompt: string,
-      options?: { workspaceDir?: string; model?: string; thinking_level?: string; role?: string }
+      options?: { workspaceDir?: string; model?: string; thinking_level?: string }
     ) => {
       void chat.sendMessage(prompt, { ...options, workspaceDir: options?.workspaceDir || projectPath });
     },
@@ -111,9 +111,7 @@ export function ThunderChatView({
       sessionTitle={activeConversation?.title || title}
       messages={chat.messages}
       isStreaming={chat.isStreaming}
-      streamingText={chat.streamingText}
-      streamingReasoning={chat.streamingReasoning}
-      streamingTools={chat.streamingTools}
+      liveSegments={chat.liveSegments}
       models={chat.models}
       selectedModel={chat.selectedModel}
       onSelectModel={chat.setSelectedModel}
@@ -144,9 +142,6 @@ export function ThunderChatView({
       sessionTotalTokens={chat.sessionTotalTokens}
       currentContextTokens={chat.currentContextTokens}
       contextWindowLimit={chat.contextWindowLimit}
-      roles={chat.roles}
-      selectedRole={chat.selectedRole}
-      onSelectRole={chat.selectRole}
       pendingQuestion={chat.pendingQuestion}
       onAnswerQuestion={chat.answerQuestion}
       onDismissQuestion={chat.dismissQuestion}

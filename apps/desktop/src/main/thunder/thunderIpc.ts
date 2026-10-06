@@ -24,7 +24,7 @@ import {
   getActiveStream
 } from "./thunderStreamBuffer";
 import { notesGetTaskWorkspaceContext, notesLinkSessionToTask } from "../notesService";
-import type { ThunderModelsConfig, ThunderRoleRecord, ThunderScheduleInput } from "@agent-resume/core";
+import type { ThunderModelsConfig, ThunderScheduleInput } from "@agent-resume/core";
 
 let configWatcher: fs.FSWatcher | null = null;
 
@@ -48,7 +48,6 @@ function startThunderConfigWatcher(): void {
       for (const win of BrowserWindow.getAllWindows()) {
         if (!win.isDestroyed()) {
           win.webContents.send("thunder:models:changed");
-          win.webContents.send("thunder:roles:changed");
         }
       }
     }, 300);
@@ -59,8 +58,7 @@ function startThunderConfigWatcher(): void {
       if (
         filename &&
         (filename.includes("models.json") ||
-          filename.includes("auth.json") ||
-          filename.includes("roles.jsonl"))
+          filename.includes("auth.json"))
       ) {
         notifyChange();
       }
@@ -73,12 +71,6 @@ function startThunderConfigWatcher(): void {
 export function registerThunderIpc(): void {
   startThunderConfigWatcher();
   const config = createThunderConfigStore();
-  // Ship the built-in roles with the app: missing ones are appended once at
-  // boot, never overwriting a user's edited definition of the same id.
-  const { ensured } = config.ensureBuiltinRoles();
-  if (ensured.length > 0) {
-    console.log(`[thunder-ipc] Ensured built-in roles: ${ensured.join(", ")}`);
-  }
 
   safeHandle("schedule:list", async () => {
     return listSchedules();
@@ -134,26 +126,6 @@ export function registerThunderIpc(): void {
     return getThunderClient().listModels();
   });
 
-  safeHandle("thunder:listRoles", async (_event, args?: { workspaceDir?: string }) => {
-    return getThunderClient().listRoles(args?.workspaceDir);
-  });
-
-  // ── Config file editors (Settings → Thunder) ────────────────────────────
-  // The daemon reloads both files per request, so writes here apply to the
-  // very next run without a daemon restart.
-
-  safeHandle("thunder:readRolesFile", () => config.readRolesFile());
-
-  safeHandle(
-    "thunder:writeRolesFile",
-    (_event, args: { records: ThunderRoleRecord[] }) =>
-      config.writeRolesFile(args?.records ?? [])
-  );
-
-  safeHandle("thunder:resetBuiltinRole", (_event, args: { id: string }) => {
-    config.resetBuiltinRole(args?.id ?? "");
-  });
-
   safeHandle("thunder:readModelsConfig", () => config.readModelsConfig());
 
   safeHandle(
@@ -206,7 +178,7 @@ export function registerThunderIpc(): void {
         workspaceDir?: string;
         taskNoteId?: string;
         thinking_level?: string;
-        role?: string;
+        attachments?: import("@agent-resume/core").ThunderImageAttachment[];
       }
     ) => {
       const client = getThunderClient();
@@ -281,7 +253,7 @@ export function registerThunderIpc(): void {
           taskNoteId: args.taskNoteId,
           gtdContext,
           thinking_level: args.thinking_level,
-          role: args.role,
+          attachments: args.attachments,
           onEvent: (event) => {
             accumulateStreamEvent(snapshot, event);
             for (const win of BrowserWindow.getAllWindows()) {
@@ -325,6 +297,30 @@ export function registerThunderIpc(): void {
 
   safeHandle("thunder:chat:resumeTask", async (_event, args: { taskId: string }) => {
     return getThunderClient().resumeTask(args.taskId);
+  });
+
+  safeHandle(
+    "thunder:chat:steerTask",
+    async (
+      _event,
+      args: {
+        taskId: string;
+        message: string;
+        behavior: "steer" | "follow_up";
+        attachments?: import("@agent-resume/core").ThunderImageAttachment[];
+      }
+    ) => {
+      return getThunderClient().steerTask(
+        args.taskId,
+        args.message,
+        args.behavior,
+        args.attachments
+      );
+    }
+  );
+
+  safeHandle("thunder:chat:clearTaskQueue", async (_event, args: { taskId: string }) => {
+    return getThunderClient().clearTaskQueue(args.taskId);
   });
 
   safeHandle("thunder:chat:getTrace", async (_event, args: { sessionId: string; taskId?: string }) => {

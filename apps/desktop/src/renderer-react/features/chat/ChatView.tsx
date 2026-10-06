@@ -11,9 +11,7 @@ export function ChatView({ active }: { active: boolean }): React.JSX.Element | n
     activeSessionId,
     messages,
     isStreaming,
-    streamingText,
-    streamingReasoning,
-    streamingTools,
+    liveSegments,
     models,
     selectedModel,
     thinkingLevel,
@@ -37,15 +35,15 @@ export function ChatView({ active }: { active: boolean }): React.JSX.Element | n
     pendingQuestion,
     answerQuestion,
     dismissQuestion,
-    roles,
-    selectedRole,
-    selectRole,
     sendMessage,
     resendUserMessage,
     regenerateResponse,
     composerPrefill,
     prefillComposer,
     cancelCurrentTask,
+    queued,
+    steerRunningTask,
+    followUpRunningTask,
     refreshDaemonStatus,
     currentTrace,
     traceSpans,
@@ -136,9 +134,7 @@ export function ChatView({ active }: { active: boolean }): React.JSX.Element | n
         sessionTitle={activeSession?.title}
         messages={messages}
         isStreaming={isStreaming}
-        streamingText={streamingText}
-        streamingReasoning={streamingReasoning}
-        streamingTools={streamingTools}
+        liveSegments={liveSegments}
         models={models}
         selectedModel={selectedModel}
         onSelectModel={setSelectedModel}
@@ -153,6 +149,11 @@ export function ChatView({ active }: { active: boolean }): React.JSX.Element | n
         isWorkspaceLocked={isWorkspaceLocked}
         onSendMessage={sendMessage}
         onCancelTask={cancelCurrentTask}
+        queuedCount={queued.steering.length + queued.followUp.length}
+        onSteerMessage={(message, attachments) => void steerRunningTask(message, attachments)}
+        onFollowUpMessage={(message, attachments) =>
+          void followUpRunningTask(message, attachments)
+        }
         onNewSession={createNewSession}
         onRegenerate={regenerateResponse}
         onResend={resendUserMessage}
@@ -169,9 +170,6 @@ export function ChatView({ active }: { active: boolean }): React.JSX.Element | n
         sessionTotalTokens={sessionTotalTokens}
         currentContextTokens={currentContextTokens}
         contextWindowLimit={contextWindowLimit}
-        roles={roles}
-        selectedRole={selectedRole}
-        onSelectRole={selectRole}
         pendingQuestion={pendingQuestion}
         onAnswerQuestion={answerQuestion}
         onDismissQuestion={dismissQuestion}

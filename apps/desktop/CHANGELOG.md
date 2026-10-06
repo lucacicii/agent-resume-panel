@@ -8,6 +8,24 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## English
 
+### [0.2.34]
+
+#### Added
+
+- **Image attachment & vision in Thunder chat**: paste or attach images directly in the composer with full vision model inference support, thumbnail preview, and removal before send
+- **Live steering & interaction**: steer running agent tasks in real time by typing into the composer or attaching screenshots without waiting for the task to finish
+- **Unified Changes panel**: merged the separate Files and Git Diff workbench views into a unified Changes panel, consolidating modified file trees, status badges, and diffs in one place
+
+#### Changed
+
+- **Direct Thunder integration**: removed the legacy role layer end to end, communicating directly through Thunder's streamlined session protocol
+- **Chronological live streaming**: active turns render as a single smooth chronological stream, eliminating layout jumps and flickering during streaming
+- **Empty session cleanup**: newly created sessions that never received a user message stay out of the session list
+
+#### Fixed
+
+- **Graceful stop handling**: clicking stop cleanly preserves the partially streamed response while immediately unlocking the composer for the next prompt
+
 ### [0.2.33]
 
 #### Added
@@ -742,6 +760,24 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 ---
 
 ## 简体中文
+
+### [0.2.34]
+
+#### 新增
+
+- **Thunder 聊天支持图片附件与视觉能力**：支持在输入框直接粘贴或上传图片，配备缩略图预览与撤销，原生支持 Vision 视觉大模型推理
+- **任务运行中实时引导（Steering）**：Agent 执行过程中无需等待完成，可随时输入追加指令或附带截图进行实时干预与引导
+- **统一 Changes（变更）面板**：将原先分散的 Files 与 Git Diff 整合为单一的 Changes 面板，集中展示变更文件树、状态徽标与代码差异
+
+#### 变更
+
+- **端到端直连 Thunder**：全面移除旧版角色（Role）中间层，端到端对齐 Thunder 原生会话协议
+- **时间线流式平滑渲染**：正在生成的 Turn 按严格时间线顺序流式渲染，大幅减少渲染闪烁与视口跳动
+- **自动清理空会话**：新建但未产生实际对话的会话不再残留于会话列表，保持列表干净整洁
+
+#### 修复
+
+- **停止操作保持可用**：点击停止后完整保留已生成的流式内容，并立即释放输入框供下次输入
 
 ### [0.2.33]
 

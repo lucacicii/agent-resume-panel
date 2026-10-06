@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import React from "react";
 import { TracePopover } from "./TracePopover";
-import { FileChangesPopover } from "./FileChangesPopover";
+import { FileFootprintList } from "./FileFootprintList";
 import type { ThunderTaskTrace, ThunderFileChangeRecord, ThunderTelemetryNotice } from "@agent-resume/core";
 import type { TraceSpan } from "./useTraceCollector";
 
@@ -81,7 +81,7 @@ describe("TracePopover", () => {
   });
 });
 
-describe("FileChangesPopover", () => {
+describe("FileFootprintList", () => {
   it("renders modified files with tool name and action", () => {
     const files: ThunderFileChangeRecord[] = [
       {
@@ -99,16 +99,8 @@ describe("FileChangesPopover", () => {
       }
     ];
 
-    render(
-      <FileChangesPopover
-        isOpen={true}
-        onClose={vi.fn()}
-        files={files}
-        workspaceDir="/workspace"
-      />
-    );
+    render(<FileFootprintList files={files} workspaceDir="/workspace" />);
 
-    expect(screen.getByText("Modified Files")).toBeTruthy();
     expect(screen.getByText("src/main.rs")).toBeTruthy();
     expect(screen.getByText("package.json")).toBeTruthy();
     expect(screen.getByText("write_file")).toBeTruthy();

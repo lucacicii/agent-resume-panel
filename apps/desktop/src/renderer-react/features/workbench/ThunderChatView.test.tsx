@@ -32,7 +32,6 @@ function installBridge(overrides: Record<string, unknown> = {}): void {
       source: "dev-sibling"
     }),
     thunderListModels: vi.fn().mockResolvedValue(MODELS),
-    thunderListRoles: vi.fn().mockResolvedValue([]),
     thunderChatListConversations: vi.fn().mockResolvedValue([
       {
         id: "sess_1",
@@ -65,7 +64,6 @@ function installBridge(overrides: Record<string, unknown> = {}): void {
     thunderChatCancelTask: vi.fn().mockResolvedValue(true),
     onThunderChatEvent: vi.fn().mockReturnValue(() => undefined),
     onThunderModelsChanged: vi.fn().mockReturnValue(() => undefined),
-    onThunderRolesChanged: vi.fn().mockReturnValue(() => undefined),
     notesRead: vi.fn().mockResolvedValue({ record: { work: { projects: [] } }, content: "" }),
     ...overrides
   } as any;

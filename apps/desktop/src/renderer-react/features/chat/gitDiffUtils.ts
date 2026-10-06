@@ -303,6 +303,28 @@ export interface ConversationGitFile {
   status: string;
 }
 
+/** Stable per-file key: the same repo-relative path can exist in two repos. */
+export function conversationFileKey(
+  file: Pick<ConversationGitFile, "repoRoot" | "repoPath">
+): string {
+  return `${file.repoRoot}\0${file.repoPath}`;
+}
+
+/** Group conversation files by repository, so each repo commits its own paths. */
+export function groupConversationFilesByRepo(
+  files: ConversationGitFile[]
+): Array<{ repoRoot: string; paths: string[] }> {
+  const groups = new Map<string, Set<string>>();
+  for (const file of files) {
+    const paths = groups.get(file.repoRoot) || new Set<string>();
+    paths.add(file.repoPath);
+    groups.set(file.repoRoot, paths);
+  }
+  return [...groups.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([repoRoot, paths]) => ({ repoRoot, paths: [...paths] }));
+}
+
 /**
  * Filters a repository's full dirty file list down to only the files that were
  * modified in the current conversation, matching on the repository + path pair.

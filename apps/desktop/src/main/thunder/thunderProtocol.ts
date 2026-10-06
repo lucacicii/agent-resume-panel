@@ -2,6 +2,8 @@ export type {
   ThunderConversationSummary,
   ThunderConversation,
   ThunderChatMessage,
+  ThunderContentPart,
+  ThunderImageAttachment,
   ThunderToolExecutionRecord,
   ThunderChatStreamPayload,
   ThunderChatTaskOptions,
@@ -40,7 +42,7 @@ export interface ThunderQuestionItem {
   options: ThunderQuestionOption[];
 }
 
-export type { ThunderRoleInfo, ThunderRoleRecord, ThunderModelsConfig, ThunderModelsProvider } from "@agent-resume/core";
+export type { ThunderModelsConfig, ThunderModelsProvider } from "@agent-resume/core";
 
 export type ThunderAgentEvent =
   | { type: "turn_start"; turn: number; timestamp: number }
@@ -98,6 +100,19 @@ export type ThunderAgentEvent =
       questions: ThunderQuestionItem[];
     }
   | { type: "task_paused"; reason: string }
+  | {
+      type: "steer_accepted";
+      turn: number;
+      /** `steer` or `follow_up` — which queue the message came from. */
+      behavior: string;
+      message: string;
+    }
+  | {
+      /** Both queues in full, so the renderer never shows a stale count. */
+      type: "task_queue_update";
+      steering: string[];
+      follow_up: string[];
+    }
   | { type: "done"; stats?: unknown }
   | { type: "error"; message: string }
   | { type: string; [key: string]: unknown };
@@ -133,6 +148,12 @@ export type ThunderDaemonIncoming =
       task_id: string;
       session_id?: string;
       error: string;
+      /**
+       * The run's terminal reason when one exists (`Cancelled`, `Error`, ...).
+       * Absent when the daemon failed before a run started, which is what lets a
+       * client tell "the agent stopped" from "we never got going".
+       */
+      finish_reason?: string;
     }
   | {
       type: "user_question";
@@ -146,4 +167,25 @@ export type ThunderDaemonIncoming =
       task_id: string;
       session_id?: string;
       reason: string;
+    }
+  | {
+      /**
+       * The task's pending steering / follow-up queues changed.
+       *
+       * Always the complete queues, never a delta: a client that missed one
+       * message would otherwise drift out of sync with the agent forever.
+       */
+      type: "task_queue_update";
+      task_id: string;
+      session_id?: string;
+      steering: string[];
+      follow_up: string[];
     };
+
+/**
+ * Where a queued message enters the run.
+ *
+ * The two placements are far apart, so the daemon refuses to guess: a caller
+ * must state which one it means.
+ */
+export type ThunderQueueBehavior = "steer" | "follow_up";

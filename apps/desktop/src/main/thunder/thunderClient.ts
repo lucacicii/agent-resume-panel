@@ -14,12 +14,13 @@ import {
   type ThunderDaemonSettings
 } from "./daemonResolver";
 import type {
-  ThunderRoleInfo,
   ThunderDaemonIncoming,
   ThunderModelInfo,
   ThunderObservedEvent,
   ThunderConversationSummary,
   ThunderConversation,
+  ThunderImageAttachment,
+  ThunderQueueBehavior,
   ThunderTaskTrace,
   ThunderTitleResult
 } from "./thunderProtocol";
@@ -380,6 +381,24 @@ export class ThunderClient {
         }
         break;
       }
+      case "task_queue_update": {
+        const task = this.activeTasks.get(msg.task_id);
+        if (task?.onEvent) {
+          try {
+            task.onEvent({
+              agent_id: msg.task_id,
+              event: {
+                type: "task_queue_update",
+                steering: msg.steering ?? [],
+                follow_up: msg.follow_up ?? []
+              }
+            } as ThunderObservedEvent);
+          } catch (err) {
+            console.error("[thunder-daemon:task-queue-handler-error]", err);
+          }
+        }
+        break;
+      }
     }
   }
 
@@ -425,12 +444,23 @@ export class ThunderClient {
         {},
         10_000
       );
-      if (Array.isArray(res)) return res;
-      if (res && Array.isArray((res as any).conversations)) return (res as any).conversations;
+      if (Array.isArray(res)) return this.spokenOnly(res);
+      if (res && Array.isArray((res as any).conversations)) {
+        return this.spokenOnly((res as any).conversations);
+      }
       return this.listConversationsFromDisk();
     } catch {
       return this.listConversationsFromDisk();
     }
+  }
+
+  /**
+   * A conversation nobody has spoken to is not a session. The store refuses to
+   * persist one and the daemon already filters `list_conversations`; this keeps
+   * rows an older build wrote out of the panel's list as well.
+   */
+  private spokenOnly(rows: ThunderConversationSummary[]): ThunderConversationSummary[] {
+    return rows.filter((row) => (row.turn_count ?? 0) > 0);
   }
 
   public async getConversation(sessionId: string): Promise<ThunderConversation | null> {
@@ -644,8 +674,10 @@ export class ThunderClient {
         try {
           const raw = await fs.promises.readFile(indexFile, "utf-8");
           const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed)) return parsed;
-          if (parsed && typeof parsed === "object") return Object.values(parsed);
+          if (Array.isArray(parsed)) return this.spokenOnly(parsed);
+          if (parsed && typeof parsed === "object") {
+            return this.spokenOnly(Object.values(parsed) as ThunderConversationSummary[]);
+          }
         } catch {
           // fallback to directory scan
         }
@@ -680,7 +712,7 @@ export class ThunderClient {
           }
         }
       }
-      return summaries.sort((a, b) => b.updated_at_ms - a.updated_at_ms);
+      return this.spokenOnly(summaries).sort((a, b) => b.updated_at_ms - a.updated_at_ms);
     } catch {
       return [];
     }
@@ -715,8 +747,7 @@ export class ThunderClient {
     model?: string;
     sessionId?: string;
     thinking_level?: string;
-    /** Role id to activate host-side (enforces permission). */
-    role?: string;
+    attachments?: ThunderImageAttachment[];
     onEvent?: (event: ThunderObservedEvent) => void;
   }): Promise<{ finalContent?: string; finishReason: string; activePlugins?: string[] }> {
     await this.ensureRunning();
@@ -769,7 +800,10 @@ export class ThunderClient {
               model: options.model,
               thinking_level: options.thinking_level,
               session_id: options.sessionId,
-              role: options.role
+              attachments:
+                options.attachments && options.attachments.length > 0
+                  ? options.attachments
+                  : undefined
             },
             30_000
           );
@@ -779,21 +813,6 @@ export class ThunderClient {
         }
       }
     );
-  }
-
-  /** List roles visible from global + project scopes (host is the authority). */
-  public async listRoles(workspaceDir?: string): Promise<ThunderRoleInfo[]> {
-    try {
-      const res = await this.sendCommand<{ roles?: ThunderRoleInfo[] }>(
-        "list_roles",
-        { workspace_dir: workspaceDir },
-        10_000
-      );
-      return Array.isArray(res?.roles) ? res.roles : [];
-    } catch {
-      // Roles are optional; a daemon without them must not break the palette.
-      return [];
-    }
   }
 
   /** Answer a pending `ask_user_question` so the parked agent can continue. */
@@ -824,6 +843,44 @@ export class ThunderClient {
   public async resumeTask(taskId: string): Promise<boolean> {
     const res = await this.sendCommand<{ resumed?: boolean }>("resume_task", { task_id: taskId }, 10_000);
     return Boolean(res?.resumed);
+  }
+
+  /**
+   * Queue user input into a running task.
+   *
+   * `behavior` is required by the daemon: `steer` enters at the next turn
+   * boundary (after the current tool calls), `follow_up` only once the run has
+   * nothing else to do. Neither interrupts a tool that is executing.
+   */
+  public async steerTask(
+    taskId: string,
+    message: string,
+    behavior: ThunderQueueBehavior,
+    attachments?: ThunderImageAttachment[]
+  ): Promise<{ queued: number } | null> {
+    const res = await this.sendCommand<{ queued?: number }>(
+      "steer_task",
+      { task_id: taskId, message, behavior, attachments },
+      10_000
+    );
+    if (res === null) return null;
+    return { queued: res?.queued ?? 0 };
+  }
+
+  /**
+   * Drop everything queued into a running task and return its text, so the
+   * caller can put it back in the editor when the user aborts.
+   */
+  public async clearTaskQueue(
+    taskId: string
+  ): Promise<{ steering: string[]; followUp: string[] } | null> {
+    const res = await this.sendCommand<{ steering?: string[]; follow_up?: string[] }>(
+      "clear_queue",
+      { task_id: taskId },
+      10_000
+    );
+    if (res === null) return null;
+    return { steering: res?.steering ?? [], followUp: res?.follow_up ?? [] };
   }
 
   public async cancelTask(taskId: string): Promise<boolean> {

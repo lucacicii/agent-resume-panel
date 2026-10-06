@@ -6,8 +6,8 @@ import { desktopApi } from "../../bridge";
 import type {
   AgentToolDescriptor,
   SkillDescriptor,
-  ThunderModelInfo,
-  ThunderRoleInfo
+  ThunderImageAttachment,
+  ThunderModelInfo
 } from "@agent-resume/core";
 import type { ChatRunMetrics } from "./useThunderChat";
 import {
@@ -18,12 +18,10 @@ import {
 } from "./chatTokens";
 
 export type ChatSlashSuggestion = {
-  kind: "skill" | "mcp" | "command" | "role";
+  kind: "skill" | "mcp" | "command";
   name: string;
   description: string;
   location?: string;
-  /** Roles carry their capability tier so the list can badge them. */
-  permission?: string;
 };
 
 export type ChatMentionSuggestion = {
@@ -34,6 +32,39 @@ export type ChatMentionSuggestion = {
   badge: string;
   gtdStatus?: string;
 };
+
+export interface PendingChatImage {
+  id: string;
+  name: string;
+  mimeType: string;
+  previewUrl: string;
+  path?: string;
+  data?: string;
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("Failed to read file"));
+    reader.readAsDataURL(file);
+  });
+}
+
+function electronPath(file: File): string | undefined {
+  const value = (file as File & { path?: string }).path;
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+const ALLOWED_IMAGE_MIME = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/jpg",
+  "image/webp",
+  "image/gif"
+]);
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_PENDING_IMAGES = 10;
 
 export type ChatPathSuggestion =
   | { kind: "directory"; name: string; relativePath: string }
@@ -207,15 +238,29 @@ export async function compileChatPrompt(
 }
 
 interface ChatComposerProps {
-  onSend: (prompt: string, options?: { workspaceDir?: string; model?: string; thinking_level?: string; role?: string }) => void;
+  onSend: (
+    prompt: string,
+    options?: {
+      workspaceDir?: string;
+      model?: string;
+      thinking_level?: string;
+      attachments?: ThunderImageAttachment[];
+    }
+  ) => void;
   onCancel: () => void;
   isStreaming: boolean;
+  /**
+   * Queue text into the running task.
+   *
+   * `steer` enters at the next turn boundary (after the tool calls already in
+   * flight), `follow_up` only once the run has nothing else to do. Optional so
+   * a host that cannot steer simply behaves as before.
+   */
+  onSteer?: (message: string, attachments?: ThunderImageAttachment[]) => void;
+  onFollowUp?: (message: string, attachments?: ThunderImageAttachment[]) => void;
+  /** Pending queue size, for the badge. */
+  queuedCount?: number;
   models: ThunderModelInfo[];
-  /** Roles offered as slash commands; the host enforces their permission. */
-  roles?: ThunderRoleInfo[];
-  /** The chip's persistent role selection; null/empty means "auto". */
-  selectedRole?: string | null;
-  onSelectRole?: (roleId: string | null) => void;
   selectedModel: string;
   onSelectModel: (model: string) => void;
   thinkingLevel: string;
@@ -287,10 +332,10 @@ export function ChatComposer({
   onSend,
   onCancel,
   isStreaming,
+  onSteer,
+  onFollowUp,
+  queuedCount,
   models,
-  roles = [],
-  selectedRole = null,
-  onSelectRole,
   selectedModel,
   onSelectModel,
   thinkingLevel,
@@ -334,10 +379,153 @@ export function ChatComposer({
   const [directoryError, setDirectoryError] = useState("");
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const workspaceButtonRef = useRef<HTMLButtonElement | null>(null);
   const slashItemRefs = useRef<Array<HTMLLIElement | null>>([]);
   const mentionItemRefs = useRef<Array<HTMLLIElement | null>>([]);
   const directoryItemRefs = useRef<Array<HTMLLIElement | null>>([]);
+
+  const [pendingImages, setPendingImages] = useState<PendingChatImage[]>([]);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+
+  const removePendingImage = useCallback((id: string) => {
+    setPendingImages((prev) => prev.filter((img) => img.id !== id));
+  }, []);
+
+  const handlePaste = useCallback(
+    async (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+      const items = [...(event.clipboardData?.items ?? [])];
+      const imageItems = items.filter((item) => item.type.startsWith("image/"));
+      if (!imageItems.length) return;
+
+      event.preventDefault();
+      const next: PendingChatImage[] = [];
+      let currentCount = pendingImages.length;
+
+      for (const item of imageItems) {
+        if (currentCount >= MAX_PENDING_IMAGES) break;
+        const file = item.getAsFile();
+        if (!file) continue;
+
+        if (file.size > MAX_IMAGE_BYTES) {
+          console.warn(`Image ${file.name} exceeds 5MB limit`);
+          continue;
+        }
+
+        const mimeType = file.type || "image/png";
+        if (!ALLOWED_IMAGE_MIME.has(mimeType.toLowerCase())) continue;
+
+        const dataUrl = await readFileAsDataUrl(file);
+        const data = dataUrl.split(",")[1] || "";
+        const filePath = electronPath(file);
+
+        next.push({
+          id: `img_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          name: file.name || "Pasted Image",
+          mimeType,
+          previewUrl: dataUrl,
+          path: filePath,
+          data
+        });
+        currentCount += 1;
+      }
+
+      if (next.length > 0) {
+        setPendingImages((prev) => [...prev, ...next]);
+      }
+    },
+    [pendingImages.length]
+  );
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    if (e.dataTransfer.types.includes("Files")) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+    }
+  }, []);
+
+  const handleDrop = useCallback(
+    async (e: React.DragEvent) => {
+      const files = Array.from(e.dataTransfer.files || []);
+      const imageFiles = files.filter(
+        (f) => f.type.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(f.name)
+      );
+      if (!imageFiles.length) return;
+
+      e.preventDefault();
+      const next: PendingChatImage[] = [];
+      let currentCount = pendingImages.length;
+
+      for (const file of imageFiles) {
+        if (currentCount >= MAX_PENDING_IMAGES) break;
+        if (file.size > MAX_IMAGE_BYTES) {
+          console.warn(`Image ${file.name} exceeds 5MB limit`);
+          continue;
+        }
+        const mimeType = file.type || "image/png";
+        if (file.type && !ALLOWED_IMAGE_MIME.has(mimeType.toLowerCase())) continue;
+
+        const dataUrl = await readFileAsDataUrl(file);
+        const data = dataUrl.split(",")[1] || "";
+        const filePath = electronPath(file);
+
+        next.push({
+          id: `img_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          name: file.name,
+          mimeType,
+          previewUrl: dataUrl,
+          path: filePath,
+          data
+        });
+        currentCount += 1;
+      }
+
+      if (next.length > 0) {
+        setPendingImages((prev) => [...prev, ...next]);
+      }
+    },
+    [pendingImages.length]
+  );
+
+  const handleFileInputChange = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(e.target.files || []);
+      if (!files.length) return;
+
+      const next: PendingChatImage[] = [];
+      let currentCount = pendingImages.length;
+
+      for (const file of files) {
+        if (currentCount >= MAX_PENDING_IMAGES) break;
+        if (file.size > MAX_IMAGE_BYTES) {
+          console.warn(`Image ${file.name} exceeds 5MB limit`);
+          continue;
+        }
+        const mimeType = file.type || "image/png";
+        if (file.type && !ALLOWED_IMAGE_MIME.has(mimeType.toLowerCase())) continue;
+
+        const dataUrl = await readFileAsDataUrl(file);
+        const data = dataUrl.split(",")[1] || "";
+        const filePath = electronPath(file);
+
+        next.push({
+          id: `img_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          name: file.name,
+          mimeType,
+          previewUrl: dataUrl,
+          path: filePath,
+          data
+        });
+        currentCount += 1;
+      }
+
+      if (next.length > 0) {
+        setPendingImages((prev) => [...prev, ...next]);
+      }
+      e.target.value = "";
+    },
+    [pendingImages.length]
+  );
 
   const loadTasks = useCallback(async () => {
     if (typeof desktopApi().notesListTasks !== "function") return;
@@ -467,19 +655,6 @@ export function ChatComposer({
     const q = slashToken.query.toLowerCase();
     const out: ChatSlashSuggestion[] = [];
 
-    // Roles first: a role is a mode, so it should outrank skills and MCP tools.
-    for (const r of roles) {
-      const haystack = `${r.name} ${r.id} ${r.description || ""}`.toLowerCase();
-      if (!q || haystack.includes(q)) {
-        out.push({
-          kind: "role",
-          name: r.id,
-          description: r.description || `${r.name} · ${r.permission}`,
-          permission: r.permission
-        });
-      }
-    }
-
     for (const s of skills) {
       if (!q || s.name.toLowerCase().includes(q) || s.description?.toLowerCase().includes(q)) {
         out.push({
@@ -503,7 +678,7 @@ export function ChatComposer({
     }
 
     return out.slice(0, 30);
-  }, [slashToken, skills, tools, roles]);
+  }, [slashToken, skills, tools]);
 
   // Mention suggestions (@): notes, GTD tasks, sessions
   const mentionSuggestions = useMemo<ChatMentionSuggestion[]>(() => {
@@ -793,27 +968,26 @@ export function ChatComposer({
     [enterDirectory, hashToken, cursor, text]
   );
 
-  // A leading `/id` (or `/alias`) selects that role for this send.
-  const activeRole = useMemo(() => {
-    const m = text.match(/^\/([a-zA-Z0-9_-]+)/);
-    if (!m) return null;
-    const token = (m[1] || "").toLowerCase();
-    return roles.find((r) => r.id.toLowerCase() === token || (r.aliases || []).some((a) => a.toLowerCase() === token)) || null;
-  }, [text, roles]);
-
   const doSend = async () => {
     if (isStreaming) {
       onCancel();
       return;
     }
     const currentText = text.trim();
-    if (!currentText) return;
+    if (!currentText && pendingImages.length === 0) return;
 
     setText("");
     const mentionsToCompile = [...referencedMentions];
     const filesToCompile = [...referencedFiles];
+    const attachmentsToSend: ThunderImageAttachment[] = pendingImages.map((img) => ({
+      name: img.name,
+      mimeType: img.mimeType,
+      path: img.path,
+      data: img.data
+    }));
     setReferencedMentions([]);
     setReferencedFiles([]);
+    setPendingImages([]);
 
     try {
       const effectivePrompt = await compileChatPrompt(currentText, {
@@ -823,34 +997,24 @@ export function ChatComposer({
         referencedMentions: mentionsToCompile,
         referencedFiles: filesToCompile
       });
-      onSend(effectivePrompt, {
+      onSend(effectivePrompt || "Please analyze the attached image.", {
         workspaceDir,
         model: selectedModel,
         thinking_level: thinkingLevel,
-        // A leading `/id` is a one-shot pick and overrides the chip for this
-        // send; the chip selection persists across sends until switched.
-        role: activeRole?.id ?? (selectedRole || undefined)
+        attachments: attachmentsToSend.length > 0 ? attachmentsToSend : undefined
       });
     } catch (err) {
       console.warn("Failed to compile prompt context:", err);
-      onSend(currentText, {
-      workspaceDir,
-      model: selectedModel,
-      thinking_level: thinkingLevel,
-      role: activeRole?.id ?? (selectedRole || undefined)
-    });
+      onSend(currentText || "Please analyze the attached image.", {
+        workspaceDir,
+        model: selectedModel,
+        thinking_level: thinkingLevel,
+        attachments: attachmentsToSend.length > 0 ? attachmentsToSend : undefined
+      });
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // Role cycling rides on Shift+Tab, one layer above every autocomplete:
-    // the menus accept plain Tab / Enter, so Shift+Tab can safely own this.
-    if (e.key === "Tab" && e.shiftKey && roles.length > 0 && onSelectRole) {
-      e.preventDefault();
-      cycleRole();
-      return;
-    }
-
     if (slashOpen && slashSuggestions.length > 0) {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -939,9 +1103,33 @@ export function ChatComposer({
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       if (isStreaming) {
+        // A run is in flight: Enter steers it, Alt/Option+Enter queues a
+        // follow-up. Neither interrupts the tool that is running.
+        //
+        // Staged images ride along, so "look at this screenshot" works the same
+        // whether the run is idle or live.
+        const attachments: ThunderImageAttachment[] = pendingImages.map((img) => ({
+          name: img.name,
+          mimeType: img.mimeType,
+          path: img.path,
+          data: img.data
+        }));
+        const trimmed = text.trim();
+        const canQueue = Boolean(onSteer || onFollowUp);
+        if ((!trimmed && attachments.length === 0) || !canQueue) return;
+        const prompt =
+          trimmed || (attachments.length > 0 ? "Please analyze the attached image." : "");
+        const withAttachments = attachments.length > 0 ? attachments : undefined;
+        if (e.altKey && onFollowUp) {
+          onFollowUp(prompt, withAttachments);
+        } else if (onSteer) {
+          onSteer(prompt, withAttachments);
+        }
+        setText("");
+        setPendingImages([]);
         return;
       }
-      if (text.trim()) {
+      if (text.trim() || pendingImages.length > 0) {
         void doSend();
       }
     }
@@ -950,7 +1138,7 @@ export function ChatComposer({
   const handleSendClick = () => {
     if (isStreaming) {
       onCancel();
-    } else if (text.trim()) {
+    } else if (text.trim() || pendingImages.length > 0) {
       void doSend();
     }
   };
@@ -1122,33 +1310,6 @@ export function ChatComposer({
     return thinkingLevel || currentModel?.default_thinking_level || "medium";
   }, [supportsThinking, thinkingLevel, currentModel]);
 
-  // Role chip options: "auto" first, then roles in daemon order (id-sorted).
-  // The tier/mode suffix keeps the blast radius visible at a glance.
-  const roleOptions = useMemo(() => {
-    const options: Array<{ value: string; label: string }> = [{ value: "", label: "Role: Auto" }];
-    for (const role of roles) {
-      const meta = [role.permission, role.mode].filter(Boolean).join(" · ");
-      options.push({
-        value: role.id,
-        label: meta ? `Role: ${role.name} (${meta})` : `Role: ${role.name}`
-      });
-    }
-    return options;
-  }, [roles]);
-
-  const currentRole = useMemo(() => {
-    return roles.find((r) => r.id === selectedRole) || null;
-  }, [roles, selectedRole]);
-
-  /** Shift+Tab cycles [auto → role1 → role2 → … → auto]; plain Tab stays with autocomplete. */
-  const cycleRole = useCallback(() => {
-    if (!onSelectRole || roles.length === 0) return;
-    const ids = ["", ...roles.map((r) => r.id)];
-    const index = ids.indexOf(selectedRole || "");
-    const next = ids[(index + 1) % ids.length];
-    onSelectRole(next || null);
-  }, [onSelectRole, roles, selectedRole]);
-
   const draftTokens = text.trim().length > 0 ? Math.max(1, Math.ceil(text.trim().length / 3)) : 0;
   const contextTokensWithDraft = (currentContextTokens || 0) + draftTokens;
   const contextPercent = contextWindowLimit && contextWindowLimit > 0
@@ -1156,14 +1317,50 @@ export function ChatComposer({
     : null;
 
   return (
-    <div className="tb-composer-wrapper">
+    <div
+      className="tb-composer-wrapper"
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
       {docked ?? null}
+      {isStreaming && (queuedCount ?? 0) > 0 && (
+        <div className="tb-composer-queued" aria-label="Queued messages">
+          <span>📥 {queuedCount} queued</span>
+          <span>Enter steers · ⌥Enter follows up</span>
+        </div>
+      )}
       <div className={`tb-composer-box${isStreaming ? " is-active" : ""}`}>
+        {pendingImages.length > 0 && (
+          <div className="wb-terminal-composer-pending-images" aria-label="Attached images">
+            {pendingImages.map((img) => (
+              <div className="wb-terminal-composer-pending-image" key={img.id}>
+                <button
+                  type="button"
+                  className="wb-terminal-composer-pending-image-open"
+                  title={img.name}
+                  onClick={() => setImagePreview(img.previewUrl)}
+                >
+                  <img src={img.previewUrl} alt={img.name} />
+                </button>
+                <button
+                  type="button"
+                  className="wb-terminal-composer-pending-image-remove"
+                  title="Remove image"
+                  aria-label="Remove image"
+                  onClick={() => removePendingImage(img.id)}
+                >
+                  <ThemeIcon name="close" size={ICON_SIZE.inline} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="tb-composer-input-area">
           <textarea
             ref={textareaRef}
             className="tb-composer-textarea"
             value={text}
+            onPaste={handlePaste}
             onChange={(e) => {
               const next = e.target.value;
               setText(next);
@@ -1208,22 +1405,12 @@ export function ChatComposer({
                 onClick={() => acceptSlashSuggestion(item)}
               >
                 <ThemeIcon
-                  name={
-                    item.kind === "role"
-                      ? "shield-check"
-                      : item.kind === "skill"
-                        ? "sparkles"
-                        : "wrench"
-                  }
+                  name={item.kind === "skill" ? "sparkles" : "wrench"}
                   size={ICON_SIZE.dense}
                 />
                 <span className="wb-terminal-composer-suggestion-text">/{item.name}</span>
-                <span className={`tb-composer-suggestion-badge${item.kind === "role" ? " is-role" : ""}`}>
-                  {item.kind === "role"
-                    ? `Role · ${item.permission === "read" ? "read-only" : item.permission === "write" ? "write" : "full"}`
-                    : item.kind === "skill"
-                      ? "Skill"
-                      : "MCP"}
+                <span className="tb-composer-suggestion-badge">
+                  {item.kind === "skill" ? "Skill" : "MCP"}
                 </span>
                 {item.description ? (
                   <span className="wb-terminal-composer-suggestion-desc">{item.description}</span>
@@ -1456,6 +1643,28 @@ export function ChatComposer({
 
         <div className="tb-composer-toolbar">
           <div className="tb-composer-tools-left">
+            {/* Hidden image file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
+              multiple
+              style={{ display: "none" }}
+              onChange={handleFileInputChange}
+            />
+
+            {/* Attach Image Button */}
+            <button
+              type="button"
+              className="tb-composer-chip"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isStreaming}
+              title="Attach images (PNG, JPEG, WebP, GIF)"
+              aria-label="Attach images"
+            >
+              <ThemeIcon name="paperclip" size={ICON_SIZE.inline} />
+            </button>
+
             {/* Model Selector Chip */}
             <div className="tb-composer-chip">
               <ThemeIcon name="bot" size={ICON_SIZE.inline} />
@@ -1488,24 +1697,6 @@ export function ChatComposer({
               />
             </div>
 
-            {/* Role Chip: persistent role selection; Shift+Tab cycles. */}
-            <div className={`tb-composer-chip${roles.length === 0 ? " tb-chip-disabled" : ""}`}>
-              <ThemeIcon name="user" size={ICON_SIZE.inline} />
-              <NativeMenuSelect
-                className="tb-composer-native-select"
-                value={selectedRole || ""}
-                options={roleOptions}
-                onChange={(value) => onSelectRole?.(value || null)}
-                disabled={isStreaming || roles.length === 0}
-                ariaLabel="Role"
-                title={
-                  roles.length === 0
-                    ? "No roles available (define them in Settings → Thunder)"
-                    : `Role: ${currentRole ? `${currentRole.name} (${[currentRole.permission, currentRole.mode].filter(Boolean).join(" · ")})` : "Auto"} — Shift+Tab to cycle`
-                }
-              />
-            </div>
-
             {/* Workspace Selector Chip */}
             <button
               ref={workspaceButtonRef}
@@ -1530,9 +1721,9 @@ export function ChatComposer({
           <div className="tb-composer-tools-right">
             <button
               type="button"
-              className={`tb-composer-action-btn${isStreaming ? " is-stop" : ""}${!isStreaming && !text.trim() ? " is-disabled" : ""}`}
+              className={`tb-composer-action-btn${isStreaming ? " is-stop" : ""}${!isStreaming && !text.trim() && pendingImages.length === 0 ? " is-disabled" : ""}`}
               onClick={handleSendClick}
-              disabled={!isStreaming && !text.trim()}
+              disabled={!isStreaming && !text.trim() && pendingImages.length === 0}
               aria-label={isStreaming ? "Stop task" : "Send message"}
               title={isStreaming ? "Stop task" : "Send (Enter)"}
             >
@@ -1545,6 +1736,25 @@ export function ChatComposer({
           </div>
         </div>
       </div>
+
+      {imagePreview ? (
+        <div
+          className="notes-image-preview"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setImagePreview(null)}
+        >
+          <img src={imagePreview} alt="" />
+          <button
+            type="button"
+            className="notes-image-preview-close"
+            aria-label="Close"
+            onClick={() => setImagePreview(null)}
+          >
+            <ThemeIcon name="close" size={ICON_SIZE.default} />
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
