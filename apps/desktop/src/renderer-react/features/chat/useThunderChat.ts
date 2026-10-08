@@ -57,6 +57,26 @@ interface SessionStream {
   segments: LiveSegment[];
 }
 
+/**
+ * A run that ends on anything but `done` produced no answer, so the transcript
+ * must say why. The daemon's `loop_complete` carries only the finish reason;
+ * the message behind an `error` comes from the run's `error` event.
+ */
+function failureNoticeForFinishReason(reason: string, detail?: string): string | undefined {
+  switch (reason) {
+    case "error":
+      return `⚠️ **Task failed**: ${
+        detail?.trim() || "Thunder ended the run with an error (see daemon logs for details)."
+      }`;
+    case "max_turns_exceeded":
+      return "⚠️ **Task stopped**: the agent reached its maximum number of turns without producing an answer.";
+    case "budget_exceeded":
+      return "⚠️ **Task stopped**: the agent reached its token budget without producing an answer.";
+    default:
+      return undefined;
+  }
+}
+
 /** Append a delta to the trailing run of the same kind, or open a new run. */
 function appendDelta(segments: LiveSegment[], kind: "reasoning" | "text", delta: string): void {
   const last = segments[segments.length - 1];
@@ -335,6 +355,9 @@ export function useThunderChat() {
 
   const activeStreamsRef = useRef<Map<string, SessionStream>>(new Map());
   const finalizedTasksRef = useRef<Set<string>>(new Set());
+  /** Last engine error per task id: an error turn streams no content, so its
+   *  `loop_complete` has to report the failure instead of an empty answer. */
+  const taskErrorMessagesRef = useRef<Map<string, string>>(new Map());
 
   const refreshDaemonStatus = useCallback(async () => {
     try {
@@ -691,6 +714,8 @@ export function useThunderChat() {
       finalTools?: ActiveToolInfo[];
       finalSegments?: LiveSegment[];
       finishReason?: string;
+      /** Rendered instead of the answer when the run ended without one. */
+      failureNotice?: string;
     }) => {
       const { sessionId, taskId, finishReason } = opts;
       const streamState = activeStreamsRef.current.get(sessionId);
@@ -702,16 +727,27 @@ export function useThunderChat() {
       }
       if (effectiveTaskId) {
         finalizedTasksRef.current.add(effectiveTaskId);
+        taskErrorMessagesRef.current.delete(effectiveTaskId);
         if (finalizedTasksRef.current.size > 200) {
           const first = finalizedTasksRef.current.values().next().value;
           if (first) finalizedTasksRef.current.delete(first);
         }
       }
 
-      const content = opts.finalContent ?? streamState?.streamingText ?? "";
+      const streamed = opts.finalContent ?? streamState?.streamingText ?? "";
+      // Partial text still belongs to the transcript: show it under the failure.
+      const content = opts.failureNotice
+        ? `${opts.failureNotice}${streamed ? `\n\n${streamed}` : ""}`
+        : streamed;
       const reasoning = opts.finalReasoning ?? streamState?.streamingReasoning ?? undefined;
       const rawTools = opts.finalTools ?? (streamState && streamState.streamingTools.length > 0 ? streamState.streamingTools : undefined);
-      const segments = opts.finalSegments ?? streamState?.segments;
+      const streamedSegments = opts.finalSegments ?? streamState?.segments;
+      // A turn that streamed anything renders its segments instead of `content`,
+      // so the failure notice has to become a segment of its own to stay visible.
+      const segments =
+        opts.failureNotice && streamedSegments && streamedSegments.length > 0
+          ? [...streamedSegments, { kind: "text" as const, text: opts.failureNotice }]
+          : streamedSegments;
       const toolExecutions = rawTools?.map((t) => ({
         toolCallId: t.toolCallId,
         name: t.name,
@@ -837,6 +873,7 @@ export function useThunderChat() {
 
       const taskId = `task_${Date.now()}`;
       setActiveTaskId(taskId);
+      taskErrorMessagesRef.current.delete(taskId);
 
       activeStreamsRef.current.set(effectiveSessionId, {
         taskId,
@@ -1318,7 +1355,11 @@ export function useThunderChat() {
             sessionId,
             taskId,
             finalContent,
-            finishReason: finishReason ? String(finishReason) : "done"
+            finishReason: finishReason ? String(finishReason) : "done",
+            failureNotice: failureNoticeForFinishReason(
+              finishReason ? String(finishReason) : "done",
+              taskErrorMessagesRef.current.get(taskId)
+            )
           });
           break;
         }
@@ -1356,7 +1397,10 @@ export function useThunderChat() {
           break;
         }
         case "error": {
-          console.warn("[thunder-event:error]", (ev as any).message);
+          const message = String((ev as any).message || "").trim();
+          // Keep it for `loop_complete`: the failure reason must reach the transcript.
+          if (message) taskErrorMessagesRef.current.set(taskId, message);
+          console.warn("[thunder-event:error]", message);
           break;
         }
       }
