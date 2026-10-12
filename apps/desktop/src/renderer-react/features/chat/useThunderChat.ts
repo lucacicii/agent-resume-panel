@@ -58,6 +58,17 @@ interface SessionStream {
 }
 
 /**
+ * A question the agent is parked on. It is owned by the session that raised it,
+ * so a run blocked in one conversation can never dock its bubble over another.
+ */
+interface PendingQuestion {
+  questionId: string;
+  taskId: string;
+  sessionId: string;
+  questions: ThunderQuestionItem[];
+}
+
+/**
  * A run that ends on anything but `done` produced no answer, so the transcript
  * must say why. The daemon's `loop_complete` carries only the finish reason;
  * the message behind an `error` comes from the run's `error` event.
@@ -156,6 +167,34 @@ function rebuildSegments(events: ThunderActiveStreamSnapshot["events"]): LiveSeg
     }
   }
   return segments;
+}
+
+/**
+ * The question a buffered run is still parked on, recovered from the main
+ * process's event log so a renderer that remounts mid-run re-docks the bubble
+ * over the conversation that raised it. The main process drops the entry once
+ * the question is answered, so an already-answered one cannot come back.
+ */
+function parkedQuestionFromSnapshot(
+  snapshot: ThunderActiveStreamSnapshot | null | undefined
+): PendingQuestion | null {
+  const events = snapshot?.events;
+  if (!snapshot || !events?.length) return null;
+  for (let i = events.length - 1; i >= 0; i--) {
+    const ev = (events[i] as { event?: unknown })?.event as
+      | ({ type?: string } & Record<string, any>)
+      | undefined;
+    if (ev?.type !== "user_question") continue;
+    const questionId = String(ev.question_id || "");
+    if (!questionId) return null;
+    return {
+      questionId,
+      taskId: snapshot.taskId,
+      sessionId: snapshot.sessionId,
+      questions: Array.isArray(ev.questions) ? ev.questions : []
+    };
+  }
+  return null;
 }
 
 /**
@@ -325,11 +364,14 @@ export function useThunderChat() {
   const [streamStartTime, setStreamStartTime] = useState<number | null>(null);
 
   // A question the agent is blocked on; rendered as a bubble until answered.
-  const [pendingQuestion, setPendingQuestion] = useState<{
-    questionId: string;
-    taskId: string;
-    questions: ThunderQuestionItem[];
-  } | null>(null);
+  const [pendingQuestion, setPendingQuestion] = useState<PendingQuestion | null>(null);
+  /**
+   * Every parked question this renderer has seen, keyed by the session that
+   * raised it. The daemon broadcasts events for all sessions, so the bubble has
+   * to be derived from the session on screen rather than from the last event
+   * that happened to arrive.
+   */
+  const pendingQuestionsRef = useRef<Map<string, PendingQuestion>>(new Map());
 
   // End-to-end task trace and file modification tracking
   const {
@@ -358,6 +400,11 @@ export function useThunderChat() {
   /** Last engine error per task id: an error turn streams no content, so its
    *  `loop_complete` has to report the failure instead of an empty answer. */
   const taskErrorMessagesRef = useRef<Map<string, string>>(new Map());
+
+  /** Dock the parked question of `sessionId`; no session (or none parked) clears it. */
+  const syncPendingQuestion = useCallback((sessionId: string | null) => {
+    setPendingQuestion(sessionId ? pendingQuestionsRef.current.get(sessionId) ?? null : null);
+  }, []);
 
   const refreshDaemonStatus = useCallback(async () => {
     try {
@@ -398,6 +445,12 @@ export function useThunderChat() {
     try {
       setLoading(true);
       setActiveSessionId(sessionId);
+      // Commit the switch synchronously too: everything that must answer "is
+      // this still the session on screen?" runs before React re-renders.
+      activeSessionIdRef.current = sessionId;
+      // The bubble follows its conversation: opening a session docks its own
+      // parked question (if any) and drops the one left behind.
+      syncPendingQuestion(sessionId);
       const conv = await desktopApi().thunderChatGetConversation({ sessionId });
       if (conv) {
         if (conv.model) {
@@ -542,6 +595,14 @@ export function useThunderChat() {
           activeStreamsRef.current.set(sessionId, stream);
         }
       }
+      // A run parked on a question is session state, not a one-off notification:
+      // when the renderer that watched the question arrive is gone (reload, pane
+      // remount), recover it from the buffered event log.
+      const parked = parkedQuestionFromSnapshot(snapshot);
+      if (parked) {
+        pendingQuestionsRef.current.set(sessionId, parked);
+        if (activeSessionIdRef.current === sessionId) setPendingQuestion(parked);
+      }
       if (stream) {
         setIsStreaming(true);
         setActiveTaskId(stream.taskId);
@@ -589,7 +650,7 @@ export function useThunderChat() {
     } finally {
       setLoading(false);
     }
-  }, [loadTrace, models, restoreFromSnapshot, setFileChanges]);
+  }, [loadTrace, models, restoreFromSnapshot, setFileChanges, syncPendingQuestion]);
 
   const createNewSession = useCallback(() => {
     setActiveSessionId(null);
@@ -773,6 +834,9 @@ export function useThunderChat() {
 
       const isCurrentSession = activeSessionIdRef.current === sessionId;
 
+      // The run is over: any question it parked died with it, in every session.
+      pendingQuestionsRef.current.delete(sessionId);
+
       if (isCurrentSession) {
         setMessages((prev) => {
           const last = prev[prev.length - 1];
@@ -953,6 +1017,7 @@ export function useThunderChat() {
             role: "assistant",
             content: `⚠️ **Task failed**: ${err instanceof Error ? err.message : String(err)}`
           };
+          pendingQuestionsRef.current.delete(effectiveSessionId);
           if (activeSessionIdRef.current === effectiveSessionId) {
             setMessages((prev) => [...prev, errMsg]);
             setPendingQuestion(null);
@@ -1077,10 +1142,12 @@ export function useThunderChat() {
     async (answers: Record<string, string> | undefined, cancelled = false) => {
       const pending = pendingQuestion;
       if (!pending) return;
+      pendingQuestionsRef.current.delete(pending.sessionId);
       setPendingQuestion(null);
       try {
         await desktopApi().thunderChatAnswerQuestion({
           questionId: pending.questionId,
+          sessionId: pending.sessionId,
           answers,
           cancelled
         });
@@ -1163,15 +1230,18 @@ export function useThunderChat() {
 
     // Cancelling frees a parked question: tell the daemon so its routing table
     // does not keep a dangling oneshot, then drop the bubble locally.
-    setPendingQuestion((prev) => {
-      if (prev && (!targetTaskId || prev.taskId === targetTaskId)) {
-        void desktopApi()
-          .thunderChatAnswerQuestion({ questionId: prev.questionId, cancelled: true })
-          .catch(() => undefined);
-        return null;
-      }
-      return prev;
-    });
+    const parked = curSessId ? pendingQuestionsRef.current.get(curSessId) : undefined;
+    if (parked && (!targetTaskId || parked.taskId === targetTaskId)) {
+      pendingQuestionsRef.current.delete(parked.sessionId);
+      setPendingQuestion((prev) => (prev?.questionId === parked.questionId ? null : prev));
+      void desktopApi()
+        .thunderChatAnswerQuestion({
+          questionId: parked.questionId,
+          sessionId: parked.sessionId,
+          cancelled: true
+        })
+        .catch(() => undefined);
+    }
 
     // Force stop locally immediately so UI never gets stuck
     if (curSessId && stream) {
@@ -1365,11 +1435,19 @@ export function useThunderChat() {
         }
         case "user_question": {
           const q = ev as any;
-          setPendingQuestion({
+          const parked: PendingQuestion = {
             questionId: String(q.question_id || ""),
             taskId,
+            sessionId,
             questions: Array.isArray(q.questions) ? q.questions : []
-          });
+          };
+          // Events arrive for every conversation on the daemon: remember the
+          // question for the session that raised it, and dock the bubble only
+          // when that session is the one on screen.
+          if (parked.questionId) {
+            pendingQuestionsRef.current.set(sessionId, parked);
+            if (isCurrentSession) setPendingQuestion(parked);
+          }
           break;
         }
         case "task_paused": {

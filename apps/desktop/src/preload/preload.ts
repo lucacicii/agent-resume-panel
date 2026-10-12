@@ -1565,6 +1565,8 @@ export interface DesktopApi {
   /** Answer a pending ask_user_question bubble. */
   thunderChatAnswerQuestion(args: {
     questionId: string;
+    /** Session the question was asked in, so the buffered run drops it here. */
+    sessionId?: string;
     answers?: Record<string, string>;
     cancelled?: boolean;
   }): Promise<boolean>;

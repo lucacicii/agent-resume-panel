@@ -97,6 +97,23 @@ export function accumulateStreamEvent(
   snapshot.events.push(observed as unknown as ThunderActiveStreamSnapshot["events"][number]);
 }
 
+/**
+ * Forget a parked question once it has been answered (or cancelled).
+ *
+ * The renderer re-derives its question bubble from this log when it remounts,
+ * so the answered question has to stop being recoverable: otherwise a reload
+ * during the resumed run would re-dock a bubble the user already dismissed.
+ */
+export function dropPendingQuestion(sessionId: string, questionId?: string): void {
+  const snapshot = activeStreams.get(sessionId);
+  if (!snapshot) return;
+  snapshot.events = snapshot.events.filter((observed) => {
+    const ev = (observed as { event?: { type?: string; question_id?: string } })?.event;
+    if (ev?.type !== "user_question") return true;
+    return questionId ? ev.question_id !== questionId : false;
+  });
+}
+
 /** Mark a buffered task finished and drop it. */
 export function finishActiveStream(sessionId: string, taskId?: string): void {
   const snapshot = activeStreams.get(sessionId);

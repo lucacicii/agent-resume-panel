@@ -3,6 +3,7 @@ import type { ThunderObservedEvent } from "./thunderProtocol";
 import {
   accumulateStreamEvent,
   createActiveStreamSnapshot,
+  dropPendingQuestion,
   finishActiveStream,
   getActiveStream,
   resetActiveStreams
@@ -74,5 +75,31 @@ describe("thunderStreamBuffer", () => {
     const snapshot = createActiveStreamSnapshot({ sessionId: "sess_3", taskId: "task_3" });
     finishActiveStream("sess_3", "other_task");
     expect(getActiveStream("sess_3")).toBe(snapshot);
+  });
+
+  it("stops offering an answered question while the run keeps streaming", () => {
+    const snapshot = createActiveStreamSnapshot({ sessionId: "sess_4", taskId: "task_4" });
+    accumulateStreamEvent(
+      snapshot,
+      observed({ type: "user_question", question_id: "q1", questions: [{ question: "A or B?" }] })
+    );
+    accumulateStreamEvent(snapshot, observed({ type: "token_delta", turn: 2, delta: "A" }));
+
+    dropPendingQuestion("sess_4", "q1");
+
+    expect(snapshot.events.filter((e) => e.event.type === "user_question")).toHaveLength(0);
+    // Only the question goes: the turn that resumed after the answer stays.
+    expect(snapshot.streamingText).toBe("A");
+    expect(getActiveStream("sess_4")).toBe(snapshot);
+  });
+
+  it("drops every parked question of a session when no id is given", () => {
+    const snapshot = createActiveStreamSnapshot({ sessionId: "sess_5", taskId: "task_5" });
+    accumulateStreamEvent(snapshot, observed({ type: "user_question", question_id: "q1" }));
+    accumulateStreamEvent(snapshot, observed({ type: "user_question", question_id: "q2" }));
+
+    dropPendingQuestion("sess_5");
+
+    expect(snapshot.events).toHaveLength(0);
   });
 });

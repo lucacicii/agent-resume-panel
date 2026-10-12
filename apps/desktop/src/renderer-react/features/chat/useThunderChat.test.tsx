@@ -46,6 +46,7 @@ function installHarness(): Harness {
     thunderChatGetConversation: vi.fn().mockResolvedValue(null),
     thunderChatGetActiveStream: vi.fn().mockResolvedValue(null),
     thunderChatGetTrace: vi.fn().mockResolvedValue(null),
+    thunderChatAnswerQuestion: vi.fn().mockResolvedValue(true),
     thunderChatRunTask: vi.fn().mockImplementation(
       () =>
         new Promise<unknown>((resolve, reject) => {
@@ -166,5 +167,102 @@ describe("useThunderChat turn finalization", () => {
 
     const assistant = result.current.messages.at(-1);
     expect(assistant?.content).toBe("好的");
+  });
+});
+
+describe("useThunderChat parked questions", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const question = (text: string) => [{ question: text, options: [{ label: "A" }, { label: "B" }] }];
+
+  it("docks a question only over the conversation that asked it", async () => {
+    const harness = installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    const { taskId, sessionId } = await startTurn(result);
+
+    act(() => harness.emit(observed(taskId, sessionId, { type: "user_question", question_id: "q1", questions: question("A or B?") })));
+    expect(result.current.pendingQuestion?.questionId).toBe("q1");
+
+    // Another conversation asking does not take over the screen.
+    act(() => harness.emit(observed("task_b", "sess_b", { type: "user_question", question_id: "q2", questions: question("C or D?") })));
+    expect(result.current.pendingQuestion?.questionId).toBe("q1");
+
+    // …and switching conversations swaps the bubble rather than leaking it.
+    await act(async () => {
+      await result.current.selectSession("sess_b");
+    });
+    expect(result.current.pendingQuestion?.questionId).toBe("q2");
+
+    await act(async () => {
+      await result.current.selectSession(sessionId);
+    });
+    expect(result.current.pendingQuestion?.questionId).toBe("q1");
+  });
+
+  it("drops the bubble when the conversation moves on without an answer", async () => {
+    const harness = installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    const { taskId, sessionId } = await startTurn(result);
+
+    act(() => harness.emit(observed(taskId, sessionId, { type: "user_question", question_id: "q1", questions: question("A or B?") })));
+    act(() =>
+      harness.emit(
+        observed(taskId, sessionId, {
+          type: "loop_complete",
+          finish_reason: "cancelled",
+          final_content: null,
+          stats: { total_turns: 1, total_duration_ms: 10 }
+        })
+      )
+    );
+
+    expect(result.current.pendingQuestion).toBeNull();
+    await act(async () => {
+      await result.current.selectSession(sessionId);
+    });
+    expect(result.current.pendingQuestion).toBeNull();
+  });
+
+  it("re-docks a parked question from the daemon buffer after a remount", async () => {
+    const harness = installHarness();
+    window.agentResume.thunderChatGetActiveStream = vi.fn().mockResolvedValue({
+      sessionId: "sess_parked",
+      taskId: "task_parked",
+      startedAtMs: Date.now(),
+      isRunning: true,
+      streamingText: "working",
+      streamingReasoning: "",
+      streamingTools: [],
+      events: [
+        { agent_id: "root", timestamp_ms: Date.now(), event: { type: "token_delta", delta: "working" } },
+        {
+          agent_id: "root",
+          timestamp_ms: Date.now(),
+          event: { type: "user_question", question_id: "q_parked", questions: question("A or B?") }
+        }
+      ]
+    });
+
+    const { result } = renderHook(() => useThunderChat());
+    await act(async () => {
+      await result.current.selectSession("sess_parked");
+    });
+
+    expect(result.current.pendingQuestion?.questionId).toBe("q_parked");
+    expect(result.current.pendingQuestion?.sessionId).toBe("sess_parked");
+
+    // Answering hands the question id and its session to the daemon once.
+    await act(async () => {
+      await result.current.answerQuestion({ "A or B?": "A" });
+    });
+    expect(window.agentResume.thunderChatAnswerQuestion).toHaveBeenCalledWith({
+      questionId: "q_parked",
+      sessionId: "sess_parked",
+      answers: { "A or B?": "A" },
+      cancelled: false
+    });
+    expect(result.current.pendingQuestion).toBeNull();
   });
 });
