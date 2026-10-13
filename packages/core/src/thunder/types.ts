@@ -122,6 +122,34 @@ export interface ThunderAgentStats {
   avg_tokens_per_second?: number;
 }
 
+export interface ThunderMetricsSnapshot {
+  session_id: string;
+  task_id?: string;
+  model?: string;
+  thinking_level?: string;
+  is_running: boolean;
+  turn: number;
+  live_tps: number;
+  avg_tps?: number;
+  live_tokens: number;
+  live_reasoning_tokens: number;
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  reasoning_tokens?: number;
+  total_tokens?: number;
+  cached_tokens: number;
+  cache_write_tokens?: number;
+  cache_hit_percent?: number;
+  context_tokens: number;
+  context_window_limit?: number;
+  context_usage_percent?: number;
+  session_total_tokens: number;
+  generation_duration_ms: number;
+  tool_duration_ms: number;
+  duration_ms?: number;
+  wall_duration_ms?: number;
+}
+
 export interface ThunderTraceSpan {
   id: string;
   turn: number;
@@ -146,6 +174,7 @@ export interface ThunderTaskTrace {
   wall_duration_ms?: number;
   finish_reason?: string;
   stats?: ThunderAgentStats;
+  metrics?: ThunderMetricsSnapshot;
   final_content?: string;
   events?: ThunderObservedEvent[];
   file_changes?: ThunderFileChangeRecord[];
@@ -371,6 +400,7 @@ export interface ThunderActiveStreamSnapshot {
   streamingText: string;
   streamingReasoning: string;
   streamingTools: ThunderToolExecutionRecord[];
+  metrics?: ThunderMetricsSnapshot;
   events: ThunderObservedEvent[];
 }
 

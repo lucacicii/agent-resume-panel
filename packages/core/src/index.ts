@@ -966,6 +966,7 @@ export type {
   ThunderTaskTrace,
   ThunderTurnStats,
   ThunderAgentStats,
+  ThunderMetricsSnapshot,
   ThunderToolCallFunction,
   ThunderToolCall,
   ThunderToolExecutionRecord,

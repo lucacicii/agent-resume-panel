@@ -8,6 +8,16 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## English
 
+### [Unreleased]
+
+#### Changed
+
+- **Authoritative chat telemetry**: token rate, token breakdown, prompt-cache hit rate, context occupancy and durations now come from Thunder's `MetricsPlugin` snapshot instead of being recomputed in the renderer — live values stream in as `metrics_update` events, and the completed run's snapshot is read from the trace's `metrics` key
+
+#### Fixed
+
+- **Token speed** no longer under-reports by an order of magnitude: batched streaming deltas are estimated as real tokens rather than counted as one token per event, and the rate excludes prompt prefill (TTFT) and tool execution time
+
 ### [0.2.34]
 
 #### Added
@@ -760,6 +770,16 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 ---
 
 ## 简体中文
+
+### [未发布]
+
+#### 变更
+
+- **聊天遥测以后端为准**：token 速率、token 明细、Prompt Cache 命中率、上下文占用与耗时全部改由 Thunder 的 `MetricsPlugin` 快照提供，前端不再自行估算——实时数值通过 `metrics_update` 事件下发，任务结束后的快照读取自 trace 的 `metrics` 字段
+
+#### 修复
+
+- **token 速率不再低估一个数量级**：批量到达的流式 delta 按真实 token 估算，而非「一个事件算一个 token」；同时速率分母剔除 Prompt 首字等待（TTFT）与工具执行耗时
 
 ### [0.2.34]
 

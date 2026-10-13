@@ -1,4 +1,4 @@
-import type { ThunderActiveStreamSnapshot } from "@agent-resume/core";
+import type { ThunderActiveStreamSnapshot, ThunderMetricsSnapshot } from "@agent-resume/core";
 import type { ThunderObservedEvent } from "./thunderProtocol";
 
 /**
@@ -90,6 +90,14 @@ export function accumulateStreamEvent(
             }
           : tool
       );
+      break;
+    }
+    case "custom": {
+      const e = ev as { kind?: unknown; payload?: unknown };
+      if (e.kind === "metrics_update" && e.payload && typeof e.payload === "object") {
+        snapshot.metrics = e.payload as ThunderMetricsSnapshot;
+        return;
+      }
       break;
     }
   }

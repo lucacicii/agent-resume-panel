@@ -266,3 +266,156 @@ describe("useThunderChat parked questions", () => {
     expect(result.current.pendingQuestion).toBeNull();
   });
 });
+
+describe("useThunderChat streaming token metrics", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.clearAllMocks();
+  });
+
+  it("estimates real token counts from batched deltas and excludes tool execution time from live TPS", async () => {
+    const harness = installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    const { taskId, sessionId } = await startTurn(result);
+
+    vi.useFakeTimers();
+    const t0 = 1_700_000_000_000;
+    vi.setSystemTime(t0);
+
+    // First delta arrives at t0
+    act(() => {
+      harness.emit(
+        observed(taskId, sessionId, {
+          type: "reasoning_delta",
+          turn: 1,
+          delta: "思考分析问题结构与调用参数"
+        })
+      );
+    });
+
+    // 1 second of streaming batched CJK + code tokens (~60+ tokens in 1 chunk)
+    vi.setSystemTime(t0 + 1000);
+    act(() => {
+      harness.emit(
+        observed(taskId, sessionId, {
+          type: "token_delta",
+          turn: 1,
+          delta: "这是一段批量刷新到达的中文回复内容，包含完整的句子与技术分析说明，用来验证流式速率计算不会按事件个数误算为几个 token。"
+        })
+      );
+    });
+
+    const tokensTurn1 = result.current.streamingMetrics.tokensCount;
+    const tpsTurn1 = result.current.streamingMetrics.tps;
+    // Must count actual estimated tokens (> 60), not 2 delta events
+    expect(tokensTurn1).toBeGreaterThan(60);
+    expect(result.current.streamingMetrics.reasoningCount).toBeGreaterThan(10);
+    expect(tpsTurn1).toBeCloseTo(tokensTurn1 / 1.0, 1);
+
+    // Tool starts at t0 + 1000ms and takes 10 seconds to execute
+    act(() => {
+      harness.emit(
+        observed(taskId, sessionId, {
+          type: "tool_exec_start",
+          turn: 1,
+          tool_call_id: "call_1",
+          name: "bash",
+          arguments: { command: "sleep 10" }
+        })
+      );
+    });
+    vi.setSystemTime(t0 + 11_000);
+    act(() => {
+      harness.emit(
+        observed(taskId, sessionId, {
+          type: "tool_exec_result",
+          turn: 1,
+          tool_call_id: "call_1",
+          name: "bash",
+          result: { output: "ok", is_error: false }
+        })
+      );
+      harness.emit(
+        observed(taskId, sessionId, {
+          type: "turn_end",
+          turn: 1,
+          stats: {
+            turn: 1,
+            prompt_tokens: 1000,
+            completion_tokens: 80,
+            reasoning_tokens: 20,
+            duration_ms: 1000,
+            tool_calls_count: 1,
+            tokens_per_second: 80
+          }
+        })
+      );
+    });
+
+    // Turn 2 starts after 2s prefill wait (t0 + 13_000) and streams for 1s (t0 + 14_000)
+    vi.setSystemTime(t0 + 13_000);
+    act(() => {
+      harness.emit(
+        observed(taskId, sessionId, {
+          type: "token_delta",
+          turn: 2,
+          delta: "开始第二轮流式输出内容，"
+        })
+      );
+    });
+    vi.setSystemTime(t0 + 14_000);
+    act(() => {
+      harness.emit(
+        observed(taskId, sessionId, {
+          type: "token_delta",
+          turn: 2,
+          delta: "工具执行的十秒钟等待以及首字延迟都不应当稀释模型的真实生成速率。"
+        })
+      );
+    });
+
+    // Active generation time is 1s (turn 1) + 1s (turn 2) = 2s, NOT 14s wall clock
+    const totalTokens = result.current.streamingMetrics.tokensCount;
+    const liveTps = result.current.streamingMetrics.tps;
+    expect(totalTokens).toBeGreaterThan(120);
+    expect(liveTps).toBeCloseTo(totalTokens / 2.0, 1);
+    expect(liveTps).toBeGreaterThan(60);
+  });
+
+  it("adopts authoritative metrics_update snapshots emitted by Thunder's MetricsPlugin", async () => {
+    const harness = installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    const { taskId, sessionId } = await startTurn(result);
+
+    act(() => {
+      harness.emit(
+        observed(taskId, sessionId, {
+          type: "custom",
+          kind: "metrics_update",
+          payload: {
+            session_id: sessionId,
+            task_id: taskId,
+            is_running: true,
+            turn: 1,
+            live_tps: 78.6,
+            live_tokens: 420,
+            live_reasoning_tokens: 180,
+            cached_tokens: 8000,
+            context_tokens: 12420,
+            session_total_tokens: 25000,
+            generation_duration_ms: 5343,
+            tool_duration_ms: 120
+          }
+        })
+      );
+    });
+
+    expect(result.current.streamingMetrics).toEqual({
+      tokensCount: 420,
+      tps: 78.6,
+      reasoningCount: 180
+    });
+    expect(result.current.currentContextTokens).toBe(12420);
+    expect(result.current.sessionTotalTokens).toBe(25000);
+  });
+});
