@@ -523,9 +523,11 @@ export function ChatMain({
         )}
       </div>
 
-      {/* Floating Composer. The agent question bubble (task parked until
-          answered) docks directly above the input inside the same floating
-          layer, so the composer can never cover it. */}
+      {/* Composer row: the last row of the pane's flex column, below the
+          scrollable feed. The agent question bubble (task parked until
+          answered) docks directly above the input in the same row, so the
+          composer can never cover it — and the row now takes its own height,
+          so neither can cover the messages. */}
       <ChatComposer
         docked={
           hasQuestion && pendingQuestion ? (

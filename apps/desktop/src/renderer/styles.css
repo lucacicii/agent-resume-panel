@@ -19124,8 +19124,10 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 /* --- Chat Feed --- */
 .tb-chat-feed {
   flex: 1 1 auto;
+  /* The composer follows in flow, so the feed reserves no bottom clearance. */
+  min-height: 0;
   overflow-y: auto;
-  padding: 24px 24px 150px 24px;
+  padding: 24px;
   display: flex;
   flex-direction: column;
 }
@@ -19795,15 +19797,21 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 }
 
 /* --- BeautifulUI: Chat Composer & Prompt Bar --- */
+/*
+ * The composer is the last row of the chat pane's flex column, not an overlay:
+ * it takes its natural height and the feed (`flex: 1 1 auto`) absorbs the
+ * remainder, so a taller composer — a multi-line draft, the queued bar, pending
+ * image thumbnails, or a docked question card — can never cover the newest
+ * messages. It used to be `position: absolute; bottom: 0; z-index: 20` with a
+ * hand-tuned 150px bottom padding on the feed faking the clearance, which broke
+ * as soon as the composer grew past that value.
+ */
 .tb-composer-wrapper {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
+  flex: 0 0 auto;
+  position: relative;
   padding: 16px 24px 20px 24px;
   background: linear-gradient(to top, var(--color-window-bg) 75%, transparent);
   pointer-events: none;
-  z-index: 20;
 }
 
 .tb-composer-queued {
@@ -20124,9 +20132,10 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 
 /*
  * Agent question bubble docks directly above the composer box, inside the
- * floating composer layer (.tb-composer-wrapper, z-index 20, pointer-events:
- * none). It used to sit in flow under the wrapper, where the composer covered
- * it entirely — docking it in the same layer keeps it visible and clickable.
+ * composer's own row (.tb-composer-wrapper, pointer-events: none). It used to
+ * sit in flow under the wrapper, where the composer covered it entirely. Now
+ * that the row is a normal flex-column item, the row grows with the card and
+ * the feed shrinks, so nothing covers anything and no clearance is faked.
  */
 .tb-chat-main .tb-composer-wrapper .wb-acp-question-card {
   pointer-events: auto;
@@ -20138,15 +20147,6 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   backdrop-filter: var(--backdrop-blur-heavy);
   -webkit-backdrop-filter: var(--backdrop-blur-heavy);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.04);
-}
-
-/*
- * While a question is docked, grow the feed's composer clearance so the card
- * (capped at min(42vh, 360px) tall) plus the input doesn't cover the newest
- * messages that prompted it.
- */
-.tb-chat-main.has-question .tb-chat-feed {
-  padding-bottom: calc(min(42vh, 360px) + 200px);
 }
 
 .wb-terminal-composer-suggestion.is-active .tb-composer-suggestion-badge {
