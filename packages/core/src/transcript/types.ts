@@ -23,6 +23,7 @@ export interface PreviewHomes {
   opencodeHome: string;
   piHome: string;
   primeHome: string;
+  ompHome: string;
   cursorHome: string;
   cursorIdeUserDataHome: string;
 }

@@ -6,8 +6,7 @@ import { renameClaudeSession } from "./claude";
 import { renameCodexSession } from "./codex";
 import { renameGrokSession } from "./grok";
 import { renameOpenCodeSession } from "./opencode";
-import { renamePiSession } from "./pi";
-import { renamePrimeSession } from "./pi";
+import { renameOmpSession, renamePiSession, renamePrimeSession } from "./pi";
 
 export type RenameHomes = PreviewHomes;
 
@@ -45,6 +44,8 @@ export async function renameSessionNative(
       return renamePiSession(homes.piHome, session, title);
     case "prime":
       return renamePrimeSession(homes.primeHome, session, title);
+    case "omp":
+      return renameOmpSession(homes.ompHome, session, title);
     case "chat":
       return renameAcpSessionInStore(homes.panelHome, session.id, title);
     default:

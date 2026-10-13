@@ -6,12 +6,13 @@ export type AgentProvider =
   | "opencode"
   | "pi"
   | "prime"
+  | "omp"
   | "cursor"
   | "cursor-ide"
   | "chat";
 
 /** Underlying ACP agent when provider is "chat". */
-type CatalogAcpProvider = "codex" | "claude" | "grok" | "opencode" | "pi" | "prime";
+type CatalogAcpProvider = "codex" | "claude" | "grok" | "opencode" | "pi" | "prime" | "omp";
 
 export interface AgentSession {
   provider: AgentProvider;
@@ -31,7 +32,7 @@ export interface AgentSession {
   source?: string;
   /**
    * When provider is "chat" (ACP), the underlying ACP agent
-   * (codex / claude / grok / opencode / pi / prime).
+   * (codex / claude / grok / opencode / pi / prime / omp).
    */
   acpProvider?: CatalogAcpProvider;
   archived?: boolean;
@@ -104,7 +105,8 @@ export function toAgentSession(row: CatalogSessionRow): AgentSession {
       acp === "grok" ||
       acp === "opencode" ||
       acp === "pi" ||
-      acp === "prime"
+      acp === "prime" ||
+      acp === "omp"
     ) {
       session.acpProvider = acp;
     }

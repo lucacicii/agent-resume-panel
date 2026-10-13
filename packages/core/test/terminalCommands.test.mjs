@@ -15,6 +15,7 @@ test("supportsNewSessionYoloMode accurately identifies providers with YOLO suppo
   assert.equal(supportsNewSessionYoloMode("grok"), true);
   assert.equal(supportsNewSessionYoloMode("opencode"), true);
   assert.equal(supportsNewSessionYoloMode("prime"), true);
+  assert.equal(supportsNewSessionYoloMode("omp"), true);
   assert.equal(supportsNewSessionYoloMode("cursor"), true);
   assert.equal(supportsNewSessionYoloMode("pi"), false);
   assert.equal(supportsNewSessionYoloMode("cursor-ide"), false);
@@ -24,6 +25,7 @@ test("supportsNewSessionYoloMode accurately identifies providers with YOLO suppo
 test("buildNewSessionCommand keeps standard commands unchanged", () => {
   assert.equal(buildNewSessionCommand("codex", "/work/app", "standard"), "codex --cd '/work/app'");
   assert.equal(buildNewSessionCommand("claude", "/work/app", "standard"), "claude");
+  assert.equal(buildNewSessionCommand("omp", "/work/app", "standard"), "omp");
 });
 
 test("buildNewSessionCommand enables provider-specific YOLO flags", () => {
@@ -33,6 +35,7 @@ test("buildNewSessionCommand enables provider-specific YOLO flags", () => {
   assert.equal(buildNewSessionCommand("grok", "/work/app", "yolo"), "grok --cwd '/work/app' --permission-mode bypassPermissions --sandbox off");
   assert.equal(buildNewSessionCommand("opencode", "/work/app", "yolo"), "opencode '/work/app' --auto");
   assert.equal(buildNewSessionCommand("cursor", "/work/app", "yolo"), "cursor-agent --workspace '/work/app' --yolo --sandbox disabled --approve-mcps");
+  assert.equal(buildNewSessionCommand("omp", "/work/app", "yolo"), "omp --auto-approve");
 });
 
 test("buildNewSessionCommand rejects providers without a verified YOLO mode", () => {
@@ -45,6 +48,7 @@ test("supportsSessionContext identifies providers with verified session context 
   assert.equal(supportsSessionContext("claude"), true);
   assert.equal(supportsSessionContext("pi"), true);
   assert.equal(supportsSessionContext("prime"), true);
+  assert.equal(supportsSessionContext("omp"), true);
   assert.equal(supportsSessionContext("agy"), false);
   assert.equal(supportsSessionContext("cursor"), false);
   assert.equal(supportsSessionContext("opencode"), false);
@@ -65,6 +69,10 @@ test("sessionContextFlags crafts provider-specific extra prompt flags", () => {
   );
   assert.equal(
     sessionContextFlags("prime", "/tmp/ws/AGENTS.md"),
+    "--append-system-prompt \"$(cat '/tmp/ws/AGENTS.md')\""
+  );
+  assert.equal(
+    sessionContextFlags("omp", "/tmp/ws/AGENTS.md"),
     "--append-system-prompt \"$(cat '/tmp/ws/AGENTS.md')\""
   );
   assert.equal(sessionContextFlags("agy", "/tmp/ws/AGENTS.md"), "");

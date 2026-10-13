@@ -13,6 +13,7 @@ export const DEFAULT_AGENT_HOMES = {
   opencodeHome: "~/.local/share/opencode",
   piHome: "~/.pi/agent",
   primeHome: "~/.prime/agent",
+  ompHome: "~/.omp/agent",
   cursorHome: "~/.cursor"
 } as const;
 
@@ -73,6 +74,7 @@ export function resolvePreviewHomes(settings: PanelSettings, panelHomeHint?: str
     opencodeHome: expandHome(homes.opencodeHome?.trim() || DEFAULT_AGENT_HOMES.opencodeHome),
     piHome: expandHome(homes.piHome?.trim() || DEFAULT_AGENT_HOMES.piHome),
     primeHome: expandHome(homes.primeHome?.trim() || DEFAULT_AGENT_HOMES.primeHome),
+    ompHome: expandHome(homes.ompHome?.trim() || DEFAULT_AGENT_HOMES.ompHome),
     cursorHome: expandHome(homes.cursorHome?.trim() || DEFAULT_AGENT_HOMES.cursorHome),
     cursorIdeUserDataHome: expandHome(homes.cursorIdeUserDataHome?.trim() || defaultCursorIdeUserDataHome())
   };

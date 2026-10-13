@@ -7,7 +7,7 @@ import { previewCodexSession } from "./codex";
 import { previewCursorSession } from "./cursor";
 import { previewGrokSession } from "./grok";
 import { previewOpenCodeSession } from "./opencode";
-import { previewPiSession, previewPrimeSession } from "./pi";
+import { previewOmpSession, previewPiSession, previewPrimeSession } from "./pi";
 import { PreviewHomes, PreviewMessage, SessionPreviewResult } from "./types";
 
 export async function loadSessionPreview(
@@ -30,6 +30,8 @@ export async function loadSessionPreview(
       return previewPiSession(session, homes, options);
     case "prime":
       return previewPrimeSession(session, homes, options);
+    case "omp":
+      return previewOmpSession(session, homes, options);
     case "cursor":
       return previewCursorSession(session, homes, options);
     case "chat":
