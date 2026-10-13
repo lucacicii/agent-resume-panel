@@ -182,7 +182,13 @@ export interface ThunderTaskTrace {
 }
 
 export type ThunderAgentEvent =
-  | { type: "turn_start"; turn: number; timestamp: number }
+  | {
+      type: "turn_start";
+      turn: number;
+      timestamp: number;
+      /** Estimated size of the prompt this turn sends (system prompt + tools included). */
+      estimated_prompt_tokens?: number;
+    }
   | { type: "token_delta"; turn: number; delta: string }
   | { type: "reasoning_delta"; turn: number; delta: string }
   | {

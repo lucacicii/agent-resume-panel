@@ -1083,6 +1083,10 @@ export function useThunderChat() {
       setStreamTokensCount(0);
       setStreamReasoningCount(0);
       setLiveStreamingTps(0);
+      // The badge promises "发送新消息后重新计算": without this the previous
+      // run's elapsed time sat there until the first turn of the new one ended.
+      // The snapshot refills it from the run's first frame.
+      setLastRunMetrics(null);
       setIsStreaming(true);
 
       const taskId = `task_${Date.now()}`;
@@ -1645,6 +1649,19 @@ export function useThunderChat() {
             if (typeof snap.session_total_tokens === "number" && snap.session_total_tokens > 0) {
               setSessionTotalTokens(snap.session_total_tokens);
             }
+            // The snapshot is the only source that knows the run's wall clock
+            // *while it runs*: `turn_end` reports a turn's duration and only the
+            // trace (read after the run) had the total. Without this the badge
+            // showed the last turn — a 27-minute task reading "2.9s".
+            setLastRunMetrics({
+              tps: snap.avg_tps ?? (snap.live_tps > 0 ? snap.live_tps : undefined),
+              promptTokens: snap.prompt_tokens,
+              completionTokens: snap.completion_tokens,
+              cachedTokens: snap.cached_tokens,
+              reasoningTokens: snap.reasoning_tokens,
+              totalTokens: snap.total_tokens,
+              durationMs: snap.wall_duration_ms ?? snap.duration_ms
+            });
           }
           break;
         }

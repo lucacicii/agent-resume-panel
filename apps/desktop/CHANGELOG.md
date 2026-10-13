@@ -17,6 +17,8 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 #### Fixed
 
 - **Token speed** no longer under-reports by an order of magnitude: batched streaming deltas are estimated as real tokens rather than counted as one token per event, and the rate excludes prompt prefill (TTFT) and tool execution time
+- **Total elapsed time** now shows the run's wall clock instead of the last turn's duration — a 27-minute task read "2.9s" because `turn_end` only carries that turn's time; it is also cleared when a new message is sent, so the previous run's elapsed no longer lingers
+- **Context occupancy and cumulative tokens** advance while the answer streams, instead of jumping once per turn (Thunder reports the in-flight request's prompt size on `turn_start` and grows it with the output)
 
 ### [0.2.34]
 
@@ -780,6 +782,8 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 #### 修复
 
 - **token 速率不再低估一个数量级**：批量到达的流式 delta 按真实 token 估算，而非「一个事件算一个 token」；同时速率分母剔除 Prompt 首字等待（TTFT）与工具执行耗时
+- **总耗时改为整轮 run 的挂钟时间**：此前用的是「最后一个 turn」的耗时（`turn_end` 只带该轮），27 分钟的任务会显示成 2.9s；同时发送新消息时清空，不再残留上一轮的数字
+- **上下文与总消耗在流式过程中就会增长**：不再只在轮末跳一次（Thunder 在 `turn_start` 就报出本次请求的 prompt 规模，并随生成量推进）
 
 ### [0.2.34]
 

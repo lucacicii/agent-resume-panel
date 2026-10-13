@@ -404,7 +404,8 @@ describe("useThunderChat streaming token metrics", () => {
             context_tokens: 12420,
             session_total_tokens: 25000,
             generation_duration_ms: 5343,
-            tool_duration_ms: 120
+            tool_duration_ms: 120,
+            wall_duration_ms: 91_000
           }
         })
       );
@@ -417,5 +418,49 @@ describe("useThunderChat streaming token metrics", () => {
     });
     expect(result.current.currentContextTokens).toBe(12420);
     expect(result.current.sessionTotalTokens).toBe(25000);
+    // 总耗时 is the run's wall clock, known while it runs — not the last turn's
+    // duration (which is all `turn_end` carries).
+    expect(result.current.lastRunMetrics?.durationMs).toBe(91_000);
+  });
+
+  it("forgets the previous run's figures when a new one starts", async () => {
+    const harness = installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    const { taskId, sessionId } = await startTurn(result);
+
+    act(() => {
+      harness.emit(
+        observed(taskId, sessionId, {
+          type: "custom",
+          kind: "metrics_update",
+          payload: {
+            session_id: sessionId,
+            task_id: taskId,
+            is_running: true,
+            turn: 1,
+            live_tps: 50,
+            live_tokens: 100,
+            live_reasoning_tokens: 0,
+            cached_tokens: 0,
+            context_tokens: 2000,
+            session_total_tokens: 2000,
+            generation_duration_ms: 100,
+            tool_duration_ms: 0,
+            wall_duration_ms: 12_000
+          }
+        })
+      );
+    });
+    expect(result.current.lastRunMetrics?.durationMs).toBe(12_000);
+
+    // End the run, then start another: a new message must not show the previous
+    // run's elapsed time until its own first frame arrives.
+    await act(async () => {
+      harness.resolveRun({ finalContent: "done", finishReason: "done" });
+    });
+    act(() => {
+      void result.current.sendMessage("next task");
+    });
+    expect(result.current.lastRunMetrics).toBeNull();
   });
 });
