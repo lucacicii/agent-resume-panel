@@ -39,6 +39,9 @@ const EXTENSION_DEAD = [
 ];
 
 const DESKTOP_DEAD = [
+  // Browser sessions moved into the workbench sidebar panel; the pane tab group is gone.
+  "desktop.browser.closeBrowser",
+  "desktop.workbench.tabGroupBrowser",
   "desktop.agent.auditFailedPrefix",
   "desktop.agent.auditIndexWithTitle",
   "desktop.agent.errorPrefix",

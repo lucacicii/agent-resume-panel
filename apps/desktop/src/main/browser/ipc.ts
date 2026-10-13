@@ -2,6 +2,7 @@ import { BrowserWindow } from "electron";
 import { safeHandle } from "../ipcUtils";
 import { BrowserController } from "./controller";
 import { getBrowserWindow, listBrowserWindows } from "./window";
+import type { BrowserProbeStrings } from "../../shared/browserTypes";
 import type {
   BrowserCreateArgs,
   BrowserEvent,
@@ -195,6 +196,59 @@ export function registerBrowserIpc(deps: RegisterBrowserIpcDeps): BrowserControl
     "browser:clearCookies",
     async (_event, args: { browserId: BrowserSessionId; hosts?: string[] }) => {
       return c.clearCookies(args.browserId, args.hosts);
+    }
+  );
+
+  safeHandle(
+    "browser:setProbeActive",
+    async (
+      _event,
+      args: {
+        browserId: BrowserSessionId;
+        tabId?: BrowserTabId;
+        active: boolean;
+        strings?: BrowserProbeStrings;
+      }
+    ) => {
+      return c.setProbeActive(args.browserId, args.tabId, Boolean(args.active), args.strings);
+    }
+  );
+
+  safeHandle(
+    "browser:setInspectMode",
+    async (
+      _event,
+      args: { browserId: BrowserSessionId; tabId?: BrowserTabId; mode: "inspect" | "markup" | "off" }
+    ) => {
+      return c.setInspectMode(args.browserId, args.mode, args.tabId);
+    }
+  );
+
+  safeHandle(
+    "browser:clearMarkups",
+    async (_event, args: { browserId: BrowserSessionId; tabId?: BrowserTabId; id?: string }) => {
+      return c.clearMarkups(args.browserId, args.id, args.tabId);
+    }
+  );
+
+  safeHandle(
+    "browser:setZoom",
+    async (_event, args: { browserId: BrowserSessionId; tabId?: BrowserTabId; factor: number }) => {
+      return c.setZoom(args.browserId, Number(args.factor), args.tabId);
+    }
+  );
+
+  safeHandle(
+    "browser:toggleDevTools",
+    async (_event, args: { browserId: BrowserSessionId; tabId?: BrowserTabId }) => {
+      return c.toggleDevTools(args.browserId, args.tabId);
+    }
+  );
+
+  safeHandle(
+    "browser:clearDevtoolsLogs",
+    async (_event, args: { browserId: BrowserSessionId; tabId?: BrowserTabId }) => {
+      return c.clearDevtoolsLogs(args.browserId, args.tabId);
     }
   );
 

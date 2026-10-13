@@ -22,7 +22,7 @@ Every task workbench lives in **its own window**. The main window is the **GTD b
 4. Resume CLI sessions in the **embedded terminal** (multi-tab) or **external** terminal. If [workspace mentions](workspace-mentions.md) are configured, the new-session picker can open a pack’s work folder and inject reference paths into the first prompt. `arpm go <id>` does the same from any terminal.  
 5. If the default target is an **ACP · …** agent, **New session** opens a **visual chat pane** in the same tab strip (Agent Client Protocol; Claude Code, Codex, Grok Build, OpenCode, Pi).  
 6. The detail header names the **task** and points at the directory it works in — the folder you activated, else its only folder, else the task's shared workspace — with a one-click **reveal in Finder** and the **branch** control; watch the **status bar** for live **cwd** and **git branch** (including nested repos when detected).  
-7. Open **Search** or **Scripts** from the detail toolbar, or expand scripts under **Explorer**; click the status bar branch to switch branches when Git IPC is available.  
+7. Open **Search**, **Scripts** or **Browser** from the detail toolbar, or expand scripts under **Explorer**; click the status bar branch to switch branches when Git IPC is available.  
 8. In **Git**, select specific changed files before commit when you do not want to commit everything; open a changed file to inspect an inline diff and search within it. **Auto generate** uses `<repo>/.arp/config.json` `workbench.git.commitMessage` when present, otherwise **Settings → Workbench** commit-message style.
 9. In **Explorer**, right-click a file to inspect its Git history across local and remote-tracking branches, including commits before renames. Right-click a folder to discard Git changes under that directory, or use context menus on changed files to open them or copy absolute / relative paths. Open editors watch the workspace and report external changes, conflicts, and deleted files.
 
@@ -36,6 +36,7 @@ Every task workbench lives in **its own window**. The main window is the **GTD b
 | **Nested git scan** | Discover git repos under the project tree |
 | **Git changes** | Stage/select files, commit only selected paths, push / pull, and inspect diffs |
 | **Git log graph** | Branch graph and commit node details in the side panel |
+| **Browser** | Open a live page for this folder: address bar, tabs, clear cookies, and pop-out into its own window. **Pick element** reports the element, its component and source line; **Annotate** frames regions and attaches notes you can send to the session; the CDP console collects page errors and forwards one to the session; viewport presets and zoom drive the embedded view |
 
 ### Find in Files
 
@@ -107,7 +108,7 @@ The binary is discovered automatically (a sibling checkout, the bundled copy und
 4. CLI 会话用 **内嵌终端**（多标签）或 **外部终端** 恢复。若配置了 [工作区 Mention](workspace-mentions.md)，新建会话选择器可打开该包的工作目录并把参考路径写入首条 prompt。任意终端也可用 `arpm go <id>`。  
 5. 若默认目标为 **ACP · …** Agent，**新建会话**会在同一标签栏打开 **可视化聊天**（Agent Client Protocol；支持 Claude Code、Codex、Grok Build、OpenCode、Pi）。  
 6. 详情头显示 **任务名** 与它指向的目录（你激活的目录 → 唯一目录 → 任务的共享 workspace），目录后可一键 **在 Finder 中显示**，同一行还有 **分支** 控件；**状态栏** 显示实时 **cwd** 与 **git 分支**（可识别嵌套 git 根）。  
-7. 从详情工具栏打开 **Search** 或 **Scripts**，也可在 **Explorer** 下展开脚本区；Git IPC 可用时可点击状态栏分支切换分支。  
+7. 从详情工具栏打开 **Search**、**Scripts** 或 **Browser**，也可在 **Explorer** 下展开脚本区；Git IPC 可用时可点击状态栏分支切换分支。  
 8. 在 **Git** 中可先勾选变更文件再提交，不必一次提交全部改动；打开变更文件可查看内联 diff 并在其中查找。**自动生成**优先使用仓库 `<repo>/.arp/config.json` 的 `workbench.git.commitMessage`，没有该文件时回退到 **设置 → Workbench** 的提交信息格式。
 9. 在 **Explorer** 中右键文件可查看本地分支与远程跟踪分支中的 Git 提交历史（包含文件重名前的记录）；右键目录可一键回退该目录下的 Git 改动；在 Git 变更项右键菜单中可直接打开文件或复制绝对/相对路径。打开的编辑器会监听工作区，并提示外部修改、冲突和文件删除。
 
@@ -121,6 +122,7 @@ The binary is discovered automatically (a sibling checkout, the bundled copy und
 | **嵌套 Git 扫描** | 发现项目树下的 git 仓库 |
 | **Git 变更** | 勾选文件、仅提交选中路径、push / pull 与 diff 查看 |
 | **Git Log 图** | 侧边栏分支图与提交节点信息 |
+| **Browser** | 为当前目录打开实时页面：地址栏、多标签、清除 Cookie、弹出独立窗口。**圈选** 报告元素、所在组件与源码行号；**圈改** 框选区域并附上批注，可一键发送到会话；CDP 控制台收集页面报错并转交会话；视口预设与缩放驱动内嵌视图 |
 
 ### 全局查找
 

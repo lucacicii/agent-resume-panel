@@ -1,11 +1,13 @@
 import { WebContentsView, session as electronSession, type Session } from "electron";
 import { isNavigationAllowed } from "../policy";
+import { isProbeMessage } from "../probe";
 import type { BrowserPolicy, BrowserTabId, BrowserTabState } from "../types";
 import { normalizeUrlInput } from "../types";
 
 type TabViewHooks = {
   onTabState: (tabId: BrowserTabId, patch: Partial<BrowserTabState>) => void;
   onConsole?: (tabId: BrowserTabId, level: string, message: string) => void;
+  onProbeMessage?: (tabId: BrowserTabId, text: string) => void;
   getPolicy: () => BrowserPolicy;
 };
 
@@ -103,7 +105,13 @@ export function createElectronTabView(args: {
     }
   });
   wc.on("console-message", (_event, level, message) => {
-    args.hooks.onConsole?.(args.tabId, String(level), String(message));
+    const text = String(message);
+    // Probe payloads are protocol, not page logs: they never reach the console feed.
+    if (isProbeMessage(text)) {
+      args.hooks.onProbeMessage?.(args.tabId, text);
+      return;
+    }
+    args.hooks.onConsole?.(args.tabId, String(level), text);
   });
   wc.on("render-process-gone", (_event, details) => {
     loading = false;

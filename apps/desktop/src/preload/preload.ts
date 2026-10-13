@@ -68,7 +68,8 @@ export type {
 import type {
   BrowserIpcEvent,
   BrowserPolicyState,
-  BrowserSessionState
+  BrowserSessionState,
+  BrowserProbeStrings
 } from "../shared/browserTypes";
 import type { TaskColorKey, TaskCustomColor } from "../shared/taskColors";
 export type { TaskColorKey, TaskCustomColor };
@@ -235,6 +236,21 @@ export interface DesktopApi {
   browserActivateTab(args: { browserId: string; tabId: string }): Promise<BrowserSessionState>;
   browserSetPolicy(args: { browserId: string; policy: Partial<BrowserPolicyState> }): Promise<BrowserSessionState>;
   browserClearCookies(args: { browserId: string; hosts?: string[] }): Promise<BrowserSessionState>;
+  browserSetProbeActive(args: {
+    browserId: string;
+    tabId?: string;
+    active: boolean;
+    strings?: BrowserProbeStrings;
+  }): Promise<{ ok: boolean }>;
+  browserSetInspectMode(args: {
+    browserId: string;
+    tabId?: string;
+    mode: "inspect" | "markup" | "off";
+  }): Promise<{ ok: boolean }>;
+  browserClearMarkups(args: { browserId: string; tabId?: string; id?: string }): Promise<{ ok: boolean }>;
+  browserSetZoom(args: { browserId: string; tabId?: string; factor: number }): Promise<{ ok: boolean }>;
+  browserToggleDevTools(args: { browserId: string; tabId?: string }): Promise<{ ok: boolean; open: boolean }>;
+  browserClearDevtoolsLogs(args: { browserId: string; tabId?: string }): Promise<{ ok: boolean }>;
   onBrowserEvent(callback: (event: BrowserIpcEvent) => void): () => void;
   onSettingsNavigate(callback: (payload: { pane: string }) => void): () => void;
   onSettingsChanged(
@@ -1687,6 +1703,12 @@ const api: DesktopApi = {
   browserActivateTab: (args) => ipcRenderer.invoke("browser:activateTab", args),
   browserSetPolicy: (args) => ipcRenderer.invoke("browser:setPolicy", args),
   browserClearCookies: (args) => ipcRenderer.invoke("browser:clearCookies", args),
+  browserSetProbeActive: (args) => ipcRenderer.invoke("browser:setProbeActive", args),
+  browserSetInspectMode: (args) => ipcRenderer.invoke("browser:setInspectMode", args),
+  browserClearMarkups: (args) => ipcRenderer.invoke("browser:clearMarkups", args),
+  browserSetZoom: (args) => ipcRenderer.invoke("browser:setZoom", args),
+  browserToggleDevTools: (args) => ipcRenderer.invoke("browser:toggleDevTools", args),
+  browserClearDevtoolsLogs: (args) => ipcRenderer.invoke("browser:clearDevtoolsLogs", args),
   onBrowserEvent: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, payload: BrowserIpcEvent) => callback(payload);
     ipcRenderer.on("browser:event", handler);

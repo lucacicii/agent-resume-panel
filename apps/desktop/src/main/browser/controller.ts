@@ -1,9 +1,13 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
   BrowserWindow,
+  type WebContents,
   type WebContentsView
 } from "electron";
 import { createElectronTabView, type ElectronTabView } from "./backend/electron";
+import { BrowserDevtoolsBridge } from "./devtools";
+import { parseProbeMessage } from "./probe";
+import type { BrowserProbeStrings } from "../../shared/browserTypes";
 import {
   closeBrowserWindow,
   contentBoundsForWindow,
@@ -33,6 +37,16 @@ type BrowserControllerDeps = {
   getDefaultPolicy?: () => BrowserPolicy | undefined;
   getDefaultSurface?: () => BrowserSurfaceKind | "last-used";
   broadcast: (event: BrowserEvent) => void;
+};
+
+/** Probe bridge plus the page listeners that must come off with it. */
+type TabProbe = {
+  browserId: BrowserSessionId;
+  tabId: BrowserTabId;
+  bridge: BrowserDevtoolsBridge;
+  wc: WebContents;
+  onLoad: () => void;
+  onDevtoolsClosed: () => void;
 };
 
 type InternalSession = {
@@ -72,8 +86,15 @@ function cloneState(state: BrowserSessionState): BrowserSessionState {
   };
 }
 
+/** Probe bridge key: one bridge per tab. */
+function probeKey(browserId: BrowserSessionId, tabId: BrowserTabId): string {
+  return `${browserId}::${tabId}`;
+}
+
 export class BrowserController {
   private readonly sessions = new Map<BrowserSessionId, InternalSession>();
+  /** Probe/console bridges, keyed `${browserId}::${tabId}`. */
+  private readonly probes = new Map<string, TabProbe>();
   private lastUsedSurface: BrowserSurfaceKind = "workbench";
 
   constructor(private readonly deps: BrowserControllerDeps) {}
@@ -167,6 +188,7 @@ export class BrowserController {
     const session = this.sessions.get(browserId);
     if (!session) return { ok: false };
     this.detachActiveView(session);
+    this.releaseProbes(browserId);
     for (const tab of session.tabs.values()) {
       tab.dispose();
     }
@@ -354,6 +376,7 @@ export class BrowserController {
     if (session.state.activeTabId === tabId) {
       this.detachActiveView(session);
     }
+    this.releaseProbe(browserId, tabId);
     tab.dispose();
     session.tabs.delete(tabId);
     session.state.tabs = session.state.tabs.filter((item) => item.tabId !== tabId);
@@ -427,6 +450,120 @@ export class BrowserController {
     const tab = session.tabs.get(id);
     if (!tab || tab.view.webContents.isDestroyed()) return null;
     return tab.view.webContents;
+  }
+
+  /**
+   * Turns the pick/annotate probe on for one tab. The bridge owns the CDP
+   * console session, so `active: false` releases both.
+   */
+  setProbeActive(
+    browserId: BrowserSessionId,
+    tabId: BrowserTabId | undefined,
+    active: boolean,
+    strings?: BrowserProbeStrings
+  ): { ok: boolean } {
+    const session = this.sessions.get(browserId);
+    if (!session) return { ok: false };
+    const id = tabId || session.state.activeTabId;
+
+    if (!active) {
+      this.releaseProbe(browserId, id);
+      return { ok: true };
+    }
+
+    const tab = session.tabs.get(id);
+    if (!tab || tab.view.webContents.isDestroyed() || !strings) return { ok: false };
+    const key = probeKey(browserId, id);
+    const existing = this.probes.get(key);
+    if (existing) {
+      // Already live: re-arm, so a panel that lost the shared debugger session can recover.
+      existing.bridge.attach();
+      return { ok: true };
+    }
+
+    const wc = tab.view.webContents;
+    const bridge = new BrowserDevtoolsBridge(
+      wc,
+      {
+        onLog: (entry) => this.deps.broadcast({ type: "devtoolsLog", browserId, tabId: id, entry }),
+        onLogsCleared: () => this.deps.broadcast({ type: "devtoolsLogsCleared", browserId, tabId: id }),
+        onStateChange: (attached, reason) =>
+          this.deps.broadcast({ type: "devtoolsAttached", browserId, tabId: id, attached, reason })
+      },
+      strings
+    );
+    // The probe is installed per document, so every navigation needs it again.
+    const onLoad = () => void bridge.injectProbe();
+    // DevTools takes the debugger session away; it comes back on close.
+    const onDevtoolsClosed = () => {
+      if (this.probes.get(key)?.bridge === bridge) bridge.attach();
+    };
+    wc.on("dom-ready", onLoad);
+    wc.on("did-finish-load", onLoad);
+    wc.on("devtools-closed", onDevtoolsClosed);
+    this.probes.set(key, { browserId, tabId: id, bridge, wc, onLoad, onDevtoolsClosed });
+    bridge.attach();
+    void bridge.injectProbe();
+    return { ok: true };
+  }
+
+  async setInspectMode(
+    browserId: BrowserSessionId,
+    mode: "inspect" | "markup" | "off",
+    tabId?: BrowserTabId
+  ): Promise<{ ok: boolean }> {
+    const bridge = this.probeFor(browserId, tabId);
+    if (!bridge) return { ok: false };
+    await bridge.setInspectMode(mode);
+    return { ok: true };
+  }
+
+  async clearMarkups(browserId: BrowserSessionId, id?: string, tabId?: BrowserTabId): Promise<{ ok: boolean }> {
+    const bridge = this.probeFor(browserId, tabId);
+    if (!bridge) return { ok: false };
+    await bridge.clearMarkups(id);
+    return { ok: true };
+  }
+
+  /** Clears the console feed for every viewer of this tab. */
+  clearDevtoolsLogs(browserId: BrowserSessionId, tabId?: BrowserTabId): { ok: boolean } {
+    const bridge = this.probeFor(browserId, tabId);
+    if (!bridge) return { ok: false };
+    bridge.clearLogs();
+    return { ok: true };
+  }
+
+  /**
+   * Lets a synthetic click reach the page while the sidebar panel has the pick or
+   * annotate overlay armed. A no-op when no probe hosts the tab.
+   */
+  async setProbePassthrough(
+    browserId: BrowserSessionId,
+    passthrough: boolean,
+    tabId?: BrowserTabId
+  ): Promise<{ ok: boolean }> {
+    const bridge = this.probeFor(browserId, tabId);
+    if (!bridge) return { ok: false };
+    await bridge.setInputPassthrough(passthrough);
+    return { ok: true };
+  }
+
+  setZoom(browserId: BrowserSessionId, factor: number, tabId?: BrowserTabId): { ok: boolean } {
+    const wc = this.getTabWebContents(browserId, tabId);
+    if (!wc) return { ok: false };
+    wc.setZoomFactor(factor);
+    return { ok: true };
+  }
+
+  toggleDevTools(browserId: BrowserSessionId, tabId?: BrowserTabId): { ok: boolean; open: boolean } {
+    const wc = this.getTabWebContents(browserId, tabId);
+    if (!wc) return { ok: false, open: false };
+    if (wc.isDevToolsOpened()) {
+      wc.closeDevTools();
+      return { ok: true, open: false };
+    }
+    wc.openDevTools({ mode: "detach" });
+    return { ok: true, open: true };
   }
 
   /** Called when a standalone browser window is closed by the user. */
@@ -506,6 +643,18 @@ export class BrowserController {
             level,
             message
           });
+        },
+        onProbeMessage: (id, text) => {
+          const parsed = parseProbeMessage(text);
+          if (!parsed) return;
+          const browserId = session.state.id;
+          if (parsed.kind === "inspect") {
+            this.deps.broadcast({ type: "probeInspect", browserId, tabId: id, target: parsed.target });
+          } else if (parsed.kind === "markup") {
+            this.deps.broadcast({ type: "probeMarkup", browserId, tabId: id, markup: parsed.markup });
+          } else {
+            this.deps.broadcast({ type: "probeCancelled", browserId, tabId: id });
+          }
         }
       }
     });
@@ -533,6 +682,35 @@ export class BrowserController {
     const tab = session.tabs.get(id);
     if (!tab) throw new Error(`Unknown tab: ${id}`);
     return tab;
+  }
+
+  private probeFor(browserId: BrowserSessionId, tabId?: BrowserTabId): BrowserDevtoolsBridge | null {
+    const session = this.sessions.get(browserId);
+    if (!session) return null;
+    return this.probes.get(probeKey(browserId, tabId || session.state.activeTabId))?.bridge ?? null;
+  }
+
+  private releaseProbe(browserId: BrowserSessionId, tabId: BrowserTabId): void {
+    const key = probeKey(browserId, tabId);
+    const probe = this.probes.get(key);
+    if (!probe) return;
+    this.probes.delete(key);
+    if (!probe.wc.isDestroyed()) {
+      probe.wc.removeListener("dom-ready", probe.onLoad);
+      probe.wc.removeListener("did-finish-load", probe.onLoad);
+      probe.wc.removeListener("devtools-closed", probe.onDevtoolsClosed);
+    }
+    // The injected script outlives this bridge until the page navigates, so hand
+    // the page back before letting go: a panel closed while annotate was armed
+    // would otherwise leave its overlay swallowing every click. Annotations stay.
+    void probe.bridge.setInputPassthrough(true);
+    probe.bridge.dispose();
+  }
+
+  private releaseProbes(browserId: BrowserSessionId): void {
+    for (const probe of [...this.probes.values()]) {
+      if (probe.browserId === browserId) this.releaseProbe(probe.browserId, probe.tabId);
+    }
   }
 
   private attachActiveView(session: InternalSession, win: BrowserWindow, rect: BrowserRect): void {

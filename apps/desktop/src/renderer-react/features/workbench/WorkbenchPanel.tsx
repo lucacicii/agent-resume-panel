@@ -55,7 +55,7 @@ import {
   SelectionActionResult,
   useSelectionActionResult
 } from "../../selection/SelectionActionResult";
-import { BrowserPaneView } from "../browser/BrowserPaneView";
+import { BrowserSidePanel } from "../browser/BrowserSidePanel";
 import type { BrowserSessionState } from "../../../shared/browserTypes";
 import type { WorkbenchFocusSessionRequest, WorkbenchSendSelectionRequest } from "../../../shared/workbenchSelection";
 import { collectActiveSessionDots, type ActiveSessionDot } from "./activeSessionDots";
@@ -241,11 +241,9 @@ type BrowserPane = {
   browserId: string;
   projectPath: string;
   workbenchId?: string;
-  boundRecordId?: string;
-  startUrl?: string;
   surfaceKind: "workbench" | "window";
 };
-type SideView = "files" | "git" | "search" | "scripts" | null;
+type SideView = "files" | "git" | "search" | "scripts" | "browser" | null;
 type SearchReveal = { path: string; line: number; column: number; endColumn: number };
 const GTD_STATUSES = DESKTOP_GTD_STATUSES;
 /** Shared empty list so a project-less task keeps a stable array identity. */
@@ -1905,6 +1903,21 @@ export function WorkbenchPanel(): ReactPortal | null {
   const currentAcpChats = acpChats.filter((pane) => paneScopeKey(pane) === activeScopeKey);
   const currentThunderChats = thunderChats.filter((pane) => paneScopeKey(pane) === activeScopeKey);
   const currentBrowsers = browsers.filter((pane) => paneScopeKey(pane) === activeScopeKey);
+  const panelProject = sideRoot ?? selectedProject ?? null;
+  const panelBrowsers = useMemo(
+    () =>
+      currentBrowsers
+        .filter((pane) => !panelProject || projectPathKey(pane.projectPath) === projectPathKey(panelProject))
+        .map((pane) => ({
+          key: pane.key,
+          browserId: pane.browserId,
+          projectPath: pane.projectPath,
+          title: pane.title,
+          surfaceKind: pane.surfaceKind
+        }))
+        .reverse(),
+    [currentBrowsers, panelProject]
+  );
   const currentNotePanes = notePanes.filter((pane) => paneScopeKey(pane) === activeScopeKey);
   const activePane = activePanes[activeScopeKey] || "";
   const activeTerminal = currentTerminals.find((pane) => pane.key === activePane);
@@ -2345,7 +2358,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       remainingThunder?: ThunderChatPane[];
       remainingEditors?: EditorPane[];
       remainingDiffs?: DiffPane[];
-      remainingBrowsers?: BrowserPane[];
     }
   ) => {
     const history = (paneHistoryRef.current[scopeKey] || []).filter((item) => item !== closedKey);
@@ -2361,13 +2373,10 @@ export function WorkbenchPanel(): ReactPortal | null {
       ?? editors.filter((item) => paneScopeKey(item) === scopeKey && item.key !== closedKey);
     const projectDiffs = options?.remainingDiffs
       ?? diffs.filter((item) => paneScopeKey(item) === scopeKey && item.key !== closedKey);
-    const remainingBrowsers = options?.remainingBrowsers
-      ?? browsers.filter((item) => paneScopeKey(item) === scopeKey && item.key !== closedKey);
     const closedGroup: WorkbenchPaneGroup | null =
       terminals.find((item) => item.key === closedKey)?.group
       ?? (acpChats.some((item) => item.key === closedKey) ? "session" : null)
       ?? (thunderChats.some((item) => item.key === closedKey) ? "session" : null)
-      ?? (browsers.some((item) => item.key === closedKey) ? "browser" : null)
       ?? (editors.some((item) => item.key === closedKey) || diffs.some((item) => item.key === closedKey) ? "code" : null);
     const groupsByKey = new Map<string, WorkbenchPaneGroup>([
       ...remainingTerminals.map((item) => [item.key, item.group] as const),
@@ -2375,7 +2384,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       ...remainingThunder.map((item) => [item.key, "session"] as const),
       ...projectEditors.map((item) => [item.key, "code"] as const),
       ...projectDiffs.map((item) => [item.key, "code"] as const),
-      ...remainingBrowsers.map((item) => [item.key, "browser"] as const)
     ]);
     const liveKeys = new Set([
       ...remainingTerminals.map((item) => item.key),
@@ -2383,7 +2391,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       ...remainingThunder.map((item) => item.key),
       ...projectEditors.map((item) => item.key),
       ...projectDiffs.map((item) => item.key),
-      ...remainingBrowsers.map((item) => item.key)
     ]);
     const nextPane =
       history.find((item) => liveKeys.has(item) && groupsByKey.get(item) === closedGroup) ||
@@ -2393,7 +2400,6 @@ export function WorkbenchPanel(): ReactPortal | null {
       remainingThunder[remainingThunder.length - 1]?.key ||
       projectEditors[0]?.key ||
       projectDiffs[0]?.key ||
-      remainingBrowsers[remainingBrowsers.length - 1]?.key ||
       "";
     if (nextPane) {
       paneHistoryRef.current[scopeKey] = [nextPane, ...history.filter((item) => item !== nextPane)].slice(0, 32);
@@ -2402,7 +2408,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     setActivePanes((current) => (current[scopeKey] === closedKey ? { ...current, [scopeKey]: nextPane } : current));
     // Closing the active pane switches which session row should be highlighted.
     if (wasActive) setActiveSessionKey(workbenchPaneSessionKey(nextPane));
-  }, [acpChats, browsers, diffs, editors, terminals, thunderChats, workbenchPaneSessionKey]);
+  }, [acpChats, diffs, editors, terminals, thunderChats, workbenchPaneSessionKey]);
 
   const closeTerminal = useCallback((key: string) => {
     const pane = terminalsRef.current.find((item) => item.key === key);
@@ -2650,10 +2656,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     if (!pane) return;
     setBrowsers((current) => current.filter((item) => item.key !== key));
     void desktopApi().browserDestroy({ browserId: pane.browserId }).catch(() => undefined);
-    nextPaneAfterClose(paneScopeKey(pane), key, {
-      remainingBrowsers: browsers.filter((item) => paneScopeKey(item) === paneScopeKey(pane) && item.key !== key)
-    });
-  }, [browsers, nextPaneAfterClose]);
+  }, [browsers]);
 
   const openBrowser = useCallback(async (targetProject?: string, startUrl?: string) => {
     const projectPath = targetProject || selectedProject;
@@ -2679,16 +2682,14 @@ export function WorkbenchPanel(): ReactPortal | null {
             browserId: session.id,
             projectPath,
             workbenchId: activeWorkbenchIdRef.current ?? undefined,
-            startUrl,
             surfaceKind: session.surface.kind
           }
         ];
       });
-      setActivePane(key, projectPath);
     } catch (error) {
       setStatus({ text: statusError(error), kind: "error" });
     }
-  }, [selectedProject, setActivePane, t]);
+  }, [selectedProject, t]);
 
   // Auto-register browser panes created outside the Workbench UI (MCP browser_open,
   // agent-driven sessions, standalone window dock-back). Without this the pane has no
@@ -2833,15 +2834,13 @@ export function WorkbenchPanel(): ReactPortal | null {
       closeThunderChat(activePane);
     } else if (activePane.startsWith("editor:")) {
       closeEditor(activePane);
-    } else if (activePane.startsWith("browser:")) {
-      closeBrowser(activePane);
     } else if (activePane.startsWith("note:")) {
       closeNotePane(activePane);
     } else {
       closeDiff(activePane);
     }
     return true;
-  }, [activePane, closeAcpChat, closeBrowser, closeDiff, closeEditor, closeNotePane, closeTerminal, closeThunderChat]);
+  }, [activePane, closeAcpChat, closeDiff, closeEditor, closeNotePane, closeTerminal, closeThunderChat]);
 
   const openBlankTerminal = useCallback(async (targetProject?: string) => {
     if (terminalCreating) return;
@@ -2864,7 +2863,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
     if (raw.startsWith("acp:")) {
       const provider = raw.slice(4);
-      if (["claude", "codex", "grok", "opencode", "pi", "prime"].includes(provider)) {
+      if (["claude", "codex", "grok", "opencode", "pi", "prime", "omp"].includes(provider)) {
         return { channel: "acp", provider };
       }
     }
@@ -4997,6 +4996,29 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
   }, [activeScopeKey, requestNewSession, setActivePane, t]);
 
+  /** Hands a browser pick, annotation or console error to this scope's session. */
+  const sendProbePromptToSession = useCallback((text: string) => {
+    const prompt = text.trim();
+    if (!prompt) return;
+    const sessionPane = terminalsRef.current.find((t) => paneScopeKey(t) === activeScopeKey && t.group === "session")
+      || terminalsRef.current.find((t) => t.group === "session");
+    const acpPane = acpChatsRef.current.find((c) => paneScopeKey(c) === activeScopeKey);
+    const targetKey = sessionPane?.key || acpPane?.key;
+    const targetProjectPath = sessionPane?.projectPath || acpPane?.projectPath || panelProject || "";
+    if (!targetKey) {
+      void requestNewSession(targetProjectPath);
+      return;
+    }
+    setActivePane(targetKey, targetProjectPath);
+    setComposerDrafts((current) => ({
+      ...current,
+      [targetKey]: current[targetKey] ? `${current[targetKey]}\n${prompt}` : prompt
+    }));
+    window.requestAnimationFrame(() => {
+      composerFocusRefs.current.get(targetKey)?.({ caret: "end" });
+    });
+  }, [activeScopeKey, panelProject, requestNewSession, setActivePane]);
+
   const matchCachedGitChange = (filePath: string): { change: GitChange; staged: boolean } | null => {
     const target = normalizeWorkbenchPath(filePath);
     const cached = gitRef.current;
@@ -6038,12 +6060,6 @@ export function WorkbenchPanel(): ReactPortal | null {
         {currentNotePanes.map((pane) => <div className={`wb-terminal-tab is-note${activePane === pane.key ? " active" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="file-text" size={ICON_SIZE.dense} aria-hidden="true" />{pane.dirty ? "* " : ""}{pane.title || t("desktop.common.loading")}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.common.close")} onClick={() => closeNotePane(pane.key)}><ThemeIcon name="close" size={ICON_SIZE.dense} /></button></div>)}
       </div>
     </div>
-    <div className="wb-terminal-tabs is-browser-group" data-pane-group="browser">
-      <button type="button" className="wb-pane-tab-group-label" aria-label={t("desktop.browser.newBrowser")} title={t("desktop.browser.newBrowser")} onClick={() => void openBrowser()}><ThemeIcon name="globe" size={ICON_SIZE.dense} aria-hidden="true" /></button>
-      <div className="wb-terminal-tabs-list" role="tablist" aria-label={t("desktop.workbench.tabGroupBrowser")}>
-        {currentBrowsers.map((pane) => <div className={`wb-terminal-tab is-browser${activePane === pane.key ? " active" : ""}${pane.surfaceKind === "window" ? " is-popped-out" : ""}`} role="tab" aria-selected={activePane === pane.key} key={pane.key}><button type="button" className="wb-terminal-tab-label" onClick={() => setActivePane(pane.key)}><ThemeIcon name="globe" size={ICON_SIZE.dense} aria-hidden="true" />{pane.title}</button><button type="button" className="wb-terminal-tab-close" aria-label={t("desktop.browser.closeBrowser")} onClick={() => closeBrowser(pane.key)}><ThemeIcon name="close" size={ICON_SIZE.dense} /></button></div>)}
-      </div>
-    </div>
   </div>;
 
   const gitHistoryTitle = gitHistoryContext?.kind === "file"
@@ -6820,26 +6836,8 @@ export function WorkbenchPanel(): ReactPortal | null {
                 setThunderChats((current) => current.map((item) => item.uid === pane.uid ? { ...item, initialPrompt: undefined } : item));
               }}
             />;
-          })}{browsers.map((pane) => {
-            const visible = paneScopeKey(pane) === activeScopeKey && activePane === pane.key;
-            return <BrowserPaneView
-              key={pane.key}
-              browserId={pane.browserId}
-              projectPath={pane.projectPath}
-              active={active && visible}
-              poppedOut={pane.surfaceKind === "window"}
-              onSessionChange={(session) => {
-                if (!session) return;
-                setBrowsers((current) => current.map((item) => item.key === pane.key ? {
-                  ...item,
-                  title: session.tabs.find((tab) => tab.tabId === session.activeTabId)?.title || item.title,
-                  surfaceKind: session.surface.kind
-                } : item));
-              }}
-              onDestroyed={() => closeBrowser(pane.key)}
-            />;
           })}{terminalCreating && !currentTerminals.some((pane) => !pane.ptyId) && !currentAcpChat ? <div className="wb-terminal-loading wb-terminal-loading-stack" role="status" aria-live="polite"><ThemeIcon name="loader" className="spin" size={ICON_SIZE.prominent} aria-hidden="true" /><span>{t("desktop.common.loading")}</span></div> : null}{!terminalCreating && !currentTerminals.length && !currentEditors.length && !currentDiffs.length && !currentAcpChats.length && !currentThunderChats.length && !currentBrowsers.length && !currentNotePanes.length ? <p className="muted wb-terminal-hint">{selectedProject ? t("desktop.workbench.selectSessionHint") : t("desktop.workbench.selectProjectHint")}</p> : null}</div></div>
-          {side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane wb-explorer-side-pane"><WorkbenchFileExplorer ref={fileExplorerRef} roots={sideRoots} activePath={currentFilePath} onOpenFile={(path) => void openFile(path, undefined, projectForPath(path) || undefined)} onOpenPreview={(path) => void openFile(path, undefined, projectForPath(path) || undefined, "preview")} onShowGitHistory={(path) => void loadGitFileHistory(path)} onFindInFolder={findInExplorerFolder} onError={(message) => setStatus({ text: message, kind: "error" })} /><WorkbenchScriptsPane compact hasProject={sideRoots.length > 0} selectedProject={sideRoot} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} collapsed={scriptsSectionCollapsed} onToggleCollapsed={toggleScriptsSectionCollapsed} onRefresh={sideRoots.length ? () => void loadScripts() : undefined} onRun={runScript} onScriptContextMenu={onScriptContextMenu} /></div> : side === "scripts" ? <WorkbenchScriptsPane hasProject={sideRoots.length > 0} selectedProject={sideRoot} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} onRefresh={sideRoots.length ? () => void loadScripts() : undefined} onRun={runScript} onScriptContextMenu={onScriptContextMenu} /> : side === "search" ? <WorkbenchSearchSidePane
+          {side === "browser" ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel"><BrowserSidePanel active={active} browsers={panelBrowsers} projectPath={panelProject} onRequestCreate={() => void openBrowser(panelProject ?? undefined)} onOpenSource={(path, line) => void openFile(path, { path, line: line ?? 1, column: 1, endColumn: 1 }, projectForPath(path) || undefined)} onSendToSession={sendProbePromptToSession} /></aside></> : side ? <><ResizeHandle label={t("desktop.workbench.resizeSidePanel")} onDelta={(delta) => setWidth("side", -delta)} /><aside className="wb-side-panel">{side === "files" ? <div className="wb-side-pane wb-explorer-side-pane"><WorkbenchFileExplorer ref={fileExplorerRef} roots={sideRoots} activePath={currentFilePath} onOpenFile={(path) => void openFile(path, undefined, projectForPath(path) || undefined)} onOpenPreview={(path) => void openFile(path, undefined, projectForPath(path) || undefined, "preview")} onShowGitHistory={(path) => void loadGitFileHistory(path)} onFindInFolder={findInExplorerFolder} onError={(message) => setStatus({ text: message, kind: "error" })} /><WorkbenchScriptsPane compact hasProject={sideRoots.length > 0} selectedProject={sideRoot} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} collapsed={scriptsSectionCollapsed} onToggleCollapsed={toggleScriptsSectionCollapsed} onRefresh={sideRoots.length ? () => void loadScripts() : undefined} onRun={runScript} onScriptContextMenu={onScriptContextMenu} /></div> : side === "scripts" ? <WorkbenchScriptsPane hasProject={sideRoots.length > 0} selectedProject={sideRoot} packages={scriptPackages} loading={scriptsLoading} error={scriptsError} truncated={scriptsTruncated} onRefresh={sideRoots.length ? () => void loadScripts() : undefined} onRun={runScript} onScriptContextMenu={onScriptContextMenu} /> : side === "search" ? <WorkbenchSearchSidePane
             selectedProject={sideRoots[0] ?? null}
             searchQuery={searchQuery}
             onSearchQueryChange={setSearchQuery}
