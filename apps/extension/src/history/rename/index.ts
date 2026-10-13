@@ -5,7 +5,7 @@ import { renameCodexSession } from "./codex";
 import { renameGrokSession } from "./grok";
 import { renameOpenCodeSession } from "./opencode";
 import { renameAcpSession } from "./acp";
-import { renamePiSession, renamePrimeSession } from "./pi";
+import { renameOmpSession, renamePiSession, renamePrimeSession } from "./pi";
 
 export interface RenameHomes {
   panelHome: string;
@@ -16,6 +16,7 @@ export interface RenameHomes {
   opencodeHome: string;
   piHome: string;
   primeHome: string;
+  ompHome: string;
   cursorHome: string;
   cursorIdeUserDataHome: string;
 }
@@ -49,6 +50,8 @@ export async function renameSession(
       return renamePiSession(homes.piHome, session, title);
     case "prime":
       return renamePrimeSession(homes.primeHome, session, title);
+    case "omp":
+      return renameOmpSession(homes.ompHome, session, title);
     case "cursor":
     case "cursor-ide":
       // Cursor's local session records are catalog-only for title changes.

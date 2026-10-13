@@ -1,7 +1,14 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { loadCatalogSettings, queryCatalogSessions, querySessionById, syncCatalog } from "../catalog";
+import {
+  loadCatalogSettings,
+  queryFilteredSessionsPage,
+  queryGtdCountsFromCatalog,
+  queryManagerStats,
+  querySessionById,
+  syncCatalog
+} from "../catalog";
 import { resolveSessionById } from "../catalog/resolve";
 import { AgentSession, HistoryLoadOptions } from "../history/types";
 import { exportCatalogWithTranscripts } from "../catalog/transcript/export";
@@ -39,8 +46,8 @@ interface ManagerStats {
   byProvider: Record<string, number>;
 }
 
-const WEBVIEW_ASSET_VERSION = "5";
-
+const WEBVIEW_ASSET_VERSION = "6";
+const MANAGER_PAGE_SIZE = 200;
 let managerPanel: vscode.WebviewPanel | undefined;
 let activeManagerTree: SessionTreeProvider | undefined;
 let activeManagerBuildLoadOptions: (() => HistoryLoadOptions) | undefined;
@@ -84,6 +91,10 @@ export async function openSessionManagerPanel(
       return;
     }
 
+    if (message.type === "queryPage") {
+      await handleManagerQueryPage(managerPanel!.webview, tree, message);
+      return;
+    }
     if (message.type === "remove" && Array.isArray(message.items)) {
       await handleRemoveFromPanel(message.items, buildLoadOptions, refreshTree);
       await postManagerInit(managerPanel!.webview, tree, buildLoadOptions);
@@ -211,16 +222,30 @@ async function postManagerInit(
     const catalog = loadCatalogSettings();
     await syncCatalog(buildLoadOptions(), catalog);
     const outputLanguage = getLlmOutputLanguage();
-    const sessions = await queryCatalogSessions(catalog, outputLanguage, "any");
-    const payload = buildManagerPayload(sessions, tree);
+    const [stats, gtdCounts, firstPage] = await Promise.all([
+      queryManagerStats(catalog.dbPath),
+      queryGtdCountsFromCatalog(catalog.dbPath),
+      queryFilteredSessionsPage(catalog.dbPath, {
+        limit: MANAGER_PAGE_SIZE,
+        offset: 0,
+        outputLanguage,
+        summaryPolicy: "any"
+      })
+    ]);
+    const taggedCount = GTD_STATUSES.reduce((sum, status) => sum + (gtdCounts[status] ?? 0), 0);
+    const sessions = serializeManagerSessions(firstPage.sessions, tree);
     webview.postMessage({
       type: "init",
       uiStrings: getSessionManagerUiStrings(),
-      sessions: payload.sessions,
-      stats: payload.stats,
+      sessions,
+      stats,
+      untaggedCount: Math.max(0, stats.total - taggedCount),
+      filteredTotal: firstPage.total,
+      hasMore: sessions.length < firstPage.total,
       gtdStatuses: GTD_STATUSES.map((status) => ({
         status,
-        label: gtdStatusLabel(status)
+        label: gtdStatusLabel(status),
+        count: gtdCounts[status] ?? 0
       }))
     });
   } catch (error) {
@@ -229,22 +254,63 @@ async function postManagerInit(
   }
 }
 
-function buildManagerPayload(
+async function handleManagerQueryPage(
+  webview: vscode.Webview,
+  tree: SessionTreeProvider,
+  message: {
+    offset?: number;
+    limit?: number;
+    search?: string;
+    providers?: string[];
+    ageDays?: string;
+    gtdFilter?: string | null;
+  }
+): Promise<void> {
+  const catalog = loadCatalogSettings();
+  const offset = Math.max(0, Math.floor(message.offset ?? 0));
+  const limit = Math.max(1, Math.min(Math.floor(message.limit ?? MANAGER_PAGE_SIZE), 500));
+  const days = message.ageDays && message.ageDays !== "all" ? Number(message.ageDays) : 0;
+  const olderThanMs = days > 0 ? Date.now() - days * 24 * 60 * 60 * 1000 : undefined;
+  const providers = Array.isArray(message.providers) ? message.providers : undefined;
+  if (providers && providers.length === 0) {
+    webview.postMessage({
+      type: "pageResult",
+      offset: 0,
+      append: false,
+      total: 0,
+      hasMore: false,
+      sessions: []
+    });
+    return;
+  }
+  const page = await queryFilteredSessionsPage(catalog.dbPath, {
+    limit,
+    offset,
+    search: message.search,
+    providers,
+    olderThanMs,
+    gtdFilter: message.gtdFilter,
+    outputLanguage: getLlmOutputLanguage(),
+    summaryPolicy: "any"
+  });
+  const sessions = serializeManagerSessions(page.sessions, tree);
+  webview.postMessage({
+    type: "pageResult",
+    offset,
+    append: offset > 0,
+    total: page.total,
+    hasMore: offset + sessions.length < page.total,
+    sessions
+  });
+}
+
+function serializeManagerSessions(
   sessions: AgentSession[],
   tree: SessionTreeProvider
-): { sessions: ManagerSessionPayload[]; stats: ManagerStats } {
+): ManagerSessionPayload[] {
   const enrichedSessions = enrichSessionsWithTreeSummaries(sessions, tree.getSessions());
-
-  const byProvider: Record<string, number> = {};
-  let withSummary = 0;
-  const payloadSessions = enrichedSessions.map((enrichedSession) => {
-    byProvider[enrichedSession.provider] = (byProvider[enrichedSession.provider] ?? 0) + 1;
-
+  return enrichedSessions.map((enrichedSession) => {
     const subtitle = buildSessionSubtitle(enrichedSession);
-    if (enrichedSession.sessionSummary?.trim()) {
-      withSummary += 1;
-    }
-
     const search = enrichSearchSessionItem(enrichedSession, tree);
     return {
       provider: enrichedSession.provider,
@@ -260,11 +326,6 @@ function buildManagerPayload(
         : {})
     };
   });
-
-  return {
-    stats: { total: sessions.length, withSummary, byProvider },
-    sessions: payloadSessions
-  };
 }
 
 function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {

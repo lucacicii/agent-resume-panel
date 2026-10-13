@@ -13,7 +13,8 @@ const CLI_TARGETS = [
   { provider: "grok", label: "Grok Build" },
   { provider: "opencode", label: "OpenCode" },
   { provider: "pi", label: "Pi" },
-  { provider: "prime", label: "Prime Agent" }
+  { provider: "prime", label: "Prime Agent" },
+  { provider: "omp", label: "OMP" }
 ];
 
 const ACP_TARGETS = [
@@ -22,11 +23,12 @@ const ACP_TARGETS = [
   { provider: "grok", label: "Grok Build" },
   { provider: "opencode", label: "OpenCode" },
   { provider: "pi", label: "Pi" },
-  { provider: "prime", label: "Prime Agent" }
+  { provider: "prime", label: "Prime Agent" },
+  { provider: "omp", label: "OMP" }
 ];
 
 const SESSION_SOURCE_WHEN =
-  "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|opencode|pi|prime)/";
+  "view == agentResume.sessions && viewItem =~ /agentResume\\.session\\.(codex|claude|agy|grok|opencode|pi|prime|omp)/";
 
 const ACP_SOURCE_WHEN = "view == agentResume.acpChats && viewItem =~ /agentResume\\.acpChat\\./";
 

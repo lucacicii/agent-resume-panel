@@ -2,7 +2,16 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { AcpChatManager } from "../acp/acpChatManager";
-import { loadCatalogSettings, queryCatalogSessions, removeSessionsFromPanel, resolveSessionById } from "../catalog";
+import {
+  CatalogProjectGroupSummary,
+  loadCatalogSettings,
+  queryFilteredSessionsPage,
+  queryGtdCountsFromCatalog,
+  queryProjectGroupSummaries,
+  queryVisibleSessionCount,
+  removeSessionsFromPanel,
+  resolveSessionById
+} from "../catalog";
 import { t } from "../i18n";
 import { getSessionPreviewUiStrings, getSessionSearchUiStrings } from "../webview/uiStrings";
 import { truncateText } from "../util/dialogText";
@@ -22,13 +31,14 @@ import { openSessionResume } from "../terminal/resumeTerminal";
 import { GTD_STATUSES } from "../catalog/gtd";
 import { gtdStatusLabel } from "../gtd/gtdTree";
 import {
-  buildProjectList,
   enrichSearchSessionItem,
   enrichSessionsWithTreeSummaries,
   SessionTreeProvider
 } from "../tree/sessionTree";
 
-const WEBVIEW_ASSET_VERSION = "2";
+const SEARCH_PAGE_SIZE = 50;
+
+const WEBVIEW_ASSET_VERSION = "3";
 
 interface SearchProjectPayload {
   projectPath: string;
@@ -42,6 +52,11 @@ interface WebviewMessage {
   type?: string;
   provider?: AgentProvider;
   id?: string;
+  offset?: number;
+  limit?: number;
+  search?: string;
+  projectPath?: string | null;
+  gtdFilter?: string | null;
 }
 
 let searchPanel: vscode.WebviewPanel | undefined;
@@ -49,7 +64,7 @@ let activeSearchContext: vscode.ExtensionContext | undefined;
 let activeSearchTree: SessionTreeProvider | undefined;
 let activeSearchPreview: { provider: AgentProvider; id: string } | undefined;
 let llmConfigRefreshRegistered = false;
-
+let cachedSearchProjectGroups: CatalogProjectGroupSummary[] = [];
 export async function searchAndOpenSessions(
   context: vscode.ExtensionContext,
   tree: SessionTreeProvider,
@@ -87,6 +102,11 @@ export async function searchAndOpenSessions(
   searchPanel.webview.onDidReceiveMessage(async (message: WebviewMessage) => {
     if (message.type === "ready") {
       await postInitMessage(searchPanel!.webview, tree);
+      return;
+    }
+
+    if (message.type === "queryPage") {
+      await handleQueryPageMessage(searchPanel!.webview, tree, message);
       return;
     }
 
@@ -332,37 +352,85 @@ async function findSession(tree: SessionTreeProvider, provider: AgentProvider, i
   return resolveSessionById(tree, provider, id);
 }
 
-async function getSessionsForSearch(): Promise<AgentSession[]> {
-  const catalog = loadCatalogSettings();
-  return queryCatalogSessions(catalog, getLlmOutputLanguage(), "any");
-}
-
 async function postInitMessage(webview: vscode.Webview, tree: SessionTreeProvider): Promise<void> {
-  const sessions = enrichSessionsWithTreeSummaries(await getSessionsForSearch(), tree.getSessions());
+  const catalog = loadCatalogSettings();
+  const outputLanguage = getLlmOutputLanguage();
   const favoriteProjects = tree.getFavoriteProjects();
-  const projects = buildProjectList(sessions, favoriteProjects);
+  const [projectGroups, totalSessions, gtdCounts, firstPage] = await Promise.all([
+    queryProjectGroupSummaries(catalog.dbPath, favoriteProjects),
+    queryVisibleSessionCount(catalog.dbPath),
+    queryGtdCountsFromCatalog(catalog.dbPath),
+    queryFilteredSessionsPage(catalog.dbPath, {
+      limit: SEARCH_PAGE_SIZE,
+      offset: 0,
+      outputLanguage,
+      summaryPolicy: "any"
+    })
+  ]);
+  cachedSearchProjectGroups = projectGroups;
+  const enrichedFirstPage = enrichSessionsWithTreeSummaries(firstPage.sessions, tree.getSessions());
+  const taggedCount = GTD_STATUSES.reduce((sum, status) => sum + (gtdCounts[status] ?? 0), 0);
 
   const payload = {
     type: "init",
     uiStrings: getSessionSearchUiStrings(),
     previewUiStrings: getSessionPreviewUiStrings(),
-    projects: projects.map(
+    totalSessions,
+    untaggedCount: Math.max(0, totalSessions - taggedCount),
+    filteredTotal: firstPage.total,
+    hasMore: enrichedFirstPage.length < firstPage.total,
+    projects: projectGroups.map(
       (project): SearchProjectPayload => ({
         projectPath: path.resolve(project.projectPath),
         name: tree.getProjectDisplayName(project.projectPath),
-        sessionCount: project.sessions.length,
+        sessionCount: project.sessionCount,
         favorited: Boolean(project.favorited),
         compactPath: compactPath(project.projectPath)
       })
     ),
-    sessions: sessions.map((session) => enrichSearchSessionItem(session, tree)),
+    sessions: enrichedFirstPage.map((session) => enrichSearchSessionItem(session, tree)),
     gtdStatuses: GTD_STATUSES.map((status) => ({
       status,
-      label: gtdStatusLabel(status)
+      label: gtdStatusLabel(status),
+      count: gtdCounts[status] ?? 0
     }))
   };
 
   webview.postMessage(payload);
+}
+
+async function handleQueryPageMessage(
+  webview: vscode.Webview,
+  tree: SessionTreeProvider,
+  message: WebviewMessage
+): Promise<void> {
+  const catalog = loadCatalogSettings();
+  const offset = Math.max(0, Math.floor(message.offset ?? 0));
+  const limit = Math.max(1, Math.min(Math.floor(message.limit ?? SEARCH_PAGE_SIZE), 200));
+  const projectPath = message.projectPath?.trim() || undefined;
+  const matchedGroup = projectPath
+    ? cachedSearchProjectGroups.find((g) => path.resolve(g.projectPath) === path.resolve(projectPath))
+    : undefined;
+  const page = await queryFilteredSessionsPage(catalog.dbPath, {
+    limit,
+    offset,
+    search: message.search,
+    projectPath,
+    projectId: matchedGroup?.projectId,
+    projectCandidatePaths: matchedGroup?.candidatePaths,
+    gtdFilter: message.gtdFilter,
+    outputLanguage: getLlmOutputLanguage(),
+    summaryPolicy: "any"
+  });
+  const enriched = enrichSessionsWithTreeSummaries(page.sessions, tree.getSessions());
+  webview.postMessage({
+    type: "pageResult",
+    offset,
+    append: offset > 0,
+    total: page.total,
+    hasMore: offset + enriched.length < page.total,
+    sessions: enriched.map((session) => enrichSearchSessionItem(session, tree))
+  });
 }
 
 function getWebviewHtml(webview: vscode.Webview): string {

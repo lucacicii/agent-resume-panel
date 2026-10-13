@@ -9,7 +9,8 @@ const HANDOFF_TARGET_LABEL_KEYS: Record<HandoffTargetProvider, string> = {
   grok: "menu.handoff.targetGrok",
   opencode: "menu.handoff.targetOpenCode",
   pi: "menu.handoff.targetPi",
-  prime: "menu.handoff.targetPrime"
+  prime: "menu.handoff.targetPrime",
+  omp: "menu.handoff.targetOmp"
 };
 
 interface HandoffTargetMeta {
@@ -29,7 +30,8 @@ const HANDOFF_TARGET_META: Record<HandoffTargetProvider, HandoffTargetMeta> = {
   grok: { provider: "grok", supportsAcp: true, supportsCli: true },
   opencode: { provider: "opencode", supportsAcp: true, supportsCli: true },
   pi: { provider: "pi", supportsAcp: true, supportsCli: true },
-  prime: { provider: "prime", supportsAcp: true, supportsCli: true }
+  prime: { provider: "prime", supportsAcp: true, supportsCli: true },
+  omp: { provider: "omp", supportsAcp: true, supportsCli: true }
 };
 
 export const CLI_HANDOFF_TARGETS: HandoffTargetProvider[] = [
@@ -39,10 +41,11 @@ export const CLI_HANDOFF_TARGETS: HandoffTargetProvider[] = [
   "grok",
   "opencode",
   "pi",
-  "prime"
+  "prime",
+  "omp"
 ];
 
-export const ACP_HANDOFF_TARGETS: AcpAgentProvider[] = ["codex", "claude", "grok", "opencode", "pi", "prime"];
+export const ACP_HANDOFF_TARGETS: AcpAgentProvider[] = ["codex", "claude", "grok", "opencode", "pi", "prime", "omp"];
 
 export function isAcpHandoffTarget(provider: HandoffTargetProvider): provider is AcpAgentProvider {
   return provider !== "agy";

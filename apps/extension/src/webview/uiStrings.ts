@@ -53,7 +53,8 @@ export function getSessionSearchUiStrings(): Record<string, string> {
     chipAllGtd: t("webview.search.chipAllGtd"),
     chipAllGtdTooltip: t("webview.search.chipAllGtdTooltip"),
     chipUntagged: t("webview.search.chipUntagged"),
-    chipUntaggedTooltip: t("webview.search.chipUntaggedTooltip")
+    chipUntaggedTooltip: t("webview.search.chipUntaggedTooltip"),
+    showMore: t("tree.showMore")
   };
 }
 

@@ -2,9 +2,10 @@
   const vscode = acquireVsCodeApi();
 
   const ROW_HEIGHT = 64;
+  const PAGE_SIZE = 200;
   let uiStrings = {};
-  /** @type {{ sessions: Array<{provider:string,id:string,title:string,projectPath:string,projectName:string,updatedAtMs:number,updatedAtLabel:string,subtitle:string,gtdStatus?:string,gtdStatusLabel?:string}>, stats: {total:number, withSummary:number, byProvider: Record<string, number>}, gtdStatuses: Array<{status:string,label:string}> }} */
-  let state = { sessions: [], stats: { total: 0, withSummary: 0, byProvider: {} }, gtdStatuses: [] };
+  /** @type {{ sessions: Array<{provider:string,id:string,title:string,projectPath:string,projectName:string,updatedAtMs:number,updatedAtLabel:string,subtitle:string,gtdStatus?:string,gtdStatusLabel?:string}>, stats: {total:number, withSummary:number, byProvider: Record<string, number>}, gtdStatuses: Array<{status:string,label:string,count?:number}>, untaggedCount: number, filteredTotal: number, hasMore: boolean }} */
+  let state = { sessions: [], stats: { total: 0, withSummary: 0, byProvider: {} }, gtdStatuses: [], untaggedCount: 0, filteredTotal: 0, hasMore: false };
 
   const selected = new Set();
   const enabledProviders = new Set();
@@ -12,7 +13,8 @@
   let ageDays = "all";
   /** @type {null | "untagged" | string} */
   let selectedGtdFilter = null;
-
+  let searchDebounceTimer = null;
+  let loadingMore = false;
   const searchInput = document.getElementById("search");
   const ageFilter = document.getElementById("age-filter");
   const statsEl = document.getElementById("stats");
@@ -86,12 +88,15 @@
 
   searchInput.addEventListener("input", () => {
     query = searchInput.value;
-    render();
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(() => {
+      requestPage(0);
+    }, 150);
   });
 
   ageFilter.addEventListener("change", () => {
     ageDays = ageFilter.value;
-    render();
+    requestPage(0);
   });
 
   document.getElementById("refresh").addEventListener("click", () => {
@@ -107,7 +112,7 @@
   });
 
   selectAllEl.addEventListener("change", () => {
-    const filtered = getFilteredSessions();
+    const filtered = state.sessions;
     if (selectAllEl.checked) {
       for (const session of filtered) {
         selected.add(sessionKey(session));
@@ -122,16 +127,45 @@
 
   viewport.addEventListener("scroll", () => {
     renderRows();
+    if (
+      state.hasMore &&
+      !loadingMore &&
+      viewport.scrollTop + viewport.clientHeight >= viewport.scrollHeight - ROW_HEIGHT * 6
+    ) {
+      requestPage(state.sessions.length);
+    }
   });
+
+  function requestPage(offset) {
+    loadingMore = true;
+    vscode.postMessage({
+      type: "queryPage",
+      offset,
+      limit: PAGE_SIZE,
+      search: query,
+      ageDays,
+      providers: Array.from(enabledProviders),
+      gtdFilter: selectedGtdFilter
+    });
+  }
 
   window.addEventListener("message", (event) => {
     const message = event.data;
     if (message.type === "init") {
       uiStrings = message.uiStrings || {};
       applyStaticUi();
-      state.sessions = message.sessions || [];
-      state.stats = message.stats || { total: 0, withSummary: 0, byProvider: {} };
+      const incoming = message.sessions || [];
+      const stats = message.stats || { total: 0, withSummary: 0, byProvider: {} };
+      state.sessions = incoming;
+      state.stats = stats;
       state.gtdStatuses = message.gtdStatuses || [];
+      state.untaggedCount =
+        typeof message.untaggedCount === "number"
+          ? message.untaggedCount
+          : incoming.filter((session) => !session.gtdStatus).length;
+      state.filteredTotal = typeof message.filteredTotal === "number" ? message.filteredTotal : incoming.length;
+      state.hasMore = Boolean(message.hasMore);
+      loadingMore = false;
       enabledProviders.clear();
       for (const provider of Object.keys(state.stats.byProvider || {})) {
         enabledProviders.add(provider);
@@ -141,6 +175,16 @@
       selectAllEl.checked = false;
       renderProviderFilters();
       renderGtdFilters();
+      render();
+      return;
+    }
+
+    if (message.type === "pageResult") {
+      loadingMore = false;
+      const next = message.sessions || [];
+      state.sessions = message.append ? state.sessions.concat(next) : next;
+      state.filteredTotal = typeof message.total === "number" ? message.total : state.sessions.length;
+      state.hasMore = Boolean(message.hasMore);
       render();
       return;
     }
@@ -174,7 +218,7 @@
     const items =
       selectedItems.length > 0
         ? selectedItems
-        : getFilteredSessions();
+        : state.sessions;
     vscode.postMessage({
       type: "export",
       items: items.map((session) => ({ provider: session.provider, id: session.id }))
@@ -189,38 +233,6 @@
     return `${session.provider}:${session.id}`;
   }
 
-  function getFilteredSessions() {
-    const now = Date.now();
-    const trimmed = query.trim().toLowerCase();
-    const minAgeMs =
-      ageDays === "all" ? 0 : Number(ageDays) * 24 * 60 * 60 * 1000;
-
-    return state.sessions.filter((session) => {
-      if (!enabledProviders.has(session.provider)) {
-        return false;
-      }
-      if (minAgeMs > 0 && now - session.updatedAtMs < minAgeMs) {
-        return false;
-      }
-      if (selectedGtdFilter === "untagged" && session.gtdStatus) {
-        return false;
-      }
-      if (selectedGtdFilter && selectedGtdFilter !== "untagged" && session.gtdStatus !== selectedGtdFilter) {
-        return false;
-      }
-      if (!trimmed) {
-        return true;
-      }
-      return (
-        session.title.toLowerCase().includes(trimmed) ||
-        session.subtitle.toLowerCase().includes(trimmed) ||
-        session.provider.toLowerCase().includes(trimmed) ||
-        (session.gtdStatusLabel && session.gtdStatusLabel.toLowerCase().includes(trimmed)) ||
-        session.projectName.toLowerCase().includes(trimmed) ||
-        session.projectPath.toLowerCase().includes(trimmed)
-      );
-    });
-  }
 
   function renderGtdFilters() {
     if (!gtdFiltersEl) {
@@ -230,11 +242,10 @@
     gtdFiltersEl.innerHTML = "";
     gtdFiltersEl.setAttribute("aria-label", uiStrings.gtdFilterLabel || "GTD filter");
 
-    const untaggedCount = state.sessions.filter((session) => !session.gtdStatus).length;
     gtdFiltersEl.appendChild(
       createGtdFilterButton(
         uiStrings.gtdFilterAll || "All GTD",
-        state.sessions.length,
+        state.stats.total || state.sessions.length,
         null,
         selectedGtdFilter === null
       )
@@ -242,14 +253,17 @@
     gtdFiltersEl.appendChild(
       createGtdFilterButton(
         uiStrings.gtdFilterUntagged || "Untagged",
-        untaggedCount,
+        state.untaggedCount,
         "untagged",
         selectedGtdFilter === "untagged"
       )
     );
 
     for (const entry of state.gtdStatuses) {
-      const count = state.sessions.filter((session) => session.gtdStatus === entry.status).length;
+      const count =
+        typeof entry.count === "number"
+          ? entry.count
+          : state.sessions.filter((session) => session.gtdStatus === entry.status).length;
       gtdFiltersEl.appendChild(
         createGtdFilterButton(entry.label, count, entry.status, selectedGtdFilter === entry.status)
       );
@@ -264,7 +278,7 @@
     button.addEventListener("click", () => {
       selectedGtdFilter = filterValue;
       renderGtdFilters();
-      render();
+      requestPage(0);
     });
     return button;
   }
@@ -283,7 +297,7 @@
         } else {
           enabledProviders.delete(provider);
         }
-        render();
+        requestPage(0);
       });
       label.appendChild(input);
       label.appendChild(document.createTextNode(`${provider} (${state.stats.byProvider[provider]})`));
@@ -292,11 +306,12 @@
   }
 
   function render() {
-    const filtered = getFilteredSessions();
+    const filtered = state.sessions;
     const summaryCount = state.stats.withSummary ?? 0;
+    const shownCount = state.filteredTotal || filtered.length;
     statsEl.textContent = formatUi(
       uiStrings.stats || "Showing {0} of {1} catalog sessions · {2} with LLM summary",
-      filtered.length,
+      shownCount,
       state.stats.total,
       summaryCount
     );
@@ -305,7 +320,7 @@
   }
 
   function renderRows() {
-    const filtered = getFilteredSessions();
+    const filtered = state.sessions;
     rowsEl.innerHTML = "";
 
     if (!filtered.length) {
