@@ -109,13 +109,13 @@ export function registerAgentStatusIpc(deps: AgentStatusIpcContext): void {
 
   safeHandle("agentStatus:installIntegration", (_event, args: { id?: unknown }) => {
     const id = args?.id;
-    if (id !== "claude" && id !== "codex" && id !== "pi") throw new Error("Unknown integration.");
+    if (id !== "claude" && id !== "codex" && id !== "pi" && id !== "omp") throw new Error("Unknown integration.");
     return installAgentIntegration(integrationContext(), id as AgentIntegrationId);
   });
 
   safeHandle("agentStatus:uninstallIntegration", (_event, args: { id?: unknown }) => {
     const id = args?.id;
-    if (id !== "claude" && id !== "codex" && id !== "pi") throw new Error("Unknown integration.");
+    if (id !== "claude" && id !== "codex" && id !== "pi" && id !== "omp") throw new Error("Unknown integration.");
     return uninstallAgentIntegration(integrationContext(), id as AgentIntegrationId);
   });
 

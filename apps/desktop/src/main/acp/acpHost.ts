@@ -1171,7 +1171,7 @@ export function registerAcpIpc(deps: {
       const projectPath = args.projectPath?.trim();
       const provider = args.provider;
       if (!projectPath) throw new Error("Working directory is required.");
-      if (!["codex", "claude", "grok", "opencode", "pi", "prime"].includes(provider)) {
+      if (!["codex", "claude", "grok", "opencode", "pi", "prime", "omp"].includes(provider)) {
         throw new Error(`Unsupported ACP provider: ${provider}`);
       }
       return createAcpRecord(panelHome, projectPath, provider);

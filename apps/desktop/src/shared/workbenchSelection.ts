@@ -68,6 +68,7 @@ const WORKBENCH_SEND_SELECTION_TARGETS = [
   "cli:opencode",
   "cli:pi",
   "cli:prime",
+  "cli:omp",
   "cli:cursor",
   "cli:thunder",
   "acp:claude",
@@ -76,6 +77,7 @@ const WORKBENCH_SEND_SELECTION_TARGETS = [
   "acp:opencode",
   "acp:pi",
   "acp:prime",
+  "acp:omp",
   "thunder:visual"
 ] as const;
 

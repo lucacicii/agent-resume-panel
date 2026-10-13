@@ -194,7 +194,7 @@ type WorkbenchNewSessionTargetDraft = string;
 export interface WorkbenchDraft {
   scratchDir: string;
   /** @deprecated Prefer defaultNewSessionTarget; kept for older call sites */
-  defaultProvider: "codex" | "claude" | "grok" | "agy" | "opencode" | "pi" | "prime" | "cursor";
+  defaultProvider: "codex" | "claude" | "grok" | "agy" | "opencode" | "pi" | "prime" | "omp" | "cursor";
   /** Single-list Default Agent: CLI and ACP-prefixed options */
   defaultNewSessionTarget: WorkbenchNewSessionTargetDraft;
   newSessionYolo: boolean;
@@ -240,6 +240,7 @@ export const WORKBENCH_NEW_SESSION_TARGET_OPTIONS: Array<{
   { value: "cli:opencode", group: "cli" },
   { value: "cli:pi", group: "cli" },
   { value: "cli:prime", group: "cli" },
+  { value: "cli:omp", group: "cli" },
   { value: "cli:cursor", group: "cli" },
   { value: "cli:thunder", group: "cli" },
   { value: "acp:claude", group: "acp" },
@@ -248,6 +249,7 @@ export const WORKBENCH_NEW_SESSION_TARGET_OPTIONS: Array<{
   { value: "acp:opencode", group: "acp" },
   { value: "acp:pi", group: "acp" },
   { value: "acp:prime", group: "acp" },
+  { value: "acp:omp", group: "acp" },
   { value: "thunder:visual", group: "thunder" }
 ];
 
@@ -260,6 +262,7 @@ export interface StorageDraft {
   opencodeHome: string;
   piHome: string;
   primeHome: string;
+  ompHome: string;
   cursorHome: string;
   cursorIdeUserDataHome: string;
 }
@@ -546,6 +549,7 @@ function normalizeNewSessionTarget(settings: PanelSettings): string {
     provider === "opencode" ||
     provider === "pi" ||
     provider === "prime" ||
+    provider === "omp" ||
     provider === "cursor"
       ? provider
       : "codex";
@@ -564,6 +568,7 @@ export function workbenchDraftFromSettings(settings: PanelSettings): WorkbenchDr
     provider === "opencode" ||
     provider === "pi" ||
     provider === "prime" ||
+    provider === "omp" ||
     provider === "cursor"
       ? provider
       : "codex";
@@ -613,6 +618,7 @@ export function workbenchPatch(settings: PanelSettings, draft: WorkbenchDraft): 
     cliProvider === "opencode" ||
     cliProvider === "pi" ||
     cliProvider === "prime" ||
+    cliProvider === "omp" ||
     cliProvider === "cursor"
       ? cliProvider
       : "codex";
@@ -662,6 +668,7 @@ const AGENT_HOME_DEFAULTS = {
   opencodeHome: "~/.local/share/opencode",
   piHome: "~/.pi/agent",
   primeHome: "~/.prime/agent",
+  ompHome: "~/.omp/agent",
   cursorHome: "~/.cursor",
   cursorIdeUserDataHome: ""
 } as const;

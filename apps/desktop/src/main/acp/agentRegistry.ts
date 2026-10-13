@@ -8,5 +8,6 @@ export const DEFAULT_ACP_AGENT_LAUNCH: Record<AcpAgentProvider, AcpAgentLaunchCo
   grok: { command: "grok", args: ["agent", "stdio"] },
   opencode: { command: "npx", args: ["-y", "opencode-ai@latest", "acp"] },
   pi: { command: "npx", args: ["-y", "pi-acp"] },
-  prime: { command: "prime-agent", args: ["--mode", "acp"] }
+  prime: { command: "prime-agent", args: ["--mode", "acp"] },
+  omp: { command: "omp", args: ["acp"] }
 };

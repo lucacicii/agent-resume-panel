@@ -198,7 +198,11 @@
     "desktop.settings.thunderModels": "Models",
     "desktop.settings.thunderCheck": "Check",
     "desktop.settings.thunderCandidates": "Paths checked ({0})",
-    "desktop.settings.thunderModelsFootnote": "Models and API keys come from ~/.thunder/models.json and ~/.thunder/auth.json, which Thunder owns."
+    "desktop.settings.thunderModelsFootnote": "Models and API keys come from ~/.thunder/models.json and ~/.thunder/auth.json, which Thunder owns.",
+    "desktop.settings.ompHome": "OMP Home",
+    "desktop.settings.newSessionTarget.cli_omp": "OMP",
+    "desktop.settings.newSessionTarget.acp_omp": "ACP · OMP",
+    "desktop.workbench.acpProvider.omp": "OMP"
   },
   "ja": {
     "desktop.nav.label": "ナビゲーション",
@@ -399,7 +403,11 @@
     "desktop.settings.thunderModels": "モデル",
     "desktop.settings.thunderCheck": "再検出",
     "desktop.settings.thunderCandidates": "確認したパス（{0}）",
-    "desktop.settings.thunderModelsFootnote": "モデルと API キーは Thunder が管理し、~/.thunder/models.json と ~/.thunder/auth.json に保存されます。"
+    "desktop.settings.thunderModelsFootnote": "モデルと API キーは Thunder が管理し、~/.thunder/models.json と ~/.thunder/auth.json に保存されます。",
+    "desktop.settings.ompHome": "OMP ホーム",
+    "desktop.settings.newSessionTarget.cli_omp": "OMP",
+    "desktop.settings.newSessionTarget.acp_omp": "ACP · OMP",
+    "desktop.workbench.acpProvider.omp": "OMP"
   },
   "zh-cn": {
     "desktop.nav.label": "导航",
@@ -600,6 +608,10 @@
     "desktop.settings.thunderModels": "模型",
     "desktop.settings.thunderCheck": "检测",
     "desktop.settings.thunderCandidates": "已检查的路径（{0}）",
-    "desktop.settings.thunderModelsFootnote": "模型与 API Key 由 Thunder 管理，存放在 ~/.thunder/models.json 与 ~/.thunder/auth.json。"
+    "desktop.settings.thunderModelsFootnote": "模型与 API Key 由 Thunder 管理，存放在 ~/.thunder/models.json 与 ~/.thunder/auth.json。",
+    "desktop.settings.ompHome": "OMP 数据目录",
+    "desktop.settings.newSessionTarget.cli_omp": "OMP",
+    "desktop.settings.newSessionTarget.acp_omp": "ACP · OMP",
+    "desktop.workbench.acpProvider.omp": "OMP"
   }
 }

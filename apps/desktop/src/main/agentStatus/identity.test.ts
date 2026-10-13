@@ -40,6 +40,7 @@ describe("kindForExecutable", () => {
     expect(kindForExecutable("/Users/x/.local/bin/cursor-agent")).toBe("cursor");
     expect(kindForExecutable("/opt/homebrew/bin/agy")).toBe("agy");
     expect(kindForExecutable("prime-agent")).toBe("prime");
+    expect(kindForExecutable("/Users/x/.local/bin/omp")).toBe("omp");
   });
 
   it("ignores anything that is not an agent", () => {
@@ -53,6 +54,7 @@ describe("kindForProvider / kindForSessionKey", () => {
   it("maps provider ids onto kinds", () => {
     expect(kindForProvider("pi")).toBe("pi");
     expect(kindForProvider("Pi")).toBe("pi");
+    expect(kindForProvider("omp")).toBe("omp");
     expect(kindForProvider("cursor-ide")).toBeNull();
     expect(kindForProvider("chat")).toBeNull();
   });

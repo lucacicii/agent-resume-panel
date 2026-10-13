@@ -12,6 +12,7 @@ import {
 } from "./gitNestedScan";
 import { safeHandle } from "./ipcUtils";
 import { ensureUtf8TerminalEnv } from "./terminalEnv";
+import { installOmpExtension } from "./agentStatus/integrations/omp";
 import { installPiExtension } from "./agentStatus/integrations/pi";
 import { getAgentStatusSensor } from "./agentStatus/runtime";
 
@@ -623,8 +624,13 @@ function destroyPtyById(id: number): void {
 function ensurePiAgentResumeBridge(): void {
   try {
     const piAgentDir = path.join(os.homedir(), ".pi", "agent");
-    if (!fs.existsSync(piAgentDir)) return;
-    installPiExtension();
+    if (fs.existsSync(piAgentDir)) {
+      installPiExtension();
+    }
+    const ompAgentDir = path.join(os.homedir(), ".omp", "agent");
+    if (fs.existsSync(ompAgentDir)) {
+      installOmpExtension();
+    }
   } catch {
     // Best-effort background enhancement.
   }

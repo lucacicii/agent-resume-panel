@@ -69,9 +69,9 @@ const SCRYPT_OPTIONS = { N: 16_384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 } as co
 const ARBAK_MAGIC = Buffer.from("ARBAK001", "ascii");
 const ARBAK_TAG_BYTES = 16;
 const MAX_ARBAK_HEADER_BYTES = 64 * 1024;
-const NATIVE_PROVIDERS = new Set<Exclude<NativeConversationProvider, "cursor-ide">>([
-  "codex", "claude", "agy", "grok", "opencode", "pi", "prime", "cursor"
-]);
+const NATIVE_PROVIDERS: Record<Exclude<NativeConversationProvider, "cursor-ide">, true> = {
+  codex: true, claude: true, agy: true, grok: true, opencode: true, pi: true, prime: true, omp: true, cursor: true
+};
 
 export type BackupStorageTarget = "local-file" | "icloud-drive";
 
@@ -963,7 +963,7 @@ function nativePathParts(manifestPath: string): { provider: Exclude<NativeConver
   if (!manifestPath.startsWith(prefix)) return undefined;
   const parts = manifestPath.slice(prefix.length).split("/");
   const provider = parts.shift();
-  if (!provider || !NATIVE_PROVIDERS.has(provider as Exclude<NativeConversationProvider, "cursor-ide">) || !parts.length || parts.some((part) => !part || part === "." || part === "..")) return undefined;
+  if (!provider || !NATIVE_PROVIDERS[provider as Exclude<NativeConversationProvider, "cursor-ide">] || !parts.length || parts.some((part) => !part || part === "." || part === "..")) return undefined;
   return { provider: provider as Exclude<NativeConversationProvider, "cursor-ide">, relative: parts.join("/") };
 }
 
@@ -1142,6 +1142,7 @@ async function mergeNativeConversations(settings: PanelSettings, root: string, m
     opencode: homes.opencodeHome,
     pi: homes.piHome,
     prime: homes.primeHome,
+    omp: homes.ompHome,
     cursor: homes.cursorHome
   };
   const warnings: string[] = [...manifest.nativeConversations.warnings];
