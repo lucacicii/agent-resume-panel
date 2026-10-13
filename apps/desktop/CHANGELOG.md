@@ -8,7 +8,13 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## English
 
-### [Unreleased]
+### [0.2.35]
+
+#### Added
+
+- **omp agent support**: `omp` joins Claude Code, Codex, Gemini and Pi as a first-class provider — registered as an ACP agent (`omp acp`), a validated session provider, a settings model entry with an icon, and an agent-status source that reads `~/.omp/agent`, backed by core session sync, native resume, handoff and backup
+- **Browser side panel**: the browser left the workbench pane tab strip for the right side panel, opened from the toolbar, and ports the injection tooling that only existed in prototype-edit-llm — element probe (component + source line), region annotation sent to the session, a per-tab CDP console and network feed with "send error to session", and an agent-click guard that stands the annotate overlay aside for synthetic clicks
+- **Program status as pane state**: a program's own OSC 7501 status reports are now a first-class source beside the hooks — `done → idle`, `error → blocked`, `clear → idle` — and the panel answers the feature-detection query that Claude Code and Pi wait for before reporting anything
 
 #### Changed
 
@@ -19,6 +25,11 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 - **Token speed** no longer under-reports by an order of magnitude: batched streaming deltas are estimated as real tokens rather than counted as one token per event, and the rate excludes prompt prefill (TTFT) and tool execution time
 - **Total elapsed time** now shows the run's wall clock instead of the last turn's duration — a 27-minute task read "2.9s" because `turn_end` only carries that turn's time; it is also cleared when a new message is sent, so the previous run's elapsed no longer lingers
 - **Context occupancy and cumulative tokens** advance while the answer streams, instead of jumping once per turn (Thunder reports the in-flight request's prompt size on `turn_start` and grows it with the output)
+- **Live file changes** show up again: the panel matched a bare `file_change` event while Thunder has wrapped it as `{type:"custom", kind:"file_change", payload:…}` since before 0.3.0, so the popover stayed empty and bash's changes never landed; both the live stream and the persisted-trace replay now read the real shape
+- **A parked question belongs to the conversation that asked it**: the daemon broadcasts every session's events to every pane and the `user_question` branch was the one without a session check, so a run blocked in one conversation docked its bubble over another; the question is now keyed by session and survives a renderer remount
+- **An error turn says why it produced no answer**: a run ending on anything but `done` left `loop_complete` with empty content, so the transcript read "(No response output)" while the cause (a 403 from the gateway, say) only reached `console.warn`; the run's error event is carried into the turn, with whatever text did stream kept under it
+- **Composer layout**: the composer row is the last item of the pane's flex column instead of an absolutely positioned overlay, so a multi-line draft, the queued-messages bar or pending image thumbnails no longer grow through the fake fixed clearance and cover the newest messages
+- **The chat pane keeps its conversation when the board view switches**: mounting the chat view only while chat was current discarded the active session, transcript and live stream, so switching to GTD mid-answer came back to an empty new chat; the pane is latched on first visit and hidden instead
 
 ### [0.2.34]
 
@@ -773,7 +784,13 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## 简体中文
 
-### [未发布]
+### [0.2.35]
+
+#### 新增
+
+- **支持 omp Agent**：`omp` 与 Claude Code、Codex、Gemini、Pi 一样成为一等 provider——注册为 ACP Agent（`omp acp`）、校验型会话 provider、带图标的设置项与读取 `~/.omp/agent` 的 Agent 状态源，并由 core 提供会话同步、原生恢复、Handoff 与备份
+- **浏览器侧边面板**：浏览器从 Workbench 标签页迁到右侧边栏（工具栏打开），并移植了原本只存在于 prototype-edit-llm 的注入工具链——元素探针（组件 + 源码行）、区域标注并发送到会话、按标签页的 CDP 控制台与网络流（支持「把错误发给会话」），以及让标注浮层为合成点击让路的 agent-click 保护
+- **程序状态作为面板状态**：程序自身的 OSC 7501 状态上报与 hooks 并列成为一等来源——`done → idle`、`error → blocked`、`clear → idle`，面板同时应答 Claude Code 与 Pi 在开始上报前所等待的能力探测查询
 
 #### 变更
 
@@ -784,6 +801,11 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 - **token 速率不再低估一个数量级**：批量到达的流式 delta 按真实 token 估算，而非「一个事件算一个 token」；同时速率分母剔除 Prompt 首字等待（TTFT）与工具执行耗时
 - **总耗时改为整轮 run 的挂钟时间**：此前用的是「最后一个 turn」的耗时（`turn_end` 只带该轮），27 分钟的任务会显示成 2.9s；同时发送新消息时清空，不再残留上一轮的数字
 - **上下文与总消耗在流式过程中就会增长**：不再只在轮末跳一次（Thunder 在 `turn_start` 就报出本次请求的 prompt 规模，并随生成量推进）
+- **实时文件变更重新可见**：面板此前匹配的是裸 `file_change` 事件，而 Thunder 早在 0.3.0 之前就改为包装形态 `{type:"custom", kind:"file_change", payload:…}`，导致浮层一直是空的、bash 产生的变更从未落地；现在实时流与持久化 trace 回放两条路径都按真实结构匹配
+- **被挂起的提问归属于提问的那个会话**：daemon 会把每个会话的事件广播给所有面板，而 `user_question` 是唯一没有做会话校验的分支，于是在 A 会话阻塞的提问会浮在 B 会话上；现在提问按会话归属，渲染层重挂载后也能恢复
+- **出错的轮次会说明原因**：非 `done` 结束的 run 会让 `loop_complete` 内容为空，对话里显示「(No response output)」，而真正的原因（比如网关返回 403）只进了 `console.warn`；现在 run 的错误事件会带进该轮，并在其下保留已流式输出的文本
+- **输入框布局**：输入框行改为面板弹性列的最后一个子项，不再是绝对定位浮层——多行草稿、排队消息栏或待发送图片缩略图不会再撑破那个固定的假留白、盖住最新消息
+- **切换看板视图时聊天面板保留会话**：此前只在聊天为当前视图时挂载聊天视图，会丢掉当前会话、对话记录与实时流，回答到一半切到 GTD 再回来就变成空白新会话；现在首次进入后即常驻，仅以隐藏代替卸载
 
 ### [0.2.34]
 
