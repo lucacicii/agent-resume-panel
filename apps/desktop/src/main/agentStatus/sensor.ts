@@ -18,7 +18,14 @@ import {
   readProcessEntries,
   type ProcessEntry
 } from "./processTable";
-import { createScanState, drainReports, scanChunk, type ScanState } from "./scan";
+import {
+  PROGRAM_STATUS_REPLY,
+  createScanState,
+  drainProgramStatusQuery,
+  drainReports,
+  scanChunk,
+  type ScanState
+} from "./scan";
 import type { AgentKind, PaneTelemetry } from "./types";
 
 /** Sensor heartbeat. One tick covers every attached pane. */
@@ -123,6 +130,17 @@ export class AgentStatusSensor {
   }
 
   /**
+   * The feature-detection reply a program in this pane is waiting for, or null
+   * when it did not ask. The caller writes it to the PTY: the sensor never
+   * touches the terminal, it only reads what the program said.
+   */
+  takeProgramStatusReply(paneId: number): string | null {
+    const pane = this.panes.get(paneId);
+    if (!pane) return null;
+    return drainProgramStatusQuery(pane.scan) ? PROGRAM_STATUS_REPLY : null;
+  }
+
+  /**
    * Scan one chunk of PTY output and mirror it.
    *
    * @returns the bytes to forward to the terminal, with agent status sequences
@@ -142,7 +160,7 @@ export class AgentStatusSensor {
       pane.reportSeq += 1;
       this.deps.bridge.publishNativeReport({
         paneId,
-        source: "agent-resume:status-sequence",
+        source: report.source ?? "agent-resume:status-sequence",
         agent: pane.agent,
         state: report.state,
         seq: pane.reportSeq,

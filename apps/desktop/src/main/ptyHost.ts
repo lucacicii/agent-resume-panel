@@ -508,7 +508,12 @@ function attachPtyHandlers(
     if (!session) return;
     // The sensor owns status: it mirrors the screen and strips the agent status
     // sequence, so the renderer only ever sees bytes meant for a terminal.
-    const forwarded = getAgentStatusSensor()?.ingest(id, data) ?? data;
+    const sensor = getAgentStatusSensor();
+    const forwarded = sensor?.ingest(id, data) ?? data;
+    // The panel is this pane's terminal, so it answers the program's OSC 7501
+    // feature-detection query: Claude Code and Pi report nothing without it.
+    const programStatusReply = sensor?.takeProgramStatusReply(id);
+    if (programStatusReply) ptyInstance.write(programStatusReply);
     // Always drain. Pause means "don't forward to xterm", never "stop reading".
     appendReplay(session, forwarded);
     session.outputBytes += forwarded.length;

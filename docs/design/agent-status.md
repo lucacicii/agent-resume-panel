@@ -117,7 +117,7 @@ UI 词汇是投影:`blocked → 等待你`,`working → 运行中`,`idle/unknown
 
 | # | 来源 | 判据 | 说明 |
 | --- | --- | --- | --- |
-| 1 | `native` | 钩子/状态序列上报 | agent 自己说的,压过一切 |
+| 1 | `native` | 钩子 / 状态序列 / OSC 7501 上报 | agent 自己说的,压过一切 |
 | 2 | `process` | 前台进程组里有命令 | 内核作业控制,不是推断 |
 | 3 | `screen` | 命中的规则带 `skipStateUpdate` | 屏幕是 viewer(转录/历史),保留上一次状态 |
 | 4 | `screen`/`osc` | 命中的规则带 `visibleBlocker` | **正在绘制**的对话框,压过"画它的输出" |
@@ -207,7 +207,7 @@ UI 词汇是投影:`blocked → 等待你`,`working → 运行中`,`idle/unknown
 | 来源 | 实现 | 说明 |
 | --- | --- | --- |
 | 屏幕镜像 | `mirror.ts` + `@xterm/headless` | 每 pane 一个实例;与渲染层**同宽度表**(Unicode 11,否则 emoji 折行位置不同)、**撤销软折行**;`flush()` 等解析完成再快照(xterm 解析是异步的) |
-| 终端转义 | `scan.ts` | 状态序列 `ESC ] 633 ; AR ; …`、OSC 0/2 标题、OSC 9;4 进度、DEC 25 光标;**跨 chunk 进位缓冲**避免序列被切断 |
+| 终端转义 | `scan.ts` | 状态序列 `ESC ] 633 ; AR ; …`、程序状态报告 `ESC ] 7501 ; state=…`、OSC 0/2 标题、OSC 9;4 进度、DEC 25 光标;**跨 chunk 进位缓冲**避免序列被切断。程序能力探测 `ESC ] 7501 ; ?` 的回执由 `ptyHost` 写回 PTY(`scan.ts` 只负责识别,传感器把它交出来) |
 | 进程身份 | `identity.ts` | 可执行名 → agent;`node|bun|deno` 后跟脚本名时解包(pi 就是这种 npm 安装形态);会话键 `cli:<provider>` 作为声明式兜底 |
 | 前台作业 | `processTable.ts` | `ps -Ao pid=,ppid=,pgid=,tpgid=,tty=,comm=` + 独立 `pid=,args=`;`tpgid` 即该终端的前台进程组 |
 | 钩子上报 | `integrations/*` + `cli.ts` | agent 自己汇报生命周期事件(见 §8) |
@@ -218,6 +218,17 @@ UI 词汇是投影:`blocked → 等待你`,`working → 运行中`,`idle/unknown
 
 **状态序列的语义**:`awaiting → blocked`、`running → working`、`idle → idle`。它由 pi 伴随扩展写入
 stdout,传感器扫描后转为 `native` 上报——因此 pi 的精确度与钩子同级,不需要第二条通道。
+
+**OSC 7501(Program Status Protocol)比它更宽**:同一个 pane 里的任何程序都能用一条转义序列自报
+`idle`/`working`/`blocked`/`done`/`error`(`clear` 表示撤下记录),`app=` 命名来源。`scan.ts` 只认
+根记录(带 `id=` 的子记录不拥有 pane 状态),并把上报映射进本项目的词汇:`done → idle`(与 Stop
+钩子一致,否则每轮结束都会变成"在等你")、`error → blocked`(跑挂了,只剩这一档能让用户看见)、
+`clear → idle`;无法识别的 `state` 整条丢弃。来源写作 `osc7501:<app>`;报文里的 `msg`/`title`/
+`progress` 不参与判定,因此不解码。
+
+**回执是门槛**:规范要求终端回答 `ESC ] 7501 ; ?`。Claude Code(≥ 2.1.295)与 Pi(≥ 1.1.0)在收到
+回执前一个字都不发,而 pane 的终端就是本 App——所以 `ptyHost` 把这条回执写回程序。omp(≥ 18.8.7)
+不做探测,直接上报。
 
 ---
 

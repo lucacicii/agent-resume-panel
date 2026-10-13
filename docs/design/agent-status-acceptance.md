@@ -57,6 +57,12 @@ Setup: build a DMG, install it, launch, then **Settings → Background status**.
     priority, restart the daemon, confirm the inspector shows `source: override`.
 13. **Diagnostics agree with reality**: `pnpm run doctor:desktop` reports the
     daemon pid/API version and the installed hooks.
+14. **Program status comes first (OSC 7501)**: in a pane running Claude Code
+    ≥ 2.1.295 or Pi ≥ 1.1.0, Inspect shows `authority: native` and
+    `source: osc7501:claude-code` / `osc7501:pi`. Both agents stay silent until
+    the terminal answers `ESC ] 7501 ; ?`, so seeing this also proves the reply
+    was written back to the PTY. A pane running an agent without OSC 7501 must
+    keep `source: screen`.
 
 ## 3. Automated gates
 
