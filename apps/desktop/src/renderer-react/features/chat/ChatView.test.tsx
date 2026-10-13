@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import { ChatView } from "./ChatView";
 import { sortGtdTasks } from "./ChatComposer";
-import type { ThunderConversationSummary } from "@agent-resume/core";
+import type { ThunderChatStreamPayload, ThunderChatTaskResult, ThunderConversationSummary } from "@agent-resume/core";
+import type { DesktopApi } from "../../../preload/preload";
 
 const mockConversations: ThunderConversationSummary[] = [
   {
@@ -405,6 +406,76 @@ describe("ChatView", () => {
         })
       );
     });
+  });
+
+  it("keeps the conversation and the live stream while the pane is hidden and shown again", async () => {
+    const captured: { emit: ((payload: ThunderChatStreamPayload) => void) | null } = { emit: null };
+    window.agentResume.onThunderChatEvent = (callback) => {
+      captured.emit = callback;
+      return () => undefined;
+    };
+    // Hold the turn open: the default mock resolves immediately, which would end
+    // the stream before the pane is hidden.
+    const runTask = vi.fn(
+      (_args: Parameters<DesktopApi["thunderChatRunTask"]>[0]): Promise<ThunderChatTaskResult> =>
+        // Intentionally never settles (and needs no resolver): the assertions below
+        // run while the turn is open. `Promise.withResolvers` is not in this lib.
+        new Promise<ThunderChatTaskResult>(() => undefined)
+    );
+    window.agentResume.thunderChatRunTask = runTask;
+
+    const view = (active: boolean) => (
+      <I18nProvider>
+        <ChatView active={active} />
+      </I18nProvider>
+    );
+    const rendered = render(view(true));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Inspect Git Status & Changes").length).toBeGreaterThanOrEqual(1);
+    }, { timeout: 5_000 });
+    fireEvent.click(screen.getAllByText("Inspect Git Status & Changes")[0]);
+    await waitFor(() => expect(screen.getByText("Working tree is clean.")).toBeTruthy(), { timeout: 5_000 });
+
+    const textarea = screen.getByPlaceholderText(/Ask Thunder agent anything/i);
+    fireEvent.change(textarea, { target: { value: "Hide me" } });
+    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
+    await waitFor(() => expect(runTask).toHaveBeenCalled(), { timeout: 5_000 });
+    await waitFor(() => expect(captured.emit).toBeTruthy(), { timeout: 5_000 });
+
+    // The row clicked above is the session the composer sends into.
+    const sessionId = "sess_1";
+    const taskId = runTask.mock.calls[0][0].taskId;
+
+    act(() => {
+      captured.emit?.({
+        taskId,
+        sessionId,
+        event: { agent_id: taskId, event: { type: "token_delta", turn: 1, delta: "before-hide" } }
+      });
+    });
+    await waitFor(() => expect(screen.getByText(/before-hide/)).toBeTruthy());
+
+    // Hidden, not unmounted.
+    rendered.rerender(view(false));
+    expect((document.querySelector(".tb-chat-view") as HTMLElement).style.display).toBe("none");
+    expect(screen.getByText("Working tree is clean.")).toBeTruthy();
+
+    // Deltas that arrive while hidden are still applied to the transcript.
+    act(() => {
+      captured.emit?.({
+        taskId,
+        sessionId,
+        event: { agent_id: taskId, event: { type: "token_delta", turn: 1, delta: "while-hidden" } }
+      });
+    });
+
+    rendered.rerender(view(true));
+    expect((document.querySelector(".tb-chat-view") as HTMLElement).style.display).toBe("flex");
+    expect(screen.getByText(/before-hide/)).toBeTruthy();
+    expect(screen.getByText(/while-hidden/)).toBeTruthy();
+    // Same instance came back: the conversation was never re-fetched from disk.
+    expect(window.agentResume.thunderChatGetConversation).toHaveBeenCalledTimes(1);
   });
 
   it("regenerates the assistant response when clicking Regenerate", async () => {

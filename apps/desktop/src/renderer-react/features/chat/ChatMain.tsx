@@ -326,6 +326,14 @@ export function ChatMain({
     scrollToBottom(true);
   }, [sessionId, scrollToBottom]);
 
+  // The pane is hidden rather than unmounted while another board view shows, so
+  // content that arrived in the meantime left the feed unpinned; re-pin on show.
+  useLayoutEffect(() => {
+    if (!active) return;
+    stickToBottom.current = true;
+    scrollToBottom(true);
+  }, [active, scrollToBottom]);
+
   const hasMessages = messages.length > 0 || isStreaming;
   const showEmptyState = !hasMessages;
   /** The agent is blocked on ask_user_question — the card docks above the composer. */

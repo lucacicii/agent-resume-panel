@@ -252,6 +252,15 @@ function storedNavCollapsed(): boolean {
 function MainRendererRuntime(): React.JSX.Element {
   const [view, setView] = useState<BoardView>(storedBoardView);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(storedNavCollapsed);
+  // The chat pane owns the whole conversation in its hook state (active session,
+  // transcript, live stream, queued input). Mounting it only while it is the
+  // current board view threw that away on every switch, so a run that was
+  // mid-answer came back as an empty new chat. Latch it on first visit, then hide
+  // it with the `active` prop, the way `GtdView` is handled.
+  const [chatVisited, setChatVisited] = useState(false);
+  useEffect(() => {
+    if (view === "chat") setChatVisited(true);
+  }, [view]);
 
   // The stylesheet keys host visibility off this attribute, the same way it
   // does for `data-fullscreen`; both views stay mounted-capable, only one shows.
@@ -299,9 +308,9 @@ function MainRendererRuntime(): React.JSX.Element {
       <GtdView active={view === "gtd"} />
       {view === "notes" ? <NotesView active /> : null}
       {view === "schedule" ? <ScheduleView active /> : null}
-      {view === "chat" ? (
+      {chatVisited ? (
         <ErrorBoundary>
-          <ChatView active />
+          <ChatView active={view === "chat"} />
         </ErrorBoundary>
       ) : null}
       {view === "archive" ? <ArchiveView active /> : null}
