@@ -961,6 +961,7 @@ export type {
   ThunderAgentEvent,
   ThunderTelemetryNotice,
   ThunderFileChangeRecord,
+  ThunderFileChangePayload,
   ThunderTraceSpan,
   ThunderTaskTrace,
   ThunderTurnStats,

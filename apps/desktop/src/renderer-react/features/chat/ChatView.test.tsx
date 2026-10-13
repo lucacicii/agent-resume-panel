@@ -207,12 +207,13 @@ describe("ChatView", () => {
         {
           agent_id: "task_live",
           event: {
-            type: "file_change",
-            turn: 1,
-            tool_call_id: "f1",
-            path: "/work/repo/a.ts",
-            action: "modified",
-            tool_name: "write_file"
+            type: "custom",
+            kind: "file_change",
+            payload: {
+              path: "/work/repo/a.ts",
+              action: "modified",
+              tool: "write_file"
+            }
           }
         }
       ]

@@ -100,16 +100,18 @@ describe("useTraceCollector", () => {
     expect(bashSpan?.status).toBe("completed");
     expect(bashSpan?.durationMs).toBe(1200);
 
-    // 6. File change event
+    // 6. File change event — a `custom` event wrapping the tool's own kind, as
+    // the kernel forwards it verbatim.
     act(() => {
       const fileEv: ThunderAgentEvent = {
-        type: "file_change",
-        turn: 1,
-        tool_call_id: "call_write_1",
-        path: "/ws/src/config.json",
-        action: "written",
-        bytes: 256,
-        tool_name: "write_file"
+        type: "custom",
+        kind: "file_change",
+        payload: {
+          path: "/ws/src/config.json",
+          action: "written",
+          bytes: 256,
+          tool: "write_file"
+        }
       };
       result.current.recordEvent(fileEv, "task_123");
     });
@@ -117,6 +119,7 @@ describe("useTraceCollector", () => {
     expect(result.current.fileChanges).toHaveLength(1);
     expect(result.current.fileChanges[0].path).toBe("/ws/src/config.json");
     expect(result.current.fileChanges[0].tool).toBe("write_file");
+    expect(result.current.fileChanges[0].turn).toBe(1);
 
     // 7. Telemetry notice event
     act(() => {

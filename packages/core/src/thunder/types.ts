@@ -82,6 +82,23 @@ export interface ThunderFileChangeRecord {
   toolCallId?: string;
 }
 
+/**
+ * Payload of thunder's `file_change` custom event.
+ *
+ * Emitted by the tool layer (`thunder-agent-pack-code/src/file_change.rs`) as
+ * `AgentEvent::Custom`, which reaches a host as
+ * `{"type":"custom","kind":"file_change","payload":{…}}`. The event carries no
+ * turn and no tool call id — the kernel does not interpret it, so only what the
+ * tool itself knows is in here.
+ */
+export interface ThunderFileChangePayload {
+  path: string;
+  action: "written" | "created" | "modified" | "deleted" | "failed" | string;
+  /** Present for `write_file`; `bash` reports a path and an action only. */
+  bytes?: number;
+  tool?: string;
+}
+
 export interface ThunderTurnStats {
   turn: number;
   prompt_tokens?: number;
@@ -166,13 +183,18 @@ export type ThunderAgentEvent =
       };
     }
   | {
-      type: "file_change";
-      turn: number;
-      tool_call_id: string;
-      path: string;
-      action: "written" | "created" | "modified" | "deleted" | "failed" | string;
-      bytes?: number;
-      tool_name: string;
+      /**
+       * A host-defined event forwarded verbatim by the kernel. Thunder emits
+       * `kind: "file_change"` from the tool layer; the payload shape is
+       * `ThunderFileChangePayload`. Other kinds are safe to ignore.
+       *
+       * Note this is `type: "custom"` with a `kind` discriminator — NOT a
+       * top-level `type: "file_change"`. The kernel deliberately does not
+       * interpret custom events, so they arrive wrapped.
+       */
+      type: "custom";
+      kind: string;
+      payload: Record<string, unknown>;
     }
   | {
       type: "telemetry_notice";
