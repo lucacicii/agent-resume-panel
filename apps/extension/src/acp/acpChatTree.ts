@@ -211,6 +211,8 @@ function providerIcon(provider: AcpAgentProvider): string {
       return "symbol-method";
     case "prime":
       return "sparkle";
+    case "omp":
+      return "symbol-method";
     default:
       return "comment";
   }

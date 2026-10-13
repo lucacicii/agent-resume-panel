@@ -34,6 +34,9 @@ function resumeCommandFor(session: AgentSession): string {
   if (session.provider === "prime") {
     return `prime-agent --resume ${shellQuote(session.id)}`;
   }
+  if (session.provider === "omp") {
+    return `omp -r ${shellQuote(session.id)}`;
+  }
   if (session.provider === "cursor") {
     return `cursor-agent --workspace ${shellQuote(cwd)} --resume ${shellQuote(session.id)}`;
   }
@@ -54,6 +57,7 @@ export function supportsNewSessionYoloMode(provider: AgentProvider): boolean {
     provider === "grok" ||
     provider === "opencode" ||
     provider === "prime" ||
+    provider === "omp" ||
     provider === "cursor"
   );
 }
@@ -91,6 +95,9 @@ function newSessionCommandFor(
     if (provider === "prime") {
       return "prime-agent --autonomous";
     }
+    if (provider === "omp") {
+      return "omp --auto-approve";
+    }
     if (provider === "cursor") {
       return `cursor-agent --workspace ${shellQuote(projectPath)} --yolo --sandbox disabled --approve-mcps`;
     }
@@ -114,6 +121,9 @@ function newSessionCommandFor(
   }
   if (provider === "prime") {
     return "prime-agent";
+  }
+  if (provider === "omp") {
+    return "omp";
   }
   if (provider === "cursor") {
     return `cursor-agent --workspace ${shellQuote(projectPath)}`;
@@ -140,7 +150,7 @@ export function sessionContextFlags(provider: AgentProvider, file: string): stri
     // starts with an HTML comment, so it always arrives as literal text.
     return `-c "developer_instructions=$(cat ${shellQuote(file)})"`;
   }
-  if (provider === "claude" || provider === "pi" || provider === "prime") {
+  if (provider === "claude" || provider === "pi" || provider === "prime" || provider === "omp") {
     return `--append-system-prompt "$(cat ${shellQuote(file)})"`;
   }
   return "";

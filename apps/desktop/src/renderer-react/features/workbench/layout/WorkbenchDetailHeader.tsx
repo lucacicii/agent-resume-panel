@@ -2,7 +2,7 @@ import { ICON_SIZE, ThemeIcon } from "../../../components/ThemeIcon";
 import { useI18n } from "../../../i18n";
 import type { TerminalPane } from "../terminal/TerminalView";
 
-type WorkbenchSideView = "files" | "git" | "search" | "scripts" | null;
+type WorkbenchSideView = "files" | "git" | "search" | "scripts" | "browser" | null;
 
 export function WorkbenchDetailHeader({
   title,
@@ -126,6 +126,16 @@ export function WorkbenchDetailHeader({
             onClick={() => onToggleSide("scripts")}
           >
             <ThemeIcon name="play" size={ICON_SIZE.default} />
+          </button>
+          <button
+            type="button"
+            className={`wb-detail-tool${side === "browser" ? " active" : ""}`}
+            aria-pressed={side === "browser"}
+            aria-label={t("desktop.workbench.sidePanelBrowser")}
+            title={t("desktop.workbench.sidePanelBrowser")}
+            onClick={() => onToggleSide("browser")}
+          >
+            <ThemeIcon name="globe" size={ICON_SIZE.default} />
           </button>
         </div>
       </div>

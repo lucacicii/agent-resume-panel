@@ -3,6 +3,7 @@ import { desktopApi } from "../../bridge";
 import type {
   ThunderActiveStreamSnapshot,
   ThunderAgentEvent,
+  ThunderFileChangePayload,
   ThunderFileChangeRecord,
   ThunderTaskTrace,
   ThunderTelemetryNotice
@@ -29,6 +30,14 @@ export function useTraceCollector() {
   const activeTaskIdRef = useRef<string | null>(null);
   const activeSessionIdRef = useRef<string | null>(null);
   const startTimesRef = useRef<Map<string, number>>(new Map());
+  /**
+   * The turn `turn_start` last opened.
+   *
+   * `file_change` carries no turn — the kernel forwards it verbatim and the
+   * tool does not know one — so its span has to borrow the turn in flight or it
+   * lands in a group of its own in the popover.
+   */
+  const currentTurnRef = useRef<number>(1);
 
   const resetTrace = useCallback(() => {
     setCurrentTrace(null);
@@ -39,6 +48,7 @@ export function useTraceCollector() {
     activeTaskIdRef.current = null;
     activeSessionIdRef.current = null;
     startTimesRef.current.clear();
+    currentTurnRef.current = 1;
   }, []);
 
   const startTaskTrace = useCallback(
@@ -52,6 +62,7 @@ export function useTraceCollector() {
       const now = Date.now();
       activeTaskIdRef.current = options.taskId;
       activeSessionIdRef.current = options.sessionId;
+      currentTurnRef.current = 1;
       setIsCollecting(true);
       setSpans([]);
       setFileChanges([]);
@@ -89,6 +100,7 @@ export function useTraceCollector() {
     switch (ev.type) {
       case "turn_start": {
         const turn = (ev as any).turn || 1;
+        currentTurnRef.current = turn;
         const spanId = `turn_${turn}`;
         const startTs = eventTsMs((ev as any).timestamp);
         startTimesRef.current.set(spanId, startTs);
@@ -240,16 +252,25 @@ export function useTraceCollector() {
         break;
       }
 
-      case "file_change": {
-        const fc = ev as any;
+      case "custom": {
+        // The kernel forwards tool-emitted events verbatim, so they arrive
+        // wrapped: `type: "custom"`, with the tool's own `kind` inside. A
+        // `file_change` payload is `{path, action, bytes?, tool?}` — no turn and
+        // no tool call id, because the kernel does not interpret it and the
+        // tool does not know either. The current turn is the one `turn_start`
+        // last opened, which is what the popover groups spans by.
+        if ((ev as any).kind !== "file_change") break;
+        const payload = ((ev as any).payload ?? {}) as ThunderFileChangePayload;
+        const path = payload.path;
+        if (!path) break;
+        const turn = currentTurnRef.current;
         const record: ThunderFileChangeRecord = {
-          path: fc.path,
-          tool: fc.tool_name || "tool",
-          action: fc.action || "modified",
-          bytes: fc.bytes,
-          turn: fc.turn,
-          timestamp: now,
-          toolCallId: fc.tool_call_id
+          path,
+          tool: payload.tool || "tool",
+          action: payload.action || "modified",
+          bytes: payload.bytes,
+          turn,
+          timestamp: now
         };
 
         setFileChanges((prev) => {
@@ -263,8 +284,10 @@ export function useTraceCollector() {
         setSpans((prev) => [
           ...prev,
           {
-            id: `file_${fc.tool_call_id || now}_${fc.path}`,
-            turn: fc.turn || 1,
+            // No tool call id on the wire: `now` plus the path keeps this
+            // unique even when one `bash` reports several files at once.
+            id: `file_${now}_${path}`,
+            turn,
             type: "file",
             name: `${record.action} ${record.path}`,
             startedAtMs: now,
@@ -349,6 +372,7 @@ export function useTraceCollector() {
       activeTaskIdRef.current = snapshot.taskId;
       activeSessionIdRef.current = snapshot.sessionId;
       startTimesRef.current.clear();
+      currentTurnRef.current = 1;
       setIsCollecting(true);
       setSpans([]);
       setFileChanges([]);
@@ -408,10 +432,19 @@ export function useTraceCollector() {
         const reconstructedSpans: TraceSpan[] = [];
         const reconstructedFiles: ThunderFileChangeRecord[] = [];
         const reconstructedNotices: ThunderTelemetryNotice[] = [];
+        // The replay builds its own arrays rather than going through
+        // `recordEvent`, so it tracks the turn itself: `file_change` carries
+        // none, and borrowing a stale ref would group it under the wrong turn.
+        let replayTurn = 1;
 
         for (const wrapped of trace.events) {
           const ev = wrapped?.event;
           if (!ev) continue;
+
+          if (ev.type === "turn_start") {
+            replayTurn = (ev as any).turn || replayTurn;
+            continue;
+          }
 
           if (ev.type === "tool_exec_result") {
             const t = ev as any;
@@ -434,17 +467,18 @@ export function useTraceCollector() {
             if (t.result?.telemetry) {
               reconstructedNotices.push(t.result.telemetry);
             }
-          } else if (ev.type === "file_change") {
-            const fc = ev as any;
-            reconstructedFiles.push({
-              path: fc.path,
-              tool: fc.tool_name || "tool",
-              action: fc.action || "modified",
-              bytes: fc.bytes,
-              turn: fc.turn,
-              timestamp: trace.started_at_ms,
-              toolCallId: fc.tool_call_id
-            });
+          } else if (ev.type === "custom" && (ev as any).kind === "file_change") {
+            const fc = ((ev as any).payload ?? {}) as ThunderFileChangePayload;
+            if (fc.path) {
+              reconstructedFiles.push({
+                path: fc.path,
+                tool: fc.tool || "tool",
+                action: fc.action || "modified",
+                bytes: fc.bytes,
+                turn: replayTurn,
+                timestamp: trace.started_at_ms
+              });
+            }
           } else if (ev.type === "telemetry_notice") {
             const tn = ev as any;
             reconstructedNotices.push({

@@ -762,6 +762,7 @@ function isAgentSession(value: unknown): value is AgentSession {
         value.provider === "opencode" ||
         value.provider === "pi" ||
         value.provider === "prime" ||
+        value.provider === "omp" ||
         value.provider === "cursor" ||
         value.provider === "cursor-ide" ||
         value.provider === "chat") &&

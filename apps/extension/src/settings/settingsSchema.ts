@@ -69,7 +69,7 @@ export function getSettingSections(): SettingSection[] {
           description: t("settings.fieldEditorNewSessionProviderDescription"),
           type: "enum",
           default: "codex",
-          enum: ["codex", "claude", "agy", "grok", "opencode", "pi", "prime", "cursor"],
+          enum: ["codex", "claude", "agy", "grok", "opencode", "pi", "prime", "omp", "cursor"],
           enumLabels: {
             codex: t("settings.enum.editorNewSessionProviderCodex"),
             claude: t("settings.enum.editorNewSessionProviderClaude"),
@@ -78,6 +78,7 @@ export function getSettingSections(): SettingSection[] {
             opencode: t("settings.enum.editorNewSessionProviderOpencode"),
             pi: t("settings.enum.editorNewSessionProviderPi"),
             prime: t("settings.enum.editorNewSessionProviderPrime"),
+            omp: t("settings.enum.editorNewSessionProviderOmp"),
             cursor: "Cursor CLI"
           }
         }
@@ -182,6 +183,13 @@ export function getSettingSections(): SettingSection[] {
           description: t("settings.fieldPrimeHomeDescription"),
           type: "string",
           default: "~/.prime/agent"
+        },
+        {
+          key: "ompHome",
+          label: t("settings.fieldOmpHomeLabel"),
+          description: t("settings.fieldOmpHomeDescription"),
+          type: "string",
+          default: "~/.omp/agent"
         },
         {
           key: "cursorHome",
@@ -507,6 +515,26 @@ export function getSettingSections(): SettingSection[] {
               description: t("settings.fieldAcpPrimeLaunchArgsDescription"),
               type: "stringArray",
               default: ["--mode", "acp"]
+            }
+          ]
+        },
+        {
+          id: "omp",
+          title: t("settings.groupAcpOmpTitle"),
+          fields: [
+            {
+              key: "acp.agents.omp.command",
+              label: t("settings.fieldAcpLaunchCommandLabel"),
+              description: t("settings.fieldAcpOmpLaunchCommandDescription"),
+              type: "string",
+              default: "omp"
+            },
+            {
+              key: "acp.agents.omp.args",
+              label: t("settings.fieldAcpLaunchArgsLabel"),
+              description: t("settings.fieldAcpOmpLaunchArgsDescription"),
+              type: "stringArray",
+              default: ["acp"]
             }
           ]
         }

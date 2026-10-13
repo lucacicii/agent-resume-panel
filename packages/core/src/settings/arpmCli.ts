@@ -60,6 +60,7 @@ const CLI_PROVIDERS = new Set<string>([
   "opencode",
   "pi",
   "prime",
+  "omp",
   "cursor"
 ]);
 
@@ -92,7 +93,7 @@ function parseGoFlags(args: string[]): {
     if (arg === "--provider") {
       const next = args[i + 1];
       if (!next || !CLI_PROVIDERS.has(next)) {
-        throw new Error("`--provider` requires a CLI agent (codex, claude, grok, agy, opencode, pi, prime, cursor).");
+        throw new Error("`--provider` requires a CLI agent (codex, claude, grok, agy, opencode, pi, prime, omp, cursor).");
       }
       provider = next as AgentProvider;
       i += 1;
@@ -126,7 +127,7 @@ function parseRunFlags(args: string[]): {
       if (!next) throw new Error(`\`${arg}\` requires a value.`);
       if (arg === "--provider") {
         if (!CLI_PROVIDERS.has(next)) {
-          throw new Error("`--provider` requires a CLI agent (codex, claude, grok, agy, opencode, pi, prime, cursor).");
+          throw new Error("`--provider` requires a CLI agent (codex, claude, grok, agy, opencode, pi, prime, omp, cursor).");
         }
         provider = next as AgentProvider;
       } else {

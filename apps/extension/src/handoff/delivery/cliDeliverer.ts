@@ -70,6 +70,8 @@ function providerLabel(provider: AgentProvider): string {
       return "Pi";
     case "prime":
       return "Prime Agent";
+    case "omp":
+      return "OMP";
     default:
       return provider;
   }

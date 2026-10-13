@@ -29,6 +29,7 @@ const AGENT_KINDS: readonly AgentKind[] = [
   "cursor",
   "agy",
   "prime",
+  "omp",
   "unknown"
 ];
 const STATE_ALIASES: Record<string, AgentState> = {

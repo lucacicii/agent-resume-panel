@@ -330,9 +330,17 @@ export async function invokeBrowserTool(
           if (!refs) throw new Error("No snapshot refs. Call browser_snapshot first.");
           const backend = refs.backend.get(ref);
           const selector = refs.selector.get(ref);
-          if (backend) await clickByBackendNodeId(wc, backend);
-          else if (selector) await clickBySelector(wc, selector);
-          else throw new Error(`Unknown ref: ${ref}. Re-run browser_snapshot.`);
+          // Chromium hit-tests CDP mouse input by coordinates, and the sidebar panel's
+          // probe overlay sits on top of the page: let it stand aside for this click.
+          // The selector fallback calls `el.click()` in-page and needs none of this.
+          await ctx.controller.setProbePassthrough(session.id, true, activeTabId);
+          try {
+            if (backend) await clickByBackendNodeId(wc, backend);
+            else if (selector) await clickBySelector(wc, selector);
+            else throw new Error(`Unknown ref: ${ref}. Re-run browser_snapshot.`);
+          } finally {
+            await ctx.controller.setProbePassthrough(session.id, false, activeTabId);
+          }
           return textResult({ ok: true, ref, browserId: session.id, tabId: activeTabId });
         });
       }

@@ -165,13 +165,13 @@ describe("backupService", () => {
     sourceSettings.agentHomes = {
       codexHome: path.join(sourceAgents, "codex"), claudeHome: path.join(sourceAgents, "claude"),
       antigravityHome: path.join(sourceAgents, "agy"), grokHome: path.join(sourceAgents, "grok"),
-      opencodeHome: path.join(sourceAgents, "opencode"), piHome: path.join(sourceAgents, "pi"), primeHome: path.join(sourceAgents, "prime"),
+      opencodeHome: path.join(sourceAgents, "opencode"), piHome: path.join(sourceAgents, "pi"), primeHome: path.join(sourceAgents, "prime"), ompHome: path.join(sourceAgents, "omp"),
       cursorHome: path.join(sourceAgents, "cursor")
     };
     targetSettings.agentHomes = {
       codexHome: path.join(targetAgents, "codex"), claudeHome: path.join(targetAgents, "claude"),
       antigravityHome: path.join(targetAgents, "agy"), grokHome: path.join(targetAgents, "grok"),
-      opencodeHome: path.join(targetAgents, "opencode"), piHome: path.join(targetAgents, "pi"), primeHome: path.join(targetAgents, "prime"),
+      opencodeHome: path.join(targetAgents, "opencode"), piHome: path.join(targetAgents, "pi"), primeHome: path.join(targetAgents, "prime"), ompHome: path.join(targetAgents, "omp"),
       cursorHome: path.join(targetAgents, "cursor")
     };
     await preparePanelDatabases(sourceSettings);
@@ -218,11 +218,11 @@ describe("backupService", () => {
     const targetAgents = path.join(targetHome, "agent-homes");
     sourceSettings.agentHomes = {
       codexHome: path.join(sourceAgents, "codex"), claudeHome: path.join(sourceAgents, "claude"), antigravityHome: path.join(sourceAgents, "agy"),
-      grokHome: path.join(sourceAgents, "grok"), opencodeHome: path.join(sourceAgents, "opencode"), piHome: path.join(sourceAgents, "pi"), primeHome: path.join(sourceAgents, "prime"), cursorHome: path.join(sourceAgents, "cursor")
+      grokHome: path.join(sourceAgents, "grok"), opencodeHome: path.join(sourceAgents, "opencode"), piHome: path.join(sourceAgents, "pi"), primeHome: path.join(sourceAgents, "prime"), ompHome: path.join(sourceAgents, "omp"), cursorHome: path.join(sourceAgents, "cursor")
     };
     targetSettings.agentHomes = {
       codexHome: path.join(targetAgents, "codex"), claudeHome: path.join(targetAgents, "claude"), antigravityHome: path.join(targetAgents, "agy"),
-      grokHome: path.join(targetAgents, "grok"), opencodeHome: path.join(targetAgents, "opencode"), piHome: path.join(targetAgents, "pi"), primeHome: path.join(targetAgents, "prime"), cursorHome: path.join(targetAgents, "cursor")
+      grokHome: path.join(targetAgents, "grok"), opencodeHome: path.join(targetAgents, "opencode"), piHome: path.join(targetAgents, "pi"), primeHome: path.join(targetAgents, "prime"), ompHome: path.join(targetAgents, "omp"), cursorHome: path.join(targetAgents, "cursor")
     };
     await preparePanelDatabases(sourceSettings);
     await preparePanelDatabases(targetSettings);
@@ -286,13 +286,13 @@ describe("backupService", () => {
     sourceSettings.agentHomes = {
       codexHome: path.join(sourceAgents, "codex"), claudeHome: path.join(sourceAgents, "claude"),
       antigravityHome: path.join(sourceAgents, "agy"), grokHome: path.join(sourceAgents, "grok"),
-      opencodeHome: path.join(sourceAgents, "opencode"), piHome: path.join(sourceAgents, "pi"), primeHome: path.join(sourceAgents, "prime"),
+      opencodeHome: path.join(sourceAgents, "opencode"), piHome: path.join(sourceAgents, "pi"), primeHome: path.join(sourceAgents, "prime"), ompHome: path.join(sourceAgents, "omp"),
       cursorHome: path.join(sourceAgents, "cursor")
     };
     targetSettings.agentHomes = {
       codexHome: path.join(targetAgents, "codex"), claudeHome: path.join(targetAgents, "claude"),
       antigravityHome: path.join(targetAgents, "agy"), grokHome: path.join(targetAgents, "grok"),
-      opencodeHome: path.join(targetAgents, "opencode"), piHome: path.join(targetAgents, "pi"), primeHome: path.join(targetAgents, "prime"),
+      opencodeHome: path.join(targetAgents, "opencode"), piHome: path.join(targetAgents, "pi"), primeHome: path.join(targetAgents, "prime"), ompHome: path.join(targetAgents, "omp"),
       cursorHome: path.join(targetAgents, "cursor")
     };
     await preparePanelDatabases(sourceSettings);

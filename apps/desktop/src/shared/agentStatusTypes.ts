@@ -29,6 +29,7 @@ export type AgentKind =
   | "cursor"
   | "agy"
   | "prime"
+  | "omp"
   | "unknown";
 
 /**

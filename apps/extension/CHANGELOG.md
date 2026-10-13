@@ -8,6 +8,12 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## 简体中文
 
+### [2.12.0]
+
+#### 新增
+
+- **OMP Agent 支持**：同步 `~/.omp/agent/sessions/**/*.jsonl`（自动过滤带 `parentSession` 的子代理会话与解析首行 `title`），支持原生 `omp -r` 终端恢复、`omp acp` ACP 可视化对话、CLI 新建会话、Handoff 与备份。
+- **全链路 SQL 按需分页加载**：侧边栏树视图（Recent Sessions、Projects 列表、每个 Project 内会话、GTD 状态分组、Notes 关联会话）、Search Sessions 面板与 Session Manager 面板全部改为 SQL 按需分页与聚合查询，不再一次性拉取全部会话，彻底消除大量会话时的卡顿。
 ### [2.11.2]
 
 #### 修复
@@ -517,6 +523,12 @@ This file is used for Open VSX release notes and follows [Keep a Changelog](http
 
 ## English
 
+### [2.12.0]
+
+#### Added
+
+- **OMP Agent support**: sync `~/.omp/agent/sessions/**/*.jsonl` (filtering `parentSession` subagents and reading leading `title` entries), native `omp -r` terminal resume, ACP Chat via `omp acp`, CLI new session, handoff, and backup.
+- **End-to-end SQL pagination**: sidebar tree views (Recent Sessions, Projects list, per-project sessions, GTD status groups, and Notes session lookup), Search Sessions, and Session Manager now load on demand via SQL `LIMIT / OFFSET` and aggregate queries instead of loading the entire catalog at once.
 ### [2.11.2]
 
 #### Fixed

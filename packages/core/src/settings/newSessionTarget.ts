@@ -10,6 +10,7 @@ const CLI_PROVIDERS = new Set<string>([
   "opencode",
   "pi",
   "prime",
+  "omp",
   "cursor",
   "chat"
 ]);

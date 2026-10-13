@@ -75,13 +75,15 @@ export type ThunderAgentEvent =
       };
     }
   | {
-      type: "file_change";
-      turn: number;
-      tool_call_id: string;
-      path: string;
-      action: "written" | "created" | "modified" | "deleted" | "failed" | string;
-      bytes?: number;
-      tool_name: string;
+      /**
+       * A host-defined event forwarded verbatim by the kernel — thunder emits
+       * `kind: "file_change"` from its tool layer. Deliberately NOT a top-level
+       * `type: "file_change"`: the kernel does not interpret custom events, so
+       * they arrive wrapped with a `kind` discriminator and a `payload`.
+       */
+      type: "custom";
+      kind: string;
+      payload: Record<string, unknown>;
     }
   | {
       type: "telemetry_notice";

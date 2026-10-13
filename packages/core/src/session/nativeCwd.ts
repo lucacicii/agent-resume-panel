@@ -49,6 +49,8 @@ export async function updateNativeSessionCwd(
       return updatePiPrimeCwd(homes.piHome, id, target);
     case "prime":
       return updatePiPrimeCwd(homes.primeHome, id, target);
+    case "omp":
+      return updatePiPrimeCwd(homes.ompHome, id, target);
     default:
       return { ok: false, reason: "unsupported-provider" };
   }
@@ -276,15 +278,16 @@ async function updatePiPrimeCwd(
     } catch {
       continue;
     }
-    const header = rows[0];
-    if (!header || header.type !== "session" || String(header.id || "") !== sessionId) {
+    const headerIndex = rows.findIndex((row) => row && row.type === "session");
+    const header = headerIndex >= 0 ? rows[headerIndex] : undefined;
+    if (!header || String(header.id || "") !== sessionId) {
       continue;
     }
     if (header.cwd === target) {
       return { ok: true, reason: "unchanged" };
     }
     const next = rows.map((row, index) =>
-      index === 0 ? { ...row, cwd: target } : row
+      index === headerIndex ? { ...row, cwd: target } : row
     );
     await atomicWriteLines(file, next);
     return { ok: true, reason: "ok" };

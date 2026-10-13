@@ -36,6 +36,7 @@ export interface AgentSessionSyncOptions {
   opencodeHome: string;
   piHome: string;
   primeHome: string;
+  ompHome: string;
   cursorHome: string;
   cursorIdeUserDataHome: string;
   configuredAgentHomes?: AgentHomesSettings;
@@ -83,7 +84,7 @@ interface AgentSessionLoadDetails {
   excludedCodexAcpSessionIds: string[];
 }
 
-const PROVIDERS: SyncableAgentProvider[] = ["codex", "claude", "agy", "grok", "opencode", "pi", "prime", "cursor", "cursor-ide"];
+const PROVIDERS: SyncableAgentProvider[] = ["codex", "claude", "agy", "grok", "opencode", "pi", "prime", "omp", "cursor", "cursor-ide"];
 const textCache = new Map<string, { mtimeMs: number; size: number; value: string }>();
 const listCache = new Map<string, { expiresAt: number; value: string[] }>();
 const codexOriginatorCache = new Map<string, { mtimeMs: number; size: number; value?: string }>();
@@ -286,6 +287,7 @@ async function loadProvider(
     case "opencode": return loadOpenCode(options);
     case "pi": return { provider, sessions: await loadPi(options.piHome, options.maxItems) };
     case "prime": return { provider, sessions: await loadPrime(options.primeHome, options.maxItems) };
+    case "omp": return { provider, sessions: await loadJsonlSessions("omp", options.ompHome, options.maxItems) };
     case "cursor": return { provider, sessions: await loadCursor(options.cursorHome, options.maxItems) };
     case "cursor-ide": return { provider, sessions: await loadCursorIde(options) };
   }
@@ -584,9 +586,9 @@ async function loadPrime(home: string, maxItems: number): Promise<LoadedSession[
   return loadJsonlSessions("prime", home, maxItems);
 }
 
-async function loadJsonlSessions(provider: "pi" | "prime", home: string, maxItems: number): Promise<LoadedSession[]> {
+async function loadJsonlSessions(provider: "pi" | "prime" | "omp", home: string, maxItems: number): Promise<LoadedSession[]> {
   const files = await cachedFiles(`${provider}:${home}`, () => listJsonlFiles(path.join(home, "sessions"))); const out: LoadedSession[] = [];
-  for (const file of files) { const rows = await readCachedJsonLines<any>(file); const header = rows[0]; if (header?.type !== "session" || !header.id) continue; let title = "", firstUser = "", count = 0, updated = Date.parse(header.timestamp || "") || 0; for (const row of rows.slice(1)) { updated = Math.max(updated, Date.parse(row.timestamp || "") || 0); if (row.type === "session_info" && row.name) title = row.name; if (row.type === "message" && row.message?.role === "user") { count++; firstUser ||= contentText(row.message.content); } } out.push(session(provider, header.id, clean(title) || clean(firstUser) || header.id, header.cwd || os.homedir(), updated || await mtime(file), { messageCount: count || undefined, source: "jsonl", transcriptKind: "jsonl", transcriptRefs: JSON.stringify({ kind: "jsonl", paths: [file] }) })); }
+  for (const file of files) { const rows = await readCachedJsonLines<any>(file); const header = rows.find((row) => row?.type === "session"); if (!header?.id || header.parentSession) continue; let title = "", firstUser = "", model: string | undefined, count = 0, updated = Date.parse(header.timestamp || "") || 0; for (const row of rows) { updated = Math.max(updated, Date.parse(row.timestamp || row.updatedAt || "") || 0); if (row.type === "title" && typeof row.title === "string" && row.title.trim()) title = row.title; if (row.type === "session_info" && row.name) title = row.name; if (row.type === "model_change" && typeof row.model === "string" && row.model.trim()) model = row.model.trim(); if (row.type === "message" && row.message?.role === "user") { count++; firstUser ||= contentText(row.message.content); } } out.push(session(provider, header.id, clean(title) || clean(firstUser) || header.id, header.cwd || os.homedir(), updated || await mtime(file), { model, messageCount: count || undefined, source: "jsonl", transcriptKind: "jsonl", transcriptRefs: JSON.stringify({ kind: "jsonl", paths: [file] }) })); }
   return out.sort(byUpdated).slice(0, maxItems);
 }
 
@@ -599,6 +601,7 @@ function byUpdated(a: AgentSession, b: AgentSession): number { return b.updatedA
 function label(provider: SyncableAgentProvider): string {
   if (provider === "agy") return "Antigravity";
   if (provider === "prime") return "Prime Agent";
+  if (provider === "omp") return "OMP";
   if (provider === "cursor") return "Cursor CLI";
   if (provider === "cursor-ide") return "Cursor IDE";
   return provider[0].toUpperCase() + provider.slice(1);
@@ -619,8 +622,8 @@ async function cachedFiles(key: string, load: () => Promise<string[]>): Promise<
 function claudePath(file: string): string { const dir = path.basename(path.dirname(file)); return dir.startsWith("-") ? `/${dir.slice(1).replaceAll("-", "/")}` : os.homedir(); }
 async function grokCwd(summaryFile: string): Promise<string> { const group = path.dirname(path.dirname(summaryFile)); try { return (await readCachedText(path.join(group, ".cwd"))).trim(); } catch { try { return decodeURIComponent(path.basename(group)); } catch { return path.basename(group); } } }
 function parseOpenCodeModel(raw?: string): string | undefined { if (!raw) return undefined; try { const value = JSON.parse(raw); return value.id && value.providerID ? `${value.providerID}/${value.id}` : value.id || value.providerID || raw; } catch { return raw; } }
-function providerHome(provider: SyncableAgentProvider, options: AgentSessionSyncOptions): string { switch (provider) { case "codex": return options.codexHome; case "claude": return options.claudeHome; case "agy": return options.antigravityHome; case "grok": return options.grokHome; case "opencode": return options.opencodeHome; case "pi": return options.piHome; case "prime": return options.primeHome; case "cursor": return options.cursorHome; case "cursor-ide": return options.cursorIdeUserDataHome; } }
-function agentHomeSettingKey(provider: Exclude<SyncableAgentProvider, "cursor-ide">): keyof AgentHomesSettings { switch (provider) { case "codex": return "codexHome"; case "claude": return "claudeHome"; case "agy": return "antigravityHome"; case "grok": return "grokHome"; case "opencode": return "opencodeHome"; case "pi": return "piHome"; case "prime": return "primeHome"; case "cursor": return "cursorHome"; } }
+function providerHome(provider: SyncableAgentProvider, options: AgentSessionSyncOptions): string { switch (provider) { case "codex": return options.codexHome; case "claude": return options.claudeHome; case "agy": return options.antigravityHome; case "grok": return options.grokHome; case "opencode": return options.opencodeHome; case "pi": return options.piHome; case "prime": return options.primeHome; case "omp": return options.ompHome; case "cursor": return options.cursorHome; case "cursor-ide": return options.cursorIdeUserDataHome; } }
+function agentHomeSettingKey(provider: Exclude<SyncableAgentProvider, "cursor-ide">): keyof AgentHomesSettings { switch (provider) { case "codex": return "codexHome"; case "claude": return "claudeHome"; case "agy": return "antigravityHome"; case "grok": return "grokHome"; case "opencode": return "opencodeHome"; case "pi": return "piHome"; case "prime": return "primeHome"; case "omp": return "ompHome"; case "cursor": return "cursorHome"; } }
 function isConfiguredAgentHome(provider: SyncableAgentProvider, options: AgentSessionSyncOptions): boolean {
   if (provider === "cursor-ide") {
     return Boolean(options.configuredAgentHomes?.cursorIdeUserDataHome?.trim());

@@ -11,7 +11,8 @@ import type {
   ThunderAgentStats,
   ThunderQuestionItem,
   ThunderImageAttachment,
-  ThunderActiveStreamSnapshot
+  ThunderActiveStreamSnapshot,
+  ThunderMetricsSnapshot
 } from "@agent-resume/core";
 import { useTraceCollector } from "./useTraceCollector";
 
@@ -55,6 +56,131 @@ interface SessionStream {
   streamingReasoning: string;
   streamingTools: ActiveToolInfo[];
   segments: LiveSegment[];
+  /** Total estimated tokens from completed turns in this run. */
+  completedTokens: number;
+  /** Total estimated reasoning tokens from completed turns in this run. */
+  completedReasoningTokens: number;
+  /** Total active generation duration (ms) from completed turns in this run. */
+  completedGenMs: number;
+  /** Timestamp (ms) when the current turn's first token/reasoning delta arrived. */
+  turnFirstTokenAt: number | null;
+  /** Estimated answer tokens accumulated in the current turn so far. */
+  turnTextTokens: number;
+  /** Estimated reasoning tokens accumulated in the current turn so far. */
+  turnReasoningTokens: number;
+  /** Whether the current turn's generation time has already been recorded. */
+  turnGenSettled: boolean;
+}
+
+/**
+ * Fast token count estimator matching thunder-agent-loop's `estimate_token_count`:
+ * - CJK / Kana / Hangul: ~1.5 tokens per char
+ * - ASCII (half-weighting whitespace): ~3.7 chars per token
+ * - Punctuation (ASCII + CJK): +0.2 tokens per char
+ */
+export function estimateTokenCount(text: string): number {
+  if (!text) return 0;
+  let cjkCount = 0;
+  let whitespaceCount = 0;
+  let punctuationCount = 0;
+  let totalChars = 0;
+
+  for (const ch of text) {
+    totalChars += 1;
+    const u = ch.codePointAt(0) ?? 0;
+    if (
+      (u >= 0x4e00 && u <= 0x9fff) ||
+      (u >= 0x3400 && u <= 0x4dbf) ||
+      (u >= 0x3040 && u <= 0x30ff) ||
+      (u >= 0xac00 && u <= 0xd7af)
+    ) {
+      cjkCount += 1;
+    } else if (u <= 0x20 && (u === 0x20 || u === 0x09 || u === 0x0a || u === 0x0d || u === 0x0b || u === 0x0c)) {
+      whitespaceCount += 1;
+    } else if (
+      (u >= 0x21 && u <= 0x2f) ||
+      (u >= 0x3a && u <= 0x40) ||
+      (u >= 0x5b && u <= 0x60) ||
+      (u >= 0x7b && u <= 0x7e) ||
+      (u >= 0x3000 && u <= 0x303f) ||
+      (u >= 0xff00 && u <= 0xffef)
+    ) {
+      punctuationCount += 1;
+    } else if (/\s/.test(ch)) {
+      whitespaceCount += 1;
+    }
+  }
+
+  if (totalChars === 0) return 0;
+  const asciiCount = Math.max(0, totalChars - cjkCount);
+  const cjkTokens = Math.ceil((cjkCount * 15) / 10);
+  const effectiveAscii = Math.max(0, asciiCount - Math.floor(whitespaceCount / 2));
+  const asciiTokens = Math.ceil((effectiveAscii * 10) / 37);
+  const punctTokens = Math.ceil((punctuationCount * 2) / 10);
+
+  return Math.max(1, cjkTokens + asciiTokens + punctTokens);
+}
+
+function createSessionStream(taskId: string): SessionStream {
+  return {
+    taskId,
+    streamingText: "",
+    streamingReasoning: "",
+    streamingTools: [],
+    segments: [],
+    completedTokens: 0,
+    completedReasoningTokens: 0,
+    completedGenMs: 0,
+    turnFirstTokenAt: null,
+    turnTextTokens: 0,
+    turnReasoningTokens: 0,
+    turnGenSettled: false
+  };
+}
+
+function computeLiveStreamMetrics(
+  stream: SessionStream | undefined,
+  nowMs: number = Date.now()
+): { tokensCount: number; reasoningCount: number; tps: number } {
+  if (!stream) return { tokensCount: 0, reasoningCount: 0, tps: 0 };
+  const tokensCount = stream.completedTokens + stream.turnTextTokens + stream.turnReasoningTokens;
+  const reasoningCount = stream.completedReasoningTokens + stream.turnReasoningTokens;
+  const currentTurnMs =
+    stream.turnFirstTokenAt !== null ? Math.max(0, nowMs - stream.turnFirstTokenAt) : 0;
+  const totalGenSec = (stream.completedGenMs + currentTurnMs) / 1000;
+  const tps = tokensCount > 0 && totalGenSec > 0.2 ? tokensCount / totalGenSec : 0;
+  return { tokensCount, reasoningCount, tps };
+}
+
+/**
+ * A question the agent is parked on. It is owned by the session that raised it,
+ * so a run blocked in one conversation can never dock its bubble over another.
+ */
+interface PendingQuestion {
+  questionId: string;
+  taskId: string;
+  sessionId: string;
+  questions: ThunderQuestionItem[];
+}
+
+/**
+ * A run that ends on anything but `done` produced no answer, so the transcript
+ * must say why. The daemon's `loop_complete` carries only the finish reason;
+ * the message behind an `error` comes from the run's `error` event.
+ */
+function failureNoticeForFinishReason(reason: string, detail?: string): string | undefined {
+  switch (reason) {
+    case "error":
+      return `⚠️ **Task failed**: ${
+        detail?.trim() || "Thunder ended the run with an error (see daemon logs for details)."
+      }`;
+    case "max_turns_exceeded":
+      return "⚠️ **Task stopped**: the agent reached its maximum number of turns without producing an answer.";
+    case "budget_exceeded":
+      return "⚠️ **Task stopped**: the agent reached its token budget without producing an answer.";
+    default:
+      return undefined;
+  }
 }
 
 /** Append a delta to the trailing run of the same kind, or open a new run. */
@@ -136,6 +262,34 @@ function rebuildSegments(events: ThunderActiveStreamSnapshot["events"]): LiveSeg
     }
   }
   return segments;
+}
+
+/**
+ * The question a buffered run is still parked on, recovered from the main
+ * process's event log so a renderer that remounts mid-run re-docks the bubble
+ * over the conversation that raised it. The main process drops the entry once
+ * the question is answered, so an already-answered one cannot come back.
+ */
+function parkedQuestionFromSnapshot(
+  snapshot: ThunderActiveStreamSnapshot | null | undefined
+): PendingQuestion | null {
+  const events = snapshot?.events;
+  if (!snapshot || !events?.length) return null;
+  for (let i = events.length - 1; i >= 0; i--) {
+    const ev = (events[i] as { event?: unknown })?.event as
+      | ({ type?: string } & Record<string, any>)
+      | undefined;
+    if (ev?.type !== "user_question") continue;
+    const questionId = String(ev.question_id || "");
+    if (!questionId) return null;
+    return {
+      questionId,
+      taskId: snapshot.taskId,
+      sessionId: snapshot.sessionId,
+      questions: Array.isArray(ev.questions) ? ev.questions : []
+    };
+  }
+  return null;
 }
 
 /**
@@ -302,14 +456,17 @@ export function useThunderChat() {
   const [currentContextTokens, setCurrentContextTokens] = useState<number>(0);
   const [streamTokensCount, setStreamTokensCount] = useState(0);
   const [streamReasoningCount, setStreamReasoningCount] = useState(0);
-  const [streamStartTime, setStreamStartTime] = useState<number | null>(null);
+  const [liveStreamingTps, setLiveStreamingTps] = useState(0);
 
   // A question the agent is blocked on; rendered as a bubble until answered.
-  const [pendingQuestion, setPendingQuestion] = useState<{
-    questionId: string;
-    taskId: string;
-    questions: ThunderQuestionItem[];
-  } | null>(null);
+  const [pendingQuestion, setPendingQuestion] = useState<PendingQuestion | null>(null);
+  /**
+   * Every parked question this renderer has seen, keyed by the session that
+   * raised it. The daemon broadcasts events for all sessions, so the bubble has
+   * to be derived from the session on screen rather than from the last event
+   * that happened to arrive.
+   */
+  const pendingQuestionsRef = useRef<Map<string, PendingQuestion>>(new Map());
 
   // End-to-end task trace and file modification tracking
   const {
@@ -335,6 +492,14 @@ export function useThunderChat() {
 
   const activeStreamsRef = useRef<Map<string, SessionStream>>(new Map());
   const finalizedTasksRef = useRef<Set<string>>(new Set());
+  /** Last engine error per task id: an error turn streams no content, so its
+   *  `loop_complete` has to report the failure instead of an empty answer. */
+  const taskErrorMessagesRef = useRef<Map<string, string>>(new Map());
+
+  /** Dock the parked question of `sessionId`; no session (or none parked) clears it. */
+  const syncPendingQuestion = useCallback((sessionId: string | null) => {
+    setPendingQuestion(sessionId ? pendingQuestionsRef.current.get(sessionId) ?? null : null);
+  }, []);
 
   const refreshDaemonStatus = useCallback(async () => {
     try {
@@ -375,6 +540,12 @@ export function useThunderChat() {
     try {
       setLoading(true);
       setActiveSessionId(sessionId);
+      // Commit the switch synchronously too: everything that must answer "is
+      // this still the session on screen?" runs before React re-renders.
+      activeSessionIdRef.current = sessionId;
+      // The bubble follows its conversation: opening a session docks its own
+      // parked question (if any) and drops the one left behind.
+      syncPendingQuestion(sessionId);
       const conv = await desktopApi().thunderChatGetConversation({ sessionId });
       if (conv) {
         if (conv.model) {
@@ -509,29 +680,76 @@ export function useThunderChat() {
           .catch(() => null);
         if (snapshot && !snapshot.isRunning) snapshot = null;
         if (snapshot) {
+          const textTok = estimateTokenCount(snapshot.streamingText);
+          const reasonTok = estimateTokenCount(snapshot.streamingReasoning);
+          const firstDeltaEv = snapshot.events.find(
+            (e) =>
+              e.event?.type === "token_delta" ||
+              e.event?.type === "reasoning_delta"
+          );
+          const firstTs =
+            (firstDeltaEv as { timestamp_ms?: number } | undefined)?.timestamp_ms ||
+            snapshot.startedAtMs ||
+            Date.now();
           stream = {
-            taskId: snapshot.taskId,
+            ...createSessionStream(snapshot.taskId),
             streamingText: snapshot.streamingText,
             streamingReasoning: snapshot.streamingReasoning,
             streamingTools: snapshot.streamingTools,
-            segments: rebuildSegments(snapshot.events)
+            segments: rebuildSegments(snapshot.events),
+            turnFirstTokenAt: textTok + reasonTok > 0 ? firstTs : null,
+            turnTextTokens: textTok,
+            turnReasoningTokens: reasonTok
           };
           activeStreamsRef.current.set(sessionId, stream);
         }
       }
+      // A run parked on a question is session state, not a one-off notification:
+      // when the renderer that watched the question arrive is gone (reload, pane
+      // remount), recover it from the buffered event log.
+      const parked = parkedQuestionFromSnapshot(snapshot);
+      if (parked) {
+        pendingQuestionsRef.current.set(sessionId, parked);
+        if (activeSessionIdRef.current === sessionId) setPendingQuestion(parked);
+      }
       if (stream) {
+        const live = computeLiveStreamMetrics(stream);
+        const snapMetrics = snapshot?.metrics;
         setIsStreaming(true);
         setActiveTaskId(stream.taskId);
         setLiveSegments(stream.segments);
+        setStreamTokensCount(snapMetrics ? snapMetrics.live_tokens : live.tokensCount);
+        setStreamReasoningCount(snapMetrics ? snapMetrics.live_reasoning_tokens : live.reasoningCount);
+        setLiveStreamingTps(snapMetrics ? snapMetrics.live_tps : live.tps);
       } else {
         setIsStreaming(false);
         setActiveTaskId(null);
         setLiveSegments([]);
+        setStreamTokensCount(0);
+        setStreamReasoningCount(0);
+        setLiveStreamingTps(0);
       }
 
       // Load persistent trace for this conversation and populate run metrics
       const trace = await loadTrace(sessionId);
-      if (trace?.stats) {
+      if (trace?.metrics) {
+        const m = trace.metrics;
+        setLastRunMetrics({
+          tps: m.avg_tps ?? (m.live_tps > 0 ? m.live_tps : undefined),
+          promptTokens: m.prompt_tokens,
+          completionTokens: m.completion_tokens,
+          cachedTokens: m.cached_tokens,
+          reasoningTokens: m.reasoning_tokens,
+          totalTokens: m.total_tokens,
+          durationMs: m.wall_duration_ms ?? m.duration_ms ?? trace.wall_duration_ms ?? trace.duration_ms
+        });
+        if (m.session_total_tokens > 0) {
+          setSessionTotalTokens(m.session_total_tokens);
+        }
+        if (m.context_tokens > 0) {
+          setCurrentContextTokens(m.context_tokens);
+        }
+      } else if (trace?.stats) {
         setLastRunMetrics({
           tps: trace.stats.avg_tokens_per_second,
           promptTokens: trace.stats.total_prompt_tokens,
@@ -556,7 +774,6 @@ export function useThunderChat() {
       } else {
         setLastRunMetrics(null);
       }
-
       // Replace the disk trace with the live in-flight trace when resuming.
       if (snapshot) {
         restoreFromSnapshot(snapshot);
@@ -566,7 +783,7 @@ export function useThunderChat() {
     } finally {
       setLoading(false);
     }
-  }, [loadTrace, models, restoreFromSnapshot, setFileChanges]);
+  }, [loadTrace, models, restoreFromSnapshot, setFileChanges, syncPendingQuestion]);
 
   const createNewSession = useCallback(() => {
     setActiveSessionId(null);
@@ -691,6 +908,8 @@ export function useThunderChat() {
       finalTools?: ActiveToolInfo[];
       finalSegments?: LiveSegment[];
       finishReason?: string;
+      /** Rendered instead of the answer when the run ended without one. */
+      failureNotice?: string;
     }) => {
       const { sessionId, taskId, finishReason } = opts;
       const streamState = activeStreamsRef.current.get(sessionId);
@@ -702,16 +921,27 @@ export function useThunderChat() {
       }
       if (effectiveTaskId) {
         finalizedTasksRef.current.add(effectiveTaskId);
+        taskErrorMessagesRef.current.delete(effectiveTaskId);
         if (finalizedTasksRef.current.size > 200) {
           const first = finalizedTasksRef.current.values().next().value;
           if (first) finalizedTasksRef.current.delete(first);
         }
       }
 
-      const content = opts.finalContent ?? streamState?.streamingText ?? "";
+      const streamed = opts.finalContent ?? streamState?.streamingText ?? "";
+      // Partial text still belongs to the transcript: show it under the failure.
+      const content = opts.failureNotice
+        ? `${opts.failureNotice}${streamed ? `\n\n${streamed}` : ""}`
+        : streamed;
       const reasoning = opts.finalReasoning ?? streamState?.streamingReasoning ?? undefined;
       const rawTools = opts.finalTools ?? (streamState && streamState.streamingTools.length > 0 ? streamState.streamingTools : undefined);
-      const segments = opts.finalSegments ?? streamState?.segments;
+      const streamedSegments = opts.finalSegments ?? streamState?.segments;
+      // A turn that streamed anything renders its segments instead of `content`,
+      // so the failure notice has to become a segment of its own to stay visible.
+      const segments =
+        opts.failureNotice && streamedSegments && streamedSegments.length > 0
+          ? [...streamedSegments, { kind: "text" as const, text: opts.failureNotice }]
+          : streamedSegments;
       const toolExecutions = rawTools?.map((t) => ({
         toolCallId: t.toolCallId,
         name: t.name,
@@ -737,6 +967,9 @@ export function useThunderChat() {
 
       const isCurrentSession = activeSessionIdRef.current === sessionId;
 
+      // The run is over: any question it parked died with it, in every session.
+      pendingQuestionsRef.current.delete(sessionId);
+
       if (isCurrentSession) {
         setMessages((prev) => {
           const last = prev[prev.length - 1];
@@ -749,7 +982,7 @@ export function useThunderChat() {
         setLiveSegments([]);
         setStreamTokensCount(0);
         setStreamReasoningCount(0);
-        setStreamStartTime(null);
+        setLiveStreamingTps(0);
         setIsStreaming(false);
         setActiveTaskId(null);
         setQueued({ steering: [], followUp: [] });
@@ -758,7 +991,24 @@ export function useThunderChat() {
         void (async () => {
           try {
             const latestTrace = await loadTrace(sessionId, effectiveTaskId);
-            if (latestTrace?.stats) {
+            if (latestTrace?.metrics) {
+              const m = latestTrace.metrics;
+              setLastRunMetrics({
+                tps: m.avg_tps ?? (m.live_tps > 0 ? m.live_tps : undefined),
+                promptTokens: m.prompt_tokens,
+                completionTokens: m.completion_tokens,
+                cachedTokens: m.cached_tokens,
+                reasoningTokens: m.reasoning_tokens,
+                totalTokens: m.total_tokens,
+                durationMs: m.wall_duration_ms ?? m.duration_ms ?? latestTrace.wall_duration_ms ?? latestTrace.duration_ms
+              });
+              if (m.session_total_tokens > 0) {
+                setSessionTotalTokens(m.session_total_tokens);
+              }
+              if (m.context_tokens > 0) {
+                setCurrentContextTokens(m.context_tokens);
+              }
+            } else if (latestTrace?.stats) {
               setLastRunMetrics({
                 tps: latestTrace.stats.avg_tokens_per_second,
                 promptTokens: latestTrace.stats.total_prompt_tokens,
@@ -832,19 +1082,18 @@ export function useThunderChat() {
       setLiveSegments([]);
       setStreamTokensCount(0);
       setStreamReasoningCount(0);
-      setStreamStartTime(null);
+      setLiveStreamingTps(0);
+      // The badge promises "发送新消息后重新计算": without this the previous
+      // run's elapsed time sat there until the first turn of the new one ended.
+      // The snapshot refills it from the run's first frame.
+      setLastRunMetrics(null);
       setIsStreaming(true);
 
       const taskId = `task_${Date.now()}`;
       setActiveTaskId(taskId);
+      taskErrorMessagesRef.current.delete(taskId);
 
-      activeStreamsRef.current.set(effectiveSessionId, {
-        taskId,
-        streamingText: "",
-        streamingReasoning: "",
-        streamingTools: [],
-        segments: []
-      });
+      activeStreamsRef.current.set(effectiveSessionId, createSessionStream(taskId));
 
       const model = options?.model || selectedModel || (models[0]?.selection_id ?? "mock");
       const currentModelInfo = models.find((m) => (m.selection_id || m.id) === model);
@@ -916,6 +1165,7 @@ export function useThunderChat() {
             role: "assistant",
             content: `⚠️ **Task failed**: ${err instanceof Error ? err.message : String(err)}`
           };
+          pendingQuestionsRef.current.delete(effectiveSessionId);
           if (activeSessionIdRef.current === effectiveSessionId) {
             setMessages((prev) => [...prev, errMsg]);
             setPendingQuestion(null);
@@ -1040,10 +1290,12 @@ export function useThunderChat() {
     async (answers: Record<string, string> | undefined, cancelled = false) => {
       const pending = pendingQuestion;
       if (!pending) return;
+      pendingQuestionsRef.current.delete(pending.sessionId);
       setPendingQuestion(null);
       try {
         await desktopApi().thunderChatAnswerQuestion({
           questionId: pending.questionId,
+          sessionId: pending.sessionId,
           answers,
           cancelled
         });
@@ -1126,15 +1378,18 @@ export function useThunderChat() {
 
     // Cancelling frees a parked question: tell the daemon so its routing table
     // does not keep a dangling oneshot, then drop the bubble locally.
-    setPendingQuestion((prev) => {
-      if (prev && (!targetTaskId || prev.taskId === targetTaskId)) {
-        void desktopApi()
-          .thunderChatAnswerQuestion({ questionId: prev.questionId, cancelled: true })
-          .catch(() => undefined);
-        return null;
-      }
-      return prev;
-    });
+    const parked = curSessId ? pendingQuestionsRef.current.get(curSessId) : undefined;
+    if (parked && (!targetTaskId || parked.taskId === targetTaskId)) {
+      pendingQuestionsRef.current.delete(parked.sessionId);
+      setPendingQuestion((prev) => (prev?.questionId === parked.questionId ? null : prev));
+      void desktopApi()
+        .thunderChatAnswerQuestion({
+          questionId: parked.questionId,
+          sessionId: parked.sessionId,
+          cancelled: true
+        })
+        .catch(() => undefined);
+    }
 
     // Force stop locally immediately so UI never gets stuck
     if (curSessId && stream) {
@@ -1153,7 +1408,7 @@ export function useThunderChat() {
       setLiveSegments([]);
       setStreamTokensCount(0);
       setStreamReasoningCount(0);
-      setStreamStartTime(null);
+      setLiveStreamingTps(0);
     }
 
     try {
@@ -1176,13 +1431,7 @@ export function useThunderChat() {
 
       let stream = activeStreamsRef.current.get(sessionId);
       if (!stream) {
-        stream = {
-          taskId,
-          streamingText: "",
-          streamingReasoning: "",
-          streamingTools: [],
-          segments: []
-        };
+        stream = createSessionStream(taskId);
         activeStreamsRef.current.set(sessionId, stream);
       }
       const activeStream = stream;
@@ -1194,34 +1443,87 @@ export function useThunderChat() {
         if (isCurrentSession) setLiveSegments([...activeStream.segments]);
       };
 
+      const publishStreamMetrics = (nowMs: number) => {
+        if (!isCurrentSession) return;
+        const live = computeLiveStreamMetrics(activeStream, nowMs);
+        setStreamTokensCount(live.tokensCount);
+        setStreamReasoningCount(live.reasoningCount);
+        setLiveStreamingTps(live.tps);
+      };
+
+      const settleTurnGenerationWindow = (nowMs: number, stats?: ThunderTurnStats) => {
+        if (stream.turnFirstTokenAt !== null) {
+          stream.completedGenMs += Math.max(0, nowMs - stream.turnFirstTokenAt);
+          stream.turnFirstTokenAt = null;
+        } else if (!stream.turnGenSettled && stats) {
+          const ct = typeof stats.completion_tokens === "number" ? stats.completion_tokens : 0;
+          if (
+            typeof stats.tokens_per_second === "number" &&
+            stats.tokens_per_second > 0 &&
+            ct > 0
+          ) {
+            stream.completedGenMs += Math.round((ct / stats.tokens_per_second) * 1000);
+          } else if (typeof stats.duration_ms === "number" && stats.duration_ms > 0 && ct > 0) {
+            stream.completedGenMs += stats.duration_ms;
+          }
+        }
+        const turnComp =
+          stats && typeof stats.completion_tokens === "number" && stats.completion_tokens > 0
+            ? stats.completion_tokens
+            : stream.turnTextTokens + stream.turnReasoningTokens;
+        const turnReas =
+          stats && typeof stats.reasoning_tokens === "number" && stats.reasoning_tokens > 0
+            ? stats.reasoning_tokens
+            : stream.turnReasoningTokens;
+        stream.completedTokens += turnComp;
+        stream.completedReasoningTokens += turnReas;
+        stream.turnTextTokens = 0;
+        stream.turnReasoningTokens = 0;
+        stream.turnGenSettled = false;
+        stream.streamingText = "";
+        stream.streamingReasoning = "";
+      };
+
+      const nowMs = Date.now();
+
       switch (ev.type) {
         case "token_delta": {
-          const delta = (ev as any).delta || "";
+          const delta = typeof ev.delta === "string" ? ev.delta : "";
+          if (stream.turnFirstTokenAt === null) {
+            stream.turnFirstTokenAt = nowMs;
+          }
           stream.streamingText += delta;
+          stream.turnTextTokens = estimateTokenCount(stream.streamingText);
           appendDelta(stream.segments, "text", delta);
           if (isCurrentSession) {
             publishSegments();
-            setStreamTokensCount((prev) => prev + 1);
-            setStreamStartTime((prev) => prev || Date.now());
+            publishStreamMetrics(nowMs);
           }
           break;
         }
         case "reasoning_delta": {
-          const delta = (ev as any).delta || "";
+          const delta = typeof ev.delta === "string" ? ev.delta : "";
+          if (stream.turnFirstTokenAt === null) {
+            stream.turnFirstTokenAt = nowMs;
+          }
           stream.streamingReasoning += delta;
+          stream.turnReasoningTokens = estimateTokenCount(stream.streamingReasoning);
           appendDelta(stream.segments, "reasoning", delta);
           if (isCurrentSession) {
             publishSegments();
-            setStreamTokensCount((prev) => prev + 1);
-            setStreamReasoningCount((prev) => prev + 1);
-            setStreamStartTime((prev) => prev || Date.now());
+            publishStreamMetrics(nowMs);
           }
           break;
         }
         case "tool_exec_start": {
-          const toolCallId = (ev as any).tool_call_id || `tool_${Date.now()}`;
-          const name = (ev as any).name || "tool";
-          const args = (ev as any).arguments || {};
+          if (stream.turnFirstTokenAt !== null) {
+            stream.completedGenMs += Math.max(0, nowMs - stream.turnFirstTokenAt);
+            stream.turnFirstTokenAt = null;
+            stream.turnGenSettled = true;
+          }
+          const toolCallId = typeof ev.tool_call_id === "string" && ev.tool_call_id ? ev.tool_call_id : `tool_${nowMs}`;
+          const name = typeof ev.name === "string" && ev.name ? ev.name : "tool";
+          const args = (ev.arguments && typeof ev.arguments === "object" ? ev.arguments : {}) as Record<string, unknown>;
           const exists = stream.streamingTools.find((t) => t.toolCallId === toolCallId);
           if (!exists) {
             const tool: ActiveToolInfo = { toolCallId, name, arguments: args, isRunning: true };
@@ -1231,6 +1533,7 @@ export function useThunderChat() {
             }
           }
           publishSegments();
+          publishStreamMetrics(nowMs);
           break;
         }
         case "tool_exec_result": {
@@ -1257,7 +1560,9 @@ export function useThunderChat() {
           break;
         }
         case "turn_end": {
-          const stats = (ev as any).stats as ThunderTurnStats | undefined;
+          const stats = ev.stats as ThunderTurnStats | undefined;
+          settleTurnGenerationWindow(nowMs, stats);
+          publishStreamMetrics(nowMs);
           if (stats && isCurrentSession) {
             const pt = typeof stats.prompt_tokens === "number" ? stats.prompt_tokens : undefined;
             const ct = typeof stats.completion_tokens === "number" ? stats.completion_tokens : undefined;
@@ -1318,17 +1623,63 @@ export function useThunderChat() {
             sessionId,
             taskId,
             finalContent,
-            finishReason: finishReason ? String(finishReason) : "done"
+            finishReason: finishReason ? String(finishReason) : "done",
+            failureNotice: failureNoticeForFinishReason(
+              finishReason ? String(finishReason) : "done",
+              taskErrorMessagesRef.current.get(taskId)
+            )
           });
+          break;
+        }
+        case "custom": {
+          const customEv = ev as { kind?: unknown; payload?: unknown };
+          if (
+            customEv.kind === "metrics_update" &&
+            customEv.payload &&
+            typeof customEv.payload === "object" &&
+            isCurrentSession
+          ) {
+            const snap = customEv.payload as ThunderMetricsSnapshot;
+            setStreamTokensCount(snap.live_tokens);
+            setStreamReasoningCount(snap.live_reasoning_tokens);
+            setLiveStreamingTps(snap.live_tps);
+            if (typeof snap.context_tokens === "number" && snap.context_tokens > 0) {
+              setCurrentContextTokens(snap.context_tokens);
+            }
+            if (typeof snap.session_total_tokens === "number" && snap.session_total_tokens > 0) {
+              setSessionTotalTokens(snap.session_total_tokens);
+            }
+            // The snapshot is the only source that knows the run's wall clock
+            // *while it runs*: `turn_end` reports a turn's duration and only the
+            // trace (read after the run) had the total. Without this the badge
+            // showed the last turn — a 27-minute task reading "2.9s".
+            setLastRunMetrics({
+              tps: snap.avg_tps ?? (snap.live_tps > 0 ? snap.live_tps : undefined),
+              promptTokens: snap.prompt_tokens,
+              completionTokens: snap.completion_tokens,
+              cachedTokens: snap.cached_tokens,
+              reasoningTokens: snap.reasoning_tokens,
+              totalTokens: snap.total_tokens,
+              durationMs: snap.wall_duration_ms ?? snap.duration_ms
+            });
+          }
           break;
         }
         case "user_question": {
           const q = ev as any;
-          setPendingQuestion({
+          const parked: PendingQuestion = {
             questionId: String(q.question_id || ""),
             taskId,
+            sessionId,
             questions: Array.isArray(q.questions) ? q.questions : []
-          });
+          };
+          // Events arrive for every conversation on the daemon: remember the
+          // question for the session that raised it, and dock the bubble only
+          // when that session is the one on screen.
+          if (parked.questionId) {
+            pendingQuestionsRef.current.set(sessionId, parked);
+            if (isCurrentSession) setPendingQuestion(parked);
+          }
           break;
         }
         case "task_paused": {
@@ -1356,7 +1707,10 @@ export function useThunderChat() {
           break;
         }
         case "error": {
-          console.warn("[thunder-event:error]", (ev as any).message);
+          const message = String((ev as any).message || "").trim();
+          // Keep it for `loop_complete`: the failure reason must reach the transcript.
+          if (message) taskErrorMessagesRef.current.set(taskId, message);
+          console.warn("[thunder-event:error]", message);
           break;
         }
       }
@@ -1394,13 +1748,7 @@ export function useThunderChat() {
 
   const isWorkspaceLocked = Boolean(activeSessionId && workspaceDir);
 
-  const liveStreamingTps = useMemo(() => {
-    if (!isStreaming || !streamStartTime || streamTokensCount === 0) return 0;
-    const elapsedSec = (Date.now() - streamStartTime) / 1000;
-    if (elapsedSec <= 0.2) return 0;
-    return streamTokensCount / elapsedSec;
-  }, [isStreaming, streamStartTime, streamTokensCount]);
-
+  // Live streaming TPS is updated on each delta / turn settle in `liveStreamingTps`.
   const contextWindowLimit = useMemo(() => {
     const currentModelInfo = models.find((m) => (m.selection_id || m.id) === selectedModel);
     return currentModelInfo?.context_window;

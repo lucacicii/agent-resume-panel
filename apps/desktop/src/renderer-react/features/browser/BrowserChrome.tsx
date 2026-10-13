@@ -19,6 +19,8 @@ type BrowserChromeProps = {
   onPopOut?: () => void;
   onDock?: () => void;
   onClearCookies?: () => void;
+  /** Extra toolbar slot; the sidebar panel puts its probe controls here. */
+  extra?: React.ReactNode;
 };
 
 function activeTab(session: BrowserSessionState | null): BrowserTabStateDto | null {
@@ -40,7 +42,8 @@ export function BrowserChrome({
   onActivateTab,
   onPopOut,
   onDock,
-  onClearCookies
+  onClearCookies,
+  extra
 }: BrowserChromeProps): React.JSX.Element {
   const { t } = useI18n();
   const tab = activeTab(session);
@@ -143,6 +146,7 @@ export function BrowserChrome({
           ) : null}
         </div>
       </div>
+      {extra ? <div className="browser-chrome-extra">{extra}</div> : null}
     </div>
   );
 }

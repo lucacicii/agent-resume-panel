@@ -30,7 +30,8 @@ const EXECUTABLE_KINDS: Record<string, AgentKind> = {
   agy: "agy",
   antigravity: "agy",
   "antigravity-cli": "agy",
-  "prime-agent": "prime"
+  "prime-agent": "prime",
+  omp: "omp"
 };
 
 /** Interpreters that hide the agent behind a script argument. */
@@ -45,7 +46,8 @@ const PROVIDER_KINDS: Record<string, AgentKind> = {
   grok: "grok",
   cursor: "cursor",
   agy: "agy",
-  prime: "prime"
+  prime: "prime",
+  omp: "omp"
 };
 
 /**

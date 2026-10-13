@@ -8,7 +8,7 @@ import {
   FolderTree, GitBranch, Globe, GripVertical, History, LayoutDashboard, LoaderCircle,
   MessageSquare, MessageSquarePlus, MessageSquareWarning, NotebookText, PanelLeftClose, PanelRight, Paperclip, Pencil, Pin, Play, Plus,
   Quote, RefreshCw, Replace, ReplaceAll, Save, Search, Send, Settings, ShieldCheck, Sparkles, Square,
-  SquareKanban, TerminalSquare, Trash2, Undo2, Upload, User, Waypoints, Wrench, X, Zap,
+  SquareKanban, Target, TerminalSquare, Trash2, Undo2, Upload, User, Waypoints, Wrench, X, Zap,
   type LucideIcon,
   type LucideProps
 } from "lucide-react";
@@ -149,7 +149,7 @@ const OPEN_ICONS = {
   "panel-right": PanelRight, paperclip: Paperclip, pencil: Pencil, pin: Pin, play: Play, plus: Plus,
   "app-window": AppWindow,
   quote: Quote, refresh: RefreshCw, replace: Replace, "replace-all": ReplaceAll, save: Save, search: Search, send: Send, settings: Settings,
-  "shield-check": ShieldCheck, sparkles: Sparkles, square: Square, "square-kanban": SquareKanban,
+  "shield-check": ShieldCheck, sparkles: Sparkles, square: Square, "square-kanban": SquareKanban, target: Target,
   terminal: TerminalSquare,
   trash: Trash2, undo: Undo2, upload: Upload, user: User, waypoints: Waypoints, wrench: Wrench, close: X,
   zap: Zap, "corner-down-right": CornerDownRight

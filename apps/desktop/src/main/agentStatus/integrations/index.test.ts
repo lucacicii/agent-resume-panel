@@ -16,6 +16,7 @@ import {
   codexHooksPath,
   installClaudeHooks,
   installCodexHooks,
+  installAgentIntegration,
   listAgentIntegrations,
   uninstallClaudeHooks,
   uninstallCodexHooks,
@@ -143,5 +144,21 @@ describe("codex hooks", () => {
 
     uninstallCodexHooks(ctx);
     expect(hookCommands(file)).toEqual(["other-tool notify"]);
+  });
+});
+
+describe("omp companion extension", () => {
+  it("writes the companion bridge into ~/.omp/agent/extensions and reports installed", () => {
+    const ctx = context();
+    mkdirSync(path.join(ctx.home ?? "", ".omp", "agent"), { recursive: true });
+    const before = listAgentIntegrations(ctx).find((entry) => entry.id === "omp");
+    expect(before?.detected).toBe(true);
+    expect(before?.installed).toBe(false);
+
+    const after = installAgentIntegration(ctx, "omp");
+    expect(after.installed).toBe(true);
+    expect(after.configPath).toBeTruthy();
+    expect(existsSync(after.configPath!)).toBe(true);
+    expect(readFileSync(after.configPath!, "utf8")).toContain("633;AR;");
   });
 });

@@ -20,6 +20,7 @@ import { createThunderConfigStore } from "./thunderConfig";
 import {
   accumulateStreamEvent,
   createActiveStreamSnapshot,
+  dropPendingQuestion,
   finishActiveStream,
   getActiveStream
 } from "./thunderStreamBuffer";
@@ -286,7 +287,18 @@ export function registerThunderIpc(): void {
 
   safeHandle(
     "thunder:chat:answerQuestion",
-    async (_event, args: { questionId: string; answers?: Record<string, string>; cancelled?: boolean }) => {
+    async (
+      _event,
+      args: {
+        questionId: string;
+        sessionId?: string;
+        answers?: Record<string, string>;
+        cancelled?: boolean;
+      }
+    ) => {
+      // Answering ends the park: the buffered run must stop offering the
+      // question, so a renderer that remounts mid-run cannot re-dock it.
+      if (args.sessionId) dropPendingQuestion(args.sessionId, args.questionId);
       return getThunderClient().answerQuestion(args);
     }
   );

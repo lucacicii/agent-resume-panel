@@ -14,6 +14,7 @@
   "desktop.settings.grokHome": "settings.fieldGrokHomeLabel",
   "desktop.settings.opencodeHome": "settings.fieldOpencodeHomeLabel",
   "desktop.settings.piHome": "settings.fieldPiHomeLabel",
+  "desktop.settings.ompHome": "settings.fieldOmpHomeLabel",
   "desktop.settings.paneGeneral": "settings.sectionGeneralTitle",
   "desktop.settings.footerHint": "webview.settings.footerHint",
   "desktop.settings.linkDocumentation": "webview.settings.linkDocumentation",

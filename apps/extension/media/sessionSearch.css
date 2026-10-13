@@ -111,6 +111,16 @@ body {
   border-bottom: none;
 }
 
+.load-more-row {
+  display: flex;
+  justify-content: center;
+  padding: 10px;
+}
+
+.load-more-btn {
+  min-width: 140px;
+}
+
 .session-body {
   display: flex;
   align-items: flex-start;

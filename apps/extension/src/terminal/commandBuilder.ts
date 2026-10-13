@@ -21,6 +21,9 @@ export function buildResumeCommand(session: AgentSession): string {
   if (session.provider === "prime") {
     return `prime-agent --resume ${shellQuote(session.id)}`;
   }
+  if (session.provider === "omp") {
+    return `omp -r ${shellQuote(session.id)}`;
+  }
   if (session.provider === "cursor") {
     return `cursor-agent --workspace ${shellQuote(cwd)} --resume ${shellQuote(session.id)}`;
   }
@@ -49,6 +52,9 @@ export function buildNewSessionCommand(provider: AgentProvider, projectPath: str
   }
   if (provider === "prime") {
     return "prime-agent";
+  }
+  if (provider === "omp") {
+    return "omp";
   }
   if (provider === "cursor") {
     return `cursor-agent --workspace ${shellQuote(projectPath)}`;

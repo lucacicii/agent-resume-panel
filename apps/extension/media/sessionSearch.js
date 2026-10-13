@@ -4,16 +4,18 @@
   let uiStrings = {};
   let previewUiStrings = {};
 
-  /** @type {{ projects: Array<{projectPath: string, name: string, sessionCount: number, favorited: boolean, compactPath: string}>, sessions: Array<{provider: string, id: string, title: string, projectPath: string, projectName: string, branch?: string, summary?: string, updatedAtLabel: string, gtdStatus?: string, gtdStatusLabel?: string}>, gtdStatuses: Array<{status: string, label: string}> }} */
-  let state = { projects: [], sessions: [], gtdStatuses: [] };
+  /** @type {{ projects: Array<{projectPath: string, name: string, sessionCount: number, favorited: boolean, compactPath: string}>, sessions: Array<{provider: string, id: string, title: string, projectPath: string, projectName: string, branch?: string, summary?: string, updatedAtLabel: string, gtdStatus?: string, gtdStatusLabel?: string}>, gtdStatuses: Array<{status: string, label: string, count?: number}>, totalSessions: number, untaggedCount: number, filteredTotal: number, hasMore: boolean }} */
+  let state = { projects: [], sessions: [], gtdStatuses: [], totalSessions: 0, untaggedCount: 0, filteredTotal: 0, hasMore: false };
   let selectedProjectPath = null;
   /** @type {null | "untagged" | string} */
   let selectedGtdFilter = null;
   let query = "";
+  let searchDebounceTimer = null;
+  let loadingPage = false;
   let previewLoadingKey = null;
   /** @type {{ provider: string, id: string } | null} */
   let activePreviewSession = null;
-
+  const PAGE_SIZE = 50;
   const searchInput = document.getElementById("search");
   const chipsEl = document.getElementById("chips");
   const gtdChipsEl = document.getElementById("gtd-chips");
@@ -83,7 +85,10 @@
 
   searchInput.addEventListener("input", () => {
     query = searchInput.value;
-    renderSessions();
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(() => {
+      requestPage(0);
+    }, 150);
   });
 
   previewResume.addEventListener("click", () => {
@@ -154,11 +159,22 @@
       uiStrings = message.uiStrings || {};
       previewUiStrings = message.previewUiStrings || {};
       applyStaticUi();
+      const incomingSessions = message.sessions || [];
+      const totalSessions = typeof message.totalSessions === "number" ? message.totalSessions : incomingSessions.length;
+      const untaggedCount =
+        typeof message.untaggedCount === "number"
+          ? message.untaggedCount
+          : incomingSessions.filter((session) => !session.gtdStatus).length;
       state = {
         projects: message.projects || [],
-        sessions: message.sessions || [],
-        gtdStatuses: message.gtdStatuses || []
+        sessions: incomingSessions,
+        gtdStatuses: message.gtdStatuses || [],
+        totalSessions,
+        untaggedCount,
+        filteredTotal: typeof message.filteredTotal === "number" ? message.filteredTotal : incomingSessions.length,
+        hasMore: Boolean(message.hasMore)
       };
+      loadingPage = false;
       selectedProjectPath = null;
       selectedGtdFilter = null;
       query = searchInput.value;
@@ -176,6 +192,20 @@
       ) {
         closePreview();
       }
+      if (query.trim()) {
+        requestPage(0);
+      }
+      return;
+    }
+
+    if (message.type === "pageResult") {
+      loadingPage = false;
+      const nextSessions = message.sessions || [];
+      state.sessions = message.append ? state.sessions.concat(nextSessions) : nextSessions;
+      state.filteredTotal = typeof message.total === "number" ? message.total : state.sessions.length;
+      state.hasMore = Boolean(message.hasMore);
+      renderSessions();
+      syncPreviewTitle();
       return;
     }
 
@@ -234,12 +264,24 @@
     }
   });
 
+  function requestPage(offset) {
+    loadingPage = true;
+    vscode.postMessage({
+      type: "queryPage",
+      offset,
+      limit: PAGE_SIZE,
+      search: query,
+      projectPath: selectedProjectPath,
+      gtdFilter: selectedGtdFilter
+    });
+  }
+
   function renderChips() {
     chipsEl.innerHTML = "";
 
     const allChip = createChip(
       uiStrings.chipAllProjects || "All Projects",
-      state.sessions.length,
+      state.totalSessions || state.sessions.length,
       null,
       !selectedProjectPath,
       uiStrings.chipAllProjectsTooltip || "Show sessions from all projects"
@@ -268,7 +310,7 @@
     button.addEventListener("click", () => {
       selectedProjectPath = projectPath;
       renderChips();
-      renderSessions();
+      requestPage(0);
     });
     return button;
   }
@@ -280,11 +322,10 @@
 
     gtdChipsEl.innerHTML = "";
 
-    const untaggedCount = state.sessions.filter((session) => !session.gtdStatus).length;
     gtdChipsEl.appendChild(
       createGtdChip(
         uiStrings.chipAllGtd || "All GTD",
-        state.sessions.length,
+        state.totalSessions || state.sessions.length,
         null,
         selectedGtdFilter === null,
         uiStrings.chipAllGtdTooltip || "Show sessions regardless of GTD status"
@@ -293,7 +334,7 @@
     gtdChipsEl.appendChild(
       createGtdChip(
         uiStrings.chipUntagged || "Untagged",
-        untaggedCount,
+        state.untaggedCount,
         "untagged",
         selectedGtdFilter === "untagged",
         uiStrings.chipUntaggedTooltip || "Show sessions without a GTD status"
@@ -301,7 +342,10 @@
     );
 
     for (const entry of state.gtdStatuses) {
-      const count = state.sessions.filter((session) => session.gtdStatus === entry.status).length;
+      const count =
+        typeof entry.count === "number"
+          ? entry.count
+          : state.sessions.filter((session) => session.gtdStatus === entry.status).length;
       gtdChipsEl.appendChild(
         createGtdChip(entry.label, count, entry.status, selectedGtdFilter === entry.status, entry.label)
       );
@@ -317,13 +361,13 @@
     button.addEventListener("click", () => {
       selectedGtdFilter = filterValue;
       renderGtdChips();
-      renderSessions();
+      requestPage(0);
     });
     return button;
   }
 
   function renderSessions() {
-    const filtered = state.sessions.filter(matchesSession);
+    const filtered = state.sessions;
     sessionsEl.innerHTML = "";
 
     if (!filtered.length) {
@@ -455,6 +499,25 @@
       row.appendChild(body);
       row.appendChild(actions);
       sessionsEl.appendChild(row);
+    }
+
+    if (state.hasMore) {
+      const remaining = Math.max(0, state.filteredTotal - filtered.length);
+      const moreWrap = document.createElement("div");
+      moreWrap.className = "load-more-row";
+      const moreBtn = document.createElement("button");
+      moreBtn.type = "button";
+      moreBtn.className = "chip load-more-btn";
+      moreBtn.disabled = loadingPage;
+      const baseLabel = uiStrings.showMore || "Show More";
+      moreBtn.textContent = remaining > 0 ? `${baseLabel} (${remaining})` : baseLabel;
+      moreBtn.addEventListener("click", () => {
+        if (!loadingPage) {
+          requestPage(state.sessions.length);
+        }
+      });
+      moreWrap.appendChild(moreBtn);
+      sessionsEl.appendChild(moreWrap);
     }
   }
 

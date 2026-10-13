@@ -13,6 +13,7 @@ type ProviderIconProps = {
  */
 const PROVIDER_ICON_FILES: Record<string, string> = {
   pi: "./assets/providers/pi.svg",
+  omp: "./assets/providers/pi.svg",
   opencode: "./assets/providers/opencode.png",
   claude: "./assets/providers/claude.svg",
   // Codex uses the ChatGPT product mark.

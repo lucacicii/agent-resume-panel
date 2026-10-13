@@ -30,6 +30,14 @@ export async function renamePrimeSession(
   await renameJsonlSession(path.join(primeHome, "sessions"), session, title, "Prime Agent");
 }
 
+export async function renameOmpSession(
+  ompHome: string,
+  session: AgentSession,
+  title: string
+): Promise<void> {
+  await renameJsonlSession(path.join(ompHome, "sessions"), session, title, "OMP");
+}
+
 async function renameJsonlSession(
   sessionsRoot: string,
   session: AgentSession,
@@ -47,17 +55,28 @@ async function renameJsonlSession(
     throw new Error(`${providerLabel} session file is empty: ${sessionPath}`);
   }
 
-  let header: JsonlSessionHeader;
-  try {
-    header = JSON.parse(lines[0].trim()) as JsonlSessionHeader;
-  } catch {
+  let sessionHeaderIndex = -1;
+  let matchedHeader = false;
+  for (let i = 0; i < lines.length; i += 1) {
+    const trimmed = lines[i].trim();
+    if (!trimmed) continue;
+    try {
+      const entry = JSON.parse(trimmed) as JsonlSessionHeader;
+      if (entry.type === "session") {
+        sessionHeaderIndex = i;
+        matchedHeader = entry.id === session.id;
+        break;
+      }
+    } catch {
+      // keep scanning
+    }
+  }
+  if (sessionHeaderIndex < 0) {
     throw new Error(`${providerLabel} session header is invalid: ${sessionPath}`);
   }
-
-  if (header.type !== "session" || header.id !== session.id) {
+  if (!matchedHeader) {
     throw new Error(`${providerLabel} session header does not match ${session.id}.`);
   }
-
   let updated = false;
   const nextLines = lines.map((line) => {
     const trimmed = line.trim();
@@ -72,6 +91,10 @@ async function renameJsonlSession(
       return line;
     }
 
+    if (entry.type === "title") {
+      updated = true;
+      return JSON.stringify({ ...entry, title, updatedAt: new Date().toISOString() });
+    }
     if (entry.type !== "session_info") {
       return line;
     }
@@ -82,7 +105,7 @@ async function renameJsonlSession(
 
   if (!updated) {
     nextLines.splice(
-      1,
+      sessionHeaderIndex + 1,
       0,
       JSON.stringify({ type: "session_info", name: title, timestamp: new Date().toISOString() })
     );
@@ -101,23 +124,20 @@ async function findJsonlSessionFile(root: string, sessionId: string): Promise<st
       continue;
     }
 
-    const firstLine = content
-      .split("\n")
-      .map((line) => line.trim())
-      .find(Boolean);
-    if (!firstLine) {
-      continue;
-    }
-
-    let header: JsonlSessionHeader;
-    try {
-      header = JSON.parse(firstLine) as JsonlSessionHeader;
-    } catch {
-      continue;
-    }
-
-    if (header.type === "session" && header.id === sessionId) {
-      return sessionPath;
+    for (const rawLine of content.split("\n")) {
+      const line = rawLine.trim();
+      if (!line) continue;
+      try {
+        const entry = JSON.parse(line) as JsonlSessionHeader;
+        if (entry.type === "session") {
+          if (entry.id === sessionId) {
+            return sessionPath;
+          }
+          break;
+        }
+      } catch {
+        continue;
+      }
     }
   }
 

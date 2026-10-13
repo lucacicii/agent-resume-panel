@@ -57,7 +57,7 @@ test("explicit missing agent home still warns", async () => {
   assert.ok(result.warnings.some((warning) => warning.includes("Claude data directory not found")));
 });
 
-test("syncs nine providers, preserves local enhancements, and isolates provider failures", async () => {
+test("syncs ten providers, preserves local enhancements, and isolates provider failures", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "agent-resume-sync-"));
   const homes = {
     codexHome: path.join(root, "codex"),
@@ -67,6 +67,7 @@ test("syncs nine providers, preserves local enhancements, and isolates provider 
     opencodeHome: path.join(root, "opencode"),
     piHome: path.join(root, "pi"),
     primeHome: path.join(root, "prime"),
+    ompHome: path.join(root, "omp"),
     cursorHome: path.join(root, "cursor"),
     cursorIdeUserDataHome: path.join(root, "cursor-ide-user")
   };
@@ -96,6 +97,16 @@ test("syncs nine providers, preserves local enhancements, and isolates provider 
     { type: "session", id: "prime-1", cwd: "/tmp/prime", timestamp: "2026-01-01T00:00:09Z" },
     { type: "message", timestamp: "2026-01-01T00:00:10Z", message: { role: "user", content: "Prime title" } }
   ]);
+  await jsonl(path.join(homes.ompHome, "sessions", "-tmp-omp", "omp-1.jsonl"), [
+    { type: "title", v: 1, title: "OMP title", updatedAt: "2026-01-01T00:00:11Z", pad: "   " },
+    { type: "session", version: 3, id: "omp-1", cwd: "/tmp/omp", timestamp: "2026-01-01T00:00:10Z" },
+    { type: "model_change", id: "mc1", timestamp: "2026-01-01T00:00:10Z", model: "magpie/step-5" },
+    { type: "message", timestamp: "2026-01-01T00:00:11Z", message: { role: "user", content: [{ type: "text", text: "OMP first prompt" }] } }
+  ]);
+  await jsonl(path.join(homes.ompHome, "sessions", "-tmp-omp", "omp-1", "subagent.jsonl"), [
+    { type: "session", version: 3, id: "omp-sub-1", cwd: "/tmp/omp", parentSession: "/tmp/omp/omp-1.jsonl", timestamp: "2026-01-01T00:00:12Z" },
+    { type: "message", timestamp: "2026-01-01T00:00:12Z", message: { role: "user", content: [{ type: "text", text: "Subagent task" }] } }
+  ]);
   await mkdir(path.join(homes.cursorHome, "chats", "workspace-a", "cursor-1"), { recursive: true });
   await writeFile(
     path.join(homes.cursorHome, "chats", "workspace-a", "cursor-1", "meta.json"),
@@ -123,14 +134,18 @@ test("syncs nine providers, preserves local enhancements, and isolates provider 
   const firstPromise = syncAgentSessions(options);
   assert.equal(syncAgentSessions(options), firstPromise, "concurrent calls share one task");
   const first = await firstPromise;
-  assert.equal(first.providers.filter((provider) => provider.status === "ok").length, 9);
-  assert.deepEqual(new Set(first.sessions.map((item) => item.provider)), new Set(["codex", "claude", "agy", "grok", "opencode", "pi", "prime", "cursor", "cursor-ide"]));
+  assert.equal(first.providers.filter((provider) => provider.status === "ok").length, 10);
+  assert.deepEqual(new Set(first.sessions.map((item) => item.provider)), new Set(["codex", "claude", "agy", "grok", "opencode", "pi", "prime", "omp", "cursor", "cursor-ide"]));
   const cursor = first.sessions.find((item) => item.provider === "cursor");
   assert.equal(cursor?.title, "Cursor CLI title");
   assert.equal(cursor?.projectPath, "/tmp/cursor");
   const prime = first.sessions.find((item) => item.provider === "prime");
   assert.equal(prime?.title, "Prime title");
   assert.equal(prime?.projectPath, "/tmp/prime");
+  const omp = first.sessions.find((item) => item.provider === "omp");
+  assert.equal(omp?.title, "OMP title");
+  assert.equal(omp?.projectPath, "/tmp/omp");
+  assert.equal(omp?.model, "magpie/step-5");
   const cursorIde = first.sessions.find((item) => item.provider === "cursor-ide");
   assert.equal(cursorIde?.title, "Cursor IDE title");
   assert.equal(cursorIde?.projectPath, "/tmp/cursor-ide");
@@ -254,6 +269,7 @@ test("keeps Codex ACP threads out of CLI sessions and removes existing catalog d
     opencodeHome: path.join(root, "opencode"),
     piHome: path.join(root, "pi"),
     primeHome: path.join(root, "prime"),
+    ompHome: path.join(root, "omp"),
     cursorHome: path.join(root, "cursor"),
     cursorIdeUserDataHome: path.join(root, "cursor-ide-user")
   };

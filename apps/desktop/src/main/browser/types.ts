@@ -1,3 +1,5 @@
+import type { BrowserDevtoolsLogEntry, BrowserProbeMarkup, BrowserProbeTarget } from "../../shared/browserTypes";
+
 export type BrowserSessionId = string;
 export type BrowserTabId = string;
 
@@ -64,7 +66,13 @@ export type BrowserEvent =
       filename: string;
       state: "started" | "done" | "blocked";
     }
-  | { type: "crash"; browserId: BrowserSessionId; reason: string };
+  | { type: "crash"; browserId: BrowserSessionId; reason: string }
+  | { type: "probeInspect"; browserId: BrowserSessionId; tabId: BrowserTabId; target: BrowserProbeTarget }
+  | { type: "probeMarkup"; browserId: BrowserSessionId; tabId: BrowserTabId; markup: BrowserProbeMarkup }
+  | { type: "probeCancelled"; browserId: BrowserSessionId; tabId: BrowserTabId }
+  | { type: "devtoolsLog"; browserId: BrowserSessionId; tabId: BrowserTabId; entry: BrowserDevtoolsLogEntry }
+  | { type: "devtoolsLogsCleared"; browserId: BrowserSessionId; tabId: BrowserTabId }
+  | { type: "devtoolsAttached"; browserId: BrowserSessionId; tabId: BrowserTabId; attached: boolean; reason?: string };
 
 export type BrowserCreateArgs = {
   projectPath: string;

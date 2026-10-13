@@ -25,10 +25,11 @@ import {
   removeOurHooks,
   writeJsonObjectIfChanged
 } from "./config";
+import { installOmpExtension, ompExtensionInstalled, ompExtensionPath } from "./omp";
 import { installPiExtension, piExtensionInstalled, piExtensionPath } from "./pi";
 import { isOurCommand, materializeWrapper, type WrapperConfig } from "./wrapper";
 
-export type AgentIntegrationId = "claude" | "codex" | "pi";
+export type AgentIntegrationId = "claude" | "codex" | "pi" | "omp";
 
 export type AgentIntegrationContext = {
   panelHome: string;
@@ -256,10 +257,28 @@ function piStatus(ctx: AgentIntegrationContext): AgentIntegrationStatus {
   };
 }
 
+// ----------------------------------------------------------------------------- OMP
+
+function ompStatus(ctx: AgentIntegrationContext): AgentIntegrationStatus {
+  const target = ompExtensionPath(homeDir(ctx));
+  const detected = existsSync(path.join(homeDir(ctx), ".omp", "agent"));
+  const installed = ompExtensionInstalled(homeDir(ctx));
+  return {
+    id: "omp",
+    label: "OMP",
+    detected,
+    installed,
+    detail: installed
+      ? "companion extension reports status on the terminal stream (managed by the app)"
+      : "extension is written when Desktop starts",
+    configPath: target
+  };
+}
+
 // -------------------------------------------------------------------------- registry
 
 export function listAgentIntegrations(ctx: AgentIntegrationContext): AgentIntegrationStatus[] {
-  return [claudeStatus(ctx), codexStatus(ctx), piStatus(ctx)];
+  return [claudeStatus(ctx), codexStatus(ctx), piStatus(ctx), ompStatus(ctx)];
 }
 
 export function installAgentIntegration(
@@ -268,6 +287,7 @@ export function installAgentIntegration(
 ): AgentIntegrationStatus {
   if (id === "claude") installClaudeHooks(ctx);
   else if (id === "codex") installCodexHooks(ctx);
+  else if (id === "omp") installOmpExtension(homeDir(ctx));
   else installPiExtension(homeDir(ctx));
   return listAgentIntegrations(ctx).find((entry) => entry.id === id)!;
 }
@@ -278,7 +298,9 @@ export function uninstallAgentIntegration(
 ): AgentIntegrationStatus {
   if (id === "claude") uninstallClaudeHooks(ctx);
   else if (id === "codex") uninstallCodexHooks(ctx);
-  else {
+  else if (id === "omp") {
+    throw new Error("The OMP companion extension is managed by the app and is rewritten on startup.");
+  } else {
     throw new Error("The Pi companion extension is managed by the app and is rewritten on startup.");
   }
   return listAgentIntegrations(ctx).find((entry) => entry.id === id)!;

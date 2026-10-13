@@ -38,6 +38,11 @@ export function buildHandoffCliLaunchCommand(
         return `prime-agent ${shellQuote(prompt)}`;
       }
       return `prime-agent @${shellQuotePathForPi(handoffFilePath)}`;
+    case "omp":
+      if (useInline) {
+        return `omp ${shellQuote(prompt)}`;
+      }
+      return `omp @${shellQuotePathForPi(handoffFilePath)}`;
     case "agy":
       return `agy --prompt-interactive ${shellQuote(prompt)}`;
     default:

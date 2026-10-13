@@ -1,4 +1,4 @@
-export type AcpAgentProvider = "codex" | "claude" | "grok" | "opencode" | "pi" | "prime";
+export type AcpAgentProvider = "codex" | "claude" | "grok" | "opencode" | "pi" | "prime" | "omp";
 
 export interface AcpAgentLaunchConfig {
   command: string;

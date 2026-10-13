@@ -82,6 +82,23 @@ export interface ThunderFileChangeRecord {
   toolCallId?: string;
 }
 
+/**
+ * Payload of thunder's `file_change` custom event.
+ *
+ * Emitted by the tool layer (`thunder-agent-pack-code/src/file_change.rs`) as
+ * `AgentEvent::Custom`, which reaches a host as
+ * `{"type":"custom","kind":"file_change","payload":{…}}`. The event carries no
+ * turn and no tool call id — the kernel does not interpret it, so only what the
+ * tool itself knows is in here.
+ */
+export interface ThunderFileChangePayload {
+  path: string;
+  action: "written" | "created" | "modified" | "deleted" | "failed" | string;
+  /** Present for `write_file`; `bash` reports a path and an action only. */
+  bytes?: number;
+  tool?: string;
+}
+
 export interface ThunderTurnStats {
   turn: number;
   prompt_tokens?: number;
@@ -103,6 +120,34 @@ export interface ThunderAgentStats {
   total_tool_executions: number;
   total_tool_time_ms: number;
   avg_tokens_per_second?: number;
+}
+
+export interface ThunderMetricsSnapshot {
+  session_id: string;
+  task_id?: string;
+  model?: string;
+  thinking_level?: string;
+  is_running: boolean;
+  turn: number;
+  live_tps: number;
+  avg_tps?: number;
+  live_tokens: number;
+  live_reasoning_tokens: number;
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  reasoning_tokens?: number;
+  total_tokens?: number;
+  cached_tokens: number;
+  cache_write_tokens?: number;
+  cache_hit_percent?: number;
+  context_tokens: number;
+  context_window_limit?: number;
+  context_usage_percent?: number;
+  session_total_tokens: number;
+  generation_duration_ms: number;
+  tool_duration_ms: number;
+  duration_ms?: number;
+  wall_duration_ms?: number;
 }
 
 export interface ThunderTraceSpan {
@@ -129,6 +174,7 @@ export interface ThunderTaskTrace {
   wall_duration_ms?: number;
   finish_reason?: string;
   stats?: ThunderAgentStats;
+  metrics?: ThunderMetricsSnapshot;
   final_content?: string;
   events?: ThunderObservedEvent[];
   file_changes?: ThunderFileChangeRecord[];
@@ -136,7 +182,13 @@ export interface ThunderTaskTrace {
 }
 
 export type ThunderAgentEvent =
-  | { type: "turn_start"; turn: number; timestamp: number }
+  | {
+      type: "turn_start";
+      turn: number;
+      timestamp: number;
+      /** Estimated size of the prompt this turn sends (system prompt + tools included). */
+      estimated_prompt_tokens?: number;
+    }
   | { type: "token_delta"; turn: number; delta: string }
   | { type: "reasoning_delta"; turn: number; delta: string }
   | {
@@ -166,13 +218,18 @@ export type ThunderAgentEvent =
       };
     }
   | {
-      type: "file_change";
-      turn: number;
-      tool_call_id: string;
-      path: string;
-      action: "written" | "created" | "modified" | "deleted" | "failed" | string;
-      bytes?: number;
-      tool_name: string;
+      /**
+       * A host-defined event forwarded verbatim by the kernel. Thunder emits
+       * `kind: "file_change"` from the tool layer; the payload shape is
+       * `ThunderFileChangePayload`. Other kinds are safe to ignore.
+       *
+       * Note this is `type: "custom"` with a `kind` discriminator — NOT a
+       * top-level `type: "file_change"`. The kernel deliberately does not
+       * interpret custom events, so they arrive wrapped.
+       */
+      type: "custom";
+      kind: string;
+      payload: Record<string, unknown>;
     }
   | {
       type: "telemetry_notice";
@@ -349,6 +406,7 @@ export interface ThunderActiveStreamSnapshot {
   streamingText: string;
   streamingReasoning: string;
   streamingTools: ThunderToolExecutionRecord[];
+  metrics?: ThunderMetricsSnapshot;
   events: ThunderObservedEvent[];
 }
 

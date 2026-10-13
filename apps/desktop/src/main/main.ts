@@ -2665,10 +2665,13 @@ function registerIpc(): void {
   }) => {
     const settings = await loadSettings();
     const paths = await loadPanelDbPaths(settings);
-    const validProviders = new Set<AgentProvider>(["codex", "claude", "agy", "grok", "opencode", "pi", "prime", "cursor", "cursor-ide", "chat"]);
+    const validProviders: Record<AgentProvider, true> = {
+      codex: true, claude: true, agy: true, grok: true, opencode: true,
+      pi: true, prime: true, omp: true, cursor: true, "cursor-ide": true, chat: true
+    };
     const providers = (args?.providers ?? []).map((value) => String(value).trim()).filter(Boolean);
     for (const provider of providers) {
-      if (!validProviders.has(provider as AgentProvider)) throw new Error("Invalid session provider.");
+      if (!validProviders[provider as AgentProvider]) throw new Error("Invalid session provider.");
     }
     const gtdStatuses = (args?.gtdStatuses ?? []).map((value) => String(value).trim()).filter(Boolean);
     for (const status of gtdStatuses) {

@@ -14,6 +14,7 @@ export type NativeConversationProvider =
   | "opencode"
   | "pi"
   | "prime"
+  | "omp"
   | "cursor"
   | "cursor-ide";
 
@@ -54,7 +55,7 @@ const DEFAULT_MAX_FILE_BYTES = 512 * 1024 * 1024;
 const DEFAULT_MAX_TOTAL_BYTES = 4 * 1024 * 1024 * 1024;
 const DEFAULT_OPENCODE_SHARD_TARGET_BYTES = 448 * 1024 * 1024;
 const SUPPORTED: Array<Exclude<NativeConversationProvider, "cursor-ide">> = [
-  "codex", "claude", "agy", "grok", "opencode", "pi", "prime", "cursor"
+  "codex", "claude", "agy", "grok", "opencode", "pi", "prime", "omp", "cursor"
 ];
 const OPEN_CODE_KEEP_DATA = new Set([
   "project", "project_directory", "workspace", "session", "session_context_epoch",
@@ -132,6 +133,7 @@ function formatBytes(value: number): string {
 function providerLabel(provider: NativeConversationProvider): string {
   if (provider === "agy") return "Antigravity";
   if (provider === "prime") return "Prime Agent";
+  if (provider === "omp") return "OMP";
   if (provider === "cursor") return "Cursor CLI";
   if (provider === "cursor-ide") return "Cursor IDE";
   if (provider === "opencode") return "OpenCode";
@@ -411,6 +413,7 @@ export async function buildNativeConversationArtifacts(settings: PanelSettings, 
 
   await copyProvider("pi", homes.piHome, await filesBelow(path.join(homes.piHome, "sessions"), (relative) => relative.endsWith(".jsonl"), 12).then((items) => items.map((item) => ({ absolute: item.absolute, relative: path.posix.join("sessions", item.relative) }))));
   await copyProvider("prime", homes.primeHome, await filesBelow(path.join(homes.primeHome, "sessions"), (relative) => relative.endsWith(".jsonl"), 12).then((items) => items.map((item) => ({ absolute: item.absolute, relative: path.posix.join("sessions", item.relative) }))));
+  await copyProvider("omp", homes.ompHome, await filesBelow(path.join(homes.ompHome, "sessions"), (relative) => relative.endsWith(".jsonl"), 12).then((items) => items.map((item) => ({ absolute: item.absolute, relative: path.posix.join("sessions", item.relative) }))));
   await copyProvider("cursor", homes.cursorHome, [
     ...(await filesBelow(path.join(homes.cursorHome, "chats"), (relative) => relative.endsWith("meta.json"), 12).then((items) => items.map((item) => ({ absolute: item.absolute, relative: path.posix.join("chats", item.relative) })))),
     ...(await filesBelow(path.join(homes.cursorHome, "projects"), (relative) => relative.includes("agent-transcripts/") && relative.endsWith(".jsonl"), 14).then((items) => items.map((item) => ({ absolute: item.absolute, relative: path.posix.join("projects", item.relative) }))))

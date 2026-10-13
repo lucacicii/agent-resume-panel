@@ -23,6 +23,7 @@ function homes(root) {
     opencodeHome: path.join(root, "opencode"),
     piHome: path.join(root, "pi"),
     primeHome: path.join(root, "prime"),
+    ompHome: path.join(root, "omp"),
     cursorHome: path.join(root, "cursor"),
     cursorIdeUserDataHome: path.join(root, "cursor-ide")
   };
@@ -144,23 +145,25 @@ test("claude native cwd is rewritten in project jsonl and history.jsonl", async 
   await fs.rm(root, { recursive: true, force: true });
 });
 
-test("pi and prime native cwd are rewritten on the session header row", async () => {
-  for (const provider of ["pi", "prime"]) {
+test("pi, prime, and omp native cwd are rewritten on the session header row", async () => {
+  for (const provider of ["pi", "prime", "omp"]) {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), `native-cwd-${provider}-`));
     const h = homes(root);
-    const dir = provider === "pi" ? h.piHome : h.primeHome;
+    const dir = provider === "pi" ? h.piHome : provider === "prime" ? h.primeHome : h.ompHome;
     const sessionsDir = path.join(dir, "sessions");
     await fs.mkdir(sessionsDir, { recursive: true });
     const file = path.join(sessionsDir, "sess-1.jsonl");
+    const prefix = provider === "omp" ? `${JSON.stringify({ type: "title", v: 1, title: "T", updatedAt: "2026-01-01T00:00:00Z" })}\n` : "";
     await fs.writeFile(
       file,
-      `${JSON.stringify({ type: "session", id: "sess-1", cwd: "/old", timestamp: "2026-01-01T00:00:00Z" })}\n${JSON.stringify({ type: "message", timestamp: "2026-01-01T00:00:01Z", message: { role: "user", content: "hi" } })}\n`,
+      `${prefix}${JSON.stringify({ type: "session", id: "sess-1", cwd: "/old", timestamp: "2026-01-01T00:00:00Z" })}\n${JSON.stringify({ type: "message", timestamp: "2026-01-01T00:00:01Z", message: { role: "user", content: "hi" } })}\n`,
       "utf8"
     );
 
     const result = await updateNativeSessionCwd(provider, "sess-1", "/new/project", h);
     assert.equal(result.ok, true);
-    const header = JSON.parse((await fs.readFile(file, "utf8")).trim().split("\n")[0]);
+    const rows = (await fs.readFile(file, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+    const header = rows.find((row) => row.type === "session");
     assert.equal(header.cwd, "/new/project");
 
     await fs.rm(root, { recursive: true, force: true });

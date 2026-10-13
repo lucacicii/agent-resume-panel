@@ -3,7 +3,14 @@ import * as vscode from "vscode";
 import { AgentSession, basenameOrPath, compactPath } from "../history";
 import { t } from "../i18n";
 import { GtdStatus } from "../catalog/gtd";
+import {
+  CatalogProjectGroupSummary,
+  queryProjectGroupSummaries,
+  queryProjectSessionsPage,
+  queryRecentSessionsPage
+} from "../catalog/query";
 import { isFavoriteProject } from "../favorites/projectFavorites";
+import { LlmOutputLanguage } from "../llm/languages";
 import {
   formatProjectLabel,
   pickProjectDisplayPath,
@@ -14,11 +21,21 @@ import { ProjectSessionSortMode, projectTreeItemId, sortSessionsForProject } fro
 import { DEFAULT_SECTION_ORDER, SectionKind } from "./sectionOrder";
 
 type RootNode = RecentRootNode | FavoritesRootNode | ProjectsRootNode | WarningNode | EmptyNode;
-export type TreeNode = RootNode | ProjectNode | SessionNode | ShowMoreRecentNode;
+export type TreeNode =
+  | RootNode
+  | ProjectNode
+  | SessionNode
+  | ShowMoreRecentNode
+  | ShowMoreProjectsNode
+  | ShowMoreProjectSessionsNode;
 type SectionRootNode = RecentRootNode | FavoritesRootNode | ProjectsRootNode;
 
 const recentInitialLimit = 10;
 const recentLimitStep = 10;
+const projectsInitialLimit = 25;
+const projectsLimitStep = 25;
+const projectSessionsInitialLimit = 20;
+const projectSessionsLimitStep = 20;
 const MESSAGE_COUNT_THRESHOLD = 10;
 
 interface RecentRootNode {
@@ -47,9 +64,24 @@ interface ShowMoreRecentNode {
   remaining: number;
 }
 
+interface ShowMoreProjectsNode {
+  kind: "showMoreProjects";
+  remaining: number;
+}
+
+interface ShowMoreProjectSessionsNode {
+  kind: "showMoreProjectSessions";
+  projectKey: string;
+  remaining: number;
+}
+
 interface ProjectNode {
   kind: "project";
   projectPath: string;
+  projectId?: string;
+  groupKey?: string;
+  sessionCount?: number;
+  candidatePaths?: string[];
   sessions: AgentSession[];
   favorited?: boolean;
 }
@@ -59,7 +91,6 @@ interface SessionNode {
   session: AgentSession;
   showProjectName?: boolean;
 }
-
 export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
   private readonly onDidChangeTreeDataEmitter = new vscode.EventEmitter<TreeNode | undefined | null | void>();
   readonly onDidChangeTreeData = this.onDidChangeTreeDataEmitter.event;
@@ -69,6 +100,18 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
   private favoriteProjects: string[] = [];
   private sectionOrder: SectionKind[] = [...DEFAULT_SECTION_ORDER];
   private recentVisibleCount = recentInitialLimit;
+  private projectsVisibleCount = projectsInitialLimit;
+  private projectSessionVisibleCounts = new Map<string, number>();
+  private catalogConfig?: {
+    dbPath: string;
+    maxCap: number;
+    outputLanguage?: LlmOutputLanguage;
+  };
+  private cachedRecentSessions: AgentSession[] = [];
+  private cachedRecentTotal = 0;
+  private cachedProjectGroups: CatalogProjectGroupSummary[] = [];
+  private cachedProjectSessions = new Map<string, AgentSession[]>();
+  private summaryOverrides = new Map<string, string>();
   private projectSessionSortMode: (projectPath: string) => ProjectSessionSortMode = () => "updatedDesc";
   private projectAliasResolver: (projectPath: string) => string | undefined = () => undefined;
   private gtdStatusResolver: (session: AgentSession) => string | undefined = () => undefined;
@@ -134,13 +177,35 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
     return formatProjectLabel(projectPath, this.projectAliasResolver(projectPath));
   }
 
-  setData(sessions: AgentSession[], warnings: string[]): void {
-    this.sessions = sessions;
-    this.warnings = warnings;
+  setCatalogSource(config: {
+    dbPath: string;
+    maxCap: number;
+    outputLanguage?: LlmOutputLanguage;
+    warnings?: string[];
+  }): void {
+    this.catalogConfig = {
+      dbPath: config.dbPath,
+      maxCap: config.maxCap,
+      outputLanguage: config.outputLanguage
+    };
+    this.warnings = config.warnings ?? [];
     this.recentVisibleCount = recentInitialLimit;
+    this.projectsVisibleCount = projectsInitialLimit;
+    this.projectSessionVisibleCounts.clear();
+    this.cachedProjectSessions.clear();
     this.onDidChangeTreeDataEmitter.fire();
   }
 
+  setData(sessions: AgentSession[], warnings: string[]): void {
+    this.catalogConfig = undefined;
+    this.sessions = sessions;
+    this.warnings = warnings;
+    this.recentVisibleCount = recentInitialLimit;
+    this.projectsVisibleCount = projectsInitialLimit;
+    this.projectSessionVisibleCounts.clear();
+    this.cachedProjectSessions.clear();
+    this.onDidChangeTreeDataEmitter.fire();
+  }
   setFavoriteProjects(projectPaths: string[]): void {
     this.favoriteProjects = projectPaths;
     this.onDidChangeTreeDataEmitter.fire();
@@ -178,7 +243,11 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
 
   getProjectSessionsFromNode(node: unknown): AgentSession[] {
     if (isProjectNode(node)) {
-      return node.sessions;
+      if (node.sessions.length > 0) {
+        return node.sessions;
+      }
+      const key = node.groupKey ?? projectTreeItemId(node.projectPath);
+      return this.cachedProjectSessions.get(key) ?? [];
     }
     if (isSessionNode(node)) {
       return [node.session];
@@ -186,6 +255,27 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
     return [];
   }
 
+  async loadProjectSessionsFromNode(node: unknown, limit = 100): Promise<AgentSession[]> {
+    if (isSessionNode(node)) {
+      return [node.session];
+    }
+    if (!isProjectNode(node)) {
+      return [];
+    }
+    if (!this.catalogConfig) {
+      return node.sessions;
+    }
+    const page = await queryProjectSessionsPage(this.catalogConfig.dbPath, {
+      projectPath: node.projectPath,
+      projectId: node.projectId,
+      candidatePaths: node.candidatePaths,
+      sortMode: this.projectSessionSortMode(node.projectPath),
+      limit,
+      offset: 0,
+      outputLanguage: this.catalogConfig.outputLanguage
+    });
+    return page.sessions.map((s) => this.applySummaryOverride(s));
+  }
   getTreeItem(element: TreeNode): vscode.TreeItem {
     switch (element.kind) {
       case "recentRoot":
@@ -211,7 +301,8 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
           this.getProjectDisplayName(element.projectPath),
           vscode.TreeItemCollapsibleState.Collapsed
         );
-        item.description = `${element.sessions.length}`;
+        const count = element.sessionCount ?? element.sessions.length;
+        item.description = `${count}`;
         item.tooltip = buildProjectTooltip(element.projectPath, alias, this.hasProjectNoteResolver(element.projectPath));
         item.id = projectTreeItemId(element.projectPath);
         item.iconPath = new vscode.ThemeIcon(element.favorited ? "star-full" : "folder");
@@ -221,11 +312,15 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
       case "session":
         return buildSessionTreeItem(element.session, this.getSessionTreeItemOptions(element.showProjectName));
       case "showMoreRecent":
-        return showMoreRecentItem(element.remaining);
+        return showMoreItem(element.remaining, "agentResume.showMoreRecent");
+      case "showMoreProjects":
+        return showMoreItem(element.remaining, "agentResume.showMoreProjects");
+      case "showMoreProjectSessions":
+        return showMoreItem(element.remaining, "agentResume.showMoreProjectSessions", [element.projectKey]);
     }
   }
 
-  getChildren(element?: TreeNode): TreeNode[] {
+  async getChildren(element?: TreeNode): Promise<TreeNode[]> {
     if (!element) {
       const roots: TreeNode[] = [];
       if (this.warnings.length) {
@@ -235,10 +330,18 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
       return roots;
     }
 
+    if (this.catalogConfig) {
+      return this.getCatalogChildren(element);
+    }
+
     if (element.kind === "recentRoot") {
       const visibleSessions: TreeNode[] = this.sessions
         .slice(0, this.recentVisibleCount)
-        .map((session) => ({ kind: "session" as const, session, showProjectName: true } satisfies SessionNode));
+        .map((session) => ({
+          kind: "session" as const,
+          session: this.applySummaryOverride(session),
+          showProjectName: true
+        } satisfies SessionNode));
       const remaining = Math.max(0, this.sessions.length - visibleSessions.length);
       if (remaining > 0) {
         visibleSessions.push({ kind: "showMoreRecent", remaining });
@@ -251,27 +354,69 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
     }
 
     if (element.kind === "projectsRoot") {
-      return groupByProject(this.sessions, new Set(this.favoriteProjects));
+      const allProjects = groupByProject(this.sessions, new Set(this.favoriteProjects));
+      const visibleProjects: TreeNode[] = allProjects.slice(0, this.projectsVisibleCount);
+      const remaining = Math.max(0, allProjects.length - visibleProjects.length);
+      if (remaining > 0) {
+        visibleProjects.push({ kind: "showMoreProjects", remaining });
+      }
+      return visibleProjects;
     }
 
     if (element.kind === "project") {
-      return buildProjectChildren(element.sessions, this.projectSessionSortMode(element.projectPath));
+      const key = element.groupKey ?? projectTreeItemId(element.projectPath);
+      const limit = this.projectSessionVisibleCounts.get(key) ?? projectSessionsInitialLimit;
+      const sorted = sortSessionsForProject(element.sessions, this.projectSessionSortMode(element.projectPath));
+      const visible: TreeNode[] = sorted
+        .slice(0, limit)
+        .map((session) => ({ kind: "session" as const, session: this.applySummaryOverride(session) }));
+      const remaining = Math.max(0, sorted.length - visible.length);
+      if (remaining > 0) {
+        visible.push({ kind: "showMoreProjectSessions", projectKey: key, remaining });
+      }
+      return visible;
     }
 
     return [];
   }
-
   refresh(): void {
     this.onDidChangeTreeDataEmitter.fire();
   }
 
   showMoreRecent(): void {
-    this.recentVisibleCount = Math.min(this.sessions.length, this.recentVisibleCount + recentLimitStep);
+    const maxTotal = this.catalogConfig ? this.cachedRecentTotal : this.sessions.length;
+    this.recentVisibleCount = Math.min(maxTotal, this.recentVisibleCount + recentLimitStep);
+    this.onDidChangeTreeDataEmitter.fire();
+  }
+
+  showMoreProjects(): void {
+    this.projectsVisibleCount += projectsLimitStep;
+    this.onDidChangeTreeDataEmitter.fire();
+  }
+
+  showMoreProjectSessions(projectKey?: string): void {
+    if (!projectKey) {
+      return;
+    }
+    const current = this.projectSessionVisibleCounts.get(projectKey) ?? projectSessionsInitialLimit;
+    this.projectSessionVisibleCounts.set(projectKey, current + projectSessionsLimitStep);
     this.onDidChangeTreeDataEmitter.fire();
   }
 
   getSessions(): AgentSession[] {
-    return this.sessions;
+    if (!this.catalogConfig) {
+      return this.sessions;
+    }
+    const seen = new Map<string, AgentSession>();
+    for (const s of this.cachedRecentSessions) {
+      seen.set(`${s.provider}:${s.id}`, this.applySummaryOverride(s));
+    }
+    for (const list of this.cachedProjectSessions.values()) {
+      for (const s of list) {
+        seen.set(`${s.provider}:${s.id}`, this.applySummaryOverride(s));
+      }
+    }
+    return [...seen.values()];
   }
 
   updateSessionSummary(session: AgentSession, summary: string): void {
@@ -279,16 +424,122 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeNode> {
     if (!trimmed) {
       return;
     }
-
+    this.summaryOverrides.set(`${session.provider}:${session.id}`, trimmed);
     const index = this.sessions.findIndex(
       (entry) => entry.provider === session.provider && entry.id === session.id
     );
-    if (index < 0) {
-      return;
+    if (index >= 0) {
+      this.sessions[index] = { ...this.sessions[index], sessionSummary: trimmed };
+    }
+    this.onDidChangeTreeDataEmitter.fire();
+  }
+
+  private applySummaryOverride(session: AgentSession): AgentSession {
+    const override = this.summaryOverrides.get(`${session.provider}:${session.id}`);
+    return override ? { ...session, sessionSummary: override } : session;
+  }
+
+  private async getCatalogChildren(element: TreeNode): Promise<TreeNode[]> {
+    const cfg = this.catalogConfig!;
+    if (element.kind === "recentRoot") {
+      const page = await queryRecentSessionsPage(cfg.dbPath, {
+        limit: this.recentVisibleCount,
+        offset: 0,
+        maxCap: cfg.maxCap,
+        outputLanguage: cfg.outputLanguage
+      });
+      this.cachedRecentSessions = page.sessions;
+      this.cachedRecentTotal = page.total;
+      const visibleSessions: TreeNode[] = page.sessions.map((session) => ({
+        kind: "session" as const,
+        session: this.applySummaryOverride(session),
+        showProjectName: true
+      }));
+      const remaining = Math.max(0, page.total - visibleSessions.length);
+      if (remaining > 0) {
+        visibleSessions.push({ kind: "showMoreRecent", remaining });
+      }
+      return visibleSessions;
     }
 
-    this.sessions[index] = { ...this.sessions[index], sessionSummary: trimmed };
-    this.onDidChangeTreeDataEmitter.fire();
+    if (element.kind === "favoritesRoot" || element.kind === "projectsRoot") {
+      this.cachedProjectGroups = await queryProjectGroupSummaries(cfg.dbPath, this.favoriteProjects);
+      if (element.kind === "favoritesRoot") {
+        const withSessions = this.cachedProjectGroups.filter((g) => g.favorited);
+        const emptyFavorites = this.favoriteProjects
+          .filter(
+            (favoritePath) =>
+              !withSessions.some(
+                (g) =>
+                  isFavoriteProject([favoritePath], g.projectPath) ||
+                  g.candidatePaths.some((candidate) => isFavoriteProject([favoritePath], candidate))
+              )
+          )
+          .map((favoritePath) => ({
+            kind: "project" as const,
+            projectPath: path.resolve(favoritePath),
+            groupKey: projectTreeItemId(favoritePath),
+            sessionCount: 0,
+            sessions: [] as AgentSession[],
+            favorited: true
+          }));
+        return [
+          ...withSessions.map((g) => ({
+            kind: "project" as const,
+            projectPath: g.projectPath,
+            projectId: g.projectId,
+            groupKey: g.groupKey,
+            sessionCount: g.sessionCount,
+            candidatePaths: g.candidatePaths,
+            sessions: [] as AgentSession[],
+            favorited: true
+          })),
+          ...emptyFavorites
+        ];
+      }
+
+      const nonFavorites = this.cachedProjectGroups.filter((g) => !g.favorited);
+      const visible: TreeNode[] = nonFavorites.slice(0, this.projectsVisibleCount).map((g) => ({
+        kind: "project" as const,
+        projectPath: g.projectPath,
+        projectId: g.projectId,
+        groupKey: g.groupKey,
+        sessionCount: g.sessionCount,
+        candidatePaths: g.candidatePaths,
+        sessions: [] as AgentSession[]
+      }));
+      const remaining = Math.max(0, nonFavorites.length - visible.length);
+      if (remaining > 0) {
+        visible.push({ kind: "showMoreProjects", remaining });
+      }
+      return visible;
+    }
+
+    if (element.kind === "project") {
+      const key = element.groupKey ?? projectTreeItemId(element.projectPath);
+      const limit = this.projectSessionVisibleCounts.get(key) ?? projectSessionsInitialLimit;
+      const page = await queryProjectSessionsPage(cfg.dbPath, {
+        projectPath: element.projectPath,
+        projectId: element.projectId,
+        candidatePaths: element.candidatePaths,
+        sortMode: this.projectSessionSortMode(element.projectPath),
+        limit,
+        offset: 0,
+        outputLanguage: cfg.outputLanguage
+      });
+      this.cachedProjectSessions.set(key, page.sessions);
+      const children: TreeNode[] = page.sessions.map((session) => ({
+        kind: "session" as const,
+        session: this.applySummaryOverride(session)
+      }));
+      const remaining = Math.max(0, page.total - children.length);
+      if (remaining > 0) {
+        children.push({ kind: "showMoreProjectSessions", projectKey: key, remaining });
+      }
+      return children;
+    }
+
+    return [];
   }
 }
 
@@ -343,14 +594,15 @@ function sessionDescription(session: AgentSession, hasNote = false): string {
   return hasNote ? `${time} · ${t("tree.hasNote")}` : time;
 }
 
-function showMoreRecentItem(remaining: number): vscode.TreeItem {
+function showMoreItem(remaining: number, commandId: string, args?: unknown[]): vscode.TreeItem {
   const item = new vscode.TreeItem(t("tree.showMore"), vscode.TreeItemCollapsibleState.None);
   item.description = t("tree.showMoreDescription", remaining);
   item.tooltip = t("tree.showMoreTooltip");
   item.iconPath = new vscode.ThemeIcon("add");
   item.command = {
-    command: "agentResume.showMoreRecent",
-    title: t("tree.showMoreCommandTitle")
+    command: commandId,
+    title: t("tree.showMoreCommandTitle"),
+    ...(args ? { arguments: args } : {})
   };
   return item;
 }
@@ -535,6 +787,9 @@ export function providerLabel(provider: AgentSession["provider"]): string {
   if (provider === "prime") {
     return "prime";
   }
+  if (provider === "omp") {
+    return "omp";
+  }
   if (provider === "cursor") {
     return "cursor cli";
   }
@@ -565,6 +820,9 @@ function providerIcon(provider: AgentSession["provider"]): string {
   }
   if (provider === "prime") {
     return "sparkle";
+  }
+  if (provider === "omp") {
+    return "symbol-method";
   }
   if (provider === "cursor" || provider === "cursor-ide") {
     return "window";

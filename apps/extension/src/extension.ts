@@ -8,8 +8,8 @@ import { getAcpRecord, loadAcpRecords } from "./acp/store";
 import { AcpSessionRecord } from "./acp/types";
 import {
   loadCatalogSettings,
-  queryCatalogSessions,
-  querySidebarSessions,
+  querySessionsByKeys,
+  queryVisibleSessionCount,
   removeSessionsFromPanel,
   renameSessionWithCatalog,
   resolveSessionById,
@@ -109,7 +109,7 @@ import { PANEL_DOC_ISSUES, PANEL_DOC_README } from "./constants/docLinks";
 import { promptReloadIfContributionsStale } from "./upgrade/contributionSync";
 
 type NewSessionTarget = AgentProvider | "codexApp" | "ghostty";
-type EditorNewSessionProvider = Extract<AgentProvider, "codex" | "claude" | "agy" | "grok" | "opencode" | "pi" | "prime" | "cursor">;
+type EditorNewSessionProvider = Extract<AgentProvider, "codex" | "claude" | "agy" | "grok" | "opencode" | "pi" | "prime" | "omp" | "cursor">;
 
 function defaultCursorIdeUserDataHome(): string {
   if (process.platform === "darwin") {
@@ -240,6 +240,13 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     }),
     vscode.commands.registerCommand("agentResume.showMoreRecent", () => tree.showMoreRecent()),
+    vscode.commands.registerCommand("agentResume.showMoreProjects", () => tree.showMoreProjects()),
+    vscode.commands.registerCommand("agentResume.showMoreProjectSessions", (projectKey?: string) =>
+      tree.showMoreProjectSessions(projectKey)
+    ),
+    vscode.commands.registerCommand("agentResume.showMoreGtdStatus", (status?: GtdStatus) =>
+      gtdTree?.showMoreStatus(status)
+    ),
     vscode.commands.registerCommand("agentResume.newSession", () => newSessionInCurrentWorkspace(context, tree)),
     vscode.commands.registerCommand("agentResume.newSessionFromEditor", () => newSessionFromEditor(context, tree)),
     vscode.commands.registerCommand("agentResume.newAcpChat", () => openNewAcpChat(acpTree, acpChatManager)),
@@ -294,6 +301,7 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
     ...menuCommand("agentResume.newPiSession", (node?: unknown) => openNewSession(tree, node, "pi", context)),
     ...menuCommand("agentResume.newPrimeSession", (node?: unknown) => openNewSession(tree, node, "prime", context)),
+    ...menuCommand("agentResume.newOmpSession", (node?: unknown) => openNewSession(tree, node, "omp", context)),
     ...menuCommand("agentResume.newCodexAppSession", (node?: unknown) => openNewCodexAppSession(tree, node)),
     ...menuCommand("agentResume.favoriteProject", (node?: unknown) => favoriteProject(context, tree, node)),
     ...menuCommand("agentResume.unfavoriteProject", (node?: unknown) => unfavoriteProject(context, tree, node)),
@@ -560,17 +568,31 @@ async function refresh(tree: SessionTreeProvider, showToast: boolean): Promise<v
   try {
     const result = await syncCatalog(loadOptions, catalog);
     const llmConfig = extensionContext ? await getLlmConfig(extensionContext) : undefined;
-    const sessions = await querySidebarSessions(catalog, loadOptions.maxItems, llmConfig?.outputLanguage);
+    const maxCap = catalog.sidebarMode === "full" ? Math.max(loadOptions.maxItems, catalog.syncMaxItems) : loadOptions.maxItems;
     await projectAliasStore?.reload();
     await sessionGtdStore?.reload();
     await notesStore?.reload();
-    tree.setData(sessions, result.warnings);
-    gtdTree?.setData(sessions, result.warnings);
-    notesTree?.setSessions(sessions);
+    tree.setCatalogSource({
+      dbPath: catalog.dbPath,
+      maxCap,
+      outputLanguage: llmConfig?.outputLanguage,
+      warnings: result.warnings
+    });
+    gtdTree?.setCatalogSource({
+      dbPath: catalog.dbPath,
+      outputLanguage: llmConfig?.outputLanguage,
+      warnings: result.warnings
+    });
+    const noteSessionKeys = (notesStore?.getAllNotes() ?? [])
+      .filter((note) => note.scope === "session" && note.provider && note.agentSessionId)
+      .map((note) => ({ provider: note.provider!, id: note.agentSessionId! }));
+    const noteSessions = await querySessionsByKeys(catalog.dbPath, noteSessionKeys, llmConfig?.outputLanguage);
+    notesTree?.setSessions(noteSessions);
     notesTree?.setProjectDisplayName((projectPath) => tree.getProjectDisplayName(projectPath));
     notesTree?.refresh();
     if (showToast) {
-      vscode.window.showInformationMessage(t("notification.syncedCliSessions", sessions.length));
+      const totalVisible = await queryVisibleSessionCount(catalog.dbPath, maxCap);
+      vscode.window.showInformationMessage(t("notification.syncedCliSessions", totalVisible));
     }
   } catch (error) {
     tree.setData([], [formatError(error)]);
@@ -607,6 +629,7 @@ function buildHistoryLoadOptions(
     opencodeHome: expandHome(config.get<string>("opencodeHome", "~/.local/share/opencode")),
     piHome: expandHome(config.get<string>("piHome", "~/.pi/agent")),
     primeHome: expandHome(config.get<string>("primeHome", "~/.prime/agent")),
+    ompHome: expandHome(config.get<string>("ompHome", "~/.omp/agent")),
     cursorHome: expandHome(config.get<string>("cursorHome", "~/.cursor")),
     cursorIdeUserDataHome: configuredCursorIdeUserDataHome
       ? expandHome(configuredCursorIdeUserDataHome)
@@ -629,11 +652,10 @@ async function searchAndOpen(
 ): Promise<void> {
   await refresh(tree, false);
   const catalog = loadCatalogSettings();
-  if (!tree.getSessions().length && !(await queryCatalogSessions(catalog)).length) {
+  if ((await queryVisibleSessionCount(catalog.dbPath)) === 0) {
     vscode.window.showInformationMessage(t("notification.noAgentSessionsFound"));
     return;
   }
-
   await searchAndOpenSessions(context, tree, refreshTree, acpChatManager);
 }
 
@@ -891,6 +913,11 @@ async function pickNewSessionTarget(): Promise<NewSessionTarget | undefined> {
         provider: "prime" as const
       },
       {
+        label: t("quickpick.newSessionOmpLabel"),
+        description: t("quickpick.newSessionOmpDescription"),
+        provider: "omp" as const
+      },
+      {
         label: "Cursor CLI",
         description: "Start a Cursor agent session in the selected workspace",
         provider: "cursor" as const
@@ -1062,7 +1089,7 @@ async function resolveOpenFolderSession(
     return session;
   }
 
-  const projectSessions = tree.getProjectSessionsFromNode(nodeOrSession);
+  const projectSessions = await tree.loadProjectSessionsFromNode(nodeOrSession, 200);
   if (!projectSessions.length) {
     return undefined;
   }
@@ -1186,6 +1213,7 @@ function isAgentSession(value: unknown): value is AgentSession {
         value.provider === "opencode" ||
         value.provider === "pi" ||
         value.provider === "prime" ||
+        value.provider === "omp" ||
         value.provider === "cursor" ||
         value.provider === "cursor-ide" ||
         value.provider === "chat") &&

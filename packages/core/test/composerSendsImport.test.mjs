@@ -126,7 +126,8 @@ test("imports user messages from pi jsonl into composer sends (idempotent)", asy
   const homes = {
     panelHome,
     piHome: PI_SESSION_ROOT,
-    primeHome: os.tmpdir()
+    primeHome: os.tmpdir(),
+    ompHome: os.tmpdir()
   };
   const session = piSession(sessionId, cwd);
   try {
@@ -194,7 +195,8 @@ test("import sees rows beyond the UI 100-row cap (snowball regression)", async (
   const homes = {
     panelHome,
     piHome: PI_SESSION_ROOT,
-    primeHome: os.tmpdir()
+    primeHome: os.tmpdir(),
+    ompHome: os.tmpdir()
   };
   const session = piSession(sessionId, cwd);
   try {

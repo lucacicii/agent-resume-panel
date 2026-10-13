@@ -27,6 +27,10 @@ export async function previewPrimeSession(session: AgentSession, homes: PreviewH
   return previewJsonlSession(session, path.join(homes.primeHome, "sessions"));
 }
 
+export async function previewOmpSession(session: AgentSession, homes: PreviewHomes): Promise<SessionPreviewResult> {
+  return previewJsonlSession(session, path.join(homes.ompHome, "sessions"));
+}
+
 async function previewJsonlSession(session: AgentSession, sessionsRoot: string): Promise<SessionPreviewResult> {
   const sessionFiles = await listJsonlFiles(sessionsRoot);
   const messages: SessionPreviewResult["messages"] = [];
@@ -47,18 +51,24 @@ async function previewJsonlSession(session: AgentSession, sessionsRoot: string):
       continue;
     }
 
-    let header: JsonlSessionHeader;
-    try {
-      header = JSON.parse(lines[0]) as JsonlSessionHeader;
-    } catch {
+    let matchedSession = false;
+    for (const line of lines) {
+      let header: JsonlSessionHeader;
+      try {
+        header = JSON.parse(line) as JsonlSessionHeader;
+      } catch {
+        continue;
+      }
+      if (header.type === "session") {
+        matchedSession = header.id === session.id;
+        break;
+      }
+    }
+    if (!matchedSession) {
       continue;
     }
 
-    if (header.type !== "session" || header.id !== session.id) {
-      continue;
-    }
-
-    for (const line of lines.slice(1)) {
+    for (const line of lines) {
       let entry: JsonlMessageEntry;
       try {
         entry = JSON.parse(line) as JsonlMessageEntry;
