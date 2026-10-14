@@ -14,6 +14,8 @@ export type {
   ThunderTaskTrace,
   ThunderTurnStats,
   ThunderAgentStats,
+  ThunderAgentPhase,
+  ThunderAgentStatus,
   ThunderModelInfo,
   ThunderPermissionMode,
   ThunderModeChangeSource,
@@ -83,7 +85,9 @@ export type ThunderAgentEvent =
   | {
       /**
        * A host-defined event forwarded verbatim by the kernel — thunder emits
-       * `kind: "file_change"` from its tool layer. Deliberately NOT a top-level
+       * `kind: "file_change"` from its tool layer, `kind: "metrics_update"` from
+       * its telemetry plugin, and `kind: "agent_status"` from its execution-status
+       * plugin (`ThunderAgentStatus`). Deliberately NOT a top-level
        * `type: "file_change"`: the kernel does not interpret custom events, so
        * they arrive wrapped with a `kind` discriminator and a `payload`.
        */

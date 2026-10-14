@@ -18121,6 +18121,54 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   color: var(--color-accent);
 }
 
+/* Live phase of a thunder run. Reports rather than acts, so it is not a button
+   — but it sits on the same row and borrows the same box. */
+.tb-agent-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  height: 26px;
+  padding: 0 var(--space-2-5);
+  border-radius: var(--radius-sm);
+  background: var(--color-secondary-bg);
+  border: 0.5px solid var(--color-separator);
+  color: var(--color-label-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.tb-agent-status-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-label-tertiary);
+}
+
+.tb-agent-status.is-running .tb-agent-status-dot {
+  background: #10b981;
+  animation: tbPulse 1.8s infinite;
+}
+
+.tb-agent-status.is-awaiting .tb-agent-status-dot {
+  background: #f59e0b;
+}
+
+.tb-agent-status.is-error {
+  color: #ef4444;
+}
+
+.tb-agent-status.is-error .tb-agent-status-dot {
+  background: #ef4444;
+}
+
+/* The tool name and the turn number are asides to the phase, not the message. */
+.tb-agent-status-turn {
+  font-size: 10px;
+  color: var(--color-label-tertiary);
+}
+
 .tb-header-badge {
   display: inline-flex;
   align-items: center;

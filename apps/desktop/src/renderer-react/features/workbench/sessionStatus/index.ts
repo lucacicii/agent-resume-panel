@@ -7,6 +7,7 @@
  *
  *   - `useAgentStatus`  — daemon snapshot for PTY-backed panes
  *   - `useAcpStatus`    — ACP chat lifecycle, which never leaves this process
+ *   - `useThunderChatStatus` — Thunder runs, which report their own phase
  *   - `types`           — `AgentState` → `SessionDotStatus` projection
  */
 
@@ -20,3 +21,10 @@ export {
 export { useAgentStatus, type AgentStatusView, type StatusPane } from "./useAgentStatus";
 
 export { acpStatusFor, useAcpStatus, type AcpStatusEvent } from "./useAcpStatus";
+
+export {
+  agentPhaseToDotStatus,
+  isNewerAgentStatus,
+  useThunderChatStatus,
+  type ThunderStatusEvent
+} from "./useThunderChatStatus";

@@ -31,7 +31,10 @@ const EXECUTABLE_KINDS: Record<string, AgentKind> = {
   antigravity: "agy",
   "antigravity-cli": "agy",
   "prime-agent": "prime",
-  omp: "omp"
+  omp: "omp",
+  // The embedded TUI. Reported as `thunder-tui` whatever launched it (`cargo
+  // run` puts cargo in between, and the descendant walk unwraps that).
+  "thunder-tui": "thunder"
 };
 
 /** Interpreters that hide the agent behind a script argument. */
@@ -47,7 +50,8 @@ const PROVIDER_KINDS: Record<string, AgentKind> = {
   cursor: "cursor",
   agy: "agy",
   prime: "prime",
-  omp: "omp"
+  omp: "omp",
+  thunder: "thunder"
 };
 
 /**

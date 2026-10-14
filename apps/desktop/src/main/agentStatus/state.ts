@@ -228,7 +228,10 @@ export class AgentStatusState {
       matchedRule: fromScreen ? record.screen?.matchedRule : undefined,
       reason:
         verdict.source === "native" && record.native
-          ? `hook report from ${record.native.source}`
+          // A native report is not always a hook: pi's status sequence and a
+          // program's own OSC 7501 report land here too, and the source is what
+          // tells them apart (`agent-resume:<agent>` vs `osc7501:<app>`).
+          ? `report from ${record.native.source}`
           : verdict.reason,
       manifests: record.manifests,
       screenSkipped: record.screen?.skipStateUpdate ? record.screen.reason : undefined,

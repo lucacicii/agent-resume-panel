@@ -1,4 +1,8 @@
-import type { ThunderActiveStreamSnapshot, ThunderMetricsSnapshot } from "@agent-resume/core";
+import type {
+  ThunderActiveStreamSnapshot,
+  ThunderAgentStatus,
+  ThunderMetricsSnapshot
+} from "@agent-resume/core";
 import type { ThunderObservedEvent } from "./thunderProtocol";
 
 /**
@@ -97,6 +101,12 @@ export function accumulateStreamEvent(
       if (e.kind === "metrics_update" && e.payload && typeof e.payload === "object") {
         snapshot.metrics = e.payload as ThunderMetricsSnapshot;
         return;
+      }
+      if (e.kind === "agent_status" && e.payload && typeof e.payload === "object") {
+        snapshot.agentStatus = e.payload as ThunderAgentStatus;
+        // Deliberately NOT dropped from `events` the way `metrics_update` is:
+        // the frames are low-frequency and they are the evidence of what the
+        // host believed the run was doing, so the trace keeps them.
       }
       break;
     }

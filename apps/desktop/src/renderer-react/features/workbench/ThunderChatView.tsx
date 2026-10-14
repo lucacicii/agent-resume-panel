@@ -144,6 +144,7 @@ export function ThunderChatView({
       sessionTotalTokens={chat.sessionTotalTokens}
       currentContextTokens={chat.currentContextTokens}
       contextWindowLimit={chat.contextWindowLimit}
+      agentStatus={chat.agentStatus}
       pendingQuestion={chat.pendingQuestion}
       onAnswerQuestion={chat.answerQuestion}
       onDismissQuestion={chat.dismissQuestion}

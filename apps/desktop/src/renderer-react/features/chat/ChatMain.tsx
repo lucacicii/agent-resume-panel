@@ -9,6 +9,7 @@ import { ChatComposer } from "./ChatComposer";
 import { ChatQuestionBubble } from "./ChatQuestionBubble";
 import { ChatUiRequestCard } from "./ChatUiRequestCard";
 import { ChatEmptyState } from "./ChatEmptyState";
+import { AgentStatusChip } from "./AgentStatusChip";
 import { TurnDetailOverlay, TurnDots } from "./TurnDots";
 import { TracePopover } from "./TracePopover";
 import { ChatChangesPopover } from "./ChatChangesPopover";
@@ -20,7 +21,8 @@ import type {
   ThunderQuestionItem,
   ThunderFileChangeRecord,
   ThunderTaskTrace,
-  ThunderTelemetryNotice
+  ThunderTelemetryNotice,
+  ThunderAgentStatus
 } from "@agent-resume/core";
 import type { ChatRunMetrics, LiveSegment, LiveTurn, RenderedChatMessage } from "./useThunderChat";
 import type { TraceSpan } from "./useTraceCollector";
@@ -89,6 +91,8 @@ interface ChatMainProps {
   sessionTotalTokens?: number;
   currentContextTokens?: number;
   contextWindowLimit?: number;
+  /** What thunder says the run is doing; `null` when nothing is running. */
+  agentStatus?: ThunderAgentStatus | null;
   /** Question the agent is blocked on, rendered as a bubble. */
   pendingQuestion?: { questionId: string; taskId: string; questions: ThunderQuestionItem[] } | null;
   onAnswerQuestion?: (answers: Record<string, string> | undefined, cancelled?: boolean) => void | Promise<void>;
@@ -148,6 +152,7 @@ export function ChatMain({
   sessionTotalTokens,
   currentContextTokens,
   contextWindowLimit,
+  agentStatus,
   pendingQuestion,
   onAnswerQuestion,
   onDismissQuestion,
@@ -440,6 +445,8 @@ export function ChatMain({
         </div>
 
         <div className="tb-chat-header-actions">
+          <AgentStatusChip status={agentStatus} />
+
           {/* Find in conversation (opened via Cmd/Ctrl+F) */}
           {searchOpen ? (
           <div className="tb-chat-search">
