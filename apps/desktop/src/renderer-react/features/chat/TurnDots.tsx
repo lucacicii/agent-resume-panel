@@ -6,12 +6,16 @@ import { useI18n } from "../../i18n";
 import type { LiveSegment, LiveTurn } from "./useThunderChat";
 
 /**
- * The run's turns as a row of dots above the feed.
+ * The run's finished turns as a stack of dots above the feed.
  *
- * One dot per engine turn. The feed itself only ever renders the turn that is
- * running, so the finished ones live here: clicking a dot opens that turn's
- * thinking and tool calls in a drawer laid over the pane (absolute, so the
- * message flow does not reflow under it).
+ * The feed itself ever renders only the turn that is running, so the finished
+ * ones live here: the dots overlap into a pile, and clicking one opens that
+ * turn's thinking and tool calls in a drawer laid over the pane (absolute, so
+ * the message flow does not reflow under it).
+ *
+ * The running turn gets no dot. It is on screen in the feed already, so a dot
+ * for it would be a second, staler copy of the same thing; it stays reachable
+ * from the drawer's arrows, which read the live segments as a magnifier.
  */
 export function TurnDots({
   turns,
@@ -28,20 +32,26 @@ export function TurnDots({
   const { t } = useI18n();
   const trackRef = useRef<HTMLDivElement | null>(null);
 
+  /** Finished turns, paired with their index in `turns` — the drawer is keyed by
+   *  that index, so filtering must not renumber the dots. */
+  const finished = turns
+    .map((turn, index) => ({ turn, index }))
+    .filter((entry) => entry.turn.status !== "running");
+
   // A long run walks off the end of the row; keep the newest dot in view.
   useEffect(() => {
     const track = trackRef.current;
     if (!track) return;
     track.scrollLeft = track.scrollWidth;
-  }, [turns.length]);
+  }, [finished.length]);
 
-  if (turns.length === 0) return null;
+  if (finished.length === 0) return null;
 
   return (
     <div className="tb-turn-dots" role="tablist" aria-label={t("desktop.chat.turns.label")}>
       <span className="tb-turn-dots-label">{t("desktop.chat.turns.label")}</span>
       <div className="tb-turn-dots-track" ref={trackRef}>
-        {turns.map((turn, index) => {
+        {finished.map(({ turn, index }) => {
           const isOpen = openIndex === index;
           const title = describeTurn(turn, t);
           return (
@@ -56,7 +66,6 @@ export function TurnDots({
               onClick={() => (isOpen ? onClose() : onOpen(index))}
             >
               <span className="tb-turn-dot-num">{turn.turn}</span>
-              {turn.status === "running" && <span className="tb-turn-dot-ring" aria-hidden="true" />}
             </button>
           );
         })}
@@ -70,13 +79,10 @@ function describeTurn(turn: LiveTurn, t: (key: string, ...args: Array<string | n
   const parts = [t("desktop.chat.turns.turnN", turn.turn)];
   if (turn.toolCount > 0) parts.push(t("desktop.chat.turns.toolCount", turn.toolCount));
   if (turn.durationMs !== undefined) parts.push(`${(turn.durationMs / 1000).toFixed(1)}s`);
-  const status =
-    turn.status === "running"
-      ? t("desktop.chat.turns.statusRunning")
-      : turn.status === "error"
-        ? t("desktop.chat.turns.statusError")
-        : t("desktop.chat.turns.statusDone");
-  parts.push(status);
+  // Only finished turns reach a dot, so a turn still running is either failed or done here.
+  parts.push(
+    turn.status === "error" ? t("desktop.chat.turns.statusError") : t("desktop.chat.turns.statusDone")
+  );
   parts.push(t("desktop.chat.turns.openHint"));
   return parts.join(" · ");
 }

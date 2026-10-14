@@ -567,8 +567,10 @@ export function ChatMain({
           over the feed's own right padding, so it takes no layout width. */}
       <div className="tb-chat-body">
 
-        {/* The run's turns. The feed below renders only the running one, so the
-            finished turns are only reachable through these dots. */}
+        {/* The run's finished turns, piled into a stack of dots. The feed below
+            renders the turn that is running, so the finished ones are only
+            reachable through these dots — and the running turn gets no dot of
+            its own, since it is already on screen here. */}
         {liveTurns.length > 0 && (
           <TurnDots
             turns={liveTurns}
