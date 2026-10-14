@@ -31,7 +31,11 @@ import type {
   ThunderChatTaskResult,
   ThunderImageAttachment,
   ThunderTaskTrace,
-  ThunderTitleResult
+  ThunderTitleResult,
+  ThunderPermissionMode,
+  ThunderModeChanged,
+  ThunderUiRequest,
+  ThunderUiAnswer
 } from "../main/thunder/thunderProtocol";
 import type { McpClientInfo } from "../main/mcpRegistration";
 import type {
@@ -1132,6 +1136,9 @@ export interface DesktopApi {
   agentStatusDaemonStatus?(): Promise<AgentStatusDaemonStatus>;
   agentStatusStartDaemon?(): Promise<AgentStatusDaemonStatus>;
   agentStatusStopDaemon?(): Promise<AgentStatusDaemonStatus>;
+  /** Register/unregister the launchd login item that keeps the daemon alive across logins. */
+  agentStatusInstallLaunchAgent?(): Promise<AgentStatusDaemonStatus>;
+  agentStatusUninstallLaunchAgent?(): Promise<AgentStatusDaemonStatus>;
   /** Every pane the daemon knows about, for the inspector. */
   agentStatusPanes?(): Promise<PaneStatus[]>;
   /** Why one pane settled the way it did, rule by rule. */
@@ -1575,6 +1582,8 @@ export interface DesktopApi {
     workspaceDir?: string;
     taskNoteId?: string;
     thinking_level?: string;
+    /** Pin this run's approval mode; omitted until the user picks one. */
+    mode?: ThunderPermissionMode;
     attachments?: ThunderImageAttachment[];
   }): Promise<ThunderChatTaskResult>;
   thunderChatCancelTask(args: { taskId: string }): Promise<boolean>;
@@ -1599,6 +1608,31 @@ export interface DesktopApi {
     behavior: "steer" | "follow_up";
     attachments?: import("@agent-resume/core").ThunderImageAttachment[];
   }): Promise<{ queued: number } | null>;
+  /**
+   * The mode a session is judged by, plus its remembered allow-rules.
+   *
+   * The hydration source when a session is opened: Thunder keeps the mode per
+   * session in memory and does not store it in the conversation.
+   */
+  thunderChatGetPermissionState(args: { sessionId: string }): Promise<{
+    mode: ThunderPermissionMode;
+    rules: unknown[];
+  } | null>;
+  /**
+   * Set a session's mode. Applies to its next run and to a run already in
+   * flight, at that run's next tool call. Rejects when the daemon refuses, so
+   * the caller can roll its optimistic update back.
+   */
+  thunderChatSetMode(args: {
+    sessionId: string;
+    mode: ThunderPermissionMode;
+  }): Promise<{ mode: ThunderPermissionMode } | null>;
+  /**
+   * Answer a dialog raised as `ui_request` (a permission approval, a plan
+   * review, ...). `cancelled` resolves it as refused immediately rather than
+   * letting the daemon wait out its timeout.
+   */
+  thunderChatAnswerUi(answer: ThunderUiAnswer): Promise<{ requestId: string; delivered: boolean }>;
   /** Drop everything queued and return its text, for an editor restore. */
   thunderChatClearTaskQueue(args: {
     taskId: string;
@@ -1607,6 +1641,15 @@ export interface DesktopApi {
   thunderChatGetActiveStream(args: { sessionId: string }): Promise<ThunderActiveStreamSnapshot | null>;
   thunderChatListTraces(args: { sessionId: string }): Promise<Array<{ task_id: string; started_at_ms: number; duration_ms?: number; prompt?: string }>>;
   onThunderChatEvent(callback: (payload: ThunderChatStreamPayload) => void): () => void;
+  /**
+   * Approval-mode changes, for every session — filter by `sessionId`.
+   *
+   * Not part of the task event stream: this frame arrives whether or not a run
+   * is live, which is the whole point of it.
+   */
+  onThunderModeChanged(callback: (payload: ThunderModeChanged) => void): () => void;
+  /** Dialogs waiting for an answer (permission approvals, plan reviews, ...). */
+  onThunderUiRequest(callback: (request: ThunderUiRequest) => void): () => void;
   onThunderModelsChanged(callback: () => void): () => void;
   onScheduleRunEvent(callback: (payload: { scheduleId: string; runId: string; event: ThunderAgentEvent; accumulatedOutput: string }) => void): () => void;
   onScheduleStatusChanged(callback: (payload: { scheduleId: string; runId: string; status: string; output?: string; error?: string }) => void): () => void;
@@ -1974,6 +2017,8 @@ const api: DesktopApi = {
   agentStatusDaemonStatus: () => ipcRenderer.invoke("agentStatus:daemonStatus"),
   agentStatusStartDaemon: () => ipcRenderer.invoke("agentStatus:startDaemon"),
   agentStatusStopDaemon: () => ipcRenderer.invoke("agentStatus:stopDaemon"),
+  agentStatusInstallLaunchAgent: () => ipcRenderer.invoke("agentStatus:installLaunchAgent"),
+  agentStatusUninstallLaunchAgent: () => ipcRenderer.invoke("agentStatus:uninstallLaunchAgent"),
   agentStatusPanes: () => ipcRenderer.invoke("agentStatus:panes"),
   agentStatusExplain: (args) => ipcRenderer.invoke("agentStatus:explain", args),
   agentStatusScreen: (args) => ipcRenderer.invoke("agentStatus:screen", args),
@@ -2134,6 +2179,9 @@ const api: DesktopApi = {
   thunderChatResumeTask: (args) => ipcRenderer.invoke("thunder:chat:resumeTask", args),
   thunderChatSteerTask: (args) => ipcRenderer.invoke("thunder:chat:steerTask", args),
   thunderChatClearTaskQueue: (args) => ipcRenderer.invoke("thunder:chat:clearTaskQueue", args),
+  thunderChatGetPermissionState: (args) => ipcRenderer.invoke("thunder:chat:getPermissionState", args),
+  thunderChatSetMode: (args) => ipcRenderer.invoke("thunder:chat:setMode", args),
+  thunderChatAnswerUi: (answer) => ipcRenderer.invoke("thunder:chat:answerUi", answer),
   thunderChatGetTrace: (args) => ipcRenderer.invoke("thunder:chat:getTrace", args),
   thunderChatGetActiveStream: (args) => ipcRenderer.invoke("thunder:chat:getActiveStream", args),
   thunderChatListTraces: (args) => ipcRenderer.invoke("thunder:chat:listTraces", args),
@@ -2141,6 +2189,16 @@ const api: DesktopApi = {
     const handler = (_event: Electron.IpcRendererEvent, payload: ThunderChatStreamPayload) => callback(payload);
     ipcRenderer.on("thunder:chat:event", handler);
     return () => ipcRenderer.removeListener("thunder:chat:event", handler);
+  },
+  onThunderModeChanged: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: ThunderModeChanged) => callback(payload);
+    ipcRenderer.on("thunder:mode:changed", handler);
+    return () => ipcRenderer.removeListener("thunder:mode:changed", handler);
+  },
+  onThunderUiRequest: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: ThunderUiRequest) => callback(payload);
+    ipcRenderer.on("thunder:ui:request", handler);
+    return () => ipcRenderer.removeListener("thunder:ui:request", handler);
   },
   onThunderModelsChanged: (callback) => {
     const handler = () => callback();

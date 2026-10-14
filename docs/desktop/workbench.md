@@ -18,7 +18,7 @@ Every task workbench lives in **its own window**. The main window is the **GTD b
 
 1. Click a task on the **GTD board**. Its workbench window opens on that task’s sessions (a task with several workbenches opens the one you used last).  
 2. Select a task to see only its sessions. With no task selected, the middle pane lists all sessions.  
-3. Attach a local folder with **Add folder** (macOS folder picker). Click a folder chip to make it the active root for Explorer / Git / Search / Scripts. A task can reference several folders; with none or several, new sessions start in the task’s shared workspace, whose `AGENTS.md` / `CLAUDE.md` carry the address table (where each folder lives) and the note’s background knowledge. Right-click the task to open that folder once a session has created it. With a single folder, the session starts directly in that repository and the same address table and knowledge are appended to the agent’s system prompt (Codex, Claude, Pi, Prime) — nothing is written into the repository. In a session running in the shared workspace, typing `#` in the composer suggests the task’s referenced repositories; `→` walks into a folder level by level (`←` steps back) and `Tab` inserts the highlighted entry — the absolute path for a project inside the shared workspace.  
+3. Attach a local folder with **Add folder** (macOS folder picker). Click a folder chip to make it the active root for Explorer / Git / Search / Scripts. A task can reference several folders; with none or several, new sessions start in the task’s shared workspace, whose `AGENTS.md` / `CLAUDE.md` carry the address table (where each folder lives), the note’s background knowledge, and a pointer to `.arp/docs/` in that workspace for long-lived shared docs. Right-click the task to open that folder once a session has created it. With a single folder, the session starts directly in that repository and the same address table and knowledge are appended to the agent’s system prompt (Codex, Claude, Pi, Prime) — nothing is written into the repository, and the injected block says nothing about `.arp` (there `.arp/` is the committed panel config, see [Settings & data](settings-and-data.md)). In a session running in the shared workspace, typing `#` in the composer suggests the task’s referenced repositories; `→` walks into a folder level by level (`←` steps back) and `Tab` inserts the highlighted entry — the absolute path for a project inside the shared workspace.  
 4. Resume CLI sessions in the **embedded terminal** (multi-tab) or **external** terminal. If [workspace mentions](workspace-mentions.md) are configured, the new-session picker can open a pack’s work folder and inject reference paths into the first prompt. `arpm go <id>` does the same from any terminal.  
 5. If the default target is an **ACP · …** agent, **New session** opens a **visual chat pane** in the same tab strip (Agent Client Protocol; Claude Code, Codex, Grok Build, OpenCode, Pi).  
 6. The detail header names the **task** and points at the directory it works in — the folder you activated, else its only folder, else the task's shared workspace — with a one-click **reveal in Finder** and the **branch** control; watch the **status bar** for live **cwd** and **git branch** (including nested repos when detected).  
@@ -65,6 +65,21 @@ Existing Thunder conversations are also listed in the Workbench session list (sc
 
 The binary is discovered automatically (a sibling checkout, the bundled copy under `Contents/Resources/thunder/bin`, `THUNDER_PATH`), and can be overridden in **Settings → Thunder** with the `thunder-daemon` / `thunder-tui` paths.
 
+#### Approval modes
+
+The composer's **shield chip**, next to the model picker, shows the mode the session is judged by:
+
+| Mode | What runs |
+|---|---|
+| **Plan** | Reads only — writes are refused, and the refusal names `write_plan` / `exit_plan_mode`. The plan text is the deliverable. |
+| **Ask** | Reads run; anything that changes something waits for your approval. |
+| **Accept Edits** | Edits inside the working area run without asking; the rest still asks. |
+| **YOLO** | Nothing asks. |
+
+**Shift+Tab** cycles them (Shift+Enter still inserts a newline, and an open `/`, `@` or `#` menu keeps the key). The mode can change mid-run — the daemon judges each tool call by the mode in force when the call is made — so the chip is never disabled while the agent works. A change made anywhere, including the plan dialog's own approval, moves the chip and is reported in the chat.
+
+When the agent needs an answer — a plan to approve, an `ask`-mode permission prompt, a plugin's question — a card docks above the input and the run waits. Answering it with the buttons is what releases the run; **Dismiss** declines it immediately. A card raised by Thunder itself (the shield badge) is an authorisation moment; a plugin-raised one is informational and never grants anything.
+
 ### Keyboard & defaults
 
 - **⌘P / Ctrl+P** and **⌘⇧P / Ctrl+Shift+P** open **Quick Access** / the **command palette** inside a workbench window: files in the task's folders, open or exit a task, start sessions and terminals, open side panels. Type `>` to filter commands.  
@@ -104,7 +119,7 @@ The binary is discovered automatically (a sibling checkout, the bundled copy und
 
 1. 在 **GTD 看板**点一个任务。它的 Workbench 窗口会打开到该任务的 session（一个任务有多个 workbench 时，打开你上次用的那个）。  
 2. 选中任务只看它的 session；未选任务时中间栏列出全部 session。  
-3. 用 **新增目录**（macOS 文件夹选择器）挂本地目录。点目录 chip 把它设为 Explorer / Git / Search / Scripts 的活动根。一个任务可挂多个目录；零个或多个时，新 session 走任务的共享 workspace，其 `AGENTS.md` / `CLAUDE.md` 内含地址表（各目录在哪）与笔记的背景知识。右键任务可在目录生成后打开它。只有单个目录时，会话直接在该仓库中启动，并通过系统提示参数注入相同的地址表与背景知识（Codex、Claude、Pi、Prime），不污染用户仓库。在共享 workspace 中运行的会话里，输入框键入 `#` 会列出任务引用的仓库；按 `→` 可逐级进入下一层目录（`←` 返回上一级），`Tab` 插入当前选中项——共享 workspace 内的项目会插入其绝对路径。  
+3. 用 **新增目录**（macOS 文件夹选择器）挂本地目录。点目录 chip 把它设为 Explorer / Git / Search / Scripts 的活动根。一个任务可挂多个目录；零个或多个时，新 session 走任务的共享 workspace，其 `AGENTS.md` / `CLAUDE.md` 内含地址表（各目录在哪）、笔记的背景知识，以及该 workspace 中 `.arp/docs/` 作为长期共享文档落点的说明。右键任务可在目录生成后打开它。只有单个目录时，会话直接在该仓库中启动，并通过系统提示参数注入相同的地址表与背景知识（Codex、Claude、Pi、Prime），不污染用户仓库，注入的 block 也不提 `.arp`（仓库里的 `.arp/` 是已提交的面板配置，见 [设置与数据](settings-and-data.md)）。在共享 workspace 中运行的会话里，输入框键入 `#` 会列出任务引用的仓库；按 `→` 可逐级进入下一层目录（`←` 返回上一级），`Tab` 插入当前选中项——共享 workspace 内的项目会插入其绝对路径。  
 4. CLI 会话用 **内嵌终端**（多标签）或 **外部终端** 恢复。若配置了 [工作区 Mention](workspace-mentions.md)，新建会话选择器可打开该包的工作目录并把参考路径写入首条 prompt。任意终端也可用 `arpm go <id>`。  
 5. 若默认目标为 **ACP · …** Agent，**新建会话**会在同一标签栏打开 **可视化聊天**（Agent Client Protocol；支持 Claude Code、Codex、Grok Build、OpenCode、Pi）。  
 6. 详情头显示 **任务名** 与它指向的目录（你激活的目录 → 唯一目录 → 任务的共享 workspace），目录后可一键 **在 Finder 中显示**，同一行还有 **分支** 控件；**状态栏** 显示实时 **cwd** 与 **git 分支**（可识别嵌套 git 根）。  
@@ -150,6 +165,21 @@ Thunder 是独立的 Rust Agent 运行时，自带终端客户端与可视化聊
 已有的 Thunder 会话也会出现在 Workbench 会话列表中（打开任务时按任务过滤）。点击行即作为可视化聊天打开；右键可选择 **以可视化聊天打开** 或 **在 Thunder TUI 中恢复**。
 
 二进制会自动探测（同级 checkout、`Contents/Resources/thunder/bin` 打包副本或 `THUNDER_PATH`），也可在 **设置 → Thunder** 中通过 `thunder-daemon` / `thunder-tui` 路径覆盖。
+
+#### 审批档位
+
+输入框工具栏上、模型选择器旁边的**盾牌 chip** 显示当前会话的判定档位：
+
+| 档位 | 会跑什么 |
+|---|---|
+| **Plan** | 只读——写操作被拒，且拒绝文案会点名 `write_plan` / `exit_plan_mode`。此时计划本身就是交付物。 |
+| **Ask** | 读操作直接跑；任何会改变东西的调用都等你批准。 |
+| **Accept Edits** | 工作区内的编辑不问直接跑；其余仍然要问。 |
+| **YOLO** | 什么都不问。 |
+
+**Shift+Tab** 在四档之间循环（Shift+Enter 仍是换行；`/`、`@`、`#` 菜单打开时按键归菜单）。运行中也能切——daemon 按「调用发起那一刻」的档位判定，所以 agent 干活时 chip 不会禁用。任何来源的变化（包括计划弹窗里批准的那一下）都会让 chip 跟着动，并在聊天里给出提示。
+
+agent 需要你回答时——批准计划、`ask` 档位的授权、插件的提问——输入框上方会停靠一张卡片，run 会一直等。点按钮作答才会放行；**Dismiss** 表示立刻拒绝。带盾牌徽章的是 Thunder 自己发起的**授权时刻**；插件发起的只是通知，不构成任何授权。
 
 ### 快捷键与默认值
 

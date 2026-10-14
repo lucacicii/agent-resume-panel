@@ -190,6 +190,140 @@ describe("ChatComposer UI popovers and keyboard interactions", () => {
     cleanup();
   });
 
+  describe("permission mode chip", () => {
+    it("is absent when the host has no mode to show", () => {
+      render(<ChatComposer {...defaultProps} />);
+      expect(screen.queryByTestId("chat-composer-mode")).toBeNull();
+    });
+
+    it("shows the session's mode, and says so when it is not known yet", () => {
+      const { rerender } = render(
+        <ChatComposer {...defaultProps} permissionMode="ask" onSelectPermissionMode={vi.fn()} />
+      );
+      expect(screen.getByTestId("chat-composer-mode").textContent).toContain("Ask");
+
+      // `""` is "the daemon has not answered yet", which must not be rendered
+      // as any particular mode.
+      rerender(
+        <ChatComposer {...defaultProps} permissionMode="" onSelectPermissionMode={vi.fn()} />
+      );
+      expect(screen.getByTestId("chat-composer-mode").textContent).toContain("Mode: …");
+    });
+
+    it("offers all four modes and reports the one picked", async () => {
+      const onSelectPermissionMode = vi.fn();
+      const contextMenuShow = vi.fn().mockResolvedValue(null);
+      (window as any).agentResume.contextMenuShow = contextMenuShow;
+      render(
+        <ChatComposer
+          {...defaultProps}
+          permissionMode="yolo"
+          onSelectPermissionMode={onSelectPermissionMode}
+        />
+      );
+
+      fireEvent.click(screen.getByTestId("chat-composer-mode"));
+
+      await waitFor(() => expect(contextMenuShow).toHaveBeenCalledTimes(1));
+      const items = contextMenuShow.mock.calls[0][0].items;
+      expect(items.map((item: { label: string }) => item.label)).toEqual([
+        "Plan",
+        "Ask",
+        "Accept Edits",
+        "YOLO"
+      ]);
+      expect(items.filter((item: { checked?: boolean }) => item.checked)).toHaveLength(1);
+    });
+
+    it("stays usable while a run is in flight", () => {
+      render(
+        <ChatComposer {...defaultProps} isStreaming permissionMode="plan" onSelectPermissionMode={vi.fn()} />
+      );
+      // The daemon judges each call by the mode in force when it is made, so a
+      // mid-run flip is a supported move — unlike the model and thinking chips.
+      expect((screen.getByTestId("chat-composer-mode") as HTMLButtonElement).disabled).toBe(false);
+    });
+  });
+
+  describe("Shift+Tab", () => {
+    it("cycles to the first mode and consumes the keystroke", () => {
+      const onSelectPermissionMode = vi.fn();
+      render(
+        <ChatComposer
+          {...defaultProps}
+          permissionMode="yolo"
+          onSelectPermissionMode={onSelectPermissionMode}
+        />
+      );
+      const textarea = screen.getByPlaceholderText(/Ask Thunder agent anything/i);
+
+      // The keystroke bubbles on to the window-level listener as well; cycling
+      // once is what proves the two handlers agree on who took it.
+      fireEvent.keyDown(textarea, { key: "Tab", shiftKey: true });
+      expect(onSelectPermissionMode).toHaveBeenCalledTimes(1);
+      expect(onSelectPermissionMode).toHaveBeenCalledWith("plan");
+    });
+
+    it("cycles from an unknown mode too, rather than doing nothing", () => {
+      const onSelectPermissionMode = vi.fn();
+      render(
+        <ChatComposer
+          {...defaultProps}
+          permissionMode=""
+          onSelectPermissionMode={onSelectPermissionMode}
+        />
+      );
+      fireEvent.keyDown(screen.getByPlaceholderText(/Ask Thunder agent anything/i), {
+        key: "Tab",
+        shiftKey: true
+      });
+      expect(onSelectPermissionMode).toHaveBeenCalledWith("plan");
+    });
+
+    it("leaves Shift+Enter to the textarea's newline", () => {
+      const onSelectPermissionMode = vi.fn();
+      const onSend = vi.fn();
+      render(
+        <ChatComposer
+          {...defaultProps}
+          onSend={onSend}
+          permissionMode="ask"
+          onSelectPermissionMode={onSelectPermissionMode}
+        />
+      );
+      const textarea = screen.getByPlaceholderText(/Ask Thunder agent anything/i) as HTMLTextAreaElement;
+      fireEvent.change(textarea, { target: { value: "line one" } });
+
+      fireEvent.keyDown(textarea, { key: "Enter", shiftKey: true });
+
+      expect(onSelectPermissionMode).not.toHaveBeenCalled();
+      expect(onSend).not.toHaveBeenCalled();
+    });
+
+    it("yields to an open suggestion menu", async () => {
+      const onSelectPermissionMode = vi.fn();
+      render(
+        <ChatComposer
+          {...defaultProps}
+          permissionMode="ask"
+          onSelectPermissionMode={onSelectPermissionMode}
+        />
+      );
+      const textarea = screen.getByPlaceholderText(/Ask Thunder agent anything/i) as HTMLTextAreaElement;
+
+      fireEvent.change(textarea, { target: { value: "/", selectionStart: 1 } });
+      await waitFor(() => expect(screen.getByRole("listbox", { name: /slash commands/i })).toBeTruthy());
+
+      // The menus claim a bare Tab to accept a completion and do not look at
+      // modifiers, so their priority is positional — reaching the mode branch
+      // would mean no menu wanted the keystroke.
+      fireEvent.keyDown(textarea, { key: "Tab", shiftKey: true });
+
+      expect(onSelectPermissionMode).not.toHaveBeenCalled();
+      expect(textarea.value).toBe("/dividend-cows ");
+    });
+  });
+
   it("displays slash suggestions when typing / and accepts selection with Tab", async () => {
     render(<ChatComposer {...defaultProps} />);
     const textarea = screen.getByPlaceholderText(/Ask Thunder agent anything/i);

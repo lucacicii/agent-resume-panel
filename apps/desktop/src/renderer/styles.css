@@ -17493,6 +17493,22 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   margin-top: var(--space-2);
 }
 
+.schedule-form-cron {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* An unparseable cron expression used to be indistinguishable from a valid one
+   until the schedule fired at a surprising time, so the invalid state is loud. */
+.schedule-form-input-invalid {
+  border-color: var(--color-red-600, #e5484d);
+}
+
+.schedule-form-hint-error {
+  color: var(--color-red-600, #e5484d);
+}
+
 .schedule-time-input {
   max-width: 140px;
 }
@@ -19141,6 +19157,237 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   margin: 0 auto;
 }
 
+/* --- Chat Timeline Rail ---
+   The rail floats over the feed's own right padding: it never takes layout
+   width, so the 800px message column stays centred and no message is covered.
+   Dots are positioned from the measured content offset of each row, so the
+   rail's spacing mirrors the real document. */
+.tb-chat-body {
+  position: relative;
+  /* The feed's row of the pane's flex column. `min-height: 0` is what lets the
+     feed inside it scroll instead of growing the pane. */
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.tb-chat-timeline {
+  position: absolute;
+  top: var(--space-3);
+  /* The feed keeps 24px of right padding; the rail's 20px sit inside it, so the
+     message column's right edge stays clear even in a narrow pane. */
+  right: var(--space-0-5);
+  bottom: var(--space-3);
+  width: 20px;
+  display: flex;
+  justify-content: center;
+  /* The rail is chrome over the feed: the strip takes pointer events, but the
+     wrapper does not, so a drag or selection that crosses the right edge still
+     reaches the messages underneath. */
+  pointer-events: none;
+  z-index: 2;
+}
+
+.tb-timeline-rail {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  /* The whole strip is the target: the component resolves the nearest dot from
+     the pointer's y, because on a dense rail the dots are closer together than
+     any usable hit box. */
+  pointer-events: auto;
+  cursor: default;
+}
+
+/* Inert rail: nothing to navigate, so the strip must not intercept clicks or
+   drags in the column of the feed it happens to float over. */
+.tb-chat-timeline.is-empty .tb-timeline-rail {
+  pointer-events: none;
+}
+
+/* The rail strip itself: a hairline that reads as a track without competing
+   with the messages. */
+.tb-timeline-rail::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  transform: translateX(-50%);
+  background: var(--color-separator);
+  pointer-events: none;
+}
+
+/* How much of the conversation the viewport currently shows. */
+.tb-timeline-viewport {
+  position: absolute;
+  left: 50%;
+  width: 3px;
+  transform: translateX(-50%);
+  border-radius: 1.5px;
+  background: var(--color-fill-secondary);
+  pointer-events: none;
+  transition: top var(--duration-fast) linear, height var(--duration-fast) linear;
+}
+
+.tb-timeline-dots {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* A dot is a box centred on its measured y (the component adds half of
+   DEFAULT_DOT_SIZE, see timelineModel.ts), sized `minGap` tall so the nearest-
+   centre resolution has a stable grid to work against. It takes no pointer
+   events — the rail does, so hover and click can never disagree about which dot
+   the user meant. */
+.tb-timeline-dot {
+  position: absolute;
+  left: 50%;
+  width: 20px;
+  height: 12px;
+  margin: 0;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  pointer-events: none;
+  border-radius: 50%;
+}
+
+.tb-timeline-dot-mark {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-label-tertiary);
+  transition: transform var(--duration-fast) var(--ease-glide), background-color var(--duration-fast) linear;
+}
+
+.tb-timeline-dot:hover .tb-timeline-dot-mark,
+.tb-timeline-dot:focus-visible .tb-timeline-dot-mark {
+  transform: scale(1.34);
+  background: var(--color-label-secondary);
+}
+
+/* Keyboard focus ring lives on the whole box, which is also the pointer target
+   the rail resolves, so the ring and the hover response cover the same area. */
+.tb-timeline-dot:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-focus-ring);
+}
+
+/* A collapsed dot stands for several messages: a bar instead of a point, so the
+   rail reads as "dense here" rather than "one message here". */
+.tb-timeline-dot.is-grouped .tb-timeline-dot-mark {
+  width: 2px;
+  height: 10px;
+  border-radius: 1px;
+}
+
+.tb-timeline-dot.is-active .tb-timeline-dot-mark {
+  background: var(--color-accent);
+}
+
+.tb-timeline-dot.is-live .tb-timeline-dot-mark {
+  background: var(--color-accent);
+  animation: tb-timeline-pulse 1.5s infinite ease-in-out;
+}
+
+@keyframes tb-timeline-pulse {
+  0% {
+    transform: scale(0.85);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scale(1.3);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.85);
+    opacity: 0.5;
+  }
+}
+
+/* Hover / focus preview. Anchored to the rail and pushed left of it, so it can
+   never cover the dot it describes. */
+.tb-timeline-preview {
+  position: absolute;
+  right: calc(100% + var(--space-1));
+  width: 260px;
+  padding: var(--space-2) var(--space-2-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  border-radius: var(--radius-md);
+  background: var(--color-elevated-bg);
+  border: 0.5px solid var(--color-separator-strong);
+  box-shadow: var(--shadow-popover);
+  pointer-events: none;
+  z-index: 3;
+}
+
+.tb-timeline-preview-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  font-size: 11px;
+  color: var(--color-label-tertiary);
+}
+
+.tb-timeline-preview-role {
+  padding: 1px var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--color-fill-primary);
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.tb-timeline-preview-role.is-user {
+  background: var(--color-fill-secondary);
+  color: var(--color-label-secondary);
+}
+
+.tb-timeline-preview-seq,
+.tb-timeline-preview-meta {
+  font-family: var(--font-family-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+}
+
+.tb-timeline-preview-meta.is-live {
+  color: var(--color-accent);
+}
+
+.tb-timeline-preview-excerpt {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--color-label-primary);
+  /* Two lines, then ellipsis: the preview is a signpost, not a reading pane. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.tb-timeline-preview-grouped {
+  font-size: 11px;
+  color: var(--color-label-tertiary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tb-timeline-dot.is-live .tb-timeline-dot-mark {
+    animation: none;
+  }
+
+  .tb-timeline-viewport {
+    transition: none;
+  }
+}
+
 .tb-scroll-anchor {
   height: 1px;
 }
@@ -20019,6 +20266,46 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   user-select: none;
 }
 
+/* Approval-mode chip (`tb-chip-mode-<mode>`). The tint carries the signal:
+   "Plan" and "YOLO" are both just words, and they are the two extremes a user
+   has to tell apart before typing. The gradient runs from most cautious to
+   least — plan is the one that should catch the eye. */
+.tb-chip-mode-plan {
+  background: color-mix(in srgb, var(--color-warning) 16%, var(--color-secondary-bg));
+  border-color: color-mix(in srgb, var(--color-warning) 45%, transparent);
+}
+
+.tb-chip-mode-plan .tb-composer-native-select {
+  color: color-mix(in srgb, var(--color-warning) 78%, var(--color-label-primary));
+}
+
+.tb-chip-mode-ask {
+  background: color-mix(in srgb, var(--color-accent) 14%, var(--color-secondary-bg));
+  border-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
+}
+
+.tb-chip-mode-ask .tb-composer-native-select {
+  color: color-mix(in srgb, var(--color-accent) 78%, var(--color-label-primary));
+}
+
+.tb-chip-mode-acceptEdits {
+  background: color-mix(in srgb, var(--color-teal) 16%, var(--color-secondary-bg));
+  border-color: color-mix(in srgb, var(--color-teal) 45%, transparent);
+}
+
+.tb-chip-mode-acceptEdits .tb-composer-native-select {
+  color: color-mix(in srgb, var(--color-teal) 72%, var(--color-label-primary));
+}
+
+.tb-chip-mode-yolo {
+  background: color-mix(in srgb, var(--color-destructive) 13%, var(--color-secondary-bg));
+  border-color: color-mix(in srgb, var(--color-destructive) 38%, transparent);
+}
+
+.tb-chip-mode-yolo .tb-composer-native-select {
+  color: color-mix(in srgb, var(--color-destructive) 76%, var(--color-label-primary));
+}
+
 .tb-chip-locked:hover {
   background: var(--color-secondary-bg);
   color: var(--color-label-secondary);
@@ -20147,6 +20434,179 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   backdrop-filter: var(--backdrop-blur-heavy);
   -webkit-backdrop-filter: var(--backdrop-blur-heavy);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+/*
+ * `ui_request` dialog (plan approval, permission prompt, plugin question).
+ *
+ * Docks in the same slot as the question bubble above, for the same reason:
+ * the run is parked until it is answered, so it must not be coverable. The
+ * `is-host` variant is deliberately styled as a different *kind* of surface —
+ * a titled bar a plugin's own chrome cannot reproduce. Only host-sourced
+ * requests are authorisation moments; a plugin one is informational.
+ */
+.tb-chat-main .tb-composer-wrapper .tb-ui-request-card {
+  pointer-events: auto;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0 auto 10px;
+  max-width: 720px;
+  width: calc(100% - 32px);
+  padding: var(--space-2-5) var(--space-3);
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-lg);
+  background: var(--chat-compose-bg, var(--panel));
+  backdrop-filter: var(--backdrop-blur-heavy);
+  -webkit-backdrop-filter: var(--backdrop-blur-heavy);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.tb-ui-request-card.is-host {
+  border-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
+}
+
+.tb-ui-request-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 12.5px;
+  color: var(--color-label-primary, var(--text));
+}
+
+.tb-ui-request-head strong {
+  font-weight: 600;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.tb-ui-request-source {
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.tb-ui-request-card.is-host .tb-ui-request-source {
+  background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+  color: color-mix(in srgb, var(--color-accent) 80%, var(--color-label-primary, var(--text)));
+}
+
+.tb-ui-request-card.is-plugin .tb-ui-request-source {
+  background: color-mix(in srgb, var(--color-label-primary, var(--text)) 8%, transparent);
+  color: var(--color-label-secondary, var(--muted));
+}
+
+.tb-ui-request-path {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  color: var(--color-label-secondary, var(--muted));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tb-ui-request-document {
+  max-height: min(38vh, 320px);
+  overflow: auto;
+  padding: var(--space-2) var(--space-2-5);
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-label-primary, var(--text)) 3%, transparent);
+  font-size: 12.5px;
+}
+
+.tb-ui-request-message {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--color-label-secondary, var(--muted));
+  white-space: pre-wrap;
+}
+
+.tb-ui-request-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1-5);
+}
+
+.tb-ui-request-option {
+  margin: 0;
+  padding: var(--space-1-5) var(--space-2-5);
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-label-primary, var(--text)) 4%, transparent);
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tb-ui-request-option:hover {
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-accent) 35%, transparent);
+}
+
+.tb-ui-request-form {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.tb-ui-request-form.is-editor {
+  align-items: flex-end;
+}
+
+.tb-ui-request-input,
+.tb-ui-request-textarea {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: var(--space-1-5) var(--space-2);
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-md);
+  background: var(--color-secondary-bg);
+  color: var(--color-label-primary, var(--text));
+  font: inherit;
+  font-size: 12.5px;
+}
+
+.tb-ui-request-textarea {
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.tb-ui-request-input:focus,
+.tb-ui-request-textarea:focus {
+  outline: none;
+  border-color: var(--color-focus-ring);
+}
+
+.tb-ui-request-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 11px;
+}
+
+.tb-ui-request-dismiss {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-label-secondary, var(--muted));
+  font: inherit;
+  font-size: 11px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.tb-ui-request-note {
+  color: var(--color-label-tertiary, var(--muted));
+  line-height: 1.35;
 }
 
 .wb-terminal-composer-suggestion.is-active .tb-composer-suggestion-badge {
@@ -20308,3 +20768,297 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   line-height: 1.4;
 }
 
+
+/* --- Turn dots: the run's engine turns, above the feed ---
+   The feed renders only the running turn, so finished turns are reachable
+   through these dots; one dot opens that turn's thinking and tool calls in the
+   drawer below. */
+.tb-turn-dots {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 18px;
+  border-bottom: 0.5px solid var(--color-separator);
+  background: var(--color-secondary-bg);
+  flex-shrink: 0;
+  /* Above the drawer's mask (z 20): the dots are that drawer's own control, so
+     clicking a different dot must switch turns rather than dismiss the drawer. */
+  position: relative;
+  z-index: 22;
+}
+
+.tb-turn-dots-label {
+  font-size: 11px;
+  color: var(--color-label-tertiary);
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+
+.tb-turn-dots-track {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 2px 0;
+  scrollbar-width: none;
+}
+
+.tb-turn-dots-track::-webkit-scrollbar {
+  display: none;
+}
+
+.tb-turn-dot {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 50%;
+  border: 0.5px solid var(--color-separator);
+  background: var(--color-window-bg);
+  color: var(--color-label-secondary);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.tb-turn-dot:hover {
+  border-color: var(--color-accent);
+  color: var(--color-label-primary);
+}
+
+.tb-turn-dot:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.tb-turn-dot.is-done {
+  border-color: color-mix(in srgb, var(--color-success) 45%, transparent);
+  background: color-mix(in srgb, var(--color-success) 12%, transparent);
+  color: var(--color-success);
+}
+
+.tb-turn-dot.is-error {
+  border-color: color-mix(in srgb, var(--color-destructive) 50%, transparent);
+  background: color-mix(in srgb, var(--color-destructive) 12%, transparent);
+  color: var(--color-destructive);
+}
+
+.tb-turn-dot.is-running {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+  color: var(--color-accent);
+}
+
+.tb-turn-dot.is-open {
+  border-color: var(--color-accent);
+  color: var(--color-label-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+
+.tb-turn-dot-num {
+  line-height: 1;
+}
+
+/* A breathing ring marks the turn still producing, so a long run reads as
+   "working" rather than "the last dot happens to be blue". */
+.tb-turn-dot-ring {
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 55%, transparent);
+  animation: tb-turn-ring 1.6s infinite ease-in-out;
+}
+
+@keyframes tb-turn-ring {
+  0%, 100% { opacity: 0.3; transform: scale(0.94); }
+  50% { opacity: 0.9; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tb-turn-dot-ring { animation: none; opacity: 0.6; }
+}
+
+/* --- Turn detail drawer: over the pane, so the feed does not reflow --- */
+.tb-turn-overlay-mask {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  background: color-mix(in srgb, var(--color-window-bg) 55%, transparent);
+}
+
+.tb-turn-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: 40%;
+  z-index: 21;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-window-bg);
+  border-top: 0.5px solid var(--color-separator);
+  border-radius: 12px 12px 0 0;
+  box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.18);
+  animation: tb-turn-slide-up 0.18s ease;
+}
+
+@keyframes tb-turn-slide-up {
+  from { transform: translateY(14px); opacity: 0.6; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tb-turn-overlay { animation: none; }
+}
+
+.tb-turn-overlay-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 0.5px solid var(--color-separator);
+  flex-shrink: 0;
+}
+
+.tb-turn-overlay-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 590;
+  color: var(--color-label-primary);
+  flex-shrink: 0;
+}
+
+.tb-turn-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.tb-turn-badge.is-running {
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+}
+
+.tb-turn-badge.is-done {
+  color: var(--color-success);
+  background: color-mix(in srgb, var(--color-success) 14%, transparent);
+}
+
+.tb-turn-badge.is-error {
+  color: var(--color-destructive);
+  background: color-mix(in srgb, var(--color-destructive) 14%, transparent);
+}
+
+.tb-turn-spinner {
+  width: 7px;
+  height: 7px;
+  border: 1.5px solid var(--color-accent);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: tb-turn-spin 0.8s linear infinite;
+}
+
+@keyframes tb-turn-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tb-turn-spinner { animation: none; }
+}
+
+.tb-turn-overlay-meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.tb-turn-meta-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-label-tertiary);
+  background: var(--color-tertiary-bg);
+  padding: 1px 5px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.tb-turn-overlay-actions {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.tb-turn-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--color-label-tertiary);
+  cursor: pointer;
+}
+
+.tb-turn-nav:hover:not(:disabled) {
+  background: var(--color-tertiary-bg);
+  color: var(--color-label-primary);
+}
+
+.tb-turn-nav:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.tb-turn-nav:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.tb-turn-nav-pos {
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-label-tertiary);
+  padding: 0 2px;
+}
+
+.tb-turn-overlay-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 10px 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tb-turn-text {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-label-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.tb-turn-empty {
+  font-size: 12px;
+  color: var(--color-label-tertiary);
+  padding: 8px 2px;
+}

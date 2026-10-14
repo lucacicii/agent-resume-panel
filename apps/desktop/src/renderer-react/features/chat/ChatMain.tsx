@@ -3,9 +3,13 @@ import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { useTextSearchHighlight } from "../../components/useTextSearch";
 import { desktopApi } from "../../bridge";
 import { ChatMessageItem } from "./ChatMessageItem";
+import { ChatTimeline } from "./ChatTimeline";
+import { buildTimelineItems, scrollTopForAnchor } from "./timelineModel";
 import { ChatComposer } from "./ChatComposer";
 import { ChatQuestionBubble } from "./ChatQuestionBubble";
+import { ChatUiRequestCard } from "./ChatUiRequestCard";
 import { ChatEmptyState } from "./ChatEmptyState";
+import { TurnDetailOverlay, TurnDots } from "./TurnDots";
 import { TracePopover } from "./TracePopover";
 import { ChatChangesPopover } from "./ChatChangesPopover";
 import { useConversationChanges } from "./useConversationChanges";
@@ -18,7 +22,7 @@ import type {
   ThunderTaskTrace,
   ThunderTelemetryNotice
 } from "@agent-resume/core";
-import type { ChatRunMetrics, LiveSegment, RenderedChatMessage } from "./useThunderChat";
+import type { ChatRunMetrics, LiveSegment, LiveTurn, RenderedChatMessage } from "./useThunderChat";
 import type { TraceSpan } from "./useTraceCollector";
 import { useI18n } from "../../i18n";
 
@@ -42,11 +46,16 @@ interface ChatMainProps {
   ) => void;
   /** The in-flight turn as ordered runs, so the feed stays in true time order. */
   liveSegments: LiveSegment[];
+  /** Every turn of the in-flight run, for the dots row. */
+  liveTurns?: LiveTurn[];
   models: ThunderModelInfo[];
   selectedModel: string;
   onSelectModel: (model: string) => void;
   thinkingLevel: string;
   onSelectThinkingLevel: (level: string) => void;
+  /** Approval mode for this session; `""` until the daemon has been asked. */
+  permissionMode?: import("@agent-resume/core").ThunderPermissionMode | "";
+  onSelectPermissionMode?: (mode: import("@agent-resume/core").ThunderPermissionMode) => void;
   workspaceDir: string;
   onSelectWorkspaceDir: (dir: string) => void;
   workspaceSource?: "finder" | "gtd";
@@ -84,6 +93,16 @@ interface ChatMainProps {
   pendingQuestion?: { questionId: string; taskId: string; questions: ThunderQuestionItem[] } | null;
   onAnswerQuestion?: (answers: Record<string, string> | undefined, cancelled?: boolean) => void | Promise<void>;
   onDismissQuestion?: () => void | Promise<void>;
+  /**
+   * Dialog the daemon is blocking on (`ui_request`) — a plan approval, an
+   * `ask`-mode permission prompt, or a plugin's own question.
+   */
+  pendingUiRequest?: import("@agent-resume/core").ThunderUiRequest | null;
+  onAnswerUiRequest?: (answer: {
+    value?: string;
+    confirmed?: boolean;
+    cancelled?: boolean;
+  }) => void | Promise<void>;
 }
 
 export function ChatMain({
@@ -93,6 +112,7 @@ export function ChatMain({
   messages,
   isStreaming,
   liveSegments,
+  liveTurns = [],
   queuedCount,
   onSteerMessage,
   onFollowUpMessage,
@@ -101,6 +121,8 @@ export function ChatMain({
   onSelectModel,
   thinkingLevel,
   onSelectThinkingLevel,
+  permissionMode,
+  onSelectPermissionMode,
   workspaceDir,
   onSelectWorkspaceDir,
   workspaceSource,
@@ -128,13 +150,17 @@ export function ChatMain({
   contextWindowLimit,
   pendingQuestion,
   onAnswerQuestion,
-  onDismissQuestion
+  onDismissQuestion,
+  pendingUiRequest,
+  onAnswerUiRequest
 }: ChatMainProps) {
   const feedRef = useRef<HTMLDivElement | null>(null);
   /** A strategy while true: follow the newest content (正文 + thinking). */
   const stickToBottom = useRef(true);
   const [isTraceOpen, setIsTraceOpen] = useState(false);
   const [isChangesOpen, setIsChangesOpen] = useState(false);
+  /** Index into `liveTurns` of the turn whose drawer is open; null = closed. */
+  const [openTurnIndex, setOpenTurnIndex] = useState<number | null>(null);
   const [nestedScan, setNestedScan] = useState<GitNestedScanOptions | undefined>(undefined);
   const [workspaceDirs, setWorkspaceDirs] = useState<string[]>(() => (workspaceDir ? [workspaceDir] : []));
 
@@ -320,6 +346,60 @@ export function ChatMain({
     node.scrollTop = node.scrollHeight;
   }, []);
 
+  /**
+   * Jump the feed to a message the timeline points at.
+   *
+   * The offset is computed from the row's measured position rather than
+   * `scrollIntoView`, which would also scroll the window and every ancestor —
+   * wrong inside the Workbench pane, where this chat shares the column with
+   * other views. Pinning is re-decided from the target: landing on the newest
+   * message keeps following the stream, landing anywhere else stops it so the
+   * next commit cannot yank the reader back to the bottom.
+   */
+  const jumpToMessage = useCallback(
+    (index: number) => {
+      const node = feedRef.current;
+      if (!node) return;
+      const row = node.querySelector<HTMLElement>(`[data-timeline-index="${index}"]`);
+      if (!row) return;
+      const target = scrollTopForAnchor(
+        node.getBoundingClientRect().top,
+        row.getBoundingClientRect().top,
+        node.scrollTop
+      );
+      stickToBottom.current = node.scrollHeight - node.clientHeight - target < 80;
+      const reducedMotion =
+        typeof window.matchMedia === "function" &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      // jsdom has no `scrollTo`; falling back to the plain assignment keeps the
+      // jump observable in tests and identical for the user without smooth scrolling.
+      if (typeof node.scrollTo !== "function") {
+        node.scrollTop = target;
+        return;
+      }
+      node.scrollTo({ top: target, behavior: reducedMotion ? "auto" : "smooth" });
+    },
+    []
+  );
+
+  /** One rail entry per feed row, plus the turn still streaming. */
+  const timelineItems = useMemo(
+    () => buildTimelineItems(messages, { content: liveContent, streaming: isStreaming }),
+    [messages, liveContent, isStreaming]
+  );
+
+  // Switching conversations always starts pinned to the newest content, and
+  // drops the turn drawer: its index means nothing against a different run.
+  useEffect(() => {
+    setOpenTurnIndex(null);
+  }, [sessionId]);
+  // A new run clears the turns before filling them, so an index left over from
+  // the previous run would point at an unrelated turn. Closing on the empty
+  // frame means the drawer can never survive into a run it does not belong to.
+  useEffect(() => {
+    if (liveTurns.length === 0) setOpenTurnIndex((prev) => (prev === null ? prev : null));
+  }, [liveTurns]);
+
   // Switching conversations always starts pinned to the newest content.
   useLayoutEffect(() => {
     stickToBottom.current = true;
@@ -338,15 +418,18 @@ export function ChatMain({
   const showEmptyState = !hasMessages;
   /** The agent is blocked on ask_user_question — the card docks above the composer. */
   const hasQuestion = Boolean(pendingQuestion && pendingQuestion.questions.length > 0);
+  /** A `ui_request` dialog is docked in the same slot; only one ever shows at a
+      time, because the daemon raises one blocking dialog per run. */
+  const hasDialog = Boolean(pendingUiRequest || hasQuestion);
 
   // A strategy: follow streaming content unless the user scrolled away (B).
   // The question card also docks/un-docks, so re-pin then too.
   useLayoutEffect(() => {
     scrollToBottom();
-  }, [messages.length, liveSegments, hasQuestion, scrollToBottom]);
+  }, [messages.length, liveSegments, hasDialog, scrollToBottom]);
 
   return (
-    <div className={hasQuestion ? "tb-chat-main has-question" : "tb-chat-main"}>
+    <div className={hasDialog ? "tb-chat-main has-question" : "tb-chat-main"}>
       {/* Chat Header */}
       <header className="tb-chat-header">
         <div className="tb-chat-header-title-box">
@@ -473,54 +556,73 @@ export function ChatMain({
         changes={changes}
       />
 
-      {/* Messages Feed or Empty State */}
-      <div className="tb-chat-feed" ref={feedRef} onScroll={(event) => {
-        const node = event.currentTarget;
-        if (node.clientHeight <= 0) return;
-        stickToBottom.current = node.scrollHeight - node.scrollTop - node.clientHeight < 80;
-      }}>
-        {showEmptyState ? (
-          <ChatEmptyState
-            onSelectPrompt={onSendMessage}
-            daemonOnline={daemonOnline}
+      {/* Feed + the floating timeline rail. The rail is absolutely positioned
+          over the feed's own right padding, so it takes no layout width. */}
+      <div className="tb-chat-body">
+
+        {/* The run's turns. The feed below renders only the running one, so the
+            finished turns are only reachable through these dots. */}
+        {liveTurns.length > 0 && (
+          <TurnDots
+            turns={liveTurns}
+            openIndex={openTurnIndex}
+            onOpen={setOpenTurnIndex}
+            onClose={() => setOpenTurnIndex(null)}
           />
-        ) : (
-          <div className="tb-messages-container">
-            {messages.map((msg, idx) => (
-              <ChatMessageItem
-                key={`msg_${idx}`}
-                message={msg}
-                index={idx}
-                segments={msg.segments}
-                displayText={translations[messageKey(idx, msg.content)]}
-                translated={Boolean(translations[messageKey(idx, msg.content)])}
-                isTranslating={translatingIds.has(messageKey(idx, msg.content))}
-                onTranslate={toggleTranslate}
-                translateLabel={translateLabel}
-                restoreLabel={restoreLabel}
-                translatingLabel={translatingLabel}
-                onRegenerate={onRegenerate}
-                onResend={onResend}
-                onEdit={onEditPrompt}
-              />
-            ))}
-
-            {/* Live Streaming Turn */}
-            {isStreaming && (
-              <ChatMessageItem
-                message={{
-                  role: "assistant",
-                  content: liveContent
-                }}
-                index={messages.length}
-                isStreaming={true}
-                segments={liveSegments}
-              />
-            )}
-
-            <div className="tb-scroll-anchor" />
-          </div>
         )}
+        <div
+          className="tb-chat-feed"
+          ref={feedRef}
+          onScroll={(event) => {
+            const node = event.currentTarget;
+            if (node.clientHeight <= 0) return;
+            stickToBottom.current = node.scrollHeight - node.scrollTop - node.clientHeight < 80;
+          }}
+        >
+          {showEmptyState ? (
+            <ChatEmptyState onSelectPrompt={onSendMessage} daemonOnline={daemonOnline} />
+          ) : (
+            <div className="tb-messages-container">
+              {messages.map((msg, idx) => (
+                <ChatMessageItem
+                  key={`msg_${idx}`}
+                  message={msg}
+                  index={idx}
+                  anchorIndex={idx}
+                  segments={msg.segments}
+                  displayText={translations[messageKey(idx, msg.content)]}
+                  translated={Boolean(translations[messageKey(idx, msg.content)])}
+                  isTranslating={translatingIds.has(messageKey(idx, msg.content))}
+                  onTranslate={toggleTranslate}
+                  translateLabel={translateLabel}
+                  restoreLabel={restoreLabel}
+                  translatingLabel={translatingLabel}
+                  onRegenerate={onRegenerate}
+                  onResend={onResend}
+                  onEdit={onEditPrompt}
+                />
+              ))}
+
+              {/* Live Streaming Turn */}
+              {isStreaming && (
+                <ChatMessageItem
+                  message={{
+                    role: "assistant",
+                    content: liveContent
+                  }}
+                  index={messages.length}
+                  anchorIndex={messages.length}
+                  isStreaming={true}
+                  segments={liveSegments}
+                />
+              )}
+
+              <div className="tb-scroll-anchor" />
+            </div>
+          )}
+        </div>
+
+        <ChatTimeline feedRef={feedRef} entries={timelineItems} onJump={jumpToMessage} />
       </div>
 
       {/* Composer row: the last row of the pane's flex column, below the
@@ -530,7 +632,16 @@ export function ChatMain({
           so neither can cover the messages. */}
       <ChatComposer
         docked={
-          hasQuestion && pendingQuestion ? (
+          pendingUiRequest && onAnswerUiRequest ? (
+            /* Keyed by request: answer text belongs to the dialog that was up,
+               and the daemon only ever has one in flight, so a new dialog must
+               arrive as a new card rather than inherit the last one's draft. */
+            <ChatUiRequestCard
+              key={pendingUiRequest.requestId}
+              request={pendingUiRequest}
+              onAnswer={onAnswerUiRequest}
+            />
+          ) : hasQuestion && pendingQuestion ? (
             <ChatQuestionBubble
               questionId={pendingQuestion.questionId}
               questions={pendingQuestion.questions}
@@ -550,6 +661,8 @@ export function ChatMain({
         onSelectModel={onSelectModel}
         thinkingLevel={thinkingLevel}
         onSelectThinkingLevel={onSelectThinkingLevel}
+        permissionMode={permissionMode}
+        onSelectPermissionMode={onSelectPermissionMode}
         workspaceDir={workspaceDir}
         onSelectWorkspaceDir={onSelectWorkspaceDir}
         workspaceSource={workspaceSource}
@@ -564,6 +677,33 @@ export function ChatMain({
         currentContextTokens={currentContextTokens}
         contextWindowLimit={contextWindowLimit}
       />
+
+      {/* Turn detail drawer: over the pane, so it neither reflows the feed nor
+          hides the composer. The running turn keeps streaming into it. */}
+      {openTurnIndex !== null && liveTurns[openTurnIndex]
+        ? (() => {
+            const turn = liveTurns[openTurnIndex];
+            const isRunningTurn = turn.status === "running";
+            return (
+              <TurnDetailOverlay
+                turn={turn}
+                segments={isRunningTurn ? liveSegments : turn.segments}
+                isStreaming={isRunningTurn}
+                index={openTurnIndex}
+                total={liveTurns.length}
+                onPrev={() =>
+                  setOpenTurnIndex((prev) => (prev === null ? prev : Math.max(0, prev - 1)))
+                }
+                onNext={() =>
+                  setOpenTurnIndex((prev) =>
+                    prev === null ? prev : Math.min(liveTurns.length - 1, prev + 1)
+                  )
+                }
+                onClose={() => setOpenTurnIndex(null)}
+              />
+            );
+          })()
+        : null}
     </div>
   );
 }

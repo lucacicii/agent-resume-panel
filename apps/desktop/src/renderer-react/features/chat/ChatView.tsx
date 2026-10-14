@@ -12,9 +12,11 @@ export function ChatView({ active }: { active: boolean }): React.JSX.Element | n
     messages,
     isStreaming,
     liveSegments,
+    liveTurns,
     models,
     selectedModel,
     thinkingLevel,
+    permissionMode,
     workspaceDir,
     workspaceSource,
     taskNoteId,
@@ -22,6 +24,7 @@ export function ChatView({ active }: { active: boolean }): React.JSX.Element | n
     daemonStatus,
     setSelectedModel,
     setThinkingLevel,
+    setPermissionMode,
     setWorkspaceDir,
     setWorkspaceGtdTask,
     setWorkspaceFinderDir,
@@ -35,6 +38,8 @@ export function ChatView({ active }: { active: boolean }): React.JSX.Element | n
     pendingQuestion,
     answerQuestion,
     dismissQuestion,
+    pendingUiRequest,
+    answerUiRequest,
     sendMessage,
     resendUserMessage,
     regenerateResponse,
@@ -135,11 +140,14 @@ export function ChatView({ active }: { active: boolean }): React.JSX.Element | n
         messages={messages}
         isStreaming={isStreaming}
         liveSegments={liveSegments}
+        liveTurns={liveTurns}
         models={models}
         selectedModel={selectedModel}
         onSelectModel={setSelectedModel}
         thinkingLevel={thinkingLevel}
         onSelectThinkingLevel={setThinkingLevel}
+        permissionMode={permissionMode}
+        onSelectPermissionMode={setPermissionMode}
         workspaceDir={workspaceDir}
         onSelectWorkspaceDir={setWorkspaceDir}
         workspaceSource={workspaceSource}
@@ -173,6 +181,8 @@ export function ChatView({ active }: { active: boolean }): React.JSX.Element | n
         pendingQuestion={pendingQuestion}
         onAnswerQuestion={answerQuestion}
         onDismissQuestion={dismissQuestion}
+        pendingUiRequest={pendingUiRequest}
+        onAnswerUiRequest={answerUiRequest}
       />
     </div>,
     host

@@ -22,7 +22,11 @@ import type {
   ThunderImageAttachment,
   ThunderQueueBehavior,
   ThunderTaskTrace,
-  ThunderTitleResult
+  ThunderTitleResult,
+  ThunderModeChanged,
+  ThunderPermissionMode,
+  ThunderUiRequest,
+  ThunderUiAnswer
 } from "./thunderProtocol";
 
 /** How long a loaded `settings.thunder` snapshot is trusted before re-reading it. */
@@ -55,6 +59,29 @@ export class ThunderClient {
   private startingPromise: Promise<void> | null = null;
   private thunderSettings: ThunderDaemonSettings | null = null;
   private thunderSettingsLoadedAt = 0;
+
+  /**
+   * Listeners for frames that belong to a *session* rather than a task.
+   *
+   * Every other daemon frame is routed by `task_id` into the run's own event
+   * stream, which means it can only reach a surface while a run is live. A mode
+   * change and a permission dialog are exactly the frames that arrive when
+   * nothing is running, so they need their own way out.
+   */
+  private modeListeners = new Set<(payload: ThunderModeChanged) => void>();
+  private uiRequestListeners = new Set<(request: ThunderUiRequest) => void>();
+
+  /** Observe approval-mode changes for every session (filter by `sessionId` yourself). */
+  public onModeChanged(listener: (payload: ThunderModeChanged) => void): () => void {
+    this.modeListeners.add(listener);
+    return () => this.modeListeners.delete(listener);
+  }
+
+  /** Observe dialogs waiting for an answer (`ui_request`). */
+  public onUiRequest(listener: (request: ThunderUiRequest) => void): () => void {
+    this.uiRequestListeners.add(listener);
+    return () => this.uiRequestListeners.delete(listener);
+  }
 
   /**
    * Re-read `settings.thunder` so a hand-edited settings.json takes effect without a
@@ -397,6 +424,72 @@ export class ThunderClient {
             console.error("[thunder-daemon:task-queue-handler-error]", err);
           }
         }
+        break;
+      }
+      case "mode_changed": {
+        // Pushed, not answered: it never rides a task's stream, so it goes to
+        // the session-scoped listeners. This is the only way a surface learns
+        // the mode moved when nothing is running — including when the *model*
+        // got a plan approved mid-run.
+        const payload: ThunderModeChanged = {
+          sessionId: msg.session_id,
+          taskId: msg.task_id,
+          mode: msg.mode as ThunderPermissionMode,
+          previous: msg.previous as ThunderPermissionMode | undefined,
+          source: msg.source === "plan_approved"
+            ? "planApproved"
+            : msg.source === "run_option"
+              ? "runOption"
+              : "user"
+        };
+        console.log(
+          `[thunder-client:mode] session=${payload.sessionId} ${payload.previous ?? "?"} -> ${payload.mode} (${payload.source})`
+        );
+        for (const listener of this.modeListeners) {
+          try {
+            listener(payload);
+          } catch (err) {
+            console.error("[thunder-daemon:mode-listener-error]", err);
+          }
+        }
+        break;
+      }
+      case "ui_request": {
+        // A blocking dialog. `ui` discriminates the shape and its siblings were
+        // flattened in beside it (see ThunderDaemonIncoming).
+        const request: ThunderUiRequest = {
+          requestId: msg.request_id,
+          taskId: msg.task_id,
+          sessionId: msg.session_id,
+          source: msg.source === "host" ? "host" : "plugin",
+          ui: msg.ui as ThunderUiRequest["ui"],
+          title: msg.title,
+          options: msg.options,
+          message: msg.message,
+          placeholder: msg.placeholder,
+          prefill: msg.prefill,
+          path: msg.path,
+          content: msg.content,
+          timeoutMs: msg.timeout_ms
+        };
+        console.log(
+          `[thunder-client:ui] request=${request.requestId} ui=${request.ui} source=${request.source}`
+        );
+        for (const listener of this.uiRequestListeners) {
+          try {
+            listener(request);
+          } catch (err) {
+            console.error("[thunder-daemon:ui-listener-error]", err);
+          }
+        }
+        break;
+      }
+      case "ui_notice": {
+        console.log(`[thunder-daemon:notice] ${msg.level}: ${msg.message}`);
+        break;
+      }
+      case "ui_status": {
+        console.log(`[thunder-daemon:status] ${msg.key}=${msg.text ?? ""}`);
         break;
       }
     }
@@ -748,6 +841,23 @@ export class ThunderClient {
     sessionId?: string;
     thinking_level?: string;
     attachments?: ThunderImageAttachment[];
+    /**
+     * Non-interactive run: the daemon omits the `ask_user_question` tool
+     * entirely. Nothing can answer a question on a scheduled run, and a parked
+     * question costs the full 1800s request timeout, so an unattended caller
+     * must pass `true` rather than rely on the daemon default (which is `false`
+     * for backward compatibility with interactive hosts).
+     */
+    headless?: boolean;
+    /**
+     * Permission mode for this run (`plan` / `ask` / `acceptEdits` / `yolo`).
+     *
+     * Stated explicitly rather than inherited, because the inherited value comes
+     * from `~/.thunder/config.json`'s `agent.defaultMode` — a global setting that
+     * would otherwise silently change how every schedule behaves. An unattended
+     * run wants `yolo`; a read-only sweep wants `plan`.
+     */
+    mode?: string;
     onEvent?: (event: ThunderObservedEvent) => void;
   }): Promise<{ finalContent?: string; finishReason: string; activePlugins?: string[] }> {
     await this.ensureRunning();
@@ -800,6 +910,8 @@ export class ThunderClient {
               model: options.model,
               thinking_level: options.thinking_level,
               session_id: options.sessionId,
+              headless: options.headless === true ? true : undefined,
+              mode: options.mode,
               attachments:
                 options.attachments && options.attachments.length > 0
                   ? options.attachments
@@ -881,6 +993,81 @@ export class ThunderClient {
     );
     if (res === null) return null;
     return { steering: res?.steering ?? [], followUp: res?.follow_up ?? [] };
+  }
+
+  /**
+   * Read the mode a session is judged by, plus the rules it has remembered.
+   *
+   * This is the hydration source for a surface that has just opened a session:
+   * the daemon keeps the mode in memory per `session_id`, and it is deliberately
+   * not part of the stored conversation.
+   *
+   * One wrinkle worth knowing: a session that has *never* run is created here in
+   * Thunder's default (`yolo`), while that session's first run resolves
+   * `.thunder`'s `agent.defaultMode` instead. A `mode_changed` with
+   * `source: "runOption"` arrives at that first run and corrects whatever is on
+   * screen.
+   */
+  public async getPermissionState(
+    sessionId: string
+  ): Promise<{ mode: ThunderPermissionMode; rules: unknown[] } | null> {
+    const res = await this.sendCommand<{ mode?: string; rules?: unknown[] }>(
+      "get_permission_state",
+      { session_id: sessionId },
+      10_000
+    );
+    if (res === null || !res?.mode) return null;
+    return { mode: res.mode as ThunderPermissionMode, rules: res.rules ?? [] };
+  }
+
+  /**
+   * Set the mode a session is judged by.
+   *
+   * Takes effect on the session's next run *and* on a run already in flight, at
+   * its next tool call. Only the four canonical values are sent: Thunder's
+   * parser also accepts pre-0.4 aliases (`bypass_permissions`, `never`, ...),
+   * but those are a compatibility layer for old config files, not a value space
+   * a UI should be able to reach.
+   *
+   * Rejects when the daemon refuses (an unknown mode, or a daemon predating
+   * `set_mode`) — that rejection is what lets a caller roll its optimistic
+   * update back instead of showing a mode the daemon never accepted.
+   */
+  public async setMode(
+    sessionId: string,
+    mode: ThunderPermissionMode
+  ): Promise<{ mode: ThunderPermissionMode } | null> {
+    const res = await this.sendCommand<{ mode?: string }>(
+      "set_mode",
+      { session_id: sessionId, mode },
+      10_000
+    );
+    if (res === null) return null;
+    return { mode: (res?.mode as ThunderPermissionMode) ?? mode };
+  }
+
+  /**
+   * Answer a `ui_request`. The daemon resolves the blocked caller and reports
+   * whether the answer reached it (`delivered: false` for a stale request id —
+   * a late answer can never land on a later dialog).
+   */
+  public async answerUi(
+    answer: ThunderUiAnswer
+  ): Promise<{ requestId: string; delivered: boolean }> {
+    const res = await this.sendCommand<{ request_id?: string; delivered?: boolean }>(
+      "answer_ui",
+      {
+        request_id: answer.requestId,
+        value: answer.value,
+        confirmed: answer.confirmed,
+        cancelled: answer.cancelled === true
+      },
+      10_000
+    );
+    return {
+      requestId: res?.request_id ?? answer.requestId,
+      delivered: Boolean(res?.delivered)
+    };
   }
 
   public async cancelTask(taskId: string): Promise<boolean> {

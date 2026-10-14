@@ -25,11 +25,13 @@ import {
 } from "./integrations";
 import {
   ensureAgentStatusDaemon,
+  installAgentStatusLaunchAgent,
   isAgentStatusLaunchAgentInstalled,
   readAgentStatusDaemonStatus,
   resolveAgentStatusCliPath,
   resolveDaemonEntryPath,
   stopAgentStatusDaemon,
+  uninstallAgentStatusLaunchAgent,
   type AgentStatusDaemonStatus
 } from "./lifecycle";
 import { agentStatusPaths } from "./paths";
@@ -136,6 +138,23 @@ export function registerAgentStatusIpc(deps: AgentStatusIpcContext): void {
 
   safeHandle("agentStatus:stopDaemon", async () => {
     await stopAgentStatusDaemon(deps.getPanelHome());
+    return readStatus();
+  });
+
+  // Login item: previously the pane could only *report* this, never set it.
+  safeHandle("agentStatus:installLaunchAgent", async () => {
+    await installAgentStatusLaunchAgent({
+      panelHome: deps.getPanelHome(),
+      execPath: deps.execPath,
+      entryPath: bundleEntry(),
+      appVersion: deps.appVersion,
+      notify: deps.isPackaged
+    });
+    return readStatus();
+  });
+
+  safeHandle("agentStatus:uninstallLaunchAgent", async () => {
+    await uninstallAgentStatusLaunchAgent();
     return readStatus();
   });
 

@@ -18,6 +18,7 @@ export function NativeMenuSelect<T extends string>({
   ariaLabel,
   title,
   disabled,
+  emptyLabel,
   testId
 }: {
   value: T;
@@ -27,10 +28,17 @@ export function NativeMenuSelect<T extends string>({
   ariaLabel: string;
   title?: string;
   disabled?: boolean;
+  /**
+   * Shown when `value` matches no option — a control whose subject is not known
+   * yet (the mode chip before the daemon has answered) rather than one that is
+   * simply empty. Without it the trigger renders a bare chevron.
+   */
+  emptyLabel?: string;
   testId?: string;
 }): React.JSX.Element {
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const current = options.find((option) => option.value === value);
+  const label = current?.label ?? emptyLabel ?? "";
 
   const openMenu = async () => {
     const rect = buttonRef.current?.getBoundingClientRect();
@@ -54,13 +62,13 @@ export function NativeMenuSelect<T extends string>({
       type="button"
       className={className}
       data-testid={testId}
-      aria-label={`${ariaLabel}: ${current?.label ?? ""}`}
+      aria-label={`${ariaLabel}: ${label}`}
       aria-haspopup="menu"
-      title={title ?? current?.label}
+      title={title ?? label}
       disabled={disabled}
       onClick={() => void openMenu()}
     >
-      <span className="native-menu-select-label">{current?.label ?? ""}</span>
+      <span className="native-menu-select-label">{label}</span>
       <ThemeIcon name="chevron-down" size={ICON_SIZE.inline} aria-hidden="true" />
     </button>
   );

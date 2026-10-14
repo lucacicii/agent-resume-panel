@@ -114,6 +114,11 @@ describe("ChatView", () => {
       thunderChatGetTrace: vi.fn().mockResolvedValue(null),
       thunderChatGetActiveStream: vi.fn().mockResolvedValue(null),
       onThunderChatEvent: vi.fn().mockReturnValue(() => undefined),
+      onThunderModeChanged: vi.fn().mockReturnValue(() => undefined),
+      onThunderUiRequest: vi.fn().mockReturnValue(() => undefined),
+      thunderChatGetPermissionState: vi.fn().mockResolvedValue({ mode: "yolo" }),
+      thunderChatSetMode: vi.fn().mockResolvedValue({ mode: "yolo" }),
+      thunderChatAnswerUi: vi.fn().mockResolvedValue(true),
       pickDirectory: vi.fn().mockResolvedValue({ ok: true, path: "/work/repo" }),
       contextMenuShow: vi.fn().mockResolvedValue(null),
       notesListTasks: vi.fn().mockResolvedValue([

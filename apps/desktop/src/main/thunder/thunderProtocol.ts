@@ -14,7 +14,13 @@ export type {
   ThunderTaskTrace,
   ThunderTurnStats,
   ThunderAgentStats,
-  ThunderModelInfo
+  ThunderModelInfo,
+  ThunderPermissionMode,
+  ThunderModeChangeSource,
+  ThunderModeChanged,
+  ThunderUiRequest,
+  ThunderUiRequestSource,
+  ThunderUiAnswer
 } from "@agent-resume/core";
 
 /** Result of AI-title generation or manual title setting (errors are structured, never thrown). */
@@ -182,6 +188,61 @@ export type ThunderDaemonIncoming =
       session_id?: string;
       steering: string[];
       follow_up: string[];
+    }
+  | {
+      /**
+       * A session's approval mode changed — pushed, not answered.
+       *
+       * This frame is not a reply to anything, so it never arrives on a task's
+       * event stream; it is routed by `session_id`. `source` says what moved
+       * the mode, and `previous` carries the mode it moved from. A no-op is
+       * never announced, so a receipt always means a real change.
+       */
+      type: "mode_changed";
+      session_id: string;
+      task_id?: string;
+      mode: string;
+      previous?: string;
+      source: string;
+    }
+  | {
+      /**
+       * A dialog the agent (or a plugin) wants answered, blocking that caller
+       * until `answer_ui` arrives or the timeout expires — on expiry the daemon
+       * resolves it as cancelled, so a silent panel degrades to "denied", never
+       * to "allowed".
+       *
+       * `UiRequest` is flattened in, so the discriminating field is `ui` and
+       * its siblings (`options`, `content`, ...) sit next to `title`.
+       */
+      type: "ui_request";
+      request_id: string;
+      task_id?: string;
+      session_id?: string;
+      /** `host` marks an authorisation moment; see `ThunderUiRequest`. */
+      source: string;
+      ui: string;
+      title: string;
+      options?: string[];
+      message?: string;
+      placeholder?: string;
+      prefill?: string;
+      path?: string;
+      content?: string;
+      timeout_ms?: number;
+    }
+  | {
+      /** Fire-and-forget notification from the agent or a plugin. */
+      type: "ui_notice";
+      source: string;
+      message: string;
+      level: string;
+    }
+  | {
+      /** A status-bar entry the panel may set or clear. */
+      type: "ui_status";
+      key: string;
+      text?: string;
     };
 
 /**

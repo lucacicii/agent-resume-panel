@@ -365,3 +365,209 @@ describe("ChatMain find-in-conversation", () => {
     });
   });
 });
+
+describe("ChatMain timeline rail", () => {
+  beforeEach(() => {
+    window.agentResume = {
+      getI18nBundle: vi.fn().mockResolvedValue({ locale: "en", messages: {} }),
+      onI18nBundleChanged: vi.fn().mockReturnValue(() => undefined),
+      onLocaleChanged: vi.fn().mockReturnValue(() => undefined),
+      contextMenuShow: vi.fn().mockResolvedValue(null)
+    } as any;
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("anchors every rendered message row for the rail to measure", () => {
+    renderChatMain({
+      ...baseProps(),
+      isStreaming: false,
+      messages: [
+        { role: "user", content: "Hello" },
+        { role: "assistant", content: "Hi" }
+      ]
+    });
+
+    const anchors = Array.from(document.querySelectorAll("[data-timeline-index]")).map(
+      (row) => (row as HTMLElement).dataset.timelineIndex
+    );
+    expect(anchors).toEqual(["0", "1"]);
+  });
+
+  it("anchors the streaming turn at the next index", () => {
+    renderChatMain({
+      ...baseProps(),
+      isStreaming: true,
+      messages: [{ role: "user", content: "Hello" }],
+      liveSegments: [{ kind: "text", text: "partial answer" }]
+    });
+
+    const anchors = Array.from(document.querySelectorAll("[data-timeline-index]")).map(
+      (row) => (row as HTMLElement).dataset.timelineIndex
+    );
+    expect(anchors).toEqual(["0", "1"]);
+  });
+
+  it("floats the rail beside the feed without taking layout width", () => {
+    renderChatMain({ ...baseProps(), isStreaming: false });
+
+    // The rail lives in the feed's own wrapper, not inside the scroll container.
+    const body = document.querySelector(".tb-chat-body");
+    expect(body).toBeTruthy();
+    expect(body?.querySelector(".tb-chat-feed")).toBeTruthy();
+    expect(body?.querySelector("[data-testid='chat-timeline']")).toBeTruthy();
+    // It is a sibling of the feed, so it cannot scroll away with the messages.
+    expect(document.querySelector(".tb-chat-feed [data-testid='chat-timeline']")).toBeNull();
+  });
+
+  it("keeps the rail inert while the conversation does not scroll", async () => {
+    // jsdom never scrolls: the rail shell mounts for measurement and stays empty.
+    renderChatMain({ ...baseProps(), isStreaming: false });
+
+    await waitFor(() => expect(document.querySelector("[data-testid='chat-timeline']")).toBeTruthy());
+    expect(document.querySelector(".tb-timeline-dot")).toBeNull();
+    expect(document.querySelector("[data-testid='chat-timeline']")?.getAttribute("aria-hidden")).toBe("true");
+  });
+});
+
+/**
+ * The dots row is how finished turns stay reachable: the feed renders only the
+ * running turn's segments, so a turn that ended is only visible through its dot.
+ */
+describe("ChatMain turn dots", () => {
+  beforeEach(() => {
+    window.agentResume = {
+      getI18nBundle: vi.fn().mockResolvedValue({
+        locale: "en",
+        messages: {
+          "desktop.chat.turns.label": "Turns",
+          "desktop.chat.turns.turnN": "Turn {0}",
+          "desktop.chat.turns.toolCount": "{0} tools",
+          "desktop.chat.turns.statusRunning": "Running",
+          "desktop.chat.turns.statusDone": "Done",
+          "desktop.chat.turns.statusError": "Failed",
+          "desktop.chat.turns.openHint": "Click to see its thinking and tools",
+          "desktop.chat.turns.prev": "Previous turn",
+          "desktop.chat.turns.next": "Next turn",
+          "desktop.chat.turns.empty": "This turn produced no thinking or tool calls.",
+          "desktop.common.close": "Close"
+        }
+      }),
+      onI18nBundleChanged: vi.fn().mockReturnValue(() => undefined),
+      onLocaleChanged: vi.fn().mockReturnValue(() => undefined),
+      contextMenuShow: vi.fn().mockResolvedValue(null)
+    } as any;
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  function turns() {
+    return [
+      {
+        turn: 1,
+        status: "done" as const,
+        toolCount: 1,
+        startedAtMs: Date.now() - 5000,
+        durationMs: 3200,
+        promptTokens: 100,
+        completionTokens: 20,
+        segments: [
+          { kind: "reasoning" as const, text: "TURN1_THINKING" },
+          { kind: "text" as const, text: "TURN1_ANSWER" }
+        ]
+      },
+      {
+        turn: 2,
+        status: "running" as const,
+        toolCount: 0,
+        startedAtMs: Date.now(),
+        segments: [{ kind: "reasoning" as const, text: "TURN2_THINKING" }]
+      }
+    ];
+  }
+
+  it("draws one dot per turn and opens that turn's thinking on click", async () => {
+    renderChatMain({ ...baseProps(), liveTurns: turns() } as any);
+
+    await waitFor(() => {
+      expect(document.querySelectorAll(".tb-turn-dot")).toHaveLength(2);
+    });
+    const dots = document.querySelectorAll(".tb-turn-dot");
+    expect(dots[0].classList.contains("is-done")).toBe(true);
+    expect(dots[1].classList.contains("is-running")).toBe(true);
+
+    // Nothing is open until a dot is clicked.
+    expect(document.querySelector(".tb-turn-overlay")).toBeNull();
+
+    fireEvent.click(dots[0]);
+    await waitFor(() => {
+      expect(document.querySelector(".tb-turn-overlay")).toBeTruthy();
+    });
+
+    // The drawer shows turn 1 and only turn 1.
+    const body = document.querySelector(".tb-turn-overlay-body")!;
+    expect(body.textContent).toContain("TURN1_THINKING");
+    expect(body.textContent).toContain("TURN1_ANSWER");
+    expect(body.textContent).not.toContain("TURN2_THINKING");
+  });
+
+  it("switches to another turn, and closes on a second click of the same dot", async () => {
+    const live = turns();
+    renderChatMain({
+      ...baseProps(),
+      liveTurns: live,
+      // Turn 2 is the running one, so its drawer reads the feed's live segments.
+      liveSegments: [{ kind: "reasoning", text: "TURN2_LIVE" }]
+    } as any);
+    await waitFor(() => {
+      expect(document.querySelectorAll(".tb-turn-dot")).toHaveLength(2);
+    });
+    const dots = () => document.querySelectorAll(".tb-turn-dot");
+
+    fireEvent.click(dots()[0]);
+    await waitFor(() => expect(document.querySelector(".tb-turn-overlay-body")).toBeTruthy());
+    expect(document.querySelector(".tb-turn-overlay-body")!.textContent).toContain("TURN1_THINKING");
+
+    // A different dot swaps the drawer's contents rather than stacking one.
+    fireEvent.click(dots()[1]);
+    await waitFor(() => {
+      expect(document.querySelector(".tb-turn-overlay-body")!.textContent).toContain("TURN2_LIVE");
+    });
+    expect(document.querySelectorAll(".tb-turn-overlay")).toHaveLength(1);
+    expect(document.querySelector(".tb-turn-overlay-body")!.textContent).not.toContain("TURN1_THINKING");
+
+    // Clicking the open dot again closes it.
+    fireEvent.click(dots()[1]);
+    await waitFor(() => expect(document.querySelector(".tb-turn-overlay")).toBeNull());
+  });
+
+  it("shows the running turn's live segments, not its frozen copy", async () => {
+    const live = turns();
+    renderChatMain({
+      ...baseProps(),
+      liveTurns: live,
+      // The feed's live segments are the running turn's; the drawer must read these.
+      liveSegments: [{ kind: "reasoning", text: "LIVE_RUNNING_TEXT" }]
+    } as any);
+
+    await waitFor(() => {
+      expect(document.querySelectorAll(".tb-turn-dot")).toHaveLength(2);
+    });
+    fireEvent.click(document.querySelectorAll(".tb-turn-dot")[1]);
+    await waitFor(() => expect(document.querySelector(".tb-turn-overlay-body")).toBeTruthy());
+
+    const body = document.querySelector(".tb-turn-overlay-body")!;
+    expect(body.textContent).toContain("LIVE_RUNNING_TEXT");
+    expect(body.textContent).not.toContain("TURN2_THINKING");
+  });
+
+  it("renders no dots row when the run has no turns", () => {
+    renderChatMain({ ...baseProps(), liveTurns: [] } as any);
+    expect(document.querySelector(".tb-turn-dots")).toBeNull();
+    expect(document.querySelector(".tb-turn-overlay")).toBeNull();
+  });
+});

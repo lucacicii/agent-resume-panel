@@ -107,6 +107,28 @@ export function AgentStatusPane({ t }: { t: Translate }) {
     }
   }, [daemon?.running, refresh, t]);
 
+  const toggleLoginAgent = useCallback(async () => {
+    setBusy("loginAgent");
+    try {
+      const call = daemon?.launchAgentInstalled
+        ? desktopApi().agentStatusUninstallLaunchAgent
+        : desktopApi().agentStatusInstallLaunchAgent;
+      const next = await call?.();
+      setDaemon(next ?? null);
+      setStatus({
+        text: daemon?.launchAgentInstalled
+          ? t("desktop.settings.agentStatus.loginAgentRemoved")
+          : t("desktop.settings.agentStatus.loginAgentAdded"),
+        kind: "ok"
+      });
+      await refresh();
+    } catch (error) {
+      setStatus({ text: error instanceof Error ? error.message : String(error), kind: "error" });
+    } finally {
+      setBusy(null);
+    }
+  }, [daemon?.launchAgentInstalled, refresh, t]);
+
   return (
     <div className="settings-agent-status">
       <section>
@@ -135,7 +157,23 @@ export function AgentStatusPane({ t }: { t: Translate }) {
             </div>
             <div>
               <dt>{t("desktop.settings.agentStatus.factLoginAgent")}</dt>
-              <dd>{daemon.launchAgentInstalled ? t("desktop.common.confirm") : "—"}</dd>
+              <dd>
+                <span>
+                  {daemon.launchAgentInstalled
+                    ? t("desktop.settings.agentStatus.loginAgentOn")
+                    : t("desktop.settings.agentStatus.loginAgentOff")}
+                </span>
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={busy === "loginAgent"}
+                  onClick={() => void toggleLoginAgent()}
+                >
+                  {daemon.launchAgentInstalled
+                    ? t("desktop.settings.agentStatus.loginAgentRemove")
+                    : t("desktop.settings.agentStatus.loginAgentAdd")}
+                </button>
+              </dd>
             </div>
             <div>
               <dt>{t("desktop.settings.agentStatus.factSocket")}</dt>

@@ -12,6 +12,16 @@ interface Harness {
   emit(payload: HarnessEvent): void;
   resolveRun(value: unknown): void;
   rejectRun(error: unknown): void;
+  /** A pushed mode change, as the daemon's session-scoped channel delivers it. */
+  emitMode(payload: {
+    sessionId: string;
+    taskId?: string;
+    mode: string;
+    previous?: string;
+    source: string;
+  }): void;
+  /** A blocking dialog, same channel treatment. */
+  emitUi(request: Record<string, unknown>): void;
 }
 
 /** The daemon's model list, as the settings pane receives it. */
@@ -37,6 +47,8 @@ function thunderStatus() {
 
 function installHarness(): Harness {
   let emit: ((payload: HarnessEvent) => void) | undefined;
+  let emitMode: ((payload: any) => void) | undefined;
+  let emitUi: ((request: any) => void) | undefined;
   let resolveRun: ((value: unknown) => void) | undefined;
   let rejectRun: ((reason?: unknown) => void) | undefined;
 
@@ -47,6 +59,9 @@ function installHarness(): Harness {
     thunderChatGetActiveStream: vi.fn().mockResolvedValue(null),
     thunderChatGetTrace: vi.fn().mockResolvedValue(null),
     thunderChatAnswerQuestion: vi.fn().mockResolvedValue(true),
+    thunderChatGetPermissionState: vi.fn().mockResolvedValue({ mode: "yolo" }),
+    thunderChatSetMode: vi.fn().mockResolvedValue({ mode: "yolo" }),
+    thunderChatAnswerUi: vi.fn().mockResolvedValue(true),
     thunderChatRunTask: vi.fn().mockImplementation(
       () =>
         new Promise<unknown>((resolve, reject) => {
@@ -60,13 +75,27 @@ function installHarness(): Harness {
         emit = undefined;
       };
     }),
+    onThunderModeChanged: vi.fn().mockImplementation((callback: (payload: any) => void) => {
+      emitMode = callback;
+      return () => {
+        emitMode = undefined;
+      };
+    }),
+    onThunderUiRequest: vi.fn().mockImplementation((callback: (request: any) => void) => {
+      emitUi = callback;
+      return () => {
+        emitUi = undefined;
+      };
+    }),
     onThunderModelsChanged: vi.fn().mockReturnValue(() => {})
   } as unknown as typeof window.agentResume;
 
   return {
     emit: (payload) => emit?.(payload),
     resolveRun: (value) => resolveRun?.(value),
-    rejectRun: (error) => rejectRun?.(error)
+    rejectRun: (error) => rejectRun?.(error),
+    emitMode: (payload) => emitMode?.(payload),
+    emitUi: (request) => emitUi?.(request)
   };
 }
 
@@ -462,5 +491,399 @@ describe("useThunderChat streaming token metrics", () => {
       void result.current.sendMessage("next task");
     });
     expect(result.current.lastRunMetrics).toBeNull();
+  });
+});
+
+describe("useThunderChat approval mode", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("hydrates the chip from the daemon when a session is opened", async () => {
+    installHarness();
+    // The mode is the daemon's per-session state and is not in the stored
+    // conversation, so it has to be asked for rather than read off `conv`.
+    (window.agentResume.thunderChatGetPermissionState as any).mockResolvedValue({ mode: "plan" });
+    const { result } = renderHook(() => useThunderChat());
+
+    await act(async () => {
+      await result.current.selectSession("sess_a");
+    });
+
+    expect(window.agentResume.thunderChatGetPermissionState).toHaveBeenCalledWith({
+      sessionId: "sess_a"
+    });
+    await waitFor(() => expect(result.current.permissionMode).toBe("plan"));
+  });
+
+  it("starts unknown rather than guessing a default", async () => {
+    installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    expect(result.current.permissionMode).toBe("");
+  });
+
+  it("sends the choice to the daemon and rolls the chip back when it is refused", async () => {
+    installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    await act(async () => {
+      await result.current.selectSession("sess_a");
+    });
+    await waitFor(() => expect(result.current.permissionMode).toBe("yolo"));
+
+    act(() => result.current.setPermissionMode("plan"));
+    expect(result.current.permissionMode).toBe("plan");
+    await waitFor(() =>
+      expect(window.agentResume.thunderChatSetMode).toHaveBeenCalledWith({
+        sessionId: "sess_a",
+        mode: "plan"
+      })
+    );
+
+    // A daemon that predates `set_mode` rejects; the chip must say so by going
+    // back rather than showing a mode the session is not actually judged by.
+    (window.agentResume.thunderChatSetMode as any).mockRejectedValueOnce(new Error("unknown method"));
+    act(() => result.current.setPermissionMode("acceptEdits"));
+    await waitFor(() => expect(result.current.permissionMode).toBe("plan"));
+  });
+
+  it("keeps a pre-session choice local instead of minting a session for it", async () => {
+    installHarness();
+    const { result } = renderHook(() => useThunderChat());
+
+    act(() => result.current.setPermissionMode("plan"));
+
+    expect(result.current.permissionMode).toBe("plan");
+    expect(window.agentResume.thunderChatSetMode).not.toHaveBeenCalled();
+  });
+
+  it("follows a pushed change for the open session and ignores other sessions", async () => {
+    const harness = installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    await act(async () => {
+      await result.current.selectSession("sess_a");
+    });
+    await waitFor(() => expect(result.current.permissionMode).toBe("yolo"));
+
+    act(() =>
+      harness.emitMode({
+        sessionId: "sess_b",
+        mode: "plan",
+        previous: "yolo",
+        source: "user"
+      })
+    );
+    expect(result.current.permissionMode).toBe("yolo");
+
+    act(() =>
+      harness.emitMode({
+        sessionId: "sess_a",
+        mode: "ask",
+        previous: "yolo",
+        source: "user"
+      })
+    );
+    expect(result.current.permissionMode).toBe("ask");
+  });
+
+  it("announces an approval the plan dialog made, because the chip moved on its own", async () => {
+    const harness = installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    await act(async () => {
+      await result.current.selectSession("sess_a");
+    });
+
+    act(() =>
+      harness.emitMode({
+        sessionId: "sess_a",
+        taskId: "task_1",
+        mode: "acceptEdits",
+        previous: "plan",
+        source: "planApproved"
+      })
+    );
+
+    expect(result.current.permissionMode).toBe("acceptEdits");
+    expect(result.current.titleNotice?.text).toContain("Plan approved");
+  });
+
+  it("passes the mode to the run once the user has chosen one", async () => {
+    installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    await waitFor(() => expect(result.current.models.length).toBe(1));
+
+    act(() => result.current.setPermissionMode("plan"));
+    act(() => {
+      void result.current.sendMessage("只输出两个字：好的");
+    });
+
+    await waitFor(() => expect(window.agentResume.thunderChatRunTask).toHaveBeenCalled());
+    expect((window.agentResume.thunderChatRunTask as any).mock.calls[0][0].mode).toBe("plan");
+  });
+
+  it("omits the mode when the user never touched the chip, so .thunder's defaultMode still applies", async () => {
+    installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    await waitFor(() => expect(result.current.models.length).toBe(1));
+
+    act(() => {
+      void result.current.sendMessage("只输出两个字：好的");
+    });
+
+    await waitFor(() => expect(window.agentResume.thunderChatRunTask).toHaveBeenCalled());
+    expect((window.agentResume.thunderChatRunTask as any).mock.calls[0][0].mode).toBeUndefined();
+  });
+});
+
+describe("useThunderChat ui_request host", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const reviewRequest = {
+    requestId: "ui_1",
+    sessionId: "sess_a",
+    taskId: "task_1",
+    source: "host",
+    ui: "review",
+    title: "Approve this plan?",
+    path: "/w/.thunder/plans/sess_a.md",
+    content: "# Plan",
+    options: ["Yes, but ask before each edit", "No, keep planning"]
+  };
+
+  it("docks the dialog the run is blocked on", async () => {
+    const harness = installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    await act(async () => {
+      await result.current.selectSession("sess_a");
+    });
+
+    act(() => harness.emitUi(reviewRequest));
+
+    expect(result.current.pendingUiRequest?.requestId).toBe("ui_1");
+  });
+
+  it("parks a dialog for another session instead of docking it", async () => {
+    const harness = installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    await act(async () => {
+      await result.current.selectSession("sess_a");
+    });
+
+    act(() => harness.emitUi({ ...reviewRequest, requestId: "ui_2", sessionId: "sess_b" }));
+    expect(result.current.pendingUiRequest).toBeNull();
+
+    // Switching to the blocked session docks what was parked for it.
+    await act(async () => {
+      await result.current.selectSession("sess_b");
+    });
+    expect(result.current.pendingUiRequest?.requestId).toBe("ui_2");
+  });
+
+  it("answers with the option verbatim and clears the card", async () => {
+    const harness = installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    await act(async () => {
+      await result.current.selectSession("sess_a");
+    });
+    act(() => harness.emitUi(reviewRequest));
+
+    await act(async () => {
+      await result.current.answerUiRequest({ value: "Yes, but ask before each edit" });
+    });
+
+    // The daemon matches the answer against the label it sent, so the string
+    // travels back untouched.
+    expect(window.agentResume.thunderChatAnswerUi).toHaveBeenCalledWith({
+      requestId: "ui_1",
+      value: "Yes, but ask before each edit",
+      confirmed: undefined,
+      cancelled: undefined
+    });
+    expect(result.current.pendingUiRequest).toBeNull();
+
+    // A remount must not re-dock a question that has been answered.
+    await act(async () => {
+      await result.current.selectSession("sess_b");
+      await result.current.selectSession("sess_a");
+    });
+    expect(result.current.pendingUiRequest).toBeNull();
+  });
+
+  it("sends an explicit cancellation so the daemon can fail closed now", async () => {
+    const harness = installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    await act(async () => {
+      await result.current.selectSession("sess_a");
+    });
+    act(() => harness.emitUi(reviewRequest));
+
+    await act(async () => {
+      await result.current.answerUiRequest({ cancelled: true });
+    });
+
+    expect(window.agentResume.thunderChatAnswerUi).toHaveBeenCalledWith({
+      requestId: "ui_1",
+      value: undefined,
+      confirmed: undefined,
+      cancelled: true
+    });
+  });
+});
+
+/**
+ * The dots row reads `liveTurns`: one entry per engine turn, each holding only
+ * the segments that turn produced. The feed renders `liveSegments`, which is the
+ * running turn alone — that split is what these cases pin down.
+ */
+describe("useThunderChat turn splitting", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("opens a turn per turn_start and keeps each turn's segments separate", async () => {
+    const harness = installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    const { taskId, sessionId } = await startTurn(result);
+
+    act(() => harness.emit(observed(taskId, sessionId, { type: "turn_start", turn: 1, timestamp: 1 })));
+    act(() => harness.emit(observed(taskId, sessionId, { type: "reasoning_delta", turn: 1, delta: "想一" })));
+    act(() => harness.emit(observed(taskId, sessionId, { type: "token_delta", turn: 1, delta: "答一" })));
+    act(() =>
+      harness.emit(
+        observed(taskId, sessionId, {
+          type: "tool_exec_start",
+          turn: 1,
+          tool_call_id: "t1",
+          name: "read_file",
+          arguments: {}
+        })
+      )
+    );
+    act(() =>
+      harness.emit(
+        observed(taskId, sessionId, {
+          type: "turn_end",
+          turn: 1,
+          finish_reason: "tool_calls",
+          stats: { turn: 1, prompt_tokens: 100, completion_tokens: 20, duration_ms: 1500, tool_calls_count: 1 }
+        })
+      )
+    );
+
+    expect(result.current.liveTurns).toHaveLength(1);
+    const first = result.current.liveTurns[0];
+    expect(first.turn).toBe(1);
+    expect(first.status).toBe("done");
+    expect(first.toolCount).toBe(1);
+    expect(first.durationMs).toBe(1500);
+    expect(first.promptTokens).toBe(100);
+    expect(first.completionTokens).toBe(20);
+    expect(first.segments.map((segment) => segment.kind)).toEqual(["reasoning", "text", "tools"]);
+
+    // Turn 2: the previous turn freezes and the feed switches to the new one.
+    act(() => harness.emit(observed(taskId, sessionId, { type: "turn_start", turn: 2, timestamp: 2 })));
+    expect(result.current.liveTurns).toHaveLength(2);
+    expect(result.current.liveTurns[0].status).toBe("done");
+
+    // The feed goes empty the moment the turn opens, not on its first delta.
+    expect(result.current.liveSegments).toHaveLength(0);
+
+    act(() => harness.emit(observed(taskId, sessionId, { type: "token_delta", turn: 2, delta: "答二" })));
+
+    // Turn 2 owns only its own text; turn 1's three segments are untouched.
+    expect(result.current.liveSegments).toEqual([{ kind: "text", text: "答二" }]);
+    expect(result.current.liveTurns[0].segments.map((segment) => segment.kind)).toEqual([
+      "reasoning",
+      "text",
+      "tools"
+    ]);
+    expect(result.current.liveTurns[1].segments).toEqual([{ kind: "text", text: "答二" }]);
+  });
+
+  it("splits turns from event payloads alone, without relying on turn_start", async () => {
+    const harness = installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    const { taskId, sessionId } = await startTurn(result);
+
+    // No `turn_start` frame at all: the deltas' own `turn` still splits the run.
+    act(() => harness.emit(observed(taskId, sessionId, { type: "token_delta", turn: 1, delta: "一" })));
+    act(() => harness.emit(observed(taskId, sessionId, { type: "token_delta", turn: 2, delta: "二" })));
+
+    expect(result.current.liveTurns.map((turn) => turn.turn)).toEqual([1, 2]);
+    expect(result.current.liveTurns[0].segments).toEqual([{ kind: "text", text: "一" }]);
+    expect(result.current.liveTurns[1].segments).toEqual([{ kind: "text", text: "二" }]);
+    expect(result.current.liveSegments).toEqual([{ kind: "text", text: "二" }]);
+  });
+
+  it("closes the running turn when the turn boundary moves on", async () => {
+    const harness = installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    const { taskId, sessionId } = await startTurn(result);
+
+    act(() => harness.emit(observed(taskId, sessionId, { type: "token_delta", turn: 1, delta: "半" })));
+    act(() => harness.emit(observed(taskId, sessionId, { type: "token_delta", turn: 2, delta: "半二" })));
+
+    // Opening turn 2 is what settles turn 1, even with no `turn_end` for it:
+    // cutting over swaps the segments array, and only one turn can be running.
+    expect(result.current.liveTurns.map((turn) => turn.status)).toEqual(["done", "running"]);
+  });
+
+  it("bounds the dots row to the in-flight run", async () => {
+    const harness = installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    const { taskId, sessionId } = await startTurn(result);
+
+    act(() => harness.emit(observed(taskId, sessionId, { type: "token_delta", turn: 1, delta: "一" })));
+    act(() => harness.emit(observed(taskId, sessionId, { type: "turn_end", turn: 1, stats: { turn: 1, duration_ms: 10, tool_calls_count: 0 } })));
+    act(() => harness.emit(observed(taskId, sessionId, { type: "turn_start", turn: 2, timestamp: 2 })));
+    act(() => harness.emit(observed(taskId, sessionId, { type: "token_delta", turn: 2, delta: "二" })));
+    expect(result.current.liveTurns).toHaveLength(2);
+
+    // A finished run hands over to the transcript, whose frozen segments carry
+    // every turn: the row is a live affordance, not a second history view.
+    await act(async () => {
+      harness.resolveRun({ finalContent: "一二", finishReason: "done" });
+    });
+    expect(result.current.liveTurns).toHaveLength(0);
+    const segments = result.current.messages.at(-1)?.segments ?? [];
+    const text = segments
+      .filter((segment): segment is Extract<typeof segment, { kind: "text" }> => segment.kind === "text")
+      .map((segment) => segment.text);
+    expect(text).toEqual(["一", "二"]);
+  });
+
+  it("marks the running turn failed when the daemon reports an error", async () => {
+    const harness = installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    const { taskId, sessionId } = await startTurn(result);
+
+    act(() => harness.emit(observed(taskId, sessionId, { type: "token_delta", turn: 1, delta: "x" })));
+    act(() => harness.emit(observed(taskId, sessionId, { type: "error", turn: 1, message: "boom" })));
+
+    expect(result.current.liveTurns[0].status).toBe("error");
+  });
+
+  it("keeps every turn's segments on the finished message when a run is cancelled", async () => {
+    const harness = installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    const { taskId, sessionId } = await startTurn(result);
+
+    act(() => harness.emit(observed(taskId, sessionId, { type: "reasoning_delta", turn: 1, delta: "轮一思考" })));
+    act(() => harness.emit(observed(taskId, sessionId, { type: "turn_end", turn: 1, stats: { turn: 1, duration_ms: 10, tool_calls_count: 0 } })));
+    act(() => harness.emit(observed(taskId, sessionId, { type: "reasoning_delta", turn: 2, delta: "轮二思考" })));
+
+    await act(async () => {
+      await result.current.cancelCurrentTask();
+    });
+
+    // `stream.segments` only points at turn 2, so a cancel that read it alone
+    // would drop turn 1's reasoning from the transcript.
+    const segments = result.current.messages.at(-1)?.segments ?? [];
+    const reasoning = segments
+      .filter((segment): segment is Extract<typeof segment, { kind: "reasoning" }> => segment.kind === "reasoning")
+      .map((segment) => segment.text);
+    expect(reasoning).toEqual(["轮一思考", "轮二思考"]);
+    expect(result.current.liveTurns).toHaveLength(0);
   });
 });

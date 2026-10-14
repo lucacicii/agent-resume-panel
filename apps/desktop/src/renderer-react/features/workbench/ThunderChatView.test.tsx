@@ -64,6 +64,11 @@ function installBridge(overrides: Record<string, unknown> = {}): void {
     thunderChatCancelTask: vi.fn().mockResolvedValue(true),
     onThunderChatEvent: vi.fn().mockReturnValue(() => undefined),
     onThunderModelsChanged: vi.fn().mockReturnValue(() => undefined),
+    onThunderModeChanged: vi.fn().mockReturnValue(() => undefined),
+    onThunderUiRequest: vi.fn().mockReturnValue(() => undefined),
+    thunderChatGetPermissionState: vi.fn().mockResolvedValue({ mode: "yolo" }),
+    thunderChatSetMode: vi.fn().mockResolvedValue({ mode: "yolo" }),
+    thunderChatAnswerUi: vi.fn().mockResolvedValue(true),
     notesRead: vi.fn().mockResolvedValue({ record: { work: { projects: [] } }, content: "" }),
     ...overrides
   } as any;
