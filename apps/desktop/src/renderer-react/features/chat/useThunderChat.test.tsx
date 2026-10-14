@@ -730,3 +730,160 @@ describe("useThunderChat ui_request host", () => {
     });
   });
 });
+
+/**
+ * The dots row reads `liveTurns`: one entry per engine turn, each holding only
+ * the segments that turn produced. The feed renders `liveSegments`, which is the
+ * running turn alone — that split is what these cases pin down.
+ */
+describe("useThunderChat turn splitting", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("opens a turn per turn_start and keeps each turn's segments separate", async () => {
+    const harness = installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    const { taskId, sessionId } = await startTurn(result);
+
+    act(() => harness.emit(observed(taskId, sessionId, { type: "turn_start", turn: 1, timestamp: 1 })));
+    act(() => harness.emit(observed(taskId, sessionId, { type: "reasoning_delta", turn: 1, delta: "想一" })));
+    act(() => harness.emit(observed(taskId, sessionId, { type: "token_delta", turn: 1, delta: "答一" })));
+    act(() =>
+      harness.emit(
+        observed(taskId, sessionId, {
+          type: "tool_exec_start",
+          turn: 1,
+          tool_call_id: "t1",
+          name: "read_file",
+          arguments: {}
+        })
+      )
+    );
+    act(() =>
+      harness.emit(
+        observed(taskId, sessionId, {
+          type: "turn_end",
+          turn: 1,
+          finish_reason: "tool_calls",
+          stats: { turn: 1, prompt_tokens: 100, completion_tokens: 20, duration_ms: 1500, tool_calls_count: 1 }
+        })
+      )
+    );
+
+    expect(result.current.liveTurns).toHaveLength(1);
+    const first = result.current.liveTurns[0];
+    expect(first.turn).toBe(1);
+    expect(first.status).toBe("done");
+    expect(first.toolCount).toBe(1);
+    expect(first.durationMs).toBe(1500);
+    expect(first.promptTokens).toBe(100);
+    expect(first.completionTokens).toBe(20);
+    expect(first.segments.map((segment) => segment.kind)).toEqual(["reasoning", "text", "tools"]);
+
+    // Turn 2: the previous turn freezes and the feed switches to the new one.
+    act(() => harness.emit(observed(taskId, sessionId, { type: "turn_start", turn: 2, timestamp: 2 })));
+    expect(result.current.liveTurns).toHaveLength(2);
+    expect(result.current.liveTurns[0].status).toBe("done");
+
+    // The feed goes empty the moment the turn opens, not on its first delta.
+    expect(result.current.liveSegments).toHaveLength(0);
+
+    act(() => harness.emit(observed(taskId, sessionId, { type: "token_delta", turn: 2, delta: "答二" })));
+
+    // Turn 2 owns only its own text; turn 1's three segments are untouched.
+    expect(result.current.liveSegments).toEqual([{ kind: "text", text: "答二" }]);
+    expect(result.current.liveTurns[0].segments.map((segment) => segment.kind)).toEqual([
+      "reasoning",
+      "text",
+      "tools"
+    ]);
+    expect(result.current.liveTurns[1].segments).toEqual([{ kind: "text", text: "答二" }]);
+  });
+
+  it("splits turns from event payloads alone, without relying on turn_start", async () => {
+    const harness = installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    const { taskId, sessionId } = await startTurn(result);
+
+    // No `turn_start` frame at all: the deltas' own `turn` still splits the run.
+    act(() => harness.emit(observed(taskId, sessionId, { type: "token_delta", turn: 1, delta: "一" })));
+    act(() => harness.emit(observed(taskId, sessionId, { type: "token_delta", turn: 2, delta: "二" })));
+
+    expect(result.current.liveTurns.map((turn) => turn.turn)).toEqual([1, 2]);
+    expect(result.current.liveTurns[0].segments).toEqual([{ kind: "text", text: "一" }]);
+    expect(result.current.liveTurns[1].segments).toEqual([{ kind: "text", text: "二" }]);
+    expect(result.current.liveSegments).toEqual([{ kind: "text", text: "二" }]);
+  });
+
+  it("closes the running turn when the turn boundary moves on", async () => {
+    const harness = installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    const { taskId, sessionId } = await startTurn(result);
+
+    act(() => harness.emit(observed(taskId, sessionId, { type: "token_delta", turn: 1, delta: "半" })));
+    act(() => harness.emit(observed(taskId, sessionId, { type: "token_delta", turn: 2, delta: "半二" })));
+
+    // Opening turn 2 is what settles turn 1, even with no `turn_end` for it:
+    // cutting over swaps the segments array, and only one turn can be running.
+    expect(result.current.liveTurns.map((turn) => turn.status)).toEqual(["done", "running"]);
+  });
+
+  it("bounds the dots row to the in-flight run", async () => {
+    const harness = installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    const { taskId, sessionId } = await startTurn(result);
+
+    act(() => harness.emit(observed(taskId, sessionId, { type: "token_delta", turn: 1, delta: "一" })));
+    act(() => harness.emit(observed(taskId, sessionId, { type: "turn_end", turn: 1, stats: { turn: 1, duration_ms: 10, tool_calls_count: 0 } })));
+    act(() => harness.emit(observed(taskId, sessionId, { type: "turn_start", turn: 2, timestamp: 2 })));
+    act(() => harness.emit(observed(taskId, sessionId, { type: "token_delta", turn: 2, delta: "二" })));
+    expect(result.current.liveTurns).toHaveLength(2);
+
+    // A finished run hands over to the transcript, whose frozen segments carry
+    // every turn: the row is a live affordance, not a second history view.
+    await act(async () => {
+      harness.resolveRun({ finalContent: "一二", finishReason: "done" });
+    });
+    expect(result.current.liveTurns).toHaveLength(0);
+    const segments = result.current.messages.at(-1)?.segments ?? [];
+    const text = segments
+      .filter((segment): segment is Extract<typeof segment, { kind: "text" }> => segment.kind === "text")
+      .map((segment) => segment.text);
+    expect(text).toEqual(["一", "二"]);
+  });
+
+  it("marks the running turn failed when the daemon reports an error", async () => {
+    const harness = installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    const { taskId, sessionId } = await startTurn(result);
+
+    act(() => harness.emit(observed(taskId, sessionId, { type: "token_delta", turn: 1, delta: "x" })));
+    act(() => harness.emit(observed(taskId, sessionId, { type: "error", turn: 1, message: "boom" })));
+
+    expect(result.current.liveTurns[0].status).toBe("error");
+  });
+
+  it("keeps every turn's segments on the finished message when a run is cancelled", async () => {
+    const harness = installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    const { taskId, sessionId } = await startTurn(result);
+
+    act(() => harness.emit(observed(taskId, sessionId, { type: "reasoning_delta", turn: 1, delta: "轮一思考" })));
+    act(() => harness.emit(observed(taskId, sessionId, { type: "turn_end", turn: 1, stats: { turn: 1, duration_ms: 10, tool_calls_count: 0 } })));
+    act(() => harness.emit(observed(taskId, sessionId, { type: "reasoning_delta", turn: 2, delta: "轮二思考" })));
+
+    await act(async () => {
+      await result.current.cancelCurrentTask();
+    });
+
+    // `stream.segments` only points at turn 2, so a cancel that read it alone
+    // would drop turn 1's reasoning from the transcript.
+    const segments = result.current.messages.at(-1)?.segments ?? [];
+    const reasoning = segments
+      .filter((segment): segment is Extract<typeof segment, { kind: "reasoning" }> => segment.kind === "reasoning")
+      .map((segment) => segment.text);
+    expect(reasoning).toEqual(["轮一思考", "轮二思考"]);
+    expect(result.current.liveTurns).toHaveLength(0);
+  });
+});

@@ -9,6 +9,7 @@ import { ChatComposer } from "./ChatComposer";
 import { ChatQuestionBubble } from "./ChatQuestionBubble";
 import { ChatUiRequestCard } from "./ChatUiRequestCard";
 import { ChatEmptyState } from "./ChatEmptyState";
+import { TurnDetailOverlay, TurnDots } from "./TurnDots";
 import { TracePopover } from "./TracePopover";
 import { ChatChangesPopover } from "./ChatChangesPopover";
 import { useConversationChanges } from "./useConversationChanges";
@@ -21,7 +22,7 @@ import type {
   ThunderTaskTrace,
   ThunderTelemetryNotice
 } from "@agent-resume/core";
-import type { ChatRunMetrics, LiveSegment, RenderedChatMessage } from "./useThunderChat";
+import type { ChatRunMetrics, LiveSegment, LiveTurn, RenderedChatMessage } from "./useThunderChat";
 import type { TraceSpan } from "./useTraceCollector";
 import { useI18n } from "../../i18n";
 
@@ -45,6 +46,8 @@ interface ChatMainProps {
   ) => void;
   /** The in-flight turn as ordered runs, so the feed stays in true time order. */
   liveSegments: LiveSegment[];
+  /** Every turn of the in-flight run, for the dots row. */
+  liveTurns?: LiveTurn[];
   models: ThunderModelInfo[];
   selectedModel: string;
   onSelectModel: (model: string) => void;
@@ -109,6 +112,7 @@ export function ChatMain({
   messages,
   isStreaming,
   liveSegments,
+  liveTurns = [],
   queuedCount,
   onSteerMessage,
   onFollowUpMessage,
@@ -155,6 +159,8 @@ export function ChatMain({
   const stickToBottom = useRef(true);
   const [isTraceOpen, setIsTraceOpen] = useState(false);
   const [isChangesOpen, setIsChangesOpen] = useState(false);
+  /** Index into `liveTurns` of the turn whose drawer is open; null = closed. */
+  const [openTurnIndex, setOpenTurnIndex] = useState<number | null>(null);
   const [nestedScan, setNestedScan] = useState<GitNestedScanOptions | undefined>(undefined);
   const [workspaceDirs, setWorkspaceDirs] = useState<string[]>(() => (workspaceDir ? [workspaceDir] : []));
 
@@ -382,6 +388,18 @@ export function ChatMain({
     [messages, liveContent, isStreaming]
   );
 
+  // Switching conversations always starts pinned to the newest content, and
+  // drops the turn drawer: its index means nothing against a different run.
+  useEffect(() => {
+    setOpenTurnIndex(null);
+  }, [sessionId]);
+  // A new run clears the turns before filling them, so an index left over from
+  // the previous run would point at an unrelated turn. Closing on the empty
+  // frame means the drawer can never survive into a run it does not belong to.
+  useEffect(() => {
+    if (liveTurns.length === 0) setOpenTurnIndex((prev) => (prev === null ? prev : null));
+  }, [liveTurns]);
+
   // Switching conversations always starts pinned to the newest content.
   useLayoutEffect(() => {
     stickToBottom.current = true;
@@ -541,6 +559,17 @@ export function ChatMain({
       {/* Feed + the floating timeline rail. The rail is absolutely positioned
           over the feed's own right padding, so it takes no layout width. */}
       <div className="tb-chat-body">
+
+        {/* The run's turns. The feed below renders only the running one, so the
+            finished turns are only reachable through these dots. */}
+        {liveTurns.length > 0 && (
+          <TurnDots
+            turns={liveTurns}
+            openIndex={openTurnIndex}
+            onOpen={setOpenTurnIndex}
+            onClose={() => setOpenTurnIndex(null)}
+          />
+        )}
         <div
           className="tb-chat-feed"
           ref={feedRef}
@@ -648,6 +677,33 @@ export function ChatMain({
         currentContextTokens={currentContextTokens}
         contextWindowLimit={contextWindowLimit}
       />
+
+      {/* Turn detail drawer: over the pane, so it neither reflows the feed nor
+          hides the composer. The running turn keeps streaming into it. */}
+      {openTurnIndex !== null && liveTurns[openTurnIndex]
+        ? (() => {
+            const turn = liveTurns[openTurnIndex];
+            const isRunningTurn = turn.status === "running";
+            return (
+              <TurnDetailOverlay
+                turn={turn}
+                segments={isRunningTurn ? liveSegments : turn.segments}
+                isStreaming={isRunningTurn}
+                index={openTurnIndex}
+                total={liveTurns.length}
+                onPrev={() =>
+                  setOpenTurnIndex((prev) => (prev === null ? prev : Math.max(0, prev - 1)))
+                }
+                onNext={() =>
+                  setOpenTurnIndex((prev) =>
+                    prev === null ? prev : Math.min(liveTurns.length - 1, prev + 1)
+                  )
+                }
+                onClose={() => setOpenTurnIndex(null)}
+              />
+            );
+          })()
+        : null}
     </div>
   );
 }

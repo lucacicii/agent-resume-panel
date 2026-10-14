@@ -12,6 +12,7 @@ export function ChatView({ active }: { active: boolean }): React.JSX.Element | n
     messages,
     isStreaming,
     liveSegments,
+    liveTurns,
     models,
     selectedModel,
     thinkingLevel,
@@ -139,6 +140,7 @@ export function ChatView({ active }: { active: boolean }): React.JSX.Element | n
         messages={messages}
         isStreaming={isStreaming}
         liveSegments={liveSegments}
+        liveTurns={liveTurns}
         models={models}
         selectedModel={selectedModel}
         onSelectModel={setSelectedModel}

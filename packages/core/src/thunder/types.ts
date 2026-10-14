@@ -257,7 +257,13 @@ export type ThunderAgentEvent =
       self_healed?: string;
       guidance?: string;
     }
-  | { type: "turn_end"; turn: number; stats?: ThunderTurnStats }
+  | {
+      type: "turn_end";
+      turn: number;
+      /** How the turn ended: `stop`, `tool_calls`, `length`, `error`, … */
+      finish_reason?: string;
+      stats?: ThunderTurnStats;
+    }
   | { type: "done"; stats?: unknown }
   | { type: "error"; message: string }
   | { type: string; [key: string]: unknown };

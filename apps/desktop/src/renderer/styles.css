@@ -20768,3 +20768,297 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   line-height: 1.4;
 }
 
+
+/* --- Turn dots: the run's engine turns, above the feed ---
+   The feed renders only the running turn, so finished turns are reachable
+   through these dots; one dot opens that turn's thinking and tool calls in the
+   drawer below. */
+.tb-turn-dots {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 18px;
+  border-bottom: 0.5px solid var(--color-separator);
+  background: var(--color-secondary-bg);
+  flex-shrink: 0;
+  /* Above the drawer's mask (z 20): the dots are that drawer's own control, so
+     clicking a different dot must switch turns rather than dismiss the drawer. */
+  position: relative;
+  z-index: 22;
+}
+
+.tb-turn-dots-label {
+  font-size: 11px;
+  color: var(--color-label-tertiary);
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+
+.tb-turn-dots-track {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 2px 0;
+  scrollbar-width: none;
+}
+
+.tb-turn-dots-track::-webkit-scrollbar {
+  display: none;
+}
+
+.tb-turn-dot {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 50%;
+  border: 0.5px solid var(--color-separator);
+  background: var(--color-window-bg);
+  color: var(--color-label-secondary);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.tb-turn-dot:hover {
+  border-color: var(--color-accent);
+  color: var(--color-label-primary);
+}
+
+.tb-turn-dot:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.tb-turn-dot.is-done {
+  border-color: color-mix(in srgb, var(--color-success) 45%, transparent);
+  background: color-mix(in srgb, var(--color-success) 12%, transparent);
+  color: var(--color-success);
+}
+
+.tb-turn-dot.is-error {
+  border-color: color-mix(in srgb, var(--color-destructive) 50%, transparent);
+  background: color-mix(in srgb, var(--color-destructive) 12%, transparent);
+  color: var(--color-destructive);
+}
+
+.tb-turn-dot.is-running {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+  color: var(--color-accent);
+}
+
+.tb-turn-dot.is-open {
+  border-color: var(--color-accent);
+  color: var(--color-label-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+
+.tb-turn-dot-num {
+  line-height: 1;
+}
+
+/* A breathing ring marks the turn still producing, so a long run reads as
+   "working" rather than "the last dot happens to be blue". */
+.tb-turn-dot-ring {
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 55%, transparent);
+  animation: tb-turn-ring 1.6s infinite ease-in-out;
+}
+
+@keyframes tb-turn-ring {
+  0%, 100% { opacity: 0.3; transform: scale(0.94); }
+  50% { opacity: 0.9; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tb-turn-dot-ring { animation: none; opacity: 0.6; }
+}
+
+/* --- Turn detail drawer: over the pane, so the feed does not reflow --- */
+.tb-turn-overlay-mask {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  background: color-mix(in srgb, var(--color-window-bg) 55%, transparent);
+}
+
+.tb-turn-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: 40%;
+  z-index: 21;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-window-bg);
+  border-top: 0.5px solid var(--color-separator);
+  border-radius: 12px 12px 0 0;
+  box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.18);
+  animation: tb-turn-slide-up 0.18s ease;
+}
+
+@keyframes tb-turn-slide-up {
+  from { transform: translateY(14px); opacity: 0.6; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tb-turn-overlay { animation: none; }
+}
+
+.tb-turn-overlay-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 0.5px solid var(--color-separator);
+  flex-shrink: 0;
+}
+
+.tb-turn-overlay-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 590;
+  color: var(--color-label-primary);
+  flex-shrink: 0;
+}
+
+.tb-turn-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.tb-turn-badge.is-running {
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+}
+
+.tb-turn-badge.is-done {
+  color: var(--color-success);
+  background: color-mix(in srgb, var(--color-success) 14%, transparent);
+}
+
+.tb-turn-badge.is-error {
+  color: var(--color-destructive);
+  background: color-mix(in srgb, var(--color-destructive) 14%, transparent);
+}
+
+.tb-turn-spinner {
+  width: 7px;
+  height: 7px;
+  border: 1.5px solid var(--color-accent);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: tb-turn-spin 0.8s linear infinite;
+}
+
+@keyframes tb-turn-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tb-turn-spinner { animation: none; }
+}
+
+.tb-turn-overlay-meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.tb-turn-meta-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-label-tertiary);
+  background: var(--color-tertiary-bg);
+  padding: 1px 5px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.tb-turn-overlay-actions {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.tb-turn-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--color-label-tertiary);
+  cursor: pointer;
+}
+
+.tb-turn-nav:hover:not(:disabled) {
+  background: var(--color-tertiary-bg);
+  color: var(--color-label-primary);
+}
+
+.tb-turn-nav:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.tb-turn-nav:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.tb-turn-nav-pos {
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-label-tertiary);
+  padding: 0 2px;
+}
+
+.tb-turn-overlay-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 10px 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tb-turn-text {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-label-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.tb-turn-empty {
+  font-size: 12px;
+  color: var(--color-label-tertiary);
+  padding: 8px 2px;
+}
