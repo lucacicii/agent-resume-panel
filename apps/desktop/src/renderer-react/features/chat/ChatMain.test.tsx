@@ -365,3 +365,69 @@ describe("ChatMain find-in-conversation", () => {
     });
   });
 });
+
+describe("ChatMain timeline rail", () => {
+  beforeEach(() => {
+    window.agentResume = {
+      getI18nBundle: vi.fn().mockResolvedValue({ locale: "en", messages: {} }),
+      onI18nBundleChanged: vi.fn().mockReturnValue(() => undefined),
+      onLocaleChanged: vi.fn().mockReturnValue(() => undefined),
+      contextMenuShow: vi.fn().mockResolvedValue(null)
+    } as any;
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("anchors every rendered message row for the rail to measure", () => {
+    renderChatMain({
+      ...baseProps(),
+      isStreaming: false,
+      messages: [
+        { role: "user", content: "Hello" },
+        { role: "assistant", content: "Hi" }
+      ]
+    });
+
+    const anchors = Array.from(document.querySelectorAll("[data-timeline-index]")).map(
+      (row) => (row as HTMLElement).dataset.timelineIndex
+    );
+    expect(anchors).toEqual(["0", "1"]);
+  });
+
+  it("anchors the streaming turn at the next index", () => {
+    renderChatMain({
+      ...baseProps(),
+      isStreaming: true,
+      messages: [{ role: "user", content: "Hello" }],
+      liveSegments: [{ kind: "text", text: "partial answer" }]
+    });
+
+    const anchors = Array.from(document.querySelectorAll("[data-timeline-index]")).map(
+      (row) => (row as HTMLElement).dataset.timelineIndex
+    );
+    expect(anchors).toEqual(["0", "1"]);
+  });
+
+  it("floats the rail beside the feed without taking layout width", () => {
+    renderChatMain({ ...baseProps(), isStreaming: false });
+
+    // The rail lives in the feed's own wrapper, not inside the scroll container.
+    const body = document.querySelector(".tb-chat-body");
+    expect(body).toBeTruthy();
+    expect(body?.querySelector(".tb-chat-feed")).toBeTruthy();
+    expect(body?.querySelector("[data-testid='chat-timeline']")).toBeTruthy();
+    // It is a sibling of the feed, so it cannot scroll away with the messages.
+    expect(document.querySelector(".tb-chat-feed [data-testid='chat-timeline']")).toBeNull();
+  });
+
+  it("keeps the rail inert while the conversation does not scroll", async () => {
+    // jsdom never scrolls: the rail shell mounts for measurement and stays empty.
+    renderChatMain({ ...baseProps(), isStreaming: false });
+
+    await waitFor(() => expect(document.querySelector("[data-testid='chat-timeline']")).toBeTruthy());
+    expect(document.querySelector(".tb-timeline-dot")).toBeNull();
+    expect(document.querySelector("[data-testid='chat-timeline']")?.getAttribute("aria-hidden")).toBe("true");
+  });
+});

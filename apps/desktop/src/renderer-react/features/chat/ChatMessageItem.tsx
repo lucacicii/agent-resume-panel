@@ -9,6 +9,12 @@ import type { ActiveToolInfo, LiveSegment } from "./useThunderChat";
 interface ChatMessageItemProps {
   message: ThunderChatMessage;
   index?: number;
+  /**
+   * Rendered as `data-timeline-index` on the row, so the chat timeline can
+   * measure this message's real offset in the scroll content. Absent on rows
+   * that are not jump targets.
+   */
+  anchorIndex?: number;
   isStreaming?: boolean;
   /**
    * The ordered runs of a turn this renderer watched stream in. When present the
@@ -34,6 +40,7 @@ interface ChatMessageItemProps {
 export function ChatMessageItem({
   message,
   index = 0,
+  anchorIndex,
   isStreaming = false,
   segments,
   onRegenerate,
@@ -182,7 +189,10 @@ export function ChatMessageItem({
     );
 
   return (
-    <div className={`tb-message-row${isUser ? " is-user" : " is-assistant"}`}>
+    <div
+      className={`tb-message-row${isUser ? " is-user" : " is-assistant"}`}
+      data-timeline-index={anchorIndex}
+    >
       <div className="tb-message-avatar">
         {isUser ? (
           <span className="tb-avatar-user">You</span>

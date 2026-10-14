@@ -3,6 +3,8 @@ import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { useTextSearchHighlight } from "../../components/useTextSearch";
 import { desktopApi } from "../../bridge";
 import { ChatMessageItem } from "./ChatMessageItem";
+import { ChatTimeline } from "./ChatTimeline";
+import { buildTimelineItems, scrollTopForAnchor } from "./timelineModel";
 import { ChatComposer } from "./ChatComposer";
 import { ChatQuestionBubble } from "./ChatQuestionBubble";
 import { ChatEmptyState } from "./ChatEmptyState";
@@ -320,6 +322,48 @@ export function ChatMain({
     node.scrollTop = node.scrollHeight;
   }, []);
 
+  /**
+   * Jump the feed to a message the timeline points at.
+   *
+   * The offset is computed from the row's measured position rather than
+   * `scrollIntoView`, which would also scroll the window and every ancestor —
+   * wrong inside the Workbench pane, where this chat shares the column with
+   * other views. Pinning is re-decided from the target: landing on the newest
+   * message keeps following the stream, landing anywhere else stops it so the
+   * next commit cannot yank the reader back to the bottom.
+   */
+  const jumpToMessage = useCallback(
+    (index: number) => {
+      const node = feedRef.current;
+      if (!node) return;
+      const row = node.querySelector<HTMLElement>(`[data-timeline-index="${index}"]`);
+      if (!row) return;
+      const target = scrollTopForAnchor(
+        node.getBoundingClientRect().top,
+        row.getBoundingClientRect().top,
+        node.scrollTop
+      );
+      stickToBottom.current = node.scrollHeight - node.clientHeight - target < 80;
+      const reducedMotion =
+        typeof window.matchMedia === "function" &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      // jsdom has no `scrollTo`; falling back to the plain assignment keeps the
+      // jump observable in tests and identical for the user without smooth scrolling.
+      if (typeof node.scrollTo !== "function") {
+        node.scrollTop = target;
+        return;
+      }
+      node.scrollTo({ top: target, behavior: reducedMotion ? "auto" : "smooth" });
+    },
+    []
+  );
+
+  /** One rail entry per feed row, plus the turn still streaming. */
+  const timelineItems = useMemo(
+    () => buildTimelineItems(messages, { content: liveContent, streaming: isStreaming }),
+    [messages, liveContent, isStreaming]
+  );
+
   // Switching conversations always starts pinned to the newest content.
   useLayoutEffect(() => {
     stickToBottom.current = true;
@@ -473,54 +517,62 @@ export function ChatMain({
         changes={changes}
       />
 
-      {/* Messages Feed or Empty State */}
-      <div className="tb-chat-feed" ref={feedRef} onScroll={(event) => {
-        const node = event.currentTarget;
-        if (node.clientHeight <= 0) return;
-        stickToBottom.current = node.scrollHeight - node.scrollTop - node.clientHeight < 80;
-      }}>
-        {showEmptyState ? (
-          <ChatEmptyState
-            onSelectPrompt={onSendMessage}
-            daemonOnline={daemonOnline}
-          />
-        ) : (
-          <div className="tb-messages-container">
-            {messages.map((msg, idx) => (
-              <ChatMessageItem
-                key={`msg_${idx}`}
-                message={msg}
-                index={idx}
-                segments={msg.segments}
-                displayText={translations[messageKey(idx, msg.content)]}
-                translated={Boolean(translations[messageKey(idx, msg.content)])}
-                isTranslating={translatingIds.has(messageKey(idx, msg.content))}
-                onTranslate={toggleTranslate}
-                translateLabel={translateLabel}
-                restoreLabel={restoreLabel}
-                translatingLabel={translatingLabel}
-                onRegenerate={onRegenerate}
-                onResend={onResend}
-                onEdit={onEditPrompt}
-              />
-            ))}
+      {/* Feed + the floating timeline rail. The rail is absolutely positioned
+          over the feed's own right padding, so it takes no layout width. */}
+      <div className="tb-chat-body">
+        <div
+          className="tb-chat-feed"
+          ref={feedRef}
+          onScroll={(event) => {
+            const node = event.currentTarget;
+            if (node.clientHeight <= 0) return;
+            stickToBottom.current = node.scrollHeight - node.scrollTop - node.clientHeight < 80;
+          }}
+        >
+          {showEmptyState ? (
+            <ChatEmptyState onSelectPrompt={onSendMessage} daemonOnline={daemonOnline} />
+          ) : (
+            <div className="tb-messages-container">
+              {messages.map((msg, idx) => (
+                <ChatMessageItem
+                  key={`msg_${idx}`}
+                  message={msg}
+                  index={idx}
+                  anchorIndex={idx}
+                  segments={msg.segments}
+                  displayText={translations[messageKey(idx, msg.content)]}
+                  translated={Boolean(translations[messageKey(idx, msg.content)])}
+                  isTranslating={translatingIds.has(messageKey(idx, msg.content))}
+                  onTranslate={toggleTranslate}
+                  translateLabel={translateLabel}
+                  restoreLabel={restoreLabel}
+                  translatingLabel={translatingLabel}
+                  onRegenerate={onRegenerate}
+                  onResend={onResend}
+                  onEdit={onEditPrompt}
+                />
+              ))}
 
-            {/* Live Streaming Turn */}
-            {isStreaming && (
-              <ChatMessageItem
-                message={{
-                  role: "assistant",
-                  content: liveContent
-                }}
-                index={messages.length}
-                isStreaming={true}
-                segments={liveSegments}
-              />
-            )}
+              {/* Live Streaming Turn */}
+              {isStreaming && (
+                <ChatMessageItem
+                  message={{
+                    role: "assistant",
+                    content: liveContent
+                  }}
+                  index={messages.length}
+                  anchorIndex={messages.length}
+                  isStreaming={true}
+                  segments={liveSegments}
+                />
+              )}
 
-            <div className="tb-scroll-anchor" />
-          </div>
-        )}
+              <div className="tb-scroll-anchor" />
+            </div>
+          )}
+        </div>
+
+        <ChatTimeline feedRef={feedRef} entries={timelineItems} onJump={jumpToMessage} />
       </div>
 
       {/* Composer row: the last row of the pane's flex column, below the

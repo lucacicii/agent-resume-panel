@@ -19141,6 +19141,237 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   margin: 0 auto;
 }
 
+/* --- Chat Timeline Rail ---
+   The rail floats over the feed's own right padding: it never takes layout
+   width, so the 800px message column stays centred and no message is covered.
+   Dots are positioned from the measured content offset of each row, so the
+   rail's spacing mirrors the real document. */
+.tb-chat-body {
+  position: relative;
+  /* The feed's row of the pane's flex column. `min-height: 0` is what lets the
+     feed inside it scroll instead of growing the pane. */
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.tb-chat-timeline {
+  position: absolute;
+  top: var(--space-3);
+  /* The feed keeps 24px of right padding; the rail's 20px sit inside it, so the
+     message column's right edge stays clear even in a narrow pane. */
+  right: var(--space-0-5);
+  bottom: var(--space-3);
+  width: 20px;
+  display: flex;
+  justify-content: center;
+  /* The rail is chrome over the feed: the strip takes pointer events, but the
+     wrapper does not, so a drag or selection that crosses the right edge still
+     reaches the messages underneath. */
+  pointer-events: none;
+  z-index: 2;
+}
+
+.tb-timeline-rail {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  /* The whole strip is the target: the component resolves the nearest dot from
+     the pointer's y, because on a dense rail the dots are closer together than
+     any usable hit box. */
+  pointer-events: auto;
+  cursor: default;
+}
+
+/* Inert rail: nothing to navigate, so the strip must not intercept clicks or
+   drags in the column of the feed it happens to float over. */
+.tb-chat-timeline.is-empty .tb-timeline-rail {
+  pointer-events: none;
+}
+
+/* The rail strip itself: a hairline that reads as a track without competing
+   with the messages. */
+.tb-timeline-rail::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  transform: translateX(-50%);
+  background: var(--color-separator);
+  pointer-events: none;
+}
+
+/* How much of the conversation the viewport currently shows. */
+.tb-timeline-viewport {
+  position: absolute;
+  left: 50%;
+  width: 3px;
+  transform: translateX(-50%);
+  border-radius: 1.5px;
+  background: var(--color-fill-secondary);
+  pointer-events: none;
+  transition: top var(--duration-fast) linear, height var(--duration-fast) linear;
+}
+
+.tb-timeline-dots {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* A dot is a box centred on its measured y (the component adds half of
+   DEFAULT_DOT_SIZE, see timelineModel.ts), sized `minGap` tall so the nearest-
+   centre resolution has a stable grid to work against. It takes no pointer
+   events — the rail does, so hover and click can never disagree about which dot
+   the user meant. */
+.tb-timeline-dot {
+  position: absolute;
+  left: 50%;
+  width: 20px;
+  height: 12px;
+  margin: 0;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  pointer-events: none;
+  border-radius: 50%;
+}
+
+.tb-timeline-dot-mark {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-label-tertiary);
+  transition: transform var(--duration-fast) var(--ease-glide), background-color var(--duration-fast) linear;
+}
+
+.tb-timeline-dot:hover .tb-timeline-dot-mark,
+.tb-timeline-dot:focus-visible .tb-timeline-dot-mark {
+  transform: scale(1.34);
+  background: var(--color-label-secondary);
+}
+
+/* Keyboard focus ring lives on the whole box, which is also the pointer target
+   the rail resolves, so the ring and the hover response cover the same area. */
+.tb-timeline-dot:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-focus-ring);
+}
+
+/* A collapsed dot stands for several messages: a bar instead of a point, so the
+   rail reads as "dense here" rather than "one message here". */
+.tb-timeline-dot.is-grouped .tb-timeline-dot-mark {
+  width: 2px;
+  height: 10px;
+  border-radius: 1px;
+}
+
+.tb-timeline-dot.is-active .tb-timeline-dot-mark {
+  background: var(--color-accent);
+}
+
+.tb-timeline-dot.is-live .tb-timeline-dot-mark {
+  background: var(--color-accent);
+  animation: tb-timeline-pulse 1.5s infinite ease-in-out;
+}
+
+@keyframes tb-timeline-pulse {
+  0% {
+    transform: scale(0.85);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scale(1.3);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.85);
+    opacity: 0.5;
+  }
+}
+
+/* Hover / focus preview. Anchored to the rail and pushed left of it, so it can
+   never cover the dot it describes. */
+.tb-timeline-preview {
+  position: absolute;
+  right: calc(100% + var(--space-1));
+  width: 260px;
+  padding: var(--space-2) var(--space-2-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  border-radius: var(--radius-md);
+  background: var(--color-elevated-bg);
+  border: 0.5px solid var(--color-separator-strong);
+  box-shadow: var(--shadow-popover);
+  pointer-events: none;
+  z-index: 3;
+}
+
+.tb-timeline-preview-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  font-size: 11px;
+  color: var(--color-label-tertiary);
+}
+
+.tb-timeline-preview-role {
+  padding: 1px var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--color-fill-primary);
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.tb-timeline-preview-role.is-user {
+  background: var(--color-fill-secondary);
+  color: var(--color-label-secondary);
+}
+
+.tb-timeline-preview-seq,
+.tb-timeline-preview-meta {
+  font-family: var(--font-family-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+}
+
+.tb-timeline-preview-meta.is-live {
+  color: var(--color-accent);
+}
+
+.tb-timeline-preview-excerpt {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--color-label-primary);
+  /* Two lines, then ellipsis: the preview is a signpost, not a reading pane. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.tb-timeline-preview-grouped {
+  font-size: 11px;
+  color: var(--color-label-tertiary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tb-timeline-dot.is-live .tb-timeline-dot-mark {
+    animation: none;
+  }
+
+  .tb-timeline-viewport {
+    transition: none;
+  }
+}
+
 .tb-scroll-anchor {
   height: 1px;
 }

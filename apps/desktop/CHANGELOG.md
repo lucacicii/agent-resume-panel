@@ -8,6 +8,12 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 ## English
 
+### [Unreleased]
+
+#### Added
+
+- **Chat timeline rail**: a floating rail on the right edge of a chat puts one point per user or agent answer, hover shows a card with the role, the ordinal, the engine turn and the turn's duration plus a two-line excerpt, and clicking scrolls that message under the header. Points are projected from the rows' real offsets, so the rail shows where the conversation is dense; anchors that would overlap collapse into a bar that reports how many messages it stands for. It takes no layout width (it floats over the feed's own padding), is one Tab stop with arrow-key navigation, and is inert until the conversation actually scrolls
+
 ### [0.2.35]
 
 #### Added
@@ -783,6 +789,12 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 ---
 
 ## 简体中文
+
+### [未发布]
+
+#### 新增
+
+- **对话时间线轨道**：聊天右侧悬浮一条轨道，用户与 Agent 的每次回答各占一个点；hover 显示角色、序号、引擎轮次与该轮耗时，外加两行正文摘要，点击即把该条消息滚到标题栏下方。点位由消息行在正文中的真实偏移投影而来，因此疏密一目了然；会重叠的锚点自动合并成一条短杠并标出它代表几条消息。轨道不占布局宽度（悬浮在 feed 自身的留白之上），整体是一个 Tab 停靠点、可用方向键在点间移动，且在对话不足以滚动时保持惰性
 
 ### [0.2.35]
 
