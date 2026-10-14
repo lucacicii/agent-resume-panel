@@ -57,6 +57,8 @@ describe("taskWorkspace", () => {
     expect(agents).toContain(`- app → ${address.projects[0].path}`);
     expect(agents).toContain("(path not found on this machine)");
     expect(agents).toContain(`Full note: ${address.noteAbsPath} (or the note_read MCP tool, noteId wi-1)`);
+    // The workspace is not a repository, so it is the only place we point docs at.
+    expect(agents).toContain("Shared long-lived docs go under .arp/docs/");
     expect(await fs.readFile(path.join(dir, "CLAUDE.md"), "utf8")).toBe(agents);
   });
 
@@ -170,6 +172,9 @@ describe("taskWorkspace", () => {
     expect(table).toContain("- app → /work/app");
     expect(table).toContain("Full note: /panel/notes/library/wi.md (or the note_read MCP tool, noteId wi-1)");
     expect(table).not.toContain("This directory is the task's neutral workspace");
+    // Injected into a session whose cwd is the user's repository: never tell the
+    // agent to create <repo>/.arp/ there.
+    expect(table).not.toContain(".arp");
   });
 
   it("treats the panel's own data directory as internal, not as a task project", async () => {

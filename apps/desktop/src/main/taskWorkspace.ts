@@ -103,6 +103,8 @@ export function renderAddressTable(address: TaskAddress, workspaceDir?: string):
   if (workspaceDir) {
     lines.push(
       "This directory is the task's neutral workspace (it is not a git repository).",
+      "Shared long-lived docs go under .arp/docs/ here — the panel never reads them.",
+      "In a repository, .arp/ holds the committed panel config instead.",
       ""
     );
   }
@@ -113,7 +115,6 @@ export function renderAddressTable(address: TaskAddress, workspaceDir?: string):
       : ["- (none yet) — add a project from the task header, or link a session to one"]),
     "",
     "cd into the repository you need before running project commands.",
-    "Shared artifacts and notes go under .arp/.",
     `Full note: ${address.noteAbsPath} (or the note_read MCP tool, noteId ${address.noteId})`
   );
   return lines.join("\n");
