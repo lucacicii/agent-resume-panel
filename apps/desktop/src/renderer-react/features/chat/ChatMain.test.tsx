@@ -465,13 +465,17 @@ describe("ChatMain turn dots", () => {
     cleanup();
   });
 
+  /**
+   * A run of three turns: one that finished, one that failed, one still running.
+   * The dots carry the finished pair; the running one stays in the feed.
+   */
   function turns() {
     return [
       {
         turn: 1,
         status: "done" as const,
         toolCount: 1,
-        startedAtMs: Date.now() - 5000,
+        startedAtMs: Date.now() - 9000,
         durationMs: 3200,
         promptTokens: 100,
         completionTokens: 20,
@@ -482,15 +486,23 @@ describe("ChatMain turn dots", () => {
       },
       {
         turn: 2,
+        status: "error" as const,
+        toolCount: 0,
+        startedAtMs: Date.now() - 4000,
+        durationMs: 800,
+        segments: [{ kind: "reasoning" as const, text: "TURN2_THINKING" }]
+      },
+      {
+        turn: 3,
         status: "running" as const,
         toolCount: 0,
         startedAtMs: Date.now(),
-        segments: [{ kind: "reasoning" as const, text: "TURN2_THINKING" }]
+        segments: [{ kind: "reasoning" as const, text: "TURN3_FROZEN" }]
       }
     ];
   }
 
-  it("draws one dot per turn and opens that turn's thinking on click", async () => {
+  it("draws a dot per finished turn, marks the failed one, and opens that turn on click", async () => {
     renderChatMain({ ...baseProps(), liveTurns: turns() } as any);
 
     await waitFor(() => {
@@ -498,7 +510,7 @@ describe("ChatMain turn dots", () => {
     });
     const dots = document.querySelectorAll(".tb-turn-dot");
     expect(dots[0].classList.contains("is-done")).toBe(true);
-    expect(dots[1].classList.contains("is-running")).toBe(true);
+    expect(dots[1].classList.contains("is-error")).toBe(true);
 
     // Nothing is open until a dot is clicked.
     expect(document.querySelector(".tb-turn-overlay")).toBeNull();
@@ -515,14 +527,34 @@ describe("ChatMain turn dots", () => {
     expect(body.textContent).not.toContain("TURN2_THINKING");
   });
 
-  it("switches to another turn, and closes on a second click of the same dot", async () => {
-    const live = turns();
+  it("leaves the running turn out of the dots, and still magnifies it from the drawer", async () => {
     renderChatMain({
       ...baseProps(),
-      liveTurns: live,
-      // Turn 2 is the running one, so its drawer reads the feed's live segments.
-      liveSegments: [{ kind: "reasoning", text: "TURN2_LIVE" }]
+      liveTurns: turns(),
+      // The feed's live segments are the running turn's; the drawer must read these.
+      liveSegments: [{ kind: "reasoning", text: "TURN3_LIVE" }]
     } as any);
+    await waitFor(() => {
+      expect(document.querySelectorAll(".tb-turn-dot")).toHaveLength(2);
+    });
+    // No dot claims to be running: the running turn is on screen in the feed.
+    expect(document.querySelector(".tb-turn-dot.is-running")).toBeNull();
+
+    fireEvent.click(document.querySelectorAll(".tb-turn-dot")[1]);
+    await waitFor(() => expect(document.querySelector(".tb-turn-overlay-body")).toBeTruthy());
+    expect(document.querySelector(".tb-turn-overlay-body")!.textContent).toContain("TURN2_THINKING");
+
+    // The arrows still walk into the running turn, where they read live segments
+    // rather than the frozen copy the turn itself holds.
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+    await waitFor(() => {
+      expect(document.querySelector(".tb-turn-overlay-body")!.textContent).toContain("TURN3_LIVE");
+    });
+    expect(document.querySelector(".tb-turn-overlay-body")!.textContent).not.toContain("TURN3_FROZEN");
+  });
+
+  it("switches to another turn, and closes on a second click of the same dot", async () => {
+    renderChatMain({ ...baseProps(), liveTurns: turns() } as any);
     await waitFor(() => {
       expect(document.querySelectorAll(".tb-turn-dot")).toHaveLength(2);
     });
@@ -535,7 +567,7 @@ describe("ChatMain turn dots", () => {
     // A different dot swaps the drawer's contents rather than stacking one.
     fireEvent.click(dots()[1]);
     await waitFor(() => {
-      expect(document.querySelector(".tb-turn-overlay-body")!.textContent).toContain("TURN2_LIVE");
+      expect(document.querySelector(".tb-turn-overlay-body")!.textContent).toContain("TURN2_THINKING");
     });
     expect(document.querySelectorAll(".tb-turn-overlay")).toHaveLength(1);
     expect(document.querySelector(".tb-turn-overlay-body")!.textContent).not.toContain("TURN1_THINKING");
@@ -545,24 +577,9 @@ describe("ChatMain turn dots", () => {
     await waitFor(() => expect(document.querySelector(".tb-turn-overlay")).toBeNull());
   });
 
-  it("shows the running turn's live segments, not its frozen copy", async () => {
-    const live = turns();
-    renderChatMain({
-      ...baseProps(),
-      liveTurns: live,
-      // The feed's live segments are the running turn's; the drawer must read these.
-      liveSegments: [{ kind: "reasoning", text: "LIVE_RUNNING_TEXT" }]
-    } as any);
-
-    await waitFor(() => {
-      expect(document.querySelectorAll(".tb-turn-dot")).toHaveLength(2);
-    });
-    fireEvent.click(document.querySelectorAll(".tb-turn-dot")[1]);
-    await waitFor(() => expect(document.querySelector(".tb-turn-overlay-body")).toBeTruthy());
-
-    const body = document.querySelector(".tb-turn-overlay-body")!;
-    expect(body.textContent).toContain("LIVE_RUNNING_TEXT");
-    expect(body.textContent).not.toContain("TURN2_THINKING");
+  it("renders no dots row while the run's only turn is still running", () => {
+    renderChatMain({ ...baseProps(), liveTurns: [turns()[2]] } as any);
+    expect(document.querySelector(".tb-turn-dots")).toBeNull();
   });
 
   it("renders no dots row when the run has no turns", () => {

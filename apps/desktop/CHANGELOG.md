@@ -13,6 +13,7 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 #### Added
 
 - **Chat timeline rail**: a floating rail on the right edge of a chat puts one point per user or agent answer, hover shows a card with the role, the ordinal, the engine turn and the turn's duration plus a two-line excerpt, and clicking scrolls that message under the header. Points are projected from the rows' real offsets, so the rail shows where the conversation is dense; anchors that would overlap collapse into a bar that reports how many messages it stands for. It takes no layout width (it floats over the feed's own padding), is one Tab stop with arrow-key navigation, and is inert until the conversation actually scrolls
+- **A run's turns collapse into a stack of dots**: a turn did not exist as a unit in the UI — thinking and tool calls arrived as one flat sequence, so only the last stretch of a long run could be read as "what the agent did". Every turn now has its own boundary (Thunder tags each observation with its turn number): the feed streams the running turn alone, and every finished turn is pulled out of it into a numbered circle, the circles piled into an overlapping stack above the feed. Clicking one opens that turn's whole thinking and tool calls in a drawer over the pane (`←`/`→` walk the turns, `Esc` closes); a failed turn is drawn red and pierces the pile, so its ring is never buried under the dots that follow it. The running turn gets no circle of its own — it is on screen in the feed — though the drawer's arrows still reach it and read its live segments. The stack is only as wide as its own overlap, so a forty-turn run costs a strip rather than a column
 
 #### Fixed
 
@@ -805,6 +806,7 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 #### 新增
 
 - **对话时间线轨道**：聊天右侧悬浮一条轨道，用户与 Agent 的每次回答各占一个点；hover 显示角色、序号、引擎轮次与该轮耗时，外加两行正文摘要，点击即把该条消息滚到标题栏下方。点位由消息行在正文中的真实偏移投影而来，因此疏密一目了然；会重叠的锚点自动合并成一条短杠并标出它代表几条消息。轨道不占布局宽度（悬浮在 feed 自身的留白之上），整体是一个 Tab 停靠点、可用方向键在点间移动，且在对话不足以滚动时保持惰性
+- **一次 run 的每一轮折叠成一叠圆点**：此前「一轮」在界面上并不存在——思考与工具调用是一条扁平的流，长任务里只有最后一截能读出「agent 干了什么」。现在每一轮都有自己的边界（thunder 给每个 observation 事件都带上轮次号）：主 feed 只直播正在跑的那一轮，跑完的轮被摘出来各自折成一枚带轮号的圆点，圆点互相重叠、在 feed 上方堆成一叠。点一枚即在该轮全部思考与工具调用上打开浮层（`←`/`→` 翻轮、`Esc` 关闭）；出错的轮描红并穿透整叠，红圈不会被后面的圆点盖住。正在执行的那一轮**不给**圆点——它本来就在下方正文里——但浮层的方向键仍能翻到它并读它的实时片段。这一叠只占自身重叠后的宽度，四十轮也只花掉一条窄带，而不是一列
 
 #### 修复
 

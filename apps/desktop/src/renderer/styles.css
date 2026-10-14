@@ -20845,9 +20845,13 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 .tb-turn-dots-track {
   display: flex;
   align-items: center;
-  gap: 6px;
+  /* No gap and a negative margin instead: the dots pile up into a stack, so a
+     long run stays a short strip. The padding is the pile's clip margin — the
+     open halo and the focus outline are drawn outside a dot's own box, and
+     `overflow-x` clips the vertical axis too. */
+  gap: 0;
   overflow-x: auto;
-  padding: 2px 0;
+  padding: var(--space-1-5) var(--space-1);
   scrollbar-width: none;
 }
 
@@ -20857,8 +20861,8 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 
 .tb-turn-dot {
   position: relative;
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border-radius: 50%;
   border: 0.5px solid var(--color-separator);
@@ -20869,66 +20873,72 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
   flex-shrink: 0;
-  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease,
+    transform 0.15s ease;
 }
 
-.tb-turn-dot:hover {
-  border-color: var(--color-accent);
-  color: var(--color-label-primary);
+/* Later turns paint over earlier ones (plain DOM order), and what gets covered is
+   the previous dot's outer 6px — outside its number, so every turn stays legible.
+   A dot that is hovered, focused or open lifts out of the pile and to the top. */
+.tb-turn-dot + .tb-turn-dot {
+  margin-left: calc(-1 * var(--space-1-5));
 }
 
-.tb-turn-dot:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 1px;
-}
-
+/* The tint is mixed against the window colour rather than over it: an opaque
+   fill is what lets a dot cover the one behind it instead of blending into it. */
 .tb-turn-dot.is-done {
   border-color: color-mix(in srgb, var(--color-success) 45%, transparent);
-  background: color-mix(in srgb, var(--color-success) 12%, transparent);
+  background: color-mix(in srgb, var(--color-success) 12%, var(--color-window-bg));
   color: var(--color-success);
 }
 
+/* A failed turn pierces the pile: its red ring must never end up buried under
+   the dots that come after it. */
 .tb-turn-dot.is-error {
   border-color: color-mix(in srgb, var(--color-destructive) 50%, transparent);
-  background: color-mix(in srgb, var(--color-destructive) 12%, transparent);
+  background: color-mix(in srgb, var(--color-destructive) 12%, var(--color-window-bg));
   color: var(--color-destructive);
+  z-index: 40;
 }
 
-.tb-turn-dot.is-running {
-  border-color: var(--color-accent);
-  background: color-mix(in srgb, var(--color-accent) 16%, transparent);
-  color: var(--color-accent);
+/* Hover and focus come after the status rules on purpose: same specificity, so
+   the later rule wins and a dot being pointed at keeps its green or red — the
+   accent is reserved for the open turn. It grows and lifts out of the pile
+   instead, the way the timeline rail's dots answer a hover. */
+.tb-turn-dot:hover,
+.tb-turn-dot:focus-visible {
+  z-index: 60;
+  transform: translateY(-2px) scale(1.08);
+}
+
+.tb-turn-dot:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-focus-ring);
 }
 
 .tb-turn-dot.is-open {
   border-color: var(--color-accent);
   color: var(--color-label-primary);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 22%, transparent);
+  z-index: 60;
+  transform: translateY(-2px) scale(1.08);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent);
 }
 
 .tb-turn-dot-num {
   line-height: 1;
 }
 
-/* A breathing ring marks the turn still producing, so a long run reads as
-   "working" rather than "the last dot happens to be blue". */
-.tb-turn-dot-ring {
-  position: absolute;
-  inset: -3px;
-  border-radius: 50%;
-  border: 1px solid color-mix(in srgb, var(--color-accent) 55%, transparent);
-  animation: tb-turn-ring 1.6s infinite ease-in-out;
-}
-
-@keyframes tb-turn-ring {
-  0%, 100% { opacity: 0.3; transform: scale(0.94); }
-  50% { opacity: 0.9; transform: scale(1); }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .tb-turn-dot-ring { animation: none; opacity: 0.6; }
+  .tb-turn-dot {
+    transition: none;
+  }
+
+  .tb-turn-dot:hover,
+  .tb-turn-dot:focus-visible,
+  .tb-turn-dot.is-open {
+    transform: none;
+  }
 }
 
 /* --- Turn detail drawer: over the pane, so the feed does not reflow --- */
