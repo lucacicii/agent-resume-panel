@@ -250,6 +250,7 @@ import { getThunderClient } from "./thunder/thunderClient";
 import { startThunderScheduler, stopThunderScheduler } from "./thunder/thunderScheduler";
 import {
   ensureAgentStatusDaemon,
+  installAgentStatusLaunchAgent,
   resolveDaemonEntryPath,
   stopAgentStatusDaemon
 } from "./agentStatus/lifecycle";
@@ -372,6 +373,8 @@ function startAgentStatus(panelHome: string): void {
         `[agent-resume] agent-status daemon ${result.started ? "started" : "already running"} ` +
           `(pid ${result.endpoint.pid}, api v${result.endpoint.apiVersion})`
       );
+
+      await ensureAgentStatusLoginItem(panelHome);
     } catch (error) {
       void recordAppError({
         source: "agent-status",
@@ -380,6 +383,49 @@ function startAgentStatus(panelHome: string): void {
       });
     }
   })();
+}
+
+/**
+ * Register the launchd login item.
+ *
+ * `docs/design/agent-status.md` has described this plist since stage 1, but
+ * nothing ever wrote it — the settings pane could only report `—`, and the
+ * daemon died with the app. Now that installation is real, packaged builds
+ * register it once and the daemon outlives a logout.
+ *
+ * Packaged only: a dev build's daemon entry lives in a repo `dist/` that the
+ * next rebuild replaces, so pinning it into launchd would leave a login item
+ * pointing at stale code. Set `AGENT_RESUME_AGENT_STATUS_LOGIN_ITEM=0` to opt out.
+ */
+async function ensureAgentStatusLoginItem(panelHome: string): Promise<void> {
+  if (!app.isPackaged) return;
+  if (process.env.AGENT_RESUME_AGENT_STATUS_LOGIN_ITEM === "0") {
+    console.log("[agent-resume] login item disabled by AGENT_RESUME_AGENT_STATUS_LOGIN_ITEM=0");
+    return;
+  }
+  try {
+    const installed = await installAgentStatusLaunchAgent({
+      panelHome,
+      execPath: process.execPath,
+      entryPath: resolveDaemonEntryPath({
+        isPackaged: app.isPackaged,
+        resourcesPath: process.resourcesPath,
+        appPath: app.getAppPath()
+      }),
+      appVersion: app.getVersion(),
+      notify: true
+    });
+    if (installed.changed) {
+      console.log(`[agent-resume] login item registered: ${installed.plistPath}`);
+    }
+  } catch (error) {
+    // A login item is a convenience, never a reason to fail startup.
+    void recordAppError({
+      source: "agent-status",
+      message: "The background daemon could not be registered as a login item.",
+      error
+    });
+  }
 }
 
 /** Create the bridge, the sensor, and the renderer IPC exactly once. */

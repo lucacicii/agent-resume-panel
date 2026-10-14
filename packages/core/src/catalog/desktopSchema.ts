@@ -307,3 +307,22 @@ CREATE TABLE IF NOT EXISTS thunder_schedule_runs (
 CREATE INDEX IF NOT EXISTS idx_thunder_schedule_runs_schedule
   ON thunder_schedule_runs(schedule_id, started_at_ms DESC);
 `;
+
+/**
+ * `thunder_schedules.catch_up` — what to do about trigger points that came due
+ * while the scheduler was not running.
+ *
+ * Nullable rather than `NOT NULL DEFAULT 'skip'` so the read side can tell
+ * "never configured" from "explicitly skip"; the scheduler treats both as skip.
+ */
+export const SCHEDULE_CATCH_UP_MIGRATION_SQL = `
+ALTER TABLE thunder_schedules ADD COLUMN catch_up TEXT;
+`;
+
+/**
+ * `thunder_schedules.session_mode` — whether a schedule's runs share one Thunder
+ * session or each get a fresh one. See `ScheduleSessionMode`.
+ */
+export const SCHEDULE_SESSION_MODE_MIGRATION_SQL = `
+ALTER TABLE thunder_schedules ADD COLUMN session_mode TEXT;
+`;

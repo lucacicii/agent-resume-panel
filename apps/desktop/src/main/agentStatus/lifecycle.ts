@@ -6,10 +6,9 @@
  * Electron-free so it can be exercised by the daemon test script.
  */
 
-import { execFile, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { closeSync, existsSync, openSync } from "node:fs";
 import * as path from "node:path";
-import { promisify } from "node:util";
 import { connectAgentStatusClient } from "./client";
 import {
   ensureAgentStatusDir,
@@ -20,12 +19,17 @@ import {
   AGENT_STATUS_APP_VERSION_ENV,
   AGENT_STATUS_LAUNCH_AGENT_LABEL,
   AGENT_STATUS_PANEL_HOME_ENV,
-  agentStatusPaths,
-  launchAgentPlistPath
+  agentStatusPaths
 } from "./paths";
 import { AGENT_STATUS_API_VERSION } from "./types";
+import {
+  installLaunchAgent,
+  isLaunchAgentInstalled,
+  uninstallLaunchAgent,
+  type LaunchAgentResult,
+  type LaunchAgentSpec
+} from "../launchd";
 
-const execFileAsync = promisify(execFile);
 const DEFAULT_START_TIMEOUT_MS = 5_000;
 const START_POLL_MS = 50;
 
@@ -228,21 +232,74 @@ export async function readAgentStatusDaemonStatus(panelHome: string): Promise<Ag
 
 // --------------------------------------------------------------------------- launchd
 
-/** True when the plist exists and launchd knows the service. */
+/**
+ * True when the login item is actually installed.
+ *
+ * This used to be `existsSync(plist) && launchctl print`, and since nothing in
+ * the repo ever wrote the plist it was permanently false. The install/remove
+ * pair below is what makes the answer meaningful.
+ */
 export async function isAgentStatusLaunchAgentInstalled(): Promise<boolean> {
-  const plistPath = launchAgentPlistPath();
-  if (!existsSync(plistPath)) return false;
-  try {
-    await execFileAsync("launchctl", ["print", `${launchDomain()}/${AGENT_STATUS_LAUNCH_AGENT_LABEL}`]);
-    return true;
-  } catch {
-    return false;
-  }
+  return isLaunchAgentInstalled(AGENT_STATUS_LAUNCH_AGENT_LABEL);
 }
 
-function launchDomain(): string {
-  const uid = typeof process.getuid === "function" ? process.getuid() : 0;
-  return `gui/${uid}`;
+/**
+ * Build the launchd spec for the status daemon.
+ *
+ * `RunAtLoad` + `KeepAlive` are what make it outlive a logout; the panel home is
+ * baked into the environment so a daemon started by launchd finds the same
+ * endpoints the app uses.
+ */
+function agentStatusLaunchAgentSpec(input: {
+  panelHome: string;
+  execPath: string;
+  entryPath: string;
+  appVersion: string;
+  notify?: boolean;
+}): LaunchAgentSpec {
+  const paths = agentStatusPaths(input.panelHome);
+  const args = [
+    input.entryPath,
+    "--panel-home",
+    input.panelHome,
+    "--app-version",
+    input.appVersion
+  ];
+  if (input.notify) args.push("--notify");
+
+  return {
+    label: AGENT_STATUS_LAUNCH_AGENT_LABEL,
+    programArguments: [input.execPath, ...args],
+    environment: {
+      ELECTRON_RUN_AS_NODE: "1",
+      [AGENT_STATUS_PANEL_HOME_ENV]: input.panelHome,
+      [AGENT_STATUS_APP_VERSION_ENV]: input.appVersion
+    },
+    logPath: paths.log,
+    runAtLoad: true,
+    keepAlive: true,
+    throttleIntervalSeconds: 5,
+    appVersion: input.appVersion
+  };
+}
+
+/** Register the status daemon as a login item, so it survives a logout. */
+export async function installAgentStatusLaunchAgent(input: {
+  panelHome: string;
+  execPath: string;
+  entryPath: string;
+  appVersion: string;
+  notify?: boolean;
+}): Promise<LaunchAgentResult> {
+  return installLaunchAgent(agentStatusLaunchAgentSpec(input));
+}
+
+/** Remove the login item and boot the service out. */
+export async function uninstallAgentStatusLaunchAgent(): Promise<{
+  removed: boolean;
+  plistPath: string;
+}> {
+  return uninstallLaunchAgent(AGENT_STATUS_LAUNCH_AGENT_LABEL);
 }
 
 // ---------------------------------------------------------------------------- helpers

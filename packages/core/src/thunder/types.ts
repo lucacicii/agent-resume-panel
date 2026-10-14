@@ -1,7 +1,15 @@
 export type ScheduleTriggerType = "interval" | "daily" | "cron" | "manual";
+export type ScheduleCatchUpPolicy = "skip" | "once" | "all";
+/**
+ * Whether a schedule's runs share one Thunder session (`pinned`) or each get a
+ * fresh one (`fresh`). Pinned keeps the prompt prefix cache-warm and makes the
+ * schedule's history a single readable conversation; fresh guarantees runs
+ * cannot influence each other through prior context.
+ */
+export type ScheduleSessionMode = "pinned" | "fresh";
 export type ScheduleStatus = "idle" | "running" | "success" | "failed";
 export type ScheduleRunStatus = "running" | "completed" | "failed" | "cancelled";
-export type ScheduleRunTriggerSource = "schedule" | "manual";
+export type ScheduleRunTriggerSource = "schedule" | "manual" | "catch_up";
 
 export interface ThunderSchedule {
   id: string;
@@ -11,6 +19,14 @@ export interface ThunderSchedule {
   model?: string;
   triggerType: ScheduleTriggerType;
   triggerValue: string;
+  /**
+   * What to do about trigger points that came due while the scheduler was not
+   * running. `skip` (default) treats an overdue run as stale; `once` replays
+   * only the most recent; `all` replays every point.
+   */
+  catchUp?: ScheduleCatchUpPolicy;
+  /** `pinned` (default) or `fresh`; see {@link ScheduleSessionMode}. */
+  sessionMode?: ScheduleSessionMode;
   enabled: boolean;
   lastRunAtMs?: number;
   lastStatus?: ScheduleStatus;
@@ -278,6 +294,8 @@ export interface ThunderScheduleInput {
   model?: string;
   triggerType: ScheduleTriggerType;
   triggerValue: string;
+  catchUp?: ScheduleCatchUpPolicy;
+  sessionMode?: ScheduleSessionMode;
   enabled?: boolean;
 }
 

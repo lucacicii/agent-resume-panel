@@ -748,6 +748,23 @@ export class ThunderClient {
     sessionId?: string;
     thinking_level?: string;
     attachments?: ThunderImageAttachment[];
+    /**
+     * Non-interactive run: the daemon omits the `ask_user_question` tool
+     * entirely. Nothing can answer a question on a scheduled run, and a parked
+     * question costs the full 1800s request timeout, so an unattended caller
+     * must pass `true` rather than rely on the daemon default (which is `false`
+     * for backward compatibility with interactive hosts).
+     */
+    headless?: boolean;
+    /**
+     * Permission mode for this run (`plan` / `ask` / `acceptEdits` / `yolo`).
+     *
+     * Stated explicitly rather than inherited, because the inherited value comes
+     * from `~/.thunder/config.json`'s `agent.defaultMode` — a global setting that
+     * would otherwise silently change how every schedule behaves. An unattended
+     * run wants `yolo`; a read-only sweep wants `plan`.
+     */
+    mode?: string;
     onEvent?: (event: ThunderObservedEvent) => void;
   }): Promise<{ finalContent?: string; finishReason: string; activePlugins?: string[] }> {
     await this.ensureRunning();
@@ -800,6 +817,8 @@ export class ThunderClient {
               model: options.model,
               thinking_level: options.thinking_level,
               session_id: options.sessionId,
+              headless: options.headless === true ? true : undefined,
+              mode: options.mode,
               attachments:
                 options.attachments && options.attachments.length > 0
                   ? options.attachments

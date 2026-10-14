@@ -17493,6 +17493,22 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   margin-top: var(--space-2);
 }
 
+.schedule-form-cron {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* An unparseable cron expression used to be indistinguishable from a valid one
+   until the schedule fired at a surprising time, so the invalid state is loud. */
+.schedule-form-input-invalid {
+  border-color: var(--color-red-600, #e5484d);
+}
+
+.schedule-form-hint-error {
+  color: var(--color-red-600, #e5484d);
+}
+
 .schedule-time-input {
   max-width: 140px;
 }

@@ -1132,6 +1132,9 @@ export interface DesktopApi {
   agentStatusDaemonStatus?(): Promise<AgentStatusDaemonStatus>;
   agentStatusStartDaemon?(): Promise<AgentStatusDaemonStatus>;
   agentStatusStopDaemon?(): Promise<AgentStatusDaemonStatus>;
+  /** Register/unregister the launchd login item that keeps the daemon alive across logins. */
+  agentStatusInstallLaunchAgent?(): Promise<AgentStatusDaemonStatus>;
+  agentStatusUninstallLaunchAgent?(): Promise<AgentStatusDaemonStatus>;
   /** Every pane the daemon knows about, for the inspector. */
   agentStatusPanes?(): Promise<PaneStatus[]>;
   /** Why one pane settled the way it did, rule by rule. */
@@ -1974,6 +1977,8 @@ const api: DesktopApi = {
   agentStatusDaemonStatus: () => ipcRenderer.invoke("agentStatus:daemonStatus"),
   agentStatusStartDaemon: () => ipcRenderer.invoke("agentStatus:startDaemon"),
   agentStatusStopDaemon: () => ipcRenderer.invoke("agentStatus:stopDaemon"),
+  agentStatusInstallLaunchAgent: () => ipcRenderer.invoke("agentStatus:installLaunchAgent"),
+  agentStatusUninstallLaunchAgent: () => ipcRenderer.invoke("agentStatus:uninstallLaunchAgent"),
   agentStatusPanes: () => ipcRenderer.invoke("agentStatus:panes"),
   agentStatusExplain: (args) => ipcRenderer.invoke("agentStatus:explain", args),
   agentStatusScreen: (args) => ipcRenderer.invoke("agentStatus:screen", args),

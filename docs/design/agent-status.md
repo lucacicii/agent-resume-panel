@@ -243,7 +243,13 @@ stdout,传感器扫描后转为 `native` 上报——因此 pi 的精确度与�
 | 状态快照 | `<panel home>/.desktop/agent-status/state.json` | 只存 pane 身份 + 原生上报,**不存屏幕文本** |
 | 日志 | `<panel home>/.desktop/agent-status/daemon.log` | 启动时打印已加载规则包清单 |
 | socket | `<tmpdir>/agent-resume-status-<uid>-<profile-hash>.sock` | 0600;见下 |
-| 登录启动 | `~/Library/LaunchAgents/dev.agentresume.agent-status.plist` | `RunAtLoad` + `KeepAlive{SuccessfulExit:false}` + `ThrottleInterval 5` |
+| 登录启动 | `~/Library/LaunchAgents/dev.agentresume.agent-status.plist` | `RunAtLoad` + `KeepAlive` + `ThrottleInterval 5`；**由 `src/main/launchd.ts` 真的写入**（打包版启动时自动注册，设置面板可手动装卸） |
+
+> **勘误（本次修复）**：登录启动这一行从 stage 1 就写在文档里,但**当时并没有任何代码去写这份 plist**
+> ——仓库里只有一处 `existsSync` + `launchctl print` 的**检查**,所以设置面板那一栏永远显示 `—`,
+> 守护进程实际只在应用打开时存活。现在安装/卸载是真的(见 `lifecycle.ts` 的
+> `installAgentStatusLaunchAgent` / `uninstallAgentStatusLaunchAgent`,底层走 `launchctl bootstrap`/`bootout`),
+> 并有 `scripts/launchd.test.mjs` 覆盖 plist 渲染与「不覆盖他人 plist」两条约束。
 
 **socket 为什么在 tmpdir**:macOS 的 unix socket 路径上限约 104 字节,`<panel home>/.desktop/agent-status/daemon.sock`
 在长用户名或长 panel home 下直接 `listen EINVAL`(实现时实测踩到)。tmpdir 路径短且按用户私有,
@@ -393,7 +399,7 @@ ACP 聊天不是 PTY pane,它的生命周期留在渲染进程(`useAcpStatus` �
 | `bridge.ts` / `ipc.ts` / `runtime.ts` | 主进程与守护进程、渲染层的桥 |
 | `state.ts` | 每 pane 记录、每帧求值、持久化、explain/screenDump |
 | `daemon.ts` | 入口、单实例、心跳、优雅退出、通知与发现的宿主 |
-| `lifecycle.ts` | 重启/替换、launchd 安装与卸载、状态读取、入口路径解析 |
+| `lifecycle.ts` | 重启/替换、状态读取、入口路径解析,以及 launchd 登录项的安装/卸载 |
 | `engine/manifest.ts` / `region.ts` / `evaluate.ts` / `registry.ts` | 规则编译、切片、求值、分层与覆盖 |
 | `engine/manifests/*.json` | 5 份规则包(34 条规则) |
 | `integrations/` | 钩子安装器、包装脚本、配置编辑、pi 扩展 |

@@ -54,7 +54,3 @@ export function agentStatusPaths(panelHome: string): AgentStatusPaths {
     log: path.join(dir, "daemon.log")
   };
 }
-
-export function launchAgentPlistPath(home: string = os.homedir()): string {
-  return path.join(home, "Library", "LaunchAgents", `${AGENT_STATUS_LAUNCH_AGENT_LABEL}.plist`);
-}

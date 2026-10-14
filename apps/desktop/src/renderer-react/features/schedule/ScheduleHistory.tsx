@@ -107,14 +107,19 @@ export function ScheduleHistory({ schedule }: ScheduleHistoryProps) {
                       {r.status}
                     </span>
                     <span className="schedule-history-source">
-                      {r.triggerSource === "manual" ? "Manual" : "Scheduled"}
+                      {r.triggerSource === "manual"
+                        ? text("desktop.schedule.sourceManual", "Manual")
+                        : r.triggerSource === "catch_up"
+                          ? text("desktop.schedule.sourceCatchUp", "Catch-up")
+                          : text("desktop.schedule.sourceScheduled", "Scheduled")}
                     </span>
                   </div>
                   <div className="schedule-history-row-time">
                     {formatTime(r.startedAtMs)}
                   </div>
                   <div className="schedule-history-row-duration">
-                    Duration: {formatDuration(r.startedAtMs, r.finishedAtMs)}
+                    {text("desktop.schedule.duration", "Duration")}:{" "}
+                    {formatDuration(r.startedAtMs, r.finishedAtMs)}
                   </div>
                 </button>
               );

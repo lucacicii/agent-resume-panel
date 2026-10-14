@@ -949,6 +949,8 @@ export type {
   ScheduleStatus,
   ScheduleRunStatus,
   ScheduleRunTriggerSource,
+  ScheduleCatchUpPolicy,
+  ScheduleSessionMode,
   ThunderSchedule,
   ThunderScheduleRun,
   ThunderScheduleRunLogEntry,

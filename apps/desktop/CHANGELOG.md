@@ -14,6 +14,16 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 
 - **Chat timeline rail**: a floating rail on the right edge of a chat puts one point per user or agent answer, hover shows a card with the role, the ordinal, the engine turn and the turn's duration plus a two-line excerpt, and clicking scrolls that message under the header. Points are projected from the rows' real offsets, so the rail shows where the conversation is dense; anchors that would overlap collapse into a bar that reports how many messages it stands for. It takes no layout width (it floats over the feed's own padding), is one Tab stop with arrow-key navigation, and is inert until the conversation actually scrolls
 
+#### Fixed
+
+- **Schedules that actually honour their trigger**: a `cron` schedule silently fired hourly whatever the expression said (`computeNextRun` returned `now + 1h`), so `0 9 * * 1-5` looked correct in the editor and ran every hour. Cron is now parsed for real (`croner`), an expression that cannot be parsed or can never fire is rejected at save time with the next fire time shown, and a schedule that came due while the panel was closed follows an explicit per-schedule policy — skip (default), replay the latest, or replay every missed point — surfaced in the run history as a *Catch-up* trigger. Two more defects in the same path went with it: the due check asked whether *any* schedule was running and so let one long run starve every other schedule, and a schedule stuck at `running` by a killed panel was never released — both are now reconciled per schedule at startup, orphaned runs are closed out, and cancelling a run clears the schedule it belongs to (the broadcast carried an empty `scheduleId`, so the UI never left its running state)
+- **Scheduled runs no longer park for 30 minutes**: a schedule ran through the interactive path — no `headless`, no `mode`, no `session_id` — so a model that asked a clarifying question parked on `ask_user_question` until the 1800s timeout, with nothing able to answer. Scheduled runs now declare themselves non-interactive, state their permission mode explicitly rather than inheriting `~/.thunder/config.json`'s `agent.defaultMode`, and run in a named session per schedule (continuable, prompt-cache warm, and no collision with a chat session)
+- **The login item exists now**: `docs/design/agent-status.md` has documented a `RunAtLoad` + `KeepAlive` launchd agent since stage 1, and settings reported whether it was installed — but nothing in the repo ever wrote the plist, so that row read `—` forever and the status daemon only lived while the app was open. It is now written with `launchctl bootstrap`/`bootout`, registered automatically by packaged builds, and installable/removable from the settings pane. A pre-existing plist that this app did not write is never overwritten or deleted
+
+#### Changed
+
+- **`desktop.schedule.*` strings joined the i18n catalog**: the 84 schedule strings (and the two board nav names) were hand-written into the locale files, bypassing the catalog that `merge:desktop-i18n` generates from — new strings add to the drift. They are now registered in all three locales, and the schedule editor documents web access: Thunder's `web_search` / `web_fetch` ship enabled with no configuration, which nothing in the UI previously said
+
 ### [0.2.35]
 
 #### Added
@@ -795,6 +805,16 @@ Update this file before each Desktop release (`pnpm run release:desktop:mac`).
 #### 新增
 
 - **对话时间线轨道**：聊天右侧悬浮一条轨道，用户与 Agent 的每次回答各占一个点；hover 显示角色、序号、引擎轮次与该轮耗时，外加两行正文摘要，点击即把该条消息滚到标题栏下方。点位由消息行在正文中的真实偏移投影而来，因此疏密一目了然；会重叠的锚点自动合并成一条短杠并标出它代表几条消息。轨道不占布局宽度（悬浮在 feed 自身的留白之上），整体是一个 Tab 停靠点、可用方向键在点间移动，且在对话不足以滚动时保持惰性
+
+#### 修复
+
+- **计划终于按触发规则执行**：`cron` 计划无论表达式写什么都每小时触发一次（`computeNextRun` 直接返回 `now + 1h`），所以 `0 9 * * 1-5` 在编辑器里看着没问题，实际每小时跑。现在真解析 cron（`croner`），无法解析或永不触发的表达式在保存时即被拒绝并显示下次执行时间；面板关闭期间错过的触发点按计划自身的策略处理——跳过（默认）、只补最近一次、或全部补跑——执行记录里以「补跑」标注来源。同一路径上的另外两个缺陷一并修掉：到期检查原本问的是「是否有任意计划在运行」，于是一个长任务会饿死其他所有计划；被强杀的面板留下的 `running` 状态永不释放——现在启动时按计划逐个对账、清理孤儿执行记录，且取消执行会一并清掉所属计划的状态（原先广播的 `scheduleId` 是空串，UI 因此永远回不到非运行态）
+- **计划任务不再卡满 30 分钟**：计划走的是交互式路径——没有 `headless`、没有 `mode`、没有 `session_id`——模型只要问一个澄清问题就会挂在 `ask_user_question` 上直到 1800 秒超时，而没有任何东西能回答它。现在计划任务显式声明为非交互、显式声明权限模式（而非继承 `~/.thunder/config.json` 的 `agent.defaultMode`），并按计划使用固定会话（可续接、提示词缓存命中、且不与聊天会话抢占）
+- **登录项现在是真的**：`docs/design/agent-status.md` 从 stage 1 就记载了 `RunAtLoad` + `KeepAlive` 的 launchd 服务，设置面板还专门显示它是否已安装——但仓库里从来没有代码去写这份 plist，所以那一栏永远显示 `—`，状态守护进程只在应用打开时存活。现在用 `launchctl bootstrap`/`bootout` 真实写入，打包版启动时自动注册，设置面板可手动装卸。不是本应用写入的 plist 绝不会被覆盖或删除
+
+#### 变更
+
+- **`desktop.schedule.*` 文案并入 i18n 目录源**：84 条计划文案（以及两个 Board 导航名）此前是手写进 locale 文件的，绕过了 `merge:desktop-i18n` 所依据的 catalog，导致新增文案只会加深这条裂缝。现已补齐三语登记，并在计划编辑器中说明联网能力：Thunder 的 `web_search` / `web_fetch` 开箱即用、无需任何配置——这一点此前 UI 从未提及
 
 ### [0.2.35]
 
