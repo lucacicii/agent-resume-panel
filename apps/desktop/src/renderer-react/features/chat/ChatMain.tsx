@@ -164,8 +164,13 @@ export function ChatMain({
   const stickToBottom = useRef(true);
   const [isTraceOpen, setIsTraceOpen] = useState(false);
   const [isChangesOpen, setIsChangesOpen] = useState(false);
-  /** Index into `liveTurns` of the turn whose drawer is open; null = closed. */
-  const [openTurnIndex, setOpenTurnIndex] = useState<number | null>(null);
+  /**
+   * The open turn drawer: which pile it was opened from, and the turn's index
+   * in that pile. Every run on the feed owns a pile — a finished one hangs off
+   * the row it left behind, the running one off the row it is streaming into —
+   * so the index alone would point into the wrong run's turns.
+   */
+  const [openTurn, setOpenTurn] = useState<{ pile: number | "live"; index: number } | null>(null);
   const [nestedScan, setNestedScan] = useState<GitNestedScanOptions | undefined>(undefined);
   const [workspaceDirs, setWorkspaceDirs] = useState<string[]>(() => (workspaceDir ? [workspaceDir] : []));
 
@@ -203,13 +208,18 @@ export function ChatMain({
         .join(""),
     [liveSegments]
   );
-  const streamingTools = useMemo(
-    () =>
-      liveSegments
-        .filter((segment): segment is Extract<LiveSegment, { kind: "tools" }> => segment.kind === "tools")
-        .flatMap((segment) => segment.tools),
-    [liveSegments]
-  );
+  const streamingTools = useMemo(() => {
+    const live = liveSegments
+      .filter((segment): segment is Extract<LiveSegment, { kind: "tools" }> => segment.kind === "tools")
+      .flatMap((segment) => segment.tools);
+    if (live.length > 0) return live;
+    // Once the run is over the live segments are gone, and the answer message no
+    // longer carries its tool executions — they live in the pile. The file-change
+    // derivation still needs them, so it reads the finished run's turns here.
+    return liveTurns.flatMap((turn) =>
+      turn.segments.flatMap((segment) => (segment.kind === "tools" ? segment.tools : []))
+    );
+  }, [liveSegments, liveTurns]);
 
   const toggleTranslate = useCallback(async (idx: number, text: string) => {
     if (!text.trim()) return;
@@ -394,15 +404,17 @@ export function ChatMain({
   );
 
   // Switching conversations always starts pinned to the newest content, and
-  // drops the turn drawer: its index means nothing against a different run.
+  // drops the turn drawer: its pile means nothing against a different session.
   useEffect(() => {
-    setOpenTurnIndex(null);
+    setOpenTurn(null);
   }, [sessionId]);
-  // A new run clears the turns before filling them, so an index left over from
-  // the previous run would point at an unrelated turn. Closing on the empty
-  // frame means the drawer can never survive into a run it does not belong to.
+  // A new run clears the stream's turns before filling them, so a drawer left
+  // open on the previous run's pile would be re-pointed at whatever turn lands
+  // on that index next. Closing on the empty frame means it can never survive
+  // into a run it does not belong to. A drawer on a row's own pile is the row's
+  // business, and stays open.
   useEffect(() => {
-    if (liveTurns.length === 0) setOpenTurnIndex((prev) => (prev === null ? prev : null));
+    if (liveTurns.length === 0) setOpenTurn((prev) => (prev?.pile === "live" ? null : prev));
   }, [liveTurns]);
 
   // Switching conversations always starts pinned to the newest content.
@@ -432,6 +444,27 @@ export function ChatMain({
   useLayoutEffect(() => {
     scrollToBottom();
   }, [messages.length, liveSegments, hasDialog, scrollToBottom]);
+
+  /** The turns of one pile: the run still streaming, or a row's own run — the
+      row a run leaves behind, and the row a reopened session reads back. */
+  const turnsOfPile = (pile: number | "live"): readonly LiveTurn[] =>
+    pile === "live" ? liveTurns : messages[pile]?.turns ?? [];
+  /** The run's turns, piled into the stack of dots that hangs off its reply. The
+      feed shows only the turn that is running, so the finished ones are
+      reachable through these dots alone — and the running turn gets no dot of
+      its own, since it is already on screen. */
+  const pileOf = (pile: number | "live"): React.ReactNode =>
+    turnsOfPile(pile).length > 0 ? (
+      <TurnDots
+        turns={turnsOfPile(pile)}
+        openIndex={openTurn?.pile === pile ? openTurn.index : null}
+        onOpen={(index) => setOpenTurn({ pile, index })}
+        onClose={() => setOpenTurn(null)}
+      />
+    ) : undefined;
+  /** The drawer's turns: the pile it was opened from, looked up now. Empty once
+      that pile is gone, which is what closes the drawer with it. */
+  const openTurnPile = openTurn ? turnsOfPile(openTurn.pile) : [];
 
   return (
     <div className={hasDialog ? "tb-chat-main has-question" : "tb-chat-main"}>
@@ -567,18 +600,6 @@ export function ChatMain({
           over the feed's own right padding, so it takes no layout width. */}
       <div className="tb-chat-body">
 
-        {/* The run's finished turns, piled into a stack of dots. The feed below
-            renders the turn that is running, so the finished ones are only
-            reachable through these dots — and the running turn gets no dot of
-            its own, since it is already on screen here. */}
-        {liveTurns.length > 0 && (
-          <TurnDots
-            turns={liveTurns}
-            openIndex={openTurnIndex}
-            onOpen={setOpenTurnIndex}
-            onClose={() => setOpenTurnIndex(null)}
-          />
-        )}
         <div
           className="tb-chat-feed"
           ref={feedRef}
@@ -609,6 +630,9 @@ export function ChatMain({
                   onRegenerate={onRegenerate}
                   onResend={onResend}
                   onEdit={onEditPrompt}
+                  /* The run's answer carries the pile; the live row below carries
+                     it instead while the run is still going. */
+                  turnDots={pileOf(idx)}
                 />
               ))}
 
@@ -623,6 +647,7 @@ export function ChatMain({
                   anchorIndex={messages.length}
                   isStreaming={true}
                   segments={liveSegments}
+                  turnDots={pileOf("live")}
                 />
               )}
 
@@ -689,26 +714,26 @@ export function ChatMain({
 
       {/* Turn detail drawer: over the pane, so it neither reflows the feed nor
           hides the composer. The running turn keeps streaming into it. */}
-      {openTurnIndex !== null && liveTurns[openTurnIndex]
+      {openTurn && openTurnPile[openTurn.index]
         ? (() => {
-            const turn = liveTurns[openTurnIndex];
+            const turn = openTurnPile[openTurn.index];
             const isRunningTurn = turn.status === "running";
             return (
               <TurnDetailOverlay
                 turn={turn}
                 segments={isRunningTurn ? liveSegments : turn.segments}
                 isStreaming={isRunningTurn}
-                index={openTurnIndex}
-                total={liveTurns.length}
+                index={openTurn.index}
+                total={openTurnPile.length}
                 onPrev={() =>
-                  setOpenTurnIndex((prev) => (prev === null ? prev : Math.max(0, prev - 1)))
+                  setOpenTurn((prev) => (prev ? { ...prev, index: Math.max(0, prev.index - 1) } : prev))
                 }
                 onNext={() =>
-                  setOpenTurnIndex((prev) =>
-                    prev === null ? prev : Math.min(liveTurns.length - 1, prev + 1)
+                  setOpenTurn((prev) =>
+                    prev ? { ...prev, index: Math.min(openTurnPile.length - 1, prev.index + 1) } : prev
                   )
                 }
-                onClose={() => setOpenTurnIndex(null)}
+                onClose={() => setOpenTurn(null)}
               />
             );
           })()

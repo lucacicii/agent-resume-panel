@@ -6,7 +6,7 @@ import { useI18n } from "../../i18n";
 import type { LiveSegment, LiveTurn } from "./useThunderChat";
 
 /**
- * The run's finished turns as a stack of dots above the feed.
+ * The run's finished turns as a stack of dots hanging off the agent's reply.
  *
  * The feed itself ever renders only the turn that is running, so the finished
  * ones live here: the dots overlap into a pile, and clicking one opens that
@@ -16,6 +16,10 @@ import type { LiveSegment, LiveTurn } from "./useThunderChat";
  * The running turn gets no dot. It is on screen in the feed already, so a dot
  * for it would be a second, staler copy of the same thing; it stays reachable
  * from the drawer's arrows, which read the live segments as a magnifier.
+ *
+ * The pile renders inside the message row's content column — right after the
+ * avatar, above that reply's text — which is the caller's job: `ChatMessageItem`
+ * takes this as its `turnDots` slot.
  */
 export function TurnDots({
   turns,
@@ -48,8 +52,10 @@ export function TurnDots({
   if (finished.length === 0) return null;
 
   return (
+    // The label is the row's accessible name only: the numbers carry the
+    // meaning on screen, and a "Turns" caption at the top of a reply reads as
+    // chrome.
     <div className="tb-turn-dots" role="tablist" aria-label={t("desktop.chat.turns.label")}>
-      <span className="tb-turn-dots-label">{t("desktop.chat.turns.label")}</span>
       <div className="tb-turn-dots-track" ref={trackRef}>
         {finished.map(({ turn, index }) => {
           const isOpen = openIndex === index;

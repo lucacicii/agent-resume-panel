@@ -20817,29 +20817,19 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 }
 
 
-/* --- Turn dots: the run's engine turns, above the feed ---
+/* --- Turn dots: the run's engine turns, hanging off the agent's reply ---
    The feed renders only the running turn, so finished turns are reachable
    through these dots; one dot opens that turn's thinking and tool calls in the
-   drawer below. */
+   drawer below. The pile is the reply's first block, so it starts right after
+   the avatar and sits above that reply's text. */
 .tb-turn-dots {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 18px;
-  border-bottom: 0.5px solid var(--color-separator);
-  background: var(--color-secondary-bg);
-  flex-shrink: 0;
+  min-width: 0;
   /* Above the drawer's mask (z 20): the dots are that drawer's own control, so
      clicking a different dot must switch turns rather than dismiss the drawer. */
   position: relative;
   z-index: 22;
-}
-
-.tb-turn-dots-label {
-  font-size: 11px;
-  color: var(--color-label-tertiary);
-  letter-spacing: 0.02em;
-  flex-shrink: 0;
 }
 
 .tb-turn-dots-track {
@@ -20851,6 +20841,9 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
      `overflow-x` clips the vertical axis too. */
   gap: 0;
   overflow-x: auto;
+  /* The track is as wide as the reply's column, so a run longer than that
+     scrolls sideways instead of widening the message row. */
+  min-width: 0;
   padding: var(--space-1-5) var(--space-1);
   scrollbar-width: none;
 }

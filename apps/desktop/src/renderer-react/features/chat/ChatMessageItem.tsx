@@ -3,11 +3,10 @@ import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { StreamdownRenderer } from "../../components/StreamdownRenderer";
 import { ThinkingState } from "./ThinkingState";
 import { ToolCallsState } from "./ToolCallsState";
-import type { ThunderChatMessage } from "@agent-resume/core";
-import type { ActiveToolInfo, LiveSegment } from "./useThunderChat";
+import type { ActiveToolInfo, LiveSegment, RenderedChatMessage } from "./useThunderChat";
 
 interface ChatMessageItemProps {
-  message: ThunderChatMessage;
+  message: RenderedChatMessage;
   index?: number;
   /**
    * Rendered as `data-timeline-index` on the row, so the chat timeline can
@@ -22,6 +21,14 @@ interface ChatMessageItemProps {
    * (reasoning, then answer, then tool calls) is used.
    */
   segments?: LiveSegment[];
+  /**
+   * The run's finished turns, as the pile of dots that hangs off this reply.
+   * Rendered as the container's first child, so it lands right after the avatar
+   * and above the answer — the history of a run belongs to the agent's reply,
+   * not to the pane. `ChatMain` decides which row owns the paint: the streaming
+   * one while the run is live, the run's answer once it is over.
+   */
+  turnDots?: React.ReactNode;
   onRegenerate?: (index: number) => void;
   onResend?: (index: number) => void;
   onEdit?: (text: string) => void;
@@ -43,6 +50,7 @@ export function ChatMessageItem({
   anchorIndex,
   isStreaming = false,
   segments,
+  turnDots,
   onRegenerate,
   onResend,
   onEdit,
@@ -87,6 +95,14 @@ export function ChatMessageItem({
 
   const activeReasoning = message.reasoning || "";
   const activeTools = message.tool_executions || historicalTools;
+  /**
+   * A run's thinking and tool calls are per turn, and this row is a whole run:
+   * the pile of dots hanging off it is where they are read back, one dot per
+   * turn. Left to the flat lanes they would paint a second, staler copy of what
+   * the dots already hold — the same reason a run's row carries no segments once
+   * the run is over.
+   */
+  const pileHoldsDetail = (message.turns?.length ?? 0) > 0;
   const liveSegments = segments ?? [];
   const lastSegmentIndex = liveSegments.length - 1;
   const lastTextIndex = liveSegments.reduce(
@@ -132,12 +148,12 @@ export function ChatMessageItem({
       })
     ) : (
       <>
-        {activeReasoning && (
+        {activeReasoning && !pileHoldsDetail && (
           <ThinkingState reasoning={activeReasoning} isStreaming={isStreaming && !message.content} />
         )}
 
         {/* Grouped Tool Calls (Collapsed by default, similar to Thinking) */}
-        {activeTools.length > 0 && (
+        {activeTools.length > 0 && !pileHoldsDetail && (
           <ToolCallsState tools={activeTools} isStreaming={isStreaming} defaultExpanded={false} />
         )}
 
@@ -204,6 +220,7 @@ export function ChatMessageItem({
       </div>
 
       <div className="tb-message-container">
+        {turnDots}
         {body}
 
         {/* User Message Action Toolbar */}
