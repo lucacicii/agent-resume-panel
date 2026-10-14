@@ -35,3 +35,4 @@ See [product-independence.md](product-independence.md) for the full extension vs
 - Catalog records are indexes over provider-owned local transcripts. Do not turn a catalog hide/remove action into deletion of a provider's native session data.
 - Extension settings stay in VS Code `agentResume.*` (+ SecretStorage). Desktop settings live in `settings.desktop.json` under the same `panelHome`.
 - Use strict types for new domain flows; avoid `any` and avoid bypassing public core exports with deep imports from another workspace.
+- The Desktop renderer bundles for the browser, so `@agent-resume/core` may give it **types** (`import type`, erased at build time) but not **values**: a value import from the barrel pulls the Node-side graph into the bundle and fails the build with one unresolved `node:*` per Node builtin. Runtime values cross through the `@agent-resume/core/browser` entry, kept Node-free and guarded by `apps/desktop/src/renderer-react/coreEntryContract.test.ts`.

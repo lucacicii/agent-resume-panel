@@ -15,6 +15,10 @@
     "./extension": {
       "types": "./dist/extension.d.ts",
       "default": "./dist/extension.js"
+    },
+    "./browser": {
+      "types": "./dist/browser.d.ts",
+      "default": "./dist/browser.js"
     }
   },
   "bin": {

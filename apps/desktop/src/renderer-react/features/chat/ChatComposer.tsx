@@ -10,7 +10,7 @@ import type {
   ThunderModelInfo,
   ThunderPermissionMode
 } from "@agent-resume/core";
-import { THUNDER_PERMISSION_MODES } from "@agent-resume/core";
+import { THUNDER_PERMISSION_MODES } from "@agent-resume/core/browser";
 import type { ChatRunMetrics } from "./useThunderChat";
 import {
   atTokenAtCursor,
