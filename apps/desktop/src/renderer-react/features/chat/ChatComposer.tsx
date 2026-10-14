@@ -7,8 +7,10 @@ import type {
   AgentToolDescriptor,
   SkillDescriptor,
   ThunderImageAttachment,
-  ThunderModelInfo
+  ThunderModelInfo,
+  ThunderPermissionMode
 } from "@agent-resume/core";
+import { THUNDER_PERMISSION_MODES } from "@agent-resume/core";
 import type { ChatRunMetrics } from "./useThunderChat";
 import {
   atTokenAtCursor,
@@ -95,6 +97,33 @@ const GTD_STATUS_LABELS: Record<string, string> = {
   next: "进行中",
   waiting: "等待",
   done: "已完成"
+};
+
+/**
+ * Chip labels for the four approval modes, in `Shift+Tab` order.
+ *
+ * Kept short because they are what the *trigger* shows; the meaning lives in
+ * `PERMISSION_MODE_HINTS`, which only fits in a menu or a tooltip.
+ */
+const PERMISSION_MODE_LABELS: Record<ThunderPermissionMode, string> = {
+  plan: "Plan",
+  ask: "Ask",
+  acceptEdits: "Accept Edits",
+  yolo: "YOLO"
+};
+
+/**
+ * One line per mode, worded from the gate matrix in thunder's `mode.rs`.
+ *
+ * `plan` and `yolo` are the two a user has to recognise at a glance and they
+ * are opposites, which is the argument for spelling them out rather than
+ * trusting the name.
+ */
+const PERMISSION_MODE_HINTS: Record<ThunderPermissionMode, string> = {
+  plan: "Read-only. Writes are refused — the plan text is the deliverable",
+  ask: "Reads run free; anything that changes something waits for you",
+  acceptEdits: "Edits inside the working area run without asking; the rest asks",
+  yolo: "Never asks — every call runs"
 };
 
 export function sortGtdTasks<T extends { gtdStatus?: string; updatedAtMs?: number }>(items: T[]): T[] {
@@ -265,6 +294,16 @@ interface ChatComposerProps {
   onSelectModel: (model: string) => void;
   thinkingLevel: string;
   onSelectThinkingLevel: (level: string) => void;
+  /**
+   * The approval mode this session is judged by, and how to change it.
+   *
+   * Optional so the composer still renders where a host has no mode to show;
+   * the chip simply does not appear. `""` means "not hydrated yet" (the daemon
+   * holds the truth per session), which the chip renders as unknown rather
+   * than guessing.
+   */
+  permissionMode?: ThunderPermissionMode | "";
+  onSelectPermissionMode?: (mode: ThunderPermissionMode) => void;
   workspaceDir: string;
   onSelectWorkspaceDir: (dir: string) => void;
   workspaceSource?: "finder" | "gtd";
@@ -340,6 +379,8 @@ export function ChatComposer({
   onSelectModel,
   thinkingLevel,
   onSelectThinkingLevel,
+  permissionMode = "",
+  onSelectPermissionMode,
   workspaceDir,
   onSelectWorkspaceDir,
   workspaceSource = "finder",
@@ -379,6 +420,7 @@ export function ChatComposer({
   const [directoryError, setDirectoryError] = useState("");
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const composerRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const workspaceButtonRef = useRef<HTMLButtonElement | null>(null);
   const slashItemRefs = useRef<Array<HTMLLIElement | null>>([]);
@@ -1133,6 +1175,18 @@ export function ChatComposer({
         void doSend();
       }
     }
+
+    // Shift+Tab cycles the approval mode. It sits *after* the three suggestion
+    // menus on purpose: they claim a bare `Tab` to accept a completion without
+    // asking about modifiers, so a Shift+Tab that arrives here is one no menu
+    // wanted — menu priority is a matter of position, not of a flag.
+    //
+    // Shift+Enter is deliberately left alone: it still falls through to the
+    // textarea's own newline.
+    if (e.key === "Tab" && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      e.preventDefault();
+      cyclePermissionMode();
+    }
   };
 
   const handleSendClick = () => {
@@ -1305,6 +1359,48 @@ export function ChatComposer({
     return false;
   }, [currentModel]);
 
+  /**
+   * The four modes, all of them, with the active one check-marked by
+   * `NativeMenuSelect`. Listing the alternatives is the point: the chip alone
+   * would say which mode is on, never what the others mean.
+   */
+  const permissionModeOptions = useMemo(
+    () => THUNDER_PERMISSION_MODES.map((value) => ({ value, label: PERMISSION_MODE_LABELS[value] })),
+    []
+  );
+
+  /** Walk `THUNDER_PERMISSION_MODES`, wrapping at the end. */
+  const cyclePermissionMode = useCallback(() => {
+    if (!onSelectPermissionMode) return;
+    const current = permissionMode ? THUNDER_PERMISSION_MODES.indexOf(permissionMode) : -1;
+    const next = THUNDER_PERMISSION_MODES[(current + 1) % THUNDER_PERMISSION_MODES.length];
+    onSelectPermissionMode(next);
+  }, [permissionMode, onSelectPermissionMode]);
+
+  /**
+   * Shift+Tab also works with the focus on the chip or anywhere else in the
+   * composer, not only inside the textarea.
+   *
+   * The textarea's own handler runs first (React's listener sits on the root
+   * container, below `window`), so `defaultPrevented` is the handshake between
+   * the two: it is true exactly when the textarea already took the keystroke —
+   * cycling there, or handing `Tab` to an open suggestion menu. One press
+   * therefore cycles once, and a menu still wins.
+   */
+  useEffect(() => {
+    if (!onSelectPermissionMode) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Tab" || !e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.defaultPrevented) return;
+      const root = composerRef.current;
+      if (!root || !root.contains(document.activeElement)) return;
+      e.preventDefault();
+      cyclePermissionMode();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [cyclePermissionMode, onSelectPermissionMode]);
+
   const effectiveThinkingLevel = useMemo(() => {
     if (!supportsThinking) return "off";
     return thinkingLevel || currentModel?.default_thinking_level || "medium";
@@ -1318,6 +1414,7 @@ export function ChatComposer({
 
   return (
     <div
+      ref={composerRef}
       className="tb-composer-wrapper"
       onDragOver={handleDragOver}
       onDrop={handleDrop}
@@ -1678,6 +1775,36 @@ export function ChatComposer({
                 title={selectedModel || "Select Model"}
               />
             </div>
+
+            {/* Permission Mode Chip.
+
+                Deliberately *not* disabled while streaming: the daemon judges
+                each tool call by the mode in force when the call is made, so a
+                flip mid-run lands on the very next call — which is exactly the
+                move a user wants when the agent is already working. */}
+            {onSelectPermissionMode && (
+              <div
+                className={`tb-composer-chip tb-chip-mode${
+                  permissionMode ? ` tb-chip-mode-${permissionMode}` : ""
+                }`}
+              >
+                <ThemeIcon name="shield-check" size={ICON_SIZE.inline} />
+                <NativeMenuSelect<string>
+                  className="tb-composer-native-select"
+                  value={permissionMode}
+                  options={permissionModeOptions}
+                  onChange={(next) => onSelectPermissionMode(next as ThunderPermissionMode)}
+                  ariaLabel="Permission Mode"
+                  emptyLabel="Mode: …"
+                  title={
+                    permissionMode
+                      ? `${PERMISSION_MODE_HINTS[permissionMode]} — Shift+Tab cycles`
+                      : "Mode not known yet — Shift+Tab cycles"
+                  }
+                  testId="chat-composer-mode"
+                />
+              </div>
+            )}
 
             {/* Thinking Level Chip */}
             <div className={`tb-composer-chip${!supportsThinking ? " tb-chip-disabled" : ""}`}>

@@ -20266,6 +20266,46 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   user-select: none;
 }
 
+/* Approval-mode chip (`tb-chip-mode-<mode>`). The tint carries the signal:
+   "Plan" and "YOLO" are both just words, and they are the two extremes a user
+   has to tell apart before typing. The gradient runs from most cautious to
+   least — plan is the one that should catch the eye. */
+.tb-chip-mode-plan {
+  background: color-mix(in srgb, var(--color-warning) 16%, var(--color-secondary-bg));
+  border-color: color-mix(in srgb, var(--color-warning) 45%, transparent);
+}
+
+.tb-chip-mode-plan .tb-composer-native-select {
+  color: color-mix(in srgb, var(--color-warning) 78%, var(--color-label-primary));
+}
+
+.tb-chip-mode-ask {
+  background: color-mix(in srgb, var(--color-accent) 14%, var(--color-secondary-bg));
+  border-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
+}
+
+.tb-chip-mode-ask .tb-composer-native-select {
+  color: color-mix(in srgb, var(--color-accent) 78%, var(--color-label-primary));
+}
+
+.tb-chip-mode-acceptEdits {
+  background: color-mix(in srgb, var(--color-teal) 16%, var(--color-secondary-bg));
+  border-color: color-mix(in srgb, var(--color-teal) 45%, transparent);
+}
+
+.tb-chip-mode-acceptEdits .tb-composer-native-select {
+  color: color-mix(in srgb, var(--color-teal) 72%, var(--color-label-primary));
+}
+
+.tb-chip-mode-yolo {
+  background: color-mix(in srgb, var(--color-destructive) 13%, var(--color-secondary-bg));
+  border-color: color-mix(in srgb, var(--color-destructive) 38%, transparent);
+}
+
+.tb-chip-mode-yolo .tb-composer-native-select {
+  color: color-mix(in srgb, var(--color-destructive) 76%, var(--color-label-primary));
+}
+
 .tb-chip-locked:hover {
   background: var(--color-secondary-bg);
   color: var(--color-label-secondary);
@@ -20394,6 +20434,179 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   backdrop-filter: var(--backdrop-blur-heavy);
   -webkit-backdrop-filter: var(--backdrop-blur-heavy);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+/*
+ * `ui_request` dialog (plan approval, permission prompt, plugin question).
+ *
+ * Docks in the same slot as the question bubble above, for the same reason:
+ * the run is parked until it is answered, so it must not be coverable. The
+ * `is-host` variant is deliberately styled as a different *kind* of surface —
+ * a titled bar a plugin's own chrome cannot reproduce. Only host-sourced
+ * requests are authorisation moments; a plugin one is informational.
+ */
+.tb-chat-main .tb-composer-wrapper .tb-ui-request-card {
+  pointer-events: auto;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0 auto 10px;
+  max-width: 720px;
+  width: calc(100% - 32px);
+  padding: var(--space-2-5) var(--space-3);
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-lg);
+  background: var(--chat-compose-bg, var(--panel));
+  backdrop-filter: var(--backdrop-blur-heavy);
+  -webkit-backdrop-filter: var(--backdrop-blur-heavy);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.tb-ui-request-card.is-host {
+  border-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
+}
+
+.tb-ui-request-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 12.5px;
+  color: var(--color-label-primary, var(--text));
+}
+
+.tb-ui-request-head strong {
+  font-weight: 600;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.tb-ui-request-source {
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.tb-ui-request-card.is-host .tb-ui-request-source {
+  background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+  color: color-mix(in srgb, var(--color-accent) 80%, var(--color-label-primary, var(--text)));
+}
+
+.tb-ui-request-card.is-plugin .tb-ui-request-source {
+  background: color-mix(in srgb, var(--color-label-primary, var(--text)) 8%, transparent);
+  color: var(--color-label-secondary, var(--muted));
+}
+
+.tb-ui-request-path {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  color: var(--color-label-secondary, var(--muted));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tb-ui-request-document {
+  max-height: min(38vh, 320px);
+  overflow: auto;
+  padding: var(--space-2) var(--space-2-5);
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-label-primary, var(--text)) 3%, transparent);
+  font-size: 12.5px;
+}
+
+.tb-ui-request-message {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--color-label-secondary, var(--muted));
+  white-space: pre-wrap;
+}
+
+.tb-ui-request-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1-5);
+}
+
+.tb-ui-request-option {
+  margin: 0;
+  padding: var(--space-1-5) var(--space-2-5);
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-label-primary, var(--text)) 4%, transparent);
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tb-ui-request-option:hover {
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-accent) 35%, transparent);
+}
+
+.tb-ui-request-form {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.tb-ui-request-form.is-editor {
+  align-items: flex-end;
+}
+
+.tb-ui-request-input,
+.tb-ui-request-textarea {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: var(--space-1-5) var(--space-2);
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-md);
+  background: var(--color-secondary-bg);
+  color: var(--color-label-primary, var(--text));
+  font: inherit;
+  font-size: 12.5px;
+}
+
+.tb-ui-request-textarea {
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.tb-ui-request-input:focus,
+.tb-ui-request-textarea:focus {
+  outline: none;
+  border-color: var(--color-focus-ring);
+}
+
+.tb-ui-request-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 11px;
+}
+
+.tb-ui-request-dismiss {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-label-secondary, var(--muted));
+  font: inherit;
+  font-size: 11px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.tb-ui-request-note {
+  color: var(--color-label-tertiary, var(--muted));
+  line-height: 1.35;
 }
 
 .wb-terminal-composer-suggestion.is-active .tb-composer-suggestion-badge {

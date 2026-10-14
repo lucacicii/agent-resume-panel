@@ -29,6 +29,35 @@ import type { ThunderModelsConfig, ThunderScheduleInput } from "@agent-resume/co
 
 let configWatcher: fs.FSWatcher | null = null;
 
+/**
+ * Push the daemon's *session-scoped* frames to every window.
+ *
+ * Every other frame reaches the renderer through the run that owns it
+ * (`thunder:chat:event`, wired inside the runTask handler). A mode change and a
+ * permission dialog are precisely the frames that arrive when nothing is
+ * running — the user toggling plan mode before sending, or the agent asking to
+ * write during a run it will block — so they get their own channel rather than
+ * being smuggled into a stream that means "events of task X".
+ *
+ * Registered once, for the process lifetime.
+ */
+function registerSessionScopedThunderBroadcasts(): void {
+  const broadcast = (channel: string, payload: unknown) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (win.isDestroyed()) continue;
+      try {
+        win.webContents.send(channel, payload);
+      } catch {
+        // ignore when window destroyed
+      }
+    }
+  };
+
+  const client = getThunderClient();
+  client.onModeChanged((payload) => broadcast("thunder:mode:changed", payload));
+  client.onUiRequest((request) => broadcast("thunder:ui:request", request));
+}
+
 function startThunderConfigWatcher(): void {
   if (configWatcher) return;
   const home = os.homedir();
@@ -72,6 +101,7 @@ function startThunderConfigWatcher(): void {
 export function registerThunderIpc(): void {
   startThunderConfigWatcher();
   const config = createThunderConfigStore();
+  registerSessionScopedThunderBroadcasts();
 
   safeHandle("schedule:list", async () => {
     return listSchedules();
@@ -179,6 +209,8 @@ export function registerThunderIpc(): void {
         workspaceDir?: string;
         taskNoteId?: string;
         thinking_level?: string;
+        /** Pin this run's approval mode; omitted until the user picks one. */
+        mode?: import("@agent-resume/core").ThunderPermissionMode;
         attachments?: import("@agent-resume/core").ThunderImageAttachment[];
       }
     ) => {
@@ -254,6 +286,7 @@ export function registerThunderIpc(): void {
           taskNoteId: args.taskNoteId,
           gtdContext,
           thinking_level: args.thinking_level,
+          mode: args.mode,
           attachments: args.attachments,
           onEvent: (event) => {
             accumulateStreamEvent(snapshot, event);
@@ -334,6 +367,30 @@ export function registerThunderIpc(): void {
   safeHandle("thunder:chat:clearTaskQueue", async (_event, args: { taskId: string }) => {
     return getThunderClient().clearTaskQueue(args.taskId);
   });
+
+  safeHandle(
+    "thunder:chat:getPermissionState",
+    async (_event, args: { sessionId: string }) => {
+      return getThunderClient().getPermissionState(args.sessionId);
+    }
+  );
+
+  safeHandle(
+    "thunder:chat:setMode",
+    async (
+      _event,
+      args: { sessionId: string; mode: import("@agent-resume/core").ThunderPermissionMode }
+    ) => {
+      return getThunderClient().setMode(args.sessionId, args.mode);
+    }
+  );
+
+  safeHandle(
+    "thunder:chat:answerUi",
+    async (_event, args: import("@agent-resume/core").ThunderUiAnswer) => {
+      return getThunderClient().answerUi(args);
+    }
+  );
 
   safeHandle("thunder:chat:getTrace", async (_event, args: { sessionId: string; taskId?: string }) => {
     return getThunderClient().getTrace(args);

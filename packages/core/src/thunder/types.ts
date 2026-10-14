@@ -409,6 +409,89 @@ export interface ThunderChatStreamPayload {
 }
 
 /**
+ * The approval mode a session is judged by, spelled the way Thunder spells it.
+ *
+ * These four are the canonical wire values; Thunder's parser also tolerates a
+ * long tail of pre-0.4 aliases, but a host should only ever *send* these.
+ */
+export type ThunderPermissionMode = "plan" | "ask" | "acceptEdits" | "yolo";
+
+/** The order `Shift+Tab` cycles in — Thunder's `Mode::ALL`. */
+export const THUNDER_PERMISSION_MODES: ThunderPermissionMode[] = [
+  "plan",
+  "ask",
+  "acceptEdits",
+  "yolo"
+];
+
+/** What made a session's mode move. */
+export type ThunderModeChangeSource = "user" | "planApproved" | "runOption";
+
+/**
+ * Pushed by the daemon whenever a session's approval mode changes — whatever
+ * moved it: the user's own toggle, a run that pinned a mode, or an approved
+ * plan. A no-op is never announced, so receiving one always means a real
+ * change; `previous` is carried so a surface can render the transition rather
+ * than diffing values itself.
+ */
+export interface ThunderModeChanged {
+  sessionId: string;
+  /** Present when the change happened inside a run (a plan approval). */
+  taskId?: string;
+  mode: ThunderPermissionMode;
+  previous?: ThunderPermissionMode;
+  source: ThunderModeChangeSource;
+}
+
+/** Who raised a dialog. See `ThunderUiRequest`. */
+export type ThunderUiRequestSource = "host" | "plugin";
+
+/**
+ * A blocking dialog the agent — or a plugin — wants answered.
+ *
+ * `ui` picks the shape: `select` answers with one of `options`, `confirm` with
+ * a boolean, `input`/`editor` with free text, and `review` with one of
+ * `options` over a `content` document that IS the thing being approved.
+ *
+ * `source` is security-relevant: `host` marks a host-initiated interaction
+ * (a permission approval or a plan review) and must be rendered with chrome a
+ * plugin cannot imitate. A `plugin`-sourced request is display only and must
+ * never be treated as an authorisation decision.
+ */
+export interface ThunderUiRequest {
+  requestId: string;
+  taskId?: string;
+  sessionId?: string;
+  source: ThunderUiRequestSource;
+  ui: "select" | "confirm" | "input" | "editor" | "review";
+  title: string;
+  options?: string[];
+  message?: string;
+  placeholder?: string;
+  prefill?: string;
+  /** Where a reviewed document lives, for the header. */
+  path?: string;
+  /** The document under review, as markdown. */
+  content?: string;
+  timeoutMs?: number;
+}
+
+/**
+ * The answer to a `ThunderUiRequest`.
+ *
+ * Only one field is meaningful: `value` for a choice, `confirmed` for a
+ * yes/no, `cancelled` for a dismissal. Cancelling is how a surface says "nobody
+ * is going to answer this" — the daemon then fails closed immediately instead
+ * of holding the agent until `timeoutMs` elapses.
+ */
+export interface ThunderUiAnswer {
+  requestId: string;
+  value?: string;
+  confirmed?: boolean;
+  cancelled?: boolean;
+}
+
+/**
  * Live snapshot of an in-flight Thunder task, buffered in the main process so a
  * renderer that unmounted and remounted mid-answer can resume the stream instead
  * of restarting from the next incremental delta.
@@ -436,6 +519,12 @@ export interface ThunderChatTaskOptions {
   workspaceDir?: string;
   taskNoteId?: string;
   thinking_level?: string;
+  /**
+   * Pin this run's approval mode. Only sent once the user has actually chosen
+   * one: omitting it leaves the session's remembered mode (or `.thunder`'s
+   * `agent.defaultMode` for a first run) in charge.
+   */
+  mode?: ThunderPermissionMode;
   attachments?: ThunderImageAttachment[];
 }
 

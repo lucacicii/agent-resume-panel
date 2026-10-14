@@ -1064,6 +1064,11 @@ describe("WorkbenchPanel", () => {
       thunderChatGetTrace: async () => null,
       onThunderChatEvent: () => () => undefined,
       onThunderModelsChanged: () => () => undefined,
+      onThunderModeChanged: () => () => undefined,
+      onThunderUiRequest: () => () => undefined,
+      thunderChatGetPermissionState: async () => ({ mode: "yolo" }),
+      thunderChatSetMode: async () => ({ mode: "yolo" }),
+      thunderChatAnswerUi: async () => true,
       notesRead: async () => ({ record: { work: { projects: [] } }, content: "" }),
       notesListTasks: async () => [],
       notesLinkSessionToTask: vi.fn(async () => ({}))
@@ -1170,6 +1175,11 @@ describe("WorkbenchPanel", () => {
       thunderChatGetTrace: async () => null,
       onThunderChatEvent: () => () => undefined,
       onThunderModelsChanged: () => () => undefined,
+      onThunderModeChanged: () => () => undefined,
+      onThunderUiRequest: () => () => undefined,
+      thunderChatGetPermissionState: async () => ({ mode: "yolo" }),
+      thunderChatSetMode: async () => ({ mode: "yolo" }),
+      thunderChatAnswerUi: async () => true,
       notesRead: async () => ({ record: { work: { projects: [] } }, content: "" }),
       notesListTasks: async () => []
     } as unknown as typeof window.agentResume;

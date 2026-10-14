@@ -117,6 +117,8 @@ export function ThunderChatView({
       onSelectModel={chat.setSelectedModel}
       thinkingLevel={chat.thinkingLevel}
       onSelectThinkingLevel={chat.setThinkingLevel}
+      permissionMode={chat.permissionMode}
+      onSelectPermissionMode={chat.setPermissionMode}
       workspaceDir={chat.workspaceDir || projectPath}
       onSelectWorkspaceDir={chat.setWorkspaceDir}
       workspaceSource={chat.workspaceSource}
@@ -145,6 +147,8 @@ export function ThunderChatView({
       pendingQuestion={chat.pendingQuestion}
       onAnswerQuestion={chat.answerQuestion}
       onDismissQuestion={chat.dismissQuestion}
+      pendingUiRequest={chat.pendingUiRequest}
+      onAnswerUiRequest={chat.answerUiRequest}
     />
     </div>
   );

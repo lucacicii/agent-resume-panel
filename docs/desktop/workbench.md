@@ -65,6 +65,21 @@ Existing Thunder conversations are also listed in the Workbench session list (sc
 
 The binary is discovered automatically (a sibling checkout, the bundled copy under `Contents/Resources/thunder/bin`, `THUNDER_PATH`), and can be overridden in **Settings → Thunder** with the `thunder-daemon` / `thunder-tui` paths.
 
+#### Approval modes
+
+The composer's **shield chip**, next to the model picker, shows the mode the session is judged by:
+
+| Mode | What runs |
+|---|---|
+| **Plan** | Reads only — writes are refused, and the refusal names `write_plan` / `exit_plan_mode`. The plan text is the deliverable. |
+| **Ask** | Reads run; anything that changes something waits for your approval. |
+| **Accept Edits** | Edits inside the working area run without asking; the rest still asks. |
+| **YOLO** | Nothing asks. |
+
+**Shift+Tab** cycles them (Shift+Enter still inserts a newline, and an open `/`, `@` or `#` menu keeps the key). The mode can change mid-run — the daemon judges each tool call by the mode in force when the call is made — so the chip is never disabled while the agent works. A change made anywhere, including the plan dialog's own approval, moves the chip and is reported in the chat.
+
+When the agent needs an answer — a plan to approve, an `ask`-mode permission prompt, a plugin's question — a card docks above the input and the run waits. Answering it with the buttons is what releases the run; **Dismiss** declines it immediately. A card raised by Thunder itself (the shield badge) is an authorisation moment; a plugin-raised one is informational and never grants anything.
+
 ### Keyboard & defaults
 
 - **⌘P / Ctrl+P** and **⌘⇧P / Ctrl+Shift+P** open **Quick Access** / the **command palette** inside a workbench window: files in the task's folders, open or exit a task, start sessions and terminals, open side panels. Type `>` to filter commands.  
@@ -150,6 +165,21 @@ Thunder 是独立的 Rust Agent 运行时，自带终端客户端与可视化聊
 已有的 Thunder 会话也会出现在 Workbench 会话列表中（打开任务时按任务过滤）。点击行即作为可视化聊天打开；右键可选择 **以可视化聊天打开** 或 **在 Thunder TUI 中恢复**。
 
 二进制会自动探测（同级 checkout、`Contents/Resources/thunder/bin` 打包副本或 `THUNDER_PATH`），也可在 **设置 → Thunder** 中通过 `thunder-daemon` / `thunder-tui` 路径覆盖。
+
+#### 审批档位
+
+输入框工具栏上、模型选择器旁边的**盾牌 chip** 显示当前会话的判定档位：
+
+| 档位 | 会跑什么 |
+|---|---|
+| **Plan** | 只读——写操作被拒，且拒绝文案会点名 `write_plan` / `exit_plan_mode`。此时计划本身就是交付物。 |
+| **Ask** | 读操作直接跑；任何会改变东西的调用都等你批准。 |
+| **Accept Edits** | 工作区内的编辑不问直接跑；其余仍然要问。 |
+| **YOLO** | 什么都不问。 |
+
+**Shift+Tab** 在四档之间循环（Shift+Enter 仍是换行；`/`、`@`、`#` 菜单打开时按键归菜单）。运行中也能切——daemon 按「调用发起那一刻」的档位判定，所以 agent 干活时 chip 不会禁用。任何来源的变化（包括计划弹窗里批准的那一下）都会让 chip 跟着动，并在聊天里给出提示。
+
+agent 需要你回答时——批准计划、`ask` 档位的授权、插件的提问——输入框上方会停靠一张卡片，run 会一直等。点按钮作答才会放行；**Dismiss** 表示立刻拒绝。带盾牌徽章的是 Thunder 自己发起的**授权时刻**；插件发起的只是通知，不构成任何授权。
 
 ### 快捷键与默认值
 

@@ -12,7 +12,10 @@ import type {
   ThunderQuestionItem,
   ThunderImageAttachment,
   ThunderActiveStreamSnapshot,
-  ThunderMetricsSnapshot
+  ThunderMetricsSnapshot,
+  ThunderPermissionMode,
+  ThunderModeChanged,
+  ThunderUiRequest
 } from "@agent-resume/core";
 import { useTraceCollector } from "./useTraceCollector";
 
@@ -468,6 +471,32 @@ export function useThunderChat() {
    */
   const pendingQuestionsRef = useRef<Map<string, PendingQuestion>>(new Map());
 
+  /**
+   * The approval mode this session is judged by.
+   *
+   * Empty until hydrated, deliberately: the truth lives in the daemon per
+   * session and is *not* part of the stored conversation, so seeding a default
+   * here would show a confident wrong value — `yolo` is Thunder's own default,
+   * but `.thunder`'s `agent.defaultMode` may name anything.
+   */
+  const [permissionMode, setPermissionMode] = useState<ThunderPermissionMode | "">("");
+  /**
+   * Whether the user has actually chosen a mode this session.
+   *
+   * Only a chosen mode is pinned onto a run. Sending one unconditionally would
+   * silently override `agent.defaultMode` for every ARP session.
+   */
+  const permissionModeDirtyRef = useRef(false);
+
+  /** A dialog the agent is blocked on; rendered as a card until answered. */
+  const [pendingUiRequest, setPendingUiRequest] = useState<ThunderUiRequest | null>(null);
+  /**
+   * Every parked dialog this renderer has seen, keyed by session — same reason
+   * as `pendingQuestionsRef`: the daemon broadcasts for all sessions, so what
+   * docks must be derived from the session on screen.
+   */
+  const pendingUiRequestsRef = useRef<Map<string, ThunderUiRequest>>(new Map());
+
   // End-to-end task trace and file modification tracking
   const {
     currentTrace,
@@ -499,6 +528,11 @@ export function useThunderChat() {
   /** Dock the parked question of `sessionId`; no session (or none parked) clears it. */
   const syncPendingQuestion = useCallback((sessionId: string | null) => {
     setPendingQuestion(sessionId ? pendingQuestionsRef.current.get(sessionId) ?? null : null);
+  }, []);
+
+  /** Same, for a dialog the agent is blocked on. */
+  const syncPendingUiRequest = useCallback((sessionId: string | null) => {
+    setPendingUiRequest(sessionId ? pendingUiRequestsRef.current.get(sessionId) ?? null : null);
   }, []);
 
   const refreshDaemonStatus = useCallback(async () => {
@@ -546,6 +580,25 @@ export function useThunderChat() {
       // The bubble follows its conversation: opening a session docks its own
       // parked question (if any) and drops the one left behind.
       syncPendingQuestion(sessionId);
+      syncPendingUiRequest(sessionId);
+      // The approval mode is the daemon's per-session state, not part of the
+      // stored conversation (unlike `model` / `thinking_level`, which the
+      // conversation record carries), so it has to be asked for. Not awaited:
+      // the chip can fill in a moment later, and a mode change pushes a
+      // correction anyway.
+      setPermissionMode("");
+      permissionModeDirtyRef.current = false;
+      void desktopApi()
+        .thunderChatGetPermissionState({ sessionId })
+        .then((state) => {
+          // A fast switch to another session must not have this land on it.
+          if (activeSessionIdRef.current === sessionId && state?.mode) {
+            setPermissionMode(state.mode);
+          }
+        })
+        .catch((err) => {
+          console.warn("[thunder-chat] could not read the session's mode:", err);
+        });
       const conv = await desktopApi().thunderChatGetConversation({ sessionId });
       if (conv) {
         if (conv.model) {
@@ -783,7 +836,7 @@ export function useThunderChat() {
     } finally {
       setLoading(false);
     }
-  }, [loadTrace, models, restoreFromSnapshot, setFileChanges, syncPendingQuestion]);
+  }, [loadTrace, models, restoreFromSnapshot, setFileChanges, syncPendingQuestion, syncPendingUiRequest]);
 
   const createNewSession = useCallback(() => {
     setActiveSessionId(null);
@@ -793,6 +846,11 @@ export function useThunderChat() {
     setActiveTaskId(null);
     // A bubble belongs to the session that raised it.
     setPendingQuestion(null);
+    setPendingUiRequest(null);
+    // A brand-new session has no mode yet: leave it to the daemon, so
+    // `.thunder`'s `agent.defaultMode` still decides its first run.
+    setPermissionMode("");
+    permissionModeDirtyRef.current = false;
     setQueued({ steering: [], followUp: [] });
     setLiveSegments([]);
     setSessionTotalTokens(0);
@@ -841,6 +899,61 @@ export function useThunderChat() {
       }
     },
     [models]
+  );
+
+  /**
+   * Choose the approval mode for this session.
+   *
+   * Optimistic, then reconciled: the chip moves at once, and snaps back if the
+   * daemon refuses (an unknown value, or a daemon that predates `set_mode`).
+   * The daemon also pushes a `mode_changed` for a real change, so a stale
+   * optimistic value corrects itself even when the command succeeded.
+   *
+   * Before the first message there is no session to name, so the choice is kept
+   * locally and travels on the first run instead — minting a session id here
+   * would leave the daemon holding an entry for a session that may never run.
+   */
+  const handleSelectPermissionMode = useCallback(
+    (next: ThunderPermissionMode) => {
+      const previous = permissionMode;
+      setPermissionMode(next);
+      permissionModeDirtyRef.current = true;
+      const sessionId = activeSessionIdRef.current;
+      if (!sessionId) return;
+      void desktopApi()
+        .thunderChatSetMode({ sessionId, mode: next })
+        .catch((err) => {
+          console.warn("[thunder-chat] set_mode refused, keeping the old mode:", err);
+          setPermissionMode(previous);
+        });
+    },
+    [permissionMode]
+  );
+
+  /**
+   * Answer the dialog the agent is blocked on.
+   *
+   * Cancelling is a first-class answer: it tells the daemon to fail closed now
+   * rather than holding the agent for the rest of the timeout.
+   */
+  const answerUiRequest = useCallback(
+    async (answer: { value?: string; confirmed?: boolean; cancelled?: boolean }) => {
+      const pending = pendingUiRequest;
+      if (!pending) return;
+      pendingUiRequestsRef.current.delete(pending.sessionId ?? "");
+      setPendingUiRequest(null);
+      try {
+        await desktopApi().thunderChatAnswerUi({
+          requestId: pending.requestId,
+          value: answer.value,
+          confirmed: answer.confirmed,
+          cancelled: answer.cancelled
+        });
+      } catch (err) {
+        console.error("[thunder-chat] could not deliver the dialog answer:", err);
+      }
+    },
+    [pendingUiRequest]
   );
 
   const deleteSession = useCallback(
@@ -1141,6 +1254,10 @@ export function useThunderChat() {
           workspaceDir: ws,
           taskNoteId: effectiveTaskNoteId,
           thinking_level: thinking,
+          // Only a mode the user actually chose is pinned onto the run. Sending
+          // one unconditionally would make `.thunder`'s `agent.defaultMode` dead
+          // for every ARP session.
+          mode: permissionModeDirtyRef.current && permissionMode ? permissionMode : undefined,
           attachments: options?.attachments
         });
 
@@ -1181,7 +1298,7 @@ export function useThunderChat() {
         }
       }
     },
-    [finalizeSessionTurn, finishTaskTrace, loadConversations, models, selectedModel, startTaskTrace, taskNoteId, thinkingLevel, workspaceDir, workspaceSource]
+    [finalizeSessionTurn, finishTaskTrace, loadConversations, models, permissionMode, selectedModel, startTaskTrace, taskNoteId, thinkingLevel, workspaceDir, workspaceSource]
   );
 
   const prefillComposer = useCallback((text: string) => {
@@ -1723,6 +1840,38 @@ export function useThunderChat() {
     return () => unsub?.();
   }, [finalizeSessionTurn, recordTraceEvent]);
 
+  // Approval-mode changes arrive *outside* the task stream: the daemon pushes
+  // them whether or not a run is live, because the user may toggle plan mode
+  // before sending anything. Routed by session, like a parked question.
+  useEffect(() => {
+    const unsub = desktopApi().onThunderModeChanged((payload: ThunderModeChanged) => {
+      if (payload.sessionId !== activeSessionIdRef.current) return;
+      setPermissionMode(payload.mode);
+      // A change the user did not make is worth saying out loud — the chip
+      // moving on its own would otherwise look like a glitch.
+      if (payload.source === "planApproved") {
+        setTitleNotice({
+          kind: "success",
+          text: `Plan approved — approval mode is now ${payload.mode}`
+        });
+      }
+    });
+    return () => unsub?.();
+  }, []);
+
+  // Dialogs the agent is blocked on (a permission approval, a plan review).
+  // Parked per session for the same reason questions are.
+  useEffect(() => {
+    const unsub = desktopApi().onThunderUiRequest((request: ThunderUiRequest) => {
+      const key = request.sessionId ?? "";
+      pendingUiRequestsRef.current.set(key, request);
+      if (key === (activeSessionIdRef.current ?? "")) {
+        setPendingUiRequest(request);
+      }
+    });
+    return () => unsub?.();
+  }, []);
+
   // Initial load
   useEffect(() => {
     void refreshDaemonStatus();
@@ -1775,6 +1924,9 @@ export function useThunderChat() {
     daemonStatus,
     setSelectedModel: handleSelectModel,
     setThinkingLevel,
+    /** The daemon's per-session approval mode; `""` until hydrated. */
+    permissionMode,
+    setPermissionMode: handleSelectPermissionMode,
     setWorkspaceDir,
     setWorkspaceGtdTask,
     setWorkspaceFinderDir,
@@ -1795,6 +1947,8 @@ export function useThunderChat() {
     pendingQuestion,
     answerQuestion,
     dismissQuestion,
+    pendingUiRequest,
+    answerUiRequest,
     refreshDaemonStatus,
     currentTrace,
     traceSpans,

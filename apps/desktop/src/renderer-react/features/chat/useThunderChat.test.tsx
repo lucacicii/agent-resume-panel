@@ -12,6 +12,16 @@ interface Harness {
   emit(payload: HarnessEvent): void;
   resolveRun(value: unknown): void;
   rejectRun(error: unknown): void;
+  /** A pushed mode change, as the daemon's session-scoped channel delivers it. */
+  emitMode(payload: {
+    sessionId: string;
+    taskId?: string;
+    mode: string;
+    previous?: string;
+    source: string;
+  }): void;
+  /** A blocking dialog, same channel treatment. */
+  emitUi(request: Record<string, unknown>): void;
 }
 
 /** The daemon's model list, as the settings pane receives it. */
@@ -37,6 +47,8 @@ function thunderStatus() {
 
 function installHarness(): Harness {
   let emit: ((payload: HarnessEvent) => void) | undefined;
+  let emitMode: ((payload: any) => void) | undefined;
+  let emitUi: ((request: any) => void) | undefined;
   let resolveRun: ((value: unknown) => void) | undefined;
   let rejectRun: ((reason?: unknown) => void) | undefined;
 
@@ -47,6 +59,9 @@ function installHarness(): Harness {
     thunderChatGetActiveStream: vi.fn().mockResolvedValue(null),
     thunderChatGetTrace: vi.fn().mockResolvedValue(null),
     thunderChatAnswerQuestion: vi.fn().mockResolvedValue(true),
+    thunderChatGetPermissionState: vi.fn().mockResolvedValue({ mode: "yolo" }),
+    thunderChatSetMode: vi.fn().mockResolvedValue({ mode: "yolo" }),
+    thunderChatAnswerUi: vi.fn().mockResolvedValue(true),
     thunderChatRunTask: vi.fn().mockImplementation(
       () =>
         new Promise<unknown>((resolve, reject) => {
@@ -60,13 +75,27 @@ function installHarness(): Harness {
         emit = undefined;
       };
     }),
+    onThunderModeChanged: vi.fn().mockImplementation((callback: (payload: any) => void) => {
+      emitMode = callback;
+      return () => {
+        emitMode = undefined;
+      };
+    }),
+    onThunderUiRequest: vi.fn().mockImplementation((callback: (request: any) => void) => {
+      emitUi = callback;
+      return () => {
+        emitUi = undefined;
+      };
+    }),
     onThunderModelsChanged: vi.fn().mockReturnValue(() => {})
   } as unknown as typeof window.agentResume;
 
   return {
     emit: (payload) => emit?.(payload),
     resolveRun: (value) => resolveRun?.(value),
-    rejectRun: (error) => rejectRun?.(error)
+    rejectRun: (error) => rejectRun?.(error),
+    emitMode: (payload) => emitMode?.(payload),
+    emitUi: (request) => emitUi?.(request)
   };
 }
 
@@ -462,5 +491,242 @@ describe("useThunderChat streaming token metrics", () => {
       void result.current.sendMessage("next task");
     });
     expect(result.current.lastRunMetrics).toBeNull();
+  });
+});
+
+describe("useThunderChat approval mode", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("hydrates the chip from the daemon when a session is opened", async () => {
+    installHarness();
+    // The mode is the daemon's per-session state and is not in the stored
+    // conversation, so it has to be asked for rather than read off `conv`.
+    (window.agentResume.thunderChatGetPermissionState as any).mockResolvedValue({ mode: "plan" });
+    const { result } = renderHook(() => useThunderChat());
+
+    await act(async () => {
+      await result.current.selectSession("sess_a");
+    });
+
+    expect(window.agentResume.thunderChatGetPermissionState).toHaveBeenCalledWith({
+      sessionId: "sess_a"
+    });
+    await waitFor(() => expect(result.current.permissionMode).toBe("plan"));
+  });
+
+  it("starts unknown rather than guessing a default", async () => {
+    installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    expect(result.current.permissionMode).toBe("");
+  });
+
+  it("sends the choice to the daemon and rolls the chip back when it is refused", async () => {
+    installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    await act(async () => {
+      await result.current.selectSession("sess_a");
+    });
+    await waitFor(() => expect(result.current.permissionMode).toBe("yolo"));
+
+    act(() => result.current.setPermissionMode("plan"));
+    expect(result.current.permissionMode).toBe("plan");
+    await waitFor(() =>
+      expect(window.agentResume.thunderChatSetMode).toHaveBeenCalledWith({
+        sessionId: "sess_a",
+        mode: "plan"
+      })
+    );
+
+    // A daemon that predates `set_mode` rejects; the chip must say so by going
+    // back rather than showing a mode the session is not actually judged by.
+    (window.agentResume.thunderChatSetMode as any).mockRejectedValueOnce(new Error("unknown method"));
+    act(() => result.current.setPermissionMode("acceptEdits"));
+    await waitFor(() => expect(result.current.permissionMode).toBe("plan"));
+  });
+
+  it("keeps a pre-session choice local instead of minting a session for it", async () => {
+    installHarness();
+    const { result } = renderHook(() => useThunderChat());
+
+    act(() => result.current.setPermissionMode("plan"));
+
+    expect(result.current.permissionMode).toBe("plan");
+    expect(window.agentResume.thunderChatSetMode).not.toHaveBeenCalled();
+  });
+
+  it("follows a pushed change for the open session and ignores other sessions", async () => {
+    const harness = installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    await act(async () => {
+      await result.current.selectSession("sess_a");
+    });
+    await waitFor(() => expect(result.current.permissionMode).toBe("yolo"));
+
+    act(() =>
+      harness.emitMode({
+        sessionId: "sess_b",
+        mode: "plan",
+        previous: "yolo",
+        source: "user"
+      })
+    );
+    expect(result.current.permissionMode).toBe("yolo");
+
+    act(() =>
+      harness.emitMode({
+        sessionId: "sess_a",
+        mode: "ask",
+        previous: "yolo",
+        source: "user"
+      })
+    );
+    expect(result.current.permissionMode).toBe("ask");
+  });
+
+  it("announces an approval the plan dialog made, because the chip moved on its own", async () => {
+    const harness = installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    await act(async () => {
+      await result.current.selectSession("sess_a");
+    });
+
+    act(() =>
+      harness.emitMode({
+        sessionId: "sess_a",
+        taskId: "task_1",
+        mode: "acceptEdits",
+        previous: "plan",
+        source: "planApproved"
+      })
+    );
+
+    expect(result.current.permissionMode).toBe("acceptEdits");
+    expect(result.current.titleNotice?.text).toContain("Plan approved");
+  });
+
+  it("passes the mode to the run once the user has chosen one", async () => {
+    installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    await waitFor(() => expect(result.current.models.length).toBe(1));
+
+    act(() => result.current.setPermissionMode("plan"));
+    act(() => {
+      void result.current.sendMessage("只输出两个字：好的");
+    });
+
+    await waitFor(() => expect(window.agentResume.thunderChatRunTask).toHaveBeenCalled());
+    expect((window.agentResume.thunderChatRunTask as any).mock.calls[0][0].mode).toBe("plan");
+  });
+
+  it("omits the mode when the user never touched the chip, so .thunder's defaultMode still applies", async () => {
+    installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    await waitFor(() => expect(result.current.models.length).toBe(1));
+
+    act(() => {
+      void result.current.sendMessage("只输出两个字：好的");
+    });
+
+    await waitFor(() => expect(window.agentResume.thunderChatRunTask).toHaveBeenCalled());
+    expect((window.agentResume.thunderChatRunTask as any).mock.calls[0][0].mode).toBeUndefined();
+  });
+});
+
+describe("useThunderChat ui_request host", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const reviewRequest = {
+    requestId: "ui_1",
+    sessionId: "sess_a",
+    taskId: "task_1",
+    source: "host",
+    ui: "review",
+    title: "Approve this plan?",
+    path: "/w/.thunder/plans/sess_a.md",
+    content: "# Plan",
+    options: ["Yes, but ask before each edit", "No, keep planning"]
+  };
+
+  it("docks the dialog the run is blocked on", async () => {
+    const harness = installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    await act(async () => {
+      await result.current.selectSession("sess_a");
+    });
+
+    act(() => harness.emitUi(reviewRequest));
+
+    expect(result.current.pendingUiRequest?.requestId).toBe("ui_1");
+  });
+
+  it("parks a dialog for another session instead of docking it", async () => {
+    const harness = installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    await act(async () => {
+      await result.current.selectSession("sess_a");
+    });
+
+    act(() => harness.emitUi({ ...reviewRequest, requestId: "ui_2", sessionId: "sess_b" }));
+    expect(result.current.pendingUiRequest).toBeNull();
+
+    // Switching to the blocked session docks what was parked for it.
+    await act(async () => {
+      await result.current.selectSession("sess_b");
+    });
+    expect(result.current.pendingUiRequest?.requestId).toBe("ui_2");
+  });
+
+  it("answers with the option verbatim and clears the card", async () => {
+    const harness = installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    await act(async () => {
+      await result.current.selectSession("sess_a");
+    });
+    act(() => harness.emitUi(reviewRequest));
+
+    await act(async () => {
+      await result.current.answerUiRequest({ value: "Yes, but ask before each edit" });
+    });
+
+    // The daemon matches the answer against the label it sent, so the string
+    // travels back untouched.
+    expect(window.agentResume.thunderChatAnswerUi).toHaveBeenCalledWith({
+      requestId: "ui_1",
+      value: "Yes, but ask before each edit",
+      confirmed: undefined,
+      cancelled: undefined
+    });
+    expect(result.current.pendingUiRequest).toBeNull();
+
+    // A remount must not re-dock a question that has been answered.
+    await act(async () => {
+      await result.current.selectSession("sess_b");
+      await result.current.selectSession("sess_a");
+    });
+    expect(result.current.pendingUiRequest).toBeNull();
+  });
+
+  it("sends an explicit cancellation so the daemon can fail closed now", async () => {
+    const harness = installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    await act(async () => {
+      await result.current.selectSession("sess_a");
+    });
+    act(() => harness.emitUi(reviewRequest));
+
+    await act(async () => {
+      await result.current.answerUiRequest({ cancelled: true });
+    });
+
+    expect(window.agentResume.thunderChatAnswerUi).toHaveBeenCalledWith({
+      requestId: "ui_1",
+      value: undefined,
+      confirmed: undefined,
+      cancelled: true
+    });
   });
 });

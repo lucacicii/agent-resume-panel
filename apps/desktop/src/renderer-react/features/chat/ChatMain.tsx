@@ -7,6 +7,7 @@ import { ChatTimeline } from "./ChatTimeline";
 import { buildTimelineItems, scrollTopForAnchor } from "./timelineModel";
 import { ChatComposer } from "./ChatComposer";
 import { ChatQuestionBubble } from "./ChatQuestionBubble";
+import { ChatUiRequestCard } from "./ChatUiRequestCard";
 import { ChatEmptyState } from "./ChatEmptyState";
 import { TracePopover } from "./TracePopover";
 import { ChatChangesPopover } from "./ChatChangesPopover";
@@ -49,6 +50,9 @@ interface ChatMainProps {
   onSelectModel: (model: string) => void;
   thinkingLevel: string;
   onSelectThinkingLevel: (level: string) => void;
+  /** Approval mode for this session; `""` until the daemon has been asked. */
+  permissionMode?: import("@agent-resume/core").ThunderPermissionMode | "";
+  onSelectPermissionMode?: (mode: import("@agent-resume/core").ThunderPermissionMode) => void;
   workspaceDir: string;
   onSelectWorkspaceDir: (dir: string) => void;
   workspaceSource?: "finder" | "gtd";
@@ -86,6 +90,16 @@ interface ChatMainProps {
   pendingQuestion?: { questionId: string; taskId: string; questions: ThunderQuestionItem[] } | null;
   onAnswerQuestion?: (answers: Record<string, string> | undefined, cancelled?: boolean) => void | Promise<void>;
   onDismissQuestion?: () => void | Promise<void>;
+  /**
+   * Dialog the daemon is blocking on (`ui_request`) — a plan approval, an
+   * `ask`-mode permission prompt, or a plugin's own question.
+   */
+  pendingUiRequest?: import("@agent-resume/core").ThunderUiRequest | null;
+  onAnswerUiRequest?: (answer: {
+    value?: string;
+    confirmed?: boolean;
+    cancelled?: boolean;
+  }) => void | Promise<void>;
 }
 
 export function ChatMain({
@@ -103,6 +117,8 @@ export function ChatMain({
   onSelectModel,
   thinkingLevel,
   onSelectThinkingLevel,
+  permissionMode,
+  onSelectPermissionMode,
   workspaceDir,
   onSelectWorkspaceDir,
   workspaceSource,
@@ -130,7 +146,9 @@ export function ChatMain({
   contextWindowLimit,
   pendingQuestion,
   onAnswerQuestion,
-  onDismissQuestion
+  onDismissQuestion,
+  pendingUiRequest,
+  onAnswerUiRequest
 }: ChatMainProps) {
   const feedRef = useRef<HTMLDivElement | null>(null);
   /** A strategy while true: follow the newest content (正文 + thinking). */
@@ -382,15 +400,18 @@ export function ChatMain({
   const showEmptyState = !hasMessages;
   /** The agent is blocked on ask_user_question — the card docks above the composer. */
   const hasQuestion = Boolean(pendingQuestion && pendingQuestion.questions.length > 0);
+  /** A `ui_request` dialog is docked in the same slot; only one ever shows at a
+      time, because the daemon raises one blocking dialog per run. */
+  const hasDialog = Boolean(pendingUiRequest || hasQuestion);
 
   // A strategy: follow streaming content unless the user scrolled away (B).
   // The question card also docks/un-docks, so re-pin then too.
   useLayoutEffect(() => {
     scrollToBottom();
-  }, [messages.length, liveSegments, hasQuestion, scrollToBottom]);
+  }, [messages.length, liveSegments, hasDialog, scrollToBottom]);
 
   return (
-    <div className={hasQuestion ? "tb-chat-main has-question" : "tb-chat-main"}>
+    <div className={hasDialog ? "tb-chat-main has-question" : "tb-chat-main"}>
       {/* Chat Header */}
       <header className="tb-chat-header">
         <div className="tb-chat-header-title-box">
@@ -582,7 +603,16 @@ export function ChatMain({
           so neither can cover the messages. */}
       <ChatComposer
         docked={
-          hasQuestion && pendingQuestion ? (
+          pendingUiRequest && onAnswerUiRequest ? (
+            /* Keyed by request: answer text belongs to the dialog that was up,
+               and the daemon only ever has one in flight, so a new dialog must
+               arrive as a new card rather than inherit the last one's draft. */
+            <ChatUiRequestCard
+              key={pendingUiRequest.requestId}
+              request={pendingUiRequest}
+              onAnswer={onAnswerUiRequest}
+            />
+          ) : hasQuestion && pendingQuestion ? (
             <ChatQuestionBubble
               questionId={pendingQuestion.questionId}
               questions={pendingQuestion.questions}
@@ -602,6 +632,8 @@ export function ChatMain({
         onSelectModel={onSelectModel}
         thinkingLevel={thinkingLevel}
         onSelectThinkingLevel={onSelectThinkingLevel}
+        permissionMode={permissionMode}
+        onSelectPermissionMode={onSelectPermissionMode}
         workspaceDir={workspaceDir}
         onSelectWorkspaceDir={onSelectWorkspaceDir}
         workspaceSource={workspaceSource}
