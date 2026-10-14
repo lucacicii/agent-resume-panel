@@ -166,6 +166,42 @@ export interface ThunderMetricsSnapshot {
   wall_duration_ms?: number;
 }
 
+/**
+ * What a Thunder run is doing right now — the payload of the `agent_status`
+ * custom event.
+ *
+ * Thunder's `StatusPlugin` is the single authority for this, so a consumer
+ * reads it rather than re-deriving a phase from the raw stream (which is what
+ * the chat used to do, badly: no event is emitted at all while an approval gate
+ * has the run parked).
+ *
+ * Frames are emitted **only when the status changes**, and `seq` is monotonic
+ * within a run, so a consumer drops any frame that does not move forward.
+ */
+export type ThunderAgentPhase =
+  | "idle"
+  | "thinking"
+  | "streaming"
+  | "tool"
+  | "awaiting_user"
+  | "paused"
+  | "compacting"
+  | "done"
+  | "error";
+
+export interface ThunderAgentStatus {
+  session_id: string;
+  phase: ThunderAgentPhase;
+  /** Present only while `phase` is `tool`. */
+  tool?: string;
+  turn: number;
+  /** Free-form detail for a phase that needs one (an error message, say). */
+  detail?: string;
+  /** When this run started, not when this frame was made. */
+  started_at_ms: number;
+  seq: number;
+}
+
 export interface ThunderTraceSpan {
   id: string;
   turn: number;
@@ -236,8 +272,11 @@ export type ThunderAgentEvent =
   | {
       /**
        * A host-defined event forwarded verbatim by the kernel. Thunder emits
-       * `kind: "file_change"` from the tool layer; the payload shape is
-       * `ThunderFileChangePayload`. Other kinds are safe to ignore.
+       * `kind: "file_change"` from the tool layer (payload
+       * `ThunderFileChangePayload`), `kind: "metrics_update"` from the telemetry
+       * plugin (`ThunderMetricsSnapshot`), and `kind: "agent_status"` from the
+       * execution-status plugin (`ThunderAgentStatus`). Other kinds are safe to
+       * ignore.
        *
        * Note this is `type: "custom"` with a `kind` discriminator — NOT a
        * top-level `type: "file_change"`. The kernel deliberately does not
@@ -514,6 +553,8 @@ export interface ThunderActiveStreamSnapshot {
   streamingReasoning: string;
   streamingTools: ThunderToolExecutionRecord[];
   metrics?: ThunderMetricsSnapshot;
+  /** Latest `agent_status` frame, kept so a remount shows the live phase. */
+  agentStatus?: ThunderAgentStatus;
   events: ThunderObservedEvent[];
 }
 

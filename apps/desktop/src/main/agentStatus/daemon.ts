@@ -328,6 +328,7 @@ const AGENT_KINDS: readonly AgentKind[] = [
   "agy",
   "prime",
   "omp",
+  "thunder",
   "unknown"
 ];
 const AGENT_STATES: readonly AgentState[] = ["idle", "working", "blocked", "unknown"];

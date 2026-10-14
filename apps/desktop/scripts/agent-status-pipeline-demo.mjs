@@ -75,6 +75,19 @@ console.log(
 check("scan stripped the status sequence", forwarded.includes("633;AR"), false);
 check("scan read the report", reports.map((report) => report.state), ["blocked"]);
 
+// ②b The same channel, a program that names itself: OSC 7501, which is how the
+// thunder TUI reports (it is not a PTY agent and installs no hooks).
+const thunderScan = createScanState();
+const thunderForwarded = scanChunk(thunderScan, "\x1b]7501;app=thunder:state=working:kind=bash\x1b\\");
+const thunderReports = drainReports(thunderScan);
+console.log(
+  `②b OSC 7501: ${JSON.stringify(thunderReports)} forwarded=${JSON.stringify(thunderForwarded)}`
+);
+check("a program can report for itself", thunderReports, [
+  { state: "working", detail: "bash", source: "osc7501:thunder" }
+]);
+check("the report never reaches the screen", thunderForwarded, "");
+
 // ③ mirror.ts: bytes → screen text (soft wraps undone), at 60 columns.
 const mirror = new PaneMirror({ cols: 60, rows: 12 });
 mirror.write(forwarded);
@@ -173,6 +186,42 @@ console.log(
 );
 check("native wins over the screen", nativeSnapshot.byPaneId["1"].state, "working");
 check("native panes skip the rules", nativeExplain.evaluated.length, 0);
+
+// ⑧ A pane whose program reported for itself, end to end: the bytes read in ②b,
+// carried the way sensor.ts carries them.
+await client.request("telemetry.publish", {
+  paneId: 2,
+  agent: "thunder",
+  ptyPid: 2345,
+  sessionKey: "cli:thunder:sess_1",
+  oscTitle: "",
+  cursorHidden: false,
+  toolRunning: true,
+  screenText: "  ⏺ Ran the build\n",
+  lastOutputAt: Date.now() - 500,
+  at: Date.now()
+});
+const selfReport = thunderReports[0];
+await client.request("pane.report_state", {
+  paneId: 2,
+  source: selfReport.source,
+  agent: "thunder",
+  state: selfReport.state,
+  seq: 1,
+  sessionKey: "cli:thunder:sess_1"
+});
+const selfSnapshot = await client.request("status.snapshot");
+const selfExplain = await client.request("status.explain", { paneId: 2 });
+console.log(
+  `⑧ a pane that speaks for itself: ${JSON.stringify(selfSnapshot.byPaneId["2"])}` +
+    ` explain=${JSON.stringify(selfExplain.reason)}`
+);
+check("the pane is named for the agent it runs", selfSnapshot.byPaneId["2"].agent, "thunder");
+check("a self-reporting pane is native from then on", selfSnapshot.byPaneId["2"].authority, "native");
+check("the snapshot collapses it to the coarse source", selfSnapshot.byPaneId["2"].source, "native");
+// The pane's own name for itself survives where explain can show it.
+check("explain still names the program that reported", String(selfExplain.reason).includes("osc7501:thunder"), true);
+check("and its screen is never read", selfExplain.evaluated.length, 0);
 
 client.close();
 daemon.kill("SIGTERM");

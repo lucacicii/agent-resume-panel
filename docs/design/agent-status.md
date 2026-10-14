@@ -107,8 +107,9 @@
 ### 4.1 状态词汇
 
 `AgentState = idle | working | blocked | unknown`
-`AgentKind = claude | codex | pi | opencode | grok | cursor | agy | prime | unknown`
-(八种来自仓库自己的 `buildResumeCommand`,即 App 真能恢复会话的 agent。)
+`AgentKind = claude | codex | pi | opencode | grok | cursor | agy | prime | omp | thunder | unknown`
+(前十种里,前九种来自仓库自己的 `buildResumeCommand`,即 App 真能恢复会话的 agent;`thunder` 是本 App
+自己内嵌的 TUI(`cli:thunder` 目标),不是可恢复的第三方 agent——它自报状态,不装钩子,见 §6。)
 
 UI 词汇是投影:`blocked → 等待你`,`working → 运行中`,`idle/unknown → 不显示圆点`(宁可少提示,不可误报);
 `connecting/error` 只来自 ACP,不由守护进程产生。
@@ -230,6 +231,23 @@ stdout,传感器扫描后转为 `native` 上报——因此 pi 的精确度与�
 回执前一个字都不发,而 pane 的终端就是本 App——所以 `ptyHost` 把这条回执写回程序。omp(≥ 18.8.7)
 不做探测,直接上报。
 
+**thunder 是唯一两条路都不走钩子的 agent**,因为它是本 App 自己嵌在里面的:
+
+| 路径 | 通道 | 消费点 |
+| --- | --- | --- |
+| 聊天面板(不经 PTY) | thunder daemon 的执行状态插件推 `agent_status` 自定义事件(`{phase, tool, turn, seq}`) | `useThunderChat` → 聊天头部胶囊;`useThunderChatStatus` → 会话圆点 |
+| `cli:thunder` 窗格里的 TUI | OSC 7501,`app=thunder` | 上面那套(snapshot 的 `source` 归一为 `native`,explain 里写作 `osc7501:thunder`) |
+
+TUI 启动第一帧就写一条 `app=thunder:state=idle`——这条同时是**给窗格命名**的动作(面板靠 `app=`
+知道窗格里是哪个程序),退出时补一条 `idle` 撤下记录:窗格活得比进程久,程序一旦报过状态,面板就
+不再读该窗格的屏幕了。`identity.ts` 因此认 `thunder-tui`(可执行名)与 `cli:thunder`(会话键),
+而**不需要** `engine/manifests/thunder.json`:OSC 上报已把该 pane 的权威置为 `native`,屏幕规则
+根本不再求值(§4.2 的"连算都不算")。
+
+阶段 → 圆点的投影在 `agentPhaseToDotStatus`,与 §4.1 的投影同向:`awaiting_user`/`paused → awaiting_user`
+(用户自己按的暂停同样"没有你不会继续")、`thinking`/`streaming`/`tool`/`compacting → running`、
+`error → error`、`idle`/`done → open`。帧只在跃迁时推送,`seq` 单调,非递增帧丢弃。
+
 ---
 
 ## 7. 守护进程
@@ -278,6 +296,10 @@ dev 不打开(否则开发时天天弹窗)。
 ---
 
 ## 8. 钩子集成
+
+**thunder 不在这个清单里,这是有意的**:它不需要钩子,因为它就是本 App 自己嵌的——状态走它自己的
+执行状态插件与 OSC 7501(§6),因此**一个字节的用户全局配置都不用改写**,也就没有 §8.2 那道门禁存在的
+必要(它本来就是为了让全局钩子在别人的终端里失效)。
 
 ### 8.1 安装清单
 
@@ -346,6 +368,13 @@ payload 只在包装脚本里被粗略 grep 出 `session_id`(作为 session 归�
 
 `useAgentStatus` 订阅快照并把 `AgentState` 投影为圆点;`activeSessionDots` 为**每个 pane**生成一个点,并带上它所属的 `workbenchId`。
 ACP 聊天不是 PTY pane,它的生命周期留在渲染进程(`useAcpStatus` 直接读 ACP 流),与守护进程的状态合并展示。
+Thunder 聊天同理且更彻底:一个 run 的阶段由 thunder 自己报(`useThunderChatStatus` 读 `agent_status`),
+圆点因此知道它是**在跑**还是**在等你**(以前 `cli:thunder` 恒为 `open`)。三份 runtime 在
+`WorkbenchPanel` 的 `sessionRuntimeByPaneKey` 里按 pane key 合并,优先级是 ACP / Thunder 覆盖守护进程的
+答案——结构化生命周期比进程观察更近。
+
+聊天头部另有一枚实时胶囊(`AgentStatusChip`,`idle`/`done` 不显示):它存在的主要理由正是圆点答不出的
+那一档——**卡在提问/审批上的 run 从外面看和"正在思考"一模一样**。
 
 三层展示,共享同一份点数据:
 

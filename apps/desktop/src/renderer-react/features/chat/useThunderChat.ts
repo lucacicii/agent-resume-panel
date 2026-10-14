@@ -13,11 +13,13 @@ import type {
   ThunderImageAttachment,
   ThunderActiveStreamSnapshot,
   ThunderMetricsSnapshot,
+  ThunderAgentStatus,
   ThunderPermissionMode,
   ThunderModeChanged,
   ThunderUiRequest
 } from "@agent-resume/core";
 import { useTraceCollector } from "./useTraceCollector";
+import { isNewerAgentStatus } from "../workbench/sessionStatus";
 
 export interface ChatRunMetrics {
   tps?: number;
@@ -620,6 +622,22 @@ export function useThunderChat() {
   const [streamReasoningCount, setStreamReasoningCount] = useState(0);
   const [liveStreamingTps, setLiveStreamingTps] = useState(0);
 
+  /**
+   * What thunder says the run is doing — the only authority for that question.
+   *
+   * Read rather than derived: the chat used to infer a phase from the raw
+   * stream, which cannot see the one state that matters most (a run parked on
+   * an approval gate emits nothing at all).
+   */
+  const [agentStatus, setAgentStatus] = useState<ThunderAgentStatus | null>(null);
+  /** The frame the state above was built from, for the out-of-order guard. */
+  const agentStatusRef = useRef<ThunderAgentStatus | null>(null);
+  const applyAgentStatus = useCallback((frame: ThunderAgentStatus | null) => {
+    if (frame && !isNewerAgentStatus(frame, agentStatusRef.current)) return;
+    agentStatusRef.current = frame;
+    setAgentStatus(frame);
+  }, []);
+
   // A question the agent is blocked on; rendered as a bubble until answered.
   const [pendingQuestion, setPendingQuestion] = useState<PendingQuestion | null>(null);
   /**
@@ -938,6 +956,13 @@ export function useThunderChat() {
         setStreamTokensCount(snapMetrics ? snapMetrics.live_tokens : live.tokensCount);
         setStreamReasoningCount(snapMetrics ? snapMetrics.live_reasoning_tokens : live.reasoningCount);
         setLiveStreamingTps(snapMetrics ? snapMetrics.live_tps : live.tps);
+        // The phase comes back with the buffered task: a renderer that arrives
+        // mid-run should show what the run is doing, not wait for the next
+        // transition (a thinking stretch is minutes long).
+        const held = agentStatusRef.current;
+        applyAgentStatus(
+          snapshot?.agentStatus ?? (held?.session_id === sessionId ? held : null)
+        );
       } else {
         setIsStreaming(false);
         setActiveTaskId(null);
@@ -946,6 +971,8 @@ export function useThunderChat() {
         setStreamTokensCount(0);
         setStreamReasoningCount(0);
         setLiveStreamingTps(0);
+        // No run, no phase: a leftover status would describe a run that is over.
+        applyAgentStatus(null);
       }
 
       // Load persistent trace for this conversation and populate run metrics
@@ -1001,7 +1028,7 @@ export function useThunderChat() {
     } finally {
       setLoading(false);
     }
-  }, [loadTrace, models, restoreFromSnapshot, setFileChanges, syncPendingQuestion, syncPendingUiRequest]);
+  }, [applyAgentStatus, loadTrace, models, restoreFromSnapshot, setFileChanges, syncPendingQuestion, syncPendingUiRequest]);
 
   const createNewSession = useCallback(() => {
     setActiveSessionId(null);
@@ -1012,6 +1039,8 @@ export function useThunderChat() {
     // A bubble belongs to the session that raised it.
     setPendingQuestion(null);
     setPendingUiRequest(null);
+    // So does a phase: the draft has not run anything yet.
+    applyAgentStatus(null);
     // A brand-new session has no mode yet: leave it to the daemon, so
     // `.thunder`'s `agent.defaultMode` still decides its first run.
     setPermissionMode("");
@@ -1027,7 +1056,7 @@ export function useThunderChat() {
       const nextDef = target.default_thinking_level || (target.reasoning ? "medium" : "off");
       setThinkingLevel(nextDef);
     }
-  }, [models, resetTrace, selectedModel]);
+  }, [applyAgentStatus, models, resetTrace, selectedModel]);
 
   const setWorkspaceGtdTask = useCallback((noteId: string, dir: string) => {
     setTaskNoteId(noteId);
@@ -2001,6 +2030,14 @@ export function useThunderChat() {
               durationMs: snap.wall_duration_ms ?? snap.duration_ms
             });
           }
+          if (
+            customEv.kind === "agent_status" &&
+            customEv.payload &&
+            typeof customEv.payload === "object" &&
+            isCurrentSession
+          ) {
+            applyAgentStatus(customEv.payload as ThunderAgentStatus);
+          }
           break;
         }
         case "user_question": {
@@ -2063,7 +2100,7 @@ export function useThunderChat() {
     });
 
     return () => unsub?.();
-  }, [finalizeSessionTurn, recordTraceEvent]);
+  }, [applyAgentStatus, finalizeSessionTurn, recordTraceEvent]);
 
   // Approval-mode changes arrive *outside* the task stream: the daemon pushes
   // them whether or not a run is live, because the user may toggle plan mode
@@ -2189,6 +2226,8 @@ export function useThunderChat() {
     },
     sessionTotalTokens,
     currentContextTokens,
-    contextWindowLimit
+    contextWindowLimit,
+    /** What thunder reports the run is doing; `null` when nothing is running. */
+    agentStatus
   };
 }

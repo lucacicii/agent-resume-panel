@@ -41,6 +41,8 @@ describe("kindForExecutable", () => {
     expect(kindForExecutable("/opt/homebrew/bin/agy")).toBe("agy");
     expect(kindForExecutable("prime-agent")).toBe("prime");
     expect(kindForExecutable("/Users/x/.local/bin/omp")).toBe("omp");
+    // The embedded TUI, whether launched from the panel or through cargo.
+    expect(kindForExecutable("/Users/x/thunder/target/release/thunder-tui")).toBe("thunder");
   });
 
   it("ignores anything that is not an agent", () => {
@@ -62,6 +64,7 @@ describe("kindForProvider / kindForSessionKey", () => {
   it("reads the provider out of a session key", () => {
     expect(kindForSessionKey("cli:claude:abc123")).toBe("claude");
     expect(kindForSessionKey("cli:opencode:xyz")).toBe("opencode");
+    expect(kindForSessionKey("cli:thunder:sess_1")).toBe("thunder");
     expect(kindForSessionKey("acp:record")).toBeNull();
     expect(kindForSessionKey("cli:chat:1")).toBeNull();
     expect(kindForSessionKey(undefined)).toBeNull();

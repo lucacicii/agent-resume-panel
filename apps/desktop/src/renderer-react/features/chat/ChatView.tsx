@@ -59,7 +59,8 @@ export function ChatView({ active }: { active: boolean }): React.JSX.Element | n
     streamingMetrics,
     sessionTotalTokens,
     currentContextTokens,
-    contextWindowLimit
+    contextWindowLimit,
+    agentStatus
   } = useThunderChat();
 
   // Keyboard shortcut: ⌘N for new conversation
@@ -178,6 +179,7 @@ export function ChatView({ active }: { active: boolean }): React.JSX.Element | n
         sessionTotalTokens={sessionTotalTokens}
         currentContextTokens={currentContextTokens}
         contextWindowLimit={contextWindowLimit}
+        agentStatus={agentStatus}
         pendingQuestion={pendingQuestion}
         onAnswerQuestion={answerQuestion}
         onDismissQuestion={dismissQuestion}

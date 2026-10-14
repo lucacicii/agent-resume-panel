@@ -30,6 +30,7 @@ export type AgentKind =
   | "agy"
   | "prime"
   | "omp"
+  | "thunder"
   | "unknown";
 
 /**
