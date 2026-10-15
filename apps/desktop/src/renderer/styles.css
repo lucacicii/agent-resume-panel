@@ -20837,14 +20837,15 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   align-items: center;
   /* No gap and a negative margin instead: the dots pile up into a stack, so a
      long run stays a short strip. The padding is the pile's clip margin — the
-     open halo and the focus outline are drawn outside a dot's own box, and
-     `overflow-x` clips the vertical axis too. */
+     glow, the open halo and the focus outline are all drawn outside a dot's own
+     box, and `overflow-x` clips the vertical axis too — so it is sized for the
+     widest thing a dot draws out there: the 5px glow on the 1px rim. */
   gap: 0;
   overflow-x: auto;
   /* The track is as wide as the reply's column, so a run longer than that
      scrolls sideways instead of widening the message row. */
   min-width: 0;
-  padding: var(--space-1-5) var(--space-1);
+  padding: var(--space-1-5);
   scrollbar-width: none;
 }
 
@@ -20865,40 +20866,80 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   font-variant-numeric: tabular-nums;
   display: flex;
   align-items: center;
-  justify-content: center;
+  /* The number sits at the left of the dot because that is the only part of it a
+     pile leaves visible — everything from the middle on is covered by the next
+     dot (see the overlap below). The newest dot has nothing over it and centres
+     its number in the whole circle. */
+  justify-content: flex-start;
+  padding-left: 2px;
   flex-shrink: 0;
+  /* The halo: a hairline rim plus a soft spill, both in the dot's own colour, so
+     the pile reads as lit rather than drawn. The colour is the kind's (below) —
+     a dot with no kind does not glow, and `is-open` / `:focus-visible` re-state
+     the shadow with their ring in front of it. */
+  --turn-glow: transparent;
+  box-shadow: 0 0 0 1px var(--turn-glow), 0 0 5px var(--turn-glow);
   transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease,
     transform 0.15s ease;
 }
 
+.tb-turn-dot:last-child {
+  justify-content: center;
+  padding-left: 0;
+}
+
 /* Later turns paint over earlier ones (plain DOM order), and what gets covered is
-   the previous dot's outer 6px — outside its number, so every turn stays legible.
-   A dot that is hovered, focused or open lifts out of the pile and to the top. */
+   the previous dot's right side — outside its number, which sits in the part that
+   stays visible. 9px is as far as a *two-digit* number lets the pile close up:
+   past that the covering dot's edge eats into the tens-and-units pair, and runs
+   reach turn 10 long before they stop. A dot that is hovered, focused or open
+   lifts out of the pile and to the top. */
 .tb-turn-dot + .tb-turn-dot {
-  margin-left: calc(-1 * var(--space-1-5));
+  margin-left: -9px;
 }
 
 /* The tint is mixed against the window colour rather than over it: an opaque
-   fill is what lets a dot cover the one behind it instead of blending into it. */
-.tb-turn-dot.is-done {
-  border-color: color-mix(in srgb, var(--color-success) 45%, transparent);
+   fill is what lets a dot cover the one behind it instead of blending into it.
+   The colour says what the turn did — green for a turn that ran tools, orange
+   for one that only thought and answered — so a pile reads as "out doing things,
+   then back to think". Orange rather than the thinking blocks' blue accent:
+   side by side in a pile two blues 9px apart read as one smudged mark, while
+   blue against orange stays legible at the size the pile actually is. The dot's
+   own colour is also what it glows in. The base rule's neutral colours stay as
+   the fallback for a dot with no kind. */
+.tb-turn-dot.is-tools {
+  --turn-glow: color-mix(in srgb, var(--color-success) 32%, transparent);
+  border-color: color-mix(in srgb, var(--color-success) 50%, transparent);
   background: color-mix(in srgb, var(--color-success) 12%, var(--color-window-bg));
   color: var(--color-success);
 }
 
-/* A failed turn pierces the pile: its red ring must never end up buried under
-   the dots that come after it. */
-.tb-turn-dot.is-error {
-  border-color: color-mix(in srgb, var(--color-destructive) 50%, transparent);
-  background: color-mix(in srgb, var(--color-destructive) 12%, var(--color-window-bg));
-  color: var(--color-destructive);
-  z-index: 40;
+.tb-turn-dot.is-thinking {
+  --turn-glow: color-mix(in srgb, var(--color-warning) 32%, transparent);
+  border-color: color-mix(in srgb, var(--color-warning) 50%, transparent);
+  background: color-mix(in srgb, var(--color-warning) 12%, var(--color-window-bg));
+  color: var(--color-warning);
 }
 
-/* Hover and focus come after the status rules on purpose: same specificity, so
-   the later rule wins and a dot being pointed at keeps its green or red — the
-   accent is reserved for the open turn. It grows and lifts out of the pile
-   instead, the way the timeline rail's dots answer a hover. */
+/* A failed turn: solid red, the number knocked out to white. It must not be read
+   as an orange thinking dot — tinted, the two hues are neighbours — so failure is
+   drawn here the way it is drawn everywhere else, and a *fill* is what carries it
+   rather than a ring. That is also why it no longer pierces the pile (`z-index`):
+   a dot drawn over its successor covers the successor's number, which sits in the
+   left crescent for exactly this reason, and an unlabelled sliver is a worse
+   outcome than a red circle with a bite out of its right side. */
+.tb-turn-dot.is-error {
+  --turn-glow: color-mix(in srgb, var(--color-destructive) 45%, transparent);
+  border-color: var(--color-destructive);
+  background: var(--color-destructive);
+  color: #fff;
+}
+
+/* Hover and focus come after the kind and status rules on purpose: same
+   specificity, so the later rule wins and a dot being pointed at keeps its green,
+   orange or red — the accent *ring* stays the open turn's mark. It grows and
+   lifts out of the pile instead, the way the timeline rail's dots answer a
+   hover. */
 .tb-turn-dot:hover,
 .tb-turn-dot:focus-visible {
   z-index: 60;
@@ -20907,7 +20948,7 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 
 .tb-turn-dot:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px var(--color-focus-ring);
+  box-shadow: 0 0 0 3px var(--color-focus-ring), 0 0 5px var(--turn-glow);
 }
 
 .tb-turn-dot.is-open {
@@ -20915,7 +20956,8 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   color: var(--color-label-primary);
   z-index: 60;
   transform: translateY(-2px) scale(1.08);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent),
+    0 0 5px var(--turn-glow);
 }
 
 .tb-turn-dot-num {

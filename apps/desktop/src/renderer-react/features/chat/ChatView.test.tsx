@@ -312,6 +312,13 @@ describe("ChatView", () => {
     });
     expect(document.querySelectorAll(".tb-message-row.is-assistant")).toHaveLength(1);
     expect(screen.getByText("Step oneStep twoStep three")).toBeTruthy();
+    // Each dot's colour says what its turn did, off what the turn persisted: the
+    // two that ran tools, then the one that only answered.
+    expect(
+      [...document.querySelectorAll(".tb-turn-dot")].map((dot) =>
+        dot.classList.contains("is-tools") ? "tools" : "thinking"
+      )
+    ).toEqual(["tools", "tools", "thinking"]);
     // Each turn's thinking and tool calls are behind its dot, not laid out flat.
     expect(document.querySelectorAll(".tb-tool-group-container")).toHaveLength(0);
     expect(document.querySelectorAll(".tb-thinking-container")).toHaveLength(0);
