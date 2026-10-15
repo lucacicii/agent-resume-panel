@@ -934,7 +934,7 @@ export interface DesktopApi {
   workbenchSearchPathsCancel(): Promise<{ ok: boolean }>;
   workbenchCopyPath(args: { rootPath: string; sourcePath: string }): Promise<{ ok: boolean }>;
   workbenchClipboardHasFiles(): Promise<{ hasFiles: boolean }>;
-  workbenchPasteClipboardImage(): Promise<{ path: string; previewUrl: string } | null>;
+  workbenchPasteClipboardImage(args?: { scopeId?: string }): Promise<{ path: string; previewUrl: string } | null>;
   workbenchPastePaths(args: { rootPath: string; targetDirectory: string }): Promise<{
     copied: Array<{
       sourcePath: string;
@@ -1955,7 +1955,7 @@ const api: DesktopApi = {
   workbenchSearchPathsCancel: () => ipcRenderer.invoke("workbench:searchPathsCancel"),
   workbenchCopyPath: (args) => ipcRenderer.invoke("workbench:copyPath", args),
   workbenchClipboardHasFiles: () => ipcRenderer.invoke("workbench:clipboardHasFiles"),
-  workbenchPasteClipboardImage: () => ipcRenderer.invoke("workbench:pasteClipboardImage"),
+  workbenchPasteClipboardImage: (args?: { scopeId?: string }) => ipcRenderer.invoke("workbench:pasteClipboardImage", args),
   workbenchPastePaths: (args) => ipcRenderer.invoke("workbench:pastePaths", args),
   workbenchSetFileWatch: (args) => ipcRenderer.invoke("workbench:setFileWatch", args),
   onWorkbenchFileSystemChanged: (callback) => {

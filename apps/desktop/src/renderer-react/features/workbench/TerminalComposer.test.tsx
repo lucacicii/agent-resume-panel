@@ -558,10 +558,11 @@ describe("TerminalComposer", () => {
     const previewUrl = "data:image/png;base64,AAAA";
     const { container, onChange } = await renderComposer({ value: "look " });
     window.agentResume.notesClipboardHasImage = () => true;
-    window.agentResume.workbenchPasteClipboardImage = vi.fn(async () => ({
-      path: "/tmp/agent-resume-clipboard-1.png",
+    const pasteImage = vi.fn(async () => ({
+      path: "/tmp/agent-resume-clipboard-terminal-1.png",
       previewUrl
     }));
+    window.agentResume.workbenchPasteClipboardImage = pasteImage;
     focusInput();
     textbox().setSelectionRange(5, 5);
     fireEvent.paste(textbox(), {
@@ -570,8 +571,10 @@ describe("TerminalComposer", () => {
       }
     });
     await waitFor(() => {
-      expect(onChange).toHaveBeenCalledWith("look '/tmp/agent-resume-clipboard-1.png'");
+      expect(onChange).toHaveBeenCalledWith("look '/tmp/agent-resume-clipboard-terminal-1.png'");
     });
+    // The pane key scopes the temp file, so the path stays stable across pastes.
+    expect(pasteImage).toHaveBeenCalledWith({ scopeId: "terminal:1" });
     const preview = container.querySelector(".wb-terminal-composer-pending-image img") as HTMLImageElement;
     expect(preview?.src).toBe(previewUrl);
     fireEvent.click(screen.getByRole("button", { name: "Image preview" }));
@@ -597,7 +600,7 @@ describe("TerminalComposer", () => {
     const { container, onChange } = await renderComposer({ value: "see " });
     window.agentResume.notesClipboardHasImage = () => true;
     window.agentResume.workbenchPasteClipboardImage = vi.fn(async () => ({
-      path: "/tmp/agent-resume-clipboard-2.png",
+      path: "/tmp/agent-resume-clipboard-terminal-1.png",
       previewUrl: "data:image/png;base64,BBBB"
     }));
     focusInput();
@@ -606,7 +609,7 @@ describe("TerminalComposer", () => {
       clipboardData: { items: [{ type: "image/png", getAsFile: () => null }] }
     });
     await waitFor(() => {
-      expect(textbox().value).toBe("see '/tmp/agent-resume-clipboard-2.png'");
+      expect(textbox().value).toBe("see '/tmp/agent-resume-clipboard-terminal-1.png'");
     });
     fireEvent.click(screen.getByRole("button", { name: "Remove image" }));
     expect(onChange).toHaveBeenCalledWith("see ");
@@ -617,7 +620,7 @@ describe("TerminalComposer", () => {
     const { container, onSendToTerminal } = await renderComposer({ value: "" });
     window.agentResume.notesClipboardHasImage = () => true;
     window.agentResume.workbenchPasteClipboardImage = vi.fn(async () => ({
-      path: "/tmp/agent-resume-clipboard-3.png",
+      path: "/tmp/agent-resume-clipboard-terminal-1.png",
       previewUrl: "data:image/png;base64,CCCC"
     }));
     focusInput();
@@ -625,7 +628,7 @@ describe("TerminalComposer", () => {
       clipboardData: { items: [{ type: "image/png", getAsFile: () => null }] }
     });
     await waitFor(() => {
-      expect(textbox().value).toBe("'/tmp/agent-resume-clipboard-3.png'");
+      expect(textbox().value).toBe("'/tmp/agent-resume-clipboard-terminal-1.png'");
     });
     fireEvent.keyDown(textbox(), { key: "Enter" });
     expect(onSendToTerminal).toHaveBeenCalledTimes(1);

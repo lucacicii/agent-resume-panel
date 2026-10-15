@@ -13,14 +13,25 @@ import {
   listWorkbenchSessionFolders,
   type PanelSettings
 } from "@agent-resume/core";
-import { exportBackup, importBackup, selectBackupForImport } from "./backupService";
+import { cleanupTemporaryBackups, exportBackup, importBackup, selectBackupForImport } from "./backupService";
 
 const roots: string[] = [];
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 async function makeSettings(): Promise<PanelSettings> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-backup-test-"));
   roots.push(root);
   return { panelHome: root } as PanelSettings;
+}
+
+async function exists(file: string): Promise<boolean> {
+  return fs.stat(file).then(() => true, () => false);
+}
+
+/** Backdate a fresh fixture so the sweeper sees it as old. */
+async function ageFile(file: string, ageMs: number): Promise<void> {
+  const when = new Date(Date.now() - ageMs);
+  await fs.utimes(file, when, when);
 }
 
 describe("backupService", () => {
@@ -318,4 +329,30 @@ describe("backupService", () => {
     await expect(runSqliteJson<{ title: string; time_updated: number }>(targetDb, "SELECT title, time_updated FROM session WHERE id = 's1';")).resolves.toEqual([{ title: "Imported", time_updated: 200 }]);
     await expect(runSqliteJson<{ id: string; session_id: string; text: string }>(targetDb, "SELECT id, session_id, text FROM message WHERE id = 'm1';")).resolves.toEqual([{ id: "m1", session_id: "s1", text: "hello" }]);
   }, 30_000);
+
+  it("prunes stale temp artifacts and keeps recent clipboard images", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "agent-resume-sweep-test-"));
+    roots.push(root);
+    const staleClipboard = path.join(root, "agent-resume-clipboard-terminal-1.png");
+    const recentClipboard = path.join(root, "agent-resume-clipboard-terminal-2.png");
+    const staleScratch = path.join(root, "agent-resume-backup-stale");
+    const recentScratch = path.join(root, "agent-resume-import-fresh");
+    const unrelated = path.join(root, "agent-resume-clipboard-notes.txt");
+    for (const file of [staleClipboard, recentClipboard, staleScratch, recentScratch, unrelated]) {
+      await fs.writeFile(file, "x");
+    }
+    await ageFile(staleClipboard, 8 * DAY_MS);
+    await ageFile(staleScratch, 2 * DAY_MS);
+    await ageFile(recentClipboard, 6 * DAY_MS);
+    await ageFile(unrelated, 30 * DAY_MS);
+
+    await cleanupTemporaryBackups(root);
+
+    // Transcripts still render recent pasted images, so only week-old ones go.
+    await expect(exists(recentClipboard)).resolves.toBe(true);
+    await expect(exists(staleClipboard)).resolves.toBe(false);
+    await expect(exists(staleScratch)).resolves.toBe(false);
+    await expect(exists(recentScratch)).resolves.toBe(true);
+    await expect(exists(unrelated)).resolves.toBe(true);
+  });
 });

@@ -807,7 +807,7 @@ export function TerminalComposer(props: {
     const start = el.selectionStart ?? value.length;
     const end = el.selectionEnd ?? value.length;
     const currentValue = value;
-    void api.workbenchPasteClipboardImage()
+    void api.workbenchPasteClipboardImage({ scopeId: pane.key })
       .then((result) => {
         if (!result?.path) return;
         const quoted = shellQuotePath(result.path);
@@ -824,7 +824,7 @@ export function TerminalComposer(props: {
         });
       })
       .catch(() => undefined);
-  }, [applyValue, value]);
+  }, [applyValue, pane.key, value]);
 
   const onDragEnter = (event: React.DragEvent) => {
     if (!hasWorkbenchPathDnd(event.dataTransfer)) return;

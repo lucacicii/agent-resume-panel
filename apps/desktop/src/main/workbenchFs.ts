@@ -836,7 +836,9 @@ export function registerWorkbenchFsIpc(): void {
     }
   );
 
-  safeHandle("workbench:pasteClipboardImage", async () => pasteWorkbenchClipboardImage());
+  safeHandle("workbench:pasteClipboardImage", async (_event, args?: { scopeId?: string }) =>
+    pasteWorkbenchClipboardImage({ scopeId: args?.scopeId })
+  );
 
   safeHandle(
     "workbench:listDirectory",
