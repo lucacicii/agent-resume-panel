@@ -68,7 +68,7 @@ export function TurnDots({
               aria-selected={isOpen}
               aria-label={title}
               title={title}
-              className={`tb-turn-dot is-${turn.status}${isOpen ? " is-open" : ""}`}
+              className={`tb-turn-dot is-${turn.status} ${kindOf(turn)}${isOpen ? " is-open" : ""}`}
               onClick={() => (isOpen ? onClose() : onOpen(index))}
             >
               <span className="tb-turn-dot-num">{turn.turn}</span>
@@ -78,6 +78,18 @@ export function TurnDots({
       </div>
     </div>
   );
+}
+
+/**
+ * What the dot's colour says the turn did: `is-tools` for a turn that ran a
+ * tool, `is-thinking` for one that only thought and answered. Most turns carry
+ * both, and a turn that called anything counts as a tool turn — the split the
+ * eye reads across a pile is "this one went out and did something" against
+ * "this one stayed in its head", which is also what the tooltip and the
+ * `aria-label` report (the tool count) for a reader who cannot see the colour.
+ */
+function kindOf(turn: LiveTurn): "is-tools" | "is-thinking" {
+  return turn.toolCount > 0 ? "is-tools" : "is-thinking";
 }
 
 /** The dot's tooltip / aria-label: what happened in this turn, and that it opens. */

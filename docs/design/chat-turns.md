@@ -15,7 +15,8 @@ The sketch that drove this:
 - every **finished** turn is pulled out of the feed and piled into a stack of
   numbered circles on the agent's own reply;
 - clicking a circle shows **all** of that turn's thinking and tool calls;
-- a turn that **failed** is drawn red;
+- a turn that **failed** is drawn red, and a turn's colour otherwise says what it
+  did — tools or thinking;
 - the **running turn gets no circle**, because it is already on screen.
 
 A session reopened later shows the same thing, because thunder now writes the
@@ -136,26 +137,59 @@ flushes that turn without stats.
 
 The dots overlap instead of sitting in a row:
 
-- `gap: 0` plus `.tb-turn-dot + .tb-turn-dot { margin-left: -6px }`. What gets
-  covered is the previous dot's outer 6px, which is outside its 10.5px number, so
-  every turn stays legible however long the run is. A dot is 24px — the number of
-  a 10-plus-turn run needs the room, and it is the hit-target minimum.
+- `gap: 0` plus `.tb-turn-dot + .tb-turn-dot { margin-left: -9px }`. What gets
+  covered is the previous dot's right side, which is outside its number: the
+  number sits at the dot's **left** (`justify-content: flex-start`,
+  `padding-left: 2px`) because that is the part a pile leaves visible — the
+  newest dot, which nothing covers, centres its number in the whole circle
+  instead (`:last-child`). 9px is as far as the pile can close: half a dot
+  (12px) reads better as a stack, but the covering dot's edge then eats into a
+  **two-digit** turn number, and runs reach turn 10 long before they stop. A dot
+  is 24px — a two-digit number needs the room, and it is the hit-target minimum.
+- **The colour says what the turn did**, not just that it finished:
+  `.is-tools` (green, `--color-success`) for a turn that ran a tool,
+  `.is-thinking` (orange, `--color-warning`) for one that only thought and
+  answered. It is `TurnDots`'s `kindOf`, one class per dot, and a failed turn
+  keeps its kind — the `.is-error` rule is what paints it red. The distinction is
+  not colour-only: the tooltip and `aria-label` state the tool count.
+- Orange, not the thinking blocks' blue accent: shoulders together in a pile, two
+  blues 9px apart read as one smudged mark, while blue against orange stays
+  legible at the size a pile actually is. The colour is a **kind** colour, not a
+  status one, which is why it does not reuse `--color-warning`'s "something needs
+  attention" meaning — nothing in the pile is a warning.
+- **Each dot glows in its own colour.** `.tb-turn-dot` declares
+  `--turn-glow: transparent` and a shadow built from it — `0 0 0 1px` (a hairline
+  rim, which is what makes the halo read as light rather than blur) plus
+  `0 0 5px` — and each kind sets the variable to its own colour at 32%
+  (`--color-success` / `--color-warning`, 45% for the error's red). One variable
+  is what lets `:focus-visible` and `.is-open` re-state the whole shadow with
+  their own ring in front of the glow instead of dropping it. A dot with no kind
+  has no halo.
 - Paint order is plain DOM order — later turns sit on top — which is exactly what
   a pile should look like, and needs no `z-index`.
 - A dot's fill is `color-mix(…, var(--color-window-bg))` rather than
   `color-mix(…, transparent)`: an **opaque** fill is what lets a dot cover the one
   behind it instead of blending into it. Both were tried against a rendered strip;
-  the translucent version merged the pile into one green mass.
-- A failed turn takes `z-index: 40` and therefore **pierces** the pile: its red
-  ring must never end up buried under the dots that come after it.
+  the translucent version merged the pile into one mass.
+- A failed turn is a **solid** `--color-destructive` disc with its number knocked
+  out to `#fff`, and it keeps DOM order like every other dot. Tinted, its red is a
+  neighbour of the thinking dots' orange; a fill is what separates them, and a fill
+  survives being half-covered. It used to pierce the pile (`z-index: 40`) for fear
+  of a buried red *ring* — but a dot drawn over its successor covers the successor's
+  number, which sits in the dot's left crescent for exactly this reason, and an
+  unlabelled sliver of a dot is a worse outcome than a red circle with a bite out
+  of its right side. Rendered side by side at 3.2× and 1×: the bite is invisible
+  next to the missing number.
 - Hover and `:focus-visible` take `z-index: 60` and grow the dot out of the pile
   (`translateY(-2px) scale(1.08)`), the way the timeline rail's dots answer a
   hover. They deliberately do **not** recolour it: the later-rule-wins order is
-  what keeps a pointed-at dot green or red, and the accent stays the mark of the
-  open turn. `:focus-visible` draws the rail's `--color-focus-ring` halo.
-- The track's `--space-1-5` / `--space-1` padding is the pile's clip margin
-  (`overflow-x` makes the vertical axis clip too), which is why the halo, the
-  focus ring and the lift all fit.
+  what keeps a pointed-at dot green, orange or red, and the accent ring stays the
+  mark of the open turn. `:focus-visible` draws the rail's `--color-focus-ring`
+  halo in front of the dot's own glow.
+- The track's `--space-1-5` padding is the pile's clip margin
+  (`overflow-x` makes the vertical axis clip too), sized for the widest thing a dot
+  draws outside its own box: the glow's 5px spill plus its 1px rim. The focus ring
+  and the lift fit inside that.
 - It scrolls sideways inside the reply's column (`min-width: 0` on the track)
   instead of widening the message row, and keeps the newest dot in view.
 - No caption: the numbers carry the meaning on screen, and a "Turns" label at the
@@ -179,7 +213,7 @@ open dot's second click closes it too.
 
 | File | What |
 | --- | --- |
-| `features/chat/TurnDots.tsx` | `TurnDots`, `describeTurn`, `TurnDetailOverlay` |
+| `features/chat/TurnDots.tsx` | `TurnDots`, `kindOf` (the dot's colour), `describeTurn`, `TurnDetailOverlay` |
 | `features/chat/ChatMessageItem.tsx` | The `turnDots` slot: the pile renders as the reply container's first child; suppresses the flat thinking/tool lanes on a row that carries turns |
 | `features/chat/ChatMain.tsx` | Which pile each row leads with (its own turns, or the stream's while live) and the drawer below it; clears the open drawer when the conversation switches or the stream's turns empty; falls back to the run's turns for the file-change derivation |
 | `features/chat/useThunderChat.ts` | The turn model (§2), `RenderedChatMessage.turns`, the pile's survival past `finalizeSessionTurn` (§3.1.1), and `buildConversationRows` (§3.1.2) |
@@ -195,15 +229,18 @@ running" rule because the drawer still labels a running turn.
 ## 6. Testing
 
 `ChatMain.test.tsx` → *ChatMain turn dots*: one dot per finished turn with the
-failed one marked, the running turn left out of the pile yet still reachable (and
-reading live segments) from the drawer's arrows, switching between turns and
-closing on a second click, no row when the run's only turn is the running one, the
-pile rendering inside the agent row after its avatar, the pile staying on the
-answer once the run is over (off the row's own turns, and still opening them), and
-two runs each opening their own pile. `ChatView.test.tsx` covers the hand-over end
-to end: after `loop_complete` the reply leads with the dot, carries no tool groups
-or thinking, and one click brings them back in the drawer — and a conversation
-read back from disk arrives as one reply per run with its turns piled into dots.
+failed one marked and each dot carrying what its turn did (tools or thinking), the
+running turn left out of the pile yet still reachable (and reading live segments)
+from the drawer's arrows, switching between turns and closing on a second click, no
+row when the run's only turn is the running one, the pile rendering inside the
+agent row after its avatar, the pile staying on the answer once the run is over
+(off the row's own turns, and still opening them), and two runs each opening their
+own pile. `ChatView.test.tsx` covers the hand-over end to end: after
+`loop_complete` the reply leads with the dot, carries no tool groups or thinking,
+and one click brings them back in the drawer — and a conversation read back from
+disk arrives as one reply per run, its turns piled into dots whose colours come
+from what each turn persisted. The colours themselves are CSS, so the tests assert
+the kind class (`is-tools` / `is-thinking`), never a colour value.
 `useThunderChat.test.tsx` covers the model: splitting on `turn_start`, splitting
 on payload turns alone, freezing on a turn change, `error` marking the current
 turn, a finished run handing its turns to the pile while its answer stays
@@ -246,4 +283,14 @@ pnpm run i18n:check
 - **The run's row carries no segments.** Anything that used to read a finished
   run's thinking or tools off the message has to read the turns now; the
   file-change derivation is the one such reader and does exactly that.
+- **Orange thinking dots are neighbours of the error red.** Tinted, the two hues
+  are close, so what separates them is the failure's *fill* — solid red with a
+  white number — rather than its hue. A palette change that lightens
+  `--color-destructive` (or darkens `--color-warning`) reopens that question. The
+  failed dot is also covered on its right by the dot after it, like every other
+  dot: the price of not swallowing that dot's number (§3.2), and the reason the
+  red is a fill that can afford to be bitten.
+- **Every dot's glow is set by eye.** The 32% / 5px pair was chosen against a
+  rendered strip at 3.2× and 1×, light and dark; it is a judgement, not a
+  measured value, and it is the one part of §3.2 that a render cannot verify.
 

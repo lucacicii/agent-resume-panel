@@ -512,6 +512,13 @@ describe("ChatMain turn dots", () => {
     const dots = document.querySelectorAll(".tb-turn-dot");
     expect(dots[0].classList.contains("is-done")).toBe(true);
     expect(dots[1].classList.contains("is-error")).toBe(true);
+    // The colour says what the turn did, not just that it finished: turn 1 ran a
+    // tool, turn 2 only thought. A failed turn still carries its kind — the error
+    // rule is what paints it red.
+    expect(dots[0].classList.contains("is-tools")).toBe(true);
+    expect(dots[0].classList.contains("is-thinking")).toBe(false);
+    expect(dots[1].classList.contains("is-thinking")).toBe(true);
+    expect(dots[1].classList.contains("is-tools")).toBe(false);
 
     // Nothing is open until a dot is clicked.
     expect(document.querySelector(".tb-turn-overlay")).toBeNull();
