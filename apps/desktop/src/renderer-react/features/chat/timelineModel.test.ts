@@ -78,12 +78,12 @@ describe("buildTimelineItems", () => {
 describe("computeRailDots", () => {
   it("projects anchors proportionally into the rail", () => {
     // Four anchors spread evenly over 1000px of scrollable content, on a 100px
-    // rail whose dots are 6px tall (usable travel = 94).
+    // rail whose dots are 8px tall (usable travel = 92).
     const entries = [entry(0), entry(1), entry(2), entry(3)];
     const anchorTops = [0, 333.33, 666.67, 1000];
     const dots = computeRailDots({ entries, anchorTops, scrollable: 1000, railHeight: 100 });
     expect(dots).toHaveLength(4);
-    expect(dots.map((dot) => Math.round(dot.y))).toEqual([0, 31, 63, 94]);
+    expect(dots.map((dot) => Math.round(dot.y))).toEqual([0, 31, 61, 92]);
     expect(dots.every((dot) => dot.count === 1)).toBe(true);
   });
 
@@ -114,11 +114,11 @@ describe("computeRailDots", () => {
 
   it("sits a merged dot in the middle of what it stands for", () => {
     const entries = [entry(0), entry(1)];
-    // usable travel = 594px. 0 → y 0; 15/1000 of it → y 8.91 (inside the 11px gap,
-    // so they merge). The centre of the two is 4.455, not 0.
+    // usable travel = 592px. 0 → y 0; 15/1000 of it → y 8.88 (inside the 14px gap,
+    // so they merge). The centre of the two is 4.44, not 0.
     const dots = computeRailDots({ entries, anchorTops: [0, 15], scrollable: 1000, railHeight: 600 });
     expect(dots).toHaveLength(1);
-    expect(dots[0].y).toBeCloseTo(4.455, 4);
+    expect(dots[0].y).toBeCloseTo(4.44, 4);
   });
 
   it("never lets a dot escape the rail, whatever the measurement says", () => {
