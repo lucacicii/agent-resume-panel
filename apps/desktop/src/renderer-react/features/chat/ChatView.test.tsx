@@ -261,7 +261,7 @@ describe("ChatView", () => {
     expect(buffered.compareDocumentPosition(resumed) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("keeps one block per agent step so turn output never merges", async () => {
+  it("reads a run back as one reply with its turns piled into dots", async () => {
     window.agentResume.thunderChatGetConversation = vi.fn().mockResolvedValue({
       id: "sess_1",
       title: "Inspect Git Status & Changes",
@@ -273,18 +273,21 @@ describe("ChatView", () => {
         {
           role: "assistant",
           content: "Step one",
+          reasoning: "thinking one",
+          stats: { turn: 1, duration_ms: 1200, tool_calls_count: 1 },
           tool_executions: [{ toolCallId: "t1", name: "bash", arguments: { command: "ls" } }]
         },
         { role: "tool", content: "out1", tool_call_id: "t1" },
         {
           role: "assistant",
           content: "Step two",
+          stats: { turn: 2, duration_ms: 800, tool_calls_count: 1 },
           tool_executions: [{ toolCallId: "t2", name: "read_file", arguments: { path: "a" } }]
         },
         {
           role: "assistant",
           content: "Step three",
-          tool_executions: [{ toolCallId: "t3", name: "write_file", arguments: { path: "b" } }]
+          stats: { turn: 3, duration_ms: 500, tool_calls_count: 0 }
         }
       ],
       created_at_ms: Date.now() - 1000,
@@ -302,22 +305,32 @@ describe("ChatView", () => {
     });
     fireEvent.click(screen.getAllByText("Inspect Git Status & Changes")[0]);
 
+    // The run's three turns are one reply, their text in the order it was
+    // produced — the row the run left behind while it streamed.
     await waitFor(() => {
-      expect(screen.getByText("Step one")).toBeTruthy();
+      expect(document.querySelectorAll(".tb-turn-dot")).toHaveLength(3);
     });
+    expect(document.querySelectorAll(".tb-message-row.is-assistant")).toHaveLength(1);
+    expect(screen.getByText("Step oneStep twoStep three")).toBeTruthy();
+    // Each dot's colour says what its turn did, off what the turn persisted: the
+    // two that ran tools, then the one that only answered.
+    expect(
+      [...document.querySelectorAll(".tb-turn-dot")].map((dot) =>
+        dot.classList.contains("is-tools") ? "tools" : "thinking"
+      )
+    ).toEqual(["tools", "tools", "thinking"]);
+    // Thinking and tool calls stay inline in the message body as compact collapsible sections
+    expect(document.querySelectorAll(".tb-tool-group-container").length).toBeGreaterThan(0);
+    expect(document.querySelectorAll(".tb-thinking-container").length).toBeGreaterThan(0);
 
-    // One block per agent step: consecutive steps are separate turns' output and
-    // must not be glued into a single block.
-    const groups = document.querySelectorAll(".tb-tool-group-container");
-    expect(groups.length).toBe(3);
-    expect(groups[0]?.textContent).toContain("Used 1 tool");
-    expect(groups[1]?.textContent).toContain("Used 1 tool");
-    expect(groups[2]?.textContent).toContain("Used 1 tool");
-
-    // The blocks keep transcript order instead of being regrouped.
-    const ordered = ["Step one", "Step two", "Step three"].map((text) => screen.getByText(text));
-    expect(ordered[0].compareDocumentPosition(ordered[1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(ordered[1].compareDocumentPosition(ordered[2]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Opening a dot reads that turn back.
+    fireEvent.click(document.querySelectorAll(".tb-turn-dot")[0]);
+    await waitFor(() => {
+      expect(document.querySelector(".tb-turn-overlay")).toBeTruthy();
+    });
+    const drawer = document.querySelector(".tb-turn-overlay-body")!;
+    expect(drawer.textContent).toContain("thinking one");
+    expect(drawer.textContent).toContain("Step one");
   });
 
   it("interleaves thinking, tool calls and text in the order the events arrive", async () => {
@@ -379,7 +392,8 @@ describe("ChatView", () => {
     expect(toolGroups[0].compareDocumentPosition(toolGroups[1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(toolGroups[1].compareDocumentPosition(screen.getByText(/second answer/)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
-    // The daemon's own completion must not reflow the block the user just read.
+    // The run's completion moves its thinking and tool calls into the pile: the
+    // reply keeps its answer, and the detail is one click away.
     play({ type: "loop_complete", finish_reason: "Done", final_content: "first answersecond answer" });
 
     await waitFor(() => {
@@ -387,10 +401,25 @@ describe("ChatView", () => {
     });
     const settledRows = document.querySelectorAll<HTMLElement>(".tb-message-container");
     const settled = settledRows[settledRows.length - 1];
-    const settledGroups = settled.querySelectorAll(".tb-tool-group-container");
-    expect(settledGroups.length).toBe(2);
-    expect(settled.querySelector(".tb-thinking-container")).not.toBeNull();
-    expect(settledGroups[1].compareDocumentPosition(screen.getByText(/second answer/)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // The pile leads the reply, and it is the turn's only home now.
+    const dots = settled.querySelectorAll<HTMLElement>(".tb-turn-dot");
+    expect(dots.length).toBe(1);
+    expect(settled.querySelectorAll(".tb-tool-group-container").length).toBeGreaterThan(0);
+    expect(settled.querySelector(".tb-thinking-container")).toBeTruthy();
+    expect(settled.textContent).toContain("first answersecond answer");
+    expect(
+      settled.querySelector(".tb-turn-dots")!.compareDocumentPosition(screen.getByText(/first answersecond answer/)) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+
+    // One click brings that turn's thinking and tools back.
+    fireEvent.click(dots[0]);
+    await waitFor(() => {
+      expect(document.querySelector(".tb-turn-overlay-body")).toBeTruthy();
+    });
+    const drawer = document.querySelector<HTMLElement>(".tb-turn-overlay-body")!;
+    expect(drawer.querySelectorAll(".tb-tool-group-container").length).toBe(2);
+    expect(drawer.textContent).toContain("checking things first");
   });
 
   it("submits a new message through the composer", async () => {

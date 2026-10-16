@@ -53,7 +53,16 @@ export type LiveSegment =
   | { kind: "tools"; tools: ActiveToolInfo[] };
 
 /** A chat message plus the ordered segments this renderer watched it stream in. */
-export type RenderedChatMessage = ThunderChatMessage & { segments?: LiveSegment[] };
+export type RenderedChatMessage = ThunderChatMessage & {
+  segments?: LiveSegment[];
+  /**
+   * The run's turns, when this row stands for a whole run — the row a reopened
+   * session reads back, and the row a run leaves behind when it finishes. Empty
+   * on the row a run is streaming into, whose turns live on the session stream
+   * until the run ends.
+   */
+  turns?: LiveTurn[];
+};
 
 /**
  * One engine turn (step) of a run, with the segments it produced.
@@ -471,9 +480,26 @@ function freezeSegments(segments: LiveSegment[], content: string): LiveSegment[]
   return frozen;
 }
 
-function normalizeConversationMessages(rawMessages: ThunderChatMessage[]): ThunderChatMessage[] {
-  const result: ThunderChatMessage[] = [];
+/**
+ * Shape a conversation read back from disk into the rows the feed paints.
+ *
+ * Two jobs, in this order:
+ *
+ * 1. Fold the wire shape into one row per answer: tool results belong to the
+ *    call that produced them, so they are absorbed into that assistant row
+ *    instead of standing as rows of their own.
+ * 2. Fold a run's turns into the run: thunder writes one assistant message per
+ *    engine turn, so a run on disk is a stretch of consecutive assistant
+ *    messages between the user messages that bracket it. The feed shows a run
+ *    the way it looked while it streamed — one reply, its turns behind the pile
+ *    of dots that hangs off it — and a run that reads back as a flat list of
+ *    per-turn blocks is a different thing from the run the user just watched.
+ */
+export function buildConversationRows(rawMessages: ThunderChatMessage[]): RenderedChatMessage[] {
+  const result: RenderedChatMessage[] = [];
   const toolResultsByCallId = new Map<string, string>();
+  /** The consecutive assistant messages being collected into the run's row. */
+  let run: ThunderChatMessage[] = [];
 
   // Collect tool outputs first
   for (const msg of rawMessages) {
@@ -497,6 +523,10 @@ function normalizeConversationMessages(rawMessages: ThunderChatMessage[]): Thund
     }
 
     if (msg.role === "user") {
+      // A user message ends the run before it: runs start from one, so nothing
+      // on the far side of it can belong to the run being collected.
+      flushRun(result, run);
+      run = [];
       result.push(msg);
       continue;
     }
@@ -523,18 +553,130 @@ function normalizeConversationMessages(rawMessages: ThunderChatMessage[]): Thund
         }
       }
 
-      // One block per engine step: the agent loop emits one assistant message
-      // per step, and merging consecutive steps glued different turns' output
-      // into one block. Keeping them apart is what makes the feed a faithful,
-      // chronologically ordered transcript.
-      result.push({
+      // Consecutive assistant messages are the turns of one run: the pile of
+      // dots that hangs off the run's reply is where they are read back, one
+      // dot per turn.
+      run.push({
         ...msg,
         tool_executions: executions.length > 0 ? executions : msg.tool_executions
       });
     }
   }
+  flushRun(result, run);
 
   return result;
+}
+
+/** The run's turns, folded into the row the feed shows for the run. */
+function flushRun(rows: RenderedChatMessage[], run: ThunderChatMessage[]): void {
+  if (run.length === 0) return;
+  const turns = run.map((message, index) => turnFromMessage(message, index + 1));
+  const content = run.map((message) => message.content ?? "").join("");
+  const executions = run.flatMap((message) => message.tool_executions ?? []);
+
+  rows.push({
+    // The run's identity is its reply, and its reply is the last turn's message;
+    // everything per turn is moved into `turns` below.
+    ...run[run.length - 1],
+    // The turns' own text, glued in the order it was produced — exactly what the
+    // stream accumulated while the same run was live.
+    content,
+    turns,
+    // Thinking and tool calls are per turn, and the pile is where a turn is read
+    // back: left on the row they would paint a second, staler copy of what the
+    // dots already hold.
+    reasoning: undefined,
+    tool_calls: undefined,
+    // Kept for the file-change scan, which wants the whole run's calls and has
+    // nowhere else to read them from once the run is on disk.
+    tool_executions: executions.length > 0 ? executions : undefined,
+    // A turn's stats describe one turn; this row stands for all of them.
+    stats: undefined
+  });
+}
+
+/** One persisted assistant message as the turn the pile shows a dot for. */
+function turnFromMessage(message: ThunderChatMessage, positionInRun: number): LiveTurn {
+  const segments: LiveSegment[] = [];
+  if (message.reasoning) segments.push({ kind: "reasoning", text: message.reasoning });
+  if (message.content) segments.push({ kind: "text", text: message.content });
+  const tools = message.tool_executions ?? [];
+  if (tools.length > 0) {
+    segments.push({ kind: "tools", tools: tools.map((tool) => ({ ...tool, isRunning: false })) });
+  }
+
+  const stats = message.stats;
+  return {
+    // A run numbers its turns from 1; a turn cut short before its `turn_end`
+    // carries no stats, and falls back to where it sits in the run.
+    turn: stats?.turn ?? positionInRun,
+    segments,
+    // A run on disk is over, and nothing is persisted about how it ended: its
+    // turns read as done rather than as the failure the session may have hit.
+    status: "done",
+    toolCount: tools.length,
+    startedAtMs: 0,
+    durationMs: stats?.duration_ms,
+    promptTokens: stats?.prompt_tokens,
+    completionTokens: stats?.completion_tokens
+  };
+}
+
+/**
+ * The `review` answers that count as approving the plan under review. The
+ * daemon matches the answer against the label it sent, so the check is on the
+ * exact option strings (see ChatUiRequestCard: the clicked label travels back
+ * verbatim). Anything else on a `review` is "keep planning" or unknown.
+ */
+const REVIEW_APPROVE_OPTIONS: ReadonlySet<string> = new Set([
+  "Yes, and auto-accept edits",
+  "Yes, but ask before each edit",
+  "Yes, fully autonomous"
+]);
+
+/**
+ * Build the local receipt left behind when the user answers a blocking
+ * `ui_request` dialog. Returns the receipt text, or null when there is nothing
+ * worth saying (an unknown value that should not be dressed up as a decision).
+ */
+function buildUiAnswerReceipt(
+  pending: Pick<ThunderUiRequest, "ui" | "title" | "path" | "content">,
+  answer: { value?: string; confirmed?: boolean; cancelled?: boolean }
+): string | null {
+  if (answer.cancelled) {
+    return `🚫 已关闭“${pending.title}”（视为拒绝，agent 将失败关闭继续）`;
+  }
+  switch (pending.ui) {
+    case "review": {
+      if (answer.value === "No, keep planning") {
+        // First half of the two-step flow: the follow-up `input` leaves its
+        // own receipt when it arrives.
+        return "📝 已选择继续规划，等待补充意见…";
+      }
+      if (answer.value && REVIEW_APPROVE_OPTIONS.has(answer.value)) {
+        const head = `✅ 已批准计划：${answer.value}`;
+        if (!(pending.content ?? "").trim()) return head;
+        return (
+          `${head}\n` +
+          `<details><summary>查看已批准的计划书（${pending.path ?? ""}）</summary>\n\n${pending.content}\n\n</details>`
+        );
+      }
+      return null;
+    }
+    case "input":
+    case "editor":
+      // The follow-up half: title is usually "What should change in the plan?".
+      // Paste the feedback verbatim so the record holds what was actually sent.
+      return answer.value ? `💬 补充意见已提交：\n\n${answer.value}` : null;
+    case "confirm":
+      if (answer.confirmed === true) return "✅ 已允许";
+      if (answer.confirmed === false) return "⛔ 已拒绝";
+      return null;
+    case "select":
+      return answer.value ? `✅ 已选择：${answer.value}` : null;
+    default:
+      return null;
+  }
 }
 
 export function useThunderChat() {
@@ -777,6 +919,9 @@ export function useThunderChat() {
           console.warn("[thunder-chat] could not read the session's mode:", err);
         });
       const conv = await desktopApi().thunderChatGetConversation({ sessionId });
+      // A fast switch to another session must not have this land on it: loads
+      // resolve in arrival order, not call order.
+      if (activeSessionIdRef.current !== sessionId) return;
       if (conv) {
         if (conv.model) {
           setSelectedModel(conv.model);
@@ -797,6 +942,9 @@ export function useThunderChat() {
               provider: "chat",
               sessionId
             });
+            // Same race as the conversation load above: the lookup resolved
+            // after the user moved on, so its binding belongs nowhere on screen.
+            if (activeSessionIdRef.current !== sessionId) return;
             if (linkedNoteId) {
               setTaskNoteId(linkedNoteId);
               setWorkspaceSource("gtd");
@@ -838,7 +986,7 @@ export function useThunderChat() {
           }
         }
         if (Array.isArray(conv.messages)) {
-          setMessages(normalizeConversationMessages(conv.messages));
+          setMessages(buildConversationRows(conv.messages));
 
           // Backfill file modification records from conversation tool calls
           const extractedFiles: ThunderFileChangeRecord[] = [];
@@ -908,6 +1056,9 @@ export function useThunderChat() {
         snapshot = await desktopApi()
           .thunderChatGetActiveStream({ sessionId })
           .catch(() => null);
+        // The buffered stream belongs to the session it was fetched for, not
+        // to whatever session is on screen now.
+        if (activeSessionIdRef.current !== sessionId) return;
         if (snapshot && !snapshot.isRunning) snapshot = null;
         if (snapshot) {
           const textTok = estimateTokenCount(snapshot.streamingText);
@@ -977,6 +1128,9 @@ export function useThunderChat() {
 
       // Load persistent trace for this conversation and populate run metrics
       const trace = await loadTrace(sessionId);
+      // The trace and its metrics describe the fetched session; a switch that
+      // landed while it loaded ends this load, like the guards above.
+      if (activeSessionIdRef.current !== sessionId) return;
       if (trace?.metrics) {
         const m = trace.metrics;
         setLastRunMetrics({
@@ -1135,8 +1289,33 @@ export function useThunderChat() {
     async (answer: { value?: string; confirmed?: boolean; cancelled?: boolean }) => {
       const pending = pendingUiRequest;
       if (!pending) return;
+      // Snapshot before clearing: the card is gone the moment this returns, and
+      // the receipt below is built from the snapshot, not from live state.
+      const snapshot = {
+        sessionId: pending.sessionId,
+        ui: pending.ui,
+        title: pending.title,
+        path: pending.path,
+        content: pending.content
+      };
       pendingUiRequestsRef.current.delete(pending.sessionId ?? "");
       setPendingUiRequest(null);
+      // A parked dialog answered from another session leaves no receipt there:
+      // the receipt belongs to the conversation that raised it.
+      if (!snapshot.sessionId || snapshot.sessionId === activeSessionIdRef.current) {
+        const receipt = buildUiAnswerReceipt(snapshot, answer);
+        if (receipt) {
+          // Local receipt only: it is appended to the feed so the answered
+          // dialog leaves a trace, but it is NOT written back to the daemon —
+          // the daemon has no mid-run append entry, and a reopened session
+          // reads back only what the daemon persisted. The durable record of
+          // the decision is the daemon's tool result (a separate change).
+          // `buildConversationRows` passes `user` rows through untouched, so a
+          // plain {role, content} receipt is all the feed needs — no new role.
+          const receiptMsg: ThunderChatMessage = { role: "user", content: receipt };
+          setMessages((prev) => [...prev, receiptMsg]);
+        }
+      }
       try {
         await desktopApi().thunderChatAnswerUi({
           requestId: pending.requestId,
@@ -1249,7 +1428,14 @@ export function useThunderChat() {
         settleTurn(streamState.currentTurn, undefined, Date.now(), finishReason);
         streamState.currentTurn = null;
       }
-      const streamedSegments = opts.finalSegments ?? runSegmentsOf(streamState);
+      // The run's turns outlive it: the dots stay on the agent's reply once the
+      // run is over, so the finished run's thinking and tool calls keep their
+      // home instead of being flattened onto the answer message. A run that
+      // opened no turn at all has no pile to keep them in, so it falls back to
+      // the message carrying its segments.
+      const runTurns = streamState ? streamState.turns.map((turn) => ({ ...turn })) : [];
+      const keepsTurns = runTurns.length > 0;
+      const streamedSegments = keepsTurns ? [] : opts.finalSegments ?? runSegmentsOf(streamState);
       // A turn that streamed anything renders its segments instead of `content`,
       // so the failure notice has to become a segment of its own to stay visible.
       const segments =
@@ -1271,13 +1457,20 @@ export function useThunderChat() {
         finalContent: content
       });
 
-      const assistantMsg: RenderedChatMessage = {
-        role: "assistant",
-        content: content || "(No response output)",
-        reasoning: reasoning || undefined,
-        tool_executions: toolExecutions,
-        segments: segments && segments.length > 0 ? freezeSegments(segments, content) : undefined
-      };
+      const assistantMsg: RenderedChatMessage = keepsTurns
+        ? // Its thinking and tool calls have a home in the pile now, so the reply
+          // is the answer and nothing else. The turns ride along on the row, the
+          // way a reopened session reads them back off disk, so the pile outlives
+          // the run's own state. (The chat's file-change derivation reads the
+          // tools off those turns instead — see `ChatMain`.)
+          { role: "assistant", content: content || "(No response output)", turns: runTurns }
+        : {
+            role: "assistant",
+            content: content || "(No response output)",
+            reasoning: reasoning || undefined,
+            tool_executions: toolExecutions,
+            segments: segments && segments.length > 0 ? freezeSegments(segments, content) : undefined
+          };
 
       const isCurrentSession = activeSessionIdRef.current === sessionId;
 
@@ -1288,13 +1481,23 @@ export function useThunderChat() {
         setMessages((prev) => {
           const last = prev[prev.length - 1];
           if (last?.role === "assistant" && last?.content === assistantMsg.content) {
-            return prev;
+            // The answer is already on the feed (the daemon's final content and
+            // the loop's completion can both land here): keep that row, but hand
+            // it the turns — the pile is theirs, and only the row can paint it.
+            return assistantMsg.turns
+              ? [...prev.slice(0, -1), { ...last, ...assistantMsg }]
+              : prev;
           }
           return [...prev, assistantMsg];
         });
         setPendingQuestion(null);
         setLiveSegments([]);
-        setLiveTurns([]);
+        // Kept, not cleared: a drawer left open on the running turn holds an
+        // index into these, and re-publishing the settled copies is what flips a
+        // last turn that never saw `turn_end` from "running" to done. The row
+        // carries the same turns — that copy is the one a reload reads back, and
+        // the one the feed paints the pile from once the run is over.
+        setLiveTurns(runTurns);
         setStreamTokensCount(0);
         setStreamReasoningCount(0);
         setLiveStreamingTps(0);
@@ -1719,8 +1922,9 @@ export function useThunderChat() {
         finalContent: stream.streamingText || "(Cancelled)",
         finalReasoning: stream.streamingReasoning || undefined,
         finalTools: stream.streamingTools.length > 0 ? stream.streamingTools : undefined,
-        // The whole run, not just the turn that happened to be open: a cancel
-        // mid-run must not drop the earlier turns' thinking and tools.
+        // Read only when the run opened no turn at all — there is no pile to
+        // hold them then. The whole run, not just the turn that happened to be
+        // open, so a cancel mid-run never drops the earlier turns' thinking.
         finalSegments: runSegmentsOf(stream),
         finishReason: "cancelled"
       });

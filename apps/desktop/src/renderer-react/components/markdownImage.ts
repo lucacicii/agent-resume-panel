@@ -4,6 +4,13 @@ const DATA_URI_MAX_CHARS = 2_000_000;
 export type MarkdownImageOptions = {
   baseDir?: string;
   rootDir?: string;
+  /**
+   * Whether bare absolute image paths in prose are promoted to images.
+   * Defaults to true. Chat user rows set it false: a pasted terminal path is
+   * quoted text, not an attachment — promoting it paints a phantom image for
+   * a file the daemon never saw.
+   */
+  promoteBarePaths?: boolean;
 };
 
 type MarkdownImageResolution =
@@ -158,6 +165,7 @@ export function promoteBareImagePaths(
   options: MarkdownImageOptions = {}
 ): string {
   if (!markdown) return markdown;
+  if (options.promoteBarePaths === false) return markdown;
   return markdown.replace(BARE_IMAGE_PATH, (full, captured: string, offset: number) => {
     if (isInsideFence(markdown, offset)) return full;
     if (offset >= 2 && markdown.slice(offset - 2, offset) === "](") return full;

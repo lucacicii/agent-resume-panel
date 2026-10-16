@@ -126,6 +126,12 @@ describe("promoteBareImagePaths", () => {
     const src = "/var/folders/jg/xxx/T/pi-clipboard-abc.png";
     expect(promoteBareImagePaths(`"${src}#anfeng-web 添加页面`)).toBe(`![](${src})#anfeng-web 添加页面`);
   });
+
+  it("leaves bare paths alone when the caller opts out of promotion", () => {
+    const src = "/var/folders/jg/xxx/T/agent-resume-clipboard-terminal-1.png";
+    const input = `run ${src} now`;
+    expect(promoteBareImagePaths(input, { promoteBarePaths: false })).toBe(input);
+  });
 });
 
 describe("rewriteMarkdownImageSyntax", () => {

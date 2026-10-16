@@ -44,7 +44,16 @@ export async function previewOpenCodeSession(
   `;
   const messages = await runSqliteJson<OpenCodeMessageRow>(dbPath, messageSql);
   if (!messages.length) {
-    throw new Error("OpenCode transcript not found for this session.");
+    // Only a session the database has never seen is missing; a session row with
+    // no message rows is simply empty.
+    const knownSession = await runSqliteJson<{ id: string }>(
+      dbPath,
+      `select id from session where id = '${escapeSqlLiteral(session.id)}' limit 1`
+    );
+    if (!knownSession.length) {
+      throw new Error("OpenCode transcript not found for this session.");
+    }
+    return finalizePreviewMessages(session.title, [], undefined, options);
   }
 
   const partSql = `
@@ -104,7 +113,7 @@ export async function previewOpenCodeSession(
   }
 
   if (!previewMessages.length) {
-    throw new Error("OpenCode transcript is empty for this session.");
+    return finalizePreviewMessages(session.title, [], undefined, options);
   }
 
   return finalizePreviewMessages(session.title, previewMessages, undefined, options);

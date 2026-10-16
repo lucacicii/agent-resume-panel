@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import { ChatMain } from "./ChatMain";
 import type { ThunderChatMessage } from "@agent-resume/core";
+import type { RenderedChatMessage } from "./useThunderChat";
 
 const messages: ThunderChatMessage[] = [{ role: "user", content: "Hello" }];
 
@@ -511,6 +512,13 @@ describe("ChatMain turn dots", () => {
     const dots = document.querySelectorAll(".tb-turn-dot");
     expect(dots[0].classList.contains("is-done")).toBe(true);
     expect(dots[1].classList.contains("is-error")).toBe(true);
+    // The colour says what the turn did, not just that it finished: turn 1 ran a
+    // tool, turn 2 only thought. A failed turn still carries its kind — the error
+    // rule is what paints it red.
+    expect(dots[0].classList.contains("is-tools")).toBe(true);
+    expect(dots[0].classList.contains("is-thinking")).toBe(false);
+    expect(dots[1].classList.contains("is-thinking")).toBe(true);
+    expect(dots[1].classList.contains("is-tools")).toBe(false);
 
     // Nothing is open until a dot is clicked.
     expect(document.querySelector(".tb-turn-overlay")).toBeNull();
@@ -586,5 +594,94 @@ describe("ChatMain turn dots", () => {
     renderChatMain({ ...baseProps(), liveTurns: [] } as any);
     expect(document.querySelector(".tb-turn-dots")).toBeNull();
     expect(document.querySelector(".tb-turn-overlay")).toBeNull();
+  });
+
+  it("hangs the pile off the agent's reply, right after its avatar", async () => {
+    renderChatMain({ ...baseProps(), liveTurns: turns() } as any);
+    await waitFor(() => {
+      expect(document.querySelectorAll(".tb-turn-dot")).toHaveLength(2);
+    });
+
+    const row = document.querySelector(".tb-message-row.is-assistant")!;
+    const avatar = row.querySelector(".tb-message-avatar")!;
+    const dots = row.querySelector(".tb-turn-dots")!;
+
+    // Inside the reply's own content column, and after the avatar in paint order.
+    expect(dots.parentElement!.classList.contains("tb-message-container")).toBe(true);
+    expect(avatar.compareDocumentPosition(dots) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("keeps the pile on the answer once the run is over, off the row it left behind", async () => {
+    const settled = turns().map((turn) => ({ ...turn, status: "done" as const }));
+    const answered: RenderedChatMessage[] = [
+      { role: "user", content: "Hello" },
+      // The run is over: its turns ride on the row it left behind — the same
+      // place a reopened session reads them back from.
+      { role: "assistant", content: "ANSWER", turns: settled }
+    ];
+    renderChatMain({
+      ...baseProps(),
+      isStreaming: false,
+      messages: answered,
+      // The row is what paints the pile; the stream's own copy went with the run.
+      liveTurns: []
+    } as any);
+
+    await waitFor(() => {
+      expect(document.querySelectorAll(".tb-turn-dot")).toHaveLength(3);
+    });
+    const rows = document.querySelectorAll(".tb-message-row.is-assistant");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].querySelectorAll(".tb-turn-dot")).toHaveLength(3);
+
+    // The dots still open their turn long after the run that produced it.
+    fireEvent.click(rows[0].querySelectorAll(".tb-turn-dot")[1]);
+    await waitFor(() => {
+      expect(document.querySelector(".tb-turn-overlay-body")!.textContent).toContain("TURN2_THINKING");
+    });
+  });
+
+  it("keeps each run's pile on its own reply", async () => {
+    const run = (answer: string, marker: string): RenderedChatMessage => ({
+      role: "assistant",
+      content: answer,
+      turns: [
+        {
+          turn: 1,
+          status: "done",
+          toolCount: 0,
+          startedAtMs: 0,
+          segments: [{ kind: "reasoning", text: marker }]
+        }
+      ]
+    });
+    renderChatMain({
+      ...baseProps(),
+      isStreaming: false,
+      liveTurns: [],
+      messages: [
+        { role: "user", content: "first" },
+        run("FIRST ANSWER", "FIRST_THINKING"),
+        { role: "user", content: "second" },
+        run("SECOND ANSWER", "SECOND_THINKING")
+      ]
+    } as any);
+
+    await waitFor(() => {
+      expect(document.querySelectorAll(".tb-turn-dots")).toHaveLength(2);
+    });
+
+    // Each pile opens its own run's turn, never the other run's.
+    const rows = document.querySelectorAll(".tb-message-row.is-assistant");
+    fireEvent.click(rows[0].querySelector(".tb-turn-dot")!);
+    await waitFor(() => {
+      expect(document.querySelector(".tb-turn-overlay-body")!.textContent).toContain("FIRST_THINKING");
+    });
+    expect(document.querySelector(".tb-turn-overlay-body")!.textContent).not.toContain("SECOND_THINKING");
+
+    fireEvent.click(rows[1].querySelector(".tb-turn-dot")!);
+    await waitFor(() => {
+      expect(document.querySelector(".tb-turn-overlay-body")!.textContent).toContain("SECOND_THINKING");
+    });
   });
 });

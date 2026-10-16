@@ -3,11 +3,10 @@ import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
 import { StreamdownRenderer } from "../../components/StreamdownRenderer";
 import { ThinkingState } from "./ThinkingState";
 import { ToolCallsState } from "./ToolCallsState";
-import type { ThunderChatMessage } from "@agent-resume/core";
-import type { ActiveToolInfo, LiveSegment } from "./useThunderChat";
+import type { ActiveToolInfo, LiveSegment, RenderedChatMessage } from "./useThunderChat";
 
 interface ChatMessageItemProps {
-  message: ThunderChatMessage;
+  message: RenderedChatMessage;
   index?: number;
   /**
    * Rendered as `data-timeline-index` on the row, so the chat timeline can
@@ -22,6 +21,14 @@ interface ChatMessageItemProps {
    * (reasoning, then answer, then tool calls) is used.
    */
   segments?: LiveSegment[];
+  /**
+   * The run's finished turns, as the pile of dots that hangs off this reply.
+   * Rendered as the container's first child, so it lands right after the avatar
+   * and above the answer — the history of a run belongs to the agent's reply,
+   * not to the pane. `ChatMain` decides which row owns the paint: the streaming
+   * one while the run is live, the run's answer once it is over.
+   */
+  turnDots?: React.ReactNode;
   onRegenerate?: (index: number) => void;
   onResend?: (index: number) => void;
   onEdit?: (text: string) => void;
@@ -43,6 +50,7 @@ export function ChatMessageItem({
   anchorIndex,
   isStreaming = false,
   segments,
+  turnDots,
   onRegenerate,
   onResend,
   onEdit,
@@ -56,6 +64,7 @@ export function ChatMessageItem({
 }: ChatMessageItemProps) {
   const [copied, setCopied] = useState(false);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [turnsExpanded, setTurnsExpanded] = useState<boolean | null>(null);
   const isUser = message.role === "user";
 
   const handleCopy = async () => {
@@ -87,6 +96,40 @@ export function ChatMessageItem({
 
   const activeReasoning = message.reasoning || "";
   const activeTools = message.tool_executions || historicalTools;
+  const turns = message.turns ?? [];
+
+  const allReasoning = React.useMemo(() => {
+    if (activeReasoning) return activeReasoning;
+    if (turns.length > 0) {
+      const texts: string[] = [];
+      for (const t of turns) {
+        for (const seg of t.segments) {
+          if (seg.kind === "reasoning" && seg.text) {
+            texts.push(seg.text);
+          }
+        }
+      }
+      return texts.join("\n\n---\n\n");
+    }
+    return "";
+  }, [activeReasoning, turns]);
+
+  const allTools: ActiveToolInfo[] = React.useMemo(() => {
+    if (activeTools && activeTools.length > 0) return activeTools;
+    if (turns.length > 0) {
+      const result: ActiveToolInfo[] = [];
+      for (const t of turns) {
+        for (const seg of t.segments) {
+          if (seg.kind === "tools" && seg.tools) {
+            result.push(...seg.tools);
+          }
+        }
+      }
+      return result;
+    }
+    return [];
+  }, [activeTools, turns]);
+
   const liveSegments = segments ?? [];
   const lastSegmentIndex = liveSegments.length - 1;
   const lastTextIndex = liveSegments.reduce(
@@ -126,21 +169,95 @@ export function ChatMessageItem({
               isAnimating={isStreaming && isLast}
               className="tb-markdown-view markdown-body"
               hardBreaks
+              // Live segments ride on assistant rows (the user row carries no
+              // segments); still, a bare pasted path is quoted text, never an
+              // attachment, so promotion stays off wherever the row is the user's.
+              imageOptions={isUser ? { promoteBarePaths: false } : undefined}
             />
           </div>
         );
       })
-    ) : (
-      <>
-        {activeReasoning && (
-          <ThinkingState reasoning={activeReasoning} isStreaming={isStreaming && !message.content} />
-        )}
+) : (
+  <>
+        {turns.length > 0 ? (
+          <div className="tb-chronological-timeline">
+            {turns.length > 2 && (
+              <div className="tb-timeline-summary-bar">
+                <button
+                  type="button"
+                  className="tb-timeline-summary-toggle"
+                  onClick={() => setTurnsExpanded((prev) => !(prev ?? (turns.length <= 2)))}
+                >
+                  <span className="tb-timeline-summary-icon">
+                    <ThemeIcon name="sparkles" size={ICON_SIZE.dense} />
+                  </span>
+                  <span className="tb-timeline-summary-label">
+                    {turns.length} steps in sequence ({allTools.length} {allTools.length === 1 ? "action" : "actions"})
+                  </span>
+                  <span className="tb-timeline-summary-hint">
+                    {(turnsExpanded ?? (turns.length <= 2)) ? "Hide sequence ▴" : "Show sequence ▾"}
+                  </span>
+                </button>
+              </div>
+            )}
 
-        {/* Grouped Tool Calls (Collapsed by default, similar to Thinking) */}
-        {activeTools.length > 0 && (
-          <ToolCallsState tools={activeTools} isStreaming={isStreaming} defaultExpanded={false} />
+            <div className={`tb-timeline-steps-stream${(turnsExpanded ?? (turns.length <= 2)) ? " is-expanded" : " is-collapsed"}`}>
+              {turns.map((turn, tIdx) => {
+                const hasSegments = turn.segments && turn.segments.length > 0;
+                return (
+                  <div key={`turn_seq_${turn.turn}_${tIdx}`} className="tb-timeline-turn-block">
+                    <div className="tb-timeline-turn-header">
+                      <span className="tb-timeline-turn-dot" />
+                      <span className="tb-timeline-turn-title">Step {turn.turn}</span>
+                      {turn.durationMs !== undefined && turn.durationMs > 0 && (
+                        <span className="tb-timeline-turn-time">{(turn.durationMs / 1000).toFixed(1)}s</span>
+                      )}
+                      {turn.status === "error" && (
+                        <span className="tb-timeline-turn-error">failed</span>
+                      )}
+                    </div>
+                    <div className="tb-timeline-turn-body">
+                      {hasSegments ? (
+                        turn.segments.map((seg, sIdx) => {
+                          if (seg.kind === "reasoning" && seg.text) {
+                            return (
+                              <ThinkingState
+                                key={`turn_${turn.turn}_r_${sIdx}`}
+                                reasoning={seg.text}
+                                isStreaming={false}
+                                defaultExpanded={false}
+                              />
+                            );
+                          }
+                          if (seg.kind === "tools" && seg.tools && seg.tools.length > 0) {
+                            return (
+                              <ToolCallsState
+                                key={`turn_${turn.turn}_t_${sIdx}`}
+                                tools={seg.tools}
+                                isStreaming={false}
+                                defaultExpanded={false}
+                              />
+                            );
+                          }
+                          return null;
+                        })
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <>
+            {allReasoning ? (
+              <ThinkingState reasoning={allReasoning} isStreaming={isStreaming && !message.content} defaultExpanded={false} />
+            ) : null}
+            {allTools.length > 0 ? (
+              <ToolCallsState tools={allTools} isStreaming={isStreaming} defaultExpanded={false} />
+            ) : null}
+          </>
         )}
-
         <div className="tb-message-bubble">
           {isUser && message.parts && message.parts.some((p) => p.type === "image") && (
             <div className="wb-terminal-composer-pending-images tb-message-images">
@@ -177,6 +294,10 @@ export function ChatMessageItem({
               isAnimating={isStreaming}
               className="tb-markdown-view markdown-body"
               hardBreaks
+              // A user row's real attachments arrive as `parts` (painted above);
+              // a bare path in its text is quoted terminal output. Promoting it
+              // would paint a phantom image for a file the daemon never saw.
+              imageOptions={isUser ? { promoteBarePaths: false } : undefined}
             />
           ) : isStreaming ? (
             <div className="tb-streaming-placeholder">
@@ -204,6 +325,7 @@ export function ChatMessageItem({
       </div>
 
       <div className="tb-message-container">
+        {turnDots}
         {body}
 
         {/* User Message Action Toolbar */}

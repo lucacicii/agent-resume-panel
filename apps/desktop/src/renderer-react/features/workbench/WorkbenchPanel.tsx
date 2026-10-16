@@ -216,6 +216,30 @@ type PendingWorkbenchSession = {
   /** When set, append the bound session to this task on bind. */
   taskNoteId?: string;
 };
+/**
+ * A Thunder TUI pane whose conversation is not known yet: the TUI mints it in
+ * its own process at the first turn, so the pane is bound by discovery.
+ */
+type UnboundThunderTuiPane = {
+  terminalKey: string;
+  cwd: string;
+  launchedAtMs: number;
+  /** A restored pane knows the conversation it was resumed with. */
+  sessionIdHint?: string;
+};
+/** How far a Thunder conversation may predate its pane and still be its own. */
+const THUNDER_TUI_BIND_SLACK_MS = 5_000;
+/** The `--session <id>` a Thunder TUI command resumes, when it carries one. */
+const THUNDER_SESSION_FLAG = /(?:^|\s)--session\s+(?:'([^']+)'|"([^"]+)"|(\S+))/;
+/** Thunder's store is not synced by the catalog, so unbound panes poll it. */
+const THUNDER_TUI_DISCOVERY_POLL_MS = 3_000;
+
+/** The conversation a persisted Thunder TUI command resumes, if it names one. */
+function thunderSessionIdFromCommand(command: string | undefined): string | undefined {
+  if (!command || !/thunder/i.test(command)) return undefined;
+  const match = THUNDER_SESSION_FLAG.exec(command);
+  return match?.[1] || match?.[2] || match?.[3] || undefined;
+}
 type WorkbenchSessionRow =
   | { kind: "pending"; pending: PendingWorkbenchSession }
   | { kind: "session"; session: AgentSession }
@@ -299,7 +323,7 @@ type WorkbenchProject = {
   updatedAt: number;
 };
 type WorkbenchContextMenu = {
-  kind: "session" | "session-tab" | "editor-tab" | "task" | "note";
+  kind: "session" | "session-tab" | "editor-tab" | "task" | "note" | "thunder";
   x: number;
   y: number;
   /** Tasks / notes: the note id (and title for labels). */
@@ -310,6 +334,8 @@ type WorkbenchContextMenu = {
   taskTitle?: string;
   taskHasSessions?: boolean;
   session?: AgentSession;
+  /** Thunder rows are not catalog sessions: the row's own summary stands in. */
+  thunderConversation?: ThunderConversationSummary;
   floatingNoteTarget?: FloatingSessionNoteTarget;
   hasFloatingNote?: boolean;
   editorKey?: string;
@@ -332,7 +358,10 @@ type WorkbenchNewSessionTarget =
 type ProjectPickDialog =
   | {
       kind: "moveSessionToTask";
-      session: AgentSession;
+      /** `${provider}:${id}` — Thunder rows link as `thunder:<conversation id>`. */
+      sessionKey: string;
+      sessionTitle: string;
+      projectPath: string;
       options: Array<{ noteId: string; label: string; path?: string }>;
       query: string;
       busy: boolean;
@@ -379,11 +408,18 @@ const DIFF_SESSION_ALONGSIDE_KEY = "wb-diff-session-alongside";
 const TUI_SPLIT_HEIGHT_KEY = "wb-tui-split-height";
 const ALL_PROJECTS_PANE_KEY = "__all_projects__";
 
+function effectiveGtdStatusForKey(
+  statuses: Record<string, GtdStatus>,
+  key: string
+): GtdStatus {
+  return statuses[key] || "inbox";
+}
+
 function effectiveGtdStatus(
   statuses: Record<string, GtdStatus>,
   session: AgentSession
 ): GtdStatus {
-  return statuses[sessionKey(session)] || "inbox";
+  return effectiveGtdStatusForKey(statuses, sessionKey(session));
 }
 
 function paneProjectKey(projectPath: string | null): string {
@@ -505,6 +541,21 @@ function sessionNoteTarget(session: AgentSession, projectName?: string): Floatin
     projectPath: session.projectPath || "",
     projectName: projectName || basename(session.projectPath),
     sessionTitle: session.title || session.id
+  };
+}
+
+/** Note target for a Thunder conversation, which the catalog does not carry. */
+function thunderSessionNoteTarget(
+  conversation: ThunderConversationSummary,
+  projectName?: string
+): FloatingSessionNoteTarget {
+  const projectPath = conversation.workspace || "";
+  return {
+    provider: "thunder",
+    sessionId: conversation.id,
+    projectPath,
+    projectName: projectName || basename(projectPath),
+    sessionTitle: conversation.title || conversation.id
   };
 }
 
@@ -715,6 +766,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [acpChats, setAcpChats] = useState<AcpChatPane[]>([]);
   const [thunderChats, setThunderChats] = useState<ThunderChatPane[]>([]);
   const [thunderConversations, setThunderConversations] = useState<ThunderConversationSummary[]>([]);
+  const [unboundThunderTui, setUnboundThunderTui] = useState<UnboundThunderTuiPane[]>([]);
   const [browsers, setBrowsers] = useState<BrowserPane[]>([]);
   const [notePanes, setNotePanes] = useState<NotePane[]>([]);
   const [activePanes, setActivePanes] = useState<Record<string, string>>({});
@@ -759,6 +811,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const terminalRefs = useRef(new Map<number, Terminal>());
   const terminalMouseTrackingRef = useRef(new Map<number, boolean>());
   const pendingSessionsRef = useRef<PendingWorkbenchSession[]>([]);
+  const unboundThunderTuiRef = useRef<UnboundThunderTuiPane[]>([]);
   /** Latest task workspace scope, for values read during session binding. */
   const taskScopeRef = useRef<{ noteId: string } | null>(null);
   const workbenchesRef = useRef<Workbench[]>([]);
@@ -1827,33 +1880,62 @@ export function WorkbenchPanel(): ReactPortal | null {
    * Thunder conversations are not in the catalog. When a task is scoped they are
    * limited to the task's workspace (or an explicit `thunder:` link); otherwise
    * every conversation is listed, mirroring the catalog's "all" page.
+   *
+   * Scope and search stay separate memos: the meta row needs a denominator for
+   * "how many rows could be here", which a query-filtered list cannot answer.
    */
-  const visibleThunderConversations = useMemo(() => {
-    const q = sessionQuery.trim().toLowerCase();
+  const scopedThunderConversations = useMemo(() => {
     const scoped = sessionFilter === "task" && taskScope && taskSessionsKnown;
+    if (!scoped) return thunderConversations;
     const scopePaths = new Set(
       [selectedProject, ...scopeProjects]
         .filter((path): path is string => Boolean(path))
         .map((path) => projectPathKey(path))
     );
     const linkedKeys = new Set(taskSessionKeys);
-    return thunderConversations
-      .filter((conversation) => {
-        if (scoped) {
-          const workspace = projectPathKey(conversation.workspace || "");
-          const inScope = (workspace && scopePaths.has(workspace)) || linkedKeys.has(`thunder:${conversation.id}`);
-          if (!inScope) return false;
-        }
-        return `${conversation.title || ""} ${conversation.id} thunder`.toLowerCase().includes(q);
-      })
-      .sort((a, b) => b.updated_at_ms - a.updated_at_ms);
-  }, [thunderConversations, sessionQuery, sessionFilter, taskScope, taskSessionsKnown, selectedProject, scopeProjects, taskSessionKeys]);
+    return thunderConversations.filter((conversation) => {
+      const workspace = projectPathKey(conversation.workspace || "");
+      return Boolean(workspace && scopePaths.has(workspace)) || linkedKeys.has(`thunder:${conversation.id}`);
+    });
+  }, [thunderConversations, sessionFilter, taskScope, taskSessionsKnown, selectedProject, scopeProjects, taskSessionKeys]);
 
-  const visibleSessionRows = useMemo<WorkbenchSessionRow[]>(() => [
-    ...visiblePendingSessions.map((pending) => ({ kind: "pending" as const, pending })),
-    ...visibleSessions.map((session) => ({ kind: "session" as const, session })),
-    ...visibleThunderConversations.map((conversation) => ({ kind: "thunder" as const, conversation }))
-  ], [visiblePendingSessions, visibleSessions, visibleThunderConversations]);
+  const visibleThunderConversations = useMemo(() => {
+    const q = sessionQuery.trim().toLowerCase();
+    return scopedThunderConversations
+      .filter((conversation) => `${conversation.title || ""} ${conversation.id} thunder`.toLowerCase().includes(q))
+      .sort((a, b) => b.updated_at_ms - a.updated_at_ms);
+  }, [scopedThunderConversations, sessionQuery]);
+
+  /**
+   * Catalog rows and Thunder's own rows share one timeline: both stamp ms
+   * (`updatedAt` / `updated_at_ms`), so a conversation touched a minute ago
+   * sorts above a session from last week. Appending Thunder after the catalog
+   * is what pinned every conversation — however fresh — below every session,
+   * however old. Pending rows stay on top instead: a session that has not
+   * reached the catalog yet is a live terminal, not a point on the timeline.
+   */
+  const visibleSessionRows = useMemo<WorkbenchSessionRow[]>(() => {
+    const recency = (row: WorkbenchSessionRow) => row.kind === "pending"
+      ? row.pending.createdAt
+      : row.kind === "thunder" ? row.conversation.updated_at_ms : row.session.updatedAt;
+    const timeline = [
+      ...visibleSessions.map((session) => ({ kind: "session" as const, session })),
+      ...visibleThunderConversations.map((conversation) => ({ kind: "thunder" as const, conversation }))
+    ].sort((a, b) => recency(b) - recency(a));
+    return [
+      ...visiblePendingSessions.map((pending) => ({ kind: "pending" as const, pending })),
+      ...timeline
+    ];
+  }, [visiblePendingSessions, visibleSessions, visibleThunderConversations]);
+  /**
+   * What the meta row counts: every row the list holds, out of every row it
+   * could hold. Thunder rows belong in both halves — leaving them out of the
+   * numerator is what made a 400-row list read "3 / 120".
+   */
+  const sessionListCounts = useMemo(() => ({
+    shown: visibleSessions.length + visiblePendingSessions.length + visibleThunderConversations.length,
+    total: sessionsTotal + selectedPendingSessions.length + scopedThunderConversations.length
+  }), [visibleSessions, visiblePendingSessions, visibleThunderConversations, sessionsTotal, selectedPendingSessions, scopedThunderConversations]);
   /** Left-panel note list: the task's note tree when filtered, else every note. */
   const visibleNotes = useMemo(() => {
     const q = noteQuery.trim().toLowerCase();
@@ -2644,6 +2726,19 @@ export function WorkbenchPanel(): ReactPortal | null {
     setActiveSessionKey(key);
   }, [addThunderChat, selectProject, setActivePane]);
 
+  /**
+   * Track a Thunder TUI pane that has no conversation yet.
+   *
+   * Thunder mints the conversation inside the TUI process, so there is no id to
+   * pass at launch: the pane is bound later, when the poll below sees the
+   * conversation this workspace registered after the pane started.
+   */
+  const trackThunderTuiPane = useCallback((terminalKey: string, cwd: string, sessionIdHint?: string) => {
+    const entry = { terminalKey, cwd, launchedAtMs: Date.now(), sessionIdHint };
+    unboundThunderTuiRef.current = [...unboundThunderTuiRef.current, entry];
+    setUnboundThunderTui(unboundThunderTuiRef.current);
+  }, []);
+
   /** Launch the native Thunder TUI, optionally resuming an existing conversation. */
   const launchThunderTui = useCallback(async (conversation?: ThunderConversationSummary) => {
     const cwd = (conversation?.workspace || selectedProject || "").trim();
@@ -2666,14 +2761,135 @@ export function WorkbenchPanel(): ReactPortal | null {
       if (result.mode === "xterm" && result.command) {
         const launchCwd = result.cwd || cwd;
         const title = conversation?.title || t("desktop.settings.newSessionTarget.cli_thunder");
-        addTerminal(title, launchCwd, result.command, launchCwd, undefined, "session", { env: result.env });
-        setSessionViewMode("hybrid");
-        writeWorkbenchValue(SESSION_VIEW_MODE_KEY, activeWorkbenchIdRef.current, "hybrid");
+        // Resuming a conversation means the pane has something to observe right
+        // away; a bare TUI has to register its conversation first.
+        const boundKey = conversation?.id ? `thunder:${conversation.id}` : undefined;
+        const terminalKey = addTerminal(title, launchCwd, result.command, launchCwd, boundKey, "session", { env: result.env });
+        if (boundKey) linkSessionToOpenTask(boundKey, launchCwd);
+        else trackThunderTuiPane(terminalKey, launchCwd);
+        setSessionViewMode(boundKey ? "hybrid" : "terminal");
+        writeWorkbenchValue(SESSION_VIEW_MODE_KEY, activeWorkbenchIdRef.current, boundKey ? "hybrid" : "terminal");
       }
     } catch (error) {
       setStatus({ text: statusError(error), kind: "error" });
     }
-  }, [addTerminal, selectedProject, t]);
+  }, [addTerminal, linkSessionToOpenTask, selectedProject, t, trackThunderTuiPane]);
+
+  /**
+   * AI-rename a Thunder conversation. Unlike catalog sessions this never goes
+   * through `performAutoRenameSession`, which looks the session up in the
+   * catalog page and would silently no-op for Thunder.
+   */
+  const autoRenameThunderConversation = useCallback(async (conversation: ThunderConversationSummary) => {
+    const api = desktopApi();
+    if (typeof api.thunderChatGenerateTitle !== "function") return;
+    try {
+      const result = await api.thunderChatGenerateTitle({ sessionId: conversation.id });
+      if (!result?.ok) {
+        setStatus({
+          text: t("desktop.workbench.thunderRenameFailed", result?.error || result?.errorKind || ""),
+          kind: "error"
+        });
+      }
+      // The title lives in Thunder's own store, so the row only refreshes here.
+      await reloadThunderConversations();
+    } catch (error) {
+      setStatus({ text: statusError(error), kind: "error" });
+    }
+  }, [reloadThunderConversations, t]);
+
+  /** Delete a Thunder conversation: confirm, drop its visual pane, refresh the list. */
+  const deleteThunderConversation = useCallback(async (conversation: ThunderConversationSummary) => {
+    const api = desktopApi();
+    if (typeof api.thunderChatDeleteConversation !== "function") return;
+    const key = `thunder:${conversation.id}`;
+    const label = conversation.title || conversation.id;
+    if (!(await confirmDestructive(
+      t("desktop.workbench.deleteThunderConversationConfirm", label),
+      t("desktop.common.delete")
+    ))) return;
+    try {
+      await api.thunderChatDeleteConversation({ sessionId: conversation.id });
+      // A visual pane on this conversation would be a pane on a dead id. A TUI
+      // terminal bound to it is left alone: that is the user's own live process.
+      if (thunderChatsRef.current.some((pane) => pane.key === key)) closeThunderChat(key);
+      await reloadThunderConversations();
+    } catch (error) {
+      setStatus({ text: statusError(error), kind: "error" });
+    }
+  }, [closeThunderChat, reloadThunderConversations, t]);
+
+  // A TUI pane that was closed before its conversation appeared stops being a
+  // binding target.
+  useEffect(() => {
+    if (!unboundThunderTuiRef.current.length) return;
+    const live = unboundThunderTuiRef.current.filter((entry) =>
+      terminals.some((pane) => pane.key === entry.terminalKey)
+    );
+    if (live.length === unboundThunderTuiRef.current.length) return;
+    unboundThunderTuiRef.current = live;
+    setUnboundThunderTui(live);
+  }, [terminals]);
+
+  useEffect(() => {
+    if (!unboundThunderTui.length) return;
+    if (typeof desktopApi().thunderChatListConversations !== "function") return;
+    const timer = window.setInterval(() => { void reloadThunderConversations(); }, THUNDER_TUI_DISCOVERY_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [unboundThunderTui.length, reloadThunderConversations]);
+
+  /**
+   * Bind a Thunder TUI pane to the conversation its process registered: the
+   * store stamps a new conversation with the TUI's start time and the pane's
+   * cwd, which is how a pane with no id finds its own. A restored pane carries
+   * the id it was resumed with instead.
+   */
+  useEffect(() => {
+    if (!unboundThunderTui.length || !thunderConversations.length) return;
+    // A visual chat pane owns its conversation as well, even before it has
+    // rebound its pane key to it.
+    const claimed = new Set([
+      ...terminals.flatMap((pane) => pane.sessionKey ? [pane.sessionKey] : []),
+      ...thunderChats.flatMap((pane) => pane.sessionId ? [`thunder:${pane.sessionId}`] : [])
+    ]);
+    const assignments = new Map<string, string>();
+    const entries = [...unboundThunderTui].sort((a, b) => a.launchedAtMs - b.launchedAtMs);
+
+    entries.forEach((entry, index) => {
+      // The next pane's launch bounds this one from above: a conversation
+      // stamped after it belongs to that pane, not to this one.
+      const upperBound = entries[index + 1]?.launchedAtMs ?? Infinity;
+      const candidate = thunderConversations
+        .filter((conversation) => {
+          if (claimed.has(`thunder:${conversation.id}`)) return false;
+          if ((conversation.turn_count ?? 0) <= 0) return false;
+          if (entry.sessionIdHint) return conversation.id === entry.sessionIdHint;
+          if (projectPathKey(conversation.workspace || "") !== projectPathKey(entry.cwd)) return false;
+          return conversation.created_at_ms >= entry.launchedAtMs - THUNDER_TUI_BIND_SLACK_MS
+            && conversation.created_at_ms < upperBound;
+        })
+        .sort((a, b) => a.created_at_ms - b.created_at_ms)[0];
+      if (!candidate) return;
+      const bound = `thunder:${candidate.id}`;
+      claimed.add(bound);
+      assignments.set(entry.terminalKey, bound);
+    });
+
+    if (!assignments.size) return;
+    const bindSessions = (current: TerminalPane[]) => current.map((pane) => {
+      const bound = assignments.get(pane.key);
+      return bound ? { ...pane, sessionKey: bound } : pane;
+    });
+    terminalsRef.current = bindSessions(terminalsRef.current);
+    setTerminals(bindSessions);
+    for (const entry of unboundThunderTui) {
+      const bound = assignments.get(entry.terminalKey);
+      if (bound) linkSessionToOpenTask(bound, entry.cwd);
+    }
+    const remaining = unboundThunderTuiRef.current.filter((entry) => !assignments.has(entry.terminalKey));
+    unboundThunderTuiRef.current = remaining;
+    setUnboundThunderTui(remaining);
+  }, [linkSessionToOpenTask, terminals, thunderChats, thunderConversations, unboundThunderTui]);
 
   const closeBrowser = useCallback((key: string) => {
     const pane = browsers.find((item) => item.key === key);
@@ -3013,16 +3229,19 @@ export function WorkbenchPanel(): ReactPortal | null {
           const title = t("desktop.workbench.newSessionTitle", basename(launchCwd));
           const terminalKey = addTerminal(title, launchCwd, result.command, launchCwd, undefined, "session", { initialPrompt: prompt, env: result.env });
           // Thunder's TUI keeps its own conversation store, so there is no catalog
-          // session to bind a pending row to.
-          if (target.channel !== "thunder") addPendingSession(terminalKey, target.provider, launchCwd, title);
-          setSessionViewMode("hybrid");
-          writeWorkbenchValue(SESSION_VIEW_MODE_KEY, activeWorkbenchIdRef.current, "hybrid");
+          // session to bind a pending row to — its pane is bound by discovery.
+          if (target.channel === "thunder") trackThunderTuiPane(terminalKey, launchCwd);
+          else addPendingSession(terminalKey, target.provider, launchCwd, title);
+          // A brand-new session has nothing to observe yet, so it opens in the
+          // fullscreen terminal; the transcript split stays one toggle away.
+          setSessionViewMode("terminal");
+          writeWorkbenchValue(SESSION_VIEW_MODE_KEY, activeWorkbenchIdRef.current, "terminal");
         }
         await loadSessions();
       }
     } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
     finally { setTerminalCreating(false); }
-  }, [addAcpChat, addPendingSession, addTerminal, addThunderChat, linkSessionToOpenTask, loadSessions, reloadWorkbench, settings?.workbench?.composerMentions, t, terminalCreating]);
+  }, [addAcpChat, addPendingSession, addTerminal, addThunderChat, linkSessionToOpenTask, loadSessions, reloadWorkbench, settings?.workbench?.composerMentions, t, terminalCreating, trackThunderTuiPane]);
 
   /**
    * New-session picker as a native `NSMenu`.
@@ -3335,6 +3554,9 @@ export function WorkbenchPanel(): ReactPortal | null {
       if (tips.length) continue;
       const identity = sessionIdentityFromKey(pane.sessionKey);
       if (!identity) continue;
+      // Composer history comes from the catalog, which does not hold Thunder
+      // conversations (they live in the daemon's own store).
+      if (identity.provider === "thunder") continue;
       const importKey = `${identity.provider}:${identity.sessionId}`;
       if (composerImportKeysRef.current.has(importKey)) continue;
       composerImportKeysRef.current.add(importKey);
@@ -3791,6 +4013,14 @@ export function WorkbenchPanel(): ReactPortal | null {
       .filter((pane) => liveIds.has(pane.ptyId) && !knownPtyIds.has(pane.ptyId))
       .map((pane): TerminalPane => ({ ...pane, workbenchId }));
     if (!additions.length) return;
+    // A restored Thunder TUI pane still knows the conversation it was resumed
+    // with from its own command line, so its binding does not have to wait for
+    // discovery to guess it.
+    for (const pane of additions) {
+      if (pane.group !== "session" || pane.sessionKey) continue;
+      const hint = thunderSessionIdFromCommand(pane.command);
+      if (hint) trackThunderTuiPane(pane.key, pane.cwd, hint);
+    }
     terminalsRef.current = [...terminalsRef.current, ...additions];
     setTerminals((current) => [
       ...current,
@@ -3800,7 +4030,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     if (scope && !activePanesRef.current[scope]) {
       setActivePane(additions[additions.length - 1]!.key, projectPath ?? selectedProject);
     }
-  }, [selectedProject, setActivePane]);
+  }, [selectedProject, setActivePane, trackThunderTuiPane]);
 
   // Persist a workbench's panes so its workspace can be restored later. The
   // terminals carry their pty id: a reopened workbench adopts those processes.
@@ -4084,6 +4314,23 @@ export function WorkbenchPanel(): ReactPortal | null {
     refreshFloatingNoteAvailability(sessionNoteTarget(session, aliases[session.projectPath] || basename(session.projectPath)), menu);
   };
 
+  /**
+   * Thunder rows share the catalog sessions' overlay menu. They stay out of
+   * `selectedSessionKeys` — Thunder is not part of the catalog selection model.
+   */
+  const thunderConversationMenu = (event: React.MouseEvent, conversation: ThunderConversationSummary) => {
+    event.preventDefault();
+    const workspace = conversation.workspace || "";
+    const menu: WorkbenchContextMenu = {
+      kind: "thunder",
+      thunderConversation: conversation,
+      x: event.clientX,
+      y: event.clientY
+    };
+    setContextMenu(menu);
+    refreshFloatingNoteAvailability(thunderSessionNoteTarget(conversation, aliases[workspace] || basename(workspace)), menu);
+  };
+
   const noteMenu = (event: React.MouseEvent, note: { noteId: string; title: string }) => {
     event.preventDefault();
     event.stopPropagation();
@@ -4199,7 +4446,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     return () => window.removeEventListener("agent-resume:open-note", onOpenNote);
   }, [openNotePane]);
 
-  const openMoveSessionToTaskDialog = (session: AgentSession) => {
+  const openMoveSessionToTaskDialog = (owner: { sessionKey: string; sessionTitle: string; projectPath: string }) => {
     const options = tasks
       .map((task) => ({ noteId: task.noteId, label: task.title, path: task.primaryProject || task.projects?.[0] }))
       .sort((a, b) => a.label.localeCompare(b.label));
@@ -4209,7 +4456,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     }
     setProjectPickDialog({
       kind: "moveSessionToTask",
-      session,
+      ...owner,
       options,
       query: "",
       busy: false,
@@ -4219,13 +4466,13 @@ export function WorkbenchPanel(): ReactPortal | null {
 
   const applyMoveSessionToTask = async (target: { noteId: string; label: string; path?: string }) => {
     if (!projectPickDialog || projectPickDialog.kind !== "moveSessionToTask") return;
-    const session = projectPickDialog.session;
+    const { sessionKey: ownerKey, projectPath } = projectPickDialog;
     setProjectPickDialog((current) => current ? { ...current, busy: true, status: t("desktop.workbench.moveToTaskRunning") } : current);
     try {
       await desktopApi().notesLinkSessionToTask({
         noteId: target.noteId,
-        sessionKey: sessionKey(session),
-        projectPath: session.projectPath
+        sessionKey: ownerKey,
+        projectPath
       });
       setProjectPickDialog(null);
       setStatus({ text: t("desktop.workbench.moveToTaskDone", target.label) });
@@ -4311,10 +4558,76 @@ export function WorkbenchPanel(): ReactPortal | null {
       }
       return;
     }
+    if (menu.kind === "thunder" && menu.thunderConversation) {
+      const conversation = menu.thunderConversation;
+      const workspace = conversation.workspace || "";
+      const ownerKey = `thunder:${conversation.id}`;
+      if (action === "openThunderChat") {
+        openThunderConversation(conversation);
+        return;
+      }
+      if (action === "thunderTui") {
+        void launchThunderTui(conversation);
+        return;
+      }
+      if (action === "floatingNote") {
+        openFloatingNote(thunderSessionNoteTarget(conversation, aliases[workspace] || basename(workspace)));
+        return;
+      }
+      if (action === "note") {
+        await openMountedNote({ scope: "session", projectPath: workspace, provider: "thunder", sessionId: conversation.id });
+        return;
+      }
+      if (action === "autoRename") {
+        void autoRenameThunderConversation(conversation);
+        return;
+      }
+      if (action === "moveTask") {
+        openMoveSessionToTaskDialog({
+          sessionKey: ownerKey,
+          sessionTitle: conversation.title || conversation.id,
+          projectPath: workspace
+        });
+        return;
+      }
+      if (action === "deleteThunderConversation") {
+        await deleteThunderConversation(conversation);
+        return;
+      }
+      if (action.startsWith("gtd:")) {
+        const status = action === "gtd:clear"
+          ? null
+          : GTD_STATUSES.includes(action.slice(4) as DesktopGtdStatus)
+            ? action.slice(4) as DesktopGtdStatus
+            : null;
+        if (action !== "gtd:clear" && !status) return;
+        try {
+          await desktopApi().setSessionGtdStatus({ provider: "thunder", id: conversation.id, status });
+          setGtdStatuses((current) => {
+            const next = { ...current };
+            if (status) next[ownerKey] = status;
+            else delete next[ownerKey];
+            return next;
+          });
+          setStatus({ text: "" });
+          window.dispatchEvent(new Event("agent-resume:sessions-mutated"));
+        } catch (error) {
+          const message = t("desktop.workbench.gtdStatusSaveFailed", statusError(error));
+          setStatus({ text: message, kind: "error" });
+          notifyDesktop({ text: message, kind: "error" });
+        }
+        return;
+      }
+      return;
+    }
     const session = menu.session;
     if (!session) return;
     if (action === "moveTask") {
-      openMoveSessionToTaskDialog(session);
+      openMoveSessionToTaskDialog({
+        sessionKey: sessionKey(session),
+        sessionTitle: session.title || session.id,
+        projectPath: session.projectPath || ""
+      });
       return;
     }
     if (action.startsWith("gtd:")) {
@@ -5660,7 +5973,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     else { setSideWidth(next); writeWorkbenchValue(SIDE_WIDTH_KEY, activeWorkbenchIdRef.current, String(next)); }
   };
 
-  const contextMenuWidth = contextMenu?.kind === "session" || contextMenu?.kind === "session-tab" ? 210 : 240;
+  const contextMenuWidth = contextMenu?.kind === "session" || contextMenu?.kind === "session-tab" || contextMenu?.kind === "thunder" ? 210 : 240;
   const contextMenuHeight = (() => {
     if (!contextMenu) return 320;
     switch (contextMenu.kind) {
@@ -6377,7 +6690,7 @@ export function WorkbenchPanel(): ReactPortal | null {
           </div>
           <input className="wb-search wb-note-search" type="search" aria-label={t("desktop.workbench.searchSessions")} placeholder={t("desktop.common.search")} value={sessionQuery} autoComplete="off" spellCheck={false} onChange={(event) => { setSessionQuery(event.target.value); setSelectedSessionKeys((current) => current.size ? new Set() : current); setSelectionAnchorKey((current) => current ? "" : current); }} />
         </div>
-        <div className="wb-list-meta-row"><p className="wb-list-meta">{selectedSessionKeys.size > 1 ? t("desktop.workbench.selectedCount", selectedSessionKeys.size) : sessionQuery ? t("desktop.workbench.listMetaSearch", selectedSessionScope, sessionQuery, visibleSessions.length + visiblePendingSessions.length) : `${visibleSessions.length + visiblePendingSessions.length} / ${sessionsTotal + selectedPendingSessions.length}`}</p>{selectedSessionKeys.size > 1 ? <button type="button" className="wb-list-remove-btn" onClick={() => {
+        <div className="wb-list-meta-row"><p className="wb-list-meta">{selectedSessionKeys.size > 1 ? t("desktop.workbench.selectedCount", selectedSessionKeys.size) : sessionQuery ? t("desktop.workbench.listMetaSearch", selectedSessionScope, sessionQuery, sessionListCounts.shown) : `${sessionListCounts.shown} / ${sessionListCounts.total}`}</p>{selectedSessionKeys.size > 1 ? <button type="button" className="wb-list-remove-btn" onClick={() => {
           const targets = visibleSessions.filter((item) => selectedSessionKeys.has(sessionKey(item)));
           if (!targets.length) return;
           void (async () => {
@@ -6401,6 +6714,7 @@ export function WorkbenchPanel(): ReactPortal | null {
             if (row.kind === "thunder") {
               const conversation = row.conversation;
               const key = `thunder:${conversation.id}`;
+              const gtdStatus = gtdStatuses[key];
               const isOpen = openSessionKeys.has(key);
               return <button
                 type="button"
@@ -6410,17 +6724,8 @@ export function WorkbenchPanel(): ReactPortal | null {
                   setSelectionAnchorKey("");
                   openThunderConversation(conversation);
                 }}
-                onContextMenu={(event) => {
-                  event.preventDefault();
-                  void showContextMenuAt(contextMenuPoint(event), [
-                    { id: "open", label: t("desktop.workbench.openThunderChat") },
-                    { id: "tui", label: t("desktop.workbench.resumeThunderTui") }
-                  ]).then((chosen) => {
-                    if (chosen === "open") openThunderConversation(conversation);
-                    else if (chosen === "tui") void launchThunderTui(conversation);
-                  });
-                }}
-              ><span className="wb-list-item-top"><span className="wb-session-title-wrap">{isOpen ? <span className="wb-session-activity-dot" aria-hidden="true" /> : null}<span className="wb-list-item-title" ref={(el) => syncTruncationTitle(el)}>{conversation.title || conversation.id}</span></span></span><span className="wb-list-item-preview" ref={(el) => syncTruncationTitle(el)}><span className="wb-list-item-date">{formatDateTime(conversation.updated_at_ms)}</span><span className="s-provider-tag" data-provider="thunder">thunder</span>{conversation.workspace ? <>{" · "}{aliases[conversation.workspace] || basename(conversation.workspace)}</> : null}</span></button>;
+                onContextMenu={(event) => thunderConversationMenu(event, conversation)}
+              ><span className="wb-list-item-top"><span className="wb-session-title-wrap">{isOpen ? <span className="wb-session-activity-dot" aria-hidden="true" /> : null}<span className="wb-list-item-title" ref={(el) => syncTruncationTitle(el)}>{conversation.title || conversation.id}</span></span></span><span className="wb-list-item-preview" ref={(el) => syncTruncationTitle(el)}><span className="wb-list-item-date">{formatDateTime(conversation.updated_at_ms)}</span><span className="s-provider-tag" data-provider="thunder">thunder</span>{gtdStatus ? <span className={`wb-gtd-status-badge is-${gtdStatus}`} aria-label={t("desktop.workbench.gtdStatusLabel", t(`desktop.workbench.gtdStatus.${gtdStatus}`))}>{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</span> : <span className="wb-gtd-status-badge is-unmarked" title={t("desktop.gtd.unmarkedHint")}>{t("desktop.gtd.unmarked")}</span>}{conversation.workspace ? <>{" · "}{aliases[conversation.workspace] || basename(conversation.workspace)}</> : null}</span></button>;
             }
             const session = row.session;
             const key = sessionKey(session);
@@ -7020,14 +7325,29 @@ export function WorkbenchPanel(): ReactPortal | null {
         </div>
       </>}
     </div> : null}
-    {contextMenu && !(contextMenu.kind === "task" && !contextMenu.workspaceDir && contextMenu.taskHasSessions) ? <div ref={contextMenuRef} className={`wb-context-menu${contextMenu.kind === "session" || contextMenu.kind === "session-tab" ? " wb-session-context-menu" : ""}${contextMenuClosing ? " is-closing" : ""}`} role="menu" style={{ left: contextMenuLeft, top: contextMenu.y, visibility: "hidden" }} onContextMenu={(event) => event.preventDefault()}>
+    {contextMenu && !(contextMenu.kind === "task" && !contextMenu.workspaceDir && contextMenu.taskHasSessions) ? <div ref={contextMenuRef} className={`wb-context-menu${contextMenu.kind === "session" || contextMenu.kind === "session-tab" || contextMenu.kind === "thunder" ? " wb-session-context-menu" : ""}${contextMenuClosing ? " is-closing" : ""}`} role="menu" style={{ left: contextMenuLeft, top: contextMenu.y, visibility: "hidden" }} onContextMenu={(event) => event.preventDefault()}>
       {contextMenu.kind === "session-tab" ? <button type="button" role="menuitem" onClick={() => void runContextAction("floatingNote")}>{t(contextMenu.hasFloatingNote ? "desktop.workbench.openFloatingNote" : "desktop.workbench.addFloatingNote")}</button> : contextMenu.kind === "editor-tab" ? <button type="button" role="menuitem" onClick={() => void runContextAction("toggleEditorPreview")}>{t(contextMenu.editorPreview ? "desktop.common.edit" : "desktop.workbench.preview")}</button> : contextMenu.kind === "note" ? <>
         <span className="wb-context-menu-label">{t("desktop.workbench.setGtdStatus")}</span>
         <div className="wb-gtd-context-tags" role="group" aria-label={t("desktop.workbench.setGtdStatus")}>
           {GTD_STATUSES.map((gtdStatus) => <button type="button" role="menuitemradio" className={`wb-gtd-context-tag is-${gtdStatus}`} aria-checked={noteItems.find((item) => item.noteId === contextMenu.noteId)?.gtdStatus === gtdStatus} key={gtdStatus} onClick={() => void runContextAction(`gtd:${gtdStatus}`)}>{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</button>)}
         </div>
         {noteItems.find((item) => item.noteId === contextMenu.noteId)?.gtdStatus ? <button type="button" role="menuitem" onClick={() => void runContextAction("gtd:clear")}>{t("desktop.workbench.clearGtdStatus")}</button> : null}
-      </> : contextMenu.kind === "task" ? <>{contextMenu.workspaceDir ? <button type="button" role="menuitem" onClick={() => void runContextAction("openWorkspace")}>{t("desktop.workbench.openTaskWorkspace")}</button> : null}{contextMenu.noteId && contextMenu.noteId === taskScope?.noteId && taskRollup?.override ? <button type="button" role="menuitem" onClick={() => void runContextAction("followChildren")}>{t("desktop.gtd.followChildren")}</button> : null}{!contextMenu.taskHasSessions ? <>{contextMenu.workspaceDir ? <div className="context-menu-separator" role="separator" /> : null}<button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => void runContextAction("deleteTask")}>{t("desktop.workbench.deleteTask")}</button></> : null}</> : selectedSessionKeys.size > 1 && contextMenu.session && selectedSessionKeys.has(sessionKey(contextMenu.session)) ? <>
+      </> : contextMenu.kind === "task" ? <>{contextMenu.workspaceDir ? <button type="button" role="menuitem" onClick={() => void runContextAction("openWorkspace")}>{t("desktop.workbench.openTaskWorkspace")}</button> : null}{contextMenu.noteId && contextMenu.noteId === taskScope?.noteId && taskRollup?.override ? <button type="button" role="menuitem" onClick={() => void runContextAction("followChildren")}>{t("desktop.gtd.followChildren")}</button> : null}{!contextMenu.taskHasSessions ? <>{contextMenu.workspaceDir ? <div className="context-menu-separator" role="separator" /> : null}<button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => void runContextAction("deleteTask")}>{t("desktop.workbench.deleteTask")}</button></> : null}</> : contextMenu.kind === "thunder" && contextMenu.thunderConversation ? <>
+        <button type="button" role="menuitem" onClick={() => void runContextAction("openThunderChat")}>{t("desktop.workbench.openThunderChat")}</button>
+        <button type="button" role="menuitem" onClick={() => void runContextAction("thunderTui")}>{t("desktop.workbench.resumeThunderTui")}</button>
+        <button type="button" role="menuitem" onClick={() => void runContextAction("floatingNote")}>{t(contextMenu.hasFloatingNote ? "desktop.workbench.openFloatingNote" : "desktop.workbench.addFloatingNote")}</button>
+        <button type="button" role="menuitem" onClick={() => void runContextAction("note")}>{t("desktop.workbench.mountNote")}</button>
+        <button type="button" role="menuitem" onClick={() => void runContextAction("autoRename")}>{t("desktop.workbench.autoRename")}</button>
+        <button type="button" role="menuitem" onClick={() => void runContextAction("moveTask")}>{t("desktop.workbench.moveToTask")}</button>
+        <div className="context-menu-separator" role="separator" />
+        <span className="wb-context-menu-label">{t("desktop.workbench.setGtdStatus")}</span>
+        <div className="wb-gtd-context-tags" role="group" aria-label={t("desktop.workbench.setGtdStatus")}>
+          {GTD_STATUSES.map((gtdStatus) => <button type="button" role="menuitemradio" className={`wb-gtd-context-tag is-${gtdStatus}`} aria-checked={contextMenu.thunderConversation ? effectiveGtdStatusForKey(gtdStatuses, `thunder:${contextMenu.thunderConversation.id}`) === gtdStatus : false} key={gtdStatus} onClick={() => void runContextAction(`gtd:${gtdStatus}`)}>{t(`desktop.workbench.gtdStatus.${gtdStatus}`)}</button>)}
+        </div>
+        {contextMenu.thunderConversation && gtdStatuses[`thunder:${contextMenu.thunderConversation.id}`] ? <button type="button" role="menuitem" onClick={() => void runContextAction("gtd:clear")}>{t("desktop.workbench.clearGtdStatus")}</button> : null}
+        <div className="context-menu-separator" role="separator" />
+        <button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => void runContextAction("deleteThunderConversation")}>{t("desktop.workbench.deleteThunderConversation")}</button>
+      </> : selectedSessionKeys.size > 1 && contextMenu.session && selectedSessionKeys.has(sessionKey(contextMenu.session)) ? <>
         <button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => void runContextAction("remove")}>{t("desktop.workbench.removeFromPanelCount", selectedSessionKeys.size)}</button>
       </> : <>
         {contextMenu.session?.provider === "codex" ? <button type="button" role="menuitem" onClick={() => void runContextAction("codex")}>{t("desktop.workbench.openInChatGpt")}</button> : null}
@@ -7046,7 +7366,7 @@ export function WorkbenchPanel(): ReactPortal | null {
         <button type="button" role="menuitem" className="context-menu-item-danger" onClick={() => void runContextAction("remove")}>{t("desktop.workbench.removeFromPanel")}</button>
       </>}
     </div> : null}
-    {projectPickDialog ? <div className={`wb-note-created-overlay${projectPickDialogClosing ? " is-closing" : ""}`}><div className="wb-note-created-backdrop" onClick={() => !projectPickDialog.busy && setProjectPickDialog(null)} /><div className="wb-note-created-panel wb-project-pick-panel" role="dialog" aria-modal="true" aria-label={t("desktop.workbench.moveToTask")}><p className="wb-note-created-title">{t("desktop.workbench.moveToTaskTitle", projectPickDialog.session.title || projectPickDialog.session.id)}</p><p className="muted wb-rename-status">{t("desktop.workbench.moveToTaskHint")}</p><input type="search" className="wb-rename-input" value={projectPickDialog.query} placeholder={t("desktop.common.search")} autoComplete="off" spellCheck={false} disabled={projectPickDialog.busy} onChange={(event) => setProjectPickDialog((current) => current ? { ...current, query: event.target.value } : current)} />{projectPickDialog.status ? <p className="wb-rename-status muted">{projectPickDialog.status}</p> : null}<div className="wb-project-pick-list" role="listbox">{projectPickDialog.options.filter((item) => `${item.label} ${item.path ?? ""}`.toLowerCase().includes(projectPickDialog.query.trim().toLowerCase())).map((item) => <button type="button" className="wb-project-pick-item" key={item.noteId} disabled={projectPickDialog.busy} onClick={() => void applyMoveSessionToTask(item)}><span className="wb-project-pick-label">{item.label}</span>{item.path ? <span className="wb-project-pick-path">{item.path}</span> : null}</button>)}</div><div className="wb-note-created-actions"><button type="button" className="wb-note-created-btn" disabled={projectPickDialog.busy} onClick={() => setProjectPickDialog(null)}>{t("desktop.common.cancel")}</button></div></div></div> : null}
+    {projectPickDialog ? <div className={`wb-note-created-overlay${projectPickDialogClosing ? " is-closing" : ""}`}><div className="wb-note-created-backdrop" onClick={() => !projectPickDialog.busy && setProjectPickDialog(null)} /><div className="wb-note-created-panel wb-project-pick-panel" role="dialog" aria-modal="true" aria-label={t("desktop.workbench.moveToTask")}><p className="wb-note-created-title">{t("desktop.workbench.moveToTaskTitle", projectPickDialog.sessionTitle)}</p><p className="muted wb-rename-status">{t("desktop.workbench.moveToTaskHint")}</p><input type="search" className="wb-rename-input" value={projectPickDialog.query} placeholder={t("desktop.common.search")} autoComplete="off" spellCheck={false} disabled={projectPickDialog.busy} onChange={(event) => setProjectPickDialog((current) => current ? { ...current, query: event.target.value } : current)} />{projectPickDialog.status ? <p className="wb-rename-status muted">{projectPickDialog.status}</p> : null}<div className="wb-project-pick-list" role="listbox">{projectPickDialog.options.filter((item) => `${item.label} ${item.path ?? ""}`.toLowerCase().includes(projectPickDialog.query.trim().toLowerCase())).map((item) => <button type="button" className="wb-project-pick-item" key={item.noteId} disabled={projectPickDialog.busy} onClick={() => void applyMoveSessionToTask(item)}><span className="wb-project-pick-label">{item.label}</span>{item.path ? <span className="wb-project-pick-path">{item.path}</span> : null}</button>)}</div><div className="wb-note-created-actions"><button type="button" className="wb-note-created-btn" disabled={projectPickDialog.busy} onClick={() => setProjectPickDialog(null)}>{t("desktop.common.cancel")}</button></div></div></div> : null}
     <GitChangesPanel
       visible={side === "git" && !gitHistoryContext}
       git={git}

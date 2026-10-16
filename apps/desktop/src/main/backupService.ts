@@ -64,6 +64,8 @@ const NATIVE_ROOT = "native";
 const CREDENTIALS_PATH = "credentials.enc";
 const RECOVERY_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const TEMP_RETENTION_MS = 24 * 60 * 60 * 1000;
+/** Transcripts keep rendering pasted clipboard images, so they outlive scratch dirs by far. */
+const CLIPBOARD_IMAGE_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const ICLOUD_RETENTION_COUNT = 10;
 const SCRYPT_OPTIONS = { N: 16_384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 } as const;
 const ARBAK_MAGIC = Buffer.from("ARBAK001", "ascii");
@@ -747,12 +749,22 @@ async function pruneIcloudBackups(provider: BackupStorageProvider, machineId: st
   }
 }
 
-async function cleanupTemporaryBackups(): Promise<void> {
-  const rows = await fsp.readdir(os.tmpdir(), { withFileTypes: true }).catch(() => [] as import("node:fs").Dirent[]);
-  await Promise.all(rows.filter((row) => /^(agent-resume-(?:backup|import|decrypt|native-journal)-)/.test(row.name)).map(async (row) => {
-    const candidate = path.join(os.tmpdir(), row.name);
+/** Temp files the app owns in os.tmpdir(), each with the age it must reach to be swept. */
+const TEMPORARY_ARTIFACTS: Array<{ name: RegExp; retentionMs: number }> = [
+  { name: /^(agent-resume-(?:backup|import|decrypt|native-journal)-)/, retentionMs: TEMP_RETENTION_MS },
+  { name: /^agent-resume-clipboard-.*\.png$/, retentionMs: CLIPBOARD_IMAGE_RETENTION_MS }
+];
+
+/** `tempRoot` is a test seam; production always sweeps os.tmpdir(). */
+export async function cleanupTemporaryBackups(tempRoot = os.tmpdir()): Promise<void> {
+  const now = Date.now();
+  const rows = await fsp.readdir(tempRoot, { withFileTypes: true }).catch(() => [] as import("node:fs").Dirent[]);
+  await Promise.all(rows.map(async (row) => {
+    const artifact = TEMPORARY_ARTIFACTS.find((item) => item.name.test(row.name));
+    if (!artifact) return;
+    const candidate = path.join(tempRoot, row.name);
     const stat = await fsp.stat(candidate).catch(() => undefined);
-    if (stat && stat.mtimeMs < Date.now() - TEMP_RETENTION_MS) await fsp.rm(candidate, { recursive: true, force: true });
+    if (stat && stat.mtimeMs < now - artifact.retentionMs) await fsp.rm(candidate, { recursive: true, force: true });
   }));
 }
 

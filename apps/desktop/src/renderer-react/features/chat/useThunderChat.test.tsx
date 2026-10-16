@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { useThunderChat } from "./useThunderChat";
+import { useThunderChat, buildConversationRows } from "./useThunderChat";
 
 interface HarnessEvent {
   taskId: string;
@@ -170,12 +170,10 @@ describe("useThunderChat turn finalization", () => {
     const assistant = result.current.messages.at(-1);
     expect(assistant?.content).toContain("⚠️ **Task stopped**");
     expect(assistant?.content).toContain("西湖位于");
-    // Segments win over `content` in the transcript, so the notice needs one.
-    const segments = assistant?.segments ?? [];
-    expect(segments.at(-1)).toEqual({
-      kind: "text",
-      text: "⚠️ **Task stopped**: the agent reached its maximum number of turns without producing an answer."
-    });
+    // The turn, not the message, is where its output lives now — and the notice
+    // rides the message's own text, so nothing has to become a segment.
+    expect(result.current.liveTurns[0].segments).toEqual([{ kind: "text", text: "西湖位于" }]);
+    expect(assistant?.segments).toBeUndefined();
   });
 
   it("shows the answer of a run that finished normally", async () => {
@@ -729,6 +727,102 @@ describe("useThunderChat ui_request host", () => {
       cancelled: true
     });
   });
+
+  it("leaves an approval receipt with the plan folded in, so the dialog's closing is not a disappearance", async () => {
+    const harness = installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    await act(async () => {
+      await result.current.selectSession("sess_a");
+    });
+    act(() =>
+      harness.emitUi({ ...reviewRequest, content: "# Plan\n\n1. Do the thing" })
+    );
+
+    await act(async () => {
+      await result.current.answerUiRequest({ value: "Yes, but ask before each edit" });
+    });
+
+    const rows = result.current.messages;
+    const receipt = rows[rows.length - 1];
+    expect(receipt.role).toBe("user");
+    expect(receipt.content).toContain("✅ 已批准计划：Yes, but ask before each edit");
+    expect(receipt.content).toContain("Do the thing");
+    expect(receipt.content).toContain("<details>");
+  });
+
+  it("leaves a waiting receipt for keep-planning, then pastes the follow-up feedback verbatim", async () => {
+    const harness = installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    await act(async () => {
+      await result.current.selectSession("sess_a");
+    });
+    act(() => harness.emitUi(reviewRequest));
+
+    await act(async () => {
+      await result.current.answerUiRequest({ value: "No, keep planning" });
+    });
+
+    let rows = result.current.messages;
+    expect(rows[rows.length - 1].content).toContain("📝 已选择继续规划");
+
+    // The second half of the two-step flow: the follow-up input's own receipt.
+    act(() =>
+      harness.emitUi({
+        requestId: "ui_2",
+        sessionId: "sess_a",
+        taskId: "task_1",
+        source: "host",
+        ui: "input",
+        title: "What should change in the plan?"
+      })
+    );
+    await act(async () => {
+      await result.current.answerUiRequest({ value: "start with the parser" });
+    });
+
+    rows = result.current.messages;
+    expect(rows[rows.length - 1].content).toContain("💬 补充意见已提交");
+    expect(rows[rows.length - 1].content).toContain("start with the parser");
+  });
+
+  it("leaves a dismissal receipt so closing reads as a decision, not silence", async () => {
+    const harness = installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    await act(async () => {
+      await result.current.selectSession("sess_a");
+    });
+    act(() => harness.emitUi(reviewRequest));
+
+    await act(async () => {
+      await result.current.answerUiRequest({ cancelled: true });
+    });
+
+    const rows = result.current.messages;
+    expect(rows[rows.length - 1].content).toContain("🚫 已关闭");
+    expect(rows[rows.length - 1].content).toContain("Approve this plan?");
+  });
+
+  it("leaves the receipt exactly once when answering a parked dialog after switching to it", async () => {
+    const harness = installHarness();
+    const { result } = renderHook(() => useThunderChat());
+    await act(async () => {
+      await result.current.selectSession("sess_a");
+    });
+    // Parked for another session while sess_a is on screen: no card, no answer.
+    act(() => harness.emitUi({ ...reviewRequest, requestId: "ui_2", sessionId: "sess_b" }));
+    expect(result.current.pendingUiRequest).toBeNull();
+    await act(async () => {
+      await result.current.selectSession("sess_b");
+    });
+    const before = result.current.messages.length;
+    await act(async () => {
+      await result.current.answerUiRequest({ value: "Yes, but ask before each edit" });
+    });
+    // The receipt belongs to sess_b (now on screen, so it lands there) —
+    // exactly once, not once per session visited.
+    expect(result.current.messages.length).toBe(before + 1);
+    expect(result.current.messages[before].content).toContain("✅ 已批准计划");
+  });
 });
 
 /**
@@ -736,6 +830,48 @@ describe("useThunderChat ui_request host", () => {
  * the segments that turn produced. The feed renders `liveSegments`, which is the
  * running turn alone — that split is what these cases pin down.
  */
+describe("useThunderChat session switching", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("drops a late conversation load when the user has moved on", async () => {
+    installHarness();
+    const conversations: Record<string, { id: string; messages: { role: string; content: string }[] }> = {
+      sess_a: { id: "sess_a", messages: [{ role: "user", content: "aaa" }] },
+      sess_b: { id: "sess_b", messages: [{ role: "user", content: "bbb" }] }
+    };
+    let releaseA: ((value: unknown) => void) | undefined;
+    (window.agentResume.thunderChatGetConversation as any).mockImplementation(({ sessionId }: { sessionId: string }) => {
+      if (sessionId === "sess_a") {
+        return new Promise((resolve) => {
+          releaseA = resolve as (value: unknown) => void;
+        });
+      }
+      return Promise.resolve(conversations[sessionId] ?? null);
+    });
+    const { result } = renderHook(() => useThunderChat());
+
+    // Start on A but hold its load; switch to B, whose load resolves first.
+    let selectA: Promise<void> | undefined;
+    act(() => {
+      selectA = result.current.selectSession("sess_a");
+    });
+    await act(async () => {
+      await result.current.selectSession("sess_b");
+    });
+    expect(result.current.messages.map((m) => m.content)).toEqual(["bbb"]);
+
+    // A's load lands late: it must not repaint B's feed.
+    await act(async () => {
+      releaseA?.(conversations.sess_a);
+      await selectA;
+    });
+    expect(result.current.activeSessionId).toBe("sess_b");
+    expect(result.current.messages.map((m) => m.content)).toEqual(["bbb"]);
+  });
+});
+
 describe("useThunderChat turn splitting", () => {
   afterEach(() => {
     vi.clearAllMocks();
@@ -829,7 +965,7 @@ describe("useThunderChat turn splitting", () => {
     expect(result.current.liveTurns.map((turn) => turn.status)).toEqual(["done", "running"]);
   });
 
-  it("bounds the dots row to the in-flight run", async () => {
+  it("hands a finished run's turns to the pile instead of flattening them onto the answer", async () => {
     const harness = installHarness();
     const { result } = renderHook(() => useThunderChat());
     const { taskId, sessionId } = await startTurn(result);
@@ -840,17 +976,26 @@ describe("useThunderChat turn splitting", () => {
     act(() => harness.emit(observed(taskId, sessionId, { type: "token_delta", turn: 2, delta: "二" })));
     expect(result.current.liveTurns).toHaveLength(2);
 
-    // A finished run hands over to the transcript, whose frozen segments carry
-    // every turn: the row is a live affordance, not a second history view.
     await act(async () => {
       harness.resolveRun({ finalContent: "一二", finishReason: "done" });
     });
-    expect(result.current.liveTurns).toHaveLength(0);
-    const segments = result.current.messages.at(-1)?.segments ?? [];
-    const text = segments
-      .filter((segment): segment is Extract<typeof segment, { kind: "text" }> => segment.kind === "text")
-      .map((segment) => segment.text);
-    expect(text).toEqual(["一", "二"]);
+
+    // The pile outlives the run: both turns are still there, the one that never
+    // saw `turn_end` settled, and each keeps only its own segments — so the
+    // thinking and tool calls stay reachable through the dots.
+    expect(result.current.liveTurns.map((turn) => turn.turn)).toEqual([1, 2]);
+    expect(result.current.liveTurns.map((turn) => turn.status)).toEqual(["done", "done"]);
+    expect(result.current.liveTurns[0].segments).toEqual([{ kind: "text", text: "一" }]);
+    expect(result.current.liveTurns[1].segments).toEqual([{ kind: "text", text: "二" }]);
+
+    // And the answer message is the text alone, not a second, flat copy of the
+    // run under the reply.
+    const answer = result.current.messages.at(-1);
+    expect(answer?.content).toBe("一二");
+    expect(answer?.segments).toBeUndefined();
+    // The turns ride on the row too: that copy is what a reload paints the pile
+    // from, once the session stream it was read off is gone.
+    expect(answer?.turns?.map((turn) => turn.turn)).toEqual([1, 2]);
   });
 
   it("marks the running turn failed when the daemon reports an error", async () => {
@@ -864,7 +1009,7 @@ describe("useThunderChat turn splitting", () => {
     expect(result.current.liveTurns[0].status).toBe("error");
   });
 
-  it("keeps every turn's segments on the finished message when a run is cancelled", async () => {
+  it("keeps every turn's thinking in the pile when a run is cancelled", async () => {
     const harness = installHarness();
     const { result } = renderHook(() => useThunderChat());
     const { taskId, sessionId } = await startTurn(result);
@@ -878,12 +1023,89 @@ describe("useThunderChat turn splitting", () => {
     });
 
     // `stream.segments` only points at turn 2, so a cancel that read it alone
-    // would drop turn 1's reasoning from the transcript.
-    const segments = result.current.messages.at(-1)?.segments ?? [];
-    const reasoning = segments
+    // would drop turn 1's reasoning; the pile is what holds both now.
+    const reasoning = result.current.liveTurns
+      .flatMap((turn) => turn.segments)
       .filter((segment): segment is Extract<typeof segment, { kind: "reasoning" }> => segment.kind === "reasoning")
       .map((segment) => segment.text);
     expect(reasoning).toEqual(["轮一思考", "轮二思考"]);
-    expect(result.current.liveTurns).toHaveLength(0);
+    expect(result.current.messages.at(-1)?.segments).toBeUndefined();
+  });
+});
+
+describe("buildConversationRows", () => {
+  it("folds a run's turns into the reply they add up to, and leaves the next run alone", () => {
+    const rows = buildConversationRows([
+      { role: "user", content: "first" },
+      {
+        role: "assistant",
+        content: "looking",
+        reasoning: "think one",
+        stats: { turn: 1, duration_ms: 1200 },
+        tool_calls: [{ id: "t1", type: "function", function: { name: "bash", arguments: '{"command":"ls"}' } }]
+      },
+      { role: "tool", content: "out1", tool_call_id: "t1" },
+      { role: "assistant", content: "done", stats: { turn: 2, duration_ms: 800 } },
+      { role: "user", content: "second" },
+      { role: "assistant", content: "again", stats: { turn: 1, duration_ms: 100 } }
+    ]);
+
+    // A user message is the run boundary: two runs, one row each.
+    expect(rows.map((row) => row.role)).toEqual(["user", "assistant", "user", "assistant"]);
+
+    const first = rows[1];
+    // The turns' text, glued in the order the stream produced it.
+    expect(first.content).toBe("lookingdone");
+    expect(first.turns?.map((turn) => turn.turn)).toEqual([1, 2]);
+    // Thinking and tool calls moved into the turn the dot stands for, results
+    // paired with their call, and nothing left to paint flat on the row.
+    expect(first.reasoning).toBeUndefined();
+    expect(first.tool_calls).toBeUndefined();
+    expect(first.turns?.[0].segments).toEqual([
+      { kind: "reasoning", text: "think one" },
+      { kind: "text", text: "looking" },
+      {
+        kind: "tools",
+        tools: [{ toolCallId: "t1", name: "bash", arguments: { command: "ls" }, result: "out1", isRunning: false }]
+      }
+    ]);
+    expect(first.turns?.[0].toolCount).toBe(1);
+    expect(first.turns?.[0].durationMs).toBe(1200);
+    // A run on disk is over: its turns read as done, never as still running.
+    expect(first.turns?.map((turn) => turn.status)).toEqual(["done", "done"]);
+
+    // The second run starts its own numbering and its own pile.
+    expect(rows[3].turns?.map((turn) => turn.turn)).toEqual([1]);
+    expect(rows[3].content).toBe("again");
+  });
+
+  it("numbers a turn that never reached its turn_end by where it sits in the run", () => {
+    const rows = buildConversationRows([
+      { role: "user", content: "go" },
+      { role: "assistant", content: "one", stats: { turn: 1 } },
+      // Cut short: no `stats`, because the run died before this turn ended.
+      { role: "assistant", content: "two" }
+    ]);
+
+    expect(rows[1].turns?.map((turn) => turn.turn)).toEqual([1, 2]);
+  });
+
+  it("keeps the run's tool calls on the row for the file-change scan", () => {
+    const rows = buildConversationRows([
+      { role: "user", content: "go" },
+      {
+        role: "assistant",
+        content: "one",
+        tool_executions: [{ toolCallId: "t1", name: "write_file", arguments: { path: "/w/a.ts" } }]
+      },
+      {
+        role: "assistant",
+        content: "two",
+        tool_executions: [{ toolCallId: "t2", name: "write_file", arguments: { path: "/w/b.ts" } }]
+      }
+    ]);
+
+    // The pile owns their paint, but the scan reads them off the row.
+    expect(rows[1].tool_executions?.map((tool) => tool.name)).toEqual(["write_file", "write_file"]);
   });
 });

@@ -35,6 +35,7 @@ export async function previewOmpSession(session: AgentSession, homes: PreviewHom
 async function previewJsonlSession(session: AgentSession, sessionsRoot: string, options?: FinalizePreviewOptions): Promise<SessionPreviewResult> {
   const sessionFiles = await listJsonlFiles(sessionsRoot);
   const messages: SessionPreviewResult["messages"] = [];
+  let matchedSessionFile = false;
 
   for (const file of sessionFiles) {
     let content: string;
@@ -68,6 +69,7 @@ async function previewJsonlSession(session: AgentSession, sessionsRoot: string, 
     if (!matchedSession) {
       continue;
     }
+    matchedSessionFile = true;
 
     for (const line of lines) {
       let entry: JsonlMessageEntry;
@@ -100,6 +102,11 @@ async function previewJsonlSession(session: AgentSession, sessionsRoot: string, 
     if (messages.length) {
       return finalizePreviewMessages(session.title, messages, undefined, options);
     }
+  }
+
+  // The session file is there but holds no turns yet: empty, not missing.
+  if (matchedSessionFile) {
+    return finalizePreviewMessages(session.title, [], undefined, options);
   }
 
   throw new Error("Session transcript not found for this session.");

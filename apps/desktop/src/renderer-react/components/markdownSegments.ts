@@ -67,7 +67,8 @@ export function prepareMarkdownFragment(markdown: string, options?: MarkdownImag
 }
 
 function markdownOptionsKey(options?: MarkdownImageOptions): string {
-  return options ? `${options.baseDir || ""}\u0000${options.rootDir || ""}` : "";
+  if (!options) return "";
+  return `${options.baseDir || ""}\u0000${options.rootDir || ""}\u0000${options.promoteBarePaths === false ? "0" : "1"}`;
 }
 
 function takeSegment(

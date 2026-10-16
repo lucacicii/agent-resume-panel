@@ -6,7 +6,7 @@ import { useI18n } from "../../i18n";
 import type { LiveSegment, LiveTurn } from "./useThunderChat";
 
 /**
- * The run's finished turns as a stack of dots above the feed.
+ * The run's finished turns as a stack of dots hanging off the agent's reply.
  *
  * The feed itself ever renders only the turn that is running, so the finished
  * ones live here: the dots overlap into a pile, and clicking one opens that
@@ -16,6 +16,10 @@ import type { LiveSegment, LiveTurn } from "./useThunderChat";
  * The running turn gets no dot. It is on screen in the feed already, so a dot
  * for it would be a second, staler copy of the same thing; it stays reachable
  * from the drawer's arrows, which read the live segments as a magnifier.
+ *
+ * The pile renders inside the message row's content column — right after the
+ * avatar, above that reply's text — which is the caller's job: `ChatMessageItem`
+ * takes this as its `turnDots` slot.
  */
 export function TurnDots({
   turns,
@@ -38,6 +42,8 @@ export function TurnDots({
     .map((turn, index) => ({ turn, index }))
     .filter((entry) => entry.turn.status !== "running");
 
+  const [userExpanded, setUserExpanded] = useState<boolean | null>(null);
+
   // A long run walks off the end of the row; keep the newest dot in view.
   useEffect(() => {
     const track = trackRef.current;
@@ -47,10 +53,53 @@ export function TurnDots({
 
   if (finished.length === 0) return null;
 
+  const showSteps = openIndex !== null || (userExpanded ?? (finished.length <= 3));
+
+  const totalTurns = finished.length;
+  const totalTools = finished.reduce((sum, f) => sum + f.turn.toolCount, 0);
+  const totalDurationMs = finished.reduce((sum, f) => sum + (f.turn.durationMs || 0), 0);
+  const errorCount = finished.filter((f) => f.turn.status === "error").length;
+
   return (
     <div className="tb-turn-dots" role="tablist" aria-label={t("desktop.chat.turns.label")}>
-      <span className="tb-turn-dots-label">{t("desktop.chat.turns.label")}</span>
-      <div className="tb-turn-dots-track" ref={trackRef}>
+      <div
+        className="tb-turn-process-bar"
+        onClick={() => setUserExpanded((prev) => !(prev ?? (finished.length <= 3)))}
+        role="button"
+        tabIndex={0}
+        style={{ cursor: "pointer" }}
+      >
+        <div className="tb-turn-process-info">
+          <span className="tb-turn-process-icon">
+            <ThemeIcon name="sparkles" size={ICON_SIZE.dense} />
+          </span>
+          <span className="tb-turn-process-label">
+            {totalTurns} {totalTurns === 1 ? "step" : "steps"}
+          </span>
+          {totalTools > 0 && (
+            <span className="tb-turn-process-chip">
+              <ThemeIcon name="terminal" size={ICON_SIZE.inline} />
+              <span>{totalTools} {totalTools === 1 ? "tool" : "tools"}</span>
+            </span>
+          )}
+          {totalDurationMs > 0 && (
+            <span className="tb-turn-process-time">
+              {(totalDurationMs / 1000).toFixed(1)}s
+            </span>
+          )}
+          {errorCount > 0 && (
+            <span className="tb-turn-process-error">
+              {errorCount} failed
+            </span>
+          )}
+        </div>
+        <span className="tb-turn-process-hint">
+          {showSteps ? "Hide steps ▴" : "Inspect steps ▾"}
+        </span>
+      </div>
+
+      {showSteps && (
+        <div className="tb-turn-dots-track" ref={trackRef}>
         {finished.map(({ turn, index }) => {
           const isOpen = openIndex === index;
           const title = describeTurn(turn, t);
@@ -62,7 +111,7 @@ export function TurnDots({
               aria-selected={isOpen}
               aria-label={title}
               title={title}
-              className={`tb-turn-dot is-${turn.status}${isOpen ? " is-open" : ""}`}
+              className={`tb-turn-dot is-${turn.status} ${kindOf(turn)}${isOpen ? " is-open" : ""}`}
               onClick={() => (isOpen ? onClose() : onOpen(index))}
             >
               <span className="tb-turn-dot-num">{turn.turn}</span>
@@ -70,8 +119,21 @@ export function TurnDots({
           );
         })}
       </div>
-    </div>
-  );
+    )}
+  </div>
+);
+}
+
+/**
+ * What the dot's colour says the turn did: `is-tools` for a turn that ran a
+ * tool, `is-thinking` for one that only thought and answered. Most turns carry
+ * both, and a turn that called anything counts as a tool turn — the split the
+ * eye reads across a pile is "this one went out and did something" against
+ * "this one stayed in its head", which is also what the tooltip and the
+ * `aria-label` report (the tool count) for a reader who cannot see the colour.
+ */
+function kindOf(turn: LiveTurn): "is-tools" | "is-thinking" {
+  return turn.toolCount > 0 ? "is-tools" : "is-thinking";
 }
 
 /** The dot's tooltip / aria-label: what happened in this turn, and that it opens. */

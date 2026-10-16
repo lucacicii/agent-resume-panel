@@ -508,6 +508,7 @@ export {
   normalizePreviewText
 } from "./transcript/text";
 export type { ExtractedPreviewContent } from "./transcript/text";
+export { previewThunderConversation } from "./transcript/thunder";
 
 export type { AgentCitation } from "./agent/types";
 export { retrieveAgentContext } from "./agent/retrieve";

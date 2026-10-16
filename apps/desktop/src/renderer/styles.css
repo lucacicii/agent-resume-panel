@@ -19191,7 +19191,8 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   /* The composer follows in flow, so the feed reserves no bottom clearance. */
   min-height: 0;
   overflow-y: auto;
-  padding: 24px;
+  /* 40px right padding reserves clearance for the floating timeline rail (16px right + 20px width). */
+  padding: 24px 40px 24px 24px;
   display: flex;
   flex-direction: column;
 }
@@ -19223,9 +19224,8 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 .tb-chat-timeline {
   position: absolute;
   top: var(--space-3);
-  /* The feed keeps 24px of right padding; the rail's 20px sit inside it, so the
-     message column's right edge stays clear even in a narrow pane. */
-  right: var(--space-0-5);
+  /* Clearance from right edge: 16px puts it comfortably away from the window edge while sitting inside the feed's 40px padding. */
+  right: var(--space-4);
   bottom: var(--space-3);
   width: 20px;
   display: flex;
@@ -19295,7 +19295,7 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   position: absolute;
   left: 50%;
   width: 20px;
-  height: 12px;
+  height: 14px;
   margin: 0;
   padding: 0;
   transform: translate(-50%, -50%);
@@ -19309,8 +19309,8 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 }
 
 .tb-timeline-dot-mark {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: var(--color-label-tertiary);
   transition: transform var(--duration-fast) var(--ease-glide), background-color var(--duration-fast) linear;
@@ -19332,9 +19332,9 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 /* A collapsed dot stands for several messages: a bar instead of a point, so the
    rail reads as "dense here" rather than "one message here". */
 .tb-timeline-dot.is-grouped .tb-timeline-dot-mark {
-  width: 2px;
-  height: 10px;
-  border-radius: 1px;
+  width: 3px;
+  height: 12px;
+  border-radius: 1.5px;
 }
 
 .tb-timeline-dot.is-active .tb-timeline-dot-mark {
@@ -19493,6 +19493,127 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 .tb-message-row.is-user .tb-message-container {
   align-items: flex-end;
 }
+.tb-message-row.is-assistant .tb-message-container {
+  position: relative;
+  border-left: 1.5px solid color-mix(in srgb, var(--color-separator) 60%, transparent);
+  padding-left: 12px;
+  margin-left: 2px;
+  gap: 6px;
+}
+/* --- Chronological Spine Timeline --- */
+.tb-chronological-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.tb-timeline-summary-bar {
+  margin-bottom: 2px;
+}
+
+.tb-timeline-summary-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--color-fill-secondary) 50%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-separator) 40%, transparent);
+  color: var(--color-label-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tb-timeline-summary-toggle:hover {
+  background: color-mix(in srgb, var(--color-fill-secondary) 80%, transparent);
+  color: var(--color-label-primary);
+  border-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
+}
+
+.tb-timeline-summary-icon {
+  color: var(--color-accent);
+  display: flex;
+  align-items: center;
+}
+
+.tb-timeline-summary-label {
+  font-weight: 600;
+  color: var(--color-label-primary);
+}
+
+.tb-timeline-summary-hint {
+  font-size: 10px;
+  color: var(--color-label-tertiary);
+  margin-left: 2px;
+}
+
+.tb-timeline-steps-stream {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.tb-timeline-steps-stream.is-collapsed {
+  display: none;
+}
+
+.tb-timeline-turn-block {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  position: relative;
+}
+
+.tb-timeline-turn-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--color-label-tertiary);
+  margin-bottom: 1px;
+}
+
+.tb-timeline-turn-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  margin-left: -15.5px;
+  box-shadow: 0 0 0 2px var(--color-window-bg);
+  flex-shrink: 0;
+}
+
+.tb-timeline-turn-title {
+  color: var(--color-label-secondary);
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.tb-timeline-turn-time {
+  font-family: var(--font-family-mono, monospace);
+  font-size: 10px;
+  color: var(--color-label-tertiary);
+}
+
+.tb-timeline-turn-error {
+  font-size: 9.5px;
+  font-weight: 600;
+  color: var(--color-destructive);
+  background: rgba(255, 59, 48, 0.12);
+  padding: 0 4px;
+  border-radius: 4px;
+}
+
+.tb-timeline-turn-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 2px;
+}
 
 .tb-message-bubble {
   font-size: 13.5px;
@@ -19634,35 +19755,45 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 
 /* --- BeautifulUI: Thinking State --- */
 .tb-thinking-container {
-  border: 0.5px solid var(--color-separator);
-  border-radius: var(--radius-md, 8px);
-  background: var(--color-secondary-bg);
-  overflow: hidden;
-  margin-bottom: 4px;
-  transition: border-color 0.2s ease;
+  border: none;
+  background: transparent;
+  overflow: visible;
+  margin-bottom: 2px;
+  box-shadow: none;
 }
 
 .tb-thinking-container.is-streaming {
-  border-color: color-mix(in srgb, var(--color-accent) 35%, transparent);
+  border: none;
+  background: transparent;
+  box-shadow: none;
 }
-
 .tb-thinking-header {
   width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 7px 10px;
+  padding: 2px 6px;
+  min-height: 24px;
+  border-radius: 4px;
   background: transparent;
   border: none;
   cursor: pointer;
   color: var(--color-label-secondary);
-  font-size: 12px;
+  font-size: 11.5px;
+  font-weight: 500;
+  text-align: left;
+  transition: background 0.12s ease;
+  border: none;
+  cursor: pointer;
+  color: var(--color-label-secondary);
+  font-size: 11.5px;
   font-weight: 500;
   text-align: left;
 }
 
 .tb-thinking-header:hover {
   color: var(--color-label-primary);
+  background: color-mix(in srgb, var(--color-fill-secondary) 50%, transparent);
 }
 
 .tb-thinking-header-left {
@@ -19682,14 +19813,20 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 
 .tb-thinking-title {
   flex-shrink: 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.15px;
+  color: var(--color-label-secondary);
 }
 
 .tb-thinking-time-badge {
-  font-size: 10.5px;
-  color: var(--color-label-tertiary);
-  background: var(--color-tertiary-bg);
-  padding: 1px 5px;
-  border-radius: 4px;
+  font-size: 10px;
+  font-family: var(--font-family-mono, monospace);
+  font-weight: 600;
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  padding: 1px 6px;
+  border-radius: 10px;
 }
 
 .tb-thinking-pulse {
@@ -19779,7 +19916,6 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   text-overflow: ellipsis;
   font-size: 11.5px;
   font-weight: 400;
-  font-style: italic;
   color: var(--color-label-tertiary);
 }
 
@@ -19788,6 +19924,7 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   align-items: center;
   transition: transform 0.2s ease;
   flex-shrink: 0;
+  color: var(--color-label-tertiary);
 }
 
 .tb-thinking-chevron.is-open {
@@ -19795,21 +19932,56 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 }
 
 .tb-thinking-body {
-  padding: 8px 12px 10px 12px;
-  border-top: 0.5px solid var(--color-separator);
-  background: var(--color-pane-bg);
+  padding: 4px 0 6px 6px;
+  border-top: none;
+  background: transparent;
+}
+
+.tb-thinking-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 2px 6px 2px;
+  margin-bottom: 6px;
+  border-bottom: none;
+}
+
+.tb-thinking-toolbar-label {
+  font-size: 10.5px;
+  font-family: var(--font-family-mono, monospace);
+  color: var(--color-label-tertiary);
+}
+
+.tb-thinking-copy-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--color-control-bg);
+  border: 0.5px solid var(--color-separator);
+  font-size: 10.5px;
+  color: var(--color-label-secondary);
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.tb-thinking-copy-btn:hover {
+  background: var(--color-tertiary-bg);
+  color: var(--color-label-primary);
 }
 
 .tb-thinking-content {
-  border-left: 2px solid var(--color-accent);
+  border-left: 2px solid color-mix(in srgb, var(--color-accent) 40%, transparent);
   padding-left: 10px;
-  font-family: var(--font-family-mono);
+  font-family: inherit;
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 1.6;
   color: var(--color-label-secondary);
   white-space: pre-wrap;
   word-break: break-word;
-  max-height: 280px;
+  background: transparent;
+  max-height: 260px;
   overflow-y: auto;
 }
 
@@ -19838,35 +20010,45 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 
 /* --- Grouped Tool Calls Container (similar to ThinkingState) --- */
 .tb-tool-group-container {
-  border: 0.5px solid var(--color-separator);
-  border-radius: var(--radius-md, 8px);
-  background: var(--color-secondary-bg);
-  overflow: hidden;
-  margin-bottom: 4px;
-  transition: border-color 0.2s ease;
+  border: none;
+  background: transparent;
+  overflow: visible;
+  margin-bottom: 2px;
+  box-shadow: none;
 }
 
 .tb-tool-group-container.is-running {
-  border-color: color-mix(in srgb, var(--color-accent) 35%, transparent);
+  border: none;
+  background: transparent;
+  box-shadow: none;
 }
-
 .tb-tool-group-header {
   width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 7px 10px;
+  padding: 2px 6px;
+  min-height: 24px;
+  border-radius: 4px;
   background: transparent;
   border: none;
   cursor: pointer;
   color: var(--color-label-secondary);
-  font-size: 12px;
+  font-size: 11.5px;
+  font-weight: 500;
+  text-align: left;
+  transition: background 0.12s ease;
+  border: none;
+  cursor: pointer;
+  color: var(--color-label-secondary);
+  font-size: 11.5px;
   font-weight: 500;
   text-align: left;
 }
 
 .tb-tool-group-header:hover {
   color: var(--color-label-primary);
+  background: color-mix(in srgb, var(--color-fill-secondary) 50%, transparent);
 }
 
 .tb-tool-group-header-left {
@@ -19888,24 +20070,33 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex: 0 1 auto;
+  min-width: 0;
   max-width: 460px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--color-label-primary);
 }
 
 .tb-tool-group-count-badge {
-  font-size: 10.5px;
-  color: var(--color-label-tertiary);
-  background: var(--color-tertiary-bg);
-  padding: 1px 5px;
-  border-radius: 4px;
+  font-size: 10px;
+  font-family: var(--font-family-mono, monospace);
+  font-weight: 600;
+  color: var(--color-label-secondary);
+  background: var(--color-fill-secondary);
+  padding: 1px 6px;
+  border-radius: 10px;
   flex-shrink: 0;
 }
 
 .tb-tool-group-error-badge {
-  font-size: 10.5px;
+  font-size: 10px;
+  font-family: var(--font-family-mono, monospace);
+  font-weight: 600;
   color: var(--color-destructive);
   background: rgba(255, 59, 48, 0.12);
-  padding: 1px 5px;
-  border-radius: 4px;
+  padding: 1px 6px;
+  border-radius: 10px;
   flex-shrink: 0;
 }
 
@@ -19932,27 +20123,40 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 }
 
 .tb-tool-group-body {
-  padding: 8px 10px 10px 10px;
-  border-top: 0.5px solid var(--color-separator);
-  background: var(--color-pane-bg);
+  padding: 2px 0 4px 6px;
+  border-top: none;
+  background: transparent;
 }
 
 .tb-tool-group-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 3px;
+  padding: 2px 0 2px 4px;
+  border-top: none;
+  background: transparent;
 }
 
 .tb-tool-chip {
-  border: 0.5px solid var(--color-separator);
-  border-radius: var(--radius-md, 8px);
+  border: 1px solid color-mix(in srgb, var(--color-separator) 45%, transparent);
+  border-radius: 5px;
   background: var(--color-pane-bg);
   overflow: hidden;
-  transition: all 0.15s ease;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.tb-tool-chip:hover {
+  border-color: color-mix(in srgb, var(--color-accent) 35%, var(--color-separator));
 }
 
 .tb-tool-chip.is-running {
   border-color: var(--color-accent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--color-accent) 15%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 4%, var(--color-pane-bg));
+}
+
+.tb-tool-chip.is-error {
+  border-color: var(--color-destructive);
 }
 
 .tb-tool-chip-header {
@@ -19960,39 +20164,130 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 7px 10px;
+  padding: 4px 8px;
+  min-height: 26px;
   background: transparent;
   border: none;
   cursor: pointer;
   text-align: left;
 }
+.tb-tool-chip-header:hover {
+  background: color-mix(in srgb, var(--color-fill-secondary) 50%, transparent);
+}
 
 .tb-tool-chip-header-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .tb-tool-icon {
   color: var(--color-accent);
   display: flex;
   align-items: center;
+  flex-shrink: 0;
+}
+
+.tb-tool-verb {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--color-accent);
+  flex-shrink: 0;
+}
+
+.tb-tool-target {
+  font-family: var(--font-family-mono, monospace);
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--color-label-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 280px;
 }
 
 .tb-tool-name {
-  font-family: var(--font-family-mono);
-  font-size: 12px;
-  font-weight: 500;
+  font-family: var(--font-family-mono, monospace);
+  font-size: 10px;
+  color: var(--color-label-tertiary);
+  background: var(--color-fill-secondary);
+  padding: 1px 5px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.tb-tool-meta-badge {
+  font-family: var(--font-family-mono, monospace);
+  font-size: 9.5px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  color: var(--color-accent);
+  flex-shrink: 0;
+}
+
+.tb-tool-inline-preview {
+  display: flex;
+  flex-direction: column;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-top: 2px;
+}
+
+.tb-tool-terminal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  background: color-mix(in srgb, #000 35%, var(--color-secondary-bg));
+  border-bottom: 0.5px solid color-mix(in srgb, var(--color-separator) 40%, transparent);
+  font-family: var(--font-family-mono, monospace);
+  font-size: 11px;
+}
+
+.tb-tool-terminal-prompt-box {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.tb-tool-terminal-prompt {
+  color: var(--color-accent);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.tb-tool-terminal-cmd {
   color: var(--color-label-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tb-tool-terminal-body {
+  max-height: 200px;
+  overflow-y: auto;
+  background: color-mix(in srgb, #000 20%, var(--color-secondary-bg));
+  padding: 6px 8px;
 }
 
 .tb-tool-status {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 11px;
+  font-size: 10.5px;
   padding: 1px 6px;
   border-radius: 4px;
+  font-weight: 500;
+  flex-shrink: 0;
 }
 
 .tb-tool-status.running {
@@ -20028,6 +20323,7 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   align-items: center;
   color: var(--color-label-tertiary);
   transition: transform 0.2s ease;
+  flex-shrink: 0;
 }
 
 .tb-tool-chevron.is-open {
@@ -20068,6 +20364,7 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   font-size: 10.5px;
   color: var(--color-label-secondary);
   cursor: pointer;
+  transition: all 0.12s ease;
 }
 
 .tb-tool-copy-btn:hover {
@@ -20082,10 +20379,10 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   background: var(--color-control-bg);
   border: 0.5px solid var(--color-separator);
   font-family: var(--font-family-mono);
-  font-size: 11.5px;
-  line-height: 1.4;
+  font-size: 11px;
+  line-height: 1.45;
   color: var(--color-label-primary);
-  max-height: 180px;
+  max-height: 200px;
   overflow-y: auto;
   white-space: pre-wrap;
   word-break: break-all;
@@ -20574,6 +20871,87 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   white-space: pre-wrap;
 }
 
+/*
+ * The plan under review, pending edition: a full-width block in the
+ * transcript feed, expanded by default so the whole plan is readable in
+ * place. Its docked sibling (`ChatUiRequestCard`) keeps only a collapsed
+ * peek. Answering unmounts the dialog, which unmounts this block — the
+ * durable record is A's collapsed local receipt, not this block.
+ */
+.tb-plan-review-block {
+  max-width: 100%;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2-5) var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 45%, transparent);
+  border-radius: var(--radius-lg);
+  background: var(--chat-compose-bg, var(--panel));
+}
+
+.tb-plan-review-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 12.5px;
+  color: var(--color-label-primary, var(--text));
+}
+
+.tb-plan-review-path {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  color: var(--color-label-secondary, var(--muted));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tb-plan-review-badge {
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+  color: color-mix(in srgb, var(--color-accent) 80%, var(--color-label-primary, var(--text)));
+}
+
+.tb-plan-review-body {
+  min-width: 0;
+}
+
+.tb-plan-review-summary {
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tb-plan-review-document {
+  max-height: 48vh;
+  overflow: auto;
+  margin-top: var(--space-1-5);
+  padding: var(--space-2) var(--space-2-5);
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-label-primary, var(--text)) 3%, transparent);
+  font-size: 12.5px;
+}
+
+/* The docked card keeps only a collapsed peek at the plan. */
+.tb-ui-request-document.is-summary {
+  max-height: none;
+}
+
+.tb-ui-request-summary {
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 .tb-ui-request-options {
   display: flex;
   flex-wrap: wrap;
@@ -20817,112 +21195,184 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 }
 
 
-/* --- Turn dots: the run's engine turns, above the feed ---
+/* --- Turn dots: the run's engine turns, hanging off the agent's reply ---
    The feed renders only the running turn, so finished turns are reachable
    through these dots; one dot opens that turn's thinking and tool calls in the
-   drawer below. */
+   drawer below. The pile is the reply's first block, so it starts right after
+   the avatar and sits above that reply's text. */
+/* --- Turn process card: the run's engine turns, hanging off the agent's reply ---
+   The feed renders only the running turn, so finished turns are reachable
+   through these dots; one dot opens that turn's thinking and tool calls in the
+   drawer below. The card is the reply's first block, so it starts right after
+   the avatar and sits above that reply's text. */
 .tb-turn-dots {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 18px;
-  border-bottom: 0.5px solid var(--color-separator);
-  background: var(--color-secondary-bg);
-  flex-shrink: 0;
-  /* Above the drawer's mask (z 20): the dots are that drawer's own control, so
-     clicking a different dot must switch turns rather than dismiss the drawer. */
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
   position: relative;
-  z-index: 22;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  margin-bottom: 4px;
+  box-shadow: none;
 }
 
-.tb-turn-dots-label {
+.tb-turn-process-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--color-fill-secondary) 50%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-separator) 35%, transparent);
   font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  width: fit-content;
+}
+
+.tb-turn-process-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.tb-turn-process-icon {
+  color: var(--color-accent);
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.tb-turn-process-label {
+  font-weight: 600;
+  color: var(--color-label-primary);
+  letter-spacing: 0.15px;
+}
+
+.tb-turn-process-chip {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10.5px;
+  font-family: var(--font-family-mono, monospace);
+  color: var(--color-label-secondary);
+  background: var(--color-fill-secondary);
+  padding: 1px 6px;
+  border-radius: 10px;
+}
+
+.tb-turn-process-time {
+  font-size: 10.5px;
+  font-family: var(--font-family-mono, monospace);
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  padding: 1px 6px;
+  border-radius: 10px;
+}
+
+.tb-turn-process-error {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--color-destructive);
+  background: rgba(255, 59, 48, 0.12);
+  padding: 1px 6px;
+  border-radius: 10px;
+}
+
+.tb-turn-process-hint {
+  font-size: 10.5px;
   color: var(--color-label-tertiary);
-  letter-spacing: 0.02em;
   flex-shrink: 0;
 }
 
 .tb-turn-dots-track {
   display: flex;
   align-items: center;
-  /* No gap and a negative margin instead: the dots pile up into a stack, so a
-     long run stays a short strip. The padding is the pile's clip margin — the
-     open halo and the focus outline are drawn outside a dot's own box, and
-     `overflow-x` clips the vertical axis too. */
-  gap: 0;
+  gap: 4px;
   overflow-x: auto;
-  padding: var(--space-1-5) var(--space-1);
-  scrollbar-width: none;
+  min-width: 0;
+  padding: 2px 0 2px 0;
+  scrollbar-width: thin;
 }
 
 .tb-turn-dots-track::-webkit-scrollbar {
-  display: none;
+  height: 3px;
+}
+
+.tb-turn-dots-track::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-separator) 60%, transparent);
+  border-radius: 3px;
 }
 
 .tb-turn-dot {
   position: relative;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border-radius: 50%;
-  border: 0.5px solid var(--color-separator);
-  background: var(--color-window-bg);
+  min-width: 20px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--color-separator) 50%, transparent);
+  background: color-mix(in srgb, var(--color-fill-secondary) 40%, transparent);
   color: var(--color-label-secondary);
-  font-size: 10.5px;
+  font-size: 10px;
+  font-family: var(--font-family-mono, monospace);
   font-variant-numeric: tabular-nums;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease,
-    transform 0.15s ease;
+  cursor: pointer;
+  transition: all 0.15s ease;
 }
 
-/* Later turns paint over earlier ones (plain DOM order), and what gets covered is
-   the previous dot's outer 6px — outside its number, so every turn stays legible.
-   A dot that is hovered, focused or open lifts out of the pile and to the top. */
+.tb-turn-dot:last-child {
+  justify-content: center;
+  padding: 0 5px;
+}
+
 .tb-turn-dot + .tb-turn-dot {
-  margin-left: calc(-1 * var(--space-1-5));
+  margin-left: 0;
 }
 
-/* The tint is mixed against the window colour rather than over it: an opaque
-   fill is what lets a dot cover the one behind it instead of blending into it. */
-.tb-turn-dot.is-done {
-  border-color: color-mix(in srgb, var(--color-success) 45%, transparent);
-  background: color-mix(in srgb, var(--color-success) 12%, var(--color-window-bg));
+.tb-turn-dot.is-tools {
+  border-color: color-mix(in srgb, var(--color-success) 40%, transparent);
+  background: color-mix(in srgb, var(--color-success) 10%, var(--color-window-bg));
   color: var(--color-success);
 }
 
-/* A failed turn pierces the pile: its red ring must never end up buried under
-   the dots that come after it. */
-.tb-turn-dot.is-error {
-  border-color: color-mix(in srgb, var(--color-destructive) 50%, transparent);
-  background: color-mix(in srgb, var(--color-destructive) 12%, var(--color-window-bg));
-  color: var(--color-destructive);
-  z-index: 40;
+.tb-turn-dot.is-thinking {
+  border-color: color-mix(in srgb, var(--color-warning) 40%, transparent);
+  background: color-mix(in srgb, var(--color-warning) 10%, var(--color-window-bg));
+  color: var(--color-warning);
 }
 
-/* Hover and focus come after the status rules on purpose: same specificity, so
-   the later rule wins and a dot being pointed at keeps its green or red — the
-   accent is reserved for the open turn. It grows and lifts out of the pile
-   instead, the way the timeline rail's dots answer a hover. */
-.tb-turn-dot:hover,
-.tb-turn-dot:focus-visible {
-  z-index: 60;
-  transform: translateY(-2px) scale(1.08);
+.tb-turn-dot.is-error {
+  border-color: var(--color-destructive);
+  background: var(--color-destructive);
+  color: #fff;
+}
+
+.tb-turn-dot:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.1);
 }
 
 .tb-turn-dot:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px var(--color-focus-ring);
+  box-shadow: 0 0 0 2px var(--color-focus-ring);
 }
 
 .tb-turn-dot.is-open {
   border-color: var(--color-accent);
-  color: var(--color-label-primary);
-  z-index: 60;
-  transform: translateY(-2px) scale(1.08);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 20%, var(--color-window-bg));
+  color: var(--color-accent);
+  font-weight: 700;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 25%, transparent);
+  transform: translateY(-1px);
 }
 
 .tb-turn-dot-num {
@@ -20946,23 +21396,24 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   position: absolute;
   inset: 0;
   z-index: 20;
-  background: color-mix(in srgb, var(--color-window-bg) 55%, transparent);
+  background: transparent;
 }
 
 .tb-turn-overlay {
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  top: 40%;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  max-height: 52%;
   z-index: 21;
   display: flex;
   flex-direction: column;
   background: var(--color-window-bg);
-  border-top: 0.5px solid var(--color-separator);
-  border-radius: 12px 12px 0 0;
-  box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.18);
-  animation: tb-turn-slide-up 0.18s ease;
+  border: 1px solid var(--color-separator);
+  border-radius: 10px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.28);
+  animation: tb-turn-slide-up 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
 }
 
 @keyframes tb-turn-slide-up {

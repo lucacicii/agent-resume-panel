@@ -41,16 +41,16 @@ export interface RailDot {
   isLive: boolean;
 }
 
-export const DEFAULT_DOT_SIZE = 6;
+export const DEFAULT_DOT_SIZE = 8;
 /**
  * Minimum center-to-center distance before two anchors merge into one dot.
  *
  * The hit box is exactly this tall (see `.tb-timeline-dot` in styles.css), so at
  * the tightest two boxes are adjacent rather than overlapping — otherwise hover
- * would land on an arbitrary one of them. The 6px mark inside leaves a wider
+ * would land on an arbitrary one of them. The 8px mark inside leaves a wider
  * visual gap than the boxes suggest.
  */
-export const DEFAULT_MIN_GAP = 12;
+export const DEFAULT_MIN_GAP = 14;
 
 /** How far the message is allowed to slide under the top of the feed on a jump. */
 export const JUMP_TOP_PADDING = 12;
