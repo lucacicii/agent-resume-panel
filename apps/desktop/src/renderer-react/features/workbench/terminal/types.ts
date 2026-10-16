@@ -1,7 +1,7 @@
 import type { DesktopAppearanceState } from "../../../themes";
 import type { WorkbenchTerminalThemeId } from "../terminalThemes";
 
-export type TerminalEngineType = "xterm" | "ghostty-web";
+export type TerminalEngineType = "xterm";
 
 export type TerminalRendererMode = "webgl" | "canvas";
 

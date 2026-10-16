@@ -14,10 +14,8 @@ import {
   PanelSettings,
   WORKBENCH_TERMINAL_THEME_IDS,
   WORKBENCH_TERMINAL_RENDERERS,
-  WORKBENCH_TERMINAL_ENGINES,
   type DesktopTheme,
   type WorkbenchComposerSlashPhrase,
-  type WorkbenchTerminalEngine,
   type WorkbenchTerminalRenderer,
   type WorkbenchTerminalThemeId
 } from "./types";
@@ -32,7 +30,6 @@ const WORKBENCH_EDITOR_TAB_SIZES = new Set([2, 4, 8]);
 const WORKBENCH_EDITOR_SAVE_DELAYS = new Set([300, 600, 1000, 2000]);
 const TERMINAL_THEME_IDS = new Set<string>(WORKBENCH_TERMINAL_THEME_IDS);
 const TERMINAL_RENDERERS = new Set<string>(WORKBENCH_TERMINAL_RENDERERS);
-const TERMINAL_ENGINES = new Set<string>(WORKBENCH_TERMINAL_ENGINES);
 
 export function normalizeDesktopTheme(value: string | undefined | null): DesktopTheme {
   return value === "light" || value === "dark" || value === "system" ? value : "system";
@@ -61,14 +58,6 @@ export function normalizeWorkbenchTerminalRenderer(
   return DEFAULT_SETTINGS.workbench?.terminalRenderer ?? "webgl";
 }
 
-export function normalizeWorkbenchTerminalEngine(
-  value: string | undefined | null
-): WorkbenchTerminalEngine {
-  if (value && TERMINAL_ENGINES.has(value)) {
-    return value as WorkbenchTerminalEngine;
-  }
-  return DEFAULT_SETTINGS.workbench?.terminalEngine ?? "xterm";
-}
 
 const COMPOSER_SLASH_TRIGGER = /^[A-Za-z0-9_-]{1,40}$/;
 const COMPOSER_SLASH_PHRASE_MAX = 4000;
@@ -218,9 +207,6 @@ function mergeSettings(partial: Partial<PanelSettings> | null | undefined): Pane
       ...(partial.workbench || {}),
       terminalTheme: normalizeWorkbenchTerminalTheme(
         partial.workbench?.terminalTheme ?? base.workbench?.terminalTheme
-      ),
-      terminalEngine: normalizeWorkbenchTerminalEngine(
-        partial.workbench?.terminalEngine ?? base.workbench?.terminalEngine
       ),
       terminalRenderer: normalizeWorkbenchTerminalRenderer(
         partial.workbench?.terminalRenderer ?? base.workbench?.terminalRenderer

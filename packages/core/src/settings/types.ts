@@ -105,11 +105,6 @@ export interface NotesSettings {
 }
 
 export type WorkbenchTerminalMode = "xterm" | "external-system" | "external-ghostty";
-export type WorkbenchTerminalEngine = "xterm" | "ghostty-web";
-export const WORKBENCH_TERMINAL_ENGINES: readonly WorkbenchTerminalEngine[] = [
-  "xterm",
-  "ghostty-web"
-] as const;
 /** Built-in embedded xterm color presets (desktop Workbench). */
 export type WorkbenchTerminalThemeId =
   | "follow-app"
@@ -246,8 +241,6 @@ export interface WorkbenchSettings {
   /** Editor used by the workbench project context menu. Default auto. */
   projectEditor?: WorkbenchProjectEditor;
   terminalMode?: WorkbenchTerminalMode;
-  /** Embedded terminal emulator engine: `xterm` (default) or `ghostty-web`. */
-  terminalEngine?: WorkbenchTerminalEngine;
   /** Embedded xterm color preset. `follow-app` follows the application appearance. */
   terminalTheme?: WorkbenchTerminalThemeId;
   /** Workbench CodeMirror scheme. `follow-app` is the default. */
@@ -412,7 +405,6 @@ export interface PanelSettings {
     sessionRename?: Pick<LlmUseOptions, "disableThinking">;
     sessionSummary?: Pick<LlmUseOptions, "disableThinking">;
     report?: Pick<LlmUseOptions, "disableThinking">;
-    gtd?: Pick<LlmUseOptions, "disableThinking">;
     translate?: Pick<LlmUseOptions, "disableThinking">;
   };
   /** Auto session_summary generation (Desktop main process). */

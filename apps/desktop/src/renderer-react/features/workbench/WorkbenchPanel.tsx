@@ -4926,8 +4926,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     : "follow-app";
   const terminalThemeId = resolveTerminalThemeId(settings?.workbench?.terminalTheme);
   const desktopAppearance = useMemo(() => appearanceStateFromSettings(settings || {}), [settings]);
-  const terminalEngine: TerminalEngineType =
-    settings?.workbench?.terminalEngine === "ghostty-web" ? "ghostty-web" : "xterm";
+  const terminalEngine: TerminalEngineType = "xterm";
   const terminalRendererMode: TerminalRendererMode =
     settings?.workbench?.terminalRenderer === "canvas" ? "canvas" : "webgl";
   const saveEditor = async (key: string, force = false) => {
