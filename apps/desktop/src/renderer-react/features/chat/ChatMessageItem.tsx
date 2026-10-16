@@ -95,14 +95,40 @@ export function ChatMessageItem({
 
   const activeReasoning = message.reasoning || "";
   const activeTools = message.tool_executions || historicalTools;
-  /**
-   * A run's thinking and tool calls are per turn, and this row is a whole run:
-   * the pile of dots hanging off it is where they are read back, one dot per
-   * turn. Left to the flat lanes they would paint a second, staler copy of what
-   * the dots already hold — the same reason a run's row carries no segments once
-   * the run is over.
-   */
-  const pileHoldsDetail = (message.turns?.length ?? 0) > 0;
+  const turns = message.turns ?? [];
+
+  const allReasoning = React.useMemo(() => {
+    if (activeReasoning) return activeReasoning;
+    if (turns.length > 0) {
+      const texts: string[] = [];
+      for (const t of turns) {
+        for (const seg of t.segments) {
+          if (seg.kind === "reasoning" && seg.text) {
+            texts.push(seg.text);
+          }
+        }
+      }
+      return texts.join("\n\n---\n\n");
+    }
+    return "";
+  }, [activeReasoning, turns]);
+
+  const allTools: ActiveToolInfo[] = React.useMemo(() => {
+    if (activeTools && activeTools.length > 0) return activeTools;
+    if (turns.length > 0) {
+      const result: ActiveToolInfo[] = [];
+      for (const t of turns) {
+        for (const seg of t.segments) {
+          if (seg.kind === "tools" && seg.tools) {
+            result.push(...seg.tools);
+          }
+        }
+      }
+      return result;
+    }
+    return [];
+  }, [activeTools, turns]);
+
   const liveSegments = segments ?? [];
   const lastSegmentIndex = liveSegments.length - 1;
   const lastTextIndex = liveSegments.reduce(
@@ -152,14 +178,14 @@ export function ChatMessageItem({
       })
     ) : (
       <>
-        {activeReasoning && !pileHoldsDetail && (
-          <ThinkingState reasoning={activeReasoning} isStreaming={isStreaming && !message.content} />
-        )}
+        {allReasoning ? (
+          <ThinkingState reasoning={allReasoning} isStreaming={isStreaming && !message.content} defaultExpanded={false} />
+        ) : null}
 
         {/* Grouped Tool Calls (Collapsed by default, similar to Thinking) */}
-        {activeTools.length > 0 && !pileHoldsDetail && (
-          <ToolCallsState tools={activeTools} isStreaming={isStreaming} defaultExpanded={false} />
-        )}
+        {allTools.length > 0 ? (
+          <ToolCallsState tools={allTools} isStreaming={isStreaming} defaultExpanded={false} />
+        ) : null}
 
         <div className="tb-message-bubble">
           {isUser && message.parts && message.parts.some((p) => p.type === "image") && (

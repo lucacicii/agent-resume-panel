@@ -56,15 +56,27 @@ export function TurnDots({
   const totalDurationMs = finished.reduce((sum, f) => sum + (f.turn.durationMs || 0), 0);
   const errorCount = finished.filter((f) => f.turn.status === "error").length;
 
+  const [showSteps, setShowSteps] = useState(finished.length <= 3);
+
+  useEffect(() => {
+    if (openIndex !== null) setShowSteps(true);
+  }, [openIndex]);
+
   return (
     <div className="tb-turn-dots" role="tablist" aria-label={t("desktop.chat.turns.label")}>
-      <div className="tb-turn-process-bar">
+      <div
+        className="tb-turn-process-bar"
+        onClick={() => setShowSteps((prev) => !prev)}
+        role="button"
+        tabIndex={0}
+        style={{ cursor: "pointer" }}
+      >
         <div className="tb-turn-process-info">
           <span className="tb-turn-process-icon">
             <ThemeIcon name="sparkles" size={ICON_SIZE.dense} />
           </span>
           <span className="tb-turn-process-label">
-            {totalTurns} {totalTurns === 1 ? "turn" : "turns"}
+            {totalTurns} {totalTurns === 1 ? "step" : "steps"}
           </span>
           {totalTools > 0 && (
             <span className="tb-turn-process-chip">
@@ -84,11 +96,12 @@ export function TurnDots({
           )}
         </div>
         <span className="tb-turn-process-hint">
-          {openIndex !== null ? "Close step" : "Click step to inspect"}
+          {showSteps ? "Hide steps ▴" : "Inspect steps ▾"}
         </span>
       </div>
 
-      <div className="tb-turn-dots-track" ref={trackRef}>
+      {showSteps && (
+        <div className="tb-turn-dots-track" ref={trackRef}>
         {finished.map(({ turn, index }) => {
           const isOpen = openIndex === index;
           const title = describeTurn(turn, t);
@@ -108,8 +121,9 @@ export function TurnDots({
           );
         })}
       </div>
-    </div>
-  );
+    )}
+  </div>
+);
 }
 
 /**
