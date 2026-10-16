@@ -299,7 +299,7 @@ export function SettingsPanel({
             <div
               className={`settings-pane${pane === "usage" || pane === "logs" ? " settings-pane-usage" : pane === "about" ? " settings-pane-about" : ""}`}
             >
-              {pane === "usage" || pane === "logs" || pane === "about" || pane === "mcp" || pane === "backup" || pane === "agentStatus" ? body : <div className="settings-pane-body">{body}</div>}
+              {pane === "usage" || pane === "logs" || pane === "about" || pane === "mcp" || pane === "backup" ? body : <div className="settings-pane-body">{body}</div>}
             </div>
           </div>
           {pane === "about" ? (
@@ -362,9 +362,14 @@ function ProvidersPane({ draft, setDraft, commit, t }: { draft: ProvidersDraft; 
     update("providers", draft.providers.map((entry) => entry.id === providerId ? patch({ ...entry, models: [...entry.models] }) : entry), options);
   };
 
-  const addProvider = () => {
+  const addProvider = (preset?: { name: string; baseUrl: string; models?: ProviderModel[] }) => {
     const id = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `provider-${Date.now()}`;
-    const provider: AiProvider = { id, name: t("desktop.settings.providerNewName"), baseUrl: "https://api.openai.com/v1", models: [] };
+    const provider: AiProvider = {
+      id,
+      name: preset?.name ?? t("desktop.settings.providerNewName"),
+      baseUrl: preset?.baseUrl ?? "https://api.openai.com/v1",
+      models: preset?.models ? [...preset.models] : []
+    };
     update("providers", [...draft.providers, provider]);
     setSelectedProviderId(id);
   };
@@ -564,16 +569,39 @@ function ProvidersPane({ draft, setDraft, commit, t }: { draft: ProvidersDraft; 
     <section className="settings-group">
       <div className="settings-group-header">
         <h3 className="settings-group-title">{t("desktop.settings.providerList")}</h3>
-        <button
-          type="button"
-          className="ghost-btn"
-          data-testid="settings-add-provider"
-          onClick={addProvider}
-        >
-          + {t("desktop.settings.providerAdd")}
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+          <button
+            type="button"
+            className="ghost-btn"
+            data-testid="settings-add-provider"
+            onClick={() => addProvider()}
+          >
+            + {t("desktop.settings.providerAdd")}
+          </button>
+        </div>
       </div>
       <div className="settings-group-body">
+        <div className="settings-provider-presets-row">
+          <span className="settings-footnote muted">Presets:</span>
+          {[
+            { name: "OpenAI", baseUrl: "https://api.openai.com/v1", models: [{ id: "gpt-4o", kind: "text" as const }, { id: "gpt-4o-mini", kind: "text" as const }, { id: "text-embedding-3-small", kind: "embedding" as const }] },
+            { name: "DeepSeek", baseUrl: "https://api.deepseek.com/v1", models: [{ id: "deepseek-chat", kind: "text" as const }, { id: "deepseek-reasoner", kind: "text" as const }] },
+            { name: "Anthropic", baseUrl: "https://api.anthropic.com/v1", models: [{ id: "claude-3-7-sonnet-20250219", kind: "text" as const }, { id: "claude-3-5-sonnet-20241022", kind: "text" as const }] },
+            { name: "Ollama", baseUrl: "http://localhost:11434/v1", models: [{ id: "qwen2.5-coder", kind: "text" as const }, { id: "llama3", kind: "text" as const }] },
+            { name: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1", models: [{ id: "anthropic/claude-3.5-sonnet", kind: "text" as const }, { id: "openai/gpt-4o", kind: "text" as const }] },
+            { name: "SiliconFlow", baseUrl: "https://api.siliconflow.cn/v1", models: [{ id: "deepseek-ai/DeepSeek-V3", kind: "text" as const }, { id: "deepseek-ai/DeepSeek-R1", kind: "text" as const }] }
+          ].map((preset) => (
+            <button
+              key={preset.name}
+              type="button"
+              className="settings-slash-preset-btn"
+              onClick={() => addProvider(preset)}
+              title={`Add ${preset.name} preset`}
+            >
+              +{preset.name}
+            </button>
+          ))}
+        </div>
         <div className="settings-provider-layout">
           <aside className="settings-provider-list" aria-label={t("desktop.settings.providerListLabel")}>
             {draft.providers.length === 0 ? (
@@ -807,86 +835,106 @@ function ProvidersPane({ draft, setDraft, commit, t }: { draft: ProvidersDraft; 
       <h3 className="settings-group-title">{t("desktop.settings.specificFeatureModels")}</h3>
       <div className="settings-group-body">
         <p className="settings-footnote">{t("desktop.settings.specificFeatureModelsFootnote")}</p>
-        {selectionRow(
-          "desktop.settings.chatModelUse",
-          "desktop.settings.chatModelUseDesc",
-          "text",
-          draft.chatSelection,
-          (value) => update("chatSelection", value),
-          t("desktop.settings.modelPlaceholder"),
-          "settings-model-select-chat"
-        )}
-        <label className="settings-row">
-          <span className="settings-row-label">
-            <span className="settings-row-title">{t("desktop.settings.disableThinking")}</span>
-            <span className="settings-row-desc">{t("desktop.settings.disableThinkingChatDesc")}</span>
-          </span>
-          <span className="settings-toggle">
-            <input type="checkbox" role="switch" checked={draft.chatDisableThinking} onChange={(event) => update("chatDisableThinking", event.target.checked)} />
-            <span className="settings-toggle-track" aria-hidden="true" />
-          </span>
-        </label>
-        {selectionRow(
-          "desktop.settings.gitCommitModelUse",
-          "desktop.settings.gitCommitModelUseDesc",
-          "text",
-          draft.gitCommitSelection,
-          (value) => update("gitCommitSelection", value),
-          t("desktop.settings.modelPlaceholder"),
-          "settings-model-select-git-commit"
-        )}
-        {selectionRow(
-          "desktop.settings.sessionRenameModelUse",
-          "desktop.settings.sessionRenameModelUseDesc",
-          "text",
-          draft.sessionRenameSelection,
-          (value) => update("sessionRenameSelection", value),
-          t("desktop.settings.modelPlaceholder"),
-          "settings-model-select-session-rename"
-        )}
-        {selectionRow(
-          "desktop.settings.sessionSummaryModelUse",
-          "desktop.settings.sessionSummaryModelUseDesc",
-          "text",
-          draft.sessionSummarySelection,
-          (value) => update("sessionSummarySelection", value),
-          t("desktop.settings.modelPlaceholder"),
-          "settings-model-select-session-summary"
-        )}
-        {selectionRow(
-          "desktop.settings.reportModelUse",
-          "desktop.settings.reportModelUseDesc",
-          "text",
-          draft.reportSelection,
-          (value) => update("reportSelection", value),
-          t("desktop.settings.modelPlaceholder"),
-          "settings-model-select-report"
-        )}
-        <label className="settings-row">
-          <span className="settings-row-label">
-            <span className="settings-row-title">{t("desktop.settings.outputLanguage")}</span>
-            <span className="settings-row-desc">{t("desktop.settings.fieldOutputLanguageDescription")}</span>
-          </span>
-          <NativeMenuSelect className="settings-row-control" ariaLabel={t("desktop.settings.outputLanguage")} title={t("desktop.settings.outputLanguage")} value={draft.toolOutputLanguage} options={[{ value: "auto", label: t("desktop.settings.fieldOutputLanguageOptionAuto") }, { value: "en", label: "English" }, { value: "zh-cn", label: "简体中文" }, { value: "ja", label: "日本語" }]} onChange={(value) => update("toolOutputLanguage", value as typeof draft.toolOutputLanguage)} />
-        </label>
-        {selectionRow(
-          "desktop.settings.translateModelUse",
-          "desktop.settings.translateModelUseDesc",
-          "text",
-          draft.translateSelection,
-          (value) => update("translateSelection", value),
-          t("desktop.settings.modelPlaceholder"),
-          "settings-model-select-translate"
-        )}
-        {selectionRow(
-          "desktop.settings.embeddingModelUse",
-          "desktop.settings.embeddingModelUseDesc",
-          "embedding",
-          draft.embeddingSelection,
-          (value) => update("embeddingSelection", value),
-          t("desktop.settings.modelPlaceholder"),
-          "settings-model-select-embedding"
-        )}
+        <div className="settings-feature-model-group">
+          <div className="settings-feature-model-group-title">
+            <ThemeIcon name="message-square" size={ICON_SIZE.dense} aria-hidden="true" />
+            <span>{t("desktop.settings.chatModelUse")}</span>
+          </div>
+          {selectionRow(
+            "desktop.settings.chatModelUse",
+            "desktop.settings.chatModelUseDesc",
+            "text",
+            draft.chatSelection,
+            (value) => update("chatSelection", value),
+            t("desktop.settings.modelPlaceholder"),
+            "settings-model-select-chat"
+          )}
+          <label className="settings-row" style={{ marginTop: "var(--space-2)" }}>
+            <span className="settings-row-label">
+              <span className="settings-row-title">{t("desktop.settings.disableThinking")}</span>
+              <span className="settings-row-desc">{t("desktop.settings.disableThinkingChatDesc")}</span>
+            </span>
+            <span className="settings-toggle">
+              <input type="checkbox" role="switch" checked={draft.chatDisableThinking} onChange={(event) => update("chatDisableThinking", event.target.checked)} />
+              <span className="settings-toggle-track" aria-hidden="true" />
+            </span>
+          </label>
+        </div>
+
+        <div className="settings-feature-model-group">
+          <div className="settings-feature-model-group-title">
+            <ThemeIcon name="file-code" size={ICON_SIZE.dense} aria-hidden="true" />
+            <span>Tasks & Engineering</span>
+          </div>
+          {selectionRow(
+            "desktop.settings.gitCommitModelUse",
+            "desktop.settings.gitCommitModelUseDesc",
+            "text",
+            draft.gitCommitSelection,
+            (value) => update("gitCommitSelection", value),
+            t("desktop.settings.modelPlaceholder"),
+            "settings-model-select-git-commit"
+          )}
+          {selectionRow(
+            "desktop.settings.sessionRenameModelUse",
+            "desktop.settings.sessionRenameModelUseDesc",
+            "text",
+            draft.sessionRenameSelection,
+            (value) => update("sessionRenameSelection", value),
+            t("desktop.settings.modelPlaceholder"),
+            "settings-model-select-session-rename"
+          )}
+          {selectionRow(
+            "desktop.settings.sessionSummaryModelUse",
+            "desktop.settings.sessionSummaryModelUseDesc",
+            "text",
+            draft.sessionSummarySelection,
+            (value) => update("sessionSummarySelection", value),
+            t("desktop.settings.modelPlaceholder"),
+            "settings-model-select-session-summary"
+          )}
+          {selectionRow(
+            "desktop.settings.reportModelUse",
+            "desktop.settings.reportModelUseDesc",
+            "text",
+            draft.reportSelection,
+            (value) => update("reportSelection", value),
+            t("desktop.settings.modelPlaceholder"),
+            "settings-model-select-report"
+          )}
+        </div>
+
+        <div className="settings-feature-model-group">
+          <div className="settings-feature-model-group-title">
+            <ThemeIcon name="search" size={ICON_SIZE.dense} aria-hidden="true" />
+            <span>Search & Language</span>
+          </div>
+          <label className="settings-row">
+            <span className="settings-row-label">
+              <span className="settings-row-title">{t("desktop.settings.outputLanguage")}</span>
+              <span className="settings-row-desc">{t("desktop.settings.fieldOutputLanguageDescription")}</span>
+            </span>
+            <NativeMenuSelect className="settings-row-control" ariaLabel={t("desktop.settings.outputLanguage")} title={t("desktop.settings.outputLanguage")} value={draft.toolOutputLanguage} options={[{ value: "auto", label: t("desktop.settings.fieldOutputLanguageOptionAuto") }, { value: "en", label: "English" }, { value: "zh-cn", label: "简体中文" }, { value: "ja", label: "日本語" }]} onChange={(value) => update("toolOutputLanguage", value as typeof draft.toolOutputLanguage)} />
+          </label>
+          {selectionRow(
+            "desktop.settings.translateModelUse",
+            "desktop.settings.translateModelUseDesc",
+            "text",
+            draft.translateSelection,
+            (value) => update("translateSelection", value),
+            t("desktop.settings.modelPlaceholder"),
+            "settings-model-select-translate"
+          )}
+          {selectionRow(
+            "desktop.settings.embeddingModelUse",
+            "desktop.settings.embeddingModelUseDesc",
+            "embedding",
+            draft.embeddingSelection,
+            (value) => update("embeddingSelection", value),
+            t("desktop.settings.modelPlaceholder"),
+            "settings-model-select-embedding"
+          )}
+        </div>
       </div>
     </section>
   </>;
