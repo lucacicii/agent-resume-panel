@@ -19493,6 +19493,127 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 .tb-message-row.is-user .tb-message-container {
   align-items: flex-end;
 }
+.tb-message-row.is-assistant .tb-message-container {
+  position: relative;
+  border-left: 1.5px solid color-mix(in srgb, var(--color-separator) 60%, transparent);
+  padding-left: 12px;
+  margin-left: 2px;
+  gap: 6px;
+}
+/* --- Chronological Spine Timeline --- */
+.tb-chronological-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.tb-timeline-summary-bar {
+  margin-bottom: 2px;
+}
+
+.tb-timeline-summary-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--color-fill-secondary) 50%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-separator) 40%, transparent);
+  color: var(--color-label-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tb-timeline-summary-toggle:hover {
+  background: color-mix(in srgb, var(--color-fill-secondary) 80%, transparent);
+  color: var(--color-label-primary);
+  border-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
+}
+
+.tb-timeline-summary-icon {
+  color: var(--color-accent);
+  display: flex;
+  align-items: center;
+}
+
+.tb-timeline-summary-label {
+  font-weight: 600;
+  color: var(--color-label-primary);
+}
+
+.tb-timeline-summary-hint {
+  font-size: 10px;
+  color: var(--color-label-tertiary);
+  margin-left: 2px;
+}
+
+.tb-timeline-steps-stream {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.tb-timeline-steps-stream.is-collapsed {
+  display: none;
+}
+
+.tb-timeline-turn-block {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  position: relative;
+}
+
+.tb-timeline-turn-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--color-label-tertiary);
+  margin-bottom: 1px;
+}
+
+.tb-timeline-turn-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  margin-left: -15.5px;
+  box-shadow: 0 0 0 2px var(--color-window-bg);
+  flex-shrink: 0;
+}
+
+.tb-timeline-turn-title {
+  color: var(--color-label-secondary);
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.tb-timeline-turn-time {
+  font-family: var(--font-family-mono, monospace);
+  font-size: 10px;
+  color: var(--color-label-tertiary);
+}
+
+.tb-timeline-turn-error {
+  font-size: 9.5px;
+  font-weight: 600;
+  color: var(--color-destructive);
+  background: rgba(255, 59, 48, 0.12);
+  padding: 0 4px;
+  border-radius: 4px;
+}
+
+.tb-timeline-turn-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 2px;
+}
 
 .tb-message-bubble {
   font-size: 13.5px;
@@ -19634,29 +19755,34 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 
 /* --- BeautifulUI: Thinking State --- */
 .tb-thinking-container {
-  border: 1px solid color-mix(in srgb, var(--color-separator) 40%, transparent);
-  border-left: 2px solid var(--color-accent);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--color-fill-secondary) 25%, transparent);
-  overflow: hidden;
-  margin-bottom: 4px;
+  border: none;
+  background: transparent;
+  overflow: visible;
+  margin-bottom: 2px;
   box-shadow: none;
-  transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 
 .tb-thinking-container.is-streaming {
-  border-color: color-mix(in srgb, var(--color-accent) 30%, transparent);
-  border-left-color: var(--color-accent);
-  background: color-mix(in srgb, var(--color-accent) 6%, transparent);
+  border: none;
+  background: transparent;
+  box-shadow: none;
 }
 .tb-thinking-header {
   width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 8px;
-  min-height: 26px;
+  padding: 2px 6px;
+  min-height: 24px;
+  border-radius: 4px;
   background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--color-label-secondary);
+  font-size: 11.5px;
+  font-weight: 500;
+  text-align: left;
+  transition: background 0.12s ease;
   border: none;
   cursor: pointer;
   color: var(--color-label-secondary);
@@ -19806,9 +19932,9 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 }
 
 .tb-thinking-body {
-  padding: 6px 12px 10px 12px;
-  border-top: 0.5px solid var(--color-separator);
-  background: var(--color-pane-bg);
+  padding: 4px 0 6px 6px;
+  border-top: none;
+  background: transparent;
 }
 
 .tb-thinking-toolbar {
@@ -19817,7 +19943,7 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   justify-content: space-between;
   padding: 2px 2px 6px 2px;
   margin-bottom: 6px;
-  border-bottom: 0.5px solid color-mix(in srgb, var(--color-separator) 60%, transparent);
+  border-bottom: none;
 }
 
 .tb-thinking-toolbar-label {
@@ -19846,15 +19972,16 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 }
 
 .tb-thinking-content {
-  border-left: 2px solid color-mix(in srgb, var(--color-accent) 50%, transparent);
-  padding-left: 8px;
-  font-family: var(--font-family-mono, monospace);
-  font-size: 11.5px;
-  line-height: 1.55;
+  border-left: 2px solid color-mix(in srgb, var(--color-accent) 40%, transparent);
+  padding-left: 10px;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.6;
   color: var(--color-label-secondary);
   white-space: pre-wrap;
   word-break: break-word;
-  max-height: 240px;
+  background: transparent;
+  max-height: 260px;
   overflow-y: auto;
 }
 
@@ -19883,30 +20010,34 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 
 /* --- Grouped Tool Calls Container (similar to ThinkingState) --- */
 .tb-tool-group-container {
-  border: 1px solid color-mix(in srgb, var(--color-separator) 40%, transparent);
-  border-left: 2px solid var(--color-accent);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--color-fill-secondary) 25%, transparent);
-  overflow: hidden;
-  margin-bottom: 4px;
+  border: none;
+  background: transparent;
+  overflow: visible;
+  margin-bottom: 2px;
   box-shadow: none;
-  transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 
 .tb-tool-group-container.is-running {
-  border-color: color-mix(in srgb, var(--color-accent) 30%, transparent);
-  border-left-color: var(--color-accent);
-  background: color-mix(in srgb, var(--color-accent) 6%, transparent);
+  border: none;
+  background: transparent;
+  box-shadow: none;
 }
-
 .tb-tool-group-header {
   width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 8px;
-  min-height: 26px;
+  padding: 2px 6px;
+  min-height: 24px;
+  border-radius: 4px;
   background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--color-label-secondary);
+  font-size: 11.5px;
+  font-weight: 500;
+  text-align: left;
+  transition: background 0.12s ease;
   border: none;
   cursor: pointer;
   color: var(--color-label-secondary);
@@ -19992,18 +20123,18 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 }
 
 .tb-tool-group-body {
-  padding: 8px 10px 10px 10px;
-  border-top: 0.5px solid var(--color-separator);
-  background: var(--color-pane-bg);
+  padding: 2px 0 4px 6px;
+  border-top: none;
+  background: transparent;
 }
 
 .tb-tool-group-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 4px 6px 6px;
-  border-top: 0.5px solid color-mix(in srgb, var(--color-separator) 40%, transparent);
-  background: color-mix(in srgb, var(--color-pane-bg) 60%, transparent);
+  gap: 3px;
+  padding: 2px 0 2px 4px;
+  border-top: none;
+  background: transparent;
 }
 
 .tb-tool-chip {
@@ -21077,26 +21208,30 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 .tb-turn-dots {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
   max-width: 100%;
   position: relative;
-  z-index: 22;
-  background: color-mix(in srgb, var(--color-secondary-bg) 65%, var(--color-pane-bg));
-  border: 0.5px solid color-mix(in srgb, var(--color-separator) 80%, transparent);
-  border-left: 2.5px solid var(--color-accent);
-  border-radius: var(--radius-md, 8px);
-  padding: 7px 10px 8px 10px;
-  margin-bottom: 6px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  margin-bottom: 4px;
+  box-shadow: none;
 }
 
 .tb-turn-process-bar {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: 11.5px;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--color-fill-secondary) 50%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-separator) 35%, transparent);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  width: fit-content;
 }
 
 .tb-turn-process-info {
@@ -21176,14 +21311,14 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 
 .tb-turn-dot {
   position: relative;
-  min-width: 24px;
-  height: 22px;
-  padding: 0 5px;
-  border-radius: 6px;
-  border: 0.5px solid var(--color-separator);
-  background: var(--color-control-bg);
+  min-width: 20px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--color-separator) 50%, transparent);
+  background: color-mix(in srgb, var(--color-fill-secondary) 40%, transparent);
   color: var(--color-label-secondary);
-  font-size: 10.5px;
+  font-size: 10px;
   font-family: var(--font-family-mono, monospace);
   font-variant-numeric: tabular-nums;
   display: flex;
