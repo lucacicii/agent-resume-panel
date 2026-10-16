@@ -23,11 +23,21 @@ export function ThinkingState({
   defaultExpanded = false
 }: ThinkingStateProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
+  const [copied, setCopied] = useState(false);
   const [seconds, setSeconds] = useState(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
   /** A strategy while true: follow the newest reasoning unless the user scrolls up (B). */
   const stickToBottom = useRef(true);
+
+  const handleCopy = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (reasoning) {
+      await navigator.clipboard.writeText(reasoning);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }
+  };
 
   const scrollToBottom = useCallback((force = false) => {
     const node = contentRef.current;
@@ -139,6 +149,20 @@ export function ThinkingState({
 
       {expanded && (
         <div className="tb-thinking-body">
+          <div className="tb-thinking-toolbar">
+            <span className="tb-thinking-toolbar-label">
+              {lineCount} {lineCount === 1 ? "line" : "lines"} of reasoning
+            </span>
+            <button
+              type="button"
+              className="tb-thinking-copy-btn"
+              onClick={handleCopy}
+              title="Copy thought process"
+            >
+              <ThemeIcon name={copied ? "check" : "copy"} size={ICON_SIZE.inline} />
+              <span>{copied ? "Copied" : "Copy"}</span>
+            </button>
+          </div>
           <div
             className="tb-thinking-content"
             ref={contentRef}

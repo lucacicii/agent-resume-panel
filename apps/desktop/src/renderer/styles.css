@@ -19634,16 +19634,20 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 
 /* --- BeautifulUI: Thinking State --- */
 .tb-thinking-container {
-  border: 0.5px solid var(--color-separator);
+  border: 0.5px solid color-mix(in srgb, var(--color-separator) 80%, transparent);
+  border-left: 2.5px solid var(--color-accent);
   border-radius: var(--radius-md, 8px);
-  background: var(--color-secondary-bg);
+  background: color-mix(in srgb, var(--color-secondary-bg) 60%, var(--color-pane-bg));
   overflow: hidden;
   margin-bottom: 4px;
-  transition: border-color 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .tb-thinking-container.is-streaming {
-  border-color: color-mix(in srgb, var(--color-accent) 35%, transparent);
+  border-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
+  border-left-color: var(--color-accent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--color-accent) 15%, transparent);
 }
 
 .tb-thinking-header {
@@ -19651,7 +19655,7 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 7px 10px;
+  padding: 6px 10px;
   background: transparent;
   border: none;
   cursor: pointer;
@@ -19663,6 +19667,7 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 
 .tb-thinking-header:hover {
   color: var(--color-label-primary);
+  background: color-mix(in srgb, var(--color-fill-secondary) 50%, transparent);
 }
 
 .tb-thinking-header-left {
@@ -19682,14 +19687,20 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 
 .tb-thinking-title {
   flex-shrink: 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.15px;
+  color: var(--color-label-secondary);
 }
 
 .tb-thinking-time-badge {
-  font-size: 10.5px;
-  color: var(--color-label-tertiary);
-  background: var(--color-tertiary-bg);
-  padding: 1px 5px;
-  border-radius: 4px;
+  font-size: 10px;
+  font-family: var(--font-family-mono, monospace);
+  font-weight: 600;
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  padding: 1px 6px;
+  border-radius: 10px;
 }
 
 .tb-thinking-pulse {
@@ -19779,7 +19790,6 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   text-overflow: ellipsis;
   font-size: 11.5px;
   font-weight: 400;
-  font-style: italic;
   color: var(--color-label-tertiary);
 }
 
@@ -19788,6 +19798,7 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   align-items: center;
   transition: transform 0.2s ease;
   flex-shrink: 0;
+  color: var(--color-label-tertiary);
 }
 
 .tb-thinking-chevron.is-open {
@@ -19795,9 +19806,43 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 }
 
 .tb-thinking-body {
-  padding: 8px 12px 10px 12px;
+  padding: 6px 12px 10px 12px;
   border-top: 0.5px solid var(--color-separator);
   background: var(--color-pane-bg);
+}
+
+.tb-thinking-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 2px 6px 2px;
+  margin-bottom: 6px;
+  border-bottom: 0.5px solid color-mix(in srgb, var(--color-separator) 60%, transparent);
+}
+
+.tb-thinking-toolbar-label {
+  font-size: 10.5px;
+  font-family: var(--font-family-mono, monospace);
+  color: var(--color-label-tertiary);
+}
+
+.tb-thinking-copy-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--color-control-bg);
+  border: 0.5px solid var(--color-separator);
+  font-size: 10.5px;
+  color: var(--color-label-secondary);
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.tb-thinking-copy-btn:hover {
+  background: var(--color-tertiary-bg);
+  color: var(--color-label-primary);
 }
 
 .tb-thinking-content {
@@ -19805,7 +19850,7 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   padding-left: 10px;
   font-family: var(--font-family-mono);
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 1.55;
   color: var(--color-label-secondary);
   white-space: pre-wrap;
   word-break: break-word;
@@ -19838,16 +19883,20 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 
 /* --- Grouped Tool Calls Container (similar to ThinkingState) --- */
 .tb-tool-group-container {
-  border: 0.5px solid var(--color-separator);
+  border: 0.5px solid color-mix(in srgb, var(--color-separator) 80%, transparent);
+  border-left: 2.5px solid var(--color-accent);
   border-radius: var(--radius-md, 8px);
-  background: var(--color-secondary-bg);
+  background: color-mix(in srgb, var(--color-secondary-bg) 60%, var(--color-pane-bg));
   overflow: hidden;
   margin-bottom: 4px;
-  transition: border-color 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .tb-tool-group-container.is-running {
-  border-color: color-mix(in srgb, var(--color-accent) 35%, transparent);
+  border-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
+  border-left-color: var(--color-accent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--color-accent) 15%, transparent);
 }
 
 .tb-tool-group-header {
@@ -19855,7 +19904,7 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 7px 10px;
+  padding: 6px 10px;
   background: transparent;
   border: none;
   cursor: pointer;
@@ -19867,6 +19916,7 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 
 .tb-tool-group-header:hover {
   color: var(--color-label-primary);
+  background: color-mix(in srgb, var(--color-fill-secondary) 50%, transparent);
 }
 
 .tb-tool-group-header-left {
@@ -19889,23 +19939,30 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 460px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--color-label-primary);
 }
 
 .tb-tool-group-count-badge {
-  font-size: 10.5px;
-  color: var(--color-label-tertiary);
-  background: var(--color-tertiary-bg);
-  padding: 1px 5px;
-  border-radius: 4px;
+  font-size: 10px;
+  font-family: var(--font-family-mono, monospace);
+  font-weight: 600;
+  color: var(--color-label-secondary);
+  background: var(--color-fill-secondary);
+  padding: 1px 6px;
+  border-radius: 10px;
   flex-shrink: 0;
 }
 
 .tb-tool-group-error-badge {
-  font-size: 10.5px;
+  font-size: 10px;
+  font-family: var(--font-family-mono, monospace);
+  font-weight: 600;
   color: var(--color-destructive);
   background: rgba(255, 59, 48, 0.12);
-  padding: 1px 5px;
-  border-radius: 4px;
+  padding: 1px 6px;
+  border-radius: 10px;
   flex-shrink: 0;
 }
 
@@ -19940,19 +19997,28 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 .tb-tool-group-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
 }
 
 .tb-tool-chip {
-  border: 0.5px solid var(--color-separator);
-  border-radius: var(--radius-md, 8px);
+  border: 0.5px solid color-mix(in srgb, var(--color-separator) 70%, transparent);
+  border-radius: 6px;
   background: var(--color-pane-bg);
   overflow: hidden;
   transition: all 0.15s ease;
 }
 
+.tb-tool-chip:hover {
+  border-color: color-mix(in srgb, var(--color-accent) 30%, var(--color-separator));
+}
+
 .tb-tool-chip.is-running {
   border-color: var(--color-accent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--color-accent) 15%, transparent);
+}
+
+.tb-tool-chip.is-error {
+  border-color: var(--color-destructive);
 }
 
 .tb-tool-chip-header {
@@ -19960,39 +20026,71 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 7px 10px;
+  padding: 6px 9px;
   background: transparent;
   border: none;
   cursor: pointer;
   text-align: left;
 }
 
+.tb-tool-chip-header:hover {
+  background: color-mix(in srgb, var(--color-fill-secondary) 50%, transparent);
+}
+
 .tb-tool-chip-header-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .tb-tool-icon {
   color: var(--color-accent);
   display: flex;
   align-items: center;
+  flex-shrink: 0;
+}
+
+.tb-tool-verb {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--color-accent);
+  flex-shrink: 0;
+}
+
+.tb-tool-target {
+  font-family: var(--font-family-mono, monospace);
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--color-label-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
 }
 
 .tb-tool-name {
-  font-family: var(--font-family-mono);
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--color-label-primary);
+  font-family: var(--font-family-mono, monospace);
+  font-size: 10px;
+  color: var(--color-label-tertiary);
+  background: var(--color-fill-secondary);
+  padding: 1px 5px;
+  border-radius: 4px;
+  flex-shrink: 0;
 }
 
 .tb-tool-status {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 11px;
+  font-size: 10.5px;
   padding: 1px 6px;
   border-radius: 4px;
+  font-weight: 500;
+  flex-shrink: 0;
 }
 
 .tb-tool-status.running {
@@ -20028,6 +20126,7 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   align-items: center;
   color: var(--color-label-tertiary);
   transition: transform 0.2s ease;
+  flex-shrink: 0;
 }
 
 .tb-tool-chevron.is-open {
@@ -20068,6 +20167,7 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   font-size: 10.5px;
   color: var(--color-label-secondary);
   cursor: pointer;
+  transition: all 0.12s ease;
 }
 
 .tb-tool-copy-btn:hover {
@@ -20082,10 +20182,10 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   background: var(--color-control-bg);
   border: 0.5px solid var(--color-separator);
   font-family: var(--font-family-mono);
-  font-size: 11.5px;
-  line-height: 1.4;
+  font-size: 11px;
+  line-height: 1.45;
   color: var(--color-label-primary);
-  max-height: 180px;
+  max-height: 200px;
   overflow-y: auto;
   white-space: pre-wrap;
   word-break: break-all;
