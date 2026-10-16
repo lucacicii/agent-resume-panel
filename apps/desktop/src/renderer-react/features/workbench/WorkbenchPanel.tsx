@@ -1880,27 +1880,31 @@ export function WorkbenchPanel(): ReactPortal | null {
    * Thunder conversations are not in the catalog. When a task is scoped they are
    * limited to the task's workspace (or an explicit `thunder:` link); otherwise
    * every conversation is listed, mirroring the catalog's "all" page.
+   *
+   * Scope and search stay separate memos: the meta row needs a denominator for
+   * "how many rows could be here", which a query-filtered list cannot answer.
    */
-  const visibleThunderConversations = useMemo(() => {
-    const q = sessionQuery.trim().toLowerCase();
+  const scopedThunderConversations = useMemo(() => {
     const scoped = sessionFilter === "task" && taskScope && taskSessionsKnown;
+    if (!scoped) return thunderConversations;
     const scopePaths = new Set(
       [selectedProject, ...scopeProjects]
         .filter((path): path is string => Boolean(path))
         .map((path) => projectPathKey(path))
     );
     const linkedKeys = new Set(taskSessionKeys);
-    return thunderConversations
-      .filter((conversation) => {
-        if (scoped) {
-          const workspace = projectPathKey(conversation.workspace || "");
-          const inScope = (workspace && scopePaths.has(workspace)) || linkedKeys.has(`thunder:${conversation.id}`);
-          if (!inScope) return false;
-        }
-        return `${conversation.title || ""} ${conversation.id} thunder`.toLowerCase().includes(q);
-      })
+    return thunderConversations.filter((conversation) => {
+      const workspace = projectPathKey(conversation.workspace || "");
+      return Boolean(workspace && scopePaths.has(workspace)) || linkedKeys.has(`thunder:${conversation.id}`);
+    });
+  }, [thunderConversations, sessionFilter, taskScope, taskSessionsKnown, selectedProject, scopeProjects, taskSessionKeys]);
+
+  const visibleThunderConversations = useMemo(() => {
+    const q = sessionQuery.trim().toLowerCase();
+    return scopedThunderConversations
+      .filter((conversation) => `${conversation.title || ""} ${conversation.id} thunder`.toLowerCase().includes(q))
       .sort((a, b) => b.updated_at_ms - a.updated_at_ms);
-  }, [thunderConversations, sessionQuery, sessionFilter, taskScope, taskSessionsKnown, selectedProject, scopeProjects, taskSessionKeys]);
+  }, [scopedThunderConversations, sessionQuery]);
 
   /**
    * Catalog rows and Thunder's own rows share one timeline: both stamp ms
@@ -1923,6 +1927,15 @@ export function WorkbenchPanel(): ReactPortal | null {
       ...timeline
     ];
   }, [visiblePendingSessions, visibleSessions, visibleThunderConversations]);
+  /**
+   * What the meta row counts: every row the list holds, out of every row it
+   * could hold. Thunder rows belong in both halves — leaving them out of the
+   * numerator is what made a 400-row list read "3 / 120".
+   */
+  const sessionListCounts = useMemo(() => ({
+    shown: visibleSessions.length + visiblePendingSessions.length + visibleThunderConversations.length,
+    total: sessionsTotal + selectedPendingSessions.length + scopedThunderConversations.length
+  }), [visibleSessions, visiblePendingSessions, visibleThunderConversations, sessionsTotal, selectedPendingSessions, scopedThunderConversations]);
   /** Left-panel note list: the task's note tree when filtered, else every note. */
   const visibleNotes = useMemo(() => {
     const q = noteQuery.trim().toLowerCase();
@@ -6677,7 +6690,7 @@ export function WorkbenchPanel(): ReactPortal | null {
           </div>
           <input className="wb-search wb-note-search" type="search" aria-label={t("desktop.workbench.searchSessions")} placeholder={t("desktop.common.search")} value={sessionQuery} autoComplete="off" spellCheck={false} onChange={(event) => { setSessionQuery(event.target.value); setSelectedSessionKeys((current) => current.size ? new Set() : current); setSelectionAnchorKey((current) => current ? "" : current); }} />
         </div>
-        <div className="wb-list-meta-row"><p className="wb-list-meta">{selectedSessionKeys.size > 1 ? t("desktop.workbench.selectedCount", selectedSessionKeys.size) : sessionQuery ? t("desktop.workbench.listMetaSearch", selectedSessionScope, sessionQuery, visibleSessions.length + visiblePendingSessions.length) : `${visibleSessions.length + visiblePendingSessions.length} / ${sessionsTotal + selectedPendingSessions.length}`}</p>{selectedSessionKeys.size > 1 ? <button type="button" className="wb-list-remove-btn" onClick={() => {
+        <div className="wb-list-meta-row"><p className="wb-list-meta">{selectedSessionKeys.size > 1 ? t("desktop.workbench.selectedCount", selectedSessionKeys.size) : sessionQuery ? t("desktop.workbench.listMetaSearch", selectedSessionScope, sessionQuery, sessionListCounts.shown) : `${sessionListCounts.shown} / ${sessionListCounts.total}`}</p>{selectedSessionKeys.size > 1 ? <button type="button" className="wb-list-remove-btn" onClick={() => {
           const targets = visibleSessions.filter((item) => selectedSessionKeys.has(sessionKey(item)));
           if (!targets.length) return;
           void (async () => {
