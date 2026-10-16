@@ -1238,6 +1238,7 @@ describe("WorkbenchPanel", () => {
       "desktop.workbench.gtdStatus.done": "Done",
       "desktop.workbench.deleteThunderConversation": "Delete Thunder conversation",
       "desktop.workbench.deleteThunderConversationConfirm": "Delete Thunder conversation \"{0}\"?",
+      "desktop.workbench.listMetaSearch": "{0} · search \"{1}\" · {2} sessions",
       "desktop.workbench.selectSessionHint": "Select a session",
       "desktop.workbench.selectProjectHint": "Select a project",
       "desktop.gtd.unmarked": "Unmarked",
@@ -1310,6 +1311,41 @@ describe("WorkbenchPanel", () => {
       "Older catalog session",
       "Oldest Thunder chat"
     ]);
+  });
+
+  it("counts Thunder rows in the list meta line", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const catalogSession = (id: string, updatedAt: number) => ({
+      provider: "codex" as const,
+      id,
+      title: id,
+      projectPath: "/work/app",
+      updatedAt
+    });
+    window.agentResume = thunderWorkbenchApi({
+      listSessions: async () => [catalogSession("s-1", 2), catalogSession("s-2", 1)],
+      thunderChatListConversations: async () => [
+        thunderConversation({ id: "t-1", title: "Thunder one" }),
+        thunderConversation({ id: "t-2", title: "Thunder two" }),
+        thunderConversation({ id: "t-3", title: "Thunder three" })
+      ]
+    });
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await activateTaskDirectory("/work/app");
+
+    // Both halves count every row the list can hold, Thunder included — a count
+    // that stopped at the catalog read "2 / 2" above five rows.
+    await waitFor(() => expect(document.querySelectorAll(".wb-list-item-title")).toHaveLength(5));
+    expect(document.querySelector(".wb-list-meta")?.textContent).toBe("5 / 5");
+
+    // Search narrows the numerator and leaves the denominator whole.
+    fireEvent.change(document.querySelector(".wb-note-search") as HTMLInputElement, { target: { value: "Thunder two" } });
+    await waitFor(() => expect(document.querySelectorAll(".wb-list-item-title")).toHaveLength(1));
+    expect(document.querySelector(".wb-list-meta")?.textContent).toBe("Test task · search \"Thunder two\" · 1 sessions");
   });
 
   it("gives a Thunder row the overlay session menu plus its two Thunder actions", async () => {
