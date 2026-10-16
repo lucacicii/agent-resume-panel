@@ -216,6 +216,30 @@ type PendingWorkbenchSession = {
   /** When set, append the bound session to this task on bind. */
   taskNoteId?: string;
 };
+/**
+ * A Thunder TUI pane whose conversation is not known yet: the TUI mints it in
+ * its own process at the first turn, so the pane is bound by discovery.
+ */
+type UnboundThunderTuiPane = {
+  terminalKey: string;
+  cwd: string;
+  launchedAtMs: number;
+  /** A restored pane knows the conversation it was resumed with. */
+  sessionIdHint?: string;
+};
+/** How far a Thunder conversation may predate its pane and still be its own. */
+const THUNDER_TUI_BIND_SLACK_MS = 5_000;
+/** The `--session <id>` a Thunder TUI command resumes, when it carries one. */
+const THUNDER_SESSION_FLAG = /(?:^|\s)--session\s+(?:'([^']+)'|"([^"]+)"|(\S+))/;
+/** Thunder's store is not synced by the catalog, so unbound panes poll it. */
+const THUNDER_TUI_DISCOVERY_POLL_MS = 3_000;
+
+/** The conversation a persisted Thunder TUI command resumes, if it names one. */
+function thunderSessionIdFromCommand(command: string | undefined): string | undefined {
+  if (!command || !/thunder/i.test(command)) return undefined;
+  const match = THUNDER_SESSION_FLAG.exec(command);
+  return match?.[1] || match?.[2] || match?.[3] || undefined;
+}
 type WorkbenchSessionRow =
   | { kind: "pending"; pending: PendingWorkbenchSession }
   | { kind: "session"; session: AgentSession }
@@ -715,6 +739,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const [acpChats, setAcpChats] = useState<AcpChatPane[]>([]);
   const [thunderChats, setThunderChats] = useState<ThunderChatPane[]>([]);
   const [thunderConversations, setThunderConversations] = useState<ThunderConversationSummary[]>([]);
+  const [unboundThunderTui, setUnboundThunderTui] = useState<UnboundThunderTuiPane[]>([]);
   const [browsers, setBrowsers] = useState<BrowserPane[]>([]);
   const [notePanes, setNotePanes] = useState<NotePane[]>([]);
   const [activePanes, setActivePanes] = useState<Record<string, string>>({});
@@ -759,6 +784,7 @@ export function WorkbenchPanel(): ReactPortal | null {
   const terminalRefs = useRef(new Map<number, Terminal>());
   const terminalMouseTrackingRef = useRef(new Map<number, boolean>());
   const pendingSessionsRef = useRef<PendingWorkbenchSession[]>([]);
+  const unboundThunderTuiRef = useRef<UnboundThunderTuiPane[]>([]);
   /** Latest task workspace scope, for values read during session binding. */
   const taskScopeRef = useRef<{ noteId: string } | null>(null);
   const workbenchesRef = useRef<Workbench[]>([]);
@@ -2644,6 +2670,19 @@ export function WorkbenchPanel(): ReactPortal | null {
     setActiveSessionKey(key);
   }, [addThunderChat, selectProject, setActivePane]);
 
+  /**
+   * Track a Thunder TUI pane that has no conversation yet.
+   *
+   * Thunder mints the conversation inside the TUI process, so there is no id to
+   * pass at launch: the pane is bound later, when the poll below sees the
+   * conversation this workspace registered after the pane started.
+   */
+  const trackThunderTuiPane = useCallback((terminalKey: string, cwd: string, sessionIdHint?: string) => {
+    const entry = { terminalKey, cwd, launchedAtMs: Date.now(), sessionIdHint };
+    unboundThunderTuiRef.current = [...unboundThunderTuiRef.current, entry];
+    setUnboundThunderTui(unboundThunderTuiRef.current);
+  }, []);
+
   /** Launch the native Thunder TUI, optionally resuming an existing conversation. */
   const launchThunderTui = useCallback(async (conversation?: ThunderConversationSummary) => {
     const cwd = (conversation?.workspace || selectedProject || "").trim();
@@ -2666,14 +2705,91 @@ export function WorkbenchPanel(): ReactPortal | null {
       if (result.mode === "xterm" && result.command) {
         const launchCwd = result.cwd || cwd;
         const title = conversation?.title || t("desktop.settings.newSessionTarget.cli_thunder");
-        addTerminal(title, launchCwd, result.command, launchCwd, undefined, "session", { env: result.env });
-        setSessionViewMode("hybrid");
-        writeWorkbenchValue(SESSION_VIEW_MODE_KEY, activeWorkbenchIdRef.current, "hybrid");
+        // Resuming a conversation means the pane has something to observe right
+        // away; a bare TUI has to register its conversation first.
+        const boundKey = conversation?.id ? `thunder:${conversation.id}` : undefined;
+        const terminalKey = addTerminal(title, launchCwd, result.command, launchCwd, boundKey, "session", { env: result.env });
+        if (boundKey) linkSessionToOpenTask(boundKey, launchCwd);
+        else trackThunderTuiPane(terminalKey, launchCwd);
+        setSessionViewMode(boundKey ? "hybrid" : "terminal");
+        writeWorkbenchValue(SESSION_VIEW_MODE_KEY, activeWorkbenchIdRef.current, boundKey ? "hybrid" : "terminal");
       }
     } catch (error) {
       setStatus({ text: statusError(error), kind: "error" });
     }
-  }, [addTerminal, selectedProject, t]);
+  }, [addTerminal, linkSessionToOpenTask, selectedProject, t, trackThunderTuiPane]);
+
+  // A TUI pane that was closed before its conversation appeared stops being a
+  // binding target.
+  useEffect(() => {
+    if (!unboundThunderTuiRef.current.length) return;
+    const live = unboundThunderTuiRef.current.filter((entry) =>
+      terminals.some((pane) => pane.key === entry.terminalKey)
+    );
+    if (live.length === unboundThunderTuiRef.current.length) return;
+    unboundThunderTuiRef.current = live;
+    setUnboundThunderTui(live);
+  }, [terminals]);
+
+  useEffect(() => {
+    if (!unboundThunderTui.length) return;
+    if (typeof desktopApi().thunderChatListConversations !== "function") return;
+    const timer = window.setInterval(() => { void reloadThunderConversations(); }, THUNDER_TUI_DISCOVERY_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [unboundThunderTui.length, reloadThunderConversations]);
+
+  /**
+   * Bind a Thunder TUI pane to the conversation its process registered: the
+   * store stamps a new conversation with the TUI's start time and the pane's
+   * cwd, which is how a pane with no id finds its own. A restored pane carries
+   * the id it was resumed with instead.
+   */
+  useEffect(() => {
+    if (!unboundThunderTui.length || !thunderConversations.length) return;
+    // A visual chat pane owns its conversation as well, even before it has
+    // rebound its pane key to it.
+    const claimed = new Set([
+      ...terminals.flatMap((pane) => pane.sessionKey ? [pane.sessionKey] : []),
+      ...thunderChats.flatMap((pane) => pane.sessionId ? [`thunder:${pane.sessionId}`] : [])
+    ]);
+    const assignments = new Map<string, string>();
+    const entries = [...unboundThunderTui].sort((a, b) => a.launchedAtMs - b.launchedAtMs);
+
+    entries.forEach((entry, index) => {
+      // The next pane's launch bounds this one from above: a conversation
+      // stamped after it belongs to that pane, not to this one.
+      const upperBound = entries[index + 1]?.launchedAtMs ?? Infinity;
+      const candidate = thunderConversations
+        .filter((conversation) => {
+          if (claimed.has(`thunder:${conversation.id}`)) return false;
+          if ((conversation.turn_count ?? 0) <= 0) return false;
+          if (entry.sessionIdHint) return conversation.id === entry.sessionIdHint;
+          if (projectPathKey(conversation.workspace || "") !== projectPathKey(entry.cwd)) return false;
+          return conversation.created_at_ms >= entry.launchedAtMs - THUNDER_TUI_BIND_SLACK_MS
+            && conversation.created_at_ms < upperBound;
+        })
+        .sort((a, b) => a.created_at_ms - b.created_at_ms)[0];
+      if (!candidate) return;
+      const bound = `thunder:${candidate.id}`;
+      claimed.add(bound);
+      assignments.set(entry.terminalKey, bound);
+    });
+
+    if (!assignments.size) return;
+    const bindSessions = (current: TerminalPane[]) => current.map((pane) => {
+      const bound = assignments.get(pane.key);
+      return bound ? { ...pane, sessionKey: bound } : pane;
+    });
+    terminalsRef.current = bindSessions(terminalsRef.current);
+    setTerminals(bindSessions);
+    for (const entry of unboundThunderTui) {
+      const bound = assignments.get(entry.terminalKey);
+      if (bound) linkSessionToOpenTask(bound, entry.cwd);
+    }
+    const remaining = unboundThunderTuiRef.current.filter((entry) => !assignments.has(entry.terminalKey));
+    unboundThunderTuiRef.current = remaining;
+    setUnboundThunderTui(remaining);
+  }, [linkSessionToOpenTask, terminals, thunderChats, thunderConversations, unboundThunderTui]);
 
   const closeBrowser = useCallback((key: string) => {
     const pane = browsers.find((item) => item.key === key);
@@ -3013,16 +3129,19 @@ export function WorkbenchPanel(): ReactPortal | null {
           const title = t("desktop.workbench.newSessionTitle", basename(launchCwd));
           const terminalKey = addTerminal(title, launchCwd, result.command, launchCwd, undefined, "session", { initialPrompt: prompt, env: result.env });
           // Thunder's TUI keeps its own conversation store, so there is no catalog
-          // session to bind a pending row to.
-          if (target.channel !== "thunder") addPendingSession(terminalKey, target.provider, launchCwd, title);
-          setSessionViewMode("hybrid");
-          writeWorkbenchValue(SESSION_VIEW_MODE_KEY, activeWorkbenchIdRef.current, "hybrid");
+          // session to bind a pending row to — its pane is bound by discovery.
+          if (target.channel === "thunder") trackThunderTuiPane(terminalKey, launchCwd);
+          else addPendingSession(terminalKey, target.provider, launchCwd, title);
+          // A brand-new session has nothing to observe yet, so it opens in the
+          // fullscreen terminal; the transcript split stays one toggle away.
+          setSessionViewMode("terminal");
+          writeWorkbenchValue(SESSION_VIEW_MODE_KEY, activeWorkbenchIdRef.current, "terminal");
         }
         await loadSessions();
       }
     } catch (error) { setStatus({ text: statusError(error), kind: "error" }); }
     finally { setTerminalCreating(false); }
-  }, [addAcpChat, addPendingSession, addTerminal, addThunderChat, linkSessionToOpenTask, loadSessions, reloadWorkbench, settings?.workbench?.composerMentions, t, terminalCreating]);
+  }, [addAcpChat, addPendingSession, addTerminal, addThunderChat, linkSessionToOpenTask, loadSessions, reloadWorkbench, settings?.workbench?.composerMentions, t, terminalCreating, trackThunderTuiPane]);
 
   /**
    * New-session picker as a native `NSMenu`.
@@ -3335,6 +3454,9 @@ export function WorkbenchPanel(): ReactPortal | null {
       if (tips.length) continue;
       const identity = sessionIdentityFromKey(pane.sessionKey);
       if (!identity) continue;
+      // Composer history comes from the catalog, which does not hold Thunder
+      // conversations (they live in the daemon's own store).
+      if (identity.provider === "thunder") continue;
       const importKey = `${identity.provider}:${identity.sessionId}`;
       if (composerImportKeysRef.current.has(importKey)) continue;
       composerImportKeysRef.current.add(importKey);
@@ -3791,6 +3913,14 @@ export function WorkbenchPanel(): ReactPortal | null {
       .filter((pane) => liveIds.has(pane.ptyId) && !knownPtyIds.has(pane.ptyId))
       .map((pane): TerminalPane => ({ ...pane, workbenchId }));
     if (!additions.length) return;
+    // A restored Thunder TUI pane still knows the conversation it was resumed
+    // with from its own command line, so its binding does not have to wait for
+    // discovery to guess it.
+    for (const pane of additions) {
+      if (pane.group !== "session" || pane.sessionKey) continue;
+      const hint = thunderSessionIdFromCommand(pane.command);
+      if (hint) trackThunderTuiPane(pane.key, pane.cwd, hint);
+    }
     terminalsRef.current = [...terminalsRef.current, ...additions];
     setTerminals((current) => [
       ...current,
@@ -3800,7 +3930,7 @@ export function WorkbenchPanel(): ReactPortal | null {
     if (scope && !activePanesRef.current[scope]) {
       setActivePane(additions[additions.length - 1]!.key, projectPath ?? selectedProject);
     }
-  }, [selectedProject, setActivePane]);
+  }, [selectedProject, setActivePane, trackThunderTuiPane]);
 
   // Persist a workbench's panes so its workspace can be restored later. The
   // terminals carry their pty id: a reopened workbench adopts those processes.
