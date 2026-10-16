@@ -1274,6 +1274,44 @@ describe("WorkbenchPanel", () => {
     ...overrides
   } as unknown as typeof window.agentResume);
 
+  it("interleaves Thunder conversations with catalog sessions by recency", async () => {
+    const host = document.createElement("div");
+    host.id = "react-workbench";
+    document.body.append(host);
+    const now = Date.now();
+    const catalogSession = (id: string, title: string, updatedAt: number) => ({
+      provider: "codex" as const,
+      id,
+      title,
+      projectPath: "/work/app",
+      updatedAt
+    });
+    window.agentResume = thunderWorkbenchApi({
+      listSessions: async () => [
+        catalogSession("s-old", "Older catalog session", now - 3000),
+        catalogSession("s-new", "Newer catalog session", now - 1000)
+      ],
+      thunderChatListConversations: async () => [
+        thunderConversation({ id: "t-mid", title: "Thunder in between", updated_at_ms: now - 2000 }),
+        thunderConversation({ id: "t-old", title: "Oldest Thunder chat", updated_at_ms: now - 4000 })
+      ]
+    });
+
+    render(<I18nProvider><WorkbenchPanel /></I18nProvider>);
+    await act(async () => window.dispatchEvent(new CustomEvent("agent-resume:tab-change", { detail: "workbench" })));
+    await activateTaskDirectory("/work/app");
+
+    // One timeline, not catalog-then-Thunder: a conversation touched between the
+    // two sessions sorts between them, and the stalest row of either store sinks.
+    await waitFor(() => expect(document.querySelectorAll(".wb-list-item-title")).toHaveLength(4));
+    expect([...document.querySelectorAll(".wb-list-item-title")].map((item) => item.textContent)).toEqual([
+      "Newer catalog session",
+      "Thunder in between",
+      "Older catalog session",
+      "Oldest Thunder chat"
+    ]);
+  });
+
   it("gives a Thunder row the overlay session menu plus its two Thunder actions", async () => {
     const host = document.createElement("div");
     host.id = "react-workbench";
