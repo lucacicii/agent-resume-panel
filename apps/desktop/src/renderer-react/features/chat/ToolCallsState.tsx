@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { ICON_SIZE, ThemeIcon } from "../../components/ThemeIcon";
-import { ToolChip } from "./ToolChip";
+import { ToolChip, parseToolCall } from "./ToolChip";
 import type { ActiveToolInfo } from "./useThunderChat";
 
 interface ToolCallsStateProps {
@@ -27,7 +27,8 @@ export function ToolCallsState({
     title += ` (${toolNames})`;
   }
   if (runningTool) {
-    title = `Running ${runningTool.name}...`;
+    const parsed = parseToolCall(runningTool.name, runningTool.arguments);
+    title = `Running: ${parsed.verb} ${parsed.target}...`;
   }
 
   return (
