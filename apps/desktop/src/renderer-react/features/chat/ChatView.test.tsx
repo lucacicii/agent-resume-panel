@@ -319,9 +319,9 @@ describe("ChatView", () => {
         dot.classList.contains("is-tools") ? "tools" : "thinking"
       )
     ).toEqual(["tools", "tools", "thinking"]);
-    // Each turn's thinking and tool calls are behind its dot, not laid out flat.
-    expect(document.querySelectorAll(".tb-tool-group-container")).toHaveLength(0);
-    expect(document.querySelectorAll(".tb-thinking-container")).toHaveLength(0);
+    // Thinking and tool calls stay inline in the message body as compact collapsible sections
+    expect(document.querySelectorAll(".tb-tool-group-container").length).toBeGreaterThan(0);
+    expect(document.querySelectorAll(".tb-thinking-container").length).toBeGreaterThan(0);
 
     // Opening a dot reads that turn back.
     fireEvent.click(document.querySelectorAll(".tb-turn-dot")[0]);
@@ -404,8 +404,8 @@ describe("ChatView", () => {
     // The pile leads the reply, and it is the turn's only home now.
     const dots = settled.querySelectorAll<HTMLElement>(".tb-turn-dot");
     expect(dots.length).toBe(1);
-    expect(settled.querySelectorAll(".tb-tool-group-container").length).toBe(0);
-    expect(settled.querySelector(".tb-thinking-container")).toBeNull();
+    expect(settled.querySelectorAll(".tb-tool-group-container").length).toBeGreaterThan(0);
+    expect(settled.querySelector(".tb-thinking-container")).toBeTruthy();
     expect(settled.textContent).toContain("first answersecond answer");
     expect(
       settled.querySelector(".tb-turn-dots")!.compareDocumentPosition(screen.getByText(/first answersecond answer/)) &
