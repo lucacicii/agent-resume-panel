@@ -63,7 +63,6 @@ describe("settings model", () => {
     expect(draft.sessionRenameSelection).toEqual({ providerId: "p1", modelId: "tool" });
     expect(draft.sessionSummarySelection).toEqual({ providerId: "p1", modelId: "tool" });
     expect(draft.reportSelection).toEqual({ providerId: "p1", modelId: "tool" });
-    expect(draft.gtdSelection).toEqual({ providerId: "p1", modelId: "tool" });
     expect(draft.translateSelection).toEqual({ providerId: "p1", modelId: "tool" });
     expect(draft.toolOutputLanguage).toBe("auto");
     expect(draft.toolMaxContextChars).toBe(120_000);
@@ -78,14 +77,12 @@ describe("settings model", () => {
       sessionRenameSelection: { providerId: "p1", modelId: "tool" },
       sessionSummarySelection: { providerId: "p1", modelId: "tool" },
       reportSelection: { providerId: "p1", modelId: "tool" },
-      gtdSelection: { providerId: "p1", modelId: "tool" },
       translateSelection: { providerId: "p1", modelId: "tool" }
     });
     expect(patch.modelSelections?.gitCommit).toEqual({ providerId: "p1", modelId: "tool" });
     expect(patch.modelSelections?.sessionRename).toEqual({ providerId: "p1", modelId: "tool" });
     expect(patch.modelSelections?.sessionSummary).toEqual({ providerId: "p1", modelId: "tool" });
     expect(patch.modelSelections?.report).toEqual({ providerId: "p1", modelId: "tool" });
-    expect(patch.modelSelections?.gtd).toEqual({ providerId: "p1", modelId: "tool" });
     expect(patch.modelSelections?.translate).toEqual({ providerId: "p1", modelId: "tool" });
   });
 
@@ -429,22 +426,6 @@ describe("settings model", () => {
     expect(patch.workbench?.terminalRenderer).toBe("canvas");
   });
 
-  it("defaults and persists workbench terminal engine (xterm / ghostty-web)", () => {
-    const defaultDraft = workbenchDraftFromSettings(settings);
-    expect(defaultDraft.terminalEngine).toBe("xterm");
-
-    const ghosttyDraft = workbenchDraftFromSettings({
-      ...settings,
-      workbench: { terminalEngine: "ghostty-web" }
-    });
-    expect(ghosttyDraft.terminalEngine).toBe("ghostty-web");
-
-    const patch = workbenchPatch(settings, {
-      ...defaultDraft,
-      terminalEngine: "ghostty-web"
-    });
-    expect(patch.workbench?.terminalEngine).toBe("ghostty-web");
-  });
 
   it("only stores non-default agent homes", () => {
     const storage = storagePatch({ ...settings, agentHomes: { codexHome: "~/old-codex" } }, { ...storageDraftFromSettings(settings), panelHome: "~/panel", codexHome: "~/custom-codex" });

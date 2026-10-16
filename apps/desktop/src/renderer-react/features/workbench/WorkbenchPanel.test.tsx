@@ -1007,7 +1007,6 @@ describe("WorkbenchPanel", () => {
       listProjectAliases: async () => ({}),
       getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
       listSessions: async () => [{ provider: "codex", id: "session-1", title: "Fix renderer", projectPath: "/work/app", updatedAt: 1 }],
-      workbenchGetProjectEditor: async () => ({ selected: "vscode", available: true, editor: { id: "vscode", label: "VS Code" } }),
       workbenchNewSession,
       workbenchOpenSession: async () => ({ mode: "external-system", cwd: "/work/app", external: true })
     } as unknown as typeof window.agentResume;
@@ -1054,7 +1053,6 @@ describe("WorkbenchPanel", () => {
       listProjectAliases: async () => ({}),
       getSettings: async () => ({ workbench: { defaultNewSessionTarget: "thunder:visual" } }),
       listSessions: async () => [],
-      workbenchGetProjectEditor: async () => ({ selected: "auto", available: false, editor: null }),
       workbenchNewSession,
       acpCreateSession,
       thunderGetStatus: async () => ({ available: true, repoPath: "/thunder", daemonPath: "/thunder/daemon", tuiPath: "/thunder/tui", models: [] }),
@@ -1105,7 +1103,6 @@ describe("WorkbenchPanel", () => {
       listProjectAliases: async () => ({}),
       getSettings: async () => ({ workbench: { defaultNewSessionTarget: "cli:thunder" } }),
       listSessions: async () => [],
-      workbenchGetProjectEditor: async () => ({ selected: "auto", available: false, editor: null }),
       workbenchNewSession,
       notesRead: async () => ({ record: { work: { projects: [] } }, content: "" }),
       notesListTasks: async () => []
@@ -1147,7 +1144,6 @@ describe("WorkbenchPanel", () => {
       listProjectAliases: async () => ({}),
       getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
       listSessions: async () => [],
-      workbenchGetProjectEditor: async () => ({ selected: "auto", available: false, editor: null }),
       contextMenuShow,
       workbenchNewSession: vi.fn(async () => ({ mode: "external-system", cwd: "/work/app", external: true })),
       thunderGetStatus: async () => ({ available: true, repoPath: "/thunder", daemonPath: "/thunder/daemon", tuiPath: "/thunder/tui", models: [] }),
@@ -1255,7 +1251,6 @@ describe("WorkbenchPanel", () => {
     listProjectAliases: async () => ({}),
     getSettings: async () => ({ workbench: { defaultNewSessionProvider: "codex" } }),
     listSessions: async () => [],
-    workbenchGetProjectEditor: async () => ({ selected: "auto", available: false, editor: null }),
     contextMenuShow,
     workbenchNewSession: vi.fn(async () => ({ mode: "external-system", cwd: "/work/app", external: true })),
     thunderGetStatus: async () => ({ available: true, repoPath: "/thunder", daemonPath: "/thunder/daemon", tuiPath: "/thunder/tui", models: [] }),
@@ -1482,7 +1477,6 @@ describe("WorkbenchPanel", () => {
       listProjectAliases: async () => ({}),
       getSettings: async () => ({ workbench: { defaultNewSessionTarget: "cli:thunder" } }),
       listSessions: async () => [],
-      workbenchGetProjectEditor: async () => ({ selected: "auto", available: false, editor: null }),
       contextMenuShow,
       workbenchNewSession,
       previewSession,

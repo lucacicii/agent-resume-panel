@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { DesktopAppearanceState } from "../../../themes";
-import { createTerminalAdapter, XtermTerminalAdapter, GhosttyWebTerminalAdapter } from "./index";
+import { createTerminalAdapter, XtermTerminalAdapter } from "./index";
 
 beforeAll(() => {
   if (!window.matchMedia) {
@@ -91,42 +91,4 @@ describe("Terminal Adapters", () => {
     });
   });
 
-  describe("GhosttyWebTerminalAdapter", () => {
-    it("initializes ghostty-web adapter and manages event handlers", async () => {
-      const onData = vi.fn();
-      const onResize = vi.fn();
-      const onWriteParsed = vi.fn();
-      const onBufferChange = vi.fn();
-
-      const adapter = createTerminalAdapter("ghostty-web", defaultOptions);
-      expect(adapter.engineType).toBe("ghostty-web");
-      expect(adapter instanceof GhosttyWebTerminalAdapter).toBe(true);
-
-      adapter.onData(onData);
-      adapter.onResize(onResize);
-      adapter.onWriteParsed(onWriteParsed);
-      adapter.onBufferChange(onBufferChange);
-
-      const container = document.createElement("div");
-      adapter.open(container);
-
-      await new Promise<void>((resolve) => adapter.write("hello from ghostty\r\n", resolve));
-      expect(onWriteParsed).toHaveBeenCalled();
-
-      // Test Alternate buffer detection
-      adapter.write("\x1b[?1049h");
-      expect(adapter.getBufferInfo().type).toBe("alternate");
-      expect(onBufferChange).toHaveBeenCalled();
-
-      adapter.write("\x1b[?1049l");
-      expect(adapter.getBufferInfo().type).toBe("normal");
-
-      adapter.resize(100, 30);
-      expect(adapter.cols).toBe(100);
-      expect(adapter.rows).toBe(30);
-      expect(onResize).toHaveBeenCalledWith({ cols: 100, rows: 30 });
-
-      adapter.dispose();
-    });
-  });
 });

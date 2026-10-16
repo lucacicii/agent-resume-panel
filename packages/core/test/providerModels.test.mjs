@@ -6,7 +6,6 @@ import {
   chatLlmConfigFromSettings,
   embeddingConfigFromSettings,
   gitCommitLlmConfigFromSettings,
-  gtdLlmConfigFromSettings,
   listProviderModels,
   llmConfigFromSettings,
   reportLlmConfigFromSettings,
@@ -176,22 +175,16 @@ test("unconfigured providers resolve to undefined and unset selections fall back
     llmConfigFromSettings({ ...poolSettings, modelSelections: {} })?.model,
     "gpt-4o-mini"
   );
-  assert.equal(
-    resolveSelectedModel({ ...poolSettings, providers: [] }, "image"),
-    undefined
-  );
 });
 
 test("isModelUse recognizes base and specialized use cases", () => {
   assert.equal(isModelUse("tool"), true);
   assert.equal(isModelUse("chat"), true);
   assert.equal(isModelUse("embedding"), true);
-  assert.equal(isModelUse("image"), true);
   assert.equal(isModelUse("gitCommit"), true);
   assert.equal(isModelUse("sessionRename"), true);
   assert.equal(isModelUse("sessionSummary"), true);
   assert.equal(isModelUse("report"), true);
-  assert.equal(isModelUse("gtd"), true);
   assert.equal(isModelUse("translate"), true);
   assert.equal(isModelUse("unknown"), false);
 });
@@ -202,7 +195,6 @@ test("specialized use cases fall back to tool or chat by default, and honor over
   assert.equal(sessionRenameLlmConfigFromSettings(poolSettings)?.model, "gpt-4o-mini");
   assert.equal(sessionSummaryLlmConfigFromSettings(poolSettings)?.model, "gpt-4o-mini");
   assert.equal(reportLlmConfigFromSettings(poolSettings)?.model, "gpt-4o-mini");
-  assert.equal(gtdLlmConfigFromSettings(poolSettings)?.model, "gpt-4o-mini");
   assert.equal(translateLlmConfigFromSettings(poolSettings)?.model, "gpt-4o-mini");
 
   // Specialized use cases in this area default to disableThinking: true
@@ -210,7 +202,6 @@ test("specialized use cases fall back to tool or chat by default, and honor over
   assert.equal(sessionRenameLlmConfigFromSettings(poolSettings)?.disableThinking, true);
   assert.equal(sessionSummaryLlmConfigFromSettings(poolSettings)?.disableThinking, true);
   assert.equal(reportLlmConfigFromSettings(poolSettings)?.disableThinking, true);
-  assert.equal(gtdLlmConfigFromSettings(poolSettings)?.disableThinking, true);
   assert.equal(translateLlmConfigFromSettings(poolSettings)?.disableThinking, true);
 
   // With specific overrides, each specialized use resolves to its explicit model.
@@ -222,7 +213,6 @@ test("specialized use cases fall back to tool or chat by default, and honor over
       sessionRename: { providerId: "p2", modelId: "llama3" },
       sessionSummary: { providerId: "p1", modelId: "gpt-4o" },
       report: { providerId: "p1", modelId: "gpt-4o" },
-      gtd: { providerId: "p2", modelId: "llama3" },
       translate: { providerId: "p1", modelId: "gpt-4o" }
     }
   };
@@ -230,7 +220,6 @@ test("specialized use cases fall back to tool or chat by default, and honor over
   assert.equal(sessionRenameLlmConfigFromSettings(overridden)?.model, "llama3");
   assert.equal(sessionSummaryLlmConfigFromSettings(overridden)?.model, "gpt-4o");
   assert.equal(reportLlmConfigFromSettings(overridden)?.model, "gpt-4o");
-  assert.equal(gtdLlmConfigFromSettings(overridden)?.model, "llama3");
   assert.equal(translateLlmConfigFromSettings(overridden)?.model, "gpt-4o");
 });
 

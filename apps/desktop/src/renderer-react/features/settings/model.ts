@@ -145,12 +145,10 @@ export interface ProvidersDraft {
   toolSelection: ModelSelection;
   chatSelection: ModelSelection;
   embeddingSelection: ModelSelection;
-  imageSelection: ModelSelection;
   gitCommitSelection: ModelSelection;
   sessionRenameSelection: ModelSelection;
   sessionSummarySelection: ModelSelection;
   reportSelection: ModelSelection;
-  gtdSelection: ModelSelection;
   translateSelection: ModelSelection;
   /** Tool-use options (summaries / digests output language, budgets). */
   toolOutputLanguage: UiLanguageValue;
@@ -198,9 +196,7 @@ export interface WorkbenchDraft {
   /** Single-list Default Agent: CLI and ACP-prefixed options */
   defaultNewSessionTarget: WorkbenchNewSessionTargetDraft;
   newSessionYolo: boolean;
-  projectEditor: "auto" | "vscode" | "vscodium" | "cursor" | "windsurf";
   terminalMode: "xterm" | "external-system";
-  terminalEngine: "xterm" | "ghostty-web";
   terminalTheme: WorkbenchTerminalThemeId;
   editorTheme: "follow-app" | "light" | "dark";
   /** webgl (default) or force canvas for CJK/GPU compatibility */
@@ -325,12 +321,10 @@ export function providersDraftFromSettings(settings: PanelSettings): ProvidersDr
     toolSelection: legacyTool,
     chatSelection: settings.modelSelections?.chat ?? legacyTool,
     embeddingSelection: settings.modelSelections?.embedding ?? {},
-    imageSelection: settings.modelSelections?.image ?? {},
     gitCommitSelection: settings.modelSelections?.gitCommit ?? legacyTool,
     sessionRenameSelection: settings.modelSelections?.sessionRename ?? legacyTool,
     sessionSummarySelection: settings.modelSelections?.sessionSummary ?? legacyTool,
     reportSelection: settings.modelSelections?.report ?? legacyTool,
-    gtdSelection: settings.modelSelections?.gtd ?? legacyTool,
     translateSelection: settings.modelSelections?.translate ?? legacyTool,
     toolOutputLanguage: normalizeOutputLanguage(toolOptions?.outputLanguage),
     toolMaxContextChars: typeof toolOptions?.maxContextChars === "number" ? toolOptions.maxContextChars : 120_000,
@@ -366,12 +360,10 @@ function normalizeDraftSelections(draft: ProvidersDraft): Partial<Record<ModelUs
     ["tool", draft.toolSelection],
     ["chat", draft.chatSelection],
     ["embedding", draft.embeddingSelection],
-    ["image", draft.imageSelection],
     ["gitCommit", draft.gitCommitSelection],
     ["sessionRename", draft.sessionRenameSelection],
     ["sessionSummary", draft.sessionSummarySelection],
     ["report", draft.reportSelection],
-    ["gtd", draft.gtdSelection],
     ["translate", draft.translateSelection]
   ];
   for (const [use, selection] of entries) {
@@ -577,9 +569,7 @@ export function workbenchDraftFromSettings(settings: PanelSettings): WorkbenchDr
     defaultProvider: defaultProvider,
     defaultNewSessionTarget: target,
     newSessionYolo: workbench?.newSessionYolo === true,
-    projectEditor: workbench?.projectEditor === "vscode" || workbench?.projectEditor === "vscodium" || workbench?.projectEditor === "cursor" || workbench?.projectEditor === "windsurf" ? workbench.projectEditor : "auto",
     terminalMode: workbench?.terminalMode === "external-system" || workbench?.terminalMode === "external-ghostty" ? "external-system" : "xterm",
-    terminalEngine: workbench?.terminalEngine === "ghostty-web" ? "ghostty-web" : "xterm",
     terminalTheme: resolveTerminalThemeId(workbench?.terminalTheme),
     editorTheme: workbench?.editorTheme === "light" || workbench?.editorTheme === "dark" ? workbench.editorTheme : "follow-app",
     terminalRenderer: workbench?.terminalRenderer === "canvas" ? "canvas" : "webgl",
@@ -629,9 +619,7 @@ export function workbenchPatch(settings: PanelSettings, draft: WorkbenchDraft): 
       defaultNewSessionProvider: safeCli,
       defaultNewSessionTarget: target,
       newSessionYolo: draft.newSessionYolo === true,
-      projectEditor: draft.projectEditor,
       terminalMode: draft.terminalMode,
-      terminalEngine: draft.terminalEngine,
       terminalTheme: resolveTerminalThemeId(draft.terminalTheme),
       editorTheme: draft.editorTheme,
       terminalRenderer: draft.terminalRenderer === "canvas" ? "canvas" : "webgl",

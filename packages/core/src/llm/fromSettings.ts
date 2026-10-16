@@ -69,7 +69,6 @@ export function resolveSelectedModel(
     use === "sessionRename" ||
     use === "sessionSummary" ||
     use === "report" ||
-    use === "gtd" ||
     use === "translate"
   ) {
     return resolveSelectedModel(settings, "tool");
@@ -82,9 +81,6 @@ export function resolveSelectedModel(
   }
   if (use === "embedding") {
     return findFirstValidModel(settings, "embedding");
-  }
-  if (use === "image") {
-    return findFirstValidModel(settings, "image");
   }
   return undefined;
 }
@@ -107,7 +103,6 @@ export type SpecializedModelUse =
   | "sessionRename"
   | "sessionSummary"
   | "report"
-  | "gtd"
   | "translate";
 
 export const SPECIALIZED_MODEL_USES: readonly SpecializedModelUse[] = [
@@ -115,9 +110,8 @@ export const SPECIALIZED_MODEL_USES: readonly SpecializedModelUse[] = [
   "sessionRename",
   "sessionSummary",
   "report",
-  "gtd",
   "translate"
-] as const;
+];
 
 export function isSpecializedModelUse(use: ModelUse): use is SpecializedModelUse {
   return (
@@ -125,7 +119,6 @@ export function isSpecializedModelUse(use: ModelUse): use is SpecializedModelUse
     use === "sessionRename" ||
     use === "sessionSummary" ||
     use === "report" ||
-    use === "gtd" ||
     use === "translate"
   );
 }
@@ -214,13 +207,6 @@ export function reportLlmConfigFromSettings(
   return llmConfigForUse(settings, "report", systemLocale);
 }
 
-/** GTD action item analysis model. Falls back to tool selection when unset. */
-export function gtdLlmConfigFromSettings(
-  settings: PanelSettings,
-  systemLocale?: string
-): LlmRuntimeConfig | undefined {
-  return llmConfigForUse(settings, "gtd", systemLocale);
-}
 
 /** Inline transcript and selection translation model. Falls back to tool selection when unset. */
 export function translateLlmConfigFromSettings(

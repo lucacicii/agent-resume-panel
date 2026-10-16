@@ -395,14 +395,6 @@ export interface DesktopApi {
   hideSession(args: { provider: string; id: string }): Promise<{ ok: boolean }>;
   hideSessions(args: { sessions: Array<{ provider: string; id: string }> }): Promise<{ ok: boolean }>;
   createScratchDir(): Promise<string>;
-  workbenchGetProjectEditor(): Promise<{
-    selected: "auto" | "vscode" | "vscodium" | "cursor" | "windsurf";
-    available: boolean;
-    editor: {
-      id: "vscode" | "vscodium" | "cursor" | "windsurf";
-      label: string;
-    } | null;
-  }>;
   workbenchOpenSession(args: {
     provider: string;
     id: string;
@@ -1829,7 +1821,6 @@ const api: DesktopApi = {
   hideSession: (args) => ipcRenderer.invoke("sessions:hide", args),
   hideSessions: (args) => ipcRenderer.invoke("sessions:hideMany", args),
   createScratchDir: () => ipcRenderer.invoke("workbench:createScratchDir"),
-  workbenchGetProjectEditor: () => ipcRenderer.invoke("workbench:getProjectEditor"),
   workbenchOpenSession: (args) => ipcRenderer.invoke("workbench:openSession", args),
   setWorkbenchActiveSessions: (sessions) => {
     ipcRenderer.send("workbench:activeSessions", sessions);

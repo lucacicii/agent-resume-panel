@@ -48,24 +48,20 @@ export type ModelUse =
   | "tool"
   | "chat"
   | "embedding"
-  | "image"
   | "gitCommit"
   | "sessionRename"
   | "sessionSummary"
   | "report"
-  | "gtd"
   | "translate";
 
 export const MODEL_USES: readonly ModelUse[] = [
   "tool",
   "chat",
   "embedding",
-  "image",
   "gitCommit",
   "sessionRename",
   "sessionSummary",
   "report",
-  "gtd",
   "translate"
 ];
 

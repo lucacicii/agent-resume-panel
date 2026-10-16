@@ -74,7 +74,6 @@ import {
   openCommandInSystemTerminal,
   openSessionInSystemTerminal,
   renameSessionAction,
-  resolveProjectEditor,
   resolvePanelHome,
   resolvePreviewHomes,
   resolveScratchBaseDir,
@@ -2981,17 +2980,6 @@ function registerIpc(): void {
     const dir = path.join(base, `session-${Date.now()}`);
     await fs.mkdir(dir, { recursive: true });
     return dir;
-  });
-
-  safeHandle("workbench:getProjectEditor", async () => {
-    const settings = await loadSettings();
-    const selected = settings.workbench?.projectEditor || "auto";
-    const editor = await resolveProjectEditor(selected);
-    return {
-      selected,
-      available: Boolean(editor),
-      editor
-    };
   });
 
   safeHandle(

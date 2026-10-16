@@ -64,7 +64,6 @@ export type {
   CommitMessageStyle,
   WorkbenchProjectEditor,
   WorkbenchTerminalMode,
-  WorkbenchTerminalEngine,
   WorkbenchTerminalThemeId,
   WorkbenchTerminalRenderer,
   GhosttyLaunchMode,
@@ -80,13 +79,11 @@ export {
   DEFAULT_DESKTOP_BROWSER_SETTINGS,
   WORKBENCH_TERMINAL_THEME_IDS,
   WORKBENCH_TERMINAL_RENDERERS,
-  WORKBENCH_TERMINAL_ENGINES,
   ACP_AGENT_PROVIDERS
 } from "./settings/types";
 export {
   normalizeWorkbenchComposerSlashPhrases,
   normalizeWorkbenchTerminalTheme,
-  normalizeWorkbenchTerminalEngine,
   normalizeWorkbenchTerminalRenderer,
   normalizeDesktopTheme,
   normalizeWorkbenchEditorTheme
@@ -314,7 +311,6 @@ export {
   sessionRenameLlmConfigFromSettings,
   sessionSummaryLlmConfigFromSettings,
   reportLlmConfigFromSettings,
-  gtdLlmConfigFromSettings,
   translateLlmConfigFromSettings,
   isSpecializedModelUse,
   SPECIALIZED_MODEL_USES,

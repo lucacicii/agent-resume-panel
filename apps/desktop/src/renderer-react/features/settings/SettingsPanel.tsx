@@ -379,12 +379,10 @@ function ProvidersPane({ draft, setDraft, commit, t }: { draft: ProvidersDraft; 
       toolSelection: clearIfSelected(draft.toolSelection),
       chatSelection: clearIfSelected(draft.chatSelection),
       embeddingSelection: clearIfSelected(draft.embeddingSelection),
-      imageSelection: clearIfSelected(draft.imageSelection),
       gitCommitSelection: clearIfSelected(draft.gitCommitSelection),
       sessionRenameSelection: clearIfSelected(draft.sessionRenameSelection),
       sessionSummarySelection: clearIfSelected(draft.sessionSummarySelection),
       reportSelection: clearIfSelected(draft.reportSelection),
-      gtdSelection: clearIfSelected(draft.gtdSelection),
       translateSelection: clearIfSelected(draft.translateSelection)
     };
     setDraft(next);
@@ -466,7 +464,6 @@ function ProvidersPane({ draft, setDraft, commit, t }: { draft: ProvidersDraft; 
         "sessionRenameSelection",
         "sessionSummarySelection",
         "reportSelection",
-        "gtdSelection",
         "translateSelection"
       ] as const;
       for (const key of textKeys) {
@@ -477,10 +474,6 @@ function ProvidersPane({ draft, setDraft, commit, t }: { draft: ProvidersDraft; 
     } else if (newModelKind === "embedding") {
       if (!draft.embeddingSelection?.providerId) {
         nextDraft.embeddingSelection = { providerId: selectedProvider.id, modelId: id };
-      }
-    } else if (newModelKind === "image") {
-      if (!draft.imageSelection?.providerId) {
-        nextDraft.imageSelection = { providerId: selectedProvider.id, modelId: id };
       }
     }
     setDraft(nextDraft);
@@ -532,9 +525,7 @@ function ProvidersPane({ draft, setDraft, commit, t }: { draft: ProvidersDraft; 
     const emptyHint =
       kind === "embedding"
         ? t("desktop.settings.noEmbeddingModelsHint")
-        : kind === "image"
-          ? t("desktop.settings.noImageModelsHint")
-          : t("desktop.settings.noTextModelsHint");
+        : t("desktop.settings.noTextModelsHint");
     return (
       <label className="settings-row" key={labelKey}>
         <span className="settings-row-label">
@@ -879,15 +870,6 @@ function ProvidersPane({ draft, setDraft, commit, t }: { draft: ProvidersDraft; 
           <NativeMenuSelect className="settings-row-control" ariaLabel={t("desktop.settings.outputLanguage")} title={t("desktop.settings.outputLanguage")} value={draft.toolOutputLanguage} options={[{ value: "auto", label: t("desktop.settings.fieldOutputLanguageOptionAuto") }, { value: "en", label: "English" }, { value: "zh-cn", label: "简体中文" }, { value: "ja", label: "日本語" }]} onChange={(value) => update("toolOutputLanguage", value as typeof draft.toolOutputLanguage)} />
         </label>
         {selectionRow(
-          "desktop.settings.gtdModelUse",
-          "desktop.settings.gtdModelUseDesc",
-          "text",
-          draft.gtdSelection,
-          (value) => update("gtdSelection", value),
-          t("desktop.settings.modelPlaceholder"),
-          "settings-model-select-gtd"
-        )}
-        {selectionRow(
           "desktop.settings.translateModelUse",
           "desktop.settings.translateModelUseDesc",
           "text",
@@ -904,15 +886,6 @@ function ProvidersPane({ draft, setDraft, commit, t }: { draft: ProvidersDraft; 
           (value) => update("embeddingSelection", value),
           t("desktop.settings.modelPlaceholder"),
           "settings-model-select-embedding"
-        )}
-        {selectionRow(
-          "desktop.settings.imageModelUse",
-          "desktop.settings.imageModelUseDesc",
-          "image",
-          draft.imageSelection,
-          (value) => update("imageSelection", value),
-          t("desktop.settings.modelPlaceholder"),
-          "settings-model-select-image"
         )}
       </div>
     </section>
