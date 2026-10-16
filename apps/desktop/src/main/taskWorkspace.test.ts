@@ -59,6 +59,8 @@ describe("taskWorkspace", () => {
     expect(agents).toContain(`Full note: ${address.noteAbsPath} (or the note_read MCP tool, noteId wi-1)`);
     // The workspace is not a repository, so it is the only place we point docs at.
     expect(agents).toContain("Shared long-lived docs go under .arp/docs/");
+    expect(agents).toContain("create a new worktree on a new branch per affected repo");
+    expect(agents).toContain("Repos that require PRs go through PR review");
     expect(await fs.readFile(path.join(dir, "CLAUDE.md"), "utf8")).toBe(agents);
   });
 

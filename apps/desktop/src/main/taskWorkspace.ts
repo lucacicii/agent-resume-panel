@@ -115,6 +115,7 @@ export function renderAddressTable(address: TaskAddress, workspaceDir?: string):
       : ["- (none yet) — add a project from the task header, or link a session to one"]),
     "",
     "cd into the repository you need before running project commands.",
+    "When a change touches any referenced repository (one or more): create a new worktree on a new branch per affected repo — never commit straight to the shared branches. Repos that require PRs go through PR review and merge the PR(s) when the task is done; repos that allow direct push (e.g. a private GitLab, a personal GitHub repo) push the branch and merge it when the task is done, no PR required.",
     `Full note: ${address.noteAbsPath} (or the note_read MCP tool, noteId ${address.noteId})`
   );
   return lines.join("\n");
