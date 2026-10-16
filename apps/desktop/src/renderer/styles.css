@@ -19634,33 +19634,33 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 
 /* --- BeautifulUI: Thinking State --- */
 .tb-thinking-container {
-  border: 0.5px solid color-mix(in srgb, var(--color-separator) 80%, transparent);
-  border-left: 2.5px solid var(--color-accent);
-  border-radius: var(--radius-md, 8px);
-  background: color-mix(in srgb, var(--color-secondary-bg) 60%, var(--color-pane-bg));
+  border: 1px solid color-mix(in srgb, var(--color-separator) 40%, transparent);
+  border-left: 2px solid var(--color-accent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color-fill-secondary) 25%, transparent);
   overflow: hidden;
   margin-bottom: 4px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: none;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 
 .tb-thinking-container.is-streaming {
-  border-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
+  border-color: color-mix(in srgb, var(--color-accent) 30%, transparent);
   border-left-color: var(--color-accent);
-  box-shadow: 0 0 12px color-mix(in srgb, var(--color-accent) 15%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 6%, transparent);
 }
-
 .tb-thinking-header {
   width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 10px;
+  padding: 4px 8px;
+  min-height: 26px;
   background: transparent;
   border: none;
   cursor: pointer;
   color: var(--color-label-secondary);
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 500;
   text-align: left;
 }
@@ -19846,15 +19846,15 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 }
 
 .tb-thinking-content {
-  border-left: 2px solid var(--color-accent);
-  padding-left: 10px;
-  font-family: var(--font-family-mono);
-  font-size: 12px;
+  border-left: 2px solid color-mix(in srgb, var(--color-accent) 50%, transparent);
+  padding-left: 8px;
+  font-family: var(--font-family-mono, monospace);
+  font-size: 11.5px;
   line-height: 1.55;
   color: var(--color-label-secondary);
   white-space: pre-wrap;
   word-break: break-word;
-  max-height: 280px;
+  max-height: 240px;
   overflow-y: auto;
 }
 
@@ -19883,20 +19883,20 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 
 /* --- Grouped Tool Calls Container (similar to ThinkingState) --- */
 .tb-tool-group-container {
-  border: 0.5px solid color-mix(in srgb, var(--color-separator) 80%, transparent);
-  border-left: 2.5px solid var(--color-accent);
-  border-radius: var(--radius-md, 8px);
-  background: color-mix(in srgb, var(--color-secondary-bg) 60%, var(--color-pane-bg));
+  border: 1px solid color-mix(in srgb, var(--color-separator) 40%, transparent);
+  border-left: 2px solid var(--color-accent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color-fill-secondary) 25%, transparent);
   overflow: hidden;
   margin-bottom: 4px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: none;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 
 .tb-tool-group-container.is-running {
-  border-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
+  border-color: color-mix(in srgb, var(--color-accent) 30%, transparent);
   border-left-color: var(--color-accent);
-  box-shadow: 0 0 12px color-mix(in srgb, var(--color-accent) 15%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 6%, transparent);
 }
 
 .tb-tool-group-header {
@@ -19904,12 +19904,13 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 10px;
+  padding: 4px 8px;
+  min-height: 26px;
   background: transparent;
   border: none;
   cursor: pointer;
   color: var(--color-label-secondary);
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 500;
   text-align: left;
 }
@@ -19938,6 +19939,8 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex: 0 1 auto;
+  min-width: 0;
   max-width: 460px;
   font-size: 11.5px;
   font-weight: 500;
@@ -19997,24 +20000,28 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
 .tb-tool-group-list {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 4px;
+  padding: 4px 6px 6px;
+  border-top: 0.5px solid color-mix(in srgb, var(--color-separator) 40%, transparent);
+  background: color-mix(in srgb, var(--color-pane-bg) 60%, transparent);
 }
 
 .tb-tool-chip {
-  border: 0.5px solid color-mix(in srgb, var(--color-separator) 70%, transparent);
-  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--color-separator) 45%, transparent);
+  border-radius: 5px;
   background: var(--color-pane-bg);
   overflow: hidden;
-  transition: all 0.15s ease;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 
 .tb-tool-chip:hover {
-  border-color: color-mix(in srgb, var(--color-accent) 30%, var(--color-separator));
+  border-color: color-mix(in srgb, var(--color-accent) 35%, var(--color-separator));
 }
 
 .tb-tool-chip.is-running {
   border-color: var(--color-accent);
   box-shadow: 0 0 8px color-mix(in srgb, var(--color-accent) 15%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 4%, var(--color-pane-bg));
 }
 
 .tb-tool-chip.is-error {
@@ -20026,13 +20033,13 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 9px;
+  padding: 4px 8px;
+  min-height: 26px;
   background: transparent;
   border: none;
   cursor: pointer;
   text-align: left;
 }
-
 .tb-tool-chip-header:hover {
   background: color-mix(in srgb, var(--color-fill-secondary) 50%, transparent);
 }
@@ -20069,7 +20076,9 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 320px;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 280px;
 }
 
 .tb-tool-name {
@@ -20080,6 +20089,63 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   padding: 1px 5px;
   border-radius: 4px;
   flex-shrink: 0;
+}
+.tb-tool-meta-badge {
+  font-family: var(--font-family-mono, monospace);
+  font-size: 9.5px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  color: var(--color-accent);
+  flex-shrink: 0;
+}
+
+.tb-tool-inline-preview {
+  display: flex;
+  flex-direction: column;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-top: 2px;
+}
+
+.tb-tool-terminal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  background: color-mix(in srgb, #000 35%, var(--color-secondary-bg));
+  border-bottom: 0.5px solid color-mix(in srgb, var(--color-separator) 40%, transparent);
+  font-family: var(--font-family-mono, monospace);
+  font-size: 11px;
+}
+
+.tb-tool-terminal-prompt-box {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.tb-tool-terminal-prompt {
+  color: var(--color-accent);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.tb-tool-terminal-cmd {
+  color: var(--color-label-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tb-tool-terminal-body {
+  max-height: 200px;
+  overflow-y: auto;
+  background: color-mix(in srgb, #000 20%, var(--color-secondary-bg));
+  padding: 6px 8px;
 }
 
 .tb-tool-status {
@@ -21195,23 +21261,24 @@ html[data-window-mode="main"][data-board-view]:not([data-board-view="gtd"]) #rea
   position: absolute;
   inset: 0;
   z-index: 20;
-  background: color-mix(in srgb, var(--color-window-bg) 55%, transparent);
+  background: transparent;
 }
 
 .tb-turn-overlay {
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  top: 40%;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  max-height: 52%;
   z-index: 21;
   display: flex;
   flex-direction: column;
   background: var(--color-window-bg);
-  border-top: 0.5px solid var(--color-separator);
-  border-radius: 12px 12px 0 0;
-  box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.18);
-  animation: tb-turn-slide-up 0.18s ease;
+  border: 1px solid var(--color-separator);
+  border-radius: 10px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.28);
+  animation: tb-turn-slide-up 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
 }
 
 @keyframes tb-turn-slide-up {
