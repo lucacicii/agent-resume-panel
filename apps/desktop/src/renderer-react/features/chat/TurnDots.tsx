@@ -51,11 +51,43 @@ export function TurnDots({
 
   if (finished.length === 0) return null;
 
+  const totalTurns = finished.length;
+  const totalTools = finished.reduce((sum, f) => sum + f.turn.toolCount, 0);
+  const totalDurationMs = finished.reduce((sum, f) => sum + (f.turn.durationMs || 0), 0);
+  const errorCount = finished.filter((f) => f.turn.status === "error").length;
+
   return (
-    // The label is the row's accessible name only: the numbers carry the
-    // meaning on screen, and a "Turns" caption at the top of a reply reads as
-    // chrome.
     <div className="tb-turn-dots" role="tablist" aria-label={t("desktop.chat.turns.label")}>
+      <div className="tb-turn-process-bar">
+        <div className="tb-turn-process-info">
+          <span className="tb-turn-process-icon">
+            <ThemeIcon name="sparkles" size={ICON_SIZE.dense} />
+          </span>
+          <span className="tb-turn-process-label">
+            {totalTurns} {totalTurns === 1 ? "turn" : "turns"}
+          </span>
+          {totalTools > 0 && (
+            <span className="tb-turn-process-chip">
+              <ThemeIcon name="terminal" size={ICON_SIZE.inline} />
+              <span>{totalTools} {totalTools === 1 ? "tool" : "tools"}</span>
+            </span>
+          )}
+          {totalDurationMs > 0 && (
+            <span className="tb-turn-process-time">
+              {(totalDurationMs / 1000).toFixed(1)}s
+            </span>
+          )}
+          {errorCount > 0 && (
+            <span className="tb-turn-process-error">
+              {errorCount} failed
+            </span>
+          )}
+        </div>
+        <span className="tb-turn-process-hint">
+          {openIndex !== null ? "Close step" : "Click step to inspect"}
+        </span>
+      </div>
+
       <div className="tb-turn-dots-track" ref={trackRef}>
         {finished.map(({ turn, index }) => {
           const isOpen = openIndex === index;
