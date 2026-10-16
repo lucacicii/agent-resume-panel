@@ -66,8 +66,10 @@ export async function previewCodexSession(
     }
   }
 
+  // The rollout file exists but holds no turns yet: an empty session, not a
+  // retrieval failure.
   if (!messages.length) {
-    throw new Error("Codex transcript is empty for this session.");
+    return finalizePreviewMessages(session.title, [], undefined, options);
   }
 
   return finalizePreviewMessages(session.title, messages, undefined, options);

@@ -40,6 +40,7 @@ import {
   unhideAllProjectsInCatalog,
   loadProjectAliasesMap,
   loadSessionPreview,
+  previewThunderConversation,
   loadSettings,
   ensureProjectForPath,
   unhideProjectInCatalog,
@@ -2796,7 +2797,39 @@ function registerIpc(): void {
 
   ipcMain.handle(
     "sessions:preview",
-    async (_event, args: { provider: AgentProvider; id: string }) => {
+    async (_event, args: { provider: AgentProvider | "thunder"; id: string }) => {
+      // Thunder conversations live in Thunder's own store, never in the catalog,
+      // so they are resolved from the daemon (with its disk fallback) instead.
+      if (args.provider === "thunder") {
+        const fallback = {
+          provider: args.provider,
+          id: args.id,
+          title: args.id,
+          projectPath: "",
+          updatedAt: Date.now()
+        };
+        try {
+          const conversation = await getThunderClient().getConversation(args.id);
+          if (!conversation) {
+            throw new Error(`Thunder conversation not found: ${args.id}`);
+          }
+          return {
+            session: {
+              ...fallback,
+              title: conversation.title || conversation.id,
+              projectPath: conversation.workspace || "",
+              updatedAt: conversation.updated_at_ms
+            },
+            preview: previewThunderConversation(conversation)
+          };
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          return {
+            session: fallback,
+            preview: { title: fallback.title, messages: [], warning: message }
+          };
+        }
+      }
       const settings = await loadSettings();
       const paths = await loadPanelDbPaths(settings);
       const session = await getSessionById(paths.catalogDb, args.provider, args.id);

@@ -25,6 +25,7 @@ export async function previewClaudeSession(
   const projectRoot = path.join(homes.claudeHome, "projects");
   const files = await listJsonlFiles(projectRoot);
   const messages: SessionPreviewResult["messages"] = [];
+  let matchedSessionFile = false;
 
   for (const file of files) {
     const rows = await readJsonLines<ClaudeProjectRow>(file);
@@ -33,6 +34,7 @@ export async function previewClaudeSession(
     if (!sessionIds.has(session.id) && fileId !== session.id) {
       continue;
     }
+    matchedSessionFile = true;
 
     for (const row of rows) {
       if (row.isMeta) {
@@ -61,6 +63,11 @@ export async function previewClaudeSession(
     if (messages.length) {
       return finalizePreviewMessages(session.title, messages, undefined, options);
     }
+  }
+
+  // The session's own file is there but carries no turns yet: empty, not missing.
+  if (matchedSessionFile) {
+    return finalizePreviewMessages(session.title, [], undefined, options);
   }
 
   throw new Error("Claude transcript not found for this session.");

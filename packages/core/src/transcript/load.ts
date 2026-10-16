@@ -36,6 +36,14 @@ export async function loadSessionPreview(
       return previewCursorSession(session, homes, options);
     case "chat":
       return previewAcpSession(session, homes, options);
+    case "cursor-ide":
+      // Composer bodies live in the editor's own global storage, which the panel
+      // deliberately does not parse — say so instead of failing as unsupported.
+      return {
+        title: session.title,
+        messages: [],
+        warning: "Cursor IDE stores conversation bodies outside its supported local header index."
+      };
     default:
       throw new Error(`Preview is not supported for provider ${session.provider}.`);
   }

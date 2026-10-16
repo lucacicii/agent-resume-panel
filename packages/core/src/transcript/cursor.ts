@@ -89,7 +89,7 @@ export async function previewCursorSession(
     }
   }
   if (!messages.length) {
-    throw new Error("Cursor CLI transcript is empty for this session.");
+    return finalizePreviewMessages(session.title, [], undefined, options);
   }
   return finalizePreviewMessages(session.title, messages, undefined, options);
 }
